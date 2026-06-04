@@ -53,14 +53,14 @@ export const TimelineClip = memo(function TimelineClip({
   const handleOpacity = getClipHandleOpacity({ isHovered, isSelected, isDragging });
 
   const borderColor = isSelected
-    ? trackStyle.accent + "60"
+    ? trackStyle.accent
     : isHovered
       ? theme.clipBorderHover
       : theme.clipBorder;
   const boxShadow = isDragging
     ? theme.clipShadowDragging
     : isSelected
-      ? `0 0 0 1px ${trackStyle.accent}40`
+      ? `0 0 0 1px ${trackStyle.accent}80, 0 0 8px ${trackStyle.accent}25`
       : isHovered
         ? theme.clipShadowHover
         : theme.clipShadow;
