@@ -218,38 +218,47 @@ export function TimelineToolbar({
               </button>
             </Tooltip>
           )}
-          {onSplitElement && (
-            <Tooltip label="Split clip at playhead (S)">
-              <button
-                type="button"
-                onClick={() => {
-                  const { selectedElementId, elements, currentTime } = usePlayerStore.getState();
-                  if (!selectedElementId) return;
-                  const el = elements.find((e) => (e.key ?? e.id) === selectedElementId);
-                  if (el && currentTime > el.start && currentTime < el.start + el.duration) {
-                    onSplitElement(el, currentTime);
-                  }
-                }}
-                className="flex h-7 w-7 items-center justify-center rounded text-neutral-500 transition-colors hover:text-neutral-200"
-              >
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 16 16"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.4"
-                  strokeLinecap="round"
-                >
-                  <line x1="8" y1="2" x2="8" y2="14" />
-                  <polyline points="5,5 3,2" />
-                  <polyline points="11,5 13,2" />
-                  <polyline points="5,11 3,14" />
-                  <polyline points="11,11 13,14" />
-                </svg>
-              </button>
-            </Tooltip>
-          )}
+          {onSplitElement &&
+            (() => {
+              const { selectedElementId, elements, currentTime } = usePlayerStore.getState();
+              const el = selectedElementId
+                ? elements.find((e) => (e.key ?? e.id) === selectedElementId)
+                : null;
+              if (!el || el.compositionSrc) return null;
+              const canSplit = currentTime > el.start && currentTime < el.start + el.duration;
+              return (
+                <Tooltip label="Split clip at playhead (S)">
+                  <button
+                    type="button"
+                    disabled={!canSplit}
+                    onClick={() => {
+                      if (canSplit) onSplitElement(el, currentTime);
+                    }}
+                    className={`flex h-7 w-7 items-center justify-center rounded transition-colors ${
+                      canSplit
+                        ? "text-neutral-500 hover:text-neutral-200"
+                        : "text-neutral-700 cursor-not-allowed"
+                    }`}
+                  >
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <circle cx="8" cy="18" r="3" />
+                      <circle cx="16" cy="18" r="3" />
+                      <line x1="12" y1="2" x2="8" y2="15" />
+                      <line x1="12" y1="2" x2="16" y2="15" />
+                    </svg>
+                  </button>
+                </Tooltip>
+              );
+            })()}
         </div>
         <div className="flex items-center gap-1">
           <Tooltip label="Fit timeline to width">
