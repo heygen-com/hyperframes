@@ -878,10 +878,13 @@ const REMOTE_MEDIA_SUBDIR = "_remote_media";
 const REMOTE_MEDIA_TAG_RE =
   /<(?:video|audio)\b[^>]*?\bsrc\s*=\s*["'](https?:\/\/[^"']+)["'][^>]*>/gi;
 // Match <img> tags (including agent-pipeline-emitted variants where `src` is
-// not the first attribute). frameCapture.ts has no `pollImagesReady` analog of
-// `pollVideosReady`, so a remote <img> can race the frame capture and produce
-// blank-frame flicker when Chrome's image-cache evicts the decoded pixels.
-const REMOTE_IMG_TAG_RE = /<img\b[^>]*?\bsrc\s*=\s*["'](https?:\/\/[^"']+)["'][^>]*>/gi;
+// not the first attribute). Producer-side localisation is the primary fix for
+// the remote-<img> flicker; frameCapture's `pollImagesReady`/`decodeAllImages`
+// are the defense-in-depth layer for any remote URL that bypasses this step.
+// The `(?<![\w-])` lookbehind pins the match to a real `src` attribute so we
+// don't rewrite `data-src` / `data-*-src` (lazy-loader placeholders whose URL
+// is not what Chrome actually paints). `srcset` is excluded by the `\s*=`.
+const REMOTE_IMG_TAG_RE = /<img\b[^>]*?(?<![\w-])src\s*=\s*["'](https?:\/\/[^"']+)["'][^>]*>/gi;
 
 /**
  * Download a set of remote URLs in parallel into `remoteDir`, build the
@@ -981,14 +984,19 @@ export async function localizeRemoteMediaSources(
  * of `downloadDir`, rewrite the HTML src attributes to relative paths, and
  * return a `{ relativePath → absoluteLocalPath }` map for the orchestrator.
  *
- * Why: frame-capture awaits videos (`pollVideosReady`) and fonts
- * (`document.fonts.ready`) but has no equivalent for `<img>`. A composition
- * with remote S3 `<img src>` URLs reaches Chrome unchanged; the readiness
- * check passes before the image is fully decoded, *and* Chrome may evict
- * decoded pixels mid-render under memory pressure and re-fetch from the
- * remote origin. Either path produces blank-frame flicker. Localising the
+ * Why: a composition with remote S3 `<img src>` URLs reaches Chrome unchanged;
+ * the readiness check can pass before the image is fully decoded, *and* Chrome
+ * may evict decoded pixels mid-render under memory pressure and re-fetch from
+ * the remote origin. Either path produces blank-frame flicker. Localising the
  * sources before render eliminates both races — once the file is local,
- * Chrome's image cache is bounded by disk reads, not S3 latency.
+ * Chrome's image cache is bounded by fast disk reads, not S3 latency, so a
+ * mid-render re-fetch lands within a frame instead of flickering. This is the
+ * primary fix; frameCapture's `pollImagesReady` is the defense-in-depth layer.
+ *
+ * Scope: only `<img src>` is localised here. Remote `srcset`,
+ * `<picture><source>`, SVG `<image href>`, and CSS `background-image: url()`
+ * outside `@font-face` are NOT covered — agent-pipeline compositions emit
+ * plain `<img src>`, but those are open follow-ups if other shapes appear.
  *
  * This bites agent-pipeline-generated compositions (astral / daphne /
  * hyperion `multi-v2` outputs) which render directly without going through
@@ -1202,10 +1210,10 @@ export async function compileForRender(
     externalAssets.set(relPath, absPath);
   }
 
-  // Download remote <img> sources. Same race shape as video/audio but no
-  // `pollImagesReady` exists in frameCapture, so the readiness gate can pass
-  // before Chrome decodes the pixels — and Chrome can evict decoded pixels
-  // mid-render and re-fetch, producing intermittent blank-frame flicker.
+  // Download remote <img> sources. Same race shape as video/audio: the
+  // readiness gate can pass before Chrome decodes the pixels, and Chrome can
+  // evict decoded pixels mid-render and re-fetch, producing intermittent
+  // blank-frame flicker. Localising to disk removes both races.
   const { html: htmlWithLocalImages, remoteMediaAssets: remoteImageAssets } =
     await localizeRemoteImageSources(htmlWithLocalMedia, downloadDir);
   for (const [relPath, absPath] of remoteImageAssets) {

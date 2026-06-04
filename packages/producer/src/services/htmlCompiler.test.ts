@@ -1045,6 +1045,32 @@ describe("localizeRemoteImageSources", () => {
     }
   });
 
+  it("does not match data-src (lazy-loader placeholder), only the real src attribute", async () => {
+    // A lazy-loader emits the real asset in `data-src` and a placeholder in
+    // `src`. We must localise what Chrome actually paints (the real `src`),
+    // not the `data-src` URL — matching `data-src` would download an asset the
+    // render never shows and could break the loader's runtime swap.
+    const orig = globalThis.fetch;
+    let fetchCount = 0;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).fetch = async () => {
+      fetchCount++;
+      return new Response(new Uint8Array(100), { status: 200 });
+    };
+    try {
+      const dl = mkdtempSync(join(tmpdir(), "hf-img-datasrc-"));
+      const html = `<img data-src="https://lazy.example.com/real.png" src="https://cdn.example.com/placeholder.png" />`;
+      const { html: result } = await localizeRemoteImageSources(html, dl);
+      // The real src is localised; the data-src URL is left untouched.
+      expect(result).toContain("https://lazy.example.com/real.png");
+      expect(result).not.toContain("https://cdn.example.com/placeholder.png");
+      expect(fetchCount).toBe(1);
+    } finally {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (globalThis as any).fetch = orig;
+    }
+  });
+
   it("handles src attribute not as the first attribute (agent-pipeline shape)", async () => {
     // The 02_kobe astral-pipeline composition that surfaced this bug emits
     // <img> tags with `class` before `src`. Regex must not assume src position.
