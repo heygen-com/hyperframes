@@ -62,6 +62,7 @@ interface EditHistoryHandle {
 interface UseAppHotkeysParams {
   toggleTimelineVisibility: () => void;
   handleTimelineElementDelete: (element: TimelineElement) => Promise<void>;
+  handleTimelineElementSplit: (element: TimelineElement, splitTime: number) => Promise<void>;
   handleDomEditElementDelete: (selection: DomEditSelection) => Promise<void>;
   domEditSelectionRef: React.MutableRefObject<DomEditSelection | null>;
   clearDomSelectionRef: React.MutableRefObject<() => void>;
@@ -87,6 +88,7 @@ interface UseAppHotkeysParams {
 export function useAppHotkeys({
   toggleTimelineVisibility,
   handleTimelineElementDelete,
+  handleTimelineElementSplit,
   handleDomEditElementDelete,
   domEditSelectionRef,
   editHistory,
@@ -195,6 +197,8 @@ export function useAppHotkeys({
   handleToggleRef.current = handleTimelineToggleHotkey;
   const handleDeleteRef = useRef(handleTimelineElementDelete);
   handleDeleteRef.current = handleTimelineElementDelete;
+  const handleSplitRef = useRef(handleTimelineElementSplit);
+  handleSplitRef.current = handleTimelineElementSplit;
   const handleDomEditDeleteRef = useRef(handleDomEditElementDelete);
   handleDomEditDeleteRef.current = handleDomEditElementDelete;
   const handleUndoRef = useRef(handleUndo);
@@ -304,6 +308,29 @@ export function useAppHotkeys({
         document.querySelector<HTMLElement>("[data-studio-fullscreen-target]")?.requestFullscreen();
       }
       return;
+    }
+
+    // S — split selected clip at playhead
+    if (
+      event.key === "s" &&
+      !event.metaKey &&
+      !event.ctrlKey &&
+      !event.altKey &&
+      !isEditableTarget(event.target)
+    ) {
+      const { selectedElementId, elements, currentTime } = usePlayerStore.getState();
+      if (selectedElementId) {
+        const element = elements.find((el) => (el.key ?? el.id) === selectedElementId);
+        if (
+          element &&
+          currentTime > element.start &&
+          currentTime < element.start + element.duration
+        ) {
+          event.preventDefault();
+          void handleSplitRef.current(element, currentTime);
+          return;
+        }
+      }
     }
 
     // Delete / Backspace — remove selected keyframes > reset keyframes > remove element

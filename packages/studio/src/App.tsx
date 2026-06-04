@@ -286,6 +286,7 @@ export function StudioApp() {
   const appHotkeys = useAppHotkeys({
     toggleTimelineVisibility,
     handleTimelineElementDelete: timelineEditing.handleTimelineElementDelete,
+    handleTimelineElementSplit: timelineEditing.handleTimelineElementSplit,
     handleDomEditElementDelete: domEditDeleteBridge,
     domEditSelectionRef: domEditSelectionBridgeRef,
     clearDomSelectionRef,
@@ -489,6 +490,7 @@ export function StudioApp() {
     <TimelineToolbar
       toggleTimelineVisibility={toggleTimelineVisibility}
       domEditSession={domEditSession}
+      onSplitElement={timelineEditing.handleTimelineElementSplit}
     />
   );
   return (
@@ -532,6 +534,7 @@ export function StudioApp() {
                   handleTimelineElementMove={timelineEditing.handleTimelineElementMove}
                   handleTimelineElementResize={timelineEditing.handleTimelineElementResize}
                   handleBlockedTimelineEdit={timelineEditing.handleBlockedTimelineEdit}
+                  handleTimelineElementSplit={timelineEditing.handleTimelineElementSplit}
                   setCompIdToSrc={setCompIdToSrc}
                   setCompositionLoading={setCompositionLoading}
                   shouldShowSelectedDomBounds={shouldShowSelectedDomBounds}

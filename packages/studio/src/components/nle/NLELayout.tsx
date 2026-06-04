@@ -69,6 +69,7 @@ interface NLELayoutProps {
     updates: Pick<TimelineElement, "start" | "duration" | "playbackStart">,
   ) => Promise<void> | void;
   onBlockedEditAttempt?: (element: TimelineElement, intent: BlockedTimelineEditIntent) => void;
+  onSplitElement?: (element: TimelineElement, splitTime: number) => Promise<void> | void;
   onSelectTimelineElement?: (element: TimelineElement | null) => void;
   onDeleteKeyframe?: (elementId: string, percentage: number) => void;
   onDeleteAllKeyframes?: (elementId: string) => void;
@@ -122,6 +123,7 @@ export const NLELayout = memo(function NLELayout({
   onMoveElement,
   onResizeElement,
   onBlockedEditAttempt,
+  onSplitElement,
   onSelectTimelineElement,
   onDeleteKeyframe,
   onDeleteAllKeyframes,
@@ -457,6 +459,7 @@ export const NLELayout = memo(function NLELayout({
                 onMoveElement={onMoveElement}
                 onResizeElement={onResizeElement}
                 onBlockedEditAttempt={onBlockedEditAttempt}
+                onSplitElement={onSplitElement}
                 onSelectElement={onSelectTimelineElement}
                 onDeleteKeyframe={onDeleteKeyframe}
                 onDeleteAllKeyframes={onDeleteAllKeyframes}

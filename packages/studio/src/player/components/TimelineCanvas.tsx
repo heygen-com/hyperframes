@@ -67,6 +67,7 @@ interface TimelineCanvasProps {
   onShiftClickKeyframe?: (elementId: string, percentage: number) => void;
   onDragKeyframe?: (element: TimelineElement, oldPct: number, newPct: number) => void;
   onContextMenuKeyframe?: (e: React.MouseEvent, elementId: string, percentage: number) => void;
+  onContextMenuClip?: (e: React.MouseEvent, element: TimelineElement) => void;
   onToggleKeyframeAtPlayhead?: (element: TimelineElement) => void;
 }
 
@@ -116,6 +117,7 @@ export const TimelineCanvas = memo(function TimelineCanvas({
   onShiftClickKeyframe,
   onDragKeyframe,
   onContextMenuKeyframe,
+  onContextMenuClip,
   onToggleKeyframeAtPlayhead: _onToggleKeyframeAtPlayhead,
 }: TimelineCanvasProps) {
   const draggedElement = draggedClip?.element ?? null;
@@ -249,6 +251,10 @@ export const TimelineCanvas = memo(function TimelineCanvas({
                 return (
                   <TimelineClip
                     key={clipKey}
+                    onContextMenu={(e: React.MouseEvent) => {
+                      e.preventDefault();
+                      onContextMenuClip?.(e, el);
+                    }}
                     el={previewElement}
                     pps={pps}
                     clipY={CLIP_Y}

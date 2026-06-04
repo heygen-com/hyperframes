@@ -16,6 +16,7 @@ import {
   type KeyframeDiamondContextMenuState,
 } from "./KeyframeDiamondContextMenu";
 import { useTimelineClipDrag } from "./useTimelineClipDrag";
+import { ClipContextMenu } from "./ClipContextMenu";
 import {
   GUTTER,
   TRACK_H,
@@ -70,6 +71,7 @@ interface TimelineProps {
     updates: Pick<TimelineElement, "start" | "duration" | "playbackStart">,
   ) => Promise<void> | void;
   onBlockedEditAttempt?: (element: TimelineElement, intent: BlockedTimelineEditIntent) => void;
+  onSplitElement?: (element: TimelineElement, splitTime: number) => Promise<void> | void;
   onSelectElement?: (element: TimelineElement | null) => void;
   onDeleteKeyframe?: (elementId: string, percentage: number) => void;
   onDeleteAllKeyframes?: (elementId: string) => void;
@@ -91,6 +93,7 @@ export const Timeline = memo(function Timeline({
   onMoveElement,
   onResizeElement,
   onBlockedEditAttempt,
+  onSplitElement,
   onSelectElement,
   onDeleteKeyframe,
   onDeleteAllKeyframes,
@@ -135,6 +138,11 @@ export const Timeline = memo(function Timeline({
   const [showPopover, setShowPopover] = useState(false);
   const [showShortcutHint, setShowShortcutHint] = useState(true);
   const [kfContextMenu, setKfContextMenu] = useState<KeyframeDiamondContextMenuState | null>(null);
+  const [clipContextMenu, setClipContextMenu] = useState<{
+    x: number;
+    y: number;
+    element: TimelineElement;
+  } | null>(null);
   const [viewportWidth, setViewportWidth] = useState(0);
   const roRef = useRef<ResizeObserver | null>(null);
   const shortcutHintRafRef = useRef(0);
@@ -532,6 +540,12 @@ export const Timeline = memo(function Timeline({
               currentEase: kf?.ease ?? kfData?.ease,
             });
           }}
+          onContextMenuClip={(e, el) => {
+            e.preventDefault();
+            setSelectedElementId(el.key ?? el.id);
+            onSelectElement?.(el);
+            setClipContextMenu({ x: e.clientX, y: e.clientY, element: el });
+          }}
         />
       </div>
 
@@ -581,6 +595,18 @@ export const Timeline = memo(function Timeline({
               void navigator.clipboard.writeText(JSON.stringify(kf.properties, null, 2));
             }
           }}
+        />
+      )}
+
+      {clipContextMenu && (
+        <ClipContextMenu
+          x={clipContextMenu.x}
+          y={clipContextMenu.y}
+          element={clipContextMenu.element}
+          currentTime={currentTime}
+          onClose={() => setClipContextMenu(null)}
+          onSplit={(el, time) => onSplitElement?.(el, time)}
+          onDelete={(el) => _onDeleteElement?.(el)}
         />
       )}
     </div>
