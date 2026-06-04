@@ -70,6 +70,20 @@ function injectAttr(tag: string, attr: string, value: string): string {
   return tag.replace(/>$/, ` ${attr}="${value}">`);
 }
 
+/**
+ * Parse a timing attribute (data-start, data-end, data-media-start),
+ * treating unparsable values as `fallback`. Without the guard a typo like
+ * data-start="abc" flows through as NaN and is serialized back into the
+ * compiled HTML as data-end="NaN", which the parser then turns into a NaN
+ * duration. Same policy extractResolvedMedia already applies to
+ * data-duration.
+ */
+export function parseTimingAttr(value: string | null, fallback: number): number {
+  if (value === null) return fallback;
+  const parsed = parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
 // ── Core compilation ─────────────────────────────────────────────────────
 
 function compileTag(
@@ -91,15 +105,33 @@ function compileTag(
     result = injectAttr(result, "data-hf-auto-start", "");
     startStr = "0";
   }
-  const start = parseFloat(startStr);
-  const mediaStartStr = getAttr(result, "data-media-start");
-  const mediaStart = mediaStartStr ? parseFloat(mediaStartStr) : 0;
+  let start = parseFloat(startStr);
+  if (!Number.isFinite(start)) {
+    // Unparsable data-start: normalize the attribute to 0 in the output so
+    // downstream consumers (parser, runtime) never see the garbage value.
+    result = result.replace(/data-start=["'][^"']*["']/, 'data-start="0"');
+    start = 0;
+  }
+  const mediaStart = parseTimingAttr(getAttr(result, "data-media-start"), 0);
+
+  // Strip an unparsable data-end so the normal missing-data-end flow below
+  // recomputes or resolves it instead of leaving the garbage value in place.
+  const dataEndStr = getAttr(result, "data-end");
+  if (dataEndStr !== null && !Number.isFinite(parseFloat(dataEndStr))) {
+    result = result.replace(/\s*data-end=["'][^"']*["']/, "");
+  }
 
   // 1. Compute data-end from data-start + data-duration
   if (!hasAttr(result, "data-end")) {
     const durationStr = getAttr(result, "data-duration");
-    if (durationStr !== null) {
-      const end = start + parseFloat(durationStr);
+    const duration = durationStr !== null ? parseFloat(durationStr) : NaN;
+    if (durationStr !== null && !Number.isFinite(duration)) {
+      // Unparsable data-duration: drop it and fall through to the
+      // unresolved path so the caller's resolver supplies the real one.
+      result = result.replace(/\s*data-duration=["'][^"']*["']/, "");
+    }
+    if (Number.isFinite(duration)) {
+      const end = start + duration;
       result = injectAttr(result, "data-end", String(end));
     } else if (id) {
       // No data-duration: mark as unresolved so caller can provide it
@@ -165,7 +197,7 @@ export function compileTimingAttrs(html: string): CompilationResult {
       unresolved.push({
         id,
         tagName: "div",
-        start: startStr ? parseFloat(startStr) : 0,
+        start: parseTimingAttr(startStr, 0),
         mediaStart: 0,
         compositionSrc: compositionSrc ?? undefined,
       });
@@ -199,8 +231,7 @@ export function injectDurations(html: string, resolutions: ResolvedDuration[]): 
 
       // Add data-end if missing
       if (!hasAttr(result, "data-end")) {
-        const startStr = getAttr(result, "data-start");
-        const start = startStr ? parseFloat(startStr) : 0;
+        const start = parseTimingAttr(getAttr(result, "data-start"), 0);
         result = injectAttr(result, "data-end", String(start + duration));
       }
 
@@ -241,9 +272,9 @@ export function extractResolvedMedia(html: string): ResolvedMediaElement[] {
       id,
       tagName: isVideo ? "video" : "audio",
       src: getAttr(tag, "src") ?? undefined,
-      start: startStr !== null ? parseFloat(startStr) : 0,
+      start: parseTimingAttr(startStr, 0),
       duration,
-      mediaStart: mediaStartStr ? parseFloat(mediaStartStr) : 0,
+      mediaStart: parseTimingAttr(mediaStartStr, 0),
       loop: hasAttr(tag, "loop"),
     });
   }
@@ -265,8 +296,7 @@ export function clampDurations(html: string, clamps: ResolvedDuration[]): string
       tag = tag.replace(/data-duration=["'][^"']*["']/, `data-duration="${duration}"`);
 
       // Recompute data-end from data-start + clamped duration
-      const startStr = getAttr(tag, "data-start");
-      const start = startStr ? parseFloat(startStr) : 0;
+      const start = parseTimingAttr(getAttr(tag, "data-start"), 0);
       tag = tag.replace(/data-end=["'][^"']*["']/, `data-end="${start + duration}"`);
 
       return tag;
