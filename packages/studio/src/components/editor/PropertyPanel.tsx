@@ -288,9 +288,9 @@ export const PropertyPanel = memo(function PropertyPanel({
   const gsapAnimId =
     gsapAnimations?.find((a) => a.keyframes)?.id ?? gsapAnimations?.[0]?.id ?? null;
 
-  // Read GSAP-interpolated values at the current seek time.
-  // Recomputed on every render (currentTime changes trigger re-render from the store subscription).
-  const gsapRuntimeValues = (() => {
+  // Read ALL GSAP-interpolated values at the current seek time.
+  // Discovers animated properties from the animation's keyframes/tween vars.
+  const gsapRuntimeValues: Record<string, number> | null = (() => {
     if (!gsapAnimId || gsapAnimations.length === 0) return null;
     const iframe = previewIframeRef?.current;
     if (!iframe?.contentWindow) return null;
@@ -299,25 +299,27 @@ export const PropertyPanel = memo(function PropertyPanel({
     try {
       const gsap = (
         iframe.contentWindow as unknown as {
-          gsap?: { getProperty: (el: Element, prop: string) => number };
+          gsap?: { getProperty: (el: Element, prop: string) => number | string };
         }
       ).gsap;
       if (!gsap?.getProperty) return null;
       const el = iframe.contentDocument?.querySelector(selector);
       if (!el) return null;
-      const read = (prop: string) => {
+      const propKeys = new Set<string>();
+      for (const anim of gsapAnimations) {
+        if (anim.keyframes) {
+          for (const kf of anim.keyframes.keyframes) {
+            for (const p of Object.keys(kf.properties)) propKeys.add(p);
+          }
+        }
+        for (const p of Object.keys(anim.properties)) propKeys.add(p);
+      }
+      const result: Record<string, number> = {};
+      for (const prop of propKeys) {
         const v = Number(gsap.getProperty(el, prop));
-        return Number.isFinite(v) ? Math.round(v * 100) / 100 : null;
-      };
-      return {
-        x: read("x"),
-        y: read("y"),
-        width: read("width"),
-        height: read("height"),
-        rotation: read("rotation"),
-        scale: read("scale"),
-        opacity: read("opacity"),
-      };
+        if (Number.isFinite(v)) result[prop] = Math.round(v * 100) / 100;
+      }
+      return Object.keys(result).length > 0 ? result : null;
     } catch {
       return null;
     }
