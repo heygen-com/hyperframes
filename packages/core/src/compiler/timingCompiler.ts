@@ -116,9 +116,12 @@ function compileTag(
 
   // Strip an unparsable data-end so the normal missing-data-end flow below
   // recomputes or resolves it instead of leaving the garbage value in place.
+  // Single \s (not \s*): the attribute always has whitespace before it
+  // inside a tag, and an unbounded prefix backtracks polynomially on
+  // attacker-controlled input (CodeQL js/polynomial-redos).
   const dataEndStr = getAttr(result, "data-end");
   if (dataEndStr !== null && !Number.isFinite(parseFloat(dataEndStr))) {
-    result = result.replace(/\s*data-end=["'][^"']*["']/, "");
+    result = result.replace(/\sdata-end=["'][^"']*["']/, "");
   }
 
   // 1. Compute data-end from data-start + data-duration
@@ -128,7 +131,8 @@ function compileTag(
     if (durationStr !== null && !Number.isFinite(duration)) {
       // Unparsable data-duration: drop it and fall through to the
       // unresolved path so the caller's resolver supplies the real one.
-      result = result.replace(/\s*data-duration=["'][^"']*["']/, "");
+      // Single \s for the same reason as the data-end strip above.
+      result = result.replace(/\sdata-duration=["'][^"']*["']/, "");
     }
     if (Number.isFinite(duration)) {
       const end = start + duration;
