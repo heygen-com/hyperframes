@@ -11,6 +11,7 @@ import {
   discoverAudioVolumeAutomationFromTimeline,
   inlineExternalScripts,
   localizeRemoteMediaSources,
+  localizeRemoteImageSources,
   localizeRemoteFontFaces,
   recompileWithResolutions,
 } from "./htmlCompiler.js";
@@ -947,6 +948,120 @@ describe("localizeRemoteMediaSources", () => {
     // OS-aware and extracts the filename correctly on both platforms.
     const { basename: b } = require("node:path");
     expect(b("/tmp/_remote_media/download_abc123.mp4")).toBe("download_abc123.mp4");
+  });
+});
+
+// ── localizeRemoteImageSources ───────────────────────────────────────────────
+//
+// Regression coverage for the agent-pipeline `<img>` flicker bug: producer's
+// frame-capture has no `pollImagesReady` analog of `pollVideosReady`, so a
+// composition with raw S3 `<img src="https://...">` URLs (astral / daphne /
+// hyperion multi-v2 outputs) reaches Chrome with a network dependency that
+// races the readiness gate AND can be evicted mid-render. Localising before
+// render is the architectural fix; `pollImagesReady` in frameCapture is the
+// defense-in-depth layer.
+//
+// Mirrors the localizeRemoteMediaSources test shape; fetch is patched in
+// for success cases and a real 404 covers the fallback path.
+
+describe("localizeRemoteImageSources", () => {
+  it("rewrites remote <img> src to _remote_media path when download succeeds", async () => {
+    const orig = globalThis.fetch;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).fetch = async () => new Response(new Uint8Array(100), { status: 200 });
+    try {
+      const dl = mkdtempSync(join(tmpdir(), "hf-img-ok-"));
+      const html = `<img class="hero" src="https://img-ok.example.com/photo.png" />`;
+      const { html: result, remoteMediaAssets } = await localizeRemoteImageSources(html, dl);
+      expect(result).not.toContain("https://img-ok.example.com/");
+      expect(result).toContain("_remote_media/");
+      expect(remoteMediaAssets.size).toBe(1);
+    } finally {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (globalThis as any).fetch = orig;
+    }
+  });
+
+  it("preserves original URL on download failure without throwing", async () => {
+    const dl = mkdtempSync(join(tmpdir(), "hf-img-fail-"));
+    const url = "https://example.com/will-404-image-localize-test.png";
+    const html = `<img src="${url}" />`;
+    const { html: result, remoteMediaAssets } = await localizeRemoteImageSources(html, dl);
+    expect(result).toContain(url);
+    expect(remoteMediaAssets.size).toBe(0);
+  });
+
+  it("deduplicates: two <img> tags with the same src URL → one download", async () => {
+    const orig = globalThis.fetch;
+    let fetchCount = 0;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).fetch = async () => {
+      fetchCount++;
+      return new Response(new Uint8Array(100), { status: 200 });
+    };
+    try {
+      const dl = mkdtempSync(join(tmpdir(), "hf-img-dedup-"));
+      const html = `<img src="https://dedup-img.example.com/hero.jpg" />
+<img src="https://dedup-img.example.com/hero.jpg" />`;
+      await localizeRemoteImageSources(html, dl);
+      expect(fetchCount).toBe(1);
+    } finally {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (globalThis as any).fetch = orig;
+    }
+  });
+
+  it("does not rewrite local (non-HTTP) src paths", async () => {
+    const dl = mkdtempSync(join(tmpdir(), "hf-img-local-"));
+    const html = `<img src="assets/hero.png" />`;
+    const { html: result, remoteMediaAssets } = await localizeRemoteImageSources(html, dl);
+    expect(result).toContain("assets/hero.png");
+    expect(result).not.toContain("_remote_media/");
+    expect(remoteMediaAssets.size).toBe(0);
+  });
+
+  it("does not rewrite data: URI src", async () => {
+    const dl = mkdtempSync(join(tmpdir(), "hf-img-data-"));
+    const html = `<img src="data:image/svg+xml,%3Csvg/%3E" />`;
+    const { html: result, remoteMediaAssets } = await localizeRemoteImageSources(html, dl);
+    expect(result).toContain("data:image/svg+xml");
+    expect(remoteMediaAssets.size).toBe(0);
+  });
+
+  it("rewrites both double-quoted and single-quoted src attributes", async () => {
+    const orig = globalThis.fetch;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).fetch = async () => new Response(new Uint8Array(100), { status: 200 });
+    try {
+      const dl = mkdtempSync(join(tmpdir(), "hf-img-quotes-"));
+      const html = `<img src="https://q-img.example.com/dq.png" />
+<img src='https://q-img.example.com/sq.jpg' />`;
+      const { html: result } = await localizeRemoteImageSources(html, dl);
+      expect(result).not.toContain("https://q-img.example.com/");
+      expect(result.match(/_remote_media\//g)?.length).toBe(2);
+    } finally {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (globalThis as any).fetch = orig;
+    }
+  });
+
+  it("handles src attribute not as the first attribute (agent-pipeline shape)", async () => {
+    // The 02_kobe astral-pipeline composition that surfaced this bug emits
+    // <img> tags with `class` before `src`. Regex must not assume src position.
+    const orig = globalThis.fetch;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).fetch = async () => new Response(new Uint8Array(100), { status: 200 });
+    try {
+      const dl = mkdtempSync(join(tmpdir(), "hf-img-attr-order-"));
+      const html = `<img class="kobe-cutout" alt="kobe" src="https://astral.example.com/d828bca.png" />`;
+      const { html: result, remoteMediaAssets } = await localizeRemoteImageSources(html, dl);
+      expect(result).not.toContain("https://astral.example.com/");
+      expect(result).toContain("_remote_media/");
+      expect(remoteMediaAssets.size).toBe(1);
+    } finally {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (globalThis as any).fetch = orig;
+    }
   });
 });
 
