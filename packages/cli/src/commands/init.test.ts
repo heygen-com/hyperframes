@@ -147,6 +147,51 @@ describe("hyperframes init flag rename", () => {
       ]);
       expect(res.status).toBe(1);
       expect(res.stderr).toContain("Video file not found: missing.mp4");
+      expect(existsSync(target)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("--audio with a missing file fails without creating the project directory", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
+    const target = join(dir, "proj");
+    try {
+      const res = runInit([
+        target,
+        "--example",
+        "blank",
+        "--non-interactive",
+        "--skip-skills",
+        "--audio",
+        "missing.mp3",
+      ]);
+      expect(res.status).toBe(1);
+      expect(res.stderr).toContain("Audio file not found: missing.mp3");
+      expect(existsSync(target)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("--video and --audio together fail without creating the project directory", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
+    const target = join(dir, "proj");
+    try {
+      const res = runInit([
+        target,
+        "--example",
+        "blank",
+        "--non-interactive",
+        "--skip-skills",
+        "--video",
+        "clip.mp4",
+        "--audio",
+        "track.mp3",
+      ]);
+      expect(res.status).toBe(1);
+      expect(res.stderr).toContain("Cannot use --video and --audio together");
+      expect(existsSync(target)).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
