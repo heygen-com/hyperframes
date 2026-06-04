@@ -597,11 +597,18 @@ export async function pollImagesReady(
   return check();
 }
 
-// Force every successfully-loaded `<img>` to be GPU-uploaded before frame
-// capture. `naturalWidth > 0` means the bitmap is decoded, but compositor-side
-// upload can still happen lazily on first paint — and Chrome may evict the
-// decoded pixels under memory pressure between frames. `img.decode()` returns
-// a Promise that resolves once the image is ready for synchronous use.
+// Force every successfully-loaded `<img>` to be GPU-uploaded before the first
+// frame capture. `naturalWidth > 0` means the bitmap has been decoded into
+// CPU memory, but compositor-side GPU upload can still happen lazily on first
+// paint. Calling `img.decode()` returns a Promise that resolves once the image
+// is ready for synchronous painting — eliminating the small first-frame race
+// between "image is technically loaded" and "the rasterized texture is on the
+// GPU and ready to composite".
+//
+// Note this is purely an init-time guard; it doesn't prevent Chrome from
+// evicting decoded pixels mid-render. The producer-side `localizeRemoteImageSources`
+// is what bounds the eviction risk (a re-fetch hits the local file server's
+// disk-backed paging, not S3 over the network).
 //
 // Critical: `decode()` on an in-flight image waits for the fetch to resolve.
 // If `pollImagesReady` timed out with some images still loading (`!complete`),
