@@ -81,12 +81,12 @@ function browserTimeoutErrorMessage(error: BrowserTimeoutParseError): {
     case "not-a-number":
       return {
         title,
-        message: `Got "${error.raw}". Must be a positive number of seconds (e.g. 180).`,
+        message: `Got "${error.raw}", which is not a number. Pass a positive number of seconds (e.g. 180).`,
       };
     case "not-positive":
       return {
         title,
-        message: `Got "${error.raw}". Must be a positive number of seconds (e.g. 180).`,
+        message: `Got "${error.raw}" seconds, which is not positive. Pass a positive number of seconds (e.g. 180).`,
       };
     case "too-small":
       return {
