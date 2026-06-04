@@ -550,14 +550,18 @@ async function pollVideosReady(
   return check();
 }
 
-// Wait for every `<img>` with a non-`data:` src to have loaded its pixel
-// data (`complete && naturalWidth > 0`). htmlCompiler localises remote `<img>`
+// Wait for every `<img>` with a non-`data:` src to have settled — either
+// successfully loaded (`complete && naturalWidth > 0`) or failed with a
+// broken-image marker (`complete && naturalWidth === 0`, the HTMLImageElement
+// equivalent of HTMLMediaElement.error). htmlCompiler localises remote `<img>`
 // URLs to the local file server before this point, so in practice this polls
 // for the local fetch to land — but the guard is a defensive net so that any
 // future composition path that leaves a remote URL in place won't capture
 // frames before the pixels arrive. Mirrors `pollVideosReady` for parity with
-// the video-side readiness contract.
-async function pollImagesReady(
+// the video-side readiness contract (videos exit-early on `ve.error`; images
+// exit-early on `complete && naturalWidth === 0`).
+/** @internal exported for unit testing only */
+export async function pollImagesReady(
   page: Page,
   timeoutMs: number,
   intervalMs: number = 100,
@@ -572,6 +576,12 @@ async function pollImagesReady(
             const ie = img as HTMLImageElement;
             const src = ie.getAttribute("src") || "";
             if (!src || src.startsWith("data:")) return true;
+            // A `complete` image with zero naturalWidth has settled with an
+            // error (404 / decode failure / CORS rejection / blocked). Treat
+            // as done — waiting won't make it load — and let the render
+            // continue with the broken-image marker visible. Mirrors how
+            // pollVideosReady treats `ve.error`.
+            if (ie.complete && ie.naturalWidth === 0) return true;
             if (ie.complete && ie.naturalWidth > 0) return true;
             return false;
           })
@@ -587,12 +597,18 @@ async function pollImagesReady(
   return check();
 }
 
-// Force every decoded `<img>` to be GPU-uploaded before frame capture.
-// `naturalWidth > 0` means the bitmap is decoded, but compositor-side upload
-// can still happen lazily on first paint — and Chrome may evict the decoded
-// pixels under memory pressure between frames. `img.decode()` returns a
-// Promise that resolves once the image is ready for synchronous use; we
-// swallow individual failures so a single broken image doesn't tank the render.
+// Force every successfully-loaded `<img>` to be GPU-uploaded before frame
+// capture. `naturalWidth > 0` means the bitmap is decoded, but compositor-side
+// upload can still happen lazily on first paint — and Chrome may evict the
+// decoded pixels under memory pressure between frames. `img.decode()` returns
+// a Promise that resolves once the image is ready for synchronous use.
+//
+// Critical: `decode()` on an in-flight image waits for the fetch to resolve.
+// If `pollImagesReady` timed out with some images still loading (`!complete`),
+// calling `decode()` on them would block here until the network finally
+// completes — or until puppeteer's evaluate timeout fires and throws an
+// uncaught error that aborts the render. Skip in-flight and broken images;
+// only force GPU upload for images that successfully loaded.
 async function decodeAllImages(page: Page): Promise<void> {
   await page.evaluate(async () => {
     const imgs = Array.from(document.querySelectorAll("img"));
@@ -600,6 +616,10 @@ async function decodeAllImages(page: Page): Promise<void> {
       imgs.map((img) => {
         const ie = img as HTMLImageElement;
         if (typeof ie.decode !== "function") return Promise.resolve();
+        // Skip still-loading images (in-flight decode() would hang) and
+        // broken images (decode() rejects, but pre-filtering is clearer
+        // than relying on the .catch).
+        if (!ie.complete || ie.naturalWidth === 0) return Promise.resolve();
         return ie.decode().catch(() => undefined);
       }),
     );
