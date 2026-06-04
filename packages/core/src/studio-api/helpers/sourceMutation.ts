@@ -212,3 +212,65 @@ export function probeElementInSource(source: string, target: SourceMutationTarge
   const el = findTargetElement(document, target);
   return el != null && isHTMLElement(el);
 }
+
+export interface SplitElementResult {
+  html: string;
+  matched: boolean;
+  newId: string | null;
+}
+
+export function splitElementInHtml(
+  source: string,
+  target: SourceMutationTarget,
+  splitTime: number,
+  newId: string,
+): SplitElementResult {
+  const { document, wrappedFragment } = parseSourceDocument(source);
+  const el = findTargetElement(document, target);
+  if (!el || !isHTMLElement(el)) return { html: source, matched: false, newId: null };
+
+  const start = parseFloat(el.getAttribute("data-start") ?? "0") || 0;
+  const duration = parseFloat(el.getAttribute("data-duration") ?? "0") || 0;
+  if (duration <= 0 || splitTime <= start || splitTime >= start + duration) {
+    return { html: source, matched: false, newId: null };
+  }
+
+  const firstDuration = splitTime - start;
+  const secondDuration = duration - firstDuration;
+
+  const clone = el.cloneNode(true) as HTMLElement;
+  clone.setAttribute("id", newId);
+  clone.setAttribute("data-start", String(Math.round(splitTime * 1000) / 1000));
+  clone.setAttribute("data-duration", String(Math.round(secondDuration * 1000) / 1000));
+
+  // Adjust media trim offset for the second half
+  const playbackStartAttr = el.hasAttribute("data-playback-start")
+    ? "data-playback-start"
+    : el.hasAttribute("data-media-start")
+      ? "data-media-start"
+      : null;
+  if (playbackStartAttr) {
+    const currentTrim = parseFloat(el.getAttribute(playbackStartAttr) ?? "0") || 0;
+    const rate = parseFloat(el.getAttribute("data-playback-rate") ?? "1") || 1;
+    clone.setAttribute(
+      playbackStartAttr,
+      String(Math.round((currentTrim + firstDuration * rate) * 1000) / 1000),
+    );
+  }
+
+  // Trim the original element's duration
+  el.setAttribute("data-duration", String(Math.round(firstDuration * 1000) / 1000));
+
+  // Insert clone after original
+  if (el.nextSibling) {
+    el.parentElement!.insertBefore(clone, el.nextSibling);
+  } else {
+    el.parentElement!.appendChild(clone);
+  }
+
+  return {
+    html: wrappedFragment ? document.body.innerHTML || "" : document.toString(),
+    matched: true,
+    newId,
+  };
+}
