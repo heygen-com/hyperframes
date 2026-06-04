@@ -20,6 +20,7 @@ import {
   Camera as PhCamera,
   ArrowClockwise,
   Gear,
+  Scissors as PhScissors,
 } from "@phosphor-icons/react";
 import type { Icon as PhosphorIcon, IconProps as PhosphorIconProps } from "@phosphor-icons/react";
 
@@ -55,3 +56,4 @@ export const RotateCcw = makeIcon(ArrowCounterClockwise);
 export const Camera = makeIcon(PhCamera);
 export const RotateCw = makeIcon(ArrowClockwise);
 export const Settings = makeIcon(Gear);
+export const Scissors = makeIcon(PhScissors);

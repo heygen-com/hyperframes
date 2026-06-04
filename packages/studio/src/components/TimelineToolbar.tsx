@@ -6,6 +6,7 @@ import { getTimelineToggleTitle } from "../utils/timelineDiscovery";
 import { usePlayerStore, type TimelineElement } from "../player";
 import { STUDIO_KEYFRAMES_ENABLED } from "./editor/manualEditingAvailability";
 import { Tooltip } from "./ui";
+import { Scissors } from "../icons/SystemIcons";
 import type { GsapAnimation, GsapPercentageKeyframe } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "./editor/domEditingTypes";
 
@@ -240,21 +241,7 @@ export function TimelineToolbar({
                         : "text-neutral-700 cursor-not-allowed"
                     }`}
                   >
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <circle cx="8" cy="18" r="3" />
-                      <circle cx="16" cy="18" r="3" />
-                      <line x1="12" y1="2" x2="8" y2="15" />
-                      <line x1="12" y1="2" x2="16" y2="15" />
-                    </svg>
+                    <Scissors size={15} />
                   </button>
                 </Tooltip>
               );
