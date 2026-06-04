@@ -695,6 +695,47 @@ function ensureDockerImage(version: string, platform: string, quiet: boolean): s
   return tag;
 }
 
+/**
+ * Resolves the Docker `--platform` for this host and enforces the constraints
+ * that come with it — keeping that policy out of `renderDocker` so the
+ * orchestrator stays focused on build/run wiring. May terminate the process
+ * via errorBox on unrecoverable mismatches (e.g. --gpu on arm64).
+ */
+function resolveDockerHostPlatform(options: RenderOptions): string {
+  const platform = resolveDockerPlatform();
+
+  // Docker Desktop on Apple Silicon (and colima with VZ) doesn't implement
+  // the `--gpus` host-passthrough flag, so requesting `--gpu` on a linux/arm64
+  // container fails at `docker run` with an opaque device-driver error. Catch
+  // it early with actionable guidance.
+  if (options.gpu && platform === "linux/arm64") {
+    errorBox(
+      "--gpu is not supported with --docker on arm64 hosts",
+      "Docker Desktop/colima on Apple Silicon doesn't expose --gpus host passthrough to linux/arm64 containers.",
+      "Drop --gpu, or run a native (non-Docker) render on this host, or set HYPERFRAMES_DOCKER_PLATFORM=linux/amd64 if you need GPU encoding (slow under qemu but works).",
+    );
+    process.exit(1);
+  }
+
+  if (!options.quiet && platform === "linux/arm64") {
+    // chrome-headless-shell doesn't publish a linux-arm64 build, so the arm64
+    // image falls back to system chromium. That loses byte-for-byte parity
+    // with amd64 renders — fine for end-user output, not fine if you're
+    // comparing against an amd64 golden baseline. Set
+    // HYPERFRAMES_DOCKER_PLATFORM=linux/amd64 to keep parity (qemu-emulated,
+    // slower).
+    console.log(
+      c.dim(
+        "  Host is arm64 — using linux/arm64 image with system chromium " +
+          "(output won't be byte-identical to amd64 renders; " +
+          "set HYPERFRAMES_DOCKER_PLATFORM=linux/amd64 to force parity).",
+      ),
+    );
+  }
+
+  return platform;
+}
+
 async function renderDocker(
   projectDir: string,
   outputPath: string,
@@ -708,19 +749,7 @@ async function renderDocker(
     console.log(c.dim("  Dev mode: using hyperframes@latest in Docker image"));
   }
 
-  const platform = resolveDockerPlatform();
-  if (!options.quiet && platform === "linux/arm64") {
-    // chrome-headless-shell doesn't publish a linux-arm64 build, so the arm64
-    // image falls back to system chromium. That loses byte-for-byte parity
-    // with amd64 renders — fine for end-user output, not fine if you're
-    // comparing against an amd64 golden baseline.
-    console.log(
-      c.dim(
-        "  Host is arm64 — using linux/arm64 image with system chromium " +
-          "(output won't be byte-identical to amd64 renders).",
-      ),
-    );
-  }
+  const platform = resolveDockerHostPlatform(options);
 
   let imageTag: string;
   try {

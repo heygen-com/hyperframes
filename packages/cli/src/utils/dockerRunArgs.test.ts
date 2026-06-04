@@ -327,14 +327,51 @@ describe("buildDockerRunArgs", () => {
 
 describe("resolveDockerPlatform", () => {
   it("maps arm64 hosts to linux/arm64", () => {
-    expect(resolveDockerPlatform("arm64")).toBe("linux/arm64");
+    expect(resolveDockerPlatform("arm64", {})).toBe("linux/arm64");
   });
 
   it("maps x64 hosts to linux/amd64", () => {
-    expect(resolveDockerPlatform("x64")).toBe("linux/amd64");
+    expect(resolveDockerPlatform("x64", {})).toBe("linux/amd64");
   });
 
   it("treats unknown architectures as linux/amd64 (safe default)", () => {
-    expect(resolveDockerPlatform("riscv64")).toBe("linux/amd64");
+    expect(resolveDockerPlatform("riscv64", {})).toBe("linux/amd64");
+  });
+
+  // Regression guard: the production call site is `resolveDockerPlatform()`
+  // with no args. If a refactor drops either default parameter, every other
+  // arch-mapping test would still pass — this one fails loudly.
+  it("uses process.arch and process.env when called with no arguments", () => {
+    const result = resolveDockerPlatform();
+    // Must equal the explicit-arg form (env override notwithstanding, which
+    // wouldn't be set in the test runner unless deliberately stubbed).
+    const expected = process.env.HYPERFRAMES_DOCKER_PLATFORM
+      ? process.env.HYPERFRAMES_DOCKER_PLATFORM
+      : resolveDockerPlatform(process.arch, {});
+    expect(result).toBe(expected);
+  });
+
+  it("honors HYPERFRAMES_DOCKER_PLATFORM override on an arm64 host (Rosetta-Node / parity-regen escape hatch)", () => {
+    expect(resolveDockerPlatform("arm64", { HYPERFRAMES_DOCKER_PLATFORM: "linux/amd64" })).toBe(
+      "linux/amd64",
+    );
+  });
+
+  it("honors HYPERFRAMES_DOCKER_PLATFORM override on an amd64 host", () => {
+    expect(resolveDockerPlatform("x64", { HYPERFRAMES_DOCKER_PLATFORM: "linux/arm64" })).toBe(
+      "linux/arm64",
+    );
+  });
+
+  it("trims whitespace from HYPERFRAMES_DOCKER_PLATFORM and ignores empty override", () => {
+    expect(resolveDockerPlatform("arm64", { HYPERFRAMES_DOCKER_PLATFORM: "  linux/amd64  " })).toBe(
+      "linux/amd64",
+    );
+    // Empty/whitespace-only override falls back to arch detection — important
+    // for shells where `export FOO=""` would otherwise pin platform to "".
+    expect(resolveDockerPlatform("arm64", { HYPERFRAMES_DOCKER_PLATFORM: "" })).toBe("linux/arm64");
+    expect(resolveDockerPlatform("arm64", { HYPERFRAMES_DOCKER_PLATFORM: "   " })).toBe(
+      "linux/arm64",
+    );
   });
 });

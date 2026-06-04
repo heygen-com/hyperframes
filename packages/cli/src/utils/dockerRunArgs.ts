@@ -58,8 +58,24 @@ export interface DockerRenderOptions {
  * Maps Node's `process.arch` to a Docker `--platform` string. We only emit
  * the two architectures the renderer actively supports — arm64 hosts (Apple
  * Silicon, Graviton, Ampere) and everything else (treated as amd64).
+ *
+ * Honors `HYPERFRAMES_DOCKER_PLATFORM` as an escape hatch (typed loosely so
+ * the override can target future platforms without a CLI release):
+ *
+ * - Apple Silicon users running an x64 Node binary under Rosetta (where
+ *   `process.arch === "x64"` despite the host being arm64) can set it to
+ *   `linux/arm64` to avoid re-triggering issue #1193.
+ * - Maintainers regenerating amd64 golden baselines on an arm64 host can set
+ *   it to `linux/amd64` to keep the byte-for-byte guarantee.
+ * - Users on remote daemons (`DOCKER_HOST=ssh://amd64-server`) can force the
+ *   actual daemon arch instead of relying on local `process.arch`.
  */
-export function resolveDockerPlatform(arch: string = process.arch): string {
+export function resolveDockerPlatform(
+  arch: string = process.arch,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  const override = env.HYPERFRAMES_DOCKER_PLATFORM;
+  if (override && override.trim() !== "") return override.trim();
   return arch === "arm64" ? "linux/arm64" : "linux/amd64";
 }
 

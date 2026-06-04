@@ -38,9 +38,17 @@ RUN npm install -g hyperframes@${HYPERFRAMES_VERSION}
 # available so the engine uses BeginFrame rendering. On arm64 (no
 # chrome-headless-shell) it leaves PRODUCER_HEADLESS_SHELL_PATH unset, so the
 # engine falls back to PUPPETEER_EXECUTABLE_PATH (system chromium).
+#
+# If TARGETARCH=amd64 and the binary is missing, fail the build loudly — the
+# previous (pre-PR) wrapper used an `&&` chain that crashed `docker build` in
+# this case, and silently downgrading to system chromium on amd64 would mask
+# golden-baseline regressions.
 RUN SHELL_PATH=$(find /root/.cache/puppeteer/chrome-headless-shell -name "chrome-headless-shell" -type f 2>/dev/null | head -1); \
     if [ -n "$SHELL_PATH" ]; then \
       printf '#!/bin/sh\nexport PRODUCER_HEADLESS_SHELL_PATH=%s\nexec hyperframes render "$@"\n' "$SHELL_PATH" > /usr/local/bin/hf-render; \
+    elif [ "$TARGETARCH" = "amd64" ]; then \
+      echo "ERROR: chrome-headless-shell binary not found on amd64 — @puppeteer/browsers install must have failed or moved its cache layout." >&2; \
+      exit 1; \
     else \
       printf '#!/bin/sh\nexec hyperframes render "$@"\n' > /usr/local/bin/hf-render; \
     fi \
