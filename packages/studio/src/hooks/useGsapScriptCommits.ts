@@ -164,6 +164,17 @@ export function useGsapScriptCommits({
 
       onCacheInvalidate();
 
+      if (result.parsed?.animations) {
+        const { setKeyframeCache } = usePlayerStore.getState();
+        for (const anim of result.parsed.animations) {
+          if (!anim.keyframes) continue;
+          const id = anim.targetSelector.match(/^#([\w-]+)/)?.[1];
+          if (!id) continue;
+          setKeyframeCache(`${targetPath}#${id}`, anim.keyframes);
+          if (targetPath !== "index.html") setKeyframeCache(`index.html#${id}`, anim.keyframes);
+        }
+      }
+
       if (options.skipReload) return;
 
       options.beforeReload?.();

@@ -419,11 +419,8 @@ function findAllTweenCalls(
           this.traverse(path);
           return;
         }
-        const selectorValue = resolveTargetSelector(args[0], path, scope, targetBindings);
-        if (!selectorValue) {
-          this.traverse(path);
-          return;
-        }
+        const selectorValue =
+          resolveTargetSelector(args[0], path, scope, targetBindings) ?? "__unresolved__";
 
         if (method === "fromTo") {
           results.push({
@@ -697,6 +694,7 @@ function tweenCallToAnimation(
   const properties: Record<string, number | string> = {};
   const extras: Record<string, unknown> = {};
   let keyframesData: GsapKeyframesData | undefined;
+  let hasUnresolvedKeyframes = false;
 
   for (const [key, val] of Object.entries(vars)) {
     if (BUILTIN_VAR_KEYS.has(key)) continue;
@@ -705,6 +703,7 @@ function tweenCallToAnimation(
     if (key === "keyframes") {
       const kfNode = findPropertyNode(call.varsArg, "keyframes");
       keyframesData = parseKeyframesNode(kfNode, scope);
+      if (!keyframesData && kfNode) hasUnresolvedKeyframes = true;
       continue;
     }
 
@@ -763,6 +762,8 @@ function tweenCallToAnimation(
   };
   if (Object.keys(extras).length > 0) anim.extras = extras;
   if (keyframesData) anim.keyframes = keyframesData;
+  if (hasUnresolvedKeyframes) anim.hasUnresolvedKeyframes = true;
+  if (call.selector === "__unresolved__") anim.hasUnresolvedSelector = true;
   return anim;
 }
 
@@ -1174,6 +1175,7 @@ export function addKeyframeToScript(
   percentage: number,
   properties: Record<string, number | string>,
   ease?: string,
+  backfillDefaults?: Record<string, number | string>,
 ): string {
   const loc = locateAnimation(script, animationId);
   if (!loc) return script;
@@ -1189,25 +1191,48 @@ export function addKeyframeToScript(
   );
   if (existingIdx !== -1) {
     kfNode.properties[existingIdx].value = newValueNode;
-    return recast.print(loc.parsed.ast).code;
+  } else {
+    // Build the new property node with a quoted percentage key
+    const newProp = parseExpr(`{ ${JSON.stringify(pctKey)}: {} }`).properties[0];
+    newProp.value = newValueNode;
+
+    // Insert in sorted order by percentage
+    let insertIdx = kfNode.properties.length;
+    for (let i = 0; i < kfNode.properties.length; i++) {
+      const key = isObjectProperty(kfNode.properties[i])
+        ? propKeyName(kfNode.properties[i])
+        : undefined;
+      if (typeof key === "string" && percentageFromKey(key) > percentage) {
+        insertIdx = i;
+        break;
+      }
+    }
+    kfNode.properties.splice(insertIdx, 0, newProp);
   }
 
-  // Build the new property node with a quoted percentage key
-  const newProp = parseExpr(`{ ${JSON.stringify(pctKey)}: {} }`).properties[0];
-  newProp.value = newValueNode;
-
-  // Insert in sorted order by percentage
-  let insertIdx = kfNode.properties.length;
-  for (let i = 0; i < kfNode.properties.length; i++) {
-    const key = isObjectProperty(kfNode.properties[i])
-      ? propKeyName(kfNode.properties[i])
-      : undefined;
-    if (typeof key === "string" && percentageFromKey(key) > percentage) {
-      insertIdx = i;
-      break;
+  // Backfill: when the new keyframe introduces properties absent from other
+  // keyframes, add default values so GSAP can interpolate them.
+  if (backfillDefaults) {
+    const newPropKeys = Object.keys(properties);
+    const pctProps = filterPercentageProps(kfNode);
+    for (const prop of pctProps) {
+      const key = propKeyName(prop);
+      if (key === pctKey) continue;
+      const valObj = prop.value;
+      if (!valObj || valObj.type !== "ObjectExpression") continue;
+      const existingKeys = new Set(
+        valObj.properties.filter((p: any) => isObjectProperty(p)).map((p: any) => propKeyName(p)),
+      );
+      for (const pk of newPropKeys) {
+        if (existingKeys.has(pk)) continue;
+        const defaultVal = backfillDefaults[pk];
+        if (defaultVal == null) continue;
+        const fillProp = parseExpr(`{ ${safeKey(pk)}: ${valueToCode(defaultVal)} }`).properties[0];
+        valObj.properties.push(fillProp);
+      }
     }
   }
-  kfNode.properties.splice(insertIdx, 0, newProp);
+
   return recast.print(loc.parsed.ast).code;
 }
 
@@ -1329,10 +1354,12 @@ function insertKeyframesProp(
   varsArg: any,
   fromProps: Record<string, number | string>,
   toProps: Record<string, number | string>,
+  easeEach?: string,
 ): void {
   const fromEntries = Object.entries(fromProps).map(([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`);
   const toEntries = Object.entries(toProps).map(([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`);
-  const kfCode = `{ "0%": { ${fromEntries.join(", ")} }, "100%": { ${toEntries.join(", ")} } }`;
+  const easeEntry = easeEach ? `, easeEach: ${JSON.stringify(easeEach)}` : "";
+  const kfCode = `{ "0%": { ${fromEntries.join(", ")} }, "100%": { ${toEntries.join(", ")} }${easeEntry} }`;
   const kfProp = parseExpr(`{ keyframes: {} }`).properties[0];
   kfProp.value = parseExpr(kfCode);
   if (varsArg?.type === "ObjectExpression") varsArg.properties.unshift(kfProp);
@@ -1359,10 +1386,9 @@ export function convertToKeyframesInScript(
   const originalEase = anim.ease;
 
   stripEditableAndEase(varsArg);
-  insertKeyframesProp(varsArg, fromProps, toProps);
+  insertKeyframesProp(varsArg, fromProps, toProps, originalEase || undefined);
 
   if (originalEase) {
-    setVarsKey(varsArg, "easeEach", originalEase);
     setVarsKey(varsArg, "ease", "none");
   }
 
@@ -1399,4 +1425,159 @@ export function removeAllKeyframesFromScript(script: string, animationId: string
   collapseKeyframesToFlat(loc.target.call.varsArg, lastRecord);
 
   return recast.print(loc.parsed.ast).code;
+}
+
+/**
+ * Replace a dynamic `keyframes: <expr>` with a static percentage-keyframes object.
+ * Called when the user first edits a dynamically-generated keyframe in the studio.
+ */
+export function materializeKeyframesInScript(
+  script: string,
+  animationId: string,
+  keyframes: Array<{
+    percentage: number;
+    properties: Record<string, number | string>;
+    ease?: string;
+  }>,
+  easeEach?: string,
+  resolvedSelector?: string,
+): string {
+  const loc = locateAnimation(script, animationId);
+  if (!loc) return script;
+
+  const varsArg = loc.target.call.varsArg;
+
+  // Replace dynamic selector with resolved static string
+  if (resolvedSelector && loc.target.call.node.arguments[0]) {
+    loc.target.call.node.arguments[0] = parseExpr(JSON.stringify(resolvedSelector));
+  }
+
+  const entries: string[] = [];
+  const sorted = keyframes.slice().sort((a, b) => a.percentage - b.percentage);
+  for (const kf of sorted) {
+    const propEntries = Object.entries(kf.properties).map(
+      ([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`,
+    );
+    if (kf.ease) propEntries.push(`ease: ${JSON.stringify(kf.ease)}`);
+    entries.push(`${JSON.stringify(kf.percentage + "%")}: { ${propEntries.join(", ")} }`);
+  }
+  if (easeEach) {
+    entries.push(`easeEach: ${JSON.stringify(easeEach)}`);
+  }
+
+  const kfObjCode = `{ ${entries.join(", ")} }`;
+  const kfParent = varsArg.properties.find(
+    (p: any) => isObjectProperty(p) && propKeyName(p) === "keyframes",
+  );
+  if (kfParent) {
+    kfParent.value = parseExpr(kfObjCode);
+  } else {
+    const kfProp = parseExpr(`{ keyframes: ${kfObjCode} }`).properties[0];
+    varsArg.properties.unshift(kfProp);
+  }
+
+  removeVarsKey(varsArg, "easeEach");
+
+  return recast.print(loc.parsed.ast).code;
+}
+
+/**
+ * Replace a dynamic loop that generates multiple tween calls with individual
+ * static `tl.to()` calls — one per element. Finds the loop containing the
+ * animation and replaces the entire loop body with unrolled static calls.
+ */
+export function unrollDynamicAnimations(
+  script: string,
+  animationId: string,
+  elements: Array<{
+    selector: string;
+    keyframes: Array<{ percentage: number; properties: Record<string, number | string> }>;
+    easeEach?: string;
+  }>,
+): string {
+  const loc = locateAnimation(script, animationId);
+  if (!loc) return script;
+
+  const varsArg = loc.target.call.varsArg;
+
+  // Read duration and ease from the original tween vars
+  const durationVal = extractLiteralValue(findPropertyNode(varsArg, "duration"), loc.parsed.scope);
+  const easeVal = extractLiteralValue(findPropertyNode(varsArg, "ease"), loc.parsed.scope);
+  const duration = typeof durationVal === "number" ? durationVal : 8;
+  const ease = typeof easeVal === "string" ? easeVal : "none";
+  const posArg = loc.target.call.positionArg;
+  const position = posArg ? extractLiteralValue(posArg, loc.parsed.scope) : 0;
+  const posCode =
+    typeof position === "number"
+      ? String(position)
+      : typeof position === "string"
+        ? JSON.stringify(position)
+        : "0";
+
+  // Find the enclosing loop (for/forEach) by walking up the AST path
+  let loopNode: any = null;
+  let current = loc.target.call.path;
+  while (current) {
+    const node = current.node ?? current.value;
+    if (
+      node?.type === "ForStatement" ||
+      node?.type === "ForInStatement" ||
+      node?.type === "ForOfStatement" ||
+      node?.type === "WhileStatement"
+    ) {
+      loopNode = node;
+      break;
+    }
+    if (
+      node?.type === "ExpressionStatement" &&
+      node.expression?.type === "CallExpression" &&
+      node.expression.callee?.property?.name === "forEach"
+    ) {
+      loopNode = node;
+      break;
+    }
+    current = current.parent ?? current.parentPath;
+  }
+
+  // Build replacement code: individual tl.to() calls for each element
+  const calls: string[] = [];
+  for (const el of elements) {
+    const kfEntries: string[] = [];
+    const sorted = el.keyframes.slice().sort((a, b) => a.percentage - b.percentage);
+    for (const kf of sorted) {
+      const propEntries = Object.entries(kf.properties).map(
+        ([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`,
+      );
+      kfEntries.push(`${JSON.stringify(kf.percentage + "%")}: { ${propEntries.join(", ")} }`);
+    }
+    if (el.easeEach) {
+      kfEntries.push(`easeEach: ${JSON.stringify(el.easeEach)}`);
+    }
+    calls.push(
+      `tl.to(${JSON.stringify(el.selector)}, { keyframes: { ${kfEntries.join(", ")} }, duration: ${duration}, ease: ${JSON.stringify(ease)} }, ${posCode});`,
+    );
+  }
+
+  const replacement = calls.join("\n  ");
+
+  if (loopNode) {
+    // Replace the entire loop with the unrolled calls
+    const start = loopNode.start ?? loopNode.range?.[0];
+    const end = loopNode.end ?? loopNode.range?.[1];
+    if (typeof start === "number" && typeof end === "number") {
+      return script.slice(0, start) + replacement + script.slice(end);
+    }
+  }
+
+  // Fallback: replace just the tween call's enclosing expression statement
+  const stmtNode = loc.target.call.path?.parent?.node ?? loc.target.call.path?.parentPath?.node;
+  if (stmtNode?.type === "ExpressionStatement") {
+    const start = stmtNode.start ?? stmtNode.range?.[0];
+    const end = stmtNode.end ?? stmtNode.range?.[1];
+    if (typeof start === "number" && typeof end === "number") {
+      return script.slice(0, start) + replacement + script.slice(end);
+    }
+  }
+
+  return script;
 }

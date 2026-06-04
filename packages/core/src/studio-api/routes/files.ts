@@ -22,6 +22,7 @@ import {
   removeElementFromHtml,
   patchElementInHtml,
   probeElementInSource,
+  splitElementInHtml,
   type PatchOperation,
 } from "../helpers/sourceMutation.js";
 import { parseHTML } from "linkedom";
@@ -316,6 +317,39 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     );
   });
 
+  api.post("/projects/:id/file-mutations/split-element/*", async (c) => {
+    const ctx = await resolveFileMutationContext(c, adapter, "split-element");
+    if ("error" in ctx) return ctx.error;
+
+    const parsed = await parseMutationBody<{
+      target?: { id?: string; selector?: string; selectorIndex?: number };
+      splitTime?: number;
+      newId?: string;
+    }>(c);
+    if ("error" in parsed) return parsed.error;
+    if (typeof parsed.body.splitTime !== "number" || !parsed.body.newId) {
+      return c.json({ error: "target, splitTime, and newId required" }, 400);
+    }
+
+    let originalContent: string;
+    try {
+      originalContent = readFileSync(ctx.absPath, "utf-8");
+    } catch {
+      return c.json({ error: "not found" }, 404);
+    }
+    const result = splitElementInHtml(
+      originalContent,
+      parsed.target,
+      parsed.body.splitTime,
+      parsed.body.newId,
+    );
+    if (!result.matched) {
+      return c.json({ ok: false, changed: false, content: originalContent });
+    }
+    writeFileSync(ctx.absPath, result.html, "utf-8");
+    return c.json({ ok: true, changed: true, content: result.html, newId: result.newId });
+  });
+
   api.post("/projects/:id/file-mutations/patch-element/*", async (c) => {
     const ctx = await resolveFileMutationContext(c, adapter, "patch-element");
     if ("error" in ctx) return ctx.error;
@@ -586,6 +620,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
         percentage: number;
         properties: Record<string, number | string>;
         ease?: string;
+        backfillDefaults?: Record<string, number | string>;
       }
     | { type: "remove-keyframe"; animationId: string; percentage: number }
     | {
@@ -600,7 +635,23 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
         animationId: string;
         resolvedFromValues?: Record<string, number | string>;
       }
-    | { type: "remove-all-keyframes"; animationId: string };
+    | { type: "remove-all-keyframes"; animationId: string }
+    | {
+        type: "materialize-keyframes";
+        animationId: string;
+        keyframes: Array<{
+          percentage: number;
+          properties: Record<string, number | string>;
+          ease?: string;
+        }>;
+        easeEach?: string;
+        resolvedSelector?: string;
+        allElements?: Array<{
+          selector: string;
+          keyframes: Array<{ percentage: number; properties: Record<string, number | string> }>;
+          easeEach?: string;
+        }>;
+      };
 
   api.post("/projects/:id/gsap-mutations/*", async (c) => {
     const res = await resolveProjectPath(c, adapter, (id) => `/projects/${id}/gsap-mutations/`, {
@@ -735,6 +786,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
           body.percentage,
           body.properties,
           body.ease,
+          body.backfillDefaults,
         );
         break;
       }
@@ -766,6 +818,21 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       case "remove-all-keyframes": {
         const { removeAllKeyframesFromScript } = await loadGsapParser();
         newScript = removeAllKeyframesFromScript(block.scriptText, body.animationId);
+        break;
+      }
+      case "materialize-keyframes": {
+        const { materializeKeyframesInScript, unrollDynamicAnimations } = await loadGsapParser();
+        if (body.allElements && body.allElements.length > 0) {
+          newScript = unrollDynamicAnimations(block.scriptText, body.animationId, body.allElements);
+        } else {
+          newScript = materializeKeyframesInScript(
+            block.scriptText,
+            body.animationId,
+            body.keyframes,
+            body.easeEach,
+            body.resolvedSelector,
+          );
+        }
         break;
       }
       default:

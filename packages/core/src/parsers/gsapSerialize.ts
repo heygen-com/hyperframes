@@ -23,6 +23,10 @@ export interface GsapAnimation {
   extras?: Record<string, unknown>;
   /** Native GSAP keyframes data — present when the tween uses keyframes: { ... }. */
   keyframes?: GsapKeyframesData;
+  /** True when the tween has a `keyframes` property that couldn't be statically resolved (dynamic). */
+  hasUnresolvedKeyframes?: boolean;
+  /** True when the tween's target selector couldn't be statically resolved (dynamic). */
+  hasUnresolvedSelector?: boolean;
 }
 
 export interface GsapPercentageKeyframe {

@@ -27,6 +27,7 @@ import {
   tryGsapDragIntercept,
   tryGsapResizeIntercept,
   tryGsapRotationIntercept,
+  readRuntimeKeyframes,
 } from "./gsapRuntimeBridge";
 
 // ── Types ──
@@ -215,6 +216,7 @@ export function useDomEditSession({
     STUDIO_GSAP_PANEL_ENABLED ? (projectId ?? null) : null,
     gsapSourceFile,
     gsapCacheVersion,
+    previewIframeRef,
   );
 
   const {
@@ -228,6 +230,7 @@ export function useDomEditSession({
       ? { id: domEditSelection.id ?? null, selector: domEditSelection.selector ?? null }
       : null,
     gsapCacheVersion,
+    previewIframeRef,
   );
 
   const {
@@ -491,6 +494,49 @@ export function useDomEditSession({
     [domEditSelection, convertToKeyframes],
   );
 
+  const handleGsapMaterializeKeyframes = useCallback(
+    async (animId: string) => {
+      if (!domEditSelection || !gsapCommitMutation) return;
+      const anim = selectedGsapAnimations.find((a) => a.id === animId);
+      if (!anim || (!anim.hasUnresolvedKeyframes && !anim.hasUnresolvedSelector) || !anim.keyframes)
+        return;
+      if (anim.hasUnresolvedSelector) {
+        const { scanAllRuntimeKeyframes } = await import("./gsapRuntimeKeyframes");
+        const allScanned = scanAllRuntimeKeyframes(previewIframeRef.current);
+        if (allScanned.size === 0) return;
+        const allElements = Array.from(allScanned.entries()).map(([id, data]) => ({
+          selector: `#${id}`,
+          keyframes: data.keyframes,
+          easeEach: data.easeEach,
+        }));
+        await gsapCommitMutation(
+          domEditSelection,
+          {
+            type: "materialize-keyframes",
+            animationId: animId,
+            keyframes: allScanned.get(domEditSelection.id ?? "")?.keyframes ?? [],
+            allElements,
+          },
+          { label: "Unroll dynamic animations", skipReload: true },
+        );
+        return;
+      }
+      const runtime = readRuntimeKeyframes(previewIframeRef.current, anim.targetSelector);
+      if (!runtime || runtime.keyframes.length === 0) return;
+      await gsapCommitMutation(
+        domEditSelection,
+        {
+          type: "materialize-keyframes",
+          animationId: animId,
+          keyframes: runtime.keyframes,
+          easeEach: runtime.easeEach,
+        },
+        { label: "Materialize dynamic keyframes", skipReload: true },
+      );
+    },
+    [domEditSelection, selectedGsapAnimations, gsapCommitMutation, previewIframeRef],
+  );
+
   const handleGsapRemoveAllKeyframes = useCallback(
     (animId: string) => {
       if (!domEditSelection) return;
@@ -656,6 +702,7 @@ export function useDomEditSession({
     handleGsapAddKeyframe,
     handleGsapRemoveKeyframe,
     handleGsapConvertToKeyframes,
+    handleGsapMaterializeKeyframes,
     handleGsapRemoveAllKeyframes,
     handleResetSelectedElementKeyframes,
     invalidateGsapCache: bumpGsapCache,

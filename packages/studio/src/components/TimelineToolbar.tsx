@@ -3,7 +3,7 @@ import {
   getTimelineZoomPercent,
 } from "../player/components/timelineZoom";
 import { getTimelineToggleTitle } from "../utils/timelineDiscovery";
-import { usePlayerStore } from "../player";
+import { usePlayerStore, type TimelineElement } from "../player";
 import { STUDIO_KEYFRAMES_ENABLED } from "./editor/manualEditingAvailability";
 import { Tooltip } from "./ui";
 import type { GsapAnimation, GsapPercentageKeyframe } from "@hyperframes/core/gsap-parser";
@@ -85,6 +85,7 @@ interface DomEditSessionSlice {
   handleGsapRemoveKeyframe: (animId: string, pct: number) => void;
   handleGsapAddKeyframe: (animId: string, pct: number, prop: string, val: number | string) => void;
   handleGsapConvertToKeyframes: (animId: string) => void;
+  handleGsapMaterializeKeyframes: (animId: string) => Promise<void>;
   handleGsapAddAnimation: (method: "to" | "from" | "set" | "fromTo") => void;
   previewIframeRef?: React.RefObject<HTMLIFrameElement | null>;
 }
@@ -92,6 +93,7 @@ interface DomEditSessionSlice {
 interface TimelineToolbarProps {
   toggleTimelineVisibility: () => void;
   domEditSession?: DomEditSessionSlice;
+  onSplitElement?: (element: TimelineElement, splitTime: number) => void;
 }
 
 // fallow-ignore-next-line complexity
@@ -119,9 +121,12 @@ function useKeyframeToggle(session?: DomEditSessionSlice) {
 
   // fallow-ignore-next-line complexity
   const onToggle = sel
-    ? () => {
+    ? async () => {
         const t = usePlayerStore.getState().currentTime;
         if (kfAnim?.keyframes) {
+          if (kfAnim.hasUnresolvedKeyframes) {
+            await session.handleGsapMaterializeKeyframes(kfAnim.id);
+          }
           const elStart = Number.parseFloat(sel.dataAttributes?.start ?? "0") || 0;
           const elDuration = Number.parseFloat(sel.dataAttributes?.duration ?? "1") || 1;
           const pct =
@@ -161,6 +166,7 @@ function useKeyframeToggle(session?: DomEditSessionSlice) {
 export function TimelineToolbar({
   toggleTimelineVisibility,
   domEditSession,
+  onSplitElement,
 }: TimelineToolbarProps) {
   const zoomMode = usePlayerStore((s) => s.zoomMode);
   const manualZoomPercent = usePlayerStore((s) => s.manualZoomPercent);
@@ -208,6 +214,38 @@ export function TimelineToolbar({
                       strokeWidth="1.2"
                     />
                   )}
+                </svg>
+              </button>
+            </Tooltip>
+          )}
+          {onSplitElement && (
+            <Tooltip label="Split clip at playhead (S)">
+              <button
+                type="button"
+                onClick={() => {
+                  const { selectedElementId, elements, currentTime } = usePlayerStore.getState();
+                  if (!selectedElementId) return;
+                  const el = elements.find((e) => (e.key ?? e.id) === selectedElementId);
+                  if (el && currentTime > el.start && currentTime < el.start + el.duration) {
+                    onSplitElement(el, currentTime);
+                  }
+                }}
+                className="flex h-7 w-7 items-center justify-center rounded text-neutral-500 transition-colors hover:text-neutral-200"
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.4"
+                  strokeLinecap="round"
+                >
+                  <line x1="8" y1="2" x2="8" y2="14" />
+                  <polyline points="5,5 3,2" />
+                  <polyline points="11,5 13,2" />
+                  <polyline points="5,11 3,14" />
+                  <polyline points="11,11 13,14" />
                 </svg>
               </button>
             </Tooltip>
