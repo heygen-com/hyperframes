@@ -6,6 +6,7 @@
  */
 
 import { spawn } from "child_process";
+import { killWithEscalation } from "./processTracker.js";
 
 export type ConcreteGpuEncoder = "nvenc" | "videotoolbox" | "vaapi" | "qsv" | "amf";
 export type GpuEncoder = ConcreteGpuEncoder | null;
@@ -138,13 +139,13 @@ async function canUseGpuEncoder(encoder: ConcreteGpuEncoder): Promise<boolean> {
   return new Promise((resolve) => {
     let settled = false;
     let timedOut = false;
-    let killTimer: ReturnType<typeof setTimeout> | undefined;
+    let cancelEscalation: (() => void) | null = null;
     let stderr = "";
     const finish = (usable: boolean) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      if (killTimer) clearTimeout(killTimer);
+      cancelEscalation?.();
       resolve(usable);
     };
     const ffmpeg = spawn("ffmpeg", getProbeArgs(encoder), {
@@ -157,11 +158,7 @@ async function canUseGpuEncoder(encoder: ConcreteGpuEncoder): Promise<boolean> {
 
     const timer = setTimeout(() => {
       timedOut = true;
-      ffmpeg.kill("SIGTERM");
-      killTimer = setTimeout(() => {
-        ffmpeg.kill("SIGKILL");
-        finish(false);
-      }, GPU_PROBE_KILL_GRACE_MS);
+      cancelEscalation = killWithEscalation(ffmpeg, GPU_PROBE_KILL_GRACE_MS);
     }, GPU_PROBE_TIMEOUT_MS);
 
     ffmpeg.on("close", (code, signal) => {

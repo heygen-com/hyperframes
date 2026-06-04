@@ -90,7 +90,12 @@ describe.skipIf(process.platform === "win32")("killWithEscalation", () => {
   });
 
   it("escalates to SIGKILL when the process ignores SIGTERM", async () => {
-    const proc = spawn("bash", ["-c", "trap '' TERM; sleep 60"], { stdio: "ignore" });
+    // Block on the bash builtin `read` (stdin held open by the pipe) instead
+    // of spawning `sleep`: a SIGKILLed bash reparents the sleep child, which
+    // then lingers for 60s and accumulates orphans in watch/parallel runs.
+    const proc = spawn("bash", ["-c", "trap '' TERM; read -t 60 _"], {
+      stdio: ["pipe", "ignore", "ignore"],
+    });
     // Give bash a beat to install the trap; killing before that races the
     // trap setup and SIGTERM would win legitimately.
     await new Promise((resolve) => setTimeout(resolve, 200));
@@ -104,7 +109,9 @@ describe.skipIf(process.platform === "win32")("killWithEscalation", () => {
   }, 5000);
 
   it("cancel clears the pending escalation", async () => {
-    const proc = spawn("bash", ["-c", "trap '' TERM; sleep 60"], { stdio: "ignore" });
+    const proc = spawn("bash", ["-c", "trap '' TERM; read -t 60 _"], {
+      stdio: ["pipe", "ignore", "ignore"],
+    });
     await new Promise((resolve) => setTimeout(resolve, 200));
 
     const cancel = killWithEscalation(proc, 100);
