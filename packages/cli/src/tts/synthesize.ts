@@ -48,7 +48,7 @@ function hasPythonPackage(python: string, pkg: string): boolean {
   try {
     execFileSync(python, ["-c", `import ${pkg}`], {
       stdio: ["pipe", "pipe", "pipe"],
-      timeout: 10_000,
+      timeout: 30_000, // ONNX runtime import can take 10+ seconds on cold start
     });
     return true;
   } catch {
@@ -203,6 +203,7 @@ export async function synthesize(
       {
         encoding: "utf-8",
         timeout: 300_000,
+        maxBuffer: 10 * 1024 * 1024, // 10 MB — ONNX runtime prints verbose warnings
         stdio: ["pipe", "pipe", "pipe"],
       },
     );

@@ -1,7 +1,46 @@
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync, unlinkSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { downloadFile } from "../utils/download.js";
+
+const LOCK_STALE_MS = 300_000; // 5 min — generous to cover large model downloads
+
+function acquireLock(lockPath: string): boolean {
+  try {
+    writeFileSync(lockPath, String(process.pid), { flag: "wx" });
+    return true;
+  } catch {
+    // Lock exists — check if it's stale
+    try {
+      const stat = statSync(lockPath);
+      if (Date.now() - stat.mtimeMs > LOCK_STALE_MS) {
+        unlinkSync(lockPath);
+        writeFileSync(lockPath, String(process.pid), { flag: "wx" });
+        return true;
+      }
+    } catch {
+      // Race — another process grabbed it
+    }
+    return false;
+  }
+}
+
+function releaseLock(lockPath: string): void {
+  try {
+    const content = readFileSync(lockPath, "utf-8").trim();
+    if (content === String(process.pid)) unlinkSync(lockPath);
+  } catch {
+    // Already cleaned up
+  }
+}
+
+async function waitForLock(lockPath: string, timeoutMs: number = 300_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (!existsSync(lockPath)) return;
+    await new Promise((r) => setTimeout(r, 1_000));
+  }
+}
 
 const CACHE_DIR = join(homedir(), ".cache", "hyperframes", "tts");
 const MODELS_DIR = join(CACHE_DIR, "models");
@@ -114,8 +153,20 @@ export async function ensureModel(
   }
 
   mkdirSync(MODELS_DIR, { recursive: true });
-  options?.onProgress?.(`Downloading TTS model ${model} (~311 MB)...`);
-  await downloadFile(url, modelPath);
+  const lockPath = `${modelPath}.lock`;
+  if (!acquireLock(lockPath)) {
+    options?.onProgress?.("Another process is downloading the model, waiting...");
+    await waitForLock(lockPath);
+    if (existsSync(modelPath)) return modelPath;
+  }
+
+  try {
+    if (existsSync(modelPath)) return modelPath;
+    options?.onProgress?.(`Downloading TTS model ${model} (~311 MB)...`);
+    await downloadFile(url, modelPath);
+  } finally {
+    releaseLock(lockPath);
+  }
 
   if (!existsSync(modelPath)) {
     throw new Error(`Model download failed: ${model}`);
@@ -135,8 +186,20 @@ export async function ensureVoices(options?: {
   if (existsSync(voicesPath)) return voicesPath;
 
   mkdirSync(VOICES_DIR, { recursive: true });
-  options?.onProgress?.("Downloading voice data (~27 MB)...");
-  await downloadFile(VOICES_URL, voicesPath);
+  const lockPath = `${voicesPath}.lock`;
+  if (!acquireLock(lockPath)) {
+    options?.onProgress?.("Another process is downloading voice data, waiting...");
+    await waitForLock(lockPath);
+    if (existsSync(voicesPath)) return voicesPath;
+  }
+
+  try {
+    if (existsSync(voicesPath)) return voicesPath;
+    options?.onProgress?.("Downloading voice data (~27 MB)...");
+    await downloadFile(VOICES_URL, voicesPath);
+  } finally {
+    releaseLock(lockPath);
+  }
 
   if (!existsSync(voicesPath)) {
     throw new Error("Voice data download failed");
