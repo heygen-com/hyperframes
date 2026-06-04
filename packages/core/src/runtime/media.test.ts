@@ -320,6 +320,25 @@ describe("syncRuntimeMedia", () => {
     expect(clip.el.pause).toHaveBeenCalled();
   });
 
+  it("does not restart a non-loop clip that has naturally ended before the clip's end time", () => {
+    // Reproduces: bg-music WAV is 60s but data-duration="68.6" (composition duration).
+    // At t=62 the file has ended; without this guard the runtime calls el.play() every
+    // rAF tick, resetting currentTime to 0 and causing audible stutter for 8.6s.
+    const clip = createMockClip({ start: 0, end: 68.6, loop: false });
+    Object.defineProperty(clip.el, "paused", { value: true, writable: true });
+    Object.defineProperty(clip.el, "ended", { value: true, writable: true, configurable: true });
+    syncRuntimeMedia({ clips: [clip], timeSeconds: 62, playing: true, playbackRate: 1 });
+    expect(clip.el.play).not.toHaveBeenCalled();
+  });
+
+  it("does restart a loop clip that has naturally ended while still within its active window", () => {
+    const clip = createMockClip({ start: 0, end: 68.6, loop: true, sourceDuration: 60 });
+    Object.defineProperty(clip.el, "paused", { value: true, writable: true });
+    Object.defineProperty(clip.el, "ended", { value: true, writable: true, configurable: true });
+    syncRuntimeMedia({ clips: [clip], timeSeconds: 62, playing: true, playbackRate: 1 });
+    expect(clip.el.play).toHaveBeenCalled();
+  });
+
   it("sets volume when clip has volume", () => {
     const clip = createMockClip({ start: 0, end: 10, volume: 0.7 });
     syncRuntimeMedia({ clips: [clip], timeSeconds: 5, playing: false, playbackRate: 1 });

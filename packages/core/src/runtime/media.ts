@@ -159,8 +159,15 @@ export function syncRuntimeMedia(params: {
     const { el } = clip;
     if (!el.isConnected) continue;
     let relTime = (params.timeSeconds - clip.start) * clip.playbackRate + clip.mediaStart;
+    // An ended non-loop element has played its file to natural completion.
+    // Don't restart it — if the authored duration extends past the file's
+    // actual length, the element sits silently until the composition ends.
+    // (el.ended resets to false when the user scrubs back, so seeks work.)
     const isActive =
-      params.timeSeconds >= clip.start && params.timeSeconds < clip.end && relTime >= 0;
+      params.timeSeconds >= clip.start &&
+      params.timeSeconds < clip.end &&
+      relTime >= 0 &&
+      (!el.ended || clip.loop);
     if (isActive) {
       // Loop wrapping: when media reaches end, restart from mediaStart
       if (clip.loop && clip.sourceDuration != null && clip.sourceDuration > 0) {
