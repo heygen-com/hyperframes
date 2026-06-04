@@ -478,12 +478,9 @@ export function useTimelineEditing({
         !element.duration ||
         !Number.isFinite(element.duration)
       ) {
-        showToast(
-          element.compositionSrc
-            ? "Sub-compositions cannot be split."
-            : "This clip cannot be split.",
-          "error",
-        );
+        if (!element.compositionSrc) {
+          showToast("This clip cannot be split.", "error");
+        }
         return;
       }
 
