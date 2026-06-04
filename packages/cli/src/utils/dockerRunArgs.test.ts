@@ -248,6 +248,23 @@ describe("buildDockerRunArgs", () => {
     expect(args).not.toContain("--composition");
   });
 
+  it("forwards --browser-timeout in seconds when pageNavigationTimeoutMs is set", () => {
+    const args = buildDockerRunArgs({
+      ...FIXED_INPUT,
+      options: { ...BASE, pageNavigationTimeoutMs: 180_000 },
+    });
+    const idx = args.indexOf("--browser-timeout");
+    expect(idx).toBeGreaterThan(-1);
+    // CLI flag takes seconds; engine takes ms — the docker bridge converts
+    // back to seconds so the in-container CLI re-parses it consistently.
+    expect(args[idx + 1]).toBe("180");
+  });
+
+  it("omits --browser-timeout when pageNavigationTimeoutMs is not set", () => {
+    const args = buildDockerRunArgs({ ...FIXED_INPUT, options: BASE });
+    expect(args).not.toContain("--browser-timeout");
+  });
+
   it("forwards rational --fps verbatim (NTSC 30000/1001)", () => {
     // Regression for the fps fraction-syntax feature: the rational form must
     // survive the host → container hop as a single `30000/1001` argument so

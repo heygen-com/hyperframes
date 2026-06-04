@@ -746,9 +746,11 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
 
   // Navigate to the file server
   const url = `${serverUrl}/index.html`;
+  const pageNavigationTimeout =
+    session.config?.pageNavigationTimeout ?? DEFAULT_CONFIG.pageNavigationTimeout;
   if (session.captureMode === "screenshot") {
     // Screenshot mode: standard navigation, rAF works normally
-    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: pageNavigationTimeout });
 
     const pageReadyTimeout =
       session.config?.playerReadyTimeout ?? DEFAULT_CONFIG.playerReadyTimeout;
@@ -878,7 +880,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
   })();
   warmupLoopPromise.catch(() => {});
 
-  await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
+  await page.goto(url, { waitUntil: "domcontentloaded", timeout: pageNavigationTimeout });
 
   // Poll for window.__hf readiness using manual evaluate loop (waitForFunction
   // uses rAF polling internally, which won't fire in beginFrame mode).

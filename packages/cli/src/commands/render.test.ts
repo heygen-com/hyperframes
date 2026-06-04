@@ -212,6 +212,41 @@ describe("renderLocal browser GPU config", () => {
     expect(producerState.createdJobs[0]?.entryFile).toBeUndefined();
   });
 
+  it("forwards --browser-timeout into resolveConfig as pageNavigationTimeout (ms)", async () => {
+    await renderLocal("/tmp/project", "/tmp/out.mp4", {
+      fps: { num: 30, den: 1 },
+      quality: "standard",
+      format: "mp4",
+      gpu: false,
+      browserGpuMode: "software",
+      hdrMode: "auto",
+      quiet: true,
+      pageNavigationTimeoutMs: 180_000,
+    });
+
+    expect(producerState.resolveConfigCalls[0]).toMatchObject({
+      pageNavigationTimeout: 180_000,
+    });
+  });
+
+  it("omits pageNavigationTimeout from resolveConfig when --browser-timeout is not set", async () => {
+    await renderLocal("/tmp/project", "/tmp/out.mp4", {
+      fps: { num: 30, den: 1 },
+      quality: "standard",
+      format: "mp4",
+      gpu: false,
+      browserGpuMode: "software",
+      hdrMode: "auto",
+      quiet: true,
+    });
+
+    // Issue #1199: when the flag is omitted, the engine's DEFAULT_CONFIG must
+    // own the navigation timeout. Forwarding `undefined` would override
+    // `pageNavigationTimeout: 60_000` to `undefined` and re-introduce the
+    // bug in a different shape.
+    expect(producerState.resolveConfigCalls[0]).not.toHaveProperty("pageNavigationTimeout");
+  });
+
   it("forwards outputResolution to createRenderJob when --resolution is set", async () => {
     await renderLocal("/tmp/project", "/tmp/out.mp4", {
       fps: { num: 30, den: 1 },

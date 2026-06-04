@@ -234,6 +234,15 @@ export default defineCommand({
         "Use --no-page-side-compositing to force the layered path.",
       default: true,
     },
+    "browser-timeout": {
+      type: "string",
+      description:
+        "Puppeteer page-navigation timeout in seconds for the entry HTML. " +
+        "Increase when heavy compositions (many videos / fonts / asset " +
+        "requests) cannot reach domcontentloaded within the 60s default " +
+        "(see issue #1199). Env fallback: PRODUCER_PAGE_NAVIGATION_TIMEOUT_MS " +
+        "(in milliseconds).",
+    },
   },
   async run({ args }) {
     // ── Resolve project ────────────────────────────────────────────────────
@@ -378,8 +387,29 @@ export default defineCommand({
       process.exit(1);
     }
 
+    // ── Validate browser-timeout ──────────────────────────────────────────
+    // CLI accepts seconds (matches FFmpeg / shell ergonomics); the engine
+    // config and Puppeteer both take milliseconds, so multiply once here.
+    let pageNavigationTimeoutMs: number | undefined;
+    if (args["browser-timeout"] != null) {
+      const parsed = Number(args["browser-timeout"]);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        errorBox(
+          "Invalid browser-timeout",
+          `Got "${args["browser-timeout"]}". Must be a positive number of seconds (e.g. 180).`,
+        );
+        process.exit(1);
+      }
+      pageNavigationTimeoutMs = Math.round(parsed * 1000);
+    }
+
     // ── Validate composition entry file ──────────────────────────────────
-    const entryFile = args.composition?.trim().replace(/^\.\//, "") || undefined;
+    // Resolves the project directory itself (e.g. `--composition .` or
+    // `--composition ./`) to undefined so the producer falls back to
+    // index.html instead of statSync-ing the dir and later blowing up with
+    // EISDIR inside readFileSync(). See issue #1199.
+    let entryFile = args.composition?.trim().replace(/^\.\//, "") || undefined;
+    if (entryFile === "." || entryFile === "") entryFile = undefined;
     if (entryFile) {
       const absProjectDir = resolve(project.dir);
       const entryPath = resolve(absProjectDir, entryFile);
@@ -390,13 +420,26 @@ export default defineCommand({
         );
         process.exit(1);
       }
+      let entryStat;
       try {
-        statSync(entryPath);
+        entryStat = statSync(entryPath);
       } catch {
         errorBox(
           "Composition not found",
           `"${entryFile}" does not exist in the project directory.`,
           "Pass a path to a .html file relative to the project root (e.g. compositions/intro.html).",
+        );
+        process.exit(1);
+      }
+      if (!entryStat.isFile()) {
+        // Directory paths slip past statSync() and explode downstream with
+        // `EISDIR: illegal operation on a directory, read` when the producer
+        // calls readFileSync() on the entry. Reject them here with an
+        // actionable message instead.
+        errorBox(
+          "Invalid composition path",
+          `"${entryFile}" is a directory, not an .html file.`,
+          "Pass a path to a .html file (e.g. compositions/intro.html), or omit --composition to render index.html.",
         );
         process.exit(1);
       }
@@ -523,6 +566,7 @@ export default defineCommand({
         entryFile,
         outputResolution,
         pageSideCompositing: args["page-side-compositing"] !== false,
+        pageNavigationTimeoutMs,
         exitAfterComplete: true,
       });
     } else {
@@ -541,6 +585,7 @@ export default defineCommand({
         variables,
         entryFile,
         outputResolution,
+        pageNavigationTimeoutMs,
         exitAfterComplete: true,
       });
     }
@@ -570,6 +615,13 @@ interface RenderOptions {
   /** Output resolution preset; see `resolveDeviceScaleFactor` for constraints. */
   outputResolution?: CanvasResolution;
   pageSideCompositing?: boolean;
+  /**
+   * Puppeteer `page.goto()` timeout for the entry HTML, in milliseconds.
+   * When omitted, the engine default (60s) applies. Surfaced as
+   * `--browser-timeout <seconds>` at the CLI and threaded through to the
+   * producer's EngineConfig override.
+   */
+  pageNavigationTimeoutMs?: number;
 }
 
 /**
@@ -790,6 +842,7 @@ async function renderDocker(
       entryFile: options.entryFile,
       outputResolution: options.outputResolution,
       pageSideCompositing: options.pageSideCompositing,
+      pageNavigationTimeoutMs: options.pageNavigationTimeoutMs,
     },
   });
 
@@ -865,6 +918,9 @@ export async function renderLocal(
     useGpu: options.gpu,
     producerConfig: producer.resolveConfig({
       browserGpuMode: options.browserGpuMode ?? "software",
+      ...(options.pageNavigationTimeoutMs != null
+        ? { pageNavigationTimeout: options.pageNavigationTimeoutMs }
+        : {}),
     }),
     hdrMode: options.hdrMode,
     crf: options.crf,
