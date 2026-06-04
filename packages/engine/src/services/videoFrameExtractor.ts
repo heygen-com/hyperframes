@@ -10,7 +10,7 @@ import { existsSync, mkdirSync, readdirSync, rmSync } from "fs";
 import { isAbsolute, join, posix, resolve, sep } from "path";
 import { parseHTML } from "linkedom";
 import { decodeUrlPathVariants } from "@hyperframes/core";
-import { trackChildProcess } from "../utils/processTracker.js";
+import { killWithEscalation, trackChildProcess } from "../utils/processTracker.js";
 import { extractMediaMetadata, type VideoMetadata } from "../utils/ffprobe.js";
 import {
   analyzeCompositionHdr,
@@ -262,34 +262,50 @@ export async function extractVideoFramesRange(
     const ffmpeg = spawn("ffmpeg", args);
     trackChildProcess(ffmpeg);
     let stderr = "";
+    let timedOut = false;
+    const cancelEscalations: Array<() => void> = [];
     const onAbort = () => {
-      ffmpeg.kill("SIGTERM");
+      cancelEscalations.push(killWithEscalation(ffmpeg));
     };
     if (signal) {
       if (signal.aborted) {
-        ffmpeg.kill("SIGTERM");
+        onAbort();
       } else {
         signal.addEventListener("abort", onAbort, { once: true });
       }
     }
 
     const timer = setTimeout(() => {
-      ffmpeg.kill("SIGTERM");
+      timedOut = true;
+      cancelEscalations.push(killWithEscalation(ffmpeg));
     }, ffmpegProcessTimeout);
 
     ffmpeg.stderr.on("data", (data) => {
       stderr += data.toString();
     });
 
-    ffmpeg.on("close", (code) => {
+    const cleanup = () => {
       clearTimeout(timer);
+      for (const cancel of cancelEscalations) cancel();
       if (signal) signal.removeEventListener("abort", onAbort);
+    };
+
+    ffmpeg.on("close", (code) => {
+      cleanup();
       if (signal?.aborted) {
         reject(new Error("Video frame extraction cancelled"));
         return;
       }
       if (code !== 0) {
-        reject(new Error(`FFmpeg exited with code ${code}: ${stderr.slice(-500)}`));
+        // A timeout kill exits with a signal (code null); name the actual
+        // cause instead of the unhelpful "exited with code null".
+        reject(
+          new Error(
+            timedOut
+              ? `FFmpeg frame extraction timed out after ${ffmpegProcessTimeout}ms: ${stderr.slice(-500)}`
+              : `FFmpeg exited with code ${code}: ${stderr.slice(-500)}`,
+          ),
+        );
         return;
       }
 
@@ -314,8 +330,7 @@ export async function extractVideoFramesRange(
     });
 
     ffmpeg.on("error", (err) => {
-      clearTimeout(timer);
-      if (signal) signal.removeEventListener("abort", onAbort);
+      cleanup();
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
         reject(new Error("[FFmpeg] ffmpeg not found"));
       } else {

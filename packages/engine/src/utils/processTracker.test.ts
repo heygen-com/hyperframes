@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { spawn } from "node:child_process";
-import { trackChildProcess, killTrackedProcesses } from "./processTracker.js";
+import { trackChildProcess, killTrackedProcesses, killWithEscalation } from "./processTracker.js";
 
 // Reset tracked set between tests by killing everything
 beforeEach(() => {
@@ -70,5 +70,57 @@ describe("killTrackedProcesses", () => {
 
     killTrackedProcesses();
     killTrackedProcesses();
+  });
+});
+
+describe("killWithEscalation", () => {
+  it("kills a SIGTERM-compliant process", async () => {
+    const proc = spawn("sleep", ["60"], { stdio: "ignore" });
+
+    const exitPromise = new Promise<void>((resolve) => proc.on("close", () => resolve()));
+    const cancel = killWithEscalation(proc);
+
+    await exitPromise;
+    cancel();
+    expect(proc.signalCode).toBe("SIGTERM");
+  });
+
+  it("escalates to SIGKILL when the process ignores SIGTERM", async () => {
+    const proc = spawn("bash", ["-c", "trap '' TERM; sleep 60"], { stdio: "ignore" });
+    // Give bash a beat to install the trap; killing before that races the
+    // trap setup and SIGTERM would win legitimately.
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    const exitPromise = new Promise<void>((resolve) => proc.on("close", () => resolve()));
+    const cancel = killWithEscalation(proc, 100);
+
+    await exitPromise;
+    cancel();
+    expect(proc.signalCode).toBe("SIGKILL");
+  }, 5000);
+
+  it("cancel clears the pending escalation", async () => {
+    const proc = spawn("bash", ["-c", "trap '' TERM; sleep 60"], { stdio: "ignore" });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    const cancel = killWithEscalation(proc, 100);
+    cancel();
+
+    // Past the grace period the process must still be alive: SIGTERM was
+    // trapped and the SIGKILL escalation was cancelled.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(proc.exitCode).toBeNull();
+    expect(proc.signalCode).toBeNull();
+
+    proc.kill("SIGKILL");
+    await new Promise<void>((resolve) => proc.on("close", () => resolve()));
+  }, 5000);
+
+  it("does not throw on an already-exited process", async () => {
+    const proc = spawn("true", { stdio: "ignore" });
+    await new Promise<void>((resolve) => proc.on("close", () => resolve()));
+
+    const cancel = killWithEscalation(proc);
+    cancel();
   });
 });

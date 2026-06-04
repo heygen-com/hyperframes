@@ -9,6 +9,41 @@ export function trackChildProcess(proc: ChildProcess): void {
   proc.once("error", remove);
 }
 
+const KILL_ESCALATION_GRACE_MS = 500;
+
+/**
+ * Kill a single child process with SIGTERM, escalating to SIGKILL if it has
+ * not exited after a short grace period. Same policy as
+ * killTrackedProcesses(), but for timeout/abort kills of one process whose
+ * caller is awaiting its `close` event — without the escalation, a process
+ * that ignores SIGTERM (stuck I/O, frozen pipe) never emits `close` and the
+ * awaiting promise hangs forever.
+ *
+ * Returns a cancel function; call it once the process exits so the
+ * escalation timer doesn't outlive it.
+ */
+export function killWithEscalation(
+  proc: ChildProcess,
+  graceMs: number = KILL_ESCALATION_GRACE_MS,
+): () => void {
+  try {
+    proc.kill("SIGTERM");
+  } catch {
+    // Already exited.
+  }
+  const timer = setTimeout(() => {
+    if (proc.exitCode === null && proc.signalCode === null) {
+      try {
+        proc.kill("SIGKILL");
+      } catch {
+        // Already exited.
+      }
+    }
+  }, graceMs);
+  timer.unref();
+  return () => clearTimeout(timer);
+}
+
 /**
  * SIGTERM all tracked child processes, then SIGKILL any that survive
  * after a short grace period.

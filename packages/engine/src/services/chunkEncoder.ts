@@ -8,7 +8,7 @@
 import { spawn } from "child_process";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "fs";
 import { join, dirname } from "path";
-import { trackChildProcess } from "../utils/processTracker.js";
+import { killWithEscalation, trackChildProcess } from "../utils/processTracker.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import {
   type GpuEncoder,
@@ -414,12 +414,14 @@ export async function encodeFramesFromDir(
     const ffmpeg = spawn("ffmpeg", args);
     trackChildProcess(ffmpeg);
     let stderr = "";
+    let timedOut = false;
+    const cancelEscalations: Array<() => void> = [];
     const onAbort = () => {
-      ffmpeg.kill("SIGTERM");
+      cancelEscalations.push(killWithEscalation(ffmpeg));
     };
     if (signal) {
       if (signal.aborted) {
-        ffmpeg.kill("SIGTERM");
+        onAbort();
       } else {
         signal.addEventListener("abort", onAbort, { once: true });
       }
@@ -427,16 +429,22 @@ export async function encodeFramesFromDir(
 
     const encodeTimeout = config?.ffmpegEncodeTimeout ?? DEFAULT_CONFIG.ffmpegEncodeTimeout;
     const timer = setTimeout(() => {
-      ffmpeg.kill("SIGTERM");
+      timedOut = true;
+      cancelEscalations.push(killWithEscalation(ffmpeg));
     }, encodeTimeout);
 
     ffmpeg.stderr.on("data", (data) => {
       stderr += data.toString();
     });
 
-    ffmpeg.on("close", (code) => {
+    const cleanup = () => {
       clearTimeout(timer);
+      for (const cancel of cancelEscalations) cancel();
       if (signal) signal.removeEventListener("abort", onAbort);
+    };
+
+    ffmpeg.on("close", (code) => {
+      cleanup();
       const durationMs = Date.now() - startTime;
       if (signal?.aborted) {
         resolve({
@@ -457,7 +465,11 @@ export async function encodeFramesFromDir(
           durationMs,
           framesEncoded: 0,
           fileSize: 0,
-          error: formatFfmpegError(code, stderr),
+          // A timeout kill exits with a signal (code null); name the actual
+          // cause instead of the unhelpful "[FFmpeg] process error".
+          error: timedOut
+            ? `[FFmpeg] encode timed out after ${encodeTimeout}ms`
+            : formatFfmpegError(code, stderr),
         });
         return;
       }
@@ -467,8 +479,7 @@ export async function encodeFramesFromDir(
     });
 
     ffmpeg.on("error", (err) => {
-      clearTimeout(timer);
-      if (signal) signal.removeEventListener("abort", onAbort);
+      cleanup();
       resolve({
         success: false,
         outputPath,
