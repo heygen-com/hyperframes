@@ -9,9 +9,10 @@ type PuppeteerBrowsers = typeof import("@puppeteer/browsers");
 async function loadPuppeteerBrowsers(): Promise<PuppeteerBrowsers> {
   try {
     return await import("@puppeteer/browsers");
-  } catch {
+  } catch (err) {
+    const cause = err instanceof Error ? err.message : String(err);
     throw new Error(
-      `Failed to load @puppeteer/browsers (likely missing transitive dependency "debug").\n` +
+      `Failed to load @puppeteer/browsers: ${cause}\n` +
         `Fix: run \`npm install\` or \`bun install\` to restore missing packages, then retry.`,
     );
   }
@@ -325,7 +326,7 @@ export async function ensureBrowser(options?: EnsureBrowserOptions): Promise<Bro
 
   // Chrome headless shell has no Linux ARM64 build (e.g. DGX Spark, GB10).
   // Try to auto-install system Chromium via apt, then find it.
-  if (await isLinuxArm()) {
+  if (isLinuxArm()) {
     return ensureLinuxArmBrowser(options);
   }
 
@@ -352,9 +353,8 @@ export function clearBrowser(): boolean {
   return true;
 }
 
-export async function isLinuxArm(): Promise<boolean> {
-  const { detectBrowserPlatform } = await loadPuppeteerBrowsers();
-  return detectBrowserPlatform() === "linux_arm";
+export function isLinuxArm(): boolean {
+  return process.platform === "linux" && process.arch === "arm64";
 }
 
 export { CHROME_VERSION, CACHE_DIR };
