@@ -24,7 +24,7 @@ async function runEnsure(): Promise<void> {
 
   // ARM64 Linux: Chrome headless shell is not available.
   // Try to find system Chromium first, then attempt auto-install via apt.
-  if (isLinuxArm()) {
+  if (await isLinuxArm()) {
     const s = clack.spinner();
     s.start("Linux ARM64 detected — looking for system Chromium...");
     const existing = await findBrowser();

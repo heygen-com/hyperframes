@@ -22,7 +22,7 @@
     },
     "packages/aws-lambda": {
       "name": "@hyperframes/aws-lambda",
-      "version": "0.6.51",
+      "version": "0.6.69",
       "dependencies": {
         "@aws-sdk/client-s3": "^3.700.0",
         "@aws-sdk/client-sfn": "^3.700.0",
@@ -54,7 +54,7 @@
     },
     "packages/cli": {
       "name": "@hyperframes/cli",
-      "version": "0.6.51",
+      "version": "0.6.69",
       "bin": {
         "hyperframes": "./dist/cli.js",
       },
@@ -64,6 +64,7 @@
         "adm-zip": "^0.5.16",
         "citty": "^0.2.1",
         "compare-versions": "^6.1.1",
+        "debug": "^4.4.0",
         "esbuild": "^0.25.12",
         "fontkit": "^2.0.4",
         "giget": "^3.2.0",
@@ -99,7 +100,7 @@
     },
     "packages/core": {
       "name": "@hyperframes/core",
-      "version": "0.6.51",
+      "version": "0.6.69",
       "dependencies": {
         "@babel/parser": "^7.27.0",
         "@chenglou/pretext": "^0.0.5",
@@ -128,7 +129,7 @@
     },
     "packages/engine": {
       "name": "@hyperframes/engine",
-      "version": "0.6.51",
+      "version": "0.6.69",
       "dependencies": {
         "@hono/node-server": "^1.13.0",
         "@hyperframes/core": "workspace:^",
@@ -146,7 +147,7 @@
     },
     "packages/player": {
       "name": "@hyperframes/player",
-      "version": "0.6.51",
+      "version": "0.6.69",
       "devDependencies": {
         "@types/bun": "^1.1.0",
         "gsap": "^3.12.5",
@@ -158,7 +159,7 @@
     },
     "packages/producer": {
       "name": "@hyperframes/producer",
-      "version": "0.6.51",
+      "version": "0.6.69",
       "dependencies": {
         "@fontsource/archivo-black": "^5.2.8",
         "@fontsource/eb-garamond": "^5.2.7",
@@ -198,7 +199,7 @@
     },
     "packages/shader-transitions": {
       "name": "@hyperframes/shader-transitions",
-      "version": "0.6.51",
+      "version": "0.6.69",
       "dependencies": {
         "html2canvas": "^1.4.1",
       },
@@ -210,7 +211,7 @@
     },
     "packages/studio": {
       "name": "@hyperframes/studio",
-      "version": "0.6.51",
+      "version": "0.6.69",
       "dependencies": {
         "@codemirror/autocomplete": "^6.20.1",
         "@codemirror/commands": "^6.10.3",

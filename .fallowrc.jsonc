@@ -99,6 +99,10 @@
     // dynamic require() resolution, peer/static-file consumption in tests,
     // and bun-hoisted workspace devDeps (e.g. happy-dom in root package.json
     // resolves for every workspace, so workspaces don't redeclare it).
+    // Required by @puppeteer/browsers and puppeteer-core at runtime; listed
+    // as a direct dep to guarantee installation even when transitive
+    // resolution fails (corrupted cache, dedup edge cases).
+    "debug",
     "puppeteer",
     "puppeteer-core",
     "esbuild",

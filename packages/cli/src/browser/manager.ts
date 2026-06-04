@@ -3,7 +3,19 @@ import { existsSync, readdirSync, rmSync } from "node:fs";
 import { basename } from "node:path";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { Browser, detectBrowserPlatform, getInstalledBrowsers, install } from "@puppeteer/browsers";
+
+type PuppeteerBrowsers = typeof import("@puppeteer/browsers");
+
+async function loadPuppeteerBrowsers(): Promise<PuppeteerBrowsers> {
+  try {
+    return await import("@puppeteer/browsers");
+  } catch {
+    throw new Error(
+      `Failed to load @puppeteer/browsers (likely missing transitive dependency "debug").\n` +
+        `Fix: run \`npm install\` or \`bun install\` to restore missing packages, then retry.`,
+    );
+  }
+}
 
 const CHROME_VERSION = "131.0.6778.85";
 const CACHE_DIR = join(homedir(), ".cache", "hyperframes", "chrome");
@@ -84,6 +96,7 @@ async function findFromCache(): Promise<BrowserResult | undefined> {
   // download-of-last-resort). This is the fallback path: only reached when
   // no puppeteer-cache binary exists.
   if (existsSync(CACHE_DIR)) {
+    const { Browser, getInstalledBrowsers } = await loadPuppeteerBrowsers();
     const installed = await getInstalledBrowsers({ cacheDir: CACHE_DIR });
     const match = installed.find((b) => b.browser === Browser.CHROMEHEADLESSSHELL);
     if (match) {
@@ -303,6 +316,8 @@ export async function ensureBrowser(options?: EnsureBrowserOptions): Promise<Bro
   const existing = await findBrowser();
   if (existing) return existing;
 
+  const { Browser, detectBrowserPlatform, install } = await loadPuppeteerBrowsers();
+
   const platform = detectBrowserPlatform();
   if (!platform) {
     throw new Error(`Unsupported platform: ${process.platform} ${process.arch}`);
@@ -310,7 +325,7 @@ export async function ensureBrowser(options?: EnsureBrowserOptions): Promise<Bro
 
   // Chrome headless shell has no Linux ARM64 build (e.g. DGX Spark, GB10).
   // Try to auto-install system Chromium via apt, then find it.
-  if (isLinuxArm()) {
+  if (await isLinuxArm()) {
     return ensureLinuxArmBrowser(options);
   }
 
@@ -337,7 +352,8 @@ export function clearBrowser(): boolean {
   return true;
 }
 
-export function isLinuxArm(): boolean {
+export async function isLinuxArm(): Promise<boolean> {
+  const { detectBrowserPlatform } = await loadPuppeteerBrowsers();
   return detectBrowserPlatform() === "linux_arm";
 }
 
