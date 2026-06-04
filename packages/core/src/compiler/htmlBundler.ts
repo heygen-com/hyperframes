@@ -266,7 +266,7 @@ function rewriteCssUrlsWithInlinedAssets(cssText: string, projectDir: string): s
   );
 }
 
-function cssAttributeSelector(attr: string, value: string): string {
+export function cssAttributeSelector(attr: string, value: string): string {
   return `[${attr}="${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"]`;
 }
 
@@ -274,7 +274,7 @@ function uniqueCompositionId(baseId: string, index: number): string {
   return `${baseId}__hf${index}`;
 }
 
-type BundledHostCompositionIdentity = {
+export type BundledHostCompositionIdentity = {
   authoredCompositionId: string | null;
   runtimeCompositionId: string | null;
 };
@@ -320,7 +320,7 @@ function countBundledAuthoredCompositionIds(hosts: Element[]): Map<string, numbe
   return counts;
 }
 
-function assignBundledRuntimeCompositionIds(
+export function assignBundledRuntimeCompositionIds(
   hosts: Element[],
   counts: Map<string, number> = countBundledAuthoredCompositionIds(hosts),
 ): Map<Element, BundledHostCompositionIdentity> {
@@ -366,7 +366,7 @@ function assignBundledRuntimeCompositionIds(
   return identities;
 }
 
-function parseHostVariableValues(host: Element): Record<string, unknown> {
+export function parseHostVariableValues(host: Element): Record<string, unknown> {
   const raw = host.getAttribute("data-variable-values");
   if (!raw) return {};
   let parsed: unknown;
