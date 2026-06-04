@@ -49,6 +49,7 @@ export interface StudioPreviewAreaProps {
     updates: Pick<TimelineElement, "start" | "duration" | "playbackStart">,
   ) => Promise<void> | void;
   handleBlockedTimelineEdit: (element: TimelineElement, intent: BlockedTimelineEditIntent) => void;
+  handleTimelineElementSplit: (element: TimelineElement, splitTime: number) => Promise<void> | void;
   setCompIdToSrc: (map: Map<string, string>) => void;
   setCompositionLoading: (loading: boolean) => void;
   shouldShowSelectedDomBounds: boolean;
@@ -67,6 +68,7 @@ export function StudioPreviewArea({
   handleTimelineElementMove,
   handleTimelineElementResize,
   handleBlockedTimelineEdit,
+  handleTimelineElementSplit,
   setCompIdToSrc,
   setCompositionLoading,
   shouldShowSelectedDomBounds,
@@ -107,7 +109,7 @@ export function StudioPreviewArea({
     handleGsapUpdateMeta,
     handleGsapAddKeyframe,
     handleGsapConvertToKeyframes,
-    handleGsapRemoveAllKeyframes,
+    handleGsapDeleteAnimation,
   } = useDomEditContext();
 
   return (
@@ -127,10 +129,12 @@ export function StudioPreviewArea({
           onMoveElement={handleTimelineElementMove}
           onResizeElement={handleTimelineElementResize}
           onBlockedEditAttempt={handleBlockedTimelineEdit}
+          onSplitElement={handleTimelineElementSplit}
           onSelectTimelineElement={handleTimelineElementSelect}
           onDeleteAllKeyframes={(_elId) => {
-            const anim = selectedGsapAnimations.find((a) => a.keyframes);
-            if (anim) handleGsapRemoveAllKeyframes(anim.id);
+            const anim =
+              selectedGsapAnimations.find((a) => a.keyframes) ?? selectedGsapAnimations[0];
+            if (anim) handleGsapDeleteAnimation(anim.id);
           }}
           onDeleteKeyframe={(_elId, pct) => {
             const anim = selectedGsapAnimations.find((a) => a.keyframes);

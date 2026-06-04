@@ -23,6 +23,7 @@ interface TimelineClipProps {
   onResizeStart?: (edge: "start" | "end", e: React.PointerEvent) => void;
   onClick: (e: React.MouseEvent) => void;
   onDoubleClick: (e: React.MouseEvent) => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
   children?: ReactNode;
 }
 
@@ -44,6 +45,7 @@ export const TimelineClip = memo(function TimelineClip({
   onResizeStart,
   onClick,
   onDoubleClick,
+  onContextMenu,
   children,
 }: TimelineClipProps) {
   const leftPx = el.start * pps;
@@ -98,6 +100,7 @@ export const TimelineClip = memo(function TimelineClip({
       onPointerDown={onPointerDown}
       onClick={onClick}
       onDoubleClick={onDoubleClick}
+      onContextMenu={onContextMenu}
     >
       {/* Left accent stripe */}
       <div
