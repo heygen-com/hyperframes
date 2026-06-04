@@ -65,6 +65,42 @@ Never run `bun run --cwd packages/producer test:update` directly from the
 host to capture a baseline that will be committed — the resulting output.mp4
 will not match CI. Use it only for local-only experimentation.
 
+## Releasing
+
+All eight packages share one version. `.github/workflows/publish.yml` publishes
+them when a `v*` tag is pushed (it also accepts a manual `workflow_dispatch` with
+a version input). The CLI publishes as the unscoped `hyperframes` package; the
+other seven as `@hyperframes/*`.
+
+Cut a release from `main`:
+
+```bash
+bun run release:prepare <version>   # e.g. 0.6.72
+```
+
+Run it twice:
+
+1. **First run** writes `releases/v<version>.md` and prepends an entry to
+   `docs/changelog.mdx`, then stops with a non-zero exit. Edit both files: write
+   the 1–2 sentence summary and remove the `<!-- TODO -->` marker.
+2. **Second run** (after the TODO is gone) bumps every package and plugin
+   manifest, creates the `chore: release v<version>` commit, and tags
+   `v<version>` (lightweight).
+
+Then push to trigger the publish:
+
+```bash
+git push origin main --tags
+```
+
+Notes:
+
+- Pre-release versions (`0.6.72-alpha.1`) publish to the matching npm dist-tag
+  (`alpha`) instead of `latest`.
+- `--skip-changelog-check` skips the changelog gate for emergency releases.
+- The publish step skips any version already on npm, so re-running a failed
+  workflow run is safe.
+
 ## Skills
 
 Composition authoring (not repo development) is guided by skills installed via `npx skills add heygen-com/hyperframes`. See `skills/` for source. Invoke `/hyperframes`, `/hyperframes-cli`, `/hyperframes-registry`, `/tailwind`, or `/gsap` when authoring compositions. Use `/tailwind` for projects created with `hyperframes init --tailwind` so agents follow the pinned Tailwind v4 browser-runtime contract instead of Studio's Tailwind v3 setup. Use `/animejs`, `/css-animations`, `/lottie`, `/three`, or `/waapi` when a composition uses those first-party runtime adapters. Invoke `/hyperframes-media` for asset preprocessing (TTS narration, audio/video transcription, background removal for transparent overlays) — these commands have their own skill so the CLI skill stays focused on the dev loop. When a user provides a website URL and wants a video, invoke `/website-to-hyperframes` — it runs the full 7-step capture-to-video pipeline.

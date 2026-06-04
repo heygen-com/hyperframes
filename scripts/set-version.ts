@@ -109,12 +109,8 @@ function updatePluginVersions(version: string) {
 }
 
 function createReleaseCommitAndTag(version: string) {
-  const status = execFileSync("git", ["status", "--porcelain"], {
-    cwd: ROOT,
-    encoding: "utf-8",
-  }).trim();
   const allowedPaths = releaseAllowedPaths(version);
-  assertNoUnexpectedChanges(status, allowedPaths);
+  assertNoUnexpectedChanges(collectChangedPaths(), allowedPaths);
 
   // Pass git arguments as an array (execFileSync, no shell) so the interpolated
   // version and paths can never be interpreted as shell commands.
@@ -208,7 +204,7 @@ export function docsChangelogEntryHasGeneratedTodo(content: string, marker: stri
   return hasGeneratedChangelogTodo(entry);
 }
 
-function releaseAllowedPaths(version: string) {
+export function releaseAllowedPaths(version: string) {
   return [
     ...PACKAGES.map((pkg) => join(pkg, "package.json")),
     ...PLUGINS.map((plugin) => join(plugin, "plugin.json")),
@@ -217,16 +213,40 @@ function releaseAllowedPaths(version: string) {
   ];
 }
 
-function assertNoUnexpectedChanges(status: string, allowedPaths: string[]) {
-  const unexpected = status
-    .split("\n")
-    .filter(
-      (line) => line && !allowedPaths.some((allowedPath) => gitStatusPath(line) === allowedPath),
-    );
+// Collect every uncommitted path (modified-tracked + untracked) as clean,
+// repo-relative paths. We deliberately use `diff --name-only` and `ls-files`
+// with `-z` rather than parsing `git status --porcelain`: the porcelain
+// "XY <path>" prefix width shifts with stage state, and a fixed-width slice
+// of it once mis-read a legitimate release file (`.claude-plugin/plugin.json`)
+// as an unexpected change, falsely blocking a release. These two commands
+// emit bare NUL-separated paths with no status column to misparse.
+function collectChangedPaths(): string[] {
+  const tracked = execFileSync("git", ["diff", "--name-only", "-z", "HEAD"], {
+    cwd: ROOT,
+    encoding: "utf-8",
+  });
+  const untracked = execFileSync("git", ["ls-files", "--others", "--exclude-standard", "-z"], {
+    cwd: ROOT,
+    encoding: "utf-8",
+  });
+  return [...splitNulList(tracked), ...splitNulList(untracked)];
+}
+
+export function splitNulList(output: string): string[] {
+  return output.split("\0").filter(Boolean);
+}
+
+export function findUnexpectedChanges(changedPaths: string[], allowedPaths: string[]): string[] {
+  const allowed = new Set(allowedPaths);
+  return changedPaths.filter((path) => !allowed.has(path));
+}
+
+function assertNoUnexpectedChanges(changedPaths: string[], allowedPaths: string[]) {
+  const unexpected = findUnexpectedChanges(changedPaths, allowedPaths);
 
   if (unexpected.length > 0) {
     console.error("\nUnexpected uncommitted changes:");
-    unexpected.forEach((line) => console.error(`  ${line}`));
+    unexpected.forEach((path) => console.error(`  ${path}`));
     console.error("Commit or stash these before releasing.");
     process.exit(1);
   }
@@ -241,10 +261,6 @@ function printReleaseNextSteps(version: string) {
   } else {
     console.log(`Run 'git push origin main --tags' to trigger the publish workflow.`);
   }
-}
-
-export function gitStatusPath(line: string) {
-  return line.slice(3).replace(/^"|"$/g, "");
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

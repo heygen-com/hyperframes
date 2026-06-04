@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   changelogArtifacts,
-  gitStatusPath,
+  findUnexpectedChanges,
   isPrerelease,
   parseReleaseOptions,
+  releaseAllowedPaths,
   releaseRequiresChangelog,
+  splitNulList,
 } from "./set-version.ts";
 
 describe("set-version release options", () => {
@@ -64,12 +66,31 @@ describe("set-version release options", () => {
   });
 });
 
-describe("git status parsing", () => {
-  it("extracts unquoted porcelain paths", () => {
-    assert.equal(gitStatusPath(" M docs/changelog.mdx"), "docs/changelog.mdx");
+describe("changed-path guard", () => {
+  it("splits NUL-separated git output and drops the empty trailing entry", () => {
+    assert.deepEqual(splitNulList("packages/core/package.json\0releases/v1.2.3.md\0"), [
+      "packages/core/package.json",
+      "releases/v1.2.3.md",
+    ]);
+    assert.deepEqual(splitNulList(""), []);
   });
 
-  it("extracts quoted porcelain paths", () => {
-    assert.equal(gitStatusPath('?? "releases/v1.2.3.md"'), "releases/v1.2.3.md");
+  it("accepts a release whose changes are all allowed paths", () => {
+    const allowed = releaseAllowedPaths("1.2.3");
+    assert.deepEqual(
+      findUnexpectedChanges(
+        ["packages/core/package.json", ".claude-plugin/plugin.json", "releases/v1.2.3.md"],
+        allowed,
+      ),
+      [],
+    );
+  });
+
+  it("flags changes outside the allowed release paths", () => {
+    const allowed = releaseAllowedPaths("1.2.3");
+    assert.deepEqual(
+      findUnexpectedChanges(["packages/core/package.json", "packages/core/src/index.ts"], allowed),
+      ["packages/core/src/index.ts"],
+    );
   });
 });
