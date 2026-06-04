@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { TimelineElement } from "../player";
+import { usePlayerStore } from "../player";
 import {
   STUDIO_INSPECTOR_PANELS_ENABLED,
   STUDIO_GSAP_PANEL_ENABLED,
@@ -204,6 +205,18 @@ export function useDomEditSession({
     updateDomEditHoverSelection,
     onClickToSource,
   });
+
+  // Sync DOM selection → timeline selectedElementId so that clip selection
+  // highlights and diamond playhead fills work on cold-load URL restore.
+  useEffect(() => {
+    if (!domEditSelection?.id) return;
+    const { selectedElementId, elements, setSelectedElementId } = usePlayerStore.getState();
+    const matchKey = elements.find(
+      (el) => el.domId === domEditSelection.id || el.id === domEditSelection.id,
+    );
+    const key = matchKey ? (matchKey.key ?? matchKey.id) : null;
+    if (key && key !== selectedElementId) setSelectedElementId(key);
+  }, [domEditSelection?.id]);
 
   // ── GSAP script editing ──
 
