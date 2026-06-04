@@ -36,7 +36,15 @@ export interface ProbeCallbacks {
   onRuntimeInjected?: () => void;
 }
 
-function readPositiveDimension(value: string | null): number | null {
+/**
+ * Parse a composition dimension, rejecting anything that isn't a positive
+ * finite number. Exported because the `width`/`height` attribute handlers in
+ * hyperframes-player.ts need the same guard: dimensions feed
+ * scaleIframeToFit's `w / compositionWidth` division, where NaN produces an
+ * invalid `scale(NaN)` transform and zero a division by zero — both render
+ * the player blank with no signal.
+ */
+export function readPositiveDimension(value: string | null): number | null {
   if (value === null) return null;
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
