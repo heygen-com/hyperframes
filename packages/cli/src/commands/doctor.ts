@@ -1,13 +1,18 @@
 import { defineCommand } from "citty";
 import { execSync } from "node:child_process";
-import { freemem, platform } from "node:os";
+import { platform } from "node:os";
 import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
 import { findBrowser } from "../browser/manager.js";
 import { findFFmpeg, getFFmpegInstallHint } from "../browser/ffmpeg.js";
 import { VERSION } from "../version.js";
 import { getUpdateMeta, withMeta } from "../utils/updateCheck.js";
-import { getSystemMeta, getShmSizeMb, getFreeDiskMb, bytesToMb } from "../telemetry/system.js";
+import {
+  getSystemMeta,
+  getShmSizeMb,
+  getFreeDiskMb,
+  getAvailableMemoryMb,
+} from "../telemetry/system.js";
 
 export const examples: Example[] = [
   ["Check system dependencies", "hyperframes doctor"],
@@ -25,13 +30,23 @@ interface CheckResult {
   hint?: string;
 }
 
+/**
+ * Extract a clean "toolname X.Y.Z" from the verbose first line of
+ * `ffmpeg -version` / `ffprobe -version` output. Falls back to the
+ * trimmed input when the pattern doesn't match.
+ */
+export function parseToolVersion(raw: string): string {
+  const m = raw.match(/(ffmpeg|ffprobe)\s+version\s+([\d][\d.\-\w]*)/i);
+  return m ? `${m[1]} ${m[2]}` : raw.trim();
+}
+
 function checkFFmpeg(): CheckResult {
   const path = findFFmpeg();
   if (path) {
     try {
-      const version =
+      const raw =
         execSync("ffmpeg -version", { encoding: "utf-8", timeout: 5000 }).split("\n")[0] ?? "";
-      return { ok: true, detail: version.trim() };
+      return { ok: true, detail: parseToolVersion(raw) };
     } catch {
       return { ok: true, detail: path };
     }
@@ -47,9 +62,9 @@ function checkFFprobe(): CheckResult {
   // `ffprobe -version` works cross-platform if it's on PATH — no need for
   // `which`/`where` shell detection, which differs by OS.
   try {
-    const version =
+    const raw =
       execSync("ffprobe -version", { encoding: "utf-8", timeout: 5000 }).split("\n")[0] ?? "";
-    return { ok: true, detail: version.trim() };
+    return { ok: true, detail: parseToolVersion(raw) };
   } catch {
     return {
       ok: false,
@@ -124,18 +139,18 @@ function checkCPU(): CheckResult {
 
 function checkMemory(): CheckResult {
   const sys = getSystemMeta();
-  const freeMb = bytesToMb(freemem()); // fresh reading, not cached
+  const availMb = getAvailableMemoryMb();
   const totalGb = (sys.memory_total_mb / 1024).toFixed(1);
-  const freeGb = (freeMb / 1024).toFixed(1);
+  const availGb = (availMb / 1024).toFixed(1);
 
-  if (freeMb < 2048) {
+  if (availMb < 2048) {
     return {
       ok: false,
-      detail: `${totalGb} GB total \u00B7 ${freeGb} GB free`,
+      detail: `${totalGb} GB total \u00B7 ${availGb} GB available`,
       hint: "Low memory — renders may fail. Close other apps or increase RAM.",
     };
   }
-  return { ok: true, detail: `${totalGb} GB total \u00B7 ${freeGb} GB free` };
+  return { ok: true, detail: `${totalGb} GB total \u00B7 ${availGb} GB available` };
 }
 
 function checkShm(): CheckResult {

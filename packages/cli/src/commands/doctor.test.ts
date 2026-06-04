@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { buildDoctorReport, redactHome, type CheckOutcome } from "./doctor.js";
+import { buildDoctorReport, redactHome, parseToolVersion, type CheckOutcome } from "./doctor.js";
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -59,6 +59,32 @@ describe("redactHome", () => {
   it("leaves strings without HOME unchanged", () => {
     process.env["HOME"] = "/Users/alice";
     expect(redactHome("brew install ffmpeg")).toBe("brew install ffmpeg");
+  });
+});
+
+describe("parseToolVersion", () => {
+  it("extracts ffmpeg version from full copyright line", () => {
+    expect(
+      parseToolVersion("ffmpeg version 8.1.1 Copyright (c) 2000-2026 the FFmpeg developers"),
+    ).toBe("ffmpeg 8.1.1");
+  });
+
+  it("extracts ffprobe version from full copyright line", () => {
+    expect(
+      parseToolVersion("ffprobe version 8.1.1 Copyright (c) 2007-2026 the FFmpeg developers"),
+    ).toBe("ffprobe 8.1.1");
+  });
+
+  it("handles Windows gyan.dev builds with suffix", () => {
+    expect(
+      parseToolVersion(
+        "ffmpeg version 7.1.1-essentials_build-www.gyan.dev Copyright (c) 2000-2024",
+      ),
+    ).toBe("ffmpeg 7.1.1-essentials_build-www.gyan.dev");
+  });
+
+  it("returns trimmed input when pattern does not match", () => {
+    expect(parseToolVersion("  some unrecognized output  ")).toBe("some unrecognized output");
   });
 });
 
