@@ -73,7 +73,11 @@ describe("killTrackedProcesses", () => {
   });
 });
 
-describe("killWithEscalation", () => {
+// On Windows, kill("SIGTERM") maps to TerminateProcess and is unconditional,
+// so a trap-based shim can't ignore it and the SIGKILL escalation is never
+// reached. The whole block exercises POSIX-only signal semantics; skip it
+// there, same as the runFfmpeg kill-escalation suite.
+describe.skipIf(process.platform === "win32")("killWithEscalation", () => {
   it("kills a SIGTERM-compliant process", async () => {
     const proc = spawn("sleep", ["60"], { stdio: "ignore" });
 
