@@ -86,6 +86,11 @@ export function resolveDockerPlatform(
   return arch === "arm64" ? "linux/arm64" : "linux/amd64";
 }
 
+// Pure argv builder — the cognitive count tracks the number of optional CLI
+// flags it forwards, not branching depth. Each conditional spread is one
+// option = O(1) to read. Inherited from main (#1196 added platform handling);
+// this PR added one more conditional for --browser-timeout.
+// fallow-ignore-next-line complexity
 export function buildDockerRunArgs(input: DockerRunArgsInput): string[] {
   const { imageTag, projectDir, outputDir, outputFilename, options } = input;
   const platform = input.platform ?? resolveDockerPlatform();

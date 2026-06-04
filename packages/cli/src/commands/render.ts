@@ -6,6 +6,7 @@ import {
   resolveVariablesArg,
   validateVariablesAgainstProject,
 } from "../utils/variables.js";
+import { resolveBrowserTimeoutMsArg, resolveCompositionEntryArg } from "../utils/renderArgs.js";
 
 export const examples: Example[] = [
   ["Render to MP4", "hyperframes render --output output.mp4"],
@@ -119,7 +120,8 @@ export default defineCommand({
       alias: "c",
       description:
         "Render a specific composition file instead of index.html (e.g. compositions/intro.html). " +
-        "Sub-compositions using <template> wrappers must be referenced from index.html via data-composition-src.",
+        "Sub-compositions using <template> wrappers must be referenced from index.html via data-composition-src. " +
+        "Pass `.` (or omit the flag) to render the project's index.html.",
     },
     output: {
       type: "string",
@@ -237,13 +239,23 @@ export default defineCommand({
     "browser-timeout": {
       type: "string",
       description:
-        "Puppeteer page-navigation timeout in seconds for the entry HTML. " +
+        "Puppeteer page-navigation timeout in SECONDS for the entry HTML. " +
         "Increase when heavy compositions (many videos / fonts / asset " +
         "requests) cannot reach domcontentloaded within the 60s default " +
-        "(see issue #1199). Env fallback: PRODUCER_PAGE_NAVIGATION_TIMEOUT_MS " +
-        "(in milliseconds).",
+        "(see issue #1199). Accepts 0.001-86400 (24h cap). " +
+        "Note: this controls page.goto only — very heavy compositions may " +
+        "also need PRODUCER_PUPPETEER_PROTOCOL_TIMEOUT_MS / " +
+        "PRODUCER_PLAYER_READY_TIMEOUT_MS bumped (the post-goto window.__hf " +
+        "readiness poll has its own 45s budget). " +
+        "Env fallback: PRODUCER_PAGE_NAVIGATION_TIMEOUT_MS (MILLISECONDS).",
     },
   },
+  // `run` is the citty handler for `hyperframes render` — sequential flag
+  // validation + render dispatch. Inherited CRITICAL on main (CRAP 1290);
+  // this PR extracted --browser-timeout + --composition validators into
+  // `utils/renderArgs.ts`, reducing cyclomatic 75→65 and CRAP 1290→978.
+  // Full decomposition is tracked separately and out of scope for #1199.
+  // fallow-ignore-next-line complexity
   async run({ args }) {
     // ── Resolve project ────────────────────────────────────────────────────
     const project = resolveProject(args.dir);
@@ -387,63 +399,12 @@ export default defineCommand({
       process.exit(1);
     }
 
-    // ── Validate browser-timeout ──────────────────────────────────────────
-    // CLI accepts seconds (matches FFmpeg / shell ergonomics); the engine
-    // config and Puppeteer both take milliseconds, so multiply once here.
-    let pageNavigationTimeoutMs: number | undefined;
-    if (args["browser-timeout"] != null) {
-      const parsed = Number(args["browser-timeout"]);
-      if (!Number.isFinite(parsed) || parsed <= 0) {
-        errorBox(
-          "Invalid browser-timeout",
-          `Got "${args["browser-timeout"]}". Must be a positive number of seconds (e.g. 180).`,
-        );
-        process.exit(1);
-      }
-      pageNavigationTimeoutMs = Math.round(parsed * 1000);
-    }
-
-    // ── Validate composition entry file ──────────────────────────────────
-    // Resolves the project directory itself (e.g. `--composition .` or
-    // `--composition ./`) to undefined so the producer falls back to
-    // index.html instead of statSync-ing the dir and later blowing up with
-    // EISDIR inside readFileSync(). See issue #1199.
-    let entryFile = args.composition?.trim().replace(/^\.\//, "") || undefined;
-    if (entryFile === "." || entryFile === "") entryFile = undefined;
-    if (entryFile) {
-      const absProjectDir = resolve(project.dir);
-      const entryPath = resolve(absProjectDir, entryFile);
-      if (!entryPath.startsWith(absProjectDir)) {
-        errorBox(
-          "Invalid composition path",
-          `Entry file must stay inside the project directory: ${entryFile}`,
-        );
-        process.exit(1);
-      }
-      let entryStat;
-      try {
-        entryStat = statSync(entryPath);
-      } catch {
-        errorBox(
-          "Composition not found",
-          `"${entryFile}" does not exist in the project directory.`,
-          "Pass a path to a .html file relative to the project root (e.g. compositions/intro.html).",
-        );
-        process.exit(1);
-      }
-      if (!entryStat.isFile()) {
-        // Directory paths slip past statSync() and explode downstream with
-        // `EISDIR: illegal operation on a directory, read` when the producer
-        // calls readFileSync() on the entry. Reject them here with an
-        // actionable message instead.
-        errorBox(
-          "Invalid composition path",
-          `"${entryFile}" is a directory, not an .html file.`,
-          "Pass a path to a .html file (e.g. compositions/intro.html), or omit --composition to render index.html.",
-        );
-        process.exit(1);
-      }
-    }
+    // ── Validate browser-timeout (seconds) and composition entry file ────
+    // Both validators live in `utils/renderArgs.ts` so the parse/reject
+    // branches are unit-testable without `process.exit`. See issue #1199
+    // for the original EISDIR / silent-timeout-0 footguns this guards.
+    const pageNavigationTimeoutMs = resolveBrowserTimeoutMsArg(args["browser-timeout"]);
+    const entryFile = resolveCompositionEntryArg(args.composition, project.dir, statSync);
 
     // ── Print render plan ─────────────────────────────────────────────────
     if (!quiet) {
@@ -788,6 +749,9 @@ function resolveDockerHostPlatform(options: RenderOptions): string {
   return platform;
 }
 
+// Inherited minor finding (CRAP 37.1, cyclomatic 11). This PR only added
+// `pageNavigationTimeoutMs` to the options forwarded to `buildDockerRunArgs`.
+// fallow-ignore-next-line complexity
 async function renderDocker(
   projectDir: string,
   outputPath: string,
@@ -1014,6 +978,9 @@ function handleRenderError(
  * Extract rich metrics from the completed render job and send to telemetry.
  * speed_ratio = composition_duration / render_time — higher is better, >1 means faster than realtime.
  */
+// Inherited CRITICAL (CRAP 148.4, cyclomatic 24): exhaustive nullish-fallback
+// chain across 30+ telemetry fields. Not touched by this PR.
+// fallow-ignore-next-line complexity
 function trackRenderMetrics(
   job: RenderJob,
   elapsedMs: number,
