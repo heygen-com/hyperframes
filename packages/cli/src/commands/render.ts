@@ -49,7 +49,7 @@ import { maybePromptRenderFeedback } from "../telemetry/feedback.js";
 import { bytesToMb } from "../telemetry/system.js";
 import { VERSION } from "../version.js";
 import { isDevMode } from "../utils/env.js";
-import { buildDockerRunArgs } from "../utils/dockerRunArgs.js";
+import { buildDockerRunArgs, resolveDockerPlatform } from "../utils/dockerRunArgs.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { findFFmpeg, getFFmpegInstallHint } from "../browser/ffmpeg.js";
 import type { RenderJob } from "@hyperframes/producer";
@@ -632,15 +632,23 @@ function dockerImageExists(tag: string): boolean {
   }
 }
 
-function ensureDockerImage(version: string, quiet: boolean): string {
-  const tag = dockerImageTag(version);
+function dockerImageTagForPlatform(version: string, platform: string): string {
+  // Suffix the tag with the arch so amd64 and arm64 images of the same
+  // hyperframes version coexist in the local cache (a developer who flips
+  // between hosts shouldn't have to rebuild).
+  const archSuffix = platform === "linux/arm64" ? "-arm64" : "";
+  return `${dockerImageTag(version)}${archSuffix}`;
+}
+
+function ensureDockerImage(version: string, platform: string, quiet: boolean): string {
+  const tag = dockerImageTagForPlatform(version, platform);
 
   if (dockerImageExists(tag)) {
     if (!quiet) console.log(c.dim(`  Docker image: ${tag} (cached)`));
     return tag;
   }
 
-  if (!quiet) console.log(c.dim(`  Building Docker image: ${tag}...`));
+  if (!quiet) console.log(c.dim(`  Building Docker image: ${tag} (${platform})...`));
 
   const dockerfilePath = resolveDockerfilePath();
 
@@ -649,16 +657,27 @@ function ensureDockerImage(version: string, quiet: boolean): string {
   mkdirSync(tmpDir, { recursive: true });
   writeFileSync(join(tmpDir, "Dockerfile"), readFileSync(dockerfilePath));
 
-  // linux/amd64 forced — chrome-headless-shell doesn't ship ARM Linux binaries
+  // Platform is now derived from the host arch (see resolveDockerPlatform).
+  // Apple Silicon and other arm64 hosts get a native linux/arm64 build; the
+  // Dockerfile skips chrome-headless-shell on arm64 and falls back to system
+  // chromium because chrome-headless-shell ships linux64 only.
+  //
+  // TARGETARCH is passed explicitly rather than relying on BuildKit's
+  // automatic platform args because the legacy builder (and some BuildKit
+  // configurations like colima 0.6.x) leaves it unset, which would defeat
+  // the arch conditional in the Dockerfile.
+  const targetArch = platform === "linux/arm64" ? "arm64" : "amd64";
   try {
     execFileSync(
       "docker",
       [
         "build",
         "--platform",
-        "linux/amd64",
+        platform,
         "--build-arg",
         `HYPERFRAMES_VERSION=${version}`,
+        "--build-arg",
+        `TARGETARCH=${targetArch}`,
         "-t",
         tag,
         tmpDir,
@@ -689,9 +708,23 @@ async function renderDocker(
     console.log(c.dim("  Dev mode: using hyperframes@latest in Docker image"));
   }
 
+  const platform = resolveDockerPlatform();
+  if (!options.quiet && platform === "linux/arm64") {
+    // chrome-headless-shell doesn't publish a linux-arm64 build, so the arm64
+    // image falls back to system chromium. That loses byte-for-byte parity
+    // with amd64 renders — fine for end-user output, not fine if you're
+    // comparing against an amd64 golden baseline.
+    console.log(
+      c.dim(
+        "  Host is arm64 — using linux/arm64 image with system chromium " +
+          "(output won't be byte-identical to amd64 renders).",
+      ),
+    );
+  }
+
   let imageTag: string;
   try {
-    imageTag = ensureDockerImage(dockerVersion, options.quiet);
+    imageTag = ensureDockerImage(dockerVersion, platform, options.quiet);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     const isDockerMissing = /connect|not found|ENOENT/i.test(message);
@@ -712,6 +745,7 @@ async function renderDocker(
     projectDir: resolve(projectDir),
     outputDir: resolve(outputDir),
     outputFilename,
+    platform,
     options: {
       fps: options.fps,
       quality: options.quality,

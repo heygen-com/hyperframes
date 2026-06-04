@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildDockerRunArgs, type DockerRenderOptions } from "./dockerRunArgs.js";
+import {
+  buildDockerRunArgs,
+  resolveDockerPlatform,
+  type DockerRenderOptions,
+} from "./dockerRunArgs.js";
 
 const BASE: DockerRenderOptions = {
   fps: { num: 30, den: 1 },
@@ -18,6 +22,10 @@ const FIXED_INPUT = {
   projectDir: "/abs/proj",
   outputDir: "/abs/out",
   outputFilename: "out.mp4",
+  // Pin platform in tests so snapshots are arch-independent (otherwise they
+  // flip between linux/amd64 and linux/arm64 depending on the host running
+  // the test).
+  platform: "linux/amd64",
 };
 
 describe("buildDockerRunArgs", () => {
@@ -289,5 +297,44 @@ describe("buildDockerRunArgs", () => {
   it("omits --no-page-side-compositing when pageSideCompositing is not explicitly false", () => {
     const args = buildDockerRunArgs({ ...FIXED_INPUT, options: BASE });
     expect(args).not.toContain("--no-page-side-compositing");
+  });
+
+  // Regression for #1193: an arm64 host (Apple Silicon) was being pinned to
+  // linux/amd64, which forced qemu emulation of chrome-headless-shell and
+  // produced either navigation timeouts or chrome SEGVs. Each host arch must
+  // land in its native --platform value.
+  it("emits linux/arm64 when host platform is arm64", () => {
+    const args = buildDockerRunArgs({
+      imageTag: "hyperframes-renderer:0.0.0-test",
+      projectDir: "/abs/proj",
+      outputDir: "/abs/out",
+      outputFilename: "out.mp4",
+      platform: "linux/arm64",
+      options: BASE,
+    });
+    const idx = args.indexOf("--platform");
+    expect(idx).toBeGreaterThanOrEqual(0);
+    expect(args[idx + 1]).toBe("linux/arm64");
+  });
+
+  it("emits linux/amd64 when platform is explicitly amd64", () => {
+    const args = buildDockerRunArgs({ ...FIXED_INPUT, options: BASE });
+    const idx = args.indexOf("--platform");
+    expect(idx).toBeGreaterThanOrEqual(0);
+    expect(args[idx + 1]).toBe("linux/amd64");
+  });
+});
+
+describe("resolveDockerPlatform", () => {
+  it("maps arm64 hosts to linux/arm64", () => {
+    expect(resolveDockerPlatform("arm64")).toBe("linux/arm64");
+  });
+
+  it("maps x64 hosts to linux/amd64", () => {
+    expect(resolveDockerPlatform("x64")).toBe("linux/amd64");
+  });
+
+  it("treats unknown architectures as linux/amd64 (safe default)", () => {
+    expect(resolveDockerPlatform("riscv64")).toBe("linux/amd64");
   });
 });

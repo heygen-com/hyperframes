@@ -17,6 +17,16 @@ export interface DockerRunArgsInput {
   outputDir: string;
   /** Filename within `outputDir` (joined to /output inside the container). */
   outputFilename: string;
+  /**
+   * Docker `--platform` value (`linux/amd64` or `linux/arm64`). When omitted,
+   * resolves to the host architecture via `resolveDockerPlatform()`. Pinning
+   * to `linux/amd64` on an arm64 host (the legacy default) forces qemu
+   * emulation of chrome-headless-shell, which segfaults or stalls on Apple
+   * Silicon — see issue #1193. Native `linux/arm64` falls back to the
+   * system chromium baked into the image at the cost of byte-for-byte
+   * parity with amd64 renders.
+   */
+  platform?: string;
   options: DockerRenderOptions;
 }
 
@@ -44,13 +54,23 @@ export interface DockerRenderOptions {
   pageSideCompositing?: boolean;
 }
 
+/**
+ * Maps Node's `process.arch` to a Docker `--platform` string. We only emit
+ * the two architectures the renderer actively supports — arm64 hosts (Apple
+ * Silicon, Graviton, Ampere) and everything else (treated as amd64).
+ */
+export function resolveDockerPlatform(arch: string = process.arch): string {
+  return arch === "arm64" ? "linux/arm64" : "linux/amd64";
+}
+
 export function buildDockerRunArgs(input: DockerRunArgsInput): string[] {
   const { imageTag, projectDir, outputDir, outputFilename, options } = input;
+  const platform = input.platform ?? resolveDockerPlatform();
   return [
     "run",
     "--rm",
     "--platform",
-    "linux/amd64",
+    platform,
     "--shm-size=2g",
     // GPU encoding requires host GPU passthrough.
     ...(options.gpu ? ["--gpus", "all"] : []),
