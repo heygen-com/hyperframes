@@ -110,6 +110,7 @@ export class HyperframesRenderStack extends Construct {
         NODE_OPTIONS: "--enable-source-maps",
         TMPDIR: "/tmp",
         HYPERFRAMES_LAMBDA_CHROME_SOURCE: chromeSource,
+        HYPERFRAMES_RENDER_BUCKET: this.bucket.bucketName,
       },
     });
 
@@ -195,6 +196,7 @@ export class HyperframesRenderStack extends Construct {
     const NON_RETRYABLE_PLAN = [
       "FFMPEG_VERSION_MISMATCH",
       "PLAN_HASH_MISMATCH",
+      "S3_URI_NOT_ALLOWED",
       "BROWSER_GPU_NOT_SOFTWARE",
       "FONT_FETCH_FAILED",
       "PLAN_TOO_LARGE",
@@ -204,12 +206,14 @@ export class HyperframesRenderStack extends Construct {
     const NON_RETRYABLE_CHUNK = [
       "FFMPEG_VERSION_MISMATCH",
       "PLAN_HASH_MISMATCH",
+      "S3_URI_NOT_ALLOWED",
       "BROWSER_GPU_NOT_SOFTWARE",
       "ChromeBinaryUnavailableError",
     ];
     const NON_RETRYABLE_ASSEMBLE = [
       "FFMPEG_VERSION_MISMATCH",
       "PLAN_HASH_MISMATCH",
+      "S3_URI_NOT_ALLOWED",
       "FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED",
       "ChromeBinaryUnavailableError",
     ];

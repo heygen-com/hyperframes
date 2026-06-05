@@ -459,6 +459,69 @@ describe("handler dispatch", () => {
   });
 });
 
+describe("handler — S3 URI allowlist (security: F-004)", () => {
+  let prevBucket: string | undefined;
+
+  beforeEach(() => {
+    prevBucket = process.env.HYPERFRAMES_RENDER_BUCKET;
+  });
+
+  afterEach(() => {
+    if (prevBucket === undefined) {
+      delete process.env.HYPERFRAMES_RENDER_BUCKET;
+    } else {
+      process.env.HYPERFRAMES_RENDER_BUCKET = prevBucket;
+    }
+  });
+
+  it("rejects a plan event whose ProjectS3Uri is outside the allowed bucket", async () => {
+    process.env.HYPERFRAMES_RENDER_BUCKET = "good-bucket";
+    const tmpRoot = makeTmpRoot();
+    const s3 = new FakeS3Client();
+
+    const event: PlanEvent = {
+      Action: "plan",
+      ProjectS3Uri: "s3://evil-bucket/project.tar.gz",
+      PlanOutputS3Prefix: "s3://good-bucket/renders/abc/",
+      Config: { fps: 30, width: 1920, height: 1080, format: "mp4" },
+    };
+    const deps = {
+      s3: s3 as unknown as import("@aws-sdk/client-s3").S3Client,
+      tmpRoot,
+      skipChromeResolution: true,
+    };
+
+    await expect(handler(event, deps)).rejects.toMatchObject({
+      name: "S3_URI_NOT_ALLOWED",
+      message: expect.stringContaining("evil-bucket"),
+    });
+    expect(s3.ops).toHaveLength(0);
+  });
+
+  it("rejects an assemble event with a cross-bucket chunk URI", async () => {
+    process.env.HYPERFRAMES_RENDER_BUCKET = "good-bucket";
+    const tmpRoot = makeTmpRoot();
+    const s3 = new FakeS3Client();
+
+    const event: AssembleEvent = {
+      Action: "assemble",
+      PlanS3Uri: "s3://good-bucket/plan.tar.gz",
+      ChunkS3Uris: ["s3://good-bucket/chunks/0001.mp4", "s3://evil-bucket/chunks/0002.mp4"],
+      AudioS3Uri: null,
+      OutputS3Uri: "s3://good-bucket/renders/abc/output.mp4",
+      Format: "mp4",
+    };
+    const deps = {
+      s3: s3 as unknown as import("@aws-sdk/client-s3").S3Client,
+      tmpRoot,
+      skipChromeResolution: true,
+    };
+
+    await expect(handler(event, deps)).rejects.toMatchObject({ name: "S3_URI_NOT_ALLOWED" });
+    expect(s3.ops).toHaveLength(0);
+  });
+});
+
 // ── helpers ─────────────────────────────────────────────────────────────────
 
 /**
