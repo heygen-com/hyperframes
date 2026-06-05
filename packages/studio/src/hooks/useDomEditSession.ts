@@ -289,6 +289,7 @@ export function useDomEditSession({
     handleDomMotionCommit,
     handleDomMotionClear,
     handleDomEditElementDelete,
+    handleDomZIndexReorderCommit,
   } = useDomEditCommits({
     activeCompPath,
     previewIframeRef,
@@ -553,6 +554,7 @@ export function useDomEditSession({
     handleDomHtmlAttributeCommit,
     handleDomPathOffsetCommit: handleGsapAwarePathOffsetCommit,
     handleDomGroupPathOffsetCommit,
+    handleDomZIndexReorderCommit,
     handleDomBoxSizeCommit: handleGsapAwareBoxSizeCommit,
     handleDomRotationCommit: handleGsapAwareRotationCommit,
     handleDomManualEditsReset,

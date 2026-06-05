@@ -13,6 +13,7 @@ import {
   resolveTimelineSelectionSeekTime,
 } from "../../utils/studioHelpers";
 import { Layers } from "../../icons/SystemIcons";
+import { useLayerDrag, type LayerReorderEvent } from "./useLayerDrag";
 
 const TAG_ICONS: Record<string, string> = {
   video: "Vi",
@@ -51,6 +52,7 @@ interface CollapsedState {
   [key: string]: boolean;
 }
 
+// fallow-ignore-next-line complexity
 export const LayersPanel = memo(function LayersPanel() {
   const {
     previewIframeRef,
@@ -60,11 +62,17 @@ export const LayersPanel = memo(function LayersPanel() {
     timelineElements,
     currentTime,
   } = useStudioContext();
-  const { domEditSelection, applyDomSelection, updateDomEditHoverSelection } = useDomEditContext();
+  const {
+    domEditSelection,
+    applyDomSelection,
+    updateDomEditHoverSelection,
+    handleDomZIndexReorderCommit,
+  } = useDomEditContext();
 
   const [layers, setLayers] = useState<DomEditLayerItem[]>([]);
   const [collapsed, setCollapsed] = useState<CollapsedState>({});
   const prevDocVersionRef = useRef(0);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const isMasterView = !activeCompPath || activeCompPath === "index.html";
 
@@ -87,7 +95,7 @@ export const LayersPanel = memo(function LayersPanel() {
       activeCompositionPath: activeCompPath,
       isMasterView,
     });
-    setLayers(items);
+    setLayers(sortLayersByZIndex(items));
   }, [previewIframeRef, activeCompPath, isMasterView]);
 
   useEffect(() => {
@@ -119,7 +127,6 @@ export const LayersPanel = memo(function LayersPanel() {
         isMasterView,
         preferClipAncestor: false,
       }),
-    // LayersPanel has no projectId; probe is skipped when projectId is absent
     [activeCompPath, isMasterView],
   );
 
@@ -130,8 +137,6 @@ export const LayersPanel = memo(function LayersPanel() {
 
       let matchedId = findMatchingTimelineElementId(selection, timelineElements);
 
-      // No direct match — walk up DOM ancestors to find the nearest element
-      // that has a timeline entry (e.g. a child of scene1 seeks to scene1.start)
       if (!matchedId) {
         const sourceFile = selection.sourceFile ?? "index.html";
         let ancestor = layer.element.parentElement;
@@ -185,9 +190,41 @@ export const LayersPanel = memo(function LayersPanel() {
     setCollapsed((prev) => ({ ...prev, [key]: !prev[key] }));
   }, []);
 
-  const selectedKey = domEditSelection ? getDomEditLayerKey(domEditSelection) : null;
+  const handleReorder = useCallback(
+    (event: LayerReorderEvent) => {
+      const { siblingLayers, fromIndex, toIndex } = event;
+      const reordered = [...siblingLayers];
+      const [moved] = reordered.splice(fromIndex, 1);
+      reordered.splice(toIndex, 0, moved);
 
+      const entries = reordered.map((layer, i) => ({
+        element: layer.element,
+        zIndex: reordered.length - i,
+        id: layer.id,
+        selector: layer.selector,
+        selectorIndex: layer.selectorIndex,
+        sourceFile: layer.sourceFile,
+      }));
+
+      handleDomZIndexReorderCommit(entries);
+    },
+    [handleDomZIndexReorderCommit],
+  );
+
+  const selectedKey = domEditSelection ? getDomEditLayerKey(domEditSelection) : null;
   const visibleLayers = getVisibleLayers(layers, collapsed);
+
+  const {
+    dragKey,
+    insertionLineY,
+    handleRowPointerDown,
+    handleContainerPointerMove,
+    handleContainerPointerUp,
+  } = useLayerDrag({
+    visibleLayers,
+    scrollContainerRef,
+    onReorder: handleReorder,
+  });
 
   if (layers.length === 0) {
     return (
@@ -207,9 +244,16 @@ export const LayersPanel = memo(function LayersPanel() {
       <div className="border-b border-white/10 px-3 py-2 text-[11px] text-neutral-500">
         {layers.length} layer{layers.length === 1 ? "" : "s"}
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto py-1">
-        {visibleLayers.map((layer) => {
+      <div
+        ref={scrollContainerRef}
+        className="relative min-h-0 flex-1 overflow-y-auto py-1"
+        onPointerMove={handleContainerPointerMove}
+        onPointerUp={handleContainerPointerUp}
+        onPointerCancel={handleContainerPointerUp}
+      >
+        {visibleLayers.map((layer, index) => {
           const selected = layer.key === selectedKey;
+          const isDragged = layer.key === dragKey;
           const isCollapsed = collapsed[layer.key] ?? false;
           const hasChildren = layer.childCount > 0;
           const isCompHost = isCompositionHost(layer.element);
@@ -217,21 +261,25 @@ export const LayersPanel = memo(function LayersPanel() {
           return (
             <div
               key={layer.key}
+              data-layer-index={index}
               role="button"
               tabIndex={0}
-              onClick={() => handleSelectLayer(layer)}
-              onPointerEnter={() => handleLayerHover(layer)}
+              onClick={() => !dragKey && handleSelectLayer(layer)}
+              onPointerDown={(e) => handleRowPointerDown(index, e)}
+              onPointerEnter={() => !dragKey && handleLayerHover(layer)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
                   handleSelectLayer(layer);
                 }
               }}
-              className={`group flex w-full cursor-pointer items-center gap-1.5 px-2 py-1 text-left transition-colors ${
-                selected
-                  ? "bg-studio-accent/14 text-studio-accent"
-                  : "text-neutral-300 hover:bg-white/[0.04] hover:text-neutral-100"
-              }`}
+              className={`group flex w-full items-center gap-1.5 px-2 py-1 text-left transition-colors ${
+                isDragged
+                  ? "opacity-40"
+                  : selected
+                    ? "bg-studio-accent/14 text-studio-accent"
+                    : "text-neutral-300 hover:bg-white/[0.04] hover:text-neutral-100"
+              } ${dragKey ? "cursor-grabbing" : "cursor-pointer"}`}
               style={{ paddingLeft: 8 + layer.depth * 16 }}
             >
               {hasChildren ? (
@@ -271,10 +319,86 @@ export const LayersPanel = memo(function LayersPanel() {
             </div>
           );
         })}
+        {insertionLineY != null && (
+          <div
+            className="pointer-events-none absolute left-2 right-2 h-0.5 bg-studio-accent"
+            style={{ top: insertionLineY }}
+          />
+        )}
       </div>
     </div>
   );
 });
+
+// ── Pure helpers ──────────────────────────────────────────────────────
+
+// fallow-ignore-next-line complexity
+function getElementZIndex(element: HTMLElement): number {
+  try {
+    const inline = element.style?.zIndex;
+    if (inline && inline !== "auto") {
+      const parsed = parseInt(inline, 10);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+    const win = element.ownerDocument?.defaultView;
+    if (!win) return 0;
+    const value = win.getComputedStyle(element).zIndex;
+    if (value === "auto" || value === "") return 0;
+    const parsed = parseInt(value, 10);
+    return Number.isFinite(parsed) ? parsed : 0;
+  } catch {
+    return 0;
+  }
+}
+
+// fallow-ignore-next-line complexity
+export function sortLayersByZIndex(layers: DomEditLayerItem[]): DomEditLayerItem[] {
+  if (layers.length <= 1) return layers;
+
+  const minDepth = layers[0].depth;
+  for (let i = 1; i < layers.length; i++) {
+    if (layers[i].depth < minDepth) return layers;
+  }
+
+  const chunks: Array<{ root: DomEditLayerItem; children: DomEditLayerItem[]; domIndex: number }> =
+    [];
+
+  for (let i = 0; i < layers.length; i++) {
+    if (layers[i].depth === minDepth) {
+      const children: DomEditLayerItem[] = [];
+      let j = i + 1;
+      while (j < layers.length && layers[j].depth > minDepth) {
+        children.push(layers[j]);
+        j++;
+      }
+      chunks.push({ root: layers[i], children, domIndex: chunks.length });
+    }
+  }
+
+  if (chunks.length <= 1) {
+    if (chunks.length === 1 && chunks[0].children.length > 0) {
+      const sorted = sortLayersByZIndex(chunks[0].children);
+      return [chunks[0].root, ...sorted];
+    }
+    return layers;
+  }
+
+  chunks.sort((a, b) => {
+    const zA = getElementZIndex(a.root.element);
+    const zB = getElementZIndex(b.root.element);
+    if (zA !== zB) return zB - zA;
+    return b.domIndex - a.domIndex;
+  });
+
+  const result: DomEditLayerItem[] = [];
+  for (const chunk of chunks) {
+    result.push(chunk.root);
+    if (chunk.children.length > 0) {
+      result.push(...sortLayersByZIndex(chunk.children));
+    }
+  }
+  return result;
+}
 
 function getVisibleLayers(
   layers: DomEditLayerItem[],

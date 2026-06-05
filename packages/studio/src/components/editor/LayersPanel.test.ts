@@ -1,0 +1,85 @@
+// @vitest-environment happy-dom
+
+import { describe, expect, it } from "vitest";
+import { Window } from "happy-dom";
+import type { DomEditLayerItem } from "./domEditingTypes";
+import { sortLayersByZIndex } from "./LayersPanel";
+
+function makeLayer(overrides: Partial<DomEditLayerItem> & { zIndex?: string }): DomEditLayerItem {
+  const win = new Window();
+  const doc = win.document;
+  const el = doc.createElement("div") as unknown as HTMLElement;
+  if (overrides.zIndex != null) {
+    (el as unknown as { style: { zIndex: string } }).style.zIndex = overrides.zIndex;
+  }
+  return {
+    key: overrides.key ?? `layer-${Math.random()}`,
+    element: el,
+    label: overrides.label ?? "div",
+    tagName: overrides.tagName ?? "div",
+    depth: overrides.depth ?? 0,
+    childCount: overrides.childCount ?? 0,
+    sourceFile: overrides.sourceFile ?? "index.html",
+  };
+}
+
+describe("sortLayersByZIndex", () => {
+  it("sorts siblings by z-index descending", () => {
+    const a = makeLayer({ key: "a", zIndex: "1", depth: 0 });
+    const b = makeLayer({ key: "b", zIndex: "3", depth: 0 });
+    const c = makeLayer({ key: "c", zIndex: "2", depth: 0 });
+
+    const sorted = sortLayersByZIndex([a, b, c]);
+    expect(sorted.map((l) => l.key)).toEqual(["b", "c", "a"]);
+  });
+
+  it("preserves DOM order (reversed) for siblings with auto z-index", () => {
+    const a = makeLayer({ key: "a", depth: 0 });
+    const b = makeLayer({ key: "b", depth: 0 });
+    const c = makeLayer({ key: "c", depth: 0 });
+
+    const sorted = sortLayersByZIndex([a, b, c]);
+    expect(sorted.map((l) => l.key)).toEqual(["c", "b", "a"]);
+  });
+
+  it("sorts explicit z-index above auto, auto elements maintain reversed DOM order", () => {
+    const a = makeLayer({ key: "a", depth: 0 });
+    const b = makeLayer({ key: "b", zIndex: "5", depth: 0 });
+    const c = makeLayer({ key: "c", depth: 0 });
+
+    const sorted = sortLayersByZIndex([a, b, c]);
+    expect(sorted.map((l) => l.key)).toEqual(["b", "c", "a"]);
+  });
+
+  it("sorts children independently of their parent's siblings", () => {
+    const parent1 = makeLayer({ key: "p1", zIndex: "1", depth: 0, childCount: 2 });
+    const child1a = makeLayer({ key: "c1a", zIndex: "3", depth: 1 });
+    const child1b = makeLayer({ key: "c1b", zIndex: "1", depth: 1 });
+    const parent2 = makeLayer({ key: "p2", zIndex: "2", depth: 0, childCount: 1 });
+    const child2a = makeLayer({ key: "c2a", zIndex: "1", depth: 1 });
+
+    const sorted = sortLayersByZIndex([parent1, child1a, child1b, parent2, child2a]);
+    expect(sorted.map((l) => l.key)).toEqual(["p2", "c2a", "p1", "c1a", "c1b"]);
+  });
+
+  it("handles single-element groups without crash", () => {
+    const single = makeLayer({ key: "only", zIndex: "5", depth: 0 });
+    const sorted = sortLayersByZIndex([single]);
+    expect(sorted).toEqual([single]);
+  });
+
+  it("returns empty array for empty input", () => {
+    expect(sortLayersByZIndex([])).toEqual([]);
+  });
+
+  it("preserves deeply nested structure with sorting at each level", () => {
+    const root = makeLayer({ key: "root", depth: 0, childCount: 2 });
+    const a = makeLayer({ key: "a", zIndex: "1", depth: 1, childCount: 2 });
+    const a1 = makeLayer({ key: "a1", zIndex: "10", depth: 2 });
+    const a2 = makeLayer({ key: "a2", zIndex: "20", depth: 2 });
+    const b = makeLayer({ key: "b", zIndex: "2", depth: 1 });
+
+    const sorted = sortLayersByZIndex([root, a, a1, a2, b]);
+    expect(sorted.map((l) => l.key)).toEqual(["root", "b", "a", "a2", "a1"]);
+  });
+});
