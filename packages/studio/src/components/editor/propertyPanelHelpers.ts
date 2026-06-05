@@ -1,5 +1,61 @@
 import { parseCssColor, type ParsedColor } from "./colorValue";
 import { COMMON_LOCAL_FONT_FAMILIES } from "./fontCatalog";
+import type { DomEditSelection } from "./domEditing";
+import type { ImportedFontAsset } from "./fontAssets";
+
+export interface PropertyPanelProps {
+  projectId: string;
+  projectDir: string | null;
+  assets: string[];
+  element: DomEditSelection | null;
+  multiSelectCount?: number;
+  copiedAgentPrompt: boolean;
+  onClearSelection: () => void;
+  onSetStyle: (prop: string, value: string) => void | Promise<void>;
+  onSetAttribute: (attr: string, value: string) => void | Promise<void>;
+  onSetHtmlAttribute: (attr: string, value: string | null) => void | Promise<void>;
+  onSetManualOffset: (element: DomEditSelection, next: { x: number; y: number }) => void;
+  onSetManualSize: (element: DomEditSelection, next: { width: number; height: number }) => void;
+  onSetManualRotation: (element: DomEditSelection, next: { angle: number }) => void;
+  onSetText: (value: string, fieldKey?: string) => void;
+  onSetTextFieldStyle: (fieldKey: string, property: string, value: string) => void;
+  onAddTextField: (afterFieldKey?: string) => string | Promise<string | null> | null;
+  onRemoveTextField: (fieldKey: string) => void;
+  onAskAgent: () => void;
+  onImportAssets?: (files: FileList) => Promise<string[]>;
+  fontAssets?: ImportedFontAsset[];
+  onImportFonts?: (files: FileList | File[]) => Promise<ImportedFontAsset[]>;
+  previewIframeRef?: React.RefObject<HTMLIFrameElement | null>;
+  gsapAnimations?: import("@hyperframes/core/gsap-parser").GsapAnimation[];
+  gsapMultipleTimelines?: boolean;
+  gsapUnsupportedTimelinePattern?: boolean;
+  onUpdateGsapProperty?: (animId: string, prop: string, value: number | string) => void;
+  onUpdateGsapMeta?: (
+    animId: string,
+    updates: { duration?: number; ease?: string; position?: number },
+  ) => void;
+  onDeleteGsapAnimation?: (animId: string) => void;
+  onAddGsapProperty?: (animId: string, prop: string) => void;
+  onRemoveGsapProperty?: (animId: string, prop: string) => void;
+  onUpdateGsapFromProperty?: (animId: string, prop: string, value: number | string) => void;
+  onAddGsapFromProperty?: (animId: string, prop: string) => void;
+  onRemoveGsapFromProperty?: (animId: string, prop: string) => void;
+  onAddGsapAnimation?: (method: "to" | "from" | "set" | "fromTo") => void;
+  onAddKeyframe?: (
+    animationId: string,
+    percentage: number,
+    property: string,
+    value: number | string,
+  ) => void;
+  onRemoveKeyframe?: (animationId: string, percentage: number) => void;
+  onConvertToKeyframes?: (animationId: string) => void;
+  onCommitAnimatedProperty?: (
+    selection: DomEditSelection,
+    property: string,
+    value: number | string,
+  ) => Promise<void>;
+  onSeekToTime?: (time: number) => void;
+}
 
 /* ------------------------------------------------------------------ */
 /*  Font types & constants (shared by font and section modules)        */
@@ -398,4 +454,38 @@ export function extractBackgroundImageUrl(value: string | undefined): string {
   const endParen = value.indexOf(")", index);
   if (endParen < index) return "";
   return value.slice(index, endParen).trim();
+}
+
+// ── Fit to children ──────────────────────────────────────────────────
+
+export function computeFitToChildrenSize(
+  element: DomEditSelection,
+): { width: number; height: number } | null {
+  const el = element.element;
+  const win = el.ownerDocument?.defaultView;
+  const children = Array.from(el.children).filter((c): c is HTMLElement => c.nodeType === 1);
+  if (children.length === 0) return null;
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity;
+  for (const child of children) {
+    if (win) {
+      const cs = win.getComputedStyle(child);
+      if (cs.visibility === "hidden" || cs.display === "none") continue;
+    }
+    const r = child.getBoundingClientRect();
+    if (r.width === 0 && r.height === 0) continue;
+    minX = Math.min(minX, r.left);
+    minY = Math.min(minY, r.top);
+    maxX = Math.max(maxX, r.right);
+    maxY = Math.max(maxY, r.bottom);
+  }
+  if (!isFinite(minX)) return null;
+  const parentRect = el.getBoundingClientRect();
+  const scaleX = parentRect.width > 0 ? element.boundingBox.width / parentRect.width : 1;
+  const scaleY = parentRect.height > 0 ? element.boundingBox.height / parentRect.height : 1;
+  const width = Math.round((maxX - minX) * scaleX);
+  const height = Math.round((maxY - minY) * scaleY);
+  return width > 0 && height > 0 ? { width, height } : null;
 }
