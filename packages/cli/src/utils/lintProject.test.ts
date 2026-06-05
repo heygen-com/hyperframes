@@ -473,6 +473,75 @@ describe("audio_src_not_found", () => {
     // author can grep for it in their HTML.
     expect(finding?.message).toContain("../assets/missing.mp3");
   });
+
+  it("errors when <audio> src references a missing file (positive baseline)", async () => {
+    const html = `<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080">
+    <audio id="music" src="missing-file.mp3" data-start="0" data-track-index="0" data-volume="1"></audio>
+  </div>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["main"] = gsap.timeline({ paused: true });</script>
+</body></html>`;
+    const project = makeProject(html);
+
+    const { results } = await lintProject(project);
+
+    const first = results[0];
+    expect(first).toBeDefined();
+    const finding = first?.result.findings.find((f) => f.code === "audio_src_not_found");
+    expect(finding).toBeDefined();
+    expect(finding?.message).toContain("missing-file.mp3");
+  });
+
+  it("does not error when <audio> src is a deferred tts_ token placeholder", async () => {
+    const html = `<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080">
+    <audio id="vo" src="<<tts_xzvv>>" data-start="0" data-track-index="0" data-volume="1"></audio>
+  </div>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["main"] = gsap.timeline({ paused: true });</script>
+</body></html>`;
+    const project = makeProject(html);
+
+    const { results } = await lintProject(project);
+
+    const first = results[0];
+    expect(first).toBeDefined();
+    const finding = first?.result.findings.find((f) => f.code === "audio_src_not_found");
+    expect(finding).toBeUndefined();
+  });
+
+  it("does not error when <audio> src is a deferred music_ token placeholder", async () => {
+    const html = `<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080">
+    <audio id="bgm" src="<<music_bg42>>" data-start="0" data-track-index="0" data-volume="1"></audio>
+  </div>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["main"] = gsap.timeline({ paused: true });</script>
+</body></html>`;
+    const project = makeProject(html);
+
+    const { results } = await lintProject(project);
+
+    const first = results[0];
+    expect(first).toBeDefined();
+    const finding = first?.result.findings.find((f) => f.code === "audio_src_not_found");
+    expect(finding).toBeUndefined();
+  });
+
+  it("does not error when <audio> src is a deferred audio_ token placeholder", async () => {
+    const html = `<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080">
+    <audio id="track" src="<<audio_6bwj>>" data-start="0" data-track-index="0" data-volume="1"></audio>
+  </div>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["main"] = gsap.timeline({ paused: true });</script>
+</body></html>`;
+    const project = makeProject(html);
+
+    const { results } = await lintProject(project);
+
+    const first = results[0];
+    expect(first).toBeDefined();
+    const finding = first?.result.findings.find((f) => f.code === "audio_src_not_found");
+    expect(finding).toBeUndefined();
+  });
 });
 
 describe("texture_mask_asset_not_found", () => {

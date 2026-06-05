@@ -303,6 +303,13 @@ function lintAudioSrcNotFound(
 
   const audioSrcRe = /<audio\b[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>/gi;
 
+  // Deferred-token contract: the platform's post-finish resolver replaces
+  // placeholders shaped like `<<{kind}_{id}>>` (e.g. `<<tts_xzvv>>`,
+  // `<<music_bg42>>`, `<<audio_6bwj>>`) with real asset URLs after the
+  // composition is shipped. They look like missing files to this lint
+  // pass but are legitimate at author-time, so skip them here.
+  const deferredTokenRe = /<<(?:tts|audio|music|sfx|sound|narration)_[a-zA-Z0-9]+>>/i;
+
   const missingSrcs: string[] = [];
   for (const { html, compSrcPath } of htmlSources) {
     let match: RegExpExecArray | null;
@@ -310,6 +317,7 @@ function lintAudioSrcNotFound(
       const src = match[1]!;
       if (/^(https?:|data:|blob:)/i.test(src)) continue;
       if (/^__[A-Z_]+__$/.test(src)) continue; // Skip template placeholders
+      if (deferredTokenRe.test(src)) continue; // Skip deferred tokens (resolved post-finish)
       // Sub-composition srcs are written relative to the sub-composition file
       // (e.g. "../assets/foo.mp3"); the bundler rewrites them to root-relative
       // before serving. Mirror that rewrite here so the existence check sees

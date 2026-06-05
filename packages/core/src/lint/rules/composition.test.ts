@@ -521,7 +521,11 @@ describe("composition rules", () => {
 
   describe("standalone_composition_wrapped_in_template", () => {
     it("flags root index.html wrapped in template", async () => {
-      const html = `<template id="main-template">
+      // Fixture deliberately uses id="root" — a non-`-template` suffix — so
+      // it stays a true positive after the sub-composition-template
+      // self-suppression FP fix. The `-template` id suffix is the documented
+      // sub-composition signal; anything else is a likely misuse.
+      const html = `<template id="root">
   <div data-composition-id="main" data-width="1920" data-height="1080">
     <script>
       window.__timelines = window.__timelines || {};
@@ -551,6 +555,36 @@ describe("composition rules", () => {
         (f) => f.code === "standalone_composition_wrapped_in_template",
       );
       expect(finding).toBeUndefined();
+    });
+
+    it("does not flag a `<template id='*-template'>` wrapper even without isSubComposition (FP fix)", async () => {
+      // `compositions/beat-1.html` is a sub-composition by convention. When
+      // a caller forgets to pass `isSubComposition: true`, the file's top-
+      // level `<template id='beat-1-template'>` wrapper is itself the
+      // signal, so the rule should self-suppress.
+      const html = `<template id="beat-1-template">
+  <div data-composition-id="beat-1" data-width="1920" data-height="1080">
+    <div class="hero"></div>
+  </div>
+</template>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find(
+        (f) => f.code === "standalone_composition_wrapped_in_template",
+      );
+      expect(finding).toBeUndefined();
+    });
+
+    it("still flags a bare `<template>` wrapper with no `-template` id (true positive)", async () => {
+      // No `-template` id suffix means we can't distinguish this from a
+      // genuine misuse of `<template>` at the document root.
+      const html = `<template>
+  <div data-composition-id="main" data-width="1920" data-height="1080"></div>
+</template>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find(
+        (f) => f.code === "standalone_composition_wrapped_in_template",
+      );
+      expect(finding).toBeDefined();
     });
   });
 
@@ -587,6 +621,57 @@ describe("composition rules", () => {
       const finding = result.findings.find(
         (f) => f.code === "requestanimationframe_in_composition",
       );
+      expect(finding).toBeUndefined();
+    });
+  });
+
+  describe("set_timeout_in_composition", () => {
+    it("flags setTimeout usage in script content", async () => {
+      const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    setTimeout(() => { console.log("delayed"); }, 1000);
+    window.__timelines["c1"] = gsap.timeline({ paused: true });
+  </script>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "set_timeout_in_composition");
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("warning");
+      expect(finding?.message).toContain("setTimeout");
+    });
+
+    it("flags setInterval usage", async () => {
+      const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    setInterval(() => {}, 500);
+    window.__timelines["c1"] = gsap.timeline({ paused: true });
+  </script>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "set_timeout_in_composition");
+      expect(finding).toBeDefined();
+      expect(finding?.message).toContain("setInterval");
+    });
+
+    it("does not flag setTimeout inside comments or string literals", async () => {
+      const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    // setTimeout(() => {}, 1000);
+    const note = "use setTimeout instead";
+    window.__timelines["c1"] = gsap.timeline({ paused: true });
+  </script>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "set_timeout_in_composition");
       expect(finding).toBeUndefined();
     });
   });
@@ -661,6 +746,34 @@ describe("composition rules", () => {
       const result = await lintHyperframeHtml(html, { isSubComposition: true });
       const finding = result.findings.find((f) => f.code === "root_composition_missing_data_start");
       expect(finding).toBeUndefined();
+    });
+
+    it("does not warn when the file is wrapped in `<template id='*-template'>` (FP fix)", async () => {
+      // Real-world: linting `compositions/beat-1.html` standalone, without
+      // the caller flagging `isSubComposition`. The `-template` id suffix
+      // is the sub-composition signal.
+      const html = `<template id="beat-1-template">
+  <div data-composition-id="beat-1" data-width="1920" data-height="1080">
+    <div class="hero"></div>
+  </div>
+</template>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "root_composition_missing_data_start");
+      expect(finding).toBeUndefined();
+    });
+
+    it("still warns on a real root composition missing data-start (true positive)", async () => {
+      // Plain HTML document with a root `data-composition-id` and no
+      // `data-start` — the rule must still fire so the FP-fix doesn't
+      // silently broaden suppression.
+      const html = `<!DOCTYPE html><html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080">
+    <div class="hero"></div>
+  </div>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "root_composition_missing_data_start");
+      expect(finding).toBeDefined();
     });
   });
 
@@ -819,6 +932,184 @@ describe("composition rules", () => {
         filePath: "/project/compositions/scene.html",
       });
       const finding = result.findings.find((f) => f.code === "invalid_capture_path");
+      expect(finding).toBeUndefined();
+    });
+  });
+
+  describe("sfx_data_start_must_be_master_time", () => {
+    it("warns when an SFX <audio data-start> equals the beat-relative offset rather than master time", async () => {
+      // beat-2 host starts at master t=6.5. Script inside the beat calls
+      // playSfx('sfx-click') at position 2.0 (beat-relative). Author copied
+      // the 2.0 directly to data-start, but master time should be 8.5.
+      const html = `<!DOCTYPE html>
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="10">
+    <div data-composition-src="compositions/beat-2.html" data-start="6.5" data-duration="3"></div>
+    <audio id="sfx" data-track-name="sfx-click" data-start="2.0" src="capture/sfx-click.mp3"></audio>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+      window.__timelines["main"] = tl;
+      tl.call(playSfx, ['sfx-click'], 2.0);
+    </script>
+  </div>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "sfx_data_start_must_be_master_time");
+      expect(finding).toBeDefined();
+      expect(finding?.message).toContain("8.50");
+    });
+
+    it("does not warn when data-start is already in master time", async () => {
+      // Same beat starting at master t=6.5, script call at beat-relative
+      // 2.0, but data-start correctly set to 8.5 (master time).
+      const html = `<!DOCTYPE html>
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="10">
+    <div data-composition-src="compositions/beat-2.html" data-start="6.5" data-duration="3"></div>
+    <audio id="sfx" data-track-name="sfx-click" data-start="8.5" src="capture/sfx-click.mp3"></audio>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+      window.__timelines["main"] = tl;
+      tl.call(playSfx, ['sfx-click'], 8.5);
+    </script>
+  </div>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "sfx_data_start_must_be_master_time");
+      expect(finding).toBeUndefined();
+    });
+  });
+
+  describe("master_timeline_orchestrates_sub_compositions", () => {
+    // Helper: build a root index.html with N sub-comp hosts. `masterScript`
+    // is the body of the master <script> block (everything *between* the
+    // `window.__timelines = ...` boilerplate and the `window.__timelines["main"] = tl`
+    // assignment).
+    const buildRoot = (subCompCount: number, masterScript: string) => {
+      const hosts = Array.from(
+        { length: subCompCount },
+        (_, i) =>
+          `<div data-composition-id="beat-${i + 1}" data-composition-src="compositions/beat-${i + 1}.html" data-start="${i * 4}" data-duration="4"></div>`,
+      ).join("\n    ");
+      return `<!DOCTYPE html>
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="${subCompCount * 4}">
+    ${hosts}
+    <audio data-track-name="vo" data-start="0" src="capture/vo.mp3"></audio>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+      ${masterScript}
+      window.__timelines["main"] = tl;
+    </script>
+  </div>
+</body></html>`;
+    };
+
+    it("fires when 5 sub-comp hosts and master tl is only a sentinel + audio sync", async () => {
+      // Sentinel-only master: tl.to({}, {duration: 20}) — orchestrates nothing.
+      const html = buildRoot(5, `tl.to({}, { duration: 20 });`);
+      const result = await lintHyperframeHtml(html, { filePath: "/project/index.html" });
+      const finding = result.findings.find(
+        (f) => f.code === "master_timeline_orchestrates_sub_compositions",
+      );
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("error");
+      expect(finding?.message).toContain("ZERO of the 5");
+      expect(finding?.message).toContain("#beat-1");
+      expect(finding?.message).toContain("#beat-5");
+    });
+
+    it("does NOT fire when master tl nests each sub-comp via tl.add(window.__timelines['X'])", async () => {
+      const orchestration = Array.from(
+        { length: 5 },
+        (_, i) => `tl.add(window.__timelines['beat-${i + 1}'], ${i * 4});`,
+      ).join("\n      ");
+      const html = buildRoot(5, orchestration);
+      const result = await lintHyperframeHtml(html, { filePath: "/project/index.html" });
+      const finding = result.findings.find(
+        (f) => f.code === "master_timeline_orchestrates_sub_compositions",
+      );
+      expect(finding).toBeUndefined();
+    });
+
+    it("does NOT fire when master tl issues fromTo autoAlpha visibility tweens per sub-comp", async () => {
+      const orchestration = Array.from(
+        { length: 5 },
+        (_, i) =>
+          `tl.fromTo('#beat-${i + 1}', { autoAlpha: 0 }, { autoAlpha: 1, duration: 0.3 }, ${i * 4});`,
+      ).join("\n      ");
+      const html = buildRoot(5, orchestration);
+      const result = await lintHyperframeHtml(html, { filePath: "/project/index.html" });
+      const finding = result.findings.find(
+        (f) => f.code === "master_timeline_orchestrates_sub_compositions",
+      );
+      expect(finding).toBeUndefined();
+    });
+
+    it("does NOT fire when master tl assigns an alias and adds it (pattern d)", async () => {
+      // tl.add(beat1Tl, 0) where beat1Tl = window.__timelines['beat-1'].
+      const orchestration = Array.from(
+        { length: 5 },
+        (_, i) =>
+          `const beat${i + 1}Tl = window.__timelines['beat-${i + 1}'];\n      tl.add(beat${i + 1}Tl, ${i * 4});`,
+      ).join("\n      ");
+      const html = buildRoot(5, orchestration);
+      const result = await lintHyperframeHtml(html, { filePath: "/project/index.html" });
+      const finding = result.findings.find(
+        (f) => f.code === "master_timeline_orchestrates_sub_compositions",
+      );
+      expect(finding).toBeUndefined();
+    });
+
+    it('does NOT fire when master tl uses [data-composition-id="X"] selector form', async () => {
+      const orchestration = Array.from(
+        { length: 5 },
+        (_, i) =>
+          `tl.set('[data-composition-id="beat-${i + 1}"]', { className: '+=visible' }, ${i * 4});`,
+      ).join("\n      ");
+      const html = buildRoot(5, orchestration);
+      const result = await lintHyperframeHtml(html, { filePath: "/project/index.html" });
+      const finding = result.findings.find(
+        (f) => f.code === "master_timeline_orchestrates_sub_compositions",
+      );
+      expect(finding).toBeUndefined();
+    });
+
+    it("does NOT fire when there is only one sub-comp host (single-beat composition)", async () => {
+      const html = buildRoot(1, `tl.to({}, { duration: 4 });`);
+      const result = await lintHyperframeHtml(html, { filePath: "/project/index.html" });
+      const finding = result.findings.find(
+        (f) => f.code === "master_timeline_orchestrates_sub_compositions",
+      );
+      expect(finding).toBeUndefined();
+    });
+
+    it("does NOT fire on sub-compositions (template-wrapped)", async () => {
+      // Sub-comps register their own paused timeline; they are not expected
+      // to orchestrate siblings. Even with multiple inner hosts (which would
+      // be unusual), this rule must skip when wrapped in <template>.
+      const html = `<template id="scene-template">
+  <div data-composition-id="scene" data-start="0" data-width="1920" data-height="1080">
+    <div data-composition-id="inner-1" data-composition-src="x.html" data-start="0" data-duration="2"></div>
+    <div data-composition-id="inner-2" data-composition-src="y.html" data-start="2" data-duration="2"></div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+      tl.to({}, { duration: 4 });
+      window.__timelines["scene"] = tl;
+    </script>
+  </div>
+</template>`;
+      const result = await lintHyperframeHtml(html, {
+        filePath: "/project/compositions/scene.html",
+        isSubComposition: true,
+      });
+      const finding = result.findings.find(
+        (f) => f.code === "master_timeline_orchestrates_sub_compositions",
+      );
       expect(finding).toBeUndefined();
     });
   });
