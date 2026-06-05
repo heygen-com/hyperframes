@@ -1084,23 +1084,11 @@ async function runTestSuite(
       logPretty("Comparing visual quality (100 checkpoints)...", "🔍");
       const videoMetadata = await extractMediaMetadata(renderedOutputPath);
       const snapshotMetadata = await extractMediaMetadata(snapshotVideoPath);
-      // Sample at the common duration. Container duration can drift between
-      // rendered and snapshot when encoder/mux flags change (e.g. -avoid_negative_ts
-      // can shift the first audio sample, extending reported duration without
-      // changing video frame count). Using the rendered duration alone makes the
-      // last checkpoint land on a frame index that may not exist in the snapshot,
-      // which causes ffmpeg's PSNR filter to emit no `average:` line.
       const videoDuration = Math.min(
-        videoMetadata.durationSeconds,
-        snapshotMetadata.durationSeconds,
+        videoMetadata.videoStreamDurationSeconds,
+        snapshotMetadata.videoStreamDurationSeconds,
       );
       const fps = fpsToNumber(suite.meta.renderConfig.fps);
-      // Container duration includes audio padding past the last video frame
-      // (e.g. many-cuts: 5.654s container vs 5.6s of video). At i=99 the
-      // raw container duration maps to a frame index past nb_frames, and
-      // ffmpeg's PSNR filter emits no `average:` line for a non-existent
-      // frame. Subtract one frame interval so the last checkpoint always
-      // lands on a frame the video stream actually contains.
       const sampleDuration = Math.max(0, videoDuration - 1 / fps);
 
       const minPsnrForMode = resolveMinPsnrForMode(options.mode, suite.meta.minPsnr);

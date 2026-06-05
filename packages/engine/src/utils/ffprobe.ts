@@ -55,6 +55,7 @@ export interface VideoColorSpace {
 
 export interface VideoMetadata {
   durationSeconds: number;
+  videoStreamDurationSeconds: number;
   width: number;
   height: number;
   fps: number;
@@ -81,6 +82,8 @@ interface FFProbeStream {
   codec_name?: string;
   width?: number;
   height?: number;
+  duration?: string;
+  nb_frames?: string;
   pix_fmt?: string;
   r_frame_rate?: string;
   avg_frame_rate?: string;
@@ -264,6 +267,7 @@ export async function extractMediaMetadata(filePath: string): Promise<VideoMetad
       if (stillImageMeta) {
         return {
           durationSeconds: 0,
+          videoStreamDurationSeconds: 0,
           width: stillImageMeta.width,
           height: stillImageMeta.height,
           fps: 0,
@@ -296,8 +300,12 @@ export async function extractMediaMetadata(filePath: string): Promise<VideoMetad
     const hasAlpha =
       /(^|[^a-z])yuva|rgba|argb|bgra|gbrap|gray[a-z0-9]*a/i.test(pixelFormat) || alphaMode === "1";
 
+    const containerDuration = output?.format.duration ? parseFloat(output.format.duration) : 0;
+    const streamDuration = videoStream.duration ? parseFloat(videoStream.duration) : 0;
+
     return {
-      durationSeconds: output?.format.duration ? parseFloat(output.format.duration) : 0,
+      durationSeconds: containerDuration,
+      videoStreamDurationSeconds: streamDuration > 0 ? streamDuration : containerDuration,
       width: videoStream.width || stillImageMeta?.width || 0,
       height: videoStream.height || stillImageMeta?.height || 0,
       fps,
