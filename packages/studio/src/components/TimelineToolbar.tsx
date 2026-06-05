@@ -127,7 +127,6 @@ function useKeyframeToggle(session?: DomEditSessionSlice) {
         if (kfAnim?.keyframes) {
           if (kfAnim.hasUnresolvedKeyframes) {
             await session.handleGsapMaterializeKeyframes?.(kfAnim.id);
-
           }
           const elStart = Number.parseFloat(sel.dataAttributes?.start ?? "0") || 0;
           const elDuration = Number.parseFloat(sel.dataAttributes?.duration ?? "1") || 1;
