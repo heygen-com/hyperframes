@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { Eye, Layers, MessageSquare, Move, X } from "../../icons/SystemIcons";
+import { Clock, Eye, Layers, MessageSquare, Move, X } from "../../icons/SystemIcons";
 import { type DomEditSelection } from "./domEditing";
 import { readStudioBoxSize, readStudioPathOffset, readStudioRotation } from "./manualEdits";
 import type { ImportedFontAsset } from "./fontAssets";
@@ -13,7 +13,6 @@ import {
 import { MetricField, Section } from "./propertyPanelPrimitives";
 import { isMediaElement, MediaSection } from "./propertyPanelMediaSection";
 import { TextSection, StyleSections } from "./propertyPanelSections";
-import { TimingSection } from "./propertyPanelTimingSection";
 import { GsapAnimationSection } from "./GsapAnimationSection";
 import { KeyframeNavigation } from "./KeyframeNavigation";
 import { STUDIO_GSAP_PANEL_ENABLED, STUDIO_KEYFRAMES_ENABLED } from "./manualEditingAvailability";
@@ -83,6 +82,70 @@ interface PropertyPanelProps {
     value: number | string,
   ) => Promise<void>;
   onSeekToTime?: (time: number) => void;
+}
+
+/* ------------------------------------------------------------------ */
+/*  TimingSection                                                      */
+/* ------------------------------------------------------------------ */
+
+function formatTimingValue(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return "0.00s";
+  return `${seconds.toFixed(2)}s`;
+}
+
+function parseTimingValue(input: string): number | null {
+  const cleaned = input.replace(/s$/i, "").trim();
+  const parsed = Number.parseFloat(cleaned);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function TimingSection({
+  element,
+  onSetAttribute,
+}: {
+  element: DomEditSelection;
+  onSetAttribute: (attr: string, value: string) => void | Promise<void>;
+}) {
+  const start = Number.parseFloat(element.dataAttributes.start ?? "0") || 0;
+  const duration =
+    Number.parseFloat(
+      element.dataAttributes.duration ?? element.dataAttributes["hf-authored-duration"] ?? "0",
+    ) || 0;
+  const end = start + duration;
+
+  const commitStart = (nextValue: string) => {
+    const parsed = parseTimingValue(nextValue);
+    if (parsed == null) return;
+    void onSetAttribute("start", parsed.toFixed(2));
+  };
+
+  const commitDuration = (nextValue: string) => {
+    const parsed = parseTimingValue(nextValue);
+    if (parsed == null || parsed <= 0) return;
+    void onSetAttribute("duration", parsed.toFixed(2));
+  };
+
+  const commitEnd = (nextValue: string) => {
+    const parsed = parseTimingValue(nextValue);
+    if (parsed == null || parsed <= start) return;
+    void onSetAttribute("duration", (parsed - start).toFixed(2));
+  };
+
+  return (
+    <Section title="Timing" icon={<Clock size={15} />}>
+      <div className={RESPONSIVE_GRID}>
+        <MetricField label="Start" value={formatTimingValue(start)} onCommit={commitStart} />
+        <MetricField label="End" value={formatTimingValue(end)} onCommit={commitEnd} />
+      </div>
+      <div className="mt-3">
+        <MetricField
+          label="Duration"
+          value={formatTimingValue(duration)}
+          onCommit={commitDuration}
+        />
+      </div>
+    </Section>
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -439,6 +502,46 @@ export const PropertyPanel = memo(function PropertyPanel({
                 />
               )}
             </div>
+            {element.capabilities.canApplyManualSize && (
+              <button
+                type="button"
+                className="flex-shrink-0 rounded p-1 text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-300"
+                title="Fit to children"
+                onClick={() => {
+                  const el = element.element;
+                  const win = el.ownerDocument?.defaultView;
+                  const children = Array.from(el.children).filter(
+                    (c): c is HTMLElement => c.nodeType === 1,
+                  );
+                  if (children.length === 0) return;
+                  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                  for (const child of children) {
+                    if (win) {
+                      const cs = win.getComputedStyle(child);
+                      if (cs.visibility === "hidden" || cs.display === "none") continue;
+                    }
+                    const r = child.getBoundingClientRect();
+                    if (r.width === 0 && r.height === 0) continue;
+                    minX = Math.min(minX, r.left);
+                    minY = Math.min(minY, r.top);
+                    maxX = Math.max(maxX, r.right);
+                    maxY = Math.max(maxY, r.bottom);
+                  }
+                  if (!isFinite(minX)) return;
+                  const parentRect = el.getBoundingClientRect();
+                  const scaleX = parentRect.width > 0 ? element.boundingBox.width / parentRect.width : 1;
+                  const scaleY = parentRect.height > 0 ? element.boundingBox.height / parentRect.height : 1;
+                  const width = Math.round((maxX - minX) * scaleX);
+                  const height = Math.round((maxY - minY) * scaleY);
+                  if (width > 0 && height > 0) onSetManualSize(element, { width, height });
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2">
+                  <rect x="2" y="2" width="10" height="10" strokeDasharray="2 1.5" rx="1" />
+                  <path d="M2 4.5h1m-1 5h1m8-5h1m-1 5h1M4.5 2v1m5-1v1M4.5 11v1m5-1v1" />
+                </svg>
+              </button>
+            )}
             <div className="flex items-center gap-1">
               <div className="flex-1">
                 <MetricField
