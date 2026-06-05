@@ -538,10 +538,8 @@ export function useDomEditSession({
     agentModalAnchorPoint,
     copiedAgentPrompt,
     agentPromptSelectionContext,
-
     // Refs
     domEditSelectionRef,
-
     // Callbacks
     handleTimelineElementSelect,
     handlePreviewCanvasMouseDown,

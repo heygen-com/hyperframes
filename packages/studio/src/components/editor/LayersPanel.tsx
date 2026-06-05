@@ -200,8 +200,10 @@ export const LayersPanel = memo(function LayersPanel() {
 
       const existingValues = siblingLayers.map((l) => getElementZIndex(l.element));
       const sorted = [...existingValues].sort((a, b) => b - a);
-      const allSame = sorted.every((v) => v === sorted[0]);
-      const zValues = allSame ? reordered.map((_, i) => reordered.length - i) : sorted;
+      const hasDupes = sorted.some((v, i) => i > 0 && v === sorted[i - 1]);
+      const zValues = hasDupes
+        ? reordered.map((_, i) => reordered.length - i)
+        : sorted;
 
       const entries = reordered.map((layer, i) => ({
         element: layer.element,
