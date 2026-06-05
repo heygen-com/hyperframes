@@ -2,10 +2,17 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createServer, type Server } from "node:net";
 import { resolve } from "node:path";
 import { createServer as createHttpServer, type Server as HttpServer } from "node:http";
-import { PORT_PROBE_HOSTS, detectHyperframesServer, testPortOnAllHosts } from "./portUtils.js";
+import {
+  PORT_PROBE_HOSTS,
+  detectHyperframesServer,
+  findPortAndServe,
+  testPortOnAllHosts,
+} from "./portUtils.js";
+import type { ServerType } from "@hono/node-server";
 
 const openServers: Server[] = [];
 const openHttpServers: HttpServer[] = [];
+const openAdaptorServers: ServerType[] = [];
 
 async function allocFreePort(): Promise<number> {
   const srv = createServer();
@@ -18,25 +25,26 @@ async function allocFreePort(): Promise<number> {
   return port;
 }
 
+async function closeAll(servers: Array<{ close(cb: () => void): void }>): Promise<void> {
+  await Promise.all(
+    servers.splice(0).map((s) => new Promise<void>((resolve) => s.close(() => resolve()))),
+  );
+}
+
 afterEach(async () => {
-  await Promise.all(
-    openServers.splice(0).map(
-      (s) =>
-        new Promise<void>((resolve) => {
-          s.close(() => resolve());
-        }),
-    ),
-  );
-  await Promise.all(
-    openHttpServers.splice(0).map(
-      (s) =>
-        new Promise<void>((resolve) => {
-          s.close(() => resolve());
-        }),
-    ),
-  );
+  await closeAll(openServers);
+  await closeAll(openHttpServers);
+  await closeAll(openAdaptorServers);
   vi.restoreAllMocks();
 });
+
+function boundAddress(server: ServerType): string {
+  const addr = server.address();
+  if (addr === null || typeof addr === "string") {
+    throw new Error(`expected an AddressInfo, got ${JSON.stringify(addr)}`);
+  }
+  return addr.address;
+}
 
 async function startConfigProbeServer(payload: Record<string, unknown>): Promise<number> {
   const server = createHttpServer((_req, res) => {
@@ -119,6 +127,37 @@ describe("testPortOnAllHosts — sequential contract (platform-agnostic)", () =>
 
     expect(result).toBe(false);
     expect(hostsProbed).toEqual(["127.0.0.1", "0.0.0.0"]);
+  });
+});
+
+describe("findPortAndServe — bind host (security: F-001)", () => {
+  const okFetch = (): Response => new Response("ok");
+
+  it("binds to loopback (127.0.0.1) by default — not all interfaces", async () => {
+    const port = await allocFreePort();
+    const result = await findPortAndServe(okFetch, port, "/tmp/demo-project", true);
+    expect(result.type).toBe("started");
+    if (result.type !== "started") return;
+    openAdaptorServers.push(result.server);
+    // A no-host listen() binds the unspecified address (`::`/`0.0.0.0`),
+    // exposing the studio API to the LAN. The fix must default to loopback.
+    expect(boundAddress(result.server)).toBe("127.0.0.1");
+  });
+
+  it("honours an explicit bindHost when the operator opts in to LAN exposure", async () => {
+    const port = await allocFreePort();
+    const result = await findPortAndServe(
+      okFetch,
+      port,
+      "/tmp/demo-project",
+      true,
+      null,
+      "0.0.0.0",
+    );
+    expect(result.type).toBe("started");
+    if (result.type !== "started") return;
+    openAdaptorServers.push(result.server);
+    expect(boundAddress(result.server)).toBe("0.0.0.0");
   });
 });
 
