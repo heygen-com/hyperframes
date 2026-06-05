@@ -1,4 +1,4 @@
-import { readFileSync, existsSync } from "fs";
+import { readFileSync, existsSync, realpathSync } from "fs";
 import { join, resolve, relative, dirname, isAbsolute, sep } from "path";
 import { transformSync } from "esbuild";
 import { compileHtml, type MediaDurationProber } from "./htmlCompiler";
@@ -18,11 +18,25 @@ import { getHyperframeRuntimeScript } from "../generated/runtime-inline";
 import { readDeclaredDefaults } from "../runtime/getVariables";
 import { inlineSubCompositions } from "./inlineSubCompositions";
 
+/**
+ * Verify resolved path stays within projectDir after following symlinks, preventing
+ * escape via a symlink inside the project that points at a file outside it.
+ * Returns true (safe) when the path doesn't exist — a dangling symlink can't be read.
+ */
+function isSymlinkWithinProject(resolved: string, projectDir: string): boolean {
+  try {
+    return realpathSync(resolved).startsWith(realpathSync(projectDir) + sep);
+  } catch {
+    return true;
+  }
+}
+
 /** Resolve a relative path within projectDir, rejecting traversal outside it. */
 function safePath(projectDir: string, relativePath: string): string | null {
   const resolved = resolve(projectDir, relativePath);
   const normalizedBase = resolve(projectDir) + sep;
   if (!resolved.startsWith(normalizedBase) && resolved !== resolve(projectDir)) return null;
+  if (!isSymlinkWithinProject(resolved, projectDir)) return null;
   return resolved;
 }
 
@@ -89,8 +103,9 @@ function isRelativeUrl(url: string): boolean {
   );
 }
 
-function safeReadFile(filePath: string): string | null {
+function safeReadFile(filePath: string, projectDir?: string): string | null {
   if (!existsSync(filePath)) return null;
+  if (projectDir != null && !isSymlinkWithinProject(filePath, projectDir)) return null;
   try {
     return readFileSync(filePath, "utf-8");
   } catch {
@@ -158,7 +173,7 @@ function inlineCssFile(
       const normalizedBase = resolve(projectDir) + sep;
       if (!resolved.startsWith(normalizedBase)) return full;
       if (visited.has(resolved)) return "";
-      const content = safeReadFile(resolved);
+      const content = safeReadFile(resolved, projectDir);
       if (content == null) return full;
       visited.add(resolved);
       const inlined = inlineCssFile(content, dirname(resolved), projectDir, visited);
