@@ -1600,6 +1600,7 @@ export async function executeRenderJob(
       compiledDir,
       job,
       cfg,
+      log,
       composition,
       abortSignal,
       assertNotAborted,

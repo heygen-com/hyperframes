@@ -51,6 +51,7 @@ import {
   type RenderJob,
 } from "../../renderOrchestrator.js";
 import { type CompositionMetadata } from "../shared.js";
+import type { ProducerLogger } from "../../../logger.js";
 
 export interface ExtractVideosStageInput {
   projectDir: string;
@@ -58,6 +59,7 @@ export interface ExtractVideosStageInput {
   compiledDir: string;
   job: RenderJob;
   cfg: EngineConfig;
+  log?: ProducerLogger;
   /** Mutated in place — audio entries auto-discovered from video files are pushed onto `composition.audios`. */
   composition: CompositionMetadata;
   abortSignal: AbortSignal | undefined;
@@ -102,6 +104,7 @@ export async function runExtractVideosStage(
     compiledDir,
     job,
     cfg,
+    log,
     composition,
     abortSignal,
     assertNotAborted,
@@ -122,6 +125,7 @@ export async function runExtractVideosStage(
   const nativeHdrVideoIds = new Set<string>();
   const videoTransfers = new Map<string, HdrTransfer>();
   if (job.config.hdrMode !== "force-sdr" && composition.videos.length > 0) {
+    log?.info("Probing video color spaces...", { videoCount: composition.videos.length });
     await Promise.all(
       composition.videos.map(async (v) => {
         // Use the shared resolver so a `<video src="../assets/foo">` in a
@@ -175,6 +179,11 @@ export async function runExtractVideosStage(
   }
 
   if (composition.videos.length > 0) {
+    const totalVideos = composition.videos.length;
+    for (let i = 0; i < totalVideos; i++) {
+      const v = composition.videos[i]!;
+      log?.info(`Extracting frames from video ${i + 1}/${totalVideos}: ${v.src}`);
+    }
     extractionResult = await extractAllVideoFrames(
       composition.videos,
       projectDir,

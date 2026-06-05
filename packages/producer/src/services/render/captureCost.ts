@@ -210,11 +210,15 @@ export async function measureCaptureCostFromSession(
   session: CaptureSession,
   totalFrames: number,
   fps: number,
+  log?: ProducerLogger,
 ): Promise<{ estimate: CaptureCostEstimate; samples: CaptureCalibrationSample[] }> {
   const sampledFrames = selectCaptureCalibrationFrames(totalFrames);
   const samples: CaptureCalibrationSample[] = [];
+  const totalSamples = sampledFrames.length;
 
-  for (const frameIndex of sampledFrames) {
+  for (let i = 0; i < sampledFrames.length; i++) {
+    const frameIndex = sampledFrames[i]!;
+    log?.info(`Calibration: capturing test frame ${i + 1}/${totalSamples}...`);
     const time = frameIndex / fps;
     const startedAt = Date.now();
     const result = await captureFrameToBuffer(session, frameIndex, time);
@@ -224,8 +228,13 @@ export async function measureCaptureCostFromSession(
     });
   }
 
+  const estimate = estimateMeasuredCaptureCostMultiplier(samples);
+  if (estimate.p95Ms !== undefined) {
+    log?.info(`Calibration complete, estimated cost: ${estimate.p95Ms}ms/frame (p95)`);
+  }
+
   return {
-    estimate: estimateMeasuredCaptureCostMultiplier(samples),
+    estimate,
     samples,
   };
 }
@@ -323,6 +332,7 @@ export async function runCaptureCalibration(input: {
     sessionDir: string,
     sessionCfg: EngineConfig,
   ): Promise<{ estimate: CaptureCostEstimate; samples: CaptureCalibrationSample[] }> => {
+    log.info("Launching browser for capture calibration...");
     const session = await createCaptureSession(
       fileServer.url,
       sessionDir,
@@ -332,10 +342,21 @@ export async function runCaptureCalibration(input: {
     );
     sessionRef.current = session;
     if (!session.isInitialized) {
-      await initializeSession(session);
+      log.info("Initializing calibration session...");
+      const calInitStart = Date.now();
+      const calHeartbeat = setInterval(() => {
+        const elapsed = ((Date.now() - calInitStart) / 1000).toFixed(1);
+        log.info(`Still waiting for browser initialization... (${elapsed}s elapsed)`);
+      }, 30_000);
+      try {
+        await initializeSession(session);
+      } finally {
+        clearInterval(calHeartbeat);
+      }
     }
     assertNotAborted();
-    const result = await measureCaptureCostFromSession(session, totalFrames, fps);
+    log.info("Calibration session ready, capturing test frames...");
+    const result = await measureCaptureCostFromSession(session, totalFrames, fps, log);
     logCaptureCalibrationResult(result, log);
     return result;
   };
