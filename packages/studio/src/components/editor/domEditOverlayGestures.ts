@@ -6,6 +6,7 @@ import type {
 } from "./manualEdits";
 import type { ManualOffsetDragMember } from "./manualOffsetDrag";
 import type { GroupOverlayItem } from "./domEditOverlayGeometry";
+import type { SnapContext } from "./snapTargetCollection";
 
 export type GestureKind = "drag" | "resize" | "rotate";
 
@@ -36,6 +37,9 @@ export interface GestureState {
   editScaleX: number;
   editScaleY: number;
   manualEditDragToken?: string;
+  snapContext?: SnapContext;
+  lastSnappedDx?: number;
+  lastSnappedDy?: number;
 }
 
 export interface GroupGestureState {
@@ -43,6 +47,9 @@ export interface GroupGestureState {
   startY: number;
   originItems: GroupOverlayItem[];
   members: ManualOffsetDragMember[];
+  snapContext?: SnapContext;
+  lastSnappedDx?: number;
+  lastSnappedDy?: number;
 }
 
 export interface BlockedMoveState {

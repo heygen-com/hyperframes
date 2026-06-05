@@ -1,4 +1,5 @@
-import { memo, useMemo, useRef, type RefObject } from "react";
+import { memo, useMemo, useRef, useState, type RefObject } from "react";
+import { useMountEffect } from "../../hooks/useMountEffect";
 import { type DomEditSelection } from "./domEditing";
 import { resolveDomEditGroupOverlayRect, toOverlayRect } from "./domEditOverlayGeometry";
 import {
@@ -10,6 +11,8 @@ import {
 } from "./domEditOverlayGestures";
 import { useDomEditOverlayRects } from "./useDomEditOverlayRects";
 import { createDomEditOverlayGestureHandlers } from "./useDomEditOverlayGestures";
+import { SnapGuideOverlay, type SnapGuidesState } from "./SnapGuideOverlay";
+import { GridOverlay } from "./GridOverlay";
 
 // Re-exports for external consumers — preserving existing import paths.
 export {
@@ -61,6 +64,8 @@ interface DomEditOverlayProps {
     next: { width: number; height: number },
   ) => Promise<void> | void;
   onRotationCommit: (selection: DomEditSelection, next: { angle: number }) => Promise<void> | void;
+  gridVisible?: boolean;
+  gridSpacing?: number;
 }
 
 export const DomEditOverlay = memo(function DomEditOverlay({
@@ -75,6 +80,8 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   onCanvasPointerLeave,
   onSelectionChange,
   onBlockedMove,
+  gridVisible = false,
+  gridSpacing = 50,
   onManualDragStart,
   onPathOffsetCommit,
   onGroupPathOffsetCommit,
@@ -89,6 +96,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   const suppressNextBoxClickRef = useRef(false);
   const suppressNextBoxMouseDownRef = useRef(false);
   const suppressNextOverlayMouseDownRef = useRef(false);
+  const snapGuidesRef = useRef<SnapGuidesState | null>(null);
   const rafPausedRef = useRef(false);
 
   const selectionRef = useRef(selection);
@@ -136,6 +144,50 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     rafPausedRef,
   });
 
+  const [compRect, setCompRect] = useState({
+    left: 0,
+    top: 0,
+    width: 0,
+    height: 0,
+    scaleX: 1,
+    scaleY: 1,
+  });
+  useMountEffect(() => {
+    let frame = 0;
+    // fallow-ignore-next-line complexity
+    const update = () => {
+      frame = requestAnimationFrame(update);
+      const iframe = iframeRef.current;
+      const overlayEl = overlayRef.current;
+      if (!iframe || !overlayEl) return;
+      const iRect = iframe.getBoundingClientRect();
+      const oRect = overlayEl.getBoundingClientRect();
+      const left = iRect.left - oRect.left;
+      const top = iRect.top - oRect.top;
+      if (iRect.width <= 0 || iRect.height <= 0) return;
+      const doc = iframe.contentDocument;
+      const root = doc?.querySelector<HTMLElement>("[data-composition-id]") ?? doc?.documentElement;
+      const dw = Number.parseFloat(root?.getAttribute("data-width") ?? "");
+      const dh = Number.parseFloat(root?.getAttribute("data-height") ?? "");
+      const scaleX = dw > 0 ? iRect.width / dw : 1;
+      const scaleY = dh > 0 ? iRect.height / dh : 1;
+      setCompRect((prev) => {
+        if (
+          Math.abs(prev.left - left) < 0.5 &&
+          Math.abs(prev.top - top) < 0.5 &&
+          Math.abs(prev.width - iRect.width) < 0.5 &&
+          Math.abs(prev.height - iRect.height) < 0.5 &&
+          Math.abs(prev.scaleX - scaleX) < 0.001 &&
+          Math.abs(prev.scaleY - scaleY) < 0.001
+        )
+          return prev;
+        return { left, top, width: iRect.width, height: iRect.height, scaleX, scaleY };
+      });
+    };
+    frame = requestAnimationFrame(update);
+    return () => cancelAnimationFrame(frame);
+  });
+
   const gestures = createDomEditOverlayGestureHandlers({
     overlayRef,
     iframeRef,
@@ -158,6 +210,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     onRotationCommitRef,
     onCanvasPointerMoveRef,
     onCanvasMouseDown,
+    snapGuidesRef,
   });
 
   const selectionKey = useMemo(() => {
@@ -192,6 +245,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     }
   };
 
+  // fallow-ignore-next-line complexity
   const handleOverlayPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!allowCanvasMovement || event.button !== 0) return;
     if (event.shiftKey) {
@@ -387,6 +441,21 @@ export const DomEditOverlay = memo(function DomEditOverlay({
           </div>
         </>
       )}
+      <GridOverlay
+        visible={gridVisible}
+        spacing={gridSpacing}
+        scaleX={compRect.scaleX}
+        scaleY={compRect.scaleY}
+        compositionLeft={compRect.left}
+        compositionTop={compRect.top}
+        compositionWidth={compRect.width}
+        compositionHeight={compRect.height}
+      />
+      <SnapGuideOverlay
+        snapGuidesRef={snapGuidesRef}
+        overlayWidth={compRect.width}
+        overlayHeight={compRect.height}
+      />
     </div>
   );
 });
