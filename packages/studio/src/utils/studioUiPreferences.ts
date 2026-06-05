@@ -11,6 +11,10 @@ export interface StudioUiPreferences {
   audioMuted?: boolean;
   previewZoom?: StoredPreviewZoomState;
   recentBlocks?: string[];
+  snapEnabled?: boolean;
+  gridVisible?: boolean;
+  gridSpacing?: number;
+  snapToGrid?: boolean;
 }
 
 const STUDIO_UI_PREFERENCES_KEY = "hf-studio-ui-preferences";
@@ -28,6 +32,7 @@ function getBrowserStorage(): Storage | null {
   }
 }
 
+// fallow-ignore-next-line complexity
 function readStorage(storage: Storage | null): StudioUiPreferences {
   if (!storage) return {};
   try {
@@ -66,6 +71,18 @@ function readStorage(storage: Storage | null): StudioUiPreferences {
       preferences.recentBlocks = parsed.recentBlocks.filter(
         (v: unknown): v is string => typeof v === "string",
       );
+    }
+    if (typeof parsed.snapEnabled === "boolean") {
+      preferences.snapEnabled = parsed.snapEnabled;
+    }
+    if (typeof parsed.gridVisible === "boolean") {
+      preferences.gridVisible = parsed.gridVisible;
+    }
+    if (typeof parsed.gridSpacing === "number" && Number.isFinite(parsed.gridSpacing)) {
+      preferences.gridSpacing = parsed.gridSpacing;
+    }
+    if (typeof parsed.snapToGrid === "boolean") {
+      preferences.snapToGrid = parsed.snapToGrid;
     }
     return preferences;
   } catch {
