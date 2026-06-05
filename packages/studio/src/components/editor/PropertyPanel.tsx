@@ -418,7 +418,10 @@ export const PropertyPanel = memo(function PropertyPanel({
                   keyframes={gsapKeyframes}
                   currentPercentage={currentPct}
                   onSeek={(pct) => onSeekToTime?.(elStart + (pct / 100) * elDuration)}
-                  onAddKeyframe={(pct) => onAddKeyframe?.(gsapAnimId, pct, "x", displayX)}
+                  onAddKeyframe={() =>
+                    onCommitAnimatedProperty &&
+                    void onCommitAnimatedProperty(element, "x", displayX)
+                  }
                   onRemoveKeyframe={(pct) => onRemoveKeyframe?.(gsapAnimId, pct)}
                   onConvertToKeyframes={() => onConvertToKeyframes?.(gsapAnimId)}
                 />
@@ -440,7 +443,10 @@ export const PropertyPanel = memo(function PropertyPanel({
                   keyframes={gsapKeyframes}
                   currentPercentage={currentPct}
                   onSeek={(pct) => onSeekToTime?.(elStart + (pct / 100) * elDuration)}
-                  onAddKeyframe={(pct) => onAddKeyframe?.(gsapAnimId, pct, "y", displayY)}
+                  onAddKeyframe={() =>
+                    onCommitAnimatedProperty &&
+                    void onCommitAnimatedProperty(element, "y", displayY)
+                  }
                   onRemoveKeyframe={(pct) => onRemoveKeyframe?.(gsapAnimId, pct)}
                   onConvertToKeyframes={() => onConvertToKeyframes?.(gsapAnimId)}
                 />
@@ -462,7 +468,10 @@ export const PropertyPanel = memo(function PropertyPanel({
                   keyframes={gsapKeyframes}
                   currentPercentage={currentPct}
                   onSeek={(pct) => onSeekToTime?.(elStart + (pct / 100) * elDuration)}
-                  onAddKeyframe={(pct) => onAddKeyframe?.(gsapAnimId, pct, "width", displayW)}
+                  onAddKeyframe={() =>
+                    onCommitAnimatedProperty &&
+                    void onCommitAnimatedProperty(element, "width", displayW)
+                  }
                   onRemoveKeyframe={(pct) => onRemoveKeyframe?.(gsapAnimId, pct)}
                   onConvertToKeyframes={() => onConvertToKeyframes?.(gsapAnimId)}
                 />
@@ -484,7 +493,10 @@ export const PropertyPanel = memo(function PropertyPanel({
                   keyframes={gsapKeyframes}
                   currentPercentage={currentPct}
                   onSeek={(pct) => onSeekToTime?.(elStart + (pct / 100) * elDuration)}
-                  onAddKeyframe={(pct) => onAddKeyframe?.(gsapAnimId, pct, "height", displayH)}
+                  onAddKeyframe={() =>
+                    onCommitAnimatedProperty &&
+                    void onCommitAnimatedProperty(element, "height", displayH)
+                  }
                   onRemoveKeyframe={(pct) => onRemoveKeyframe?.(gsapAnimId, pct)}
                   onConvertToKeyframes={() => onConvertToKeyframes?.(gsapAnimId)}
                 />
@@ -504,7 +516,10 @@ export const PropertyPanel = memo(function PropertyPanel({
                   keyframes={gsapKeyframes}
                   currentPercentage={currentPct}
                   onSeek={(pct) => onSeekToTime?.(elStart + (pct / 100) * elDuration)}
-                  onAddKeyframe={(pct) => onAddKeyframe?.(gsapAnimId, pct, "rotation", displayR)}
+                  onAddKeyframe={() =>
+                    onCommitAnimatedProperty &&
+                    void onCommitAnimatedProperty(element, "rotation", displayR)
+                  }
                   onRemoveKeyframe={(pct) => onRemoveKeyframe?.(gsapAnimId, pct)}
                   onConvertToKeyframes={() => onConvertToKeyframes?.(gsapAnimId)}
                 />
@@ -531,17 +546,19 @@ export const PropertyPanel = memo(function PropertyPanel({
                       }}
                     />
                   </div>
-                  {STUDIO_KEYFRAMES_ENABLED && gsapAnimId && (
+                  {STUDIO_KEYFRAMES_ENABLED && (gsapAnimId || onCommitAnimatedProperty) && (
                     <KeyframeNavigation
                       property="z"
                       keyframes={gsapKeyframes}
                       currentPercentage={currentPct}
                       onSeek={(pct) => onSeekToTime?.(elStart + (pct / 100) * elDuration)}
-                      onAddKeyframe={(pct) =>
-                        onAddKeyframe?.(gsapAnimId, pct, "z", gsapRuntimeValues.z ?? 0)
-                      }
-                      onRemoveKeyframe={(pct) => onRemoveKeyframe?.(gsapAnimId, pct)}
-                      onConvertToKeyframes={() => onConvertToKeyframes?.(gsapAnimId)}
+                      onAddKeyframe={() => {
+                        if (onCommitAnimatedProperty) {
+                          void onCommitAnimatedProperty(element, "z", gsapRuntimeValues?.z ?? 0);
+                        }
+                      }}
+                      onRemoveKeyframe={(pct) => gsapAnimId && onRemoveKeyframe?.(gsapAnimId, pct)}
+                      onConvertToKeyframes={() => gsapAnimId && onConvertToKeyframes?.(gsapAnimId)}
                     />
                   )}
                 </div>
