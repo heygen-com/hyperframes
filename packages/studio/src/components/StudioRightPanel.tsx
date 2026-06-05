@@ -91,6 +91,7 @@ export function StudioRightPanel({
     handleGsapUpdateFromProperty,
     handleGsapAddFromProperty,
     handleGsapRemoveFromProperty,
+    commitAnimatedProperty,
   } = useDomEditContext();
 
   const { assets, fontAssets, projectDir, handleImportFiles, handleImportFonts } =
@@ -224,6 +225,7 @@ export function StudioRightPanel({
                   onAddGsapFromProperty={handleGsapAddFromProperty}
                   onRemoveGsapFromProperty={handleGsapRemoveFromProperty}
                   onAddGsapAnimation={handleGsapAddAnimation}
+                  onCommitAnimatedProperty={commitAnimatedProperty}
                 />
               ) : motionPanelActive ? (
                 <MotionPanel

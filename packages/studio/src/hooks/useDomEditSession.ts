@@ -29,6 +29,7 @@ import {
   tryGsapResizeIntercept,
   tryGsapRotationIntercept,
 } from "./gsapRuntimeBridge";
+import { useAnimatedPropertyCommit } from "./useAnimatedPropertyCommit";
 
 // ── Types ──
 
@@ -526,6 +527,15 @@ export function useDomEditSession({
     return true;
   }, [domEditSelection, selectedGsapAnimations, removeAllKeyframes]);
 
+  const commitAnimatedProperty = useAnimatedPropertyCommit({
+    selectedGsapAnimations,
+    gsapCommitMutation,
+    addGsapAnimation: (sel, method, time) => addGsapAnimation(sel, method, time),
+    convertToKeyframes: (sel, animId) => convertToKeyframes(sel, animId),
+    previewIframeRef,
+    bumpGsapCache,
+  });
+
   // Sync selection from preview document on load / refresh
   // eslint-disable-next-line no-restricted-syntax
   useEffect(() => {
@@ -671,6 +681,7 @@ export function useDomEditSession({
     handleGsapConvertToKeyframes,
     handleGsapRemoveAllKeyframes,
     handleResetSelectedElementKeyframes,
+    commitAnimatedProperty,
     invalidateGsapCache: bumpGsapCache,
     previewIframeRef,
   };

@@ -76,6 +76,11 @@ interface PropertyPanelProps {
   ) => void;
   onRemoveKeyframe?: (animationId: string, percentage: number) => void;
   onConvertToKeyframes?: (animationId: string) => void;
+  onCommitAnimatedProperty?: (
+    selection: DomEditSelection,
+    property: string,
+    value: number | string,
+  ) => Promise<void>;
   onSeekToTime?: (time: number) => void;
 }
 
@@ -186,6 +191,7 @@ export const PropertyPanel = memo(function PropertyPanel({
   onAddKeyframe,
   onRemoveKeyframe,
   onConvertToKeyframes,
+  onCommitAnimatedProperty,
   onSeekToTime,
 }: PropertyPanelProps) {
   const styles = element?.computedStyles ?? EMPTY_STYLES;
@@ -240,6 +246,10 @@ export const PropertyPanel = memo(function PropertyPanel({
   const commitManualOffset = (axis: "x" | "y", nextValue: string) => {
     const parsed = parsePxMetricValue(nextValue);
     if (parsed == null) return;
+    if (onCommitAnimatedProperty && (gsapAnimId || gsapAnimations.length > 0)) {
+      void onCommitAnimatedProperty(element, axis, parsed);
+      return;
+    }
     if (gsapKeyframes && gsapAnimId && onAddKeyframe) {
       const pct = Math.max(0, Math.min(100, Math.round(currentPct * 10) / 10));
       onAddKeyframe(gsapAnimId, pct, axis, parsed);
@@ -501,7 +511,78 @@ export const PropertyPanel = memo(function PropertyPanel({
               )}
             </div>
           </div>
+          {gsapRuntimeValues && (
+            <div className="mt-3 border-t border-neutral-800/40 pt-3">
+              <div className="mb-2 text-[10px] font-medium uppercase tracking-wider text-neutral-600">
+                3D Transform
+              </div>
+              <div className={RESPONSIVE_GRID}>
+                <div className="flex items-center gap-1">
+                  <div className="flex-1">
+                    <MetricField
+                      label="Z"
+                      value={formatPxMetricValue(gsapRuntimeValues.z ?? 0)}
+                      scrub
+                      onCommit={(next) => {
+                        const v = parsePxMetricValue(next);
+                        if (v != null && onCommitAnimatedProperty) {
+                          void onCommitAnimatedProperty(element, "z", v);
+                        }
+                      }}
+                    />
+                  </div>
+                  {STUDIO_KEYFRAMES_ENABLED && gsapAnimId && (
+                    <KeyframeNavigation
+                      property="z"
+                      keyframes={gsapKeyframes}
+                      currentPercentage={currentPct}
+                      onSeek={(pct) => onSeekToTime?.(elStart + (pct / 100) * elDuration)}
+                      onAddKeyframe={(pct) =>
+                        onAddKeyframe?.(gsapAnimId, pct, "z", gsapRuntimeValues.z ?? 0)
+                      }
+                      onRemoveKeyframe={(pct) => onRemoveKeyframe?.(gsapAnimId, pct)}
+                      onConvertToKeyframes={() => onConvertToKeyframes?.(gsapAnimId)}
+                    />
+                  )}
+                </div>
+                <MetricField
+                  label="Scale"
+                  value={String(gsapRuntimeValues.scale ?? 1)}
+                  scrub
+                  onCommit={(next) => {
+                    const v = Number.parseFloat(next);
+                    if (Number.isFinite(v) && onCommitAnimatedProperty) {
+                      void onCommitAnimatedProperty(element, "scale", v);
+                    }
+                  }}
+                />
+                <MetricField
+                  label="RotX"
+                  value={`${gsapRuntimeValues.rotationX ?? 0}°`}
+                  onCommit={(next) => {
+                    const v = Number.parseFloat(next.replace("°", ""));
+                    if (Number.isFinite(v) && onCommitAnimatedProperty) {
+                      void onCommitAnimatedProperty(element, "rotationX", v);
+                    }
+                  }}
+                />
+                <MetricField
+                  label="RotY"
+                  value={`${gsapRuntimeValues.rotationY ?? 0}°`}
+                  onCommit={(next) => {
+                    const v = Number.parseFloat(next.replace("°", ""));
+                    if (Number.isFinite(v) && onCommitAnimatedProperty) {
+                      void onCommitAnimatedProperty(element, "rotationY", v);
+                    }
+                  }}
+                />
+              </div>
+            </div>
+          )}
           <div className="mt-3">
+            <div className="mb-2 text-[10px] font-medium uppercase tracking-wider text-neutral-600">
+              Stacking
+            </div>
             <MetricField
               label="Z-index"
               value={String(parseInt(styles["z-index"] || "auto", 10) || 0)}
