@@ -12,6 +12,7 @@ import {
   shouldHandleTimelineDeleteKey,
   shouldAutoScrollTimeline,
 } from "./Timeline";
+import { RULER_H, TRACK_H } from "./timelineLayout";
 import { formatTime } from "../lib/time";
 
 describe("generateTicks", () => {
@@ -230,8 +231,7 @@ describe("getTimelinePlayheadLeft", () => {
 
 describe("getTimelineCanvasHeight", () => {
   it("includes bottom scroll buffer below the last track", () => {
-    // RULER_H (24) + trackCount * TRACK_H (48) + scroll buffer
-    expect(getTimelineCanvasHeight(3)).toBeGreaterThan(24 + 3 * 48);
+    expect(getTimelineCanvasHeight(3)).toBeGreaterThan(RULER_H + 3 * TRACK_H);
   });
 
   it("still keeps ruler space when there are no tracks", () => {

@@ -125,8 +125,9 @@ function useKeyframeToggle(session?: DomEditSessionSlice) {
     ? async () => {
         const t = usePlayerStore.getState().currentTime;
         if (kfAnim?.keyframes) {
-          if (kfAnim.hasUnresolvedKeyframes && session.handleGsapMaterializeKeyframes) {
-            await session.handleGsapMaterializeKeyframes(kfAnim.id);
+          if (kfAnim.hasUnresolvedKeyframes) {
+            await session.handleGsapMaterializeKeyframes?.(kfAnim.id);
+
           }
           const elStart = Number.parseFloat(sel.dataAttributes?.start ?? "0") || 0;
           const elDuration = Number.parseFloat(sel.dataAttributes?.duration ?? "1") || 1;
