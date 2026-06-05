@@ -1582,7 +1582,7 @@ export async function executeRenderJob(
     if (cfg.lowMemoryMode) {
       captureForceScreenshot = true;
       log.info(
-        "[Render] Low-memory system detected — using safe render profile: " +
+        "[Render] Low-memory render profile active — " +
           "screenshot capture, auto-worker calibration skipped" +
           (job.config.workers === undefined ? ", pinned to 1 worker" : "") +
           ". Override with --no-low-memory-mode or PRODUCER_LOW_MEMORY_MODE=false.",
@@ -1755,17 +1755,16 @@ export async function executeRenderJob(
       }
     }
 
-    let workerCount =
-      cfg.lowMemoryMode && job.config.workers === undefined
-        ? 1
-        : resolveRenderWorkerCount(
-            totalFrames,
-            job.config.workers,
-            cfg,
-            compiled,
-            log,
-            captureCalibration?.estimate,
-          );
+    // Low-memory safe-mode's single-worker pin lives inside
+    // resolveRenderWorkerCount so its "why workers=N" logging stays coherent.
+    let workerCount = resolveRenderWorkerCount(
+      totalFrames,
+      job.config.workers,
+      cfg,
+      compiled,
+      log,
+      captureCalibration?.estimate,
+    );
 
     if (workerCount > 1 && probeSession) {
       lastBrowserConsole = probeSession.browserConsoleBuffer;

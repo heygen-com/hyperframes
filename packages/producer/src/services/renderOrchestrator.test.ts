@@ -406,6 +406,7 @@ function createConfig(): EngineConfig {
     browserTimeout: 120000,
     protocolTimeout: 300000,
     forceScreenshot: false,
+    lowMemoryMode: false,
     enableChunkedEncode: false,
     chunkSizeFrames: 360,
     enableStreamingEncode: false,
@@ -620,6 +621,53 @@ describe("resolveRenderWorkerCount", () => {
 
     expect(workers).toBe(1);
     expect(log.warn).toHaveBeenCalledOnce();
+  });
+
+  // fallow-ignore-next-line code-duplication
+  it("pins to 1 worker in low-memory mode when no explicit --workers is set", () => {
+    const log = {
+      error: vi.fn(),
+      warn: vi.fn(),
+      info: vi.fn(),
+      debug: vi.fn(),
+    };
+
+    const workers = resolveRenderWorkerCount(
+      900,
+      undefined,
+      { ...cfg, lowMemoryMode: true },
+      {
+        hasShaderTransitions: false,
+        renderModeHints: { recommendScreenshot: false, reasons: [] },
+      },
+      log,
+    );
+
+    expect(workers).toBe(1);
+    expect(log.info).toHaveBeenCalledOnce();
+  });
+
+  // fallow-ignore-next-line code-duplication
+  it("respects explicit --workers in low-memory mode (only the pin is bypassed)", () => {
+    const log = {
+      error: vi.fn(),
+      warn: vi.fn(),
+      info: vi.fn(),
+      debug: vi.fn(),
+    };
+
+    const workers = resolveRenderWorkerCount(
+      900,
+      4,
+      { ...cfg, lowMemoryMode: true, coresPerWorker: 2.5 },
+      {
+        hasShaderTransitions: false,
+        renderModeHints: { recommendScreenshot: false, reasons: [] },
+      },
+      log,
+    );
+
+    expect(workers).toBe(4);
   });
 
   it("keeps baseline auto workers after screenshot fallback when measured capture is cheap", () => {

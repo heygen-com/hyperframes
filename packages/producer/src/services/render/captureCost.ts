@@ -129,6 +129,18 @@ export function resolveRenderWorkerCount(
     return 1;
   }
 
+  // Low-memory safe profile pins capture to a single worker (unless the user
+  // asked for a specific count) so the pipeline never runs N concurrent
+  // Chrome instances on a constrained host. Kept here, alongside the other
+  // worker-count decisions, so the "why workers=N" log stays coherent across
+  // every path into capture.
+  if (cfg.lowMemoryMode && requestedWorkers === undefined) {
+    log.info(
+      "[Render] Low-memory profile — pinning to 1 capture worker (auto-worker calibration skipped).",
+    );
+    return 1;
+  }
+
   const captureCost = combineCaptureCostEstimates(
     estimateCaptureCostMultiplier(compiled),
     measuredCaptureCost,

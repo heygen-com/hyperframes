@@ -37,6 +37,15 @@ export const LOW_MEMORY_TOTAL_MB_THRESHOLD = 8192;
  * stable proxy for "how many concurrent Chrome instances can this box
  * survive". Accepts an explicit `totalMb` so callers (and tests) can pass
  * a known value instead of re-probing.
+ *
+ * Caveat: `os.totalmem()` reports the *host's* physical RAM, not a
+ * cgroup/container memory limit. A 4 GB container on a 32 GB host will not
+ * auto-flag as low-memory, and an 8 GB container on a 64 GB host won't
+ * either. Containerised and serverless callers (Docker `--docker` renders,
+ * Lambda) that want a specific profile should set `PRODUCER_LOW_MEMORY_MODE`
+ * explicitly rather than relying on auto-detection. Hosts whose *total* RAM
+ * is genuinely <= the threshold (laptops, small VMs, small Lambda tiers) are
+ * detected correctly regardless of container nesting.
  */
 export function isLowMemorySystem(totalMb: number = getSystemTotalMb()): boolean {
   return totalMb <= LOW_MEMORY_TOTAL_MB_THRESHOLD;

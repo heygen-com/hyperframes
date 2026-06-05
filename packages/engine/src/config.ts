@@ -6,7 +6,11 @@
  * fallbacks for backward compatibility during migration.
  */
 
-import { getSystemTotalMb, isLowMemorySystem } from "./services/systemMemory.js";
+import {
+  getSystemTotalMb,
+  isLowMemorySystem,
+  LOW_MEMORY_TOTAL_MB_THRESHOLD,
+} from "./services/systemMemory.js";
 
 /**
  * Full engine configuration. All fields are wired through the config
@@ -237,14 +241,14 @@ export const DEFAULT_CONFIG: EngineConfig = {
 function memoryAdaptiveCacheLimit(): number {
   const total = getSystemTotalMb();
   if (total < 4096) return 32;
-  if (total <= 8192) return 64;
+  if (total <= LOW_MEMORY_TOTAL_MB_THRESHOLD) return 64;
   return DEFAULT_CONFIG.frameDataUriCacheLimit;
 }
 
 function memoryAdaptiveCacheBytesMb(): number {
   const total = getSystemTotalMb();
   if (total < 4096) return 128;
-  if (total <= 8192) return 256;
+  if (total <= LOW_MEMORY_TOTAL_MB_THRESHOLD) return 256;
   return DEFAULT_CONFIG.frameDataUriCacheBytesLimitMb;
 }
 

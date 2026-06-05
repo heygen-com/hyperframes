@@ -11,7 +11,7 @@ import { existsSync, readdirSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
-import { getSystemTotalMb } from "./systemMemory.js";
+import { getSystemTotalMb, LOW_MEMORY_TOTAL_MB_THRESHOLD } from "./systemMemory.js";
 
 let _puppeteer: PuppeteerNode | undefined;
 
@@ -507,13 +507,13 @@ function getGpuMemBudgetMb(): number {
 
   const total = getSystemTotalMb();
   if (total < 4096) return 512;
-  if (total <= 8192) return 1024;
+  if (total <= LOW_MEMORY_TOTAL_MB_THRESHOLD) return 1024;
   return Math.min(Math.floor(total / 2), 16384);
 }
 
 function getLowMemoryFlags(): string[] {
   const total = getSystemTotalMb();
-  if (total > 8192) return [];
+  if (total > LOW_MEMORY_TOTAL_MB_THRESHOLD) return [];
   const heapMb = total < 4096 ? 256 : 512;
   return [`--js-flags=--max-old-space-size=${heapMb}`];
 }
