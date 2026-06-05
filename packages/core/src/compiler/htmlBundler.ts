@@ -320,6 +320,7 @@ function countBundledAuthoredCompositionIds(hosts: Element[]): Map<string, numbe
   return counts;
 }
 
+// fallow-ignore-next-line complexity
 export function assignBundledRuntimeCompositionIds(
   hosts: Element[],
   counts: Map<string, number> = countBundledAuthoredCompositionIds(hosts),
