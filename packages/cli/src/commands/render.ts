@@ -249,6 +249,20 @@ export default defineCommand({
         "readiness poll has its own 45s budget). " +
         "Env fallback: PRODUCER_PAGE_NAVIGATION_TIMEOUT_MS (MILLISECONDS).",
     },
+    "protocol-timeout": {
+      type: "string",
+      description:
+        "CDP protocol timeout in ms. Increase on slow/low-memory machines " +
+        "where Chrome operations time out. Default: 300000 (5 min). " +
+        "Env: PRODUCER_PUPPETEER_PROTOCOL_TIMEOUT_MS.",
+    },
+    "player-ready-timeout": {
+      type: "string",
+      description:
+        "Timeout in ms for the composition player to become ready. " +
+        "Increase for complex compositions on slow hardware. Default: 45000 (45 s). " +
+        "Env: PRODUCER_PLAYER_READY_TIMEOUT_MS.",
+    },
   },
   // `run` is the citty handler for `hyperframes render` — sequential flag
   // validation + render dispatch. Inherited CRITICAL on main (CRAP 1290);
@@ -324,6 +338,32 @@ export default defineCommand({
         process.exit(1);
       }
       workers = parsed;
+    }
+
+    // ── Validate timeout overrides ─────────────────────────────────────
+    let protocolTimeout: number | undefined;
+    if (args["protocol-timeout"] != null) {
+      const parsed = parseInt(args["protocol-timeout"], 10);
+      if (isNaN(parsed) || parsed < 1000) {
+        errorBox(
+          "Invalid protocol-timeout",
+          `Got "${args["protocol-timeout"]}". Must be a number >= 1000 (ms).`,
+        );
+        process.exit(1);
+      }
+      protocolTimeout = parsed;
+    }
+    let playerReadyTimeout: number | undefined;
+    if (args["player-ready-timeout"] != null) {
+      const parsed = parseInt(args["player-ready-timeout"], 10);
+      if (isNaN(parsed) || parsed < 1000) {
+        errorBox(
+          "Invalid player-ready-timeout",
+          `Got "${args["player-ready-timeout"]}". Must be a number >= 1000 (ms).`,
+        );
+        process.exit(1);
+      }
+      playerReadyTimeout = parsed;
     }
 
     // ── Wire opt-in: page-side compositing ───────────────────────────────
@@ -528,6 +568,8 @@ export default defineCommand({
         outputResolution,
         pageSideCompositing: args["page-side-compositing"] !== false,
         pageNavigationTimeoutMs,
+        protocolTimeout,
+        playerReadyTimeout,
         exitAfterComplete: true,
       });
     } else {
@@ -547,6 +589,8 @@ export default defineCommand({
         entryFile,
         outputResolution,
         pageNavigationTimeoutMs,
+        protocolTimeout,
+        playerReadyTimeout,
         exitAfterComplete: true,
       });
     }
@@ -583,6 +627,10 @@ interface RenderOptions {
    * producer's EngineConfig override.
    */
   pageNavigationTimeoutMs?: number;
+  /** CDP protocol timeout override (ms). */
+  protocolTimeout?: number;
+  /** Player-ready timeout override (ms). */
+  playerReadyTimeout?: number;
 }
 
 /**
@@ -885,6 +933,8 @@ export async function renderLocal(
       ...(options.pageNavigationTimeoutMs != null
         ? { pageNavigationTimeout: options.pageNavigationTimeoutMs }
         : {}),
+      ...(options.protocolTimeout != null && { protocolTimeout: options.protocolTimeout }),
+      ...(options.playerReadyTimeout != null && { playerReadyTimeout: options.playerReadyTimeout }),
     }),
     hdrMode: options.hdrMode,
     crf: options.crf,

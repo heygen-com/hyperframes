@@ -96,6 +96,20 @@
       "file": "packages/cli/src/commands/render.ts",
       "exports": ["resolveBrowserGpuForCli", "renderLocal"],
     },
+    // captureCost.ts: constants and helpers consumed by the runCaptureCalibration
+    // orchestration function and tests, but the entry-point graph doesn't
+    // reach them because the orchestrator's caller resolves them dynamically.
+    {
+      "file": "packages/producer/src/services/render/captureCost.ts",
+      "exports": [
+        "CAPTURE_CALIBRATION_TARGET_MS",
+        "MAX_MEASURED_CAPTURE_COST_MULTIPLIER",
+        "CAPTURE_CALIBRATION_PROTOCOL_TIMEOUT_MS",
+        "measureCaptureCostFromSession",
+        "logCaptureCalibrationResult",
+        "createFailedCaptureCalibrationEstimate",
+      ],
+    },
   ],
   "ignoreDependencies": [
     // Runtime/dynamic deps not visible to static analysis: tsup `external`,

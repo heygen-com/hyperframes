@@ -509,13 +509,13 @@ function getGpuMemBudgetMb(): number {
 
   const total = getTotalMemMb();
   if (total < 4096) return 512;
-  if (total < 8192) return 1024;
+  if (total <= 8192) return 1024;
   return Math.min(Math.floor(total / 2), 16384);
 }
 
 function getLowMemoryFlags(): string[] {
   const total = getTotalMemMb();
-  if (total >= 8192) return [];
+  if (total > 8192) return [];
   const heapMb = total < 4096 ? 256 : 512;
   return [`--js-flags=--max-old-space-size=${heapMb}`];
 }

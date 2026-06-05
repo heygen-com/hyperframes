@@ -161,7 +161,7 @@ export function resolveRenderWorkerCount(
 export function createCaptureCalibrationConfig(cfg: EngineConfig): EngineConfig {
   return {
     ...cfg,
-    protocolTimeout: Math.min(cfg.protocolTimeout, CAPTURE_CALIBRATION_PROTOCOL_TIMEOUT_MS),
+    protocolTimeout: Math.max(cfg.protocolTimeout, CAPTURE_CALIBRATION_PROTOCOL_TIMEOUT_MS),
   };
 }
 

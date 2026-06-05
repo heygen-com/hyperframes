@@ -228,14 +228,14 @@ function getSystemTotalMb(): number {
 function memoryAdaptiveCacheLimit(): number {
   const total = getSystemTotalMb();
   if (total < 4096) return 32;
-  if (total < 8192) return 64;
+  if (total <= 8192) return 64;
   return DEFAULT_CONFIG.frameDataUriCacheLimit;
 }
 
 function memoryAdaptiveCacheBytesMb(): number {
   const total = getSystemTotalMb();
   if (total < 4096) return 128;
-  if (total < 8192) return 256;
+  if (total <= 8192) return 256;
   return DEFAULT_CONFIG.frameDataUriCacheBytesLimitMb;
 }
 

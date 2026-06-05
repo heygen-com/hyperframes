@@ -728,19 +728,21 @@ describe("selectCaptureCalibrationFrames", () => {
 });
 
 describe("capture calibration safeguards", () => {
-  it("uses a bounded protocol timeout for calibration probes", () => {
+  it("respects user protocol timeout when higher than calibration default", () => {
     const cfg = createConfig();
     const calibrationCfg = createCaptureCalibrationConfig(cfg);
 
-    expect(calibrationCfg.protocolTimeout).toBe(30000);
+    // User's 300s timeout is higher than the 30s calibration default — use the user's value
+    expect(calibrationCfg.protocolTimeout).toBe(300000);
     expect(cfg.protocolTimeout).toBe(300000);
   });
 
-  it("preserves smaller explicit protocol timeouts for calibration probes", () => {
+  it("uses calibration floor when user timeout is lower", () => {
     const cfg = createConfig();
     cfg.protocolTimeout = 5000;
 
-    expect(createCaptureCalibrationConfig(cfg).protocolTimeout).toBe(5000);
+    // 5s is below the 30s calibration floor — use the floor
+    expect(createCaptureCalibrationConfig(cfg).protocolTimeout).toBe(30000);
   });
 
   it("falls back to screenshot mode after beginFrame calibration failures", () => {
