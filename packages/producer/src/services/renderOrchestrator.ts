@@ -74,6 +74,8 @@ import {
   convertTransfer,
   type ElementStackingInfo,
   type HfTransitionMeta,
+  getSystemTotalMb,
+  LOW_MEMORY_TOTAL_MB_THRESHOLD,
 } from "@hyperframes/engine";
 import { join, dirname, resolve } from "path";
 import { randomUUID } from "crypto";
@@ -1565,6 +1567,29 @@ export async function executeRenderJob(
     // `cfg.forceScreenshot` directly.
     let captureForceScreenshot = compileResult.forceScreenshot;
 
+    // Low-memory safe profile: on memory-constrained hosts the default render
+    // shape (probe Chrome + a throwaway calibration Chrome + N capture
+    // workers) thrashes — concurrent Chrome instances drive memory pressure
+    // that slows every CDP call and spikes V8 GC, surfacing as the slow/stuck
+    // renders in heygen-com/hyperframes#1218 / #1219. Collapse to the cheapest
+    // shape: skip auto-worker calibration (the gate below), pin to a single
+    // worker (resolved below), and prefer screenshot capture over BeginFrame
+    // (which avoids the BeginFrame protocol-timeout → relaunch churn on slow
+    // hardware). Auto-detected from total RAM; opt out with
+    // `--no-low-memory-mode` / PRODUCER_LOW_MEMORY_MODE=false. An explicit
+    // `--workers N` still gets screenshot capture + skipped calibration; only
+    // the single-worker pin is bypassed.
+    if (cfg.lowMemoryMode) {
+      captureForceScreenshot = true;
+      log.info(
+        "[Render] Low-memory system detected — using safe render profile: " +
+          "screenshot capture, auto-worker calibration skipped" +
+          (job.config.workers === undefined ? ", pinned to 1 worker" : "") +
+          ". Override with --no-low-memory-mode or PRODUCER_LOW_MEMORY_MODE=false.",
+        { totalMemMb: getSystemTotalMb(), thresholdMb: LOW_MEMORY_TOTAL_MB_THRESHOLD },
+      );
+    }
+
     const probeResult = await runProbeStage({
       projectDir,
       workDir,
@@ -1703,7 +1728,12 @@ export async function executeRenderJob(
     const htmlInCanvasDetected = compiled.renderModeHints.reasons.some(
       (r) => r.code === "htmlInCanvas",
     );
-    if (job.config.workers === undefined && totalFrames >= 60 && !htmlInCanvasDetected) {
+    if (
+      job.config.workers === undefined &&
+      totalFrames >= 60 &&
+      !htmlInCanvasDetected &&
+      !cfg.lowMemoryMode
+    ) {
       const outcome = await runCaptureCalibration({
         cfg,
         fileServer,
@@ -1725,14 +1755,17 @@ export async function executeRenderJob(
       }
     }
 
-    let workerCount = resolveRenderWorkerCount(
-      totalFrames,
-      job.config.workers,
-      cfg,
-      compiled,
-      log,
-      captureCalibration?.estimate,
-    );
+    let workerCount =
+      cfg.lowMemoryMode && job.config.workers === undefined
+        ? 1
+        : resolveRenderWorkerCount(
+            totalFrames,
+            job.config.workers,
+            cfg,
+            compiled,
+            log,
+            captureCalibration?.estimate,
+          );
 
     if (workerCount > 1 && probeSession) {
       lastBrowserConsole = probeSession.browserConsoleBuffer;

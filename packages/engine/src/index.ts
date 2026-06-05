@@ -44,6 +44,11 @@ export type {
 
 // ── Configuration ──────────────────────────────────────────────────────────────
 export { resolveConfig, DEFAULT_CONFIG, type EngineConfig } from "./config.js";
+export {
+  getSystemTotalMb,
+  isLowMemorySystem,
+  LOW_MEMORY_TOTAL_MB_THRESHOLD,
+} from "./services/systemMemory.js";
 
 // ── Browser management ─────────────────────────────────────────────────────────
 export {

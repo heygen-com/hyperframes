@@ -263,6 +263,15 @@ export default defineCommand({
         "Increase for complex compositions on slow hardware. Default: 45000 (45 s). " +
         "Env: PRODUCER_PLAYER_READY_TIMEOUT_MS.",
     },
+    "low-memory-mode": {
+      type: "boolean",
+      description:
+        "Force the low-memory safe render profile on (--low-memory-mode) or " +
+        "off (--no-low-memory-mode). Safe mode pins to 1 worker, uses " +
+        "screenshot capture, and skips auto-worker calibration to avoid " +
+        "memory thrash on constrained machines. Default: auto-detected from " +
+        "total RAM (<= 8 GB). Env: PRODUCER_LOW_MEMORY_MODE.",
+    },
   },
   // `run` is the citty handler for `hyperframes render` — sequential flag
   // validation + render dispatch. Inherited CRITICAL on main (CRAP 1290);
@@ -369,6 +378,14 @@ export default defineCommand({
     // ── Wire opt-in: page-side compositing ───────────────────────────────
     if (args["page-side-compositing"] === false) {
       process.env.HF_PAGE_SIDE_COMPOSITING = "false";
+    }
+
+    // ── Override: low-memory safe profile (tri-state) ────────────────────
+    // Absent → auto-detect from total RAM inside resolveConfig. Explicit
+    // --low-memory-mode / --no-low-memory-mode forces it on/off via the env
+    // var the producer's resolveConfig reads.
+    if (args["low-memory-mode"] != null) {
+      process.env.PRODUCER_LOW_MEMORY_MODE = args["low-memory-mode"] ? "true" : "false";
     }
 
     // ── Validate max-concurrent-renders ─────────────────────────────────

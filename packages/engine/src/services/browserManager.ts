@@ -9,8 +9,9 @@ import type { Browser, PuppeteerNode } from "puppeteer-core";
 import { execSync } from "child_process";
 import { existsSync, readdirSync } from "fs";
 import { join } from "path";
-import { homedir, totalmem } from "os";
+import { homedir } from "os";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
+import { getSystemTotalMb } from "./systemMemory.js";
 
 let _puppeteer: PuppeteerNode | undefined;
 
@@ -478,10 +479,6 @@ export function _setPuppeteerForTests(mock: PuppeteerNode | undefined): void {
   _puppeteer = mock;
 }
 
-function getTotalMemMb(): number {
-  return Math.floor(totalmem() / (1024 * 1024));
-}
-
 let _cachedVramMb: number | null = null;
 
 function probeNvidiaVramMb(): number | null {
@@ -508,14 +505,14 @@ function getGpuMemBudgetMb(): number {
   const vram = probeNvidiaVramMb();
   if (vram) return Math.min(vram, 16384);
 
-  const total = getTotalMemMb();
+  const total = getSystemTotalMb();
   if (total < 4096) return 512;
   if (total <= 8192) return 1024;
   return Math.min(Math.floor(total / 2), 16384);
 }
 
 function getLowMemoryFlags(): string[] {
-  const total = getTotalMemMb();
+  const total = getSystemTotalMb();
   if (total > 8192) return [];
   const heapMb = total < 4096 ? 256 : 512;
   return [`--js-flags=--max-old-space-size=${heapMb}`];

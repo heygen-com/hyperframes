@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { resolveConfig, DEFAULT_CONFIG } from "./config.js";
+import { isLowMemorySystem } from "./services/systemMemory.js";
 
 describe("resolveConfig", () => {
   const savedEnv = new Map<string, string | undefined>();
@@ -155,6 +156,35 @@ describe("resolveConfig", () => {
       setEnv("HF_PAGE_SIDE_COMPOSITING", "true");
       const config = resolveConfig({ enablePageSideCompositing: false });
       expect(config.enablePageSideCompositing).toBe(false);
+    });
+  });
+
+  describe("lowMemoryMode", () => {
+    it("forces on for truthy PRODUCER_LOW_MEMORY_MODE values", () => {
+      setEnv("PRODUCER_LOW_MEMORY_MODE", "true");
+      for (const v of ["true", "on", "1", "TRUE"]) {
+        process.env.PRODUCER_LOW_MEMORY_MODE = v;
+        expect(resolveConfig().lowMemoryMode).toBe(true);
+      }
+    });
+
+    it("forces off for falsy PRODUCER_LOW_MEMORY_MODE values", () => {
+      setEnv("PRODUCER_LOW_MEMORY_MODE", "false");
+      for (const v of ["false", "off", "0", "OFF"]) {
+        process.env.PRODUCER_LOW_MEMORY_MODE = v;
+        expect(resolveConfig().lowMemoryMode).toBe(false);
+      }
+    });
+
+    it("auto-detects from total RAM when the env var is unset", () => {
+      setEnv("PRODUCER_LOW_MEMORY_MODE", "");
+      delete process.env.PRODUCER_LOW_MEMORY_MODE;
+      expect(resolveConfig().lowMemoryMode).toBe(isLowMemorySystem());
+    });
+
+    it("explicit override beats both env and auto-detection", () => {
+      setEnv("PRODUCER_LOW_MEMORY_MODE", "true");
+      expect(resolveConfig({ lowMemoryMode: false }).lowMemoryMode).toBe(false);
     });
   });
 });
