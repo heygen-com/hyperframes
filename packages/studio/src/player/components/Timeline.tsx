@@ -8,7 +8,7 @@ import { useTimelineRangeSelection } from "./useTimelineRangeSelection";
 import { useTimelinePlayhead } from "./useTimelinePlayhead";
 import { type TrackVisualStyle, getTrackStyle } from "./timelineIcons";
 import { getTimelinePixelsPerSecond } from "./timelineZoom";
-import { TIMELINE_ASSET_MIME, TIMELINE_BLOCK_MIME } from "../../utils/timelineAssetDrop";
+import { useTimelineAssetDrop } from "./timelineDragDrop";
 import { TimelineEmptyState } from "./TimelineEmptyState";
 import { TimelineCanvas } from "./TimelineCanvas";
 import {
@@ -19,11 +19,9 @@ import { useTimelineClipDrag } from "./useTimelineClipDrag";
 import { ClipContextMenu } from "./ClipContextMenu";
 import {
   GUTTER,
-  TRACK_H,
   generateTicks,
   getTimelineCanvasHeight,
   shouldShowTimelineShortcutHint,
-  resolveTimelineAssetDrop,
 } from "./timelineLayout";
 
 // Re-export pure utilities so existing imports from "./Timeline" still resolve.
@@ -364,71 +362,15 @@ export const Timeline = memo(function Timeline({
     [resizingClip],
   );
 
-  const [isDragOver, setIsDragOver] = useState(false);
-  const handleAssetDragOver = useCallback((e: React.DragEvent) => {
-    const hasFiles = e.dataTransfer.files.length > 0;
-    const types = Array.from(e.dataTransfer.types);
-    const hasAsset = types.includes(TIMELINE_ASSET_MIME);
-    const hasBlock = types.includes(TIMELINE_BLOCK_MIME);
-    if (!hasFiles && !hasAsset && !hasBlock) return;
-    e.preventDefault();
-    if (hasAsset || hasBlock) e.dataTransfer.dropEffect = "copy";
-    setIsDragOver(true);
-  }, []);
-
-  const handleAssetDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      setIsDragOver(false);
-      const scroll = scrollRef.current;
-      const rect = scroll?.getBoundingClientRect();
-      const dropInput = {
-        rectLeft: rect?.left ?? 0,
-        rectTop: rect?.top ?? 0,
-        scrollLeft: scroll?.scrollLeft ?? 0,
-        scrollTop: scroll?.scrollTop ?? 0,
-        pixelsPerSecond: ppsRef.current,
-        duration: durationRef.current,
-        trackHeight: TRACK_H,
-        trackOrder: trackOrderRef.current,
-      };
-      if (onFileDrop && e.dataTransfer.files.length > 0) {
-        void onFileDrop(
-          Array.from(e.dataTransfer.files),
-          scroll && rect ? resolveTimelineAssetDrop(dropInput, e.clientX, e.clientY) : undefined,
-        );
-        return;
-      }
-      const assetPayload = e.dataTransfer.getData(TIMELINE_ASSET_MIME);
-      if (assetPayload && onAssetDrop && scroll && rect) {
-        try {
-          const parsed = JSON.parse(assetPayload) as { path?: string };
-          if (parsed.path)
-            void onAssetDrop(
-              parsed.path,
-              resolveTimelineAssetDrop(dropInput, e.clientX, e.clientY),
-            );
-        } catch {
-          /* ignore malformed drag payloads */
-        }
-        return;
-      }
-      const blockPayload = e.dataTransfer.getData(TIMELINE_BLOCK_MIME);
-      if (blockPayload && onBlockDrop && scroll && rect) {
-        try {
-          const parsed = JSON.parse(blockPayload) as { name?: string };
-          if (parsed.name)
-            void onBlockDrop(
-              parsed.name,
-              resolveTimelineAssetDrop(dropInput, e.clientX, e.clientY),
-            );
-        } catch {
-          /* ignore malformed drag payloads */
-        }
-      }
-    },
-    [onAssetDrop, onBlockDrop, onFileDrop],
-  );
+  const { isDragOver, setIsDragOver, handleAssetDragOver, handleAssetDrop } = useTimelineAssetDrop({
+    scrollRef,
+    ppsRef,
+    durationRef,
+    trackOrderRef,
+    onFileDrop,
+    onAssetDrop,
+    onBlockDrop,
+  });
 
   if (!timelineReady || elements.length === 0) {
     return (

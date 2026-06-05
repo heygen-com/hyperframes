@@ -30,6 +30,7 @@ import {
   tryGsapRotationIntercept,
 } from "./gsapRuntimeBridge";
 import { useAnimatedPropertyCommit } from "./useAnimatedPropertyCommit";
+import { useGsapSelectionHandlers } from "./useGsapSelectionHandlers";
 
 // ── Types ──
 
@@ -308,10 +309,7 @@ export function useDomEditSession({
     buildDomSelectionFromTarget,
   });
 
-  // Wrap the CSS-based path offset commit with GSAP-awareness: when the
-  // selected element has GSAP animations controlling x/y, read the actual
-  // interpolated position from the iframe runtime and commit via the GSAP
-  // script mutation path instead of the CSS translate offset.
+  // GSAP-aware: intercept offset/resize/rotation to commit via script mutation when animated.
   const handleGsapAwarePathOffsetCommit = useCallback(
     async (selection: DomEditSelection, next: { x: number; y: number }) => {
       if (gsapCommitMutation) {
@@ -406,126 +404,40 @@ export function useDomEditSession({
     ],
   );
 
-  const handleGsapUpdateProperty = useCallback(
-    (animId: string, prop: string, value: number | string) => {
-      if (!domEditSelection) return;
-      updateGsapProperty(domEditSelection, animId, prop, value);
-    },
-    [domEditSelection, updateGsapProperty],
-  );
-
-  const handleGsapUpdateMeta = useCallback(
-    (animId: string, updates: { duration?: number; ease?: string; position?: number }) => {
-      if (!domEditSelection) return;
-      updateGsapMeta(domEditSelection, animId, updates);
-    },
-    [domEditSelection, updateGsapMeta],
-  );
-
-  const handleGsapDeleteAnimation = useCallback(
-    (animId: string) => {
-      if (!domEditSelection) return;
-      deleteGsapAnimation(domEditSelection, animId);
-    },
-    [domEditSelection, deleteGsapAnimation],
-  );
-
-  const handleGsapAddAnimation = useCallback(
-    (method: "to" | "from" | "set" | "fromTo") => {
-      if (!domEditSelection) return;
-      addGsapAnimation(domEditSelection, method, currentTime);
-      if (domEditSelection.element.hasAttribute("data-hf-studio-path-offset")) {
-        handleDomManualEditsReset(domEditSelection);
-      }
-    },
-    [domEditSelection, addGsapAnimation, currentTime, handleDomManualEditsReset],
-  );
-
-  const handleGsapAddProperty = useCallback(
-    (animId: string, prop: string) => {
-      if (!domEditSelection) return;
-      addGsapProperty(domEditSelection, animId, prop);
-    },
-    [domEditSelection, addGsapProperty],
-  );
-
-  const handleGsapRemoveProperty = useCallback(
-    (animId: string, prop: string) => {
-      if (!domEditSelection) return;
-      removeGsapProperty(domEditSelection, animId, prop);
-    },
-    [domEditSelection, removeGsapProperty],
-  );
-
-  const handleGsapUpdateFromProperty = useCallback(
-    (animId: string, prop: string, value: number | string) => {
-      if (!domEditSelection) return;
-      updateGsapFromProperty(domEditSelection, animId, prop, value);
-    },
-    [domEditSelection, updateGsapFromProperty],
-  );
-
-  const handleGsapAddFromProperty = useCallback(
-    (animId: string, prop: string) => {
-      if (!domEditSelection) return;
-      addGsapFromProperty(domEditSelection, animId, prop);
-    },
-    [domEditSelection, addGsapFromProperty],
-  );
-
-  const handleGsapRemoveFromProperty = useCallback(
-    (animId: string, prop: string) => {
-      if (!domEditSelection) return;
-      removeGsapFromProperty(domEditSelection, animId, prop);
-    },
-    [domEditSelection, removeGsapFromProperty],
-  );
-
-  const handleGsapAddKeyframe = useCallback(
-    (animId: string, percentage: number, property: string, value: number | string) => {
-      if (!domEditSelection) return;
-      addKeyframe(domEditSelection, animId, percentage, property, value);
-    },
-    [domEditSelection, addKeyframe],
-  );
-
-  const handleGsapRemoveKeyframe = useCallback(
-    (animId: string, percentage: number) => {
-      if (!domEditSelection) return;
-      removeKeyframe(domEditSelection, animId, percentage);
-    },
-    [domEditSelection, removeKeyframe],
-  );
-
-  const handleGsapConvertToKeyframes = useCallback(
-    (animId: string) => {
-      if (!domEditSelection) return;
-      convertToKeyframes(domEditSelection, animId);
-    },
-    [domEditSelection, convertToKeyframes],
-  );
-
-  const handleGsapRemoveAllKeyframes = useCallback(
-    (animId: string) => {
-      if (!domEditSelection) return;
-      removeAllKeyframes(domEditSelection, animId);
-    },
-    [domEditSelection, removeAllKeyframes],
-  );
-
-  /**
-   * Reset keyframes for the currently selected element.
-   * Finds the animation with keyframes from the resolved GSAP animations
-   * and sends a remove-all-keyframes mutation. Returns true if keyframes
-   * were found and the mutation was dispatched.
-   */
-  const handleResetSelectedElementKeyframes = useCallback((): boolean => {
-    if (!domEditSelection) return false;
-    const withKeyframes = selectedGsapAnimations.find((a) => a.keyframes);
-    if (!withKeyframes) return false;
-    removeAllKeyframes(domEditSelection, withKeyframes.id);
-    return true;
-  }, [domEditSelection, selectedGsapAnimations, removeAllKeyframes]);
+  const {
+    handleGsapUpdateProperty,
+    handleGsapUpdateMeta,
+    handleGsapDeleteAnimation,
+    handleGsapAddAnimation,
+    handleGsapAddProperty,
+    handleGsapRemoveProperty,
+    handleGsapUpdateFromProperty,
+    handleGsapAddFromProperty,
+    handleGsapRemoveFromProperty,
+    handleGsapAddKeyframe,
+    handleGsapRemoveKeyframe,
+    handleGsapConvertToKeyframes,
+    handleGsapRemoveAllKeyframes,
+    handleResetSelectedElementKeyframes,
+  } = useGsapSelectionHandlers({
+    domEditSelection,
+    updateGsapProperty,
+    updateGsapMeta,
+    deleteGsapAnimation,
+    addGsapAnimation,
+    addGsapProperty,
+    removeGsapProperty,
+    updateGsapFromProperty,
+    addGsapFromProperty,
+    removeGsapFromProperty,
+    addKeyframe,
+    removeKeyframe,
+    convertToKeyframes,
+    removeAllKeyframes,
+    currentTime,
+    handleDomManualEditsReset,
+    selectedGsapAnimations,
+  });
 
   const commitAnimatedProperty = useAnimatedPropertyCommit({
     selectedGsapAnimations,

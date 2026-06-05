@@ -44,6 +44,7 @@ import { PanelLayoutProvider } from "./contexts/PanelLayoutContext";
 import { FileManagerProvider } from "./contexts/FileManagerContext";
 import { DomEditProvider } from "./contexts/DomEditContext";
 import { StudioSplash } from "./components/StudioSplash";
+import { StudioToast } from "./components/StudioToast";
 import { useServerConnection } from "./hooks/useServerConnection";
 import {
   normalizeStudioCompositionPath,
@@ -583,17 +584,7 @@ export function StudioApp() {
               )}
 
               {dragOverlay.active && <StudioGlobalDragOverlay />}
-              {appToast && (
-                <div
-                  className={`absolute bottom-6 left-1/2 -translate-x-1/2 z-[91] px-4 py-2 rounded-lg border text-sm shadow-lg animate-in fade-in slide-in-from-bottom-2 ${
-                    appToast.tone === "error"
-                      ? "bg-red-900/90 border-red-700/50 text-red-200"
-                      : "bg-neutral-900/95 border-neutral-700/60 text-neutral-100"
-                  }`}
-                >
-                  {appToast.message}
-                </div>
-              )}
+              {appToast && <StudioToast message={appToast.message} tone={appToast.tone} />}
             </div>
           </DomEditProvider>
         </FileManagerProvider>
