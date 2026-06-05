@@ -4,13 +4,24 @@ import { describe, expect, it } from "vitest";
 import { Window } from "happy-dom";
 import type { DomEditLayerItem } from "./domEditingTypes";
 import { sortLayersByZIndex } from "./LayersPanel";
+import { isLayerDraggable } from "./useLayerDrag";
 
-function makeLayer(overrides: Partial<DomEditLayerItem> & { zIndex?: string }): DomEditLayerItem {
+function makeLayer(
+  overrides: Partial<DomEditLayerItem> & { zIndex?: string; locked?: boolean },
+): DomEditLayerItem {
   const win = new Window();
   const doc = win.document;
+  const parent = doc.createElement("div") as unknown as HTMLElement;
+  if (overrides.locked) {
+    (parent as unknown as Element).setAttribute("data-timeline-locked", "true");
+  }
   const el = doc.createElement("div") as unknown as HTMLElement;
+  parent.appendChild(el as unknown as Node);
   if (overrides.zIndex != null) {
     (el as unknown as { style: { zIndex: string } }).style.zIndex = overrides.zIndex;
+  }
+  if (overrides.id) {
+    (el as unknown as Element).setAttribute("id", overrides.id);
   }
   return {
     key: overrides.key ?? `layer-${Math.random()}`,
@@ -19,6 +30,9 @@ function makeLayer(overrides: Partial<DomEditLayerItem> & { zIndex?: string }): 
     tagName: overrides.tagName ?? "div",
     depth: overrides.depth ?? 0,
     childCount: overrides.childCount ?? 0,
+    id: overrides.id,
+    selector: overrides.selector,
+    selectorIndex: overrides.selectorIndex,
     sourceFile: overrides.sourceFile ?? "index.html",
   };
 }
@@ -81,5 +95,32 @@ describe("sortLayersByZIndex", () => {
 
     const sorted = sortLayersByZIndex([root, a, a1, a2, b]);
     expect(sorted.map((l) => l.key)).toEqual(["root", "b", "a", "a2", "a1"]);
+  });
+});
+
+describe("isLayerDraggable", () => {
+  it("returns false for layers without id or selector", () => {
+    const layer = makeLayer({ key: "anon" });
+    expect(isLayerDraggable(layer)).toBe(false);
+  });
+
+  it("returns true for layers with an id", () => {
+    const layer = makeLayer({ key: "with-id", id: "my-el" });
+    expect(isLayerDraggable(layer)).toBe(true);
+  });
+
+  it("returns true for layers with a selector", () => {
+    const layer = makeLayer({ key: "with-sel", selector: ".my-class" });
+    expect(isLayerDraggable(layer)).toBe(true);
+  });
+
+  it("returns false for layers inside a locked composition", () => {
+    const layer = makeLayer({ key: "locked", id: "locked-el", locked: true });
+    expect(isLayerDraggable(layer)).toBe(false);
+  });
+
+  it("returns true for layers with id and no locked ancestor", () => {
+    const layer = makeLayer({ key: "free", id: "free-el" });
+    expect(isLayerDraggable(layer)).toBe(true);
   });
 });

@@ -24,6 +24,7 @@ export interface UseLayerDragOptions {
   visibleLayers: DomEditLayerItem[];
   scrollContainerRef: React.RefObject<HTMLDivElement | null>;
   onReorder: (event: LayerReorderEvent) => void;
+  onSingleSibling?: () => void;
 }
 
 export interface UseLayerDragReturn {
@@ -34,8 +35,14 @@ export interface UseLayerDragReturn {
   handleContainerPointerUp: () => void;
 }
 
-function isLayerDraggable(layer: DomEditLayerItem): boolean {
-  return !!(layer.selector || layer.id);
+export function isLayerDraggable(layer: DomEditLayerItem): boolean {
+  if (!(layer.selector || layer.id)) return false;
+  let el: HTMLElement | null = layer.element;
+  while (el) {
+    if (el.hasAttribute("data-timeline-locked")) return false;
+    el = el.parentElement;
+  }
+  return true;
 }
 
 function findSiblingIndices(visibleLayers: DomEditLayerItem[], layerIndex: number): number[] {
@@ -107,6 +114,7 @@ export function useLayerDrag({
   visibleLayers,
   scrollContainerRef,
   onReorder,
+  onSingleSibling,
 }: UseLayerDragOptions): UseLayerDragReturn {
   const dragRef = useRef<DragState | null>(null);
   const [dragKey, setDragKey] = useState<string | null>(null);
@@ -119,7 +127,10 @@ export function useLayerDrag({
       if (!layer || !isLayerDraggable(layer)) return;
 
       const siblingIndices = findSiblingIndices(visibleLayers, layerIndex);
-      if (siblingIndices.length <= 1) return;
+      if (siblingIndices.length <= 1) {
+        onSingleSibling?.();
+        return;
+      }
 
       const fromSiblingPos = siblingIndices.indexOf(layerIndex);
       if (fromSiblingPos === -1) return;
@@ -141,7 +152,7 @@ export function useLayerDrag({
         activated: false,
       };
     },
-    [visibleLayers, scrollContainerRef],
+    [visibleLayers, scrollContainerRef, onSingleSibling],
   );
 
   const handleContainerPointerMove = useCallback(

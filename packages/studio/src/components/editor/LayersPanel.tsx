@@ -13,7 +13,7 @@ import {
   resolveTimelineSelectionSeekTime,
 } from "../../utils/studioHelpers";
 import { Layers } from "../../icons/SystemIcons";
-import { useLayerDrag, type LayerReorderEvent } from "./useLayerDrag";
+import { useLayerDrag, isLayerDraggable, type LayerReorderEvent } from "./useLayerDrag";
 
 const TAG_ICONS: Record<string, string> = {
   video: "Vi",
@@ -61,6 +61,7 @@ export const LayersPanel = memo(function LayersPanel() {
     compositionLoading,
     timelineElements,
     currentTime,
+    showToast,
   } = useStudioContext();
   const {
     domEditSelection,
@@ -197,9 +198,14 @@ export const LayersPanel = memo(function LayersPanel() {
       const [moved] = reordered.splice(fromIndex, 1);
       reordered.splice(toIndex, 0, moved);
 
+      const existingValues = siblingLayers.map((l) => getElementZIndex(l.element));
+      const sorted = [...existingValues].sort((a, b) => b - a);
+      const allSame = sorted.every((v) => v === sorted[0]);
+      const zValues = allSame ? reordered.map((_, i) => reordered.length - i) : sorted;
+
       const entries = reordered.map((layer, i) => ({
         element: layer.element,
-        zIndex: reordered.length - i,
+        zIndex: zValues[i],
         id: layer.id,
         selector: layer.selector,
         selectorIndex: layer.selectorIndex,
@@ -214,6 +220,10 @@ export const LayersPanel = memo(function LayersPanel() {
   const selectedKey = domEditSelection ? getDomEditLayerKey(domEditSelection) : null;
   const visibleLayers = getVisibleLayers(layers, collapsed);
 
+  const handleSingleSibling = useCallback(() => {
+    showToast("Only one layer at this level", "info");
+  }, [showToast]);
+
   const {
     dragKey,
     insertionLineY,
@@ -224,6 +234,7 @@ export const LayersPanel = memo(function LayersPanel() {
     visibleLayers,
     scrollContainerRef,
     onReorder: handleReorder,
+    onSingleSibling: handleSingleSibling,
   });
 
   if (layers.length === 0) {
@@ -254,6 +265,7 @@ export const LayersPanel = memo(function LayersPanel() {
         {visibleLayers.map((layer, index) => {
           const selected = layer.key === selectedKey;
           const isDragged = layer.key === dragKey;
+          const draggable = isLayerDraggable(layer);
           const isCollapsed = collapsed[layer.key] ?? false;
           const hasChildren = layer.childCount > 0;
           const isCompHost = isCompositionHost(layer.element);
@@ -279,7 +291,7 @@ export const LayersPanel = memo(function LayersPanel() {
                   : selected
                     ? "bg-studio-accent/14 text-studio-accent"
                     : "text-neutral-300 hover:bg-white/[0.04] hover:text-neutral-100"
-              } ${dragKey ? "cursor-grabbing" : "cursor-pointer"}`}
+              } ${dragKey ? "cursor-grabbing" : draggable ? "cursor-pointer" : "cursor-not-allowed opacity-50"}`}
               style={{ paddingLeft: 8 + layer.depth * 16 }}
             >
               {hasChildren ? (

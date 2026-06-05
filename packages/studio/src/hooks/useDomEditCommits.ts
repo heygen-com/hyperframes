@@ -545,6 +545,18 @@ export function useDomEditCommits({
       for (let i = 0; i < entries.length; i++) {
         const entry = entries[i];
         entry.element.style.zIndex = String(entry.zIndex);
+        const patches: Array<{ type: "inline-style"; property: string; value: string }> = [
+          { type: "inline-style", property: "z-index", value: String(entry.zIndex) },
+        ];
+        try {
+          const win = entry.element.ownerDocument?.defaultView;
+          if (win && win.getComputedStyle(entry.element).position === "static") {
+            entry.element.style.position = "relative";
+            patches.push({ type: "inline-style", property: "position", value: "relative" });
+          }
+        } catch {
+          /* cross-origin or detached — skip */
+        }
         commitPositionPatchToHtml(
           {
             element: entry.element,
@@ -553,7 +565,7 @@ export function useDomEditCommits({
             selectorIndex: entry.selectorIndex,
             sourceFile: entry.sourceFile,
           } as unknown as DomEditSelection,
-          [{ type: "inline-style", property: "z-index", value: String(entry.zIndex) }],
+          patches,
           {
             label: "Reorder layers",
             coalesceKey,
