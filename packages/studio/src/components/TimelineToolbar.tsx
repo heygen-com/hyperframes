@@ -86,7 +86,7 @@ interface DomEditSessionSlice {
   handleGsapRemoveKeyframe: (animId: string, pct: number) => void;
   handleGsapAddKeyframe: (animId: string, pct: number, prop: string, val: number | string) => void;
   handleGsapConvertToKeyframes: (animId: string) => void;
-  handleGsapMaterializeKeyframes: (animId: string) => Promise<void>;
+  handleGsapMaterializeKeyframes?: (animId: string) => Promise<void>;
   handleGsapAddAnimation: (method: "to" | "from" | "set" | "fromTo") => void;
   previewIframeRef?: React.RefObject<HTMLIFrameElement | null>;
 }
@@ -125,7 +125,7 @@ function useKeyframeToggle(session?: DomEditSessionSlice) {
     ? async () => {
         const t = usePlayerStore.getState().currentTime;
         if (kfAnim?.keyframes) {
-          if (kfAnim.hasUnresolvedKeyframes) {
+          if (kfAnim.hasUnresolvedKeyframes && session.handleGsapMaterializeKeyframes) {
             await session.handleGsapMaterializeKeyframes(kfAnim.id);
           }
           const elStart = Number.parseFloat(sel.dataAttributes?.start ?? "0") || 0;

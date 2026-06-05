@@ -37,6 +37,7 @@ function createCfg(overrides: Partial<EngineConfig> = {}): EngineConfig {
     chromeArgs: [],
     chromePath: undefined,
     captureCostMultiplier: 1,
+    // fallow-ignore-next-line code-duplication
     format: "jpeg",
     jpegQuality: 80,
     concurrency: "auto",

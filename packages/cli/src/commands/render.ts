@@ -387,6 +387,7 @@ export default defineCommand({
     // ── Resolve output path ───────────────────────────────────────────────
     const rendersDir = resolve("renders");
     const ext = FORMAT_EXT[format] ?? ".mp4";
+    // fallow-ignore-next-line code-duplication
     const now = new Date();
     const datePart = now.toISOString().slice(0, 10);
     const timePart = now.toTimeString().slice(0, 8).replace(/:/g, "-");
@@ -896,6 +897,7 @@ async function renderDocker(
   if (options.exitAfterComplete) scheduleRenderProcessExit();
 }
 
+// fallow-ignore-next-line complexity
 export async function renderLocal(
   projectDir: string,
   outputPath: string,

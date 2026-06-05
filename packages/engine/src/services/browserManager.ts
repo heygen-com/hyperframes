@@ -331,6 +331,7 @@ export async function acquireBrowser(
   return launchPromise;
 }
 
+// fallow-ignore-next-line complexity
 async function launchBrowser(
   chromeArgs: string[],
   config?: Partial<

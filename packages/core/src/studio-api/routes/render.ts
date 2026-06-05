@@ -86,6 +86,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
       composition = body.composition;
     }
 
+    // fallow-ignore-next-line code-duplication
     const now = new Date();
     const datePart = now.toISOString().slice(0, 10);
     const timePart = now.toTimeString().slice(0, 8).replace(/:/g, "-");

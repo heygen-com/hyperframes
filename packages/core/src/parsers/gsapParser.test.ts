@@ -920,14 +920,16 @@ describe("variable-target resolution (querySelector pattern)", () => {
     expect(result.animations[2].extras?.stagger).toBe("__raw:0.1");
   });
 
-  it("leaves unresolvable variable targets out of the animation list", () => {
+  it("marks unresolvable variable targets with __unresolved__ and hasUnresolvedSelector", () => {
     const script = `
       const tl = gsap.timeline({ paused: true });
       tl.to(someUnknownThing, { opacity: 1, duration: 0.5 }, 0);
       tl.to(".real", { opacity: 1, duration: 0.5 }, 1);
     `;
     const result = parseGsapScript(script);
-    expect(result.animations.map((a) => a.targetSelector)).toEqual([".real"]);
+    expect(result.animations.map((a) => a.targetSelector)).toEqual(["__unresolved__", ".real"]);
+    expect(result.animations[0].hasUnresolvedSelector).toBe(true);
+    expect(result.animations[1].hasUnresolvedSelector).toBeUndefined();
   });
 });
 

@@ -869,16 +869,18 @@ describe("Additional edge cases", () => {
     expect(result.animations[1].targetSelector).toBe("#el2");
   });
 
-  it("skips a variable target that is not bound to a DOM lookup", () => {
+  it("marks a variable target that is not bound to a DOM lookup as __unresolved__", () => {
     const script = `
       const tl = gsap.timeline({ paused: true });
       tl.to(mysteryTarget, { opacity: 1, duration: 0.5 }, 0);
       tl.to("#el2", { x: 100, duration: 0.5 }, 0);
     `;
     const result = parseGsapScript(script);
-    // mysteryTarget has no resolvable selector binding — only the literal survives.
-    expect(result.animations).toHaveLength(1);
-    expect(result.animations[0].targetSelector).toBe("#el2");
+    // mysteryTarget has no resolvable selector binding — kept with __unresolved__ marker.
+    expect(result.animations).toHaveLength(2);
+    expect(result.animations[0].targetSelector).toBe("__unresolved__");
+    expect(result.animations[0].hasUnresolvedSelector).toBe(true);
+    expect(result.animations[1].targetSelector).toBe("#el2");
   });
 
   it("boolean values in vars are not included in properties", () => {
