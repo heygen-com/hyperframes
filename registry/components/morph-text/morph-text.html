@@ -56,7 +56,8 @@
         transform: translateY(-50%);
         width: 1920px;
         height: 210px;
-        filter: drop-shadow(0 10px 44px rgba(0, 0, 0, 0.5)) drop-shadow(0 3px 10px rgba(0, 0, 0, 0.25));
+        filter: drop-shadow(0 10px 44px rgba(0, 0, 0, 0.5))
+          drop-shadow(0 3px 10px rgba(0, 0, 0, 0.25));
       }
 
       #morph-display {
@@ -144,12 +145,14 @@
               color: el.dataset.color || "#111111",
             };
           })
-          .filter(function (w) { return w.text; });
+          .filter(function (w) {
+            return w.text;
+          });
 
         if (words.length < 2) {
           words = [
             { text: "Morph", font: "'Figtree', sans-serif", color: "#111111" },
-            { text: "Text",  font: "'Figtree', sans-serif", color: "#111111" },
+            { text: "Text", font: "'Figtree', sans-serif", color: "#111111" },
           ];
         }
 
@@ -178,12 +181,16 @@
 
           if (frac <= 0) {
             display.style.filter = "none";
-            elA.style.filter = ""; elA.style.opacity = "1";
-            elB.style.filter = ""; elB.style.opacity = "0";
+            elA.style.filter = "";
+            elA.style.opacity = "1";
+            elB.style.filter = "";
+            elB.style.opacity = "0";
           } else if (frac >= 1) {
             display.style.filter = "none";
-            elA.style.filter = ""; elA.style.opacity = "0";
-            elB.style.filter = ""; elB.style.opacity = "1";
+            elA.style.filter = "";
+            elA.style.opacity = "0";
+            elB.style.filter = "";
+            elB.style.opacity = "1";
           } else {
             display.style.filter = "url(#morph-threshold)";
             var blurB = Math.min(8 / frac - 8, 100);
@@ -202,7 +209,9 @@
           t: duration,
           duration: duration,
           ease: "none",
-          onUpdate: function () { applyMorph(proxy.t); }
+          onUpdate: function () {
+            applyMorph(proxy.t);
+          },
         });
 
         applyMorph(0);
