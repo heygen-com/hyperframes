@@ -1497,6 +1497,100 @@ describe("HyperframesPlayer volume and mute", () => {
   });
 });
 
+// ── Audio lock ──
+
+describe("HyperframesPlayer audio lock", () => {
+  let player: HTMLElement & { muted: boolean; audioLocked: boolean };
+
+  beforeEach(async () => {
+    await import("./hyperframes-player.js");
+    player = document.createElement("hyperframes-player") as typeof player;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    document.body.innerHTML = "";
+  });
+
+  it("audioLocked property toggles the audio-locked attribute", () => {
+    document.body.appendChild(player);
+
+    player.audioLocked = true;
+    expect(player.hasAttribute("audio-locked")).toBe(true);
+
+    player.audioLocked = false;
+    expect(player.hasAttribute("audio-locked")).toBe(false);
+  });
+
+  it("forces muted when audio-locked is set", () => {
+    document.body.appendChild(player);
+    expect(player.hasAttribute("muted")).toBe(false);
+
+    player.setAttribute("audio-locked", "");
+    expect(player.muted).toBe(true);
+    expect(player.hasAttribute("muted")).toBe(true);
+  });
+
+  it("re-asserts mute when something tries to unmute while locked", () => {
+    document.body.appendChild(player);
+    player.setAttribute("audio-locked", "");
+
+    // Direct property unmute
+    player.muted = false;
+    expect(player.hasAttribute("muted")).toBe(true);
+
+    // Raw attribute removal
+    player.removeAttribute("muted");
+    expect(player.hasAttribute("muted")).toBe(true);
+  });
+
+  it("allows unmute again once unlocked", () => {
+    document.body.appendChild(player);
+    player.setAttribute("audio-locked", "");
+    expect(player.muted).toBe(true);
+
+    // Unlock does NOT auto-unmute — it only lifts the restriction.
+    player.removeAttribute("audio-locked");
+    expect(player.muted).toBe(true);
+
+    // Now the viewer/host can unmute.
+    player.muted = false;
+    expect(player.hasAttribute("muted")).toBe(false);
+  });
+
+  it("hides the volume controls when locked after controls exist", () => {
+    player.setAttribute("controls", "");
+    document.body.appendChild(player);
+
+    const volumeWrap = player.shadowRoot!.querySelector(".hfp-volume-wrap") as HTMLElement;
+    expect(volumeWrap.style.display).not.toBe("none");
+
+    player.setAttribute("audio-locked", "");
+    expect(volumeWrap.style.display).toBe("none");
+  });
+
+  it("hides the volume controls when controls are created while already locked", () => {
+    player.setAttribute("audio-locked", "");
+    player.setAttribute("controls", "");
+    document.body.appendChild(player);
+
+    const volumeWrap = player.shadowRoot!.querySelector(".hfp-volume-wrap") as HTMLElement;
+    expect(volumeWrap.style.display).toBe("none");
+  });
+
+  it("restores the volume controls when unlocked", () => {
+    player.setAttribute("controls", "");
+    player.setAttribute("audio-locked", "");
+    document.body.appendChild(player);
+
+    const volumeWrap = player.shadowRoot!.querySelector(".hfp-volume-wrap") as HTMLElement;
+    expect(volumeWrap.style.display).toBe("none");
+
+    player.removeAttribute("audio-locked");
+    expect(volumeWrap.style.display).not.toBe("none");
+  });
+});
+
 // ── Playback rate ──
 
 describe("HyperframesPlayer playback rate", () => {

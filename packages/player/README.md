@@ -60,6 +60,7 @@ Show a static image before playback starts:
 | `height`               | number                          | 1080          | Composition height in pixels (aspect ratio)                                 |
 | `controls`             | boolean                         | false         | Show play/pause, scrubber, and time display                                 |
 | `muted`                | boolean                         | false         | Mute audio playback                                                         |
+| `audio-locked`         | boolean                         | false         | Force-mute and hide the volume controls so the viewer cannot turn sound on  |
 | `poster`               | string                          | —             | Image URL shown before playback starts                                      |
 | `playback-rate`        | number                          | 1             | Speed multiplier (0.5 = half, 2 = double)                                   |
 | `autoplay`             | boolean                         | false         | Start playing when ready                                                    |
@@ -114,6 +115,7 @@ player.paused; // boolean (read-only)
 player.ready; // boolean (read-only)
 player.playbackRate; // number (read/write)
 player.muted; // boolean (read/write)
+player.audioLocked; // boolean (read/write) — force-mute + hide volume controls
 player.loop; // boolean (read/write)
 player.shaderCaptureScale; // number (read/write)
 player.shaderLoading; // "composition" | "player" | "none" (read/write)

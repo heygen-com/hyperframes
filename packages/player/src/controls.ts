@@ -21,6 +21,14 @@ export const SPEED_PRESETS = [0.25, 0.5, 1, 1.5, 2, 4] as const;
 export interface ControlsOptions {
   /** Speed presets shown in the menu. Defaults to SPEED_PRESETS. */
   speedPresets?: readonly number[];
+  /**
+   * When true, the volume controls (mute button + volume slider) are hidden so
+   * the viewer cannot change the audio state. Backs the `audio-locked`
+   * attribute on `<hyperframes-player>`, which enforces host-mandated silent
+   * playback (e.g. a HyperFrames project embedded in a chat host). Toggleable
+   * at runtime via the returned `setVolumeControlsHidden`.
+   */
+  audioLocked?: boolean;
 }
 
 export function formatSpeed(speed: number): string {
@@ -48,6 +56,7 @@ export function createControls(
   updateSpeed: (speed: number) => void;
   updateMuted: (muted: boolean) => void;
   updateVolume: (volume: number) => void;
+  setVolumeControlsHidden: (hidden: boolean) => void;
   show: () => void;
   hide: () => void;
   destroy: () => void;
@@ -132,6 +141,11 @@ export function createControls(
 
   volumeWrap.appendChild(volumeSliderWrap);
   volumeWrap.appendChild(muteBtn);
+
+  // Audio-locked: hide the whole volume control (mute toggle + slider) so the
+  // viewer has no UI path to turn sound on. The player still mutes the media
+  // independently via the `muted` attribute; this only removes the controls.
+  if (options.audioLocked) volumeWrap.style.display = "none";
 
   controls.appendChild(playBtn);
   controls.appendChild(scrubber);
@@ -355,6 +369,9 @@ export function createControls(
       volumeFill.style.width = `${volume * 100}%`;
       volumeSlider.setAttribute("aria-valuenow", String(Math.round(volume * 100)));
       muteBtn.innerHTML = getVolumeIcon(isMuted, volume);
+    },
+    setVolumeControlsHidden(hidden: boolean) {
+      volumeWrap.style.display = hidden ? "none" : "";
     },
     show() {
       controls.style.display = "";

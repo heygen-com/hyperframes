@@ -42,6 +42,7 @@ class HyperframesPlayer extends HTMLElement {
       "height",
       "controls",
       "muted",
+      "audio-locked",
       "volume",
       "poster",
       "playback-rate",
@@ -198,10 +199,10 @@ class HyperframesPlayer extends HTMLElement {
         break;
       }
       case "muted":
-        this._media.updateMuted(val !== null);
-        this._sendControl("set-muted", { muted: val !== null });
-        this.controlsApi?.updateMuted(val !== null);
-        this.dispatchEvent(new Event("volumechange"));
+        this._handleMutedChange(val);
+        break;
+      case "audio-locked":
+        this._applyAudioLock(val !== null);
         break;
       case "volume": {
         const v = Math.max(0, Math.min(1, parseFloat(val || "1")));
@@ -338,6 +339,41 @@ class HyperframesPlayer extends HTMLElement {
   set muted(m: boolean) {
     if (m) this.setAttribute("muted", "");
     else this.removeAttribute("muted");
+  }
+
+  get audioLocked() {
+    return this.hasAttribute("audio-locked");
+  }
+  set audioLocked(locked: boolean) {
+    if (locked) this.setAttribute("audio-locked", "");
+    else this.removeAttribute("audio-locked");
+  }
+
+  /** Apply a change to the `muted` attribute: re-assert under an audio lock,
+   *  else mute/unmute the media, sync the controls, and fire `volumechange`. */
+  private _handleMutedChange(val: string | null): void {
+    // While audio is locked, ignore any attempt to clear `muted` (host control,
+    // stray script, raw `removeAttribute`) and re-assert it. The re-set fires
+    // this callback again with val="" (not null) so it mutes normally — no loop.
+    if (val === null && this.hasAttribute("audio-locked")) {
+      this.setAttribute("muted", "");
+      return;
+    }
+    this._media.updateMuted(val !== null);
+    this._sendControl("set-muted", { muted: val !== null });
+    this.controlsApi?.updateMuted(val !== null);
+    this.dispatchEvent(new Event("volumechange"));
+  }
+
+  /**
+   * Host-mandated silent playback (e.g. embedded in a chat host): force mute
+   * and hide the volume controls so the viewer cannot turn sound on. Unlocking
+   * only unhides the controls — it does not auto-unmute; callers manage `muted`
+   * explicitly after unlocking.
+   */
+  private _applyAudioLock(locked: boolean): void {
+    if (locked) this.muted = true;
+    this.controlsApi?.setVolumeControlsHidden(locked);
   }
 
   get volume() {
@@ -525,6 +561,7 @@ class HyperframesPlayer extends HTMLElement {
         onMuteToggle: () => void (this.muted = !this.muted),
         onVolumeChange: (v) => void (this.volume = v),
       },
+      this.audioLocked,
     );
   }
 

@@ -20,6 +20,7 @@ export function setupControls(
   volume: number,
   speedPresetsAttr: string | null,
   callbacks: ControlsCallbacks,
+  audioLocked = false,
 ): ReturnType<typeof createControls> {
   const speedPresets = speedPresetsAttr
     ? speedPresetsAttr
@@ -27,7 +28,10 @@ export function setupControls(
         .map(Number)
         .filter((n) => !isNaN(n) && n > 0)
     : undefined;
-  const options: ControlsOptions = speedPresets ? { speedPresets } : {};
+  const options: ControlsOptions = {
+    ...(speedPresets ? { speedPresets } : {}),
+    audioLocked,
+  };
   const api = createControls(parent, callbacks, options);
   api.updateMuted(muted);
   api.updateVolume(volume);
