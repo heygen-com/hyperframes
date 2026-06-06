@@ -369,6 +369,11 @@ async function launchBrowser(
     protocolTimeout,
   });
 
+  const browserVersion = await browser.version().catch(() => "unknown");
+  console.log(
+    `[BrowserManager] Browser launched (${browserVersion}, ${captureMode}, headlessShell=${!!headlessShell}, platform=${process.platform})`,
+  );
+
   if (captureMode === "beginframe") {
     const supported = await probeBeginFrameSupport(browser).catch(() => true);
     if (!supported) {

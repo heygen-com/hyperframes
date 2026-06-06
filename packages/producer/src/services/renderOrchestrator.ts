@@ -1495,6 +1495,22 @@ export async function executeRenderJob(
 
     job.startedAt = new Date();
     assertNotAborted();
+
+    log.info("[Render] Pipeline started", {
+      platform: process.platform,
+      arch: process.arch,
+      nodeVersion: process.version,
+      fps: job.config.fps,
+      format: outputFormat,
+      quality: job.config.quality,
+      browserGpuMode: cfg.browserGpuMode,
+      forceScreenshot: cfg.forceScreenshot,
+      protocolTimeout: cfg.protocolTimeout,
+      browserTimeout: cfg.browserTimeout,
+      pageNavigationTimeout: cfg.pageNavigationTimeout,
+      playerReadyTimeout: cfg.playerReadyTimeout,
+    });
+
     if (!existsSync(workDir)) mkdirSync(workDir, { recursive: true });
 
     if (job.config.debug) {
@@ -2124,6 +2140,19 @@ export async function executeRenderJob(
       lastBrowserConsole,
       perfStages,
       hdrDiagnostics,
+    });
+
+    log.info("[Render] Failure summary", {
+      failedStage: job.currentStage,
+      error: errorMessage,
+      elapsedMs: Date.now() - pipelineStart,
+      stageTimings: perfStages,
+      isTimeout: isTimeoutError,
+      workers: job.config.workers ?? "auto",
+      protocolTimeout: cfg.protocolTimeout,
+      browserConsoleErrors: lastBrowserConsole
+        .filter((l) => l.includes("ERROR") || l.includes("PAGEERROR"))
+        .slice(-5),
     });
 
     await cleanupRenderResources({

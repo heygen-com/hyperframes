@@ -361,6 +361,12 @@ export async function runCaptureCalibration(input: {
   };
 
   const calibrationCfg = createCaptureCalibrationConfig({ ...cfg, forceScreenshot });
+  log.info("[Render] Calibration config", {
+    protocolTimeout: calibrationCfg.protocolTimeout,
+    parentProtocolTimeout: cfg.protocolTimeout,
+    forceScreenshot,
+    totalFrames,
+  });
   let calibration:
     | { estimate: CaptureCostEstimate; samples: CaptureCalibrationSample[] }
     | undefined;
