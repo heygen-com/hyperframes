@@ -11,5 +11,8 @@
       "target": "compositions/components/morph-text.html",
       "type": "hyperframes:snippet"
     }
-  ]
+  ],
+  "preview": {
+    "video": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/morph-text.mp4"
+  }
 }
