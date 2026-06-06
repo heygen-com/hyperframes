@@ -37,6 +37,7 @@ export const PROP_LABELS: Record<string, string> = {
   letterSpacing: "Tracking",
   skewX: "Skew X",
   skewY: "Skew Y",
+  innerText: "Counter Value",
 };
 
 export const PROP_UNITS: Record<string, string> = {
@@ -65,6 +66,7 @@ export const PROP_TOOLTIPS: Record<string, string> = {
   height: "Element height",
   autoAlpha: "Like opacity but hides element completely at 0",
   visibility: "Show or hide the element",
+  innerText: "End value for a number roll-up (the number it counts up/down to)",
 };
 
 export const EASE_LABELS: Record<string, string> = {
@@ -154,6 +156,7 @@ export const PROP_CONSTRAINTS: Record<string, { min?: number; max?: number; step
   y: { step: 1 },
   fontSize: { min: 1, step: 1 },
   letterSpacing: { step: 0.1 },
+  innerText: { step: 1 },
 };
 
 export function clampPropertyValue(prop: string, value: number): number {

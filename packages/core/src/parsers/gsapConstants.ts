@@ -41,6 +41,8 @@ export const SUPPORTED_PROPS = [
   // Filter & Clipping
   "filter",
   "clipPath",
+  // DOM content (number counters, text roll-ups)
+  "innerText",
 ];
 
 export const SUPPORTED_EASES = [
