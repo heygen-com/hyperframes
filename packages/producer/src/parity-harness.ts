@@ -284,8 +284,10 @@ async function captureParitySide(
 ): Promise<{ buffer: Buffer; styles: Record<string, unknown> }> {
   const page = await browser.newPage();
   try {
+    // Use domcontentloaded to avoid blocking on video media preloading, which
+    // can exceed the navigation timeout for compositions with many video sources.
     await page.goto(url, {
-      waitUntil: "load",
+      waitUntil: "domcontentloaded",
       timeout: 60_000,
     });
     await waitForParityReady(page);
