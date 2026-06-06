@@ -4,7 +4,7 @@
   "type": "hyperframes:component",
   "title": "Blend Difference",
   "description": "Auto-inverting text using mix-blend-mode: difference — flips between white and black per-pixel against the background",
-  "tags": ["text", "effect", "blend-mode", "contrast", "inversion"],
+  "tags": ["text", "text-effect", "blend-mode", "contrast", "inversion"],
   "files": [
     {
       "path": "caption-blend-difference.html",

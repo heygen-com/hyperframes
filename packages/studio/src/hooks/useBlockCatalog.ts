@@ -20,9 +20,10 @@ export function useBlockCatalog() {
       vfx: 1,
       transitions: 2,
       effects: 3,
-      social: 4,
-      data: 5,
-      scenes: 6,
+      "text-effects": 4,
+      social: 5,
+      data: 6,
+      scenes: 7,
     };
 
     let cancelled = false;

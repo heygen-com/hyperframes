@@ -16,6 +16,7 @@ const COLOR_MAP: Record<BlockCategory, { bg: string; text: string; dot: string }
   scenes: { bg: "bg-amber-500/15", text: "text-amber-400", dot: "bg-amber-400" },
   captions: { bg: "bg-cyan-500/15", text: "text-cyan-400", dot: "bg-cyan-400" },
   effects: { bg: "bg-rose-500/15", text: "text-rose-400", dot: "bg-rose-400" },
+  "text-effects": { bg: "bg-violet-500/15", text: "text-violet-400", dot: "bg-violet-400" },
 };
 
 export function getCategoryColors(category: BlockCategory) {
