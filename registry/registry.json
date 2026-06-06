@@ -156,6 +156,10 @@
       "type": "hyperframes:component"
     },
     {
+      "name": "morph-text",
+      "type": "hyperframes:component"
+    },
+    {
       "name": "instagram-follow",
       "type": "hyperframes:block"
     },
