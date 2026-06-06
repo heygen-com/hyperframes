@@ -61,6 +61,12 @@ export interface ProbeStageInput {
   workDir: string;
   job: RenderJob;
   cfg: EngineConfig;
+  /**
+   * Capture-mode flag threaded from the orchestrator. The stage derives a
+   * local copy of `cfg` with this value applied to `forceScreenshot`
+   * before any engine call, so the caller-owned `cfg` is never mutated.
+   */
+  forceScreenshot: boolean;
   log: ProducerLogger;
   assertNotAborted: () => void;
   /** From compileStage. May be replaced via `recompileWithResolutions`. */
@@ -112,6 +118,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
     workDir,
     job,
     cfg,
+    forceScreenshot,
     log,
     assertNotAborted,
     composition,
@@ -121,6 +128,10 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
     deviceScaleFactor,
   } = input;
   let { compiled } = input;
+
+  const probeCfg: EngineConfig =
+    cfg.forceScreenshot === forceScreenshot ? cfg : { ...cfg, forceScreenshot };
+
   let fileServer: FileServerHandle | null = null;
   let probeSession: CaptureSession | null = null;
   let lastBrowserConsole: string[] = [];
@@ -170,7 +181,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
       join(workDir, "probe"),
       captureOpts,
       null,
-      cfg,
+      probeCfg,
     );
     log.info("Waiting for composition to initialize...");
     const initStart = Date.now();

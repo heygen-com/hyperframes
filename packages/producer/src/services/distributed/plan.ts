@@ -769,6 +769,7 @@ export async function plan(
     workDir,
     job,
     cfg,
+    forceScreenshot,
     log,
     assertNotAborted,
     compiled,

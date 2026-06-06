@@ -1611,6 +1611,7 @@ export async function executeRenderJob(
       workDir,
       job,
       cfg,
+      forceScreenshot: captureForceScreenshot,
       log,
       assertNotAborted,
       compiled,
