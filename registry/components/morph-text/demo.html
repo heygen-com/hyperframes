@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Morph Text</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Figtree:wght@900&display=block"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #fff;
+      }
+
+      #morph-text {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+      }
+
+      /* Word list: hidden source of truth — edit <li> items in Studio. */
+      #morph-words {
+        display: none;
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+
+      #morph-filter {
+        position: absolute;
+        width: 0;
+        height: 0;
+        overflow: hidden;
+        pointer-events: none;
+      }
+
+      #morph-wrapper {
+        position: absolute;
+        top: 50%;
+        left: 0;
+        transform: translateY(-50%);
+        width: 1920px;
+        height: 210px;
+        filter: drop-shadow(0 10px 44px rgba(0, 0, 0, 0.5))
+          drop-shadow(0 3px 10px rgba(0, 0, 0, 0.25));
+      }
+
+      #morph-display {
+        width: 100%;
+        height: 100%;
+        filter: none;
+      }
+
+      #morph-a,
+      #morph-b {
+        position: absolute;
+        width: 100%;
+        display: inline-block;
+        text-align: center;
+        font-size: 120pt;
+        font-weight: 900;
+        line-height: 1;
+        user-select: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="morph-text"
+      data-composition-id="morph-text"
+      data-timeline-locked
+      data-width="1920"
+      data-height="1080"
+      data-duration="15"
+      data-fps="30"
+      data-morph-speed="1"
+      data-morph-pause="1.5"
+    >
+      <!--
+        Edit words here — one <li> per word or phrase.
+        data-font  : CSS font-family (e.g. "'Figtree', sans-serif")
+        data-color : text color hex (e.g. "#000000")
+        Adjust data-morph-speed (seconds per morph) and data-morph-pause (hold time) above.
+      -->
+      <ol id="morph-words" aria-hidden="true">
+        <li data-font="'Figtree', sans-serif" data-color="#000000">Do more with less.</li>
+        <li data-font="'Figtree', sans-serif" data-color="#000000">Built for what's next.</li>
+        <li data-font="'Figtree', sans-serif" data-color="#000000">Fast. Focused. Powerful.</li>
+        <li data-font="'Figtree', sans-serif" data-color="#000000">Your work, amplified.</li>
+        <li data-font="'Figtree', sans-serif" data-color="#000000">Start free today.</li>
+      </ol>
+
+      <svg id="morph-filter" aria-hidden="true" focusable="false">
+        <defs>
+          <filter id="morph-threshold">
+            <feColorMatrix
+              in="SourceGraphic"
+              type="matrix"
+              values="1 0 0 0 0
+                      0 1 0 0 0
+                      0 0 1 0 0
+                      0 0 0 255 -100"
+            />
+          </filter>
+        </defs>
+      </svg>
+
+      <div id="morph-wrapper">
+        <div id="morph-display">
+          <span id="morph-a"></span>
+          <span id="morph-b"></span>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        "use strict";
+
+        var container = document.getElementById("morph-text");
+        var display = document.getElementById("morph-display");
+        var elA = document.getElementById("morph-a");
+        var elB = document.getElementById("morph-b");
+
+        var words = Array.from(document.querySelectorAll("#morph-words li"))
+          .map(function (el) {
+            return {
+              text: el.textContent.trim(),
+              font: el.dataset.font || "'Figtree', sans-serif",
+              color: el.dataset.color || "#111111",
+            };
+          })
+          .filter(function (w) {
+            return w.text;
+          });
+
+        if (words.length < 2) {
+          words = [
+            { text: "Morph", font: "'Figtree', sans-serif", color: "#111111" },
+            { text: "Text", font: "'Figtree', sans-serif", color: "#111111" },
+          ];
+        }
+
+        var morphSpeed = parseFloat(container.dataset.morphSpeed || "1");
+        var morphPause = parseFloat(container.dataset.morphPause || "0.25");
+        var duration = parseFloat(container.dataset.duration || "9");
+        var stepDur = morphSpeed + morphPause;
+        var totalWordDur = words.length * stepDur;
+
+        function applyMorph(T) {
+          var t = T % totalWordDur;
+          var stepIdx = Math.floor(t / stepDur);
+          var stepT = t - stepIdx * stepDur;
+          var frac = Math.min(stepT / morphSpeed, 1);
+
+          var wA = words[stepIdx % words.length];
+          var wB = words[(stepIdx + 1) % words.length];
+
+          elA.textContent = wA.text;
+          elA.style.fontFamily = wA.font;
+          elA.style.color = wA.color;
+
+          elB.textContent = wB.text;
+          elB.style.fontFamily = wB.font;
+          elB.style.color = wB.color;
+
+          if (frac <= 0) {
+            display.style.filter = "none";
+            elA.style.filter = "";
+            elA.style.opacity = "1";
+            elB.style.filter = "";
+            elB.style.opacity = "0";
+          } else if (frac >= 1) {
+            display.style.filter = "none";
+            elA.style.filter = "";
+            elA.style.opacity = "0";
+            elB.style.filter = "";
+            elB.style.opacity = "1";
+          } else {
+            display.style.filter = "url(#morph-threshold)";
+            var blurB = Math.min(8 / frac - 8, 100);
+            var blurA = Math.min(8 / (1 - frac) - 8, 100);
+            elB.style.filter = "blur(" + blurB + "px)";
+            elB.style.opacity = frac;
+            elA.style.filter = "blur(" + blurA + "px)";
+            elA.style.opacity = 1 - frac;
+          }
+        }
+
+        var proxy = { t: 0 };
+        var tl = gsap.timeline({ paused: true });
+
+        tl.to(proxy, {
+          t: duration,
+          duration: duration,
+          ease: "none",
+          onUpdate: function () {
+            applyMorph(proxy.t);
+          },
+        });
+
+        applyMorph(0);
+        tl.seek(0);
+
+        window.__timelines = window.__timelines || {};
+        window.__timelines["morph-text"] = tl;
+      })();
+    </script>
+  </body>
+</html>
