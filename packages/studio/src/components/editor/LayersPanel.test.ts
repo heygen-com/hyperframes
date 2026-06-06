@@ -86,6 +86,15 @@ describe("sortLayersByZIndex", () => {
     expect(sortLayersByZIndex([])).toEqual([]);
   });
 
+  it("handles duplicate z-index values with reverse DOM order tiebreak", () => {
+    const a = makeLayer({ key: "a", zIndex: "2", depth: 0 });
+    const b = makeLayer({ key: "b", zIndex: "1", depth: 0 });
+    const c = makeLayer({ key: "c", zIndex: "2", depth: 0 });
+
+    const sorted = sortLayersByZIndex([a, b, c]);
+    expect(sorted.map((l) => l.key)).toEqual(["c", "a", "b"]);
+  });
+
   it("preserves deeply nested structure with sorting at each level", () => {
     const root = makeLayer({ key: "root", depth: 0, childCount: 2 });
     const a = makeLayer({ key: "a", zIndex: "1", depth: 1, childCount: 2 });
