@@ -105,6 +105,78 @@ describe("getVariables", () => {
   });
 });
 
+describe("T8 — override-set merge semantics (flat-merge, current behaviour)", () => {
+  beforeEach(() => {
+    setDeclared(null);
+    setOverrides(undefined);
+  });
+
+  afterEach(() => {
+    setDeclared(null);
+    setOverrides(undefined);
+  });
+
+  it("last override write wins when called twice (flat-merge)", () => {
+    setDeclared(JSON.stringify([{ id: "color", type: "string", label: "Color", default: "red" }]));
+    setOverrides({ color: "blue" });
+    setOverrides({ color: "green" });
+    expect(getVariables()).toEqual({ color: "green" });
+  });
+
+  it("sparse override leaves unmentioned declared defaults intact", () => {
+    setDeclared(
+      JSON.stringify([
+        { id: "title", type: "string", label: "Title", default: "Hello" },
+        { id: "theme", type: "string", label: "Theme", default: "light" },
+        { id: "count", type: "number", label: "Count", default: 3 },
+      ]),
+    );
+    setOverrides({ theme: "dark" });
+    const result = getVariables();
+    expect(result).toEqual({ title: "Hello", theme: "dark", count: 3 });
+  });
+
+  it("batch override (brand kit) applies all keys at once", () => {
+    setDeclared(
+      JSON.stringify([
+        { id: "primary", type: "string", label: "Primary", default: "#fff" },
+        { id: "secondary", type: "string", label: "Secondary", default: "#000" },
+        { id: "font", type: "string", label: "Font", default: "Inter" },
+      ]),
+    );
+    setOverrides({ primary: "#0f0f0f", secondary: "#e5e5e5", font: "Roboto" });
+    expect(getVariables()).toEqual({
+      primary: "#0f0f0f",
+      secondary: "#e5e5e5",
+      font: "Roboto",
+    });
+  });
+
+  it("second override replaces the first — uncovered keys fall back to declared defaults, not prior override values", () => {
+    setDeclared(
+      JSON.stringify([
+        { id: "primary", type: "string", label: "Primary", default: "#fff" },
+        { id: "secondary", type: "string", label: "Secondary", default: "#000" },
+      ]),
+    );
+    // Apply a full brand-kit batch override covering both keys.
+    setOverrides({ primary: "#brand-primary", secondary: "#brand-secondary" });
+    // setOverrides replaces entirely, not patches — secondary drops back to declared default, not "#brand-secondary".
+    setOverrides({ primary: "#manual" });
+    expect(getVariables()).toEqual({ primary: "#manual", secondary: "#000" });
+  });
+
+  it("setOverrides(undefined) clears overrides — declared defaults are returned", () => {
+    setDeclared(
+      JSON.stringify([{ id: "title", type: "string", label: "Title", default: "Hello" }]),
+    );
+    setOverrides({ title: "Custom" });
+    expect(getVariables()).toEqual({ title: "Custom" });
+    setOverrides(undefined);
+    expect(getVariables()).toEqual({ title: "Hello" });
+  });
+});
+
 describe("readDeclaredDefaults", () => {
   it("returns {} for a null root", () => {
     expect(readDeclaredDefaults(null)).toEqual({});
