@@ -209,6 +209,75 @@ describe("edit history", () => {
     expect(state.undo[0].files["index.html"].after).toBe("c");
   });
 
+  it("coalesces entries with the same coalesceKey within the window (prop: format)", () => {
+    const first = buildEditHistoryEntry({
+      projectId: "project-1",
+      label: "Edit title color",
+      kind: "source",
+      coalesceKey: "prop:title.color",
+      files: {
+        "index.html": { before: "a", after: "b" },
+      },
+      now: 100,
+      id: "entry-1",
+    });
+    const second = buildEditHistoryEntry({
+      projectId: "project-1",
+      label: "Edit title color",
+      kind: "source",
+      coalesceKey: "prop:title.color",
+      files: {
+        "index.html": { before: "b", after: "c" },
+      },
+      now: 200,
+      id: "entry-2",
+    });
+
+    const state = pushEditHistoryEntry(
+      pushEditHistoryEntry(createEmptyEditHistory(), first),
+      second,
+      { coalesceMs: 1000 },
+    );
+
+    expect(state.undo).toHaveLength(1);
+    expect(state.undo[0].id).toBe("entry-2");
+    expect(state.undo[0].files["index.html"].before).toBe("a");
+    expect(state.undo[0].files["index.html"].after).toBe("c");
+  });
+
+  it("does not coalesce entries with different coalesceKeys (cross-prop separation)", () => {
+    const titleEdit = buildEditHistoryEntry({
+      projectId: "project-1",
+      label: "Edit title color",
+      kind: "source",
+      coalesceKey: "prop:title.color",
+      files: {
+        "index.html": { before: "a", after: "b" },
+      },
+      now: 100,
+      id: "entry-title",
+    });
+    const bodyEdit = buildEditHistoryEntry({
+      projectId: "project-1",
+      label: "Edit body color",
+      kind: "source",
+      coalesceKey: "prop:body.color",
+      files: {
+        "index.html": { before: "b", after: "c" },
+      },
+      now: 200,
+      id: "entry-body",
+    });
+
+    const state = pushEditHistoryEntry(
+      pushEditHistoryEntry(createEmptyEditHistory(), titleEdit),
+      bodyEdit,
+      { coalesceMs: 1000 },
+    );
+
+    expect(state.undo.map((e) => e.id)).toEqual(["entry-title", "entry-body"]);
+  });
+
   it("does not coalesce source editor edits outside the coalesce window", () => {
     const first = buildEditHistoryEntry({
       projectId: "project-1",
@@ -241,4 +310,47 @@ describe("edit history", () => {
 
     expect(state.undo.map((entry) => entry.id)).toEqual(["entry-1", "entry-2"]);
   });
+
+  it("coalesces entries exactly at the coalesce boundary (delta === coalesceMs is inclusive)", () => {
+    const first = buildEditHistoryEntry({
+      projectId: "project-1",
+      label: "Edit source",
+      kind: "source",
+      coalesceKey: "source:index.html",
+      files: {
+        "index.html": { before: "a", after: "b" },
+      },
+      now: 100,
+      id: "entry-1",
+    });
+    const second = buildEditHistoryEntry({
+      projectId: "project-1",
+      label: "Edit source",
+      kind: "source",
+      coalesceKey: "source:index.html",
+      files: {
+        "index.html": { before: "b", after: "c" },
+      },
+      now: 1100, // exactly coalesceMs=1000ms after first
+      id: "entry-2",
+    });
+
+    const state = pushEditHistoryEntry(
+      pushEditHistoryEntry(createEmptyEditHistory(), first),
+      second,
+      { coalesceMs: 1000 },
+    );
+
+    // Boundary is <=: delta of exactly 1000ms coalesces into one entry.
+    expect(state.undo).toHaveLength(1);
+    expect(state.undo[0].id).toBe("entry-2");
+    expect(state.undo[0].files["index.html"].before).toBe("a");
+    expect(state.undo[0].files["index.html"].after).toBe("c");
+  });
+
+  it.todo("gesture-start/commit collapses intermediate drag steps into one undo entry");
+
+  it.todo(
+    "origin:applyPatches edits are excluded from undo stack to prevent undo loops (requires SDK session)",
+  );
 });
