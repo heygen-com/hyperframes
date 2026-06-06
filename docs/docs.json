@@ -223,14 +223,20 @@
           {
             "group": "Effects",
             "pages": [
-              "catalog/components/caption-blend-difference",
               "catalog/components/grain-overlay",
               "catalog/components/grid-pixelate-wipe",
               "catalog/components/parallax-unzoom",
               "catalog/components/parallax-zoom",
               "catalog/components/shimmer-sweep",
-              "catalog/components/texture-mask-text",
               "catalog/components/vignette"
+            ]
+          },
+          {
+            "group": "Text Effects",
+            "pages": [
+              "catalog/components/caption-blend-difference",
+              "catalog/components/morph-text",
+              "catalog/components/texture-mask-text"
             ]
           },
           {

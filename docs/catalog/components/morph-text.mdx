@@ -1,0 +1,40 @@
+---
+title: "Morph Text"
+description: "Gooey text morph — cycles through an editable word list using SVG threshold + GSAP-driven blur for a fluid, satisfying transition effect"
+---
+
+# Morph Text
+
+Gooey text morph — cycles through an editable word list using SVG threshold + GSAP-driven blur for a fluid, satisfying transition effect
+
+`text` `text-effect` `typography` `morph` `gooey` `kinetic` `animation`
+
+<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/morph-text.mp4" autoPlay muted loop playsInline />
+
+## Install
+
+<CodeGroup>
+
+```bash Terminal
+npx hyperframes add morph-text
+```
+
+</CodeGroup>
+
+## Details
+
+| Property | Value |
+| --- | --- |
+| Type | Component |
+
+## Files
+
+| File | Target | Type |
+| --- | --- | --- |
+| `morph-text.html` | `compositions/components/morph-text.html` | hyperframes:snippet |
+
+## Usage
+
+Open `compositions/components/morph-text.html` and paste its contents into your composition.
+
+Edit the `<ol id="morph-words">` list to change the statements that cycle through. Each `<li>` accepts `data-font` (CSS font-family) and `data-color` (hex) attributes. Adjust `data-morph-speed` (seconds per transition) and `data-morph-pause` (hold time) on the root element.
