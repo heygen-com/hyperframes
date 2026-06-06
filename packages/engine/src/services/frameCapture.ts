@@ -786,6 +786,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
       session.options.skipReadinessVideoIds ?? [],
       pageReadyTimeout,
     );
+    logInitPhase("pollVideosReady complete");
     if (!videosReady) {
       const failedVideos = await page.evaluate((skipIdList: readonly string[]) => {
         const skip = new Set(skipIdList);
