@@ -53,11 +53,10 @@ export const CAPTURE_CALIBRATION_TARGET_MS = 600;
 export const MAX_MEASURED_CAPTURE_COST_MULTIPLIER = 8;
 
 /**
- * CDP protocol timeout used while running calibration. Bounded below
- * the normal `cfg.protocolTimeout` so a wedged BeginFrame calibration
- * times out fast and falls back to screenshot mode (see the
- * `shouldFallbackToScreenshotAfterCalibrationError` path in the
- * sequencer).
+ * CDP protocol timeout used while running calibration. This is a ceiling,
+ * not a floor — a wedged BeginFrame must time out fast so the sequencer
+ * can fall back to screenshot mode via
+ * `shouldFallbackToScreenshotAfterCalibrationError`.
  */
 export const CAPTURE_CALIBRATION_PROTOCOL_TIMEOUT_MS = 30_000;
 
@@ -161,7 +160,7 @@ export function resolveRenderWorkerCount(
 export function createCaptureCalibrationConfig(cfg: EngineConfig): EngineConfig {
   return {
     ...cfg,
-    protocolTimeout: Math.max(cfg.protocolTimeout, CAPTURE_CALIBRATION_PROTOCOL_TIMEOUT_MS),
+    protocolTimeout: Math.min(cfg.protocolTimeout, CAPTURE_CALIBRATION_PROTOCOL_TIMEOUT_MS),
   };
 }
 

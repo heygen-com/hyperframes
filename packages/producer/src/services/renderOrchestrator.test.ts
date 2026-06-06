@@ -737,21 +737,22 @@ describe("selectCaptureCalibrationFrames", () => {
 });
 
 describe("capture calibration safeguards", () => {
-  it("respects user protocol timeout when higher than calibration default", () => {
+  it("caps protocol timeout at calibration ceiling for fast fallback", () => {
     const cfg = createConfig();
     const calibrationCfg = createCaptureCalibrationConfig(cfg);
 
-    // User's 300s timeout is higher than the 30s calibration default — use the user's value
-    expect(calibrationCfg.protocolTimeout).toBe(300000);
+    // Default 300s is above the 30s calibration ceiling — cap at 30s
+    // so a wedged BeginFrame times out fast and falls back to screenshot
+    expect(calibrationCfg.protocolTimeout).toBe(30000);
     expect(cfg.protocolTimeout).toBe(300000);
   });
 
-  it("uses calibration floor when user timeout is lower", () => {
+  it("preserves user timeout when already below calibration ceiling", () => {
     const cfg = createConfig();
     cfg.protocolTimeout = 5000;
 
-    // 5s is below the 30s calibration floor — use the floor
-    expect(createCaptureCalibrationConfig(cfg).protocolTimeout).toBe(30000);
+    // 5s is below the 30s ceiling — keep the user's value
+    expect(createCaptureCalibrationConfig(cfg).protocolTimeout).toBe(5000);
   });
 
   it("falls back to screenshot mode after beginFrame calibration failures", () => {

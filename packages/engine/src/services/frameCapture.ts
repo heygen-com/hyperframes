@@ -748,17 +748,26 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
   const url = `${serverUrl}/index.html`;
   const pageNavigationTimeout =
     session.config?.pageNavigationTimeout ?? DEFAULT_CONFIG.pageNavigationTimeout;
+  const initStart = Date.now();
+  const logInitPhase = (phase: string) => {
+    console.log(`[initSession:${session.captureMode}] ${phase} (${Date.now() - initStart}ms)`);
+  };
+
   if (session.captureMode === "screenshot") {
     // Screenshot mode: standard navigation, rAF works normally
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: pageNavigationTimeout });
+    logInitPhase("page.goto complete");
 
     const pageReadyTimeout =
       session.config?.playerReadyTimeout ?? DEFAULT_CONFIG.playerReadyTimeout;
     await pollHfReady(page, pageReadyTimeout);
+    logInitPhase("pollHfReady complete");
 
     await pollSubCompositionTimelines(page, pageReadyTimeout);
+    logInitPhase("pollSubCompositionTimelines complete");
 
     await applyVideoMetadataHints(page, session.options.videoMetadataHints);
+    logInitPhase("applyVideoMetadataHints complete");
 
     // Wait for all video elements to have decoded their CURRENT frame, not
     // just metadata. readyState >= 2 (HAVE_CURRENT_DATA) means a frame is
@@ -811,9 +820,12 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
       );
     }
     await decodeAllImages(page);
+    logInitPhase("images ready + decoded");
 
     await page.evaluate(`document.fonts?.ready`);
+    logInitPhase("fonts ready");
     await waitForOptionalTailwindReady(page, pageReadyTimeout);
+    logInitPhase("tailwind ready");
 
     // For PNG captures, force the page background fully transparent so the
     // captured screenshots carry a real alpha channel. Must run AFTER
@@ -879,22 +891,27 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     );
   })();
   warmupLoopPromise.catch(() => {});
+  logInitPhase("warmup loop started");
 
   await page.goto(url, { waitUntil: "domcontentloaded", timeout: pageNavigationTimeout });
+  logInitPhase("page.goto complete");
 
   // Poll for window.__hf readiness using manual evaluate loop (waitForFunction
   // uses rAF polling internally, which won't fire in beginFrame mode).
   const pageReadyTimeout = session.config?.playerReadyTimeout ?? DEFAULT_CONFIG.playerReadyTimeout;
   try {
     await pollHfReady(page, pageReadyTimeout);
+    logInitPhase("pollHfReady complete");
   } catch (err) {
     warmupState.running = false;
     throw err;
   }
 
   await pollSubCompositionTimelines(page, pageReadyTimeout);
+  logInitPhase("pollSubCompositionTimelines complete");
 
   await applyVideoMetadataHints(page, session.options.videoMetadataHints);
+  logInitPhase("applyVideoMetadataHints complete");
 
   // Same readyState contract as the screenshot path above (>= 2 / HAVE_CURRENT_DATA).
   const bfVideosReady = await pollVideosReady(
@@ -916,6 +933,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
         `Continuing render — affected videos will appear as blank/black frames.`,
     );
   }
+  logInitPhase("pollVideosReady complete");
 
   // Image readiness — parity with pollVideosReady. Defense against remote
   // <img> URLs that bypass the htmlCompiler localize step.
@@ -938,10 +956,12 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     );
   }
   await decodeAllImages(page);
+  logInitPhase("images ready + decoded");
 
-  // Font check (no rAF dependency — uses fonts.ready API directly)
   await page.evaluate(`document.fonts?.ready`);
+  logInitPhase("fonts ready");
   await waitForOptionalTailwindReady(page, pageReadyTimeout);
+  logInitPhase("tailwind ready");
 
   // Stop warmup. Unlocked mode exits on this flag; locked mode keeps ticking
   // until LOCKED_WARMUP_TICKS, so we await its promise to ensure the count is
