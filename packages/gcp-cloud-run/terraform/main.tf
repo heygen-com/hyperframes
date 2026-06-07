@@ -81,6 +81,7 @@ resource "google_cloud_run_v2_service" "render" {
     max_instance_request_concurrency = 1
 
     scaling {
+      min_instance_count = var.min_instances
       max_instance_count = var.max_instances
     }
 
@@ -156,6 +157,37 @@ resource "google_monitoring_alert_policy" "runaway_requests" {
       duration        = "0s"
       aggregations {
         alignment_period   = "3600s"
+        per_series_aligner = "ALIGN_SUM"
+      }
+    }
+  }
+
+  notification_channels = var.notification_channels
+}
+
+# ── Workflow-failure alert ───────────────────────────────────────────────────
+# Request-count alone misses a render that fails 100% of the time at low
+# volume. Alert on any FAILED workflow execution so a broken render path is
+# visible even when traffic is light.
+resource "google_monitoring_alert_policy" "workflow_failures" {
+  project      = var.project_id
+  display_name = "${local.name}-render workflow execution failures"
+  combiner     = "OR"
+
+  conditions {
+    display_name = "Failed workflow executions (5m)"
+    condition_threshold {
+      filter = join(" AND ", [
+        "resource.type = \"workflows.googleapis.com/Workflow\"",
+        "resource.labels.workflow_id = \"${google_workflows_workflow.render.name}\"",
+        "metric.type = \"workflows.googleapis.com/finished_execution_count\"",
+        "metric.labels.status = \"FAILED\"",
+      ])
+      comparison      = "COMPARISON_GT"
+      threshold_value = 0
+      duration        = "0s"
+      aggregations {
+        alignment_period   = "300s"
         per_series_aligner = "ALIGN_SUM"
       }
     }

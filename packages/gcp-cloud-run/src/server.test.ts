@@ -228,6 +228,28 @@ describe("bucket allowlist guard", () => {
       else process.env.HYPERFRAMES_RENDER_BUCKET = prev;
     }
   });
+
+  it('treats HYPERFRAMES_RENDER_BUCKET="*" as an explicit opt-out (off-bucket allowed)', async () => {
+    const gcs = new FakeGcs();
+    await seedPlanTar(gcs, "gs://any-bucket/renders/r1/plan.tar.gz", PLAN_HASH);
+    const prev = process.env.HYPERFRAMES_RENDER_BUCKET;
+    process.env.HYPERFRAMES_RENDER_BUCKET = "*";
+    try {
+      const event: RenderChunkEvent = {
+        Action: "renderChunk",
+        PlanGcsUri: "gs://any-bucket/renders/r1/plan.tar.gz",
+        PlanHash: PLAN_HASH,
+        ChunkIndex: 0,
+        ChunkOutputGcsPrefix: "gs://any-bucket/renders/r1/",
+        Format: "mp4",
+      };
+      const res = await dispatch(event, depsWith(gcs));
+      expect(res.Action).toBe("renderChunk");
+    } finally {
+      if (prev === undefined) delete process.env.HYPERFRAMES_RENDER_BUCKET;
+      else process.env.HYPERFRAMES_RENDER_BUCKET = prev;
+    }
+  });
 });
 
 describe("createApp HTTP mapping", () => {

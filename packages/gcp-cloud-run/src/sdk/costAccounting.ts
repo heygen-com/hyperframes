@@ -41,11 +41,19 @@ export interface BilledCloudRunInvocation {
   estimated: boolean;
 }
 
-/** Result of {@link computeRenderCost}. */
+/**
+ * Result of {@link computeRenderCost}.
+ *
+ * NOTE: `displayCost` / `accruedSoFarUsd` cover Cloud Run compute + Cloud
+ * Workflows steps only. They EXCLUDE GCS storage + network egress for the
+ * plan tarball (which can be ~100 MB), chunk artifacts, and the final output
+ * — see `breakdown.gcsEstimate`. Treat the figure as a compute-cost floor,
+ * not the authoritative total bill.
+ */
 export interface RenderCost {
-  /** USD accrued to date. */
+  /** USD accrued to date (Cloud Run + Workflows only; excludes GCS — see note above). */
   accruedSoFarUsd: number;
-  /** Human-readable USD string, e.g. `"$0.0214"`. */
+  /** Human-readable USD string, e.g. `"$0.0214"`. Excludes GCS storage/egress. */
   displayCost: string;
   breakdown: {
     cloudRunUsd: number;

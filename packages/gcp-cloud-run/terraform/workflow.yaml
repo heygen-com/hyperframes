@@ -87,10 +87,13 @@ main:
     - renderChunks:
         parallel:
           shared: [chunkUris, chunkResults]
-          # Fan-out cap tracks the plan's chunkCount so the caller's
-          # Config.maxParallelChunks (which plan() honours when sizing the
-          # chunk list) stays the single source of truth.
-          concurrency_limit: ${chunkCount}
+          # Run up to chunkCount chunks at once, clamped to 20 — Cloud
+          # Workflows hard-caps concurrent branches/iterations per execution
+          # at 20 (https://cloud.google.com/workflows/quotas). Above that,
+          # iterations queue regardless of concurrency_limit, so a config with
+          # maxParallelChunks > 20 still renders correctly; the extra chunks
+          # just wait. All chunkCount iterations always run.
+          concurrency_limit: ${math.min(chunkCount, 20)}
           for:
             value: idx
             in: ${chunkIndexes}

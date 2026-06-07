@@ -38,6 +38,12 @@ variable "request_timeout_seconds" {
   default     = 3600
 }
 
+variable "min_instances" {
+  type        = number
+  description = "Min Cloud Run instances. Default 0 (scale-to-zero) is cheapest but means the first render after idle pays a cold start (image pull + Chrome + bun boot, ~20-30s). Set to 1 to keep one warm if first-render latency matters."
+  default     = 0
+}
+
 variable "max_instances" {
   type        = number
   description = "Max Cloud Run instances. Each chunk pins one instance (request concurrency = 1), and the workflow fans out up to the plan's chunk count (which never exceeds Config.maxParallelChunks). Keep this >= the largest maxParallelChunks you render with, or excess chunks queue behind 429s + retry backoff. Also a runaway-cost backstop."

@@ -18,7 +18,7 @@
 
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
 import { Storage } from "@google-cloud/storage";
@@ -240,19 +240,18 @@ async function handlePlan(event: PlanEvent, deps?: HandlerDeps): Promise<PlanRes
 
     // Upload the planDir as a single tarball. The workflow cannot pass a
     // directory-shaped artifact between steps; we serialize and rely on the
-    // consumer (renderChunk / assemble) to untar. Audio is co-located
-    // alongside the plan so RenderChunk doesn't have to pull the whole plan
-    // tarball when audio isn't relevant to the chunk.
+    // consumer (renderChunk / assemble) to untar. `audio.aac` lives inside
+    // planDir, so it already rides along in this tarball — every consumer
+    // (including assemble) gets it from the untar. We deliberately do NOT
+    // upload a separate audio object: it would duplicate the bytes on every
+    // plan upload and be re-downloaded + overwritten by assemble. `AudioGcsUri`
+    // stays in the result shape for wire compatibility but is null.
     const planTar = join(work, "plan.tar.gz");
     await tarDirectory(planDir, planTar);
     const planTarUri = `${trimTrailingSlash(event.PlanOutputGcsPrefix)}/plan.tar.gz`;
     const audioPath = join(planDir, "audio.aac");
     const hasAudio = existsSync(audioPath) && statSync(audioPath).size > 0;
-    const audioUri = hasAudio ? `${trimTrailingSlash(event.PlanOutputGcsPrefix)}/audio.aac` : null;
-    await Promise.all([
-      uploadFileToGcs(storage, planTar, planTarUri, "application/gzip"),
-      hasAudio && audioUri ? uploadFileToGcs(storage, audioPath, audioUri, "audio/aac") : null,
-    ]);
+    await uploadFileToGcs(storage, planTar, planTarUri, "application/gzip");
 
     return {
       Action: "plan",
@@ -264,8 +263,8 @@ async function handlePlan(event: PlanEvent, deps?: HandlerDeps): Promise<PlanRes
       Width: result.width,
       Height: result.height,
       Format: result.format,
-      HasAudio: audioUri !== null,
-      AudioGcsUri: audioUri,
+      HasAudio: hasAudio,
+      AudioGcsUri: null,
       FfmpegVersion: result.ffmpegVersion,
       ProducerVersion: result.producerVersion,
       DurationMs: Date.now() - started,
@@ -340,7 +339,7 @@ async function uploadChunkOutput(
 ): Promise<string> {
   const trimmed = trimTrailingSlash(prefix);
   if (result.outputKind === "file") {
-    const ext = result.outputPath.slice(result.outputPath.lastIndexOf("."));
+    const ext = extname(result.outputPath);
     const uri = `${trimmed}/chunks/${pad(chunkIndex)}${ext}`;
     await uploadFileToGcs(storage, result.outputPath, uri);
     return uri;
@@ -376,9 +375,16 @@ async function handleAssemble(
 
     const chunkPaths = await downloadChunkObjects(storage, event.ChunkGcsUris, work, event.Format);
 
+    // Audio rides inside the plan tarball, so it's already on disk after the
+    // untar above — no separate download. Fall back to a supplied AudioGcsUri
+    // only for backward compatibility with an older Plan that uploaded it
+    // standalone.
     let audioPath: string | null = null;
-    if (event.AudioGcsUri) {
-      audioPath = join(planDir, "audio.aac");
+    const planAudio = join(planDir, "audio.aac");
+    if (existsSync(planAudio) && statSync(planAudio).size > 0) {
+      audioPath = planAudio;
+    } else if (event.AudioGcsUri) {
+      audioPath = planAudio;
       await downloadGcsObjectToFile(storage, event.AudioGcsUri, audioPath);
     }
 
@@ -464,18 +470,38 @@ function getEventGcsUris(event: PlanEvent | RenderChunkEvent | AssembleEvent): s
   }
 }
 
+/** Emit the "guard disabled" warning at most once per instance. */
+let warnedAllowlistDisabled = false;
+
 /**
  * Verify every GCS URI in the event resolves to the configured render
  * bucket. Throws `GCS_URI_NOT_ALLOWED` (non-retryable) when a URI targets a
  * different bucket, preventing request injection from reading or writing
  * arbitrary GCS data.
  *
- * Skipped when `HYPERFRAMES_RENDER_BUCKET` is unset so deployments without
- * the env var continue to work.
+ * Opt-out is explicit: set `HYPERFRAMES_RENDER_BUCKET="*"` to disable the
+ * guard intentionally. If the env var is simply unset (or empty), the guard
+ * is disabled but a warning is logged once so the gap is visible in Cloud
+ * Logging — it shouldn't silently fail open. The Terraform module always
+ * wires the bucket name, so the prod path enforces.
  */
+// fallow-ignore-next-line complexity
 function validateEventGcsUris(event: PlanEvent | RenderChunkEvent | AssembleEvent): void {
   const allowedBucket = process.env.HYPERFRAMES_RENDER_BUCKET?.trim();
-  if (!allowedBucket) return;
+  if (allowedBucket === "*") return; // explicit, intentional opt-out
+  if (!allowedBucket) {
+    if (!warnedAllowlistDisabled) {
+      warnedAllowlistDisabled = true;
+      logEvent({
+        event: "bucket_allowlist_disabled",
+        level: "WARNING",
+        message:
+          "HYPERFRAMES_RENDER_BUCKET is unset — the GCS bucket-allowlist guard is DISABLED. " +
+          'Set it to the render bucket name to enforce, or to "*" to opt out intentionally.',
+      });
+    }
+    return;
+  }
 
   for (const uri of getEventGcsUris(event)) {
     const { bucket } = parseGcsUri(uri);
