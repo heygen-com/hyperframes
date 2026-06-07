@@ -1,0 +1,31 @@
+{
+  "animations": [
+    {
+      "targetSelector": "#notification",
+      "method": "to",
+      "position": 0.2,
+      "properties": {
+        "x": 0,
+        "opacity": 1
+      },
+      "duration": 0.5,
+      "ease": "power3.out",
+      "id": "#notification-to-200"
+    },
+    {
+      "targetSelector": "#notification",
+      "method": "to",
+      "position": 4.2,
+      "properties": {
+        "x": 420,
+        "opacity": 0
+      },
+      "duration": 0.3,
+      "ease": "power3.in",
+      "id": "#notification-to-4200"
+    }
+  ],
+  "timelineVar": "tl",
+  "preamble": "var tl = gsap.timeline({ paused: true });",
+  "postamble": "window.__timelines[\"macos-notification\"] = tl;"
+}

@@ -1,0 +1,75 @@
+{
+  "animations": [
+    {
+      "targetSelector": "#card",
+      "method": "to",
+      "position": 0.1,
+      "properties": {
+        "y": 0,
+        "opacity": 1
+      },
+      "duration": 0.5,
+      "ease": "power3.out",
+      "id": "#card-to-100"
+    },
+    {
+      "targetSelector": "#subscribe-btn",
+      "method": "to",
+      "position": 1,
+      "properties": {
+        "scale": 0.92
+      },
+      "duration": 0.15,
+      "ease": "power2.out",
+      "id": "#subscribe-btn-to-1000"
+    },
+    {
+      "targetSelector": "#subscribe-btn",
+      "method": "to",
+      "position": 1.15,
+      "properties": {
+        "scale": 1
+      },
+      "duration": 0.4,
+      "ease": "elastic.out(1, 0.4)",
+      "id": "#subscribe-btn-to-1150"
+    },
+    {
+      "targetSelector": "#btn-subscribe",
+      "method": "to",
+      "position": 1.15,
+      "properties": {
+        "opacity": 0
+      },
+      "duration": 0.08,
+      "ease": "none",
+      "id": "#btn-subscribe-to-1150"
+    },
+    {
+      "targetSelector": "#btn-subscribed",
+      "method": "to",
+      "position": 1.18,
+      "properties": {
+        "opacity": 1
+      },
+      "duration": 0.08,
+      "ease": "none",
+      "id": "#btn-subscribed-to-1180"
+    },
+    {
+      "targetSelector": "#card",
+      "method": "to",
+      "position": 3.8,
+      "properties": {
+        "y": 300,
+        "opacity": 0
+      },
+      "duration": 0.25,
+      "ease": "power3.in",
+      "id": "#card-to-3800"
+    }
+  ],
+  "timelineVar": "tl",
+  "preamble": "window.__timelines = window.__timelines || {};\nvar tl = gsap.timeline({ paused: true });",
+  "postamble": "window.__timelines[\"yt-lower-third\"] = tl;"
+}

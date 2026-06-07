@@ -39,6 +39,8 @@
     "packages/engine/tests/**",
     "skills/**/test-corpus/**",
     "skills/**/scripts/**",
+    // Golden snapshot files: data consumed by toMatchFileSnapshot, not importable modules.
+    "packages/**/__goldens__/**",
     "registry/**",
     "examples/**",
     ".github/workflows/fixtures/**",

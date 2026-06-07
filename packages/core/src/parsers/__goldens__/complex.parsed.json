@@ -1,0 +1,58 @@
+{
+  "animations": [
+    {
+      "targetSelector": ".ambient-line",
+      "method": "from",
+      "position": 0.16,
+      "properties": {
+        "scaleX": 0,
+        "opacity": 0
+      },
+      "duration": 0.42,
+      "extras": {
+        "stagger": "__raw:0.08"
+      },
+      "id": ".ambient-line-from-160"
+    },
+    {
+      "targetSelector": ".ambient-word",
+      "method": "from",
+      "position": 0.08,
+      "properties": {
+        "scale": 0.92,
+        "opacity": 0
+      },
+      "duration": 0.5,
+      "id": ".ambient-word-from-80"
+    },
+    {
+      "targetSelector": ".headline .sub",
+      "method": "from",
+      "position": 0.2,
+      "properties": {
+        "y": 20,
+        "opacity": 0
+      },
+      "duration": 0.28,
+      "id": ".headline .sub-from-200"
+    },
+    {
+      "targetSelector": ".headline span",
+      "method": "from",
+      "position": 0.05,
+      "properties": {
+        "y": 46,
+        "opacity": 0
+      },
+      "duration": 0.38,
+      "ease": "back.out(1.35)",
+      "extras": {
+        "stagger": "__raw:0.055"
+      },
+      "id": ".headline span-from-50"
+    }
+  ],
+  "timelineVar": "tl",
+  "preamble": "window.__timelines = window.__timelines || {};\ngsap.defaults({ force3D: true });\nconst tl = gsap.timeline({ paused: true, defaults: { duration: 0.45, ease: \"power3.out\" } });",
+  "postamble": "window.__timelines[\"vpn-youtube-spot\"] = tl;"
+}
