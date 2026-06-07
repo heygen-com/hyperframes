@@ -62,8 +62,8 @@ main:
         next: planProducedZeroChunks
     - planProducedZeroChunks:
         raise:
-          code: PLAN_TOO_LARGE
-          message: "Plan returned ChunkCount=0 — non-retryable producer-side invariant violation."
+          code: PLAN_PRODUCED_ZERO_CHUNKS
+          message: "Plan returned ChunkCount=0 — the composition produced no frames. Non-retryable producer-side invariant violation."
     - buildChunkList:
         # Pre-size the ordered chunk-URI + per-chunk result lists so the
         # parallel branches below assign by index (distinct indices, no
@@ -142,6 +142,10 @@ main:
               AudioGcsUri: ${planResult.AudioGcsUri}
               OutputGcsUri: ${outputGcsUri}
               Format: ${planResult.Format}
+              # Forward the caller's exact-CFR request (Config.cfr) to assemble.
+              # `"cfr" in config` guards the optional key; when unset this is
+              # false, which the handler reads as the default -c copy path.
+              Cfr: ${("cfr" in config) and config.cfr}
           result: assembleResp
         retry:
           predicate: ${retryable}
