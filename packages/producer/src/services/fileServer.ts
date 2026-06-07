@@ -509,6 +509,12 @@ const HF_BRIDGE_SCRIPT = `(function() {
       configurable: true,
       enumerable: true,
       get: function() {
+        // While the GSAP tween-batching interceptor (HF_EARLY_STUB) is draining
+        // queued tweens via rAF, the real timelines are still empty. Return 0
+        // here so pollHfReady in the engine keeps waiting (its condition is
+        // __hf.duration > 0), preventing the capture pipeline from seeking
+        // empty timelines and producing blank/incorrect frames.
+        if (window.__hfTimelinesBuilding) return 0;
         var d = p.getDuration();
         return d > 0 ? d : getDeclaredDuration();
       },
