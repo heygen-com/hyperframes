@@ -285,6 +285,135 @@ describe("HF_EARLY_STUB + HF_BRIDGE_SCRIPT integration", () => {
     expect(sandbox.window.__hf?.duration).toBe(30);
   });
 
+  it("keeps render-time timeline seeks synchronous during large renders", () => {
+    const sandbox: {
+      window: Record<string, unknown> & {
+        __hf?: Record<string, unknown>;
+        __hfTimelinesBuilding?: boolean;
+        gsap?: { timeline: () => { totalTime: (time?: number) => number | unknown } };
+        requestAnimationFrame: typeof requestAnimationFrame;
+        setTimeout: typeof setTimeout;
+      };
+      document: Record<string, never>;
+      CustomEvent: typeof CustomEvent;
+    } = {
+      window: {
+        requestAnimationFrame: (() => 1) as typeof requestAnimationFrame,
+        setTimeout: (() => 1) as typeof setTimeout,
+      },
+      document: {},
+      CustomEvent,
+    };
+    sandbox.window.window = sandbox.window;
+    sandbox.window.document = sandbox.document;
+    sandbox.window.CustomEvent = sandbox.CustomEvent;
+
+    new Function("window", "document", "CustomEvent", `with (window) {\n${HF_EARLY_STUB}\n}`)(
+      sandbox.window,
+      sandbox.document,
+      sandbox.CustomEvent,
+    );
+
+    const totalTimeCalls: number[] = [];
+    sandbox.window.gsap = {
+      timeline: () => ({
+        to: () => {},
+        from: () => {},
+        fromTo: () => {},
+        set: () => {},
+        pause: () => {},
+        play: () => {},
+        seek: () => {},
+        totalTime: (time?: number) => {
+          if (typeof time === "number") totalTimeCalls.push(time);
+          return totalTimeCalls.at(-1) ?? 0;
+        },
+        time: () => 0,
+        duration: () => 10,
+        add: () => {},
+        getChildren: () => [],
+        paused: () => true,
+        timeScale: () => 1,
+        kill: () => {},
+      }),
+    };
+
+    const timeline = sandbox.window.gsap.timeline();
+    for (let i = 0; i < 5100; i += 1) {
+      timeline.totalTime(i / 30);
+    }
+
+    expect(totalTimeCalls).toHaveLength(5100);
+    expect(sandbox.window.__hfTimelinesBuilding).toBe(false);
+  });
+
+  it("flushes queued construction calls before forwarding timeline children", () => {
+    const sandbox: {
+      window: Record<string, unknown> & {
+        __hf?: Record<string, unknown>;
+        __hfTimelinesBuilding?: boolean;
+        gsap?: {
+          timeline: () => { to: (...args: unknown[]) => unknown; getChildren: () => unknown[] };
+        };
+        requestAnimationFrame: typeof requestAnimationFrame;
+        setTimeout: typeof setTimeout;
+      };
+      document: Record<string, never>;
+      CustomEvent: typeof CustomEvent;
+    } = {
+      window: {
+        requestAnimationFrame: (() => 1) as typeof requestAnimationFrame,
+        setTimeout: ((callback: () => void) => {
+          callback();
+          return 1;
+        }) as typeof setTimeout,
+      },
+      document: {},
+      CustomEvent,
+    };
+    sandbox.window.window = sandbox.window;
+    sandbox.window.document = sandbox.document;
+    sandbox.window.CustomEvent = sandbox.CustomEvent;
+
+    new Function("window", "document", "CustomEvent", `with (window) {\n${HF_EARLY_STUB}\n}`)(
+      sandbox.window,
+      sandbox.document,
+      sandbox.CustomEvent,
+    );
+
+    const constructionCalls: unknown[][] = [];
+    const child = { id: "child" };
+    sandbox.window.gsap = {
+      timeline: () => ({
+        to: (...args: unknown[]) => {
+          constructionCalls.push(args);
+        },
+        from: () => {},
+        fromTo: () => {},
+        set: () => {},
+        pause: () => {},
+        play: () => {},
+        seek: () => {},
+        totalTime: () => 0,
+        time: () => 0,
+        duration: () => 10,
+        add: () => {},
+        getChildren: () => [child],
+        paused: () => true,
+        timeScale: () => 1,
+        kill: () => {},
+      }),
+    };
+
+    const timeline = sandbox.window.gsap.timeline();
+    timeline.to("#box", { x: 100 });
+
+    expect(constructionCalls).toHaveLength(0);
+    expect(timeline.getChildren()).toEqual([child]);
+    expect(constructionCalls).toHaveLength(1);
+    expect(sandbox.window.__hfTimelinesBuilding).toBe(false);
+  });
+
   it("keeps bridge duration at zero until the runtime publishes render readiness", () => {
     const sandbox: {
       window: Record<string, unknown> & {

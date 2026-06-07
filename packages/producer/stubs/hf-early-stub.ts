@@ -66,19 +66,7 @@ declare global {
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type TimelineOperationMethod =
-  | "to"
-  | "from"
-  | "fromTo"
-  | "add"
-  | "pause"
-  | "play"
-  | "seek"
-  | "totalTime"
-  | "time"
-  | "duration"
-  | "paused"
-  | "timeScale";
+type TimelineOperationMethod = "to" | "from" | "fromTo" | "set" | "add";
 
 interface TimelineOperation {
   proxy: TimelineProxy;
@@ -106,6 +94,7 @@ interface GsapTimeline {
   time(...args: unknown[]): unknown;
   duration(...args: unknown[]): unknown;
   add(...args: unknown[]): unknown;
+  getChildren(...args: unknown[]): unknown[];
   paused(...args: unknown[]): unknown;
   timeScale(...args: unknown[]): unknown;
   kill(): void;
@@ -127,17 +116,16 @@ interface GsapInstance {
 interface TimelineProxy extends GsapTimeline {
   __hfReal: GsapTimeline;
   __hfQueue: TimelineOperation[];
+  __hfIsProxy?: true;
 }
 
 // ─── Module-level state ───────────────────────────────────────────────────────
 
 const BATCH_SIZE = 100;
-const SYNC_OPERATION_LIMIT = 5000;
 const activeProxies: TimelineProxy[] = [];
 const pendingOperations: TimelineOperation[] = [];
 let batchScheduled = false;
 let publishCheckScheduled = false;
-let executedOperationCount = 0;
 
 function requestBatchFrame(callback: FrameRequestCallback): number {
   const originalRequestAnimationFrame = window.__HF_VIRTUAL_TIME__?.originalRequestAnimationFrame;
@@ -159,7 +147,11 @@ function scheduleAfterScriptStack(callback: () => void): void {
 // ─── Batch flusher ────────────────────────────────────────────────────────────
 
 function unwrapTimelineArg(arg: unknown): unknown {
-  if (arg !== null && typeof arg === "object" && "__hfReal" in (arg as Record<string, unknown>)) {
+  if (
+    arg !== null &&
+    typeof arg === "object" &&
+    "__hfIsProxy" in (arg as Record<string, unknown>)
+  ) {
     return (arg as TimelineProxy).__hfReal;
   }
   return arg;
@@ -180,12 +172,6 @@ function enqueueTimelineOperation(
   args: unknown[],
 ): TimelineProxy {
   const entry = { proxy, method, args };
-  if (pendingOperations.length === 0 && executedOperationCount < SYNC_OPERATION_LIMIT) {
-    executedOperationCount += 1;
-    applyTimelineOperation(entry);
-    return proxy;
-  }
-  executedOperationCount += 1;
   proxy.__hfQueue.push(entry);
   pendingOperations.push(entry);
   scheduleBatch();
@@ -266,8 +252,8 @@ function wrapTimeline(real: GsapTimeline): TimelineProxy {
   const proxy: TimelineProxy = {
     __hfReal: real,
     __hfQueue: [],
+    __hfIsProxy: true,
 
-    // ── Queued mutating methods ──────────────────────────────────────────────
     to(...args: unknown[]): TimelineProxy {
       return enqueueTimelineOperation(proxy, "to", args);
     },
@@ -278,52 +264,70 @@ function wrapTimeline(real: GsapTimeline): TimelineProxy {
       return enqueueTimelineOperation(proxy, "fromTo", args);
     },
     set(...args: unknown[]): TimelineProxy {
-      real.set(...args);
-      return proxy;
-    },
-
-    // ── Ordered chain methods — queue with tweens to preserve GSAP semantics ─
-    pause(...args: unknown[]): TimelineProxy {
-      return enqueueTimelineOperation(proxy, "pause", args);
-    },
-    play(...args: unknown[]): TimelineProxy {
-      return enqueueTimelineOperation(proxy, "play", args);
-    },
-    seek(...args: unknown[]): TimelineProxy {
-      return enqueueTimelineOperation(proxy, "seek", args);
+      return enqueueTimelineOperation(proxy, "set", args);
     },
     add(...args: unknown[]): TimelineProxy {
       return enqueueTimelineOperation(proxy, "add", args);
     },
 
-    // ── Forwarded value-returning methods ────────────────────────────────────
-    // Getter form (no args) → return the real value.
-    // Setter form (args.length > 0) → forward to real, then return proxy so
-    // callers can chain `.to(...)` against the proxy rather than leaking the
-    // real timeline out of the batching chain.
-    totalTime(...args: unknown[]): unknown {
-      if (args.length > 0) return enqueueTimelineOperation(proxy, "totalTime", args);
+    pause(...args: unknown[]): TimelineProxy {
       flushPendingOperations();
+      real.pause(...args);
+      return proxy;
+    },
+    play(...args: unknown[]): TimelineProxy {
+      flushPendingOperations();
+      real.play(...args);
+      return proxy;
+    },
+    seek(...args: unknown[]): TimelineProxy {
+      flushPendingOperations();
+      real.seek(...args);
+      return proxy;
+    },
+    totalTime(...args: unknown[]): unknown {
+      flushPendingOperations();
+      if (args.length > 0) {
+        real.totalTime(...args);
+        return proxy;
+      }
       return real.totalTime();
     },
     time(...args: unknown[]): unknown {
-      if (args.length > 0) return enqueueTimelineOperation(proxy, "time", args);
       flushPendingOperations();
+      if (args.length > 0) {
+        real.time(...args);
+        return proxy;
+      }
       return real.time();
     },
     duration(...args: unknown[]): unknown {
-      if (args.length > 0) return enqueueTimelineOperation(proxy, "duration", args);
       flushPendingOperations();
+      if (args.length > 0) {
+        real.duration(...args);
+        return proxy;
+      }
       return real.duration();
     },
-    paused(...args: unknown[]): unknown {
-      if (args.length > 0) return enqueueTimelineOperation(proxy, "paused", args);
+    getChildren(...args: unknown[]): unknown[] {
       flushPendingOperations();
+      const children = real.getChildren(...args);
+      return Array.isArray(children) ? children : [];
+    },
+    paused(...args: unknown[]): unknown {
+      flushPendingOperations();
+      if (args.length > 0) {
+        real.paused(...args);
+        return proxy;
+      }
       return real.paused();
     },
     timeScale(...args: unknown[]): unknown {
-      if (args.length > 0) return enqueueTimelineOperation(proxy, "timeScale", args);
       flushPendingOperations();
+      if (args.length > 0) {
+        real.timeScale(...args);
+        return proxy;
+      }
       return real.timeScale();
     },
     kill(): void {
