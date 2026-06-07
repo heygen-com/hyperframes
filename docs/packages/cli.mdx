@@ -1226,7 +1226,7 @@ hyperframes cloudrun deploy --project my-gcp-project --region us-central1
 hyperframes cloudrun deploy --project my-gcp-project --image us-central1-docker.pkg.dev/my-gcp-project/hyperframes/hyperframes-render:v1
 ```
 
-Flags: `--project` (required), `--region` (default `us-central1`), `--image` (skip the build), `--repo` (Artifact Registry repo, default `hyperframes`).
+Flags: `--project` (required), `--region` (default `us-central1`), `--image` (skip the build), `--repo` (Artifact Registry repo, default `hyperframes`). Machine sizing / scaling: `--cpu` (1/2/4/8, default 4), `--memory` (e.g. `32Gi`, default `16Gi`), `--max-instances` (render fan-out ceiling, default 100), `--timeout` (per-request seconds, max 3600). Omitted sizing flags keep the module defaults; for anything finer, apply the Terraform module directly.
 
 #### `cloudrun sites create <projectDir>`
 

@@ -121,6 +121,18 @@ export default defineCommand({
       type: "string",
       description: "Artifact Registry repo for the built image (default: hyperframes)",
     },
+    // Machine sizing / scaling (deploy). Omitted flags keep the Terraform
+    // module defaults (4 vCPU / 16Gi / 100 instances / 3600s).
+    cpu: { type: "string", description: "vCPU per Cloud Run instance: 1 | 2 | 4 | 8 (deploy)" },
+    memory: { type: "string", description: "Memory per instance, e.g. 16Gi | 32Gi (deploy)" },
+    "max-instances": {
+      type: "string",
+      description: "Max Cloud Run instances = render fan-out ceiling (deploy)",
+    },
+    timeout: {
+      type: "string",
+      description: "Per-request timeout in seconds, max 3600 (deploy)",
+    },
 
     // sites / render
     "site-id": { type: "string", description: "Explicit site id (overrides content hash)" },
@@ -354,17 +366,7 @@ function runDeploy(args: Record<string, unknown>): void {
   run("terraform", ["init", "-input=false"], { cwd: tfDir });
   run(
     "terraform",
-    [
-      "apply",
-      "-input=false",
-      "-auto-approve",
-      "-var",
-      `project_id=${project}`,
-      "-var",
-      `region=${region}`,
-      "-var",
-      `image=${image}`,
-    ],
+    ["apply", "-input=false", "-auto-approve", ...machineVars(args, project, region, image)],
     { cwd: tfDir },
   );
 
@@ -381,6 +383,37 @@ function runDeploy(args: Record<string, unknown>): void {
   console.log(
     `  Next: ${c.accent("hyperframes cloudrun render ./my-project --width 1920 --height 1080 --wait")}`,
   );
+}
+
+/**
+ * Build the `-var` list for `terraform apply`: always project/region/image,
+ * plus any machine-sizing / scaling flags the caller supplied. Omitted flags
+ * fall through to the Terraform module defaults (4 vCPU / 16Gi / 100 / 3600s).
+ */
+// fallow-ignore-next-line complexity
+function machineVars(
+  args: Record<string, unknown>,
+  project: string,
+  region: string,
+  image: string,
+): string[] {
+  const vars = [
+    "-var",
+    `project_id=${project}`,
+    "-var",
+    `region=${region}`,
+    "-var",
+    `image=${image}`,
+  ];
+  const cpu = args.cpu as string | undefined;
+  const memory = args.memory as string | undefined;
+  const maxInstances = parsePositiveInt(args["max-instances"], "--max-instances");
+  const timeout = parsePositiveInt(args.timeout, "--timeout");
+  if (cpu) vars.push("-var", `cpu=${cpu}`);
+  if (memory) vars.push("-var", `memory=${memory}`);
+  if (maxInstances !== undefined) vars.push("-var", `max_instances=${maxInstances}`);
+  if (timeout !== undefined) vars.push("-var", `request_timeout_seconds=${timeout}`);
+  return vars;
 }
 
 /** Walk up from the terraform dir to find the repo root (the one with the Dockerfile context). */
