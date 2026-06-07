@@ -206,25 +206,41 @@ function wrapTimeline(real: GsapTimeline): TimelineProxy {
       return proxy;
     },
     add(...args: unknown[]): TimelineProxy {
-      real.add(...args);
+      // Unwrap proxy children so GSAP's internal tween graph (_first/_next/_prev
+      // linkage) holds real timeline references, not proxy objects that lack
+      // internal GSAP fields like `_dp`.
+      const unwrapped = args.map((a) =>
+        a !== null && typeof a === "object" && "__hfReal" in (a as Record<string, unknown>)
+          ? (a as TimelineProxy).__hfReal
+          : a,
+      );
+      real.add(...unwrapped);
       return proxy;
     },
 
     // ── Forwarded value-returning methods ────────────────────────────────────
+    // Getter form (no args) → return the real value.
+    // Setter form (args.length > 0) → forward to real, then return proxy so
+    // callers can chain `.to(...)` against the proxy rather than leaking the
+    // real timeline out of the batching chain.
     totalTime(...args: unknown[]): unknown {
-      return real.totalTime(...args);
+      const result = real.totalTime(...args);
+      return args.length > 0 ? proxy : result;
     },
     time(...args: unknown[]): unknown {
-      return real.time(...args);
+      const result = real.time(...args);
+      return args.length > 0 ? proxy : result;
     },
     duration(...args: unknown[]): unknown {
       return real.duration(...args);
     },
     paused(...args: unknown[]): unknown {
-      return real.paused(...args);
+      const result = real.paused(...args);
+      return args.length > 0 ? proxy : result;
     },
     timeScale(...args: unknown[]): unknown {
-      return real.timeScale(...args);
+      const result = real.timeScale(...args);
+      return args.length > 0 ? proxy : result;
     },
     kill(): void {
       real.kill();
