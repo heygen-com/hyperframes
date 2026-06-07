@@ -3,6 +3,7 @@
   "entry": [
     "packages/producer/src/**/*.test.ts",
     "packages/aws-lambda/src/**/*.test.ts",
+    "packages/gcp-cloud-run/src/**/*.test.ts",
     "packages/producer/src/regression-harness.ts",
     "packages/producer/src/regression-harness-distributed.test.ts",
     "packages/producer/src/regression-harness-lambda-local.ts",

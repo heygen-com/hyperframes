@@ -1,0 +1,172 @@
+# HyperFrames distributed render orchestration on Cloud Workflows.
+#
+#   Plan → BuildChunkList → AssertChunkCount → RenderChunks (parallel) → Assemble
+#
+# Mirrors the Step Functions state machine in
+# `examples/aws-lambda/template.yaml`. Every step POSTs to the same Cloud Run
+# service URL (passed in as `args.ServiceUrl`) and varies only the body's
+# `Action`. The service returns the step's small result body on 2xx; on a
+# non-retryable failure it returns HTTP 400, on a retryable failure HTTP 5xx —
+# the `retryable` predicate below keys off exactly that split.
+#
+# The final returned object accumulates every step's result body so
+# `getRenderProgress` can read frame totals + per-step durations on success:
+#   { Plan: {...}, Chunks: [{...}, ...], Assemble: {...} }
+#
+# Deploy with `gcloud workflows deploy` (the Terraform module / the
+# `hyperframes cloudrun deploy` command do this for you).
+
+main:
+  params: [args]
+  steps:
+    - init:
+        assign:
+          - serviceUrl: ${args.ServiceUrl}
+          - projectGcsUri: ${args.ProjectGcsUri}
+          - planOutputGcsPrefix: ${args.PlanOutputGcsPrefix}
+          - outputGcsUri: ${args.OutputGcsUri}
+          - config: ${args.Config}
+
+    # ── Plan (Activity A) ────────────────────────────────────────────────────
+    - plan:
+        try:
+          call: http.post
+          args:
+            url: ${serviceUrl}
+            timeout: 1800
+            auth:
+              type: OIDC
+            body:
+              Action: plan
+              ProjectGcsUri: ${projectGcsUri}
+              PlanOutputGcsPrefix: ${planOutputGcsPrefix}
+              Config: ${config}
+          result: planResp
+        retry:
+          predicate: ${retryable}
+          max_retries: 4
+          backoff:
+            initial_delay: 2
+            max_delay: 60
+            multiplier: 2
+    - capturePlan:
+        assign:
+          - planResult: ${planResp.body}
+          - chunkCount: ${planResult.ChunkCount}
+
+    # ── BuildChunkList + AssertChunkCount ──────────────────────────────────────
+    - assertChunkCount:
+        switch:
+          - condition: ${chunkCount > 0}
+            next: buildChunkList
+        next: planProducedZeroChunks
+    - planProducedZeroChunks:
+        raise:
+          code: PLAN_TOO_LARGE
+          message: "Plan returned ChunkCount=0 — non-retryable producer-side invariant violation."
+    - buildChunkList:
+        # Pre-size the ordered chunk-URI + per-chunk result lists so the
+        # parallel branches below assign by index (distinct indices, no
+        # read-modify-write race on a shared accumulator).
+        assign:
+          - chunkIndexes: []
+          - chunkUris: []
+          - chunkResults: []
+    - fillLists:
+        for:
+          value: i
+          range: [0, ${chunkCount - 1}]
+          steps:
+            - appendSlots:
+                assign:
+                  - chunkIndexes: ${list.concat(chunkIndexes, i)}
+                  - chunkUris: ${list.concat(chunkUris, "")}
+                  - chunkResults: ${list.concat(chunkResults, "")}
+
+    # ── RenderChunks (Activity B, fanned out) ──────────────────────────────────
+    - renderChunks:
+        parallel:
+          shared: [chunkUris, chunkResults]
+          # Fan-out cap tracks the plan's chunkCount so the caller's
+          # Config.maxParallelChunks (which plan() honours when sizing the
+          # chunk list) stays the single source of truth.
+          concurrency_limit: ${chunkCount}
+          for:
+            value: idx
+            in: ${chunkIndexes}
+            steps:
+              - renderOneChunk:
+                  try:
+                    call: http.post
+                    args:
+                      url: ${serviceUrl}
+                      timeout: 1800
+                      auth:
+                        type: OIDC
+                      body:
+                        Action: renderChunk
+                        ChunkIndex: ${idx}
+                        PlanGcsUri: ${planResult.PlanGcsUri}
+                        PlanHash: ${planResult.PlanHash}
+                        ChunkOutputGcsPrefix: ${planOutputGcsPrefix}
+                        Format: ${planResult.Format}
+                    result: chunkResp
+                  retry:
+                    predicate: ${retryable}
+                    max_retries: 4
+                    backoff:
+                      initial_delay: 2
+                      max_delay: 60
+                      multiplier: 2
+              - storeChunk:
+                  assign:
+                    - chunkUris[idx]: ${chunkResp.body.ChunkGcsUri}
+                    - chunkResults[idx]: ${chunkResp.body}
+
+    # ── Assemble (Activity C) ──────────────────────────────────────────────────
+    - assemble:
+        try:
+          call: http.post
+          args:
+            url: ${serviceUrl}
+            timeout: 1800
+            auth:
+              type: OIDC
+            body:
+              Action: assemble
+              PlanGcsUri: ${planResult.PlanGcsUri}
+              ChunkGcsUris: ${chunkUris}
+              AudioGcsUri: ${planResult.AudioGcsUri}
+              OutputGcsUri: ${outputGcsUri}
+              Format: ${planResult.Format}
+          result: assembleResp
+        retry:
+          predicate: ${retryable}
+          max_retries: 4
+          backoff:
+            initial_delay: 2
+            max_delay: 60
+            multiplier: 2
+
+    - done:
+        return:
+          Plan: ${planResult}
+          Chunks: ${chunkResults}
+          Assemble: ${assembleResp.body}
+
+# Retry predicate: retry transient/server failures (429 + 5xx), never the
+# handler's non-retryable 400s (bad input, plan-hash mismatch, unsupported
+# format, …). Connection / timeout errors carry no `.code`; retry those too.
+retryable:
+  params: [e]
+  steps:
+    - classify:
+        switch:
+          - condition: ${not("code" in e)}
+            return: true
+          - condition: ${e.code == 429}
+            return: true
+          - condition: ${e.code >= 500 and e.code < 600}
+            return: true
+    - nonRetryable:
+        return: false

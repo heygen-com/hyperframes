@@ -1,0 +1,8 @@
+{
+  "Action": "renderChunk",
+  "PlanGcsUri": "gs://hyperframes-render-PROJECT/renders/hf-render-demo/plan.tar.gz",
+  "PlanHash": "REPLACE_WITH_PLAN_HASH",
+  "ChunkIndex": 0,
+  "ChunkOutputGcsPrefix": "gs://hyperframes-render-PROJECT/renders/hf-render-demo/",
+  "Format": "mp4"
+}

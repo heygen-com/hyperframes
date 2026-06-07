@@ -101,6 +101,7 @@
             "pages": [
               "guides/deploy",
               "deploy/aws-lambda",
+              "deploy/gcp-cloud-run",
               "deploy/templates-on-lambda",
               "deploy/migrating-to-hyperframes-lambda"
             ]

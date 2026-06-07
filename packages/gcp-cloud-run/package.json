@@ -1,0 +1,62 @@
+{
+  "name": "@hyperframes/gcp-cloud-run",
+  "version": "0.6.79",
+  "description": "Google Cloud Run + Workflows adapter for HyperFrames distributed rendering — request handler, client-side SDK, and Terraform module.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/heygen-com/hyperframes",
+    "directory": "packages/gcp-cloud-run"
+  },
+  "files": [
+    "dist/",
+    "terraform/",
+    "Dockerfile",
+    "README.md"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./server": {
+      "import": "./dist/server.js",
+      "types": "./dist/server.d.ts"
+    },
+    "./sdk": {
+      "import": "./dist/sdk/index.js",
+      "types": "./dist/sdk/index.d.ts"
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "start": "bun dist/server.js",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@google-cloud/storage": "^7.14.0",
+    "@google-cloud/workflows": "^4.2.0",
+    "@hono/node-server": "^1.13.0",
+    "@hyperframes/producer": "workspace:^",
+    "hono": "^4.6.0",
+    "puppeteer-core": "^24.39.1",
+    "tar": "^7.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.10",
+    "@types/tar": "^6.1.13",
+    "esbuild": "^0.25.12",
+    "tsx": "^4.21.0",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

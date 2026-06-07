@@ -12,12 +12,11 @@
  * produce the same `siteId` and `HeadObject`-short-circuit the upload.
  */
 
-import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
-import { createHash } from "node:crypto";
+import { mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, relative } from "node:path";
+import { join } from "node:path";
 import { HeadObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { PLAN_PROJECT_DIR_SKIP_SEGMENTS } from "@hyperframes/producer/distributed";
+import { hashProjectDir } from "@hyperframes/producer/distributed";
 import { formatS3Uri, tarDirectory, uploadFileToS3 } from "../s3Transport.js";
 
 /** Options for {@link deploySite}. */
@@ -108,41 +107,6 @@ export async function deploySite(opts: DeploySiteOptions): Promise<SiteHandle> {
   } finally {
     rmSync(workdir, { recursive: true, force: true });
   }
-}
-
-/**
- * SHA-256 over every regular file under `projectDir` (sorted by relative
- * path) → 16-character hex prefix. The prefix is the `siteId`.
- *
- * The hash includes the relative path plus every byte of each file, so a
- * same-bytes rename still yields a fresh id. We trim to 16 chars because
- * the full 64 isn't useful in an S3 key for legibility.
- *
- * Reads are synchronous: project trees are typically tens of MB at most
- * (HTML/CSS/JS plus a few composition assets), so the simpler shape wins
- * over a streaming pipeline.
- */
-function hashProjectDir(projectDir: string): string {
-  const hash = createHash("sha256");
-  const files: string[] = [];
-  function walk(dir: string, isRoot: boolean): void {
-    for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
-      a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
-    )) {
-      if (isRoot && PLAN_PROJECT_DIR_SKIP_SEGMENTS.has(entry.name)) continue;
-      const full = join(dir, entry.name);
-      if (entry.isDirectory()) walk(full, false);
-      else if (entry.isFile()) files.push(full);
-    }
-  }
-  walk(projectDir, true);
-  for (const file of files) {
-    const rel = relative(projectDir, file).replaceAll("\\", "/");
-    hash.update(rel);
-    hash.update("\0");
-    hash.update(readFileSync(file));
-  }
-  return hash.digest("hex").slice(0, 16);
 }
 
 async function headObject(

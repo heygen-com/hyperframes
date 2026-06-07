@@ -1,0 +1,11 @@
+{
+  "Action": "assemble",
+  "PlanGcsUri": "gs://hyperframes-render-PROJECT/renders/hf-render-demo/plan.tar.gz",
+  "ChunkGcsUris": [
+    "gs://hyperframes-render-PROJECT/renders/hf-render-demo/chunks/0000.mp4",
+    "gs://hyperframes-render-PROJECT/renders/hf-render-demo/chunks/0001.mp4"
+  ],
+  "AudioGcsUri": null,
+  "OutputGcsUri": "gs://hyperframes-render-PROJECT/renders/hf-render-demo/output.mp4",
+  "Format": "mp4"
+}

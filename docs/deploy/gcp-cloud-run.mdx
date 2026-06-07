@@ -1,0 +1,99 @@
+---
+title: Google Cloud Run
+description: "Deploy distributed HyperFrames rendering to Google Cloud Run + Cloud Workflows, and drive renders from a laptop or CI."
+---
+
+HyperFrames ships a Google Cloud deployment that mirrors the [AWS Lambda](/deploy/aws-lambda) one: a single Cloud Run service fronts a Cloud Workflows definition that fans renders out across many parallel chunk workers, with intermediate artifacts in Google Cloud Storage. The render primitives are identical — only the storage, compute, and orchestration adapters differ.
+
+It's the right choice for teams already running their backend and storage on Google Cloud who want distributed HyperFrames rendering without adding AWS infrastructure.
+
+## Architecture
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│ Cloud Workflows definition                                       │
+│   Plan → parallel(for chunk) RenderChunk → Assemble              │
+└──────────────────────────────────────────────────────────────────┘
+                              │ OIDC-authenticated http.post per step
+                              ▼
+┌──────────────────────────────────────────────────────────────────┐
+│ One Cloud Run service (packages/gcp-cloud-run/Dockerfile)        │
+│   dist/server.js                                                 │
+│     ├─ Action="plan"        → @hyperframes/producer/distributed  │
+│     ├─ Action="renderChunk" → @hyperframes/producer/distributed  │
+│     └─ Action="assemble"    → @hyperframes/producer/distributed  │
+└──────────────────────────────────────────────────────────────────┘
+                              │ GCS download / upload
+                              ▼
+                    Google Cloud Storage bucket
+```
+
+Each workflow step `POST`s to the same Cloud Run URL with a different `Action`. The handler downloads its inputs from GCS into the container's filesystem, runs the matching OSS primitive, uploads the output back to GCS, and returns a small JSON result. The workflow accumulates every step's result and returns `{ Plan, Chunks, Assemble }`.
+
+## Why Cloud Run is simpler than Lambda here
+
+Cloud Run runs a container image, so the Chrome story collapses to a `Dockerfile` line. There's no 250 MB ZIP ceiling, no `@sparticuz/chromium` runtime decompression, and no packaging probe — the image installs the same pinned `chrome-headless-shell` build the production renderer uses. Cloud Run gen2 also gives more headroom than Lambda: up to a 60-minute request timeout and 32 GiB of memory.
+
+## Deploy
+
+The Terraform module at `packages/gcp-cloud-run/terraform` provisions the GCS bucket, the Cloud Run service, the Cloud Workflows definition, two least-privilege service accounts, and a runaway-request alert.
+
+```bash
+# 1. Build + push the render image.
+gcloud builds submit . \
+  --tag us-central1-docker.pkg.dev/PROJECT/hyperframes/hyperframes-render:v1
+
+# 2. Apply the module.
+cd node_modules/@hyperframes/gcp-cloud-run/terraform
+terraform init
+terraform apply \
+  -var project_id=PROJECT \
+  -var region=us-central1 \
+  -var image=us-central1-docker.pkg.dev/PROJECT/hyperframes/hyperframes-render:v1
+```
+
+Terraform outputs `render_bucket_name`, `service_url`, `workflow_name`, and `region`. Pass those into the SDK.
+
+<Note>
+The target GCP project must have **billing enabled** — Cloud Run, Cloud Workflows, Artifact Registry, and Cloud Build are all billed services.
+</Note>
+
+## Render
+
+```ts
+import {
+  renderToCloudRun,
+  getRenderProgress,
+} from "@hyperframes/gcp-cloud-run/sdk";
+
+const handle = await renderToCloudRun({
+  projectDir: "./my-composition",
+  config: { fps: 30, width: 1920, height: 1080, format: "mp4" },
+  bucketName: "hyperframes-render-my-project",
+  projectId: "my-project",
+  location: "us-central1",
+  workflowId: "hyperframes-render",
+  serviceUrl: "https://hyperframes-render-abc.us-central1.run.app",
+});
+
+let progress = await getRenderProgress({ executionName: handle.executionName });
+while (progress.status === "running") {
+  await new Promise((r) => setTimeout(r, 5000));
+  progress = await getRenderProgress({ executionName: handle.executionName });
+}
+console.log(progress.status, progress.outputFile, progress.costs.displayCost);
+```
+
+Templates with [variables](/concepts/variables) work the same way — declare `data-composition-variables` on the composition and pass `config.variables`. The Cloud Workflows execution argument is capped at 512 KiB, so pass media as URL references the composition resolves at render time rather than inlining base64.
+
+## End-to-end smoke
+
+`examples/gcp-cloud-run/scripts/smoke.sh` builds the image, applies the Terraform module, renders a fixture composition through the workflow at one or more chunk sizes, PSNR-compares each output against the in-process baseline, and tears the stack down.
+
+```bash
+examples/gcp-cloud-run/scripts/smoke.sh --project my-project --region us-central1
+```
+
+## Supported formats
+
+Same as the distributed pipeline everywhere: `mp4` (H.264 / H.265), `mov` (ProRes), `webm` (VP9), and `png-sequence`. HDR mp4 is not supported in distributed mode.

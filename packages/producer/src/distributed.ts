@@ -70,6 +70,18 @@ export {
 // ── Assemble (Activity C) ───────────────────────────────────────────────────
 export { assemble, type AssembleResult } from "./services/distributed/assemble.js";
 
+// ── Cloud-agnostic adapter helpers ──────────────────────────────────────────
+// Shared by the distributed-render adapters (aws-lambda, gcp-cloud-run, …) so
+// the config-shape validator lives in one place; each adapter layers only its
+// own wire-format size cap on top.
+export {
+  InvalidConfigError,
+  type SerializableDistributedRenderConfig,
+  validateDistributedRenderConfig,
+  validateVariablesPayload,
+} from "./services/distributed/renderConfigValidation.js";
+export { hashProjectDir } from "./services/distributed/projectHash.js";
+
 // ── Format union ────────────────────────────────────────────────────────────
 // Canonical output-format type. The aws-lambda package re-exports it so
 // CLI / adopter SDKs can derive runtime allowlists from one source.

@@ -46,6 +46,7 @@
     "@hyperframes/aws-lambda": "workspace:*",
     "@hyperframes/core": "workspace:*",
     "@hyperframes/engine": "workspace:*",
+    "@hyperframes/gcp-cloud-run": "workspace:*",
     "@hyperframes/producer": "workspace:*",
     "@hyperframes/studio": "workspace:*",
     "@types/adm-zip": "^0.5.7",

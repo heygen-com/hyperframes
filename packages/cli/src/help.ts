@@ -56,6 +56,7 @@ const GROUPS: Group[] = [
     commands: [
       ["cloud", "Render compositions on HeyGen's cloud (no local Chrome/ffmpeg)"],
       ["lambda", "Deploy and drive distributed renders on AWS Lambda"],
+      ["cloudrun", "Deploy and drive distributed renders on Google Cloud Run"],
     ],
   },
   {

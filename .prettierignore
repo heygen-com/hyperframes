@@ -2,3 +2,6 @@ docs/
 DOCS_GUIDELINES.md
 packages/producer/tests/
 *.generated.ts
+
+# Cloud Workflows GCL — uses ${...} expressions that are not standard YAML.
+packages/gcp-cloud-run/terraform/workflow.yaml

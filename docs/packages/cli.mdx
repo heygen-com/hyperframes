@@ -1207,6 +1207,55 @@ The actions list is deliberately broad (`Resource: "*"`) because CloudFormation 
 
 `hyperframes lambda` keeps per-stack metadata under `<cwd>/.hyperframes/lambda-stack-<name>.json` so the verbs don't need to call `describe-stacks` every time. Commit the file to a repo or `.gitignore` it depending on your workflow — it contains the bucket name, state-machine ARN, and region, none of which are secrets but all of which are AWS-account-identifying.
 
+## hyperframes cloudrun
+
+The Google Cloud counterpart to `hyperframes lambda`. Deploys HyperFrames distributed rendering to Cloud Run + Cloud Workflows and drives renders from your laptop or CI. Wraps the `@hyperframes/gcp-cloud-run` SDK plus `terraform` (the module shipped with the package) and `gcloud` / Cloud Build for the image.
+
+```bash
+hyperframes cloudrun deploy --project my-gcp-project
+hyperframes cloudrun render ./my-project --width 1920 --height 1080 --wait
+hyperframes cloudrun destroy --project my-gcp-project   # when you're done
+```
+
+#### `cloudrun deploy`
+
+Enables the required APIs, builds + pushes the render image via Cloud Build (unless you pass `--image`), then `terraform apply`s the module that provisions the GCS bucket, Cloud Run service, Cloud Workflows definition, two service accounts, and a runaway-request alert. Caches the resulting bucket / service URL / workflow id so later verbs don't need them re-passed.
+
+```bash
+hyperframes cloudrun deploy --project my-gcp-project --region us-central1
+hyperframes cloudrun deploy --project my-gcp-project --image us-central1-docker.pkg.dev/my-gcp-project/hyperframes/hyperframes-render:v1
+```
+
+Flags: `--project` (required), `--region` (default `us-central1`), `--image` (skip the build), `--repo` (Artifact Registry repo, default `hyperframes`).
+
+#### `cloudrun sites create <projectDir>`
+
+Tar + upload a project to GCS once and reuse it across renders. `--site-id` overrides the content hash. Prints the `gs://` URI.
+
+#### `cloudrun render <projectDir>`
+
+Start a distributed render. `--width` / `--height` are required; `--fps` (24/30/60), `--format`, `--codec`, `--quality`, `--chunk-size`, `--max-parallel-chunks`, and `--output-resolution` (deviceScaleFactor supersampling, e.g. `4k`) mirror the local render flags. Pass composition variables with `--variables '{"title":"Hi"}'` or `--variables-file alice.json`; add `--strict-variables` to fail on a key that's undeclared or mistyped vs the composition's `data-composition-variables`. `--wait` polls until the render finishes and prints the output URI + cost; without it the command returns an execution name.
+
+#### `cloudrun render-batch <projectDir>`
+
+Fan out N personalised renders from a JSONL batch file (`--batch users.jsonl`, one `{"outputKey":"...","variables":{...}}` per line). Deploys the site once and starts an execution per entry, capped at `--max-concurrent` (default 50). `--dry-run` prints the resolved manifest without starting anything. Shares the render flags above.
+
+#### `cloudrun progress <executionName>`
+
+Print progress + cost for an in-flight or finished render. Coarse `running` progress; exact frame counts + cost on success.
+
+#### `cloudrun destroy`
+
+`terraform destroy` the stack (force-destroys the render bucket). Reads the cached project/region, or pass `--project` / `--region`.
+
+### When to pick `cloudrun` vs `lambda`
+
+Same trade-off as `lambda`, on Google Cloud instead of AWS. Pick `cloudrun` when your backend + storage already live on GCP. The render primitives are identical; only the storage (GCS), compute (Cloud Run), and orchestration (Cloud Workflows) adapters differ.
+
+### State file
+
+`hyperframes cloudrun` caches the deployed stack's coordinates under `~/.hyperframes/cloudrun-state.json` (project id, region, bucket, service URL, workflow id) so `render` / `progress` / `destroy` don't need them re-passed. None are secrets, but all are GCP-project-identifying.
+
 ## hyperframes.json
 
 `hyperframes init` writes a `hyperframes.json` file at the root of every new project. `hyperframes add` reads it to know which registry to pull items from and where to drop them. Edit the file (or delete it to fall back to defaults) to reshape your project layout or point at a custom registry.

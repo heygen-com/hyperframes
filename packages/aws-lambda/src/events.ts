@@ -16,7 +16,12 @@
  * results per §2.4).
  */
 
-import type { DistributedFormat, DistributedRenderConfig } from "@hyperframes/producer/distributed";
+import type {
+  DistributedFormat,
+  SerializableDistributedRenderConfig,
+} from "@hyperframes/producer/distributed";
+
+export type { SerializableDistributedRenderConfig } from "@hyperframes/producer/distributed";
 
 /** Discriminator for the three roles the one Lambda image fulfills. */
 export type LambdaAction = "plan" | "renderChunk" | "assemble";
@@ -92,17 +97,6 @@ export interface AssembleEvent {
    */
   Cfr?: boolean;
 }
-
-/**
- * `DistributedRenderConfig` minus the runtime-only fields (`logger`,
- * `abortSignal`, `producerConfig`). The Step Functions event JSON cannot
- * carry function references; the handler reconstitutes the runtime fields
- * from Lambda environment + the AbortController it owns.
- */
-export type SerializableDistributedRenderConfig = Omit<
-  DistributedRenderConfig,
-  "logger" | "abortSignal" | "producerConfig"
->;
 
 // ── Result types — kept small to fit Step Functions history budgets ─────────
 

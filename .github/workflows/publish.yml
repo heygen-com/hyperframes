@@ -131,6 +131,7 @@ jobs:
           publish_pkg "@hyperframes/shader-transitions" "@hyperframes/shader-transitions"
           publish_pkg "@hyperframes/studio" "@hyperframes/studio"
           publish_pkg "@hyperframes/aws-lambda" "@hyperframes/aws-lambda"
+          publish_pkg "@hyperframes/gcp-cloud-run" "@hyperframes/gcp-cloud-run"
 
           # CLI is @hyperframes/cli in the monorepo but published as unscoped "hyperframes" on npm.
           # Rewrite the name in package.json before publishing, then use npm publish directly

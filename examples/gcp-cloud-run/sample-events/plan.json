@@ -1,0 +1,6 @@
+{
+  "Action": "plan",
+  "ProjectGcsUri": "gs://hyperframes-render-PROJECT/sites/abc123/project.tar.gz",
+  "PlanOutputGcsPrefix": "gs://hyperframes-render-PROJECT/renders/hf-render-demo/",
+  "Config": { "fps": 30, "width": 1920, "height": 1080, "format": "mp4" }
+}
