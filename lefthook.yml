@@ -19,7 +19,10 @@ pre-commit:
     # fails on issues introduced by the branch, not inherited findings.
     fallow:
       glob: "packages/**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}"
-      run: bunx fallow audit --base origin/main --fail-on-issues
+      # Unset git worktree env vars: fallow creates a temp worktree internally and
+      # GIT_DIR/GIT_INDEX_FILE (set by git in worktree hook context) break that.
+      # env -u is safe in non-worktree contexts (no-op when var is unset).
+      run: env -u GIT_DIR -u GIT_INDEX_FILE -u GIT_WORK_TREE bunx fallow audit --base origin/main --fail-on-issues
     filesize:
       # Scoped to packages/studio — the 600 LOC limit is a studio architecture
       # standard enforced as part of the App.tsx decomposition work. Player and

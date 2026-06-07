@@ -9,25 +9,8 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseHtml } from "./htmlParser.js";
+import { maxEndTime, serialize } from "./test-utils.js";
 import { generateHyperframesHtml } from "../generators/hyperframes.js";
-import type { ParsedHtml } from "./htmlParser.js";
-
-function maxEndTime(elements: ParsedHtml["elements"]): number {
-  if (elements.length === 0) return 0;
-  return Math.max(...elements.map((e) => e.startTime + e.duration));
-}
-
-function serialize(parsed: ParsedHtml): string {
-  // Fixed compositionId prevents Date.now() churn from masking structural instability.
-  // The compositionId generation instability itself is tracked as R1 (stable hf- ids).
-  return generateHyperframesHtml(parsed.elements, maxEndTime(parsed.elements), {
-    compositionId: "test-comp",
-    resolution: parsed.resolution,
-    styles: parsed.styles ?? undefined,
-    keyframes: parsed.keyframes,
-    stageZoomKeyframes: parsed.stageZoomKeyframes,
-  });
-}
 
 describe("T1 — parse→serialize round-trip (DOM/timing)", () => {
   it("preserves element count and ids through one round-trip", () => {

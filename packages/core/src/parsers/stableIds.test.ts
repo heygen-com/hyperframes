@@ -13,23 +13,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { parseHtml } from "./htmlParser.js";
-import { generateHyperframesHtml } from "../generators/hyperframes.js";
-import type { ParsedHtml } from "./htmlParser.js";
-
-function maxEndTime(elements: ParsedHtml["elements"]): number {
-  if (elements.length === 0) return 0;
-  return Math.max(...elements.map((e) => e.startTime + e.duration));
-}
-
-function serialize(parsed: ParsedHtml): string {
-  return generateHyperframesHtml(parsed.elements, maxEndTime(parsed.elements), {
-    compositionId: "test-comp",
-    resolution: parsed.resolution,
-    styles: parsed.styles ?? undefined,
-    keyframes: parsed.keyframes,
-    stageZoomKeyframes: parsed.stageZoomKeyframes,
-  });
-}
+import { serialize } from "./test-utils.js";
 
 describe("T2 — stable element ids (spec for R1)", () => {
   // --- Spec (red until R1) ---

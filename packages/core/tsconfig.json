@@ -15,5 +15,12 @@
   },
   "files": ["src/runtime/mediaVolumeEnvelope.ts"],
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "src/tests", "src/runtime", "**/*.test.ts"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/tests",
+    "src/runtime",
+    "**/*.test.ts",
+    "src/parsers/test-utils.ts"
+  ]
 }
