@@ -7,8 +7,11 @@ import {
   STUDIO_OFFSET_Y_PROP,
   STUDIO_WIDTH_PROP,
   STUDIO_HEIGHT_PROP,
+  STUDIO_ROTATION_PROP,
   STUDIO_PATH_OFFSET_ATTR,
   STUDIO_BOX_SIZE_ATTR,
+  STUDIO_ROTATION_ATTR,
+  STUDIO_ROTATION_DRAFT_ATTR,
   STUDIO_ORIGINAL_TRANSLATE_ATTR,
   STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR,
   STUDIO_ORIGINAL_WIDTH_ATTR,
@@ -24,13 +27,26 @@ import {
   STUDIO_ORIGINAL_SCALE_ATTR,
   STUDIO_ORIGINAL_TRANSFORM_ORIGIN_ATTR,
   STUDIO_ORIGINAL_DISPLAY_ATTR,
+  STUDIO_ORIGINAL_ROTATE_ATTR,
+  STUDIO_ORIGINAL_INLINE_ROTATE_ATTR,
+  STUDIO_ORIGINAL_ROTATION_TRANSFORM_ORIGIN_ATTR,
   STUDIO_ORIGINAL_TRANSFORM_DISPLAY_ATTR,
 } from "./manualEditsTypes";
+import {
+  STUDIO_MOTION_ATTR,
+  STUDIO_MOTION_ORIGINAL_TRANSFORM_ATTR,
+  STUDIO_MOTION_ORIGINAL_OPACITY_ATTR,
+  STUDIO_MOTION_ORIGINAL_VISIBILITY_ATTR,
+} from "./studioMotionTypes";
 import {
   buildPathOffsetPatches,
   buildClearPathOffsetPatches,
   buildBoxSizePatches,
   buildClearBoxSizePatches,
+  buildRotationPatches,
+  buildClearRotationPatches,
+  buildMotionPatches,
+  buildClearMotionPatches,
 } from "./manualEditsDomPatches";
 
 /* ── helpers ── */
@@ -208,5 +224,119 @@ describe("buildBoxSizePatches / buildClearBoxSizePatches", () => {
   it("build/clear symmetry: clear addresses every {type,property} key that build emits", () => {
     const e = populatedBoxEl();
     assertClearCoversKeys(buildBoxSizePatches(e), buildClearBoxSizePatches(e));
+  });
+});
+
+/* ── Rotation ────────────────────────────────────────────────────────────── */
+
+describe("buildRotationPatches / buildClearRotationPatches", () => {
+  function populatedRotEl(): HTMLElement {
+    const e = div();
+    e.style.setProperty(STUDIO_ROTATION_PROP, "45");
+    e.style.setProperty("rotate", "45deg");
+    e.style.setProperty("transform-origin", "left center");
+    e.style.setProperty("display", "block");
+    e.setAttribute(STUDIO_ORIGINAL_ROTATE_ATTR, "0deg");
+    e.setAttribute(STUDIO_ORIGINAL_INLINE_ROTATE_ATTR, "0deg");
+    e.setAttribute(STUDIO_ORIGINAL_ROTATION_TRANSFORM_ORIGIN_ATTR, "center center");
+    e.setAttribute(STUDIO_ORIGINAL_TRANSFORM_DISPLAY_ATTR, "flex");
+    return e;
+  }
+
+  it("populated: captures rotation styles, attrs, and transform-display marker in declaration order", () => {
+    const ops = buildRotationPatches(populatedRotEl());
+    expect(ops).toEqual([
+      { type: "inline-style", property: STUDIO_ROTATION_PROP, value: "45" },
+      { type: "inline-style", property: "rotate", value: "45deg" },
+      { type: "inline-style", property: "transform-origin", value: "left center" },
+      { type: "inline-style", property: "display", value: "block" },
+      { type: "attribute", property: STUDIO_ROTATION_ATTR, value: "true" },
+      { type: "attribute", property: STUDIO_ORIGINAL_ROTATE_ATTR, value: "0deg" },
+      { type: "attribute", property: STUDIO_ORIGINAL_INLINE_ROTATE_ATTR, value: "0deg" },
+      {
+        type: "attribute",
+        property: STUDIO_ORIGINAL_ROTATION_TRANSFORM_ORIGIN_ATTR,
+        value: "center center",
+      },
+      { type: "attribute", property: STUDIO_ORIGINAL_TRANSFORM_DISPLAY_ATTR, value: "flex" },
+    ]);
+  });
+
+  it("empty: bare element yields only the rotation marker", () => {
+    expect(buildRotationPatches(div())).toEqual([
+      { type: "attribute", property: STUDIO_ROTATION_ATTR, value: "true" },
+    ]);
+  });
+
+  it("clear: restores rotate and transform-origin from orig attrs, nulls draft attr", () => {
+    const e = div();
+    e.setAttribute(STUDIO_ORIGINAL_INLINE_ROTATE_ATTR, "30deg");
+    e.setAttribute(STUDIO_ORIGINAL_ROTATION_TRANSFORM_ORIGIN_ATTR, "top left");
+    e.setAttribute(STUDIO_ORIGINAL_TRANSFORM_DISPLAY_ATTR, "grid");
+    const ops = buildClearRotationPatches(e);
+    expect(ops).toEqual([
+      { type: "inline-style", property: STUDIO_ROTATION_PROP, value: null },
+      { type: "inline-style", property: "rotate", value: "30deg" },
+      { type: "inline-style", property: "transform-origin", value: "top left" },
+      { type: "attribute", property: STUDIO_ROTATION_ATTR, value: null },
+      { type: "attribute", property: STUDIO_ROTATION_DRAFT_ATTR, value: null },
+      { type: "attribute", property: STUDIO_ORIGINAL_ROTATE_ATTR, value: null },
+      { type: "attribute", property: STUDIO_ORIGINAL_INLINE_ROTATE_ATTR, value: null },
+      { type: "attribute", property: STUDIO_ORIGINAL_ROTATION_TRANSFORM_ORIGIN_ATTR, value: null },
+      { type: "inline-style", property: "display", value: "grid" },
+      { type: "attribute", property: STUDIO_ORIGINAL_TRANSFORM_DISPLAY_ATTR, value: null },
+    ]);
+  });
+
+  it("build/clear symmetry: clear addresses every {type,property} key that build emits", () => {
+    const e = populatedRotEl();
+    assertClearCoversKeys(buildRotationPatches(e), buildClearRotationPatches(e));
+  });
+});
+
+/* ── Motion ──────────────────────────────────────────────────────────────── */
+
+describe("buildMotionPatches / buildClearMotionPatches", () => {
+  const MOTION_JSON = '{"kind":"gsap-motion","start":0,"duration":1}';
+
+  function populatedMotionEl(): HTMLElement {
+    const e = div();
+    e.setAttribute(STUDIO_MOTION_ATTR, MOTION_JSON);
+    e.setAttribute(STUDIO_MOTION_ORIGINAL_TRANSFORM_ATTR, "translateX(0)");
+    e.setAttribute(STUDIO_MOTION_ORIGINAL_OPACITY_ATTR, "1");
+    e.setAttribute(STUDIO_MOTION_ORIGINAL_VISIBILITY_ATTR, "visible");
+    return e;
+  }
+
+  it("populated: captures motion JSON and all three original attrs when motion attr is present", () => {
+    const ops = buildMotionPatches(populatedMotionEl());
+    expect(ops).toEqual([
+      { type: "attribute", property: STUDIO_MOTION_ATTR, value: MOTION_JSON },
+      {
+        type: "attribute",
+        property: STUDIO_MOTION_ORIGINAL_TRANSFORM_ATTR,
+        value: "translateX(0)",
+      },
+      { type: "attribute", property: STUDIO_MOTION_ORIGINAL_OPACITY_ATTR, value: "1" },
+      { type: "attribute", property: STUDIO_MOTION_ORIGINAL_VISIBILITY_ATTR, value: "visible" },
+    ]);
+  });
+
+  it("empty: returns [] when STUDIO_MOTION_ATTR is absent", () => {
+    expect(buildMotionPatches(div())).toEqual([]);
+  });
+
+  it("clear: always nulls all four motion attrs regardless of element state", () => {
+    expect(buildClearMotionPatches(div())).toEqual([
+      { type: "attribute", property: STUDIO_MOTION_ATTR, value: null },
+      { type: "attribute", property: STUDIO_MOTION_ORIGINAL_TRANSFORM_ATTR, value: null },
+      { type: "attribute", property: STUDIO_MOTION_ORIGINAL_OPACITY_ATTR, value: null },
+      { type: "attribute", property: STUDIO_MOTION_ORIGINAL_VISIBILITY_ATTR, value: null },
+    ]);
+  });
+
+  it("build/clear symmetry: clear addresses every {type,property} key that build emits", () => {
+    const e = populatedMotionEl();
+    assertClearCoversKeys(buildMotionPatches(e), buildClearMotionPatches(e));
   });
 });
