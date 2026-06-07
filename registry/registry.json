@@ -172,6 +172,10 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "news-ticker",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "x-post",
       "type": "hyperframes:block"
     },

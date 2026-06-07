@@ -244,7 +244,8 @@
             "group": "Blocks",
             "pages": [
               "catalog/blocks/flowchart",
-              "catalog/blocks/logo-outro"
+              "catalog/blocks/logo-outro",
+              "catalog/blocks/news-ticker"
             ]
           },
           {

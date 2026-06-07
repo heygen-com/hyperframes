@@ -551,6 +551,20 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/macos-tahoe-liquid-glass.png"
   },
   {
+    "name": "news-ticker",
+    "type": "block",
+    "title": "News Ticker",
+    "description": "Premium broadcast-style lower-third ticker with live label, headline ribbon, and scrolling news crawl.",
+    "tags": [
+      "lower-third",
+      "news",
+      "ticker",
+      "overlay"
+    ],
+    "href": "/catalog/blocks/news-ticker",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/news-ticker.png"
+  },
+  {
     "name": "north-korea-locked-down",
     "type": "block",
     "title": "North Korea Locked Down",

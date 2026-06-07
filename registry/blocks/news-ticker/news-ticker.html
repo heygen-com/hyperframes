@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>News Ticker</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: transparent;
+      }
+
+      body {
+        font-family: "Inter", sans-serif;
+      }
+
+      #nt-root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        color: #f8fafc;
+        background: transparent;
+      }
+
+      #nt-root .nt-shell {
+        position: absolute;
+        left: 96px;
+        right: 96px;
+        bottom: 72px;
+        height: 216px;
+        filter: drop-shadow(0 28px 44px rgba(0, 0, 0, 0.32));
+      }
+
+      #nt-root .nt-panel {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 28px;
+        background:
+          linear-gradient(180deg, rgba(21, 31, 48, 0.96), rgba(7, 13, 24, 0.98)),
+          linear-gradient(90deg, rgba(201, 31, 45, 0.72), transparent 38%);
+      }
+
+      #nt-root .nt-panel::before {
+        position: absolute;
+        inset: 0;
+        content: "";
+        background:
+          radial-gradient(circle at 14% 0%, rgba(255, 255, 255, 0.2), transparent 26%),
+          linear-gradient(
+            110deg,
+            transparent 0 42%,
+            rgba(255, 255, 255, 0.06) 42% 43%,
+            transparent 43% 100%
+          );
+        opacity: 0.72;
+        pointer-events: none;
+      }
+
+      #nt-root .nt-top-row {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 0;
+        height: 126px;
+        display: flex;
+        align-items: stretch;
+      }
+
+      #nt-root .nt-brand {
+        width: 294px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        background: linear-gradient(135deg, #e11d2e, #9f1220);
+        box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.16);
+      }
+
+      #nt-root .nt-live-dot {
+        width: 18px;
+        height: 18px;
+        border-radius: 999px;
+        background: #ffffff;
+        box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.55);
+      }
+
+      #nt-root .nt-brand-text {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        text-transform: uppercase;
+      }
+
+      #nt-root .nt-live {
+        font-size: 22px;
+        font-weight: 900;
+        line-height: 1;
+        letter-spacing: 0.16em;
+      }
+
+      #nt-root .nt-desk {
+        font-size: 15px;
+        font-weight: 700;
+        line-height: 1;
+        letter-spacing: 0.22em;
+        color: #ffffff;
+      }
+
+      #nt-root .nt-headline-wrap {
+        position: relative;
+        flex: 1;
+        display: flex;
+        align-items: center;
+        padding: 0 250px 0 44px;
+        overflow: hidden;
+      }
+
+      #nt-root .nt-headline {
+        position: relative;
+        z-index: 1;
+        font-size: 48px;
+        font-weight: 850;
+        line-height: 1.02;
+        letter-spacing: 0;
+        white-space: nowrap;
+        color: #ffffff;
+        text-shadow: 0 2px 14px rgba(0, 0, 0, 0.34);
+      }
+
+      #nt-root .nt-headline-accent {
+        color: #ff4455;
+      }
+
+      #nt-root .nt-time {
+        position: absolute;
+        top: 25px;
+        right: 38px;
+        padding: 10px 16px;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.08);
+        color: rgba(255, 255, 255, 0.74);
+        font-size: 18px;
+        font-weight: 700;
+        line-height: 1;
+        letter-spacing: 0.08em;
+        font-variant-numeric: tabular-nums;
+      }
+
+      #nt-root .nt-bottom-row {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 90px;
+        display: flex;
+        align-items: center;
+        border-top: 1px solid rgba(255, 255, 255, 0.11);
+        background: rgba(2, 6, 13, 0.58);
+      }
+
+      #nt-root .nt-label {
+        width: 294px;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-right: 1px solid rgba(255, 255, 255, 0.14);
+        background: #5f0712;
+        color: #ffffff;
+        font-size: 24px;
+        font-weight: 900;
+        line-height: 1;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+
+      #nt-root .nt-ticker-window {
+        position: relative;
+        flex: 1;
+        height: 100%;
+        overflow: hidden;
+        background: #050b15;
+      }
+
+      #nt-root .nt-ticker-window::before,
+      #nt-root .nt-ticker-window::after {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        z-index: 2;
+        width: 90px;
+        content: "";
+        pointer-events: none;
+      }
+
+      #nt-root .nt-ticker-window::before {
+        left: 0;
+        background: linear-gradient(90deg, #050b15, transparent);
+      }
+
+      #nt-root .nt-ticker-window::after {
+        right: 0;
+        background: linear-gradient(270deg, #050b15, transparent);
+      }
+
+      #nt-root .nt-ticker-track {
+        position: absolute;
+        left: 34px;
+        top: 0;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        gap: 34px;
+        white-space: nowrap;
+        will-change: transform;
+      }
+
+      #nt-root .nt-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 14px;
+        padding: 13px 18px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 999px;
+        background: #08111f;
+        color: #ffffff;
+        font-size: 31px;
+        font-weight: 650;
+        line-height: 1;
+        letter-spacing: 0;
+      }
+
+      #nt-root .nt-separator {
+        width: 9px;
+        height: 9px;
+        border-radius: 999px;
+        background: #e11d2e;
+        box-shadow: 0 0 22px rgba(225, 29, 46, 0.75);
+      }
+
+      #nt-root .nt-metric {
+        padding: 4px 8px;
+        border-radius: 8px;
+        background: #063344;
+        color: #c8f8ff;
+        font-weight: 850;
+        font-variant-numeric: tabular-nums;
+      }
+
+      #nt-root .nt-flash {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: -260px;
+        z-index: 3;
+        width: 210px;
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.18), transparent);
+        transform: skewX(-16deg);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="nt-root"
+      data-composition-id="news-ticker"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="7"
+    >
+      <section
+        id="nt-shell"
+        class="clip nt-shell"
+        data-start="0"
+        data-duration="7"
+        data-track-index="0"
+      >
+        <div class="nt-panel">
+          <div id="nt-flash" class="nt-flash"></div>
+          <div class="nt-top-row">
+            <div id="nt-brand" class="nt-brand">
+              <div id="nt-live-dot" class="nt-live-dot"></div>
+              <div class="nt-brand-text">
+                <div class="nt-live">Live</div>
+                <div class="nt-desk">Global Desk</div>
+              </div>
+            </div>
+            <div class="nt-headline-wrap">
+              <h1 id="nt-headline" class="nt-headline">
+                AI video tools move from <span class="nt-headline-accent">prototype</span> to
+                production
+              </h1>
+              <div id="nt-time" class="nt-time">09:41 UTC</div>
+            </div>
+          </div>
+          <div class="nt-bottom-row">
+            <div id="nt-label" class="nt-label">Breaking</div>
+            <div class="nt-ticker-window">
+              <div id="nt-ticker-track" class="nt-ticker-track">
+                <span class="nt-item"
+                  ><span class="nt-separator"></span>Creator teams shorten launch cycles by
+                  <span class="nt-metric">38%</span></span
+                >
+                <span class="nt-item"
+                  ><span class="nt-separator"></span>Rendering queues clear in under
+                  <span class="nt-metric">2 min</span></span
+                >
+                <span class="nt-item"
+                  ><span class="nt-separator"></span>New catalog blocks trending across product
+                  demos</span
+                >
+                <span class="nt-item"
+                  ><span class="nt-separator"></span>Studio editors adopt HTML-first motion
+                  systems</span
+                >
+                <span class="nt-item"
+                  ><span class="nt-separator"></span>Creator teams shorten launch cycles by
+                  <span class="nt-metric">38%</span></span
+                >
+                <span class="nt-item"
+                  ><span class="nt-separator"></span>Rendering queues clear in under
+                  <span class="nt-metric">2 min</span></span
+                >
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+
+      var tl = gsap.timeline({ paused: true });
+      var shell = document.getElementById("nt-shell");
+      var brand = document.getElementById("nt-brand");
+      var headline = document.getElementById("nt-headline");
+      var label = document.getElementById("nt-label");
+      var tickerTrack = document.getElementById("nt-ticker-track");
+      var liveDot = document.getElementById("nt-live-dot");
+      var flash = document.getElementById("nt-flash");
+      var time = document.getElementById("nt-time");
+
+      gsap.set(shell, { y: 260, opacity: 0 });
+      gsap.set(brand, { x: -80, opacity: 0 });
+      gsap.set(headline, { y: 26, opacity: 0, clipPath: "inset(0 100% 0 0)" });
+      gsap.set(label, { y: 18, opacity: 0 });
+      gsap.set(time, { y: -10, opacity: 0 });
+      gsap.set(tickerTrack, { x: 1260 });
+
+      tl.to(shell, { y: 0, opacity: 1, duration: 0.52, ease: "power4.out" }, 0);
+      tl.to(brand, { x: 0, opacity: 1, duration: 0.42, ease: "power3.out" }, 0.08);
+      tl.to(
+        headline,
+        {
+          y: 0,
+          opacity: 1,
+          clipPath: "inset(0 0% 0 0)",
+          duration: 0.62,
+          ease: "power3.out",
+        },
+        0.18,
+      );
+      tl.to(time, { y: 0, opacity: 1, duration: 0.32, ease: "power2.out" }, 0.5);
+      tl.to(label, { y: 0, opacity: 1, duration: 0.28, ease: "power2.out" }, 0.55);
+      tl.to(flash, { x: 2040, duration: 0.86, ease: "power2.inOut" }, 0.34);
+      tl.to(
+        tickerTrack,
+        {
+          x: -1120,
+          duration: 6.05,
+          ease: "none",
+        },
+        0.62,
+      );
+      tl.to(
+        liveDot,
+        {
+          scale: 1.32,
+          boxShadow: "0 0 0 18px rgba(255,255,255,0)",
+          duration: 0.42,
+          repeat: 11,
+          yoyo: true,
+          ease: "sine.inOut",
+        },
+        0.58,
+      );
+      tl.to(flash, { x: 4080, duration: 0.72, ease: "power2.inOut" }, 3.42);
+      tl.to(shell, { y: 170, opacity: 0, duration: 0.34, ease: "power3.in" }, 6.62);
+
+      window.__timelines["news-ticker"] = tl;
+    </script>
+  </body>
+</html>
