@@ -74,6 +74,14 @@
       "import": "./src/parsers/springEase.ts",
       "types": "./src/parsers/springEase.ts"
     },
+    "./fonts/aliases": {
+      "import": "./src/fonts/aliases.ts",
+      "types": "./src/fonts/aliases.ts"
+    },
+    "./fonts/system-locator": {
+      "import": "./src/fonts/systemFontLocator.ts",
+      "types": "./src/fonts/systemFontLocator.ts"
+    },
     "./schemas/registry.json": "./schemas/registry.json",
     "./schemas/registry-item.json": "./schemas/registry-item.json"
   },
@@ -136,6 +144,14 @@
       "./spring-ease": {
         "import": "./dist/parsers/springEase.js",
         "types": "./dist/parsers/springEase.d.ts"
+      },
+      "./fonts/aliases": {
+        "import": "./dist/fonts/aliases.js",
+        "types": "./dist/fonts/aliases.d.ts"
+      },
+      "./fonts/system-locator": {
+        "import": "./dist/fonts/systemFontLocator.js",
+        "types": "./dist/fonts/systemFontLocator.d.ts"
       },
       "./schemas/registry.json": "./schemas/registry.json",
       "./schemas/registry-item.json": "./schemas/registry-item.json"

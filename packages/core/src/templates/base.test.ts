@@ -100,6 +100,7 @@ describe("constants", () => {
   });
 
   it("TEXT_STYLES includes font and alignment", () => {
+    expect(TEXT_STYLES).toContain('font-family: "Inter"');
     expect(TEXT_STYLES).toContain("font-size: 48px");
     expect(TEXT_STYLES).toContain("font-weight: bold");
     expect(TEXT_STYLES).toContain("color: white");

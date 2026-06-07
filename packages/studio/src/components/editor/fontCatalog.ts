@@ -111,14 +111,21 @@ export const COMMON_LOCAL_FONT_FAMILIES = [
   "SF Pro Text",
   "Avenir",
   "Avenir Next",
-  "Helvetica Neue",
-  "Arial",
-  "Georgia",
-  "Times New Roman",
   "Menlo",
   "Monaco",
-  "Courier New",
 ] as const;
+
+import { resolveAliasDisplayName } from "@hyperframes/core/fonts/aliases";
+
+/**
+ * Resolves the render-time canonical font for a local font family name.
+ * Derived from the shared FONT_ALIAS_MAP — no hand-curation needed.
+ */
+export function renderAliasFor(family: string): string | undefined {
+  const display = resolveAliasDisplayName(family);
+  if (!display || display.toLowerCase() === family.toLowerCase()) return undefined;
+  return display;
+}
 
 export function googleFontStylesheetUrl(family: string): string {
   const encodedFamily = encodeURIComponent(family.trim()).replace(/%20/g, "+");

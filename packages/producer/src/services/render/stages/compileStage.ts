@@ -78,6 +78,11 @@ export interface CompileStageInput {
    * leaves it `undefined` to preserve current behavior.
    */
   failClosedFontFetch?: boolean;
+  /**
+   * When `true`, fonts not resolved by aliases or Google Fonts are located
+   * on the local filesystem and embedded. Distributed renders pass `false`.
+   */
+  allowSystemFontCapture?: boolean;
 }
 
 export interface CompileStageResult {
@@ -111,11 +116,13 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
     log,
     assertNotAborted,
     failClosedFontFetch,
+    allowSystemFontCapture,
   } = input;
 
   const compileStart = Date.now();
   const compiled = await compileForRender(projectDir, htmlPath, join(workDir, "downloads"), {
     failClosedFontFetch: failClosedFontFetch === true,
+    allowSystemFontCapture,
   });
   assertNotAborted();
   const compileOnlyMs = Date.now() - compileStart;

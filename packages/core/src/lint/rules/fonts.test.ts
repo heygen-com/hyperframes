@@ -34,6 +34,84 @@ describe("font rules", () => {
     });
   });
 
+  describe("system_font_will_alias", () => {
+    it("flags SF Mono as aliased to JetBrains Mono", async () => {
+      const html = `<div data-composition-id="test" data-width="1920" data-height="1080">
+        <style>code { font-family: 'SF Mono', monospace; }</style>
+      </div>`;
+      const findings = await findByCode(html, "system_font_will_alias");
+      expect(findings).toHaveLength(1);
+      expect(findings[0]!.severity).toBe("info");
+      expect(findings[0]!.message).toContain("JetBrains Mono");
+    });
+
+    it("flags Helvetica Neue as aliased to Inter", async () => {
+      const html = `<div data-composition-id="test" data-width="1920" data-height="1080">
+        <style>body { font-family: 'Helvetica Neue', sans-serif; }</style>
+      </div>`;
+      const findings = await findByCode(html, "system_font_will_alias");
+      expect(findings).toHaveLength(1);
+      expect(findings[0]!.message).toContain("Inter");
+    });
+
+    it("does not flag canonical font names", async () => {
+      const html = `<div data-composition-id="test" data-width="1920" data-height="1080">
+        <style>body { font-family: 'Inter', sans-serif; }</style>
+      </div>`;
+      const findings = await findByCode(html, "system_font_will_alias");
+      expect(findings).toHaveLength(0);
+    });
+
+    it("does not flag Roboto (canonical name)", async () => {
+      const html = `<div data-composition-id="test" data-width="1920" data-height="1080">
+        <style>body { font-family: 'Roboto', sans-serif; }</style>
+      </div>`;
+      const findings = await findByCode(html, "system_font_will_alias");
+      expect(findings).toHaveLength(0);
+    });
+
+    it("does not flag unknown fonts (handled by font_family_without_font_face)", async () => {
+      const html = `<div data-composition-id="test" data-width="1920" data-height="1080">
+        <style>body { font-family: 'Comic Sans MS', sans-serif; }</style>
+      </div>`;
+      const findings = await findByCode(html, "system_font_will_alias");
+      expect(findings).toHaveLength(0);
+    });
+
+    it("does not flag aliased fonts that have explicit @font-face", async () => {
+      const html = `<div data-composition-id="test" data-width="1920" data-height="1080">
+        <style>
+          @font-face { font-family: 'Menlo'; src: url('../fonts/menlo.woff2'); }
+          code { font-family: 'Menlo', monospace; }
+        </style>
+      </div>`;
+      const findings = await findByCode(html, "system_font_will_alias");
+      expect(findings).toHaveLength(0);
+    });
+
+    it("handles case-insensitive font names", async () => {
+      const html = `<div data-composition-id="test" data-width="1920" data-height="1080">
+        <style>body { font-family: 'VERDANA', sans-serif; }</style>
+      </div>`;
+      const findings = await findByCode(html, "system_font_will_alias");
+      expect(findings).toHaveLength(1);
+      expect(findings[0]!.message).toContain("Inter");
+    });
+
+    it("reports multiple aliased fonts in one finding", async () => {
+      const html = `<div data-composition-id="test" data-width="1920" data-height="1080">
+        <style>
+          body { font-family: 'Verdana', sans-serif; }
+          code { font-family: 'Consolas', monospace; }
+        </style>
+      </div>`;
+      const findings = await findByCode(html, "system_font_will_alias");
+      expect(findings).toHaveLength(1);
+      expect(findings[0]!.message).toContain("Inter");
+      expect(findings[0]!.message).toContain("JetBrains Mono");
+    });
+  });
+
   describe("font_family_without_font_face", () => {
     it("flags font-family used without @font-face", async () => {
       const html = `<div data-composition-id="test" data-width="1920" data-height="1080">

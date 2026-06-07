@@ -36,10 +36,11 @@ import {
   type AudioVolumeKeyframe,
   analyzeKeyframeIntervals,
 } from "@hyperframes/engine";
-import { downloadToTemp, isHttpUrl } from "../utils/urlDownloader.js";
+import { assertPublicHttpsUrl, downloadToTemp, isHttpUrl } from "../utils/urlDownloader.js";
 import type { Page } from "puppeteer-core";
 import { injectDeterministicFontFaces } from "./deterministicFonts.js";
 import { createStudioPositionSeekReapplyScript } from "@hyperframes/core/studio-api/manual-edits-render-script";
+import { defaultLogger } from "../logger.js";
 
 export interface CompiledComposition {
   html: string;
@@ -707,7 +708,7 @@ function ensureFullDocument(html: string): string {
   // Wrap fragment with a proper document including margin/padding reset.
   // Without this, Chrome applies default body { margin: 8px } which creates
   // visible white lines at the edges of rendered video.
-  return `<!DOCTYPE html>\n<html>\n<head>\n  <meta charset="UTF-8">\n  <style>*{margin:0;padding:0;box-sizing:border-box;text-rendering:geometricPrecision}body{overflow:hidden;background:#000}</style>\n</head>\n<body style="margin:0;overflow:hidden">\n${html}\n</body>\n</html>`;
+  return `<!DOCTYPE html>\n<html>\n<head>\n  <meta charset="UTF-8">\n  <style>*{margin:0;padding:0;box-sizing:border-box;text-rendering:geometricPrecision}body{overflow:hidden;background:#000;font-family:"Inter",sans-serif}</style>\n</head>\n<body style="margin:0;overflow:hidden">\n${html}\n</body>\n</html>`;
 }
 
 /**
@@ -780,9 +781,9 @@ export async function inlineExternalScripts(html: string): Promise<string> {
       }
       inlineScript.textContent = `/* inlined: ${src} */\n${safeText}\n`;
       el.replaceWith(inlineScript);
-      console.log(`[Compiler] Inlined CDN script: ${src}`);
+      defaultLogger.info(`[Compiler] Inlined CDN script: ${src}`);
     } else {
-      console.warn(
+      defaultLogger.warn(
         `[Compiler] WARNING: Failed to download CDN script: ${src} — ${download.reason}. ` +
           `The render may fail if this script is required (e.g. GSAP). ` +
           `Consider bundling it locally in your project.`,
@@ -860,7 +861,7 @@ export function collectExternalAssets(
   }
 
   if (externalAssets.size > 0) {
-    console.log(
+    defaultLogger.info(
       `[Compiler] Found ${externalAssets.size} asset(s) outside project directory — will copy to render output`,
     );
   }
@@ -914,7 +915,7 @@ async function downloadAndRewriteUrls(
         const localPath = await downloadToTemp(url, remoteDir);
         urlToLocal.set(url, localPath);
       } catch (err) {
-        console.warn(
+        defaultLogger.warn(
           `[Compiler] ${warnLabel} ${url} — using original URL as fallback. ${
             err instanceof Error ? err.message : String(err)
           }`,
@@ -939,7 +940,7 @@ async function downloadAndRewriteUrls(
     if (extraRewrite) result = extraRewrite(result, url, relPath);
   }
 
-  console.log(`[Compiler] ${logLabel} ${urlToLocal.size} to ${REMOTE_MEDIA_SUBDIR}/`);
+  defaultLogger.info(`[Compiler] ${logLabel} ${urlToLocal.size} to ${REMOTE_MEDIA_SUBDIR}/`);
   return { html: result, remoteMediaAssets };
 }
 
@@ -1043,15 +1044,214 @@ const REMOTE_FONTFACE_URL_RE = /url\(["']?(https?:\/\/[^"')]+)["']?\)/gi;
  * to the next font in the stack (e.g. Arial). Downloading the font file
  * before render and rewriting to a local path eliminates the CORS race.
  */
+/** Returns true for URLs belonging to Google Fonts (handled by the deterministic font injector). */
+function isGoogleFontsUrl(href: string): boolean {
+  try {
+    const host = new URL(href).hostname.toLowerCase();
+    return host === "fonts.googleapis.com" || host === "fonts.gstatic.com";
+  } catch {
+    return /fonts\.googleapis\.com|fonts\.gstatic\.com/i.test(href);
+  }
+}
+
+const MAX_STYLESHEET_BYTES = 2 * 1024 * 1024;
+
+async function fetchExternalStylesheetCss(href: string): Promise<string | null> {
+  try {
+    assertPublicHttpsUrl(href);
+  } catch {
+    return null;
+  }
+  try {
+    const response = await fetch(href, {
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) {
+      defaultLogger.warn(
+        `[Compiler] External stylesheet fetch failed for ${href} — HTTP ${response.status}`,
+      );
+      return null;
+    }
+    const contentLength = response.headers.get("content-length");
+    if (contentLength && parseInt(contentLength, 10) > MAX_STYLESHEET_BYTES) {
+      defaultLogger.warn(
+        `[Compiler] External stylesheet too large (${contentLength} bytes): ${href}`,
+      );
+      return null;
+    }
+    const text = await response.text();
+    if (text.length > MAX_STYLESHEET_BYTES) {
+      defaultLogger.warn(
+        `[Compiler] External stylesheet too large (${text.length} bytes): ${href}`,
+      );
+      return null;
+    }
+    return text;
+  } catch (err) {
+    defaultLogger.warn(
+      `[Compiler] External stylesheet fetch failed for ${href} — ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+    return null;
+  }
+}
+
+/**
+ * Extract all `@font-face { ... }` blocks from a CSS string, preserving the
+ * full rule text (including the `@font-face` keyword and braces).
+ *
+ * Uses a depth-tracking scan instead of `[^}]*` so blocks with nested
+ * descriptor values that happen to contain `}` (rare but valid in
+ * `format(...)` hints with custom idents) are captured correctly.
+ */
+function extractFontFaceBlocks(css: string): string[] {
+  const blocks: string[] = [];
+  const atRule = /@font-face\s*/gi;
+  let m: RegExpExecArray | null;
+  while ((m = atRule.exec(css)) !== null) {
+    const openIdx = css.indexOf("{", m.index + m[0].length);
+    if (openIdx === -1) break;
+    let depth = 1;
+    let i = openIdx + 1;
+    for (; i < css.length && depth > 0; i++) {
+      if (css[i] === "{") depth++;
+      else if (css[i] === "}") depth--;
+    }
+    if (depth === 0) {
+      blocks.push(css.slice(m.index, i));
+      atRule.lastIndex = i;
+    }
+  }
+  return blocks;
+}
+
+/**
+ * Find all external `<link rel="stylesheet">` tags pointing to non-Google
+ * CDNs, fetch their CSS, and replace the `<link>` with an inline `<style>`
+ * containing only the `@font-face` rules. This allows Phase 2 (the existing
+ * inline scan) to pick up and localise the font file URLs.
+ *
+ * Google Fonts links are excluded because the deterministic font injector
+ * handles those. If a fetch fails or the CSS has no `@font-face` blocks,
+ * the original `<link>` tag is preserved (graceful degradation).
+ */
+// fallow-ignore-next-line complexity
+async function inlineExternalFontStylesheets(html: string): Promise<string> {
+  const linkRe = /<link\b[^>]*\brel=["']stylesheet["'][^>]*>/gi;
+  const hrefRe = /\bhref=["']([^"']+)["']/i;
+
+  const linkMatches: { fullMatch: string; href: string }[] = [];
+  let linkMatch: RegExpExecArray | null;
+  while ((linkMatch = linkRe.exec(html)) !== null) {
+    const tag = linkMatch[0];
+    const hrefMatch = hrefRe.exec(tag);
+    if (!hrefMatch?.[1]) continue;
+    const href = hrefMatch[1];
+    if (!/^https?:\/\//i.test(href)) continue;
+    if (isGoogleFontsUrl(href)) continue;
+    linkMatches.push({ fullMatch: tag, href });
+  }
+
+  if (linkMatches.length === 0) return html;
+
+  const MAX_CONCURRENT_STYLESHEET_FETCHES = 4;
+  const fetches: { fullMatch: string; href: string; css: string | null }[] = [];
+  for (let i = 0; i < linkMatches.length; i += MAX_CONCURRENT_STYLESHEET_FETCHES) {
+    const batch = linkMatches.slice(i, i + MAX_CONCURRENT_STYLESHEET_FETCHES);
+    const results = await Promise.all(
+      batch.map(async ({ fullMatch, href }) => {
+        const css = await fetchExternalStylesheetCss(href);
+        return { fullMatch, href, css };
+      }),
+    );
+    fetches.push(...results);
+  }
+
+  let result = html;
+  for (const { fullMatch, href, css } of fetches) {
+    if (css === null) continue;
+    const fontFaceBlocks = extractFontFaceBlocks(css);
+    if (fontFaceBlocks.length === 0) continue;
+    const inlineStyle = `<style>/* Inlined from ${href} */\n${fontFaceBlocks.join("\n")}\n</style>`;
+    result = result.replace(fullMatch, inlineStyle);
+    defaultLogger.info(
+      `[Compiler] Inlined ${fontFaceBlocks.length} @font-face rule(s) from external stylesheet: ${href}`,
+    );
+  }
+  return result;
+}
+
+/**
+ * Collect all remote `url(https://...)` references inside `@font-face` blocks
+ * found in `<style>` tags.
+ */
+// fallow-ignore-next-line complexity
+function collectFontFaceUrls(html: string): Set<string> {
+  const styleBlockRe = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
+  const urlSet = new Set<string>();
+
+  let styleMatch: RegExpExecArray | null;
+  while ((styleMatch = styleBlockRe.exec(html)) !== null) {
+    const cssText = styleMatch[1] ?? "";
+    // Depth-tracking scanner to correctly handle @font-face blocks that
+    // contain nested braces (e.g. unicode-range fallback rules).
+    let i = 0;
+    while (i < cssText.length) {
+      const atIdx = cssText.indexOf("@font-face", i);
+      if (atIdx === -1) break;
+      const braceStart = cssText.indexOf("{", atIdx);
+      if (braceStart === -1) break;
+      let depth = 1;
+      let j = braceStart + 1;
+      while (j < cssText.length && depth > 0) {
+        if (cssText[j] === "{") depth++;
+        else if (cssText[j] === "}") depth--;
+        j++;
+      }
+      const block = cssText.slice(braceStart + 1, j - 1);
+      const urlRe = new RegExp(REMOTE_FONTFACE_URL_RE.source, REMOTE_FONTFACE_URL_RE.flags);
+      let urlMatch: RegExpExecArray | null;
+      while ((urlMatch = urlRe.exec(block)) !== null) {
+        if (urlMatch[1]) urlSet.add(urlMatch[1]);
+      }
+      i = j;
+    }
+  }
+  return urlSet;
+}
+
 /** @internal exported for unit testing only */
 export async function localizeRemoteFontFaces(
   html: string,
   downloadDir: string,
 ): Promise<{ html: string; remoteMediaAssets: Map<string, string> }> {
-  // Only scan inside <style> blocks to avoid false-positive matches in JS.
+  // Phase 1: Inline @font-face rules from external <link rel="stylesheet"> tags.
+  const processed = await inlineExternalFontStylesheets(html);
+
+  // Phase 2: Download font file URLs from all @font-face blocks (both
+  // pre-existing inline blocks and the ones just inlined from external sheets).
+  const urlSet = collectFontFaceUrls(processed);
+
+  return downloadAndRewriteUrls(
+    urlSet,
+    processed,
+    join(downloadDir, REMOTE_MEDIA_SUBDIR),
+    "Remote font download failed for",
+    "Localized remote font face(s)",
+    (h, url, relPath) => h.replaceAll(`url(${url})`, `url("${relPath}")`),
+  );
+}
+
+const LOCAL_FONTFACE_URL_RE = /url\(["']?(?!data:|https?:\/\/)([^"')]+)["']?\)/gi;
+
+// fallow-ignore-next-line complexity
+async function embedLocalFontFaces(html: string, projectDir: string): Promise<string> {
+  const { fontToDataUri: toDataUri } = await import("./fontCompression.js");
   const styleBlockRe = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
   const fontFaceRe = /@font-face\s*\{([^}]*)\}/gi;
-  const urlSet = new Set<string>();
+  let result = html;
+  const embedded = new Set<string>();
 
   let styleMatch: RegExpExecArray | null;
   while ((styleMatch = styleBlockRe.exec(html)) !== null) {
@@ -1060,23 +1260,30 @@ export async function localizeRemoteFontFaces(
     let ffMatch: RegExpExecArray | null;
     while ((ffMatch = ffRe.exec(cssText)) !== null) {
       const block = ffMatch[1] ?? "";
-      const urlRe = new RegExp(REMOTE_FONTFACE_URL_RE.source, REMOTE_FONTFACE_URL_RE.flags);
+      const urlRe = new RegExp(LOCAL_FONTFACE_URL_RE.source, LOCAL_FONTFACE_URL_RE.flags);
       let urlMatch: RegExpExecArray | null;
       while ((urlMatch = urlRe.exec(block)) !== null) {
-        if (urlMatch[1]) urlSet.add(urlMatch[1]);
+        const localPath = urlMatch[1];
+        if (!localPath || embedded.has(localPath)) continue;
+        const absPath = localPath.startsWith("/") ? localPath : resolve(projectDir, localPath);
+        if (!isPathInside(absPath, projectDir)) continue;
+        if (!existsSync(absPath)) continue;
+        const ext = absPath.match(/\.(woff2?|ttf|otf|ttc)$/i)?.[1]?.toLowerCase() ?? "ttf";
+        try {
+          const buffer = readFileSync(absPath);
+          const dataUri = await toDataUri(buffer, ext);
+          result = result.replaceAll(localPath, dataUri);
+          embedded.add(localPath);
+          defaultLogger.info(
+            `[Compiler] Embedded local font file: ${localPath} (${(buffer.length / 1024).toFixed(0)} KB → data URI)`,
+          );
+        } catch {
+          // File read or compression failed — keep the original path
+        }
       }
     }
   }
-
-  return downloadAndRewriteUrls(
-    urlSet,
-    html,
-    join(downloadDir, REMOTE_MEDIA_SUBDIR),
-    "Remote font download failed for",
-    "Localized remote font face(s)",
-    // Also rewrite unquoted url(https://...) CSS syntax.
-    (h, url, relPath) => h.replaceAll(`url(${url})`, `url("${relPath}")`),
-  );
+  return result;
 }
 
 /**
@@ -1093,6 +1300,13 @@ export interface CompileForRenderOptions {
    * `false` preserves the in-process behavior.
    */
   failClosedFontFetch?: boolean;
+  /**
+   * When `true`, fonts not resolved by the bundled alias map or Google Fonts
+   * are located on the local filesystem, compressed to woff2, and embedded.
+   * Default `true` for local renders. Distributed callers pass `false` to
+   * prevent host-specific font capture from leaking into the planDir.
+   */
+  allowSystemFontCapture?: boolean;
 }
 
 const GSAP_CDN_BASE = "https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/";
@@ -1104,7 +1318,7 @@ function rewriteUnresolvableGsapToCdn(html: string, projectDir: string): string 
       if (/^https?:\/\//i.test(src)) return full;
       const absPath = resolve(projectDir, src);
       if (existsSync(absPath)) return full;
-      console.log(
+      defaultLogger.info(
         `[Compiler] Rewriting missing gsap script to CDN: ${src} → ${GSAP_CDN_BASE}${file}`,
       );
       return `${prefix}${GSAP_CDN_BASE}${file}${suffix}`;
@@ -1164,7 +1378,10 @@ export async function compileForRender(
     injectTextRenderingRule(
       coalesceHeadStylesAndBodyScripts(promoteCssImportsToLinkTags(sanitizedHtml)),
     ),
-    { failClosedFontFetch: options.failClosedFontFetch === true },
+    {
+      failClosedFontFetch: options.failClosedFontFetch === true,
+      allowSystemFontCapture: options.allowSystemFontCapture,
+    },
   );
 
   // Download CDN scripts and inline them AFTER coalescing. This order matters:
@@ -1224,13 +1441,13 @@ export async function compileForRender(
   // Remote font URLs fail with a CORS rejection at render time (S3 does not
   // allow http://localhost:PORT as origin), causing Chrome to silently fall
   // back to the next font in the stack.
-  const { html, remoteMediaAssets: remoteFontAssets } = await localizeRemoteFontFaces(
-    htmlWithLocalImages,
-    downloadDir,
-  );
+  const { html: htmlWithLocalizedFonts, remoteMediaAssets: remoteFontAssets } =
+    await localizeRemoteFontFaces(htmlWithLocalImages, downloadDir);
   for (const [relPath, absPath] of remoteFontAssets) {
     externalAssets.set(relPath, absPath);
   }
+
+  const html = await embedLocalFontFaces(htmlWithLocalizedFonts, projectDir);
 
   // Parse main HTML elements
   const mainVideos = parseVideoElements(html);
@@ -1253,7 +1470,7 @@ export async function compileForRender(
     Promise.all([analyzeKeyframeIntervals(videoPath), extractMediaMetadata(videoPath)])
       .then(([analysis, metadata]) => {
         if (analysis.isProblematic) {
-          console.warn(
+          defaultLogger.warn(
             `[Compiler] WARNING: Video "${video.id}" has sparse keyframes (max interval: ${analysis.maxIntervalSeconds}s). ` +
               `This causes seek failures and frame freezing. Re-encode with: ${reencode}`,
           );

@@ -2,9 +2,16 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
+import { defaultLogger } from "../logger.js";
 
+import { FONT_ALIAS_MAP } from "@hyperframes/core/fonts/aliases";
+import {
+  locateSystemFontVariants,
+  SYSTEM_FONT_SIZE_LIMIT,
+} from "@hyperframes/core/fonts/system-locator";
 import { parseHTML } from "linkedom";
 import { EMBEDDED_FONT_DATA } from "./fontData.generated.js";
+import { fontToDataUri } from "./fontCompression.js";
 
 type FontFaceSpec = {
   weight: string;
@@ -153,39 +160,11 @@ const CANONICAL_FONTS: Record<string, CanonicalFontSpec> = {
   },
 };
 
-const FONT_ALIASES: Record<string, keyof typeof CANONICAL_FONTS> = {
-  inter: "inter",
-  "helvetica neue": "inter",
-  helvetica: "inter",
-  arial: "inter",
-  "helvetica bold": "inter",
-  montserrat: "montserrat",
-  futura: "montserrat",
-  "din alternate": "montserrat",
-  "arial black": "montserrat",
-  outfit: "outfit",
-  nunito: "nunito",
-  oswald: "oswald",
-  "bebas neue": "league-gothic",
-  "league gothic": "league-gothic",
-  "archivo black": "archivo-black",
-  "space mono": "space-mono",
-  "ibm plex mono": "ibm-plex-mono",
-  "jetbrains mono": "jetbrains-mono",
-  "courier new": "jetbrains-mono",
-  courier: "jetbrains-mono",
-  "eb garamond": "eb-garamond",
-  garamond: "eb-garamond",
-  "playfair display": "playfair-display",
-  "source code pro": "source-code-pro",
-  "noto sans jp": "noto-sans-jp",
-  "noto sans japanese": "noto-sans-jp",
-  roboto: "roboto",
-  "open sans": "open-sans",
-  lato: "lato",
-  poppins: "poppins",
-  "segoe ui": "roboto",
-};
+// FONT_ALIASES derives from the shared alias map in @hyperframes/core.
+// The cast is safe: every value in FONT_ALIAS_MAP is a valid CANONICAL_FONTS key.
+export const FONT_ALIASES = FONT_ALIAS_MAP as Record<string, keyof typeof CANONICAL_FONTS>;
+
+export { FONT_ALIAS_KEYS } from "@hyperframes/core/fonts/aliases";
 
 function normalizeFamilyName(family: string): string {
   return family
@@ -322,7 +301,30 @@ async function buildFontFaceCss(
       continue;
     }
 
-    // Neither path resolved
+    // Path 3: locate font on the local filesystem, compress, and embed.
+    if (options.allowSystemFontCapture) {
+      const variants = locateSystemFontVariants(originalCaseFamily);
+      if (variants.length > 0) {
+        let totalBytes = 0;
+        for (const variant of variants) {
+          const fontBuffer = readFileSync(variant.path);
+          totalBytes += fontBuffer.length;
+          const dataUri = await fontToDataUri(fontBuffer, variant.format);
+          rules.push(buildFontFaceRule(originalCaseFamily, dataUri, variant.weight, variant.style));
+        }
+        if (totalBytes > SYSTEM_FONT_SIZE_LIMIT) {
+          defaultLogger.warn(
+            `[Compiler] System font "${originalCaseFamily}" is large (${(totalBytes / 1024 / 1024).toFixed(1)} MB total across ${variants.length} variant(s)) — embedding anyway. Consider font subsetting for production.`,
+          );
+        }
+        defaultLogger.info(
+          `[Compiler] Embedded system font "${originalCaseFamily}" — ${variants.length} variant(s), ${(totalBytes / 1024).toFixed(0)} KB total`,
+        );
+        continue;
+      }
+    }
+
+    // No path resolved
     unresolved.push(originalCaseFamily);
   }
 
@@ -340,14 +342,14 @@ function warnUnresolvedFonts(unresolved: string[]): void {
       return acc;
     }, [])
     .sort();
-  console.warn(
+  defaultLogger.warn(
     `[Compiler] No deterministic font mapping for: ${unresolved.join(", ")}\n` +
       `  Mapped fonts: ${mapped.join(", ")}\n` +
       `  To fix, pick one:\n` +
       `    1. Use a mapped font name instead (see list above)\n` +
       `    2. Add a @font-face block in your HTML with a local or hosted font file\n` +
       `    3. Install the font locally on the render machine (Docker: add to Dockerfile)\n` +
-      `    4. Add an alias to FONT_ALIASES in deterministicFonts.ts (for contributors)\n` +
+      `    4. Add an alias to FONT_ALIAS_MAP in packages/core/src/fonts/aliases.ts (for contributors)\n` +
       `  Docs: https://hyperframes.heygen.com/docs/fonts`,
   );
 }
@@ -442,6 +444,7 @@ export class FontFetchError extends Error {
 interface InternalFontFetchOptions {
   failClosedFontFetch: boolean;
   fetchImpl: typeof fetch;
+  allowSystemFontCapture: boolean;
 }
 
 /**
@@ -580,7 +583,7 @@ async function fetchGoogleFont(
   }
 
   if (faces.length > 0) {
-    console.log(
+    defaultLogger.info(
       `[Compiler] Fetched ${faces.length} font face(s) for "${familyName}" from Google Fonts (cached to ${fontCacheDir(slug)})`,
     );
   }
@@ -613,6 +616,14 @@ export interface InjectDeterministicFontFacesOptions {
    * network.
    */
   fetchImpl?: typeof fetch;
+  /**
+   * When `true` (default for local renders), fonts that aren't resolved by
+   * the bundled alias map or Google Fonts are located on the local filesystem,
+   * compressed to woff2, and embedded as data URIs. Set to `false` for
+   * distributed/Lambda renders where the host filesystem is not guaranteed
+   * to contain the same fonts as the authoring machine.
+   */
+  allowSystemFontCapture?: boolean;
 }
 
 export async function injectDeterministicFontFaces(
@@ -621,7 +632,12 @@ export async function injectDeterministicFontFaces(
 ): Promise<string> {
   const failClosedFontFetch = options.failClosedFontFetch === true;
   const fetchImpl = options.fetchImpl ?? fetch;
-  const fetchOptions: InternalFontFetchOptions = { failClosedFontFetch, fetchImpl };
+  const allowSystemFontCapture = options.allowSystemFontCapture !== false;
+  const fetchOptions: InternalFontFetchOptions = {
+    failClosedFontFetch,
+    fetchImpl,
+    allowSystemFontCapture,
+  };
 
   const existingFaces = extractExistingFontFaces(html);
   const requestedFamilies = extractRequestedFontFamilies(html);
@@ -638,6 +654,14 @@ export async function injectDeterministicFontFaces(
   }
 
   const { css, unresolved } = await buildFontFaceCss(pendingFamilies, fetchOptions);
+  if (unresolved.length > 0 && options.failClosedFontFetch) {
+    throw new FontFetchError(
+      unresolved.join(", "),
+      "",
+      `[Compiler] Unresolved fonts in fail-closed mode: ${unresolved.join(", ")}. ` +
+        `Distributed renders require all fonts to be resolvable.`,
+    );
+  }
   if (!css) {
     if (unresolved.length > 0) {
       warnUnresolvedFonts(unresolved);
@@ -656,7 +680,7 @@ export async function injectDeterministicFontFaces(
   styleEl.textContent = css;
   head.insertBefore(styleEl, head.firstChild);
 
-  console.log(
+  defaultLogger.info(
     `[Compiler] Injected deterministic @font-face rules for ${pendingFamilies.size - unresolved.length} requested font families`,
   );
   if (unresolved.length > 0) {

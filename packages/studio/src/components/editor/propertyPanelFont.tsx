@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { googleFontStylesheetUrl, POPULAR_GOOGLE_FONT_FAMILIES } from "./fontCatalog";
+import {
+  googleFontStylesheetUrl,
+  POPULAR_GOOGLE_FONT_FAMILIES,
+  renderAliasFor,
+} from "./fontCatalog";
 import { fontFamilyFromAssetPath, importedFontFaceCss, type ImportedFontAsset } from "./fontAssets";
 import {
   DEFAULT_FONT_FAMILIES,
@@ -315,12 +319,32 @@ export function FontFamilyField({
     );
   };
 
+  const importSystemFont = async (family: string): Promise<ImportedFontAsset | null> => {
+    if (!onImportFonts) return null;
+    const response = await fetch(`/api/fonts/file?family=${encodeURIComponent(family)}`);
+    if (!response.ok) return null;
+    const blob = await response.blob();
+    const ext = response.headers.get("Content-Disposition")?.match(/\.(\w+)"?$/)?.[1] ?? "ttf";
+    const file = new File([blob], `${family}.${ext}`, { type: blob.type || "font/ttf" });
+    const imported = await onImportFonts([file]);
+    return (
+      imported.find((a) => a.family.toLowerCase() === family.toLowerCase()) ?? imported[0] ?? null
+    );
+  };
+
   const commitFamily = async (option: FontOption) => {
-    if (option.source === "Local") {
+    const needsImport =
+      option.source === "Local" ||
+      (option.source === "System" && !GENERIC_FONT_FAMILIES.has(option.family.toLowerCase()));
+
+    if (needsImport) {
       setImportingFonts(true);
       setFontNotice(null);
       try {
-        const imported = await importLocalFont(option.family);
+        const imported =
+          option.source === "Local"
+            ? await importLocalFont(option.family)
+            : await importSystemFont(option.family);
         if (imported) {
           loadImportedFontStylesheet(imported);
           onCommit(buildFontFamilyValue(imported.family));
@@ -328,13 +352,9 @@ export function FontFamilyField({
           setOpen(false);
           return;
         }
-        onCommit(buildFontFamilyValue(option.family));
-        setQuery("");
-        setOpen(false);
       } finally {
         setImportingFonts(false);
       }
-      return;
     }
     if (option.source === "Google") loadGoogleFontStylesheet(option.family);
     const imported = importedFonts.find(
@@ -440,7 +460,14 @@ export function FontFamilyField({
                       : "text-neutral-300 hover:bg-neutral-900 hover:text-neutral-100"
                   }`}
                 >
-                  <span className="min-w-0 truncate font-medium">{option.family}</span>
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <span className="truncate font-medium">{option.family}</span>
+                    {renderAliasFor(option.family) && (
+                      <span className="flex-shrink-0 text-[9px] text-neutral-500">
+                        → {renderAliasFor(option.family)}
+                      </span>
+                    )}
+                  </span>
                   <span className="flex-shrink-0 text-[9px] uppercase tracking-[0.14em] text-neutral-600">
                     {option.source}
                   </span>

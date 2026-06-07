@@ -188,7 +188,7 @@ export {
   type KeyframeAnalysis,
 } from "./utils/ffprobe.js";
 
-export { downloadToTemp, isHttpUrl } from "./utils/urlDownloader.js";
+export { assertPublicHttpsUrl, downloadToTemp, isHttpUrl } from "./utils/urlDownloader.js";
 export {
   runFfmpeg,
   formatFfmpegError,

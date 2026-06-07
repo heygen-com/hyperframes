@@ -1,39 +1,19 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync, statSync } from "node:fs";
-import { homedir, platform } from "node:os";
-import { join } from "node:path";
+import { closeSync, constants, fstatSync, openSync, readSync } from "node:fs";
+import { platform } from "node:os";
 import type { Hono } from "hono";
+import {
+  collectFontFileEntries,
+  fontDirectories,
+  locateSystemFont,
+  SYSTEM_FONT_SIZE_LIMIT,
+} from "../../fonts/systemFontLocator";
 
-const FONT_EXT_RE = /\.(otf|ttf|ttc|woff2?)$/i;
 const MAX_FONT_RESULTS = 2000;
 const GOOGLE_FONTS_METADATA_URL = "https://fonts.google.com/metadata/fonts";
 const GOOGLE_FONTS_FETCH_TIMEOUT_MS = 3000;
 let cachedFonts: string[] | null = null;
 let cachedGoogleFonts: string[] | null = null;
-
-const STYLE_SUFFIXES = new Set([
-  "black",
-  "bold",
-  "book",
-  "condensed",
-  "demi",
-  "demibold",
-  "display",
-  "extra",
-  "extrabold",
-  "hairline",
-  "heavy",
-  "italic",
-  "light",
-  "medium",
-  "normal",
-  "regular",
-  "roman",
-  "semibold",
-  "thin",
-  "ultra",
-  "ultralight",
-]);
 
 const GOOGLE_FONT_FALLBACKS = [
   "Inter",
@@ -60,46 +40,6 @@ const GOOGLE_FONT_FALLBACKS = [
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
-}
-
-function fontDirectories(): string[] {
-  const home = homedir();
-  if (platform() === "darwin") {
-    return [
-      join(home, "Library", "Fonts"),
-      "/Library/Fonts",
-      "/System/Library/Fonts",
-      "/System/Library/Fonts/Supplemental",
-    ];
-  }
-  if (platform() === "win32") {
-    return [join(process.env.WINDIR || "C:\\Windows", "Fonts")];
-  }
-  return [
-    join(home, ".fonts"),
-    join(home, ".local", "share", "fonts"),
-    "/usr/local/share/fonts",
-    "/usr/share/fonts",
-  ];
-}
-
-function toFamilyName(fileName: string): string | null {
-  const withoutExt = fileName.replace(FONT_EXT_RE, "");
-  if (!withoutExt || withoutExt.startsWith(".")) return null;
-
-  const spaced = withoutExt
-    .replace(/[_-]+/g, " ")
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
-    .replace(/\s+/g, " ")
-    .trim();
-  const words = spaced.split(" ").filter(Boolean);
-  while (words.length > 1 && STYLE_SUFFIXES.has((words.at(-1) ?? "").toLowerCase())) {
-    words.pop();
-  }
-
-  const family = words.join(" ").trim();
-  return family.length >= 2 ? family : null;
 }
 
 function collectMacSystemProfilerFonts(): string[] {
@@ -143,27 +83,8 @@ function collectMacSystemProfilerFonts(): string[] {
   return fonts;
 }
 
-function collectFontsFromDir(dir: string, depth = 0): string[] {
-  if (!existsSync(dir) || depth > 2) return [];
-  const fonts: string[] = [];
-
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const fullPath = join(dir, entry.name);
-    if (entry.isDirectory()) {
-      fonts.push(...collectFontsFromDir(fullPath, depth + 1));
-      continue;
-    }
-    if (!entry.isFile() || !FONT_EXT_RE.test(entry.name)) continue;
-    try {
-      if (!statSync(fullPath).isFile()) continue;
-    } catch {
-      continue;
-    }
-    const family = toFamilyName(entry.name);
-    if (family) fonts.push(family);
-  }
-
-  return fonts;
+function collectFontsFromDir(dir: string): string[] {
+  return collectFontFileEntries(dir).map((e) => e.family);
 }
 
 function listInstalledFontFamilies(): string[] {
@@ -244,4 +165,50 @@ async function listGoogleFontFamilies(): Promise<string[]> {
 export function registerFontRoutes(api: Hono): void {
   api.get("/fonts", (c) => c.json({ fonts: listInstalledFontFamilies() }));
   api.get("/fonts/google", async (c) => c.json({ fonts: await listGoogleFontFamilies() }));
+
+  // fallow-ignore-next-line complexity
+  api.get("/fonts/file", (c) => {
+    const family = c.req.query("family");
+    if (!family) return c.json({ error: "family parameter required" }, 400);
+
+    const located = locateSystemFont(family);
+    if (!located) return c.json({ error: "font not found" }, 404);
+
+    let fd: number;
+    try {
+      fd = openSync(located.path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    } catch {
+      return c.json({ error: "font file not accessible" }, 404);
+    }
+    try {
+      const stat = fstatSync(fd);
+      if (stat.size > SYSTEM_FONT_SIZE_LIMIT) {
+        return c.json({ error: "font file too large" }, 413);
+      }
+      const buffer = Buffer.alloc(stat.size);
+      readSync(fd, buffer, 0, stat.size, 0);
+      const mimeType =
+        located.format === "otf"
+          ? "font/otf"
+          : located.format === "woff2"
+            ? "font/woff2"
+            : located.format === "woff"
+              ? "font/woff"
+              : located.format === "ttc"
+                ? "font/collection"
+                : "font/ttf";
+
+      const fileName = `${family.replace(/[^a-zA-Z0-9 -]/g, "")}.${located.format}`;
+      return new Response(buffer, {
+        headers: {
+          "Content-Type": mimeType,
+          "Content-Disposition": `attachment; filename="${fileName}"`,
+        },
+      });
+    } catch {
+      return c.json({ error: "failed to read font file" }, 500);
+    } finally {
+      closeSync(fd);
+    }
+  });
 }

@@ -743,6 +743,9 @@ export async function plan(
     // Distributed renders fail closed on font-fetch errors so the planDir
     // is content-addressed against deterministic fonts only.
     failClosedFontFetch: config.failClosedFontFetch !== false,
+    // Distributed renders must not capture host-specific system fonts —
+    // the Lambda/worker filesystem won't have the same fonts installed.
+    allowSystemFontCapture: false,
   });
   let compiled = compileResult.compiled;
   const composition = compileResult.composition;

@@ -797,6 +797,7 @@ describe("text-rendering rule injection", () => {
     const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
 
     expect(compiled.html.replace(/\s+/g, "")).toContain("text-rendering:geometricPrecision");
+    expect(compiled.html.replace(/\s+/g, "")).toContain('font-family:"Inter",sans-serif');
   });
 });
 
@@ -1190,6 +1191,137 @@ body { background-image: url("${BG_URL}"); }
     const { html: result, remoteMediaAssets } = await localizeRemoteFontFaces(html, dl);
     expect(result).toBe(html);
     expect(remoteMediaAssets.size).toBe(0);
+  });
+
+  // ── External <link rel="stylesheet"> inlining ──
+
+  it("leaves Google Fonts <link> tags untouched", async () => {
+    const dl = mkdtempSync(join(tmpdir(), "hf-ff-gf-"));
+    const html = `<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700">
+<link rel="stylesheet" href="https://fonts.gstatic.com/s/inter/inter.css">
+<style>body { color: red; }</style>`;
+    const { html: result, remoteMediaAssets } = await localizeRemoteFontFaces(html, dl);
+    // Google Fonts links should remain as-is — the deterministic font injector handles them
+    expect(result).toContain("fonts.googleapis.com");
+    expect(result).toContain("fonts.gstatic.com");
+    expect(result).toBe(html);
+    expect(remoteMediaAssets.size).toBe(0);
+  });
+
+  it("does not process non-stylesheet <link> tags (rel=icon, rel=preconnect)", async () => {
+    const dl = mkdtempSync(join(tmpdir(), "hf-ff-nonss-"));
+    const html = `<link rel="icon" href="https://cdn.example.com/favicon.ico">
+<link rel="preconnect" href="https://cdn.example.com">
+<link rel="dns-prefetch" href="https://cdn.example.com">`;
+    const { html: result, remoteMediaAssets } = await localizeRemoteFontFaces(html, dl);
+    expect(result).toBe(html);
+    expect(remoteMediaAssets.size).toBe(0);
+  });
+
+  it("inlines @font-face rules from external non-Google stylesheet and downloads font files", async () => {
+    const EXTERNAL_FONT_URL = "https://cdn.example.com/fonts/custom.woff2";
+    const STYLESHEET_URL = "https://cdn.example.com/fonts/style.css";
+    const fakeCss = `
+/* Reset styles */
+body { margin: 0; }
+@font-face {
+  font-family: "CustomFont";
+  src: url("${EXTERNAL_FONT_URL}") format("woff2");
+  font-weight: 400;
+}
+h1 { font-size: 2rem; }`;
+
+    const orig = globalThis.fetch;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).fetch = async (url: string) => {
+      if (url === STYLESHEET_URL) {
+        return new Response(fakeCss, { status: 200 });
+      }
+      // Font file download
+      return new Response(new Uint8Array(16), { status: 200 });
+    };
+    try {
+      const dl = mkdtempSync(join(tmpdir(), "hf-ff-ext-"));
+      const html = `<link rel="stylesheet" href="${STYLESHEET_URL}">
+<style>body { color: red; }</style>`;
+      const { html: result, remoteMediaAssets } = await localizeRemoteFontFaces(html, dl);
+      // The <link> tag should be replaced with an inline <style> containing the @font-face
+      expect(result).not.toContain(`href="${STYLESHEET_URL}"`);
+      expect(result).not.toContain("<link");
+      expect(result).toContain("@font-face");
+      expect(result).toContain("CustomFont");
+      // The remote font URL should be rewritten to a local path
+      expect(result).not.toContain(EXTERNAL_FONT_URL);
+      expect(result).toContain("_remote_media/");
+      expect(remoteMediaAssets.size).toBe(1);
+    } finally {
+      globalThis.fetch = orig;
+    }
+  });
+
+  it("keeps <link> tag when external stylesheet fetch fails (graceful degradation)", async () => {
+    const STYLESHEET_URL = "https://down.example.com/fonts.css";
+    const orig = globalThis.fetch;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).fetch = async () => new Response(null, { status: 503 });
+    try {
+      const dl = mkdtempSync(join(tmpdir(), "hf-ff-extfail-"));
+      const html = `<link rel="stylesheet" href="${STYLESHEET_URL}">`;
+      const { html: result, remoteMediaAssets } = await localizeRemoteFontFaces(html, dl);
+      // Original link tag preserved on failure
+      expect(result).toContain(STYLESHEET_URL);
+      expect(result).toContain("<link");
+      expect(remoteMediaAssets.size).toBe(0);
+    } finally {
+      globalThis.fetch = orig;
+    }
+  });
+
+  it("keeps <link> tag when external stylesheet has no @font-face rules", async () => {
+    const STYLESHEET_URL = "https://cdn.example.com/reset.css";
+    const orig = globalThis.fetch;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).fetch = async () =>
+      new Response("body { margin: 0; } h1 { color: blue; }", { status: 200 });
+    try {
+      const dl = mkdtempSync(join(tmpdir(), "hf-ff-noff-"));
+      const html = `<link rel="stylesheet" href="${STYLESHEET_URL}">`;
+      const { html: result, remoteMediaAssets } = await localizeRemoteFontFaces(html, dl);
+      // No @font-face → keep the original link tag (non-font CSS may be needed)
+      expect(result).toContain(STYLESHEET_URL);
+      expect(result).toContain("<link");
+      expect(remoteMediaAssets.size).toBe(0);
+    } finally {
+      globalThis.fetch = orig;
+    }
+  });
+
+  it("handles multiple external stylesheets, mixing Google and non-Google", async () => {
+    const FONT_CDN_URL = "https://use.typekit.net/abc123.css";
+    const FONT_FILE_URL = "https://use.typekit.net/af/font.woff2";
+    const fontCss = `@font-face { font-family: "AdobeFont"; src: url("${FONT_FILE_URL}") format("woff2"); }`;
+
+    const orig = globalThis.fetch;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).fetch = async (url: string) => {
+      if (url === FONT_CDN_URL) return new Response(fontCss, { status: 200 });
+      return new Response(new Uint8Array(16), { status: 200 });
+    };
+    try {
+      const dl = mkdtempSync(join(tmpdir(), "hf-ff-multi-"));
+      const html = `<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto">
+<link rel="stylesheet" href="${FONT_CDN_URL}">`;
+      const { html: result, remoteMediaAssets } = await localizeRemoteFontFaces(html, dl);
+      // Google link untouched
+      expect(result).toContain("fonts.googleapis.com");
+      // Typekit link inlined — the <link> tag is replaced; the URL only appears in a CSS comment
+      expect(result).not.toContain(`href="${FONT_CDN_URL}"`);
+      expect(result).toContain("AdobeFont");
+      expect(result).toContain("_remote_media/");
+      expect(remoteMediaAssets.size).toBe(1);
+    } finally {
+      globalThis.fetch = orig;
+    }
   });
 });
 

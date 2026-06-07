@@ -1,3 +1,4 @@
+import { FONT_ALIAS_KEYS, resolveAliasDisplayName } from "../../fonts/aliases";
 import type { LintContext, HyperframeLintFinding } from "../context";
 
 const GENERIC_FAMILIES = new Set([
@@ -18,43 +19,6 @@ const GENERIC_FAMILIES = new Set([
   "initial",
   "unset",
   "revert",
-]);
-
-// Fonts pre-bundled as data URIs in the producer (deterministicFonts.ts FONT_ALIASES).
-// These render correctly without @font-face — the producer injects them automatically.
-// Must match the keys in packages/producer/src/services/deterministicFonts.ts exactly.
-const PRODUCER_BUNDLED_FONTS = new Set([
-  "inter",
-  "helvetica neue",
-  "helvetica",
-  "arial",
-  "helvetica bold",
-  "montserrat",
-  "futura",
-  "din alternate",
-  "arial black",
-  "outfit",
-  "nunito",
-  "oswald",
-  "bebas neue",
-  "league gothic",
-  "archivo black",
-  "space mono",
-  "ibm plex mono",
-  "jetbrains mono",
-  "courier new",
-  "courier",
-  "eb garamond",
-  "garamond",
-  "playfair display",
-  "source code pro",
-  "noto sans jp",
-  "noto sans japanese",
-  "roboto",
-  "open sans",
-  "lato",
-  "poppins",
-  "segoe ui",
 ]);
 
 function extractFontFaceFamilies(styles: Array<{ content: string }>): Set<string> {
@@ -98,6 +62,18 @@ function extractUsedFontFamilies(styles: Array<{ content: string }>): string[] {
   return used;
 }
 
+function collectAliasedFonts(used: string[], declared: Set<string>): string[] {
+  const aliased: string[] = [];
+  for (const name of used) {
+    if (declared.has(name)) continue;
+    const displayName = resolveAliasDisplayName(name);
+    if (!displayName) continue;
+    if (displayName.toLowerCase() === name) continue;
+    aliased.push(`'${name}' → ${displayName}`);
+  }
+  return aliased;
+}
+
 export const fontRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   // google_fonts_import
   ({ styles, source }) => {
@@ -123,15 +99,36 @@ export const fontRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
     return findings;
   },
 
+  // system_font_will_alias — inform when a font will be silently substituted
+  ({ styles, options }) => {
+    const declared = extractFontFaceFamilies(styles);
+    const used = extractUsedFontFamilies(styles);
+    const aliased = collectAliasedFonts(used, declared);
+    if (aliased.length === 0) return [];
+    // In distributed / Lambda renders system-font capture is disabled, so
+    // the alias substitution does NOT happen — elevate to a warning.
+    const severity = options.distributed ? ("warning" as const) : ("info" as const);
+    return [
+      {
+        code: "system_font_will_alias",
+        severity,
+        message:
+          `Font ${aliased.length === 1 ? "family" : "families"} will be substituted at render time: ${aliased.join(", ")}. ` +
+          (options.distributed
+            ? "In distributed/Lambda rendering system-font capture is disabled — these fonts will fall back to OS defaults. Embed explicit @font-face declarations instead."
+            : "The renderer maps these to bundled fonts for cross-platform consistency. " +
+              "Use the target font name directly for consistent preview and render results."),
+      },
+    ];
+  },
+
   // font_family_without_font_face
   ({ styles }) => {
     const findings: HyperframeLintFinding[] = [];
     const declared = extractFontFaceFamilies(styles);
     const used = extractUsedFontFamilies(styles);
 
-    const undeclared = used.filter(
-      (name) => !declared.has(name) && !PRODUCER_BUNDLED_FONTS.has(name),
-    );
+    const undeclared = used.filter((name) => !declared.has(name) && !FONT_ALIAS_KEYS.has(name));
     if (undeclared.length === 0) return findings;
 
     findings.push({
