@@ -1717,6 +1717,27 @@ export function initSandboxRuntimeModular(): void {
   // fileServer.ts sets this immediately (no timeline to bind in its runtime).
   window.__renderReady = true;
 
+  // When the GSAP tween-batching interceptor (HF_EARLY_STUB, fileServer.ts) is
+  // active, composition scripts queue tl.to() calls instead of executing them
+  // synchronously. The queue drains via requestAnimationFrame after DCL — so
+  // window.__timelines may contain proxy timelines that have no tweens yet.
+  // Wait for the "hf-timelines-built" event before rebinding to ensure the real
+  // GSAP timeline has its full tween sequence attached.
+  if (window.__hfTimelinesBuilding) {
+    const onTimelinesBuilt = () => {
+      window.removeEventListener("hf-timelines-built", onTimelinesBuilt);
+      const prevTimeline = state.capturedTimeline;
+      if (bindRootTimelineIfAvailable() && state.capturedTimeline !== prevTimeline) {
+        player._timeline = state.capturedTimeline;
+      }
+      runAdapters("discover", state.currentTime);
+      window.__renderReady = true;
+      postTimeline();
+      postState(true);
+    };
+    window.addEventListener("hf-timelines-built", onTimelinesBuilt);
+  }
+
   // When the bundler inlines compositions, data-composition-src is removed so
   // loadExternalCompositions() is skipped. But inline scripts registering child
   // timelines in __timelines haven't executed yet (they run in the browser's next
