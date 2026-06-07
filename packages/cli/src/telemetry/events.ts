@@ -1,51 +1,142 @@
+import { redactTelemetryString } from "@hyperframes/core";
 import { trackEvent } from "./client.js";
+
+export interface RenderObservabilityTelemetryPayload {
+  observabilityRenderJobId?: string;
+  observabilityCompositionHash?: string;
+  observabilityEventCount?: number;
+  observabilityLastPhase?: string;
+  observabilityLastStatus?: string;
+  observabilityFailedPhase?: string;
+  browserDiagnosticCount?: number;
+  browserDiagnosticErrors?: number;
+  browserDiagnosticPageErrors?: number;
+  browserDiagnosticRequestFailed?: number;
+  browserDiagnosticHttpErrors?: number;
+  browserDiagnosticNavigationStarts?: number;
+  browserDiagnosticNavigationFailures?: number;
+  browserDiagnosticConsoleErrors?: number;
+  browserDiagnosticConsoleWarnings?: number;
+  captureMode?: string;
+  captureForceScreenshot?: boolean;
+  captureWorkerCount?: number;
+  captureUseStreamingEncode?: boolean;
+  captureUseLayeredComposite?: boolean;
+  captureUsePageSideCompositing?: boolean;
+  captureHasHdrContent?: boolean;
+  captureBrowserGpuMode?: string;
+  captureProtocolTimeoutMs?: number;
+  capturePageNavigationTimeoutMs?: number;
+  capturePlayerReadyTimeoutMs?: number;
+  observabilityExtractVideoCount?: number;
+  observabilityExtractedVideoCount?: number;
+  observabilityExtractTotalFrames?: number;
+  observabilityExtractMaxFramesPerVideo?: number;
+  observabilityExtractAvgFramesPerVideo?: number;
+  observabilityExtractVfrProbeMs?: number;
+  observabilityExtractVfrPreflightMs?: number;
+  observabilityExtractVfrPreflightCount?: number;
+  observabilityExtractCacheHits?: number;
+  observabilityExtractCacheMisses?: number;
+  observabilityInitDurationMs?: number;
+  observabilityInitTweenCount?: number;
+}
+
+function renderObservabilityEventProperties(props: RenderObservabilityTelemetryPayload) {
+  return {
+    observability_render_job_id: props.observabilityRenderJobId,
+    observability_composition_hash: props.observabilityCompositionHash,
+    observability_event_count: props.observabilityEventCount,
+    observability_last_phase: props.observabilityLastPhase,
+    observability_last_status: props.observabilityLastStatus,
+    observability_failed_phase: props.observabilityFailedPhase,
+    browser_diagnostic_count: props.browserDiagnosticCount,
+    browser_diagnostic_errors: props.browserDiagnosticErrors,
+    browser_diagnostic_page_errors: props.browserDiagnosticPageErrors,
+    browser_diagnostic_request_failed: props.browserDiagnosticRequestFailed,
+    browser_diagnostic_http_errors: props.browserDiagnosticHttpErrors,
+    browser_diagnostic_navigation_starts: props.browserDiagnosticNavigationStarts,
+    browser_diagnostic_navigation_failures: props.browserDiagnosticNavigationFailures,
+    browser_diagnostic_console_errors: props.browserDiagnosticConsoleErrors,
+    browser_diagnostic_console_warnings: props.browserDiagnosticConsoleWarnings,
+    capture_mode: props.captureMode,
+    capture_force_screenshot: props.captureForceScreenshot,
+    capture_worker_count: props.captureWorkerCount,
+    capture_use_streaming_encode: props.captureUseStreamingEncode,
+    capture_use_layered_composite: props.captureUseLayeredComposite,
+    capture_use_page_side_compositing: props.captureUsePageSideCompositing,
+    capture_has_hdr_content: props.captureHasHdrContent,
+    capture_browser_gpu_mode: props.captureBrowserGpuMode,
+    capture_protocol_timeout_ms: props.captureProtocolTimeoutMs,
+    capture_page_navigation_timeout_ms: props.capturePageNavigationTimeoutMs,
+    capture_player_ready_timeout_ms: props.capturePlayerReadyTimeoutMs,
+    observability_extract_video_count: props.observabilityExtractVideoCount,
+    observability_extracted_video_count: props.observabilityExtractedVideoCount,
+    observability_extract_total_frames: props.observabilityExtractTotalFrames,
+    observability_extract_max_frames_per_video: props.observabilityExtractMaxFramesPerVideo,
+    observability_extract_avg_frames_per_video: props.observabilityExtractAvgFramesPerVideo,
+    observability_extract_vfr_probe_ms: props.observabilityExtractVfrProbeMs,
+    observability_extract_vfr_preflight_ms: props.observabilityExtractVfrPreflightMs,
+    observability_extract_vfr_preflight_count: props.observabilityExtractVfrPreflightCount,
+    observability_extract_cache_hits: props.observabilityExtractCacheHits,
+    observability_extract_cache_misses: props.observabilityExtractCacheMisses,
+    observability_init_duration_ms: props.observabilityInitDurationMs,
+    observability_init_tween_count: props.observabilityInitTweenCount,
+  };
+}
+
+function redactTelemetryMessage(value: string): string {
+  return redactTelemetryString(value);
+}
 
 export function trackCommand(command: string): void {
   trackEvent("cli_command", { command });
 }
 
-export function trackRenderComplete(props: {
-  durationMs: number;
-  fps: number;
-  quality: string;
-  workers?: number;
-  docker: boolean;
-  gpu: boolean;
-  // "cli" when triggered by `hyperframes render` (default), "studio" when
-  // triggered by a studio preview-server render (POST /api/projects/:id/render).
-  source?: "cli" | "studio";
-  // Composition metadata
-  compositionDurationMs?: number;
-  compositionWidth?: number;
-  compositionHeight?: number;
-  totalFrames?: number;
-  // Processing efficiency
-  speedRatio?: number;
-  captureAvgMs?: number;
-  capturePeakMs?: number;
-  // Resource usage
-  peakMemoryMb?: number;
-  memoryFreeMb?: number;
-  tmpPeakBytes?: number;
-  // Per-stage timings (subset of RenderPerfSummary.stages)
-  stageCompileMs?: number;
-  stageVideoExtractMs?: number;
-  stageAudioProcessMs?: number;
-  stageCaptureMs?: number;
-  stageEncodeMs?: number;
-  stageAssembleMs?: number;
-  // Video-extraction breakdown (from RenderPerfSummary.videoExtractBreakdown)
-  extractResolveMs?: number;
-  extractHdrProbeMs?: number;
-  extractHdrPreflightMs?: number;
-  extractHdrPreflightCount?: number;
-  extractVfrProbeMs?: number;
-  extractVfrPreflightMs?: number;
-  extractVfrPreflightCount?: number;
-  extractPhase3Ms?: number;
-  extractCacheHits?: number;
-  extractCacheMisses?: number;
-}): void {
+export function trackRenderComplete(
+  props: {
+    durationMs: number;
+    fps: number;
+    quality: string;
+    workers?: number;
+    docker: boolean;
+    gpu: boolean;
+    // "cli" when triggered by `hyperframes render` (default), "studio" when
+    // triggered by a studio preview-server render (POST /api/projects/:id/render).
+    source?: "cli" | "studio";
+    // Composition metadata
+    compositionDurationMs?: number;
+    compositionWidth?: number;
+    compositionHeight?: number;
+    totalFrames?: number;
+    // Processing efficiency
+    speedRatio?: number;
+    captureAvgMs?: number;
+    capturePeakMs?: number;
+    // Resource usage
+    peakMemoryMb?: number;
+    memoryFreeMb?: number;
+    tmpPeakBytes?: number;
+    // Per-stage timings (subset of RenderPerfSummary.stages)
+    stageCompileMs?: number;
+    stageVideoExtractMs?: number;
+    stageAudioProcessMs?: number;
+    stageCaptureMs?: number;
+    stageEncodeMs?: number;
+    stageAssembleMs?: number;
+    // Video-extraction breakdown (from RenderPerfSummary.videoExtractBreakdown)
+    extractResolveMs?: number;
+    extractHdrProbeMs?: number;
+    extractHdrPreflightMs?: number;
+    extractHdrPreflightCount?: number;
+    extractVfrProbeMs?: number;
+    extractVfrPreflightMs?: number;
+    extractVfrPreflightCount?: number;
+    extractPhase3Ms?: number;
+    extractCacheHits?: number;
+    extractCacheMisses?: number;
+  } & RenderObservabilityTelemetryPayload,
+): void {
   trackEvent("render_complete", {
     duration_ms: props.durationMs,
     fps: props.fps,
@@ -80,22 +171,25 @@ export function trackRenderComplete(props: {
     extract_phase3_ms: props.extractPhase3Ms,
     extract_cache_hits: props.extractCacheHits,
     extract_cache_misses: props.extractCacheMisses,
+    ...renderObservabilityEventProperties(props),
   });
 }
 
-export function trackRenderError(props: {
-  fps: number;
-  quality: string;
-  docker: boolean;
-  workers?: number;
-  gpu?: boolean;
-  source?: "cli" | "studio";
-  failedStage?: string;
-  errorMessage?: string;
-  elapsedMs?: number;
-  peakMemoryMb?: number;
-  memoryFreeMb?: number;
-}): void {
+export function trackRenderError(
+  props: {
+    fps: number;
+    quality: string;
+    docker: boolean;
+    workers?: number;
+    gpu?: boolean;
+    source?: "cli" | "studio";
+    failedStage?: string;
+    errorMessage?: string;
+    elapsedMs?: number;
+    peakMemoryMb?: number;
+    memoryFreeMb?: number;
+  } & RenderObservabilityTelemetryPayload,
+): void {
   trackEvent("render_error", {
     fps: props.fps,
     quality: props.quality,
@@ -104,10 +198,65 @@ export function trackRenderError(props: {
     gpu: props.gpu,
     source: props.source ?? "cli",
     failed_stage: props.failedStage,
-    error_message: props.errorMessage,
+    error_message: props.errorMessage ? redactTelemetryMessage(props.errorMessage) : undefined,
     elapsed_ms: props.elapsedMs,
     peak_memory_mb: props.peakMemoryMb,
     memory_free_mb: props.memoryFreeMb,
+    ...renderObservabilityEventProperties(props),
+  });
+}
+
+export function trackRenderObservation(props: {
+  source?: "cli" | "studio";
+  renderJobId?: string;
+  phase?: string;
+  status?: string;
+  compositionHash?: string;
+  elapsedMs?: number;
+  durationMs?: number;
+  message?: string;
+  workerCount?: number;
+  forceScreenshot?: boolean;
+  useStreamingEncode?: boolean;
+  useLayeredComposite?: boolean;
+  usePageSideCompositing?: boolean;
+  hasHdrContent?: boolean;
+  captureMode?: string;
+  videoCount?: number;
+  extractedVideoCount?: number;
+  totalFramesExtracted?: number;
+  maxFramesPerVideo?: number;
+  avgFramesPerExtractedVideo?: number;
+  vfrPreflightCount?: number;
+  vfrPreflightMs?: number;
+  cacheHits?: number;
+  cacheMisses?: number;
+}): void {
+  trackEvent("render_observation", {
+    source: props.source ?? "cli",
+    render_job_id: props.renderJobId,
+    phase: props.phase,
+    status: props.status,
+    composition_hash: props.compositionHash,
+    elapsed_ms: props.elapsedMs,
+    duration_ms: props.durationMs,
+    message: props.message ? redactTelemetryMessage(props.message) : undefined,
+    worker_count: props.workerCount,
+    force_screenshot: props.forceScreenshot,
+    use_streaming_encode: props.useStreamingEncode,
+    use_layered_composite: props.useLayeredComposite,
+    use_page_side_compositing: props.usePageSideCompositing,
+    has_hdr_content: props.hasHdrContent,
+    capture_mode: props.captureMode,
+    video_count: props.videoCount,
+    extracted_video_count: props.extractedVideoCount,
+    total_frames_extracted: props.totalFramesExtracted,
+    max_frames_per_video: props.maxFramesPerVideo,
+    avg_frames_per_extracted_video: props.avgFramesPerExtractedVideo,
+    vfr_preflight_count: props.vfrPreflightCount,
+    vfr_preflight_ms: props.vfrPreflightMs,
+    extract_cache_hits: props.cacheHits,
+    extract_cache_misses: props.cacheMisses,
   });
 }
 

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   formatHttpErrorDiagnostic,
   formatNavigationFailureDiagnostic,
+  formatNavigationStartDiagnostic,
   formatRequestFailureDiagnostic,
   isFontResourceError,
   sanitizeDiagnosticUrl,
@@ -148,6 +149,20 @@ describe("navigation diagnostics", () => {
     expect(diagnostic).toContain("mode=screenshot");
     expect(diagnostic).toContain("timeoutMs=60000");
     expect(diagnostic).toContain("elapsedMs=60123");
+    expect(diagnostic).toContain("url=http://127.0.0.1:4173/index.html");
+    expect(diagnostic).not.toContain("claim_token");
+  });
+
+  it("formats page.goto starts with mode, timeout, and sanitized URL", () => {
+    const diagnostic = formatNavigationStartDiagnostic({
+      captureMode: "screenshot",
+      url: "http://127.0.0.1:4173/index.html?claim_token=secret",
+      timeoutMs: 60_000,
+    });
+
+    expect(diagnostic).toContain("[FrameCapture:NAV] page.goto start");
+    expect(diagnostic).toContain("mode=screenshot");
+    expect(diagnostic).toContain("timeoutMs=60000");
     expect(diagnostic).toContain("url=http://127.0.0.1:4173/index.html");
     expect(diagnostic).not.toContain("claim_token");
   });

@@ -11,7 +11,6 @@
  * by reusing the helpers rather than by careful comment-keeping.
  */
 
-import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   type CaptureSession,
@@ -31,6 +30,7 @@ import {
   addHdrTiming,
   compositeHdrFrame,
 } from "../../renderOrchestrator.js";
+import { writeFileExclusiveSync } from "../shared.js";
 import {
   captureSceneIntoBuffer,
   cleanupEndedHdrVideos,
@@ -200,7 +200,7 @@ export async function runSequentialLayeredFrameLoop(input: SequentialLoopInput):
       await compositeHdrFrame(hdrCompositeCtx, normalCanvas, time, stackingInfo, undefined, i);
       addHdrTiming(hdrPerf, "normalCompositeMs", timingStart);
       if (debugDumpEnabled && debugDumpDir && i % 30 === 0) {
-        writeFileSync(
+        writeFileExclusiveSync(
           join(debugDumpDir, `frame_${String(i).padStart(4, "0")}_final_rgb48le.bin`),
           normalCanvas,
         );

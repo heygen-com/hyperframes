@@ -59,6 +59,7 @@ import {
 import type { FileServerHandle } from "../../fileServer.js";
 import type { ProducerLogger } from "../../../logger.js";
 import type { ProgressCallback, RenderJob } from "../../renderOrchestrator.js";
+import { wrapCaptureStageError } from "../captureStageError.js";
 import { updateJobStatus } from "../shared.js";
 
 /**
@@ -269,6 +270,10 @@ export async function runCaptureStreamingStage(
           const frameProgress = (i + 1) / totalFrames;
           const progress = 25 + frameProgress * 55;
 
+          // Keep status cadence identical to disk sequential capture; the
+          // capture error wrapper below must remain separate from finally so it
+          // can throw with the browser console before encoder cleanup runs.
+          // fallow-ignore-next-line code-duplication
           updateJobStatus(
             job,
             "rendering",
@@ -277,7 +282,14 @@ export async function runCaptureStreamingStage(
             onProgress,
           );
         }
+        // This must mirror disk capture: catch wraps the original failure with
+        // browser diagnostics, finally only handles cleanup.
+        // fallow-ignore-next-line code-duplication
+      } catch (error) {
+        lastBrowserConsole = session.browserConsoleBuffer;
+        throw wrapCaptureStageError(error, lastBrowserConsole);
       } finally {
+        // Keep the latest console buffer for success and cleanup-error summaries.
         lastBrowserConsole = session.browserConsoleBuffer;
         await closeCaptureSession(session);
       }

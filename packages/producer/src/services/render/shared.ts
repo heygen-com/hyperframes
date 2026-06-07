@@ -41,6 +41,17 @@ export interface CompositionMetadata {
  */
 export const BROWSER_MEDIA_EPSILON = 0.0001;
 
+export function writeFileExclusiveSync(path: string, data: NodeJS.ArrayBufferView | string): void {
+  try {
+    writeFileSync(path, data, { flag: "wx", mode: 0o600 });
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "EEXIST") {
+      return;
+    }
+    throw error;
+  }
+}
+
 /**
  * Browser-discovered media inside inlined sub-compositions can still report
  * scene-local timing from the merged DOM (e.g. start=0, end=85.52) while the

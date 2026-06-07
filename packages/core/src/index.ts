@@ -161,6 +161,7 @@ export {
   quantizeTimeToFrame,
   type MediaVisualStyleProperty,
 } from "./inline-scripts/parityContract";
+export { redactTelemetryString } from "./telemetryRedaction";
 export type {
   HyperframePickerApi,
   HyperframePickerBoundingBox,

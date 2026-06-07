@@ -45,15 +45,20 @@ import { loadProducer } from "../utils/producer.js";
 import { c } from "../ui/colors.js";
 import { formatBytes, formatDuration, errorBox } from "../ui/format.js";
 import { renderProgress } from "../ui/progress.js";
-import { trackRenderComplete, trackRenderError } from "../telemetry/events.js";
+import {
+  trackRenderComplete,
+  trackRenderError,
+  trackRenderObservation,
+} from "../telemetry/events.js";
 import { maybePromptRenderFeedback } from "../telemetry/feedback.js";
+import { renderJobObservabilityTelemetryPayload } from "../telemetry/renderObservability.js";
 import { bytesToMb } from "../telemetry/system.js";
 import { VERSION } from "../version.js";
 import { isDevMode } from "../utils/env.js";
 import { buildDockerRunArgs, resolveDockerPlatform } from "../utils/dockerRunArgs.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { findFFmpeg, getFFmpegInstallHint } from "../browser/ffmpeg.js";
-import type { RenderJob } from "@hyperframes/producer";
+import type { ProducerLogger, RenderJob } from "@hyperframes/producer";
 import {
   normalizeResolutionFlag,
   parseFps,
@@ -932,6 +937,9 @@ export async function renderLocal(
   }
 
   const startTime = Date.now();
+  const logger = createRenderTelemetryLogger(
+    producer.createConsoleLogger?.("info") ?? createNoopProducerLogger(),
+  );
 
   // Pass the resolved browser path to the producer via env var so
   // resolveConfig() picks it up. This bridges the CLI's ensureBrowser()
@@ -947,6 +955,7 @@ export async function renderLocal(
     format: options.format,
     workers: options.workers,
     useGpu: options.gpu,
+    logger,
     producerConfig: producer.resolveConfig({
       browserGpuMode: options.browserGpuMode ?? "software",
       ...(options.pageNavigationTimeoutMs != null
@@ -979,6 +988,7 @@ export async function renderLocal(
       false,
       "Try --docker for containerized rendering",
       job.failedStage,
+      job,
     );
   }
 
@@ -1019,6 +1029,89 @@ function getMemorySnapshot() {
   };
 }
 
+function metaString(meta: Record<string, unknown> | undefined, key: string): string | undefined {
+  const value = meta?.[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+function metaNumber(meta: Record<string, unknown> | undefined, key: string): number | undefined {
+  const value = meta?.[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function metaBoolean(meta: Record<string, unknown> | undefined, key: string): boolean | undefined {
+  const value = meta?.[key];
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function trackRenderTraceFromLog(message: string, meta: Record<string, unknown> | undefined): void {
+  if (message !== "[Render:trace]") return;
+  const status = metaString(meta, "status");
+  if (status !== "checkpoint" && status !== "error") return;
+  trackRenderObservation({
+    source: "cli",
+    renderJobId: metaString(meta, "renderJobId"),
+    phase: metaString(meta, "phase"),
+    status,
+    compositionHash: metaString(meta, "compositionHash"),
+    elapsedMs: metaNumber(meta, "elapsedMs"),
+    durationMs: metaNumber(meta, "durationMs"),
+    message: metaString(meta, "message"),
+    workerCount: metaNumber(meta, "workerCount"),
+    forceScreenshot: metaBoolean(meta, "forceScreenshot"),
+    useStreamingEncode: metaBoolean(meta, "useStreamingEncode"),
+    useLayeredComposite: metaBoolean(meta, "useLayeredComposite"),
+    usePageSideCompositing: metaBoolean(meta, "usePageSideCompositing"),
+    hasHdrContent: metaBoolean(meta, "hasHdrContent"),
+    captureMode: metaString(meta, "captureMode"),
+    videoCount: metaNumber(meta, "videoCount"),
+    extractedVideoCount: metaNumber(meta, "extractedVideoCount"),
+    totalFramesExtracted: metaNumber(meta, "totalFramesExtracted"),
+    maxFramesPerVideo: metaNumber(meta, "maxFramesPerVideo"),
+    avgFramesPerExtractedVideo: metaNumber(meta, "avgFramesPerExtractedVideo"),
+    vfrPreflightCount: metaNumber(meta, "vfrPreflightCount"),
+    vfrPreflightMs: metaNumber(meta, "vfrPreflightMs"),
+    cacheHits: metaNumber(meta, "cacheHits"),
+    cacheMisses: metaNumber(meta, "cacheMisses"),
+  });
+}
+
+function createRenderTelemetryLogger(base: ProducerLogger): ProducerLogger {
+  return {
+    error(message, meta) {
+      base.error(message, meta);
+      trackRenderTraceFromLog(message, meta);
+    },
+    warn(message, meta) {
+      base.warn(message, meta);
+      trackRenderTraceFromLog(message, meta);
+    },
+    info(message, meta) {
+      base.info(message, meta);
+      trackRenderTraceFromLog(message, meta);
+    },
+    debug(message, meta) {
+      base.debug(message, meta);
+      trackRenderTraceFromLog(message, meta);
+    },
+    isLevelEnabled(level) {
+      return base.isLevelEnabled?.(level) ?? true;
+    },
+  };
+}
+
+function createNoopProducerLogger(): ProducerLogger {
+  return {
+    error() {},
+    warn() {},
+    info() {},
+    debug() {},
+    isLevelEnabled() {
+      return true;
+    },
+  };
+}
+
 function handleRenderError(
   error: unknown,
   options: RenderOptions,
@@ -1026,6 +1119,7 @@ function handleRenderError(
   docker: boolean,
   hint: string,
   failedStage?: string,
+  job?: RenderJob,
 ): never {
   const message = normalizeErrorMessage(error);
   trackRenderError({
@@ -1037,6 +1131,7 @@ function handleRenderError(
     elapsedMs: Date.now() - startTime,
     errorMessage: message,
     failedStage,
+    ...renderJobObservabilityTelemetryPayload(job),
     ...getMemorySnapshot(),
   });
   errorBox("Render failed", message, hint);
@@ -1099,6 +1194,7 @@ function trackRenderMetrics(
     extractPhase3Ms: extract?.extractMs,
     extractCacheHits: extract?.cacheHits,
     extractCacheMisses: extract?.cacheMisses,
+    ...renderJobObservabilityTelemetryPayload(job),
     ...getMemorySnapshot(),
   });
 }

@@ -18,6 +18,14 @@ export {
   type RenderPerfSummary,
   type ProgressCallback,
 } from "./services/renderOrchestrator.js";
+export {
+  type BrowserDiagnosticSummary,
+  type RenderCaptureObservability,
+  type RenderObservabilitySummary,
+  type RenderObservationData,
+  type RenderObservationEvent,
+  type RenderObservationStatus,
+} from "./services/render/observability.js";
 
 // ── Frame capture (lower-level) ─────────────────────────────────────────────
 export {

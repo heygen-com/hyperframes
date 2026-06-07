@@ -10,6 +10,7 @@ import type { FileServerHandle } from "../fileServer.js";
 import { defaultLogger, type ProducerLogger } from "../../logger.js";
 import type { HdrDiagnostics, RenderJob } from "../renderOrchestrator.js";
 import { normalizeErrorMessage } from "../../utils/errorMessage.js";
+import type { RenderObservabilitySummary } from "./observability.js";
 
 /**
  * Wrap a cleanup operation so it never throws, but logs any failure.
@@ -80,6 +81,7 @@ export function buildRenderErrorDetails(input: {
   lastBrowserConsole: string[];
   perfStages: Record<string, number>;
   hdrDiagnostics: HdrDiagnostics;
+  observability?: RenderObservabilitySummary;
 }): NonNullable<RenderJob["errorDetails"]> {
   const errorMessage = normalizeErrorMessage(input.error);
   const errorStack = input.error instanceof Error ? input.error.stack : undefined;
@@ -96,5 +98,6 @@ export function buildRenderErrorDetails(input: {
       input.hdrDiagnostics.imageDecodeFailures > 0
         ? { ...input.hdrDiagnostics }
         : undefined,
+    observability: input.observability,
   };
 }

@@ -78,6 +78,7 @@ import {
 import { partitionTransitionFrames, shouldUseHybridLayeredPath } from "./captureHdrFrameShared.js";
 import { runSequentialLayeredFrameLoop } from "./captureHdrSequentialLoop.js";
 import { runHybridLayeredFrameLoop } from "./captureHdrHybridLoop.js";
+import { wrapCaptureStageError } from "../captureStageError.js";
 
 export interface CaptureHdrStageInput {
   job: RenderJob;
@@ -461,6 +462,9 @@ export async function runCaptureHdrStage(
     }
     captureDurationMs = Date.now() - stageStart;
     encodeMs = hdrEncodeResult.durationMs;
+  } catch (error) {
+    lastBrowserConsole = domSession.browserConsoleBuffer;
+    throw wrapCaptureStageError(error, lastBrowserConsole);
   } finally {
     if (hdrEncoder && !hdrEncoderClosed) {
       try {

@@ -9,8 +9,12 @@
 import { freemem } from "node:os";
 import type { Fps } from "@hyperframes/core";
 import { fpsToNumber } from "@hyperframes/core";
-import type { RenderPerfSummary } from "@hyperframes/producer";
+import type { RenderJob, RenderPerfSummary } from "@hyperframes/producer";
 import { trackRenderComplete, trackRenderError } from "../telemetry/events.js";
+import {
+  renderJobObservabilityTelemetryPayload,
+  renderObservabilityTelemetryPayload,
+} from "../telemetry/renderObservability.js";
 import { bytesToMb } from "../telemetry/system.js";
 
 export interface StudioRenderOpts {
@@ -78,6 +82,7 @@ function perfPayload(
     tmpPeakBytes: perf.tmpPeakBytes,
     ...stagesPayload(perf.stages),
     ...extractPayload(perf.videoExtractBreakdown),
+    ...renderObservabilityTelemetryPayload(perf.observability),
   };
 }
 
@@ -86,6 +91,7 @@ export function emitStudioRenderError(
   elapsedMs: number,
   failedStage: string | undefined,
   err: unknown,
+  job: RenderJob | undefined,
 ): void {
   // `workers` is intentionally omitted: studio renders don't accept a
   // user-supplied worker count (the producer picks its default), so on early
@@ -99,6 +105,7 @@ export function emitStudioRenderError(
     failedStage,
     errorMessage: err instanceof Error ? err.message : String(err),
     elapsedMs,
+    ...renderJobObservabilityTelemetryPayload(job),
     ...memSnapshot(),
   });
 }

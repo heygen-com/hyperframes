@@ -16,7 +16,15 @@
  * exist, leaving the caller with empty maps that the hot loop tolerates.
  */
 
-import { mkdirSync, openSync, readFileSync, statSync } from "node:fs";
+import {
+  closeSync,
+  constants,
+  fstatSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import {
   type CaptureSession,
@@ -35,6 +43,13 @@ import type {
   RenderJob,
 } from "../../renderOrchestrator.js";
 import type { CompositionMetadata } from "../shared.js";
+
+const NO_FOLLOW_FLAG = constants.O_NOFOLLOW ?? 0;
+
+function tempDirSafePrefix(id: string): string {
+  const safe = id.replace(/[^A-Za-z0-9_.-]/g, "_").slice(0, 80);
+  return safe || "video";
+}
 
 export interface HdrResourcePrep {
   hdrVideoIds: string[];
@@ -175,8 +190,8 @@ export async function extractHdrVideoFrames(args: {
   for (const [videoId, srcPath] of prep.hdrVideoSrcPaths) {
     const video = composition.videos.find((v) => v.id === videoId);
     if (!video) continue;
-    const frameDir = join(framesDir, `hdr_${videoId}`);
-    mkdirSync(frameDir, { recursive: true });
+    mkdirSync(framesDir, { recursive: true });
+    const frameDir = mkdtempSync(join(framesDir, `hdr_${tempDirSafePrefix(videoId)}-`));
     const duration = video.end - video.start;
     const dims = prep.hdrExtractionDims.get(videoId) ?? { width, height };
     const rawPath = join(frameDir, "frames.rgb48le");
@@ -212,24 +227,31 @@ export async function extractHdrVideoFrames(args: {
       );
     }
     const frameSize = dims.width * dims.height * 6;
-    const frameCount = Math.floor(statSync(rawPath).size / frameSize);
-    if (frameCount < 1) {
-      hdrDiagnostics.videoExtractionFailures += 1;
-      throw new Error(
-        `HDR frame extraction produced no frames for video "${videoId}". ` +
-          `Aborting render to avoid shipping black HDR layers.`,
-      );
+    const fd = openSync(rawPath, constants.O_RDONLY | NO_FOLLOW_FLAG);
+    let handedOff = false;
+    try {
+      const frameCount = Math.floor(fstatSync(fd).size / frameSize);
+      if (frameCount < 1) {
+        hdrDiagnostics.videoExtractionFailures += 1;
+        throw new Error(
+          `HDR frame extraction produced no frames for video "${videoId}". ` +
+            `Aborting render to avoid shipping black HDR layers.`,
+        );
+      }
+      out.set(videoId, {
+        dir: frameDir,
+        rawPath,
+        fd,
+        width: dims.width,
+        height: dims.height,
+        frameSize,
+        frameCount,
+        scratch: Buffer.allocUnsafe(frameSize),
+      });
+      handedOff = true;
+    } finally {
+      if (!handedOff) closeSync(fd);
     }
-    out.set(videoId, {
-      dir: frameDir,
-      rawPath,
-      fd: openSync(rawPath, "r"),
-      width: dims.width,
-      height: dims.height,
-      frameSize,
-      frameCount,
-      scratch: Buffer.allocUnsafe(frameSize),
-    });
   }
   return out;
 }

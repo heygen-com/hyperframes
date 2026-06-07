@@ -57,6 +57,10 @@ export interface CaptureSession {
   pageReleased?: boolean;
   browserReleased?: boolean;
   browserConsoleBuffer: string[];
+  initTelemetry?: {
+    initDurationMs: number;
+    tweenCount: number;
+  };
   capturePerf: {
     frames: number;
     seekMs: number;
@@ -84,6 +88,49 @@ function appendBrowserDiagnostic(session: CaptureSession, text: string): void {
   if (session.browserConsoleBuffer.length > BROWSER_CONSOLE_BUFFER_SIZE) {
     session.browserConsoleBuffer.shift();
   }
+}
+
+async function collectSessionInitTelemetry(
+  page: Page,
+  initStart: number,
+): Promise<{ initDurationMs: number; tweenCount: number }> {
+  const initDurationMs = Date.now() - initStart;
+  let tweenCount = 0;
+  try {
+    tweenCount = await page.evaluate(() => {
+      const timelines =
+        (window as unknown as { __timelines?: Record<string, unknown> }).__timelines || {};
+      const seen = new Set<object>();
+      let count = 0;
+      for (const timeline of Object.values(timelines)) {
+        const maybeTimeline = timeline as { getChildren?: unknown };
+        if (typeof maybeTimeline?.getChildren !== "function") continue;
+        const children = maybeTimeline.getChildren(true, true, false) as unknown[];
+        for (const child of children) {
+          if (child && typeof child === "object" && !seen.has(child)) {
+            seen.add(child);
+            count++;
+          }
+        }
+      }
+      return count;
+    });
+  } catch {
+    tweenCount = 0;
+  }
+  return { initDurationMs, tweenCount };
+}
+
+async function recordSessionInitTelemetry(
+  session: CaptureSession,
+  initStart: number,
+): Promise<void> {
+  const telemetry = await collectSessionInitTelemetry(session.page, initStart);
+  session.initTelemetry = telemetry;
+  appendBrowserDiagnostic(
+    session,
+    `[FrameCapture:INIT] complete initDurationMs=${telemetry.initDurationMs} tweenCount=${telemetry.tweenCount}`,
+  );
 }
 
 export function sanitizeDiagnosticUrl(input: string): string {
@@ -123,6 +170,18 @@ export function formatNavigationFailureDiagnostic(input: {
     `[FrameCapture:ERROR] page.goto failed ` +
     `mode=${input.captureMode} timeoutMs=${input.timeoutMs} elapsedMs=${input.elapsedMs} ` +
     `url=${sanitizeDiagnosticUrl(input.url)} error=${message}`
+  );
+}
+
+export function formatNavigationStartDiagnostic(input: {
+  captureMode: CaptureMode;
+  url: string;
+  timeoutMs: number;
+}): string {
+  return (
+    `[FrameCapture:NAV] page.goto start ` +
+    `mode=${input.captureMode} timeoutMs=${input.timeoutMs} ` +
+    `url=${sanitizeDiagnosticUrl(input.url)}`
   );
 }
 
@@ -849,6 +908,15 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     console.log(`[initSession:${session.captureMode}] ${phase} (${Date.now() - initStart}ms)`);
   };
   const gotoEntryPage = async (): Promise<void> => {
+    appendBrowserDiagnostic(
+      session,
+      formatNavigationStartDiagnostic({
+        captureMode: session.captureMode,
+        url,
+        timeoutMs: pageNavigationTimeout,
+      }),
+    );
+    logInitPhase("page.goto start");
     try {
       await page.goto(url, { waitUntil: "domcontentloaded", timeout: pageNavigationTimeout });
     } catch (error) {
@@ -940,6 +1008,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     logInitPhase("fonts ready");
     await waitForOptionalTailwindReady(page, pageReadyTimeout);
     logInitPhase("tailwind ready");
+    await recordSessionInitTelemetry(session, initStart);
 
     // For PNG captures, force the page background fully transparent so the
     // captured screenshots carry a real alpha channel. Must run AFTER
@@ -1076,6 +1145,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
   logInitPhase("fonts ready");
   await waitForOptionalTailwindReady(page, pageReadyTimeout);
   logInitPhase("tailwind ready");
+  await recordSessionInitTelemetry(session, initStart);
 
   // Stop warmup. Unlocked mode exits on this flag; locked mode keeps ticking
   // until LOCKED_WARMUP_TICKS, so we await its promise to ensure the count is

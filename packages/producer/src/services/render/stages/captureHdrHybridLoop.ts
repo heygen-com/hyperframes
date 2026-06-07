@@ -18,7 +18,6 @@
  * worker sessions are always spawned.
  */
 
-import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   type CaptureOptions,
@@ -46,6 +45,7 @@ import {
   addHdrTiming,
   compositeHdrFrame,
 } from "../../renderOrchestrator.js";
+import { writeFileExclusiveSync } from "../shared.js";
 import {
   type ShaderTransitionWorkerPool,
   createShaderTransitionWorkerPool,
@@ -327,7 +327,7 @@ export async function runHybridLayeredFrameLoop(input: HybridLoopInput): Promise
           await compositeHdrFrame(wctx, canvas, time, stackingInfo, undefined, i);
           addHdrTiming(hdrPerf, "normalCompositeMs", timingStart);
           if (debugDumpEnabled && debugDumpDir && i % 30 === 0) {
-            writeFileSync(
+            writeFileExclusiveSync(
               join(debugDumpDir, `frame_${String(i).padStart(4, "0")}_final_rgb48le.bin`),
               canvas,
             );

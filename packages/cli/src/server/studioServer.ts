@@ -28,6 +28,7 @@ import {
 } from "@hyperframes/core/studio-api";
 import { getElementScreenshotClip } from "@hyperframes/core/studio-api/screenshot-clip";
 import type { ScreenshotClip } from "@hyperframes/core/studio-api/screenshot-clip";
+import type { RenderJob } from "@hyperframes/producer";
 
 const STUDIO_MANUAL_EDITS_PATH = ".hyperframes/studio-manual-edits.json";
 
@@ -278,6 +279,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       // Run render asynchronously, mutating the state object
       const startTime = Date.now();
       (async () => {
+        let renderJob: RenderJob | undefined;
         try {
           const { createRenderJob, executeRenderJob } = await import("@hyperframes/producer");
           const { ensureBrowser } = await import("../browser/manager.js");
@@ -303,6 +305,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
             ...(manualEditsRenderScript ? { renderBodyScripts: [manualEditsRenderScript] } : {}),
             ...(opts.composition ? { entryFile: opts.composition } : {}),
           });
+          renderJob = job;
           const onProgress = (j: { progress: number; currentStage?: string }) => {
             state.progress = j.progress;
             if (j.currentStage) state.stage = j.currentStage;
@@ -319,7 +322,8 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         } catch (err) {
           state.status = "failed";
           state.error = err instanceof Error ? err.message : String(err);
-          emitStudioRenderError(opts, Date.now() - startTime, state.stage, err);
+          // fallow-ignore-next-line code-duplication
+          emitStudioRenderError(opts, Date.now() - startTime, state.stage, err, renderJob);
           try {
             const metaPath = opts.outputPath.replace(/\.(mp4|webm|mov)$/, ".meta.json");
             writeFileSync(metaPath, JSON.stringify({ status: "failed" }));

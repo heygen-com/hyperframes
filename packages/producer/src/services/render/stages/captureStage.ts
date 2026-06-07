@@ -55,6 +55,7 @@ import {
   type ProgressCallback,
   type RenderJob,
 } from "../../renderOrchestrator.js";
+import { wrapCaptureStageError } from "../captureStageError.js";
 import { updateJobStatus } from "../shared.js";
 
 export interface CaptureStageInput {
@@ -264,6 +265,10 @@ export async function runCaptureStage(input: CaptureStageInput): Promise<Capture
         const frameProgress = (i + 1) / rangeFrames;
         const progress = 25 + frameProgress * 45;
 
+        // Keep status cadence identical to the streaming sequential path; the
+        // capture error wrapper below must remain separate from finally so it
+        // can throw with the browser console before cleanup overwrites flow.
+        // fallow-ignore-next-line code-duplication
         updateJobStatus(
           job,
           "rendering",
@@ -272,7 +277,14 @@ export async function runCaptureStage(input: CaptureStageInput): Promise<Capture
           onProgress,
         );
       }
+      // This must mirror streaming capture: catch wraps the original failure with
+      // browser diagnostics, finally only handles cleanup.
+      // fallow-ignore-next-line code-duplication
+    } catch (error) {
+      lastBrowserConsole = session.browserConsoleBuffer;
+      throw wrapCaptureStageError(error, lastBrowserConsole);
     } finally {
+      // Keep the latest console buffer for success and cleanup-error summaries.
       lastBrowserConsole = session.browserConsoleBuffer;
       await closeCaptureSession(session);
     }
