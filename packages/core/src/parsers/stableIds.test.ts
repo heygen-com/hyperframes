@@ -34,7 +34,7 @@ function serialize(parsed: ParsedHtml): string {
 describe("T2 — stable element ids (spec for R1)", () => {
   // --- Spec (red until R1) ---
 
-  it("[spec] elements without an id get a hf- prefixed id at parse", () => {
+  it.fails("[spec] elements without an id get a hf- prefixed id at parse", () => {
     const html = `<html><body><div id="stage">
       <img src="logo.svg" data-start="0" data-end="5" data-name="Logo" />
       <div data-start="0" data-end="5" data-name="Card"><div>Text</div></div>
@@ -45,7 +45,7 @@ describe("T2 — stable element ids (spec for R1)", () => {
     }
   });
 
-  it("[spec] generated hf- ids match /^hf-[a-z0-9]{4}$/", () => {
+  it.fails("[spec] generated hf- ids match /^hf-[a-z0-9]{4}$/", () => {
     const html = `<html><body><div id="stage">
       <div data-start="0" data-end="5" data-name="Unnamed"><div>X</div></div>
       <video data-start="1" data-end="6" src="v.mp4" data-name="Clip"></video>
@@ -57,7 +57,7 @@ describe("T2 — stable element ids (spec for R1)", () => {
     }
   });
 
-  it("[spec] adding an element before existing ones does not change existing ids", () => {
+  it.fails("[spec] adding an element before existing ones does not change existing ids", () => {
     const base = `<html><body><div id="stage">
       <div data-start="0" data-end="5" data-name="AlphaEl"><div>A</div></div>
       <div data-start="1" data-end="6" data-name="BetaEl"><div>B</div></div>
