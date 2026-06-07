@@ -1,3 +1,4 @@
+// fallow-ignore-file unused-file
 /**
  * HyperFrames early stub — injected at the very start of `<head>` before any
  * other scripts run. Compiled to an IIFE by scripts/build-hf-early-stub.ts.
@@ -56,6 +57,9 @@ declare global {
   interface Window {
     __hf?: Record<string, unknown>;
     __hfTimelinesBuilding?: boolean;
+    __HF_VIRTUAL_TIME__?: {
+      originalRequestAnimationFrame?: typeof window.requestAnimationFrame;
+    };
   }
 }
 
@@ -117,8 +121,17 @@ const BATCH_SIZE = 100;
 const activeProxies: TimelineProxy[] = [];
 let batchScheduled = false;
 
+function requestBatchFrame(callback: FrameRequestCallback): number {
+  const originalRequestAnimationFrame = window.__HF_VIRTUAL_TIME__?.originalRequestAnimationFrame;
+  if (typeof originalRequestAnimationFrame === "function") {
+    return originalRequestAnimationFrame(callback);
+  }
+  return requestAnimationFrame(callback);
+}
+
 // ─── Batch flusher ────────────────────────────────────────────────────────────
 
+// fallow-ignore-next-line complexity
 function flushBatch(): void {
   batchScheduled = false;
   let anyRemaining = false;
@@ -138,7 +151,7 @@ function flushBatch(): void {
 
   if (anyRemaining) {
     batchScheduled = true;
-    requestAnimationFrame(flushBatch);
+    requestBatchFrame(flushBatch);
   } else {
     window.__hfTimelinesBuilding = false;
     try {
@@ -153,7 +166,7 @@ function scheduleBatch(): void {
   if (!batchScheduled) {
     batchScheduled = true;
     window.__hfTimelinesBuilding = true;
-    requestAnimationFrame(flushBatch);
+    requestBatchFrame(flushBatch);
   }
 }
 

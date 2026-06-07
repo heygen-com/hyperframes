@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication complexity
 import { installRuntimeControlBridge, postRuntimeMessage } from "./bridge";
 import { initRuntimeAnalytics, emitAnalyticsEvent } from "./analytics";
 import { createCssAdapter } from "./adapters/css";
@@ -1515,6 +1516,10 @@ export function initSandboxRuntimeModular(): void {
     }
   };
 
+  let maybePublishRenderReady = () => {
+    window.__renderReady = false;
+  };
+
   if (!externalCompositionsReady) {
     const compositionLoaderParams = {
       injectedStyles: state.injectedCompStyles,
@@ -1539,14 +1544,10 @@ export function initSandboxRuntimeModular(): void {
       .then(() => loadInlineTemplateCompositions(compositionLoaderParams))
       .finally(() => {
         externalCompositionsReady = true;
-        bindRootTimelineIfAvailable();
-        window.__renderReady = true;
         bindMediaMetadataListeners();
-        runAdapters("discover", state.currentTime);
         installAssetFailureDiagnostics();
         applyCaptionOverrides();
-        postTimeline();
-        postState(true);
+        maybePublishRenderReady();
       });
   } else {
     // No external/inline compositions to load — apply caption overrides immediately
@@ -1706,55 +1707,6 @@ export function initSandboxRuntimeModular(): void {
     onDisablePickMode: () => picker.disablePickMode(),
   });
 
-  bindRootTimelineIfAvailable();
-  if (state.capturedTimeline) {
-    player._timeline = state.capturedTimeline;
-  }
-
-  // __renderReady = timeline binding attempted, safe for deterministic seeking.
-  // Set unconditionally: renderSeek works with or without a GSAP timeline
-  // (CSS/WAAPI/Lottie compositions use adapter-only seeking).
-  // fileServer.ts sets this immediately (no timeline to bind in its runtime).
-  window.__renderReady = true;
-
-  // When the GSAP tween-batching interceptor (HF_EARLY_STUB, fileServer.ts) is
-  // active, composition scripts queue tl.to() calls instead of executing them
-  // synchronously. The queue drains via requestAnimationFrame after DCL — so
-  // window.__timelines may contain proxy timelines that have no tweens yet.
-  // Wait for the "hf-timelines-built" event before rebinding to ensure the real
-  // GSAP timeline has its full tween sequence attached.
-  if (window.__hfTimelinesBuilding) {
-    const onTimelinesBuilt = () => {
-      window.removeEventListener("hf-timelines-built", onTimelinesBuilt);
-      const prevTimeline = state.capturedTimeline;
-      if (bindRootTimelineIfAvailable() && state.capturedTimeline !== prevTimeline) {
-        player._timeline = state.capturedTimeline;
-      }
-      runAdapters("discover", state.currentTime);
-      window.__renderReady = true;
-      postTimeline();
-      postState(true);
-    };
-    window.addEventListener("hf-timelines-built", onTimelinesBuilt);
-  }
-
-  // When the bundler inlines compositions, data-composition-src is removed so
-  // loadExternalCompositions() is skipped. But inline scripts registering child
-  // timelines in __timelines haven't executed yet (they run in the browser's next
-  // microtask). Defer a rebinding attempt to catch them.
-  if (externalCompositionsReady) {
-    setTimeout(() => {
-      const prevTimeline = state.capturedTimeline;
-      if (bindRootTimelineIfAvailable() && state.capturedTimeline !== prevTimeline) {
-        player._timeline = state.capturedTimeline;
-      }
-      runAdapters("discover", state.currentTime);
-      window.__renderReady = true;
-      postTimeline();
-      postState(true);
-    }, 0);
-  }
-
   state.deterministicAdapters = [
     createWaapiAdapter(),
     createCssAdapter({
@@ -1782,6 +1734,61 @@ export function initSandboxRuntimeModular(): void {
   void webAudio.init().then((ok) => {
     webAudioReady = ok;
   });
+
+  const publishRenderReadyAfterTimelineBinding = () => {
+    const prevTimeline = state.capturedTimeline;
+    const rebound = bindRootTimelineIfAvailable();
+    if (
+      state.capturedTimeline &&
+      (rebound || state.capturedTimeline !== prevTimeline || !player._timeline)
+    ) {
+      player._timeline = state.capturedTimeline;
+    }
+    const boundDuration = getSafeTimelineDurationSeconds(state.capturedTimeline, 0);
+    if (boundDuration > 0) {
+      clock.setDuration(boundDuration);
+    }
+    runAdapters("discover", state.currentTime);
+    // __renderReady = timeline binding attempted, safe for deterministic seeking.
+    // Set after any GSAP batching has completed. renderSeek works with or
+    // without a GSAP timeline (CSS/WAAPI/Lottie compositions use adapters only).
+    window.__renderReady = true;
+    postTimeline();
+    postState(true);
+  };
+
+  maybePublishRenderReady = () => {
+    if (!externalCompositionsReady || window.__hfTimelinesBuilding) {
+      window.__renderReady = false;
+      return;
+    }
+    publishRenderReadyAfterTimelineBinding();
+  };
+
+  // When the GSAP tween-batching interceptor (HF_EARLY_STUB, fileServer.ts) is
+  // active, composition scripts queue tl.to() calls instead of executing them
+  // synchronously. Wait for the "hf-timelines-built" event before the first
+  // binding attempt so the transport clock receives the finished timeline
+  // duration instead of permanently publishing duration=0.
+  if (window.__hfTimelinesBuilding) {
+    window.__renderReady = false;
+    const onTimelinesBuilt = () => {
+      window.removeEventListener("hf-timelines-built", onTimelinesBuilt);
+      maybePublishRenderReady();
+    };
+    window.addEventListener("hf-timelines-built", onTimelinesBuilt);
+  }
+  maybePublishRenderReady();
+
+  // When the bundler inlines compositions, data-composition-src is removed so
+  // loadExternalCompositions() is skipped. But inline scripts registering child
+  // timelines in __timelines haven't executed yet (they run in the browser's next
+  // microtask). Defer a rebinding attempt to catch them.
+  if (externalCompositionsReady) {
+    setTimeout(() => {
+      maybePublishRenderReady();
+    }, 0);
+  }
   let transportTickCount = 0;
   let inTransportTick = false;
 
