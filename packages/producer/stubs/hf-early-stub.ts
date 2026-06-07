@@ -255,11 +255,8 @@ if (typeof window !== "undefined") {
       set(g: GsapInstance): void {
         _realGsap = g;
         if (!g || typeof g.timeline !== "function") return;
-        const origTimeline = g.timeline.bind(g) as (
-          params?: unknown,
-        ) => GsapTimeline;
-        g.timeline = (params?: unknown): GsapTimeline =>
-          wrapTimeline(origTimeline(params));
+        const origTimeline = g.timeline.bind(g) as (params?: unknown) => GsapTimeline;
+        g.timeline = (params?: unknown): GsapTimeline => wrapTimeline(origTimeline(params));
       },
     });
   } catch {

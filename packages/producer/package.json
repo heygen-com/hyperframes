@@ -31,9 +31,9 @@
     "registry": "https://registry.npmjs.org/"
   },
   "scripts": {
-  "build": "bun run build:fonts && bun run build:hf-early-stub && bun run --cwd ../.. build:hyperframes-runtime:modular && node build.mjs",
-  "build:fonts": "node scripts/build-fonts.mjs",
-  "build:hf-early-stub": "bun run scripts/build-hf-early-stub.ts",
+    "build": "bun run build:fonts && bun run build:hf-early-stub && bun run --cwd ../.. build:hyperframes-runtime:modular && node build.mjs",
+    "build:fonts": "node scripts/build-fonts.mjs",
+    "build:hf-early-stub": "bun run scripts/build-hf-early-stub.ts",
     "typecheck": "tsc --noEmit",
     "parity:check": "tsx src/parity-harness.ts",
     "parity:fixtures": "tsx src/parity-fixtures.ts",

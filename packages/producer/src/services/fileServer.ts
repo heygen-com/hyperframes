@@ -416,7 +416,6 @@ const RENDER_MODE_SCRIPT = `(function() {
   waitForPlayer();
 })();`;
 
-
 /**
  * Early stub: ensures `window.__hf` exists *before* any user `<script>` in
  * `<body>` executes, and batches GSAP timeline construction via
