@@ -59,16 +59,30 @@ declare global {
     __hfTimelinesBuilding?: boolean;
     __HF_VIRTUAL_TIME__?: {
       originalRequestAnimationFrame?: typeof window.requestAnimationFrame;
+      originalSetTimeout?: typeof window.setTimeout;
     };
   }
 }
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type TweenMethod = "to" | "from" | "fromTo" | "set";
+type TimelineOperationMethod =
+  | "to"
+  | "from"
+  | "fromTo"
+  | "add"
+  | "pause"
+  | "play"
+  | "seek"
+  | "totalTime"
+  | "time"
+  | "duration"
+  | "paused"
+  | "timeScale";
 
-interface TweenDescriptor {
-  method: TweenMethod;
+interface TimelineOperation {
+  proxy: TimelineProxy;
+  method: TimelineOperationMethod;
   args: unknown[];
 }
 
@@ -112,14 +126,18 @@ interface GsapInstance {
  */
 interface TimelineProxy extends GsapTimeline {
   __hfReal: GsapTimeline;
-  __hfQueue: TweenDescriptor[];
+  __hfQueue: TimelineOperation[];
 }
 
 // ─── Module-level state ───────────────────────────────────────────────────────
 
 const BATCH_SIZE = 100;
+const SYNC_OPERATION_LIMIT = 5000;
 const activeProxies: TimelineProxy[] = [];
+const pendingOperations: TimelineOperation[] = [];
 let batchScheduled = false;
+let publishCheckScheduled = false;
+let executedOperationCount = 0;
 
 function requestBatchFrame(callback: FrameRequestCallback): number {
   const originalRequestAnimationFrame = window.__HF_VIRTUAL_TIME__?.originalRequestAnimationFrame;
@@ -129,36 +147,102 @@ function requestBatchFrame(callback: FrameRequestCallback): number {
   return requestAnimationFrame(callback);
 }
 
+function scheduleAfterScriptStack(callback: () => void): void {
+  const originalSetTimeout = window.__HF_VIRTUAL_TIME__?.originalSetTimeout;
+  if (typeof originalSetTimeout === "function") {
+    originalSetTimeout(callback, 0);
+    return;
+  }
+  setTimeout(callback, 0);
+}
+
 // ─── Batch flusher ────────────────────────────────────────────────────────────
+
+function unwrapTimelineArg(arg: unknown): unknown {
+  if (arg !== null && typeof arg === "object" && "__hfReal" in (arg as Record<string, unknown>)) {
+    return (arg as TimelineProxy).__hfReal;
+  }
+  return arg;
+}
+
+function applyTimelineOperation(entry: TimelineOperation): void {
+  const real = entry.proxy.__hfReal;
+  const fn = real[entry.method];
+  if (typeof fn === "function") {
+    const args = entry.method === "add" ? entry.args.map(unwrapTimelineArg) : entry.args;
+    (fn as (...args: unknown[]) => unknown).call(real, ...args);
+  }
+}
+
+function enqueueTimelineOperation(
+  proxy: TimelineProxy,
+  method: TimelineOperationMethod,
+  args: unknown[],
+): TimelineProxy {
+  const entry = { proxy, method, args };
+  if (pendingOperations.length === 0 && executedOperationCount < SYNC_OPERATION_LIMIT) {
+    executedOperationCount += 1;
+    applyTimelineOperation(entry);
+    return proxy;
+  }
+  executedOperationCount += 1;
+  proxy.__hfQueue.push(entry);
+  pendingOperations.push(entry);
+  scheduleBatch();
+  return proxy;
+}
+
+function removeProxyQueueEntry(entry: TimelineOperation): void {
+  const index = entry.proxy.__hfQueue.indexOf(entry);
+  if (index >= 0) entry.proxy.__hfQueue.splice(index, 1);
+}
+
+function flushPendingOperations(): void {
+  while (pendingOperations.length > 0) {
+    const entry = pendingOperations.shift();
+    if (!entry) continue;
+    removeProxyQueueEntry(entry);
+    applyTimelineOperation(entry);
+  }
+  scheduleTimelinesBuiltCheck();
+}
+
+function publishTimelinesBuilt(): void {
+  publishCheckScheduled = false;
+  window.__hfTimelinesBuilding = false;
+  try {
+    window.dispatchEvent(new CustomEvent("hf-timelines-built"));
+  } catch {
+    // ignore — CustomEvent unavailable in some test environments
+  }
+}
+
+function scheduleTimelinesBuiltCheck(): void {
+  if (publishCheckScheduled) return;
+  publishCheckScheduled = true;
+  scheduleAfterScriptStack(() => {
+    if (pendingOperations.length === 0) {
+      publishTimelinesBuilt();
+    } else {
+      publishCheckScheduled = false;
+    }
+  });
+}
 
 // fallow-ignore-next-line complexity
 function flushBatch(): void {
   batchScheduled = false;
-  let anyRemaining = false;
-
-  for (const proxy of activeProxies) {
-    if (proxy.__hfQueue.length === 0) continue;
-    const batch = proxy.__hfQueue.splice(0, BATCH_SIZE);
-    const real = proxy.__hfReal;
-    for (const entry of batch) {
-      const fn = real[entry.method];
-      if (typeof fn === "function") {
-        (fn as (...args: unknown[]) => unknown).call(real, ...entry.args);
-      }
-    }
-    if (proxy.__hfQueue.length > 0) anyRemaining = true;
+  const batch = pendingOperations.splice(0, BATCH_SIZE);
+  for (const entry of batch) {
+    removeProxyQueueEntry(entry);
+    applyTimelineOperation(entry);
   }
 
-  if (anyRemaining) {
+  if (pendingOperations.length > 0) {
     batchScheduled = true;
     requestBatchFrame(flushBatch);
   } else {
-    window.__hfTimelinesBuilding = false;
-    try {
-      window.dispatchEvent(new CustomEvent("hf-timelines-built"));
-    } catch {
-      // ignore — CustomEvent unavailable in some test environments
-    }
+    publishTimelinesBuilt();
   }
 }
 
@@ -185,50 +269,31 @@ function wrapTimeline(real: GsapTimeline): TimelineProxy {
 
     // ── Queued mutating methods ──────────────────────────────────────────────
     to(...args: unknown[]): TimelineProxy {
-      proxy.__hfQueue.push({ method: "to", args });
-      scheduleBatch();
-      return proxy;
+      return enqueueTimelineOperation(proxy, "to", args);
     },
     from(...args: unknown[]): TimelineProxy {
-      proxy.__hfQueue.push({ method: "from", args });
-      scheduleBatch();
-      return proxy;
+      return enqueueTimelineOperation(proxy, "from", args);
     },
     fromTo(...args: unknown[]): TimelineProxy {
-      proxy.__hfQueue.push({ method: "fromTo", args });
-      scheduleBatch();
-      return proxy;
+      return enqueueTimelineOperation(proxy, "fromTo", args);
     },
     set(...args: unknown[]): TimelineProxy {
-      proxy.__hfQueue.push({ method: "set", args });
-      scheduleBatch();
+      real.set(...args);
       return proxy;
     },
 
-    // ── Forwarded chain methods — delegate to real, return proxy ─────────────
+    // ── Ordered chain methods — queue with tweens to preserve GSAP semantics ─
     pause(...args: unknown[]): TimelineProxy {
-      real.pause(...args);
-      return proxy;
+      return enqueueTimelineOperation(proxy, "pause", args);
     },
     play(...args: unknown[]): TimelineProxy {
-      real.play(...args);
-      return proxy;
+      return enqueueTimelineOperation(proxy, "play", args);
     },
     seek(...args: unknown[]): TimelineProxy {
-      real.seek(...args);
-      return proxy;
+      return enqueueTimelineOperation(proxy, "seek", args);
     },
     add(...args: unknown[]): TimelineProxy {
-      // Unwrap proxy children so GSAP's internal tween graph (_first/_next/_prev
-      // linkage) holds real timeline references, not proxy objects that lack
-      // internal GSAP fields like `_dp`.
-      const unwrapped = args.map((a) =>
-        a !== null && typeof a === "object" && "__hfReal" in (a as Record<string, unknown>)
-          ? (a as TimelineProxy).__hfReal
-          : a,
-      );
-      real.add(...unwrapped);
-      return proxy;
+      return enqueueTimelineOperation(proxy, "add", args);
     },
 
     // ── Forwarded value-returning methods ────────────────────────────────────
@@ -237,25 +302,32 @@ function wrapTimeline(real: GsapTimeline): TimelineProxy {
     // callers can chain `.to(...)` against the proxy rather than leaking the
     // real timeline out of the batching chain.
     totalTime(...args: unknown[]): unknown {
-      const result = real.totalTime(...args);
-      return args.length > 0 ? proxy : result;
+      if (args.length > 0) return enqueueTimelineOperation(proxy, "totalTime", args);
+      flushPendingOperations();
+      return real.totalTime();
     },
     time(...args: unknown[]): unknown {
-      const result = real.time(...args);
-      return args.length > 0 ? proxy : result;
+      if (args.length > 0) return enqueueTimelineOperation(proxy, "time", args);
+      flushPendingOperations();
+      return real.time();
     },
     duration(...args: unknown[]): unknown {
-      return real.duration(...args);
+      if (args.length > 0) return enqueueTimelineOperation(proxy, "duration", args);
+      flushPendingOperations();
+      return real.duration();
     },
     paused(...args: unknown[]): unknown {
-      const result = real.paused(...args);
-      return args.length > 0 ? proxy : result;
+      if (args.length > 0) return enqueueTimelineOperation(proxy, "paused", args);
+      flushPendingOperations();
+      return real.paused();
     },
     timeScale(...args: unknown[]): unknown {
-      const result = real.timeScale(...args);
-      return args.length > 0 ? proxy : result;
+      if (args.length > 0) return enqueueTimelineOperation(proxy, "timeScale", args);
+      flushPendingOperations();
+      return real.timeScale();
     },
     kill(): void {
+      flushPendingOperations();
       real.kill();
     },
   };

@@ -403,7 +403,6 @@ const RENDER_MODE_SCRIPT = `(function() {
     if (hasComposition) {
       if (window.__player && typeof window.__player.renderSeek === "function") {
         window.__playerReady = true;
-        window.__renderReady = true;
         return;
       }
       __realSetTimeout(waitForPlayer, 50);
@@ -516,6 +515,7 @@ const HF_BRIDGE_SCRIPT = `(function() {
         // __hf.duration > 0), preventing the capture pipeline from seeking
         // empty timelines and producing blank/incorrect frames.
         if (window.__hfTimelinesBuilding) return 0;
+        if (!window.__renderReady) return 0;
         var d = p.getDuration();
         return d > 0 ? d : getDeclaredDuration();
       },
