@@ -118,6 +118,13 @@ describe("buildPathOffsetPatches / buildClearPathOffsetPatches", () => {
     ]);
   });
 
+  it("clear: empty STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR coerces to null (translate not set to empty string)", () => {
+    const e = div();
+    e.setAttribute(STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR, "");
+    const ops = buildClearPathOffsetPatches(e);
+    expect(ops.find((o) => o.property === "translate")?.value).toBeNull();
+  });
+
   it("build/clear symmetry: clear addresses every {type,property} key that build emits", () => {
     const e = populatedPathEl();
     assertClearCoversKeys(buildPathOffsetPatches(e), buildClearPathOffsetPatches(e));
@@ -203,22 +210,54 @@ describe("buildBoxSizePatches / buildClearBoxSizePatches", () => {
     ]);
   });
 
-  it("clear: restores width and height from orig attrs, nulls all orig attrs", () => {
+  it("clear(populated): ops follow interleaved restore-then-null order for every orig attr", () => {
+    const ops = buildClearBoxSizePatches(populatedBoxEl());
+    expect(ops).toEqual([
+      { type: "inline-style", property: STUDIO_WIDTH_PROP, value: null },
+      { type: "inline-style", property: STUDIO_HEIGHT_PROP, value: null },
+      { type: "attribute", property: STUDIO_BOX_SIZE_ATTR, value: null },
+      { type: "inline-style", property: "width", value: "250px" },
+      { type: "attribute", property: STUDIO_ORIGINAL_WIDTH_ATTR, value: null },
+      { type: "inline-style", property: "height", value: "150px" },
+      { type: "attribute", property: STUDIO_ORIGINAL_HEIGHT_ATTR, value: null },
+      { type: "inline-style", property: "min-width", value: "0px" },
+      { type: "attribute", property: STUDIO_ORIGINAL_MIN_WIDTH_ATTR, value: null },
+      { type: "inline-style", property: "min-height", value: "0px" },
+      { type: "attribute", property: STUDIO_ORIGINAL_MIN_HEIGHT_ATTR, value: null },
+      { type: "inline-style", property: "max-width", value: "none" },
+      { type: "attribute", property: STUDIO_ORIGINAL_MAX_WIDTH_ATTR, value: null },
+      { type: "inline-style", property: "max-height", value: "none" },
+      { type: "attribute", property: STUDIO_ORIGINAL_MAX_HEIGHT_ATTR, value: null },
+      { type: "inline-style", property: "flex-basis", value: "0px" },
+      { type: "attribute", property: STUDIO_ORIGINAL_FLEX_BASIS_ATTR, value: null },
+      { type: "inline-style", property: "flex-grow", value: "0" },
+      { type: "attribute", property: STUDIO_ORIGINAL_FLEX_GROW_ATTR, value: null },
+      { type: "inline-style", property: "flex-shrink", value: "1" },
+      { type: "attribute", property: STUDIO_ORIGINAL_FLEX_SHRINK_ATTR, value: null },
+      { type: "inline-style", property: "box-sizing", value: "content-box" },
+      { type: "attribute", property: STUDIO_ORIGINAL_BOX_SIZING_ATTR, value: null },
+      { type: "inline-style", property: "scale", value: "1" },
+      { type: "attribute", property: STUDIO_ORIGINAL_SCALE_ATTR, value: null },
+      { type: "inline-style", property: "transform-origin", value: "50% 50%" },
+      { type: "attribute", property: STUDIO_ORIGINAL_TRANSFORM_ORIGIN_ATTR, value: null },
+      { type: "inline-style", property: "display", value: "flex" },
+      { type: "attribute", property: STUDIO_ORIGINAL_DISPLAY_ATTR, value: null },
+      { type: "attribute", property: STUDIO_ORIGINAL_TRANSFORM_DISPLAY_ATTR, value: null },
+    ]);
+  });
+
+  it("clear: empty orig attr coerces to null (style is removed rather than set to empty string)", () => {
     const e = div();
-    e.setAttribute(STUDIO_ORIGINAL_WIDTH_ATTR, "200px");
-    e.setAttribute(STUDIO_ORIGINAL_HEIGHT_ATTR, "100px");
+    e.setAttribute(STUDIO_ORIGINAL_WIDTH_ATTR, "");
     const ops = buildClearBoxSizePatches(e);
-    expect(ops).toEqual(
-      expect.arrayContaining([
-        { type: "inline-style", property: STUDIO_WIDTH_PROP, value: null },
-        { type: "inline-style", property: STUDIO_HEIGHT_PROP, value: null },
-        { type: "attribute", property: STUDIO_BOX_SIZE_ATTR, value: null },
-        { type: "inline-style", property: "width", value: "200px" },
-        { type: "attribute", property: STUDIO_ORIGINAL_WIDTH_ATTR, value: null },
-        { type: "inline-style", property: "height", value: "100px" },
-        { type: "attribute", property: STUDIO_ORIGINAL_HEIGHT_ATTR, value: null },
-      ]),
-    );
+    expect(ops.find((o) => o.property === "width")?.value).toBeNull();
+  });
+
+  it("clear: bare element emits only null ops — no style restores fire when orig attrs are absent", () => {
+    const ops = buildClearBoxSizePatches(div());
+    // 3 fixed (studio-width, studio-height, box-size marker) + 14 attr-null pushes (one per BOX_SIZE_ORIG_ATTR)
+    expect(ops).toHaveLength(17);
+    expect(ops.every((op) => op.value === null)).toBe(true);
   });
 
   it("build/clear symmetry: clear addresses every {type,property} key that build emits", () => {
@@ -288,6 +327,18 @@ describe("buildRotationPatches / buildClearRotationPatches", () => {
     ]);
   });
 
+  it("clear: absent STUDIO_ORIGINAL_ROTATION_TRANSFORM_ORIGIN_ATTR yields null for transform-origin", () => {
+    const ops = buildClearRotationPatches(div());
+    expect(ops.find((o) => o.property === "transform-origin")?.value).toBeNull();
+  });
+
+  it("clear: empty STUDIO_ORIGINAL_INLINE_ROTATE_ATTR coerces to null (rotate not set to empty string)", () => {
+    const e = div();
+    e.setAttribute(STUDIO_ORIGINAL_INLINE_ROTATE_ATTR, "");
+    const ops = buildClearRotationPatches(e);
+    expect(ops.find((o) => o.property === "rotate")?.value).toBeNull();
+  });
+
   it("build/clear symmetry: clear addresses every {type,property} key that build emits", () => {
     const e = populatedRotEl();
     assertClearCoversKeys(buildRotationPatches(e), buildClearRotationPatches(e));
@@ -327,12 +378,14 @@ describe("buildMotionPatches / buildClearMotionPatches", () => {
   });
 
   it("clear: always nulls all four motion attrs regardless of element state", () => {
-    expect(buildClearMotionPatches(div())).toEqual([
+    const expected = [
       { type: "attribute", property: STUDIO_MOTION_ATTR, value: null },
       { type: "attribute", property: STUDIO_MOTION_ORIGINAL_TRANSFORM_ATTR, value: null },
       { type: "attribute", property: STUDIO_MOTION_ORIGINAL_OPACITY_ATTR, value: null },
       { type: "attribute", property: STUDIO_MOTION_ORIGINAL_VISIBILITY_ATTR, value: null },
-    ]);
+    ];
+    expect(buildClearMotionPatches(div())).toEqual(expected);
+    expect(buildClearMotionPatches(populatedMotionEl())).toEqual(expected);
   });
 
   it("build/clear symmetry: clear addresses every {type,property} key that build emits", () => {
