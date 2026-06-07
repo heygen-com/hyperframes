@@ -66,6 +66,9 @@ tmp/
 packages/core/src/generated/
 packages/producer/src/services/fontData.generated.ts
 
+# Plan documents (working artifacts, not committed)
+docs/plans/
+
 # Local proof / test artifacts
 qa-artifacts/
 my-video/
