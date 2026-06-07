@@ -59,6 +59,12 @@ var __dirname = __hf_dirname(__filename);`,
     // @hyperframes/aws-lambda being a `dependencies` entry in package.json.
     "@hyperframes/aws-lambda",
     "@hyperframes/aws-lambda/sdk",
+    // Same treatment for the GCP adapter: the cloudrun subverb files
+    // dynamic-import `@hyperframes/gcp-cloud-run/sdk` only when the user runs
+    // `hyperframes cloudrun *`. Keep it external; runtime resolution comes
+    // from the `dependencies`/workspace entry, not the bundled CLI.
+    "@hyperframes/gcp-cloud-run",
+    "@hyperframes/gcp-cloud-run/sdk",
   ],
   noExternal: [
     "@hyperframes/core",
@@ -88,6 +94,8 @@ var __dirname = __hf_dirname(__filename);`,
       // which would resolve to `../aws-lambda/src/index.ts/sdk` without
       // an explicit subpath alias. The SDK subpath has its own barrel.
       "@hyperframes/aws-lambda/sdk": resolve(__dirname, "../aws-lambda/src/sdk/index.ts"),
+      // Same for the GCP adapter's SDK subpath barrel.
+      "@hyperframes/gcp-cloud-run/sdk": resolve(__dirname, "../gcp-cloud-run/src/sdk/index.ts"),
       // hf#732 lever-4: alias for the PNG decode+blit worker's import.
       // `alphaBlit.ts` is import-free (only zlib) so the worker survives
       // the worker_thread loader boundary directly via this TS source.
