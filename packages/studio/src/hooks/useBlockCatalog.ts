@@ -1,6 +1,10 @@
 import { useState, useEffect, useMemo } from "react";
 import type { RegistryItem } from "@hyperframes/core/registry";
-import { type BlockCategory, resolveBlockCategory } from "../utils/blockCategories";
+import {
+  BLOCK_CATEGORIES,
+  type BlockCategory,
+  resolveBlockCategory,
+} from "../utils/blockCategories";
 
 export type CatalogItem = RegistryItem & {
   category: BlockCategory;
@@ -15,17 +19,6 @@ export function useBlockCatalog() {
 
   // fallow-ignore-next-line complexity
   useEffect(() => {
-    const CATEGORY_ORDER: Record<BlockCategory, number> = {
-      captions: 0,
-      vfx: 1,
-      transitions: 2,
-      effects: 3,
-      "text-effects": 4,
-      social: 5,
-      data: 6,
-      scenes: 7,
-    };
-
     let cancelled = false;
     (async () => {
       try {
@@ -35,7 +28,11 @@ export function useBlockCatalog() {
         if (cancelled) return;
         const items = data
           .map((b) => ({ ...b, category: resolveBlockCategory(b.tags) }))
-          .sort((a, b) => (CATEGORY_ORDER[a.category] ?? 9) - (CATEGORY_ORDER[b.category] ?? 9));
+          .sort((a, b) => {
+            const ia = BLOCK_CATEGORIES.findIndex((c) => c.id === a.category);
+            const ib = BLOCK_CATEGORIES.findIndex((c) => c.id === b.category);
+            return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+          });
         setBlocks(items);
       } catch (err) {
         if (cancelled) return;

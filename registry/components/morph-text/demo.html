@@ -1,3 +1,6 @@
+<!-- demo.html — used by scripts/generate-catalog-previews.ts to render the
+     catalog preview video. Not installed by `hyperframes add morph-text`.
+     Keep in sync with morph-text.html. -->
 <!doctype html>
 <html lang="en">
   <head>
@@ -157,7 +160,7 @@
         }
 
         var morphSpeed = parseFloat(container.dataset.morphSpeed || "1");
-        var morphPause = parseFloat(container.dataset.morphPause || "0.25");
+        var morphPause = parseFloat(container.dataset.morphPause || "1.5");
         var duration = parseFloat(container.dataset.duration || "9");
         var stepDur = morphSpeed + morphPause;
         var totalWordDur = words.length * stepDur;
@@ -193,13 +196,22 @@
             elB.style.opacity = "1";
           } else {
             display.style.filter = "url(#morph-threshold)";
-            var blurB = Math.min(8 / frac - 8, 100);
-            var blurA = Math.min(8 / (1 - frac) - 8, 100);
+            var blurB = Math.max(0, Math.min(8 / frac - 8, 100));
+            var blurA = Math.max(0, Math.min(8 / (1 - frac) - 8, 100));
             elB.style.filter = "blur(" + blurB + "px)";
             elB.style.opacity = frac;
             elA.style.filter = "blur(" + blurA + "px)";
             elA.style.opacity = 1 - frac;
           }
+        }
+
+        if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
+          elA.textContent = words[0].text;
+          elA.style.fontFamily = words[0].font;
+          elA.style.color = words[0].color;
+          elA.style.opacity = "1";
+          display.style.filter = "none";
+          return;
         }
 
         var proxy = { t: 0 };

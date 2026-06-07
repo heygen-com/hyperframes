@@ -4,7 +4,7 @@
   "type": "hyperframes:component",
   "title": "Texture Mask Text",
   "description": "CSS luminance masks that cut holes through letterforms - 66 pre-built texture masks from ambientCG PBR color maps",
-  "tags": ["text", "text-effect", "texture", "mask"],
+  "tags": ["text", "text-effect", "effect", "texture", "mask"],
   "textureGroups": [
     {
       "title": "Masonry",
