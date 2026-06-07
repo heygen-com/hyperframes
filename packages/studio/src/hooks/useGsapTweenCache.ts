@@ -224,7 +224,14 @@ export function usePopulateKeyframeCacheForFile(
     const sf = sourceFile;
     fetchParsedAnimations(projectId, sf).then((parsed) => {
       if (!parsed) return;
-      const { setKeyframeCache } = usePlayerStore.getState();
+      const { setKeyframeCache, keyframeCache } = usePlayerStore.getState();
+      const sfPrefix = `${sf}#`;
+      const fallbackPrefix = "index.html#";
+      for (const key of keyframeCache.keys()) {
+        if (key.startsWith(sfPrefix) || (sf !== "index.html" && key.startsWith(fallbackPrefix))) {
+          setKeyframeCache(key, undefined);
+        }
+      }
       for (const anim of parsed.animations) {
         const id = extractIdFromSelector(anim.targetSelector);
         if (!id || !anim.keyframes) continue;

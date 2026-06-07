@@ -217,6 +217,34 @@ export const PropertyPanel = memo(function PropertyPanel({
     }
   })();
 
+  const gsapBorderRadius: { tl: number; tr: number; br: number; bl: number } | null = (() => {
+    if (!gsapRuntimeValues || !("borderRadius" in gsapRuntimeValues)) {
+      const hasBRProp = gsapAnimations.some(
+        (a) =>
+          "borderRadius" in a.properties ||
+          a.keyframes?.keyframes.some((kf) => "borderRadius" in kf.properties),
+      );
+      if (!hasBRProp) return null;
+    }
+    const iframe = previewIframeRef?.current;
+    const selector = element.id ? `#${element.id}` : element.selector;
+    if (!iframe?.contentDocument || !selector) return null;
+    try {
+      const el = iframe.contentDocument.querySelector(selector);
+      if (!el) return null;
+      const cs = iframe.contentWindow!.getComputedStyle(el);
+      const parse = (v: string) => Number.parseFloat(v) || 0;
+      return {
+        tl: parse(cs.borderTopLeftRadius),
+        tr: parse(cs.borderTopRightRadius),
+        br: parse(cs.borderBottomRightRadius),
+        bl: parse(cs.borderBottomLeftRadius),
+      };
+    } catch {
+      return null;
+    }
+  })();
+
   const displayX = gsapRuntimeValues?.x ?? manualOffset.x;
   const displayY = gsapRuntimeValues?.y ?? manualOffset.y;
   const displayW = gsapRuntimeValues?.width ?? resolvedWidth;
@@ -544,6 +572,7 @@ export const PropertyPanel = memo(function PropertyPanel({
             assets={assets}
             onSetStyle={onSetStyle}
             onImportAssets={onImportAssets}
+            gsapBorderRadius={gsapBorderRadius}
           />
         )}
       </div>

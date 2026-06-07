@@ -108,6 +108,7 @@ interface GsapScriptCommitsParams {
   domEditSaveTimestampRef: React.MutableRefObject<number>;
   reloadPreview: () => void;
   onCacheInvalidate: () => void;
+  onFileContentChanged?: (path: string, content: string) => void;
 }
 
 const DEBOUNCE_MS = 150;
@@ -121,6 +122,7 @@ export function useGsapScriptCommits({
   domEditSaveTimestampRef,
   reloadPreview,
   onCacheInvalidate,
+  onFileContentChanged,
 }: GsapScriptCommitsParams) {
   const pendingPropertyEditRef = useRef<{
     selection: DomEditSelection;
@@ -164,14 +166,28 @@ export function useGsapScriptCommits({
 
       onCacheInvalidate();
 
+      if (result.after != null) {
+        onFileContentChanged?.(targetPath, result.after);
+      }
+
       if (result.parsed?.animations) {
         const { setKeyframeCache } = usePlayerStore.getState();
+        const idsWithKeyframes = new Set<string>();
         for (const anim of result.parsed.animations) {
-          if (!anim.keyframes) continue;
           const id = anim.targetSelector.match(/^#([\w-]+)/)?.[1];
           if (!id) continue;
-          setKeyframeCache(`${targetPath}#${id}`, anim.keyframes);
-          if (targetPath !== "index.html") setKeyframeCache(`index.html#${id}`, anim.keyframes);
+          if (anim.keyframes) {
+            idsWithKeyframes.add(id);
+            setKeyframeCache(`${targetPath}#${id}`, anim.keyframes);
+            if (targetPath !== "index.html") setKeyframeCache(`index.html#${id}`, anim.keyframes);
+          }
+        }
+        const targetId =
+          (mutation as { targetSelector?: string }).targetSelector?.match(/^#([\w-]+)/)?.[1] ??
+          selection.id;
+        if (targetId && !idsWithKeyframes.has(targetId)) {
+          setKeyframeCache(`${targetPath}#${targetId}`, undefined);
+          if (targetPath !== "index.html") setKeyframeCache(`index.html#${targetId}`, undefined);
         }
       }
 
@@ -195,6 +211,7 @@ export function useGsapScriptCommits({
       domEditSaveTimestampRef,
       reloadPreview,
       onCacheInvalidate,
+      onFileContentChanged,
     ],
   );
 

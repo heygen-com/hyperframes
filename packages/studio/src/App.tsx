@@ -334,6 +334,7 @@ export function StudioApp() {
     queueDomEditSave: previewPersistence.queueDomEditSave,
     readProjectFile: fileManager.readProjectFile,
     writeProjectFile: fileManager.writeProjectFile,
+    updateEditingFileContent: fileManager.updateEditingFileContent,
     domEditSaveTimestampRef,
     editHistory: { recordEdit: editHistory.recordEdit },
     fileTree: fileManager.fileTree,

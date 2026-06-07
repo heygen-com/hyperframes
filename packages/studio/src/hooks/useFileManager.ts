@@ -108,6 +108,12 @@ export function useFileManager({
     }
   }, []);
 
+  const updateEditingFileContent = useCallback((path: string, content: string) => {
+    if (editingPathRef.current === path) {
+      setEditingFile({ path, content });
+    }
+  }, []);
+
   const readOptionalProjectFile = useCallback(async (path: string): Promise<string> => {
     const pid = projectIdRef.current;
     if (!pid) throw new Error("No active project");
@@ -460,6 +466,7 @@ export function useFileManager({
     readProjectFile,
     writeProjectFile,
     readOptionalProjectFile,
+    updateEditingFileContent,
 
     // Click-to-source
     revealSourceOffset,
