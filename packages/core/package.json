@@ -194,7 +194,7 @@
     "jsdom": "^29.0.0",
     "tsx": "^4.21.0",
     "typescript": "^5.0.0",
-    "vitest": "^3.2.4"
+    "vitest": "^4.1.0"
   },
   "peerDependencies": {
     "hono": "^4.0.0"
