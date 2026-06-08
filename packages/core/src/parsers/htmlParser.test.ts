@@ -26,13 +26,13 @@ describe("parseHtml", () => {
     const result = parseHtml(html);
 
     expect(result.elements).toHaveLength(2);
-    expect(result.elements[0].id).toBe("text1");
+    expect(result.elements[0].id).toMatch(/^hf-[a-z0-9]{4}$/);
     expect(result.elements[0].startTime).toBe(0);
     expect(result.elements[0].duration).toBe(5);
     expect(result.elements[0].name).toBe("Title");
     expect(result.elements[0].type).toBe("text");
 
-    expect(result.elements[1].id).toBe("text2");
+    expect(result.elements[1].id).toMatch(/^hf-[a-z0-9]{4}$/);
     expect(result.elements[1].startTime).toBe(2);
     expect(result.elements[1].duration).toBe(5);
   });
@@ -53,7 +53,7 @@ describe("parseHtml", () => {
 
     expect(result.elements).toHaveLength(1);
     expect(result.elements[0].type).toBe("composition");
-    expect(result.elements[0].id).toBe("comp1");
+    expect(result.elements[0].id).toMatch(/^hf-[a-z0-9]{4}$/);
     if (result.elements[0].type === "composition") {
       expect(result.elements[0].compositionId).toBe("abc123");
       expect(result.elements[0].src).toBe("/compositions/abc123");
@@ -76,20 +76,20 @@ describe("parseHtml", () => {
 
     expect(result.elements).toHaveLength(3);
 
-    const video = result.elements.find((e) => e.id === "vid1");
+    const video = result.elements.find((e) => e.type === "video");
     expect(video).toBeDefined();
-    expect(video?.type).toBe("video");
+    expect(video?.id).toMatch(/^hf-[a-z0-9]{4}$/);
     if (video?.type === "video") {
       expect(video.src).toBe("video.mp4");
     }
 
-    const audio = result.elements.find((e) => e.id === "aud1");
+    const audio = result.elements.find((e) => e.type === "audio");
     expect(audio).toBeDefined();
-    expect(audio?.type).toBe("audio");
+    expect(audio?.id).toMatch(/^hf-[a-z0-9]{4}$/);
 
-    const img = result.elements.find((e) => e.id === "img1");
+    const img = result.elements.find((e) => e.type === "image");
     expect(img).toBeDefined();
-    expect(img?.type).toBe("image");
+    expect(img?.id).toMatch(/^hf-[a-z0-9]{4}$/);
   });
 
   it("handles missing attributes gracefully", () => {
@@ -123,7 +123,7 @@ describe("parseHtml", () => {
     const result = parseHtml(html);
 
     expect(result.elements).toHaveLength(1);
-    expect(result.elements[0].id).toMatch(/^element-\d+$/);
+    expect(result.elements[0].id).toMatch(/^hf-[a-z0-9]{4}$/);
   });
 
   it("extracts GSAP script from script tags", () => {
@@ -398,9 +398,12 @@ describe("parseHtml", () => {
     `;
     const result = parseHtml(html);
 
-    expect(result.keyframes["text1"]).toBeDefined();
-    expect(result.keyframes["text1"]).toHaveLength(2);
-    expect(result.keyframes["text1"][0].id).toBe("kf1");
+    const elId = result.elements[0]?.id ?? "";
+    expect(elId).toMatch(/^hf-[a-z0-9]{4}$/);
+    const kfs = result.keyframes[elId];
+    expect(kfs).toBeDefined();
+    expect(kfs).toHaveLength(2);
+    expect(kfs[0].id).toBe("kf1");
   });
 
   it("parses stage zoom keyframes", () => {
