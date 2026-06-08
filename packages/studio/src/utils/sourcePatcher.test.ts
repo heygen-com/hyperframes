@@ -517,17 +517,72 @@ describe("motion attribute round-trip via sourcePatcher", () => {
   });
 });
 
-// T3 — id-based targeting (spec for R1).
-// R1 adds `hfId?: string` to PatchTarget and a `[data-hf-id="…"]` lookup branch
-// in findTagByTarget. Convert from it.todo to real assertions in the R1 PR.
+// T3 — id-based targeting (R1).
 describe("T3 — hfId targeting (spec for R1)", () => {
-  it.todo("updates inline style by data-hf-id");
+  it("updates inline style by data-hf-id", () => {
+    const html = `<h1 data-hf-id="hf-x7k2" style="color: red">Hello</h1>`;
+    const result = applyPatchByTarget(
+      html,
+      { hfId: "hf-x7k2" },
+      {
+        type: "inline-style",
+        property: "color",
+        value: "blue",
+      },
+    );
+    expect(result).toContain("color: blue");
+    expect(result).toContain('data-hf-id="hf-x7k2"');
+  });
 
-  it.todo("updates text content by data-hf-id");
+  it("updates text content by data-hf-id", () => {
+    const html = `<p data-hf-id="hf-a1b2">Old text</p>`;
+    const result = applyPatchByTarget(
+      html,
+      { hfId: "hf-a1b2" },
+      {
+        type: "text-content",
+        property: "",
+        value: "New text",
+      },
+    );
+    expect(result).toContain(">New text<");
+  });
 
-  it.todo("updates attribute by data-hf-id");
+  it("updates attribute by data-hf-id", () => {
+    const html = `<div data-hf-id="hf-c3d4" data-start="0"></div>`;
+    const result = applyPatchByTarget(
+      html,
+      { hfId: "hf-c3d4" },
+      {
+        type: "attribute",
+        property: "start",
+        value: "2.5",
+      },
+    );
+    expect(result).toContain('data-start="2.5"');
+  });
 
-  it.todo("data-hf-id attribute is preserved after a style patch");
+  it("data-hf-id attribute is preserved after a style patch", () => {
+    const html = `<h1 data-hf-id="hf-x7k2" style="color: red">Hello</h1>`;
+    const patched = applyPatchByTarget(
+      html,
+      { hfId: "hf-x7k2" },
+      {
+        type: "inline-style",
+        property: "color",
+        value: "blue",
+      },
+    );
+    expect(readAttributeByTarget(patched, { hfId: "hf-x7k2" }, "data-hf-id")).toBe("hf-x7k2");
+  });
 
-  it.todo("hfId lookup falls through to selector when hfId not found");
+  it("hfId lookup falls through to selector when hfId not found", () => {
+    const html = `<h1 class="headline" style="color: red">Hello</h1>`;
+    const result = applyPatchByTarget(
+      html,
+      { hfId: "hf-missing", selector: ".headline" },
+      { type: "inline-style", property: "color", value: "blue" },
+    );
+    expect(result).toContain("color: blue");
+  });
 });

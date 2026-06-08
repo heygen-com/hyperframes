@@ -94,6 +94,7 @@ export interface PatchOperation {
 
 export interface PatchTarget {
   id?: string | null;
+  hfId?: string;
   selector?: string;
   selectorIndex?: number;
 }
@@ -232,61 +233,58 @@ function replaceTagAtMatch(html: string, match: TagMatch, newTag: string): strin
   return `${html.slice(0, match.start)}${newTag}${html.slice(match.end)}`;
 }
 
-export function findTagByTarget(html: string, target: PatchTarget): TagMatch | null {
-  if (target.id) {
-    const idPattern = new RegExp(`(<[^>]*\\bid=(["'])${escapeRegex(target.id)}\\2[^>]*)>`, "i");
-    const match = idPattern.exec(html);
-    if (match?.index != null) {
+function execDataAttrPattern(html: string, attr: string, value: string): TagMatch | null {
+  const pattern = new RegExp(`(<[^>]*\\b${attr}=(["'])${escapeRegex(value)}\\2[^>]*)>`, "i");
+  const match = pattern.exec(html);
+  return match?.index != null
+    ? { tag: match[1], start: match.index, end: match.index + match[1].length }
+    : null;
+}
+
+function findTagByClass(html: string, target: PatchTarget): TagMatch | null {
+  const classMatch = target.selector?.match(/^\.([a-zA-Z0-9_-]+)$/);
+  if (!classMatch) return null;
+  const cls = classMatch[1];
+  const pattern = new RegExp(
+    `(<[^>]*\\bclass=(["'])[^"']*\\b${escapeRegex(cls)}\\b[^"']*\\2[^>]*)>`,
+    "gi",
+  );
+  const selectorIndex = target.selectorIndex ?? 0;
+  let match: RegExpExecArray | null;
+  let currentIndex = 0;
+  while ((match = pattern.exec(html)) !== null) {
+    if (currentIndex === selectorIndex && match.index != null) {
       return {
         tag: match[1],
         start: match.index,
         end: match.index + match[1].length,
       };
     }
+    currentIndex += 1;
+  }
+  return null;
+}
+
+export function findTagByTarget(html: string, target: PatchTarget): TagMatch | null {
+  if (target.hfId) {
+    const result = execDataAttrPattern(html, "data-hf-id", target.hfId);
+    if (result) return result;
+  }
+
+  if (target.id) {
+    const result = execDataAttrPattern(html, "id", target.id);
+    if (result) return result;
   }
 
   if (!target.selector) return null;
 
   const compositionIdMatch = target.selector.match(/^\[data-composition-id="([^"]+)"\]$/);
   if (compositionIdMatch) {
-    const compId = compositionIdMatch[1];
-    const pattern = new RegExp(
-      `(<[^>]*\\bdata-composition-id=(["'])${escapeRegex(compId)}\\2[^>]*)>`,
-      "i",
-    );
-    const match = pattern.exec(html);
-    if (match?.index != null) {
-      return {
-        tag: match[1],
-        start: match.index,
-        end: match.index + match[1].length,
-      };
-    }
+    const result = execDataAttrPattern(html, "data-composition-id", compositionIdMatch[1]);
+    if (result) return result;
   }
 
-  const classMatch = target.selector.match(/^\.([a-zA-Z0-9_-]+)$/);
-  if (classMatch) {
-    const cls = classMatch[1];
-    const pattern = new RegExp(
-      `(<[^>]*\\bclass=(["'])[^"']*\\b${escapeRegex(cls)}\\b[^"']*\\2[^>]*)>`,
-      "gi",
-    );
-    const selectorIndex = target.selectorIndex ?? 0;
-    let match: RegExpExecArray | null;
-    let currentIndex = 0;
-    while ((match = pattern.exec(html)) !== null) {
-      if (currentIndex === selectorIndex && match.index != null) {
-        return {
-          tag: match[1],
-          start: match.index,
-          end: match.index + match[1].length,
-        };
-      }
-      currentIndex += 1;
-    }
-  }
-
-  return null;
+  return findTagByClass(html, target);
 }
 
 export function readAttributeByTarget(
