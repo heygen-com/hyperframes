@@ -1,9 +1,9 @@
 ---
 title: HyperFrames MCP
-description: "Author, preview, and render HyperFrames videos directly inside Claude.ai and ChatGPT — no local install required."
+description: "Author, preview, and render HyperFrames videos directly inside Claude.ai, ChatGPT, and Grok — no local install required."
 ---
 
-The HyperFrames MCP is a hosted [Model Context Protocol](https://modelcontextprotocol.io) server that lets you create, edit, preview, and render HyperFrames video compositions from inside Claude.ai or ChatGPT.
+The HyperFrames MCP is a hosted [Model Context Protocol](https://modelcontextprotocol.io) server that lets you create, edit, preview, and render HyperFrames video compositions from inside Claude.ai, ChatGPT, or Grok.
 
 <Note>
   **In beta.** Features and pricing may change. Found a bug or have feedback? [File an issue on GitHub](https://github.com/heygen-com/hyperframes/issues).
@@ -63,6 +63,27 @@ The MCP requires a HeyGen account for authentication and credits. Sign up at [he
       </Step>
       <Step title="Enter the URL">
         Paste:
+        ```
+        https://mcp.heygen.com/mcp/hyperframes
+        ```
+      </Step>
+      <Step title="Sign in to HeyGen">
+        Authorize via OAuth.
+      </Step>
+      <Step title="Start a new chat">
+        Open a new chat. Same prompts work as in Claude.ai.
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="Grok">
+    <Steps>
+      <Step title="Open Settings → Connectors">
+        In Grok: **Settings → Connectors**.
+      </Step>
+      <Step title="Find HyperFrames">
+        Search the connector catalog for **HyperFrames** and click **Connect**.
+
+        Don't see it in the catalog? Add it manually: **Add custom connector**, then paste:
         ```
         https://mcp.heygen.com/mcp/hyperframes
         ```
@@ -196,7 +217,7 @@ Complete the OAuth flow in the inspector's browser tab. Once authenticated, you 
 
 ### Watch progress notifications
 
-The MCP emits MCP `notifications/progress` events during long-running `compose` and `render_video` calls. The host (Claude.ai or ChatGPT) displays them inline:
+The MCP emits MCP `notifications/progress` events during long-running `compose` and `render_video` calls. The host (Claude.ai, ChatGPT, or Grok) displays them inline:
 
 ```
 You:    "make me a 30-second product intro"
@@ -265,7 +286,7 @@ For bugs or feature requests, file an issue at [github.com/heygen-com/hyperframe
 - The prompt you used
 - The `composition_id` and `job_id` (if applicable) — these are visible in the tool response details
 - A description of what you expected vs. what happened
-- The host (Claude.ai web/desktop, ChatGPT, etc.)
+- The host (Claude.ai web/desktop, ChatGPT, Grok, etc.)
 
 ## Limitations
 
@@ -274,7 +295,7 @@ For bugs or feature requests, file an issue at [github.com/heygen-com/hyperframe
 - **No binary uploads from chat.** You can reference assets you've already uploaded to HeyGen via the web UI, but the MCP does not currently accept new file uploads through chat. Upload via [app.heygen.com](https://app.heygen.com) first, then reference the asset by name.
 - **Aspect ratios:** `16:9`, `9:16`, `1:1`, `4:5`. Other ratios fall back to the closest match.
 - **No fine-grained editing tools.** Edits go through the agent. For pixel-precise control, use the [CLI](/quickstart) and a coding agent like Claude Code or Cursor.
-- **Widget rendering requires a host that supports MCP widgets.** Claude.ai web/desktop and ChatGPT (Apps SDK) support widgets today. Text-only MCP clients (Claude Code CLI, Cursor, Windsurf) will see a clickable preview URL instead — full text-mode support is on the roadmap.
+- **Widget rendering requires a host that supports MCP widgets.** Claude.ai web/desktop, ChatGPT (Apps SDK), and Grok support widgets today. Text-only MCP clients (Claude Code CLI, Cursor, Windsurf) will see a clickable preview URL instead — full text-mode support is on the roadmap.
 
 ## How this relates to the open-source framework
 
