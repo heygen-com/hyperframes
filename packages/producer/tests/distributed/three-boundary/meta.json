@@ -1,0 +1,16 @@
+{
+  "name": "Distributed: Three.js WebGL boundary",
+  "description": "2s composition (20 frames @ 10fps) with a Three.js purple cube on a dark background. Validates that the GSAP batching proxy correctly forwards WebGL render callbacks and that CDP screenshot capture composites WebGL canvas layers — catches the v0.6.80 regression where the plain-object proxy silently dropped eventCallback() and other non-allowlisted GSAP methods, producing black frames.",
+  "tags": ["distributed", "threejs", "webgl"],
+
+  "minPsnr": 25,
+  "maxFrameFailures": 0,
+
+  "minAudioCorrelation": 0.9,
+  "maxAudioLagWindows": 120,
+
+  "renderConfig": {
+    "fps": 10,
+    "chunkSize": 10
+  }
+}

@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>chunk-boundary: Three.js (setTimeout-deferred)</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+    <style>
+      body,
+      html {
+        margin: 0;
+        padding: 0;
+        width: 320px;
+        height: 180px;
+        background: #0f172a;
+        overflow: hidden;
+      }
+      #main-comp {
+        position: relative;
+        width: 320px;
+        height: 180px;
+      }
+      canvas {
+        display: block;
+        width: 320px;
+        height: 180px;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="main-comp"
+      data-composition-id="main-comp"
+      data-width="320"
+      data-height="180"
+      data-start="0"
+      data-duration="2"
+    ></div>
+
+    <script>
+      // Exercises the setTimeout-deferred timeline registration pattern from
+      // issue #1260. The entire GSAP timeline + Three.js setup is deferred
+      // past DOMContentLoaded via setTimeout(fn, 0), which triggers the
+      // maybePublishRenderReady race fixed in this PR.
+      setTimeout(function () {
+        var canvas = document.createElement("canvas");
+        canvas.width = 320;
+        canvas.height = 180;
+        document.getElementById("main-comp").appendChild(canvas);
+
+        var scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0f172a);
+        var camera = new THREE.PerspectiveCamera(45, 320 / 180, 0.1, 50);
+        camera.position.set(0, 0, 4);
+        var renderer = new THREE.WebGLRenderer({
+          canvas: canvas,
+          antialias: true,
+        });
+        renderer.setSize(320, 180, false);
+
+        var geo = new THREE.BoxGeometry(1, 1, 1);
+        var mat = new THREE.MeshStandardMaterial({ color: 0xa855f7 });
+        var cube = new THREE.Mesh(geo, mat);
+        scene.add(cube);
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+        var light = new THREE.DirectionalLight(0xffffff, 0.7);
+        light.position.set(2, 2, 3);
+        scene.add(light);
+
+        window.__hfThreeTime = 0;
+        function renderFrame() {
+          var t = window.__hfThreeTime || 0;
+          cube.rotation.x = t * Math.PI;
+          cube.rotation.y = t * Math.PI * 0.5;
+          renderer.render(scene, camera);
+        }
+        window.addEventListener("hf-seek", function (e) {
+          if (e && e.detail && typeof e.detail.time === "number") {
+            window.__hfThreeTime = e.detail.time;
+          }
+          renderFrame();
+        });
+        renderFrame();
+
+        var dur = gsap.timeline({ paused: true });
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main-comp"] = dur;
+        dur.to({}, { duration: 2, onUpdate: renderFrame }, 0);
+      }, 0);
+    </script>
+  </body>
+</html>

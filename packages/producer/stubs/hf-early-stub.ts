@@ -38,11 +38,12 @@
  * completes (the captured timeline reference remains valid — the proxy delegates
  * all non-mutating calls to the real timeline throughout).
  *
- * Render-mode correctness: `window.__renderReady` is intentionally not gated
- * here because the bridge script's `window.__hf.duration` getter already waits
- * for `window.__player.getDuration() > 0`, which only becomes true after
- * `bindRootTimelineIfAvailable()` completes in `init.ts`, which happens after
- * the `"hf-timelines-built"` listener fires. No separate gate is needed.
+ * Render-mode correctness: `init.ts` gates `__renderReady` on
+ * `__hfTimelinesBuilding` via `maybePublishRenderReady()`. When batching
+ * starts after init (setTimeout-deferred timelines), `maybePublishRenderReady`
+ * re-registers a `hf-timelines-built` listener to retry once the batch
+ * completes. The bridge's `__hf.duration` getter returns 0 until
+ * `__renderReady` is true, keeping `pollHfReady` waiting.
  *
  * Batch size: ~100 tweens per rAF budget. Each batch completes in <4 ms on a
  * 2023 laptop at the 8 562-tween scale; 16 ms rAF budgets are never exhausted.
@@ -248,96 +249,77 @@ function scheduleBatch(): void {
  * All methods return `proxy` so that callers who chain off the returned value
  * continue to go through the proxy for the duration of the batching phase.
  */
+// Methods that queue operations for batched flush (mutating tween additions).
+const BATCHED_METHODS = new Set<string>(["to", "from", "fromTo", "set", "add"]);
+const PROXY_STATE_KEYS = new Set(["__hfReal", "__hfQueue", "__hfIsProxy"]);
+
+function createFlushingMethodWrapper(
+  real: GsapTimeline,
+  fn: (...a: unknown[]) => unknown,
+  proxyRef: () => unknown,
+): (...args: unknown[]) => unknown {
+  return (...args: unknown[]) => {
+    flushPendingOperations();
+    const result = fn.call(real, ...args);
+    return result === real ? proxyRef() : result;
+  };
+}
+
 function wrapTimeline(real: GsapTimeline): TimelineProxy {
-  const proxy: TimelineProxy = {
+  const state = {
     __hfReal: real,
-    __hfQueue: [],
-    __hfIsProxy: true,
-
-    to(...args: unknown[]): TimelineProxy {
-      return enqueueTimelineOperation(proxy, "to", args);
-    },
-    from(...args: unknown[]): TimelineProxy {
-      return enqueueTimelineOperation(proxy, "from", args);
-    },
-    fromTo(...args: unknown[]): TimelineProxy {
-      return enqueueTimelineOperation(proxy, "fromTo", args);
-    },
-    set(...args: unknown[]): TimelineProxy {
-      return enqueueTimelineOperation(proxy, "set", args);
-    },
-    add(...args: unknown[]): TimelineProxy {
-      return enqueueTimelineOperation(proxy, "add", args);
-    },
-
-    pause(...args: unknown[]): TimelineProxy {
-      flushPendingOperations();
-      real.pause(...args);
-      return proxy;
-    },
-    play(...args: unknown[]): TimelineProxy {
-      flushPendingOperations();
-      real.play(...args);
-      return proxy;
-    },
-    seek(...args: unknown[]): TimelineProxy {
-      flushPendingOperations();
-      real.seek(...args);
-      return proxy;
-    },
-    totalTime(...args: unknown[]): unknown {
-      flushPendingOperations();
-      if (args.length > 0) {
-        real.totalTime(...args);
-        return proxy;
-      }
-      return real.totalTime();
-    },
-    time(...args: unknown[]): unknown {
-      flushPendingOperations();
-      if (args.length > 0) {
-        real.time(...args);
-        return proxy;
-      }
-      return real.time();
-    },
-    duration(...args: unknown[]): unknown {
-      flushPendingOperations();
-      if (args.length > 0) {
-        real.duration(...args);
-        return proxy;
-      }
-      return real.duration();
-    },
-    getChildren(...args: unknown[]): unknown[] {
-      flushPendingOperations();
-      const children = real.getChildren(...args);
-      return Array.isArray(children) ? children : [];
-    },
-    paused(...args: unknown[]): unknown {
-      flushPendingOperations();
-      if (args.length > 0) {
-        real.paused(...args);
-        return proxy;
-      }
-      return real.paused();
-    },
-    timeScale(...args: unknown[]): unknown {
-      flushPendingOperations();
-      if (args.length > 0) {
-        real.timeScale(...args);
-        return proxy;
-      }
-      return real.timeScale();
-    },
-    kill(): void {
-      flushPendingOperations();
-      real.kill();
-    },
+    __hfQueue: [] as TimelineOperation[],
+    __hfIsProxy: true as const,
   };
 
-  activeProxies.push(proxy);
-  return proxy;
+  // Use a Proxy so that ANY method or property access on the timeline is
+  // forwarded to the real GSAP timeline after flushing pending operations.
+  // The previous plain-object approach only forwarded an explicit allowlist,
+  // which silently dropped calls like eventCallback(), vars, labels(),
+  // repeat(), and other GSAP API surface — causing black frames when
+  // compositions used anything outside the allowlist.
+  const proxy = new Proxy(state, {
+    // fallow-ignore-next-line complexity
+    get(_target, prop, receiver) {
+      if (PROXY_STATE_KEYS.has(prop as string)) {
+        return state[prop as keyof typeof state];
+      }
+      if (typeof prop === "string" && BATCHED_METHODS.has(prop)) {
+        return (...args: unknown[]) =>
+          enqueueTimelineOperation(
+            proxy as unknown as TimelineProxy,
+            prop as TimelineOperationMethod,
+            args,
+          );
+      }
+      const value = (real as Record<string | symbol, unknown>)[prop];
+      // Forwarded methods (getChildren, eventCallback, labels, etc.) flush
+      // then delegate. Return values are NOT re-proxied — getChildren()
+      // returns raw GSAP child timelines. This is intentional: batching
+      // applies to the root timeline only; child timelines returned by
+      // getChildren are used for enumeration/cleanup, not tween additions.
+      if (typeof value === "function") {
+        return createFlushingMethodWrapper(
+          real,
+          value as (...a: unknown[]) => unknown,
+          () => receiver,
+        );
+      }
+      // Non-function property reads also flush so post-batch reads (e.g.
+      // tl.vars, tl.data) see state consistent with all applied tweens.
+      if (value !== undefined) flushPendingOperations();
+      return value;
+    },
+
+    set(_target, prop, value) {
+      flushPendingOperations();
+      (real as Record<string | symbol, unknown>)[prop] = value;
+      return true;
+    },
+  });
+
+  activeProxies.push(proxy as unknown as TimelineProxy);
+  return proxy as unknown as TimelineProxy;
 }
 
 // ─── Entry point ─────────────────────────────────────────────────────────────

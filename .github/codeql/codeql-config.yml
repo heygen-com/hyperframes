@@ -54,3 +54,11 @@ query-filters:
       paths:
         - "packages/cli/src/capture/index.ts"
         - "packages/cli/src/whisper/normalize.ts"
+
+  # Golden baselines inline vendor libraries (Three.js, GSAP) whose bundled
+  # Math.random() calls trip insecure-randomness. These are test artifacts
+  # from compiled compositions, not production code paths.
+  - exclude:
+      id: js/insecure-randomness
+      paths:
+        - "packages/producer/tests/**/output/compiled.html"

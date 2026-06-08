@@ -1757,27 +1757,28 @@ export function initSandboxRuntimeModular(): void {
     postState(true);
   };
 
+  let buildListenerPending = false;
+
   maybePublishRenderReady = () => {
-    if (!externalCompositionsReady || window.__hfTimelinesBuilding) {
+    if (!externalCompositionsReady) {
       window.__renderReady = false;
+      return;
+    }
+    if (window.__hfTimelinesBuilding) {
+      window.__renderReady = false;
+      if (!buildListenerPending) {
+        buildListenerPending = true;
+        const onBuilt = () => {
+          buildListenerPending = false;
+          maybePublishRenderReady();
+        };
+        window.addEventListener("hf-timelines-built", onBuilt, { once: true });
+      }
       return;
     }
     publishRenderReadyAfterTimelineBinding();
   };
 
-  // When the GSAP tween-batching interceptor (HF_EARLY_STUB, fileServer.ts) is
-  // active, composition scripts queue tl.to() calls instead of executing them
-  // synchronously. Wait for the "hf-timelines-built" event before the first
-  // binding attempt so the transport clock receives the finished timeline
-  // duration instead of permanently publishing duration=0.
-  if (window.__hfTimelinesBuilding) {
-    window.__renderReady = false;
-    const onTimelinesBuilt = () => {
-      window.removeEventListener("hf-timelines-built", onTimelinesBuilt);
-      maybePublishRenderReady();
-    };
-    window.addEventListener("hf-timelines-built", onTimelinesBuilt);
-  }
   maybePublishRenderReady();
 
   // When the bundler inlines compositions, data-composition-src is removed so
