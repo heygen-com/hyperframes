@@ -431,6 +431,7 @@ describe("T7 — data-hf-id targeting (spec for R1)", () => {
     expect(html).not.toContain("HACKED");
   });
 
+
   // The Studio edit path targets by id/selector (it never sends hfId). Once a
   // persisted data-hf-id exists in source, those edits must NOT strip it — else
   // the stable handle is destroyed by the next edit. This is the preservation
