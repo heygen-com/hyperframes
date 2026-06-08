@@ -8,6 +8,10 @@ permissions:
 # External users' CI continues to emit telemetry unless they set this themselves.
 env:
   HYPERFRAMES_NO_TELEMETRY: "1"
+  # ubuntu-24.04 runners ship with /usr/bin/ffmpeg. Setting FFMPEG_BIN makes
+  # ffmpeg-static's postinstall script skip its GitHub-release binary download,
+  # preventing spurious bun-install failures when that CDN is unavailable.
+  FFMPEG_BIN: /usr/bin/ffmpeg
 
 on:
   pull_request:

@@ -19,7 +19,7 @@ inputs:
   max-attempts:
     description: Max download attempts before failing.
     required: false
-    default: "3"
+    default: "8"
 
 runs:
   using: composite
@@ -44,7 +44,7 @@ runs:
           } catch {
             Write-Warning "Download failed: $($_.Exception.Message)"
             if ($attempt -eq $maxAttempts) { throw }
-            Start-Sleep -Seconds (10 * $attempt)
+            Start-Sleep -Seconds (30 * $attempt)
           }
         }
 

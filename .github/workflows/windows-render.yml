@@ -108,6 +108,12 @@ jobs:
       - name: Install FFmpeg
         uses: ./.github/actions/install-ffmpeg-windows
 
+      - name: Set FFMPEG_BIN for bun install
+        shell: pwsh
+        run: |
+          $path = (Get-Command ffmpeg.exe).Source
+          "FFMPEG_BIN=$path" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
       # -----------------------------------------------------------------
       # Verify FFmpeg feature inventory.
       #
@@ -393,6 +399,12 @@ jobs:
       # -----------------------------------------------------------------
       - name: Install FFmpeg
         uses: ./.github/actions/install-ffmpeg-windows
+
+      - name: Set FFMPEG_BIN for bun install
+        shell: pwsh
+        run: |
+          $path = (Get-Command ffmpeg.exe).Source
+          "FFMPEG_BIN=$path" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Install Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
