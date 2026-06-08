@@ -11,6 +11,7 @@ import type {
   CompositionVariable,
 } from "../core.types";
 import { validateCompositionGsap } from "./gsapSerialize";
+import { ensureHfIds } from "./hfIds.js";
 import type { ValidationResult } from "../core.types";
 
 const MEDIA_TYPES = new Set<string>(["video", "image", "audio"]);
@@ -156,8 +157,9 @@ function resolveResolutionFromDimensions(width: number, height: number): CanvasR
 }
 
 export function parseHtml(html: string): ParsedHtml {
+  const withIds = ensureHfIds(html);
   const parser = new DOMParser();
-  const doc = parser.parseFromString(html, "text/html");
+  const doc = parser.parseFromString(withIds, "text/html");
 
   const elements: TimelineElement[] = [];
   const keyframes: Record<string, Keyframe[]> = {};
@@ -190,7 +192,8 @@ export function parseHtml(html: string): ParsedHtml {
       duration = 5;
     }
 
-    const id = el.id || `element-${++idCounter}`;
+    // R1: stable hf- id minted by ensureHfIds above; clips just read it.
+    const id = el.getAttribute("data-hf-id") || el.id || `element-${++idCounter}`;
     const name = getElementName(el);
     const zIndex = getZIndex(el);
 

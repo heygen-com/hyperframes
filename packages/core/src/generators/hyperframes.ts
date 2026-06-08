@@ -447,6 +447,7 @@ function generateZoomGsapAnimations(
 function generateElementHtml(element: TimelineElement, keyframes?: Keyframe[]): string {
   const baseAttrs = [
     `id="${element.id}"`,
+    `data-hf-id="${element.id}"`,
     `data-start="${element.startTime}"`,
     `data-end="${element.startTime + element.duration}"`,
     `data-layer="${element.zIndex}"`,

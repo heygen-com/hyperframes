@@ -18,7 +18,7 @@ import { serialize } from "./test-utils.js";
 describe("T2 — stable element ids (spec for R1)", () => {
   // --- Spec (red until R1) ---
 
-  it.fails("[spec] elements without an id get a hf- prefixed id at parse", () => {
+  it("[spec] elements without an id get a hf- prefixed id at parse", () => {
     const html = `<html><body><div id="stage">
       <img src="logo.svg" data-start="0" data-end="5" data-name="Logo" />
       <div data-start="0" data-end="5" data-name="Card"><div>Text</div></div>
@@ -29,7 +29,7 @@ describe("T2 — stable element ids (spec for R1)", () => {
     }
   });
 
-  it.fails("[spec] generated hf- ids match /^hf-[a-z0-9]{4}$/", () => {
+  it("[spec] generated hf- ids match /^hf-[a-z0-9]{4}$/", () => {
     const html = `<html><body><div id="stage">
       <div data-start="0" data-end="5" data-name="Unnamed"><div>X</div></div>
       <video data-start="1" data-end="6" src="v.mp4" data-name="Clip"></video>
@@ -41,7 +41,7 @@ describe("T2 — stable element ids (spec for R1)", () => {
     }
   });
 
-  it.fails("[spec] adding an element before existing ones does not change existing ids", () => {
+  it("[spec] adding an element before existing ones does not change existing ids", () => {
     const base = `<html><body><div id="stage">
       <div data-start="0" data-end="5" data-name="AlphaEl"><div>A</div></div>
       <div data-start="1" data-end="6" data-name="BetaEl"><div>B</div></div>
@@ -62,12 +62,12 @@ describe("T2 — stable element ids (spec for R1)", () => {
 
   // --- Baseline (already pass, must not regress) ---
 
-  it("elements with an existing id keep it unchanged", () => {
+  it("existing data-hf-id is pinned and becomes the clip id (never re-minted)", () => {
     const html = `<html><body><div id="stage">
-      <div id="my-title" data-start="0" data-end="5" data-name="Title"><div>Hi</div></div>
+      <div data-hf-id="hf-anch" data-start="0" data-end="5" data-name="Title"><div>Hi</div></div>
     </div></body></html>`;
     const { elements } = parseHtml(html);
-    expect(elements.some((e) => e.id === "my-title")).toBe(true);
+    expect(elements.some((e) => e.id === "hf-anch")).toBe(true);
   });
 
   it("ids are deterministic: same input produces same ids on re-parse", () => {
