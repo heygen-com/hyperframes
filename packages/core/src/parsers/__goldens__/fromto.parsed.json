@@ -1,0 +1,38 @@
+{
+  "animations": [
+    {
+      "targetSelector": "#hero",
+      "method": "fromTo",
+      "position": 0.1,
+      "properties": {
+        "x": 0,
+        "opacity": 1
+      },
+      "fromProperties": {
+        "x": -200,
+        "opacity": 0
+      },
+      "duration": 0.6,
+      "ease": "power3.out",
+      "id": "#hero-fromTo-100"
+    },
+    {
+      "targetSelector": "#caption",
+      "method": "fromTo",
+      "position": 0.5,
+      "properties": {
+        "y": 0,
+        "opacity": 1
+      },
+      "fromProperties": {
+        "y": -30,
+        "opacity": 0
+      },
+      "duration": 0.45,
+      "id": "#caption-fromTo-500"
+    }
+  ],
+  "timelineVar": "tl",
+  "preamble": "var tl = gsap.timeline({ paused: true });",
+  "postamble": "window.__timelines[\"hero-reveal\"] = tl;"
+}

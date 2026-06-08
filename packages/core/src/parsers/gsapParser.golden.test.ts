@@ -51,12 +51,21 @@ const COMPLEX_SCRIPT = `\
 window.__timelines = window.__timelines || {};
 gsap.defaults({ force3D: true });
 const tl = gsap.timeline({ paused: true, defaults: { duration: 0.45, ease: "power3.out" } });
-const breatheRepeats = Math.ceil(7 / 2.4) - 1;
 tl.from(".headline span", { y: 46, opacity: 0, stagger: 0.055, duration: 0.38, ease: "back.out(1.35)" }, 0.05)
   .from(".headline .sub", { y: 20, opacity: 0, duration: 0.28 }, 0.2)
   .from(".ambient-word", { scale: 0.92, opacity: 0, duration: 0.5 }, 0.08)
   .from(".ambient-line", { scaleX: 0, opacity: 0, stagger: 0.08, duration: 0.42 }, 0.16);
 window.__timelines["vpn-youtube-spot"] = tl;`;
+
+// fromTo: exercises the three-argument (fromArg, toArg, position) AST path and
+// negative numeric literals (UnaryExpression arm in resolveNode).
+const FROMTO_SCRIPT = `\
+var tl = gsap.timeline({ paused: true });
+var hero = document.getElementById("hero");
+var caption = document.getElementById("caption");
+tl.fromTo(hero, { x: -200, opacity: 0 }, { x: 0, opacity: 1, duration: 0.6, ease: "power3.out" }, 0.1);
+tl.fromTo(caption, { y: -30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.45 }, 0.5);
+window.__timelines["hero-reveal"] = tl;`;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -121,6 +130,22 @@ describe("T6a — GSAP parser golden tests (Recast/Babel baseline)", () => {
 
     it("serializeGsapAnimations output matches golden", async () => {
       await expect(serialized).toMatchFileSnapshot(g("complex.serialized.js"));
+    });
+  });
+
+  describe("fromTo — two tl.fromTo calls with negative positions (hero-reveal)", () => {
+    let parsed: string;
+    let serialized: string;
+    beforeAll(() => {
+      ({ parsed, serialized } = parseAndSerialize(FROMTO_SCRIPT));
+    });
+
+    it("parseGsapScript output matches golden", async () => {
+      await expect(parsed).toMatchFileSnapshot(g("fromto.parsed.json"));
+    });
+
+    it("serializeGsapAnimations output matches golden", async () => {
+      await expect(serialized).toMatchFileSnapshot(g("fromto.serialized.js"));
     });
   });
 });

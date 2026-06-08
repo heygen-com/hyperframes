@@ -365,8 +365,16 @@ describe("probeElementInSource", () => {
 // T7 — data-hf-id targeting (spec for R1).
 // R1 adds `hfId?: string` to SourceMutationTarget and a `[data-hf-id="…"]` branch
 // in findTargetElement (sourceMutation.ts:34). Convert from it.todo in the R1 PR.
+// Covers the same surface as T3 (Studio sourcePatcher) — Core sourceMutation supports
+// all patch types (inline-style, attribute, text-content) via patchElementInHtml.
 describe("T7 — data-hf-id targeting (spec for R1)", () => {
-  it.todo("patches element by data-hf-id when no HTML id attribute is present");
+  it.todo("updates inline style by data-hf-id when no HTML id attribute is present");
+
+  it.todo("updates text content by data-hf-id");
+
+  it.todo("updates attribute by data-hf-id");
 
   it.todo("data-hf-id attribute survives the patch (can be targeted again)");
+
+  it.todo("hfId lookup falls through to selector when hfId is not found in the document");
 });

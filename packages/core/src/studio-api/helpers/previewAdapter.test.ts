@@ -26,11 +26,31 @@ describe("T10 — PreviewAdapter contract (spec for R7)", () => {
   describe("applyDraft / revertDraft", () => {
     it.todo("applyDraft writes --hf-studio-* CSS props and sets the gesture marker");
 
-    it.todo("applyDraft accepts both move (dx/dy) and resize (w/h) payloads");
+    it.todo("applyDraft accepts a move payload (dx/dy) and writes the translate draft");
+
+    it.todo("applyDraft accepts a resize payload (w/h) and writes the size draft");
 
     it.todo("revertDraft removes draft props and clears the gesture marker");
 
     it.todo("revertDraft restores original translate when an original was recorded");
+  });
+
+  describe("applyDraft edge cases (R7 implementation contract)", () => {
+    it.todo(
+      "second applyDraft before revert/commit overwrites first draft — does not accumulate (dx/dy)",
+    );
+
+    it.todo(
+      "revertDraft is safe to call when no gesture is in progress (idempotent / no-op on empty marker)",
+    );
+
+    it.todo(
+      "elementAtPoint filtering is stable when playhead changes mid-drag — opacity re-evaluated per call",
+    );
+
+    it.todo(
+      "stage-root exclusion applies only to the outermost data-hf-root; nested sub-composition roots count as targets",
+    );
   });
 
   describe("commitPreview", () => {
@@ -47,5 +67,9 @@ describe("T10 — PreviewAdapter contract (spec for R7)", () => {
     it.todo("reads authored absolute times from data-start / data-end");
 
     it.todo("ignores elements without data-hf-id");
+
+    it.todo(
+      "returns a defined timing entry when data-hf-id is present but data-start / data-end are missing",
+    );
   });
 });
