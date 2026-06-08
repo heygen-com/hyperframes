@@ -17,6 +17,16 @@ describe("set-version release options", () => {
       version: "1.2.3",
       skipTag: true,
       skipChangelogCheck: true,
+      skipMonotonicityCheck: false,
+    });
+  });
+
+  it("parses --skip-monotonicity-check flag", () => {
+    assert.deepEqual(parseReleaseOptions(["0.6.82", "--skip-monotonicity-check"]), {
+      version: "0.6.82",
+      skipTag: false,
+      skipChangelogCheck: false,
+      skipMonotonicityCheck: true,
     });
   });
 
