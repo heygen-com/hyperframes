@@ -84,6 +84,10 @@
       "type": "hyperframes:component"
     },
     {
+      "name": "motion-blur",
+      "type": "hyperframes:component"
+    },
+    {
       "name": "texture-mask-text",
       "type": "hyperframes:component"
     },

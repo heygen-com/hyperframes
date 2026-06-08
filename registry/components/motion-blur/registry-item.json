@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "motion-blur",
+  "type": "hyperframes:component",
+  "title": "Motion Blur",
+  "description": "Velocity-driven motion blur — samples element position each frame and scales CSS blur + horizontal stretch proportionally to speed",
+  "tags": ["effect", "motion-blur", "velocity", "animation", "physics"],
+  "files": [
+    {
+      "path": "motion-blur.html",
+      "target": "compositions/components/motion-blur.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/motion-blur.png"
+  }
+}

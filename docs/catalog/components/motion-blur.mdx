@@ -1,0 +1,70 @@
+---
+title: "Motion Blur"
+description: "Velocity-driven directional motion blur — samples element position each frame and applies a one-sided ghost trail proportional to speed"
+---
+
+# Motion Blur
+
+Velocity-driven directional motion blur — samples element position each frame and applies a one-sided ghost trail proportional to speed.
+
+`effect` `motion-blur` `velocity` `animation` `physics`
+
+<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/motion-blur.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/motion-blur.png" autoPlay muted loop playsInline />
+
+## Install
+
+<CodeGroup>
+
+```bash Terminal
+npx hyperframes add motion-blur
+```
+
+</CodeGroup>
+
+## Details
+
+| Property | Value |
+| --- | --- |
+| Type | Component |
+
+## Files
+
+| File | Target | Type |
+| --- | --- | --- |
+| `motion-blur.html` | `compositions/components/motion-blur.html` | hyperframes:snippet |
+
+## Usage
+
+Paste the snippet into your composition, then call `attachMotionBlur()` after your GSAP tweens and before registering `window.__timelines`.
+
+```html
+<!-- Extend the timeline to data-duration before calling attachMotionBlur -->
+tl.set(document.body, {}, DATA_DURATION);
+
+attachMotionBlur("#my-box", tl, {
+  axis: "x",      // "x" | "y" | "both"
+  blurMax: 40,    // max blur radius in px (default 20)
+});
+
+window.__timelines = window.__timelines || {};
+window.__timelines["my-composition"] = tl;
+```
+
+## How it works
+
+Each target element gets its own SVG filter. On every timeline seek, `attachMotionBlur` samples the element's GSAP `x`/`y` position, computes velocity, and drives three SVG filter primitives:
+
+1. **Ghost copies** — three faded, blurred copies of the element placed behind it at increasing offsets proportional to speed. Inherently one-sided: no forward blur.
+2. **Top blur** — a small symmetric Gaussian at the current position so the element looks in-motion rather than crisp on top of the trail.
+
+Blur scales linearly with velocity up to `blurMax`. Both the ghost trail and top blur clear automatically when the element decelerates to rest.
+
+## Options
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `axis` | `"both"` | Motion axis — `"x"`, `"y"`, or `"both"` |
+| `blurScale` | `0.008` | Blur per px/s of velocity |
+| `blurMax` | `20` | Max blur radius on the motion axis (px) |
+| `stretchScale` | `0.0002` | scaleX/Y added per px/s (requires `stretchMax > 0`) |
+| `stretchMax` | `0` | Max stretch above 1.0 — disabled by default |

@@ -1,1153 +1,1168 @@
 [
-  {
-    "name": "app-showcase",
-    "type": "block",
-    "title": "App Showcase",
-    "description": "Fitness app product showcase with three floating smartphone screens",
-    "tags": [
-      "showcase",
-      "app",
-      "3d"
-    ],
-    "href": "/catalog/blocks/app-showcase",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/app-showcase.png"
-  },
-  {
-    "name": "apple-money-count",
-    "type": "block",
-    "title": "Apple Money Count",
-    "description": "Apple-style finance counter that counts from $0 to $10,000, flashes green, and bursts money icons with sound.",
-    "tags": [
-      "showcase",
-      "finance",
-      "kinetic",
-      "youtube",
-      "sfx"
-    ],
-    "href": "/catalog/blocks/apple-money-count",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/apple-money-count.png"
-  },
-  {
-    "name": "blue-sweater-intro-video",
-    "type": "block",
-    "title": "Blue Sweater Intro Video",
-    "description": "Warm AI creator intro sequence that resolves into an X follow card for @_blue_sweater_.",
-    "tags": [
-      "showcase",
-      "ai",
-      "creator",
-      "sfx"
-    ],
-    "href": "/catalog/blocks/blue-sweater-intro-video",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/blue-sweater-intro-video.png"
-  },
-  {
-    "name": "caption-blend-difference",
-    "type": "component",
-    "title": "Blend Difference",
-    "description": "Auto-inverting text using mix-blend-mode: difference — flips between white and black per-pixel against the background",
-    "tags": [
-      "text",
-      "effect",
-      "blend-mode",
-      "contrast",
-      "inversion"
-    ],
-    "href": "/catalog/components/caption-blend-difference",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caption-blend-difference.png"
-  },
-  {
-    "name": "caption-clip-wipe",
-    "type": "component",
-    "title": "Clip Wipe",
-    "description": "Left-to-right clip-path wipe reveal per word",
-    "tags": [
-      "captions",
-      "caption-style",
-      "wipe",
-      "clip-path",
-      "reveal"
-    ],
-    "href": "/catalog/components/caption-clip-wipe",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caption-clip-wipe.png"
-  },
-  {
-    "name": "caption-editorial-emphasis",
-    "type": "component",
-    "title": "Editorial Emphasis",
-    "description": "Dual-font system with dramatic size contrast for emphasis words",
-    "tags": [
-      "captions",
-      "caption-style",
-      "editorial",
-      "typography",
-      "emphasis"
-    ],
-    "href": "/catalog/components/caption-editorial-emphasis",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caption-editorial-emphasis.png"
-  },
-  {
-    "name": "caption-emoji-pop",
-    "type": "component",
-    "title": "Emoji Pop",
-    "description": "Emoji integration with stroked text and horizontal squeeze entrance",
-    "tags": [
-      "captions",
-      "caption-style",
-      "emoji",
-      "social"
-    ],
-    "href": "/catalog/components/caption-emoji-pop",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caption-emoji-pop.png"
-  },
-  {
-    "name": "caption-glitch-rgb",
-    "type": "component",
-    "title": "Glitch RGB",
-    "description": "RGB chromatic aberration with CRT scanline overlay",
-    "tags": [
-      "captions",
-      "caption-style",
-      "glitch",
-      "cyber",
-      "tech"
-    ],
-    "href": "/catalog/components/caption-glitch-rgb",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caption-glitch-rgb.png"
-  },
-  {
-    "name": "caption-gradient-fill",
-    "type": "component",
-    "title": "Gradient Fill",
-    "description": "Gradient-clipped text with elastic bounce entrance",
-    "tags": [
-      "captions",
-      "caption-style",
-      "gradient",
-      "colorful"
-    ],
-    "href": "/catalog/components/caption-gradient-fill",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caption-gradient-fill.png"
-  },
-  {
-    "name": "caption-highlight",
-    "type": "component",
-    "title": "Highlight",
-    "description": "Red background sweep behind each active word, TikTok-style",
-    "tags": [
-      "captions",
-      "caption-style",
-      "highlight",
-      "social",
-      "tiktok"
-    ],
-    "href": "/catalog/components/caption-highlight",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caption-highlight.png"
-  },
-  {
-    "name": "caption-kinetic-slam",
-    "type": "component",
-    "title": "Kinetic Slam",
-    "description": "Full-screen single-word display with alternating entrance directions",
-    "tags": [
-      "captions",
-      "caption-style",
-      "kinetic",
-      "typography",
-      "slam"
-    ],
-    "href": "/catalog/components/caption-kinetic-slam",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caption-kinetic-slam.png"
-  },
-  {
-    "name": "caption-matrix-decode",
-    "type": "component",
-    "title": "Matrix Decode",
-    "description": "Character scramble animation before text reveal",
-    "tags": [
-      "captions",
-      "caption-style",
-      "matrix",
-      "scramble",
-      "decode"
-    ],
-    "href": "/catalog/components/caption-matrix-decode",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caption-matrix-decode.png"
-  },
-  {
-    "name": "caption-neon-accent",
-    "type": "component",
-    "title": "Neon Accent",
-    "description": "Multi-color neon glow accents with wiggle drift animation",
-    "tags": [
-      "captions",
-      "caption-style",
-      "neon",
-      "glow",
-      "accent"
-    ],
-    "href": "/catalog/components/caption-neon-accent",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caption-neon-accent.png"
-  },
-  {
-    "name": "caption-neon-glow",
-    "type": "component",
-    "title": "Neon Glow",
-    "description": "Cyan and magenta neon glow with keyword accent colors",
-    "tags": [
-      "captions",
-      "caption-style",
-      "neon",
-      "glow",
-      "gaming"
-    ],
-    "href": "/catalog/components/caption-neon-glow",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caption-neon-glow.png"
-  },
-  {
-    "name": "caption-parallax-layers",
-    "type": "component",
-    "title": "Parallax Layers",
-    "description": "Behind-subject 3D text layering with vertical stretch effect",
-    "tags": [
-      "captions",
-      "caption-style",
-      "parallax",
-      "3d",
-      "depth"
-    ],
-    "href": "/catalog/components/caption-parallax-layers",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caption-parallax-layers.png"
-  },
-  {
-    "name": "caption-particle-burst",
-    "type": "component",
-    "title": "Particle Burst",
-    "description": "Keyword words trigger colored particle explosions",
-    "tags": [
-      "captions",
-      "caption-style",
-      "particles",
-      "burst",
-      "effects"
-    ],
-    "href": "/catalog/components/caption-particle-burst",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caption-particle-burst.png"
-  },
-  {
-    "name": "caption-pill-karaoke",
-    "type": "component",
-    "title": "Pill Karaoke",
-    "description": "Pill-shaped container with per-word karaoke color highlight",
-    "tags": [
-      "captions",
-      "caption-style",
-      "karaoke",
-      "pill"
-    ],
-    "href": "/catalog/components/caption-pill-karaoke",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caption-pill-karaoke.png"
-  },
-  {
-    "name": "caption-texture",
-    "type": "component",
-    "title": "Texture",
-    "description": "Flowing texture mask over large uppercase text — ships with 6 textures (lava, marble, metal, wood, concrete, rock), configurable via the texture variable",
-    "tags": [
-      "captions",
-      "caption-style",
-      "texture",
-      "mask"
-    ],
-    "href": "/catalog/components/caption-texture",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caption-texture.png"
-  },
-  {
-    "name": "caption-weight-shift",
-    "type": "component",
-    "title": "Weight Shift",
-    "description": "Elegant font-weight transition between caption lines",
-    "tags": [
-      "captions",
-      "caption-style",
-      "minimal",
-      "typography"
-    ],
-    "href": "/catalog/components/caption-weight-shift",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caption-weight-shift.png"
-  },
-  {
-    "name": "chromatic-radial-split",
-    "type": "block",
-    "title": "Chromatic Radial Split",
-    "description": "Shader transition with chromatic aberration radial split",
-    "tags": [
-      "transition",
-      "shader"
-    ],
-    "href": "/catalog/blocks/chromatic-radial-split",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/chromatic-radial-split.png"
-  },
-  {
-    "name": "cinematic-zoom",
-    "type": "block",
-    "title": "Cinematic Zoom",
-    "description": "Shader transition with dramatic zoom blur",
-    "tags": [
-      "transition",
-      "shader"
-    ],
-    "href": "/catalog/blocks/cinematic-zoom",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/cinematic-zoom.png"
-  },
-  {
-    "name": "cross-warp-morph",
-    "type": "block",
-    "title": "Cross Warp Morph",
-    "description": "Shader transition with cross-warped morphing",
-    "tags": [
-      "transition",
-      "shader"
-    ],
-    "href": "/catalog/blocks/cross-warp-morph",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/cross-warp-morph.png"
-  },
-  {
-    "name": "data-chart",
-    "type": "block",
-    "title": "Data Chart",
-    "description": "Animated bar + line chart with staggered reveal, NYT-style typography, and value labels",
-    "tags": [
-      "data",
-      "chart",
-      "statistics"
-    ],
-    "href": "/catalog/blocks/data-chart",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/data-chart.png"
-  },
-  {
-    "name": "domain-warp-dissolve",
-    "type": "block",
-    "title": "Domain Warp Dissolve",
-    "description": "Shader transition with fractal noise domain warping",
-    "tags": [
-      "transition",
-      "shader"
-    ],
-    "href": "/catalog/blocks/domain-warp-dissolve",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/domain-warp-dissolve.png"
-  },
-  {
-    "name": "flash-through-white",
-    "type": "block",
-    "title": "Flash Through White",
-    "description": "Shader transition with white flash crossfade",
-    "tags": [
-      "transition",
-      "shader"
-    ],
-    "href": "/catalog/blocks/flash-through-white",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/flash-through-white.png"
-  },
-  {
-    "name": "flowchart",
-    "type": "block",
-    "title": "Flowchart",
-    "description": "Animated decision tree with SVG connectors, sticky-note nodes, cursor interaction, and typing correction",
-    "tags": [
-      "diagram",
-      "flowchart",
-      "interactive"
-    ],
-    "href": "/catalog/blocks/flowchart",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/flowchart.png"
-  },
-  {
-    "name": "glitch",
-    "type": "block",
-    "title": "Glitch",
-    "description": "Shader transition with digital glitch artifacts",
-    "tags": [
-      "transition",
-      "shader"
-    ],
-    "href": "/catalog/blocks/glitch",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/glitch.png"
-  },
-  {
-    "name": "grain-overlay",
-    "type": "component",
-    "title": "Grain Overlay",
-    "description": "Animated film grain texture overlay using CSS keyframes — adds warmth and analog character to any composition",
-    "tags": [
-      "texture",
-      "grain",
-      "overlay",
-      "film"
-    ],
-    "href": "/catalog/components/grain-overlay",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/grain-overlay.png"
-  },
-  {
-    "name": "gravitational-lens",
-    "type": "block",
-    "title": "Gravitational Lens",
-    "description": "Shader transition with gravitational lensing distortion",
-    "tags": [
-      "transition",
-      "shader"
-    ],
-    "href": "/catalog/blocks/gravitational-lens",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/gravitational-lens.png"
-  },
-  {
-    "name": "grid-pixelate-wipe",
-    "type": "component",
-    "title": "Grid Pixelate Wipe",
-    "description": "Transition effect where the screen dissolves into a grid of squares that fade out with staggered timing — use between scenes",
-    "tags": [
-      "transition",
-      "wipe",
-      "grid",
-      "pixelate"
-    ],
-    "href": "/catalog/components/grid-pixelate-wipe",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/grid-pixelate-wipe.png"
-  },
-  {
-    "name": "instagram-follow",
-    "type": "block",
-    "title": "Instagram Follow",
-    "description": "Animated Instagram follow overlay with profile card and follow button",
-    "tags": [
-      "social",
-      "overlay",
-      "instagram"
-    ],
-    "href": "/catalog/blocks/instagram-follow",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/instagram-follow.png"
-  },
-  {
-    "name": "ios26-liquid-glass",
-    "type": "block",
-    "title": "iOS 26 Liquid Glass Home Screen",
-    "description": "3D iPhone with a normal iOS 26 home screen, liquid glass app icons, shader wallpaper, dock, and fluid glass notifications that drop from the status area onto a GLTF device model.",
-    "tags": [
-      "liquid-glass-html-in-canvas",
-      "webgpu",
-      "3d",
-      "iphone",
-      "ios26",
-      "notifications",
-      "gltf",
-      "html-in-canvas"
-    ],
-    "href": "/catalog/blocks/ios26-liquid-glass",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/ios26-liquid-glass.png"
-  },
-  {
-    "name": "light-leak",
-    "type": "block",
-    "title": "Light Leak",
-    "description": "Shader transition with cinematic light leak overlay",
-    "tags": [
-      "transition",
-      "shader"
-    ],
-    "href": "/catalog/blocks/light-leak",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/light-leak.png"
-  },
-  {
-    "name": "liquid-glass-context-menu",
-    "type": "block",
-    "title": "Liquid Glass Context Menu",
-    "description": "Frosted glass context menu panel drifting over an aurora shader background",
-    "tags": [
-      "html-in-canvas",
-      "liquid-glass-html-in-canvas",
-      "webgpu"
-    ],
-    "href": "/catalog/blocks/liquid-glass-context-menu",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/liquid-glass-context-menu.png"
-  },
-  {
-    "name": "liquid-glass-media-controls",
-    "type": "block",
-    "title": "Liquid Glass Media Controls",
-    "description": "Frosted glass media control panels spreading over an aurora shader background",
-    "tags": [
-      "html-in-canvas",
-      "liquid-glass-html-in-canvas",
-      "webgpu"
-    ],
-    "href": "/catalog/blocks/liquid-glass-media-controls",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/liquid-glass-media-controls.png"
-  },
-  {
-    "name": "liquid-glass-notification",
-    "type": "block",
-    "title": "Liquid Glass Notification",
-    "description": "Frosted glass notification cards floating over an aurora shader background",
-    "tags": [
-      "html-in-canvas",
-      "liquid-glass-html-in-canvas",
-      "webgpu"
-    ],
-    "href": "/catalog/blocks/liquid-glass-notification",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/liquid-glass-notification.png"
-  },
-  {
-    "name": "liquid-glass-widgets",
-    "type": "block",
-    "title": "Liquid Glass Widgets",
-    "description": "Frosted glass stat cards, showcase panel and pill chips over an aurora shader background",
-    "tags": [
-      "html-in-canvas",
-      "liquid-glass-html-in-canvas",
-      "webgpu"
-    ],
-    "href": "/catalog/blocks/liquid-glass-widgets",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/liquid-glass-widgets.png"
-  },
-  {
-    "name": "logo-outro",
-    "type": "block",
-    "title": "Logo Outro",
-    "description": "Cinematic logo reveal with piece-by-piece assembly, glow bloom, tagline fade-in, and URL pill",
-    "tags": [
-      "branding",
-      "outro",
-      "logo"
-    ],
-    "href": "/catalog/blocks/logo-outro",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/logo-outro.png"
-  },
-  {
-    "name": "macos-notification",
-    "type": "block",
-    "title": "macOS Notification",
-    "description": "Animated macOS-style notification banner with app icon and message",
-    "tags": [
-      "social",
-      "overlay",
-      "notification"
-    ],
-    "href": "/catalog/blocks/macos-notification",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/macos-notification.png"
-  },
-  {
-    "name": "macos-tahoe-liquid-glass",
-    "type": "block",
-    "title": "macOS Tahoe Liquid Glass Desktop",
-    "description": "3D MacBook with a macOS Tahoe-style desktop, glass menu bar, Finder window, dock, and cinematic device camera move.",
-    "tags": [
-      "html-in-canvas",
-      "3d",
-      "macos",
-      "tahoe",
-      "gltf"
-    ],
-    "href": "/catalog/blocks/macos-tahoe-liquid-glass",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/macos-tahoe-liquid-glass.png"
-  },
-  {
-    "name": "north-korea-locked-down",
-    "type": "block",
-    "title": "North Korea Locked Down",
-    "description": "Realistic map zoom into North Korea with a red scribble circle, locked-down pop-up label, and reddish editorial wash.",
-    "tags": [
-      "showcase",
-      "map",
-      "annotation",
-      "youtube",
-      "kinetic"
-    ],
-    "href": "/catalog/blocks/north-korea-locked-down",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/north-korea-locked-down.png"
-  },
-  {
-    "name": "nyc-paris-flight",
-    "type": "block",
-    "title": "NYC Paris Flight",
-    "description": "Apple-style realistic map animation with a plane flying from New York to Paris, marker circle, landing pop, and sound effects.",
-    "tags": [
-      "showcase",
-      "travel",
-      "map",
-      "youtube",
-      "sfx"
-    ],
-    "href": "/catalog/blocks/nyc-paris-flight",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/nyc-paris-flight.png"
-  },
-  {
-    "name": "parallax-unzoom",
-    "type": "component",
-    "title": "Parallax Unzoom",
-    "description": "Reveal transition — focus card scales down from full frame as siblings parallax in to form a grid (reverse of parallax-zoom)",
-    "tags": [
-      "transition",
-      "reveal",
-      "unzoom",
-      "parallax",
-      "grid",
-      "hero"
-    ],
-    "href": "/catalog/components/parallax-unzoom",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/parallax-unzoom.png"
-  },
-  {
-    "name": "parallax-zoom",
-    "type": "component",
-    "title": "Parallax Zoom",
-    "description": "Center card scales up to fill the frame while siblings parallax outward — inspired by the eBay Playbook hero transition",
-    "tags": [
-      "transition",
-      "zoom",
-      "parallax",
-      "grid",
-      "hero"
-    ],
-    "href": "/catalog/components/parallax-zoom",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/parallax-zoom.png"
-  },
-  {
-    "name": "reddit-post",
-    "type": "block",
-    "title": "Reddit Post Card",
-    "description": "Animated Reddit post card overlay with upvotes and comments",
-    "tags": [
-      "social",
-      "overlay",
-      "reddit"
-    ],
-    "href": "/catalog/blocks/reddit-post",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/reddit-post.png"
-  },
-  {
-    "name": "ridged-burn",
-    "type": "block",
-    "title": "Ridged Burn",
-    "description": "Shader transition with ridged turbulence burn effect",
-    "tags": [
-      "transition",
-      "shader"
-    ],
-    "href": "/catalog/blocks/ridged-burn",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/ridged-burn.png"
-  },
-  {
-    "name": "ripple-waves",
-    "type": "block",
-    "title": "Ripple Waves",
-    "description": "Shader transition with concentric ripple wave distortion",
-    "tags": [
-      "transition",
-      "shader"
-    ],
-    "href": "/catalog/blocks/ripple-waves",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/ripple-waves.png"
-  },
-  {
-    "name": "sdf-iris",
-    "type": "block",
-    "title": "SDF Iris",
-    "description": "Shader transition with signed distance field iris reveal",
-    "tags": [
-      "transition",
-      "shader"
-    ],
-    "href": "/catalog/blocks/sdf-iris",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/sdf-iris.png"
-  },
-  {
-    "name": "shimmer-sweep",
-    "type": "component",
-    "title": "Shimmer Sweep",
-    "description": "Animated light sweep across text or elements using a CSS gradient mask — ideal for AI accents and premium reveals",
-    "tags": [
-      "text",
-      "shimmer",
-      "highlight",
-      "effect"
-    ],
-    "href": "/catalog/components/shimmer-sweep",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/shimmer-sweep.png"
-  },
-  {
-    "name": "spain-map",
-    "type": "block",
-    "title": "Spain Map",
-    "description": "Animated Spain choropleth by autonomous community with staggered reveals and gradient legend — D3 conic conformal projection",
-    "tags": [
-      "data",
-      "map",
-      "geography",
-      "spain",
-      "europe",
-      "choropleth"
-    ],
-    "href": "/catalog/blocks/spain-map",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/spain-map.png"
-  },
-  {
-    "name": "spotify-card",
-    "type": "block",
-    "title": "Spotify Now Playing",
-    "description": "Animated Spotify now-playing card with album art and progress bar",
-    "tags": [
-      "social",
-      "overlay",
-      "spotify"
-    ],
-    "href": "/catalog/blocks/spotify-card",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/spotify-card.png"
-  },
-  {
-    "name": "swirl-vortex",
-    "type": "block",
-    "title": "Swirl Vortex",
-    "description": "Shader transition with swirling vortex distortion",
-    "tags": [
-      "transition",
-      "shader"
-    ],
-    "href": "/catalog/blocks/swirl-vortex",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/swirl-vortex.png"
-  },
-  {
-    "name": "texture-mask-text",
-    "type": "component",
-    "title": "Texture Mask Text",
-    "description": "CSS luminance masks that cut holes through letterforms - 66 pre-built texture masks from ambientCG PBR color maps",
-    "tags": [
-      "text",
-      "texture",
-      "mask",
-      "effect"
-    ],
-    "href": "/catalog/components/texture-mask-text",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/texture-mask-text.png"
-  },
-  {
-    "name": "thermal-distortion",
-    "type": "block",
-    "title": "Thermal Distortion",
-    "description": "Shader transition with heat haze thermal distortion",
-    "tags": [
-      "transition",
-      "shader"
-    ],
-    "href": "/catalog/blocks/thermal-distortion",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/thermal-distortion.png"
-  },
-  {
-    "name": "tiktok-follow",
-    "type": "block",
-    "title": "TikTok Follow",
-    "description": "Animated TikTok follow overlay with profile card and follow button",
-    "tags": [
-      "social",
-      "overlay",
-      "tiktok"
-    ],
-    "href": "/catalog/blocks/tiktok-follow",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/tiktok-follow.png"
-  },
-  {
-    "name": "transitions-3d",
-    "type": "block",
-    "title": "3D Transitions",
-    "description": "Showcase of 3D perspective flip and rotate transitions",
-    "tags": [
-      "transition",
-      "showcase"
-    ],
-    "href": "/catalog/blocks/transitions-3d",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/transitions-3d.png"
-  },
-  {
-    "name": "transitions-blur",
-    "type": "block",
-    "title": "Blur Transitions",
-    "description": "Showcase of blur-based transitions between scenes",
-    "tags": [
-      "transition",
-      "showcase"
-    ],
-    "href": "/catalog/blocks/transitions-blur",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/transitions-blur.png"
-  },
-  {
-    "name": "transitions-cover",
-    "type": "block",
-    "title": "Cover Transitions",
-    "description": "Showcase of cover/uncover slide transitions",
-    "tags": [
-      "transition",
-      "showcase"
-    ],
-    "href": "/catalog/blocks/transitions-cover",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/transitions-cover.png"
-  },
-  {
-    "name": "transitions-destruction",
-    "type": "block",
-    "title": "Destruction Transitions",
-    "description": "Showcase of destructive break-apart transitions",
-    "tags": [
-      "transition",
-      "showcase"
-    ],
-    "href": "/catalog/blocks/transitions-destruction",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/transitions-destruction.png"
-  },
-  {
-    "name": "transitions-dissolve",
-    "type": "block",
-    "title": "Dissolve Transitions",
-    "description": "Showcase of dissolve and fade transitions",
-    "tags": [
-      "transition",
-      "showcase"
-    ],
-    "href": "/catalog/blocks/transitions-dissolve",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/transitions-dissolve.png"
-  },
-  {
-    "name": "transitions-distortion",
-    "type": "block",
-    "title": "Distortion Transitions",
-    "description": "Showcase of warp and distortion transitions",
-    "tags": [
-      "transition",
-      "showcase"
-    ],
-    "href": "/catalog/blocks/transitions-distortion",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/transitions-distortion.png"
-  },
-  {
-    "name": "transitions-grid",
-    "type": "block",
-    "title": "Grid Transitions",
-    "description": "Showcase of grid-based tile transitions",
-    "tags": [
-      "transition",
-      "showcase"
-    ],
-    "href": "/catalog/blocks/transitions-grid",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/transitions-grid.png"
-  },
-  {
-    "name": "transitions-light",
-    "type": "block",
-    "title": "Light Transitions",
-    "description": "Showcase of light-based glow and flash transitions",
-    "tags": [
-      "transition",
-      "showcase"
-    ],
-    "href": "/catalog/blocks/transitions-light",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/transitions-light.png"
-  },
-  {
-    "name": "transitions-mechanical",
-    "type": "block",
-    "title": "Mechanical Transitions",
-    "description": "Showcase of mechanical shutter and iris transitions",
-    "tags": [
-      "transition",
-      "showcase"
-    ],
-    "href": "/catalog/blocks/transitions-mechanical",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/transitions-mechanical.png"
-  },
-  {
-    "name": "transitions-other",
-    "type": "block",
-    "title": "Other Transitions",
-    "description": "Showcase of miscellaneous creative transitions",
-    "tags": [
-      "transition",
-      "showcase"
-    ],
-    "href": "/catalog/blocks/transitions-other",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/transitions-other.png"
-  },
-  {
-    "name": "transitions-push",
-    "type": "block",
-    "title": "Push Transitions",
-    "description": "Showcase of push and slide transitions",
-    "tags": [
-      "transition",
-      "showcase"
-    ],
-    "href": "/catalog/blocks/transitions-push",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/transitions-push.png"
-  },
-  {
-    "name": "transitions-radial",
-    "type": "block",
-    "title": "Radial Transitions",
-    "description": "Showcase of radial wipe and reveal transitions",
-    "tags": [
-      "transition",
-      "showcase"
-    ],
-    "href": "/catalog/blocks/transitions-radial",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/transitions-radial.png"
-  },
-  {
-    "name": "transitions-scale",
-    "type": "block",
-    "title": "Scale Transitions",
-    "description": "Showcase of scale and zoom transitions",
-    "tags": [
-      "transition",
-      "showcase"
-    ],
-    "href": "/catalog/blocks/transitions-scale",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/transitions-scale.png"
-  },
-  {
-    "name": "ui-3d-reveal",
-    "type": "block",
-    "title": "3D UI Reveal",
-    "description": "Perspective 3D reveal animation for UI elements",
-    "tags": [
-      "showcase",
-      "3d",
-      "reveal"
-    ],
-    "href": "/catalog/blocks/ui-3d-reveal",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/ui-3d-reveal.png"
-  },
-  {
-    "name": "us-map",
-    "type": "block",
-    "title": "US Map",
-    "description": "Animated US choropleth map with staggered state reveals, value labels, and gradient legend — pure inline SVG with GSAP",
-    "tags": [
-      "data",
-      "map",
-      "geography",
-      "usa",
-      "choropleth"
-    ],
-    "href": "/catalog/blocks/us-map",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/us-map.png"
-  },
-  {
-    "name": "us-map-bubble",
-    "type": "block",
-    "title": "US Bubble Map",
-    "description": "Animated US bubble map with proportional city markers, value callouts, and connection lines — composable with us-map",
-    "tags": [
-      "data",
-      "map",
-      "geography",
-      "usa",
-      "bubble",
-      "cities"
-    ],
-    "href": "/catalog/blocks/us-map-bubble",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/us-map-bubble.png"
-  },
-  {
-    "name": "us-map-flow",
-    "type": "block",
-    "title": "US Flow Map",
-    "description": "Animated connection arcs between US cities over a base map — composable origin-destination flow visualization",
-    "tags": [
-      "data",
-      "map",
-      "geography",
-      "usa",
-      "flow",
-      "connections",
-      "arcs"
-    ],
-    "href": "/catalog/blocks/us-map-flow",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/us-map-flow.png"
-  },
-  {
-    "name": "us-map-hex",
-    "type": "block",
-    "title": "US Hex Grid Map",
-    "description": "Animated hexagonal tile grid map — each state as an equal-weight hex with data fill and abbreviation label",
-    "tags": [
-      "data",
-      "map",
-      "geography",
-      "usa",
-      "hexgrid",
-      "tilegrid"
-    ],
-    "href": "/catalog/blocks/us-map-hex",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/us-map-hex.png"
-  },
-  {
-    "name": "vfx-iphone-device",
-    "type": "block",
-    "title": "iPhone & MacBook 3D Showcase",
-    "description": "Real GLTF iPhone 15 Pro Max and MacBook Pro models with live HTML-in-Canvas screen content, morphing glass lens, product review camera choreography, and 360° turntable.",
-    "tags": [
-      "html-in-canvas",
-      "3d",
-      "device",
-      "iphone",
-      "macbook",
-      "gltf"
-    ],
-    "href": "/catalog/blocks/vfx-iphone-device",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-iphone-device.png"
-  },
-  {
-    "name": "vfx-liquid-background",
-    "type": "block",
-    "title": "Liquid Background",
-    "description": "Organic liquid simulation with vertex displacement on a subdivided plane. HTML content floats above rippling fluid surface with real-time wave dynamics.",
-    "tags": [
-      "html-in-canvas",
-      "liquid",
-      "webgl",
-      "displacement",
-      "background"
-    ],
-    "href": "/catalog/blocks/vfx-liquid-background",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-liquid-background.png"
-  },
-  {
-    "name": "vfx-magnetic",
-    "type": "block",
-    "title": "Magnetic",
-    "description": "VFX composition block",
-    "tags": [
-      "html-in-canvas",
-      "webgl"
-    ],
-    "href": "/catalog/blocks/vfx-magnetic",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-magnetic.png"
-  },
-  {
-    "name": "vfx-portal",
-    "type": "block",
-    "title": "Portal",
-    "description": "VFX composition block",
-    "tags": [
-      "html-in-canvas",
-      "webgl"
-    ],
-    "href": "/catalog/blocks/vfx-portal",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-portal.png"
-  },
-  {
-    "name": "vfx-shatter",
-    "type": "block",
-    "title": "Shatter",
-    "description": "VFX composition block",
-    "tags": [
-      "html-in-canvas",
-      "webgl"
-    ],
-    "href": "/catalog/blocks/vfx-shatter",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-shatter.png"
-  },
-  {
-    "name": "vfx-text-cursor",
-    "type": "block",
-    "title": "VFX Text Cursor",
-    "description": "Dramatic text reveal with cursor glow, chromatic shadow rays, and directional lighting on a black stage. Canvas-based shader post-processing with spectral color edges.",
-    "tags": [
-      "html-in-canvas",
-      "text",
-      "shader",
-      "cursor",
-      "chromatic"
-    ],
-    "href": "/catalog/blocks/vfx-text-cursor",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-text-cursor.png"
-  },
-  {
-    "name": "vignette",
-    "type": "component",
-    "title": "Vignette",
-    "description": "Cinematic radial vignette overlay using a pure-CSS gradient — darkens the edges to pull focus toward the center",
-    "tags": [
-      "vignette",
-      "overlay",
-      "cinematic",
-      "effect"
-    ],
-    "href": "/catalog/components/vignette",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/vignette.png"
-  },
-  {
-    "name": "vpn-youtube-spot",
-    "type": "block",
-    "title": "VPN YouTube Spot",
-    "description": "Snappy Apple-style YouTube insert showing a phone finding and installing a friendly VPN app with sound effects.",
-    "tags": [
-      "app",
-      "showcase",
-      "youtube",
-      "sfx"
-    ],
-    "href": "/catalog/blocks/vpn-youtube-spot",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vpn-youtube-spot.png"
-  },
-  {
-    "name": "whip-pan",
-    "type": "block",
-    "title": "Whip Pan",
-    "description": "Shader transition simulating a fast camera whip pan",
-    "tags": [
-      "transition",
-      "shader"
-    ],
-    "href": "/catalog/blocks/whip-pan",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/whip-pan.png"
-  },
-  {
-    "name": "world-map",
-    "type": "block",
-    "title": "World Map",
-    "description": "Animated world choropleth with country-by-country reveal, tooltip labels, and rotating globe inset — D3 Natural Earth projection",
-    "tags": [
-      "data",
-      "map",
-      "geography",
-      "world",
-      "choropleth"
-    ],
-    "href": "/catalog/blocks/world-map",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/world-map.png"
-  },
-  {
-    "name": "x-post",
-    "type": "block",
-    "title": "X Post Card",
-    "description": "Animated X/Twitter post card overlay with engagement metrics",
-    "tags": [
-      "social",
-      "overlay",
-      "twitter"
-    ],
-    "href": "/catalog/blocks/x-post",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/x-post.png"
-  },
-  {
-    "name": "yt-lower-third",
-    "type": "block",
-    "title": "YouTube Lower Third",
-    "description": "Animated YouTube subscribe lower third with avatar and channel info",
-    "tags": [
-      "social",
-      "overlay",
-      "youtube"
-    ],
-    "href": "/catalog/blocks/yt-lower-third",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/yt-lower-third.png"
-  }
+    {
+        "name": "app-showcase",
+        "type": "block",
+        "title": "App Showcase",
+        "description": "Fitness app product showcase with three floating smartphone screens",
+        "tags": [
+            "showcase",
+            "app",
+            "3d"
+        ],
+        "href": "/catalog/blocks/app-showcase",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/app-showcase.png"
+    },
+    {
+        "name": "apple-money-count",
+        "type": "block",
+        "title": "Apple Money Count",
+        "description": "Apple-style finance counter that counts from $0 to $10,000, flashes green, and bursts money icons with sound.",
+        "tags": [
+            "showcase",
+            "finance",
+            "kinetic",
+            "youtube",
+            "sfx"
+        ],
+        "href": "/catalog/blocks/apple-money-count",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/apple-money-count.png"
+    },
+    {
+        "name": "blue-sweater-intro-video",
+        "type": "block",
+        "title": "Blue Sweater Intro Video",
+        "description": "Warm AI creator intro sequence that resolves into an X follow card for @_blue_sweater_.",
+        "tags": [
+            "showcase",
+            "ai",
+            "creator",
+            "sfx"
+        ],
+        "href": "/catalog/blocks/blue-sweater-intro-video",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/blue-sweater-intro-video.png"
+    },
+    {
+        "name": "caption-blend-difference",
+        "type": "component",
+        "title": "Blend Difference",
+        "description": "Auto-inverting text using mix-blend-mode: difference \u2014 flips between white and black per-pixel against the background",
+        "tags": [
+            "text",
+            "effect",
+            "blend-mode",
+            "contrast",
+            "inversion"
+        ],
+        "href": "/catalog/components/caption-blend-difference",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caption-blend-difference.png"
+    },
+    {
+        "name": "caption-clip-wipe",
+        "type": "component",
+        "title": "Clip Wipe",
+        "description": "Left-to-right clip-path wipe reveal per word",
+        "tags": [
+            "captions",
+            "caption-style",
+            "wipe",
+            "clip-path",
+            "reveal"
+        ],
+        "href": "/catalog/components/caption-clip-wipe",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caption-clip-wipe.png"
+    },
+    {
+        "name": "caption-editorial-emphasis",
+        "type": "component",
+        "title": "Editorial Emphasis",
+        "description": "Dual-font system with dramatic size contrast for emphasis words",
+        "tags": [
+            "captions",
+            "caption-style",
+            "editorial",
+            "typography",
+            "emphasis"
+        ],
+        "href": "/catalog/components/caption-editorial-emphasis",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caption-editorial-emphasis.png"
+    },
+    {
+        "name": "caption-emoji-pop",
+        "type": "component",
+        "title": "Emoji Pop",
+        "description": "Emoji integration with stroked text and horizontal squeeze entrance",
+        "tags": [
+            "captions",
+            "caption-style",
+            "emoji",
+            "social"
+        ],
+        "href": "/catalog/components/caption-emoji-pop",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caption-emoji-pop.png"
+    },
+    {
+        "name": "caption-glitch-rgb",
+        "type": "component",
+        "title": "Glitch RGB",
+        "description": "RGB chromatic aberration with CRT scanline overlay",
+        "tags": [
+            "captions",
+            "caption-style",
+            "glitch",
+            "cyber",
+            "tech"
+        ],
+        "href": "/catalog/components/caption-glitch-rgb",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caption-glitch-rgb.png"
+    },
+    {
+        "name": "caption-gradient-fill",
+        "type": "component",
+        "title": "Gradient Fill",
+        "description": "Gradient-clipped text with elastic bounce entrance",
+        "tags": [
+            "captions",
+            "caption-style",
+            "gradient",
+            "colorful"
+        ],
+        "href": "/catalog/components/caption-gradient-fill",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caption-gradient-fill.png"
+    },
+    {
+        "name": "caption-highlight",
+        "type": "component",
+        "title": "Highlight",
+        "description": "Red background sweep behind each active word, TikTok-style",
+        "tags": [
+            "captions",
+            "caption-style",
+            "highlight",
+            "social",
+            "tiktok"
+        ],
+        "href": "/catalog/components/caption-highlight",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caption-highlight.png"
+    },
+    {
+        "name": "caption-kinetic-slam",
+        "type": "component",
+        "title": "Kinetic Slam",
+        "description": "Full-screen single-word display with alternating entrance directions",
+        "tags": [
+            "captions",
+            "caption-style",
+            "kinetic",
+            "typography",
+            "slam"
+        ],
+        "href": "/catalog/components/caption-kinetic-slam",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caption-kinetic-slam.png"
+    },
+    {
+        "name": "caption-matrix-decode",
+        "type": "component",
+        "title": "Matrix Decode",
+        "description": "Character scramble animation before text reveal",
+        "tags": [
+            "captions",
+            "caption-style",
+            "matrix",
+            "scramble",
+            "decode"
+        ],
+        "href": "/catalog/components/caption-matrix-decode",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caption-matrix-decode.png"
+    },
+    {
+        "name": "caption-neon-accent",
+        "type": "component",
+        "title": "Neon Accent",
+        "description": "Multi-color neon glow accents with wiggle drift animation",
+        "tags": [
+            "captions",
+            "caption-style",
+            "neon",
+            "glow",
+            "accent"
+        ],
+        "href": "/catalog/components/caption-neon-accent",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caption-neon-accent.png"
+    },
+    {
+        "name": "caption-neon-glow",
+        "type": "component",
+        "title": "Neon Glow",
+        "description": "Cyan and magenta neon glow with keyword accent colors",
+        "tags": [
+            "captions",
+            "caption-style",
+            "neon",
+            "glow",
+            "gaming"
+        ],
+        "href": "/catalog/components/caption-neon-glow",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caption-neon-glow.png"
+    },
+    {
+        "name": "caption-parallax-layers",
+        "type": "component",
+        "title": "Parallax Layers",
+        "description": "Behind-subject 3D text layering with vertical stretch effect",
+        "tags": [
+            "captions",
+            "caption-style",
+            "parallax",
+            "3d",
+            "depth"
+        ],
+        "href": "/catalog/components/caption-parallax-layers",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caption-parallax-layers.png"
+    },
+    {
+        "name": "caption-particle-burst",
+        "type": "component",
+        "title": "Particle Burst",
+        "description": "Keyword words trigger colored particle explosions",
+        "tags": [
+            "captions",
+            "caption-style",
+            "particles",
+            "burst",
+            "effects"
+        ],
+        "href": "/catalog/components/caption-particle-burst",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caption-particle-burst.png"
+    },
+    {
+        "name": "caption-pill-karaoke",
+        "type": "component",
+        "title": "Pill Karaoke",
+        "description": "Pill-shaped container with per-word karaoke color highlight",
+        "tags": [
+            "captions",
+            "caption-style",
+            "karaoke",
+            "pill"
+        ],
+        "href": "/catalog/components/caption-pill-karaoke",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caption-pill-karaoke.png"
+    },
+    {
+        "name": "caption-texture",
+        "type": "component",
+        "title": "Texture",
+        "description": "Flowing texture mask over large uppercase text \u2014 ships with 6 textures (lava, marble, metal, wood, concrete, rock), configurable via the texture variable",
+        "tags": [
+            "captions",
+            "caption-style",
+            "texture",
+            "mask"
+        ],
+        "href": "/catalog/components/caption-texture",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caption-texture.png"
+    },
+    {
+        "name": "caption-weight-shift",
+        "type": "component",
+        "title": "Weight Shift",
+        "description": "Elegant font-weight transition between caption lines",
+        "tags": [
+            "captions",
+            "caption-style",
+            "minimal",
+            "typography"
+        ],
+        "href": "/catalog/components/caption-weight-shift",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caption-weight-shift.png"
+    },
+    {
+        "name": "chromatic-radial-split",
+        "type": "block",
+        "title": "Chromatic Radial Split",
+        "description": "Shader transition with chromatic aberration radial split",
+        "tags": [
+            "transition",
+            "shader"
+        ],
+        "href": "/catalog/blocks/chromatic-radial-split",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/chromatic-radial-split.png"
+    },
+    {
+        "name": "cinematic-zoom",
+        "type": "block",
+        "title": "Cinematic Zoom",
+        "description": "Shader transition with dramatic zoom blur",
+        "tags": [
+            "transition",
+            "shader"
+        ],
+        "href": "/catalog/blocks/cinematic-zoom",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/cinematic-zoom.png"
+    },
+    {
+        "name": "cross-warp-morph",
+        "type": "block",
+        "title": "Cross Warp Morph",
+        "description": "Shader transition with cross-warped morphing",
+        "tags": [
+            "transition",
+            "shader"
+        ],
+        "href": "/catalog/blocks/cross-warp-morph",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/cross-warp-morph.png"
+    },
+    {
+        "name": "data-chart",
+        "type": "block",
+        "title": "Data Chart",
+        "description": "Animated bar + line chart with staggered reveal, NYT-style typography, and value labels",
+        "tags": [
+            "data",
+            "chart",
+            "statistics"
+        ],
+        "href": "/catalog/blocks/data-chart",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/data-chart.png"
+    },
+    {
+        "name": "domain-warp-dissolve",
+        "type": "block",
+        "title": "Domain Warp Dissolve",
+        "description": "Shader transition with fractal noise domain warping",
+        "tags": [
+            "transition",
+            "shader"
+        ],
+        "href": "/catalog/blocks/domain-warp-dissolve",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/domain-warp-dissolve.png"
+    },
+    {
+        "name": "flash-through-white",
+        "type": "block",
+        "title": "Flash Through White",
+        "description": "Shader transition with white flash crossfade",
+        "tags": [
+            "transition",
+            "shader"
+        ],
+        "href": "/catalog/blocks/flash-through-white",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/flash-through-white.png"
+    },
+    {
+        "name": "flowchart",
+        "type": "block",
+        "title": "Flowchart",
+        "description": "Animated decision tree with SVG connectors, sticky-note nodes, cursor interaction, and typing correction",
+        "tags": [
+            "diagram",
+            "flowchart",
+            "interactive"
+        ],
+        "href": "/catalog/blocks/flowchart",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/flowchart.png"
+    },
+    {
+        "name": "glitch",
+        "type": "block",
+        "title": "Glitch",
+        "description": "Shader transition with digital glitch artifacts",
+        "tags": [
+            "transition",
+            "shader"
+        ],
+        "href": "/catalog/blocks/glitch",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/glitch.png"
+    },
+    {
+        "name": "grain-overlay",
+        "type": "component",
+        "title": "Grain Overlay",
+        "description": "Animated film grain texture overlay using CSS keyframes \u2014 adds warmth and analog character to any composition",
+        "tags": [
+            "texture",
+            "grain",
+            "overlay",
+            "film"
+        ],
+        "href": "/catalog/components/grain-overlay",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/grain-overlay.png"
+    },
+    {
+        "name": "gravitational-lens",
+        "type": "block",
+        "title": "Gravitational Lens",
+        "description": "Shader transition with gravitational lensing distortion",
+        "tags": [
+            "transition",
+            "shader"
+        ],
+        "href": "/catalog/blocks/gravitational-lens",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/gravitational-lens.png"
+    },
+    {
+        "name": "grid-pixelate-wipe",
+        "type": "component",
+        "title": "Grid Pixelate Wipe",
+        "description": "Transition effect where the screen dissolves into a grid of squares that fade out with staggered timing \u2014 use between scenes",
+        "tags": [
+            "transition",
+            "wipe",
+            "grid",
+            "pixelate"
+        ],
+        "href": "/catalog/components/grid-pixelate-wipe",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/grid-pixelate-wipe.png"
+    },
+    {
+        "name": "motion-blur",
+        "type": "component",
+        "title": "Motion Blur",
+        "description": "Velocity-driven motion blur \u2014 samples element position each frame and scales CSS blur + horizontal stretch proportionally to speed",
+        "tags": [
+            "effect",
+            "motion-blur",
+            "velocity",
+            "animation",
+            "physics"
+        ],
+        "href": "/catalog/components/motion-blur",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/motion-blur.png"
+    },
+    {
+        "name": "instagram-follow",
+        "type": "block",
+        "title": "Instagram Follow",
+        "description": "Animated Instagram follow overlay with profile card and follow button",
+        "tags": [
+            "social",
+            "overlay",
+            "instagram"
+        ],
+        "href": "/catalog/blocks/instagram-follow",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/instagram-follow.png"
+    },
+    {
+        "name": "ios26-liquid-glass",
+        "type": "block",
+        "title": "iOS 26 Liquid Glass Home Screen",
+        "description": "3D iPhone with a normal iOS 26 home screen, liquid glass app icons, shader wallpaper, dock, and fluid glass notifications that drop from the status area onto a GLTF device model.",
+        "tags": [
+            "liquid-glass-html-in-canvas",
+            "webgpu",
+            "3d",
+            "iphone",
+            "ios26",
+            "notifications",
+            "gltf",
+            "html-in-canvas"
+        ],
+        "href": "/catalog/blocks/ios26-liquid-glass",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/ios26-liquid-glass.png"
+    },
+    {
+        "name": "light-leak",
+        "type": "block",
+        "title": "Light Leak",
+        "description": "Shader transition with cinematic light leak overlay",
+        "tags": [
+            "transition",
+            "shader"
+        ],
+        "href": "/catalog/blocks/light-leak",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/light-leak.png"
+    },
+    {
+        "name": "liquid-glass-context-menu",
+        "type": "block",
+        "title": "Liquid Glass Context Menu",
+        "description": "Frosted glass context menu panel drifting over an aurora shader background",
+        "tags": [
+            "html-in-canvas",
+            "liquid-glass-html-in-canvas",
+            "webgpu"
+        ],
+        "href": "/catalog/blocks/liquid-glass-context-menu",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/liquid-glass-context-menu.png"
+    },
+    {
+        "name": "liquid-glass-media-controls",
+        "type": "block",
+        "title": "Liquid Glass Media Controls",
+        "description": "Frosted glass media control panels spreading over an aurora shader background",
+        "tags": [
+            "html-in-canvas",
+            "liquid-glass-html-in-canvas",
+            "webgpu"
+        ],
+        "href": "/catalog/blocks/liquid-glass-media-controls",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/liquid-glass-media-controls.png"
+    },
+    {
+        "name": "liquid-glass-notification",
+        "type": "block",
+        "title": "Liquid Glass Notification",
+        "description": "Frosted glass notification cards floating over an aurora shader background",
+        "tags": [
+            "html-in-canvas",
+            "liquid-glass-html-in-canvas",
+            "webgpu"
+        ],
+        "href": "/catalog/blocks/liquid-glass-notification",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/liquid-glass-notification.png"
+    },
+    {
+        "name": "liquid-glass-widgets",
+        "type": "block",
+        "title": "Liquid Glass Widgets",
+        "description": "Frosted glass stat cards, showcase panel and pill chips over an aurora shader background",
+        "tags": [
+            "html-in-canvas",
+            "liquid-glass-html-in-canvas",
+            "webgpu"
+        ],
+        "href": "/catalog/blocks/liquid-glass-widgets",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/liquid-glass-widgets.png"
+    },
+    {
+        "name": "logo-outro",
+        "type": "block",
+        "title": "Logo Outro",
+        "description": "Cinematic logo reveal with piece-by-piece assembly, glow bloom, tagline fade-in, and URL pill",
+        "tags": [
+            "branding",
+            "outro",
+            "logo"
+        ],
+        "href": "/catalog/blocks/logo-outro",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/logo-outro.png"
+    },
+    {
+        "name": "macos-notification",
+        "type": "block",
+        "title": "macOS Notification",
+        "description": "Animated macOS-style notification banner with app icon and message",
+        "tags": [
+            "social",
+            "overlay",
+            "notification"
+        ],
+        "href": "/catalog/blocks/macos-notification",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/macos-notification.png"
+    },
+    {
+        "name": "macos-tahoe-liquid-glass",
+        "type": "block",
+        "title": "macOS Tahoe Liquid Glass Desktop",
+        "description": "3D MacBook with a macOS Tahoe-style desktop, glass menu bar, Finder window, dock, and cinematic device camera move.",
+        "tags": [
+            "html-in-canvas",
+            "3d",
+            "macos",
+            "tahoe",
+            "gltf"
+        ],
+        "href": "/catalog/blocks/macos-tahoe-liquid-glass",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/macos-tahoe-liquid-glass.png"
+    },
+    {
+        "name": "north-korea-locked-down",
+        "type": "block",
+        "title": "North Korea Locked Down",
+        "description": "Realistic map zoom into North Korea with a red scribble circle, locked-down pop-up label, and reddish editorial wash.",
+        "tags": [
+            "showcase",
+            "map",
+            "annotation",
+            "youtube",
+            "kinetic"
+        ],
+        "href": "/catalog/blocks/north-korea-locked-down",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/north-korea-locked-down.png"
+    },
+    {
+        "name": "nyc-paris-flight",
+        "type": "block",
+        "title": "NYC Paris Flight",
+        "description": "Apple-style realistic map animation with a plane flying from New York to Paris, marker circle, landing pop, and sound effects.",
+        "tags": [
+            "showcase",
+            "travel",
+            "map",
+            "youtube",
+            "sfx"
+        ],
+        "href": "/catalog/blocks/nyc-paris-flight",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/nyc-paris-flight.png"
+    },
+    {
+        "name": "parallax-unzoom",
+        "type": "component",
+        "title": "Parallax Unzoom",
+        "description": "Reveal transition \u2014 focus card scales down from full frame as siblings parallax in to form a grid (reverse of parallax-zoom)",
+        "tags": [
+            "transition",
+            "reveal",
+            "unzoom",
+            "parallax",
+            "grid",
+            "hero"
+        ],
+        "href": "/catalog/components/parallax-unzoom",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/parallax-unzoom.png"
+    },
+    {
+        "name": "parallax-zoom",
+        "type": "component",
+        "title": "Parallax Zoom",
+        "description": "Center card scales up to fill the frame while siblings parallax outward \u2014 inspired by the eBay Playbook hero transition",
+        "tags": [
+            "transition",
+            "zoom",
+            "parallax",
+            "grid",
+            "hero"
+        ],
+        "href": "/catalog/components/parallax-zoom",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/parallax-zoom.png"
+    },
+    {
+        "name": "reddit-post",
+        "type": "block",
+        "title": "Reddit Post Card",
+        "description": "Animated Reddit post card overlay with upvotes and comments",
+        "tags": [
+            "social",
+            "overlay",
+            "reddit"
+        ],
+        "href": "/catalog/blocks/reddit-post",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/reddit-post.png"
+    },
+    {
+        "name": "ridged-burn",
+        "type": "block",
+        "title": "Ridged Burn",
+        "description": "Shader transition with ridged turbulence burn effect",
+        "tags": [
+            "transition",
+            "shader"
+        ],
+        "href": "/catalog/blocks/ridged-burn",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/ridged-burn.png"
+    },
+    {
+        "name": "ripple-waves",
+        "type": "block",
+        "title": "Ripple Waves",
+        "description": "Shader transition with concentric ripple wave distortion",
+        "tags": [
+            "transition",
+            "shader"
+        ],
+        "href": "/catalog/blocks/ripple-waves",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/ripple-waves.png"
+    },
+    {
+        "name": "sdf-iris",
+        "type": "block",
+        "title": "SDF Iris",
+        "description": "Shader transition with signed distance field iris reveal",
+        "tags": [
+            "transition",
+            "shader"
+        ],
+        "href": "/catalog/blocks/sdf-iris",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/sdf-iris.png"
+    },
+    {
+        "name": "shimmer-sweep",
+        "type": "component",
+        "title": "Shimmer Sweep",
+        "description": "Animated light sweep across text or elements using a CSS gradient mask \u2014 ideal for AI accents and premium reveals",
+        "tags": [
+            "text",
+            "shimmer",
+            "highlight",
+            "effect"
+        ],
+        "href": "/catalog/components/shimmer-sweep",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/shimmer-sweep.png"
+    },
+    {
+        "name": "spain-map",
+        "type": "block",
+        "title": "Spain Map",
+        "description": "Animated Spain choropleth by autonomous community with staggered reveals and gradient legend \u2014 D3 conic conformal projection",
+        "tags": [
+            "data",
+            "map",
+            "geography",
+            "spain",
+            "europe",
+            "choropleth"
+        ],
+        "href": "/catalog/blocks/spain-map",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/spain-map.png"
+    },
+    {
+        "name": "spotify-card",
+        "type": "block",
+        "title": "Spotify Now Playing",
+        "description": "Animated Spotify now-playing card with album art and progress bar",
+        "tags": [
+            "social",
+            "overlay",
+            "spotify"
+        ],
+        "href": "/catalog/blocks/spotify-card",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/spotify-card.png"
+    },
+    {
+        "name": "swirl-vortex",
+        "type": "block",
+        "title": "Swirl Vortex",
+        "description": "Shader transition with swirling vortex distortion",
+        "tags": [
+            "transition",
+            "shader"
+        ],
+        "href": "/catalog/blocks/swirl-vortex",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/swirl-vortex.png"
+    },
+    {
+        "name": "texture-mask-text",
+        "type": "component",
+        "title": "Texture Mask Text",
+        "description": "CSS luminance masks that cut holes through letterforms - 66 pre-built texture masks from ambientCG PBR color maps",
+        "tags": [
+            "text",
+            "texture",
+            "mask",
+            "effect"
+        ],
+        "href": "/catalog/components/texture-mask-text",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/texture-mask-text.png"
+    },
+    {
+        "name": "thermal-distortion",
+        "type": "block",
+        "title": "Thermal Distortion",
+        "description": "Shader transition with heat haze thermal distortion",
+        "tags": [
+            "transition",
+            "shader"
+        ],
+        "href": "/catalog/blocks/thermal-distortion",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/thermal-distortion.png"
+    },
+    {
+        "name": "tiktok-follow",
+        "type": "block",
+        "title": "TikTok Follow",
+        "description": "Animated TikTok follow overlay with profile card and follow button",
+        "tags": [
+            "social",
+            "overlay",
+            "tiktok"
+        ],
+        "href": "/catalog/blocks/tiktok-follow",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/tiktok-follow.png"
+    },
+    {
+        "name": "transitions-3d",
+        "type": "block",
+        "title": "3D Transitions",
+        "description": "Showcase of 3D perspective flip and rotate transitions",
+        "tags": [
+            "transition",
+            "showcase"
+        ],
+        "href": "/catalog/blocks/transitions-3d",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/transitions-3d.png"
+    },
+    {
+        "name": "transitions-blur",
+        "type": "block",
+        "title": "Blur Transitions",
+        "description": "Showcase of blur-based transitions between scenes",
+        "tags": [
+            "transition",
+            "showcase"
+        ],
+        "href": "/catalog/blocks/transitions-blur",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/transitions-blur.png"
+    },
+    {
+        "name": "transitions-cover",
+        "type": "block",
+        "title": "Cover Transitions",
+        "description": "Showcase of cover/uncover slide transitions",
+        "tags": [
+            "transition",
+            "showcase"
+        ],
+        "href": "/catalog/blocks/transitions-cover",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/transitions-cover.png"
+    },
+    {
+        "name": "transitions-destruction",
+        "type": "block",
+        "title": "Destruction Transitions",
+        "description": "Showcase of destructive break-apart transitions",
+        "tags": [
+            "transition",
+            "showcase"
+        ],
+        "href": "/catalog/blocks/transitions-destruction",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/transitions-destruction.png"
+    },
+    {
+        "name": "transitions-dissolve",
+        "type": "block",
+        "title": "Dissolve Transitions",
+        "description": "Showcase of dissolve and fade transitions",
+        "tags": [
+            "transition",
+            "showcase"
+        ],
+        "href": "/catalog/blocks/transitions-dissolve",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/transitions-dissolve.png"
+    },
+    {
+        "name": "transitions-distortion",
+        "type": "block",
+        "title": "Distortion Transitions",
+        "description": "Showcase of warp and distortion transitions",
+        "tags": [
+            "transition",
+            "showcase"
+        ],
+        "href": "/catalog/blocks/transitions-distortion",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/transitions-distortion.png"
+    },
+    {
+        "name": "transitions-grid",
+        "type": "block",
+        "title": "Grid Transitions",
+        "description": "Showcase of grid-based tile transitions",
+        "tags": [
+            "transition",
+            "showcase"
+        ],
+        "href": "/catalog/blocks/transitions-grid",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/transitions-grid.png"
+    },
+    {
+        "name": "transitions-light",
+        "type": "block",
+        "title": "Light Transitions",
+        "description": "Showcase of light-based glow and flash transitions",
+        "tags": [
+            "transition",
+            "showcase"
+        ],
+        "href": "/catalog/blocks/transitions-light",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/transitions-light.png"
+    },
+    {
+        "name": "transitions-mechanical",
+        "type": "block",
+        "title": "Mechanical Transitions",
+        "description": "Showcase of mechanical shutter and iris transitions",
+        "tags": [
+            "transition",
+            "showcase"
+        ],
+        "href": "/catalog/blocks/transitions-mechanical",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/transitions-mechanical.png"
+    },
+    {
+        "name": "transitions-other",
+        "type": "block",
+        "title": "Other Transitions",
+        "description": "Showcase of miscellaneous creative transitions",
+        "tags": [
+            "transition",
+            "showcase"
+        ],
+        "href": "/catalog/blocks/transitions-other",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/transitions-other.png"
+    },
+    {
+        "name": "transitions-push",
+        "type": "block",
+        "title": "Push Transitions",
+        "description": "Showcase of push and slide transitions",
+        "tags": [
+            "transition",
+            "showcase"
+        ],
+        "href": "/catalog/blocks/transitions-push",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/transitions-push.png"
+    },
+    {
+        "name": "transitions-radial",
+        "type": "block",
+        "title": "Radial Transitions",
+        "description": "Showcase of radial wipe and reveal transitions",
+        "tags": [
+            "transition",
+            "showcase"
+        ],
+        "href": "/catalog/blocks/transitions-radial",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/transitions-radial.png"
+    },
+    {
+        "name": "transitions-scale",
+        "type": "block",
+        "title": "Scale Transitions",
+        "description": "Showcase of scale and zoom transitions",
+        "tags": [
+            "transition",
+            "showcase"
+        ],
+        "href": "/catalog/blocks/transitions-scale",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/transitions-scale.png"
+    },
+    {
+        "name": "ui-3d-reveal",
+        "type": "block",
+        "title": "3D UI Reveal",
+        "description": "Perspective 3D reveal animation for UI elements",
+        "tags": [
+            "showcase",
+            "3d",
+            "reveal"
+        ],
+        "href": "/catalog/blocks/ui-3d-reveal",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/ui-3d-reveal.png"
+    },
+    {
+        "name": "us-map",
+        "type": "block",
+        "title": "US Map",
+        "description": "Animated US choropleth map with staggered state reveals, value labels, and gradient legend \u2014 pure inline SVG with GSAP",
+        "tags": [
+            "data",
+            "map",
+            "geography",
+            "usa",
+            "choropleth"
+        ],
+        "href": "/catalog/blocks/us-map",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/us-map.png"
+    },
+    {
+        "name": "us-map-bubble",
+        "type": "block",
+        "title": "US Bubble Map",
+        "description": "Animated US bubble map with proportional city markers, value callouts, and connection lines \u2014 composable with us-map",
+        "tags": [
+            "data",
+            "map",
+            "geography",
+            "usa",
+            "bubble",
+            "cities"
+        ],
+        "href": "/catalog/blocks/us-map-bubble",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/us-map-bubble.png"
+    },
+    {
+        "name": "us-map-flow",
+        "type": "block",
+        "title": "US Flow Map",
+        "description": "Animated connection arcs between US cities over a base map \u2014 composable origin-destination flow visualization",
+        "tags": [
+            "data",
+            "map",
+            "geography",
+            "usa",
+            "flow",
+            "connections",
+            "arcs"
+        ],
+        "href": "/catalog/blocks/us-map-flow",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/us-map-flow.png"
+    },
+    {
+        "name": "us-map-hex",
+        "type": "block",
+        "title": "US Hex Grid Map",
+        "description": "Animated hexagonal tile grid map \u2014 each state as an equal-weight hex with data fill and abbreviation label",
+        "tags": [
+            "data",
+            "map",
+            "geography",
+            "usa",
+            "hexgrid",
+            "tilegrid"
+        ],
+        "href": "/catalog/blocks/us-map-hex",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/us-map-hex.png"
+    },
+    {
+        "name": "vfx-iphone-device",
+        "type": "block",
+        "title": "iPhone & MacBook 3D Showcase",
+        "description": "Real GLTF iPhone 15 Pro Max and MacBook Pro models with live HTML-in-Canvas screen content, morphing glass lens, product review camera choreography, and 360\u00b0 turntable.",
+        "tags": [
+            "html-in-canvas",
+            "3d",
+            "device",
+            "iphone",
+            "macbook",
+            "gltf"
+        ],
+        "href": "/catalog/blocks/vfx-iphone-device",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-iphone-device.png"
+    },
+    {
+        "name": "vfx-liquid-background",
+        "type": "block",
+        "title": "Liquid Background",
+        "description": "Organic liquid simulation with vertex displacement on a subdivided plane. HTML content floats above rippling fluid surface with real-time wave dynamics.",
+        "tags": [
+            "html-in-canvas",
+            "liquid",
+            "webgl",
+            "displacement",
+            "background"
+        ],
+        "href": "/catalog/blocks/vfx-liquid-background",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-liquid-background.png"
+    },
+    {
+        "name": "vfx-magnetic",
+        "type": "block",
+        "title": "Magnetic",
+        "description": "VFX composition block",
+        "tags": [
+            "html-in-canvas",
+            "webgl"
+        ],
+        "href": "/catalog/blocks/vfx-magnetic",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-magnetic.png"
+    },
+    {
+        "name": "vfx-portal",
+        "type": "block",
+        "title": "Portal",
+        "description": "VFX composition block",
+        "tags": [
+            "html-in-canvas",
+            "webgl"
+        ],
+        "href": "/catalog/blocks/vfx-portal",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-portal.png"
+    },
+    {
+        "name": "vfx-shatter",
+        "type": "block",
+        "title": "Shatter",
+        "description": "VFX composition block",
+        "tags": [
+            "html-in-canvas",
+            "webgl"
+        ],
+        "href": "/catalog/blocks/vfx-shatter",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-shatter.png"
+    },
+    {
+        "name": "vfx-text-cursor",
+        "type": "block",
+        "title": "VFX Text Cursor",
+        "description": "Dramatic text reveal with cursor glow, chromatic shadow rays, and directional lighting on a black stage. Canvas-based shader post-processing with spectral color edges.",
+        "tags": [
+            "html-in-canvas",
+            "text",
+            "shader",
+            "cursor",
+            "chromatic"
+        ],
+        "href": "/catalog/blocks/vfx-text-cursor",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-text-cursor.png"
+    },
+    {
+        "name": "vignette",
+        "type": "component",
+        "title": "Vignette",
+        "description": "Cinematic radial vignette overlay using a pure-CSS gradient \u2014 darkens the edges to pull focus toward the center",
+        "tags": [
+            "vignette",
+            "overlay",
+            "cinematic",
+            "effect"
+        ],
+        "href": "/catalog/components/vignette",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/vignette.png"
+    },
+    {
+        "name": "vpn-youtube-spot",
+        "type": "block",
+        "title": "VPN YouTube Spot",
+        "description": "Snappy Apple-style YouTube insert showing a phone finding and installing a friendly VPN app with sound effects.",
+        "tags": [
+            "app",
+            "showcase",
+            "youtube",
+            "sfx"
+        ],
+        "href": "/catalog/blocks/vpn-youtube-spot",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vpn-youtube-spot.png"
+    },
+    {
+        "name": "whip-pan",
+        "type": "block",
+        "title": "Whip Pan",
+        "description": "Shader transition simulating a fast camera whip pan",
+        "tags": [
+            "transition",
+            "shader"
+        ],
+        "href": "/catalog/blocks/whip-pan",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/whip-pan.png"
+    },
+    {
+        "name": "world-map",
+        "type": "block",
+        "title": "World Map",
+        "description": "Animated world choropleth with country-by-country reveal, tooltip labels, and rotating globe inset \u2014 D3 Natural Earth projection",
+        "tags": [
+            "data",
+            "map",
+            "geography",
+            "world",
+            "choropleth"
+        ],
+        "href": "/catalog/blocks/world-map",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/world-map.png"
+    },
+    {
+        "name": "x-post",
+        "type": "block",
+        "title": "X Post Card",
+        "description": "Animated X/Twitter post card overlay with engagement metrics",
+        "tags": [
+            "social",
+            "overlay",
+            "twitter"
+        ],
+        "href": "/catalog/blocks/x-post",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/x-post.png"
+    },
+    {
+        "name": "yt-lower-third",
+        "type": "block",
+        "title": "YouTube Lower Third",
+        "description": "Animated YouTube subscribe lower third with avatar and channel info",
+        "tags": [
+            "social",
+            "overlay",
+            "youtube"
+        ],
+        "href": "/catalog/blocks/yt-lower-third",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/yt-lower-third.png"
+    }
 ]
