@@ -1,0 +1,23 @@
+name: Prepare FFMPEG_BIN for bun install
+description: >-
+  Copies the system ffmpeg binary to a writable temp location and sets
+  FFMPEG_BIN in the environment. ffmpeg-static's postinstall script checks
+  whether a file already exists at FFMPEG_BIN; if it does and process.exit(0)
+  is respected by the runtime, the CDN download is skipped entirely. If the
+  runtime intercepts process.exit(0) and the download proceeds anyway, using
+  a writable target prevents the EACCES failure that occurs when the
+  destination is a system path like /usr/bin/ffmpeg.
+
+runs:
+  using: composite
+  steps:
+    - name: Copy ffmpeg to writable path
+      shell: bash
+      run: |
+        FFMPEG=$(which ffmpeg 2>/dev/null || echo "")
+        if [ -z "$FFMPEG" ]; then
+          sudo apt-get install -y --no-install-recommends ffmpeg
+          FFMPEG=/usr/bin/ffmpeg
+        fi
+        cp "$FFMPEG" "$RUNNER_TEMP/hf-ffmpeg"
+        echo "FFMPEG_BIN=$RUNNER_TEMP/hf-ffmpeg" >> "$GITHUB_ENV"

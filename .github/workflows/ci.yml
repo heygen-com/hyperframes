@@ -8,10 +8,6 @@ permissions:
 # External users' CI continues to emit telemetry unless they set this themselves.
 env:
   HYPERFRAMES_NO_TELEMETRY: "1"
-  # ubuntu-24.04 runners ship with /usr/bin/ffmpeg. Setting FFMPEG_BIN makes
-  # ffmpeg-static's postinstall script skip its GitHub-release binary download,
-  # preventing spurious bun-install failures when that CDN is unavailable.
-  FFMPEG_BIN: /usr/bin/ffmpeg
 
 on:
   pull_request:
@@ -71,6 +67,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
+      - uses: ./.github/actions/prepare-ffmpeg-bin
       - run: bun install --frozen-lockfile
       - run: bun run build
 
@@ -88,6 +85,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
+      - uses: ./.github/actions/prepare-ffmpeg-bin
       - run: bun install --frozen-lockfile
       - run: bun run lint
 
@@ -121,6 +119,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
+      - uses: ./.github/actions/prepare-ffmpeg-bin
       - run: bun install --frozen-lockfile
       - name: Run fallow audit
         id: audit
@@ -176,6 +175,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
+      - uses: ./.github/actions/prepare-ffmpeg-bin
       - run: bun install --frozen-lockfile
       - run: bun run format:check
 
@@ -193,6 +193,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
+      - uses: ./.github/actions/prepare-ffmpeg-bin
       - run: bun install --frozen-lockfile
       - run: bun run build
       - run: bun run --filter '*' typecheck
@@ -211,6 +212,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
+      - uses: ./.github/actions/prepare-ffmpeg-bin
       - run: bun install --frozen-lockfile
       - run: bun run test:scripts
       - run: bun run --cwd packages/core build:hyperframes-runtime
@@ -230,6 +232,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
+      - uses: ./.github/actions/prepare-ffmpeg-bin
       - run: bun install --frozen-lockfile
       - run: bun run --filter @hyperframes/core test:hyperframe-runtime-ci
 
@@ -247,6 +250,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
+      - uses: ./.github/actions/prepare-ffmpeg-bin
       - run: bun install --frozen-lockfile
       - run: bun run --cwd packages/core build:hyperframes-runtime
       - name: Start studio and check for runtime errors
@@ -312,6 +316,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
+      - uses: ./.github/actions/prepare-ffmpeg-bin
       - run: bun install --frozen-lockfile
       - run: bun run build
 
@@ -387,6 +392,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
+      - uses: ./.github/actions/prepare-ffmpeg-bin
       - name: Install dependencies
         run: bun install --frozen-lockfile
       - name: Build monorepo
