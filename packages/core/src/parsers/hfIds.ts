@@ -1,5 +1,5 @@
 /**
- * Stable hf- element id minting (R1). Browser-safe: linkedom only, no recast.
+ * Stable hf- element id minting (R1). Node-safe (linkedom only, not browser DOM).
  *
  * Two surfaces share these helpers:
  *  - ensureHfIds(html): node-id surface — mints data-hf-id on every element.
@@ -24,7 +24,8 @@ function fnv1a(str: string): number {
 
 function toHfId(hash: number): string {
   const s = (hash >>> 0).toString(36);
-  const four = s.length >= 4 ? s.slice(0, 4) : s.padStart(4, "0");
+  // Use suffix (most-avalanched bits) for better distribution within the 4-char window.
+  const four = s.length >= 4 ? s.slice(-4) : s.padStart(4, "0");
   return `hf-${four}`;
 }
 
@@ -38,11 +39,13 @@ function ownText(el: Element): string {
 }
 
 function contentKey(el: Element): string {
+  // Exclude all data-hf-* attrs (ids, studio state) — they must not influence the hash.
+  // Use \x00 / \x01 separators (invalid in HTML attrs) to prevent ambiguous serialization.
   const attrs = Array.from(el.attributes)
-    .filter((a) => a.name !== "data-hf-id" && !a.name.startsWith("data-hf-studio-"))
-    .map((a) => `${a.name}=${a.value}`)
+    .filter((a) => !a.name.startsWith("data-hf-"))
+    .map((a) => `${a.name}\x00${a.value}`)
     .sort()
-    .join("&");
+    .join("\x01");
   return `${el.tagName.toLowerCase()}|${attrs}|${ownText(el)}`;
 }
 
@@ -51,6 +54,7 @@ export function mintHfId(el: Element, assigned: Set<string>): string {
   let id = toHfId(fnv1a(key));
   let dup = 0;
   while (assigned.has(id)) {
+    if (dup > 1000) throw new Error("ensureHfIds: hash collision limit exceeded");
     dup += 1;
     id = toHfId(fnv1a(`${key}#${dup}`));
   }
