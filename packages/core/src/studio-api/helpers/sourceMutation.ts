@@ -32,10 +32,39 @@ function querySelectorAllWithTemplates(root: Document | Element, selector: strin
   return [];
 }
 
+// Prevent CSS attribute-selector injection via a crafted hfId: escape
+// backslashes first, then double-quotes. Keeps a malformed/hostile value from
+// breaking out of the `[data-hf-id="…"]` selector once callers beyond the
+// internal mint contract (R2+ user flows) pass values here.
+function escapeCssAttrValue(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+function findByHfId(document: Document, hfId: string): Element | null {
+  try {
+    const matches = querySelectorAllWithTemplates(
+      document,
+      `[data-hf-id="${escapeCssAttrValue(hfId)}"]`,
+    );
+    if (matches.length > 1) {
+      // The mint contract guarantees uniqueness; a duplicate means upstream
+      // id drift. Don't silently patch an arbitrary one — surface it.
+      // eslint-disable-next-line no-console
+      console.warn(
+        `sourceMutation: data-hf-id "${hfId}" matched ${matches.length} elements; using the first. ids must be unique per document.`,
+      );
+    }
+    return matches[0] ?? null;
+  } catch {
+    // Malformed selector despite escaping — let the caller fall back.
+    return null;
+  }
+}
+
 function findTargetElement(document: Document, target: SourceMutationTarget): Element | null {
   if (target.hfId) {
-    const matches = querySelectorAllWithTemplates(document, `[data-hf-id="${target.hfId}"]`);
-    if (matches[0]) return matches[0];
+    const el = findByHfId(document, target.hfId);
+    if (el) return el;
   }
 
   if (target.id) {

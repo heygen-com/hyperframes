@@ -415,6 +415,22 @@ describe("T7 — data-hf-id targeting (spec for R1)", () => {
     expect(html).toMatch(/color:\s*blue/);
   });
 
+  it("does not break out of the selector on a crafted hfId (CSS injection guard)", () => {
+    // A value with a quote/bracket must be escaped, not injected — it should
+    // simply match nothing and leave the source untouched, never throw.
+    const source = `<h1 class="safe">A</h1><h1 class="victim">B</h1>`;
+    const evil = `x"] , [class="victim`;
+    const run = () =>
+      patchElementInHtml(source, { hfId: evil }, [
+        { type: "text-content", property: "textContent", value: "HACKED" },
+      ]);
+    expect(run).not.toThrow();
+    const { html, matched } = run();
+    expect(matched).toBe(false);
+    expect(html).toBe(source);
+    expect(html).not.toContain("HACKED");
+  });
+
   // The Studio edit path targets by id/selector (it never sends hfId). Once a
   // persisted data-hf-id exists in source, those edits must NOT strip it — else
   // the stable handle is destroyed by the next edit. This is the preservation
