@@ -10,7 +10,8 @@
  */
 import { parseHTML } from "linkedom";
 
-const EXCLUDED_TAGS = new Set(["script", "style", "template", "meta"]);
+// Non-editable / non-visual elements that should never receive a stable id.
+const EXCLUDED_TAGS = new Set(["script", "style", "template", "meta", "link", "noscript", "base"]);
 
 // 32-bit FNV-1a. Pure, deterministic, no crypto, no Math.random.
 function fnv1a(str: string): number {
@@ -63,7 +64,13 @@ export function mintHfId(el: Element, assigned: Set<string>): string {
 }
 
 export function ensureHfIds(html: string): string {
-  const { document } = parseHTML(html);
+  // Mirror parseSourceDocument's fragment-wrapping so bare fragments don't land
+  // outside <body> in linkedom, which would cause body.querySelectorAll to return [].
+  const hasDocumentShell = /<!doctype|<html[\s>]/i.test(html);
+  const wrapped = !hasDocumentShell;
+  const { document } = wrapped
+    ? parseHTML(`<!DOCTYPE html><html><head></head><body>${html}</body></html>`)
+    : parseHTML(html);
   const body = document.body;
   if (!body) return html;
 
@@ -80,5 +87,5 @@ export function ensureHfIds(html: string): string {
     el.setAttribute("data-hf-id", mintHfId(el, assigned));
   }
 
-  return document.toString();
+  return wrapped ? document.body.innerHTML || "" : document.toString();
 }
