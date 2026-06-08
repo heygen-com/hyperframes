@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   changelogArtifacts,
+  compareSemver,
   findUnexpectedChanges,
   isPrerelease,
   parseReleaseOptions,
@@ -63,6 +64,32 @@ describe("set-version release options", () => {
       "releases/v1.2.3.md",
       "docs/changelog.mdx#HyperFrames v1.2.3",
     ]);
+  });
+});
+
+describe("semver comparison", () => {
+  it("returns negative when a < b", () => {
+    assert.ok(compareSemver("0.6.82", "1.0.3") < 0);
+  });
+
+  it("returns positive when a > b", () => {
+    assert.ok(compareSemver("1.0.4", "0.6.82") > 0);
+  });
+
+  it("returns zero for equal versions", () => {
+    assert.equal(compareSemver("0.6.82", "0.6.82"), 0);
+  });
+
+  it("compares major version first", () => {
+    assert.ok(compareSemver("2.0.0", "1.99.99") > 0);
+  });
+
+  it("compares minor when major is equal", () => {
+    assert.ok(compareSemver("0.7.0", "0.6.99") > 0);
+  });
+
+  it("compares patch when major and minor are equal", () => {
+    assert.ok(compareSemver("0.6.83", "0.6.82") > 0);
   });
 });
 
