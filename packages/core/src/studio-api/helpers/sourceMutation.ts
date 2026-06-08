@@ -2,6 +2,7 @@ import { parseHTML } from "linkedom";
 
 export interface SourceMutationTarget {
   id?: string | null;
+  hfId?: string;
   selector?: string;
   selectorIndex?: number;
 }
@@ -32,6 +33,11 @@ function querySelectorAllWithTemplates(root: Document | Element, selector: strin
 }
 
 function findTargetElement(document: Document, target: SourceMutationTarget): Element | null {
+  if (target.hfId) {
+    const matches = querySelectorAllWithTemplates(document, `[data-hf-id="${target.hfId}"]`);
+    if (matches[0]) return matches[0];
+  }
+
   if (target.id) {
     const byId = document.getElementById(target.id);
     if (byId) return byId;
@@ -207,7 +213,7 @@ export function patchElementInHtml(
 }
 
 export function probeElementInSource(source: string, target: SourceMutationTarget): boolean {
-  if (!target.id && !target.selector) return false;
+  if (!target.id && !target.hfId && !target.selector) return false;
   const { document } = parseSourceDocument(source);
   const el = findTargetElement(document, target);
   return el != null && isHTMLElement(el);

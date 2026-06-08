@@ -368,13 +368,50 @@ describe("probeElementInSource", () => {
 // Covers the same surface as T3 (Studio sourcePatcher) — Core sourceMutation supports
 // all patch types (inline-style, attribute, text-content) via patchElementInHtml.
 describe("T7 — data-hf-id targeting (spec for R1)", () => {
-  it.todo("updates inline style by data-hf-id when no HTML id attribute is present");
+  it("updates inline style by data-hf-id when no HTML id attribute is present", () => {
+    const source = `<h1 data-hf-id="hf-x7k2" style="color: red">Hello</h1>`;
+    const { html, matched } = patchElementInHtml(source, { hfId: "hf-x7k2" }, [
+      { type: "inline-style", property: "color", value: "blue" },
+    ]);
+    expect(matched).toBe(true);
+    expect(html).toMatch(/color:\s*blue/);
+    expect(html).toContain('data-hf-id="hf-x7k2"');
+  });
 
-  it.todo("updates text content by data-hf-id");
+  it("updates text content by data-hf-id", () => {
+    const source = `<p data-hf-id="hf-a1b2">Old text</p>`;
+    const { html, matched } = patchElementInHtml(source, { hfId: "hf-a1b2" }, [
+      { type: "text-content", property: "", value: "New text" },
+    ]);
+    expect(matched).toBe(true);
+    expect(html).toContain("New text");
+  });
 
-  it.todo("updates attribute by data-hf-id");
+  it("updates attribute by data-hf-id", () => {
+    const source = `<div data-hf-id="hf-c3d4" data-start="0"></div>`;
+    const { html, matched } = patchElementInHtml(source, { hfId: "hf-c3d4" }, [
+      { type: "attribute", property: "start", value: "2.5" },
+    ]);
+    expect(matched).toBe(true);
+    expect(html).toContain('data-start="2.5"');
+  });
 
-  it.todo("data-hf-id attribute survives the patch (can be targeted again)");
+  it("data-hf-id attribute survives the patch (can be targeted again)", () => {
+    const source = `<h1 data-hf-id="hf-x7k2" style="color: red">Hello</h1>`;
+    const { html } = patchElementInHtml(source, { hfId: "hf-x7k2" }, [
+      { type: "inline-style", property: "color", value: "blue" },
+    ]);
+    expect(html).toContain('data-hf-id="hf-x7k2"');
+  });
 
-  it.todo("hfId lookup falls through to selector when hfId is not found in the document");
+  it("hfId lookup falls through to selector when hfId is not found in the document", () => {
+    const source = `<h1 class="headline" style="color: red">Hello</h1>`;
+    const { html, matched } = patchElementInHtml(
+      source,
+      { hfId: "hf-missing", selector: ".headline" },
+      [{ type: "inline-style", property: "color", value: "blue" }],
+    );
+    expect(matched).toBe(true);
+    expect(html).toMatch(/color:\s*blue/);
+  });
 });
