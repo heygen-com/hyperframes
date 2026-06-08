@@ -3,7 +3,7 @@
   "name": "motion-blur",
   "type": "hyperframes:component",
   "title": "Motion Blur",
-  "description": "Velocity-driven motion blur — samples element position each frame and scales CSS blur + horizontal stretch proportionally to speed",
+  "description": "Velocity-driven motion blur — samples element position each frame and applies a one-sided SVG feGaussianBlur ghost trail proportional to speed",
   "tags": ["effect", "motion-blur", "velocity", "animation", "physics"],
   "files": [
     {

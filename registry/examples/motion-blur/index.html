@@ -332,7 +332,7 @@
       <script>
         (function () {
           /* ── attachMotionBlur ─────────────────────────────────────── */
-          var _hfMbUid = (window._hfMbUid = window._hfMbUid || 0);
+          if (!window._hfMbUid) window._hfMbUid = 0;
           var ns = "http://www.w3.org/2000/svg";
 
           function attachMotionBlur(selector, tl, opts) {
@@ -340,7 +340,7 @@
             var blurScale = opts.blurScale !== undefined ? opts.blurScale : 0.008;
             var blurMax = opts.blurMax !== undefined ? opts.blurMax : 20;
             var stretchScale = opts.stretchScale !== undefined ? opts.stretchScale : 0.0002;
-            var stretchMax = opts.stretchMax !== undefined ? opts.stretchMax : 0.5;
+            var stretchMax = opts.stretchMax !== undefined ? opts.stretchMax : 0;
             var axis = opts.axis || "both";
 
             var items = Array.isArray(selector) ? selector : [selector];
@@ -364,7 +364,7 @@
             ];
 
             var state = targets.map(function (el) {
-              var uid = "hf-mb-" + _hfMbUid++;
+              var uid = "hf-mb-" + window._hfMbUid++;
               var svg = document.createElementNS(ns, "svg");
               svg.setAttribute("style", "position:absolute;width:0;height:0;overflow:hidden;");
 
@@ -482,6 +482,17 @@
                           "stdDeviation",
                           (bxFinal * 0.15).toFixed(2) + " " + (byFinal * 0.15).toFixed(2),
                         );
+                        if (stretchMax > 0) {
+                          var sx = 1 + Math.min(Math.abs(vx) * stretchScale, stretchMax);
+                          var sy = 1 + Math.min(Math.abs(vy) * stretchScale, stretchMax);
+                          var ox = axis !== "y" ? (vx >= 0 ? "100% 50%" : "0% 50%") : "50% 50%";
+                          var oy = axis !== "x" ? (vy >= 0 ? "50% 100%" : "50% 0%") : "50% 50%";
+                          gsap.set(s.el, {
+                            scaleX: axis !== "y" ? sx : 1,
+                            scaleY: axis !== "x" ? sy : 1,
+                            transformOrigin: axis === "x" ? ox : axis === "y" ? oy : "50% 50%",
+                          });
+                        }
                       } else {
                         s.el.style.filter = "";
                         s.ghosts.forEach(function (g) {
@@ -490,6 +501,9 @@
                           g.feGB.setAttribute("stdDeviation", "0 0");
                         });
                         s.feTopBlur.setAttribute("stdDeviation", "0 0");
+                        if (stretchMax > 0) {
+                          gsap.set(s.el, { scaleX: 1, scaleY: 1, transformOrigin: "50% 50%" });
+                        }
                       }
 
                       s.prevX = x;
@@ -503,6 +517,9 @@
                         g.feGB.setAttribute("stdDeviation", "0 0");
                       });
                       s.feTopBlur.setAttribute("stdDeviation", "0 0");
+                      if (stretchMax > 0) {
+                        gsap.set(s.el, { scaleX: 1, scaleY: 1, transformOrigin: "50% 50%" });
+                      }
                       s.prevX = x;
                       s.prevY = y;
                       s.prevTime = time;

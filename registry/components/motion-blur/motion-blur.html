@@ -34,7 +34,7 @@
 
 <script>
   (function () {
-    var _hfMbUid = (window._hfMbUid = window._hfMbUid || 0);
+    if (!window._hfMbUid) window._hfMbUid = 0;
 
     window.attachMotionBlur = function (selector, tl, opts) {
       opts = opts || {};
@@ -66,7 +66,7 @@
       ];
 
       var state = targets.map(function (el) {
-        var uid = "hf-mb-" + _hfMbUid++;
+        var uid = "hf-mb-" + window._hfMbUid++;
         var svg = document.createElementNS(ns, "svg");
         svg.setAttribute("style", "position:absolute;width:0;height:0;overflow:hidden;");
 
