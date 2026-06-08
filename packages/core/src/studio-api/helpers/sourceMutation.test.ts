@@ -414,4 +414,28 @@ describe("T7 — data-hf-id targeting (spec for R1)", () => {
     expect(matched).toBe(true);
     expect(html).toMatch(/color:\s*blue/);
   });
+
+  // The Studio edit path targets by id/selector (it never sends hfId). Once a
+  // persisted data-hf-id exists in source, those edits must NOT strip it — else
+  // the stable handle is destroyed by the next edit. This is the preservation
+  // guarantee the write-back design depends on.
+  it("preserves an existing data-hf-id when the element is patched by id", () => {
+    const source = `<h1 id="hero" data-hf-id="hf-x7k2" style="color: red">Hello</h1>`;
+    const { html, matched } = patchElementInHtml(source, { id: "hero" }, [
+      { type: "inline-style", property: "color", value: "blue" },
+    ]);
+    expect(matched).toBe(true);
+    expect(html).toMatch(/color:\s*blue/);
+    expect(html).toContain('data-hf-id="hf-x7k2"');
+  });
+
+  it("preserves an existing data-hf-id when the element is patched by selector", () => {
+    const source = `<p class="body" data-hf-id="hf-a1b2">Old</p>`;
+    const { html, matched } = patchElementInHtml(source, { selector: ".body" }, [
+      { type: "text-content", property: "textContent", value: "New" },
+    ]);
+    expect(matched).toBe(true);
+    expect(html).toContain("New");
+    expect(html).toContain('data-hf-id="hf-a1b2"');
+  });
 });
