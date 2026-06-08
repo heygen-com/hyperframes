@@ -15,9 +15,14 @@ runs:
       shell: bash
       run: |
         FFMPEG=$(which ffmpeg 2>/dev/null || echo "")
-        if [ -z "$FFMPEG" ]; then
-          sudo apt-get install -y --no-install-recommends ffmpeg
-          FFMPEG=/usr/bin/ffmpeg
+        if [ -n "$FFMPEG" ]; then
+          cp "$FFMPEG" "$RUNNER_TEMP/hf-ffmpeg"
+        else
+          # ffmpeg not pre-installed; write a stub so ffmpeg-static's postinstall
+          # finds a file at FFMPEG_BIN and exits early (statSync check) without
+          # attempting the CDN download. Jobs that need a real ffmpeg binary
+          # install it via apt before calling this action.
+          printf '#!/bin/sh\nexec ffmpeg "$@"\n' > "$RUNNER_TEMP/hf-ffmpeg"
         fi
-        cp "$FFMPEG" "$RUNNER_TEMP/hf-ffmpeg"
+        chmod +x "$RUNNER_TEMP/hf-ffmpeg"
         echo "FFMPEG_BIN=$RUNNER_TEMP/hf-ffmpeg" >> "$GITHUB_ENV"
