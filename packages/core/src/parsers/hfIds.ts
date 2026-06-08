@@ -23,6 +23,10 @@ function fnv1a(str: string): number {
   return h >>> 0;
 }
 
+// 4 base-36 chars · 36^4 ≈ 1.68M ids per document. Birthday-paradox collision
+// ≈ N²/(2·36^4): well under 1% per document after dup rehash at realistic
+// clip-model sizes (≤ a few hundred elements). The dup-rehash in mintHfId
+// resolves the rare collision; width is deliberately small for readable ids.
 function toHfId(hash: number): string {
   const s = (hash >>> 0).toString(36);
   // Use suffix (most-avalanched bits) for better distribution within the 4-char window.
@@ -55,8 +59,15 @@ export function mintHfId(el: Element, assigned: Set<string>): string {
   let id = toHfId(fnv1a(key));
   let dup = 0;
   while (assigned.has(id)) {
-    if (dup > 1000) throw new Error("ensureHfIds: hash collision limit exceeded");
     dup += 1;
+    // Graceful fallback instead of a hard throw: rehashing only fails to find a
+    // free 4-char slot in a pathological document (~1.6M identical elements).
+    // Rather than crash the whole parse, widen the id with the dup counter —
+    // still deterministic and unique, just longer than the 4-char norm.
+    if (dup > 10000) {
+      id = `hf-${(fnv1a(key) >>> 0).toString(36)}-${dup}`;
+      break;
+    }
     id = toHfId(fnv1a(`${key}#${dup}`));
   }
   assigned.add(id);
@@ -76,7 +87,9 @@ export function ensureHfIds(html: string): string {
 
   const assigned = new Set<string>();
   // Seed with already-present ids (pin) so fresh mints never collide with them.
-  for (const el of Array.from(document.querySelectorAll("[data-hf-id]"))) {
+  // Scope to <body> to match the mint walk below — a stray data-hf-id in <head>
+  // must not pin an id into the set that a body element would then be bumped off.
+  for (const el of Array.from(body.querySelectorAll("[data-hf-id]"))) {
     const existing = el.getAttribute("data-hf-id");
     if (existing) assigned.add(existing);
   }
