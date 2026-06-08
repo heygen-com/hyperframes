@@ -18,7 +18,7 @@ The HyperFrames MCP is a hosted [Model Context Protocol](https://modelcontextpro
 - Revisit compositions you've created previously
 - Check your render credits
 
-The agent behind `compose` has 25+ HyperFrames-specific skills baked in — typography, color palettes, motion principles, GSAP effects, audio-reactive animation, captions, voice generation. You don't have to specify any of this directly; describe the video you want and the agent picks the right tools.
+The agent behind `compose` has 25+ HyperFrames-specific skills baked in — typography, color palettes, motion principles, GSAP effects, audio-reactive animation, and captions. You don't have to specify any of this directly; describe the video you want and the agent picks the right tools.
 
 <Note>
   Looking for the open-source CLI? See the [Quickstart](/quickstart). The MCP is a hosted product for zero-install authoring inside an LLM chat. The CLI gives you full control of rendering and runtime; the MCP gives you instant authoring with cloud rendering.
@@ -90,7 +90,7 @@ The MCP exposes six tools to the LLM. You don't call them directly — the model
 
 ### compose
 
-Authors a new composition or applies an edit to an existing one. The HyperFrames agent handles voice selection, captions, blocks, layout, transitions, color, and timing internally based on your natural-language prompt.
+Authors a new composition or applies an edit to an existing one. The HyperFrames agent handles captions, blocks, layout, transitions, color, and timing internally based on your natural-language prompt.
 
 **Triggered by prompts like:**
 
@@ -98,7 +98,7 @@ Authors a new composition or applies an edit to an existing one. The HyperFrames
 - "Change the title font to a bold serif" → edits the most recent composition
 - "Add a flash transition before the call-to-action" → applies a structured edit
 
-**Returns:** A composition reference (id, title, thumbnail) plus an inline player widget. Progress notifications stream during the run so you can see what the agent is doing — *"Drafting outline...", "Selecting voice and style...", "Generating HTML...", "Rendering preview frame..."*
+**Returns:** A composition reference (id, title, thumbnail) plus an inline player widget. Progress notifications stream during the run so you can see what the agent is doing — *"Drafting outline...", "Selecting style...", "Generating HTML...", "Rendering preview frame..."*
 
 ### list_compositions
 
@@ -170,7 +170,7 @@ Agent:  [render-progress widget, then player widget with download link]
 
 ### Reference your existing HeyGen assets
 
-If you've uploaded logos, brand voices, fonts, or other assets to your HeyGen account, the agent can use them. Just say *"use my logo"* or *"use my Sarah brand voice."* The agent resolves the asset by name and recency.
+If you've uploaded logos, fonts, or other assets to your HeyGen account, the agent can use them. Just say *"use my logo"* or *"use my brand font."* The agent resolves the asset by name and recency.
 
 ### Pick the right format up front
 
@@ -200,7 +200,7 @@ The MCP emits MCP `notifications/progress` events during long-running `compose` 
 You:    "make me a 30-second product intro"
 Agent:  [calls compose]
   ↳ "Drafting outline..."           ← progress notification
-  ↳ "Selecting voice and style..."  ← progress notification
+  ↳ "Selecting style..."            ← progress notification
   ↳ "Generating HTML..."            ← progress notification
   ↳ "Rendering preview frame..."    ← progress notification
   ↳ [composition + player widget]
@@ -282,7 +282,7 @@ The MCP is a HeyGen-hosted product that wraps:
 
 - The HyperFrames composition agent (the LLM that authors compositions)
 - HeyGen's cloud rendering pipeline
-- HeyGen's voice / TTS / asset libraries
+- HeyGen's asset libraries
 - OAuth, credits, and tier management
 
 | You want… | Use… |

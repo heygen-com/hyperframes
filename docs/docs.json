@@ -74,6 +74,7 @@
           {
             "group": "Guides",
             "pages": [
+              "guides/mcp",
               "guides/pipeline",
               "guides/html-in-canvas",
               "guides/website-to-video",
