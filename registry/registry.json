@@ -486,6 +486,10 @@
     {
       "name": "parallax-unzoom",
       "type": "hyperframes:component"
+    },
+    {
+      "name": "lower-third-bild",
+      "type": "hyperframes:block"
     }
   ]
 }

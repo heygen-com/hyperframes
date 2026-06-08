@@ -142,6 +142,7 @@
               "catalog/blocks/macos-tahoe-liquid-glass",
               "catalog/blocks/vfx-iphone-device",
               "catalog/blocks/vfx-liquid-background",
+              "catalog/blocks/vfx-liquid-glass",
               "catalog/blocks/vfx-magnetic",
               "catalog/blocks/vfx-portal",
               "catalog/blocks/vfx-shatter",
@@ -203,54 +204,6 @@
               "catalog/blocks/app-showcase",
               "catalog/blocks/apple-money-count",
               "catalog/blocks/blue-sweater-intro-video",
-              "catalog/blocks/north-korea-locked-down",
-              "catalog/blocks/nyc-paris-flight",
-              "catalog/blocks/ui-3d-reveal",
-              "catalog/blocks/vpn-youtube-spot"
-            ]
-          },
-          {
-            "group": "Data",
-            "pages": [
-              "catalog/blocks/data-chart",
-              "catalog/blocks/spain-map",
-              "catalog/blocks/us-map",
-              "catalog/blocks/us-map-bubble",
-              "catalog/blocks/us-map-flow",
-              "catalog/blocks/us-map-hex",
-              "catalog/blocks/world-map"
-            ]
-          },
-          {
-            "group": "Effects",
-            "pages": [
-              "catalog/components/grain-overlay",
-              "catalog/components/grid-pixelate-wipe",
-              "catalog/components/motion-blur",
-              "catalog/components/parallax-unzoom",
-              "catalog/components/parallax-zoom",
-              "catalog/components/shimmer-sweep",
-              "catalog/components/vignette"
-            ]
-          },
-          {
-            "group": "Text Effects",
-            "pages": [
-              "catalog/components/caption-blend-difference",
-              "catalog/components/morph-text",
-              "catalog/components/texture-mask-text"
-            ]
-          },
-          {
-            "group": "Blocks",
-            "pages": [
-              "catalog/blocks/flowchart",
-              "catalog/blocks/logo-outro"
-            ]
-          },
-          {
-            "group": "Code Snippets",
-            "pages": [
               "catalog/blocks/code-snippet-apple-terminal-basic",
               "catalog/blocks/code-snippet-apple-terminal-clear-dark",
               "catalog/blocks/code-snippet-apple-terminal-clear-light",
@@ -274,7 +227,47 @@
               "catalog/blocks/code-snippet-monokai",
               "catalog/blocks/code-snippet-solarized-light",
               "catalog/blocks/code-snippet-visual-studio-dark",
-              "catalog/blocks/code-snippet-visual-studio-light"
+              "catalog/blocks/code-snippet-visual-studio-light",
+              "catalog/blocks/north-korea-locked-down",
+              "catalog/blocks/nyc-paris-flight",
+              "catalog/blocks/ui-3d-reveal",
+              "catalog/blocks/vpn-youtube-spot"
+            ]
+          },
+          {
+            "group": "Data",
+            "pages": [
+              "catalog/blocks/data-chart",
+              "catalog/blocks/spain-map",
+              "catalog/blocks/us-map",
+              "catalog/blocks/us-map-bubble",
+              "catalog/blocks/us-map-flow",
+              "catalog/blocks/us-map-hex",
+              "catalog/blocks/world-map"
+            ]
+          },
+          {
+            "group": "Effects",
+            "pages": [
+              "catalog/components/caption-blend-difference",
+              "catalog/components/grain-overlay",
+              "catalog/components/grid-pixelate-wipe",
+              "catalog/components/morph-text",
+              "catalog/components/motion-blur",
+              "catalog/components/parallax-unzoom",
+              "catalog/components/parallax-zoom",
+              "catalog/components/shimmer-sweep",
+              "catalog/components/texture-mask-text",
+              "catalog/components/vignette"
+            ]
+          },
+          {
+            "group": "Blocks",
+            "pages": [
+              "catalog/blocks/flowchart",
+              "catalog/blocks/flowchart-vertical",
+              "catalog/blocks/logo-outro",
+              "catalog/blocks/lower-third-bild"
             ]
           }
         ]
