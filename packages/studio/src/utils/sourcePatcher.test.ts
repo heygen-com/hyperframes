@@ -516,3 +516,18 @@ describe("motion attribute round-trip via sourcePatcher", () => {
     expect(JSON.parse(readBack!)).toEqual(motion);
   });
 });
+
+// T3 — id-based targeting (spec for R1).
+// R1 adds `hfId?: string` to PatchTarget and a `[data-hf-id="…"]` lookup branch
+// in findTagByTarget. Convert from it.todo to real assertions in the R1 PR.
+describe("T3 — hfId targeting (spec for R1)", () => {
+  it.todo("updates inline style by data-hf-id");
+
+  it.todo("updates text content by data-hf-id");
+
+  it.todo("updates attribute by data-hf-id");
+
+  it.todo("data-hf-id attribute is preserved after a style patch");
+
+  it.todo("hfId lookup falls through to selector when hfId not found");
+});

@@ -361,3 +361,12 @@ describe("probeElementInSource", () => {
     expect(probeElementInSource(sourceHtml, { id: "canvas" })).toBe(true);
   });
 });
+
+// T7 — data-hf-id targeting (spec for R1).
+// R1 adds `hfId?: string` to SourceMutationTarget and a `[data-hf-id="…"]` branch
+// in findTargetElement (sourceMutation.ts:34). Convert from it.todo in the R1 PR.
+describe("T7 — data-hf-id targeting (spec for R1)", () => {
+  it.todo("patches element by data-hf-id when no HTML id attribute is present");
+
+  it.todo("data-hf-id attribute survives the patch (can be targeted again)");
+});
