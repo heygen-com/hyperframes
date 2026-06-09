@@ -1,5 +1,79 @@
-import { useCallback, useRef, useState } from "react";
+import { memo, useCallback, useRef, useState } from "react";
 import { EASE_CURVES, EASE_LABELS, parseCustomEaseFromString } from "./gsapAnimationConstants";
+
+const PRESET_GRID_EASES = [
+  "none",
+  "power2.out",
+  "power2.in",
+  "power2.inOut",
+  "power3.out",
+  "back.out",
+  "expo.out",
+  "elastic.out",
+] as const;
+
+function MiniCurveSvg({
+  curve,
+  active,
+}: {
+  curve: [number, number, number, number];
+  active: boolean;
+}) {
+  const [x1, y1, x2, y2] = curve;
+  const s = 24;
+  const p = 3;
+  const g = s - p * 2;
+  const sx = (px: number) => p + g * px;
+  const sy = (py: number) => s - p - g * py;
+  const d = `M${p},${s - p} C${sx(x1)},${sy(y1)} ${sx(x2)},${sy(y2)} ${s - p},${p}`;
+  return (
+    <svg width={s} height={s} viewBox={`0 0 ${s} ${s}`}>
+      <path
+        d={d}
+        fill="none"
+        stroke={active ? "#3CE6AC" : "#737373"}
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+const EasePresetGrid = memo(function EasePresetGrid({
+  currentEase,
+  onSelect,
+}: {
+  currentEase: string;
+  onSelect: (ease: string) => void;
+}) {
+  return (
+    <div className="grid grid-cols-4 gap-1 mb-2">
+      {PRESET_GRID_EASES.map((name) => {
+        const curve = EASE_CURVES[name];
+        if (!curve) return null;
+        const isActive = currentEase === name;
+        return (
+          <button
+            key={name}
+            type="button"
+            onClick={() => onSelect(name)}
+            className={`flex flex-col items-center gap-0.5 rounded-md p-1 transition-colors ${
+              isActive ? "bg-panel-accent/10 ring-1 ring-panel-accent/30" : "hover:bg-neutral-800"
+            }`}
+            title={EASE_LABELS[name] ?? name}
+          >
+            <MiniCurveSvg curve={curve} active={isActive} />
+            <span
+              className={`text-[8px] leading-none ${isActive ? "text-panel-accent" : "text-neutral-500"}`}
+            >
+              {(EASE_LABELS[name] ?? name).split(" ").slice(0, 2).join(" ")}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+});
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
@@ -108,12 +182,13 @@ export function EaseCurveSection({
 
   return (
     <div className="rounded-lg bg-neutral-900/50 p-2">
+      <EasePresetGrid currentEase={ease} onSelect={(name) => onCustomEaseCommit(name)} />
       <div className="mb-1.5 flex items-center justify-between">
         <span className="text-[10px] font-medium text-neutral-500">Speed curve</span>
         <button
           type="button"
           onClick={play}
-          className="rounded px-1.5 py-0.5 text-[10px] font-medium text-emerald-400 transition-colors hover:bg-emerald-500/10"
+          className="rounded px-1.5 py-0.5 text-[10px] font-medium text-panel-accent transition-colors hover:bg-panel-accent/10"
         >
           {progress !== null ? "Playing…" : "Preview"}
         </button>
@@ -165,17 +240,17 @@ export function EaseCurveSection({
             y1={end.y}
             x2={p2.x}
             y2={p2.y}
-            stroke="rgba(52,211,153,0.25)"
+            stroke="rgba(45,212,191,0.25)"
             strokeWidth="1"
           />
-          <path d={curvePath} fill="none" stroke="#34d399" strokeWidth="2" strokeLinecap="round" />
-          {progress !== null && <circle cx={dotX} cy={dotY} r="4" fill="#34d399" />}
+          <path d={curvePath} fill="none" stroke="#3CE6AC" strokeWidth="2" strokeLinecap="round" />
+          {progress !== null && <circle cx={dotX} cy={dotY} r="4" fill="#3CE6AC" />}
           <circle
             cx={p1.x}
             cy={p1.y}
             r="5"
             fill="#0a0a1a"
-            stroke="#34d399"
+            stroke="#3CE6AC"
             strokeWidth="2"
             className="cursor-grab active:cursor-grabbing"
             onPointerDown={(e) => handlePointerDown("p1", e)}
@@ -185,7 +260,7 @@ export function EaseCurveSection({
             cy={p2.y}
             r="5"
             fill="#0a0a1a"
-            stroke="#34d399"
+            stroke="#3CE6AC"
             strokeWidth="2"
             className="cursor-grab active:cursor-grabbing"
             onPointerDown={(e) => handlePointerDown("p2", e)}

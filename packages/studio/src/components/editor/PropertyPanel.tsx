@@ -4,7 +4,6 @@ import { readStudioBoxSize, readStudioPathOffset, readStudioRotation } from "./m
 import {
   EMPTY_STYLES,
   formatPxMetricValue,
-  LABEL,
   parsePxMetricValue,
   RESPONSIVE_GRID,
 } from "./propertyPanelHelpers";
@@ -16,7 +15,7 @@ import { KeyframeNavigation } from "./KeyframeNavigation";
 import { STUDIO_GSAP_PANEL_ENABLED, STUDIO_KEYFRAMES_ENABLED } from "./manualEditingAvailability";
 import { usePlayerStore } from "../../player";
 import { TimingSection } from "./propertyPanelTimingSection";
-import { computeFitToChildrenSize, type PropertyPanelProps } from "./propertyPanelHelpers";
+import { type PropertyPanelProps } from "./propertyPanelHelpers";
 
 // Re-export helpers that external consumers import from this module
 export {
@@ -70,6 +69,8 @@ export const PropertyPanel = memo(function PropertyPanel({
   onAddGsapFromProperty,
   onRemoveGsapFromProperty,
   onAddGsapAnimation,
+  onSetArcPath,
+  onUpdateArcSegment,
   onAddKeyframe,
   onRemoveKeyframe,
   onConvertToKeyframes,
@@ -217,6 +218,34 @@ export const PropertyPanel = memo(function PropertyPanel({
     }
   })();
 
+  const gsapBorderRadius: { tl: number; tr: number; br: number; bl: number } | null = (() => {
+    if (!gsapRuntimeValues || !("borderRadius" in gsapRuntimeValues)) {
+      const hasBRProp = gsapAnimations.some(
+        (a) =>
+          "borderRadius" in a.properties ||
+          a.keyframes?.keyframes.some((kf) => "borderRadius" in kf.properties),
+      );
+      if (!hasBRProp) return null;
+    }
+    const iframe = previewIframeRef?.current;
+    const selector = element.id ? `#${element.id}` : element.selector;
+    if (!iframe?.contentDocument || !selector) return null;
+    try {
+      const el = iframe.contentDocument.querySelector(selector);
+      if (!el) return null;
+      const cs = iframe.contentWindow!.getComputedStyle(el);
+      const parse = (v: string) => Number.parseFloat(v) || 0;
+      return {
+        tl: parse(cs.borderTopLeftRadius),
+        tr: parse(cs.borderTopRightRadius),
+        br: parse(cs.borderBottomRightRadius),
+        bl: parse(cs.borderBottomLeftRadius),
+      };
+    } catch {
+      return null;
+    }
+  })();
+
   const displayX = gsapRuntimeValues?.x ?? manualOffset.x;
   const displayY = gsapRuntimeValues?.y ?? manualOffset.y;
   const displayW = gsapRuntimeValues?.width ?? resolvedWidth;
@@ -224,34 +253,33 @@ export const PropertyPanel = memo(function PropertyPanel({
   const displayR = gsapRuntimeValues?.rotation ?? manualRotation.angle;
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-neutral-900 text-neutral-100">
-      <div className="border-b border-neutral-800 px-4 py-5">
-        <div className="flex items-start justify-between gap-4">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-panel-bg text-panel-text-1">
+      <div className="px-4 py-3">
+        <div className="flex items-center justify-between gap-4">
           <div className="min-w-0">
-            <div className={LABEL}>Document</div>
-            <div className="mt-3 truncate text-[12px] font-semibold text-neutral-100">
+            <div className="truncate text-[13px] font-semibold text-neutral-100">
               {element.label}
             </div>
-            <div className="mt-1 truncate text-[11px] text-neutral-500">{sourceLabel}</div>
+            <div className="mt-0.5 truncate text-[11px] text-neutral-500">{sourceLabel}</div>
           </div>
-          <button
-            type="button"
-            aria-label="Clear selection"
-            onClick={onClearSelection}
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-neutral-700 bg-neutral-950 text-neutral-500 shadow-[0_1px_2px_rgba(0,0,0,0.2)] transition-colors hover:border-neutral-600 hover:text-neutral-200"
-          >
-            <X size={13} />
-          </button>
-        </div>
-        <div className="mt-4 flex min-w-0 flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={onAskAgent}
-            className="inline-flex h-8 items-center justify-center gap-2 rounded-xl border border-neutral-700 bg-neutral-950 px-3.5 text-[11px] font-medium text-neutral-100 transition-colors hover:border-studio-accent/40 hover:text-studio-accent"
-          >
-            <MessageSquare size={15} />
-            <span>{copiedAgentPrompt ? "Prompt copied" : "Copy prompt to AI agent"}</span>
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={onAskAgent}
+              className="flex h-6 w-6 items-center justify-center rounded text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-300"
+              title={copiedAgentPrompt ? "Prompt copied" : "Copy prompt to AI agent"}
+            >
+              <MessageSquare size={13} />
+            </button>
+            <button
+              type="button"
+              aria-label="Clear selection"
+              onClick={onClearSelection}
+              className="flex h-6 w-6 items-center justify-center rounded text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-300"
+            >
+              <X size={13} />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -384,29 +412,6 @@ export const PropertyPanel = memo(function PropertyPanel({
                 />
               )}
             </div>
-            {element.capabilities.canApplyManualSize && (
-              <button
-                type="button"
-                className="flex-shrink-0 rounded p-1 text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-300"
-                title="Fit to children"
-                onClick={() => {
-                  const size = computeFitToChildrenSize(element);
-                  if (size) onSetManualSize(element, size);
-                }}
-              >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 14 14"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.2"
-                >
-                  <rect x="2" y="2" width="10" height="10" strokeDasharray="2 1.5" rx="1" />
-                  <path d="M2 4.5h1m-1 5h1m8-5h1m-1 5h1M4.5 2v1m5-1v1M4.5 11v1m5-1v1" />
-                </svg>
-              </button>
-            )}
             <div className="flex items-center gap-1">
               <div className="flex-1">
                 <MetricField
@@ -467,17 +472,40 @@ export const PropertyPanel = memo(function PropertyPanel({
                     />
                   )}
                 </div>
-                <MetricField
-                  label="Scale"
-                  value={String(gsapRuntimeValues.scale ?? 1)}
-                  scrub
-                  onCommit={(next) => {
-                    const v = Number.parseFloat(next);
-                    if (Number.isFinite(v) && onCommitAnimatedProperty) {
-                      void onCommitAnimatedProperty(element, "scale", v);
-                    }
-                  }}
-                />
+                <div className="flex items-center gap-1">
+                  <div className="flex-1">
+                    <MetricField
+                      label="Scale"
+                      value={String(gsapRuntimeValues.scale ?? 1)}
+                      scrub
+                      onCommit={(next) => {
+                        const v = Number.parseFloat(next);
+                        if (Number.isFinite(v) && onCommitAnimatedProperty) {
+                          void onCommitAnimatedProperty(element, "scale", v);
+                        }
+                      }}
+                    />
+                  </div>
+                  {STUDIO_KEYFRAMES_ENABLED && (gsapAnimId || onCommitAnimatedProperty) && (
+                    <KeyframeNavigation
+                      property="scale"
+                      keyframes={gsapKeyframes}
+                      currentPercentage={currentPct}
+                      onSeek={(pct) => onSeekToTime?.(elStart + (pct / 100) * elDuration)}
+                      onAddKeyframe={() => {
+                        if (onCommitAnimatedProperty) {
+                          void onCommitAnimatedProperty(
+                            element,
+                            "scale",
+                            gsapRuntimeValues?.scale ?? 1,
+                          );
+                        }
+                      }}
+                      onRemoveKeyframe={(pct) => gsapAnimId && onRemoveKeyframe?.(gsapAnimId, pct)}
+                      onConvertToKeyframes={() => gsapAnimId && onConvertToKeyframes?.(gsapAnimId)}
+                    />
+                  )}
+                </div>
                 <MetricField
                   label="RotX"
                   value={`${gsapRuntimeValues.rotationX ?? 0}°`}
@@ -533,6 +561,8 @@ export const PropertyPanel = memo(function PropertyPanel({
               onAddFromProperty={onAddGsapFromProperty}
               onRemoveFromProperty={onRemoveGsapFromProperty}
               onAddAnimation={onAddGsapAnimation}
+              onSetArcPath={onSetArcPath}
+              onUpdateArcSegment={onUpdateArcSegment}
             />
           )}
 
@@ -544,6 +574,7 @@ export const PropertyPanel = memo(function PropertyPanel({
             assets={assets}
             onSetStyle={onSetStyle}
             onImportAssets={onImportAssets}
+            gsapBorderRadius={gsapBorderRadius}
           />
         )}
       </div>

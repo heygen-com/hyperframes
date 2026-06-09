@@ -71,7 +71,7 @@ function ColorSlider({
         aria-valuemax={max}
         aria-valuenow={value}
         aria-disabled={disabled}
-        className={`relative h-4 rounded-full border border-neutral-700 shadow-[inset_0_1px_2px_rgba(0,0,0,0.55)] outline-none focus:border-[#f5a400] focus:ring-2 focus:ring-[#f5a400]/40 ${
+        className={`relative h-4 rounded-full border border-neutral-700 shadow-[inset_0_1px_2px_rgba(0,0,0,0.55)] outline-none focus:border-panel-accent focus:ring-2 focus:ring-panel-accent/40 ${
           disabled ? "cursor-not-allowed opacity-50" : "cursor-ew-resize"
         }`}
         style={{ background }}
@@ -294,7 +294,7 @@ export function ColorField({
                 <div className="truncate text-[11px] font-medium text-neutral-100">
                   {currentColor}
                 </div>
-                <div className="mt-0.5 text-[9px] uppercase tracking-[0.12em] text-neutral-600">
+                <div className="mt-0.5 text-[9px] text-neutral-600">
                   S {saturationPercent}% · B {brightnessPercent}% · A {alphaPercent}%
                 </div>
               </div>

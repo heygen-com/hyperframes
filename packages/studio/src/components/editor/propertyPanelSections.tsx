@@ -262,15 +262,13 @@ function TextFieldEditor({
   onRemoveTextField: (fieldKey: string) => void;
 }) {
   return (
-    <div className="space-y-4 rounded-xl border border-neutral-800 bg-neutral-900/60 p-3">
+    <div className="space-y-3">
       <div className={showRemove ? "flex min-w-0 items-center justify-between gap-2" : "min-w-0"}>
         <div className="min-w-0">
           <div className="truncate text-[11px] font-medium text-neutral-100">
             {formatTextFieldPreview(field.value) || "Text"}
           </div>
-          <div className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">
-            {field.tagName}
-          </div>
+          <div className="text-[10px] text-neutral-500">{field.tagName}</div>
         </div>
         {showRemove && (
           <button
@@ -368,7 +366,7 @@ export function TextSection({
 
   if (textFields.length === 1) {
     return (
-      <Section title="Text" icon={<Type size={15} />}>
+      <Section title="Text" icon={<Type size={15} />} defaultCollapsed>
         <TextFieldEditor
           field={activeField}
           styles={styles}
@@ -426,7 +424,7 @@ export function TextSection({
                         {formatTextFieldPreview(field.value) || `Text ${index + 1}`}
                       </span>
                     </div>
-                    <span className="flex-shrink-0 rounded-md border border-neutral-700 bg-neutral-950 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.12em] text-neutral-500">
+                    <span className="flex-shrink-0 rounded-md border border-neutral-700 bg-neutral-950 px-1.5 py-0.5 text-[10px] text-neutral-500">
                       {field.tagName}
                     </span>
                   </div>

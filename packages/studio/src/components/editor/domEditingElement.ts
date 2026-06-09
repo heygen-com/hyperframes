@@ -37,9 +37,26 @@ export function isElementComputedVisible(el: HTMLElement): boolean {
 
 const VISUAL_LEAF_TAGS = new Set(["img", "video", "canvas", "svg", "audio"]);
 
+function hasVisualPresence(el: HTMLElement): boolean {
+  const win = el.ownerDocument.defaultView;
+  if (!win) return false;
+  const cs = win.getComputedStyle(el);
+  if (cs.backgroundImage !== "none") return true;
+  if (
+    cs.backgroundColor &&
+    cs.backgroundColor !== "transparent" &&
+    cs.backgroundColor !== "rgba(0, 0, 0, 0)"
+  )
+    return true;
+  if (cs.borderWidth && parseFloat(cs.borderWidth) > 0 && cs.borderStyle !== "none") return true;
+  if (cs.boxShadow && cs.boxShadow !== "none") return true;
+  return false;
+}
+
 function isEmptyVisualContainer(el: HTMLElement): boolean {
   const tag = el.tagName.toLowerCase();
   if (VISUAL_LEAF_TAGS.has(tag)) return false;
+  if (hasVisualPresence(el)) return false;
 
   const { children } = el;
   if (children.length === 0) {

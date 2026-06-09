@@ -257,9 +257,9 @@ export function SliderControl({
         onMouseUp={() => commitDraft(draft)}
         onTouchEnd={() => commitDraft(draft)}
         onBlur={() => commitDraft(draft)}
-        className="h-2 min-w-0 w-full cursor-pointer appearance-none rounded-full bg-neutral-800 accent-[#3ce6ac] disabled:cursor-not-allowed"
+        className="h-4 min-w-0 w-full cursor-pointer appearance-none bg-transparent disabled:cursor-not-allowed disabled:opacity-50 [&::-webkit-slider-runnable-track]:h-[2px] [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-panel-border [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-[10px] [&::-webkit-slider-thumb]:h-[10px] [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:-mt-1 [&::-webkit-slider-thumb]:shadow-[0_0_0_2px_#0C0C0E,0_1px_3px_rgba(0,0,0,0.5)] [&::-webkit-slider-thumb]:cursor-grab [&::-webkit-slider-thumb:active]:cursor-grabbing"
       />
-      <div className="min-w-[52px] rounded-xl border border-neutral-800 bg-neutral-900 px-2 py-2 text-right text-[11px] font-medium text-neutral-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+      <div className="min-w-[44px] rounded-md bg-panel-input px-2 py-1.5 text-right text-[11px] font-medium text-panel-text-1 tabular-nums">
         {formatDisplayValue?.(draft) ?? displayValue}
       </div>
     </div>
@@ -279,7 +279,7 @@ export function SegmentedControl({
 }) {
   return (
     <div
-      className="grid min-w-0 gap-1 rounded-xl bg-neutral-900 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
+      className="grid min-w-0 gap-[2px] rounded-md bg-panel-input p-[2px]"
       style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
     >
       {options.map((option) => (
@@ -288,10 +288,10 @@ export function SegmentedControl({
           type="button"
           disabled={disabled}
           onClick={() => onChange(option.value)}
-          className={`min-w-0 truncate rounded-lg px-2 py-1.5 text-[11px] font-medium transition-colors disabled:cursor-not-allowed ${
+          className={`min-w-0 truncate rounded px-2 py-[5px] text-[11px] font-medium transition-colors disabled:cursor-not-allowed ${
             option.value === value
-              ? "bg-neutral-800 text-white shadow-[0_1px_3px_rgba(0,0,0,0.28)]"
-              : "text-neutral-500 hover:text-neutral-200"
+              ? "bg-panel-hover text-white"
+              : "text-panel-text-4 hover:text-panel-text-2"
           }`}
         >
           {option.label}
@@ -336,7 +336,7 @@ export function SelectField({
 
 export function Section({
   title,
-  icon,
+  icon: _icon,
   children,
   accessory,
   defaultCollapsed = false,
@@ -350,32 +350,45 @@ export function Section({
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
 
   return (
-    <section className="min-w-0 border-t border-neutral-800/80">
+    <section className="min-w-0 border-t border-panel-border">
       <button
         type="button"
         onClick={() => setCollapsed((v) => !v)}
-        className="flex w-full items-center justify-between gap-2 px-4 py-3"
+        className="flex w-full items-center justify-between gap-2 px-4 py-2.5"
       >
-        <div className="flex min-w-0 items-center gap-2.5">
-          <span className="flex-shrink-0 text-neutral-500">{icon}</span>
-          <h3 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-neutral-300">
-            {title}
-          </h3>
-        </div>
+        <h3 className="text-[12px] font-semibold text-panel-text-1">{title}</h3>
         <div className="flex items-center gap-2">
           {accessory}
-          <svg
-            width="10"
-            height="10"
-            viewBox="0 0 10 10"
-            fill="currentColor"
-            className={`flex-shrink-0 text-neutral-500 transition-transform ${collapsed ? "-rotate-90" : ""}`}
-          >
-            <path d="M2 3l3 4 3-4z" />
-          </svg>
+          {collapsed && (
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 12 12"
+              fill="none"
+              className="flex-shrink-0 text-panel-text-5"
+            >
+              <path
+                d="M6 2.5v7M2.5 6h7"
+                stroke="currentColor"
+                strokeWidth="1.2"
+                strokeLinecap="round"
+              />
+            </svg>
+          )}
+          {!collapsed && (
+            <svg
+              width="10"
+              height="10"
+              viewBox="0 0 10 10"
+              fill="currentColor"
+              className="flex-shrink-0 text-panel-text-5"
+            >
+              <path d="M2 3l3 4 3-4z" />
+            </svg>
+          )}
         </div>
       </button>
-      {!collapsed && <div className="px-4 pb-4">{children}</div>}
+      {!collapsed && <div className="px-4 pb-3">{children}</div>}
     </section>
   );
 }

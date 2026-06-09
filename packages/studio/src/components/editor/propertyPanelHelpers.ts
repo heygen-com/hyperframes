@@ -41,6 +41,19 @@ export interface PropertyPanelProps {
   onAddGsapFromProperty?: (animId: string, prop: string) => void;
   onRemoveGsapFromProperty?: (animId: string, prop: string) => void;
   onAddGsapAnimation?: (method: "to" | "from" | "set" | "fromTo") => void;
+  onSetArcPath?: (
+    animId: string,
+    config: {
+      enabled: boolean;
+      autoRotate?: boolean | number;
+      segments?: import("@hyperframes/core/gsap-parser").ArcPathSegment[];
+    },
+  ) => void;
+  onUpdateArcSegment?: (
+    animId: string,
+    segmentIndex: number,
+    update: Partial<import("@hyperframes/core/gsap-parser").ArcPathSegment>,
+  ) => void;
   onAddKeyframe?: (
     animationId: string,
     percentage: number,
@@ -184,8 +197,8 @@ function fontSourceRank(source: FontSource): number {
 /* ------------------------------------------------------------------ */
 
 export const FIELD =
-  "min-w-0 rounded-xl border border-neutral-800 bg-neutral-900/95 px-3 py-2 text-neutral-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] transition-colors focus-within:border-neutral-600";
-export const LABEL = "text-[11px] font-medium uppercase tracking-[0.18em] text-neutral-500";
+  "min-w-0 rounded-md bg-panel-input px-3 py-[7px] text-panel-text-1 transition-colors focus-within:ring-1 focus-within:ring-panel-accent/30";
+export const LABEL = "text-[11px] font-medium text-panel-text-3";
 export const RESPONSIVE_GRID = "grid grid-cols-[repeat(auto-fit,minmax(118px,1fr))] gap-3";
 export const EMPTY_STYLES: Record<string, string> = {};
 

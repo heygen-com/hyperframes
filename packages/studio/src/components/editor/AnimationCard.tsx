@@ -17,6 +17,9 @@ import {
 } from "./gsapAnimationConstants";
 import { buildTweenSummary } from "./gsapAnimationHelpers";
 import { EaseCurveSection } from "./EaseCurveSection";
+import { ArcPathControls } from "./ArcPathControls";
+import type { ArcPathSegment } from "@hyperframes/core/gsap-parser";
+import { P } from "./panelTokens";
 const BOOLEAN_PROPS = new Set(["visibility"]);
 const STRING_PROPS = new Set(["filter", "clipPath"]);
 
@@ -97,11 +100,18 @@ function PropertyRow({
           <button
             type="button"
             onClick={() => onCommit(isVisible ? "hidden" : "visible")}
-            className={`flex-shrink-0 w-7 h-4 rounded-full transition-colors relative ${isVisible ? "bg-emerald-500/30" : "bg-neutral-700"}`}
+            className={`flex-shrink-0 rounded-full transition-all duration-150 relative`}
+            style={{ width: 28, height: 16, background: isVisible ? P.accent : P.borderInput }}
             title={isVisible ? "Visible — click to hide" : "Hidden — click to show"}
           >
             <span
-              className={`absolute top-0.5 h-3 w-3 rounded-full transition-transform ${isVisible ? "bg-emerald-400 translate-x-3.5" : "bg-neutral-500 translate-x-0.5"}`}
+              className="absolute top-[2px] left-0 rounded-full transition-transform duration-150"
+              style={{
+                width: 12,
+                height: 12,
+                background: isVisible ? P.white : P.textMuted,
+                transform: isVisible ? "translateX(14px)" : "translateX(2px)",
+              }}
             />
           </button>
         </div>
@@ -241,6 +251,15 @@ interface AnimationCardProps {
   onRemoveFromProperty?: (animationId: string, property: string) => void;
   onLivePreview?: (property: string, value: number | string) => void;
   onLivePreviewEnd?: () => void;
+  onSetArcPath?: (
+    animationId: string,
+    config: { enabled: boolean; autoRotate?: boolean | number; segments?: ArcPathSegment[] },
+  ) => void;
+  onUpdateArcSegment?: (
+    animationId: string,
+    segmentIndex: number,
+    update: Partial<ArcPathSegment>,
+  ) => void;
 }
 
 // fallow-ignore-next-line complexity
@@ -257,6 +276,8 @@ export const AnimationCard = memo(function AnimationCard({
   onRemoveFromProperty,
   onLivePreview,
   onLivePreviewEnd,
+  onSetArcPath,
+  onUpdateArcSegment,
 }: AnimationCardProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [addingProp, setAddingProp] = useState(false);
@@ -329,7 +350,7 @@ export const AnimationCard = memo(function AnimationCard({
   const [copied, setCopied] = useState(false);
 
   const methodLabel = METHOD_LABELS[animation.method] ?? animation.method;
-  const easeName = animation.ease ?? "none";
+  const easeName = animation.ease ?? animation.keyframes?.easeEach ?? "none";
   const easeLabel = easeName.startsWith("custom(")
     ? "Custom curve"
     : (EASE_LABELS[easeName] ?? easeName);
@@ -348,7 +369,7 @@ export const AnimationCard = memo(function AnimationCard({
         className="flex w-full items-center gap-2 py-1.5"
       >
         <span
-          className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-400"
+          className="rounded bg-panel-accent/10 px-1.5 py-0.5 text-[10px] font-semibold text-panel-accent"
           title={METHOD_TOOLTIPS[animation.method]}
         >
           {methodLabel}
@@ -420,13 +441,13 @@ export const AnimationCard = memo(function AnimationCard({
               <>
                 <SelectField
                   label="Speed"
-                  value={
-                    animation.ease?.startsWith("custom(") ? "custom" : (animation.ease ?? "none")
-                  }
+                  value={easeName.startsWith("custom(") ? "custom" : easeName}
                   options={[...SUPPORTED_EASES, "custom"]}
                   onChange={(next) => {
                     if (next === "custom") {
-                      const points = controlPointsForGsapEase(animation.ease ?? "power2.out");
+                      const points = controlPointsForGsapEase(
+                        easeName !== "none" ? easeName : "power2.out",
+                      );
                       const path = `M0,0 C${points.x1},${points.y1} ${points.x2},${points.y2} 1,1`;
                       onUpdateMeta(animation.id, { ease: `custom(${path})` });
                     } else {
@@ -435,7 +456,7 @@ export const AnimationCard = memo(function AnimationCard({
                   }}
                 />
                 <EaseCurveSection
-                  ease={animation.ease ?? "none"}
+                  ease={easeName}
                   duration={animation.duration}
                   onCustomEaseCommit={(customEase) =>
                     onUpdateMeta(animation.id, { ease: customEase })
@@ -477,7 +498,7 @@ export const AnimationCard = memo(function AnimationCard({
             )}
 
             {animation.method === "fromTo" && Object.keys(animation.properties).length > 0 && (
-              <p className="text-[9px] font-semibold uppercase tracking-wider text-emerald-400/70">
+              <p className="text-[9px] font-semibold uppercase tracking-wider text-panel-accent/70">
                 To
               </p>
             )}
@@ -499,6 +520,39 @@ export const AnimationCard = memo(function AnimationCard({
                 ))}
               </div>
             )}
+
+            {onSetArcPath &&
+              (animation.properties.x != null ||
+                animation.properties.y != null ||
+                animation.keyframes) && (
+                <div className="border-t border-neutral-800 pt-3">
+                  <ArcPathControls
+                    arcPath={
+                      animation.arcPath ?? { enabled: false, autoRotate: false, segments: [] }
+                    }
+                    segmentCount={Math.max(
+                      animation.properties.x != null || animation.properties.y != null ? 1 : 0,
+                      (animation.keyframes?.keyframes?.length ?? 0) - 1,
+                    )}
+                    onToggle={(enabled) =>
+                      onSetArcPath(animation.id, {
+                        enabled,
+                        segments: animation.arcPath?.segments,
+                      })
+                    }
+                    onUpdateSegment={(index, update) =>
+                      onUpdateArcSegment?.(animation.id, index, update)
+                    }
+                    onToggleAutoRotate={(autoRotate) =>
+                      onSetArcPath(animation.id, {
+                        enabled: true,
+                        autoRotate,
+                        segments: animation.arcPath?.segments,
+                      })
+                    }
+                  />
+                </div>
+              )}
 
             <div className="flex items-center gap-2 pt-1">
               <AddPropertyTrigger
