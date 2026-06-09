@@ -23,6 +23,8 @@ export interface GsapAnimation {
   extras?: Record<string, unknown>;
   /** Native GSAP keyframes data — present when the tween uses keyframes: { ... }. */
   keyframes?: GsapKeyframesData;
+  /** Arc motion path config — present when the tween uses motionPath for curved position interpolation. */
+  arcPath?: ArcPathConfig;
   /** True when the tween has a `keyframes` property that couldn't be statically resolved (dynamic). */
   hasUnresolvedKeyframes?: boolean;
   /** True when the tween's target selector couldn't be statically resolved (dynamic). */
@@ -42,6 +44,18 @@ export interface GsapKeyframesData {
   keyframes: GsapPercentageKeyframe[];
   ease?: string;
   easeEach?: string;
+}
+
+export interface ArcPathSegment {
+  curviness: number;
+  cp1?: { x: number; y: number };
+  cp2?: { x: number; y: number };
+}
+
+export interface ArcPathConfig {
+  enabled: boolean;
+  autoRotate: boolean | number;
+  segments: ArcPathSegment[];
 }
 
 export interface ParsedGsap {
@@ -176,10 +190,8 @@ const FORBIDDEN_GSAP_PATTERNS: Array<{ pattern: RegExp; message: string }> = [
   { pattern: /\.add\s*\(/, message: "add() method not allowed" },
   { pattern: /\.addLabel\s*\(/, message: "addLabel() method not allowed" },
   { pattern: /\.addPause\s*\(/, message: "addPause() method not allowed" },
-  { pattern: /gsap\.registerPlugin\s*\(/, message: "registerPlugin() not allowed" },
   { pattern: /gsap\.registerEffect\s*\(/, message: "registerEffect() not allowed" },
   { pattern: /ScrollTrigger/, message: "ScrollTrigger not allowed" },
-  { pattern: /MotionPathPlugin/, message: "MotionPathPlugin not allowed" },
   { pattern: /onComplete\s*:/, message: "onComplete callback not allowed" },
   { pattern: /onUpdate\s*:/, message: "onUpdate callback not allowed" },
   { pattern: /onStart\s*:/, message: "onStart callback not allowed" },

@@ -651,6 +651,39 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
           keyframes: Array<{ percentage: number; properties: Record<string, number | string> }>;
           easeEach?: string;
         }>;
+      }
+    | {
+        type: "set-arc-path";
+        animationId: string;
+        enabled: boolean;
+        autoRotate?: boolean | number;
+        segments?: Array<{
+          curviness: number;
+          cp1?: { x: number; y: number };
+          cp2?: { x: number; y: number };
+        }>;
+      }
+    | {
+        type: "update-arc-segment";
+        animationId: string;
+        segmentIndex: number;
+        curviness?: number;
+        cp1?: { x: number; y: number };
+        cp2?: { x: number; y: number };
+      }
+    | { type: "remove-arc-path"; animationId: string }
+    | {
+        type: "add-with-keyframes";
+        targetSelector: string;
+        position: number;
+        duration: number;
+        keyframes: Array<{
+          percentage: number;
+          properties: Record<string, number | string>;
+          ease?: string;
+          auto?: boolean;
+        }>;
+        ease?: string;
       };
 
   api.post("/projects/:id/gsap-mutations/*", async (c) => {
@@ -833,6 +866,47 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
             body.resolvedSelector,
           );
         }
+        break;
+      }
+      case "set-arc-path": {
+        const { setArcPathInScript } = await loadGsapParser();
+        newScript = setArcPathInScript(block.scriptText, body.animationId, {
+          enabled: body.enabled,
+          autoRotate: body.autoRotate ?? false,
+          segments: body.segments ?? [],
+        });
+        break;
+      }
+      case "update-arc-segment": {
+        const { updateArcSegmentInScript } = await loadGsapParser();
+        newScript = updateArcSegmentInScript(
+          block.scriptText,
+          body.animationId,
+          body.segmentIndex,
+          {
+            ...(body.curviness !== undefined ? { curviness: body.curviness } : {}),
+            ...(body.cp1 ? { cp1: body.cp1 } : {}),
+            ...(body.cp2 ? { cp2: body.cp2 } : {}),
+          },
+        );
+        break;
+      }
+      case "remove-arc-path": {
+        const { removeArcPathFromScript } = await loadGsapParser();
+        newScript = removeArcPathFromScript(block.scriptText, body.animationId);
+        break;
+      }
+      case "add-with-keyframes": {
+        const { addAnimationWithKeyframesToScript } = await loadGsapParser();
+        const result = addAnimationWithKeyframesToScript(
+          block.scriptText,
+          body.targetSelector,
+          body.position,
+          body.duration,
+          body.keyframes,
+          body.ease,
+        );
+        newScript = result.script;
         break;
       }
       default:

@@ -16,6 +16,7 @@ import {
   updateKeyframeInScript,
   convertToKeyframesInScript,
   removeAllKeyframesFromScript,
+  addAnimationWithKeyframesToScript,
 } from "./gsapParser.js";
 import type { GsapAnimation } from "./gsapParser.js";
 import type { Keyframe } from "../core.types";
@@ -1502,5 +1503,204 @@ describe("keyframe mutations", () => {
     expect(anim.keyframes).toBeUndefined();
     expect(anim.properties.x).toBe(200);
     expect(anim.properties.opacity).toBe(1);
+  });
+});
+
+describe("motionPath parsing", () => {
+  it("parses motionPath with waypoint array and curviness", () => {
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#el", {
+        motionPath: {
+          path: [{x: 0, y: 0}, {x: 200, y: -100}, {x: 400, y: 50}],
+          curviness: 1.5
+        },
+        duration: 2
+      }, 0);
+    `;
+    const result = parseGsapScript(script);
+    expect(result.animations).toHaveLength(1);
+    const anim = result.animations[0];
+
+    expect(anim.arcPath).toBeDefined();
+    expect(anim.arcPath!.enabled).toBe(true);
+    expect(anim.arcPath!.segments).toHaveLength(2);
+    expect(anim.arcPath!.segments[0].curviness).toBe(1.5);
+    expect(anim.arcPath!.segments[1].curviness).toBe(1.5);
+
+    expect(anim.keyframes).toBeDefined();
+    expect(anim.keyframes!.keyframes).toHaveLength(3);
+    expect(anim.keyframes!.keyframes[0].properties.x).toBe(0);
+    expect(anim.keyframes!.keyframes[0].properties.y).toBe(0);
+    expect(anim.keyframes!.keyframes[1].properties.x).toBe(200);
+    expect(anim.keyframes!.keyframes[1].properties.y).toBe(-100);
+    expect(anim.keyframes!.keyframes[2].properties.x).toBe(400);
+    expect(anim.keyframes!.keyframes[2].properties.y).toBe(50);
+  });
+
+  it("parses motionPath with type cubic and explicit control points", () => {
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#el", {
+        motionPath: {
+          path: [
+            {x: 0, y: 0},
+            {x: 50, y: -80}, {x: 150, y: -120},
+            {x: 200, y: -100},
+            {x: 250, y: -80}, {x: 350, y: 30},
+            {x: 400, y: 50}
+          ],
+          type: "cubic"
+        },
+        duration: 2
+      }, 0);
+    `;
+    const result = parseGsapScript(script);
+    const anim = result.animations[0];
+
+    expect(anim.arcPath).toBeDefined();
+    expect(anim.arcPath!.segments).toHaveLength(2);
+
+    expect(anim.arcPath!.segments[0].cp1).toEqual({ x: 50, y: -80 });
+    expect(anim.arcPath!.segments[0].cp2).toEqual({ x: 150, y: -120 });
+
+    expect(anim.arcPath!.segments[1].cp1).toEqual({ x: 250, y: -80 });
+    expect(anim.arcPath!.segments[1].cp2).toEqual({ x: 350, y: 30 });
+
+    expect(anim.keyframes!.keyframes).toHaveLength(3);
+    expect(anim.keyframes!.keyframes[0].properties).toEqual({ x: 0, y: 0 });
+    expect(anim.keyframes!.keyframes[1].properties).toEqual({ x: 200, y: -100 });
+    expect(anim.keyframes!.keyframes[2].properties).toEqual({ x: 400, y: 50 });
+  });
+
+  it("parses motionPath with autoRotate", () => {
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#el", {
+        motionPath: {
+          path: [{x: 0, y: 0}, {x: 200, y: 100}],
+          autoRotate: true
+        },
+        duration: 1
+      }, 0);
+    `;
+    const result = parseGsapScript(script);
+    const anim = result.animations[0];
+    expect(anim.arcPath!.autoRotate).toBe(true);
+  });
+
+  it("merges motionPath waypoints into existing keyframes", () => {
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#el", {
+        motionPath: {
+          path: [{x: 0, y: 0}, {x: 200, y: 100}],
+          curviness: 2
+        },
+        keyframes: {
+          "0%": { opacity: 1 },
+          "100%": { opacity: 0 }
+        },
+        duration: 2
+      }, 0);
+    `;
+    const result = parseGsapScript(script);
+    const anim = result.animations[0];
+
+    expect(anim.arcPath).toBeDefined();
+    expect(anim.arcPath!.segments).toHaveLength(1);
+    expect(anim.arcPath!.segments[0].curviness).toBe(2);
+
+    expect(anim.keyframes!.keyframes).toHaveLength(2);
+    expect(anim.keyframes!.keyframes[0].properties).toEqual({ opacity: 1, x: 0, y: 0 });
+    expect(anim.keyframes!.keyframes[1].properties).toEqual({ opacity: 0, x: 200, y: 100 });
+  });
+
+  it("skips motionPath with fewer than 2 waypoints", () => {
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#el", {
+        motionPath: { path: [{x: 0, y: 0}] },
+        duration: 1
+      }, 0);
+    `;
+    const result = parseGsapScript(script);
+    expect(result.animations[0].arcPath).toBeUndefined();
+  });
+
+  it("tween without motionPath parses identically to before", () => {
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#el", { x: 100, y: 200, duration: 1 }, 0);
+    `;
+    const result = parseGsapScript(script);
+    const anim = result.animations[0];
+    expect(anim.arcPath).toBeUndefined();
+    expect(anim.properties.x).toBe(100);
+    expect(anim.properties.y).toBe(200);
+  });
+});
+
+// ── addAnimationWithKeyframesToScript ──────────────────────────────────────
+
+describe("addAnimationWithKeyframesToScript", () => {
+  const BASE = `
+const tl = gsap.timeline({ paused: true });
+tl.to("#title", { x: 100, duration: 0.5 }, 0);
+  `.trim();
+
+  it("adds a new tween with keyframes after existing tweens", () => {
+    const { script, id } = addAnimationWithKeyframesToScript(BASE, "#box", 3, 0.5, [
+      { percentage: 0, properties: { x: 0 } },
+      { percentage: 100, properties: { x: 200 } },
+    ]);
+    expect(script).toContain("#box");
+    expect(script).toContain("keyframes");
+    expect(script).toContain('"0%"');
+    expect(script).toContain('"100%"');
+    expect(id).toBeTruthy();
+
+    const parsed = parseGsapScript(script);
+    expect(parsed.animations.length).toBe(2);
+    const newAnim = parsed.animations[1];
+    expect(newAnim.targetSelector).toBe("#box");
+    expect(newAnim.keyframes).toBeDefined();
+    expect(newAnim.keyframes!.keyframes.length).toBe(2);
+  });
+
+  it("preserves existing tween code", () => {
+    const { script } = addAnimationWithKeyframesToScript(BASE, "#new", 2, 1, [
+      { percentage: 0, properties: { opacity: 0 } },
+      { percentage: 100, properties: { opacity: 1 } },
+    ]);
+    expect(script).toContain("#title");
+    expect(script).toContain("x: 100");
+  });
+
+  it("produces a stable ID for the new animation", () => {
+    const { script, id } = addAnimationWithKeyframesToScript(BASE, "#el", 1, 1, [
+      { percentage: 0, properties: { y: 0 } },
+      { percentage: 100, properties: { y: 100 } },
+    ]);
+    expect(id).toContain("#el");
+    const parsed = parseGsapScript(script);
+    const match = parsed.animations.find((a) => a.id === id);
+    expect(match).toBeDefined();
+  });
+
+  it("includes per-keyframe ease when provided", () => {
+    const { script } = addAnimationWithKeyframesToScript(BASE, "#el", 0, 1, [
+      { percentage: 0, properties: { x: 0 }, ease: "power2.out" },
+      { percentage: 100, properties: { x: 100 } },
+    ]);
+    expect(script).toContain("power2.out");
+  });
+
+  it("returns original script on parse failure", () => {
+    const { script, id } = addAnimationWithKeyframesToScript("not valid js {{", "#el", 0, 1, [
+      { percentage: 0, properties: { x: 0 } },
+    ]);
+    expect(script).toBe("not valid js {{");
+    expect(id).toBe("");
   });
 });

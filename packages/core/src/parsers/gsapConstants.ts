@@ -76,4 +76,5 @@ export const SUPPORTED_EASES = [
   "spring-stiff",
   "spring-wobbly",
   "spring-heavy",
+  "steps(1)",
 ];
