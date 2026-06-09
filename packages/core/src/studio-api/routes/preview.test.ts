@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";

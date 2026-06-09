@@ -67,6 +67,13 @@ function contentKey(el: Element): string {
  * (`if (el.getAttribute("data-hf-id")) continue`), so normal operation
  * never re-exposes the ordering after first persist.
  */
+// WIRE CONTRACT: id minting is content-keyed (FNV1a of innerHTML + tag). R7's
+// preview route relies on mintHfId producing identical ids across mint contexts
+// (disk-persist pass vs. in-memory bundle pass) — see preview.test.ts
+// "bundle returning untagged HTML gets same ids as disk". Any change that adds
+// positional, session, or random input to the hash breaks that invariant and
+// makes hf- ids diverge between disk and served HTML, silently corrupting
+// drag-to-edit targeting.
 export function mintHfId(el: Element, assigned: Set<string>): string {
   const key = contentKey(el);
   let id = toHfId(fnv1a(key));

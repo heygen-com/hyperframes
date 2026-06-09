@@ -196,6 +196,7 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
   });
 
   // Bundled composition preview
+  // fallow-ignore-next-line complexity
   api.get("/projects/:id/preview", async (c) => {
     const project = await adapter.resolveProject(c.req.param("id"));
     if (!project) return c.json({ error: "not found" }, 404);
@@ -311,6 +312,7 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
   });
 
   // Static asset serving (with range request support for audio/video seeking)
+  // fallow-ignore-next-line complexity
   api.get("/projects/:id/preview/*", async (c) => {
     const project = await adapter.resolveProject(c.req.param("id"));
     if (!project) return c.json({ error: "not found" }, 404);
