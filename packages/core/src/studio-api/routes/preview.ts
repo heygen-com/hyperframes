@@ -239,6 +239,11 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
         bundled = bundled.replace(/<head>/i, `<head><base href="${baseHref}">`);
       }
 
+      // ensureHfIds runs after transformPreviewHtml in case the adapter injected
+      // new elements. On the no-bundle path bundled=normalizedDisk (already tagged)
+      // so this is idempotent. On the bundled path the bundler may return untagged
+      // HTML (stale cache); because ids are content-keyed the minted ids will match
+      // the ids already written to disk by persistHfIdsIfNeeded above.
       bundled = injectStudioPreviewAugmentations(
         ensureHfIds(await transformPreviewHtml(bundled, adapter, project, mainCompositionPath)),
         adapter,
