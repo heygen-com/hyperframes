@@ -80,12 +80,47 @@ function readRuntimeKeyframeValues(
   return result;
 }
 
+// fallow-ignore-next-line complexity
+function readRuntimeValuesForAnim(
+  iframe: HTMLIFrameElement | null,
+  sel: DomEditSelection,
+  anim: GsapAnimation,
+): Record<string, number> {
+  if (!iframe?.contentWindow) return {};
+  let gsap: { getProperty?: (el: Element, prop: string) => number } | undefined;
+  try {
+    gsap = (iframe.contentWindow as Window & { gsap?: typeof gsap }).gsap;
+  } catch {
+    return {};
+  }
+  if (!gsap?.getProperty) return {};
+  const selector = sel.id ? `#${sel.id}` : sel.selector;
+  if (!selector) return {};
+  let doc: Document | null = null;
+  try {
+    doc = iframe.contentDocument;
+  } catch {
+    return {};
+  }
+  const element = doc?.querySelector(selector);
+  if (!element) return {};
+  const result: Record<string, number> = {};
+  for (const prop of Object.keys(anim.properties)) {
+    const val = Number(gsap.getProperty(element, prop));
+    if (Number.isFinite(val)) result[prop] = Math.round(val);
+  }
+  return result;
+}
+
 interface DomEditSessionSlice {
   domEditSelection: DomEditSelection | null;
   selectedGsapAnimations: GsapAnimation[];
   handleGsapRemoveKeyframe: (animId: string, pct: number) => void;
   handleGsapAddKeyframe: (animId: string, pct: number, prop: string, val: number | string) => void;
-  handleGsapConvertToKeyframes: (animId: string) => void;
+  handleGsapConvertToKeyframes: (
+    animId: string,
+    resolvedFromValues?: Record<string, number | string>,
+  ) => void;
   handleGsapMaterializeKeyframes?: (animId: string) => Promise<void>;
   handleGsapAddAnimation: (method: "to" | "from" | "set" | "fromTo") => void;
   previewIframeRef?: React.RefObject<HTMLIFrameElement | null>;
@@ -154,7 +189,15 @@ function useKeyframeToggle(session?: DomEditSessionSlice) {
             }
           }
         } else if (flatAnim) {
-          session.handleGsapConvertToKeyframes(flatAnim.id);
+          const runtimeProps = readRuntimeValuesForAnim(
+            session.previewIframeRef?.current ?? null,
+            sel,
+            flatAnim,
+          );
+          session.handleGsapConvertToKeyframes(
+            flatAnim.id,
+            Object.keys(runtimeProps).length > 0 ? runtimeProps : undefined,
+          );
         } else {
           session.handleGsapAddAnimation("to");
         }

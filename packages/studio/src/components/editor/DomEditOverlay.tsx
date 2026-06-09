@@ -90,6 +90,29 @@ export const DomEditOverlay = memo(function DomEditOverlay({
 }: DomEditOverlayProps) {
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const boxRef = useRef<HTMLDivElement | null>(null);
+
+  const selectionShapeStyles = (() => {
+    const fallback = {
+      borderRadius: 4 as string | number,
+      clipPath: undefined as string | undefined,
+    };
+    if (!selection?.element) return fallback;
+    try {
+      const tag = selection.element.tagName.toLowerCase();
+      if (tag === "svg" || tag === "img" || tag === "video" || tag === "canvas") return fallback;
+      const win = selection.element.ownerDocument.defaultView;
+      if (!win) return fallback;
+      const cs = win.getComputedStyle(selection.element);
+      const br = cs.borderRadius;
+      const cp = cs.clipPath;
+      return {
+        borderRadius: br && br !== "0px" ? br : 4,
+        clipPath: cp && cp !== "none" ? cp : undefined,
+      };
+    } catch {
+      return fallback;
+    }
+  })();
   const gestureRef = useRef<GestureState | null>(null);
   const groupGestureRef = useRef<GroupGestureState | null>(null);
   const blockedMoveRef = useRef<BlockedMoveState | null>(null);
@@ -134,6 +157,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     groupOverlayItems,
     groupOverlayItemsRef,
     setGroupOverlayItems,
+    childRects,
   } = useDomEditOverlayRects({
     iframeRef,
     overlayRef,
@@ -324,13 +348,30 @@ export const DomEditOverlay = memo(function DomEditOverlay({
         <div
           aria-hidden="true"
           data-dom-edit-hover-box="true"
-          className="pointer-events-none absolute rounded-xl border border-studio-accent/80 bg-studio-accent/5 shadow-[0_0_0_1px_rgba(60,230,172,0.25)]"
-          style={{
-            left: hoverRect.left,
-            top: hoverRect.top,
-            width: hoverRect.width,
-            height: hoverRect.height,
-          }}
+          className="pointer-events-none absolute border border-studio-accent/80 bg-studio-accent/5 shadow-[0_0_0_1px_rgba(60,230,172,0.25)]"
+          style={(() => {
+            let br: string | number = 4;
+            let cp: string | undefined;
+            try {
+              const el = hoverSelection.element;
+              const tag = el.tagName.toLowerCase();
+              if (tag !== "svg" && tag !== "img" && tag !== "video" && tag !== "canvas") {
+                const cs = el.ownerDocument.defaultView?.getComputedStyle(el);
+                if (cs?.borderRadius && cs.borderRadius !== "0px") br = cs.borderRadius;
+                if (cs?.clipPath && cs.clipPath !== "none") cp = cs.clipPath;
+              }
+            } catch {
+              /* cross-origin guard */
+            }
+            return {
+              left: hoverRect.left,
+              top: hoverRect.top,
+              width: hoverRect.width,
+              height: hoverRect.height,
+              borderRadius: br,
+              clipPath: cp,
+            };
+          })()}
         />
       )}
       {hasGroupSelection && groupOverlayItems.length > 1 && groupBounds && (
@@ -398,12 +439,14 @@ export const DomEditOverlay = memo(function DomEditOverlay({
             key={selectionKey}
             ref={boxRef}
             data-dom-edit-selection-box="true"
-            className="pointer-events-auto absolute rounded-xl border border-studio-accent/80 bg-studio-accent/5 shadow-[0_0_0_1px_rgba(60,230,172,0.25)]"
+            className={`pointer-events-auto absolute ${selectionShapeStyles.clipPath ? "shadow-[inset_0_0_0_2px_rgba(60,230,172,0.6)]" : "border border-studio-accent/80 shadow-[0_0_0_1px_rgba(60,230,172,0.25)]"} bg-studio-accent/5`}
             style={{
               left: overlayRect.left,
               top: overlayRect.top,
               width: overlayRect.width,
               height: overlayRect.height,
+              borderRadius: selectionShapeStyles.borderRadius,
+              clipPath: selectionShapeStyles.clipPath,
               cursor:
                 allowCanvasMovement && selection.capabilities.canApplyManualOffset
                   ? "move"
@@ -441,6 +484,19 @@ export const DomEditOverlay = memo(function DomEditOverlay({
           </div>
         </>
       )}
+      {childRects.length > 0 &&
+        childRects.map((cr, i) => (
+          <div
+            key={i}
+            className="pointer-events-none absolute border border-dashed border-white/20 rounded-sm"
+            style={{
+              left: cr.left,
+              top: cr.top,
+              width: cr.width,
+              height: cr.height,
+            }}
+          />
+        ))}
       <GridOverlay
         visible={gridVisible}
         spacing={gridSpacing}

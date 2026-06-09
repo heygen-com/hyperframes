@@ -239,9 +239,9 @@ export const LayersPanel = memo(function LayersPanel() {
 
   if (layers.length === 0) {
     return (
-      <div className="flex h-full flex-col items-center justify-center bg-neutral-900 px-6 text-center">
-        <Layers size={18} className="mb-3 text-neutral-600" />
-        <p className="text-sm font-medium text-neutral-200">No layers</p>
+      <div className="flex h-full flex-col items-center justify-center bg-panel-bg px-6 text-center">
+        <Layers size={18} className="mb-3 text-panel-text-5" />
+        <p className="text-sm font-medium text-panel-text-1">No layers</p>
         <p className="mt-1 text-xs text-neutral-500">Load a composition to see its element tree</p>
       </div>
     );
@@ -249,10 +249,10 @@ export const LayersPanel = memo(function LayersPanel() {
 
   return (
     <div
-      className="flex h-full min-h-0 flex-col overflow-hidden bg-neutral-900"
+      className="flex h-full min-h-0 flex-col overflow-hidden bg-panel-bg"
       onPointerLeave={() => handleLayerHover(null)}
     >
-      <div className="border-b border-white/10 px-3 py-2 text-[11px] text-neutral-500">
+      <div className="border-b border-panel-border px-3 py-2 text-[11px] text-panel-text-3">
         {layers.length} layer{layers.length === 1 ? "" : "s"}
       </div>
       <div
@@ -289,8 +289,8 @@ export const LayersPanel = memo(function LayersPanel() {
                 isDragged
                   ? "opacity-40"
                   : selected
-                    ? "bg-studio-accent/14 text-studio-accent"
-                    : "text-neutral-300 hover:bg-white/[0.04] hover:text-neutral-100"
+                    ? "bg-panel-accent/14 text-panel-accent"
+                    : "text-panel-text-2 hover:bg-panel-hover/40 hover:text-panel-text-1"
               } ${dragKey ? "cursor-grabbing" : draggable ? "cursor-pointer" : "cursor-not-allowed opacity-50"}`}
               style={{ paddingLeft: 8 + layer.depth * 16 }}
             >
@@ -316,17 +316,19 @@ export const LayersPanel = memo(function LayersPanel() {
               <span
                 className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-[8px] font-bold uppercase ${
                   selected
-                    ? "bg-studio-accent/18 text-studio-accent"
+                    ? "bg-panel-accent/18 text-panel-accent"
                     : isCompHost
-                      ? "bg-blue-900/40 text-blue-400"
-                      : "bg-neutral-800 text-neutral-500"
+                      ? "bg-panel-accent/40 text-panel-accent"
+                      : "bg-panel-hover text-panel-text-4"
                 }`}
               >
                 {getTagBadge(layer.tagName)}
               </span>
               <span className="min-w-0 flex-1 truncate text-[11px]">{layer.label}</span>
               {hasChildren && (
-                <span className="text-[9px] tabular-nums text-neutral-600">{layer.childCount}</span>
+                <span className="text-[9px] tabular-nums text-panel-text-5">
+                  {layer.childCount}
+                </span>
               )}
             </div>
           );

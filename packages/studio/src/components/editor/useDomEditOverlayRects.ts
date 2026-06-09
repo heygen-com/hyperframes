@@ -17,6 +17,14 @@ import {
   toOverlayRect,
 } from "./domEditOverlayGeometry";
 
+function childRectsEqual(a: OverlayRect[], b: OverlayRect[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (!rectsEqual(a[i]!, b[i]!)) return false;
+  }
+  return true;
+}
+
 interface UseDomEditOverlayRectsOptions {
   iframeRef: RefObject<HTMLIFrameElement | null>;
   overlayRef: RefObject<HTMLDivElement | null>;
@@ -37,6 +45,7 @@ interface UseDomEditOverlayRectsResult {
   groupOverlayItems: GroupOverlayItem[];
   groupOverlayItemsRef: RefObject<GroupOverlayItem[]>;
   setGroupOverlayItems: (next: GroupOverlayItem[]) => void;
+  childRects: OverlayRect[];
 }
 
 export function useDomEditOverlayRects({
@@ -51,6 +60,7 @@ export function useDomEditOverlayRects({
   const [overlayRect, setOverlayRectState] = useState<OverlayRect | null>(null);
   const [hoverRect, setHoverRectState] = useState<OverlayRect | null>(null);
   const [groupOverlayItems, setGroupOverlayItemsState] = useState<GroupOverlayItem[]>([]);
+  const [childRects, setChildRectsState] = useState<OverlayRect[]>([]);
 
   const overlayRectRef = useRef<OverlayRect | null>(null);
   const hoverRectRef = useRef<OverlayRect | null>(null);
@@ -58,6 +68,7 @@ export function useDomEditOverlayRects({
   const resolvedElementRef = useRef<{ key: string; element: HTMLElement } | null>(null);
   const resolvedHoverElementRef = useRef<{ key: string; element: HTMLElement } | null>(null);
   const resolvedGroupElementRef = useRef<Map<string, HTMLElement>>(new Map());
+  const childRectsRef = useRef<OverlayRect[]>([]);
 
   const setOverlayRect = (next: OverlayRect | null) => {
     if (rectsEqual(overlayRectRef.current, next)) return;
@@ -133,12 +144,37 @@ export function useDomEditOverlayRects({
         );
         if (el && isElementVisibleForOverlay(el)) {
           setOverlayRect(toOverlayRect(overlayEl, iframe, el));
+          const descendants = el.querySelectorAll("*");
+          if (descendants.length > 0 && descendants.length <= 60) {
+            const nextChildRects: OverlayRect[] = [];
+            for (let i = 0; i < descendants.length; i++) {
+              const child = descendants[i] as HTMLElement;
+              if (!child.getBoundingClientRect) continue;
+              const r = toOverlayRect(overlayEl, iframe, child);
+              if (r && r.width > 2 && r.height > 2) nextChildRects.push(r);
+            }
+            if (!childRectsEqual(childRectsRef.current, nextChildRects)) {
+              childRectsRef.current = nextChildRects;
+              setChildRectsState(nextChildRects);
+            }
+          } else if (childRectsRef.current.length > 0) {
+            childRectsRef.current = [];
+            setChildRectsState([]);
+          }
         } else {
           setOverlayRect(null);
+          if (childRectsRef.current.length > 0) {
+            childRectsRef.current = [];
+            setChildRectsState([]);
+          }
         }
       } else {
         resolvedElementRef.current = null;
         setOverlayRect(null);
+        if (childRectsRef.current.length > 0) {
+          childRectsRef.current = [];
+          setChildRectsState([]);
+        }
       }
 
       const group = groupSelectionsRef.current;
@@ -203,5 +239,6 @@ export function useDomEditOverlayRects({
     groupOverlayItems,
     groupOverlayItemsRef,
     setGroupOverlayItems,
+    childRects,
   };
 }
