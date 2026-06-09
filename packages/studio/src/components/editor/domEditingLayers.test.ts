@@ -1,8 +1,31 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { resolveDomEditSelection } from "./domEditingLayers";
+import { resolveDomEditSelection, buildDomEditPatchTarget } from "./domEditingLayers";
 
 const opts = { activeCompositionPath: "index.html", isMasterView: true, skipSourceProbe: true };
+
+describe("buildDomEditPatchTarget", () => {
+  it("includes hfId when selection has hfId", () => {
+    const target = buildDomEditPatchTarget({
+      id: undefined,
+      hfId: "hf-abc",
+      selector: ".foo",
+      selectorIndex: 0,
+    });
+    expect(target.hfId).toBe("hf-abc");
+  });
+
+  it("includes id and selector when hfId absent", () => {
+    const target = buildDomEditPatchTarget({
+      id: "hero",
+      hfId: undefined,
+      selector: "#hero",
+      selectorIndex: undefined,
+    });
+    expect(target.id).toBe("hero");
+    expect(target.hfId).toBeUndefined();
+  });
+});
 
 describe("resolveDomEditSelection — hfId from data-hf-id", () => {
   it("populates hfId from the element data-hf-id attribute", async () => {

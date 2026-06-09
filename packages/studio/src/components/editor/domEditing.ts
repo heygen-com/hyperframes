@@ -26,6 +26,7 @@ export {
 // Layers, text fields, capabilities, selection, patch ops
 export {
   buildDefaultDomEditTextField,
+  buildDomEditPatchTarget,
   buildDomEditStylePatchOperation,
   buildDomEditTextPatchOperation,
   collectDomEditLayerItems,

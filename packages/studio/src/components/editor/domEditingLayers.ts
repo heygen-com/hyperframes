@@ -555,3 +555,14 @@ export function isTextEditableSelection(selection: DomEditSelection): boolean {
 }
 
 // buildElementAgentPrompt is in domEditingAgentPrompt.ts
+
+export function buildDomEditPatchTarget(
+  selection: Pick<DomEditSelection, "id" | "hfId" | "selector" | "selectorIndex">,
+): { id?: string | null; hfId?: string; selector?: string; selectorIndex?: number } {
+  return {
+    id: selection.id,
+    hfId: selection.hfId,
+    selector: selection.selector,
+    selectorIndex: selection.selectorIndex,
+  };
+}

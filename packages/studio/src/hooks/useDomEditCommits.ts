@@ -5,7 +5,11 @@ import type { PatchOperation } from "../utils/sourcePatcher";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import { primaryFontFamilyValue } from "../utils/studioFontHelpers";
-import { getDomEditTargetKey, type DomEditSelection } from "../components/editor/domEditing";
+import {
+  buildDomEditPatchTarget,
+  getDomEditTargetKey,
+  type DomEditSelection,
+} from "../components/editor/domEditing";
 import {
   applyStudioPathOffset,
   applyStudioBoxSize,
@@ -182,11 +186,7 @@ export function useDomEditCommits({
 
       if (options?.shouldSave && !options.shouldSave()) return;
 
-      const patchTarget: { id?: string | null; selector?: string; selectorIndex?: number } = {
-        id: selection.id,
-        selector: selection.selector,
-        selectorIndex: selection.selectorIndex,
-      };
+      const patchTarget = buildDomEditPatchTarget(selection);
 
       // Mark the save timestamp before the file write so the SSE file-change
       // handler suppresses the reload even if the event arrives before the
@@ -471,16 +471,8 @@ export function useDomEditCommits({
         if (typeof originalContent !== "string")
           throw new Error(`Missing file contents for ${targetPath}`);
 
-        const patchTarget: { id?: string; selector?: string; selectorIndex?: number } = selection.id
-          ? {
-              id: selection.id,
-              selector: selection.selector,
-              selectorIndex: selection.selectorIndex,
-            }
-          : selection.selector
-            ? { selector: selection.selector, selectorIndex: selection.selectorIndex }
-            : ({} as never);
-        if (!patchTarget.id && !patchTarget.selector) {
+        const patchTarget = buildDomEditPatchTarget(selection);
+        if (!patchTarget.id && !patchTarget.selector && !patchTarget.hfId) {
           throw new Error("Selected element has no patchable target");
         }
 
@@ -561,6 +553,7 @@ export function useDomEditCommits({
           {
             element: entry.element,
             id: entry.id ?? null,
+            hfId: entry.element.getAttribute("data-hf-id") ?? undefined,
             selector: entry.selector,
             selectorIndex: entry.selectorIndex,
             sourceFile: entry.sourceFile,
