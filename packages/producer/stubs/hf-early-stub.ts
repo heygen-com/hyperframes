@@ -244,16 +244,50 @@ function scheduleBatch(): void {
 // ─── Timeline proxy factory ───────────────────────────────────────────────────
 
 /**
+ * Methods queued for rAF-based batch flush (mutating tween additions).
+ * These return the proxy for chaining and never synchronously flush.
+ */
+const BATCHED_METHODS = new Set(["to", "from", "fromTo", "set", "add"]);
+
+/**
+ * Walk the real timeline's prototype chain and generate forwarding stubs on
+ * `proxy` for every public method not already present. Each stub flushes
+ * pending operations, calls the real method, and returns `proxy` when the
+ * real method returns `this` (for chaining). Private GSAP internals (keys
+ * starting with `_`) are skipped.
+ */
+// fallow-ignore-next-line complexity
+function forwardRemainingMethods(proxy: TimelineProxy, real: GsapTimeline): void {
+  let obj: object | null = real as object;
+  while (obj !== null && obj !== Object.prototype) {
+    for (const key of Object.getOwnPropertyNames(obj)) {
+      if (key === "constructor" || key in proxy || BATCHED_METHODS.has(key)) continue;
+      if (key.charAt(0) === "_") continue;
+      const desc = Object.getOwnPropertyDescriptor(obj, key);
+      if (!desc || typeof desc.value !== "function") continue;
+      const fn = desc.value as (...a: unknown[]) => unknown;
+      (proxy as Record<string, unknown>)[key] = function (
+        this: unknown,
+        ...args: unknown[]
+      ): unknown {
+        flushPendingOperations();
+        const result = fn.call(real, ...args);
+        return result === real ? proxy : result;
+      };
+    }
+    obj = Object.getPrototypeOf(obj);
+  }
+}
+
+/**
  * Create a queuing proxy around a real GSAP timeline.
  *
- * All methods return `proxy` so that callers who chain off the returned value
- * continue to go through the proxy for the duration of the batching phase.
- *
- * Silently dropped methods (not in the allowlist):
- *   eventCallback, labels, repeat, yoyo, delay, endTime, iteration,
- *   invalidate, restart, resume, reverse, revert, then, vars (write)
- * Workaround: use onUpdate/onComplete/onStart in to() vars instead of
- * tl.eventCallback(). See #1260 for context.
+ * Batched methods (to/from/fromTo/set/add) queue operations for rAF flush.
+ * All other methods on the real timeline are forwarded via dynamically
+ * generated stubs that flush pending operations before delegating. This
+ * uses a plain object — not `new Proxy` — because Chrome's headless shell
+ * hangs when Proxy traps are exposed during page.goto navigation (Symbol
+ * probing, thenable checks, DevTools serialization).
  */
 function wrapTimeline(real: GsapTimeline): TimelineProxy {
   const proxy: TimelineProxy = {
@@ -342,6 +376,8 @@ function wrapTimeline(real: GsapTimeline): TimelineProxy {
       real.kill();
     },
   };
+
+  forwardRemainingMethods(proxy, real);
 
   activeProxies.push(proxy);
   return proxy;
