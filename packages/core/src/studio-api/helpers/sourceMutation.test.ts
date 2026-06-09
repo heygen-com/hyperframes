@@ -3,6 +3,7 @@ import {
   removeElementFromHtml,
   patchElementInHtml,
   probeElementInSource,
+  splitElementInHtml,
 } from "./sourceMutation.js";
 
 describe("removeElementFromHtml", () => {
@@ -453,5 +454,16 @@ describe("T7 — data-hf-id targeting (spec for R1)", () => {
     expect(matched).toBe(true);
     expect(html).toContain("New");
     expect(html).toContain('data-hf-id="hf-a1b2"');
+  });
+});
+
+describe("splitElementInHtml — hfId clone isolation", () => {
+  it("does not copy data-hf-id to the cloned second half", () => {
+    const source = `<html><body><div data-composition-id="root"><div id="clip1" class="clip" data-start="0" data-duration="10" data-hf-id="hf-abc123"></div></div></body></html>`;
+    const { html, matched } = splitElementInHtml(source, { id: "clip1" }, 5, "clip2");
+
+    expect(matched).toBe(true);
+    const occurrences = (html.match(/data-hf-id="hf-abc123"/g) ?? []).length;
+    expect(occurrences).toBe(1);
   });
 });

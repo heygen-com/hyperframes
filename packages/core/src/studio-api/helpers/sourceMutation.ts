@@ -275,6 +275,7 @@ export function splitElementInHtml(
 
   const clone = el.cloneNode(true) as HTMLElement;
   clone.setAttribute("id", newId);
+  clone.removeAttribute("data-hf-id");
   clone.setAttribute("data-start", String(Math.round(splitTime * 1000) / 1000));
   clone.setAttribute("data-duration", String(Math.round(secondDuration * 1000) / 1000));
 
