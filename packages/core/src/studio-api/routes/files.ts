@@ -84,7 +84,12 @@ function resolveFileMutationContext(c: RouteContext, adapter: StudioApiAdapter, 
   return resolveProjectPath(c, adapter, (id) => `/projects/${id}/file-mutations/${operation}/`);
 }
 
-type MutationTarget = { id?: string | null; selector?: string; selectorIndex?: number };
+type MutationTarget = {
+  id?: string | null;
+  hfId?: string;
+  selector?: string;
+  selectorIndex?: number;
+};
 
 /** Write `next` to `absPath` only if it differs from `original`, returning a standardized change response. */
 function writeIfChanged(

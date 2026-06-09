@@ -369,6 +369,7 @@ export async function resolveDomEditSelection(
     return {
       element: current,
       id: current.id || undefined,
+      hfId: current.getAttribute("data-hf-id") ?? undefined,
       selector,
       selectorIndex,
       sourceFile,
