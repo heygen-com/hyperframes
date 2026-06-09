@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { refreshRuntimeMediaCache, syncRuntimeMedia } from "./media";
+import { readElementPlaybackRate, refreshRuntimeMediaCache, syncRuntimeMedia } from "./media";
 import type { RuntimeMediaClip } from "./media";
 
 function createVideo(attrs: Record<string, string>): HTMLVideoElement {
@@ -22,6 +22,37 @@ function createAudio(attrs: Record<string, string>): HTMLAudioElement {
   document.body.appendChild(el);
   return el;
 }
+
+describe("readElementPlaybackRate", () => {
+  it("reads defaultPlaybackRate from element", () => {
+    const el = document.createElement("video");
+    Object.defineProperty(el, "defaultPlaybackRate", { value: 0.5, writable: true });
+    expect(readElementPlaybackRate(el)).toBe(0.5);
+  });
+
+  it("defaults to 1 when not set", () => {
+    const el = document.createElement("video");
+    expect(readElementPlaybackRate(el)).toBe(1);
+  });
+
+  it("clamps to [0.1, 5]", () => {
+    const el = document.createElement("video");
+    Object.defineProperty(el, "defaultPlaybackRate", { value: 0.01, writable: true });
+    expect(readElementPlaybackRate(el)).toBe(0.1);
+    Object.defineProperty(el, "defaultPlaybackRate", { value: 10, writable: true });
+    expect(readElementPlaybackRate(el)).toBe(5);
+  });
+
+  it("defaults to 1 for NaN/negative/zero", () => {
+    const el = document.createElement("video");
+    Object.defineProperty(el, "defaultPlaybackRate", { value: NaN, writable: true });
+    expect(readElementPlaybackRate(el)).toBe(1);
+    Object.defineProperty(el, "defaultPlaybackRate", { value: -1, writable: true });
+    expect(readElementPlaybackRate(el)).toBe(1);
+    Object.defineProperty(el, "defaultPlaybackRate", { value: 0, writable: true });
+    expect(readElementPlaybackRate(el)).toBe(1);
+  });
+});
 
 describe("refreshRuntimeMediaCache", () => {
   afterEach(() => {
@@ -140,9 +171,7 @@ describe("refreshRuntimeMediaCache", () => {
         const mediaStart =
           Number.parseFloat(element.dataset.playbackStart ?? element.dataset.mediaStart ?? "0") ||
           0;
-        const rawRate = element.defaultPlaybackRate;
-        const playbackRate =
-          Number.isFinite(rawRate) && rawRate > 0 ? Math.max(0.1, Math.min(5, rawRate)) : 1;
+        const playbackRate = readElementPlaybackRate(element);
         return Number.isFinite(element.duration) && element.duration > mediaStart
           ? Math.max(0, (element.duration - mediaStart) / playbackRate)
           : null;

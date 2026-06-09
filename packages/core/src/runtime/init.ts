@@ -9,7 +9,7 @@ import { createThreeAdapter } from "./adapters/three";
 import { createTypegpuAdapter } from "./adapters/typegpu";
 import { patchVideoTextureCompat } from "./adapters/video-texture-compat";
 import { createWaapiAdapter } from "./adapters/waapi";
-import { refreshRuntimeMediaCache, syncRuntimeMedia } from "./media";
+import { readElementPlaybackRate, refreshRuntimeMediaCache, syncRuntimeMedia } from "./media";
 import { probeAndCacheElementVolume, type VolumeKeyframe } from "./mediaVolumeEnvelope.js";
 import { createPickerModule } from "./picker";
 import { createRuntimePlayer } from "./player";
@@ -1356,9 +1356,7 @@ export function initSandboxRuntimeModular(): void {
         const mediaStart =
           Number.parseFloat(element.dataset.playbackStart ?? element.dataset.mediaStart ?? "0") ||
           0;
-        const rawRate = element.defaultPlaybackRate;
-        const playbackRate =
-          Number.isFinite(rawRate) && rawRate > 0 ? Math.max(0.1, Math.min(5, rawRate)) : 1;
+        const playbackRate = readElementPlaybackRate(element);
         const hostRemaining =
           context.inheritedStart != null &&
           context.inheritedDuration != null &&

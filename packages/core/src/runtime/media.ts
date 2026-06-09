@@ -1,6 +1,11 @@
 import { swallow } from "./diagnostics";
 import { interpolateVolumeGain, type VolumeKeyframe } from "./mediaVolumeEnvelope.js";
 
+export function readElementPlaybackRate(el: HTMLMediaElement): number {
+  const raw = el.defaultPlaybackRate;
+  return Number.isFinite(raw) && raw > 0 ? Math.max(0.1, Math.min(5, raw)) : 1;
+}
+
 export type RuntimeMediaClip = {
   el: HTMLVideoElement | HTMLAudioElement;
   start: number;
@@ -47,11 +52,7 @@ export function refreshRuntimeMediaCache(params?: {
     if (!Number.isFinite(start)) continue;
     const mediaStart =
       Number.parseFloat(el.dataset.playbackStart ?? el.dataset.mediaStart ?? "0") || 0;
-    // Read per-element rate from the native defaultPlaybackRate property.
-    // LLMs set this via el.defaultPlaybackRate = 0.5 in a <script> tag.
-    const rawRate = el.defaultPlaybackRate;
-    const playbackRate =
-      Number.isFinite(rawRate) && rawRate > 0 ? Math.max(0.1, Math.min(5, rawRate)) : 1;
+    const playbackRate = readElementPlaybackRate(el);
     const loop = el.loop;
     const sourceDuration = Number.isFinite(el.duration) && el.duration > 0 ? el.duration : null;
     let duration =
