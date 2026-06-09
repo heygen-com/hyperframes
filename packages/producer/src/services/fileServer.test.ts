@@ -414,6 +414,63 @@ describe("HF_EARLY_STUB + HF_BRIDGE_SCRIPT integration", () => {
     expect(sandbox.window.__hfTimelinesBuilding).toBe(false);
   });
 
+  it("proxy is non-thenable — Promise.resolve(proxy) resolves immediately", async () => {
+    const sandbox: {
+      window: Record<string, unknown> & {
+        __hf?: Record<string, unknown>;
+        __hfTimelinesBuilding?: boolean;
+        gsap?: { timeline: () => Record<string, unknown> };
+        requestAnimationFrame: typeof requestAnimationFrame;
+        setTimeout: typeof setTimeout;
+      };
+      document: Record<string, never>;
+      CustomEvent: typeof CustomEvent;
+    } = {
+      window: {
+        requestAnimationFrame: (() => 1) as typeof requestAnimationFrame,
+        setTimeout: (() => 1) as typeof setTimeout,
+      },
+      document: {},
+      CustomEvent,
+    };
+    sandbox.window.window = sandbox.window;
+    sandbox.window.document = sandbox.document;
+    sandbox.window.CustomEvent = sandbox.CustomEvent;
+
+    new Function("window", "document", "CustomEvent", `with (window) {\n${HF_EARLY_STUB}\n}`)(
+      sandbox.window,
+      sandbox.document,
+      sandbox.CustomEvent,
+    );
+
+    sandbox.window.gsap = {
+      timeline: () => ({
+        to: () => {},
+        from: () => {},
+        fromTo: () => {},
+        set: () => {},
+        pause: () => {},
+        play: () => {},
+        seek: () => {},
+        totalTime: () => 0,
+        time: () => 0,
+        duration: () => 10,
+        add: () => {},
+        getChildren: () => [],
+        paused: () => true,
+        timeScale: () => 1,
+        kill: () => {},
+        then: (_resolve: () => void) => {
+          throw new Error("Real then() was called — proxy is thenable");
+        },
+      }),
+    };
+
+    const timeline = sandbox.window.gsap.timeline();
+    const resolved = await Promise.resolve(timeline);
+    expect(resolved).toBe(timeline);
+  });
+
   it("keeps bridge duration at zero until the runtime publishes render readiness", () => {
     const sandbox: {
       window: Record<string, unknown> & {

@@ -441,8 +441,8 @@ jobs:
           # Format: [initSession:MODE] page.goto complete (NNNms)
           MAX_MS=$(grep -oP 'page\.goto complete \(\K[0-9]+' /tmp/hf-cli-render.log | sort -n | tail -1)
           if [ -z "$MAX_MS" ]; then
-            echo "::warning::No page.goto timing found in render logs — canary skipped"
-            exit 0
+            echo "::error::No page.goto timing found in render logs — log format may have changed. Update the grep pattern."
+            exit 1
           fi
           echo "Slowest page.goto: ${MAX_MS}ms (budget: 5000ms)"
           if [ "$MAX_MS" -gt 5000 ]; then

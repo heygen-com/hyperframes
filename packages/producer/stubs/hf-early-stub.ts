@@ -254,14 +254,17 @@ const BATCHED_METHODS = new Set(["to", "from", "fromTo", "set", "add"]);
  * `proxy` for every public method not already present. Each stub flushes
  * pending operations, calls the real method, and returns `proxy` when the
  * real method returns `this` (for chaining). Private GSAP internals (keys
- * starting with `_`) are skipped.
+ * starting with `_`) and `then` are skipped — `then` makes GSAP timelines
+ * thenable, which would cause `Promise.resolve(proxy)` / `await proxy` to
+ * hang for paused timelines.
  */
 // fallow-ignore-next-line complexity
 function forwardRemainingMethods(proxy: TimelineProxy, real: GsapTimeline): void {
   let obj: object | null = real as object;
   while (obj !== null && obj !== Object.prototype) {
     for (const key of Object.getOwnPropertyNames(obj)) {
-      if (key === "constructor" || key in proxy || BATCHED_METHODS.has(key)) continue;
+      if (key === "constructor" || key === "then" || key in proxy || BATCHED_METHODS.has(key))
+        continue;
       if (key.charAt(0) === "_") continue;
       const desc = Object.getOwnPropertyDescriptor(obj, key);
       if (!desc || typeof desc.value !== "function") continue;
