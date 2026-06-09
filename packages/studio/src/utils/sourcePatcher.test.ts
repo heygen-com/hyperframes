@@ -585,4 +585,20 @@ describe("T3 — hfId targeting (spec for R1)", () => {
     );
     expect(result).toContain("color: blue");
   });
+
+  it("hfId match is authoritative — selector is not used as a narrowing filter", () => {
+    // hfId matches h1; selector points at h2. hfId wins — patch lands on h1, h2 untouched.
+    const html = `<h1 data-hf-id="hf-x7k2" class="a">A</h1><h2 class="b">B</h2>`;
+    const result = applyPatchByTarget(
+      html,
+      { hfId: "hf-x7k2", selector: ".b" },
+      { type: "inline-style", property: "color", value: "blue" },
+    );
+    expect(result).toContain('data-hf-id="hf-x7k2"');
+    const h1End = result.indexOf("</h1>");
+    const bluePos = result.indexOf("color: blue");
+    expect(bluePos).toBeGreaterThan(-1);
+    expect(bluePos).toBeLessThan(h1End);
+    expect(result).toContain('<h2 class="b">B</h2>');
+  });
 });
