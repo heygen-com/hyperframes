@@ -54,6 +54,19 @@ function contentKey(el: Element): string {
   return `${el.tagName.toLowerCase()}|${attrs}|${ownText(el)}`;
 }
 
+/**
+ * Collision tiebreak for byte-identical siblings: document-order dup counter
+ * (`hash(key#N)`). This IS order-dependent — two identical `<span></span>`
+ * get different ids based on which comes first in the DOM. This is unavoidable:
+ * unique ids for byte-identical elements require a positional signal.
+ *
+ * Why this is safe in practice: once `ensureHfIds` write-back persists
+ * `data-hf-id` to source the attribute is physically bound to its element.
+ * Reordering identical siblings carries the attribute along → zero
+ * order-dependence post-persist. `ensureHfIds` skips pinned elements
+ * (`if (el.getAttribute("data-hf-id")) continue`), so normal operation
+ * never re-exposes the ordering after first persist.
+ */
 export function mintHfId(el: Element, assigned: Set<string>): string {
   const key = contentKey(el);
   let id = toHfId(fnv1a(key));

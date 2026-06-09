@@ -77,6 +77,24 @@ describe("ensureHfIds", () => {
     expect(a).toMatch(/^hf-[a-z0-9]{4}$/);
     expect(b).toMatch(/^hf-[a-z0-9]{4}$/);
   });
+
+  // Post-persist stability: once data-hf-id is written back to source, edits
+  // don't drift the id because the attribute is already present and pinned.
+  it("pinned id survives text edit after first persist", () => {
+    const raw = `<!doctype html><html><body><div>original text</div></body></html>`;
+    const persisted = ensureHfIds(raw); // simulates write-back on first serve
+    const [originalId] = ids(persisted);
+    const edited = persisted.replace("original text", "edited text");
+    expect(ids(ensureHfIds(edited))).toContain(originalId);
+  });
+
+  it("pinned id survives attribute edit after first persist", () => {
+    const raw = `<!doctype html><html><body><div class="old">text</div></body></html>`;
+    const persisted = ensureHfIds(raw); // simulates write-back on first serve
+    const [originalId] = ids(persisted);
+    const edited = persisted.replace('class="old"', 'class="new"');
+    expect(ids(ensureHfIds(edited))).toContain(originalId);
+  });
 });
 
 // Lock the edit-lifecycle behavior. These pin BOTH the guarantee that holds
