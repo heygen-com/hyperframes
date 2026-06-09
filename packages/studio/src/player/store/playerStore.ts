@@ -22,6 +22,8 @@ export interface TimelineElement {
   duration: number;
   track: number;
   domId?: string;
+  /** Stable `data-hf-id` attribute value — used as primary patch target when present */
+  hfId?: string;
   /** Best-effort selector used when patching source HTML back from timeline edits */
   selector?: string;
   /** Zero-based occurrence index for non-unique selectors */

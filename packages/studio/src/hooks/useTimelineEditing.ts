@@ -45,9 +45,22 @@ interface UseTimelineEditingOptions {
 
 // ── Helpers ──
 
-function buildPatchTarget(element: { domId?: string; selector?: string; selectorIndex?: number }) {
+function buildPatchTarget(element: {
+  domId?: string;
+  hfId?: string;
+  selector?: string;
+  selectorIndex?: number;
+}) {
   if (element.domId) {
-    return { id: element.domId, selector: element.selector, selectorIndex: element.selectorIndex };
+    return {
+      id: element.domId,
+      hfId: element.hfId,
+      selector: element.selector,
+      selectorIndex: element.selectorIndex,
+    };
+  }
+  if (element.hfId) {
+    return { hfId: element.hfId, selector: element.selector, selectorIndex: element.selectorIndex };
   }
   if (element.selector) {
     return { selector: element.selector, selectorIndex: element.selectorIndex };

@@ -72,8 +72,10 @@ export function createTimelineElementFromManifestClip(params: {
   let selectorIndex: number | undefined;
   let sourceFile: string | undefined;
 
+  let hfId: string | undefined;
   if (hostEl) {
     domId = hostEl.id || undefined;
+    hfId = hostEl.getAttribute("data-hf-id") ?? undefined;
     selector = getTimelineElementSelector(hostEl);
     selectorIndex =
       doc && selector ? getTimelineElementSelectorIndex(doc, hostEl, selector) : undefined;
@@ -98,6 +100,7 @@ export function createTimelineElementFromManifestClip(params: {
     duration: clip.duration,
     track: clip.track,
     domId,
+    hfId,
     selector,
     selectorIndex,
     sourceFile,
@@ -127,6 +130,7 @@ export function createTimelineElementFromManifestClip(params: {
     }
     if (hostEl) {
       entry.domId = hostEl.id || undefined;
+      entry.hfId = hostEl.getAttribute("data-hf-id") ?? undefined;
       entry.selector = getTimelineElementSelector(hostEl);
       entry.selectorIndex =
         doc && entry.selector
@@ -187,6 +191,7 @@ export function createImplicitTimelineLayersFromDOM(
 
     layers.push({
       domId: child.id || undefined,
+      hfId: child.getAttribute("data-hf-id") ?? undefined,
       duration: rootDuration,
       id: identity.id,
       key: identity.key,
@@ -262,6 +267,7 @@ export function parseTimelineFromDOM(doc: Document, rootDuration: number): Timel
       duration: dur,
       track: isNaN(track) ? 0 : track,
       domId: el.id || undefined,
+      hfId: el.getAttribute("data-hf-id") ?? undefined,
       selector,
       selectorIndex,
       sourceFile,
