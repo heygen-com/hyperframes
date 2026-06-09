@@ -1,75 +1,222 @@
+// fallow-ignore-file code-duplication
 /**
  * T10 — PreviewAdapter contract (spec for R7).
  *
- * `createPreviewAdapter` does not exist yet. These stubs define the expected
- * interface so R7 has a concrete target. Convert from it.todo to real
- * assertions in the R7 PR.
+ * Converted from it.todo stubs. These tests FAIL until Task 3 implements
+ * createPreviewAdapter in ./previewAdapter.ts.
  *
- * Hit-testing (elementAtPoint) in both linkedom and jsdom returns null for
- * all geometry calls — the real tests must inject a position-resolver stub
- * or mock elementFromPoint. The contract tested is filtering logic (root
- * exclusion, data-hf-id ancestor walk, opacity-at-playhead), not geometry.
+ * Position resolution: elementFromPoint is always null in jsdom. All
+ * elementAtPoint tests inject a resolvePoint stub so the contract tested
+ * is filtering logic (root exclusion, data-hf-id ancestor walk,
+ * opacity-at-playhead), not geometry.
+ *
+ * CSS custom property names used below mirror the Studio constants from
+ * manualEditsTypes.ts — they will be shared with the PreviewAdapter
+ * implementation once the draft-marker module moves to core (Task 4).
  */
-import { describe, it } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
+import { createPreviewAdapter } from "./previewAdapter.js";
+
+// ── DOM helpers ────────────────────────────────────────────────────────────
+
+beforeEach(() => {
+  document.body.innerHTML = "";
+});
+
+/** Create + append an element to body; optionally set attrs and inline styles. */
+function make(
+  tag: string,
+  attrs: Record<string, string> = {},
+  styles: Record<string, string> = {},
+): HTMLElement {
+  const elem = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) elem.setAttribute(k, v);
+  for (const [k, v] of Object.entries(styles)) elem.style.setProperty(k, v);
+  document.body.appendChild(elem);
+  return elem;
+}
+
+function adapterWith(resolvePoint: (x: number, y: number) => Element | null) {
+  return createPreviewAdapter(document, { resolvePoint });
+}
+
+// ── elementAtPoint ─────────────────────────────────────────────────────────
 
 describe("T10 — PreviewAdapter contract (spec for R7)", () => {
   describe("elementAtPoint", () => {
-    it.todo("returns null for the stage root (data-hf-root)");
+    it("returns null for the stage root (data-hf-root)", () => {
+      const root = make("div", { "data-hf-root": "true" });
+      const adapter = adapterWith(() => root);
+      expect(adapter.elementAtPoint(0, 0)).toBeNull();
+    });
 
-    it.todo("returns the nearest ancestor with data-hf-id");
+    it("returns the nearest ancestor with data-hf-id", () => {
+      const parent = make("div", { "data-hf-id": "hf-abcd" });
+      const child = document.createElement("span");
+      parent.appendChild(child);
+      const adapter = adapterWith(() => child);
+      expect(adapter.elementAtPoint(0, 0)).toBe(parent);
+    });
 
-    it.todo("returns null when the hit element has no data-hf-id ancestor");
+    it("returns null when the hit element has no data-hf-id ancestor", () => {
+      const orphan = make("div");
+      const adapter = adapterWith(() => orphan);
+      expect(adapter.elementAtPoint(0, 0)).toBeNull();
+    });
 
-    it.todo("skips elements whose computed opacity is 0 at the given playhead time");
+    it("skips elements whose computed opacity is 0 at the given playhead time", () => {
+      const elem = make("div", { "data-hf-id": "hf-zzzz" }, { opacity: "0" });
+      const adapter = adapterWith(() => elem);
+      expect(adapter.elementAtPoint(0, 0, { atTime: 1.0 })).toBeNull();
+    });
   });
+
+  // ── applyDraft / revertDraft ───────────────────────────────────────────
 
   describe("applyDraft / revertDraft", () => {
-    it.todo("applyDraft writes --hf-studio-* CSS props and sets the gesture marker");
+    it("applyDraft writes --hf-studio-* CSS props and sets the gesture marker", () => {
+      const target = make("div", { "data-hf-id": "hf-aaaa" });
+      const adapter = adapterWith(() => null);
+      adapter.applyDraft({ type: "move", hfId: "hf-aaaa", dx: 10, dy: 20 });
+      expect(target.style.getPropertyValue("--hf-studio-offset-x")).not.toBe("");
+      expect(target.hasAttribute("data-hf-studio-manual-edit-gesture")).toBe(true);
+    });
 
-    it.todo("applyDraft accepts a move payload (dx/dy) and writes the translate draft");
+    it("applyDraft accepts a move payload (dx/dy) and writes the translate draft", () => {
+      const target = make("div", { "data-hf-id": "hf-aaaa" });
+      const adapter = adapterWith(() => null);
+      adapter.applyDraft({ type: "move", hfId: "hf-aaaa", dx: 30, dy: 15 });
+      expect(target.style.getPropertyValue("--hf-studio-offset-x")).toBe("30px");
+      expect(target.style.getPropertyValue("--hf-studio-offset-y")).toBe("15px");
+    });
 
-    it.todo("applyDraft accepts a resize payload (w/h) and writes the size draft");
+    it("applyDraft accepts a resize payload (w/h) and writes the size draft", () => {
+      const target = make("div", { "data-hf-id": "hf-aaaa" });
+      const adapter = adapterWith(() => null);
+      adapter.applyDraft({ type: "resize", hfId: "hf-aaaa", w: 200, h: 100 });
+      expect(target.style.getPropertyValue("--hf-studio-width")).toBe("200px");
+      expect(target.style.getPropertyValue("--hf-studio-height")).toBe("100px");
+    });
 
-    it.todo("revertDraft removes draft props and clears the gesture marker");
+    it("revertDraft removes draft props and clears the gesture marker", () => {
+      const target = make("div", { "data-hf-id": "hf-aaaa" });
+      const adapter = adapterWith(() => null);
+      adapter.applyDraft({ type: "move", hfId: "hf-aaaa", dx: 10, dy: 20 });
+      adapter.revertDraft();
+      expect(target.style.getPropertyValue("--hf-studio-offset-x")).toBe("");
+      expect(target.style.getPropertyValue("--hf-studio-offset-y")).toBe("");
+      expect(target.hasAttribute("data-hf-studio-manual-edit-gesture")).toBe(false);
+    });
 
-    it.todo("revertDraft restores original translate when an original was recorded");
+    it("revertDraft restores original translate when an original was recorded", () => {
+      const target = make("div", { "data-hf-id": "hf-aaaa" });
+      target.style.setProperty("translate", "50px 0px");
+      const adapter = adapterWith(() => null);
+      adapter.applyDraft({ type: "move", hfId: "hf-aaaa", dx: 10, dy: 0 });
+      adapter.revertDraft();
+      expect(target.style.getPropertyValue("translate")).toBe("50px 0px");
+    });
   });
+
+  // ── edge cases ─────────────────────────────────────────────────────────
 
   describe("applyDraft edge cases (R7 implementation contract)", () => {
-    it.todo(
-      "second applyDraft before revert/commit overwrites first draft — does not accumulate (dx/dy)",
-    );
+    it("second applyDraft before revert/commit overwrites first draft — does not accumulate (dx/dy)", () => {
+      const target = make("div", { "data-hf-id": "hf-aaaa" });
+      const adapter = adapterWith(() => null);
+      adapter.applyDraft({ type: "move", hfId: "hf-aaaa", dx: 10, dy: 20 });
+      adapter.applyDraft({ type: "move", hfId: "hf-aaaa", dx: 5, dy: 15 });
+      expect(target.style.getPropertyValue("--hf-studio-offset-x")).toBe("5px");
+      expect(target.style.getPropertyValue("--hf-studio-offset-y")).toBe("15px");
+    });
 
-    it.todo(
-      "revertDraft is safe to call when no gesture is in progress (idempotent / no-op on empty marker)",
-    );
+    it("revertDraft is safe to call when no gesture is in progress (idempotent / no-op on empty marker)", () => {
+      const adapter = adapterWith(() => null);
+      expect(() => adapter.revertDraft()).not.toThrow();
+      expect(() => adapter.revertDraft()).not.toThrow();
+    });
 
-    it.todo(
-      "elementAtPoint filtering is stable when playhead changes mid-drag — opacity re-evaluated per call",
-    );
+    it("elementAtPoint filtering is stable when playhead changes mid-drag — opacity re-evaluated per call", () => {
+      const elem = make("div", { "data-hf-id": "hf-zzzz" });
+      const adapter = adapterWith(() => elem);
+      expect(adapter.elementAtPoint(0, 0, { atTime: 0 })).toBe(elem);
+      // simulates GSAP seeking to a time where the element is hidden
+      elem.style.setProperty("opacity", "0");
+      expect(adapter.elementAtPoint(0, 0, { atTime: 1.0 })).toBeNull();
+    });
 
-    it.todo(
-      "stage-root exclusion applies only to the outermost data-hf-root; nested sub-composition roots count as targets",
-    );
+    it("stage-root exclusion applies only to the outermost data-hf-root; nested sub-composition roots count as targets", () => {
+      const outerRoot = make("div", { "data-hf-root": "true" });
+      const innerRoot = document.createElement("div");
+      innerRoot.setAttribute("data-hf-root", "true");
+      innerRoot.setAttribute("data-hf-id", "hf-sub1");
+      outerRoot.appendChild(innerRoot);
+
+      const adapterOuter = adapterWith(() => outerRoot);
+      expect(adapterOuter.elementAtPoint(0, 0)).toBeNull();
+
+      const adapterInner = adapterWith(() => innerRoot);
+      expect(adapterInner.elementAtPoint(0, 0)).toBe(innerRoot);
+    });
   });
+
+  // ── commitPreview ──────────────────────────────────────────────────────
 
   describe("commitPreview", () => {
-    it.todo("returns null when no gesture marker is present");
+    it("returns null when no gesture marker is present", () => {
+      const adapter = adapterWith(() => null);
+      expect(adapter.commitPreview()).toBeNull();
+    });
 
-    it.todo("derives a moveElement patch from draft markers on commit");
+    it("derives a moveElement patch from draft markers on commit", () => {
+      make("div", { "data-hf-id": "hf-aaaa" });
+      const adapter = adapterWith(() => null);
+      adapter.applyDraft({ type: "move", hfId: "hf-aaaa", dx: 30, dy: 15 });
+      const patch = adapter.commitPreview();
+      expect(patch).toEqual({ type: "moveElement", hfId: "hf-aaaa", dx: 30, dy: 15 });
+    });
 
-    it.todo("derives a resize patch from draft markers on commit");
+    it("derives a resize patch from draft markers on commit", () => {
+      make("div", { "data-hf-id": "hf-aaaa" });
+      const adapter = adapterWith(() => null);
+      adapter.applyDraft({ type: "resize", hfId: "hf-aaaa", w: 200, h: 100 });
+      const patch = adapter.commitPreview();
+      expect(patch).toEqual({ type: "resize", hfId: "hf-aaaa", width: 200, height: 100 });
+    });
 
-    it.todo("clears the gesture marker after commit");
+    it("clears the gesture marker after commit", () => {
+      const target = make("div", { "data-hf-id": "hf-aaaa" });
+      const adapter = adapterWith(() => null);
+      adapter.applyDraft({ type: "move", hfId: "hf-aaaa", dx: 10, dy: 0 });
+      adapter.commitPreview();
+      expect(target.hasAttribute("data-hf-studio-manual-edit-gesture")).toBe(false);
+    });
   });
 
+  // ── getElementTimings ──────────────────────────────────────────────────
+
   describe("getElementTimings", () => {
-    it.todo("reads authored absolute times from data-start / data-end");
+    it("reads authored absolute times from data-start / data-end", () => {
+      make("div", { "data-hf-id": "hf-t1", "data-start": "0.5", "data-end": "2.0" });
+      const adapter = adapterWith(() => null);
+      const timings = adapter.getElementTimings();
+      expect(timings["hf-t1"]).toEqual({ start: 0.5, end: 2.0 });
+    });
 
-    it.todo("ignores elements without data-hf-id");
+    it("ignores elements without data-hf-id", () => {
+      make("div", { "data-start": "0.5", "data-end": "2.0" }); // no data-hf-id
+      const adapter = adapterWith(() => null);
+      const timings = adapter.getElementTimings();
+      expect(Object.keys(timings)).toHaveLength(0);
+    });
 
-    it.todo(
-      "returns a defined timing entry when data-hf-id is present but data-start / data-end are missing",
-    );
+    it("returns a defined timing entry when data-hf-id is present but data-start / data-end are missing", () => {
+      make("div", { "data-hf-id": "hf-notimed" });
+      const adapter = adapterWith(() => null);
+      const timings = adapter.getElementTimings();
+      expect(timings["hf-notimed"]).toBeDefined();
+      expect(timings["hf-notimed"].start).toBeUndefined();
+      expect(timings["hf-notimed"].end).toBeUndefined();
+    });
   });
 });
