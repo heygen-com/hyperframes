@@ -7,11 +7,14 @@ import {
   formatPxMetricValue,
   parsePxMetricValue,
   RESPONSIVE_GRID,
+  readGsapRuntimeValuesForPanel,
+  readGsapBorderRadiusForPanel,
 } from "./propertyPanelHelpers";
 import { MetricField, Section } from "./propertyPanelPrimitives";
 import { isMediaElement, MediaSection } from "./propertyPanelMediaSection";
 import { TextSection, StyleSections } from "./propertyPanelSections";
 import { GsapAnimationSection } from "./GsapAnimationSection";
+import { PropertyPanel3dTransform } from "./propertyPanel3dTransform";
 import { KeyframeNavigation } from "./KeyframeNavigation";
 import { STUDIO_GSAP_PANEL_ENABLED, STUDIO_KEYFRAMES_ENABLED } from "./manualEditingAvailability";
 import { usePlayerStore } from "../../player";
@@ -188,69 +191,19 @@ export const PropertyPanel = memo(function PropertyPanel({
     gsapAnimations?.find((a) => a.keyframes)?.id ?? gsapAnimations?.[0]?.id ?? null;
 
   // Read ALL GSAP-interpolated values at the current seek time.
-  // Discovers animated properties from the animation's keyframes/tween vars.
-  const gsapRuntimeValues: Record<string, number> | null = (() => {
-    if (!gsapAnimId || gsapAnimations.length === 0) return null;
-    const iframe = previewIframeRef?.current;
-    if (!iframe?.contentWindow) return null;
-    const selector = element.id ? `#${element.id}` : element.selector;
-    if (!selector) return null;
-    try {
-      const gsap = (
-        iframe.contentWindow as unknown as {
-          gsap?: { getProperty: (el: Element, prop: string) => number | string };
-        }
-      ).gsap;
-      if (!gsap?.getProperty) return null;
-      const el = iframe.contentDocument?.querySelector(selector);
-      if (!el) return null;
-      const propKeys = new Set<string>();
-      for (const anim of gsapAnimations) {
-        if (anim.keyframes) {
-          for (const kf of anim.keyframes.keyframes) {
-            for (const p of Object.keys(kf.properties)) propKeys.add(p);
-          }
-        }
-        for (const p of Object.keys(anim.properties)) propKeys.add(p);
-      }
-      const result: Record<string, number> = {};
-      for (const prop of propKeys) {
-        const v = Number(gsap.getProperty(el, prop));
-        if (Number.isFinite(v)) result[prop] = Math.round(v * 100) / 100;
-      }
-      return Object.keys(result).length > 0 ? result : null;
-    } catch {
-      return null;
-    }
-  })();
+  const gsapRuntimeValues = readGsapRuntimeValuesForPanel(
+    gsapAnimId,
+    gsapAnimations,
+    element,
+    previewIframeRef ?? { current: null },
+  );
 
-  const gsapBorderRadius: { tl: number; tr: number; br: number; bl: number } | null = (() => {
-    if (!gsapRuntimeValues || !("borderRadius" in gsapRuntimeValues)) {
-      const hasBRProp = gsapAnimations.some(
-        (a) =>
-          "borderRadius" in a.properties ||
-          a.keyframes?.keyframes.some((kf) => "borderRadius" in kf.properties),
-      );
-      if (!hasBRProp) return null;
-    }
-    const iframe = previewIframeRef?.current;
-    const selector = element.id ? `#${element.id}` : element.selector;
-    if (!iframe?.contentDocument || !selector) return null;
-    try {
-      const el = iframe.contentDocument.querySelector(selector);
-      if (!el) return null;
-      const cs = iframe.contentWindow!.getComputedStyle(el);
-      const parse = (v: string) => Number.parseFloat(v) || 0;
-      return {
-        tl: parse(cs.borderTopLeftRadius),
-        tr: parse(cs.borderTopRightRadius),
-        br: parse(cs.borderBottomRightRadius),
-        bl: parse(cs.borderBottomLeftRadius),
-      };
-    } catch {
-      return null;
-    }
-  })();
+  const gsapBorderRadius = readGsapBorderRadiusForPanel(
+    gsapRuntimeValues,
+    gsapAnimations,
+    element,
+    previewIframeRef ?? { current: null },
+  );
 
   const displayX = gsapRuntimeValues?.x ?? manualOffset.x;
   const displayY = gsapRuntimeValues?.y ?? manualOffset.y;
@@ -510,97 +463,19 @@ export const PropertyPanel = memo(function PropertyPanel({
             </div>
           </div>
           {gsapRuntimeValues && (
-            <div className="mt-3 border-t border-neutral-800/40 pt-3">
-              <div className="mb-2 text-[10px] font-medium uppercase tracking-wider text-neutral-600">
-                3D Transform
-              </div>
-              <div className={RESPONSIVE_GRID}>
-                <div className="flex items-center gap-1">
-                  <div className="flex-1">
-                    <MetricField
-                      label="Z"
-                      value={formatPxMetricValue(gsapRuntimeValues.z ?? 0)}
-                      scrub
-                      onCommit={(next) => {
-                        const v = parsePxMetricValue(next);
-                        if (v != null && onCommitAnimatedProperty) {
-                          void onCommitAnimatedProperty(element, "z", v);
-                        }
-                      }}
-                    />
-                  </div>
-                  {STUDIO_KEYFRAMES_ENABLED && (gsapAnimId || onCommitAnimatedProperty) && (
-                    <KeyframeNavigation
-                      property="z"
-                      keyframes={gsapKeyframes}
-                      currentPercentage={currentPct}
-                      onSeek={(pct) => onSeekToTime?.(elStart + (pct / 100) * elDuration)}
-                      onAddKeyframe={() => {
-                        if (onCommitAnimatedProperty) {
-                          void onCommitAnimatedProperty(element, "z", gsapRuntimeValues?.z ?? 0);
-                        }
-                      }}
-                      onRemoveKeyframe={(pct) => gsapAnimId && onRemoveKeyframe?.(gsapAnimId, pct)}
-                      onConvertToKeyframes={() => gsapAnimId && onConvertToKeyframes?.(gsapAnimId)}
-                    />
-                  )}
-                </div>
-                <div className="flex items-center gap-1">
-                  <div className="flex-1">
-                    <MetricField
-                      label="Scale"
-                      value={String(gsapRuntimeValues.scale ?? 1)}
-                      scrub
-                      onCommit={(next) => {
-                        const v = Number.parseFloat(next);
-                        if (Number.isFinite(v) && onCommitAnimatedProperty) {
-                          void onCommitAnimatedProperty(element, "scale", v);
-                        }
-                      }}
-                    />
-                  </div>
-                  {STUDIO_KEYFRAMES_ENABLED && (gsapAnimId || onCommitAnimatedProperty) && (
-                    <KeyframeNavigation
-                      property="scale"
-                      keyframes={gsapKeyframes}
-                      currentPercentage={currentPct}
-                      onSeek={(pct) => onSeekToTime?.(elStart + (pct / 100) * elDuration)}
-                      onAddKeyframe={() => {
-                        if (onCommitAnimatedProperty) {
-                          void onCommitAnimatedProperty(
-                            element,
-                            "scale",
-                            gsapRuntimeValues?.scale ?? 1,
-                          );
-                        }
-                      }}
-                      onRemoveKeyframe={(pct) => gsapAnimId && onRemoveKeyframe?.(gsapAnimId, pct)}
-                      onConvertToKeyframes={() => gsapAnimId && onConvertToKeyframes?.(gsapAnimId)}
-                    />
-                  )}
-                </div>
-                <MetricField
-                  label="RotX"
-                  value={`${gsapRuntimeValues.rotationX ?? 0}°`}
-                  onCommit={(next) => {
-                    const v = Number.parseFloat(next.replace("°", ""));
-                    if (Number.isFinite(v) && onCommitAnimatedProperty) {
-                      void onCommitAnimatedProperty(element, "rotationX", v);
-                    }
-                  }}
-                />
-                <MetricField
-                  label="RotY"
-                  value={`${gsapRuntimeValues.rotationY ?? 0}°`}
-                  onCommit={(next) => {
-                    const v = Number.parseFloat(next.replace("°", ""));
-                    if (Number.isFinite(v) && onCommitAnimatedProperty) {
-                      void onCommitAnimatedProperty(element, "rotationY", v);
-                    }
-                  }}
-                />
-              </div>
-            </div>
+            <PropertyPanel3dTransform
+              gsapRuntimeValues={gsapRuntimeValues}
+              gsapAnimId={gsapAnimId}
+              gsapKeyframes={gsapKeyframes}
+              currentPct={currentPct}
+              elStart={elStart}
+              elDuration={elDuration}
+              element={element}
+              onCommitAnimatedProperty={onCommitAnimatedProperty}
+              onSeekToTime={onSeekToTime}
+              onRemoveKeyframe={onRemoveKeyframe}
+              onConvertToKeyframes={onConvertToKeyframes}
+            />
           )}
           <div className="mt-3">
             <div className="mb-2 text-[10px] font-medium uppercase tracking-wider text-neutral-600">

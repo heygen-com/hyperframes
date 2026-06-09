@@ -2,6 +2,7 @@ import { parseCssColor, type ParsedColor } from "./colorValue";
 import { COMMON_LOCAL_FONT_FAMILIES } from "./fontCatalog";
 import type { DomEditSelection } from "./domEditing";
 import type { ImportedFontAsset } from "./fontAssets";
+import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 
 export interface PropertyPanelProps {
   projectId: string;
@@ -504,4 +505,79 @@ export function computeFitToChildrenSize(
   const width = Math.round((maxX - minX) * scaleX);
   const height = Math.round((maxY - minY) * scaleY);
   return width > 0 && height > 0 ? { width, height } : null;
+}
+
+// ── GSAP runtime value readers (used by PropertyPanel) ────────────────────
+
+export function readGsapRuntimeValuesForPanel(
+  gsapAnimId: string | null,
+  gsapAnimations: GsapAnimation[],
+  element: DomEditSelection,
+  previewIframeRef: React.RefObject<HTMLIFrameElement | null>,
+): Record<string, number> | null {
+  if (!gsapAnimId || gsapAnimations.length === 0) return null;
+  const iframe = previewIframeRef?.current;
+  if (!iframe?.contentWindow) return null;
+  const selector = element.id ? `#${element.id}` : element.selector;
+  if (!selector) return null;
+  try {
+    const gsap = (
+      iframe.contentWindow as unknown as {
+        gsap?: { getProperty: (el: Element, prop: string) => number | string };
+      }
+    ).gsap;
+    if (!gsap?.getProperty) return null;
+    const el = iframe.contentDocument?.querySelector(selector);
+    if (!el) return null;
+    const propKeys = new Set<string>();
+    for (const anim of gsapAnimations) {
+      if (anim.keyframes) {
+        for (const kf of anim.keyframes.keyframes) {
+          for (const p of Object.keys(kf.properties)) propKeys.add(p);
+        }
+      }
+      for (const p of Object.keys(anim.properties)) propKeys.add(p);
+    }
+    const result: Record<string, number> = {};
+    for (const prop of propKeys) {
+      const v = Number(gsap.getProperty(el, prop));
+      if (Number.isFinite(v)) result[prop] = Math.round(v * 100) / 100;
+    }
+    return Object.keys(result).length > 0 ? result : null;
+  } catch {
+    return null;
+  }
+}
+
+export function readGsapBorderRadiusForPanel(
+  gsapRuntimeValues: Record<string, number> | null,
+  gsapAnimations: GsapAnimation[],
+  element: DomEditSelection,
+  previewIframeRef: React.RefObject<HTMLIFrameElement | null>,
+): { tl: number; tr: number; br: number; bl: number } | null {
+  if (!gsapRuntimeValues || !("borderRadius" in gsapRuntimeValues)) {
+    const hasBRProp = gsapAnimations.some(
+      (a) =>
+        "borderRadius" in a.properties ||
+        a.keyframes?.keyframes.some((kf) => "borderRadius" in kf.properties),
+    );
+    if (!hasBRProp) return null;
+  }
+  const iframe = previewIframeRef?.current;
+  const selector = element.id ? `#${element.id}` : element.selector;
+  if (!iframe?.contentDocument || !selector) return null;
+  try {
+    const el = iframe.contentDocument.querySelector(selector);
+    if (!el) return null;
+    const cs = iframe.contentWindow!.getComputedStyle(el);
+    const parse = (v: string) => Number.parseFloat(v) || 0;
+    return {
+      tl: parse(cs.borderTopLeftRadius),
+      tr: parse(cs.borderTopRightRadius),
+      br: parse(cs.borderBottomRightRadius),
+      bl: parse(cs.borderBottomLeftRadius),
+    };
+  } catch {
+    return null;
+  }
 }
