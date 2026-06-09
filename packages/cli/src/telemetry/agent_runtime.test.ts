@@ -163,6 +163,97 @@ describe("detectAgentRuntime — Replit / Hermes / openclaw / Pi", () => {
   });
 });
 
+describe("detectAgentRuntime — Gemini managed agent", () => {
+  // Gemini managed agent is detected via filesystem markers (`/.agents/AGENTS.md`)
+  // and the gVisor kernel string, NOT env vars — so these tests mock node:fs
+  // and node:os rather than mutating process.env.
+  beforeEach(() => {
+    vi.resetModules();
+    stripVendorEnv();
+  });
+
+  afterEach(() => {
+    vi.resetModules();
+    vi.restoreAllMocks();
+  });
+
+  it("reports gemini_managed_agent when /.agents/AGENTS.md exists AND the kernel is gVisor", async () => {
+    vi.doMock("node:os", async () => {
+      const actual = await vi.importActual<typeof import("node:os")>("node:os");
+      return { ...actual, release: () => "4.19.0-gvisor", platform: () => "linux" };
+    });
+    vi.doMock("node:fs", async () => {
+      const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
+      return {
+        ...actual,
+        existsSync: (path: string) => path === "/.agents/AGENTS.md" || actual.existsSync(path),
+      };
+    });
+    const { detectAgentRuntime } = await import("./agent_runtime.js");
+    expect(detectAgentRuntime()).toBe("gemini_managed_agent");
+  });
+
+  it("does NOT report gemini_managed_agent when /.agents/AGENTS.md is absent (even on gVisor)", async () => {
+    // A generic gVisor surface (GKE Sandbox / Cloud Run gen2) that doesn't
+    // mount the managed-agent layout must fall through to env-var rules.
+    vi.doMock("node:os", async () => {
+      const actual = await vi.importActual<typeof import("node:os")>("node:os");
+      return { ...actual, release: () => "4.19.0-gvisor", platform: () => "linux" };
+    });
+    vi.doMock("node:fs", async () => {
+      const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
+      return {
+        ...actual,
+        existsSync: () => false,
+      };
+    });
+    const { detectAgentRuntime } = await import("./agent_runtime.js");
+    expect(detectAgentRuntime()).toBeNull();
+  });
+
+  it("does NOT report gemini_managed_agent when /.agents/AGENTS.md exists but the kernel is not gVisor", async () => {
+    // A dev box that happens to have a stray /.agents/AGENTS.md must not
+    // false-positive — the gVisor conjunction is what makes the signal safe.
+    vi.doMock("node:os", async () => {
+      const actual = await vi.importActual<typeof import("node:os")>("node:os");
+      return { ...actual, release: () => "6.8.0-100-generic", platform: () => "linux" };
+    });
+    vi.doMock("node:fs", async () => {
+      const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
+      return {
+        ...actual,
+        existsSync: (path: string) => path === "/.agents/AGENTS.md" || actual.existsSync(path),
+        readFileSync: (path: string) =>
+          path === "/proc/version"
+            ? "Linux version 6.8.0-100-generic (buildd@lcy01)"
+            : actual.readFileSync(path),
+      };
+    });
+    const { detectAgentRuntime } = await import("./agent_runtime.js");
+    expect(detectAgentRuntime()).toBeNull();
+  });
+
+  it("returns gemini_managed_agent over an env-var rule when both signals match", async () => {
+    // If a user happens to set CLAUDECODE=1 inside a Gemini sandbox (or any
+    // odd config), the filesystem+kernel signal wins — Gemini is more
+    // specific than a generic env-var marker.
+    process.env["CLAUDECODE"] = "1";
+    vi.doMock("node:os", async () => {
+      const actual = await vi.importActual<typeof import("node:os")>("node:os");
+      return { ...actual, release: () => "4.19.0-gvisor", platform: () => "linux" };
+    });
+    vi.doMock("node:fs", async () => {
+      const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
+      return {
+        ...actual,
+        existsSync: (path: string) => path === "/.agents/AGENTS.md" || actual.existsSync(path),
+      };
+    });
+    const { detectAgentRuntime } = await import("./agent_runtime.js");
+    expect(detectAgentRuntime()).toBe("gemini_managed_agent");
+  });
+});
+
 describe("detectSandboxRuntime — file-system path", () => {
   beforeEach(() => {
     vi.resetModules();

@@ -30,6 +30,7 @@ export type AgentRuntime =
   | "hermes"
   | "openclaw"
   | "pi"
+  | "gemini_managed_agent"
   | null;
 
 interface VendorRule {
@@ -144,10 +145,17 @@ export function detectSandboxRuntime(): SandboxRuntime {
 
 /**
  * Identify the coding-agent vendor that spawned this process, if any.
- * Returns null on a regular interactive shell. Only checks for the
- * EXISTENCE of well-known env vars — never reads their values.
+ * Returns null on a regular interactive shell. Most rules only check the
+ * EXISTENCE of well-known env vars (never their values), but a few agents
+ * are best identified by filesystem markers — those run via dedicated
+ * detector functions ahead of the env-var rule loop.
  */
 export function detectAgentRuntime(): AgentRuntime {
+  // Gemini managed agent — empirical signal is a filesystem layout
+  // (`/.agents/AGENTS.md`) inside the gVisor kernel that hosts it. Env vars
+  // alone are insufficient (`GEMINI_API_KEY` is user-settable on any host),
+  // so this gets a dedicated check ahead of the env-var-only VENDOR_RULES.
+  if (isGeminiManagedAgent()) return "gemini_managed_agent";
   for (const rule of VENDOR_RULES) {
     if (rule.check(process.env)) return rule.name;
   }
@@ -215,4 +223,24 @@ function isKVM(): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Gemini managed-agent sandbox — Google's managed runtime that mounts the
+ * agent's repo under `/.agents/` (AGENTS.md + skills/ + workspace/) and runs
+ * inside a gVisor kernel. The conjunction is what makes this unambiguous:
+ *   - `/.agents/AGENTS.md` excludes generic gVisor surfaces (GKE Sandbox,
+ *     Cloud Run gen2) that don't mount the managed-agent layout.
+ *   - The gVisor kernel check excludes a dev box that happens to have a
+ *     stray `/.agents/` directory.
+ *
+ * Source: empirical introspection of a live Gemini managed-agent sandbox
+ * (env_id `b9db4e56`, 2026-06-09) by gemini-agent. `GEMINI_API_KEY` is NOT
+ * keyed on because it's user-settable on any host; the filesystem +
+ * kernel-string pair is the actually-distinctive signal.
+ */
+function isGeminiManagedAgent(): boolean {
+  if (platform() !== "linux") return false;
+  if (!existsSync("/.agents/AGENTS.md")) return false;
+  return isGVisor();
 }
