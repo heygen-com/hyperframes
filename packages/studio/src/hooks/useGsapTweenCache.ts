@@ -1,7 +1,71 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
-import type { GsapAnimation, ParsedGsap } from "@hyperframes/core/gsap-parser";
+import type { GsapAnimation, GsapKeyframesData, ParsedGsap } from "@hyperframes/core/gsap-parser";
+import type { GsapPercentageKeyframe } from "@hyperframes/core/gsap-parser";
 import { usePlayerStore } from "../player/store/playerStore";
 import { readRuntimeKeyframes, scanAllRuntimeKeyframes } from "./gsapRuntimeBridge";
+
+function deduplicateKeyframes(keyframes: GsapPercentageKeyframe[]): GsapPercentageKeyframe[] {
+  const byPct = new Map<number, GsapPercentageKeyframe>();
+  for (const kf of keyframes) {
+    const existing = byPct.get(kf.percentage);
+    if (existing) {
+      existing.properties = { ...existing.properties, ...kf.properties };
+      if (kf.ease) existing.ease = kf.ease;
+    } else {
+      byPct.set(kf.percentage, { ...kf, properties: { ...kf.properties } });
+    }
+  }
+  return Array.from(byPct.values()).sort((a, b) => a.percentage - b.percentage);
+}
+
+const PROPERTY_DEFAULTS: Record<string, number> = {
+  opacity: 1,
+  x: 0,
+  y: 0,
+  scale: 1,
+  scaleX: 1,
+  scaleY: 1,
+  rotation: 0,
+};
+
+function synthesizeFlatTweenKeyframes(anim: GsapAnimation): GsapKeyframesData | null {
+  if (anim.method === "set") {
+    return {
+      format: "percentage",
+      keyframes: [{ percentage: 0, properties: { ...anim.properties } }],
+    };
+  }
+  const toProps = anim.properties;
+  const fromProps = anim.fromProperties;
+  if (!toProps || Object.keys(toProps).length === 0) return null;
+
+  const startProps: Record<string, number | string> = {};
+  const endProps: Record<string, number | string> = {};
+
+  if (anim.method === "from") {
+    for (const [k, v] of Object.entries(toProps)) {
+      startProps[k] = v;
+      endProps[k] = PROPERTY_DEFAULTS[k] ?? 0;
+    }
+  } else if (anim.method === "fromTo" && fromProps) {
+    Object.assign(startProps, fromProps);
+    Object.assign(endProps, toProps);
+  } else {
+    for (const [k, v] of Object.entries(toProps)) {
+      startProps[k] = PROPERTY_DEFAULTS[k] ?? 0;
+      endProps[k] = v;
+    }
+  }
+
+  return {
+    format: "percentage",
+    keyframes: [
+      { percentage: 0, properties: startProps },
+      { percentage: 100, properties: endProps },
+    ],
+    ...(anim.ease ? { ease: anim.ease } : {}),
+  };
+}
 
 function extractIdFromSelector(selector: string): string | null {
   const match = selector.match(/^#([\w-]+)/);
@@ -182,12 +246,33 @@ export function useGsapAnimationsForElement(
 
   // Populate keyframe cache for the selected element.
   // Key format must match timeline element keys: "sourceFile#domId".
+  // Merges keyframes from ALL animations targeting this element and synthesizes
+  // flat tweens so the cache is never downgraded vs the bulk populate.
   const elementId = target?.id ?? null;
   useEffect(() => {
     if (!elementId) return;
+    const allKeyframes: GsapKeyframesData["keyframes"] = [];
+    let format: GsapKeyframesData["format"] = "percentage";
+    let ease: string | undefined;
+    let easeEach: string | undefined;
+    for (const anim of animations) {
+      const kf = anim.keyframes ?? synthesizeFlatTweenKeyframes(anim);
+      if (!kf) continue;
+      allKeyframes.push(...kf.keyframes);
+      format = kf.format;
+      if (kf.ease) ease = kf.ease;
+      if (kf.easeEach) easeEach = kf.easeEach;
+    }
+    if (allKeyframes.length === 0) return;
+    const dedupedKeyframes = deduplicateKeyframes(allKeyframes);
+    const merged: GsapKeyframesData = {
+      format,
+      keyframes: dedupedKeyframes,
+      ...(ease ? { ease } : {}),
+      ...(easeEach ? { easeEach } : {}),
+    };
     const { setKeyframeCache } = usePlayerStore.getState();
-    const withKeyframes = animations.find((a) => a.keyframes);
-    setKeyframeCache(`${sourceFile}#${elementId}`, withKeyframes?.keyframes ?? undefined);
+    setKeyframeCache(`${sourceFile}#${elementId}`, merged);
   }, [elementId, sourceFile, animations]);
 
   return { animations, multipleTimelines, unsupportedTimelinePattern };
@@ -213,25 +298,46 @@ export function usePopulateKeyframeCacheForFile(
   const lastFetchKeyRef = useRef("");
 
   const runtimeScanDoneRef = useRef("");
+  const astFetchDoneRef = useRef("");
 
   useEffect(() => {
     const fetchKey = `kf-cache:${projectId}:${sourceFile}:${version}`;
     if (fetchKey === lastFetchKeyRef.current) return;
     lastFetchKeyRef.current = fetchKey;
     runtimeScanDoneRef.current = "";
+    astFetchDoneRef.current = "";
     if (!projectId) return;
 
     const sf = sourceFile;
     fetchParsedAnimations(projectId, sf).then((parsed) => {
       if (!parsed) return;
-      const { setKeyframeCache } = usePlayerStore.getState();
+      const { setKeyframeCache, keyframeCache } = usePlayerStore.getState();
+      const sfPrefix = `${sf}#`;
+      const fallbackPrefix = "index.html#";
+      for (const key of keyframeCache.keys()) {
+        if (key.startsWith(sfPrefix) || (sf !== "index.html" && key.startsWith(fallbackPrefix))) {
+          setKeyframeCache(key, undefined);
+        }
+      }
+      const mergedByElement = new Map<string, GsapKeyframesData>();
       for (const anim of parsed.animations) {
         const id = extractIdFromSelector(anim.targetSelector);
-        if (!id || !anim.keyframes) continue;
-        setKeyframeCache(`${sf}#${id}`, anim.keyframes);
-        if (sf !== "index.html") setKeyframeCache(`index.html#${id}`, anim.keyframes);
+        if (!id) continue;
+        const kfData = anim.keyframes ?? synthesizeFlatTweenKeyframes(anim);
+        if (!kfData) continue;
+        const existing = mergedByElement.get(id);
+        if (existing) {
+          existing.keyframes = deduplicateKeyframes([...existing.keyframes, ...kfData.keyframes]);
+        } else {
+          mergedByElement.set(id, { ...kfData, keyframes: [...kfData.keyframes] });
+        }
       }
-      runtimeScanDoneRef.current = fetchKey;
+      for (const [id, kfData] of mergedByElement) {
+        setKeyframeCache(`${sf}#${id}`, kfData);
+        setKeyframeCache(id, kfData);
+        if (sf !== "index.html") setKeyframeCache(`index.html#${id}`, kfData);
+      }
+      astFetchDoneRef.current = fetchKey;
     });
   }, [projectId, sourceFile, version]);
 
@@ -246,7 +352,8 @@ export function usePopulateKeyframeCacheForFile(
 
     const tryRuntimeScan = () => {
       if (runtimeScanDoneRef.current === `kf-cache:${projectId}:${sf}:${version}`) return true;
-      const iframe = iframeRef?.current;
+      const iframe =
+        iframeRef?.current ?? document.querySelector<HTMLIFrameElement>("iframe[src*='/preview/']");
       if (!iframe) return false;
       const scanned = scanAllRuntimeKeyframes(iframe);
       if (scanned.size === 0) return false;
@@ -254,7 +361,8 @@ export function usePopulateKeyframeCacheForFile(
       for (const [id, data] of scanned) {
         const cacheKey = `${sf}#${id}`;
         const fallbackKey = `index.html#${id}`;
-        if (keyframeCache.has(cacheKey) || keyframeCache.has(fallbackKey)) continue;
+        if (keyframeCache.has(cacheKey) || keyframeCache.has(fallbackKey) || keyframeCache.has(id))
+          continue;
         const entry = {
           format: "percentage" as const,
           keyframes: data.keyframes,
@@ -262,6 +370,7 @@ export function usePopulateKeyframeCacheForFile(
         };
         setKeyframeCache(cacheKey, entry);
         if (sf !== "index.html") setKeyframeCache(fallbackKey, entry);
+        setKeyframeCache(id, entry);
       }
       runtimeScanDoneRef.current = `kf-cache:${projectId}:${sf}:${version}`;
       return true;

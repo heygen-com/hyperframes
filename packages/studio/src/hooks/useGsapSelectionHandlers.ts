@@ -62,7 +62,11 @@ export function useGsapSelectionHandlers({
     value: number | string,
   ) => void;
   removeKeyframe: (sel: DomEditSelection, animId: string, percentage: number) => void;
-  convertToKeyframes: (sel: DomEditSelection, animId: string) => void;
+  convertToKeyframes: (
+    sel: DomEditSelection,
+    animId: string,
+    resolvedFromValues?: Record<string, number | string>,
+  ) => void;
   removeAllKeyframes: (sel: DomEditSelection, animId: string) => void;
   currentTime: number;
   handleDomManualEditsReset: (sel: DomEditSelection) => void;
@@ -160,9 +164,9 @@ export function useGsapSelectionHandlers({
   );
 
   const handleGsapConvertToKeyframes = useCallback(
-    (animId: string) => {
+    (animId: string, resolvedFromValues?: Record<string, number | string>) => {
       if (!domEditSelection) return;
-      convertToKeyframes(domEditSelection, animId);
+      convertToKeyframes(domEditSelection, animId, resolvedFromValues);
     },
     [domEditSelection, convertToKeyframes],
   );
