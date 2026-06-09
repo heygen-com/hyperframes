@@ -1,0 +1,141 @@
+---
+title: Keyframes & Arc Motion
+description: "Edit GSAP keyframes visually in Studio — timeline diamonds, arc motion paths, and gesture recording."
+---
+
+Studio gives you visual tools to create and edit GSAP keyframes without writing code. You can adjust animation properties in the Design Panel, convert straight-line motion into curved arcs, and record gesture-based motion by dragging elements in the preview.
+
+## Timeline Keyframe Diamonds
+
+When you open a composition in Studio, the timeline shows **diamond markers** on clips that have GSAP animations. Each diamond represents a keyframe — a point in time where a property value is set.
+
+- **Start diamond** — where the tween begins (e.g., `x: 0`)
+- **End diamond** — where the tween ends (e.g., `x: 1000`)
+- Elements with multiple tweens show multiple diamond pairs
+
+<Note>
+  Keyframe diamonds are synthesized from your GSAP tweens automatically. Every `.to()`, `.from()`, and `.fromTo()` call produces start and end markers on the timeline.
+</Note>
+
+## Editing Animation Properties
+
+Select any animated element in the preview or timeline to open the Design Panel. The **Animation** section shows:
+
+- **Method badge** — `Animate`, `Animate In`, or `Animate Out` (maps to `.to()`, `.from()`, `.fromTo()`)
+- **Timing** — Length (duration) and Starts at (position on timeline)
+- **Speed** — The GSAP ease (e.g., `power2.inOut`, `back.out(3)`)
+- **Speed curve** — Visual preview of the easing function
+- **Properties** — Each animated property (Move X, Move Y, Scale, Opacity, etc.) with its target value
+
+<Steps>
+  <Step title="Select an element">
+    Click an animated element in the preview or its clip in the timeline. The Design Panel opens on the right.
+  </Step>
+  <Step title="Edit property values">
+    Change any property value directly — for example, set Move X to `500` to make the element travel 500px. Changes apply immediately via soft reload.
+  </Step>
+  <Step title="Change the ease">
+    Click the ease dropdown (e.g., "Smooth ease") to pick a different easing function. The speed curve preview updates live.
+  </Step>
+  <Step title="Verify in Code tab">
+    Switch to the Code tab to see the generated GSAP code. Every Design Panel edit writes valid GSAP that renders identically in preview and headless export.
+  </Step>
+</Steps>
+
+## Arc Motion
+
+Arc Motion converts a straight-line x/y animation into a curved path using GSAP's MotionPathPlugin. Instead of moving in a straight diagonal, the element follows a smooth arc — like tossing an object into a basket.
+
+### When to Use It
+
+Use Arc Motion when an element has both `x` and `y` properties in a single tween. Common examples:
+- Add-to-cart animations (item arcs from product to cart icon)
+- Throw/toss effects
+- Any motion that should feel physical rather than robotic
+
+### Step-by-Step
+
+<Steps>
+  <Step title="Select an element with x/y motion">
+    The element must have a `.to()` tween with both Move X and Move Y properties. Select it in the preview or timeline.
+  </Step>
+  <Step title="Toggle Arc Motion ON">
+    In the Animation section of the Design Panel, find the **Arc Motion** toggle below the property list. Switch it ON.
+  </Step>
+  <Step title="Adjust Curviness">
+    The **Curviness** slider controls how exaggerated the arc is:
+    - `0` — straight line (no curve)
+    - `1` — gentle natural arc
+    - `1.5–2.0` — smooth throw feel (recommended)
+    - `3.0` — extreme loop
+
+    Scrub the timeline to preview the arc in real time.
+  </Step>
+  <Step title="Toggle Auto-Rotate (optional)">
+    Enable **Auto-Rotate** to make the element rotate to face the direction of travel along the arc. This adds a "thrown" feel vs. a "floating" feel.
+  </Step>
+  <Step title="Verify the generated code">
+    Switch to the Code tab. You'll see:
+
+    ```javascript
+    tl.to("#element", {
+      scale: 0.4,
+      opacity: 0,
+      duration: 1.0,
+      ease: "power2.inOut",
+      motionPath: {
+        path: [{x: 0, y: 0}, {x: 1400, y: -280}],
+        curviness: 1.5,
+        autoRotate: true
+      }
+    }, 1.0);
+    ```
+
+    The MotionPathPlugin CDN script is added automatically.
+  </Step>
+  <Step title="Disable to restore straight motion">
+    Toggle Arc Motion OFF to restore the original `x` and `y` properties as flat tween values.
+  </Step>
+</Steps>
+
+<Note>
+  Arc Motion works for flat `.to()` tweens with x/y properties. It synthesizes waypoints from `{x: 0, y: 0}` (start) to `{x: targetX, y: targetY}` (end). For more complex paths with intermediate waypoints, edit the `motionPath.path` array directly in the Code tab.
+</Note>
+
+## Gesture Recording
+
+Record motion by physically dragging an element in the preview while the timeline plays. The pointer path is simplified and converted into GSAP keyframes automatically.
+
+<Steps>
+  <Step title="Select an element">
+    Click the element you want to animate in the preview.
+  </Step>
+  <Step title="Click Record or press R">
+    In the Animation section of the Design Panel, click **Record gesture (R)** or press the R key. The timeline starts playing.
+  </Step>
+  <Step title="Drag the element">
+    Move the element in the preview by dragging it. Your pointer motion is sampled at ~60fps. A trail overlay shows the path you're drawing.
+  </Step>
+  <Step title="Stop recording">
+    Press R again or wait for the timeline to reach the end. Recording stops, the motion is simplified (reducing ~180 raw samples to 5–15 clean keyframes), and the keyframes are written to the GSAP script immediately.
+  </Step>
+  <Step title="Review or undo">
+    The timeline seeks back to the recording start so you can scrub through the result. If you don't like it, press **Cmd+Z** to undo and try again.
+  </Step>
+</Steps>
+
+## Clipboard Context
+
+The **clipboard icon** next to the element name in the Design Panel copies structured element context to your clipboard:
+
+```
+Element: Title (#title)
+File: index.html:15
+Position: x=100, y=40
+Size: 264×43
+Tag: <div>
+Animation: from() 0.5s at 0s, ease: power2.out
+Properties: x: -40, opacity: 0
+```
+
+Paste this into any AI agent prompt to give it spatial context about the element — its position, size, animation, and source location.

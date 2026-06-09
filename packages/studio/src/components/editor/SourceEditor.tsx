@@ -143,7 +143,6 @@ export const SourceEditor = memo(function SourceEditor({
       selection: { anchor: pos },
       effects: EditorView.scrollIntoView(pos, { y: "center" }),
     });
-    view.focus();
   }, [revealOffset]);
 
   return <div ref={mountEditor} className="h-full w-full overflow-hidden" />;

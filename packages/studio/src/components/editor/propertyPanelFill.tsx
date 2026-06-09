@@ -278,7 +278,7 @@ export function GradientField({
               checked={parsed.repeating}
               disabled={disabled}
               onChange={(e) => patch({ repeating: e.target.checked })}
-              className="h-4 w-4 rounded border-neutral-700 bg-neutral-950 text-[#3ce6ac] focus:ring-[#3ce6ac]"
+              className="h-4 w-4 rounded border-neutral-700 bg-neutral-950 text-panel-accent focus:ring-panel-accent"
             />
             Repeat
           </label>

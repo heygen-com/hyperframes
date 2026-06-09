@@ -67,6 +67,7 @@ export function DomEditProvider({
     handleGsapAddFromProperty,
     handleGsapRemoveFromProperty,
     handleGsapAddKeyframe,
+    handleGsapAddKeyframeBatch,
     handleGsapRemoveKeyframe,
     handleGsapConvertToKeyframes,
     handleGsapRemoveAllKeyframes,
@@ -76,6 +77,7 @@ export function DomEditProvider({
     handleUpdateArcSegment,
     invalidateGsapCache,
     previewIframeRef,
+    commitMutation,
   },
   children,
 }: {
@@ -138,6 +140,7 @@ export function DomEditProvider({
       handleGsapAddFromProperty,
       handleGsapRemoveFromProperty,
       handleGsapAddKeyframe,
+      handleGsapAddKeyframeBatch,
       handleGsapRemoveKeyframe,
       handleGsapConvertToKeyframes,
       handleGsapRemoveAllKeyframes,
@@ -147,6 +150,7 @@ export function DomEditProvider({
       handleUpdateArcSegment,
       invalidateGsapCache,
       previewIframeRef,
+      commitMutation,
     }),
     [
       domEditSelection,
@@ -203,6 +207,7 @@ export function DomEditProvider({
       handleGsapAddFromProperty,
       handleGsapRemoveFromProperty,
       handleGsapAddKeyframe,
+      handleGsapAddKeyframeBatch,
       handleGsapRemoveKeyframe,
       handleGsapConvertToKeyframes,
       handleGsapRemoveAllKeyframes,
@@ -212,6 +217,7 @@ export function DomEditProvider({
       handleUpdateArcSegment,
       invalidateGsapCache,
       previewIframeRef,
+      commitMutation,
     ],
   );
   return <DomEditContext value={stable}>{children}</DomEditContext>;

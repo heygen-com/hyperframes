@@ -74,7 +74,6 @@
           {
             "group": "Guides",
             "pages": [
-              "guides/mcp",
               "guides/pipeline",
               "guides/html-in-canvas",
               "guides/website-to-video",
@@ -85,6 +84,7 @@
               "guides/prompting",
               "guides/hyperframes-vs-remotion",
               "guides/gsap-animation",
+              "guides/keyframes",
               "guides/rendering",
               "guides/remove-background",
               "guides/hdr",
@@ -227,7 +227,6 @@
             "pages": [
               "catalog/components/grain-overlay",
               "catalog/components/grid-pixelate-wipe",
-              "catalog/components/motion-blur",
               "catalog/components/parallax-unzoom",
               "catalog/components/parallax-zoom",
               "catalog/components/shimmer-sweep",

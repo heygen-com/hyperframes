@@ -12,7 +12,6 @@ export interface StudioContextValue {
   compositionLoading: boolean;
   refreshKey: number;
   setRefreshKey: React.Dispatch<React.SetStateAction<number>>;
-  currentTime: number;
   timelineElements: TimelineElement[];
   isPlaying: boolean;
   editHistory: {
@@ -63,7 +62,6 @@ export function StudioProvider({
     compositionLoading,
     refreshKey,
     setRefreshKey,
-    currentTime,
     timelineElements,
     isPlaying,
     editHistory,
@@ -89,7 +87,6 @@ export function StudioProvider({
       compositionLoading,
       refreshKey,
       setRefreshKey,
-      currentTime,
       timelineElements,
       isPlaying,
       editHistory,
@@ -112,7 +109,6 @@ export function StudioProvider({
       captionEditMode,
       compositionLoading,
       refreshKey,
-      currentTime,
       isPlaying,
       compositionDimensions,
       timelineVisible,

@@ -60,9 +60,9 @@ export const LayersPanel = memo(function LayersPanel() {
     refreshKey,
     compositionLoading,
     timelineElements,
-    currentTime,
     showToast,
   } = useStudioContext();
+  const currentTime = usePlayerStore((s) => s.currentTime);
   const {
     domEditSelection,
     applyDomSelection,

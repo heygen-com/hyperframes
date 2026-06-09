@@ -32,6 +32,9 @@ export interface StudioRightPanelProps {
     compositionPath: string;
   } | null;
   onCloseBlockParams?: () => void;
+  recordingState?: "idle" | "recording" | "preview";
+  recordingDuration?: number;
+  onToggleRecording?: () => void;
 }
 
 // fallow-ignore-next-line complexity
@@ -41,6 +44,9 @@ export function StudioRightPanel({
   motionPanelActive,
   activeBlockParams,
   onCloseBlockParams,
+  recordingState,
+  recordingDuration,
+  onToggleRecording,
 }: StudioRightPanelProps) {
   const {
     rightWidth,
@@ -92,6 +98,8 @@ export function StudioRightPanel({
     handleGsapAddFromProperty,
     handleGsapRemoveFromProperty,
     commitAnimatedProperty,
+    handleSetArcPath,
+    handleUpdateArcSegment,
   } = useDomEditContext();
 
   const { assets, fontAssets, projectDir, handleImportFiles, handleImportFonts } =
@@ -226,6 +234,11 @@ export function StudioRightPanel({
                   onRemoveGsapFromProperty={handleGsapRemoveFromProperty}
                   onAddGsapAnimation={handleGsapAddAnimation}
                   onCommitAnimatedProperty={commitAnimatedProperty}
+                  onSetArcPath={handleSetArcPath}
+                  onUpdateArcSegment={handleUpdateArcSegment}
+                  recordingState={recordingState}
+                  recordingDuration={recordingDuration}
+                  onToggleRecording={onToggleRecording}
                 />
               ) : motionPanelActive ? (
                 <MotionPanel

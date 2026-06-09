@@ -81,6 +81,7 @@ interface UseAppHotkeysParams {
   onResetKeyframes: () => boolean;
   onDeleteSelectedKeyframes: () => void;
   onAfterUndoRedo?: () => void;
+  onToggleRecording?: () => void;
 }
 
 // ── Hook ──
@@ -106,6 +107,7 @@ export function useAppHotkeys({
   onResetKeyframes,
   onDeleteSelectedKeyframes,
   onAfterUndoRedo,
+  onToggleRecording,
 }: UseAppHotkeysParams) {
   const previewHotkeyWindowRef = useRef<Window | null>(null);
   const handleAppKeyDownRef = useRef<((event: KeyboardEvent) => void) | undefined>(undefined);
@@ -215,6 +217,8 @@ export function useAppHotkeys({
   onResetKeyframesRef.current = onResetKeyframes;
   const onDeleteSelectedKeyframesRef = useRef(onDeleteSelectedKeyframes);
   onDeleteSelectedKeyframesRef.current = onDeleteSelectedKeyframes;
+  const onToggleRecordingRef = useRef(onToggleRecording);
+  onToggleRecordingRef.current = onToggleRecording;
 
   // ── Consolidated keydown handler ──
 
@@ -376,6 +380,20 @@ export function useAppHotkeys({
         event.preventDefault();
         void handleDomEditDeleteRef.current(domSelection);
       }
+    }
+
+    // R — toggle gesture recording
+    if (
+      event.key === "r" &&
+      !event.metaKey &&
+      !event.ctrlKey &&
+      !event.altKey &&
+      !event.shiftKey &&
+      !isEditableTarget(event.target) &&
+      onToggleRecordingRef.current
+    ) {
+      event.preventDefault();
+      onToggleRecordingRef.current();
     }
   };
 

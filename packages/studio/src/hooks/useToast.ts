@@ -16,5 +16,10 @@ export function useToast() {
     if (timerRef.current) clearTimeout(timerRef.current);
   });
 
-  return { appToast, showToast };
+  const dismissToast = useCallback(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    setAppToast(null);
+  }, []);
+
+  return { appToast, showToast, dismissToast };
 }

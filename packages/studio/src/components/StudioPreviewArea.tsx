@@ -56,6 +56,8 @@ export interface StudioPreviewAreaProps {
   setCompositionLoading: (loading: boolean) => void;
   shouldShowSelectedDomBounds: boolean;
   blockPreview?: BlockPreviewInfo | null;
+  isGestureRecording?: boolean;
+  gestureOverlay?: ReactNode;
 }
 
 // fallow-ignore-next-line complexity
@@ -74,7 +76,9 @@ export function StudioPreviewArea({
   setCompIdToSrc,
   setCompositionLoading,
   shouldShowSelectedDomBounds,
+  isGestureRecording,
   blockPreview,
+  gestureOverlay,
 }: StudioPreviewAreaProps) {
   const {
     projectId,
@@ -241,7 +245,7 @@ export function StudioPreviewArea({
                   }
                   selection={shouldShowSelectedDomBounds ? domEditSelection : null}
                   groupSelections={shouldShowSelectedDomBounds ? domEditGroupSelections : []}
-                  allowCanvasMovement={STUDIO_PREVIEW_MANUAL_EDITING_ENABLED}
+                  allowCanvasMovement={STUDIO_PREVIEW_MANUAL_EDITING_ENABLED && !isGestureRecording}
                   onCanvasMouseDown={handlePreviewCanvasMouseDown}
                   onCanvasPointerMove={handlePreviewCanvasPointerMove}
                   onCanvasPointerLeave={handlePreviewCanvasPointerLeave}
@@ -256,6 +260,7 @@ export function StudioPreviewArea({
                   gridSpacing={snapPrefs.gridSpacing}
                 />
                 <SnapToolbar onSnapChange={setSnapPrefs} />
+                {gestureOverlay}
               </>
             ) : null
           }

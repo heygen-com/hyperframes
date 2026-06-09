@@ -17,7 +17,6 @@ interface StudioContextInput {
   compositionLoading: boolean;
   refreshKey: number;
   setRefreshKey: React.Dispatch<React.SetStateAction<number>>;
-  currentTime: number;
   timelineElements: StudioContextValue["timelineElements"];
   isPlaying: boolean;
   editHistory: { canUndo: boolean; canRedo: boolean; undoLabel: string; redoLabel: string };
@@ -50,7 +49,7 @@ export function buildStudioContextValue(input: StudioContextInput): StudioContex
     compositionLoading: input.compositionLoading,
     refreshKey: input.refreshKey,
     setRefreshKey: input.setRefreshKey,
-    currentTime: input.currentTime,
+
     timelineElements: input.timelineElements,
     isPlaying: input.isPlaying,
     editHistory: input.editHistory,
@@ -81,6 +80,7 @@ export function useInspectorState(
   rightCollapsed: boolean,
   isPlaying: boolean,
   domEditSelection: DomEditSelection | null,
+  isGestureRecording?: boolean,
 ): InspectorState {
   // fallow-ignore-next-line complexity
   return useMemo(() => {
@@ -101,9 +101,10 @@ export function useInspectorState(
       inspectorPanelActive,
       inspectorButtonActive:
         STUDIO_INSPECTOR_PANELS_ENABLED && !rightCollapsed && inspectorPanelActive,
-      shouldShowSelectedDomBounds: inspectorPanelActive && !rightCollapsed && !isPlaying,
+      shouldShowSelectedDomBounds:
+        inspectorPanelActive && !rightCollapsed && !isPlaying && !isGestureRecording,
     };
-  }, [rightPanelTab, rightCollapsed, isPlaying, domEditSelection]);
+  }, [rightPanelTab, rightCollapsed, isPlaying, domEditSelection, isGestureRecording]);
 }
 
 // fallow-ignore-next-line complexity

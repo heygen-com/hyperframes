@@ -1,3 +1,5 @@
+import { useRef } from "react";
+import { useEnableKeyframes, type EnableKeyframesSession } from "../hooks/useEnableKeyframes";
 import {
   getNextTimelineZoomPercent,
   getTimelineZoomPercent,
@@ -7,123 +9,12 @@ import { usePlayerStore, type TimelineElement } from "../player";
 import { STUDIO_KEYFRAMES_ENABLED } from "./editor/manualEditingAvailability";
 import { Tooltip } from "./ui";
 import { Scissors } from "../icons/SystemIcons";
-import type { GsapAnimation, GsapPercentageKeyframe } from "@hyperframes/core/gsap-parser";
+import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "./editor/domEditingTypes";
 
-function interpolateKeyframeProperties(
-  keyframes: GsapPercentageKeyframe[],
-  pct: number,
-): Record<string, number> {
-  const sorted = keyframes.slice().sort((a, b) => a.percentage - b.percentage);
-  const allProps = new Set<string>();
-  for (const kf of sorted) {
-    for (const p of Object.keys(kf.properties)) {
-      if (typeof kf.properties[p] === "number") allProps.add(p);
-    }
-  }
-  const result: Record<string, number> = {};
-  for (const prop of allProps) {
-    let prev: { pct: number; val: number } | null = null;
-    let next: { pct: number; val: number } | null = null;
-    for (const kf of sorted) {
-      const v = kf.properties[prop];
-      if (typeof v !== "number") continue;
-      if (kf.percentage <= pct) prev = { pct: kf.percentage, val: v };
-      if (kf.percentage >= pct && !next) next = { pct: kf.percentage, val: v };
-    }
-    if (prev && next && prev.pct !== next.pct) {
-      const t = (pct - prev.pct) / (next.pct - prev.pct);
-      result[prop] = Math.round(prev.val + t * (next.val - prev.val));
-    } else if (prev) {
-      result[prop] = Math.round(prev.val);
-    } else if (next) {
-      result[prop] = Math.round(next.val);
-    }
-  }
-  return result;
-}
-
-function readRuntimeKeyframeValues(
-  iframe: HTMLIFrameElement | null,
-  sel: DomEditSelection,
-  keyframes: GsapPercentageKeyframe[],
-): Record<string, number> {
-  if (!iframe?.contentWindow) return {};
-  let gsap: { getProperty?: (el: Element, prop: string) => number } | undefined;
-  try {
-    gsap = (iframe.contentWindow as Window & { gsap?: typeof gsap }).gsap;
-  } catch {
-    return {};
-  }
-  if (!gsap?.getProperty) return {};
-  const selector = sel.id ? `#${sel.id}` : sel.selector;
-  if (!selector) return {};
-  let doc: Document | null = null;
-  try {
-    doc = iframe.contentDocument;
-  } catch {
-    return {};
-  }
-  const element = doc?.querySelector(selector);
-  if (!element) return {};
-  const allProps = new Set<string>();
-  for (const kf of keyframes) {
-    for (const p of Object.keys(kf.properties)) {
-      if (typeof kf.properties[p] === "number") allProps.add(p);
-    }
-  }
-  const result: Record<string, number> = {};
-  for (const prop of allProps) {
-    const val = Number(gsap.getProperty(element, prop));
-    if (Number.isFinite(val)) result[prop] = Math.round(val);
-  }
-  return result;
-}
-
-// fallow-ignore-next-line complexity
-function readRuntimeValuesForAnim(
-  iframe: HTMLIFrameElement | null,
-  sel: DomEditSelection,
-  anim: GsapAnimation,
-): Record<string, number> {
-  if (!iframe?.contentWindow) return {};
-  let gsap: { getProperty?: (el: Element, prop: string) => number } | undefined;
-  try {
-    gsap = (iframe.contentWindow as Window & { gsap?: typeof gsap }).gsap;
-  } catch {
-    return {};
-  }
-  if (!gsap?.getProperty) return {};
-  const selector = sel.id ? `#${sel.id}` : sel.selector;
-  if (!selector) return {};
-  let doc: Document | null = null;
-  try {
-    doc = iframe.contentDocument;
-  } catch {
-    return {};
-  }
-  const element = doc?.querySelector(selector);
-  if (!element) return {};
-  const result: Record<string, number> = {};
-  for (const prop of Object.keys(anim.properties)) {
-    const val = Number(gsap.getProperty(element, prop));
-    if (Number.isFinite(val)) result[prop] = Math.round(val);
-  }
-  return result;
-}
-
-interface DomEditSessionSlice {
+interface DomEditSessionSlice extends EnableKeyframesSession {
   domEditSelection: DomEditSelection | null;
   selectedGsapAnimations: GsapAnimation[];
-  handleGsapRemoveKeyframe: (animId: string, pct: number) => void;
-  handleGsapAddKeyframe: (animId: string, pct: number, prop: string, val: number | string) => void;
-  handleGsapConvertToKeyframes: (
-    animId: string,
-    resolvedFromValues?: Record<string, number | string>,
-  ) => void;
-  handleGsapMaterializeKeyframes?: (animId: string) => Promise<void>;
-  handleGsapAddAnimation: (method: "to" | "from" | "set" | "fromTo") => void;
-  previewIframeRef?: React.RefObject<HTMLIFrameElement | null>;
 }
 
 interface TimelineToolbarProps {
@@ -132,15 +23,20 @@ interface TimelineToolbarProps {
   onSplitElement?: (element: TimelineElement, splitTime: number) => void;
 }
 
-// fallow-ignore-next-line complexity
 function useKeyframeToggle(session?: DomEditSessionSlice) {
   const currentTime = usePlayerStore((s) => s.currentTime);
+  const sessionRef = useRef(session);
+  sessionRef.current = session;
+
+  const onToggle = useEnableKeyframes(
+    sessionRef as React.RefObject<EnableKeyframesSession | undefined>,
+  );
+
   if (!session) return { state: "none" as const, onToggle: undefined };
 
   const sel = session.domEditSelection;
   const anims = session.selectedGsapAnimations;
   const kfAnim = anims.find((a) => a.keyframes);
-  const flatAnim = anims.find((a) => !a.keyframes);
 
   let state: "active" | "inactive" | "none" = "none";
   if (kfAnim?.keyframes && sel) {
@@ -155,56 +51,7 @@ function useKeyframeToggle(session?: DomEditSessionSlice) {
       : "inactive";
   }
 
-  // fallow-ignore-next-line complexity
-  const onToggle = sel
-    ? async () => {
-        const t = usePlayerStore.getState().currentTime;
-        if (kfAnim?.keyframes) {
-          if (kfAnim.hasUnresolvedKeyframes) {
-            await session.handleGsapMaterializeKeyframes?.(kfAnim.id);
-          }
-          const elStart = Number.parseFloat(sel.dataAttributes?.start ?? "0") || 0;
-          const elDuration = Number.parseFloat(sel.dataAttributes?.duration ?? "1") || 1;
-          const pct =
-            elDuration > 0
-              ? Math.max(0, Math.min(100, Math.round(((t - elStart) / elDuration) * 1000) / 10))
-              : 0;
-          const existing = kfAnim.keyframes.keyframes.find(
-            (k) => Math.abs(k.percentage - pct) <= 1,
-          );
-          if (existing) {
-            session.handleGsapRemoveKeyframe(kfAnim.id, existing.percentage);
-          } else {
-            const runtimeValues = readRuntimeKeyframeValues(
-              session.previewIframeRef?.current ?? null,
-              sel,
-              kfAnim.keyframes.keyframes,
-            );
-            const values =
-              Object.keys(runtimeValues).length > 0
-                ? runtimeValues
-                : interpolateKeyframeProperties(kfAnim.keyframes.keyframes, pct);
-            for (const [prop, val] of Object.entries(values)) {
-              session.handleGsapAddKeyframe(kfAnim.id, pct, prop, val);
-            }
-          }
-        } else if (flatAnim) {
-          const runtimeProps = readRuntimeValuesForAnim(
-            session.previewIframeRef?.current ?? null,
-            sel,
-            flatAnim,
-          );
-          session.handleGsapConvertToKeyframes(
-            flatAnim.id,
-            Object.keys(runtimeProps).length > 0 ? runtimeProps : undefined,
-          );
-        } else {
-          session.handleGsapAddAnimation("to");
-        }
-      }
-    : undefined;
-
-  return { state, onToggle };
+  return { state, onToggle: sel ? onToggle : undefined };
 }
 
 export function TimelineToolbar({

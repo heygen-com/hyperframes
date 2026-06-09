@@ -102,7 +102,7 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
         const x2 = (kf.percentage / 100) * clipWidthPx;
         return (
           <div
-            key={`line-${prev.percentage}-${kf.percentage}`}
+            key={`line-${i}-${prev.percentage}-${kf.percentage}`}
             className="absolute"
             style={{
               left: x1,
@@ -118,7 +118,7 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
         );
       })}
 
-      {sorted.map((kf) => {
+      {sorted.map((kf, i) => {
         const leftPx = (kf.percentage / 100) * clipWidthPx - half;
         const kfKey = `${elementId}:${kf.percentage}`;
         const isKfSelected = selectedKeyframes.has(kfKey);
@@ -126,7 +126,7 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
         const color = isKfSelected || atPlayhead ? accentColor : "#a3a3a3";
         return (
           <button
-            key={kf.percentage}
+            key={`${i}-${kf.percentage}`}
             type="button"
             className="absolute"
             style={{

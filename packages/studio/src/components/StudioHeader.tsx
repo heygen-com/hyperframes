@@ -17,6 +17,7 @@ export interface StudioHeaderProps {
   refreshCaptureFrameTime: () => void;
   inspectorButtonActive: boolean;
   inspectorPanelActive: boolean;
+  onExport?: () => void;
 }
 
 function HyperframesLogo() {
@@ -147,6 +148,7 @@ export function StudioHeader({
   refreshCaptureFrameTime,
   inspectorButtonActive,
   inspectorPanelActive,
+  onExport,
 }: StudioHeaderProps) {
   const { projectId, editHistory, handleUndo, handleRedo } = useStudioContext();
   const { rightCollapsed, setRightCollapsed, setRightPanelTab } = usePanelLayoutContext();
@@ -171,10 +173,10 @@ export function StudioHeader({
             void handleUndo();
           }}
           disabled={!editHistory.canUndo}
-          className={`h-7 w-7 flex items-center justify-center rounded-md border transition-colors ${
+          className={`h-7 w-7 flex items-center justify-center rounded-md transition-colors ${
             editHistory.canUndo
-              ? "border-neutral-700 text-neutral-300 hover:border-neutral-500 hover:bg-neutral-800"
-              : "border-neutral-900 text-neutral-700"
+              ? "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800"
+              : "text-neutral-700 cursor-default"
           }`}
           title={
             editHistory.undoLabel
@@ -192,10 +194,10 @@ export function StudioHeader({
             void handleRedo();
           }}
           disabled={!editHistory.canRedo}
-          className={`h-7 w-7 flex items-center justify-center rounded-md border transition-colors ${
+          className={`h-7 w-7 flex items-center justify-center rounded-md transition-colors ${
             editHistory.canRedo
-              ? "border-neutral-700 text-neutral-300 hover:border-neutral-500 hover:bg-neutral-800"
-              : "border-neutral-900 text-neutral-700"
+              ? "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800"
+              : "text-neutral-700 cursor-default"
           }`}
           title={
             editHistory.redoLabel
@@ -215,7 +217,7 @@ export function StudioHeader({
           }}
           onFocus={refreshCaptureFrameTime}
           onPointerDown={refreshCaptureFrameTime}
-          className="h-7 flex items-center gap-1.5 px-2.5 rounded-md text-[11px] font-medium border border-neutral-700 text-neutral-300 transition-colors hover:border-neutral-500 hover:bg-neutral-800"
+          className="h-7 flex items-center gap-1.5 px-2.5 rounded-md text-[11px] font-medium text-neutral-400 transition-colors hover:text-neutral-200 hover:bg-neutral-800"
           title="Capture current frame"
           aria-label="Capture current frame"
         >
@@ -263,6 +265,17 @@ export function StudioHeader({
             <polygon points="10 8 16 12 10 16" fill="currentColor" stroke="none" />
           </svg>
           Inspector
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setRightPanelTab("renders");
+            setRightCollapsed(false);
+            onExport?.();
+          }}
+          className="h-7 flex items-center gap-1.5 px-3 rounded-md text-[11px] font-semibold bg-studio-accent text-[#09090B] hover:brightness-110 transition-colors"
+        >
+          Export
         </button>
       </div>
     </div>

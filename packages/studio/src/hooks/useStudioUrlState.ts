@@ -11,7 +11,6 @@ import {
 interface UseStudioUrlStateParams {
   projectId: string | null;
   activeCompPath: string | null;
-  currentTime: number;
   duration: number;
   isPlaying: boolean;
   compositionLoading: boolean;
@@ -57,7 +56,6 @@ function replaceHash(nextHash: string) {
 export function useStudioUrlState({
   projectId,
   activeCompPath,
-  currentTime,
   duration,
   isPlaying,
   compositionLoading,
@@ -72,6 +70,7 @@ export function useStudioUrlState({
   applyDomSelection,
   initialState,
 }: UseStudioUrlStateParams) {
+  const currentTime = usePlayerStore((s) => s.currentTime);
   const hydratedSeekRef = useRef(initialState.currentTime == null);
   const hydratedInitialTimeRef = useRef(initialState.currentTime == null);
   const hydratedSelectionRef = useRef(initialState.selection == null);

@@ -3,6 +3,7 @@ import { copyTextToClipboard } from "../utils/clipboard";
 import { readTagSnippetByTarget } from "../utils/sourcePatcher";
 import { toProjectAbsolutePath, type AgentModalAnchorPoint } from "../utils/studioHelpers";
 import { buildElementAgentPrompt, type DomEditSelection } from "../components/editor/domEditing";
+import { usePlayerStore } from "../player";
 
 // ── Types ──
 
@@ -11,7 +12,6 @@ export interface UseAskAgentModalParams {
   activeCompPath: string | null;
   projectDir: string | null;
   projectIdRef: React.MutableRefObject<string | null>;
-  currentTime: number;
   showToast: (message: string, tone?: "error" | "info") => void;
   domEditSelectionRef: React.MutableRefObject<DomEditSelection | null>;
   domEditSelection: DomEditSelection | null;
@@ -23,7 +23,6 @@ export function useAskAgentModal({
   activeCompPath,
   projectDir,
   projectIdRef,
-  currentTime,
   showToast,
   domEditSelectionRef,
   domEditSelection,
@@ -91,7 +90,7 @@ export function useAskAgentModal({
       const tagSnippet = agentPromptTagSnippet ?? domEditSelection.element.outerHTML;
       const prompt = buildElementAgentPrompt({
         selection: domEditSelection,
-        currentTime,
+        currentTime: usePlayerStore.getState().currentTime,
         tagSnippet,
         selectionContext: agentPromptSelectionContext,
         userInstruction,
@@ -115,7 +114,6 @@ export function useAskAgentModal({
       activeCompPath,
       agentPromptSelectionContext,
       agentPromptTagSnippet,
-      currentTime,
       domEditSelection,
       projectDir,
       showToast,

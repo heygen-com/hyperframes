@@ -68,6 +68,9 @@ export interface PropertyPanelProps {
     value: number | string,
   ) => Promise<void>;
   onSeekToTime?: (time: number) => void;
+  recordingState?: "idle" | "recording" | "preview";
+  recordingDuration?: number;
+  onToggleRecording?: () => void;
 }
 
 /* ------------------------------------------------------------------ */

@@ -76,7 +76,7 @@ export function MediaSection({
         {srcAttr && (
           <div className="min-w-0">
             <div className="flex items-center justify-between gap-2">
-              <div className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">Source</div>
+              <div className="text-[11px] font-medium text-neutral-500">Source</div>
               <button
                 type="button"
                 onClick={() => {

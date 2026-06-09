@@ -1,5 +1,6 @@
-import { memo } from "react";
-import { Eye, Layers, MessageSquare, Move, X } from "../../icons/SystemIcons";
+import { memo, useRef, useState } from "react";
+import { Eye, Layers, Move, X } from "../../icons/SystemIcons";
+import { useStudioContext } from "../../contexts/StudioContext";
 import { readStudioBoxSize, readStudioPathOffset, readStudioRotation } from "./manualEdits";
 import {
   EMPTY_STYLES,
@@ -40,7 +41,7 @@ export const PropertyPanel = memo(function PropertyPanel({
   assets,
   element,
   multiSelectCount = 0,
-  copiedAgentPrompt,
+  copiedAgentPrompt: _copiedAgentPrompt,
   onClearSelection,
   onSetStyle,
   onSetAttribute,
@@ -52,7 +53,7 @@ export const PropertyPanel = memo(function PropertyPanel({
   onSetTextFieldStyle,
   onAddTextField,
   onRemoveTextField,
-  onAskAgent,
+  onAskAgent: _onAskAgent,
   onImportAssets,
   fontAssets = [],
   onImportFonts,
@@ -76,8 +77,15 @@ export const PropertyPanel = memo(function PropertyPanel({
   onConvertToKeyframes,
   onCommitAnimatedProperty,
   onSeekToTime,
+  recordingState,
+  recordingDuration,
+  onToggleRecording,
 }: PropertyPanelProps) {
   const styles = element?.computedStyles ?? EMPTY_STYLES;
+  const { showToast } = useStudioContext();
+  const [clipboardCopied, setClipboardCopied] = useState(false);
+  const clipboardTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const currentTime = usePlayerStore((s) => s.currentTime);
 
   if (!element) {
     return (
@@ -171,10 +179,8 @@ export const PropertyPanel = memo(function PropertyPanel({
     onSetManualRotation(element, { angle: parsed });
   };
 
-  // Keyframe navigation state
   const elStart = Number.parseFloat(element?.dataAttributes?.start ?? "0") || 0;
   const elDuration = Number.parseFloat(element?.dataAttributes?.duration ?? "1") || 0;
-  const currentTime = usePlayerStore((s) => s.currentTime);
   const currentPct = elDuration > 0 ? ((currentTime - elStart) / elDuration) * 100 : 0;
 
   const gsapKeyframes = gsapAnimations?.find((a) => a.keyframes)?.keyframes?.keyframes ?? null;
@@ -265,11 +271,78 @@ export const PropertyPanel = memo(function PropertyPanel({
           <div className="flex items-center gap-1">
             <button
               type="button"
-              onClick={onAskAgent}
-              className="flex h-6 w-6 items-center justify-center rounded text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-300"
-              title={copiedAgentPrompt ? "Prompt copied" : "Copy prompt to AI agent"}
+              onClick={() => {
+                const file = element.sourceFile ?? "index.html";
+                let lineNum: number | null = null;
+                try {
+                  const src =
+                    previewIframeRef?.current?.contentDocument?.documentElement?.outerHTML ?? "";
+                  if (src && element.id) {
+                    const idx = src.indexOf(`id="${element.id}"`);
+                    if (idx > -1) lineNum = src.slice(0, idx).split("\n").length;
+                  }
+                  if (!lineNum && element.selector) {
+                    const tag = element.tagName.toLowerCase();
+                    const cls = element.selector.startsWith(".")
+                      ? element.selector.slice(1).split(".")[0]
+                      : null;
+                    const search = cls ? `class="${cls}` : `<${tag}`;
+                    const idx = src.indexOf(search);
+                    if (idx > -1) lineNum = src.slice(0, idx).split("\n").length;
+                  }
+                } catch {}
+                const fileLoc = lineNum ? `${file}:${lineNum}` : file;
+                const lines = [
+                  `Element: ${element.label} (${sourceLabel})`,
+                  `File: ${fileLoc}`,
+                  `Position: x=${Math.round(element.boundingBox.x)}, y=${Math.round(element.boundingBox.y)}`,
+                  `Size: ${Math.round(element.boundingBox.width)}×${Math.round(element.boundingBox.height)}`,
+                  `Tag: <${element.tagName}>`,
+                ];
+                if (
+                  element.computedStyles["z-index"] &&
+                  element.computedStyles["z-index"] !== "auto"
+                ) {
+                  lines.push(`Z-index: ${element.computedStyles["z-index"]}`);
+                }
+                if (gsapAnimations.length > 0) {
+                  const anim = gsapAnimations[0];
+                  lines.push(
+                    `Animation: ${anim.method}() ${anim.duration}s at ${anim.position}s, ease: ${anim.ease ?? "default"}`,
+                  );
+                  const props = Object.entries(anim.properties)
+                    .map(([k, v]) => `${k}: ${v}`)
+                    .join(", ");
+                  if (props) lines.push(`Properties: ${props}`);
+                }
+                const text = lines.join("\n");
+                void navigator.clipboard.writeText(text);
+                showToast(
+                  `Copied element info for ${element.label} — paste into any AI agent`,
+                  "info",
+                );
+                setClipboardCopied(true);
+                clearTimeout(clipboardTimerRef.current);
+                clipboardTimerRef.current = setTimeout(() => setClipboardCopied(false), 1500);
+              }}
+              className={`flex h-6 w-6 items-center justify-center rounded transition-colors ${
+                clipboardCopied
+                  ? "text-studio-accent"
+                  : "text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300"
+              }`}
+              title={clipboardCopied ? "Copied!" : "Copy element info to clipboard"}
             >
-              <MessageSquare size={13} />
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              >
+                <rect x="5" y="5" width="9" height="9" rx="1.5" />
+                <path d="M11 5V3.5A1.5 1.5 0 009.5 2h-6A1.5 1.5 0 002 3.5v6A1.5 1.5 0 003.5 11H5" />
+              </svg>
             </button>
             <button
               type="button"
@@ -565,6 +638,32 @@ export const PropertyPanel = memo(function PropertyPanel({
               onUpdateArcSegment={onUpdateArcSegment}
             />
           )}
+
+        {onToggleRecording && (
+          <div className="px-4 pb-3">
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={onToggleRecording}
+              className={`w-full flex items-center justify-center gap-2 rounded-lg py-2 text-[11px] font-medium transition-colors ${
+                recordingState === "recording"
+                  ? "bg-red-500/15 text-red-400 border border-red-500/30 animate-pulse"
+                  : "bg-panel-input text-panel-text-2 hover:bg-panel-hover border border-panel-border"
+              }`}
+            >
+              <svg width="10" height="10" viewBox="0 0 10 10">
+                {recordingState === "recording" ? (
+                  <rect x="1" y="1" width="8" height="8" rx="1" fill="currentColor" />
+                ) : (
+                  <circle cx="5" cy="5" r="4.5" fill="currentColor" />
+                )}
+              </svg>
+              {recordingState === "recording"
+                ? `Stop recording ${(recordingDuration ?? 0).toFixed(1)}s — press R`
+                : "Record gesture (R) — move pointer to capture motion"}
+            </button>
+          </div>
+        )}
 
         {showEditableSections && (
           <StyleSections
