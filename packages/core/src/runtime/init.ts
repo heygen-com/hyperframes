@@ -1356,6 +1356,9 @@ export function initSandboxRuntimeModular(): void {
         const mediaStart =
           Number.parseFloat(element.dataset.playbackStart ?? element.dataset.mediaStart ?? "0") ||
           0;
+        const rawRate = element.defaultPlaybackRate;
+        const playbackRate =
+          Number.isFinite(rawRate) && rawRate > 0 ? Math.max(0.1, Math.min(5, rawRate)) : 1;
         const hostRemaining =
           context.inheritedStart != null &&
           context.inheritedDuration != null &&
@@ -1364,7 +1367,7 @@ export function initSandboxRuntimeModular(): void {
             : null;
         const sourceDuration =
           Number.isFinite(element.duration) && element.duration > mediaStart
-            ? Math.max(0, element.duration - mediaStart)
+            ? Math.max(0, (element.duration - mediaStart) / playbackRate)
             : null;
         if (sourceDuration != null && hostRemaining != null) {
           return Math.min(sourceDuration, hostRemaining);
