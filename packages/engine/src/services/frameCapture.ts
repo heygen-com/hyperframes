@@ -703,11 +703,16 @@ async function pollSubCompositionTimelines(
   timeoutMs: number,
   intervalMs: number = 150,
 ): Promise<void> {
+  // Hosts may opt out of the timeline wait with `data-no-timeline` —
+  // compositions driven purely by CSS animations / rAF (the render-compat
+  // contract) never register window.__timelines[id], and without the opt-out
+  // they stall here for the full playerReadyTimeout (45 s) on every render.
   const expression = `(function() {
     var hosts = document.querySelectorAll("[data-composition-id]");
     if (hosts.length === 0) return true;
     var timelines = window.__timelines || {};
     for (var i = 0; i < hosts.length; i++) {
+      if (hosts[i].hasAttribute("data-no-timeline")) continue;
       var id = hosts[i].getAttribute("data-composition-id");
       if (!id) continue;
       if (!timelines[id]) return false;
@@ -735,6 +740,7 @@ async function pollSubCompositionTimelines(
       var timelines = window.__timelines || {};
       var m = [];
       for (var i = 0; i < hosts.length; i++) {
+        if (hosts[i].hasAttribute("data-no-timeline")) continue;
         var id = hosts[i].getAttribute("data-composition-id");
         if (id && !timelines[id]) m.push(id);
       }
@@ -742,7 +748,8 @@ async function pollSubCompositionTimelines(
     })()`);
     console.warn(
       `[FrameCapture] Sub-composition timelines not registered after ${timeoutMs}ms: ${missing}. ` +
-        `Compositions that load data asynchronously (e.g. fetch) must register window.__timelines[id] after setup completes.`,
+        `Compositions that load data asynchronously (e.g. fetch) must register window.__timelines[id] after setup completes. ` +
+        `Compositions intentionally driven without GSAP timelines (CSS animations / rAF) can mark the host with data-no-timeline to skip this wait.`,
     );
   }
 }
@@ -1426,6 +1433,10 @@ async function captureFrameCore(
         options.height,
         options.format ?? "jpeg",
         options.quality ?? 80,
+        // Paint-event sync only without BeginFrame (macOS / screenshot-launched):
+        // under BeginFrame control the per-frame beginFrame above already painted
+        // a fresh snapshot, and no further paint would arrive during a wait.
+        session.beginFrameTimeTicks === 0,
       );
     } else {
       screenshotBuffer = await pageScreenshotCapture(page, options);
