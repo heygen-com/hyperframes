@@ -81,14 +81,12 @@ export function applySoftReload(iframe: HTMLIFrameElement | null, scriptText: st
       win.__hfStudioManualEditsApply?.();
     };
 
-    // Load MotionPathPlugin on demand if the script uses motionPath.
-    // Uses the same CDN as composition templates (GSAP_CDN in constants.ts).
+    // Load MotionPathPlugin on demand if the script uses motionPath
     const needsMotionPath = /motionPath\s*[:{]/.test(scriptText);
     if (needsMotionPath && !win.MotionPathPlugin && win.gsap) {
       const pluginScript = doc.createElement("script");
       pluginScript.src = "https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/MotionPathPlugin.min.js";
       pluginScript.onload = () => executeScript();
-      pluginScript.onerror = () => executeScript();
       doc.head.appendChild(pluginScript);
       return;
     }
