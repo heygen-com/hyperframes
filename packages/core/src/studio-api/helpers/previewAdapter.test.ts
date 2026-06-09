@@ -64,10 +64,20 @@ describe("T10 — PreviewAdapter contract (spec for R7)", () => {
       expect(adapter.elementAtPoint(0, 0)).toBeNull();
     });
 
-    it("skips elements whose computed opacity is 0 at the given playhead time", () => {
+    it("skips elements whose currently-computed opacity is 0 (atTime is a caller-seek hint, not evaluated by the adapter)", () => {
       const elem = make("div", { "data-hf-id": "hf-zzzz" }, { opacity: "0" });
       const adapter = adapterWith(() => elem);
       expect(adapter.elementAtPoint(0, 0, { atTime: 1.0 })).toBeNull();
+    });
+
+    it("returns null for nested data-hf-root without data-hf-id (treated same as outer stage root)", () => {
+      const outerRoot = make("div", { "data-hf-root": "true" });
+      const innerRoot = document.createElement("div");
+      innerRoot.setAttribute("data-hf-root", "true");
+      // no data-hf-id — no explicit id means no draggable target
+      outerRoot.appendChild(innerRoot);
+      const adapter = adapterWith(() => innerRoot);
+      expect(adapter.elementAtPoint(0, 0)).toBeNull();
     });
   });
 
@@ -130,19 +140,44 @@ describe("T10 — PreviewAdapter contract (spec for R7)", () => {
       expect(target.style.getPropertyValue("--hf-studio-offset-y")).toBe("15px");
     });
 
+    it("resize → move switch clears width/height props — no cross-type prop leak", () => {
+      const target = make("div", { "data-hf-id": "hf-aaaa" });
+      const adapter = adapterWith(() => null);
+      adapter.applyDraft({ type: "resize", hfId: "hf-aaaa", w: 200, h: 100 });
+      adapter.applyDraft({ type: "move", hfId: "hf-aaaa", dx: 10, dy: 5 });
+      // move props set
+      expect(target.style.getPropertyValue("--hf-studio-offset-x")).toBe("10px");
+      expect(target.style.getPropertyValue("--hf-studio-offset-y")).toBe("5px");
+      // resize props cleared by the auto-revert before re-apply
+      expect(target.style.getPropertyValue("--hf-studio-width")).toBe("");
+      expect(target.style.getPropertyValue("--hf-studio-height")).toBe("");
+    });
+
+    it("revertDraft after commitPreview is a no-op — does not restore stale translate", () => {
+      const target = make("div", { "data-hf-id": "hf-aaaa" });
+      target.style.setProperty("translate", "50px 0px");
+      const adapter = adapterWith(() => null);
+      adapter.applyDraft({ type: "move", hfId: "hf-aaaa", dx: 10, dy: 0 });
+      adapter.commitPreview();
+      // simulate caller applying translate after commit
+      target.style.setProperty("translate", "10px 0px");
+      adapter.revertDraft(); // no gesture in flight — should be no-op
+      expect(target.style.getPropertyValue("translate")).toBe("10px 0px");
+    });
+
     it("revertDraft is safe to call when no gesture is in progress (idempotent / no-op on empty marker)", () => {
       const adapter = adapterWith(() => null);
       expect(() => adapter.revertDraft()).not.toThrow();
       expect(() => adapter.revertDraft()).not.toThrow();
     });
 
-    it("elementAtPoint filtering is stable when playhead changes mid-drag — opacity re-evaluated per call", () => {
+    it("elementAtPoint filtering is stable when inline opacity changes mid-drag — computed style re-evaluated per call", () => {
       const elem = make("div", { "data-hf-id": "hf-zzzz" });
       const adapter = adapterWith(() => elem);
-      expect(adapter.elementAtPoint(0, 0, { atTime: 0 })).toBe(elem);
+      expect(adapter.elementAtPoint(0, 0)).toBe(elem);
       // simulates GSAP seeking to a time where the element is hidden
       elem.style.setProperty("opacity", "0");
-      expect(adapter.elementAtPoint(0, 0, { atTime: 1.0 })).toBeNull();
+      expect(adapter.elementAtPoint(0, 0)).toBeNull();
     });
 
     it("stage-root exclusion applies only to the outermost data-hf-root; nested sub-composition roots count as targets", () => {

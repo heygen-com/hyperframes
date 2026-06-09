@@ -11,7 +11,8 @@ import {
   createStudioMotionRenderBodyScript,
   STUDIO_MOTION_PATH,
 } from "../helpers/studioMotionRenderScript.js";
-import { ensureHfIds, persistHfIdsIfNeeded } from "../helpers/hfIdPersist.js";
+import { ensureHfIds } from "../../parsers/hfIds.js";
+import { persistHfIdsIfNeeded } from "../helpers/hfIdPersist.js";
 
 const PROJECT_SIGNATURE_META = "hyperframes-project-signature";
 const GSAP_CDN_VERSION = "3.15.0";

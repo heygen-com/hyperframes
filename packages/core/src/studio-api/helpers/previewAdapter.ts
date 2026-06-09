@@ -15,6 +15,11 @@ export type CommitPatch =
   | { type: "resize"; hfId: string; width: number; height: number };
 
 export interface PreviewAdapter {
+  /**
+   * @param atTime - Caller hint only. The adapter reads current computed styles;
+   *   the caller must seek the GSAP timeline to `atTime` before invoking so that
+   *   GSAP-driven inline styles reflect the desired playhead position.
+   */
   elementAtPoint(x: number, y: number, opts?: { atTime?: number }): Element | null;
   applyDraft(payload: DraftPayload): void;
   revertDraft(): void;
@@ -34,7 +39,13 @@ export function createPreviewAdapter(
   let gesture: GestureState | null = null;
 
   function findById(hfId: string): HTMLElement | null {
-    return doc.querySelector(`[data-hf-id="${hfId}"]`) as HTMLElement | null;
+    // CSS.escape is available in browsers; hf-ids are always hf-[a-z0-9]+ so
+    // no escaping is strictly needed, but be safe in non-browser environments.
+    const escaped =
+      typeof CSS !== "undefined" && typeof CSS.escape === "function"
+        ? CSS.escape(hfId)
+        : hfId.replace(/([^\w-])/g, "\\$1");
+    return doc.querySelector(`[data-hf-id="${escaped}"]`) as HTMLElement | null;
   }
 
   function isVisible(el: Element): boolean {
@@ -44,6 +55,7 @@ export function createPreviewAdapter(
     if (style.display === "none" || style.visibility === "hidden") return false;
     const op = parseFloat(style.opacity);
     // NaN (empty string from environments with no CSS cascade) → treat as visible.
+    // 0.01 threshold: sub-1% opacity is not user-targetable in drag gestures.
     return Number.isNaN(op) || op >= 0.01;
   }
 
@@ -63,7 +75,7 @@ export function createPreviewAdapter(
   }
 
   return {
-    elementAtPoint(x, y, _opts) {
+    elementAtPoint(x, y, _perCallOpts) {
       const hit = opts?.resolvePoint?.(x, y) ?? null;
       if (!hit) return null;
 
