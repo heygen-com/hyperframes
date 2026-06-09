@@ -1,6 +1,6 @@
 {
   "name": "Distributed: Three.js WebGL boundary (setTimeout-deferred)",
-  "description": "Same Three.js purple cube as three-boundary, but the entire GSAP timeline and Three.js setup is deferred via setTimeout(fn, 0) — the exact pattern from issue #1260. Exercises the maybePublishRenderReady race where __hfTimelinesBuilding starts false at DOMContentLoaded then flips true after init.ts has already run. Without the hf-timelines-built re-registration fix, this composition times out with 'Composition has zero duration'.",
+  "description": "Same Three.js purple cube as three-boundary, but the entire GSAP timeline and Three.js setup is deferred via setTimeout(fn, 0). Exercises the maybePublishRenderReady race where __hfTimelinesBuilding starts false at DOMContentLoaded then flips true after init.ts has already run. Without the hf-timelines-built re-registration fix (#1279), this composition times out with 'Composition has zero duration'.",
   "tags": ["distributed", "threejs", "webgl", "deferred"],
 
   "minPsnr": 25,

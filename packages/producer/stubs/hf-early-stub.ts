@@ -248,6 +248,12 @@ function scheduleBatch(): void {
  *
  * All methods return `proxy` so that callers who chain off the returned value
  * continue to go through the proxy for the duration of the batching phase.
+ *
+ * Silently dropped methods (not in the allowlist):
+ *   eventCallback, labels, repeat, yoyo, delay, endTime, iteration,
+ *   invalidate, restart, resume, reverse, revert, then, vars (write)
+ * Workaround: use onUpdate/onComplete/onStart in to() vars instead of
+ * tl.eventCallback(). See #1260 for context.
  */
 function wrapTimeline(real: GsapTimeline): TimelineProxy {
   const proxy: TimelineProxy = {
