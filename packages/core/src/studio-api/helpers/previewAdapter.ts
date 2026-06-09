@@ -23,7 +23,6 @@ export interface PreviewAdapter {
 }
 
 interface GestureState {
-  hfId: string;
   payload: DraftPayload;
   originalTranslate: string | undefined;
 }
@@ -38,10 +37,29 @@ export function createPreviewAdapter(
     return doc.querySelector(`[data-hf-id="${hfId}"]`) as HTMLElement | null;
   }
 
-  function opacity(el: Element): number {
+  function isVisible(el: Element): boolean {
     const view = doc.defaultView;
-    if (!view) return 1;
-    return parseFloat(view.getComputedStyle(el).opacity) || 0;
+    if (!view) return true;
+    const style = view.getComputedStyle(el);
+    if (style.display === "none" || style.visibility === "hidden") return false;
+    const op = parseFloat(style.opacity);
+    // NaN (empty string from environments with no CSS cascade) → treat as visible.
+    return Number.isNaN(op) || op >= 0.01;
+  }
+
+  function clearDraftProps(target: HTMLElement): void {
+    target.style.removeProperty(STUDIO_OFFSET_X_PROP);
+    target.style.removeProperty(STUDIO_OFFSET_Y_PROP);
+    target.style.removeProperty(STUDIO_WIDTH_PROP);
+    target.style.removeProperty(STUDIO_HEIGHT_PROP);
+    target.removeAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR);
+  }
+
+  function revertGesture(target: HTMLElement, state: GestureState): void {
+    clearDraftProps(target);
+    if (state.originalTranslate !== undefined) {
+      target.style.setProperty("translate", state.originalTranslate);
+    }
   }
 
   return {
@@ -52,7 +70,7 @@ export function createPreviewAdapter(
       let el: Element | null = hit;
       while (el && el !== doc.body) {
         if (el.hasAttribute("data-hf-id")) {
-          return opacity(el) === 0 ? null : (el as HTMLElement);
+          return isVisible(el) ? (el as HTMLElement) : null;
         }
         // data-hf-root without data-hf-id = outermost stage root — stop
         if (el.hasAttribute("data-hf-root")) return null;
@@ -62,11 +80,19 @@ export function createPreviewAdapter(
     },
 
     applyDraft(payload) {
+      // Auto-revert any in-flight gesture before starting a new one so no
+      // element is left with orphaned draft CSS props or the gesture marker.
+      if (gesture) {
+        const prev = findById(gesture.payload.hfId);
+        if (prev) revertGesture(prev, gesture);
+        gesture = null;
+      }
+
       const target = findById(payload.hfId);
       if (!target) return;
 
       const originalTranslate = target.style.getPropertyValue("translate") || undefined;
-      gesture = { hfId: payload.hfId, payload, originalTranslate };
+      gesture = { payload, originalTranslate };
       target.setAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR, "true");
 
       if (payload.type === "move") {
@@ -80,46 +106,37 @@ export function createPreviewAdapter(
 
     revertDraft() {
       if (!gesture) return;
-      const target = findById(gesture.hfId);
-      if (target) {
-        target.style.removeProperty(STUDIO_OFFSET_X_PROP);
-        target.style.removeProperty(STUDIO_OFFSET_Y_PROP);
-        target.style.removeProperty(STUDIO_WIDTH_PROP);
-        target.style.removeProperty(STUDIO_HEIGHT_PROP);
-        target.removeAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR);
-        if (gesture.originalTranslate !== undefined) {
-          target.style.setProperty("translate", gesture.originalTranslate);
-        }
-      }
+      const target = findById(gesture.payload.hfId);
+      if (target) revertGesture(target, gesture);
       gesture = null;
     },
 
     commitPreview() {
       if (!gesture) return null;
-      const { hfId, payload } = gesture;
+      const { payload } = gesture;
 
-      const target = findById(hfId);
-      if (target) {
-        target.removeAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR);
-      }
+      const target = findById(payload.hfId);
+      if (target) clearDraftProps(target);
       gesture = null;
 
       if (payload.type === "move") {
-        return { type: "moveElement", hfId, dx: payload.dx, dy: payload.dy };
+        return { type: "moveElement", hfId: payload.hfId, dx: payload.dx, dy: payload.dy };
       }
-      return { type: "resize", hfId, width: payload.w, height: payload.h };
+      return { type: "resize", hfId: payload.hfId, width: payload.w, height: payload.h };
     },
 
     getElementTimings() {
       const result: Record<string, { start?: number; end?: number }> = {};
-      for (const el of Array.from(doc.querySelectorAll("[data-hf-id]"))) {
+      for (const el of doc.querySelectorAll("[data-hf-id]")) {
         const hfId = el.getAttribute("data-hf-id");
         if (!hfId) continue;
         const s = el.getAttribute("data-start");
         const e = el.getAttribute("data-end");
+        const sv = s !== null ? parseFloat(s) : NaN;
+        const ev = e !== null ? parseFloat(e) : NaN;
         result[hfId] = {
-          start: s !== null ? parseFloat(s) : undefined,
-          end: e !== null ? parseFloat(e) : undefined,
+          start: Number.isFinite(sv) ? sv : undefined,
+          end: Number.isFinite(ev) ? ev : undefined,
         };
       }
       return result;

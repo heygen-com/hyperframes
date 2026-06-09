@@ -88,12 +88,14 @@ describe("ensureHfIds", () => {
     expect(ids(ensureHfIds(edited))).toContain(originalId);
   });
 
-  it("pinned id survives attribute edit after first persist", () => {
-    const raw = `<!doctype html><html><body><div class="old">text</div></body></html>`;
-    const persisted = ensureHfIds(raw); // simulates write-back on first serve
-    const [originalId] = ids(persisted);
-    const edited = persisted.replace('class="old"', 'class="new"');
-    expect(ids(ensureHfIds(edited))).toContain(originalId);
+  // Hash-based stability (no prior pin): the same element content yields the
+  // same id regardless of what sibling elements appear in the document.
+  it("content-keyed minting is stable: same element content → same id in different documents", () => {
+    const alone = `<!doctype html><html><body><div class="card">hello</div></body></html>`;
+    const [idAlone] = ids(ensureHfIds(alone));
+    // The <div class="card">hello</div> appears alongside a new sibling here.
+    const withSibling = `<!doctype html><html><body><span>prefix</span><div class="card">hello</div></body></html>`;
+    expect(ids(ensureHfIds(withSibling))).toContain(idAlone);
   });
 });
 

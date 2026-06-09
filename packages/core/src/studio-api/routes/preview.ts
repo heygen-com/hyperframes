@@ -216,8 +216,8 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
       let bundled = await adapter.bundle(project.dir);
       let mainCompositionPath = "index.html";
       if (!bundled) {
-        if (!diskMain || normalizedDisk === null) return c.text("not found", 404);
-        bundled = normalizedDisk;
+        if (!diskMain) return c.text("not found", 404);
+        bundled = normalizedDisk ?? diskMain.html;
         mainCompositionPath = diskMain.compositionPath;
       }
 
@@ -246,20 +246,20 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
       );
       return c.html(bundled, 200, previewCacheHeaders(etag));
     } catch {
-      if (diskMain && normalizedDisk !== null) {
+      // Re-read disk on bundle failure so we serve the latest file content,
+      // not the pre-request snapshot that may have been saved over.
+      const fallback = resolveProjectMainHtml(project.dir, project.id);
+      if (fallback) {
+        const fallbackHtml = persistHfIdsIfNeeded(
+          join(project.dir, fallback.compositionPath),
+          fallback.html,
+        );
         return c.html(
           injectStudioPreviewAugmentations(
-            ensureHfIds(
-              await transformPreviewHtml(
-                normalizedDisk,
-                adapter,
-                project,
-                diskMain.compositionPath,
-              ),
-            ),
+            await transformPreviewHtml(fallbackHtml, adapter, project, fallback.compositionPath),
             adapter,
             project.dir,
-            diskMain.compositionPath,
+            fallback.compositionPath,
           ),
           200,
           previewCacheHeaders(etag),
