@@ -50,6 +50,10 @@
       "import": "./src/studio-api/helpers/studioMotionRenderScript.ts",
       "types": "./src/studio-api/helpers/studioMotionRenderScript.ts"
     },
+    "./studio-api/draft-markers": {
+      "import": "./src/studio-api/helpers/draftMarkers.ts",
+      "types": "./src/studio-api/helpers/draftMarkers.ts"
+    },
     "./text": {
       "import": "./src/text/index.ts",
       "types": "./src/text/index.ts"
@@ -120,6 +124,10 @@
       "./studio-api/studio-motion-render-script": {
         "import": "./dist/studio-api/helpers/studioMotionRenderScript.js",
         "types": "./dist/studio-api/helpers/studioMotionRenderScript.d.ts"
+      },
+      "./studio-api/draft-markers": {
+        "import": "./dist/studio-api/helpers/draftMarkers.js",
+        "types": "./dist/studio-api/helpers/draftMarkers.d.ts"
       },
       "./text": {
         "import": "./dist/text/index.js",

@@ -1,13 +1,15 @@
 /* ── Public constants ──────────────────────────────────────────────── */
-export const STUDIO_OFFSET_X_PROP = "--hf-studio-offset-x";
-export const STUDIO_OFFSET_Y_PROP = "--hf-studio-offset-y";
-export const STUDIO_WIDTH_PROP = "--hf-studio-width";
-export const STUDIO_HEIGHT_PROP = "--hf-studio-height";
+export {
+  STUDIO_OFFSET_X_PROP,
+  STUDIO_OFFSET_Y_PROP,
+  STUDIO_WIDTH_PROP,
+  STUDIO_HEIGHT_PROP,
+  STUDIO_MANUAL_EDIT_GESTURE_ATTR,
+} from "@hyperframes/core/studio-api/draft-markers";
 export const STUDIO_ROTATION_PROP = "--hf-studio-rotation";
 
 /* ── Internal DOM attribute names ─────────────────────────────────── */
 export const STUDIO_PATH_OFFSET_ATTR = "data-hf-studio-path-offset";
-export const STUDIO_MANUAL_EDIT_GESTURE_ATTR = "data-hf-studio-manual-edit-gesture";
 export const STUDIO_BOX_SIZE_ATTR = "data-hf-studio-box-size";
 export const STUDIO_ROTATION_ATTR = "data-hf-studio-rotation";
 export const STUDIO_ORIGINAL_TRANSLATE_ATTR = "data-hf-studio-original-translate";

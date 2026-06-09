@@ -1,3 +1,11 @@
+import {
+  STUDIO_OFFSET_X_PROP,
+  STUDIO_OFFSET_Y_PROP,
+  STUDIO_WIDTH_PROP,
+  STUDIO_HEIGHT_PROP,
+  STUDIO_MANUAL_EDIT_GESTURE_ATTR,
+} from "./draftMarkers.js";
+
 export type DraftPayload =
   | { type: "move"; hfId: string; dx: number; dy: number }
   | { type: "resize"; hfId: string; w: number; h: number };
@@ -59,14 +67,14 @@ export function createPreviewAdapter(
 
       const originalTranslate = target.style.getPropertyValue("translate") || undefined;
       gesture = { hfId: payload.hfId, payload, originalTranslate };
-      target.setAttribute("data-hf-studio-manual-edit-gesture", "true");
+      target.setAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR, "true");
 
       if (payload.type === "move") {
-        target.style.setProperty("--hf-studio-offset-x", `${payload.dx}px`);
-        target.style.setProperty("--hf-studio-offset-y", `${payload.dy}px`);
+        target.style.setProperty(STUDIO_OFFSET_X_PROP, `${payload.dx}px`);
+        target.style.setProperty(STUDIO_OFFSET_Y_PROP, `${payload.dy}px`);
       } else {
-        target.style.setProperty("--hf-studio-width", `${payload.w}px`);
-        target.style.setProperty("--hf-studio-height", `${payload.h}px`);
+        target.style.setProperty(STUDIO_WIDTH_PROP, `${payload.w}px`);
+        target.style.setProperty(STUDIO_HEIGHT_PROP, `${payload.h}px`);
       }
     },
 
@@ -74,11 +82,11 @@ export function createPreviewAdapter(
       if (!gesture) return;
       const target = findById(gesture.hfId);
       if (target) {
-        target.style.removeProperty("--hf-studio-offset-x");
-        target.style.removeProperty("--hf-studio-offset-y");
-        target.style.removeProperty("--hf-studio-width");
-        target.style.removeProperty("--hf-studio-height");
-        target.removeAttribute("data-hf-studio-manual-edit-gesture");
+        target.style.removeProperty(STUDIO_OFFSET_X_PROP);
+        target.style.removeProperty(STUDIO_OFFSET_Y_PROP);
+        target.style.removeProperty(STUDIO_WIDTH_PROP);
+        target.style.removeProperty(STUDIO_HEIGHT_PROP);
+        target.removeAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR);
         if (gesture.originalTranslate !== undefined) {
           target.style.setProperty("translate", gesture.originalTranslate);
         }
@@ -92,7 +100,7 @@ export function createPreviewAdapter(
 
       const target = findById(hfId);
       if (target) {
-        target.removeAttribute("data-hf-studio-manual-edit-gesture");
+        target.removeAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR);
       }
       gesture = null;
 
