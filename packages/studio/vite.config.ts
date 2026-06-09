@@ -192,4 +192,7 @@ export default defineConfig({
     // "Dynamic require of fs is not supported". Browser bundles never reach them.
     external: ["recast", "@babel/parser", "ast-types"],
   },
+  test: {
+    exclude: ["data/**", "node_modules/**"],
+  },
 });

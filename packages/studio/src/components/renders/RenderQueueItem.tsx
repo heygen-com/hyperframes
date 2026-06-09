@@ -142,54 +142,53 @@ export const RenderQueueItem = memo(function RenderQueueItem({
           )}
         </div>
 
-        {/* Actions — always visible to prevent layout shifts */}
-        <div className="flex items-center gap-1 flex-shrink-0">
-          <button
-            onClick={isComplete ? handleDownload : undefined}
-            className={`p-1 rounded transition-colors ${
-              isComplete
-                ? "text-panel-text-5 hover:text-panel-accent"
-                : "text-panel-text-5/30 pointer-events-none"
-            }`}
-            title={isComplete ? "Download" : "Rendering..."}
-            disabled={!isComplete}
-          >
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+        {/* Actions */}
+        {hovered && (
+          <div className="flex items-center gap-1 flex-shrink-0">
+            {isComplete && (
+              <button
+                onClick={handleDownload}
+                className="p-1 rounded text-panel-text-4 hover:text-panel-accent transition-colors"
+                title="Download"
+              >
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+              </button>
+            )}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete();
+              }}
+              className="p-1 rounded text-panel-text-4 hover:text-red-400 transition-colors"
+              title="Remove"
             >
-              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
-              <polyline points="7 10 12 15 17 10" />
-              <line x1="12" y1="15" x2="12" y2="3" />
-            </svg>
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete();
-            }}
-            className="p-1 rounded text-panel-text-5 hover:text-red-400 transition-colors"
-            title="Remove"
-          >
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-            >
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              >
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -15,6 +15,14 @@ mkdirSync("dist", { recursive: true });
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 
+// The banner provides a real `require` function via createRequire so that
+// esbuild's CJS interop (__require) works correctly in ESM output.
+// Without this, bundled CJS deps (recast, yauzl, etc.) that call
+// require("fs") throw "Dynamic require of 'fs' is not supported".
+const cjsBanner = {
+  js: "import { createRequire as __cjsRequire } from 'module'; const require = __cjsRequire(import.meta.url);",
+};
+
 const workspaceAliasPlugin = {
   name: "workspace-alias",
   setup(build) {
@@ -36,80 +44,32 @@ const workspaceAliasPlugin = {
   },
 };
 
+const sharedOpts = {
+  bundle: true,
+  platform: "node",
+  target: "node22",
+  format: "esm",
+  external: ["puppeteer", "esbuild", "postcss"],
+  plugins: [workspaceAliasPlugin],
+  minify: false,
+  sourcemap: true,
+  banner: cjsBanner,
+};
+
 await Promise.all([
+  build({ ...sharedOpts, entryPoints: ["src/index.ts"], outfile: "dist/index.js" }),
+  build({ ...sharedOpts, entryPoints: ["src/server.ts"], outfile: "dist/public-server.js" }),
   build({
-    bundle: true,
-    platform: "node",
-    target: "node22",
-    format: "esm",
-    external: ["puppeteer", "esbuild", "postcss", "wawoff2"],
-    plugins: [workspaceAliasPlugin],
-    minify: false,
-    sourcemap: true,
-    entryPoints: ["src/index.ts"],
-    outfile: "dist/index.js",
-  }),
-  build({
-    bundle: true,
-    platform: "node",
-    target: "node22",
-    format: "esm",
-    external: ["puppeteer", "esbuild", "postcss", "wawoff2"],
-    plugins: [workspaceAliasPlugin],
-    minify: false,
-    sourcemap: true,
-    entryPoints: ["src/server.ts"],
-    outfile: "dist/public-server.js",
-  }),
-  // PNG decode + alpha-blit worker (hf#732 lever-4). Loaded by
-  // `pngDecodeBlitWorkerPool.createPngDecodeBlitWorkerPool` via
-  // `new Worker(<path>)`. Must be a separate entry point so the worker
-  // module is standalone and shares no parent module-graph state.
-  build({
-    bundle: true,
-    platform: "node",
-    target: "node22",
-    format: "esm",
-    external: ["puppeteer", "esbuild", "postcss", "wawoff2"],
-    plugins: [workspaceAliasPlugin],
-    minify: false,
-    sourcemap: true,
+    ...sharedOpts,
     entryPoints: ["src/services/pngDecodeBlitWorker.ts"],
     outfile: "dist/services/pngDecodeBlitWorker.js",
   }),
-  // Shader-blend worker (hf#677 follow-up). Loaded by
-  // `shaderTransitionWorkerPool.createShaderTransitionWorkerPool` via
-  // `new Worker(<path>)`. Same bundling rationale as the
-  // `pngDecodeBlitWorker` entry above.
   build({
-    bundle: true,
-    platform: "node",
-    target: "node22",
-    format: "esm",
-    external: ["puppeteer", "esbuild", "postcss", "wawoff2"],
-    plugins: [workspaceAliasPlugin],
-    minify: false,
-    sourcemap: true,
+    ...sharedOpts,
     entryPoints: ["src/services/shaderTransitionWorker.ts"],
     outfile: "dist/services/shaderTransitionWorker.js",
   }),
-  // `@hyperframes/producer/distributed` subpath — the public distributed
-  // render primitives (plan / renderChunk / assemble). Bundled as a
-  // separate entry so adopters that don't need the in-process renderer
-  // (Lambda chunk workers, CDK constructs, thin orchestrators) can import
-  // only this surface and skip the rest of the producer's dependency tree.
-  build({
-    bundle: true,
-    platform: "node",
-    target: "node22",
-    format: "esm",
-    external: ["puppeteer", "esbuild", "postcss", "wawoff2"],
-    plugins: [workspaceAliasPlugin],
-    minify: false,
-    sourcemap: true,
-    entryPoints: ["src/distributed.ts"],
-    outfile: "dist/distributed.js",
-  }),
+  build({ ...sharedOpts, entryPoints: ["src/distributed.ts"], outfile: "dist/distributed.js" }),
 ]);
 
 // Copy core runtime artifacts so the producer can find them at dist/

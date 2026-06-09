@@ -154,22 +154,22 @@ function FormatInfoTooltip({ format }: { format: "mp4" | "webm" | "mov" }) {
         strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"
-        className="text-neutral-600 hover:text-neutral-400 transition-colors cursor-help"
+        className="text-panel-text-5 hover:text-panel-text-3 transition-colors cursor-help"
       >
         <circle cx="12" cy="12" r="10" />
         <path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3" />
         <line x1="12" y1="17" x2="12.01" y2="17" />
       </svg>
       {open && (
-        <div className="absolute top-full right-0 mt-1.5 w-52 p-2 rounded bg-neutral-900 border border-neutral-700 shadow-lg z-50">
-          <p className="text-[10px] font-semibold text-neutral-200 mb-0.5">{info.label}</p>
-          <p className="text-[9px] text-neutral-400 leading-tight">{info.desc}</p>
+        <div className="absolute top-full right-0 mt-1.5 w-52 p-2 rounded bg-panel-input border border-neutral-700 shadow-lg z-50">
+          <p className="text-[10px] font-semibold text-panel-text-1 mb-0.5">{info.label}</p>
+          <p className="text-[9px] text-panel-text-3 leading-tight">{info.desc}</p>
           <div className="mt-1.5 pt-1.5 border-t border-neutral-800">
             {(["mp4", "mov", "webm"] as const)
               .filter((f) => f !== format)
               .map((f) => (
-                <p key={f} className="text-[9px] text-neutral-500 leading-relaxed">
-                  <span className="text-neutral-400 font-medium">{FORMAT_INFO[f].label}</span>
+                <p key={f} className="text-[9px] text-panel-text-4 leading-relaxed">
+                  <span className="text-panel-text-3 font-medium">{FORMAT_INFO[f].label}</span>
                   {" — "}
                   {FORMAT_INFO[f].desc}
                 </p>
@@ -209,80 +209,97 @@ function FormatExportButton({
   // MOV (ProRes) is a fixed-quality codec — quality selector has no effect.
   const showQuality = format !== "mov";
 
+  const selectCls =
+    "h-7 w-full px-2 text-[11px] bg-panel-input rounded-md text-panel-text-1 outline-none cursor-pointer disabled:opacity-50 hover:bg-panel-hover transition-colors";
+
   return (
-    <div className="flex items-center gap-1 flex-wrap justify-end">
-      <FormatInfoTooltip format={format} />
-      {/* Resolution must remain the leftmost <select> in this row — it
-          carries `rounded-l` for the joined-button look. If you ever hide it
-          (feature-flag, etc.), move `rounded-l` to whichever element ends up
-          leftmost. */}
-      <select
-        value={resolution}
-        onChange={(e) => setResolution(e.target.value as ResolutionPreset | "auto")}
-        disabled={isRendering}
-        className="h-5 px-1 text-[10px] rounded-l bg-neutral-800 border border-neutral-700 text-neutral-300 outline-none disabled:opacity-50"
-      >
-        {SCALE_OPTION_ORDER.map((value) => (
-          <option key={value} value={value} disabled={!scaleApplies(value, compositionDimensions)}>
-            {scaleOptionLabel(value, compositionDimensions)}
-          </option>
-        ))}
-      </select>
-      {showQuality && (
-        <select
-          value={quality}
-          onChange={(e) => {
-            const v = e.target.value as "draft" | "standard" | "high";
-            setQuality(v);
-            persistRenderSettings(format, v, fps);
-          }}
-          disabled={isRendering}
-          title={QUALITY_OPTIONS.find((q) => q.value === quality)?.title}
-          className="h-5 px-1 text-[10px] bg-neutral-800 border border-neutral-700 text-neutral-300 outline-none disabled:opacity-50"
-        >
-          {QUALITY_OPTIONS.map((q) => (
-            <option key={q.value} value={q.value} title={q.title}>
-              {q.label}
-            </option>
-          ))}
-        </select>
-      )}
-      <select
-        value={fps}
-        onChange={(e) => {
-          const v = Number(e.target.value) as 24 | 30 | 60;
-          setFps(v);
-          persistRenderSettings(format, quality, v);
-        }}
-        disabled={isRendering}
-        title="Frames per second"
-        className="h-5 px-1 text-[10px] bg-neutral-800 border border-neutral-700 text-neutral-300 outline-none disabled:opacity-50"
-      >
-        <option value={24}>24fps</option>
-        <option value={30}>30fps</option>
-        <option value={60}>60fps</option>
-      </select>
-      <select
-        value={format}
-        onChange={(e) => {
-          const v = e.target.value as "mp4" | "webm" | "mov";
-          setFormat(v);
-          persistRenderSettings(v, quality, fps);
-        }}
-        disabled={isRendering}
-        className="h-5 px-1 text-[10px] bg-neutral-800 border border-neutral-700 text-neutral-300 outline-none disabled:opacity-50"
-      >
-        <option value="mp4">MP4</option>
-        <option value="mov">MOV</option>
-        <option value="webm">WebM</option>
-      </select>
+    <div className="flex flex-col gap-3">
+      <div className="grid grid-cols-2 gap-2">
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] text-panel-text-4">Format</span>
+            <FormatInfoTooltip format={format} />
+          </div>
+          <select
+            value={format}
+            onChange={(e) => {
+              const v = e.target.value as "mp4" | "webm" | "mov";
+              setFormat(v);
+              persistRenderSettings(v, quality, fps);
+            }}
+            disabled={isRendering}
+            className={selectCls}
+          >
+            <option value="mp4">MP4</option>
+            <option value="mov">MOV (ProRes)</option>
+            <option value="webm">WebM</option>
+          </select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <span className="text-[10px] text-panel-text-4">Resolution</span>
+          <select
+            value={resolution}
+            onChange={(e) => setResolution(e.target.value as ResolutionPreset | "auto")}
+            disabled={isRendering}
+            className={selectCls}
+          >
+            {SCALE_OPTION_ORDER.map((value) => (
+              <option
+                key={value}
+                value={value}
+                disabled={!scaleApplies(value, compositionDimensions)}
+              >
+                {scaleOptionLabel(value, compositionDimensions)}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <span className="text-[10px] text-panel-text-4">Frame rate</span>
+          <select
+            value={fps}
+            onChange={(e) => {
+              const v = Number(e.target.value) as 24 | 30 | 60;
+              setFps(v);
+              persistRenderSettings(format, quality, v);
+            }}
+            disabled={isRendering}
+            className={selectCls}
+          >
+            <option value={24}>24 fps</option>
+            <option value={30}>30 fps</option>
+            <option value={60}>60 fps</option>
+          </select>
+        </div>
+        {showQuality && (
+          <div className="flex flex-col gap-1">
+            <span className="text-[10px] text-panel-text-4">Quality</span>
+            <select
+              value={quality}
+              onChange={(e) => {
+                const v = e.target.value as "draft" | "standard" | "high";
+                setQuality(v);
+                persistRenderSettings(format, v, fps);
+              }}
+              disabled={isRendering}
+              className={selectCls}
+            >
+              {QUALITY_OPTIONS.map((q) => (
+                <option key={q.value} value={q.value}>
+                  {q.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+      </div>
       <button
         onClick={() => {
           trackStudioEvent("render_start", { format, quality, resolution, fps });
           void onStartRender(format, quality, resolution, fps);
         }}
         disabled={isRendering}
-        className="flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-r bg-studio-accent text-[#09090B] hover:brightness-110 transition-colors disabled:opacity-50"
+        className="w-full flex items-center justify-center h-8 text-[11px] font-semibold rounded-md bg-panel-accent text-[#09090B] hover:brightness-110 transition-colors disabled:opacity-50"
       >
         {isRendering ? "Rendering..." : "Export"}
       </button>
@@ -313,23 +330,12 @@ export const RenderQueue = memo(function RenderQueue({
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header — no title, already shown in header button */}
-      <div className="flex items-center justify-end flex-wrap gap-y-1.5 px-3 py-2 border-b border-neutral-800/50 flex-shrink-0">
-        <div className="flex items-center gap-1.5">
-          {completedCount > 0 && (
-            <button
-              onClick={onClearCompleted}
-              className="text-[10px] text-neutral-600 hover:text-neutral-400 transition-colors"
-            >
-              Clear
-            </button>
-          )}
-          <FormatExportButton
-            onStartRender={onStartRender}
-            isRendering={isRendering}
-            compositionDimensions={compositionDimensions}
-          />
-        </div>
+      <div className="px-3 py-3 border-b border-panel-border flex-shrink-0">
+        <FormatExportButton
+          onStartRender={onStartRender}
+          isRendering={isRendering}
+          compositionDimensions={compositionDimensions}
+        />
       </div>
 
       {/* Job list */}
@@ -343,7 +349,7 @@ export const RenderQueue = memo(function RenderQueue({
               fill="none"
               stroke="currentColor"
               strokeWidth="1.5"
-              className="text-neutral-700"
+              className="text-panel-text-5"
             >
               <rect
                 x="2"
@@ -361,17 +367,32 @@ export const RenderQueue = memo(function RenderQueue({
                 strokeLinejoin="round"
               />
             </svg>
-            <p className="text-[10px] text-neutral-600 text-center">No renders yet</p>
+            <p className="text-[10px] text-panel-text-5 text-center">No renders yet</p>
           </div>
         ) : (
-          jobs.map((job) => (
-            <RenderQueueItem
-              key={job.id}
-              job={job}
-              projectId={projectId}
-              onDelete={() => onDelete(job.id)}
-            />
-          ))
+          <div>
+            {completedCount > 0 && (
+              <div className="flex items-center justify-between px-3 py-1.5 border-b border-panel-border">
+                <span className="text-[10px] text-panel-text-4">
+                  {jobs.length} render{jobs.length === 1 ? "" : "s"}
+                </span>
+                <button
+                  onClick={onClearCompleted}
+                  className="text-[10px] text-panel-text-4 hover:text-panel-text-2 transition-colors"
+                >
+                  Clear
+                </button>
+              </div>
+            )}
+            {jobs.map((job) => (
+              <RenderQueueItem
+                key={job.id}
+                job={job}
+                projectId={projectId}
+                onDelete={() => onDelete(job.id)}
+              />
+            ))}
+          </div>
         )}
       </div>
     </div>
