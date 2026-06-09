@@ -252,6 +252,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     groupOverlayItems.every((item) => item.selection.capabilities.canApplyManualOffset);
 
   const handleOverlayMouseDown = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (!allowCanvasMovement) return;
     if (suppressNextOverlayMouseDownRef.current) {
       suppressNextOverlayMouseDownRef.current = false;
       suppressNextBoxMouseDownRef.current = false;
@@ -312,6 +313,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   };
 
   const handleBoxClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (!allowCanvasMovement) return;
     if (gestureRef.current || groupGestureRef.current) return;
     if (suppressNextBoxClickRef.current) {
       suppressNextBoxClickRef.current = false;
@@ -344,7 +346,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       onPointerUp={gestures.onPointerUp}
       onPointerCancel={() => gestures.clearPointerState(selectionRef)}
     >
-      {hoverSelection && hoverRect && (
+      {hoverSelection && hoverRect && compRect.width > 0 && (
         <div
           aria-hidden="true"
           data-dom-edit-hover-box="true"
@@ -374,7 +376,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
           })()}
         />
       )}
-      {hasGroupSelection && groupOverlayItems.length > 1 && groupBounds && (
+      {hasGroupSelection && groupOverlayItems.length > 1 && groupBounds && compRect.width > 0 && (
         <>
           {groupOverlayItems.map((item) => (
             <div
@@ -408,7 +410,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
           />
         </>
       )}
-      {!hasGroupSelection && selection && overlayRect && (
+      {!hasGroupSelection && selection && overlayRect && compRect.width > 0 && (
         <>
           {allowCanvasMovement && selection.capabilities.canApplyManualRotation && (
             <div
@@ -485,6 +487,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
         </>
       )}
       {childRects.length > 0 &&
+        compRect.width > 0 &&
         childRects.map((cr, i) => (
           <div
             key={i}

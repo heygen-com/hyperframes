@@ -113,7 +113,13 @@ export function useDomEditOverlayRects({
 
     const update = () => {
       frame = requestAnimationFrame(update);
-      if (rafPausedRef.current) return;
+      if (rafPausedRef.current) {
+        if (childRectsRef.current.length > 0) {
+          childRectsRef.current = [];
+          setChildRectsState([]);
+        }
+        return;
+      }
 
       const sel = selectionRef.current;
       const iframe = iframeRef.current;
@@ -143,7 +149,8 @@ export function useDomEditOverlayRects({
           resolvedElementRef as ResolvedElementRef,
         );
         if (el && isElementVisibleForOverlay(el)) {
-          setOverlayRect(toOverlayRect(overlayEl, iframe, el));
+          const nextRect = toOverlayRect(overlayEl, iframe, el);
+          setOverlayRect(nextRect);
           const descendants = el.querySelectorAll("*");
           if (descendants.length > 0 && descendants.length <= 60) {
             const nextChildRects: OverlayRect[] = [];

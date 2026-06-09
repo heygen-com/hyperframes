@@ -273,11 +273,25 @@ export function applyStudioPathOffsetDraft(
 ): void {
   promoteInlineForTransform(element);
   writeStudioPathOffsetVars(element, offset, { updateBase: false });
-  element.style.setProperty(
-    "translate",
-    composeTranslateValue(element, `${Math.round(offset.x)}px`, `${Math.round(offset.y)}px`),
-  );
-  stripGsapTranslateFromTransform(element);
+
+  const isGsapAnimated = gsapAnimatesProperty(element, "x", "y");
+  if (isGsapAnimated) {
+    // For GSAP-animated elements: use gsap.set for positioning (the timeline
+    // is paused during drag). Set translate:none explicitly to prevent
+    // double-counting with the transform.
+    element.style.setProperty("translate", "none");
+    const win = element.ownerDocument.defaultView as
+      | (Window & { gsap?: { set: (el: Element, vars: Record<string, unknown>) => void } })
+      | null;
+    win?.gsap?.set(element, { x: offset.x, y: offset.y });
+  } else {
+    // Non-GSAP elements: use CSS translate as before.
+    element.style.setProperty(
+      "translate",
+      composeTranslateValue(element, `${Math.round(offset.x)}px`, `${Math.round(offset.y)}px`),
+    );
+    stripGsapTranslateFromTransform(element);
+  }
 }
 
 /* ── Box size apply ───────────────────────────────────────────────── */
@@ -505,6 +519,10 @@ function queryStudioElements(doc: Document, attr: string): HTMLElement[] {
 
 function reapplyPathOffsets(doc: Document): void {
   for (const el of queryStudioElements(doc, STUDIO_PATH_OFFSET_ATTR)) {
+    // Skip elements where GSAP actively animates position — GSAP bakes the
+    // CSS translate into its transform and sets translate: none every tick.
+    // Stripping/restoring would oscillate against GSAP's rendering.
+    if (gsapAnimatesProperty(el, "x", "y")) continue;
     const x = el.style.getPropertyValue(STUDIO_OFFSET_X_PROP);
     const y = el.style.getPropertyValue(STUDIO_OFFSET_Y_PROP);
     if (x || y) {

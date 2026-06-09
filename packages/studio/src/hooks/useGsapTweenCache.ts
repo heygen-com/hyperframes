@@ -95,7 +95,12 @@ export function getAnimationsForElement(
   if (target.selector) matchers.add(target.selector);
   if (matchers.size === 0) return [];
   return animations.filter((a) =>
-    a.targetSelector.split(",").some((part) => matchers.has(part.trim())),
+    a.targetSelector.split(",").some((part) => {
+      const trimmed = part.trim();
+      if (matchers.has(trimmed)) return true;
+      const lastSimple = trimmed.split(/\s+/).pop();
+      return lastSimple ? matchers.has(lastSimple) : false;
+    }),
   );
 }
 
@@ -251,6 +256,16 @@ export function useGsapAnimationsForElement(
   const elementId = target?.id ?? null;
   useEffect(() => {
     if (!elementId) return;
+
+    // Resolve the element's time range from the player store so we can
+    // convert tween-relative keyframe percentages to clip-relative ones.
+    const { elements } = usePlayerStore.getState();
+    const timelineEl = elements.find(
+      (el) => el.domId === elementId || (el.key ?? el.id) === `${sourceFile}#${elementId}`,
+    );
+    const elStart = timelineEl?.start ?? 0;
+    const elDuration = timelineEl?.duration ?? 4;
+
     const allKeyframes: GsapKeyframesData["keyframes"] = [];
     let format: GsapKeyframesData["format"] = "percentage";
     let ease: string | undefined;
@@ -258,12 +273,29 @@ export function useGsapAnimationsForElement(
     for (const anim of animations) {
       const kf = anim.keyframes ?? synthesizeFlatTweenKeyframes(anim);
       if (!kf) continue;
-      allKeyframes.push(...kf.keyframes);
+      // Convert tween-relative percentages to clip-relative so diamonds
+      // render at the correct position within the timeline clip.
+      const tweenPos = typeof anim.position === "number" ? anim.position : 0;
+      const tweenDur = anim.duration ?? elDuration;
+      for (const k of kf.keyframes) {
+        const absTime = tweenPos + (k.percentage / 100) * tweenDur;
+        const clipPct =
+          elDuration > 0
+            ? Math.round(((absTime - elStart) / elDuration) * 1000) / 10
+            : k.percentage;
+        allKeyframes.push({ ...k, percentage: clipPct });
+      }
       format = kf.format;
       if (kf.ease) ease = kf.ease;
       if (kf.easeEach) easeEach = kf.easeEach;
     }
-    if (allKeyframes.length === 0) return;
+    if (allKeyframes.length === 0) {
+      const { keyframeCache, setKeyframeCache } = usePlayerStore.getState();
+      if (keyframeCache.has(`${sourceFile}#${elementId}`)) {
+        setKeyframeCache(`${sourceFile}#${elementId}`, undefined);
+      }
+      return;
+    }
     const dedupedKeyframes = deduplicateKeyframes(allKeyframes);
     const merged: GsapKeyframesData = {
       format,
@@ -319,17 +351,34 @@ export function usePopulateKeyframeCacheForFile(
           setKeyframeCache(key, undefined);
         }
       }
+      const { elements } = usePlayerStore.getState();
       const mergedByElement = new Map<string, GsapKeyframesData>();
       for (const anim of parsed.animations) {
         const id = extractIdFromSelector(anim.targetSelector);
         if (!id) continue;
         const kfData = anim.keyframes ?? synthesizeFlatTweenKeyframes(anim);
         if (!kfData) continue;
+        // Convert tween-relative percentages to clip-relative.
+        const tweenPos = typeof anim.position === "number" ? anim.position : 0;
+        const tweenDur = anim.duration ?? 1;
+        const timelineEl = elements.find(
+          (el) => el.domId === id || (el.key ?? el.id) === `${sf}#${id}`,
+        );
+        const elStart = timelineEl?.start ?? 0;
+        const elDuration = timelineEl?.duration ?? 4;
+        const clipKeyframes = kfData.keyframes.map((kf) => {
+          const absTime = tweenPos + (kf.percentage / 100) * tweenDur;
+          const clipPct =
+            elDuration > 0
+              ? Math.round(((absTime - elStart) / elDuration) * 1000) / 10
+              : kf.percentage;
+          return { ...kf, percentage: clipPct };
+        });
         const existing = mergedByElement.get(id);
         if (existing) {
-          existing.keyframes = deduplicateKeyframes([...existing.keyframes, ...kfData.keyframes]);
+          existing.keyframes = deduplicateKeyframes([...existing.keyframes, ...clipKeyframes]);
         } else {
-          mergedByElement.set(id, { ...kfData, keyframes: [...kfData.keyframes] });
+          mergedByElement.set(id, { ...kfData, keyframes: clipKeyframes });
         }
       }
       for (const [id, kfData] of mergedByElement) {

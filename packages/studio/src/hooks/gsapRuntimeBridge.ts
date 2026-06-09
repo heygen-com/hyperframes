@@ -10,9 +10,14 @@
  */
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
-import { clearStudioPathOffset } from "../components/editor/manualEdits";
+
 import { usePlayerStore } from "../player/store/playerStore";
 import { readRuntimeKeyframes, scanAllRuntimeKeyframes } from "./gsapRuntimeKeyframes";
+import {
+  absoluteToPercentage,
+  resolveTweenStart,
+  resolveTweenDuration,
+} from "../utils/globalTimeCompiler";
 
 // ── Runtime reads ──────────────────────────────────────────────────────────
 
@@ -91,10 +96,17 @@ function selectorForSelection(selection: DomEditSelection): string | null {
 
 // ── Percentage computation ─────────────────────────────────────────────────
 
-function computeCurrentPercentage(selection: DomEditSelection): number {
+function computeCurrentPercentage(selection: DomEditSelection, animation?: GsapAnimation): number {
+  const currentTime = usePlayerStore.getState().currentTime;
+  if (animation) {
+    const start = resolveTweenStart(animation);
+    const duration = resolveTweenDuration(animation);
+    if (start !== null) {
+      return absoluteToPercentage(currentTime, start, duration);
+    }
+  }
   const elStart = Number.parseFloat(selection.dataAttributes?.start ?? "0") || 0;
   const elDuration = Number.parseFloat(selection.dataAttributes?.duration ?? "1") || 1;
-  const currentTime = usePlayerStore.getState().currentTime;
   return elDuration > 0
     ? Math.max(0, Math.min(100, Math.round(((currentTime - elStart) / elDuration) * 1000) / 10))
     : 0;
@@ -190,6 +202,10 @@ export async function tryGsapDragIntercept(
   const selector = selectorForSelection(selection);
   if (!selector) return false;
 
+  // Keyframe writes at 0%/100% when outside the tween range. Acceptable
+  // trade-off — CSS path must NEVER touch GSAP-targeted elements because
+  // changing the CSS offset corrupts all existing keyframes (baked mismatch).
+
   const gsapPos = readGsapPositionFromIframe(iframe, selector);
   if (!gsapPos) return false;
 
@@ -232,39 +248,144 @@ async function commitGsapPositionFromDrag(
   const rad = (-rotDeg * Math.PI) / 180;
   const cos = Math.cos(rad);
   const sin = Math.sin(rad);
-  const adjX = studioOffset.x * cos - studioOffset.y * sin;
-  const adjY = studioOffset.x * sin + studioOffset.y * cos;
-  const newX = Math.round(gsapPos.x + adjX);
-  const newY = Math.round(gsapPos.y + adjY);
-  const clearOffset = () => clearStudioPathOffset(selection.element);
+  const el = selection.element;
+  const origX = Number.parseFloat(el.getAttribute("data-hf-drag-initial-offset-x") ?? "") || 0;
+  const origY = Number.parseFloat(el.getAttribute("data-hf-drag-initial-offset-y") ?? "") || 0;
+  const deltaX = studioOffset.x - origX;
+  const deltaY = studioOffset.y - origY;
+  const adjX = deltaX * cos - deltaY * sin;
+  const adjY = deltaX * sin + deltaY * cos;
+  // Use the GSAP base captured at drag start — the live gsapPos is corrupted
+  // by the draft's gsap.set() calls during drag.
+  const baseGsapX =
+    Number.parseFloat(el.getAttribute("data-hf-drag-gsap-base-x") ?? "") || gsapPos.x;
+  const baseGsapY =
+    Number.parseFloat(el.getAttribute("data-hf-drag-gsap-base-y") ?? "") || gsapPos.y;
+  const newX = Math.round(baseGsapX + adjX);
+  const newY = Math.round(baseGsapY + adjY);
+  // Restore the CSS offset to pre-drag value so the baked translate stays
+  // consistent with existing keyframes. The drag is captured in the new keyframe.
+  const restoreOffset = () => {
+    el.style.setProperty("--hf-studio-offset-x", `${origX}px`);
+    el.style.setProperty("--hf-studio-offset-y", `${origY}px`);
+    el.removeAttribute("data-hf-drag-initial-offset-x");
+    el.removeAttribute("data-hf-drag-initial-offset-y");
+  };
 
   if (anim.keyframes) {
     const newId = await materializeIfDynamic(anim, iframe, callbacks.commitMutation, selection);
     const effectiveAnim = newId ? { ...anim, id: newId } : anim;
     const runtimeProps = readAllAnimatedProperties(iframe, selector, anim);
-    await commitKeyframedPosition(
+
+    // Check if current time is outside the tween's range — extend the tween
+    // to cover the playhead, remap existing keyframes, then add the new one.
+    const ct = usePlayerStore.getState().currentTime;
+    const ts = resolveTweenStart(effectiveAnim);
+    const td = resolveTweenDuration(effectiveAnim);
+    if (ts !== null && td > 0 && (ct < ts - 0.01 || ct > ts + td + 0.01)) {
+      await extendTweenAndAddKeyframe(
+        selection,
+        effectiveAnim,
+        { ...runtimeProps, x: newX, y: newY },
+        ct,
+        ts,
+        td,
+        callbacks,
+        restoreOffset,
+      );
+    } else {
+      await commitKeyframedPosition(
+        selection,
+        effectiveAnim,
+        { ...runtimeProps, x: newX, y: newY },
+        callbacks,
+        restoreOffset,
+      );
+    }
+  } else if (anim.method === "from" || anim.method === "fromTo") {
+    // from()/fromTo() — convert to keyframes in a single mutation, placing
+    // the dragged position at the 100% (rest) keyframe. A single mutation
+    // avoids the stable-id flip (from→to) that breaks chained mutations.
+    await callbacks.commitMutation(
       selection,
-      effectiveAnim,
-      { ...runtimeProps, x: newX, y: newY },
-      callbacks,
-      clearOffset,
+      {
+        type: "convert-to-keyframes",
+        animationId: anim.id,
+        resolvedFromValues: { x: newX, y: newY },
+      },
+      { label: "Move layer (keyframe rest)", softReload: true, beforeReload: restoreOffset },
     );
-  } else if (anim.method === "from") {
-    await commitFromPosition(selection, anim, studioOffset, callbacks, clearOffset);
-  } else if (anim.method === "fromTo") {
-    await commitFromToPosition(selection, anim, studioOffset, callbacks, clearOffset);
   } else {
-    // Flat to()/set() — convert to keyframes first so the drag position
-    // is captured at the current seek time, not just the tween endpoint.
+    // Flat to()/set() — convert to keyframes then add at current percentage.
     const runtimeProps = readAllAnimatedProperties(iframe, selector, anim);
     await commitFlatViaKeyframes(
       selection,
       anim,
       { ...runtimeProps, x: newX, y: newY },
       callbacks,
-      clearOffset,
+      restoreOffset,
     );
   }
+}
+
+/**
+ * Extend a tween's time range to cover `targetTime`, remap all existing
+ * keyframe percentages to preserve their absolute positions, then add
+ * a new keyframe at the target time.
+ */
+async function extendTweenAndAddKeyframe(
+  selection: DomEditSelection,
+  anim: GsapAnimation,
+  properties: Record<string, number>,
+  targetTime: number,
+  tweenStart: number,
+  tweenDuration: number,
+  callbacks: GsapDragCommitCallbacks,
+  beforeReload?: () => void,
+): Promise<void> {
+  const tweenEnd = tweenStart + tweenDuration;
+  const newStart = Math.min(targetTime, tweenStart);
+  const newEnd = Math.max(targetTime, tweenEnd);
+  const newDuration = Math.max(0.01, newEnd - newStart);
+
+  // Step 1: Remap all existing keyframes to preserve their absolute times
+  // in the new range, then add the new keyframe.
+  const existingKfs = anim.keyframes?.keyframes ?? [];
+  const remappedKfs: Array<{ percentage: number; properties: Record<string, number | string> }> =
+    [];
+  for (const kf of existingKfs) {
+    const absTime = tweenStart + (kf.percentage / 100) * tweenDuration;
+    const newPct = Math.round(((absTime - newStart) / newDuration) * 1000) / 10;
+    remappedKfs.push({ percentage: newPct, properties: { ...kf.properties } });
+  }
+
+  // Add the new keyframe at the target time
+  const targetPct = Math.round(((targetTime - newStart) / newDuration) * 1000) / 10;
+  remappedKfs.push({ percentage: targetPct, properties });
+
+  // Sort and dedupe
+  remappedKfs.sort((a, b) => a.percentage - b.percentage);
+
+  // Step 2: Delete the old tween and create a new one with the extended range
+  // and all remapped keyframes. Using delete + add-with-keyframes as an atomic pair.
+  await callbacks.commitMutation(
+    selection,
+    { type: "delete", animationId: anim.id },
+    { label: "Extend tween range", skipReload: true },
+  );
+
+  const selector = anim.targetSelector;
+  await callbacks.commitMutation(
+    selection,
+    {
+      type: "add-with-keyframes",
+      targetSelector: selector,
+      position: Math.round(newStart * 1000) / 1000,
+      duration: Math.round(newDuration * 1000) / 1000,
+      keyframes: remappedKfs,
+    },
+    { label: `Move layer (extended keyframe)`, softReload: true, beforeReload },
+  );
 }
 
 // fallow-ignore-next-line complexity
@@ -273,9 +394,9 @@ async function commitKeyframedPosition(
   anim: GsapAnimation,
   properties: Record<string, number>,
   callbacks: GsapDragCommitCallbacks,
-  beforeReload: () => void,
+  beforeReload?: () => void,
 ): Promise<void> {
-  const pct = computeCurrentPercentage(selection);
+  const pct = computeCurrentPercentage(selection, anim);
 
   await callbacks.commitMutation(
     selection,
@@ -300,7 +421,7 @@ async function commitFlatViaKeyframes(
   anim: GsapAnimation,
   properties: Record<string, number>,
   callbacks: GsapDragCommitCallbacks,
-  beforeReload: () => void,
+  beforeReload?: () => void,
 ): Promise<void> {
   await callbacks.commitMutation(
     selection,
@@ -308,7 +429,7 @@ async function commitFlatViaKeyframes(
     { label: "Convert to keyframes for drag", skipReload: true },
   );
 
-  const pct = computeCurrentPercentage(selection);
+  const pct = computeCurrentPercentage(selection, anim);
 
   await callbacks.commitMutation(
     selection,
@@ -319,65 +440,6 @@ async function commitFlatViaKeyframes(
       properties,
     },
     { label: `Move layer (keyframe ${pct}%)`, softReload: true, beforeReload },
-  );
-}
-
-async function commitFromPosition(
-  selection: DomEditSelection,
-  anim: GsapAnimation,
-  delta: { x: number; y: number },
-  callbacks: GsapDragCommitCallbacks,
-  beforeReload: () => void,
-): Promise<void> {
-  const fromX = Math.round(Number(anim.properties.x ?? 0) + delta.x);
-  const fromY = Math.round(Number(anim.properties.y ?? 0) + delta.y);
-
-  await callbacks.commitMutation(
-    selection,
-    { type: "update-property", animationId: anim.id, property: "x", value: fromX },
-    { label: "Move layer (GSAP from x)", skipReload: true },
-  );
-  await callbacks.commitMutation(
-    selection,
-    { type: "update-property", animationId: anim.id, property: "y", value: fromY },
-    { label: "Move layer (GSAP from y)", softReload: true, beforeReload },
-  );
-}
-
-// fallow-ignore-next-line complexity
-async function commitFromToPosition(
-  selection: DomEditSelection,
-  anim: GsapAnimation,
-  delta: { x: number; y: number },
-  callbacks: GsapDragCommitCallbacks,
-  beforeReload: () => void,
-): Promise<void> {
-  if (anim.fromProperties) {
-    const fromX = Math.round(Number(anim.fromProperties.x ?? 0) + delta.x);
-    const fromY = Math.round(Number(anim.fromProperties.y ?? 0) + delta.y);
-    await callbacks.commitMutation(
-      selection,
-      { type: "update-from-property", animationId: anim.id, property: "x", value: fromX },
-      { label: "Move (GSAP from x)", skipReload: true },
-    );
-    await callbacks.commitMutation(
-      selection,
-      { type: "update-from-property", animationId: anim.id, property: "y", value: fromY },
-      { label: "Move (GSAP from y)", skipReload: true },
-    );
-  }
-
-  const toX = Math.round(Number(anim.properties.x ?? 0) + delta.x);
-  const toY = Math.round(Number(anim.properties.y ?? 0) + delta.y);
-  await callbacks.commitMutation(
-    selection,
-    { type: "update-property", animationId: anim.id, property: "x", value: toX },
-    { label: "Move (GSAP to x)", skipReload: true },
-  );
-  await callbacks.commitMutation(
-    selection,
-    { type: "update-property", animationId: anim.id, property: "y", value: toY },
-    { label: "Move (GSAP to y)", softReload: true, beforeReload },
   );
 }
 
@@ -461,7 +523,7 @@ export async function tryGsapResizeIntercept(
   }
   if (!anim) return false;
 
-  const pct = computeCurrentPercentage(selection);
+  const pct = computeCurrentPercentage(selection, anim);
 
   if (anim.hasUnresolvedKeyframes || anim.hasUnresolvedSelector) {
     const newId = await materializeIfDynamic(anim, iframe, commitMutation, selection);
@@ -545,7 +607,7 @@ export async function tryGsapRotationIntercept(
     }
   }
 
-  const pct = computeCurrentPercentage(selection);
+  const pct = computeCurrentPercentage(selection, anim);
   const newRotation = Math.round(gsapRotation + angle);
 
   if (anim.hasUnresolvedKeyframes || anim.hasUnresolvedSelector) {

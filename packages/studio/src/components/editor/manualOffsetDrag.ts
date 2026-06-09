@@ -232,6 +232,41 @@ export function createManualOffsetDragMember(input: {
   rect: ManualOffsetDragRect;
 }): ManualOffsetDragMemberResult {
   const initialOffset = readStudioPathOffset(input.element);
+  input.element.setAttribute("data-hf-drag-initial-offset-x", String(initialOffset.x));
+  input.element.setAttribute("data-hf-drag-initial-offset-y", String(initialOffset.y));
+
+  // Capture GSAP's x/y BEFORE any draft applies gsap.set — the commit path
+  // needs the original (uncorrupted) GSAP position to compute the new keyframe value.
+  const win = input.element.ownerDocument.defaultView as
+    | (Window & {
+        gsap?: { getProperty?: (el: Element, prop: string) => number };
+        __timelines?: Record<string, { pause?: () => void; paused?: () => boolean }>;
+      })
+    | null;
+  const gsapX = win?.gsap?.getProperty?.(input.element, "x") || 0;
+  const gsapY = win?.gsap?.getProperty?.(input.element, "y") || 0;
+  input.element.setAttribute("data-hf-drag-gsap-base-x", String(gsapX));
+  input.element.setAttribute("data-hf-drag-gsap-base-y", String(gsapY));
+
+  // Pause GSAP timelines during drag to prevent the tween from overwriting
+  // the draft's gsap.set on every tick. Track which we paused to resume later.
+  if (win?.__timelines) {
+    const paused: string[] = [];
+    for (const [id, tl] of Object.entries(win.__timelines)) {
+      try {
+        if (tl?.pause && !tl.paused?.()) {
+          tl.pause();
+          paused.push(id);
+        }
+      } catch {
+        /* cross-origin guard */
+      }
+    }
+    if (paused.length > 0) {
+      input.element.setAttribute("data-hf-drag-paused-timelines", paused.join(","));
+    }
+  }
+
   const initialPathOffset = captureStudioPathOffset(input.element);
   const gestureToken = beginStudioManualEditGesture(input.element);
   const measured = measureManualOffsetDragScreenToOffsetMatrix(input.element, initialOffset);
@@ -313,11 +348,35 @@ function restoreManualOffsetDragMember(member: ManualOffsetDragMember): void {
 export function restoreManualOffsetDragMembers(members: ManualOffsetDragMember[]): void {
   for (const member of members) {
     restoreManualOffsetDragMember(member);
+    resumeGsapTimelines(member.element);
   }
 }
 
 export function endManualOffsetDragMembers(members: ManualOffsetDragMember[]): void {
   for (const member of members) {
     endStudioManualEditGesture(member.element, member.gestureToken);
+    member.element.removeAttribute("data-hf-drag-initial-offset-x");
+    member.element.removeAttribute("data-hf-drag-initial-offset-y");
+    member.element.removeAttribute("data-hf-drag-gsap-base-x");
+    member.element.removeAttribute("data-hf-drag-gsap-base-y");
+    resumeGsapTimelines(member.element);
   }
+}
+
+function resumeGsapTimelines(element: HTMLElement): void {
+  const ids = element.getAttribute("data-hf-drag-paused-timelines");
+  element.removeAttribute("data-hf-drag-paused-timelines");
+  if (!ids) return;
+  const win = element.ownerDocument.defaultView as
+    | (Window & {
+        __timelines?: Record<string, { pause?: () => void }>;
+        __player?: { seek?: (t: number) => void; getTime?: () => number };
+      })
+    | null;
+  if (!win) return;
+  // Re-seek to the current time to restore the paused timeline's render state.
+  // play() would start playback; pause() already stops. Seek re-renders at the
+  // current position without starting playback.
+  const t = win.__player?.getTime?.() ?? 0;
+  win.__player?.seek?.(t);
 }

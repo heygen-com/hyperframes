@@ -954,33 +954,13 @@ export function initSandboxRuntimeModular(): void {
         state.capturedTimeline.totalTime(seekTime, false);
       }
 
-      // Strip stale CSS offset artifacts from GSAP-targeted elements.
-      // These leak into the HTML when the CSS offset path fires for a
-      // GSAP-animated element (stale cache race). On reload, both the
-      // offset and GSAP transform stack, doubling the visual position.
-      const staleEls = document.querySelectorAll("[data-hf-studio-path-offset]");
-      if (staleEls.length > 0 && state.capturedTimeline.getChildren) {
-        const tweenTargets = new Set<Element>();
-        try {
-          for (const child of state.capturedTimeline.getChildren(true)) {
-            if (typeof child.targets === "function") {
-              for (const t of child.targets()) tweenTargets.add(t);
-            }
-          }
-        } catch {
-          /* timeline access guard */
-        }
-        for (const el of staleEls) {
-          if (!tweenTargets.has(el)) continue;
-          const htmlEl = el as HTMLElement;
-          htmlEl.removeAttribute("data-hf-studio-path-offset");
-          htmlEl.removeAttribute("data-hf-studio-original-translate");
-          htmlEl.removeAttribute("data-hf-studio-original-inline-translate");
-          htmlEl.style.removeProperty("--hf-studio-offset-x");
-          htmlEl.style.removeProperty("--hf-studio-offset-y");
-          htmlEl.style.removeProperty("translate");
-        }
-      }
+      // GSAP bakes the CSS `translate` into style.transform on seek.
+      // The Studio seek wrapper (installStudioManualEditSeekReapply) calls
+      // reapplyPositionEditsAfterSeek to un-bake it. Call the apply hook
+      // directly here as well, since the wrapper may not be installed yet
+      // during initial rebind (timing race on first load / soft reload).
+      const applyFn = (window as Record<string, unknown>).__hfStudioManualEditsApply;
+      if (typeof applyFn === "function") applyFn();
     }
     if (resolution.diagnostics) {
       postRuntimeMessage({
@@ -1002,24 +982,11 @@ export function initSandboxRuntimeModular(): void {
     });
     // Stamp data-start / data-duration on GSAP-targeted elements that lack
     // them so the Studio timeline can discover individual animated elements.
-    // Skip elements whose ancestor already carries timing — stamping them
-    // would override the parent's clip visibility and cause preview/render
-    // parity drift.
     {
       const rootComp = resolveRootCompositionElement();
       const rootDuration = boundDuration > 0 ? boundDuration : 0;
       const dur = String(rootDuration > 0 ? rootDuration : 1);
       const seen = new Set<Element>();
-
-      const hasTimedAncestor = (el: HTMLElement): boolean => {
-        let cursor = el.parentElement;
-        while (cursor) {
-          if (cursor.hasAttribute("data-start")) return true;
-          if (cursor === rootComp) return false;
-          cursor = cursor.parentElement;
-        }
-        return false;
-      };
 
       // Stamp GSAP-targeted elements
       if (state.capturedTimeline.getChildren) {
@@ -1030,7 +997,6 @@ export function initSandboxRuntimeModular(): void {
               if (!(target instanceof HTMLElement)) continue;
               if (target === rootComp) continue;
               if (target.hasAttribute("data-start")) continue;
-              if (hasTimedAncestor(target)) continue;
               if (seen.has(target)) continue;
               seen.add(target);
               target.setAttribute("data-start", "0");
@@ -1050,7 +1016,6 @@ export function initSandboxRuntimeModular(): void {
           if (!(el instanceof HTMLElement)) continue;
           if (el === rootComp) continue;
           if (el.hasAttribute("data-start")) continue;
-          if (hasTimedAncestor(el)) continue;
           if (seen.has(el)) continue;
           if (el.tagName === "SCRIPT" || el.tagName === "STYLE" || el.tagName === "LINK") continue;
           seen.add(el);

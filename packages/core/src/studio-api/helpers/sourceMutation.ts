@@ -230,7 +230,11 @@ export function patchElementInHtml(
         }
         break;
       case "text-content":
-        if (op.value != null) htmlEl.textContent = op.value;
+        if (op.value != null) {
+          const inner = htmlEl.children.length === 1 ? htmlEl.firstElementChild : null;
+          const textTarget = inner ? (inner as unknown as HTMLElement) : htmlEl;
+          textTarget.textContent = op.value;
+        }
         break;
     }
   }
@@ -254,6 +258,35 @@ export interface SplitElementResult {
   newId: string | null;
 }
 
+function resolveElementTiming(el: Element): {
+  start: number;
+  duration: number;
+  usesDataEnd: boolean;
+} {
+  const start = parseFloat(el.getAttribute("data-start") ?? "0") || 0;
+  const usesDataEnd = el.hasAttribute("data-end");
+  const duration = usesDataEnd
+    ? parseFloat(el.getAttribute("data-end") ?? "") - start || 0
+    : parseFloat(el.getAttribute("data-duration") ?? "0") || 0;
+  return { start, duration, usesDataEnd };
+}
+
+function setElementDuration(
+  el: Element,
+  start: number,
+  duration: number,
+  usesDataEnd: boolean,
+): void {
+  if (usesDataEnd) {
+    const endTime = String(Math.round((start + duration) * 1000) / 1000);
+    el.setAttribute("data-end", endTime);
+    el.removeAttribute("data-duration");
+  } else {
+    el.setAttribute("data-duration", String(Math.round(duration * 1000) / 1000));
+    el.removeAttribute("data-end");
+  }
+}
+
 export function splitElementInHtml(
   source: string,
   target: SourceMutationTarget,
@@ -264,8 +297,7 @@ export function splitElementInHtml(
   const el = findTargetElement(document, target);
   if (!el || !isHTMLElement(el)) return { html: source, matched: false, newId: null };
 
-  const start = parseFloat(el.getAttribute("data-start") ?? "0") || 0;
-  const duration = parseFloat(el.getAttribute("data-duration") ?? "0") || 0;
+  const { start, duration, usesDataEnd } = resolveElementTiming(el);
   if (duration <= 0 || splitTime <= start || splitTime >= start + duration) {
     return { html: source, matched: false, newId: null };
   }
@@ -277,7 +309,7 @@ export function splitElementInHtml(
   clone.setAttribute("id", newId);
   clone.removeAttribute("data-hf-id");
   clone.setAttribute("data-start", String(Math.round(splitTime * 1000) / 1000));
-  clone.setAttribute("data-duration", String(Math.round(secondDuration * 1000) / 1000));
+  setElementDuration(clone, splitTime, secondDuration, usesDataEnd);
 
   // Adjust media trim offset for the second half
   const playbackStartAttr = el.hasAttribute("data-playback-start")
@@ -287,7 +319,8 @@ export function splitElementInHtml(
       : null;
   if (playbackStartAttr) {
     const currentTrim = parseFloat(el.getAttribute(playbackStartAttr) ?? "0") || 0;
-    const rate = parseFloat(el.getAttribute("data-playback-rate") ?? "1") || 1;
+    const rateRaw = parseFloat(el.getAttribute("data-playback-rate") ?? "");
+    const rate = Number.isFinite(rateRaw) ? rateRaw : 1;
     clone.setAttribute(
       playbackStartAttr,
       String(Math.round((currentTrim + firstDuration * rate) * 1000) / 1000),
@@ -295,7 +328,7 @@ export function splitElementInHtml(
   }
 
   // Trim the original element's duration
-  el.setAttribute("data-duration", String(Math.round(firstDuration * 1000) / 1000));
+  setElementDuration(el, start, firstDuration, usesDataEnd);
 
   // Insert clone after original
   if (el.nextSibling) {

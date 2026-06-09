@@ -78,17 +78,34 @@ function updateKeyframeCacheFromParsed(
   selectionId: string | undefined,
   mutation: Record<string, unknown>,
 ): void {
-  const { setKeyframeCache } = usePlayerStore.getState();
+  const { setKeyframeCache, elements } = usePlayerStore.getState();
   const idsWithKeyframes = new Set<string>();
   const merged = new Map<string, KeyframeCacheEntry>();
   for (const anim of animations) {
     const id = anim.targetSelector.match(/^#([\w-]+)/)?.[1];
     if (!id || !anim.keyframes) continue;
     idsWithKeyframes.add(id);
+
+    // Convert tween-relative percentages to clip-relative so diamonds
+    // render at the correct position within the timeline clip.
+    const tweenPos = typeof anim.position === "number" ? anim.position : 0;
+    const tweenDur = anim.duration ?? 1;
+    const timelineEl = elements.find(
+      (el) => el.domId === id || (el.key ?? el.id) === `${targetPath}#${id}`,
+    );
+    const elStart = timelineEl?.start ?? 0;
+    const elDuration = timelineEl?.duration ?? 4;
+    const clipKeyframes = anim.keyframes.keyframes.map((kf) => {
+      const absTime = tweenPos + (kf.percentage / 100) * tweenDur;
+      const clipPct =
+        elDuration > 0 ? Math.round(((absTime - elStart) / elDuration) * 1000) / 10 : kf.percentage;
+      return { ...kf, percentage: clipPct };
+    });
+
     const existing = merged.get(id);
     if (existing) {
       const byPct = new Map<number, (typeof existing.keyframes)[0]>();
-      for (const kf of [...existing.keyframes, ...anim.keyframes.keyframes]) {
+      for (const kf of [...existing.keyframes, ...clipKeyframes]) {
         const prev = byPct.get(kf.percentage);
         if (prev) {
           prev.properties = { ...prev.properties, ...kf.properties };
@@ -99,11 +116,12 @@ function updateKeyframeCacheFromParsed(
       }
       existing.keyframes = Array.from(byPct.values()).sort((a, b) => a.percentage - b.percentage);
     } else {
-      merged.set(id, { ...anim.keyframes, keyframes: [...anim.keyframes.keyframes] });
+      merged.set(id, { ...anim.keyframes, keyframes: clipKeyframes });
     }
   }
   for (const [id, entry] of merged) {
     setKeyframeCache(`${targetPath}#${id}`, entry);
+    setKeyframeCache(id, entry);
     if (targetPath !== "index.html") setKeyframeCache(`index.html#${id}`, entry);
   }
   const targetId =
@@ -201,12 +219,14 @@ export function useGsapScriptCommits({
         });
       }
 
-      onCacheInvalidate();
-
       if (result.after != null) {
         onFileContentChanged?.(targetPath, result.after);
       }
 
+      if (options.skipReload) return;
+
+      // Write the keyframe cache immediately from the parsed response
+      // (synchronous — the timeline diamonds appear on the next render).
       if (result.parsed?.animations) {
         updateKeyframeCacheFromParsed(
           result.parsed.animations,
@@ -215,8 +235,6 @@ export function useGsapScriptCommits({
           mutation,
         );
       }
-
-      if (options.skipReload) return;
 
       options.beforeReload?.();
 
@@ -227,6 +245,11 @@ export function useGsapScriptCommits({
       } else {
         reloadPreview();
       }
+
+      // Bump the cache version AFTER reload so the async re-fetch in
+      // useGsapAnimationsForElement reads the post-reload script, not
+      // the stale pre-reload version that would overwrite fresh data.
+      onCacheInvalidate();
     },
     [
       projectIdRef,
@@ -468,6 +491,21 @@ export function useGsapScriptCommits({
     },
     [commitMutation, activeCompPath],
   );
+  const addKeyframeBatch = useCallback(
+    (
+      selection: DomEditSelection,
+      animationId: string,
+      percentage: number,
+      properties: Record<string, number | string>,
+    ) => {
+      return commitMutation(
+        selection,
+        { type: "add-keyframe", animationId, percentage, properties },
+        { label: `Add keyframe at ${percentage}%`, softReload: true },
+      );
+    },
+    [commitMutation],
+  );
   const removeKeyframe = useCallback(
     (selection: DomEditSelection, animationId: string, percentage: number) => {
       const sf = selection.sourceFile || activeCompPath || "index.html";
@@ -500,7 +538,7 @@ export function useGsapScriptCommits({
       animationId: string,
       resolvedFromValues?: Record<string, number | string>,
     ) => {
-      void commitMutation(
+      return commitMutation(
         selection,
         { type: "convert-to-keyframes", animationId, resolvedFromValues },
         { label: "Convert to keyframes" },
@@ -590,6 +628,7 @@ export function useGsapScriptCommits({
     addGsapFromProperty,
     removeGsapFromProperty,
     addKeyframe,
+    addKeyframeBatch,
     removeKeyframe,
     convertToKeyframes,
     removeAllKeyframes,
