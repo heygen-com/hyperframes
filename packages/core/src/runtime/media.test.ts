@@ -131,6 +131,28 @@ describe("refreshRuntimeMediaCache", () => {
     expect(result.mediaClips[0].duration).toBe(20);
   });
 
+  it("resolveDurationSeconds must account for playbackRate (regression: clip clipped early)", () => {
+    const el = createVideo({ "data-start": "0", "data-duration": "10" });
+    Object.defineProperty(el, "defaultPlaybackRate", { value: 0.5, writable: true });
+    Object.defineProperty(el, "duration", { value: 5, writable: true });
+    const result = refreshRuntimeMediaCache({
+      resolveDurationSeconds: (element) => {
+        const mediaStart =
+          Number.parseFloat(element.dataset.playbackStart ?? element.dataset.mediaStart ?? "0") ||
+          0;
+        const rawRate = element.defaultPlaybackRate;
+        const playbackRate =
+          Number.isFinite(rawRate) && rawRate > 0 ? Math.max(0.1, Math.min(5, rawRate)) : 1;
+        return Number.isFinite(element.duration) && element.duration > mediaStart
+          ? Math.max(0, (element.duration - mediaStart) / playbackRate)
+          : null;
+      },
+    });
+    // 5s source at 0.5x = 10s effective; should NOT be capped to 5s
+    expect(result.mediaClips[0].duration).toBe(10);
+    expect(result.mediaClips[0].end).toBe(10);
+  });
+
   it("reads native loop attribute", () => {
     createVideo({ "data-start": "0", "data-duration": "15", loop: "" });
     const result = refreshRuntimeMediaCache();
