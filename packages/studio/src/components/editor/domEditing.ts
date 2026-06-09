@@ -35,6 +35,7 @@ export {
   getDomEditNonEditableReason,
   getDomEditTargetKey,
   isTextEditableSelection,
+  readHfId,
   refreshDomEditSelection,
   resolveDomEditCapabilities,
   resolveDomEditSelection,

@@ -26,14 +26,21 @@ import {
 
 // Re-export helpers that were previously public from this module so that
 // existing import sites (hook + tests) don't need to change.
+// fallow-ignore-next-line unused-exports
 export {
   readTimelineDurationFromDocument,
+  // fallow-ignore-next-line unused-exports
   resolveMediaElement,
+  // fallow-ignore-next-line unused-exports
   applyMediaMetadataFromElement,
   getTimelineElementSelector,
+  // fallow-ignore-next-line unused-exports
   getTimelineElementSourceFile,
+  // fallow-ignore-next-line unused-exports
   getTimelineElementSelectorIndex,
+  // fallow-ignore-next-line unused-exports
   buildTimelineElementIdentity,
+  // fallow-ignore-next-line unused-exports
   getTimelineElementIdentity,
   findTimelineDomNodeForClip,
 } from "./timelineElementHelpers";
@@ -75,7 +82,7 @@ export function createTimelineElementFromManifestClip(params: {
   let hfId: string | undefined;
   if (hostEl) {
     domId = hostEl.id || undefined;
-    hfId = hostEl.getAttribute("data-hf-id") ?? undefined;
+    hfId = hostEl.getAttribute("data-hf-id") || undefined;
     selector = getTimelineElementSelector(hostEl);
     selectorIndex =
       doc && selector ? getTimelineElementSelectorIndex(doc, hostEl, selector) : undefined;
@@ -130,7 +137,7 @@ export function createTimelineElementFromManifestClip(params: {
     }
     if (hostEl) {
       entry.domId = hostEl.id || undefined;
-      entry.hfId = hostEl.getAttribute("data-hf-id") ?? undefined;
+      entry.hfId = hostEl.getAttribute("data-hf-id") || undefined;
       entry.selector = getTimelineElementSelector(hostEl);
       entry.selectorIndex =
         doc && entry.selector
@@ -191,7 +198,7 @@ export function createImplicitTimelineLayersFromDOM(
 
     layers.push({
       domId: child.id || undefined,
-      hfId: child.getAttribute("data-hf-id") ?? undefined,
+      hfId: child.getAttribute("data-hf-id") || undefined,
       duration: rootDuration,
       id: identity.id,
       key: identity.key,
@@ -267,7 +274,7 @@ export function parseTimelineFromDOM(doc: Document, rootDuration: number): Timel
       duration: dur,
       track: isNaN(track) ? 0 : track,
       domId: el.id || undefined,
-      hfId: el.getAttribute("data-hf-id") ?? undefined,
+      hfId: el.getAttribute("data-hf-id") || undefined,
       selector,
       selectorIndex,
       sourceFile,

@@ -92,6 +92,8 @@ export interface PatchOperation {
   value: string | null;
 }
 
+// Runtime validation for hfId lives in findTagByTarget → execDataAttrPattern (CSS attr-value
+// escape). This type is documentation only; the server's MutationTarget mirrors this shape.
 export interface PatchTarget {
   id?: string | null;
   hfId?: string;

@@ -173,6 +173,7 @@ export function buildDefaultDomEditTextField(base?: Partial<DomEditTextField>): 
 // fallow-ignore-next-line complexity
 export function resolveDomEditCapabilities(args: {
   selector?: string;
+  hfId?: string;
   tagName?: string;
   className?: string;
   inlineStyles: Record<string, string>;
@@ -182,7 +183,7 @@ export function resolveDomEditCapabilities(args: {
   isMasterView: boolean;
   existsInSource?: boolean;
 }): DomEditCapabilities {
-  if (!args.selector || args.isInsideLockedComposition) {
+  if ((!args.selector && !args.hfId) || args.isInsideLockedComposition) {
     return {
       canSelect: !args.isInsideLockedComposition,
       canEditStyles: false,
@@ -289,7 +290,7 @@ export function buildElementLabel(el: HTMLElement): string {
 async function probeSourceElement(
   projectId: string,
   sourceFile: string,
-  target: { id?: string; selector?: string; selectorIndex?: number },
+  target: { id?: string; hfId?: string; selector?: string; selectorIndex?: number },
 ): Promise<boolean> {
   try {
     const response = await fetch(
@@ -321,7 +322,8 @@ export async function resolveDomEditSelection(
   let current: HTMLElement | null = getSelectionCandidate(startEl, options);
   while (current && current !== doc.body && current !== doc.documentElement) {
     const selector = buildStableSelector(current);
-    if (!selector) {
+    const hfId = readHfId(current);
+    if (!selector && !hfId) {
       current = current.parentElement;
       continue;
     }
@@ -330,13 +332,9 @@ export async function resolveDomEditSelection(
       current,
       options.activeCompositionPath,
     );
-    const selectorIndex = getSelectorIndex(
-      doc,
-      current,
-      selector,
-      sourceFile,
-      options.activeCompositionPath,
-    );
+    const selectorIndex = selector
+      ? getSelectorIndex(doc, current, selector, sourceFile, options.activeCompositionPath)
+      : undefined;
     const compositionSrc =
       current.getAttribute("data-composition-src") ??
       current.getAttribute("data-composition-file") ??
@@ -346,15 +344,18 @@ export async function resolveDomEditSelection(
     const textFields = collectDomEditTextFields(current);
     const isInsideLocked = Boolean(findClosestByAttribute(current, ["data-timeline-locked"]));
     let existsInSource: boolean | undefined;
-    if (!options.skipSourceProbe && options.projectId && (current.id || selector)) {
-      const probeTarget: { id?: string; selector?: string; selectorIndex?: number } = {};
+    if (!options.skipSourceProbe && options.projectId && (current.id || selector || hfId)) {
+      const probeTarget: { id?: string; hfId?: string; selector?: string; selectorIndex?: number } =
+        {};
       if (current.id) probeTarget.id = current.id;
+      if (hfId) probeTarget.hfId = hfId;
       if (selector) probeTarget.selector = selector;
       if (selectorIndex != null) probeTarget.selectorIndex = selectorIndex;
       existsInSource = await probeSourceElement(options.projectId, sourceFile, probeTarget);
     }
     const capabilities = resolveDomEditCapabilities({
       selector,
+      hfId,
       tagName: current.tagName.toLowerCase(),
       className: current.className,
       inlineStyles,
@@ -369,7 +370,7 @@ export async function resolveDomEditSelection(
     return {
       element: current,
       id: current.id || undefined,
-      hfId: current.getAttribute("data-hf-id") ?? undefined,
+      hfId,
       selector,
       selectorIndex,
       sourceFile,
@@ -452,6 +453,7 @@ export function collectDomEditLayerItems(
   if (!root) return [];
 
   const items: DomEditLayerItem[] = [];
+  // fallow-ignore-next-line complexity
   const visit = (el: HTMLElement, depth: number) => {
     if (items.length >= maxItems) return;
 
@@ -465,6 +467,7 @@ export function collectDomEditLayerItems(
         depth,
         childCount: getDirectLayerChildren(el, options).length,
         id: target.id ?? undefined,
+        hfId: target.hfId ?? undefined,
         selector: target.selector ?? undefined,
         selectorIndex: target.selectorIndex,
         sourceFile: target.sourceFile,
@@ -536,10 +539,11 @@ export function getDomEditNonEditableReason(
 }
 
 export function getDomEditTargetKey(
-  selection: Pick<DomEditSelection, "id" | "selector" | "selectorIndex" | "sourceFile">,
+  selection: Pick<DomEditSelection, "id" | "hfId" | "selector" | "selectorIndex" | "sourceFile">,
 ): string {
   return [
     selection.sourceFile || "index.html",
+    selection.hfId ?? "",
     selection.id ?? "",
     selection.selector ?? "",
     selection.selectorIndex ?? "",
@@ -555,6 +559,10 @@ export function isTextEditableSelection(selection: DomEditSelection): boolean {
 }
 
 // buildElementAgentPrompt is in domEditingAgentPrompt.ts
+
+export function readHfId(element: Element): string | undefined {
+  return element.getAttribute("data-hf-id")?.trim() || undefined;
+}
 
 export function buildDomEditPatchTarget(
   selection: Pick<DomEditSelection, "id" | "hfId" | "selector" | "selectorIndex">,

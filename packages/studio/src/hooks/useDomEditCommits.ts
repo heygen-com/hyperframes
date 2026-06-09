@@ -8,6 +8,7 @@ import { primaryFontFamilyValue } from "../utils/studioFontHelpers";
 import {
   buildDomEditPatchTarget,
   getDomEditTargetKey,
+  readHfId,
   type DomEditSelection,
 } from "../components/editor/domEditing";
 import {
@@ -533,7 +534,7 @@ export function useDomEditCommits({
       }>,
     ) => {
       if (entries.length === 0) return;
-      const coalesceKey = `z-reorder:${entries.map((e) => e.id ?? e.selector ?? "el").join(":")}`;
+      const coalesceKey = `z-reorder:${entries.map((e) => e.id ?? e.selector ?? e.element.getAttribute("data-hf-id") ?? "el").join(":")}`;
       for (let i = 0; i < entries.length; i++) {
         const entry = entries[i];
         entry.element.style.zIndex = String(entry.zIndex);
@@ -553,7 +554,7 @@ export function useDomEditCommits({
           {
             element: entry.element,
             id: entry.id ?? null,
-            hfId: entry.element.getAttribute("data-hf-id") ?? undefined,
+            hfId: readHfId(entry.element),
             selector: entry.selector,
             selectorIndex: entry.selectorIndex,
             sourceFile: entry.sourceFile,
