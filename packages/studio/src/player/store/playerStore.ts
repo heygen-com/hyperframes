@@ -70,6 +70,23 @@ interface PlayerState {
   toggleSelectedKeyframe: (key: string) => void;
   clearSelectedKeyframes: () => void;
 
+  /** Multi-select: additional selected elements beyond selectedElementId. */
+  selectedElementIds: Set<string>;
+  toggleSelectedElementId: (id: string) => void;
+  clearSelectedElementIds: () => void;
+
+  /** Clipboard for keyframe copy/paste — stores keyframes with relative times. */
+  keyframeClipboard: Array<{
+    relativeTime: number;
+    properties: Record<string, number | string>;
+    ease?: string;
+  }> | null;
+  setKeyframeClipboard: (data: PlayerState["keyframeClipboard"]) => void;
+
+  /** Elements with expanded property rows in the timeline. */
+  expandedTimelineElements: Set<string>;
+  toggleExpandedElement: (id: string) => void;
+
   /** Keyframe data per element id, populated from parsed GSAP animations. */
   keyframeCache: Map<string, KeyframeCacheEntry>;
   setKeyframeCache: (elementId: string, data: KeyframeCacheEntry | undefined) => void;
@@ -139,6 +156,28 @@ export const usePlayerStore = create<PlayerState>((set) => ({
       return { selectedKeyframes: next };
     }),
   clearSelectedKeyframes: () => set({ selectedKeyframes: new Set() }),
+
+  keyframeClipboard: null,
+  setKeyframeClipboard: (data) => set({ keyframeClipboard: data }),
+
+  selectedElementIds: new Set<string>(),
+  toggleSelectedElementId: (id: string) =>
+    set((s) => {
+      const next = new Set(s.selectedElementIds);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return { selectedElementIds: next };
+    }),
+  clearSelectedElementIds: () => set({ selectedElementIds: new Set() }),
+
+  expandedTimelineElements: new Set<string>(),
+  toggleExpandedElement: (id: string) =>
+    set((s) => {
+      const next = new Set(s.expandedTimelineElements);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return { expandedTimelineElements: next };
+    }),
 
   keyframeCache: new Map(),
   setKeyframeCache: (elementId, data) =>
@@ -212,6 +251,8 @@ export const usePlayerStore = create<PlayerState>((set) => ({
       inPoint: null,
       outPoint: null,
       selectedKeyframes: new Set(),
+      selectedElementIds: new Set(),
+      expandedTimelineElements: new Set(),
       keyframeCache: new Map(),
     }),
 }));
