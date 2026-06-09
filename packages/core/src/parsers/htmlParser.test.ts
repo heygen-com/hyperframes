@@ -17,8 +17,8 @@ describe("parseHtml", () => {
       <html>
       <body>
         <div id="stage">
-          <div id="text1" data-hf-id="text1" data-start="0" data-end="5" data-name="Title"><div>Hello World</div></div>
-          <div id="text2" data-hf-id="text2" data-start="2" data-end="7" data-name="Subtitle"><div>Sub</div></div>
+          <div id="text1" data-start="0" data-end="5" data-name="Title"><div>Hello World</div></div>
+          <div id="text2" data-start="2" data-end="7" data-name="Subtitle"><div>Sub</div></div>
         </div>
       </body>
       </html>
@@ -42,7 +42,7 @@ describe("parseHtml", () => {
       <html>
       <body>
         <div id="stage">
-          <div id="comp1" data-hf-id="comp1" data-start="0" data-end="10" data-type="composition" data-composition-id="abc123">
+          <div id="comp1" data-start="0" data-end="10" data-type="composition" data-composition-id="abc123">
             <iframe src="/compositions/abc123"></iframe>
           </div>
         </div>
@@ -65,9 +65,9 @@ describe("parseHtml", () => {
       <html>
       <body>
         <div id="stage">
-          <video id="vid1" data-hf-id="vid1" data-start="0" data-end="10" src="video.mp4" data-name="My Video"></video>
-          <audio id="aud1" data-hf-id="aud1" data-start="0" data-end="5" src="music.mp3" data-name="Music"></audio>
-          <img id="img1" data-hf-id="img1" data-start="2" data-end="8" src="photo.jpg" data-name="Photo" />
+          <video id="vid1" data-start="0" data-end="10" src="video.mp4" data-name="My Video"></video>
+          <audio id="aud1" data-start="0" data-end="5" src="music.mp3" data-name="Music"></audio>
+          <img id="img1" data-start="2" data-end="8" src="photo.jpg" data-name="Photo" />
         </div>
       </body>
       </html>
@@ -391,7 +391,7 @@ describe("parseHtml", () => {
       <html>
       <body>
         <div id="stage">
-          <div id="text1" data-hf-id="text1" data-start="0" data-end="5" data-keyframes='${keyframes}'><div>Hello</div></div>
+          <div id="text1" data-start="0" data-end="5" data-keyframes='${keyframes}'><div>Hello</div></div>
         </div>
       </body>
       </html>
