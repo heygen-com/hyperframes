@@ -328,3 +328,36 @@ describe("registerPreviewRoutes", () => {
     expect(signature).toMatch(/^[a-f0-9]{24}$/);
   });
 });
+
+describe("hf-id surfacing in preview route", () => {
+  it("serves HTML with data-hf-id on body elements (R7 write-back)", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html><html><head></head><body><div class="card"><p>text</p></div></body></html>`,
+    );
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+    const res = await app.request("http://localhost/projects/demo/preview");
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    const ids = html.match(/data-hf-id="hf-[a-z0-9]{4}"/g);
+    // div and p both tagged
+    expect(ids?.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("writes data-hf-id back to disk on first serve", async () => {
+    const { readFileSync } = await import("node:fs");
+    const projectDir = createProjectDir();
+    const indexPath = join(projectDir, "index.html");
+    writeFileSync(
+      indexPath,
+      `<!doctype html><html><head></head><body><div>hello</div></body></html>`,
+    );
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+    await app.request("http://localhost/projects/demo/preview");
+    const onDisk = readFileSync(indexPath, "utf-8");
+    expect(onDisk).toContain('data-hf-id="hf-');
+  });
+});
