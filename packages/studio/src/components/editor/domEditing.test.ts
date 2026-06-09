@@ -1156,3 +1156,46 @@ describe("patch builders and prompt builder", () => {
     ).not.toThrow();
   });
 });
+
+describe("hfId — find, key, capabilities (R7 fixes)", () => {
+  it("getDomEditTargetKey keeps two hfId-only elements distinct", () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const a = getDomEditTargetKey({ sourceFile: "index.html", hfId: "hf-aaa" } as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const b = getDomEditTargetKey({ sourceFile: "index.html", hfId: "hf-bbb" } as any);
+    expect(a).not.toBe(b);
+  });
+
+  it("findElementForSelection finds element by data-hf-id when no id or selector", () => {
+    const doc = createDocument(`
+      <div data-composition-id="root">
+        <div data-hf-id="hf-xyz789" class="clip" style="position:absolute;left:0;top:0;width:100px;height:100px;"></div>
+      </div>
+    `);
+    const el = doc.querySelector('[data-hf-id="hf-xyz789"]') as HTMLElement;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const found = findElementForSelection(doc, { hfId: "hf-xyz789" } as any);
+    expect(found).toBe(el);
+  });
+
+  it("resolveDomEditCapabilities enables editing for hfId-only element (no CSS selector)", () => {
+    const result = resolveDomEditCapabilities({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      hfId: "hf-abc" as any,
+      selector: undefined,
+      inlineStyles: { left: "10px", top: "20px", width: "100px", height: "50px" },
+      computedStyles: {
+        position: "absolute",
+        left: "10px",
+        top: "20px",
+        width: "100px",
+        height: "50px",
+      },
+      isCompositionHost: false,
+      isInsideLockedComposition: false,
+      isMasterView: false,
+    });
+    expect(result.canSelect).toBe(true);
+    expect(result.canMove).toBe(true);
+  });
+});

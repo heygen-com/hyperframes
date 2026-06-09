@@ -100,9 +100,9 @@ describe("ensureHfIds", () => {
 });
 
 // Lock the edit-lifecycle behavior. These pin BOTH the guarantee that holds
-// once ids are persisted to source (pinning) AND the two limitations that hold
-// while they are not (design §3 write-back is not yet wired — see
-// notes/r1-stable-hf-ids-design.md "Implementation status & verified lifecycle gap").
+// once ids are persisted to source (pinning) AND the behavior for truly unpinned
+// HTML (no data-hf-id in the input — unreachable in production after write-back
+// landed in R7 Task 1-2, but still the correct contract for that path).
 describe("ensureHfIds — edit lifecycle (R1 stability)", () => {
   it("pinned id survives a content edit (the §3 write-back guarantee)", () => {
     // Element already carries data-hf-id in source (as it would after write-back).
@@ -110,25 +110,24 @@ describe("ensureHfIds — edit lifecycle (R1 stability)", () => {
     expect(idOf(ensureHfIds(edited), "p.body")).toBe("hf-abcd");
   });
 
-  it("KNOWN LIMITATION: an unpinned id changes when the element's text is edited", () => {
-    // No data-hf-id in source → every parse re-mints from content. Editing the
-    // text changes the hash, so the id drifts. This is the "pure-hash" mode the
-    // design rejected; flip this assertion to .toBe once write-back lands.
+  it("unpinned id drifts when element text is edited (pure-hash, unreachable after write-back)", () => {
+    // No data-hf-id in source → every parse re-mints from content. This path is
+    // unreachable in production after R7 write-back: the first serve pins the id.
     const before = idOf(ensureHfIds(doc(`<p class="body">Hello</p>`)), "p.body");
     const after = idOf(ensureHfIds(doc(`<p class="body">Hello world</p>`)), "p.body");
     expect(before).not.toBe(after);
   });
 
-  it("KNOWN LIMITATION: an unpinned id changes when an attribute is edited", () => {
+  it("unpinned id drifts when attribute is edited (pure-hash, unreachable after write-back)", () => {
     const before = idOf(ensureHfIds(doc(`<p class="body">x</p>`)), "p");
     const after = idOf(ensureHfIds(doc(`<p class="lead">x</p>`)), "p");
     expect(before).not.toBe(after);
   });
 
-  it("KNOWN LIMITATION: identical-content siblings have no content-stable id for the 2nd occurrence", () => {
+  it("identical-content siblings: second occurrence gets a position-derived dedup id", () => {
     // Insertion stability holds for DISTINCT content (covered elsewhere), but a
-    // second identical sibling collides and gets a position-derived dedup id —
-    // there is no content-stable handle for it. The first keeps the base id.
+    // second identical sibling collides and gets a position-derived dedup id.
+    // First element keeps the base (content-derived) id; documented in project_hfid_dedup_tiebreak.
     const single = idOf(ensureHfIds(doc(`<p class="x">same</p>`)), "p.x");
     const pair = ids(ensureHfIds(doc(`<p class="x">same</p><p class="x">same</p>`)));
     expect(pair[0]).toBe(single); // first identical element: stable, content-derived

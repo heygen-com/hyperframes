@@ -285,6 +285,7 @@ export function useGsapScriptCommits({
             body: JSON.stringify({
               target: {
                 id: selection.id,
+                hfId: selection.hfId,
                 selector: selection.selector,
                 selectorIndex: selection.selectorIndex,
               },

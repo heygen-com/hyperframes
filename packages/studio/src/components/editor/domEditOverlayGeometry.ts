@@ -190,10 +190,11 @@ export function filterNestedDomEditGroupItems<T extends { element: HTMLElement }
 }
 
 export function selectionCacheKey(
-  selection: Pick<DomEditSelection, "id" | "selector" | "selectorIndex" | "sourceFile">,
+  selection: Pick<DomEditSelection, "id" | "hfId" | "selector" | "selectorIndex" | "sourceFile">,
 ): string {
   return [
     selection.sourceFile ?? "",
+    selection.hfId ?? "",
     selection.id ?? "",
     selection.selector ?? "",
     selection.selectorIndex ?? "",

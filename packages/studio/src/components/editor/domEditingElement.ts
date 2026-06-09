@@ -95,7 +95,7 @@ function isInspectableLayerElement(el: HTMLElement): boolean {
 export function getDomLayerPatchTarget(
   el: HTMLElement,
   activeCompositionPath: string | null,
-): Pick<DomEditSelection, "id" | "selector" | "selectorIndex" | "sourceFile"> | null {
+): Pick<DomEditSelection, "id" | "hfId" | "selector" | "selectorIndex" | "sourceFile"> | null {
   if (!isInspectableLayerElement(el)) return null;
   if (el.hasAttribute("data-composition-id")) return null;
 
@@ -105,6 +105,7 @@ export function getDomLayerPatchTarget(
   const { sourceFile } = getSourceFileForElement(el, activeCompositionPath);
   return {
     id: el.id || undefined,
+    hfId: el.getAttribute("data-hf-id") || undefined,
     selector,
     selectorIndex: getSelectorIndex(
       el.ownerDocument,
@@ -229,9 +230,14 @@ export function isLargeRasterDomEditSelection(
 
 export function findElementForSelection(
   doc: Document,
-  selection: Pick<DomEditSelection, "id" | "selector" | "selectorIndex" | "sourceFile">,
+  selection: Pick<DomEditSelection, "id" | "hfId" | "selector" | "selectorIndex" | "sourceFile">,
   activeCompositionPath: string | null = null,
 ): HTMLElement | null {
+  if (selection.hfId) {
+    const byHfId = doc.querySelector(`[data-hf-id="${selection.hfId}"]`);
+    if (isHtmlElement(byHfId)) return byHfId;
+  }
+
   if (selection.id) {
     const byId = doc.getElementById(selection.id);
     if (

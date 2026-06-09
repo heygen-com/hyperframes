@@ -286,6 +286,7 @@ export function buildMissingCompositionElements(
       duration: dur,
       track: isNaN(track) ? 0 : track,
       domId: el.id || undefined,
+      hfId: el.getAttribute("data-hf-id") || undefined,
       selector,
       selectorIndex,
       sourceFile,

@@ -98,6 +98,7 @@ export interface DomEditLayerItem {
   depth: number;
   childCount: number;
   id?: string;
+  hfId?: string;
   selector?: string;
   selectorIndex?: number;
   sourceFile: string;
