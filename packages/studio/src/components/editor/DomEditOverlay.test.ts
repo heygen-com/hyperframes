@@ -61,6 +61,7 @@ vi.mock("./useDomEditOverlayRects", async () => {
         groupOverlayItems,
         groupOverlayItemsRef,
         setGroupOverlayItems,
+        childRects: [],
       };
     },
   };
