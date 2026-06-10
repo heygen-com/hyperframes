@@ -580,6 +580,20 @@ function parsePercentageKeyframes(node: any, scope: ScopeBindings): GsapKeyframe
   };
 }
 
+function computeKeyframesTotalDuration(varsNode: any, scope: ScopeBindings): number | undefined {
+  const kfNode = (varsNode.properties ?? []).find(
+    (p: any) => (p.key?.name ?? p.key?.value) === "keyframes",
+  )?.value;
+  if (!kfNode || kfNode.type !== "ArrayExpression") return undefined;
+  let total = 0;
+  for (const el of kfNode.elements ?? []) {
+    if (!el || el.type !== "ObjectExpression") continue;
+    const r = objectExpressionToRecord(el, scope);
+    if (typeof r.duration === "number") total += r.duration;
+  }
+  return total > 0 ? total : undefined;
+}
+
 // fallow-ignore-next-line complexity
 function parseObjectArrayKeyframes(node: any, scope: ScopeBindings): GsapKeyframesData {
   const elements = node.elements ?? [];
@@ -861,8 +875,12 @@ function tweenCallToAnimation(
   const posVal = call.positionArg ? extractLiteralValue(call.positionArg, scope) : 0;
   const position: number | string =
     typeof posVal === "number" ? posVal : typeof posVal === "string" ? posVal : 0;
-  const duration = typeof vars.duration === "number" ? vars.duration : undefined;
+  let duration = typeof vars.duration === "number" ? vars.duration : undefined;
   const ease = typeof vars.ease === "string" ? vars.ease : undefined;
+
+  if (duration === undefined && keyframesData) {
+    duration = computeKeyframesTotalDuration(call.varsArg, scope);
+  }
 
   const anim: Omit<GsapAnimation, "id"> = {
     targetSelector: call.selector,
@@ -1026,6 +1044,21 @@ function setVarsKey(varsArg: any, key: string, value: number | string): void {
 }
 
 /**
+ * Filter an ObjectExpression's properties, keeping non-editable keys
+ * and delegating the keep/drop decision for editable keys to `shouldKeep`.
+ */
+function filterEditableKeys(varsArg: any, shouldKeep: (key: string) => boolean): void {
+  if (varsArg?.type !== "ObjectExpression") return;
+  varsArg.properties = varsArg.properties.filter((p: any) => {
+    if (!isObjectProperty(p)) return true;
+    const key = propKeyName(p);
+    if (typeof key !== "string") return true;
+    if (!isEditablePropertyKey(key)) return true;
+    return shouldKeep(key);
+  });
+}
+
+/**
  * Replace the editable-property keys on an ObjectExpression with `newProps`,
  * leaving `duration`, `ease`, `stagger`, callbacks and other non-editable keys
  * untouched.
@@ -1034,15 +1067,7 @@ function reconcileEditableProperties(
   varsArg: any,
   newProps: Record<string, number | string>,
 ): void {
-  if (varsArg?.type !== "ObjectExpression") return;
-  // Drop editable props no longer present.
-  varsArg.properties = varsArg.properties.filter((p: any) => {
-    if (!isObjectProperty(p)) return true;
-    const key = propKeyName(p);
-    if (typeof key !== "string") return true;
-    if (!isEditablePropertyKey(key)) return true;
-    return key in newProps;
-  });
+  filterEditableKeys(varsArg, (key) => key in newProps);
   // Upsert each new prop, preserving the order keys first appeared.
   for (const [key, value] of Object.entries(newProps)) {
     setVarsKey(varsArg, key, value);
@@ -1122,6 +1147,24 @@ export function updateAnimationInScript(
   const target = parsed.located.find((l) => l.id === animationId);
   if (!target) return script;
   applyUpdatesToCall(target.call, updates);
+  return recast.print(parsed.ast).code;
+}
+
+function updateAnimationSelector(script: string, animationId: string, newSelector: string): string {
+  let parsed: ParsedGsapAst;
+  try {
+    parsed = parseGsapAst(script);
+  } catch {
+    return script;
+  }
+  const target = parsed.located.find((l) => l.id === animationId);
+  if (!target) return script;
+  const selectorArg = target.call.path.node.arguments?.[0];
+  if (selectorArg?.type === "StringLiteral") {
+    selectorArg.value = newSelector;
+  } else if (selectorArg?.type === "Identifier") {
+    target.call.path.node.arguments[0] = { type: "StringLiteral", value: newSelector };
+  }
   return recast.print(parsed.ast).code;
 }
 
@@ -1277,7 +1320,185 @@ export function removeAnimationFromScript(script: string, animationId: string): 
   return recast.print(parsed.ast).code;
 }
 
+function insertInheritedStateSet(
+  script: string,
+  selector: string,
+  position: number,
+  properties: Record<string, number | string>,
+): string {
+  let parsed: ParsedGsapAst;
+  try {
+    parsed = parseGsapAst(script);
+  } catch {
+    return script;
+  }
+  const tlVar = parsed.timelineVar;
+  const props = Object.entries(properties)
+    .map(([k, v]) => `${k}: ${typeof v === "string" ? JSON.stringify(v) : v}`)
+    .join(", ");
+  const code = `${tlVar}.set(${JSON.stringify(selector)}, { ${props} }, ${position});`;
+  const newStatement = parseScript(code).program.body[0];
+  const anchor = findTimelineDeclarationPath(parsed.ast, tlVar);
+  if (anchor) {
+    anchor.insertAfter(newStatement);
+  } else if (parsed.located.length > 0) {
+    const firstTween = parsed.located[0]!.call;
+    const stmtPath = findStatementPath(firstTween.path);
+    if (stmtPath) stmtPath.insertBefore(newStatement);
+    else parsed.ast.program.body.unshift(newStatement);
+  } else {
+    parsed.ast.program.body.push(newStatement);
+  }
+  return recast.print(parsed.ast).code;
+}
+
+// ── Split Animation Functions ─────────────────────────────────────────────
+
+export interface SplitAnimationsOptions {
+  originalId: string;
+  newId: string;
+  splitTime: number;
+  elementStart: number;
+  elementDuration: number;
+}
+
+export interface SplitAnimationsResult {
+  script: string;
+  /** Non-ID-selector animations that the engine cannot safely retarget. */
+  skippedSelectors: string[];
+}
+
+// fallow-ignore-next-line complexity
+export function splitAnimationsInScript(
+  script: string,
+  opts: SplitAnimationsOptions,
+): SplitAnimationsResult {
+  const parsed = parseGsapScript(script);
+  const originalSelector = `#${opts.originalId}`;
+  const newSelector = `#${opts.newId}`;
+
+  const skippedSelectors: string[] = [];
+  for (const a of parsed.animations) {
+    if (a.targetSelector !== originalSelector && a.targetSelector.includes(opts.originalId)) {
+      skippedSelectors.push(a.targetSelector);
+    }
+  }
+
+  const matching = parsed.animations.filter((a) => a.targetSelector === originalSelector);
+  if (matching.length === 0) return { script, skippedSelectors };
+
+  let result = script;
+  const newElementStart = opts.splitTime;
+  const inheritedProps: Record<string, number | string> = {};
+
+  // Reverse iteration: updateAnimationSelector mutates selectors in the source
+  // string, which can shift count-based ID suffixes (e.g. "#hero-1" → "#hero-2")
+  // for later animations. Processing last-to-first prevents stale ID collisions.
+  for (let i = matching.length - 1; i >= 0; i--) {
+    const anim = matching[i]!;
+    const pos = typeof anim.position === "number" ? anim.position : 0;
+    const dur = anim.duration ?? 0;
+    const animEnd = pos + dur;
+
+    if (anim.keyframes) {
+      if (pos >= opts.splitTime) {
+        result = updateAnimationSelector(result, anim.id, newSelector);
+      } else if (animEnd > opts.splitTime) {
+        // Spanning keyframes can't be correctly split without renormalizing
+        // percentages and durations — leave on original, warn the caller.
+        skippedSelectors.push(`${originalSelector} (keyframes spanning split)`);
+        const kfs = anim.keyframes.keyframes;
+        for (const kf of kfs) {
+          const kfTime = pos + (kf.percentage / 100) * dur;
+          if (kfTime <= opts.splitTime) {
+            for (const [k, v] of Object.entries(kf.properties)) {
+              inheritedProps[k] = v;
+            }
+          }
+        }
+      } else {
+        // Entirely before split — extract final keyframe properties
+        const kfs = anim.keyframes.keyframes;
+        if (kfs.length > 0) {
+          for (const [k, v] of Object.entries(kfs[kfs.length - 1]!.properties)) {
+            inheritedProps[k] = v;
+          }
+        }
+      }
+      continue;
+    }
+
+    if (animEnd <= opts.splitTime) {
+      for (const [k, v] of Object.entries(anim.properties)) {
+        inheritedProps[k] = v;
+      }
+      continue;
+    }
+
+    if (pos >= opts.splitTime) {
+      result = updateAnimationSelector(result, anim.id, newSelector);
+      continue;
+    }
+
+    // Spans the split — use linear interpolation to compute mid-values,
+    // then .fromTo() on the clone so both halves play the correct range.
+    // For .fromTo() tweens we have explicit from-values; for .to() tweens
+    // we use accumulated state from prior animations, defaulting to 0 for
+    // unknown numeric properties (the standard GSAP transform initial state).
+    const progress = dur > 0 ? (opts.splitTime - pos) / dur : 0;
+    const fromSource = anim.fromProperties ?? inheritedProps;
+    const midProps: Record<string, number | string> = {};
+    for (const [k, v] of Object.entries(anim.properties)) {
+      if (typeof v !== "number") {
+        midProps[k] = v;
+        continue;
+      }
+      const fromVal = typeof fromSource[k] === "number" ? (fromSource[k] as number) : 0;
+      midProps[k] = fromVal + (v - fromVal) * progress;
+    }
+
+    const firstHalfDuration = opts.splitTime - pos;
+    result = updateAnimationInScript(result, anim.id, {
+      duration: firstHalfDuration,
+      properties: midProps,
+    });
+
+    const secondHalfDuration = animEnd - opts.splitTime;
+    const addResult = addAnimationToScript(result, {
+      targetSelector: newSelector,
+      method: "fromTo",
+      position: newElementStart,
+      duration: secondHalfDuration,
+      properties: { ...anim.properties },
+      fromProperties: { ...midProps },
+      ease: anim.ease,
+      extras: anim.extras,
+    });
+    result = addResult.script;
+
+    for (const [k, v] of Object.entries(midProps)) {
+      inheritedProps[k] = v;
+    }
+  }
+
+  if (Object.keys(inheritedProps).length > 0) {
+    result = insertInheritedStateSet(result, newSelector, newElementStart, inheritedProps);
+  }
+
+  return { script: result, skippedSelectors };
+}
+
 // ── Keyframe Mutation Functions ────────────────────────────────────────────
+
+function sortedKeyframes(
+  kfs: Array<{ percentage: number; properties: Record<string, number | string>; ease?: string }>,
+) {
+  return kfs.slice().sort((a, b) => a.percentage - b.percentage);
+}
+
+function keyframePropsToCode(kf: { properties: Record<string, number | string> }): string[] {
+  return Object.entries(kf.properties).map(([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`);
+}
 
 /** Remove a named property from an ObjectExpression's properties array. */
 function removeVarsKey(varsArg: any, key: string): void {
@@ -1345,6 +1566,19 @@ function collapseKeyframesToFlat(varsArg: any, record: Record<string, unknown>):
 }
 
 /**
+ * Locate an animation's keyframes ObjectExpression and build the percentage key.
+ * Shared preamble for addKeyframeToScript, removeKeyframeFromScript, and
+ * updateKeyframeInScript.
+ */
+function locateKeyframeCtx(script: string, animationId: string, percentage: number) {
+  const loc = locateAnimation(script, animationId);
+  if (!loc) return null;
+  const kfNode = findKeyframesObjectNode(loc.target.call.varsArg);
+  if (!kfNode) return null;
+  return { loc, kfNode, pctKey: `${percentage}%` };
+}
+
+/**
  * Insert a keyframe at the given percentage in an existing percentage-keyframes
  * object. If the percentage already exists, its value is replaced.
  */
@@ -1375,8 +1609,8 @@ export function addKeyframeToScript(
     kfNode = findKeyframesObjectNode(loc.target.call.varsArg);
     if (!kfNode) return script;
   }
-
   const pctKey = `${percentage}%`;
+
   const newValueNode = buildKeyframeValueNode(properties, ease);
 
   // Replace if this percentage already exists
@@ -1467,12 +1701,10 @@ export function removeKeyframeFromScript(
   animationId: string,
   percentage: number,
 ): string {
-  const loc = locateAnimation(script, animationId);
-  if (!loc) return script;
-  const kfNode = findKeyframesObjectNode(loc.target.call.varsArg);
-  if (!kfNode) return script;
+  const ctx = locateKeyframeCtx(script, animationId, percentage);
+  if (!ctx) return script;
+  const { loc, kfNode, pctKey } = ctx;
 
-  const pctKey = `${percentage}%`;
   const removeIdx = kfNode.properties.findIndex(
     (p: any) => isObjectProperty(p) && propKeyName(p) === pctKey,
   );
@@ -1502,12 +1734,10 @@ export function updateKeyframeInScript(
   properties: Record<string, number | string>,
   ease?: string,
 ): string {
-  const loc = locateAnimation(script, animationId);
-  if (!loc) return script;
-  const kfNode = findKeyframesObjectNode(loc.target.call.varsArg);
-  if (!kfNode) return script;
+  const ctx = locateKeyframeCtx(script, animationId, percentage);
+  if (!ctx) return script;
+  const { loc, kfNode, pctKey } = ctx;
 
-  const pctKey = `${percentage}%`;
   const existing = kfNode.properties.find(
     (p: any) => isObjectProperty(p) && propKeyName(p) === pctKey,
   );
@@ -1560,14 +1790,15 @@ function resolveConversionProps(
 
 /** Strip editable properties and ease/keyframes keys from a varsArg. */
 function stripEditableAndEase(varsArg: any): void {
+  // ease is a BUILTIN_VAR_KEY (not editable), so filterEditableKeys won't remove it —
+  // drop it explicitly before filtering, along with keyframes.
   if (varsArg?.type !== "ObjectExpression") return;
   varsArg.properties = varsArg.properties.filter((p: any) => {
     if (!isObjectProperty(p)) return true;
     const key = propKeyName(p);
-    if (typeof key !== "string") return true;
-    if (key === "ease" || key === "keyframes") return false;
-    return !isEditablePropertyKey(key);
+    return key !== "ease" && key !== "keyframes";
   });
+  filterEditableKeys(varsArg, () => false);
 }
 
 /** Build and prepend a keyframes property node onto varsArg. */
@@ -1674,11 +1905,8 @@ export function materializeKeyframesInScript(
   }
 
   const entries: string[] = [];
-  const sorted = keyframes.slice().sort((a, b) => a.percentage - b.percentage);
-  for (const kf of sorted) {
-    const propEntries = Object.entries(kf.properties).map(
-      ([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`,
-    );
+  for (const kf of sortedKeyframes(keyframes)) {
+    const propEntries = keyframePropsToCode(kf);
     if (kf.ease) propEntries.push(`ease: ${JSON.stringify(kf.ease)}`);
     entries.push(`${JSON.stringify(kf.percentage + "%")}: { ${propEntries.join(", ")} }`);
   }
@@ -1977,11 +2205,8 @@ export function unrollDynamicAnimations(
   const calls: string[] = [];
   for (const el of elements) {
     const kfEntries: string[] = [];
-    const sorted = el.keyframes.slice().sort((a, b) => a.percentage - b.percentage);
-    for (const kf of sorted) {
-      const propEntries = Object.entries(kf.properties).map(
-        ([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`,
-      );
+    for (const kf of sortedKeyframes(el.keyframes)) {
+      const propEntries = keyframePropsToCode(kf);
       kfEntries.push(`${JSON.stringify(kf.percentage + "%")}: { ${propEntries.join(", ")} }`);
     }
     if (el.easeEach) {

@@ -193,6 +193,7 @@
     "@babel/parser": "^7.27.0",
     "@chenglou/pretext": "^0.0.5",
     "postcss": "^8.5.8",
+    "postcss-selector-parser": "^7.1.2",
     "recast": "^0.23.11"
   },
   "devDependencies": {

@@ -1,4 +1,6 @@
 import { parseHTML } from "linkedom";
+import postcss from "postcss";
+import selectorParser from "postcss-selector-parser";
 
 export interface SourceMutationTarget {
   id?: string | null;
@@ -16,6 +18,36 @@ function parseSourceDocument(source: string): { document: Document; wrappedFragm
     document: parseHTML(`<!DOCTYPE html><html><head></head><body>${source}</body></html>`).document,
     wrappedFragment: true,
   };
+}
+
+function duplicateCssRulesForId(document: Document, originalId: string, newId: string): void {
+  const idToken = `#${originalId}`;
+  const transform = selectorParser((selectors) => {
+    selectors.walkIds((node) => {
+      if (node.value === originalId) node.value = newId;
+    });
+  });
+  for (const styleEl of document.querySelectorAll("style")) {
+    const css = styleEl.textContent ?? "";
+    let root: postcss.Root;
+    try {
+      root = postcss.parse(css);
+    } catch {
+      continue;
+    }
+    const clones: postcss.Rule[] = [];
+    root.walkRules((rule) => {
+      if (!rule.selector.includes(idToken)) return;
+      const newSelector = transform.processSync(rule.selector);
+      if (newSelector === rule.selector) return;
+      const clone = rule.clone({ selector: newSelector });
+      clones.push(clone);
+    });
+    if (clones.length > 0) {
+      for (const c of clones) root.append(c);
+      styleEl.textContent = root.toString();
+    }
+  }
 }
 
 function querySelectorAllWithTemplates(root: Document | Element, selector: string): Element[] {
@@ -287,6 +319,7 @@ function setElementDuration(
   }
 }
 
+// fallow-ignore-next-line complexity
 export function splitElementInHtml(
   source: string,
   target: SourceMutationTarget,
@@ -302,6 +335,14 @@ export function splitElementInHtml(
     return { html: source, matched: false, newId: null };
   }
 
+  if (document.getElementById(newId)) {
+    let suffix = 2;
+    const base = newId;
+    while (document.getElementById(newId)) {
+      newId = `${base}-${suffix++}`;
+    }
+  }
+
   const firstDuration = splitTime - start;
   const secondDuration = duration - firstDuration;
 
@@ -310,6 +351,9 @@ export function splitElementInHtml(
   clone.removeAttribute("data-hf-id");
   clone.setAttribute("data-start", String(Math.round(splitTime * 1000) / 1000));
   setElementDuration(clone, splitTime, secondDuration, usesDataEnd);
+
+  // Keep the "clip" class — the runtime uses it to control visibility
+  // based on data-start/data-duration timing.
 
   // Adjust media trim offset for the second half
   const playbackStartAttr = el.hasAttribute("data-playback-start")
@@ -325,6 +369,12 @@ export function splitElementInHtml(
       playbackStartAttr,
       String(Math.round((currentTrim + firstDuration * rate) * 1000) / 1000),
     );
+  }
+
+  // Duplicate CSS rules targeting the original ID so the clone inherits the same styles.
+  const originalId = el.getAttribute("id");
+  if (originalId) {
+    duplicateCssRulesForId(document, originalId, newId);
   }
 
   // Trim the original element's duration

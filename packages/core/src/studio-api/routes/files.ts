@@ -408,15 +408,25 @@ type GsapMutationRequest =
         auto?: boolean;
       }>;
       ease?: string;
+    }
+  | {
+      type: "split-animations";
+      originalId: string;
+      newId: string;
+      splitTime: number;
+      elementStart: number;
+      elementDuration: number;
     };
 
 // ── GSAP mutation executor ──────────────────────────────────────────────────
+
+type GsapMutationResult = string | { script: string; skippedSelectors: string[] };
 
 async function executeGsapMutation(
   body: GsapMutationRequest,
   block: NonNullable<ReturnType<typeof extractGsapScriptBlock>>,
   respond: (data: unknown, status?: number) => Response,
-): Promise<string | Response> {
+): Promise<GsapMutationResult | Response> {
   const parser = await loadGsapParser();
   const {
     parseGsapScript,
@@ -434,6 +444,7 @@ async function executeGsapMutation(
     updateArcSegmentInScript,
     removeArcPathFromScript,
     addAnimationWithKeyframesToScript,
+    splitAnimationsInScript,
   } = parser;
 
   function requireAnimation(
@@ -605,6 +616,36 @@ async function executeGsapMutation(
         body.ease,
       );
       return result.script;
+    }
+    case "split-animations": {
+      if (
+        typeof body.originalId !== "string" ||
+        !body.originalId ||
+        typeof body.newId !== "string" ||
+        !body.newId ||
+        typeof body.splitTime !== "number" ||
+        !Number.isFinite(body.splitTime) ||
+        typeof body.elementStart !== "number" ||
+        !Number.isFinite(body.elementStart) ||
+        typeof body.elementDuration !== "number" ||
+        !Number.isFinite(body.elementDuration) ||
+        body.elementDuration <= 0
+      ) {
+        return respond(
+          {
+            error:
+              "split-animations requires originalId, newId (non-empty strings), splitTime, elementStart (finite numbers), and elementDuration (positive number)",
+          },
+          400,
+        );
+      }
+      return splitAnimationsInScript(block.scriptText, {
+        originalId: body.originalId,
+        newId: body.newId,
+        splitTime: body.splitTime,
+        elementStart: body.elementStart,
+        elementDuration: body.elementDuration,
+      });
     }
     default:
       return respond({ error: `unknown mutation type: ${(body as { type: string }).type}` }, 400);
@@ -1019,21 +1060,24 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     const result = await executeGsapMutation(body, block, respond);
     if (result instanceof Response) return result;
 
-    const newScript = result;
+    const newScript = typeof result === "string" ? result : result.script;
     const newHtml = block.replaceScript(newScript);
     if (newHtml !== html) {
       writeFileSync(res.absPath, newHtml, "utf-8");
     }
 
-    // Re-parse the mutated script so the UI gets fresh state
     const { parseGsapScript } = await loadGsapParser();
     const freshParsed = parseGsapScript(newScript);
-    return c.json({
+    const responsePayload: Record<string, unknown> = {
       ok: true,
       parsed: freshParsed,
       before: html,
       after: newHtml,
       scriptText: newScript,
-    });
+    };
+    if (typeof result !== "string" && result.skippedSelectors.length > 0) {
+      responsePayload.skippedSelectors = result.skippedSelectors;
+    }
+    return c.json(responsePayload);
   });
 }

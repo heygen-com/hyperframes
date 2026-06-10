@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   removeElementFromHtml,
   patchElementInHtml,
-  probeElementInSource,
   splitElementInHtml,
+  probeElementInSource,
 } from "./sourceMutation.js";
 
 describe("removeElementFromHtml", () => {
@@ -465,5 +465,55 @@ describe("splitElementInHtml — hfId clone isolation", () => {
     expect(matched).toBe(true);
     const occurrences = (html.match(/data-hf-id="hf-abc123"/g) ?? []).length;
     expect(occurrences).toBe(1);
+  });
+});
+
+describe("splitElementInHtml", () => {
+  const source = `<!DOCTYPE html><html><head><style>#box { position: absolute; top: 100px; background: red; }</style></head><body><div data-composition-id="root"><div id="box" class="clip" data-start="1" data-duration="6">Hello</div></div></body></html>`;
+
+  it("splits element at the given time", () => {
+    const result = splitElementInHtml(source, { id: "box" }, 3, "box-split");
+    expect(result.matched).toBe(true);
+    expect(result.html).toContain('data-duration="2"');
+    expect(result.html).toContain('id="box-split"');
+    expect(result.html).toContain('data-start="3"');
+    expect(result.html).toContain('data-duration="4"');
+  });
+
+  it("duplicates CSS rules for the new element ID", () => {
+    const result = splitElementInHtml(source, { id: "box" }, 3, "box-split");
+    expect(result.html).toContain("#box-split");
+    expect(result.html).toContain("background: red");
+    const cssMatches = result.html.match(/#box-split\s*\{/g);
+    expect(cssMatches?.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("deduplicates IDs when the requested newId already exists", () => {
+    const withExisting = source.replace(
+      "</div></div>",
+      '</div><div id="box-split" data-start="5" data-duration="1">Existing</div></div>',
+    );
+    const result = splitElementInHtml(withExisting, { id: "box" }, 3, "box-split");
+    expect(result.matched).toBe(true);
+    expect(result.html).toContain('id="box-split-2"');
+  });
+
+  it("keeps clip class on the cloned element", () => {
+    const result = splitElementInHtml(source, { id: "box" }, 3, "box-split");
+    expect(result.html).toMatch(/id="box-split"[^>]*class="clip"/);
+  });
+
+  it("returns matched false for out-of-range split time", () => {
+    expect(splitElementInHtml(source, { id: "box" }, 0.5, "box-split").matched).toBe(false);
+    expect(splitElementInHtml(source, { id: "box" }, 7.5, "box-split").matched).toBe(false);
+  });
+
+  it("adjusts media playback-start for the second half", () => {
+    const mediaSource = source.replace(
+      'id="box" class="clip" data-start="1" data-duration="6"',
+      'id="box" class="clip" data-start="1" data-duration="6" data-playback-start="0"',
+    );
+    const result = splitElementInHtml(mediaSource, { id: "box" }, 3, "box-split");
+    expect(result.html).toMatch(/id="box-split"[^>]*data-playback-start="2"/);
   });
 });
