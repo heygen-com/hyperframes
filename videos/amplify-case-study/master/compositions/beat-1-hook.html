@@ -1,0 +1,108 @@
+<template id="beat-1-hook-template">
+  <div
+    id="amplifier-case-study-beat-1"
+    data-composition-id="amplifier-case-study-beat-1"
+    data-start="0"
+    data-duration="7"
+    data-width="1920"
+    data-height="1080"
+  >
+    <div class="b1-headline">
+      <span class="b1-word">Click.</span>
+      <span class="b1-word">Wait</span>
+      <span class="b1-word">two</span>
+      <span class="b1-word">minutes.</span>
+      <span class="b1-word">Get</span>
+      <span class="b1-word">a</span>
+      <span class="b1-word">video</span>
+      <span class="b1-word">that</span>
+      <span class="b1-word">actually</span>
+      <span class="b1-word">looks</span>
+      <span class="b1-word">like</span>
+      <span class="b1-word">your</span>
+      <span class="b1-word">article.</span>
+    </div>
+
+    <div class="hf-hairline b1-hairline"></div>
+
+    <style>
+      [data-composition-id="amplifier-case-study-beat-1"] {
+        position: absolute;
+        inset: 0;
+        background: var(--ink);
+        color: var(--paper);
+        font-family: "Inter Tight", "Inter", system-ui, sans-serif;
+        overflow: hidden;
+      }
+      [data-composition-id="amplifier-case-study-beat-1"] .b1-headline {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 1640px;
+        text-align: center;
+        font-family: "Inter Tight", "Inter", system-ui, sans-serif;
+        font-weight: 500;
+        font-size: 96px;
+        line-height: 1.12;
+        letter-spacing: -0.01em;
+        color: var(--paper);
+      }
+      [data-composition-id="amplifier-case-study-beat-1"] .b1-word {
+        display: inline-block;
+        margin: 0 14px 0 0;
+        will-change: transform, opacity;
+      }
+      [data-composition-id="amplifier-case-study-beat-1"] .b1-hairline {
+        position: absolute;
+        bottom: 80px;
+        left: 96px;
+        height: 1px;
+        width: 8%;
+        background: var(--signal);
+        transform-origin: left center;
+        transform: scaleX(0);
+        opacity: 0.85;
+      }
+    </style>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      tl.from(
+        '[data-composition-id="amplifier-case-study-beat-1"] .b1-word',
+        {
+          y: 24,
+          opacity: 0,
+          duration: 0.6,
+          ease: "power3.out",
+          stagger: 0.16,
+        },
+        0,
+      );
+
+      tl.to(
+        '[data-composition-id="amplifier-case-study-beat-1"] .b1-hairline',
+        { scaleX: 1, duration: 1.2, ease: "power2.out" },
+        0.2,
+      );
+
+      // Ambient: gentle hairline opacity pulse (4s loop, finite repeats over the 7s beat)
+      tl.to(
+        '[data-composition-id="amplifier-case-study-beat-1"] .b1-hairline',
+        {
+          opacity: 0.82,
+          duration: 2,
+          ease: "sine.inOut",
+          repeat: 2,
+          yoyo: true,
+        },
+        1.5,
+      );
+
+      window.__timelines["amplifier-case-study-beat-1"] = tl;
+    </script>
+  </div>
+</template>

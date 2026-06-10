@@ -1,0 +1,224 @@
+<template id="beat-2-template-grid-template">
+  <div
+    id="amplifier-case-study-beat-2"
+    data-composition-id="amplifier-case-study-beat-2"
+    data-start="0"
+    data-duration="10"
+    data-width="1920"
+    data-height="1080"
+  >
+    <div class="b2-label">amplifier / 2026-05-15</div>
+
+    <div class="b2-grid">
+      <div class="b2-cell">
+        <div class="b2-eyebrow">EPISODE 014</div>
+        <div class="b2-title">Dev Day Recap: What Agents Got Right</div>
+        <div class="b2-accent"></div>
+      </div>
+      <div class="b2-cell">
+        <div class="b2-eyebrow">EARNINGS Q1</div>
+        <div class="b2-title">Reading the Numbers Behind the Pivot</div>
+        <div class="b2-accent"></div>
+      </div>
+      <div class="b2-cell b2-cell--zoom">
+        <div class="b2-eyebrow">BENCHMARK</div>
+        <div class="b2-title">Agent Performance Across Six Frontier Models</div>
+        <div class="b2-accent"></div>
+      </div>
+      <div class="b2-cell">
+        <div class="b2-eyebrow">MODEL DROP</div>
+        <div class="b2-title">What Changed in This Week's Release</div>
+        <div class="b2-accent"></div>
+      </div>
+      <div class="b2-cell">
+        <div class="b2-eyebrow">TOOLS WEEKLY</div>
+        <div class="b2-title">Twenty Builders, Twenty Stacks</div>
+        <div class="b2-accent"></div>
+      </div>
+      <div class="b2-cell b2-cell--caption">
+        <div class="b2-caption">
+          <span class="b2-word">Every</span>
+          <span class="b2-word">video</span>
+          <span class="b2-word">looked</span>
+          <span class="b2-word">like</span>
+          <span class="b2-word">every</span>
+          <span class="b2-word">other</span>
+          <span class="b2-word">video.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="hf-hairline b2-hairline"></div>
+
+    <style>
+      [data-composition-id="amplifier-case-study-beat-2"] {
+        position: absolute;
+        inset: 0;
+        background: var(--ink);
+        color: var(--paper);
+        font-family: "Inter Tight", "Inter", system-ui, sans-serif;
+        overflow: hidden;
+      }
+      [data-composition-id="amplifier-case-study-beat-2"] .b2-label {
+        position: absolute;
+        top: 60px;
+        right: 96px;
+        font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+        font-weight: 500;
+        font-size: 14px;
+        letter-spacing: 0.04em;
+        color: var(--paper-muted);
+      }
+      [data-composition-id="amplifier-case-study-beat-2"] .b2-grid {
+        position: absolute;
+        top: 150px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: grid;
+        grid-template-columns: repeat(3, 480px);
+        grid-template-rows: repeat(2, 270px);
+        gap: 40px;
+      }
+      [data-composition-id="amplifier-case-study-beat-2"] .b2-cell {
+        position: relative;
+        width: 480px;
+        height: 270px;
+        box-sizing: border-box;
+        padding: 24px;
+        background: var(--ink-elevated);
+        border: 1px solid var(--ink-line);
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        will-change: transform, opacity;
+        transform-origin: center center;
+      }
+      [data-composition-id="amplifier-case-study-beat-2"] .b2-eyebrow {
+        font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+        font-weight: 500;
+        font-size: 14px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--paper-muted);
+      }
+      [data-composition-id="amplifier-case-study-beat-2"] .b2-title {
+        font-family: "Inter Tight", "Inter", system-ui, sans-serif;
+        font-weight: 500;
+        font-size: 32px;
+        line-height: 1.15;
+        max-width: 380px;
+        color: var(--paper);
+      }
+      [data-composition-id="amplifier-case-study-beat-2"] .b2-accent {
+        height: 4px;
+        width: 60%;
+        background: var(--warn);
+      }
+      [data-composition-id="amplifier-case-study-beat-2"] .b2-cell--caption {
+        background: transparent;
+        border: none;
+        padding: 24px;
+        display: flex;
+        align-items: flex-end;
+      }
+      [data-composition-id="amplifier-case-study-beat-2"] .b2-caption {
+        font-family: "Inter Tight", "Inter", system-ui, sans-serif;
+        font-weight: 500;
+        font-size: 32px;
+        line-height: 1.2;
+        color: var(--paper);
+        max-width: 430px;
+      }
+      [data-composition-id="amplifier-case-study-beat-2"] .b2-word {
+        display: inline-block;
+        margin: 0 6px 0 0;
+        will-change: transform, opacity;
+      }
+      [data-composition-id="amplifier-case-study-beat-2"] .b2-hairline {
+        position: absolute;
+        bottom: 80px;
+        left: 96px;
+        height: 1px;
+        width: 25%;
+        background: var(--signal);
+        transform-origin: left center;
+        transform: scaleX(0.32);
+        opacity: 0.85;
+      }
+    </style>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      // Top-right label fades in immediately
+      tl.from(
+        '[data-composition-id="amplifier-case-study-beat-2"] .b2-label',
+        { opacity: 0, duration: 0.4 },
+        0,
+      );
+
+      // Cells populate one-by-one with subtle scale
+      tl.from(
+        '[data-composition-id="amplifier-case-study-beat-2"] .b2-cell:not(.b2-cell--caption)',
+        {
+          opacity: 0,
+          scale: 0.96,
+          duration: 0.5,
+          ease: "power3.out",
+          stagger: 0.12,
+        },
+        0.3,
+      );
+
+      // Hairline carries over from Beat 1's end-state (scaleX 1.0 of an 8% width
+      // box) and grows to fill its new 25% width box (12% absolute growth).
+      tl.fromTo(
+        '[data-composition-id="amplifier-case-study-beat-2"] .b2-hairline',
+        { scaleX: 0.32 },
+        { scaleX: 1.0, duration: 1.6, ease: "power2.out" },
+        0.3,
+      );
+
+      // All cells "breathe together" — synchronized opacity oscillation 3→5.5s
+      tl.to(
+        '[data-composition-id="amplifier-case-study-beat-2"] .b2-cell:not(.b2-cell--caption)',
+        {
+          keyframes: [{ opacity: 0.85 }, { opacity: 1.0 }, { opacity: 0.85 }],
+          duration: 2.5,
+          ease: "sine.inOut",
+          repeat: 0,
+        },
+        3,
+      );
+
+      // Caption appears in cell 6 at 4s — word-by-word reveal
+      tl.from(
+        '[data-composition-id="amplifier-case-study-beat-2"] .b2-caption .b2-word',
+        {
+          y: 24,
+          opacity: 0,
+          duration: 0.4,
+          ease: "power3.out",
+          stagger: 0.1,
+        },
+        4,
+      );
+
+      // At 9.5s, cells dim and cell 3 enlarges/zooms toward viewer
+      tl.to(
+        '[data-composition-id="amplifier-case-study-beat-2"] .b2-cell:not(.b2-cell--zoom):not(.b2-cell--caption)',
+        { opacity: 0.3, duration: 0.5 },
+        9.5,
+      );
+      tl.to(
+        '[data-composition-id="amplifier-case-study-beat-2"] .b2-cell--zoom',
+        { scale: 2.4, zIndex: 10, duration: 0.5, ease: "power2.in" },
+        9.5,
+      );
+
+      window.__timelines["amplifier-case-study-beat-2"] = tl;
+    </script>
+  </div>
+</template>

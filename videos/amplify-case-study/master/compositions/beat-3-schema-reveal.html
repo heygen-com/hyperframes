@@ -1,0 +1,320 @@
+<template id="beat-3-schema-reveal-template">
+  <div
+    id="amplifier-case-study-beat-3"
+    data-composition-id="amplifier-case-study-beat-3"
+    data-start="0"
+    data-duration="13"
+    data-width="1920"
+    data-height="1080"
+  >
+    <!-- Carryover thumbnail from Beat 2 (BENCHMARK cell, post-zoom). Sits in
+         the left third and dissolves at t=1s to reveal the code panel beneath. -->
+    <div class="b3-carryover">
+      <div class="b3-carryover-eyebrow">BENCHMARK</div>
+      <div class="b3-carryover-title">Agent Performance Across Six Frontier Models</div>
+      <div class="b3-carryover-accent"></div>
+    </div>
+
+    <!-- Code panel: JSON schema beneath the dissolving thumbnail. -->
+    <div class="b3-panel">
+      <pre
+        class="b3-code"
+      ><code><div class="b3-line"><span class="b3-punct">{</span></div><div class="b3-line">  <span class="b3-key">"eyebrow"</span><span class="b3-punct">:</span>        <span class="b3-val">""</span><span class="b3-punct">,</span></div><div class="b3-line">  <span class="b3-key">"title"</span><span class="b3-punct">:</span>          <span class="b3-val">""</span><span class="b3-punct">,</span></div><div class="b3-line">  <span class="b3-key">"body"</span><span class="b3-punct">:</span>           <span class="b3-val">""</span><span class="b3-punct">,</span></div><div class="b3-line">  <span class="b3-key">"highlight"</span><span class="b3-punct">:</span>      <span class="b3-val">""</span><span class="b3-punct">,</span></div><div class="b3-line">  <span class="b3-key">"supportingPoints"</span><span class="b3-punct">:</span> <span class="b3-val">[]</span><span class="b3-punct">,</span></div><div class="b3-line">  <span class="b3-key">"narration"</span><span class="b3-punct">:</span>      <span class="b3-val">""</span></div><div class="b3-line"><span class="b3-punct">}</span></div></code></pre>
+    </div>
+
+    <!-- Right-side vertical stack of constraint labels. Two-column layout
+         keeps the arrow aligned even after HTML whitespace collapse. -->
+    <div class="b3-constraints">
+      <div class="b3-constraint">
+        <span class="b3-constraint-key">layout</span
+        ><span class="b3-constraint-arrow">&larr; worker</span>
+      </div>
+      <div class="b3-constraint">
+        <span class="b3-constraint-key">color</span
+        ><span class="b3-constraint-arrow">&larr; worker</span>
+      </div>
+      <div class="b3-constraint">
+        <span class="b3-constraint-key">motion</span
+        ><span class="b3-constraint-arrow">&larr; worker</span>
+      </div>
+      <div class="b3-constraint">
+        <span class="b3-constraint-key">composition</span
+        ><span class="b3-constraint-arrow">&larr; worker</span>
+      </div>
+    </div>
+
+    <!-- Bottom-center big caption: "The schema was the ceiling." -->
+    <div class="b3-caption">
+      <span class="b3-cap-word">The</span>
+      <span class="b3-cap-word">schema</span>
+      <span class="b3-cap-word">was</span>
+      <span class="b3-cap-word">the</span>
+      <span class="b3-cap-word"><span class="b3-ceiling">ceiling.</span></span>
+    </div>
+
+    <!-- Persistent hairline, passed through from beat 2 at scaleX 1.0 -->
+    <div class="hf-hairline b3-hairline"></div>
+
+    <style>
+      :root {
+        --ink: #08090b;
+        --ink-elevated: #12141a;
+        --ink-line: #1f232c;
+        --ink-soft: #2a2f3b;
+        --paper: #f5f2ec;
+        --paper-muted: #8b8e96;
+        --paper-dim: #5a5e68;
+        --signal: #22d67a;
+        --signal-soft: rgba(34, 214, 122, 0.15);
+        --warn: #f4a641;
+        --warn-soft: rgba(244, 166, 65, 0.18);
+        --code: #7dd3fc;
+        --code-soft: rgba(125, 211, 252, 0.15);
+        --font-display: "Inter Tight", "Inter", system-ui, sans-serif;
+        --font-mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+      }
+      [data-composition-id="amplifier-case-study-beat-3"] {
+        position: absolute;
+        inset: 0;
+        background: var(--ink);
+        color: var(--paper);
+        font-family: "Inter Tight", "Inter", system-ui, sans-serif;
+        overflow: hidden;
+      }
+
+      /* Carryover thumbnail (continuation from Beat 2) */
+      [data-composition-id="amplifier-case-study-beat-3"] .b3-carryover {
+        position: absolute;
+        left: 96px;
+        top: 240px;
+        width: 720px;
+        height: 405px;
+        box-sizing: border-box;
+        padding: 28px;
+        background: var(--ink-elevated);
+        border: 1px solid var(--ink-line);
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        transform-origin: center center;
+        will-change: transform, opacity;
+        z-index: 2;
+      }
+      [data-composition-id="amplifier-case-study-beat-3"] .b3-carryover-eyebrow {
+        font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+        font-weight: 500;
+        font-size: 18px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--paper-muted);
+      }
+      [data-composition-id="amplifier-case-study-beat-3"] .b3-carryover-title {
+        font-family: "Inter Tight", "Inter", system-ui, sans-serif;
+        font-weight: 500;
+        font-size: 44px;
+        line-height: 1.12;
+        max-width: 600px;
+        color: var(--paper);
+      }
+      [data-composition-id="amplifier-case-study-beat-3"] .b3-carryover-accent {
+        height: 6px;
+        width: 60%;
+        background: var(--warn);
+      }
+
+      /* Code panel beneath carryover */
+      [data-composition-id="amplifier-case-study-beat-3"] .b3-panel {
+        position: absolute;
+        left: 96px;
+        top: 240px;
+        width: 720px;
+        box-sizing: border-box;
+        padding: 28px;
+        background: var(--ink-elevated);
+        border: 1px solid var(--code-soft);
+        border-radius: 8px;
+        z-index: 1;
+        will-change: opacity;
+      }
+      [data-composition-id="amplifier-case-study-beat-3"] .b3-code {
+        margin: 0;
+        font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+        font-weight: 500;
+        font-size: 28px;
+        line-height: 1.5;
+        color: var(--paper);
+        white-space: pre;
+      }
+      [data-composition-id="amplifier-case-study-beat-3"] .b3-code code {
+        display: block;
+      }
+      [data-composition-id="amplifier-case-study-beat-3"] .b3-line {
+        display: block;
+        will-change: opacity;
+      }
+      [data-composition-id="amplifier-case-study-beat-3"] .b3-key {
+        color: var(--code);
+      }
+      [data-composition-id="amplifier-case-study-beat-3"] .b3-val {
+        color: var(--paper-dim);
+      }
+      [data-composition-id="amplifier-case-study-beat-3"] .b3-punct {
+        color: var(--paper-muted);
+      }
+
+      /* Right-side constraint stack */
+      [data-composition-id="amplifier-case-study-beat-3"] .b3-constraints {
+        position: absolute;
+        right: 96px;
+        top: 300px;
+        width: 520px;
+        text-align: left;
+        will-change: opacity;
+      }
+      [data-composition-id="amplifier-case-study-beat-3"] .b3-constraint {
+        font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+        font-weight: 400;
+        font-size: 22px;
+        line-height: 1.8;
+        color: var(--paper-muted);
+        white-space: nowrap;
+        will-change: transform, opacity;
+      }
+      [data-composition-id="amplifier-case-study-beat-3"] .b3-constraint-key {
+        display: inline-block;
+        width: 240px;
+      }
+      [data-composition-id="amplifier-case-study-beat-3"] .b3-constraint-arrow {
+        display: inline-block;
+      }
+
+      /* Big bottom-center caption */
+      [data-composition-id="amplifier-case-study-beat-3"] .b3-caption {
+        position: absolute;
+        top: 820px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 1728px;
+        text-align: center;
+        font-family: "Inter Tight", "Inter", system-ui, sans-serif;
+        font-weight: 500;
+        font-size: 96px;
+        line-height: 1.12;
+        letter-spacing: -0.01em;
+        color: var(--paper);
+      }
+      [data-composition-id="amplifier-case-study-beat-3"] .b3-cap-word {
+        display: inline-block;
+        margin: 0 14px 0 0;
+        will-change: transform, opacity;
+      }
+      [data-composition-id="amplifier-case-study-beat-3"] .b3-ceiling {
+        color: var(--warn);
+      }
+
+      /* Hairline: passed-along state from beat 2 (25% width, scaleX 1.0). */
+      [data-composition-id="amplifier-case-study-beat-3"] .b3-hairline {
+        position: absolute;
+        bottom: 80px;
+        left: 96px;
+        height: 1px;
+        width: 25%;
+        background: var(--signal);
+        transform-origin: left center;
+        transform: scaleX(1);
+        opacity: 0.85;
+      }
+    </style>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      // Thumbnail carryover dissolve at t=1.0s
+      tl.to(
+        '[data-composition-id="amplifier-case-study-beat-3"] .b3-carryover',
+        { opacity: 0, scale: 1.05, duration: 0.7 },
+        1.0,
+      );
+
+      // Code panel fades in as carryover dissolves
+      tl.from(
+        '[data-composition-id="amplifier-case-study-beat-3"] .b3-panel',
+        { opacity: 0, duration: 0.5 },
+        1.5,
+      );
+
+      // Schema lines reveal one by one — compressed stagger so all 7 lines
+      // land during "The model only filled in strings" (clip-local 0.58–2.5).
+      tl.from(
+        '[data-composition-id="amplifier-case-study-beat-3"] .b3-line',
+        {
+          opacity: 0,
+          duration: 0.3,
+          ease: "power2.out",
+          stagger: 0.25,
+        },
+        1.8,
+      );
+
+      // Constraint labels slide in from right during
+      // "Layout, color, motion — all on us." (clip-local 2.5–4.6).
+      tl.from(
+        '[data-composition-id="amplifier-case-study-beat-3"] .b3-constraint',
+        {
+          x: 40,
+          opacity: 0,
+          duration: 0.4,
+          ease: "power2.out",
+          stagger: 0.18,
+        },
+        3.0,
+      );
+
+      // Warn sweep on schema keys as the narrator hits "the schema"
+      // (clip-local ~4.6s, was 6.5s — landed 2s after audio).
+      tl.to(
+        '[data-composition-id="amplifier-case-study-beat-3"] .b3-key',
+        {
+          color: "var(--warn)",
+          duration: 0.18,
+          ease: "power2.inOut",
+          yoyo: true,
+          repeat: 1,
+          stagger: 0.1,
+        },
+        4.6,
+      );
+
+      // Big caption reveals during "The schema was the ceiling."
+      // (clip-local 4.6–6.17s). Was 8.5s — landed 2.3s after audio.
+      tl.from(
+        '[data-composition-id="amplifier-case-study-beat-3"] .b3-cap-word',
+        {
+          y: 24,
+          opacity: 0,
+          duration: 0.5,
+          ease: "power3.out",
+          stagger: 0.18,
+        },
+        4.8,
+      );
+
+      // Panel dims after big caption fully lands; was 11.5s (post-narration hold).
+      tl.to(
+        [
+          '[data-composition-id="amplifier-case-study-beat-3"] .b3-panel',
+          '[data-composition-id="amplifier-case-study-beat-3"] .b3-constraints',
+        ],
+        {
+          opacity: 0.15,
+          duration: 0.6,
+        },
+        7.0,
+      );
+
+      window.__timelines["amplifier-case-study-beat-3"] = tl;
+    </script>
+  </div>
+</template>

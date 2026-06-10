@@ -1,0 +1,471 @@
+<template id="beat-7-bespoke-grid-template">
+  <div
+    id="amplifier-case-study-beat-7"
+    data-composition-id="amplifier-case-study-beat-7"
+    data-start="0"
+    data-duration="12"
+    data-width="1920"
+    data-height="1080"
+  >
+    <!-- Load Lora for cell 1's serif italic title -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@1,600&display=swap"
+      rel="stylesheet"
+    />
+
+    <div class="b7-label">amplifier / 2026-05-19+</div>
+
+    <div class="b7-grid">
+      <!-- ============================================================
+           CELL 1 — Warm-cream serif essay
+           ============================================================ -->
+      <div class="b7-cell b7-c1">
+        <div class="b7-c1-eyebrow">ESSAY · 02</div>
+        <div class="b7-c1-title">On The Quiet Power of Subtraction</div>
+        <div class="b7-c1-byline">— d. proctor</div>
+      </div>
+
+      <!-- ============================================================
+           CELL 2 — Deep-navy oversized number
+           ============================================================ -->
+      <div class="b7-cell b7-c2">
+        <div class="b7-c2-stat">
+          <span class="b7-c2-num">42</span><span class="b7-c2-pct">%</span>
+        </div>
+        <div class="b7-c2-sub">of agents that read the docs</div>
+      </div>
+
+      <!-- ============================================================
+           CELL 3 — Mono-paper manifesto
+           ============================================================ -->
+      <div class="b7-cell b7-c3">
+        <div class="b7-c3-bar"></div>
+        <div class="b7-c3-stack">
+          <div class="b7-c3-line">Make</div>
+          <div class="b7-c3-line">It</div>
+          <div class="b7-c3-line">Move.</div>
+        </div>
+        <div class="b7-c3-rule"></div>
+      </div>
+
+      <!-- ============================================================
+           CELL 4 — Gradient mesh + icons
+           ============================================================ -->
+      <div class="b7-cell b7-c4">
+        <div class="b7-c4-mesh"></div>
+        <div class="b7-c4-veil"></div>
+        <div class="b7-c4-title">Six tools that ship</div>
+        <div class="b7-c4-icons">
+          <span class="b7-c4-ico">◆</span>
+          <span class="b7-c4-ico">▲</span>
+          <span class="b7-c4-ico">●</span>
+          <span class="b7-c4-ico">■</span>
+          <span class="b7-c4-ico">★</span>
+        </div>
+      </div>
+
+      <!-- ============================================================
+           CELL 5 — Dark terminal aesthetic
+           ============================================================ -->
+      <div class="b7-cell b7-c5">
+        <div class="b7-c5-dots">
+          <span class="b7-c5-dotlight"></span>
+          <span class="b7-c5-dotlight"></span>
+          <span class="b7-c5-dotlight"></span>
+        </div>
+        <div class="b7-c5-term">
+          <div class="b7-c5-line"><span class="b7-c5-prompt">$</span> deploy --env prod</div>
+          <div class="b7-c5-line b7-c5-arrow">&rarr; shipping...</div>
+          <div class="b7-c5-line">
+            <span class="b7-c5-dot">●</span>
+            <span class="b7-c5-ok">ok</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============================================================
+           CELL 6 — Caption (matches Beat 2 placement)
+           ============================================================ -->
+      <div class="b7-cell b7-c-caption">
+        <div class="b7-caption">
+          <span class="b7-cap-word">Now</span>
+          <span class="b7-cap-word">every</span>
+          <span class="b7-cap-word">video</span>
+          <span class="b7-cap-word">is</span>
+          <span class="b7-cap-word">its</span>
+          <span class="b7-cap-word">own</span>
+          <span class="b7-cap-word">thing.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="hf-hairline b7-hairline"></div>
+
+    <style>
+      :root {
+        --ink: #08090b;
+        --ink-elevated: #12141a;
+        --ink-line: #1f232c;
+        --ink-soft: #2a2f3b;
+        --paper: #f5f2ec;
+        --paper-muted: #8b8e96;
+        --paper-dim: #5a5e68;
+        --signal: #22d67a;
+        --signal-soft: rgba(34, 214, 122, 0.15);
+        --warn: #f4a641;
+        --warn-soft: rgba(244, 166, 65, 0.18);
+        --code: #7dd3fc;
+        --code-soft: rgba(125, 211, 252, 0.15);
+        --font-display: "Inter Tight", "Inter", system-ui, sans-serif;
+        --font-mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+      }
+
+      [data-composition-id="amplifier-case-study-beat-7"] {
+        position: absolute;
+        inset: 0;
+        background: var(--ink);
+        color: var(--paper);
+        font-family: "Inter Tight", "Inter", system-ui, sans-serif;
+        overflow: hidden;
+      }
+
+      [data-composition-id="amplifier-case-study-beat-7"] .b7-label {
+        position: absolute;
+        top: 60px;
+        right: 96px;
+        font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+        font-weight: 500;
+        font-size: 14px;
+        letter-spacing: 0.04em;
+        color: var(--paper-muted);
+      }
+
+      /* Same grid geometry as beat-2 for visual rhyme */
+      [data-composition-id="amplifier-case-study-beat-7"] .b7-grid {
+        position: absolute;
+        top: 150px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: grid;
+        grid-template-columns: repeat(3, 480px);
+        grid-template-rows: repeat(2, 270px);
+        gap: 40px;
+      }
+
+      [data-composition-id="amplifier-case-study-beat-7"] .b7-cell {
+        position: relative;
+        width: 480px;
+        height: 270px;
+        box-sizing: border-box;
+        overflow: hidden;
+        will-change: transform, opacity;
+        transform-origin: center center;
+      }
+
+      /* ---------- Cell 1: Warm-cream serif essay ---------- */
+      [data-composition-id="amplifier-case-study-beat-7"] .b7-c1 {
+        background: #f7f1e6;
+        padding: 26px 28px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+      }
+      [data-composition-id="amplifier-case-study-beat-7"] .b7-c1-eyebrow {
+        font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+        font-weight: 500;
+        font-size: 11px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: #7a6a55;
+      }
+      [data-composition-id="amplifier-case-study-beat-7"] .b7-c1-title {
+        font-family: "Lora", "Iowan Old Style", "Georgia", serif;
+        font-style: italic;
+        font-weight: 600;
+        font-size: 28px;
+        line-height: 1.2;
+        color: #1a1614;
+        max-width: 380px;
+      }
+      [data-composition-id="amplifier-case-study-beat-7"] .b7-c1-byline {
+        font-family: "Lora", "Georgia", serif;
+        font-style: italic;
+        font-size: 12px;
+        color: #6b5a48;
+      }
+
+      /* ---------- Cell 2: Deep-navy oversized number ---------- */
+      [data-composition-id="amplifier-case-study-beat-7"] .b7-c2 {
+        background: linear-gradient(135deg, #0a1f3d, #1a3f75);
+        padding: 22px 28px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+      }
+      [data-composition-id="amplifier-case-study-beat-7"] .b7-c2-stat {
+        display: flex;
+        align-items: baseline;
+        color: var(--paper);
+        line-height: 1;
+      }
+      [data-composition-id="amplifier-case-study-beat-7"] .b7-c2-num {
+        font-family: "Inter Tight", "Inter", system-ui, sans-serif;
+        font-weight: 600;
+        font-size: 120px;
+        letter-spacing: -0.03em;
+        color: var(--paper);
+      }
+      [data-composition-id="amplifier-case-study-beat-7"] .b7-c2-pct {
+        font-family: "Inter Tight", "Inter", system-ui, sans-serif;
+        font-weight: 500;
+        font-size: 64px;
+        margin-left: 6px;
+        color: #b8c5dc;
+      }
+      [data-composition-id="amplifier-case-study-beat-7"] .b7-c2-sub {
+        margin-top: 14px;
+        font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+        font-weight: 400;
+        font-size: 14px;
+        letter-spacing: 0.02em;
+        color: #b8c5dc;
+      }
+
+      /* ---------- Cell 3: Mono-paper manifesto ---------- */
+      [data-composition-id="amplifier-case-study-beat-7"] .b7-c3 {
+        background: #f2f0e8;
+        padding: 24px 28px 26px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+      }
+      [data-composition-id="amplifier-case-study-beat-7"] .b7-c3-bar {
+        width: 60%;
+        height: 12px;
+        background: #22d67a;
+      }
+      [data-composition-id="amplifier-case-study-beat-7"] .b7-c3-stack {
+        display: flex;
+        flex-direction: column;
+        line-height: 1;
+      }
+      [data-composition-id="amplifier-case-study-beat-7"] .b7-c3-line {
+        font-family: "Inter Tight", "Inter", system-ui, sans-serif;
+        font-weight: 500;
+        font-size: 56px;
+        color: #0a0a0a;
+        letter-spacing: -0.02em;
+      }
+      [data-composition-id="amplifier-case-study-beat-7"] .b7-c3-rule {
+        width: 30%;
+        height: 2px;
+        background: #0a0a0a;
+      }
+
+      /* ---------- Cell 4: Gradient mesh + icons ---------- */
+      [data-composition-id="amplifier-case-study-beat-7"] .b7-c4 {
+        background: #1a0a1a;
+      }
+      [data-composition-id="amplifier-case-study-beat-7"] .b7-c4-mesh {
+        position: absolute;
+        inset: -40%;
+        background: conic-gradient(from 180deg at 50% 50%, #ff6b9d, #9d6bff, #6bffd8, #ff6b9d);
+        filter: blur(8px) saturate(120%);
+        transform-origin: center center;
+        will-change: transform;
+      }
+      [data-composition-id="amplifier-case-study-beat-7"] .b7-c4-veil {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(180deg, rgba(0, 0, 0, 0) 35%, rgba(0, 0, 0, 0.45) 100%);
+      }
+      [data-composition-id="amplifier-case-study-beat-7"] .b7-c4-title {
+        position: absolute;
+        top: 24px;
+        left: 28px;
+        font-family: "Inter Tight", "Inter", system-ui, sans-serif;
+        font-weight: 500;
+        font-size: 24px;
+        color: #ffffff;
+        text-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
+      }
+      [data-composition-id="amplifier-case-study-beat-7"] .b7-c4-icons {
+        position: absolute;
+        bottom: 22px;
+        left: 28px;
+        right: 28px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      [data-composition-id="amplifier-case-study-beat-7"] .b7-c4-ico {
+        font-size: 32px;
+        color: #ffffff;
+        line-height: 1;
+        text-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+      }
+
+      /* ---------- Cell 5: Dark terminal aesthetic ---------- */
+      [data-composition-id="amplifier-case-study-beat-7"] .b7-c5 {
+        background: #08090b;
+        border: 1px solid #1f232c;
+        padding: 22px 26px 24px;
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+      }
+      [data-composition-id="amplifier-case-study-beat-7"] .b7-c5-dots {
+        display: flex;
+        gap: 8px;
+      }
+      [data-composition-id="amplifier-case-study-beat-7"] .b7-c5-dotlight {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--paper-dim);
+      }
+      [data-composition-id="amplifier-case-study-beat-7"] .b7-c5-term {
+        font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+        font-size: 14px;
+        line-height: 1.7;
+        color: var(--paper);
+      }
+      [data-composition-id="amplifier-case-study-beat-7"] .b7-c5-prompt {
+        color: var(--code);
+      }
+      [data-composition-id="amplifier-case-study-beat-7"] .b7-c5-arrow {
+        color: var(--paper-muted);
+      }
+      [data-composition-id="amplifier-case-study-beat-7"] .b7-c5-dot {
+        color: var(--code);
+        display: inline-block;
+        will-change: opacity;
+      }
+      [data-composition-id="amplifier-case-study-beat-7"] .b7-c5-ok {
+        color: var(--signal);
+        margin-left: 6px;
+      }
+
+      /* ---------- Caption cell (matches beat-2) ---------- */
+      [data-composition-id="amplifier-case-study-beat-7"] .b7-c-caption {
+        background: transparent;
+        padding: 24px;
+        display: flex;
+        align-items: flex-end;
+        overflow: visible;
+      }
+      [data-composition-id="amplifier-case-study-beat-7"] .b7-caption {
+        font-family: "Inter Tight", "Inter", system-ui, sans-serif;
+        font-weight: 500;
+        font-size: 32px;
+        line-height: 1.2;
+        color: var(--paper);
+        max-width: 430px;
+      }
+      [data-composition-id="amplifier-case-study-beat-7"] .b7-cap-word {
+        display: inline-block;
+        margin: 0 6px 0 0;
+        will-change: transform, opacity;
+      }
+
+      /* Persistent hairline — passed-along state ~85% width */
+      [data-composition-id="amplifier-case-study-beat-7"] .b7-hairline {
+        position: absolute;
+        bottom: 80px;
+        left: 96px;
+        height: 1px;
+        width: 85%;
+        background: var(--signal);
+        transform-origin: left center;
+        transform: scaleX(1);
+        opacity: 0.85;
+      }
+    </style>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+      const ROOT = '[data-composition-id="amplifier-case-study-beat-7"]';
+
+      // Label fades in
+      tl.from(ROOT + " .b7-label", { opacity: 0, duration: 0.4 }, 0);
+
+      // Cells populate one-by-one with stagger
+      tl.from(
+        ROOT + " .b7-cell:not(.b7-c-caption)",
+        {
+          opacity: 0,
+          scale: 0.96,
+          duration: 0.5,
+          ease: "power3.out",
+          stagger: 0.4,
+        },
+        0.3,
+      );
+
+      // Cell 2 counter: 0 → 42 looping.
+      // Cycle = 2.5s + 1s repeatDelay = 3.5s. Window 3.0 → 12.0 = 9s → 2 reps.
+      tl.fromTo(
+        ROOT + " .b7-c2-num",
+        { innerText: 0 },
+        {
+          innerText: 42,
+          duration: 2.5,
+          snap: { innerText: 1 },
+          repeat: 2,
+          yoyo: true,
+          repeatDelay: 1,
+          ease: "power2.out",
+        },
+        3.0,
+      );
+
+      // Cell 4 mesh: slow rotation. 18s/rotation, but only 8.5s remain → partial.
+      // Use a faster rotation that completes a few times within the window.
+      tl.to(
+        ROOT + " .b7-c4-mesh",
+        {
+          rotation: 360,
+          duration: 8.5,
+          ease: "none",
+          transformOrigin: "center center",
+        },
+        3.5,
+      );
+
+      // Cell 5 dot pulse. Cycle 0.6s × 2 (yoyo) = 1.2s.
+      // Window 3.8 → 12.0 = 8.2s → ~6 yoyo pairs (13 reps).
+      tl.to(
+        ROOT + " .b7-c5-dot",
+        {
+          opacity: 0.3,
+          duration: 0.6,
+          ease: "sine.inOut",
+          yoyo: true,
+          repeat: 13,
+        },
+        3.8,
+      );
+
+      // Caption at t=7.0s — word-by-word reveal
+      tl.from(
+        ROOT + " .b7-cap-word",
+        {
+          y: 24,
+          opacity: 0,
+          duration: 0.5,
+          ease: "power3.out",
+          stagger: 0.12,
+        },
+        7.0,
+      );
+
+      window.__timelines["amplifier-case-study-beat-7"] = tl;
+    </script>
+  </div>
+</template>

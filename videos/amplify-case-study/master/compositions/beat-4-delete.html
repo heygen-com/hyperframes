@@ -1,0 +1,415 @@
+<template id="beat-4-delete-template">
+  <div
+    id="amplifier-case-study-beat-4"
+    data-composition-id="amplifier-case-study-beat-4"
+    data-start="0"
+    data-duration="10"
+    data-width="1920"
+    data-height="1080"
+  >
+    <!-- Full-canvas terminal frame, 1600x800 centered. Mirrors macOS-style
+         chrome: three traffic-light dots top-left, file path as title. -->
+    <div class="b4-terminal">
+      <div class="b4-chrome">
+        <div class="b4-dots">
+          <span class="b4-dot"></span>
+          <span class="b4-dot"></span>
+          <span class="b4-dot"></span>
+        </div>
+        <div class="b4-title">~/amplifier — apps/web</div>
+        <div class="b4-chrome-spacer"></div>
+      </div>
+
+      <div class="b4-body">
+        <!-- git log lines: 4 lines fade in 350ms apart starting at t=0.5s -->
+        <div class="b4-line b4-log-cmd">
+          <span class="b4-prompt">$</span> git log --oneline
+          apps/web/src/lib/explainer-storyboard.ts | head -3
+        </div>
+        <div class="b4-line b4-log-row">
+          <span class="b4-sha">e0f0f28</span> chore: storyboard module
+        </div>
+        <div class="b4-line b4-log-row">
+          <span class="b4-sha">1a2b3c4</span> feat: explainer interview
+        </div>
+        <div class="b4-line b4-log-row">
+          <span class="b4-sha">d4e5f6a</span> feat: video pipeline scaffolding
+        </div>
+
+        <!-- Spacer line -->
+        <div class="b4-spacer"></div>
+
+        <!-- Typed line at t=2.0s: rm src/lib/explainer-storyboard.ts -->
+        <div class="b4-line b4-typed-row">
+          <span class="b4-prompt">$</span
+          ><span class="b4-rm-text">rm src/lib/explainer-storyboard.ts</span
+          ><span class="b4-rm-cursor">_</span>
+        </div>
+
+        <!-- Spacer -->
+        <div class="b4-spacer"></div>
+
+        <!-- git diff --stat HEAD~1 at t=5.0s -->
+        <div class="b4-line b4-diff-cmd">
+          <span class="b4-prompt">$</span> git diff --stat HEAD~1
+        </div>
+        <div class="b4-line b4-diff-row">
+          <span class="b4-diff-path">&nbsp;apps/web/src/lib/explainer-storyboard.ts |</span
+          ><span class="b4-counter">0</span
+          ><span class="b4-dashes">----------------------------</span>
+        </div>
+
+        <!-- Spacer -->
+        <div class="b4-spacer"></div>
+
+        <!-- Commit line typed at t=7.5s -->
+        <div class="b4-line b4-commit-row">
+          <span class="b4-prompt">$</span
+          ><span class="b4-commit-text">git commit -m "delete the ceiling"</span
+          ><span class="b4-commit-cursor">_</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Persistent hairline — passed-along state ~45% in beat 4 -->
+    <div class="hf-hairline b4-hairline"></div>
+
+    <style>
+      :root {
+        --ink: #08090b;
+        --ink-elevated: #12141a;
+        --ink-line: #1f232c;
+        --ink-soft: #2a2f3b;
+        --paper: #f5f2ec;
+        --paper-muted: #8b8e96;
+        --paper-dim: #5a5e68;
+        --signal: #22d67a;
+        --signal-soft: rgba(34, 214, 122, 0.15);
+        --warn: #f4a641;
+        --warn-soft: rgba(244, 166, 65, 0.18);
+        --code: #7dd3fc;
+        --code-soft: rgba(125, 211, 252, 0.15);
+        --font-display: "Inter Tight", "Inter", system-ui, sans-serif;
+        --font-mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+      }
+
+      [data-composition-id="amplifier-case-study-beat-4"] {
+        position: absolute;
+        inset: 0;
+        background: var(--ink);
+        color: var(--paper);
+        font-family: "Inter Tight", "Inter", system-ui, sans-serif;
+        overflow: hidden;
+      }
+
+      /* Terminal frame */
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-terminal {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        width: 1600px;
+        height: 800px;
+        box-sizing: border-box;
+        background: var(--ink-elevated);
+        border: 1px solid var(--ink-line);
+        border-radius: 8px;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
+      }
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-chrome {
+        display: flex;
+        align-items: center;
+        height: 44px;
+        padding: 0 16px;
+        border-bottom: 1px solid var(--ink-line);
+        background: var(--ink);
+      }
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-dots {
+        display: flex;
+        gap: 8px;
+        width: 200px;
+      }
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: var(--paper-dim);
+      }
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-title {
+        flex: 1;
+        text-align: center;
+        font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+        font-size: 14px;
+        font-weight: 500;
+        letter-spacing: 0.04em;
+        color: var(--paper-muted);
+      }
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-chrome-spacer {
+        width: 200px;
+      }
+
+      /* Terminal body */
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-body {
+        flex: 1;
+        padding: 36px 40px;
+        font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+        font-size: 22px;
+        font-weight: 400;
+        line-height: 1.55;
+        color: var(--paper);
+        overflow: hidden;
+      }
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-line {
+        display: block;
+        white-space: nowrap;
+        will-change: opacity;
+      }
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-spacer {
+        height: 10px;
+      }
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-prompt {
+        color: var(--signal);
+        margin-right: 8px;
+      }
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-sha {
+        color: var(--code);
+        margin-right: 12px;
+      }
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-log-row {
+        color: var(--paper-muted);
+      }
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-log-cmd {
+        color: var(--paper);
+      }
+
+      /* Lines that animate in start hidden */
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-log-cmd,
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-log-row,
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-typed-row,
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-diff-cmd,
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-diff-row,
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-commit-row {
+        opacity: 0;
+      }
+
+      /* Typed rm line — text is in DOM; reveal via width clip */
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-rm-text {
+        color: var(--paper);
+        display: inline-block;
+        overflow: hidden;
+        white-space: nowrap;
+        vertical-align: bottom;
+        width: 0ch;
+      }
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-rm-cursor {
+        color: var(--paper);
+        opacity: 0;
+        margin-left: 2px;
+      }
+
+      /* Diff row + counter */
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-diff-cmd {
+        color: var(--paper);
+      }
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-diff-path {
+        color: var(--paper-muted);
+      }
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-counter {
+        display: inline-block;
+        min-width: 80px;
+        text-align: right;
+        margin: 0 12px 0 4px;
+        color: var(--signal);
+        font-weight: 500;
+      }
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-dashes {
+        display: inline-block;
+        color: var(--signal);
+        overflow: hidden;
+        white-space: nowrap;
+        direction: rtl;
+        max-width: 0;
+        vertical-align: bottom;
+      }
+
+      /* Commit row */
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-commit-text {
+        color: var(--paper);
+        display: inline-block;
+        overflow: hidden;
+        white-space: nowrap;
+        vertical-align: bottom;
+        width: 0ch;
+      }
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-commit-cursor {
+        color: var(--paper);
+        opacity: 0;
+        margin-left: 2px;
+      }
+
+      /* Hairline — passed-along state ~45% width in beat 4 */
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-hairline {
+        position: absolute;
+        bottom: 80px;
+        left: 96px;
+        height: 1px;
+        width: 45%;
+        background: var(--signal);
+        transform-origin: left center;
+        transform: scaleX(1);
+        opacity: 0.85;
+      }
+    </style>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      // Narration plays clip-local 1.07–4.49s:
+      //   "So we deleted it. Four hundred and fifty-five lines, gone."
+      // Visual cues retimed so the rm types during "So we deleted it" and
+      // the 455 counter hits during "Four hundred and fifty-five."
+
+      // 1. Git log command + 3 result rows, set the scene before narration.
+      tl.to(
+        '[data-composition-id="amplifier-case-study-beat-4"] .b4-log-cmd',
+        { opacity: 1, duration: 0.25 },
+        0.0,
+      );
+      tl.to(
+        '[data-composition-id="amplifier-case-study-beat-4"] .b4-log-row',
+        { opacity: 1, duration: 0.25, stagger: 0.25 },
+        0.3,
+      );
+
+      // 2. "rm src/lib/explainer-storyboard.ts" types during "So we deleted it."
+      const rmText = "rm src/lib/explainer-storyboard.ts";
+      tl.to(
+        '[data-composition-id="amplifier-case-study-beat-4"] .b4-typed-row',
+        { opacity: 1, duration: 0.1 },
+        1.0,
+      );
+      tl.to(
+        '[data-composition-id="amplifier-case-study-beat-4"] .b4-rm-text',
+        {
+          width: rmText.length + "ch",
+          duration: rmText.length * 0.04,
+          ease: "none",
+        },
+        1.0,
+      );
+
+      // Cursor blink right after rm completes.
+      tl.to(
+        '[data-composition-id="amplifier-case-study-beat-4"] .b4-rm-cursor',
+        {
+          opacity: 1,
+          duration: 0.3,
+          ease: "steps(1)",
+          yoyo: true,
+          repeat: 1,
+        },
+        2.4,
+      );
+
+      // 3. SFX tick on "deleted" punch.
+      tl.call(
+        function () {
+          try {
+            const Ctx = window.AudioContext || window.webkitAudioContext;
+            if (!Ctx) return;
+            const ctx = new Ctx();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = "square";
+            osc.frequency.value = 600;
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.15, ctx.currentTime + 0.01);
+            gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.2);
+            osc.start();
+            osc.stop(ctx.currentTime + 0.2);
+          } catch (_) {
+            /* no-op */
+          }
+        },
+        [],
+        2.5,
+      );
+
+      // 4. git diff --stat HEAD~1 just before the number lands.
+      tl.to(
+        '[data-composition-id="amplifier-case-study-beat-4"] .b4-diff-cmd',
+        { opacity: 1, duration: 0.2 },
+        2.7,
+      );
+      tl.to(
+        '[data-composition-id="amplifier-case-study-beat-4"] .b4-diff-row',
+        { opacity: 1, duration: 0.2 },
+        2.9,
+      );
+
+      // Counter 0 → 455 lands during "Four hundred and fifty-five."
+      // Discrete .set() calls (24 steps over 1.0s) — see commit history for
+      // why we don't use onUpdate.
+      const counterStart = 2.9;
+      const counterDur = 1.0;
+      const counterSteps = 24;
+      for (let i = 0; i <= counterSteps; i++) {
+        const t = i / counterSteps;
+        // power2.out ease: 1 - (1 - t)^2
+        const eased = 1 - (1 - t) * (1 - t);
+        const value = Math.round(eased * 455);
+        tl.set(
+          '[data-composition-id="amplifier-case-study-beat-4"] .b4-counter',
+          { innerText: String(value) },
+          counterStart + t * counterDur,
+        );
+      }
+
+      // Dashes draw right-to-left in signal-green alongside the counter.
+      tl.to(
+        '[data-composition-id="amplifier-case-study-beat-4"] .b4-dashes',
+        { maxWidth: 600, duration: 1.0, ease: "power2.out" },
+        2.9,
+      );
+
+      // 5. git commit -m "delete the ceiling" types as narrator finishes "gone".
+      const commitText = 'git commit -m "delete the ceiling"';
+      tl.to(
+        '[data-composition-id="amplifier-case-study-beat-4"] .b4-commit-row',
+        { opacity: 1, duration: 0.1 },
+        4.5,
+      );
+      tl.to(
+        '[data-composition-id="amplifier-case-study-beat-4"] .b4-commit-text',
+        {
+          width: commitText.length + "ch",
+          duration: commitText.length * 0.03,
+          ease: "none",
+        },
+        4.5,
+      );
+
+      // Flash commit line signal-green briefly when finished, then fade to 0.4
+      const commitDone = 4.5 + commitText.length * 0.03;
+      tl.to(
+        '[data-composition-id="amplifier-case-study-beat-4"] .b4-commit-text',
+        { color: "var(--signal)", duration: 0.2 },
+        commitDone,
+      );
+      tl.to(
+        '[data-composition-id="amplifier-case-study-beat-4"] .b4-commit-row',
+        { opacity: 0.4, duration: 0.6 },
+        commitDone + 0.4,
+      );
+
+      window.__timelines["amplifier-case-study-beat-4"] = tl;
+    </script>
+  </div>
+</template>

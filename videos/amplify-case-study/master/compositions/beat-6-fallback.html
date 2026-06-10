@@ -1,0 +1,286 @@
+<template id="beat-6-fallback-template">
+  <div
+    id="amplifier-case-study-beat-6"
+    data-composition-id="amplifier-case-study-beat-6"
+    data-start="0"
+    data-duration="8"
+    data-width="1920"
+    data-height="1080"
+  >
+    <!-- Top-right metadata label -->
+    <div class="b6-meta">amplifier-video-worker / fallback layer</div>
+
+    <!-- Stage: full 1728px-wide content area, centered, 96px outer margin. -->
+    <div class="b6-stage">
+      <!-- SVG layer for dotted connectors descending from where the MP4 node
+           sat in Beat 5 (offscreen top of this beat, implied) down to the
+           top edge of the fallback block. -->
+      <svg
+        class="b6-svg"
+        viewBox="0 0 1728 940"
+        preserveAspectRatio="xMidYMid meet"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <!-- Dotted vertical connectors, x=400 and x=1520 in stage coords.
+             Drop from y=60 (offscreen-top implication) to y=440 (top of
+             fallback block, which sits at stage-y 440..560 corresponding
+             to canvas y=580..700). -->
+        <line class="b6-dotted-connector b6-conn-left" x1="400" y1="60" x2="400" y2="440" />
+        <line class="b6-dotted-connector b6-conn-right" x1="1520" y1="60" x2="1520" y2="440" />
+      </svg>
+
+      <!-- Horizontal divider hairline at canvas y=540 (stage y=400). -->
+      <div class="b6-divider"></div>
+
+      <!-- Fallback block: y=580..700 canvas (stage y=440..560), full stage
+           width 1728px (the stage already accounts for 96px margins). -->
+      <div class="b6-fallback-block">
+        <div class="b6-fallback-label">template renderer (fallback)</div>
+      </div>
+
+      <!-- Base plate: 8px thick at canvas y=708 (stage y=568), full stage
+           width. The "foundation" indicator. -->
+      <div class="b6-baseplate"></div>
+    </div>
+
+    <!-- Bottom-left caption (word-by-word reveal at t=3.0s) -->
+    <div class="b6-caption">
+      <span class="b6-cap-word">Floor</span>
+      <span class="b6-cap-word">solid.</span>
+      <span class="b6-cap-word b6-cap-ceiling">Ceiling</span>
+      <span class="b6-cap-word">ambitious.</span>
+    </div>
+
+    <!-- Persistent hairline — passed-along state ~70% width in beat 6 -->
+    <div class="hf-hairline b6-hairline"></div>
+
+    <style>
+      :root {
+        --ink: #08090b;
+        --ink-elevated: #12141a;
+        --ink-line: #1f232c;
+        --ink-soft: #2a2f3b;
+        --paper: #f5f2ec;
+        --paper-muted: #8b8e96;
+        --paper-dim: #5a5e68;
+        --signal: #22d67a;
+        --signal-soft: rgba(34, 214, 122, 0.15);
+        --warn: #f4a641;
+        --warn-soft: rgba(244, 166, 65, 0.18);
+        --code: #7dd3fc;
+        --code-soft: rgba(125, 211, 252, 0.15);
+        --font-display: "Inter Tight", "Inter", system-ui, sans-serif;
+        --font-mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+      }
+
+      [data-composition-id="amplifier-case-study-beat-6"] {
+        position: absolute;
+        inset: 0;
+        background: var(--ink);
+        color: var(--paper);
+        font-family: "Inter Tight", "Inter", system-ui, sans-serif;
+        overflow: hidden;
+      }
+
+      /* Top-right meta label */
+      [data-composition-id="amplifier-case-study-beat-6"] .b6-meta {
+        position: absolute;
+        top: 56px;
+        right: 96px;
+        font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+        font-size: 14px;
+        font-weight: 500;
+        letter-spacing: 0.04em;
+        color: var(--paper-muted);
+      }
+
+      /* Stage: 1728px wide, starts at canvas x=96, y=140. Internal coordinate
+         system goes 0..940 vertically inside the stage (canvas y=140..1080).
+         So canvas y=540 → stage y=400 (divider position).
+         Canvas y=580..700 → stage y=440..560 (fallback block).
+         Canvas y=708..716 → stage y=568..576 (base plate). */
+      [data-composition-id="amplifier-case-study-beat-6"] .b6-stage {
+        position: absolute;
+        left: 96px;
+        top: 140px;
+        width: 1728px;
+        height: 940px;
+      }
+
+      /* SVG connector layer fills the stage. */
+      [data-composition-id="amplifier-case-study-beat-6"] .b6-svg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+      }
+
+      /* Dotted hairlines descending from offscreen-top into block. */
+      [data-composition-id="amplifier-case-study-beat-6"] .b6-dotted-connector {
+        stroke: var(--ink-soft);
+        stroke-width: 1.5;
+        stroke-linecap: round;
+        stroke-dasharray: 4 8;
+        fill: none;
+        opacity: 0;
+      }
+
+      /* Horizontal divider hairline. Full stage width, 1px tall, sits at
+         stage-y 400 (canvas y=540). */
+      [data-composition-id="amplifier-case-study-beat-6"] .b6-divider {
+        position: absolute;
+        left: 0;
+        top: 400px;
+        width: 100%;
+        height: 1px;
+        background: var(--ink-soft);
+        transform-origin: left center;
+        will-change: transform;
+      }
+
+      /* Fallback block: full stage width (1728px), 120px tall, sits at
+         stage-y 440 (canvas y=580). */
+      [data-composition-id="amplifier-case-study-beat-6"] .b6-fallback-block {
+        position: absolute;
+        left: 0;
+        top: 440px;
+        width: 100%;
+        height: 120px;
+        background: var(--ink-elevated);
+        border: 1px solid var(--ink-line);
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        will-change: transform, opacity;
+      }
+
+      /* Label inside the fallback block. */
+      [data-composition-id="amplifier-case-study-beat-6"] .b6-fallback-label {
+        font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+        font-size: 28px;
+        font-weight: 500;
+        letter-spacing: 0.02em;
+        color: var(--paper-muted);
+        will-change: opacity;
+      }
+
+      /* Base plate: 8px thick, full stage width, sits at stage-y 568
+         (canvas y=708). The "foundation" indicator below the block. */
+      [data-composition-id="amplifier-case-study-beat-6"] .b6-baseplate {
+        position: absolute;
+        left: 0;
+        top: 568px;
+        width: 100%;
+        height: 8px;
+        background: var(--ink-line);
+        transform-origin: center center;
+        will-change: transform, opacity;
+      }
+
+      /* Bottom-left caption: display-m sized 96px Inter Tight 500. */
+      [data-composition-id="amplifier-case-study-beat-6"] .b6-caption {
+        position: absolute;
+        left: 96px;
+        bottom: 120px;
+        font-family: "Inter Tight", "Inter", system-ui, sans-serif;
+        font-size: 96px;
+        font-weight: 500;
+        letter-spacing: -0.01em;
+        line-height: 1.05;
+        color: var(--paper);
+        max-width: 1600px;
+      }
+      [data-composition-id="amplifier-case-study-beat-6"] .b6-cap-word {
+        display: inline-block;
+        opacity: 0;
+        transform: translateY(24px);
+        margin-right: 24px;
+        will-change: opacity, transform;
+      }
+      [data-composition-id="amplifier-case-study-beat-6"] .b6-cap-ceiling {
+        color: var(--signal);
+      }
+
+      /* Persistent hairline — passed-along state ~70% width in beat 6. */
+      [data-composition-id="amplifier-case-study-beat-6"] .b6-hairline {
+        position: absolute;
+        bottom: 80px;
+        left: 96px;
+        height: 1px;
+        width: 70%;
+        background: var(--signal);
+        transform-origin: left center;
+        transform: scaleX(1);
+        opacity: 0.85;
+      }
+    </style>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+      const ROOT = '[data-composition-id="amplifier-case-study-beat-6"]';
+
+      // Horizontal hairline draws across from left at t=0.5s.
+      tl.from(
+        ROOT + " .b6-divider",
+        {
+          scaleX: 0,
+          duration: 0.6,
+          ease: "power2.inOut",
+          transformOrigin: "left center",
+        },
+        0.5,
+      );
+
+      // Fallback block draws in (scale from center) at t=1.0s.
+      tl.from(
+        ROOT + " .b6-fallback-block",
+        {
+          opacity: 0,
+          scaleX: 0,
+          duration: 0.6,
+          ease: "power3.out",
+          transformOrigin: "center center",
+        },
+        1.0,
+      );
+
+      // Label fades in at t=1.5s.
+      tl.from(ROOT + " .b6-fallback-label", { opacity: 0, duration: 0.4, ease: "power2.out" }, 1.5);
+
+      // Base plate scales in from center at t=1.8s.
+      tl.from(
+        ROOT + " .b6-baseplate",
+        {
+          opacity: 0,
+          scaleX: 0,
+          duration: 0.5,
+          ease: "power2.out",
+          transformOrigin: "center center",
+        },
+        1.8,
+      );
+
+      // Dotted connectors fade in at t=1.8s.
+      tl.to(ROOT + " .b6-dotted-connector", { opacity: 1, duration: 0.5, ease: "power2.out" }, 1.8);
+
+      // Caption word-by-word reveal at t=3.0s.
+      tl.to(
+        ROOT + " .b6-cap-word",
+        {
+          opacity: 1,
+          y: 0,
+          duration: 0.5,
+          ease: "power3.out",
+          stagger: 0.18,
+        },
+        3.0,
+      );
+
+      window.__timelines["amplifier-case-study-beat-6"] = tl;
+    </script>
+  </div>
+</template>

@@ -105,6 +105,14 @@ basecamp-video/
 launch-video*/
 ab-test/
 compositions/
+# Exception (bd-8dcu): hand-authored beat compositions for the amplify case-study
+# video are source-of-truth for re-rendering the master MP4 — track only HTMLs.
+!videos/amplify-case-study/master/compositions/
+!videos/amplify-case-study/master/compositions/*.html
+# But keep rendered output (mp4/mov) out, mirroring the global compositions rule.
+videos/amplify-case-study/master/compositions/*.mp4
+videos/amplify-case-study/master/compositions/*.mov
+videos/amplify-case-study/master/compositions/*.MOV
 video-6-2-patched/
 claude-design-hyperframes-video/
 .claude/worktrees/

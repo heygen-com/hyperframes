@@ -1,0 +1,476 @@
+<template id="beat-5-new-pipeline-template">
+  <div
+    id="amplifier-case-study-beat-5"
+    data-composition-id="amplifier-case-study-beat-5"
+    data-start="0"
+    data-duration="18"
+    data-width="1920"
+    data-height="1080"
+  >
+    <!-- Top-right metadata label -->
+    <div class="b5-meta">amplifier-video-worker / 2026-05-19</div>
+
+    <!-- Architecture diagram canvas. Origin at (0,0) of the inner stage.
+         Stage is 1728px wide (96px outer margin) centered. Y coordinates:
+         Row 1 pills center at ~y=240. Row 2 pills center at ~y=620. -->
+    <div class="b5-stage">
+      <!-- SVG connector layer sits behind the pills. viewBox matches stage dims.
+           Pill vertical centers: Row 1 y=224 (top:208+16), Row 2 y=604 (top:588+16). -->
+      <svg
+        class="b5-svg"
+        viewBox="0 0 1728 800"
+        preserveAspectRatio="xMidYMid meet"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <!-- Row 1 horizontal connectors. Pill right edges → next pill left edge:
+               interview (left=120, ~170w)  ends at ~290, brief starts at 470
+               brief     (left=470, ~95w)   ends at ~565, SQS starts at 800
+               SQS       (left=800, ~85w)   ends at ~885, worker starts at 1095
+        -->
+        <line class="b5-line b5-line-1" x1="295" y1="224" x2="470" y2="224" style="--len: 175" />
+        <line class="b5-line b5-line-2" x1="570" y1="224" x2="800" y2="224" style="--len: 230" />
+        <line class="b5-line b5-line-3" x1="890" y1="224" x2="1095" y2="224" style="--len: 205" />
+
+        <!-- Vertical drop from worker (~x=1155, bottom y=240) down to LLM composes
+             (left=280, ~140w, top y=588). Stepped polyline: down, left, into pill top. -->
+        <polyline
+          class="b5-line b5-vert"
+          points="1155,240 1155,480 355,480 355,588"
+          style="--len: 1148"
+          fill="none"
+        />
+
+        <!-- Row 2 horizontal connectors. Pill right edges → next pill left edge:
+               llm composes (left=280, ~155w) ends at ~435, validate at 660
+               validate     (left=660, ~110w) ends at ~770, render at 990
+               render       (left=990, ~95w)  ends at ~1085, mp4 at 1290
+        -->
+        <line class="b5-line b5-line-4" x1="440" y1="604" x2="660" y2="604" style="--len: 220" />
+        <line class="b5-line b5-line-5" x1="775" y1="604" x2="990" y2="604" style="--len: 215" />
+        <line class="b5-line b5-line-6" x1="1090" y1="604" x2="1290" y2="604" style="--len: 200" />
+
+        <!-- Retry arrow: from [validate] top (mid x=715, y=588) curving up-and-over
+             back into [llm composes] top (mid x=355, y=588). Arcs above row 2. -->
+        <path
+          class="b5-retry"
+          d="M 715 588 C 715 480, 355 480, 355 588"
+          fill="none"
+          style="--len: 520"
+        />
+        <!-- Retry arrowhead pointing down into [llm composes] top -->
+        <polyline class="b5-retry-head" points="347,576 355,588 363,576" fill="none" />
+      </svg>
+
+      <!-- Row 1 pills -->
+      <div class="b5-node b5-n-interview" style="left: 120px; top: 208px">
+        <div class="b5-pill">interview</div>
+      </div>
+      <div class="b5-node b5-n-brief" style="left: 470px; top: 208px">
+        <div class="b5-pill">brief</div>
+      </div>
+      <div class="b5-node b5-n-sqs" style="left: 800px; top: 208px">
+        <div class="b5-pill">SQS</div>
+      </div>
+      <div class="b5-node b5-n-worker" style="left: 1095px; top: 208px">
+        <div class="b5-pill">worker</div>
+      </div>
+
+      <!-- Row 2 pills -->
+      <div class="b5-node b5-n-llm" style="left: 280px; top: 588px">
+        <div class="b5-pill">LLM composes</div>
+      </div>
+      <div class="b5-node b5-n-validate" style="left: 660px; top: 588px">
+        <div class="b5-pill">validate</div>
+      </div>
+      <div class="b5-node b5-n-render" style="left: 990px; top: 588px">
+        <div class="b5-pill">render</div>
+      </div>
+      <div class="b5-node b5-n-mp4" style="left: 1290px; top: 588px">
+        <div class="b5-pill">MP4</div>
+      </div>
+
+      <!-- Retry arrow label -->
+      <div class="b5-retry-label">linter stderr → retry</div>
+
+      <!-- Code snippet panel (slides in from left of Row 2 area) -->
+      <div class="b5-code">
+        <div class="b5-code-line">
+          <span class="b5-tok-fn">await</span>
+          <span class="b5-tok-id">openai.responses.create</span>({
+        </div>
+        <div class="b5-code-line">
+          &nbsp;&nbsp;<span class="b5-tok-key">model</span>:
+          <span class="b5-tok-str">'gpt-5'</span>,
+        </div>
+        <div class="b5-code-line">&nbsp;&nbsp;<span class="b5-tok-key">input</span>: [</div>
+        <div class="b5-code-line">
+          &nbsp;&nbsp;&nbsp;&nbsp;{
+          <span class="b5-tok-key">role</span>: <span class="b5-tok-str">'system'</span>,
+          <span class="b5-tok-key">content</span>: skillBundle },
+        </div>
+        <div class="b5-code-line">
+          &nbsp;&nbsp;&nbsp;&nbsp;{
+          <span class="b5-tok-key">role</span>: <span class="b5-tok-str">'user'</span>,
+          <span class="b5-tok-key">content</span>: brief },
+        </div>
+        <div class="b5-code-line">&nbsp;&nbsp;],</div>
+        <div class="b5-code-line">});</div>
+      </div>
+    </div>
+
+    <!-- Bottom-left caption (word-by-word reveal at t=10s) -->
+    <div class="b5-caption">
+      <span class="b5-cap-word">The</span>
+      <span class="b5-cap-word">worker</span>
+      <span class="b5-cap-word">authors</span>
+      <span class="b5-cap-word">the</span>
+      <span class="b5-cap-word">whole</span>
+      <span class="b5-cap-word">composition.</span>
+    </div>
+
+    <!-- Persistent hairline — passed-along state ~55% in beat 5 -->
+    <div class="hf-hairline b5-hairline"></div>
+
+    <style>
+      :root {
+        --ink: #08090b;
+        --ink-elevated: #12141a;
+        --ink-line: #1f232c;
+        --ink-soft: #2a2f3b;
+        --paper: #f5f2ec;
+        --paper-muted: #8b8e96;
+        --paper-dim: #5a5e68;
+        --signal: #22d67a;
+        --signal-soft: rgba(34, 214, 122, 0.15);
+        --warn: #f4a641;
+        --warn-soft: rgba(244, 166, 65, 0.18);
+        --code: #7dd3fc;
+        --code-soft: rgba(125, 211, 252, 0.15);
+        --font-display: "Inter Tight", "Inter", system-ui, sans-serif;
+        --font-mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+      }
+
+      [data-composition-id="amplifier-case-study-beat-5"] {
+        position: absolute;
+        inset: 0;
+        background: var(--ink);
+        color: var(--paper);
+        font-family: "Inter Tight", "Inter", system-ui, sans-serif;
+        overflow: hidden;
+      }
+
+      /* Top-right meta label */
+      [data-composition-id="amplifier-case-study-beat-5"] .b5-meta {
+        position: absolute;
+        top: 56px;
+        right: 96px;
+        font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+        font-size: 14px;
+        font-weight: 500;
+        letter-spacing: 0.04em;
+        color: var(--paper-muted);
+      }
+
+      /* Stage: 1728px wide content area, centered horizontally, vertically
+         positioned roughly y=140..940 (800px tall). */
+      [data-composition-id="amplifier-case-study-beat-5"] .b5-stage {
+        position: absolute;
+        left: 96px;
+        top: 140px;
+        width: 1728px;
+        height: 800px;
+      }
+
+      /* SVG connector layer fills the stage. */
+      [data-composition-id="amplifier-case-study-beat-5"] .b5-svg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+      }
+
+      /* Line styling — drawn via stroke-dashoffset animation. */
+      [data-composition-id="amplifier-case-study-beat-5"] .b5-line {
+        stroke: var(--ink-soft);
+        stroke-width: 1.5;
+        stroke-linecap: round;
+        fill: none;
+        stroke-dasharray: var(--len);
+        stroke-dashoffset: var(--len);
+      }
+      [data-composition-id="amplifier-case-study-beat-5"] .b5-retry {
+        stroke: var(--signal);
+        stroke-width: 1.5;
+        stroke-linecap: round;
+        opacity: 0.85;
+        stroke-dasharray: var(--len);
+        stroke-dashoffset: var(--len);
+      }
+      [data-composition-id="amplifier-case-study-beat-5"] .b5-retry-head {
+        stroke: var(--signal);
+        stroke-width: 1.5;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        opacity: 0;
+      }
+
+      /* Pill nodes — positioned absolutely with left/top inline. The .b5-pill
+         child is what we tween for activation. */
+      [data-composition-id="amplifier-case-study-beat-5"] .b5-node {
+        position: absolute;
+        height: 32px;
+        display: flex;
+        align-items: center;
+      }
+      [data-composition-id="amplifier-case-study-beat-5"] .b5-pill {
+        height: 32px;
+        padding: 0 24px;
+        line-height: 32px;
+        border: 1px solid var(--ink-line);
+        background: var(--ink-elevated);
+        border-radius: 999px;
+        font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+        font-size: 18px;
+        font-weight: 400;
+        color: var(--paper-muted);
+        white-space: nowrap;
+        will-change: transform, border-color, background-color, color;
+      }
+
+      /* Retry arrow label sits centered above the curve apex. SVG curve apex
+         is at approx x=535 (mid of 715,355), y=480 in stage coords. */
+      [data-composition-id="amplifier-case-study-beat-5"] .b5-retry-label {
+        position: absolute;
+        left: 430px;
+        top: 460px;
+        font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+        font-size: 14px;
+        font-weight: 500;
+        letter-spacing: 0.04em;
+        color: var(--signal);
+        opacity: 0;
+      }
+
+      /* Code snippet panel — slides in from left, parked between Row 1 and the
+         vertical drop, near the worker→llm step. ~380px wide, lives at the
+         top-right of stage to avoid both rows of pills. */
+      [data-composition-id="amplifier-case-study-beat-5"] .b5-code {
+        position: absolute;
+        left: 1330px;
+        top: 340px;
+        width: 380px;
+        padding: 18px 20px;
+        box-sizing: border-box;
+        background: var(--ink-elevated);
+        border: 1px solid var(--code-soft);
+        border-radius: 6px;
+        font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+        font-size: 12px;
+        line-height: 1.55;
+        color: var(--paper);
+        opacity: 0;
+        transform: translateX(-40px);
+        will-change: opacity, transform;
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+      }
+      [data-composition-id="amplifier-case-study-beat-5"] .b5-code-line {
+        white-space: nowrap;
+      }
+      [data-composition-id="amplifier-case-study-beat-5"] .b5-tok-fn {
+        color: var(--signal);
+      }
+      [data-composition-id="amplifier-case-study-beat-5"] .b5-tok-id {
+        color: var(--paper);
+      }
+      [data-composition-id="amplifier-case-study-beat-5"] .b5-tok-key {
+        color: var(--code);
+      }
+      [data-composition-id="amplifier-case-study-beat-5"] .b5-tok-str {
+        color: var(--warn);
+      }
+
+      /* Bottom-left caption: display-m sized 56px (smaller than spec 96px
+         because we have lots of diagram above). Word-by-word reveal. */
+      [data-composition-id="amplifier-case-study-beat-5"] .b5-caption {
+        position: absolute;
+        left: 96px;
+        bottom: 120px;
+        font-family: "Inter Tight", "Inter", system-ui, sans-serif;
+        font-size: 56px;
+        font-weight: 500;
+        letter-spacing: -0.01em;
+        line-height: 1.05;
+        color: var(--paper);
+        max-width: 1200px;
+      }
+      [data-composition-id="amplifier-case-study-beat-5"] .b5-cap-word {
+        display: inline-block;
+        opacity: 0;
+        transform: translateY(24px);
+        margin-right: 14px;
+        will-change: opacity, transform;
+      }
+
+      /* Persistent hairline — passed-along state ~55% width in beat 5 */
+      [data-composition-id="amplifier-case-study-beat-5"] .b5-hairline {
+        position: absolute;
+        bottom: 80px;
+        left: 96px;
+        height: 1px;
+        width: 55%;
+        background: var(--signal);
+        transform-origin: left center;
+        transform: scaleX(1);
+        opacity: 0.85;
+      }
+    </style>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+      const ROOT = '[data-composition-id="amplifier-case-study-beat-5"]';
+
+      // Helpers
+      function activateNode(name, time) {
+        tl.to(
+          ROOT + " .b5-n-" + name + " .b5-pill",
+          {
+            borderColor: "var(--signal)",
+            backgroundColor: "var(--signal-soft)",
+            color: "var(--paper)",
+            duration: 0.4,
+            ease: "power2.out",
+          },
+          time,
+        );
+      }
+      function drawLine(cls, time, dur) {
+        tl.to(
+          ROOT + " ." + cls,
+          {
+            strokeDashoffset: 0,
+            duration: dur || 0.5,
+            ease: "power2.inOut",
+          },
+          time,
+        );
+      }
+      function pulseNode(name, time) {
+        tl.to(
+          ROOT + " .b5-n-" + name + " .b5-pill",
+          {
+            scale: 1.06,
+            duration: 0.3,
+            ease: "power2.out",
+            transformOrigin: "center center",
+          },
+          time,
+        );
+        tl.to(
+          ROOT + " .b5-n-" + name + " .b5-pill",
+          { scale: 1.0, duration: 0.3, ease: "power2.inOut" },
+          time + 0.3,
+        );
+      }
+
+      // --- Row 1 sequential activation ---
+      // t=0.5: interview activates
+      activateNode("interview", 0.5);
+      drawLine("b5-line-1", 0.9, 0.4);
+
+      // t=1.1: brief
+      activateNode("brief", 1.1);
+      drawLine("b5-line-2", 1.5, 0.4);
+
+      // t=1.7: SQS
+      activateNode("sqs", 1.7);
+      drawLine("b5-line-3", 2.1, 0.4);
+
+      // t=2.3: worker
+      activateNode("worker", 2.3);
+
+      // Worker pulse at ~t=2.9
+      pulseNode("worker", 2.9);
+
+      // Vertical drop hairline t=3.5
+      drawLine("b5-vert", 3.5, 0.8);
+
+      // --- Row 2 sequential activation ---
+      // t=4.0: llm composes
+      activateNode("llm", 4.0);
+      drawLine("b5-line-4", 4.4, 0.4);
+
+      // Code snippet panel slides in at t=4.5
+      tl.to(ROOT + " .b5-code", { opacity: 1, x: 0, duration: 0.6, ease: "power3.out" }, 4.5);
+
+      // t=4.8: validate
+      activateNode("validate", 4.8);
+      drawLine("b5-line-5", 5.2, 0.4);
+
+      // t=5.6: render
+      activateNode("render", 5.6);
+      drawLine("b5-line-6", 6.0, 0.4);
+
+      // t=6.4: MP4
+      activateNode("mp4", 6.4);
+
+      // --- Retry arrow draws at t=6.0 ---
+      drawLine("b5-retry", 6.0, 0.8);
+      tl.to(ROOT + " .b5-retry-head", { opacity: 1, duration: 0.2 }, 6.7);
+      tl.to(ROOT + " .b5-retry-label", { opacity: 1, duration: 0.4, ease: "power2.out" }, 6.6);
+
+      // --- Retry loop flash twice at t=7.5 ---
+      // Each cycle: llm scales 1→1.03→1, then validate scales 1→1.03→1, 600ms total.
+      function retryFlash(time) {
+        tl.to(
+          ROOT + " .b5-n-llm .b5-pill",
+          { scale: 1.03, duration: 0.15, ease: "power2.out" },
+          time,
+        );
+        tl.to(
+          ROOT + " .b5-n-llm .b5-pill",
+          { scale: 1.0, duration: 0.15, ease: "power2.inOut" },
+          time + 0.15,
+        );
+        tl.to(
+          ROOT + " .b5-n-validate .b5-pill",
+          { scale: 1.03, duration: 0.15, ease: "power2.out" },
+          time + 0.3,
+        );
+        tl.to(
+          ROOT + " .b5-n-validate .b5-pill",
+          { scale: 1.0, duration: 0.15, ease: "power2.inOut" },
+          time + 0.45,
+        );
+      }
+      retryFlash(7.5);
+      retryFlash(8.2);
+
+      // --- Caption word-by-word at t=10.0 ---
+      tl.to(
+        ROOT + " .b5-cap-word",
+        {
+          opacity: 1,
+          y: 0,
+          duration: 0.35,
+          ease: "power3.out",
+          stagger: 0.12,
+        },
+        10.0,
+      );
+
+      // --- Ambient pulse on retry arrow t=12.0+ ---
+      // We can't easily yoyo to end-of-timeline cleanly, but a few cycles
+      // covers the hold period (12.0..17.0 = 5s, so ~3 cycles of 1.6s).
+      for (let i = 0; i < 4; i++) {
+        const at = 12.0 + i * 1.4;
+        tl.to(ROOT + " .b5-retry", { opacity: 0.45, duration: 0.7, ease: "sine.inOut" }, at);
+        tl.to(ROOT + " .b5-retry", { opacity: 0.85, duration: 0.7, ease: "sine.inOut" }, at + 0.7);
+      }
+
+      window.__timelines["amplifier-case-study-beat-5"] = tl;
+    </script>
+  </div>
+</template>
