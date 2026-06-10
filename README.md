@@ -26,7 +26,7 @@
 </p>
 
 <p align="center">
-  <img src="https://static.heygen.ai/hyperframes-oss/docs/images/hfgif-1280.webp" alt="HyperFrames demo: HTML code on the left transforms into a rendered video on the right" width="800">
+  <img src="https://static.heygen.ai/hyperframes-oss/docs/images/hyperframes-logo-motion-1280.webp" alt="HyperFrames demo: HTML code on the left transforms into a rendered video on the right" width="800">
 </p>
 
 HyperFrames is an open-source framework for turning HTML, CSS, media, and seekable animations into deterministic MP4 videos. Use it locally with the CLI, from AI coding agents with skills, or as the rendering core behind hosted authoring workflows.
