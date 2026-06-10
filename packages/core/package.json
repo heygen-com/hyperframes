@@ -66,6 +66,10 @@
       "import": "./src/runtime/mediaVolumeEnvelope.ts",
       "types": "./src/runtime/mediaVolumeEnvelope.ts"
     },
+    "./hf-ids": {
+      "import": "./src/parsers/hfIds.ts",
+      "types": "./src/parsers/hfIds.ts"
+    },
     "./gsap-parser": {
       "import": "./src/parsers/gsapParser.ts",
       "types": "./src/parsers/gsapParser.ts"
@@ -140,6 +144,10 @@
       "./media-volume-envelope": {
         "import": "./dist/runtime/mediaVolumeEnvelope.js",
         "types": "./dist/runtime/mediaVolumeEnvelope.d.ts"
+      },
+      "./hf-ids": {
+        "import": "./dist/parsers/hfIds.js",
+        "types": "./dist/parsers/hfIds.d.ts"
       },
       "./gsap-parser": {
         "import": "./dist/parsers/gsapParser.js",
