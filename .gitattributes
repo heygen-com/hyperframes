@@ -4,24 +4,25 @@
 # and trips GitHub's "Binary file not shown" diff heuristic.
 * text=auto eol=lf
 
-# Golden baseline videos for regression tests
-packages/producer/tests/*/output/output.mp4 filter=lfs diff=lfs merge=lfs -text
-packages/producer/tests/distributed/*/output/output.mp4 filter=lfs diff=lfs merge=lfs -text
-packages/producer/tests/distributed/*/output/output.mov filter=lfs diff=lfs merge=lfs -text
-packages/producer/tests/distributed/*/output/output.webm filter=lfs diff=lfs merge=lfs -text
+# Regression-test media under packages/producer/tests — RECURSIVE (`**`) so
+# media in ANY nested fixture dir routes to LFS. The earlier non-recursive
+# patterns (`tests/*/output/...`, `tests/*/src/...`) only matched one level
+# deep, so binaries in nested dirs like `tests/hdr-regression/hdr-pq/assets/*.mp4`
+# and `.../_renders/*.mp4` committed straight into the git pack and now live in
+# history forever. `**` closes that leak: any video/baseline anywhere under
+# tests/ is LFS, regardless of how deeply it is nested.
+packages/producer/tests/**/*.mp4 filter=lfs diff=lfs merge=lfs -text
+packages/producer/tests/**/*.mov filter=lfs diff=lfs merge=lfs -text
+packages/producer/tests/**/*.webm filter=lfs diff=lfs merge=lfs -text
+packages/producer/tests/**/*.png filter=lfs diff=lfs merge=lfs -text
 
-# Source video clips for regression test fixtures (HDR samples, etc.)
-packages/producer/tests/*/src/*.mp4 filter=lfs diff=lfs merge=lfs -text
-packages/producer/tests/distributed/*/src/*.mp4 filter=lfs diff=lfs merge=lfs -text
-
-# Source image assets for regression test fixtures (HDR PNGs, screenshot fixtures, etc.)
-packages/producer/tests/*/src/*.png filter=lfs diff=lfs merge=lfs -text
-packages/producer/tests/distributed/*/src/*.png filter=lfs diff=lfs merge=lfs -text
-
-# Golden baseline frames for png-sequence distributed fixtures. Each frame is
-# a small RGBA PNG (~10-15 KB) but a fixture can carry 60+ of them, and
-# additional fixtures will grow the set further — LFS keeps the repo lean.
-packages/producer/tests/distributed/*/output/frames/*.png filter=lfs diff=lfs merge=lfs -text
+# ONNX models must ALWAYS use LFS regardless of location: a 31 MB ppmattingv2
+# model was once committed raw into skills/ then deleted — but a raw commit
+# lives in history forever. No path in the repo legitimately ships a raw .onnx.
+# (Audio masters / .wav are intentionally NOT globalized here — registry blocks
+#  ship raw audio so they stay portable when installed via `hyperframes add`.
+#  The wav-in-LFS question is a coordinated policy decision left for later.)
+*.onnx filter=lfs diff=lfs merge=lfs -text
 
 # GitHub Linguist overrides — HTML files are compositions (user content / templates),
 # not the framework source. Hide them from the repo language stats so TypeScript,

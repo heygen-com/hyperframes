@@ -32,9 +32,12 @@ videos/
 coverage/
 .debug/
 
-# Producer regression test failures (generated debugging artifacts)
-packages/producer/tests/*/failures/
-packages/producer/tests/distributed/*/failures/
+# Producer regression test failures (generated debugging artifacts).
+# RECURSIVE (`**`) so a failures/ dump at ANY fixture depth is ignored — the
+# old non-recursive `tests/*/failures/` + `tests/distributed/*/failures/` rules
+# only matched one level deep, so a nested fixture like
+# `tests/hdr-regression/hdr-pq/failures/` could still get committed.
+packages/producer/tests/**/failures/
 packages/producer/tests/parity/fixtures/hyperframe.runtime.iife.js
 
 # Player perf test results (generated each run, attached as CI artifact)
