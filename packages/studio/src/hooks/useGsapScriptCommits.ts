@@ -4,7 +4,7 @@ import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import type { EditHistoryKind } from "../utils/editHistory";
 import { applySoftReload } from "../utils/gsapSoftReload";
 import { executeOptimistic } from "../utils/optimisticUpdate";
-import { usePlayerStore, type KeyframeCacheEntry } from "../player/store/playerStore";
+import type { KeyframeCacheEntry } from "../player/store/playerStore";
 import { commitKeyframeAtTimeImpl } from "./gsapKeyframeCommit";
 import {
   updateKeyframeCacheFromParsed,

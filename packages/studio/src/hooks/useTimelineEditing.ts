@@ -26,7 +26,7 @@ import {
   applyPatchByTarget,
   formatTimelineAttributeNumber,
 } from "./timelineEditingHelpers";
-import type { PatchTarget, PersistTimelineEditInput } from "./timelineEditingHelpers";
+import type { PersistTimelineEditInput } from "./timelineEditingHelpers";
 
 // ── Types ──
 

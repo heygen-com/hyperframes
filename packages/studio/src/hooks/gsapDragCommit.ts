@@ -11,7 +11,7 @@ import {
   resolveTweenStart,
   resolveTweenDuration,
 } from "../utils/globalTimeCompiler";
-import { readAllAnimatedProperties, readGsapProperty } from "./gsapRuntimeReaders";
+import { readAllAnimatedProperties } from "./gsapRuntimeReaders";
 
 export interface GsapDragCommitCallbacks {
   commitMutation: (

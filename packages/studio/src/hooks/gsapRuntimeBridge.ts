@@ -11,7 +11,6 @@
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 
-import { resolveTweenStart, resolveTweenDuration } from "../utils/globalTimeCompiler";
 import { readAllAnimatedProperties, readGsapProperty } from "./gsapRuntimeReaders";
 import {
   commitGsapPositionFromDrag,
