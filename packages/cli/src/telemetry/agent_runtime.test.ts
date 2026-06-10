@@ -164,11 +164,11 @@ describe("detectAgentRuntime — Replit / Hermes / openclaw / Pi", () => {
 });
 
 describe("detectAgentRuntime — Gemini managed agent", () => {
-  // Gemini managed agent is detected via the `/.agents/` platform mount and
-  // the gVisor kernel string, NOT env vars — so these tests mock node:fs and
-  // node:os rather than mutating process.env. We key on the `/.agents/`
-  // DIRECTORY (not the optional AGENTS.md file) so skills-only and
-  // inline-instruction agents are still detected.
+  // Gemini managed agent is detected via the `/.agents/` platform mount (a
+  // DIRECTORY) and the gVisor kernel string, NOT env vars — so these tests
+  // mock node:fs statSync and node:os rather than mutating process.env. We key
+  // on the `/.agents/` directory (not the optional AGENTS.md file) so
+  // skills-only and inline-instruction agents are still detected.
   beforeEach(() => {
     vi.resetModules();
     stripVendorEnv();
@@ -179,18 +179,26 @@ describe("detectAgentRuntime — Gemini managed agent", () => {
     vi.restoreAllMocks();
   });
 
-  it("reports gemini_managed_agent when /.agents/ exists AND the kernel is gVisor", async () => {
-    vi.doMock("node:os", async () => {
-      const actual = await vi.importActual<typeof import("node:os")>("node:os");
-      return { ...actual, release: () => "4.19.0-gvisor", platform: () => "linux" };
-    });
+  // Mock node:fs so statSync("/.agents") reports a directory; everything else
+  // delegates to the real fs.
+  const mockAgentsDir = () =>
     vi.doMock("node:fs", async () => {
       const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
       return {
         ...actual,
-        existsSync: (path: string) => path === "/.agents" || actual.existsSync(path),
+        statSync: (path: string) =>
+          path === "/.agents"
+            ? ({ isDirectory: () => true } as unknown as import("node:fs").Stats)
+            : actual.statSync(path),
       };
     });
+
+  it("reports gemini_managed_agent when /.agents/ is a directory AND the kernel is gVisor", async () => {
+    vi.doMock("node:os", async () => {
+      const actual = await vi.importActual<typeof import("node:os")>("node:os");
+      return { ...actual, release: () => "4.19.0-gvisor", platform: () => "linux" };
+    });
+    mockAgentsDir();
     const { detectAgentRuntime } = await import("./agent_runtime.js");
     expect(detectAgentRuntime()).toBe("gemini_managed_agent");
   });
@@ -198,22 +206,13 @@ describe("detectAgentRuntime — Gemini managed agent", () => {
   it("detects a skills-only managed agent (no AGENTS.md) — the generalizability case", async () => {
     // AGENTS.md is OPTIONAL: an agent may use inline `system_instruction` or a
     // skills-only definition and ship no AGENTS.md. Keying on the `/.agents/`
-    // directory (not the file) must still detect it. Here `/.agents/AGENTS.md`
-    // is explicitly absent while the mount + skills/ are present.
+    // directory mount (not the file) must still detect it — the mock makes
+    // `/.agents` a directory with no AGENTS.md present.
     vi.doMock("node:os", async () => {
       const actual = await vi.importActual<typeof import("node:os")>("node:os");
       return { ...actual, release: () => "4.19.0-gvisor", platform: () => "linux" };
     });
-    vi.doMock("node:fs", async () => {
-      const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
-      return {
-        ...actual,
-        existsSync: (path: string) =>
-          path === "/.agents" || path === "/.agents/skills" || actual.existsSync(path),
-        // /.agents/AGENTS.md intentionally NOT matched -> the old file-based
-        // rule would have returned null here.
-      };
-    });
+    mockAgentsDir();
     const { detectAgentRuntime } = await import("./agent_runtime.js");
     expect(detectAgentRuntime()).toBe("gemini_managed_agent");
   });
@@ -229,14 +228,17 @@ describe("detectAgentRuntime — Gemini managed agent", () => {
       const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
       return {
         ...actual,
-        existsSync: () => false,
+        statSync: (path: string) => {
+          if (path === "/.agents") throw new Error("ENOENT: no such file or directory");
+          return actual.statSync(path);
+        },
       };
     });
     const { detectAgentRuntime } = await import("./agent_runtime.js");
     expect(detectAgentRuntime()).toBeNull();
   });
 
-  it("does NOT report gemini_managed_agent when /.agents/ exists but the kernel is not gVisor", async () => {
+  it("does NOT report gemini_managed_agent when /.agents/ is a directory but the kernel is not gVisor", async () => {
     // A dev box that happens to have a stray /.agents/ must not false-positive
     // — the gVisor conjunction is what makes the signal safe.
     vi.doMock("node:os", async () => {
@@ -247,7 +249,10 @@ describe("detectAgentRuntime — Gemini managed agent", () => {
       const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
       return {
         ...actual,
-        existsSync: (path: string) => path === "/.agents" || actual.existsSync(path),
+        statSync: (path: string) =>
+          path === "/.agents"
+            ? ({ isDirectory: () => true } as unknown as import("node:fs").Stats)
+            : actual.statSync(path),
         readFileSync: (path: string) =>
           path === "/proc/version"
             ? "Linux version 6.8.0-100-generic (buildd@lcy01)"
@@ -267,13 +272,7 @@ describe("detectAgentRuntime — Gemini managed agent", () => {
       const actual = await vi.importActual<typeof import("node:os")>("node:os");
       return { ...actual, release: () => "4.19.0-gvisor", platform: () => "linux" };
     });
-    vi.doMock("node:fs", async () => {
-      const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
-      return {
-        ...actual,
-        existsSync: (path: string) => path === "/.agents" || actual.existsSync(path),
-      };
-    });
+    mockAgentsDir();
     const { detectAgentRuntime } = await import("./agent_runtime.js");
     expect(detectAgentRuntime()).toBe("gemini_managed_agent");
   });

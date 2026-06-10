@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { platform, release } from "node:os";
 import { detectWSL } from "./platform.js";
 
@@ -277,8 +277,13 @@ function isGeminiManagedAgent(): boolean {
   // The uniqueness anchor: the managed-agent definition mount root. We key on
   // the `/.agents/` directory (not the optional AGENTS.md file) so skills-only
   // and inline-instruction agents are still detected. Nothing else on gVisor
-  // (Cloud Run, GKE Sandbox, Fly.io) creates this path.
-  if (!existsSync("/.agents")) return false;
+  // (Cloud Run, GKE Sandbox, Fly.io) creates this path. Require an actual
+  // directory — a stray file or symlink named `/.agents` must not match.
+  try {
+    if (!statSync("/.agents").isDirectory()) return false;
+  } catch {
+    return false; // ENOENT / EACCES — no mount, not a managed agent.
+  }
   // The guard: rule out a stray user-created `/.agents/` on a non-sandbox
   // host. Not a second uniqueness signal — gVisor isn't unique on its own.
   return isGVisor();

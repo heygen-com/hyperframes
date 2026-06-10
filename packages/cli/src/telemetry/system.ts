@@ -39,10 +39,11 @@ export interface SystemMeta {
    */
   sandbox_runtime: SandboxRuntime;
   /**
-   * Coding-agent vendor that spawned this process, if any (claude_code,
-   * codex, cursor, copilot_agent, replit, hermes, openclaw, pi).
-   * Detected by env-var existence only — values are never read. Every rule
-   * keys on a marker that has a public-source citation in agent_runtime.ts;
+   * Coding-agent vendor that spawned this process, if any (see the
+   * `AgentRuntime` union in agent_runtime.ts for the full, current set).
+   * Most rules check env-var existence only — values are never read; a few
+   * use filesystem/kernel markers (e.g. the Gemini managed-agent mount).
+   * Every rule keys on a marker with a source citation in agent_runtime.ts;
    * unverified guesses are deliberately omitted (false-negative > guess).
    * null when no agent is detected.
    */
