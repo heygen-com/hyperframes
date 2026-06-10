@@ -97,7 +97,29 @@ describe("focusDomEditOverlayElement", () => {
 });
 
 describe("DomEditOverlay", () => {
-  it("renders selected bounds right after clicking a movable selection", () => {
+  it("renders selected bounds right after clicking a movable selection", async () => {
+    // The overlay's compRect updates via a RAF loop reading iframe + overlay
+    // getBoundingClientRect. happy-dom returns all zeros for newly-created
+    // elements with no layout, so without stubs the RAF early-returns
+    // (iRect.width <= 0) and compRect.width stays 0 — gating the selection
+    // box (and other bounded UI) behind `compRect.width > 0` (added in the
+    // keyframes PR a468550f). Stub element-level getBoundingClientRect for
+    // the test so the RAF compRect update produces a real width.
+    const originalGetBoundingClientRect = Element.prototype.getBoundingClientRect;
+    Element.prototype.getBoundingClientRect = function (): DOMRect {
+      return {
+        left: 0,
+        top: 0,
+        right: 800,
+        bottom: 450,
+        width: 800,
+        height: 450,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      };
+    };
+
     const host = document.createElement("div");
     document.body.append(host);
     const root = createRoot(host);
@@ -163,6 +185,15 @@ describe("DomEditOverlay", () => {
       root.render(React.createElement(Harness));
     });
 
+    // Flush the mount's RAF tick so the compRect update lands before the
+    // pointer-down. Two animation-frame ticks: the first scheduled by
+    // useMountEffect's update(), the second by update()'s tail recursion.
+    await act(async () => {
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      });
+    });
+
     const overlay = host.querySelector('[aria-label="Composition canvas"]') as HTMLDivElement;
     expect(overlay).toBeTruthy();
 
@@ -184,6 +215,7 @@ describe("DomEditOverlay", () => {
       root.unmount();
     });
     HTMLDivElement.prototype.setPointerCapture = originalPointerCapture;
+    Element.prototype.getBoundingClientRect = originalGetBoundingClientRect;
     host.remove();
   });
 });
