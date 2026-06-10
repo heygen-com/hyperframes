@@ -116,7 +116,7 @@ export function setOwnText(el: Element, text: string): void {
   // Track original position of the first text node so we restore there, not at firstChild.
   let firstTextIdx = -1;
   for (let i = 0; i < children.length; i++) {
-    if (children[i].nodeType === 3) {
+    if (children[i]?.nodeType === 3) {
       firstTextIdx = i;
       break;
     }

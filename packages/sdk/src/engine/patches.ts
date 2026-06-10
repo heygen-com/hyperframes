@@ -105,6 +105,8 @@ export function pathToKey(path: string): string | null {
 
 // ─── Patch event builder ──────────────────────────────────────────────────────
 
+// Consumed by session.ts dispatch/batch in the next stacked PR (#1325).
+// fallow-ignore-next-line unused-export
 export function buildPatchEvent(
   forward: readonly JsonPatchOp[],
   inverse: readonly JsonPatchOp[],
