@@ -15,10 +15,7 @@ function makeVideo(overrides: Partial<VideoElement> = {}): VideoElement {
   };
 }
 
-function makeExtracted(
-  videoId: string,
-  fileHasAudio: boolean,
-): ExtractedFrames {
+function makeExtracted(videoId: string, fileHasAudio: boolean): ExtractedFrames {
   return {
     videoId,
     srcPath: "/tmp/clip.mp4",
