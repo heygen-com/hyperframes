@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { TimelineElement } from "../player";
 import { usePlayerStore } from "../player";
-import {
-  STUDIO_GSAP_PANEL_ENABLED,
-} from "../components/editor/manualEditingAvailability";
+import { STUDIO_GSAP_PANEL_ENABLED } from "../components/editor/manualEditingAvailability";
 import { type DomEditSelection } from "../components/editor/domEditing";
 import { useDomEditPreviewSync } from "./useDomEditPreviewSync";
 import type { ImportedFontAsset } from "../components/editor/fontAssets";

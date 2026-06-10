@@ -4,9 +4,7 @@
  * Extracted from useDomEditSession to keep file sizes under the 600-line limit.
  */
 import { useEffect, useRef } from "react";
-import {
-  STUDIO_INSPECTOR_PANELS_ENABLED,
-} from "../components/editor/manualEditingAvailability";
+import { STUDIO_INSPECTOR_PANELS_ENABLED } from "../components/editor/manualEditingAvailability";
 import { findElementForSelection, type DomEditSelection } from "../components/editor/domEditing";
 import { reapplyPositionEditsAfterSeek } from "../components/editor/manualEdits";
 import type { SidebarTab } from "../components/sidebar/LeftSidebar";

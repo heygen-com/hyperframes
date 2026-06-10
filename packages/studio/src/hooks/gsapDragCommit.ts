@@ -292,4 +292,3 @@ export async function commitGsapPositionFromDrag(
     );
   }
 }
-

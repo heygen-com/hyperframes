@@ -45,14 +45,8 @@ export interface UseBlockHandlersResult {
     React.SetStateAction<UseBlockHandlersResult["activeBlockParams"]>
   >;
   handleAddBlock: (blockName: string) => void;
-  handleTimelineBlockDrop: (
-    blockName: string,
-    placement: { start: number; track: number },
-  ) => void;
-  handlePreviewBlockDrop: (
-    blockName: string,
-    position: { left: number; top: number },
-  ) => void;
+  handleTimelineBlockDrop: (blockName: string, placement: { start: number; track: number }) => void;
+  handlePreviewBlockDrop: (blockName: string, position: { left: number; top: number }) => void;
 }
 
 export function useBlockHandlers({
@@ -62,9 +56,8 @@ export function useBlockHandlers({
   setRightCollapsed,
   setRightPanelTab,
 }: UseBlockHandlersParams): UseBlockHandlersResult {
-  const [activeBlockParams, setActiveBlockParams] = useState<
-    UseBlockHandlersResult["activeBlockParams"]
-  >(null);
+  const [activeBlockParams, setActiveBlockParams] =
+    useState<UseBlockHandlersResult["activeBlockParams"]>(null);
 
   const blockCtx = useMemo(
     () => ({

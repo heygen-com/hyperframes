@@ -147,7 +147,14 @@ export function useGestureCommit({
         void stopAndCommitRecording();
       }
     }, 100);
-  }, [gestureRecording, showToast, stopAndCommitRecording, previewIframeRef, domEditSessionRef, isGestureRecordingRef]);
+  }, [
+    gestureRecording,
+    showToast,
+    stopAndCommitRecording,
+    previewIframeRef,
+    domEditSessionRef,
+    isGestureRecordingRef,
+  ]);
 
   return { gestureState, gestureRecording, handleToggleRecording };
 }
