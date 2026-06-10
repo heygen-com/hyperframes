@@ -17,3 +17,14 @@ export type {
 } from "./types.js";
 
 export { ORIGIN_APPLY_PATCHES, ORIGIN_LOCAL } from "./types.js";
+
+export { buildDocument, buildRoots, flatElements } from "./document.js";
+
+export { openComposition } from "./session.js";
+export type { OpenCompositionOptions } from "./session.js";
+
+export { createHistory } from "./history.js";
+export type { HistoryModule, HistoryOptions, HistoryEntry } from "./history.js";
+
+export { createPersistQueue } from "./persist-queue.js";
+export type { PersistQueueModule, PersistQueueOptions } from "./persist-queue.js";

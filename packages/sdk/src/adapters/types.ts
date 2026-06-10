@@ -1,5 +1,3 @@
-// Consumed by session.ts + adapter implementations in the next stacked PR (#1325).
-// fallow-ignore-file unused-file
 import type { PersistErrorEvent } from "../types.js";
 
 // ─── PersistAdapter ───────────────────────────────────────────────────────────
