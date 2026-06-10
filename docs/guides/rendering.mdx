@@ -1,9 +1,9 @@
 ---
 title: Rendering
-description: "Render compositions to MP4, MOV, or WebM locally or in Docker."
+description: "Render compositions to MP4, MOV, WebM, GIF, or PNG sequences locally or in Docker."
 ---
 
-Render your Hyperframes [compositions](/concepts/compositions) to MP4, MOV, or WebM with the [CLI](/packages/cli). The rendering pipeline is frame-by-frame and seek-driven — see [Deterministic Rendering](/concepts/determinism) for how this works under the hood.
+Render your Hyperframes [compositions](/concepts/compositions) to MP4, MOV, WebM, GIF, or PNG sequences with the [CLI](/packages/cli). The rendering pipeline is frame-by-frame and seek-driven — see [Deterministic Rendering](/concepts/determinism) for how this works under the hood.
 
 ## Getting Started
 
@@ -116,8 +116,9 @@ Render your Hyperframes [compositions](/concepts/compositions) to MP4, MOV, or W
 | Flag | Values | Default | Description |
 |------|--------|---------|-------------|
 | `--output` | path | `renders/<name>.mp4` | Output file path |
-| `--format` | mp4, mov, webm, png-sequence | mp4 | Output format (see [Transparent Video](#transparent-video) below) |
+| `--format` | mp4, mov, webm, gif, png-sequence | mp4 | Output format (see [Transparent Video](#transparent-video) below) |
 | `--fps` | 24, 30, 60 | 30 | Frames per second |
+| `--gif-loop` | 0-65535 | 0 | GIF loop count. `0` loops forever |
 | `--quality` | draft, standard, high | standard | Encoding quality preset |
 | `--crf` | 0–51 | — | Override CRF (lower = higher quality). Cannot combine with `--video-bitrate` |
 | `--video-bitrate` | e.g. `10M`, `5000k` | — | Target bitrate encoding. Cannot combine with `--crf` |
@@ -151,6 +152,18 @@ npx hyperframes render --video-bitrate 10M --output controlled.mp4
 ```
 
 **Tip**: The default `standard` preset (CRF 18) is visually lossless at 1080p — most people cannot distinguish it from the source. Use `--quality draft` for faster iteration, or `--quality high` / `--crf 10` when file size is no concern.
+
+## Animated GIF
+
+Use GIF when the output needs to autoplay inline in GitHub PRs, READMEs, issue reports, and docs pages:
+
+```bash Terminal
+npx hyperframes render --format gif --fps 15 --gif-loop 0 --output demo.gif
+```
+
+GIF output uses a two-pass FFmpeg palette encode (`palettegen` with diff statistics, then `paletteuse` with Sierra dithering) for better gradients and text edges than a single-pass conversion. GIFs are still much larger than MP4/WebM at the same dimensions, so prefer `--fps 15` and short compositions. Hyperframes caps GIF renders at 30fps.
+
+GIF does not carry audio and only has 1-bit transparency. For transparent overlays, use `--format webm`, `--format mov`, or `--format png-sequence` instead.
 
 ## GPU Acceleration
 

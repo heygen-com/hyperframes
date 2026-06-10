@@ -584,6 +584,9 @@ export async function renderChunk(
         // AND the mp4 audio mux.
         hasAudio: false,
         isPngSequence,
+        // `DistributedFormat` has no "gif" member — distributed chunks are
+        // always video segments (gif renders in-process only).
+        isGif: false,
         preset,
         effectiveQuality,
         effectiveBitrate,

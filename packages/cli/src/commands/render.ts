@@ -6,7 +6,11 @@ import {
   resolveVariablesArg,
   validateVariablesAgainstProject,
 } from "../utils/variables.js";
-import { resolveBrowserTimeoutMsArg, resolveCompositionEntryArg } from "../utils/renderArgs.js";
+import {
+  parseGifLoopArg,
+  resolveBrowserTimeoutMsArg,
+  resolveCompositionEntryArg,
+} from "../utils/renderArgs.js";
 
 export const examples: Example[] = [
   ["Render to MP4", "hyperframes render --output output.mp4"],
@@ -17,6 +21,10 @@ export const examples: Example[] = [
   ],
   ["Render transparent overlay (ProRes)", "hyperframes render --format mov --output overlay.mov"],
   ["Render transparent WebM overlay", "hyperframes render --format webm --output overlay.webm"],
+  [
+    "Render animated GIF for PRs/docs",
+    "hyperframes render --format gif --fps 15 --gif-loop 0 --output demo.gif",
+  ],
   [
     "Render PNG sequence (RGBA frames for AE/Nuke/Fusion)",
     "hyperframes render --format png-sequence --output frames/",
@@ -97,22 +105,31 @@ function formatFpsParseError(
       return `Got "${input}". Decimal frame rates are ambiguous — use the exact rational form instead (e.g. 30000/1001 for 29.97).`;
   }
 }
-const VALID_FORMAT = new Set(["mp4", "webm", "mov", "png-sequence"]);
+const RENDER_FORMATS = ["mp4", "webm", "mov", "png-sequence", "gif"] as const;
+type RenderFormat = (typeof RENDER_FORMATS)[number];
+const VALID_FORMAT = new Set<string>(RENDER_FORMATS);
+const RENDER_FORMAT_LABEL = "mp4, webm, mov, png-sequence, or gif";
 // `png-sequence` writes a directory of frames rather than a single muxed file,
 // so its "extension" is empty — the auto-output path becomes a directory name.
-const FORMAT_EXT: Record<string, string> = {
+const FORMAT_EXT: Record<RenderFormat, string> = {
   mp4: ".mp4",
   webm: ".webm",
   mov: ".mov",
   "png-sequence": "",
+  gif: ".gif",
 };
 
 const CPU_CORE_COUNT = cpus().length;
 
+function parseRenderFormat(input: string): RenderFormat | undefined {
+  if (!VALID_FORMAT.has(input)) return undefined;
+  return RENDER_FORMATS.find((format) => format === input);
+}
+
 export default defineCommand({
   meta: {
     name: "render",
-    description: "Render a composition to MP4, WebM, MOV, or a PNG sequence",
+    description: "Render a composition to MP4, WebM, MOV, GIF, or a PNG sequence",
   },
   args: {
     dir: {
@@ -151,10 +168,14 @@ export default defineCommand({
     format: {
       type: "string",
       description:
-        "Output format: mp4, webm, mov, png-sequence " +
+        "Output format: mp4, webm, mov, gif, png-sequence " +
         "(MOV/WebM render with transparency; png-sequence writes RGBA frames " +
-        "to a directory for AE/Nuke/Fusion ingest)",
+        "to a directory for AE/Nuke/Fusion ingest; gif is best at 15fps for PRs/docs)",
       default: "mp4",
+    },
+    "gif-loop": {
+      type: "string",
+      description: "GIF loop count, 0 = infinite. Range: 0-65535. Only used with --format gif.",
     },
     workers: {
       type: "string",
@@ -299,7 +320,7 @@ export default defineCommand({
       errorBox("Invalid fps", formatFpsParseError(args.fps ?? "30", fpsParse.reason));
       process.exit(1);
     }
-    const fps: Fps = fpsParse.value;
+    let fps: Fps = fpsParse.value;
 
     // ── Validate quality ───────────────────────────────────────────────────
     const qualityRaw = args.quality ?? "standard";
@@ -311,11 +332,24 @@ export default defineCommand({
 
     // ── Validate format ─────────────────────────────────────────────────
     const formatRaw = args.format ?? "mp4";
-    if (!VALID_FORMAT.has(formatRaw)) {
-      errorBox("Invalid format", `Got "${formatRaw}". Must be mp4, webm, mov, or png-sequence.`);
+    const format = parseRenderFormat(formatRaw);
+    if (!format) {
+      errorBox("Invalid format", `Got "${formatRaw}". Must be ${RENDER_FORMAT_LABEL}.`);
       process.exit(1);
     }
-    const format = formatRaw as "mp4" | "webm" | "mov" | "png-sequence";
+
+    let gifFpsCapped = false;
+    if (format === "gif" && fpsToNumber(fps) > 30) {
+      fps = { num: 30, den: 1 };
+      gifFpsCapped = true;
+    }
+
+    const gifLoopParse = parseGifLoopArg(args["gif-loop"]);
+    if (!gifLoopParse.ok) {
+      errorBox("Invalid gif-loop", gifLoopParse.message);
+      process.exit(1);
+    }
+    const gifLoop = gifLoopParse.value ?? (format === "gif" ? 0 : undefined);
 
     // ── Validate resolution ────────────────────────────────────────────────
     let outputResolution: CanvasResolution | undefined;
@@ -462,6 +496,10 @@ export default defineCommand({
       process.exit(1);
     }
 
+    if (!quiet && gifFpsCapped) {
+      console.log(c.warn("  GIF output is capped at 30fps. Use --fps 15 for smaller files."));
+    }
+
     // ── Validate browser-timeout (seconds) and composition entry file ────
     // Both validators live in `utils/renderArgs.ts` so the parse/reject
     // branches are unit-testable without `process.exit`. See issue #1199
@@ -579,6 +617,7 @@ export default defineCommand({
         fps,
         quality,
         format,
+        gifLoop,
         workers,
         gpu: useGpu,
         browserGpuMode,
@@ -600,6 +639,7 @@ export default defineCommand({
         fps,
         quality,
         format,
+        gifLoop,
         workers,
         gpu: useGpu,
         browserGpuMode,
@@ -623,7 +663,8 @@ export default defineCommand({
 interface RenderOptions {
   fps: Fps;
   quality: "draft" | "standard" | "high";
-  format: "mp4" | "webm" | "mov" | "png-sequence";
+  format: RenderFormat;
+  gifLoop?: number;
   workers?: number;
   gpu: boolean;
   /**
@@ -866,6 +907,7 @@ async function renderDocker(
       fps: options.fps,
       quality: options.quality,
       format: options.format,
+      gifLoop: options.gifLoop,
       workers: options.workers,
       gpu: options.gpu,
       browserGpu: options.browserGpuMode === "hardware",
@@ -953,6 +995,7 @@ export async function renderLocal(
     fps: options.fps,
     quality: options.quality,
     format: options.format,
+    gifLoop: options.gifLoop,
     workers: options.workers,
     useGpu: options.gpu,
     logger,

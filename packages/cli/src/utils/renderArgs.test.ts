@@ -5,6 +5,7 @@ import {
   MAX_PAGE_NAVIGATION_TIMEOUT_SECONDS,
   parseBrowserTimeoutMsArg,
   parseCompositionEntryArg,
+  parseGifLoopArg,
   type BrowserTimeoutParseResult,
   type CompositionEntryParseResult,
 } from "./renderArgs.js";
@@ -169,5 +170,20 @@ describe("parseCompositionEntryArg", () => {
       parseCompositionEntryArg("../proj-evil/x.html", PROJECT, siblingStat),
     );
     expect(err.kind).toBe("outside-project");
+  });
+});
+
+describe("parseGifLoopArg", () => {
+  it("accepts absent flag, bounds, and integers", () => {
+    expect(parseGifLoopArg(undefined)).toEqual({ ok: true, value: undefined });
+    expect(parseGifLoopArg("0")).toEqual({ ok: true, value: 0 });
+    expect(parseGifLoopArg("65535")).toEqual({ ok: true, value: 65535 });
+  });
+
+  it("rejects out-of-range, non-integer, and empty inputs", () => {
+    expect(parseGifLoopArg("-1").ok).toBe(false);
+    expect(parseGifLoopArg("65536").ok).toBe(false);
+    expect(parseGifLoopArg("1.5").ok).toBe(false);
+    expect(parseGifLoopArg(" ").ok).toBe(false);
   });
 });

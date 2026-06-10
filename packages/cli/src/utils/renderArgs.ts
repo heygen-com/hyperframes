@@ -219,3 +219,28 @@ export function resolveCompositionEntryArg(
   }
   return result.value;
 }
+
+export type GifLoopParseResult =
+  | { ok: true; value: number | undefined }
+  | { ok: false; message: string };
+
+/**
+ * Parse and validate `--gif-loop <count>` (GIF Netscape loop count).
+ * Returns `{ ok: true, value: undefined }` when the flag is absent so the
+ * caller can apply the format-dependent default (0 = infinite for gif).
+ */
+export function parseGifLoopArg(raw: string | undefined): GifLoopParseResult {
+  if (raw === undefined) return { ok: true, value: undefined };
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) {
+    return { ok: false, message: "GIF loop count must not be empty." };
+  }
+  const parsed = Number(trimmed);
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 65_535) {
+    return {
+      ok: false,
+      message: `Got "${raw}". GIF loop count must be an integer between 0 and 65535.`,
+    };
+  }
+  return { ok: true, value: parsed };
+}

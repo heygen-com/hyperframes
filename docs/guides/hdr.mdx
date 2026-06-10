@@ -112,8 +112,9 @@ This is the same pipeline that handles compositions where, for example, an HDR d
 | `mp4` | Yes — H.265 10-bit BT.2020, HDR10 metadata |
 | `mov` | No — falls back to SDR |
 | `webm` | No — falls back to SDR |
+| `gif` | No — falls back to SDR |
 
-If HDR is enabled and you also pass `--format mov` or `--format webm`, Hyperframes logs a message and produces the equivalent SDR render. There is no error — the render still completes — so check the logs (or your verification step) to confirm you got HDR.
+If HDR is enabled and you also pass `--format mov`, `--format webm`, or `--format gif`, Hyperframes logs a message and produces the equivalent SDR render. There is no error — the render still completes — so check the logs (or your verification step) to confirm you got HDR.
 
 ## Verifying HDR Output
 

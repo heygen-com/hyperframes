@@ -4,7 +4,9 @@
  *   1. png-sequence: no encoder. Captured PNGs are renamed to
  *      `frame_NNNNNN.png` and copied to `outputPath`. Audio (if any) is
  *      written as an `audio.aac` sidecar.
- *   2. mp4 / webm / mov: invokes `encodeFramesFromDir` (or the chunked-
+ *   2. gif: runs a two-pass FFmpeg palette encode and writes directly to
+ *      `outputPath`. GIF has no mux/faststart stage and ignores audio.
+ *   3. mp4 / webm / mov: invokes `encodeFramesFromDir` (or the chunked-
  *      concat variant when `enableChunkedEncode` is on) to produce
  *      `videoOnlyPath`. The mux + faststart pass lives in `assembleStage`.
  *
@@ -26,15 +28,25 @@
  *     `success: false`.
  */
 
-import { copyFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
+import { dirname, join } from "node:path";
 import {
+  DEFAULT_CONFIG,
   encodeFramesChunkedConcat,
   encodeFramesFromDir,
+  formatFfmpegError,
   getEncoderPreset,
+  runFfmpeg,
+  type EncodeResult,
 } from "@hyperframes/engine";
+import type { Fps } from "@hyperframes/core";
 import type { ProducerLogger } from "../../../logger.js";
 import type { ProgressCallback, RenderJob } from "../../renderOrchestrator.js";
+import {
+  buildGifPalettegenArgs,
+  buildGifPaletteuseArgs,
+  type GifEncodeArgsInput,
+} from "./gifEncodeArgs.js";
 import { updateJobStatus } from "../shared.js";
 
 export interface EncodeStageInput {
@@ -62,6 +74,8 @@ export interface EncodeStageInput {
   audioOutputPath?: string;
   /** Mp4 vs png-sequence vs … gates the entire stage branch. */
   isPngSequence: boolean;
+  /** GIF writes directly to `outputPath` via a two-pass palette encode. */
+  isGif: boolean;
   /** Encoder preset (codec, preset, pixelFormat, hdr). Only used on the non-png path. */
   preset: ReturnType<typeof getEncoderPreset>;
   effectiveQuality: number;
@@ -89,6 +103,88 @@ export interface EncodeStageResult {
   encodeMs: number;
 }
 
+function resolveGifLoop(loop: number | undefined): number {
+  const resolved = loop ?? 0;
+  if (!Number.isInteger(resolved) || resolved < 0 || resolved > 65_535) {
+    throw new Error(`[Render] gifLoop must be an integer between 0 and 65535 (got ${resolved})`);
+  }
+  return resolved;
+}
+
+async function encodeGifFromDir(
+  framesDir: string,
+  framePattern: string,
+  outputPath: string,
+  input: {
+    fps: Fps;
+    loop: number;
+    palettePath: string;
+    signal?: AbortSignal;
+    timeout: number;
+  },
+): Promise<EncodeResult> {
+  const startTime = Date.now();
+  const files = readdirSync(framesDir).filter((file) => file.match(/\.(jpg|jpeg|png)$/i));
+  const frameCount = files.length;
+  if (frameCount === 0) {
+    return {
+      success: false,
+      outputPath,
+      durationMs: Date.now() - startTime,
+      framesEncoded: 0,
+      fileSize: 0,
+      error: "[FFmpeg] No frame files found in directory",
+    };
+  }
+
+  const argsInput: GifEncodeArgsInput = {
+    framesDir,
+    framePattern,
+    palettePath: input.palettePath,
+    outputPath,
+    fps: input.fps,
+    loop: input.loop,
+  };
+  const paletteResult = await runFfmpeg(buildGifPalettegenArgs(argsInput), {
+    signal: input.signal,
+    timeout: input.timeout,
+  });
+  if (!paletteResult.success) {
+    return {
+      success: false,
+      outputPath,
+      durationMs: Date.now() - startTime,
+      framesEncoded: 0,
+      fileSize: 0,
+      error: formatFfmpegError(paletteResult.exitCode, paletteResult.stderr),
+    };
+  }
+
+  const gifResult = await runFfmpeg(buildGifPaletteuseArgs(argsInput), {
+    signal: input.signal,
+    timeout: input.timeout,
+  });
+  if (!gifResult.success) {
+    return {
+      success: false,
+      outputPath,
+      durationMs: Date.now() - startTime,
+      framesEncoded: 0,
+      fileSize: 0,
+      error: formatFfmpegError(gifResult.exitCode, gifResult.stderr),
+    };
+  }
+
+  const fileSize = existsSync(outputPath) ? statSync(outputPath).size : 0;
+  return {
+    success: true,
+    outputPath,
+    durationMs: Date.now() - startTime,
+    framesEncoded: frameCount,
+    fileSize,
+  };
+}
+
 export async function runEncodeStage(input: EncodeStageInput): Promise<EncodeStageResult> {
   const {
     job,
@@ -102,6 +198,7 @@ export async function runEncodeStage(input: EncodeStageInput): Promise<EncodeSta
     hasAudio,
     audioOutputPath,
     isPngSequence,
+    isGif,
     preset,
     effectiveQuality,
     effectiveBitrate,
@@ -140,6 +237,28 @@ export async function runEncodeStage(input: EncodeStageInput): Promise<EncodeSta
       // can land alongside the frames.
       copyFileSync(audioOutputPath, join(outputPath, "audio.aac"));
       log.info(`[Render] png-sequence: audio.aac sidecar written to ${outputPath}/audio.aac`);
+    }
+    return { encodeMs: Date.now() - stage5Start };
+  }
+
+  if (isGif) {
+    // ── Stage 5 (gif): two-pass palette encode ───────────────────────
+    updateJobStatus(job, "encoding", "Encoding GIF", 75, onProgress);
+    if (hasAudio) {
+      log.warn("[Render] GIF output does not support audio; audio tracks will be ignored.");
+    }
+    const framePattern = "frame_%06d.jpg";
+    const loop = resolveGifLoop(job.config.gifLoop);
+    const encodeResult = await encodeGifFromDir(framesDir, framePattern, outputPath, {
+      fps: job.config.fps,
+      loop,
+      palettePath: join(dirname(videoOnlyPath), "gif-palette.png"),
+      signal: abortSignal,
+      timeout: job.config.producerConfig?.ffmpegEncodeTimeout ?? DEFAULT_CONFIG.ffmpegEncodeTimeout,
+    });
+    assertNotAborted();
+    if (!encodeResult.success) {
+      throw new Error(`Encoding failed: ${encodeResult.error}`);
     }
     return { encodeMs: Date.now() - stage5Start };
   }

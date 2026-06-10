@@ -200,6 +200,20 @@ describe("buildDockerRunArgs", () => {
     expect(args[formatIdx + 1]).toBe("png-sequence");
   });
 
+  it("forwards --format gif and --gif-loop to the container", () => {
+    const args = buildDockerRunArgs({
+      ...FIXED_INPUT,
+      outputFilename: "demo.gif",
+      options: { ...BASE, format: "gif", gifLoop: 0 },
+    });
+    const formatIdx = args.indexOf("--format");
+    const loopIdx = args.indexOf("--gif-loop");
+    expect(formatIdx).toBeGreaterThanOrEqual(0);
+    expect(args[formatIdx + 1]).toBe("gif");
+    expect(loopIdx).toBeGreaterThanOrEqual(0);
+    expect(args[loopIdx + 1]).toBe("0");
+  });
+
   it("forwards --video-bitrate to the container when set", () => {
     const args = buildDockerRunArgs({
       ...FIXED_INPUT,

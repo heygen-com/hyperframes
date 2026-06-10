@@ -261,6 +261,10 @@ export interface RenderConfig {
    * - `"mov"`: ProRes 4444 + `yuva444p10le` → **true alpha channel +
    *   10-bit color**. Sized for editor ingest (Premiere, Final Cut Pro,
    *   DaVinci Resolve), not direct web playback. Audio is muxed as AAC.
+   * - `"gif"`: animated GIF encoded from captured frames with a two-pass
+   *   FFmpeg palette (`palettegen` + `paletteuse`). Use for PRs, READMEs,
+   *   and docs where inline autoplay matters more than file size. No audio
+   *   stream and no alpha channel.
    * - `"png-sequence"`: a directory of zero-padded RGBA PNGs
    *   (`frame_000001.png` …). Lossless alpha, largest on disk, no muxed
    *   audio (an `audio.aac` sidecar is written alongside the PNGs when
@@ -278,7 +282,9 @@ export interface RenderConfig {
    * not paint a fullscreen `body` / `#root` background in their
    * compositions when targeting alpha output.
    */
-  format?: "mp4" | "webm" | "mov" | "png-sequence";
+  format?: "mp4" | "webm" | "mov" | "png-sequence" | "gif";
+  /** GIF Netscape loop count. 0 means infinite looping. Only used with `format: "gif"`. */
+  gifLoop?: number;
   workers?: number;
   useGpu?: boolean;
   debug?: boolean;
@@ -1428,6 +1434,7 @@ export function shouldUseStreamingEncode(
 ): boolean {
   if (!cfg.enableStreamingEncode) return false;
   if (outputFormat === "png-sequence") return false;
+  if (outputFormat === "gif") return false;
   if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) return false;
   if (durationSeconds > cfg.streamingEncodeMaxDurationSeconds) return false;
   return workerCount === 1;
@@ -1516,6 +1523,7 @@ export async function executeRenderJob(
   const isWebm = outputFormat === "webm";
   const isMov = outputFormat === "mov";
   const isPngSequence = outputFormat === "png-sequence";
+  const isGif = outputFormat === "gif";
   const needsAlpha = isWebm || isMov || isPngSequence;
   // `forceScreenshot` is resolved exactly once inside `compileStage` (alpha
   // output + composition `renderModeHints` are folded together there) and
@@ -1981,6 +1989,7 @@ export async function executeRenderJob(
       webm: ".webm",
       mov: ".mov",
       "png-sequence": "",
+      gif: ".gif",
     };
     const videoExt = FORMAT_EXT[outputFormat] ?? ".mp4";
     const videoOnlyPath = join(workDir, `video-only${videoExt}`);
@@ -1997,9 +2006,11 @@ export async function executeRenderJob(
     // exactly the single capture the page-side compositor produces. HDR
     // content still forces the layered path (HDR layers need per-layer
     // alpha + native HDR raw frame compositing in Node; that's out of scope
-    // for this opt-in).
+    // for this opt-in). GIF also uses this path for shader transitions
+    // because its two-pass palette encoder needs disk frames, not the
+    // layered path's streaming raw-video encoder.
     const usePageSideCompositingForTransitions =
-      cfg.enablePageSideCompositing &&
+      (cfg.enablePageSideCompositing || isGif) &&
       compiled.hasShaderTransitions &&
       !hasHdrContent &&
       !isPngSequence &&
@@ -2015,7 +2026,7 @@ export async function executeRenderJob(
       !usePageSideCompositingForTransitions &&
       shouldUseLayeredComposite({
         hasHdrContent,
-        hasShaderTransitions: compiled.hasShaderTransitions,
+        hasShaderTransitions: compiled.hasShaderTransitions && !isGif,
         isPngSequence,
       });
     updateCaptureObservability({
@@ -2041,7 +2052,8 @@ export async function executeRenderJob(
     // reads `preset.quality` for `effectiveQuality` and `preset.codec` for
     // unrelated bookkeeping. Fall back to the mp4 preset shape — its values
     // are never written to ffmpeg in the png-sequence path.
-    const presetFormat: "mp4" | "webm" | "mov" = isPngSequence ? "mp4" : outputFormat;
+    const presetFormat: "mp4" | "webm" | "mov" =
+      outputFormat === "webm" || outputFormat === "mov" ? outputFormat : "mp4";
     const preset = getEncoderPreset(job.config.quality, presetFormat, encoderHdr);
 
     // CLI overrides (--crf, --video-bitrate) flow through job.config and must
@@ -2219,7 +2231,7 @@ export async function executeRenderJob(
         const encodeRes = await observeRenderStage(
           observability,
           "encode",
-          { hasAudio, isPngSequence, chunkedEncode: enableChunkedEncode },
+          { hasAudio, isPngSequence, isGif, chunkedEncode: enableChunkedEncode },
           () =>
             runEncodeStage({
               job,
@@ -2233,6 +2245,7 @@ export async function executeRenderJob(
               hasAudio,
               audioOutputPath,
               isPngSequence,
+              isGif,
               preset,
               effectiveQuality,
               effectiveBitrate,
@@ -2261,9 +2274,10 @@ export async function executeRenderJob(
     fileServer = null;
 
     // ── Stage 6: Assemble ───────────────────────────────────────────────
-    // Skipped for png-sequence — there is no encoded video to mux/faststart.
-    // The frames were copied directly to outputPath in Stage 5.
-    if (!isPngSequence) {
+    // Skipped for formats with no mux/faststart step. png-sequence is a
+    // directory deliverable, and gif is written directly to outputPath by the
+    // two-pass palette encoder.
+    if (!isPngSequence && !isGif) {
       const assembleRes = await observeRenderStage(observability, "assemble", { hasAudio }, () =>
         runAssembleStage({
           job,
@@ -2278,7 +2292,7 @@ export async function executeRenderJob(
       );
       perfStages.assembleMs = assembleRes.assembleMs;
     } else {
-      observability.checkpoint("assemble", "skipped for png-sequence");
+      observability.checkpoint("assemble", `skipped for ${outputFormat}`);
     }
 
     // ── Complete ─────────────────────────────────────────────────────────

@@ -169,6 +169,22 @@ describe("renderLocal browser GPU config", () => {
     expect(producerState.createdJobs[0]?.format).toBe("png-sequence");
   });
 
+  it("forwards format: gif and gifLoop through to createRenderJob", async () => {
+    await renderLocal("/tmp/project", "/tmp/demo.gif", {
+      fps: { num: 15, den: 1 },
+      quality: "standard",
+      format: "gif",
+      gifLoop: 3,
+      gpu: false,
+      browserGpuMode: "software",
+      hdrMode: "auto",
+      quiet: true,
+    });
+
+    expect(producerState.createdJobs[0]?.format).toBe("gif");
+    expect(producerState.createdJobs[0]?.gifLoop).toBe(3);
+  });
+
   it("omits variables from createRenderJob when not provided", async () => {
     await renderLocal("/tmp/project", "/tmp/out.mp4", {
       fps: { num: 30, den: 1 },
