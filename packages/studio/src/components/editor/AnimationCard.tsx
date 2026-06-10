@@ -398,9 +398,21 @@ export const AnimationCard = memo(function AnimationCard({
         <div className="pt-2">
           <div className="space-y-3">
             <div className="flex items-start gap-2">
-              <p className="flex-1 text-[10px] leading-relaxed text-neutral-400 italic">
-                {summary}
-              </p>
+              <div className="flex-1">
+                <p className="text-[10px] leading-relaxed text-neutral-400 italic">{summary}</p>
+                {animation.keyframes && (
+                  <p className="mt-1 text-[9px] text-neutral-500">
+                    <span
+                      className="inline-block w-2 h-2 mr-1 align-middle"
+                      style={{
+                        background: "currentColor",
+                        clipPath: "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)",
+                      }}
+                    />
+                    Keyframed — edit values in the Layout panel above
+                  </p>
+                )}
+              </div>
               <button
                 type="button"
                 onClick={() => {

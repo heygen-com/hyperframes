@@ -7,6 +7,7 @@ interface CompositionsTabProps {
   onSelect: (comp: string) => void;
   onRenderComposition?: (comp: string) => void;
   isRendering?: boolean;
+  lintFindingsByFile?: Map<string, { count: number; messages: string[] }>;
 }
 
 const DEFAULT_PREVIEW_STAGE = { width: 1920, height: 1080 };
@@ -111,6 +112,7 @@ function CompCard({
   onSelect,
   onRender,
   isRendering,
+  lintInfo,
 }: {
   projectId: string;
   comp: string;
@@ -118,6 +120,7 @@ function CompCard({
   onSelect: () => void;
   onRender?: () => void;
   isRendering?: boolean;
+  lintInfo?: { count: number; messages: string[] };
 }) {
   const [hovered, setHovered] = useState(false);
   const [stageSize, setStageSize] = useState(DEFAULT_PREVIEW_STAGE);
@@ -215,8 +218,16 @@ function CompCard({
           tabIndex={-1}
         />
       </div>
-      <div className="min-w-0 flex-1">
-        <span className="text-[11px] font-medium text-neutral-300 truncate block">{name}</span>
+      <div
+        className="min-w-0 flex-1"
+        title={lintInfo && lintInfo.count > 0 ? lintInfo.messages.join("\n") : undefined}
+      >
+        <div className="flex items-center gap-1">
+          <span className="text-[11px] font-medium text-neutral-300 truncate">{name}</span>
+          {lintInfo && lintInfo.count > 0 && (
+            <span className="flex-shrink-0 w-2 h-2 rounded-full bg-amber-400" />
+          )}
+        </div>
         <span className="text-[9px] text-neutral-600 truncate block">{comp}</span>
       </div>
       {onRender && (
@@ -262,6 +273,7 @@ export const CompositionsTab = memo(function CompositionsTab({
   onSelect,
   onRenderComposition,
   isRendering,
+  lintFindingsByFile,
 }: CompositionsTabProps) {
   if (compositions.length === 0) {
     return (
@@ -282,6 +294,7 @@ export const CompositionsTab = memo(function CompositionsTab({
           onSelect={() => onSelect(comp)}
           onRender={onRenderComposition ? () => onRenderComposition(comp) : undefined}
           isRendering={isRendering}
+          lintInfo={lintFindingsByFile?.get(comp)}
         />
       ))}
     </div>

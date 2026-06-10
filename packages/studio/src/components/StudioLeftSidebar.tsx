@@ -16,6 +16,8 @@ export interface StudioLeftSidebarProps {
   onPreviewBlock?: (preview: BlockPreviewInfo | null) => void;
   onLint: () => void;
   linting: boolean;
+  lintFindingCount?: number;
+  lintFindingsByFile?: Map<string, { count: number; messages: string[] }>;
 }
 
 // fallow-ignore-next-line complexity
@@ -26,6 +28,8 @@ export function StudioLeftSidebar({
   onPreviewBlock,
   onLint,
   linting,
+  lintFindingCount,
+  lintFindingsByFile,
 }: StudioLeftSidebarProps) {
   const {
     leftCollapsed,
@@ -129,6 +133,8 @@ export function StudioLeftSidebar({
         isRendering={renderQueue.isRendering}
         onLint={onLint}
         linting={linting}
+        lintFindingCount={lintFindingCount}
+        lintFindingsByFile={lintFindingsByFile}
         onToggleCollapse={toggleLeftSidebar}
         onAddBlock={onAddBlock}
         onPreviewBlock={onPreviewBlock}

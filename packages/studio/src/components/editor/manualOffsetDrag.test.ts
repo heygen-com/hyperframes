@@ -66,6 +66,7 @@ describe("measureManualOffsetDragScreenToOffsetMatrix", () => {
   it("measures the element center response and restores probe styles", () => {
     const window = new Window();
     const element = window.document.createElement("div");
+    element.setAttribute("data-hf-studio-path-offset", "true");
     window.document.body.append(element);
 
     element.getBoundingClientRect = () => {
@@ -109,6 +110,7 @@ describe("measureManualOffsetDragScreenToOffsetMatrix", () => {
     iframe.getBoundingClientRect = () => new window.DOMRect(50, 40, 100, 50);
 
     const element = iframeDocument.createElement("div");
+    element.setAttribute("data-hf-studio-path-offset", "true");
     iframeDocument.body.append(element);
     element.getBoundingClientRect = () => {
       const offsetX = Number.parseFloat(element.style.getPropertyValue(STUDIO_OFFSET_X_PROP)) || 0;
@@ -130,9 +132,24 @@ describe("measureManualOffsetDragScreenToOffsetMatrix", () => {
     expect(nextOffset).toEqual({ x: 100, y: 50 });
   });
 
-  it("rejects elements whose movement response cannot be measured", () => {
+  it("returns identity matrix for non-path-offset elements with zero initial offset", () => {
     const window = new Window();
     const element = window.document.createElement("div");
+    window.document.body.append(element);
+    element.getBoundingClientRect = () => new window.DOMRect(10, 20, 12, 8);
+
+    const measured = measureManualOffsetDragScreenToOffsetMatrix(element, { x: 0, y: 0 });
+
+    expect(measured.ok).toBe(true);
+    if (measured.ok) {
+      expectMatrixClose(measured.matrix, { a: 1, b: 0, c: 0, d: 1 });
+    }
+  });
+
+  it("rejects path-offset elements whose movement response cannot be measured", () => {
+    const window = new Window();
+    const element = window.document.createElement("div");
+    element.setAttribute("data-hf-studio-path-offset", "true");
     window.document.body.append(element);
     element.getBoundingClientRect = () => new window.DOMRect(10, 20, 12, 8);
 

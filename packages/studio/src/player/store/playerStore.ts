@@ -117,6 +117,12 @@ interface PlayerState {
   requestedSeekTime: number | null;
   requestSeek: (time: number) => void;
   clearSeekRequest: () => void;
+
+  autoKeyframeEnabled: boolean;
+  setAutoKeyframeEnabled: (enabled: boolean) => void;
+
+  lintFindingsByElement: Map<string, { count: number; messages: string[] }>;
+  setLintFindingsByElement: (map: Map<string, { count: number; messages: string[] }>) => void;
 }
 
 // Lightweight pub-sub for current time during playback.
@@ -191,6 +197,12 @@ export const usePlayerStore = create<PlayerState>((set) => ({
   requestedSeekTime: null,
   requestSeek: (time) => set({ requestedSeekTime: time }),
   clearSeekRequest: () => set({ requestedSeekTime: null }),
+
+  autoKeyframeEnabled: true,
+  setAutoKeyframeEnabled: (enabled) => set({ autoKeyframeEnabled: enabled }),
+
+  lintFindingsByElement: new Map(),
+  setLintFindingsByElement: (map) => set({ lintFindingsByElement: map }),
 
   setIsPlaying: (playing) => set({ isPlaying: playing }),
   setPlaybackRate: (rate) => {

@@ -15,7 +15,7 @@ import {
 
 // ── Types ──
 
-export interface FileTreeProps {
+interface FileTreeProps {
   files: string[];
   activeFile: string | null;
   onSelectFile: (path: string) => void;
@@ -26,6 +26,7 @@ export interface FileTreeProps {
   onDuplicateFile?: (path: string) => void;
   onMoveFile?: (oldPath: string, newPath: string) => void;
   onImportFiles?: (files: FileList, dir?: string) => void;
+  lintFindingsByFile?: Map<string, { count: number; messages: string[] }>;
 }
 
 // ── Main FileTree Component ──
@@ -41,6 +42,7 @@ export const FileTree = memo(function FileTree({
   onDuplicateFile,
   onMoveFile,
   onImportFiles,
+  lintFindingsByFile,
 }: FileTreeProps) {
   const tree = useMemo(() => buildTree(files), [files]);
   const children = useMemo(() => sortChildren(tree.children), [tree]);
@@ -283,6 +285,7 @@ export const FileTree = memo(function FileTree({
               onContextMenu={handleContextMenu}
               inlineInput={inlineInput}
               onDragStart={handleDragStart}
+              lintInfo={lintFindingsByFile?.get(child.fullPath)}
             />
           ) : (
             <TreeFolder
@@ -299,6 +302,7 @@ export const FileTree = memo(function FileTree({
               onDrop={handleDrop}
               onDragLeave={handleDragLeave}
               dragOverFolder={dragOverFolder}
+              lintFindingsByFile={lintFindingsByFile}
             />
           ),
         )}

@@ -128,6 +128,9 @@ export async function persistTimelineEdit(input: PersistTimelineEditInput): Prom
 }
 
 export async function readFileContent(projectId: string, targetPath: string): Promise<string> {
+  if (targetPath.includes("\0") || targetPath.includes("..")) {
+    throw new Error(`Unsafe path: ${targetPath}`);
+  }
   const response = await fetch(
     `/api/projects/${projectId}/files/${encodeURIComponent(targetPath)}`,
   );

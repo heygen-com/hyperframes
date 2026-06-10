@@ -25,6 +25,28 @@ export function readGsapProperty(
   }
 }
 
+const POSITION_PROPS = new Set(["x", "y", "xPercent", "yPercent"]);
+const GSAP_CONFIG_KEYS = new Set([
+  "duration",
+  "ease",
+  "delay",
+  "stagger",
+  "id",
+  "onComplete",
+  "onUpdate",
+  "onStart",
+  "onRepeat",
+  "repeat",
+  "yoyo",
+  "repeatDelay",
+  "paused",
+  "immediateRender",
+  "lazy",
+  "overwrite",
+  "keyframes",
+  "parent",
+]);
+
 export function readAllAnimatedProperties(
   iframe: HTMLIFrameElement | null,
   selector: string,
@@ -61,7 +83,119 @@ export function readAllAnimatedProperties(
 
   for (const prop of propKeys) {
     const val = Number(gsap.getProperty(el, prop));
-    if (Number.isFinite(val)) result[prop] = Math.round(val);
+    if (Number.isFinite(val)) {
+      result[prop] = POSITION_PROPS.has(prop) ? Math.round(val) : Math.round(val * 1000) / 1000;
+    }
   }
+
+  const otherTweenProps = new Set<string>();
+  try {
+    const win = iframe.contentWindow as unknown as { __timelines?: Record<string, unknown> };
+    const timelines = win.__timelines;
+    if (timelines) {
+      for (const tl of Object.values(timelines)) {
+        const tlObj = tl as {
+          getChildren?: (
+            deep: boolean,
+          ) => Array<{ targets?: () => Element[]; vars?: Record<string, unknown> }>;
+        };
+        if (!tlObj?.getChildren) continue;
+        for (const child of tlObj.getChildren(true)) {
+          if (typeof child.targets !== "function") continue;
+          const targets = child.targets();
+          if (!targets.includes(el)) continue;
+          const vars = child.vars;
+          if (!vars) continue;
+          for (const k of Object.keys(vars)) {
+            if (!GSAP_CONFIG_KEYS.has(k)) otherTweenProps.add(k);
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.warn(
+      "Cross-tween guard failed — baseline capture may include values from other tweens",
+      e,
+    );
+  }
+  for (const p of propKeys) otherTweenProps.delete(p);
+
+  // Tier 1: Transform + visual properties with universal CSS defaults.
+  // Safe to compare against hardcoded values — these are always 0 or 1
+  // regardless of the element's stylesheet.
+  const UNIVERSAL_BASELINE: Record<string, number> = {
+    opacity: 1,
+    scale: 1,
+    scaleX: 1,
+    scaleY: 1,
+    scaleZ: 1,
+    rotation: 0,
+    rotationX: 0,
+    rotationY: 0,
+    skewX: 0,
+    skewY: 0,
+    z: 0,
+    xPercent: 0,
+    yPercent: 0,
+    transformPerspective: 0,
+    blur: 0,
+    brightness: 1,
+    contrast: 1,
+    saturate: 1,
+    hueRotate: 0,
+    grayscale: 0,
+    sepia: 0,
+    invert: 0,
+  };
+  for (const [prop, defaultVal] of Object.entries(UNIVERSAL_BASELINE)) {
+    if (prop in result) continue;
+    if (otherTweenProps.has(prop)) continue;
+    const val = Number(gsap.getProperty(el, prop));
+    if (Number.isFinite(val) && Math.round(val * 1000) !== Math.round(defaultVal * 1000)) {
+      result[prop] = Math.round(val * 1000) / 1000;
+    }
+  }
+
+  // Tier 2: Element-dependent properties — their "default" depends on the
+  // stylesheet, so we compare GSAP's runtime value against the element's
+  // computed CSS value. Only capture if GSAP has actively changed it.
+  const COMPUTED_BASELINE = [
+    "borderRadius",
+    "borderTopLeftRadius",
+    "borderTopRightRadius",
+    "borderBottomLeftRadius",
+    "borderBottomRightRadius",
+    "letterSpacing",
+    "wordSpacing",
+    "lineHeight",
+    "fontSize",
+    "outlineOffset",
+    "outlineWidth",
+    "strokeDashoffset",
+    "strokeWidth",
+    "backgroundPositionX",
+    "backgroundPositionY",
+  ];
+  let computedStyle: CSSStyleDeclaration | null = null;
+  try {
+    computedStyle = doc?.defaultView?.getComputedStyle(el) ?? null;
+  } catch {}
+  for (const prop of COMPUTED_BASELINE) {
+    if (prop in result) continue;
+    if (otherTweenProps.has(prop)) continue;
+    const gsapVal = Number(gsap.getProperty(el, prop));
+    if (!Number.isFinite(gsapVal)) continue;
+    let cssVal = NaN;
+    if (computedStyle) {
+      const raw = computedStyle.getPropertyValue(
+        prop.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`),
+      );
+      cssVal = parseFloat(raw);
+    }
+    if (Number.isFinite(cssVal) && Math.round(gsapVal * 1000) === Math.round(cssVal * 1000))
+      continue;
+    result[prop] = Math.round(gsapVal * 1000) / 1000;
+  }
+
   return result;
 }

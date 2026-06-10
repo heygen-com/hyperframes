@@ -36,13 +36,44 @@ interface CommitAnimatedPropertyDeps {
   bumpGsapCache: () => void;
 }
 
-function computePercentage(selection: DomEditSelection): number {
+function computePercentage(selection: DomEditSelection, anim?: GsapAnimation): number {
+  const currentTime = usePlayerStore.getState().currentTime;
+  const tweenPos = typeof anim?.position === "number" ? anim.position : 0;
+  const tweenDur = anim?.duration ?? 0;
+  if (tweenDur > 0) {
+    return Math.max(
+      0,
+      Math.min(100, Math.round(((currentTime - tweenPos) / tweenDur) * 1000) / 10),
+    );
+  }
   const elStart = Number.parseFloat(selection.dataAttributes?.start ?? "0") || 0;
   const elDuration = Number.parseFloat(selection.dataAttributes?.duration ?? "1") || 1;
-  const currentTime = usePlayerStore.getState().currentTime;
   return elDuration > 0
     ? Math.max(0, Math.min(100, Math.round(((currentTime - elStart) / elDuration) * 1000) / 10))
     : 0;
+}
+
+function pickBestAnimation(
+  animations: GsapAnimation[],
+  selector: string | null,
+): GsapAnimation | undefined {
+  if (animations.length <= 1) return animations[0];
+  const currentTime = usePlayerStore.getState().currentTime;
+
+  const scored = animations.map((a) => {
+    let score = 0;
+    if (a.keyframes) score += 10;
+    // Prefer single-element selectors over comma-separated groups
+    if (selector && a.targetSelector === selector) score += 5;
+    else if (a.targetSelector.includes(",")) score -= 3;
+    // Prefer tweens active at the current time
+    const pos = typeof a.position === "number" ? a.position : 0;
+    const dur = a.duration ?? 0;
+    if (currentTime >= pos - 0.05 && currentTime <= pos + dur + 0.05) score += 8;
+    return { anim: a, score };
+  });
+  scored.sort((a, b) => b.score - a.score);
+  return scored[0]?.anim;
 }
 
 function selectorFor(selection: DomEditSelection): string | null {
@@ -70,10 +101,8 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
 
       const iframe = previewIframeRef.current;
       const selector = selectorFor(selection);
-      const pct = computePercentage(selection);
 
-      let anim: GsapAnimation | undefined =
-        selectedGsapAnimations.find((a) => a.keyframes) ?? selectedGsapAnimations[0];
+      let anim: GsapAnimation | undefined = pickBestAnimation(selectedGsapAnimations, selector);
 
       // Case 3: No animation — create one first
       if (!anim) {
@@ -97,6 +126,8 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
         );
       }
 
+      const pct = computePercentage(selection, anim);
+
       // Read all currently animated properties from runtime for backfill
       const runtimeProps = selector ? readAllAnimatedProperties(iframe, selector, anim) : {};
 
@@ -112,15 +143,26 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
       }
       backfillDefaults[property] = typeof value === "number" ? value : value;
 
+      const existingKf = anim.keyframes?.keyframes.some(
+        (kf) => Math.abs(kf.percentage - pct) < 0.05,
+      );
+
       await gsapCommitMutation(
         selection,
-        {
-          type: "add-keyframe",
-          animationId: anim.id,
-          percentage: pct,
-          properties,
-          backfillDefaults,
-        },
+        existingKf
+          ? {
+              type: "update-keyframe",
+              animationId: anim.id,
+              percentage: pct,
+              properties,
+            }
+          : {
+              type: "add-keyframe",
+              animationId: anim.id,
+              percentage: pct,
+              properties,
+              backfillDefaults,
+            },
         { label: `Edit ${property} (keyframe ${pct}%)`, softReload: true },
       );
     },

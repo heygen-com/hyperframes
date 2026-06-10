@@ -138,9 +138,6 @@ export function useLayerDrag({
       const container = scrollContainerRef.current;
       if (!container) return;
 
-      e.preventDefault();
-      container.setPointerCapture(e.pointerId);
-
       dragRef.current = {
         pointerId: e.pointerId,
         startY: e.clientY,
@@ -163,6 +160,12 @@ export function useLayerDrag({
       if (!drag.activated) {
         if (Math.abs(e.clientY - drag.startY) < DRAG_THRESHOLD_PX) return;
         drag.activated = true;
+        const container = scrollContainerRef.current;
+        if (container && drag.pointerId != null) {
+          try {
+            container.setPointerCapture(drag.pointerId);
+          } catch {}
+        }
         setDragKey(visibleLayers[drag.dragLayerIndex]?.key ?? null);
       }
 

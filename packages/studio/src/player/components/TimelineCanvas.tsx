@@ -9,10 +9,32 @@ import {
 } from "./timelineEditing";
 import { getRenderedTimelineElement, type TimelineTheme } from "./timelineTheme";
 import { GUTTER, TRACK_H, RULER_H, CLIP_Y, CLIP_HANDLE_W } from "./timelineLayout";
-import type { TimelineElement, KeyframeCacheEntry } from "../store/playerStore";
+import {
+  usePlayerStore,
+  type TimelineElement,
+  type KeyframeCacheEntry,
+} from "../store/playerStore";
 import type { DraggedClipState, ResizingClipState, BlockedClipState } from "./useTimelineClipDrag";
 import type { TrackVisualStyle } from "./timelineIcons";
 import { STUDIO_KEYFRAMES_ENABLED } from "../../components/editor/manualEditingAvailability";
+
+function ClipLabel({ element, color }: { element: TimelineElement; color: string }) {
+  const lint = usePlayerStore((s) => s.lintFindingsByElement.get(element.key ?? element.id));
+  return (
+    <span
+      className="flex items-center gap-1 truncate text-[10px] font-medium leading-none"
+      style={{ color }}
+    >
+      {element.label || element.id || element.tag}
+      {lint && lint.count > 0 && (
+        <span
+          className="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-amber-400"
+          title={lint.messages.join("\n")}
+        />
+      )}
+    </span>
+  );
+}
 
 interface TimelineCanvasProps {
   major: number[];
@@ -157,12 +179,7 @@ export const TimelineCanvas = memo(function TimelineCanvas({
         }
       >
         {renderClipContent?.(element, clipStyle) ?? (
-          <span
-            className="truncate text-[10px] font-medium leading-none"
-            style={{ color: clipStyle.label }}
-          >
-            {element.label || element.id || element.tag}
-          </span>
+          <ClipLabel element={element} color={clipStyle.label} />
         )}
       </div>
     </>

@@ -246,7 +246,7 @@ export function useGsapScriptCommits({
     (selection: DomEditSelection, animationId: string) => {
       void commitMutation(
         selection,
-        { type: "delete", animationId },
+        { type: "delete", animationId, stripStudioEdits: true },
         { label: "Delete GSAP animation" },
       );
     },

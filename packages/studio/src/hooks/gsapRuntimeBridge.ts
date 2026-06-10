@@ -10,6 +10,7 @@
  */
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
+import { usePlayerStore } from "../player/store/playerStore";
 
 import { readAllAnimatedProperties, readGsapProperty } from "./gsapRuntimeReaders";
 import {
@@ -59,31 +60,40 @@ function readGsapPositionFromIframe(
 // ── Animation matching ─────────────────────────────────────────────────────
 
 // fallow-ignore-next-line complexity
-function findGsapPositionAnimation(animations: GsapAnimation[]): GsapAnimation | null {
-  // Prefer animations that already have x/y
-  for (const anim of animations) {
-    if (anim.keyframes) {
-      const hasPos = anim.keyframes.keyframes.some(
-        (kf) => "x" in kf.properties || "y" in kf.properties,
-      );
-      if (hasPos) return anim;
-    }
-    const props = anim.properties;
-    const fromProps = anim.fromProperties;
-    if (anim.method === "fromTo") {
-      if ("x" in props || "y" in props || (fromProps && ("x" in fromProps || "y" in fromProps))) {
-        return anim;
-      }
-    } else if ("x" in props || "y" in props) {
-      return anim;
-    }
+function animHasPosition(anim: GsapAnimation): boolean {
+  if (anim.keyframes?.keyframes.some((kf) => "x" in kf.properties || "y" in kf.properties))
+    return true;
+  if (anim.method === "fromTo") {
+    const from = anim.fromProperties;
+    return (
+      "x" in anim.properties || "y" in anim.properties || !!(from && ("x" in from || "y" in from))
+    );
   }
-  // Fall back to any keyframed animation — drag will add x/y to it
-  for (const anim of animations) {
-    if (anim.keyframes) return anim;
-  }
-  // Fall back to any animation — will be converted to keyframes
-  return animations[0] ?? null;
+  return "x" in anim.properties || "y" in anim.properties;
+}
+
+function findGsapPositionAnimation(
+  animations: GsapAnimation[],
+  selector?: string,
+): GsapAnimation | null {
+  if (animations.length === 0) return null;
+  const currentTime = usePlayerStore.getState().currentTime;
+
+  const scored = animations
+    .filter((a) => animHasPosition(a) || a.keyframes || animations.length === 1)
+    .map((a) => {
+      let score = 0;
+      if (animHasPosition(a)) score += 10;
+      if (a.keyframes) score += 5;
+      if (selector && a.targetSelector === selector) score += 8;
+      else if (a.targetSelector.includes(",")) score -= 5;
+      const pos = typeof a.position === "number" ? a.position : 0;
+      const dur = a.duration ?? 0;
+      if (currentTime >= pos - 0.05 && currentTime <= pos + dur + 0.05) score += 4;
+      return { anim: a, score };
+    });
+  scored.sort((a, b) => b.score - a.score);
+  return scored[0]?.anim ?? animations[0];
 }
 
 // ── Selector resolution ────────────────────────────────────────────────────
@@ -114,15 +124,19 @@ export async function tryGsapDragIntercept(
   commitMutation: GsapDragCommitCallbacks["commitMutation"],
   fetchFallbackAnimations?: () => Promise<GsapAnimation[]>,
 ): Promise<boolean> {
-  let posAnim = findGsapPositionAnimation(animations);
+  const selector = selectorForSelection(selection);
+  if (!selector) return false;
+
+  let posAnim = findGsapPositionAnimation(animations, selector);
   if (!posAnim && fetchFallbackAnimations) {
     const fresh = await fetchFallbackAnimations();
-    posAnim = findGsapPositionAnimation(fresh);
+    posAnim = findGsapPositionAnimation(fresh, selector);
   }
   if (!posAnim) return false;
 
-  const selector = selectorForSelection(selection);
-  if (!selector) return false;
+  // Keyframe writes at 0%/100% when outside the tween range. Acceptable
+  // trade-off — CSS path must NEVER touch GSAP-targeted elements because
+  // changing the CSS offset corrupts all existing keyframes (baked mismatch).
 
   const gsapPos = readGsapPositionFromIframe(iframe, selector);
   if (!gsapPos) return false;

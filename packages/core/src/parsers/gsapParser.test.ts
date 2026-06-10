@@ -1383,6 +1383,95 @@ describe("keyframe mutations", () => {
     expect(kfs[1].properties.x).toBe(999);
   });
 
+  // ── _auto endpoint updates ────────────────────────────────────────────
+
+  const AUTO_SCRIPT = `
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#hero", {
+      keyframes: { "0%": { x: 0, y: 0, _auto: 1 }, "100%": { x: 200, y: 100, _auto: 1 } },
+      duration: 2
+    }, 0);
+  `;
+
+  const AUTO_5KF_SCRIPT = `
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#hero", {
+      keyframes: {
+        "0%": { x: 0, y: 0, _auto: 1 },
+        "25%": { x: 50, y: 25 },
+        "50%": { x: 100, y: 50 },
+        "75%": { x: 150, y: 75 },
+        "100%": { x: 200, y: 100, _auto: 1 }
+      },
+      duration: 2
+    }, 0);
+  `;
+
+  it("addKeyframe adjacent to auto 100% — updates 100%", () => {
+    const id = getAnimId(AUTO_SCRIPT);
+    const updated = addKeyframeToScript(AUTO_SCRIPT, id, 50, { x: 300, y: 200 });
+    const kfs = parseGsapScript(updated).animations[0].keyframes!.keyframes;
+    const kf100 = kfs.find((k) => k.percentage === 100)!;
+    expect(kf100.properties.x).toBe(300);
+    expect(kf100.properties.y).toBe(200);
+  });
+
+  it("addKeyframe adjacent to auto 0% — updates 0%", () => {
+    const id = getAnimId(AUTO_SCRIPT);
+    const updated = addKeyframeToScript(AUTO_SCRIPT, id, 50, { x: 300, y: 200 });
+    const kfs = parseGsapScript(updated).animations[0].keyframes!.keyframes;
+    const kf0 = kfs.find((k) => k.percentage === 0)!;
+    expect(kf0.properties.x).toBe(300);
+    expect(kf0.properties.y).toBe(200);
+  });
+
+  it("addKeyframe NOT adjacent to auto 100% — leaves 100% untouched", () => {
+    const id = getAnimId(AUTO_5KF_SCRIPT);
+    const updated = addKeyframeToScript(AUTO_5KF_SCRIPT, id, 74, { x: 999, y: 888 });
+    const kfs = parseGsapScript(updated).animations[0].keyframes!.keyframes;
+    const kf100 = kfs.find((k) => k.percentage === 100)!;
+    expect(kf100.properties.x).toBe(200);
+    expect(kf100.properties.y).toBe(100);
+  });
+
+  it("addKeyframe NOT adjacent to auto 0% — leaves 0% untouched", () => {
+    const id = getAnimId(AUTO_5KF_SCRIPT);
+    const updated = addKeyframeToScript(AUTO_5KF_SCRIPT, id, 30, { x: 999, y: 888 });
+    const kfs = parseGsapScript(updated).animations[0].keyframes!.keyframes;
+    const kf0 = kfs.find((k) => k.percentage === 0)!;
+    expect(kf0.properties.x).toBe(0);
+    expect(kf0.properties.y).toBe(0);
+  });
+
+  it("addKeyframe at 88% in 5-keyframe set — updates adjacent 100% only", () => {
+    const id = getAnimId(AUTO_5KF_SCRIPT);
+    const updated = addKeyframeToScript(AUTO_5KF_SCRIPT, id, 88, { x: 500, y: 400 });
+    const kfs = parseGsapScript(updated).animations[0].keyframes!.keyframes;
+    const kf100 = kfs.find((k) => k.percentage === 100)!;
+    const kf0 = kfs.find((k) => k.percentage === 0)!;
+    expect(kf100.properties.x).toBe(500);
+    expect(kf0.properties.x).toBe(0);
+  });
+
+  it("addKeyframe at 12% in 5-keyframe set — updates adjacent 0% only", () => {
+    const id = getAnimId(AUTO_5KF_SCRIPT);
+    const updated = addKeyframeToScript(AUTO_5KF_SCRIPT, id, 12, { x: 500, y: 400 });
+    const kfs = parseGsapScript(updated).animations[0].keyframes!.keyframes;
+    const kf0 = kfs.find((k) => k.percentage === 0)!;
+    const kf100 = kfs.find((k) => k.percentage === 100)!;
+    expect(kf0.properties.x).toBe(500);
+    expect(kf100.properties.x).toBe(200);
+  });
+
+  it("non-auto 100% is never modified", () => {
+    const id = getAnimId(KF_SCRIPT);
+    const updated = addKeyframeToScript(KF_SCRIPT, id, 50, { x: 999 });
+    const kfs = parseGsapScript(updated).animations[0].keyframes!.keyframes;
+    const kf100 = kfs.find((k) => k.percentage === 100)!;
+    expect(kf100.properties.x).toBe(200);
+    expect(kf100.properties.opacity).toBe(1);
+  });
+
   // ── removeKeyframeFromScript ────────────────────────────────────────────
 
   it("removeKeyframeFromScript — removes one keyframe", () => {

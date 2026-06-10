@@ -1,4 +1,4 @@
-import { memo, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { Eye, Layers, Move, X } from "../../icons/SystemIcons";
 import { useStudioContext } from "../../contexts/StudioContext";
 import { readStudioBoxSize, readStudioPathOffset, readStudioRotation } from "./manualEdits";
@@ -17,7 +17,7 @@ import { GsapAnimationSection } from "./GsapAnimationSection";
 import { PropertyPanel3dTransform } from "./propertyPanel3dTransform";
 import { KeyframeNavigation } from "./KeyframeNavigation";
 import { STUDIO_GSAP_PANEL_ENABLED, STUDIO_KEYFRAMES_ENABLED } from "./manualEditingAvailability";
-import { usePlayerStore } from "../../player";
+import { usePlayerStore, liveTime } from "../../player";
 import { TimingSection } from "./propertyPanelTimingSection";
 import { type PropertyPanelProps } from "./propertyPanelHelpers";
 
@@ -88,7 +88,29 @@ export const PropertyPanel = memo(function PropertyPanel({
   const { showToast } = useStudioContext();
   const [clipboardCopied, setClipboardCopied] = useState(false);
   const clipboardTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const currentTime = usePlayerStore((s) => s.currentTime);
+  const storeTime = usePlayerStore((s) => s.currentTime);
+  const isPlaying = usePlayerStore((s) => s.isPlaying);
+  const liveTimeRef = useRef(storeTime);
+  const [, forceRender] = useState(0);
+  useEffect(() => {
+    if (!isPlaying) return;
+    let timerId: ReturnType<typeof setTimeout> | 0 = 0;
+    const unsub = liveTime.subscribe((t) => {
+      liveTimeRef.current = t;
+      if (!timerId)
+        timerId = setTimeout(() => {
+          timerId = 0;
+          forceRender((v) => v + 1);
+        }, 33);
+    });
+    return () => {
+      unsub();
+      if (timerId) clearTimeout(timerId);
+    };
+  }, [isPlaying]);
+  const currentTime = isPlaying ? liveTimeRef.current : storeTime;
+  const cacheElementKey = element?.id ?? element?.selector ?? "";
+  const cacheEntry = usePlayerStore((s) => s.keyframeCache.get(cacheElementKey));
 
   if (!element) {
     return (
@@ -140,13 +162,17 @@ export const PropertyPanel = memo(function PropertyPanel({
   const commitManualOffset = (axis: "x" | "y", nextValue: string) => {
     const parsed = parsePxMetricValue(nextValue);
     if (parsed == null) return;
-    if (onCommitAnimatedProperty && (gsapAnimId || gsapAnimations.length > 0)) {
+    if (onCommitAnimatedProperty && hasGsapAnimation) {
       void onCommitAnimatedProperty(element, axis, parsed);
       return;
     }
     if (gsapKeyframes && gsapAnimId && onAddKeyframe) {
       const pct = Math.max(0, Math.min(100, Math.round(currentPct * 10) / 10));
       onAddKeyframe(gsapAnimId, pct, axis, parsed);
+      return;
+    }
+    if (hasGsapAnimation) {
+      showToast?.("Cannot edit position — animation callbacks not available");
       return;
     }
     const current = readStudioPathOffset(element.element);
@@ -160,6 +186,14 @@ export const PropertyPanel = memo(function PropertyPanel({
   const commitManualSize = (axis: "width" | "height", nextValue: string) => {
     const parsed = parsePxMetricValue(nextValue);
     if (parsed == null || parsed <= 0) return;
+    if (onCommitAnimatedProperty && hasGsapAnimation) {
+      void onCommitAnimatedProperty(element, axis, parsed);
+      return;
+    }
+    if (hasGsapAnimation) {
+      showToast?.("Cannot edit size — animation callbacks not available");
+      return;
+    }
     const current = readStudioBoxSize(element.element);
     const width =
       current.width > 0
@@ -186,9 +220,12 @@ export const PropertyPanel = memo(function PropertyPanel({
   const elDuration = Number.parseFloat(element?.dataAttributes?.duration ?? "1") || 0;
   const currentPct = elDuration > 0 ? ((currentTime - elStart) / elDuration) * 100 : 0;
 
-  const gsapKeyframes = gsapAnimations?.find((a) => a.keyframes)?.keyframes?.keyframes ?? null;
-  const gsapAnimId =
-    gsapAnimations?.find((a) => a.keyframes)?.id ?? gsapAnimations?.[0]?.id ?? null;
+  const gsapKfAnim = gsapAnimations?.find((a) => a.keyframes) ?? null;
+  const gsapKeyframes = gsapKfAnim?.keyframes?.keyframes ?? null;
+  const gsapAnimId = gsapKfAnim?.id ?? gsapAnimations?.[0]?.id ?? null;
+  const hasGsapAnimation = !!(gsapAnimId || gsapAnimations.length > 0);
+  const navKeyframes = cacheEntry?.keyframes ?? gsapKeyframes;
+  const seekFromKfPct = (pct: number) => onSeekToTime?.(elStart + (pct / 100) * elDuration);
 
   // Read ALL GSAP-interpolated values at the current seek time.
   const gsapRuntimeValues = readGsapRuntimeValuesForPanel(
@@ -351,9 +388,9 @@ export const PropertyPanel = memo(function PropertyPanel({
               {STUDIO_KEYFRAMES_ENABLED && gsapAnimId && (
                 <KeyframeNavigation
                   property="x"
-                  keyframes={gsapKeyframes}
+                  keyframes={navKeyframes}
                   currentPercentage={currentPct}
-                  onSeek={(pct) => onSeekToTime?.(elStart + (pct / 100) * elDuration)}
+                  onSeek={seekFromKfPct}
                   onAddKeyframe={() =>
                     onCommitAnimatedProperty &&
                     void onCommitAnimatedProperty(element, "x", displayX)
@@ -376,9 +413,9 @@ export const PropertyPanel = memo(function PropertyPanel({
               {STUDIO_KEYFRAMES_ENABLED && gsapAnimId && (
                 <KeyframeNavigation
                   property="y"
-                  keyframes={gsapKeyframes}
+                  keyframes={navKeyframes}
                   currentPercentage={currentPct}
-                  onSeek={(pct) => onSeekToTime?.(elStart + (pct / 100) * elDuration)}
+                  onSeek={seekFromKfPct}
                   onAddKeyframe={() =>
                     onCommitAnimatedProperty &&
                     void onCommitAnimatedProperty(element, "y", displayY)
@@ -401,9 +438,9 @@ export const PropertyPanel = memo(function PropertyPanel({
               {STUDIO_KEYFRAMES_ENABLED && gsapAnimId && (
                 <KeyframeNavigation
                   property="width"
-                  keyframes={gsapKeyframes}
+                  keyframes={navKeyframes}
                   currentPercentage={currentPct}
-                  onSeek={(pct) => onSeekToTime?.(elStart + (pct / 100) * elDuration)}
+                  onSeek={seekFromKfPct}
                   onAddKeyframe={() =>
                     onCommitAnimatedProperty &&
                     void onCommitAnimatedProperty(element, "width", displayW)
@@ -426,9 +463,9 @@ export const PropertyPanel = memo(function PropertyPanel({
               {STUDIO_KEYFRAMES_ENABLED && gsapAnimId && (
                 <KeyframeNavigation
                   property="height"
-                  keyframes={gsapKeyframes}
+                  keyframes={navKeyframes}
                   currentPercentage={currentPct}
-                  onSeek={(pct) => onSeekToTime?.(elStart + (pct / 100) * elDuration)}
+                  onSeek={seekFromKfPct}
                   onAddKeyframe={() =>
                     onCommitAnimatedProperty &&
                     void onCommitAnimatedProperty(element, "height", displayH)
@@ -449,9 +486,9 @@ export const PropertyPanel = memo(function PropertyPanel({
               {STUDIO_KEYFRAMES_ENABLED && gsapAnimId && (
                 <KeyframeNavigation
                   property="rotation"
-                  keyframes={gsapKeyframes}
+                  keyframes={navKeyframes}
                   currentPercentage={currentPct}
-                  onSeek={(pct) => onSeekToTime?.(elStart + (pct / 100) * elDuration)}
+                  onSeek={seekFromKfPct}
                   onAddKeyframe={() =>
                     onCommitAnimatedProperty &&
                     void onCommitAnimatedProperty(element, "rotation", displayR)
@@ -466,7 +503,7 @@ export const PropertyPanel = memo(function PropertyPanel({
             <PropertyPanel3dTransform
               gsapRuntimeValues={gsapRuntimeValues}
               gsapAnimId={gsapAnimId}
-              gsapKeyframes={gsapKeyframes}
+              gsapKeyframes={navKeyframes}
               currentPct={currentPct}
               elStart={elStart}
               elDuration={elDuration}

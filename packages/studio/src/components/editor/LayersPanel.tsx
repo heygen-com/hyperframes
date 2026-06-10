@@ -122,13 +122,28 @@ export const LayersPanel = memo(function LayersPanel() {
   }, [compositionLoading, collectLayers]);
 
   const resolveSelection = useCallback(
-    (layer: DomEditLayerItem) =>
-      resolveDomEditSelection(layer.element, {
+    (layer: DomEditLayerItem) => {
+      // Re-find the element from the live DOM — layer.element may be stale
+      // after soft reload (which replaces scripts without reloading the iframe).
+      let el = layer.element;
+      if (!el.isConnected) {
+        const iframe = previewIframeRef.current;
+        const doc = iframe?.contentDocument;
+        if (doc) {
+          const found =
+            (layer.id ? doc.getElementById(layer.id) : null) ??
+            (layer.hfId ? doc.querySelector(`[data-hf-id="${layer.hfId}"]`) : null) ??
+            doc.getElementById(layer.key);
+          if (found instanceof HTMLElement) el = found;
+        }
+      }
+      return resolveDomEditSelection(el, {
         activeCompositionPath: activeCompPath,
         isMasterView,
         preferClipAncestor: false,
-      }),
-    [activeCompPath, isMasterView],
+      });
+    },
+    [activeCompPath, isMasterView, previewIframeRef],
   );
 
   const seekToLayer = useCallback(

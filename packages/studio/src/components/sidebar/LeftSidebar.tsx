@@ -54,6 +54,8 @@ interface LeftSidebarProps {
   isRendering?: boolean;
   onLint?: () => void;
   linting?: boolean;
+  lintFindingCount?: number;
+  lintFindingsByFile?: Map<string, { count: number; messages: string[] }>;
   onToggleCollapse?: () => void;
   onAddBlock?: (blockName: string) => void;
   onPreviewBlock?: (preview: BlockPreviewInfo | null) => void;
@@ -84,6 +86,8 @@ export const LeftSidebar = memo(
       isRendering,
       onLint,
       linting,
+      lintFindingCount,
+      lintFindingsByFile,
       onToggleCollapse,
       onAddBlock,
       onPreviewBlock,
@@ -216,6 +220,7 @@ export const LeftSidebar = memo(
                 onSelect={onSelectComposition}
                 onRenderComposition={onRenderComposition}
                 isRendering={isRendering}
+                lintFindingsByFile={lintFindingsByFile}
               />
             )}
             {tab === "assets" && (
@@ -242,6 +247,7 @@ export const LeftSidebar = memo(
                       onDuplicateFile={onDuplicateFile}
                       onMoveFile={onMoveFile}
                       onImportFiles={onImportFiles}
+                      lintFindingsByFile={lintFindingsByFile}
                     />
                   </div>
                 )}
@@ -279,6 +285,11 @@ export const LeftSidebar = memo(
                     <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
                   </svg>
                   {linting ? "Linting…" : "Lint"}
+                  {!linting && lintFindingCount != null && lintFindingCount > 0 && (
+                    <span className="ml-1 min-w-[16px] rounded-full bg-amber-500/20 px-1 text-[9px] font-bold text-amber-400">
+                      {lintFindingCount}
+                    </span>
+                  )}
                 </button>
               </div>
             )}

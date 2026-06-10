@@ -61,7 +61,24 @@ export function applySoftReload(iframe: HTMLIFrameElement | null, scriptText: st
     if (timelines) {
       for (const key of Object.keys(timelines)) {
         try {
-          timelines[key]?.kill?.();
+          const tl = timelines[key] as {
+            kill?: () => void;
+            getChildren?: (deep: boolean) => Array<{ targets?: () => Element[] }>;
+          };
+          const allTargets: Element[] = [];
+          if (tl?.getChildren) {
+            try {
+              for (const child of tl.getChildren(true)) {
+                if (typeof child.targets === "function") {
+                  for (const t of child.targets()) {
+                    allTargets.push(t);
+                    delete (t as unknown as Record<string, unknown>)._gsap;
+                  }
+                }
+              }
+            } catch {}
+          }
+          tl?.kill?.();
         } catch {}
         delete timelines[key];
       }

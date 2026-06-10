@@ -100,7 +100,7 @@ export async function materializeIfDynamic(
  * keyframe percentages to preserve their absolute positions, then add
  * a new keyframe at the target time.
  */
-export async function extendTweenAndAddKeyframe(
+async function extendTweenAndAddKeyframe(
   selection: DomEditSelection,
   anim: GsapAnimation,
   properties: Record<string, number>,
@@ -149,7 +149,7 @@ export async function extendTweenAndAddKeyframe(
 }
 
 // fallow-ignore-next-line complexity
-export async function commitKeyframedPosition(
+async function commitKeyframedPosition(
   selection: DomEditSelection,
   anim: GsapAnimation,
   properties: Record<string, number>,
@@ -175,7 +175,7 @@ export async function commitKeyframedPosition(
  * drag position at the current percentage.
  */
 // fallow-ignore-next-line complexity
-export async function commitFlatViaKeyframes(
+async function commitFlatViaKeyframes(
   selection: DomEditSelection,
   anim: GsapAnimation,
   properties: Record<string, number>,
@@ -230,10 +230,10 @@ export async function commitGsapPositionFromDrag(
   const deltaY = studioOffset.y - origY;
   const adjX = deltaX * cos - deltaY * sin;
   const adjY = deltaX * sin + deltaY * cos;
-  const baseGsapX =
-    Number.parseFloat(el.getAttribute("data-hf-drag-gsap-base-x") ?? "") || gsapPos.x;
-  const baseGsapY =
-    Number.parseFloat(el.getAttribute("data-hf-drag-gsap-base-y") ?? "") || gsapPos.y;
+  const parsedBaseX = Number.parseFloat(el.getAttribute("data-hf-drag-gsap-base-x") ?? "");
+  const parsedBaseY = Number.parseFloat(el.getAttribute("data-hf-drag-gsap-base-y") ?? "");
+  const baseGsapX = Number.isFinite(parsedBaseX) ? parsedBaseX : gsapPos.x;
+  const baseGsapY = Number.isFinite(parsedBaseY) ? parsedBaseY : gsapPos.y;
   const newX = Math.round(baseGsapX + adjX);
   const newY = Math.round(baseGsapY + adjY);
   const restoreOffset = () => {

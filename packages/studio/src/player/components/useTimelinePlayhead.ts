@@ -1,5 +1,5 @@
 import { useRef, useCallback, useEffect } from "react";
-import { liveTime, type ZoomMode } from "../store/playerStore";
+import { liveTime, usePlayerStore, type ZoomMode } from "../store/playerStore";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { getPinchTimelineZoomPercent } from "./timelineZoom";
 import {
@@ -90,6 +90,7 @@ export function useTimelinePlayhead({
       if (
         scroll &&
         !isDragging.current &&
+        usePlayerStore.getState().isPlaying &&
         shouldAutoScrollTimeline(zoomModeRef.current, scroll.scrollWidth, scroll.clientWidth)
       ) {
         const edgeMargin = scroll.clientWidth * 0.12;

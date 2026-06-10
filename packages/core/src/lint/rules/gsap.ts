@@ -867,4 +867,33 @@ export const gsapRules: LintRule<LintContext>[] = [
     }
     return findings;
   },
+
+  // gsap_group_selector_keyframes
+  ({ scripts }) => {
+    const findings: HyperframeLintFinding[] = [];
+    for (const script of scripts) {
+      const content = stripJsComments(script.content);
+      const pattern = /\.(?:to|from|fromTo)\(\s*["']([^"']+,\s*[^"']+)["']\s*,\s*\{[^}]*keyframes/g;
+      let match: RegExpExecArray | null;
+      while ((match = pattern.exec(content)) !== null) {
+        const selector = match[1]!;
+        const count = selector.split(",").length;
+        const contextStart = Math.max(0, match.index - 20);
+        const contextEnd = Math.min(content.length, match.index + match[0].length + 40);
+        findings.push({
+          code: "gsap_group_selector_keyframes",
+          severity: "warning",
+          message:
+            `GSAP tween targets ${count} elements with shared keyframes ("${truncateSnippet(selector, 60)}"). ` +
+            `Editing one element's keyframes in Studio will affect all ${count} elements. ` +
+            `Split into individual tweens for per-element keyframe control.`,
+          fixHint:
+            `Replace the group selector with individual tl.to() calls per element, ` +
+            `each with their own keyframes object.`,
+          snippet: truncateSnippet(content.slice(contextStart, contextEnd)),
+        });
+      }
+    }
+    return findings;
+  },
 ];

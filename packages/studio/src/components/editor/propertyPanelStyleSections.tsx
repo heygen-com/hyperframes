@@ -369,15 +369,7 @@ export function StyleSections({
         </div>
       </Section>
 
-      <Section
-        title="Fill"
-        icon={<Palette size={15} />}
-        accessory={
-          <div className="rounded-full border border-neutral-700 bg-neutral-900 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.16em] text-neutral-400">
-            {preferredFillMode}
-          </div>
-        }
-      >
+      <Section title="Fill" icon={<Palette size={15} />}>
         <div className="space-y-4">
           <SegmentedControl
             disabled={styleEditingDisabled}

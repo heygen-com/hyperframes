@@ -520,17 +520,19 @@ function queryStudioElements(doc: Document, attr: string): HTMLElement[] {
 
 function reapplyPathOffsets(doc: Document): void {
   for (const el of queryStudioElements(doc, STUDIO_PATH_OFFSET_ATTR)) {
-    // Skip elements where GSAP actively animates position — GSAP bakes the
-    // CSS translate into its transform and sets translate: none every tick.
-    // Stripping/restoring would oscillate against GSAP's rendering.
-    if (gsapAnimatesProperty(el, "x", "y")) continue;
+    const gsapSkip = gsapAnimatesProperty(el, "x", "y");
     const x = el.style.getPropertyValue(STUDIO_OFFSET_X_PROP);
     const y = el.style.getPropertyValue(STUDIO_OFFSET_Y_PROP);
+    if (gsapSkip) continue;
     if (x || y) {
-      applyStudioPathOffset(el, {
-        x: Number.parseFloat(x) || 0,
-        y: Number.parseFloat(y) || 0,
-      });
+      applyStudioPathOffset(
+        el,
+        {
+          x: Number.parseFloat(x) || 0,
+          y: Number.parseFloat(y) || 0,
+        },
+        { updateBase: false },
+      );
     }
   }
 }

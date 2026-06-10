@@ -35,6 +35,7 @@ import { AskAgentModal } from "./components/AskAgentModal";
 import { StudioGlobalDragOverlay } from "./components/StudioGlobalDragOverlay";
 import { StudioHeader } from "./components/StudioHeader";
 import { useGestureCommit } from "./hooks/useGestureCommit";
+import { STUDIO_KEYFRAMES_ENABLED } from "./components/editor/manualEditingAvailability";
 
 import { GestureTrailOverlay } from "./components/editor/GestureTrailOverlay";
 import { StudioLeftSidebar } from "./components/StudioLeftSidebar";
@@ -251,7 +252,9 @@ export function StudioApp() {
     onResetKeyframes: () => resetKeyframesRef.current(),
     onDeleteSelectedKeyframes: () => deleteSelectedKeyframesRef.current(),
     onAfterUndoRedo: () => invalidateGsapCacheRef.current(),
-    onToggleRecording: () => handleToggleRecordingRef.current(),
+    onToggleRecording: STUDIO_KEYFRAMES_ENABLED
+      ? () => handleToggleRecordingRef.current()
+      : undefined,
   });
   const selectSidebarTabStable = useCallback(
     (tab: SidebarTab) => leftSidebarRef.current?.selectTab(tab),
@@ -330,7 +333,11 @@ export function StudioApp() {
   });
 
   const compositionDimensions = useCompositionDimensions();
-  const { lintModal, linting, handleLint, closeLintModal } = useLintModal(projectId);
+  const { lintModal, linting, handleLint, closeLintModal, findingsByElement, findingsByFile } =
+    useLintModal(projectId, refreshKey);
+  useEffect(() => {
+    usePlayerStore.getState().setLintFindingsByElement(findingsByElement);
+  }, [findingsByElement]);
   const frameCapture = useFrameCapture({
     projectId,
     activeCompPath,
@@ -482,6 +489,8 @@ export function StudioApp() {
                   onPreviewBlock={setBlockPreview}
                   onLint={handleLint}
                   linting={linting}
+                  lintFindingCount={lintModal?.length ?? findingsByFile.size}
+                  lintFindingsByFile={findingsByFile}
                 />
                 <StudioPreviewArea
                   timelineToolbar={timelineToolbar}
@@ -529,7 +538,7 @@ export function StudioApp() {
                     }}
                     recordingState={gestureState}
                     recordingDuration={gestureRecording.recordingDuration}
-                    onToggleRecording={handleToggleRecording}
+                    onToggleRecording={STUDIO_KEYFRAMES_ENABLED ? handleToggleRecording : undefined}
                   />
                 )}
               </div>

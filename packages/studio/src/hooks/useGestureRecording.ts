@@ -18,6 +18,128 @@ interface AccumulatedState {
   z: number;
 }
 
+interface BasePosition {
+  baseX: number;
+  baseY: number;
+  baseOpacity: number;
+  baseScale: number;
+  cssOffX: number;
+  cssOffY: number;
+}
+
+interface GsapRuntime {
+  seek: (t: number) => void;
+  set: (target: string, vars: Record<string, number>) => void;
+  selector: string;
+  element: HTMLElement;
+  startTime: number;
+  maxSeekTime: number;
+  savedVisibility: string;
+  savedTranslate: string;
+}
+
+// ---------------------------------------------------------------------------
+// Extracted helpers — pure functions, no refs, no React.
+// ---------------------------------------------------------------------------
+
+function readBasePosition(element: HTMLElement, iframeEl: HTMLIFrameElement): BasePosition {
+  let baseOpacity = 1;
+  let baseScale = 1;
+  let baseX = 0;
+  let baseY = 0;
+
+  try {
+    const gsap = (
+      iframeEl.contentWindow as Window & {
+        gsap?: { getProperty: (el: Element, prop: string) => number };
+      }
+    ).gsap;
+    if (gsap?.getProperty) {
+      baseOpacity = Number(gsap.getProperty(element, "opacity")) || 1;
+      baseScale = Number(gsap.getProperty(element, "scaleX")) || 1;
+      baseX = Number(gsap.getProperty(element, "x")) || 0;
+      baseY = Number(gsap.getProperty(element, "y")) || 0;
+    }
+  } catch {
+    /* cross-origin guard */
+  }
+
+  // Path-offset CSS vars live on the element regardless of whether
+  // translate is currently var-based or "none" (GSAP-baked).
+  const cssOffX = Number.parseFloat(element.style.getPropertyValue("--hf-studio-offset-x")) || 0;
+  const cssOffY = Number.parseFloat(element.style.getPropertyValue("--hf-studio-offset-y")) || 0;
+  const translateVal = element.style.translate ?? "";
+  if (translateVal.includes("var(")) {
+    baseX += cssOffX;
+    baseY += cssOffY;
+  }
+
+  return { baseX, baseY, baseOpacity, baseScale, cssOffX, cssOffY };
+}
+
+function connectGsapRuntime(
+  element: HTMLElement,
+  iframeEl: HTMLIFrameElement,
+  selector: string | null,
+  elementEndTime: number | undefined,
+): GsapRuntime | null {
+  try {
+    const win = iframeEl.contentWindow as Window & {
+      gsap?: { set: (t: string, v: Record<string, number>) => void };
+      __timelines?: Record<string, { seek: (t: number) => void; duration: () => number }>;
+      __player?: { getTime: () => number };
+    };
+    const tl = win?.__timelines ? Object.values(win.__timelines)[0] : null;
+    if (win?.gsap?.set && tl?.seek && selector) {
+      const tlDuration = tl.duration();
+      return {
+        seek: tl.seek.bind(tl),
+        set: win.gsap.set.bind(win.gsap),
+        selector,
+        element,
+        startTime: win.__player?.getTime() ?? 0,
+        maxSeekTime:
+          elementEndTime != null && elementEndTime < tlDuration ? elementEndTime : tlDuration,
+        savedVisibility: element.style.visibility,
+        savedTranslate: element.style.getPropertyValue("translate"),
+      };
+    }
+  } catch {
+    /* cross-origin or missing runtime */
+  }
+  return null;
+}
+
+function applyRuntimePreview(
+  runtime: GsapRuntime,
+  time: number,
+  properties: Record<string, number>,
+): void {
+  const seekTime = Math.min(runtime.startTime + time, runtime.maxSeekTime);
+  runtime.seek(seekTime);
+  runtime.element.style.setProperty("translate", "none");
+  runtime.set(runtime.selector, { ...properties });
+  runtime.element.style.visibility = "visible";
+  liveTime.notify(seekTime);
+  usePlayerStore.getState().setCurrentTime(seekTime);
+}
+
+function recordSample(r: RecordingRefs, time: number, properties: Record<string, number>): void {
+  const sampleProps = { ...properties };
+  if ("x" in sampleProps) sampleProps.x -= r.cssVarOffset.x;
+  if ("y" in sampleProps) sampleProps.y -= r.cssVarOffset.y;
+  r.samples.push({ time, properties: sampleProps });
+  r.trail.push({ x: r.pointer.x, y: r.pointer.y });
+}
+
+function computeIframeScale(iframeEl: HTMLIFrameElement): number {
+  const iframeRect = iframeEl.getBoundingClientRect();
+  const doc = iframeEl.contentDocument;
+  const root = doc?.querySelector<HTMLElement>("[data-composition-id]") ?? doc?.documentElement;
+  const declaredWidth = Number(root?.getAttribute("data-width")) || 1920;
+  return declaredWidth > 0 ? iframeRect.width / declaredWidth : 1;
+}
+
 function resolveGestureProperties(
   dx: number,
   dy: number,
@@ -63,6 +185,53 @@ function resolveGestureProperties(
   };
 }
 
+// ---------------------------------------------------------------------------
+// Grouped mutable state carried across the recording session.
+// Replaces 14 individual useRef calls with a single ref object.
+// ---------------------------------------------------------------------------
+
+interface RecordingRefs {
+  pointer: { x: number; y: number };
+  startPointer: { x: number; y: number };
+  hasMoved: boolean;
+  scrollDelta: number;
+  modifiers: Modifiers;
+  accumulated: AccumulatedState;
+  basePosition: { x: number; y: number };
+  cssVarOffset: { x: number; y: number };
+  scale: number;
+  pointerElementOffset: { x: number; y: number };
+  runtime: GsapRuntime | null;
+  rafId: number;
+  samples: GestureSample[];
+  trail: Array<{ x: number; y: number }>;
+  cleanup: (() => void) | null;
+}
+
+function createRecordingRefs(): RecordingRefs {
+  return {
+    pointer: { x: 0, y: 0 },
+    startPointer: { x: 0, y: 0 },
+    hasMoved: false,
+    scrollDelta: 0,
+    modifiers: { shift: false, alt: false, meta: false },
+    accumulated: { opacity: 1, scale: 1, z: 0 },
+    basePosition: { x: 0, y: 0 },
+    cssVarOffset: { x: 0, y: 0 },
+    scale: 1,
+    pointerElementOffset: { x: 0, y: 0 },
+    runtime: null,
+    rafId: 0,
+    samples: [],
+    trail: [],
+    cleanup: null,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Hook
+// ---------------------------------------------------------------------------
+
 export function useGestureRecording() {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
@@ -71,34 +240,18 @@ export function useGestureRecording() {
   // startRecording and stopRecording check this ref, not the useState value.
   const isRecordingRef = useRef(false);
 
-  const pointerRef = useRef({ x: 0, y: 0 });
-  const startPointerRef = useRef({ x: 0, y: 0 });
-  const scrollDeltaRef = useRef(0);
-  const modifiersRef = useRef<Modifiers>({ shift: false, alt: false, meta: false });
-  const accumulatedRef = useRef<AccumulatedState>({ opacity: 1, scale: 1, z: 0 });
-  const basePositionRef = useRef({ x: 0, y: 0 });
-  const scaleRef = useRef(1);
-  const hasMovedRef = useRef(false);
-  const pointerElementOffsetRef = useRef({ x: 0, y: 0 });
-  const runtimeRef = useRef<{
-    seek: (t: number) => void;
-    set: (target: string, vars: Record<string, number>) => void;
-    selector: string;
-    element: HTMLElement;
-    startTime: number;
-    maxSeekTime: number;
-  } | null>(null);
+  const refs = useRef<RecordingRefs>(createRecordingRefs());
 
-  const rafIdRef = useRef(0);
-  const samplesRef = useRef<GestureSample[]>([]);
-  const trailRef = useRef<Array<{ x: number; y: number }>>([]);
-  const cleanupRef = useRef<(() => void) | null>(null);
+  // Stable reference aliases for the return value — consumers read these directly.
+  const samplesRef = useRef<GestureSample[]>(refs.current.samples);
+  const trailRef = useRef<Array<{ x: number; y: number }>>(refs.current.trail);
 
   // Unmount safety: cancel RAF + remove listeners if component tears down mid-recording.
   useEffect(() => {
+    const r = refs.current;
     return () => {
-      cleanupRef.current?.();
-      cleanupRef.current = null;
+      r.cleanup?.();
+      r.cleanup = null;
       isRecordingRef.current = false;
     };
   }, []);
@@ -108,109 +261,58 @@ export function useGestureRecording() {
       if (isRecordingRef.current) return;
       isRecordingRef.current = true;
 
-      samplesRef.current = [];
-      trailRef.current = [];
-      hasMovedRef.current = false;
+      const r = refs.current;
+      r.samples = [];
+      r.trail = [];
+      r.hasMoved = false;
+      r.scrollDelta = 0;
+      samplesRef.current = r.samples;
+      trailRef.current = r.trail;
       setRecordingDuration(0);
-      scrollDeltaRef.current = 0;
 
-      let baseOpacity = 1;
-      let baseScaleVal = 1;
-      let baseX = 0;
-      let baseY = 0;
-      try {
-        const gsap = (
-          iframeEl.contentWindow as Window & {
-            gsap?: { getProperty: (el: Element, prop: string) => number };
-          }
-        ).gsap;
-        if (gsap?.getProperty) {
-          baseOpacity = Number(gsap.getProperty(element, "opacity")) || 1;
-          baseScaleVal = Number(gsap.getProperty(element, "scaleX")) || 1;
-          baseX = Number(gsap.getProperty(element, "x")) || 0;
-          baseY = Number(gsap.getProperty(element, "y")) || 0;
-        }
-      } catch {
-        /* cross-origin guard */
-      }
-      // When reapplyPathOffsets has run (translate restored to var-based),
-      // GSAP's cache was stripped — gsapX is 0 but the element is visually
-      // at CSSLeft + translate(offset). gsap.set wipes translate, so we need
-      // baseX to include the offset. When translate is "none" (GSAP owns it),
-      // gsapX already includes the baked offset — don't add.
-      const translateVal = element.style.translate ?? "";
-      if (translateVal.includes("var(")) {
-        const offX = Number.parseFloat(element.style.getPropertyValue("--hf-studio-offset-x")) || 0;
-        const offY = Number.parseFloat(element.style.getPropertyValue("--hf-studio-offset-y")) || 0;
-        baseX += offX;
-        baseY += offY;
-      }
-      accumulatedRef.current = { opacity: baseOpacity, scale: baseScaleVal, z: 0 };
-      basePositionRef.current = { x: baseX, y: baseY };
+      // --- Phase 1: Read base position from GSAP + CSS vars ---
+      const base = readBasePosition(element, iframeEl);
+      r.cssVarOffset = { x: base.cssOffX, y: base.cssOffY };
+      r.accumulated = { opacity: base.baseOpacity, scale: base.baseScale, z: 0 };
+      r.basePosition = { x: base.baseX, y: base.baseY };
 
+      if (base.cssOffX || base.cssOffY) {
+        element.style.setProperty("--hf-studio-offset-x", "0px");
+        element.style.setProperty("--hf-studio-offset-y", "0px");
+      }
+
+      // --- Phase 2: Connect to the iframe GSAP runtime ---
       const selector = element.id ? `#${element.id}` : null;
-      try {
-        const win = iframeEl.contentWindow as Window & {
-          gsap?: { set: (t: string, v: Record<string, number>) => void };
-          __timelines?: Record<string, { seek: (t: number) => void; duration: () => number }>;
-          __player?: { getTime: () => number };
-        };
-        const tl = win?.__timelines ? Object.values(win.__timelines)[0] : null;
-        if (win?.gsap?.set && tl?.seek && selector) {
-          const tlDuration = tl.duration();
-          runtimeRef.current = {
-            seek: tl.seek.bind(tl),
-            set: win.gsap.set.bind(win.gsap),
-            selector,
-            element,
-            startTime: win.__player?.getTime() ?? 0,
-            maxSeekTime:
-              elementEndTime != null && elementEndTime < tlDuration ? elementEndTime : tlDuration,
-          };
-        }
-      } catch {
-        runtimeRef.current = null;
-      }
+      r.runtime = connectGsapRuntime(element, iframeEl, selector, elementEndTime);
 
+      // --- Phase 3: Compute iframe viewport → composition scale ---
+      r.scale = computeIframeScale(iframeEl);
+
+      // --- Phase 4: Element center for pointer-element offset ---
+      // element.getBoundingClientRect() is in the iframe's viewport.
+      // Convert to the studio (parent) viewport using the iframe's position and scale.
       const iframeRect = iframeEl.getBoundingClientRect();
-      const doc = iframeEl.contentDocument;
-      const root = doc?.querySelector<HTMLElement>("[data-composition-id]") ?? doc?.documentElement;
-      const declaredWidth = Number(root?.getAttribute("data-width")) || 1920;
-      scaleRef.current = declaredWidth > 0 ? iframeRect.width / declaredWidth : 1;
-
-      // Compute the offset between the element's visual center and the pointer
-      // so the element tracks the pointer exactly during recording (no jump).
       const elRect = element.getBoundingClientRect();
+      const iframeScale = r.scale || 1;
       const elCenterViewport = {
-        x: elRect.left + elRect.width / 2,
-        y: elRect.top + elRect.height / 2,
+        x: iframeRect.left + (elRect.left + elRect.width / 2) * iframeScale,
+        y: iframeRect.top + (elRect.top + elRect.height / 2) * iframeScale,
       };
-      pointerElementOffsetRef.current = { x: 0, y: 0 }; // reset; set on first move
+      r.pointerElementOffset = { x: 0, y: 0 };
 
+      // --- Phase 5: Attach event listeners ---
       const handlePointerMove = (e: PointerEvent) => {
-        pointerRef.current = { x: e.clientX, y: e.clientY };
-        modifiersRef.current = {
-          shift: e.shiftKey,
-          alt: e.altKey,
-          meta: e.metaKey || e.ctrlKey,
-        };
+        r.pointer = { x: e.clientX, y: e.clientY };
+        r.modifiers = { shift: e.shiftKey, alt: e.altKey, meta: e.metaKey || e.ctrlKey };
       };
 
       const handleWheel = (e: WheelEvent) => {
-        scrollDeltaRef.current += e.deltaY;
-        modifiersRef.current = {
-          shift: e.shiftKey,
-          alt: e.altKey,
-          meta: e.metaKey || e.ctrlKey,
-        };
+        r.scrollDelta += e.deltaY;
+        r.modifiers = { shift: e.shiftKey, alt: e.altKey, meta: e.metaKey || e.ctrlKey };
       };
 
       const handleKeyChange = (e: KeyboardEvent) => {
-        modifiersRef.current = {
-          shift: e.shiftKey,
-          alt: e.altKey,
-          meta: e.metaKey || e.ctrlKey,
-        };
+        r.modifiers = { shift: e.shiftKey, alt: e.altKey, meta: e.metaKey || e.ctrlKey };
       };
 
       document.addEventListener("pointermove", handlePointerMove, { passive: true });
@@ -218,86 +320,70 @@ export function useGestureRecording() {
       document.addEventListener("keydown", handleKeyChange, { passive: true });
       document.addEventListener("keyup", handleKeyChange, { passive: true });
 
-      startPointerRef.current = { ...pointerRef.current };
       const startMs = performance.now();
 
-      let startCaptured = false;
+      r.startPointer = { ...r.pointer };
       const captureStart = (e: PointerEvent) => {
-        if (!startCaptured) {
-          startPointerRef.current = { x: e.clientX, y: e.clientY };
-          // Compute the offset between the pointer and the element center
-          // so the element follows the pointer without jumping.
-          pointerElementOffsetRef.current = {
-            x: e.clientX - elCenterViewport.x,
-            y: e.clientY - elCenterViewport.y,
-          };
-          startCaptured = true;
-          hasMovedRef.current = true;
+        if (!r.hasMoved) {
+          r.startPointer = { x: e.clientX, y: e.clientY };
+          const offX = e.clientX - elCenterViewport.x;
+          const offY = e.clientY - elCenterViewport.y;
+          r.pointerElementOffset = { x: offX, y: offY };
+          r.basePosition.x += offX / iframeScale;
+          r.basePosition.y += offY / iframeScale;
+          r.hasMoved = true;
         }
       };
       document.addEventListener("pointermove", captureStart, { passive: true, once: true });
 
+      // --- Phase 6: RAF tick loop ---
       const tick = () => {
         if (!isRecordingRef.current) return;
         const now = performance.now();
         const time = (now - startMs) / 1000;
-        const scale = scaleRef.current || 1;
-        const dx = (pointerRef.current.x - startPointerRef.current.x) / scale;
-        const dy = (pointerRef.current.y - startPointerRef.current.y) / scale;
-        const scrollDelta = scrollDeltaRef.current;
 
-        // Skip zero-displacement samples before the pointer has moved.
-        if (!hasMovedRef.current && dx === 0 && dy === 0 && scrollDelta === 0) {
-          rafIdRef.current = requestAnimationFrame(tick);
+        const scale = r.scale || 1;
+        const dx = (r.pointer.x - r.startPointer.x) / scale;
+        const dy = (r.pointer.y - r.startPointer.y) / scale;
+        const scrollDelta = r.scrollDelta;
+
+        if (!r.hasMoved && dx === 0 && dy === 0 && scrollDelta === 0) {
+          r.rafId = requestAnimationFrame(tick);
           return;
         }
-        hasMovedRef.current = true;
+        r.hasMoved = true;
 
         const { properties, nextState } = resolveGestureProperties(
           dx,
           dy,
           scrollDelta,
-          modifiersRef.current,
-          accumulatedRef.current,
+          r.modifiers,
+          r.accumulated,
         );
-        if ("x" in properties) properties.x = Math.round(basePositionRef.current.x + properties.x);
-        if ("y" in properties) properties.y = Math.round(basePositionRef.current.y + properties.y);
+        if ("x" in properties) properties.x = Math.round(r.basePosition.x + properties.x);
+        if ("y" in properties) properties.y = Math.round(r.basePosition.y + properties.y);
 
-        accumulatedRef.current = nextState;
-        scrollDeltaRef.current = 0;
+        r.accumulated = nextState;
+        r.scrollDelta = 0;
 
-        // Manual seek on the raw GSAP timeline (not the Studio player wrapper,
-        // which triggers React state updates). After seek renders all elements
-        // at the correct time, gsap.set overrides the recorded element so it
-        // follows the pointer. The browser paints the set values on this frame;
-        // next tick's seek will overwrite, but we re-apply immediately.
-        if (runtimeRef.current) {
+        if (r.runtime) {
           try {
-            const seekTime = Math.min(
-              runtimeRef.current.startTime + time,
-              runtimeRef.current.maxSeekTime,
-            );
-            runtimeRef.current.seek(seekTime);
-            runtimeRef.current.set(runtimeRef.current.selector, { ...properties });
-            runtimeRef.current.element.style.visibility = "visible";
-            liveTime.notify(seekTime);
-            usePlayerStore.getState().setCurrentTime(seekTime);
+            applyRuntimePreview(r.runtime, time, properties);
           } catch {
-            runtimeRef.current = null;
+            r.runtime = null;
           }
         }
 
-        samplesRef.current.push({ time, properties });
-        trailRef.current.push({ x: pointerRef.current.x, y: pointerRef.current.y });
+        recordSample(r, time, properties);
         setRecordingDuration(time);
-        rafIdRef.current = requestAnimationFrame(tick);
+        r.rafId = requestAnimationFrame(tick);
       };
 
       setIsRecording(true);
-      rafIdRef.current = requestAnimationFrame(tick);
+      r.rafId = requestAnimationFrame(tick);
 
-      cleanupRef.current = () => {
-        cancelAnimationFrame(rafIdRef.current);
+      r.cleanup = () => {
+        cancelAnimationFrame(r.rafId);
         document.removeEventListener("pointermove", handlePointerMove);
         document.removeEventListener("wheel", handleWheel);
         document.removeEventListener("keydown", handleKeyChange);
@@ -311,21 +397,37 @@ export function useGestureRecording() {
   const stopRecording = useCallback((): GestureSample[] => {
     if (!isRecordingRef.current) return [];
     isRecordingRef.current = false;
-    runtimeRef.current = null;
-    cleanupRef.current?.();
-    cleanupRef.current = null;
-    const frozen = samplesRef.current.slice();
+    const r = refs.current;
+    if (r.runtime) {
+      const { element: el, savedVisibility, savedTranslate } = r.runtime;
+      el.style.visibility = savedVisibility;
+      el.style.setProperty("translate", savedTranslate || "");
+    }
+    if (r.cssVarOffset.x || r.cssVarOffset.y) {
+      const el = r.runtime?.element;
+      if (el) {
+        el.style.setProperty("--hf-studio-offset-x", `${r.cssVarOffset.x}px`);
+        el.style.setProperty("--hf-studio-offset-y", `${r.cssVarOffset.y}px`);
+      }
+    }
+    r.runtime = null;
+    r.cleanup?.();
+    r.cleanup = null;
+    const frozen = r.samples.slice();
     setRecordingDuration(frozen.length > 0 ? frozen[frozen.length - 1]!.time : 0);
     setIsRecording(false);
     return frozen;
   }, []); // No deps — uses refs only
 
   const clearSamples = useCallback(() => {
-    samplesRef.current = [];
-    trailRef.current = [];
+    const r = refs.current;
+    r.samples = [];
+    r.trail = [];
+    samplesRef.current = r.samples;
+    trailRef.current = r.trail;
     setRecordingDuration(0);
-    accumulatedRef.current = { opacity: 1, scale: 1, z: 0 };
-    scrollDeltaRef.current = 0;
+    r.accumulated = { opacity: 1, scale: 1, z: 0 };
+    r.scrollDelta = 0;
   }, []);
 
   return {

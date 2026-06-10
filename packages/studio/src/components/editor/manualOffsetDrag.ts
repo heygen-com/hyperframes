@@ -142,8 +142,18 @@ export function applyManualOffsetDragMatrix(matrix: ManualOffsetDragMatrix, poin
 export function measureManualOffsetDragScreenToOffsetMatrix(
   element: HTMLElement,
   initialOffset: { x: number; y: number },
-  options: { probeSize?: number } = {},
+  options: { probeSize?: number; scaleX?: number; scaleY?: number } = {},
 ): { ok: true; matrix: ManualOffsetDragMatrix } | { ok: false; reason: string } {
+  if (
+    !element.hasAttribute("data-hf-studio-path-offset") &&
+    initialOffset.x === 0 &&
+    initialOffset.y === 0
+  ) {
+    const sx = options.scaleX || 1;
+    const sy = options.scaleY || 1;
+    return { ok: true, matrix: { a: 1 / sx, b: 0, c: 0, d: 1 / sy } };
+  }
+
   const probeSize = options.probeSize ?? DEFAULT_OFFSET_PROBE_PX;
   if (!Number.isFinite(probeSize) || probeSize <= 0) {
     return { ok: false, reason: "Invalid movement probe size." };
@@ -235,8 +245,6 @@ export function createManualOffsetDragMember(input: {
   input.element.setAttribute("data-hf-drag-initial-offset-x", String(initialOffset.x));
   input.element.setAttribute("data-hf-drag-initial-offset-y", String(initialOffset.y));
 
-  // Capture GSAP's x/y BEFORE any draft applies gsap.set — the commit path
-  // needs the original (uncorrupted) GSAP position to compute the new keyframe value.
   const win = input.element.ownerDocument.defaultView as
     | (Window & {
         gsap?: { getProperty?: (el: Element, prop: string) => number };
@@ -248,8 +256,6 @@ export function createManualOffsetDragMember(input: {
   input.element.setAttribute("data-hf-drag-gsap-base-x", String(gsapX));
   input.element.setAttribute("data-hf-drag-gsap-base-y", String(gsapY));
 
-  // Pause GSAP timelines during drag to prevent the tween from overwriting
-  // the draft's gsap.set on every tick. Track which we paused to resume later.
   if (win?.__timelines) {
     const paused: string[] = [];
     for (const [id, tl] of Object.entries(win.__timelines)) {
@@ -269,7 +275,10 @@ export function createManualOffsetDragMember(input: {
 
   const initialPathOffset = captureStudioPathOffset(input.element);
   const gestureToken = beginStudioManualEditGesture(input.element);
-  const measured = measureManualOffsetDragScreenToOffsetMatrix(input.element, initialOffset);
+  const measured = measureManualOffsetDragScreenToOffsetMatrix(input.element, initialOffset, {
+    scaleX: input.rect.editScaleX,
+    scaleY: input.rect.editScaleY,
+  });
   if (!measured.ok) {
     // Fallback: when GSAP transforms interfere with probe measurement, use
     // the preview scale as an approximation. The commit path reads the actual
@@ -363,7 +372,7 @@ export function endManualOffsetDragMembers(members: ManualOffsetDragMember[]): v
   }
 }
 
-function resumeGsapTimelines(element: HTMLElement): void {
+export function resumeGsapTimelines(element: HTMLElement): void {
   const ids = element.getAttribute("data-hf-drag-paused-timelines");
   element.removeAttribute("data-hf-drag-paused-timelines");
   if (!ids) return;
@@ -374,9 +383,6 @@ function resumeGsapTimelines(element: HTMLElement): void {
       })
     | null;
   if (!win) return;
-  // Re-seek to the current time to restore the paused timeline's render state.
-  // play() would start playback; pause() already stops. Seek re-renders at the
-  // current position without starting playback.
   const t = win.__player?.getTime?.() ?? 0;
   win.__player?.seek?.(t);
 }

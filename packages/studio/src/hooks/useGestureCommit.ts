@@ -80,6 +80,12 @@ export function useGestureCommit({
       const simplified = simplifyGestureSamples(frozenSamples, duration, 5);
       const sortedPcts = Array.from(simplified.keys()).sort((a, b) => a - b);
 
+      // Ensure a 0% keyframe exists with the element's start-of-recording position
+      if (!simplified.has(0) && frozenSamples.length > 0) {
+        simplified.set(0, frozenSamples[0]!.properties);
+        if (!sortedPcts.includes(0)) sortedPcts.unshift(0);
+      }
+
       const selector = sel.id ? `#${sel.id}` : sel.selector;
       if (!selector) {
         showToast("Cannot save — element has no selector", "error");

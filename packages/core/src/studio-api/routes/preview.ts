@@ -67,12 +67,14 @@ function injectScriptTagIntoHead(html: string, scriptTag: string): string {
 }
 
 function htmlHasGsap(html: string): boolean {
-  // Keep this heuristic conservative: if user source already loads GSAP, Studio does not add another copy.
+  // Only match GSAP references outside <template> elements — scripts inside
+  // templates are inert when cloned and don't make GSAP globally available.
+  const outsideTemplates = html.replace(/<template\b[^>]*>[\s\S]*?<\/template>/gi, "");
   return (
-    /<script\b[^>]*src=["'][^"']*gsap/i.test(html) ||
-    /\/\*\s*inlined:.*gsap/i.test(html) ||
-    /\b(GreenSock|_gsScope)\b/.test(html) ||
-    /\bgsap\.(config|defaults|registerPlugin|version)\b/.test(html)
+    /<script\b[^>]*src=["'][^"']*gsap/i.test(outsideTemplates) ||
+    /\/\*\s*inlined:.*gsap/i.test(outsideTemplates) ||
+    /\b(GreenSock|_gsScope)\b/.test(outsideTemplates) ||
+    /\bgsap\.(config|defaults|registerPlugin|version)\b/.test(outsideTemplates)
   );
 }
 

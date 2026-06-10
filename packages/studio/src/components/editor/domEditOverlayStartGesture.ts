@@ -121,6 +121,7 @@ export function startGesture(
 
   if (kind === "drag") {
     opts.onManualDragStartRef.current?.();
+    opts.rafPausedRef.current = true;
     const result = createManualOffsetDragMember({
       key: selectionCacheKey(sel),
       selection: sel,

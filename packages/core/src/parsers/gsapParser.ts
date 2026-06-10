@@ -1404,21 +1404,30 @@ export function addKeyframeToScript(
     kfNode.properties.splice(insertIdx, 0, newProp);
   }
 
-  // Auto-update 100%: if the 100% keyframe still has `_auto: 1` (never
-  // explicitly edited by the user), update it to match the new keyframe's
-  // values so the element holds its final position instead of snapping back.
-  // Once the user drags at 100%, `_auto` is gone and we stop touching it.
-  if (percentage < 100 && percentage !== 0) {
+  // Auto-update adjacent endpoints: only update an `_auto` 0% or 100%
+  // keyframe when the new keyframe is directly next to it (no other keyframe
+  // between them). This prevents a keyframe at 74% from clobbering 100% when
+  // 75% already exists, and a keyframe at 30% from clobbering 0% when 25%
+  // already exists.
+  if (percentage > 0 && percentage < 100) {
     const pctProps = filterPercentageProps(kfNode);
-    const hundredProp = pctProps.find((p: any) => percentageFromKey(propKeyName(p) ?? "") === 100);
-    if (hundredProp?.value?.type === "ObjectExpression") {
-      const hasAuto = hundredProp.value.properties.some(
+    const allPcts = pctProps
+      .map((p: any) => percentageFromKey(propKeyName(p) ?? ""))
+      .filter((n: number) => !Number.isNaN(n) && n !== percentage)
+      .sort((a: number, b: number) => a - b);
+    const leftNeighbor = allPcts.filter((p: number) => p < percentage).pop();
+    const rightNeighbor = allPcts.find((p: number) => p > percentage);
+    for (const endPct of [0, 100]) {
+      const isNeighbor = endPct === 0 ? leftNeighbor === 0 : rightNeighbor === 100;
+      if (!isNeighbor) continue;
+      const endProp = pctProps.find((p: any) => percentageFromKey(propKeyName(p) ?? "") === endPct);
+      if (!endProp?.value || endProp.value.type !== "ObjectExpression") continue;
+      const hasAuto = endProp.value.properties.some(
         (p: any) => isObjectProperty(p) && propKeyName(p) === "_auto",
       );
-      if (hasAuto) {
-        const updatedProps = { ...properties, _auto: 1 as number | string };
-        hundredProp.value = buildKeyframeValueNode(updatedProps, undefined);
-      }
+      if (!hasAuto) continue;
+      const updatedProps = { ...properties, _auto: 1 as number | string };
+      endProp.value = buildKeyframeValueNode(updatedProps, undefined);
     }
   }
 
@@ -1623,18 +1632,18 @@ export function removeAllKeyframesFromScript(script: string, animationId: string
   const kfNode = findKeyframesObjectNode(loc.target.call.varsArg);
   if (!kfNode) return script;
 
-  // Collect all percentage keyframe entries, sorted
   const kfEntries = filterPercentageProps(kfNode)
     .map((p: any) => ({ pct: percentageFromKey(propKeyName(p)!), prop: p }))
     .filter((e) => !Number.isNaN(e.pct))
     .sort((a, b) => a.pct - b.pct);
   if (kfEntries.length === 0) return script;
 
-  const lastRecord = objectExpressionToRecord(
-    kfEntries[kfEntries.length - 1]!.prop.value,
-    loc.parsed.scope,
-  );
-  collapseKeyframesToFlat(loc.target.call.varsArg, lastRecord);
+  // For to()/set(): collapse to last keyframe (the destination = visible state).
+  // For from(): collapse to first keyframe (the starting state).
+  const method = loc.target.call.method;
+  const collapseEntry = method === "from" ? kfEntries[0]! : kfEntries[kfEntries.length - 1]!;
+  const record = objectExpressionToRecord(collapseEntry.prop.value, loc.parsed.scope);
+  collapseKeyframesToFlat(loc.target.call.varsArg, record);
 
   return recast.print(loc.parsed.ast).code;
 }

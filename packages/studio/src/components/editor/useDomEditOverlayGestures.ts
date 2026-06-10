@@ -11,6 +11,7 @@ import {
   applyManualOffsetDragDraft,
   endManualOffsetDragMembers,
   restoreManualOffsetDragMembers,
+  resumeGsapTimelines,
 } from "./manualOffsetDrag";
 import {
   applyStudioBoxSize,
@@ -401,6 +402,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     if (g.kind === "drag" && movedDistance < BLOCKED_MOVE_THRESHOLD_PX) {
       restoreStudioPathOffset(sel.element, g.initialPathOffset);
       endStudioManualEditGesture(sel.element, g.manualEditDragToken);
+      resumeGsapTimelines(sel.element);
       if (box) {
         box.style.left = `${g.originLeft}px`;
         box.style.top = `${g.originTop}px`;
@@ -507,6 +509,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     if (g?.mode === "path-offset" && sel) {
       restoreStudioPathOffset(sel.element, g.initialPathOffset);
       endStudioManualEditGesture(sel.element, g.manualEditDragToken);
+      resumeGsapTimelines(sel.element);
       restoreGestureOverlayRect(g);
     }
     if (g?.mode === "box-size" && sel) {

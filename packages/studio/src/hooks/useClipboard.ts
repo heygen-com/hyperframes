@@ -8,6 +8,7 @@ import { insertTimelineAssetIntoSource } from "../utils/timelineAssetDrop";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import type { EditHistoryKind } from "../utils/editHistory";
 import { formatTimelineAttributeNumber } from "../player/components/timelineEditing";
+import { readFileContent } from "./timelineEditingHelpers";
 
 interface RecordEditInput {
   label: string;
@@ -28,16 +29,6 @@ interface UseClipboardOptions {
   handleTimelineElementDelete: (element: TimelineElement) => Promise<void>;
   handleDomEditElementDelete: (selection: DomEditSelection) => Promise<void>;
   previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
-}
-
-async function readFileContent(projectId: string, targetPath: string): Promise<string> {
-  const response = await fetch(
-    `/api/projects/${projectId}/files/${encodeURIComponent(targetPath)}`,
-  );
-  if (!response.ok) throw new Error(`Failed to read ${targetPath}`);
-  const data = (await response.json()) as { content?: string };
-  if (typeof data.content !== "string") throw new Error(`Missing file contents for ${targetPath}`);
-  return data.content;
 }
 
 function getElementOuterHtml(

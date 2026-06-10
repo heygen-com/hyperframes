@@ -12,6 +12,26 @@ import { Scissors } from "../icons/SystemIcons";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "./editor/domEditingTypes";
 
+function AutoKeyframeToggle() {
+  const enabled = usePlayerStore((s) => s.autoKeyframeEnabled);
+  return (
+    <Tooltip label={enabled ? "Auto-keyframe ON" : "Auto-keyframe OFF"}>
+      <button
+        type="button"
+        onClick={() => usePlayerStore.getState().setAutoKeyframeEnabled(!enabled)}
+        className={`flex h-7 w-7 items-center justify-center rounded transition-colors ${
+          enabled ? "text-red-400" : "text-neutral-600 hover:text-neutral-400"
+        }`}
+      >
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <circle cx="7" cy="7" r="5" stroke="currentColor" strokeWidth="1.5" />
+          {enabled && <circle cx="7" cy="7" r="3" fill="currentColor" />}
+        </svg>
+      </button>
+    </Tooltip>
+  );
+}
+
 interface DomEditSessionSlice extends EnableKeyframesSession {
   domEditSelection: DomEditSelection | null;
   selectedGsapAnimations: GsapAnimation[];
@@ -74,40 +94,43 @@ export function TimelineToolbar({
             Timeline
           </div>
           {STUDIO_KEYFRAMES_ENABLED && onToggleKeyframe && (
-            <Tooltip
-              label={
-                keyframeState === "active"
-                  ? "Remove keyframe at playhead"
-                  : keyframeState === "inactive"
-                    ? "Add keyframe at playhead"
-                    : "Enable keyframes"
-              }
-            >
-              <button
-                type="button"
-                onClick={onToggleKeyframe}
-                className={`flex h-7 w-7 items-center justify-center rounded transition-colors ${
+            <>
+              <Tooltip
+                label={
                   keyframeState === "active"
-                    ? "text-studio-accent"
+                    ? "Remove keyframe at playhead"
                     : keyframeState === "inactive"
-                      ? "text-neutral-400 hover:text-studio-accent"
-                      : "text-neutral-600 hover:text-neutral-400"
-                }`}
+                      ? "Add keyframe at playhead"
+                      : "Enable keyframes"
+                }
               >
-                <svg width="18" height="18" viewBox="0 0 10 10" fill="currentColor">
-                  {keyframeState === "active" ? (
-                    <path d="M5 0.5L9.5 5L5 9.5L0.5 5Z" />
-                  ) : (
-                    <path
-                      d="M5 1.2L8.8 5L5 8.8L1.2 5Z"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.2"
-                    />
-                  )}
-                </svg>
-              </button>
-            </Tooltip>
+                <button
+                  type="button"
+                  onClick={onToggleKeyframe}
+                  className={`flex h-7 w-7 items-center justify-center rounded transition-colors ${
+                    keyframeState === "active"
+                      ? "text-studio-accent"
+                      : keyframeState === "inactive"
+                        ? "text-neutral-400 hover:text-studio-accent"
+                        : "text-neutral-600 hover:text-neutral-400"
+                  }`}
+                >
+                  <svg width="18" height="18" viewBox="0 0 10 10" fill="currentColor">
+                    {keyframeState === "active" ? (
+                      <path d="M5 0.5L9.5 5L5 9.5L0.5 5Z" />
+                    ) : (
+                      <path
+                        d="M5 1.2L8.8 5L5 8.8L1.2 5Z"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.2"
+                      />
+                    )}
+                  </svg>
+                </button>
+              </Tooltip>
+              <AutoKeyframeToggle />
+            </>
           )}
           {onSplitElement &&
             (() => {
