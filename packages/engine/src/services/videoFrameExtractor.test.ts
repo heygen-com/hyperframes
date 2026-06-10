@@ -757,9 +757,9 @@ describe("getFrameAtTime — IEEE 754 boundary precision", () => {
     expect(frame).toBe("frame-7.jpg");
   });
 
-  it("accounts for mediaStart in frame index", () => {
+  it("mediaStart does not offset frame index (extractor handles trim via -ss)", () => {
     const extracted = makeExtracted(25, 100);
     const frame = getFrameAtTime(extracted, 0, 0, false, 1.0);
-    expect(frame).toBe("frame-25.jpg");
+    expect(frame).toBe("frame-0.jpg");
   });
 });
