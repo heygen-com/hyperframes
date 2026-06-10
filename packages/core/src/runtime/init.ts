@@ -1680,7 +1680,7 @@ export function initSandboxRuntimeModular(): void {
       const mediaEls = document.querySelectorAll("video, audio");
       for (const el of mediaEls) {
         if (!(el instanceof HTMLMediaElement)) continue;
-        el.muted = effective;
+        el.muted = effective || el.defaultMuted;
       }
     },
     onSetVolume: (volume) => {
@@ -1701,7 +1701,7 @@ export function initSandboxRuntimeModular(): void {
       const mediaEls = document.querySelectorAll("video, audio");
       for (const el of mediaEls) {
         if (!(el instanceof HTMLMediaElement)) continue;
-        el.muted = effective;
+        el.muted = effective || el.defaultMuted;
       }
     },
     onSetPlaybackRate: (rate) => {

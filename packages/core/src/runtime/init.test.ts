@@ -744,4 +744,97 @@ describe("initSandboxRuntimeModular", () => {
     expect(seekTimes.length).toBeGreaterThanOrEqual(2);
     expect(seekTimes[seekTimes.length - 1]).toBe(0);
   });
+
+  it("onSetMuted preserves authored muted attribute on video elements", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "root");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const video = document.createElement("video");
+    video.setAttribute("muted", "");
+    video.muted = true; // browsers auto-sync from attribute; jsdom doesn't
+    video.setAttribute("src", "avatar.mp4");
+    root.appendChild(video);
+
+    const audio = document.createElement("audio");
+    audio.setAttribute("data-start", "0");
+    audio.setAttribute("data-duration", "10");
+    audio.setAttribute("src", "voiceover.mp3");
+    root.appendChild(audio);
+
+    window.__timelines = { root: createMockTimeline(10) };
+    initSandboxRuntimeModular();
+
+    expect(video.defaultMuted).toBe(true);
+    expect(video.muted).toBe(true);
+    expect(audio.muted).toBe(false);
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "hf-parent", type: "control", action: "set-muted", muted: false },
+      }),
+    );
+
+    expect(video.muted).toBe(true);
+    expect(audio.muted).toBe(false);
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "hf-parent", type: "control", action: "set-muted", muted: true },
+      }),
+    );
+
+    expect(video.muted).toBe(true);
+    expect(audio.muted).toBe(true);
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "hf-parent", type: "control", action: "set-muted", muted: false },
+      }),
+    );
+
+    expect(video.muted).toBe(true);
+    expect(audio.muted).toBe(false);
+  });
+
+  it("onSetMediaOutputMuted preserves authored muted attribute on video elements", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "root");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const video = document.createElement("video");
+    video.setAttribute("muted", "");
+    video.muted = true;
+    video.setAttribute("src", "avatar.mp4");
+    root.appendChild(video);
+
+    const audio = document.createElement("audio");
+    audio.setAttribute("data-start", "0");
+    audio.setAttribute("data-duration", "10");
+    audio.setAttribute("src", "voiceover.mp3");
+    root.appendChild(audio);
+
+    window.__timelines = { root: createMockTimeline(10) };
+    initSandboxRuntimeModular();
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          source: "hf-parent",
+          type: "control",
+          action: "set-media-output-muted",
+          muted: false,
+        },
+      }),
+    );
+
+    expect(video.muted).toBe(true);
+    expect(audio.muted).toBe(false);
+  });
 });

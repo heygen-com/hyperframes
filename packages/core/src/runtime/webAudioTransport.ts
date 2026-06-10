@@ -140,6 +140,16 @@ export class WebAudioTransport {
       };
       this._activeSources.push(scheduled);
       this._paused = false;
+
+      sourceNode.addEventListener("ended", () => {
+        const idx = this._activeSources.indexOf(scheduled);
+        if (idx !== -1) {
+          this._activeSources.splice(idx, 1);
+          el.muted = priorMuted;
+          if (this._activeSources.length === 0) this._paused = true;
+        }
+      });
+
       return scheduled;
     } catch (err) {
       swallow("webAudioTransport.schedule", err);
