@@ -3,6 +3,9 @@
  *
  * Not a general-purpose JSON Patch implementation. Translates the well-defined path
  * grammar back into DOM mutations. Used by applyPatches() for host undo (T3 mode).
+ *
+ * Supports only the emit subset (add/remove/replace) — move/copy/test ops and
+ * unknown paths are silently ignored, matching the JsonPatchOp contract.
  */
 
 import type { JsonPatchOp } from "../types.js";
@@ -164,12 +167,26 @@ function applyOne(parsed: ParsedDocument, patch: JsonPatchOp, p: ParsedPath): vo
     case "metadata": {
       const root = findRoot(parsed.document);
       if (!root || !p.field) return;
+      // Mirror mutate.ts: style always written; the data-* forced-override
+      // attribute is updated only when the composition already carries it.
       if (p.field === "width") {
-        if (patch.op === "remove") setElementStyles(root, { width: null });
-        else setElementStyles(root, { width: `${patch.value}px` });
+        if (patch.op === "remove") {
+          setElementStyles(root, { width: null });
+          root.removeAttribute("data-width");
+        } else {
+          setElementStyles(root, { width: `${patch.value}px` });
+          if (root.hasAttribute("data-width")) root.setAttribute("data-width", String(patch.value));
+        }
       } else if (p.field === "height") {
-        if (patch.op === "remove") setElementStyles(root, { height: null });
-        else setElementStyles(root, { height: `${patch.value}px` });
+        if (patch.op === "remove") {
+          setElementStyles(root, { height: null });
+          root.removeAttribute("data-height");
+        } else {
+          setElementStyles(root, { height: `${patch.value}px` });
+          if (root.hasAttribute("data-height")) {
+            root.setAttribute("data-height", String(patch.value));
+          }
+        }
       } else if (p.field === "duration") {
         if (patch.op === "remove") root.removeAttribute("data-duration");
         else root.setAttribute("data-duration", String(patch.value));

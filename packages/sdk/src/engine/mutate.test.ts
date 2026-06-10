@@ -388,3 +388,38 @@ describe("Phase 3b ops", () => {
     ).toBe(false);
   });
 });
+
+// ─── setCompositionMetadata — data-width/data-height forced override ─────────
+
+describe("setCompositionMetadata data-* channel", () => {
+  const ATTR_HTML = `
+<div data-hf-id="hf-stage" data-hf-root data-width="1280" data-height="720" style="width: 1280px; height: 720px">
+  <h1 data-hf-id="hf-title">Hi</h1>
+</div>
+`.trim();
+
+  it("updates data-width/data-height when the composition carries them", () => {
+    const parsed = parseMutable(ATTR_HTML);
+    applyOp(parsed, { type: "setCompositionMetadata", width: 1920, height: 1080 });
+    const root = parsed.document.querySelector("[data-hf-root]");
+    expect(root?.getAttribute("data-width")).toBe("1920");
+    expect(root?.getAttribute("data-height")).toBe("1080");
+    expect(root?.getAttribute("style")).toContain("width: 1920px");
+  });
+
+  it("inverse restores both channels", () => {
+    const parsed = parseMutable(ATTR_HTML);
+    const before = serializeDocument(parsed);
+    const { inverse } = applyOp(parsed, { type: "setCompositionMetadata", width: 1920 });
+    applyPatchesToDocument(parsed, inverse);
+    expect(serializeDocument(parsed)).toBe(before);
+  });
+
+  it("does not mint data-* attributes on compositions without them", () => {
+    const parsed = fresh();
+    applyOp(parsed, { type: "setCompositionMetadata", width: 1920 });
+    const root = parsed.document.querySelector("[data-hf-root]");
+    expect(root?.hasAttribute("data-width")).toBe(false);
+    expect(root?.getAttribute("style")).toContain("width: 1920px");
+  });
+});

@@ -304,11 +304,18 @@ function handleSetCompositionMetadata(
   const root = findRoot(parsed.document);
   if (!root) return result;
 
+  // The runtime treats data-width/data-height as a FORCED override of inline
+  // style when present (core/runtime/init.ts applyCompositionSizing). So:
+  // style is always written; the data-* attribute is updated only when the
+  // composition already carries it — otherwise a style-only write would be
+  // clobbered on load. Absent attributes stay absent (keeps inverses exact).
   if (op.width !== undefined) {
     const styles = getElementStyles(root);
-    const oldWidth = styles["width"] ?? null;
+    const oldAttr = root.getAttribute("data-width");
+    const oldWidth = oldAttr ?? styles["width"] ?? null;
     const newVal = `${op.width}px`;
     setElementStyles(root, { width: newVal });
+    if (oldAttr !== null) root.setAttribute("data-width", String(op.width));
     const path = metaPath("width");
     const p = scalarChange(path, oldWidth !== null ? parseFloat(oldWidth) : null, op.width);
     result.forward.push(p.forward);
@@ -317,9 +324,11 @@ function handleSetCompositionMetadata(
 
   if (op.height !== undefined) {
     const styles = getElementStyles(root);
-    const oldHeight = styles["height"] ?? null;
+    const oldAttr = root.getAttribute("data-height");
+    const oldHeight = oldAttr ?? styles["height"] ?? null;
     const newVal = `${op.height}px`;
     setElementStyles(root, { height: newVal });
+    if (oldAttr !== null) root.setAttribute("data-height", String(op.height));
     const path = metaPath("height");
     const p = scalarChange(path, oldHeight !== null ? parseFloat(oldHeight) : null, op.height);
     result.forward.push(p.forward);

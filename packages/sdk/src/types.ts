@@ -28,7 +28,10 @@ export interface SdkDocument {
   readonly width: number | null;
   readonly height: number | null;
   readonly compositionDuration: number | null;
-  /** ensureHfIds-stamped HTML used as the source of truth for serialization */
+  /**
+   * BUILD-TIME snapshot of the ensureHfIds-stamped HTML. Never updated after
+   * mutations — use Composition.serialize() for the current document state.
+   */
   readonly html: string;
 }
 
@@ -105,6 +108,11 @@ export interface GsapTweenSpec {
 
 // ─── Patch layer (F2: RFC 6902 frozen contract) ───────────────────────────────
 
+/**
+ * Emit-only subset of RFC 6902: the SDK never emits move/copy/test, and
+ * applyPatches() ignores ops outside this subset. Hosts feeding patches back
+ * must restrict themselves to add/remove/replace.
+ */
 export interface JsonPatchOp {
   op: "add" | "remove" | "replace";
   path: string;
@@ -131,8 +139,13 @@ export interface PatchEvent {
  * Reserved origin tag for applyPatches().
  * Host listeners MUST skip this origin to prevent undo loops:
  *   comp.on('patch', ({ origin }) => { if (origin === ORIGIN_APPLY_PATCHES) return; ... })
+ *
+ * A namespaced string (not a unique symbol) so the sentinel survives realm
+ * boundaries — postMessage, structured clone, JSON — which T3 embedded hosts
+ * may forward patch events across. The namespace prefix keeps collision risk
+ * with host-chosen origins negligible.
  */
-export const ORIGIN_APPLY_PATCHES: unique symbol = Symbol("applyPatches");
+export const ORIGIN_APPLY_PATCHES = "@hyperframes/sdk:applyPatches" as const;
 
 /** Default origin when none specified — UI-driven dispatch. */
 export const ORIGIN_LOCAL = "local" as const;

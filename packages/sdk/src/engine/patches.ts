@@ -5,7 +5,7 @@
  *   /elements/{hfId}/inlineStyles/{camelCaseProp}
  *   /elements/{hfId}/text
  *   /elements/{hfId}/attributes/{name}
- *   /elements/{hfId}/timing/{start|duration|trackIndex}
+ *   /elements/{hfId}/timing/{start|end|trackIndex}   ← end = computed absolute data-end
  *   /elements/{hfId}/hold/{start|end|fill}
  *   /elements/{hfId}                        ← whole subtree (removeElement)
  *   /variables/{variableId}
