@@ -192,6 +192,26 @@ describe("renderChunk()", () => {
       // `(name, sha256)` pairs, so two byte-identical chunks have the same
       // fingerprint without us having to compare each PNG separately.
       expect(a.sha256).toBe(b.sha256);
+
+      // Stage perf split: the timers must be populated and bounded by the
+      // chunk's total wall time (they partition `durationMs` alongside
+      // validation/file-server/hash overhead).
+      expect(a.planHashMs).toBeGreaterThanOrEqual(0);
+      expect(a.sessionBootMs).toBeGreaterThanOrEqual(0);
+      expect(a.captureStageMs).toBeGreaterThan(0);
+      expect(a.encodeStageMs).toBeGreaterThan(0);
+      expect(a.workers).toBeGreaterThanOrEqual(1);
+      expect(a.captureStageMs + a.encodeStageMs).toBeLessThanOrEqual(a.durationMs);
+      const perf = JSON.parse(readFileSync(a.perfPath, "utf-8"));
+      for (const key of [
+        "planHashMs",
+        "sessionBootMs",
+        "captureStageMs",
+        "encodeStageMs",
+        "workers",
+      ]) {
+        expect(typeof perf[key]).toBe("number");
+      }
     },
     TIMEOUT_MS,
   );

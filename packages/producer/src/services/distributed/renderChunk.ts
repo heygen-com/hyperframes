@@ -127,6 +127,28 @@ export interface ChunkResult {
   sha256: string;
   durationMs: number;
   /**
+   * Stage wall-clock split of `durationMs`, for separating per-chunk fixed
+   * overhead from frame-proportional work in fleet cost models:
+   *
+   * - `planHashMs` — full planDir content-hash recomputation (validation).
+   * - `sessionBootMs` — sequential-branch Chrome boot + SwiftShader assert +
+   *   composition warmup. Stays 0 when `workers > 1` (each parallel worker
+   *   boots inside the capture stage instead).
+   * - `captureStageMs` — the capture stage call; includes per-worker session
+   *   boots in the parallel branch.
+   * - `encodeStageMs` — the encode stage call (single ffmpeg invocation, or
+   *   the frame-dir arrangement for png-sequence).
+   *
+   * The remainder of `durationMs` is validation + file-server setup + output
+   * hashing + cleanup.
+   */
+  planHashMs: number;
+  sessionBootMs: number;
+  captureStageMs: number;
+  encodeStageMs: number;
+  /** Capture workers used for this chunk (`calculateOptimalWorkers` result). */
+  workers: number;
+  /**
    * Path to a sidecar JSON containing per-chunk perf counters. Adapters
    * upload this alongside the chunk so per-chunk regressions are
    * inspectable without the workflow having to carry the payload.
@@ -365,7 +387,9 @@ export async function renderChunk(
   // the chunk renders. Distinct from the other validation paths above
   // because `MISSING_PLAN_ARTIFACT` etc. are structural; this is purely
   // content-fingerprint drift.
+  const planHashStarted = Date.now();
   const recomputedPlanHash = recomputePlanHashFromPlanDir(planDir);
+  const planHashMs = Date.now() - planHashStarted;
   if (recomputedPlanHash !== plan.planHash) {
     throw new RenderChunkValidationError(
       PLAN_HASH_MISMATCH,
@@ -495,6 +519,12 @@ export async function renderChunk(
     let session: CaptureSession | null = null;
     let outputKind: "file" | "frame-dir";
     let framesEncoded = 0;
+    // Stage wall-clock split for the cost model: per-chunk fixed overhead
+    // (boot, warmup, hash, IO) vs frame-proportional work. Consumed from the
+    // perf sidecar / ChunkResult by the orchestration's telemetry.
+    let sessionBootMs = 0;
+    let captureStageMs = 0;
+    let encodeStageMs = 0;
     try {
       if (chunkWorkerCount === 1) {
         // Sequential branch reuses the probe session for the actual capture.
@@ -507,9 +537,11 @@ export async function renderChunk(
         // which would trip a false-negative even when the GL backend is in
         // fact SwiftShader. The canvas + WEBGL_debug_renderer_info probe
         // works on any page (we navigate to about:blank inside the helper).
+        const bootStarted = Date.now();
         session = await createCaptureSession(fileServer.url, framesDir, captureOptions, null, cfg);
         await assertSwiftShader(session.page, readWebGlVendorInfoFromCanvas);
         await initializeSession(session);
+        sessionBootMs = Date.now() - bootStarted;
         // `discardWarmupCapture` is intentionally NOT called: every frame
         // seeks fresh DOM, so `lastFrameCache` is never read; priming it
         // would deadlock Chrome's compositor by issuing a second beginFrame
@@ -519,6 +551,10 @@ export async function renderChunk(
       // creates its own session and runs `assertSwiftShader` before its
       // first frame.
 
+      // In the parallel branch (chunkWorkerCount > 1) this stage also boots
+      // one Chrome session per worker, so captureStageMs includes those
+      // boots; sessionBootMs stays 0 there.
+      const captureStarted = Date.now();
       await runCaptureStage({
         fileServer,
         workDir,
@@ -539,6 +575,7 @@ export async function renderChunk(
         frameRange: { startFrame: slice.startFrame, endFrame: slice.endFrame },
       });
       // captureStage closes the session it consumed.
+      captureStageMs = Date.now() - captureStarted;
       session = null;
       framesEncoded = framesInChunk;
 
@@ -570,6 +607,7 @@ export async function renderChunk(
         if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
       }
 
+      const encodeStarted = Date.now();
       await runEncodeStage({
         job,
         log,
@@ -600,6 +638,7 @@ export async function renderChunk(
         lockGopForChunkConcat: !isPngSequence,
         gopSize: framesInChunk,
       });
+      encodeStageMs = Date.now() - encodeStarted;
     } finally {
       // Cleanest path: captureStage closed the session for us. The defensive
       // close handles error paths where we threw before delegating.
@@ -628,6 +667,11 @@ export async function renderChunk(
       endFrame: slice.endFrame,
       framesEncoded,
       durationMs,
+      planHashMs,
+      sessionBootMs,
+      captureStageMs,
+      encodeStageMs,
+      workers: chunkWorkerCount,
       sha256,
       outputKind,
       producerVersion: plan.producerVersion,
@@ -652,6 +696,11 @@ export async function renderChunk(
       framesEncoded,
       sha256,
       durationMs,
+      planHashMs,
+      sessionBootMs,
+      captureStageMs,
+      encodeStageMs,
+      workers: chunkWorkerCount,
       perfPath,
     };
   } finally {
