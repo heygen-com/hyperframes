@@ -20,6 +20,7 @@ import {
   resolveProjectRelativeSrc,
   codecMayHaveAlpha,
   decoderForCodec,
+  getFrameAtTime,
   type VideoElement,
   type ExtractedFrames,
 } from "./videoFrameExtractor.js";
@@ -703,4 +704,55 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
     const duplicateRate = duplicates / frames.length;
     expect(duplicateRate).toBeLessThan(0.1);
   }, 60_000);
+});
+
+describe("getFrameAtTime — IEEE 754 boundary precision", () => {
+  function makeExtracted(fps: number, totalFrames: number): ExtractedFrames {
+    const framePaths = new Map<number, string>();
+    for (let i = 0; i < totalFrames; i++) framePaths.set(i, `frame-${i}.jpg`);
+    return {
+      fps,
+      totalFrames,
+      framePaths,
+      metadata: { durationSeconds: totalFrames / fps, width: 1920, height: 1080, codec: "h264", hasAudio: false, fps },
+    } as ExtractedFrames;
+  }
+
+  it("does not produce duplicate frames when data-start is grid-aligned", () => {
+    const extracted = makeExtracted(25, 351);
+    const videoStart = 0;
+    const seen: string[] = [];
+    let duplicates = 0;
+    for (let i = 0; i < 351; i++) {
+      const globalTime = i / 25;
+      const frame = getFrameAtTime(extracted, globalTime, videoStart);
+      if (frame && seen.length > 0 && frame === seen[seen.length - 1]) duplicates++;
+      if (frame) seen.push(frame);
+    }
+    expect(duplicates).toBe(0);
+  });
+
+  it("returns monotonically increasing frame indices", () => {
+    const extracted = makeExtracted(25, 100);
+    let lastIndex = -1;
+    for (let i = 0; i < 100; i++) {
+      const globalTime = i / 25;
+      const frame = getFrameAtTime(extracted, globalTime, 0);
+      const idx = frame ? parseInt(frame.split("-")[1]!) : -1;
+      expect(idx).toBeGreaterThan(lastIndex);
+      lastIndex = idx;
+    }
+  });
+
+  it("handles the 0.28 * 25 boundary case (6.999999 vs 7)", () => {
+    const extracted = makeExtracted(25, 10);
+    const frame = getFrameAtTime(extracted, 0.28, 0);
+    expect(frame).toBe("frame-7.jpg");
+  });
+
+  it("accounts for mediaStart in frame index", () => {
+    const extracted = makeExtracted(25, 100);
+    const frame = getFrameAtTime(extracted, 0, 0, false, 1.0);
+    expect(frame).toBe("frame-25.jpg");
+  });
 });

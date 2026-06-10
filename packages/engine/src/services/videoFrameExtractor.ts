@@ -928,13 +928,15 @@ export function getFrameAtTime(
   loop = false,
   mediaStart = 0,
 ): string | null {
-  let localTime = globalTime - videoStart;
-  if (localTime < 0) return null;
+  let localTime = globalTime - videoStart + mediaStart;
+  if (localTime < mediaStart) return null;
   const loopDuration = Math.max(0, extracted.metadata.durationSeconds - mediaStart);
-  if (loop && loopDuration > 0 && localTime >= loopDuration) {
-    localTime %= loopDuration;
+  if (loop && loopDuration > 0 && (localTime - mediaStart) >= loopDuration) {
+    localTime = mediaStart + ((localTime - mediaStart) % loopDuration);
   }
-  const frameIndex = Math.floor(localTime * extracted.fps);
+  // Add epsilon before flooring to avoid IEEE 754 boundary errors where
+  // e.g. 0.28 * 25 === 6.999999999999999 instead of 7.
+  const frameIndex = Math.floor(localTime * extracted.fps + 1e-9);
   if (loop && frameIndex >= extracted.totalFrames && extracted.totalFrames > 0) {
     return extracted.framePaths.get(extracted.totalFrames - 1) || null;
   }
@@ -1039,12 +1041,12 @@ export class FrameLookupTable {
     for (const videoId of this.activeVideoIds) {
       const video = this.videos.get(videoId);
       if (!video) continue;
-      let localTime = globalTime - video.start;
+      let localTime = globalTime - video.start + video.mediaStart;
       const loopDuration = Math.max(0, video.extracted.metadata.durationSeconds - video.mediaStart);
-      if (video.loop && loopDuration > 0 && localTime >= loopDuration) {
-        localTime %= loopDuration;
+      if (video.loop && loopDuration > 0 && (localTime - video.mediaStart) >= loopDuration) {
+        localTime = video.mediaStart + ((localTime - video.mediaStart) % loopDuration);
       }
-      const frameIndex = Math.floor(localTime * video.extracted.fps);
+      const frameIndex = Math.floor(localTime * video.extracted.fps + 1e-9);
       if (video.loop && frameIndex >= video.extracted.totalFrames) {
         const framePath = video.extracted.framePaths.get(video.extracted.totalFrames - 1);
         if (framePath) {
