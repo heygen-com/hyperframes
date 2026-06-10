@@ -10,7 +10,7 @@
 
 import { parseHTML } from "linkedom";
 import { ensureHfIds } from "@hyperframes/core/hf-ids";
-import { getElementStyles } from "./engine/model.js";
+import { findRoot, getElementStyles } from "./engine/model.js";
 import type { HyperFramesElement, SdkDocument } from "./types.js";
 
 // Tags that carry no editable content and must not enter the element tree.
@@ -25,6 +25,9 @@ const EXCLUDED_TAGS = new Set([
   "head",
 ]);
 
+// Snapshot text is TRIMMED for display (markup indentation produces noisy
+// whitespace text nodes). setText writes verbatim — engine getOwnText/setOwnText
+// operate on raw text. el.text is a display value, not a round-trip identity.
 function ownText(el: Element): string | null {
   let text = "";
   el.childNodes.forEach((n) => {
@@ -105,21 +108,26 @@ function extractStyles(doc: Document): string | null {
   return styleEl ? styleEl.textContent : null;
 }
 
+// Root resolution delegates to the engine's findRoot so dimension extraction
+// and mutations agree on which element is the composition root.
 // fallow-ignore-next-line complexity
 function extractDimensions(doc: Document): { width: number | null; height: number | null } {
-  const stage = doc.getElementById("stage") ?? doc.querySelector("[data-hf-root]");
+  const stage = findRoot(doc);
   if (!stage) return { width: null, height: null };
+  // data-width/data-height are the runtime's forced override — prefer them.
+  const wAttr = stage.getAttribute("data-width");
+  const hAttr = stage.getAttribute("data-height");
   const style = (stage as HTMLElement).getAttribute?.("style") ?? "";
   const wm = /width:\s*(\d+)px/.exec(style);
   const hm = /height:\s*(\d+)px/.exec(style);
   return {
-    width: wm ? parseInt(wm[1] ?? "", 10) : null,
-    height: hm ? parseInt(hm[1] ?? "", 10) : null,
+    width: wAttr !== null ? parseInt(wAttr, 10) : wm ? parseInt(wm[1] ?? "", 10) : null,
+    height: hAttr !== null ? parseInt(hAttr, 10) : hm ? parseInt(hm[1] ?? "", 10) : null,
   };
 }
 
 function extractDuration(doc: Document): number | null {
-  const root = doc.querySelector("[data-hf-root]") ?? doc.body;
+  const root = findRoot(doc) ?? doc.body;
   const dur = root?.getAttribute("data-duration");
   return dur ? parseFloat(dur) : null;
 }
