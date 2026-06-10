@@ -77,6 +77,8 @@ class CompositionImpl implements Composition {
   private batchInverse: JsonPatchOp[] = [];
   private batchOpTypes: string[] = [];
   private batchOrigin: unknown = ORIGIN_LOCAL;
+  /** Override-set state at outermost batch entry — restored if the batch throws. */
+  private batchOverridesSnapshot: OverrideSet = {};
 
   constructor(parsed: ParsedDocument, opts: OpenCompositionOptions) {
     this.parsed = parsed;
@@ -237,6 +239,11 @@ class CompositionImpl implements Composition {
 
   /**
    * Coalesce multiple dispatches into one undo entry / one patch event.
+   *
+   * Transactional: if the callback throws, all DOM mutations applied so far
+   * are reverted (accumulated inverse patches replayed in reverse) and the
+   * override-set is restored — the model is exactly as it was at batch entry.
+   *
    * Note: a batch that produces no effective mutations still fires 'change'
    * handlers (parity with no-op dispatch) — subscribers must not assume
    * silence when wrapping speculative operations.
@@ -245,7 +252,10 @@ class CompositionImpl implements Composition {
   batch(fn: () => void, opts?: { origin?: unknown }): void {
     const origin = opts?.origin ?? ORIGIN_LOCAL;
     this.batchDepth++;
-    if (this.batchDepth === 1) this.batchOrigin = origin; // only set on outermost entry
+    if (this.batchDepth === 1) {
+      this.batchOrigin = origin; // only set on outermost entry
+      this.batchOverridesSnapshot = { ...this.overrides };
+    }
     let threw = false;
     try {
       fn();
@@ -262,22 +272,32 @@ class CompositionImpl implements Composition {
             this.batchOrigin,
             this.batchOpTypes,
           );
-          this.batchForward = [];
-          this.batchInverse = [];
-          this.batchOpTypes = [];
-          this.batchOrigin = ORIGIN_LOCAL;
+          this.resetBatchState();
           this.patchHandlers.forEach((h) => h(event));
           this.changeHandlers.forEach((h) => h());
         } else {
-          // threw OR empty: always reset; fire changeHandlers for no-op (parity with dispatch)
-          this.batchForward = [];
-          this.batchInverse = [];
-          this.batchOpTypes = [];
-          this.batchOrigin = ORIGIN_LOCAL;
+          if (threw && this.batchInverse.length > 0) {
+            // Roll back: the dispatches inside the batch already mutated the
+            // DOM. Without this, a throwing batch would leave the model in a
+            // partial state with no patch trail to undo it.
+            applyPatchesToDocument(this.parsed, [...this.batchInverse].reverse());
+            this.overrides = { ...this.batchOverridesSnapshot };
+            this.elementsCache = null;
+          }
+          this.resetBatchState();
+          // Empty no-op batch: fire changeHandlers (parity with dispatch)
           if (!threw) this.changeHandlers.forEach((h) => h());
         }
       }
     }
+  }
+
+  private resetBatchState(): void {
+    this.batchForward = [];
+    this.batchInverse = [];
+    this.batchOpTypes = [];
+    this.batchOrigin = ORIGIN_LOCAL;
+    this.batchOverridesSnapshot = {};
   }
 
   can(op: EditOp): boolean {
@@ -339,9 +359,10 @@ class CompositionImpl implements Composition {
   applyPatches(patches: readonly JsonPatchOp[], opts?: { origin?: unknown }): void {
     const origin = opts?.origin ?? ORIGIN_APPLY_PATCHES;
 
-    // Compute inverse of the incoming patches (apply-then-revert = restore)
-    // For applyPatches the "inverse" is the current state before application.
-    // Emit a patch event so history and subscribers stay in sync.
+    // The emitted PatchEvent carries an EMPTY inversePatches array — hosts
+    // maintaining an external inverse log must compute inverses from their own
+    // state; applyPatches events never enter history (origin-guarded).
+    // Emit a patch event so subscribers stay in sync.
     applyPatchesToDocument(this.parsed, patches);
     this.elementsCache = null;
 

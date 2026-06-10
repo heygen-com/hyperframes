@@ -102,3 +102,39 @@ describe("override-set replay on open", () => {
     expect(comp.getOverrides()).toEqual(overrides);
   });
 });
+
+// ─── batch() transactional rollback ───────────────────────────────────────────
+
+describe("batch rollback on throw", () => {
+  it("reverts DOM mutations and override-set when the callback throws", async () => {
+    const comp = await openComposition(BASE_HTML);
+    const htmlBefore = comp.serialize();
+
+    expect(() =>
+      comp.batch(() => {
+        comp.setStyle("hf-title", { color: "#e63946" });
+        comp.setText("hf-sub", "changed");
+        throw new Error("user cancelled");
+      }),
+    ).toThrowError("user cancelled");
+
+    expect(comp.getElement("hf-title")?.inlineStyles["color"]).toBe("#fff");
+    expect(comp.getElement("hf-sub")?.text).toBe("subtitle");
+    expect(comp.serialize()).toBe(htmlBefore);
+    expect(comp.getOverrides()).toEqual({});
+  });
+
+  it("a throwing batch leaves no history entry — undo is a no-op", async () => {
+    const comp = await openComposition(BASE_HTML);
+    try {
+      comp.batch(() => {
+        comp.setStyle("hf-title", { color: "#e63946" });
+        throw new Error("boom");
+      });
+    } catch {
+      // expected
+    }
+    comp.undo();
+    expect(comp.getElement("hf-title")?.inlineStyles["color"]).toBe("#fff");
+  });
+});

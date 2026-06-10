@@ -62,8 +62,13 @@ export function createHistory(session: Composition, opts: HistoryOptions = {}): 
       .join("\n");
   }
 
+  function opTypesKey(opTypes: readonly string[]): string {
+    // Sorted: the same op-type SET coalesces regardless of dispatch order.
+    return [...opTypes].sort().join(",");
+  }
+
   function shouldCoalesce(entry: HistoryEntry, incoming: PatchEvent): boolean {
-    if (entry.opTypes.join(",") !== incoming.opTypes.join(",")) return false;
+    if (opTypesKey(entry.opTypes) !== opTypesKey(incoming.opTypes)) return false;
     if (entry.origin !== incoming.origin) return false;
     // Coalesce only when the SAME paths are touched (e.g. slider drag on one
     // property). Without this, rapid edits to different elements would merge
