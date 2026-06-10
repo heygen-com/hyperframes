@@ -111,15 +111,26 @@ export async function addStaggeredEntrance(html: string, staggerDelay = 0.15): P
 
   const textEls = comp.find({ tag: "div" });
 
+  // Phase 3b feature-detect: addGsapTween throws UnsupportedOpError until the
+  // parser-backed engine lands — skip animation rather than crash the job.
+  const probeTween = {
+    method: "from",
+    position: 0,
+    duration: 0.5,
+    ease: "power3.out",
+    fromProperties: { opacity: 0, y: 30 },
+  } as const;
+  const first = textEls[0];
+  if (
+    !first ||
+    !comp.can({ type: "addGsapTween", target: first, id: "preflight", tween: probeTween })
+  ) {
+    return comp.serialize();
+  }
+
   comp.batch(() => {
     textEls.forEach((id, i) => {
-      comp.addGsapTween(id, {
-        method: "from",
-        position: i * staggerDelay,
-        duration: 0.5,
-        ease: "power3.out",
-        fromProperties: { opacity: 0, y: 30 },
-      });
+      comp.addGsapTween(id, { ...probeTween, position: i * staggerDelay });
     });
   });
 

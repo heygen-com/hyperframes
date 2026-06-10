@@ -55,9 +55,21 @@ export function createHistory(session: Composition, opts: HistoryOptions = {}): 
     return trackedOrigins.includes(origin);
   }
 
+  function pathsKey(patches: readonly JsonPatchOp[]): string {
+    return patches
+      .map((p) => p.path)
+      .sort()
+      .join("\n");
+  }
+
   function shouldCoalesce(entry: HistoryEntry, incoming: PatchEvent): boolean {
     if (entry.opTypes.join(",") !== incoming.opTypes.join(",")) return false;
     if (entry.origin !== incoming.origin) return false;
+    // Coalesce only when the SAME paths are touched (e.g. slider drag on one
+    // property). Without this, rapid edits to different elements would merge
+    // into one entry holding the second forward + first inverse — undo would
+    // then revert the wrong element.
+    if (pathsKey(entry.patches) !== pathsKey(incoming.patches)) return false;
     const now = Date.now();
     return now - entry.timestamp <= coalesceMs;
   }

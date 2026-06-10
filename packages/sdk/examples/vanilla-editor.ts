@@ -102,29 +102,36 @@ export function applyOpFromJson(comp: Composition, opJson: unknown): void {
 
 // ── GSAP operations ───────────────────────────────────────────────────────────
 
-export function addFadeIn(comp: Composition, targetId: string, delay = 0): string {
-  return comp.addGsapTween(targetId, {
+// NOTE (Phase 3b): GSAP ops require the parser-backed engine and throw
+// UnsupportedOpError until it lands. Feature-detect with can() first.
+
+export function addFadeIn(comp: Composition, targetId: string, delay = 0): string | null {
+  const tween: GsapTweenSpec = {
     method: "from",
     position: delay,
     duration: 0.4,
     ease: "power2.out",
     fromProperties: { opacity: 0 },
-  });
+  };
+  if (!comp.can({ type: "addGsapTween", target: targetId, id: "preflight", tween })) return null;
+  return comp.addGsapTween(targetId, tween);
 }
 
 export function addBounce(
   comp: Composition,
   targetId: string,
   overrides?: Partial<GsapTweenSpec>,
-): string {
-  return comp.addGsapTween(targetId, {
+): string | null {
+  const tween: GsapTweenSpec = {
     method: "from",
     position: 0,
     duration: 0.6,
     ease: "bounce.out",
     fromProperties: { y: 60, opacity: 0 },
     ...overrides,
-  });
+  };
+  if (!comp.can({ type: "addGsapTween", target: targetId, id: "preflight", tween })) return null;
+  return comp.addGsapTween(targetId, tween);
 }
 
 // Keyframe editing (addGsapKeyframe / removeGsapKeyframe — v1, promoted 2026-06-09):

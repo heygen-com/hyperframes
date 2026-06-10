@@ -87,17 +87,23 @@ export function onClipDrag(comp: Composition, id: string, start: number, duratio
 
 // ── GSAP animation panel ──────────────────────────────────────────────────────
 
-export function addBounceIn(comp: Composition, targetId: string): string {
-  return comp.addGsapTween(targetId, {
+// Phase 3b: GSAP ops throw UnsupportedOpError until the parser-backed engine
+// lands — feature-detect with can() and disable the panel control if false.
+
+export function addBounceIn(comp: Composition, targetId: string): string | null {
+  const tween = {
     method: "from",
     position: 0,
     duration: 0.5,
     ease: "bounce.out",
     fromProperties: { y: 40, opacity: 0 },
-  });
+  } as const;
+  if (!comp.can({ type: "addGsapTween", target: targetId, id: "preflight", tween })) return null;
+  return comp.addGsapTween(targetId, tween);
 }
 
 export function updateEase(comp: Composition, animationId: string, ease: string): void {
+  if (!comp.can({ type: "setGsapTween", animationId, properties: { ease } })) return;
   comp.setGsapTween(animationId, { ease });
 }
 
