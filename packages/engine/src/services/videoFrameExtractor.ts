@@ -931,7 +931,7 @@ export function getFrameAtTime(
   let localTime = globalTime - videoStart + mediaStart;
   if (localTime < mediaStart) return null;
   const loopDuration = Math.max(0, extracted.metadata.durationSeconds - mediaStart);
-  if (loop && loopDuration > 0 && (localTime - mediaStart) >= loopDuration) {
+  if (loop && loopDuration > 0 && localTime - mediaStart >= loopDuration) {
     localTime = mediaStart + ((localTime - mediaStart) % loopDuration);
   }
   // Add epsilon before flooring to avoid IEEE 754 boundary errors where
@@ -1043,7 +1043,7 @@ export class FrameLookupTable {
       if (!video) continue;
       let localTime = globalTime - video.start + video.mediaStart;
       const loopDuration = Math.max(0, video.extracted.metadata.durationSeconds - video.mediaStart);
-      if (video.loop && loopDuration > 0 && (localTime - video.mediaStart) >= loopDuration) {
+      if (video.loop && loopDuration > 0 && localTime - video.mediaStart >= loopDuration) {
         localTime = video.mediaStart + ((localTime - video.mediaStart) % loopDuration);
       }
       const frameIndex = Math.floor(localTime * video.extracted.fps + 1e-9);

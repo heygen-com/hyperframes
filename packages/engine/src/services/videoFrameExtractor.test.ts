@@ -714,7 +714,14 @@ describe("getFrameAtTime — IEEE 754 boundary precision", () => {
       fps,
       totalFrames,
       framePaths,
-      metadata: { durationSeconds: totalFrames / fps, width: 1920, height: 1080, codec: "h264", hasAudio: false, fps },
+      metadata: {
+        durationSeconds: totalFrames / fps,
+        width: 1920,
+        height: 1080,
+        codec: "h264",
+        hasAudio: false,
+        fps,
+      },
     } as ExtractedFrames;
   }
 
