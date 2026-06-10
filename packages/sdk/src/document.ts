@@ -10,6 +10,7 @@
 
 import { parseHTML } from "linkedom";
 import { ensureHfIds } from "@hyperframes/core/hf-ids";
+import { getElementStyles } from "./engine/model.js";
 import type { HyperFramesElement, SdkDocument } from "./types.js";
 
 // Tags that carry no editable content and must not enter the element tree.
@@ -23,22 +24,6 @@ const EXCLUDED_TAGS = new Set([
   "base",
   "head",
 ]);
-
-// fallow-ignore-next-line complexity
-function parseInlineStyles(styleAttr: string): Record<string, string> {
-  const result: Record<string, string> = {};
-  for (const decl of styleAttr.split(";")) {
-    const idx = decl.indexOf(":");
-    if (idx === -1) continue;
-    const prop = decl.slice(0, idx).trim();
-    const value = decl.slice(idx + 1).trim();
-    if (!prop || !value) continue;
-    // Convert kebab-case → camelCase to match CSSStyleDeclaration convention
-    const camel = prop.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
-    result[camel] = value;
-  }
-  return result;
-}
 
 function ownText(el: Element): string | null {
   let text = "";
@@ -57,8 +42,7 @@ function buildElement(el: Element): HyperFramesElement | null {
   const id = el.getAttribute("data-hf-id") ?? "";
   if (!id) return null; // should never happen after ensureHfIds, but guard defensively
 
-  const styleAttr = (el as HTMLElement).getAttribute?.("style") ?? "";
-  const inlineStyles = parseInlineStyles(styleAttr);
+  const inlineStyles = getElementStyles(el);
 
   const classAttr = el.getAttribute("class") ?? "";
   const classNames = classAttr
@@ -141,11 +125,27 @@ function extractDuration(doc: Document): number | null {
 }
 
 /**
+ * Build the element tree from an already-parsed (hf-id-stamped) linkedom Document.
+ * Walks the live DOM directly — no serialize/re-parse round trip. This is what
+ * the session's query API uses against its mutable document.
+ */
+export function buildRoots(document: Document): HyperFramesElement[] {
+  const body = document.body;
+  const roots: HyperFramesElement[] = [];
+  if (body) {
+    for (const child of Array.from(body.children)) {
+      const built = buildElement(child);
+      if (built) roots.push(built);
+    }
+  }
+  return roots;
+}
+
+/**
  * Parse an HTML string into the SDK document model.
  * Calls ensureHfIds first so every element has a stable data-hf-id.
  * Uses linkedom — node-safe (works in agents, CI, server-side).
  */
-// fallow-ignore-next-line complexity
 export function buildDocument(html: string): SdkDocument {
   const stamped = ensureHfIds(html);
 
@@ -155,20 +155,10 @@ export function buildDocument(html: string): SdkDocument {
     ? parseHTML(`<!DOCTYPE html><html><head></head><body>${stamped}</body></html>`)
     : parseHTML(stamped);
 
-  const body = document.body;
-  const roots: HyperFramesElement[] = [];
-
-  if (body) {
-    for (const child of Array.from(body.children)) {
-      const built = buildElement(child);
-      if (built) roots.push(built);
-    }
-  }
-
   const dims = extractDimensions(document);
 
   return {
-    roots,
+    roots: buildRoots(document),
     gsapScript: extractGsapScript(document),
     styles: extractStyles(document),
     width: dims.width,

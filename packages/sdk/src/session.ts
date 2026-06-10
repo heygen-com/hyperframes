@@ -23,9 +23,8 @@ import type {
   ElementHandle,
 } from "./types.js";
 import { ORIGIN_APPLY_PATCHES, ORIGIN_LOCAL } from "./types.js";
-import { buildDocument, flatElements } from "./document.js";
+import { buildRoots, flatElements } from "./document.js";
 import type { PersistAdapter, PreviewAdapter } from "./adapters/types.js";
-import type { SdkDocument } from "./types.js";
 import { parseMutable } from "./engine/model.js";
 import type { ParsedDocument } from "./engine/model.js";
 import { applyOp, validateOp } from "./engine/mutate.js";
@@ -58,6 +57,9 @@ class CompositionImpl implements Composition {
   /** Accumulated override-set — T3 embedded mode fold contract. */
   private overrides: OverrideSet;
 
+  /** Lazily-built element snapshot, invalidated on every mutation. */
+  private elementsCache: ElementSnapshot[] | null = null;
+
   private currentSelection: string[] = [];
 
   private changeHandlers: Array<() => void> = [];
@@ -76,7 +78,7 @@ class CompositionImpl implements Composition {
   private batchOpTypes: string[] = [];
   private batchOrigin: unknown = ORIGIN_LOCAL;
 
-  constructor(_doc: SdkDocument, parsed: ParsedDocument, opts: OpenCompositionOptions) {
+  constructor(parsed: ParsedDocument, opts: OpenCompositionOptions) {
     this.parsed = parsed;
     this.persist = opts.persist;
     this.preview = opts.preview;
@@ -143,7 +145,9 @@ class CompositionImpl implements Composition {
   // ── Query API (F1) ───────────────────────────────────────────────────────────
 
   getElements(): ElementSnapshot[] {
-    return flatElements(buildDocument(serializeDocument(this.parsed)).roots);
+    // Walk the live linkedom DOM directly — no serialize/re-parse round trip.
+    this.elementsCache ??= flatElements(buildRoots(this.parsed.document));
+    return [...this.elementsCache];
   }
 
   getElement(id: HfId): ElementSnapshot | null {
@@ -209,6 +213,8 @@ class CompositionImpl implements Composition {
       return;
     }
 
+    this.elementsCache = null;
+
     // Update override-set from forward patches
     for (const p of forward) {
       const key = pathToKey(p.path);
@@ -229,6 +235,12 @@ class CompositionImpl implements Composition {
     }
   }
 
+  /**
+   * Coalesce multiple dispatches into one undo entry / one patch event.
+   * Note: a batch that produces no effective mutations still fires 'change'
+   * handlers (parity with no-op dispatch) — subscribers must not assume
+   * silence when wrapping speculative operations.
+   */
   // fallow-ignore-next-line complexity
   batch(fn: () => void, opts?: { origin?: unknown }): void {
     const origin = opts?.origin ?? ORIGIN_LOCAL;
@@ -331,6 +343,7 @@ class CompositionImpl implements Composition {
     // For applyPatches the "inverse" is the current state before application.
     // Emit a patch event so history and subscribers stay in sync.
     applyPatchesToDocument(this.parsed, patches);
+    this.elementsCache = null;
 
     // Update override-set
     for (const p of patches) {
@@ -373,9 +386,10 @@ export async function openComposition(
   html: string,
   opts?: OpenCompositionOptions,
 ): Promise<Composition> {
-  const doc = buildDocument(html);
+  // Single parse: parseMutable stamps hf-ids + builds the live linkedom DOM;
+  // the query API derives element snapshots from it lazily.
   const parsed = parseMutable(html);
-  const session = new CompositionImpl(doc, parsed, opts ?? {});
+  const session = new CompositionImpl(parsed, opts ?? {});
 
   const isEmbedded = opts?.overrides !== undefined;
 
