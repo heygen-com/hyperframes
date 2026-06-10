@@ -40,6 +40,32 @@ export interface MutationResult {
 
 const EMPTY: MutationResult = { forward: [], inverse: [] };
 
+/** Ops that require the Phase 3b parser-backed engine (meriyah/css-tree). */
+const PHASE3B_OPS = new Set([
+  "setClassStyle",
+  "addGsapTween",
+  "setGsapTween",
+  "setGsapKeyframe",
+  "addGsapKeyframe",
+  "removeGsapKeyframe",
+  "removeGsapTween",
+  "addLabel",
+  "removeLabel",
+]);
+
+// Re-exported from the package entry in the next stacked PR (#1325).
+// fallow-ignore-next-line unused-export
+export class UnsupportedOpError extends Error {
+  readonly code = "E_UNSUPPORTED_OP";
+  constructor(opType: string) {
+    super(
+      `Op '${opType}' requires the Phase 3b parser-backed engine and is not available yet. ` +
+        `Use can(op) to feature-detect before dispatching.`,
+    );
+    this.name = "UnsupportedOpError";
+  }
+}
+
 // ─── Target normalization ────────────────────────────────────────────────────
 
 function targets(target: HfId | HfId[]): HfId[] {
@@ -75,7 +101,9 @@ export function applyOp(parsed: ParsedDocument, op: EditOp): MutationResult {
       return handleSetCompositionMetadata(parsed, op);
     case "setVariableValue":
       return handleSetVariableValue(parsed, op.id, op.value);
-    // Phase 3b parser-backed ops — pass through without mutation for now
+    // Phase 3b parser-backed ops — fail loudly rather than silently no-op:
+    // a caller must never believe an animation edit succeeded when nothing
+    // was mutated and no patch was emitted.
     case "setClassStyle":
     case "addGsapTween":
     case "setGsapTween":
@@ -85,7 +113,7 @@ export function applyOp(parsed: ParsedDocument, op: EditOp): MutationResult {
     case "removeGsapTween":
     case "addLabel":
     case "removeLabel":
-      return EMPTY;
+      throw new UnsupportedOpError(op.type);
   }
 }
 
@@ -349,8 +377,9 @@ export function validateOp(parsed: ParsedDocument, op: EditOp): boolean {
       return findRoot(parsed.document) !== null;
     case "setCompositionMetadata":
       return true;
-    // Phase 3b — defer validation; allow through
+    // Phase 3b — not implemented yet; can() must report false so callers
+    // can feature-detect instead of hitting UnsupportedOpError.
     default:
-      return true;
+      return !PHASE3B_OPS.has(op.type);
   }
 }

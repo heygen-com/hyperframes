@@ -361,3 +361,30 @@ describe("validateOp", () => {
     expect(validateOp(fresh(), { type: "setCompositionMetadata", width: 100 })).toBe(true);
   });
 });
+
+// ─── Phase 3b ops — fail loudly, feature-detectable ───────────────────────────
+
+describe("Phase 3b ops", () => {
+  it("applyOp throws UnsupportedOpError instead of silently no-opping", () => {
+    expect(() =>
+      applyOp(fresh(), {
+        type: "addGsapTween",
+        target: "hf-title",
+        id: "tw-1",
+        tween: { method: "from", fromProperties: { opacity: 0 } },
+      }),
+    ).toThrowError(/Phase 3b/);
+  });
+
+  it("validateOp returns false so can() feature-detects", () => {
+    expect(validateOp(fresh(), { type: "removeGsapTween", animationId: "tw-1" })).toBe(false);
+    expect(
+      validateOp(fresh(), {
+        type: "addGsapTween",
+        target: "hf-title",
+        id: "tw-1",
+        tween: { method: "from", fromProperties: { opacity: 0 } },
+      }),
+    ).toBe(false);
+  });
+});
