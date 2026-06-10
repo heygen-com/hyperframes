@@ -29,6 +29,7 @@ import {
   extractAllVideoFrames,
   createFrameLookupTable,
   type VideoElement,
+  type ExtractedFrames,
   FrameLookupTable,
   createCaptureSession,
   initializeSession,
@@ -189,6 +190,39 @@ export interface CompositionMetadata {
   audios: AudioElement[];
   width: number;
   height: number;
+}
+
+/**
+ * Auto-detect audio from extracted video files (via ffprobe metadata) and
+ * append it to `composition.audios` so the mixer includes it in the final mix.
+ *
+ * The element's declared intent wins over the file's contents: videos whose
+ * `hasAudio` flag is false (compiled from `muted` / data-has-audio="false")
+ * are skipped even when the source file ships an audio track. Without this
+ * check, a muted <video> whose file contains audio leaks that audio into the
+ * render at full volume.
+ */
+export function appendAutoDetectedVideoAudio(
+  composition: Pick<CompositionMetadata, "videos" | "audios">,
+  extracted: ExtractedFrames[],
+): void {
+  const existingAudioSrcs = new Set(composition.audios.map((a) => a.src));
+  for (const ext of extracted) {
+    if (!ext.metadata.hasAudio) continue;
+    const video = composition.videos.find((v) => v.id === ext.videoId);
+    if (!video || !video.hasAudio || existingAudioSrcs.has(video.src)) continue;
+    composition.audios.push({
+      id: `${video.id}-audio`,
+      src: video.src,
+      start: video.start,
+      end: video.end,
+      mediaStart: video.mediaStart,
+      layer: 0,
+      volume: 1.0,
+      type: "video",
+    });
+    existingAudioSrcs.add(video.src);
+  }
 }
 
 function updateJobStatus(
@@ -724,26 +758,7 @@ export async function executeRenderJob(
 
       perfStages.videoExtractMs = Date.now() - stage2Start;
 
-      // Auto-detect audio from video files via ffprobe metadata
-      const existingAudioSrcs = new Set(composition.audios.map((a) => a.src));
-      for (const ext of extractionResult.extracted) {
-        if (ext.metadata.hasAudio) {
-          const video = composition.videos.find((v) => v.id === ext.videoId);
-          if (video && !existingAudioSrcs.has(video.src)) {
-            composition.audios.push({
-              id: `${video.id}-audio`,
-              src: video.src,
-              start: video.start,
-              end: video.end,
-              mediaStart: video.mediaStart,
-              layer: 0,
-              volume: 1.0,
-              type: "video",
-            });
-            existingAudioSrcs.add(video.src);
-          }
-        }
-      }
+      appendAutoDetectedVideoAudio(composition, extractionResult.extracted);
     } else {
       perfStages.videoExtractMs = Date.now() - stage2Start;
     }
