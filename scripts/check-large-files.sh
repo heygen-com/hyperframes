@@ -11,43 +11,70 @@
 # fails the commit. Fix by either adding an LFS pattern in .gitattributes for
 # that path/extension, or not committing the file (assets/, gitignore, etc.).
 #
-# Usage: check-large-files.sh <file> [<file> ...]   (lefthook passes staged files)
+# Usage:
+#   check-large-files.sh                 # default: check the staged file set
+#   check-large-files.sh <file> [<file>] # explicit files (handy for testing)
+#
+# We read the staged set ourselves rather than taking lefthook's {staged_files}
+# expansion: that expands to a bare space-separated string, which splits paths
+# containing spaces into separate args. `git diff --cached` + a line-based read
+# keeps whole paths intact (only a literal newline in a filename would break it,
+# which git quotes/escapes anyway).
 
-set -eu
+set -u
 
 MAX_KB="${HF_MAX_NONLFS_KB:-500}"
-violations=0
 
-for f in "$@"; do
+# Emit the list of paths to check, one per line.
+list_files() {
+  if [ "$#" -gt 0 ]; then
+    printf '%s\n' "$@"
+  else
+    # Added/Copied/Modified/Renamed staged paths (skip Deleted — nothing to size).
+    git diff --cached --name-only --diff-filter=ACMR
+  fi
+}
+
+violations="$(mktemp)"
+trap 'rm -f "$violations"' EXIT INT TERM
+
+list_files "$@" | while IFS= read -r f; do
+  [ -n "$f" ] || continue
+
+  # Skip symlinks: `wc -c` would measure the link *target's* bytes, so a symlink
+  # to a large LFS-tracked asset could be flagged even though the real blob is a
+  # tiny pointer. Symlinks themselves are never the bloat we're hunting.
+  [ -L "$f" ] && continue
   [ -f "$f" ] || continue
 
   # registry/ intentionally ships raw binary assets (block backgrounds, avatar
   # PNGs, .glb models, audio) so installed blocks stay portable without an LFS
   # round-trip. Those are the product, not accidental bloat — skip them here.
-  # (Their size is managed by review + the recompression convention instead.)
   case "$f" in registry/*) continue ;; esac
 
-  # Size in KB (portable: wc -c works everywhere; avoids stat's BSD/GNU split).
-  bytes=$(wc -c < "$f" | tr -d ' ')
-  kb=$((bytes / 1024))
+  bytes="$(wc -c < "$f" | tr -d ' ')"
+  # Ceiling division: a sub-1024-byte file must report >=1 KB, never 0, so it
+  # can't slip past a strict threshold (e.g. HF_MAX_NONLFS_KB=0). Plain
+  # `bytes / 1024` would round a 512-byte binary down to 0 and pass it.
+  kb=$(( (bytes + 1023) / 1024 ))
   [ "$kb" -le "$MAX_KB" ] && continue
 
   # Is this path routed through LFS? `git check-attr` reads .gitattributes.
-  filter=$(git check-attr filter -- "$f" | sed 's/.*: //')
-  if [ "$filter" = "lfs" ]; then
-    continue
-  fi
+  filter="$(git check-attr filter -- "$f" | sed 's/.*: //')"
+  [ "$filter" = "lfs" ] && continue
 
-  if [ "$violations" -eq 0 ]; then
-    echo "ERROR: large binaries are being committed to git instead of LFS." >&2
-    echo "       (limit: ${MAX_KB} KB — override per-commit with HF_MAX_NONLFS_KB)" >&2
-    echo >&2
-  fi
-  echo "  • ${f} (${kb} KB)" >&2
-  violations=$((violations + 1))
+  printf '%s\t%s\n' "$kb" "$f" >> "$violations"
 done
 
-if [ "$violations" -gt 0 ]; then
+# `while` ran in a pipeline subshell, so it couldn't set a parent-shell flag —
+# the violations file is the durable signal.
+if [ -s "$violations" ]; then
+  echo "ERROR: large binaries are being committed to git instead of LFS." >&2
+  echo "       (limit: ${MAX_KB} KB — override per-commit with HF_MAX_NONLFS_KB)" >&2
+  echo >&2
+  while IFS='	' read -r kb f; do
+    echo "  • ${f} (${kb} KB)" >&2
+  done < "$violations"
   echo >&2
   echo "Fix: add an LFS pattern for it in .gitattributes, e.g." >&2
   echo "       path/to/**/*.ext filter=lfs diff=lfs merge=lfs -text" >&2
