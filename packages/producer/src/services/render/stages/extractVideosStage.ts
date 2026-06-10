@@ -214,12 +214,15 @@ export async function runExtractVideosStage(
     );
     videoMetadataHints = collectVideoMetadataHints(extractionResult.extracted);
 
-    // Auto-detect audio from video files via ffprobe metadata
+    // Auto-detect audio from video files via ffprobe metadata.
+    // Both the file (ext.metadata.hasAudio) AND the element (video.hasAudio)
+    // must declare audio — a muted <video> whose source contains audio should
+    // not leak that audio into the render.
     const existingAudioSrcs = new Set(composition.audios.map((a) => a.src));
     for (const ext of extractionResult.extracted) {
       if (ext.metadata.hasAudio) {
         const video = composition.videos.find((v) => v.id === ext.videoId);
-        if (video && !existingAudioSrcs.has(video.src)) {
+        if (video && video.hasAudio && !existingAudioSrcs.has(video.src)) {
           composition.audios.push({
             id: `${video.id}-audio`,
             src: video.src,
