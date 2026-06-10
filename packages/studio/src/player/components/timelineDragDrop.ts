@@ -1,25 +1,13 @@
-// fallow-ignore-file clone-families
 import { useCallback, useState, type RefObject } from "react";
 import { TIMELINE_ASSET_MIME, TIMELINE_BLOCK_MIME } from "../../utils/timelineAssetDrop";
 import { TRACK_H, resolveTimelineAssetDrop } from "./timelineLayout";
+import type { TimelineDropCallbacks } from "./timelineCallbacks";
 
-interface UseTimelineAssetDropOptions {
+interface UseTimelineAssetDropOptions extends TimelineDropCallbacks {
   scrollRef: RefObject<HTMLDivElement | null>;
   ppsRef: RefObject<number>;
   durationRef: RefObject<number>;
   trackOrderRef: RefObject<number[]>;
-  onFileDrop?: (
-    files: File[],
-    placement?: { start: number; track: number },
-  ) => Promise<void> | void;
-  onAssetDrop?: (
-    assetPath: string,
-    placement: { start: number; track: number },
-  ) => Promise<void> | void;
-  onBlockDrop?: (
-    blockName: string,
-    placement: { start: number; track: number },
-  ) => Promise<void> | void;
 }
 
 export function useTimelineAssetDrop({

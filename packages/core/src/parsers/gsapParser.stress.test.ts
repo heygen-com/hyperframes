@@ -7,6 +7,13 @@ import {
   removeAnimationFromScript,
 } from "./gsapParser.js";
 import type { ParsedGsap } from "./gsapParser.js";
+import {
+  parseAndSerialize,
+  parseSingleAnimation,
+  expectStaggerRaw,
+  expectRawWithResolvable,
+  expectSingleAnimPosition,
+} from "./gsapParser.test-helpers.js";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -232,16 +239,15 @@ describe("3. Extreme values", () => {
   });
 
   it("Infinity literal", () => {
-    const script = `
+    expectRawWithResolvable(
+      `
       const tl = gsap.timeline({ paused: true });
       tl.to("#el", { x: Infinity, y: 50, duration: 1 }, 0);
-    `;
-    const result = parseGsapScript(script);
-    expect(result.animations).toHaveLength(1);
-    // Infinity is an Identifier, not a NumericLiteral — should be __raw
-    const xVal = result.animations[0].properties.x;
-    expect(typeof xVal === "string" && xVal.startsWith("__raw:")).toBe(true);
-    expect(result.animations[0].properties.y).toBe(50);
+    `,
+      "x",
+      "y",
+      50,
+    );
   });
 });
 
@@ -298,16 +304,8 @@ describe("5. Deeply nested objects", () => {
       const tl = gsap.timeline({ paused: true });
       tl.to(".items", { opacity: 1, duration: 0.5, stagger: { amount: 1, grid: [3, 3], from: "center", axis: "x" } }, 0);
     `;
-    const result = parseGsapScript(script);
-    expect(result.animations).toHaveLength(1);
-    expect(result.animations[0].extras).toBeDefined();
-    expect(result.animations[0].extras!.stagger).toBeDefined();
-    // stagger should be __raw: containing the nested object source
-    const stagger = String(result.animations[0].extras!.stagger);
-    expect(stagger.startsWith("__raw:")).toBe(true);
-    expect(stagger).toContain("amount");
-    expect(stagger).toContain("grid");
-    expect(stagger).toContain("center");
+    const anim = parseSingleAnimation(script);
+    expectStaggerRaw(anim, "amount", "grid", "center");
   });
 
   it("complex stagger survives round-trip serialization", () => {
@@ -315,11 +313,7 @@ describe("5. Deeply nested objects", () => {
       const tl = gsap.timeline({ paused: true });
       tl.to(".items", { opacity: 1, duration: 0.5, stagger: { amount: 1, grid: [3, 3], from: "center", axis: "x" } }, 0);
     `;
-    const parsed = parseGsapScript(script);
-    const serialized = serializeGsapAnimations(parsed.animations, parsed.timelineVar, {
-      preamble: parsed.preamble,
-      postamble: parsed.postamble,
-    });
+    const { serialized } = parseAndSerialize(script);
     expect(serialized).toContain("stagger:");
     expect(serialized).toContain("amount");
     expect(serialized).toContain("grid");
@@ -380,17 +374,16 @@ describe("7. Template literals in values", () => {
   });
 
   it("template literal with expression becomes __raw", () => {
-    const script = `
+    expectRawWithResolvable(
+      `
       const val = 100;
       const tl = gsap.timeline({ paused: true });
       tl.to("#el", { x: \`\${val}px\`, y: 50, duration: 1 }, 0);
-    `;
-    const result = parseGsapScript(script);
-    expect(result.animations).toHaveLength(1);
-    // Template literal with expressions is not resolvable
-    const xVal = result.animations[0].properties.x;
-    expect(typeof xVal === "string" && xVal.startsWith("__raw:")).toBe(true);
-    expect(result.animations[0].properties.y).toBe(50);
+    `,
+      "x",
+      "y",
+      50,
+    );
   });
 });
 
@@ -472,17 +465,15 @@ describe("9. Comments everywhere", () => {
 
 describe("10. Arrow functions as values", () => {
   it("arrow function property becomes __raw", () => {
-    const script = `
+    expectRawWithResolvable(
+      `
       const tl = gsap.timeline({ paused: true });
       tl.to("#el", { x: (i) => i * 50, opacity: 1, duration: 1 }, 0);
-    `;
-    const result = parseGsapScript(script);
-    expect(result.animations).toHaveLength(1);
-    // Arrow function is not resolvable
-    const xVal = result.animations[0].properties.x;
-    expect(typeof xVal === "string" && xVal.startsWith("__raw:")).toBe(true);
-    // Resolvable values still work
-    expect(result.animations[0].properties.opacity).toBe(1);
+    `,
+      "x",
+      "opacity",
+      1,
+    );
   });
 
   it("arrow function in stagger becomes __raw extra", () => {
@@ -490,10 +481,8 @@ describe("10. Arrow functions as values", () => {
       const tl = gsap.timeline({ paused: true });
       tl.to(".items", { opacity: 1, duration: 0.5, stagger: (i) => i * 0.1 }, 0);
     `;
-    const result = parseGsapScript(script);
-    expect(result.animations[0].extras).toBeDefined();
-    const stagger = String(result.animations[0].extras!.stagger);
-    expect(stagger.startsWith("__raw:")).toBe(true);
+    const anim = parseSingleAnimation(script);
+    expectStaggerRaw(anim);
   });
 
   it("arrow function round-trips via serialization", () => {
@@ -501,11 +490,7 @@ describe("10. Arrow functions as values", () => {
       const tl = gsap.timeline({ paused: true });
       tl.to("#el", { x: (i) => i * 50, opacity: 1, duration: 1 }, 0);
     `;
-    const parsed = parseGsapScript(script);
-    const serialized = serializeGsapAnimations(parsed.animations, parsed.timelineVar, {
-      preamble: parsed.preamble,
-      postamble: parsed.postamble,
-    });
+    const { serialized } = parseAndSerialize(script);
     // The raw arrow function should be emitted without quotes
     expect(serialized).toContain("(i) => i * 50");
     expect(serialized).not.toContain('"(i) => i * 50"');
@@ -534,28 +519,26 @@ describe("11. Spread operator", () => {
 
 describe("12. Conditional expressions", () => {
   it("ternary expression becomes __raw", () => {
-    const script = `
+    expectRawWithResolvable(
+      `
       const condition = true;
       const tl = gsap.timeline({ paused: true });
       tl.to("#el", { x: condition ? 100 : 200, y: 50, duration: 1 }, 0);
-    `;
-    const result = parseGsapScript(script);
-    expect(result.animations).toHaveLength(1);
-    // ConditionalExpression is not handled by resolveNode
-    const xVal = result.animations[0].properties.x;
-    expect(typeof xVal === "string" && xVal.startsWith("__raw:")).toBe(true);
-    expect(result.animations[0].properties.y).toBe(50);
+    `,
+      "x",
+      "y",
+      50,
+    );
   });
 
   it("conditional in position argument defaults to 0", () => {
-    const script = `
+    expectSingleAnimPosition(
+      `
       const tl = gsap.timeline({ paused: true });
       tl.to("#el", { x: 100, duration: 1 }, someCondition ? 0 : 2);
-    `;
-    const result = parseGsapScript(script);
-    expect(result.animations).toHaveLength(1);
-    // Position can't be resolved — falls back to 0
-    expect(result.animations[0].position).toBe(0);
+    `,
+      0,
+    );
   });
 });
 
@@ -930,17 +913,16 @@ describe("Additional edge cases", () => {
   });
 
   it("scope resolution: binary expression with one unresolvable side", () => {
-    const script = `
+    expectRawWithResolvable(
+      `
       const BASE = 100;
       const tl = gsap.timeline({ paused: true });
       tl.to("#el", { x: BASE + unknownVar, y: BASE * 2, duration: 1 }, 0);
-    `;
-    const result = parseGsapScript(script);
-    // BASE + unknownVar: left is 100, right is undefined => result is undefined => __raw
-    const xVal = result.animations[0].properties.x;
-    expect(typeof xVal === "string" && xVal.startsWith("__raw:")).toBe(true);
-    // BASE * 2: both resolved => 200
-    expect(result.animations[0].properties.y).toBe(200);
+    `,
+      "x",
+      "y",
+      200,
+    );
   });
 
   it("negative position in ID generation", () => {
@@ -954,13 +936,12 @@ describe("Additional edge cases", () => {
   });
 
   it("fromTo with no position arg defaults to 0", () => {
-    const script = `
+    expectSingleAnimPosition(
+      `
       const tl = gsap.timeline({ paused: true });
       tl.fromTo("#el", { opacity: 0 }, { opacity: 1, duration: 1 });
-    `;
-    const result = parseGsapScript(script);
-    expect(result.animations).toHaveLength(1);
-    // For fromTo, position is args[3] which is undefined => defaults to 0
-    expect(result.animations[0].position).toBe(0);
+    `,
+      0,
+    );
   });
 });

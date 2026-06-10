@@ -31,6 +31,10 @@
     // Keyframe UI components — wired dynamically via EaseCurveSection/MotionPanel.
     "packages/studio/src/components/editor/KeyframeDiamond.tsx",
     "packages/studio/src/components/editor/SpringEaseEditor.tsx",
+    // NLE notice — rendered conditionally via NLELayout when timeline is first shown.
+    "packages/studio/src/components/nle/TimelineEditorNotice.tsx",
+    // Zoom hook extracted for downstream razor-blade PRs (#1330, #1331).
+    "packages/studio/src/player/components/useTimelineZoom.ts",
   ],
   "ignorePatterns": [
     "docs/**",
@@ -112,6 +116,27 @@
         "logCaptureCalibrationResult",
         "createFailedCaptureCalibrationEstimate",
       ],
+    },
+    // Shared test helpers consumed by gsapParser.test.ts (same file,
+    // fallow doesn't trace intra-file test consumption).
+    {
+      "file": "packages/core/src/parsers/gsapParser.test-helpers.ts",
+      "exports": [
+        "expectKeyframe",
+        "expectKeyframesFormat",
+        "convertAndReparse",
+        "parseSplitAndAssert",
+      ],
+    },
+    // Shared timeline components extracted for downstream PRs in the
+    // razor-blade stack (#1330, #1331). Consumers live on those branches.
+    {
+      "file": "packages/studio/src/player/components/timelineCallbacks.ts",
+      "exports": ["*"],
+    },
+    {
+      "file": "packages/studio/src/utils/timelineElementSplit.ts",
+      "exports": ["buildPatchTarget", "readFileContent"],
     },
   ],
   "ignoreDependencies": [

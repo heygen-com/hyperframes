@@ -1,5 +1,6 @@
-import { memo, useCallback, useEffect, useRef } from "react";
+import { memo, useRef } from "react";
 import { EASE_LABELS } from "../../components/editor/gsapAnimationConstants";
+import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
 
 export interface KeyframeDiamondContextMenuState {
   x: number;
@@ -41,26 +42,8 @@ export const KeyframeDiamondContextMenu = memo(function KeyframeDiamondContextMe
   onChangeEase,
   onCopyProperties,
 }: KeyframeDiamondContextMenuProps) {
-  const menuRef = useRef<HTMLDivElement>(null);
+  const menuRef = useContextMenuDismiss(onClose);
   const easeSubmenuRef = useRef<HTMLDivElement>(null);
-
-  const dismiss = useCallback(
-    (e: MouseEvent | KeyboardEvent) => {
-      if (e instanceof KeyboardEvent && e.key !== "Escape") return;
-      if (e instanceof MouseEvent && menuRef.current?.contains(e.target as Node)) return;
-      onClose();
-    },
-    [onClose],
-  );
-
-  useEffect(() => {
-    document.addEventListener("mousedown", dismiss);
-    document.addEventListener("keydown", dismiss);
-    return () => {
-      document.removeEventListener("mousedown", dismiss);
-      document.removeEventListener("keydown", dismiss);
-    };
-  }, [dismiss]);
 
   const adjustedX = Math.min(state.x, window.innerWidth - 200);
   const adjustedY = Math.min(state.y, window.innerHeight - 300);

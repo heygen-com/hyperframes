@@ -1,4 +1,5 @@
 import { TIMELINE_TOGGLE_SHORTCUT_LABEL } from "../../utils/timelineDiscovery";
+import { PlayheadIndicator } from "../../player/components/PlayheadIndicator";
 
 interface TimelineEditorNoticeProps {
   onDismiss: () => void;
@@ -76,31 +77,7 @@ export function TimelineEditorNotice({ onDismiss }: TimelineEditorNoticeProps) {
                     "hfTimelineNoticePlayheadSweep 2.8s cubic-bezier(0.4, 0, 0.2, 1) infinite",
                 }}
               >
-                <div
-                  className="absolute top-0 bottom-0"
-                  style={{
-                    left: "50%",
-                    width: 2,
-                    marginLeft: -1,
-                    background: "var(--hf-accent, #3CE6AC)",
-                    boxShadow: "0 0 8px rgba(60,230,172,0.5)",
-                  }}
-                />
-                <div
-                  className="absolute"
-                  style={{ left: "50%", top: 0, transform: "translateX(-50%)" }}
-                >
-                  <div
-                    style={{
-                      width: 0,
-                      height: 0,
-                      borderLeft: "6px solid transparent",
-                      borderRight: "6px solid transparent",
-                      borderTop: "8px solid var(--hf-accent, #3CE6AC)",
-                      filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.6))",
-                    }}
-                  />
-                </div>
+                <PlayheadIndicator />
               </div>
 
               <div className="flex flex-col gap-1.5">

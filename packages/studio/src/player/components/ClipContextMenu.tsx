@@ -1,5 +1,7 @@
-import { memo, useCallback, useEffect, useRef } from "react";
+import { memo } from "react";
 import type { TimelineElement } from "../store/playerStore";
+import { canSplitElement } from "../../utils/timelineElementSplit";
+import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
 
 interface ClipContextMenuProps {
   x: number;
@@ -20,30 +22,12 @@ export const ClipContextMenu = memo(function ClipContextMenu({
   onSplit,
   onDelete,
 }: ClipContextMenuProps) {
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  const dismiss = useCallback(
-    (e: MouseEvent | KeyboardEvent) => {
-      if (e instanceof KeyboardEvent && e.key !== "Escape") return;
-      if (e instanceof MouseEvent && menuRef.current?.contains(e.target as Node)) return;
-      onClose();
-    },
-    [onClose],
-  );
-
-  useEffect(() => {
-    document.addEventListener("mousedown", dismiss);
-    document.addEventListener("keydown", dismiss);
-    return () => {
-      document.removeEventListener("mousedown", dismiss);
-      document.removeEventListener("keydown", dismiss);
-    };
-  }, [dismiss]);
+  const menuRef = useContextMenuDismiss(onClose);
 
   const adjustedX = Math.min(x, window.innerWidth - 200);
   const adjustedY = Math.min(y, window.innerHeight - 200);
 
-  const isSplittable = ["video", "audio", "img"].includes(element.tag);
+  const isSplittable = canSplitElement(element) && ["video", "audio", "img"].includes(element.tag);
   const canSplit =
     isSplittable && currentTime > element.start && currentTime < element.start + element.duration;
 
