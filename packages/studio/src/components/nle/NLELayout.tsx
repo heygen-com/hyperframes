@@ -10,7 +10,7 @@ import {
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { useTimelinePlayer, PlayerControls, Timeline, usePlayerStore } from "../../player";
 import type { TimelineElement } from "../../player";
-import type { BlockedTimelineEditIntent } from "../../player/components/timelineEditing";
+import type { TimelineEditCallbacks } from "../../player/components/timelineCallbacks";
 import { NLEPreview } from "./NLEPreview";
 import { CompositionBreadcrumb } from "./CompositionBreadcrumb";
 import { usePreviewBlockDrop } from "./usePreviewBlockDrop";
@@ -20,7 +20,7 @@ import {
   getTimelineToggleTitle,
 } from "../../utils/timelineDiscovery";
 
-interface NLELayoutProps {
+interface NLELayoutProps extends TimelineEditCallbacks {
   projectId: string;
   portrait?: boolean;
   /** Slot for overlays rendered on top of the preview (cursors, highlights, etc.) */
@@ -59,23 +59,7 @@ interface NLELayoutProps {
     blockName: string,
     position: { left: number; top: number },
   ) => Promise<void> | void;
-  /** Persist timeline move actions back into source HTML */
-  onMoveElement?: (
-    element: TimelineElement,
-    updates: Pick<TimelineElement, "start" | "track">,
-  ) => Promise<void> | void;
-  onResizeElement?: (
-    element: TimelineElement,
-    updates: Pick<TimelineElement, "start" | "duration" | "playbackStart">,
-  ) => Promise<void> | void;
-  onBlockedEditAttempt?: (element: TimelineElement, intent: BlockedTimelineEditIntent) => void;
-  onSplitElement?: (element: TimelineElement, splitTime: number) => Promise<void> | void;
   onSelectTimelineElement?: (element: TimelineElement | null) => void;
-  onDeleteKeyframe?: (elementId: string, percentage: number) => void;
-  onDeleteAllKeyframes?: (elementId: string) => void;
-  onChangeKeyframeEase?: (elementId: string, percentage: number, ease: string) => void;
-  onMoveKeyframe?: (element: TimelineElement, oldPct: number, newPct: number) => void;
-  onToggleKeyframeAtPlayhead?: (element: TimelineElement) => void;
   /** Exposes the compIdToSrc map for parent components (e.g., useRenderClipContent) */
   onCompIdToSrcChange?: (map: Map<string, string>) => void;
   /** Whether the timeline panel is visible (default: true) */
@@ -124,6 +108,8 @@ export const NLELayout = memo(function NLELayout({
   onResizeElement,
   onBlockedEditAttempt,
   onSplitElement,
+  onRazorSplit,
+  onRazorSplitAll,
   onSelectTimelineElement,
   onDeleteKeyframe,
   onDeleteAllKeyframes,
@@ -460,6 +446,8 @@ export const NLELayout = memo(function NLELayout({
                 onResizeElement={onResizeElement}
                 onBlockedEditAttempt={onBlockedEditAttempt}
                 onSplitElement={onSplitElement}
+                onRazorSplit={onRazorSplit}
+                onRazorSplitAll={onRazorSplitAll}
                 onSelectElement={onSelectTimelineElement}
                 onDeleteKeyframe={onDeleteKeyframe}
                 onDeleteAllKeyframes={onDeleteAllKeyframes}

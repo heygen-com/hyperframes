@@ -2,12 +2,12 @@ import { useRef, useMemo, useCallback, useState, useEffect, memo, type ReactNode
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { EditPopover } from "./EditModal";
-import { type BlockedTimelineEditIntent } from "./timelineEditing";
 import { defaultTimelineTheme, type TimelineTheme } from "./timelineTheme";
 import { useTimelineRangeSelection } from "./useTimelineRangeSelection";
 import { useTimelinePlayhead } from "./useTimelinePlayhead";
 import { type TrackVisualStyle, getTrackStyle } from "./timelineIcons";
 import { getTimelinePixelsPerSecond } from "./timelineZoom";
+import { useTimelineZoom } from "./useTimelineZoom";
 import { useTimelineAssetDrop } from "./timelineDragDrop";
 import { TimelineEmptyState } from "./TimelineEmptyState";
 import { TimelineCanvas } from "./TimelineCanvas";
@@ -23,6 +23,7 @@ import {
   getTimelineCanvasHeight,
   shouldShowTimelineShortcutHint,
 } from "./timelineLayout";
+import type { TimelineEditCallbacks, TimelineDropCallbacks } from "./timelineCallbacks";
 
 // Re-export pure utilities so existing imports from "./Timeline" still resolve.
 export {
@@ -39,7 +40,7 @@ export {
   getDefaultDroppedTrack,
 } from "./timelineLayout";
 
-interface TimelineProps {
+interface TimelineProps extends TimelineEditCallbacks, TimelineDropCallbacks {
   onSeek?: (time: number) => void;
   onDrillDown?: (element: TimelineElement) => void;
   renderClipContent?: (
@@ -47,35 +48,8 @@ interface TimelineProps {
     style: { clip: string; label: string },
   ) => ReactNode;
   renderClipOverlay?: (element: TimelineElement) => ReactNode;
-  onFileDrop?: (
-    files: File[],
-    placement?: { start: number; track: number },
-  ) => Promise<void> | void;
-  onAssetDrop?: (
-    assetPath: string,
-    placement: { start: number; track: number },
-  ) => Promise<void> | void;
-  onBlockDrop?: (
-    blockName: string,
-    placement: { start: number; track: number },
-  ) => Promise<void> | void;
   onDeleteElement?: (element: TimelineElement) => Promise<void> | void;
-  onMoveElement?: (
-    element: TimelineElement,
-    updates: Pick<TimelineElement, "start" | "track">,
-  ) => Promise<void> | void;
-  onResizeElement?: (
-    element: TimelineElement,
-    updates: Pick<TimelineElement, "start" | "duration" | "playbackStart">,
-  ) => Promise<void> | void;
-  onBlockedEditAttempt?: (element: TimelineElement, intent: BlockedTimelineEditIntent) => void;
-  onSplitElement?: (element: TimelineElement, splitTime: number) => Promise<void> | void;
   onSelectElement?: (element: TimelineElement | null) => void;
-  onDeleteKeyframe?: (elementId: string, percentage: number) => void;
-  onDeleteAllKeyframes?: (elementId: string) => void;
-  onChangeKeyframeEase?: (elementId: string, percentage: number, ease: string) => void;
-  onMoveKeyframe?: (element: TimelineElement, oldPct: number, newPct: number) => void;
-  onToggleKeyframeAtPlayhead?: (element: TimelineElement) => void;
   theme?: Partial<TimelineTheme>;
 }
 
@@ -92,6 +66,8 @@ export const Timeline = memo(function Timeline({
   onResizeElement,
   onBlockedEditAttempt,
   onSplitElement,
+  onRazorSplit,
+  onRazorSplitAll,
   onSelectElement,
   onDeleteKeyframe,
   onDeleteAllKeyframes,
@@ -107,17 +83,16 @@ export const Timeline = memo(function Timeline({
   const selectedElementId = usePlayerStore((s) => s.selectedElementId);
   const setSelectedElementId = usePlayerStore((s) => s.setSelectedElementId);
   const currentTime = usePlayerStore((s) => s.currentTime);
-  const zoomMode = usePlayerStore((s) => s.zoomMode);
-  const manualZoomPercent = usePlayerStore((s) => s.manualZoomPercent);
-  const setZoomMode = usePlayerStore((s) => s.setZoomMode);
-  const setManualZoomPercent = usePlayerStore((s) => s.setManualZoomPercent);
+  const { zoomMode, manualZoomPercent, setZoomMode, setManualZoomPercent } = useTimelineZoom();
 
   const playheadRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const activeTool = usePlayerStore((s) => s.activeTool);
   const [hoveredClip, setHoveredClip] = useState<string | null>(null);
   const isDragging = useRef(false);
   const [shiftHeld, setShiftHeld] = useState(false);
+  const [razorGuideX, setRazorGuideX] = useState<number | null>(null);
 
   useMountEffect(() => {
     const down = (e: KeyboardEvent) => e.key === "Shift" && setShiftHeld(true);
@@ -388,7 +363,14 @@ export const Timeline = memo(function Timeline({
     <div
       ref={setContainerRef}
       aria-label="Timeline"
-      className={`relative border-t select-none h-full overflow-hidden ${shiftHeld ? "cursor-crosshair" : "cursor-default"}`}
+      className={`relative border-t select-none h-full overflow-hidden ${activeTool === "razor" ? "cursor-crosshair" : shiftHeld ? "cursor-crosshair" : "cursor-default"}`}
+      onMouseMove={(e) => {
+        if (activeTool === "razor" && scrollRef.current) {
+          const rect = scrollRef.current.getBoundingClientRect();
+          setRazorGuideX(e.clientX - rect.left + scrollRef.current.scrollLeft);
+        }
+      }}
+      onMouseLeave={() => setRazorGuideX(null)}
       style={{
         touchAction: "pan-x pan-y",
         background: theme.shellBackground,
@@ -402,7 +384,16 @@ export const Timeline = memo(function Timeline({
         onDragOver={handleAssetDragOver}
         onDragLeave={() => setIsDragOver(false)}
         onDrop={handleAssetDrop}
-        onPointerDown={handlePointerDown}
+        onPointerDown={(e) => {
+          if (activeTool === "razor" && e.shiftKey && e.button === 0 && scrollRef.current) {
+            const rect = scrollRef.current.getBoundingClientRect();
+            const x = e.clientX - rect.left + scrollRef.current.scrollLeft - GUTTER;
+            const splitTime = Math.max(0, x / pps);
+            onRazorSplitAll?.(splitTime);
+            return;
+          }
+          handlePointerDown(e);
+        }}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onLostPointerCapture={handlePointerUp}
@@ -488,7 +479,19 @@ export const Timeline = memo(function Timeline({
             onSelectElement?.(el);
             setClipContextMenu({ x: e.clientX, y: e.clientY, element: el });
           }}
+          onRazorSplit={onRazorSplit}
+          onRazorSplitAll={onRazorSplitAll}
         />
+        {activeTool === "razor" && razorGuideX !== null && (
+          <div
+            className="absolute top-0 bottom-0 pointer-events-none z-10"
+            style={{
+              left: razorGuideX,
+              width: 1,
+              background: "rgba(239,68,68,0.7)",
+            }}
+          />
+        )}
       </div>
 
       {showShortcutHint && !showPopover && !rangeSelection && (

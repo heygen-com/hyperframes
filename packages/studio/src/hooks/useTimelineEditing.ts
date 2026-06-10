@@ -1,6 +1,7 @@
 import { useCallback, useRef } from "react";
 import type { TimelineElement } from "../player";
 import { usePlayerStore } from "../player";
+import { useRazorSplit } from "./useRazorSplit";
 import {
   buildTimelineAssetId,
   buildTimelineAssetInsertHtml,
@@ -30,7 +31,7 @@ import type { PersistTimelineEditInput } from "./timelineEditingHelpers";
 
 // ── Types ──
 
-interface RecordEditInput {
+export interface RecordEditInput {
   label: string;
   kind: EditHistoryKind;
   coalesceKey?: string;
@@ -386,108 +387,24 @@ export function useTimelineEditing({
     [showToast],
   );
 
-  const handleTimelineElementSplit = useCallback(
-    async (element: TimelineElement, splitTime: number) => {
-      if (isRecordingRef?.current) {
-        showToast("Cannot edit timeline while recording", "error");
-        return;
-      }
-      const pid = projectIdRef.current;
-      if (!pid) return;
-
-      const splittableTags = new Set(["video", "audio", "img"]);
-      if (
-        element.timelineLocked ||
-        element.timingSource === "implicit" ||
-        element.compositionSrc ||
-        !splittableTags.has(element.tag) ||
-        !element.duration ||
-        !Number.isFinite(element.duration)
-      ) {
-        return;
-      }
-
-      if (splitTime <= element.start || splitTime >= element.start + element.duration) {
-        showToast("Playhead must be inside the clip to split.", "error");
-        return;
-      }
-
-      const patchTarget = buildPatchTarget(element);
-      if (!patchTarget) {
-        showToast("Clip is missing a patchable target.", "error");
-        return;
-      }
-
-      const targetPath = element.sourceFile || activeCompPath || "index.html";
-      try {
-        const originalContent = await readFileContent(pid, targetPath);
-        const existingIds = collectHtmlIds(originalContent);
-        const baseId = element.domId || "clip";
-        let newId = `${baseId}-split`;
-        let suffix = 2;
-        while (existingIds.includes(newId)) {
-          newId = `${baseId}-split-${suffix++}`;
-        }
-
-        const response = await fetch(
-          `/api/projects/${pid}/file-mutations/split-element/${encodeURIComponent(targetPath)}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ target: patchTarget, splitTime, newId }),
-          },
-        );
-        if (!response.ok) {
-          throw new Error("Split request failed");
-        }
-
-        const data = (await response.json()) as {
-          ok?: boolean;
-          changed?: boolean;
-          content?: string;
-        };
-        if (!data.ok || !data.changed) {
-          showToast("Failed to split clip — playhead may be outside the clip.", "error");
-          return;
-        }
-
-        const patchedContent = typeof data.content === "string" ? data.content : originalContent;
-
-        domEditSaveTimestampRef.current = Date.now();
-        await saveProjectFilesWithHistory({
-          projectId: pid,
-          label: "Split timeline clip",
-          kind: "timeline",
-          files: { [targetPath]: patchedContent },
-          readFile: async () => originalContent,
-          writeFile: writeProjectFile,
-          recordEdit,
-        });
-
-        reloadPreview();
-        const label = getTimelineElementLabel(element);
-        showToast(`Split ${label} at ${splitTime.toFixed(2)}s`, "info");
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Failed to split timeline clip";
-        showToast(message, "error");
-      }
-    },
-    [
-      activeCompPath,
-      recordEdit,
-      showToast,
-      writeProjectFile,
-      domEditSaveTimestampRef,
-      reloadPreview,
-      isRecordingRef,
-    ],
-  );
+  const { handleRazorSplit, handleRazorSplitAll } = useRazorSplit({
+    projectId,
+    activeCompPath,
+    showToast,
+    writeProjectFile,
+    recordEdit,
+    domEditSaveTimestampRef,
+    reloadPreview,
+    isRecordingRef,
+  });
 
   return {
     handleTimelineElementMove,
     handleTimelineElementResize,
     handleTimelineElementDelete,
-    handleTimelineElementSplit,
+    handleTimelineElementSplit: handleRazorSplit,
+    handleRazorSplit,
+    handleRazorSplitAll,
     handleTimelineAssetDrop,
     handleTimelineFileDrop,
     handleBlockedTimelineEdit,

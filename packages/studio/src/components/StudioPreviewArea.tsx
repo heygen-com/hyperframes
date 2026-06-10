@@ -52,6 +52,8 @@ export interface StudioPreviewAreaProps {
   ) => Promise<void> | void;
   handleBlockedTimelineEdit: (element: TimelineElement, intent: BlockedTimelineEditIntent) => void;
   handleTimelineElementSplit: (element: TimelineElement, splitTime: number) => Promise<void> | void;
+  handleRazorSplit: (element: TimelineElement, splitTime: number) => Promise<void> | void;
+  handleRazorSplitAll: (splitTime: number) => Promise<void> | void;
   setCompIdToSrc: (map: Map<string, string>) => void;
   setCompositionLoading: (loading: boolean) => void;
   shouldShowSelectedDomBounds: boolean;
@@ -73,6 +75,8 @@ export function StudioPreviewArea({
   handleTimelineElementResize,
   handleBlockedTimelineEdit,
   handleTimelineElementSplit,
+  handleRazorSplit,
+  handleRazorSplitAll,
   setCompIdToSrc,
   setCompositionLoading,
   shouldShowSelectedDomBounds,
@@ -146,6 +150,8 @@ export function StudioPreviewArea({
           onResizeElement={handleTimelineElementResize}
           onBlockedEditAttempt={handleBlockedTimelineEdit}
           onSplitElement={handleTimelineElementSplit}
+          onRazorSplit={handleRazorSplit}
+          onRazorSplitAll={handleRazorSplitAll}
           onSelectTimelineElement={handleTimelineElementSelect}
           onDeleteAllKeyframes={(_elId) => {
             const anim =
