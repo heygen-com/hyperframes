@@ -151,9 +151,9 @@ export function detectSandboxRuntime(): SandboxRuntime {
  * detector functions ahead of the env-var rule loop.
  */
 export function detectAgentRuntime(): AgentRuntime {
-  // Gemini managed agent — keyed on a filesystem mount (`/.agents/AGENTS.md`)
-  // with a gVisor guard against false positives. See `isGeminiManagedAgent`
-  // for the load-bearing-vs-guard split. Env vars alone are insufficient
+  // Gemini managed agent — keyed on the `/.agents/` platform mount with a
+  // gVisor guard against false positives. See `isGeminiManagedAgent` for the
+  // uniqueness-anchor-vs-guard split. Env vars alone are insufficient
   // (`GEMINI_API_KEY` is user-settable), so this runs ahead of VENDOR_RULES.
   if (isGeminiManagedAgent()) return "gemini_managed_agent";
   for (const rule of VENDOR_RULES) {
@@ -226,20 +226,35 @@ function isKVM(): boolean {
 }
 
 /**
- * Gemini managed-agent sandbox — Google's managed runtime that mounts the
- * agent's repo under `/.agents/` (AGENTS.md + skills/ + workspace/) and runs
- * inside a gVisor kernel.
+ * Gemini managed-agent sandbox — Google's Managed Agents runtime (the
+ * Antigravity base agent). The platform auto-discovers the agent definition
+ * under `/.agents/` and runs it inside a gVisor kernel.
  *
  * Signal hierarchy (the two checks are NOT co-equal):
- *   - `/.agents/AGENTS.md` is the *uniqueness anchor*: definitionally a
- *     managed-agent artifact (the platform injects it per-run; its mtime
- *     tracks the interaction, not the base image). Nothing in the generic
- *     Google-Cloud-on-gVisor universe (Cloud Run gen2, GKE Sandbox) mounts
- *     `/.agents/`. This single check carries essentially all uniqueness.
+ *   - `/.agents/` is the *uniqueness anchor*: the platform's agent-definition
+ *     mount root. Per Google's Managed Agents docs the runtime scans `/.agents/`
+ *     for the agent's instructions (`/.agents/AGENTS.md`) and skills
+ *     (`/.agents/skills/<name>/SKILL.md`). Nothing in the generic
+ *     Google-Cloud-on-gVisor universe (Cloud Run gen2, GKE Sandbox, Fly.io)
+ *     mounts `/.agents/` at the filesystem root.
+ *
+ *     We key on the `/.agents/` DIRECTORY, not `/.agents/AGENTS.md`: AGENTS.md
+ *     is OPTIONAL. Google's docs state "AGENTS.md is optional ... the
+ *     system_instruction and AGENTS.md are additive; both apply when present",
+ *     so an agent may declare its instructions inline via `system_instruction`
+ *     in agent.yaml and ship no AGENTS.md file. Keying on the file would
+ *     silently miss every managed agent that uses inline instructions or a
+ *     skills-only definition; the directory mount generalizes across all
+ *     managed agents that ship any definition.
  *   - `isGVisor()` is a *guard*, not a co-uniqueness signal. gVisor itself
  *     is shared with GKE Sandbox + Cloud Run gen2 — it does not discriminate
- *     Antigravity from those. Its job here is to rule out the unlikely case
- *     of a human creating `/.agents/AGENTS.md` on a non-sandbox host.
+ *     the managed-agent surface from those. Its job here is to rule out the
+ *     unlikely case of a human creating `/.agents/` on a non-sandbox host.
+ *
+ * Known coverage gap: an agent defined with ONLY inline `system_instruction`
+ * (no skills, no AGENTS.md) may not materialize a `/.agents/` mount — that
+ * tail can't be closed from the docs and needs an empirical spin to confirm.
+ * The common case (skills and/or AGENTS.md present) is covered.
  *
  * Things deliberately NOT keyed on (each fails the uniqueness test —
  * shared across the broader Google-Cloud-on-gVisor universe or trivially
@@ -248,21 +263,23 @@ function isKVM(): boolean {
  *   - `Google Compute Engine` DMI (entire GCP reports this)
  *   - `job` cgroup (Google-internal but broadly present)
  *   - egress-proxy env / CA-cert env cluster (any MITM container sets these)
- *   - `/.google/` base-image overlay
+ *   - `/workspace/` (the agent's data mount — generic, not unique)
  *   - `GEMINI_API_KEY` (user-settable on any host)
  *
- * Source: empirical introspection of live Gemini managed-agent sandboxes by
- * gemini-agent (2026-06-09) — stability verified across 3 independent fresh
- * sandbox spins (spike + `b9db4e56` + `d59d6361`); uniqueness analysis ruled
- * out the corroborating signals above by FS-root + cgroup + netns + DMI +
- * PID-1 introspection.
+ * Source: Google Managed Agents docs (ai.google.dev/gemini-api/docs/custom-agents
+ * + managed-agents-quickstart) for the `/.agents/` mount contract and AGENTS.md
+ * optionality; empirical introspection of live managed-agent sandboxes by
+ * gemini-agent (2026-06-09) for the gVisor pairing — present across 3
+ * independent fresh sandbox spins (spike + `b9db4e56` + `d59d6361`).
  */
 function isGeminiManagedAgent(): boolean {
   if (platform() !== "linux") return false;
-  // The uniqueness anchor: managed-agent platform mount. Nothing else on
-  // gVisor (Cloud Run, GKE Sandbox, Fly.io) creates this path.
-  if (!existsSync("/.agents/AGENTS.md")) return false;
-  // The guard: rule out a stray user-created `/.agents/AGENTS.md` on a
-  // non-sandbox host. Not a second uniqueness signal — gVisor isn't unique.
+  // The uniqueness anchor: the managed-agent definition mount root. We key on
+  // the `/.agents/` directory (not the optional AGENTS.md file) so skills-only
+  // and inline-instruction agents are still detected. Nothing else on gVisor
+  // (Cloud Run, GKE Sandbox, Fly.io) creates this path.
+  if (!existsSync("/.agents")) return false;
+  // The guard: rule out a stray user-created `/.agents/` on a non-sandbox
+  // host. Not a second uniqueness signal — gVisor isn't unique on its own.
   return isGVisor();
 }
