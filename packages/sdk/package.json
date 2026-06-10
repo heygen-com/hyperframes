@@ -1,0 +1,73 @@
+{
+  "name": "@hyperframes/sdk",
+  "version": "0.6.86",
+  "description": "Headless, framework-neutral HyperFrames composition editing engine",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/heygen-com/hyperframes",
+    "directory": "packages/sdk"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
+    },
+    "./adapters/memory": {
+      "import": "./src/adapters/memory.ts",
+      "types": "./src/adapters/memory.ts"
+    },
+    "./adapters/fs": {
+      "import": "./src/adapters/fs.ts",
+      "types": "./src/adapters/fs.ts"
+    },
+    "./adapters/headless": {
+      "import": "./src/adapters/headless.ts",
+      "types": "./src/adapters/headless.ts"
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "import": "./dist/index.js",
+        "types": "./dist/index.d.ts"
+      },
+      "./adapters/memory": {
+        "import": "./dist/adapters/memory.js",
+        "types": "./dist/adapters/memory.d.ts"
+      },
+      "./adapters/fs": {
+        "import": "./dist/adapters/fs.js",
+        "types": "./dist/adapters/fs.d.ts"
+      },
+      "./adapters/headless": {
+        "import": "./dist/adapters/headless.js",
+        "types": "./dist/adapters/headless.d.ts"
+      }
+    },
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "typecheck:examples": "tsc --noEmit -p tsconfig.check.json"
+  },
+  "dependencies": {
+    "@hyperframes/core": "workspace:*",
+    "linkedom": "^0.18.12"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.10",
+    "typescript": "^5.0.0",
+    "vitest": "^3.2.4"
+  }
+}
