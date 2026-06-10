@@ -53,9 +53,10 @@ const PHASE3B_OPS = new Set([
   "removeLabel",
 ]);
 
-// Re-exported from the package entry in the next stacked PR (#1325).
-// fallow-ignore-next-line unused-export
 export class UnsupportedOpError extends Error {
+  // Stable error code — part of the public API contract (F7); hosts switch on
+  // err.code rather than the message.
+  // fallow-ignore-next-line unused-class-member
   readonly code = "E_UNSUPPORTED_OP";
   constructor(opType: string) {
     super(

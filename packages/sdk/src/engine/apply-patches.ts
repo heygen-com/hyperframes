@@ -8,9 +8,10 @@
  * unknown paths are silently ignored, matching the JsonPatchOp contract.
  */
 
-import type { JsonPatchOp } from "../types.js";
+import type { JsonPatchOp, OverrideSet } from "../types.js";
 import type { ParsedDocument } from "./model.js";
 import { findById, findRoot, setElementStyles, setOwnText } from "./model.js";
+import { keyToPath } from "./patches.js";
 
 // ─── Path parser ────────────────────────────────────────────────────────────
 
@@ -55,6 +56,25 @@ function parsePath(path: string): ParsedPath | null {
 }
 
 // ─── Patch application ───────────────────────────────────────────────────────
+
+/**
+ * Replay a stored override-set onto a freshly-parsed base document (T3 init).
+ * Property keys with null mean "restore base value" — a no-op on a fresh base.
+ * Bare element keys with null are removal markers — the element is removed.
+ */
+export function applyOverrideSet(parsed: ParsedDocument, overrides: OverrideSet): void {
+  const patches: JsonPatchOp[] = [];
+  for (const [key, value] of Object.entries(overrides)) {
+    const path = keyToPath(key);
+    if (!path) continue;
+    if (value === null) {
+      if (!key.includes(".")) patches.push({ op: "remove", path });
+      continue;
+    }
+    patches.push({ op: "replace", path, value });
+  }
+  applyPatchesToDocument(parsed, patches);
+}
 
 export function applyPatchesToDocument(
   parsed: ParsedDocument,

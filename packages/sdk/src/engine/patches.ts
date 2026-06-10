@@ -103,6 +103,38 @@ export function pathToKey(path: string): string | null {
   return null;
 }
 
+/**
+ * Inverse of pathToKey — maps an override-set key back to its RFC 6902 path.
+ * Used to replay a stored override-set onto a fresh base document (T3 init).
+ */
+export function keyToPath(key: string): string | null {
+  const style = /^([^.]+)\.style\.(.+)$/.exec(key);
+  if (style?.[1] && style[2]) return stylePath(style[1], style[2]);
+
+  const text = /^([^.]+)\.text$/.exec(key);
+  if (text?.[1]) return textPath(text[1]);
+
+  const attr = /^([^.]+)\.attr\.(.+)$/.exec(key);
+  if (attr?.[1] && attr[2]) return attrPath(attr[1], attr[2]);
+
+  const timing = /^([^.]+)\.timing\.(start|end|trackIndex)$/.exec(key);
+  if (timing?.[1]) return timingPath(timing[1], timing[2] as "start" | "end" | "trackIndex");
+
+  const hold = /^([^.]+)\.hold\.(start|end|fill)$/.exec(key);
+  if (hold?.[1]) return holdPath(hold[1], hold[2] as "start" | "end" | "fill");
+
+  const variable = /^var\.(.+)$/.exec(key);
+  if (variable?.[1]) return variablePath(variable[1]);
+
+  const meta = /^meta\.(width|height|duration)$/.exec(key);
+  if (meta) return metaPath(meta[1] as "width" | "height" | "duration");
+
+  // Bare element id — removal marker key.
+  if (!key.includes(".")) return elementPath(key);
+
+  return null;
+}
+
 // ─── Patch event builder ──────────────────────────────────────────────────────
 
 export function buildPatchEvent(

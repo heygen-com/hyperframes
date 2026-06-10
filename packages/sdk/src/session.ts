@@ -29,7 +29,7 @@ import { parseMutable } from "./engine/model.js";
 import type { ParsedDocument } from "./engine/model.js";
 import { applyOp, validateOp } from "./engine/mutate.js";
 import { serializeDocument } from "./engine/serialize.js";
-import { applyPatchesToDocument } from "./engine/apply-patches.js";
+import { applyPatchesToDocument, applyOverrideSet } from "./engine/apply-patches.js";
 import { buildPatchEvent, pathToKey } from "./engine/patches.js";
 import { createHistory } from "./history.js";
 import type { HistoryModule } from "./history.js";
@@ -389,6 +389,11 @@ export async function openComposition(
   // Single parse: parseMutable stamps hf-ids + builds the live linkedom DOM;
   // the query API derives element snapshots from it lazily.
   const parsed = parseMutable(html);
+
+  // T3 embedded: replay the stored override-set onto the base in one pass,
+  // so the session exposes the user's exact edited state — not the template.
+  if (opts?.overrides) applyOverrideSet(parsed, opts.overrides);
+
   const session = new CompositionImpl(parsed, opts ?? {});
 
   const isEmbedded = opts?.overrides !== undefined;
