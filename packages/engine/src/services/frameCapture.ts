@@ -34,6 +34,7 @@ import {
   injectDrawElementCanvas,
   captureDrawElementFrame,
   resolveDrawElementCaptureMode,
+  instrumentAcceleratedCanvases,
 } from "./drawElementService.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import type {
@@ -485,6 +486,14 @@ export async function createCaptureSession(
       w.__name = <T>(fn: T, _name: string): T => fn;
     }
   });
+  // Fast capture: record accelerated canvases (webgl/webgl2/webgpu) and force
+  // preserveDrawingBuffer before any page script can create a context — their
+  // paint records freeze at the first frame, so captureDrawElementFrame
+  // composites their live content via drawImage instead (see
+  // instrumentAcceleratedCanvases). Must be registered before navigation.
+  if (useDrawElement) {
+    await page.evaluateOnNewDocument(instrumentAcceleratedCanvases);
+  }
   // Inject render-time variable overrides before any page script runs, so the
   // runtime helper `getVariables()` returns the merged result on its first
   // call. Pass the JSON string and parse inside the page so we don't require

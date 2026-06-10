@@ -45,6 +45,63 @@ export function resolveDrawElementCaptureMode(
 }
 
 /**
+ * Instrument `HTMLCanvasElement.getContext` before any page script runs.
+ *
+ * Accelerated canvas contexts (webgl/webgl2/webgpu) present via compositor
+ * texture swap — the canvas element never repaints, so its paint record never
+ * invalidates and drawElementImage serves the FIRST frame's snapshot for the
+ * whole render (confirmed: typegpu comp frozen at t=0, 21 dB; 2d canvas is
+ * unaffected at 56 dB). The fix is to composite those canvases manually:
+ * this wrapper records them in `window.__hf_accel_canvases` so
+ * captureDrawElementFrame can hide them from paint records and drawImage
+ * their live content underneath the drawElementImage output.
+ *
+ * WebGL contexts additionally get `preserveDrawingBuffer: true` forced —
+ * without it the drawing buffer is cleared after each compositor present and
+ * drawImage(glCanvas) reads blank.
+ *
+ * Must be registered via page.evaluateOnNewDocument BEFORE navigation.
+ */
+export function instrumentAcceleratedCanvases(): void {
+  type AccelWindow = Window & {
+    __hf_accel_canvases?: HTMLCanvasElement[];
+    __hf_canvas_2d?: HTMLCanvasElement[];
+  };
+  const w = window as AccelWindow;
+  w.__hf_accel_canvases = [];
+  w.__hf_canvas_2d = [];
+  const orig = HTMLCanvasElement.prototype.getContext;
+  // oxlint-disable-next-line no-explicit-any
+  (HTMLCanvasElement.prototype as any).getContext = function (
+    this: HTMLCanvasElement,
+    type: string,
+    attrs?: Record<string, unknown>,
+  ) {
+    const isGl = type === "webgl" || type === "webgl2" || type === "experimental-webgl";
+    const isAccel = isGl || type === "webgpu";
+    const finalAttrs = isGl ? { ...attrs, preserveDrawingBuffer: true } : attrs;
+    // oxlint-disable-next-line no-explicit-any
+    const ctx = (orig as any).call(this, type, finalAttrs);
+    if (ctx && isAccel) {
+      const list = w.__hf_accel_canvases ?? [];
+      if (!list.includes(this)) list.push(this);
+      w.__hf_accel_canvases = list;
+    }
+    // 2d canvases are tracked separately: their paint records DO refresh on
+    // macOS (the sentinel forces a paint each frame), but under BeginFrame
+    // pacing (Linux headless-shell) canvas bitmap changes never dirty the
+    // record and the capture freezes at the first frame — so the BeginFrame
+    // path composites these too (see captureDrawElementFrame).
+    if (ctx && type === "2d") {
+      const list2d = w.__hf_canvas_2d ?? [];
+      if (!list2d.includes(this)) list2d.push(this);
+      w.__hf_canvas_2d = list2d;
+    }
+    return ctx;
+  };
+}
+
+/**
  * Detect whether the page is running on SwiftShader (software rasterizer).
  *
  * Returns true inside Docker headless-shell with --use-angle=swiftshader.
@@ -164,6 +221,33 @@ export async function captureDrawElementFrame(
       if (!canvas || !root) throw new Error("drawElement canvas not initialized");
       const ctx = canvas.getContext("2d");
       if (!ctx) throw new Error("drawElement: 2d context unavailable");
+      // Accelerated canvases (webgl/webgl2/webgpu) never repaint — their paint
+      // record stays frozen at the first frame (see instrumentAcceleratedCanvases).
+      // Hide them NOW, before this frame's paint, so the stale record stops
+      // painting; drawAndEncode composites their live content via drawImage
+      // underneath the drawElementImage output instead. Hiding must happen
+      // before the paint wait (sync mode) so the awaited paint reflects it.
+      type AccelWindow = Window & {
+        __hf_accel_canvases?: HTMLCanvasElement[];
+        __hf_canvas_2d?: HTMLCanvasElement[];
+      };
+      const aw = window as AccelWindow;
+      const accel = (aw.__hf_accel_canvases ?? []).filter((c) => root.contains(c));
+      // Under BeginFrame pacing (sync=false) 2d canvas bitmaps also freeze in
+      // the paint records — composite them the same way. On paint-synced hosts
+      // (sync=true) the per-frame sentinel paint refreshes them natively.
+      if (!sync) {
+        for (const c of (aw.__hf_canvas_2d ?? []).filter((c2) => root.contains(c2))) {
+          if (!accel.includes(c)) accel.push(c);
+        }
+        // Stable z among composited canvases: document order.
+        accel.sort((a, b) =>
+          a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1,
+        );
+      }
+      for (const c of accel) {
+        if (c.style.visibility !== "hidden") c.style.visibility = "hidden";
+      }
       return new Promise<string>((resolveCapture, rejectCapture) => {
         let settled = false;
         const drawAndEncode = () => {
@@ -189,6 +273,22 @@ export async function captureDrawElementFrame(
             if (bg) {
               ctx.fillStyle = bg;
               ctx.fillRect(0, 0, w, h);
+            }
+            // Composite live accelerated-canvas content UNDER the DOM paint.
+            // The canvases are visibility:hidden (transparent holes in the
+            // drawElementImage output), so DOM content above them (captions,
+            // overlays) still paints on top. Constraint: an opaque background
+            // on the composition root or an ancestor between root and the
+            // canvas would paint over this — backgrounds belong on <body> or
+            // inside the canvas for GPU comps.
+            const rootRect = root.getBoundingClientRect();
+            for (const c of accel) {
+              const r = c.getBoundingClientRect();
+              try {
+                ctx.drawImage(c, r.left - rootRect.left, r.top - rootRect.top, r.width, r.height);
+              } catch {
+                // Zero-sized or not-yet-configured canvas — skip this frame.
+              }
             }
             (
               ctx as unknown as { drawElementImage(el: Element, x: number, y: number): void }
