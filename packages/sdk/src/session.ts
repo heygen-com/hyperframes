@@ -391,6 +391,10 @@ class CompositionImpl implements Composition {
 
   // ── Lifecycle ────────────────────────────────────────────────────────────────
 
+  async flush(): Promise<void> {
+    await this.persistQueueModule?.flush();
+  }
+
   dispose(): void {
     this.persistQueueModule?.dispose();
     this.historyModule?.dispose();

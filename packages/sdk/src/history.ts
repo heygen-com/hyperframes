@@ -68,6 +68,7 @@ export function createHistory(session: Composition, opts: HistoryOptions = {}): 
   }
 
   function shouldCoalesce(entry: HistoryEntry, incoming: PatchEvent): boolean {
+    if (coalesceMs <= 0) return false;
     if (opTypesKey(entry.opTypes) !== opTypesKey(incoming.opTypes)) return false;
     if (entry.origin !== incoming.origin) return false;
     // Coalesce only when the SAME paths are touched (e.g. slider drag on one

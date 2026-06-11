@@ -252,5 +252,7 @@ export interface Composition {
   applyPatches(patches: readonly JsonPatchOp[], opts?: { origin?: unknown }): void;
 
   // ── Lifecycle ──────────────────────────────────────────────────────────────
+  /** Drain the persist queue — resolves when any queued write is committed. No-op if no adapter. */
+  flush(): Promise<void>;
   dispose(): void;
 }

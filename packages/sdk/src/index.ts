@@ -30,3 +30,5 @@ export type { HistoryModule, HistoryOptions, HistoryEntry } from "./history.js";
 
 export { createPersistQueue } from "./persist-queue.js";
 export type { PersistQueueModule, PersistQueueOptions } from "./persist-queue.js";
+
+export type { PersistAdapter, PreviewAdapter, PersistVersionEntry } from "./adapters/types.js";
