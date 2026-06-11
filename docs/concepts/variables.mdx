@@ -193,6 +193,25 @@ npx hyperframes render --variables '{"title":"Q4 Report"}' --strict-variables --
   CLI overrides apply only to the top-level composition. Sub-composition variables are controlled by `data-variable-values` on each host element.
 </Note>
 
+## Batch Renders
+
+Use `--batch` when the same composition should render once per data row:
+
+```json rows.json
+[
+  { "name": "Alice", "title": "Q4 Report" },
+  { "name": "Bob", "title": "Renewal Plan" }
+]
+```
+
+```bash Terminal
+npx hyperframes render --batch rows.json --output "renders/{name}.mp4" --strict-variables
+```
+
+Each row is treated like a `--variables` object and merged over the composition defaults. Output paths support `{key}` placeholders from the row plus `{index}`. Hyperframes validates missing placeholders, output collisions, and `--strict-variables` issues before the first row starts rendering, then writes `manifest.json` next to the outputs with one status row per render.
+
+For small compositions, `--batch-concurrency 2` can run rows in parallel. The default is `1` because each individual render already parallelizes across render workers.
+
 ## Layering and Precedence
 
 Variable values are resolved by merging three sources, lowest to highest precedence:

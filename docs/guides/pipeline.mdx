@@ -178,6 +178,8 @@ The pipeline delivers the localhost Studio URL as the handoff. Your AI agent run
 npx hyperframes render --output my-video.mp4
 ```
 
+For personalized or catalog outputs, render the same validated composition with `--batch rows.json --output "renders/{name}.mp4"` and use the generated `manifest.json` as the delivery checklist.
+
 **Gate:** `lint` and `validate` pass with zero errors. Snapshot frames look right. The Studio preview URL is ready to share.
 
 ## Iterating

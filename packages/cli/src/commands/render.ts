@@ -42,6 +42,10 @@ export const examples: Example[] = [
     "Variables from a JSON file",
     "hyperframes render --variables-file ./vars.json --output out.mp4",
   ],
+  [
+    "Batch render one output per variables row",
+    'hyperframes render --batch rows.json --output "renders/{name}.mp4"',
+  ],
 ];
 import { cpus, freemem, tmpdir } from "node:os";
 import { resolve, dirname, join, basename } from "node:path";
@@ -248,6 +252,26 @@ export default defineCommand({
         "Fail render if any --variables key is undeclared or has a wrong type vs the composition's data-composition-variables. Without this flag, mismatches are warnings.",
       default: false,
     },
+    batch: {
+      type: "string",
+      description:
+        'Path to a JSON array of variable rows (or {"rows":[...]}). Renders one output per row.',
+    },
+    "batch-concurrency": {
+      type: "string",
+      description:
+        "Maximum number of batch rows to render at once. Default: 1, because each render already parallelizes across workers.",
+    },
+    "batch-fail-fast": {
+      type: "boolean",
+      description: "Stop launching new batch rows after the first row failure.",
+      default: false,
+    },
+    json: {
+      type: "boolean",
+      description: "With --batch, emit JSON progress events.",
+      default: false,
+    },
     resolution: {
       type: "string",
       description:
@@ -440,6 +464,39 @@ export default defineCommand({
       process.env.PRODUCER_MAX_CONCURRENT_RENDERS = String(parsed);
     }
 
+    // ── Validate batch mode ───────────────────────────────────────────────
+    const batchPath =
+      typeof args.batch === "string" && args.batch.trim() !== "" ? args.batch.trim() : undefined;
+    if (batchPath && (args.variables != null || args["variables-file"] != null)) {
+      errorBox(
+        "Conflicting variables flags",
+        "Use either --batch or --variables/--variables-file, not both.",
+      );
+      process.exit(1);
+    }
+
+    if (!batchPath && args["batch-concurrency"] != null) {
+      errorBox("Invalid batch-concurrency", "--batch-concurrency requires --batch.");
+      process.exit(1);
+    }
+    if (!batchPath && args["batch-fail-fast"]) {
+      errorBox("Invalid batch-fail-fast", "--batch-fail-fast requires --batch.");
+      process.exit(1);
+    }
+
+    let batchConcurrency = 1;
+    if (args["batch-concurrency"] != null) {
+      const parsed = parseInt(args["batch-concurrency"], 10);
+      if (isNaN(parsed) || parsed < 1) {
+        errorBox(
+          "Invalid batch-concurrency",
+          `Got "${args["batch-concurrency"]}". Must be a positive integer.`,
+        );
+        process.exit(1);
+      }
+      batchConcurrency = parsed;
+    }
+
     // ── Resolve output path ───────────────────────────────────────────────
     const rendersDir = resolve("renders");
     const ext = FORMAT_EXT[format] ?? ".mp4";
@@ -447,18 +504,23 @@ export default defineCommand({
     const now = new Date();
     const datePart = now.toISOString().slice(0, 10);
     const timePart = now.toTimeString().slice(0, 8).replace(/:/g, "-");
+    const batchOutputTemplate = args.output
+      ? args.output
+      : join(rendersDir, `${project.name}_${datePart}_${timePart}_{index}${ext}`);
     const outputPath = args.output
       ? resolve(args.output)
       : join(rendersDir, `${project.name}_${datePart}_${timePart}${ext}`);
 
     // Ensure output directory exists
-    mkdirSync(dirname(outputPath), { recursive: true });
+    if (!batchPath) mkdirSync(dirname(outputPath), { recursive: true });
 
     const useDocker = args.docker ?? false;
     const useGpu = args.gpu ?? false;
     const browserGpuArg = args["browser-gpu"];
     const browserGpuMode = resolveBrowserGpuForCli(useDocker, browserGpuArg);
     const quiet = args.quiet ?? false;
+    const batchJson = args.json ?? false;
+    const effectiveQuiet = quiet || (batchPath != null && batchJson);
     const strictAll = args["strict-all"] ?? false;
     const strictErrors = (args.strict ?? false) || strictAll;
     const crfRaw = args.crf;
@@ -507,8 +569,27 @@ export default defineCommand({
     const pageNavigationTimeoutMs = resolveBrowserTimeoutMsArg(args["browser-timeout"]);
     const entryFile = resolveCompositionEntryArg(args.composition, project.dir, statSync);
 
+    // ── Preflight batch rows before browser/lint work ────────────────────
+    let batchModule: typeof import("./batchRender.js") | undefined;
+    let preparedBatch: import("./batchRender.js").PreparedBatchRender | undefined;
+    if (batchPath) {
+      batchModule = await import("./batchRender.js");
+      try {
+        preparedBatch = batchModule.prepareBatchRender({
+          batchPath,
+          outputTemplate: batchOutputTemplate,
+          indexPath: project.indexPath,
+          strictVariables: args["strict-variables"] ?? false,
+          quiet: quiet || batchJson,
+          json: batchJson,
+        });
+      } catch (error: unknown) {
+        batchModule.exitBatchRenderInputError(error);
+      }
+    }
+
     // ── Print render plan ─────────────────────────────────────────────────
-    if (!quiet) {
+    if (!quiet && !batchPath) {
       const workerLabel =
         workers != null ? `${workers} workers` : `auto workers (${CPU_CORE_COUNT} cores detected)`;
       console.log("");
@@ -544,23 +625,35 @@ export default defineCommand({
     let browserPath: string | undefined;
     if (!useDocker) {
       const { ensureBrowser } = await import("../browser/manager.js");
-      const clack = await import("@clack/prompts");
-      const s = clack.spinner();
-      s.start("Checking browser...");
+      let browserSpinner:
+        | {
+            start: (message?: string) => void;
+            message: (message: string) => void;
+            stop: (message?: string) => void;
+          }
+        | undefined;
       try {
-        const info = await ensureBrowser({
-          onProgress: (downloaded, total) => {
-            if (total <= 0) return;
-            const pct = Math.floor((downloaded / total) * 100);
-            s.message(
-              `Downloading Chrome... ${c.progress(pct + "%")} ${c.dim("(" + formatBytes(downloaded) + " / " + formatBytes(total) + ")")}`,
-            );
-          },
-        });
-        browserPath = info.executablePath;
-        s.stop(c.dim(`Browser: ${info.source}`));
+        if (effectiveQuiet) {
+          const info = await ensureBrowser();
+          browserPath = info.executablePath;
+        } else {
+          const clack = await import("@clack/prompts");
+          browserSpinner = clack.spinner();
+          browserSpinner.start("Checking browser...");
+          const info = await ensureBrowser({
+            onProgress: (downloaded, total) => {
+              if (total <= 0) return;
+              const pct = Math.floor((downloaded / total) * 100);
+              browserSpinner?.message(
+                `Downloading Chrome... ${c.progress(pct + "%")} ${c.dim("(" + formatBytes(downloaded) + " / " + formatBytes(total) + ")")}`,
+              );
+            },
+          });
+          browserPath = info.executablePath;
+          browserSpinner.stop(c.dim(`Browser: ${info.source}`));
+        }
       } catch (err: unknown) {
-        s.stop(c.error("Browser not available"));
+        browserSpinner?.stop(c.error("Browser not available"));
         errorBox(
           "Chrome not found",
           err instanceof Error ? err.message : String(err),
@@ -599,6 +692,57 @@ export default defineCommand({
     if (args.hdr && args.sdr) {
       console.error("Error: --hdr and --sdr are mutually exclusive.");
       process.exit(1);
+    }
+
+    // ── Batch render ──────────────────────────────────────────────────────
+    if (batchPath && batchModule && preparedBatch) {
+      const batchQuiet = quiet || batchJson;
+      const hdrMode: RenderOptions["hdrMode"] = args.sdr
+        ? "force-sdr"
+        : args.hdr
+          ? "force-hdr"
+          : "auto";
+      const renderOptionsBase: RenderOptions = {
+        fps,
+        quality,
+        format,
+        workers,
+        gpu: useGpu,
+        browserGpuMode,
+        hdrMode,
+        crf,
+        videoBitrate,
+        quiet: batchQuiet,
+        browserPath,
+        entryFile,
+        outputResolution,
+        pageNavigationTimeoutMs,
+        protocolTimeout,
+        playerReadyTimeout,
+        exitAfterComplete: false,
+        throwOnError: true,
+        skipFeedback: true,
+      };
+      const manifest = await batchModule.runBatchRender({
+        prepared: preparedBatch,
+        concurrency: batchConcurrency,
+        failFast: args["batch-fail-fast"] ?? false,
+        quiet: batchQuiet,
+        json: batchJson,
+        renderOne: (row) =>
+          useDocker
+            ? renderDocker(project.dir, row.outputPath, {
+                ...renderOptionsBase,
+                variables: row.variables,
+                pageSideCompositing: args["page-side-compositing"] !== false,
+              })
+            : renderLocal(project.dir, row.outputPath, {
+                ...renderOptionsBase,
+                variables: row.variables,
+              }),
+      });
+      if (manifest.failed > 0) process.exitCode = 1;
+      return;
     }
 
     // ── Resolve --variables / --variables-file ──────────────────────────
@@ -660,6 +804,11 @@ export default defineCommand({
   },
 });
 
+export interface SingleRenderResult {
+  durationMs?: number;
+  renderTimeMs: number;
+}
+
 interface RenderOptions {
   fps: Fps;
   quality: "draft" | "standard" | "high";
@@ -695,6 +844,10 @@ interface RenderOptions {
   protocolTimeout?: number;
   /** Player-ready timeout override (ms). */
   playerReadyTimeout?: number;
+  /** Throw render failures to the caller instead of printing and exiting. */
+  throwOnError?: boolean;
+  /** Skip the interactive feedback prompt after a successful render. */
+  skipFeedback?: boolean;
 }
 
 /**
@@ -868,7 +1021,7 @@ async function renderDocker(
   projectDir: string,
   outputPath: string,
   options: RenderOptions,
-): Promise<void> {
+): Promise<SingleRenderResult> {
   const startTime = Date.now();
 
   // Dev mode (tsx/ts-node) uses "latest" since the local version isn't on npm
@@ -959,6 +1112,7 @@ async function renderDocker(
 
   printRenderComplete(outputPath, elapsed, options.quiet);
   if (options.exitAfterComplete) scheduleRenderProcessExit();
+  return { renderTimeMs: elapsed };
 }
 
 // fallow-ignore-next-line complexity
@@ -966,7 +1120,7 @@ export async function renderLocal(
   projectDir: string,
   outputPath: string,
   options: RenderOptions,
-): Promise<void> {
+): Promise<SingleRenderResult> {
   const preflight = await runEnvironmentChecks({
     projectDir,
     browserPath: options.browserPath,
@@ -1050,11 +1204,17 @@ export async function renderLocal(
   const elapsed = Date.now() - startTime;
   trackRenderMetrics(job, elapsed, options, false);
   printRenderComplete(outputPath, elapsed, options.quiet);
-  await maybePromptRenderFeedback({
-    renderDurationMs: elapsed,
-    quiet: options.quiet,
-  });
+  if (!options.skipFeedback) {
+    await maybePromptRenderFeedback({
+      renderDurationMs: elapsed,
+      quiet: options.quiet,
+    });
+  }
   if (options.exitAfterComplete) scheduleRenderProcessExit();
+  const durationMs = job.perfSummary
+    ? Math.round(job.perfSummary.compositionDurationSeconds * 1000)
+    : undefined;
+  return { renderTimeMs: elapsed, durationMs };
 }
 
 type UnrefableTimer = {
@@ -1189,6 +1349,9 @@ function handleRenderError(
     ...renderJobObservabilityTelemetryPayload(job),
     ...getMemorySnapshot(),
   });
+  if (options.throwOnError) {
+    throw new Error(message);
+  }
   errorBox("Render failed", message, hint);
   process.exit(1);
 }

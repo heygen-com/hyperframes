@@ -124,6 +124,9 @@ Render your Hyperframes [compositions](/concepts/compositions) to MP4, MOV, WebM
 | `--video-bitrate` | e.g. `10M`, `5000k` | — | Target bitrate encoding. Cannot combine with `--crf` |
 | `--workers` | 1-8 or `auto` | auto | Parallel render workers (see [Workers](#workers) below) |
 | `--max-concurrent-renders` | 1-10 | 2 | Max simultaneous renders via the producer server (see [Concurrent Renders](#concurrent-renders) below) |
+| `--batch` | path | — | JSON array of variable rows (or `{ "rows": [...] }`), rendering one output per row |
+| `--batch-concurrency` | integer | 1 | Maximum batch rows to render at once |
+| `--batch-fail-fast` | — | off | Stop launching new batch rows after the first row failure |
 | `--gpu` | — | off | GPU encoding (NVENC, VideoToolbox, AMF, VAAPI, QSV) |
 | `--browser-gpu` / `--no-browser-gpu` | — | on locally, off in Docker | Use or opt out of host GPU acceleration for local Chrome/WebGL capture |
 | `--hdr` | — | off | Force HDR output even if no HDR sources are detected (MP4 only). See [HDR Rendering](/guides/hdr) |
@@ -230,6 +233,25 @@ npx hyperframes render --workers 8 --output output.mp4
 - Long compositions (30+ seconds) on a machine with 8+ cores and 16+ GB RAM
 - Dedicated render machines or CI runners
 - Docker mode on a well-provisioned host
+
+## Batch Rendering
+
+Batch rendering runs the same composition once per variables row:
+
+```json rows.json
+[
+  { "name": "Alice", "headline": "Welcome, Alice" },
+  { "name": "Bob", "headline": "Welcome, Bob" }
+]
+```
+
+```bash Terminal
+npx hyperframes render --batch rows.json --output "renders/{name}.mp4" --strict-variables
+```
+
+`--output` is a template. Use `{index}` or any scalar key from the row to make each path unique. Hyperframes preflights the full batch before rendering: malformed rows, missing placeholders, duplicate output paths, and strict variable mismatches fail before the first video starts. A `manifest.json` file is written next to the outputs with per-row status, output path, render time, duration when available, and error details.
+
+Rows continue after failures by default so a bad data row does not discard the rest of the batch. Add `--batch-fail-fast` to stop launching new rows after the first failure, or `--json` to stream machine-readable progress events while the manifest is updated.
 
 ## Concurrent Renders
 
