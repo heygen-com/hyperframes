@@ -31,11 +31,11 @@
 import { copyFileSync, existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
-  DEFAULT_CONFIG,
   encodeFramesChunkedConcat,
   encodeFramesFromDir,
   formatFfmpegError,
   getEncoderPreset,
+  resolveConfig,
   runFfmpeg,
   type EncodeResult,
 } from "@hyperframes/engine";
@@ -254,7 +254,7 @@ export async function runEncodeStage(input: EncodeStageInput): Promise<EncodeSta
       loop,
       palettePath: join(dirname(videoOnlyPath), "gif-palette.png"),
       signal: abortSignal,
-      timeout: job.config.producerConfig?.ffmpegEncodeTimeout ?? DEFAULT_CONFIG.ffmpegEncodeTimeout,
+      timeout: (job.config.producerConfig ?? resolveConfig()).ffmpegEncodeTimeout,
     });
     assertNotAborted();
     if (!encodeResult.success) {
@@ -294,7 +294,14 @@ export async function runEncodeStage(input: EncodeStageInput): Promise<EncodeSta
         chunkedEncodeSize,
         abortSignal,
       )
-    : await encodeFramesFromDir(framesDir, framePattern, videoOnlyPath, encoderOpts, abortSignal);
+    : await encodeFramesFromDir(
+        framesDir,
+        framePattern,
+        videoOnlyPath,
+        encoderOpts,
+        abortSignal,
+        job.config.producerConfig ?? resolveConfig(),
+      );
   assertNotAborted();
 
   if (!encodeResult.success) {
