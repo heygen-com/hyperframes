@@ -121,7 +121,7 @@ export function createMediaPreloadManager(options?: {
     const inWindow = new Set<RuntimeMediaClip>();
 
     for (const clip of clips) {
-      const active = timeSeconds >= clip.start && timeSeconds < clip.end;
+      const active = timeSeconds >= clip.start && timeSeconds <= clip.end;
       const inLookahead = clip.start >= timeSeconds && clip.start <= windowEnd;
       const inLookbehind = clip.end > windowStart && clip.end <= timeSeconds;
       if (active || inLookahead || inLookbehind) {
