@@ -56,7 +56,9 @@ export function useGestureCommit({
   // fallow-ignore-next-line complexity
   const stopAndCommitRecording = useCallback(async () => {
     clearInterval(recordingAutoStopRef.current);
-    if (commitInFlightRef.current) return;
+    if (commitInFlightRef.current) {
+      return;
+    }
     commitInFlightRef.current = true;
     gestureStateRef.current = "idle";
     isGestureRecordingRef.current = false;
@@ -109,63 +111,73 @@ export function useGestureCommit({
           percentage: pct,
           properties: simplified.get(pct) as Record<string, number | string>,
         }));
-
-        // Check if the recorded gesture contains position properties.
-        // If so, and a position-group tween already exists for this element,
-        // replace it atomically instead of adding a duplicate.
         const hasPositionProps = keyframes.some((kf) =>
           Object.keys(kf.properties).some((k) => classifyPropertyGroup(k) === "position"),
         );
+        const allAnims = liveSession.selectedGsapAnimations ?? [];
         const existingPositionTween = hasPositionProps
-          ? liveSession.selectedGsapAnimations?.find(
-              (a) => a.propertyGroup === "position" && a.targetSelector === selector,
-            )
+          ? allAnims.find((a) => a.propertyGroup === "position" && a.targetSelector === selector)
           : undefined;
-
         if (existingPositionTween) {
           const tweenStart = existingPositionTween.resolvedStart ?? 0;
           const tweenDur = existingPositionTween.duration ?? duration;
-          const existingKfs = existingPositionTween.keyframes?.keyframes ?? [];
+          const tweenEnd = tweenStart + tweenDur;
+          const recEnd = recStart + duration;
 
-          // Map the recording window (recStart..recStart+duration) into the
-          // existing tween's 0-100% space so we can merge instead of nuke.
-          const rangeStartPct = tweenDur > 0 ? ((recStart - tweenStart) / tweenDur) * 100 : 0;
-          const rangeEndPct =
-            tweenDur > 0 ? ((recStart + duration - tweenStart) / tweenDur) * 100 : 100;
+          // Only merge if the recording overlaps the existing tween's time range.
+          // No overlap → fall through to add-with-keyframes (creates a separate tween).
+          const overlaps = recStart < tweenEnd + 0.05 && recEnd > tweenStart - 0.05;
 
-          // Keep existing keyframes that fall outside the recording window
-          const preserved = existingKfs
-            .filter(
-              (kf) => kf.percentage < rangeStartPct - 0.5 || kf.percentage > rangeEndPct + 0.5,
-            )
-            .map((kf) => ({
-              percentage: kf.percentage,
+          if (overlaps) {
+            const existingKfs = existingPositionTween.keyframes?.keyframes ?? [];
+            const rangeStartPct =
+              tweenDur > 0 ? Math.max(0, ((recStart - tweenStart) / tweenDur) * 100) : 0;
+            const rangeEndPct =
+              tweenDur > 0 ? Math.min(100, ((recEnd - tweenStart) / tweenDur) * 100) : 100;
+
+            const preserved = existingKfs
+              .filter(
+                (kf) => kf.percentage < rangeStartPct - 0.5 || kf.percentage > rangeEndPct + 0.5,
+              )
+              .map((kf) => ({
+                percentage: kf.percentage,
+                properties: kf.properties,
+                ...(kf.ease ? { ease: kf.ease } : {}),
+              }));
+
+            const mapped = keyframes.map((kf) => ({
+              percentage: rangeStartPct + (kf.percentage / 100) * (rangeEndPct - rangeStartPct),
               properties: kf.properties,
-              ...(kf.ease ? { ease: kf.ease } : {}),
             }));
 
-          // Map recorded keyframes (0-100% of recording) into tween percentage space
-          const mapped = keyframes.map((kf) => ({
-            percentage: rangeStartPct + (kf.percentage / 100) * (rangeEndPct - rangeStartPct),
-            properties: kf.properties,
-          }));
+            const merged = [...preserved, ...mapped].sort((a, b) => a.percentage - b.percentage);
 
-          const merged = [...preserved, ...mapped].sort((a, b) => a.percentage - b.percentage);
-
-          await liveSession.commitMutation(
-            {
-              type: "replace-with-keyframes",
-              animationId: existingPositionTween.id,
-              targetSelector: selector,
-              position:
-                typeof existingPositionTween.position === "number"
-                  ? existingPositionTween.position
-                  : tweenStart,
-              duration: tweenDur,
-              keyframes: merged,
-            },
-            { label: "Gesture recording (merge)", softReload: true },
-          );
+            await liveSession.commitMutation(
+              {
+                type: "replace-with-keyframes",
+                animationId: existingPositionTween.id,
+                targetSelector: selector,
+                position:
+                  typeof existingPositionTween.position === "number"
+                    ? existingPositionTween.position
+                    : tweenStart,
+                duration: tweenDur,
+                keyframes: merged,
+              },
+              { label: "Gesture recording (merge)", softReload: true },
+            );
+          } else {
+            await liveSession.commitMutation(
+              {
+                type: "add-with-keyframes",
+                targetSelector: selector,
+                position: Math.round(recStart * 1000) / 1000,
+                duration: Math.round(duration * 1000) / 1000,
+                keyframes,
+              },
+              { label: "Gesture recording (new range)", softReload: true },
+            );
+          }
         } else {
           await liveSession.commitMutation(
             {
@@ -180,6 +192,9 @@ export function useGestureCommit({
         }
       }
       showToast(`Recorded ${sortedPcts.length} keyframes`, "info");
+    } catch (err) {
+      console.error("[GR:error]", err);
+      showToast(`Gesture commit failed: ${err}`, "error");
     } finally {
       store.requestSeek(recordingStartTimeRef.current);
       gestureRecording.clearSamples();

@@ -1,4 +1,5 @@
 import { memo } from "react";
+import { createPortal } from "react-dom";
 import type { TimelineElement } from "../store/playerStore";
 import { canSplitElement } from "../../utils/timelineElementSplit";
 import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
@@ -24,8 +25,11 @@ export const ClipContextMenu = memo(function ClipContextMenu({
 }: ClipContextMenuProps) {
   const menuRef = useContextMenuDismiss(onClose);
 
-  const adjustedX = Math.min(x, window.innerWidth - 200);
-  const adjustedY = Math.min(y, window.innerHeight - 200);
+  const menuWidth = 200;
+  const menuHeight = 80;
+  const overflowY = y + menuHeight - window.innerHeight;
+  const adjustedX = x + menuWidth > window.innerWidth ? x - menuWidth : x;
+  const adjustedY = overflowY > 0 ? y - overflowY - 8 : y;
 
   const isSplittable = canSplitElement(element) && ["video", "audio", "img"].includes(element.tag);
   const canSplit =
@@ -37,7 +41,7 @@ export const ClipContextMenu = memo(function ClipContextMenu({
       ? `Split at ${currentTime.toFixed(2)}s`
       : "Split (move playhead inside clip)";
 
-  return (
+  return createPortal(
     <div
       ref={menuRef}
       className="fixed z-50 bg-neutral-900 border border-neutral-700 rounded-md shadow-lg py-1 min-w-[180px]"
@@ -78,6 +82,7 @@ export const ClipContextMenu = memo(function ClipContextMenu({
         <span>Delete</span>
         <span className="text-neutral-500 text-[10px] ml-3">⌫</span>
       </button>
-    </div>
+    </div>,
+    document.body,
   );
 });

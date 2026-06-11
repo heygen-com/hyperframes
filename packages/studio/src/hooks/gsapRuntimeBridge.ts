@@ -226,6 +226,7 @@ export async function tryGsapDragIntercept(
 
   await commitGsapPositionFromDrag(selection, posAnim, offset, gsapPos, iframe, selector, {
     commitMutation,
+    fetchAnimations: fetchFallbackAnimations,
   });
   return true;
 }

@@ -366,25 +366,27 @@ export const NLELayout = memo(function NLELayout({
       {/* Preview + player controls */}
       <div className="flex-1 min-h-0 flex flex-col">
         <div
-          className="flex-1 min-h-0 relative overflow-hidden"
+          className="flex-1 min-h-0 relative"
           data-preview-pan-surface="true"
           onDragOver={handlePreviewDragOver}
           onDragLeave={handlePreviewDragLeave}
           onDrop={handlePreviewDrop}
         >
-          <NLEPreview
-            projectId={projectId}
-            iframeRef={iframeRef}
-            onIframeLoad={onIframeLoad}
-            onCompositionLoadingChange={setCompositionLoading}
-            portrait={portrait}
-            directUrl={directUrl}
-            suppressLoadingOverlay={hasLoadedOnceRef.current}
-            onStageRef={handleStageRef}
-          />
-          {previewDragOver && (
-            <div className="absolute inset-2 z-40 rounded-lg border-2 border-dashed border-studio-accent/50 bg-studio-accent/[0.04] pointer-events-none" />
-          )}
+          <div className="absolute inset-0 overflow-hidden">
+            <NLEPreview
+              projectId={projectId}
+              iframeRef={iframeRef}
+              onIframeLoad={onIframeLoad}
+              onCompositionLoadingChange={setCompositionLoading}
+              portrait={portrait}
+              directUrl={directUrl}
+              suppressLoadingOverlay={hasLoadedOnceRef.current}
+              onStageRef={handleStageRef}
+            />
+            {previewDragOver && (
+              <div className="absolute inset-2 z-40 rounded-lg border-2 border-dashed border-studio-accent/50 bg-studio-accent/[0.04] pointer-events-none" />
+            )}
+          </div>
           {!isFullscreen && previewOverlay}
         </div>
         <div className="bg-neutral-950 border-t border-neutral-800/50 flex-shrink-0">

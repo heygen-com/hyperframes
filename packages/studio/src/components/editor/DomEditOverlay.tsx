@@ -13,6 +13,7 @@ import { useDomEditOverlayRects } from "./useDomEditOverlayRects";
 import { createDomEditOverlayGestureHandlers } from "./useDomEditOverlayGestures";
 import { SnapGuideOverlay, type SnapGuidesState } from "./SnapGuideOverlay";
 import { GridOverlay } from "./GridOverlay";
+import { useOffScreenIndicators } from "./useOffScreenIndicators";
 
 // Re-exports for external consumers — preserving existing import paths.
 export {
@@ -54,6 +55,7 @@ interface DomEditOverlayProps {
   ) => void;
   onBlockedMove: (selection: DomEditSelection) => void;
   onManualDragStart?: () => void;
+  onSelectElementById?: (id: string) => Promise<DomEditSelection | null>;
   onPathOffsetCommit: (
     selection: DomEditSelection,
     next: { x: number; y: number },
@@ -83,6 +85,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   gridVisible = false,
   gridSpacing = 50,
   onManualDragStart,
+  onSelectElementById,
   onPathOffsetCommit,
   onGroupPathOffsetCommit,
   onBoxSizeCommit,
@@ -212,6 +215,8 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     return () => cancelAnimationFrame(frame);
   });
 
+  const offScreenIndicators = useOffScreenIndicators({ iframeRef, overlayRef, compRect });
+
   const gestures = createDomEditOverlayGestureHandlers({
     overlayRef,
     iframeRef,
@@ -263,6 +268,22 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     }
     const target = event.target as HTMLElement | null;
     if (target?.closest('[data-dom-edit-selection-box="true"]')) return;
+    // Don't re-resolve selection when clicking outside the composition bounds —
+    // the iframe can't resolve elements there, so it would clear the selection.
+    if (selection && compRect.width > 0) {
+      const overlayEl = overlayRef.current;
+      if (overlayEl) {
+        const overlayRect = overlayEl.getBoundingClientRect();
+        const clickX = event.clientX - overlayRect.left;
+        const clickY = event.clientY - overlayRect.top;
+        const outsideComp =
+          clickX < compRect.left ||
+          clickX > compRect.left + compRect.width ||
+          clickY < compRect.top ||
+          clickY > compRect.top + compRect.height;
+        if (outsideComp) return;
+      }
+    }
     onCanvasMouseDown(event, { preferClipAncestor: false });
     if (event.shiftKey) {
       suppressNextBoxMouseDownRef.current = true;
@@ -500,6 +521,64 @@ export const DomEditOverlay = memo(function DomEditOverlay({
             }}
           />
         ))}
+      {offScreenIndicators.length > 0 &&
+        compRect.width > 0 &&
+        offScreenIndicators.map((ind) => {
+          const isSelected = selection?.id === ind.elementId;
+          return (
+            <div
+              key={`offscreen-${ind.key}`}
+              className={`absolute rounded-sm ${isSelected ? "pointer-events-none" : "cursor-grab"}`}
+              style={{
+                left: ind.left,
+                top: ind.top,
+                width: ind.width,
+                height: ind.height,
+                border: `1.5px dashed var(--panel-accent, #34d399)`,
+                opacity: isSelected ? 0.3 : 0.5,
+                zIndex: isSelected ? 1 : 5,
+              }}
+              onPointerDown={
+                isSelected
+                  ? undefined
+                  : (e) => {
+                      if (e.button !== 0) return;
+                      e.stopPropagation();
+                      e.preventDefault();
+                      const startX = e.clientX;
+                      const startY = e.clientY;
+                      const el = e.currentTarget;
+                      el.setPointerCapture(e.pointerId);
+                      let deltaX = 0;
+                      let deltaY = 0;
+                      let moved = false;
+                      const onMove = (me: PointerEvent) => {
+                        deltaX = me.clientX - startX;
+                        deltaY = me.clientY - startY;
+                        if (Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3) moved = true;
+                        if (moved) {
+                          el.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+                        }
+                      };
+                      const onUp = async (ue: PointerEvent) => {
+                        el.releasePointerCapture(ue.pointerId);
+                        el.removeEventListener("pointermove", onMove);
+                        el.removeEventListener("pointerup", onUp);
+                        el.style.transform = "";
+                        const sel = await onSelectElementById?.(ind.elementId);
+                        if (moved && sel && onPathOffsetCommit) {
+                          const scale = compRect.scaleX || 1;
+                          onPathOffsetCommit(sel, { x: deltaX / scale, y: deltaY / scale });
+                        }
+                      };
+                      el.addEventListener("pointermove", onMove);
+                      el.addEventListener("pointerup", onUp);
+                    }
+              }
+              title={isSelected ? undefined : `Drag #${ind.elementId}`}
+            />
+          );
+        })}
       <GridOverlay
         visible={gridVisible}
         spacing={gridSpacing}

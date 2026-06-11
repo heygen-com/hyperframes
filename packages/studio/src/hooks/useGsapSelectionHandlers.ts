@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import { usePlayerStore } from "../player";
 
@@ -13,6 +13,7 @@ export function useGsapSelectionHandlers({
   updateGsapProperty,
   updateGsapMeta,
   deleteGsapAnimation,
+  deleteAllForSelector,
   addGsapAnimation,
   addGsapProperty,
   removeGsapProperty,
@@ -40,6 +41,7 @@ export function useGsapSelectionHandlers({
     updates: { duration?: number; ease?: string; position?: number },
   ) => void;
   deleteGsapAnimation: (sel: DomEditSelection, animId: string) => void;
+  deleteAllForSelector: (sel: DomEditSelection, targetSelector: string) => void;
   addGsapAnimation: (
     sel: DomEditSelection,
     method: "to" | "from" | "set" | "fromTo",
@@ -79,6 +81,9 @@ export function useGsapSelectionHandlers({
   handleDomManualEditsReset: (sel: DomEditSelection) => void;
   selectedGsapAnimations: { id: string; keyframes?: unknown }[];
 }) {
+  const lastSelectionRef = useRef<DomEditSelection | null>(null);
+  if (domEditSelection) lastSelectionRef.current = domEditSelection;
+
   const handleGsapUpdateProperty = useCallback(
     (animId: string, prop: string, value: number | string) => {
       if (!domEditSelection) return;
@@ -97,10 +102,20 @@ export function useGsapSelectionHandlers({
 
   const handleGsapDeleteAnimation = useCallback(
     (animId: string) => {
-      if (!domEditSelection) return;
-      deleteGsapAnimation(domEditSelection, animId);
+      const sel = domEditSelection ?? lastSelectionRef.current;
+      if (!sel) return;
+      deleteGsapAnimation(sel, animId);
     },
     [domEditSelection, deleteGsapAnimation],
+  );
+
+  const handleGsapDeleteAllForElement = useCallback(
+    (targetSelector: string) => {
+      const sel = domEditSelection ?? lastSelectionRef.current;
+      if (!sel) return;
+      deleteAllForSelector(sel, targetSelector);
+    },
+    [domEditSelection, deleteAllForSelector],
   );
 
   const handleGsapAddAnimation = useCallback(
@@ -205,6 +220,7 @@ export function useGsapSelectionHandlers({
     handleGsapUpdateProperty,
     handleGsapUpdateMeta,
     handleGsapDeleteAnimation,
+    handleGsapDeleteAllForElement,
     handleGsapAddAnimation,
     handleGsapAddProperty,
     handleGsapRemoveProperty,

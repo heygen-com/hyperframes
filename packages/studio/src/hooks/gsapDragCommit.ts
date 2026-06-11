@@ -23,6 +23,7 @@ export interface GsapDragCommitCallbacks {
       beforeReload?: () => void;
     },
   ) => Promise<void>;
+  fetchAnimations?: () => Promise<GsapAnimation[]>;
 }
 
 // ── Percentage computation ─────────────────────────────────────────────────
@@ -150,7 +151,6 @@ async function commitKeyframedPosition(
 ): Promise<void> {
   const { activeKeyframePct, setActiveKeyframePct } = usePlayerStore.getState();
   const pct = activeKeyframePct ?? computeCurrentPercentage(selection, anim);
-  if (activeKeyframePct != null) setActiveKeyframePct(null);
   await callbacks.commitMutation(
     selection,
     {
@@ -161,6 +161,7 @@ async function commitKeyframedPosition(
     },
     { label: `Move layer (keyframe ${pct}%)`, softReload: true, beforeReload },
   );
+  if (activeKeyframePct != null) setActiveKeyframePct(null);
 }
 
 /**
@@ -275,21 +276,7 @@ export async function commitGsapPositionFromDrag(
         { label: "Split from() for drag", skipReload: true },
       );
 
-      // Check if a position-group tween already exists (e.g. from gesture recording).
-      // If so, extend it instead of creating a duplicate.
-      const allAnims = await (async () => {
-        const pid = selection.sourceFile || "index.html";
-        try {
-          const r = await fetch(
-            `/api/projects/${encodeURIComponent(window.location.hash.match(/project\/([^?/]+)/)?.[1] ?? "")}/gsap-animations/${encodeURIComponent(pid)}`,
-          );
-          if (!r.ok) return [];
-          const parsed = await r.json();
-          return (parsed?.animations ?? []) as GsapAnimation[];
-        } catch {
-          return [];
-        }
-      })();
+      const allAnims = callbacks.fetchAnimations ? await callbacks.fetchAnimations() : [];
       const existingPosAnim = allAnims.find(
         (a) => a.propertyGroup === "position" && a.targetSelector === anim.targetSelector,
       );

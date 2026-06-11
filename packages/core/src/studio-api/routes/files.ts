@@ -434,6 +434,10 @@ type GsapMutationRequest =
   | {
       type: "split-into-property-groups";
       animationId: string;
+    }
+  | {
+      type: "delete-all-for-selector";
+      targetSelector: string;
     };
 
 // ── GSAP mutation executor ──────────────────────────────────────────────────
@@ -527,6 +531,17 @@ async function executeGsapMutation(
         bakeVisibilityOnDelete(block.document, delTarget.anim);
       }
       return removeAnimationFromScript(block.scriptText, body.animationId);
+    }
+    case "delete-all-for-selector": {
+      const parsed = parseGsapScript(block.scriptText);
+      const matching = parsed.animations.filter((a) => a.targetSelector === body.targetSelector);
+      if (matching.length === 0) return block.scriptText;
+      stripStudioEditsFromTarget(block.document, body.targetSelector);
+      let script = block.scriptText;
+      for (const anim of matching.reverse()) {
+        script = removeAnimationFromScript(script, anim.id);
+      }
+      return script;
     }
     case "add-property": {
       const r = requireAnimation(block.scriptText, body.animationId);

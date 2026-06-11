@@ -108,6 +108,7 @@ export function StudioPreviewArea({
     handlePreviewCanvasPointerMove,
     handlePreviewCanvasPointerLeave,
     applyDomSelection,
+    buildDomSelectionFromTarget,
     handleBlockedDomMove,
     handleDomManualDragStart,
     handleDomPathOffsetCommit,
@@ -119,7 +120,7 @@ export function StudioPreviewArea({
     handleGsapUpdateMeta,
     handleGsapAddKeyframe,
     handleGsapConvertToKeyframes,
-    handleGsapDeleteAnimation,
+    handleGsapDeleteAllForElement,
   } = useDomEditContext();
 
   const [snapPrefs, setSnapPrefs] = useState(() => {
@@ -153,10 +154,9 @@ export function StudioPreviewArea({
           onRazorSplit={handleRazorSplit}
           onRazorSplitAll={handleRazorSplitAll}
           onSelectTimelineElement={handleTimelineElementSelect}
-          onDeleteAllKeyframes={(_elId) => {
-            for (const anim of selectedGsapAnimations) {
-              handleGsapDeleteAnimation(anim.id);
-            }
+          onDeleteAllKeyframes={(elId) => {
+            const rawId = elId.includes("#") ? elId.split("#").pop()! : elId;
+            handleGsapDeleteAllForElement(`#${rawId}`);
           }}
           onDeleteKeyframe={(_elId, pct) => {
             const cacheKey = domEditSelection?.id ?? "";
@@ -185,11 +185,23 @@ export function StudioPreviewArea({
               selectedGsapAnimations.find((a) => a.keyframes);
             if (!anim?.keyframes) return;
             const tweenOldPct = cachedKf?.tweenPercentage ?? oldPct;
-            const kf = anim.keyframes.keyframes.find((k) => k.percentage === oldPct);
+            const kf = anim.keyframes.keyframes.find(
+              (k) => Math.abs(k.percentage - tweenOldPct) < 0.2,
+            );
             if (!kf) return;
+            const tweenStart = anim.resolvedStart ?? 0;
+            const tweenDur = anim.duration ?? 1;
+            const newAbsTime = _el.start + (newPct / 100) * _el.duration;
+            const tweenNewPct =
+              tweenDur > 0
+                ? Math.max(
+                    0,
+                    Math.min(100, Math.round(((newAbsTime - tweenStart) / tweenDur) * 1000) / 10),
+                  )
+                : 0;
             handleGsapRemoveKeyframe(anim.id, tweenOldPct);
             for (const [prop, val] of Object.entries(kf.properties)) {
-              handleGsapAddKeyframe(anim.id, newPct, prop, val);
+              handleGsapAddKeyframe(anim.id, tweenNewPct, prop, val);
             }
           }}
           onToggleKeyframeAtPlayhead={(el) => {
@@ -279,6 +291,14 @@ export function StudioPreviewArea({
                   onRotationCommit={handleDomRotationCommit}
                   gridVisible={snapPrefs.gridVisible}
                   gridSpacing={snapPrefs.gridSpacing}
+                  onSelectElementById={async (id) => {
+                    const iframe = previewIframeRef.current;
+                    const el = iframe?.contentDocument?.getElementById(id);
+                    if (!el) return null;
+                    const sel = await buildDomSelectionFromTarget(el);
+                    if (sel) applyDomSelection(sel, { revealPanel: true });
+                    return sel;
+                  }}
                 />
                 <SnapToolbar onSnapChange={setSnapPrefs} />
                 {gestureOverlay}

@@ -260,6 +260,16 @@ export function useGsapScriptCommits({
     },
     [commitMutation],
   );
+  const deleteAllForSelector = useCallback(
+    (selection: DomEditSelection, targetSelector: string) => {
+      void commitMutation(
+        selection,
+        { type: "delete-all-for-selector", targetSelector },
+        { label: "Delete all animations for element" },
+      );
+    },
+    [commitMutation],
+  );
   const addGsapAnimation = useCallback(
     // fallow-ignore-next-line complexity
     async (
@@ -558,6 +568,7 @@ export function useGsapScriptCommits({
     updateGsapProperty,
     updateGsapMeta,
     deleteGsapAnimation,
+    deleteAllForSelector,
     addGsapAnimation,
     addGsapProperty,
     removeGsapProperty,

@@ -17,26 +17,6 @@ import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "./editor/domEditingTypes";
 import { canSplitElement } from "../utils/timelineElementSplit";
 
-function AutoKeyframeToggle() {
-  const enabled = usePlayerStore((s) => s.autoKeyframeEnabled);
-  return (
-    <Tooltip label={enabled ? "Auto-keyframe ON" : "Auto-keyframe OFF"}>
-      <button
-        type="button"
-        onClick={() => usePlayerStore.getState().setAutoKeyframeEnabled(!enabled)}
-        className={`flex h-7 w-7 items-center justify-center rounded transition-colors ${
-          enabled ? "text-red-400" : "text-neutral-600 hover:text-neutral-400"
-        }`}
-      >
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-          <circle cx="7" cy="7" r="5" stroke="currentColor" strokeWidth="1.5" />
-          {enabled && <circle cx="7" cy="7" r="3" fill="currentColor" />}
-        </svg>
-      </button>
-    </Tooltip>
-  );
-}
-
 interface DomEditSessionSlice extends EnableKeyframesSession {
   domEditSelection: DomEditSelection | null;
   selectedGsapAnimations: GsapAnimation[];
@@ -169,7 +149,6 @@ export function TimelineToolbar({
                   </svg>
                 </button>
               </Tooltip>
-              <AutoKeyframeToggle />
             </>
           )}
           {onSplitElement &&
