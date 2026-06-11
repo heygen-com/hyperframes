@@ -220,9 +220,7 @@ describe("persist adapter", () => {
 
     const comp = await openComposition(BASE_HTML, { persist: adapter });
     comp.setStyle("hf-title", { color: "#f00" });
-
-    // Give the persist queue a tick to flush
-    await new Promise((r) => setTimeout(r, 20));
+    await comp.flush();
 
     expect(writeSpy).toHaveBeenCalled();
     const [, content] = writeSpy.mock.calls[0] as [string, string];

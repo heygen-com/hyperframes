@@ -98,6 +98,15 @@ describe("override-set replay on open", () => {
     expect(comp.getElement("hf-title")?.inlineStyles["color"]).toBeUndefined();
   });
 
+  it("null removal override on non-existent property is a safe no-op", async () => {
+    // backgroundColor doesn't exist on hf-title in the base; removing it must not throw.
+    const comp = await openComposition(BASE_HTML, {
+      overrides: { "hf-title.style.backgroundColor": null },
+    });
+    expect(comp.getElement("hf-title")).not.toBeNull();
+    expect(comp.getElement("hf-title")?.inlineStyles["backgroundColor"]).toBeUndefined();
+  });
+
   it("getOverrides returns the set the session was opened with", async () => {
     const overrides = { "hf-title.style.color": "#e63946" };
     const comp = await openComposition(BASE_HTML, { overrides });

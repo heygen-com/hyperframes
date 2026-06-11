@@ -233,7 +233,12 @@ export interface Composition {
   // ── Advanced / agent layer (F10 layer 2) ──────────────────────────────────
   dispatch(op: EditOp, opts?: { origin?: unknown }): void;
   batch(fn: () => void, opts?: { origin?: unknown }): void;
-  /** Dry-run validation — would dispatch(op) succeed? UI enablement, agent precondition checks. */
+  /**
+   * Dry-run validation — would dispatch(op) succeed?
+   * Returns false for: unknown element id, missing root, unimplemented Phase 3b ops, unknown op types.
+   * Use as a feature-detection gate: `if (!comp.can(op)) return;` — Phase 3b ops always return false
+   * until the parser-backed engine ships. This is intentional: silent no-op is worse than skipping.
+   */
   can(op: EditOp): boolean;
 
   // ── Events (one typed emitter — F10) ──────────────────────────────────────

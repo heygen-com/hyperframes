@@ -140,6 +140,17 @@ describe("setText", () => {
     expect(serializeDocument(parsed)).toBe(before);
   });
 
+  it("creates text node when element has no existing text node", () => {
+    const parsed = parseMutable(
+      '<div data-hf-id="hf-s" data-hf-root><span data-hf-id="hf-empty"></span></div>',
+    );
+    const result = applyOp(parsed, { type: "setText", target: "hf-empty", value: "Added" });
+    const el = parsed.document.querySelector('[data-hf-id="hf-empty"]');
+    expect(el?.textContent).toBe("Added");
+    expect(result.forward[0]?.op).toBe("replace");
+    expect(result.forward[0]?.value).toBe("Added");
+  });
+
   it("override-set key maps correctly", () => {
     expect(pathToKey("/elements/hf-title/text")).toBe("hf-title.text");
   });
