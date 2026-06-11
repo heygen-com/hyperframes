@@ -71,6 +71,15 @@ describe("parseAnimatedGifMetadata", () => {
     expect(metadata?.durationSeconds).toBe(0.2);
   });
 
+  it("clamps all-zero frame delays to the browser playback minimum", () => {
+    const frames = Array.from({ length: 10 }, () => frame(0)).flat();
+    const metadata = parseAnimatedGifMetadata(gif(frames, 0));
+
+    expect(metadata?.animated).toBe(true);
+    expect(metadata?.delaysCentiseconds).toEqual(Array.from({ length: 10 }, () => 10));
+    expect(metadata?.durationSeconds).toBe(1);
+  });
+
   it("reads Netscape loop metadata", () => {
     const metadata = parseAnimatedGifMetadata(gif([...frame(8), ...frame(8)], 0));
 

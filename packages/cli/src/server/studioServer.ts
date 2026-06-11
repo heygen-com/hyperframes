@@ -32,7 +32,7 @@ import type { RenderJob } from "@hyperframes/producer";
 
 const STUDIO_MANUAL_EDITS_PATH = ".hyperframes/studio-manual-edits.json";
 const REMOTE_GIF_IMG_SRC_RE =
-  /<img\b[^>]*?\bsrc\s*=\s*["'](https:\/\/[^"']+\.gif(?:[?#][^"']*)?)["'][^>]*>/gi;
+  /<img\b[^>]*?\bsrc\s*=\s*["'](https?:\/\/[^"']+\.gif(?:[?#][^"']*)?)["'][^>]*>/gi;
 
 // ── Path resolution ─────────────────────────────────────────────────────────
 

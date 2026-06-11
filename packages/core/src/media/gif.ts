@@ -9,6 +9,14 @@ export interface AnimatedGifMetadata {
   animated: boolean;
 }
 
+const BROWSER_MIN_DELAY_CENTISECONDS = 10;
+
+function normalizeDelayCentiseconds(delay: number): number {
+  // Chrome clamps GIF frame delays <= 1cs to 10cs (100ms); mirror browser playback timing.
+  if (delay <= 1) return BROWSER_MIN_DELAY_CENTISECONDS;
+  return Math.max(0, delay);
+}
+
 function readAscii(bytes: Uint8Array, start: number, length: number): string {
   if (start + length > bytes.length) return "";
   let value = "";
@@ -104,7 +112,7 @@ export function parseAnimatedGifMetadata(bytes: Uint8Array): AnimatedGifMetadata
         if (blockSize !== 4 || pos + 6 > bytes.length) return null;
         const delay = readU16LE(bytes, pos + 2);
         if (delay == null) return null;
-        delaysCentiseconds.push(delay);
+        delaysCentiseconds.push(normalizeDelayCentiseconds(delay));
         pos += 1 + blockSize;
         if (bytes[pos] !== 0) return null;
         pos += 1;
@@ -144,8 +152,7 @@ export function parseAnimatedGifMetadata(bytes: Uint8Array): AnimatedGifMetadata
     return null;
   }
 
-  const durationSeconds =
-    delaysCentiseconds.reduce((total, delay) => total + Math.max(0, delay), 0) / 100;
+  const durationSeconds = delaysCentiseconds.reduce((total, delay) => total + delay, 0) / 100;
 
   return {
     width,
