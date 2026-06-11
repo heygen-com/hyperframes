@@ -20,7 +20,7 @@ metadata:
 
 # HyperFrames — read this first
 
-**Start here for any HyperFrames task** — especially with no project `CLAUDE.md` present. Capability map + video router below.
+**Start here for any HyperFrames task** — especially with no project agent config (`CLAUDE.md` / `AGENTS.md` / `.cursorrules`) present. Capability map + video router below.
 
 ## Capability map — which skill for which intent
 

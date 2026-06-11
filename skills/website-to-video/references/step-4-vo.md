@@ -92,7 +92,7 @@ After the provider is selected, audition at least 2 voices with the first senten
 **HeyGen TTS:**
 
 - If the HeyGen MCP is available: use the TTS tool directly.
-- If no MCP: use the v3 API (current; v1/v2 deprecated, supported until Oct 2026):
+- If no MCP: use the v3 API (current; v1/v2 deprecated, supported until Oct 2026). **Auth depends on credential type:** the `x-api-key` header below works only with an **account API key** (`HEYGEN_API_KEY`). If you authenticated via **OAuth** (e.g. claude.ai / the HeyGen MCP login), `x-api-key` will 401 — send `Authorization: Bearer $HEYGEN_OAUTH_TOKEN` instead, or just use the MCP TTS tool above.
 
   ```bash
   # List voices — response shape: { "data": [...], "has_more": bool }
