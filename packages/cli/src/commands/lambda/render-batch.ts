@@ -69,6 +69,7 @@ export interface RenderBatchArgs {
   quality?: "draft" | "standard" | "high";
   chunkSize?: number;
   maxParallelChunks?: number;
+  targetChunkFrames?: number;
   /**
    * Maximum in-flight Step Functions starts at any moment. Caps fan-out
    * so a 10 000-entry batch doesn't try to spawn 10 000 executions
@@ -217,6 +218,7 @@ export async function runRenderBatch(args: RenderBatchArgs): Promise<void> {
     quality: args.quality,
     chunkSize: args.chunkSize,
     maxParallelChunks: args.maxParallelChunks,
+    targetChunkFrames: args.targetChunkFrames,
     runtimeCap: "lambda",
   };
 

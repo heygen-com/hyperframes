@@ -144,6 +144,11 @@ export default defineCommand({
     quality: { type: "string", description: "draft | standard | high" },
     "chunk-size": { type: "string", description: "Frames per chunk" },
     "max-parallel-chunks": { type: "string", description: "Max concurrent chunks" },
+    "target-chunk-frames": {
+      type: "string",
+      description:
+        "Cap per-chunk frames; auto-adds chunks (up to --max-parallel-chunks) to keep each under this. Ignored if --chunk-size is set.",
+    },
     "output-resolution": {
       type: "string",
       description:
@@ -781,6 +786,7 @@ function buildRenderConfig(
     quality: parseQuality(args.quality),
     chunkSize: parsePositiveInt(args["chunk-size"], "--chunk-size"),
     maxParallelChunks: parsePositiveInt(args["max-parallel-chunks"], "--max-parallel-chunks"),
+    targetChunkFrames: parsePositiveInt(args["target-chunk-frames"], "--target-chunk-frames"),
     outputResolution: parseOutputResolution(args["output-resolution"]),
     variables,
   });

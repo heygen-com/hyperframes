@@ -1234,7 +1234,7 @@ Tar + upload a project to GCS once and reuse it across renders. `--site-id` over
 
 #### `cloudrun render <projectDir>`
 
-Start a distributed render. `--width` / `--height` are required; `--fps` (24/30/60), `--format`, `--codec`, `--quality`, `--chunk-size`, `--max-parallel-chunks`, and `--output-resolution` (deviceScaleFactor supersampling, e.g. `4k`) mirror the local render flags. Pass composition variables with `--variables '{"title":"Hi"}'` or `--variables-file alice.json`; add `--strict-variables` to fail on a key that's undeclared or mistyped vs the composition's `data-composition-variables`. `--wait` polls until the render finishes and prints the output URI + cost; without it the command returns an execution name.
+Start a distributed render. `--width` / `--height` are required; `--fps` (24/30/60), `--format`, `--codec`, `--quality`, `--chunk-size`, `--max-parallel-chunks`, `--target-chunk-frames`, and `--output-resolution` (deviceScaleFactor supersampling, e.g. `4k`) mirror the local render flags. `--target-chunk-frames` caps the frames per chunk so a single chunk can't run past a per-chunk timeout on a long video: the planner uses the fewest chunks that keep each at or below the bound, up to `--max-parallel-chunks`, and short videos still collapse to fewer chunks. It's a ceiling, not a fixed size, and is ignored when `--chunk-size` is set. Pass composition variables with `--variables '{"title":"Hi"}'` or `--variables-file alice.json`; add `--strict-variables` to fail on a key that's undeclared or mistyped vs the composition's `data-composition-variables`. `--wait` polls until the render finishes and prints the output URI + cost; without it the command returns an execution name.
 
 #### `cloudrun render-batch <projectDir>`
 

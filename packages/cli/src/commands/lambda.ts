@@ -133,6 +133,11 @@ export default defineCommand({
     quality: { type: "string", description: "draft | standard | high" },
     "chunk-size": { type: "string", description: "Frames per chunk (default: 240)" },
     "max-parallel-chunks": { type: "string", description: "Max concurrent chunks (default: 16)" },
+    "target-chunk-frames": {
+      type: "string",
+      description:
+        "Cap per-chunk frames; auto-adds chunks (up to --max-parallel-chunks) to keep each under this. Ignored if --chunk-size is set.",
+    },
     "execution-name": {
       type: "string",
       description: "Step Functions execution name (default: hf-render-<uuid>)",
@@ -311,6 +316,7 @@ export default defineCommand({
           quality: parseQuality(args.quality),
           chunkSize: parsePositiveInt(args["chunk-size"], "--chunk-size"),
           maxParallelChunks: parsePositiveInt(args["max-parallel-chunks"], "--max-parallel-chunks"),
+          targetChunkFrames: parsePositiveInt(args["target-chunk-frames"], "--target-chunk-frames"),
           executionName: args["execution-name"] as string | undefined,
           outputKey: args["output-key"] as string | undefined,
           variables: args.variables as string | undefined,
@@ -363,6 +369,7 @@ export default defineCommand({
           quality: parseQuality(args.quality),
           chunkSize: parsePositiveInt(args["chunk-size"], "--chunk-size"),
           maxParallelChunks: parsePositiveInt(args["max-parallel-chunks"], "--max-parallel-chunks"),
+          targetChunkFrames: parsePositiveInt(args["target-chunk-frames"], "--target-chunk-frames"),
           maxConcurrent: parsePositiveInt(args["max-concurrent"], "--max-concurrent"),
           strictVariables: Boolean(args["strict-variables"]),
           dryRun: Boolean(args["dry-run"]),

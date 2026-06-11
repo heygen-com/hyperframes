@@ -46,6 +46,7 @@ Most adopters' render config maps directly:
 | Quality preset | `--quality=draft / standard / high` | Maps onto ffmpeg encoder presets. |
 | Chunk size in frames | `--chunk-size=240` (default 240) | ~8s at 30 fps; sized to fit Lambda's 15-min cap with headroom. |
 | Max parallel chunks | `--max-parallel-chunks=16` (default 16) | Caps the Map state's fan-out. |
+| Per-chunk frame ceiling | `--target-chunk-frames=N` (optional) | Caps frames per chunk so one chunk can't run past Lambda's 15-min cap on a long video: the planner adds chunks (up to `--max-parallel-chunks`) to keep each at or below `N`, and short videos still collapse to fewer chunks. A ceiling, not a fixed size; ignored when `--chunk-size` is set. |
 | Bitrate / CRF | `--bitrate=10M` or `--crf=18` | Mutually exclusive. |
 
 ## Variables (inputProps)

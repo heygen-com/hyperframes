@@ -47,6 +47,7 @@ export interface RenderArgs {
   quality?: "draft" | "standard" | "high";
   chunkSize?: number;
   maxParallelChunks?: number;
+  targetChunkFrames?: number;
   executionName?: string;
   outputKey?: string;
   /** Inline JSON for `--variables '{...}'`. Mutually exclusive with `variablesFile`. */
@@ -123,6 +124,7 @@ export async function runRender(args: RenderArgs): Promise<void> {
     quality: args.quality,
     chunkSize: args.chunkSize,
     maxParallelChunks: args.maxParallelChunks,
+    targetChunkFrames: args.targetChunkFrames,
     runtimeCap: "lambda",
     variables,
   };
