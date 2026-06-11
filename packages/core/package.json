@@ -35,6 +35,10 @@
       "types": "./src/compiler/index.ts"
     },
     "./runtime": "./dist/hyperframe.runtime.iife.js",
+    "./runtime/clipTree": {
+      "import": "./src/runtime/clipTree.ts",
+      "types": "./src/runtime/clipTree.ts"
+    },
     "./runtime/lottie-readiness": {
       "import": "./src/lottieReadiness.ts",
       "types": "./src/lottieReadiness.ts"

@@ -136,6 +136,7 @@ interface HotkeyCallbacks {
   onToggleRecording?: () => void;
   leftSidebarRef: React.RefObject<LeftSidebarHandle | null>;
   domEditSelectionRef: React.MutableRefObject<DomEditSelection | null>;
+  showToast: (message: string, tone?: "error" | "info") => void;
 }
 
 function dispatchModifierKey(event: KeyboardEvent, key: string, cb: HotkeyCallbacks): boolean {
@@ -203,6 +204,14 @@ function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCallbacks
       ) {
         event.preventDefault();
         void cb.handleTimelineElementSplit(el, currentTime);
+        return;
+      }
+      // Expanded sub-comp children carry a qualified `sourceFile#id` selection
+      // that isn't in the raw `elements` list, so the s-key can't resolve them.
+      // Nudge toward the razor tool instead of failing silently.
+      if (!el && selectedElementId.includes("#")) {
+        event.preventDefault();
+        cb.showToast("Use the razor tool (B) to split clips inside a sub-composition", "info");
         return;
       }
     }
@@ -376,6 +385,7 @@ export function useAppHotkeys({
     onToggleRecording,
     leftSidebarRef,
     domEditSelectionRef,
+    showToast,
   };
 
   // ── Keydown dispatch ──

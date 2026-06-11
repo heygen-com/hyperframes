@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Eye, Layers, Move, X } from "../../icons/SystemIcons";
 import { useStudioShellContext } from "../../contexts/StudioContext";
 import { readStudioBoxSize, readStudioPathOffset, readStudioRotation } from "./manualEdits";
@@ -111,6 +111,29 @@ export const PropertyPanel = memo(function PropertyPanel({
   const cacheElementKey = element?.id ?? element?.selector ?? "";
   const cacheEntry = usePlayerStore((s) => s.keyframeCache.get(cacheElementKey));
 
+  const iframeRef = previewIframeRef ?? { current: null };
+  const gsapAnimIdForMemo = element
+    ? (gsapAnimations?.find((a: { keyframes?: unknown }) => a.keyframes)?.id ??
+      gsapAnimations?.[0]?.id ??
+      null)
+    : null;
+  const gsapRuntimeValues = useMemo(
+    () =>
+      element
+        ? readGsapRuntimeValuesForPanel(gsapAnimIdForMemo, gsapAnimations, element, iframeRef)
+        : null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- iframeRef is stable; currentTime drives re-reads during playback
+    [gsapAnimIdForMemo, gsapAnimations, element, currentTime],
+  );
+  const gsapBorderRadius = useMemo(
+    () =>
+      element
+        ? readGsapBorderRadiusForPanel(gsapRuntimeValues, gsapAnimations, element, iframeRef)
+        : null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [gsapRuntimeValues, gsapAnimations, element, currentTime],
+  );
+
   if (!element) {
     return (
       <div className="flex h-full flex-col bg-neutral-900">
@@ -193,21 +216,6 @@ export const PropertyPanel = memo(function PropertyPanel({
     if (groupAnim) return groupAnim.id;
     return gsapAnimId ?? "";
   };
-
-  // Read ALL GSAP-interpolated values at the current seek time.
-  const gsapRuntimeValues = readGsapRuntimeValuesForPanel(
-    gsapAnimId,
-    gsapAnimations,
-    element,
-    previewIframeRef ?? { current: null },
-  );
-
-  const gsapBorderRadius = readGsapBorderRadiusForPanel(
-    gsapRuntimeValues,
-    gsapAnimations,
-    element,
-    previewIframeRef ?? { current: null },
-  );
 
   const displayX = gsapRuntimeValues?.x ?? manualOffset.x;
   const displayY = gsapRuntimeValues?.y ?? manualOffset.y;

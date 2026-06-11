@@ -14,6 +14,7 @@ import { useDomEditPositionPatchCommit } from "./useDomEditPositionPatchCommit";
 import { useDomEditTextCommits } from "./useDomEditTextCommits";
 import { useDomGeometryCommits } from "./useDomGeometryCommits";
 import { useElementLifecycleOps } from "./useElementLifecycleOps";
+import { formatFieldsSuffix } from "./gsapScriptCommitHelpers";
 
 // ── Helpers ──
 
@@ -31,14 +32,7 @@ async function readErrorResponseBody(
 
 function formatPatchRejectionMessage(body: { error?: string; fields?: string[] } | null): string {
   if (!body?.error) return "Couldn't save edit";
-  // Pre-existing clone of the GSAP save-error formatter (gsapScriptCommitHelpers);
-  // surfaced here by this PR's adjacent edits, not introduced by it.
-  // fallow-ignore-next-line code-duplication
-  const fields = Array.isArray(body.fields)
-    ? body.fields.filter((field): field is string => typeof field === "string")
-    : [];
-  const suffix = fields.length > 0 ? ` (${fields.join(", ")})` : "";
-  return `Couldn't save edit: ${body.error}${suffix}`;
+  return `Couldn't save edit: ${body.error}${formatFieldsSuffix(body.fields)}`;
 }
 
 interface RecordEditInput {

@@ -66,6 +66,8 @@ export function useTimelineSyncCallbacks({
         return;
       }
 
+      usePlayerStore.getState().setClipManifest(data.clips);
+
       // Show root-level clips: no parentCompositionId, OR parent is a "phantom wrapper"
       const clipCompositionIds = new Set(data.clips.map((c) => c.compositionId).filter(Boolean));
       const filtered = data.clips.filter(
@@ -76,6 +78,26 @@ export function useTimelineSyncCallbacks({
         iframeDoc = iframeRef.current?.contentDocument ?? null;
       } catch {
         iframeDoc = null;
+      }
+
+      try {
+        const iframeWin = iframeRef.current?.contentWindow as
+          | (Window & { __clipTree?: import("@hyperframes/core/runtime/clipTree").ClipTree })
+          | null;
+        const clipTree = iframeWin?.__clipTree;
+        if (clipTree) {
+          const parentMap = new Map<string, string>();
+          const walk = (nodes: typeof clipTree.roots) => {
+            for (const node of nodes) {
+              if (node.id && node.parentId) parentMap.set(node.id, node.parentId);
+              if (node.children.length > 0) walk(node.children);
+            }
+          };
+          walk(clipTree.roots);
+          usePlayerStore.getState().setClipParentMap(parentMap);
+        }
+      } catch {
+        // cross-origin or __clipTree not available — parentMap stays empty
       }
       const usedHostEls = new Set<Element>();
       const els: TimelineElement[] = filtered.map((clip, index) => {

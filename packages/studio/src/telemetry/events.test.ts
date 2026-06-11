@@ -7,7 +7,12 @@ vi.mock("./client", () => ({
   trackEvent: (...args: unknown[]) => trackEvent(...args),
 }));
 
-const { trackStudioSessionStart, trackStudioRenderStart } = await import("./events");
+const {
+  trackStudioSessionStart,
+  trackStudioRenderStart,
+  trackStudioRazorSplit,
+  trackStudioExpandedClipEdit,
+} = await import("./events");
 
 describe("studio telemetry events", () => {
   beforeEach(() => {
@@ -53,5 +58,15 @@ describe("studio telemetry events", () => {
       resolution: undefined,
       composition: undefined,
     });
+  });
+
+  it("trackStudioRazorSplit emits 'studio_razor_split' with mode and count", () => {
+    trackStudioRazorSplit({ mode: "all", count: 3 });
+    expect(trackEvent).toHaveBeenCalledWith("studio_razor_split", { mode: "all", count: 3 });
+  });
+
+  it("trackStudioExpandedClipEdit emits 'studio_expanded_clip_edit' with action", () => {
+    trackStudioExpandedClipEdit({ action: "resize" });
+    expect(trackEvent).toHaveBeenCalledWith("studio_expanded_clip_edit", { action: "resize" });
   });
 });

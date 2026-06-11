@@ -3,6 +3,7 @@ import { useMusicBeatAnalysis } from "../../hooks/useMusicBeatAnalysis";
 import { isMusicTrack } from "../../utils/timelineInspector";
 import { remapBeatAnalysisToComposition } from "../../utils/beatEditActions";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
+import { useExpandedTimelineElements } from "../hooks/useExpandedTimelineElements";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { EditPopover } from "./EditModal";
 import { defaultTimelineTheme, type TimelineTheme } from "./timelineTheme";
@@ -28,7 +29,10 @@ import {
   shouldShowTimelineShortcutHint,
 } from "./timelineLayout";
 import type { TimelineDropCallbacks } from "./timelineCallbacks";
-import { useTimelineEditContext } from "../../contexts/TimelineEditContext";
+import {
+  useResolvedTimelineEditCallbacks,
+  type TimelineEditOverrides,
+} from "./useResolvedTimelineEditCallbacks";
 
 // Re-export pure utilities so existing imports from "./Timeline" still resolve.
 export {
@@ -45,7 +49,7 @@ export {
   getDefaultDroppedTrack,
 } from "./timelineLayout";
 
-interface TimelineProps extends TimelineDropCallbacks {
+interface TimelineProps extends TimelineDropCallbacks, TimelineEditOverrides {
   onSeek?: (time: number) => void;
   onDrillDown?: (element: TimelineElement) => void;
   renderClipContent?: (
@@ -67,6 +71,10 @@ export const Timeline = memo(function Timeline({
   onAssetDrop,
   onBlockDrop,
   onDeleteElement: _onDeleteElement,
+  onMoveElement: onMoveElementOverride,
+  onResizeElement: onResizeElementOverride,
+  onBlockedEditAttempt: onBlockedEditAttemptOverride,
+  onSplitElement: onSplitElementOverride,
   onSelectElement,
   theme: themeOverrides,
 }: TimelineProps = {}) {
@@ -80,14 +88,18 @@ export const Timeline = memo(function Timeline({
     onDeleteAllKeyframes,
     onChangeKeyframeEase,
     onMoveKeyframe,
-  } = useTimelineEditContext();
+  } = useResolvedTimelineEditCallbacks({
+    onMoveElement: onMoveElementOverride,
+    onResizeElement: onResizeElementOverride,
+    onBlockedEditAttempt: onBlockedEditAttemptOverride,
+    onSplitElement: onSplitElementOverride,
+  });
   const theme = useMemo(() => ({ ...defaultTimelineTheme, ...themeOverrides }), [themeOverrides]);
   useMusicBeatAnalysis();
-  const elements = usePlayerStore((s) => s.elements);
+  const rawElements = usePlayerStore((s) => s.elements);
+  const expandedElements = useExpandedTimelineElements();
   const beatAnalysis = usePlayerStore((s) => s.beatAnalysis);
   const musicElement = usePlayerStore((s) => s.elements.find(isMusicTrack) ?? null);
-
-  // Merge user edits + remap beats from audio-file → composition coordinates.
   const beatEdits = usePlayerStore((s) => s.beatEdits);
   const adjustedBeatAnalysis = useMemo(
     () => remapBeatAnalysisToComposition(beatAnalysis, musicElement, beatEdits),
@@ -176,21 +188,21 @@ export const Timeline = memo(function Timeline({
 
   const effectiveDuration = useMemo(() => {
     const safeDur = Number.isFinite(duration) ? duration : 0;
-    if (elements.length === 0) return safeDur;
-    const maxEnd = Math.max(...elements.map((el) => el.start + el.duration));
+    if (rawElements.length === 0) return safeDur;
+    const maxEnd = Math.max(...rawElements.map((el) => el.start + el.duration));
     const result = Math.max(safeDur, maxEnd);
     return Number.isFinite(result) ? result : safeDur;
-  }, [elements, duration]);
+  }, [rawElements, duration]);
 
   const tracks = useMemo(() => {
-    const map = new Map<number, typeof elements>();
-    for (const el of elements) {
+    const map = new Map<number, typeof expandedElements>();
+    for (const el of expandedElements) {
       const list = map.get(el.track) ?? [];
       list.push(el);
       map.set(el.track, list);
     }
     return Array.from(map.entries()).sort(([a], [b]) => a - b);
-  }, [elements]);
+  }, [expandedElements]);
 
   const trackStyles = useMemo(() => {
     const map = new Map<number, TrackVisualStyle>();
@@ -247,8 +259,9 @@ export const Timeline = memo(function Timeline({
   const toggleSelectedKeyframe = usePlayerStore((s) => s.toggleSelectedKeyframe);
 
   const selectedElement = useMemo(
-    () => elements.find((element) => (element.key ?? element.id) === selectedElementId) ?? null,
-    [elements, selectedElementId],
+    () =>
+      expandedElements.find((element) => (element.key ?? element.id) === selectedElementId) ?? null,
+    [expandedElements, selectedElementId],
   );
   const selectedElementRef = useRef<TimelineElement | null>(selectedElement);
   selectedElementRef.current = selectedElement;
@@ -283,7 +296,7 @@ export const Timeline = memo(function Timeline({
     effectiveDuration,
     pps,
     timelineReady,
-    elementsLength: elements.length,
+    elementsLength: expandedElements.length,
     setZoomMode,
     setManualZoomPercent,
     onSeek,
@@ -332,7 +345,7 @@ export const Timeline = memo(function Timeline({
 
   useEffect(() => {
     syncShortcutHintVisibility();
-  }, [syncShortcutHintVisibility, timelineReady, elements.length, totalH]);
+  }, [syncShortcutHintVisibility, timelineReady, expandedElements.length, totalH]);
 
   const getPreviewElement = useCallback(
     (element: TimelineElement): TimelineElement => {
@@ -362,7 +375,7 @@ export const Timeline = memo(function Timeline({
     onBlockDrop,
   });
 
-  if (!timelineReady || elements.length === 0) {
+  if (!timelineReady || expandedElements.length === 0) {
     return (
       <TimelineEmptyState
         isDragOver={isDragOver}
@@ -482,7 +495,7 @@ export const Timeline = memo(function Timeline({
             }
           }}
           onContextMenuKeyframe={(e, elId, pct) => {
-            const el = elements.find((x) => (x.key ?? x.id) === elId);
+            const el = expandedElements.find((x) => (x.key ?? x.id) === elId);
             if (el) {
               setSelectedElementId(elId);
               onSelectElement?.(el);

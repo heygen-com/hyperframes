@@ -3,6 +3,7 @@ import type { TimelineElement } from "../player";
 import { usePlayerStore } from "../player";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import { getTimelineElementLabel, collectHtmlIds } from "../utils/studioHelpers";
+import { trackStudioRazorSplit } from "../telemetry/events";
 import {
   canSplitElement,
   buildPatchTarget,
@@ -196,6 +197,7 @@ export function useRazorSplit({
         });
 
         reloadPreview();
+        trackStudioRazorSplit({ mode: "single", count: 1 });
         showToast(`Split ${getTimelineElementLabel(element)} at ${splitTime.toFixed(2)}s`, "info");
         if (skippedSelectors?.length) {
           showToast(
@@ -277,6 +279,7 @@ export function useRazorSplit({
         });
 
         reloadPreview();
+        trackStudioRazorSplit({ mode: "all", count: splitCount });
         showToast(`Split ${splitCount} clips at ${splitTime.toFixed(2)}s`, "info");
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to split clips";

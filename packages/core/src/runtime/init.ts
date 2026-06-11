@@ -20,6 +20,7 @@ import { createRuntimePlayer } from "./player";
 import { createRuntimeState } from "./state";
 import { collectRuntimeTimelinePayload } from "./timeline";
 import { createRuntimeStartTimeResolver } from "./startResolver";
+import { createClipTree } from "./clipTree";
 import { loadExternalCompositions, loadInlineTemplateCompositions } from "./compositionLoader";
 import { applyCaptionOverrides } from "./captionOverrides";
 import { TransportClock } from "./clock";
@@ -1560,6 +1561,18 @@ export function initSandboxRuntimeModular(): void {
     });
   };
 
+  // Signature the live __clipTree was built from; rebuild only when the set of
+  // timed elements changes (e.g. a sub-composition finishes loading), not every
+  // transport tick. A plain count misses same-count swaps (one sub-comp unloads
+  // as another loads), so the signature keys on id+tag in document order.
+  let clipTreeSignature = "";
+  const computeClipTreeSignature = (): string => {
+    let sig = "";
+    for (const el of document.querySelectorAll("[data-start]")) {
+      sig += `${el.id}:${el.tagName}|`;
+    }
+    return sig;
+  };
   const postTimeline = () => {
     sanitizeCompositionDurationAttributes();
     applyCompositionSizing();
@@ -1580,6 +1593,23 @@ export function initSandboxRuntimeModular(): void {
       canonicalFps: state.canonicalFps,
     });
     window.__clipManifest = payload;
+
+    const currentSignature = computeClipTreeSignature();
+    if (!window.__clipTree || clipTreeSignature !== currentSignature) {
+      const runtimeWindow = window as Window & {
+        __timelines?: Record<string, RuntimeTimelineLike | undefined>;
+      };
+      window.__clipTree = createClipTree({
+        startResolver: createRuntimeStartTimeResolver({
+          timelineRegistry: runtimeWindow.__timelines ?? {},
+          includeAuthoredTimingAttrs: true,
+        }),
+        timelineRegistry: runtimeWindow.__timelines ?? {},
+        rootDuration: payload.durationInFrames / state.canonicalFps,
+      });
+      clipTreeSignature = currentSignature;
+    }
+
     postRuntimeMessage(payload);
     scheduleRootStageLayoutDiagnostics();
   };

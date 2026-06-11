@@ -73,7 +73,7 @@ export const STUDIO_KEYFRAMES_ENABLED = resolveStudioBooleanEnvFlag(
 export const STUDIO_RAZOR_TOOL_ENABLED = resolveStudioBooleanEnvFlag(
   env,
   ["VITE_STUDIO_ENABLE_RAZOR_TOOL", "VITE_STUDIO_RAZOR_TOOL_ENABLED"],
-  false,
+  true,
 );
 
 // When disabled (the default), drag/resize/rotate commits always take the CSS

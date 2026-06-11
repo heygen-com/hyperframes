@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { MusicBeatAnalysis } from "@hyperframes/core/beats";
 import type { BeatEditState } from "../../utils/beatEditing";
+import type { ClipManifestClip } from "../lib/playbackTypes";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
 
 /** Minimal keyframe cache types — mirrors GsapKeyframesData without pulling in Node-only gsap-parser. */
@@ -50,6 +51,13 @@ export interface TimelineElement {
   timelineLocked?: boolean;
   /** Value of data-timeline-role attribute — used to identify music vs. voiceover. */
   timelineRole?: string;
+  /**
+   * Set by useExpandedTimelineElements on an inline-expanded sub-composition
+   * child: the absolute master-timeline start of the sub-comp host the child
+   * lives in. Presence marks the element as expanded; edits subtract it to get
+   * the child's local (sourceFile-relative) time. Works at any nesting depth.
+   */
+  expandedParentStart?: number;
 }
 
 export type ZoomMode = "fit" | "manual";
@@ -138,21 +146,22 @@ interface PlayerState {
   /** Undo/redo stacks for beat edits (in-memory, session-only). */
   beatUndo: BeatHistoryEntry[];
   beatRedo: BeatHistoryEntry[];
-  /** Apply a beat edit and record it for undo. */
   commitBeatEdits: (next: BeatEditState | null, label: string) => void;
-  /** Undo/redo the most recent beat edit; returns its label or null if none. */
   undoBeatEdits: () => string | null;
   redoBeatEdits: () => string | null;
-  /** Clear beat edit history (e.g. when the music track changes). */
   resetBeatHistory: () => void;
-  /** Callback that persists current beats to disk; registered by the analysis hook. */
   beatPersist: (() => void) | null;
   setBeatPersist: (fn: (() => void) | null) => void;
+
+  clipManifest: ClipManifestClip[] | null;
+  setClipManifest: (clips: ClipManifestClip[] | null) => void;
+  clipParentMap: Map<string, string>;
+  setClipParentMap: (map: Map<string, string>) => void;
 }
 
 interface BeatHistoryEntry {
-  restore: BeatEditState | null; // state to restore when this entry is applied
-  at: number; // original edit timestamp (for global undo ordering)
+  restore: BeatEditState | null;
+  at: number;
   label: string;
 }
 
@@ -271,6 +280,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     return entry.label;
   },
 
+  clipManifest: null,
+  setClipManifest: (clips) => set({ clipManifest: clips }),
+  clipParentMap: new Map(),
+  setClipParentMap: (map) => set({ clipParentMap: map }),
+
   setIsPlaying: (playing) => {
     if (get().isPlaying === playing) return;
     set({ isPlaying: playing });
@@ -338,12 +352,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       selectedKeyframes: new Set(),
       selectedElementIds: new Set(),
       keyframeCache: new Map(),
-      // Beat state is project-specific — clear it so a project switch can't
-      // apply the previous project's beats/undo/persist to the new one.
       beatAnalysis: null,
       beatEdits: null,
       beatUndo: [],
       beatRedo: [],
       beatPersist: null,
+      clipManifest: null,
+      clipParentMap: new Map(),
     }),
 }));
