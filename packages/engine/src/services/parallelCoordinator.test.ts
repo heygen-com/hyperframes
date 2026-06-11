@@ -74,11 +74,16 @@ describe("distributeFramesInterleaved", () => {
   });
 
   it("all frames are covered exactly once across workers", () => {
-    for (const [total, workers] of [[10, 3], [12, 4], [7, 2], [1, 4]] as [number, number][]) {
+    for (const [total, workers] of [
+      [10, 3],
+      [12, 4],
+      [7, 2],
+      [1, 4],
+    ] as [number, number][]) {
       const tasks = distributeFramesInterleaved(total, workers, "/tmp/work");
       const captured = new Set<number>();
       for (const task of tasks) {
-        for (let i = task.startFrame; i < task.endFrame; i += (task.stride ?? 1)) {
+        for (let i = task.startFrame; i < task.endFrame; i += task.stride ?? 1) {
           expect(captured.has(i)).toBe(false); // no duplicates
           captured.add(i);
         }

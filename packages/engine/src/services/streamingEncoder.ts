@@ -124,7 +124,7 @@ export interface StreamingEncoderResult {
 }
 
 export interface StreamingEncoder {
-  writeFrame: (buffer: Buffer) => boolean;
+  writeFrame: (buffer: Buffer) => Promise<boolean>;
   close: () => Promise<StreamingEncoderResult>;
   getExitStatus: () => "running" | "success" | "error";
 }
@@ -447,7 +447,7 @@ export async function spawnStreamingEncoder(
   resetTimer();
 
   const encoder: StreamingEncoder = {
-    writeFrame: (buffer: Buffer): boolean => {
+    writeFrame: async (buffer: Buffer): Promise<boolean> => {
       if (exitStatus !== "running" || !ffmpeg.stdin || ffmpeg.stdin.destroyed) {
         return false;
       }
@@ -467,8 +467,31 @@ export async function spawnStreamingEncoder(
       // steady state with a slower-but-alive FFmpeg, writes alternate between
       // true and false as the buffer drains and refills; the trues are enough
       // to keep the heartbeat ticking.
-      if (accepted) resetTimer();
-      return accepted;
+      if (accepted) {
+        resetTimer();
+        return true;
+      }
+      // Back-pressure: FFmpeg stdin buffer is full. Await drain before returning
+      // so the capture loop naturally throttles to FFmpeg's encode throughput.
+      // This prevents Node's internal stdin buffer from growing unboundedly on
+      // long high-worker-count renders and also ensures `ffmpegStreamingTimeout`
+      // resets promptly on the next frame (since the next write will return true).
+      await new Promise<void>((resolve) => {
+        const stdin = ffmpeg.stdin!;
+        const cleanup = () => {
+          stdin.removeListener("drain", onEvent);
+          stdin.removeListener("finish", onEvent);
+          stdin.removeListener("error", onEvent);
+          resolve();
+        };
+        const onEvent = cleanup;
+        stdin.once("drain", onEvent);
+        stdin.once("finish", onEvent);
+        stdin.once("error", onEvent);
+      });
+      if (exitStatus !== "running") return false;
+      resetTimer();
+      return true;
     },
 
     close: async (): Promise<StreamingEncoderResult> => {

@@ -199,7 +199,7 @@ export async function runCaptureStreamingStage(
 
       const onFrameBuffer = async (frameIndex: number, buffer: Buffer): Promise<void> => {
         await reorderBuffer.waitForFrame(frameIndex);
-        currentEncoder.writeFrame(buffer);
+        await currentEncoder.writeFrame(buffer);
         reorderBuffer.advanceTo(frameIndex + 1);
       };
 
@@ -267,7 +267,7 @@ export async function runCaptureStreamingStage(
           const time = (i * job.config.fps.den) / job.config.fps.num;
           const { buffer } = await captureFrameToBuffer(session, i, time);
           await reorderBuffer.waitForFrame(i);
-          currentEncoder.writeFrame(buffer);
+          await currentEncoder.writeFrame(buffer);
           reorderBuffer.advanceTo(i + 1);
           job.framesRendered = i + 1;
 

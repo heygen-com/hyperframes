@@ -556,7 +556,7 @@ describe("spawnStreamingEncoder lifecycle and cleanup", () => {
     const dir = mkdtempSync(join(tmpdir(), "se-writefail-"));
     const encoder = await spawnStreamingEncoder(join(dir, "out.mp4"), baseOptions);
 
-    expect(encoder.writeFrame(Buffer.from([0]))).toBe(true);
+    expect(await encoder.writeFrame(Buffer.from([0]))).toBe(true);
 
     const proc = calls[0]!.proc;
     await new Promise<void>((resolve) => {
@@ -566,7 +566,7 @@ describe("spawnStreamingEncoder lifecycle and cleanup", () => {
       });
     });
 
-    expect(encoder.writeFrame(Buffer.from([0]))).toBe(false);
+    expect(await encoder.writeFrame(Buffer.from([0]))).toBe(false);
   });
 
   it("close() removes the abort listener so a post-close abort does not re-kill ffmpeg", async () => {
@@ -613,7 +613,7 @@ describe("spawnStreamingEncoder lifecycle and cleanup", () => {
       // progressing" capture the encoder must still be alive. The old total-
       // render timeout would have fired SIGTERM at ~1000ms.
       for (let i = 0; i < 9; i++) {
-        encoder.writeFrame(Buffer.from([i]));
+        void encoder.writeFrame(Buffer.from([i]));
         vi.advanceTimersByTime(900);
       }
       expect(proc.kill).not.toHaveBeenCalled();
@@ -651,7 +651,7 @@ describe("spawnStreamingEncoder lifecycle and cleanup", () => {
       // should NOT fire (every write was buffered, not accepted), so the
       // 1000ms timer (last reset on spawn) elapses near the start.
       for (let i = 0; i < 9; i++) {
-        encoder.writeFrame(Buffer.from([i]));
+        void encoder.writeFrame(Buffer.from([i]));
         vi.advanceTimersByTime(900);
       }
       expect(proc.kill).toHaveBeenCalledWith("SIGTERM");

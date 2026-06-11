@@ -241,7 +241,15 @@ export function distributeFramesInterleaved(
   workDir: string,
 ): WorkerTask[] {
   if (workerCount <= 1) {
-    return [{ workerId: 0, startFrame: 0, endFrame: totalFrames, outputDir: join(workDir, "worker-0") }];
+    return [
+      {
+        workerId: 0,
+        startFrame: 0,
+        endFrame: totalFrames,
+        stride: 1,
+        outputDir: join(workDir, "worker-0"),
+      },
+    ];
   }
   const tasks: WorkerTask[] = [];
   for (let i = 0; i < workerCount && i < totalFrames; i++) {
