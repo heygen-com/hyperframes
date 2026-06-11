@@ -91,10 +91,7 @@ export function applyOp(parsed: ParsedDocument, op: EditOp): MutationResult {
     case "setHold":
       return handleSetHold(parsed, targets(op.target), op.hold);
     case "moveElement":
-      return handleSetStyle(parsed, targets(op.target), {
-        left: `${op.x}px`,
-        top: `${op.y}px`,
-      });
+      return handleMoveElement(parsed, targets(op.target), op.x, op.y);
     case "removeElement":
       return handleRemoveElement(parsed, targets(op.target));
     case "setCompositionMetadata":
@@ -145,6 +142,22 @@ function handleSetStyle(
     }
   }
   return result;
+}
+
+function handleMoveElement(
+  parsed: ParsedDocument,
+  ids: HfId[],
+  x: number,
+  y: number,
+): MutationResult {
+  // HF elements are positioned via data-x / data-y (parsed by htmlParser.ts,
+  // emitted by hyperframes generator). CSS left/top is not the convention.
+  const rx = handleSetAttribute(parsed, ids, "data-x", String(x));
+  const ry = handleSetAttribute(parsed, ids, "data-y", String(y));
+  return {
+    forward: [...rx.forward, ...ry.forward],
+    inverse: [...ry.inverse, ...rx.inverse],
+  };
 }
 
 function handleSetText(parsed: ParsedDocument, ids: HfId[], value: string): MutationResult {

@@ -330,7 +330,7 @@ describe("setCompositionMetadata", () => {
 // ─── moveElement ─────────────────────────────────────────────────────────────
 
 describe("moveElement", () => {
-  it("sets left and top as inline styles", () => {
+  it("sets data-x and data-y attributes (HF positioning convention)", () => {
     const parsed = fresh();
     const result = applyOp(parsed, {
       type: "moveElement",
@@ -338,11 +338,22 @@ describe("moveElement", () => {
       x: 100,
       y: 200,
     });
-    expect(result.forward.some((p) => p.path.endsWith("/left"))).toBe(true);
-    expect(result.forward.some((p) => p.path.endsWith("/top"))).toBe(true);
     const el = parsed.document.querySelector('[data-hf-id="hf-title"]');
-    expect(el?.getAttribute("style")).toContain("left: 100px");
-    expect(el?.getAttribute("style")).toContain("top: 200px");
+    expect(el?.getAttribute("data-x")).toBe("100");
+    expect(el?.getAttribute("data-y")).toBe("200");
+    expect(result.forward.some((p) => p.path.endsWith("/data-x"))).toBe(true);
+    expect(result.forward.some((p) => p.path.endsWith("/data-y"))).toBe(true);
+  });
+
+  it("inverse restores prior data-x/data-y", () => {
+    const parsed = fresh();
+    const el = parsed.document.querySelector('[data-hf-id="hf-title"]') as Element;
+    el.setAttribute("data-x", "50");
+    el.setAttribute("data-y", "75");
+    const result = applyOp(parsed, { type: "moveElement", target: "hf-title", x: 100, y: 200 });
+    applyPatchesToDocument(parsed, result.inverse);
+    expect(el.getAttribute("data-x")).toBe("50");
+    expect(el.getAttribute("data-y")).toBe("75");
   });
 });
 
