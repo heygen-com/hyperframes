@@ -38,6 +38,7 @@ import {
   initializeSession,
 } from "@hyperframes/engine";
 import { fpsToNumber } from "@hyperframes/core";
+import { multiplyVolumeKeyframeEnvelopes } from "@hyperframes/core/media-volume-envelope";
 import type { CompiledComposition } from "../../htmlCompiler.js";
 import {
   discoverMediaFromBrowser,
@@ -367,9 +368,18 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
         for (const audio of composition.audios) {
           const keyframes = byId.get(audio.id);
           if (!keyframes || keyframes.length === 0) continue;
-          audio.volumeKeyframes = keyframes;
+          audio.volumeKeyframes =
+            audio.volumeKeyframes && audio.volumeKeyframes.length > 0
+              ? multiplyVolumeKeyframeEnvelopes({
+                  sourceKeyframes: keyframes,
+                  multiplierKeyframes: audio.volumeKeyframes,
+                  trackStart: audio.start,
+                  trackEnd: audio.end,
+                  baseVolume: audio.volume ?? 1,
+                })
+              : keyframes;
           log.info(`[Probe] Runtime audio volume automation: ${audio.id}`, {
-            keyframeCount: keyframes.length,
+            keyframeCount: audio.volumeKeyframes.length,
           });
         }
       }

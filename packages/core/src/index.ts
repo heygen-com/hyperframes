@@ -115,6 +115,7 @@ export type {
 
 export {
   compileTimingAttrs,
+  compileAudioDucking,
   injectDurations,
   extractResolvedMedia,
   clampDurations,

@@ -128,6 +128,7 @@ describe("@hyperframes/core public API exports", () => {
   describe("compiler exports", () => {
     it("exports compiler functions", () => {
       expect(typeof core.compileTimingAttrs).toBe("function");
+      expect(typeof core.compileAudioDucking).toBe("function");
       expect(typeof core.injectDurations).toBe("function");
       expect(typeof core.extractResolvedMedia).toBe("function");
       expect(typeof core.clampDurations).toBe("function");

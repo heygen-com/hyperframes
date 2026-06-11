@@ -16,7 +16,7 @@ vi.mock("../utils/runFfmpeg.js", () => ({
   runFfmpeg: runFfmpegMock,
 }));
 
-import { processCompositionAudio } from "./audioMixer.js";
+import { parseAudioElements, processCompositionAudio } from "./audioMixer.js";
 
 describe("processCompositionAudio", () => {
   const tempDirs: string[] = [];
@@ -26,6 +26,44 @@ describe("processCompositionAudio", () => {
     for (const dir of tempDirs.splice(0)) {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  it("parses compiled duck keyframes as volume automation", () => {
+    const elements = parseAudioElements(`
+      <audio
+        id="music"
+        src="music.wav"
+        data-start="0"
+        data-end="4"
+        data-volume="0.8"
+        data-hf-duck-keyframes='[{"time":1,"volume":0.2},{"time":3,"volume":0.2},{"time":3.5,"volume":0.8}]'
+      ></audio>
+    `);
+
+    expect(elements).toHaveLength(1);
+    expect(elements[0]?.volumeKeyframes).toEqual([
+      { time: 1, volume: 0.2 },
+      { time: 3, volume: 0.2 },
+      { time: 3.5, volume: 0.8 },
+    ]);
+  });
+
+  it("multiplies compiled ducking over authored volume keyframes", () => {
+    const elements = parseAudioElements(`
+      <audio
+        id="music"
+        src="music.wav"
+        data-start="0"
+        data-end="4"
+        data-volume="1"
+        data-volume-keyframes='[{"time":0,"volume":1},{"time":4,"volume":0.5}]'
+        data-hf-duck-keyframes='[{"time":1,"volume":1},{"time":2,"volume":0.25},{"time":3,"volume":1}]'
+      ></audio>
+    `);
+
+    const volumes = elements[0]?.volumeKeyframes?.map((kf) => kf.volume);
+    expect(Math.min(...(volumes ?? [1]))).toBeLessThan(0.2);
+    expect(elements[0]?.volumeKeyframes?.at(-1)).toEqual({ time: 4, volume: 0.5 });
   });
 
   it("preserves muted tracks and uses unity master gain by default", async () => {

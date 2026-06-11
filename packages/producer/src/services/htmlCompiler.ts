@@ -14,6 +14,7 @@ import { join, dirname, resolve, basename } from "path";
 import { parseHTML } from "linkedom";
 import {
   compileTimingAttrs,
+  compileAudioDucking,
   injectDurations,
   extractResolvedMedia,
   clampDurations,
@@ -257,6 +258,8 @@ async function compileHtmlFile(
   if (clampList.length > 0) {
     compiledHtml = clampDurations(compiledHtml, clampList);
   }
+
+  compiledHtml = compileAudioDucking(compiledHtml);
 
   // Strip crossorigin from video elements: the render pipeline replaces them with
   // injected frame images, so the browser never needs to load the source.
@@ -1884,7 +1887,7 @@ export async function recompileWithResolutions(
 ): Promise<CompiledComposition> {
   if (resolutions.length === 0) return compiled;
 
-  const html = injectDurations(compiled.html, resolutions);
+  const html = compileAudioDucking(injectDurations(compiled.html, resolutions));
 
   // Re-parse sub-compositions with the updated parent bounds
   const {

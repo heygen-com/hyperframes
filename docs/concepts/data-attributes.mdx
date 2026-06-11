@@ -20,6 +20,35 @@ Hyperframes uses HTML data attributes to control timing, media playback, and [co
 | `data-media-start` | `"2"` | Media playback offset / trim point in seconds. Default: `0` |
 | `data-volume` | `"0.8"` | Audio/video volume, 0 to 1 |
 | `data-has-audio` | `"true"` | Indicates video has an audio track |
+| `data-role` | `"voice"` | Marks narration or dialogue that should trigger ducking |
+| `data-duck` | `"-12dB"` | Lowers this track while audible `data-role="voice"` clips overlap it |
+| `data-duck-fade` | `"0.3"` | Ducking ramp duration in seconds. Default: `0.3` |
+
+## Music Ducking
+
+Use `data-duck` on background music and `data-role="voice"` on narration or dialogue. Hyperframes computes the overlap windows from clip timing and renders the result through the same volume automation path used for authored fades.
+
+```html index.html
+<audio
+  id="music"
+  src="assets/music.mp3"
+  data-start="0"
+  data-duration="30"
+  data-track-index="1"
+  data-volume="0.8"
+  data-duck="-12dB"
+></audio>
+<audio
+  id="voiceover"
+  src="assets/voiceover.mp3"
+  data-start="4"
+  data-duration="12"
+  data-track-index="2"
+  data-role="voice"
+></audio>
+```
+
+`data-duck` accepts dB values (`"-12dB"` or `"-12"`) and linear gains (`"0.25"`). `data-duck-fade` controls the ramp into and out of the ducked level. Runtime-triggered audio that is not represented as timed `<audio>` or audible `<video>` clips is not part of the compile-time duck calculation.
 
 ## Composition Attributes
 

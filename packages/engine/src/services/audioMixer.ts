@@ -6,17 +6,16 @@
 
 import { existsSync, mkdirSync, rmSync } from "fs";
 import { isAbsolute, join, dirname } from "path";
-import { parseHTML } from "linkedom";
 import { extractAudioMetadata } from "../utils/ffprobe.js";
 import { downloadToTemp, isHttpUrl } from "../utils/urlDownloader.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { runFfmpeg } from "../utils/runFfmpeg.js";
-import { unwrapTemplate } from "../utils/htmlTemplate.js";
 import { resolveProjectRelativeSrc } from "./videoFrameExtractor.js";
 import type { AudioElement, AudioTrack, MixResult } from "./audioMixer.types.js";
 import { applyVolumeEnvelopeToWav } from "./audioVolumeEnvelope.js";
 
 export type { AudioElement, MixResult } from "./audioMixer.types.js";
+export { parseAudioElements } from "./audioElementParser.js";
 
 function clampVolume(volume: number): number {
   if (!Number.isFinite(volume)) return 1;
@@ -167,63 +166,6 @@ interface ExtractResult {
   outputPath: string;
   durationMs: number;
   error?: string;
-}
-
-export function parseAudioElements(html: string): AudioElement[] {
-  const elements: AudioElement[] = [];
-  const { document } = parseHTML(unwrapTemplate(html));
-
-  // Parse <audio> elements
-  const audioEls = document.querySelectorAll("audio[id][src]");
-  for (const el of audioEls) {
-    const id = el.getAttribute("id");
-    const src = el.getAttribute("src");
-    if (!id || !src) continue;
-
-    const startAttr = el.getAttribute("data-start");
-    const endAttr = el.getAttribute("data-end");
-    const mediaStartAttr = el.getAttribute("data-media-start");
-    const layerAttr = el.getAttribute("data-layer");
-    const volumeAttr = el.getAttribute("data-volume");
-
-    elements.push({
-      id,
-      src,
-      start: startAttr ? parseFloat(startAttr) : 0,
-      end: endAttr ? parseFloat(endAttr) : 0,
-      mediaStart: mediaStartAttr ? parseFloat(mediaStartAttr) : 0,
-      layer: layerAttr ? parseInt(layerAttr) : 0,
-      volume: volumeAttr ? parseFloat(volumeAttr) : 1.0,
-      type: "audio",
-    });
-  }
-
-  // Parse <video> elements with data-has-audio="true"
-  const videoEls = document.querySelectorAll('video[id][src][data-has-audio="true"]');
-  for (const el of videoEls) {
-    const id = el.getAttribute("id");
-    const src = el.getAttribute("src");
-    if (!id || !src) continue;
-
-    const startAttr = el.getAttribute("data-start");
-    const endAttr = el.getAttribute("data-end");
-    const mediaStartAttr = el.getAttribute("data-media-start");
-    const layerAttr = el.getAttribute("data-layer");
-    const volumeAttr = el.getAttribute("data-volume");
-
-    elements.push({
-      id: `${id}-audio`,
-      src,
-      start: startAttr ? parseFloat(startAttr) : 0,
-      end: endAttr ? parseFloat(endAttr) : 0,
-      mediaStart: mediaStartAttr ? parseFloat(mediaStartAttr) : 0,
-      layer: layerAttr ? parseInt(layerAttr) : 0,
-      volume: volumeAttr ? parseFloat(volumeAttr) : 1.0,
-      type: "video",
-    });
-  }
-
-  return elements;
 }
 
 async function extractAudioFromVideo(

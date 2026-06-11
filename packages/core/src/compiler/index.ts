@@ -1,6 +1,7 @@
 // Timing compiler (browser-safe)
 export {
   compileTimingAttrs,
+  compileAudioDucking,
   injectDurations,
   extractResolvedMedia,
   clampDurations,

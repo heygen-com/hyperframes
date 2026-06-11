@@ -15,6 +15,7 @@ import {
   localizeRemoteFontFaces,
   recompileWithResolutions,
 } from "./htmlCompiler.js";
+import type { AudioVolumeKeyframe } from "@hyperframes/engine";
 
 // ── collectExternalAssets ──────────────────────────────────────────────────
 
@@ -520,6 +521,56 @@ describe("detectShaderTransitionUsage", () => {
 </body></html>`;
 
     expect(detectShaderTransitionUsage(html)).toBe(false);
+  });
+});
+
+function interpolateVolume(keyframes: AudioVolumeKeyframe[], time: number): number {
+  if (keyframes.length === 0) return 1;
+  let segment = 0;
+  while (segment < keyframes.length - 2 && time >= keyframes[segment + 1]!.time) {
+    segment += 1;
+  }
+  const a = keyframes[segment]!;
+  const b = keyframes[segment + 1] ?? a;
+  const span = b.time - a.time;
+  const progress = span <= 0 ? 0 : Math.min(1, Math.max(0, (time - a.time) / span));
+  return a.volume + (b.volume - a.volume) * progress;
+}
+
+function rmsVolume(keyframes: AudioVolumeKeyframe[], start: number, end: number): number {
+  let sumSquares = 0;
+  let count = 0;
+  for (let t = start; t <= end; t += 0.05) {
+    const volume = interpolateVolume(keyframes, t);
+    sumSquares += volume * volume;
+    count += 1;
+  }
+  return Math.sqrt(sumSquares / count);
+}
+
+describe("audio ducking compilation", () => {
+  it("passes a lower render-side RMS envelope during voice windows", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-audio-duck-"));
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html><html><body>
+  <div data-composition-id="root" data-width="640" data-height="360" data-duration="4">
+    <audio id="music" src="music.wav" data-start="0" data-duration="4" data-volume="1" data-duck="-12dB" data-duck-fade="0.3"></audio>
+    <audio id="voice" src="voice.wav" data-start="1" data-duration="1" data-role="voice"></audio>
+  </div>
+</body></html>`,
+    );
+
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    const music = compiled.audios.find((audio) => audio.id === "music");
+    if (!music?.volumeKeyframes) throw new Error("Missing music duck keyframes");
+
+    const beforeVoice = rmsVolume(music.volumeKeyframes, 0.1, 0.6);
+    const duringVoice = rmsVolume(music.volumeKeyframes, 1.1, 1.9);
+    const afterVoice = rmsVolume(music.volumeKeyframes, 3.0, 3.5);
+
+    expect(duringVoice).toBeLessThan(beforeVoice * 0.35);
+    expect(duringVoice).toBeLessThan(afterVoice * 0.35);
   });
 });
 

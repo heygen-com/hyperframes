@@ -1,10 +1,19 @@
 import { describe, it, expect } from "vitest";
 import {
   compileTimingAttrs,
+  compileAudioDucking,
   injectDurations,
   extractResolvedMedia,
   clampDurations,
 } from "./timingCompiler.js";
+import { parseVolumeKeyframesAttribute } from "../runtime/mediaVolumeEnvelope.js";
+
+function duckKeyframesFor(html: string, id: string) {
+  const match = html.match(new RegExp(`<audio\\b[^>]*id=["']${id}["'][^>]*>`, "i"));
+  if (!match) throw new Error(`Missing audio tag ${id}`);
+  const attr = match[0].match(/data-hf-duck-keyframes='([^']+)'/);
+  return parseVolumeKeyframesAttribute(attr?.[1]);
+}
 
 describe("compileTimingAttrs", () => {
   it("adds data-end when data-start and data-duration are present on a video", () => {
@@ -183,5 +192,55 @@ describe("clampDurations", () => {
 
     expect(result).toContain('data-duration="5"');
     expect(result).toContain('data-end="7"');
+  });
+});
+
+describe("compileAudioDucking", () => {
+  it("emits duck keyframes around voice overlaps", () => {
+    const html = compileTimingAttrs(`
+      <audio id="music" src="music.mp3" data-start="0" data-duration="8" data-volume="0.8" data-duck="-12dB" data-duck-fade="0.5"></audio>
+      <audio id="voice" src="voice.mp3" data-start="2" data-duration="2" data-role="voice"></audio>
+    `).html;
+
+    const keyframes = duckKeyframesFor(compileAudioDucking(html), "music");
+
+    expect(keyframes.map((kf) => kf.time)).toEqual([1.5, 2, 4, 4.5]);
+    expect(keyframes[0]?.volume).toBe(0.8);
+    expect(keyframes[1]?.volume).toBeCloseTo(0.20095, 5);
+    expect(keyframes[2]?.volume).toBeCloseTo(0.20095, 5);
+    expect(keyframes[3]?.volume).toBe(0.8);
+  });
+
+  it("merges voice gaps shorter than two fades", () => {
+    const html = compileTimingAttrs(`
+      <audio id="music" src="music.mp3" data-start="0" data-duration="5" data-duck="0.25" data-duck-fade="0.25"></audio>
+      <audio id="voice-a" src="a.mp3" data-start="1" data-duration="1" data-role="voice"></audio>
+      <audio id="voice-b" src="b.mp3" data-start="2.3" data-duration="0.7" data-role="voice"></audio>
+    `).html;
+
+    const keyframes = duckKeyframesFor(compileAudioDucking(html), "music");
+
+    expect(keyframes).toEqual([
+      { time: 0.75, volume: 1 },
+      { time: 1, volume: 0.25 },
+      { time: 3, volume: 0.25 },
+      { time: 3.25, volume: 1 },
+    ]);
+  });
+
+  it("uses resolved timeline duration for playback-rate voice clips", () => {
+    const html = compileTimingAttrs(`
+      <audio id="music" src="music.mp3" data-start="0" data-duration="8" data-duck="0.5" data-duck-fade="0.5"></audio>
+      <audio id="voice" src="voice.mp3" data-start="1" data-duration="6" data-playback-rate="0.5" data-role="voice"></audio>
+    `).html;
+
+    const keyframes = duckKeyframesFor(compileAudioDucking(html), "music");
+
+    expect(keyframes).toEqual([
+      { time: 0.5, volume: 1 },
+      { time: 1, volume: 0.5 },
+      { time: 7, volume: 0.5 },
+      { time: 7.5, volume: 1 },
+    ]);
   });
 });

@@ -50,6 +50,23 @@ export interface CompilationResult {
 
 // ffprobe precision can differ slightly across local and CI media stacks.
 const MEDIA_DURATION_CLAMP_EPSILON_SECONDS = 0.05;
+const DUCK_KEYFRAMES_ATTR = "data-hf-duck-keyframes";
+const DEFAULT_DUCK_FADE_SECONDS = 0.3;
+
+interface Interval {
+  start: number;
+  end: number;
+}
+
+interface MediaTimingClip extends Interval {
+  id: string;
+  volume: number;
+  muted: boolean;
+  hasAudio: boolean;
+  role: string | null;
+  duckGain: number | null;
+  duckFade: number;
+}
 
 export function shouldClampMediaDuration(declaredDuration: number, maxDuration: number): boolean {
   return declaredDuration > maxDuration + MEDIA_DURATION_CLAMP_EPSILON_SECONDS;
@@ -58,8 +75,8 @@ export function shouldClampMediaDuration(declaredDuration: number, maxDuration: 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
 function getAttr(tag: string, attr: string): string | null {
-  const match = tag.match(new RegExp(`${attr}=["']([^"']+)["']`));
-  return match ? (match[1] ?? null) : null;
+  const match = tag.match(new RegExp(`(?:^|\\s)${attr}\\s*=\\s*(["'])(.*?)\\1`, "i"));
+  return match ? (match[2] ?? null) : null;
 }
 
 function hasAttr(tag: string, attr: string): boolean {
@@ -68,6 +85,160 @@ function hasAttr(tag: string, attr: string): boolean {
 
 function injectAttr(tag: string, attr: string, value: string): string {
   return tag.replace(/>$/, ` ${attr}="${value}">`);
+}
+
+function setAttr(tag: string, attr: string, value: string): string {
+  const serialized = value.replace(/'/g, "&#39;");
+  const pattern = new RegExp(`(\\s${attr}\\s*=\\s*)(["'])(.*?)\\2`, "i");
+  if (pattern.test(tag)) {
+    return tag.replace(pattern, (_match, prefix: string) => `${prefix}'${serialized}'`);
+  }
+  return tag.replace(/>$/, ` ${attr}='${serialized}'>`);
+}
+
+function removeAttr(tag: string, attr: string): string {
+  return tag.replace(new RegExp(`\\s${attr}(?:\\s*=\\s*(["']).*?\\1)?`, "i"), "");
+}
+
+function parseFiniteNumber(raw: string | null): number | null {
+  if (raw === null) return null;
+  const parsed = Number.parseFloat(raw);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseSeconds(raw: string | null, fallback: number): number {
+  if (raw === null) return fallback;
+  const value = raw.trim().toLowerCase().endsWith("s") ? raw.trim().slice(0, -1) : raw;
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function clampVolume(volume: number): number {
+  if (!Number.isFinite(volume)) return 1;
+  return Math.max(0, Math.min(1, volume));
+}
+
+function parseDuckGain(raw: string | null): number | null {
+  if (raw === null) return null;
+  const trimmed = raw.trim().toLowerCase();
+  if (!trimmed) return null;
+  if (trimmed.endsWith("db")) {
+    const db = Number.parseFloat(trimmed.slice(0, -2));
+    return Number.isFinite(db) ? Math.pow(10, db / 20) : null;
+  }
+  const value = Number.parseFloat(trimmed);
+  if (!Number.isFinite(value)) return null;
+  return value < 0 ? Math.pow(10, value / 20) : value;
+}
+
+function clipEndFromAttrs(tag: string, start: number): number | null {
+  const end = parseFiniteNumber(getAttr(tag, "data-end"));
+  if (end !== null) return end;
+  const duration = parseFiniteNumber(getAttr(tag, "data-duration"));
+  return duration !== null ? start + duration : null;
+}
+
+function readMediaTimingClip(tag: string): MediaTimingClip | null {
+  const id = getAttr(tag, "id");
+  if (!id) return null;
+  const start = parseFiniteNumber(getAttr(tag, "data-start"));
+  if (start === null) return null;
+  const end = clipEndFromAttrs(tag, start);
+  if (end === null || end <= start) return null;
+
+  const tagMatch = tag.match(/^<(audio|video)\b/i);
+  const tagName = tagMatch?.[1]?.toLowerCase();
+  if (tagName !== "audio" && tagName !== "video") return null;
+
+  const volume = clampVolume(parseFiniteNumber(getAttr(tag, "data-volume")) ?? 1);
+  const muted = hasAttr(tag, "muted");
+  const hasAudio = tagName === "audio" || getAttr(tag, "data-has-audio") === "true";
+  const role = getAttr(tag, "data-role")?.trim().toLowerCase() ?? null;
+  const duckGain = parseDuckGain(getAttr(tag, "data-duck"));
+
+  return {
+    id,
+    start,
+    end,
+    volume,
+    muted,
+    hasAudio,
+    role,
+    duckGain,
+    duckFade: parseSeconds(getAttr(tag, "data-duck-fade"), DEFAULT_DUCK_FADE_SECONDS),
+  };
+}
+
+function isAudibleClip(clip: MediaTimingClip): boolean {
+  return clip.hasAudio && !clip.muted && clip.volume > 0;
+}
+
+function mergeIntervals(intervals: Interval[], maxGap: number): Interval[] {
+  const sorted = intervals
+    .filter((interval) => interval.end > interval.start)
+    .sort((a, b) => a.start - b.start);
+  const merged: Interval[] = [];
+  for (const interval of sorted) {
+    const previous = merged.at(-1);
+    if (previous && interval.start <= previous.end + maxGap) {
+      previous.end = Math.max(previous.end, interval.end);
+    } else {
+      merged.push({ ...interval });
+    }
+  }
+  return merged;
+}
+
+function intersectIntervals(track: Interval, intervals: Interval[]): Interval[] {
+  const overlaps: Interval[] = [];
+  for (const interval of intervals) {
+    const start = Math.max(track.start, interval.start);
+    const end = Math.min(track.end, interval.end);
+    if (end > start) overlaps.push({ start, end });
+  }
+  return overlaps;
+}
+
+function roundedKeyframe(time: number, volume: number): { time: number; volume: number } {
+  return {
+    time: Number(time.toFixed(6)),
+    volume: Number(clampVolume(volume).toFixed(6)),
+  };
+}
+
+function createDuckKeyframes(
+  track: MediaTimingClip,
+  voiceIntervals: Interval[],
+): { time: number; volume: number }[] {
+  if (track.duckGain === null) return [];
+  const duckVolume = clampVolume(track.volume * track.duckGain);
+  if (duckVolume >= track.volume - 0.000001) return [];
+
+  const overlaps = mergeIntervals(intersectIntervals(track, voiceIntervals), track.duckFade * 2);
+  const keyframes: { time: number; volume: number }[] = [];
+  const add = (time: number, volume: number) => {
+    const point = roundedKeyframe(time, volume);
+    const previous = keyframes.at(-1);
+    if (previous && Math.abs(previous.time - point.time) < 0.000001) {
+      previous.volume = point.volume;
+    } else {
+      keyframes.push(point);
+    }
+  };
+
+  for (const overlap of overlaps) {
+    const duration = overlap.end - overlap.start;
+    const fade = Math.min(track.duckFade, duration / 2);
+    const rampStart = Math.max(track.start, overlap.start - fade);
+    const rampEnd = Math.min(track.end, overlap.end + fade);
+
+    if (rampStart < overlap.start) add(rampStart, track.volume);
+    add(overlap.start, duckVolume);
+    add(overlap.end, duckVolume);
+    if (rampEnd > overlap.end) add(rampEnd, track.volume);
+  }
+
+  return keyframes;
 }
 
 // ── Core compilation ─────────────────────────────────────────────────────
@@ -175,6 +346,42 @@ export function compileTimingAttrs(html: string): CompilationResult {
   });
 
   return { html, unresolved };
+}
+
+/**
+ * Compile declarative audio ducking into an internal volume multiplier envelope.
+ *
+ * `data-duck` stays authored source-of-truth. The generated
+ * `data-hf-duck-keyframes` attribute is intentionally internal so repeated
+ * compilation can replace it without multiplying the duck curve twice.
+ */
+export function compileAudioDucking(html: string): string {
+  const mediaTags = Array.from(html.matchAll(/<(?:audio|video)\b[^>]*>/gi), (match) => match[0]);
+  const clips = mediaTags
+    .map((tag) => readMediaTimingClip(tag))
+    .filter((clip): clip is MediaTimingClip => clip !== null);
+  const voiceIntervals = mergeIntervals(
+    clips
+      .filter((clip) => clip.role === "voice" && isAudibleClip(clip))
+      .map((clip) => ({ start: clip.start, end: clip.end })),
+    0,
+  );
+
+  const duckKeyframesById = new Map<string, { time: number; volume: number }[]>();
+  for (const clip of clips) {
+    if (clip.duckGain === null || !isAudibleClip(clip)) continue;
+    const keyframes = createDuckKeyframes(clip, voiceIntervals);
+    if (keyframes.length > 0) duckKeyframesById.set(clip.id, keyframes);
+  }
+
+  return html.replace(/<(?:audio|video)\b[^>]*>/gi, (tag) => {
+    const id = getAttr(tag, "id");
+    const keyframes = id ? duckKeyframesById.get(id) : undefined;
+    if (keyframes && keyframes.length > 0) {
+      return setAttr(tag, DUCK_KEYFRAMES_ATTR, JSON.stringify(keyframes));
+    }
+    return hasAttr(tag, DUCK_KEYFRAMES_ATTR) ? removeAttr(tag, DUCK_KEYFRAMES_ATTR) : tag;
+  });
 }
 
 /**

@@ -56,6 +56,9 @@ Common sizes:
 | `data-track-index` | All | Yes | Timeline track number. Controls z-ordering (higher = in front). Clips on the same track cannot overlap. |
 | `data-media-start` | video, audio | No | Playback offset / trim point in source file (seconds). Default: `0`. See [Data Attributes](/concepts/data-attributes). |
 | `data-volume` | audio, video | No | Volume level from `0` to `1`. Default: `1`. |
+| `data-role` | audio, video | No | Semantic audio role. Set `data-role="voice"` on narration or dialogue tracks that should trigger music ducking. |
+| `data-duck` | audio, video | No | Duck this track while any audible `data-role="voice"` clip overlaps it. Accepts dB (`"-12dB"` or `"-12"`) or a linear gain (`"0.25"`). |
+| `data-duck-fade` | audio, video | No | Ducking ramp duration in seconds. Default: `0.3`. |
 | `data-composition-id` | div | On compositions | Unique composition ID. Must match the key used in `window.__timelines`. |
 | `data-composition-src` | div | No | Path to external composition HTML file (for [nested compositions](#composition-clips)). |
 | `data-variable-values` | div | No | JSON object of values passed to a nested composition. The framework carries the values through, but your composition script must read and apply them manually. |
@@ -129,8 +132,30 @@ Common sizes:
     - `data-duration` is **optional** — defaults to the remaining duration of the source file from `data-media-start`
     - Audio clips are invisible — do not add `class="clip"` (there is nothing to show/hide)
     - `data-volume` controls volume — use `"0.5"` for background music at 50% volume
+    - `data-duck` lowers background music under clips marked `data-role="voice"`
     - `data-media-start` trims the beginning of the audio source, just like video
     - Multiple audio clips can overlap on different tracks for layered sound design
+
+    ```html
+    <audio
+      id="music"
+      src="./assets/music.mp3"
+      data-start="0"
+      data-duration="30"
+      data-track-index="1"
+      data-volume="0.8"
+      data-duck="-12dB"
+      data-duck-fade="0.3"
+    ></audio>
+    <audio
+      id="voiceover"
+      src="./assets/voiceover.mp3"
+      data-start="4"
+      data-duration="12"
+      data-track-index="2"
+      data-role="voice"
+    ></audio>
+    ```
   </Accordion>
 
   <Accordion title="Composition Clips (Nested)">

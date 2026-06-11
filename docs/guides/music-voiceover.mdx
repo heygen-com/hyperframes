@@ -1,0 +1,32 @@
+---
+title: Music + Voiceover
+description: "Balance background music under narration with declarative audio ducking."
+---
+
+Use `data-duck` when a music bed should automatically drop under narration or dialogue. Mark the narration with `data-role="voice"` and put the duck amount on the music track.
+
+```html index.html
+<audio
+  id="music"
+  src="assets/music.mp3"
+  data-start="0"
+  data-duration="30"
+  data-track-index="1"
+  data-volume="0.8"
+  data-duck="-12dB"
+  data-duck-fade="0.3"
+></audio>
+
+<audio
+  id="voiceover"
+  src="assets/voiceover.mp3"
+  data-start="4"
+  data-duration="12"
+  data-track-index="2"
+  data-role="voice"
+></audio>
+```
+
+`data-duck="-12dB"` lowers the music by 12 dB while the voice clip is audible. `data-duck-fade="0.3"` ramps into the lower level before the voice starts and ramps back out after it ends. If several voice clips are close together, short gaps are merged so the music does not pump between words.
+
+The ducking pass uses resolved clip timing, so it works best for timed `<audio>` clips and audible `<video data-has-audio="true">` clips. Audio started imperatively from script is outside this compile-time calculation.

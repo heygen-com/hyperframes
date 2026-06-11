@@ -1,6 +1,7 @@
 import { resolve } from "path";
 import {
   compileTimingAttrs,
+  compileAudioDucking,
   injectDurations,
   extractResolvedMedia,
   clampDurations,
@@ -37,7 +38,7 @@ export async function compileHtml(
   const { html: staticCompiled, unresolved } = compileTimingAttrs(rawHtml);
   let html = staticCompiled;
 
-  if (!probeMediaDuration) return html;
+  if (!probeMediaDuration) return compileAudioDucking(html);
 
   // Phase 1: Resolve missing durations
   const mediaUnresolved = unresolved.filter(
@@ -86,5 +87,5 @@ export async function compileHtml(
     html = clampDurations(html, clampList);
   }
 
-  return html;
+  return compileAudioDucking(html);
 }
