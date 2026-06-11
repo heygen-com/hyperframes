@@ -80,6 +80,7 @@ COPY packages/studio/package.json packages/studio/package.json
 COPY packages/shader-transitions/package.json packages/shader-transitions/package.json
 COPY packages/aws-lambda/package.json packages/aws-lambda/package.json
 COPY packages/gcp-cloud-run/package.json packages/gcp-cloud-run/package.json
+COPY packages/sdk/package.json packages/sdk/package.json
 RUN bun install --frozen-lockfile
 
 # Copy source
