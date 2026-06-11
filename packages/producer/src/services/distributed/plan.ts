@@ -128,6 +128,23 @@ export interface DistributedRenderConfig {
   chunkSize?: number;
   /** Default `16`. Caps long renders to fewer-but-longer chunks for operational fairness. */
   maxParallelChunks?: number;
+  /**
+   * Upper bound on frames-per-chunk, in frames. Optional; when omitted (the
+   * default) chunk sizing is unchanged. When set, chunking targets the fewest
+   * chunks whose per-chunk frame count stays at or below this bound, still
+   * capped by `maxParallelChunks`:
+   *
+   *     chunkCount = clamp(ceil(totalFrames / targetChunkFrames), 1, maxParallelChunks)
+   *
+   * This bounds per-chunk render *time* (which scales with frames-per-chunk) so
+   * a single chunk can't exceed a downstream per-chunk timeout on a long video,
+   * while short videos still collapse to few chunks. It is a ceiling, not a
+   * fixed size: a video short enough to fit in fewer chunks gets fewer. Ignored
+   * when `chunkSize` is set (an explicit fixed size already pins per-chunk
+   * frames). Mutually exclusive with `chunkSize` in intent; if both are passed,
+   * `chunkSize` wins and `targetChunkFrames` is a no-op.
+   */
+  targetChunkFrames?: number;
   /** Runtime hint; consumed by future per-runtime budget checks. The current implementation records the value but does not enforce. */
   runtimeCap?: "lambda" | "temporal" | "cloud-run-job" | "k8s-job" | "none";
 
@@ -410,11 +427,18 @@ export function measurePlanDirBytes(planDir: string): number {
  * the caller's fan-out intent: passing `maxParallelChunks=16` without
  * `chunkSize` produces 16 chunks (subject to the `MIN_CHUNK_SIZE` floor
  * on tiny renders). Explicit numbers, including `240`, take precedence.
+ *
+ * Optional `targetChunkFrames` caps per-chunk frames in the auto-sized path:
+ * the auto-sizer then targets `clamp(ceil(totalFrames / targetChunkFrames), 1,
+ * maxParallelChunks)` chunks, so short videos collapse to fewer chunks and long
+ * videos add chunks (up to the cap) to keep each one under the bound. It is a
+ * no-op when omitted, and ignored when `configChunkSize` is set.
  */
 export function resolveChunkPlan(
   totalFrames: number,
   configChunkSize: number | undefined,
   maxParallelChunks: number,
+  targetChunkFrames?: number,
 ): { chunkCount: number; effectiveChunkSize: number } {
   // Integer-only inputs: a fractional `totalFrames` (e.g. 10.5) would
   // otherwise produce a last chunk with non-integer `endFrame`, and the
@@ -430,8 +454,22 @@ export function resolveChunkPlan(
   if (configChunkSize !== undefined) {
     assertPositiveInteger("configChunkSize", configChunkSize);
   }
+  if (targetChunkFrames !== undefined) {
+    assertPositiveInteger("targetChunkFrames", targetChunkFrames);
+  }
+  // `targetChunkFrames` lowers the auto-sizer's effective parallelism so the
+  // chosen chunk count keeps frames-per-chunk at or below the bound, without
+  // ever exceeding `maxParallelChunks`. It only affects the auto-sized path
+  // (`configChunkSize === undefined`); an explicit `chunkSize` already pins
+  // per-chunk frames and takes precedence. When `targetChunkFrames` is
+  // undefined, `autoSizeParallel === maxParallelChunks` and the auto-sized
+  // chunk size is identical to the prior behavior.
+  const autoSizeParallel =
+    targetChunkFrames === undefined
+      ? maxParallelChunks
+      : Math.min(maxParallelChunks, Math.max(1, Math.ceil(totalFrames / targetChunkFrames)));
   const resolvedChunkSize =
-    configChunkSize ?? Math.max(MIN_CHUNK_SIZE, Math.ceil(totalFrames / maxParallelChunks));
+    configChunkSize ?? Math.max(MIN_CHUNK_SIZE, Math.ceil(totalFrames / autoSizeParallel));
   const naiveCount = Math.ceil(totalFrames / resolvedChunkSize);
   const chunkCount = Math.min(maxParallelChunks, Math.max(1, naiveCount));
   const effectiveChunkSize = Math.max(resolvedChunkSize, Math.ceil(totalFrames / chunkCount));
@@ -890,6 +928,7 @@ export async function plan(
     totalFrames,
     config.chunkSize,
     maxParallel,
+    config.targetChunkFrames,
   );
   const chunks = buildChunkSlices(totalFrames, chunkCount, effectiveChunkSize);
 

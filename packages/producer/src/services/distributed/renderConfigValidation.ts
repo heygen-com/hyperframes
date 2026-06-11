@@ -160,6 +160,21 @@ export function validateDistributedRenderConfig(
     }
   }
 
+  if (config.targetChunkFrames !== undefined) {
+    if (!Number.isInteger(config.targetChunkFrames) || config.targetChunkFrames < 1) {
+      throw new InvalidConfigError(
+        "config.targetChunkFrames",
+        `must be a positive integer; got ${config.targetChunkFrames}`,
+      );
+    }
+    if (config.targetChunkFrames > MAX_CHUNK_SIZE) {
+      throw new InvalidConfigError(
+        "config.targetChunkFrames",
+        `must be <= ${MAX_CHUNK_SIZE}; got ${config.targetChunkFrames}`,
+      );
+    }
+  }
+
   if (config.runtimeCap !== undefined && !ALLOWED_RUNTIME_CAPS.includes(config.runtimeCap)) {
     throw new InvalidConfigError(
       "config.runtimeCap",
