@@ -42,7 +42,6 @@ import type { EditHistoryKind } from "../utils/editHistory";
 import { useDomEditTextCommits } from "./useDomEditTextCommits";
 
 // ── Helpers ──
-
 type TimelineLike = { getChildren?: (nested: boolean) => Array<{ targets?: () => Element[] }> };
 
 // fallow-ignore-next-line complexity
