@@ -31,6 +31,10 @@ export type AgentRuntime =
   | "openclaw"
   | "pi"
   | "gemini_managed_agent"
+  | "windsurf"
+  | "cline"
+  | "gemini_cli"
+  | "crush"
   | null;
 
 interface VendorRule {
@@ -70,12 +74,25 @@ const VENDOR_RULES: VendorRule[] = [
       typeof env["CODEX_CI"] === "string" ||
       typeof env["CODEX_SANDBOX_NETWORK_DISABLED"] === "string",
   },
-  // Cursor IDE integrated terminal — exports TERM_PROGRAM=cursor.
-  // Cursor Background Agent env vars are not publicly documented; if a
-  // canonical marker is identified later, add it here.
+  // Cursor IDE integrated terminal — exports TERM_PROGRAM=cursor. Compared
+  // case-insensitively for parity with the Windsurf rule below: Cursor sets
+  // lowercase today, but matching loosely costs nothing and won't miss a
+  // capitalized variant. Cursor Background Agent env vars are not publicly
+  // documented; if a canonical marker is identified later, add it here.
   {
     name: "cursor",
-    check: (env) => env["TERM_PROGRAM"] === "cursor",
+    check: (env) => env["TERM_PROGRAM"]?.toLowerCase() === "cursor",
+  },
+  // Windsurf (Codeium) integrated terminal — exports TERM_PROGRAM=windsurf, the
+  // direct analog of the Cursor rule above. Attested across many independent
+  // detectors (nx packages/nx/src/native/ide/detection.rs, adonisjs/application,
+  // ag-grid git-hooks). Compared case-insensitively because sources disagree on
+  // casing ("windsurf" vs "Windsurf"). Like Cursor this marks the editor's
+  // integrated terminal, not specifically that the Cascade agent is driving;
+  // under WSL/remote it can also fall back to TERM_PROGRAM=vscode.
+  {
+    name: "windsurf",
+    check: (env) => env["TERM_PROGRAM"]?.toLowerCase() === "windsurf",
   },
   // GitHub Copilot Coding Agent — runs inside GitHub Actions and the
   // workflow injects an additional marker to distinguish from generic CI.
@@ -125,7 +142,73 @@ const VENDOR_RULES: VendorRule[] = [
     name: "pi",
     check: (env) => typeof env["PI_CODING_AGENT"] === "string",
   },
+  // Cline (cline/cline) VS Code extension — injects CLINE_ACTIVE=true into the
+  // integrated terminal via vscode.TerminalOptions.env, which the terminal
+  // exports to every shell command run in it
+  // (apps/vscode/src/hosts/vscode/terminal/VscodeTerminalRegistry.ts:29).
+  // Caveat: present only on the default "vscodeTerminal" exec path — the opt-in
+  // backgroundExec/YOLO path spawns via child_process without the marker. Same
+  // integrated-terminal-only scope as the Cursor/Windsurf rules above.
+  // Source: https://github.com/cline/cline (VscodeTerminalRegistry.ts:29)
+  {
+    name: "cline",
+    check: (env) => typeof env["CLINE_ACTIVE"] === "string",
+  },
+  // Google Gemini CLI (open-source @google/gemini-cli) — DISTINCT from the
+  // Gemini managed-agent sandbox. (If a /.agents/ filesystem detector is
+  // present in detectAgentRuntime() it runs ahead of this loop and wins for a
+  // managed-agent sandbox, leaving this rule to match only the local CLI.)
+  // The shell-execution service
+  // sets GEMINI_CLI=1 on the child env of every shell command it spawns, so
+  // downstream executables can tell they were launched by Gemini CLI
+  // (packages/core/src/services/shellExecutionService.ts:56,486-487 — spread
+  // onto baseEnv after sanitizeEnvironment, passed as env: to both the
+  // child_process and node-pty spawn paths).
+  // Caveat: under STRICT sanitization (when GITHUB_SHA is set / the GitHub
+  // Action surface) GEMINI_CLI is not allow-listed and gets stripped — reliable
+  // for the local CLI, not inside Gemini's GitHub Action runner.
+  // Source: https://github.com/google-gemini/gemini-cli (shellExecutionService.ts:56,486-487)
+  {
+    name: "gemini_cli",
+    check: (env) => typeof env["GEMINI_CLI"] === "string",
+  },
+  // Crush (charmbracelet/crush) — internal/shell/shell.go:43-48,98
+  // unconditionally appends CRUSH=1 (plus generic AGENT=crush / AI_AGENT=crush)
+  // to the env of every shell it spawns: both the interactive bash tool and the
+  // hook runner. We key on CRUSH since AGENT/AI_AGENT are generic and collide.
+  // Source: https://github.com/charmbracelet/crush (internal/shell/shell.go:43-48,98)
+  {
+    name: "crush",
+    check: (env) => typeof env["CRUSH"] === "string",
+  },
 ];
+
+// Agents evaluated and deliberately NOT added. Each fails the bar the rules
+// above meet — a marker reliably present in the environment of the
+// shell/subprocess the agent spawns. Recorded here (not only in the PR) so the
+// next person doesn't re-derive it:
+//   - OpenHands — OPENHANDS_BUILD_GIT_SHA/_REF exists in the agent-server
+//     Dockerfile (base-image-minimal stage, added 2025-11-09 in PR #1100) but
+//     is empirically ABSENT from the runtime env of every published
+//     ghcr.io/openhands/agent-server image inspected (12+ tags, 2025-10 →
+//     2026-01, incl. the introducing PR's merge commit). The declared ENV
+//     never reaches the published image. Re-add only if a real published image
+//     carries it in `docker inspect .Config.Env`.
+//   - Aider — sets no self-identifying env var; both shell-spawn sites
+//     (run_cmd.py Popen / pexpect.spawn) pass no env=, so children inherit
+//     os.environ verbatim.
+//   - Goose — AGENT=goose/GOOSE_TERMINAL=1 are set on the recipe-retry path
+//     and the computercontroller MCP extension, but NOT on the default
+//     developer `shell` tool (sets only PATH+cwd), so the primary path is
+//     undetected.
+//   - opencode — OPENCODE_TERMINAL=1 is set only on the interactive PTY panel,
+//     not on the model's bash/shell tool.
+//   - Roo Code — ROO_ACTIVE is set only on the `vscode` terminal provider; the
+//     shipped default is the execa provider (terminalShellIntegrationDisabled
+//     defaults true), which sets no marker.
+//   - Amp / Devin / Jules / Factory Droid — no verifiable unconditional runtime
+//     marker (Amp is closed/minified; Devin/Jules are closed sandboxes;
+//     Factory's FACTORY_PROJECT_DIR / DROID_PLUGIN_ROOT are hook-scoped only).
 
 /**
  * Identify the managed sandbox runtime hosting this CLI invocation.

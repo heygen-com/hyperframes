@@ -20,6 +20,9 @@ const VENDOR_ENV_KEYS = [
   "OPENCLAW_STATE_DIR",
   "OPENCLAW_CONFIG_PATH",
   "PI_CODING_AGENT",
+  "CLINE_ACTIVE",
+  "GEMINI_CLI",
+  "CRUSH",
 ] as const;
 
 function stripVendorEnv(): void {
@@ -117,6 +120,12 @@ describe("detectAgentRuntime — Cursor / Copilot / cohort", () => {
     expect(detectAgentRuntime()).toBe("cursor");
   });
 
+  it("detects Cursor case-insensitively (TERM_PROGRAM=Cursor)", async () => {
+    process.env["TERM_PROGRAM"] = "Cursor";
+    const { detectAgentRuntime } = await import("./agent_runtime.js");
+    expect(detectAgentRuntime()).toBe("cursor");
+  });
+
   it("detects Copilot Coding Agent via GITHUB_ACTIONS + COPILOT_AGENT_ID", async () => {
     process.env["GITHUB_ACTIONS"] = "true";
     process.env["COPILOT_AGENT_ID"] = "abc123";
@@ -175,6 +184,11 @@ describe("detectAgentRuntime — Gemini managed agent", () => {
   });
 
   afterEach(() => {
+    // Clear the node:os / node:fs doMock registrations so they don't leak into
+    // the env-var-only suites that follow (restoreAllMocks does not undo
+    // doMock, and those suites don't resetModules in beforeEach).
+    vi.doUnmock("node:os");
+    vi.doUnmock("node:fs");
     vi.resetModules();
     vi.restoreAllMocks();
   });
@@ -275,6 +289,50 @@ describe("detectAgentRuntime — Gemini managed agent", () => {
     mockAgentsDir();
     const { detectAgentRuntime } = await import("./agent_runtime.js");
     expect(detectAgentRuntime()).toBe("gemini_managed_agent");
+  });
+});
+
+describe("detectAgentRuntime — Windsurf / Cline / Gemini CLI / Crush", () => {
+  const savedEnv = { ...process.env };
+  beforeEach(stripVendorEnv);
+  afterEach(() => {
+    process.env = { ...savedEnv };
+  });
+
+  it("detects Windsurf via TERM_PROGRAM=windsurf", async () => {
+    process.env["TERM_PROGRAM"] = "windsurf";
+    const { detectAgentRuntime } = await import("./agent_runtime.js");
+    expect(detectAgentRuntime()).toBe("windsurf");
+  });
+
+  it("detects Windsurf case-insensitively (TERM_PROGRAM=Windsurf)", async () => {
+    process.env["TERM_PROGRAM"] = "Windsurf";
+    const { detectAgentRuntime } = await import("./agent_runtime.js");
+    expect(detectAgentRuntime()).toBe("windsurf");
+  });
+
+  it("detects Cline via CLINE_ACTIVE (default vscode-terminal path)", async () => {
+    process.env["CLINE_ACTIVE"] = "true";
+    const { detectAgentRuntime } = await import("./agent_runtime.js");
+    expect(detectAgentRuntime()).toBe("cline");
+  });
+
+  it("detects Gemini CLI via GEMINI_CLI", async () => {
+    process.env["GEMINI_CLI"] = "1";
+    const { detectAgentRuntime } = await import("./agent_runtime.js");
+    expect(detectAgentRuntime()).toBe("gemini_cli");
+  });
+
+  it("detects Crush via CRUSH (set unconditionally on every spawned shell)", async () => {
+    process.env["CRUSH"] = "1";
+    const { detectAgentRuntime } = await import("./agent_runtime.js");
+    expect(detectAgentRuntime()).toBe("crush");
+  });
+
+  it("does NOT misread the user-set value (existence only) — GEMINI_CLI key shape ignored", async () => {
+    process.env["GEMINI_CLI"] = "anything";
+    const { detectAgentRuntime } = await import("./agent_runtime.js");
+    expect(detectAgentRuntime()).toBe("gemini_cli");
   });
 });
 
