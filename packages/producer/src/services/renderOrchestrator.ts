@@ -1436,24 +1436,12 @@ export function shouldUseStreamingEncode(
   if (outputFormat === "png-sequence") return false;
   if (outputFormat === "gif") return false;
   if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) return false;
-  // Duration cap for single-worker: `streamingEncodeMaxDurationSeconds` (default 240s).
-  // Duration cap for multi-worker: a more generous fixed cap (3× the default, 720s).
-  //
-  // Why caps differ:
-  //   Single-worker: if FFmpeg is slower than capture, `writeFrame` back-pressure
-  //   accumulates in the Node writable-stream buffer without bound (Node honours
-  //   highWaterMark as advisory). The cap limits worst-case buffer growth.
-  //
-  //   Multi-worker (interleaved): on the *capture→reorder* side, in-flight frame
-  //   buffers are bounded by `workerCount` because each worker blocks at
-  //   `reorderBuffer.waitForFrame` before capturing the next frame. On the
-  //   *reorder→FFmpeg* side the same unbounded-buffer risk applies: if FFmpeg
-  //   encodes slower than workers capture, the Node stdin buffer still grows.
-  //   Worst case (3 workers × 1hr): ~80 GB buffer growth → OOM. The 720s cap
-  //   bounds this to a tolerable ~20 GB ceiling and covers practical workloads
-  //   (the longest known composition at time of writing is ~548s). The durable
-  //   fix is real back-pressure in `writeFrame` (await drain when
-  //   `accepted === false`) — tracked as a follow-up issue.
+  // Capture-side: workers serialize through FrameReorderBuffer, so at most
+  // workerCount captured frames are in flight at any moment. The encoder-side
+  // buffer (Node stdin → FFmpeg) is NOT explicitly bounded and relies on FFmpeg
+  // keeping up with workerCount × per-worker-fps. Long comps + slow encode
+  // can still grow Node's internal write buffer — see streamingEncodeMaxDurationSeconds
+  // for the single-worker safeguard.
   // Multi-worker cap is fixed at 1800s (30 min), independent of the single-worker
   // config value. Rationale: 1800s is 3× the longest known practical composition
   // (~548s), giving real-world headroom while keeping worst-case Node buffer growth
