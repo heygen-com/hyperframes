@@ -120,12 +120,6 @@ describe("detectAgentRuntime — Cursor / Copilot / cohort", () => {
     expect(detectAgentRuntime()).toBe("cursor");
   });
 
-  it("detects Cursor case-insensitively (TERM_PROGRAM=Cursor)", async () => {
-    process.env["TERM_PROGRAM"] = "Cursor";
-    const { detectAgentRuntime } = await import("./agent_runtime.js");
-    expect(detectAgentRuntime()).toBe("cursor");
-  });
-
   it("detects Copilot Coding Agent via GITHUB_ACTIONS + COPILOT_AGENT_ID", async () => {
     process.env["GITHUB_ACTIONS"] = "true";
     process.env["COPILOT_AGENT_ID"] = "abc123";

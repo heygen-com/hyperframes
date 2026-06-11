@@ -74,22 +74,21 @@ const VENDOR_RULES: VendorRule[] = [
       typeof env["CODEX_CI"] === "string" ||
       typeof env["CODEX_SANDBOX_NETWORK_DISABLED"] === "string",
   },
-  // Cursor IDE integrated terminal — exports TERM_PROGRAM=cursor. Compared
-  // case-insensitively for parity with the Windsurf rule below: Cursor sets
-  // lowercase today, but matching loosely costs nothing and won't miss a
-  // capitalized variant. Cursor Background Agent env vars are not publicly
-  // documented; if a canonical marker is identified later, add it here.
+  // Cursor IDE integrated terminal — exports TERM_PROGRAM=cursor (exact,
+  // lowercase). Cursor Background Agent env vars are not publicly documented;
+  // if a canonical marker is identified later, add it here.
   {
     name: "cursor",
-    check: (env) => env["TERM_PROGRAM"]?.toLowerCase() === "cursor",
+    check: (env) => env["TERM_PROGRAM"] === "cursor",
   },
-  // Windsurf (Codeium) integrated terminal — exports TERM_PROGRAM=windsurf, the
-  // direct analog of the Cursor rule above. Attested across many independent
-  // detectors (nx packages/nx/src/native/ide/detection.rs, adonisjs/application,
-  // ag-grid git-hooks). Compared case-insensitively because sources disagree on
-  // casing ("windsurf" vs "Windsurf"). Like Cursor this marks the editor's
-  // integrated terminal, not specifically that the Cascade agent is driving;
-  // under WSL/remote it can also fall back to TERM_PROGRAM=vscode.
+  // Windsurf (Codeium) integrated terminal — exports TERM_PROGRAM=windsurf.
+  // Attested across many independent detectors (nx
+  // packages/nx/src/native/ide/detection.rs, adonisjs/application, ag-grid
+  // git-hooks). Compared case-INsensitively (unlike the exact Cursor rule
+  // above) because Windsurf sources disagree on casing ("windsurf" vs
+  // "Windsurf"); Cursor's do not, so it stays exact. Like Cursor this marks the
+  // editor's integrated terminal, not specifically that the Cascade agent is
+  // driving; under WSL/remote it can also fall back to TERM_PROGRAM=vscode.
   {
     name: "windsurf",
     check: (env) => env["TERM_PROGRAM"]?.toLowerCase() === "windsurf",
