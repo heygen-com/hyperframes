@@ -51,6 +51,7 @@ function ensureElementAddressable(selection: DomEditSelection): {
 
 interface MutationResult {
   ok: boolean;
+  changed?: boolean;
   parsed?: ParsedGsap;
   before?: string;
   after?: string;
@@ -131,9 +132,16 @@ export function useGsapScriptCommits({
       const pid = projectIdRef.current;
       if (!pid) return;
       const targetPath = selection.sourceFile || activeCompPath || "index.html";
-
       const result = await mutateGsapScript(pid, targetPath, mutation);
-      if (!result?.ok) return;
+      if (!result) {
+        if (options.skipReload) return;
+        throw new Error(`Mutation failed: ${mutation.type}`);
+      }
+
+      if (result.changed === false) {
+        if (options.skipReload) return;
+        return;
+      }
 
       domEditSaveTimestampRef.current = Date.now();
 
