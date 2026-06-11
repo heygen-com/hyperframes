@@ -19,8 +19,12 @@
  * 1 channel silently produces a garbage matte (top-third smeared + striped).
  *
  *   node matte.cjs <project-dir>
+ *   node matte.cjs --ensure-model   (pre-warm: download/verify the model, print its path)
  * Reads:  <project>/source.mp4  OR  <project>/frames_bg/f_%04d.png
  * Writes: <project>/frames_fg/f_%04d.png (RGBA, subject opaque), <project>/matte.fps
+ * Model:  downloaded on demand (sha256-pinned) to ~/.cache/hyperframes/matting/ from
+ *         the repo's model-assets-v1 release; offline hosts can pre-place the file
+ *         there or set MATTE_MODEL.
  * Env:    MATTE_MODEL — path to an alternative ppmattingv2 ONNX (dims parsed from the
  *                       `<H>x<W>.onnx` filename suffix, e.g. 1088x1920 for max detail)
  *         MATTE_EMA   — temporal smoothing weight for the NEW frame (default 0.5;
@@ -62,11 +66,19 @@ function hfResolve(pkg) {
 const ort = hfResolve("onnxruntime-node");
 const sharp = hfResolve("sharp");
 
-// Bundled with the skill (no auto-download: the upstream ONNX exports have no stable
-// public URL). MATTE_MODEL may point at any ppmattingv2 `<H>x<W>.onnx` export.
+// Model resolution: MATTE_MODEL env → copy bundled next to the skill (legacy
+// checkouts) → ~/.cache/hyperframes/matting (downloaded on demand). The upstream
+// PaddleSeg ONNX exports have no stable public URL, so the exact blob is hosted on
+// the repo's `model-assets-v1` GitHub release (same pattern as the CLI's
+// background-removal manager pulling u2net from rembg's release) and sha256-pinned
+// here. MATTE_MODEL may point at any ppmattingv2 `<H>x<W>.onnx` export.
+const MODEL_NAME = "ppmattingv2_stdc1_human_544x960.onnx";
+const MODEL_URL = `https://github.com/heygen-com/hyperframes/releases/download/model-assets-v1/${MODEL_NAME}`;
+const MODEL_SHA256 = "75df19af62aaf0453e24444e7ee3cdf8d8de0f628aa9f59c30248cf6220ee9f6";
+const BUNDLED_MODEL = path.resolve(__dirname, "..", "assets", MODEL_NAME);
+const CACHED_MODEL = path.join(os.homedir(), ".cache", "hyperframes", "matting", MODEL_NAME);
 const MODEL =
-  process.env.MATTE_MODEL ||
-  path.resolve(__dirname, "..", "assets", "ppmattingv2_stdc1_human_544x960.onnx");
+  process.env.MATTE_MODEL || (fs.existsSync(BUNDLED_MODEL) ? BUNDLED_MODEL : CACHED_MODEL);
 const EMA = (() => {
   const v = parseFloat(process.env.MATTE_EMA || "0.5");
   return v > 0 && v <= 1 ? v : 0.5;
@@ -80,14 +92,34 @@ function modelDims(modelPath) {
   }
   return { MH: parseInt(m[1], 10), MW: parseInt(m[2], 10) };
 }
-function ensureModel() {
+async function ensureModel() {
   if (fs.existsSync(MODEL)) return;
-  console.error(`[matte] model missing: ${MODEL}`);
-  console.error(`        The PP-MattingV2 ONNX ships with this skill (assets/). If you moved the`);
-  console.error(
-    `        skill, restore assets/ppmattingv2_stdc1_human_544x960.onnx or set MATTE_MODEL.`,
-  );
-  process.exit(3);
+  if (MODEL !== CACHED_MODEL) {
+    console.error(`[matte] model missing: ${MODEL}`);
+    console.error(`        MATTE_MODEL points at a file that does not exist — fix the path, or`);
+    console.error(`        unset it to auto-download the default model.`);
+    process.exit(3);
+  }
+  console.error(`[matte] model not cached — downloading PP-MattingV2 (~34 MB, one-time)…`);
+  console.error(`        ${MODEL_URL}`);
+  const res = await fetch(MODEL_URL);
+  if (!res.ok) {
+    console.error(`[matte] model download failed (HTTP ${res.status}).`);
+    console.error(`        Download it manually to ${CACHED_MODEL}`);
+    console.error(`        or set MATTE_MODEL to a local copy.`);
+    process.exit(3);
+  }
+  const buf = Buffer.from(await res.arrayBuffer());
+  const sha = require("crypto").createHash("sha256").update(buf).digest("hex");
+  if (sha !== MODEL_SHA256) {
+    console.error(`[matte] sha256 mismatch on downloaded model (got ${sha}) — refusing to use it.`);
+    process.exit(3);
+  }
+  fs.mkdirSync(path.dirname(CACHED_MODEL), { recursive: true });
+  const tmp = `${CACHED_MODEL}.${process.pid}.part`; // same-dir temp → atomic rename
+  fs.writeFileSync(tmp, buf);
+  fs.renameSync(tmp, CACHED_MODEL);
+  console.error(`[matte] model cached ✓ ${CACHED_MODEL}`);
 }
 
 function ensureSource(project) {
@@ -158,9 +190,14 @@ function extractFrames(src, dst, fps) {
 }
 
 async function main() {
+  if (process.argv[2] === "--ensure-model") {
+    await ensureModel();
+    console.log(MODEL);
+    return;
+  }
   const project = path.resolve(process.argv[2] || "");
   if (!process.argv[2]) {
-    console.error("usage: matte.cjs <project-dir>");
+    console.error("usage: matte.cjs <project-dir> | --ensure-model");
     process.exit(1);
   }
   const src = ensureSource(project);
@@ -171,7 +208,7 @@ async function main() {
     console.error(`[matte] no source video found in ${project}`);
     process.exit(2);
   }
-  ensureModel();
+  await ensureModel();
 
   if (fs.existsSync(src) && !fs.existsSync(framesBg)) {
     const fps = probeFps(src);
