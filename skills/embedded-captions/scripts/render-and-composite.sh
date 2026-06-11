@@ -262,9 +262,9 @@ hf_render_dir() {
   # bash 3.2 (macOS) throws on empty-array expansion under `set -u`, so branch
   # explicitly instead of splatting an optional --format array.
   if [[ -n "$fmt" ]]; then
-    node "$HF_CLI" render --dir "$proj" --fps "$FPS" --format "$fmt" -o "$out" &
+    node "$HF_CLI" render --dir "$proj" --fps "$FPS" --format "$fmt" --crf 11 -o "$out" &
   else
-    node "$HF_CLI" render --dir "$proj" --fps "$FPS" -o "$out" &
+    node "$HF_CLI" render --dir "$proj" --fps "$FPS" --crf 11 -o "$out" &
   fi
   local pid=$! start=$SECONDS elapsed
   while kill -0 "$pid" 2>/dev/null; do
@@ -365,9 +365,16 @@ H="$(ffprobe -v error -select_streams v:0 -show_entries stream=height -of defaul
 # plan.duration / data-duration, which can exceed the source (e.g. Whisper word
 # timestamps overrun the clip). Past the source the a-roll is gone (black) but the
 # matte overlay repeats its last frame → the tail shows the subject floating on
-# black. frames_fg is extracted at the source's native rate, so its count/fps IS
-# the true source length; cap output there.
+# black. frames_fg count/fps APPROXIMATES the source length, but fractional-rate
+# sources (29.97) get over-extracted by integer-fps rounding (e.g. 544 frames for
+# a 542-frame 18.085s clip -> 544/30 = 18.133s -> ~1.5 trailing BLACK frames after
+# the a-roll stream ends). The true a-roll duration is authoritative: clamp to
+# min(matte frames / fps, source duration).
 MATTE_DUR="$(awk "BEGIN{printf \"%.3f\", $(ls "$PROJECT/frames_fg" | wc -l)/$FPS}")"
+SRC_DUR="$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$PROJECT/source.mp4" 2>/dev/null || true)"
+if [[ -n "${SRC_DUR:-}" ]]; then
+  MATTE_DUR="$(awk "BEGIN{m=$MATTE_DUR; s=$SRC_DUR; printf \"%.3f\", (s>0 && s<m) ? s : m}")"
+fi
 echo "[render] clamp output to source/matte length: ${MATTE_DUR}s"
 
 # Bug-1 guard: the background plate ($BG) must be at least the matte/source length,
@@ -408,7 +415,7 @@ if [[ -f "$PROJECT/rail.html" ]]; then
     ffmpeg -y -i "$BG" \
       -framerate "$FPS" -i "$PROJECT/frames_fg/f_%04d.png" \
       -filter_complex "[1:v]scale=${W}:${H},format=yuva420p[m];[0:v][m]overlay=format=auto[v]" \
-      -map "[v]" -map 0:a -r "$FPS" -t "$MATTE_DUR" -c:v libx264 -crf 16 -preset medium -c:a copy "$MATTED"
+      -map "[v]" -map 0:a -r "$FPS" -t "$MATTE_DUR" -c:v libx264 -crf 11 -preset medium -c:a copy "$MATTED"
   fi
 
   # rail.webm was already rendered IN PARALLEL with the base pass above.
@@ -419,7 +426,7 @@ if [[ -f "$PROJECT/rail.html" ]]; then
   # decode so the WebM alpha plane is honoured by overlay)
   ffmpeg -y -i "$MATTED" -c:v libvpx-vp9 -i "$RAIL_WEBM" \
     -filter_complex "[0:v][1:v]overlay=format=auto[v]" \
-    -map "[v]" -map 0:a -r "$FPS" -t "$MATTE_DUR" -c:v libx264 -crf 16 -preset medium -c:a copy "$FINAL"
+    -map "[v]" -map 0:a -r "$FPS" -t "$MATTE_DUR" -c:v libx264 -crf 11 -preset medium -c:a copy "$FINAL"
   rm -f "$MATTED"
   if [[ -s "$GATES" ]]; then echo "[render] ── gates ──"; sed 's/^/[render]   /' "$GATES"; fi
 echo "[render] done → $FINAL"
@@ -445,14 +452,14 @@ if [[ -f "$PROJECT/index_fg.html" ]]; then
     -i "$FG_CAPS" \
     -filter_complex "[1:v]scale=${W}:${H},format=yuva420p[matte];[0:v][matte]overlay=format=auto,format=gbrp[matted];[2:v]format=gbrp[fg];[matted][fg]blend=all_mode=screen,format=yuv420p[v]" \
     -map "[v]" -map 0:a \
-    -r "$FPS" -t "$MATTE_DUR" -c:v libx264 -crf 18 -preset medium -c:a copy \
+    -r "$FPS" -t "$MATTE_DUR" -c:v libx264 -crf 12 -preset medium -c:a copy \
     "$FINAL"
 elif [[ "$CAPTION_LAYER" == "fg" ]]; then
   # Global FG mode: skip matte overlay entirely. bg_plus_caps.mp4 already
   # has captions on top of a-roll. Re-encode for consistency.
   echo "[render] fg mode (global) — skipping matte, re-encoding ${W}x${H}"
   ffmpeg -y -i "$BG" \
-    -r "$FPS" -t "$MATTE_DUR" -c:v libx264 -crf 18 -preset medium -c:a copy \
+    -r "$FPS" -t "$MATTE_DUR" -c:v libx264 -crf 12 -preset medium -c:a copy \
     "$FINAL"
 else
   echo "[render] bg mode — overlay matte (${W}x${H})"
@@ -460,7 +467,7 @@ else
     -framerate "$FPS" -i "$PROJECT/frames_fg/f_%04d.png" \
     -filter_complex "[1:v]scale=${W}:${H},format=yuva420p[fg];[0:v][fg]overlay=format=auto[v]" \
     -map "[v]" -map 0:a \
-    -r "$FPS" -t "$MATTE_DUR" -c:v libx264 -crf 18 -preset medium -c:a copy \
+    -r "$FPS" -t "$MATTE_DUR" -c:v libx264 -crf 12 -preset medium -c:a copy \
     "$FINAL"
 fi
 

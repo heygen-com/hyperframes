@@ -1,0 +1,21 @@
+{
+  "name": "lastpage",
+  "voice": "the speaker reads from a manuscript that already exists — a blurred future-transcript haunts the room all video; one rack-focus reveals every faint line was the apex word. The future was only ever one sentence.",
+  "when": "visionary thesis, prophecy-toned founder talks, trailers, literary content. Mid/dark scenes (the field needs air).",
+  "register": "literary-prophetic",
+  "fonts": { "body": "Cormorant Garamond" },
+  "palette": { "body": "#F0E9D8" },
+  "body": {
+    "paradigm": "lastpage",
+    "layer": "bg",
+    "fontPx": 44,
+    "bottomPx": 96,
+    "fieldCount": 9,
+    "fieldBlur": 9,
+    "seed": 4242
+  },
+  "hero": { "setpiece": "rackfocus", "inline": true, "params": {} },
+  "fx": {},
+  "plate": { "pushIn": 0.012, "grain": 6 },
+  "linkages": ["field-is-the-apex"]
+}

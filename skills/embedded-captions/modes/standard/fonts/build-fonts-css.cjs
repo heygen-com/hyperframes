@@ -20,51 +20,64 @@ const OUT = path.join(__dirname, "fonts.css");
 
 // slug → exact CSS family name (must match what templates declare in font-family).
 const FAMILY = {
-  "anton": "Anton",
-  "audiowide": "Audiowide",
-  "inter": "Inter",
+  anton: "Anton",
+  audiowide: "Audiowide",
+  inter: "Inter",
   "baloo-2": "Baloo 2",
-  "bangers": "Bangers",
+  bangers: "Bangers",
   "bodoni-moda": "Bodoni Moda",
-  "caveat": "Caveat",
-  "cinzel": "Cinzel",
+  caveat: "Caveat",
+  cinzel: "Cinzel",
   "cormorant-garamond": "Cormorant Garamond",
-  "creepster": "Creepster",
-  "fredoka": "Fredoka",
-  "monoton": "Monoton",
-  "orbitron": "Orbitron",
+  creepster: "Creepster",
+  fredoka: "Fredoka",
+  monoton: "Monoton",
+  orbitron: "Orbitron",
   "permanent-marker": "Permanent Marker",
   "press-start-2p": "Press Start 2P",
   "saira-stencil-one": "Saira Stencil One",
   "shippori-mincho": "Shippori Mincho",
-  "sora": "Sora",
+  rajdhani: "Rajdhani",
+  "chakra-petch": "Chakra Petch",
+  sora: "Sora",
   "space-grotesk": "Space Grotesk",
   "special-elite": "Special Elite",
-  "teko": "Teko",
-  "vt323": "VT323",
+  teko: "Teko",
+  vt323: "VT323",
 };
 
-const files = fs.readdirSync(FILES).filter((f) => f.endsWith(".woff2")).sort();
+const files = fs
+  .readdirSync(FILES)
+  .filter((f) => f.endsWith(".woff2"))
+  .sort();
 const faces = [];
 let raw = 0;
 const seenFamilies = new Set();
 for (const f of files) {
   const m = f.match(/^(.*)-latin-(\d+)-(normal|italic)\.woff2$/);
-  if (!m) { console.error(`[fonts] skip unrecognized filename: ${f}`); continue; }
-  const slug = m[1], weight = m[2], style = m[3];
+  if (!m) {
+    console.error(`[fonts] skip unrecognized filename: ${f}`);
+    continue;
+  }
+  const slug = m[1],
+    weight = m[2],
+    style = m[3];
   const family = FAMILY[slug];
-  if (!family) { console.error(`[fonts] no family mapping for slug "${slug}" (${f}) — add it to FAMILY`); process.exit(1); }
+  if (!family) {
+    console.error(`[fonts] no family mapping for slug "${slug}" (${f}) — add it to FAMILY`);
+    process.exit(1);
+  }
   const buf = fs.readFileSync(path.join(FILES, f));
   raw += buf.length;
   seenFamilies.add(family);
   faces.push(
     `@font-face {\n` +
-    `  font-family: '${family}';\n` +
-    `  font-style: ${style};\n` +
-    `  font-weight: ${weight};\n` +
-    `  font-display: block;\n` +  // block (not swap): render text only once the real face is ready — measure-layout + capture see the true glyphs, never a fallback flash
-    `  src: url(data:font/woff2;base64,${buf.toString("base64")}) format('woff2');\n` +
-    `}`
+      `  font-family: '${family}';\n` +
+      `  font-style: ${style};\n` +
+      `  font-weight: ${weight};\n` +
+      `  font-display: block;\n` + // block (not swap): render text only once the real face is ready — measure-layout + capture see the true glyphs, never a fallback flash
+      `  src: url(data:font/woff2;base64,${buf.toString("base64")}) format('woff2');\n` +
+      `}`,
   );
 }
 
@@ -78,5 +91,7 @@ const header =
 fs.writeFileSync(OUT, header + "\n" + faces.join("\n\n") + "\n");
 const outKb = Math.round(fs.statSync(OUT).size / 1024);
 console.log(`[fonts] wrote ${OUT}`);
-console.log(`[fonts] ${faces.length} faces, ${seenFamilies.size} families, ${outKb}KB css (${Math.round(raw / 1024)}KB raw)`);
+console.log(
+  `[fonts] ${faces.length} faces, ${seenFamilies.size} families, ${outKb}KB css (${Math.round(raw / 1024)}KB raw)`,
+);
 console.log(`[fonts] families: ${[...seenFamilies].sort().join(", ")}`);

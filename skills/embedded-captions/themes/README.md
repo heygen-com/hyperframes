@@ -42,36 +42,47 @@ phases, each gated on need — never rewrite for tidiness alone:
 
 ## Body paradigms (registry)
 
-| paradigm   | surface                                                           | layer | entrance verbs                                                         | exit verbs                                             |
-| ---------- | ----------------------------------------------------------------- | ----- | ---------------------------------------------------------------------- | ------------------------------------------------------ |
-| `rail`     | lower-third lines, replace                                        | fg    | `stamp` (1f hot appear→crush→recoil→cool), `flick` (tube double-flick) | `drop` (mass falls), `powercut` (bright→ghost→off)     |
-| `panel`    | docked glass console, accumulate + typed                          | fg    | `type` (width steps per word, $ prompt, caret blinks)                  | hold                                                   |
-| `poem`     | open-space stanzas, accumulate; letters CONDENSE from seeded dust | fg    | `condense`                                                             | `drift` (stanza hand-off) + optional dispersal linkage |
-| `takeover` | full-frame hard-cut cards, plate dimmed throughout                | bg    | `cut` (+ tension `creep` before silences, auto-detected)               | hard cut / blur dissolve                               |
+| paradigm   | surface                                                                                                  | layer | entrance verbs                                                                                                                                                                                                                               | exit verbs                                             |
+| ---------- | -------------------------------------------------------------------------------------------------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `rail`     | lower-third lines, replace                                                                               | fg    | `stamp` (1f hot appear→crush→recoil→cool), `flick` (tube double-flick), `bootflick` (corrupted-cyan boot 1–2f → settles to UI color; minors keep a cyan/red registration shadow). `stamp` minors cool to `palette.minorCool` (default amber) | `drop` (mass falls), `powercut` (bright→ghost→off)     |
+| `panel`    | docked glass console, accumulate + typed                                                                 | fg    | `type` (width steps per word, $ prompt, caret blinks)                                                                                                                                                                                        | hold                                                   |
+| `poem`     | open-space stanzas, accumulate; letters CONDENSE from seeded dust                                        | fg    | `condense`                                                                                                                                                                                                                                   | `drift` (stanza hand-off) + optional dispersal linkage |
+| `takeover` | full-frame hard-cut cards, plate dimmed throughout                                                       | bg    | `cut` (+ tension `creep` before silences, auto-detected)                                                                                                                                                                                     | hard cut / blur dissolve                               |
+| `lastpage` | manuscript rail (typed serif) + a seeded field of BLURRED apex-word instances haunting the room from t=0 | bg    | typed rail; field breathes imperceptibly                                                                                                                                                                                                     | rail fades; field resolves at apex (see `rackfocus`)   |
 
 fg body uses the **rail.html alpha-webm channel** (true alpha — dark panels and
 scrims work; never the screen-blend index_fg path, which can only add light).
 
 ## Hero setpieces (registry)
 
-| setpiece     | what happens                                                                                                                                                                                                | notes                                                                                |
-| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `detonation` | charge-dim → sheared stencil slices crush in hot → SNAP into register → squash → elastic settle → paint cools to bone → bars/ticks/designation-tag deploy → shear-apart exit                                | pairs with fx flash/rings/sparks + plate punch/shake                                 |
-| `decode`     | slot-machine glyph reels (steps() ease, seek-safe) lock left→right with RGB jitter → lock snap → CRT power-off exit                                                                                         | pairs with `redact-until-hero`                                                       |
-| `drawon`     | the word is WRITTEN stroke-by-stroke from a single-line font (Hershey) — per-stroke paths revealed sequentially at constant pen speed, nib rides `getPointAtLength`, hops at pen lifts; then hum + buzz dip | any word, zero tuning: `gen-stroke-path.py` lays out glyph pen-paths at compile time |
-| `assembly`   | (inline, poem) apex word condenses BIG while star particles fly into it                                                                                                                                     |                                                                                      |
-| `colorflip`  | (inline, takeover) accent-color crush card + dim kick + squash/settle + loom                                                                                                                                | pairs with fx flash + plate punch/shake                                              |
+| setpiece     | what happens                                                                                                                                                                                                                                                                                                                                                                                                                                         | notes                                                                                                                                                                                                                                                |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `detonation` | charge-dim → sheared stencil slices crush in hot → SNAP into register → squash → elastic settle → paint cools to bone → bars/ticks/designation-tag deploy → shear-apart exit                                                                                                                                                                                                                                                                         | pairs with fx flash/rings/sparks + plate punch/shake                                                                                                                                                                                                 |
+| `decode`     | slot-machine glyph reels (steps() ease, seek-safe) lock left→right with RGB jitter → lock snap → CRT power-off exit                                                                                                                                                                                                                                                                                                                                  | pairs with `redact-until-hero`                                                                                                                                                                                                                       |
+| `drawon`     | the word is WRITTEN stroke-by-stroke from a single-line font (Hershey) — per-stroke paths revealed sequentially at constant pen speed, nib rides `getPointAtLength`, hops at pen lifts; then hum + buzz dip                                                                                                                                                                                                                                          | any word, zero tuning: `gen-stroke-path.py` lays out glyph pen-paths at compile time                                                                                                                                                                 |
+| `cpslam`     | acid-yellow stencil word slams in BEHIND the subject with REAL diagonal notch cuts (SVG mask = true transparency over footage), chromatic split that settles to a PERMANENT cyan/red registration error, seeded glitch ticks, katakana tag, glitch-out exit                                                                                                                                                                                          | bounded hold (~2.6s default, `params.hold` / `hero.exitAt` override) — a climax is an event, not wallpaper                                                                                                                                           |
+| `coverword`  | the spoken apex word SET IN the replica typeface of the CP2077 cover mark (`assets/brand/CyberpunkReplica.ttf` — lowercase glyphs carry the logo's real brush chops, blade terminals and spikes; logo case = First-upper rest-lower). The setpiece adds only what the font lacks: solid cyan duplicate offset (-7,8), baseline streak merged with the glyph feet + cyan debris, circuit trace off the tail, tear-in slices / living print / tear-out | metric-exact layout from `cyberpunk-widths.json` (advance widths + ink bounds; `fontPx` = target INK height). No digits in the replica → compile ERROR with guidance. Replica font: personal-use license — samurai is already fan-kit non-commercial |
+| `assembly`   | (inline, poem) apex word condenses BIG while star particles fly into it                                                                                                                                                                                                                                                                                                                                                                              |                                                                                                                                                                                                                                                      |
+| `colorflip`  | (inline, takeover) accent-color crush card + dim kick + squash/settle + loom                                                                                                                                                                                                                                                                                                                                                                         | pairs with fx flash + plate punch/shake                                                                                                                                                                                                              |
 
 Inline setpieces (`hero.inline: true`) live inside the body paradigm — the hero
 word stays in `lines`. Embed setpieces own the word: leave it OUT of `lines`
 (rail↔climax hand-off), except `panel` + `redact-until-hero`, where the words
 appear in the log as `█████` until the decode locks.
 
+A setpiece may additionally return `fgCss/fgHtml/fgJs` — those parts are merged
+into the fg alpha page (rail.html), for furniture that must ride ABOVE the matte
+(e.g. a verbatim chip that may never be occluded) while the setpiece scenery
+stays embedded behind the subject.
+
 ## Linkages
 
 - `redact-until-hero` — panel log shows hero words as blocks; un-redacts at lock
 - `corrupt-on-last-word` — panel jitters + hue-shifts on the final word
 - `disperse-on-last-word` — every visible poem letter scatters back to dust
+- `field-is-the-apex` — (lastpage) the blurred future-field rack-focuses at the
+  apex: every faint line was the apex word all along; the main instance holds,
+  the rest re-blur and die
 
 ## Hard rules inherited (do not relax)
 
@@ -91,6 +102,31 @@ appear in the log as `█████` until the decode locks.
 - round linecap renders a DOT at dashoffset=len → hide each stroke until its turn
 - inline-block trailing spaces collapse → word gaps via margin, not text spaces
 - SVG-font glyph y is UP → flip when converting (gen-stroke-path.py does)
+- NEVER gsap x/y/scale on raw SVG children: it runs `_parseTransform`/getBBox, and
+  zero-area shapes (fan-kit slivers) trip GSAP's bbox hack → `appendChild` on a
+  null docElement in injected-gsap contexts (preview-frames, renderer). Jitter
+  SVG pieces via `attr:{transform:"translate(...)"}` only; scale/loom belongs on
+  an HTML wrapper div. Nuance: a ROOT `<svg>` inside a div has null
+  ownerSVGElement → GSAP classifies it as HTML (CSS transforms, no getBBox), so
+  scale/skew on the svg root is safe — but copying that onto an inner `<g>`
+  becomes the fatal class. attr transforms can't TWEEN — use frame-quantized
+  step chains (identical on screen at 24fps)
+
+## Timeline ownership rules (audit-derived, do not relax)
+
+- ONE owner per (target, property) at any instant. A duration tween re-renders
+  every tick until it ends — any set/tween on the same property inside that
+  window gets visually overwritten a frame later (1-frame ghosts, flash-backs).
+  Known shapes: yield dim vs line exit; yield restore vs powercut set-chain;
+  per-word line-y bounces with word gaps < 0.22s. The rail emitter guards these
+  (bounce ownership tracker, dim clamped ≥ line-in, restore only with ≥0.3s
+  runway before exit — else the line exits dimmed, by design).
+- Inverted clamps: `Math.max(lo, Math.min(hi, x))` with lo > hi silently pins to
+  lo. When a lockup is wider than the frame, CENTER it (x = W/2) instead of
+  clamping — decorative bleed must be symmetric.
+- The overflow gate only measures elements with direct text nodes — SVG-painted
+  setpieces (mask text + rects) are invisible to it. Do not read its "ok" as
+  proof for svg lockups; judge those on the preview frames.
 
 ## theme.json — full schema
 
