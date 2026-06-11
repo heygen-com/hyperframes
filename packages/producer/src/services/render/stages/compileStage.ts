@@ -123,6 +123,10 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
   const compiled = await compileForRender(projectDir, htmlPath, join(workDir, "downloads"), {
     failClosedFontFetch: failClosedFontFetch === true,
     allowSystemFontCapture,
+    animatedGifCacheDir: cfg.extractCacheDir
+      ? join(cfg.extractCacheDir, "animated-gif")
+      : undefined,
+    ffmpegProcessTimeout: cfg.ffmpegProcessTimeout,
   });
   assertNotAborted();
   const compileOnlyMs = Date.now() - compileStart;

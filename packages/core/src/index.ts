@@ -136,6 +136,7 @@ export {
 } from "./compiler/rewriteSubCompPaths";
 export { CSS_URL_RE, isNonRelativeUrl, isPathInside } from "./compiler/assetPaths";
 export { decodeUrlPathVariants } from "./utils/urlPath";
+export { parseAnimatedGifMetadata, type AnimatedGifMetadata } from "./media/gif";
 
 // Inline scripts
 export {

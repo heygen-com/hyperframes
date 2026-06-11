@@ -108,7 +108,7 @@ Common sizes:
     **Key behavior:**
     - `data-duration` is **required** for images (unlike video/audio, there is no source duration to default to)
     - `class="clip"` is **required** — this enables the runtime to show/hide the image based on timing
-    - Supported formats: PNG, JPG, WebP, SVG, GIF (first frame only)
+    - Supported formats: PNG, JPG, WebP, SVG, GIF. Animated GIFs are prepared as timeline-synced video for preview and render; `data-loop` can override GIF loop metadata.
     - Position and size with CSS — the image renders at its natural size unless styled otherwise
   </Accordion>
 

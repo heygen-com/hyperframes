@@ -10,6 +10,7 @@
  */
 
 import type { Page } from "puppeteer-core";
+import { parseAnimatedGifMetadata } from "@hyperframes/core";
 
 export interface CatalogedAsset {
   url: string;
@@ -229,7 +230,65 @@ export async function catalogAssets(page: Page): Promise<CatalogedAsset[]> {
   const raw = (assets as CatalogedAsset[]) || [];
 
   // Deduplicate srcset resolution variants — keep highest resolution per base URL
-  return deduplicateSrcsetVariants(raw);
+  return annotateGifAssetMetadata(deduplicateSrcsetVariants(raw));
+}
+
+function isGifUrl(url: string): boolean {
+  try {
+    return new URL(url).pathname.toLowerCase().endsWith(".gif");
+  } catch {
+    return url.toLowerCase().split(/[?#]/, 1)[0]?.endsWith(".gif") ?? false;
+  }
+}
+
+function appendNote(existing: string | undefined, note: string): string {
+  return existing ? `${existing}; ${note}` : note;
+}
+
+async function readAssetBytes(url: string): Promise<Uint8Array | null> {
+  try {
+    const response = await fetch(url, { signal: AbortSignal.timeout(15_000) });
+    if (!response.ok) return null;
+    const contentLength = response.headers.get("content-length");
+    if (contentLength && Number.parseInt(contentLength, 10) > 25 * 1024 * 1024) return null;
+    return new Uint8Array(await response.arrayBuffer());
+  } catch {
+    return null;
+  }
+}
+
+export async function annotateGifAssetMetadata(
+  assets: CatalogedAsset[],
+  readBytes: (url: string) => Promise<Uint8Array | null> = readAssetBytes,
+): Promise<CatalogedAsset[]> {
+  return Promise.all(
+    assets.map(async (asset) => {
+      if (!isGifUrl(asset.url)) return asset;
+      const bytes = await readBytes(asset.url);
+      if (!bytes) return asset;
+      const metadata = parseAnimatedGifMetadata(bytes);
+      if (!metadata) return asset;
+      if (!metadata.animated) {
+        return {
+          ...asset,
+          notes: appendNote(asset.notes, "single-frame GIF"),
+        };
+      }
+      const loop =
+        metadata.loopCount === 0
+          ? "loops forever"
+          : metadata.loopCount == null
+            ? "no loop metadata"
+            : `loop count ${metadata.loopCount}`;
+      return {
+        ...asset,
+        notes: appendNote(
+          asset.notes,
+          `animated GIF: ${metadata.frameCount} frames, ${metadata.durationSeconds.toFixed(3)}s, ${loop}`,
+        ),
+      };
+    }),
+  );
 }
 
 /**

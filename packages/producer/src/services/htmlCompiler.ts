@@ -39,6 +39,7 @@ import {
 import { assertPublicHttpsUrl, downloadToTemp, isHttpUrl } from "../utils/urlDownloader.js";
 import type { Page } from "puppeteer-core";
 import { injectDeterministicFontFaces } from "./deterministicFonts.js";
+import { prepareAnimatedGifInputs } from "./animatedGifPrep.js";
 import { createStudioPositionSeekReapplyScript } from "@hyperframes/core/studio-api/manual-edits-render-script";
 import { defaultLogger } from "../logger.js";
 
@@ -1307,6 +1308,13 @@ export interface CompileForRenderOptions {
    * prevent host-specific font capture from leaking into the planDir.
    */
   allowSystemFontCapture?: boolean;
+  /**
+   * Optional persistent cache directory for prep-time animated GIF → WebM
+   * transcodes. When omitted, the render's downloadDir is used.
+   */
+  animatedGifCacheDir?: string;
+  /** FFmpeg timeout for animated GIF transcodes. */
+  ffmpegProcessTimeout?: number;
 }
 
 const GSAP_CDN_BASE = "https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/";
@@ -1391,11 +1399,6 @@ export async function compileForRender(
   // tags that depend on it, causing "gsap is not defined" errors.
   const assembledHtml = await inlineExternalScripts(coalescedHtml);
 
-  // Collect assets that resolve outside projectDir (e.g. ../shared-assets/hero.png).
-  // These can't be served by the file server, so we map them to paths the
-  // orchestrator will copy into the compiled output directory.
-  const { html: htmlWithAssets, externalAssets } = collectExternalAssets(assembledHtml, projectDir);
-
   // Inject studio position seek re-apply script when positions are baked into HTML.
   // GSAP overwrites the `translate` CSS property on every frame seek; this script
   // re-asserts the CSS custom property var() form after each seek so dragged
@@ -1406,13 +1409,13 @@ export async function compileForRender(
     'data-hf-studio-rotation="true"',
     'data-hf-studio-motion="',
   ];
-  const hasPositionEdits = HF_POSITION_ATTRS.some((attr) => htmlWithAssets.includes(attr));
+  const hasPositionEdits = HF_POSITION_ATTRS.some((attr) => assembledHtml.includes(attr));
   const htmlWithPositionScript = hasPositionEdits
-    ? htmlWithAssets.replace(
+    ? assembledHtml.replace(
         /<\/body>/i,
         `<script>${createStudioPositionSeekReapplyScript()}</script></body>`,
       )
-    : htmlWithAssets;
+    : assembledHtml;
 
   // Download remote <video> and <audio> sources to compiledDir and rewrite the
   // src attributes so the renderer reads from localhost. Remote S3 URLs cause
@@ -1423,9 +1426,6 @@ export async function compileForRender(
     htmlWithPositionScript,
     downloadDir,
   );
-  for (const [relPath, absPath] of remoteMediaAssets) {
-    externalAssets.set(relPath, absPath);
-  }
 
   // Download remote <img> sources. Same race shape as video/audio: the
   // readiness gate can pass before Chrome decodes the pixels, and Chrome can
@@ -1433,9 +1433,6 @@ export async function compileForRender(
   // blank-frame flicker. Localising to disk removes both races.
   const { html: htmlWithLocalImages, remoteMediaAssets: remoteImageAssets } =
     await localizeRemoteImageSources(htmlWithLocalMedia, downloadDir);
-  for (const [relPath, absPath] of remoteImageAssets) {
-    externalAssets.set(relPath, absPath);
-  }
 
   // Download remote @font-face src URLs and rewrite to local paths.
   // Remote font URLs fail with a CORS rejection at render time (S3 does not
@@ -1443,11 +1440,42 @@ export async function compileForRender(
   // back to the next font in the stack.
   const { html: htmlWithLocalizedFonts, remoteMediaAssets: remoteFontAssets } =
     await localizeRemoteFontFaces(htmlWithLocalImages, downloadDir);
+
+  const gifSourceAssets = new Map<string, string>(remoteImageAssets);
+  const {
+    html: htmlWithPreparedGifs,
+    preparedAssets: preparedGifAssets,
+    preparedGifs,
+  } = await prepareAnimatedGifInputs(htmlWithLocalizedFonts, {
+    projectDir,
+    downloadDir,
+    cacheDir: options.animatedGifCacheDir,
+    sourceAssets: gifSourceAssets,
+    timeoutMs: options.ffmpegProcessTimeout,
+  });
+  if (preparedGifs.length > 0) {
+    defaultLogger.info(`[Compiler] Prepared ${preparedGifs.length} animated GIF input(s) as WebM`);
+  }
+
+  const embeddedHtml = await embedLocalFontFaces(htmlWithPreparedGifs, projectDir);
+
+  // Collect assets that resolve outside projectDir (e.g. ../shared-assets/hero.png).
+  // These can't be served by the file server, so we map them to paths the
+  // orchestrator will copy into the compiled output directory.
+  const { html, externalAssets } = collectExternalAssets(embeddedHtml, projectDir);
+
+  for (const [relPath, absPath] of remoteMediaAssets) {
+    externalAssets.set(relPath, absPath);
+  }
+  for (const [relPath, absPath] of remoteImageAssets) {
+    externalAssets.set(relPath, absPath);
+  }
   for (const [relPath, absPath] of remoteFontAssets) {
     externalAssets.set(relPath, absPath);
   }
-
-  const html = await embedLocalFontFaces(htmlWithLocalizedFonts, projectDir);
+  for (const [relPath, absPath] of preparedGifAssets) {
+    externalAssets.set(relPath, absPath);
+  }
 
   // Parse main HTML elements
   const mainVideos = parseVideoElements(html);

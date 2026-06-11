@@ -123,7 +123,7 @@ When `hdr: true`:
 - SDR DOM overlays are converted from sRGB → BT.2020 before being layered on top
 - Output uses `libx265` with `yuv420p10le` and HDR10 mastering / content-light-level metadata
 - `format` must be `'mp4'` — `'mov'` and `'webm'` fall back to SDR
-- HDR `<img>` support is **still images only**; animated HDR-tagged images use only the first frame
+- HDR `<img>` extraction support is **still images only**; animated GIF inputs are prepared as timeline-synced video before render
 
 For full details on source requirements, fallback rules, and verification, see [HDR Rendering](/guides/hdr).
 

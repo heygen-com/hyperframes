@@ -31,6 +31,8 @@ import type { ScreenshotClip } from "@hyperframes/core/studio-api/screenshot-cli
 import type { RenderJob } from "@hyperframes/producer";
 
 const STUDIO_MANUAL_EDITS_PATH = ".hyperframes/studio-manual-edits.json";
+const REMOTE_GIF_IMG_SRC_RE =
+  /<img\b[^>]*?\bsrc\s*=\s*["'](https:\/\/[^"']+\.gif(?:[?#][^"']*)?)["'][^>]*>/gi;
 
 // ── Path resolution ─────────────────────────────────────────────────────────
 
@@ -117,6 +119,37 @@ async function reapplyStudioManualEditsToThumbnailPage(
       .__hfStudioManualEditsApply;
     if (typeof apply === "function") apply();
   });
+}
+
+function collectRemoteGifImageSources(html: string): string[] {
+  const urls = new Set<string>();
+  const re = new RegExp(REMOTE_GIF_IMG_SRC_RE.source, REMOTE_GIF_IMG_SRC_RE.flags);
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(html)) !== null) {
+    if (match[1]) urls.add(match[1]);
+  }
+  return [...urls];
+}
+
+async function downloadRemoteGifImageSources(
+  html: string,
+  downloadDir: string,
+  downloadToTemp: (url: string, destDir: string) => Promise<string>,
+): Promise<Map<string, string>> {
+  const sourceAssets = new Map<string, string>();
+  await Promise.all(
+    collectRemoteGifImageSources(html).map(async (url) => {
+      try {
+        sourceAssets.set(url, await downloadToTemp(url, downloadDir));
+      } catch (err) {
+        console.warn(
+          "[Studio] Remote animated GIF prep skipped:",
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }),
+  );
+  return sourceAssets;
 }
 
 // ── Shared thumbnail browser (pool-backed) ──────────────────────────────────
@@ -247,10 +280,23 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       }
     },
 
-    async transformPreviewHtml({ html }) {
+    async transformPreviewHtml({ html, project }) {
       const { injectDeterministicFontFaces } =
         await import("../../../producer/src/services/deterministicFonts.js");
-      return injectDeterministicFontFaces(html);
+      const { prepareAnimatedGifInputs } =
+        await import("../../../producer/src/services/animatedGifPrep.js");
+      const { downloadToTemp } = await import("../../../producer/src/utils/urlDownloader.js");
+      const gifOutputDir = join(project.dir, ".hyperframes", "prepared-assets", "gif");
+      const gifDownloadDir = join(project.dir, ".hyperframes", "prepared-assets", "downloads");
+      const prepared = await prepareAnimatedGifInputs(html, {
+        projectDir: project.dir,
+        downloadDir: gifDownloadDir,
+        outputDir: gifOutputDir,
+        outputSrcPrefix: ".hyperframes/prepared-assets/gif",
+        cacheDir: gifOutputDir,
+        sourceAssets: await downloadRemoteGifImageSources(html, gifDownloadDir, downloadToTemp),
+      });
+      return injectDeterministicFontFaces(prepared.html);
     },
 
     getProjectSignature(dir: string): string {

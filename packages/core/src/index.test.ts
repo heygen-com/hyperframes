@@ -141,6 +141,12 @@ describe("@hyperframes/core public API exports", () => {
     });
   });
 
+  describe("media exports", () => {
+    it("exports parseAnimatedGifMetadata", () => {
+      expect(typeof core.parseAnimatedGifMetadata).toBe("function");
+    });
+  });
+
   describe("inline-script exports", () => {
     it("exports hyperframe runtime artifacts", () => {
       expect(core.HYPERFRAME_RUNTIME_ARTIFACTS).toBeDefined();
