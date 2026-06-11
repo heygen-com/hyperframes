@@ -97,7 +97,7 @@ function simplifyTimeSeries(
 export function simplifyGestureSamples(
   samples: Array<{ time: number; properties: Record<string, number> }>,
   totalDuration: number,
-  epsilon: number,
+  epsilon: number | ((key: string) => number),
 ): Map<number, Record<string, number>> {
   if (samples.length === 0) return new Map();
   if (totalDuration <= 0) return new Map();
@@ -120,7 +120,8 @@ export function simplifyGestureSamples(
         series.push({ time: s.time, value: s.properties[key] });
       }
     }
-    const simplified = simplifyTimeSeries(series, epsilon);
+    const keyEpsilon = typeof epsilon === "function" ? epsilon(key) : epsilon;
+    const simplified = simplifyTimeSeries(series, keyEpsilon);
     for (const pt of simplified) {
       survivingTimes.add(pt.time);
     }

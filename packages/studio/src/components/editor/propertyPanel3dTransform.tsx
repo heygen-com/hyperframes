@@ -13,6 +13,7 @@ type KeyframeEntry = Array<{
 interface PropertyPanel3dTransformProps {
   gsapRuntimeValues: Record<string, number>;
   gsapAnimId: string | null;
+  resolveAnimIdForProp?: (prop: string) => string | null;
   gsapKeyframes: KeyframeEntry;
   currentPct: number;
   elStart: number;
@@ -31,6 +32,7 @@ interface PropertyPanel3dTransformProps {
 export function PropertyPanel3dTransform({
   gsapRuntimeValues,
   gsapAnimId,
+  resolveAnimIdForProp,
   gsapKeyframes,
   currentPct,
   elStart,
@@ -41,6 +43,7 @@ export function PropertyPanel3dTransform({
   onRemoveKeyframe,
   onConvertToKeyframes,
 }: PropertyPanel3dTransformProps) {
+  const idFor = (prop: string) => resolveAnimIdForProp?.(prop) ?? gsapAnimId;
   return (
     <div className="mt-3 border-t border-neutral-800/40 pt-3">
       <div className="mb-2 text-[10px] font-medium uppercase tracking-wider text-neutral-600">
@@ -72,8 +75,14 @@ export function PropertyPanel3dTransform({
                   void onCommitAnimatedProperty(element, "z", gsapRuntimeValues?.z ?? 0);
                 }
               }}
-              onRemoveKeyframe={(pct) => gsapAnimId && onRemoveKeyframe?.(gsapAnimId, pct)}
-              onConvertToKeyframes={() => gsapAnimId && onConvertToKeyframes?.(gsapAnimId)}
+              onRemoveKeyframe={(pct) => {
+                const id = idFor("z");
+                if (id) onRemoveKeyframe?.(id, pct);
+              }}
+              onConvertToKeyframes={() => {
+                const id = idFor("z");
+                if (id) onConvertToKeyframes?.(id);
+              }}
             />
           )}
         </div>
@@ -102,8 +111,14 @@ export function PropertyPanel3dTransform({
                   void onCommitAnimatedProperty(element, "scale", gsapRuntimeValues?.scale ?? 1);
                 }
               }}
-              onRemoveKeyframe={(pct) => gsapAnimId && onRemoveKeyframe?.(gsapAnimId, pct)}
-              onConvertToKeyframes={() => gsapAnimId && onConvertToKeyframes?.(gsapAnimId)}
+              onRemoveKeyframe={(pct) => {
+                const id = idFor("scale");
+                if (id) onRemoveKeyframe?.(id, pct);
+              }}
+              onConvertToKeyframes={() => {
+                const id = idFor("scale");
+                if (id) onConvertToKeyframes?.(id);
+              }}
             />
           )}
         </div>
