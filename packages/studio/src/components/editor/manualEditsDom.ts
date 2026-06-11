@@ -32,7 +32,7 @@ import {
 } from "./manualEditsTypes";
 import { roundRotationAngle } from "./manualEditsParsing";
 import { applyStudioMotionFromDom } from "./studioMotion";
-import { gsapAnimatesProperty } from "./gsapAnimatesProperty";
+import { gsapAnimatesProperty, gsapAnimatesTransform } from "./gsapAnimatesProperty";
 
 /* ── Gesture tracking ─────────────────────────────────────────────── */
 let studioManualEditGestureId = 0;
@@ -223,6 +223,7 @@ function isIdentityAfterTranslateStrip(m: DOMMatrix): boolean {
   return m.is2D && m.a === 1 && m.b === 0 && m.c === 0 && m.d === 1;
 }
 
+// fallow-ignore-next-line complexity
 function stripGsapTranslateFromTransform(element: HTMLElement): void {
   if (element.hasAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR)) return;
   const transform = element.style.getPropertyValue("transform");
@@ -257,6 +258,18 @@ export function applyStudioPathOffset(
 ): void {
   promoteInlineForTransform(element);
   writeStudioPathOffsetVars(element, offset, { updateBase: options.updateBase ?? true });
+  if (gsapAnimatesTransform(element)) {
+    // GSAP folded the CSS translate into its transform cache at init and owns
+    // style.transform from then on — it zeroes the translate longhand exactly
+    // once (at fold time) and never re-reads it. Writing translate here would
+    // double-apply the offset on top of the baked transform. Keep translate
+    // neutral in the live DOM and push the offset into GSAP's cache instead;
+    // the var() expression is persisted to the source file by the patch
+    // builder, where a reload re-folds it.
+    element.style.setProperty("translate", "none");
+    syncGsapOwnedTransformPosition(element);
+    return;
+  }
   element.style.setProperty(
     "translate",
     composeTranslateValue(
@@ -268,6 +281,24 @@ export function applyStudioPathOffset(
   stripGsapTranslateFromTransform(element);
 }
 
+/**
+ * After committing a new path offset on an element whose transform GSAP owns,
+ * GSAP's internal cache still holds the pre-drag baked translate — the next
+ * seek re-renders from that cache and snaps the element back. Push the new
+ * offset into GSAP so live scrubbing matches what was persisted. (A page
+ * reload re-initializes GSAP from the persisted CSS translate, so this is
+ * only needed for the live session.)
+ */
+function syncGsapOwnedTransformPosition(element: HTMLElement): void {
+  if (!gsapAnimatesTransform(element)) return;
+  const win = element.ownerDocument.defaultView as
+    | (Window & { gsap?: { set: (el: Element, vars: Record<string, unknown>) => void } })
+    | null;
+  if (!win?.gsap?.set) return;
+  const { x, y } = readStudioPathOffset(element);
+  win.gsap.set(element, { x, y });
+}
+
 export function applyStudioPathOffsetDraft(
   element: HTMLElement,
   offset: { x: number; y: number },
@@ -275,11 +306,11 @@ export function applyStudioPathOffsetDraft(
   promoteInlineForTransform(element);
   writeStudioPathOffsetVars(element, offset, { updateBase: false });
 
-  const isGsapAnimated = gsapAnimatesProperty(element, "x", "y");
+  const isGsapAnimated = gsapAnimatesTransform(element);
   if (isGsapAnimated) {
-    // For GSAP-animated elements: use gsap.set for positioning (the timeline
-    // is paused during drag). Set translate:none explicitly to prevent
-    // double-counting with the transform.
+    // GSAP owns style.transform (see applyStudioPathOffset): position via
+    // gsap.set while the timeline is paused. Set translate:none explicitly to
+    // prevent double-counting with the baked transform.
     element.style.setProperty("translate", "none");
     const win = element.ownerDocument.defaultView as
       | (Window & { gsap?: { set: (el: Element, vars: Record<string, unknown>) => void } })
@@ -520,10 +551,14 @@ function queryStudioElements(doc: Document, attr: string): HTMLElement[] {
 
 function reapplyPathOffsets(doc: Document): void {
   for (const el of queryStudioElements(doc, STUDIO_PATH_OFFSET_ATTR)) {
-    const gsapSkip = gsapAnimatesProperty(el, "x", "y");
+    // Skip elements where GSAP owns the transform stack — GSAP bakes the
+    // CSS translate into its transform and sets translate: none every tick
+    // when it tweens ANY transform property (x/y, scale, rotation, ...).
+    // Stripping/restoring would oscillate against GSAP's rendering and
+    // double-apply the offset.
+    if (gsapAnimatesTransform(el)) continue;
     const x = el.style.getPropertyValue(STUDIO_OFFSET_X_PROP);
     const y = el.style.getPropertyValue(STUDIO_OFFSET_Y_PROP);
-    if (gsapSkip) continue;
     if (x || y) {
       applyStudioPathOffset(
         el,

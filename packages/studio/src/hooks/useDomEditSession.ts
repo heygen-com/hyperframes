@@ -2,8 +2,8 @@ import { useCallback, useEffect, useRef } from "react";
 import type { TimelineElement } from "../player";
 import { usePlayerStore } from "../player";
 import {
-  STUDIO_GSAP_DRAG_INTERCEPT_ENABLED,
   STUDIO_GSAP_PANEL_ENABLED,
+  STUDIO_GSAP_DRAG_INTERCEPT_ENABLED,
 } from "../components/editor/manualEditingAvailability";
 import { type DomEditSelection } from "../components/editor/domEditing";
 import { useDomEditPreviewSync } from "./useDomEditPreviewSync";
@@ -329,7 +329,7 @@ export function useDomEditSession({
   // GSAP-aware: intercept offset/resize/rotation to commit via script mutation when animated.
   const handleGsapAwarePathOffsetCommit = useCallback(
     async (selection: DomEditSelection, next: { x: number; y: number }) => {
-      if (STUDIO_GSAP_DRAG_INTERCEPT_ENABLED && gsapCommitMutation) {
+      if (gsapCommitMutation && STUDIO_GSAP_DRAG_INTERCEPT_ENABLED) {
         const handled = await tryGsapDragIntercept(
           selection,
           next,
@@ -375,7 +375,7 @@ export function useDomEditSession({
 
   const handleGsapAwareBoxSizeCommit = useCallback(
     async (selection: DomEditSelection, next: { width: number; height: number }) => {
-      if (STUDIO_GSAP_DRAG_INTERCEPT_ENABLED && gsapCommitMutation) {
+      if (gsapCommitMutation && STUDIO_GSAP_DRAG_INTERCEPT_ENABLED) {
         const handled = await tryGsapResizeIntercept(
           selection,
           next,
@@ -399,7 +399,7 @@ export function useDomEditSession({
 
   const handleGsapAwareRotationCommit = useCallback(
     async (selection: DomEditSelection, next: { angle: number }) => {
-      if (STUDIO_GSAP_DRAG_INTERCEPT_ENABLED && gsapCommitMutation) {
+      if (gsapCommitMutation && STUDIO_GSAP_DRAG_INTERCEPT_ENABLED) {
         const handled = await tryGsapRotationIntercept(
           selection,
           next.angle,

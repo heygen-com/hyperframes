@@ -89,6 +89,16 @@ export const STUDIO_RAZOR_TOOL_ENABLED = resolveStudioBooleanEnvFlag(
   false,
 );
 
+// When disabled (the default), drag/resize/rotate commits always take the CSS
+// persist path instead of being intercepted into GSAP script keyframe
+// mutations. The keyframe intercept rewrites timeline tweens from drag
+// gestures and is opt-in until its recording path is hardened.
+export const STUDIO_GSAP_DRAG_INTERCEPT_ENABLED = resolveStudioBooleanEnvFlag(
+  env,
+  ["VITE_STUDIO_ENABLE_GSAP_DRAG_INTERCEPT", "VITE_STUDIO_GSAP_DRAG_INTERCEPT_ENABLED"],
+  false,
+);
+
 export const STUDIO_PREVIEW_SELECTION_ENABLED = STUDIO_INSPECTOR_PANELS_ENABLED;
 
 export const STUDIO_MANUAL_EDITING_DISABLED_TITLE = "Manual editing is temporarily disabled";

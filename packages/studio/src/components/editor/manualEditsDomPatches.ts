@@ -72,7 +72,23 @@ function appendTransformDisplayOps(element: HTMLElement, ops: PatchOperation[]):
 
 export function buildPathOffsetPatches(element: HTMLElement): PatchOperation[] {
   const ops: PatchOperation[] = [];
-  collectInlineStyleOps(element, [STUDIO_OFFSET_X_PROP, STUDIO_OFFSET_Y_PROP, "translate"], ops);
+  collectInlineStyleOps(element, [STUDIO_OFFSET_X_PROP, STUDIO_OFFSET_Y_PROP], ops);
+  // When GSAP owns the element's transform, the live inline translate is kept
+  // at "none" (the offset lives in GSAP's cache — see applyStudioPathOffset).
+  // Persist the var() expression in that case, so a reload re-folds the offset.
+  const inlineTranslate = element.style.getPropertyValue("translate");
+  const hasOffsetVars =
+    element.style.getPropertyValue(STUDIO_OFFSET_X_PROP) ||
+    element.style.getPropertyValue(STUDIO_OFFSET_Y_PROP);
+  const translateValue =
+    inlineTranslate && inlineTranslate !== "none"
+      ? inlineTranslate
+      : hasOffsetVars
+        ? `var(${STUDIO_OFFSET_X_PROP}, 0px) var(${STUDIO_OFFSET_Y_PROP}, 0px)`
+        : null;
+  if (translateValue) {
+    ops.push({ type: "inline-style", property: "translate", value: translateValue });
+  }
   ops.push({ type: "attribute", property: STUDIO_PATH_OFFSET_ATTR, value: "true" });
   collectAttributeOps(
     element,

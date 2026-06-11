@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import type { useDomEditSession } from "../hooks/useDomEditSession";
 

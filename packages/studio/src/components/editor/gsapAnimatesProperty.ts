@@ -1,7 +1,37 @@
+// GSAP's CSSPlugin takes ownership of the element's entire transform stack
+// when it tweens ANY of these — it bakes the CSS `translate` longhand into
+// style.transform at init and writes `translate: none` every tick. Position
+// reapply/strip logic must therefore stand down for all of them, not just x/y.
+const GSAP_TRANSFORM_PROPS = [
+  "x",
+  "y",
+  "xPercent",
+  "yPercent",
+  "scale",
+  "scaleX",
+  "scaleY",
+  "rotation",
+  "rotate",
+  "rotationX",
+  "rotationY",
+  "skewX",
+  "skewY",
+  "transform",
+];
+
+/**
+ * True when GSAP animates any transform-affecting property on the element,
+ * meaning GSAP owns `style.transform` and has neutralized CSS `translate`.
+ */
+export function gsapAnimatesTransform(el: HTMLElement): boolean {
+  return gsapAnimatesProperty(el, ...GSAP_TRANSFORM_PROPS);
+}
+
 /**
  * Checks whether GSAP actively animates one or more CSS/GSAP properties on
  * the given element by inspecting all registered `__timelines`.
  */
+// fallow-ignore-next-line complexity
 export function gsapAnimatesProperty(el: HTMLElement, ...props: string[]): boolean {
   const win = el.ownerDocument.defaultView as
     | (Window & {

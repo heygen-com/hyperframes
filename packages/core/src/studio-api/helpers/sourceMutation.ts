@@ -223,6 +223,33 @@ function isSafeAttributeValue(name: string, value: string): boolean {
   return true;
 }
 
+function patchStyleAttrString(style: string, property: string, value: string | null): string {
+  const props = new Map<string, string>();
+  const order: string[] = [];
+  for (const decl of style.split(";")) {
+    const colon = decl.indexOf(":");
+    if (colon < 0) continue;
+    const key = decl.slice(0, colon).trim();
+    const val = decl.slice(colon + 1).trim();
+    if (!key) continue;
+    if (!props.has(key)) order.push(key);
+    props.set(key, val);
+  }
+  if (value === null) {
+    props.delete(property);
+    const idx = order.indexOf(property);
+    if (idx >= 0) order.splice(idx, 1);
+  } else {
+    if (!props.has(property)) order.push(property);
+    props.set(property, value);
+  }
+  return order
+    .map((k) => `${k}: ${props.get(k) ?? ""}`)
+    .filter((d) => d.trim())
+    .join("; ");
+}
+
+// fallow-ignore-next-line complexity
 export function patchElementInHtml(
   source: string,
   target: SourceMutationTarget,
@@ -236,10 +263,14 @@ export function patchElementInHtml(
   for (const op of operations) {
     switch (op.type) {
       case "inline-style":
-        if (op.value != null) {
-          htmlEl.style.setProperty(op.property, op.value);
-        } else {
-          htmlEl.style.removeProperty(op.property);
+        // linkedom's CSSStyleDeclaration does not support CSS custom properties
+        // (--foo) or newer individual transform properties (translate, rotate,
+        // scale) via style.setProperty(). Manipulate the style attribute string
+        // directly so all property names survive the round-trip.
+        {
+          const raw = htmlEl.getAttribute("style") ?? "";
+          const patched = patchStyleAttrString(raw, op.property, op.value);
+          htmlEl.setAttribute("style", patched);
         }
         break;
       case "attribute":

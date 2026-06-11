@@ -4,6 +4,7 @@ import {
   styleUsesStudioRotation,
   restoreInlineDisplay,
 } from "./manualEditsDom";
+import { gsapAnimatesTransform } from "./gsapAnimatesProperty";
 import {
   STUDIO_OFFSET_X_PROP,
   STUDIO_OFFSET_Y_PROP,
@@ -87,7 +88,23 @@ export function captureStudioRotation(element: HTMLElement): StudioRotationSnaps
   };
 }
 
+type GsapWindow = Window & {
+  gsap?: {
+    getProperty?: (el: Element, prop: string) => number | string;
+    set?: (el: Element, vars: Record<string, unknown>) => void;
+  };
+};
+
 export function captureStudioPathOffset(element: HTMLElement): StudioPathOffsetSnapshot {
+  let gsapX: number | null = null;
+  let gsapY: number | null = null;
+  if (gsapAnimatesTransform(element)) {
+    const win = element.ownerDocument.defaultView as GsapWindow | null;
+    if (win?.gsap?.getProperty) {
+      gsapX = Number(win.gsap.getProperty(element, "x")) || 0;
+      gsapY = Number(win.gsap.getProperty(element, "y")) || 0;
+    }
+  }
   return {
     translate: element.style.getPropertyValue("translate"),
     x: element.style.getPropertyValue(STUDIO_OFFSET_X_PROP),
@@ -95,6 +112,8 @@ export function captureStudioPathOffset(element: HTMLElement): StudioPathOffsetS
     marker: element.getAttribute(STUDIO_PATH_OFFSET_ATTR),
     originalTranslate: element.getAttribute(STUDIO_ORIGINAL_TRANSLATE_ATTR),
     originalInlineTranslate: element.getAttribute(STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR),
+    gsapX,
+    gsapY,
   };
 }
 
@@ -183,6 +202,13 @@ export function restoreStudioPathOffset(
     STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR,
     previous.originalInlineTranslate,
   );
+
+  // Draft positioning on GSAP-owned elements goes through gsap.set, which
+  // mutates GSAP's transform cache — restore it alongside the inline styles.
+  if (previous.gsapX != null || previous.gsapY != null) {
+    const win = element.ownerDocument.defaultView as GsapWindow | null;
+    win?.gsap?.set?.(element, { x: previous.gsapX ?? 0, y: previous.gsapY ?? 0 });
+  }
 }
 
 /* ── Clear functions ──────────────────────────────────────────────── */
