@@ -1436,8 +1436,13 @@ export function shouldUseStreamingEncode(
   if (outputFormat === "png-sequence") return false;
   if (outputFormat === "gif") return false;
   if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) return false;
-  if (durationSeconds > cfg.streamingEncodeMaxDurationSeconds) return false;
-  return workerCount === 1;
+  // Duration cap applies to single-worker streaming only. The cap guards
+  // against FFmpeg back-pressure accumulating when a slow single-pipeline
+  // encode stalls capture. Multi-worker streaming uses `distributeFramesInterleaved`
+  // — workers advance in lockstep so in-flight frame buffers are bounded by
+  // `workerCount` (not composition length). The cap does not apply there.
+  if (workerCount === 1 && durationSeconds > cfg.streamingEncodeMaxDurationSeconds) return false;
+  return workerCount > 0;
 }
 
 /**

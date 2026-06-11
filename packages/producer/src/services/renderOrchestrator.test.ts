@@ -115,12 +115,18 @@ describe("shouldUseStreamingEncode", () => {
     ).toBe(false);
   });
 
-  it("keeps png-sequence and parallel capture on the non-streaming path", () => {
+  it("keeps png-sequence on the non-streaming path", () => {
     expect(shouldUseStreamingEncode(streamingEnabledConfig, "png-sequence", 1, 240)).toBe(false);
-    expect(shouldUseStreamingEncode(streamingEnabledConfig, "mp4", 2, 240)).toBe(false);
+    expect(shouldUseStreamingEncode(streamingEnabledConfig, "png-sequence", 2, 240)).toBe(false);
   });
 
-  it("keeps renders over the configured max duration on normal encoding", () => {
+  it("enables streaming for multi-worker renders (parallel streaming)", () => {
+    expect(shouldUseStreamingEncode(streamingEnabledConfig, "mp4", 2, 240)).toBe(true);
+    expect(shouldUseStreamingEncode(streamingEnabledConfig, "mp4", 4, 240)).toBe(true);
+  });
+
+  it("applies the duration cap to single-worker only; multi-worker streaming is uncapped", () => {
+    // Single-worker: duration cap still enforced
     expect(shouldUseStreamingEncode(streamingEnabledConfig, "mp4", 1, 240)).toBe(true);
     expect(shouldUseStreamingEncode(streamingEnabledConfig, "mp4", 1, 240.001)).toBe(false);
     expect(
@@ -131,6 +137,9 @@ describe("shouldUseStreamingEncode", () => {
         120.001,
       ),
     ).toBe(false);
+    // Multi-worker: no duration cap (interleaved distribution keeps buffer bounded by workerCount)
+    expect(shouldUseStreamingEncode(streamingEnabledConfig, "mp4", 2, 600)).toBe(true);
+    expect(shouldUseStreamingEncode(streamingEnabledConfig, "mp4", 3, 3600)).toBe(true);
   });
 });
 

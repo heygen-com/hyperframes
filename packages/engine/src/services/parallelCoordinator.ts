@@ -41,6 +41,15 @@ export interface WorkerTask {
    * calculation still uses the absolute frame index.
    */
   outputFrameOffset?: number;
+  /**
+   * Step size between frames assigned to this worker. Default 1 (contiguous
+   * chunk). Set to `workerCount` for interleaved distribution — worker `i`
+   * captures frames `i, i+N, i+2N, …` so all workers advance in lockstep and
+   * the streaming-encode reorder buffer stays nearly uncontended.
+   * Only meaningful for the streaming capture path; disk capture uses the
+   * default contiguous layout so worker output directories are contiguous.
+   */
+  stride?: number;
 }
 
 export interface WorkerResult {
@@ -210,6 +219,44 @@ export function distributeFrames(
 }
 
 /**
+ * Distribute frames across workers using an interleaved (round-robin) pattern.
+ *
+ * Worker `i` captures frames `i, i+N, i+2N, …` where `N = workerCount`.
+ * All workers advance through the timeline in near-lockstep, which means the
+ * `FrameReorderBuffer` in the streaming encode path stays nearly uncontended:
+ * whichever worker is waiting on frame `k` unblocks as soon as the worker
+ * that owns `k-1` finishes and calls `advanceTo(k)`.
+ *
+ * Contrast with the contiguous `distributeFrames`: worker 1 would have to wait
+ * for ALL of worker 0's chunk before it could unblock, collapsing N workers
+ * down to effectively 1 for the streaming path.
+ *
+ * Use this distribution **only** for the streaming capture path. Disk capture
+ * writes frames to worker-local directories and relies on contiguous layout so
+ * `mergeWorkerFrames` can rename/copy files without index arithmetic.
+ */
+export function distributeFramesInterleaved(
+  totalFrames: number,
+  workerCount: number,
+  workDir: string,
+): WorkerTask[] {
+  if (workerCount <= 1) {
+    return [{ workerId: 0, startFrame: 0, endFrame: totalFrames, outputDir: join(workDir, "worker-0") }];
+  }
+  const tasks: WorkerTask[] = [];
+  for (let i = 0; i < workerCount && i < totalFrames; i++) {
+    tasks.push({
+      workerId: i,
+      startFrame: i,
+      endFrame: totalFrames,
+      stride: workerCount,
+      outputDir: join(workDir, `worker-${i}`),
+    });
+  }
+  return tasks;
+}
+
+/**
  * Decide whether a parallel worker should run the per-worker SwiftShader
  * assertion. Gated to worker 0 only: workers within a chunk share the same
  * Chrome binary, flags, and OS/driver state, so one verification per chunk
@@ -229,7 +276,8 @@ async function captureFrameRange(
 ): Promise<number> {
   let framesCaptured = 0;
   const outputOffset = task.outputFrameOffset ?? 0;
-  for (let i = task.startFrame; i < task.endFrame; i++) {
+  const stride = task.stride ?? 1;
+  for (let i = task.startFrame; i < task.endFrame; i += stride) {
     if (signal?.aborted) throw new Error("Parallel worker cancelled");
     const time = (i * captureOptions.fps.den) / captureOptions.fps.num;
     const fileFrameIdx = i - outputOffset;
