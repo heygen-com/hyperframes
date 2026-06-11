@@ -123,7 +123,8 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
         const kfKey = `${elementId}:${kf.percentage}`;
         const isKfSelected = selectedKeyframes.has(kfKey);
         const atPlayhead = isSelected && Math.abs(kf.percentage - currentPercentage) < 0.5;
-        const color = isKfSelected || atPlayhead ? accentColor : "#a3a3a3";
+        const isHighlighted = isKfSelected || atPlayhead;
+        const color = isHighlighted ? accentColor : "#a3a3a3";
         return (
           <button
             key={`${i}-${kf.percentage}`}
@@ -135,6 +136,7 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
               transform: "translateY(-50%)",
               width: diamondSize,
               height: diamondSize,
+              zIndex: isHighlighted ? 2 : 1,
               pointerEvents: "auto",
               background: "none",
               border: "none",

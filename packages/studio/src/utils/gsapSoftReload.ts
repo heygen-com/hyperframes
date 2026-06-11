@@ -7,6 +7,8 @@ type IframeWindow = Window & {
   gsap?: {
     timeline?: (...args: unknown[]) => unknown;
     registerPlugin?: (...plugins: unknown[]) => unknown;
+    set?: (targets: Element | Element[], vars: Record<string, unknown>) => void;
+    globalTimeline?: { getChildren?: (deep: boolean) => Array<{ kill?: () => void }> };
   };
   MotionPathPlugin?: unknown;
 };
@@ -27,6 +29,14 @@ function findGsapScriptElements(doc: Document): HTMLScriptElement[] {
     if (isGsapScript(script.textContent || "")) results.push(script);
   }
   return results;
+}
+
+/** Check that the new script repopulated __timelines with at least one entry. */
+function verifyTimelinesPopulated(win: IframeWindow): boolean {
+  const tlKeys = win.__timelines
+    ? Object.keys(win.__timelines).filter((k) => k !== "__proxied")
+    : [];
+  return tlKeys.length > 0;
 }
 
 /**
@@ -56,24 +66,30 @@ export function applySoftReload(iframe: HTMLIFrameElement | null, scriptText: st
 
   const currentTime = win.__player?.getTime?.() ?? 0;
 
+  // Track whether the MotionPath async path was taken. When it is, the script
+  // executes inside pluginScript.onload — after applySoftReload has already
+  // returned. We optimistically return true because the script WILL execute
+  // once the plugin loads; the alternative (returning false) would trigger a
+  // full iframe reload that destroys the very WebGL context we're preserving.
+  let deferredToAsync = false;
+
   const doReload = () => {
     const timelines = win.__timelines;
+    const allTargets: Element[] = [];
+
     if (timelines) {
       for (const key of Object.keys(timelines)) {
+        if (key === "__proxied") continue;
         try {
           const tl = timelines[key] as {
             kill?: () => void;
             getChildren?: (deep: boolean) => Array<{ targets?: () => Element[] }>;
           };
-          const allTargets: Element[] = [];
           if (tl?.getChildren) {
             try {
               for (const child of tl.getChildren(true)) {
                 if (typeof child.targets === "function") {
-                  for (const t of child.targets()) {
-                    allTargets.push(t);
-                    delete (t as unknown as Record<string, unknown>)._gsap;
-                  }
+                  for (const t of child.targets()) allTargets.push(t);
                 }
               }
             } catch {}
@@ -82,6 +98,23 @@ export function applySoftReload(iframe: HTMLIFrameElement | null, scriptText: st
         } catch {}
         delete timelines[key];
       }
+    }
+
+    // Kill bare gsap.to/from tweens not registered on __timelines
+    if (win.gsap?.globalTimeline?.getChildren) {
+      try {
+        for (const child of win.gsap.globalTimeline.getChildren(false)) {
+          child.kill?.();
+        }
+      } catch {}
+    }
+
+    // Clear residual inline transforms left by killed tweens so from() tweens
+    // don't read stale end values from the DOM on re-execution
+    if (allTargets.length > 0 && win.gsap?.set) {
+      try {
+        win.gsap.set(allTargets, { clearProps: "all" });
+      } catch {}
     }
 
     oldScriptEl.remove();
@@ -98,10 +131,9 @@ export function applySoftReload(iframe: HTMLIFrameElement | null, scriptText: st
       win.__hfStudioManualEditsApply?.();
     };
 
-    // Load MotionPathPlugin on demand if the script uses motionPath.
-    // Uses the same CDN as composition templates (GSAP_CDN in constants.ts).
     const needsMotionPath = /motionPath\s*[:{]/.test(scriptText);
     if (needsMotionPath && !win.MotionPathPlugin && win.gsap) {
+      deferredToAsync = true;
       const pluginScript = doc.createElement("script");
       pluginScript.src = "https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/MotionPathPlugin.min.js";
       pluginScript.onload = () => executeScript();
@@ -119,7 +151,10 @@ export function applySoftReload(iframe: HTMLIFrameElement | null, scriptText: st
     } else {
       doReload();
     }
-    return true;
+    // When MotionPath needs async loading, the script hasn't executed yet —
+    // skip the __timelines check and return true optimistically.
+    if (deferredToAsync) return true;
+    return verifyTimelinesPopulated(win);
   } catch {
     return false;
   }

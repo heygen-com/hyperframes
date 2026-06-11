@@ -264,9 +264,11 @@ export function useGsapAnimationsForElement(
       (el) => el.domId === elementId || (el.key ?? el.id) === `${sourceFile}#${elementId}`,
     );
     const elStart = timelineEl?.start ?? 0;
-    const elDuration = timelineEl?.duration ?? 4;
+    const elDuration = timelineEl?.duration ?? 1;
 
-    const allKeyframes: GsapKeyframesData["keyframes"] = [];
+    const allKeyframes: Array<
+      GsapKeyframesData["keyframes"][0] & { tweenPercentage?: number; propertyGroup?: string }
+    > = [];
     let format: GsapKeyframesData["format"] = "percentage";
     let ease: string | undefined;
     let easeEach: string | undefined;
@@ -275,7 +277,8 @@ export function useGsapAnimationsForElement(
       if (!kf) continue;
       // Convert tween-relative percentages to clip-relative so diamonds
       // render at the correct position within the timeline clip.
-      const tweenPos = typeof anim.position === "number" ? anim.position : 0;
+      const tweenPos =
+        anim.resolvedStart ?? (typeof anim.position === "number" ? anim.position : 0);
       const tweenDur = anim.duration ?? elDuration;
       for (const k of kf.keyframes) {
         const absTime = tweenPos + (k.percentage / 100) * tweenDur;
@@ -283,7 +286,12 @@ export function useGsapAnimationsForElement(
           elDuration > 0
             ? Math.round(((absTime - elStart) / elDuration) * 1000) / 10
             : k.percentage;
-        allKeyframes.push({ ...k, percentage: clipPct });
+        allKeyframes.push({
+          ...k,
+          percentage: clipPct,
+          tweenPercentage: k.percentage,
+          propertyGroup: anim.propertyGroup,
+        });
       }
       format = kf.format;
       if (kf.ease) ease = kf.ease;
@@ -305,6 +313,9 @@ export function useGsapAnimationsForElement(
     };
     const { setKeyframeCache } = usePlayerStore.getState();
     setKeyframeCache(`${sourceFile}#${elementId}`, merged);
+    // PropertyPanel reads the cache by bare elementId (without sourceFile prefix),
+    // so write a duplicate entry under the bare key for cross-component lookups.
+    setKeyframeCache(elementId, merged);
   }, [elementId, sourceFile, animations]);
 
   return { animations, multipleTimelines, unsupportedTimelinePattern };
@@ -327,13 +338,14 @@ export function usePopulateKeyframeCacheForFile(
   version: number,
   iframeRef?: React.RefObject<HTMLIFrameElement | null>,
 ): void {
+  const elementCount = usePlayerStore((s) => s.elements.length);
   const lastFetchKeyRef = useRef("");
 
   const runtimeScanDoneRef = useRef("");
   const astFetchDoneRef = useRef("");
 
   useEffect(() => {
-    const fetchKey = `kf-cache:${projectId}:${sourceFile}:${version}`;
+    const fetchKey = `kf-cache:${projectId}:${sourceFile}:${version}:${elementCount}`;
     if (fetchKey === lastFetchKeyRef.current) return;
     lastFetchKeyRef.current = fetchKey;
     runtimeScanDoneRef.current = "";
@@ -358,21 +370,26 @@ export function usePopulateKeyframeCacheForFile(
         if (!id) continue;
         const kfData = anim.keyframes ?? synthesizeFlatTweenKeyframes(anim);
         if (!kfData) continue;
-        // Convert tween-relative percentages to clip-relative.
-        const tweenPos = typeof anim.position === "number" ? anim.position : 0;
+        const tweenPos =
+          anim.resolvedStart ?? (typeof anim.position === "number" ? anim.position : 0);
         const tweenDur = anim.duration ?? 1;
         const timelineEl = elements.find(
           (el) => el.domId === id || (el.key ?? el.id) === `${sf}#${id}`,
         );
         const elStart = timelineEl?.start ?? 0;
-        const elDuration = timelineEl?.duration ?? 4;
+        const elDuration = timelineEl?.duration ?? 1;
         const clipKeyframes = kfData.keyframes.map((kf) => {
           const absTime = tweenPos + (kf.percentage / 100) * tweenDur;
           const clipPct =
             elDuration > 0
               ? Math.round(((absTime - elStart) / elDuration) * 1000) / 10
               : kf.percentage;
-          return { ...kf, percentage: clipPct };
+          return {
+            ...kf,
+            percentage: clipPct,
+            tweenPercentage: kf.percentage,
+            propertyGroup: anim.propertyGroup,
+          };
         });
         const existing = mergedByElement.get(id);
         if (existing) {
@@ -388,7 +405,10 @@ export function usePopulateKeyframeCacheForFile(
       }
       astFetchDoneRef.current = fetchKey;
     });
-  }, [projectId, sourceFile, version]);
+    // elementCount is in the deps because new timeline elements (e.g. after a
+    // sub-composition expand) need their keyframe cache populated immediately;
+    // without it the effect won't re-run when elements appear/disappear.
+  }, [projectId, sourceFile, version, elementCount]);
 
   // Separate effect for runtime keyframe discovery — polls until the iframe
   // has loaded GSAP timelines, independent of the AST fetch lifecycle.

@@ -21,18 +21,23 @@ export function updateKeyframeCacheFromParsed(
 
     // Convert tween-relative percentages to clip-relative so diamonds
     // render at the correct position within the timeline clip.
-    const tweenPos = typeof anim.position === "number" ? anim.position : 0;
+    const tweenPos = anim.resolvedStart ?? (typeof anim.position === "number" ? anim.position : 0);
     const tweenDur = anim.duration ?? 1;
     const timelineEl = elements.find(
       (el) => el.domId === id || (el.key ?? el.id) === `${targetPath}#${id}`,
     );
     const elStart = timelineEl?.start ?? 0;
-    const elDuration = timelineEl?.duration ?? 4;
+    const elDuration = timelineEl?.duration ?? 1;
     const clipKeyframes = anim.keyframes.keyframes.map((kf) => {
       const absTime = tweenPos + (kf.percentage / 100) * tweenDur;
       const clipPct =
         elDuration > 0 ? Math.round(((absTime - elStart) / elDuration) * 1000) / 10 : kf.percentage;
-      return { ...kf, percentage: clipPct };
+      return {
+        ...kf,
+        percentage: clipPct,
+        tweenPercentage: kf.percentage,
+        propertyGroup: anim.propertyGroup,
+      };
     });
 
     const existing = merged.get(id);
@@ -66,7 +71,7 @@ export function updateKeyframeCacheFromParsed(
   }
 }
 
-export function buildCacheKey(sourceFile: string, elementId: string): string {
+function buildCacheKey(sourceFile: string, elementId: string): string {
   return `${sourceFile}#${elementId}`;
 }
 

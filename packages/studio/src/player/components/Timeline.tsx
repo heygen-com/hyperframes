@@ -448,6 +448,9 @@ export const Timeline = memo(function Timeline({
             onSelectElement?.(el);
             const absTime = el.start + (pct / 100) * el.duration;
             onSeek?.(absTime);
+            const kfData = keyframeCache?.get(elKey);
+            const kf = kfData?.keyframes.find((k) => Math.abs(k.percentage - pct) < 0.5);
+            usePlayerStore.getState().setActiveKeyframePct(kf?.tweenPercentage ?? null);
           }}
           onShiftClickKeyframe={(elId, pct) => {
             toggleSelectedKeyframe(`${elId}:${pct}`);
@@ -464,12 +467,13 @@ export const Timeline = memo(function Timeline({
               onSeek?.(absTime);
             }
             const kfData = keyframeCache.get(elId);
-            const kf = kfData?.keyframes.find((k) => k.percentage === pct);
+            const kf = kfData?.keyframes.find((k) => Math.abs(k.percentage - pct) < 0.2);
             setKfContextMenu({
-              x: e.clientX,
-              y: e.clientY,
+              x: e.clientX + 4,
+              y: e.clientY + 2,
               elementId: elId,
               percentage: pct,
+              tweenPercentage: kf?.tweenPercentage,
               currentEase: kf?.ease ?? kfData?.ease,
             });
           }}

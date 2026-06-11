@@ -449,7 +449,9 @@ export function useGsapScriptCommits({
         apply: () => {
           const prev = readKeyframeSnapshot(sf, elementId);
           if (prev) {
-            const newKeyframes = prev.keyframes.filter((kf) => kf.percentage !== percentage);
+            const newKeyframes = prev.keyframes.filter(
+              (kf) => Math.abs((kf.tweenPercentage ?? kf.percentage) - percentage) > 0.2,
+            );
             writeKeyframeCache(sf, elementId, { ...prev, keyframes: newKeyframes });
           }
           return prev;

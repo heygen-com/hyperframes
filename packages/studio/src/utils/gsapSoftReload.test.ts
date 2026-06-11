@@ -28,10 +28,26 @@ function buildMockIframe(overrides: Record<string, unknown> = {}) {
     ...overrides,
   };
 
+  // Intercept appendChild: when a <script> is appended, simulate execution by
+  // repopulating __timelines (mimicking what the real GSAP script would do).
+  const realAppendChild = container.appendChild.bind(container);
+  container.appendChild = <T extends Node>(node: T): T => {
+    const result = realAppendChild(node);
+    if (node instanceof HTMLScriptElement && node.textContent?.includes("gsap.timeline")) {
+      // Simulate the script populating __timelines
+      const cw = contentWindow as { __timelines?: Record<string, unknown> };
+      if (cw.__timelines) {
+        cw.__timelines.root = { kill: vi.fn(), pause: vi.fn() };
+      }
+    }
+    return result;
+  };
+
   const contentDocument = {
     querySelectorAll: (sel: string) => (sel === "script:not([src])" ? [scriptEl] : []),
     createElement: (tag: string) => document.createElement(tag),
     body: container,
+    head: document.createElement("div"),
   };
 
   return {

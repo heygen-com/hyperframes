@@ -7,6 +7,7 @@ export interface KeyframeDiamondContextMenuState {
   y: number;
   elementId: string;
   percentage: number;
+  tweenPercentage?: number;
   currentEase?: string;
 }
 
@@ -113,7 +114,7 @@ export const KeyframeDiamondContextMenu = memo(function KeyframeDiamondContextMe
         type="button"
         className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-400 hover:bg-neutral-800 cursor-pointer text-left"
         onClick={() => {
-          onDelete(state.elementId, state.percentage);
+          onDelete(state.elementId, state.tweenPercentage ?? state.percentage);
           onClose();
         }}
       >
