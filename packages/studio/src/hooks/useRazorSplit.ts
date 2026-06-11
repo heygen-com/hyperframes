@@ -7,7 +7,7 @@ import {
   canSplitElement,
   buildPatchTarget,
   readFileContent,
-  SPLIT_BOUNDARY_EPSILON_S,
+  isSplitTimeWithinBounds,
 } from "../utils/timelineElementSplit";
 import type { RecordEditInput } from "./useTimelineEditing";
 
@@ -171,12 +171,7 @@ export function useRazorSplit({
       const pid = projectIdRef.current;
       if (!pid || !canSplitElement(element)) return;
 
-      const clipStart = element.start;
-      const clipEnd = element.start + element.duration;
-      if (
-        splitTime <= clipStart + SPLIT_BOUNDARY_EPSILON_S ||
-        splitTime >= clipEnd - SPLIT_BOUNDARY_EPSILON_S
-      ) {
+      if (!isSplitTimeWithinBounds(splitTime, element.start, element.duration)) {
         return;
       }
 
