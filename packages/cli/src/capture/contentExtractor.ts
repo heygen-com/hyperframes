@@ -280,7 +280,7 @@ export async function captionImagesWithGemini(
                 .png()
                 .toBuffer();
               pngBase64 = pngBuffer.toString("base64");
-            } catch (err) {
+            } catch {
               // SVG rasterization can fail on exotic features (external fonts,
               // foreignObject, filters with missing primitives). Skip caption
               // rather than block — agent will fall back to contact-sheet view.
