@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication
 import { describe, it, expect } from "vitest";
 import { lintHyperframeHtml } from "../hyperframeLinter.js";
 
@@ -936,5 +937,105 @@ describe("GSAP rules", () => {
     const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "gsap_timeline_not_registered");
     expect(finding).toBeUndefined();
+  });
+
+  // gsap_studio_edit_blocked
+  it("warns when script registers timeline AND has GSAP tweens targeting #id selectors", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="headline" style="position:absolute;left:120px;top:200px;">Hello</div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.set("#headline", { opacity: 0 });
+    tl.to("#headline", { opacity: 1, duration: 0.5 }, 0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_studio_edit_blocked");
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("warning");
+    expect(finding?.message).toContain('"#headline"');
+  });
+
+  it("warns when script registers timeline AND has GSAP tweens targeting .class selectors", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div class="box" style="position:absolute;left:120px;top:200px;"></div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.from(".box", { y: 80, opacity: 0, duration: 0.4 }, 0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_studio_edit_blocked");
+    expect(finding).toBeDefined();
+    expect(finding?.message).toContain('".box"');
+  });
+
+  it("does NOT warn when timeline is registered but no GSAP element selectors are called", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"></div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_studio_edit_blocked");
+    expect(finding).toBeUndefined();
+  });
+
+  it("does NOT warn when script has GSAP calls but does not register on window.__timelines", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="box"></div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#box", { x: 100, duration: 1 }, 0);
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_studio_edit_blocked");
+    expect(finding).toBeUndefined();
+  });
+
+  it("lists all unique targeted selectors in the warning message", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="title"></div>
+    <div id="sub"></div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.from("#title", { opacity: 0, duration: 0.3 }, 0);
+    tl.from("#sub", { opacity: 0, duration: 0.3 }, 0.2);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_studio_edit_blocked");
+    expect(finding).toBeDefined();
+    expect(finding?.message).toContain('"#title"');
+    expect(finding?.message).toContain('"#sub"');
   });
 });

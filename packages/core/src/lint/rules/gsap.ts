@@ -22,7 +22,12 @@ async function loadParseGsapScript(): Promise<(script: string) => LintParsedGsap
 import type { LintContext } from "../context";
 import type { HyperframeLintFinding, LintRule } from "../types";
 import type { OpenTag } from "../utils";
-import { readAttr, truncateSnippet, WINDOW_TIMELINE_ASSIGN_PATTERN } from "../utils";
+import {
+  readAttr,
+  truncateSnippet,
+  WINDOW_TIMELINE_ASSIGN_PATTERN,
+  TIMELINE_REGISTRY_ASSIGN_PATTERN,
+} from "../utils";
 
 // ── GSAP-specific types ────────────────────────────────────────────────────
 
@@ -47,6 +52,7 @@ const SCENE_BOUNDARY_EPSILON_SECONDS = 0.05;
 
 // ── GSAP parsing utilities ─────────────────────────────────────────────────
 
+// fallow-ignore-next-line complexity
 function stripJsComments(source: string): string {
   let out = "";
   let i = 0;
@@ -161,6 +167,7 @@ function synthesizeWindowRaw(
 // parser already resolves variable targets (`tl.to(kicker, …)`) to selectors
 // and excludes non-DOM object-target anchors (`tl.to({ _: 0 }, …)`), so there's
 // no fragile positional pairing between a regex walk and the parsed list.
+// fallow-ignore-next-line complexity
 async function extractGsapWindows(script: string): Promise<GsapWindow[]> {
   if (!/gsap\.timeline/.test(script)) return [];
   const parseGsapScript = await loadParseGsapScript();
@@ -334,6 +341,7 @@ function getSingleClassSelector(selector: string): string | null {
   return match?.groups?.name || null;
 }
 
+// fallow-ignore-next-line complexity
 function cssTransformToGsapProps(cssTransform: string): string | null {
   const parts: string[] = [];
 
@@ -374,8 +382,10 @@ function cssTransformToGsapProps(cssTransform: string): string | null {
 
 // ── GSAP rules ─────────────────────────────────────────────────────────────
 
+// fallow-ignore-next-line complexity
 export const gsapRules: LintRule<LintContext>[] = [
   // overlapping_gsap_tweens + gsap_animates_clip_element + unscoped_gsap_selector
+  // fallow-ignore-next-line complexity
   async ({ source, tags, scripts, rootCompositionId }) => {
     const findings: HyperframeLintFinding[] = [];
 
@@ -505,6 +515,7 @@ export const gsapRules: LintRule<LintContext>[] = [
   },
 
   // gsap_css_transform_conflict
+  // fallow-ignore-next-line complexity
   async ({ styles, scripts, tags }) => {
     const findings: HyperframeLintFinding[] = [];
     const cssTranslateSelectors = new Map<string, string>();
@@ -642,6 +653,7 @@ export const gsapRules: LintRule<LintContext>[] = [
   },
 
   // audio_reactive_single_tween_per_group
+  // fallow-ignore-next-line complexity
   ({ scripts, styles }) => {
     const findings: HyperframeLintFinding[] = [];
     const isCaptionFile = styles.some((s) => /\.caption[-_]?(?:group|word)/i.test(s.content));
@@ -813,6 +825,7 @@ export const gsapRules: LintRule<LintContext>[] = [
   },
 
   // gsap_from_opacity_noop — CSS opacity:0 + gsap.from({opacity:0}) = invisible forever
+  // fallow-ignore-next-line complexity
   async ({ styles, scripts, tags }) => {
     const findings: HyperframeLintFinding[] = [];
     const cssOpacityZeroSelectors = new Set<string>();
@@ -893,6 +906,41 @@ export const gsapRules: LintRule<LintContext>[] = [
           snippet: truncateSnippet(content.slice(contextStart, contextEnd)),
         });
       }
+    }
+    return findings;
+  },
+
+  // gsap_studio_edit_blocked
+  // When a script both registers a timeline on window.__timelines AND contains
+  // GSAP mutation calls targeting element selectors, Studio's isElementGsapTargeted
+  // check returns true for those elements and silently skips saving drag/resize
+  // position changes back to source HTML.
+  ({ scripts }) => {
+    const findings: HyperframeLintFinding[] = [];
+    const GSAP_MUTATION_SELECTOR_RE = /\.\s*(?:set|to|from|fromTo)\s*\(\s*["']([#.][^"']+)["']/g;
+
+    for (const script of scripts) {
+      const content = stripJsComments(script.content);
+      if (!TIMELINE_REGISTRY_ASSIGN_PATTERN.test(content)) continue;
+
+      const targets = new Set<string>();
+      let match: RegExpExecArray | null;
+      const re = new RegExp(GSAP_MUTATION_SELECTOR_RE.source, "g");
+      while ((match = re.exec(content)) !== null) {
+        if (match[1]) targets.add(match[1]);
+      }
+      if (targets.size === 0) continue;
+
+      const selList = [...targets].map((s) => `"${s}"`).join(", ");
+      findings.push({
+        code: "gsap_studio_edit_blocked",
+        severity: "warning",
+        message: `GSAP tweens target ${selList} in a registered timeline. Studio cannot save drag/resize edits to these elements — the runtime skips write-back for any element that appears in a registered window.__timelines timeline.`,
+        fixHint:
+          "The hyperframes runtime registers timelines automatically. Do not add a manual window.__timelines script unless GSAP intentionally controls element positions. " +
+          "For initial visibility states, use CSS (e.g. opacity:0) instead of gsap.set(). " +
+          "If GSAP must own these elements' positions, avoid drag-editing them in Studio.",
+      });
     }
     return findings;
   },
