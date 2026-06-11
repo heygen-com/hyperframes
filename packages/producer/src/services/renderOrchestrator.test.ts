@@ -125,8 +125,8 @@ describe("shouldUseStreamingEncode", () => {
     expect(shouldUseStreamingEncode(streamingEnabledConfig, "mp4", 4, 240)).toBe(true);
   });
 
-  it("applies the duration cap to single-worker only; multi-worker streaming is uncapped", () => {
-    // Single-worker: duration cap still enforced
+  it("applies the duration cap to single-worker (config-driven) and a fixed 1800s cap to multi-worker", () => {
+    // Single-worker: duration cap from config
     expect(shouldUseStreamingEncode(streamingEnabledConfig, "mp4", 1, 240)).toBe(true);
     expect(shouldUseStreamingEncode(streamingEnabledConfig, "mp4", 1, 240.001)).toBe(false);
     expect(
@@ -137,9 +137,21 @@ describe("shouldUseStreamingEncode", () => {
         120.001,
       ),
     ).toBe(false);
-    // Multi-worker: no duration cap (interleaved distribution keeps buffer bounded by workerCount)
-    expect(shouldUseStreamingEncode(streamingEnabledConfig, "mp4", 2, 600)).toBe(true);
-    expect(shouldUseStreamingEncode(streamingEnabledConfig, "mp4", 3, 3600)).toBe(true);
+    // Multi-worker: fixed 1800s cap (3× the 548s Hypetech comp; guards Node stdin OOM)
+    expect(shouldUseStreamingEncode(streamingEnabledConfig, "mp4", 2, 548)).toBe(true);
+    expect(shouldUseStreamingEncode(streamingEnabledConfig, "mp4", 2, 1800)).toBe(true);
+    expect(shouldUseStreamingEncode(streamingEnabledConfig, "mp4", 2, 1800.001)).toBe(false);
+    expect(shouldUseStreamingEncode(streamingEnabledConfig, "mp4", 3, 1800)).toBe(true);
+    expect(shouldUseStreamingEncode(streamingEnabledConfig, "mp4", 3, 3600)).toBe(false);
+    // Multi-worker cap is independent of the single-worker config value
+    expect(
+      shouldUseStreamingEncode(
+        { enableStreamingEncode: true, streamingEncodeMaxDurationSeconds: 60 },
+        "mp4",
+        2,
+        1800,
+      ),
+    ).toBe(true);
   });
 });
 

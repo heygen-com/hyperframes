@@ -1436,12 +1436,31 @@ export function shouldUseStreamingEncode(
   if (outputFormat === "png-sequence") return false;
   if (outputFormat === "gif") return false;
   if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) return false;
-  // Duration cap applies to single-worker streaming only. The cap guards
-  // against FFmpeg back-pressure accumulating when a slow single-pipeline
-  // encode stalls capture. Multi-worker streaming uses `distributeFramesInterleaved`
-  // — workers advance in lockstep so in-flight frame buffers are bounded by
-  // `workerCount` (not composition length). The cap does not apply there.
-  if (workerCount === 1 && durationSeconds > cfg.streamingEncodeMaxDurationSeconds) return false;
+  // Duration cap for single-worker: `streamingEncodeMaxDurationSeconds` (default 240s).
+  // Duration cap for multi-worker: a more generous fixed cap (3× the default, 720s).
+  //
+  // Why caps differ:
+  //   Single-worker: if FFmpeg is slower than capture, `writeFrame` back-pressure
+  //   accumulates in the Node writable-stream buffer without bound (Node honours
+  //   highWaterMark as advisory). The cap limits worst-case buffer growth.
+  //
+  //   Multi-worker (interleaved): on the *capture→reorder* side, in-flight frame
+  //   buffers are bounded by `workerCount` because each worker blocks at
+  //   `reorderBuffer.waitForFrame` before capturing the next frame. On the
+  //   *reorder→FFmpeg* side the same unbounded-buffer risk applies: if FFmpeg
+  //   encodes slower than workers capture, the Node stdin buffer still grows.
+  //   Worst case (3 workers × 1hr): ~80 GB buffer growth → OOM. The 720s cap
+  //   bounds this to a tolerable ~20 GB ceiling and covers practical workloads
+  //   (the longest known composition at time of writing is ~548s). The durable
+  //   fix is real back-pressure in `writeFrame` (await drain when
+  //   `accepted === false`) — tracked as a follow-up issue.
+  // Multi-worker cap is fixed at 1800s (30 min), independent of the single-worker
+  // config value. Rationale: 1800s is 3× the longest known practical composition
+  // (~548s), giving real-world headroom while keeping worst-case Node buffer growth
+  // below ~20 GB. Adjust if your workloads routinely exceed 30 min.
+  const MULTI_WORKER_MAX_DURATION_SECONDS = 1800;
+  const maxDuration = workerCount === 1 ? cfg.streamingEncodeMaxDurationSeconds : MULTI_WORKER_MAX_DURATION_SECONDS;
+  if (durationSeconds > maxDuration) return false;
   return workerCount > 0;
 }
 
