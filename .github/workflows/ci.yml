@@ -218,6 +218,18 @@ jobs:
       - run: bun run --cwd packages/core build:hyperframes-runtime
       - run: bun run --filter '!@hyperframes/producer' test
 
+  sdk-tests:
+    name: "SDK: unit + contract + smoke"
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - run: bun install --frozen-lockfile
+      - run: bun run --filter @hyperframes/sdk test
+
   test-runtime-contract:
     name: "Test: runtime contract"
     needs: changes
