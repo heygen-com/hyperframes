@@ -126,8 +126,12 @@ function applyRuntimePreview(
 
 function recordSample(r: RecordingRefs, time: number, properties: Record<string, number>): void {
   const sampleProps = { ...properties };
-  if ("x" in sampleProps) sampleProps.x -= r.cssVarOffset.x;
-  if ("y" in sampleProps) sampleProps.y -= r.cssVarOffset.y;
+  // Subtract both the CSS var offset AND the pointer-element snap offset
+  // so the first sample doesn't include the snap-to-cursor jump.
+  if ("x" in sampleProps)
+    sampleProps.x -= r.cssVarOffset.x + r.pointerElementOffset.x / (r.scale || 1);
+  if ("y" in sampleProps)
+    sampleProps.y -= r.cssVarOffset.y + r.pointerElementOffset.y / (r.scale || 1);
   r.samples.push({ time, properties: sampleProps });
   r.trail.push({ x: r.pointer.x, y: r.pointer.y });
 }
@@ -307,6 +311,18 @@ export function useGestureRecording() {
       };
 
       const handleWheel = (e: WheelEvent) => {
+        // Capture startPointer on first wheel if no pointermove has fired yet,
+        // preventing an enormous bogus first keyframe from stale startPointer.
+        if (!r.hasMoved) {
+          r.startPointer = { x: r.pointer.x, y: r.pointer.y };
+          r.pointerElementOffset = {
+            x: r.pointer.x - elCenterViewport.x,
+            y: r.pointer.y - elCenterViewport.y,
+          };
+          r.basePosition.x += r.pointerElementOffset.x / iframeScale;
+          r.basePosition.y += r.pointerElementOffset.y / iframeScale;
+          r.hasMoved = true;
+        }
         r.scrollDelta += e.deltaY;
         r.modifiers = { shift: e.shiftKey, alt: e.altKey, meta: e.metaKey || e.ctrlKey };
       };
