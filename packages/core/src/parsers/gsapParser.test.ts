@@ -18,8 +18,10 @@ import {
   removeAllKeyframesFromScript,
   addAnimationWithKeyframesToScript,
   splitAnimationsInScript,
+  splitIntoPropertyGroups,
 } from "./gsapParser.js";
 import type { GsapAnimation } from "./gsapParser.js";
+import { classifyPropertyGroup, classifyTweenPropertyGroup } from "./gsapConstants.js";
 import type { Keyframe } from "../core.types";
 import {
   parseAndSerialize,
@@ -260,8 +262,8 @@ describe("parseGsapScript", () => {
     expect(result1.animations[1].id).toBe(result2.animations[1].id);
 
     // IDs encode selector, method, and position
-    expect(result1.animations[0].id).toBe("#el1-to-0");
-    expect(result1.animations[1].id).toBe("#el2-to-1000");
+    expect(result1.animations[0].id).toBe("#el1-to-0-visual");
+    expect(result1.animations[1].id).toBe("#el2-to-1000-position");
   });
 
   it("disambiguates colliding IDs with a suffix", () => {
@@ -272,8 +274,8 @@ describe("parseGsapScript", () => {
     `;
     const result = parseGsapScript(script);
 
-    expect(result.animations[0].id).toBe("#el1-to-0");
-    expect(result.animations[1].id).toBe("#el1-to-0-2");
+    expect(result.animations[0].id).toBe("#el1-to-0-visual");
+    expect(result.animations[1].id).toBe("#el1-to-0-visual-2");
   });
 
   it("uses string position in ID for relative positions", () => {
@@ -283,7 +285,219 @@ describe("parseGsapScript", () => {
     `;
     const result = parseGsapScript(script);
 
-    expect(result.animations[0].id).toBe("#el1-to-+=1");
+    expect(result.animations[0].id).toBe("#el1-to-+=1-visual");
+  });
+});
+
+describe("resolvedStart — timeline position resolution", () => {
+  it("resolves chained from() tweens with relative positions (sdk-test pattern)", () => {
+    const script = `
+      const tl = gsap.timeline({ defaults: { ease: "power3.out" } });
+      tl.from("#headline", { duration: 0.6, scale: 0.92, transformOrigin: "left center" })
+        .from("#subtext",  { duration: 0.5, scale: 0.92, transformOrigin: "left center" }, "-=0.3")
+        .from("#box",      { duration: 0.5, scale: 0.5,  transformOrigin: "center center" }, "-=0.3");
+    `;
+    const result = parseGsapScript(script);
+
+    expect(result.animations).toHaveLength(3);
+    // Execution order: #headline, #subtext, #box
+    expect(result.animations[0].targetSelector).toBe("#headline");
+    expect(result.animations[1].targetSelector).toBe("#subtext");
+    expect(result.animations[2].targetSelector).toBe("#box");
+
+    // #headline: implicit position → starts at 0, ends at 0.6
+    expect(result.animations[0].resolvedStart).toBe(0);
+    expect(result.animations[0].implicitPosition).toBe(true);
+
+    // #subtext: "-=0.3" from cursor (0.6) → 0.6 - 0.3 = 0.3
+    expect(result.animations[1].resolvedStart).toBe(0.3);
+
+    // #box: "-=0.3" from cursor (max(0.6, 0.3+0.5=0.8) = 0.8) → 0.8 - 0.3 = 0.5
+    expect(result.animations[2].resolvedStart).toBe(0.5);
+  });
+
+  it("resolves += and < positions", () => {
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#el1", { opacity: 1, duration: 0.5 }, "+=1");
+      tl.to("#el2", { x: 100, duration: 1 }, "<");
+      tl.to("#el3", { y: 50, duration: 0.3 }, "-=0.5");
+    `;
+    const result = parseGsapScript(script);
+
+    // #el1: "+=1" from cursor (0) → 0 + 1 = 1, ends at 1.5
+    expect(result.animations[0].resolvedStart).toBe(1);
+
+    // #el2: "<" = previous start → 1
+    expect(result.animations[1].resolvedStart).toBe(1);
+
+    // #el3: "-=0.5" from cursor (max(1.5, 1+1=2) = 2) → 2 - 0.5 = 1.5
+    expect(result.animations[2].resolvedStart).toBe(1.5);
+  });
+
+  it("resolves numeric positions directly", () => {
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#el1", { opacity: 1, duration: 0.5 }, 0);
+      tl.to("#el2", { x: 100, duration: 1 }, 2);
+    `;
+    const result = parseGsapScript(script);
+
+    expect(result.animations[0].resolvedStart).toBe(0);
+    expect(result.animations[1].resolvedStart).toBe(2);
+  });
+
+  it("resolves implicit sequential positions", () => {
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#el1", { opacity: 1, duration: 0.5 })
+        .to("#el2", { x: 100, duration: 1 })
+        .to("#el3", { y: 50, duration: 0.3 });
+    `;
+    const result = parseGsapScript(script);
+
+    // #el1: implicit → cursor=0, ends at 0.5
+    expect(result.animations[0].resolvedStart).toBe(0);
+    expect(result.animations[0].implicitPosition).toBe(true);
+
+    // #el2: implicit → cursor=0.5, ends at 1.5
+    expect(result.animations[1].resolvedStart).toBe(0.5);
+    expect(result.animations[1].implicitPosition).toBe(true);
+
+    // #el3: implicit → cursor=1.5, ends at 1.8
+    expect(result.animations[2].resolvedStart).toBe(1.5);
+    expect(result.animations[2].implicitPosition).toBe(true);
+  });
+
+  it("clamps negative resolvedStart to 0", () => {
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#el1", { opacity: 1, duration: 0.2 });
+      tl.to("#el2", { x: 100, duration: 1 }, "-=5");
+    `;
+    const result = parseGsapScript(script);
+
+    expect(result.animations[1].resolvedStart).toBe(0);
+  });
+
+  it("uses GSAP default duration (0.5) for tweens with no explicit duration", () => {
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#el1", { opacity: 1 })
+        .to("#el2", { x: 100 });
+    `;
+    const result = parseGsapScript(script);
+
+    // #el1: starts at 0, duration defaults to 0.5 → cursor at 0.5
+    expect(result.animations[0].resolvedStart).toBe(0);
+    // #el2: starts at cursor = 0.5
+    expect(result.animations[1].resolvedStart).toBe(0.5);
+  });
+
+  it("treats set() as zero-duration", () => {
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      tl.set("#el1", { opacity: 0 });
+      tl.to("#el2", { opacity: 1, duration: 1 });
+    `;
+    const result = parseGsapScript(script);
+
+    // set() at 0, zero duration → cursor stays at 0
+    expect(result.animations[0].resolvedStart).toBe(0);
+    // next tween starts at cursor = 0
+    expect(result.animations[1].resolvedStart).toBe(0);
+  });
+});
+
+describe("timeline defaults inheritance", () => {
+  it("inherits ease and duration from timeline defaults onto tweens", () => {
+    const script = `
+      const tl = gsap.timeline({ defaults: { ease: "power3.out", duration: 0.6 } });
+      tl.from("#headline", { scale: 0.92, transformOrigin: "left center" })
+        .from("#subtext", { scale: 0.92 }, "-=0.3");
+    `;
+    const result = parseGsapScript(script);
+
+    expect(result.animations[0].ease).toBe("power3.out");
+    expect(result.animations[0].duration).toBe(0.6);
+    expect(result.animations[1].ease).toBe("power3.out");
+    expect(result.animations[1].duration).toBe(0.6);
+  });
+
+  it("does not override explicit ease/duration on individual tweens", () => {
+    const script = `
+      const tl = gsap.timeline({ defaults: { ease: "power3.out", duration: 0.6 } });
+      tl.to("#el1", { opacity: 1, duration: 1, ease: "none" });
+    `;
+    const result = parseGsapScript(script);
+
+    expect(result.animations[0].ease).toBe("none");
+    expect(result.animations[0].duration).toBe(1);
+  });
+
+  it("uses inherited duration for position resolution", () => {
+    const script = `
+      const tl = gsap.timeline({ defaults: { duration: 0.8 } });
+      tl.from("#a", { scale: 0.5 })
+        .from("#b", { scale: 0.5 });
+    `;
+    const result = parseGsapScript(script);
+
+    // #a starts at 0, duration 0.8 → cursor at 0.8
+    expect(result.animations[0].resolvedStart).toBe(0);
+    // #b starts at cursor = 0.8
+    expect(result.animations[1].resolvedStart).toBe(0.8);
+  });
+});
+
+describe("property group classification", () => {
+  it("classifies individual properties into groups", () => {
+    expect(classifyPropertyGroup("x")).toBe("position");
+    expect(classifyPropertyGroup("y")).toBe("position");
+    expect(classifyPropertyGroup("xPercent")).toBe("position");
+    expect(classifyPropertyGroup("scale")).toBe("scale");
+    expect(classifyPropertyGroup("scaleX")).toBe("scale");
+    expect(classifyPropertyGroup("width")).toBe("size");
+    expect(classifyPropertyGroup("height")).toBe("size");
+    expect(classifyPropertyGroup("rotation")).toBe("rotation");
+    expect(classifyPropertyGroup("skewX")).toBe("rotation");
+    expect(classifyPropertyGroup("opacity")).toBe("visual");
+    expect(classifyPropertyGroup("autoAlpha")).toBe("visual");
+    expect(classifyPropertyGroup("borderRadius")).toBe("other");
+    expect(classifyPropertyGroup("fontSize")).toBe("other");
+  });
+
+  it("classifies a pure position tween", () => {
+    expect(classifyTweenPropertyGroup({ x: 100, y: 50 })).toBe("position");
+  });
+
+  it("classifies a pure scale tween", () => {
+    expect(classifyTweenPropertyGroup({ scale: 0.5 })).toBe("scale");
+  });
+
+  it("classifies scale + transformOrigin as scale (transformOrigin follows group)", () => {
+    expect(classifyTweenPropertyGroup({ scale: 0.5, transformOrigin: "center center" })).toBe(
+      "scale",
+    );
+  });
+
+  it("returns undefined for mixed-group tweens", () => {
+    expect(classifyTweenPropertyGroup({ x: 100, scale: 0.5 })).toBeUndefined();
+    expect(classifyTweenPropertyGroup({ x: 100, opacity: 0 })).toBeUndefined();
+  });
+
+  it("classifies tweens during parsing", () => {
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#a", { x: 100, y: 50, duration: 1 }, 0);
+      tl.to("#b", { scale: 0.5, duration: 0.5 }, 0);
+      tl.to("#c", { x: 100, scale: 0.5, opacity: 0, duration: 1 }, 0);
+    `;
+    const result = parseGsapScript(script);
+
+    expect(result.animations[0].propertyGroup).toBe("position");
+    expect(result.animations[1].propertyGroup).toBe("scale");
+    expect(result.animations[2].propertyGroup).toBeUndefined();
   });
 });
 
@@ -1223,11 +1437,12 @@ describe("native GSAP keyframes parsing", () => {
     const kfs = expectKeyframesFormat(anim, "object-array", 3);
 
     // Total duration = 0.5 + 1 + 0.8 = 2.3
-    expectKeyframe(kfs[0], 0, { x: 0, opacity: 1 });
-    // Second: cumulative = 0.5, pct = round(0.5/2.3 * 100) = 22
-    expectKeyframe(kfs[1], 22, { x: 100 }, "power2.out");
-    // Third: cumulative = 1.5, pct = round(1.5/2.3 * 100) = 65
-    expectKeyframe(kfs[2], 65, { x: 200 });
+    // First: cumulative = 0.5, pct = round(0.5/2.3 * 100) = 22
+    expectKeyframe(kfs[0], 22, { x: 0, opacity: 1 });
+    // Second: cumulative = 1.5, pct = round(1.5/2.3 * 100) = 65
+    expectKeyframe(kfs[1], 65, { x: 100 }, "power2.out");
+    // Third: cumulative = 2.3, pct = round(2.3/2.3 * 100) = 100
+    expectKeyframe(kfs[2], 100, { x: 200 });
   });
 
   it("parses simple array keyframes format", () => {
@@ -1942,5 +2157,121 @@ tl.to("#el1", { y: 200, duration: 1 }, 3);`;
     const script = `${baseScript}\ntl.to("#el1", { x: 100, duration: 1 }, 0);\ntl.to(".el1", { opacity: 0, duration: 1 }, 1);`;
     const result = splitAnimationsInScript(script, opts);
     expect(result.skippedSelectors).toEqual([".el1"]);
+  });
+});
+
+describe("splitIntoPropertyGroups", () => {
+  const baseScript = `const tl = gsap.timeline({ paused: true });`;
+
+  it("splits flat to({x, y, scale, rotation}) into 3 group tweens", () => {
+    const script = `${baseScript}\ntl.to("#el", { x: 100, y: 50, scale: 1.5, rotation: 45, duration: 1 }, 0);`;
+    const parsed = parseGsapScript(script);
+    const animId = parsed.animations[0]!.id;
+
+    const result = splitIntoPropertyGroups(script, animId);
+    const reParsed = parseGsapScript(result.script);
+
+    // Should produce 3 tweens: position (x,y), scale, rotation
+    expect(reParsed.animations).toHaveLength(3);
+    expect(result.ids).toHaveLength(3);
+
+    const groups = new Set(reParsed.animations.map((a) => a.propertyGroup));
+    expect(groups.has("position")).toBe(true);
+    expect(groups.has("scale")).toBe(true);
+    expect(groups.has("rotation")).toBe(true);
+
+    const posAnim = reParsed.animations.find((a) => a.propertyGroup === "position")!;
+    expect(posAnim.properties.x).toBe(100);
+    expect(posAnim.properties.y).toBe(50);
+    expect(posAnim.properties.scale).toBeUndefined();
+
+    const scaleAnim = reParsed.animations.find((a) => a.propertyGroup === "scale")!;
+    expect(scaleAnim.properties.scale).toBe(1.5);
+    expect(scaleAnim.properties.x).toBeUndefined();
+
+    const rotAnim = reParsed.animations.find((a) => a.propertyGroup === "rotation")!;
+    expect(rotAnim.properties.rotation).toBe(45);
+  });
+
+  it("splits flat from({scale, opacity}) into 2 group tweens", () => {
+    const script = `${baseScript}\ntl.from("#el", { scale: 0.5, opacity: 0, duration: 0.5 }, 1);`;
+    const parsed = parseGsapScript(script);
+    const animId = parsed.animations[0]!.id;
+
+    const result = splitIntoPropertyGroups(script, animId);
+    const reParsed = parseGsapScript(result.script);
+
+    expect(reParsed.animations).toHaveLength(2);
+    expect(result.ids).toHaveLength(2);
+
+    const groups = new Set(reParsed.animations.map((a) => a.propertyGroup));
+    expect(groups.has("scale")).toBe(true);
+    expect(groups.has("visual")).toBe(true);
+  });
+
+  it("returns same ID for single-group tween (no split)", () => {
+    const script = `${baseScript}\ntl.to("#el", { x: 100, y: 50, duration: 1 }, 0);`;
+    const parsed = parseGsapScript(script);
+    const animId = parsed.animations[0]!.id;
+
+    const result = splitIntoPropertyGroups(script, animId);
+    expect(result.ids).toEqual([animId]);
+    // Script should be unchanged
+    const reParsed = parseGsapScript(result.script);
+    expect(reParsed.animations).toHaveLength(1);
+  });
+
+  it("preserves position, duration, ease on split tweens", () => {
+    const script = `${baseScript}\ntl.to("#el", { x: 100, scale: 2, duration: 0.8, ease: "power2.out" }, 1.5);`;
+    const parsed = parseGsapScript(script);
+    const animId = parsed.animations[0]!.id;
+
+    const result = splitIntoPropertyGroups(script, animId);
+    const reParsed = parseGsapScript(result.script);
+
+    expect(reParsed.animations).toHaveLength(2);
+    for (const anim of reParsed.animations) {
+      expect(anim.position).toBe(1.5);
+      expect(anim.duration).toBe(0.8);
+      expect(anim.ease).toBe("power2.out");
+    }
+  });
+
+  it("splits keyframed tween: each group gets only its properties per keyframe", () => {
+    const script = `${baseScript}\ntl.to("#el", { keyframes: { "0%": { x: 0, scale: 1 }, "50%": { x: 50, scale: 1.5 }, "100%": { x: 100, scale: 2 } }, duration: 2 }, 0);`;
+    const parsed = parseGsapScript(script);
+    const animId = parsed.animations[0]!.id;
+
+    const result = splitIntoPropertyGroups(script, animId);
+    const reParsed = parseGsapScript(result.script);
+
+    expect(reParsed.animations).toHaveLength(2);
+    expect(result.ids).toHaveLength(2);
+
+    // Both tweens are keyframed — identify them by the properties inside their keyframes.
+    const xAnim = reParsed.animations.find((a) =>
+      a.keyframes?.keyframes.some((kf) => "x" in kf.properties),
+    )!;
+    const scaleAnim = reParsed.animations.find((a) =>
+      a.keyframes?.keyframes.some((kf) => "scale" in kf.properties),
+    )!;
+
+    expect(xAnim).toBeDefined();
+    expect(xAnim.keyframes).toBeDefined();
+    expect(xAnim.keyframes!.keyframes).toHaveLength(3);
+    // Position keyframes should have x but not scale
+    for (const kf of xAnim.keyframes!.keyframes) {
+      expect(kf.properties.x).toBeDefined();
+      expect(kf.properties.scale).toBeUndefined();
+    }
+
+    expect(scaleAnim).toBeDefined();
+    expect(scaleAnim.keyframes).toBeDefined();
+    expect(scaleAnim.keyframes!.keyframes).toHaveLength(3);
+    // Scale keyframes should have scale but not x
+    for (const kf of scaleAnim.keyframes!.keyframes) {
+      expect(kf.properties.scale).toBeDefined();
+      expect(kf.properties.x).toBeUndefined();
+    }
   });
 });

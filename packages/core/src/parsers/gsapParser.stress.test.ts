@@ -658,9 +658,9 @@ describe("14. ID collision", () => {
     const ids = result.animations.map((a) => a.id);
     // All IDs must be unique
     expect(new Set(ids).size).toBe(3);
-    expect(ids[0]).toBe("#el-to-0");
-    expect(ids[1]).toBe("#el-to-0-2");
-    expect(ids[2]).toBe("#el-to-0-3");
+    expect(ids[0]).toBe("#el-to-0-visual");
+    expect(ids[1]).toBe("#el-to-0-position");
+    expect(ids[2]).toBe("#el-to-0-position-2");
   });
 
   it("disambiguated IDs are stable across parses", () => {
@@ -932,7 +932,7 @@ describe("Additional edge cases", () => {
     `;
     const result = parseGsapScript(script);
     // ID uses Math.round(position * 1000) for numeric positions
-    expect(result.animations[0].id).toBe("#el-to--2500");
+    expect(result.animations[0].id).toBe("#el-to--2500-position");
   });
 
   it("fromTo with no position arg defaults to 0", () => {

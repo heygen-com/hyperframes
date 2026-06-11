@@ -39,6 +39,14 @@ export {
   SUPPORTED_PROPS,
   SUPPORTED_EASES,
 } from "./gsapSerialize";
+export type { PropertyGroupName } from "./gsapConstants";
+export {
+  PROPERTY_GROUPS,
+  classifyPropertyGroup,
+  classifyTweenPropertyGroup,
+} from "./gsapConstants";
+import { classifyPropertyGroup, classifyTweenPropertyGroup } from "./gsapConstants";
+import type { PropertyGroupName } from "./gsapConstants";
 export { generateSpringEaseData, SPRING_PRESETS } from "./springEase";
 export type { SpringPreset } from "./springEase";
 
@@ -343,19 +351,47 @@ function isGsapTimelineCall(node: any): boolean {
   );
 }
 
+interface TimelineDefaults {
+  ease?: string;
+  duration?: number;
+}
+
 interface TimelineDetection {
   timelineVar: string | null;
   timelineCount: number;
+  defaults?: TimelineDefaults;
 }
 
-function findTimelineVar(ast: any): TimelineDetection {
+function extractTimelineDefaults(
+  callNode: any,
+  scope: ScopeBindings,
+): TimelineDefaults | undefined {
+  const arg = callNode.arguments?.[0];
+  if (!arg || arg.type !== "ObjectExpression") return undefined;
+  const defaultsProp = arg.properties?.find(
+    (p: any) => isObjectProperty(p) && propKeyName(p) === "defaults",
+  );
+  if (!defaultsProp?.value || defaultsProp.value.type !== "ObjectExpression") return undefined;
+  const record = objectExpressionToRecord(defaultsProp.value, scope);
+  const result: TimelineDefaults = {};
+  if (typeof record.ease === "string") result.ease = record.ease;
+  if (typeof record.duration === "number") result.duration = record.duration;
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
+function findTimelineVar(ast: any, scope?: ScopeBindings): TimelineDetection {
   let timelineVar: string | null = null;
   let timelineCount = 0;
+  let defaults: TimelineDefaults | undefined;
+  const emptyScope: ScopeBindings = scope ?? new Map();
   recast.types.visit(ast, {
     visitVariableDeclarator(path: any) {
       if (isGsapTimelineCall(path.node.init)) {
         timelineCount += 1;
-        if (!timelineVar) timelineVar = path.node.id?.name ?? null;
+        if (!timelineVar) {
+          timelineVar = path.node.id?.name ?? null;
+          defaults = extractTimelineDefaults(path.node.init, emptyScope);
+        }
       }
       this.traverse(path);
     },
@@ -365,12 +401,13 @@ function findTimelineVar(ast: any): TimelineDetection {
         if (!timelineVar) {
           const left = path.node.left;
           if (left?.type === "Identifier") timelineVar = left.name;
+          defaults = extractTimelineDefaults(path.node.right, emptyScope);
         }
       }
       this.traverse(path);
     },
   });
-  return { timelineVar, timelineCount };
+  return { timelineVar, timelineCount, defaults };
 }
 
 // ── Find All Tween Calls ────────────────────────────────────────────────────
@@ -632,13 +669,13 @@ function parseObjectArrayKeyframes(node: any, scope: ScopeBindings): GsapKeyfram
   if (totalDuration > 0) {
     let cumulative = 0;
     for (const entry of raw) {
+      cumulative += entry.duration ?? 0;
       const percentage = Math.round((cumulative / totalDuration) * 100);
       keyframes.push({
         percentage,
         properties: entry.properties,
         ...(entry.ease ? { ease: entry.ease } : {}),
       });
-      cumulative += entry.duration ?? 0;
     }
   } else {
     for (let i = 0; i < raw.length; i++) {
@@ -872,7 +909,8 @@ function tweenCallToAnimation(
     }
   }
 
-  const posVal = call.positionArg ? extractLiteralValue(call.positionArg, scope) : 0;
+  const hasPositionArg = !!call.positionArg;
+  const posVal = hasPositionArg ? extractLiteralValue(call.positionArg, scope) : 0;
   const position: number | string =
     typeof posVal === "number" ? posVal : typeof posVal === "string" ? posVal : 0;
   let duration = typeof vars.duration === "number" ? vars.duration : undefined;
@@ -891,6 +929,16 @@ function tweenCallToAnimation(
     duration,
     ease,
   };
+  if (!hasPositionArg) anim.implicitPosition = true;
+  let group = classifyTweenPropertyGroup(properties);
+  if (!group && keyframesData) {
+    const kfProps: Record<string, unknown> = {};
+    for (const kf of keyframesData.keyframes) {
+      for (const k of Object.keys(kf.properties)) kfProps[k] = true;
+    }
+    group = classifyTweenPropertyGroup(kfProps);
+  }
+  if (group) anim.propertyGroup = group;
   if (Object.keys(extras).length > 0) anim.extras = extras;
   if (keyframesData) anim.keyframes = keyframesData;
   if (motionPathResult) anim.arcPath = motionPathResult.arcPath;
@@ -899,8 +947,96 @@ function tweenCallToAnimation(
   return anim;
 }
 
+// ── Timeline Position Resolution ──────────────────────────────────────────
+
+const GSAP_DEFAULT_DURATION = 0.5;
+
+// NOTE: Label-based positions (e.g. "myLabel+=0.5") are not yet resolved —
+// they fall through to parseFloat which returns null for non-numeric strings.
+function resolvePositionString(pos: string, cursor: number, prevStart: number): number | null {
+  const trimmed = pos.trim();
+  if (trimmed === "") return cursor;
+  if (trimmed.startsWith("+=")) {
+    const n = Number.parseFloat(trimmed.slice(2));
+    return Number.isFinite(n) ? cursor + n : null;
+  }
+  if (trimmed.startsWith("-=")) {
+    const n = Number.parseFloat(trimmed.slice(2));
+    return Number.isFinite(n) ? cursor - n : null;
+  }
+  if (trimmed === "<") return prevStart;
+  if (trimmed === ">") return cursor;
+  if (trimmed.startsWith("<")) {
+    const n = Number.parseFloat(trimmed.slice(1));
+    return Number.isFinite(n) ? prevStart + n : null;
+  }
+  if (trimmed.startsWith(">")) {
+    const n = Number.parseFloat(trimmed.slice(1));
+    return Number.isFinite(n) ? cursor + n : null;
+  }
+  const n = Number.parseFloat(trimmed);
+  return Number.isFinite(n) ? n : null;
+}
+
+function applyTimelineDefaults(
+  anims: Omit<GsapAnimation, "id">[],
+  defaults?: TimelineDefaults,
+): void {
+  if (!defaults) return;
+  for (const anim of anims) {
+    if (anim.method === "set") continue;
+    if (anim.duration === undefined && defaults.duration !== undefined) {
+      anim.duration = defaults.duration;
+    }
+    if (anim.ease === undefined && defaults.ease !== undefined) {
+      anim.ease = defaults.ease;
+    }
+  }
+}
+
+function resolveTimelinePositions(anims: Omit<GsapAnimation, "id">[]): void {
+  let cursor = 0;
+  let prevStart = 0;
+  for (const anim of anims) {
+    const duration = anim.method === "set" ? 0 : (anim.duration ?? GSAP_DEFAULT_DURATION);
+    let start: number | null;
+
+    if (anim.implicitPosition) {
+      start = cursor;
+    } else if (typeof anim.position === "number") {
+      start = anim.position;
+    } else if (typeof anim.position === "string") {
+      start = resolvePositionString(anim.position, cursor, prevStart);
+    } else {
+      start = cursor;
+    }
+
+    if (start != null) {
+      anim.resolvedStart = Math.max(0, start);
+      prevStart = anim.resolvedStart;
+      cursor = Math.max(cursor, anim.resolvedStart + duration);
+    }
+  }
+}
+
+function sortBySourcePosition(calls: TweenCallInfo[]): void {
+  calls.sort((a, b) => {
+    const aLoc = a.node.callee?.property?.loc?.start;
+    const bLoc = b.node.callee?.property?.loc?.start;
+    if (!aLoc || !bLoc) return 0;
+    return aLoc.line - bLoc.line || aLoc.column - bLoc.column;
+  });
+}
+
 // ── Stable ID Generation ───────────────────────────────────────────────────
 
+/**
+ * IDs are transient — recomputed on every parse, never persisted across sessions.
+ * They exist only in ephemeral request/response payloads, React component state,
+ * and the in-memory keyframe cache (rebuilt on every page load). No database,
+ * localStorage, or file stores animation IDs, so changing the ID format (e.g.
+ * adding a `-scale`/`-position` suffix) is safe.
+ */
 function assignStableIds(anims: Omit<GsapAnimation, "id">[]): GsapAnimation[] {
   const counts = new Map<string, number>();
   return anims.map((anim) => {
@@ -908,7 +1044,8 @@ function assignStableIds(anims: Omit<GsapAnimation, "id">[]): GsapAnimation[] {
       typeof anim.position === "number"
         ? String(Math.round(anim.position * 1000))
         : String(anim.position);
-    const base = `${anim.targetSelector}-${anim.method}-${posKey}`;
+    const groupSuffix = anim.propertyGroup ? `-${anim.propertyGroup}` : "";
+    const base = `${anim.targetSelector}-${anim.method}-${posKey}${groupSuffix}`;
     const count = (counts.get(base) ?? 0) + 1;
     counts.set(base, count);
     const id = count === 1 ? base : `${base}-${count}`;
@@ -937,10 +1074,14 @@ function parseGsapAst(script: string): ParsedGsapAst {
   const ast = parseScript(script);
   const scope = collectScopeBindings(ast);
   const targetBindings = collectTargetBindings(ast, scope);
-  const detection = findTimelineVar(ast);
+  const detection = findTimelineVar(ast, scope);
   const timelineVar = detection.timelineVar ?? "tl";
   const calls = findAllTweenCalls(ast, timelineVar, scope, targetBindings);
-  const animations = assignStableIds(calls.map((call) => tweenCallToAnimation(call, scope)));
+  sortBySourcePosition(calls);
+  const rawAnims = calls.map((call) => tweenCallToAnimation(call, scope));
+  applyTimelineDefaults(rawAnims, detection.defaults);
+  resolveTimelinePositions(rawAnims);
+  const animations = assignStableIds(rawAnims);
   const located = animations.map((animation, i) => ({
     id: animation.id,
     call: calls[i]!,
@@ -1300,7 +1441,11 @@ export function removeAnimationFromScript(script: string, animationId: string): 
     console.warn("[gsap-parser] removeAnimationFromScript parse failed:", e);
     return script;
   }
-  const target = parsed.located.find((l) => l.id === animationId);
+  let target = parsed.located.find((l) => l.id === animationId);
+  if (!target) {
+    const convertedId = animationId.replace(/-from-|-fromTo-/, "-to-");
+    target = parsed.located.find((l) => l.id === convertedId);
+  }
   if (!target) return script;
   const node = target.call.node;
   const stmtPath = findStatementPath(target.call.path);
@@ -1514,6 +1659,21 @@ function percentageFromKey(key: string): number {
   return m ? Number.parseFloat(m[1]!) : Number.NaN;
 }
 
+const PCT_TOLERANCE = 2;
+
+function findKeyframePropByPct(kfNode: any, percentage: number): { idx: number; prop: any } | null {
+  const props = kfNode.properties;
+  for (let i = 0; i < props.length; i++) {
+    if (!isObjectProperty(props[i])) continue;
+    const key = propKeyName(props[i]);
+    if (typeof key !== "string") continue;
+    const parsed = percentageFromKey(key);
+    if (Number.isNaN(parsed)) continue;
+    if (Math.abs(parsed - percentage) <= PCT_TOLERANCE) return { idx: i, prop: props[i] };
+  }
+  return null;
+}
+
 /** Build a keyframe value AST node from properties and optional ease. */
 function buildKeyframeValueNode(properties: Record<string, number | string>, ease?: string): any {
   const entries = Object.entries(properties).map(([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`);
@@ -1571,7 +1731,11 @@ function collapseKeyframesToFlat(varsArg: any, record: Record<string, unknown>):
  * updateKeyframeInScript.
  */
 function locateKeyframeCtx(script: string, animationId: string, percentage: number) {
-  const loc = locateAnimation(script, animationId);
+  let loc = locateAnimation(script, animationId);
+  if (!loc) {
+    const convertedId = animationId.replace(/-from-|-fromTo-/, "-to-");
+    loc = locateAnimation(script, convertedId);
+  }
   if (!loc) return null;
   const kfNode = findKeyframesObjectNode(loc.target.call.varsArg);
   if (!kfNode) return null;
@@ -1613,12 +1777,20 @@ export function addKeyframeToScript(
 
   const newValueNode = buildKeyframeValueNode(properties, ease);
 
-  // Replace if this percentage already exists
-  const existingIdx = kfNode.properties.findIndex(
-    (p: any) => isObjectProperty(p) && propKeyName(p) === pctKey,
-  );
-  if (existingIdx !== -1) {
-    kfNode.properties[existingIdx].value = newValueNode;
+  // Merge into existing keyframe at this percentage, or insert new
+  const existing = findKeyframePropByPct(kfNode, percentage);
+  if (existing) {
+    if (existing.prop.value?.type === "ObjectExpression") {
+      const existingRecord = objectExpressionToRecord(existing.prop.value, loc.parsed.scope);
+      const merged = { ...existingRecord };
+      for (const [k, v] of Object.entries(properties)) merged[k] = v;
+      existing.prop.value = buildKeyframeValueNode(
+        merged as Record<string, number | string>,
+        ease ?? (typeof existingRecord.ease === "string" ? existingRecord.ease : undefined),
+      );
+    } else {
+      existing.prop.value = newValueNode;
+    }
   } else {
     // Build the new property node with a quoted percentage key
     const newProp = parseExpr(`{ ${JSON.stringify(pctKey)}: {} }`).properties[0];
@@ -1703,12 +1875,11 @@ export function removeKeyframeFromScript(
 ): string {
   const ctx = locateKeyframeCtx(script, animationId, percentage);
   if (!ctx) return script;
-  const { loc, kfNode, pctKey } = ctx;
+  const { loc, kfNode } = ctx;
 
-  const removeIdx = kfNode.properties.findIndex(
-    (p: any) => isObjectProperty(p) && propKeyName(p) === pctKey,
-  );
-  if (removeIdx === -1) return script;
+  const match = findKeyframePropByPct(kfNode, percentage);
+  if (!match) return script;
+  const removeIdx = match.idx;
 
   kfNode.properties.splice(removeIdx, 1);
 
@@ -1736,14 +1907,12 @@ export function updateKeyframeInScript(
 ): string {
   const ctx = locateKeyframeCtx(script, animationId, percentage);
   if (!ctx) return script;
-  const { loc, kfNode, pctKey } = ctx;
+  const { loc, kfNode } = ctx;
 
-  const existing = kfNode.properties.find(
-    (p: any) => isObjectProperty(p) && propKeyName(p) === pctKey,
-  );
-  if (!existing) return script;
+  const match = findKeyframePropByPct(kfNode, percentage);
+  if (!match) return script;
 
-  existing.value = buildKeyframeValueNode(properties, ease);
+  match.prop.value = buildKeyframeValueNode(properties, ease);
   return recast.print(loc.parsed.ast).code;
 }
 
@@ -1760,32 +1929,47 @@ function cssIdentityValue(prop: string): number {
   return CSS_IDENTITY[prop] ?? 0;
 }
 
+/**
+ * Resolve the 0% (from) and 100% (to) property maps for a tween being
+ * converted to percentage keyframes.
+ *
+ * @param resolvedFromValues — Despite the "from" in the name (historical), these
+ *   are runtime-captured DOM values that override the conversion endpoint:
+ *   - For to():    overrides fromProps (the 0% state / where the element is now).
+ *   - For from():  overrides toProps  (the 100% state / where the element rests).
+ *   - For fromTo(): merges into toProps (the 100% endpoint the user is editing).
+ */
 function resolveConversionProps(
   anim: GsapAnimation,
   resolvedFromValues?: Record<string, number | string>,
 ): { fromProps: Record<string, number | string>; toProps: Record<string, number | string> } {
   if (anim.method === "to") {
-    if (resolvedFromValues) {
-      return { fromProps: resolvedFromValues, toProps: { ...anim.properties } };
-    }
     const identityFrom: Record<string, number | string> = {};
     for (const [key, val] of Object.entries(anim.properties)) {
       if (val != null) identityFrom[key] = typeof val === "number" ? cssIdentityValue(key) : val;
     }
-    return { fromProps: identityFrom, toProps: { ...anim.properties } };
+    const fromProps = resolvedFromValues
+      ? { ...identityFrom, ...resolvedFromValues }
+      : identityFrom;
+    return { fromProps, toProps: { ...anim.properties } };
   }
   if (anim.method === "from") {
-    if (resolvedFromValues) {
-      return { fromProps: { ...anim.properties }, toProps: resolvedFromValues };
-    }
     const identityTo: Record<string, number | string> = {};
     for (const [key, val] of Object.entries(anim.properties)) {
       if (val != null) identityTo[key] = typeof val === "number" ? cssIdentityValue(key) : val;
     }
-    return { fromProps: { ...anim.properties }, toProps: identityTo };
+    const toProps = resolvedFromValues ? { ...identityTo, ...resolvedFromValues } : identityTo;
+    return { fromProps: { ...anim.properties }, toProps };
   }
-  // fromTo
-  return { fromProps: { ...(anim.fromProperties ?? {}) }, toProps: { ...anim.properties } };
+  // fromTo(fromVars, toVars): anim.fromProperties = fromVars (0% state),
+  // anim.properties = toVars (100% state). resolvedFromValues contains the
+  // current DOM position from a drag — it represents the NEW destination, so
+  // it merges into toProps (the 100% endpoint the user is editing), NOT into
+  // fromProps. This is intentional and not inverted.
+  const toProps = resolvedFromValues
+    ? { ...anim.properties, ...resolvedFromValues }
+    : { ...anim.properties };
+  return { fromProps: { ...(anim.fromProperties ?? {}) }, toProps };
 }
 
 /** Strip editable properties and ease/keyframes keys from a varsArg. */
@@ -1827,7 +2011,11 @@ export function convertToKeyframesInScript(
   animationId: string,
   resolvedFromValues?: Record<string, number | string>,
 ): string {
-  const loc = locateAnimation(script, animationId);
+  let loc = locateAnimation(script, animationId);
+  if (!loc) {
+    const convertedId = animationId.replace(/-from-|-fromTo-/, "-to-");
+    loc = locateAnimation(script, convertedId);
+  }
   if (!loc) return script;
 
   const anim = loc.target.animation;
@@ -1858,7 +2046,11 @@ export function convertToKeyframesInScript(
  * last keyframe's properties.
  */
 export function removeAllKeyframesFromScript(script: string, animationId: string): string {
-  const loc = locateAnimation(script, animationId);
+  let loc = locateAnimation(script, animationId);
+  if (!loc) {
+    const convertedId = animationId.replace(/-from-|-fromTo-/, "-to-");
+    loc = locateAnimation(script, convertedId);
+  }
   if (!loc) return script;
   const kfNode = findKeyframesObjectNode(loc.target.call.varsArg);
   if (!kfNode) return script;
@@ -1894,7 +2086,11 @@ export function materializeKeyframesInScript(
   easeEach?: string,
   resolvedSelector?: string,
 ): string {
-  const loc = locateAnimation(script, animationId);
+  let loc = locateAnimation(script, animationId);
+  if (!loc) {
+    const convertedId = animationId.replace(/-from-|-fromTo-/, "-to-");
+    loc = locateAnimation(script, convertedId);
+  }
   if (!loc) return script;
 
   const varsArg = loc.target.call.varsArg;
@@ -2143,6 +2339,156 @@ export function removeArcPathFromScript(script: string, animationId: string): st
   });
 }
 
+// ── Split Into Property Groups ────────────────────────────────────────────
+
+/**
+ * Split a multi-group tween into separate per-group tweens. Each resulting
+ * tween contains only properties belonging to one property group (position,
+ * scale, rotation, visual, etc.). `transformOrigin` stays with the group that
+ * has the most properties. If the tween already belongs to a single group,
+ * returns the script unchanged with the original ID.
+ */
+// fallow-ignore-next-line complexity
+export function splitIntoPropertyGroups(
+  script: string,
+  animationId: string,
+): { script: string; ids: string[] } {
+  let loc = locateAnimation(script, animationId);
+  if (!loc) {
+    const convertedId = animationId.replace(/-from-|-fromTo-/, "-to-");
+    loc = locateAnimation(script, convertedId);
+  }
+  if (!loc) return { script, ids: [animationId] };
+
+  const anim = loc.target.animation;
+
+  // Collect the properties to partition. For keyframed tweens, gather the
+  // union of all properties across all keyframes. For flat tweens, use the
+  // tween's own properties map.
+  const allPropKeys = new Set<string>();
+  if (anim.keyframes) {
+    for (const kf of anim.keyframes.keyframes) {
+      for (const k of Object.keys(kf.properties)) allPropKeys.add(k);
+    }
+  } else {
+    for (const k of Object.keys(anim.properties)) allPropKeys.add(k);
+  }
+
+  // Partition properties into groups (excluding transformOrigin — handled below).
+  const groupProps = new Map<PropertyGroupName, string[]>();
+  for (const key of allPropKeys) {
+    if (key === "transformOrigin") continue;
+    const group = classifyPropertyGroup(key);
+    let arr = groupProps.get(group);
+    if (!arr) {
+      arr = [];
+      groupProps.set(group, arr);
+    }
+    arr.push(key);
+  }
+
+  // Only one group (or zero) — no split needed.
+  if (groupProps.size <= 1) return { script, ids: [anim.id] };
+
+  // Assign transformOrigin to the group with the most properties.
+  if (allPropKeys.has("transformOrigin")) {
+    let largestGroup: PropertyGroupName | undefined;
+    let largestCount = 0;
+    for (const [group, props] of groupProps) {
+      if (props.length > largestCount) {
+        largestCount = props.length;
+        largestGroup = group;
+      }
+    }
+    if (largestGroup) {
+      groupProps.get(largestGroup)!.push("transformOrigin");
+    }
+  }
+
+  // Build per-group tweens and insert them, then remove the original.
+  let result = script;
+
+  // Remove the original tween first.
+  result = removeAnimationFromScript(result, anim.id);
+
+  // Insert one tween per group. Iteration order of the Map follows insertion
+  // order, which mirrors the order properties were encountered.
+  for (const [, props] of groupProps) {
+    const propSet = new Set(props);
+
+    if (anim.keyframes) {
+      // Build keyframes containing only this group's properties per keyframe.
+      const groupKeyframes: Array<{
+        percentage: number;
+        properties: Record<string, number | string>;
+        ease?: string;
+        auto?: boolean;
+      }> = [];
+
+      for (const kf of anim.keyframes.keyframes) {
+        const filtered: Record<string, number | string> = {};
+        for (const [k, v] of Object.entries(kf.properties)) {
+          if (propSet.has(k)) filtered[k] = v;
+        }
+        // Skip keyframes where this group has zero properties.
+        if (Object.keys(filtered).length === 0) continue;
+        groupKeyframes.push({
+          percentage: kf.percentage,
+          properties: filtered,
+          ...(kf.ease ? { ease: kf.ease } : {}),
+        });
+      }
+
+      if (groupKeyframes.length === 0) continue;
+
+      const addResult = addAnimationWithKeyframesToScript(
+        result,
+        anim.targetSelector,
+        typeof anim.position === "number" ? anim.position : 0,
+        anim.duration ?? 0.5,
+        groupKeyframes,
+        anim.keyframes.easeEach ?? anim.ease,
+      );
+      result = addResult.script;
+    } else {
+      // Flat tween — filter properties to this group.
+      const groupProperties: Record<string, number | string> = {};
+      for (const [k, v] of Object.entries(anim.properties)) {
+        if (propSet.has(k)) groupProperties[k] = v;
+      }
+      if (Object.keys(groupProperties).length === 0) continue;
+
+      let fromProperties: Record<string, number | string> | undefined;
+      if (anim.method === "fromTo" && anim.fromProperties) {
+        fromProperties = {};
+        for (const [k, v] of Object.entries(anim.fromProperties)) {
+          if (propSet.has(k)) fromProperties[k] = v;
+        }
+      }
+
+      const addResult = addAnimationToScript(result, {
+        targetSelector: anim.targetSelector,
+        method: anim.method,
+        position: anim.position,
+        duration: anim.duration,
+        ease: anim.ease,
+        properties: groupProperties,
+        fromProperties,
+        extras: anim.extras,
+      });
+      result = addResult.script;
+    }
+  }
+
+  // Re-parse to collect the new IDs.
+  const reParsed = parseGsapAst(result);
+  const newIds = reParsed.located
+    .filter((l) => l.animation.targetSelector === anim.targetSelector)
+    .map((l) => l.id);
+
+  return { script: result, ids: newIds };
+}
+
 /**
  * Replace a dynamic loop that generates multiple tween calls with individual
  * static `tl.to()` calls — one per element. Finds the loop containing the
@@ -2213,7 +2559,7 @@ export function unrollDynamicAnimations(
       kfEntries.push(`easeEach: ${JSON.stringify(el.easeEach)}`);
     }
     calls.push(
-      `tl.to(${JSON.stringify(el.selector)}, { keyframes: { ${kfEntries.join(", ")} }, duration: ${duration}, ease: ${JSON.stringify(ease)} }, ${posCode});`,
+      `${loc.parsed.timelineVar}.to(${JSON.stringify(el.selector)}, { keyframes: { ${kfEntries.join(", ")} }, duration: ${duration}, ease: ${JSON.stringify(ease)} }, ${posCode});`,
     );
   }
 

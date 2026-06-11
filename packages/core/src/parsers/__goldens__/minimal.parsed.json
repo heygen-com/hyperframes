@@ -10,6 +10,7 @@
       },
       "duration": 0.5,
       "ease": "power3.out",
+      "resolvedStart": 0.2,
       "id": "#notification-to-200"
     },
     {
@@ -22,6 +23,7 @@
       },
       "duration": 0.3,
       "ease": "power3.in",
+      "resolvedStart": 4.2,
       "id": "#notification-to-4200"
     }
   ],

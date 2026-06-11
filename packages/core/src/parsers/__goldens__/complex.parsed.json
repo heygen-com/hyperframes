@@ -1,42 +1,6 @@
 {
   "animations": [
     {
-      "targetSelector": ".ambient-line",
-      "method": "from",
-      "position": 0.16,
-      "properties": {
-        "scaleX": 0,
-        "opacity": 0
-      },
-      "duration": 0.42,
-      "extras": {
-        "stagger": "__raw:0.08"
-      },
-      "id": ".ambient-line-from-160"
-    },
-    {
-      "targetSelector": ".ambient-word",
-      "method": "from",
-      "position": 0.08,
-      "properties": {
-        "scale": 0.92,
-        "opacity": 0
-      },
-      "duration": 0.5,
-      "id": ".ambient-word-from-80"
-    },
-    {
-      "targetSelector": ".headline .sub",
-      "method": "from",
-      "position": 0.2,
-      "properties": {
-        "y": 20,
-        "opacity": 0
-      },
-      "duration": 0.28,
-      "id": ".headline .sub-from-200"
-    },
-    {
       "targetSelector": ".headline span",
       "method": "from",
       "position": 0.05,
@@ -49,7 +13,50 @@
       "extras": {
         "stagger": "__raw:0.055"
       },
+      "resolvedStart": 0.05,
       "id": ".headline span-from-50"
+    },
+    {
+      "targetSelector": ".headline .sub",
+      "method": "from",
+      "position": 0.2,
+      "properties": {
+        "y": 20,
+        "opacity": 0
+      },
+      "duration": 0.28,
+      "ease": "power3.out",
+      "resolvedStart": 0.2,
+      "id": ".headline .sub-from-200"
+    },
+    {
+      "targetSelector": ".ambient-word",
+      "method": "from",
+      "position": 0.08,
+      "properties": {
+        "scale": 0.92,
+        "opacity": 0
+      },
+      "duration": 0.5,
+      "ease": "power3.out",
+      "resolvedStart": 0.08,
+      "id": ".ambient-word-from-80"
+    },
+    {
+      "targetSelector": ".ambient-line",
+      "method": "from",
+      "position": 0.16,
+      "properties": {
+        "scaleX": 0,
+        "opacity": 0
+      },
+      "duration": 0.42,
+      "ease": "power3.out",
+      "extras": {
+        "stagger": "__raw:0.08"
+      },
+      "resolvedStart": 0.16,
+      "id": ".ambient-line-from-160"
     }
   ],
   "timelineVar": "tl",

@@ -14,6 +14,7 @@
       },
       "duration": 0.6,
       "ease": "power3.out",
+      "resolvedStart": 0.1,
       "id": "#hero-fromTo-100"
     },
     {
@@ -29,6 +30,7 @@
         "opacity": 0
       },
       "duration": 0.45,
+      "resolvedStart": 0.5,
       "id": "#caption-fromTo-500"
     }
   ],

@@ -7,6 +7,7 @@
  * parsing of GSAP source lives in the Node-only `./gsapParser` module.
  */
 import type { Keyframe, KeyframeProperties, ValidationResult } from "../core.types";
+import type { PropertyGroupName } from "./gsapConstants";
 
 export type GsapMethod = "set" | "to" | "from" | "fromTo";
 
@@ -29,6 +30,13 @@ export interface GsapAnimation {
   hasUnresolvedKeyframes?: boolean;
   /** True when the tween's target selector couldn't be statically resolved (dynamic). */
   hasUnresolvedSelector?: boolean;
+  /** Absolute start time computed by walking the timeline chain (handles +=, -=, <, >, labels). */
+  resolvedStart?: number;
+  /** True when no position arg was authored — the tween is sequentially placed by GSAP. */
+  implicitPosition?: boolean;
+  /** Which property group this tween belongs to (position, scale, size, rotation, visual, other).
+   *  Undefined for legacy mixed tweens that bundle multiple groups. */
+  propertyGroup?: PropertyGroupName;
 }
 
 export interface GsapPercentageKeyframe {
@@ -77,8 +85,10 @@ export function serializeGsapAnimations(
   options?: { includeMediaSync?: boolean; preamble?: string; postamble?: string },
 ): string {
   const sorted = [...animations].sort((a, b) => {
-    const aNum = typeof a.position === "number" ? a.position : Number.MAX_SAFE_INTEGER;
-    const bNum = typeof b.position === "number" ? b.position : Number.MAX_SAFE_INTEGER;
+    const aNum =
+      a.resolvedStart ?? (typeof a.position === "number" ? a.position : Number.MAX_SAFE_INTEGER);
+    const bNum =
+      b.resolvedStart ?? (typeof b.position === "number" ? b.position : Number.MAX_SAFE_INTEGER);
     return aNum - bNum;
   });
   const lines = sorted.map((anim) => {
