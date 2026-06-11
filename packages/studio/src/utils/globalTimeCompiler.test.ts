@@ -103,8 +103,8 @@ describe("resolveTweenDuration", () => {
     expect(resolveTweenDuration(makeAnim({ duration: 2 }))).toBe(2);
   });
 
-  test("missing duration defaults to 1", () => {
-    expect(resolveTweenDuration(makeAnim({ duration: undefined }))).toBe(1);
+  test("missing duration defaults to GSAP default (0.5)", () => {
+    expect(resolveTweenDuration(makeAnim({ duration: undefined }))).toBe(0.5);
   });
 });
 

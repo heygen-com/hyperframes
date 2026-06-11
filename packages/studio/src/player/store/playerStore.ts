@@ -6,6 +6,10 @@ export interface KeyframeCacheEntry {
   format: string;
   keyframes: Array<{
     percentage: number;
+    /** Original tween-relative percentage (server mutations need this, not the clip-relative `percentage`). */
+    tweenPercentage?: number;
+    /** Which property group the source tween belongs to (position, scale, rotation, visual, etc.). */
+    propertyGroup?: string;
     properties: Record<string, number | string>;
     ease?: string;
   }>;
@@ -73,6 +77,11 @@ interface PlayerState {
   selectedKeyframes: Set<string>;
   toggleSelectedKeyframe: (key: string) => void;
   clearSelectedKeyframes: () => void;
+
+  /** Tween-relative percentage of the last-clicked keyframe diamond. Operations
+   *  (drag, resize, rotate) target this instead of recomputing from playhead. */
+  activeKeyframePct: number | null;
+  setActiveKeyframePct: (pct: number | null) => void;
 
   /** Multi-select: additional selected elements beyond selectedElementId. */
   selectedElementIds: Set<string>;
@@ -169,6 +178,9 @@ export const usePlayerStore = create<PlayerState>((set) => ({
       return { selectedKeyframes: next };
     }),
   clearSelectedKeyframes: () => set({ selectedKeyframes: new Set() }),
+
+  activeKeyframePct: null,
+  setActiveKeyframePct: (pct) => set({ activeKeyframePct: pct }),
 
   keyframeClipboard: null,
   setKeyframeClipboard: (data) => set({ keyframeClipboard: data }),

@@ -101,12 +101,4 @@ export interface StudioPathOffsetSnapshot {
   marker: string | null;
   originalTranslate: string | null;
   originalInlineTranslate: string | null;
-  /**
-   * GSAP's cached x/y at capture time, for elements whose transform GSAP
-   * owns. Draft positioning mutates GSAP's cache (gsap.set), which inline
-   * style restoration alone cannot undo. Null when GSAP does not own the
-   * element's transform.
-   */
-  gsapX: number | null;
-  gsapY: number | null;
 }

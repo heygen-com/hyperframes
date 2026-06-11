@@ -52,10 +52,12 @@ function readElementPosition(
   const element = sel.element;
   if (!element?.isConnected || !gsap?.getProperty) return result;
 
+  const POSITION_PROPS = new Set(["x", "y", "xPercent", "yPercent"]);
   const props = anim ? Object.keys(anim.properties) : ["x", "y", "opacity"];
   for (const prop of props) {
     const val = Number(gsap.getProperty(element, prop));
-    if (Number.isFinite(val)) result[prop] = Math.round(val);
+    if (!Number.isFinite(val)) continue;
+    result[prop] = POSITION_PROPS.has(prop) ? Math.round(val) : Math.round(val * 1000) / 1000;
   }
 
   return result;

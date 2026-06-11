@@ -8,6 +8,7 @@
  */
 import { useCallback } from "react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
+import { classifyPropertyGroup } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { usePlayerStore } from "../player/store/playerStore";
 import { readAllAnimatedProperties, readGsapProperty } from "./gsapRuntimeBridge";
@@ -38,7 +39,7 @@ interface CommitAnimatedPropertyDeps {
 
 function computePercentage(selection: DomEditSelection, anim?: GsapAnimation): number {
   const currentTime = usePlayerStore.getState().currentTime;
-  const tweenPos = typeof anim?.position === "number" ? anim.position : 0;
+  const tweenPos = anim?.resolvedStart ?? (typeof anim?.position === "number" ? anim.position : 0);
   const tweenDur = anim?.duration ?? 0;
   if (tweenDur > 0) {
     return Math.max(
@@ -56,18 +57,19 @@ function computePercentage(selection: DomEditSelection, anim?: GsapAnimation): n
 function pickBestAnimation(
   animations: GsapAnimation[],
   selector: string | null,
+  property?: string,
 ): GsapAnimation | undefined {
   if (animations.length <= 1) return animations[0];
   const currentTime = usePlayerStore.getState().currentTime;
+  const targetGroup = property ? classifyPropertyGroup(property) : undefined;
 
   const scored = animations.map((a) => {
     let score = 0;
+    if (targetGroup && a.propertyGroup === targetGroup) score += 20;
     if (a.keyframes) score += 10;
-    // Prefer single-element selectors over comma-separated groups
     if (selector && a.targetSelector === selector) score += 5;
     else if (a.targetSelector.includes(",")) score -= 3;
-    // Prefer tweens active at the current time
-    const pos = typeof a.position === "number" ? a.position : 0;
+    const pos = a.resolvedStart ?? (typeof a.position === "number" ? a.position : 0);
     const dur = a.duration ?? 0;
     if (currentTime >= pos - 0.05 && currentTime <= pos + dur + 0.05) score += 8;
     return { anim: a, score };
@@ -102,7 +104,11 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
       const iframe = previewIframeRef.current;
       const selector = selectorFor(selection);
 
-      let anim: GsapAnimation | undefined = pickBestAnimation(selectedGsapAnimations, selector);
+      let anim: GsapAnimation | undefined = pickBestAnimation(
+        selectedGsapAnimations,
+        selector,
+        property,
+      );
 
       // Case 3: No animation — create one first
       if (!anim) {

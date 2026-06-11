@@ -27,6 +27,7 @@ export function isTimeWithinTween(
 }
 
 export function resolveTweenStart(animation: GsapAnimation): number | null {
+  if (animation.resolvedStart != null) return animation.resolvedStart;
   if (typeof animation.position === "number") return animation.position;
   const parsed = Number.parseFloat(animation.position as string);
   if (!Number.isNaN(parsed)) return parsed;
@@ -34,7 +35,7 @@ export function resolveTweenStart(animation: GsapAnimation): number | null {
 }
 
 export function resolveTweenDuration(animation: GsapAnimation): number {
-  return animation.duration ?? 1;
+  return animation.duration ?? 0.5;
 }
 
 export function findTweenAtTime(

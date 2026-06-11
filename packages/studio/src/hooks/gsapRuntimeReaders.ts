@@ -2,6 +2,7 @@
  * Low-level GSAP runtime property readers shared by gsapRuntimeBridge and gsapDragCommit.
  */
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
+import { classifyPropertyGroup, type PropertyGroupName } from "@hyperframes/core/gsap-parser";
 
 interface IframeGsap {
   getProperty: (el: Element, prop: string) => number;
@@ -19,7 +20,8 @@ export function readGsapProperty(
     const el = iframe.contentDocument?.querySelector(selector);
     if (!el) return null;
     const val = Number(gsap.getProperty(el, prop));
-    return Number.isFinite(val) ? Math.round(val) : null;
+    if (!Number.isFinite(val)) return null;
+    return POSITION_PROPS.has(prop) ? Math.round(val) : Math.round(val * 1000) / 1000;
   } catch {
     return null;
   }
@@ -51,6 +53,7 @@ export function readAllAnimatedProperties(
   iframe: HTMLIFrameElement | null,
   selector: string,
   anim: GsapAnimation,
+  group?: PropertyGroupName,
 ): Record<string, number> {
   const result: Record<string, number> = {};
   if (!iframe?.contentWindow) return result;
@@ -79,6 +82,13 @@ export function readAllAnimatedProperties(
     }
   } else {
     for (const p of Object.keys(anim.properties)) propKeys.add(p);
+  }
+
+  // When a group filter is specified, only keep properties belonging to that group.
+  if (group) {
+    for (const p of propKeys) {
+      if (classifyPropertyGroup(p) !== group) propKeys.delete(p);
+    }
   }
 
   for (const prop of propKeys) {
@@ -147,9 +157,13 @@ export function readAllAnimatedProperties(
     sepia: 0,
     invert: 0,
   };
+  // Collect all properties that ANY tween on this element explicitly targets.
+  // Only capture baseline values for these — GSAP reports non-default values
+  // (scaleZ=0, brightness=0) for untouched properties, polluting keyframes.
+  const allTweenedProps = new Set([...propKeys, ...otherTweenProps]);
   for (const [prop, defaultVal] of Object.entries(UNIVERSAL_BASELINE)) {
     if (prop in result) continue;
-    if (otherTweenProps.has(prop)) continue;
+    if (!allTweenedProps.has(prop)) continue;
     const val = Number(gsap.getProperty(el, prop));
     if (Number.isFinite(val) && Math.round(val * 1000) !== Math.round(defaultVal * 1000)) {
       result[prop] = Math.round(val * 1000) / 1000;
