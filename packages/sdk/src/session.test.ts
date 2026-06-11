@@ -89,11 +89,13 @@ describe("override-set replay on open", () => {
     expect(comp.serialize()).not.toContain("subtitle");
   });
 
-  it("treats property-level null as restore-base (no-op on fresh base)", async () => {
+  it("treats property-level null as a deletion marker — removes the property from the base", async () => {
+    // Null in the override-set is emitted only from patchRemove (explicit deletion).
+    // On replay against a base that has the property set, it must be removed.
     const comp = await openComposition(BASE_HTML, {
       overrides: { "hf-title.style.color": null },
     });
-    expect(comp.getElement("hf-title")?.inlineStyles["color"]).toBe("#fff");
+    expect(comp.getElement("hf-title")?.inlineStyles["color"]).toBeUndefined();
   });
 
   it("getOverrides returns the set the session was opened with", async () => {

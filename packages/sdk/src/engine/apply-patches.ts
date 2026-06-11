@@ -59,8 +59,9 @@ function parsePath(path: string): ParsedPath | null {
 
 /**
  * Replay a stored override-set onto a freshly-parsed base document (T3 init).
- * Property keys with null mean "restore base value" — a no-op on a fresh base.
- * Bare element keys with null are removal markers — the element is removed.
+ * A null value means the property was explicitly deleted — emit a remove patch
+ * so the base document matches the session state. (Removing a non-existent
+ * property is a no-op in applyOne, so this is safe against fresh-base misses.)
  */
 export function applyOverrideSet(parsed: ParsedDocument, overrides: OverrideSet): void {
   const patches: JsonPatchOp[] = [];
@@ -68,7 +69,7 @@ export function applyOverrideSet(parsed: ParsedDocument, overrides: OverrideSet)
     const path = keyToPath(key);
     if (!path) continue;
     if (value === null) {
-      if (!key.includes(".")) patches.push({ op: "remove", path });
+      patches.push({ op: "remove", path });
       continue;
     }
     patches.push({ op: "replace", path, value });

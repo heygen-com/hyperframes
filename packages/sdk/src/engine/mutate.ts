@@ -40,18 +40,56 @@ export interface MutationResult {
 
 const EMPTY: MutationResult = { forward: [], inverse: [] };
 
-/** Ops that require the Phase 3b parser-backed engine (meriyah/css-tree). */
-const PHASE3B_OPS = new Set([
-  "setClassStyle",
-  "addGsapTween",
-  "setGsapTween",
-  "setGsapKeyframe",
-  "addGsapKeyframe",
-  "removeGsapKeyframe",
-  "removeGsapTween",
-  "addLabel",
-  "removeLabel",
+// ─── setAttribute safety ────────────────────────────────────────────────────
+
+// Composition-reserved attributes — changing these breaks element identity or
+// the core/studio data model. Reject before mutating.
+const RESERVED_ATTRS = new Set([
+  "data-hf-id",
+  "data-composition-id",
+  "data-width",
+  "data-height",
+  "data-start",
+  "data-end",
+  "data-track-index",
+  "data-hold-start",
+  "data-hold-end",
+  "data-hold-fill",
 ]);
+
+const DANGEROUS_URI_SCHEMES = /^(?:javascript|vbscript):/i;
+const DANGEROUS_DATA_URI = /^data\s*:\s*text\/html/i;
+const URI_BEARING_ATTRS = new Set([
+  "src",
+  "href",
+  "action",
+  "formaction",
+  "poster",
+  "srcset",
+  "xlink:href",
+]);
+
+function validateSetAttribute(name: string, value: string | null): void {
+  const lower = name.toLowerCase();
+  if (RESERVED_ATTRS.has(lower)) {
+    throw new Error(
+      `setAttribute: "${name}" is a reserved composition attribute and cannot be reassigned. ` +
+        `Use the appropriate typed method (setTiming, setHold, etc.) instead.`,
+    );
+  }
+  if (lower.startsWith("on")) {
+    throw new Error(
+      `setAttribute: event-handler attributes ("${name}") are not permitted — ` +
+        `they produce executable HTML that cannot be safely serialized.`,
+    );
+  }
+  if (value !== null && URI_BEARING_ATTRS.has(lower)) {
+    const trimmed = value.trim();
+    if (DANGEROUS_URI_SCHEMES.test(trimmed) || DANGEROUS_DATA_URI.test(trimmed)) {
+      throw new Error(`setAttribute: unsafe URI value for "${name}".`);
+    }
+  }
+}
 
 export class UnsupportedOpError extends Error {
   // Stable error code — part of the public API contract (F7); hosts switch on
@@ -169,7 +207,11 @@ function handleSetText(parsed: ParsedDocument, ids: HfId[], value: string): Muta
     const oldText = getOwnText(el);
     setOwnText(el, value);
     const path = textPath(id);
-    const p = scalarChange(path, oldText || null, value);
+    // getOwnText always returns string ("" for empty) — use it directly so
+    // the forward patch is always op:'replace', not op:'add'. An op:'add' on
+    // a text path is semantically wrong for external JSON-patch consumers
+    // (the path already exists; add would fail on strict appliers).
+    const p = scalarChange(path, oldText, value);
     result.forward.push(p.forward);
     result.inverse.push(p.inverse);
   }
@@ -182,6 +224,7 @@ function handleSetAttribute(
   name: string,
   value: string | null,
 ): MutationResult {
+  validateSetAttribute(name, value);
   const result: MutationResult = { forward: [], inverse: [] };
   for (const id of ids) {
     const el = findById(parsed.document, id);
@@ -400,9 +443,10 @@ export function validateOp(parsed: ParsedDocument, op: EditOp): boolean {
       return findRoot(parsed.document) !== null;
     case "setCompositionMetadata":
       return true;
-    // Phase 3b — not implemented yet; can() must report false so callers
-    // can feature-detect instead of hitting UnsupportedOpError.
+    // Phase 3b and unknown ops — report false so callers can feature-detect.
+    // An unknown op type must never silently pass validation only to no-op
+    // or throw in applyOp (which would violate the can() contract).
     default:
-      return !PHASE3B_OPS.has(op.type);
+      return false;
   }
 }

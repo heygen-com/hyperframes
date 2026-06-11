@@ -8,7 +8,7 @@
  * T3 (embedded) hosts own persistence — do not use this module.
  */
 
-import type { Composition } from "./types.js";
+import type { Composition, PersistErrorEvent } from "./types.js";
 import type { PersistAdapter } from "./adapters/types.js";
 
 export interface PersistQueueModule {
@@ -20,6 +20,8 @@ export interface PersistQueueModule {
 export interface PersistQueueOptions {
   /** Adapter path to write to. Default: "composition.html" */
   path?: string;
+  /** Called when adapter.write() rejects. */
+  onError?: (e: PersistErrorEvent) => void;
 }
 
 export function createPersistQueue(
@@ -48,8 +50,9 @@ export function createPersistQueue(
       if (disposed) return;
       try {
         await adapter.write(path, content);
-      } catch {
-        // error already surfaced via persist:error on the adapter
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        opts.onError?.({ error: { message, cause: err } });
       }
     });
     return writeChain;

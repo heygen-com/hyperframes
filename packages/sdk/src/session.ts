@@ -95,6 +95,10 @@ class CompositionImpl implements Composition {
     this.persistQueueModule = module;
   }
 
+  _fireError(e: PersistErrorEvent): void {
+    this.errorHandlers.forEach((h) => h(e));
+  }
+
   // ── Typed methods (F10 layer 1) ─────────────────────────────────────────────
 
   setStyle(id: HfId, styles: Record<string, string | null>): void {
@@ -272,9 +276,13 @@ class CompositionImpl implements Composition {
             this.batchOrigin,
             this.batchOpTypes,
           );
-          this.resetBatchState();
+          // Fire handlers before resetting batch state so that if a handler
+          // throws the patch data (batchForward/batchInverse) is still intact
+          // for callers that inspect it on error. The event was already built
+          // from a snapshot so handler re-entrancy does not corrupt the event.
           this.patchHandlers.forEach((h) => h(event));
           this.changeHandlers.forEach((h) => h());
+          this.resetBatchState();
         } else {
           if (threw && this.batchInverse.length > 0) {
             // Roll back: the dispatches inside the batch already mutated the
@@ -427,7 +435,9 @@ export async function openComposition(
     session.attachHistory(history);
 
     if (opts?.persist) {
-      const pq = createPersistQueue(session, opts.persist);
+      const pq = createPersistQueue(session, opts.persist, {
+        onError: (e) => session._fireError(e),
+      });
       session.attachPersistQueue(pq);
     }
   }

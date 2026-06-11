@@ -115,7 +115,9 @@ export function keyToPath(key: string): string | null {
   if (text?.[1]) return textPath(text[1]);
 
   const attr = /^([^.]+)\.attr\.(.+)$/.exec(key);
-  if (attr?.[1] && attr[2]) return attrPath(attr[1], attr[2]);
+  // pathToKey stores the RFC 6902-encoded segment verbatim; do NOT call attrPath()
+  // here (it would re-escape '~' → '~0'), just reconstruct the path directly.
+  if (attr?.[1] && attr[2]) return `/elements/${attr[1]}/attributes/${attr[2]}`;
 
   const timing = /^([^.]+)\.timing\.(start|end|trackIndex)$/.exec(key);
   if (timing?.[1]) return timingPath(timing[1], timing[2] as "start" | "end" | "trackIndex");
