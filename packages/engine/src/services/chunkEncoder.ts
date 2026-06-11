@@ -490,20 +490,26 @@ export async function encodeFramesChunkedConcat(
   options: EncoderOptions,
   chunkSizeFrames: number,
   signal?: AbortSignal,
+  config?: Partial<Pick<EngineConfig, "ffmpegEncodeTimeout">>,
 ): Promise<EncodeResult> {
   const start = Date.now();
+  // Applied per ffmpeg invocation (each chunk and the final concat), not to
+  // the whole sequence — chunks are short, so a hung process is the only
+  // thing that should ever trip it.
+  const encodeTimeout = config?.ffmpegEncodeTimeout ?? DEFAULT_CONFIG.ffmpegEncodeTimeout;
+  const fail = (error: string): EncodeResult => ({
+    success: false,
+    outputPath,
+    durationMs: Date.now() - start,
+    framesEncoded: 0,
+    fileSize: 0,
+    error: signal?.aborted ? "Chunked encode cancelled" : error,
+  });
   const files = readdirSync(framesDir)
     .filter((f) => f.match(/\.(jpg|jpeg|png)$/i))
     .sort();
   if (files.length === 0) {
-    return {
-      success: false,
-      outputPath,
-      durationMs: Date.now() - start,
-      framesEncoded: 0,
-      fileSize: 0,
-      error: "[FFmpeg] No frame files found in directory",
-    };
+    return fail("[FFmpeg] No frame files found in directory");
   }
   const chunkSize = Math.max(30, Math.floor(chunkSizeFrames));
   const chunkCount = Math.ceil(files.length / chunkSize);
@@ -513,14 +519,7 @@ export async function encodeFramesChunkedConcat(
 
   for (let i = 0; i < chunkCount; i++) {
     if (signal?.aborted) {
-      return {
-        success: false,
-        outputPath,
-        durationMs: Date.now() - start,
-        framesEncoded: 0,
-        fileSize: 0,
-        error: "Chunked encode cancelled",
-      };
+      return fail("Chunked encode cancelled");
     }
     const startNumber = i * chunkSize;
     const framesInChunk = Math.min(chunkSize, files.length - startNumber);
@@ -544,30 +543,9 @@ export async function encodeFramesChunkedConcat(
     let gpuEncoder: GpuEncoder = null;
     if (options.useGpu) gpuEncoder = await getCachedGpuEncoder();
     const args = buildEncoderArgs(options, inputArgs, chunkPath, gpuEncoder);
-    const chunkResult = await new Promise<{ success: boolean; error?: string }>((resolve) => {
-      const ffmpeg = spawn(getFfmpegBinary(), args);
-      trackChildProcess(ffmpeg);
-      let stderr = "";
-      ffmpeg.stderr.on("data", (d) => {
-        stderr += d.toString();
-      });
-      ffmpeg.on("close", (code) => {
-        if (code === 0) resolve({ success: true });
-        else resolve({ success: false, error: `Chunk ${i} encode failed: ${stderr.slice(-400)}` });
-      });
-      ffmpeg.on("error", (err) => {
-        resolve({ success: false, error: `Chunk ${i} encode error: ${err.message}` });
-      });
-    });
+    const chunkResult = await runFfmpeg(args, { signal, timeout: encodeTimeout });
     if (!chunkResult.success) {
-      return {
-        success: false,
-        outputPath,
-        durationMs: Date.now() - start,
-        framesEncoded: 0,
-        fileSize: 0,
-        error: chunkResult.error,
-      };
+      return fail(`Chunk ${i} encode failed: ${chunkResult.stderr.slice(-400)}`);
     }
     chunkPaths.push(chunkPath);
   }
@@ -588,31 +566,10 @@ export async function encodeFramesChunkedConcat(
     "-y",
     outputPath,
   ];
-  const concatResult = await new Promise<{ success: boolean; error?: string }>((resolve) => {
-    const ffmpeg = spawn(getFfmpegBinary(), concatArgs);
-    trackChildProcess(ffmpeg);
-    let stderr = "";
-    ffmpeg.stderr.on("data", (d) => {
-      stderr += d.toString();
-    });
-    ffmpeg.on("close", (code) => {
-      if (code === 0) resolve({ success: true });
-      else resolve({ success: false, error: `Chunk concat failed: ${stderr.slice(-400)}` });
-    });
-    ffmpeg.on("error", (err) => {
-      resolve({ success: false, error: `Chunk concat error: ${err.message}` });
-    });
-  });
+  const concatResult = await runFfmpeg(concatArgs, { signal, timeout: encodeTimeout });
 
   if (!concatResult.success) {
-    return {
-      success: false,
-      outputPath,
-      durationMs: Date.now() - start,
-      framesEncoded: 0,
-      fileSize: 0,
-      error: concatResult.error,
-    };
+    return fail(`Chunk concat failed: ${concatResult.stderr.slice(-400)}`);
   }
 
   const fileSize = existsSync(outputPath) ? statSync(outputPath).size : 0;

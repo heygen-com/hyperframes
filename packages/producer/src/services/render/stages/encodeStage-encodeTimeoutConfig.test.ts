@@ -10,6 +10,7 @@ import { join } from "node:path";
 // ffmpegEncodeTimeout always fell back to the hardcoded default and
 // FFMPEG_ENCODE_TIMEOUT_MS was silently ignored).
 const encodeCalls: { config: unknown }[] = [];
+const chunkedEncodeCalls: { config: unknown }[] = [];
 const runFfmpegCalls: { timeout: number | undefined }[] = [];
 let resolveConfigCalls = 0;
 
@@ -35,7 +36,18 @@ mock.module("@hyperframes/engine", () => ({
     encodeCalls.push({ config });
     return successResult;
   },
-  encodeFramesChunkedConcat: async () => successResult,
+  encodeFramesChunkedConcat: async (
+    _framesDir: string,
+    _framePattern: string,
+    _outputPath: string,
+    _options: unknown,
+    _chunkSizeFrames: number,
+    _signal: AbortSignal | undefined,
+    config: unknown,
+  ) => {
+    chunkedEncodeCalls.push({ config });
+    return successResult;
+  },
   runFfmpeg: async (_args: string[], opts: { timeout?: number }) => {
     runFfmpegCalls.push({ timeout: opts.timeout });
     return { success: true, exitCode: 0, stderr: "", stdout: "" };
@@ -95,6 +107,7 @@ function makeEncodeInput(overrides: {
   producerConfig?: ReturnType<typeof makeProducerConfig>;
   isGif?: boolean;
   framesDir?: string;
+  enableChunkedEncode?: boolean;
 }) {
   const workDir = mkdtempSync(join(tmpdir(), "hf-encode-stage-test-"));
   return {
@@ -116,7 +129,9 @@ function makeEncodeInput(overrides: {
       info: () => {},
       debug: () => {},
     },
-    outputPath: join(workDir, overrides.isGif ? "out.gif" : "out.mp4"),
+    // Extension is irrelevant here — the gif/video branch is selected by the
+    // isGif flag below and every ffmpeg call is mocked.
+    outputPath: join(workDir, "out.mp4"),
     framesDir: overrides.framesDir ?? workDir,
     videoOnlyPath: join(workDir, "video-only.mp4"),
     width: 640,
@@ -133,7 +148,7 @@ function makeEncodeInput(overrides: {
     },
     effectiveQuality: 23,
     effectiveBitrate: undefined,
-    enableChunkedEncode: false,
+    enableChunkedEncode: overrides.enableChunkedEncode ?? false,
     chunkedEncodeSize: 360,
     abortSignal: undefined,
     assertNotAborted: () => {},
@@ -142,6 +157,7 @@ function makeEncodeInput(overrides: {
 
 function resetCaptures() {
   encodeCalls.length = 0;
+  chunkedEncodeCalls.length = 0;
   runFfmpegCalls.length = 0;
   resolveConfigCalls = 0;
 }
@@ -170,6 +186,19 @@ describe("runEncodeStage — encode timeout config threading (#1348)", () => {
     expect(encodeCalls.length).toBe(1);
     expect(resolveConfigCalls).toBe(1);
     const config = encodeCalls[0].config as { ffmpegEncodeTimeout: number };
+    expect(config.ffmpegEncodeTimeout).toBe(RESOLVED_ENCODE_TIMEOUT);
+  });
+
+  it("passes the trailing config argument to encodeFramesChunkedConcat on the chunked path", async () => {
+    resetCaptures();
+    const { runEncodeStage } = await import("./encodeStage.js");
+
+    await runEncodeStage(makeEncodeInput({ enableChunkedEncode: true }));
+
+    expect(encodeCalls.length).toBe(0);
+    expect(chunkedEncodeCalls.length).toBe(1);
+    expect(resolveConfigCalls).toBe(1);
+    const config = chunkedEncodeCalls[0].config as { ffmpegEncodeTimeout: number };
     expect(config.ffmpegEncodeTimeout).toBe(RESOLVED_ENCODE_TIMEOUT);
   });
 

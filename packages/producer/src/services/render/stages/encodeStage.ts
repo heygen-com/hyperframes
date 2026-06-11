@@ -285,6 +285,7 @@ export async function runEncodeStage(input: EncodeStageInput): Promise<EncodeSta
     lockGopForChunkConcat: input.lockGopForChunkConcat === true,
     gopSize: input.gopSize,
   };
+  const encodeConfig = job.config.producerConfig ?? resolveConfig();
   const encodeResult = enableChunkedEncode
     ? await encodeFramesChunkedConcat(
         framesDir,
@@ -293,6 +294,7 @@ export async function runEncodeStage(input: EncodeStageInput): Promise<EncodeSta
         encoderOpts,
         chunkedEncodeSize,
         abortSignal,
+        encodeConfig,
       )
     : await encodeFramesFromDir(
         framesDir,
@@ -300,7 +302,7 @@ export async function runEncodeStage(input: EncodeStageInput): Promise<EncodeSta
         videoOnlyPath,
         encoderOpts,
         abortSignal,
-        job.config.producerConfig ?? resolveConfig(),
+        encodeConfig,
       );
   assertNotAborted();
 
