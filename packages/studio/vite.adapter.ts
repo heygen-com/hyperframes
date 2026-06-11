@@ -92,6 +92,7 @@ export function createViteAdapter(dataDir: string, server: ViteDevServer): Studi
   };
 
   return {
+    // fallow-ignore-next-line complexity
     listProjects() {
       if (!existsSync(dataDir)) return [];
       const sessionsDir = resolve(dataDir, "../sessions");
@@ -130,6 +131,7 @@ export function createViteAdapter(dataDir: string, server: ViteDevServer): Studi
         .sort((a, b) => (a.title ?? "").localeCompare(b.title ?? ""));
     },
 
+    // fallow-ignore-next-line complexity
     resolveProject(id: string) {
       let projectDir = join(dataDir, id);
       if (!existsSync(projectDir)) {
@@ -177,6 +179,11 @@ export function createViteAdapter(dataDir: string, server: ViteDevServer): Studi
       const cacheKey = resolve(projectDir);
       const cached = projectSignatureCache.get(cacheKey);
       if (cached) return cached;
+      // Project dirs are symlinked from anywhere on disk (often outside the
+      // studio package), so Vite's default watch roots don't cover them.
+      // Without this, the signature cache never invalidates for external
+      // projects and the preview ETag serves stale 304s after edits.
+      server.watcher.add(cacheKey);
       const signature = createProjectSignature(cacheKey);
       projectSignatureCache.set(cacheKey, signature);
       return signature;
@@ -200,6 +207,7 @@ export function createViteAdapter(dataDir: string, server: ViteDevServer): Studi
       };
 
       const startTime = Date.now();
+      // fallow-ignore-next-line complexity
       (async () => {
         try {
           if (!process.env.PRODUCER_HEADLESS_SHELL_PATH) {
@@ -260,6 +268,7 @@ export function createViteAdapter(dataDir: string, server: ViteDevServer): Studi
       return null;
     },
 
+    // fallow-ignore-next-line complexity
     async listRegistryCatalog(): Promise<RegistryItem[]> {
       const registryRoot = resolve(__dirname, "../../registry");
       const items: RegistryItem[] = [];
