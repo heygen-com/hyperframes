@@ -629,13 +629,13 @@ function parseObjectArrayKeyframes(
   if (totalDuration > 0) {
     let cumulative = 0;
     for (const entry of raw) {
+      cumulative += entry.duration ?? 0;
       const percentage = Math.round((cumulative / totalDuration) * 100);
       keyframes.push({
         percentage,
         properties: entry.properties,
         ...(entry.ease ? { ease: entry.ease } : {}),
       });
-      cumulative += entry.duration ?? 0;
     }
   } else {
     for (let i = 0; i < raw.length; i++) {
