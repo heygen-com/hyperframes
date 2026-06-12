@@ -1,6 +1,7 @@
-import { cpus, totalmem, freemem, platform, release } from "node:os";
+import { cpus, freemem, platform, release } from "node:os";
 import { existsSync, readFileSync, statfsSync } from "node:fs";
 import { execSync } from "node:child_process";
+import { getSystemTotalMb } from "@hyperframes/engine";
 import {
   detectAgentRuntime,
   detectSandboxRuntime,
@@ -67,7 +68,7 @@ export function getSystemMeta(): SystemMeta {
     cpu_count: cpuInfo.length,
     cpu_model: firstCpu?.model?.trim() ?? null,
     cpu_speed: firstCpu?.speed ?? null,
-    memory_total_mb: bytesToMb(totalmem()),
+    memory_total_mb: getSystemTotalMb(),
     is_docker: detectDocker(),
     is_ci: detectCI(),
     ci_name: getCIName(),

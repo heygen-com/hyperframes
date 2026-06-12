@@ -5,7 +5,7 @@
  * Auto-detects optimal worker count based on CPU/memory.
  */
 
-import { cpus, freemem, totalmem } from "os";
+import { cpus, freemem } from "os";
 import { existsSync, mkdirSync, readdirSync } from "fs";
 import { copyFile, rename } from "fs/promises";
 import { join } from "path";
@@ -26,6 +26,7 @@ import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { assertSwiftShader } from "../utils/assertSwiftShader.js";
 import { readWebGlVendorInfoFromCanvas } from "../utils/readWebGlVendorInfoFromCanvas.js";
 import { resolveHeadlessShellPath } from "./browserManager.js";
+import { getSystemTotalMb } from "./systemMemory.js";
 
 export interface WorkerTask {
   workerId: number;
@@ -153,7 +154,7 @@ export function calculateOptimalWorkers(
   // Use total memory instead of free memory — macOS reports misleadingly low
   // freemem() because it aggressively caches files in "inactive" memory that
   // is immediately reclaimable.
-  const totalMemoryMB = Math.round(totalmem() / (1024 * 1024));
+  const totalMemoryMB = getSystemTotalMb();
   const memoryBasedWorkers = Math.max(1, Math.floor((totalMemoryMB * 0.5) / MEMORY_PER_WORKER_MB));
 
   const frameBasedWorkers = Math.floor(totalFrames / MIN_FRAMES_PER_WORKER);
@@ -429,7 +430,7 @@ export function getSystemResources(): {
 } {
   return {
     cpuCores: cpus().length,
-    totalMemoryMB: Math.round(totalmem() / (1024 * 1024)),
+    totalMemoryMB: getSystemTotalMb(),
     freeMemoryMB: Math.round(freemem() / (1024 * 1024)),
     recommendedWorkers: calculateOptimalWorkers(1000),
   };
