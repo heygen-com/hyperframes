@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useMountEffect } from "./useMountEffect";
 import {
   installStudioManualEditSeekReapply,
@@ -7,6 +7,8 @@ import {
 } from "../components/editor/manualEdits";
 import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
 import type { EditHistoryKind } from "../utils/editHistory";
+import { createDomEditSaveQueue } from "../utils/domEditSaveQueue";
+import { trackStudioEvent } from "../utils/studioTelemetry";
 
 // ── Types ──
 
@@ -39,7 +41,7 @@ interface UsePreviewPersistenceParams {
 
 export function usePreviewPersistence({
   projectId,
-  showToast: _showToast,
+  showToast,
   readOptionalProjectFile: _readOptionalProjectFile,
   writeProjectFile: _writeProjectFile,
   recordEdit: _recordEdit,
@@ -49,15 +51,37 @@ export function usePreviewPersistence({
   reloadPreview,
   pendingTimelineEditPathRef,
 }: UsePreviewPersistenceParams) {
-  void _showToast;
   void _recordEdit;
   void _activeCompPathRef;
 
+  const [domEditSaveQueuePaused, setDomEditSaveQueuePaused] = useState<string | null>(null);
+
   const domTextCommitVersionRef = useRef(0);
-  const domEditSaveQueueRef = useRef(Promise.resolve());
+  const showToastRef = useRef(showToast);
+  showToastRef.current = showToast;
+  const domEditSaveQueueRef = useRef<ReturnType<typeof createDomEditSaveQueue> | null>(null);
   const applyStudioManualEditsToPreviewRef = useRef<
     (iframe?: HTMLIFrameElement | null) => Promise<void>
   >(async () => {});
+
+  if (!domEditSaveQueueRef.current) {
+    domEditSaveQueueRef.current = createDomEditSaveQueue({
+      onOpen: (event) => {
+        const message = "Auto-save is paused. Check your connection.";
+        setDomEditSaveQueuePaused(message);
+        showToastRef.current(message, "error");
+        trackStudioEvent("save_queue_paused", {
+          source: "dom_edit",
+          error_message: event.errorMessage,
+          status_code: event.statusCode,
+          consecutive_failures: event.consecutiveFailures,
+        });
+      },
+      onReset: () => {
+        setDomEditSaveQueuePaused(null);
+      },
+    });
+  }
 
   // Keep a ref to the latest projectId so async save callbacks always read the
   // current value, even when the callback was captured in a stale closure.
@@ -67,17 +91,21 @@ export function usePreviewPersistence({
   // ── Queue / drain helpers ──
 
   const queueDomEditSave = useCallback((save: () => Promise<void>) => {
-    const queuedSave = domEditSaveQueueRef.current.catch(() => undefined).then(save);
-    domEditSaveQueueRef.current = queuedSave.then(
-      () => undefined,
-      () => undefined,
-    );
-    return queuedSave;
+    return domEditSaveQueueRef.current?.enqueue(save) ?? save();
   }, []);
 
   const waitForPendingDomEditSaves = useCallback(async () => {
-    await domEditSaveQueueRef.current.catch(() => undefined);
+    await domEditSaveQueueRef.current?.waitForIdle();
   }, []);
+
+  const resetDomEditSaveQueueBreaker = useCallback(() => {
+    domEditSaveQueueRef.current?.reset();
+    setDomEditSaveQueuePaused(null);
+  }, []);
+
+  useMountEffect(() => () => {
+    domEditSaveQueueRef.current?.destroy();
+  });
 
   // ── Apply manual edits (HTML-baked — install seek hooks) ──
   // reapplyPositionEditsAfterSeek now also handles motion reapply from DOM attributes.
@@ -192,6 +220,8 @@ export function usePreviewPersistence({
     applyStudioManualEditsToPreviewRef,
     queueDomEditSave,
     waitForPendingDomEditSaves,
+    domEditSaveQueuePaused,
+    resetDomEditSaveQueueBreaker,
     applyCurrentStudioManualEditsToPreview,
     applyStudioManualEditsToPreview,
     syncHistoryPreviewAfterApply,

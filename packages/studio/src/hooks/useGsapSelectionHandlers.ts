@@ -1,6 +1,7 @@
 import { useCallback, useRef } from "react";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import { usePlayerStore } from "../player";
+import { trackStudioSaveFailure } from "../utils/studioSaveDiagnostics";
 
 /**
  * Thin useCallback wrappers that guard on `domEditSelection` before
@@ -46,7 +47,7 @@ export function useGsapSelectionHandlers({
     sel: DomEditSelection,
     method: "to" | "from" | "set" | "fromTo",
     time: number,
-  ) => void;
+  ) => Promise<void>;
   addGsapProperty: (sel: DomEditSelection, animId: string, prop: string) => void;
   removeGsapProperty: (sel: DomEditSelection, animId: string, prop: string) => void;
   updateGsapFromProperty: (
@@ -75,7 +76,7 @@ export function useGsapSelectionHandlers({
     sel: DomEditSelection,
     animId: string,
     resolvedFromValues?: Record<string, number | string>,
-  ) => void;
+  ) => Promise<void>;
   removeAllKeyframes: (sel: DomEditSelection, animId: string) => void;
 
   handleDomManualEditsReset: (sel: DomEditSelection) => void;
@@ -83,6 +84,22 @@ export function useGsapSelectionHandlers({
 }) {
   const lastSelectionRef = useRef<DomEditSelection | null>(null);
   if (domEditSelection) lastSelectionRef.current = domEditSelection;
+
+  const trackGsapHandlerFailure = useCallback(
+    (error: unknown, selection: DomEditSelection, mutationType: string, label: string) => {
+      trackStudioSaveFailure({
+        source: "gsap_commit",
+        error,
+        filePath: selection.sourceFile ?? undefined,
+        mutationType,
+        label,
+        targetId: selection.id,
+        targetSelector: selection.selector,
+        targetSourceFile: selection.sourceFile,
+      });
+    },
+    [],
+  );
 
   const handleGsapUpdateProperty = useCallback(
     (animId: string, prop: string, value: number | string) => {
@@ -121,12 +138,16 @@ export function useGsapSelectionHandlers({
   const handleGsapAddAnimation = useCallback(
     (method: "to" | "from" | "set" | "fromTo") => {
       if (!domEditSelection) return;
-      addGsapAnimation(domEditSelection, method, usePlayerStore.getState().currentTime);
+      void addGsapAnimation(domEditSelection, method, usePlayerStore.getState().currentTime).catch(
+        (error) => {
+          trackGsapHandlerFailure(error, domEditSelection, "add", `Add GSAP ${method} animation`);
+        },
+      );
       if (domEditSelection.element.hasAttribute("data-hf-studio-path-offset")) {
         handleDomManualEditsReset(domEditSelection);
       }
     },
-    [domEditSelection, addGsapAnimation, handleDomManualEditsReset],
+    [domEditSelection, addGsapAnimation, handleDomManualEditsReset, trackGsapHandlerFailure],
   );
 
   const handleGsapAddProperty = useCallback(
@@ -180,9 +201,11 @@ export function useGsapSelectionHandlers({
   const handleGsapAddKeyframeBatch = useCallback(
     (animId: string, percentage: number, properties: Record<string, number | string>) => {
       if (!domEditSelection) return Promise.resolve();
-      return addKeyframeBatch(domEditSelection, animId, percentage, properties);
+      return addKeyframeBatch(domEditSelection, animId, percentage, properties).catch((error) => {
+        trackGsapHandlerFailure(error, domEditSelection, "add-keyframe", "Add keyframe");
+      });
     },
-    [domEditSelection, addKeyframeBatch],
+    [domEditSelection, addKeyframeBatch, trackGsapHandlerFailure],
   );
   const handleGsapRemoveKeyframe = useCallback(
     (animId: string, percentage: number) => {
@@ -195,9 +218,16 @@ export function useGsapSelectionHandlers({
   const handleGsapConvertToKeyframes = useCallback(
     (animId: string, resolvedFromValues?: Record<string, number | string>) => {
       if (!domEditSelection) return Promise.resolve();
-      return convertToKeyframes(domEditSelection, animId, resolvedFromValues);
+      return convertToKeyframes(domEditSelection, animId, resolvedFromValues).catch((error) => {
+        trackGsapHandlerFailure(
+          error,
+          domEditSelection,
+          "convert-to-keyframes",
+          "Convert to keyframes",
+        );
+      });
     },
-    [domEditSelection, convertToKeyframes],
+    [domEditSelection, convertToKeyframes, trackGsapHandlerFailure],
   );
 
   const handleGsapRemoveAllKeyframes = useCallback(

@@ -21,8 +21,6 @@ import {
   useGsapAnimationsForElement,
   useGsapCacheVersion,
   usePopulateKeyframeCacheForFile,
-  fetchParsedAnimations,
-  getAnimationsForElement,
 } from "./useGsapTweenCache";
 import {
   tryGsapDragIntercept,
@@ -30,6 +28,8 @@ import {
   tryGsapRotationIntercept,
 } from "./gsapRuntimeBridge";
 import { useAnimatedPropertyCommit } from "./useAnimatedPropertyCommit";
+import { useGsapAnimationFetchFallback } from "./useGsapAnimationFetchFallback";
+import { useGsapInteractionFailureTelemetry } from "./useGsapInteractionFailureTelemetry";
 import { useGsapSelectionHandlers } from "./useGsapSelectionHandlers";
 
 // ── Types ──
@@ -326,6 +326,10 @@ export function useDomEditSession({
     buildDomSelectionFromTarget,
   });
 
+  const trackGsapInteractionFailure = useGsapInteractionFailureTelemetry(activeCompPath, showToast);
+
+  const makeFetchFallback = useGsapAnimationFetchFallback(projectId, gsapSourceFile);
+
   // GSAP-aware: intercept offset/resize/rotation to commit via script mutation when animated.
   const handleGsapAwarePathOffsetCommit = useCallback(
     async (selection: DomEditSelection, next: { x: number; y: number }) => {
@@ -335,22 +339,20 @@ export function useDomEditSession({
         throw new Error(GSAP_CSS_FALLBACK_BLOCKED_MESSAGE);
       }
       if (STUDIO_GSAP_DRAG_INTERCEPT_ENABLED && gsapCommitMutation) {
-        const handled = await tryGsapDragIntercept(
-          selection,
-          next,
-          selectedGsapAnimations,
-          previewIframeRef.current,
-          gsapCommitMutation,
-          async () => {
-            const pid = projectId;
-            if (!pid) return [];
-            const parsed = await fetchParsedAnimations(pid, gsapSourceFile);
-            if (!parsed) return [];
-            const target = { id: selection.id ?? null, selector: selection.selector ?? null };
-            return getAnimationsForElement(parsed.animations, target);
-          },
-        );
-        if (handled) return;
+        try {
+          const handled = await tryGsapDragIntercept(
+            selection,
+            next,
+            selectedGsapAnimations,
+            previewIframeRef.current,
+            gsapCommitMutation,
+            makeFetchFallback(selection),
+          );
+          if (handled) return;
+        } catch (error) {
+          trackGsapInteractionFailure(error, selection, "drag", "Move animated layer");
+          throw error;
+        }
       }
       return handleDomPathOffsetCommit(selection, next);
     },
@@ -359,38 +361,29 @@ export function useDomEditSession({
       selectedGsapAnimations,
       gsapCommitMutation,
       previewIframeRef,
-      projectId,
-      gsapSourceFile,
+      makeFetchFallback,
+      trackGsapInteractionFailure,
       showToast,
     ],
-  );
-
-  const makeFetchFallback = useCallback(
-    (selection: DomEditSelection) => async () => {
-      const pid = projectId;
-      if (!pid) return [];
-      const parsed = await fetchParsedAnimations(pid, gsapSourceFile);
-      if (!parsed) return [];
-      return getAnimationsForElement(parsed.animations, {
-        id: selection.id ?? null,
-        selector: selection.selector ?? null,
-      });
-    },
-    [projectId, gsapSourceFile],
   );
 
   const handleGsapAwareBoxSizeCommit = useCallback(
     async (selection: DomEditSelection, next: { width: number; height: number }) => {
       if (STUDIO_GSAP_DRAG_INTERCEPT_ENABLED && gsapCommitMutation) {
-        const handled = await tryGsapResizeIntercept(
-          selection,
-          next,
-          selectedGsapAnimations,
-          previewIframeRef.current,
-          gsapCommitMutation,
-          makeFetchFallback(selection),
-        );
-        if (handled) return;
+        try {
+          const handled = await tryGsapResizeIntercept(
+            selection,
+            next,
+            selectedGsapAnimations,
+            previewIframeRef.current,
+            gsapCommitMutation,
+            makeFetchFallback(selection),
+          );
+          if (handled) return;
+        } catch (error) {
+          trackGsapInteractionFailure(error, selection, "resize", "Resize animated layer");
+          throw error;
+        }
       }
       return handleDomBoxSizeCommit(selection, next);
     },
@@ -400,21 +393,27 @@ export function useDomEditSession({
       gsapCommitMutation,
       previewIframeRef,
       makeFetchFallback,
+      trackGsapInteractionFailure,
     ],
   );
 
   const handleGsapAwareRotationCommit = useCallback(
     async (selection: DomEditSelection, next: { angle: number }) => {
       if (STUDIO_GSAP_DRAG_INTERCEPT_ENABLED && gsapCommitMutation) {
-        const handled = await tryGsapRotationIntercept(
-          selection,
-          next.angle,
-          selectedGsapAnimations,
-          previewIframeRef.current,
-          gsapCommitMutation,
-          makeFetchFallback(selection),
-        );
-        if (handled) return;
+        try {
+          const handled = await tryGsapRotationIntercept(
+            selection,
+            next.angle,
+            selectedGsapAnimations,
+            previewIframeRef.current,
+            gsapCommitMutation,
+            makeFetchFallback(selection),
+          );
+          if (handled) return;
+        } catch (error) {
+          trackGsapInteractionFailure(error, selection, "rotation", "Rotate animated layer");
+          throw error;
+        }
       }
       return handleDomRotationCommit(selection, next);
     },
@@ -424,6 +423,7 @@ export function useDomEditSession({
       gsapCommitMutation,
       previewIframeRef,
       makeFetchFallback,
+      trackGsapInteractionFailure,
     ],
   );
 

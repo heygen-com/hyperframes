@@ -15,9 +15,15 @@ export interface PropertyPanelProps {
   onSetStyle: (prop: string, value: string) => void | Promise<void>;
   onSetAttribute: (attr: string, value: string) => void | Promise<void>;
   onSetHtmlAttribute: (attr: string, value: string | null) => void | Promise<void>;
-  onSetManualOffset: (element: DomEditSelection, next: { x: number; y: number }) => void;
-  onSetManualSize: (element: DomEditSelection, next: { width: number; height: number }) => void;
-  onSetManualRotation: (element: DomEditSelection, next: { angle: number }) => void;
+  onSetManualOffset: (
+    element: DomEditSelection,
+    next: { x: number; y: number },
+  ) => void | Promise<void>;
+  onSetManualSize: (
+    element: DomEditSelection,
+    next: { width: number; height: number },
+  ) => void | Promise<void>;
+  onSetManualRotation: (element: DomEditSelection, next: { angle: number }) => void | Promise<void>;
   onSetText: (value: string, fieldKey?: string) => void;
   onSetTextFieldStyle: (fieldKey: string, property: string, value: string) => void;
   onAddTextField: (afterFieldKey?: string) => string | Promise<string | null> | null;

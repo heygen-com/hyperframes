@@ -23,6 +23,7 @@ import {
 } from "../components/editor/domEditing";
 import type { ImportedFontAsset } from "../components/editor/fontAssets";
 import type { PersistDomEditOperations } from "./useDomEditCommits";
+import { trackStudioSaveFailure } from "../utils/studioSaveDiagnostics";
 
 // ── Types ──
 
@@ -56,6 +57,22 @@ export function useDomEditTextCommits({
   resolveImportedFontAsset,
 }: UseDomEditTextCommitsParams) {
   const domTextCommitVersionRef = useRef(0);
+
+  const trackDomEditSaveFailure = useCallback(
+    (error: unknown, mutationType: string, selection: DomEditSelection, label?: string) => {
+      trackStudioSaveFailure({
+        source: "dom_edit",
+        error,
+        filePath: selection.sourceFile ?? activeCompPath ?? "index.html",
+        mutationType,
+        label,
+        targetId: selection.id,
+        targetSelector: selection.selector,
+        targetSourceFile: selection.sourceFile,
+      });
+    },
+    [activeCompPath],
+  );
 
   const handleDomStyleCommit = useCallback(
     async (property: string, value: string) => {
@@ -100,7 +117,7 @@ export function useDomEditTextCommits({
             : undefined,
         });
       } catch (err) {
-        console.warn("[Studio] Style persist failed:", err instanceof Error ? err.message : err);
+        trackDomEditSaveFailure(err, "style", domEditSelection, "Edit layer style");
       }
       refreshDomEditSelectionFromPreview(domEditSelection);
     },
@@ -111,6 +128,7 @@ export function useDomEditTextCommits({
       refreshDomEditSelectionFromPreview,
       resolveImportedFontAsset,
       previewIframeRef,
+      trackDomEditSaveFailure,
     ],
   );
 
@@ -131,9 +149,11 @@ export function useDomEditTextCommits({
           skipRefresh: false,
         });
       } catch (err) {
-        console.warn(
-          "[Studio] Attribute persist failed:",
-          err instanceof Error ? err.message : err,
+        trackDomEditSaveFailure(
+          err,
+          "data_attribute",
+          domEditSelection,
+          `Edit ${attr.replace(/-/g, " ")}`,
         );
       }
       refreshDomEditSelectionFromPreview(domEditSelection);
@@ -144,6 +164,7 @@ export function useDomEditTextCommits({
       persistDomEditOperations,
       refreshDomEditSelectionFromPreview,
       previewIframeRef,
+      trackDomEditSaveFailure,
     ],
   );
 
@@ -170,10 +191,7 @@ export function useDomEditTextCommits({
           skipRefresh: false,
         });
       } catch (err) {
-        console.warn(
-          "[Studio] HTML attribute persist failed:",
-          err instanceof Error ? err.message : err,
-        );
+        trackDomEditSaveFailure(err, "html_attribute", domEditSelection, `Edit ${attr}`);
       }
       refreshDomEditSelectionFromPreview(domEditSelection);
     },
@@ -183,6 +201,7 @@ export function useDomEditTextCommits({
       persistDomEditOperations,
       refreshDomEditSelectionFromPreview,
       previewIframeRef,
+      trackDomEditSaveFailure,
     ],
   );
 
@@ -217,15 +236,20 @@ export function useDomEditTextCommits({
           }
         }
       }
-      await persistDomEditOperations(
-        domEditSelection,
-        [buildDomEditTextPatchOperation(nextContent)],
-        {
-          label: "Edit text",
-          skipRefresh: true,
-          shouldSave: () => domTextCommitVersionRef.current === commitVersion,
-        },
-      );
+      try {
+        await persistDomEditOperations(
+          domEditSelection,
+          [buildDomEditTextPatchOperation(nextContent)],
+          {
+            label: "Edit text",
+            skipRefresh: true,
+            shouldSave: () => domTextCommitVersionRef.current === commitVersion,
+          },
+        );
+      } catch (err) {
+        trackDomEditSaveFailure(err, "text", domEditSelection, "Edit text");
+        return;
+      }
       if (domTextCommitVersionRef.current !== commitVersion) return;
 
       if (doc) {
@@ -245,6 +269,7 @@ export function useDomEditTextCommits({
       domEditSelection,
       persistDomEditOperations,
       previewIframeRef,
+      trackDomEditSaveFailure,
     ],
   );
 
@@ -339,7 +364,11 @@ export function useDomEditTextCommits({
           : entry,
       );
 
-      await commitDomTextFields(domEditSelection, nextTextFields, { importedFont });
+      try {
+        await commitDomTextFields(domEditSelection, nextTextFields, { importedFont });
+      } catch (err) {
+        trackDomEditSaveFailure(err, "text_field_style", domEditSelection, "Edit text style");
+      }
     },
     [
       commitDomTextFields,
@@ -347,6 +376,7 @@ export function useDomEditTextCommits({
       handleDomStyleCommit,
       resolveImportedFontAsset,
       previewIframeRef,
+      trackDomEditSaveFailure,
     ],
   );
 
@@ -369,10 +399,15 @@ export function useDomEditTextCommits({
         nextField,
       );
 
-      await commitDomTextFields(domEditSelection, nextTextFields);
+      try {
+        await commitDomTextFields(domEditSelection, nextTextFields);
+      } catch (err) {
+        trackDomEditSaveFailure(err, "text_field_add", domEditSelection, "Add text");
+        return null;
+      }
       return nextField.key;
     },
-    [commitDomTextFields, domEditSelection],
+    [commitDomTextFields, domEditSelection, trackDomEditSaveFailure],
   );
 
   const handleDomRemoveTextField = useCallback(
@@ -387,9 +422,13 @@ export function useDomEditTextCommits({
       }
 
       const nextTextFields = domEditSelection.textFields.filter((entry) => entry.key !== fieldKey);
-      await commitDomTextFields(domEditSelection, nextTextFields);
+      try {
+        await commitDomTextFields(domEditSelection, nextTextFields);
+      } catch (err) {
+        trackDomEditSaveFailure(err, "text_field_remove", domEditSelection, "Remove text");
+      }
     },
-    [commitDomTextFields, domEditSelection, handleDomTextCommit],
+    [commitDomTextFields, domEditSelection, handleDomTextCommit, trackDomEditSaveFailure],
   );
 
   return {

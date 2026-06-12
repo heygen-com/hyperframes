@@ -5,7 +5,12 @@ import { fontFamilyFromAssetPath, type ImportedFontAsset } from "../components/e
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import type { EditHistoryKind } from "../utils/editHistory";
 import { findTagByTarget, type PatchTarget } from "../utils/sourcePatcher";
-import { trackStudioEvent } from "../utils/studioTelemetry";
+import {
+  createStudioSaveHttpError,
+  isStudioSaveAbortError,
+  retryStudioSave,
+  trackStudioSaveFailure,
+} from "../utils/studioSaveDiagnostics";
 
 // ── Types ──
 
@@ -53,6 +58,21 @@ export function useFileManager({
   const saveRafRef = useRef<number | null>(null);
   const refreshRafRef = useRef<number | null>(null);
   const importedFontAssetsRef = useRef<ImportedFontAsset[]>([]);
+  const mountedRef = useRef(true);
+  const saveAbortControllersRef = useRef(new Set<AbortController>());
+
+  useEffect(
+    () => () => {
+      mountedRef.current = false;
+      if (saveRafRef.current != null) cancelAnimationFrame(saveRafRef.current);
+      if (refreshRafRef.current != null) cancelAnimationFrame(refreshRafRef.current);
+      for (const controller of saveAbortControllersRef.current) {
+        controller.abort();
+      }
+      saveAbortControllersRef.current.clear();
+    },
+    [],
+  );
 
   // ── Load file tree when projectId changes ──
 
@@ -88,7 +108,7 @@ export function useFileManager({
     const pid = projectIdRef.current;
     if (!pid) throw new Error("No active project");
     const response = await fetch(`/api/projects/${pid}/files/${encodeURIComponent(path)}`);
-    if (!response.ok) throw new Error(`Failed to read ${path}`);
+    if (!response.ok) throw await createStudioSaveHttpError(response, `Failed to read ${path}`);
     const data = (await response.json()) as { content?: string };
     if (typeof data.content !== "string") throw new Error(`Missing file contents for ${path}`);
     return data.content;
@@ -97,13 +117,30 @@ export function useFileManager({
   const writeProjectFile = useCallback(async (path: string, content: string): Promise<void> => {
     const pid = projectIdRef.current;
     if (!pid) throw new Error("No active project");
-    const response = await fetch(`/api/projects/${pid}/files/${encodeURIComponent(path)}`, {
-      method: "PUT",
-      headers: { "Content-Type": "text/plain" },
-      body: content,
-    });
-    if (!response.ok) throw new Error(`Failed to save ${path}`);
-    if (editingPathRef.current === path) {
+    const controller = new AbortController();
+    saveAbortControllersRef.current.add(controller);
+    if (!mountedRef.current) controller.abort();
+
+    try {
+      await retryStudioSave(
+        async () => {
+          const response = await fetch(`/api/projects/${pid}/files/${encodeURIComponent(path)}`, {
+            method: "PUT",
+            headers: { "Content-Type": "text/plain" },
+            body: content,
+            signal: controller.signal,
+          });
+          if (!response.ok) {
+            throw await createStudioSaveHttpError(response, `Failed to save ${path}`);
+          }
+        },
+        { signal: controller.signal },
+      );
+    } finally {
+      saveAbortControllersRef.current.delete(controller);
+    }
+
+    if (mountedRef.current && editingPathRef.current === path) {
       setEditingFile({ path, content });
     }
   }, []);
@@ -120,7 +157,7 @@ export function useFileManager({
     const response = await fetch(
       `/api/projects/${pid}/files/${encodeURIComponent(path)}?optional=1`,
     );
-    if (!response.ok) throw new Error(`Failed to read ${path}`);
+    if (!response.ok) throw await createStudioSaveHttpError(response, `Failed to read ${path}`);
     const data = (await response.json()) as { content?: string };
     return typeof data.content === "string" ? data.content : "";
   }, []);
@@ -175,14 +212,27 @@ export function useFileManager({
             refreshRafRef.current = requestAnimationFrame(() => setRefreshKey((k) => k + 1));
           })
           .catch((error) => {
-            trackStudioEvent("save_failure", {
+            if (isStudioSaveAbortError(error)) return;
+            trackStudioSaveFailure({
               source: "code_editor",
-              error_message: error instanceof Error ? error.message : "unknown",
+              error,
+              filePath: path,
+              mutationType: "put",
             });
+            if (mountedRef.current) {
+              showToast("Failed to save source changes. Check your connection.", "error");
+            }
           });
       });
     },
-    [domEditSaveTimestampRef, readProjectFile, recordEdit, setRefreshKey, writeProjectFile],
+    [
+      domEditSaveTimestampRef,
+      readProjectFile,
+      recordEdit,
+      setRefreshKey,
+      showToast,
+      writeProjectFile,
+    ],
   );
 
   // ── Open source for selection (click-to-source) ──
