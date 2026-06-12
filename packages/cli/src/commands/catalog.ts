@@ -115,6 +115,9 @@ export default defineCommand({
         skipClipboard: false,
       });
 
+      for (const warning of result.warnings) {
+        console.warn(c.warn(`Warning: ${warning}`));
+      }
       console.log("");
       console.log(`${c.success("✓")} Installed ${c.accent(result.name)} (${result.type})`);
       for (const file of result.written) {

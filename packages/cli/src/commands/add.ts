@@ -15,6 +15,7 @@ import { resolve, relative } from "node:path";
 import { ITEM_TYPE_DIRS, type RegistryItem } from "@hyperframes/core";
 import { c } from "../ui/colors.js";
 import { installItem, resolveItem, resolveItemsByTag } from "../registry/index.js";
+import { checkRegistryItemCompatibility } from "../registry/compatibility.js";
 import {
   DEFAULT_PROJECT_CONFIG,
   loadProjectConfig,
@@ -75,6 +76,8 @@ export interface RunAddArgs {
   name: string;
   projectDir: string;
   skipClipboard?: boolean;
+  /** Current CLI version used for registry metadata compatibility checks. */
+  cliVersion?: string;
 }
 
 export interface RunAddResult {
@@ -85,12 +88,18 @@ export interface RunAddResult {
   written: string[];
   snippet: string;
   clipboardCopied: boolean;
+  warnings: string[];
 }
 
 export class AddError extends Error {
   constructor(
     message: string,
-    public readonly code: "unknown-item" | "wrong-type" | "install-failed" | "example-type",
+    public readonly code:
+      | "unknown-item"
+      | "wrong-type"
+      | "install-failed"
+      | "example-type"
+      | "incompatible-cli",
   ) {
     super(message);
     this.name = "AddError";
@@ -121,6 +130,11 @@ export async function runAdd(opts: RunAddArgs): Promise<RunAddResult> {
       `"${item.name}" is an example — use \`hyperframes init <dir> --example ${item.name}\` instead.`,
       "example-type",
     );
+  }
+
+  const compatibility = checkRegistryItemCompatibility(item, opts.cliVersion);
+  if (compatibility.error) {
+    throw new AddError(compatibility.error, "incompatible-cli");
   }
 
   // 3. Remap targets per project config.
@@ -162,6 +176,7 @@ export async function runAdd(opts: RunAddArgs): Promise<RunAddResult> {
     written,
     snippet,
     clipboardCopied,
+    warnings: compatibility.warnings,
   };
 }
 
@@ -211,6 +226,9 @@ export default defineCommand({
 
       if (wroteConfig) {
         console.log(c.dim(`Wrote default ${projectConfigPath(projectDir)}`));
+      }
+      for (const warning of result.warnings) {
+        console.warn(c.warn(`Warning: ${warning}`));
       }
       console.log("");
       console.log(`${c.success("✓")} Added ${c.accent(result.name)} (${result.type})`);
@@ -272,6 +290,9 @@ export default defineCommand({
         try {
           const result = await runAdd({ name: item.name, projectDir, skipClipboard: true });
           results.push(result);
+          for (const warning of result.warnings) {
+            if (!json) console.log(`  ${c.warn("Warning:")} ${warning}`);
+          }
           if (!json) console.log(`  ${c.success("✓")} ${result.name}`);
         } catch {
           if (!json) console.log(`  ${c.error("✗")} ${item.name} (skipped)`);

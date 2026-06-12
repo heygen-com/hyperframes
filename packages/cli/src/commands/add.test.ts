@@ -13,6 +13,8 @@ const MANIFEST: RegistryManifest = {
   homepage: "https://example.com",
   items: [
     { name: "my-block", type: "hyperframes:block" },
+    { name: "deprecated-block", type: "hyperframes:block" },
+    { name: "future-block", type: "hyperframes:block" },
     { name: "my-component", type: "hyperframes:component" },
     { name: "my-example", type: "hyperframes:example" },
   ],
@@ -60,6 +62,34 @@ const COMPONENT_ITEM: RegistryItem = {
   ],
 };
 
+const DEPRECATED_BLOCK_ITEM: RegistryItem = {
+  ...BLOCK_ITEM,
+  name: "deprecated-block",
+  title: "Deprecated Block",
+  deprecated: "Use `my-block` instead.",
+  files: [
+    {
+      path: "deprecated-block.html",
+      target: "compositions/deprecated-block.html",
+      type: "hyperframes:composition",
+    },
+  ],
+};
+
+const FUTURE_BLOCK_ITEM: RegistryItem = {
+  ...BLOCK_ITEM,
+  name: "future-block",
+  title: "Future Block",
+  minCliVersion: "999.0.0",
+  files: [
+    {
+      path: "future-block.html",
+      target: "compositions/future-block.html",
+      type: "hyperframes:composition",
+    },
+  ],
+};
+
 const EXAMPLE_ITEM: RegistryItem = {
   $schema: "https://hyperframes.heygen.com/schema/registry-item.json",
   name: "my-example",
@@ -73,6 +103,8 @@ const EXAMPLE_ITEM: RegistryItem = {
 
 const ITEM_BY_NAME: Record<string, RegistryItem> = {
   "my-block": BLOCK_ITEM,
+  "deprecated-block": DEPRECATED_BLOCK_ITEM,
+  "future-block": FUTURE_BLOCK_ITEM,
   "my-component": COMPONENT_ITEM,
   "my-example": EXAMPLE_ITEM,
 };
@@ -106,6 +138,27 @@ function tmp(): string {
 
 function uniqueBase(): string {
   return `https://test.invalid/${crypto.randomUUID()}`;
+}
+
+const DEFAULT_TEST_PATHS = {
+  blocks: "compositions",
+  components: "compositions/components",
+  assets: "assets",
+};
+
+function writeRegistryConfig(
+  dir: string,
+  paths: typeof DEFAULT_TEST_PATHS = DEFAULT_TEST_PATHS,
+): void {
+  writeFileSync(
+    join(dir, "hyperframes.json"),
+    JSON.stringify({
+      $schema: "https://hyperframes.heygen.com/schema/hyperframes.json",
+      registry: uniqueBase(),
+      paths,
+    }),
+    "utf-8",
+  );
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
@@ -172,19 +225,14 @@ describe("runAdd (integration, mocked registry)", () => {
     const dir = tmp();
     try {
       // Write hyperframes.json so runAdd uses our unique baseUrl.
-      const baseUrl = uniqueBase();
-      const cfg = {
-        $schema: "https://hyperframes.heygen.com/schema/hyperframes.json",
-        registry: baseUrl,
-        paths: { blocks: "compositions", components: "compositions/components", assets: "assets" },
-      };
-      writeFileSync(join(dir, "hyperframes.json"), JSON.stringify(cfg), "utf-8");
+      writeRegistryConfig(dir);
 
       const result = await runAdd({ name: "my-block", projectDir: dir, skipClipboard: true });
       expect(result.ok).toBe(true);
       expect(result.name).toBe("my-block");
       expect(result.type).toBe("hyperframes:block");
       expect(result.written).toHaveLength(1);
+      expect(result.warnings).toEqual([]);
       expect(existsSync(join(dir, "compositions/my-block.html"))).toBe(true);
       const installed = readFileSync(join(dir, "compositions/my-block.html"), "utf-8");
       expect(installed).toContain("<!-- hyperframes-registry-item: my-block -->");
@@ -195,16 +243,50 @@ describe("runAdd (integration, mocked registry)", () => {
     }
   });
 
+  it("returns a warning for deprecated registry items while still installing", async () => {
+    const dir = tmp();
+    try {
+      writeRegistryConfig(dir);
+
+      const result = await runAdd({
+        name: "deprecated-block",
+        projectDir: dir,
+        skipClipboard: true,
+      });
+      expect(result.warnings).toEqual([
+        'Registry item "deprecated-block" is deprecated: Use `my-block` instead.',
+      ]);
+      expect(existsSync(join(dir, "compositions/deprecated-block.html"))).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("blocks registry items that require a newer CLI before writing files", async () => {
+    const dir = tmp();
+    try {
+      writeRegistryConfig(dir);
+
+      await expect(
+        runAdd({
+          name: "future-block",
+          projectDir: dir,
+          skipClipboard: true,
+          cliVersion: "0.6.79",
+        }),
+      ).rejects.toMatchObject({
+        code: "incompatible-cli",
+      });
+      expect(existsSync(join(dir, "compositions/future-block.html"))).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("remaps component snippet/style targets while leaving asset targets stable", async () => {
     const dir = tmp();
     try {
-      const baseUrl = uniqueBase();
-      const cfg = {
-        $schema: "https://hyperframes.heygen.com/schema/hyperframes.json",
-        registry: baseUrl,
-        paths: { blocks: "compositions", components: "src/fx", assets: "assets" },
-      };
-      writeFileSync(join(dir, "hyperframes.json"), JSON.stringify(cfg), "utf-8");
+      writeRegistryConfig(dir, { blocks: "compositions", components: "src/fx", assets: "assets" });
 
       const result = await runAdd({
         name: "my-component",
@@ -224,19 +306,7 @@ describe("runAdd (integration, mocked registry)", () => {
   it("throws AddError with code 'example-type' when asked to add an example", async () => {
     const dir = tmp();
     try {
-      const baseUrl = uniqueBase();
-      writeFileSync(
-        join(dir, "hyperframes.json"),
-        JSON.stringify({
-          registry: baseUrl,
-          paths: {
-            blocks: "compositions",
-            components: "compositions/components",
-            assets: "assets",
-          },
-        }),
-        "utf-8",
-      );
+      writeRegistryConfig(dir);
 
       await expect(
         runAdd({ name: "my-example", projectDir: dir, skipClipboard: true }),
@@ -251,19 +321,7 @@ describe("runAdd (integration, mocked registry)", () => {
   it("throws AddError with code 'unknown-item' for a missing name", async () => {
     const dir = tmp();
     try {
-      const baseUrl = uniqueBase();
-      writeFileSync(
-        join(dir, "hyperframes.json"),
-        JSON.stringify({
-          registry: baseUrl,
-          paths: {
-            blocks: "compositions",
-            components: "compositions/components",
-            assets: "assets",
-          },
-        }),
-        "utf-8",
-      );
+      writeRegistryConfig(dir);
 
       await expect(
         runAdd({ name: "nope", projectDir: dir, skipClipboard: true }),

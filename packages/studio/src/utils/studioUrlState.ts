@@ -1,9 +1,6 @@
 import type { RightPanelTab } from "./studioHelpers";
 import { buildProjectHash, parseProjectHashRoute } from "./projectRouting";
-import {
-  STUDIO_INSPECTOR_PANELS_ENABLED,
-  STUDIO_MOTION_PANEL_ENABLED,
-} from "../components/editor/manualEditingAvailability";
+import { STUDIO_INSPECTOR_PANELS_ENABLED } from "../components/editor/manualEditingAvailability";
 
 export interface StudioUrlSelectionState {
   sourceFile?: string;
@@ -21,22 +18,19 @@ export interface StudioUrlState {
   selection: StudioUrlSelectionState | null;
 }
 
-const VALID_TABS: RightPanelTab[] = ["layers", "design", "motion", "renders"];
+const VALID_TABS: RightPanelTab[] = ["layers", "design", "renders"];
 
 export function normalizeStudioUrlPanelTab(
   tab: RightPanelTab | null,
   options: {
     inspectorPanelsEnabled?: boolean;
-    motionPanelEnabled?: boolean;
   } = {},
 ): RightPanelTab | null {
   if (!tab) return null;
   if (!VALID_TABS.includes(tab)) return null;
   const inspectorPanelsEnabled = options.inspectorPanelsEnabled ?? STUDIO_INSPECTOR_PANELS_ENABLED;
-  const motionPanelEnabled = options.motionPanelEnabled ?? STUDIO_MOTION_PANEL_ENABLED;
 
   if (!inspectorPanelsEnabled && tab !== "renders") return "renders";
-  if (tab === "motion" && !motionPanelEnabled) return "design";
   return tab;
 }
 

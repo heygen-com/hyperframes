@@ -159,7 +159,6 @@ describe("studio url state", () => {
   it("normalizes url tabs against feature flags", () => {
     expect(normalizeStudioUrlPanelTab("renders")).toBe("renders");
     expect(normalizeStudioUrlPanelTab("layers", { inspectorPanelsEnabled: false })).toBe("renders");
-    expect(normalizeStudioUrlPanelTab("motion", { motionPanelEnabled: false })).toBe("design");
   });
 
   it("hydrates seek first, preserves the initial url state, then restores selection", async () => {

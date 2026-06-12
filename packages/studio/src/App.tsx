@@ -389,9 +389,7 @@ export function StudioApp() {
   );
 
   const {
-    selectedStudioMotion,
     designPanelActive,
-    motionPanelActive,
     inspectorPanelActive,
     inspectorButtonActive,
     shouldShowSelectedDomBounds,
@@ -399,7 +397,6 @@ export function StudioApp() {
     panelLayout.rightPanelTab,
     panelLayout.rightCollapsed,
     isPlaying,
-    domEditSession.domEditSelection,
     gestureState === "recording",
   );
 
@@ -530,9 +527,7 @@ export function StudioApp() {
 
                 {!panelLayout.rightCollapsed && (
                   <StudioRightPanel
-                    selectedStudioMotion={selectedStudioMotion}
                     designPanelActive={designPanelActive}
-                    motionPanelActive={motionPanelActive}
                     activeBlockParams={activeBlockParams}
                     onCloseBlockParams={() => {
                       setActiveBlockParams(null);

@@ -28,7 +28,7 @@
  *     `success: false`.
  */
 
-import { copyFileSync, existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
   encodeFramesChunkedConcat,
@@ -148,44 +148,49 @@ async function encodeGifFromDir(
     fps: input.fps,
     loop: input.loop,
   };
-  const paletteResult = await runFfmpeg(buildGifPalettegenArgs(argsInput), {
-    signal: input.signal,
-    timeout: input.timeout,
-  });
-  if (!paletteResult.success) {
+  try {
+    const paletteResult = await runFfmpeg(buildGifPalettegenArgs(argsInput), {
+      signal: input.signal,
+      timeout: input.timeout,
+    });
+    if (!paletteResult.success) {
+      return {
+        success: false,
+        outputPath,
+        durationMs: Date.now() - startTime,
+        framesEncoded: 0,
+        fileSize: 0,
+        error: formatFfmpegError(paletteResult.exitCode, paletteResult.stderr),
+      };
+    }
+
+    const gifResult = await runFfmpeg(buildGifPaletteuseArgs(argsInput), {
+      signal: input.signal,
+      timeout: input.timeout,
+    });
+    if (!gifResult.success) {
+      return {
+        success: false,
+        outputPath,
+        durationMs: Date.now() - startTime,
+        framesEncoded: 0,
+        fileSize: 0,
+        error: formatFfmpegError(gifResult.exitCode, gifResult.stderr),
+      };
+    }
+
+    const fileSize = existsSync(outputPath) ? statSync(outputPath).size : 0;
     return {
-      success: false,
+      success: true,
       outputPath,
       durationMs: Date.now() - startTime,
-      framesEncoded: 0,
-      fileSize: 0,
-      error: formatFfmpegError(paletteResult.exitCode, paletteResult.stderr),
+      framesEncoded: frameCount,
+      fileSize,
     };
+  } finally {
+    // The GIF palette is a temp file; remove it after success or any encode failure.
+    rmSync(input.palettePath, { force: true });
   }
-
-  const gifResult = await runFfmpeg(buildGifPaletteuseArgs(argsInput), {
-    signal: input.signal,
-    timeout: input.timeout,
-  });
-  if (!gifResult.success) {
-    return {
-      success: false,
-      outputPath,
-      durationMs: Date.now() - startTime,
-      framesEncoded: 0,
-      fileSize: 0,
-      error: formatFfmpegError(gifResult.exitCode, gifResult.stderr),
-    };
-  }
-
-  const fileSize = existsSync(outputPath) ? statSync(outputPath).size : 0;
-  return {
-    success: true,
-    outputPath,
-    durationMs: Date.now() - startTime,
-    framesEncoded: frameCount,
-    fileSize,
-  };
 }
 
 export async function runEncodeStage(input: EncodeStageInput): Promise<EncodeStageResult> {

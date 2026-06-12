@@ -12,7 +12,7 @@ export interface AppToast {
   tone: "error" | "info";
 }
 
-export type RightPanelTab = "layers" | "design" | "motion" | "renders" | "block-params";
+export type RightPanelTab = "layers" | "design" | "renders" | "block-params";
 
 export interface AgentModalAnchorPoint {
   x: number;

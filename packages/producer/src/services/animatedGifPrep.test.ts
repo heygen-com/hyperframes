@@ -208,4 +208,22 @@ describe("prepareAnimatedGifInputs", () => {
     );
     expect(result.preparedGifs[0]?.sourceSrc).toBe(sourceUrl);
   });
+
+  it("propagates actionable transcode failure messages", async () => {
+    const projectDir = makeProject();
+    const sourcePath = join(projectDir, "broken.gif");
+    writeFileSync(sourcePath, gif([...frame(10), ...frame(10)], 0));
+
+    await expect(
+      prepareAnimatedGifInputs(`<img src="broken.gif" />`, {
+        projectDir,
+        downloadDir: projectDir,
+        transcode: async (request) => {
+          throw new Error(
+            `ffmpeg failed for ${request.inputPath}: Invalid data found when processing input`,
+          );
+        },
+      }),
+    ).rejects.toThrow(`ffmpeg failed for ${sourcePath}: Invalid data found`);
+  });
 });

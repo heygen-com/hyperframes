@@ -161,7 +161,7 @@ Use GIF when the output needs to autoplay inline in GitHub PRs, READMEs, issue r
 npx hyperframes render --format gif --fps 15 --gif-loop 0 --output demo.gif
 ```
 
-GIF output uses a two-pass FFmpeg palette encode (`palettegen` with diff statistics, then `paletteuse` with Sierra dithering) for better gradients and text edges than a single-pass conversion. GIFs are still much larger than MP4/WebM at the same dimensions, so prefer `--fps 15` and short compositions. Hyperframes caps GIF renders at 30fps.
+GIF output uses a two-pass FFmpeg palette encode (`palettegen` with diff statistics, then `paletteuse` with Sierra dithering) for better gradients and text edges than a single-pass conversion. GIFs are still much larger than MP4/WebM at the same dimensions, so prefer short compositions. GIF renders are capped at 30fps; pass `--fps 15` for smaller files.
 
 GIF does not carry audio and only has 1-bit transparency. For transparent overlays, use `--format webm`, `--format mov`, or `--format png-sequence` instead.
 

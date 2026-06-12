@@ -1,20 +1,12 @@
 import { Tooltip } from "./ui";
 import { PropertyPanel } from "./editor/PropertyPanel";
-import { MotionPanel } from "./editor/MotionPanel";
 import { LayersPanel } from "./editor/LayersPanel";
 import { CaptionPropertyPanel } from "../captions/components/CaptionPropertyPanel";
 import { BlockParamsPanel } from "./editor/BlockParamsPanel";
 import { RenderQueue } from "./renders/RenderQueue";
 import type { RenderJob } from "./renders/useRenderQueue";
-import type { StudioGsapMotion } from "./editor/studioMotion";
 import type { BlockParam } from "@hyperframes/core/registry";
-import {
-  STUDIO_INSPECTOR_PANELS_ENABLED,
-  STUDIO_MOTION_PANEL_ENABLED,
-} from "./editor/manualEditingAvailability";
-
-/** Motion data without targeting metadata. */
-type StudioMotionData = Omit<StudioGsapMotion, "kind" | "target" | "updatedAt">;
+import { STUDIO_INSPECTOR_PANELS_ENABLED } from "./editor/manualEditingAvailability";
 
 import { useStudioContext } from "../contexts/StudioContext";
 import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
@@ -23,9 +15,7 @@ import { useDomEditContext } from "../contexts/DomEditContext";
 import { usePlayerStore } from "../player";
 
 export interface StudioRightPanelProps {
-  selectedStudioMotion: StudioMotionData | null;
   designPanelActive: boolean;
-  motionPanelActive: boolean;
   activeBlockParams?: {
     blockName: string;
     blockTitle: string;
@@ -40,9 +30,7 @@ export interface StudioRightPanelProps {
 
 // fallow-ignore-next-line complexity
 export function StudioRightPanel({
-  selectedStudioMotion,
   designPanelActive,
-  motionPanelActive,
   activeBlockParams,
   onCloseBlockParams,
   recordingState,
@@ -84,8 +72,6 @@ export function StudioRightPanel({
     handleDomAddTextField,
     handleDomRemoveTextField,
     handleAskAgent,
-    handleDomMotionCommit,
-    handleDomMotionClear,
     selectedGsapAnimations,
     gsapMultipleTimelines,
     gsapUnsupportedTimelinePattern,
@@ -159,21 +145,6 @@ export function StudioRightPanel({
                       Layers
                     </button>
                   </Tooltip>
-                  {STUDIO_MOTION_PANEL_ENABLED && (
-                    <Tooltip label="Animation and motion" side="bottom">
-                      <button
-                        type="button"
-                        onClick={() => setRightPanelTab("motion")}
-                        className={`h-8 rounded-xl px-3 text-[11px] font-medium transition-colors ${
-                          rightPanelTab === "motion"
-                            ? "bg-neutral-800 text-white"
-                            : "text-neutral-500 hover:bg-neutral-800/70 hover:text-neutral-200"
-                        }`}
-                      >
-                        Motion
-                      </button>
-                    </Tooltip>
-                  )}
                 </>
               )}
               <Tooltip label="Render queue and exports" side="bottom">
@@ -247,14 +218,6 @@ export function StudioRightPanel({
                   recordingState={recordingState}
                   recordingDuration={recordingDuration}
                   onToggleRecording={onToggleRecording}
-                />
-              ) : motionPanelActive ? (
-                <MotionPanel
-                  element={domEditGroupSelections.length > 1 ? null : domEditSelection}
-                  motion={selectedStudioMotion}
-                  onClearSelection={clearDomSelection}
-                  onSetMotion={handleDomMotionCommit}
-                  onClearMotion={handleDomMotionClear}
                 />
               ) : (
                 <RenderQueue
