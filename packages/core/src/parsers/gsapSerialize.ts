@@ -91,6 +91,7 @@ export function serializeGsapAnimations(
       b.resolvedStart ?? (typeof b.position === "number" ? b.position : Number.MAX_SAFE_INTEGER);
     return aNum - bNum;
   });
+  // fallow-ignore-next-line complexity
   const lines = sorted.map((anim) => {
     const selector = `"${anim.targetSelector}"`;
     const props: Record<string, number | string> = { ...anim.properties };
@@ -200,7 +201,6 @@ export function getAnimationsForElementId(
 const FORBIDDEN_GSAP_PATTERNS: Array<{ pattern: RegExp; message: string }> = [
   { pattern: /\.call\s*\(/, message: "call() method not allowed" },
   { pattern: /\.add\s*\(/, message: "add() method not allowed" },
-  { pattern: /\.addLabel\s*\(/, message: "addLabel() method not allowed" },
   { pattern: /\.addPause\s*\(/, message: "addPause() method not allowed" },
   { pattern: /gsap\.registerEffect\s*\(/, message: "registerEffect() not allowed" },
   { pattern: /ScrollTrigger/, message: "ScrollTrigger not allowed" },
@@ -247,6 +247,7 @@ export function keyframesToGsapAnimations(
   const baseY = base?.y ?? 0;
   const baseScale = base?.scale ?? 1;
 
+  // fallow-ignore-next-line complexity
   sorted.forEach((kf, i) => {
     const absoluteTime = elementStartTime + kf.time;
     const isFirst = i === 0;

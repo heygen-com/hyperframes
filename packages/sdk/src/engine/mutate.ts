@@ -7,7 +7,7 @@
  * Phase 3b (parser-backed) will add setClassStyle + 7 GSAP ops as additional handlers.
  */
 
-import type { EditOp, HfId, JsonPatchOp } from "../types.js";
+import type { EditOp, GsapTweenSpec, HfId, JsonPatchOp } from "../types.js";
 import type { ParsedDocument } from "./model.js";
 import {
   findById,
@@ -17,6 +17,10 @@ import {
   getOwnText,
   setOwnText,
   getSiblingIndex,
+  getGsapScript,
+  setGsapScript,
+  getStyleSheet,
+  setStyleSheet,
 } from "./model.js";
 import {
   stylePath,
@@ -27,15 +31,31 @@ import {
   elementPath,
   variablePath,
   metaPath,
+  gsapScriptPath,
+  styleSheetPath,
   scalarChange,
   scalarDelete,
   patchAdd,
   patchRemove,
 } from "./patches.js";
+import { upsertCssRule } from "./cssWriter.js";
+import { parseGsapScriptAcornForWrite } from "@hyperframes/core/gsap-parser-acorn";
+import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
+import {
+  addAnimationToScript,
+  updateAnimationInScript,
+  removeAnimationFromScript,
+  addKeyframeToScript,
+  removeKeyframeFromScript,
+  updateKeyframeInScript,
+  addLabelToScript,
+  removeLabelFromScript,
+} from "@hyperframes/core/gsap-writer-acorn";
 
 export interface MutationResult {
   forward: JsonPatchOp[];
   inverse: JsonPatchOp[];
+  meta?: { animationId?: string };
 }
 
 const EMPTY: MutationResult = { forward: [], inverse: [] };
@@ -137,19 +157,31 @@ export function applyOp(parsed: ParsedDocument, op: EditOp): MutationResult {
       return handleSetCompositionMetadata(parsed, op);
     case "setVariableValue":
       return handleSetVariableValue(parsed, op.id, op.value);
-    // Phase 3b parser-backed ops — fail loudly rather than silently no-op:
-    // a caller must never believe an animation edit succeeded when nothing
-    // was mutated and no patch was emitted.
-    case "setClassStyle":
     case "addGsapTween":
+      return handleAddGsapTween(parsed, op.target, op.tween);
     case "setGsapTween":
-    case "setGsapKeyframe":
-    case "addGsapKeyframe":
-    case "removeGsapKeyframe":
+      return handleSetGsapTween(parsed, op.animationId, op.properties);
     case "removeGsapTween":
+      return handleRemoveGsapTween(parsed, op.animationId);
+    case "setGsapKeyframe":
+      return handleSetGsapKeyframe(
+        parsed,
+        op.animationId,
+        op.keyframeIndex,
+        op.position,
+        op.value,
+        op.ease,
+      );
+    case "addGsapKeyframe":
+      return handleAddGsapKeyframe(parsed, op.animationId, op.position, op.value);
+    case "removeGsapKeyframe":
+      return handleRemoveGsapKeyframe(parsed, op.animationId, op.keyframeIndex);
     case "addLabel":
+      return handleAddLabel(parsed, op.name, op.position);
     case "removeLabel":
-      throw new UnsupportedOpError(op.type);
+      return handleRemoveLabel(parsed, op.name);
+    case "setClassStyle":
+      return handleSetClassStyle(parsed, op.selector, op.styles);
   }
 }
 
@@ -424,9 +456,212 @@ function handleSetVariableValue(
   return { forward: [p.forward], inverse: [p.inverse] };
 }
 
+// ─── setClassStyle handler ────────────────────────────────────────────────────
+
+function handleSetClassStyle(
+  parsed: ParsedDocument,
+  selector: string,
+  styles: Record<string, string | null>,
+): MutationResult {
+  const oldCss = getStyleSheet(parsed.document);
+  const newCss = upsertCssRule(oldCss, selector, styles);
+  if (newCss === oldCss) return EMPTY;
+  setStyleSheet(parsed.document, newCss);
+  const path = styleSheetPath();
+  return {
+    forward: [{ op: "replace", path, value: newCss }],
+    inverse: [oldCss === "" ? { op: "remove", path } : { op: "replace", path, value: oldCss }],
+  };
+}
+
+// ─── GSAP script patch helpers ───────────────────────────────────────────────
+
+function gsapScriptChange(oldScript: string, newScript: string): MutationResult {
+  const path = gsapScriptPath();
+  return {
+    forward: [{ op: "replace", path, value: newScript }],
+    inverse: [{ op: "replace", path, value: oldScript }],
+  };
+}
+
+// ─── Phase 3b handlers ───────────────────────────────────────────────────────
+
+// fallow-ignore-next-line complexity
+function handleAddGsapTween(
+  parsed: ParsedDocument,
+  target: HfId,
+  tween: GsapTweenSpec,
+): MutationResult {
+  const script = getGsapScript(parsed.document);
+  if (!script) return EMPTY;
+
+  const extras: Record<string, unknown> = {};
+  if (tween.repeat !== undefined) extras.repeat = tween.repeat;
+  if (tween.yoyo !== undefined) extras.yoyo = tween.yoyo;
+  if (tween.stagger !== undefined) extras.stagger = tween.stagger;
+
+  const toProps =
+    tween.method === "fromTo"
+      ? ((tween.toProperties ?? {}) as Record<string, number | string>)
+      : ((tween.toProperties ?? tween.properties ?? {}) as Record<string, number | string>);
+
+  const animation: Omit<GsapAnimation, "id"> = {
+    targetSelector: `[data-hf-id="${target}"]`,
+    method: tween.method,
+    position: tween.position ?? 0,
+    ...(tween.duration !== undefined ? { duration: tween.duration } : {}),
+    ...(tween.ease ? { ease: tween.ease } : {}),
+    properties: toProps,
+    ...(tween.fromProperties
+      ? { fromProperties: tween.fromProperties as Record<string, number | string> }
+      : {}),
+    ...(Object.keys(extras).length > 0 ? { extras } : {}),
+  };
+
+  const { script: newScript, id: animationId } = addAnimationToScript(script, animation);
+  if (!animationId) return EMPTY;
+  setGsapScript(parsed.document, newScript);
+  return { ...gsapScriptChange(script, newScript), meta: { animationId } };
+}
+
+// fallow-ignore-next-line complexity
+function handleSetGsapTween(
+  parsed: ParsedDocument,
+  animationId: string,
+  properties: Partial<GsapTweenSpec>,
+): MutationResult {
+  const script = getGsapScript(parsed.document);
+  if (!script) return EMPTY;
+
+  const updates: Partial<GsapAnimation> = {};
+  if (properties.duration !== undefined) updates.duration = properties.duration;
+  if (properties.ease !== undefined) updates.ease = properties.ease;
+  if (properties.position !== undefined) updates.position = properties.position;
+
+  const toProps = properties.toProperties ?? properties.properties;
+  if (toProps) updates.properties = toProps as Record<string, number | string>;
+  if (properties.fromProperties)
+    updates.fromProperties = properties.fromProperties as Record<string, number | string>;
+
+  const extras: Record<string, unknown> = {};
+  if (properties.repeat !== undefined) extras.repeat = properties.repeat;
+  if (properties.yoyo !== undefined) extras.yoyo = properties.yoyo;
+  if (Object.keys(extras).length > 0) updates.extras = extras;
+
+  const newScript = updateAnimationInScript(script, animationId, updates);
+  if (newScript === script) return EMPTY;
+  setGsapScript(parsed.document, newScript);
+  return gsapScriptChange(script, newScript);
+}
+
+function handleRemoveGsapTween(parsed: ParsedDocument, animationId: string): MutationResult {
+  const script = getGsapScript(parsed.document);
+  if (!script) return EMPTY;
+  const newScript = removeAnimationFromScript(script, animationId);
+  if (newScript === script) return EMPTY;
+  setGsapScript(parsed.document, newScript);
+  return gsapScriptChange(script, newScript);
+}
+
+// fallow-ignore-next-line complexity
+function handleSetGsapKeyframe(
+  parsed: ParsedDocument,
+  animationId: string,
+  keyframeIndex: number,
+  position: number | undefined,
+  value: Record<string, unknown> | undefined,
+  ease: string | undefined,
+): MutationResult {
+  const script = getGsapScript(parsed.document);
+  if (!script) return EMPTY;
+
+  const parsedForWrite = parseGsapScriptAcornForWrite(script);
+  const located = parsedForWrite?.located.find((l) => l.id === animationId);
+  const kfs = located?.animation.keyframes?.keyframes;
+  if (!kfs || keyframeIndex < 0 || keyframeIndex >= kfs.length) return EMPTY;
+
+  const existingKf = kfs[keyframeIndex]!;
+  const currentPct = existingKf.percentage;
+  const targetPct = position ?? currentPct;
+  const props: Record<string, number | string> = value
+    ? (value as Record<string, number | string>)
+    : { ...existingKf.properties };
+  const resolvedEase = ease ?? existingKf.ease;
+
+  let newScript = script;
+  if (targetPct !== currentPct) {
+    newScript = removeKeyframeFromScript(newScript, animationId, currentPct);
+    newScript = addKeyframeToScript(newScript, animationId, targetPct, props, resolvedEase);
+  } else {
+    newScript = updateKeyframeInScript(newScript, animationId, currentPct, props, resolvedEase);
+  }
+
+  if (newScript === script) return EMPTY;
+  setGsapScript(parsed.document, newScript);
+  return gsapScriptChange(script, newScript);
+}
+
+function handleAddGsapKeyframe(
+  parsed: ParsedDocument,
+  animationId: string,
+  percentage: number,
+  value: Record<string, unknown>,
+): MutationResult {
+  const script = getGsapScript(parsed.document);
+  if (!script) return EMPTY;
+  const newScript = addKeyframeToScript(
+    script,
+    animationId,
+    percentage,
+    value as Record<string, number | string>,
+  );
+  if (newScript === script) return EMPTY;
+  setGsapScript(parsed.document, newScript);
+  return gsapScriptChange(script, newScript);
+}
+
+function handleRemoveGsapKeyframe(
+  parsed: ParsedDocument,
+  animationId: string,
+  keyframeIndex: number,
+): MutationResult {
+  const script = getGsapScript(parsed.document);
+  if (!script) return EMPTY;
+
+  const parsedForWrite = parseGsapScriptAcornForWrite(script);
+  const located = parsedForWrite?.located.find((l) => l.id === animationId);
+  const kfs = located?.animation.keyframes?.keyframes;
+  if (!kfs || keyframeIndex < 0 || keyframeIndex >= kfs.length) return EMPTY;
+
+  const pct = kfs[keyframeIndex]!.percentage;
+  const newScript = removeKeyframeFromScript(script, animationId, pct);
+  if (newScript === script) return EMPTY;
+  setGsapScript(parsed.document, newScript);
+  return gsapScriptChange(script, newScript);
+}
+
+function handleAddLabel(parsed: ParsedDocument, name: string, position: number): MutationResult {
+  const script = getGsapScript(parsed.document);
+  if (!script) return EMPTY;
+  const newScript = addLabelToScript(script, name, position);
+  if (newScript === script) return EMPTY;
+  setGsapScript(parsed.document, newScript);
+  return gsapScriptChange(script, newScript);
+}
+
+function handleRemoveLabel(parsed: ParsedDocument, name: string): MutationResult {
+  const script = getGsapScript(parsed.document);
+  if (!script) return EMPTY;
+  const newScript = removeLabelFromScript(script, name);
+  if (newScript === script) return EMPTY;
+  setGsapScript(parsed.document, newScript);
+  return gsapScriptChange(script, newScript);
+}
+
 // ─── Validation (can(op)) ────────────────────────────────────────────────────
 
 /** Returns true if the op can be applied to the current document state. */
+// fallow-ignore-next-line complexity
 export function validateOp(parsed: ParsedDocument, op: EditOp): boolean {
   switch (op.type) {
     case "setStyle":
@@ -442,10 +677,23 @@ export function validateOp(parsed: ParsedDocument, op: EditOp): boolean {
     case "setVariableValue":
       return findRoot(parsed.document) !== null;
     case "setCompositionMetadata":
+    case "setClassStyle":
       return true;
-    // Phase 3b and unknown ops — report false so callers can feature-detect.
-    // An unknown op type must never silently pass validation only to no-op
-    // or throw in applyOp (which would violate the can() contract).
+    case "addGsapTween":
+    case "addLabel": {
+      const script = getGsapScript(parsed.document);
+      if (!script) return false;
+      const p = parseGsapScriptAcornForWrite(script);
+      return p !== null && p.hasTimeline;
+    }
+    case "setGsapTween":
+    case "setGsapKeyframe":
+    case "addGsapKeyframe":
+    case "removeGsapKeyframe":
+    case "removeGsapTween":
+    case "removeLabel":
+      return getGsapScript(parsed.document) !== null;
+    // Unknown ops — report false so callers can feature-detect.
     default:
       return false;
   }

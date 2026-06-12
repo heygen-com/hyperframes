@@ -27,7 +27,7 @@ import { buildRoots, flatElements } from "./document.js";
 import type { PersistAdapter, PreviewAdapter } from "./adapters/types.js";
 import { parseMutable } from "./engine/model.js";
 import type { ParsedDocument } from "./engine/model.js";
-import { applyOp, validateOp } from "./engine/mutate.js";
+import { applyOp, validateOp, type MutationResult } from "./engine/mutate.js";
 import { serializeDocument } from "./engine/serialize.js";
 import { applyPatchesToDocument, applyOverrideSet } from "./engine/apply-patches.js";
 import { buildPatchEvent, pathToKey } from "./engine/patches.js";
@@ -129,10 +129,8 @@ class CompositionImpl implements Composition {
   }
 
   addGsapTween(target: HfId, tween: GsapTweenSpec): string {
-    // Phase 3b: AST splice. For now, mint id and pass through.
-    const tweenId = `tw-${crypto.randomUUID().slice(0, 8)}`;
-    this.dispatch({ type: "addGsapTween", target, id: tweenId, tween });
-    return tweenId;
+    const result = this._dispatch({ type: "addGsapTween", target, tween }, ORIGIN_LOCAL);
+    return result.meta?.animationId ?? "";
   }
 
   setGsapTween(animationId: string, properties: Partial<GsapTweenSpec>): void {
@@ -219,14 +217,13 @@ class CompositionImpl implements Composition {
   // ── Dispatch / batch ─────────────────────────────────────────────────────────
 
   // fallow-ignore-next-line complexity
-  dispatch(op: EditOp, opts?: { origin?: unknown }): void {
-    const origin = opts?.origin ?? ORIGIN_LOCAL;
-    const { forward, inverse } = applyOp(this.parsed, op);
+  private _dispatch(op: EditOp, origin: unknown): MutationResult {
+    const result = applyOp(this.parsed, op);
+    const { forward, inverse } = result;
 
     if (forward.length === 0 && inverse.length === 0) {
-      // No-op (e.g. Phase 3b op with no implementation yet): still fire change
       if (this.batchDepth === 0) this.changeHandlers.forEach((h) => h());
-      return;
+      return result;
     }
 
     this.elementsCache = null;
@@ -249,6 +246,12 @@ class CompositionImpl implements Composition {
       this.patchHandlers.forEach((h) => h(event));
       this.changeHandlers.forEach((h) => h());
     }
+
+    return result;
+  }
+
+  dispatch(op: EditOp, opts?: { origin?: unknown }): void {
+    this._dispatch(op, opts?.origin ?? ORIGIN_LOCAL);
   }
 
   /**

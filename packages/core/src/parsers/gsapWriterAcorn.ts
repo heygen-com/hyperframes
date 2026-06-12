@@ -1,4 +1,4 @@
-// fallow-ignore-file duplication
+// fallow-ignore-file code-duplication
 /**
  * Browser-safe GSAP write path — magic-string offset-splice.
  *
@@ -8,15 +8,20 @@
  */
 import MagicString from "magic-string";
 import type { GsapAnimation } from "./gsapSerialize.js";
-import { parseGsapScriptAcornForWrite, type TweenCallInfo } from "./gsapParserAcorn.js";
+import {
+  parseGsapScriptAcornForWrite,
+  type ParsedGsapAcornForWrite,
+  type TweenCallInfo,
+} from "./gsapParserAcorn.js";
 import * as acornWalk from "acorn-walk";
 
 // ── Code generation helpers ──────────────────────────────────────────────────
 
-function valueToCode(value: number | string): string {
+function valueToCode(value: unknown): string {
   if (typeof value === "string" && value.startsWith("__raw:")) return value.slice(6);
   if (typeof value === "string") return JSON.stringify(value);
-  return String(value);
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return JSON.stringify(value);
 }
 
 function safeKey(key: string): string {
@@ -32,7 +37,7 @@ function buildTweenStatementCode(timelineVar: string, anim: Omit<GsapAnimation, 
   const entries = Object.entries(props).map(([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`);
   if (anim.extras) {
     for (const [k, v] of Object.entries(anim.extras)) {
-      entries.push(`${safeKey(k)}: ${valueToCode(v as number | string)}`);
+      entries.push(`${safeKey(k)}: ${valueToCode(v)}`);
     }
   }
   const objCode = `{ ${entries.join(", ")} }`;
@@ -121,7 +126,7 @@ function removeProp(ms: MagicString, propNode: any, editableProps: any[]): void 
  * Update a property value if it exists, or append a new key: val before the
  * closing `}`. Call with the full ObjectExpression node.
  */
-function upsertProp(ms: MagicString, objNode: any, key: string, value: number | string): void {
+function upsertProp(ms: MagicString, objNode: any, key: string, value: unknown): void {
   if (objNode?.type !== "ObjectExpression") return;
   const existing = findPropertyNode(objNode, key);
   if (existing) {
@@ -130,6 +135,31 @@ function upsertProp(ms: MagicString, objNode: any, key: string, value: number | 
     const sep = objNode.properties.length > 0 ? ", " : "";
     ms.appendLeft(objNode.end - 1, `${sep}${safeKey(key)}: ${valueToCode(value)}`);
   }
+}
+
+// ── Insertion helpers ─────────────────────────────────────────────────────────
+
+/** Traverse callee.object chain to check if a call ultimately roots at timelineVar. */
+function isTimelineRooted(node: any, timelineVar: string): boolean {
+  if (node?.type === "Identifier") return node.name === timelineVar;
+  if (node?.type === "CallExpression") return isTimelineRooted(node.callee?.object, timelineVar);
+  return false;
+}
+
+/**
+ * Find the byte offset after which to insert a new statement (tween or label).
+ * Returns null when no timeline declaration exists in the script — callers must
+ * not emit `tl.xxx()` calls in that case as `tl` would be undefined at render.
+ */
+function findInsertionPoint(parsed: ParsedGsapAcornForWrite): number | null {
+  if (parsed.located.length > 0) {
+    const lastCall = parsed.located[parsed.located.length - 1]!.call;
+    const exprStmt = findEnclosingExpressionStatement(lastCall.ancestors);
+    return exprStmt?.end ?? lastCall.node.end;
+  }
+  if (!parsed.hasTimeline) return null;
+  const tlDecl = findTimelineDeclarationStatement(parsed.ast, parsed.timelineVar);
+  return tlDecl?.end ?? (parsed.ast.end as number);
 }
 
 // ── Public write API ─────────────────────────────────────────────────────────
@@ -179,6 +209,12 @@ export function updateAnimationInScript(
     }
   }
 
+  if (updates.extras) {
+    for (const [key, value] of Object.entries(updates.extras)) {
+      upsertProp(ms, call.varsArg, key, value);
+    }
+  }
+
   return ms.toString();
 }
 
@@ -189,19 +225,11 @@ export function addAnimationToScript(
   const parsed = parseGsapScriptAcornForWrite(script);
   if (!parsed) return { script, id: "" };
 
+  const insertionPoint = findInsertionPoint(parsed);
+  if (insertionPoint === null) return { script, id: "" };
+
   const ms = new MagicString(script);
   const statementCode = buildTweenStatementCode(parsed.timelineVar, animation);
-
-  let insertionPoint: number;
-  if (parsed.located.length > 0) {
-    const lastCall = parsed.located[parsed.located.length - 1]!.call;
-    const exprStmt = findEnclosingExpressionStatement(lastCall.ancestors);
-    insertionPoint = exprStmt?.end ?? lastCall.node.end;
-  } else {
-    const tlDecl = findTimelineDeclarationStatement(parsed.ast, parsed.timelineVar);
-    insertionPoint = tlDecl?.end ?? script.length;
-  }
-
   ms.appendLeft(insertionPoint, "\n" + statementCode);
 
   const result = ms.toString();
@@ -364,5 +392,53 @@ export function removeKeyframeFromScript(
   const allProps = (kfNode.properties ?? []).filter((p: any) => isObjectProperty(p));
   const ms = new MagicString(script);
   removeProp(ms, match.prop, allProps);
+  return ms.toString();
+}
+
+// ── Label write ops ───────────────────────────────────────────────────────────
+
+export function addLabelToScript(script: string, name: string, position: number): string {
+  const parsed = parseGsapScriptAcornForWrite(script);
+  if (!parsed) return script;
+
+  const insertionPoint = findInsertionPoint(parsed);
+  if (insertionPoint === null) return script;
+
+  const ms = new MagicString(script);
+  const labelCode = `${parsed.timelineVar}.addLabel(${JSON.stringify(name)}, ${valueToCode(position)});`;
+  ms.appendLeft(insertionPoint, "\n" + labelCode);
+  return ms.toString();
+}
+
+export function removeLabelFromScript(script: string, name: string): string {
+  const parsed = parseGsapScriptAcornForWrite(script);
+  if (!parsed) return script;
+
+  const targets: any[] = [];
+  acornWalk.simple(parsed.ast, {
+    // fallow-ignore-next-line complexity
+    ExpressionStatement(node: any) {
+      const expr = node.expression;
+      if (
+        expr?.type === "CallExpression" &&
+        expr.callee?.type === "MemberExpression" &&
+        isTimelineRooted(expr.callee.object, parsed.timelineVar) &&
+        expr.callee.property?.name === "addLabel" &&
+        expr.arguments?.[0]?.type === "Literal" &&
+        expr.arguments[0].value === name
+      ) {
+        targets.push(node);
+      }
+    },
+  });
+
+  if (!targets.length) return script;
+
+  const ms = new MagicString(script);
+  for (const target of targets) {
+    const end =
+      target.end < script.length && script[target.end] === "\n" ? target.end + 1 : target.end;
+    ms.remove(target.start, end);
+  }
   return ms.toString();
 }

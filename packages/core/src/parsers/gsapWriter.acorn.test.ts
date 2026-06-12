@@ -1,4 +1,4 @@
-// fallow-ignore-file duplication
+// fallow-ignore-file code-duplication
 /**
  * T6c — acorn write path with magic-string offset-splice.
  *

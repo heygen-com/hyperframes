@@ -1,4 +1,4 @@
-// fallow-ignore-file duplication
+// fallow-ignore-file code-duplication
 /**
  * Browser-safe GSAP read path — acorn + acorn-walk.
  *
@@ -1046,6 +1046,7 @@ function assignStableIds(anims: Omit<GsapAnimation, "id">[]): GsapAnimation[] {
 export interface ParsedGsapAcornForWrite {
   ast: any;
   timelineVar: string;
+  hasTimeline: boolean;
   located: Array<{ id: string; call: TweenCallInfo; animation: GsapAnimation }>;
 }
 
@@ -1075,7 +1076,7 @@ export function parseGsapScriptAcornForWrite(script: string): ParsedGsapAcornFor
       call,
       animation: animations[i]!,
     }));
-    return { ast, timelineVar, located };
+    return { ast, timelineVar, hasTimeline: detection.timelineVar !== null, located };
   } catch {
     return null;
   }

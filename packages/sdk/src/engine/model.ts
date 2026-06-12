@@ -132,6 +132,62 @@ export function setOwnText(el: Element, text: string): void {
   }
 }
 
+// ─── CSS style helpers ────────────────────────────────────────────────────────
+
+function findStyleElement(document: Document): Element | null {
+  return document.querySelector("style") as unknown as Element | null;
+}
+
+export function getStyleSheet(document: Document): string {
+  return findStyleElement(document)?.textContent ?? "";
+}
+
+export function setStyleSheet(document: Document, css: string): void {
+  const existing = findStyleElement(document);
+  if (!css) {
+    existing?.remove();
+    return;
+  }
+  let el = existing;
+  if (!el) {
+    el = document.createElement("style") as unknown as Element;
+    const head =
+      (document.querySelector("head") as unknown as Element | null) ??
+      (document.body as unknown as Element);
+    (head as any).appendChild(el);
+  }
+  el.textContent = css;
+}
+
+// ─── GSAP script helpers ──────────────────────────────────────────────────────
+
+function findGsapScriptElement(document: Document): Element | null {
+  const scripts = document.querySelectorAll("script");
+  for (const script of Array.from(scripts)) {
+    const text = script.textContent ?? "";
+    if (text.includes("gsap") || text.includes("ScrollTrigger"))
+      return script as unknown as Element;
+  }
+  return null;
+}
+
+export function getGsapScript(document: Document): string | null {
+  const el = findGsapScriptElement(document);
+  return el ? (el.textContent ?? "") : null;
+}
+
+export function setGsapScript(document: Document, newScript: string): void {
+  let el = findGsapScriptElement(document);
+  if (!el) {
+    el = document.createElement("script") as unknown as Element;
+    const head =
+      (document.querySelector("head") as unknown as Element | null) ??
+      (document.body as unknown as Element);
+    (head as any).appendChild(el);
+  }
+  el.textContent = newScript;
+}
+
 // ─── Sibling index ────────────────────────────────────────────────────────────
 
 export function getSiblingIndex(el: Element): number {

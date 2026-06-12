@@ -66,7 +66,7 @@ export type EditOp =
   | { type: "setClassStyle"; selector: string; styles: Record<string, string | null> }
   | { type: "setCompositionMetadata"; width?: number; height?: number; duration?: number }
   | { type: "setVariableValue"; id: string; value: string | number | boolean }
-  | { type: "addGsapTween"; target: HfId; id: string; tween: GsapTweenSpec }
+  | { type: "addGsapTween"; target: HfId; tween: GsapTweenSpec }
   | { type: "setGsapTween"; animationId: string; properties: Partial<GsapTweenSpec> }
   | {
       type: "setGsapKeyframe";
@@ -104,6 +104,7 @@ export interface GsapTweenSpec {
   properties?: Record<string, unknown>;
   repeat?: number;
   yoyo?: boolean;
+  stagger?: number | Record<string, unknown>;
 }
 
 // ─── Patch layer (F2: RFC 6902 frozen contract) ───────────────────────────────

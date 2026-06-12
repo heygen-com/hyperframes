@@ -1,4 +1,4 @@
-// fallow-ignore-file duplication
+// fallow-ignore-file code-duplication
 /**
  * T6b — acorn vs golden differential harness.
  *
