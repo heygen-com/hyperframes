@@ -591,6 +591,44 @@ describe("composition rules", () => {
     });
   });
 
+  describe("missing_data_no_timeline", () => {
+    it("warns when root has no timeline registration and no data-no-timeline", async () => {
+      const html = `<!DOCTYPE html><html><body>
+  <div data-composition-id="c1" data-width="320" data-height="180" data-duration="5"></div>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "missing_data_no_timeline");
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("warning");
+    });
+
+    it("does not warn when data-no-timeline is present (boolean form)", async () => {
+      const html = `<!DOCTYPE html><html><body>
+  <div data-composition-id="c1" data-no-timeline data-width="320" data-height="180" data-duration="5"></div>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(result.findings.find((f) => f.code === "missing_data_no_timeline")).toBeUndefined();
+    });
+
+    it("does not warn when a script registers window.__timelines[id]", async () => {
+      const html = `<!DOCTYPE html><html><body>
+  <div data-composition-id="c1" data-width="320" data-height="180" data-duration="5"></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    window.__timelines["c1"] = gsap.timeline({ paused: true });
+  </script>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(result.findings.find((f) => f.code === "missing_data_no_timeline")).toBeUndefined();
+    });
+
+    it("does not warn when there is no root composition-id", async () => {
+      const html = `<!DOCTYPE html><html><body><p>hello</p></body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(result.findings.find((f) => f.code === "missing_data_no_timeline")).toBeUndefined();
+    });
+  });
+
   describe("root_composition_missing_data_duration (removed)", () => {
     // The rule was a static proxy for the runtime's loop-inflation Infinity
     // emission, but lint cannot observe GSAP timeline duration statically and

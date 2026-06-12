@@ -393,6 +393,31 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     return findings;
   },
 
+  // missing_data_no_timeline
+  // The producer polls window.__timelines[id] with a 45-second timeout waiting
+  // for GSAP timeline registration. Compositions that never call
+  // window.__timelines[id] = tl stall for 45 s every render. Adding
+  // data-no-timeline to the root element tells the producer to skip the poll.
+  ({ rootTag, rootCompositionId, scripts }) => {
+    if (!rootCompositionId || !rootTag) return [];
+    if (/\bdata-no-timeline\b/.test(rootTag.raw)) return [];
+    const registersTimeline = scripts.some((s) => s.content.includes("window.__timelines["));
+    if (registersTimeline) return [];
+    return [
+      {
+        code: "missing_data_no_timeline",
+        severity: "warning",
+        message:
+          "This composition has no `window.__timelines` registration but is missing `data-no-timeline`. " +
+          "The producer polls for timeline registration for up to 45 seconds before timing out, " +
+          "adding 45 s to every render.",
+        fixHint:
+          'Add `data-no-timeline` to the root element to skip the poll: `<div data-composition-id="..." data-no-timeline ...>`.',
+        snippet: truncateSnippet(rootTag.raw),
+      },
+    ];
+  },
+
   // requestanimationframe_in_composition
   ({ scripts }) => {
     const findings: HyperframeLintFinding[] = [];
