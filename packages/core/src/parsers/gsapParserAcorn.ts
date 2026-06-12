@@ -419,7 +419,7 @@ const EXTRAS_KEYS = new Set([
   "immediateRender",
 ]);
 
-interface TweenCallInfo {
+export interface TweenCallInfo {
   node: any;
   /** acorn-walk ancestor array at the call site (root→call, call is last). */
   ancestors: any[];
@@ -1039,6 +1039,46 @@ function assignStableIds(anims: Omit<GsapAnimation, "id">[]): GsapAnimation[] {
     const id = count === 1 ? base : `${base}-${count}`;
     return { ...anim, id };
   });
+}
+
+// ── Write-path internal parse ─────────────────────────────────────────────────
+
+export interface ParsedGsapAcornForWrite {
+  ast: any;
+  timelineVar: string;
+  located: Array<{ id: string; call: TweenCallInfo; animation: GsapAnimation }>;
+}
+
+/**
+ * Parse a GSAP script and return internal AST + call nodes for the write path.
+ * Consumed by gsapWriterAcorn.ts (magic-string offset-splice).
+ */
+export function parseGsapScriptAcornForWrite(script: string): ParsedGsapAcornForWrite | null {
+  try {
+    const ast = acorn.parse(script, {
+      ecmaVersion: "latest",
+      sourceType: "script",
+      locations: true,
+    });
+    const scope = collectScopeBindings(ast);
+    const targetBindings = collectTargetBindings(ast, scope);
+    const detection = findTimelineVar(ast, scope);
+    const timelineVar = detection.timelineVar ?? "tl";
+    const calls = findAllTweenCalls(ast, timelineVar, scope, targetBindings);
+    sortBySourcePosition(calls);
+    const rawAnims = calls.map((call) => tweenCallToAnimation(call, scope, script));
+    applyTimelineDefaults(rawAnims, detection.defaults);
+    resolveTimelinePositions(rawAnims);
+    const animations = assignStableIds(rawAnims);
+    const located = calls.map((call, i) => ({
+      id: animations[i]!.id,
+      call,
+      animation: animations[i]!,
+    }));
+    return { ast, timelineVar, located };
+  } catch {
+    return null;
+  }
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
