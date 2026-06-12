@@ -7,11 +7,7 @@ export function isSafePath(base: string, resolved: string): boolean {
   return resolved.startsWith(norm) || resolved === resolve(base);
 }
 
-const IGNORE_DIRS = new Set([".thumbnails", "node_modules", ".git"]);
-
-function shouldIgnoreDir(rel: string): boolean {
-  return rel === ".hyperframes/backup";
-}
+const IGNORE_DIRS = new Set([".thumbnails", ".hyperframes", "node_modules", ".git"]);
 
 /**
  * True when any directory segment of a relative path is a dot-directory or
@@ -30,7 +26,7 @@ export function walkDir(dir: string, prefix = ""): string[] {
   const files: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
-    if (IGNORE_DIRS.has(entry.name) || shouldIgnoreDir(rel)) continue;
+    if (IGNORE_DIRS.has(entry.name)) continue;
     if (entry.isDirectory()) {
       files.push(...walkDir(join(dir, entry.name), rel));
     } else {

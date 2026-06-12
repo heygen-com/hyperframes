@@ -54,6 +54,10 @@
       "import": "./src/studio-api/helpers/draftMarkers.ts",
       "types": "./src/studio-api/helpers/draftMarkers.ts"
     },
+    "./studio-api/finite-mutation": {
+      "import": "./src/studio-api/helpers/finiteMutation.ts",
+      "types": "./src/studio-api/helpers/finiteMutation.ts"
+    },
     "./text": {
       "import": "./src/text/index.ts",
       "types": "./src/text/index.ts"
@@ -132,6 +136,10 @@
       "./studio-api/draft-markers": {
         "import": "./dist/studio-api/helpers/draftMarkers.js",
         "types": "./dist/studio-api/helpers/draftMarkers.d.ts"
+      },
+      "./studio-api/finite-mutation": {
+        "import": "./dist/studio-api/helpers/finiteMutation.js",
+        "types": "./dist/studio-api/helpers/finiteMutation.d.ts"
       },
       "./text": {
         "import": "./dist/text/index.js",

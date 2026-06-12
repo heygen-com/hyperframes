@@ -1,4 +1,5 @@
 import { useCallback, useRef } from "react";
+import { findUnsafeDomPatchValues } from "@hyperframes/core/studio-api/finite-mutation";
 import { usePlayerStore } from "../player";
 import { STUDIO_GSAP_DRAG_INTERCEPT_ENABLED } from "../components/editor/manualEditingAvailability";
 import { FONT_EXT } from "../utils/mediaTypes";
@@ -37,6 +38,27 @@ import { useDomEditTextCommits } from "./useDomEditTextCommits";
 
 // ── Helpers ──
 type TimelineLike = { getChildren?: (nested: boolean) => Array<{ targets?: () => Element[] }> };
+
+function formatUnsafeFieldList(fields: Array<{ path: string }>): string {
+  return fields.map((field) => field.path).join(", ");
+}
+
+async function readErrorResponseBody(
+  response: Response,
+): Promise<{ error?: string; fields?: string[] } | null> {
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) return null;
+  return (await response.json().catch(() => null)) as { error?: string; fields?: string[] } | null;
+}
+
+function formatPatchRejectionMessage(body: { error?: string; fields?: string[] } | null): string {
+  if (!body?.error) return "Couldn't save edit";
+  const fields = Array.isArray(body.fields)
+    ? body.fields.filter((field): field is string => typeof field === "string")
+    : [];
+  const suffix = fields.length > 0 ? ` (${fields.join(", ")})` : "";
+  return `Couldn't save edit: ${body.error}${suffix}`;
+}
 
 export const GSAP_CSS_FALLBACK_BLOCKED_MESSAGE =
   "This element is GSAP-animated — dragging via CSS would corrupt keyframes";
@@ -192,6 +214,13 @@ export function useDomEditCommits({
       if (options?.shouldSave && !options.shouldSave()) return;
 
       const patchTarget = buildDomEditPatchTarget(selection);
+      const patchBody = { target: patchTarget, operations };
+      const unsafeFields = findUnsafeDomPatchValues(patchBody);
+      if (unsafeFields.length > 0) {
+        const fields = formatUnsafeFieldList(unsafeFields);
+        showToast("Couldn't save edit because it contains invalid layout values", "error");
+        throw new Error(`DOM patch contains unsafe values: ${fields}`);
+      }
 
       // Mark the save timestamp before the file write so the SSE file-change
       // handler suppresses the reload even if the event arrives before the
@@ -203,10 +232,11 @@ export function useDomEditCommits({
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ target: patchTarget, operations }),
+          body: JSON.stringify(patchBody),
         },
       );
       if (!patchResponse.ok) {
+        showToast(formatPatchRejectionMessage(await readErrorResponseBody(patchResponse)), "error");
         throw await createStudioSaveHttpError(patchResponse, `Failed to patch ${targetPath}`);
       }
 
@@ -266,6 +296,7 @@ export function useDomEditCommits({
       projectIdRef,
       domEditSaveTimestampRef,
       reloadPreview,
+      showToast,
     ],
   );
 

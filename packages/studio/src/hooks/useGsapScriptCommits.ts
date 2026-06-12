@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { GsapAnimation, ParsedGsap } from "@hyperframes/core/gsap-parser";
+import { findUnsafeMutationValues } from "@hyperframes/core/studio-api/finite-mutation";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import type { EditHistoryKind } from "../utils/editHistory";
 import { applySoftReload } from "../utils/gsapSoftReload";
@@ -11,12 +12,18 @@ import {
   readKeyframeSnapshot,
   writeKeyframeCache,
 } from "./gsapKeyframeCacheHelpers";
-import { createStudioSaveHttpError } from "../utils/studioSaveDiagnostics";
 import {
   useGsapSaveFailureTelemetry,
   useSafeGsapCommitMutation,
 } from "./useSafeGsapCommitMutation";
-import { ensureElementAddressable, PROPERTY_DEFAULTS } from "./gsapScriptCommitHelpers";
+import {
+  GsapMutationHttpError,
+  assignGsapTargetAutoIdIfNeeded,
+  ensureElementAddressable,
+  formatGsapMutationRejectionToast,
+  PROPERTY_DEFAULTS,
+  readJsonResponseBody,
+} from "./gsapScriptCommitHelpers";
 
 interface MutationResult {
   ok: boolean;
@@ -41,7 +48,7 @@ async function mutateGsapScript(
     },
   );
   if (!res.ok) {
-    throw await createStudioSaveHttpError(res, `Failed to update GSAP in ${sourceFile}`);
+    throw new GsapMutationHttpError(res.status, await readJsonResponseBody(res));
   }
   const result = (await res.json()) as MutationResult;
   if (!result.ok) {
@@ -124,8 +131,28 @@ export function useGsapScriptCommits({
     ) => {
       const pid = projectIdRef.current;
       if (!pid) return;
+      const unsafeFields = findUnsafeMutationValues(mutation);
+      if (unsafeFields.length > 0) {
+        showToast?.(
+          "Couldn't read element layout — try again at a different playhead time",
+          "error",
+        );
+        if (options.skipReload) return;
+        throw new Error(
+          `Mutation contains unsafe values: ${unsafeFields.map((field) => field.path).join(", ")}`,
+        );
+      }
       const targetPath = selection.sourceFile || activeCompPath || "index.html";
-      const result = await mutateGsapScript(pid, targetPath, mutation);
+      let result: MutationResult;
+      try {
+        result = await mutateGsapScript(pid, targetPath, mutation);
+      } catch (error) {
+        if (error instanceof GsapMutationHttpError) {
+          showToast?.(formatGsapMutationRejectionToast(error), "error");
+        }
+        if (options.skipReload) return;
+        throw error;
+      }
 
       if (result.changed === false) {
         if (options.skipReload) return;
@@ -184,6 +211,7 @@ export function useGsapScriptCommits({
       reloadPreview,
       onCacheInvalidate,
       onFileContentChanged,
+      showToast,
     ],
   );
 
@@ -280,32 +308,14 @@ export function useGsapScriptCommits({
         const pid = projectIdRef.current;
         const targetPath = selection.sourceFile || activeCompPath || "index.html";
         if (!pid) return;
-        const res = await fetch(
-          `/api/projects/${encodeURIComponent(pid)}/file-mutations/patch-element/${encodeURIComponent(targetPath)}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              target: {
-                id: selection.id,
-                hfId: selection.hfId,
-                selector: selection.selector,
-                selectorIndex: selection.selectorIndex,
-              },
-              operations: [{ type: "html-attribute", property: "id", value: autoId }],
-            }),
-          },
-        );
-        if (!res.ok) {
-          throw await createStudioSaveHttpError(
-            res,
-            `Failed to assign element id in ${targetPath}`,
-          );
-        }
-        const data = (await res.json()) as { changed?: boolean };
-        if (!data.changed) {
-          throw new Error(`Failed to assign element id in ${targetPath}`);
-        }
+        const assigned = await assignGsapTargetAutoIdIfNeeded({
+          projectId: pid,
+          targetPath,
+          selection,
+          autoId,
+          showToast,
+        });
+        if (!assigned) return;
       }
 
       const elStart = Number.parseFloat(selection.dataAttributes?.start ?? "0") || 0;
@@ -334,7 +344,7 @@ export function useGsapScriptCommits({
         { label: `Add GSAP ${method} animation` },
       );
     },
-    [commitMutation, projectIdRef, activeCompPath],
+    [commitMutation, projectIdRef, activeCompPath, showToast],
   );
   const addGsapProperty = useCallback(
     // fallow-ignore-next-line complexity

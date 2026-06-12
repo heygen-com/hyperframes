@@ -18,6 +18,11 @@ import { generateWaveformCache } from "../helpers/waveform.js";
 import { validateUploadedMediaBuffer } from "../helpers/mediaValidation.js";
 import { isSafePath } from "../helpers/safePath.js";
 import { backupPathForResponse, snapshotBeforeWrite } from "../helpers/backupJournal.js";
+import {
+  findUnsafeDomPatchValues,
+  findUnsafeMutationValues,
+  type UnsafeMutationValue,
+} from "../helpers/finiteMutation.js";
 import type { GsapAnimation } from "../../parsers/gsapSerialize.js";
 import {
   removeElementFromHtml,
@@ -114,6 +119,20 @@ function writeIfChanged(
     path: filePath,
     backupPath: backupPathForResponse(projectDir, backup.backupPath),
   });
+}
+
+function rejectUnsafeMutationValues(
+  c: RouteContext,
+  unsafeFields: UnsafeMutationValue[],
+): Response {
+  return c.json(
+    {
+      error: "mutation contains unsafe values",
+      fields: unsafeFields.map((field) => field.path),
+      unsafeValues: unsafeFields,
+    },
+    400,
+  );
 }
 
 /**
@@ -951,6 +970,10 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     if (!Array.isArray(parsed.body.operations) || parsed.body.operations.length === 0) {
       return c.json({ error: "target and operations required" }, 400);
     }
+    const unsafeFields = findUnsafeDomPatchValues(parsed.body);
+    if (unsafeFields.length > 0) {
+      return rejectUnsafeMutationValues(c, unsafeFields);
+    }
 
     let originalContent: string;
     try {
@@ -1124,6 +1147,10 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     const body = (await c.req.json().catch(() => null)) as GsapMutationRequest | null;
     if (!body || !body.type) {
       return c.json({ error: "mutation type required" }, 400);
+    }
+    const unsafeFields = findUnsafeMutationValues(body);
+    if (unsafeFields.length > 0) {
+      return rejectUnsafeMutationValues(c, unsafeFields);
     }
 
     let html = readFileSync(res.absPath, "utf-8");
