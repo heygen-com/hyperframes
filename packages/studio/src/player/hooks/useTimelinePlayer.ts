@@ -155,10 +155,8 @@ export function useTimelinePlayer() {
       if (win.__timelines) {
         const keys = Object.keys(win.__timelines);
         if (keys.length > 0) {
-          // Resolve the root composition id from the DOM — the outermost
-          // `[data-composition-id]` element is the master. Without this,
-          // Object.keys() order would let a sub-composition's timeline
-          // hijack play/pause/seek and the duration readout.
+          // Resolve the root composition id from the DOM — the outermost [data-composition-id]
+          // is the master; otherwise Object.keys() order lets a sub-composition hijack transport.
           const rootId = iframe?.contentDocument
             ?.querySelector("[data-composition-id]")
             ?.getAttribute("data-composition-id");
@@ -189,6 +187,9 @@ export function useTimelinePlayer() {
           return cached.adapter;
         }
         cached?.adapter.pause();
+        console.warn(
+          `[hyperframes-studio] Composition timeline duration (${adapterDur}s) does not cover the document duration (${docDuration}s); falling back to seek-driven playback, which never starts media elements or WebAudio. Audio will not play in preview — extend the GSAP timeline to cover the declared data-duration.`,
+        );
         const adapter = createStaticSeekPlaybackAdapter(
           bestAdapter,
           effectiveDuration,

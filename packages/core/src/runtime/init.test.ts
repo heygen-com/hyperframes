@@ -282,6 +282,47 @@ describe("initSandboxRuntimeModular", () => {
     expect(slide3.style.visibility).toBe("visible");
   });
 
+  it("extends the playable duration to the root's declared data-duration when the timeline ends short", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "250.5");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    // GSAP timeline ends 0.1s short of the declared duration — the declared
+    // data-duration must win, or duration-gated consumers (studio adapter
+    // selection) reject the runtime player and audio is silently lost.
+    window.__timelines = {
+      main: createMockTimeline(250.4),
+    };
+
+    initSandboxRuntimeModular();
+
+    expect(window.__player?.getDuration()).toBe(250.5);
+  });
+
+  it("keeps the timeline duration when it exceeds the root's declared data-duration", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "10");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    window.__timelines = {
+      main: createMockTimeline(12),
+    };
+
+    initSandboxRuntimeModular();
+
+    expect(window.__player?.getDuration()).toBe(12);
+  });
+
   it("pauses nested media that is outside the timed-media cache after a seek", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");

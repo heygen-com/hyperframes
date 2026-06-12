@@ -484,6 +484,15 @@ export function initSandboxRuntimeModular(): void {
       includeAuthoredTimingAttrs: true,
     });
     let maxWindowEndSeconds = 0;
+    // The root's own data-duration is the authored source of truth for
+    // composition length. Without it in the floor, a GSAP timeline that ends
+    // even slightly short of the declared duration shrinks the playable
+    // window — and duration-gated consumers (e.g. the studio's adapter
+    // selection) silently reject the runtime player, losing audio playback.
+    const rootDeclaredSeconds = Number.parseFloat(rootEl.getAttribute("data-duration") ?? "");
+    if (Number.isFinite(rootDeclaredSeconds) && rootDeclaredSeconds > 0) {
+      maxWindowEndSeconds = rootDeclaredSeconds;
+    }
     const compositionNodes = Array.from(
       rootEl.querySelectorAll("[data-composition-id][data-start]"),
     );
