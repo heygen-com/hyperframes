@@ -202,6 +202,7 @@
     "@chenglou/pretext": "^0.0.5",
     "acorn": "^8.17.0",
     "acorn-walk": "^8.3.5",
+    "magic-string": "^0.30.21",
     "postcss": "^8.5.8",
     "postcss-selector-parser": "^7.1.2",
     "recast": "^0.23.11"
