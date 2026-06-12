@@ -207,7 +207,9 @@ function applyOne(parsed: ParsedDocument, patch: JsonPatchOp, p: ParsedPath): vo
     }
 
     case "script": {
-      if (patch.op !== "remove") {
+      if (patch.op === "remove") {
+        setGsapScript(parsed.document, "");
+      } else {
         setGsapScript(parsed.document, String(patch.value ?? ""));
       }
       break;

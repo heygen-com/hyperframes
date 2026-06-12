@@ -20,12 +20,13 @@ import * as acornWalk from "acorn-walk";
 function valueToCode(value: unknown): string {
   if (typeof value === "string" && value.startsWith("__raw:")) return value.slice(6);
   if (typeof value === "string") return JSON.stringify(value);
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (typeof value === "number") return Number.isNaN(value) ? "0" : String(value);
+  if (typeof value === "boolean") return String(value);
   return JSON.stringify(value);
 }
 
 function safeKey(key: string): string {
-  return /^[A-Za-z_$][\w$]*$/.test(key) ? key : JSON.stringify(key);
+  return /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(key) ? key : JSON.stringify(key);
 }
 
 // fallow-ignore-next-line complexity
@@ -241,11 +242,7 @@ export function addAnimationToScript(
 export function removeAnimationFromScript(script: string, animationId: string): string {
   const parsed = parseGsapScriptAcornForWrite(script);
   if (!parsed) return script;
-  let target = parsed.located.find((l) => l.id === animationId);
-  if (!target) {
-    const convertedId = animationId.replace(/-from-|-fromTo-/, "-to-");
-    target = parsed.located.find((l) => l.id === convertedId);
-  }
+  const target = parsed.located.find((l) => l.id === animationId);
   if (!target) return script;
 
   const ms = new MagicString(script);

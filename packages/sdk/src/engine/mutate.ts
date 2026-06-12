@@ -546,6 +546,7 @@ function handleSetGsapTween(
   const extras: Record<string, unknown> = {};
   if (properties.repeat !== undefined) extras.repeat = properties.repeat;
   if (properties.yoyo !== undefined) extras.yoyo = properties.yoyo;
+  if (properties.stagger !== undefined) extras.stagger = properties.stagger;
   if (Object.keys(extras).length > 0) updates.extras = extras;
 
   const newScript = updateAnimationInScript(script, animationId, updates);
