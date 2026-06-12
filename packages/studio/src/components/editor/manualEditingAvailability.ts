@@ -2,7 +2,6 @@ export type StudioFeatureFlagEnv = Record<string, boolean | string | undefined>;
 
 const STUDIO_PREVIEW_MANUAL_DRAGGING_ENV = "VITE_STUDIO_ENABLE_PREVIEW_MANUAL_DRAGGING";
 const STUDIO_INSPECTOR_PANELS_ENV = "VITE_STUDIO_ENABLE_INSPECTOR_PANELS";
-const STUDIO_MOTION_PANEL_ENV = "VITE_STUDIO_ENABLE_MOTION_PANEL";
 const TRUTHY_ENV_VALUES = new Set(["1", "true", "yes", "on", "enabled"]);
 const FALSY_ENV_VALUES = new Set(["0", "false", "no", "off", "disabled"]);
 
@@ -51,12 +50,6 @@ export const STUDIO_INSPECTOR_PANELS_ENABLED = resolveStudioBooleanEnvFlag(
   env,
   [STUDIO_INSPECTOR_PANELS_ENV, "VITE_STUDIO_INSPECTOR_PANELS_ENABLED"],
   true,
-);
-
-export const STUDIO_MOTION_PANEL_ENABLED = resolveStudioBooleanEnvFlag(
-  env,
-  [STUDIO_MOTION_PANEL_ENV, "VITE_STUDIO_MOTION_PANEL_ENABLED"],
-  false,
 );
 
 export const STUDIO_BLOCKS_PANEL_ENABLED = resolveStudioBooleanEnvFlag(

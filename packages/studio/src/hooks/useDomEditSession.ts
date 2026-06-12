@@ -303,8 +303,6 @@ export function useDomEditSession({
     handleDomBoxSizeCommit,
     handleDomRotationCommit,
     handleDomManualEditsReset,
-    handleDomMotionCommit,
-    handleDomMotionClear,
     handleDomEditElementDelete,
     handleDomZIndexReorderCommit,
   } = useDomEditCommits({
@@ -536,8 +534,6 @@ export function useDomEditSession({
     handleDomBoxSizeCommit: handleGsapAwareBoxSizeCommit,
     handleDomRotationCommit: handleGsapAwareRotationCommit,
     handleDomManualEditsReset,
-    handleDomMotionCommit,
-    handleDomMotionClear,
     handleDomTextCommit,
     handleDomTextFieldStyleCommit,
     handleDomAddTextField,
