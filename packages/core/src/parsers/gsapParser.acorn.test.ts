@@ -179,15 +179,18 @@ window.__timelines['t'] = tl;
     expect(stagger).toContain("each");
   });
 
-  it("drops dropped keys (onComplete, onStart)", () => {
+  it("drops dropped keys (onComplete, onStart, onUpdate, onRepeat)", () => {
     const script = `
 var tl = gsap.timeline({ paused: true });
-tl.to(".box", { x: 100, duration: 0.5, onComplete: function() {} }, 0);
+tl.to(".box", { x: 100, duration: 0.5, onComplete: function() {}, onStart: function() {}, onUpdate: function() {}, onRepeat: function() {} }, 0);
 window.__timelines['t'] = tl;
 `.trim();
     const result = parseGsapScriptAcorn(script);
     const anim = result.animations[0];
     expect(anim?.properties).not.toHaveProperty("onComplete");
+    expect(anim?.properties).not.toHaveProperty("onStart");
+    expect(anim?.properties).not.toHaveProperty("onUpdate");
+    expect(anim?.properties).not.toHaveProperty("onRepeat");
     expect(anim?.extras).toBeUndefined();
   });
 
