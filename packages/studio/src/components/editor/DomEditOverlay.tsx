@@ -1,7 +1,7 @@
 import { memo, useMemo, useRef, useState, type RefObject } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { type DomEditSelection } from "./domEditing";
-import { resolveDomEditGroupOverlayRect, toOverlayRect } from "./domEditOverlayGeometry";
+import { resolveDomEditGroupOverlayRect } from "./domEditOverlayGeometry";
 import {
   type BlockedMoveState,
   type FocusableDomEditOverlay,
@@ -304,28 +304,6 @@ export const DomEditOverlay = memo(function DomEditOverlay({
 
     const target = event.target as HTMLElement | null;
     if (target?.closest('[data-dom-edit-selection-box="true"]')) return;
-
-    const candidate = hoverSelectionRef.current;
-    if (!candidate?.capabilities.canApplyManualOffset) return;
-
-    const overlayEl = overlayRef.current;
-    const iframe = iframeRef.current;
-    const candidateRect =
-      overlayEl && iframe ? toOverlayRect(overlayEl, iframe, candidate.element) : null;
-    if (!candidateRect) return;
-
-    suppressNextOverlayMouseDownRef.current = true;
-    selectionRef.current = candidate;
-    setOverlayRect(candidateRect);
-    const didStartGesture = gestures.startGesture("drag", event, {
-      selection: candidate,
-      rect: candidateRect,
-    });
-    if (!didStartGesture) {
-      suppressNextOverlayMouseDownRef.current = false;
-      return;
-    }
-    onSelectionChangeRef.current(candidate);
   };
 
   const handleBoxClick = (event: React.MouseEvent<HTMLDivElement>) => {

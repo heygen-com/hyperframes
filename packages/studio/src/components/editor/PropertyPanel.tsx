@@ -34,10 +34,6 @@ export {
   setCssFilterFunctionPx,
 } from "./propertyPanelHelpers";
 
-/* ------------------------------------------------------------------ */
-/*  PropertyPanel                                                      */
-/* ------------------------------------------------------------------ */
-
 // fallow-ignore-next-line complexity
 export const PropertyPanel = memo(function PropertyPanel({
   projectId,
@@ -177,10 +173,12 @@ export const PropertyPanel = memo(function PropertyPanel({
       return;
     }
     const current = readStudioPathOffset(element.element);
-    onSetManualOffset(element, {
-      x: axis === "x" ? parsed : current.x,
-      y: axis === "y" ? parsed : current.y,
-    });
+    void Promise.resolve(
+      onSetManualOffset(element, {
+        x: axis === "x" ? parsed : current.x,
+        y: axis === "y" ? parsed : current.y,
+      }),
+    ).catch(() => undefined);
   };
 
   // fallow-ignore-next-line complexity
@@ -204,17 +202,19 @@ export const PropertyPanel = memo(function PropertyPanel({
       current.height > 0
         ? current.height
         : (parsePxMetricValue(styles.height ?? "") ?? element.boundingBox.height);
-    onSetManualSize(element, {
-      width: axis === "width" ? parsed : width,
-      height: axis === "height" ? parsed : height,
-    });
+    void Promise.resolve(
+      onSetManualSize(element, {
+        width: axis === "width" ? parsed : width,
+        height: axis === "height" ? parsed : height,
+      }),
+    ).catch(() => undefined);
   };
 
   const manualRotation = readStudioRotation(element.element);
   const commitManualRotation = (nextValue: string) => {
     const parsed = Number.parseFloat(nextValue);
     if (!Number.isFinite(parsed)) return;
-    onSetManualRotation(element, { angle: parsed });
+    void Promise.resolve(onSetManualRotation(element, { angle: parsed })).catch(() => undefined);
   };
 
   const elStart = Number.parseFloat(element?.dataAttributes?.start ?? "0") || 0;

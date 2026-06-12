@@ -431,6 +431,90 @@ describe("resolveDomEditSelection", () => {
     });
   });
 
+  it("keeps the full-canvas stage layer transform disabled while allowing style edits", async () => {
+    const document = createDocument(`
+      <div data-hf-id="hf-stage" id="stage">
+        <button id="cta">Add to basket</button>
+      </div>
+    `);
+    document.documentElement.setAttribute("data-composition-id", "root");
+    document.documentElement.setAttribute("data-width", "1920");
+    document.documentElement.setAttribute("data-height", "1080");
+    setElementRect(document.documentElement, { left: 0, top: 0, width: 1920, height: 1080 });
+    const stage = document.getElementById("stage") as HTMLElement;
+    setElementRect(stage, { left: 0, top: 0, width: 1920, height: 1080 });
+
+    const selection = await resolveDomEditSelection(stage, {
+      activeCompositionPath: null,
+      isMasterView: true,
+      skipSourceProbe: true,
+    });
+
+    expect(selection?.id).toBe("stage");
+    expect(selection?.capabilities).toMatchObject({
+      canSelect: true,
+      canEditStyles: true,
+      canMove: false,
+      canResize: false,
+      canApplyManualOffset: false,
+      canApplyManualSize: false,
+      canApplyManualRotation: false,
+      reasonIfDisabled: "The root composition defines the preview bounds.",
+    });
+  });
+
+  it("keeps direct full-bleed absolute layers editable", async () => {
+    const document = createDocument(`
+      <div id="hero" style="position: absolute; left: 0; top: 0; width: 1920px; height: 1080px;"></div>
+    `);
+    document.documentElement.setAttribute("data-composition-id", "root");
+    document.documentElement.setAttribute("data-width", "1920");
+    document.documentElement.setAttribute("data-height", "1080");
+    setElementRect(document.documentElement, { left: 0, top: 0, width: 1920, height: 1080 });
+    const hero = document.getElementById("hero") as HTMLElement;
+    setElementRect(hero, { left: 0, top: 0, width: 1920, height: 1080 });
+
+    const selection = await resolveDomEditSelection(hero, {
+      activeCompositionPath: null,
+      isMasterView: true,
+      skipSourceProbe: true,
+    });
+
+    expect(selection?.id).toBe("hero");
+    expect(selection?.capabilities).toMatchObject({
+      canSelect: true,
+      canEditStyles: true,
+      canMove: true,
+      canResize: true,
+      canApplyManualOffset: true,
+      canApplyManualSize: true,
+      canApplyManualRotation: true,
+    });
+  });
+
+  it("lets full-canvas layers opt out of root-layer classification", async () => {
+    const document = createDocument(`
+      <div data-hf-allow-root-edit id="editable-stage">
+        <button id="cta">Add to basket</button>
+      </div>
+    `);
+    document.documentElement.setAttribute("data-composition-id", "root");
+    document.documentElement.setAttribute("data-width", "1920");
+    document.documentElement.setAttribute("data-height", "1080");
+    setElementRect(document.documentElement, { left: 0, top: 0, width: 1920, height: 1080 });
+    const editableStage = document.getElementById("editable-stage") as HTMLElement;
+    setElementRect(editableStage, { left: 0, top: 0, width: 1920, height: 1080 });
+
+    const selection = await resolveDomEditSelection(editableStage, {
+      activeCompositionPath: null,
+      isMasterView: true,
+      skipSourceProbe: true,
+    });
+
+    expect(selection?.id).toBe("editable-stage");
+    expect(selection?.capabilities.canApplyManualOffset).toBe(true);
+  });
+
   it("resolves child clicks inside a composition host to the child in master view", async () => {
     const document = createDocument(`
       <div data-composition-id="main">

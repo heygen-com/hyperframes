@@ -36,6 +36,9 @@ import { useDomEditTextCommits } from "./useDomEditTextCommits";
 // ── Helpers ──
 type TimelineLike = { getChildren?: (nested: boolean) => Array<{ targets?: () => Element[] }> };
 
+export const GSAP_CSS_FALLBACK_BLOCKED_MESSAGE =
+  "This element is GSAP-animated — dragging via CSS would corrupt keyframes";
+
 // fallow-ignore-next-line complexity
 function isElementGsapTargeted(iframe: HTMLIFrameElement | null, element: HTMLElement): boolean {
   // When the GSAP drag intercept is disabled for debugging, treat every
@@ -291,7 +294,7 @@ export function useDomEditCommits({
       patches: PatchOperation[],
       options: { label: string; coalesceKey: string; skipRefresh?: boolean },
     ) => {
-      void queueDomEditSave(async () => {
+      return queueDomEditSave(async () => {
         await persistDomEditOperations(selection, patches, {
           label: options.label,
           coalesceKey: options.coalesceKey,
@@ -309,6 +312,7 @@ export function useDomEditCommits({
           target_selector: selection.selector ?? undefined,
           target_source_file: selection.sourceFile ?? undefined,
         });
+        throw error;
       });
     },
     [persistDomEditOperations, queueDomEditSave, showToast],
@@ -318,57 +322,77 @@ export function useDomEditCommits({
 
   const handleDomPathOffsetCommit = useCallback(
     (selection: DomEditSelection, next: { x: number; y: number }) => {
+      if (isElementGsapTargeted(previewIframeRef.current, selection.element)) {
+        const error = new Error(GSAP_CSS_FALLBACK_BLOCKED_MESSAGE);
+        showToast(error.message, "error");
+        return Promise.reject(error);
+      }
       applyStudioPathOffset(selection.element, next);
-      if (isElementGsapTargeted(previewIframeRef.current, selection.element)) return;
-      commitPositionPatchToHtml(selection, buildPathOffsetPatches(selection.element), {
+      return commitPositionPatchToHtml(selection, buildPathOffsetPatches(selection.element), {
         label: "Move layer",
         coalesceKey: `path-offset:${getDomEditTargetKey(selection)}`,
       });
     },
-    [commitPositionPatchToHtml, previewIframeRef],
+    [commitPositionPatchToHtml, previewIframeRef, showToast],
   );
 
   const handleDomGroupPathOffsetCommit = useCallback(
     (updates: DomEditGroupPathOffsetCommit[]) => {
-      if (updates.length === 0) return;
+      if (updates.length === 0) return Promise.resolve();
+      const blockedUpdate = updates.find(({ selection }) =>
+        isElementGsapTargeted(previewIframeRef.current, selection.element),
+      );
+      if (blockedUpdate) {
+        const error = new Error(GSAP_CSS_FALLBACK_BLOCKED_MESSAGE);
+        showToast(error.message, "error");
+        return Promise.reject(error);
+      }
       const coalesceKey = updates
         .map((u) => getDomEditTargetKey(u.selection))
         .sort()
         .join(":");
-      for (const { selection, next } of updates) {
+      const saves = updates.map(({ selection, next }) => {
         applyStudioPathOffset(selection.element, next);
-        if (isElementGsapTargeted(previewIframeRef.current, selection.element)) continue;
-        commitPositionPatchToHtml(selection, buildPathOffsetPatches(selection.element), {
+        return commitPositionPatchToHtml(selection, buildPathOffsetPatches(selection.element), {
           label: `Move ${updates.length} layers`,
           coalesceKey: `group-path-offset:${coalesceKey}`,
         });
-      }
+      });
+      return Promise.all(saves).then(() => undefined);
     },
-    [commitPositionPatchToHtml, previewIframeRef],
+    [commitPositionPatchToHtml, previewIframeRef, showToast],
   );
 
   const handleDomBoxSizeCommit = useCallback(
     (selection: DomEditSelection, next: { width: number; height: number }) => {
+      if (isElementGsapTargeted(previewIframeRef.current, selection.element)) {
+        const error = new Error(GSAP_CSS_FALLBACK_BLOCKED_MESSAGE);
+        showToast(error.message, "error");
+        return Promise.reject(error);
+      }
       applyStudioBoxSize(selection.element, next);
-      if (isElementGsapTargeted(previewIframeRef.current, selection.element)) return;
-      commitPositionPatchToHtml(selection, buildBoxSizePatches(selection.element), {
+      return commitPositionPatchToHtml(selection, buildBoxSizePatches(selection.element), {
         label: "Resize layer box",
         coalesceKey: `box-size:${getDomEditTargetKey(selection)}`,
       });
     },
-    [commitPositionPatchToHtml, previewIframeRef],
+    [commitPositionPatchToHtml, previewIframeRef, showToast],
   );
 
   const handleDomRotationCommit = useCallback(
     (selection: DomEditSelection, next: { angle: number }) => {
+      if (isElementGsapTargeted(previewIframeRef.current, selection.element)) {
+        const error = new Error(GSAP_CSS_FALLBACK_BLOCKED_MESSAGE);
+        showToast(error.message, "error");
+        return Promise.reject(error);
+      }
       applyStudioRotation(selection.element, next);
-      if (isElementGsapTargeted(previewIframeRef.current, selection.element)) return;
-      commitPositionPatchToHtml(selection, buildRotationPatches(selection.element), {
+      return commitPositionPatchToHtml(selection, buildRotationPatches(selection.element), {
         label: "Rotate layer",
         coalesceKey: `rotation:${getDomEditTargetKey(selection)}`,
       });
     },
-    [commitPositionPatchToHtml, previewIframeRef],
+    [commitPositionPatchToHtml, previewIframeRef, showToast],
   );
 
   const handleDomManualEditsReset = useCallback(
@@ -383,11 +407,11 @@ export function useDomEditCommits({
       clearStudioBoxSize(element);
       clearStudioRotation(element);
       // skipRefresh:false triggers reloadPreview() which re-syncs selection on load
-      commitPositionPatchToHtml(selection, clearPatches, {
+      void commitPositionPatchToHtml(selection, clearPatches, {
         label: "Reset layer edits",
         coalesceKey: `manual-reset:${getDomEditTargetKey(selection)}`,
         skipRefresh: false,
-      });
+      }).catch(() => undefined);
     },
     [commitPositionPatchToHtml],
   );
@@ -490,7 +514,7 @@ export function useDomEditCommits({
         } catch {
           /* cross-origin or detached — skip */
         }
-        commitPositionPatchToHtml(
+        void commitPositionPatchToHtml(
           {
             element: entry.element,
             id: entry.id ?? null,
@@ -505,7 +529,7 @@ export function useDomEditCommits({
             coalesceKey,
             skipRefresh: i < entries.length - 1,
           },
-        );
+        ).catch(() => undefined);
       }
     },
     [commitPositionPatchToHtml],

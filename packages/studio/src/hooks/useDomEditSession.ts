@@ -15,7 +15,7 @@ import type { SidebarTab } from "../components/sidebar/LeftSidebar";
 import { useAskAgentModal } from "./useAskAgentModal";
 import { useDomSelection } from "./useDomSelection";
 import { usePreviewInteraction } from "./usePreviewInteraction";
-import { useDomEditCommits } from "./useDomEditCommits";
+import { GSAP_CSS_FALLBACK_BLOCKED_MESSAGE, useDomEditCommits } from "./useDomEditCommits";
 import { useGsapScriptCommits } from "./useGsapScriptCommits";
 import {
   useGsapAnimationsForElement,
@@ -330,11 +330,8 @@ export function useDomEditSession({
     async (selection: DomEditSelection, next: { x: number; y: number }) => {
       const hasGsapAnims = selectedGsapAnimations.length > 0;
       if (hasGsapAnims && !STUDIO_GSAP_DRAG_INTERCEPT_ENABLED) {
-        showToast(
-          "This element is GSAP-animated — dragging via CSS would corrupt keyframes",
-          "error",
-        );
-        return;
+        showToast(GSAP_CSS_FALLBACK_BLOCKED_MESSAGE, "error");
+        throw new Error(GSAP_CSS_FALLBACK_BLOCKED_MESSAGE);
       }
       if (STUDIO_GSAP_DRAG_INTERCEPT_ENABLED && gsapCommitMutation) {
         const handled = await tryGsapDragIntercept(
@@ -354,7 +351,7 @@ export function useDomEditSession({
         );
         if (handled) return;
       }
-      handleDomPathOffsetCommit(selection, next);
+      return handleDomPathOffsetCommit(selection, next);
     },
     [
       handleDomPathOffsetCommit,
@@ -394,7 +391,7 @@ export function useDomEditSession({
         );
         if (handled) return;
       }
-      handleDomBoxSizeCommit(selection, next);
+      return handleDomBoxSizeCommit(selection, next);
     },
     [
       handleDomBoxSizeCommit,
@@ -418,7 +415,7 @@ export function useDomEditSession({
         );
         if (handled) return;
       }
-      handleDomRotationCommit(selection, next);
+      return handleDomRotationCommit(selection, next);
     },
     [
       handleDomRotationCommit,
