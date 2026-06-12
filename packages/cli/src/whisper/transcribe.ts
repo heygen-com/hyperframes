@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, mkdirSync, unlinkSync } from "node:fs";
 import { join, extname } from "node:path";
 import { tmpdir } from "node:os";
-import { findFFmpeg, findFFprobe } from "../browser/ffmpeg.js";
+import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
 import { ensureWhisper, ensureModel, hasFFmpeg, DEFAULT_MODEL } from "./manager.js";
 
 /**
@@ -128,7 +128,9 @@ function isVideoFile(filePath: string): boolean {
 function extractAudio(videoPath: string): string {
   const ffmpegPath = findFFmpeg();
   if (!ffmpegPath) {
-    throw new Error("ffmpeg is required to extract audio from video. Install: brew install ffmpeg");
+    throw new Error(
+      `ffmpeg is required to extract audio from video. Install: ${getFFmpegInstallHint()}`,
+    );
   }
   const wavPath = join(tmpdir(), `hyperframes-audio-${Date.now()}.wav`);
   execFileSync(
@@ -176,7 +178,7 @@ function prepareAudio(audioPath: string): string {
   // Convert to whisper-compatible WAV
   const ffmpegPath = findFFmpeg();
   if (!ffmpegPath) {
-    throw new Error("ffmpeg is required to prepare audio. Install: brew install ffmpeg");
+    throw new Error(`ffmpeg is required to prepare audio. Install: ${getFFmpegInstallHint()}`);
   }
   const wavPath = join(tmpdir(), `hyperframes-audio-${Date.now()}.wav`);
   execFileSync(
@@ -217,7 +219,7 @@ export async function transcribe(
   } else if (isVideoFile(inputPath)) {
     if (!hasFFmpeg()) {
       throw new Error(
-        "ffmpeg is required to extract audio from video. Install: brew install ffmpeg",
+        `ffmpeg is required to extract audio from video. Install: ${getFFmpegInstallHint()}`,
       );
     }
     options?.onProgress?.("Extracting audio from video...");

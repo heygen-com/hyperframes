@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { existsSync, writeFileSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 const SAMPLE_RATE = 4000;
 const PEAK_COUNT = 4000;
@@ -27,10 +27,16 @@ function computePeaks(floats: Float32Array, count: number): number[] {
   return peaks.map((p) => p / maxPeak);
 }
 
+function ffmpegBinary(): string {
+  const configured = process.env.HYPERFRAMES_FFMPEG_PATH?.trim();
+  if (configured) return resolve(configured);
+  return "ffmpeg";
+}
+
 export function decodeAudioPeaks(audioPath: string): Promise<number[]> {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolvePromise, reject) => {
     const proc = spawn(
-      "ffmpeg",
+      ffmpegBinary(),
       [
         "-i",
         audioPath,
@@ -62,7 +68,7 @@ export function decodeAudioPeaks(audioPath: string): Promise<number[]> {
         return;
       }
       const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + numSamples * 4);
-      resolve(computePeaks(new Float32Array(ab), PEAK_COUNT));
+      resolvePromise(computePeaks(new Float32Array(ab), PEAK_COUNT));
     });
     proc.on("error", reject);
   });

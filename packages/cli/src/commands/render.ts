@@ -974,13 +974,11 @@ export async function renderLocal(
     includeDisk: true,
     includeWindowsUnc: true,
   });
-  const failedCheck = preflight.outcomes.find((outcome) => !outcome.ok);
-  if (failedCheck) {
-    errorBox(
-      failedCheck.title ?? `${failedCheck.name} check failed`,
-      failedCheck.detail,
-      failedCheck.hint,
-    );
+  const failedChecks = preflight.outcomes.filter((outcome) => !outcome.ok);
+  if (failedChecks.length > 0) {
+    for (const check of failedChecks) {
+      errorBox(check.title ?? `${check.name} check failed`, check.detail, check.hint);
+    }
     process.exit(1);
   }
   if (!options.quiet) {
