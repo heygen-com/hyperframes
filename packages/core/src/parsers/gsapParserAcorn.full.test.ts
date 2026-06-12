@@ -3,6 +3,13 @@
  * T6d: parse-parity suite — runs the full gsapParser.test.ts parse scenarios
  * against parseGsapScriptAcorn.  Write-path tests are it.skip'd; those live
  * in gsapWriter.acorn.test.ts.
+ *
+ * Trust model: assertions here trust the recast-baseline outputs from
+ * gsapParser.test.ts as ground truth.  T6b (gsapParser.acorn.test.ts) carries
+ * the real behavioral parity contract; this file widens coverage to the full
+ * corpus without duplicating the contract commentary.
+ * motionPath parity tests live in the Phase 3b commit (PR #1379) because that
+ * commit adds the acorn motionPath parser itself.
  */
 import { describe, it, expect } from "vitest";
 import { parseGsapScriptAcorn } from "./gsapParserAcorn.js";
