@@ -1,5 +1,22 @@
-import { describe, it, expect, vi } from "vitest";
-import { ENCODER_PRESETS, getEncoderPreset, buildEncoderArgs } from "./chunkEncoder.js";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  ENCODER_PRESETS,
+  getEncoderPreset,
+  buildEncoderArgs,
+  encodeFramesChunkedConcat,
+} from "./chunkEncoder.js";
+
+// Spy on runFfmpeg so encodeFramesChunkedConcat tests can assert the timeout
+// each ffmpeg invocation receives without spawning real processes.
+const { runFfmpegMock } = vi.hoisted(() => ({ runFfmpegMock: vi.fn() }));
+
+vi.mock("../utils/runFfmpeg.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/runFfmpeg.js")>()),
+  runFfmpeg: runFfmpegMock,
+}));
 
 describe("ENCODER_PRESETS", () => {
   it("has draft, standard, and high presets", () => {
@@ -860,5 +877,69 @@ describe("buildEncoderArgs HDR color space", () => {
     expect(args[args.indexOf("-color_primaries:v") + 1]).toBe("bt2020");
     expect(args[args.indexOf("-color_trc:v") + 1]).toBe("smpte2084");
     expect(args.indexOf("-x265-params")).toBe(-1);
+  });
+});
+
+describe("encodeFramesChunkedConcat timeout threading", () => {
+  beforeEach(() => {
+    runFfmpegMock.mockReset();
+    runFfmpegMock.mockResolvedValue({ success: true, exitCode: 0, stderr: "", durationMs: 1 });
+  });
+
+  // 60 frames at chunk size 30 → 2 chunk encodes + 1 concat = 3 invocations.
+  function makeFramesDir(): string {
+    const framesDir = mkdtempSync(join(tmpdir(), "hf-chunk-encode-test-"));
+    for (let i = 1; i <= 60; i++) {
+      writeFileSync(join(framesDir, `frame_${String(i).padStart(6, "0")}.jpg`), "");
+    }
+    return framesDir;
+  }
+
+  const options = {
+    ...getEncoderPreset("standard", "mp4"),
+    fps: { num: 30, den: 1 },
+    width: 640,
+    height: 360,
+    useGpu: false,
+  };
+
+  it("passes config.ffmpegEncodeTimeout to every chunk encode and the final concat", async () => {
+    const framesDir = makeFramesDir();
+    const outputPath = join(mkdtempSync(join(tmpdir(), "hf-chunk-out-")), "out.mp4");
+
+    const result = await encodeFramesChunkedConcat(
+      framesDir,
+      "frame_%06d.jpg",
+      outputPath,
+      options,
+      30,
+      undefined,
+      { ffmpegEncodeTimeout: 42_000 },
+    );
+
+    expect(result.success).toBe(true);
+    expect(runFfmpegMock).toHaveBeenCalledTimes(3);
+    for (const [, opts] of runFfmpegMock.mock.calls) {
+      expect(opts.timeout).toBe(42_000);
+    }
+  });
+
+  it("falls back to the default timeout when config is absent", async () => {
+    const framesDir = makeFramesDir();
+    const outputPath = join(mkdtempSync(join(tmpdir(), "hf-chunk-out-")), "out.mp4");
+
+    const result = await encodeFramesChunkedConcat(
+      framesDir,
+      "frame_%06d.jpg",
+      outputPath,
+      options,
+      30,
+    );
+
+    expect(result.success).toBe(true);
+    expect(runFfmpegMock).toHaveBeenCalledTimes(3);
+    for (const [, opts] of runFfmpegMock.mock.calls) {
+      expect(opts.timeout).toBe(600_000);
+    }
   });
 });
