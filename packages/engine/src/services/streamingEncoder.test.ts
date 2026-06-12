@@ -418,6 +418,20 @@ const baseOptions: StreamingEncoderOptions = {
   useGpu: false,
 };
 
+async function resolveWithin<T>(promise: Promise<T>, ms = 100): Promise<T | "timeout"> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<"timeout">((resolve) => {
+        timeout = setTimeout(() => resolve("timeout"), ms);
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
 describe("spawnStreamingEncoder lifecycle and cleanup", () => {
   afterEach(() => {
     vi.resetModules();
@@ -556,7 +570,7 @@ describe("spawnStreamingEncoder lifecycle and cleanup", () => {
     const dir = mkdtempSync(join(tmpdir(), "se-writefail-"));
     const encoder = await spawnStreamingEncoder(join(dir, "out.mp4"), baseOptions);
 
-    expect(encoder.writeFrame(Buffer.from([0]))).toBe(true);
+    expect(await encoder.writeFrame(Buffer.from([0]))).toBe(true);
 
     const proc = calls[0]!.proc;
     await new Promise<void>((resolve) => {
@@ -566,7 +580,136 @@ describe("spawnStreamingEncoder lifecycle and cleanup", () => {
       });
     });
 
-    expect(encoder.writeFrame(Buffer.from([0]))).toBe(false);
+    expect(await encoder.writeFrame(Buffer.from([0]))).toBe(false);
+  });
+
+  it("writeFrame waits for stdin drain when FFmpeg applies back-pressure", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { spawnStreamingEncoder } = await import("./streamingEncoder.js");
+    const dir = mkdtempSync(join(tmpdir(), "se-drain-"));
+    const encoder = await spawnStreamingEncoder(join(dir, "out.mp4"), baseOptions);
+
+    const proc = calls[0]!.proc;
+    proc.stdin.write = (_chunk: Buffer): boolean => false;
+
+    const writeResult = encoder.writeFrame(Buffer.from([1])) as unknown;
+    expect(writeResult).toBeInstanceOf(Promise);
+
+    const writePromise = writeResult as Promise<boolean>;
+    let settled = false;
+    void writePromise.then(() => {
+      settled = true;
+    });
+
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    expect(proc.stdin.listenerCount("drain")).toBe(1);
+
+    proc.stdin.emit("drain");
+
+    await expect(writePromise).resolves.toBe(true);
+    expect(settled).toBe(true);
+    expect(proc.stdin.listenerCount("drain")).toBe(0);
+
+    process.nextTick(() => proc.emit("close", 0));
+    await encoder.close();
+  });
+
+  it("does not accumulate process close listeners across repeated back-pressured writes", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { spawnStreamingEncoder } = await import("./streamingEncoder.js");
+    const dir = mkdtempSync(join(tmpdir(), "se-drain-listeners-"));
+    const encoder = await spawnStreamingEncoder(join(dir, "out.mp4"), baseOptions);
+
+    const proc = calls[0]!.proc;
+    const baselineCloseListeners = proc.listenerCount("close");
+    const baselineDrainListeners = proc.stdin.listenerCount("drain");
+    proc.stdin.write = (_chunk: Buffer): boolean => false;
+
+    for (let i = 0; i < 12; i++) {
+      const writePromise = encoder.writeFrame(Buffer.from([i]));
+
+      await Promise.resolve();
+      expect(proc.stdin.listenerCount("drain")).toBe(baselineDrainListeners + 1);
+      expect(proc.listenerCount("close")).toBe(baselineCloseListeners + 1);
+
+      proc.stdin.emit("drain");
+
+      await expect(writePromise).resolves.toBe(true);
+      expect(proc.stdin.listenerCount("drain")).toBe(baselineDrainListeners);
+      expect(proc.listenerCount("close")).toBe(baselineCloseListeners);
+    }
+
+    process.nextTick(() => proc.emit("close", 0));
+    await encoder.close();
+  });
+
+  it("writeFrame resolves false instead of hanging when FFmpeg exits before drain", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { spawnStreamingEncoder } = await import("./streamingEncoder.js");
+    const dir = mkdtempSync(join(tmpdir(), "se-drain-exit-"));
+    const encoder = await spawnStreamingEncoder(join(dir, "out.mp4"), baseOptions);
+
+    const proc = calls[0]!.proc;
+    proc.stdin.write = (_chunk: Buffer): boolean => false;
+
+    const writeResult = encoder.writeFrame(Buffer.from([1])) as unknown;
+    expect(writeResult).toBeInstanceOf(Promise);
+
+    const writePromise = writeResult as Promise<boolean>;
+    let settled = false;
+    void writePromise.then(() => {
+      settled = true;
+    });
+
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    expect(proc.stdin.listenerCount("drain")).toBe(1);
+
+    proc.emit("close", 1);
+
+    await expect(writePromise).resolves.toBe(false);
+    expect(settled).toBe(true);
+    expect(proc.stdin.listenerCount("drain")).toBe(0);
+
+    const result = await encoder.close();
+    expect(result.success).toBe(false);
+  });
+
+  it("writeFrame resolves false when close fires after write returns false before await attaches listeners", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { spawnStreamingEncoder } = await import("./streamingEncoder.js");
+    const dir = mkdtempSync(join(tmpdir(), "se-drain-already-closed-"));
+    const encoder = await spawnStreamingEncoder(join(dir, "out.mp4"), baseOptions);
+
+    const proc = calls[0]!.proc;
+    const baselineCloseListeners = proc.listenerCount("close");
+    proc.stdin.write = (_chunk: Buffer): boolean => {
+      proc.emit("close", 1);
+      return false;
+    };
+
+    const writePromise = encoder.writeFrame(Buffer.from([1]));
+
+    await expect(resolveWithin(writePromise)).resolves.toBe(false);
+    expect(encoder.getExitStatus()).toBe("error");
+    expect(proc.stdin.listenerCount("drain")).toBe(0);
+    expect(proc.listenerCount("close")).toBe(baselineCloseListeners);
+
+    const result = await encoder.close();
+    expect(result.success).toBe(false);
   });
 
   it("close() removes the abort listener so a post-close abort does not re-kill ffmpeg", async () => {
@@ -613,7 +756,7 @@ describe("spawnStreamingEncoder lifecycle and cleanup", () => {
       // progressing" capture the encoder must still be alive. The old total-
       // render timeout would have fired SIGTERM at ~1000ms.
       for (let i = 0; i < 9; i++) {
-        encoder.writeFrame(Buffer.from([i]));
+        await encoder.writeFrame(Buffer.from([i]));
         vi.advanceTimersByTime(900);
       }
       expect(proc.kill).not.toHaveBeenCalled();
@@ -647,14 +790,17 @@ describe("spawnStreamingEncoder lifecycle and cleanup", () => {
       const proc = calls[0]!.proc;
       proc.stdin.write = (_chunk: Buffer) => false;
 
-      // Pump 9 frames at 900ms intervals — all returning false. The reset
-      // should NOT fire (every write was buffered, not accepted), so the
-      // 1000ms timer (last reset on spawn) elapses near the start.
-      for (let i = 0; i < 9; i++) {
-        encoder.writeFrame(Buffer.from([i]));
-        vi.advanceTimersByTime(900);
-      }
+      // A buffered write should remain pending and must NOT reset the timer.
+      // The 1000ms timer (last reset on spawn) therefore elapses while the
+      // caller is correctly back-pressured on the first frame.
+      const writePromise = encoder.writeFrame(Buffer.from([0]));
+      await Promise.resolve();
+
+      vi.advanceTimersByTime(1100);
       expect(proc.kill).toHaveBeenCalledWith("SIGTERM");
+
+      proc.emit("close", null);
+      await expect(writePromise).resolves.toBe(false);
     } finally {
       vi.useRealTimers();
     }

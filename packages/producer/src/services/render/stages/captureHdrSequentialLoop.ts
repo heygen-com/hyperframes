@@ -34,6 +34,7 @@ import { writeFileExclusiveSync } from "../shared.js";
 import {
   captureSceneIntoBuffer,
   cleanupEndedHdrVideos,
+  ensureFrameWritten,
   type LayeredTransitionBuffers,
 } from "./captureHdrFrameShared.js";
 import { updateJobStatus } from "../shared.js";
@@ -189,7 +190,7 @@ export async function runSequentialLayeredFrameLoop(input: SequentialLoopInput):
       );
       addHdrTiming(hdrPerf, "transitionCompositeMs", transitionTimingStart);
       timingStart = Date.now();
-      hdrEncoder.writeFrame(transitionBuffers.output);
+      ensureFrameWritten(await hdrEncoder.writeFrame(transitionBuffers.output), i);
       addHdrTiming(hdrPerf, "encoderWriteMs", timingStart);
     } else {
       if (hdrPerf) hdrPerf.normalFrames += 1;
@@ -206,7 +207,7 @@ export async function runSequentialLayeredFrameLoop(input: SequentialLoopInput):
         );
       }
       timingStart = Date.now();
-      hdrEncoder.writeFrame(normalCanvas);
+      ensureFrameWritten(await hdrEncoder.writeFrame(normalCanvas), i);
       addHdrTiming(hdrPerf, "encoderWriteMs", timingStart);
     }
 

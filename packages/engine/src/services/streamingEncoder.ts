@@ -10,10 +10,11 @@
  *   1. Frame reorder buffer – ensures out-of-order parallel workers feed
  *      frames to FFmpeg stdin in sequential order.
  *   2. Streaming FFmpeg encoder – spawns FFmpeg with `-f image2pipe` and
- *      exposes a `writeFrame(buffer)` + `close()` API.
+ *      exposes an async `writeFrame(buffer)` + `close()` API.
  */
 
 import { spawn, type ChildProcess } from "child_process";
+import { once } from "events";
 import { trackChildProcess } from "../utils/processTracker.js";
 import { existsSync, mkdirSync, statSync } from "fs";
 import { dirname } from "path";
@@ -126,7 +127,14 @@ export interface StreamingEncoderResult {
 }
 
 export interface StreamingEncoder {
-  writeFrame: (buffer: Buffer) => boolean;
+  /**
+   * Write one frame to FFmpeg stdin, awaiting `drain` when the pipe is full
+   * so back-pressure propagates to the caller. Resolves `false` when FFmpeg
+   * is already gone. Callers must serialize calls — one in-flight writeFrame
+   * per encoder (the frame reorder buffer provides this ordering); concurrent
+   * calls would interleave frame bytes on the pipe and race the drain wait.
+   */
+  writeFrame: (buffer: Buffer) => Promise<boolean>;
   close: () => Promise<StreamingEncoderResult>;
   getExitStatus: () => "running" | "success" | "error";
 }
@@ -448,9 +456,45 @@ export async function spawnStreamingEncoder(
   };
   resetTimer();
 
+  const waitForDrainOrExit = async (
+    stdin: NonNullable<ChildProcess["stdin"]>,
+  ): Promise<"drain" | "exit"> => {
+    // Back-pressure can hit once per frame. Do not race `exitPromise.then(...)`
+    // here: V8 retains `.then` reaction-list entries on an unsettled promise,
+    // so a one-hour 30fps render under steady back-pressure can accumulate
+    // ~108K closures + AbortControllers. Use one-shot listeners for this write
+    // instead, then abort them in finally. `close` is the event that flips
+    // `exitStatus`; re-check after listener attachment so a close emitted
+    // between `stdin.write(false)` and this await cannot hang forever.
+    const abortController = new AbortController();
+    try {
+      const drainPromise = once(stdin, "drain", { signal: abortController.signal }).then(
+        () => "drain" as const,
+      );
+      const closePromise = once(ffmpeg, "close", { signal: abortController.signal }).then(
+        () => "exit" as const,
+      );
+      const racePromise = Promise.race([drainPromise, closePromise]).catch((err: unknown) => {
+        if (err instanceof Error && err.name === "AbortError") {
+          return "exit" as const;
+        }
+        throw err;
+      });
+
+      if (exitStatus !== "running") {
+        return "exit";
+      }
+
+      return await racePromise;
+    } finally {
+      abortController.abort();
+    }
+  };
+
   const encoder: StreamingEncoder = {
-    writeFrame: (buffer: Buffer): boolean => {
-      if (exitStatus !== "running" || !ffmpeg.stdin || ffmpeg.stdin.destroyed) {
+    writeFrame: async (buffer: Buffer): Promise<boolean> => {
+      const stdin = ffmpeg.stdin;
+      if (exitStatus !== "running" || !stdin || stdin.destroyed) {
         return false;
       }
       // Copy the buffer before writing — Node streams hold a reference to the
@@ -459,18 +503,28 @@ export async function spawnStreamingEncoder(
       // so without this copy the pipe would read partially-overwritten data
       // and flicker.
       const copy = Buffer.from(buffer);
-      const accepted = ffmpeg.stdin.write(copy);
-      // Reset inactivity timer ONLY on `accepted === true`. `true` means the
-      // write went through to the kernel pipe without buffering in Node —
-      // proof FFmpeg is actually consuming. `false` means Node's writable
-      // stream had to buffer (FFmpeg hasn't drained the pipe yet); we deliberately
-      // don't reset on `false` so a hung FFmpeg with a still-producing Chrome
-      // can't keep us alive forever while Node's stdin buffer grows to OOM. In
-      // steady state with a slower-but-alive FFmpeg, writes alternate between
-      // true and false as the buffer drains and refills; the trues are enough
-      // to keep the heartbeat ticking.
-      if (accepted) resetTimer();
-      return accepted;
+      const accepted = stdin.write(copy);
+      // Reset inactivity timer immediately ONLY on `accepted === true`. `true`
+      // means the write went through to the kernel pipe without buffering in
+      // Node — proof FFmpeg is actually consuming. `false` means Node's writable
+      // stream had to buffer (FFmpeg hasn't drained the pipe yet); we await
+      // `drain` before letting callers produce the next frame, and only reset
+      // after drain proves consumption. We deliberately don't reset before
+      // drain so a hung FFmpeg with a still-producing Chrome can't keep us
+      // alive forever while Node's stdin buffer grows to OOM. If FFmpeg exits
+      // before draining, waitForDrainOrExit returns "exit", removes its
+      // one-shot listeners, and callers see `false` instead of hanging.
+      if (accepted) {
+        resetTimer();
+        return true;
+      }
+
+      const drainResult = await waitForDrainOrExit(stdin);
+      if (drainResult !== "drain" || exitStatus !== "running") {
+        return false;
+      }
+      resetTimer();
+      return true;
     },
 
     close: async (): Promise<StreamingEncoderResult> => {

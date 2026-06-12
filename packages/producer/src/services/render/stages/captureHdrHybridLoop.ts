@@ -54,6 +54,7 @@ import {
   type LayeredTransitionBuffers,
   captureTransitionFrameOnWorker,
   distributeLayeredHybridFrameRanges,
+  ensureFrameWritten,
   partitionTransitionFrames,
 } from "./captureHdrFrameShared.js";
 import { updateJobStatus } from "../shared.js";
@@ -185,7 +186,7 @@ export async function runHybridLayeredFrameLoop(input: HybridLoopInput): Promise
     const writeEncoded = async (frameIdx: number, buf: Buffer): Promise<void> => {
       await reorderBuffer.waitForFrame(frameIdx);
       const writeStart = Date.now();
-      hdrEncoder.writeFrame(buf);
+      ensureFrameWritten(await hdrEncoder.writeFrame(buf), frameIdx);
       addHdrTiming(hdrPerf, "encoderWriteMs", writeStart);
       reorderBuffer.advanceTo(frameIdx + 1);
       framesWritten += 1;

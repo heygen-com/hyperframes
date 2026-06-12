@@ -301,6 +301,19 @@ export async function captureTransitionFrameOnWorker(
   }
 }
 
+// ─── Streaming-encoder write guard ──────────────────────────────────────────
+
+/**
+ * Streaming-encoder writes report `false` when FFmpeg is already gone.
+ * Continuing to capture into a dead encoder wastes the rest of the render,
+ * so every frame loop stops with a frame-indexed error instead.
+ */
+export function ensureFrameWritten(frameWritten: boolean, frameIndex: number): void {
+  if (!frameWritten) {
+    throw new Error(`Streaming encoder exited before frame ${frameIndex} was written`);
+  }
+}
+
 // ─── HDR video raw-frame cleanup (sequential path only) ────────────────────
 
 export function cleanupEndedHdrVideos(args: {

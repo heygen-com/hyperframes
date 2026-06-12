@@ -60,6 +60,7 @@ import type { FileServerHandle } from "../../fileServer.js";
 import type { ProducerLogger } from "../../../logger.js";
 import type { ProgressCallback, RenderJob } from "../../renderOrchestrator.js";
 import { wrapCaptureStageError } from "../captureStageError.js";
+import { ensureFrameWritten } from "./captureHdrFrameShared.js";
 import { updateJobStatus } from "../shared.js";
 
 /**
@@ -195,7 +196,7 @@ export async function runCaptureStreamingStage(
 
       const onFrameBuffer = async (frameIndex: number, buffer: Buffer): Promise<void> => {
         await reorderBuffer.waitForFrame(frameIndex);
-        currentEncoder.writeFrame(buffer);
+        ensureFrameWritten(await currentEncoder.writeFrame(buffer), frameIndex);
         reorderBuffer.advanceTo(frameIndex + 1);
       };
 
@@ -263,7 +264,7 @@ export async function runCaptureStreamingStage(
           const time = (i * job.config.fps.den) / job.config.fps.num;
           const { buffer } = await captureFrameToBuffer(session, i, time);
           await reorderBuffer.waitForFrame(i);
-          currentEncoder.writeFrame(buffer);
+          ensureFrameWritten(await currentEncoder.writeFrame(buffer), i);
           reorderBuffer.advanceTo(i + 1);
           job.framesRendered = i + 1;
 
