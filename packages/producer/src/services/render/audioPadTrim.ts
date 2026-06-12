@@ -1,3 +1,4 @@
+// fallow-ignore-file complexity
 /**
  * audioPadTrim — pad-or-trim an `audio.aac` file so its exact duration
  * matches the assembled video's frame count divided by fps.
@@ -20,6 +21,7 @@ import { spawn } from "node:child_process";
 import {
   extractAudioMetadata,
   formatFfmpegError,
+  getFfprobeBinary,
   runFfmpeg,
   type AudioMetadata,
 } from "@hyperframes/engine";
@@ -321,7 +323,7 @@ async function defaultRunFfmpeg(args: string[]): Promise<{ success: boolean; err
 
 function runFfprobeJson<T>(args: string[]): Promise<T> {
   return new Promise((resolve, reject) => {
-    const proc = spawn("ffprobe", args);
+    const proc = spawn(getFfprobeBinary(), args);
     let stdout = "";
     let stderr = "";
     proc.stdout.on("data", (data: Buffer) => {

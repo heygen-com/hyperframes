@@ -1,3 +1,4 @@
+// fallow-ignore-file unused-class-member code-duplication complexity
 /**
  * Video Frame Extractor Service
  *
@@ -19,6 +20,7 @@ import {
 } from "../utils/hdr.js";
 import { downloadToTemp, isHttpUrl } from "../utils/urlDownloader.js";
 import { runFfmpeg } from "../utils/runFfmpeg.js";
+import { getFfmpegBinary } from "../utils/ffmpegBinaries.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { unwrapTemplate } from "../utils/htmlTemplate.js";
 import {
@@ -259,7 +261,7 @@ export async function extractVideoFramesRange(
   args.push("-y", outputPattern);
 
   return new Promise((resolve, reject) => {
-    const ffmpeg = spawn("ffmpeg", args);
+    const ffmpeg = spawn(getFfmpegBinary(), args);
     trackChildProcess(ffmpeg);
     let stderr = "";
     const onAbort = () => {

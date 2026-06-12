@@ -35,6 +35,7 @@ import {
 import { fetchRemoteTemplate } from "../templates/remote.js";
 import { trackInitTemplate } from "../telemetry/events.js";
 import { hasFFmpeg } from "../whisper/manager.js";
+import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
 import { VERSION } from "../version.js";
 import {
   CANVAS_DIMENSIONS,
@@ -75,8 +76,10 @@ const TAILWIND_BROWSER_INTEGRITY =
 
 function probeVideo(filePath: string): VideoMeta | undefined {
   try {
+    const ffprobePath = findFFprobe();
+    if (!ffprobePath) return undefined;
     const raw = execFileSync(
-      "ffprobe",
+      ffprobePath,
       ["-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", filePath],
       { encoding: "utf-8", timeout: 15_000 },
     );
@@ -134,8 +137,13 @@ function isWebCompatible(codec: string): boolean {
 
 function transcodeToMp4(inputPath: string, outputPath: string): Promise<boolean> {
   return new Promise((resolvePromise) => {
+    const ffmpegPath = findFFmpeg();
+    if (!ffmpegPath) {
+      resolvePromise(false);
+      return;
+    }
     const child = spawn(
-      "ffmpeg",
+      ffmpegPath,
       [
         "-i",
         inputPath,
@@ -345,8 +353,7 @@ async function handleVideoFile(
       );
     }
   } else {
-    const msg =
-      "ffprobe not found — using defaults (1920x1080, 5s, 30fps). Install: brew install ffmpeg";
+    const msg = `ffprobe not found — using defaults (1920x1080, 5s, 30fps). Install: ${getFFmpegInstallHint()}`;
     if (interactive) {
       clack.log.warn(msg);
     } else {
@@ -409,10 +416,10 @@ async function handleVideoFile(
     } else {
       if (interactive) {
         clack.log.warn(c.dim("ffmpeg not installed — cannot transcode."));
-        clack.log.info(c.accent("Install: brew install ffmpeg"));
+        clack.log.info(c.accent(`Install: ${getFFmpegInstallHint()}`));
       } else {
         console.log(c.warn("ffmpeg not installed — cannot transcode. Copying original."));
-        console.log(c.dim("Install: ") + c.accent("brew install ffmpeg"));
+        console.log(c.dim("Install: ") + c.accent(getFFmpegInstallHint()));
       }
       copyFileSync(videoPath, resolve(destDir, localVideoName));
     }

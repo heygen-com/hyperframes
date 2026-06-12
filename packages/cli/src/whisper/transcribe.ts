@@ -1,7 +1,9 @@
+// fallow-ignore-file complexity
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, mkdirSync, unlinkSync } from "node:fs";
 import { join, extname } from "node:path";
 import { tmpdir } from "node:os";
+import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
 import { ensureWhisper, ensureModel, hasFFmpeg, DEFAULT_MODEL } from "./manager.js";
 
 /**
@@ -124,9 +126,15 @@ function isVideoFile(filePath: string): boolean {
  * Extract audio from a video file as 16kHz mono WAV (whisper requirement).
  */
 function extractAudio(videoPath: string): string {
+  const ffmpegPath = findFFmpeg();
+  if (!ffmpegPath) {
+    throw new Error(
+      `ffmpeg is required to extract audio from video. Install: ${getFFmpegInstallHint()}`,
+    );
+  }
   const wavPath = join(tmpdir(), `hyperframes-audio-${Date.now()}.wav`);
   execFileSync(
-    "ffmpeg",
+    ffmpegPath,
     ["-i", videoPath, "-vn", "-ar", "16000", "-ac", "1", "-f", "wav", "-y", wavPath],
     { stdio: "ignore", timeout: 120_000 },
   );
@@ -138,8 +146,10 @@ function extractAudio(videoPath: string): string {
  */
 function isWav16kMono(filePath: string): boolean {
   try {
+    const ffprobePath = findFFprobe();
+    if (!ffprobePath) return false;
     const raw = execFileSync(
-      "ffprobe",
+      ffprobePath,
       ["-v", "quiet", "-print_format", "json", "-show_streams", filePath],
       { encoding: "utf-8", timeout: 10_000 },
     );
@@ -166,9 +176,13 @@ function prepareAudio(audioPath: string): string {
   }
 
   // Convert to whisper-compatible WAV
+  const ffmpegPath = findFFmpeg();
+  if (!ffmpegPath) {
+    throw new Error(`ffmpeg is required to prepare audio. Install: ${getFFmpegInstallHint()}`);
+  }
   const wavPath = join(tmpdir(), `hyperframes-audio-${Date.now()}.wav`);
   execFileSync(
-    "ffmpeg",
+    ffmpegPath,
     ["-i", audioPath, "-ar", "16000", "-ac", "1", "-f", "wav", "-y", wavPath],
     { stdio: "ignore", timeout: 120_000 },
   );
@@ -205,7 +219,7 @@ export async function transcribe(
   } else if (isVideoFile(inputPath)) {
     if (!hasFFmpeg()) {
       throw new Error(
-        "ffmpeg is required to extract audio from video. Install: brew install ffmpeg",
+        `ffmpeg is required to extract audio from video. Install: ${getFFmpegInstallHint()}`,
       );
     }
     options?.onProgress?.("Extracting audio from video...");

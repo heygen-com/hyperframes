@@ -11,6 +11,7 @@ import {
   drainBrowserPool,
   forceReleaseBrowser,
   releaseBrowser,
+  resolveHeadlessShellPath,
   resolveBrowserGpuMode,
 } from "./browserManager.js";
 
@@ -134,6 +135,23 @@ describe("resolveBrowserGpuMode", () => {
     expect(p2).toBe(p3);
     const results = await Promise.all([p1, p2, p3]);
     expect(results).toEqual(["software", "software", "software"]);
+  });
+});
+
+describe("resolveHeadlessShellPath", () => {
+  const originalHeadlessShellPath = process.env.PRODUCER_HEADLESS_SHELL_PATH;
+
+  afterEach(() => {
+    if (originalHeadlessShellPath === undefined) delete process.env.PRODUCER_HEADLESS_SHELL_PATH;
+    else process.env.PRODUCER_HEADLESS_SHELL_PATH = originalHeadlessShellPath;
+  });
+
+  it("throws a clear error when PRODUCER_HEADLESS_SHELL_PATH points at a missing binary", () => {
+    process.env.PRODUCER_HEADLESS_SHELL_PATH = "/missing/chrome-headless-shell.exe";
+
+    expect(() => resolveHeadlessShellPath({})).toThrow(
+      /Chrome binary not found at PRODUCER_HEADLESS_SHELL_PATH/,
+    );
   });
 });
 

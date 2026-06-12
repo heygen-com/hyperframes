@@ -65,7 +65,7 @@ import { VERSION } from "../version.js";
 import { isDevMode } from "../utils/env.js";
 import { buildDockerRunArgs, resolveDockerPlatform } from "../utils/dockerRunArgs.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
-import { findFFmpeg, getFFmpegInstallHint } from "../browser/ffmpeg.js";
+import { runEnvironmentChecks } from "../browser/preflight.js";
 import type { ProducerLogger, RenderJob } from "@hyperframes/producer";
 import {
   normalizeResolutionFlag,
@@ -967,29 +967,41 @@ export async function renderLocal(
   outputPath: string,
   options: RenderOptions,
 ): Promise<void> {
-  const producer = await loadProducer();
-
-  if (!findFFmpeg()) {
-    errorBox(
-      "FFmpeg not found",
-      "FFmpeg is required to encode video. The render cannot proceed without it.",
-      getFFmpegInstallHint(),
-    );
+  const preflight = await runEnvironmentChecks({
+    projectDir,
+    browserPath: options.browserPath,
+    includeBrowser: true,
+    includeDisk: true,
+    includeWindowsUnc: true,
+  });
+  const failedChecks = preflight.outcomes.filter((outcome) => !outcome.ok);
+  if (failedChecks.length > 0) {
+    for (const check of failedChecks) {
+      errorBox(check.title ?? `${check.name} check failed`, check.detail, check.hint);
+    }
     process.exit(1);
   }
+  if (!options.quiet) {
+    for (const outcome of preflight.outcomes) {
+      if (outcome.level === "warn") {
+        console.warn(c.warn(`  ${outcome.name}: ${outcome.detail}`));
+        if (outcome.hint) console.warn(c.dim(`  ${outcome.hint}`));
+      }
+    }
+  }
+
+  if (preflight.ffmpegPath) process.env.HYPERFRAMES_FFMPEG_PATH = preflight.ffmpegPath;
+  if (preflight.ffprobePath) process.env.HYPERFRAMES_FFPROBE_PATH = preflight.ffprobePath;
+  if (preflight.browser?.executablePath && !process.env.PRODUCER_HEADLESS_SHELL_PATH) {
+    process.env.PRODUCER_HEADLESS_SHELL_PATH = preflight.browser.executablePath;
+  }
+
+  const producer = await loadProducer();
 
   const startTime = Date.now();
   const logger = createRenderTelemetryLogger(
     producer.createConsoleLogger?.("info") ?? createNoopProducerLogger(),
   );
-
-  // Pass the resolved browser path to the producer via env var so
-  // resolveConfig() picks it up. This bridges the CLI's ensureBrowser()
-  // (which knows about system Chrome on macOS) with the engine's
-  // acquireBrowser() (which only checks the puppeteer cache).
-  if (options.browserPath && !process.env.PRODUCER_HEADLESS_SHELL_PATH) {
-    process.env.PRODUCER_HEADLESS_SHELL_PATH = options.browserPath;
-  }
 
   const job = producer.createRenderJob({
     fps: options.fps,

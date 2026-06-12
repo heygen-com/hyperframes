@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication complexity
 /**
  * Chunk Encoder Service
  *
@@ -18,6 +19,7 @@ import {
 } from "../utils/gpuEncoder.js";
 import { type HdrTransfer, getHdrEncoderColorParams } from "../utils/hdr.js";
 import { formatFfmpegError, runFfmpeg } from "../utils/runFfmpeg.js";
+import { getFfmpegBinary } from "../utils/ffmpegBinaries.js";
 import { type Fps, fpsToFfmpegArg } from "@hyperframes/core";
 import type { EncoderOptions, EncodeResult, MuxResult } from "./chunkEncoder.types.js";
 
@@ -411,7 +413,7 @@ export async function encodeFramesFromDir(
   const args = buildEncoderArgs(options, inputArgs, outputPath, gpuEncoder);
 
   return new Promise((resolve) => {
-    const ffmpeg = spawn("ffmpeg", args);
+    const ffmpeg = spawn(getFfmpegBinary(), args);
     trackChildProcess(ffmpeg);
     let stderr = "";
     const onAbort = () => {
@@ -543,7 +545,7 @@ export async function encodeFramesChunkedConcat(
     if (options.useGpu) gpuEncoder = await getCachedGpuEncoder();
     const args = buildEncoderArgs(options, inputArgs, chunkPath, gpuEncoder);
     const chunkResult = await new Promise<{ success: boolean; error?: string }>((resolve) => {
-      const ffmpeg = spawn("ffmpeg", args);
+      const ffmpeg = spawn(getFfmpegBinary(), args);
       trackChildProcess(ffmpeg);
       let stderr = "";
       ffmpeg.stderr.on("data", (d) => {
@@ -587,7 +589,7 @@ export async function encodeFramesChunkedConcat(
     outputPath,
   ];
   const concatResult = await new Promise<{ success: boolean; error?: string }>((resolve) => {
-    const ffmpeg = spawn("ffmpeg", concatArgs);
+    const ffmpeg = spawn(getFfmpegBinary(), concatArgs);
     trackChildProcess(ffmpeg);
     let stderr = "";
     ffmpeg.stderr.on("data", (d) => {

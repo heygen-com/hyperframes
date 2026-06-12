@@ -195,6 +195,13 @@ export {
   type RunFfmpegOptions,
   type RunFfmpegResult,
 } from "./utils/runFfmpeg.js";
+export {
+  assertConfiguredFfmpegBinariesExist,
+  getFfmpegBinary,
+  getFfprobeBinary,
+  FFMPEG_PATH_ENV,
+  FFPROBE_PATH_ENV,
+} from "./utils/ffmpegBinaries.js";
 
 export { trackChildProcess, killTrackedProcesses } from "./utils/processTracker.js";
 

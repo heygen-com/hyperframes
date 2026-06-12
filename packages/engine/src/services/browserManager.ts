@@ -49,7 +49,14 @@ export function resolveHeadlessShellPath(
     return config.chromePath;
   }
   if (process.env.PRODUCER_HEADLESS_SHELL_PATH) {
-    return process.env.PRODUCER_HEADLESS_SHELL_PATH;
+    const envPath = process.env.PRODUCER_HEADLESS_SHELL_PATH;
+    if (!existsSync(envPath)) {
+      throw new Error(
+        `[BrowserManager] Chrome binary not found at PRODUCER_HEADLESS_SHELL_PATH="${envPath}". ` +
+          "Run `hyperframes browser ensure` to re-download.",
+      );
+    }
+    return envPath;
   }
   const baseDir = join(homedir(), ".cache", "puppeteer", "chrome-headless-shell");
   if (!existsSync(baseDir)) return undefined;

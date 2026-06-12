@@ -1,3 +1,4 @@
+// fallow-ignore-file unused-type code-duplication complexity
 /**
  * Streaming Encoder Service
  *
@@ -24,6 +25,7 @@ import {
   mapPresetForGpuEncoder,
 } from "../utils/gpuEncoder.js";
 import { formatFfmpegError } from "../utils/runFfmpeg.js";
+import { getFfmpegBinary } from "../utils/ffmpegBinaries.js";
 import { getHdrEncoderColorParams } from "../utils/hdr.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { fpsToFfmpegArg, type Fps } from "@hyperframes/core";
@@ -380,7 +382,7 @@ export async function spawnStreamingEncoder(
   const args = buildStreamingArgs(options, outputPath, gpuEncoder);
 
   const startTime = Date.now();
-  const ffmpeg: ChildProcess = spawn("ffmpeg", args, {
+  const ffmpeg: ChildProcess = spawn(getFfmpegBinary(), args, {
     stdio: ["pipe", "pipe", "pipe"],
   });
   trackChildProcess(ffmpeg);

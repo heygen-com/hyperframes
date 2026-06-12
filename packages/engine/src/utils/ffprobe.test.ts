@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication
 import { EventEmitter } from "events";
 import { readFileSync } from "fs";
 import { resolve } from "path";
@@ -164,9 +165,35 @@ function createSpawnSpy(outcomes: SpawnOutcome[]): {
 }
 
 describe("ffprobe missing-binary fallback", () => {
+  const originalFfprobePath = process.env.HYPERFRAMES_FFPROBE_PATH;
+
   afterEach(() => {
     vi.resetModules();
     vi.doUnmock("child_process");
+    if (originalFfprobePath === undefined) delete process.env.HYPERFRAMES_FFPROBE_PATH;
+    else process.env.HYPERFRAMES_FFPROBE_PATH = originalFfprobePath;
+  });
+
+  it("spawns the configured absolute FFprobe path when HYPERFRAMES_FFPROBE_PATH is set", async () => {
+    process.env.HYPERFRAMES_FFPROBE_PATH = "/tools/ffprobe.exe";
+    const { spawn, calls } = createSpawnSpy([
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [{ codec_type: "audio", codec_name: "aac", sample_rate: "48000", channels: 2 }],
+          format: { duration: "1.25", bit_rate: "128000" },
+        }),
+      },
+    ]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { extractAudioMetadata } = await import("./ffprobe.js");
+    const meta = await extractAudioMetadata("/tmp/uses-configured-ffprobe.wav");
+
+    expect(meta.durationSeconds).toBe(1.25);
+    expect(calls[0]?.command).toBe(resolve("/tools/ffprobe.exe"));
   });
 
   it("extractMediaMetadata falls back to PNG cICP metadata when ffprobe is missing", async () => {
