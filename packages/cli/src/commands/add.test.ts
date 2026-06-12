@@ -15,6 +15,8 @@ const MANIFEST: RegistryManifest = {
     { name: "my-block", type: "hyperframes:block" },
     { name: "deprecated-block", type: "hyperframes:block" },
     { name: "future-block", type: "hyperframes:block" },
+    { name: "dep-block", type: "hyperframes:block" },
+    { name: "base-component", type: "hyperframes:component" },
     { name: "my-component", type: "hyperframes:component" },
     { name: "my-example", type: "hyperframes:example" },
   ],
@@ -90,6 +92,36 @@ const FUTURE_BLOCK_ITEM: RegistryItem = {
   ],
 };
 
+const BASE_COMPONENT_ITEM: RegistryItem = {
+  $schema: "https://hyperframes.heygen.com/schema/registry-item.json",
+  name: "base-component",
+  type: "hyperframes:component",
+  title: "Base Component",
+  description: "Base component dependency for tests",
+  files: [
+    {
+      path: "base-component.css",
+      target: "compositions/components/base-component/base-component.css",
+      type: "hyperframes:style",
+    },
+  ],
+};
+
+// A block that declares a transitive registryDependency on base-component.
+const DEP_BLOCK_ITEM: RegistryItem = {
+  ...BLOCK_ITEM,
+  name: "dep-block",
+  title: "Dependent Block",
+  registryDependencies: ["base-component"],
+  files: [
+    {
+      path: "dep-block.html",
+      target: "compositions/dep-block.html",
+      type: "hyperframes:composition",
+    },
+  ],
+};
+
 const EXAMPLE_ITEM: RegistryItem = {
   $schema: "https://hyperframes.heygen.com/schema/registry-item.json",
   name: "my-example",
@@ -105,6 +137,8 @@ const ITEM_BY_NAME: Record<string, RegistryItem> = {
   "my-block": BLOCK_ITEM,
   "deprecated-block": DEPRECATED_BLOCK_ITEM,
   "future-block": FUTURE_BLOCK_ITEM,
+  "dep-block": DEP_BLOCK_ITEM,
+  "base-component": BASE_COMPONENT_ITEM,
   "my-component": COMPONENT_ITEM,
   "my-example": EXAMPLE_ITEM,
 };
@@ -232,6 +266,7 @@ describe("runAdd (integration, mocked registry)", () => {
       expect(result.name).toBe("my-block");
       expect(result.type).toBe("hyperframes:block");
       expect(result.written).toHaveLength(1);
+      expect(result.installed).toEqual(["my-block"]);
       expect(result.warnings).toEqual([]);
       expect(existsSync(join(dir, "compositions/my-block.html"))).toBe(true);
       const installed = readFileSync(join(dir, "compositions/my-block.html"), "utf-8");
@@ -298,6 +333,27 @@ describe("runAdd (integration, mocked registry)", () => {
       expect(existsSync(join(dir, "src/fx/my-component/my-component.css"))).toBe(true);
       expect(existsSync(join(dir, "assets/my-component/mask.png"))).toBe(true);
       expect(result.snippet).toContain("src/fx/my-component/my-component.html");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("installs transitive registryDependencies before the requested item", async () => {
+    const dir = tmp();
+    try {
+      writeRegistryConfig(dir);
+
+      const result = await runAdd({ name: "dep-block", projectDir: dir, skipClipboard: true });
+      expect(result.name).toBe("dep-block");
+      // Dependency first, requested item last.
+      expect(result.installed).toEqual(["base-component", "dep-block"]);
+      expect(result.written).toHaveLength(2);
+      expect(
+        existsSync(join(dir, "compositions/components/base-component/base-component.css")),
+      ).toBe(true);
+      expect(existsSync(join(dir, "compositions/dep-block.html"))).toBe(true);
+      // Snippet points at the requested block, not the dependency.
+      expect(result.snippet).toContain("compositions/dep-block.html");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

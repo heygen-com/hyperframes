@@ -14,7 +14,8 @@ import { existsSync } from "node:fs";
 import { resolve, relative } from "node:path";
 import { ITEM_TYPE_DIRS, type RegistryItem } from "@hyperframes/core";
 import { c } from "../ui/colors.js";
-import { installItem, resolveItem, resolveItemsByTag } from "../registry/index.js";
+import { installItem, resolveItemsByTag } from "../registry/index.js";
+import { resolveItemWithDependencies } from "../registry/resolver.js";
 import { checkRegistryItemCompatibility } from "../registry/compatibility.js";
 import {
   DEFAULT_PROJECT_CONFIG,
@@ -86,6 +87,8 @@ export interface RunAddResult {
   type: RegistryItem["type"];
   typeDir: string;
   written: string[];
+  /** Names of every item installed, in order — dependencies first, then `name`. */
+  installed: string[];
   snippet: string;
   clipboardCopied: boolean;
   warnings: string[];
@@ -106,6 +109,44 @@ export class AddError extends Error {
   }
 }
 
+// Compatibility-gate a set of resolved items before any install runs. Throws
+// an AddError on the first item that requires a newer CLI; otherwise returns
+// the accumulated (non-fatal) warnings from every item.
+function assertCompatibleOrThrow(items: RegistryItem[], cliVersion?: string): string[] {
+  const warnings: string[] = [];
+  for (const item of items) {
+    const compatibility = checkRegistryItemCompatibility(item, cliVersion);
+    if (compatibility.error) {
+      throw new AddError(compatibility.error, "incompatible-cli");
+    }
+    warnings.push(...compatibility.warnings);
+  }
+  return warnings;
+}
+
+// Install a topologically-ordered plan (dependencies first, requested item
+// last). The installer validates every target before any write; a failure on
+// any item surfaces as an install-failed AddError. Returns all written paths.
+async function installAll(
+  installPlan: RegistryItem[],
+  destDir: string,
+  baseUrl: string | undefined,
+): Promise<string[]> {
+  const written: string[] = [];
+  try {
+    for (const planItem of installPlan) {
+      const result = await installItem(planItem, { destDir, baseUrl });
+      written.push(...result.written);
+    }
+  } catch (err) {
+    throw new AddError(
+      `Install failed: ${err instanceof Error ? err.message : String(err)}`,
+      "install-failed",
+    );
+  }
+  return written;
+}
+
 export async function runAdd(opts: RunAddArgs): Promise<RunAddResult> {
   const projectDir = resolve(opts.projectDir);
 
@@ -117,13 +158,18 @@ export async function runAdd(opts: RunAddArgs): Promise<RunAddResult> {
     config = DEFAULT_PROJECT_CONFIG;
   }
 
-  // 2. Resolve the item from the registry.
-  let item: RegistryItem;
+  // 2. Resolve the requested item and its transitive registryDependencies.
+  //    The list comes back topologically sorted: dependencies first, the
+  //    requested item last.
+  let resolved: RegistryItem[];
   try {
-    item = await resolveItem(opts.name, { baseUrl: config.registry });
+    resolved = await resolveItemWithDependencies(opts.name, { baseUrl: config.registry });
   } catch (err) {
     throw new AddError(err instanceof Error ? err.message : String(err), "unknown-item");
   }
+  // `resolveItemWithDependencies` always pushes the requested item last (or throws),
+  // so the final element is the item the user asked for.
+  const item = resolved[resolved.length - 1]!;
 
   if (item.type === "hyperframes:example") {
     throw new AddError(
@@ -132,34 +178,24 @@ export async function runAdd(opts: RunAddArgs): Promise<RunAddResult> {
     );
   }
 
-  const compatibility = checkRegistryItemCompatibility(item, opts.cliVersion);
-  if (compatibility.error) {
-    throw new AddError(compatibility.error, "incompatible-cli");
-  }
+  // 3. Compatibility-gate every item we're about to install (dependencies
+  //    included) before writing anything.
+  const warnings = assertCompatibleOrThrow(resolved, opts.cliVersion);
 
-  // 3. Remap targets per project config.
-  const remappedFiles = item.files.map((f) => ({
-    ...f,
-    target: remapTarget(item, f.target, config.paths),
+  // 4. Remap targets per project config — each item by its own type.
+  const installPlan: RegistryItem[] = resolved.map((resolvedItem) => ({
+    ...resolvedItem,
+    files: resolvedItem.files.map((f) => ({
+      ...f,
+      target: remapTarget(resolvedItem, f.target, config.paths),
+    })),
   }));
-  const itemForInstall: RegistryItem = { ...item, files: remappedFiles };
 
-  // 4. Install — the installer validates every target before any write.
-  let written: string[];
-  try {
-    const result = await installItem(itemForInstall, {
-      destDir: projectDir,
-      baseUrl: config.registry,
-    });
-    written = result.written;
-  } catch (err) {
-    throw new AddError(
-      `Install failed: ${err instanceof Error ? err.message : String(err)}`,
-      "install-failed",
-    );
-  }
+  // 5. Install — dependencies first, requested item last.
+  const written = await installAll(installPlan, projectDir, config.registry);
 
-  // 5. Build include snippet + clipboard copy.
+  // 6. Build include snippet + clipboard copy for the requested item.
+  const itemForInstall = installPlan[installPlan.length - 1]!;
   const primaryFile =
     itemForInstall.files.find((f) => f.type === "hyperframes:snippet") ??
     itemForInstall.files.find((f) => f.type === "hyperframes:composition") ??
@@ -174,9 +210,10 @@ export async function runAdd(opts: RunAddArgs): Promise<RunAddResult> {
     type: item.type,
     typeDir: ITEM_TYPE_DIRS[item.type],
     written,
+    installed: installPlan.map((planItem) => planItem.name),
     snippet,
     clipboardCopied,
-    warnings: compatibility.warnings,
+    warnings,
   };
 }
 

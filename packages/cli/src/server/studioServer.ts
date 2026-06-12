@@ -468,12 +468,19 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     },
 
     async installRegistryBlock(opts) {
-      const { resolveItem } = await import("../registry/resolver.js");
+      const { resolveItemWithDependencies } = await import("../registry/resolver.js");
       const { installItem } = await import("../registry/installer.js");
       const { readFileSync, writeFileSync, existsSync } = await import("node:fs");
       const { join } = await import("node:path");
-      const item = await resolveItem(opts.blockName);
-      const { written } = await installItem(item, { destDir: opts.project.dir });
+      // Resolve transitive registryDependencies and install them first so a
+      // block that depends on other registry items installs completely.
+      const items = await resolveItemWithDependencies(opts.blockName);
+      const written: string[] = [];
+      for (const dep of items) {
+        const result = await installItem(dep, { destDir: opts.project.dir });
+        written.push(...result.written);
+      }
+      const item = items[items.length - 1]!;
 
       const indexPath = join(opts.project.dir, "index.html");
       if (existsSync(indexPath)) {

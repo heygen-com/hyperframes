@@ -68,15 +68,53 @@ export async function loadAllItems(
 /**
  * Resolve a single item by name. Throws if unknown or unreachable.
  *
- * TODO: walk registryDependencies transitively and return a topo-sorted
- * list of items. Today examples have no deps so this returns a single item.
- * Blocks and components will need transitive resolution once they ship with
- * deps (seed items in Phase B).
+ * This is a thin guard around `resolveItemWithDependencies`: it refuses items
+ * that declare `registryDependencies`, throwing a clear error that points the
+ * caller at the dependency-aware API. That keeps single-item install paths
+ * from silently dropping a transitive dependency — any caller that wants deps
+ * installed must opt in via `resolveItemWithDependencies`.
  */
 export async function resolveItem(
   name: string,
   options: ResolveOptions = {},
 ): Promise<RegistryItem> {
+  const items = await resolveItemWithDependencies(name, options);
+  if (items.length > 1) {
+    const deps = items
+      .slice(0, -1)
+      .map((i) => i.name)
+      .join(", ");
+    throw new Error(
+      `Item "${name}" declares registryDependencies (${deps}); use resolveItemWithDependencies ` +
+        `to resolve and install them in order.`,
+    );
+  }
+  const item = items[items.length - 1];
+  if (!item) {
+    throw new Error(`Item "${name}" not found — registry unreachable or empty.`);
+  }
+  return item;
+}
+
+/**
+ * Resolve an item and all of its transitive `registryDependencies` in
+ * topological order — dependencies first, the requested item last — so callers
+ * can install the returned list front-to-back and have every prerequisite on
+ * disk before the item that needs it.
+ *
+ * Detects cycles (throws with the offending path) and missing dependencies
+ * (throws naming the absent item). Shared dependencies in a diamond graph are
+ * resolved and returned exactly once.
+ *
+ * Note: dependencies are fetched serially during the DFS walk. This keeps the
+ * cycle-detection bookkeeping (the `visiting` set) simple and correct; the
+ * registry is small enough that the extra round-trips don't matter. Switch to
+ * parallel sibling fetches only if graph depth ever becomes a real cost.
+ */
+export async function resolveItemWithDependencies(
+  name: string,
+  options: ResolveOptions = {},
+): Promise<RegistryItem[]> {
   const entries = await listRegistryItems(undefined, options);
   const entry = entries.find((e) => e.name === name);
   if (!entry) {
@@ -87,7 +125,52 @@ export async function resolveItem(
         : `Item "${name}" not found — registry unreachable or empty.`,
     );
   }
-  return fetchItemManifest(entry.name, entry.type, options.baseUrl);
+
+  const entryByName = new Map(entries.map((e) => [e.name, e]));
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const ordered: RegistryItem[] = [];
+  const itemCache = new Map<string, Promise<RegistryItem>>();
+
+  const getItem = (itemName: string): Promise<RegistryItem> => {
+    const existing = itemCache.get(itemName);
+    if (existing) return existing;
+
+    const registryEntry = entryByName.get(itemName);
+    if (!registryEntry) {
+      const available = entries.map((e) => e.name).join(", ");
+      throw new Error(
+        available.length > 0
+          ? `Dependency "${itemName}" not found in registry. Available: ${available}`
+          : `Dependency "${itemName}" not found — registry unreachable or empty.`,
+      );
+    }
+
+    const pending = fetchItemManifest(registryEntry.name, registryEntry.type, options.baseUrl);
+    itemCache.set(itemName, pending);
+    return pending;
+  };
+
+  const visit = async (itemName: string, path: string[]): Promise<void> => {
+    if (visited.has(itemName)) return;
+    if (visiting.has(itemName)) {
+      const cycleStart = path.indexOf(itemName);
+      const cyclePath = [...path.slice(cycleStart), itemName].join(" -> ");
+      throw new Error(`Circular registryDependencies detected: ${cyclePath}`);
+    }
+
+    visiting.add(itemName);
+    const item = await getItem(itemName);
+    for (const dep of item.registryDependencies ?? []) {
+      await visit(dep, [...path, itemName]);
+    }
+    visiting.delete(itemName);
+    visited.add(itemName);
+    ordered.push(item);
+  };
+
+  await visit(name, []);
+  return ordered;
 }
 
 /**

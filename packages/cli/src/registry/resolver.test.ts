@@ -1,6 +1,11 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import type { RegistryItem, RegistryManifest } from "@hyperframes/core";
-import { listRegistryItems, loadAllItems, resolveItem } from "./resolver.js";
+import {
+  listRegistryItems,
+  loadAllItems,
+  resolveItem,
+  resolveItemWithDependencies,
+} from "./resolver.js";
 
 const MANIFEST: RegistryManifest = {
   $schema: "https://hyperframes.heygen.com/schema/registry.json",
@@ -42,7 +47,14 @@ function buildItem(name: string, type: "hyperframes:example" | "hyperframes:bloc
   };
 }
 
-function mockFetch(overrides: Record<string, unknown> = {}): void {
+function mockFetch(
+  overrides: {
+    registryFails?: boolean;
+    missing?: string[];
+    /** Inject `registryDependencies` into served items, keyed by item name. */
+    dependencies?: Record<string, string[] | undefined>;
+  } = {},
+): void {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (urlInput: string | URL) => {
@@ -51,9 +63,13 @@ function mockFetch(overrides: Record<string, unknown> = {}): void {
         return new Response(JSON.stringify(MANIFEST), { status: 200 });
       }
       const m = /\/(examples|blocks|components)\/([^/]+)\/registry-item\.json$/.exec(url);
-      if (m && !(overrides.missing as string[] | undefined)?.includes(m[2]!)) {
+      if (m && !overrides.missing?.includes(m[2]!)) {
         const type = m[1] === "examples" ? "hyperframes:example" : "hyperframes:block";
-        return new Response(JSON.stringify(buildItem(m[2]!, type)), { status: 200 });
+        const item = buildItem(m[2]!, type);
+        if (overrides.dependencies && item.name in overrides.dependencies) {
+          item.registryDependencies = overrides.dependencies[item.name];
+        }
+        return new Response(JSON.stringify(item), { status: 200 });
       }
       return new Response("not found", { status: 404 });
     }),
@@ -138,6 +154,54 @@ describe("registry resolver", () => {
       );
       const baseUrl = uniqueBaseUrl();
       await expect(resolveItem("alpha", { baseUrl })).rejects.toThrow(/unreachable/);
+    });
+
+    it("refuses an item that declares registryDependencies", async () => {
+      mockFetch({ dependencies: { beta: ["alpha"] } });
+      const baseUrl = uniqueBaseUrl();
+      await expect(resolveItem("beta", { baseUrl })).rejects.toThrow(
+        /declares registryDependencies \(alpha\); use resolveItemWithDependencies/,
+      );
+    });
+  });
+
+  describe("resolveItemWithDependencies", () => {
+    it("returns dependencies first, then the requested item (linear chain)", async () => {
+      mockFetch({ dependencies: { beta: ["alpha"], gamma: ["beta"] } });
+      const baseUrl = uniqueBaseUrl();
+      const items = await resolveItemWithDependencies("gamma", { baseUrl });
+      expect(items.map((item) => item.name)).toEqual(["alpha", "beta", "gamma"]);
+    });
+
+    it("returns a single item when there are no dependencies", async () => {
+      const baseUrl = uniqueBaseUrl();
+      const items = await resolveItemWithDependencies("alpha", { baseUrl });
+      expect(items.map((item) => item.name)).toEqual(["alpha"]);
+    });
+
+    it("installs a shared transitive dependency exactly once (diamond)", async () => {
+      // gamma depends on both alpha and beta; beta also depends on alpha.
+      mockFetch({ dependencies: { gamma: ["alpha", "beta"], beta: ["alpha"] } });
+      const baseUrl = uniqueBaseUrl();
+      const items = await resolveItemWithDependencies("gamma", { baseUrl });
+      expect(items.map((item) => item.name)).toEqual(["alpha", "beta", "gamma"]);
+      expect(items.filter((item) => item.name === "alpha")).toHaveLength(1);
+    });
+
+    it("throws when a transitive dependency is missing from the registry", async () => {
+      mockFetch({ dependencies: { beta: ["does-not-exist"], gamma: ["beta"] } });
+      const baseUrl = uniqueBaseUrl();
+      await expect(resolveItemWithDependencies("gamma", { baseUrl })).rejects.toThrow(
+        /Dependency "does-not-exist" not found in registry/,
+      );
+    });
+
+    it("throws a clear cycle error for circular dependencies", async () => {
+      mockFetch({ dependencies: { alpha: ["gamma"], beta: ["alpha"], gamma: ["beta"] } });
+      const baseUrl = uniqueBaseUrl();
+      await expect(resolveItemWithDependencies("gamma", { baseUrl })).rejects.toThrow(
+        /Circular registryDependencies detected: gamma -> beta -> alpha -> gamma/,
+      );
     });
   });
 });
