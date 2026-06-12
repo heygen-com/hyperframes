@@ -10,6 +10,8 @@
  *   /elements/{hfId}                        ← whole subtree (removeElement)
  *   /variables/{variableId}
  *   /metadata/{width|height|duration}
+ *   /script/gsap                            ← GSAP inline script textContent
+ *   /style/css                              ← <style> element textContent
  *
  * Override-set key mapping:
  *   /elements/hf-x/inlineStyles/fontSize    → "hf-x.style.fontSize"
@@ -20,6 +22,8 @@
  *   /elements/hf-x                          → "hf-x"  (null = removal marker)
  *   /variables/brand-color-primary          → "var.brand-color-primary"
  *   /metadata/width                         → "meta.width"
+ *   /script/gsap                            → "script.gsap"
+ *   /style/css                              → "style.css"
  */
 
 import type { JsonPatchOp, PatchEvent } from "../types.js";
@@ -58,6 +62,14 @@ export function variablePath(id: string): string {
 
 export function metaPath(field: "width" | "height" | "duration"): string {
   return `/metadata/${field}`;
+}
+
+export function gsapScriptPath(): string {
+  return "/script/gsap";
+}
+
+export function styleSheetPath(): string {
+  return "/style/css";
 }
 
 // ─── Override-set key mapping ─────────────────────────────────────────────────
@@ -100,6 +112,12 @@ export function pathToKey(path: string): string | null {
   const metaMatch = /^\/metadata\/(.+)$/.exec(path);
   if (metaMatch) return `meta.${metaMatch[1]}`;
 
+  // /script/gsap → "script.gsap"
+  if (path === "/script/gsap") return "script.gsap";
+
+  // /style/css → "style.css"
+  if (path === "/style/css") return "style.css";
+
   return null;
 }
 
@@ -130,6 +148,9 @@ export function keyToPath(key: string): string | null {
 
   const meta = /^meta\.(width|height|duration)$/.exec(key);
   if (meta) return metaPath(meta[1] as "width" | "height" | "duration");
+
+  if (key === "script.gsap") return gsapScriptPath();
+  if (key === "style.css") return styleSheetPath();
 
   // Bare element id — removal marker key.
   if (!key.includes(".")) return elementPath(key);

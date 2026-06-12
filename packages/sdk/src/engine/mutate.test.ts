@@ -384,30 +384,38 @@ describe("validateOp", () => {
   });
 });
 
-// ─── Phase 3b ops — fail loudly, feature-detectable ───────────────────────────
+// ─── Phase 3b ops — graceful when no GSAP script, feature-detectable ────────
 
 describe("Phase 3b ops", () => {
-  it("applyOp throws UnsupportedOpError instead of silently no-opping", () => {
-    expect(() =>
-      applyOp(fresh(), {
-        type: "addGsapTween",
-        target: "hf-title",
-        id: "tw-1",
-        tween: { method: "from", fromProperties: { opacity: 0 } },
-      }),
-    ).toThrowError(/Phase 3b/);
+  it("applyOp returns EMPTY when no GSAP script is present", () => {
+    const result = applyOp(fresh(), {
+      type: "addGsapTween",
+      target: "hf-title",
+      tween: { method: "from", properties: { opacity: 0 } },
+    });
+    expect(result.forward).toHaveLength(0);
+    expect(result.inverse).toHaveLength(0);
   });
 
-  it("validateOp returns false so can() feature-detects", () => {
+  it("validateOp returns false when no GSAP script present", () => {
     expect(validateOp(fresh(), { type: "removeGsapTween", animationId: "tw-1" })).toBe(false);
     expect(
       validateOp(fresh(), {
         type: "addGsapTween",
         target: "hf-title",
-        id: "tw-1",
-        tween: { method: "from", fromProperties: { opacity: 0 } },
+        tween: { method: "from", properties: { opacity: 0 } },
       }),
     ).toBe(false);
+  });
+
+  it("setClassStyle no longer throws — implemented in Phase 3b", () => {
+    expect(() =>
+      applyOp(fresh(), {
+        type: "setClassStyle",
+        selector: ".box",
+        styles: { color: "red" },
+      }),
+    ).not.toThrow();
   });
 });
 

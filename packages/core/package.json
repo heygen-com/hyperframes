@@ -74,6 +74,14 @@
       "import": "./src/parsers/gsapParser.ts",
       "types": "./src/parsers/gsapParser.ts"
     },
+    "./gsap-parser-acorn": {
+      "import": "./src/parsers/gsapParserAcorn.ts",
+      "types": "./src/parsers/gsapParserAcorn.ts"
+    },
+    "./gsap-writer-acorn": {
+      "import": "./src/parsers/gsapWriterAcorn.ts",
+      "types": "./src/parsers/gsapWriterAcorn.ts"
+    },
     "./gsap-constants": {
       "import": "./src/parsers/gsapConstants.ts",
       "types": "./src/parsers/gsapConstants.ts"
@@ -152,6 +160,14 @@
       "./gsap-parser": {
         "import": "./dist/parsers/gsapParser.js",
         "types": "./dist/parsers/gsapParser.d.ts"
+      },
+      "./gsap-parser-acorn": {
+        "import": "./dist/parsers/gsapParserAcorn.js",
+        "types": "./dist/parsers/gsapParserAcorn.d.ts"
+      },
+      "./gsap-writer-acorn": {
+        "import": "./dist/parsers/gsapWriterAcorn.js",
+        "types": "./dist/parsers/gsapWriterAcorn.d.ts"
       },
       "./gsap-constants": {
         "import": "./dist/parsers/gsapConstants.js",
