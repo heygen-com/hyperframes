@@ -13,6 +13,7 @@ import { useDomEditOverlayRects } from "./useDomEditOverlayRects";
 import { createDomEditOverlayGestureHandlers } from "./useDomEditOverlayGestures";
 import { SnapGuideOverlay, type SnapGuidesState } from "./SnapGuideOverlay";
 import { GridOverlay } from "./GridOverlay";
+import { GestureRecordBadge, type GestureRecordingState } from "./GestureRecordControl";
 
 // Re-exports for external consumers — preserving existing import paths.
 export {
@@ -66,6 +67,8 @@ interface DomEditOverlayProps {
   onRotationCommit: (selection: DomEditSelection, next: { angle: number }) => Promise<void> | void;
   gridVisible?: boolean;
   gridSpacing?: number;
+  recordingState?: GestureRecordingState;
+  onToggleRecording?: () => void;
 }
 
 export const DomEditOverlay = memo(function DomEditOverlay({
@@ -87,6 +90,8 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   onGroupPathOffsetCommit,
   onBoxSizeCommit,
   onRotationCommit,
+  recordingState,
+  onToggleRecording,
 }: DomEditOverlayProps) {
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const boxRef = useRef<HTMLDivElement | null>(null);
@@ -430,6 +435,13 @@ export const DomEditOverlay = memo(function DomEditOverlay({
                 }}
               />
             </div>
+          )}
+          {onToggleRecording && (
+            <GestureRecordBadge
+              rect={overlayRect}
+              recordingState={recordingState}
+              onToggleRecording={onToggleRecording}
+            />
           )}
           <div
             key={selectionKey}

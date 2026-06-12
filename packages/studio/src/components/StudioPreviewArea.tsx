@@ -17,6 +17,7 @@ import { useStudioContext } from "../contexts/StudioContext";
 import { useDomEditContext } from "../contexts/DomEditContext";
 import type { BlockPreviewInfo } from "./sidebar/BlocksTab";
 import { readStudioUiPreferences } from "../utils/studioUiPreferences";
+import type { GestureRecordingState } from "./editor/GestureRecordControl";
 
 export interface StudioPreviewAreaProps {
   timelineToolbar: ReactNode;
@@ -59,6 +60,8 @@ export interface StudioPreviewAreaProps {
   shouldShowSelectedDomBounds: boolean;
   blockPreview?: BlockPreviewInfo | null;
   isGestureRecording?: boolean;
+  recordingState?: GestureRecordingState;
+  onToggleRecording?: () => void;
   gestureOverlay?: ReactNode;
 }
 
@@ -81,6 +84,8 @@ export function StudioPreviewArea({
   setCompositionLoading,
   shouldShowSelectedDomBounds,
   isGestureRecording,
+  recordingState,
+  onToggleRecording,
   blockPreview,
   gestureOverlay,
 }: StudioPreviewAreaProps) {
@@ -290,6 +295,8 @@ export function StudioPreviewArea({
                   onRotationCommit={handleDomRotationCommit}
                   gridVisible={snapPrefs.gridVisible}
                   gridSpacing={snapPrefs.gridSpacing}
+                  recordingState={recordingState}
+                  onToggleRecording={onToggleRecording}
                 />
                 <SnapToolbar onSnapChange={setSnapPrefs} />
                 {gestureOverlay}

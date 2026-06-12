@@ -19,7 +19,7 @@ function createProjectDir(): string {
 }
 
 describe("walkDir", () => {
-  it("hides internal HyperFrames files from project listings", () => {
+  it("hides internal HyperFrames backup files from project listings", () => {
     const projectDir = createProjectDir();
     mkdirSync(join(projectDir, ".hyperframes", "backup"), { recursive: true });
     mkdirSync(join(projectDir, ".hyperframes", "examples"), { recursive: true });
@@ -32,8 +32,8 @@ describe("walkDir", () => {
 
     const files = walkDir(projectDir);
     expect(files).toContain(".cache/examples/preset.html");
+    expect(files).toContain(".hyperframes/examples/preset.html");
     expect(files).toContain("compositions/scene.html");
     expect(files).not.toContain(".hyperframes/backup/snapshot.html");
-    expect(files).not.toContain(".hyperframes/examples/preset.html");
   });
 });
