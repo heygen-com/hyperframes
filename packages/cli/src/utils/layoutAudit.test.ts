@@ -16,31 +16,45 @@ describe("buildTransitionSampleTimes (#1380)", () => {
     // The #1380 repro: capA fades out 11.33–11.55, capB slams in 11.35–11.69.
     // The collision window 11.35–11.55 only shows both captions half-visible
     // away from the exact boundaries — the midpoints land inside it.
-    const times = buildTransitionSampleTimes({
+    const result = buildTransitionSampleTimes({
       duration: 20,
       boundaries: [11.33, 11.55, 11.35, 11.69],
     });
-    expect(times).toEqual([11.33, 11.34, 11.35, 11.45, 11.55, 11.62, 11.69]);
+    expect(result.times).toEqual([11.33, 11.34, 11.35, 11.45, 11.55, 11.62, 11.69]);
+    expect(result.dropped).toBe(0);
   });
 
   it("drops boundaries outside the composition and dedupes repeats", () => {
-    const times = buildTransitionSampleTimes({
+    const result = buildTransitionSampleTimes({
       duration: 10,
       boundaries: [2, 2, -1, 10.5, NaN, 4],
     });
-    expect(times).toEqual([2, 3, 4]);
+    expect(result.times).toEqual([2, 3, 4]);
+    expect(result.dropped).toBe(0);
   });
 
   it("returns an empty list without a valid duration", () => {
-    expect(buildTransitionSampleTimes({ duration: 0, boundaries: [1, 2] })).toEqual([]);
+    expect(buildTransitionSampleTimes({ duration: 0, boundaries: [1, 2] })).toEqual({
+      times: [],
+      dropped: 0,
+    });
   });
 
-  it("caps the result with an evenly-strided subset that keeps the extremes", () => {
+  it("samples every collected boundary when no cap is given", () => {
     const boundaries = Array.from({ length: 200 }, (_, i) => i * 0.05);
-    const times = buildTransitionSampleTimes({ duration: 10, boundaries, cap: 40 });
-    expect(times.length).toBeLessThanOrEqual(40);
-    expect(times[0]).toBe(0);
-    expect(times[times.length - 1]).toBeCloseTo(9.95, 3);
+    const result = buildTransitionSampleTimes({ duration: 10, boundaries });
+    // 200 boundaries + 199 segment midpoints, all distinct after rounding.
+    expect(result.times.length).toBe(399);
+    expect(result.dropped).toBe(0);
+  });
+
+  it("caps only on explicit request, reporting the omitted count and keeping the extremes", () => {
+    const boundaries = Array.from({ length: 200 }, (_, i) => i * 0.05);
+    const result = buildTransitionSampleTimes({ duration: 10, boundaries, cap: 40 });
+    expect(result.times.length).toBeLessThanOrEqual(40);
+    expect(result.dropped).toBe(399 - result.times.length);
+    expect(result.times[0]).toBe(0);
+    expect(result.times[result.times.length - 1]).toBeCloseTo(9.95, 3);
   });
 
   it("merges with even-spacing samples into one deduplicated ascending list", () => {

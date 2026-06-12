@@ -39,6 +39,7 @@ interface LayoutAuditResult {
   duration: number;
   samples: number[];
   transitionSamples: number[];
+  transitionSamplesDropped: number;
   rawIssues: LayoutIssue[];
 }
 
@@ -201,6 +202,7 @@ async function runLayoutAudit(
     samples: number;
     at?: number[];
     atTransitions: boolean;
+    maxTransitionSamples?: number;
     timeout: number;
     tolerance: number;
   },
@@ -245,12 +247,21 @@ async function runLayoutAudit(
     const duration = await getCompositionDuration(page);
     const baseSamples = buildLayoutSampleTimes({ duration, samples: opts.samples, at: opts.at });
     let transitionSamples: number[] = [];
+    let transitionSamplesDropped = 0;
     if (opts.atTransitions) {
       const boundaries = await collectTweenBoundaries(page);
-      transitionSamples = buildTransitionSampleTimes({ duration, boundaries });
+      const transitions = buildTransitionSampleTimes({
+        duration,
+        boundaries,
+        cap: opts.maxTransitionSamples,
+      });
+      transitionSamples = transitions.times;
+      transitionSamplesDropped = transitions.dropped;
     }
     const samples = mergeSampleTimes(baseSamples, transitionSamples);
-    if (samples.length === 0) return { duration, samples, transitionSamples, rawIssues: [] };
+    if (samples.length === 0) {
+      return { duration, samples, transitionSamples, transitionSamplesDropped, rawIssues: [] };
+    }
 
     await page.addScriptTag({ content: loadLayoutAuditScript() });
 
@@ -273,6 +284,7 @@ async function runLayoutAudit(
       duration,
       samples,
       transitionSamples,
+      transitionSamplesDropped,
       rawIssues: dedupeLayoutIssues(issues),
     };
   } finally {
@@ -327,6 +339,11 @@ export function createInspectCommand(commandName: "inspect" | "layout") {
           "Also sample at every tween start/end boundary (plus segment midpoints) to catch transient overlaps at transition seams",
         default: false,
       },
+      "max-transition-samples": {
+        type: "string",
+        description:
+          "Optional cap on transition-derived samples; when it truncates, the omitted count is reported (default: unlimited)",
+      },
       tolerance: {
         type: "string",
         description: "Allowed pixel overflow before reporting an issue (default: 2)",
@@ -361,6 +378,11 @@ export function createInspectCommand(commandName: "inspect" | "layout") {
       const maxIssues = Math.max(1, parseInt(args["max-issues"] as string, 10) || 80);
       const at = parseAt(args.at);
       const atTransitions = !!args["at-transitions"];
+      const maxTransitionSamplesRaw = parseInt(args["max-transition-samples"] as string, 10);
+      const maxTransitionSamples =
+        Number.isFinite(maxTransitionSamplesRaw) && maxTransitionSamplesRaw > 0
+          ? maxTransitionSamplesRaw
+          : undefined;
       const strict = !!args.strict;
       const collapseStatic = args["collapse-static"] !== false;
 
@@ -377,9 +399,15 @@ export function createInspectCommand(commandName: "inspect" | "layout") {
           samples,
           at,
           atTransitions,
+          maxTransitionSamples,
           timeout,
           tolerance,
         });
+        if (!args.json && result.transitionSamplesDropped > 0) {
+          console.log(
+            `${c.warn("⚠")}  ${result.transitionSamplesDropped} transition sample(s) omitted by --max-transition-samples; raise or drop it to sample every boundary`,
+          );
+        }
         const allIssues = collapseStatic
           ? collapseStaticLayoutIssues(result.rawIssues)
           : result.rawIssues;
@@ -395,6 +423,9 @@ export function createInspectCommand(commandName: "inspect" | "layout") {
                 duration: result.duration,
                 samples: result.samples,
                 transitionSamples: atTransitions ? result.transitionSamples : undefined,
+                transitionSamplesDropped: atTransitions
+                  ? result.transitionSamplesDropped
+                  : undefined,
                 tolerance,
                 strict,
                 collapseStatic,
