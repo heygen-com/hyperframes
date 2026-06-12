@@ -1,0 +1,43 @@
+{
+  "name": "inkwater",
+  "voice": "sumi ink dropped in still water — the scene offers paper-white radial washes to the text zones, then Mincho-serif ink words BLEED into a lower-third of three fixed reading rows (blur + scale carry the bleed over a paper-glow halo, a dark blurred halo overshoots and tightens, an ink-settling hairline draws under each line, emphasis words shed a curling ink wisp) and spent lines re-dissolve upward like ink dispersing. At the apex a dark drop falls into the frame, hits an invisible water surface at the word point and BLOOMS — three stacked blurred ink ellipses at different rates, two thin ripple rings — and the hero words resolve out of the blob (blur 16→0) on their own spoken times while the world stills under a gentle vignette; through the hold the glyph edges breathe and the ink finally re-dissolves before the next thought needs the reader.",
+  "when": "contemplative, literary or scientific-wonder narration, astronomy / nature / memory / essay films, poetry and slow-craft channels — anything spoken quietly that wants one liquid, meditative event instead of an impact. Dark ink needs a mid/bright scene band (the paper washes supply their own ground on bright skies).",
+  "register": "contemplative-still",
+  "fonts": { "body": "Shippori Mincho", "hero": "Shippori Mincho" },
+  "palette": {
+    "body": "#14110e",
+    "ink": "#14110e",
+    "paper": "#fffaee",
+    "paper2": "#fff8e8",
+    "wash": "#fff9ee",
+    "washApex": "#fffaf0",
+    "accent": "#14110e"
+  },
+  "body": {
+    "paradigm": "inkrail",
+    "layer": "fg",
+    "fontPx": 46,
+    "weight": 400,
+    "letterSpacing": "0.055em",
+    "rowGap": 56,
+    "bottomPx": 36,
+    "yield": { "dim": 0.5, "delay": 0.12, "post": 1.07 }
+  },
+  "hero": {
+    "setpiece": "inkbloom",
+    "layer": "bg",
+    "fontPx": 132,
+    "params": {
+      "fall": 0.15,
+      "maxHold": 1.75,
+      "clearGap": 0.24,
+      "vig": 0.34,
+      "washRailW": 1180,
+      "washRailH": 300,
+      "washApexH": 430
+    }
+  },
+  "fx": {},
+  "plate": { "pushIn": 0.012, "grain": 5 },
+  "linkages": []
+}

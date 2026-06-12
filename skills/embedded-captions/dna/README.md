@@ -12,24 +12,9 @@ shallow presets — every render is already fitted to its footage.
 ## Category lock (deliveries field, enforced by the compilers)
 
 Every classic DNA's **home is Cinematic (column)** — that is where all ten were
-built and validated. Using one under Standard (rail) is a CROSS-CATEGORY combo
-and is allowed only where explicitly validated:
-
-| DNA                                                               | home   | rail status                                              |
-| ----------------------------------------------------------------- | ------ | -------------------------------------------------------- |
-| keynote                                                           | column | **validated** (rooftop_std / keynote_std, user-reviewed) |
-| cream                                                             | column | **validated** (jimeng_office_std, user-reviewed)         |
-| documentary, loud, ink, editorial, neon, glitch, chrome, velocity | column | unvalidated — make-standard ERRORS                       |
-
-Why the lock matters technically: make-standard consumes only `font / palette /
-hero.entrance / sizeRange / case / register` — fx (echoes/sheen/flicker/streak),
-`wordCss`, glow/breathe and the motion grammar are cinematic-engine features, so
-an unvalidated DNA under rail would silently ship a skin without its identity.
-
-**To validate a new combo**: author it deliberately (`"allow_unvalidated_dna":
-true` in standard.json), render, review with the user, then flip that DNA's
-`deliveries.rail` to `"validated"` and remove the override. Never recommend an
-unvalidated combo.
+built and validated. (Standard/rail mode was retired 2026-06-12; the verbatim-rail
+need is served by the `anchor` theme. The old rail combos live in
+`~/Downloads/embedded-captions-archive/`.)
 
 ## The ten
 
@@ -67,8 +52,6 @@ composited children) · `ripple` (px — landing bump, captions only) · `loom` 
 ## Authoring
 
 - Cinematic mode: `cinematic.json` → `"dna": "<name>"` (drop the `template` field).
-- Standard mode: `standard.json` → `"dna": "<name>"` fills font / fills / accent /
-  climax-entrance defaults; your explicit fields still win.
 - Locked per DNA: family, palette scheme, blend, motion curves, hero orchestration.
 - Open per group (unchanged): size / weight / style / case / spacing + planes.
 - `var(--accent)` is available in per-group CSS — it resolves to the scene-sampled accent.

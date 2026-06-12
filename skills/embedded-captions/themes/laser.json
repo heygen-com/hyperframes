@@ -1,0 +1,46 @@
+{
+  "name": "laser",
+  "voice": "concert laser rig — the room goes to blackout and the light operator types the transcript. Every body word is IGNITED where two thin beams (green from the top-left, magenta from the top-right) converge on it two frames early: flare pop, snap-on in laser green, single strobe on emphasis; a sweeper beam carries each line away. The apex is the drop: a 6-beam array sweeps to one hot point, the word ignites behind the subject in an additive glow stack with two controlled strobe pops, a criss-cross beam cage draws itself around it, then the array fans out slow and wide during the hold before the beams sweep everything off L→R.",
+  "when": "music, nightlife, festivals, drops, hype reveals, tech keynote 'one more thing' beats — anything that should read as a light show. Loud register; the concert blackout makes its own contrast on any plate (bright skies included).",
+  "register": "loud",
+  "fonts": { "body": "Audiowide", "hero": "Audiowide", "tag": "Audiowide" },
+  "palette": {
+    "body": "#58ff9d",
+    "accent": "#58ff9d",
+    "magenta": "#ff4df0",
+    "core": "#eefff5",
+    "glowSoft": "#c9ffe2"
+  },
+  "body": {
+    "paradigm": "laserrail",
+    "layer": "fg",
+    "fontPx": 40,
+    "bottomPx": 98,
+    "letterSpacing": "0.02em",
+    "wordGapEm": 0.24,
+    "textTransform": "uppercase",
+    "minorScale": 1.325,
+    "yield": { "dim": 0.5, "beamDim": 0.55, "pre": 0.04, "post": 0.9 }
+  },
+  "hero": {
+    "setpiece": "lasercage",
+    "layer": "bg",
+    "fontPx": 100,
+    "params": {}
+  },
+  "fx": { "laserflash": 0.85 },
+  "plate": {
+    "charge": 0.46,
+    "dim": 0.3,
+    "punch": 0.04,
+    "punchDecay": 9,
+    "punchOffset": 0.07,
+    "shakeAmpX": 5,
+    "shakeAmpY": 4,
+    "shakeHz": 12,
+    "shakeDecay": 7,
+    "shakeWindow": 0.5,
+    "grain": 5
+  },
+  "linkages": []
+}

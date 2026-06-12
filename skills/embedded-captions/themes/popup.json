@@ -1,0 +1,46 @@
+{
+  "name": "popup",
+  "voice": "a pop-up book opens inside the frame — body words POP UP on a baseline hinge (rotationX back.out, paper overshoot) along a cream page strip that unfolds from the bottom edge (center foldline, two reading rows); emphasis words land bigger with a contact squash the page FEELS, then flick-wobble with a paper strut leaning in behind. The apex is THE CENTERFOLD: blue + cream paper starbursts unfold behind the subject, the hero word pops up in three hinged segments, struts appear, backdrop + word wobble-settle together and breathe — then the whole spread folds flat (the book closing). A blue paper star holds the hero slot on the rail (rail↔climax hand-off); paper confetti flicks past the subject at the pop.",
+  "when": "kids and family content, storytelling, education, greeting-card and wholesome brand spots, picture-book or craft channels — anything warm, rounded and gentle that suits a paper toy theater. Playful register; needs a lower third that tolerates a cream paper strip.",
+  "register": "playful",
+  "fonts": { "body": "Baloo 2", "hero": "Baloo 2", "tag": "Baloo 2" },
+  "palette": {
+    "body": "#33271a",
+    "ink": "#33271a",
+    "accent": "#6cb6e3",
+    "accentEdge": "#3f7fae",
+    "blue": "#2e7cb3",
+    "page": "#f7eed8",
+    "page2": "#f0e4c8",
+    "page3": "#e7d8b4",
+    "pageEdge": "rgba(122,96,54,0.55)",
+    "cream": "#f6ecd4",
+    "creamEdge": "#8a6f45",
+    "kraft1": "#a98f5e",
+    "kraft2": "#cdbb92",
+    "kraft3": "#e6d6af",
+    "strut1": "#4f93c4",
+    "strut2": "#6cb6e3",
+    "conf": ["#f6ecd4", "#6cb6e3", "#e3d2ac", "#f6ecd4", "#6cb6e3", "#33271a", "#f6ecd4", "#e3d2ac"]
+  },
+  "body": {
+    "paradigm": "popuprail",
+    "layer": "fg",
+    "fontPx": 42,
+    "emPx": 52,
+    "strip": { "w": 1230, "h": 124 },
+    "rowA": 70,
+    "rowB": 20,
+    "maxHold": 0.95,
+    "yield": { "dim": 0.55, "pre": 0.03, "post": 0.47 }
+  },
+  "hero": {
+    "setpiece": "centerfold",
+    "layer": "bg",
+    "fontPx": 120,
+    "params": { "segs": 3, "segStagger": 0.07, "scrim": 0.42 }
+  },
+  "fx": { "confetti": 8, "seed": 360372 },
+  "plate": { "grain": 5 },
+  "linkages": []
+}

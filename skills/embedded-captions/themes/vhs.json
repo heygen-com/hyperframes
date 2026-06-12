@@ -1,0 +1,47 @@
+{
+  "name": "vhs",
+  "voice": "camcorder tape playback — the whole frame is a VHS deck. A permanent lens vignette and OSD furniture (▶ PLAY, ● REC, green blinking timestamp) frame the clip; body words are an OSD lower third with a permanent 1px red+cyan misregistration fringe, arriving by tracking glitch (instant on + 2-frame y-shake + 1-frame band-slice shift) and exiting as REWIND streaks with flat-white echoes + scrub lines; the deck flips PLAY→REW in dead air. The apex is REC FREEZE: a 1-frame white tear band + head-switching noise bar, then the word slams in as a huge OSD readout behind the subject — three tracking-sliced bands shear in and SNAP into register, heavy red/cyan misregistration cools and keeps breathing through the hold under tape-weave jitter and an auto-iris pump, then the whole readout REWINDS off left.",
+  "when": "retro / nostalgia / found-footage / home-video registers, music and lifestyle edits, '90s tech content, '录像带/VHS/复古/DV' asks — anything that should read as a tape being played back. Mid-loud register; the backlight-comp scrim makes its own contrast on bright skies.",
+  "register": "retro-analog",
+  "fonts": { "body": "VT323", "hero": "VT323", "tag": "VT323" },
+  "palette": {
+    "body": "#F2F2EE",
+    "hot": "#FFFFFF",
+    "accent": "#D9F7D2",
+    "red": "#FF2E2E",
+    "cyan": "#3FE8E8",
+    "green": "#B9FFB0"
+  },
+  "body": {
+    "paradigm": "vhsrail",
+    "layer": "fg",
+    "fontPx": 44,
+    "bottomPx": 108,
+    "letterSpacing": "0.04em",
+    "osd": { "ts": ["JUN.11 2026 PM 7", "42"] },
+    "yield": { "dim": 0.55, "pre": 0.02, "post": 0.9 }
+  },
+  "hero": {
+    "setpiece": "vhsosd",
+    "layer": "bg",
+    "x": 640,
+    "y": 268,
+    "fontPx": 150,
+    "params": {
+      "bandClips": [
+        [0, 64],
+        [36, 30],
+        [70, 0]
+      ],
+      "bandShear": [-46, 40, -34],
+      "misregIn": 11,
+      "misreg": 3,
+      "weave": [-2, 1, -1, 2, -1, 1, -2, 0],
+      "vignette": 0.34,
+      "crush": 0.1,
+      "hold": 1.69
+    }
+  },
+  "plate": { "charge": 0.55, "dim": 0.12, "grain": 5 },
+  "linkages": []
+}

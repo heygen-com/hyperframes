@@ -1,0 +1,41 @@
+{
+  "name": "hologram",
+  "voice": "volumetric projection — every caption is LIGHT cast from an emitter. The body rail is a scanlined projection plate fed by a desk cone; words boot with a rising sweep + 1-frame interference glitch + chromatic fringe, emphasis words drop out for 2 frames and restore brighter, lines drift in rotationY and exit with the projector cut (collapse to a slit, then a dot). The apex is the full volumetric boot: emitter dot pop, cone snap, seed beam, 7-layer hologram word with climbing interference bands; a hand passes through it before the projector cuts it to the base dot.",
+  "when": "tech / sci-fi / AI / product-reveal explainers, futuristic UI talk, space and imaging content — anything that should feel projected rather than printed. Sleek register. Needs a lower frame edge for the emitter dots; the apex scrim makes its own contrast on bright scenes.",
+  "register": "sleek",
+  "fonts": { "body": "Orbitron", "hero": "Orbitron", "tag": "Orbitron" },
+  "palette": {
+    "body": "#C7F1FF",
+    "accent": "#7AE8FF",
+    "magenta": "#FF5FD6",
+    "glow": "#3ECCF2",
+    "core": "#EAFBFF",
+    "em": "#F4FEFF",
+    "glowEm": "#A0F2FF",
+    "band": "#D8FAFF",
+    "dot": "#BFF0FF",
+    "dotHot": "#DFF8FF"
+  },
+  "body": {
+    "paradigm": "holorail",
+    "layer": "fg",
+    "fontPx": 38,
+    "bottomPx": 108,
+    "plateW": 980,
+    "plateH": 96,
+    "lineDy": 9,
+    "letterSpacing": "0.02em",
+    "tag": "VOLUMETRIC FEED // CH-07",
+    "emphDelay": 0.34,
+    "yield": { "dim": 0.5, "pre": 0.18, "post": 0.37 }
+  },
+  "hero": {
+    "setpiece": "holoboot",
+    "layer": "bg",
+    "fontPx": 118,
+    "params": { "passAt": 1.29, "coneW": 800 }
+  },
+  "fx": { "holoflash": 0.5 },
+  "plate": { "scrim": 0.58, "charge": 0.28, "dim": 0.18, "grain": 5 },
+  "linkages": []
+}

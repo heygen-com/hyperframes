@@ -1,0 +1,44 @@
+{
+  "name": "transit",
+  "voice": "amber LED departure board — the whole video is a station PA system. Body words light column-by-column (L→R LED wipe + 1-frame arrival flicker) on a docked departure strip whose lines page in/out by scroll-snap; furniture: green platform tag, ticking seconds clock, a ⚠ DELAYED → ● ON TIME swap gag after the apex. The apex is a board takeover behind the subject: a big LED panel expands upward inside a chasing marquee border, the word illuminates column-by-column under a PA flash + two brightness 'ding' pulses, glow breathes with LED dropouts, then the word pages up and the panel collapses.",
+  "when": "travel/transit, announcements, schedules, countdowns, retro-terminal or arcade registers — anything that should read as an amber dot-matrix station board. Mid-loud register; needs a lower third that tolerates a dark LED strip.",
+  "register": "loud",
+  "fonts": { "body": "VT323", "hero": "VT323", "tag": "VT323" },
+  "palette": {
+    "body": "#FFB000",
+    "hot": "#FFE9B8",
+    "accent": "#FFB000",
+    "green": "#36E57A",
+    "warn": "#FF9E3D"
+  },
+  "body": {
+    "paradigm": "ledboard",
+    "layer": "fg",
+    "fontPx": 46,
+    "letterSpacing": "0.05em",
+    "board": { "left": 140, "width": 1000, "h": 116, "bottom": 30 },
+    "header": {
+      "plt": "PLT 4",
+      "clockPrefix": "19:42:0",
+      "statusWait": "⚠ DELAYED",
+      "statusOk": "● ON TIME"
+    },
+    "yield": { "dim": 0.5, "pre": 0.2, "post": 0.9 }
+  },
+  "hero": {
+    "setpiece": "ledwipe",
+    "layer": "bg",
+    "x": 620,
+    "y": 444,
+    "fontPx": 120,
+    "params": {
+      "panelW": 1080,
+      "wipeDur": 0.3,
+      "headerLeft": "NOW ARRIVING ▸ 19:42",
+      "headerRight": "GATE A4"
+    }
+  },
+  "fx": { "paflash": 0.5 },
+  "plate": { "charge": 0.5, "dim": 0.2, "grain": 5 },
+  "linkages": []
+}

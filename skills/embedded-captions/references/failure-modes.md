@@ -12,7 +12,7 @@ Running the matting ONNX through the CoreML EP partitions the graph across provi
 
 ### Aspect distortion / sharp channel-stride make the alpha garbage
 
-Two earned scars in `matte.cjs` (PP-MattingV2): (1) the ONNX exports are **fixed-size** — squashing a portrait clip into the landscape canvas distorts humans and degrades the matte; `matte.cjs` contain-pads (aspect preserved, centered on black, alpha cropped back) instead. (2) sharp returns a **3-channel** buffer from `.raw()` after resizing a 1-channel raw input — reading it with a 1-channel stride silently produces a smeared, striped, displaced matte that can _look_ plausible in the composite. Always `toBuffer({resolveWithObject:true})` and stride by `info.channels`.
+(historical — the PP-MattingV2 engine was replaced 2026-06-12 by hyperframes `remove-background`; kept because the lessons generalize) Two earned scars from the ONNX era: (1) fixed-size model exports — squashing a portrait clip into a landscape canvas distorts humans; contain-pad (aspect preserved, centered, alpha cropped back) instead. (2) sharp returns a **3-channel** buffer from `.raw()` after resizing a 1-channel raw input — reading it with a 1-channel stride silently produces a smeared, striped, displaced matte that can _look_ plausible. Always `toBuffer({resolveWithObject:true})` and stride by `info.channels` (other scripts in this skill still use sharp).
 
 **Fix**: both handled inside `matte.cjs`; preserve them if you touch it.
 

@@ -1,0 +1,54 @@
+{
+  "name": "scoreboard",
+  "voice": "stadium split-flap departures board — every body word is a mechanical flap tile on a chyron bar that flip-cycles two seeded wrong words before clacking onto the real one (hot amber flash, cools to bone); a ROW counter flips at each line change and an odometer chip rolls beside the first emphasis line. The apex is a board takeover behind the subject: floodlights swing on, a giant departures housing clacks down, one huge flap tile per letter flip-cycles wrong glyphs then locks the word left→right under a crowd-flash, the status ticker types on, one tile re-flutters during the hold.",
+  "when": "sports, transit/travel, scores, countdowns, announcements and reveals — anything that should read as DEPARTURES-board mechanical. Loud register; needs a lower third that tolerates a dark chyron bar.",
+  "register": "loud",
+  "fonts": { "body": "Teko", "hero": "Anton", "tag": "Teko" },
+  "palette": {
+    "body": "#F5EEDD",
+    "hot": "#FFB347",
+    "accent": "#FFB347",
+    "grey": "#B9BEC7",
+    "boardBone": "#F6EFDF"
+  },
+  "body": {
+    "paradigm": "flaprail",
+    "layer": "fg",
+    "fontPx": 48,
+    "barH": 96,
+    "letterSpacing": "1px",
+    "seed": 808,
+    "chyron": { "tag": "DEPARTURES", "counter": "ROW" },
+    "chip": { "label": "LIMIT", "value": "1.2", "unit": "PX", "x": 884, "y": 563 },
+    "yield": { "dim": 0.55, "pre": 0.07, "post": 0.47 }
+  },
+  "hero": {
+    "setpiece": "flapboard",
+    "layer": "bg",
+    "fontPx": 138,
+    "params": {
+      "seed": 8088,
+      "glyphs": "ABCDEFGHIKLMNOPRSTUVXYZ0123456789",
+      "lockWindow": 0.34,
+      "gap": 7,
+      "headerLeft": "★ DEPARTURES",
+      "headerRight": "GATE 06  22:40",
+      "tag": "STATUS // NOW BOARDING"
+    }
+  },
+  "fx": { "crowdflash": [0.5, 0.45] },
+  "plate": {
+    "charge": 0.62,
+    "dim": 0.34,
+    "punch": 0.045,
+    "punchDecay": 9,
+    "punchOffset": 0.34,
+    "shakeAmpX": 7,
+    "shakeAmpY": 5,
+    "shakeHz": 12,
+    "shakeDecay": 7,
+    "shakeWindow": 0.6,
+    "grain": 6
+  },
+  "linkages": []
+}

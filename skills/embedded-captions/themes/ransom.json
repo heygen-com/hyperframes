@@ -1,0 +1,62 @@
+{
+  "name": "ransom",
+  "voice": "kidnapper's collage — every word is a cutout chip clipped from a different page (cream Anton, black Inter, newsprint typewriter, accent-yellow marker) and PASTED crooked on the rail with torn edges and misaligned baselines; emphasis words get a 1-frame re-paste lift, spent chips are RIPPED off with paper-tear flashes. The apex: the sky darkens behind a collage scrim and the hero word slams in letter by letter as a ransom note — each letter a different chip, flight shadow popping tight on contact — then the whole word JOLTS as the last letter lands (the plate punches with it), looms crooked through the hold, and is torn off chip by chip.",
+  "when": "true crime, mystery / thriller content, heist energy, punk / DIY zine aesthetics, edgy product drops, unhinged-comedy hooks, \"勒索信/剪贴/拼贴字幕\" asks. Loud register; the solid chip backgrounds carry their own contrast on any scene.",
+  "register": "loud-collage",
+  "fonts": {
+    "body": "Anton",
+    "hero": "Anton",
+    "dark": "Inter",
+    "news": "Special Elite",
+    "accent": "Permanent Marker"
+  },
+  "palette": {
+    "body": "#f5f1e4",
+    "paper": "#f5f1e4",
+    "paperInk": "#17130d",
+    "dark": "#141414",
+    "darkInk": "#f7f5ef",
+    "news": "#d8d3c5",
+    "newsInk": "#262017",
+    "accent": "#ffd23f",
+    "accentInk": "#1c160c",
+    "flash": "#fffdf2"
+  },
+  "body": {
+    "paradigm": "ransomrail",
+    "layer": "fg",
+    "fontPx": 46,
+    "bottomPx": 56,
+    "letterSpacing": "0.02em",
+    "emphDelay": 0.23,
+    "seed": 3940,
+    "yield": { "dim": 0.5, "pre": 0.02, "post": 0.71 }
+  },
+  "hero": {
+    "setpiece": "ransomnote",
+    "layer": "bg",
+    "fontPx": 130,
+    "params": {
+      "step": 0.06,
+      "crush": 0.09,
+      "ripStag": 0.045,
+      "ripLead": 0.19,
+      "scrim": 0.44,
+      "pulse": 0.2,
+      "seed": 3939
+    }
+  },
+  "fx": {},
+  "plate": {
+    "punch": 0.04,
+    "punchDecay": 9,
+    "punchOffset": 0.64,
+    "shakeAmpX": 7,
+    "shakeAmpY": 5,
+    "shakeHz": 12,
+    "shakeDecay": 7,
+    "shakeWindow": 0.6,
+    "grain": 6
+  },
+  "linkages": []
+}

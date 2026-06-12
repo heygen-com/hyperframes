@@ -1,0 +1,62 @@
+{
+  "name": "graffiti",
+  "voice": "street bombing run — the lower third is a marker rail where words FLICK on crooked like fast handstyles (1-frame squeak skew, seeded rotation, back.out settle); emphasis words take alternating paint colors (yellow/magenta) with a spray-underline swoosh + overspray dots, spent lines are ROLLER-BUFFED away by a gray paint roller whose wet smear lingers, and the final word lands BIG in yellow with the punch. At the apex a writer steps up behind the subject: the dusk wall dims, the can RATTLES, and the hero word is spray-TAGGED stroke by stroke in fat yellow paint (dark under-stroke armor + soft overspray halo + glowing nib), drips grow from the low points through the hold and a magenta paint splat pops at the pen-finish.",
+  "when": "street culture, hip-hop / rap, sneaker and fashion drops, urban sports, skate/BMX, rebellious brand spots — anything that wants real handstyle energy. Loud register; the dark under-stroke armors the tag against bright skies.",
+  "register": "loud-street",
+  "fonts": {
+    "body": "Permanent Marker",
+    "tag": "Permanent Marker",
+    "strokeFont": "HersheyScript1.svg"
+  },
+  "palette": {
+    "body": "#f7f2e7",
+    "accent": "#ffd23f",
+    "em": "#ffd23f",
+    "em2": "#ff2e88",
+    "under": "#241008",
+    "nib": "#fff6d9",
+    "dripMid": "#eab928",
+    "dripLo": "#d8a51d",
+    "rollerHi": "#8d8a86",
+    "rollerLo": "#6f6c69",
+    "roller": "#807d79"
+  },
+  "body": {
+    "paradigm": "markerrail",
+    "layer": "fg",
+    "fontPx": 46,
+    "bottomPx": 98,
+    "seed": 20260611,
+    "yield": { "dim": 0.5, "pre": 0.04, "post": 0.17 }
+  },
+  "hero": {
+    "setpiece": "spraytag",
+    "layer": "bg",
+    "params": {
+      "targetWidth": 1000,
+      "window": 0.58,
+      "underWidth": 21,
+      "haloWidth": 36,
+      "coreWidth": 13,
+      "haloOpacity": 0.5,
+      "osprayN": 6,
+      "drips": 3,
+      "seed": 140987,
+      "dim": 0.22,
+      "scrim": 0.62
+    }
+  },
+  "fx": { "paintsplat": 6, "seed": 20260611 },
+  "plate": {
+    "punch": 0.04,
+    "punchDecay": 9,
+    "punchOffset": 0.63,
+    "shakeAmpX": 7,
+    "shakeAmpY": 5,
+    "shakeHz": 12,
+    "shakeDecay": 7,
+    "shakeWindow": 0.6,
+    "grain": 6
+  },
+  "linkages": []
+}

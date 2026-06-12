@@ -1,0 +1,56 @@
+{
+  "name": "dossier",
+  "voice": "cold-war case file — the clip is typed onto a manila transcript strip (carbon Special Elite hammered in char by char on seeded baselines, red ink circles around the evidence), and the verdict lands as a RUBBER STAMP behind the subject: the footage goes sepia-archival, the stamp crushes in at -8°, double-strike ghost, thin-ink patches, then holds DEAD STILL — sold only by a breathing paper indent — until the page is filed away with a mechanical yank.",
+  "when": "investigations, exposés, true-crime, document-driven storytelling, 'the record shows' narration, declassified/archival framing. Works on any luma (the manila strip is self-lit; the stamp brings its own sepia charge).",
+  "register": "archival-noir",
+  "fonts": { "body": "Special Elite", "hero": "Special Elite", "tag": "Special Elite" },
+  "palette": {
+    "body": "#2b2722",
+    "accent": "#b3271e",
+    "paper": "#d8c49a",
+    "ink": "#8a6f3f",
+    "fleck": "#8e1f17"
+  },
+  "body": {
+    "paradigm": "carbonstrip",
+    "layer": "fg",
+    "fontPx": 40,
+    "strip": { "w": 764, "h": 132, "bottomPx": 4 },
+    "rows": [36, 82],
+    "header": "CASE N°018 — TRANSCRIPT OF RECORDING",
+    "watermark": "CONFIDENTIAL",
+    "seed": 180618,
+    "yield": { "dim": 0.55, "pre": 0.02, "post": 0.41 }
+  },
+  "hero": {
+    "setpiece": "rubberstamp",
+    "layer": "bg",
+    "fontPx": 120,
+    "params": {
+      "crush": 0.074,
+      "hold": 2.02,
+      "rotation": -8,
+      "paperRot": 2.4,
+      "sepia": 0.14,
+      "patches": [
+        [27, 36, 0.72],
+        [71, 68, 0.57]
+      ]
+    }
+  },
+  "fx": { "inkflecks": 12, "seed": 180618 },
+  "plate": {
+    "charge": 0.32,
+    "dim": 0.26,
+    "punch": 0.04,
+    "punchOffset": 0.074,
+    "punchDecay": 9,
+    "shakeAmpX": 7,
+    "shakeAmpY": 5,
+    "shakeHz": 12,
+    "shakeDecay": 7,
+    "shakeWindow": 0.6,
+    "grain": 6
+  },
+  "linkages": []
+}

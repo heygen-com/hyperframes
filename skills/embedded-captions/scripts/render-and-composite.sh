@@ -31,18 +31,15 @@ if [[ ! -d "$PROJECT/frames_fg" ]]; then
   echo "[render] missing matte frames at $PROJECT/frames_fg — run matte.cjs first" >&2
   exit 1
 fi
-# Which compiler owns this project? Cinematic = make-composition.cjs (plan.json);
-# Standard = make-standard.cjs (standard.json → index/rail + a DERIVED plan.json with
-# mode=="standard" — never feed that derived plan back through the Cinematic compiler).
+# Which compiler owns this project? Cinematic = make-composition.cjs (plan.json).
+# (Standard mode retired 2026-06-12 — rail-surface needs are served by theme
+# DNAs like "anchor"; legacy standard.json projects re-render from their
+# existing index.html or via the archived compiler in embedded-captions-archive.)
 compiler_for() {
-  if [[ -f "$PROJECT/standard.json" ]]; then echo "make-standard.cjs"; return; fi
-  if [[ -f "$PROJECT/plan.json" ]] && node -e 'process.exit(require(process.argv[1]).mode==="standard"?0:1)' "$PROJECT/plan.json" 2>/dev/null; then
-    echo "make-standard.cjs"; return
-  fi
   echo "make-composition.cjs"
 }
 if [[ ! -f "$PROJECT/index.html" ]]; then
-  if [[ -f "$PROJECT/standard.json" || -f "$PROJECT/plan.json" ]]; then
+  if [[ -f "$PROJECT/plan.json" ]]; then
     C="$(compiler_for)"
     echo "[render] no index.html — auto-compiling via $C"
     node "$(dirname "$0")/$C" "$PROJECT"
@@ -54,9 +51,6 @@ if [[ ! -f "$PROJECT/index.html" ]]; then
     echo "[render] missing $PROJECT/index.html and standard.json/plan.json/cinematic.json — author + compile first" >&2
     exit 1
   fi
-elif [[ -f "$PROJECT/standard.json" && "$PROJECT/standard.json" -nt "$PROJECT/index.html" ]]; then
-  echo "[render] standard.json newer than index.html — recompiling"
-  node "$(dirname "$0")/make-standard.cjs" "$PROJECT"
 elif [[ -f "$PROJECT/cinematic.json" && "$PROJECT/cinematic.json" -nt "$PROJECT/index.html" ]]; then
   echo "[render] cinematic.json newer than index.html — recompiling"
   node "$(dirname "$0")/make-cinematic.cjs" "$PROJECT"

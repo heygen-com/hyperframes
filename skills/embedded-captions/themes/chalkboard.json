@@ -1,0 +1,52 @@
+{
+  "name": "chalkboard",
+  "voice": "night lecture — the lower third is a worn deep-green chalk band where every word is SCRIBBLED in fast chalk (2-frame pop + scribble reveal + dust puff, seeded crooked), emphasis gets double underline dashes and the final word lands in yellow chalk; between sentences an ERASER SWIPE smears the old words off and leaves ghost smudges. At the apex the band grows into a full blackboard behind the subject and the hero word is HAND-WRITTEN 130px tall in chalk stroke by stroke (jittered nib, dust falling from the pen), finished with a hand-slap dust clap and two violent underlines, then the halo breathes.",
+  "when": "education/explainers, science and lecture content, teacher channels, documentary asides, 'professor energy' brand spots. Reads as handwriting, so it suits thoughtful pacing; the deep-green board supplies its own contrast on bright scenes.",
+  "register": "scholarly-warm",
+  "fonts": { "body": "Caveat", "tag": "Caveat", "strokeFont": "HersheyScript1.svg" },
+  "palette": {
+    "body": "#f3f6ee",
+    "em": "#f3d96b",
+    "accent": "#fbf9ef",
+    "chalk": "#fbf9ef",
+    "dust": "#f6f4e9",
+    "board": "#1d3328",
+    "boardHi": "#22392c",
+    "boardLo": "#182b22",
+    "bandHi": "#23392d",
+    "bandLo": "#16271f",
+    "rim": "#8a6a48",
+    "rimLo": "#5f452c"
+  },
+  "body": {
+    "paradigm": "chalkrail",
+    "layer": "fg",
+    "fontPx": 52,
+    "strip": { "w": 1200, "h": 148, "bottomPx": 0 },
+    "rows": [26, 82],
+    "tag": "OBSERVATORY — NIGHT LECTURE · wk 07",
+    "seed": 13,
+    "eraseDelay": 0.23,
+    "yield": { "dim": 0.55, "pre": 0.07, "post": 0.41 }
+  },
+  "hero": {
+    "setpiece": "chalkwrite",
+    "layer": "bg",
+    "params": {
+      "targetWidth": 860,
+      "window": 0.78,
+      "coreWidth": 7,
+      "haloWidth": 14,
+      "halo": 0.18,
+      "dustN": 8,
+      "seed": 7,
+      "jitterSeed": 21,
+      "dim": 0.22,
+      "vig": 0.35,
+      "boardGap": 0.554
+    }
+  },
+  "fx": { "chalkclap": 12, "seed": 13 },
+  "plate": { "grain": 5 },
+  "linkages": []
+}

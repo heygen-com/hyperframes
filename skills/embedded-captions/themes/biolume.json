@@ -1,0 +1,35 @@
+{
+  "name": "biolume",
+  "voice": "deep-sea bioluminescence — the clip sinks into an abyss grade with a breathing vignette and every caption is a living light. Body words GLOW ON like jellyfish (2-frame opacity + radial bloom from center while a cyan glow breathes in), emphasis words pulse a slow double-beat (propulsion), lines float on a gentle drift across two coexisting rows and SINK away dimming; seeded plankton motes drift the open water and the ones ringing the apex get pulled into the bloom. The apex is a bioluminescent BLOOM behind the subject: a creature pre-glow double-beats and crushes to a point, the word condenses in, six luminous tendrils draw outward like filaments while caustics shimmer and cyan light spills onto the scene — then all the light sinks back into the deep.",
+  "when": "ocean / nature / science-wonder docs, dreamy or meditative monologues, slow night-time reveals, 'underwater / 深海 / 发光水母' asks — anything that should feel alive and submerged rather than printed. Soft register; the abyss grade + pocket scrim make their own contrast on bright scenes.",
+  "register": "dreamy",
+  "fonts": { "body": "Fredoka", "hero": "Fredoka", "tag": "Fredoka" },
+  "palette": {
+    "body": "#E9FFFA",
+    "accent": "#6DF2E0",
+    "violet": "#9D7BFF",
+    "ice": "#8FE8FF",
+    "core": "#F2FFFD",
+    "em": "#F4FFFD",
+    "mote": "#96F5E8",
+    "spore": "#BDFFF4"
+  },
+  "body": {
+    "paradigm": "planktonrail",
+    "layer": "fg",
+    "fontPx": 44,
+    "bottomPx": 70,
+    "rowDy": 58,
+    "motes": { "count": 12, "near": 5, "seed": 2929 },
+    "yield": { "dim": 0.55, "pre": 0.17, "enter": 0.8, "post": 0.63 }
+  },
+  "hero": {
+    "setpiece": "biobloom",
+    "layer": "bg",
+    "fontPx": 120,
+    "params": { "crush": 0.11, "drift": -30, "mood": 0.92 }
+  },
+  "fx": { "sporeburst": 7, "seed": 2930 },
+  "plate": { "scrim": 0.55, "pushIn": 0.012, "grain": 5 },
+  "linkages": []
+}

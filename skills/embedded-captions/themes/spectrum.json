@@ -1,0 +1,46 @@
+{
+  "name": "spectrum",
+  "voice": "an oscilloscope is listening — a dark scope band hosts an always-alive waveform (speech grows it, silence flattens it, every word kicks a local burst) and body words are traced on in phosphor mono with a just-traced flash; the apex is the trace itself LEAPING off the scope to hand-write the hero word in a thin phosphor stroke, fill flicker, hum, then collapse to a flatline — and on the final word the whole trace explodes, flatlines to a single dot and stamps SIGNAL LOST.",
+  "when": "science / signal / audio / measurement / astronomy explainers, data-nerd content, retro-lab or synth aesthetics, \"示波器/波形/信号字幕\" asks. The band brings its own dark glass; bright scenes fine.",
+  "register": "tech-retro",
+  "fonts": { "body": "VT323", "tag": "VT323", "strokeFont": "HersheyScript1.svg" },
+  "palette": {
+    "body": "#4dff88",
+    "accent": "#4dff88",
+    "bright": "#d6ffe4",
+    "flash": "#eafff2",
+    "em": "#ffb347",
+    "hud": "#2f8f55",
+    "panic": "#ff5f47"
+  },
+  "body": {
+    "paradigm": "scoperail",
+    "layer": "fg",
+    "fontPx": 40,
+    "bandH": 164,
+    "waveTop": 80,
+    "waveH": 84,
+    "lineDy": 34,
+    "hudL": "SPECTRUM // CH1",
+    "siglost": "— SIGNAL LOST —",
+    "waveSeed": 7,
+    "chipSeed": 11,
+    "yield": { "dim": 0.52, "pre": 0.13, "post": 0.97 }
+  },
+  "hero": {
+    "setpiece": "scopetrace",
+    "layer": "bg",
+    "params": {
+      "targetWidth": 720,
+      "window": 0.6,
+      "flickGap": 0.12,
+      "clearGap": 0.215,
+      "coreWidth": 4,
+      "haloWidth": 14,
+      "spill": 0.55
+    }
+  },
+  "fx": {},
+  "plate": { "scrim": 0.62, "grain": 5 },
+  "linkages": []
+}

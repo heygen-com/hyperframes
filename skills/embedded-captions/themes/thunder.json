@@ -1,0 +1,44 @@
+{
+  "name": "thunder",
+  "voice": "the storm is the editor — slate storm mood on the room, ambient slanted rain in front of the subject, and the sky 'kisses' (1-frame brighten) on every body word. Body words arrive on a rain-scrimmed lower third with a lit-bright lightning pop; emphasis words get a sheet-lightning double flash mirrored by a double sky-kiss. The apex is THE STRIKE: a hand-authored branched bolt flashes two frames before the word, then the word slams in lit HARD with its shadow flipped toward the bolt, ozone under-glow breathing through the hold while the rain doubles; everything washes downward with the rain.",
+  "when": "dramatic reveals, storm/weather content, epic hype beats, trailer-toned monologues, anything that should land like a thunderclap. Loud register; the charge-dim + word scrim make their own contrast on any plate (bright skies included).",
+  "register": "loud",
+  "fonts": { "body": "Sora", "hero": "Anton", "tag": "Sora" },
+  "palette": {
+    "body": "#EEF4FB",
+    "hero": "#F2F7FF",
+    "accent": "#9FD0FF",
+    "glow": "#CFE8FF",
+    "core": "#FFFFFF"
+  },
+  "body": {
+    "paradigm": "stormrail",
+    "layer": "fg",
+    "fontPx": 44,
+    "bottomPx": 98,
+    "letterSpacing": "0.015em",
+    "rain": { "count": 18, "opacity": 0.08, "seed": 9021, "seed2": 4477 },
+    "yield": { "dim": 0.5, "pre": 0.15, "post": 0.29 }
+  },
+  "hero": {
+    "setpiece": "boltstrike",
+    "layer": "bg",
+    "fontPx": 145,
+    "params": { "mood": 0.1, "side": "left", "hold": 2.05 }
+  },
+  "fx": { "strikeflash": 0.55 },
+  "plate": {
+    "charge": 0.3,
+    "dim": 0.22,
+    "punch": 0.04,
+    "punchDecay": 9,
+    "punchOffset": 0.02,
+    "shakeAmpX": 5,
+    "shakeAmpY": 4,
+    "shakeHz": 12,
+    "shakeDecay": 7,
+    "shakeWindow": 0.5,
+    "grain": 5
+  },
+  "linkages": []
+}

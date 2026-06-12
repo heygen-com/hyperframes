@@ -1,0 +1,27 @@
+{
+  "name": "anchor",
+  "voice": "the quiet professional — a verbatim rail that simply reads (2-frame fade-ups, accent emphasis), and one climax that settles into the scene behind the subject with a drawn accent underline. No spectacle: discipline IS the style. This is the conservative default that replaced Standard mode.",
+  "when": "explainers, tutorials, product walkthroughs, corporate and news-adjacent clips — anywhere every word must be read and nothing should show off. Pick it when unsure.",
+  "register": "calm",
+  "fonts": { "body": "Sora", "hero": "Sora", "tag": "Sora" },
+  "palette": { "body": "#F2EFE9", "accent": "#D9B98C", "em": "#EFCB9A" },
+  "body": {
+    "paradigm": "rail",
+    "layer": "fg",
+    "fontPx": 46,
+    "bottomPx": 96,
+    "letterSpacing": "0.012em",
+    "entrance": "fade",
+    "exit": "fade",
+    "minorScale": 1.0,
+    "yield": { "dim": 0.55, "pre": 0.2, "post": 0.9 }
+  },
+  "hero": {
+    "setpiece": "settle",
+    "layer": "bg",
+    "fontPx": 150,
+    "params": {}
+  },
+  "plate": { "dim": 0.16, "pushIn": 0.012, "grain": 5 },
+  "linkages": []
+}

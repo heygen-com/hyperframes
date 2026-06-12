@@ -1,0 +1,51 @@
+{
+  "name": "arcade",
+  "voice": "8-bit cabinet attract mode — the whole frame plays through a CRT (scanlines + vignette) above a bordered HUD bar (1UP blinking on the classic cadence, CREDIT 01) where every word coin-pops in on steps(2) with a 1-frame white blip; emphasis words run a cyan→magenta palette swap. The apex is a BOSS INTRO behind the subject: the room dims, WARNING blinks twice, ~64 seeded pixel blocks fall quantized into a matrix grid over the word rect, then the word flashes ON in Press Start 2P with chromatic ghost layers + a 3-frame palette strobe while letterbox bars slam in and a HI-SCORE odometer rolls top-right; everything dissolves checkerboard and the blocks drop away.",
+  "when": "gaming, retro-tech, playful hype, launches, achievement/level-up beats, '像素/街机/8-bit/打游戏' asks — anything that should read as an arcade cabinet boss fight. Loud register; the boss dim + dark HUD bar bring their own contrast on bright skies.",
+  "register": "loud",
+  "fonts": { "body": "Press Start 2P", "hero": "Press Start 2P", "tag": "Press Start 2P" },
+  "palette": {
+    "body": "#FFFFFF",
+    "accent": "#00E5FF",
+    "magenta": "#FF2E88",
+    "yellow": "#FFE600",
+    "credit": "#7ADCFF"
+  },
+  "body": {
+    "paradigm": "hudrail",
+    "layer": "fg",
+    "fontPx": 26,
+    "bar": { "h": 70, "inset": 24, "bottom": 50 },
+    "tags": { "left": "1UP", "right": "CREDIT 01" },
+    "scan": 0.06,
+    "textTransform": "uppercase",
+    "yield": { "dim": 0.55, "pre": 0.09, "post": 1.04 }
+  },
+  "hero": {
+    "setpiece": "bossintro",
+    "layer": "bg",
+    "fontPx": 84,
+    "params": {
+      "seed": 13013,
+      "rows": 4,
+      "tag": "WARNING",
+      "flashDelay": 0.14,
+      "hold": 1.24,
+      "letterbox": 44
+    }
+  },
+  "fx": { "coinflash": 0.55 },
+  "plate": {
+    "dim": 0.58,
+    "punch": 0.04,
+    "punchDecay": 9,
+    "punchOffset": 0.14,
+    "shakeAmpX": 7,
+    "shakeAmpY": 5,
+    "shakeHz": 12,
+    "shakeDecay": 7,
+    "shakeWindow": 0.6,
+    "grain": 6
+  },
+  "linkages": []
+}

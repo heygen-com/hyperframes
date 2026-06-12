@@ -1,0 +1,41 @@
+{
+  "name": "aurora",
+  "voice": "polar-night elegance — the sky is alive and every caption is woven light. Two huge aurora blobs drift the top of frame all clip; body words are silk serif ink whose rose→teal→violet sheen drifts continuously through the letters (emphasis words get one bright highlight sweep), lines share two coexisting rows like a woven couplet and dissolve UPWARD into drifting light streaks. The apex is a SILK RIBBON: the hero word is hand-WRITTEN into the sky behind the subject stroke by stroke (single-line script font, blurred halo + bright core, a light mote riding the pen) — and the signature: the aurora gradient keeps FLOWING through the drawn ribbon during the hold while a soft spill tints the sky and light motes rise past the subject. Gentle — no shake.",
+  "when": "dreamy / romantic / wonder content, night-sky and travel pieces, poetry, weddings, elegant brand films, '极光/丝带/优雅手写字幕' asks — anything that should feel written by light rather than printed. Soft register; the apex scrim + dark understroke carry contrast on bright skies.",
+  "register": "elegant",
+  "fonts": { "body": "Cormorant Garamond", "strokeFont": "HersheyScript1.svg" },
+  "palette": {
+    "body": "#F2EFF7",
+    "rose": "#FF9EC4",
+    "accent": "#7FE0D4",
+    "violet": "#B9A8FF",
+    "deep": "#070C24"
+  },
+  "body": {
+    "paradigm": "sheenrail",
+    "layer": "fg",
+    "fontPx": 48,
+    "bottomPx": 76,
+    "rowDy": 58,
+    "band": { "w": 860, "h": 170 },
+    "streaks": 4,
+    "seed": 20260611,
+    "yield": { "dim": 0.5, "pre": 0.16, "post": 0.62 }
+  },
+  "hero": {
+    "setpiece": "silkribbon",
+    "layer": "bg",
+    "params": {
+      "targetWidth": 880,
+      "window": 0.68,
+      "haloWidth": 18,
+      "coreWidth": 6,
+      "wash": 0.12,
+      "deepen": 0.2,
+      "spill": 0.3
+    }
+  },
+  "fx": { "silkmotes": 6, "seed": 20260612 },
+  "plate": { "scrim": 0.72, "pushIn": 0.012, "grain": 5 },
+  "linkages": []
+}

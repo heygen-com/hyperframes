@@ -1,0 +1,74 @@
+{
+  "name": "brush",
+  "voice": "sumi-e study — the lower third is a washi paper band (deckle-edged under-sheets, warm translucent sheet) where every word is brush-WIPED on behind a traveling brush-head shadow in a Mincho serif, seeded ±1° tilt; emphasis words get a double curved ink underline drawn beneath, and spent lines are wiped OFF right-to-left like a wet cloth. At the apex a warm paper wash charges behind the subject and the hero word is written in ONE violent calligraphic gesture — a pressure-tapered wet brush (four stacked stroke widths) slapping down on a start-splat, spattering droplets at the sharpest curves, ink flecks kicking past the subject — then the ink BLEEDS into the paper through the hold and a vermilion SEAL chop stamps the work with the plate punch.",
+  "when": "calm-authority explainers, craft / design / philosophy / Japan-adjacent content, tea-ceremony-paced brand films, meditation and writing channels — anything that wants ink-and-paper elegance with one violent flourish. The dark ink needs a mid/bright scene band (the paper wash supplies its own ground on bright skies).",
+  "register": "contemplative-elegant",
+  "fonts": {
+    "body": "Shippori Mincho",
+    "seal": "Shippori Mincho",
+    "strokeFont": "HersheyScript1.svg"
+  },
+  "palette": {
+    "ink": "#19120b",
+    "nib": "#1a130c",
+    "body": "#221a12",
+    "ulInk": "#2a1c12",
+    "bh": "#281e14",
+    "paperHi": "#efe8d7",
+    "paperLo": "#e7dfcb",
+    "sheetHi": "#f5efe2",
+    "sheetLo": "#ece4d2",
+    "wash": "#f6f0e2",
+    "wash2": "#f4edde",
+    "seal": "#d24a32",
+    "sealMid": "#c03422",
+    "sealLo": "#a92a1a",
+    "sealText": "#f7efe2",
+    "accent": "#c03422"
+  },
+  "body": {
+    "paradigm": "brushrail",
+    "layer": "fg",
+    "fontPx": 44,
+    "weight": 600,
+    "strip": { "w": 820, "h": 90, "bottomPx": 61 },
+    "maxHold": 0.78,
+    "seed": 20260611,
+    "yield": { "dim": 0.55, "pre": 0.16, "post": 0.46 }
+  },
+  "hero": {
+    "setpiece": "brushwrite",
+    "layer": "bg",
+    "params": {
+      "targetWidth": 760,
+      "window": 0.45,
+      "bleedWidth": 16,
+      "fatWidth": 18,
+      "midWidth": 10,
+      "coreWidth": 5,
+      "spatterN": 6,
+      "wash": 0.34,
+      "washSettle": 0.27,
+      "washH": 420,
+      "bleed": 0.38,
+      "breatheHz": 0.55,
+      "sealGlyph": "観",
+      "sealDelay": 0.04,
+      "sealSize": 64,
+      "seed": 380611
+    }
+  },
+  "fx": { "brushflecks": 6, "seed": 20260611 },
+  "plate": {
+    "punch": 0.04,
+    "punchDecay": 9,
+    "punchOffset": 0.49,
+    "shakeAmpX": 7,
+    "shakeAmpY": 5,
+    "shakeHz": 12,
+    "shakeDecay": 7,
+    "shakeWindow": 0.6,
+    "grain": 6
+  },
+  "linkages": []
+}

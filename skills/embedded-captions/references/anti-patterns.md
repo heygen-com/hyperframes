@@ -151,7 +151,7 @@ It's the Apple way, obviously faster. No. CoreML partitions the ONNX graph acros
 
 ### You pick a matte model by "general vs human."
 
-rembg's `u2net_human_seg` gets people but misses handheld mics. `isnet-general-use` catches more but still drops mics on standing mounts. The right choice for video is **PP-MattingV2** (human-trained, fast CPU, Apache-2.0; EMA-smoothed for temporal stability) via `matte.cjs`. Only fall back to rembg isnet when it fails for some reason.
+DECISION FLIPPED 2026-06-12 after a 5-model × 6-scene A/B with caption renders: the matte's job here is CAPTION LAYERING, not prop fidelity. `u2net_human_seg` (via hyperframes `remove-background`) usually excludes thin offset furniture (mic boom arms) from the matte — words stop being sliced by booms, which beat PP-MattingV2's prop-preserving behavior on real caption videos. It is NOT surgical: large salient objects near the subject (telescope rigs) can still leak in — always sample frames_fg/. Known cost: HELD products can drop out intermittently (captions pass in front) — route product-demo climaxes away from held objects. `isnet-general-use` lost outright (backlit-hair collapse). birefnet-portrait (MIT) beat everything semantically (keeps held items AND drops furniture) but is 928 MB / ~7 s-per-frame CPU — a future quality tier, not the default.
 
 ---
 
