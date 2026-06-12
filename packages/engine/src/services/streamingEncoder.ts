@@ -458,15 +458,15 @@ export async function spawnStreamingEncoder(
       // and flicker.
       const copy = Buffer.from(buffer);
       const accepted = ffmpeg.stdin.write(copy);
-      // Reset inactivity timer ONLY on `accepted === true`. `true` means the
-      // write went through to the kernel pipe without buffering in Node —
-      // proof FFmpeg is actually consuming. `false` means Node's writable
-      // stream had to buffer (FFmpeg hasn't drained the pipe yet); we deliberately
-      // don't reset on `false` so a hung FFmpeg with a still-producing Chrome
-      // can't keep us alive forever while Node's stdin buffer grows to OOM. In
-      // steady state with a slower-but-alive FFmpeg, writes alternate between
-      // true and false as the buffer drains and refills; the trues are enough
-      // to keep the heartbeat ticking.
+      // Timer reset policy — three cases:
+      // 1. `accepted === true`: write went straight to the kernel pipe; FFmpeg
+      //    is keeping up. Reset now.
+      // 2. `accepted === false` (buffer full): do NOT reset immediately. If
+      //    FFmpeg is truly hung the timer must still fire to prevent the Node
+      //    stdin buffer from growing unboundedly → OOM.
+      // 3. After `await drain`: the pipe cleared, proving FFmpeg is alive and
+      //    consuming. Reset then — a slow-but-alive FFmpeg must never trigger
+      //    a spurious SIGTERM.
       if (accepted) {
         resetTimer();
         return true;
@@ -474,8 +474,7 @@ export async function spawnStreamingEncoder(
       // Back-pressure: FFmpeg stdin buffer is full. Await drain before returning
       // so the capture loop naturally throttles to FFmpeg's encode throughput.
       // This prevents Node's internal stdin buffer from growing unboundedly on
-      // long high-worker-count renders and also ensures `ffmpegStreamingTimeout`
-      // resets promptly on the next frame (since the next write will return true).
+      // long high-worker-count renders.
       await new Promise<void>((resolve) => {
         const stdin = ffmpeg.stdin!;
         const cleanup = () => {

@@ -569,6 +569,130 @@ describe("spawnStreamingEncoder lifecycle and cleanup", () => {
     expect(await encoder.writeFrame(Buffer.from([0]))).toBe(false);
   });
 
+  it("back-pressure: writeFrame blocks until drain is emitted", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { spawnStreamingEncoder } = await import("./streamingEncoder.js");
+    const dir = mkdtempSync(join(tmpdir(), "se-drain-blocks-"));
+    const encoder = await spawnStreamingEncoder(join(dir, "out.mp4"), baseOptions);
+
+    const proc = calls[0]!.proc;
+    proc.stdin.write = (_chunk: Buffer) => false; // simulate full buffer
+
+    let resolved = false;
+    const p = encoder.writeFrame(Buffer.from([0])).then((v) => {
+      resolved = true;
+      return v;
+    });
+
+    // Flush microtasks so writeFrame reaches the drain-await
+    await Promise.resolve();
+    expect(resolved).toBe(false); // still blocked
+
+    proc.stdin.emit("drain");
+    expect(await p).toBe(true);
+    expect(resolved).toBe(true);
+  });
+
+  it("back-pressure: writeFrame returns false when encoder dies while awaiting drain", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { spawnStreamingEncoder } = await import("./streamingEncoder.js");
+    const dir = mkdtempSync(join(tmpdir(), "se-drain-death-"));
+    const encoder = await spawnStreamingEncoder(join(dir, "out.mp4"), baseOptions);
+
+    const proc = calls[0]!.proc;
+    proc.stdin.write = (_chunk: Buffer) => false;
+
+    const p = encoder.writeFrame(Buffer.from([0]));
+    await Promise.resolve(); // reach drain-await
+
+    // FFmpeg exits while we're waiting
+    proc.emit("close", 1);
+    await Promise.resolve();
+    // Drain fires (e.g. OS flushes the pipe) but encoder is already dead
+    proc.stdin.emit("drain");
+
+    expect(await p).toBe(false);
+  });
+
+  it("back-pressure: listeners are cleaned up when finish fires before drain", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { spawnStreamingEncoder } = await import("./streamingEncoder.js");
+    const dir = mkdtempSync(join(tmpdir(), "se-drain-finish-"));
+    const encoder = await spawnStreamingEncoder(join(dir, "out.mp4"), baseOptions);
+
+    const proc = calls[0]!.proc;
+    // Capture baseline listener counts (spawnStreamingEncoder may register its own)
+    const baselineDrain = proc.stdin.listenerCount("drain");
+    const baselineFinish = proc.stdin.listenerCount("finish");
+    const baselineError = proc.stdin.listenerCount("error");
+
+    proc.stdin.write = (_chunk: Buffer) => false;
+    const p = encoder.writeFrame(Buffer.from([0]));
+    await Promise.resolve(); // reach drain-await — 3 listeners registered (+drain, +finish, +error)
+
+    expect(proc.stdin.listenerCount("drain")).toBe(baselineDrain + 1);
+    expect(proc.stdin.listenerCount("finish")).toBe(baselineFinish + 1);
+    expect(proc.stdin.listenerCount("error")).toBe(baselineError + 1);
+
+    proc.stdin.emit("finish"); // finish fires instead of drain
+    await p; // resolves
+
+    // All three back-pressure listeners must be removed regardless of which event fired
+    expect(proc.stdin.listenerCount("drain")).toBe(baselineDrain);
+    expect(proc.stdin.listenerCount("finish")).toBe(baselineFinish);
+    expect(proc.stdin.listenerCount("error")).toBe(baselineError);
+  });
+
+  it("back-pressure: inactivity timer resets after drain (slow-but-alive FFmpeg)", async () => {
+    vi.useFakeTimers();
+    try {
+      const { spawn, calls } = createSpawnSpy();
+      vi.resetModules();
+      vi.doMock("child_process", () => ({ spawn }));
+
+      const { spawnStreamingEncoder } = await import("./streamingEncoder.js");
+      const dir = mkdtempSync(join(tmpdir(), "se-drain-timer-"));
+      const encoder = await spawnStreamingEncoder(join(dir, "out.mp4"), baseOptions, undefined, {
+        ffmpegStreamingTimeout: 1000,
+      });
+
+      const proc = calls[0]!.proc;
+      proc.stdin.write = (_chunk: Buffer) => false; // every write triggers drain-await
+
+      // Advance 800ms — timer set at spawn, will fire at T=1000ms if not reset
+      vi.advanceTimersByTime(800);
+
+      // Kick off a writeFrame — floating promise, drain-await registered
+      void encoder.writeFrame(Buffer.from([0]));
+      // Flush microtasks so the drain listener is registered before we emit
+      await Promise.resolve();
+
+      // FFmpeg drains: proves it's alive, resetTimer() must fire
+      proc.stdin.emit("drain");
+      await Promise.resolve(); // run the post-drain microtasks (resetTimer call)
+
+      // Advance 300ms more (T=1100ms from spawn). Without the post-drain reset
+      // the original timer would have fired SIGTERM at T=1000ms.
+      vi.advanceTimersByTime(300);
+      expect(proc.kill).not.toHaveBeenCalled();
+
+      // Advance past the reset timer (1000ms from the drain at T=800ms → T=1800ms)
+      vi.advanceTimersByTime(700);
+      expect(proc.kill).toHaveBeenCalledWith("SIGTERM");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("close() removes the abort listener so a post-close abort does not re-kill ffmpeg", async () => {
     const { spawn, calls } = createSpawnSpy();
     vi.resetModules();
