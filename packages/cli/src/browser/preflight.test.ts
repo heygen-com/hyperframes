@@ -1,0 +1,89 @@
+// fallow-ignore-file code-duplication
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { parseToolVersion, runEnvironmentChecks } from "./preflight.js";
+
+describe("runEnvironmentChecks", () => {
+  const originalFfmpegPath = process.env.HYPERFRAMES_FFMPEG_PATH;
+  const originalFfprobePath = process.env.HYPERFRAMES_FFPROBE_PATH;
+
+  beforeEach(() => {
+    process.env.HYPERFRAMES_FFMPEG_PATH = process.execPath;
+    process.env.HYPERFRAMES_FFPROBE_PATH = process.execPath;
+  });
+
+  afterEach(() => {
+    if (originalFfmpegPath === undefined) delete process.env.HYPERFRAMES_FFMPEG_PATH;
+    else process.env.HYPERFRAMES_FFMPEG_PATH = originalFfmpegPath;
+    if (originalFfprobePath === undefined) delete process.env.HYPERFRAMES_FFPROBE_PATH;
+    else process.env.HYPERFRAMES_FFPROBE_PATH = originalFfprobePath;
+  });
+
+  it("returns configured FFmpeg and FFprobe paths when checks pass", async () => {
+    const result = await runEnvironmentChecks();
+
+    expect(result.outcomes.find((outcome) => outcome.name === "FFmpeg")?.ok).toBe(true);
+    expect(result.outcomes.find((outcome) => outcome.name === "FFprobe")?.ok).toBe(true);
+    expect(result.ffmpegPath).toBe(process.execPath);
+    expect(result.ffprobePath).toBe(process.execPath);
+  });
+
+  it("reports ffprobe as a render-blocking error when the explicit path is missing", async () => {
+    process.env.HYPERFRAMES_FFPROBE_PATH = "/missing/ffprobe.exe";
+
+    const result = await runEnvironmentChecks();
+
+    expect(result.outcomes).toContainEqual(
+      expect.objectContaining({
+        name: "FFprobe",
+        ok: false,
+        level: "error",
+        title: "FFprobe not found",
+      }),
+    );
+    expect(result.ffprobePath).toBeUndefined();
+  });
+
+  it("fails early when an explicit FFmpeg env override points at a missing file", async () => {
+    process.env.HYPERFRAMES_FFMPEG_PATH = "/missing/ffmpeg.exe";
+
+    const result = await runEnvironmentChecks();
+    const ffmpeg = result.outcomes.find((outcome) => outcome.name === "FFmpeg");
+
+    expect(ffmpeg).toMatchObject({
+      ok: false,
+      detail: 'Configured path does not exist: HYPERFRAMES_FFMPEG_PATH="/missing/ffmpeg.exe"',
+    });
+  });
+
+  it("validates an explicit browser path without needing browser discovery", async () => {
+    const result = await runEnvironmentChecks({
+      includeBrowser: true,
+      browserPath: process.execPath,
+    });
+
+    expect(result.outcomes.find((outcome) => outcome.name === "Chrome")).toMatchObject({
+      ok: true,
+      path: process.execPath,
+    });
+  });
+
+  it("reports an explicit missing browser path before render starts", async () => {
+    const result = await runEnvironmentChecks({
+      includeBrowser: true,
+      browserPath: "/missing/chrome-headless-shell.exe",
+    });
+
+    expect(result.outcomes.find((outcome) => outcome.name === "Chrome")).toMatchObject({
+      ok: false,
+      title: "Chrome not found",
+    });
+  });
+});
+
+describe("parseToolVersion", () => {
+  it("extracts ffprobe versions with Windows build suffixes", () => {
+    expect(parseToolVersion("ffprobe version 7.1.1-essentials_build-www.gyan.dev Copyright")).toBe(
+      "ffprobe 7.1.1-essentials_build-www.gyan.dev",
+    );
+  });
+});

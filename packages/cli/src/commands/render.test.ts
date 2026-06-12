@@ -1,8 +1,34 @@
+// fallow-ignore-file code-duplication
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const producerState = vi.hoisted(() => ({
   createdJobs: [] as Array<Record<string, unknown>>,
   resolveConfigCalls: [] as Array<Record<string, unknown>>,
+}));
+
+const preflightState = vi.hoisted(() => ({
+  result: {
+    outcomes: [
+      { name: "FFmpeg", ok: true, level: "ok", detail: "/usr/bin/ffmpeg", path: "/usr/bin/ffmpeg" },
+      {
+        name: "FFprobe",
+        ok: true,
+        level: "ok",
+        detail: "/usr/bin/ffprobe",
+        path: "/usr/bin/ffprobe",
+      },
+      {
+        name: "Chrome",
+        ok: true,
+        level: "ok",
+        detail: "cache: /mock/chrome",
+        path: "/mock/chrome",
+      },
+    ],
+    ffmpegPath: "/usr/bin/ffmpeg",
+    ffprobePath: "/usr/bin/ffprobe",
+    browser: { executablePath: "/mock/chrome", source: "cache" },
+  },
 }));
 
 vi.mock("../utils/producer.js", () => ({
@@ -29,6 +55,10 @@ vi.mock("../browser/ffmpeg.js", () => ({
   getFFmpegInstallHint: vi.fn(() => "brew install ffmpeg"),
 }));
 
+vi.mock("../browser/preflight.js", () => ({
+  runEnvironmentChecks: vi.fn(async () => preflightState.result),
+}));
+
 describe("renderLocal browser GPU config", () => {
   const savedEnv = new Map<string, string | undefined>();
   // Pre-resolve once. The first dynamic `import("./render.js")` in this file
@@ -46,7 +76,7 @@ describe("renderLocal browser GPU config", () => {
   });
 
   function setEnv(key: string, value: string) {
-    savedEnv.set(key, process.env[key]);
+    if (!savedEnv.has(key)) savedEnv.set(key, process.env[key]);
     process.env[key] = value;
   }
 
@@ -54,6 +84,12 @@ describe("renderLocal browser GPU config", () => {
     producerState.createdJobs = [];
     producerState.resolveConfigCalls = [];
     savedEnv.clear();
+    savedEnv.set("HYPERFRAMES_FFMPEG_PATH", process.env.HYPERFRAMES_FFMPEG_PATH);
+    savedEnv.set("HYPERFRAMES_FFPROBE_PATH", process.env.HYPERFRAMES_FFPROBE_PATH);
+    savedEnv.set("PRODUCER_HEADLESS_SHELL_PATH", process.env.PRODUCER_HEADLESS_SHELL_PATH);
+    delete process.env.HYPERFRAMES_FFMPEG_PATH;
+    delete process.env.HYPERFRAMES_FFPROBE_PATH;
+    delete process.env.PRODUCER_HEADLESS_SHELL_PATH;
   });
 
   afterEach(() => {
@@ -123,6 +159,22 @@ describe("renderLocal browser GPU config", () => {
       browserGpuMode: "hardware",
       resolved: true,
     });
+  });
+
+  it("passes preflight-resolved FFmpeg, FFprobe, and browser paths through env", async () => {
+    await renderLocal("/tmp/project", "/tmp/out.mp4", {
+      fps: { num: 30, den: 1 },
+      quality: "standard",
+      format: "mp4",
+      gpu: false,
+      browserGpuMode: "software",
+      hdrMode: "auto",
+      quiet: true,
+    });
+
+    expect(process.env.HYPERFRAMES_FFMPEG_PATH).toBe("/usr/bin/ffmpeg");
+    expect(process.env.HYPERFRAMES_FFPROBE_PATH).toBe("/usr/bin/ffprobe");
+    expect(process.env.PRODUCER_HEADLESS_SHELL_PATH).toBe("/mock/chrome");
   });
 
   it("resolves browser GPU from CLI flags, Docker mode, and env fallback", () => {

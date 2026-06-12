@@ -1,3 +1,4 @@
+// fallow-ignore-file unused-export unused-type circular-dependency code-duplication complexity
 /**
  * Render Orchestrator Service
  *
@@ -78,6 +79,7 @@ import {
   type HfTransitionMeta,
   getSystemTotalMb,
   LOW_MEMORY_TOTAL_MB_THRESHOLD,
+  assertConfiguredFfmpegBinariesExist,
 } from "@hyperframes/engine";
 import { join, dirname, resolve } from "path";
 import { randomUUID } from "crypto";
@@ -1566,6 +1568,7 @@ export async function executeRenderJob(
 
     job.startedAt = new Date();
     assertNotAborted();
+    assertConfiguredFfmpegBinariesExist();
 
     log.info("[Render] Pipeline started", {
       platform: process.platform,

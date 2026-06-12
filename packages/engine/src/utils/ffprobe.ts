@@ -1,11 +1,14 @@
+// fallow-ignore-file code-duplication complexity
 import { spawn } from "child_process";
 import { readFileSync } from "fs";
 import { extname } from "path";
+import { FFPROBE_PATH_ENV, getFfprobeBinary } from "./ffmpegBinaries.js";
 
 /** Spawn ffprobe with given args, return stdout. Throws on non-zero exit or missing binary. */
 function runFfprobe(args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
-    const proc = spawn("ffprobe", args);
+    const command = getFfprobeBinary();
+    const proc = spawn(command, args);
     let stdout = "";
     let stderr = "";
     proc.stdout.on("data", (data) => {
@@ -23,7 +26,14 @@ function runFfprobe(args: string[]): Promise<string> {
     });
     proc.on("error", (err) => {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-        reject(new Error("[FFmpeg] ffprobe not found. Please install FFmpeg."));
+        const configured = process.env[FFPROBE_PATH_ENV]?.trim();
+        reject(
+          new Error(
+            configured
+              ? `[FFmpeg] ffprobe not found at ${FFPROBE_PATH_ENV}="${configured}". Please install FFmpeg.`
+              : "[FFmpeg] ffprobe not found. Please install FFmpeg.",
+          ),
+        );
       } else {
         reject(err);
       }

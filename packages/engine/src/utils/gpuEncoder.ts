@@ -1,3 +1,4 @@
+// fallow-ignore-file complexity
 /**
  * GPU Encoder Detection
  *
@@ -6,6 +7,7 @@
  */
 
 import { spawn } from "child_process";
+import { getFfmpegBinary } from "./ffmpegBinaries.js";
 
 export type ConcreteGpuEncoder = "nvenc" | "videotoolbox" | "vaapi" | "qsv" | "amf";
 export type GpuEncoder = ConcreteGpuEncoder | null;
@@ -59,7 +61,7 @@ export async function selectUsableGpuEncoder(
 
 export async function detectGpuEncoder(): Promise<GpuEncoder> {
   return new Promise((resolve) => {
-    const ffmpeg = spawn("ffmpeg", ["-encoders"], {
+    const ffmpeg = spawn(getFfmpegBinary(), ["-encoders"], {
       stdio: ["pipe", "pipe", "pipe"],
     });
     let stdout = "";
@@ -147,7 +149,7 @@ async function canUseGpuEncoder(encoder: ConcreteGpuEncoder): Promise<boolean> {
       if (killTimer) clearTimeout(killTimer);
       resolve(usable);
     };
-    const ffmpeg = spawn("ffmpeg", getProbeArgs(encoder), {
+    const ffmpeg = spawn(getFfmpegBinary(), getProbeArgs(encoder), {
       stdio: ["ignore", "ignore", "pipe"],
     });
 

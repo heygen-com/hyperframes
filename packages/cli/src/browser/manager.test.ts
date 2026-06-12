@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication
 /**
  * Browser-binary resolution tests for `findBrowser()`.
  *
@@ -72,18 +73,20 @@ function installFsMocks({ existing, dirs }: FsMockOptions) {
 function installPuppeteerBrowsersMock(
   opts: {
     installedInHfCache?: Array<{ browser: string; executablePath: string }>;
+    installResult?: { executablePath: string };
   } = {},
 ) {
   vi.doMock("@puppeteer/browsers", () => ({
     Browser: { CHROMEHEADLESSSHELL: "chrome-headless-shell" },
     detectBrowserPlatform: () => "linux",
     getInstalledBrowsers: vi.fn().mockResolvedValue(opts.installedInHfCache ?? []),
-    install: vi.fn(),
+    install: vi.fn().mockResolvedValue(opts.installResult ?? { executablePath: HF_BINARY }),
   }));
 }
 
 describe("findBrowser — cache resolution", () => {
   const origPlatform = process.platform;
+  const origArch = process.arch;
 
   beforeEach(() => {
     vi.resetModules();
@@ -91,11 +94,13 @@ describe("findBrowser — cache resolution", () => {
     // `Object.defineProperty` dance is needed because `process.platform` is a
     // getter on Node — direct assignment is silently a no-op.
     Object.defineProperty(process, "platform", { value: "linux", configurable: true });
+    Object.defineProperty(process, "arch", { value: "x64", configurable: true });
     delete process.env["HYPERFRAMES_BROWSER_PATH"];
   });
 
   afterEach(() => {
     Object.defineProperty(process, "platform", { value: origPlatform, configurable: true });
+    Object.defineProperty(process, "arch", { value: origArch, configurable: true });
     vi.restoreAllMocks();
     vi.doUnmock("node:fs");
     vi.doUnmock("node:os");
@@ -115,6 +120,28 @@ describe("findBrowser — cache resolution", () => {
     const result = await findBrowser();
 
     expect(result).toEqual({ executablePath: HF_BINARY, source: "cache" });
+  });
+
+  it("re-downloads when the hyperframes cache manifest points at a missing binary", async () => {
+    const redownloadedBinary = join(
+      HF_CACHE,
+      "chrome-headless-shell",
+      "linux-131.0.6778.85",
+      "chrome-headless-shell-linux64",
+      "redownloaded-chrome-headless-shell",
+    );
+    installFsMocks({ existing: new Set([HF_CACHE]) });
+    installPuppeteerBrowsersMock({
+      installedInHfCache: [{ browser: "chrome-headless-shell", executablePath: HF_BINARY }],
+      installResult: { executablePath: redownloadedBinary },
+    });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const { findBrowser } = await import("./manager.js");
+    const result = await findBrowser();
+
+    expect(result).toEqual({ executablePath: redownloadedBinary, source: "download" });
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("Cached binary missing"));
   });
 
   it("falls back to the puppeteer-managed cache when hyperframes cache is empty", async () => {

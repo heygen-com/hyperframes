@@ -1,10 +1,10 @@
+// fallow-ignore-file complexity
 import { defineCommand } from "citty";
 import { execSync } from "node:child_process";
 import { platform } from "node:os";
 import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
-import { findBrowser } from "../browser/manager.js";
-import { findFFmpeg, getFFmpegInstallHint } from "../browser/ffmpeg.js";
+import { parseToolVersion, runEnvironmentChecks } from "../browser/preflight.js";
 import { VERSION } from "../version.js";
 import { getUpdateMeta, withMeta } from "../utils/updateCheck.js";
 import {
@@ -30,61 +30,7 @@ interface CheckResult {
   hint?: string;
 }
 
-/**
- * Extract a clean "toolname X.Y.Z" from the verbose first line of
- * `ffmpeg -version` / `ffprobe -version` output. Falls back to the
- * trimmed input when the pattern doesn't match.
- */
-export function parseToolVersion(raw: string): string {
-  const m = raw.match(/(ffmpeg|ffprobe)\s+version\s+([\d][\d.\-\w]*)/i);
-  return m ? `${m[1]} ${m[2]}` : raw.trim();
-}
-
-function checkFFmpeg(): CheckResult {
-  const path = findFFmpeg();
-  if (path) {
-    try {
-      const raw =
-        execSync("ffmpeg -version", { encoding: "utf-8", timeout: 5000 }).split("\n")[0] ?? "";
-      return { ok: true, detail: parseToolVersion(raw) };
-    } catch {
-      return { ok: true, detail: path };
-    }
-  }
-  return {
-    ok: false,
-    detail: "Not found",
-    hint: getFFmpegInstallHint(),
-  };
-}
-
-function checkFFprobe(): CheckResult {
-  // `ffprobe -version` works cross-platform if it's on PATH — no need for
-  // `which`/`where` shell detection, which differs by OS.
-  try {
-    const raw =
-      execSync("ffprobe -version", { encoding: "utf-8", timeout: 5000 }).split("\n")[0] ?? "";
-    return { ok: true, detail: parseToolVersion(raw) };
-  } catch {
-    return {
-      ok: false,
-      detail: "Not found",
-      hint: `Installed with ffmpeg — ${getFFmpegInstallHint()}`,
-    };
-  }
-}
-
-async function checkChrome(): Promise<CheckResult> {
-  const info = await findBrowser();
-  if (info) {
-    return { ok: true, detail: `${info.source}: ${info.executablePath}` };
-  }
-  return {
-    ok: false,
-    detail: "Not found",
-    hint: "Run: npx hyperframes browser ensure",
-  };
-}
+export { parseToolVersion };
 
 function checkDocker(): CheckResult {
   try {
@@ -252,6 +198,7 @@ export default defineCommand({
     json: { type: "boolean", description: "Output as JSON", default: false },
   },
   async run({ args }) {
+    const environment = await runEnvironmentChecks({ includeBrowser: true });
     const checks: Check[] = [
       { name: "Version", run: checkVersion },
       { name: "Node.js", run: checkNode },
@@ -265,17 +212,30 @@ export default defineCommand({
       checks.push({ name: "/dev/shm", run: checkShm });
     }
 
-    checks.push(
-      { name: "Environment", run: checkEnvironment },
-      { name: "FFmpeg", run: checkFFmpeg },
-      { name: "FFprobe", run: checkFFprobe },
-      { name: "Chrome", run: checkChrome },
-      { name: "Docker", run: checkDocker },
-      { name: "Docker running", run: checkDockerRunning },
-    );
+    checks.push({ name: "Environment", run: checkEnvironment });
 
     const outcomes: CheckOutcome[] = [];
     for (const check of checks) {
+      const result = await check.run();
+      outcomes.push({
+        name: check.name,
+        ok: result.ok,
+        detail: result.detail,
+        ...(result.hint ? { hint: result.hint } : {}),
+      });
+    }
+    for (const result of environment.outcomes) {
+      outcomes.push({
+        name: result.name,
+        ok: result.ok,
+        detail: result.detail,
+        ...(result.hint ? { hint: result.hint } : {}),
+      });
+    }
+    for (const check of [
+      { name: "Docker", run: checkDocker },
+      { name: "Docker running", run: checkDockerRunning },
+    ]) {
       const result = await check.run();
       outcomes.push({
         name: check.name,

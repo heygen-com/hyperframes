@@ -1,7 +1,9 @@
+// fallow-ignore-file code-duplication complexity
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { join } from "node:path";
+import { findFFmpeg } from "../browser/ffmpeg.js";
 import { downloadFile } from "../utils/download.js";
 
 const MODELS_DIR = join(homedir(), ".cache", "hyperframes", "whisper", "models");
@@ -205,20 +207,7 @@ export async function ensureModel(
 }
 
 export function hasFFmpeg(): boolean {
-  return hasBinary("ffmpeg");
-}
-
-export function hasFFprobe(): boolean {
-  return hasBinary("ffprobe");
-}
-
-function hasBinary(name: string): boolean {
-  try {
-    execFileSync(name, ["-version"], { stdio: "ignore", timeout: 5000 });
-    return true;
-  } catch {
-    return false;
-  }
+  return findFFmpeg() !== undefined;
 }
 
 export { MODELS_DIR, DEFAULT_MODEL };

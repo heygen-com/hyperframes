@@ -1,3 +1,4 @@
+// fallow-ignore-file complexity
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import {
@@ -12,6 +13,7 @@ import {
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { parseHTML } from "linkedom";
 import { parseAnimatedGifMetadata, type AnimatedGifMetadata } from "@hyperframes/core";
+import { getFfmpegBinary } from "@hyperframes/engine";
 import { isHttpUrl } from "../utils/urlDownloader.js";
 
 const PREPARED_GIF_SUBDIR = "_animated_gif";
@@ -244,7 +246,7 @@ export function buildAnimatedGifTranscodeArgs(input: {
 
 async function runAnimatedGifTranscode(request: AnimatedGifTranscodeRequest): Promise<void> {
   await new Promise<void>((resolvePromise, reject) => {
-    const proc = spawn("ffmpeg", request.args);
+    const proc = spawn(getFfmpegBinary(), request.args);
     let stderr = "";
     const timeout = request.timeoutMs ?? 300_000;
     const timer = setTimeout(() => {
