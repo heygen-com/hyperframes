@@ -213,6 +213,8 @@
   "dependencies": {
     "@babel/parser": "^7.27.0",
     "@chenglou/pretext": "^0.0.5",
+    "acorn": "^8.17.0",
+    "acorn-walk": "^8.3.5",
     "bpm-detective": "^2.0.5",
     "postcss": "^8.5.8",
     "postcss-selector-parser": "^7.1.2",
