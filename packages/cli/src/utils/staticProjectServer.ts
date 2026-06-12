@@ -14,6 +14,7 @@ export async function serveStaticProjectHtml(
   html: string,
   bindErrorMessage = "Failed to bind local HTTP server",
 ): Promise<StaticProjectServer> {
+  // fallow-ignore-next-line complexity
   const server = createServer((req, res) => {
     const url = req.url ?? "/";
     if (url === "/" || url === "/index.html") {

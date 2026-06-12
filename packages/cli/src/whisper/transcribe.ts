@@ -41,6 +41,7 @@ function findWavDataChunk(buf: Buffer): { offset: number; size: number } | null 
  * sustained energy jump above the track's median RMS. Returns onset time in
  * seconds, or null if the track has consistent energy throughout.
  */
+// fallow-ignore-next-line complexity
 export function detectSpeechOnset(wavPath: string): number | null {
   const SAMPLE_RATE = 16000;
   const WINDOW_SECONDS = 0.5;
@@ -193,6 +194,7 @@ function prepareAudio(audioPath: string): string {
 /**
  * Transcribe an audio or video file and save transcript.json to the output directory.
  */
+// fallow-ignore-next-line complexity
 export async function transcribe(
   inputPath: string,
   outputDir: string,

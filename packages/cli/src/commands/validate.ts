@@ -112,38 +112,14 @@ async function validateInBrowser(
 ): Promise<{ errors: ConsoleEntry[]; warnings: ConsoleEntry[]; contrast?: ContrastEntry[] }> {
   const { bundleToSingleHtml } = await import("@hyperframes/core/compiler");
   const { ensureBrowser } = await import("../browser/manager.js");
+  const { serveStaticProjectHtml } = await import("../utils/staticProjectServer.js");
 
   // `bundleToSingleHtml` now inlines the runtime IIFE by default, so the
   // previous post-bundle regex substitution (which matched `src="..."` on the
   // runtime tag) is no longer needed — there's no `src` attribute to match.
   const html = await bundleToSingleHtml(projectDir);
 
-  const { createServer } = await import("node:http");
-  const { getMimeType } = await import("@hyperframes/core/studio-api");
-
-  const server = createServer((req, res) => {
-    const url = req.url ?? "/";
-    if (url === "/" || url === "/index.html") {
-      res.writeHead(200, { "Content-Type": "text/html" });
-      res.end(html);
-      return;
-    }
-    const filePath = join(projectDir, decodeURIComponent(url));
-    if (existsSync(filePath)) {
-      res.writeHead(200, { "Content-Type": getMimeType(filePath) });
-      res.end(readFileSync(filePath));
-      return;
-    }
-    res.writeHead(404);
-    res.end();
-  });
-
-  const port = await new Promise<number>((resolvePort) => {
-    server.listen(0, () => {
-      const addr = server.address();
-      resolvePort(typeof addr === "object" && addr ? addr.port : 0);
-    });
-  });
+  const server = await serveStaticProjectHtml(projectDir, html);
 
   const errors: ConsoleEntry[] = [];
   const warnings: ConsoleEntry[] = [];
@@ -208,7 +184,7 @@ async function validateInBrowser(
       }
     });
 
-    await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: "domcontentloaded", timeout: 10000 });
+    await page.goto(server.url, { waitUntil: "domcontentloaded", timeout: 10000 });
     await new Promise((r) => setTimeout(r, opts.timeout ?? 3000));
 
     if (opts.contrast) {
@@ -217,7 +193,7 @@ async function validateInBrowser(
 
     await chromeBrowser.close();
   } finally {
-    server.close();
+    await server.close();
   }
 
   return { errors, warnings, contrast };

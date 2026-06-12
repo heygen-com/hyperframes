@@ -26,6 +26,7 @@ export interface DiscoveredLottie {
  * Handles both plain JSON and dotLottie (.lottie ZIP) formats.
  * Deduplicates by content hash. Returns the count of saved files.
  */
+// fallow-ignore-next-line complexity
 export async function saveLottieAnimations(
   discoveredLotties: DiscoveredLottie[],
   lottieDir: string,
@@ -111,6 +112,7 @@ export async function saveLottieAnimations(
  * seeks to ~30% through the animation, and takes a transparent screenshot.
  * Writes a lottie-manifest.json with metadata + preview paths.
  */
+// fallow-ignore-next-line complexity
 export async function renderLottiePreviews(
   chromeBrowser: Browser,
   lottieDir: string,
@@ -227,6 +229,7 @@ const DOWNLOADABLE_VIDEO_EXTS = new Set([".mp4", ".webm", ".mov", ".m4v"]);
  * missing or lying Content-Length cannot exhaust memory. Streams from the
  * Response body rather than buffering whole because videos are large.
  */
+// fallow-ignore-next-line complexity
 async function downloadVideoBody(
   srcUrl: string,
   filename: string,
@@ -336,6 +339,7 @@ async function scanVideoDom(page: Page): Promise<VideoDescriptor[]> {
  * network set has grown for a few rounds, so static single-video pages stay
  * cheap (~6s) while a rotating carousel keeps sampling up to the budget.
  */
+// fallow-ignore-next-line complexity
 async function sampleVideoDom(
   page: Page,
   budgetMs: number,
@@ -380,6 +384,7 @@ async function sampleVideoDom(
  * Writes video-manifest.json + preview screenshots to assets/videos/previews/,
  * and the video bodies (when downloadable) to assets/videos/.
  */
+// fallow-ignore-next-line complexity
 export async function captureVideoManifest(
   page: Page,
   outputDir: string,

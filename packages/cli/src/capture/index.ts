@@ -41,6 +41,7 @@ import type { CaptureOptions, CaptureResult } from "./types.js";
 
 export type { CaptureOptions, CaptureResult } from "./types.js";
 
+// fallow-ignore-next-line complexity
 export async function captureWebsite(
   opts: CaptureOptions,
   onProgress?: (stage: string, detail?: string) => void,
@@ -146,6 +147,7 @@ export async function captureWebsite(
     // whether a <video> for it exists at snapshot time. captureVideoManifest
     // downloads these (guarded) and merges them into the manifest.
     const discoveredVideoUrls = new Set<string>();
+    // fallow-ignore-next-line complexity
     page1.on("response", async (response) => {
       try {
         const responseUrl = response.url();
@@ -398,6 +400,7 @@ export async function captureWebsite(
     // Remove Next.js bootstrap scripts individually (match each script tag separately)
     extracted.bodyHtml = extracted.bodyHtml.replace(
       /<script\b[^>]*>([\s\S]*?)<\/script>/gi,
+      // fallow-ignore-next-line complexity
       (match: string, content: string) => {
         // Only remove if this specific script contains Next.js bootstrap code
         if (

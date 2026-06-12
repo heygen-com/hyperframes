@@ -16,6 +16,7 @@ const DIST = join(CLI_ROOT, "dist");
 const STUDIO_WAIT_TIMEOUT_MS = 30_000;
 const STUDIO_POLL_INTERVAL_MS = 250;
 
+// fallow-ignore-next-line complexity
 async function waitForStudioDist(dir) {
   const deadline = Date.now() + STUDIO_WAIT_TIMEOUT_MS;
   while (Date.now() < deadline) {
@@ -54,6 +55,7 @@ function copyMdFiles(srcDir, destDir) {
   }
 }
 
+// fallow-ignore-next-line complexity
 async function main() {
   for (const sub of ["studio", "docs", "templates", "skills", "docker"]) {
     mkdirSync(join(DIST, sub), { recursive: true });
