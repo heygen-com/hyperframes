@@ -50,7 +50,7 @@ import {
   closeCaptureSession,
   createCaptureSession,
   createFrameReorderBuffer,
-  distributeFrames,
+  distributeFramesInterleaved,
   executeParallelCapture,
   initializeSession,
   prepareCaptureSessionForReuse,
@@ -190,12 +190,16 @@ export async function runCaptureStreamingStage(
     const reorderBuffer = createFrameReorderBuffer(0, totalFrames);
 
     if (workerCount > 1) {
-      // Parallel capture → streaming encode
-      const tasks = distributeFrames(totalFrames, workerCount, workDir);
+      // Parallel capture → streaming encode.
+      // Use interleaved frame distribution so all workers advance in lockstep
+      // and the reorder buffer stays nearly uncontended. With contiguous chunk
+      // distribution, worker 1 would block at its first frame until worker 0
+      // finished its entire chunk — collapsing N workers to effectively 1.
+      const tasks = distributeFramesInterleaved(totalFrames, workerCount, workDir);
 
       const onFrameBuffer = async (frameIndex: number, buffer: Buffer): Promise<void> => {
         await reorderBuffer.waitForFrame(frameIndex);
-        currentEncoder.writeFrame(buffer);
+        await currentEncoder.writeFrame(buffer);
         reorderBuffer.advanceTo(frameIndex + 1);
       };
 
@@ -263,7 +267,7 @@ export async function runCaptureStreamingStage(
           const time = (i * job.config.fps.den) / job.config.fps.num;
           const { buffer } = await captureFrameToBuffer(session, i, time);
           await reorderBuffer.waitForFrame(i);
-          currentEncoder.writeFrame(buffer);
+          await currentEncoder.writeFrame(buffer);
           reorderBuffer.advanceTo(i + 1);
           job.framesRendered = i + 1;
 

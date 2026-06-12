@@ -115,12 +115,18 @@ describe("shouldUseStreamingEncode", () => {
     ).toBe(false);
   });
 
-  it("keeps png-sequence and parallel capture on the non-streaming path", () => {
+  it("keeps png-sequence on the non-streaming path", () => {
     expect(shouldUseStreamingEncode(streamingEnabledConfig, "png-sequence", 1, 240)).toBe(false);
-    expect(shouldUseStreamingEncode(streamingEnabledConfig, "mp4", 2, 240)).toBe(false);
+    expect(shouldUseStreamingEncode(streamingEnabledConfig, "png-sequence", 2, 240)).toBe(false);
   });
 
-  it("keeps renders over the configured max duration on normal encoding", () => {
+  it("enables streaming for multi-worker renders (parallel streaming)", () => {
+    expect(shouldUseStreamingEncode(streamingEnabledConfig, "mp4", 2, 240)).toBe(true);
+    expect(shouldUseStreamingEncode(streamingEnabledConfig, "mp4", 4, 240)).toBe(true);
+  });
+
+  it("applies the duration cap to single-worker (config-driven) and a fixed 1800s cap to multi-worker", () => {
+    // Single-worker: duration cap from config
     expect(shouldUseStreamingEncode(streamingEnabledConfig, "mp4", 1, 240)).toBe(true);
     expect(shouldUseStreamingEncode(streamingEnabledConfig, "mp4", 1, 240.001)).toBe(false);
     expect(
@@ -131,6 +137,21 @@ describe("shouldUseStreamingEncode", () => {
         120.001,
       ),
     ).toBe(false);
+    // Multi-worker: fixed 1800s cap (3× the 548s Hypetech comp; guards Node stdin OOM)
+    expect(shouldUseStreamingEncode(streamingEnabledConfig, "mp4", 2, 548)).toBe(true);
+    expect(shouldUseStreamingEncode(streamingEnabledConfig, "mp4", 2, 1800)).toBe(true);
+    expect(shouldUseStreamingEncode(streamingEnabledConfig, "mp4", 2, 1800.001)).toBe(false);
+    expect(shouldUseStreamingEncode(streamingEnabledConfig, "mp4", 3, 1800)).toBe(true);
+    expect(shouldUseStreamingEncode(streamingEnabledConfig, "mp4", 3, 3600)).toBe(false);
+    // Multi-worker cap is independent of the single-worker config value
+    expect(
+      shouldUseStreamingEncode(
+        { enableStreamingEncode: true, streamingEncodeMaxDurationSeconds: 60 },
+        "mp4",
+        2,
+        1800,
+      ),
+    ).toBe(true);
   });
 });
 

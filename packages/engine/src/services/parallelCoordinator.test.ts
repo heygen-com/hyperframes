@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   calculateOptimalWorkers,
   distributeFrames,
+  distributeFramesInterleaved,
   formatWorkerFailure,
   selectWorkerDiagnostics,
   shouldVerifyWorkerGpu,
@@ -47,6 +48,74 @@ describe("distributeFrames", () => {
   it("assigns sequential worker IDs", () => {
     const tasks = distributeFrames(100, 3, "/tmp/work");
     expect(tasks.map((t) => t.workerId)).toEqual([0, 1, 2]);
+  });
+});
+
+describe("distributeFramesInterleaved", () => {
+  it("assigns worker i frames [i, i+N, i+2N, …] via stride", () => {
+    const tasks = distributeFramesInterleaved(10, 3, "/tmp/work");
+    expect(tasks).toHaveLength(3);
+
+    // worker 0: frames 0, 3, 6, 9  → startFrame=0, stride=3, endFrame=10
+    expect(tasks[0]?.workerId).toBe(0);
+    expect(tasks[0]?.startFrame).toBe(0);
+    expect(tasks[0]?.endFrame).toBe(10);
+    expect(tasks[0]?.stride).toBe(3);
+
+    // worker 1: frames 1, 4, 7  → startFrame=1, stride=3, endFrame=10
+    expect(tasks[1]?.workerId).toBe(1);
+    expect(tasks[1]?.startFrame).toBe(1);
+    expect(tasks[1]?.stride).toBe(3);
+
+    // worker 2: frames 2, 5, 8  → startFrame=2, stride=3, endFrame=10
+    expect(tasks[2]?.workerId).toBe(2);
+    expect(tasks[2]?.startFrame).toBe(2);
+    expect(tasks[2]?.stride).toBe(3);
+  });
+
+  it("all frames are covered exactly once across workers", () => {
+    for (const [total, workers] of [
+      [10, 3],
+      [12, 4],
+      [7, 2],
+      [1, 4],
+    ] as [number, number][]) {
+      const tasks = distributeFramesInterleaved(total, workers, "/tmp/work");
+      const captured = new Set<number>();
+      for (const task of tasks) {
+        for (let i = task.startFrame; i < task.endFrame; i += task.stride ?? 1) {
+          expect(captured.has(i)).toBe(false); // no duplicates
+          captured.add(i);
+        }
+      }
+      expect(captured.size).toBe(Math.min(total, total)); // all frames present
+      for (let i = 0; i < total; i++) {
+        expect(captured.has(i)).toBe(true);
+      }
+    }
+  });
+
+  it("guards workerCount > totalFrames — only spawns as many workers as there are frames", () => {
+    const tasks = distributeFramesInterleaved(2, 5, "/tmp/work");
+    // Only 2 workers should be created (one per frame), not 5
+    expect(tasks).toHaveLength(2);
+    expect(tasks[0]?.startFrame).toBe(0);
+    expect(tasks[1]?.startFrame).toBe(1);
+  });
+
+  it("single worker degenerates to a single task covering all frames with stride=1", () => {
+    const tasks = distributeFramesInterleaved(100, 1, "/tmp/work");
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]?.startFrame).toBe(0);
+    expect(tasks[0]?.endFrame).toBe(100);
+    expect(tasks[0]?.stride).toBe(1);
+  });
+
+  it("assigns worker output directories", () => {
+    const tasks = distributeFramesInterleaved(6, 3, "/tmp/my-work");
+    expect(tasks[0]?.outputDir).toContain("worker-0");
+    expect(tasks[1]?.outputDir).toContain("worker-1");
+    expect(tasks[2]?.outputDir).toContain("worker-2");
   });
 });
 

@@ -6,7 +6,7 @@ type MinimalEngineConfig = {
   ffmpegStreamingTimeout: number;
 };
 
-const writeFrame = mock((_buffer: Buffer) => true);
+const writeFrame = mock(async (_buffer: Buffer) => true);
 const closeEncoder = mock(async () => ({ success: true, durationMs: 123, fileSize: 42 }));
 const spawnStreamingEncoder = mock(async () => ({
   writeFrame,
@@ -36,6 +36,7 @@ mock.module("@hyperframes/engine", () => ({
     advanceTo: () => {},
   }),
   distributeFrames: () => [],
+  distributeFramesInterleaved: () => [],
   executeParallelCapture: async () => {},
   initializeSession: async (session: { isInitialized: boolean }) => {
     if (failInitializeSession) {

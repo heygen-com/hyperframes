@@ -151,6 +151,7 @@ export type {
 export {
   calculateOptimalWorkers,
   distributeFrames,
+  distributeFramesInterleaved,
   executeParallelCapture,
   mergeWorkerFrames,
   getSystemResources,

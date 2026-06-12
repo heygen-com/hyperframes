@@ -1438,8 +1438,20 @@ export function shouldUseStreamingEncode(
   if (outputFormat === "png-sequence") return false;
   if (outputFormat === "gif") return false;
   if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) return false;
-  if (durationSeconds > cfg.streamingEncodeMaxDurationSeconds) return false;
-  return workerCount === 1;
+  // Capture-side: workers serialize through FrameReorderBuffer, so at most
+  // workerCount captured frames are in flight at any moment. The encoder-side
+  // buffer (Node stdin → FFmpeg) is NOT explicitly bounded and relies on FFmpeg
+  // keeping up with workerCount × per-worker-fps. Long comps + slow encode
+  // can still grow Node's internal write buffer — see streamingEncodeMaxDurationSeconds
+  // for the single-worker safeguard.
+  // Multi-worker cap is fixed at 1800s (30 min), independent of the single-worker
+  // config value. Rationale: 1800s is 3× the longest known practical composition
+  // (~548s), giving real-world headroom while keeping worst-case Node buffer growth
+  // below ~20 GB. Adjust if your workloads routinely exceed 30 min.
+  const MULTI_WORKER_MAX_DURATION_SECONDS = 1800;
+  const maxDuration = workerCount === 1 ? cfg.streamingEncodeMaxDurationSeconds : MULTI_WORKER_MAX_DURATION_SECONDS;
+  if (durationSeconds > maxDuration) return false;
+  return workerCount > 0;
 }
 
 /**

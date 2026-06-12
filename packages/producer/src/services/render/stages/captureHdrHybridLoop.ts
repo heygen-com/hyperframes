@@ -185,7 +185,7 @@ export async function runHybridLayeredFrameLoop(input: HybridLoopInput): Promise
     const writeEncoded = async (frameIdx: number, buf: Buffer): Promise<void> => {
       await reorderBuffer.waitForFrame(frameIdx);
       const writeStart = Date.now();
-      hdrEncoder.writeFrame(buf);
+      await hdrEncoder.writeFrame(buf);
       addHdrTiming(hdrPerf, "encoderWriteMs", writeStart);
       reorderBuffer.advanceTo(frameIdx + 1);
       framesWritten += 1;
