@@ -9,6 +9,7 @@ import { compositionRules } from "./rules/composition";
 import { adapterRules } from "./rules/adapters";
 import { textureRules } from "./rules/textures";
 import { fontRules } from "./rules/fonts";
+import { layoutRules } from "./rules/layout";
 
 const ALL_RULES = [
   ...coreRules,
@@ -19,6 +20,7 @@ const ALL_RULES = [
   ...adapterRules,
   ...textureRules,
   ...fontRules,
+  ...layoutRules,
 ];
 
 export async function lintHyperframeHtml(

@@ -1,3 +1,5 @@
+// fallow-ignore-file complexity
+
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, extname, isAbsolute, join, posix, relative, resolve } from "node:path";
 import { lintHyperframeHtml, type HyperframeLintResult } from "@hyperframes/core/lint";
@@ -303,13 +305,17 @@ function lintAudioSrcNotFound(
 
   const audioSrcRe = /<audio\b[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>/gi;
 
+  // `<<{kind}_{id}>>` placeholders are resolved post-finish by the platform.
+  const deferredTokenRe = /<<(?:tts|audio|music|sfx|sound|narration)_[a-zA-Z0-9]+>>/i;
+
   const missingSrcs: string[] = [];
   for (const { html, compSrcPath } of htmlSources) {
     let match: RegExpExecArray | null;
     while ((match = audioSrcRe.exec(html)) !== null) {
       const src = match[1]!;
       if (/^(https?:|data:|blob:)/i.test(src)) continue;
-      if (/^__[A-Z_]+__$/.test(src)) continue; // Skip template placeholders
+      if (/^__[A-Z_]+__$/.test(src)) continue;
+      if (deferredTokenRe.test(src)) continue;
       // Sub-composition srcs are written relative to the sub-composition file
       // (e.g. "../assets/foo.mp3"); the bundler rewrites them to root-relative
       // before serving. Mirror that rewrite here so the existence check sees
