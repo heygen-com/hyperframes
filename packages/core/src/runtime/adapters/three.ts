@@ -9,7 +9,7 @@ export function createThreeAdapter(): RuntimeDeterministicAdapter {
     name: "three",
     discover: () => {},
     seek: (ctx) => {
-      forcedTime = Math.max(0, Number(ctx.time) || 0);
+      forcedTime = window.__hfTimeAnchor ?? Math.max(0, Number(ctx.time) || 0);
       lastForcedTime = forcedTime;
       window.__hfThreeTime = forcedTime;
       dispatchSeekEvent(forcedTime);

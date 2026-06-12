@@ -1625,16 +1625,20 @@ export function initSandboxRuntimeModular(): void {
     setPlaybackRate: applyPlaybackRate,
     getCanonicalFps: () => state.canonicalFps,
     onSyncMedia: (timeSeconds, playing) => {
-      state.currentTime = Math.max(0, Number(timeSeconds) || 0);
+      const t = Math.max(0, Number(timeSeconds) || 0);
+      window.__hfTimeAnchor = t;
+      state.currentTime = t;
       if (state.isPlaying !== playing) state.mediaForceSyncNextTick = true;
       state.isPlaying = playing;
       syncMediaForCurrentState();
     },
     onStatePost: postState,
     onDeterministicSeek: (timeSeconds) => {
+      const t = Number(timeSeconds) || 0;
+      window.__hfTimeAnchor = t;
       for (const adapter of state.deterministicAdapters) {
         try {
-          adapter.seek({ time: Number(timeSeconds) || 0 });
+          adapter.seek({ time: t });
         } catch (err) {
           // ignore adapter failure
           swallow("runtime.init.site11", err);
@@ -1915,6 +1919,7 @@ export function initSandboxRuntimeModular(): void {
     } else {
       seekStandaloneRegisteredTimelines(t);
     }
+    window.__hfTimeAnchor = t;
     for (const adapter of state.deterministicAdapters) {
       try {
         adapter.seek({ time: t });

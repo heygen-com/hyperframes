@@ -73,7 +73,7 @@ export function createTypegpuAdapter(): RuntimeDeterministicAdapter {
     },
 
     seek: (ctx) => {
-      forcedTime = Math.max(0, Number(ctx.time) || 0);
+      forcedTime = window.__hfTimeAnchor ?? Math.max(0, Number(ctx.time) || 0);
       lastForcedTime = forcedTime;
       window.__hfTypegpuTime = forcedTime;
       dispatchSeekEvent(forcedTime);
