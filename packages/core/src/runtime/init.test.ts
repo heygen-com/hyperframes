@@ -413,6 +413,176 @@ describe("initSandboxRuntimeModular", () => {
     expect(sceneB.style.visibility).toBe("visible");
   });
 
+  it("hides GSAP tween targets inside a hidden timed clip (issue #1387)", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "8");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const captionOne = document.createElement("div");
+    captionOne.id = "t01";
+    captionOne.setAttribute("data-start", "0");
+    captionOne.setAttribute("data-duration", "4");
+    root.appendChild(captionOne);
+
+    const lineOne = document.createElement("div");
+    lineOne.className = "line";
+    // Studio stamps full-duration pseudo-clips on GSAP tween targets.
+    lineOne.setAttribute("data-start", "0");
+    lineOne.setAttribute("data-duration", "8");
+    captionOne.appendChild(lineOne);
+
+    const captionTwo = document.createElement("div");
+    captionTwo.id = "t02";
+    captionTwo.setAttribute("data-start", "4");
+    captionTwo.setAttribute("data-duration", "4");
+    root.appendChild(captionTwo);
+
+    const lineTwo = document.createElement("div");
+    lineTwo.className = "line";
+    lineTwo.setAttribute("data-start", "0");
+    lineTwo.setAttribute("data-duration", "8");
+    captionTwo.appendChild(lineTwo);
+
+    window.__timelines = {
+      main: createMockTimeline(8),
+    };
+
+    initSandboxRuntimeModular();
+
+    const player = window.__player;
+    expect(player).toBeDefined();
+
+    player?.seek(1);
+
+    expect(captionOne.style.visibility).toBe("visible");
+    expect(lineOne.style.visibility).toBe("visible");
+    expect(captionTwo.style.visibility).toBe("hidden");
+    expect(lineTwo.style.visibility).toBe("hidden");
+
+    player?.seek(5);
+
+    expect(captionOne.style.visibility).toBe("hidden");
+    expect(lineOne.style.visibility).toBe("hidden");
+    expect(captionTwo.style.visibility).toBe("visible");
+    expect(lineTwo.style.visibility).toBe("visible");
+  });
+
+  it("does not stamp Studio timing on GSAP targets inside authored timed clips", () => {
+    const originalParent = window.parent;
+    Object.defineProperty(window, "parent", {
+      configurable: true,
+      value: {},
+    });
+
+    try {
+      const root = document.createElement("div");
+      root.setAttribute("data-composition-id", "main");
+      root.setAttribute("data-root", "true");
+      root.setAttribute("data-start", "0");
+      root.setAttribute("data-duration", "8");
+      root.setAttribute("data-width", "1920");
+      root.setAttribute("data-height", "1080");
+      document.body.appendChild(root);
+
+      const caption = document.createElement("div");
+      caption.id = "t01";
+      caption.setAttribute("data-start", "0");
+      caption.setAttribute("data-duration", "4");
+      root.appendChild(caption);
+
+      const line = document.createElement("div");
+      line.className = "line";
+      caption.appendChild(line);
+
+      const tweenTarget = {
+        targets: () => [line],
+      };
+      const timeline = createMockTimeline(8) as RuntimeTimelineLike & {
+        getChildren: (nested?: boolean) => Array<{ targets: () => Element[] }>;
+      };
+      timeline.getChildren = () => [tweenTarget];
+
+      window.__timelines = {
+        main: timeline,
+      };
+
+      initSandboxRuntimeModular();
+
+      expect(line.hasAttribute("data-start")).toBe(false);
+      expect(line.hasAttribute("data-duration")).toBe(false);
+    } finally {
+      Object.defineProperty(window, "parent", {
+        configurable: true,
+        value: originalParent,
+      });
+    }
+  });
+
+  it("hides tween targets inside inactive multi-panel beats (niemmo panel stack)", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "niemmo-launch-50");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "50");
+    root.setAttribute("data-width", "1280");
+    root.setAttribute("data-height", "720");
+    document.body.appendChild(root);
+
+    const panelA = document.createElement("div");
+    panelA.className = "panel clip";
+    panelA.setAttribute("data-composition-id", "cold-open");
+    panelA.setAttribute("data-start", "0");
+    panelA.setAttribute("data-duration", "2");
+    root.appendChild(panelA);
+
+    const headlineA = document.createElement("h1");
+    headlineA.className = "co-headline";
+    headlineA.setAttribute("data-start", "0");
+    headlineA.setAttribute("data-duration", "50");
+    panelA.appendChild(headlineA);
+
+    const panelB = document.createElement("div");
+    panelB.className = "panel clip";
+    panelB.setAttribute("data-composition-id", "problem-dev-beat");
+    panelB.setAttribute("data-start", "2");
+    panelB.setAttribute("data-duration", "2.5");
+    root.appendChild(panelB);
+
+    const headlineB = document.createElement("h1");
+    headlineB.className = "pb-headline";
+    headlineB.setAttribute("data-start", "0");
+    headlineB.setAttribute("data-duration", "50");
+    panelB.appendChild(headlineB);
+
+    window.__timelines = {
+      "niemmo-launch-50": createMockTimeline(50),
+    };
+
+    initSandboxRuntimeModular();
+
+    const player = window.__player;
+    expect(player).toBeDefined();
+
+    player?.seek(1);
+
+    expect(panelA.style.visibility).toBe("visible");
+    expect(headlineA.style.visibility).toBe("visible");
+    expect(panelB.style.visibility).toBe("hidden");
+    expect(headlineB.style.visibility).toBe("hidden");
+
+    player?.seek(3);
+
+    expect(panelA.style.visibility).toBe("hidden");
+    expect(headlineA.style.visibility).toBe("hidden");
+    expect(panelB.style.visibility).toBe("visible");
+    expect(headlineB.style.visibility).toBe("visible");
+  });
+
   it("clamps nested media to the authored host window on seek", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
