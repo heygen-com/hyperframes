@@ -217,6 +217,55 @@ function uniqueSortedTimes(times: number[]): number[] {
   return [...new Set(rounded)].sort((a, b) => a - b);
 }
 
+const DEFAULT_TRANSITION_SAMPLE_CAP = 40;
+
+export interface TransitionSampleOptions {
+  duration: number;
+  boundaries: number[];
+  cap?: number;
+}
+
+/**
+ * Build sample times from tween start/end boundaries: the boundaries
+ * themselves plus the midpoint of every segment between consecutive
+ * boundaries. Boundary frames are where transient overlaps live (#1380), but
+ * sampling exactly at a boundary can land on an element at opacity 0 — the
+ * segment midpoints catch the window where both sides of a transition are
+ * partially visible. Capped with an evenly-strided subset so compositions
+ * with hundreds of tweens don't trigger hundreds of seeks.
+ */
+export function buildTransitionSampleTimes({
+  duration,
+  boundaries,
+  cap,
+}: TransitionSampleOptions): number[] {
+  if (!Number.isFinite(duration) || duration <= 0) return [];
+  const inRange = uniqueSortedTimes(
+    boundaries.filter((time) => Number.isFinite(time) && time >= 0 && time <= duration),
+  );
+  const withMidpoints = [...inRange];
+  for (let i = 0; i < inRange.length - 1; i++) {
+    const current = inRange[i];
+    const next = inRange[i + 1];
+    if (current === undefined || next === undefined) continue;
+    withMidpoints.push(roundTime((current + next) / 2));
+  }
+  const merged = uniqueSortedTimes(withMidpoints);
+  const limit = Math.max(2, cap ?? DEFAULT_TRANSITION_SAMPLE_CAP);
+  if (merged.length <= limit) return merged;
+  const strided: number[] = [];
+  for (let i = 0; i < limit; i++) {
+    const pick = merged[Math.floor((i * (merged.length - 1)) / (limit - 1))];
+    if (pick !== undefined) strided.push(pick);
+  }
+  return uniqueSortedTimes(strided);
+}
+
+/** Merge sample-time lists into one deduplicated ascending list. */
+export function mergeSampleTimes(...lists: number[][]): number[] {
+  return uniqueSortedTimes(lists.flat());
+}
+
 function formatOverflow(overflow: LayoutOverflow): string {
   return (["left", "right", "top", "bottom"] as const)
     .flatMap((side) => {

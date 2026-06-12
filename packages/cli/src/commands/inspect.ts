@@ -6,6 +6,10 @@ export const examples: Example[] = [
   ["Inspect a specific project", "hyperframes inspect ./my-video"],
   ["Output agent-readable JSON", "hyperframes inspect --json"],
   ["Use explicit hero-frame timestamps", "hyperframes inspect --at 1.5,4.0,7.25"],
+  [
+    "Also sample at tween boundaries to catch transient overlaps",
+    "hyperframes inspect --at-transitions",
+  ],
   ["Run the compatibility alias", "hyperframes layout --json"],
 ];
 
