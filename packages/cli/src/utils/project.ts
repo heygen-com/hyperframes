@@ -8,23 +8,56 @@ export interface ProjectDir {
   indexPath: string;
 }
 
-export function resolveProject(dirArg: string | undefined): ProjectDir {
+export class InvalidProjectError extends Error {
+  readonly title: string;
+  readonly hint?: string;
+  readonly suggestion?: string;
+
+  constructor(title: string, hint?: string, suggestion?: string) {
+    super(title);
+    this.name = "InvalidProjectError";
+    this.title = title;
+    this.hint = hint;
+    this.suggestion = suggestion;
+  }
+}
+
+export function resolveProjectOrThrow(dirArg: string | undefined): ProjectDir {
+  const trimmed = dirArg?.trim();
+  if (trimmed === "#") {
+    throw new InvalidProjectError(
+      "Invalid project directory: #",
+      "# is a URL fragment, not a project path.",
+      "Run hyperframes preview . from your project directory.",
+    );
+  }
+
   const dir = resolve(dirArg ?? ".");
   const name = basename(dir);
   const indexPath = resolve(dir, "index.html");
 
   if (!existsSync(dir) || !statSync(dir).isDirectory()) {
-    errorBox("Not a directory: " + dir);
-    process.exit(1);
+    throw new InvalidProjectError("Not a directory: " + dir);
   }
   if (!existsSync(indexPath)) {
-    errorBox(
+    throw new InvalidProjectError(
       "No composition found in " + dir,
       "No index.html file found.",
       "Run npx hyperframes init to create a new composition.",
     );
-    process.exit(1);
   }
 
   return { dir, name, indexPath };
+}
+
+export function resolveProject(dirArg: string | undefined): ProjectDir {
+  try {
+    return resolveProjectOrThrow(dirArg);
+  } catch (err) {
+    if (err instanceof InvalidProjectError) {
+      errorBox(err.title, err.hint, err.suggestion);
+      process.exit(1);
+    }
+    throw err;
+  }
 }
