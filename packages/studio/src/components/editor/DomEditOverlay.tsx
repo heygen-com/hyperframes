@@ -13,7 +13,6 @@ import { useDomEditOverlayRects } from "./useDomEditOverlayRects";
 import { createDomEditOverlayGestureHandlers } from "./useDomEditOverlayGestures";
 import { SnapGuideOverlay, type SnapGuidesState } from "./SnapGuideOverlay";
 import { GridOverlay } from "./GridOverlay";
-import { useOffScreenIndicators } from "./useOffScreenIndicators";
 
 // Re-exports for external consumers — preserving existing import paths.
 export {
@@ -215,7 +214,6 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     return () => cancelAnimationFrame(frame);
   });
 
-  const offScreenIndicators = useOffScreenIndicators({ iframeRef, overlayRef, compRect });
 
   const gestures = createDomEditOverlayGestureHandlers({
     overlayRef,
@@ -521,64 +519,6 @@ export const DomEditOverlay = memo(function DomEditOverlay({
             }}
           />
         ))}
-      {offScreenIndicators.length > 0 &&
-        compRect.width > 0 &&
-        offScreenIndicators.map((ind) => {
-          const isSelected = selection?.id === ind.elementId;
-          return (
-            <div
-              key={`offscreen-${ind.key}`}
-              className={`absolute rounded-sm ${isSelected ? "pointer-events-none" : "cursor-grab"}`}
-              style={{
-                left: ind.left,
-                top: ind.top,
-                width: ind.width,
-                height: ind.height,
-                border: `1.5px dashed var(--panel-accent, #34d399)`,
-                opacity: isSelected ? 0.3 : 0.5,
-                zIndex: isSelected ? 1 : 5,
-              }}
-              onPointerDown={
-                isSelected
-                  ? undefined
-                  : (e) => {
-                      if (e.button !== 0) return;
-                      e.stopPropagation();
-                      e.preventDefault();
-                      const startX = e.clientX;
-                      const startY = e.clientY;
-                      const el = e.currentTarget;
-                      el.setPointerCapture(e.pointerId);
-                      let deltaX = 0;
-                      let deltaY = 0;
-                      let moved = false;
-                      const onMove = (me: PointerEvent) => {
-                        deltaX = me.clientX - startX;
-                        deltaY = me.clientY - startY;
-                        if (Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3) moved = true;
-                        if (moved) {
-                          el.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
-                        }
-                      };
-                      const onUp = async (ue: PointerEvent) => {
-                        el.releasePointerCapture(ue.pointerId);
-                        el.removeEventListener("pointermove", onMove);
-                        el.removeEventListener("pointerup", onUp);
-                        el.style.transform = "";
-                        const sel = await onSelectElementById?.(ind.elementId);
-                        if (moved && sel && onPathOffsetCommit) {
-                          const scale = compRect.scaleX || 1;
-                          onPathOffsetCommit(sel, { x: deltaX / scale, y: deltaY / scale });
-                        }
-                      };
-                      el.addEventListener("pointermove", onMove);
-                      el.addEventListener("pointerup", onUp);
-                    }
-              }
-              title={isSelected ? undefined : `Drag #${ind.elementId}`}
-            />
-          );
-        })}
       <GridOverlay
         visible={gridVisible}
         spacing={gridSpacing}
