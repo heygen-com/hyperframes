@@ -403,6 +403,8 @@ export function initSandboxRuntimeModular(): void {
   ): HTMLElement | null => {
     let node = element.parentElement;
     while (node) {
+      // rootComp may be null when no composition is mounted; the walk still
+      // terminates via `while (node)` — node === null is never true here.
       if (node === rootComp) break;
       if (node.hasAttribute("data-start")) {
         return node;
@@ -1500,10 +1502,11 @@ export function initSandboxRuntimeModular(): void {
       if (!(rawNode instanceof HTMLElement)) continue;
 
       let isVisibleNow = isTimedElementVisibleAt(rawNode, state.currentTime);
-      if (isVisibleNow) {
-        // Descendants must not override a hidden ancestor clip. Studio stamps
-        // GSAP tween targets with full-duration pseudo-clips whose inline
-        // visibility:visible would otherwise defeat parent visibility:hidden.
+      // Studio-only defense-in-depth: pseudo-clips stamped on tween targets can
+      // get visibility:visible for the full composition. Render mode never stamps
+      // those targets, so keep the prior per-element visibility semantics there.
+      if (isVisibleNow && window.parent !== window) {
+        // Descendants must not override a hidden ancestor clip.
         let ancestor = rawNode.parentElement;
         while (ancestor) {
           if (ancestor === rootComp) break;
