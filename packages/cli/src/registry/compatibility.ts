@@ -42,3 +42,37 @@ export function checkRegistryItemCompatibility(
       "or upgrade your installed hyperframes CLI.",
   };
 }
+
+/** Thrown by `gateRegistryItemsCompatibility` when an item requires a newer CLI. */
+export class RegistryCompatibilityError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RegistryCompatibilityError";
+  }
+}
+
+/**
+ * Compatibility-gate a set of resolved items (e.g. an item plus its transitive
+ * `registryDependencies`) before any of them are installed. Throws a
+ * `RegistryCompatibilityError` on the first item that requires a newer CLI, so
+ * a partial install never happens; returns the accumulated (non-fatal)
+ * deprecation warnings from every item.
+ *
+ * Every install path — `add`, template fetch, and the Studio "add block"
+ * action — funnels through this so a dependency that ships `minCliVersion` is
+ * rejected uniformly, not just by `hyperframes add`.
+ */
+export function gateRegistryItemsCompatibility(
+  items: RegistryItem[],
+  currentCliVersion = VERSION,
+): string[] {
+  const warnings: string[] = [];
+  for (const item of items) {
+    const result = checkRegistryItemCompatibility(item, currentCliVersion);
+    if (result.error) {
+      throw new RegistryCompatibilityError(result.error);
+    }
+    warnings.push(...result.warnings);
+  }
+  return warnings;
+}

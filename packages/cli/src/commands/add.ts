@@ -16,7 +16,10 @@ import { ITEM_TYPE_DIRS, type RegistryItem } from "@hyperframes/core";
 import { c } from "../ui/colors.js";
 import { installItem, resolveItemsByTag } from "../registry/index.js";
 import { resolveItemWithDependencies } from "../registry/resolver.js";
-import { checkRegistryItemCompatibility } from "../registry/compatibility.js";
+import {
+  gateRegistryItemsCompatibility,
+  RegistryCompatibilityError,
+} from "../registry/compatibility.js";
 import {
   DEFAULT_PROJECT_CONFIG,
   loadProjectConfig,
@@ -109,19 +112,18 @@ export class AddError extends Error {
   }
 }
 
-// Compatibility-gate a set of resolved items before any install runs. Throws
-// an AddError on the first item that requires a newer CLI; otherwise returns
-// the accumulated (non-fatal) warnings from every item.
+// Compatibility-gate a set of resolved items before any install runs, mapping
+// the shared gate's error into an AddError so the command surfaces the right
+// exit code. Returns the accumulated (non-fatal) warnings from every item.
 function assertCompatibleOrThrow(items: RegistryItem[], cliVersion?: string): string[] {
-  const warnings: string[] = [];
-  for (const item of items) {
-    const compatibility = checkRegistryItemCompatibility(item, cliVersion);
-    if (compatibility.error) {
-      throw new AddError(compatibility.error, "incompatible-cli");
+  try {
+    return gateRegistryItemsCompatibility(items, cliVersion);
+  } catch (err) {
+    if (err instanceof RegistryCompatibilityError) {
+      throw new AddError(err.message, "incompatible-cli");
     }
-    warnings.push(...compatibility.warnings);
+    throw err;
   }
-  return warnings;
 }
 
 // Install a topologically-ordered plan (dependencies first, requested item
