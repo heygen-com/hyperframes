@@ -1969,8 +1969,11 @@ export function initSandboxRuntimeModular(): void {
       }
 
       // Keep clock duration in sync with the resolved timeline duration.
-      // Cheap (no DOM reads) and catches async timeline rebinds that happen
-      // outside the 60-tick branch (metadata hydration, deferred setTimeout).
+      // Catches async timeline rebinds that happen outside the 60-tick
+      // branch (metadata hydration, deferred setTimeout). Note: this reads
+      // the DOM each tick (duration floors query authored windows + the
+      // root's declared data-duration), which also keeps live edits to
+      // data-duration in the studio reflected without a rebind.
       if (state.capturedTimeline) {
         const dur = getSafeTimelineDurationSeconds(state.capturedTimeline, 0);
         if (dur > 0) clock.setDuration(dur);

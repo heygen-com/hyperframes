@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { createStaticSeekPlaybackAdapter, wrapTimeline } from "./playbackAdapter";
+import {
+  createStaticSeekPlaybackAdapter,
+  wrapTimeline,
+  resolveStaticSeekFallback,
+  releaseStaticSeekCache,
+  type StaticSeekCacheEntry,
+} from "./playbackAdapter";
 import type {
   RuntimePlaybackAdapter,
   StaticSeekPlaybackClock,
@@ -209,5 +215,84 @@ describe("createStaticSeekPlaybackAdapter seek keepPlaying option", () => {
     expect(adapter.getTime()).toBe(10);
     expect(player.renderSeek).toHaveBeenLastCalledWith(10);
     expect(adapter.isPlaying()).toBe(false);
+  });
+});
+
+describe("static-seek fallback cache (resolveStaticSeekFallback / releaseStaticSeekCache)", () => {
+  function makeClock(): StaticSeekPlaybackClock {
+    return {
+      now: () => 0,
+      requestAnimationFrame: () => 0,
+      cancelAnimationFrame: () => {},
+    };
+  }
+
+  function makePlayer() {
+    return { getTime: () => 0, renderSeek: vi.fn() };
+  }
+
+  function resolve(
+    cache: { current: StaticSeekCacheEntry | null },
+    warned: { current: boolean },
+    player: ReturnType<typeof makePlayer>,
+    duration: number,
+  ) {
+    return resolveStaticSeekFallback({
+      cache,
+      warned,
+      bestAdapter: player as unknown as RuntimePlaybackAdapter,
+      effectiveDuration: duration,
+      docDuration: duration,
+      clock: makeClock(),
+      getPlaybackRate: () => 1,
+    });
+  }
+
+  it("warns once per downgrade streak and re-arms after release", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const cache: { current: StaticSeekCacheEntry | null } = { current: null };
+    const warned = { current: false };
+    const player = makePlayer();
+
+    resolve(cache, warned, player, 10);
+    resolve(cache, warned, player, 11); // cache miss (new duration) — must not warn again
+    expect(warn).toHaveBeenCalledTimes(1);
+
+    releaseStaticSeekCache(cache, warned);
+    resolve(cache, warned, player, 12);
+    expect(warn).toHaveBeenCalledTimes(2);
+    warn.mockRestore();
+  });
+
+  it("returns the cached adapter for the same player and duration", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const cache: { current: StaticSeekCacheEntry | null } = { current: null };
+    const warned = { current: false };
+    const player = makePlayer();
+
+    const first = resolve(cache, warned, player, 10);
+    const second = resolve(cache, warned, player, 10);
+    expect(second).toBe(first);
+    warn.mockRestore();
+  });
+
+  it("pauses the replaced adapter on cache miss and the cached adapter on release", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const cache: { current: StaticSeekCacheEntry | null } = { current: null };
+    const warned = { current: false };
+    const player = makePlayer();
+
+    const first = resolve(cache, warned, player, 10);
+    first.play();
+    expect(first.isPlaying()).toBe(true);
+    const second = resolve(cache, warned, player, 20);
+    expect(first.isPlaying()).toBe(false);
+
+    second.play();
+    expect(second.isPlaying()).toBe(true);
+    releaseStaticSeekCache(cache, warned);
+    expect(second.isPlaying()).toBe(false);
+    expect(cache.current).toBeNull();
+    vi.restoreAllMocks();
   });
 });

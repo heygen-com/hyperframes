@@ -22,12 +22,14 @@ export {
   shouldIgnorePlaybackShortcutTarget,
 } from "../lib/playbackShortcuts";
 
-import type { PlaybackAdapter, RuntimePlaybackAdapter, IframeWindow } from "../lib/playbackTypes";
+import type { PlaybackAdapter, IframeWindow } from "../lib/playbackTypes";
 import {
   getAdapterDuration,
   wrapTimeline,
-  createStaticSeekPlaybackAdapter,
   getDefaultStaticSeekPlaybackClock,
+  releaseStaticSeekCache,
+  resolveStaticSeekFallback,
+  type StaticSeekCacheEntry,
 } from "../lib/playbackAdapter";
 import {
   readTimelineDurationFromDocument,
@@ -53,11 +55,8 @@ export function useTimelinePlayer() {
   const shuttleSpeedIndexRef = useRef(0);
   const iframeShortcutCleanupRef = useRef<(() => void) | null>(null);
   const lastTimelineMessageRef = useRef<number>(0);
-  const staticSeekAdapterRef = useRef<{
-    player: RuntimePlaybackAdapter | PlaybackAdapter;
-    duration: number;
-    adapter: PlaybackAdapter;
-  } | null>(null);
+  const staticSeekAdapterRef = useRef<StaticSeekCacheEntry | null>(null);
+  const staticSeekWarnedRef = useRef(false);
 
   const { setIsPlaying, setCurrentTime, setDuration, setTimelineReady, setElements } =
     usePlayerStore.getState();
@@ -141,6 +140,7 @@ export function useTimelinePlayer() {
       const adapterDur = getAdapterDuration(playerAdapter);
 
       if (adapterDur > 0 && docDuration <= adapterDur) {
+        releaseStaticSeekCache(staticSeekAdapterRef, staticSeekWarnedRef);
         return playerAdapter;
       }
 
@@ -148,7 +148,10 @@ export function useTimelinePlayer() {
       if (win.__timeline) {
         const adapter = wrapTimeline(win.__timeline);
         const dur = getAdapterDuration(adapter);
-        if (dur > 0 && docDuration <= dur) return adapter;
+        if (dur > 0 && docDuration <= dur) {
+          releaseStaticSeekCache(staticSeekAdapterRef, staticSeekWarnedRef);
+          return adapter;
+        }
         if (dur > 0) timelineAdapter ??= adapter;
       }
 
@@ -163,7 +166,10 @@ export function useTimelinePlayer() {
           const key = rootId && rootId in win.__timelines ? rootId : keys[keys.length - 1];
           const adapter = wrapTimeline(win.__timelines[key]);
           const dur = getAdapterDuration(adapter);
-          if (dur > 0 && docDuration <= dur) return adapter;
+          if (dur > 0 && docDuration <= dur) {
+            releaseStaticSeekCache(staticSeekAdapterRef, staticSeekWarnedRef);
+            return adapter;
+          }
           if (dur > 0) timelineAdapter ??= adapter;
         }
       }
@@ -182,26 +188,15 @@ export function useTimelinePlayer() {
         effectiveDuration > 0 &&
         ("renderSeek" in bestAdapter || typeof bestAdapter.seek === "function")
       ) {
-        const cached = staticSeekAdapterRef.current;
-        if (cached?.player === bestAdapter && cached.duration === effectiveDuration) {
-          return cached.adapter;
-        }
-        cached?.adapter.pause();
-        console.warn(
-          `[hyperframes-studio] Composition timeline duration (${adapterDur}s) does not cover the document duration (${docDuration}s); falling back to seek-driven playback, which never starts media elements or WebAudio. Audio will not play in preview — extend the GSAP timeline to cover the declared data-duration.`,
-        );
-        const adapter = createStaticSeekPlaybackAdapter(
+        return resolveStaticSeekFallback({
+          cache: staticSeekAdapterRef,
+          warned: staticSeekWarnedRef,
           bestAdapter,
           effectiveDuration,
-          getDefaultStaticSeekPlaybackClock(win),
-          () => usePlayerStore.getState().playbackRate,
-        );
-        staticSeekAdapterRef.current = {
-          player: bestAdapter,
-          duration: effectiveDuration,
-          adapter,
-        };
-        return adapter;
+          docDuration,
+          clock: getDefaultStaticSeekPlaybackClock(win),
+          getPlaybackRate: () => usePlayerStore.getState().playbackRate,
+        });
       }
 
       return bestAdapter;
@@ -562,6 +557,7 @@ export function useTimelinePlayer() {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       stopRAFLoop();
       stopReverseLoop();
+      releaseStaticSeekCache(staticSeekAdapterRef, staticSeekWarnedRef);
       if (probeIntervalRef.current) clearInterval(probeIntervalRef.current);
     };
   });
