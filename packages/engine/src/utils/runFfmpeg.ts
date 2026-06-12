@@ -6,7 +6,7 @@
  */
 
 import { spawn } from "child_process";
-import { trackChildProcess } from "./processTracker.js";
+import { killWithEscalation, trackChildProcess } from "./processTracker.js";
 
 export interface RunFfmpegOptions {
   signal?: AbortSignal;
@@ -63,21 +63,22 @@ export async function runFfmpeg(args: string[], opts?: RunFfmpegOptions): Promis
     const ffmpeg = spawn("ffmpeg", args);
     trackChildProcess(ffmpeg);
     let stderr = "";
+    const cancelEscalations: Array<() => void> = [];
 
     const onAbort = () => {
-      ffmpeg.kill("SIGTERM");
+      cancelEscalations.push(killWithEscalation(ffmpeg));
     };
 
     if (signal) {
       if (signal.aborted) {
-        ffmpeg.kill("SIGTERM");
+        onAbort();
       } else {
         signal.addEventListener("abort", onAbort, { once: true });
       }
     }
 
     const timer = setTimeout(() => {
-      ffmpeg.kill("SIGTERM");
+      cancelEscalations.push(killWithEscalation(ffmpeg));
     }, timeout);
 
     ffmpeg.stderr.on("data", (data: Buffer) => {
@@ -88,9 +89,14 @@ export async function runFfmpeg(args: string[], opts?: RunFfmpegOptions): Promis
       }
     });
 
-    ffmpeg.on("close", (code) => {
+    const cleanup = () => {
       clearTimeout(timer);
+      for (const cancel of cancelEscalations) cancel();
       if (signal) signal.removeEventListener("abort", onAbort);
+    };
+
+    ffmpeg.on("close", (code) => {
+      cleanup();
       resolve({
         success: !signal?.aborted && code === 0,
         exitCode: code,
@@ -100,8 +106,7 @@ export async function runFfmpeg(args: string[], opts?: RunFfmpegOptions): Promis
     });
 
     ffmpeg.on("error", (err) => {
-      clearTimeout(timer);
-      if (signal) signal.removeEventListener("abort", onAbort);
+      cleanup();
       resolve({
         success: false,
         exitCode: null,

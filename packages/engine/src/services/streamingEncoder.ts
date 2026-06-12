@@ -13,7 +13,7 @@
  */
 
 import { spawn, type ChildProcess } from "child_process";
-import { trackChildProcess } from "../utils/processTracker.js";
+import { killWithEscalation, trackChildProcess } from "../utils/processTracker.js";
 import { existsSync, mkdirSync, statSync } from "fs";
 import { dirname } from "path";
 
@@ -390,6 +390,7 @@ export async function spawnStreamingEncoder(
   let exitCode: number | null = null;
   let exitPromiseResolve: ((value: void) => void) | null = null;
   const exitPromise = new Promise<void>((resolve) => (exitPromiseResolve = resolve));
+  const cancelEscalations: Array<() => void> = [];
 
   // Track stderr for progress and error messages
   ffmpeg.stderr?.on("data", (data: Buffer) => {
@@ -397,12 +398,14 @@ export async function spawnStreamingEncoder(
   });
 
   ffmpeg.on("close", (code: number | null) => {
+    for (const cancel of cancelEscalations) cancel();
     exitCode = code;
     exitStatus = code === 0 ? "success" : "error";
     exitPromiseResolve?.();
   });
 
   ffmpeg.on("error", (err: Error) => {
+    for (const cancel of cancelEscalations) cancel();
     exitStatus = "error";
     stderr += `\nProcess error: ${err.message}`;
     exitPromiseResolve?.();
@@ -414,12 +417,12 @@ export async function spawnStreamingEncoder(
   // Handle abort signal
   const onAbort = () => {
     if (exitStatus === "running") {
-      ffmpeg.kill("SIGTERM");
+      cancelEscalations.push(killWithEscalation(ffmpeg));
     }
   };
   if (signal) {
     if (signal.aborted) {
-      ffmpeg.kill("SIGTERM");
+      onAbort();
     } else {
       signal.addEventListener("abort", onAbort, { once: true });
     }
@@ -440,7 +443,7 @@ export async function spawnStreamingEncoder(
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => {
       if (exitStatus === "running") {
-        ffmpeg.kill("SIGTERM");
+        cancelEscalations.push(killWithEscalation(ffmpeg));
       }
     }, streamingTimeout);
   };
