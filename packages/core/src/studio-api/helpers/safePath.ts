@@ -9,6 +9,18 @@ export function isSafePath(base: string, resolved: string): boolean {
 
 const IGNORE_DIRS = new Set([".thumbnails", "node_modules", ".git"]);
 
+/**
+ * True when any directory segment of a relative path is a dot-directory or
+ * node_modules. Projects that vendor tooling assets under dot-directories
+ * (.hyperframes/, .cache/, …) ship example/preset HTML that must not surface
+ * as project compositions or studio lint targets (#1384). The file tree is
+ * deliberately not filtered — this only gates discovery.
+ */
+export function isInHiddenOrVendorDir(relPath: string): boolean {
+  const segments = relPath.split("/");
+  return segments.slice(0, -1).some((seg) => seg.startsWith(".") || seg === "node_modules");
+}
+
 /** Recursively walk a directory and return relative file paths. */
 export function walkDir(dir: string, prefix = ""): string[] {
   const files: string[] = [];
