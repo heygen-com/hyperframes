@@ -38,6 +38,20 @@ function makeHostDocument(compId: string) {
 }
 
 describe("inlineSubCompositions – #ID selector scoping divergence", () => {
+  it("throws an actionable error when a resolved sub-composition file is empty", () => {
+    const document = makeHostDocument("intro");
+    const host = document.querySelector('[data-composition-src="intro.html"]')!;
+
+    expect(() =>
+      inlineSubCompositions(document, [host], {
+        resolveHtml: () => "",
+        parseHtml: (html) => parseHTML(html).document,
+      }),
+    ).toThrow(
+      "Composition HTML is empty or could not be parsed: intro.html. Check that the file referenced by data-composition-src contains valid HTML.",
+    );
+  });
+
   it("producer path (no flattenInnerRoot): strips inner root, losing #id attribute", () => {
     const document = makeHostDocument("intro");
     const host = document.querySelector('[data-composition-src="intro.html"]')!;

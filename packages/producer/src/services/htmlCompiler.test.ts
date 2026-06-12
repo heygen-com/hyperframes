@@ -491,6 +491,35 @@ describe("detectRenderModeHints", () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  it("compileForRender reports empty sub-composition HTML with an actionable error", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-empty-subcomp-"));
+    const compositionsDir = join(projectDir, "compositions");
+    mkdirSync(compositionsDir, { recursive: true });
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html>
+<html>
+  <head></head>
+  <body>
+    <div data-composition-id="main" data-width="100" data-height="100" data-start="0" data-duration="1">
+      <div data-composition-id="intro" data-composition-src="compositions/intro.html" data-start="0" data-duration="1"></div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines.main = { duration: function() { return 1; } };
+    </script>
+  </body>
+</html>`,
+    );
+    writeFileSync(join(compositionsDir, "intro.html"), "");
+
+    await expect(
+      compileForRender(projectDir, join(projectDir, "index.html"), projectDir),
+    ).rejects.toThrow(
+      "Composition HTML is empty or could not be parsed: compositions/intro.html. Check that the file referenced by data-composition-src contains valid HTML.",
+    );
+  });
 });
 
 describe("detectShaderTransitionUsage", () => {
