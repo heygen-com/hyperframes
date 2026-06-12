@@ -132,7 +132,11 @@ export async function resolveItemWithDependencies(
   const ordered: RegistryItem[] = [];
   const itemCache = new Map<string, Promise<RegistryItem>>();
 
-  const getItem = (itemName: string): Promise<RegistryItem> => {
+  // `async` so the missing-dependency path surfaces as a promise rejection
+  // rather than a synchronous throw, keeping the control flow consistent with
+  // the `Promise<RegistryItem>` return type. The body has no `await`, so the
+  // cache is still populated synchronously on first request (dedup intact).
+  const getItem = async (itemName: string): Promise<RegistryItem> => {
     const existing = itemCache.get(itemName);
     if (existing) return existing;
 
