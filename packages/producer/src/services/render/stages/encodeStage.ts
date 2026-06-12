@@ -31,12 +31,13 @@
 import { copyFileSync, existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
-  DEFAULT_CONFIG,
   encodeFramesChunkedConcat,
   encodeFramesFromDir,
   formatFfmpegError,
   getEncoderPreset,
+  resolveConfig,
   runFfmpeg,
+  type EngineConfig,
   type EncodeResult,
 } from "@hyperframes/engine";
 import type { Fps } from "@hyperframes/core";
@@ -83,6 +84,8 @@ export interface EncodeStageInput {
   /** Producer config — enables the chunked-concat encoder when on. */
   enableChunkedEncode: boolean;
   chunkedEncodeSize: number;
+  /** Already-resolved engine config from the orchestrator; direct callers fall back below. */
+  engineConfig?: Pick<EngineConfig, "ffmpegEncodeTimeout">;
   abortSignal: AbortSignal | undefined;
   assertNotAborted: () => void;
   onProgress?: ProgressCallback;
@@ -241,6 +244,8 @@ export async function runEncodeStage(input: EncodeStageInput): Promise<EncodeSta
     return { encodeMs: Date.now() - stage5Start };
   }
 
+  const engineCfg = input.engineConfig ?? job.config.producerConfig ?? resolveConfig();
+
   if (isGif) {
     // ── Stage 5 (gif): two-pass palette encode ───────────────────────
     updateJobStatus(job, "encoding", "Encoding GIF", 75, onProgress);
@@ -254,7 +259,7 @@ export async function runEncodeStage(input: EncodeStageInput): Promise<EncodeSta
       loop,
       palettePath: join(dirname(videoOnlyPath), "gif-palette.png"),
       signal: abortSignal,
-      timeout: job.config.producerConfig?.ffmpegEncodeTimeout ?? DEFAULT_CONFIG.ffmpegEncodeTimeout,
+      timeout: engineCfg.ffmpegEncodeTimeout,
     });
     assertNotAborted();
     if (!encodeResult.success) {
@@ -293,8 +298,16 @@ export async function runEncodeStage(input: EncodeStageInput): Promise<EncodeSta
         encoderOpts,
         chunkedEncodeSize,
         abortSignal,
+        engineCfg,
       )
-    : await encodeFramesFromDir(framesDir, framePattern, videoOnlyPath, encoderOpts, abortSignal);
+    : await encodeFramesFromDir(
+        framesDir,
+        framePattern,
+        videoOnlyPath,
+        encoderOpts,
+        abortSignal,
+        engineCfg,
+      );
   assertNotAborted();
 
   if (!encodeResult.success) {

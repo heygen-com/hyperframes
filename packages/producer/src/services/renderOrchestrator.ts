@@ -2254,6 +2254,7 @@ export async function executeRenderJob(
               effectiveBitrate,
               enableChunkedEncode,
               chunkedEncodeSize,
+              engineConfig: cfg,
               abortSignal,
               assertNotAborted,
               onProgress,

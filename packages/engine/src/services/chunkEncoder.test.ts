@@ -1,5 +1,92 @@
-import { describe, it, expect, vi } from "vitest";
+import { EventEmitter } from "node:events";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { ENCODER_PRESETS, getEncoderPreset, buildEncoderArgs } from "./chunkEncoder.js";
+
+const TINY_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAACXBIWXMAAAABAAAAAQBPJcTWAAAAEElEQVR4nGP8wwACLGCSAQANBAECv1AVswAAAABJRU5ErkJggg==",
+  "base64",
+);
+
+const tempDirs: string[] = [];
+
+afterEach(() => {
+  for (const dir of tempDirs.splice(0)) {
+    rmSync(dir, { recursive: true, force: true });
+  }
+  vi.resetModules();
+  vi.doUnmock("child_process");
+  vi.useRealTimers();
+});
+
+function createFrameFixture(): { root: string; framesDir: string } {
+  const root = mkdtempSync(join(tmpdir(), "hf-chunk-encoder-"));
+  tempDirs.push(root);
+  const framesDir = join(root, "frames");
+  mkdirSync(framesDir);
+  for (let i = 1; i <= 2; i++) {
+    writeFileSync(join(framesDir, `frame_${String(i).padStart(6, "0")}.png`), TINY_PNG);
+  }
+  return { root, framesDir };
+}
+
+const tinyEncodeOptions = {
+  fps: { num: 30, den: 1 },
+  width: 2,
+  height: 2,
+  codec: "h264" as const,
+  preset: "ultrafast",
+  quality: 28,
+  pixelFormat: "yuv420p",
+  useGpu: false,
+};
+
+function encodeTimeoutMessage(timeoutMs: number): string {
+  return `FFmpeg killed after exceeding ffmpegEncodeTimeout (${timeoutMs} ms)`;
+}
+
+type FakeProc = EventEmitter & {
+  stderr: EventEmitter;
+  kill: ReturnType<typeof vi.fn>;
+  killed: boolean;
+};
+
+type SpawnCall = {
+  command: string;
+  args: readonly string[];
+  proc: FakeProc;
+};
+
+function createFakeProc(): FakeProc {
+  const proc = new EventEmitter() as FakeProc;
+  proc.stderr = new EventEmitter();
+  proc.kill = vi.fn(() => {
+    proc.killed = true;
+    return true;
+  });
+  proc.killed = false;
+  return proc;
+}
+
+function createSpawnSpy(): {
+  spawn: (command: string, args: readonly string[]) => FakeProc;
+  calls: SpawnCall[];
+} {
+  const calls: SpawnCall[] = [];
+  const spawn = (command: string, args: readonly string[]): FakeProc => {
+    const proc = createFakeProc();
+    calls.push({ command, args, proc });
+    return proc;
+  };
+  return { spawn, calls };
+}
+
+function emitClose(proc: FakeProc, code: number): void {
+  proc.emit("exit", code);
+  proc.emit("close", code);
+}
 
 describe("ENCODER_PRESETS", () => {
   it("has draft, standard, and high presets", () => {
@@ -23,6 +110,248 @@ describe("ENCODER_PRESETS", () => {
   it("standard sits between draft and high in quality", () => {
     expect(ENCODER_PRESETS.standard.quality).toBeGreaterThan(ENCODER_PRESETS.high.quality);
     expect(ENCODER_PRESETS.standard.quality).toBeLessThan(ENCODER_PRESETS.draft.quality);
+  });
+});
+
+describe("encodeFramesFromDir ffmpegEncodeTimeout", () => {
+  it("kills ffmpeg when config timeout elapses", async () => {
+    vi.useFakeTimers();
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { encodeFramesFromDir } = await import("./chunkEncoder.js");
+    const { root, framesDir } = createFrameFixture();
+
+    const encodePromise = encodeFramesFromDir(
+      framesDir,
+      "frame_%06d.png",
+      join(root, "timeout.mp4"),
+      tinyEncodeOptions,
+      undefined,
+      { ffmpegEncodeTimeout: 1000 },
+    );
+
+    expect(calls).toHaveLength(1);
+    const proc = calls[0]!.proc;
+    vi.advanceTimersByTime(999);
+    expect(proc.kill).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(1);
+    expect(proc.kill).toHaveBeenCalledWith("SIGTERM");
+
+    proc.stderr.emit("data", Buffer.from("terminated by timeout\n"));
+    emitClose(proc, 143);
+
+    const result = await encodePromise;
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("FFmpeg exited with code 143");
+    expect(result.error).toContain("terminated by timeout");
+    expect(result.error).toContain(encodeTimeoutMessage(1000));
+  });
+
+  it("keeps non-timeout ffmpeg failures unchanged", async () => {
+    vi.useFakeTimers();
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { encodeFramesFromDir } = await import("./chunkEncoder.js");
+    const { root, framesDir } = createFrameFixture();
+
+    const encodePromise = encodeFramesFromDir(
+      framesDir,
+      "frame_%06d.png",
+      join(root, "failure.mp4"),
+      tinyEncodeOptions,
+      undefined,
+      { ffmpegEncodeTimeout: 1000 },
+    );
+
+    expect(calls).toHaveLength(1);
+    const proc = calls[0]!.proc;
+    proc.stderr.emit("data", Buffer.from("encoder failed\n"));
+    emitClose(proc, 1);
+
+    const result = await encodePromise;
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("FFmpeg exited with code 1");
+    expect(result.error).toContain("encoder failed");
+    expect(result.error).not.toContain("ffmpegEncodeTimeout");
+  });
+
+  it("uses the default timeout when config is omitted", async () => {
+    vi.useFakeTimers();
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { encodeFramesFromDir } = await import("./chunkEncoder.js");
+    const { root, framesDir } = createFrameFixture();
+
+    const encodePromise = encodeFramesFromDir(
+      framesDir,
+      "frame_%06d.png",
+      join(root, "default.mp4"),
+      tinyEncodeOptions,
+    );
+
+    expect(calls).toHaveLength(1);
+    const proc = calls[0]!.proc;
+    vi.advanceTimersByTime(599_999);
+    expect(proc.kill).not.toHaveBeenCalled();
+
+    emitClose(proc, 0);
+
+    const result = await encodePromise;
+    expect(result.success).toBe(true);
+    expect(result.framesEncoded).toBe(2);
+    expect(result.fileSize).toBe(0);
+  });
+});
+
+describe("encodeFramesChunkedConcat ffmpegEncodeTimeout", () => {
+  it("passes config timeout to per-chunk encodes", async () => {
+    vi.useFakeTimers();
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { encodeFramesChunkedConcat } = await import("./chunkEncoder.js");
+    const { root, framesDir } = createFrameFixture();
+
+    const encodePromise = encodeFramesChunkedConcat(
+      framesDir,
+      "frame_%06d.png",
+      join(root, "chunked.mp4"),
+      tinyEncodeOptions,
+      30,
+      undefined,
+      { ffmpegEncodeTimeout: 1000 },
+    );
+
+    expect(calls).toHaveLength(1);
+    const proc = calls[0]!.proc;
+    vi.advanceTimersByTime(999);
+    expect(proc.kill).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(1);
+    expect(proc.kill).toHaveBeenCalledWith("SIGTERM");
+
+    proc.stderr.emit("data", Buffer.from("chunk timeout\n"));
+    emitClose(proc, 143);
+
+    const result = await encodePromise;
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Chunk 0 encode failed");
+    expect(result.error).toContain("chunk timeout");
+    expect(result.error).toContain(encodeTimeoutMessage(1000));
+  });
+
+  it("keeps non-timeout chunk failures unchanged", async () => {
+    vi.useFakeTimers();
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { encodeFramesChunkedConcat } = await import("./chunkEncoder.js");
+    const { root, framesDir } = createFrameFixture();
+
+    const encodePromise = encodeFramesChunkedConcat(
+      framesDir,
+      "frame_%06d.png",
+      join(root, "chunked-failure.mp4"),
+      tinyEncodeOptions,
+      30,
+      undefined,
+      { ffmpegEncodeTimeout: 1000 },
+    );
+
+    expect(calls).toHaveLength(1);
+    const proc = calls[0]!.proc;
+    proc.stderr.emit("data", Buffer.from("chunk failed\n"));
+    emitClose(proc, 1);
+
+    const result = await encodePromise;
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("Chunk 0 encode failed: chunk failed\n");
+    expect(result.error).not.toContain("ffmpegEncodeTimeout");
+  });
+
+  it("kills concat ffmpeg when config timeout elapses", async () => {
+    vi.useFakeTimers();
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { encodeFramesChunkedConcat } = await import("./chunkEncoder.js");
+    const { root, framesDir } = createFrameFixture();
+
+    const encodePromise = encodeFramesChunkedConcat(
+      framesDir,
+      "frame_%06d.png",
+      join(root, "concat-timeout.mp4"),
+      tinyEncodeOptions,
+      30,
+      undefined,
+      { ffmpegEncodeTimeout: 1000 },
+    );
+
+    expect(calls).toHaveLength(1);
+    emitClose(calls[0]!.proc, 0);
+    await Promise.resolve();
+
+    expect(calls).toHaveLength(2);
+    const concatProc = calls[1]!.proc;
+    vi.advanceTimersByTime(999);
+    expect(concatProc.kill).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(1);
+    expect(concatProc.kill).toHaveBeenCalledWith("SIGTERM");
+
+    concatProc.stderr.emit("data", Buffer.from("concat timeout\n"));
+    emitClose(concatProc, 143);
+
+    const result = await encodePromise;
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Chunk concat failed");
+    expect(result.error).toContain("concat timeout");
+    expect(result.error).toContain(encodeTimeoutMessage(1000));
+  });
+
+  it("uses the default timeout for per-chunk encodes when config is omitted", async () => {
+    vi.useFakeTimers();
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { encodeFramesChunkedConcat } = await import("./chunkEncoder.js");
+    const { root, framesDir } = createFrameFixture();
+
+    const encodePromise = encodeFramesChunkedConcat(
+      framesDir,
+      "frame_%06d.png",
+      join(root, "chunked-default.mp4"),
+      tinyEncodeOptions,
+      30,
+    );
+
+    expect(calls).toHaveLength(1);
+    const chunkProc = calls[0]!.proc;
+    vi.advanceTimersByTime(599_999);
+    expect(chunkProc.kill).not.toHaveBeenCalled();
+
+    emitClose(chunkProc, 0);
+    await Promise.resolve();
+
+    expect(calls).toHaveLength(2);
+    const concatProc = calls[1]!.proc;
+    emitClose(concatProc, 0);
+
+    const result = await encodePromise;
+    expect(result.success).toBe(true);
+    expect(result.framesEncoded).toBe(2);
+    expect(result.fileSize).toBe(0);
   });
 });
 

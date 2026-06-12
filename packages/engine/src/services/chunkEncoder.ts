@@ -39,6 +39,11 @@ export interface EncoderPreset {
   hdr?: { transfer: HdrTransfer };
 }
 
+function appendEncodeTimeoutMessage(error: string, timedOut: boolean, timeoutMs: number): string {
+  if (!timedOut) return error;
+  return `${error}\nFFmpeg killed after exceeding ffmpegEncodeTimeout (${timeoutMs} ms)`;
+}
+
 /**
  * Get encoder preset for a given quality and output format.
  * WebM uses VP9 with alpha-capable pixel format; MP4 uses h264 (or h265 for HDR);
@@ -428,7 +433,9 @@ export async function encodeFramesFromDir(
     }
 
     const encodeTimeout = config?.ffmpegEncodeTimeout ?? DEFAULT_CONFIG.ffmpegEncodeTimeout;
+    let timedOut = false;
     const timer = setTimeout(() => {
+      timedOut = true;
       ffmpeg.kill("SIGTERM");
     }, encodeTimeout);
 
@@ -440,7 +447,7 @@ export async function encodeFramesFromDir(
       clearTimeout(timer);
       if (signal) signal.removeEventListener("abort", onAbort);
       const durationMs = Date.now() - startTime;
-      if (signal?.aborted) {
+      if (signal?.aborted && !timedOut) {
         resolve({
           success: false,
           outputPath,
@@ -452,14 +459,18 @@ export async function encodeFramesFromDir(
         return;
       }
 
-      if (code !== 0) {
+      if (code !== 0 || timedOut) {
         resolve({
           success: false,
           outputPath,
           durationMs,
           framesEncoded: 0,
           fileSize: 0,
-          error: formatFfmpegError(code, stderr),
+          error: appendEncodeTimeoutMessage(
+            formatFfmpegError(code, stderr),
+            timedOut,
+            encodeTimeout,
+          ),
         });
         return;
       }
@@ -477,7 +488,7 @@ export async function encodeFramesFromDir(
         durationMs: Date.now() - startTime,
         framesEncoded: 0,
         fileSize: 0,
-        error: `[FFmpeg] ${err.message}`,
+        error: appendEncodeTimeoutMessage(`[FFmpeg] ${err.message}`, timedOut, encodeTimeout),
       });
     });
   });
@@ -490,6 +501,7 @@ export async function encodeFramesChunkedConcat(
   options: EncoderOptions,
   chunkSizeFrames: number,
   signal?: AbortSignal,
+  config?: Partial<Pick<EngineConfig, "ffmpegEncodeTimeout">>,
 ): Promise<EncodeResult> {
   const start = Date.now();
   const files = readdirSync(framesDir)
@@ -548,15 +560,39 @@ export async function encodeFramesChunkedConcat(
       const ffmpeg = spawn(getFfmpegBinary(), args);
       trackChildProcess(ffmpeg);
       let stderr = "";
+      const encodeTimeout = config?.ffmpegEncodeTimeout ?? DEFAULT_CONFIG.ffmpegEncodeTimeout;
+      let timedOut = false;
+      const timer = setTimeout(() => {
+        timedOut = true;
+        ffmpeg.kill("SIGTERM");
+      }, encodeTimeout);
       ffmpeg.stderr.on("data", (d) => {
         stderr += d.toString();
       });
       ffmpeg.on("close", (code) => {
-        if (code === 0) resolve({ success: true });
-        else resolve({ success: false, error: `Chunk ${i} encode failed: ${stderr.slice(-400)}` });
+        clearTimeout(timer);
+        if (code === 0 && !timedOut) resolve({ success: true });
+        else {
+          resolve({
+            success: false,
+            error: appendEncodeTimeoutMessage(
+              `Chunk ${i} encode failed: ${stderr.slice(-400)}`,
+              timedOut,
+              encodeTimeout,
+            ),
+          });
+        }
       });
       ffmpeg.on("error", (err) => {
-        resolve({ success: false, error: `Chunk ${i} encode error: ${err.message}` });
+        clearTimeout(timer);
+        resolve({
+          success: false,
+          error: appendEncodeTimeoutMessage(
+            `Chunk ${i} encode error: ${err.message}`,
+            timedOut,
+            encodeTimeout,
+          ),
+        });
       });
     });
     if (!chunkResult.success) {
@@ -592,15 +628,39 @@ export async function encodeFramesChunkedConcat(
     const ffmpeg = spawn(getFfmpegBinary(), concatArgs);
     trackChildProcess(ffmpeg);
     let stderr = "";
+    const encodeTimeout = config?.ffmpegEncodeTimeout ?? DEFAULT_CONFIG.ffmpegEncodeTimeout;
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      ffmpeg.kill("SIGTERM");
+    }, encodeTimeout);
     ffmpeg.stderr.on("data", (d) => {
       stderr += d.toString();
     });
     ffmpeg.on("close", (code) => {
-      if (code === 0) resolve({ success: true });
-      else resolve({ success: false, error: `Chunk concat failed: ${stderr.slice(-400)}` });
+      clearTimeout(timer);
+      if (code === 0 && !timedOut) resolve({ success: true });
+      else {
+        resolve({
+          success: false,
+          error: appendEncodeTimeoutMessage(
+            `Chunk concat failed: ${stderr.slice(-400)}`,
+            timedOut,
+            encodeTimeout,
+          ),
+        });
+      }
     });
     ffmpeg.on("error", (err) => {
-      resolve({ success: false, error: `Chunk concat error: ${err.message}` });
+      clearTimeout(timer);
+      resolve({
+        success: false,
+        error: appendEncodeTimeoutMessage(
+          `Chunk concat error: ${err.message}`,
+          timedOut,
+          encodeTimeout,
+        ),
+      });
     });
   });
 
