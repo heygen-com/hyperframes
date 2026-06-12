@@ -7,7 +7,7 @@ export function isSafePath(base: string, resolved: string): boolean {
   return resolved.startsWith(norm) || resolved === resolve(base);
 }
 
-const IGNORE_DIRS = new Set([".thumbnails", "node_modules", ".git"]);
+const IGNORE_DIRS = new Set([".hyperframes", ".thumbnails", "node_modules", ".git"]);
 
 /** Recursively walk a directory and return relative file paths. */
 export function walkDir(dir: string, prefix = ""): string[] {

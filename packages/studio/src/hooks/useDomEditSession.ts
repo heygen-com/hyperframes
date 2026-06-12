@@ -285,6 +285,7 @@ export function useDomEditSession({
     reloadPreview,
     onCacheInvalidate: bumpGsapCache,
     onFileContentChanged: updateEditingFileContent,
+    showToast,
   });
 
   // ── Commit handlers (delegated to useDomEditCommits) ──

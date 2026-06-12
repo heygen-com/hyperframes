@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { Hono } from "hono";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { registerFileRoutes } from "./files";
@@ -62,6 +62,74 @@ describe("registerFileRoutes", () => {
     const response = await app.request("http://localhost/projects/demo/files/missing-file.txt");
 
     expect(response.status).toBe(404);
+  });
+
+  it("backs up the previous file content before PUT overwrite", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(join(projectDir, "index.html"), "before");
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const response = await app.request("http://localhost/projects/demo/files/index.html", {
+      method: "PUT",
+      body: "after",
+    });
+    const payload = (await response.json()) as { path?: string; backupPath?: string };
+
+    expect(response.status).toBe(200);
+    expect(payload.path).toBe("index.html");
+    expect(payload.backupPath).toMatch(/^\.hyperframes\/backup\//);
+    expect(readFileSync(join(projectDir, payload.backupPath!), "utf-8")).toBe("before");
+    expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toBe("after");
+  });
+
+  it("backs up the previous file content before delete", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(join(projectDir, "index.html"), "before delete");
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const response = await app.request("http://localhost/projects/demo/files/index.html", {
+      method: "DELETE",
+    });
+    const payload = (await response.json()) as { backupPath?: string };
+
+    expect(response.status).toBe(200);
+    expect(payload.backupPath).toMatch(/^\.hyperframes\/backup\//);
+    expect(readFileSync(join(projectDir, payload.backupPath!), "utf-8")).toBe("before delete");
+  });
+
+  it("backs up the previous file content before structured DOM mutations", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(projectDir + "/index.html", '<div id="title">Before</div>');
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const response = await app.request(
+      "http://localhost/projects/demo/file-mutations/patch-element/index.html",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          target: { id: "title" },
+          operations: [{ type: "text-content", property: "textContent", value: "After" }],
+        }),
+      },
+    );
+    const payload = (await response.json()) as {
+      changed?: boolean;
+      path?: string;
+      backupPath?: string;
+    };
+
+    expect(response.status).toBe(200);
+    expect(payload.changed).toBe(true);
+    expect(payload.path).toBe("index.html");
+    expect(payload.backupPath).toMatch(/^\.hyperframes\/backup\//);
+    expect(readFileSync(join(projectDir, payload.backupPath!), "utf-8")).toBe(
+      '<div id="title">Before</div>',
+    );
+    expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toContain("After");
   });
 
   // A realistic sub-composition: markup + GSAP wrapped in a <template>, tweens

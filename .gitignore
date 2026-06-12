@@ -75,6 +75,7 @@ docs/plans/
 # Local proof / test artifacts
 qa-artifacts/
 my-video/
+.hyperframes/backup/
 examples/*
 # Tracked OSS examples — negations override the blanket `examples/*` ignore.
 !examples/aws-lambda

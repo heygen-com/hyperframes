@@ -41,7 +41,6 @@ import type { DomEditGroupPathOffsetCommit } from "../components/editor/DomEditO
 import type { EditHistoryKind } from "../utils/editHistory";
 import { useDomEditTextCommits } from "./useDomEditTextCommits";
 
-// ── Helpers ──
 type TimelineLike = { getChildren?: (nested: boolean) => Array<{ targets?: () => Element[] }> };
 
 // fallow-ignore-next-line complexity
@@ -74,8 +73,6 @@ function isElementGsapTargeted(iframe: HTMLIFrameElement | null, element: HTMLEl
   }
   return false;
 }
-
-// ── Types ──
 
 interface RecordEditInput {
   label: string;
@@ -110,7 +107,6 @@ export interface UseDomEditCommitsParams {
   projectIdRef: React.MutableRefObject<string | null>;
   reloadPreview: () => void;
 
-  // From useDomSelection
   domEditSelection: DomEditSelection | null;
   applyDomSelection: (
     selection: DomEditSelection | null,
@@ -123,8 +119,6 @@ export interface UseDomEditCommitsParams {
     options?: { preferClipAncestor?: boolean },
   ) => Promise<DomEditSelection | null>;
 }
-
-// ── Hook ──
 
 export function useDomEditCommits({
   activeCompPath,
@@ -214,6 +208,7 @@ export function useDomEditCommits({
         changed?: boolean;
         matched?: boolean;
         content?: string;
+        path?: string;
       };
 
       if (!patchData.changed) {
@@ -253,6 +248,7 @@ export function useDomEditCommits({
         coalesceKey: options?.coalesceKey,
         files: { [targetPath]: { before: originalContent, after: finalContent } },
       });
+      showToast(`Updated ${patchData.path ?? targetPath}`, "info");
 
       if (!options?.skipRefresh) {
         reloadPreview();
@@ -265,6 +261,7 @@ export function useDomEditCommits({
       projectIdRef,
       domEditSaveTimestampRef,
       reloadPreview,
+      showToast,
     ],
   );
 

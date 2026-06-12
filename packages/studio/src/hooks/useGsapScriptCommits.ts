@@ -56,6 +56,7 @@ interface MutationResult {
   before?: string;
   after?: string;
   scriptText?: string;
+  path?: string;
 }
 
 async function mutateGsapScript(
@@ -94,6 +95,7 @@ interface GsapScriptCommitsParams {
   reloadPreview: () => void;
   onCacheInvalidate: () => void;
   onFileContentChanged?: (path: string, content: string) => void;
+  showToast?: (message: string, tone?: "error" | "info") => void;
 }
 const DEBOUNCE_MS = 150;
 
@@ -107,6 +109,7 @@ export function useGsapScriptCommits({
   reloadPreview,
   onCacheInvalidate,
   onFileContentChanged,
+  showToast,
 }: GsapScriptCommitsParams) {
   const pendingPropertyEditRef = useRef<{
     selection: DomEditSelection;
@@ -157,6 +160,7 @@ export function useGsapScriptCommits({
       if (result.after != null) {
         onFileContentChanged?.(targetPath, result.after);
       }
+      showToast?.(`Updated ${result.path ?? targetPath}`, "info");
 
       if (options.skipReload) return;
 
@@ -195,6 +199,7 @@ export function useGsapScriptCommits({
       reloadPreview,
       onCacheInvalidate,
       onFileContentChanged,
+      showToast,
     ],
   );
   const flushPendingPropertyEdit = useCallback(() => {
