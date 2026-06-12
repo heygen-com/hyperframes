@@ -108,7 +108,6 @@ export function StudioPreviewArea({
     handlePreviewCanvasPointerMove,
     handlePreviewCanvasPointerLeave,
     applyDomSelection,
-    buildDomSelectionFromTarget,
     handleBlockedDomMove,
     handleDomManualDragStart,
     handleDomPathOffsetCommit,
@@ -291,14 +290,6 @@ export function StudioPreviewArea({
                   onRotationCommit={handleDomRotationCommit}
                   gridVisible={snapPrefs.gridVisible}
                   gridSpacing={snapPrefs.gridSpacing}
-                  onSelectElementById={async (id) => {
-                    const iframe = previewIframeRef.current;
-                    const el = iframe?.contentDocument?.getElementById(id);
-                    if (!el) return null;
-                    const sel = await buildDomSelectionFromTarget(el);
-                    if (sel) applyDomSelection(sel, { revealPanel: true });
-                    return sel;
-                  }}
                 />
                 <SnapToolbar onSnapChange={setSnapPrefs} />
                 {gestureOverlay}

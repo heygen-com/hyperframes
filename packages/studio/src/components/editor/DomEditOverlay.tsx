@@ -54,7 +54,6 @@ interface DomEditOverlayProps {
   ) => void;
   onBlockedMove: (selection: DomEditSelection) => void;
   onManualDragStart?: () => void;
-  onSelectElementById?: (id: string) => Promise<DomEditSelection | null>;
   onPathOffsetCommit: (
     selection: DomEditSelection,
     next: { x: number; y: number },
@@ -84,7 +83,6 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   gridVisible = false,
   gridSpacing = 50,
   onManualDragStart,
-  onSelectElementById,
   onPathOffsetCommit,
   onGroupPathOffsetCommit,
   onBoxSizeCommit,
@@ -213,7 +211,6 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     frame = requestAnimationFrame(update);
     return () => cancelAnimationFrame(frame);
   });
-
 
   const gestures = createDomEditOverlayGestureHandlers({
     overlayRef,
