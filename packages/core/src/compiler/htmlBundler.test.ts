@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, writeFileSync, mkdirSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseHTML } from "linkedom";
@@ -48,6 +48,47 @@ describe("bundleToSingleHtml", () => {
     // runtime tag — it stays as its own <script> elsewhere in the document.
     expect(runtimeBlock).not.toContain("window.__timelines.main = { duration:");
     expect(bundled).toContain('document.getElementById("scene")');
+  });
+
+  it("inlines an in-project sub-composition script but not one reached through a symlink escaping the project root", async () => {
+    // Security: a shared/cloned project may carry a symlink pointing outside the
+    // root (e.g. ext -> /etc). The bundler reads+inlines local assets, so it must
+    // refuse to follow such a symlink and leak external file contents.
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><head>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+</head><body>
+  <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+    <div id="scene-host"
+      data-composition-id="scene"
+      data-composition-src="compositions/scene.html"
+      data-start="0" data-duration="5"></div>
+  </div>
+  <script>window.__timelines={}; const tl=gsap.timeline({paused:true}); window.__timelines["main"]=tl;</script>
+</body></html>`,
+      "compositions/scene.html": `<template id="scene-template">
+  <div data-composition-id="scene" data-width="1920" data-height="1080">
+    <script src="assets/local.js"></script>
+    <script src="ext/secret.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["scene"] = gsap.timeline({ paused: true });
+    </script>
+  </div>
+</template>`,
+      "assets/local.js": `window.__HF_LOCAL__ = "LOCAL_MARKER_INLINED";`,
+    });
+    const external = mkdtempSync(join(tmpdir(), "hf-bundler-external-"));
+    writeFileSync(join(external, "secret.js"), `window.__HF_SECRET__ = "SECRET_MARKER_LEAKED";`);
+    symlinkSync(external, join(dir, "ext"), "dir");
+
+    const bundled = await bundleToSingleHtml(dir);
+
+    // Positive control: the in-project sub-comp script IS inlined, so the bundler
+    // would have inlined the symlinked one too had isSafePath not rejected it.
+    expect(bundled).toContain("LOCAL_MARKER_INLINED");
+    expect(bundled).not.toContain("SECRET_MARKER_LEAKED");
   });
 
   it("produces a self-contained runtime script when no HYPERFRAME_RUNTIME_URL is set", async () => {

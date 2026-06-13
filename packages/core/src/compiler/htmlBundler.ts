@@ -17,13 +17,16 @@ import { validateHyperframeHtmlContract } from "./staticGuard";
 import { getHyperframeRuntimeScript } from "../generated/runtime-inline";
 import { readDeclaredDefaults } from "../runtime/getVariables";
 import { inlineSubCompositions } from "./inlineSubCompositions";
+import { isSafePath } from "../safePath.js";
 
-/** Resolve a relative path within projectDir, rejecting traversal outside it. */
+/**
+ * Resolve a relative path within projectDir, rejecting traversal outside it.
+ * Uses isSafePath so an in-project symlink pointing outside the root can't
+ * smuggle an external file into the bundle (this fn's result is read+inlined).
+ */
 function safePath(projectDir: string, relativePath: string): string | null {
   const resolved = resolve(projectDir, relativePath);
-  const normalizedBase = resolve(projectDir) + sep;
-  if (!resolved.startsWith(normalizedBase) && resolved !== resolve(projectDir)) return null;
-  return resolved;
+  return isSafePath(projectDir, resolved) ? resolved : null;
 }
 
 const DEFAULT_RUNTIME_SCRIPT_URL = "";
@@ -155,8 +158,9 @@ function inlineCssFile(
       const importPath = urlPath ?? barePath;
       if (!importPath || !isRelativeUrl(importPath)) return full;
       const resolved = resolve(cssFileDir, importPath);
-      const normalizedBase = resolve(projectDir) + sep;
-      if (!resolved.startsWith(normalizedBase)) return full;
+      // @import is resolved relative to the CSS file, but must stay within the
+      // project root; isSafePath also blocks symlink escapes (content is inlined).
+      if (!isSafePath(projectDir, resolved)) return full;
       if (visited.has(resolved)) return "";
       const content = safeReadFile(resolved);
       if (content == null) return full;
