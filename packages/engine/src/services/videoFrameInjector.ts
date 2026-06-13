@@ -214,6 +214,17 @@ export function createVideoFrameInjector(
           lastInjectedFrameByVideo.set(update.videoId, update.frameIndex);
         }
       }
+      if (injectedIds.size > 0) {
+        // GPU compositions (WebGL / WebGPU) that sample these videos as
+        // textures already rendered once on the pre-injection seek, reading a
+        // stale/black frame. Now that the decoded `__render_frame__` images are
+        // in the DOM, re-render the GPU adapters at the same time so they
+        // re-upload their video textures from the correct frame. No-op in
+        // compositions without a GPU adapter.
+        await page.evaluate((t: number) => {
+          (window as unknown as { __hfReseekGpu?: (n: number) => void }).__hfReseekGpu?.(t);
+        }, time);
+      }
     }
   };
 }

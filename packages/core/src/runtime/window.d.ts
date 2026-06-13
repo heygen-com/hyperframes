@@ -45,6 +45,13 @@ declare global {
      * imperative push signal: `window.addEventListener("hf-seek", e => render(e.detail.time))`.
      */
     __hfTypegpuTime?: number;
+    /**
+     * Re-render GPU adapters (Three.js / WebGPU) at the given time, bypassing
+     * the `"hf-seek"` dedup. Called by the engine after injecting decoded
+     * video frames so GPU compositions re-upload their video textures from the
+     * freshly-injected `__render_frame__` images. See `forceDispatchSeekEvent`.
+     */
+    __hfReseekGpu?: (time: number) => void;
     __HF_PICKER_API?: HyperframePickerApi;
     gsap?: {
       timeline: (params?: { paused?: boolean }) => RuntimeTimelineLike;

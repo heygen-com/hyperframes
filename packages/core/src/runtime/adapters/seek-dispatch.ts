@@ -30,6 +30,25 @@ export function dispatchSeekEvent(time: number): void {
   }
 }
 
+/**
+ * Force-dispatch a `"hf-seek"` event even if `time` equals the last dispatched
+ * time, bypassing the dedup guard.
+ *
+ * Needed for the post-video-injection GPU re-render: the engine seeks to time
+ * T (GPU adapters render once, before video frames are injected), then injects
+ * the decoded `__render_frame__` images, then must re-render GPU compositions
+ * at the *same* T so they re-upload textures from the now-present frames. The
+ * normal dedup would swallow that second dispatch.
+ */
+export function forceDispatchSeekEvent(time: number): void {
+  _lastDispatchedTime = time;
+  try {
+    window.dispatchEvent(new CustomEvent("hf-seek", { detail: { time } }));
+  } catch (err) {
+    swallow("runtime.adapters.seek-dispatch.force", err);
+  }
+}
+
 /** Reset internal state — used in tests to prevent cross-test contamination. */
 export function resetSeekDispatchState(): void {
   _lastDispatchedTime = -1;

@@ -7,7 +7,11 @@ import { createAnimeJsAdapter } from "./adapters/animejs";
 import { createLottieAdapter } from "./adapters/lottie";
 import { createThreeAdapter } from "./adapters/three";
 import { createTypegpuAdapter } from "./adapters/typegpu";
-import { patchVideoTextureCompat } from "./adapters/video-texture-compat";
+import {
+  patchVideoTextureCompat,
+  patchWebGLVideoTextureCompat,
+} from "./adapters/video-texture-compat";
+import { forceDispatchSeekEvent } from "./adapters/seek-dispatch";
 import { createWaapiAdapter } from "./adapters/waapi";
 import { refreshRuntimeMediaCache, syncRuntimeMedia } from "./media";
 import { probeAndCacheElementVolume, type VolumeKeyframe } from "./mediaVolumeEnvelope.js";
@@ -1746,6 +1750,15 @@ export function initSandboxRuntimeModular(): void {
     createGsapAdapter({ getTimeline: () => state.capturedTimeline }),
   ] as RuntimeDeterministicAdapter[];
   patchVideoTextureCompat();
+  patchWebGLVideoTextureCompat();
+  // Lets the engine re-render GPU compositions after it injects decoded video
+  // frames, so video-textured WebGL/WebGPU scenes sample the correct frame.
+  window.__hfReseekGpu = (time: number) => {
+    const t = Math.max(0, Number(time) || 0);
+    window.__hfThreeTime = t;
+    window.__hfTypegpuTime = t;
+    forceDispatchSeekEvent(t);
+  };
   installRuntimeErrorDiagnostics();
   bindMediaMetadataListeners();
   runAdapters("discover");

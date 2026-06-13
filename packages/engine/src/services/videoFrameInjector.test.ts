@@ -202,7 +202,9 @@ describe("createVideoFrameInjector cache hygiene against page-side skips", () =>
     // Pin the contract: when the page returns `[]` (no ids actually
     // injected), the cache must not record those frameIndexes, so a follow-
     // up call at the same frameIndex still issues an inject.
-    const fakePage = {} as Page;
+    // The injector calls page.evaluate after injecting frames (GPU reseek);
+    // stub it so these cache-hygiene cases exercise the real code path.
+    const fakePage = { evaluate: async () => undefined } as unknown as Page;
     const hook = createVideoFrameInjector(
       fakeTable({ videoId: "pip", framePath: "/p", frameIndex: 5 }),
       {
@@ -235,7 +237,9 @@ describe("createVideoFrameInjector cache hygiene against page-side skips", () =>
     // record it and a second call at the same frameIndex must short-circuit.
     // This pins the happy path so a future refactor can't trade the skip
     // bug for a never-cache regression.
-    const fakePage = {} as Page;
+    // The injector calls page.evaluate after injecting frames (GPU reseek);
+    // stub it so these cache-hygiene cases exercise the real code path.
+    const fakePage = { evaluate: async () => undefined } as unknown as Page;
     const hook = createVideoFrameInjector(
       fakeTable({ videoId: "pip", framePath: "/p", frameIndex: 5 }),
       {
@@ -250,5 +254,48 @@ describe("createVideoFrameInjector cache hygiene against page-side skips", () =>
     await hook!(fakePage, 0);
     // Cache hit — no second inject for the same frameIndex.
     expect(injectVideoFramesBatchMock).toHaveBeenCalledTimes(1);
+  });
+
+  // Regression: WebGL/WebGPU compositions that sample a <video> as a texture
+  // render on `hf-seek` BEFORE frames are injected. After injecting the
+  // decoded frames, the hook must re-render the GPU adapters at the same time
+  // (window.__hfReseekGpu) so they re-upload their textures from the fresh
+  // frames — otherwise the facet flickers / goes black non-deterministically.
+  it("re-renders GPU adapters after injecting frames (post-injection reseek)", async () => {
+    const evaluate = vi.fn(async () => undefined);
+    const page = { evaluate } as unknown as Page;
+    const hook = createVideoFrameInjector(
+      fakeTable({ videoId: "facet", framePath: "/f", frameIndex: 3 }),
+      { frameSrcResolver: inlineResolver },
+    );
+
+    injectVideoFramesBatchMock.mockResolvedValueOnce(["facet"]);
+    await hook!(page, 1.5);
+
+    expect(evaluate).toHaveBeenCalledTimes(1);
+    // Re-render is requested at the same time as the seek.
+    expect(evaluate.mock.calls[0]![1]).toBe(1.5);
+    // The evaluated page function invokes window.__hfReseekGpu(time).
+    const pageFn = evaluate.mock.calls[0]![0] as (t: number) => void;
+    const reseek = vi.fn();
+    (globalThis as unknown as { window?: unknown }).window = { __hfReseekGpu: reseek };
+    pageFn(1.5);
+    delete (globalThis as unknown as { window?: unknown }).window;
+    expect(reseek).toHaveBeenCalledWith(1.5);
+  });
+
+  it("does not reseek GPU when the page injected no frames", async () => {
+    const evaluate = vi.fn(async () => undefined);
+    const page = { evaluate } as unknown as Page;
+    const hook = createVideoFrameInjector(
+      fakeTable({ videoId: "facet", framePath: "/f", frameIndex: 3 }),
+      { frameSrcResolver: inlineResolver },
+    );
+
+    // Page dropped the video (e.g. hidden host) → nothing injected → no reseek.
+    injectVideoFramesBatchMock.mockResolvedValueOnce([]);
+    await hook!(page, 1.5);
+
+    expect(evaluate).not.toHaveBeenCalled();
   });
 });
