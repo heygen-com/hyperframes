@@ -335,11 +335,10 @@ export function StudioApp() {
     effectiveTimelineDuration,
   });
   const compositionDimensions = useCompositionDimensions();
-  const { lintModal, linting, handleLint, closeLintModal, findingsByElement, findingsByFile } =
-    useLintModal(projectId, refreshKey);
-  useEffect(() => {
-    usePlayerStore.getState().setLintFindingsByElement(findingsByElement);
-  }, [findingsByElement]);
+  const { lintModal, linting, handleLint, closeLintModal, findingsByFile } = useLintModal(
+    projectId,
+    refreshKey,
+  );
   const frameCapture = useFrameCapture({
     projectId,
     activeCompPath,
