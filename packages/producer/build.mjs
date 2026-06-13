@@ -61,11 +61,6 @@ await Promise.all([
   build({ ...sharedOpts, entryPoints: ["src/server.ts"], outfile: "dist/public-server.js" }),
   build({
     ...sharedOpts,
-    entryPoints: ["src/services/pngDecodeBlitWorker.ts"],
-    outfile: "dist/services/pngDecodeBlitWorker.js",
-  }),
-  build({
-    ...sharedOpts,
     entryPoints: ["src/services/shaderTransitionWorker.ts"],
     outfile: "dist/services/shaderTransitionWorker.js",
   }),
