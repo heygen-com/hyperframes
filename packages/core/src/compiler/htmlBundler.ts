@@ -17,17 +17,7 @@ import { validateHyperframeHtmlContract } from "./staticGuard";
 import { getHyperframeRuntimeScript } from "../generated/runtime-inline";
 import { readDeclaredDefaults } from "../runtime/getVariables";
 import { inlineSubCompositions } from "./inlineSubCompositions";
-import { isSafePath } from "../safePath.js";
-
-/**
- * Resolve a relative path within projectDir, rejecting traversal outside it.
- * Uses isSafePath so an in-project symlink pointing outside the root can't
- * smuggle an external file into the bundle (this fn's result is read+inlined).
- */
-function safePath(projectDir: string, relativePath: string): string | null {
-  const resolved = resolve(projectDir, relativePath);
-  return isSafePath(projectDir, resolved) ? resolved : null;
-}
+import { isSafePath, resolveWithinProject } from "../safePath.js";
 
 const DEFAULT_RUNTIME_SCRIPT_URL = "";
 
@@ -233,7 +223,7 @@ function maybeInlineRelativeAssetUrl(urlValue: string, projectDir: string): stri
   if (!urlValue || !isRelativeUrl(urlValue)) return null;
   const { basePath, suffix } = splitUrlSuffix(urlValue.trim());
   if (!basePath) return null;
-  const filePath = safePath(projectDir, basePath);
+  const filePath = resolveWithinProject(projectDir, basePath);
   if (!filePath || !shouldInlineAsDataUrl(filePath)) return null;
   const content = safeReadFileBuffer(filePath);
   if (content == null) return null;
@@ -643,7 +633,7 @@ export async function bundleToSingleHtml(
   for (const el of [...document.querySelectorAll('link[rel="stylesheet"]')]) {
     const href = el.getAttribute("href");
     if (!href || !isRelativeUrl(href)) continue;
-    const cssPath = safePath(projectDir, href);
+    const cssPath = resolveWithinProject(projectDir, href);
     if (!cssPath) continue;
     const css = safeReadFile(cssPath);
     if (css == null) continue;
@@ -675,7 +665,7 @@ export async function bundleToSingleHtml(
   for (const el of [...document.querySelectorAll("script[src]")]) {
     const src = el.getAttribute("src");
     if (!src || !isRelativeUrl(src)) continue;
-    const jsPath = safePath(projectDir, src);
+    const jsPath = resolveWithinProject(projectDir, src);
     const js = jsPath ? safeReadFile(jsPath) : null;
     if (js == null) continue;
     localJsChunks.push(js);
@@ -710,7 +700,7 @@ export async function bundleToSingleHtml(
   const subCompResult = inlineSubCompositions(document, subCompositionHosts, {
     resolveHtml: (srcPath: string) => {
       if (!isRelativeUrl(srcPath)) return null;
-      const compPath = safePath(projectDir, srcPath);
+      const compPath = resolveWithinProject(projectDir, srcPath);
       return compPath ? safeReadFile(compPath) : null;
     },
     parseHtml: parseHTMLContent,
@@ -741,7 +731,7 @@ export async function bundleToSingleHtml(
     if (seenCompScriptSrcs.has(extSrc)) continue;
     seenCompScriptSrcs.add(extSrc);
     if (isRelativeUrl(extSrc)) {
-      const jsPath = safePath(projectDir, extSrc);
+      const jsPath = resolveWithinProject(projectDir, extSrc);
       const js = jsPath ? safeReadFile(jsPath) : null;
       if (js != null) {
         compScriptChunks.push(js);
@@ -806,7 +796,7 @@ export async function bundleToSingleHtml(
             if (!seenCompScriptSrcs.has(externalSrc)) {
               seenCompScriptSrcs.add(externalSrc);
               if (isRelativeUrl(externalSrc)) {
-                const jsPath = safePath(projectDir, externalSrc);
+                const jsPath = resolveWithinProject(projectDir, externalSrc);
                 const js = jsPath ? safeReadFile(jsPath) : null;
                 if (js != null) {
                   compScriptChunks.push(js);
@@ -861,7 +851,7 @@ export async function bundleToSingleHtml(
             if (!seenCompScriptSrcs.has(externalSrc)) {
               seenCompScriptSrcs.add(externalSrc);
               if (isRelativeUrl(externalSrc)) {
-                const jsPath = safePath(projectDir, externalSrc);
+                const jsPath = resolveWithinProject(projectDir, externalSrc);
                 const js = jsPath ? safeReadFile(jsPath) : null;
                 if (js != null) {
                   compScriptChunks.push(js);

@@ -1,9 +1,9 @@
 import type { Hono } from "hono";
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { injectScriptsIntoHtml } from "../../compiler/htmlDocument.js";
 import type { StudioApiAdapter } from "../types.js";
-import { isSafePath } from "../helpers/safePath.js";
+import { resolveWithinProject } from "../helpers/safePath.js";
 import { getMimeType } from "../helpers/mime.js";
 import { buildSubCompositionHtml } from "../helpers/subComposition.js";
 import { createProjectSignature } from "../helpers/projectSignature.js";
@@ -287,12 +287,8 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
     const compPath = decodeURIComponent(
       c.req.path.replace(`/projects/${project.id}/preview/comp/`, "").split("?")[0] ?? "",
     );
-    const compFile = resolve(project.dir, compPath);
-    if (
-      !isSafePath(project.dir, compFile) ||
-      !existsSync(compFile) ||
-      !statSync(compFile).isFile()
-    ) {
+    const compFile = resolveWithinProject(project.dir, compPath);
+    if (!compFile || !existsSync(compFile) || !statSync(compFile).isFile()) {
       return c.text("not found", 404);
     }
 
@@ -321,9 +317,12 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
     const subPath = decodeURIComponent(
       c.req.path.replace(`/projects/${project.id}/preview/`, "").split("?")[0] ?? "",
     );
-    const file = resolve(project.dir, subPath);
+    const file = resolveWithinProject(project.dir, subPath);
+    if (!file) {
+      return c.text("not found", 404);
+    }
     const stat = existsSync(file) ? statSync(file) : null;
-    if (!isSafePath(project.dir, file) || !stat?.isFile()) {
+    if (!stat?.isFile()) {
       return c.text("not found", 404);
     }
     const contentType = getMimeType(subPath);

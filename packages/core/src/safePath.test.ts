@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { isSafePath } from "./safePath.js";
+import { isSafePath, resolveWithinProject } from "./safePath.js";
 
 describe("isSafePath", () => {
   const tmpDirs: string[] = [];
@@ -104,5 +104,54 @@ describe("isSafePath", () => {
   it("fails closed when the base directory does not exist", () => {
     const base = join(tmpdir(), "safepath-does-not-exist-zzz", "nope");
     expect(isSafePath(base, join(base, "file.txt"))).toBe(false);
+  });
+});
+
+describe("resolveWithinProject", () => {
+  const tmpDirs: string[] = [];
+
+  afterEach(() => {
+    for (const d of tmpDirs) rmSync(d, { recursive: true, force: true });
+    tmpDirs.length = 0;
+  });
+
+  function tmpDir(prefix: string): string {
+    const dir = mkdtempSync(join(tmpdir(), prefix));
+    tmpDirs.push(dir);
+    return dir;
+  }
+
+  function tryCreateSymlink(target: string, path: string, type: "dir" | "file"): boolean {
+    try {
+      symlinkSync(target, path, type);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  it("returns the resolved absolute path for an in-project relative path", () => {
+    const base = tmpDir("rwp-base-");
+    expect(resolveWithinProject(base, "assets/logo.png")).toBe(join(base, "assets", "logo.png"));
+  });
+
+  it("returns the resolved path for a not-yet-existing write target", () => {
+    const base = tmpDir("rwp-base-");
+    expect(resolveWithinProject(base, "new/deep/file.txt")).toBe(
+      join(base, "new", "deep", "file.txt"),
+    );
+  });
+
+  it("returns null for a `..` traversal that escapes the project", () => {
+    const base = tmpDir("rwp-base-");
+    expect(resolveWithinProject(base, "../../etc/passwd")).toBeNull();
+  });
+
+  it("returns null when the path resolves outside via an in-project symlink", () => {
+    const base = tmpDir("rwp-base-");
+    const external = tmpDir("rwp-external-");
+    writeFileSync(join(external, "secret.txt"), "top secret");
+    if (!tryCreateSymlink(external, join(base, "link"), "dir")) return;
+    expect(resolveWithinProject(base, "link/secret.txt")).toBeNull();
   });
 });

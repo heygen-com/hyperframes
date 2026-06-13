@@ -4,7 +4,7 @@ import { readdirSync } from "node:fs";
 // `isSafePath` lives at the package root so non-studio-api layers (compiler,
 // CLI, engine) can share it without a backwards dependency on studio-api.
 // Re-exported here for back-compat with existing `../helpers/safePath.js` imports.
-export { isSafePath } from "../../safePath.js";
+export { isSafePath, resolveWithinProject } from "../../safePath.js";
 
 const IGNORE_DIRS = new Set([".thumbnails", "node_modules", ".git"]);
 

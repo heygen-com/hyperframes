@@ -56,3 +56,17 @@ export function isSafePath(base: string, resolved: string): boolean {
     return targetReal === baseReal || targetReal.startsWith(baseReal + sep);
   }
 }
+
+/**
+ * Resolve `relativePath` against `base` and return the absolute path only if it
+ * stays within `base` (after symlink resolution); otherwise return `null`.
+ *
+ * Prefer this over a bare `resolve()` followed by a separate `isSafePath()`
+ * check: collapsing the two into one call means a caller cannot resolve a
+ * project-relative path and then forget the containment guard — the gap that
+ * let the symlink-escape slip past several call sites historically.
+ */
+export function resolveWithinProject(base: string, relativePath: string): string | null {
+  const resolved = resolve(base, relativePath);
+  return isSafePath(base, resolved) ? resolved : null;
+}

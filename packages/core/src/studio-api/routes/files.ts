@@ -16,7 +16,7 @@ import type { StudioApiAdapter } from "../types.js";
 import { isAudioFile } from "../helpers/mime.js";
 import { generateWaveformCache } from "../helpers/waveform.js";
 import { validateUploadedMediaBuffer } from "../helpers/mediaValidation.js";
-import { isSafePath } from "../helpers/safePath.js";
+import { isSafePath, resolveWithinProject } from "../helpers/safePath.js";
 import { backupPathForResponse, snapshotBeforeWrite } from "../helpers/backupJournal.js";
 import {
   findUnsafeDomPatchValues,
@@ -66,8 +66,8 @@ async function resolveProjectPath(
     return { error: c.json({ error: "forbidden" }, 403) } as const;
   }
 
-  const absPath = resolve(project.dir, filePath);
-  if (!isSafePath(project.dir, absPath)) {
+  const absPath = resolveWithinProject(project.dir, filePath);
+  if (!absPath) {
     return { error: c.json({ error: "forbidden" }, 403) } as const;
   }
 
@@ -1037,8 +1037,8 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       return c.json({ error: "newPath required" }, 400);
     }
 
-    const newAbs = resolve(res.project.dir, body.newPath);
-    if (!isSafePath(res.project.dir, newAbs)) {
+    const newAbs = resolveWithinProject(res.project.dir, body.newPath);
+    if (!newAbs) {
       return c.json({ error: "forbidden" }, 403);
     }
     if (existsSync(newAbs)) {
@@ -1065,14 +1065,14 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       return c.json({ error: "path required" }, 400);
     }
 
-    const srcAbs = resolve(project.dir, body.path);
-    if (!isSafePath(project.dir, srcAbs) || !existsSync(srcAbs)) {
+    const srcAbs = resolveWithinProject(project.dir, body.path);
+    if (!srcAbs || !existsSync(srcAbs)) {
       return c.json({ error: "not found" }, 404);
     }
 
     const copyPath = generateCopyPath(project.dir, body.path);
-    const destAbs = resolve(project.dir, copyPath);
-    if (!isSafePath(project.dir, destAbs)) {
+    const destAbs = resolveWithinProject(project.dir, copyPath);
+    if (!destAbs) {
       return c.json({ error: "forbidden" }, 403);
     }
 
@@ -1098,8 +1098,8 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
 
       // Optional subdirectory within the project (e.g. "assets/audio")
       const subDir = c.req.query("dir") ?? "";
-      const targetDir = subDir ? resolve(project.dir, subDir) : project.dir;
-      if (!isSafePath(project.dir, targetDir)) return c.json({ error: "forbidden" }, 403);
+      const targetDir = subDir ? resolveWithinProject(project.dir, subDir) : project.dir;
+      if (!targetDir) return c.json({ error: "forbidden" }, 403);
       if (subDir && !existsSync(targetDir)) mkdirSync(targetDir, { recursive: true });
 
       const formData = await c.req.formData();
