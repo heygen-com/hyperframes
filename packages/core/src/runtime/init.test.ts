@@ -916,6 +916,72 @@ describe("initSandboxRuntimeModular", () => {
     expect(childTimeline.time()).toBeCloseTo(1, 1);
   });
 
+  function setupBoundaryMediaFixture() {
+    const raf = createManualRaf();
+    vi.spyOn(performance, "now").mockImplementation(() => raf.now());
+    window.requestAnimationFrame = raf.requestAnimationFrame as typeof window.requestAnimationFrame;
+    window.cancelAnimationFrame = raf.cancelAnimationFrame as typeof window.cancelAnimationFrame;
+
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "10");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const video = document.createElement("video");
+    video.setAttribute("data-start", "2");
+    video.setAttribute("data-duration", "3");
+    Object.defineProperty(video, "duration", { value: 10, writable: true, configurable: true });
+    Object.defineProperty(video, "paused", { value: false, writable: true, configurable: true });
+    Object.defineProperty(video, "readyState", { value: 4, writable: true, configurable: true });
+    // Small accumulated drift (under the 0.5s hard-sync tier and skipped by
+    // strict/force sync while the video is playing), so only the play/pause
+    // hard sync can correct it.
+    Object.defineProperty(video, "currentTime", { value: 3.2, writable: true, configurable: true });
+    video.load = () => {};
+    video.play = vi.fn(() => {
+      Object.defineProperty(video, "paused", { value: false, writable: true, configurable: true });
+      return Promise.resolve();
+    });
+    video.pause = () => {
+      Object.defineProperty(video, "paused", { value: true, writable: true, configurable: true });
+    };
+    root.appendChild(video);
+
+    window.__timelines = { main: createMockTimeline(10) };
+
+    initSandboxRuntimeModular();
+    const player = window.__player;
+    expect(player).toBeDefined();
+    return { raf, video, player };
+  }
+
+  it("hard-syncs media on pause at the exact clip end boundary", () => {
+    const { raf, video, player } = setupBoundaryMediaFixture();
+
+    player?.play();
+    raf.step(5_000);
+    player?.pause();
+
+    // The clip spans [2, 5]. Visibility (#1166) and the sync paths (#1173)
+    // treat t = end as active, so pausing exactly at the boundary must land
+    // the element on its final frame instead of leaving the drifted one.
+    expect(video.currentTime).toBe(3);
+  });
+
+  it("does not hard-sync media past the clip end on pause", () => {
+    const { raf, video, player } = setupBoundaryMediaFixture();
+
+    player?.play();
+    raf.step(5_500);
+    player?.pause();
+
+    expect(video.currentTime).toBe(3.2);
+  });
+
   it("sets __renderReady only after timeline is bound, not at __playerReady time", async () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");

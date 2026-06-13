@@ -2105,7 +2105,7 @@ export function initSandboxRuntimeModular(): void {
       if (!Number.isFinite(start)) continue;
       const durAttr = Number.parseFloat(el.dataset.duration ?? "");
       const end = Number.isFinite(durAttr) && durAttr > 0 ? start + durAttr : Infinity;
-      if (timeSeconds < start || timeSeconds >= end) continue;
+      if (timeSeconds < start || timeSeconds > end) continue;
       const mediaStart =
         Number.parseFloat(el.dataset.playbackStart ?? el.dataset.mediaStart ?? "0") || 0;
       const relTime = timeSeconds - start + mediaStart;
