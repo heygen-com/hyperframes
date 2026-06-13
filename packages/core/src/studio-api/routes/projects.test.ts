@@ -17,14 +17,15 @@ afterEach(() => {
 const COMPOSITION_HTML = '<html><body><div data-composition-id="main"></div></body></html>';
 
 // Project layout for #1384: real compositions at the root and under
-// compositions/, plus two kinds of dot-directory content that exercise
-// discovery gating differently:
-//   - .cache/        a vendored dot-directory. walkDir does NOT special-case it,
-//                    so its HTML stays listed in the file tree, but it must be
-//                    gated out of composition discovery by isInHiddenOrVendorDir.
-//   - .hyperframes/  Studio's own internal directory (backups, etc.) — already in
-//                    walkDir's IGNORE_DIRS, so it is hidden from the file tree
-//                    entirely (and therefore from compositions too).
+// compositions/, plus dot-directory content that exercises discovery gating
+// and the file tree's backup-only hiding (#1366):
+//   - .cache/examples/        a vendored dot-dir. walkDir does NOT special-case
+//                             it, so it stays listed in the file tree, but it is
+//                             gated out of composition discovery (isInHiddenOrVendorDir).
+//   - .hyperframes/examples/  vendored under Studio's dir — also listed in the
+//                             file tree, also gated out of discovery.
+//   - .hyperframes/backup/    Studio's internal snapshots — the only thing hidden
+//                             from the file tree (walkDir's shouldIgnoreDir).
 function createProjectDir(): string {
   const projectDir = mkdtempSync(join(tmpdir(), "hf-projects-test-"));
   tempDirs.push(projectDir);
@@ -35,6 +36,8 @@ function createProjectDir(): string {
   writeFileSync(join(projectDir, ".cache", "examples", "preset.html"), COMPOSITION_HTML);
   mkdirSync(join(projectDir, ".hyperframes", "examples"), { recursive: true });
   writeFileSync(join(projectDir, ".hyperframes", "examples", "preset.html"), COMPOSITION_HTML);
+  mkdirSync(join(projectDir, ".hyperframes", "backup"), { recursive: true });
+  writeFileSync(join(projectDir, ".hyperframes", "backup", "snapshot.html"), COMPOSITION_HTML);
   return projectDir;
 }
 
@@ -71,7 +74,7 @@ describe("registerProjectRoutes — composition discovery (#1384)", () => {
     expect(payload.compositions).not.toContain(".hyperframes/examples/preset.html");
   });
 
-  it("lists vendored dot-directory files in the file tree but hides Studio-internal ones", async () => {
+  it("lists vendored dot-directory files in the file tree but hides Studio backups", async () => {
     const projectDir = createProjectDir();
     const app = new Hono();
     registerProjectRoutes(app, createAdapter(projectDir));
@@ -81,7 +84,8 @@ describe("registerProjectRoutes — composition discovery (#1384)", () => {
 
     // Vendored dot-dirs stay browsable — discovery is gated, the file tree is not.
     expect(payload.files).toContain(".cache/examples/preset.html");
-    // Studio's internal dir is hidden from the tree entirely (walkDir IGNORE_DIRS).
-    expect(payload.files).not.toContain(".hyperframes/examples/preset.html");
+    expect(payload.files).toContain(".hyperframes/examples/preset.html");
+    // Only Studio's own backup snapshots are hidden from the tree (#1366).
+    expect(payload.files).not.toContain(".hyperframes/backup/snapshot.html");
   });
 });
