@@ -129,23 +129,21 @@ export function materializeInheritedTextColorsInDocument(): void {
   const body = document.body;
   if (!body) return;
 
-  for (const node of body.querySelectorAll("*")) {
-    const style = (node as HTMLElement).style;
-    if (!style || style.color) continue;
+  for (const node of body.querySelectorAll<HTMLElement>("*")) {
+    const style = node.style;
+    if (style.color) continue;
     for (let i = 0; i < node.childNodes.length; i++) {
       const child = node.childNodes[i];
-      if (child && child.nodeType === 3 && child.textContent && /\S/.test(child.textContent)) {
+      if (child?.nodeType === 3 && child.textContent && /\S/.test(child.textContent)) {
         const computed = window.getComputedStyle(node).color;
-        if (computed) {
-          node.style.color = computed;
-        }
+        if (computed) style.color = computed;
         break;
       }
     }
   }
 }
 
-export async function materializeInheritedTextColors(page: Page): Promise<void> {
+async function materializeInheritedTextColors(page: Page): Promise<void> {
   await page.evaluate(materializeInheritedTextColorsInDocument);
 }
 
