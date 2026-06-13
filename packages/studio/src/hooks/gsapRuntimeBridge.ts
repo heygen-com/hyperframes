@@ -20,37 +20,19 @@ import {
 } from "./gsapDragCommit";
 import { resolveTweenStart, resolveTweenDuration } from "../utils/globalTimeCompiler";
 import type { GsapDragCommitCallbacks } from "./gsapDragCommit";
+import { getIframeGsap, queryIframeElement } from "./gsapShared";
 
 // ── Runtime reads ──────────────────────────────────────────────────────────
-
-interface IframeGsap {
-  getProperty: (el: Element, prop: string) => number;
-}
 
 // fallow-ignore-next-line complexity
 function readGsapPositionFromIframe(
   iframe: HTMLIFrameElement | null,
   elementSelector: string,
 ): { x: number; y: number } | null {
-  if (!iframe?.contentWindow) return null;
+  const gsap = getIframeGsap(iframe);
+  if (!gsap) return null;
 
-  let gsap: IframeGsap | undefined;
-  try {
-    gsap = (iframe.contentWindow as unknown as { gsap?: IframeGsap }).gsap;
-  } catch {
-    return null;
-  }
-  if (!gsap?.getProperty) return null;
-
-  let doc: Document | null = null;
-  try {
-    doc = iframe.contentDocument;
-  } catch {
-    return null;
-  }
-  if (!doc) return null;
-
-  const element = doc.querySelector(elementSelector);
+  const element = queryIframeElement(iframe, elementSelector);
   if (!element) return null;
 
   const x = Number(gsap.getProperty(element, "x")) || 0;
@@ -459,21 +441,10 @@ export async function tryGsapRotationIntercept(
   if (!selector) return false;
 
   let gsapRotation = 0;
-  if (iframe?.contentWindow) {
-    try {
-      const gsap = (
-        iframe.contentWindow as unknown as {
-          gsap?: { getProperty: (el: Element, prop: string) => number };
-        }
-      ).gsap;
-      const doc = iframe.contentDocument;
-      const el = doc?.querySelector(selector);
-      if (gsap?.getProperty && el) {
-        gsapRotation = Number(gsap.getProperty(el, "rotation")) || 0;
-      }
-    } catch {
-      /* cross-origin guard */
-    }
+  const gsap = getIframeGsap(iframe);
+  const rotEl = gsap ? queryIframeElement(iframe, selector) : null;
+  if (gsap && rotEl) {
+    gsapRotation = Number(gsap.getProperty(rotEl, "rotation")) || 0;
   }
 
   const pct = computeCurrentPercentage(selection, anim);

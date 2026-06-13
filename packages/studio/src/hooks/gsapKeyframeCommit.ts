@@ -1,18 +1,7 @@
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { absoluteToPercentageForAnimation, findTweenAtTime } from "../utils/globalTimeCompiler";
-
-const PROPERTY_DEFAULTS: Record<string, number> = {
-  opacity: 1,
-  x: 0,
-  y: 0,
-  scale: 1,
-  scaleX: 1,
-  scaleY: 1,
-  rotation: 0,
-  width: 100,
-  height: 100,
-};
+import { PROPERTY_DEFAULTS } from "./gsapShared";
 
 type CommitFn = (
   selection: DomEditSelection,
