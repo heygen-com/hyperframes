@@ -19,6 +19,7 @@ import type { DraggedClipState, ResizingClipState, BlockedClipState } from "./us
 import type { TrackVisualStyle } from "./timelineIcons";
 import { STUDIO_KEYFRAMES_ENABLED } from "../../components/editor/manualEditingAvailability";
 import { SPLIT_BOUNDARY_EPSILON_S } from "../../utils/timelineElementSplit";
+import { useTimelineEditContext } from "../../contexts/TimelineEditContext";
 
 function ClipLabel({ element, color }: { element: TimelineElement; color: string }) {
   const lint = usePlayerStore((s) => s.lintFindingsByElement.get(element.key ?? element.id));
@@ -66,8 +67,6 @@ interface TimelineCanvasProps {
   ) => ReactNode;
   renderClipOverlay?: (element: TimelineElement) => ReactNode;
   playheadRef: React.RefObject<HTMLDivElement | null>;
-  onResizeElement?: unknown;
-  onMoveElement?: unknown;
   onDrillDown?: (element: TimelineElement) => void;
   onSelectElement?: (element: TimelineElement | null) => void;
   setHoveredClip: (key: string | null) => void;
@@ -92,9 +91,6 @@ interface TimelineCanvasProps {
   onDragKeyframe?: (element: TimelineElement, oldPct: number, newPct: number) => void;
   onContextMenuKeyframe?: (e: React.MouseEvent, elementId: string, percentage: number) => void;
   onContextMenuClip?: (e: React.MouseEvent, element: TimelineElement) => void;
-  onToggleKeyframeAtPlayhead?: (element: TimelineElement) => void;
-  onRazorSplit?: (element: TimelineElement, splitTime: number) => void;
-  onRazorSplitAll?: (splitTime: number) => void;
 }
 
 export const TimelineCanvas = memo(function TimelineCanvas({
@@ -122,8 +118,6 @@ export const TimelineCanvas = memo(function TimelineCanvas({
   renderClipContent,
   renderClipOverlay,
   playheadRef,
-  onResizeElement,
-  onMoveElement,
   onDrillDown,
   onSelectElement,
   setHoveredClip,
@@ -144,10 +138,8 @@ export const TimelineCanvas = memo(function TimelineCanvas({
   onDragKeyframe,
   onContextMenuKeyframe,
   onContextMenuClip,
-  onToggleKeyframeAtPlayhead: _onToggleKeyframeAtPlayhead,
-  onRazorSplit,
-  onRazorSplitAll,
 }: TimelineCanvasProps) {
+  const { onResizeElement, onMoveElement, onRazorSplit, onRazorSplitAll } = useTimelineEditContext();
   const draggedElement = draggedClip?.element ?? null;
   const activeDraggedElement =
     draggedClip?.started === true && draggedElement

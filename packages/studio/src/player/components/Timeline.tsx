@@ -23,7 +23,8 @@ import {
   getTimelineCanvasHeight,
   shouldShowTimelineShortcutHint,
 } from "./timelineLayout";
-import type { TimelineEditCallbacks, TimelineDropCallbacks } from "./timelineCallbacks";
+import type { TimelineDropCallbacks } from "./timelineCallbacks";
+import { useTimelineEditContext } from "../../contexts/TimelineEditContext";
 
 // Re-export pure utilities so existing imports from "./Timeline" still resolve.
 export {
@@ -40,7 +41,7 @@ export {
   getDefaultDroppedTrack,
 } from "./timelineLayout";
 
-interface TimelineProps extends TimelineEditCallbacks, TimelineDropCallbacks {
+interface TimelineProps extends TimelineDropCallbacks {
   onSeek?: (time: number) => void;
   onDrillDown?: (element: TimelineElement) => void;
   renderClipContent?: (
@@ -62,20 +63,20 @@ export const Timeline = memo(function Timeline({
   onAssetDrop,
   onBlockDrop,
   onDeleteElement: _onDeleteElement,
-  onMoveElement,
-  onResizeElement,
-  onBlockedEditAttempt,
-  onSplitElement,
-  onRazorSplit,
-  onRazorSplitAll,
   onSelectElement,
-  onDeleteKeyframe,
-  onDeleteAllKeyframes,
-  onChangeKeyframeEase,
-  onMoveKeyframe,
-  onToggleKeyframeAtPlayhead,
   theme: themeOverrides,
 }: TimelineProps = {}) {
+  const {
+    onMoveElement,
+    onResizeElement,
+    onBlockedEditAttempt,
+    onSplitElement,
+    onRazorSplitAll,
+    onDeleteKeyframe,
+    onDeleteAllKeyframes,
+    onChangeKeyframeEase,
+    onMoveKeyframe,
+  } = useTimelineEditContext();
   const theme = useMemo(() => ({ ...defaultTimelineTheme, ...themeOverrides }), [themeOverrides]);
   const elements = usePlayerStore((s) => s.elements);
   const duration = usePlayerStore((s) => s.duration);
@@ -423,8 +424,6 @@ export const Timeline = memo(function Timeline({
           renderClipContent={renderClipContent}
           renderClipOverlay={renderClipOverlay}
           playheadRef={playheadRef}
-          onResizeElement={onResizeElement}
-          onMoveElement={onMoveElement}
           onDrillDown={onDrillDown}
           onSelectElement={onSelectElement}
           setHoveredClip={setHoveredClip}
@@ -440,7 +439,6 @@ export const Timeline = memo(function Timeline({
           keyframeCache={keyframeCache}
           selectedKeyframes={selectedKeyframes}
           currentTime={currentTime}
-          onToggleKeyframeAtPlayhead={onToggleKeyframeAtPlayhead}
           onClickKeyframe={(el, pct) => {
             usePlayerStore.getState().clearSelectedKeyframes();
             const elKey = el.key ?? el.id;
@@ -483,8 +481,6 @@ export const Timeline = memo(function Timeline({
             onSelectElement?.(el);
             setClipContextMenu({ x: e.clientX, y: e.clientY, element: el });
           }}
-          onRazorSplit={onRazorSplit}
-          onRazorSplitAll={onRazorSplitAll}
         />
         {activeTool === "razor" && razorGuideX !== null && (
           <div

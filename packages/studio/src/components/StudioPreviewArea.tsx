@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useState, useMemo, type ReactNode } from "react";
 import { NLELayout } from "./nle/NLELayout";
 import { CaptionOverlay } from "../captions/components/CaptionOverlay";
 import { CaptionTimeline } from "../captions/components/CaptionTimeline";
@@ -15,6 +15,7 @@ import {
 } from "./editor/manualEditingAvailability";
 import { useStudioPlaybackContext, useStudioShellContext } from "../contexts/StudioContext";
 import { useDomEditContext } from "../contexts/DomEditContext";
+import { TimelineEditProvider } from "../contexts/TimelineEditContext";
 import type { BlockPreviewInfo } from "./sidebar/BlocksTab";
 import { readStudioUiPreferences } from "../utils/studioUiPreferences";
 import type { GestureRecordingState } from "./editor/GestureRecordControl";
@@ -139,9 +140,111 @@ export function StudioPreviewArea({
     };
   });
 
+  // fallow-ignore-next-line complexity
+  const timelineEditCallbacks = useMemo(
+    () => ({
+      onMoveElement: handleTimelineElementMove,
+      onResizeElement: handleTimelineElementResize,
+      onBlockedEditAttempt: handleBlockedTimelineEdit,
+      onSplitElement: handleTimelineElementSplit,
+      onRazorSplit: handleRazorSplit,
+      onRazorSplitAll: handleRazorSplitAll,
+      onDeleteAllKeyframes: (elId: string) => {
+        const rawId = elId.includes("#") ? (elId.split("#").pop() ?? elId) : elId;
+        handleGsapDeleteAllForElement(`#${rawId}`);
+      },
+      onDeleteKeyframe: (_elId: string, pct: number) => {
+        const cacheKey = domEditSelection?.id ?? "";
+        const cached = usePlayerStore.getState().keyframeCache.get(cacheKey);
+        const kf = cached?.keyframes.find((k) => Math.abs(k.percentage - pct) < 0.2);
+        const group = kf?.propertyGroup;
+        const anim =
+          (group ? selectedGsapAnimations.find((a) => a.propertyGroup === group) : undefined) ??
+          selectedGsapAnimations.find((a) => a.keyframes);
+        if (!anim) return;
+        handleGsapRemoveKeyframe(anim.id, kf?.tweenPercentage ?? pct);
+      },
+      onChangeKeyframeEase: (_elId: string, _pct: number, ease: string) => {
+        for (const anim of selectedGsapAnimations) {
+          if (anim.keyframes) handleGsapUpdateMeta(anim.id, { ease });
+        }
+      },
+      onMoveKeyframe: (_el: TimelineElement, oldPct: number, newPct: number) => {
+        const cacheKey = domEditSelection?.id ?? "";
+        const cached = usePlayerStore.getState().keyframeCache.get(cacheKey);
+        const cachedKf = cached?.keyframes.find((k) => Math.abs(k.percentage - oldPct) < 0.2);
+        const group = cachedKf?.propertyGroup;
+        const anim =
+          (group ? selectedGsapAnimations.find((a) => a.propertyGroup === group) : undefined) ??
+          selectedGsapAnimations.find((a) => a.keyframes);
+        if (!anim?.keyframes) return;
+        const tweenOldPct = cachedKf?.tweenPercentage ?? oldPct;
+        const kf = anim.keyframes.keyframes.find(
+          (k) => Math.abs(k.percentage - tweenOldPct) < 0.2,
+        );
+        if (!kf) return;
+        const tweenStart = anim.resolvedStart ?? 0;
+        const tweenDur = anim.duration ?? 1;
+        const newAbsTime = _el.start + (newPct / 100) * _el.duration;
+        const tweenNewPct =
+          tweenDur > 0
+            ? Math.max(
+                0,
+                Math.min(100, Math.round(((newAbsTime - tweenStart) / tweenDur) * 1000) / 10),
+              )
+            : 0;
+        handleGsapRemoveKeyframe(anim.id, tweenOldPct);
+        for (const [prop, val] of Object.entries(kf.properties)) {
+          handleGsapAddKeyframe(anim.id, tweenNewPct, prop, val);
+        }
+      },
+      onToggleKeyframeAtPlayhead: (el: TimelineElement) => {
+        const currentTime = usePlayerStore.getState().currentTime;
+        const pct =
+          el.duration > 0
+            ? Math.max(
+                0,
+                Math.min(100, Math.round(((currentTime - el.start) / el.duration) * 100)),
+              )
+            : 0;
+        const anim = selectedGsapAnimations.find((a) => a.keyframes);
+        if (anim?.keyframes) {
+          const existing = anim.keyframes.keyframes.find(
+            (k) => Math.abs(k.percentage - pct) <= 1,
+          );
+          if (existing) {
+            handleGsapRemoveKeyframe(anim.id, existing.percentage);
+          } else {
+            handleGsapAddKeyframe(anim.id, pct, "x", 0);
+          }
+        } else {
+          const flatAnim = selectedGsapAnimations.find((a) => !a.keyframes);
+          if (flatAnim) handleGsapConvertToKeyframes(flatAnim.id);
+        }
+      },
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      handleTimelineElementMove,
+      handleTimelineElementResize,
+      handleBlockedTimelineEdit,
+      handleTimelineElementSplit,
+      handleRazorSplit,
+      handleRazorSplitAll,
+      handleGsapDeleteAllForElement,
+      domEditSelection?.id,
+      selectedGsapAnimations,
+      handleGsapRemoveKeyframe,
+      handleGsapUpdateMeta,
+      handleGsapAddKeyframe,
+      handleGsapConvertToKeyframes,
+    ],
+  );
+
   return (
     <div className="flex-1 flex flex-col relative min-w-0">
       <div className="flex-1 min-h-0 relative">
+        <TimelineEditProvider value={timelineEditCallbacks}>
         <NLELayout
           projectId={projectId}
           refreshKey={refreshKey}
@@ -153,87 +256,7 @@ export function StudioPreviewArea({
           onBlockDrop={handleTimelineBlockDrop}
           onPreviewBlockDrop={handlePreviewBlockDrop}
           onFileDrop={handleTimelineFileDrop}
-          onMoveElement={handleTimelineElementMove}
-          onResizeElement={handleTimelineElementResize}
-          onBlockedEditAttempt={handleBlockedTimelineEdit}
-          onSplitElement={handleTimelineElementSplit}
-          onRazorSplit={handleRazorSplit}
-          onRazorSplitAll={handleRazorSplitAll}
           onSelectTimelineElement={handleTimelineElementSelect}
-          onDeleteAllKeyframes={(elId) => {
-            const rawId = elId.includes("#") ? (elId.split("#").pop() ?? elId) : elId;
-            handleGsapDeleteAllForElement(`#${rawId}`);
-          }}
-          onDeleteKeyframe={(_elId, pct) => {
-            const cacheKey = domEditSelection?.id ?? "";
-            const cached = usePlayerStore.getState().keyframeCache.get(cacheKey);
-            const kf = cached?.keyframes.find((k) => Math.abs(k.percentage - pct) < 0.2);
-            const group = kf?.propertyGroup;
-            const anim =
-              (group ? selectedGsapAnimations.find((a) => a.propertyGroup === group) : undefined) ??
-              selectedGsapAnimations.find((a) => a.keyframes);
-            if (!anim) return;
-            handleGsapRemoveKeyframe(anim.id, kf?.tweenPercentage ?? pct);
-          }}
-          onChangeKeyframeEase={(_elId, _pct, ease) => {
-            for (const anim of selectedGsapAnimations) {
-              if (anim.keyframes) handleGsapUpdateMeta(anim.id, { ease });
-            }
-          }}
-          // fallow-ignore-next-line complexity
-          onMoveKeyframe={(_el, oldPct, newPct) => {
-            const cacheKey = domEditSelection?.id ?? "";
-            const cached = usePlayerStore.getState().keyframeCache.get(cacheKey);
-            const cachedKf = cached?.keyframes.find((k) => Math.abs(k.percentage - oldPct) < 0.2);
-            const group = cachedKf?.propertyGroup;
-            const anim =
-              (group ? selectedGsapAnimations.find((a) => a.propertyGroup === group) : undefined) ??
-              selectedGsapAnimations.find((a) => a.keyframes);
-            if (!anim?.keyframes) return;
-            const tweenOldPct = cachedKf?.tweenPercentage ?? oldPct;
-            const kf = anim.keyframes.keyframes.find(
-              (k) => Math.abs(k.percentage - tweenOldPct) < 0.2,
-            );
-            if (!kf) return;
-            const tweenStart = anim.resolvedStart ?? 0;
-            const tweenDur = anim.duration ?? 1;
-            const newAbsTime = _el.start + (newPct / 100) * _el.duration;
-            const tweenNewPct =
-              tweenDur > 0
-                ? Math.max(
-                    0,
-                    Math.min(100, Math.round(((newAbsTime - tweenStart) / tweenDur) * 1000) / 10),
-                  )
-                : 0;
-            handleGsapRemoveKeyframe(anim.id, tweenOldPct);
-            for (const [prop, val] of Object.entries(kf.properties)) {
-              handleGsapAddKeyframe(anim.id, tweenNewPct, prop, val);
-            }
-          }}
-          onToggleKeyframeAtPlayhead={(el) => {
-            const currentTime = usePlayerStore.getState().currentTime;
-            const pct =
-              el.duration > 0
-                ? Math.max(
-                    0,
-                    Math.min(100, Math.round(((currentTime - el.start) / el.duration) * 100)),
-                  )
-                : 0;
-            const anim = selectedGsapAnimations.find((a) => a.keyframes);
-            if (anim?.keyframes) {
-              const existing = anim.keyframes.keyframes.find(
-                (k) => Math.abs(k.percentage - pct) <= 1,
-              );
-              if (existing) {
-                handleGsapRemoveKeyframe(anim.id, existing.percentage);
-              } else {
-                handleGsapAddKeyframe(anim.id, pct, "x", 0);
-              }
-            } else {
-              const flatAnim = selectedGsapAnimations.find((a) => !a.keyframes);
-              if (flatAnim) handleGsapConvertToKeyframes(flatAnim.id);
-            }
-          }}
           onCompIdToSrcChange={setCompIdToSrc}
           onCompositionLoadingChange={setCompositionLoading}
           onCompositionChange={(compPath) => {
@@ -320,6 +343,7 @@ export function StudioPreviewArea({
           timelineVisible={timelineVisible}
           onToggleTimeline={toggleTimelineVisibility}
         />
+        </TimelineEditProvider>
       </div>
       <StudioFeedbackBar />
     </div>

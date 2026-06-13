@@ -10,7 +10,6 @@ import {
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { useTimelinePlayer, PlayerControls, Timeline, usePlayerStore } from "../../player";
 import type { TimelineElement } from "../../player";
-import type { TimelineEditCallbacks } from "../../player/components/timelineCallbacks";
 import { NLEPreview } from "./NLEPreview";
 import { CompositionBreadcrumb } from "./CompositionBreadcrumb";
 import { usePreviewBlockDrop } from "./usePreviewBlockDrop";
@@ -20,7 +19,7 @@ import {
   getTimelineToggleTitle,
 } from "../../utils/timelineDiscovery";
 
-interface NLELayoutProps extends TimelineEditCallbacks {
+interface NLELayoutProps {
   projectId: string;
   portrait?: boolean;
   /** Slot for overlays rendered on top of the preview (cursors, highlights, etc.) */
@@ -104,18 +103,7 @@ export const NLELayout = memo(function NLELayout({
   onAssetDrop,
   onBlockDrop,
   onPreviewBlockDrop,
-  onMoveElement,
-  onResizeElement,
-  onBlockedEditAttempt,
-  onSplitElement,
-  onRazorSplit,
-  onRazorSplitAll,
   onSelectTimelineElement,
-  onDeleteKeyframe,
-  onDeleteAllKeyframes,
-  onChangeKeyframeEase,
-  onMoveKeyframe,
-  onToggleKeyframeAtPlayhead,
   onCompIdToSrcChange,
   timelineVisible,
   onToggleTimeline,
@@ -444,18 +432,7 @@ export const NLELayout = memo(function NLELayout({
                 onDeleteElement={onDeleteElement}
                 onAssetDrop={onAssetDrop}
                 onBlockDrop={onBlockDrop}
-                onMoveElement={onMoveElement}
-                onResizeElement={onResizeElement}
-                onBlockedEditAttempt={onBlockedEditAttempt}
-                onSplitElement={onSplitElement}
-                onRazorSplit={onRazorSplit}
-                onRazorSplitAll={onRazorSplitAll}
                 onSelectElement={onSelectTimelineElement}
-                onDeleteKeyframe={onDeleteKeyframe}
-                onDeleteAllKeyframes={onDeleteAllKeyframes}
-                onChangeKeyframeEase={onChangeKeyframeEase}
-                onMoveKeyframe={onMoveKeyframe}
-                onToggleKeyframeAtPlayhead={onToggleKeyframeAtPlayhead}
               />
             </div>
             {timelineFooter && <div className="flex-shrink-0">{timelineFooter}</div>}
