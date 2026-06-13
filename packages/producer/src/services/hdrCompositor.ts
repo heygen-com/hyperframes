@@ -1,4 +1,3 @@
-// fallow-ignore-file complexity code-duplication
 /**
  * HDR Compositor — pixel-level compositing primitives for the HDR
  * layered render path.
@@ -66,6 +65,22 @@ function countNonZeroRgb48(buf: Uint8Array): number {
   return n;
 }
 
+// ─── Constants ────────────────────────────────────────────────────────────
+
+const TRANSFORM_IDENTITY_EPSILON = 0.001;
+const OPAQUE_ALPHA_THRESHOLD = 0.999;
+const RGB48_BYTES_PER_PIXEL = 6;
+
+type AffineMatrix = [number, number, number, number, number, number];
+
+function isAffineMatrix(m: number[]): m is AffineMatrix {
+  return m.length === 6;
+}
+
+function resolveBlitOpacity(opacity: number): number | undefined {
+  return opacity < OPAQUE_ALPHA_THRESHOLD ? opacity : undefined;
+}
+
 // ─── Types ─────────────────────────────────────────────────────────────────
 
 /**
@@ -96,14 +111,13 @@ function cropRgb48le(
   cropW: number,
   cropH: number,
 ): Buffer {
-  const BPP = 6;
-  const dst = Buffer.alloc(cropW * cropH * BPP);
+  const dst = Buffer.alloc(cropW * cropH * RGB48_BYTES_PER_PIXEL);
   for (let row = 0; row < cropH; row++) {
     const srcRow = cropY + row;
     if (srcRow < 0 || srcRow >= srcH) continue;
-    const srcOff = (srcRow * srcW + cropX) * BPP;
-    const dstOff = row * cropW * BPP;
-    const copyLen = Math.min(cropW, srcW - cropX) * BPP;
+    const srcOff = (srcRow * srcW + cropX) * RGB48_BYTES_PER_PIXEL;
+    const dstOff = row * cropW * RGB48_BYTES_PER_PIXEL;
+    const copyLen = Math.min(cropW, srcW - cropX) * RGB48_BYTES_PER_PIXEL;
     if (copyLen > 0) src.copy(dst, dstOff, srcOff, srcOff + copyLen);
   }
   return dst;
@@ -138,6 +152,7 @@ export function closeHdrVideoFrameSource(source: HdrVideoFrameSource, log?: Prod
   }
 }
 
+// fallow-ignore-next-line complexity
 export function blitHdrVideoLayer(
   canvas: Buffer,
   el: ElementStackingInfo,
@@ -184,18 +199,13 @@ export function blitHdrVideoLayer(
       );
     }
 
-    const viewportMatrix = parseTransformMatrix(el.transform);
+    const rawMatrix = parseTransformMatrix(el.transform);
+    const matrix = rawMatrix && isAffineMatrix(rawMatrix) ? rawMatrix : null;
 
-    // Pass border-radius for rounded-corner masking (only when non-zero)
     const br = el.borderRadius;
     const hasBorderRadius = br[0] > 0 || br[1] > 0 || br[2] > 0 || br[3] > 0;
     const borderRadiusParam = hasBorderRadius ? br : undefined;
 
-    // Apply ancestor overflow:hidden clip rect by constraining the blit
-    // bounds. For the no-transform (region) path, we crop the source
-    // image and adjust the destination position. For the affine path,
-    // clip rect support is not yet implemented (would require per-pixel
-    // scissor in the affine blit); log a warning and skip clipping.
     let blitX = el.x;
     let blitY = el.y;
     let blitSrcX = 0;
@@ -210,7 +220,7 @@ export function blitHdrVideoLayer(
       const cy1 = Math.max(blitY, cr.y);
       const cx2 = Math.min(blitX + blitW, cr.x + cr.width);
       const cy2 = Math.min(blitY + blitH, cr.y + cr.height);
-      if (cx2 <= cx1 || cy2 <= cy1) return; // fully clipped
+      if (cx2 <= cx1 || cy2 <= cy1) return;
       blitSrcX = cx1 - blitX;
       blitSrcY = cy1 - blitY;
       blitW = cx2 - cx1;
@@ -220,23 +230,16 @@ export function blitHdrVideoLayer(
       clipped = true;
     }
 
-    // Detect translation-only matrix (no scale/rotation) — route through the
-    // region path which supports clip rects. Chrome reports a viewport matrix
-    // for all HDR elements, even untransformed ones or those with only layout
-    // translation (e.g. `left: 960px` → `matrix(1,0,0,1,960,0)`). The region
-    // blit handles translation via el.x/el.y, so we only need the affine path
-    // for actual scale/rotation transforms.
-    // parseTransformMatrix returns a 6-element array or null — length check unnecessary.
     const isTranslationOnly = !!(
-      viewportMatrix &&
-      Math.abs(viewportMatrix[0]! - 1) < 0.001 &&
-      Math.abs(viewportMatrix[1]!) < 0.001 &&
-      Math.abs(viewportMatrix[2]!) < 0.001 &&
-      Math.abs(viewportMatrix[3]! - 1) < 0.001
+      matrix &&
+      Math.abs(matrix[0] - 1) < TRANSFORM_IDENTITY_EPSILON &&
+      Math.abs(matrix[1]) < TRANSFORM_IDENTITY_EPSILON &&
+      Math.abs(matrix[2]) < TRANSFORM_IDENTITY_EPSILON &&
+      Math.abs(matrix[3] - 1) < TRANSFORM_IDENTITY_EPSILON
     );
 
     timeHdrPhase(hdrPerf, "hdrVideoBlitMs", () => {
-      if (viewportMatrix && !isTranslationOnly) {
+      if (matrix && !isTranslationOnly) {
         if (clipped && log) {
           log.debug(
             `HDR clip rect on affine-transformed element ${el.id} — clip not applied (affine scissor not yet supported)`,
@@ -245,16 +248,15 @@ export function blitHdrVideoLayer(
         blitRgb48leAffine(
           canvas,
           hdrRgb,
-          viewportMatrix,
+          matrix,
           srcW,
           srcH,
           width,
           height,
-          el.opacity < 0.999 ? el.opacity : undefined,
+          resolveBlitOpacity(el.opacity),
           borderRadiusParam,
         );
       } else if (clipped) {
-        // Crop the source buffer to the clipped region before blitting
         const croppedBuf = cropRgb48le(hdrRgb, srcW, srcH, blitSrcX, blitSrcY, blitW, blitH);
         blitRgb48leRegion(
           canvas,
@@ -265,7 +267,7 @@ export function blitHdrVideoLayer(
           blitH,
           width,
           height,
-          el.opacity < 0.999 ? el.opacity : undefined,
+          resolveBlitOpacity(el.opacity),
           borderRadiusParam,
         );
       } else {
@@ -278,7 +280,7 @@ export function blitHdrVideoLayer(
           srcH,
           width,
           height,
-          el.opacity < 0.999 ? el.opacity : undefined,
+          resolveBlitOpacity(el.opacity),
           borderRadiusParam,
         );
       }
@@ -343,23 +345,24 @@ export function blitHdrImageLayer(
         : buf.data,
     );
 
-    const viewportMatrix = parseTransformMatrix(el.transform);
+    const rawMatrix = parseTransformMatrix(el.transform);
+    const matrix = rawMatrix && isAffineMatrix(rawMatrix) ? rawMatrix : null;
 
     const br = el.borderRadius;
     const hasBorderRadius = br[0] > 0 || br[1] > 0 || br[2] > 0 || br[3] > 0;
     const borderRadiusParam = hasBorderRadius ? br : undefined;
 
     timeHdrPhase(hdrPerf, "hdrImageBlitMs", () => {
-      if (viewportMatrix) {
+      if (matrix) {
         blitRgb48leAffine(
           canvas,
           hdrRgb,
-          viewportMatrix,
+          matrix,
           buf.width,
           buf.height,
           width,
           height,
-          el.opacity < 0.999 ? el.opacity : undefined,
+          resolveBlitOpacity(el.opacity),
           borderRadiusParam,
         );
       } else {
@@ -372,7 +375,7 @@ export function blitHdrImageLayer(
           buf.height,
           width,
           height,
-          el.opacity < 0.999 ? el.opacity : undefined,
+          resolveBlitOpacity(el.opacity),
           borderRadiusParam,
         );
       }
@@ -462,6 +465,7 @@ export interface HdrCompositeContext {
  *                          dumps. Pass `-1` to disable per-layer dumps even
  *                          when `KEEP_TEMP=1` (e.g. for warmup frames).
  */
+// fallow-ignore-next-line complexity
 export async function compositeHdrFrame(
   ctx: HdrCompositeContext,
   canvas: Buffer,
