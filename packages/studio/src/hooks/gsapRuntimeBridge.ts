@@ -20,6 +20,8 @@ import {
 } from "./gsapDragCommit";
 import { resolveTweenStart, resolveTweenDuration } from "../utils/globalTimeCompiler";
 import type { GsapDragCommitCallbacks } from "./gsapDragCommit";
+import { selectorFromSelection } from "./gsapShared";
+import { roundTo3 } from "../utils/rounding";
 
 // ── Runtime reads ──────────────────────────────────────────────────────────
 
@@ -98,12 +100,6 @@ function findGsapPositionAnimation(
 }
 
 // ── Selector resolution ────────────────────────────────────────────────────
-
-function selectorForSelection(selection: DomEditSelection): string | null {
-  if (selection.id) return `#${selection.id}`;
-  if (selection.selector) return selection.selector;
-  return null;
-}
 
 // ── Property-group tween resolution ───────────────────────────────────────
 
@@ -193,7 +189,7 @@ export async function tryGsapDragIntercept(
   commitMutation: GsapDragCommitCallbacks["commitMutation"],
   fetchFallbackAnimations?: () => Promise<GsapAnimation[]>,
 ): Promise<boolean> {
-  const selector = selectorForSelection(selection);
+  const selector = selectorFromSelection(selection);
   if (!selector) return false;
 
   // Resolve the position-group tween, splitting legacy mixed tweens if needed.
@@ -284,15 +280,15 @@ export async function tryGsapResizeIntercept(
     const elDuration = Number.parseFloat(selection.dataAttributes?.duration ?? "5") || 5;
     const ct = usePlayerStore.getState().currentTime;
     const pct = elDuration > 0 ? Math.round(((ct - elStart) / elDuration) * 1000) / 10 : 0;
-    const sel = selectorForSelection(selection);
+    const sel = selectorFromSelection(selection);
     if (!sel) return false;
     await commitMutation(
       selection,
       {
         type: "add-with-keyframes",
         targetSelector: sel,
-        position: Math.round(elStart * 1000) / 1000,
-        duration: Math.round(elDuration * 1000) / 1000,
+        position: roundTo3(elStart),
+        duration: roundTo3(elDuration),
         keyframes: [
           {
             percentage: Math.max(0, Math.min(100, pct)),
@@ -310,7 +306,7 @@ export async function tryGsapResizeIntercept(
   if (activeKeyframePct != null) setActiveKeyframePct(null);
   const coalesceKey = `gsap:resize:${anim.id}`;
 
-  const selector = selectorForSelection(selection);
+  const selector = selectorFromSelection(selection);
   const runtimeProps = selector ? readAllAnimatedProperties(iframe, selector, anim) : {};
 
   let resizeProps: Record<string, number>;
@@ -320,7 +316,7 @@ export async function tryGsapResizeIntercept(
     // saved by the draft system before it ran.
     const origW = Number.parseFloat(el?.getAttribute("data-hf-studio-original-width") ?? "");
     const cssW = Number.isFinite(origW) && origW > 0 ? origW : 200;
-    const newScale = Math.round((size.width / cssW) * 1000) / 1000;
+    const newScale = roundTo3(size.width / cssW);
     resizeProps = { scale: newScale };
   } else {
     resizeProps = {
@@ -395,8 +391,8 @@ export async function tryGsapResizeIntercept(
         type: "replace-with-keyframes",
         animationId: anim.id,
         targetSelector: anim.targetSelector,
-        position: Math.round(newStart * 1000) / 1000,
-        duration: Math.round(newDuration * 1000) / 1000,
+        position: roundTo3(newStart),
+        duration: roundTo3(newDuration),
         keyframes: remapped,
       },
       { label: `Resize (extended to ${ct.toFixed(2)}s)`, softReload: true, coalesceKey },
@@ -455,7 +451,7 @@ export async function tryGsapRotationIntercept(
   }
   if (!anim) return false;
 
-  const selector = selectorForSelection(selection);
+  const selector = selectorFromSelection(selection);
   if (!selector) return false;
 
   let gsapRotation = 0;

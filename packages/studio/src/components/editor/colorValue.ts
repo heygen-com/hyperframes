@@ -1,3 +1,5 @@
+import { roundToCenti } from "../../utils/rounding";
+
 export interface ParsedColor {
   red: number;
   green: number;
@@ -24,7 +26,7 @@ function toHex(value: number): string {
 }
 
 function formatAlpha(value: number): string {
-  return `${Math.round(clampAlpha(value) * 100) / 100}`;
+  return `${roundToCenti(clampAlpha(value))}`;
 }
 
 export function parseCssColor(value: string): ParsedColor | null {

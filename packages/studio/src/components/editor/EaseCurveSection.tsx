@@ -1,5 +1,6 @@
 import { memo, useCallback, useRef, useState } from "react";
 import { EASE_CURVES, EASE_LABELS, parseCustomEaseFromString } from "./gsapAnimationConstants";
+import { roundToCenti } from "../../utils/rounding";
 
 const PRESET_GRID_EASES = [
   "none",
@@ -75,9 +76,7 @@ const EasePresetGrid = memo(function EasePresetGrid({
   );
 });
 
-function round2(n: number): number {
-  return Math.round(n * 100) / 100;
-}
+const round2 = roundToCenti;
 
 export function EaseCurveSection({
   ease,

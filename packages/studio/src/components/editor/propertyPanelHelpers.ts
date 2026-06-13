@@ -3,6 +3,7 @@ import { COMMON_LOCAL_FONT_FAMILIES } from "./fontCatalog";
 import type { DomEditSelection } from "./domEditing";
 import type { ImportedFontAsset } from "./fontAssets";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
+import { roundToCenti } from "../../utils/rounding";
 
 export interface PropertyPanelProps {
   projectId: string;
@@ -240,7 +241,7 @@ export function parseNumericValue(value: string | undefined): number | null {
 }
 
 export function formatNumericValue(value: number): string {
-  const rounded = Math.round(value * 100) / 100;
+  const rounded = roundToCenti(value);
   return Number.isInteger(rounded)
     ? `${rounded}`
     : rounded.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
@@ -541,7 +542,7 @@ export function readGsapRuntimeValuesForPanel(
     const result: Record<string, number> = {};
     for (const prop of propKeys) {
       const v = Number(gsap.getProperty(el, prop));
-      if (Number.isFinite(v)) result[prop] = Math.round(v * 100) / 100;
+      if (Number.isFinite(v)) result[prop] = roundToCenti(v);
     }
     return Object.keys(result).length > 0 ? result : null;
   } catch {

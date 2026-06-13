@@ -1,3 +1,5 @@
+import { roundTo3 } from "./rounding";
+
 const WINDOW_SIZE = 1024;
 const HOP_SIZE = 512;
 
@@ -36,7 +38,7 @@ export async function detectBeats(audioBuffer: AudioBuffer): Promise<number[]> {
     ) {
       const timeInSeconds = (i * HOP_SIZE) / sampleRate;
       if (beats.length === 0 || timeInSeconds - beats[beats.length - 1]! > 0.1) {
-        beats.push(Math.round(timeInSeconds * 1000) / 1000);
+        beats.push(roundTo3(timeInSeconds));
       }
     }
   }
