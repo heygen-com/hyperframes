@@ -1,12 +1,7 @@
 import { Clock } from "../../icons/SystemIcons";
 import type { DomEditSelection } from "./domEditing";
-import { RESPONSIVE_GRID } from "./propertyPanelHelpers";
+import { formatTimingValue, RESPONSIVE_GRID } from "./propertyPanelHelpers";
 import { MetricField, Section } from "./propertyPanelPrimitives";
-
-function formatTimingValue(seconds: number): string {
-  if (!Number.isFinite(seconds) || seconds < 0) return "0.00s";
-  return `${seconds.toFixed(2)}s`;
-}
 
 function parseTimingValue(input: string): number | null {
   const cleaned = input.replace(/s$/i, "").trim();

@@ -74,7 +74,8 @@ export function useGestureCommit({
         }
         return;
       }
-      const duration = frozenSamples.length > 0 ? frozenSamples[frozenSamples.length - 1]!.time : 0;
+      const duration =
+        frozenSamples.length > 0 ? (frozenSamples[frozenSamples.length - 1]?.time ?? 0) : 0;
 
       if (frozenSamples.length <= 2) {
         showToast("No gesture detected — move the pointer while recording", "error");

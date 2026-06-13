@@ -239,6 +239,11 @@ export function parseNumericValue(value: string | undefined): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+export function formatTimingValue(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return "0.00s";
+  return `${seconds.toFixed(2)}s`;
+}
+
 export function formatNumericValue(value: number): string {
   const rounded = Math.round(value * 100) / 100;
   return Number.isInteger(rounded)
@@ -534,8 +539,8 @@ export function readGsapBorderRadiusForPanel(
   if (!iframe?.contentDocument || !selector) return null;
   try {
     const el = iframe.contentDocument.querySelector(selector);
-    if (!el) return null;
-    const cs = iframe.contentWindow!.getComputedStyle(el);
+    if (!el || !iframe.contentWindow) return null;
+    const cs = iframe.contentWindow.getComputedStyle(el);
     const parse = (v: string) => Number.parseFloat(v) || 0;
     return {
       tl: parse(cs.borderTopLeftRadius),

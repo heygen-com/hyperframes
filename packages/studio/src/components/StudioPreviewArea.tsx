@@ -159,7 +159,7 @@ export function StudioPreviewArea({
           onRazorSplitAll={handleRazorSplitAll}
           onSelectTimelineElement={handleTimelineElementSelect}
           onDeleteAllKeyframes={(elId) => {
-            const rawId = elId.includes("#") ? elId.split("#").pop()! : elId;
+            const rawId = elId.includes("#") ? (elId.split("#").pop() ?? elId) : elId;
             handleGsapDeleteAllForElement(`#${rawId}`);
           }}
           onDeleteKeyframe={(_elId, pct) => {
