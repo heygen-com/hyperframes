@@ -216,8 +216,10 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     if (!project) return c.json({ error: "not found" }, 404);
     const filename = c.req.path.split("/renders/file/")[1];
     if (!filename) return c.json({ error: "missing filename" }, 400);
+    if (filename.includes("..")) return c.json({ error: "forbidden" }, 403);
     const rendersDir = adapter.rendersDir(project);
     const fp = join(rendersDir, filename);
+    if (!fp.startsWith(resolve(rendersDir))) return c.json({ error: "forbidden" }, 403);
     if (!existsSync(fp)) return c.json({ error: "not found" }, 404);
     const contentType = renderContentType(fp);
     const content = readFileSync(fp);
