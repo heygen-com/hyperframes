@@ -19,7 +19,7 @@ function createProjectDir(): string {
 }
 
 describe("walkDir", () => {
-  it("hides internal HyperFrames files from project listings", () => {
+  it("hides only internal HyperFrames backups, not vendored dot-directory files", () => {
     const projectDir = createProjectDir();
     mkdirSync(join(projectDir, ".hyperframes", "backup"), { recursive: true });
     mkdirSync(join(projectDir, ".hyperframes", "examples"), { recursive: true });
@@ -31,9 +31,11 @@ describe("walkDir", () => {
     writeFileSync(join(projectDir, "compositions", "scene.html"), "scene");
 
     const files = walkDir(projectDir);
+    // Vendored dot-dir files stay browsable in the file tree (#1366) — only
+    // Studio's own backup snapshots are hidden (shouldIgnoreDir).
     expect(files).toContain(".cache/examples/preset.html");
+    expect(files).toContain(".hyperframes/examples/preset.html");
     expect(files).toContain("compositions/scene.html");
     expect(files).not.toContain(".hyperframes/backup/snapshot.html");
-    expect(files).not.toContain(".hyperframes/examples/preset.html");
   });
 });
