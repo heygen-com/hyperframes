@@ -153,6 +153,12 @@ you a clear error pointing at `init --example`.
 pull from and where files land. If it is missing but the directory has an
 `index.html`, a default one is written on first use.
 
+When an item declares `registryDependencies`, `add` installs its dependencies
+first, resolving them transitively. Before installing any item files, it checks
+`minCliVersion` on every resolved item and reports upgrade guidance for an
+incompatible CLI. A `deprecated` message produces a warning without blocking
+installation.
+
 ### `catalog`
 
 Browse the registry.
