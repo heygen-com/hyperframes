@@ -88,7 +88,7 @@
     "@hyperframes/aws-lambda": "workspace:*",
     "@types/node": "^25.0.10",
     "@webgpu/types": "^0.1.69",
-    "esbuild": "^0.25.12",
+    "esbuild": "^0.28.1",
     "tsx": "^4.21.0",
     "typescript": "^5.7.2"
   },
