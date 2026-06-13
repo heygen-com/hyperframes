@@ -1,16 +1,16 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import { useState, useCallback, useRef } from "react";
 import type { EditingFile } from "../utils/studioHelpers";
 import { FONT_EXT, isMediaFile } from "../utils/mediaTypes";
 import { fontFamilyFromAssetPath, type ImportedFontAsset } from "../components/editor/fontAssets";
-import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import type { EditHistoryKind } from "../utils/editHistory";
 import { findTagByTarget, type PatchTarget } from "../utils/sourcePatcher";
-import { trackStudioEvent } from "../utils/studioTelemetry";
 import {
   createStudioSaveHttpError,
   retryStudioSave,
   StudioSaveNetworkError,
 } from "../utils/studioSaveDiagnostics";
+import { useFileTree } from "./useFileTree";
+import { useEditorSave } from "./useEditorSave";
 
 // ── Types ──
 
@@ -38,16 +38,10 @@ export function useFileManager({
   domEditSaveTimestampRef,
   setRefreshKey,
 }: UseFileManagerOptions) {
-  // ── State ──
+  // ── Shared refs ──
 
   const [editingFile, setEditingFile] = useState<EditingFile | null>(null);
-  const [projectDir, setProjectDir] = useState<string | null>(null);
-  const [fileTree, setFileTree] = useState<string[]>([]);
-  const [compositionPaths, setCompositionPaths] = useState<string[]>([]);
-  const [fileTreeLoaded, setFileTreeLoaded] = useState(false);
   const [revealSourceOffset, setRevealSourceOffset] = useState<number | null>(null);
-
-  // ── Refs ──
 
   const editingPathRef = useRef(editingFile?.path);
   editingPathRef.current = editingFile?.path;
@@ -55,37 +49,20 @@ export function useFileManager({
   const projectIdRef = useRef(projectId);
   projectIdRef.current = projectId;
 
-  const saveRafRef = useRef<number | null>(null);
-  const refreshRafRef = useRef<number | null>(null);
   const importedFontAssetsRef = useRef<ImportedFontAsset[]>([]);
 
-  // ── Load file tree when projectId changes ──
+  // ── File tree ──
 
-  // eslint-disable-next-line no-restricted-syntax
-  useEffect(() => {
-    if (!projectId) {
-      setFileTreeLoaded(false);
-      return;
-    }
-    let cancelled = false;
-    setFileTreeLoaded(false);
-    fetch(`/api/projects/${projectId}`)
-      .then((r) => r.json())
-      .then((data: { files?: string[]; dir?: string; compositions?: string[] }) => {
-        if (!cancelled && data.files) setFileTree(data.files);
-        if (!cancelled && data.compositions) setCompositionPaths(data.compositions);
-        if (!cancelled) setProjectDir(typeof data.dir === "string" ? data.dir : null);
-      })
-      .catch(() => {
-        if (!cancelled) setProjectDir(null);
-      })
-      .finally(() => {
-        if (!cancelled) setFileTreeLoaded(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [projectId]);
+  const {
+    projectDir,
+    fileTree,
+    setFileTree,
+    fileTreeLoaded,
+    refreshFileTree,
+    compositions,
+    assets,
+    fontAssets,
+  } = useFileTree({ projectId, projectIdRef });
 
   // ── Core file I/O ──
 
@@ -139,7 +116,22 @@ export function useFileManager({
     return typeof data.content === "string" ? data.content : "";
   }, []);
 
+  // ── Editor save (debounced content change) ──
+
+  const { saveRafRef, handleContentChange } = useEditorSave({
+    editingPathRef,
+    projectIdRef,
+    readProjectFile,
+    writeProjectFile,
+    recordEdit,
+    domEditSaveTimestampRef,
+    setRefreshKey,
+  });
+
   // ── File select ──
+
+  const revealRequestIdRef = useRef(0);
+  const revealAbortRef = useRef<AbortController | null>(null);
 
   const handleFileSelect = useCallback((path: string) => {
     const pid = projectIdRef.current;
@@ -162,47 +154,7 @@ export function useFileManager({
       .catch(() => {});
   }, []);
 
-  // ── Content change (debounced save) ──
-
-  const handleContentChange = useCallback(
-    (content: string) => {
-      const pid = projectIdRef.current;
-      if (!pid) return;
-      const path = editingPathRef.current;
-      if (!path) return;
-
-      if (saveRafRef.current != null) cancelAnimationFrame(saveRafRef.current);
-      saveRafRef.current = requestAnimationFrame(() => {
-        domEditSaveTimestampRef.current = Date.now();
-        saveProjectFilesWithHistory({
-          projectId: pid,
-          label: "Edit source",
-          kind: "source",
-          coalesceKey: `source:${path}`,
-          files: { [path]: content },
-          readFile: readProjectFile,
-          writeFile: writeProjectFile,
-          recordEdit,
-        })
-          .then(() => {
-            if (refreshRafRef.current != null) cancelAnimationFrame(refreshRafRef.current);
-            refreshRafRef.current = requestAnimationFrame(() => setRefreshKey((k) => k + 1));
-          })
-          .catch((error) => {
-            trackStudioEvent("save_failure", {
-              source: "code_editor",
-              error_message: error instanceof Error ? error.message : "unknown",
-            });
-          });
-      });
-    },
-    [domEditSaveTimestampRef, readProjectFile, recordEdit, setRefreshKey, writeProjectFile],
-  );
-
-  // ── Open source for selection (click-to-source) ──
-
-  const revealRequestIdRef = useRef(0);
-  const revealAbortRef = useRef<AbortController | null>(null);
+  // ── Click-to-source ──
 
   const openSourceForSelection = useCallback(
     (sourceFile: string, target: PatchTarget) => {
@@ -234,16 +186,6 @@ export function useFileManager({
     },
     [editingFile?.content],
   );
-
-  // ── File tree refresh ──
-
-  const refreshFileTree = useCallback(async () => {
-    const pid = projectIdRef.current;
-    if (!pid) return;
-    const res = await fetch(`/api/projects/${pid}`);
-    const data = await res.json();
-    if (data.files) setFileTree(data.files);
-  }, []);
 
   // ── Upload ──
 
@@ -289,7 +231,7 @@ export function useFileManager({
     [refreshFileTree, setRefreshKey, showToast],
   );
 
-  // ── File management handlers ──
+  // ── File CRUD ──
 
   const handleCreateFile = useCallback(
     async (path: string) => {
@@ -320,7 +262,6 @@ export function useFileManager({
     async (path: string) => {
       const pid = projectIdRef.current;
       if (!pid) return;
-      // Create a .gitkeep inside the folder so it appears in the tree
       const res = await fetch(
         `/api/projects/${pid}/files/${encodeURIComponent(path + "/.gitkeep")}`,
         {
@@ -371,7 +312,6 @@ export function useFileManager({
           handleFileSelect(newPath);
         }
         await refreshFileTree();
-        // Refresh preview — references in compositions may have been updated
         setRefreshKey((k) => k + 1);
       } else {
         const err = await res.json().catch(() => ({ error: "unknown" }));
@@ -435,28 +375,6 @@ export function useFileManager({
       return imported;
     },
     [uploadProjectFiles],
-  );
-
-  // ── Derived state ──
-
-  const compositions = compositionPaths;
-
-  const assets = useMemo(
-    () =>
-      fileTree.filter((f) => !f.endsWith(".html") && !f.endsWith(".md") && !f.endsWith(".json")),
-    [fileTree],
-  );
-
-  const fontAssets = useMemo<ImportedFontAsset[]>(
-    () =>
-      assets
-        .filter((asset) => FONT_EXT.test(asset))
-        .map((asset) => ({
-          family: fontFamilyFromAssetPath(asset),
-          path: asset,
-          url: `/api/projects/${projectId}/preview/${asset}`,
-        })),
-    [assets, projectId],
   );
 
   // ── Return ──
