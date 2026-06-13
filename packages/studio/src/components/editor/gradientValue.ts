@@ -1,3 +1,5 @@
+import { roundToCenti } from "../../utils/rounding";
+
 export type GradientKind = "linear" | "radial" | "conic";
 
 export type RadialSizeKeyword =
@@ -124,9 +126,7 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-function round(value: number): number {
-  return Math.round(value * 100) / 100;
-}
+const round = roundToCenti;
 
 function parsePercent(value: string | undefined, fallback: number): number {
   const parsed = parseCssNumber(value);

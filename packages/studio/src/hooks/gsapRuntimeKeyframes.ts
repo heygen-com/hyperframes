@@ -4,6 +4,7 @@
  * (loops, variables, computed selectors).
  */
 import { parsePercentageKeyframes } from "./gsapShared";
+import { roundTo3 } from "../utils/rounding";
 
 interface RuntimeTween {
   targets?: () => Element[];
@@ -145,7 +146,7 @@ export function scanAllRuntimeKeyframes(iframe: HTMLIFrameElement | null): Map<
       ]);
       for (const [k, v] of Object.entries(vars)) {
         if (skip.has(k)) continue;
-        if (typeof v === "number") properties[k] = Math.round(v * 1000) / 1000;
+        if (typeof v === "number") properties[k] = roundTo3(v);
         else if (typeof v === "string") properties[k] = v;
       }
       if (Object.keys(properties).length === 0) continue;

@@ -6,11 +6,9 @@ import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { usePlayerStore } from "../player/store/playerStore";
 import { readRuntimeKeyframes, scanAllRuntimeKeyframes } from "./gsapRuntimeKeyframes";
-import {
-  absoluteToPercentage,
-  resolveTweenStart,
-  resolveTweenDuration,
-} from "../utils/globalTimeCompiler";
+import { resolveTweenStart, resolveTweenDuration } from "../utils/globalTimeCompiler";
+import { roundTo3 } from "../utils/rounding";
+import { computeElementPercentage } from "./gsapShared";
 export interface GsapDragCommitCallbacks {
   commitMutation: (
     selection: DomEditSelection,
@@ -26,25 +24,12 @@ export interface GsapDragCommitCallbacks {
   fetchAnimations?: () => Promise<GsapAnimation[]>;
 }
 
-// ── Percentage computation ─────────────────────────────────────────────────
-
+// Re-export for backward compatibility with existing imports.
 export function computeCurrentPercentage(
   selection: DomEditSelection,
   animation?: GsapAnimation,
 ): number {
-  const currentTime = usePlayerStore.getState().currentTime;
-  if (animation) {
-    const start = resolveTweenStart(animation);
-    const duration = resolveTweenDuration(animation);
-    if (start !== null) {
-      return absoluteToPercentage(currentTime, start, duration);
-    }
-  }
-  const elStart = Number.parseFloat(selection.dataAttributes?.start ?? "0") || 0;
-  const elDuration = Number.parseFloat(selection.dataAttributes?.duration ?? "1") || 1;
-  return elDuration > 0
-    ? Math.max(0, Math.min(100, Math.round(((currentTime - elStart) / elDuration) * 1000) / 10))
-    : 0;
+  return computeElementPercentage(usePlayerStore.getState().currentTime, selection, animation);
 }
 
 // ── Dynamic keyframe materialization ──────────────────────────────────────
@@ -133,8 +118,8 @@ async function extendTweenAndAddKeyframe(
       type: "replace-with-keyframes",
       animationId: anim.id,
       targetSelector: anim.targetSelector,
-      position: Math.round(newStart * 1000) / 1000,
-      duration: Math.round(newDuration * 1000) / 1000,
+      position: roundTo3(newStart),
+      duration: roundTo3(newDuration),
       keyframes: remappedKfs,
     },
     { label: `Move layer (extended keyframe)`, softReload: true, beforeReload },
@@ -330,8 +315,8 @@ export async function commitGsapPositionFromDrag(
         {
           type: "add-with-keyframes",
           targetSelector: anim.targetSelector,
-          position: Math.round(newStart * 1000) / 1000,
-          duration: Math.round(newDuration * 1000) / 1000,
+          position: roundTo3(newStart),
+          duration: roundTo3(newDuration),
           keyframes,
         },
         { label: "Move layer (from extended)", softReload: true, beforeReload: restoreOffset },

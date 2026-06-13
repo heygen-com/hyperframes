@@ -1,0 +1,14 @@
+commit-msg:
+  commands:
+    coauthor:
+      run: |
+        MSG_FILE="{1}"
+        TRAILER1="Co-authored-by: Miguel Ángel <miguel07alm@protonmail.com>"
+        if ! grep -qF "$TRAILER1" "$MSG_FILE"; then
+          # Ensure blank line before trailers
+          if [ -n "$(tail -c1 "$MSG_FILE")" ]; then
+            echo "" >> "$MSG_FILE"
+          fi
+          echo "" >> "$MSG_FILE"
+          echo "$TRAILER1" >> "$MSG_FILE"
+        fi

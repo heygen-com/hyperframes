@@ -12,6 +12,7 @@ import { classifyPropertyGroup } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { usePlayerStore } from "../player/store/playerStore";
 import { readAllAnimatedProperties, readGsapProperty } from "./gsapRuntimeBridge";
+import { selectorFromSelection, computeElementPercentage } from "./gsapShared";
 
 interface CommitAnimatedPropertyDeps {
   selectedGsapAnimations: GsapAnimation[];
@@ -35,23 +36,6 @@ interface CommitAnimatedPropertyDeps {
   convertToKeyframes: (selection: DomEditSelection, animId: string) => void;
   previewIframeRef: React.RefObject<HTMLIFrameElement | null>;
   bumpGsapCache: () => void;
-}
-
-function computePercentage(selection: DomEditSelection, anim?: GsapAnimation): number {
-  const currentTime = usePlayerStore.getState().currentTime;
-  const tweenPos = anim?.resolvedStart ?? (typeof anim?.position === "number" ? anim.position : 0);
-  const tweenDur = anim?.duration ?? 0;
-  if (tweenDur > 0) {
-    return Math.max(
-      0,
-      Math.min(100, Math.round(((currentTime - tweenPos) / tweenDur) * 1000) / 10),
-    );
-  }
-  const elStart = Number.parseFloat(selection.dataAttributes?.start ?? "0") || 0;
-  const elDuration = Number.parseFloat(selection.dataAttributes?.duration ?? "1") || 1;
-  return elDuration > 0
-    ? Math.max(0, Math.min(100, Math.round(((currentTime - elStart) / elDuration) * 1000) / 10))
-    : 0;
 }
 
 function pickBestAnimation(
@@ -78,12 +62,6 @@ function pickBestAnimation(
   return scored[0]?.anim;
 }
 
-function selectorFor(selection: DomEditSelection): string | null {
-  if (selection.id) return `#${selection.id}`;
-  if (selection.selector) return selection.selector;
-  return null;
-}
-
 export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
   const {
     selectedGsapAnimations,
@@ -102,7 +80,7 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
       if (!gsapCommitMutation) return;
 
       const iframe = previewIframeRef.current;
-      const selector = selectorFor(selection);
+      const selector = selectorFromSelection(selection);
 
       let anim: GsapAnimation | undefined = pickBestAnimation(
         selectedGsapAnimations,
@@ -132,7 +110,7 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
         );
       }
 
-      const pct = computePercentage(selection, anim);
+      const pct = computeElementPercentage(usePlayerStore.getState().currentTime, selection, anim);
 
       // Read all currently animated properties from runtime for backfill
       const runtimeProps = selector ? readAllAnimatedProperties(iframe, selector, anim) : {};

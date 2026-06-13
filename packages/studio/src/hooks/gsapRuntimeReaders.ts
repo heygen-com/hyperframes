@@ -4,6 +4,7 @@
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { classifyPropertyGroup, type PropertyGroupName } from "@hyperframes/core/gsap-parser";
 import { getIframeGsap, queryIframeElement } from "./gsapShared";
+import { roundTo3 } from "../utils/rounding";
 
 export function readGsapProperty(
   iframe: HTMLIFrameElement | null,
@@ -18,13 +19,13 @@ export function readGsapProperty(
   try {
     const val = Number(gsap.getProperty(el, prop));
     if (!Number.isFinite(val)) return null;
-    return POSITION_PROPS.has(prop) ? Math.round(val) : Math.round(val * 1000) / 1000;
+    return POSITION_PROPS.has(prop) ? Math.round(val) : roundTo3(val);
   } catch {
     return null;
   }
 }
 
-const POSITION_PROPS = new Set(["x", "y", "xPercent", "yPercent"]);
+export const POSITION_PROPS = new Set(["x", "y", "xPercent", "yPercent"]);
 const GSAP_CONFIG_KEYS = new Set([
   "duration",
   "ease",
@@ -86,7 +87,7 @@ export function readAllAnimatedProperties(
   for (const prop of propKeys) {
     const val = Number(gsap.getProperty(el, prop));
     if (Number.isFinite(val)) {
-      result[prop] = POSITION_PROPS.has(prop) ? Math.round(val) : Math.round(val * 1000) / 1000;
+      result[prop] = POSITION_PROPS.has(prop) ? Math.round(val) : roundTo3(val);
     }
   }
 
@@ -158,7 +159,7 @@ export function readAllAnimatedProperties(
     if (!allTweenedProps.has(prop)) continue;
     const val = Number(gsap.getProperty(el, prop));
     if (Number.isFinite(val) && Math.round(val * 1000) !== Math.round(defaultVal * 1000)) {
-      result[prop] = Math.round(val * 1000) / 1000;
+      result[prop] = roundTo3(val);
     }
   }
 
@@ -200,7 +201,7 @@ export function readAllAnimatedProperties(
     }
     if (Number.isFinite(cssVal) && Math.round(gsapVal * 1000) === Math.round(cssVal * 1000))
       continue;
-    result[prop] = Math.round(gsapVal * 1000) / 1000;
+    result[prop] = roundTo3(gsapVal);
   }
 
   return result;

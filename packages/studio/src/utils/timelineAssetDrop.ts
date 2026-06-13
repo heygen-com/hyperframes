@@ -1,4 +1,6 @@
 import { AUDIO_EXT, IMAGE_EXT, VIDEO_EXT } from "./mediaTypes";
+import { roundToCenti } from "./rounding";
+import { COMPOSITION_ROOT_OPEN_TAG_RE } from "./studioHelpers";
 
 export const TIMELINE_ASSET_MIME = "application/x-hyperframes-asset";
 export const TIMELINE_BLOCK_MIME = "application/x-hyperframes-block";
@@ -51,13 +53,13 @@ export function buildTimelineFileDropPlacements(
   durations: number[],
   occupiedClips: Array<{ start: number; duration: number; track: number }> = [],
 ): Array<{ start: number; track: number }> {
-  let nextStart = Math.round(Math.max(0, placement.start) * 100) / 100;
+  let nextStart = roundToCenti(Math.max(0, placement.start));
   const sequenceStart = nextStart;
   const resolvedDurations = durations.map((duration) =>
     Number.isFinite(duration) && duration > 0 ? duration : FALLBACK_TIMELINE_FILE_DROP_DURATION,
   );
   const sequenceEnd = resolvedDurations.reduce(
-    (end, duration) => Math.round((end + duration) * 100) / 100,
+    (end, duration) => roundToCenti(end + duration),
     sequenceStart,
   );
   const overlapsDropTrack = occupiedClips.some((clip) => {
@@ -72,7 +74,7 @@ export function buildTimelineFileDropPlacements(
 
   return resolvedDurations.map((duration) => {
     const start = nextStart;
-    nextStart = Math.round((nextStart + duration) * 100) / 100;
+    nextStart = roundToCenti(nextStart + duration);
     return { start, track };
   });
 }
@@ -120,8 +122,7 @@ export function buildTimelineAssetInsertHtml(input: {
 }
 
 export function insertTimelineAssetIntoSource(source: string, assetHtml: string): string {
-  const rootOpenTag = /<[^>]*data-composition-id="[^"]+"[^>]*>/i;
-  const match = rootOpenTag.exec(source);
+  const match = COMPOSITION_ROOT_OPEN_TAG_RE.exec(source);
   if (!match || match.index == null) {
     throw new Error("No composition root found in target source");
   }

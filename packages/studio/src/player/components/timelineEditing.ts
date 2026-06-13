@@ -1,10 +1,7 @@
 import { formatTime } from "../lib/time";
+import { roundToCenti } from "../../utils/rounding";
 
-const TIME_PRECISION = 100;
-
-function roundToCentiseconds(value: number): number {
-  return Math.round(value * TIME_PRECISION) / TIME_PRECISION;
-}
+const roundToCentiseconds = roundToCenti;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);

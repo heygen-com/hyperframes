@@ -1,7 +1,8 @@
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { absoluteToPercentageForAnimation, findTweenAtTime } from "../utils/globalTimeCompiler";
-import { PROPERTY_DEFAULTS } from "./gsapShared";
+import { PROPERTY_DEFAULTS, selectorFromSelection } from "./gsapShared";
+import { roundToCenti } from "../utils/rounding";
 
 type CommitFn = (
   selection: DomEditSelection,
@@ -21,7 +22,7 @@ export async function commitKeyframeAtTimeImpl(
   properties: Record<string, number | string>,
   commitMutation: CommitFn,
 ): Promise<void> {
-  const selector = selection.id ? `#${selection.id}` : selection.selector;
+  const selector = selectorFromSelection(selection);
   if (!selector) return;
 
   const tween = findTweenAtTime(absoluteTime, animations, selector);
@@ -53,7 +54,7 @@ export async function commitKeyframeAtTimeImpl(
         backfillDefaults,
       },
       {
-        label: `Add keyframe at ${Math.round(absoluteTime * 100) / 100}s`,
+        label: `Add keyframe at ${roundToCenti(absoluteTime)}s`,
         coalesceKey: `keyframe:${tween.id}:${pct}`,
         softReload: true,
       },
@@ -73,7 +74,7 @@ export async function commitKeyframeAtTimeImpl(
         ],
       },
       {
-        label: `New animation at ${Math.round(absoluteTime * 100) / 100}s`,
+        label: `New animation at ${roundToCenti(absoluteTime)}s`,
         softReload: true,
       },
     );

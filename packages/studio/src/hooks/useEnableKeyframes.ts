@@ -12,6 +12,9 @@ import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { usePlayerStore } from "../player/store/playerStore";
 import { fetchParsedAnimations, getAnimationsForElement } from "./useGsapTweenCache";
+import { selectorFromSelection, computeElementPercentage } from "./gsapShared";
+import { POSITION_PROPS } from "./gsapRuntimeReaders";
+import { roundTo3 } from "../utils/rounding";
 
 export interface EnableKeyframesSession {
   domEditSelection: DomEditSelection | null;
@@ -52,12 +55,11 @@ function readElementPosition(
   const element = sel.element;
   if (!element?.isConnected || !gsap?.getProperty) return result;
 
-  const POSITION_PROPS = new Set(["x", "y", "xPercent", "yPercent"]);
   const props = anim ? Object.keys(anim.properties) : ["x", "y", "opacity"];
   for (const prop of props) {
     const val = Number(gsap.getProperty(element, prop));
     if (!Number.isFinite(val)) continue;
-    result[prop] = POSITION_PROPS.has(prop) ? Math.round(val) : Math.round(val * 1000) / 1000;
+    result[prop] = POSITION_PROPS.has(prop) ? Math.round(val) : roundTo3(val);
   }
 
   return result;
@@ -73,13 +75,6 @@ async function fetchAnimationsForElement(sel: DomEditSelection): Promise<GsapAni
     id: sel.id,
     selector: sel.selector,
   });
-}
-
-function computePercentage(t: number, sel: DomEditSelection): number {
-  const elStart = Number.parseFloat(sel.dataAttributes?.start ?? "0") || 0;
-  const elDuration = Number.parseFloat(sel.dataAttributes?.duration ?? "1") || 1;
-  if (elDuration <= 0) return 0;
-  return Math.max(0, Math.min(100, Math.round(((t - elStart) / elDuration) * 1000) / 10));
 }
 
 // fallow-ignore-next-line complexity
@@ -104,7 +99,7 @@ export function useEnableKeyframes(
     const flatAnim = anims.find((a) => !a.keyframes);
 
     if (kfAnim?.keyframes) {
-      const pct = computePercentage(t, sel);
+      const pct = computeElementPercentage(t, sel);
       const existing = kfAnim.keyframes.keyframes.find((k) => Math.abs(k.percentage - pct) <= 1);
       if (existing) {
         session.handleGsapRemoveKeyframe(kfAnim.id, existing.percentage);
@@ -120,17 +115,17 @@ export function useEnableKeyframes(
 
       await session.handleGsapConvertToKeyframes(flatAnim.id, hasPosition ? position : undefined);
 
-      const pct = computePercentage(t, sel);
+      const pct = computeElementPercentage(t, sel);
       if (pct > 1 && pct < 99 && hasPosition && session.handleGsapAddKeyframeBatch) {
         await session.handleGsapAddKeyframeBatch(flatAnim.id, pct, position);
         await session.handleGsapAddKeyframeBatch(flatAnim.id, 100, position);
       }
     } else {
       const position = readElementPosition(iframe, sel, null);
-      const pct = computePercentage(t, sel);
+      const pct = computeElementPercentage(t, sel);
       const elStart = Number.parseFloat(sel.dataAttributes?.start ?? "0") || 0;
       const elDuration = Number.parseFloat(sel.dataAttributes?.duration ?? "1") || 1;
-      const selector = sel.id ? `#${sel.id}` : sel.selector;
+      const selector = selectorFromSelection(sel);
 
       if (!selector) {
         session.handleGsapAddAnimation("to");
@@ -159,8 +154,8 @@ export function useEnableKeyframes(
           {
             type: "add-with-keyframes",
             targetSelector: selector,
-            position: Math.round(elStart * 1000) / 1000,
-            duration: Math.round(elDuration * 1000) / 1000,
+            position: roundTo3(elStart),
+            duration: roundTo3(elDuration),
             keyframes,
           },
           { label: "Enable keyframes", softReload: true },

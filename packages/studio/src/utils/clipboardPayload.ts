@@ -1,3 +1,5 @@
+import { COMPOSITION_ROOT_OPEN_TAG_RE } from "./studioHelpers";
+
 const CLIPBOARD_MARKER = "hyperframes-clipboard:v1";
 
 export interface ClipboardPayload {
@@ -99,8 +101,7 @@ export function insertAsSibling(
   }
 
   // Fallback: insert after composition root opening tag (same as timeline clips)
-  const rootOpenTag = /<[^>]*data-composition-id="[^"]+"[^>]*>/i;
-  const rootMatch = rootOpenTag.exec(source);
+  const rootMatch = COMPOSITION_ROOT_OPEN_TAG_RE.exec(source);
   if (rootMatch && rootMatch.index != null) {
     const insertAt = rootMatch.index + rootMatch[0].length;
     return source.slice(0, insertAt) + newHtml + source.slice(insertAt);

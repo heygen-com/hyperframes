@@ -1,6 +1,7 @@
 import type { TimelineElement } from "../player";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import type { TimelineAssetKind } from "./timelineAssetDrop";
+import { roundToCenti } from "./rounding";
 
 export interface EditingFile {
   path: string;
@@ -171,6 +172,9 @@ export function clampNumber(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
 
+/** Matches the opening tag of a composition root element (`data-composition-id`). */
+export const COMPOSITION_ROOT_OPEN_TAG_RE = /<[^>]*data-composition-id="[^"]+"[^>]*>/i;
+
 export function collectHtmlIds(source: string): string[] {
   return Array.from(source.matchAll(/\bid="([^"]+)"/g), (match) => match[1] ?? "");
 }
@@ -205,7 +209,7 @@ export async function resolveDroppedAssetDuration(
         const raw = Number(media.duration);
         finalize(
           Number.isFinite(raw) && raw > 0
-            ? Math.round(raw * 100) / 100
+            ? roundToCenti(raw)
             : DEFAULT_TIMELINE_ASSET_DURATION[kind],
         );
       },

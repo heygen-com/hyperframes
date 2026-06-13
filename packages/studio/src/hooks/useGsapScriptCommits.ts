@@ -6,6 +6,7 @@ import type { EditHistoryKind } from "../utils/editHistory";
 import { applySoftReload } from "../utils/gsapSoftReload";
 import { executeOptimistic } from "../utils/optimisticUpdate";
 import type { KeyframeCacheEntry } from "../player/store/playerStore";
+import { roundTo3 } from "../utils/rounding";
 import { commitKeyframeAtTimeImpl } from "./gsapKeyframeCommit";
 import {
   updateKeyframeCacheFromParsed,
@@ -33,7 +34,6 @@ interface MutationResult {
   after?: string;
   scriptText?: string;
 }
-
 async function mutateGsapScript(
   projectId: string,
   sourceFile: string,
@@ -320,8 +320,8 @@ export function useGsapScriptCommits({
 
       const elStart = Number.parseFloat(selection.dataAttributes?.start ?? "0") || 0;
       const elDuration = Number.parseFloat(selection.dataAttributes?.duration ?? "1") || 1;
-      const position = Math.round(elStart * 1000) / 1000;
-      const duration = Math.round(elDuration * 1000) / 1000;
+      const position = roundTo3(elStart);
+      const duration = roundTo3(elDuration);
       const toDefaults: Record<string, Record<string, number>> = {
         from: { opacity: 0 },
         to: { x: 0, y: 0, opacity: 1 },
