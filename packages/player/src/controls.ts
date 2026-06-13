@@ -330,13 +330,15 @@ export function createControls(
   };
 
   const host = parent instanceof ShadowRoot ? (parent.host as HTMLElement) : parent;
-  host.addEventListener("mousemove", () => {
+  const onHostMouseMove = () => {
     controls.classList.remove("hfp-hidden");
     startHideTimer();
-  });
-  host.addEventListener("mouseleave", () => {
+  };
+  const onHostMouseLeave = () => {
     if (isPlaying) controls.classList.add("hfp-hidden");
-  });
+  };
+  host.addEventListener("mousemove", onHostMouseMove);
+  host.addEventListener("mouseleave", onHostMouseLeave);
 
   return {
     updateTime(current: number, duration: number) {
@@ -389,7 +391,10 @@ export function createControls(
       document.removeEventListener("touchmove", onVolumeTouchMove);
       document.removeEventListener("touchend", onVolumeTouchEnd);
       document.removeEventListener("click", onDocClick);
+      host.removeEventListener("mousemove", onHostMouseMove);
+      host.removeEventListener("mouseleave", onHostMouseLeave);
       if (hideTimeout) clearTimeout(hideTimeout);
+      controls.remove();
     },
   };
 }

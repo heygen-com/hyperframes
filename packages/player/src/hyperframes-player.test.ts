@@ -1467,6 +1467,19 @@ describe("HyperframesPlayer volume and mute", () => {
     expect(slider.getAttribute("tabindex")).toBe("0");
   });
 
+  it("removes and recreates one controls bar when the controls attribute toggles", () => {
+    document.body.appendChild(player);
+
+    player.setAttribute("controls", "");
+    expect(player.shadowRoot!.querySelectorAll(".hfp-controls")).toHaveLength(1);
+
+    player.removeAttribute("controls");
+    expect(player.shadowRoot!.querySelectorAll(".hfp-controls")).toHaveLength(0);
+
+    player.setAttribute("controls", "");
+    expect(player.shadowRoot!.querySelectorAll(".hfp-controls")).toHaveLength(1);
+  });
+
   it("dispatches volumechange when muted toggles (HTML5 spec)", () => {
     document.body.appendChild(player);
 
