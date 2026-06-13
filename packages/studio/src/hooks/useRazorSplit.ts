@@ -9,7 +9,7 @@ import {
   readFileContent,
   isSplitTimeWithinBounds,
 } from "../utils/timelineElementSplit";
-import type { RecordEditInput } from "./useTimelineEditing";
+import type { RecordEditInput } from "./timelineEditingHelpers";
 
 interface UseRazorSplitOptions {
   projectId: string | null;

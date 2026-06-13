@@ -4,6 +4,7 @@ import { type DomEditSelection } from "./domEditing";
 import { resolveDomEditGroupOverlayRect } from "./domEditOverlayGeometry";
 import {
   type BlockedMoveState,
+  type DomEditGroupPathOffsetCommit,
   type FocusableDomEditOverlay,
   type GestureState,
   type GroupGestureState,
@@ -27,11 +28,7 @@ export {
   resolveDomEditResizeGesture,
   resolveDomEditRotationGesture,
 } from "./domEditOverlayGestures";
-
-export interface DomEditGroupPathOffsetCommit {
-  selection: DomEditSelection;
-  next: { x: number; y: number };
-}
+export type { DomEditGroupPathOffsetCommit } from "./domEditOverlayGestures";
 
 interface DomEditOverlayProps {
   iframeRef: RefObject<HTMLIFrameElement | null>;

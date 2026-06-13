@@ -1,4 +1,4 @@
-import type { TimelineElement } from "../player";
+import type { TimelineElement } from "../player/store/playerStore";
 import { applyPatchByTarget, readAttributeByTarget } from "../utils/sourcePatcher";
 import { formatTimelineAttributeNumber } from "../player/components/timelineEditing";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
@@ -6,7 +6,7 @@ import type { EditHistoryKind } from "../utils/editHistory";
 
 // ── Types ──
 
-interface RecordEditInput {
+export interface RecordEditInput {
   label: string;
   kind: EditHistoryKind;
   coalesceKey?: string;

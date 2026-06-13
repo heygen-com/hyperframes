@@ -1,6 +1,6 @@
 import { AUDIO_EXT, IMAGE_EXT, VIDEO_EXT } from "./mediaTypes";
 import { roundToCenti } from "./rounding";
-import { COMPOSITION_ROOT_OPEN_TAG_RE } from "./studioHelpers";
+import { COMPOSITION_ROOT_OPEN_TAG_RE } from "./compositionPatterns";
 
 export const TIMELINE_ASSET_MIME = "application/x-hyperframes-asset";
 export const TIMELINE_BLOCK_MIME = "application/x-hyperframes-block";

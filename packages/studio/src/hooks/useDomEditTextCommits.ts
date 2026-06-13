@@ -22,7 +22,7 @@ import {
   type DomEditSelection,
 } from "../components/editor/domEditing";
 import type { ImportedFontAsset } from "../components/editor/fontAssets";
-import type { PersistDomEditOperations } from "./useDomEditCommits";
+import type { PersistDomEditOperations } from "./domEditCommitTypes";
 
 // ── Types ──
 

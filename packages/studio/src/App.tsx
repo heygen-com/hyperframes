@@ -452,8 +452,6 @@ export function StudioApp() {
     timelineVisible,
     toggleTimelineVisibility,
   });
-  if (resolving || waitingForServer || !projectId)
-    return <StudioSplash waiting={waitingForServer} />;
   const timelineToolbar = useMemo(
     () => (
       <TimelineToolbar
@@ -464,6 +462,8 @@ export function StudioApp() {
     ),
     [toggleTimelineVisibility, domEditSession, timelineEditing.handleTimelineElementSplit],
   );
+  if (resolving || waitingForServer || !projectId)
+    return <StudioSplash waiting={waitingForServer} />;
   return (
     <StudioShellProvider value={studioCtxValue}>
       <StudioPlaybackProvider value={studioCtxValue}>

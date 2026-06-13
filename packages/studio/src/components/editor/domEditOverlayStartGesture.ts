@@ -21,8 +21,11 @@ import {
   filterNestedDomEditGroupItems,
   selectionCacheKey,
 } from "./domEditOverlayGeometry";
-import { type GestureKind, type GestureState } from "./domEditOverlayGestures";
-import type { UseDomEditOverlayGesturesOptions } from "./useDomEditOverlayGestures";
+import {
+  type GestureKind,
+  type GestureState,
+  type UseDomEditOverlayGesturesOptions,
+} from "./domEditOverlayGestures";
 import { collectSnapContext, buildExcludeElements } from "./snapTargetCollection";
 
 export function startGroupDrag(

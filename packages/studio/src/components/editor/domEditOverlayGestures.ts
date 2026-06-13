@@ -1,3 +1,4 @@
+import type { RefObject } from "react";
 import type { DomEditSelection } from "./domEditing";
 import type {
   StudioBoxSizeSnapshot,
@@ -5,8 +6,9 @@ import type {
   StudioRotationSnapshot,
 } from "./manualEdits";
 import type { ManualOffsetDragMember } from "./manualOffsetDrag";
-import type { GroupOverlayItem } from "./domEditOverlayGeometry";
+import type { GroupOverlayItem, OverlayRect } from "./domEditOverlayGeometry";
 import type { SnapContext } from "./snapTargetCollection";
+import type { SnapGuidesState } from "./SnapGuideOverlay";
 
 export type GestureKind = "drag" | "resize" | "rotate";
 
@@ -143,3 +145,54 @@ export function resolveDomEditRotationGesture(input: {
 export function hasDomEditRotationChanged(initialAngle: number, nextAngle: number): boolean {
   return Math.abs(nextAngle - initialAngle) >= ROTATION_COMMIT_EPSILON_DEGREES;
 }
+
+// ── Shared types for DomEditOverlay gesture wiring ──
+// These live here (rather than in DomEditOverlay.tsx or useDomEditOverlayGestures.ts)
+// to break circular imports between those files.
+
+export interface DomEditGroupPathOffsetCommit {
+  selection: DomEditSelection;
+  next: { x: number; y: number };
+}
+
+// Refs are stable across renders; values are read via .current.
+export type UseDomEditOverlayGesturesOptions = {
+  overlayRef: RefObject<HTMLDivElement | null>;
+  iframeRef: RefObject<HTMLIFrameElement | null>;
+  boxRef: RefObject<HTMLDivElement | null>;
+  selectionRef: RefObject<DomEditSelection | null>;
+  overlayRectRef: RefObject<OverlayRect | null>;
+  groupOverlayItemsRef: RefObject<GroupOverlayItem[]>;
+  gestureRef: RefObject<GestureState | null>;
+  groupGestureRef: RefObject<GroupGestureState | null>;
+  blockedMoveRef: RefObject<BlockedMoveState | null>;
+  rafPausedRef: RefObject<boolean>;
+  suppressNextBoxClickRef: RefObject<boolean>;
+  setOverlayRect: (next: OverlayRect | null) => void;
+  setGroupOverlayItems: (next: GroupOverlayItem[]) => void;
+  onBlockedMoveRef: RefObject<(selection: DomEditSelection) => void>;
+  onManualDragStartRef: RefObject<(() => void) | undefined>;
+  onPathOffsetCommitRef: RefObject<
+    (s: DomEditSelection, n: { x: number; y: number }) => Promise<void> | void
+  >;
+  onGroupPathOffsetCommitRef: RefObject<
+    (updates: DomEditGroupPathOffsetCommit[]) => Promise<void> | void
+  >;
+  onBoxSizeCommitRef: RefObject<
+    (s: DomEditSelection, n: { width: number; height: number }) => Promise<void> | void
+  >;
+  onRotationCommitRef: RefObject<
+    (s: DomEditSelection, n: { angle: number }) => Promise<void> | void
+  >;
+  onCanvasPointerMoveRef: RefObject<
+    (
+      e: React.PointerEvent<HTMLDivElement>,
+      o?: { preferClipAncestor?: boolean },
+    ) => Promise<DomEditSelection | null>
+  >;
+  onCanvasMouseDown: (
+    e: React.MouseEvent<HTMLDivElement>,
+    o?: { preferClipAncestor?: boolean },
+  ) => void;
+  snapGuidesRef: RefObject<SnapGuidesState | null>;
+};

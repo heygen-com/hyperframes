@@ -33,15 +33,14 @@ import {
 } from "./domEditOverlayGeometry";
 import {
   BLOCKED_MOVE_THRESHOLD_PX,
-  type BlockedMoveState,
   type GestureKind,
   type GestureState,
   type GroupGestureState,
+  type UseDomEditOverlayGesturesOptions,
   hasDomEditRotationChanged,
   resolveDomEditResizeGesture,
   resolveDomEditRotationGesture,
 } from "./domEditOverlayGestures";
-import type { DomEditGroupPathOffsetCommit } from "./DomEditOverlay";
 import {
   startGesture as _startGesture,
   startGroupDrag as _startGroupDrag,
@@ -52,50 +51,6 @@ import {
   resolveEquidistanceGuides,
   SNAP_THRESHOLD_PX,
 } from "./snapEngine";
-import type { SnapGuidesState } from "./SnapGuideOverlay";
-
-// Refs are stable across renders; values are read via .current.
-export type UseDomEditOverlayGesturesOptions = {
-  overlayRef: RefObject<HTMLDivElement | null>;
-  iframeRef: RefObject<HTMLIFrameElement | null>;
-  boxRef: RefObject<HTMLDivElement | null>;
-  selectionRef: RefObject<DomEditSelection | null>;
-  overlayRectRef: RefObject<OverlayRect | null>;
-  groupOverlayItemsRef: RefObject<GroupOverlayItem[]>;
-  gestureRef: RefObject<GestureState | null>;
-  groupGestureRef: RefObject<GroupGestureState | null>;
-  blockedMoveRef: RefObject<BlockedMoveState | null>;
-  rafPausedRef: RefObject<boolean>;
-  suppressNextBoxClickRef: RefObject<boolean>;
-  setOverlayRect: (next: OverlayRect | null) => void;
-  setGroupOverlayItems: (next: GroupOverlayItem[]) => void;
-  onBlockedMoveRef: RefObject<(selection: DomEditSelection) => void>;
-  onManualDragStartRef: RefObject<(() => void) | undefined>;
-  onPathOffsetCommitRef: RefObject<
-    (s: DomEditSelection, n: { x: number; y: number }) => Promise<void> | void
-  >;
-  onGroupPathOffsetCommitRef: RefObject<
-    (updates: DomEditGroupPathOffsetCommit[]) => Promise<void> | void
-  >;
-  onBoxSizeCommitRef: RefObject<
-    (s: DomEditSelection, n: { width: number; height: number }) => Promise<void> | void
-  >;
-  onRotationCommitRef: RefObject<
-    (s: DomEditSelection, n: { angle: number }) => Promise<void> | void
-  >;
-  onCanvasPointerMoveRef: RefObject<
-    (
-      e: React.PointerEvent<HTMLDivElement>,
-      o?: { preferClipAncestor?: boolean },
-    ) => Promise<DomEditSelection | null>
-  >;
-  onCanvasMouseDown: (
-    e: React.MouseEvent<HTMLDivElement>,
-    o?: { preferClipAncestor?: boolean },
-  ) => void;
-  snapGuidesRef: RefObject<SnapGuidesState | null>;
-};
-
 export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGesturesOptions) {
   const setDraftOverlayRect = (next: OverlayRect) => {
     opts.setOverlayRect(next);

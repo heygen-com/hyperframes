@@ -1,4 +1,4 @@
-import { COMPOSITION_ROOT_OPEN_TAG_RE } from "./studioHelpers";
+import { COMPOSITION_ROOT_OPEN_TAG_RE } from "./compositionPatterns";
 
 const CLIPBOARD_MARKER = "hyperframes-clipboard:v1";
 

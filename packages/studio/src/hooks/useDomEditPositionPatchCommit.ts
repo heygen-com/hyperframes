@@ -3,7 +3,7 @@ import type { DomEditSelection } from "../components/editor/domEditing";
 import type { PatchOperation } from "../utils/sourcePatcher";
 import { trackStudioSaveFailure } from "../utils/studioSaveDiagnostics";
 import { DomEditSaveQueueOpenError } from "../utils/domEditSaveQueue";
-import type { PersistDomEditOperations } from "./useDomEditCommits";
+import type { PersistDomEditOperations } from "./domEditCommitTypes";
 
 interface UseDomEditPositionPatchCommitParams {
   activeCompPath: string | null;

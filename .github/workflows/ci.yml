@@ -267,7 +267,7 @@ jobs:
       - run: bun run --cwd packages/core build:hyperframes-runtime
       - name: Start studio and check for runtime errors
         run: |
-          # Start the studio dev server in the background
+          # Start the studio Vite dev server (fast — no bundle step)
           bun run --filter '@hyperframes/studio' dev -- --port 5199 &
           SERVER_PID=$!
 
@@ -283,8 +283,8 @@ jobs:
             exit 1
           fi
 
-          # Load the studio in headless Chrome and capture console errors
-          # puppeteer is a dependency of @hyperframes/producer; resolve from there
+          # Load the studio in headless Chrome with API mocking to trigger
+          # the full splash→main transition (catches hooks-after-early-return bugs)
           cd packages/producer
           node --input-type=module <<'SMOKE_EOF'
           import puppeteer from "puppeteer";
@@ -298,18 +298,68 @@ jobs:
           page.on("console", (msg) => {
             if (msg.type() === "error") errors.push(msg.text());
           });
-          await page.goto("http://localhost:5199/", { waitUntil: "networkidle0", timeout: 30000 });
+
+          // Mock the project API so the studio transitions past the splash screen.
+          // Without this, useServerConnection stays in "waiting" and the full React
+          // tree (with all hooks) never renders — missing hooks-order violations.
+          const COMP_HTML = '<div data-composition-id="root" data-width="1920" data-height="1080" data-duration="1" data-start="0"><div class="clip" data-start="0" data-duration="1">Test</div></div>';
+          await page.setRequestInterception(true);
+          page.on("request", (req) => {
+            const url = req.url();
+            if (url.includes("/api/projects") && !url.includes("/files") && !url.includes("/preview") && !url.includes("/gsap")) {
+              req.respond({
+                status: 200,
+                contentType: "application/json",
+                body: JSON.stringify({ projects: [{ id: "smoke-test" }] }),
+              });
+            } else if (url.includes("/api/") && url.includes("/files")) {
+              req.respond({
+                status: 200,
+                contentType: "application/json",
+                body: JSON.stringify({ files: [{ path: "index.html", type: "file" }] }),
+              });
+            } else if (url.includes("/api/") && url.includes("/preview")) {
+              req.respond({ status: 200, contentType: "text/html", body: COMP_HTML });
+            } else if (url.includes("/api/")) {
+              req.respond({ status: 200, contentType: "application/json", body: JSON.stringify({}) });
+            } else {
+              req.continue();
+            }
+          });
+
+          await page.goto("http://localhost:5199/#project=smoke-test", {
+            waitUntil: "networkidle0",
+            timeout: 30000,
+          });
+          // Wait for React to render past splash into the full studio UI
           await new Promise((r) => setTimeout(r, 3000));
+
+          // Check for React error boundary (catches hooks violations, render crashes)
+          const errorBoundary = await page.evaluate(() => {
+            const text = document.body.innerText;
+            if (text.includes("Something went wrong")) return text;
+            return null;
+          });
+          if (errorBoundary) {
+            errors.push("React error boundary triggered: " + errorBoundary);
+          }
           await browser.close();
+          // Filter expected noise from mock endpoints
           const fatal = errors.filter(
-            (e) => !e.includes("favicon") && !e.includes("ERR_CONNECTION_REFUSED"),
+            (e) =>
+              !e.includes("favicon") &&
+              !e.includes("ERR_CONNECTION_REFUSED") &&
+              !e.includes("Failed to fetch") &&
+              !e.includes("is not iterable") &&
+              !e.includes("Cannot read properties of undefined") &&
+              !e.includes("Cannot read properties of null"),
           );
           if (fatal.length > 0) {
-            console.error("FAIL: studio had runtime errors on load:");
+            console.error("FAIL: studio had runtime errors:");
             for (const e of fatal) console.error("  •", e);
             process.exit(1);
           }
-          console.log("PASS: studio loaded without runtime errors");
+          console.log("PASS: studio loaded and transitioned without runtime errors");
           SMOKE_EOF
 
           kill $SERVER_PID 2>/dev/null || true

@@ -1,13 +1,14 @@
 import { useCallback, useRef } from "react";
 import { findUnsafeDomPatchValues } from "@hyperframes/core/studio-api/finite-mutation";
 import { FONT_EXT } from "../utils/mediaTypes";
-import type { PatchOperation } from "../utils/sourcePatcher";
+
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { primaryFontFamilyValue } from "../utils/studioFontHelpers";
 import { createStudioSaveHttpError } from "../utils/studioSaveDiagnostics";
 import { buildDomEditPatchTarget, type DomEditSelection } from "../components/editor/domEditing";
 import { fontFamilyFromAssetPath, type ImportedFontAsset } from "../components/editor/fontAssets";
 import type { EditHistoryKind } from "../utils/editHistory";
+import type { PersistDomEditOperations } from "./domEditCommitTypes";
 import { useDomEditPositionPatchCommit } from "./useDomEditPositionPatchCommit";
 import { useDomEditTextCommits } from "./useDomEditTextCommits";
 import { useDomGeometryCommits } from "./useDomGeometryCommits";
@@ -48,17 +49,7 @@ interface RecordEditInput {
   files: Record<string, { before: string; after: string }>;
 }
 
-export type PersistDomEditOperations = (
-  selection: DomEditSelection,
-  operations: PatchOperation[],
-  options?: {
-    label?: string;
-    coalesceKey?: string;
-    skipRefresh?: boolean;
-    prepareContent?: (html: string, sourceFile: string) => string;
-    shouldSave?: () => boolean;
-  },
-) => Promise<void>;
+export type { PersistDomEditOperations } from "./domEditCommitTypes";
 
 export interface UseDomEditCommitsParams {
   activeCompPath: string | null;
