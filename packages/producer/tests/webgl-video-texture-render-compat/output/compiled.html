@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+  <head><style data-hyperframes-text-rendering="true">html,body,*{text-rendering:geometricPrecision}</style>
+    <style>
+      body {
+        margin: 0;
+        background: #000;
+      }
+      [data-composition-id="webgl-video-texture-test"] {
+        position: relative;
+        overflow: hidden;
+      }
+      #gl {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 1280px;
+        height: 720px;
+      }
+      /* Texture-source video: sampled into WebGL only, parked off-canvas. */
+      #vid {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 4px;
+        height: 4px;
+        opacity: 0;
+        z-index: -1;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="webgl-video-texture-test" data-width="1280" data-height="720" data-start="0" data-duration="2">
+      <video id="vid" class="clip" data-start="0" data-duration="2" data-track-index="0" src="clip.mp4" muted playsinline data-end="2" data-has-audio="false"></video>
+      <canvas id="gl"></canvas>
+
+      
+    </div>
+  <script>// WebGL2 textured fullscreen triangle sampling the source video element.
+        // The handler uploads that video as a texture on every hf-seek — the
+        // natural author pattern. In headless render, Chrome can't supply decoded
+        // video frames to WebGL, so the core video-texture patch substitutes the
+        // engine's injected, decoded render-frame image, and the post-injection
+        // GPU reseek re-runs this handler. With the fix, render reproduces the
+        // preview snapshot (PSNR high); without it the canvas is black (PSNR
+        // collapses). NB: avoid writing literal tag syntax in comments here — the
+        // compiler's media-attribute injection scans the raw HTML for it.
+        (function () {
+          var canvas = document.getElementById("gl");
+          canvas.width = 1280;
+          canvas.height = 720;
+          var gl = canvas.getContext("webgl2", { preserveDrawingBuffer: true });
+          if (!gl) return;
+
+          var VS =
+            "#version 300 es\n" +
+            "in vec2 p; out vec2 uv;\n" +
+            "void main(){ uv = vec2(p.x*0.5+0.5, 0.5-p.y*0.5); gl_Position = vec4(p,0.0,1.0); }";
+          var FS =
+            "#version 300 es\n" +
+            "precision highp float; in vec2 uv; uniform sampler2D tex; out vec4 c;\n" +
+            "void main(){ c = texture(tex, uv); }";
+
+          function sh(type, src) {
+            var s = gl.createShader(type);
+            gl.shaderSource(s, src);
+            gl.compileShader(s);
+            return s;
+          }
+          var prog = gl.createProgram();
+          gl.attachShader(prog, sh(gl.VERTEX_SHADER, VS));
+          gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FS));
+          gl.linkProgram(prog);
+          gl.useProgram(prog);
+
+          var buf = gl.createBuffer();
+          gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+          gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+          var loc = gl.getAttribLocation(prog, "p");
+          gl.enableVertexAttribArray(loc);
+          gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+
+          var tex = gl.createTexture();
+          gl.bindTexture(gl.TEXTURE_2D, tex);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+          var video = document.getElementById("vid");
+
+          function render() {
+            if (video && video.readyState >= 2) {
+              gl.bindTexture(gl.TEXTURE_2D, tex);
+              gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
+            }
+            gl.clearColor(0, 0, 0, 1);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+            gl.drawArrays(gl.TRIANGLES, 0, 3);
+          }
+
+          window.addEventListener("hf-seek", function () {
+            render();
+          });
+          render();
+        })();</script></body>
+</html>

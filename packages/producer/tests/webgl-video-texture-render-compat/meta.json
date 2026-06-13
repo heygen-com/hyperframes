@@ -1,0 +1,13 @@
+{
+  "name": "webgl-video-texture-render-compat",
+  "description": "Regression guard for deterministic WebGL video textures. A WebGL2 canvas samples a <video> as a texture every hf-seek. In headless render, Chrome's compositor can't feed decoded <video> frames to WebGL, so the engine injects a decoded __render_frame__ <img> sibling and the core texImage2D video-texture patch + post-injection GPU reseek must supply the correct frame. Without that fix the rendered facets are black/stale while the preview snapshot shows the video, so render-vs-snapshot PSNR collapses. This fixture fails without the fix and passes with it.",
+  "tags": ["regression", "render-compat", "adapter"],
+  "minPsnr": 30,
+  "maxFrameFailures": 0,
+  "minAudioCorrelation": 0,
+  "maxAudioLagWindows": 1,
+  "renderConfig": {
+    "fps": 30,
+    "workers": 1
+  }
+}
