@@ -59,7 +59,7 @@ const initialState = {
   sourceFilePath: null,
 };
 
-export const useCaptionStore = create<CaptionState>((set) => ({
+export const useCaptionStore = create<CaptionState>((set, get) => ({
   ...initialState,
 
   // Basic
@@ -82,15 +82,11 @@ export const useCaptionStore = create<CaptionState>((set) => ({
       return { selectedSegmentIds: new Set([id]), selectedGroupId: null };
     }),
 
-  selectGroup: (id) =>
-    set((state) => {
-      const group = state.model?.groups.get(id);
-      if (!group) return {};
-      return {
-        selectedSegmentIds: new Set(group.segmentIds),
-        selectedGroupId: id,
-      };
-    }),
+  selectGroup: (id) => {
+    const group = get().model?.groups.get(id);
+    if (!group) return;
+    set({ selectedSegmentIds: new Set(group.segmentIds), selectedGroupId: id });
+  },
 
   selectAll: () =>
     set((state) => {
@@ -101,7 +97,11 @@ export const useCaptionStore = create<CaptionState>((set) => ({
       };
     }),
 
-  clearSelection: () => set({ selectedSegmentIds: new Set(), selectedGroupId: null }),
+  clearSelection: () => {
+    const { selectedSegmentIds, selectedGroupId } = get();
+    if (selectedSegmentIds.size === 0 && selectedGroupId === null) return;
+    set({ selectedSegmentIds: new Set(), selectedGroupId: null });
+  },
 
   // Segment mutations
   updateSegmentStyle: (segmentId, style) =>
