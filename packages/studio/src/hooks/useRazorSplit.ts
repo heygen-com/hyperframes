@@ -4,10 +4,10 @@ import { usePlayerStore } from "../player";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import { getTimelineElementLabel, collectHtmlIds } from "../utils/studioHelpers";
 import {
-  canSplitElement,
+  canSplitElementAt,
+  selectSplittableElements,
   buildPatchTarget,
   readFileContent,
-  isSplitTimeWithinBounds,
 } from "../utils/timelineElementSplit";
 import type { RecordEditInput } from "./useTimelineEditing";
 
@@ -169,11 +169,7 @@ export function useRazorSplit({
       }
 
       const pid = projectIdRef.current;
-      if (!pid || !canSplitElement(element)) return;
-
-      if (!isSplitTimeWithinBounds(splitTime, element.start, element.duration)) {
-        return;
-      }
+      if (!pid || !canSplitElementAt(element, splitTime)) return;
 
       try {
         const { targetPath, originalContent, patchedContent, changed, skippedSelectors } =
@@ -230,9 +226,7 @@ export function useRazorSplit({
       const pid = projectIdRef.current;
       if (!pid) return;
       const { elements } = usePlayerStore.getState();
-      const splittable = elements.filter(
-        (el) => canSplitElement(el) && splitTime > el.start && splitTime < el.start + el.duration,
-      );
+      const splittable = selectSplittableElements(elements, splitTime);
       if (splittable.length === 0) return;
 
       try {
