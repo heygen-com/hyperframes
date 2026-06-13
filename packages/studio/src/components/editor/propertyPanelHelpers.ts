@@ -473,40 +473,6 @@ export function extractBackgroundImageUrl(value: string | undefined): string {
   return value.slice(index, endParen).trim();
 }
 
-// ── Fit to children ──────────────────────────────────────────────────
-
-export function computeFitToChildrenSize(
-  element: DomEditSelection,
-): { width: number; height: number } | null {
-  const el = element.element;
-  const win = el.ownerDocument?.defaultView;
-  const children = Array.from(el.children).filter((c): c is HTMLElement => c.nodeType === 1);
-  if (children.length === 0) return null;
-  let minX = Infinity,
-    minY = Infinity,
-    maxX = -Infinity,
-    maxY = -Infinity;
-  for (const child of children) {
-    if (win) {
-      const cs = win.getComputedStyle(child);
-      if (cs.visibility === "hidden" || cs.display === "none") continue;
-    }
-    const r = child.getBoundingClientRect();
-    if (r.width === 0 && r.height === 0) continue;
-    minX = Math.min(minX, r.left);
-    minY = Math.min(minY, r.top);
-    maxX = Math.max(maxX, r.right);
-    maxY = Math.max(maxY, r.bottom);
-  }
-  if (!isFinite(minX)) return null;
-  const parentRect = el.getBoundingClientRect();
-  const scaleX = parentRect.width > 0 ? element.boundingBox.width / parentRect.width : 1;
-  const scaleY = parentRect.height > 0 ? element.boundingBox.height / parentRect.height : 1;
-  const width = Math.round((maxX - minX) * scaleX);
-  const height = Math.round((maxY - minY) * scaleY);
-  return width > 0 && height > 0 ? { width, height } : null;
-}
-
 // ── GSAP runtime value readers (used by PropertyPanel) ────────────────────
 
 export function readGsapRuntimeValuesForPanel(

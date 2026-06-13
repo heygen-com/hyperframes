@@ -11,7 +11,7 @@ import {
   STUDIO_MOTION_ORIGINAL_OPACITY_ATTR,
   STUDIO_MOTION_ORIGINAL_VISIBILITY_ATTR,
 } from "./studioMotionTypes";
-import { buildMotionPatches, buildClearMotionPatches } from "./manualEditsDom";
+import { buildMotionPatches, buildClearMotionPatches } from "./manualEditsDomPatches";
 import { applyPatchByTarget, readAttributeByTarget } from "../../utils/sourcePatcher";
 
 function createElement(markup: string): HTMLElement {

@@ -29,7 +29,7 @@ import {
   buildClearPathOffsetPatches,
   buildClearBoxSizePatches,
   buildClearRotationPatches,
-} from "../components/editor/manualEditsDom";
+} from "../components/editor/manualEditsDomPatches";
 import { fontFamilyFromAssetPath, type ImportedFontAsset } from "../components/editor/fontAssets";
 import type { DomEditGroupPathOffsetCommit } from "../components/editor/DomEditOverlay";
 import type { EditHistoryKind } from "../utils/editHistory";

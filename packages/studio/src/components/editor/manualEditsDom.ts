@@ -506,18 +506,6 @@ export function applyStudioRotationDraft(element: HTMLElement, rotation: { angle
   );
 }
 
-/* ── HTML patch builders (re-exported from manualEditsDomPatches) ── */
-export {
-  buildPathOffsetPatches,
-  buildClearPathOffsetPatches,
-  buildBoxSizePatches,
-  buildClearBoxSizePatches,
-  buildRotationPatches,
-  buildClearRotationPatches,
-  buildMotionPatches,
-  buildClearMotionPatches,
-} from "./manualEditsDomPatches";
-
 /* ── Seek reapply (position + motion) ────────────────────────────── */
 
 function queryStudioElements(doc: Document, attr: string): HTMLElement[] {
