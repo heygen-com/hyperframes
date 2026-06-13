@@ -90,6 +90,30 @@ export function addHdrTiming(
   perf.timings[key] += Date.now() - startMs;
 }
 
+export function timeHdrPhase<T>(
+  perf: HdrPerfCollector | undefined,
+  key: HdrPerfTimingKey,
+  fn: () => T,
+): T {
+  if (!perf) return fn();
+  const start = Date.now();
+  const result = fn();
+  addHdrTiming(perf, key, start);
+  return result;
+}
+
+export async function timeHdrPhaseAsync<T>(
+  perf: HdrPerfCollector | undefined,
+  key: HdrPerfTimingKey,
+  fn: () => Promise<T>,
+): Promise<T> {
+  if (!perf) return fn();
+  const start = Date.now();
+  const result = await fn();
+  addHdrTiming(perf, key, start);
+  return result;
+}
+
 function averageTiming(totalMs: number, count: number): number {
   return count > 0 ? Math.round((totalMs / count) * 100) / 100 : 0;
 }

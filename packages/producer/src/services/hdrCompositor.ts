@@ -34,7 +34,7 @@ import {
 import type { ProducerLogger } from "../logger.js";
 import { type HdrImageTransferCache } from "./hdrImageTransferCache.js";
 import { writeFileExclusiveSync } from "./render/shared.js";
-import { type HdrPerfCollector, addHdrTiming } from "./render/hdrPerf.js";
+import { type HdrPerfCollector, timeHdrPhase, timeHdrPhaseAsync } from "./render/hdrPerf.js";
 
 // ─── Diagnostic helpers ────────────────────────────────────────────────────
 
@@ -169,25 +169,19 @@ export function blitHdrVideoLayer(
 
   try {
     if (hdrPerf) hdrPerf.hdrVideoLayerBlits += 1;
-    let timingStart = Date.now();
-    const bytesRead = readSync(
-      frameSource.fd,
-      frameSource.scratch,
-      0,
-      frameSource.frameSize,
-      frameOffset,
+    const bytesRead = timeHdrPhase(hdrPerf, "hdrVideoReadDecodeMs", () =>
+      readSync(frameSource.fd, frameSource.scratch, 0, frameSource.frameSize, frameOffset),
     );
     if (bytesRead !== frameSource.frameSize) return;
     const hdrRgb = frameSource.scratch;
     const srcW = frameSource.width;
     const srcH = frameSource.height;
-    addHdrTiming(hdrPerf, "hdrVideoReadDecodeMs", timingStart);
 
     // Convert between HDR transfer functions if source doesn't match output
     if (sourceTransfer && targetTransfer && sourceTransfer !== targetTransfer) {
-      timingStart = Date.now();
-      convertTransfer(hdrRgb, sourceTransfer, targetTransfer);
-      addHdrTiming(hdrPerf, "hdrVideoTransferMs", timingStart);
+      timeHdrPhase(hdrPerf, "hdrVideoTransferMs", () =>
+        convertTransfer(hdrRgb, sourceTransfer, targetTransfer),
+      );
     }
 
     const viewportMatrix = parseTransformMatrix(el.transform);
@@ -241,54 +235,54 @@ export function blitHdrVideoLayer(
       Math.abs(viewportMatrix[3]! - 1) < 0.001
     );
 
-    timingStart = Date.now();
-    if (viewportMatrix && !isTranslationOnly) {
-      if (clipped && log) {
-        log.debug(
-          `HDR clip rect on affine-transformed element ${el.id} — clip not applied (affine scissor not yet supported)`,
+    timeHdrPhase(hdrPerf, "hdrVideoBlitMs", () => {
+      if (viewportMatrix && !isTranslationOnly) {
+        if (clipped && log) {
+          log.debug(
+            `HDR clip rect on affine-transformed element ${el.id} — clip not applied (affine scissor not yet supported)`,
+          );
+        }
+        blitRgb48leAffine(
+          canvas,
+          hdrRgb,
+          viewportMatrix,
+          srcW,
+          srcH,
+          width,
+          height,
+          el.opacity < 0.999 ? el.opacity : undefined,
+          borderRadiusParam,
+        );
+      } else if (clipped) {
+        // Crop the source buffer to the clipped region before blitting
+        const croppedBuf = cropRgb48le(hdrRgb, srcW, srcH, blitSrcX, blitSrcY, blitW, blitH);
+        blitRgb48leRegion(
+          canvas,
+          croppedBuf,
+          blitX,
+          blitY,
+          blitW,
+          blitH,
+          width,
+          height,
+          el.opacity < 0.999 ? el.opacity : undefined,
+          borderRadiusParam,
+        );
+      } else {
+        blitRgb48leRegion(
+          canvas,
+          hdrRgb,
+          el.x,
+          el.y,
+          srcW,
+          srcH,
+          width,
+          height,
+          el.opacity < 0.999 ? el.opacity : undefined,
+          borderRadiusParam,
         );
       }
-      blitRgb48leAffine(
-        canvas,
-        hdrRgb,
-        viewportMatrix,
-        srcW,
-        srcH,
-        width,
-        height,
-        el.opacity < 0.999 ? el.opacity : undefined,
-        borderRadiusParam,
-      );
-    } else if (clipped) {
-      // Crop the source buffer to the clipped region before blitting
-      const croppedBuf = cropRgb48le(hdrRgb, srcW, srcH, blitSrcX, blitSrcY, blitW, blitH);
-      blitRgb48leRegion(
-        canvas,
-        croppedBuf,
-        blitX,
-        blitY,
-        blitW,
-        blitH,
-        width,
-        height,
-        el.opacity < 0.999 ? el.opacity : undefined,
-        borderRadiusParam,
-      );
-    } else {
-      blitRgb48leRegion(
-        canvas,
-        hdrRgb,
-        el.x,
-        el.y,
-        srcW,
-        srcH,
-        width,
-        height,
-        el.opacity < 0.999 ? el.opacity : undefined,
-        borderRadiusParam,
-      );
-    }
-    addHdrTiming(hdrPerf, "hdrVideoBlitMs", timingStart);
+    });
   } catch (err) {
     if (log) {
       log.debug(`HDR blit failed for ${el.id}`, {
@@ -343,12 +337,11 @@ export function blitHdrImageLayer(
     // The cache returns `buf.data` unchanged when no conversion is needed,
     // and otherwise returns a per-(imageId, targetTransfer) buffer that was
     // converted exactly once and reused across every subsequent frame.
-    let timingStart = Date.now();
-    const hdrRgb =
+    const hdrRgb = timeHdrPhase(hdrPerf, "hdrImageTransferMs", () =>
       sourceTransfer && targetTransfer
         ? hdrImageTransferCache.getConverted(el.id, sourceTransfer, targetTransfer, buf.data)
-        : buf.data;
-    addHdrTiming(hdrPerf, "hdrImageTransferMs", timingStart);
+        : buf.data,
+    );
 
     const viewportMatrix = parseTransformMatrix(el.transform);
 
@@ -356,34 +349,34 @@ export function blitHdrImageLayer(
     const hasBorderRadius = br[0] > 0 || br[1] > 0 || br[2] > 0 || br[3] > 0;
     const borderRadiusParam = hasBorderRadius ? br : undefined;
 
-    timingStart = Date.now();
-    if (viewportMatrix) {
-      blitRgb48leAffine(
-        canvas,
-        hdrRgb,
-        viewportMatrix,
-        buf.width,
-        buf.height,
-        width,
-        height,
-        el.opacity < 0.999 ? el.opacity : undefined,
-        borderRadiusParam,
-      );
-    } else {
-      blitRgb48leRegion(
-        canvas,
-        hdrRgb,
-        el.x,
-        el.y,
-        buf.width,
-        buf.height,
-        width,
-        height,
-        el.opacity < 0.999 ? el.opacity : undefined,
-        borderRadiusParam,
-      );
-    }
-    addHdrTiming(hdrPerf, "hdrImageBlitMs", timingStart);
+    timeHdrPhase(hdrPerf, "hdrImageBlitMs", () => {
+      if (viewportMatrix) {
+        blitRgb48leAffine(
+          canvas,
+          hdrRgb,
+          viewportMatrix,
+          buf.width,
+          buf.height,
+          width,
+          height,
+          el.opacity < 0.999 ? el.opacity : undefined,
+          borderRadiusParam,
+        );
+      } else {
+        blitRgb48leRegion(
+          canvas,
+          hdrRgb,
+          el.x,
+          el.y,
+          buf.width,
+          buf.height,
+          width,
+          height,
+          el.opacity < 0.999 ? el.opacity : undefined,
+          borderRadiusParam,
+        );
+      }
+    });
   } catch (err) {
     if (log) {
       log.debug(`HDR image blit failed for ${el.id}`, {
@@ -628,43 +621,41 @@ export async function compositeHdrFrame(
       if (hdrPerf) hdrPerf.domLayerCaptures += 1;
 
       // 1. Seek GSAP to restore all animated properties from clean state
-      let timingStart = Date.now();
-      await domSession.page.evaluate((t: number) => {
-        if (window.__hf && typeof window.__hf.seek === "function") window.__hf.seek(t);
-      }, time);
-      addHdrTiming(hdrPerf, "domLayerSeekMs", timingStart);
+      await timeHdrPhaseAsync(hdrPerf, "domLayerSeekMs", () =>
+        domSession.page.evaluate((t: number) => {
+          if (window.__hf && typeof window.__hf.seek === "function") window.__hf.seek(t);
+        }, time),
+      );
 
       // 2. Run frame injector to set correct SDR video visibility
       if (beforeCaptureHook) {
-        timingStart = Date.now();
-        await beforeCaptureHook(domSession.page, time);
-        addHdrTiming(hdrPerf, "domLayerInjectMs", timingStart);
+        await timeHdrPhaseAsync(hdrPerf, "domLayerInjectMs", () =>
+          beforeCaptureHook(domSession.page, time),
+        );
       }
 
       // 3. Install the mask (mass-hide stylesheet + inline-hide non-layer ids)
-      timingStart = Date.now();
-      await applyDomLayerMask(domSession.page, layer.elementIds, hideIds);
-      addHdrTiming(hdrPerf, "domMaskApplyMs", timingStart);
+      await timeHdrPhaseAsync(hdrPerf, "domMaskApplyMs", () =>
+        applyDomLayerMask(domSession.page, layer.elementIds, hideIds),
+      );
 
       // 4. Screenshot
-      timingStart = Date.now();
-      const domPng = await captureAlphaPng(domSession.page, width, height);
-      addHdrTiming(hdrPerf, "domScreenshotMs", timingStart);
+      const domPng = await timeHdrPhaseAsync(hdrPerf, "domScreenshotMs", () =>
+        captureAlphaPng(domSession.page, width, height),
+      );
 
       // 5. Tear down the mask
-      timingStart = Date.now();
-      await removeDomLayerMask(domSession.page, hideIds);
-      addHdrTiming(hdrPerf, "domMaskRemoveMs", timingStart);
+      await timeHdrPhaseAsync(hdrPerf, "domMaskRemoveMs", () =>
+        removeDomLayerMask(domSession.page, hideIds),
+      );
 
       try {
-        timingStart = Date.now();
-        const { data: domRgba } = decodePng(domPng);
-        addHdrTiming(hdrPerf, "domPngDecodeMs", timingStart);
+        const { data: domRgba } = timeHdrPhase(hdrPerf, "domPngDecodeMs", () => decodePng(domPng));
         const before = shouldLog ? countNonZeroRgb48(canvas) : 0;
         const alphaPixels = shouldLog ? countNonZeroAlpha(domRgba) : 0;
-        timingStart = Date.now();
-        blitRgba8OverRgb48le(domRgba, canvas, width, height, compositeTransfer);
-        addHdrTiming(hdrPerf, "domBlitMs", timingStart);
+        timeHdrPhase(hdrPerf, "domBlitMs", () =>
+          blitRgba8OverRgb48le(domRgba, canvas, width, height, compositeTransfer),
+        );
         if (shouldLog && debugDumpDir) {
           const after = countNonZeroRgb48(canvas);
           const dumpName = `frame_${String(debugFrameIndex).padStart(4, "0")}_layer_${String(layerIdx).padStart(2, "0")}_dom.png`;

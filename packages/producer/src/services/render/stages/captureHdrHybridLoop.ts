@@ -41,7 +41,7 @@ import {
   type TransitionRange,
   compositeHdrFrame,
 } from "../../hdrCompositor.js";
-import { type HdrPerfCollector, addHdrTiming } from "../hdrPerf.js";
+import { type HdrPerfCollector, addHdrTiming, timeHdrPhaseAsync } from "../hdrPerf.js";
 import type { ProgressCallback, RenderJob } from "../../renderOrchestrator.js";
 import { writeFileExclusiveSync } from "../shared.js";
 import {
@@ -306,25 +306,25 @@ export async function runHybridLayeredFrameLoop(input: HybridLoopInput): Promise
           });
         } else {
           const beforeCaptureHook = session.onBeforeCapture;
-          let timingStart = Date.now();
-          await session.page.evaluate((t: number) => {
-            if (window.__hf && typeof window.__hf.seek === "function") window.__hf.seek(t);
-          }, time);
-          addHdrTiming(hdrPerf, "frameSeekMs", timingStart);
+          await timeHdrPhaseAsync(hdrPerf, "frameSeekMs", () =>
+            session.page.evaluate((t: number) => {
+              if (window.__hf && typeof window.__hf.seek === "function") window.__hf.seek(t);
+            }, time),
+          );
           if (beforeCaptureHook) {
-            timingStart = Date.now();
-            await beforeCaptureHook(session.page, time);
-            addHdrTiming(hdrPerf, "frameInjectMs", timingStart);
+            await timeHdrPhaseAsync(hdrPerf, "frameInjectMs", () =>
+              beforeCaptureHook(session.page, time),
+            );
           }
-          timingStart = Date.now();
-          const stackingInfo = await queryElementStacking(session.page, nativeHdrIds);
-          addHdrTiming(hdrPerf, "stackingQueryMs", timingStart);
+          const stackingInfo = await timeHdrPhaseAsync(hdrPerf, "stackingQueryMs", () =>
+            queryElementStacking(session.page, nativeHdrIds),
+          );
           canvas.fill(0);
           // Rebind ctx to this worker's session for per-layer captures
           const wctx: HdrCompositeContext = { ...hdrCompositeCtx, domSession: session };
-          timingStart = Date.now();
-          await compositeHdrFrame(wctx, canvas, time, stackingInfo, undefined, i);
-          addHdrTiming(hdrPerf, "normalCompositeMs", timingStart);
+          await timeHdrPhaseAsync(hdrPerf, "normalCompositeMs", () =>
+            compositeHdrFrame(wctx, canvas, time, stackingInfo, undefined, i),
+          );
           if (debugDumpEnabled && debugDumpDir && i % 30 === 0) {
             writeFileExclusiveSync(
               join(debugDumpDir, `frame_${String(i).padStart(4, "0")}_final_rgb48le.bin`),

@@ -29,7 +29,7 @@ import {
   blitHdrVideoLayer,
   closeHdrVideoFrameSource,
 } from "../../hdrCompositor.js";
-import { type HdrPerfCollector, addHdrTiming } from "../hdrPerf.js";
+import { type HdrPerfCollector, timeHdrPhase, timeHdrPhaseAsync } from "../hdrPerf.js";
 
 // ─── Hybrid path gating + partitioning ─────────────────────────────────────
 
@@ -141,15 +141,15 @@ export async function captureSceneIntoBuffer(a: CaptureSceneArgs): Promise<void>
     log,
     frameIdx,
   } = a;
-  let timingStart = Date.now();
-  await session.page.evaluate((t: number) => {
-    if (window.__hf && typeof window.__hf.seek === "function") window.__hf.seek(t);
-  }, time);
-  addHdrTiming(hdrPerf, "domLayerSeekMs", timingStart);
+  await timeHdrPhaseAsync(hdrPerf, "domLayerSeekMs", () =>
+    session.page.evaluate((t: number) => {
+      if (window.__hf && typeof window.__hf.seek === "function") window.__hf.seek(t);
+    }, time),
+  );
   if (beforeCaptureHook) {
-    timingStart = Date.now();
-    await beforeCaptureHook(session.page, time);
-    addHdrTiming(hdrPerf, "domLayerInjectMs", timingStart);
+    await timeHdrPhaseAsync(hdrPerf, "domLayerInjectMs", () =>
+      beforeCaptureHook(session.page, time),
+    );
   }
   for (const el of stackingInfo) {
     if (!el.isHdr || !sceneIds.has(el.id)) continue;
@@ -188,22 +188,20 @@ export async function captureSceneIntoBuffer(a: CaptureSceneArgs): Promise<void>
     .map((e) => e.id)
     .filter((id) => !sceneIds.has(id) || nativeHdrIds.has(id));
   if (hdrPerf) hdrPerf.domLayerCaptures += 1;
-  timingStart = Date.now();
-  await applyDomLayerMask(session.page, showIds, hideIds);
-  addHdrTiming(hdrPerf, "domMaskApplyMs", timingStart);
-  timingStart = Date.now();
-  const domPng = await captureAlphaPng(session.page, width, height);
-  addHdrTiming(hdrPerf, "domScreenshotMs", timingStart);
-  timingStart = Date.now();
-  await removeDomLayerMask(session.page, hideIds);
-  addHdrTiming(hdrPerf, "domMaskRemoveMs", timingStart);
+  await timeHdrPhaseAsync(hdrPerf, "domMaskApplyMs", () =>
+    applyDomLayerMask(session.page, showIds, hideIds),
+  );
+  const domPng = await timeHdrPhaseAsync(hdrPerf, "domScreenshotMs", () =>
+    captureAlphaPng(session.page, width, height),
+  );
+  await timeHdrPhaseAsync(hdrPerf, "domMaskRemoveMs", () =>
+    removeDomLayerMask(session.page, hideIds),
+  );
   try {
-    timingStart = Date.now();
-    const { data: domRgba } = decodePng(domPng);
-    addHdrTiming(hdrPerf, "domPngDecodeMs", timingStart);
-    timingStart = Date.now();
-    blitRgba8OverRgb48le(domRgba, sceneBuf, width, height, compositeTransfer);
-    addHdrTiming(hdrPerf, "domBlitMs", timingStart);
+    const { data: domRgba } = timeHdrPhase(hdrPerf, "domPngDecodeMs", () => decodePng(domPng));
+    timeHdrPhase(hdrPerf, "domBlitMs", () =>
+      blitRgba8OverRgb48le(domRgba, sceneBuf, width, height, compositeTransfer),
+    );
   } catch (err) {
     log.warn("DOM layer decode/blit failed; skipping overlay for transition scene", {
       frameIndex: frameIdx,
@@ -258,19 +256,17 @@ export async function captureTransitionFrameOnWorker(
     hdrPerf.frames += 1;
     hdrPerf.transitionFrames += 1;
   }
-  let timingStart = Date.now();
-  await session.page.evaluate((t: number) => {
-    if (window.__hf && typeof window.__hf.seek === "function") window.__hf.seek(t);
-  }, time);
-  addHdrTiming(hdrPerf, "frameSeekMs", timingStart);
+  await timeHdrPhaseAsync(hdrPerf, "frameSeekMs", () =>
+    session.page.evaluate((t: number) => {
+      if (window.__hf && typeof window.__hf.seek === "function") window.__hf.seek(t);
+    }, time),
+  );
   if (beforeCaptureHook) {
-    timingStart = Date.now();
-    await beforeCaptureHook(session.page, time);
-    addHdrTiming(hdrPerf, "frameInjectMs", timingStart);
+    await timeHdrPhaseAsync(hdrPerf, "frameInjectMs", () => beforeCaptureHook(session.page, time));
   }
-  timingStart = Date.now();
-  const stackingInfo = await queryElementStacking(session.page, nativeHdrIds);
-  addHdrTiming(hdrPerf, "stackingQueryMs", timingStart);
+  const stackingInfo = await timeHdrPhaseAsync(hdrPerf, "stackingQueryMs", () =>
+    queryElementStacking(session.page, nativeHdrIds),
+  );
   const sceneAIds = new Set(sceneElements[transition.fromScene] ?? []);
   const sceneBIds = new Set(sceneElements[transition.toScene] ?? []);
   buffers.bufferA.fill(0);
