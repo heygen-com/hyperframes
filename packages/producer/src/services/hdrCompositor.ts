@@ -505,6 +505,7 @@ export async function compositeHdrFrame(
   // generation (their <img> replacements must be hidden from sibling
   // screenshots). The actual blit is skipped in the compositing loop below.
   const layers = groupIntoLayers(filteredStacking);
+  const allElementIds = fullStacking.map((e) => e.id);
 
   const shouldLog = debugDumpEnabled && debugFrameIndex >= 0;
   if (shouldLog) {
@@ -622,7 +623,6 @@ export async function compositeHdrFrame(
       // (root background, sibling scenes' static content, the painted
       // border/box-shadow of cards, etc.) and the resulting opaque
       // pixels overwrite previously composited HDR content beneath.
-      const allElementIds = fullStacking.map((e) => e.id);
       const layerIds = new Set(layer.elementIds);
       const hideIds = allElementIds.filter((id) => !layerIds.has(id));
       if (hdrPerf) hdrPerf.domLayerCaptures += 1;
