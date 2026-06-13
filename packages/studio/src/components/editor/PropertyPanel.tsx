@@ -144,6 +144,7 @@ export const PropertyPanel = memo(function PropertyPanel({
 
   const manualOffsetEditingDisabled = !element.capabilities.canApplyManualOffset;
   const manualSizeEditingDisabled = !element.capabilities.canApplyManualSize;
+  const manualRotationEditingDisabled = !element.capabilities.canApplyManualRotation;
   const sourceLabel = element.id ? `#${element.id}` : element.selector;
   const showEditableSections = element.capabilities.canEditStyles;
   const manualOffset = readStudioPathOffset(element.element);
@@ -495,6 +496,7 @@ export const PropertyPanel = memo(function PropertyPanel({
                 <MetricField
                   label="R"
                   value={`${displayR}°`}
+                  disabled={manualRotationEditingDisabled}
                   onCommit={(next) => commitManualRotation(next.replace("°", ""))}
                 />
               </div>
