@@ -17,14 +17,22 @@ afterEach(() => {
 const COMPOSITION_HTML = '<html><body><div data-composition-id="main"></div></body></html>';
 
 // Project layout for #1384: real compositions at the root and under
-// compositions/, plus vendored example HTML inside dot-directories that
-// must not surface as compositions.
+// compositions/, plus two kinds of dot-directory content that exercise
+// discovery gating differently:
+//   - .cache/        a vendored dot-directory. walkDir does NOT special-case it,
+//                    so its HTML stays listed in the file tree, but it must be
+//                    gated out of composition discovery by isInHiddenOrVendorDir.
+//   - .hyperframes/  Studio's own internal directory (backups, etc.) — already in
+//                    walkDir's IGNORE_DIRS, so it is hidden from the file tree
+//                    entirely (and therefore from compositions too).
 function createProjectDir(): string {
   const projectDir = mkdtempSync(join(tmpdir(), "hf-projects-test-"));
   tempDirs.push(projectDir);
   writeFileSync(join(projectDir, "index.html"), COMPOSITION_HTML);
   mkdirSync(join(projectDir, "compositions"));
   writeFileSync(join(projectDir, "compositions", "scene.html"), COMPOSITION_HTML);
+  mkdirSync(join(projectDir, ".cache", "examples"), { recursive: true });
+  writeFileSync(join(projectDir, ".cache", "examples", "preset.html"), COMPOSITION_HTML);
   mkdirSync(join(projectDir, ".hyperframes", "examples"), { recursive: true });
   writeFileSync(join(projectDir, ".hyperframes", "examples", "preset.html"), COMPOSITION_HTML);
   return projectDir;
@@ -59,10 +67,11 @@ describe("registerProjectRoutes — composition discovery (#1384)", () => {
     expect(response.status).toBe(200);
     expect(payload.compositions).toContain("index.html");
     expect(payload.compositions).toContain("compositions/scene.html");
+    expect(payload.compositions).not.toContain(".cache/examples/preset.html");
     expect(payload.compositions).not.toContain(".hyperframes/examples/preset.html");
   });
 
-  it("keeps dot-directory files visible in the file tree", async () => {
+  it("lists vendored dot-directory files in the file tree but hides Studio-internal ones", async () => {
     const projectDir = createProjectDir();
     const app = new Hono();
     registerProjectRoutes(app, createAdapter(projectDir));
@@ -70,6 +79,9 @@ describe("registerProjectRoutes — composition discovery (#1384)", () => {
     const response = await app.request("http://localhost/projects/demo");
     const payload = (await response.json()) as { files?: string[] };
 
-    expect(payload.files).toContain(".hyperframes/examples/preset.html");
+    // Vendored dot-dirs stay browsable — discovery is gated, the file tree is not.
+    expect(payload.files).toContain(".cache/examples/preset.html");
+    // Studio's internal dir is hidden from the tree entirely (walkDir IGNORE_DIRS).
+    expect(payload.files).not.toContain(".hyperframes/examples/preset.html");
   });
 });
