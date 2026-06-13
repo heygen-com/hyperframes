@@ -88,18 +88,6 @@ interface PlayerState {
   toggleSelectedElementId: (id: string) => void;
   clearSelectedElementIds: () => void;
 
-  /** Clipboard for keyframe copy/paste — stores keyframes with relative times. */
-  keyframeClipboard: Array<{
-    relativeTime: number;
-    properties: Record<string, number | string>;
-    ease?: string;
-  }> | null;
-  setKeyframeClipboard: (data: PlayerState["keyframeClipboard"]) => void;
-
-  /** Elements with expanded property rows in the timeline. */
-  expandedTimelineElements: Set<string>;
-  toggleExpandedElement: (id: string) => void;
-
   /** Keyframe data per element id, populated from parsed GSAP animations. */
   keyframeCache: Map<string, KeyframeCacheEntry>;
   setKeyframeCache: (elementId: string, data: KeyframeCacheEntry | undefined) => void;
@@ -130,9 +118,6 @@ interface PlayerState {
   requestedSeekTime: number | null;
   requestSeek: (time: number) => void;
   clearSeekRequest: () => void;
-
-  autoKeyframeEnabled: boolean;
-  setAutoKeyframeEnabled: (enabled: boolean) => void;
 
   lintFindingsByElement: Map<string, { count: number; messages: string[] }>;
   setLintFindingsByElement: (map: Map<string, { count: number; messages: string[] }>) => void;
@@ -182,9 +167,6 @@ export const usePlayerStore = create<PlayerState>((set) => ({
   activeKeyframePct: null,
   setActiveKeyframePct: (pct) => set({ activeKeyframePct: pct }),
 
-  keyframeClipboard: null,
-  setKeyframeClipboard: (data) => set({ keyframeClipboard: data }),
-
   selectedElementIds: new Set<string>(),
   toggleSelectedElementId: (id: string) =>
     set((s) => {
@@ -194,15 +176,6 @@ export const usePlayerStore = create<PlayerState>((set) => ({
       return { selectedElementIds: next };
     }),
   clearSelectedElementIds: () => set({ selectedElementIds: new Set() }),
-
-  expandedTimelineElements: new Set<string>(),
-  toggleExpandedElement: (id: string) =>
-    set((s) => {
-      const next = new Set(s.expandedTimelineElements);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return { expandedTimelineElements: next };
-    }),
 
   keyframeCache: new Map(),
   setKeyframeCache: (elementId, data) =>
@@ -216,9 +189,6 @@ export const usePlayerStore = create<PlayerState>((set) => ({
   requestedSeekTime: null,
   requestSeek: (time) => set({ requestedSeekTime: time }),
   clearSeekRequest: () => set({ requestedSeekTime: null }),
-
-  autoKeyframeEnabled: true,
-  setAutoKeyframeEnabled: (enabled) => set({ autoKeyframeEnabled: enabled }),
 
   lintFindingsByElement: new Map(),
   setLintFindingsByElement: (map) => set({ lintFindingsByElement: map }),
@@ -284,7 +254,6 @@ export const usePlayerStore = create<PlayerState>((set) => ({
       activeTool: "select",
       selectedKeyframes: new Set(),
       selectedElementIds: new Set(),
-      expandedTimelineElements: new Set(),
       keyframeCache: new Map(),
     }),
 }));

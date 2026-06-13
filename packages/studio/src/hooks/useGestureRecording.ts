@@ -430,7 +430,7 @@ export function useGestureRecording() {
     r.cleanup?.();
     r.cleanup = null;
     const frozen = r.samples.slice();
-    setRecordingDuration(frozen.length > 0 ? frozen[frozen.length - 1]!.time : 0);
+    setRecordingDuration(frozen.length > 0 ? (frozen[frozen.length - 1]?.time ?? 0) : 0);
     setIsRecording(false);
     return frozen;
   }, []); // No deps — uses refs only
