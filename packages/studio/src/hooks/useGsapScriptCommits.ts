@@ -287,13 +287,13 @@ export function useGsapScriptCommits({
   );
   const deleteAllForSelector = useCallback(
     (selection: DomEditSelection, targetSelector: string) => {
-      void commitMutation(
+      commitMutationSafely(
         selection,
         { type: "delete-all-for-selector", targetSelector },
         { label: "Delete all animations for element" },
       );
     },
-    [commitMutation],
+    [commitMutationSafely],
   );
   const addGsapAnimation = useCallback(
     // fallow-ignore-next-line complexity
