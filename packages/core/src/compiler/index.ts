@@ -16,11 +16,16 @@ export { compileHtml, type MediaDurationProber } from "./htmlCompiler";
 
 // HTML bundler (Node.js — requires fs, linkedom, esbuild)
 export {
+  assignBundledRuntimeCompositionIds,
   bundleToSingleHtml,
+  cssAttributeSelector,
   type BundleOptions,
+  type BundledHostCompositionIdentity,
   prepareFlattenedInnerRoot,
   FLATTENED_INNER_ROOT_STRIP_ATTRS,
+  parseHostVariableValues,
 } from "./htmlBundler";
+export { readDeclaredDefaults } from "../runtime/getVariables";
 
 export {
   RUNTIME_BOOTSTRAP_ATTR,

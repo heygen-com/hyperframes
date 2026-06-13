@@ -743,6 +743,66 @@ describe("template-wrapped sub-composition media offsets", () => {
     expect(compiled.html).toContain("__hfNormalizeSelector");
   });
 
+  it("emits per-instance scoped variables for external sub-composition hosts", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-render-vars-"));
+    const compositionsDir = join(projectDir, "compositions");
+    mkdirSync(compositionsDir, { recursive: true });
+    const indexPath = join(projectDir, "index.html");
+
+    writeFileSync(
+      indexPath,
+      `<!DOCTYPE html>
+<html>
+  <body>
+    <div id="root" data-composition-id="root" data-width="640" data-height="360" data-duration="4">
+      <div
+        id="card-a"
+        data-composition-id="card"
+        data-composition-src="compositions/card.html"
+        data-variable-values='{"title":"Pro"}'></div>
+      <div
+        id="card-b"
+        data-composition-id="card"
+        data-composition-src="compositions/card.html"
+        data-variable-values='{"title":"Enterprise"}'></div>
+    </div>
+  </body>
+</html>`,
+    );
+    writeFileSync(
+      join(compositionsDir, "card.html"),
+      `<!DOCTYPE html>
+<html data-composition-variables='[
+  {"id":"title","type":"string","label":"Title","default":"Default Title"},
+  {"id":"theme","type":"string","label":"Theme","default":"light"}
+]'>
+  <body>
+    <div id="card-root" data-composition-id="card" data-width="640" data-height="360" data-duration="4">
+      <script>
+        window.__captured = window.__captured || [];
+        window.__captured.push(__hyperframes.getVariables());
+      </script>
+    </div>
+  </body>
+</html>`,
+    );
+
+    const compiled = await compileForRender(projectDir, indexPath, projectDir);
+    const { document } = parseHTML(compiled.html);
+    const cardA = document.querySelector("#card-a");
+    const cardB = document.querySelector("#card-b");
+
+    expect(cardA?.getAttribute("data-composition-id")).toBe("card__hf1");
+    expect(cardB?.getAttribute("data-composition-id")).toBe("card__hf2");
+    expect(cardA?.getAttribute("data-hf-original-composition-id")).toBe("card");
+    expect(cardB?.getAttribute("data-hf-original-composition-id")).toBe("card");
+    expect(compiled.html).toContain("window.__hfVariablesByComp");
+    expect(compiled.html).toContain('"card__hf1":{"title":"Pro","theme":"light"}');
+    expect(compiled.html).toContain('"card__hf2":{"title":"Enterprise","theme":"light"}');
+    expect(compiled.html).toContain('var __hfTimelineCompId = "card__hf1"');
+    expect(compiled.html).toContain('var __hfTimelineCompId = "card__hf2"');
+  });
+
   it("preserves the inferred composition boundary when the host has no composition id", async () => {
     const projectDir = mkdtempSync(join(tmpdir(), "hf-anonymous-host-"));
     const compositionsDir = join(projectDir, "compositions");

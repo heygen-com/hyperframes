@@ -23,7 +23,13 @@ import {
   type ResolvedDuration,
   type UnresolvedElement,
 } from "@hyperframes/core";
-import { inlineSubCompositions as inlineSubCompositionsShared } from "@hyperframes/core/compiler";
+import {
+  assignBundledRuntimeCompositionIds,
+  cssAttributeSelector,
+  inlineSubCompositions as inlineSubCompositionsShared,
+  parseHostVariableValues,
+  readDeclaredDefaults,
+} from "@hyperframes/core/compiler";
 import { extractMediaMetadata, extractAudioMetadata } from "../utils/ffprobe.js";
 import { isPathInside, toExternalAssetKey } from "../utils/paths.js";
 import {
@@ -575,6 +581,7 @@ function coalesceHeadStylesAndBodyScripts(html: string): string {
  * compositions from the pre-compiled map or disk, and setting explicit
  * pixel dimensions on host elements for headless rendering.
  */
+// fallow-ignore-next-line complexity
 function inlineSubCompositions(
   html: string,
   subCompositions: Map<string, string>,
@@ -586,6 +593,7 @@ function inlineSubCompositions(
   const hosts = Array.from(document.querySelectorAll("[data-composition-src]"));
 
   if (!hosts.length) return html;
+  const hostIdentityByElement = assignBundledRuntimeCompositionIds(hosts);
 
   const result = inlineSubCompositionsShared(
     document as unknown as Document,
@@ -602,8 +610,12 @@ function inlineSubCompositions(
         return compHtml;
       },
       parseHtml: (htmlStr: string) => parseHTML(htmlStr).document as unknown as Document,
+      hostIdentityMap: hostIdentityByElement,
       scriptErrorLabel: "[Compiler] Composition script failed",
       compoundAuthoredRoot: true,
+      readVariableDefaults: readDeclaredDefaults,
+      parseHostVariables: parseHostVariableValues,
+      buildScopeSelector: (compId: string) => cssAttributeSelector("data-composition-id", compId),
     },
   );
 
@@ -679,10 +691,17 @@ function inlineSubCompositions(
     }
   }
 
+  const inlineScripts = [...result.scripts];
+  if (Object.keys(result.variablesByComp).length > 0) {
+    inlineScripts.unshift(
+      `window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {}, ${JSON.stringify(result.variablesByComp)});`,
+    );
+  }
+
   // Append collected inline scripts to <body>
-  if (result.scripts.length && body) {
+  if (inlineScripts.length && body) {
     const scriptEl = document.createElement("script");
-    scriptEl.textContent = result.scripts.join("\n;\n");
+    scriptEl.textContent = inlineScripts.join("\n;\n");
     body.appendChild(scriptEl);
   }
 
