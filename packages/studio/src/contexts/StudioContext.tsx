@@ -2,18 +2,12 @@ import { createContext, useContext, useMemo, type ReactNode } from "react";
 import type { TimelineElement } from "../player";
 import type { CompositionDimensions } from "../components/renders/RenderQueue";
 
-export interface StudioContextValue {
+export interface StudioShellValue {
   projectId: string;
   activeCompPath: string | null;
   setActiveCompPath: (path: string | null) => void;
   showToast: (message: string, tone?: "error" | "info") => void;
   previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
-  captionEditMode: boolean;
-  compositionLoading: boolean;
-  refreshKey: number;
-  setRefreshKey: React.Dispatch<React.SetStateAction<number>>;
-  timelineElements: TimelineElement[];
-  isPlaying: boolean;
   editHistory: {
     canUndo: boolean;
     canRedo: boolean;
@@ -32,24 +26,49 @@ export interface StudioContextValue {
   compositionDimensions: CompositionDimensions | null;
   waitForPendingDomEditSaves: () => Promise<void>;
   handlePreviewIframeRef: (iframe: HTMLIFrameElement | null) => void;
-  refreshPreviewDocumentVersion: () => void;
   timelineVisible: boolean;
   toggleTimelineVisibility: () => void;
 }
 
-const StudioContext = createContext<StudioContextValue | null>(null);
+export interface StudioPlaybackValue {
+  captionEditMode: boolean;
+  compositionLoading: boolean;
+  refreshKey: number;
+  setRefreshKey: React.Dispatch<React.SetStateAction<number>>;
+  timelineElements: TimelineElement[];
+  isPlaying: boolean;
+  refreshPreviewDocumentVersion: () => void;
+}
 
-export function useStudioContext(): StudioContextValue {
-  const ctx = useContext(StudioContext);
-  if (!ctx) throw new Error("useStudioContext must be used within StudioProvider");
+export type StudioContextValue = StudioShellValue & StudioPlaybackValue;
+
+const StudioShellContext = createContext<StudioShellValue | null>(null);
+const StudioPlaybackContext = createContext<StudioPlaybackValue | null>(null);
+
+export function useStudioShellContext(): StudioShellValue {
+  const ctx = useContext(StudioShellContext);
+  if (!ctx) throw new Error("useStudioShellContext must be used within StudioShellProvider");
   return ctx;
 }
 
-export function StudioProvider({
+export function useStudioPlaybackContext(): StudioPlaybackValue {
+  const ctx = useContext(StudioPlaybackContext);
+  if (!ctx) throw new Error("useStudioPlaybackContext must be used within StudioPlaybackProvider");
+  return ctx;
+}
+
+/** @deprecated Use useStudioShellContext and/or useStudioPlaybackContext instead. */
+export function useStudioContext(): StudioContextValue {
+  const shell = useStudioShellContext();
+  const playback = useStudioPlaybackContext();
+  return useMemo(() => ({ ...shell, ...playback }), [shell, playback]);
+}
+
+export function StudioShellProvider({
   value,
   children,
 }: {
-  value: StudioContextValue;
+  value: StudioShellValue;
   children: ReactNode;
 }) {
   const {
@@ -58,12 +77,6 @@ export function StudioProvider({
     setActiveCompPath,
     showToast,
     previewIframeRef,
-    captionEditMode,
-    compositionLoading,
-    refreshKey,
-    setRefreshKey,
-    timelineElements,
-    isPlaying,
     editHistory,
     handleUndo,
     handleRedo,
@@ -71,24 +84,17 @@ export function StudioProvider({
     compositionDimensions,
     waitForPendingDomEditSaves,
     handlePreviewIframeRef,
-    refreshPreviewDocumentVersion,
     timelineVisible,
     toggleTimelineVisibility,
   } = value;
 
-  const stable = useMemo<StudioContextValue>(
+  const stable = useMemo<StudioShellValue>(
     () => ({
       projectId,
       activeCompPath,
       setActiveCompPath,
       showToast,
       previewIframeRef,
-      captionEditMode,
-      compositionLoading,
-      refreshKey,
-      setRefreshKey,
-      timelineElements,
-      isPlaying,
       editHistory,
       handleUndo,
       handleRedo,
@@ -96,36 +102,80 @@ export function StudioProvider({
       compositionDimensions,
       waitForPendingDomEditSaves,
       handlePreviewIframeRef,
-      refreshPreviewDocumentVersion,
       timelineVisible,
       toggleTimelineVisibility,
     }),
-    // Representative subset of deps that actually change — stable callbacks
-    // (showToast, setActiveCompPath, etc.) are included for correctness but
-    // won't trigger re-renders on their own.
     [
       projectId,
       activeCompPath,
-      captionEditMode,
-      compositionLoading,
-      refreshKey,
-      isPlaying,
       compositionDimensions,
       timelineVisible,
       editHistory,
-      timelineElements,
       renderQueue,
       setActiveCompPath,
       showToast,
       previewIframeRef,
-      setRefreshKey,
       handleUndo,
       handleRedo,
       waitForPendingDomEditSaves,
       handlePreviewIframeRef,
-      refreshPreviewDocumentVersion,
       toggleTimelineVisibility,
     ],
   );
-  return <StudioContext value={stable}>{children}</StudioContext>;
+  return <StudioShellContext value={stable}>{children}</StudioShellContext>;
+}
+
+export function StudioPlaybackProvider({
+  value,
+  children,
+}: {
+  value: StudioPlaybackValue;
+  children: ReactNode;
+}) {
+  const {
+    captionEditMode,
+    compositionLoading,
+    refreshKey,
+    setRefreshKey,
+    timelineElements,
+    isPlaying,
+    refreshPreviewDocumentVersion,
+  } = value;
+
+  const stable = useMemo<StudioPlaybackValue>(
+    () => ({
+      captionEditMode,
+      compositionLoading,
+      refreshKey,
+      setRefreshKey,
+      timelineElements,
+      isPlaying,
+      refreshPreviewDocumentVersion,
+    }),
+    [
+      captionEditMode,
+      compositionLoading,
+      refreshKey,
+      timelineElements,
+      isPlaying,
+      setRefreshKey,
+      refreshPreviewDocumentVersion,
+    ],
+  );
+  return <StudioPlaybackContext value={stable}>{children}</StudioPlaybackContext>;
+}
+
+/** @deprecated Use StudioShellProvider and StudioPlaybackProvider instead. */
+export function StudioProvider({
+  value,
+  children,
+}: {
+  value: StudioContextValue;
+  children: ReactNode;
+}) {
+  return (
+    <StudioShellProvider value={value}>
+      <StudioPlaybackProvider value={value}>{children}</StudioPlaybackProvider>
+    </StudioShellProvider>
+  );
 }

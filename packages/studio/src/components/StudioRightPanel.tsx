@@ -8,7 +8,7 @@ import type { RenderJob } from "./renders/useRenderQueue";
 import type { BlockParam } from "@hyperframes/core/registry";
 import { STUDIO_INSPECTOR_PANELS_ENABLED } from "./editor/manualEditingAvailability";
 
-import { useStudioContext } from "../contexts/StudioContext";
+import { useStudioPlaybackContext, useStudioShellContext } from "../contexts/StudioContext";
 import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
 import { useFileManagerContext } from "../contexts/FileManagerContext";
 import { useDomEditContext } from "../contexts/DomEditContext";
@@ -47,14 +47,14 @@ export function StudioRightPanel({
   } = usePanelLayoutContext();
 
   const {
-    captionEditMode,
     previewIframeRef,
     projectId,
     activeCompPath,
     compositionDimensions,
     waitForPendingDomEditSaves,
     renderQueue,
-  } = useStudioContext();
+  } = useStudioShellContext();
+  const { captionEditMode } = useStudioPlaybackContext();
 
   const {
     domEditSelection,

@@ -13,7 +13,7 @@ import {
   STUDIO_PREVIEW_MANUAL_EDITING_ENABLED,
   STUDIO_PREVIEW_SELECTION_ENABLED,
 } from "./editor/manualEditingAvailability";
-import { useStudioContext } from "../contexts/StudioContext";
+import { useStudioPlaybackContext, useStudioShellContext } from "../contexts/StudioContext";
 import { useDomEditContext } from "../contexts/DomEditContext";
 import type { BlockPreviewInfo } from "./sidebar/BlocksTab";
 import { readStudioUiPreferences } from "../utils/studioUiPreferences";
@@ -91,18 +91,20 @@ export function StudioPreviewArea({
 }: StudioPreviewAreaProps) {
   const {
     projectId,
-    refreshKey,
     activeCompPath,
     setActiveCompPath,
-    captionEditMode,
-    compositionLoading,
-    isPlaying,
     previewIframeRef,
-    refreshPreviewDocumentVersion,
     handlePreviewIframeRef,
     timelineVisible,
     toggleTimelineVisibility,
-  } = useStudioContext();
+  } = useStudioShellContext();
+  const {
+    refreshKey,
+    captionEditMode,
+    compositionLoading,
+    isPlaying,
+    refreshPreviewDocumentVersion,
+  } = useStudioPlaybackContext();
 
   const {
     domEditHoverSelection,

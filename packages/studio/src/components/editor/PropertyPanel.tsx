@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { Eye, Layers, Move, X } from "../../icons/SystemIcons";
-import { useStudioContext } from "../../contexts/StudioContext";
+import { useStudioShellContext } from "../../contexts/StudioContext";
 import { readStudioBoxSize, readStudioPathOffset, readStudioRotation } from "./manualEdits";
 import {
   EMPTY_STYLES,
@@ -83,7 +83,7 @@ export const PropertyPanel = memo(function PropertyPanel({
   onToggleRecording,
 }: PropertyPanelProps) {
   const styles = element?.computedStyles ?? EMPTY_STYLES;
-  const { showToast } = useStudioContext();
+  const { showToast } = useStudioShellContext();
   const [clipboardCopied, setClipboardCopied] = useState(false);
   const clipboardTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const storeTime = usePlayerStore((s) => s.currentTime);

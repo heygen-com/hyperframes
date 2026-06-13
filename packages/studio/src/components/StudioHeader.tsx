@@ -5,9 +5,9 @@ import {
   STUDIO_MANUAL_EDITING_DISABLED_TITLE,
 } from "./editor/manualEditingAvailability";
 import { getHistoryShortcutLabel } from "../utils/studioHelpers";
-import { useStudioContext } from "../contexts/StudioContext";
+import { useStudioShellContext } from "../contexts/StudioContext";
 import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
-import { useDomEditContext } from "../contexts/DomEditContext";
+import { useDomEditActionsContext } from "../contexts/DomEditContext";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 
 export interface StudioHeaderProps {
@@ -150,9 +150,9 @@ export function StudioHeader({
   inspectorPanelActive,
   onExport,
 }: StudioHeaderProps) {
-  const { projectId, editHistory, handleUndo, handleRedo } = useStudioContext();
+  const { projectId, editHistory, handleUndo, handleRedo } = useStudioShellContext();
   const { rightCollapsed, setRightCollapsed, setRightPanelTab } = usePanelLayoutContext();
-  const { clearDomSelection } = useDomEditContext();
+  const { clearDomSelection } = useDomEditActionsContext();
 
   return (
     <div className="flex items-center justify-between h-10 px-3 bg-neutral-900 border-b border-neutral-800 flex-shrink-0">

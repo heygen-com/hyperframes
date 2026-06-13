@@ -8,7 +8,7 @@ import {
 } from "../../utils/blockCategories";
 import { usePlayerStore } from "../../player";
 import { formatTime } from "../../player/lib/time";
-import { useStudioContext } from "../../contexts/StudioContext";
+import { useStudioShellContext } from "../../contexts/StudioContext";
 export interface BlockPreviewInfo {
   videoUrl?: string;
   posterUrl?: string;
@@ -345,7 +345,7 @@ function BlockCard({
     [onAdd, adding],
   );
 
-  const { activeCompPath, compositionDimensions } = useStudioContext();
+  const { activeCompPath, compositionDimensions } = useStudioShellContext();
 
   const handleShowPrompt = useCallback(
     (e: React.MouseEvent) => {

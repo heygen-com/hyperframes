@@ -5,7 +5,7 @@ import {
   resolveDomEditSelection,
   type DomEditLayerItem,
 } from "./domEditing";
-import { useStudioContext } from "../../contexts/StudioContext";
+import { useStudioPlaybackContext, useStudioShellContext } from "../../contexts/StudioContext";
 import { useDomEditContext } from "../../contexts/DomEditContext";
 import { usePlayerStore } from "../../player";
 import {
@@ -54,14 +54,8 @@ interface CollapsedState {
 
 // fallow-ignore-next-line complexity
 export const LayersPanel = memo(function LayersPanel() {
-  const {
-    previewIframeRef,
-    activeCompPath,
-    refreshKey,
-    compositionLoading,
-    timelineElements,
-    showToast,
-  } = useStudioContext();
+  const { previewIframeRef, activeCompPath, showToast } = useStudioShellContext();
+  const { refreshKey, compositionLoading, timelineElements } = useStudioPlaybackContext();
   const currentTime = usePlayerStore((s) => s.currentTime);
   const {
     domEditSelection,
