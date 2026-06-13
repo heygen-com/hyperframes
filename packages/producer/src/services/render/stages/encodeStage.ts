@@ -42,6 +42,7 @@ import {
 } from "@hyperframes/engine";
 import type { Fps } from "@hyperframes/core";
 import type { ProducerLogger } from "../../../logger.js";
+import { formatExportFrameName } from "../../../utils/paths.js";
 import type { ProgressCallback, RenderJob } from "../../renderOrchestrator.js";
 import {
   buildGifPalettegenArgs,
@@ -236,7 +237,7 @@ export async function runEncodeStage(input: EncodeStageInput): Promise<EncodeSta
       );
     }
     captured.forEach((name, i) => {
-      const dst = join(outputPath, `frame_${String(i + 1).padStart(6, "0")}.png`);
+      const dst = join(outputPath, formatExportFrameName(i, "png"));
       copyFileSync(join(framesDir, name), dst);
     });
     if (hasAudio && audioOutputPath && existsSync(audioOutputPath)) {

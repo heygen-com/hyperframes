@@ -109,6 +109,14 @@ export function toExternalAssetKey(absPath: string): string {
   return "hf-ext/" + normalised;
 }
 
+export function formatCaptureFrameName(index: number, ext: string): string {
+  return `frame_${String(index).padStart(6, "0")}.${ext}`;
+}
+
+export function formatExportFrameName(index: number, ext: string): string {
+  return `frame_${String(index + 1).padStart(6, "0")}.${ext}`;
+}
+
 export function resolveRenderPaths(
   projectDir: string,
   outputPath: string | null | undefined,

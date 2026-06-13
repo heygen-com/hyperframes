@@ -84,6 +84,7 @@ import {
 } from "./render/shared.js";
 import { buildRenderErrorDetails, cleanupRenderResources, safeCleanup } from "./render/cleanup.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
+import { formatCaptureFrameName } from "../utils/paths.js";
 import { resolveEffectiveHdrMode } from "./render/hdrMode.js";
 import { buildRenderPerfSummary } from "./render/perfSummary.js";
 import { getCaptureStageBrowserConsole } from "./render/captureStageError.js";
@@ -467,7 +468,7 @@ export function findMissingFrameRanges(
   let rangeStart: number | null = null;
 
   for (let frameIndex = 0; frameIndex < totalFrames; frameIndex++) {
-    const framePath = join(framesDir, `frame_${String(frameIndex).padStart(6, "0")}.${frameExt}`);
+    const framePath = join(framesDir, formatCaptureFrameName(frameIndex, frameExt));
     const missing = !existsSync(framePath);
     if (missing && rangeStart === null) {
       rangeStart = frameIndex;
@@ -535,7 +536,7 @@ function countCapturedFrames(
 ): number {
   let captured = 0;
   for (let frameIndex = 0; frameIndex < totalFrames; frameIndex++) {
-    const framePath = join(framesDir, `frame_${String(frameIndex).padStart(6, "0")}.${frameExt}`);
+    const framePath = join(framesDir, formatCaptureFrameName(frameIndex, frameExt));
     if (existsSync(framePath)) captured++;
   }
   return captured;

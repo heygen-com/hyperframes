@@ -14,7 +14,12 @@
 import { describe, expect, it } from "vitest";
 import { resolve, win32 } from "node:path";
 
-import { isPathInside, toExternalAssetKey } from "./paths.js";
+import {
+  isPathInside,
+  toExternalAssetKey,
+  formatCaptureFrameName,
+  formatExportFrameName,
+} from "./paths.js";
 
 describe("isPathInside", () => {
   it("returns true when child is directly inside parent", () => {
@@ -131,5 +136,29 @@ describe("toExternalAssetKey", () => {
     // Key cannot start with a separator or drive letter.
     expect(key.startsWith("/")).toBe(false);
     expect(/^[A-Za-z]:/.test(key)).toBe(false);
+  });
+});
+
+describe("formatCaptureFrameName", () => {
+  it("returns zero-padded filename for zero-based index", () => {
+    expect(formatCaptureFrameName(0, "jpg")).toBe("frame_000000.jpg");
+  });
+
+  it("pads to 6 digits for large indices", () => {
+    expect(formatCaptureFrameName(999999, "png")).toBe("frame_999999.png");
+  });
+
+  it("handles mid-range indices", () => {
+    expect(formatCaptureFrameName(42, "jpg")).toBe("frame_000042.jpg");
+  });
+});
+
+describe("formatExportFrameName", () => {
+  it("returns one-based filename from zero-based input", () => {
+    expect(formatExportFrameName(0, "png")).toBe("frame_000001.png");
+  });
+
+  it("increments index by 1", () => {
+    expect(formatExportFrameName(4, "png")).toBe("frame_000005.png");
   });
 });
