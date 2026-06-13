@@ -972,7 +972,7 @@ export async function plan(
   // proper or no longer needed. Leaving it past freezePlan would:
   //   (1) inflate the planDir-size check below,
   //   (2) confuse chunk workers' file walks,
-  //   (3) — load-bearing — pollute the planHash. freezePlan walks the
+  //   (3) pollute the planHash. freezePlan walks the
   //       planDir to compute the hash; chunk workers receive a planDir
   //       with `.plan-work/` already gone (the controller can also
   //       prune before transit), so their recomputed hash would not

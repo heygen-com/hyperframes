@@ -371,7 +371,7 @@ for FIXTURE in "${FIXTURE_LIST[@]}"; do
     # ffmpeg emits astats summary at log level `info`; -v error would
     # suppress it. Use -v info and parse from the combined stderr.
     #
-    # `amix normalize=0` is load-bearing: the default normalize=true
+    # Keep `amix normalize=0`: the default normalize=true
     # scales each input by 1/N before summing, so a 2-input subtract
     # reports the residual at -6 dB versus the true difference, making
     # the -50 dBFS gate effectively -44 dBFS. Disabling normalization

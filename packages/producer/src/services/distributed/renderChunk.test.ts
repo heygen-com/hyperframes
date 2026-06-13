@@ -1,8 +1,8 @@
 /**
  * Unit tests for `services/distributed/renderChunk.ts`.
  *
- * The byte-identical-retry contract is the load-bearing
- * test here: rendering the same `(planDir, chunkIndex)` twice must produce
+ * The byte-identical-retry contract is what makes retries safe here:
+ * rendering the same `(planDir, chunkIndex)` twice must produce
  * a byte-identical output file. Without this, Temporal/Step-Functions
  * retries can't safely overwrite a partial chunk — and the entire
  * fan-out activity has to fall back to "renderer doesn't retry".

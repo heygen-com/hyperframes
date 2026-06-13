@@ -70,7 +70,7 @@ describe("@hyperframes/producer (main entry)", () => {
 
   it("preserves the existing in-process exports (executeRenderJob unchanged)", () => {
     // The distributed primitives must NOT break the in-process surface;
-    // spot-check the load-bearing exports the in-process callers rely on.
+    // spot-check the exports in-process callers rely on.
     expect(typeof producerIndex.executeRenderJob).toBe("function");
     expect(typeof producerIndex.createRenderJob).toBe("function");
     expect(typeof producerIndex.createCaptureSession).toBe("function");

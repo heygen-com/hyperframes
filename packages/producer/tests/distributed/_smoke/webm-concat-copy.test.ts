@@ -437,7 +437,7 @@ describe("webm VP9 concat-copy smoke (yuva420p alpha)", () => {
       // YMIN ≈ 0 / YMAX ≈ 255 on the alpha plane; uniform alpha would
       // give YMIN == YMAX. Spread > 100 cleanly rejects the bad case.
       //
-      // `-c:v libvpx-vp9` before `-i` is load-bearing: ffmpeg's default
+      // Keep `-c:v libvpx-vp9` before `-i`: ffmpeg's default
       // VP9 decoder strips the BlockAdditional alpha track when
       // decoding to non-rgba pixel formats; forcing the libvpx-vp9
       // decoder + `-pix_fmt rgba` is how the alpha plane comes back.

@@ -86,7 +86,7 @@ Embedded images shouldn't sit flat — every image earns some motion treatment:
 - **Floating UI** — extract a key element and animate it at a different z-depth for parallax.
 - **Scroll reveal** — clip the image to a viewport window and animate `y` position.
 
-## Load-Bearing GSAP Rules
+## GSAP Rules That Keep Elements Visible
 
 Rules below came out of two independent website-to-hyperframes builds (2026-04-20) where compositions lint-clean and still ship broken — elements that never appear, ambient motion that doesn't scrub, entrance tweens that silently kill their target. The linter cannot catch these; the rules must be followed by the author.
 

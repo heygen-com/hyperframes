@@ -79,7 +79,7 @@ beforeAll(async () => {
   // ffmpeg-version readout fighting a host with no ffmpeg on PATH, or the
   // compile stage hitting a missing font binary. Either way, the Docker
   // harness exercises the same code path against a working image, so the
-  // host failure is informational rather than load-bearing.
+  // host failure does not decide whether the distributed path works.
   pngPlanDir = join(runRoot, "plan-pngseq");
   mkdirSync(pngPlanDir, { recursive: true });
   try {

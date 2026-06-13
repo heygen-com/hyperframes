@@ -317,7 +317,7 @@ Use the pacing you decided at the top of this step. The beat count, duration, an
 
 **Frame-filling rule:** When describing visuals per beat, specify sizes as FRAME FILL PERCENTAGES, not pixels. "Product screenshot fills 80% of frame" not "600px wide card."
 
-**Use whatever primitives the beat needs — alone or in combination.** A beat can layer HTML/CSS, SVG (captured or hand-drawn), WebGL/Canvas shaders, Three.js scenes, captured illustrations and photographs, kinetic typography, captured Lottie — all at once if the scene calls for that. They're inputs to one output (the video frame); there's no rule mapping intent to primitive. The video should feel **alive in every frame** — motion that's continuous and tangible, **like things exist in a physical world**. Narrow no-go: never paste a product-UI screenshot as load-bearing content (the slideshow pattern). Everything else is open.
+**Use whatever primitives the beat needs, alone or in combination.** A beat can layer HTML/CSS, SVG (captured or hand-drawn), WebGL/Canvas shaders, Three.js scenes, captured illustrations and photographs, kinetic typography, and captured Lottie all at once if the scene calls for that. They are inputs to one output: the video frame. The video should feel **alive in every frame** with motion that is continuous and tangible. Narrow no-go: never paste a product-UI screenshot into the beat as the main visual (the slideshow pattern). Everything else is open.
 
 **Opener default: fast intro to stop the scrollers.** Even a cinematic video should start with a punch — a flash, a shader bloom, a logo strike, a kinetic word build, a particle burst — anything that lands inside the first 1.0–1.5 seconds. Slow intros work for prestige trailers; videos shipping anywhere social or feed-based need a hook that beats the 1.5-second scroll threshold. Plan the opener as the most ambitious beat in the storyboard, not the gentlest one.
 
@@ -347,7 +347,7 @@ What the viewer sees — described cinematically, not as CSS specs. Use camera l
 
 Two things, both required:
 
-**Composed (load-bearing — what carries the beat):**
+**Composed (what carries the beat):**
 
 - Describe the UI / element / scene you're building from scratch: markup structure, the techniques powering it (cite [capabilities.md](capabilities.md) sections + [techniques.md](../../hyperframes/references/techniques.md) entries), key animation events. E.g. "Composed kanban: 3 column divs, 4 cards each, drag-and-drop with `back.out(1.7)` entrance stagger, counter chip on In-Progress incrementing via `tl.set()`."
 - **Brand-inflect:** brand colors from DESIGN.md, real product data (project names, real metrics, real copy — not placeholder labels), narration-sync moments. Make this beat THIS brand's beat, not a generic UI demo.

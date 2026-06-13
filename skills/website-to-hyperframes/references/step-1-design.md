@@ -2,7 +2,7 @@
 
 DESIGN.md is a **brand-truth cheat sheet** — colors and fonts you'll **weave into your composed builds**. It is NOT a layout spec, not a moodboard, not a 400-line design system audit.
 
-DESIGN.md is the brand inflection sub-agents apply when building each beat: which color is "primary," which font is for headlines, what tone the brand carries — the load-bearing knobs they flip while building.
+DESIGN.md is the brand inflection sub-agents apply when building each beat: which color is "primary," which font is for headlines, and what tone the brand carries. These are the choices sub-agents carry into each beat.
 
 **Target length: 250–350 lines.** Step 5 sub-agents read DESIGN.md to brand each beat — the more precise the component CSS values you encode here, the more brand-faithful the result. Going under 200 lines tends to produce generic dark-cinematic output because sub-agents have no brand component DNA to work from; going over 350 means you're over-investing in prose.
 
@@ -256,7 +256,7 @@ Generous whitespace as confidence. Section gaps are always `60–100px`. Content
 
 ---
 
-### `## 5. Iteration Guide` (the load-bearing section)
+### `## 5. Iteration Guide` (the section sub-agents consult when unsure)
 
 5–10 numbered rules that encode the most important brand decisions. Each rule is a **single actionable sentence stating what to do, with the specific values from this site.** These are the "if in doubt, do this" rules sub-agents consult while composing beats.
 
@@ -290,7 +290,7 @@ Generous whitespace as confidence. Section gaps are always `60–100px`. Content
 5. **Glass containers** use `rgba(255,255,255,0.9)` background, `1px` border `rgba(255,255,255,0.2)`, optional `backdrop-filter: blur(8px)`. **These are the only place transparent fills appear** — everywhere else uses solid color.
 ```
 
-If your draft has a rule like "all interactive elements require visible focus states for accessibility" — delete it. Not wrong, just not load-bearing for _this_ brand.
+If your draft has a rule like "all interactive elements require visible focus states for accessibility", delete it. It is not wrong, just not one of the brand decisions this file needs.
 
 ---
 
