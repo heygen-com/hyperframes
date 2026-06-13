@@ -52,7 +52,7 @@ export {
 } from "./services/fileServer.js";
 
 // ── Video frame injection (Hyperframes-specific hook) ───────────────────────
-export { createVideoFrameInjector } from "./services/videoFrameInjector.js";
+export { createVideoFrameInjector } from "@hyperframes/engine";
 
 // ── Configuration ───────────────────────────────────────────────────────────
 export { resolveConfig, DEFAULT_CONFIG, type ProducerConfig } from "./config.js";
