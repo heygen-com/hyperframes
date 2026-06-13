@@ -1,9 +1,6 @@
 import { useCallback } from "react";
 import { STUDIO_GSAP_DRAG_INTERCEPT_ENABLED } from "../components/editor/manualEditingAvailability";
-import {
-  getDomEditTargetKey,
-  type DomEditSelection,
-} from "../components/editor/domEditing";
+import { getDomEditTargetKey, type DomEditSelection } from "../components/editor/domEditing";
 import {
   applyStudioPathOffset,
   applyStudioBoxSize,

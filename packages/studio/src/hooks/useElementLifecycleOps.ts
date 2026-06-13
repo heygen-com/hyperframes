@@ -4,7 +4,6 @@ import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import { createStudioSaveHttpError } from "../utils/studioSaveDiagnostics";
 import {
   buildDomEditPatchTarget,
-
   readHfId,
   type DomEditSelection,
 } from "../components/editor/domEditing";

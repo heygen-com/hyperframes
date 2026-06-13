@@ -179,9 +179,7 @@ export function StudioPreviewArea({
           selectedGsapAnimations.find((a) => a.keyframes);
         if (!anim?.keyframes) return;
         const tweenOldPct = cachedKf?.tweenPercentage ?? oldPct;
-        const kf = anim.keyframes.keyframes.find(
-          (k) => Math.abs(k.percentage - tweenOldPct) < 0.2,
-        );
+        const kf = anim.keyframes.keyframes.find((k) => Math.abs(k.percentage - tweenOldPct) < 0.2);
         if (!kf) return;
         const tweenStart = anim.resolvedStart ?? 0;
         const tweenDur = anim.duration ?? 1;
@@ -202,16 +200,11 @@ export function StudioPreviewArea({
         const currentTime = usePlayerStore.getState().currentTime;
         const pct =
           el.duration > 0
-            ? Math.max(
-                0,
-                Math.min(100, Math.round(((currentTime - el.start) / el.duration) * 100)),
-              )
+            ? Math.max(0, Math.min(100, Math.round(((currentTime - el.start) / el.duration) * 100)))
             : 0;
         const anim = selectedGsapAnimations.find((a) => a.keyframes);
         if (anim?.keyframes) {
-          const existing = anim.keyframes.keyframes.find(
-            (k) => Math.abs(k.percentage - pct) <= 1,
-          );
+          const existing = anim.keyframes.keyframes.find((k) => Math.abs(k.percentage - pct) <= 1);
           if (existing) {
             handleGsapRemoveKeyframe(anim.id, existing.percentage);
           } else {
@@ -245,104 +238,109 @@ export function StudioPreviewArea({
     <div className="flex-1 flex flex-col relative min-w-0">
       <div className="flex-1 min-h-0 relative">
         <TimelineEditProvider value={timelineEditCallbacks}>
-        <NLELayout
-          projectId={projectId}
-          refreshKey={refreshKey}
-          activeCompositionPath={activeCompPath}
-          timelineToolbar={timelineToolbar}
-          renderClipContent={renderClipContent}
-          onDeleteElement={handleTimelineElementDelete}
-          onAssetDrop={handleTimelineAssetDrop}
-          onBlockDrop={handleTimelineBlockDrop}
-          onPreviewBlockDrop={handlePreviewBlockDrop}
-          onFileDrop={handleTimelineFileDrop}
-          onSelectTimelineElement={handleTimelineElementSelect}
-          onCompIdToSrcChange={setCompIdToSrc}
-          onCompositionLoadingChange={setCompositionLoading}
-          onCompositionChange={(compPath) => {
-            // Sync activeCompPath when user drills down via timeline double-click
-            // or navigates back via breadcrumb — keeps sidebar + thumbnails in sync.
-            // Guard against no-op updates to prevent circular refresh cascades
-            // between activeCompPath → compositionStack → onCompositionChange.
-            if (compPath !== activeCompPath) {
-              setActiveCompPath(compPath);
-              refreshPreviewDocumentVersion();
-            }
-          }}
-          onIframeRef={handlePreviewIframeRef}
-          previewOverlay={
-            blockPreview ? (
-              <div className="absolute inset-0 z-30 bg-black pointer-events-none">
-                {blockPreview.videoUrl ? (
-                  <video
-                    src={blockPreview.videoUrl}
-                    autoPlay
-                    muted
-                    loop
-                    playsInline
-                    className="w-full h-full object-contain"
-                  />
-                ) : blockPreview.posterUrl ? (
-                  <img
-                    src={blockPreview.posterUrl}
-                    alt={blockPreview.title}
-                    className="w-full h-full object-contain"
-                  />
-                ) : null}
-              </div>
-            ) : captionEditMode ? (
-              <CaptionOverlay iframeRef={previewIframeRef} />
-            ) : STUDIO_INSPECTOR_PANELS_ENABLED ? (
-              <>
-                <DomEditOverlay
-                  iframeRef={previewIframeRef}
-                  activeCompositionPath={activeCompPath}
-                  hoverSelection={
-                    STUDIO_PREVIEW_SELECTION_ENABLED &&
-                    !captionEditMode &&
-                    !compositionLoading &&
-                    !isPlaying
-                      ? domEditHoverSelection
-                      : null
-                  }
-                  selection={shouldShowSelectedDomBounds ? domEditSelection : null}
-                  groupSelections={shouldShowSelectedDomBounds ? domEditGroupSelections : []}
-                  allowCanvasMovement={STUDIO_PREVIEW_MANUAL_EDITING_ENABLED && !isGestureRecording}
-                  onCanvasMouseDown={handlePreviewCanvasMouseDown}
-                  onCanvasPointerMove={handlePreviewCanvasPointerMove}
-                  onCanvasPointerLeave={handlePreviewCanvasPointerLeave}
-                  onSelectionChange={applyDomSelection}
-                  onBlockedMove={handleBlockedDomMove}
-                  onManualDragStart={handleDomManualDragStart}
-                  onPathOffsetCommit={handleDomPathOffsetCommit}
-                  onGroupPathOffsetCommit={handleDomGroupPathOffsetCommit}
-                  onBoxSizeCommit={handleDomBoxSizeCommit}
-                  onRotationCommit={handleDomRotationCommit}
-                  gridVisible={snapPrefs.gridVisible}
-                  gridSpacing={snapPrefs.gridSpacing}
-                  recordingState={recordingState}
-                  onToggleRecording={onToggleRecording}
-                />
-                <SnapToolbar onSnapChange={setSnapPrefs} />
-                {gestureOverlay}
-              </>
-            ) : null
-          }
-          timelineFooter={
-            captionEditMode ? (
-              <div className="border-t border-neutral-800/30 flex-shrink-0" style={{ height: 60 }}>
-                <div className="flex items-center gap-1.5 px-2 py-0.5">
-                  <span className="text-[9px] font-medium text-neutral-500 uppercase tracking-wider">
-                    Captions
-                  </span>
+          <NLELayout
+            projectId={projectId}
+            refreshKey={refreshKey}
+            activeCompositionPath={activeCompPath}
+            timelineToolbar={timelineToolbar}
+            renderClipContent={renderClipContent}
+            onDeleteElement={handleTimelineElementDelete}
+            onAssetDrop={handleTimelineAssetDrop}
+            onBlockDrop={handleTimelineBlockDrop}
+            onPreviewBlockDrop={handlePreviewBlockDrop}
+            onFileDrop={handleTimelineFileDrop}
+            onSelectTimelineElement={handleTimelineElementSelect}
+            onCompIdToSrcChange={setCompIdToSrc}
+            onCompositionLoadingChange={setCompositionLoading}
+            onCompositionChange={(compPath) => {
+              // Sync activeCompPath when user drills down via timeline double-click
+              // or navigates back via breadcrumb — keeps sidebar + thumbnails in sync.
+              // Guard against no-op updates to prevent circular refresh cascades
+              // between activeCompPath → compositionStack → onCompositionChange.
+              if (compPath !== activeCompPath) {
+                setActiveCompPath(compPath);
+                refreshPreviewDocumentVersion();
+              }
+            }}
+            onIframeRef={handlePreviewIframeRef}
+            previewOverlay={
+              blockPreview ? (
+                <div className="absolute inset-0 z-30 bg-black pointer-events-none">
+                  {blockPreview.videoUrl ? (
+                    <video
+                      src={blockPreview.videoUrl}
+                      autoPlay
+                      muted
+                      loop
+                      playsInline
+                      className="w-full h-full object-contain"
+                    />
+                  ) : blockPreview.posterUrl ? (
+                    <img
+                      src={blockPreview.posterUrl}
+                      alt={blockPreview.title}
+                      className="w-full h-full object-contain"
+                    />
+                  ) : null}
                 </div>
-                <CaptionTimeline pixelsPerSecond={100} />
-              </div>
-            ) : undefined
-          }
-          timelineVisible={timelineVisible}
-          onToggleTimeline={toggleTimelineVisibility}
-        />
+              ) : captionEditMode ? (
+                <CaptionOverlay iframeRef={previewIframeRef} />
+              ) : STUDIO_INSPECTOR_PANELS_ENABLED ? (
+                <>
+                  <DomEditOverlay
+                    iframeRef={previewIframeRef}
+                    activeCompositionPath={activeCompPath}
+                    hoverSelection={
+                      STUDIO_PREVIEW_SELECTION_ENABLED &&
+                      !captionEditMode &&
+                      !compositionLoading &&
+                      !isPlaying
+                        ? domEditHoverSelection
+                        : null
+                    }
+                    selection={shouldShowSelectedDomBounds ? domEditSelection : null}
+                    groupSelections={shouldShowSelectedDomBounds ? domEditGroupSelections : []}
+                    allowCanvasMovement={
+                      STUDIO_PREVIEW_MANUAL_EDITING_ENABLED && !isGestureRecording
+                    }
+                    onCanvasMouseDown={handlePreviewCanvasMouseDown}
+                    onCanvasPointerMove={handlePreviewCanvasPointerMove}
+                    onCanvasPointerLeave={handlePreviewCanvasPointerLeave}
+                    onSelectionChange={applyDomSelection}
+                    onBlockedMove={handleBlockedDomMove}
+                    onManualDragStart={handleDomManualDragStart}
+                    onPathOffsetCommit={handleDomPathOffsetCommit}
+                    onGroupPathOffsetCommit={handleDomGroupPathOffsetCommit}
+                    onBoxSizeCommit={handleDomBoxSizeCommit}
+                    onRotationCommit={handleDomRotationCommit}
+                    gridVisible={snapPrefs.gridVisible}
+                    gridSpacing={snapPrefs.gridSpacing}
+                    recordingState={recordingState}
+                    onToggleRecording={onToggleRecording}
+                  />
+                  <SnapToolbar onSnapChange={setSnapPrefs} />
+                  {gestureOverlay}
+                </>
+              ) : null
+            }
+            timelineFooter={
+              captionEditMode ? (
+                <div
+                  className="border-t border-neutral-800/30 flex-shrink-0"
+                  style={{ height: 60 }}
+                >
+                  <div className="flex items-center gap-1.5 px-2 py-0.5">
+                    <span className="text-[9px] font-medium text-neutral-500 uppercase tracking-wider">
+                      Captions
+                    </span>
+                  </div>
+                  <CaptionTimeline pixelsPerSecond={100} />
+                </div>
+              ) : undefined
+            }
+            timelineVisible={timelineVisible}
+            onToggleTimeline={toggleTimelineVisibility}
+          />
         </TimelineEditProvider>
       </div>
       <StudioFeedbackBar />

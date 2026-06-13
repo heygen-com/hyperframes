@@ -5,10 +5,7 @@ import type { PatchOperation } from "../utils/sourcePatcher";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { primaryFontFamilyValue } from "../utils/studioFontHelpers";
 import { createStudioSaveHttpError } from "../utils/studioSaveDiagnostics";
-import {
-  buildDomEditPatchTarget,
-  type DomEditSelection,
-} from "../components/editor/domEditing";
+import { buildDomEditPatchTarget, type DomEditSelection } from "../components/editor/domEditing";
 import { fontFamilyFromAssetPath, type ImportedFontAsset } from "../components/editor/fontAssets";
 import type { EditHistoryKind } from "../utils/editHistory";
 import { useDomEditPositionPatchCommit } from "./useDomEditPositionPatchCommit";
@@ -295,10 +292,7 @@ export function useDomEditCommits({
 
   // ── Element lifecycle (delete, z-index reorder) ──
 
-  const {
-    handleDomEditElementDelete,
-    handleDomZIndexReorderCommit,
-  } = useElementLifecycleOps({
+  const { handleDomEditElementDelete, handleDomZIndexReorderCommit } = useElementLifecycleOps({
     activeCompPath,
     showToast,
     writeProjectFile,

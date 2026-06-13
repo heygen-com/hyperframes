@@ -139,7 +139,8 @@ export const TimelineCanvas = memo(function TimelineCanvas({
   onContextMenuKeyframe,
   onContextMenuClip,
 }: TimelineCanvasProps) {
-  const { onResizeElement, onMoveElement, onRazorSplit, onRazorSplitAll } = useTimelineEditContext();
+  const { onResizeElement, onMoveElement, onRazorSplit, onRazorSplitAll } =
+    useTimelineEditContext();
   const draggedElement = draggedClip?.element ?? null;
   const activeDraggedElement =
     draggedClip?.started === true && draggedElement
