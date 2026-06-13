@@ -4,6 +4,7 @@
  */
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { usePlayerStore, type KeyframeCacheEntry } from "../player/store/playerStore";
+import { toAbsoluteTime } from "./gsapShared";
 
 export function updateKeyframeCacheFromParsed(
   animations: GsapAnimation[],
@@ -29,7 +30,7 @@ export function updateKeyframeCacheFromParsed(
     const elStart = timelineEl?.start ?? 0;
     const elDuration = timelineEl?.duration ?? 1;
     const clipKeyframes = anim.keyframes.keyframes.map((kf) => {
-      const absTime = tweenPos + (kf.percentage / 100) * tweenDur;
+      const absTime = toAbsoluteTime(tweenPos, tweenDur, kf.percentage);
       const clipPct =
         elDuration > 0 ? Math.round(((absTime - elStart) / elDuration) * 1000) / 10 : kf.percentage;
       return {

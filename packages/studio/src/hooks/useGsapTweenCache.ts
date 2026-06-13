@@ -3,6 +3,7 @@ import type { GsapAnimation, GsapKeyframesData, ParsedGsap } from "@hyperframes/
 import type { GsapPercentageKeyframe } from "@hyperframes/core/gsap-parser";
 import { usePlayerStore } from "../player/store/playerStore";
 import { readRuntimeKeyframes, scanAllRuntimeKeyframes } from "./gsapRuntimeBridge";
+import { PROPERTY_DEFAULTS, toAbsoluteTime } from "./gsapShared";
 
 function deduplicateKeyframes(keyframes: GsapPercentageKeyframe[]): GsapPercentageKeyframe[] {
   const byPct = new Map<number, GsapPercentageKeyframe>();
@@ -17,16 +18,6 @@ function deduplicateKeyframes(keyframes: GsapPercentageKeyframe[]): GsapPercenta
   }
   return Array.from(byPct.values()).sort((a, b) => a.percentage - b.percentage);
 }
-
-const PROPERTY_DEFAULTS: Record<string, number> = {
-  opacity: 1,
-  x: 0,
-  y: 0,
-  scale: 1,
-  scaleX: 1,
-  scaleY: 1,
-  rotation: 0,
-};
 
 function synthesizeFlatTweenKeyframes(anim: GsapAnimation): GsapKeyframesData | null {
   if (anim.method === "set") {
@@ -281,7 +272,7 @@ export function useGsapAnimationsForElement(
         anim.resolvedStart ?? (typeof anim.position === "number" ? anim.position : 0);
       const tweenDur = anim.duration ?? elDuration;
       for (const k of kf.keyframes) {
-        const absTime = tweenPos + (k.percentage / 100) * tweenDur;
+        const absTime = toAbsoluteTime(tweenPos, tweenDur, k.percentage);
         const clipPct =
           elDuration > 0
             ? Math.round(((absTime - elStart) / elDuration) * 1000) / 10
@@ -379,7 +370,7 @@ export function usePopulateKeyframeCacheForFile(
         const elStart = timelineEl?.start ?? 0;
         const elDuration = timelineEl?.duration ?? 1;
         const clipKeyframes = kfData.keyframes.map((kf) => {
-          const absTime = tweenPos + (kf.percentage / 100) * tweenDur;
+          const absTime = toAbsoluteTime(tweenPos, tweenDur, kf.percentage);
           const clipPct =
             elDuration > 0
               ? Math.round(((absTime - elStart) / elDuration) * 1000) / 10

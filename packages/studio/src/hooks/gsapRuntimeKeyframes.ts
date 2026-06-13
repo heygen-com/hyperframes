@@ -3,6 +3,7 @@
  * Used to discover dynamic keyframes that the AST parser can't resolve
  * (loops, variables, computed selectors).
  */
+import { parsePercentageKeyframes } from "./gsapShared";
 
 interface RuntimeTween {
   targets?: () => Element[];
@@ -66,33 +67,8 @@ export function readRuntimeKeyframes(
     const vars = tween.vars;
     if (!vars.keyframes || typeof vars.keyframes !== "object") continue;
 
-    const kfObj = vars.keyframes as Record<string, unknown>;
-    const result: Array<{ percentage: number; properties: Record<string, number | string> }> = [];
-    let easeEach: string | undefined;
-
-    for (const [key, val] of Object.entries(kfObj)) {
-      if (key === "easeEach") {
-        if (typeof val === "string") easeEach = val;
-        continue;
-      }
-      const pctMatch = key.match(/^(\d+(?:\.\d+)?)%$/);
-      if (!pctMatch || !val || typeof val !== "object") continue;
-      const percentage = parseFloat(pctMatch[1]);
-      const properties: Record<string, number | string> = {};
-      for (const [pk, pv] of Object.entries(val as Record<string, unknown>)) {
-        if (pk === "ease") continue;
-        if (typeof pv === "number") properties[pk] = Math.round(pv * 1000) / 1000;
-        else if (typeof pv === "string") properties[pk] = pv;
-      }
-      if (Object.keys(properties).length > 0) {
-        result.push({ percentage, properties });
-      }
-    }
-
-    if (result.length > 0) {
-      result.sort((a, b) => a.percentage - b.percentage);
-      return { keyframes: result, easeEach };
-    }
+    const parsed = parsePercentageKeyframes(vars.keyframes as Record<string, unknown>);
+    if (parsed) return parsed;
   }
   return null;
 }
@@ -133,38 +109,12 @@ export function scanAllRuntimeKeyframes(iframe: HTMLIFrameElement | null): Map<
       const vars = tween.vars;
 
       if (vars.keyframes && typeof vars.keyframes === "object") {
-        const kfObj = vars.keyframes as Record<string, unknown>;
-        const keyframes: Array<{
-          percentage: number;
-          properties: Record<string, number | string>;
-        }> = [];
-        let easeEach: string | undefined;
-
-        for (const [key, val] of Object.entries(kfObj)) {
-          if (key === "easeEach") {
-            if (typeof val === "string") easeEach = val;
-            continue;
-          }
-          const pctMatch = key.match(/^(\d+(?:\.\d+)?)%$/);
-          if (!pctMatch || !val || typeof val !== "object") continue;
-          const percentage = parseFloat(pctMatch[1]);
-          const properties: Record<string, number | string> = {};
-          for (const [pk, pv] of Object.entries(val as Record<string, unknown>)) {
-            if (pk === "ease") continue;
-            if (typeof pv === "number") properties[pk] = Math.round(pv * 1000) / 1000;
-            else if (typeof pv === "string") properties[pk] = pv;
-          }
-          if (Object.keys(properties).length > 0) {
-            keyframes.push({ percentage, properties });
-          }
-        }
-
-        if (keyframes.length > 0) {
-          keyframes.sort((a, b) => a.percentage - b.percentage);
+        const parsed = parsePercentageKeyframes(vars.keyframes as Record<string, unknown>);
+        if (parsed) {
           for (const target of tween.targets()) {
             const id = (target as HTMLElement).id;
             if (id && !result.has(id)) {
-              result.set(id, { keyframes, easeEach });
+              result.set(id, parsed);
             }
           }
           continue;

@@ -35,6 +35,8 @@
     "packages/studio/src/components/nle/TimelineEditorNotice.tsx",
     // Zoom hook extracted for downstream razor-blade PRs (#1330, #1331).
     "packages/studio/src/player/components/useTimelineZoom.ts",
+    // Preview helper consumed dynamically from the studio iframe bridge.
+    "packages/studio/src/hooks/gsapRuntimePreview.ts",
   ],
   "ignorePatterns": [
     "docs/**",
