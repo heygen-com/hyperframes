@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import type { LintFinding } from "../components/LintModal";
+import { usePlayerStore } from "../player";
 
 interface RawFinding {
   severity?: string;
@@ -94,6 +95,12 @@ export function useLintModal(projectId: string | null, refreshKey?: number) {
 
   const findingsByElement = useMemo(() => groupFindings((f) => f.elementId), [groupFindings]);
   const findingsByFile = useMemo(() => groupFindings((f) => f.file), [groupFindings]);
+
+  // Sync lint findings directly to the player store — eliminates the
+  // mirroring useEffect that was previously in App.tsx.
+  useEffect(() => {
+    usePlayerStore.getState().setLintFindingsByElement(findingsByElement);
+  }, [findingsByElement]);
 
   return {
     lintModal,

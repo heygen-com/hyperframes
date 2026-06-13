@@ -133,11 +133,17 @@ export function useGsapAnimationsForElement(
   const [multipleTimelines, setMultipleTimelines] = useState(false);
   const [unsupportedTimelinePattern, setUnsupportedTimelinePattern] = useState(false);
   const lastFetchKeyRef = useRef("");
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const fetchKey = `${projectId}:${sourceFile}:${version}`;
     if (fetchKey === lastFetchKeyRef.current) return;
     lastFetchKeyRef.current = fetchKey;
+
+    if (retryTimerRef.current) {
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
 
     if (!projectId) {
       setAllAnimations([]);
@@ -158,26 +164,30 @@ export function useGsapAnimationsForElement(
       setAllAnimations(parsed.animations);
       setMultipleTimelines(parsed.multipleTimelines === true);
       setUnsupportedTimelinePattern(parsed.unsupportedTimelinePattern === true);
+
+      // Retry once if initial fetch returned 0 animations — handles
+      // cold-load race where the sourceFile isn't resolved yet.
+      if (parsed.animations.length === 0 && target) {
+        retryTimerRef.current = setTimeout(() => {
+          if (cancelled) return;
+          fetchParsedAnimations(projectId, sourceFile).then((retryParsed) => {
+            if (cancelled) return;
+            if (retryParsed && retryParsed.animations.length > 0) {
+              setAllAnimations(retryParsed.animations);
+            }
+          });
+        }, 800);
+      }
     });
 
     return () => {
       cancelled = true;
+      if (retryTimerRef.current) {
+        clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = null;
+      }
     };
-  }, [projectId, sourceFile, version]);
-
-  // Retry fetch if we have a target but no animations — handles cold-load race
-  // where the initial fetch runs before the drilled-down sourceFile is resolved
-  useEffect(() => {
-    if (!projectId || !target || allAnimations.length > 0) return;
-    const timer = setTimeout(() => {
-      fetchParsedAnimations(projectId, sourceFile).then((parsed) => {
-        if (parsed && parsed.animations.length > 0) {
-          setAllAnimations(parsed.animations);
-        }
-      });
-    }, 800);
-    return () => clearTimeout(timer);
-  }, [projectId, sourceFile, target, allAnimations.length]);
+  }, [projectId, sourceFile, version, target]);
 
   const targetId = target?.id ?? null;
   const targetSelector = target?.selector ?? null;
