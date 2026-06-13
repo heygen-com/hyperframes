@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { SUPPORTED_PROPS } from "@hyperframes/core/gsap-constants";
 import { buildTweenSummary } from "./gsapAnimationHelpers";
+import { PROP_LABELS } from "./gsapAnimationConstants";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 
 function anim(overrides: Partial<GsapAnimation>): GsapAnimation {
@@ -21,6 +23,27 @@ describe("buildTweenSummary", () => {
     expect(s).toContain("#box");
     expect(s).toContain("opacity");
     expect(s).toContain("move x");
+  });
+
+  it("describes 3D transform tweens with labels and units", () => {
+    const s = buildTweenSummary(
+      anim({
+        properties: {
+          z: 120,
+          rotationX: 45,
+          rotationY: -30,
+          rotationZ: 90,
+          perspective: 800,
+          transformOrigin: "50% 50%",
+        },
+      }),
+    );
+    expect(s).toContain("move z to 120px");
+    expect(s).toContain("rotate x to 45°");
+    expect(s).toContain("rotate y to -30°");
+    expect(s).toContain("rotate z to 90°");
+    expect(s).toContain("perspective to 800px");
+    expect(s).toContain("transform origin to 50% 50%");
   });
 
   it("describes a from tween", () => {
@@ -63,5 +86,11 @@ describe("buildTweenSummary", () => {
   it("handles no properties", () => {
     const s = buildTweenSummary(anim({ properties: {} }));
     expect(s).toContain("no properties yet");
+  });
+});
+
+describe("PROP_LABELS", () => {
+  it("provides labels for every inspector-supported GSAP property", () => {
+    expect(SUPPORTED_PROPS.filter((prop) => !PROP_LABELS[prop])).toEqual([]);
   });
 });
