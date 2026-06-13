@@ -36,12 +36,8 @@ import {
 } from "@hyperframes/engine";
 import { fpsToFfmpegArg } from "@hyperframes/core";
 import type { ProducerLogger } from "../../../logger.js";
-import type {
-  HdrDiagnostics,
-  HdrImageBuffer,
-  HdrVideoFrameSource,
-  RenderJob,
-} from "../../renderOrchestrator.js";
+import type { HdrImageBuffer, HdrVideoFrameSource } from "../../hdrCompositor.js";
+import type { HdrDiagnostics, RenderJob } from "../../renderOrchestrator.js";
 import type { CompositionMetadata } from "../shared.js";
 
 const NO_FOLLOW_FLAG = constants.O_NOFOLLOW ?? 0;

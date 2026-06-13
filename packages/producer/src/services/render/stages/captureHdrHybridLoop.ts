@@ -38,13 +38,11 @@ import type { FileServerHandle } from "../../fileServer.js";
 import type { ProducerLogger } from "../../../logger.js";
 import {
   type HdrCompositeContext,
-  type HdrPerfCollector,
-  type ProgressCallback,
-  type RenderJob,
   type TransitionRange,
-  addHdrTiming,
   compositeHdrFrame,
-} from "../../renderOrchestrator.js";
+} from "../../hdrCompositor.js";
+import { type HdrPerfCollector, addHdrTiming } from "../hdrPerf.js";
+import type { ProgressCallback, RenderJob } from "../../renderOrchestrator.js";
 import { writeFileExclusiveSync } from "../shared.js";
 import {
   type ShaderTransitionWorkerPool,

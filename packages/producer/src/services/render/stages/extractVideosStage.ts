@@ -48,10 +48,9 @@ import { fpsToNumber } from "@hyperframes/core";
 import {
   collectVideoMetadataHints,
   collectVideoReadinessSkipIds,
-  materializeExtractedFramesForCompiledDir,
   type RenderJob,
 } from "../../renderOrchestrator.js";
-import { type CompositionMetadata } from "../shared.js";
+import { materializeExtractedFramesForCompiledDir, type CompositionMetadata } from "../shared.js";
 import type { ProducerLogger } from "../../../logger.js";
 
 export interface ExtractVideosStageInput {

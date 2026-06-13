@@ -23,13 +23,11 @@ import {
 import type { ProducerLogger } from "../../../logger.js";
 import {
   type HdrCompositeContext,
-  type HdrPerfCollector,
-  type ProgressCallback,
-  type RenderJob,
   type TransitionRange,
-  addHdrTiming,
   compositeHdrFrame,
-} from "../../renderOrchestrator.js";
+} from "../../hdrCompositor.js";
+import { type HdrPerfCollector, addHdrTiming } from "../hdrPerf.js";
+import type { ProgressCallback, RenderJob } from "../../renderOrchestrator.js";
 import { writeFileExclusiveSync } from "../shared.js";
 import {
   captureSceneIntoBuffer,
@@ -57,7 +55,7 @@ export interface SequentialLoopInput {
   hdrTargetTransfer: "pq" | "hlg" | undefined;
   hdrVideoEndTimes: Map<string, number>;
   cleanedUpVideos: Set<string>;
-  hdrVideoFrameSources: Map<string, import("../../renderOrchestrator.js").HdrVideoFrameSource>;
+  hdrVideoFrameSources: Map<string, import("../../hdrCompositor.js").HdrVideoFrameSource>;
   debugDumpEnabled: boolean;
   debugDumpDir: string | null;
   assertNotAborted: () => void;

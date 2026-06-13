@@ -23,14 +23,13 @@ import {
 import type { ProducerLogger } from "../../../logger.js";
 import {
   type HdrCompositeContext,
-  type HdrPerfCollector,
   type HdrVideoFrameSource,
   type TransitionRange,
-  addHdrTiming,
   blitHdrImageLayer,
   blitHdrVideoLayer,
   closeHdrVideoFrameSource,
-} from "../../renderOrchestrator.js";
+} from "../../hdrCompositor.js";
+import { type HdrPerfCollector, addHdrTiming } from "../hdrPerf.js";
 
 // ─── Hybrid path gating + partitioning ─────────────────────────────────────
 

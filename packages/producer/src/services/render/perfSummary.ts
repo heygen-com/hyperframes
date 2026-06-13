@@ -4,10 +4,9 @@
  */
 
 import { fpsToNumber } from "@hyperframes/core";
+import type { CaptureCalibrationSample, CaptureCostEstimate } from "./captureCost.js";
 import type {
   CaptureAttemptSummary,
-  CaptureCalibrationSample,
-  CaptureCostEstimate,
   HdrDiagnostics,
   RenderJob,
   RenderPerfSummary,

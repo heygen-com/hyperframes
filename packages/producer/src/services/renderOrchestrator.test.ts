@@ -13,10 +13,9 @@ import {
   findMissingFrameRanges,
   getNextRetryWorkerCount,
   isRecoverableParallelCaptureError,
-  resolveCompositeTransfer,
-  shouldUseLayeredComposite,
   shouldUseStreamingEncode,
 } from "./renderOrchestrator.js";
+import { resolveCompositeTransfer, shouldUseLayeredComposite } from "./hdrCompositor.js";
 import {
   createCaptureCalibrationConfig,
   estimateCaptureCostMultiplier,
