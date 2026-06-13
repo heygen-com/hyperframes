@@ -18,6 +18,14 @@ function iframeContentWindow(iframe: HTMLIFrameElement | null): Window | null {
   }
 }
 
+/** Cross-origin-safe addEventListener/removeEventListener wrapper. */
+function safeAddListener(target: EventTarget | null, type: string, handler: EventListener, capture = false) {
+  try { target?.addEventListener(type, handler, capture); } catch { /* cross-origin */ }
+}
+function safeRemoveListener(target: EventTarget | null, type: string, handler: EventListener) {
+  try { target?.removeEventListener(type, handler); } catch { /* cross-origin */ }
+}
+
 /**
  * Handles Cmd/Ctrl+Z (undo) and Cmd/Ctrl+Shift+Z / Ctrl+Y (redo) key events.
  * Returns true if the event was handled, false otherwise.
@@ -40,25 +48,21 @@ function handleUndoRedoKey(event: KeyboardEvent, onUndo: () => void, onRedo: () 
 
 // ── Types ──
 
+interface HistoryFileCallbacks {
+  readFile: (path: string) => Promise<string>;
+  writeFile: (path: string, content: string) => Promise<void>;
+}
+
+interface HistoryResult {
+  ok: boolean;
+  reason?: string;
+  label?: string;
+  paths?: string[];
+}
+
 interface EditHistoryHandle {
-  undo: (callbacks: {
-    readFile: (path: string) => Promise<string>;
-    writeFile: (path: string, content: string) => Promise<void>;
-  }) => Promise<{
-    ok: boolean;
-    reason?: string;
-    label?: string;
-    paths?: string[];
-  }>;
-  redo: (callbacks: {
-    readFile: (path: string) => Promise<string>;
-    writeFile: (path: string, content: string) => Promise<void>;
-  }) => Promise<{
-    ok: boolean;
-    reason?: string;
-    label?: string;
-    paths?: string[];
-  }>;
+  undo: (callbacks: HistoryFileCallbacks) => Promise<HistoryResult>;
+  redo: (callbacks: HistoryFileCallbacks) => Promise<HistoryResult>;
 }
 
 interface UseAppHotkeysParams {
@@ -112,7 +116,6 @@ export function useAppHotkeys({
   onToggleRecording,
 }: UseAppHotkeysParams) {
   const previewHotkeyWindowRef = useRef<Window | null>(null);
-  const handleAppKeyDownRef = useRef<((event: KeyboardEvent) => void) | undefined>(undefined);
   const previewHistoryHotkeyCleanupRef = useRef<(() => void) | null>(null);
 
   // ── Timeline toggle hotkey ──
@@ -145,355 +148,245 @@ export function useAppHotkeys({
 
   // ── Undo / Redo ──
 
-  const handleUndo = useCallback(async () => {
-    await waitForPendingDomEditSaves();
-    const result = await editHistory.undo({
-      readFile: readHistoryProjectFile,
-      writeFile: writeHistoryProjectFile,
-    });
-    if (!result.ok && result.reason === "content-mismatch") {
-      showToast("File changed outside Studio. Undo history was not applied.", "info");
-      return;
-    }
-    if (result.ok && result.label) {
-      onAfterUndoRedo?.();
-      await syncHistoryPreviewAfterApply(result.paths);
-      showToast(`Undid ${result.label}`, "info");
-    }
-  }, [
-    editHistory,
-    readHistoryProjectFile,
-    showToast,
-    syncHistoryPreviewAfterApply,
-    waitForPendingDomEditSaves,
-    writeHistoryProjectFile,
-    onAfterUndoRedo,
-  ]);
-
-  const handleRedo = useCallback(async () => {
-    await waitForPendingDomEditSaves();
-    const result = await editHistory.redo({
-      readFile: readHistoryProjectFile,
-      writeFile: writeHistoryProjectFile,
-    });
-    if (!result.ok && result.reason === "content-mismatch") {
-      showToast("File changed outside Studio. Redo history was not applied.", "info");
-      return;
-    }
-    if (result.ok && result.label) {
-      onAfterUndoRedo?.();
-      await syncHistoryPreviewAfterApply(result.paths);
-      showToast(`Redid ${result.label}`, "info");
-    }
-  }, [
-    editHistory,
-    readHistoryProjectFile,
-    showToast,
-    syncHistoryPreviewAfterApply,
-    waitForPendingDomEditSaves,
-    writeHistoryProjectFile,
-    onAfterUndoRedo,
-  ]);
-
-  // ── Stable refs for the consolidated keydown handler ──
-
-  const handleToggleRef = useRef(handleTimelineToggleHotkey);
-  handleToggleRef.current = handleTimelineToggleHotkey;
-  const handleDeleteRef = useRef(handleTimelineElementDelete);
-  handleDeleteRef.current = handleTimelineElementDelete;
-  const handleSplitRef = useRef(handleTimelineElementSplit);
-  handleSplitRef.current = handleTimelineElementSplit;
-  const handleDomEditDeleteRef = useRef(handleDomEditElementDelete);
-  handleDomEditDeleteRef.current = handleDomEditElementDelete;
-  const handleUndoRef = useRef(handleUndo);
-  handleUndoRef.current = handleUndo;
-  const handleRedoRef = useRef(handleRedo);
-  handleRedoRef.current = handleRedo;
-  const handleCopyRef = useRef(handleCopy);
-  handleCopyRef.current = handleCopy;
-  const handlePasteRef = useRef(handlePaste);
-  handlePasteRef.current = handlePaste;
-  const handleCutRef = useRef(handleCut);
-  handleCutRef.current = handleCut;
-  const onResetKeyframesRef = useRef(onResetKeyframes);
-  onResetKeyframesRef.current = onResetKeyframes;
-  const onDeleteSelectedKeyframesRef = useRef(onDeleteSelectedKeyframes);
-  onDeleteSelectedKeyframesRef.current = onDeleteSelectedKeyframes;
-  const onToggleRecordingRef = useRef(onToggleRecording);
-  onToggleRecordingRef.current = onToggleRecording;
-
-  // ── Consolidated keydown handler ──
-
-  handleAppKeyDownRef.current = (event: KeyboardEvent) => {
-    // Shift+T — toggle timeline
-    handleToggleRef.current(event);
-
-    // Cmd/Ctrl+Z — undo, Cmd/Ctrl+Shift+Z or Ctrl+Y — redo
-    if (event.metaKey || event.ctrlKey) {
-      if (
-        !shouldIgnoreHistoryShortcut(event.target) &&
-        handleUndoRedoKey(
-          event,
-          () => void handleUndoRef.current(),
-          () => void handleRedoRef.current(),
-        )
-      ) {
+  const applyHistory = useCallback(
+    async (direction: "undo" | "redo") => {
+      await waitForPendingDomEditSaves();
+      const historyCallbacks = { readFile: readHistoryProjectFile, writeFile: writeHistoryProjectFile };
+      const result = await editHistory[direction](historyCallbacks);
+      if (!result.ok && result.reason === "content-mismatch") {
+        showToast(`File changed outside Studio. ${direction === "undo" ? "Undo" : "Redo"} history was not applied.`, "info");
         return;
       }
+      if (result.ok && result.label) {
+        onAfterUndoRedo?.();
+        await syncHistoryPreviewAfterApply(result.paths);
+        showToast(`${direction === "undo" ? "Undid" : "Redid"} ${result.label}`, "info");
+      }
+    },
+    [editHistory, readHistoryProjectFile, showToast, syncHistoryPreviewAfterApply, waitForPendingDomEditSaves, writeHistoryProjectFile, onAfterUndoRedo],
+  );
 
-      // Cmd/Ctrl+1 — sidebar: Compositions tab
-      if (event.key === "1") {
+  const handleUndo = useCallback(() => applyHistory("undo"), [applyHistory]);
+  const handleRedo = useCallback(() => applyHistory("redo"), [applyHistory]);
+
+  // ── Single ref for all mutable callbacks ──
+
+  const callbacks = {
+    toggleTimelineVisibility,
+    handleTimelineElementDelete,
+    handleTimelineElementSplit,
+    handleDomEditElementDelete,
+    handleUndo,
+    handleRedo,
+    handleCopy,
+    handlePaste,
+    handleCut,
+    onResetKeyframes,
+    onDeleteSelectedKeyframes,
+    onToggleRecording,
+  };
+  const cbRef = useRef(callbacks);
+  cbRef.current = callbacks;
+
+  // ── Declarative keydown dispatch ──
+
+  const handleAppKeyDown = useCallback(
+    (event: KeyboardEvent) => {
+      const cb = cbRef.current;
+
+      // Shift+T — timeline toggle (has its own guard via shouldHandleTimelineToggleHotkey)
+      if (shouldHandleTimelineToggleHotkey(event)) {
         event.preventDefault();
-        leftSidebarRef.current?.selectTab("compositions");
+        cb.toggleTimelineVisibility();
         return;
       }
 
-      // Cmd/Ctrl+2 — sidebar: Assets tab
-      if (event.key === "2") {
-        event.preventDefault();
-        leftSidebarRef.current?.selectTab("assets");
-        return;
-      }
+      const hasMod = event.metaKey || event.ctrlKey;
+      const key = event.key.toLowerCase();
 
-      // Cmd/Ctrl+C — copy (only preventDefault if we actually have something to copy)
-      const copyPasteKey = event.key.toLowerCase();
-      if (
-        copyPasteKey === "c" &&
-        !event.shiftKey &&
-        !event.altKey &&
-        !isEditableTarget(event.target)
-      ) {
-        if (handleCopyRef.current()) {
-          event.preventDefault();
-        }
-        return;
-      }
-
-      // Cmd/Ctrl+V — paste
-      if (
-        copyPasteKey === "v" &&
-        !event.shiftKey &&
-        !event.altKey &&
-        !isEditableTarget(event.target)
-      ) {
-        event.preventDefault();
-        void handlePasteRef.current();
-        return;
-      }
-
-      // Cmd/Ctrl+X — cut (only preventDefault if there's a selected element to cut)
-      if (
-        copyPasteKey === "x" &&
-        !event.shiftKey &&
-        !event.altKey &&
-        !isEditableTarget(event.target)
-      ) {
-        const hasSelection =
-          !!usePlayerStore.getState().selectedElementId || !!domEditSelectionRef.current;
-        if (hasSelection) {
-          event.preventDefault();
-          void handleCutRef.current();
-        }
-        return;
-      }
-    }
-
-    // F — toggle fullscreen preview
-    if (
-      event.key.toLowerCase() === "f" &&
-      !event.metaKey &&
-      !event.ctrlKey &&
-      !event.altKey &&
-      !event.shiftKey &&
-      !isEditableTarget(event.target)
-    ) {
-      event.preventDefault();
-      if (document.fullscreenElement) {
-        void document.exitFullscreen();
-      } else {
-        document.querySelector<HTMLElement>("[data-studio-fullscreen-target]")?.requestFullscreen();
-      }
-      return;
-    }
-
-    // S — split selected clip at playhead
-    if (
-      event.key === "s" &&
-      !event.metaKey &&
-      !event.ctrlKey &&
-      !event.altKey &&
-      !isEditableTarget(event.target)
-    ) {
-      const { selectedElementId, elements, currentTime } = usePlayerStore.getState();
-      if (selectedElementId) {
-        const element = elements.find((el) => (el.key ?? el.id) === selectedElementId);
+      // ── Modifier commands (Cmd/Ctrl+…) ──
+      if (hasMod) {
+        // Undo / Redo
         if (
-          element &&
-          canSplitElement(element) &&
-          currentTime > element.start &&
-          currentTime < element.start + element.duration
+          !shouldIgnoreHistoryShortcut(event.target) &&
+          handleUndoRedoKey(
+            event,
+            () => void cb.handleUndo(),
+            () => void cb.handleRedo(),
+          )
         ) {
-          event.preventDefault();
-          void handleSplitRef.current(element, currentTime);
           return;
         }
-      }
-    }
 
-    // B — toggle razor tool
-    if (
-      STUDIO_RAZOR_TOOL_ENABLED &&
-      event.key.toLowerCase() === "b" &&
-      !event.metaKey &&
-      !event.ctrlKey &&
-      !event.altKey &&
-      !event.shiftKey &&
-      !isEditableTarget(event.target)
-    ) {
-      event.preventDefault();
-      const { activeTool, setActiveTool } = usePlayerStore.getState();
-      setActiveTool(activeTool === "razor" ? "select" : "razor");
-      return;
-    }
-
-    // V — return to selection tool
-    if (
-      event.key.toLowerCase() === "v" &&
-      !event.metaKey &&
-      !event.ctrlKey &&
-      !event.altKey &&
-      !event.shiftKey &&
-      !isEditableTarget(event.target)
-    ) {
-      event.preventDefault();
-      usePlayerStore.getState().setActiveTool("select");
-      return;
-    }
-
-    // Escape — exit razor mode (only when no selection to deselect first)
-    if (event.key === "Escape" && !isEditableTarget(event.target)) {
-      const { activeTool, selectedElementId, setActiveTool, setSelectedElementId } =
-        usePlayerStore.getState();
-      if (activeTool === "razor") {
-        if (selectedElementId) {
-          setSelectedElementId(null);
-        } else {
-          setActiveTool("select");
+        // Sidebar tabs
+        if (event.key === "1") {
+          event.preventDefault();
+          leftSidebarRef.current?.selectTab("compositions");
+          return;
         }
-        event.preventDefault();
-        return;
-      }
-    }
+        if (event.key === "2") {
+          event.preventDefault();
+          leftSidebarRef.current?.selectTab("assets");
+          return;
+        }
 
-    // Delete / Backspace — remove selected keyframes > reset keyframes > remove element
-    if (
-      (event.key === "Delete" || event.key === "Backspace") &&
-      !event.metaKey &&
-      !event.ctrlKey &&
-      !event.altKey &&
-      !isEditableTarget(event.target)
-    ) {
-      // Priority: selected keyframes take precedence over clip deletion
-      const { selectedKeyframes } = usePlayerStore.getState();
-      if (selectedKeyframes.size > 0) {
-        onDeleteSelectedKeyframesRef.current();
-        usePlayerStore.getState().clearSelectedKeyframes();
-        event.preventDefault();
-        return;
-      }
-
-      // Backspace: try resetting keyframes first; fall through to delete if none found
-      if (event.key === "Backspace") {
-        const { selectedElementId, keyframeCache } = usePlayerStore.getState();
-        if (selectedElementId && keyframeCache.has(selectedElementId)) {
-          if (onResetKeyframesRef.current()) {
+        // Copy / Paste / Cut — only when not in an editable target
+        if (!event.shiftKey && !event.altKey && !isEditableTarget(event.target)) {
+          if (key === "c") {
+            if (cb.handleCopy()) event.preventDefault();
+            return;
+          }
+          if (key === "v") {
             event.preventDefault();
+            void cb.handlePaste();
+            return;
+          }
+          if (key === "x") {
+            const hasSelection =
+              !!usePlayerStore.getState().selectedElementId || !!domEditSelectionRef.current;
+            if (hasSelection) {
+              event.preventDefault();
+              void cb.handleCut();
+            }
+            return;
+          }
+        }
+        return;
+      }
+
+      // ── Plain-key commands (no modifier) ──
+      if (isEditableTarget(event.target)) return;
+
+      if (key === "f" && !event.shiftKey && !event.altKey) {
+        event.preventDefault();
+        if (document.fullscreenElement) {
+          void document.exitFullscreen();
+        } else {
+          document
+            .querySelector<HTMLElement>("[data-studio-fullscreen-target]")
+            ?.requestFullscreen();
+        }
+        return;
+      }
+
+      if (event.key === "s" && !event.altKey) {
+        const { selectedElementId, elements, currentTime } = usePlayerStore.getState();
+        if (selectedElementId) {
+          const element = elements.find((el) => (el.key ?? el.id) === selectedElementId);
+          if (
+            element &&
+            canSplitElement(element) &&
+            currentTime > element.start &&
+            currentTime < element.start + element.duration
+          ) {
+            event.preventDefault();
+            void cb.handleTimelineElementSplit(element, currentTime);
             return;
           }
         }
       }
 
-      const { selectedElementId, elements } = usePlayerStore.getState();
-      if (selectedElementId) {
-        const element = elements.find((el) => (el.key ?? el.id) === selectedElementId);
-        if (element) {
+      if (STUDIO_RAZOR_TOOL_ENABLED && key === "b" && !event.shiftKey && !event.altKey) {
+        event.preventDefault();
+        const { activeTool, setActiveTool } = usePlayerStore.getState();
+        setActiveTool(activeTool === "razor" ? "select" : "razor");
+        return;
+      }
+
+      if (key === "v" && !event.shiftKey && !event.altKey) {
+        event.preventDefault();
+        usePlayerStore.getState().setActiveTool("select");
+        return;
+      }
+
+      if (event.key === "Escape") {
+        const { activeTool, selectedElementId, setActiveTool, setSelectedElementId } =
+          usePlayerStore.getState();
+        if (activeTool === "razor") {
+          if (selectedElementId) {
+            setSelectedElementId(null);
+          } else {
+            setActiveTool("select");
+          }
           event.preventDefault();
-          void handleDeleteRef.current(element);
           return;
         }
       }
-      const domSelection = domEditSelectionRef.current;
-      if (domSelection) {
-        event.preventDefault();
-        void handleDomEditDeleteRef.current(domSelection);
-      }
-    }
 
-    // R — toggle gesture recording
-    if (
-      event.key === "r" &&
-      !event.metaKey &&
-      !event.ctrlKey &&
-      !event.altKey &&
-      !event.shiftKey &&
-      !isEditableTarget(event.target) &&
-      onToggleRecordingRef.current
-    ) {
-      event.preventDefault();
-      onToggleRecordingRef.current();
-    }
-  };
+      if (
+        (event.key === "Delete" || event.key === "Backspace") &&
+        !event.altKey
+      ) {
+        const { selectedKeyframes } = usePlayerStore.getState();
+        if (selectedKeyframes.size > 0) {
+          cb.onDeleteSelectedKeyframes();
+          usePlayerStore.getState().clearSelectedKeyframes();
+          event.preventDefault();
+          return;
+        }
+
+        if (event.key === "Backspace") {
+          const { selectedElementId, keyframeCache } = usePlayerStore.getState();
+          if (selectedElementId && keyframeCache.has(selectedElementId)) {
+            if (cb.onResetKeyframes()) {
+              event.preventDefault();
+              return;
+            }
+          }
+        }
+
+        const { selectedElementId, elements } = usePlayerStore.getState();
+        if (selectedElementId) {
+          const element = elements.find((el) => (el.key ?? el.id) === selectedElementId);
+          if (element) {
+            event.preventDefault();
+            void cb.handleTimelineElementDelete(element);
+            return;
+          }
+        }
+        const domSelection = domEditSelectionRef.current;
+        if (domSelection) {
+          event.preventDefault();
+          void cb.handleDomEditElementDelete(domSelection);
+        }
+        return;
+      }
+
+      if (event.key === "r" && !event.shiftKey && !event.altKey && cb.onToggleRecording) {
+        event.preventDefault();
+        cb.onToggleRecording();
+      }
+    },
+    [domEditSelectionRef, leftSidebarRef],
+  );
 
   // ── Window keydown listener ──
 
   // eslint-disable-next-line no-restricted-syntax
   useEffect(() => {
-    function handleAppKeyDown(event: KeyboardEvent) {
-      handleAppKeyDownRef.current?.(event);
-    }
     window.addEventListener("keydown", handleAppKeyDown, true);
     return () => window.removeEventListener("keydown", handleAppKeyDown, true);
-  }, []);
+  }, [handleAppKeyDown]);
 
   // ── Preview iframe keydown forwarding ──
-
-  const previewAppKeyDownHandler = useCallback((event: KeyboardEvent) => {
-    handleAppKeyDownRef.current?.(event);
-  }, []);
 
   const syncPreviewTimelineHotkey = useCallback(
     (iframe: HTMLIFrameElement | null) => {
       const nextWindow = iframeContentWindow(iframe);
       if (previewHotkeyWindowRef.current === nextWindow) return;
-      if (previewHotkeyWindowRef.current) {
-        try {
-          previewHotkeyWindowRef.current.removeEventListener("keydown", previewAppKeyDownHandler);
-        } catch {
-          /* cross-origin iframe */
-        }
-      }
+      safeRemoveListener(previewHotkeyWindowRef.current, "keydown", handleAppKeyDown as EventListener);
       previewHotkeyWindowRef.current = nextWindow;
-      try {
-        nextWindow?.addEventListener("keydown", previewAppKeyDownHandler, true);
-      } catch {
-        /* cross-origin iframe */
-      }
+      safeAddListener(nextWindow, "keydown", handleAppKeyDown as EventListener, true);
     },
-    [previewAppKeyDownHandler],
+    [handleAppKeyDown],
   );
 
   useEffect(
     () => () => {
-      if (previewHotkeyWindowRef.current) {
-        try {
-          previewHotkeyWindowRef.current.removeEventListener("keydown", previewAppKeyDownHandler);
-        } catch {
-          /* cross-origin iframe */
-        }
-        previewHotkeyWindowRef.current = null;
-      }
+      safeRemoveListener(previewHotkeyWindowRef.current, "keydown", handleAppKeyDown as EventListener);
+      previewHotkeyWindowRef.current = null;
     },
-    [previewAppKeyDownHandler],
+    [handleAppKeyDown],
   );
 
   // ── History hotkey for iframe forwarding ──
@@ -503,8 +396,8 @@ export function useAppHotkeys({
     if (shouldIgnoreHistoryShortcut(event.target)) return;
     handleUndoRedoKey(
       event,
-      () => void handleUndoRef.current(),
-      () => void handleRedoRef.current(),
+      () => void cbRef.current.handleUndo(),
+      () => void cbRef.current.handleRedo(),
     );
   }, []);
 
@@ -512,28 +405,14 @@ export function useAppHotkeys({
     (iframe: HTMLIFrameElement | null) => {
       previewHistoryHotkeyCleanupRef.current?.();
       previewHistoryHotkeyCleanupRef.current = null;
-
       const win = iframeContentWindow(iframe);
       let doc: Document | null = null;
-      try {
-        doc = iframe?.contentDocument ?? null;
-      } catch {
-        doc = null;
-      }
+      try { doc = iframe?.contentDocument ?? null; } catch { doc = null; }
       if (!win && !doc) return;
-
-      try {
-        win?.addEventListener("keydown", handleHistoryHotkey, true);
-      } catch {
-        /* cross-origin */
-      }
+      safeAddListener(win, "keydown", handleHistoryHotkey as EventListener, true);
       doc?.addEventListener("keydown", handleHistoryHotkey, true);
       previewHistoryHotkeyCleanupRef.current = () => {
-        try {
-          win?.removeEventListener("keydown", handleHistoryHotkey, true);
-        } catch {
-          /* cross-origin */
-        }
+        safeRemoveListener(win, "keydown", handleHistoryHotkey as EventListener);
         doc?.removeEventListener("keydown", handleHistoryHotkey, true);
       };
     },
