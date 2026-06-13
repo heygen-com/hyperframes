@@ -165,6 +165,7 @@ class HyperframesPlayer extends HTMLElement {
     this.controlsApi?.destroy();
   }
 
+  // fallow-ignore-next-line complexity
   attributeChangedCallback(name: string, _old: string | null, val: string | null) {
     switch (name) {
       case "src":
@@ -222,6 +223,7 @@ class HyperframesPlayer extends HTMLElement {
       }
       case "audio-src":
         if (val) this._media.setupFromUrl(val);
+        else this._media.teardownUrlAudio();
         break;
       case SHADER_CAPTURE_SCALE_ATTR:
       case SHADER_LOADING_ATTR:

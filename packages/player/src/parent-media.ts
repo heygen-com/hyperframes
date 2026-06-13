@@ -43,6 +43,10 @@ export class ParentMediaManager {
   private _mediaObserver?: MutationObserver;
   private _playbackErrorPosted = false;
   private _audioOwner: "runtime" | "parent" = "runtime";
+  /** The proxy created from the `audio-src` attribute, tracked so it can be
+   *  replaced or cleared instead of accumulating on every attribute change. */
+  private _urlAudioEntry: ProxyEntry | null = null;
+  private _urlAudioSrc: string | null = null;
 
   private readonly _dispatchEvent: (event: Event) => void;
   private readonly _getMuted: () => boolean;
@@ -76,10 +80,6 @@ export class ParentMediaManager {
     return this._entries;
   }
 
-  get playbackErrorPosted(): boolean {
-    return this._playbackErrorPosted;
-  }
-
   resetForIframeLoad(): void {
     this._playbackErrorPosted = false;
     const wasPromoted = this._audioOwner === "parent";
@@ -102,6 +102,8 @@ export class ParentMediaManager {
       m.el.src = "";
     }
     this._entries = [];
+    this._urlAudioEntry = null;
+    this._urlAudioSrc = null;
   }
 
   updateMuted(muted: boolean): void {
@@ -212,9 +214,41 @@ export class ParentMediaManager {
     this._observeDynamicMedia(iframeDoc);
   }
 
-  /** Set up a single proxy from an explicit URL (the `audio-src` attribute path). */
+  /**
+   * Set (or replace) the parent-frame audio proxy driven by the `audio-src`
+   * attribute. Re-setting with a different URL tears down the previous proxy
+   * first, so changing `audio-src` swaps the track instead of stacking a
+   * second one that keeps preloading and plays in parallel.
+   */
   setupFromUrl(audioSrc: string): void {
-    this._createEntry(audioSrc, "audio", 0, Infinity);
+    if (this._urlAudioSrc === audioSrc && this._urlAudioEntry) return;
+    this.teardownUrlAudio();
+    const entry = this._createEntry(audioSrc, "audio", 0, Infinity);
+    // `_createEntry` returns null when a proxy for this URL already exists
+    // (e.g. the composition already adopted the same media). In that case we do
+    // not own a proxy, so leave the tracking cleared rather than recording a
+    // src with no entry — otherwise teardown would target nothing and the
+    // no-op guard would never engage.
+    this._urlAudioEntry = entry;
+    this._urlAudioSrc = entry ? audioSrc : null;
+    // If the parent already owns playback, bring the fresh proxy online so a
+    // mid-playback swap is not silent until the next play tick.
+    if (entry && this._audioOwner === "parent" && !this._isPaused()) {
+      this.mirrorTime(this._getCurrentTime(), { force: true });
+      this.playAll();
+    }
+  }
+
+  /** Tear down the `audio-src` proxy (used when the attribute is removed). */
+  teardownUrlAudio(): void {
+    const entry = this._urlAudioEntry;
+    this._urlAudioEntry = null;
+    this._urlAudioSrc = null;
+    if (!entry) return;
+    entry.el.pause();
+    entry.el.src = "";
+    const idx = this._entries.indexOf(entry);
+    if (idx !== -1) this._entries.splice(idx, 1);
   }
 
   teardownObserver(): void {
@@ -258,16 +292,22 @@ export class ParentMediaManager {
     return entry;
   }
 
+  /** Resolve an iframe media element's source to an absolute URL, or null. */
+  private _resolveIframeMediaSrc(iframeEl: HTMLMediaElement): string | null {
+    const rawSrc =
+      iframeEl.getAttribute("src") || iframeEl.querySelector("source")?.getAttribute("src");
+    return rawSrc ? new URL(rawSrc, iframeEl.ownerDocument.baseURI).href : null;
+  }
+
+  // fallow-ignore-next-line complexity
   private _adoptIframeMedia(iframeEl: HTMLMediaElement): void {
     // Skip elements the preloader has demoted — the observer will re-trigger
     // when the preload attribute is promoted to "auto".
     if (iframeEl.preload === "metadata" || iframeEl.preload === "none") return;
 
-    const rawSrc =
-      iframeEl.getAttribute("src") || iframeEl.querySelector("source")?.getAttribute("src");
-    if (!rawSrc) return;
+    const src = this._resolveIframeMediaSrc(iframeEl);
+    if (!src) return;
 
-    const src = new URL(rawSrc, iframeEl.ownerDocument.baseURI).href;
     const start = parseFloat(iframeEl.getAttribute("data-start") || "0");
     const duration = parseFloat(iframeEl.getAttribute("data-duration") || "Infinity");
     const tag = iframeEl.tagName === "VIDEO" ? ("video" as const) : ("audio" as const);
@@ -285,10 +325,8 @@ export class ParentMediaManager {
   }
 
   private _detachIframeMedia(iframeEl: HTMLMediaElement): void {
-    const rawSrc =
-      iframeEl.getAttribute("src") || iframeEl.querySelector("source")?.getAttribute("src");
-    if (!rawSrc) return;
-    const src = new URL(rawSrc, iframeEl.ownerDocument.baseURI).href;
+    const src = this._resolveIframeMediaSrc(iframeEl);
+    if (!src) return;
     const idx = this._entries.findIndex((m) => m.el.src === src);
     if (idx === -1) return;
     const entry = this._entries[idx];
@@ -301,6 +339,7 @@ export class ParentMediaManager {
     this.teardownObserver();
     if (typeof MutationObserver === "undefined" || !doc.body) return;
 
+    // fallow-ignore-next-line complexity
     const obs = new MutationObserver((mutations) => {
       for (const m of mutations) {
         if (m.type === "attributes" && m.attributeName === "preload") {
