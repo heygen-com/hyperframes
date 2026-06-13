@@ -37,7 +37,6 @@ import { StudioGlobalDragOverlay } from "./components/StudioGlobalDragOverlay";
 import { StudioHeader } from "./components/StudioHeader";
 import { useGestureCommit } from "./hooks/useGestureCommit";
 import { STUDIO_KEYFRAMES_ENABLED } from "./components/editor/manualEditingAvailability";
-
 import { GestureTrailOverlay } from "./components/editor/GestureTrailOverlay";
 import { StudioLeftSidebar } from "./components/StudioLeftSidebar";
 import { StudioPreviewArea } from "./components/StudioPreviewArea";
@@ -58,16 +57,12 @@ import { trackStudioSessionStart } from "./telemetry/events";
 import { hasFiredSessionStart, markSessionStartFired } from "./telemetry/config";
 
 type CanvasRect = { left: number; top: number; width: number; height: number };
-
 // fallow-ignore-next-line complexity
 export function StudioApp() {
   const { projectId, resolving, waitingForServer } = useServerConnection();
   const initialUrlStateRef = useRef(readStudioUrlStateFromWindow());
 
-  // Fire once per browser tab session — sessionStorage-backed so HMR
-  // remounts, route changes, and any future StudioApp remount within the
-  // same tab don't refire `studio_session_start`. `has_project` lets us
-  // tell scratch-open from project-context-open.
+  // sessionStorage-backed: fires once per tab, survives HMR remounts
   useEffect(() => {
     if (resolving || waitingForServer) return;
     if (hasFiredSessionStart()) return;
