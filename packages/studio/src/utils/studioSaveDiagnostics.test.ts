@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   StudioSaveHttpError,
+  StudioSaveNetworkError,
   buildStudioSaveFailureProperties,
   getStudioSaveStatusCode,
   retryStudioSave,
@@ -73,6 +74,35 @@ describe("studio save diagnostics", () => {
         sleep: async () => {},
       }),
     ).rejects.toThrow("Too large");
+
+    expect(operation).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries typed network failures", async () => {
+    const operation = vi
+      .fn<(attempt: number) => Promise<string>>()
+      .mockRejectedValueOnce(new StudioSaveNetworkError("network dropped"))
+      .mockResolvedValue("saved");
+
+    await expect(
+      retryStudioSave(operation, {
+        sleep: async () => {},
+      }),
+    ).resolves.toBe("saved");
+
+    expect(operation).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry plain JavaScript errors", async () => {
+    const operation = vi
+      .fn<(attempt: number) => Promise<string>>()
+      .mockRejectedValue(new Error("local assertion failed"));
+
+    await expect(
+      retryStudioSave(operation, {
+        sleep: async () => {},
+      }),
+    ).rejects.toThrow("local assertion failed");
 
     expect(operation).toHaveBeenCalledTimes(1);
   });

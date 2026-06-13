@@ -31,7 +31,7 @@ interface CommitAnimatedPropertyDeps {
     selection: DomEditSelection,
     method: "to" | "from" | "set" | "fromTo",
     currentTime?: number,
-  ) => Promise<void>;
+  ) => void;
   convertToKeyframes: (selection: DomEditSelection, animId: string) => void;
   previewIframeRef: React.RefObject<HTMLIFrameElement | null>;
   bumpGsapCache: () => void;
@@ -112,7 +112,7 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
 
       // Case 3: No animation — create one first
       if (!anim) {
-        await addGsapAnimation(selection, "to");
+        addGsapAnimation(selection, "to");
         // The addGsapAnimation triggers a reload. We need to wait for the cache
         // to update. Use a small delay then bump cache to re-fetch.
         await new Promise((r) => setTimeout(r, 500));

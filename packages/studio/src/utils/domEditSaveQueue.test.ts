@@ -51,7 +51,7 @@ describe("dom edit save queue", () => {
     queue.destroy();
   });
 
-  it("resets an open breaker when already queued work succeeds", async () => {
+  it("keeps an open breaker paused even when already queued work succeeds", async () => {
     const onOpen = vi.fn();
     const onReset = vi.fn();
     const queue = createDomEditSaveQueue({
@@ -81,6 +81,11 @@ describe("dom edit save queue", () => {
     await expect(second).resolves.toBeUndefined();
 
     expect(onOpen).toHaveBeenCalledOnce();
+    expect(onReset).not.toHaveBeenCalled();
+
+    await expect(queue.enqueue(async () => {})).rejects.toThrow("Auto-save is paused");
+
+    queue.reset();
     expect(onReset).toHaveBeenCalledOnce();
     queue.destroy();
   });

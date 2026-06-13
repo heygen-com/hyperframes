@@ -8,7 +8,6 @@ import { shouldHandleTimelineToggleHotkey, isEditableTarget } from "../utils/tim
 import { shouldIgnoreHistoryShortcut } from "../utils/studioHelpers";
 import { canSplitElement } from "../utils/timelineElementSplit";
 import { STUDIO_RAZOR_TOOL_ENABLED } from "../components/editor/manualEditingAvailability";
-import { trackStudioSaveFailure } from "../utils/studioSaveDiagnostics";
 
 /** Safely resolves contentWindow for a potentially cross-origin iframe. */
 function iframeContentWindow(iframe: HTMLIFrameElement | null): Window | null {
@@ -223,39 +222,6 @@ export function useAppHotkeys({
   const onToggleRecordingRef = useRef(onToggleRecording);
   onToggleRecordingRef.current = onToggleRecording;
 
-  const runUndoRedoWithTelemetry = useCallback(
-    async (action: "undo" | "redo", run: () => Promise<void>) => {
-      try {
-        await run();
-      } catch (error) {
-        trackStudioSaveFailure({
-          source: "undo_redo",
-          error,
-          mutationType: action,
-          label: action === "undo" ? "Undo" : "Redo",
-        });
-        showToast(`Failed to ${action}.`, "error");
-      }
-    },
-    [showToast],
-  );
-
-  const runUndoRedoHotkey = useCallback(
-    (action: "undo" | "redo", run: () => Promise<void>) => {
-      void runUndoRedoWithTelemetry(action, run);
-    },
-    [runUndoRedoWithTelemetry],
-  );
-
-  const handleUndoWithTelemetry = useCallback(
-    () => runUndoRedoWithTelemetry("undo", handleUndo),
-    [handleUndo, runUndoRedoWithTelemetry],
-  );
-  const handleRedoWithTelemetry = useCallback(
-    () => runUndoRedoWithTelemetry("redo", handleRedo),
-    [handleRedo, runUndoRedoWithTelemetry],
-  );
-
   // ── Consolidated keydown handler ──
 
   handleAppKeyDownRef.current = (event: KeyboardEvent) => {
@@ -268,8 +234,8 @@ export function useAppHotkeys({
         !shouldIgnoreHistoryShortcut(event.target) &&
         handleUndoRedoKey(
           event,
-          () => runUndoRedoHotkey("undo", handleUndoRef.current),
-          () => runUndoRedoHotkey("redo", handleRedoRef.current),
+          () => void handleUndoRef.current(),
+          () => void handleRedoRef.current(),
         )
       ) {
         return;
@@ -532,18 +498,15 @@ export function useAppHotkeys({
 
   // ── History hotkey for iframe forwarding ──
 
-  const handleHistoryHotkey = useCallback(
-    (event: KeyboardEvent) => {
-      if (!(event.metaKey || event.ctrlKey)) return;
-      if (shouldIgnoreHistoryShortcut(event.target)) return;
-      handleUndoRedoKey(
-        event,
-        () => runUndoRedoHotkey("undo", handleUndoRef.current),
-        () => runUndoRedoHotkey("redo", handleRedoRef.current),
-      );
-    },
-    [runUndoRedoHotkey],
-  );
+  const handleHistoryHotkey = useCallback((event: KeyboardEvent) => {
+    if (!(event.metaKey || event.ctrlKey)) return;
+    if (shouldIgnoreHistoryShortcut(event.target)) return;
+    handleUndoRedoKey(
+      event,
+      () => void handleUndoRef.current(),
+      () => void handleRedoRef.current(),
+    );
+  }, []);
 
   const syncPreviewHistoryHotkey = useCallback(
     (iframe: HTMLIFrameElement | null) => {
@@ -586,8 +549,8 @@ export function useAppHotkeys({
   );
 
   return {
-    handleUndo: handleUndoWithTelemetry,
-    handleRedo: handleRedoWithTelemetry,
+    handleUndo,
+    handleRedo,
     syncPreviewTimelineHotkey,
     syncPreviewHistoryHotkey,
     handleTimelineToggleHotkey,

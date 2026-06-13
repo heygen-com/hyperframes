@@ -37,6 +37,46 @@ interface UsePreviewPersistenceParams {
   reloadPreview: () => void;
 }
 
+function readIframeDocument(iframe: HTMLIFrameElement): Document | null {
+  try {
+    return iframe.contentDocument;
+  } catch {
+    return null;
+  }
+}
+
+function installManualEditReapply(iframe: HTMLIFrameElement): void {
+  const reapply = () => {
+    const doc = readIframeDocument(iframe);
+    if (doc) reapplyPositionEditsAfterSeek(doc);
+  };
+  const install = () => {
+    reapply();
+    if (iframe.contentWindow) installStudioManualEditSeekReapply(iframe.contentWindow, reapply);
+  };
+  const win = iframe.contentWindow;
+  install();
+  win?.requestAnimationFrame?.(install);
+  for (const delayMs of [80, 250, 500, 1000, 2000]) {
+    win?.setTimeout?.(install, delayMs);
+  }
+}
+
+function shouldReloadForStudioFileChange(
+  payload: unknown,
+  pendingTimelineEditPathRef: React.MutableRefObject<Set<string>> | undefined,
+  domEditSaveTimestampRef: React.MutableRefObject<number>,
+): boolean {
+  const changedPath = readStudioFileChangePath(payload);
+  if (!changedPath) return false;
+  const pendingTimelinePaths = pendingTimelineEditPathRef?.current;
+  if (pendingTimelinePaths?.has(changedPath)) {
+    pendingTimelinePaths.delete(changedPath);
+    return false;
+  }
+  return Date.now() - domEditSaveTimestampRef.current >= 4000;
+}
+
 // ── Hook ──
 
 export function usePreviewPersistence({
@@ -113,37 +153,8 @@ export function usePreviewPersistence({
   const applyCurrentStudioManualEditsToPreview = useCallback(
     (iframe: HTMLIFrameElement | null = previewIframeRef.current) => {
       if (!iframe) return;
-      let doc: Document | null = null;
-      try {
-        doc = iframe.contentDocument;
-      } catch {
-        return;
-      }
-      if (!doc) return;
-
-      const reapply = () => {
-        let d: Document | null = null;
-        try {
-          d = iframe.contentDocument;
-        } catch {
-          return;
-        }
-        if (d) reapplyPositionEditsAfterSeek(d);
-      };
-
-      const install = () => {
-        reapply();
-        if (iframe.contentWindow) installStudioManualEditSeekReapply(iframe.contentWindow, reapply);
-      };
-
-      const win = iframe.contentWindow;
-      install();
-      win?.requestAnimationFrame?.(install);
-      win?.setTimeout?.(install, 80);
-      win?.setTimeout?.(install, 250);
-      win?.setTimeout?.(install, 500);
-      win?.setTimeout?.(install, 1000);
-      win?.setTimeout?.(install, 2000);
+      if (!readIframeDocument(iframe)) return;
+      installManualEditReapply(iframe);
     },
     [previewIframeRef],
   );
@@ -193,16 +204,14 @@ export function usePreviewPersistence({
   // ── Listen for external file changes (HMR / SSE) ──
   useMountEffect(() => {
     const handler = (payload?: unknown) => {
-      const changedPath = readStudioFileChangePath(payload);
-      if (!changedPath) return;
-      const recentDomEditSave = Date.now() - domEditSaveTimestampRef.current < 4000;
-      if (pendingTimelineEditPathRef?.current.has(changedPath)) {
-        pendingTimelineEditPathRef.current.delete(changedPath);
-        return;
-      }
-      if (!recentDomEditSave) {
+      if (
+        shouldReloadForStudioFileChange(
+          payload,
+          pendingTimelineEditPathRef,
+          domEditSaveTimestampRef,
+        )
+      )
         reloadPreview();
-      }
     };
     if (import.meta.hot) {
       import.meta.hot.on("hf:file-change", handler);

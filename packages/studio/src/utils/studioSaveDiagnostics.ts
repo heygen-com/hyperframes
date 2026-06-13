@@ -26,6 +26,13 @@ export class StudioSaveHttpError extends Error {
   }
 }
 
+export class StudioSaveNetworkError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "StudioSaveNetworkError";
+  }
+}
+
 function readNumericProperty(value: object, key: string): number | undefined {
   const record = value as Record<string, unknown>;
   const property = record[key];
@@ -75,7 +82,7 @@ export function getStudioSaveStatusCode(error: unknown): number | undefined {
   return undefined;
 }
 
-export function getStudioSaveAttempt(error: unknown): number | undefined {
+function getStudioSaveAttempt(error: unknown): number | undefined {
   if (!error || typeof error !== "object") return undefined;
   const direct = readNumericProperty(error, STUDIO_SAVE_ATTEMPT_PROPERTY);
   if (direct != null) return direct;
@@ -85,14 +92,15 @@ export function getStudioSaveAttempt(error: unknown): number | undefined {
   return undefined;
 }
 
-export function isStudioSaveAbortError(error: unknown): boolean {
+function isStudioSaveAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
 }
 
 function isRetryableStudioSaveError(error: unknown): boolean {
   if (isStudioSaveAbortError(error)) return false;
+  if (error instanceof StudioSaveNetworkError) return true;
   const statusCode = getStudioSaveStatusCode(error);
-  if (statusCode == null) return true;
+  if (statusCode == null) return false;
   return statusCode === 408 || statusCode === 425 || statusCode === 429 || statusCode >= 500;
 }
 

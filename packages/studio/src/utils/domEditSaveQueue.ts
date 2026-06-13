@@ -55,7 +55,7 @@ export function createDomEditSaveQueue(options: DomEditSaveQueueOptions = {}): D
   const run = async (save: () => Promise<void>) => {
     try {
       await save();
-      reset();
+      if (!breakerOpen) consecutiveFailures = 0;
     } catch (error) {
       consecutiveFailures += 1;
       if (consecutiveFailures >= failureThreshold) open(error);

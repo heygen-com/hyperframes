@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
-import { trackStudioSaveFailure } from "../utils/studioSaveDiagnostics";
+import { getStudioSaveErrorMessage, trackStudioSaveFailure } from "../utils/studioSaveDiagnostics";
 
 type CommitMutationOptions = {
   label: string;
@@ -48,6 +48,7 @@ export function useGsapSaveFailureTelemetry(activeCompPath: string | null): Trac
 export function useSafeGsapCommitMutation(
   commitMutation: CommitMutation,
   trackGsapSaveFailure: TrackGsapSaveFailure,
+  showToast?: (message: string, tone?: "error" | "info") => void,
 ) {
   return useCallback(
     (
@@ -57,8 +58,9 @@ export function useSafeGsapCommitMutation(
     ) => {
       void commitMutation(selection, mutation, options).catch((error) => {
         trackGsapSaveFailure(error, selection, mutation, options.label);
+        showToast?.(`Couldn't save animation: ${getStudioSaveErrorMessage(error)}`, "error");
       });
     },
-    [commitMutation, trackGsapSaveFailure],
+    [commitMutation, trackGsapSaveFailure, showToast],
   );
 }
