@@ -18,7 +18,6 @@ import {
   type TransitionFn,
   TRANSITIONS,
   crossfade,
-  queryElementStacking,
 } from "@hyperframes/engine";
 import type { ProducerLogger } from "../../../logger.js";
 import {
@@ -39,6 +38,7 @@ import {
   cleanupEndedHdrVideos,
   ensureFrameWritten,
   type LayeredTransitionBuffers,
+  seekInjectAndQueryStacking,
 } from "./captureHdrFrameShared.js";
 import { updateJobStatus } from "../shared.js";
 
@@ -109,19 +109,15 @@ export async function runSequentialLayeredFrameLoop(input: SequentialLoopInput):
     const time = (i * job.config.fps.den) / job.config.fps.num;
     if (hdrPerf) hdrPerf.frames += 1;
 
-    await timeHdrPhaseAsync(hdrPerf, "frameSeekMs", () =>
-      domSession.page.evaluate((t: number) => {
-        if (window.__hf && typeof window.__hf.seek === "function") window.__hf.seek(t);
-      }, time),
-    );
-
-    if (beforeCaptureHook) {
-      await timeHdrPhaseAsync(hdrPerf, "frameInjectMs", () =>
-        beforeCaptureHook(domSession.page, time),
-      );
-    }
-    const stackingInfo = await timeHdrPhaseAsync(hdrPerf, "stackingQueryMs", () =>
-      queryElementStacking(domSession.page, nativeHdrIds),
+    const stackingInfo = await seekInjectAndQueryStacking(
+      domSession.page,
+      time,
+      beforeCaptureHook,
+      nativeHdrIds,
+      hdrPerf,
+      "frameSeekMs",
+      "frameInjectMs",
+      "stackingQueryMs",
     );
     const activeTransition = transitionRanges.find((t) => i >= t.startFrame && i <= t.endFrame);
 
@@ -151,14 +147,15 @@ export async function runSequentialLayeredFrameLoop(input: SequentialLoopInput):
         transitionBuffers.bufferB.fill(0);
       });
 
-      for (const [sceneBuf, sceneIds] of [
+      const sceneCaptures: [Buffer, Set<string>][] = [
         [transitionBuffers.bufferA, sceneAIds],
         [transitionBuffers.bufferB, sceneBIds],
-      ] as const) {
+      ];
+      for (const [sceneBuf, sceneIds] of sceneCaptures) {
         assertNotAborted();
         await captureSceneIntoBuffer({
           session: domSession,
-          sceneBuf: sceneBuf as Buffer,
+          sceneBuf,
           sceneIds,
           stackingInfo,
           time,

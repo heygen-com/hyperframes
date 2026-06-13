@@ -11,6 +11,7 @@
 
 import { rmSync } from "node:fs";
 import {
+  type BeforeCaptureHook,
   type CaptureSession,
   type ElementStackingInfo,
   applyDomLayerMask,
@@ -29,7 +30,12 @@ import {
   blitHdrVideoLayer,
   closeHdrVideoFrameSource,
 } from "../../hdrCompositor.js";
-import { type HdrPerfCollector, timeHdrPhase, timeHdrPhaseAsync } from "../hdrPerf.js";
+import {
+  type HdrPerfCollector,
+  type HdrPerfTimingKey,
+  timeHdrPhase,
+  timeHdrPhaseAsync,
+} from "../hdrPerf.js";
 
 // ─── Hybrid path gating + partitioning ─────────────────────────────────────
 
@@ -101,6 +107,53 @@ export interface LayeredTransitionBuffers {
   output: Buffer;
 }
 
+// ─── Seek + inject + stacking query (shared across all three loop paths) ──
+
+/**
+ * Seek the page to `time` and run the optional before-capture hook.
+ * Used by `captureSceneIntoBuffer` which receives stacking info from
+ * its caller, and by `seekInjectAndQueryStacking` which appends a
+ * stacking query.
+ */
+async function seekAndInject(
+  page: CaptureSession["page"],
+  time: number,
+  beforeCaptureHook: BeforeCaptureHook | null,
+  hdrPerf: HdrPerfCollector | undefined,
+  seekKey: HdrPerfTimingKey,
+  injectKey: HdrPerfTimingKey,
+): Promise<void> {
+  await timeHdrPhaseAsync(hdrPerf, seekKey, () =>
+    page.evaluate((t: number) => {
+      if (window.__hf && typeof window.__hf.seek === "function") window.__hf.seek(t);
+    }, time),
+  );
+  if (beforeCaptureHook) {
+    await timeHdrPhaseAsync(hdrPerf, injectKey, () => beforeCaptureHook(page, time));
+  }
+}
+
+/**
+ * Seek the page to `time`, run the optional before-capture hook, then
+ * query element stacking order. Each phase is individually timed via the
+ * caller-provided perf keys so the sequential loop, hybrid worker, and
+ * per-scene transition capture each emit the correct telemetry label
+ * (`frameSeekMs` vs. `domLayerSeekMs`, etc.).
+ */
+export async function seekInjectAndQueryStacking(
+  page: CaptureSession["page"],
+  time: number,
+  beforeCaptureHook: BeforeCaptureHook | null,
+  nativeHdrIds: Set<string>,
+  hdrPerf: HdrPerfCollector | undefined,
+  seekKey: HdrPerfTimingKey,
+  injectKey: HdrPerfTimingKey,
+  stackingKey: HdrPerfTimingKey,
+): Promise<ElementStackingInfo[]> {
+  await seekAndInject(page, time, beforeCaptureHook, hdrPerf, seekKey, injectKey);
+  return timeHdrPhaseAsync(hdrPerf, stackingKey, () => queryElementStacking(page, nativeHdrIds));
+}
+
 // ─── Per-scene capture (shared by sequential transition + hybrid worker) ──
 
 export interface CaptureSceneArgs {
@@ -141,16 +194,14 @@ export async function captureSceneIntoBuffer(a: CaptureSceneArgs): Promise<void>
     log,
     frameIdx,
   } = a;
-  await timeHdrPhaseAsync(hdrPerf, "domLayerSeekMs", () =>
-    session.page.evaluate((t: number) => {
-      if (window.__hf && typeof window.__hf.seek === "function") window.__hf.seek(t);
-    }, time),
+  await seekAndInject(
+    session.page,
+    time,
+    beforeCaptureHook,
+    hdrPerf,
+    "domLayerSeekMs",
+    "domLayerInjectMs",
   );
-  if (beforeCaptureHook) {
-    await timeHdrPhaseAsync(hdrPerf, "domLayerInjectMs", () =>
-      beforeCaptureHook(session.page, time),
-    );
-  }
   for (const el of stackingInfo) {
     if (!el.isHdr || !sceneIds.has(el.id)) continue;
     if (nativeHdrImageIds.has(el.id)) {
@@ -256,28 +307,28 @@ export async function captureTransitionFrameOnWorker(
     hdrPerf.frames += 1;
     hdrPerf.transitionFrames += 1;
   }
-  await timeHdrPhaseAsync(hdrPerf, "frameSeekMs", () =>
-    session.page.evaluate((t: number) => {
-      if (window.__hf && typeof window.__hf.seek === "function") window.__hf.seek(t);
-    }, time),
-  );
-  if (beforeCaptureHook) {
-    await timeHdrPhaseAsync(hdrPerf, "frameInjectMs", () => beforeCaptureHook(session.page, time));
-  }
-  const stackingInfo = await timeHdrPhaseAsync(hdrPerf, "stackingQueryMs", () =>
-    queryElementStacking(session.page, nativeHdrIds),
+  const stackingInfo = await seekInjectAndQueryStacking(
+    session.page,
+    time,
+    beforeCaptureHook,
+    nativeHdrIds,
+    hdrPerf,
+    "frameSeekMs",
+    "frameInjectMs",
+    "stackingQueryMs",
   );
   const sceneAIds = new Set(sceneElements[transition.fromScene] ?? []);
   const sceneBIds = new Set(sceneElements[transition.toScene] ?? []);
   buffers.bufferA.fill(0);
   buffers.bufferB.fill(0);
-  for (const [sceneBuf, sceneIds] of [
+  const sceneCaptures: [Buffer, Set<string>][] = [
     [buffers.bufferA, sceneAIds],
     [buffers.bufferB, sceneBIds],
-  ] as const) {
+  ];
+  for (const [sceneBuf, sceneIds] of sceneCaptures) {
     await captureSceneIntoBuffer({
       session,
-      sceneBuf: sceneBuf as Buffer,
+      sceneBuf,
       sceneIds,
       stackingInfo,
       time,

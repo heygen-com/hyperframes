@@ -696,6 +696,8 @@ function normalizeCompositionSrcPath(srcPath: string): string {
 }
 
 function createStandaloneEntryRenderClone(root: Element, host: Element): Element {
+  // linkedom's cloneNode returns `any` (not `Node`), so the Element cast
+  // is needed to access setAttribute/appendChild without losing type safety.
   const hostClone = host.cloneNode(true) as Element;
   hostClone.setAttribute("data-start", "0");
 
@@ -741,6 +743,9 @@ export function extractStandaloneEntryFromIndex(
   const body = document.querySelector("body");
   if (!body) return null;
 
+  // linkedom's querySelectorAll returns `any` on Document and `NodeList` on
+  // the ParentNode mixin. Neither types the elements as `Element`, so the
+  // cast is required to call getAttribute / hasAttribute without `any`.
   const hosts = Array.from(document.querySelectorAll("[data-composition-src]")) as Element[];
   const host = hosts.find(
     (candidate) =>
@@ -749,6 +754,8 @@ export function extractStandaloneEntryFromIndex(
   );
   if (!host) return null;
 
+  // linkedom's `children` is typed as `NodeList` (not `HTMLCollection<Element>`),
+  // so the Element[] cast is needed.
   const root =
     (Array.from(body.children) as Element[]).find((candidate) =>
       candidate.hasAttribute("data-composition-id"),
@@ -807,7 +814,7 @@ export async function executeRenderJob(
     log,
     renderJobId: job.id,
   });
-  const outputFormat = (job.config.format ?? "mp4") as NonNullable<RenderConfig["format"]>;
+  const outputFormat = job.config.format ?? ("mp4" as const);
   const isWebm = outputFormat === "webm";
   const isMov = outputFormat === "mov";
   const isPngSequence = outputFormat === "png-sequence";

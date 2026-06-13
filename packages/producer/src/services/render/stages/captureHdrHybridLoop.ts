@@ -32,7 +32,6 @@ import {
   crossfade,
   initTransparentBackground,
   initializeSession,
-  queryElementStacking,
 } from "@hyperframes/engine";
 import type { FileServerHandle } from "../../fileServer.js";
 import type { ProducerLogger } from "../../../logger.js";
@@ -54,6 +53,7 @@ import {
   distributeLayeredHybridFrameRanges,
   ensureFrameWritten,
   partitionTransitionFrames,
+  seekInjectAndQueryStacking,
 } from "./captureHdrFrameShared.js";
 import { updateJobStatus } from "../shared.js";
 
@@ -305,19 +305,15 @@ export async function runHybridLayeredFrameLoop(input: HybridLoopInput): Promise
             throw err instanceof Error ? err : new Error(String(err));
           });
         } else {
-          const beforeCaptureHook = session.onBeforeCapture;
-          await timeHdrPhaseAsync(hdrPerf, "frameSeekMs", () =>
-            session.page.evaluate((t: number) => {
-              if (window.__hf && typeof window.__hf.seek === "function") window.__hf.seek(t);
-            }, time),
-          );
-          if (beforeCaptureHook) {
-            await timeHdrPhaseAsync(hdrPerf, "frameInjectMs", () =>
-              beforeCaptureHook(session.page, time),
-            );
-          }
-          const stackingInfo = await timeHdrPhaseAsync(hdrPerf, "stackingQueryMs", () =>
-            queryElementStacking(session.page, nativeHdrIds),
+          const stackingInfo = await seekInjectAndQueryStacking(
+            session.page,
+            time,
+            session.onBeforeCapture,
+            nativeHdrIds,
+            hdrPerf,
+            "frameSeekMs",
+            "frameInjectMs",
+            "stackingQueryMs",
           );
           canvas.fill(0);
           // Rebind ctx to this worker's session for per-layer captures
