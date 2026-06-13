@@ -117,6 +117,39 @@ export async function beginFrameCapture(
 }
 
 /**
+ * Materialize computed `color` as an inline style on text elements that rely
+ * on CSS inheritance. Chrome's `Page.captureScreenshot` compositor can fail to
+ * resolve inherited text color after GSAP clears its inline styles, leaving
+ * inherited-color text invisible in the captured frame.
+ *
+ * Runs in the page context via `page.evaluate` — must only reference browser
+ * globals so Puppeteer can serialize the function body.
+ */
+export function materializeInheritedTextColorsInDocument(): void {
+  const body = document.body;
+  if (!body) return;
+
+  for (const node of body.querySelectorAll("*")) {
+    const style = (node as HTMLElement).style;
+    if (!style || style.color) continue;
+    for (let i = 0; i < node.childNodes.length; i++) {
+      const child = node.childNodes[i];
+      if (child && child.nodeType === 3 && child.textContent && /\S/.test(child.textContent)) {
+        const computed = window.getComputedStyle(node).color;
+        if (computed) {
+          node.style.color = computed;
+        }
+        break;
+      }
+    }
+  }
+}
+
+export async function materializeInheritedTextColors(page: Page): Promise<void> {
+  await page.evaluate(materializeInheritedTextColorsInDocument);
+}
+
+/**
  * Capture a screenshot using standard Page.captureScreenshot CDP call.
  * Fallback for environments where BeginFrame is unavailable (macOS, Windows).
  *
@@ -127,6 +160,7 @@ export async function beginFrameCapture(
  * `captureAlphaPng`. Keeping the fast path for opaque jpeg captures is fine.
  */
 export async function pageScreenshotCapture(page: Page, options: CaptureOptions): Promise<Buffer> {
+  await materializeInheritedTextColors(page);
   const client = await getCdpSession(page);
   const isPng = options.format === "png";
   const dpr = options.deviceScaleFactor ?? 1;
@@ -163,6 +197,7 @@ export async function captureScreenshotWithAlpha(
   width: number,
   height: number,
 ): Promise<Buffer> {
+  await materializeInheritedTextColors(page);
   const client = await getCdpSession(page);
   // Force transparent background so the screenshot has a real alpha channel
   await client.send("Emulation.setDefaultBackgroundColorOverride", {
@@ -233,6 +268,7 @@ export async function initTransparentBackground(page: Page): Promise<void> {
  * two-pass compositing loop.
  */
 export async function captureAlphaPng(page: Page, width: number, height: number): Promise<Buffer> {
+  await materializeInheritedTextColors(page);
   const client = await getCdpSession(page);
   const result = await client.send("Page.captureScreenshot", {
     format: "png",
