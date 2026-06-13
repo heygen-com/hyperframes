@@ -139,19 +139,16 @@ function parseResolutionFromHtml(doc: Document): CanvasResolution | null {
   return null;
 }
 
+const UHD_SQUARE_MIN = 2160;
+const UHD_RECT_MIN = 3840;
+
 function resolveResolutionFromDimensions(width: number, height: number): CanvasResolution {
   const longSide = Math.max(width, height);
-  // UHD cutoff is the long side of the 4K presets (3840 for `landscape-4k` /
-  // `portrait-4k`, 2160 for `square-4k`). A looser threshold (e.g. >= 2560)
-  // would silently misclassify QHD/1440p (2560x1440) as 4K, which is the
-  // wrong default for a common authoring resolution closer to 1080p than to
-  // UHD. Authors who genuinely want the 4K preset can still set
-  // `data-resolution="..."` explicitly.
   if (width === height) {
-    return longSide >= 2160 ? "square-4k" : "square";
+    return longSide >= UHD_SQUARE_MIN ? "square-4k" : "square";
   }
   const isLandscape = width > height;
-  const isUhd = longSide >= 3840;
+  const isUhd = longSide >= UHD_RECT_MIN;
   if (isLandscape) return isUhd ? "landscape-4k" : "landscape";
   return isUhd ? "portrait-4k" : "portrait";
 }
@@ -612,16 +609,20 @@ export function addElementToHtml(
 
   let newEl: Element;
 
+  function applyMediaAttrs(el: Element, mediaEl: TimelineMediaElement): void {
+    if (mediaEl.src) el.setAttribute("src", mediaEl.src);
+    if (mediaEl.volume !== undefined && mediaEl.volume !== 1) {
+      el.setAttribute("data-volume", String(mediaEl.volume));
+    }
+  }
+
   switch (element.type) {
     case "video": {
       const mediaEl = element as TimelineMediaElement;
       newEl = doc.createElement("video");
       newEl.setAttribute("muted", "");
       newEl.setAttribute("playsinline", "");
-      if (mediaEl.src) newEl.setAttribute("src", mediaEl.src);
-      if (mediaEl.volume !== undefined && mediaEl.volume !== 1) {
-        newEl.setAttribute("data-volume", String(mediaEl.volume));
-      }
+      applyMediaAttrs(newEl, mediaEl);
       if (mediaEl.hasAudio) {
         newEl.setAttribute("data-has-audio", "true");
       }
@@ -637,10 +638,7 @@ export function addElementToHtml(
     case "audio": {
       const mediaEl = element as TimelineMediaElement;
       newEl = doc.createElement("audio");
-      if (mediaEl.src) newEl.setAttribute("src", mediaEl.src);
-      if (mediaEl.volume !== undefined && mediaEl.volume !== 1) {
-        newEl.setAttribute("data-volume", String(mediaEl.volume));
-      }
+      applyMediaAttrs(newEl, mediaEl);
       break;
     }
     case "text":

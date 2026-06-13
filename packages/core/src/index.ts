@@ -53,11 +53,6 @@ export {
   isMediaElement,
   isCompositionElement,
   getDefaultStageZoom,
-  isStringVariable,
-  isNumberVariable,
-  isColorVariable,
-  isBooleanVariable,
-  isEnumVariable,
 } from "./core.types";
 
 // Templates

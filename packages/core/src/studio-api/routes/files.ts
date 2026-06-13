@@ -29,6 +29,7 @@ import {
   patchElementInHtml,
   probeElementInSource,
   splitElementInHtml,
+  isHTMLElement,
   type PatchOperation,
 } from "../helpers/sourceMutation.js";
 import { parseHTML } from "linkedom";
@@ -265,7 +266,8 @@ function stripStudioEditsFromTarget(document: Document, selector: string): numbe
   try {
     for (const el of document.querySelectorAll(selector)) {
       if (!el.getAttribute("data-hf-studio-path-offset")) continue;
-      const htmlEl = el as unknown as HTMLElement;
+      if (!isHTMLElement(el)) continue;
+      const htmlEl = el;
       const originalTranslate = el.getAttribute("data-hf-studio-original-inline-translate");
       htmlEl.style.removeProperty("--hf-studio-offset-x");
       htmlEl.style.removeProperty("--hf-studio-offset-y");
@@ -285,33 +287,29 @@ function stripStudioEditsFromTarget(document: Document, selector: string): numbe
   return stripped;
 }
 
+function lastKeyframeOpacity(kfs: GsapAnimation["keyframes"]): number | string | undefined {
+  if (!kfs) return undefined;
+  for (let i = kfs.keyframes.length - 1; i >= 0; i--) {
+    if ("opacity" in kfs.keyframes[i]!.properties) return kfs.keyframes[i]!.properties.opacity;
+  }
+  return undefined;
+}
+
+function resolveFinalOpacity(anim: GsapAnimation): number | null {
+  if (anim.method === "from") return null;
+  const raw = anim.keyframes ? lastKeyframeOpacity(anim.keyframes) : anim.properties.opacity;
+  if (raw == null) return null;
+  if (typeof raw === "string" && /^[+\-*]=/.test(raw)) return null;
+  const num = Number(raw);
+  return Number.isFinite(num) && num !== 0 ? num : null;
+}
+
 function bakeVisibilityOnDelete(document: Document, anim: GsapAnimation): void {
-  let finalOpacity: number | string | undefined;
-  if (anim.method === "from") {
-    return;
-  }
-  if (anim.keyframes) {
-    const kfs = anim.keyframes.keyframes;
-    for (let i = kfs.length - 1; i >= 0; i--) {
-      if ("opacity" in kfs[i]!.properties) {
-        finalOpacity = kfs[i]!.properties.opacity;
-        break;
-      }
-    }
-  } else if ("opacity" in anim.properties) {
-    finalOpacity = anim.properties.opacity;
-  }
-  if (finalOpacity == null) {
-    return;
-  }
-  if (typeof finalOpacity === "string" && /^[+\-*]=/.test(finalOpacity)) {
-    return;
-  }
-  const numOpacity = Number(finalOpacity);
-  if (!Number.isFinite(numOpacity) || numOpacity === 0) return;
+  const opacity = resolveFinalOpacity(anim);
+  if (opacity === null) return;
   try {
     for (const el of document.querySelectorAll(anim.targetSelector)) {
-      (el as unknown as HTMLElement).style.setProperty("opacity", String(numOpacity));
+      if (isHTMLElement(el)) el.style.setProperty("opacity", String(opacity));
     }
   } catch {
     // Invalid selector — skip silently.
@@ -522,18 +520,22 @@ async function executeGsapMutation(
   }
 
   switch (body.type) {
-    case "update-property": {
+    case "update-property":
+    case "add-property": {
       const r = requireAnimation(block.scriptText, body.animationId);
       if ("err" in r) return r.err;
+      const val = body.type === "update-property" ? body.value : body.defaultValue;
       return updateAnimationInScript(block.scriptText, body.animationId, {
-        properties: { ...r.anim.properties, [body.property]: body.value },
+        properties: { ...r.anim.properties, [body.property]: val },
       });
     }
-    case "update-from-property": {
+    case "update-from-property":
+    case "add-from-property": {
       const r = requireFromToAnimation(block.scriptText, body.animationId);
       if ("err" in r) return r.err;
+      const val = body.type === "update-from-property" ? body.value : body.defaultValue;
       return updateAnimationInScript(block.scriptText, body.animationId, {
-        fromProperties: { ...(r.anim.fromProperties ?? {}), [body.property]: body.value },
+        fromProperties: { ...(r.anim.fromProperties ?? {}), [body.property]: val },
       });
     }
     case "update-meta": {
@@ -572,20 +574,6 @@ async function executeGsapMutation(
         script = removeAnimationFromScript(script, anim.id);
       }
       return script;
-    }
-    case "add-property": {
-      const r = requireAnimation(block.scriptText, body.animationId);
-      if ("err" in r) return r.err;
-      return updateAnimationInScript(block.scriptText, body.animationId, {
-        properties: { ...r.anim.properties, [body.property]: body.defaultValue },
-      });
-    }
-    case "add-from-property": {
-      const r = requireFromToAnimation(block.scriptText, body.animationId);
-      if ("err" in r) return r.err;
-      return updateAnimationInScript(block.scriptText, body.animationId, {
-        fromProperties: { ...(r.anim.fromProperties ?? {}), [body.property]: body.defaultValue },
-      });
     }
     case "remove-property": {
       const r = requireAnimation(block.scriptText, body.animationId);
@@ -790,8 +778,9 @@ async function processUploadedFiles(
       const ext = dotIdx > 0 ? name.slice(dotIdx) : "";
       const base = dotIdx > 0 ? name.slice(0, dotIdx) : name;
       let n = 2;
-      while (n < 10000 && existsSync(resolve(targetDir, `${base} (${n})${ext}`))) n++;
-      if (n >= 10000) {
+      const MAX_COPY_INDEX = 10000;
+      while (n < MAX_COPY_INDEX && existsSync(resolve(targetDir, `${base} (${n})${ext}`))) n++;
+      if (n >= MAX_COPY_INDEX) {
         skipped.push(name);
         continue;
       }

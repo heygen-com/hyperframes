@@ -6,17 +6,14 @@ export type RuntimeJson =
   | RuntimeJson[]
   | { [key: string]: RuntimeJson };
 
+import type { HyperframeControlAction } from "../inline-scripts/runtimeContract.js";
+import type { HyperframePickerElementInfo } from "../inline-scripts/pickerApi.js";
+
 export type RuntimeBridgeControlAction =
-  | "play"
-  | "pause"
-  | "seek"
+  | HyperframeControlAction
   | "tick"
-  | "set-muted"
   | "set-volume"
   | "set-media-output-muted"
-  | "set-playback-rate"
-  | "enable-pick-mode"
-  | "disable-pick-mode"
   | "flash-elements";
 
 export type RuntimeBridgeControlMessage = {
@@ -85,23 +82,7 @@ export type RuntimeDiagnosticMessage = {
   details: Record<string, RuntimeJson>;
 };
 
-export type RuntimePickerBoundingBox = {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-};
-
-export type RuntimePickerElementInfo = {
-  id: string | null;
-  tagName: string;
-  selector: string;
-  label: string;
-  boundingBox: RuntimePickerBoundingBox;
-  textContent: string | null;
-  src: string | null;
-  dataAttributes: Record<string, string>;
-};
+export type RuntimePickerElementInfo = HyperframePickerElementInfo;
 
 export type RuntimePickerHoveredMessage = {
   source: "hf-preview";

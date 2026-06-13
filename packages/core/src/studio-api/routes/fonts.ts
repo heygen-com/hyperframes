@@ -1,10 +1,9 @@
-import { execFileSync } from "node:child_process";
 import { closeSync, constants, fstatSync, openSync, readSync } from "node:fs";
-import { platform } from "node:os";
 import type { Hono } from "hono";
 import {
   collectFontFileEntries,
   fontDirectories,
+  getSystemProfilerFamilies,
   locateSystemFont,
   SYSTEM_FONT_SIZE_LIMIT,
 } from "../../fonts/systemFontLocator";
@@ -42,47 +41,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-function collectMacSystemProfilerFonts(): string[] {
-  if (platform() !== "darwin") return [];
-
-  let parsed: unknown;
-  try {
-    const raw = execFileSync("system_profiler", ["SPFontsDataType", "-json"], {
-      encoding: "utf8",
-      maxBuffer: 12 * 1024 * 1024,
-      timeout: 5000,
-    });
-    parsed = JSON.parse(raw);
-  } catch {
-    return [];
-  }
-
-  if (!isRecord(parsed) || !Array.isArray(parsed.SPFontsDataType)) return [];
-  const fonts: string[] = [];
-
-  for (const fontEntry of parsed.SPFontsDataType) {
-    if (!isRecord(fontEntry)) continue;
-    const typefaces = fontEntry.typefaces;
-    if (!Array.isArray(typefaces)) continue;
-
-    for (const typeface of typefaces) {
-      if (!isRecord(typeface)) continue;
-      const family = typeface.family;
-      const fullName = typeface.fullname;
-      const name = typeface._name;
-      if (typeof family === "string" && family.trim()) {
-        fonts.push(family.trim());
-      } else if (typeof fullName === "string" && fullName.trim()) {
-        fonts.push(fullName.trim());
-      } else if (typeof name === "string" && name.trim()) {
-        fonts.push(name.trim());
-      }
-    }
-  }
-
-  return fonts;
-}
-
 function collectFontsFromDir(dir: string): string[] {
   return collectFontFileEntries(dir).map((e) => e.family);
 }
@@ -91,7 +49,7 @@ function listInstalledFontFamilies(): string[] {
   if (cachedFonts) return cachedFonts;
   const families = new Set<string>();
 
-  for (const family of collectMacSystemProfilerFonts()) {
+  for (const family of getSystemProfilerFamilies()) {
     families.add(family);
     if (families.size >= MAX_FONT_RESULTS) break;
   }

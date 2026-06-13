@@ -4,6 +4,8 @@ import { homedir, platform } from "node:os";
 import { join, resolve } from "node:path";
 
 export const SYSTEM_FONT_SIZE_LIMIT = 5 * 1024 * 1024;
+const PROFILER_TIMEOUT_MS = 5000;
+const FC_MATCH_TIMEOUT_MS = 3000;
 
 export type FontFileFormat = "ttf" | "otf" | "woff2" | "woff" | "ttc";
 
@@ -238,7 +240,7 @@ function getSystemProfilerIndex(): Map<string, SystemProfilerEntry[]> {
     const raw = execFileSync("system_profiler", ["SPFontsDataType", "-json"], {
       encoding: "utf8",
       maxBuffer: 12 * 1024 * 1024,
-      timeout: 5000,
+      timeout: PROFILER_TIMEOUT_MS,
     });
     const parsed = JSON.parse(raw);
     if (!parsed?.SPFontsDataType || !Array.isArray(parsed.SPFontsDataType)) return profilerCache;
@@ -289,7 +291,7 @@ function locateViaFcMatch(targetFamily: string): LocatedFont | null {
   try {
     const result = execFileSync("fc-match", [targetFamily, "--format=%{file}"], {
       encoding: "utf8",
-      timeout: 3000,
+      timeout: FC_MATCH_TIMEOUT_MS,
     }).trim();
     if (!result || !isRegularFile(result) || !isPathBounded(result)) return null;
     const fileName = result.split("/").pop() ?? "";
@@ -401,6 +403,11 @@ function dedupeVariants(variants: LocatedFontVariant[]): LocatedFontVariant[] {
     if (!seen.has(key)) seen.set(key, v);
   }
   return Array.from(seen.values());
+}
+
+export function getSystemProfilerFamilies(): string[] {
+  const index = getSystemProfilerIndex();
+  return Array.from(index.keys());
 }
 
 export function clearSystemFontCache(): void {

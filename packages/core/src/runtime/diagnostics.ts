@@ -27,24 +27,11 @@
  * helper call is a real statement, so no `no-empty` warnings ship in the
  * inlined IIFE.
  */
-export interface SwallowedEvent {
-  /** Short, descriptive label naming the operation that failed. */
-  label: string;
-  /** The thrown value (often an Error, but JS allows anything). */
-  error: unknown;
-}
-
-interface HFDebugSurface {
-  __hfDebug?: boolean;
-  __HYPERFRAMES_DEBUG?: boolean;
-  __hf?: {
-    onSwallowed?: (event: SwallowedEvent) => void;
-  };
-}
+import { getDebugSurface } from "./globals.js";
 
 export function swallow(label: string, error?: unknown): void {
   if (typeof window === "undefined") return;
-  const w = window as unknown as HFDebugSurface;
+  const w = getDebugSurface();
 
   const handler = w.__hf?.onSwallowed;
   if (handler) {

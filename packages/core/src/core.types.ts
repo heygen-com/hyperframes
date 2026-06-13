@@ -330,26 +330,6 @@ export interface CompositionSpec {
   variables: CompositionVariable[];
 }
 
-export function isStringVariable(v: CompositionVariable): v is StringVariable {
-  return v.type === "string";
-}
-
-export function isNumberVariable(v: CompositionVariable): v is NumberVariable {
-  return v.type === "number";
-}
-
-export function isColorVariable(v: CompositionVariable): v is ColorVariable {
-  return v.type === "color";
-}
-
-export function isBooleanVariable(v: CompositionVariable): v is BooleanVariable {
-  return v.type === "boolean";
-}
-
-export function isEnumVariable(v: CompositionVariable): v is EnumVariable {
-  return v.type === "enum";
-}
-
 export type TimelineElement =
   | TimelineMediaElement
   | TimelineTextElement

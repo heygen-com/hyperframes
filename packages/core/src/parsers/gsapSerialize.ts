@@ -153,7 +153,7 @@ ${lines.join("\n")}${mediaSync}${postamble}
   `;
 }
 
-function serializeValue(value: unknown): string {
+export function serializeValue(value: unknown): string {
   if (typeof value === "string" && value.startsWith("__raw:")) {
     return value.slice(6);
   }
@@ -161,10 +161,13 @@ function serializeValue(value: unknown): string {
   return String(value);
 }
 
+export function safeJsKey(key: string): string {
+  return /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(key) ? key : JSON.stringify(key);
+}
+
 function serializeObject(obj: Record<string, number | string>): string {
   const entries = Object.entries(obj).map(([key, value]) => {
-    const safeKey = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(key) ? key : JSON.stringify(key);
-    return `${safeKey}: ${serializeValue(value)}`;
+    return `${safeJsKey(key)}: ${serializeValue(value)}`;
   });
   return `{ ${entries.join(", ")} }`;
 }
@@ -172,8 +175,7 @@ function serializeObject(obj: Record<string, number | string>): string {
 function serializeExtras(extras: Record<string, unknown>): string {
   return Object.entries(extras)
     .map(([key, value]) => {
-      const safeKey = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(key) ? key : JSON.stringify(key);
-      return `${safeKey}: ${serializeValue(value)}`;
+      return `${safeJsKey(key)}: ${serializeValue(value)}`;
     })
     .join(", ");
 }
@@ -296,9 +298,12 @@ export function gsapAnimationsToKeyframes(
   const baseValueEpsilon = 0.00001;
 
   return animations
-    .filter((a) => validMethods.includes(a.method) && typeof a.position === "number")
+    .filter(
+      (a): a is GsapAnimation & { position: number } =>
+        validMethods.includes(a.method) && typeof a.position === "number",
+    )
     .map((a) => {
-      const relativeTimeRaw = (a.position as number) - elementStartTime;
+      const relativeTimeRaw = a.position - elementStartTime;
       const time = clampTimeToZero ? Math.max(0, relativeTimeRaw) : relativeTimeRaw;
 
       const properties: Partial<KeyframeProperties> = {};
@@ -331,5 +336,5 @@ export function gsapAnimationsToKeyframes(
         ease: a.ease,
       };
     })
-    .filter((kf): kf is NonNullable<typeof kf> => kf !== null) as Keyframe[];
+    .filter((kf): kf is NonNullable<typeof kf> => kf !== null);
 }

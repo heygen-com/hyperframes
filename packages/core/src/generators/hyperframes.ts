@@ -320,11 +320,26 @@ export function generateHyperframesHtml(
       ? ` data-zoom-keyframes='${JSON.stringify(stageZoomKeyframes).replace(/'/g, "&#39;")}'`
       : "";
 
-  const { coreCss, customCss, googleFontsLink } = generateHyperframesStyles(
-    sortedElements,
-    resolution,
-    customStyles,
-  );
+  let styleTags = "";
+  let googleFontsLink = "";
+  if (includeStyles) {
+    const styles = generateHyperframesStyles(sortedElements, resolution, customStyles);
+    googleFontsLink = styles.googleFontsLink;
+    styleTags = [
+      styles.coreCss
+        ? `  <style data-hf-core="true">
+    ${styles.coreCss.split("\n").join("\n    ")}
+  </style>`
+        : "",
+      styles.customCss
+        ? `  <style data-hf-custom="true">
+    ${styles.customCss.split("\n").join("\n    ")}
+  </style>`
+        : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+  }
 
   const gsapScript = includeScripts
     ? generateGsapTimelineScript(sortedElements, totalDuration, {
@@ -344,23 +359,6 @@ ${gsapScript}
   </script>`
     : "";
 
-  const styleTags = includeStyles
-    ? [
-        coreCss
-          ? `  <style data-hf-core="true">
-    ${coreCss.split("\n").join("\n    ")}
-  </style>`
-          : "",
-        customCss
-          ? `  <style data-hf-custom="true">
-    ${customCss.split("\n").join("\n    ")}
-  </style>`
-          : "",
-      ]
-        .filter(Boolean)
-        .join("\n")
-    : "";
-
   const customStylesAttr = customStyles
     ? ` data-custom-styles='${JSON.stringify(customStyles).replace(/'/g, "&#39;")}'`
     : "";
@@ -372,7 +370,7 @@ ${gsapScript}
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  ${includeStyles ? googleFontsLink : ""}
+  ${googleFontsLink}
   ${gsapCdnTag}
 ${styleTags ? `  ${styleTags}` : ""}
 </head>

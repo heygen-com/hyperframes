@@ -25,6 +25,7 @@ import type { OpenTag } from "../utils";
 import {
   readAttr,
   truncateSnippet,
+  stripJsComments,
   WINDOW_TIMELINE_ASSIGN_PATTERN,
   TIMELINE_REGISTRY_ASSIGN_PATTERN,
 } from "../utils";
@@ -51,71 +52,6 @@ type CompositionRange = {
 const SCENE_BOUNDARY_EPSILON_SECONDS = 0.05;
 
 // ── GSAP parsing utilities ─────────────────────────────────────────────────
-
-// fallow-ignore-next-line complexity
-function stripJsComments(source: string): string {
-  let out = "";
-  let i = 0;
-  let quote: "'" | '"' | "`" | null = null;
-  let escaped = false;
-
-  while (i < source.length) {
-    const ch = source[i] ?? "";
-    const next = source[i + 1] ?? "";
-
-    if (quote) {
-      out += ch;
-      if (escaped) {
-        escaped = false;
-      } else if (ch === "\\") {
-        escaped = true;
-      } else if (ch === quote) {
-        quote = null;
-      }
-      i += 1;
-      continue;
-    }
-
-    if (ch === "'" || ch === '"' || ch === "`") {
-      quote = ch;
-      out += ch;
-      i += 1;
-      continue;
-    }
-
-    if (ch === "/" && next === "/") {
-      out += "  ";
-      i += 2;
-      while (i < source.length && source[i] !== "\n" && source[i] !== "\r") {
-        out += " ";
-        i += 1;
-      }
-      continue;
-    }
-
-    if (ch === "/" && next === "*") {
-      out += "  ";
-      i += 2;
-      while (i < source.length) {
-        const blockCh = source[i] ?? "";
-        const blockNext = source[i + 1] ?? "";
-        if (blockCh === "*" && blockNext === "/") {
-          out += "  ";
-          i += 2;
-          break;
-        }
-        out += blockCh === "\n" || blockCh === "\r" ? blockCh : " ";
-        i += 1;
-      }
-      continue;
-    }
-
-    out += ch;
-    i += 1;
-  }
-
-  return out;
-}
 
 function countClassUsage(tags: OpenTag[]): Map<string, number> {
   const counts = new Map<string, number>();
@@ -163,10 +99,16 @@ function synthesizeWindowRaw(
   return `${timelineVar}.${anim.method}("${anim.targetSelector}", { ${entries.join(", ")} }, ${pos})`;
 }
 
-// Build lint windows straight from the parser's structured animations. The
-// parser already resolves variable targets (`tl.to(kicker, …)`) to selectors
-// and excludes non-DOM object-target anchors (`tl.to({ _: 0 }, …)`), so there's
-// no fragile positional pairing between a regex walk and the parsed list.
+const gsapWindowsCache = new Map<string, GsapWindow[]>();
+
+async function cachedExtractGsapWindows(scriptContent: string): Promise<GsapWindow[]> {
+  const cached = gsapWindowsCache.get(scriptContent);
+  if (cached) return cached;
+  const windows = await extractGsapWindows(scriptContent);
+  gsapWindowsCache.set(scriptContent, windows);
+  return windows;
+}
+
 // fallow-ignore-next-line complexity
 async function extractGsapWindows(script: string): Promise<GsapWindow[]> {
   if (!/gsap\.timeline/.test(script)) return [];
@@ -414,7 +356,7 @@ export const gsapRules: LintRule<LintContext>[] = [
 
     for (const script of scripts) {
       const localTimelineCompId = readRegisteredTimelineCompositionId(script.content);
-      const gsapWindows = await extractGsapWindows(script.content);
+      const gsapWindows = await cachedExtractGsapWindows(script.content);
       const clipStartBoundaries =
         clipStartBoundariesByComposition.get(localTimelineCompId || rootCompositionId || "") ?? [];
 
@@ -562,7 +504,7 @@ export const gsapRules: LintRule<LintContext>[] = [
 
     for (const script of scripts) {
       if (!/gsap\.timeline/.test(script.content)) continue;
-      const windows = await extractGsapWindows(script.content);
+      const windows = await cachedExtractGsapWindows(script.content);
 
       type Conflict = { cssTransform: string; props: Set<string>; raw: string };
       const conflicts = new Map<string, Conflict>();
@@ -853,7 +795,7 @@ export const gsapRules: LintRule<LintContext>[] = [
 
     for (const script of scripts) {
       if (!/gsap\.timeline/.test(script.content)) continue;
-      const windows = await extractGsapWindows(script.content);
+      const windows = await cachedExtractGsapWindows(script.content);
 
       for (const win of windows) {
         if (win.method !== "from") continue;

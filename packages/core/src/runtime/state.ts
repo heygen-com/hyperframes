@@ -5,10 +5,8 @@ import type { TransportClock } from "./clock";
 export type RuntimeState = {
   capturedTimeline: RuntimeTimelineLike | null;
   isPlaying: boolean;
-  rafId: number | null;
   currentTime: number;
   deterministicAdapters: RuntimeDeterministicAdapter[];
-  parityModeEnabled: boolean;
   canonicalFps: number;
   bridgeMuted: boolean;
   bridgeVolume: number;
@@ -62,9 +60,7 @@ export type RuntimeState = {
    */
   bridgeMaxPostIntervalMs: number;
   controlBridgeHandler: ((event: MessageEvent) => void) | null;
-  clampDurationLoggedRaw: number | null;
   beforeUnloadHandler: (() => void) | null;
-  domReadyHandler: (() => void) | null;
   injectedCompStyles: HTMLStyleElement[];
   injectedCompScripts: HTMLScriptElement[];
   cachedTimedMediaEls: Array<HTMLVideoElement | HTMLAudioElement>;
@@ -72,7 +68,6 @@ export type RuntimeState = {
   cachedVideoClips: RuntimeMediaClip[];
   cachedMediaTimelineDurationSeconds: number;
   tornDown: boolean;
-  nativeVisualWatchdogTick: number;
   /**
    * Single-clock transport. The sole time authority — GSAP is always
    * paused and seeked to `clock.now()` on each rAF tick. Eliminates
@@ -87,10 +82,8 @@ export function createRuntimeState(): RuntimeState {
   return {
     capturedTimeline: null,
     isPlaying: false,
-    rafId: null,
     currentTime: 0,
     deterministicAdapters: [],
-    parityModeEnabled: true,
     canonicalFps: 30,
     bridgeMuted: false,
     bridgeVolume: 1,
@@ -104,9 +97,7 @@ export function createRuntimeState(): RuntimeState {
     bridgeLastPostedMuted: false,
     bridgeMaxPostIntervalMs: 80,
     controlBridgeHandler: null,
-    clampDurationLoggedRaw: null,
     beforeUnloadHandler: null,
-    domReadyHandler: null,
     injectedCompStyles: [],
     injectedCompScripts: [],
     cachedTimedMediaEls: [],
@@ -114,7 +105,6 @@ export function createRuntimeState(): RuntimeState {
     cachedVideoClips: [],
     cachedMediaTimelineDurationSeconds: 0,
     tornDown: false,
-    nativeVisualWatchdogTick: 0,
     transportClock: null,
     transportRafId: null,
   };

@@ -1,5 +1,6 @@
 import { readFileSync, existsSync } from "fs";
 import { join, resolve, relative, dirname, isAbsolute, sep } from "path";
+import { CSS_URL_RE, isNonRelativeUrl } from "./assetPaths.js";
 import { transformSync } from "esbuild";
 import { compileHtml, type MediaDurationProber } from "./htmlCompiler";
 import {
@@ -72,14 +73,7 @@ function injectInterceptor(html: string, runtimeMode: "inline" | "placeholder" =
 }
 
 function isRelativeUrl(url: string): boolean {
-  if (!url) return false;
-  return (
-    !url.startsWith("http://") &&
-    !url.startsWith("https://") &&
-    !url.startsWith("//") &&
-    !url.startsWith("data:") &&
-    !isAbsolute(url)
-  );
+  return !isNonRelativeUrl(url) && !isAbsolute(url);
 }
 
 function safeReadFile(filePath: string): string | null {
@@ -93,8 +87,6 @@ function safeReadFile(filePath: string): string | null {
 
 const CSS_IMPORT_RE =
   /@import\s+(?:url\(\s*(["']?)([^)"']+)\1\s*\)|(["'])([^"']+)\3)\s*([^;]*);\s*/g;
-
-const REBASE_URL_RE = /\burl\(\s*(["']?)([^)"']+)\1\s*\)/g;
 
 const CSS_COMMENT_RE = /\/\*[\s\S]*?\*\//g;
 
@@ -123,7 +115,7 @@ function rebaseCssUrls(css: string, cssFileDir: string, projectDir: string): str
   const resolvedRoot = resolve(projectDir);
   const resolvedDir = resolve(cssFileDir);
   if (resolvedDir === resolvedRoot) return css;
-  return css.replace(REBASE_URL_RE, (full, quote: string, urlValue: string) => {
+  return css.replace(CSS_URL_RE, (full, quote: string, urlValue: string) => {
     if (!urlValue || !isRelativeUrl(urlValue)) return full;
     const { basePath, suffix } = splitUrlSuffix(urlValue.trim());
     if (!basePath) return full;
@@ -205,29 +197,24 @@ function appendSuffixToUrl(baseUrl: string, suffix: string): string {
   return baseUrl;
 }
 
-function guessMimeType(filePath: string): string {
-  const l = filePath.toLowerCase();
-  if (l.endsWith(".svg")) return "image/svg+xml";
-  if (l.endsWith(".json")) return "application/json";
-  if (l.endsWith(".txt")) return "text/plain";
-  if (l.endsWith(".xml")) return "application/xml";
-  return "application/octet-stream";
-}
-
-function shouldInlineAsDataUrl(filePath: string): boolean {
-  const l = filePath.toLowerCase();
-  return l.endsWith(".svg") || l.endsWith(".json") || l.endsWith(".txt") || l.endsWith(".xml");
-}
+const INLINE_MIME: Record<string, string> = {
+  ".svg": "image/svg+xml",
+  ".json": "application/json",
+  ".txt": "text/plain",
+  ".xml": "application/xml",
+};
 
 function maybeInlineRelativeAssetUrl(urlValue: string, projectDir: string): string | null {
   if (!urlValue || !isRelativeUrl(urlValue)) return null;
   const { basePath, suffix } = splitUrlSuffix(urlValue.trim());
   if (!basePath) return null;
   const filePath = resolveWithinProject(projectDir, basePath);
-  if (!filePath || !shouldInlineAsDataUrl(filePath)) return null;
+  if (!filePath) return null;
+  const ext = filePath.toLowerCase().match(/\.[^.]+$/)?.[0] ?? "";
+  const mimeType = INLINE_MIME[ext];
+  if (!mimeType) return null;
   const content = safeReadFileBuffer(filePath);
   if (content == null) return null;
-  const mimeType = guessMimeType(filePath);
   const dataUrl = `data:${mimeType};base64,${content.toString("base64")}`;
   return appendSuffixToUrl(dataUrl, suffix);
 }
@@ -479,14 +466,13 @@ function autoHealMissingCompositionIds(document: Document): void {
 function coalesceHeadStylesAndBodyScripts(document: Document): void {
   const headStyleEls = [...document.querySelectorAll("head style")];
   if (headStyleEls.length > 1) {
-    const importRe = /@import\s+url\([^)]*\)\s*;|@import\s+["'][^"']+["']\s*;/gi;
     const imports: string[] = [];
     const cssParts: string[] = [];
     const seenImports = new Set<string>();
     for (const el of headStyleEls) {
       const raw = (el.textContent || "").trim();
       if (!raw) continue;
-      const nonImportCss = raw.replace(importRe, (match) => {
+      const nonImportCss = raw.replace(CSS_IMPORT_RE, (match) => {
         const cleaned = match.trim();
         if (!seenImports.has(cleaned)) {
           seenImports.add(cleaned);
@@ -607,6 +593,78 @@ export interface BundleOptions {
  * - Inlines sub-composition HTML fragments (data-composition-src)
  * - Inlines small textual assets as data URLs
  */
+
+function ensureExternalScriptTag(doc: Document, src: string): void {
+  if (doc.querySelector(`script[src="${src}"]`)) return;
+  const el = doc.createElement("script");
+  el.setAttribute("src", src);
+  doc.body.appendChild(el);
+}
+
+function hoistExternalScript(
+  src: string,
+  projectDir: string,
+  doc: Document,
+  seenSrcs: Set<string>,
+  chunks: string[],
+): void {
+  if (seenSrcs.has(src)) return;
+  seenSrcs.add(src);
+  if (!isNonRelativeUrl(src) && !isAbsolute(src)) {
+    const jsPath = resolveWithinProject(projectDir, src);
+    const js = jsPath ? safeReadFile(jsPath) : null;
+    if (js != null) {
+      chunks.push(js);
+      return;
+    }
+  }
+  ensureExternalScriptTag(doc, src);
+}
+
+function hoistCompositionScripts(
+  container: { querySelectorAll: (sel: string) => NodeListOf<Element> },
+  opts: {
+    projectDir: string;
+    document: Document;
+    compId: string | null;
+    runtimeScope: string | undefined;
+    runtimeCompId: string | undefined;
+    authoredRootId: string | undefined;
+    seenCompScriptSrcs: Set<string>;
+    compScriptChunks: string[];
+  },
+): void {
+  for (const scriptEl of [...container.querySelectorAll("script")]) {
+    const externalSrc = (scriptEl.getAttribute("src") || "").trim();
+    if (externalSrc) {
+      hoistExternalScript(
+        externalSrc,
+        opts.projectDir,
+        opts.document,
+        opts.seenCompScriptSrcs,
+        opts.compScriptChunks,
+      );
+    } else {
+      opts.compScriptChunks.push(
+        opts.compId
+          ? wrapScopedCompositionScript(
+              scriptEl.textContent || "",
+              opts.compId,
+              "[HyperFrames] composition script error:",
+              opts.runtimeScope,
+              opts.runtimeCompId || opts.compId,
+              opts.authoredRootId,
+            )
+          : wrapInlineScriptWithErrorBoundary(
+              scriptEl.textContent || "",
+              "[HyperFrames] composition script error:",
+            ),
+      );
+    }
+    scriptEl.remove();
+  }
+}
+
 export async function bundleToSingleHtml(
   projectDir: string,
   options?: BundleOptions,
@@ -789,47 +847,16 @@ export async function bundleToSingleHtml(
           );
           styleEl.remove();
         }
-        // Hoist scripts into the collected script chunks
-        for (const scriptEl of [...innerRoot.querySelectorAll("script")]) {
-          const externalSrc = (scriptEl.getAttribute("src") || "").trim();
-          if (externalSrc) {
-            if (!seenCompScriptSrcs.has(externalSrc)) {
-              seenCompScriptSrcs.add(externalSrc);
-              if (isRelativeUrl(externalSrc)) {
-                const jsPath = resolveWithinProject(projectDir, externalSrc);
-                const js = jsPath ? safeReadFile(jsPath) : null;
-                if (js != null) {
-                  compScriptChunks.push(js);
-                } else if (!document.querySelector(`script[src="${externalSrc}"]`)) {
-                  const extScript = document.createElement("script");
-                  extScript.setAttribute("src", externalSrc);
-                  document.body.appendChild(extScript);
-                }
-              } else if (!document.querySelector(`script[src="${externalSrc}"]`)) {
-                const extScript = document.createElement("script");
-                extScript.setAttribute("src", externalSrc);
-                document.body.appendChild(extScript);
-              }
-            }
-          } else {
-            compScriptChunks.push(
-              compId
-                ? wrapScopedCompositionScript(
-                    scriptEl.textContent || "",
-                    compId,
-                    "[HyperFrames] composition script error:",
-                    runtimeScope,
-                    runtimeCompId || compId,
-                    authoredRootId,
-                  )
-                : wrapInlineScriptWithErrorBoundary(
-                    scriptEl.textContent || "",
-                    "[HyperFrames] composition script error:",
-                  ),
-            );
-          }
-          scriptEl.remove();
-        }
+        hoistCompositionScripts(innerRoot, {
+          projectDir,
+          document,
+          compId,
+          runtimeScope,
+          runtimeCompId,
+          authoredRootId: authoredRootId ?? undefined,
+          seenCompScriptSrcs,
+          compScriptChunks,
+        });
 
         // Copy dimension attributes from inner root to host if not already set
         const innerW = innerRoot.getAttribute("data-width");
@@ -845,45 +872,16 @@ export async function bundleToSingleHtml(
           compStyleChunks.push(compId ? scopeCssToComposition(css, compId, runtimeScope) : css);
           styleEl.remove();
         }
-        for (const scriptEl of [...innerDoc.querySelectorAll("script")]) {
-          const externalSrc = (scriptEl.getAttribute("src") || "").trim();
-          if (externalSrc) {
-            if (!seenCompScriptSrcs.has(externalSrc)) {
-              seenCompScriptSrcs.add(externalSrc);
-              if (isRelativeUrl(externalSrc)) {
-                const jsPath = resolveWithinProject(projectDir, externalSrc);
-                const js = jsPath ? safeReadFile(jsPath) : null;
-                if (js != null) {
-                  compScriptChunks.push(js);
-                } else if (!document.querySelector(`script[src="${externalSrc}"]`)) {
-                  const extScript = document.createElement("script");
-                  extScript.setAttribute("src", externalSrc);
-                  document.body.appendChild(extScript);
-                }
-              } else if (!document.querySelector(`script[src="${externalSrc}"]`)) {
-                const extScript = document.createElement("script");
-                extScript.setAttribute("src", externalSrc);
-                document.body.appendChild(extScript);
-              }
-            }
-          } else {
-            compScriptChunks.push(
-              compId
-                ? wrapScopedCompositionScript(
-                    scriptEl.textContent || "",
-                    compId,
-                    "[HyperFrames] composition script error:",
-                    runtimeScope,
-                    runtimeCompId || compId,
-                  )
-                : wrapInlineScriptWithErrorBoundary(
-                    scriptEl.textContent || "",
-                    "[HyperFrames] composition script error:",
-                  ),
-            );
-          }
-          scriptEl.remove();
-        }
+        hoistCompositionScripts(innerDoc, {
+          projectDir,
+          document,
+          compId,
+          runtimeScope,
+          runtimeCompId,
+          authoredRootId: undefined,
+          seenCompScriptSrcs,
+          compScriptChunks,
+        });
 
         host.innerHTML = innerDoc.body.innerHTML || "";
       }

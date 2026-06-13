@@ -1,5 +1,5 @@
 import type { LintContext, HyperframeLintFinding } from "../context";
-import { findHtmlTag, readAttr, readJsonAttr, truncateSnippet } from "../utils";
+import { findHtmlTag, readAttr, readJsonAttr, stripJsComments, truncateSnippet } from "../utils";
 import { COMPOSITION_VARIABLE_TYPES } from "../../core.types";
 
 // Agent guidance thresholds: warning-only nudges for files/tracks that become hard
@@ -397,8 +397,7 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
   ({ scripts }) => {
     const findings: HyperframeLintFinding[] = [];
     for (const script of scripts) {
-      // Strip comments to avoid false positives
-      const stripped = script.content.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+      const stripped = stripJsComments(script.content);
       if (/requestAnimationFrame\s*\(/.test(stripped)) {
         findings.push({
           code: "requestanimationframe_in_composition",
@@ -515,7 +514,7 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
       const e = entry as Record<string, unknown>;
       const missing: string[] = [];
       if (typeof e.id !== "string") missing.push("id");
-      if (typeof e.type !== "string" || !knownTypes.has(e.type as string)) missing.push("type");
+      if (typeof e.type !== "string" || !knownTypes.has(e.type)) missing.push("type");
       if (typeof e.label !== "string") missing.push("label");
       if (!("default" in e)) missing.push("default");
       if (missing.length > 0) {

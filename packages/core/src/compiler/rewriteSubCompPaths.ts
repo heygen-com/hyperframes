@@ -67,18 +67,12 @@ export function rewriteAssetPaths<T>(
   getAttr: (el: T, attr: string) => string | null | undefined,
   setAttr: (el: T, attr: string, value: string) => void,
 ): void {
-  const compDir = dirname(compSrcPath);
-  if (!compDir || compDir === ".") return;
-
   for (const el of elements) {
     for (const attr of PATH_ATTRS) {
       const val = (getAttr(el, attr) || "").trim();
-      if (isAbsoluteOrSpecial(val)) continue;
-      if (!needsRewrite(val)) continue;
-      const rewritten = join(compDir, val);
-      const normalized = resolve("/", rewritten).slice(1);
-      if (normalized !== val) {
-        setAttr(el, attr, normalized);
+      const rewritten = rewriteAssetPath(compSrcPath, val);
+      if (rewritten !== val) {
+        setAttr(el, attr, rewritten);
       }
     }
   }

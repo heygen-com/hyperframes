@@ -18,6 +18,8 @@ import {
   type GsapMethod,
   type GsapPercentageKeyframe,
   type ParsedGsap,
+  serializeValue as valueToCode,
+  safeJsKey as safeKey,
 } from "./gsapSerialize";
 
 export type {
@@ -52,6 +54,21 @@ export type { SpringPreset } from "./springEase";
 
 const GSAP_METHODS = new Set<string>(["set", "to", "from", "fromTo"]);
 
+// ── Recast / Babel AST shape types ────────────────────────────────────────
+//
+// Recast's own typings are loose (`any` everywhere). These local shapes
+// capture the properties we actually access, giving us IDE navigation and
+// catch-at-write-time safety without depending on @babel/types at runtime.
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- recast AST nodes are inherently untyped
+interface AstNode extends Record<string, any> {
+  type: string;
+}
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- recast visitor paths are inherently untyped
+interface AstPath extends Record<string, any> {
+  node: AstNode;
+}
+
 // ── Recast AST Helpers ──────────────────────────────────────────────────────
 
 type ScopeBindings = ReadonlyMap<string, number | string | boolean>;
@@ -66,10 +83,10 @@ function parseScript(script: string) {
   });
 }
 
-function collectScopeBindings(ast: any): ScopeBindings {
+function collectScopeBindings(ast: AstNode): ScopeBindings {
   const bindings = new Map<string, number | string | boolean>();
   recast.types.visit(ast, {
-    visitVariableDeclarator(path: any) {
+    visitVariableDeclarator(path: AstPath) {
       const name = path.node.id?.name;
       const init = path.node.init;
       if (name && init) {
@@ -83,7 +100,7 @@ function collectScopeBindings(ast: any): ScopeBindings {
 }
 
 function resolveNode(
-  node: any,
+  node: AstNode | undefined,
   scope: ReadonlyMap<string, number | string | boolean>,
 ): number | string | boolean | undefined {
   if (!node) return undefined;
@@ -127,7 +144,7 @@ function resolveNode(
   return undefined;
 }
 
-function extractLiteralValue(node: any, scope: ScopeBindings): unknown {
+function extractLiteralValue(node: AstNode | undefined, scope: ScopeBindings): unknown {
   return resolveNode(node, scope);
 }
 
@@ -156,7 +173,7 @@ const SCOPE_NODE_TYPES = new Set([
  * `gsap.utils.toArray(".sel")` — return the CSS selector it resolves to.
  * `getElementById("id")` maps to `#id`. Returns null for anything else.
  */
-function selectorFromQueryCall(node: any, scope: ScopeBindings): string | null {
+function selectorFromQueryCall(node: AstNode, scope: ScopeBindings): string | null {
   if (node?.type !== "CallExpression") return null;
   const callee = node.callee;
   if (callee?.type !== "MemberExpression" || callee.property?.type !== "Identifier") return null;
@@ -169,7 +186,7 @@ function selectorFromQueryCall(node: any, scope: ScopeBindings): string | null {
 }
 
 /** The nearest enclosing function/program node — the binding scope of `path`. */
-function enclosingScopeNode(path: any): any {
+function enclosingScopeNode(path: AstPath): AstNode | null {
   let p = path?.parentPath;
   while (p) {
     if (SCOPE_NODE_TYPES.has(p.node?.type)) return p.node;
@@ -179,8 +196,8 @@ function enclosingScopeNode(path: any): any {
 }
 
 /** Scope nodes enclosing `path`, innermost first. */
-function scopeChainOf(path: any): any[] {
-  const chain: any[] = [];
+function scopeChainOf(path: AstPath): AstNode[] {
+  const chain: AstNode[] = [];
   let p = path;
   while (p) {
     if (SCOPE_NODE_TYPES.has(p.node?.type)) chain.push(p.node);
@@ -194,7 +211,7 @@ type TargetBindings = Map<any, Map<string, string>>;
 
 function addBinding(
   bindings: TargetBindings,
-  scopeNode: any,
+  scopeNode: AstNode,
   name: string,
   selector: string,
 ): void {
@@ -212,21 +229,23 @@ function addBinding(
  * (2) iteration callback params (`coll.forEach(el => …)`), whose element type is
  * the collection's selector — resolved against the pass-1 bindings.
  */
-function collectTargetBindings(ast: any, scope: ScopeBindings): TargetBindings {
+function collectTargetBindings(ast: AstNode, scope: ScopeBindings): TargetBindings {
   const bindings: TargetBindings = new Map();
 
   recast.types.visit(ast, {
-    visitVariableDeclarator(path: any) {
+    visitVariableDeclarator(path: AstPath) {
       const name = path.node.id?.name;
       const selector = selectorFromQueryCall(path.node.init, scope);
-      if (name && selector !== null) addBinding(bindings, enclosingScopeNode(path), name, selector);
+      const scopeNode = enclosingScopeNode(path);
+      if (name && selector !== null && scopeNode) addBinding(bindings, scopeNode, name, selector);
       this.traverse(path);
     },
-    visitAssignmentExpression(path: any) {
+    visitAssignmentExpression(path: AstPath) {
       const left = path.node.left;
       const selector = selectorFromQueryCall(path.node.right, scope);
-      if (left?.type === "Identifier" && selector !== null) {
-        addBinding(bindings, enclosingScopeNode(path), left.name, selector);
+      const scopeNode = enclosingScopeNode(path);
+      if (left?.type === "Identifier" && selector !== null && scopeNode) {
+        addBinding(bindings, scopeNode, left.name, selector);
       }
       this.traverse(path);
     },
@@ -234,7 +253,7 @@ function collectTargetBindings(ast: any, scope: ScopeBindings): TargetBindings {
 
   // Pass 2: forEach/map callback params take the collection's selector.
   recast.types.visit(ast, {
-    visitCallExpression(path: any) {
+    visitCallExpression(path: AstPath) {
       const node = path.node;
       const callee = node.callee;
       if (
@@ -256,7 +275,7 @@ function collectTargetBindings(ast: any, scope: ScopeBindings): TargetBindings {
   return bindings;
 }
 
-function isFunctionNode(node: any): boolean {
+function isFunctionNode(node: AstNode): boolean {
   return (
     node?.type === "ArrowFunctionExpression" ||
     node?.type === "FunctionExpression" ||
@@ -266,8 +285,8 @@ function isFunctionNode(node: any): boolean {
 
 /** Resolve the selector a `.forEach`/`.map` is iterating over (variable or inline call). */
 function resolveCollectionSelector(
-  node: any,
-  callPath: any,
+  node: AstNode,
+  callPath: AstPath,
   scope: ScopeBindings,
   bindings: TargetBindings,
 ): string | null {
@@ -277,7 +296,7 @@ function resolveCollectionSelector(
 }
 
 /** Resolve a variable name to its selector using the lexical scope chain of `path`. */
-function lookupBinding(name: string, path: any, bindings: TargetBindings): string | null {
+function lookupBinding(name: string, path: AstPath, bindings: TargetBindings): string | null {
   for (const scopeNode of scopeChainOf(path)) {
     const selector = bindings.get(scopeNode)?.get(name);
     if (selector !== undefined) return selector;
@@ -294,8 +313,8 @@ function lookupBinding(name: string, path: any, bindings: TargetBindings): strin
  * runtime-computed selector).
  */
 function resolveTargetSelector(
-  node: any,
-  path: any,
+  node: AstNode,
+  path: AstPath,
   scope: ScopeBindings,
   bindings: TargetBindings,
 ): string | null {
@@ -311,7 +330,7 @@ function resolveTargetSelector(
   }
   if (node.type === "ArrayExpression") {
     const parts = node.elements
-      .map((el: any) => resolveTargetSelector(el, path, scope, bindings))
+      .map((el: AstNode) => resolveTargetSelector(el, path, scope, bindings))
       .filter((s: string | null): s is string => typeof s === "string" && s.length > 0);
     return parts.length > 0 ? parts.join(", ") : null;
   }
@@ -322,7 +341,7 @@ function resolveTargetSelector(
   return null;
 }
 
-function objectExpressionToRecord(node: any, scope: ScopeBindings): Record<string, unknown> {
+function objectExpressionToRecord(node: AstNode, scope: ScopeBindings): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   if (node?.type !== "ObjectExpression") return result;
   for (const prop of node.properties ?? []) {
@@ -342,7 +361,7 @@ function objectExpressionToRecord(node: any, scope: ScopeBindings): Record<strin
 
 // ── Timeline Variable Detection ─────────────────────────────────────────────
 
-function isGsapTimelineCall(node: any): boolean {
+function isGsapTimelineCall(node: AstNode): boolean {
   return (
     node?.type === "CallExpression" &&
     node.callee?.type === "MemberExpression" &&
@@ -363,13 +382,13 @@ interface TimelineDetection {
 }
 
 function extractTimelineDefaults(
-  callNode: any,
+  callNode: AstNode,
   scope: ScopeBindings,
 ): TimelineDefaults | undefined {
   const arg = callNode.arguments?.[0];
   if (!arg || arg.type !== "ObjectExpression") return undefined;
   const defaultsProp = arg.properties?.find(
-    (p: any) => isObjectProperty(p) && propKeyName(p) === "defaults",
+    (p: AstNode) => isObjectProperty(p) && propKeyName(p) === "defaults",
   );
   if (!defaultsProp?.value || defaultsProp.value.type !== "ObjectExpression") return undefined;
   const record = objectExpressionToRecord(defaultsProp.value, scope);
@@ -379,13 +398,13 @@ function extractTimelineDefaults(
   return Object.keys(result).length > 0 ? result : undefined;
 }
 
-function findTimelineVar(ast: any, scope?: ScopeBindings): TimelineDetection {
+function findTimelineVar(ast: AstNode, scope?: ScopeBindings): TimelineDetection {
   let timelineVar: string | null = null;
   let timelineCount = 0;
   let defaults: TimelineDefaults | undefined;
   const emptyScope: ScopeBindings = scope ?? new Map();
   recast.types.visit(ast, {
-    visitVariableDeclarator(path: any) {
+    visitVariableDeclarator(path: AstPath) {
       if (isGsapTimelineCall(path.node.init)) {
         timelineCount += 1;
         if (!timelineVar) {
@@ -395,7 +414,7 @@ function findTimelineVar(ast: any, scope?: ScopeBindings): TimelineDetection {
       }
       this.traverse(path);
     },
-    visitAssignmentExpression(path: any) {
+    visitAssignmentExpression(path: AstPath) {
       if (isGsapTimelineCall(path.node.right)) {
         timelineCount += 1;
         if (!timelineVar) {
@@ -413,20 +432,20 @@ function findTimelineVar(ast: any, scope?: ScopeBindings): TimelineDetection {
 // ── Find All Tween Calls ────────────────────────────────────────────────────
 
 interface TweenCallInfo {
-  path: any;
-  node: any;
+  path: AstPath;
+  node: AstNode;
   method: GsapMethod;
   selector: string;
-  varsArg: any;
-  fromArg?: any;
-  positionArg?: any;
+  varsArg: AstNode;
+  fromArg?: AstNode;
+  positionArg?: AstNode;
 }
 
 /**
  * True when the member chain of `callNode.callee` is rooted at the timeline
  * variable — `tl.to(...)` and every link of a chain `tl.to(...).to(...)`.
  */
-function isTimelineRootedCall(callNode: any, timelineVar: string): boolean {
+function isTimelineRootedCall(callNode: AstNode, timelineVar: string): boolean {
   let obj = callNode.callee?.object;
   while (obj?.type === "CallExpression") {
     obj = obj.callee?.object;
@@ -435,14 +454,14 @@ function isTimelineRootedCall(callNode: any, timelineVar: string): boolean {
 }
 
 function findAllTweenCalls(
-  ast: any,
+  ast: AstNode,
   timelineVar: string,
   scope: ScopeBindings,
   targetBindings: TargetBindings,
 ): TweenCallInfo[] {
   const results: TweenCallInfo[] = [];
   recast.types.visit(ast, {
-    visitCallExpression(path: any) {
+    visitCallExpression(path: AstPath) {
       const node = path.node;
       const callee = node.callee;
       if (
@@ -511,13 +530,13 @@ const EXTRAS_KEYS = new Set([
  * Extract raw source text for a property in an ObjectExpression AST node.
  * Returns the printed source of the value node, suitable for verbatim re-emission.
  */
-function extractRawPropertySource(varsArgNode: any, key: string): string | undefined {
+function extractRawPropertySource(varsArgNode: AstNode, key: string): string | undefined {
   const node = findPropertyNode(varsArgNode, key);
   return node ? recast.print(node).code : undefined;
 }
 
 /** Find the raw AST node for a named property inside an ObjectExpression. */
-function findPropertyNode(varsArgNode: any, key: string): any | undefined {
+function findPropertyNode(varsArgNode: AstNode, key: string): AstNode | undefined {
   if (varsArgNode?.type !== "ObjectExpression") return undefined;
   for (const prop of varsArgNode.properties ?? []) {
     if (!isObjectProperty(prop)) continue;
@@ -531,7 +550,7 @@ function findPropertyNode(varsArgNode: any, key: string): any | undefined {
 const PERCENTAGE_KEY_RE = /^(\d+(?:\.\d+)?)%$/;
 
 /** Extract a string-valued ease or easeEach from an AST property node. */
-function tryResolveStringProp(propValue: any, scope: ScopeBindings): string | undefined {
+function tryResolveStringProp(propValue: AstNode, scope: ScopeBindings): string | undefined {
   const val = resolveNode(propValue, scope);
   return typeof val === "string" ? val : undefined;
 }
@@ -542,7 +561,10 @@ function tryResolveStringProp(propValue: any, scope: ScopeBindings): string | un
  * percentage objects, object arrays, and simple (property-array) objects.
  */
 // fallow-ignore-next-line complexity
-function parseKeyframesNode(node: any, scope: ScopeBindings): GsapKeyframesData | undefined {
+function parseKeyframesNode(
+  node: AstNode | undefined,
+  scope: ScopeBindings,
+): GsapKeyframesData | undefined {
   if (!node) return undefined;
 
   // ── Object array format: keyframes: [ { x: 0, duration: 0.5 }, ... ] ──
@@ -576,7 +598,7 @@ function parseKeyframesNode(node: any, scope: ScopeBindings): GsapKeyframesData 
 }
 
 // fallow-ignore-next-line complexity
-function parsePercentageKeyframes(node: any, scope: ScopeBindings): GsapKeyframesData {
+function parsePercentageKeyframes(node: AstNode, scope: ScopeBindings): GsapKeyframesData {
   const keyframes: GsapPercentageKeyframe[] = [];
   let ease: string | undefined;
   let easeEach: string | undefined;
@@ -617,9 +639,12 @@ function parsePercentageKeyframes(node: any, scope: ScopeBindings): GsapKeyframe
   };
 }
 
-function computeKeyframesTotalDuration(varsNode: any, scope: ScopeBindings): number | undefined {
+function computeKeyframesTotalDuration(
+  varsNode: AstNode,
+  scope: ScopeBindings,
+): number | undefined {
   const kfNode = (varsNode.properties ?? []).find(
-    (p: any) => (p.key?.name ?? p.key?.value) === "keyframes",
+    (p: AstNode) => (p.key?.name ?? p.key?.value) === "keyframes",
   )?.value;
   if (!kfNode || kfNode.type !== "ArrayExpression") return undefined;
   let total = 0;
@@ -632,7 +657,7 @@ function computeKeyframesTotalDuration(varsNode: any, scope: ScopeBindings): num
 }
 
 // fallow-ignore-next-line complexity
-function parseObjectArrayKeyframes(node: any, scope: ScopeBindings): GsapKeyframesData {
+function parseObjectArrayKeyframes(node: AstNode, scope: ScopeBindings): GsapKeyframesData {
   const elements = node.elements ?? [];
   const raw: Array<{
     properties: Record<string, number | string>;
@@ -693,7 +718,7 @@ function parseObjectArrayKeyframes(node: any, scope: ScopeBindings): GsapKeyfram
 }
 
 // fallow-ignore-next-line complexity
-function parseSimpleArrayKeyframes(node: any, scope: ScopeBindings): GsapKeyframesData {
+function parseSimpleArrayKeyframes(node: AstNode, scope: ScopeBindings): GsapKeyframesData {
   const arrayProps: Map<string, (number | string)[]> = new Map();
   let ease: string | undefined;
   let easeEach: string | undefined;
@@ -747,10 +772,13 @@ interface MotionPathParseResult {
   waypoints: Array<{ x: number; y: number }>;
 }
 
-function parseMotionPathNode(node: any, scope: ScopeBindings): MotionPathParseResult | undefined {
+function parseMotionPathNode(
+  node: AstNode | undefined,
+  scope: ScopeBindings,
+): MotionPathParseResult | undefined {
   if (!node) return undefined;
 
-  let pathNode: any;
+  let pathNode: AstNode | undefined;
   let autoRotate: boolean | number = false;
   let curviness = 1;
   let isCubic = false;
@@ -910,7 +938,7 @@ function tweenCallToAnimation(
   }
 
   const hasPositionArg = !!call.positionArg;
-  const posVal = hasPositionArg ? extractLiteralValue(call.positionArg, scope) : 0;
+  const posVal = call.positionArg ? extractLiteralValue(call.positionArg, scope) : 0;
   const position: number | string =
     typeof posVal === "number" ? posVal : typeof posVal === "string" ? posVal : 0;
   let duration = typeof vars.duration === "number" ? vars.duration : undefined;
@@ -1056,7 +1084,7 @@ function assignStableIds(anims: Omit<GsapAnimation, "id">[]): GsapAnimation[] {
 // ── Shared parse (AST + located tween calls) ────────────────────────────────
 
 interface ParsedGsapAst {
-  ast: any;
+  ast: AstNode;
   scope: ScopeBindings;
   timelineVar: string;
   detection: TimelineDetection;
@@ -1132,32 +1160,21 @@ export function parseGsapScript(script: string): ParsedGsap {
 // in real compositions (variable targets, interleaved `gsap.set`, IIFE wrapper)
 // without regenerating — and discarding — the surrounding code.
 
-/** Render a model value to the JS source it should emit as. Mirrors gsapSerialize. */
-function valueToCode(value: number | string): string {
-  if (typeof value === "string" && value.startsWith("__raw:")) return value.slice(6);
-  if (typeof value === "string") return JSON.stringify(value);
-  return String(value);
-}
-
-function safeKey(key: string): string {
-  return /^[A-Za-z_$][\w$]*$/.test(key) ? key : JSON.stringify(key);
-}
-
 /**
  * Parse a value/expression snippet into a standalone AST expression node.
  * Uses an assignment (`__hf__ = <code>`) rather than wrapping in parens so an
  * object literal parses as an expression without recast re-emitting the
  * surrounding parentheses.
  */
-function parseExpr(code: string): any {
+function parseExpr(code: string): AstNode {
   return parseScript(`__hf__ = ${code};`).program.body[0].expression.right;
 }
 
-function propKeyName(prop: any): string | undefined {
+function propKeyName(prop: AstNode): string | undefined {
   return prop?.key?.name ?? prop?.key?.value;
 }
 
-function isObjectProperty(prop: any): boolean {
+function isObjectProperty(prop: AstNode): boolean {
   return prop?.type === "ObjectProperty" || prop?.type === "Property";
 }
 
@@ -1166,16 +1183,16 @@ function isEditablePropertyKey(key: string): boolean {
   return !BUILTIN_VAR_KEYS.has(key) && !DROPPED_VAR_KEYS.has(key) && !EXTRAS_KEYS.has(key);
 }
 
-function makeObjectProperty(key: string, value: number | string): any {
+function makeObjectProperty(key: string, value: number | string): AstNode {
   const obj = parseExpr(`{ ${safeKey(key)}: ${valueToCode(value)} }`);
   return obj.properties[0];
 }
 
 /** Set (or insert) a single key on an ObjectExpression, preserving sibling keys. */
-function setVarsKey(varsArg: any, key: string, value: number | string): void {
+function setVarsKey(varsArg: AstNode, key: string, value: number | string): void {
   if (varsArg?.type !== "ObjectExpression") return;
   const existing = varsArg.properties.find(
-    (p: any) => isObjectProperty(p) && propKeyName(p) === key,
+    (p: AstNode) => isObjectProperty(p) && propKeyName(p) === key,
   );
   if (existing) {
     existing.value = parseExpr(valueToCode(value));
@@ -1188,9 +1205,9 @@ function setVarsKey(varsArg: any, key: string, value: number | string): void {
  * Filter an ObjectExpression's properties, keeping non-editable keys
  * and delegating the keep/drop decision for editable keys to `shouldKeep`.
  */
-function filterEditableKeys(varsArg: any, shouldKeep: (key: string) => boolean): void {
+function filterEditableKeys(varsArg: AstNode, shouldKeep: (key: string) => boolean): void {
   if (varsArg?.type !== "ObjectExpression") return;
-  varsArg.properties = varsArg.properties.filter((p: any) => {
+  varsArg.properties = varsArg.properties.filter((p: AstNode) => {
     if (!isObjectProperty(p)) return true;
     const key = propKeyName(p);
     if (typeof key !== "string") return true;
@@ -1205,7 +1222,7 @@ function filterEditableKeys(varsArg: any, shouldKeep: (key: string) => boolean):
  * untouched.
  */
 function reconcileEditableProperties(
-  varsArg: any,
+  varsArg: AstNode,
   newProps: Record<string, number | string>,
 ): void {
   filterEditableKeys(varsArg, (key) => key in newProps);
@@ -1215,21 +1232,23 @@ function reconcileEditableProperties(
   }
 }
 
+function applyEaseUpdate(varsArg: AstNode, ease: string): void {
+  const kfNode = findKeyframesObjectNode(varsArg);
+  if (kfNode) {
+    setVarsKey(kfNode, "easeEach", ease);
+    removeVarsKey(varsArg, "ease");
+  } else {
+    setVarsKey(varsArg, "ease", ease);
+  }
+}
+
 function applyUpdatesToCall(call: TweenCallInfo, updates: Partial<GsapAnimation>): void {
   if (updates.properties) reconcileEditableProperties(call.varsArg, updates.properties);
-  if (updates.fromProperties && call.method === "fromTo") {
+  if (updates.fromProperties && call.method === "fromTo" && call.fromArg) {
     reconcileEditableProperties(call.fromArg, updates.fromProperties);
   }
   if (updates.duration !== undefined) setVarsKey(call.varsArg, "duration", updates.duration);
-  if (updates.ease !== undefined) {
-    const kfNode = findKeyframesObjectNode(call.varsArg);
-    if (kfNode) {
-      setVarsKey(kfNode, "easeEach", updates.ease);
-      removeVarsKey(call.varsArg, "ease");
-    } else {
-      setVarsKey(call.varsArg, "ease", updates.ease);
-    }
-  }
+  if (updates.ease !== undefined) applyEaseUpdate(call.varsArg, updates.ease);
   if (updates.position !== undefined) {
     const posIdx = call.method === "fromTo" ? 3 : 2;
     call.node.arguments[posIdx] = parseExpr(valueToCode(updates.position));
@@ -1237,13 +1256,25 @@ function applyUpdatesToCall(call: TweenCallInfo, updates: Partial<GsapAnimation>
 }
 
 /** Walk up to the enclosing ExpressionStatement path (for prune / insertAfter). */
-function findStatementPath(path: any): any {
+function findStatementPath(path: AstPath): AstPath | null {
   let p = path;
   while (p) {
     if (p.node?.type === "ExpressionStatement") return p;
     p = p.parentPath;
   }
   return null;
+}
+
+function insertAfterAnchor(parsed: ParsedGsapAst, newStatement: AstNode): void {
+  const lastCall = parsed.located[parsed.located.length - 1]?.call;
+  const anchorPath = lastCall
+    ? findStatementPath(lastCall.path)
+    : findTimelineDeclarationPath(parsed.ast, parsed.timelineVar);
+  if (anchorPath) {
+    anchorPath.insertAfter(newStatement);
+  } else {
+    parsed.ast.program.body.push(newStatement);
+  }
 }
 
 /** Build the source for a single `tl.method(selector, vars, position)` call. */
@@ -1328,17 +1359,7 @@ export function addAnimationToScript(
   const id = `anim-${Date.now()}`;
   const statementCode = buildTweenStatementCode(parsed.timelineVar, animation);
   const newStatement = parseScript(statementCode).program.body[0];
-
-  const lastCall = parsed.located[parsed.located.length - 1]?.call;
-  const anchorPath = lastCall
-    ? findStatementPath(lastCall.path)
-    : findTimelineDeclarationPath(parsed.ast, parsed.timelineVar);
-
-  if (anchorPath) {
-    anchorPath.insertAfter(newStatement);
-  } else {
-    parsed.ast.program.body.push(newStatement);
-  }
+  insertAfterAnchor(parsed, newStatement);
   return { script: recast.print(parsed.ast).code, id };
 }
 
@@ -1367,31 +1388,14 @@ export function addAnimationWithKeyframesToScript(
   }
 
   const selector = JSON.stringify(targetSelector);
-  const kfEntries = keyframes.map((kf) => {
-    const propEntries = Object.entries(kf.properties).map(
-      ([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`,
-    );
-    if (kf.ease) propEntries.push(`ease: ${JSON.stringify(kf.ease)}`);
-    if (kf.auto) propEntries.push(`_auto: 1`);
-    return `${JSON.stringify(`${kf.percentage}%`)}: { ${propEntries.join(", ")} }`;
-  });
-  const kfCode = `{ ${kfEntries.join(", ")} }`;
+  const kfCode = buildKeyframeObjectCode(keyframes);
   const varEntries = [`keyframes: ${kfCode}`, `duration: ${valueToCode(duration)}`];
   if (ease) varEntries.push(`ease: ${JSON.stringify(ease)}`);
   const posCode = valueToCode(position);
   const stmtCode = `${parsed.timelineVar}.to(${selector}, { ${varEntries.join(", ")} }, ${posCode});`;
 
   const newStatement = parseScript(stmtCode).program.body[0];
-  const lastCall = parsed.located[parsed.located.length - 1]?.call;
-  const anchorPath = lastCall
-    ? findStatementPath(lastCall.path)
-    : findTimelineDeclarationPath(parsed.ast, parsed.timelineVar);
-
-  if (anchorPath) {
-    anchorPath.insertAfter(newStatement);
-  } else {
-    parsed.ast.program.body.push(newStatement);
-  }
+  insertAfterAnchor(parsed, newStatement);
 
   const result = recast.print(parsed.ast).code;
   const reParsed = parseGsapAst(result);
@@ -1400,10 +1404,10 @@ export function addAnimationWithKeyframesToScript(
 }
 
 /** Find the statement path of `const <timelineVar> = gsap.timeline(...)`. */
-function findTimelineDeclarationPath(ast: any, timelineVar: string): any {
-  let found: any = null;
+function findTimelineDeclarationPath(ast: AstNode, timelineVar: string): AstPath | null {
+  let found: AstPath | null = null;
   recast.types.visit(ast, {
-    visitVariableDeclaration(path: any) {
+    visitVariableDeclaration(path: AstPath) {
       if (found) return false;
       for (const decl of path.node.declarations ?? []) {
         if (decl.id?.name === timelineVar && isGsapTimelineCall(decl.init)) {
@@ -1418,10 +1422,10 @@ function findTimelineDeclarationPath(ast: any, timelineVar: string): any {
 }
 
 /** Find the call that chains off `targetNode` (i.e. whose callee object IS it). */
-function findChainParentCall(stmtNode: any, targetNode: any): any {
-  let found: any = null;
+function findChainParentCall(stmtNode: AstNode, targetNode: AstNode): AstNode | null {
+  let found: AstNode | null = null;
   recast.types.visit(stmtNode, {
-    visitCallExpression(p: any) {
+    visitCallExpression(p: AstPath) {
       if (found) return false;
       if (p.node.callee?.type === "MemberExpression" && p.node.callee.object === targetNode) {
         found = p.node;
@@ -1645,11 +1649,30 @@ function keyframePropsToCode(kf: { properties: Record<string, number | string> }
   return Object.entries(kf.properties).map(([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`);
 }
 
+function buildKeyframeObjectCode(
+  keyframes: Array<{
+    percentage: number;
+    properties: Record<string, number | string>;
+    ease?: string;
+    auto?: boolean;
+  }>,
+  options?: { easeEach?: string },
+): string {
+  const entries = keyframes.map((kf) => {
+    const props = keyframePropsToCode(kf);
+    if (kf.ease) props.push(`ease: ${JSON.stringify(kf.ease)}`);
+    if (kf.auto) props.push(`_auto: 1`);
+    return `${JSON.stringify(`${kf.percentage}%`)}: { ${props.join(", ")} }`;
+  });
+  if (options?.easeEach) entries.push(`easeEach: ${JSON.stringify(options.easeEach)}`);
+  return `{ ${entries.join(", ")} }`;
+}
+
 /** Remove a named property from an ObjectExpression's properties array. */
-function removeVarsKey(varsArg: any, key: string): void {
+function removeVarsKey(varsArg: AstNode, key: string): void {
   if (varsArg?.type !== "ObjectExpression") return;
   varsArg.properties = varsArg.properties.filter(
-    (p: any) => !(isObjectProperty(p) && propKeyName(p) === key),
+    (p: AstNode) => !(isObjectProperty(p) && propKeyName(p) === key),
   );
 }
 
@@ -1661,7 +1684,10 @@ function percentageFromKey(key: string): number {
 
 const PCT_TOLERANCE = 2;
 
-function findKeyframePropByPct(kfNode: any, percentage: number): { idx: number; prop: any } | null {
+function findKeyframePropByPct(
+  kfNode: AstNode,
+  percentage: number,
+): { idx: number; prop: AstNode } | null {
   const props = kfNode.properties;
   for (let i = 0; i < props.length; i++) {
     if (!isObjectProperty(props[i])) continue;
@@ -1675,7 +1701,10 @@ function findKeyframePropByPct(kfNode: any, percentage: number): { idx: number; 
 }
 
 /** Build a keyframe value AST node from properties and optional ease. */
-function buildKeyframeValueNode(properties: Record<string, number | string>, ease?: string): any {
+function buildKeyframeValueNode(
+  properties: Record<string, number | string>,
+  ease?: string,
+): AstNode {
   const entries = Object.entries(properties).map(([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`);
   if (ease) entries.push(`ease: ${JSON.stringify(ease)}`);
   return parseExpr(`{ ${entries.join(", ")} }`);
@@ -1696,15 +1725,26 @@ function locateAnimation(
   return target ? { parsed, target } : null;
 }
 
+function locateAnimationWithFallback(
+  script: string,
+  animationId: string,
+): ReturnType<typeof locateAnimation> {
+  const loc = locateAnimation(script, animationId);
+  if (loc) return loc;
+  const convertedId = animationId.replace(/-from-|-fromTo-/, "-to-");
+  if (convertedId === animationId) return null;
+  return locateAnimation(script, convertedId);
+}
+
 /** Find the keyframes ObjectExpression node on a tween's varsArg, or null. */
-function findKeyframesObjectNode(varsArg: any): any | null {
+function findKeyframesObjectNode(varsArg: AstNode): AstNode | null {
   const node = findPropertyNode(varsArg, "keyframes");
   return node?.type === "ObjectExpression" ? node : null;
 }
 
 /** Filter percentage-keyed properties from a keyframes ObjectExpression. */
-function filterPercentageProps(kfNode: any): any[] {
-  return kfNode.properties.filter((p: any) => {
+function filterPercentageProps(kfNode: AstNode): AstNode[] {
+  return kfNode.properties.filter((p: AstNode) => {
     if (!isObjectProperty(p)) return false;
     const key = propKeyName(p);
     return typeof key === "string" && PERCENTAGE_KEY_RE.test(key);
@@ -1716,7 +1756,7 @@ function filterPercentageProps(kfNode: any): any[] {
  * then remove `keyframes` and `easeEach` from varsArg. Skips the `ease` key
  * from the record (per-keyframe ease, not a tween ease).
  */
-function collapseKeyframesToFlat(varsArg: any, record: Record<string, unknown>): void {
+function collapseKeyframesToFlat(varsArg: AstNode, record: Record<string, unknown>): void {
   for (const [k, v] of Object.entries(record)) {
     if (k === "ease") continue;
     if (typeof v === "number" || typeof v === "string") setVarsKey(varsArg, k, v);
@@ -1731,11 +1771,7 @@ function collapseKeyframesToFlat(varsArg: any, record: Record<string, unknown>):
  * updateKeyframeInScript.
  */
 function locateKeyframeCtx(script: string, animationId: string, percentage: number) {
-  let loc = locateAnimation(script, animationId);
-  if (!loc) {
-    const convertedId = animationId.replace(/-from-|-fromTo-/, "-to-");
-    loc = locateAnimation(script, convertedId);
-  }
+  const loc = locateAnimationWithFallback(script, animationId);
   if (!loc) return null;
   const kfNode = findKeyframesObjectNode(loc.target.call.varsArg);
   if (!kfNode) return null;
@@ -1754,21 +1790,13 @@ export function addKeyframeToScript(
   ease?: string,
   backfillDefaults?: Record<string, number | string>,
 ): string {
-  let loc = locateAnimation(script, animationId);
-  if (!loc) {
-    const convertedId = animationId.replace(/-from-|-fromTo-/, "-to-");
-    loc = locateAnimation(script, convertedId);
-  }
+  let loc = locateAnimationWithFallback(script, animationId);
   if (!loc) return script;
   let kfNode = findKeyframesObjectNode(loc.target.call.varsArg);
 
   if (!kfNode) {
     script = convertToKeyframesInScript(script, animationId);
-    loc = locateAnimation(script, animationId);
-    if (!loc) {
-      const convertedId = animationId.replace(/-from-|-fromTo-/, "-to-");
-      loc = locateAnimation(script, convertedId);
-    }
+    loc = locateAnimationWithFallback(script, animationId);
     if (!loc) return script;
     kfNode = findKeyframesObjectNode(loc.target.call.varsArg);
     if (!kfNode) return script;
@@ -1818,7 +1846,7 @@ export function addKeyframeToScript(
   if (percentage > 0 && percentage < 100) {
     const pctProps = filterPercentageProps(kfNode);
     const allPcts = pctProps
-      .map((p: any) => percentageFromKey(propKeyName(p) ?? ""))
+      .map((p: AstNode) => percentageFromKey(propKeyName(p) ?? ""))
       .filter((n: number) => !Number.isNaN(n) && n !== percentage)
       .sort((a: number, b: number) => a - b);
     const leftNeighbor = allPcts.filter((p: number) => p < percentage).pop();
@@ -1826,10 +1854,12 @@ export function addKeyframeToScript(
     for (const endPct of [0, 100]) {
       const isNeighbor = endPct === 0 ? leftNeighbor === 0 : rightNeighbor === 100;
       if (!isNeighbor) continue;
-      const endProp = pctProps.find((p: any) => percentageFromKey(propKeyName(p) ?? "") === endPct);
+      const endProp = pctProps.find(
+        (p: AstNode) => percentageFromKey(propKeyName(p) ?? "") === endPct,
+      );
       if (!endProp?.value || endProp.value.type !== "ObjectExpression") continue;
       const hasAuto = endProp.value.properties.some(
-        (p: any) => isObjectProperty(p) && propKeyName(p) === "_auto",
+        (p: AstNode) => isObjectProperty(p) && propKeyName(p) === "_auto",
       );
       if (!hasAuto) continue;
       const updatedProps = { ...properties, _auto: 1 as number | string };
@@ -1848,7 +1878,9 @@ export function addKeyframeToScript(
       const valObj = prop.value;
       if (!valObj || valObj.type !== "ObjectExpression") continue;
       const existingKeys = new Set(
-        valObj.properties.filter((p: any) => isObjectProperty(p)).map((p: any) => propKeyName(p)),
+        valObj.properties
+          .filter((p: AstNode) => isObjectProperty(p))
+          .map((p: AstNode) => propKeyName(p)),
       );
       for (const pk of newPropKeys) {
         if (existingKeys.has(pk)) continue;
@@ -1887,7 +1919,7 @@ export function removeKeyframeFromScript(
   if (remainingKfs.length < 2) {
     const record =
       remainingKfs.length === 1
-        ? objectExpressionToRecord(remainingKfs[0].value, loc.parsed.scope)
+        ? objectExpressionToRecord(remainingKfs[0]!.value, loc.parsed.scope)
         : {};
     collapseKeyframesToFlat(loc.target.call.varsArg, record);
   }
@@ -1973,11 +2005,11 @@ function resolveConversionProps(
 }
 
 /** Strip editable properties and ease/keyframes keys from a varsArg. */
-function stripEditableAndEase(varsArg: any): void {
+function stripEditableAndEase(varsArg: AstNode): void {
   // ease is a BUILTIN_VAR_KEY (not editable), so filterEditableKeys won't remove it —
   // drop it explicitly before filtering, along with keyframes.
   if (varsArg?.type !== "ObjectExpression") return;
-  varsArg.properties = varsArg.properties.filter((p: any) => {
+  varsArg.properties = varsArg.properties.filter((p: AstNode) => {
     if (!isObjectProperty(p)) return true;
     const key = propKeyName(p);
     return key !== "ease" && key !== "keyframes";
@@ -1987,7 +2019,7 @@ function stripEditableAndEase(varsArg: any): void {
 
 /** Build and prepend a keyframes property node onto varsArg. */
 function insertKeyframesProp(
-  varsArg: any,
+  varsArg: AstNode,
   fromProps: Record<string, number | string>,
   toProps: Record<string, number | string>,
   easeEach?: string,
@@ -2011,11 +2043,7 @@ export function convertToKeyframesInScript(
   animationId: string,
   resolvedFromValues?: Record<string, number | string>,
 ): string {
-  let loc = locateAnimation(script, animationId);
-  if (!loc) {
-    const convertedId = animationId.replace(/-from-|-fromTo-/, "-to-");
-    loc = locateAnimation(script, convertedId);
-  }
+  let loc = locateAnimationWithFallback(script, animationId);
   if (!loc) return script;
 
   const anim = loc.target.animation;
@@ -2046,17 +2074,13 @@ export function convertToKeyframesInScript(
  * last keyframe's properties.
  */
 export function removeAllKeyframesFromScript(script: string, animationId: string): string {
-  let loc = locateAnimation(script, animationId);
-  if (!loc) {
-    const convertedId = animationId.replace(/-from-|-fromTo-/, "-to-");
-    loc = locateAnimation(script, convertedId);
-  }
+  let loc = locateAnimationWithFallback(script, animationId);
   if (!loc) return script;
   const kfNode = findKeyframesObjectNode(loc.target.call.varsArg);
   if (!kfNode) return script;
 
   const kfEntries = filterPercentageProps(kfNode)
-    .map((p: any) => ({ pct: percentageFromKey(propKeyName(p)!), prop: p }))
+    .map((p: AstNode) => ({ pct: percentageFromKey(propKeyName(p)!), prop: p }))
     .filter((e) => !Number.isNaN(e.pct))
     .sort((a, b) => a.pct - b.pct);
   if (kfEntries.length === 0) return script;
@@ -2086,11 +2110,7 @@ export function materializeKeyframesInScript(
   easeEach?: string,
   resolvedSelector?: string,
 ): string {
-  let loc = locateAnimation(script, animationId);
-  if (!loc) {
-    const convertedId = animationId.replace(/-from-|-fromTo-/, "-to-");
-    loc = locateAnimation(script, convertedId);
-  }
+  let loc = locateAnimationWithFallback(script, animationId);
   if (!loc) return script;
 
   const varsArg = loc.target.call.varsArg;
@@ -2100,19 +2120,9 @@ export function materializeKeyframesInScript(
     loc.target.call.node.arguments[0] = parseExpr(JSON.stringify(resolvedSelector));
   }
 
-  const entries: string[] = [];
-  for (const kf of sortedKeyframes(keyframes)) {
-    const propEntries = keyframePropsToCode(kf);
-    if (kf.ease) propEntries.push(`ease: ${JSON.stringify(kf.ease)}`);
-    entries.push(`${JSON.stringify(kf.percentage + "%")}: { ${propEntries.join(", ")} }`);
-  }
-  if (easeEach) {
-    entries.push(`easeEach: ${JSON.stringify(easeEach)}`);
-  }
-
-  const kfObjCode = `{ ${entries.join(", ")} }`;
+  const kfObjCode = buildKeyframeObjectCode(sortedKeyframes(keyframes), { easeEach });
   const kfParent = varsArg.properties.find(
-    (p: any) => isObjectProperty(p) && propKeyName(p) === "keyframes",
+    (p: AstNode) => isObjectProperty(p) && propKeyName(p) === "keyframes",
   );
   if (kfParent) {
     kfParent.value = parseExpr(kfObjCode);
@@ -2127,6 +2137,25 @@ export function materializeKeyframesInScript(
 }
 
 // ── Arc Path (motionPath) AST Mutations ──────────────────────────────────
+
+function numericXY(props: Record<string, number | string>): { x: number; y: number } | null {
+  const x = props.x;
+  const y = props.y;
+  return typeof x === "number" && typeof y === "number" ? { x, y } : null;
+}
+
+function extractArcWaypoints(anim: GsapAnimation): Array<{ x: number; y: number }> {
+  const kfs = anim.keyframes?.keyframes ?? [];
+  const waypoints = kfs.map((kf) => numericXY(kf.properties)).filter((p) => p !== null);
+  if (waypoints.length >= 2) return waypoints;
+  const px = anim.properties.x;
+  const py = anim.properties.y;
+  if (typeof px !== "number" && typeof py !== "number") return waypoints;
+  return [
+    { x: 0, y: 0 },
+    { x: typeof px === "number" ? px : 0, y: typeof py === "number" ? py : 0 },
+  ];
+}
 
 function buildMotionPathObjectCode(config: {
   waypoints: Array<{ x: number; y: number }>;
@@ -2192,14 +2221,14 @@ export function setArcPathInScript(
   if (!config.enabled) {
     // Disable arc: restore x/y from motionPath's last waypoint, then remove motionPath
     const motionPathProp = varsArg.properties.find(
-      (p: any) => isObjectProperty(p) && propKeyName(p) === "motionPath",
+      (p: AstNode) => isObjectProperty(p) && propKeyName(p) === "motionPath",
     );
     if (motionPathProp) {
       const mpVal = motionPathProp.value;
-      let pathArr: any[] | undefined;
+      let pathArr: AstNode[] | undefined;
       if (mpVal?.type === "ObjectExpression") {
         const pathProp = mpVal.properties.find(
-          (p: any) => isObjectProperty(p) && propKeyName(p) === "path",
+          (p: AstNode) => isObjectProperty(p) && propKeyName(p) === "path",
         );
         if (pathProp?.value?.type === "ArrayExpression") pathArr = pathProp.value.elements;
       }
@@ -2220,26 +2249,7 @@ export function setArcPathInScript(
     return recast.print(loc.parsed.ast).code;
   }
 
-  // Extract x/y waypoints from keyframes or flat tween properties
-  const kfs = anim.keyframes?.keyframes ?? [];
-  const waypoints: Array<{ x: number; y: number }> = [];
-  for (const kf of kfs) {
-    const x = typeof kf.properties.x === "number" ? kf.properties.x : undefined;
-    const y = typeof kf.properties.y === "number" ? kf.properties.y : undefined;
-    if (x !== undefined && y !== undefined) waypoints.push({ x, y });
-  }
-
-  // For flat tweens with x/y in properties, synthesize start → end waypoints
-  if (waypoints.length < 2) {
-    const px = anim.properties.x;
-    const py = anim.properties.y;
-    if (typeof px === "number" || typeof py === "number") {
-      waypoints.length = 0;
-      waypoints.push({ x: 0, y: 0 });
-      waypoints.push({ x: typeof px === "number" ? px : 0, y: typeof py === "number" ? py : 0 });
-    }
-  }
-
+  const waypoints = extractArcWaypoints(anim);
   if (waypoints.length < 2) return script;
 
   // Build segments — use provided segments or create defaults
@@ -2257,7 +2267,7 @@ export function setArcPathInScript(
   // Set motionPath on the vars
   const motionPathNode = parseExpr(motionPathCode);
   const existingProp = varsArg.properties.find(
-    (p: any) => isObjectProperty(p) && propKeyName(p) === "motionPath",
+    (p: AstNode) => isObjectProperty(p) && propKeyName(p) === "motionPath",
   );
   if (existingProp) {
     existingProp.value = motionPathNode;
@@ -2271,7 +2281,7 @@ export function setArcPathInScript(
   if (kfNode) {
     for (const pctProp of filterPercentageProps(kfNode)) {
       if (pctProp.value?.type === "ObjectExpression") {
-        pctProp.value.properties = pctProp.value.properties.filter((p: any) => {
+        pctProp.value.properties = pctProp.value.properties.filter((p: AstNode) => {
           const k = propKeyName(p);
           return k !== "x" && k !== "y";
         });
@@ -2303,15 +2313,7 @@ export function updateArcSegmentInScript(
 
   segments[segmentIndex] = { ...segments[segmentIndex]!, ...update };
 
-  // Rebuild the full motionPath with updated segments
-  const kfs = anim.keyframes?.keyframes ?? [];
-  const waypoints: Array<{ x: number; y: number }> = [];
-  for (const kf of kfs) {
-    const x = typeof kf.properties.x === "number" ? kf.properties.x : undefined;
-    const y = typeof kf.properties.y === "number" ? kf.properties.y : undefined;
-    if (x !== undefined && y !== undefined) waypoints.push({ x, y });
-  }
-
+  const waypoints = extractArcWaypoints(anim);
   if (waypoints.length < 2) return script;
 
   const motionPathCode = buildMotionPathObjectCode({
@@ -2322,7 +2324,7 @@ export function updateArcSegmentInScript(
 
   const varsArg = loc.target.call.varsArg;
   const existingProp = varsArg.properties.find(
-    (p: any) => isObjectProperty(p) && propKeyName(p) === "motionPath",
+    (p: AstNode) => isObjectProperty(p) && propKeyName(p) === "motionPath",
   );
   if (existingProp) {
     existingProp.value = parseExpr(motionPathCode);
@@ -2353,11 +2355,7 @@ export function splitIntoPropertyGroups(
   script: string,
   animationId: string,
 ): { script: string; ids: string[] } {
-  let loc = locateAnimation(script, animationId);
-  if (!loc) {
-    const convertedId = animationId.replace(/-from-|-fromTo-/, "-to-");
-    loc = locateAnimation(script, convertedId);
-  }
+  let loc = locateAnimationWithFallback(script, animationId);
   if (!loc) return { script, ids: [animationId] };
 
   const anim = loc.target.animation;
@@ -2523,7 +2521,7 @@ export function unrollDynamicAnimations(
         : "0";
 
   // Find the enclosing loop (for/forEach) by walking up the AST path
-  let loopNode: any = null;
+  let loopNode: AstNode | null = null;
   let current = loc.target.call.path;
   while (current) {
     const node = current.node ?? current.value;
@@ -2550,16 +2548,11 @@ export function unrollDynamicAnimations(
   // Build replacement code: individual tl.to() calls for each element
   const calls: string[] = [];
   for (const el of elements) {
-    const kfEntries: string[] = [];
-    for (const kf of sortedKeyframes(el.keyframes)) {
-      const propEntries = keyframePropsToCode(kf);
-      kfEntries.push(`${JSON.stringify(kf.percentage + "%")}: { ${propEntries.join(", ")} }`);
-    }
-    if (el.easeEach) {
-      kfEntries.push(`easeEach: ${JSON.stringify(el.easeEach)}`);
-    }
+    const kfCode = buildKeyframeObjectCode(sortedKeyframes(el.keyframes), {
+      easeEach: el.easeEach,
+    });
     calls.push(
-      `${loc.parsed.timelineVar}.to(${JSON.stringify(el.selector)}, { keyframes: { ${kfEntries.join(", ")} }, duration: ${duration}, ease: ${JSON.stringify(ease)} }, ${posCode});`,
+      `${loc.parsed.timelineVar}.to(${JSON.stringify(el.selector)}, { keyframes: ${kfCode}, duration: ${duration}, ease: ${JSON.stringify(ease)} }, ${posCode});`,
     );
   }
 

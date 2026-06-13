@@ -3,6 +3,7 @@ import postcss from "postcss";
 import {
   readAttr,
   truncateSnippet,
+  stripJsComments,
   extractCompositionIdsFromCss,
   extractTimelineRegistryKeys,
   getInlineScriptSyntaxError,
@@ -307,8 +308,7 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
     ];
 
     for (const script of scripts) {
-      // Strip comments to avoid false positives
-      const stripped = script.content.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+      const stripped = stripJsComments(script.content);
       for (const { pattern, label, hint } of patterns) {
         if (pattern.test(stripped)) {
           findings.push({

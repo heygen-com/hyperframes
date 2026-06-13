@@ -122,7 +122,7 @@ export function removeElementFromHtml(source: string, target: SourceMutationTarg
   return wrappedFragment ? document.body.innerHTML || "" : document.toString();
 }
 
-function isHTMLElement(el: Element): boolean {
+export function isHTMLElement(el: Element): el is HTMLElement {
   const HTMLEl = el.ownerDocument.defaultView?.HTMLElement;
   return HTMLEl ? el instanceof HTMLEl : "style" in el;
 }
@@ -283,7 +283,7 @@ export function patchElementInHtml(
   const { document, wrappedFragment } = parseSourceDocument(source);
   const el = findTargetElement(document, target);
   if (!el || !isHTMLElement(el)) return { html: source, matched: false };
-  const htmlEl = el as unknown as HTMLElement;
+  const htmlEl = el;
 
   for (const op of operations) {
     switch (op.type) {
@@ -320,7 +320,7 @@ export function patchElementInHtml(
       case "text-content":
         if (op.value != null) {
           const inner = htmlEl.children.length === 1 ? htmlEl.firstElementChild : null;
-          const textTarget = inner ? (inner as unknown as HTMLElement) : htmlEl;
+          const textTarget = inner && isHTMLElement(inner) ? inner : htmlEl;
           textTarget.textContent = op.value;
         }
         break;

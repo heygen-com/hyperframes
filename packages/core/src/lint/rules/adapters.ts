@@ -1,19 +1,16 @@
 import type { LintContext, HyperframeLintFinding } from "../context";
-import { readAttr } from "../utils";
+import { readAttr, extractScriptTextsAndSrcs } from "../utils";
 
 export const adapterRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   // missing_lottie_script
   ({ tags, scripts }) => {
-    const allScriptTexts = scripts.filter((s) => !/\bsrc\s*=/.test(s.attrs)).map((s) => s.content);
-    const allScriptSrcs = scripts
-      .map((s) => readAttr(`<script ${s.attrs}>`, "src") || "")
-      .filter(Boolean);
+    const { texts, srcs } = extractScriptTextsAndSrcs(scripts);
 
     const hasLottieAttr = tags.some((t) => readAttr(t.raw, "data-lottie-src") !== null);
-    const usesLottieApi = allScriptTexts.some((t) =>
+    const usesLottieApi = texts.some((t) =>
       /lottie\.(loadAnimation|setSpeed|play|stop|destroy)\b/.test(t),
     );
-    const hasLottieScript = allScriptSrcs.some((src) => /lottie/i.test(src));
+    const hasLottieScript = srcs.some((src) => /lottie/i.test(src));
 
     if (!(hasLottieAttr || usesLottieApi) || hasLottieScript) return [];
     return [
@@ -30,19 +27,16 @@ export const adapterRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> 
 
   // missing_three_script
   ({ scripts }) => {
-    const allScriptTexts = scripts.filter((s) => !/\bsrc\s*=/.test(s.attrs)).map((s) => s.content);
-    const allScriptSrcs = scripts
-      .map((s) => readAttr(`<script ${s.attrs}>`, "src") || "")
-      .filter(Boolean);
+    const { texts, srcs } = extractScriptTextsAndSrcs(scripts);
 
-    const usesThree = allScriptTexts.some((t) => /\bTHREE\./.test(t));
-    const hasThreeScript = allScriptSrcs.some((src) => /three/i.test(src));
-    const hasThreeImportMap = allScriptTexts.some(
+    const usesThree = texts.some((t) => /\bTHREE\./.test(t));
+    const hasThreeScript = srcs.some((src) => /three/i.test(src));
+    const hasThreeImportMap = texts.some(
       (t) =>
         /["']three["']/.test(t) &&
         /importmap/.test(scripts.find((s) => s.content === t)?.attrs || ""),
     );
-    const hasThreeModuleImport = allScriptTexts.some(
+    const hasThreeModuleImport = texts.some(
       (t) => /\bimport\b.*['"]three['"]/.test(t) || /\bfrom\s+['"]three['"]/.test(t),
     );
 

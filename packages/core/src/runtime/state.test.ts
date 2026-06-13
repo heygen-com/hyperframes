@@ -10,9 +10,7 @@ describe("createRuntimeState", () => {
     expect(state.playbackRate).toBe(1);
     expect(state.bridgeMuted).toBe(false);
     expect(state.capturedTimeline).toBeNull();
-    expect(state.rafId).toBeNull();
     expect(state.tornDown).toBe(false);
-    expect(state.parityModeEnabled).toBe(true);
   });
 
   it("returns independent instances", () => {

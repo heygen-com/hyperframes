@@ -67,14 +67,6 @@ describe("@hyperframes/core public API exports", () => {
       expect(zoom.focusX).toBe(960);
       expect(zoom.focusY).toBe(540);
     });
-
-    it("exports composition variable type guards", () => {
-      expect(typeof core.isStringVariable).toBe("function");
-      expect(typeof core.isNumberVariable).toBe("function");
-      expect(typeof core.isColorVariable).toBe("function");
-      expect(typeof core.isBooleanVariable).toBe("function");
-      expect(typeof core.isEnumVariable).toBe("function");
-    });
   });
 
   describe("template exports", () => {
