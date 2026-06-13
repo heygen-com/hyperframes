@@ -397,6 +397,67 @@ export function initSandboxRuntimeModular(): void {
     return resolveStartForElement(element, fallback);
   };
 
+  const findTimedClipAncestor = (
+    element: HTMLElement,
+    rootComp: HTMLElement | null,
+  ): HTMLElement | null => {
+    let node = element.parentElement;
+    while (node) {
+      // rootComp may be null when no composition is mounted; the walk still
+      // terminates via `while (node)` — node === null is never true here.
+      if (node === rootComp) break;
+      if (node.hasAttribute("data-start")) {
+        return node;
+      }
+      node = node.parentElement;
+    }
+    return null;
+  };
+
+  const isTimedElementVisibleAt = (rawNode: HTMLElement, currentTime: number): boolean => {
+    const tag = rawNode.tagName.toLowerCase();
+    if (tag === "script" || tag === "style" || tag === "link" || tag === "meta") {
+      return false;
+    }
+
+    const start =
+      tag === "video" || tag === "audio"
+        ? resolveMediaStartSeconds(rawNode, 0)
+        : resolveStartForElement(rawNode, 0);
+    let duration = resolveDurationForElement(rawNode);
+    const compId = rawNode.getAttribute("data-composition-id");
+    if (compId) {
+      const compTimeline = (window.__timelines ?? {})[compId];
+      let liveDuration: number | null = null;
+      if (compTimeline && typeof compTimeline.duration === "function") {
+        const compDur = Number(compTimeline.duration());
+        if (Number.isFinite(compDur) && compDur > 0) {
+          liveDuration = compDur;
+        }
+      }
+
+      const usesExternalCompositionSlot =
+        rawNode.hasAttribute("data-composition-src") ||
+        rawNode.hasAttribute("data-composition-file");
+
+      if (
+        duration != null &&
+        duration > 0 &&
+        liveDuration != null &&
+        !usesExternalCompositionSlot
+      ) {
+        duration = Math.min(duration, liveDuration);
+      } else if ((duration == null || duration <= 0) && liveDuration != null) {
+        duration = liveDuration;
+      }
+    }
+    const computedEnd =
+      duration != null && duration > 0 ? start + duration : Number.POSITIVE_INFINITY;
+    return (
+      currentTime >= start && (Number.isFinite(computedEnd) ? currentTime <= computedEnd : true)
+    );
+  };
+
   const hasExternalCompositions = !!document.querySelector("[data-composition-src]");
   let hasInlineTemplateCompositions = false;
   {
@@ -1008,6 +1069,7 @@ export function initSandboxRuntimeModular(): void {
               if (!(target instanceof HTMLElement)) continue;
               if (target === rootComp) continue;
               if (target.hasAttribute("data-start")) continue;
+              if (findTimedClipAncestor(target, rootComp)) continue;
               if (seen.has(target)) continue;
               seen.add(target);
               target.setAttribute("data-start", "0");
@@ -1027,6 +1089,7 @@ export function initSandboxRuntimeModular(): void {
           if (!(el instanceof HTMLElement)) continue;
           if (el === rootComp) continue;
           if (el.hasAttribute("data-start")) continue;
+          if (findTimedClipAncestor(el, rootComp)) continue;
           if (seen.has(el)) continue;
           if (el.tagName === "SCRIPT" || el.tagName === "STYLE" || el.tagName === "LINK") continue;
           seen.add(el);
@@ -1434,51 +1497,28 @@ export function initSandboxRuntimeModular(): void {
       },
     });
     const visibilityNodes = Array.from(document.querySelectorAll("[data-start]"));
+    const rootComp = resolveRootCompositionElement();
     for (const rawNode of visibilityNodes) {
       if (!(rawNode instanceof HTMLElement)) continue;
-      const tag = rawNode.tagName.toLowerCase();
-      if (tag === "script" || tag === "style" || tag === "link" || tag === "meta") continue;
 
-      const start =
-        tag === "video" || tag === "audio"
-          ? resolveMediaStartSeconds(rawNode, 0)
-          : resolveStartForElement(rawNode, 0);
-      let duration = resolveDurationForElement(rawNode);
-      const compId = rawNode.getAttribute("data-composition-id");
-      if (compId) {
-        const compTimeline = (window.__timelines ?? {})[compId];
-        let liveDuration: number | null = null;
-        if (compTimeline && typeof compTimeline.duration === "function") {
-          const compDur = Number(compTimeline.duration());
-          if (Number.isFinite(compDur) && compDur > 0) {
-            liveDuration = compDur;
+      let isVisibleNow = isTimedElementVisibleAt(rawNode, state.currentTime);
+      // Studio-only defense-in-depth: pseudo-clips stamped on tween targets can
+      // get visibility:visible for the full composition. Render mode never stamps
+      // those targets, so keep the prior per-element visibility semantics there.
+      if (isVisibleNow && window.parent !== window) {
+        // Descendants must not override a hidden ancestor clip.
+        let ancestor = rawNode.parentElement;
+        while (ancestor) {
+          if (ancestor === rootComp) break;
+          if (ancestor instanceof HTMLElement && ancestor.hasAttribute("data-start")) {
+            if (!isTimedElementVisibleAt(ancestor, state.currentTime)) {
+              isVisibleNow = false;
+              break;
+            }
           }
-        }
-
-        const usesExternalCompositionSlot =
-          rawNode.hasAttribute("data-composition-src") ||
-          rawNode.hasAttribute("data-composition-file");
-
-        // Generic child compositions retain legacy behavior and respect both
-        // the authored parent clip window and the live child timeline duration.
-        // External composition hosts render into an authored slot, so a shorter
-        // child timeline should hold its final state through that slot.
-        if (
-          duration != null &&
-          duration > 0 &&
-          liveDuration != null &&
-          !usesExternalCompositionSlot
-        ) {
-          duration = Math.min(duration, liveDuration);
-        } else if ((duration == null || duration <= 0) && liveDuration != null) {
-          duration = liveDuration;
+          ancestor = ancestor.parentElement;
         }
       }
-      const computedEnd =
-        duration != null && duration > 0 ? start + duration : Number.POSITIVE_INFINITY;
-      const isVisibleNow =
-        state.currentTime >= start &&
-        (Number.isFinite(computedEnd) ? state.currentTime <= computedEnd : true);
       rawNode.style.visibility = isVisibleNow ? "visible" : "hidden";
     }
   };

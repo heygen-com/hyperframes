@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useMountEffect } from "./useMountEffect";
 import {
   installStudioManualEditSeekReapply,
@@ -7,6 +7,8 @@ import {
 } from "../components/editor/manualEdits";
 import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
 import type { EditHistoryKind } from "../utils/editHistory";
+import { createDomEditSaveQueue } from "../utils/domEditSaveQueue";
+import { trackStudioEvent } from "../utils/studioTelemetry";
 
 // ── Types ──
 
@@ -35,11 +37,51 @@ interface UsePreviewPersistenceParams {
   reloadPreview: () => void;
 }
 
+function readIframeDocument(iframe: HTMLIFrameElement): Document | null {
+  try {
+    return iframe.contentDocument;
+  } catch {
+    return null;
+  }
+}
+
+function installManualEditReapply(iframe: HTMLIFrameElement): void {
+  const reapply = () => {
+    const doc = readIframeDocument(iframe);
+    if (doc) reapplyPositionEditsAfterSeek(doc);
+  };
+  const install = () => {
+    reapply();
+    if (iframe.contentWindow) installStudioManualEditSeekReapply(iframe.contentWindow, reapply);
+  };
+  const win = iframe.contentWindow;
+  install();
+  win?.requestAnimationFrame?.(install);
+  for (const delayMs of [80, 250, 500, 1000, 2000]) {
+    win?.setTimeout?.(install, delayMs);
+  }
+}
+
+function shouldReloadForStudioFileChange(
+  payload: unknown,
+  pendingTimelineEditPathRef: React.MutableRefObject<Set<string>> | undefined,
+  domEditSaveTimestampRef: React.MutableRefObject<number>,
+): boolean {
+  const changedPath = readStudioFileChangePath(payload);
+  if (!changedPath) return false;
+  const pendingTimelinePaths = pendingTimelineEditPathRef?.current;
+  if (pendingTimelinePaths?.has(changedPath)) {
+    pendingTimelinePaths.delete(changedPath);
+    return false;
+  }
+  return Date.now() - domEditSaveTimestampRef.current >= 4000;
+}
+
 // ── Hook ──
 
 export function usePreviewPersistence({
   projectId,
-  showToast: _showToast,
+  showToast,
   readOptionalProjectFile: _readOptionalProjectFile,
   writeProjectFile: _writeProjectFile,
   recordEdit: _recordEdit,
@@ -49,15 +91,37 @@ export function usePreviewPersistence({
   reloadPreview,
   pendingTimelineEditPathRef,
 }: UsePreviewPersistenceParams) {
-  void _showToast;
   void _recordEdit;
   void _activeCompPathRef;
 
+  const [domEditSaveQueuePaused, setDomEditSaveQueuePaused] = useState<string | null>(null);
+
   const domTextCommitVersionRef = useRef(0);
-  const domEditSaveQueueRef = useRef(Promise.resolve());
+  const showToastRef = useRef(showToast);
+  showToastRef.current = showToast;
+  const domEditSaveQueueRef = useRef<ReturnType<typeof createDomEditSaveQueue> | null>(null);
   const applyStudioManualEditsToPreviewRef = useRef<
     (iframe?: HTMLIFrameElement | null) => Promise<void>
   >(async () => {});
+
+  if (!domEditSaveQueueRef.current) {
+    domEditSaveQueueRef.current = createDomEditSaveQueue({
+      onOpen: (event) => {
+        const message = "Auto-save is paused. Check your connection.";
+        setDomEditSaveQueuePaused(message);
+        showToastRef.current(message, "error");
+        trackStudioEvent("save_queue_paused", {
+          source: "dom_edit",
+          error_message: event.errorMessage,
+          status_code: event.statusCode,
+          consecutive_failures: event.consecutiveFailures,
+        });
+      },
+      onReset: () => {
+        setDomEditSaveQueuePaused(null);
+      },
+    });
+  }
 
   // Keep a ref to the latest projectId so async save callbacks always read the
   // current value, even when the callback was captured in a stale closure.
@@ -67,17 +131,21 @@ export function usePreviewPersistence({
   // ── Queue / drain helpers ──
 
   const queueDomEditSave = useCallback((save: () => Promise<void>) => {
-    const queuedSave = domEditSaveQueueRef.current.catch(() => undefined).then(save);
-    domEditSaveQueueRef.current = queuedSave.then(
-      () => undefined,
-      () => undefined,
-    );
-    return queuedSave;
+    return domEditSaveQueueRef.current?.enqueue(save) ?? save();
   }, []);
 
   const waitForPendingDomEditSaves = useCallback(async () => {
-    await domEditSaveQueueRef.current.catch(() => undefined);
+    await domEditSaveQueueRef.current?.waitForIdle();
   }, []);
+
+  const resetDomEditSaveQueueBreaker = useCallback(() => {
+    domEditSaveQueueRef.current?.reset();
+    setDomEditSaveQueuePaused(null);
+  }, []);
+
+  useMountEffect(() => () => {
+    domEditSaveQueueRef.current?.destroy();
+  });
 
   // ── Apply manual edits (HTML-baked — install seek hooks) ──
   // reapplyPositionEditsAfterSeek now also handles motion reapply from DOM attributes.
@@ -85,37 +153,8 @@ export function usePreviewPersistence({
   const applyCurrentStudioManualEditsToPreview = useCallback(
     (iframe: HTMLIFrameElement | null = previewIframeRef.current) => {
       if (!iframe) return;
-      let doc: Document | null = null;
-      try {
-        doc = iframe.contentDocument;
-      } catch {
-        return;
-      }
-      if (!doc) return;
-
-      const reapply = () => {
-        let d: Document | null = null;
-        try {
-          d = iframe.contentDocument;
-        } catch {
-          return;
-        }
-        if (d) reapplyPositionEditsAfterSeek(d);
-      };
-
-      const install = () => {
-        reapply();
-        if (iframe.contentWindow) installStudioManualEditSeekReapply(iframe.contentWindow, reapply);
-      };
-
-      const win = iframe.contentWindow;
-      install();
-      win?.requestAnimationFrame?.(install);
-      win?.setTimeout?.(install, 80);
-      win?.setTimeout?.(install, 250);
-      win?.setTimeout?.(install, 500);
-      win?.setTimeout?.(install, 1000);
-      win?.setTimeout?.(install, 2000);
+      if (!readIframeDocument(iframe)) return;
+      installManualEditReapply(iframe);
     },
     [previewIframeRef],
   );
@@ -165,16 +204,14 @@ export function usePreviewPersistence({
   // ── Listen for external file changes (HMR / SSE) ──
   useMountEffect(() => {
     const handler = (payload?: unknown) => {
-      const changedPath = readStudioFileChangePath(payload);
-      if (!changedPath) return;
-      const recentDomEditSave = Date.now() - domEditSaveTimestampRef.current < 4000;
-      if (pendingTimelineEditPathRef?.current.has(changedPath)) {
-        pendingTimelineEditPathRef.current.delete(changedPath);
-        return;
-      }
-      if (!recentDomEditSave) {
+      if (
+        shouldReloadForStudioFileChange(
+          payload,
+          pendingTimelineEditPathRef,
+          domEditSaveTimestampRef,
+        )
+      )
         reloadPreview();
-      }
     };
     if (import.meta.hot) {
       import.meta.hot.on("hf:file-change", handler);
@@ -192,6 +229,8 @@ export function usePreviewPersistence({
     applyStudioManualEditsToPreviewRef,
     queueDomEditSave,
     waitForPendingDomEditSaves,
+    domEditSaveQueuePaused,
+    resetDomEditSaveQueueBreaker,
     applyCurrentStudioManualEditsToPreview,
     applyStudioManualEditsToPreview,
     syncHistoryPreviewAfterApply,

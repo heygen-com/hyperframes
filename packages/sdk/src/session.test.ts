@@ -4,6 +4,7 @@
 
 import { describe, it, expect } from "vitest";
 import { openComposition } from "./session.js";
+import type { DraftProps, ElementAtPointResult, PreviewAdapter } from "./adapters/types.js";
 
 const BASE_HTML = `
 <div data-hf-id="hf-stage" data-hf-root style="width: 1280px; height: 720px" data-duration="5">
@@ -12,6 +13,88 @@ const BASE_HTML = `
   <img data-hf-id="hf-logo" src="/logo.png" alt="Logo" />
 </div>
 `.trim();
+
+class TestPreviewAdapter implements PreviewAdapter {
+  private selectionHandlers: Array<(ids: string[]) => void> = [];
+
+  elementAtPoint(_x: number, _y: number, _opts?: { atTime?: number }): ElementAtPointResult | null {
+    return null;
+  }
+
+  applyDraft(_id: string, _props: DraftProps): void {
+    // Test adapter tracks selection only.
+  }
+
+  commitPreview(): void {
+    // Test adapter tracks selection only.
+  }
+
+  cancelPreview(): void {
+    // Test adapter tracks selection only.
+  }
+
+  select(ids: string[], _opts?: { additive?: boolean }): void {
+    this.emitSelection(ids);
+  }
+
+  on(_event: "selection", handler: (ids: string[]) => void): () => void {
+    this.selectionHandlers.push(handler);
+    return () => {
+      this.selectionHandlers = this.selectionHandlers.filter((h) => h !== handler);
+    };
+  }
+
+  emitSelection(ids: readonly string[]): void {
+    const snapshot = [...ids];
+    for (const handler of this.selectionHandlers) {
+      handler([...snapshot]);
+    }
+  }
+
+  listenerCount(): number {
+    return this.selectionHandlers.length;
+  }
+}
+
+// ─── Preview selection bridge ────────────────────────────────────────────────
+
+describe("preview selection bridge", () => {
+  it("mirrors preview selection into session state and notifies subscribers", async () => {
+    const preview = new TestPreviewAdapter();
+    const comp = await openComposition(BASE_HTML, { preview });
+    const events: string[][] = [];
+
+    comp.on("selectionchange", (ids) => events.push([...ids]));
+    preview.select(["hf-title"]);
+
+    expect(comp.getSelection()).toEqual(["hf-title"]);
+    expect(comp.selection().ids).toEqual(["hf-title"]);
+    expect(events).toEqual([["hf-title"]]);
+  });
+
+  it("selection proxy applies edits to ids selected by the preview", async () => {
+    const preview = new TestPreviewAdapter();
+    const comp = await openComposition(BASE_HTML, { preview });
+
+    preview.select(["hf-title", "hf-sub"]);
+    comp.selection().setStyle({ color: "#123456" });
+
+    expect(comp.getElement("hf-title")?.inlineStyles["color"]).toBe("#123456");
+    expect(comp.getElement("hf-sub")?.inlineStyles["color"]).toBe("#123456");
+  });
+
+  it("dispose unsubscribes from preview selection events", async () => {
+    const preview = new TestPreviewAdapter();
+    const comp = await openComposition(BASE_HTML, { preview });
+
+    expect(preview.listenerCount()).toBe(1);
+    comp.dispose();
+    expect(preview.listenerCount()).toBe(0);
+
+    preview.select(["hf-title"]);
+    expect(comp.getSelection()).toEqual([]);
+  });
+});
 
 // ─── History coalescing ───────────────────────────────────────────────────────
 

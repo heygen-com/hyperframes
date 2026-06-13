@@ -66,6 +66,7 @@ class CompositionImpl implements Composition {
   private selectionHandlers: Array<(ids: string[]) => void> = [];
   private patchHandlers: Array<(e: PatchEvent) => void> = [];
   private errorHandlers: Array<(e: PersistErrorEvent) => void> = [];
+  private previewSelectionUnsubscribe: (() => void) | null = null;
 
   /** Attached by openComposition() for standalone mode. */
   private historyModule: HistoryModule | null = null;
@@ -85,6 +86,8 @@ class CompositionImpl implements Composition {
     this.persist = opts.persist;
     this.preview = opts.preview;
     this.overrides = { ...(opts.overrides ?? {}) };
+    this.previewSelectionUnsubscribe =
+      this.preview?.on("selection", (ids) => this.updateSelection(ids)) ?? null;
   }
 
   attachHistory(module: HistoryModule): void {
@@ -204,6 +207,13 @@ class CompositionImpl implements Composition {
 
   getSelection(): string[] {
     return [...this.currentSelection];
+  }
+
+  private updateSelection(ids: readonly string[]): void {
+    this.currentSelection = [...ids];
+    for (const handler of this.selectionHandlers) {
+      handler([...this.currentSelection]);
+    }
   }
 
   // ── Dispatch / batch ─────────────────────────────────────────────────────────
@@ -396,6 +406,8 @@ class CompositionImpl implements Composition {
   }
 
   dispose(): void {
+    this.previewSelectionUnsubscribe?.();
+    this.previewSelectionUnsubscribe = null;
     this.persistQueueModule?.dispose();
     this.historyModule?.dispose();
     this.changeHandlers = [];

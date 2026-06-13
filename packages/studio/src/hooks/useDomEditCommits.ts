@@ -6,6 +6,7 @@ import type { PatchOperation } from "../utils/sourcePatcher";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import { primaryFontFamilyValue } from "../utils/studioFontHelpers";
+import { createStudioSaveHttpError } from "../utils/studioSaveDiagnostics";
 import {
   buildDomEditPatchTarget,
   getDomEditTargetKey,
@@ -31,6 +32,7 @@ import {
 import { fontFamilyFromAssetPath, type ImportedFontAsset } from "../components/editor/fontAssets";
 import type { DomEditGroupPathOffsetCommit } from "../components/editor/DomEditOverlay";
 import type { EditHistoryKind } from "../utils/editHistory";
+import { useDomEditPositionPatchCommit } from "./useDomEditPositionPatchCommit";
 import { useDomEditTextCommits } from "./useDomEditTextCommits";
 
 // ── Helpers ──
@@ -178,7 +180,9 @@ export function useDomEditCommits({
       const readResponse = await fetch(
         `/api/projects/${pid}/files/${encodeURIComponent(targetPath)}`,
       );
-      if (!readResponse.ok) throw new Error(`Failed to read ${targetPath}`);
+      if (!readResponse.ok) {
+        throw await createStudioSaveHttpError(readResponse, `Failed to read ${targetPath}`);
+      }
       const readData = (await readResponse.json()) as { content?: string };
       const originalContent = readData.content;
       if (typeof originalContent !== "string") {
@@ -202,7 +206,9 @@ export function useDomEditCommits({
           body: JSON.stringify({ target: patchTarget, operations }),
         },
       );
-      if (!patchResponse.ok) throw new Error(`Failed to patch ${targetPath}`);
+      if (!patchResponse.ok) {
+        throw await createStudioSaveHttpError(patchResponse, `Failed to patch ${targetPath}`);
+      }
 
       const patchData = (await patchResponse.json()) as {
         ok?: boolean;
@@ -285,38 +291,12 @@ export function useDomEditCommits({
     resolveImportedFontAsset,
   });
 
-  // ── Position patch helper ──
-
-  // fallow-ignore-next-line complexity
-  const commitPositionPatchToHtml = useCallback(
-    (
-      selection: DomEditSelection,
-      patches: PatchOperation[],
-      options: { label: string; coalesceKey: string; skipRefresh?: boolean },
-    ) => {
-      return queueDomEditSave(async () => {
-        await persistDomEditOperations(selection, patches, {
-          label: options.label,
-          coalesceKey: options.coalesceKey,
-          skipRefresh: options.skipRefresh ?? true,
-        });
-        // fallow-ignore-next-line complexity
-      }).catch((error) => {
-        const message = error instanceof Error ? error.message : "Failed to save position";
-        showToast(message);
-        trackStudioEvent("save_failure", {
-          source: "dom_edit",
-          label: options.label,
-          error_message: message,
-          target_id: selection.id ?? undefined,
-          target_selector: selection.selector ?? undefined,
-          target_source_file: selection.sourceFile ?? undefined,
-        });
-        throw error;
-      });
-    },
-    [persistDomEditOperations, queueDomEditSave, showToast],
-  );
+  const commitPositionPatchToHtml = useDomEditPositionPatchCommit({
+    activeCompPath,
+    persistDomEditOperations,
+    queueDomEditSave,
+    showToast,
+  });
 
   // ── Position commits ──
 
@@ -429,7 +409,9 @@ export function useDomEditCommits({
         const response = await fetch(
           `/api/projects/${pid}/files/${encodeURIComponent(targetPath)}`,
         );
-        if (!response.ok) throw new Error(`Failed to read ${targetPath}`);
+        if (!response.ok) {
+          throw await createStudioSaveHttpError(response, `Failed to read ${targetPath}`);
+        }
 
         const data = (await response.json()) as { content?: string };
         const originalContent = data.content;
@@ -450,7 +432,12 @@ export function useDomEditCommits({
             body: JSON.stringify({ target: patchTarget }),
           },
         );
-        if (!removeResponse.ok) throw new Error(`Failed to delete element from ${targetPath}`);
+        if (!removeResponse.ok) {
+          throw await createStudioSaveHttpError(
+            removeResponse,
+            `Failed to delete element from ${targetPath}`,
+          );
+        }
 
         const removeData = (await removeResponse.json()) as { changed?: boolean; content?: string };
         const patchedContent =

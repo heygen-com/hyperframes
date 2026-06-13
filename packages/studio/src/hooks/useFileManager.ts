@@ -6,6 +6,11 @@ import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import type { EditHistoryKind } from "../utils/editHistory";
 import { findTagByTarget, type PatchTarget } from "../utils/sourcePatcher";
 import { trackStudioEvent } from "../utils/studioTelemetry";
+import {
+  createStudioSaveHttpError,
+  retryStudioSave,
+  StudioSaveNetworkError,
+} from "../utils/studioSaveDiagnostics";
 
 // ── Types ──
 
@@ -97,12 +102,21 @@ export function useFileManager({
   const writeProjectFile = useCallback(async (path: string, content: string): Promise<void> => {
     const pid = projectIdRef.current;
     if (!pid) throw new Error("No active project");
-    const response = await fetch(`/api/projects/${pid}/files/${encodeURIComponent(path)}`, {
-      method: "PUT",
-      headers: { "Content-Type": "text/plain" },
-      body: content,
+    await retryStudioSave(async () => {
+      let response: Response;
+      try {
+        response = await fetch(`/api/projects/${pid}/files/${encodeURIComponent(path)}`, {
+          method: "PUT",
+          headers: { "Content-Type": "text/plain" },
+          body: content,
+        });
+      } catch (error) {
+        throw new StudioSaveNetworkError(`Failed to save ${path}: network error`, {
+          cause: error,
+        });
+      }
+      if (!response.ok) throw await createStudioSaveHttpError(response, `Failed to save ${path}`);
     });
-    if (!response.ok) throw new Error(`Failed to save ${path}`);
     if (editingPathRef.current === path) {
       setEditingFile({ path, content });
     }

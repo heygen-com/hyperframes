@@ -37,6 +37,7 @@ import {
   type FindPortResult,
 } from "../server/portUtils.js";
 import { killOrphanedProcesses, killProcessTree } from "../utils/orphanCleanup.js";
+import { resolveProject } from "../utils/project.js";
 
 export default defineCommand({
   meta: { name: "preview", description: "Start the studio for previewing compositions" },
@@ -118,23 +119,18 @@ export default defineCommand({
     }
 
     const rawArg = args.dir;
-    const dir = resolve(rawArg ?? ".");
-
-    // Compute display name: preserve symlink/CWD name when user runs "hyperframes preview ."
     const isImplicitCwd = !rawArg || rawArg === "." || rawArg === "./";
-    const projectName = isImplicitCwd ? basename(process.env.PWD ?? dir) : basename(dir);
+    const project = resolveProject(rawArg);
+    const dir = project.dir;
+    const indexPath = project.indexPath;
+    const projectName = isImplicitCwd ? basename(process.env.PWD ?? dir) : project.name;
 
     // Lint before starting — surface issues for the agent to fix.
-    // preview.ts doesn't use resolveProject() because it needs to proceed even without index.html.
-    const indexPath = join(dir, "index.html");
-    if (existsSync(indexPath)) {
-      const project = { dir, name: projectName, indexPath };
-      const lintResult = await lintProject(project);
-      if (lintResult.totalErrors > 0 || lintResult.totalWarnings > 0) {
-        console.log();
-        for (const line of formatLintFindings(lintResult)) console.log(line);
-        console.log();
-      }
+    const lintResult = await lintProject({ dir, name: projectName, indexPath });
+    if (lintResult.totalErrors > 0 || lintResult.totalWarnings > 0) {
+      console.log();
+      for (const line of formatLintFindings(lintResult)) console.log(line);
+      console.log();
     }
 
     // Validation: --user-data-dir requires --browser-path

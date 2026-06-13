@@ -2,14 +2,16 @@ import type { Hono } from "hono";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { StudioApiAdapter } from "../types.js";
-import { walkDir } from "../helpers/safePath.js";
+import { isInHiddenOrVendorDir, walkDir } from "../helpers/safePath.js";
 
 export function registerLintRoutes(api: Hono, adapter: StudioApiAdapter): void {
   api.get("/projects/:id/lint", async (c) => {
     const project = await adapter.resolveProject(c.req.param("id"));
     if (!project) return c.json({ error: "not found" }, 404);
     try {
-      const htmlFiles = walkDir(project.dir).filter((f) => f.endsWith(".html"));
+      const htmlFiles = walkDir(project.dir).filter(
+        (f) => f.endsWith(".html") && !isInHiddenOrVendorDir(f),
+      );
       const allFindings: Array<{
         severity: string;
         message: string;

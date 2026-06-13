@@ -17,6 +17,7 @@ import { isAudioFile } from "../helpers/mime.js";
 import { generateWaveformCache } from "../helpers/waveform.js";
 import { validateUploadedMediaBuffer } from "../helpers/mediaValidation.js";
 import { isSafePath } from "../helpers/safePath.js";
+import { backupPathForResponse, snapshotBeforeWrite } from "../helpers/backupJournal.js";
 import type { GsapAnimation } from "../../parsers/gsapSerialize.js";
 import {
   removeElementFromHtml,
@@ -94,15 +95,25 @@ type MutationTarget = {
 /** Write `next` to `absPath` only if it differs from `original`, returning a standardized change response. */
 function writeIfChanged(
   c: RouteContext,
+  projectDir: string,
+  filePath: string,
   absPath: string,
   original: string,
   next: string,
 ): Response {
   if (next === original) {
-    return c.json({ ok: true, changed: false, content: original });
+    return c.json({ ok: true, changed: false, content: original, path: filePath });
   }
+  const backup = snapshotBeforeWrite(projectDir, absPath);
+  if (backup.error) console.warn(`Failed to create backup for ${filePath}: ${backup.error}`);
   writeFileSync(absPath, next, "utf-8");
-  return c.json({ ok: true, changed: true, content: next });
+  return c.json({
+    ok: true,
+    changed: true,
+    content: next,
+    path: filePath,
+    backupPath: backupPathForResponse(projectDir, backup.backupPath),
+  });
 }
 
 /**
@@ -815,9 +826,15 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
 
     ensureDir(res.absPath);
     const body = await c.req.text();
+    const backup = snapshotBeforeWrite(res.project.dir, res.absPath);
+    if (backup.error) console.warn(`Failed to create backup for ${res.filePath}: ${backup.error}`);
     writeFileSync(res.absPath, body, "utf-8");
 
-    return c.json({ ok: true });
+    return c.json({
+      ok: true,
+      path: res.filePath,
+      backupPath: backupPathForResponse(res.project.dir, backup.backupPath),
+    });
   });
 
   // ── Create (fail if exists) ──
@@ -844,13 +861,18 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     if ("error" in res) return res.error;
 
     const stat = statSync(res.absPath);
+    const backup = snapshotBeforeWrite(res.project.dir, res.absPath);
+    if (backup.error) console.warn(`Failed to create backup for ${res.filePath}: ${backup.error}`);
     if (stat.isDirectory()) {
       rmSync(res.absPath, { recursive: true });
     } else {
       unlinkSync(res.absPath);
     }
 
-    return c.json({ ok: true });
+    return c.json({
+      ok: true,
+      backupPath: backupPathForResponse(res.project.dir, backup.backupPath),
+    });
   });
 
   api.post("/projects/:id/file-mutations/remove-element/*", async (c) => {
@@ -867,6 +889,8 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     const originalContent = readFileSync(ctx.absPath, "utf-8");
     return writeIfChanged(
       c,
+      ctx.project.dir,
+      ctx.filePath,
       ctx.absPath,
       originalContent,
       removeElementFromHtml(originalContent, parsed.target),
@@ -900,10 +924,19 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       parsed.body.newId,
     );
     if (!result.matched) {
-      return c.json({ ok: false, changed: false, content: originalContent });
+      return c.json({ ok: false, changed: false, content: originalContent, path: ctx.filePath });
     }
+    const backup = snapshotBeforeWrite(ctx.project.dir, ctx.absPath);
+    if (backup.error) console.warn(`Failed to create backup for ${ctx.filePath}: ${backup.error}`);
     writeFileSync(ctx.absPath, result.html, "utf-8");
-    return c.json({ ok: true, changed: true, content: result.html, newId: result.newId });
+    return c.json({
+      ok: true,
+      changed: true,
+      content: result.html,
+      newId: result.newId,
+      path: ctx.filePath,
+      backupPath: backupPathForResponse(ctx.project.dir, backup.backupPath),
+    });
   });
 
   api.post("/projects/:id/file-mutations/patch-element/*", async (c) => {
@@ -931,10 +964,25 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       parsed.body.operations,
     );
     if (patched === originalContent) {
-      return c.json({ ok: true, changed: false, matched, content: originalContent });
+      return c.json({
+        ok: true,
+        changed: false,
+        matched,
+        content: originalContent,
+        path: ctx.filePath,
+      });
     }
+    const backup = snapshotBeforeWrite(ctx.project.dir, ctx.absPath);
+    if (backup.error) console.warn(`Failed to create backup for ${ctx.filePath}: ${backup.error}`);
     writeFileSync(ctx.absPath, patched, "utf-8");
-    return c.json({ ok: true, changed: true, matched, content: patched });
+    return c.json({
+      ok: true,
+      changed: true,
+      matched,
+      content: patched,
+      path: ctx.filePath,
+      backupPath: backupPathForResponse(ctx.project.dir, backup.backupPath),
+    });
   });
 
   api.post("/projects/:id/file-mutations/probe-element/*", async (c) => {
@@ -1113,7 +1161,12 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     const newScript = typeof result === "string" ? result : result.script;
     const changed = newScript !== block.scriptText;
     const newHtml = changed ? block.replaceScript(newScript) : html;
+    let backupPath: string | null = null;
     if (changed) {
+      const backup = snapshotBeforeWrite(res.project.dir, res.absPath);
+      if (backup.error)
+        console.warn(`Failed to create backup for ${res.filePath}: ${backup.error}`);
+      backupPath = backupPathForResponse(res.project.dir, backup.backupPath);
       writeFileSync(res.absPath, newHtml, "utf-8");
     }
 
@@ -1126,6 +1179,8 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       before: html,
       after: newHtml,
       scriptText: newScript,
+      path: res.filePath,
+      backupPath,
     };
     if (typeof result !== "string" && result.skippedSelectors.length > 0) {
       responsePayload.skippedSelectors = result.skippedSelectors;
