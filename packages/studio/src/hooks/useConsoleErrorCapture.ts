@@ -17,15 +17,38 @@ export function useConsoleErrorCapture(previewIframe: HTMLIFrameElement | null) 
   // eslint-disable-next-line no-restricted-syntax
   useEffect(() => {
     if (!previewIframe) return;
+
+    let patchedWin: (Window & typeof globalThis) | null = null;
+    let origConsoleError: ((...args: unknown[]) => void) | null = null;
+    let errorHandler: ((e: ErrorEvent) => void) | null = null;
+
+    const detachErrorCapture = () => {
+      const win = patchedWin;
+      if (!win) return;
+      patchedWin = null;
+      try {
+        // origConsoleError and errorHandler are always set alongside patchedWin
+        win.console.error = origConsoleError!;
+        win.removeEventListener("error", errorHandler!);
+        delete (win as unknown as Record<string, unknown>).__hfErrorCapture;
+      } catch {
+        /* cross-origin or destroyed window */
+      }
+      origConsoleError = null;
+      errorHandler = null;
+    };
+
     const attachErrorCapture = () => {
+      detachErrorCapture();
       try {
         const win = previewIframe.contentWindow as (Window & typeof globalThis) | null;
         if (!win) return;
         if ((win as unknown as Record<string, unknown>).__hfErrorCapture) return;
         (win as unknown as Record<string, unknown>).__hfErrorCapture = true;
-        const origError = win.console.error.bind(win.console);
+        patchedWin = win;
+        origConsoleError = win.console.error.bind(win.console);
         win.console.error = function (...args: unknown[]) {
-          origError(...args);
+          origConsoleError!(...args);
           const text = args.map((a) => (a instanceof Error ? a.message : String(a))).join(" ");
           if (text.includes("favicon")) return;
           consoleErrorsRef.current = [
@@ -34,18 +57,20 @@ export function useConsoleErrorCapture(previewIframe: HTMLIFrameElement | null) 
           ];
           setConsoleErrors([...consoleErrorsRef.current]);
         };
-        win.addEventListener("error", (e: ErrorEvent) => {
+        errorHandler = (e: ErrorEvent) => {
           const text = e.message || String(e);
           consoleErrorsRef.current = [
             ...consoleErrorsRef.current,
             { severity: "error", message: text },
           ];
           setConsoleErrors([...consoleErrorsRef.current]);
-        });
+        };
+        win.addEventListener("error", errorHandler);
       } catch {
         /* same-origin only */
       }
     };
+
     attachErrorCapture();
     const handleLoad = () => {
       consoleErrorsRef.current = [];
@@ -53,7 +78,10 @@ export function useConsoleErrorCapture(previewIframe: HTMLIFrameElement | null) 
       attachErrorCapture();
     };
     previewIframe.addEventListener("load", handleLoad);
-    return () => previewIframe.removeEventListener("load", handleLoad);
+    return () => {
+      previewIframe.removeEventListener("load", handleLoad);
+      detachErrorCapture();
+    };
   }, [previewIframe]);
 
   return { consoleErrors, setConsoleErrors, resetErrors };

@@ -151,7 +151,7 @@ export const liveTime = {
   },
 };
 
-export const usePlayerStore = create<PlayerState>((set) => ({
+export const usePlayerStore = create<PlayerState>((set, get) => ({
   isPlaying: false,
   currentTime: 0,
   duration: 0,
@@ -223,7 +223,10 @@ export const usePlayerStore = create<PlayerState>((set) => ({
   lintFindingsByElement: new Map(),
   setLintFindingsByElement: (map) => set({ lintFindingsByElement: map }),
 
-  setIsPlaying: (playing) => set({ isPlaying: playing }),
+  setIsPlaying: (playing) => {
+    if (get().isPlaying === playing) return;
+    set({ isPlaying: playing });
+  },
   setPlaybackRate: (rate) => {
     writeStudioUiPreferences({ playbackRate: rate });
     set({ playbackRate: rate });
