@@ -1,6 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { VALID_CANVAS_RESOLUTIONS } from "../../core.types";
@@ -13,7 +13,9 @@ function createAdapter(
 ): { adapter: StudioApiAdapter; rendersDir: string } {
   const adapter: StudioApiAdapter = {
     listProjects: () => [],
-    resolveProject: async (id: string) => ({ id, dir: "/tmp/proj" }),
+    // Use a real, existing dir: isSafePath() canonicalizes the project dir with
+    // realpath and fails closed if it doesn't exist (real projects always do).
+    resolveProject: async (id: string) => ({ id, dir: tmpdir() }),
     bundle: async () => null,
     lint: async () => ({ findings: [] }),
     runtimeUrl: "/api/runtime.js",
@@ -259,5 +261,85 @@ describe("POST /projects/:id/render — fps wire format", () => {
     } finally {
       cleanup();
     }
+  });
+});
+
+describe("POST /projects/:id/render — composition path safety", () => {
+  const tmpDirs: string[] = [];
+
+  function buildAppWithProjectDir(spy: ReturnType<typeof vi.fn>): {
+    app: Hono;
+    projectDir: string;
+  } {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-render-proj-"));
+    const rendersDir = mkdtempSync(join(tmpdir(), "hf-render-out-"));
+    tmpDirs.push(projectDir, rendersDir);
+    const adapter: StudioApiAdapter = {
+      listProjects: () => [],
+      resolveProject: async (id: string) => ({ id, dir: projectDir }),
+      bundle: async () => null,
+      lint: async () => ({ findings: [] }),
+      runtimeUrl: "/api/runtime.js",
+      rendersDir: () => rendersDir,
+      startRender: (opts) => {
+        spy(opts);
+        return { id: opts.jobId, status: "rendering", progress: 0, outputPath: opts.outputPath };
+      },
+    };
+    const app = new Hono();
+    registerRenderRoutes(app, adapter);
+    return { app, projectDir };
+  }
+
+  afterEach(() => {
+    for (const d of tmpDirs) rmSync(d, { recursive: true, force: true });
+    tmpDirs.length = 0;
+  });
+
+  async function postComposition(app: Hono, composition: string): Promise<Response> {
+    return app.request("http://localhost/projects/demo/render", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ fps: 30, quality: "standard", format: "mp4", composition }),
+    });
+  }
+
+  it("accepts a composition path inside the project directory", async () => {
+    const spy = vi.fn();
+    const { app } = buildAppWithProjectDir(spy);
+    const res = await postComposition(app, "scenes/intro.html");
+    expect(res.status).toBe(200);
+    expect(spy).toHaveBeenCalledOnce();
+  });
+
+  it("rejects a `..` traversal in the composition path", async () => {
+    const spy = vi.fn();
+    const { app } = buildAppWithProjectDir(spy);
+    const res = await postComposition(app, "../../etc/passwd");
+    expect(res.status).toBe(400);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("rejects a composition reached through an in-project symlink pointing outside the project", async () => {
+    const spy = vi.fn();
+    const { app, projectDir } = buildAppWithProjectDir(spy);
+    const external = mkdtempSync(join(tmpdir(), "hf-render-external-"));
+    tmpDirs.push(external);
+    writeFileSync(join(external, "secret.html"), "<html></html>");
+    symlinkSync(external, join(projectDir, "link"), "dir");
+    const res = await postComposition(app, "link/secret.html");
+    expect(res.status).toBe(400);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("allows a composition reached through an in-project symlink that stays inside the project", async () => {
+    const spy = vi.fn();
+    const { app, projectDir } = buildAppWithProjectDir(spy);
+    mkdirSync(join(projectDir, "real"));
+    writeFileSync(join(projectDir, "real", "scene.html"), "<html></html>");
+    symlinkSync(join(projectDir, "real"), join(projectDir, "alias"), "dir");
+    const res = await postComposition(app, "alias/scene.html");
+    expect(res.status).toBe(200);
+    expect(spy).toHaveBeenCalledOnce();
   });
 });

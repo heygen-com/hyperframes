@@ -100,6 +100,7 @@ export default defineCommand({
 
     const { Hono } = await import("hono");
     const { createAdaptorServer } = await import("@hono/node-server");
+    const { isSafePath } = await import("@hyperframes/core/studio-api");
 
     const app = new Hono();
 
@@ -124,8 +125,11 @@ export default defineCommand({
       const reqPath = ctx.req.path.replace("/composition/", "");
       const filePath = resolve(project.dir, reqPath);
 
-      // Security: don't allow path traversal outside project dir
-      if (!filePath.startsWith(project.dir)) return ctx.text("Forbidden", 403);
+      // Security: don't allow path traversal outside project dir. isSafePath
+      // canonicalizes symlinks and applies a trailing-separator guard, so neither
+      // an in-project symlink to an external target nor a sibling dir whose name
+      // shares the project-dir prefix (e.g. `<dir>-evil`) can escape.
+      if (!isSafePath(project.dir, filePath)) return ctx.text("Forbidden", 403);
       if (!existsSync(filePath)) return ctx.text("Not found", 404);
 
       const content = readFileSync(filePath, "utf-8");

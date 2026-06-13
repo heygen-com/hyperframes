@@ -1,9 +1,10 @@
 import type { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { existsSync, readFileSync, mkdirSync, unlinkSync, readdirSync, statSync } from "node:fs";
-import { join, resolve, sep } from "node:path";
+import { join, resolve } from "node:path";
 import type { StudioApiAdapter, RenderJobState } from "../types.js";
 import { VALID_CANVAS_RESOLUTIONS, parseFps, type CanvasResolution } from "../../core.types.js";
+import { isSafePath } from "../helpers/safePath.js";
 
 const VALID_RESOLUTIONS = new Set<string>(VALID_CANVAS_RESOLUTIONS);
 
@@ -80,7 +81,10 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     let composition: string | undefined;
     if (typeof body.composition === "string" && body.composition.length > 0) {
       const resolved = resolve(project.dir, body.composition);
-      if (!resolved.startsWith(resolve(project.dir) + sep)) {
+      // `body.composition` is attacker-controlled (from c.req.json()). isSafePath
+      // dereferences symlinks so an in-project symlink pointing outside the root
+      // can't smuggle the render target out of the project dir.
+      if (!isSafePath(project.dir, resolved)) {
         return c.json({ error: "composition path must be within the project directory" }, 400);
       }
       composition = body.composition;
