@@ -48,7 +48,11 @@ export function isSafePath(base: string, resolved: string): boolean {
       continue;
     }
 
-    const targetReal = trailing.length ? join(ancestorReal, ...trailing.reverse()) : ancestorReal;
+    // Copy before reverse(): the array is only consumed once today, but a future
+    // edit that loops would otherwise silently misorder the rebuilt segments.
+    const targetReal = trailing.length
+      ? join(ancestorReal, ...[...trailing].reverse())
+      : ancestorReal;
     return targetReal === baseReal || targetReal.startsWith(baseReal + sep);
   }
 }

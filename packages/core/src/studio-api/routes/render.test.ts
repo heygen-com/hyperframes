@@ -304,6 +304,17 @@ describe("POST /projects/:id/render — composition path safety", () => {
     });
   }
 
+  // Mirror the repo convention (preview.test.ts): skip symlink cases on
+  // non-symlink-privileged Windows runners rather than crash the suite.
+  function tryCreateSymlink(target: string, path: string, type: "dir" | "file"): boolean {
+    try {
+      symlinkSync(target, path, type);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   it("accepts a composition path inside the project directory", async () => {
     const spy = vi.fn();
     const { app } = buildAppWithProjectDir(spy);
@@ -326,7 +337,7 @@ describe("POST /projects/:id/render — composition path safety", () => {
     const external = mkdtempSync(join(tmpdir(), "hf-render-external-"));
     tmpDirs.push(external);
     writeFileSync(join(external, "secret.html"), "<html></html>");
-    symlinkSync(external, join(projectDir, "link"), "dir");
+    if (!tryCreateSymlink(external, join(projectDir, "link"), "dir")) return;
     const res = await postComposition(app, "link/secret.html");
     expect(res.status).toBe(400);
     expect(spy).not.toHaveBeenCalled();
@@ -337,7 +348,7 @@ describe("POST /projects/:id/render — composition path safety", () => {
     const { app, projectDir } = buildAppWithProjectDir(spy);
     mkdirSync(join(projectDir, "real"));
     writeFileSync(join(projectDir, "real", "scene.html"), "<html></html>");
-    symlinkSync(join(projectDir, "real"), join(projectDir, "alias"), "dir");
+    if (!tryCreateSymlink(join(projectDir, "real"), join(projectDir, "alias"), "dir")) return;
     const res = await postComposition(app, "alias/scene.html");
     expect(res.status).toBe(200);
     expect(spy).toHaveBeenCalledOnce();

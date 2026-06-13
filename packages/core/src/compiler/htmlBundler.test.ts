@@ -17,6 +17,17 @@ function makeTempProject(files: Record<string, string>): string {
   return dir;
 }
 
+// Mirror the repo convention (preview.test.ts): skip symlink cases on
+// non-symlink-privileged Windows runners rather than crash the suite.
+function tryCreateSymlink(target: string, path: string, type: "dir" | "file"): boolean {
+  try {
+    symlinkSync(target, path, type);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 describe("bundleToSingleHtml", () => {
   it("does not merge author scripts into the runtime bootstrap placeholder", async () => {
     const dir = makeTempProject({
@@ -81,7 +92,7 @@ describe("bundleToSingleHtml", () => {
     });
     const external = mkdtempSync(join(tmpdir(), "hf-bundler-external-"));
     writeFileSync(join(external, "secret.js"), `window.__HF_SECRET__ = "SECRET_MARKER_LEAKED";`);
-    symlinkSync(external, join(dir, "ext"), "dir");
+    if (!tryCreateSymlink(external, join(dir, "ext"), "dir")) return;
 
     const bundled = await bundleToSingleHtml(dir);
 

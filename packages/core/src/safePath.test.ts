@@ -18,6 +18,17 @@ describe("isSafePath", () => {
     return dir;
   }
 
+  // Mirror the repo convention (preview.test.ts): non-symlink-privileged Windows
+  // runners can't create symlinks — skip those cases rather than crash the suite.
+  function tryCreateSymlink(target: string, path: string, type: "dir" | "file"): boolean {
+    try {
+      symlinkSync(target, path, type);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   it("allows the base directory itself", () => {
     const base = tmpDir("safepath-base-");
     expect(isSafePath(base, base)).toBe(true);
@@ -48,15 +59,15 @@ describe("isSafePath", () => {
     const secret = join(external, "secret.txt");
     writeFileSync(secret, "top secret");
     // project/link -> external/  (the classic in-project symlink escape)
-    symlinkSync(external, join(base, "link"), "dir");
+    if (!tryCreateSymlink(external, join(base, "link"), "dir")) return;
     expect(isSafePath(base, join(base, "link", "secret.txt"))).toBe(false);
   });
 
   it("rejects a not-yet-existing write target whose parent is a symlink to outside base", () => {
     const base = tmpDir("safepath-base-");
     const external = tmpDir("safepath-external-");
-    symlinkSync(external, join(base, "link"), "dir");
     // base/link -> external; writing base/link/evil.txt would land in external.
+    if (!tryCreateSymlink(external, join(base, "link"), "dir")) return;
     expect(isSafePath(base, join(base, "link", "evil.txt"))).toBe(false);
   });
 
@@ -65,7 +76,7 @@ describe("isSafePath", () => {
     const external = tmpDir("safepath-external-");
     const secret = join(external, "secret.txt");
     writeFileSync(secret, "top secret");
-    symlinkSync(secret, join(base, "passwd"), "file");
+    if (!tryCreateSymlink(secret, join(base, "passwd"), "file")) return;
     expect(isSafePath(base, join(base, "passwd"))).toBe(false);
   });
 
@@ -74,7 +85,7 @@ describe("isSafePath", () => {
     const realDir = join(base, "real");
     mkdirSync(realDir);
     writeFileSync(join(realDir, "in.txt"), "x");
-    symlinkSync(realDir, join(base, "alias"), "dir");
+    if (!tryCreateSymlink(realDir, join(base, "alias"), "dir")) return;
     expect(isSafePath(base, join(base, "alias", "in.txt"))).toBe(true);
   });
 
@@ -85,7 +96,7 @@ describe("isSafePath", () => {
     const realBase = tmpDir("safepath-realbase-");
     const linkParent = tmpDir("safepath-linkparent-");
     const baseLink = join(linkParent, "baseLink");
-    symlinkSync(realBase, baseLink, "dir");
+    if (!tryCreateSymlink(realBase, baseLink, "dir")) return;
     writeFileSync(join(realBase, "file.txt"), "x");
     expect(isSafePath(baseLink, join(baseLink, "file.txt"))).toBe(true);
   });
