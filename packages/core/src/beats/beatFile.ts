@@ -13,9 +13,20 @@ export function audioRelPathForSrc(src: string | null | undefined): string | nul
   if (!src) return null;
   // blob:/data: URLs have no stable identity across sessions — not persistable.
   if (/^(blob:|data:)/i.test(src)) return null;
-  // Studio preview URLs: /api/projects/<id>/preview[/comp]/<relpath>
-  const previewMatch = src.match(/\/preview\/(?:comp\/)?(.+?)(?:[?#].*)?$/);
-  let rel: string | null = previewMatch ? decodeURIComponent(previewMatch[1]!) : null;
+  // Studio preview URLs: /api/projects/<id>/preview[/comp]/<relpath>.
+  // Parsed with indexOf/slice (not a regex) to avoid polynomial backtracking
+  // on adversarial inputs (CodeQL js/polynomial-redos).
+  let rel: string | null = null;
+  const PREVIEW = "/preview/";
+  const previewIdx = src.indexOf(PREVIEW);
+  if (previewIdx !== -1) {
+    let after = src.slice(previewIdx + PREVIEW.length);
+    // Strip query/hash (single char class — linear, ReDoS-safe).
+    const queryOrHash = after.search(/[?#]/);
+    if (queryOrHash !== -1) after = after.slice(0, queryOrHash);
+    if (after.startsWith("comp/")) after = after.slice("comp/".length);
+    rel = after ? decodeURIComponent(after) : null;
+  }
   if (!rel) {
     // Fall back to the FULL pathname (not just basename) so two files with the
     // same name in different folders don't collide on one beat file.
