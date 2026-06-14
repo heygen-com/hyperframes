@@ -112,6 +112,7 @@ export const BeatStrip = memo(function BeatStrip({
               e.currentTarget.setPointerCapture(e.pointerId);
               dragRef.current = { index: i, startX: e.clientX, origTime: t };
               setDrag({ index: i, dx: 0 });
+              usePlayerStore.getState().setBeatDragging(true); // hide the playhead guideline
               usePlayerStore.getState().requestSeek(Math.max(0, t)); // scrub audio at beat
             }}
             onPointerMove={(e) => {
@@ -127,6 +128,7 @@ export const BeatStrip = memo(function BeatStrip({
               const d = dragRef.current;
               dragRef.current = null;
               setDrag(null);
+              usePlayerStore.getState().setBeatDragging(false);
               if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
                 e.currentTarget.releasePointerCapture(e.pointerId);
               }

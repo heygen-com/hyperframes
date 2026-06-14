@@ -60,6 +60,8 @@ interface PlayerState {
   currentTime: number;
   duration: number;
   timelineReady: boolean;
+  /** True while a beat dot is being dragged — hides the playhead guideline. */
+  beatDragging: boolean;
   elements: TimelineElement[];
   selectedElementId: string | null;
   playbackRate: number;
@@ -103,6 +105,7 @@ interface PlayerState {
   setAudioMuted: (muted: boolean) => void;
   setLoopEnabled: (enabled: boolean) => void;
   setTimelineReady: (ready: boolean) => void;
+  setBeatDragging: (dragging: boolean) => void;
   setElements: (elements: TimelineElement[]) => void;
   setSelectedElementId: (id: string | null) => void;
   updateElement: (
@@ -171,6 +174,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   currentTime: 0,
   duration: 0,
   timelineReady: false,
+  beatDragging: false,
   elements: [],
   selectedElementId: null,
   playbackRate: readStudioUiPreferences().playbackRate ?? 1,
@@ -307,6 +311,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   setCurrentTime: (time) => set({ currentTime: Number.isFinite(time) ? time : 0 }),
   setDuration: (duration) => set({ duration: Number.isFinite(duration) ? duration : 0 }),
   setTimelineReady: (ready) => set({ timelineReady: ready }),
+  setBeatDragging: (dragging) => set({ beatDragging: dragging }),
   setElements: (elements) => set({ elements }),
   setSelectedElementId: (id) => set({ selectedElementId: id }),
   updateElement: (elementId, updates) =>
@@ -324,6 +329,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       currentTime: 0,
       duration: 0,
       timelineReady: false,
+      beatDragging: false,
       elements: [],
       selectedElementId: null,
       inPoint: null,

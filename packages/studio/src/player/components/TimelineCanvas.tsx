@@ -22,6 +22,7 @@ import type { TrackVisualStyle } from "./timelineIcons";
 import { STUDIO_KEYFRAMES_ENABLED } from "../../components/editor/manualEditingAvailability";
 import { SPLIT_BOUNDARY_EPSILON_S } from "../../utils/timelineElementSplit";
 import { useTimelineEditContext } from "../../contexts/TimelineEditContext";
+import { isMusicTrack } from "../../utils/timelineInspector";
 
 function ClipLabel({ element, color }: { element: TimelineElement; color: string }) {
   const lint = usePlayerStore((s) => s.lintFindingsByElement.get(element.key ?? element.id));
@@ -145,6 +146,7 @@ export const TimelineCanvas = memo(function TimelineCanvas({
 }: TimelineCanvasProps) {
   const { onResizeElement, onMoveElement, onRazorSplit, onRazorSplitAll } =
     useTimelineEditContext();
+  const beatDragging = usePlayerStore((s) => s.beatDragging);
   const draggedElement = draggedClip?.element ?? null;
   const activeDraggedElement =
     draggedClip?.started === true && draggedElement
@@ -250,8 +252,11 @@ export const TimelineCanvas = memo(function TimelineCanvas({
                 pps={pps}
                 highlightTime={draggedClip?.started ? draggedClip.snapBeatTime : null}
               />
-              {/* Beat dots only on the active track (the one holding the selection). */}
-              {els.some((e) => (e.key ?? e.id) === selectedElementId) && (
+              {/* Beat dots on the active track (the one holding the selection),
+                  falling back to the music track when nothing is selected. */}
+              {(selectedElementId
+                ? els.some((e) => (e.key ?? e.id) === selectedElementId)
+                : els.some(isMusicTrack)) && (
                 <BeatStrip
                   beatTimes={beatAnalysis?.beatTimes}
                   beatStrengths={beatAnalysis?.beatStrengths}
@@ -494,11 +499,16 @@ export const TimelineCanvas = memo(function TimelineCanvas({
         />
       )}
 
-      {/* Playhead */}
+      {/* Playhead — hidden while dragging a beat so its guideline doesn't
+          track the scrub and clutter the beat being moved. */}
       <div
         ref={playheadRef}
         className="absolute top-0 bottom-0 pointer-events-none"
-        style={{ left: `${GUTTER}px`, zIndex: 100 }}
+        style={{
+          left: `${GUTTER}px`,
+          zIndex: 100,
+          display: beatDragging ? "none" : undefined,
+        }}
       >
         <PlayheadIndicator />
       </div>
