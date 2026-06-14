@@ -40,8 +40,6 @@ function formatPatchRejectionMessage(body: { error?: string; fields?: string[] }
   return `Couldn't save edit: ${body.error}${suffix}`;
 }
 
-// ── Types ──
-
 interface RecordEditInput {
   label: string;
   kind: EditHistoryKind;
@@ -77,9 +75,9 @@ export interface UseDomEditCommitsParams {
     target: HTMLElement,
     options?: { preferClipAncestor?: boolean },
   ) => Promise<DomEditSelection | null>;
+  /** Stage 7 Step 3b: called after a successful server-side element patch. */
+  onDomEditPersisted?: (selection: DomEditSelection, operations: PatchOperation[]) => void;
 }
-
-// ── Hook ──
 
 export function useDomEditCommits({
   activeCompPath,
@@ -99,6 +97,7 @@ export function useDomEditCommits({
   clearDomSelection,
   refreshDomEditSelectionFromPreview,
   buildDomSelectionFromTarget,
+  onDomEditPersisted,
 }: UseDomEditCommitsParams) {
   const resolveImportedFontAsset = useCallback(
     (fontFamilyValue: string): ImportedFontAsset | null => {
@@ -220,6 +219,7 @@ export function useDomEditCommits({
         coalesceKey: options?.coalesceKey,
         files: { [targetPath]: { before: originalContent, after: finalContent } },
       });
+      onDomEditPersisted?.(selection, operations);
 
       if (!options?.skipRefresh) {
         reloadPreview();
@@ -233,6 +233,7 @@ export function useDomEditCommits({
       domEditSaveTimestampRef,
       reloadPreview,
       showToast,
+      onDomEditPersisted,
     ],
   );
 
