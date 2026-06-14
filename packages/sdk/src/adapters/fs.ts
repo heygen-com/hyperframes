@@ -18,6 +18,7 @@ class FsAdapter implements PersistAdapter {
   private readonly root: string;
   private readonly maxVersions: number;
   private errorHandlers: Array<(e: PersistErrorEvent) => void> = [];
+  private readonly inflightWrites = new Set<Promise<void>>();
   private _writeLocks = new Map<string, Promise<void>>();
 
   constructor(opts: FsAdapterOptions) {
@@ -35,6 +36,16 @@ class FsAdapter implements PersistAdapter {
   }
 
   async write(path: string, content: string): Promise<void> {
+    const p = this.doWrite(path, content);
+    this.inflightWrites.add(p);
+    try {
+      await p;
+    } finally {
+      this.inflightWrites.delete(p);
+    }
+  }
+
+  private async doWrite(path: string, content: string): Promise<void> {
     try {
       const abs = this.abs(path);
       await mkdir(dirname(abs), { recursive: true });
@@ -45,7 +56,9 @@ class FsAdapter implements PersistAdapter {
     }
   }
 
-  async flush(): Promise<void> {}
+  async flush(): Promise<void> {
+    await Promise.all([...this.inflightWrites]);
+  }
 
   async listVersions(path: string): Promise<PersistVersionEntry[]> {
     const dir = this.versionsDir(path);

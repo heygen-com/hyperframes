@@ -9,8 +9,12 @@
  *   runPersistAdapterContract("s3", () => createS3Adapter({ bucket, prefix }))
  */
 
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, it, expect, vi } from "vitest";
 import { createMemoryAdapter } from "./memory.js";
+import { createFsAdapter } from "./fs.js";
 import type { PersistAdapter } from "./types.js";
 
 export function runPersistAdapterContract(
@@ -126,3 +130,8 @@ export function runPersistAdapterContract(
 
 // Run the suite against the memory adapter immediately
 runPersistAdapterContract("memory", createMemoryAdapter);
+
+// Run against the fs adapter — each test gets an isolated tmpdir
+runPersistAdapterContract("fs", () =>
+  createFsAdapter({ root: mkdtempSync(join(tmpdir(), "hf-fs-test-")) }),
+);
