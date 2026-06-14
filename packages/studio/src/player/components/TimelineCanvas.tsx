@@ -217,6 +217,14 @@ export const TimelineCanvas = memo(function TimelineCanvas({
         const ts = trackStyles.get(trackNum) ?? getTrackStyle("");
         const isPendingTrack =
           draggedClip?.started === true && !trackOrder.includes(trackNum) && els.length === 0;
+        // The beat-dot strip occupies the top of this track's lane (active track,
+        // or the music track when nothing is selected). When shown, keyframe
+        // diamonds shrink + drop to the bottom half so they don't collide with it.
+        const beatStripOnTrack =
+          (beatAnalysis?.beatTimes?.length ?? 0) >= 2 &&
+          (selectedElementId
+            ? els.some((e) => (e.key ?? e.id) === selectedElementId)
+            : els.some(isMusicTrack));
         return (
           <div
             key={trackNum}
@@ -260,9 +268,7 @@ export const TimelineCanvas = memo(function TimelineCanvas({
               />
               {/* Beat dots on the active track (the one holding the selection),
                   falling back to the music track when nothing is selected. */}
-              {(selectedElementId
-                ? els.some((e) => (e.key ?? e.id) === selectedElementId)
-                : els.some(isMusicTrack)) && (
+              {beatStripOnTrack && (
                 <BeatStrip
                   beatTimes={beatAnalysis?.beatTimes}
                   beatStrengths={beatAnalysis?.beatStrengths}
@@ -428,6 +434,7 @@ export const TimelineCanvas = memo(function TimelineCanvas({
                         keyframesData={keyframeCache.get(elementKey)!}
                         clipWidthPx={Math.max(previewElement.duration * pps, 4)}
                         clipHeightPx={TRACK_H - 2 * CLIP_Y}
+                        beatsActive={beatStripOnTrack}
                         accentColor={clipStyle.accent}
                         isSelected={isSelected}
                         currentPercentage={

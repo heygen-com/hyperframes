@@ -1,4 +1,5 @@
 import { memo, useEffect, useRef, useState } from "react";
+import { BEAT_BAND_H } from "./BeatStrip";
 
 interface KeyframeEntry {
   percentage: number;
@@ -17,6 +18,9 @@ interface TimelineClipDiamondsProps {
   keyframesData: KeyframeCacheEntry;
   clipWidthPx: number;
   clipHeightPx: number;
+  /** Beat-dot strip is shown on this track → shrink diamonds + drop them into
+   *  the bottom half so they clear the strip at the top. */
+  beatsActive?: boolean;
   accentColor: string;
   isSelected: boolean;
   currentPercentage: number;
@@ -41,6 +45,7 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
   keyframesData,
   clipWidthPx,
   clipHeightPx,
+  beatsActive,
   accentColor,
   isSelected,
   currentPercentage,
@@ -98,8 +103,11 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
 
   if (clipWidthPx < 20) return null;
 
-  const diamondSize = Math.round(clipHeightPx * DIAMOND_RATIO);
+  // When the beat strip occupies the top band, shrink the diamonds and center
+  // them in the remaining bottom region so they don't collide with it.
+  const diamondSize = Math.round(clipHeightPx * (beatsActive ? 0.45 : DIAMOND_RATIO));
   const half = diamondSize / 2;
+  const centerY = beatsActive ? BEAT_BAND_H + (clipHeightPx - BEAT_BAND_H) / 2 : clipHeightPx / 2;
   const sorted = keyframesData.keyframes.slice().sort((a, b) => a.percentage - b.percentage);
   const baseColor = isSelected ? accentColor : "#a3a3a3";
   const baseOpacity = isSelected ? 0.4 : 0.25;
@@ -185,7 +193,7 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
             className="absolute"
             style={{
               left: x1,
-              top: "50%",
+              top: centerY,
               width: x2 - x1,
               height: 2,
               transform: "translateY(-1px)",
@@ -211,7 +219,7 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
             className="absolute"
             style={{
               left: leftPx,
-              top: "50%",
+              top: centerY,
               transform: "translateY(-50%)",
               width: diamondSize,
               height: diamondSize,

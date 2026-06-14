@@ -3,7 +3,7 @@ import { moveBeatCompositionTime, deleteBeatAtCompositionTime } from "../../util
 import { usePlayerStore } from "../store/playerStore";
 import { CLIP_Y } from "./timelineLayout";
 
-const BEAT_BAND_H = 14; // dark band height at top of track
+export const BEAT_BAND_H = 14; // dark band height at top of track
 const BEAT_HIT_W = 12; // grab width per beat (px)
 
 /** Hide both layers when beats are packed tighter than this (px) — too dense to read. */
