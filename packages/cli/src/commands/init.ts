@@ -700,24 +700,33 @@ export default defineCommand({
         process.exit(1);
       }
 
+      if (videoFlag && audioFlag) {
+        console.error(c.error("Cannot use --video and --audio together"));
+        process.exit(1);
+      }
+
+      // Validate source files before creating destDir so a failed run does
+      // not leave an empty orphan directory behind. The interactive path
+      // already validates in this order.
+      const videoPath = videoFlag ? resolve(videoFlag) : undefined;
+      if (videoPath && !existsSync(videoPath)) {
+        console.error(c.error(`Video file not found: ${videoFlag}`));
+        process.exit(1);
+      }
+      const audioPath = audioFlag ? resolve(audioFlag) : undefined;
+      if (audioPath && !existsSync(audioPath)) {
+        console.error(c.error(`Audio file not found: ${audioFlag}`));
+        process.exit(1);
+      }
+
       mkdirSync(destDir, { recursive: true });
 
       let localVideoName: string | undefined;
       let videoDuration: number | undefined;
       let sourceFilePath: string | undefined;
 
-      if (videoFlag && audioFlag) {
-        console.error(c.error("Cannot use --video and --audio together"));
-        process.exit(1);
-      }
-
       // Handle video
-      if (videoFlag) {
-        const videoPath = resolve(videoFlag);
-        if (!existsSync(videoPath)) {
-          console.error(c.error(`Video file not found: ${videoFlag}`));
-          process.exit(1);
-        }
+      if (videoPath) {
         sourceFilePath = videoPath;
         const result = await handleVideoFile(videoPath, destDir, false);
         localVideoName = result.localVideoName;
@@ -728,12 +737,7 @@ export default defineCommand({
       }
 
       // Handle audio
-      if (audioFlag) {
-        const audioPath = resolve(audioFlag);
-        if (!existsSync(audioPath)) {
-          console.error(c.error(`Audio file not found: ${audioFlag}`));
-          process.exit(1);
-        }
+      if (audioPath) {
         sourceFilePath = audioPath;
         copyFileSync(audioPath, resolve(destDir, basename(audioPath)));
         console.log(`Audio: ${basename(audioPath)}`);
