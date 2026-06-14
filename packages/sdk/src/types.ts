@@ -253,6 +253,8 @@ export interface Composition {
   /** Curried handle — holds only the id, no stale-ref hazard */
   element(id: HfId): ElementHandle;
   getSelection(): string[];
+  /** Replace the current selection; fires selectionchange. Pass [] to clear. */
+  setSelection(ids: string[]): void;
 
   // ── Advanced / agent layer (F10 layer 2) ──────────────────────────────────
   dispatch(op: EditOp, opts?: { origin?: unknown }): void;

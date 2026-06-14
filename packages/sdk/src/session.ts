@@ -224,6 +224,16 @@ class CompositionImpl implements Composition {
     return [...this.currentSelection];
   }
 
+  setSelection(ids: string[]): void {
+    if (
+      ids.length === this.currentSelection.length &&
+      ids.every((id, i) => id === this.currentSelection[i])
+    ) {
+      return;
+    }
+    this.updateSelection(ids);
+  }
+
   private updateSelection(ids: readonly string[]): void {
     this.currentSelection = [...ids];
     for (const handler of this.selectionHandlers) {
