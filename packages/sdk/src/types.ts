@@ -186,6 +186,8 @@ export interface FindQuery {
   text?: string;
   name?: string;
   track?: number;
+  /** Filter to elements inside a specific sub-composition host (by host hf-id). */
+  composition?: string;
 }
 
 // ─── Typed method sugar (F10) ─────────────────────────────────────────────────

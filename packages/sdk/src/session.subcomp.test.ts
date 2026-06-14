@@ -324,7 +324,49 @@ describe("override-set — scoped id keys", () => {
   });
 });
 
-// ─── 5. Scoped id stability across serialize ──────────────────────────────────
+// ─── 5. find({ composition }) filter ─────────────────────────────────────────
+
+describe("find({ composition })", () => {
+  it("returns elements inside the named host sub-composition", async () => {
+    const html = inlinedHtml(`
+      <div data-hf-id="hf-root" data-hf-root>
+        <div data-hf-id="hf-host" data-composition-file="sub.html">
+          <p data-hf-id="hf-leaf">inside</p>
+        </div>
+        <p data-hf-id="hf-outer">outside</p>
+      </div>
+    `);
+    const comp = await openComposition(html);
+    const ids = comp.find({ composition: "hf-host" });
+    expect(ids).toContain("hf-host/hf-leaf");
+    expect(ids).not.toContain("hf-outer");
+    expect(ids).not.toContain("hf-host"); // host itself is in parent scope
+  });
+
+  it("returns empty array for unknown host id", async () => {
+    const html = inlinedHtml(
+      `<div data-hf-id="hf-root" data-hf-root><p data-hf-id="hf-p">x</p></div>`,
+    );
+    const comp = await openComposition(html);
+    expect(comp.find({ composition: "hf-no-such" })).toEqual([]);
+  });
+
+  it("can combine composition filter with other query fields", async () => {
+    const html = inlinedHtml(`
+      <div data-hf-id="hf-root" data-hf-root>
+        <div data-hf-id="hf-host" data-composition-file="sub.html">
+          <p data-hf-id="hf-a">match</p>
+          <span data-hf-id="hf-b">no</span>
+        </div>
+      </div>
+    `);
+    const comp = await openComposition(html);
+    const ids = comp.find({ composition: "hf-host", tag: "p" });
+    expect(ids).toEqual(["hf-host/hf-a"]);
+  });
+});
+
+// ─── 6. Scoped id stability across serialize ──────────────────────────────────
 
 describe("scopedId stability across serialize/re-parse", () => {
   it("scopedId values are identical after serialize + re-open", async () => {
