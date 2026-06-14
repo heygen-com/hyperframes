@@ -18,6 +18,7 @@ import { generateWaveformCache } from "../helpers/waveform.js";
 import { validateUploadedMediaBuffer } from "../helpers/mediaValidation.js";
 import { isSafePath } from "../helpers/safePath.js";
 import type { GsapAnimation } from "../../parsers/gsapSerialize.js";
+import { parseGsapScriptAcorn } from "../../parsers/gsapParserAcorn.js";
 import {
   removeElementFromHtml,
   patchElementInHtml,
@@ -288,7 +289,13 @@ function bakeVisibilityOnDelete(document: Document, anim: GsapAnimation): void {
   }
 }
 
-/** Lazy-load gsapParser to avoid pulling recast into every file-route import. */
+/**
+ * Lazy-load gsapParser for write ops (recast-backed) that are not yet ported to
+ * the acorn writer. The read path (`parseGsapScript`) has been replaced by the
+ * browser-safe `parseGsapScriptAcorn` — this loader is only needed for the write
+ * ops that remain: convertToKeyframesInScript, removeAllKeyframesFromScript,
+ * materializeKeyframesInScript, unrollDynamicAnimations, setArcPathInScript, etc.
+ */
 async function loadGsapParser() {
   return import("../../parsers/gsapParser.js");
 }
@@ -451,7 +458,6 @@ async function executeGsapMutation(
 ): Promise<GsapMutationResult | Response> {
   const parser = await loadGsapParser();
   const {
-    parseGsapScript,
     updateAnimationInScript,
     addAnimationToScript,
     removeAnimationFromScript,
@@ -474,7 +480,7 @@ async function executeGsapMutation(
     scriptText: string,
     animationId: string,
   ): { anim: GsapAnimation } | { err: Response } {
-    const parsed = parseGsapScript(scriptText);
+    const parsed = parseGsapScriptAcorn(scriptText);
     const anim = parsed.animations.find((a) => a.id === animationId);
     if (!anim) return { err: respond({ error: "animation not found" }, 404) };
     return { anim };
@@ -533,7 +539,7 @@ async function executeGsapMutation(
       return removeAnimationFromScript(block.scriptText, body.animationId);
     }
     case "delete-all-for-selector": {
-      const parsed = parseGsapScript(block.scriptText);
+      const parsed = parseGsapScriptAcorn(block.scriptText);
       const matching = parsed.animations.filter((a) => a.targetSelector === body.targetSelector);
       if (matching.length === 0) return block.scriptText;
       stripStudioEditsFromTarget(block.document, body.targetSelector);
@@ -1060,8 +1066,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       });
     }
 
-    const { parseGsapScript } = await loadGsapParser();
-    const parsed = parseGsapScript(block.scriptText);
+    const parsed = parseGsapScriptAcorn(block.scriptText);
     return c.json(parsed);
   });
 
@@ -1117,8 +1122,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       writeFileSync(res.absPath, newHtml, "utf-8");
     }
 
-    const { parseGsapScript } = await loadGsapParser();
-    const freshParsed = parseGsapScript(newScript);
+    const freshParsed = parseGsapScriptAcorn(newScript);
     const responsePayload: Record<string, unknown> = {
       ok: true,
       changed,

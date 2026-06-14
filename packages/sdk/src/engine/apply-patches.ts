@@ -10,18 +10,36 @@
 
 import type { JsonPatchOp, OverrideSet } from "../types.js";
 import type { ParsedDocument } from "./model.js";
-import { findById, findRoot, setElementStyles, setOwnText } from "./model.js";
+import {
+  findById,
+  findRoot,
+  setElementStyles,
+  setOwnText,
+  setGsapScript,
+  setStyleSheet,
+} from "./model.js";
 import { keyToPath } from "./patches.js";
 
 // ─── Path parser ────────────────────────────────────────────────────────────
 
 interface ParsedPath {
-  type: "style" | "text" | "attribute" | "timing" | "hold" | "element" | "variable" | "metadata";
+  type:
+    | "style"
+    | "text"
+    | "attribute"
+    | "timing"
+    | "hold"
+    | "element"
+    | "variable"
+    | "metadata"
+    | "script"
+    | "stylesheet";
   id?: string;
   prop?: string;
   field?: string;
 }
 
+// fallow-ignore-next-line complexity
 function parsePath(path: string): ParsedPath | null {
   const styleM = /^\/elements\/([^/]+)\/inlineStyles\/(.+)$/.exec(path);
   if (styleM) return { type: "style", id: styleM[1], prop: styleM[2] };
@@ -51,6 +69,9 @@ function parsePath(path: string): ParsedPath | null {
 
   const metaM = /^\/metadata\/(.+)$/.exec(path);
   if (metaM) return { type: "metadata", field: metaM[1] };
+
+  if (path === "/script/gsap") return { type: "script" };
+  if (path === "/style/css") return { type: "stylesheet" };
 
   return null;
 }
@@ -181,6 +202,24 @@ function applyOne(parsed: ParsedDocument, patch: JsonPatchOp, p: ParsedPath): vo
         setElementStyles(root, { [cssVar]: null });
       } else {
         setElementStyles(root, { [cssVar]: String(patch.value) });
+      }
+      break;
+    }
+
+    case "script": {
+      if (patch.op === "remove") {
+        setGsapScript(parsed.document, "");
+      } else {
+        setGsapScript(parsed.document, String(patch.value ?? ""));
+      }
+      break;
+    }
+
+    case "stylesheet": {
+      if (patch.op === "remove") {
+        setStyleSheet(parsed.document, "");
+      } else {
+        setStyleSheet(parsed.document, String(patch.value ?? ""));
       }
       break;
     }

@@ -1,0 +1,422 @@
+/**
+ * Phase 3b — GSAP mutation handler tests.
+ *
+ * Verifies the 8 parser-backed ops: addGsapTween, setGsapTween, removeGsapTween,
+ * setGsapKeyframe, addGsapKeyframe, removeGsapKeyframe, addLabel, removeLabel.
+ */
+
+import { describe, it, expect } from "vitest";
+import { parseMutable } from "./model.js";
+import { applyOp, validateOp } from "./mutate.js";
+import { applyPatchesToDocument } from "./apply-patches.js";
+import { serializeDocument } from "./serialize.js";
+
+// ─── Fixtures ─────────────────────────────────────────────────────────────────
+
+const GSAP_SCRIPT = `var tl = gsap.timeline({ paused: true });
+tl.to("[data-hf-id=\\"hf-box\\"]", { opacity: 1, duration: 0.5, ease: "power2.out" }, 0.2);
+window.__timelines["t"] = tl;`;
+
+const KF_SCRIPT = `var tl = gsap.timeline({ paused: true });
+tl.to("[data-hf-id=\\"hf-box\\"]", { keyframes: { "0%": { opacity: 0 }, "50%": { opacity: 0.7 }, "100%": { opacity: 1 } }, duration: 1 }, 0);
+window.__timelines["t"] = tl;`;
+
+function makeHtml(script: string) {
+  return `<div data-hf-id="hf-stage" data-hf-root style="width: 1280px; height: 720px">
+  <div data-hf-id="hf-box" style="opacity: 0"></div>
+  <script>${script}</script>
+</div>`.trim();
+}
+
+function fresh(script = GSAP_SCRIPT) {
+  return parseMutable(makeHtml(script));
+}
+
+function getScript(parsed: ReturnType<typeof parseMutable>): string {
+  const doc = serializeDocument(parsed);
+  const m = /<script>([\s\S]*?)<\/script>/i.exec(doc);
+  return m ? m[1]!.trim() : "";
+}
+
+// ─── validateOp gating on timeline existence ──────────────────────────────────
+
+const NO_TIMELINE_SCRIPT = `gsap.defaults({ ease: "power1.out" });
+window.__timelines = {};`;
+
+describe("validateOp — no gsap.timeline() declaration", () => {
+  function freshNoTimeline() {
+    return parseMutable(makeHtml(NO_TIMELINE_SCRIPT));
+  }
+
+  it("addGsapTween → false when script has no timeline", () => {
+    expect(
+      validateOp(freshNoTimeline(), {
+        type: "addGsapTween",
+        target: "hf-box",
+        tween: { method: "to", properties: { x: 100 } },
+      }),
+    ).toBe(false);
+  });
+
+  it("addLabel → false when script has no timeline", () => {
+    expect(validateOp(freshNoTimeline(), { type: "addLabel", name: "start", position: 0 })).toBe(
+      false,
+    );
+  });
+
+  it("addGsapTween dispatch returns EMPTY when no timeline — no dangling tl call emitted", () => {
+    const parsed = freshNoTimeline();
+    const scriptBefore = getScript(parsed);
+    const result = applyOp(parsed, {
+      type: "addGsapTween",
+      target: "hf-box",
+      tween: { method: "to", properties: { x: 100 } },
+    });
+    expect(result.forward).toHaveLength(0);
+    expect(getScript(parsed)).toBe(scriptBefore);
+  });
+});
+
+// ─── validateOp returns true when GSAP script present ─────────────────────────
+
+describe("validateOp with GSAP script", () => {
+  it("addGsapTween → true", () => {
+    expect(
+      validateOp(fresh(), {
+        type: "addGsapTween",
+        target: "hf-box",
+        tween: { method: "to", duration: 0.3, properties: { x: 100 } },
+      }),
+    ).toBe(true);
+  });
+
+  it("removeGsapTween → true", () => {
+    expect(validateOp(fresh(), { type: "removeGsapTween", animationId: "some-id" })).toBe(true);
+  });
+
+  it("addLabel → true", () => {
+    expect(validateOp(fresh(), { type: "addLabel", name: "start", position: 0 })).toBe(true);
+  });
+});
+
+// ─── addGsapTween ─────────────────────────────────────────────────────────────
+
+describe("addGsapTween", () => {
+  it("inserts new tween and returns animationId in meta", () => {
+    const parsed = fresh();
+    const result = applyOp(parsed, {
+      type: "addGsapTween",
+      target: "hf-box",
+      tween: { method: "to", duration: 0.3, properties: { x: 100 } },
+    });
+    expect(result.forward).toHaveLength(1);
+    expect(result.forward[0]?.path).toBe("/script/gsap");
+    expect(result.meta?.animationId).toBeTruthy();
+    expect(typeof result.meta?.animationId).toBe("string");
+    const newScript = String(result.forward[0]?.value ?? "");
+    expect(newScript).toContain("x: 100");
+    expect(newScript).toContain("duration: 0.3");
+  });
+
+  it("inverse patch restores original script", () => {
+    const parsed = fresh();
+    const original = getScript(parsed);
+    const result = applyOp(parsed, {
+      type: "addGsapTween",
+      target: "hf-box",
+      tween: { method: "to", duration: 0.3, properties: { x: 100 } },
+    });
+    applyPatchesToDocument(parsed, result.inverse);
+    expect(getScript(parsed)).toBe(original);
+  });
+
+  it("adds repeat/yoyo as extras", () => {
+    const parsed = fresh();
+    const result = applyOp(parsed, {
+      type: "addGsapTween",
+      target: "hf-box",
+      tween: { method: "to", duration: 1, properties: { y: 50 }, repeat: -1, yoyo: true },
+    });
+    const newScript = String(result.forward[0]?.value ?? "");
+    expect(newScript).toContain("repeat: -1");
+    expect(newScript).toContain("yoyo: true");
+  });
+
+  it("serializes stagger object as JSON, not [object Object]", () => {
+    const parsed = fresh();
+    const result = applyOp(parsed, {
+      type: "addGsapTween",
+      target: "hf-box",
+      tween: {
+        method: "to",
+        duration: 1,
+        properties: { opacity: 1 },
+        stagger: { amount: 0.5, from: "center" } as any,
+      },
+    });
+    const newScript = String(result.forward[0]?.value ?? "");
+    expect(newScript).not.toContain("[object Object]");
+    expect(newScript).toContain("amount");
+  });
+
+  it("adds fromTo tween with fromProperties and toProperties", () => {
+    const parsed = fresh();
+    const result = applyOp(parsed, {
+      type: "addGsapTween",
+      target: "hf-box",
+      tween: {
+        method: "fromTo",
+        duration: 0.5,
+        fromProperties: { opacity: 0 },
+        toProperties: { opacity: 1 },
+      },
+    });
+    const newScript = String(result.forward[0]?.value ?? "");
+    expect(newScript).toContain("fromTo(");
+    expect(newScript).toContain("opacity: 0");
+    expect(newScript).toContain("opacity: 1");
+  });
+
+  it("returns EMPTY when no GSAP script", () => {
+    const noScript = parseMutable(
+      `<div data-hf-id="hf-stage" data-hf-root><div data-hf-id="hf-box"></div></div>`,
+    );
+    const result = applyOp(noScript, {
+      type: "addGsapTween",
+      target: "hf-box",
+      tween: { method: "to", properties: { x: 1 } },
+    });
+    expect(result.forward).toHaveLength(0);
+  });
+});
+
+// ─── setGsapTween ─────────────────────────────────────────────────────────────
+
+describe("setGsapTween", () => {
+  it("updates ease in existing tween", () => {
+    const parsed = fresh();
+    const animId = `[data-hf-id="hf-box"]-to-200-visual`;
+    const result = applyOp(parsed, {
+      type: "setGsapTween",
+      animationId: animId,
+      properties: { ease: "power3.in" },
+    });
+    expect(result.forward).toHaveLength(1);
+    const newScript = String(result.forward[0]?.value ?? "");
+    expect(newScript).toContain('"power3.in"');
+    expect(newScript).not.toContain('"power2.out"');
+  });
+
+  it("updates duration in existing tween", () => {
+    const parsed = fresh();
+    const animId = `[data-hf-id="hf-box"]-to-200-visual`;
+    const result = applyOp(parsed, {
+      type: "setGsapTween",
+      animationId: animId,
+      properties: { duration: 1.5 },
+    });
+    const newScript = String(result.forward[0]?.value ?? "");
+    expect(newScript).toContain("duration: 1.5");
+    expect(newScript).not.toContain("duration: 0.5");
+  });
+
+  it("returns EMPTY for unknown animationId", () => {
+    const parsed = fresh();
+    const result = applyOp(parsed, {
+      type: "setGsapTween",
+      animationId: "nonexistent-id",
+      properties: { ease: "power1.in" },
+    });
+    expect(result.forward).toHaveLength(0);
+  });
+
+  it("inverse restores original script", () => {
+    const parsed = fresh();
+    const original = getScript(parsed);
+    const animId = `[data-hf-id="hf-box"]-to-200-visual`;
+    const result = applyOp(parsed, {
+      type: "setGsapTween",
+      animationId: animId,
+      properties: { ease: "power3.in" },
+    });
+    applyPatchesToDocument(parsed, result.inverse);
+    expect(getScript(parsed)).toBe(original);
+  });
+});
+
+// ─── removeGsapTween ──────────────────────────────────────────────────────────
+
+describe("removeGsapTween", () => {
+  it("removes tween by animationId", () => {
+    const parsed = fresh();
+    const animId = `[data-hf-id="hf-box"]-to-200-visual`;
+    const result = applyOp(parsed, { type: "removeGsapTween", animationId: animId });
+    expect(result.forward).toHaveLength(1);
+    const newScript = String(result.forward[0]?.value ?? "");
+    expect(newScript).not.toContain("opacity: 1");
+  });
+
+  it("returns EMPTY for unknown animationId", () => {
+    const parsed = fresh();
+    const result = applyOp(parsed, { type: "removeGsapTween", animationId: "no-such-id" });
+    expect(result.forward).toHaveLength(0);
+  });
+
+  it("inverse restores original script", () => {
+    const parsed = fresh();
+    const original = getScript(parsed);
+    const animId = `[data-hf-id="hf-box"]-to-200-visual`;
+    const result = applyOp(parsed, { type: "removeGsapTween", animationId: animId });
+    applyPatchesToDocument(parsed, result.inverse);
+    expect(getScript(parsed)).toBe(original);
+  });
+});
+
+// ─── Keyframe ops ─────────────────────────────────────────────────────────────
+
+describe("addGsapKeyframe", () => {
+  it("inserts new keyframe at given percentage", () => {
+    const parsed = fresh(KF_SCRIPT);
+    const animId = `[data-hf-id="hf-box"]-to-0-visual`;
+    const result = applyOp(parsed, {
+      type: "addGsapKeyframe",
+      animationId: animId,
+      position: 25,
+      value: { opacity: 0.3 },
+    });
+    expect(result.forward).toHaveLength(1);
+    const newScript = String(result.forward[0]?.value ?? "");
+    expect(newScript).toContain('"25%"');
+    expect(newScript).toContain("opacity: 0.3");
+  });
+});
+
+describe("setGsapKeyframe", () => {
+  it("updates keyframe value at index 1 (50%)", () => {
+    const parsed = fresh(KF_SCRIPT);
+    const animId = `[data-hf-id="hf-box"]-to-0-visual`;
+    const result = applyOp(parsed, {
+      type: "setGsapKeyframe",
+      animationId: animId,
+      keyframeIndex: 1,
+      value: { opacity: 0.5 },
+    });
+    expect(result.forward).toHaveLength(1);
+    const newScript = String(result.forward[0]?.value ?? "");
+    expect(newScript).toContain("opacity: 0.5");
+    expect(newScript).not.toContain("opacity: 0.7");
+  });
+
+  it("returns EMPTY for out-of-range keyframeIndex", () => {
+    const parsed = fresh(KF_SCRIPT);
+    const result = applyOp(parsed, {
+      type: "setGsapKeyframe",
+      animationId: `[data-hf-id="hf-box"]-to-0-visual`,
+      keyframeIndex: 99,
+      value: { opacity: 0 },
+    });
+    expect(result.forward).toHaveLength(0);
+  });
+
+  it("position-only move preserves existing properties — does not delete keyframe", () => {
+    const parsed = fresh(KF_SCRIPT);
+    const animId = `[data-hf-id="hf-box"]-to-0-visual`;
+    const result = applyOp(parsed, {
+      type: "setGsapKeyframe",
+      animationId: animId,
+      keyframeIndex: 1,
+      position: 60,
+    });
+    expect(result.forward).toHaveLength(1);
+    const newScript = String(result.forward[0]?.value ?? "");
+    expect(newScript).toContain('"60%"');
+    expect(newScript).not.toContain('"50%"');
+    expect(newScript).toContain("opacity: 0.7");
+  });
+
+  it("ease-only update (same position, no value) does not corrupt keyframe", () => {
+    const kfWithEase = KF_SCRIPT.replace(
+      '"0%": { opacity: 0 }',
+      '"0%": { opacity: 0, ease: "power1.in" }',
+    );
+    const parsed = fresh(kfWithEase);
+    const animId = `[data-hf-id="hf-box"]-to-0-visual`;
+    const result = applyOp(parsed, {
+      type: "setGsapKeyframe",
+      animationId: animId,
+      keyframeIndex: 0,
+      ease: "power2.out",
+    });
+    const newScript = String(result.forward[0]?.value ?? "");
+    expect(newScript).toContain('"0%"');
+    expect(newScript).toContain("opacity: 0");
+  });
+});
+
+describe("removeGsapKeyframe", () => {
+  it("removes keyframe at index 1 (50%)", () => {
+    const parsed = fresh(KF_SCRIPT);
+    const animId = `[data-hf-id="hf-box"]-to-0-visual`;
+    const result = applyOp(parsed, {
+      type: "removeGsapKeyframe",
+      animationId: animId,
+      keyframeIndex: 1,
+    });
+    expect(result.forward).toHaveLength(1);
+    const newScript = String(result.forward[0]?.value ?? "");
+    expect(newScript).not.toContain('"50%"');
+    expect(newScript).toContain('"0%"');
+    expect(newScript).toContain('"100%"');
+  });
+});
+
+// ─── Label ops ────────────────────────────────────────────────────────────────
+
+describe("addLabel", () => {
+  it("inserts addLabel call into script", () => {
+    const parsed = fresh();
+    const result = applyOp(parsed, { type: "addLabel", name: "intro", position: 0.5 });
+    expect(result.forward).toHaveLength(1);
+    const newScript = String(result.forward[0]?.value ?? "");
+    expect(newScript).toContain('addLabel("intro"');
+    expect(newScript).toContain("0.5");
+  });
+
+  it("addLabel output is not blocked by GSAP validator", async () => {
+    const { validateCompositionGsap } = await import("@hyperframes/core/gsap-parser");
+    const parsed = fresh();
+    const result = applyOp(parsed, { type: "addLabel", name: "scene1", position: 1.0 });
+    const newScript = String(result.forward[0]?.value ?? "");
+    const { errors } = validateCompositionGsap(newScript);
+    const labelError = errors.find((e) => /addLabel/i.test(e));
+    expect(labelError).toBeUndefined();
+  });
+
+  it("inverse restores original script", () => {
+    const parsed = fresh();
+    const original = getScript(parsed);
+    const result = applyOp(parsed, { type: "addLabel", name: "intro", position: 0.5 });
+    applyPatchesToDocument(parsed, result.inverse);
+    expect(getScript(parsed)).toBe(original);
+  });
+});
+
+describe("removeLabel", () => {
+  it("removes addLabel call from script", () => {
+    const withLabel = GSAP_SCRIPT.replace(
+      'window.__timelines["t"] = tl;',
+      'tl.addLabel("intro", 0.5);\nwindow.__timelines["t"] = tl;',
+    );
+    const parsed = fresh(withLabel);
+    const result = applyOp(parsed, { type: "removeLabel", name: "intro" });
+    expect(result.forward).toHaveLength(1);
+    const newScript = String(result.forward[0]?.value ?? "");
+    expect(newScript).not.toContain("addLabel");
+  });
+
+  it("returns EMPTY when label not found", () => {
+    const parsed = fresh();
+    const result = applyOp(parsed, { type: "removeLabel", name: "nonexistent" });
+    expect(result.forward).toHaveLength(0);
+  });
+});

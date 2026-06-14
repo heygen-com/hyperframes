@@ -1,4 +1,4 @@
-// fallow-ignore-file duplication
+// fallow-ignore-file code-duplication
 /**
  * Browser-safe GSAP read path — acorn + acorn-walk.
  *
@@ -153,7 +153,9 @@ function lookupBindingFromAncestors(
     const selector = bindings.get(scopeNode)?.get(name);
     if (selector !== undefined) return selector;
   }
-  return null;
+  // Program-scope bindings are stored under null (enclosingScopeNodeFromAncestors
+  // returns null when no function wrapper exists — the common case in HF scripts).
+  return bindings.get(null)?.get(name) ?? null;
 }
 
 function isFunctionNode(node: any): boolean {
@@ -470,31 +472,31 @@ function findAllTweenCalls(
       ) {
         const method = callee.property.name;
         const args = node.arguments;
-        if (args.length >= 2) {
-          const selectorValue =
-            resolveTargetSelector(args[0], nodeAncestors, scope, targetBindings) ??
-            "__unresolved__";
+        const selectorValue =
+          args.length >= 1
+            ? (resolveTargetSelector(args[0], nodeAncestors, scope, targetBindings) ??
+              "__unresolved__")
+            : "__unresolved__";
 
-          if (method === "fromTo") {
-            results.push({
-              node,
-              ancestors: nodeAncestors,
-              method: "fromTo",
-              selector: selectorValue,
-              fromArg: args[1],
-              varsArg: args[2],
-              positionArg: args[3],
-            });
-          } else {
-            results.push({
-              node,
-              ancestors: nodeAncestors,
-              method: method as GsapMethod,
-              selector: selectorValue,
-              varsArg: args[1],
-              positionArg: args[2],
-            });
-          }
+        if (method === "fromTo" && args.length >= 3) {
+          results.push({
+            node,
+            ancestors: nodeAncestors,
+            method: "fromTo",
+            selector: selectorValue,
+            fromArg: args[1],
+            varsArg: args[2],
+            positionArg: args[3],
+          });
+        } else if (method !== "fromTo" && args.length >= 2) {
+          results.push({
+            node,
+            ancestors: nodeAncestors,
+            method: method as GsapMethod,
+            selector: selectorValue,
+            varsArg: args[1],
+            positionArg: args[2],
+          });
         }
       }
     }
@@ -1046,6 +1048,7 @@ function assignStableIds(anims: Omit<GsapAnimation, "id">[]): GsapAnimation[] {
 export interface ParsedGsapAcornForWrite {
   ast: any;
   timelineVar: string;
+  hasTimeline: boolean;
   located: Array<{ id: string; call: TweenCallInfo; animation: GsapAnimation }>;
 }
 
@@ -1075,7 +1078,7 @@ export function parseGsapScriptAcornForWrite(script: string): ParsedGsapAcornFor
       call,
       animation: animations[i]!,
     }));
-    return { ast, timelineVar, located };
+    return { ast, timelineVar, hasTimeline: detection.timelineVar !== null, located };
   } catch {
     return null;
   }
