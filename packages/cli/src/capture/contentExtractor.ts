@@ -11,6 +11,7 @@
 import type { Page } from "puppeteer-core";
 import { existsSync, readdirSync, statSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import sharp from "sharp";
 import type { CatalogedAsset } from "./assetCataloger.js";
 import type { DesignTokens } from "./types.js";
 
@@ -232,7 +233,7 @@ export async function captionImagesWithGemini(
     }
     progress("design", `${Object.keys(geminiCaptions).length} images captioned with Gemini`);
 
-    // Caption SVGs by sending source code as text (vision API rejects image/svg+xml).
+    // Rasterize SVGs to PNG before captioning — Vision hallucinates wordmarks when reading SVG path text.
     const svgFiles: Array<{ file: string; relPath: string }> = [];
     const assetsDir = join(outputDir, "assets");
     for (const f of readdirSync(assetsDir)) {
@@ -246,17 +247,42 @@ export async function captionImagesWithGemini(
     }
 
     if (svgFiles.length > 0) {
-      progress("design", `Captioning ${svgFiles.length} SVGs via code analysis...`);
+      progress("design", `Rasterizing + captioning ${svgFiles.length} SVGs via vision API...`);
       const SVG_BATCH = 20;
-      const MAX_SVG_CHARS = 10_000;
+      const SVG_RENDER_SIZE = 256; // px — enough resolution for Gemini to read wordmarks, small enough to keep payload sub-MB
       for (let i = 0; i < svgFiles.length; i += SVG_BATCH) {
         const batch = svgFiles.slice(i, i + SVG_BATCH);
         const results = await Promise.allSettled(
           batch.map(async ({ relPath }) => {
             const filePath = join(assetsDir, relPath);
-            let svgText = readFileSync(filePath, "utf-8");
-            if (svgText.length > MAX_SVG_CHARS) {
-              svgText = svgText.slice(0, MAX_SVG_CHARS) + "\n<!-- truncated -->";
+            let pngBase64: string;
+            try {
+              // Flatten against a contrasting background — white-on-white SVGs render invisible to Vision.
+              const svgSource = readFileSync(filePath, "utf-8");
+              const lightFillHits = (
+                svgSource.match(/fill\s*=\s*["'](#fff(fff)?|white|#f[ef][ef])["']/gi) || []
+              ).length;
+              const darkFillHits = (
+                svgSource.match(/fill\s*=\s*["'](#000(000)?|black|#[0-3]{6}|#[0-3]{3})["']/gi) || []
+              ).length;
+              const bg =
+                lightFillHits > darkFillHits
+                  ? { r: 32, g: 32, b: 32 } // dark slate behind light glyphs
+                  : { r: 255, g: 255, b: 255 }; // white behind dark glyphs (default)
+              const pngBuffer = await sharp(filePath)
+                .resize({
+                  width: SVG_RENDER_SIZE,
+                  height: SVG_RENDER_SIZE,
+                  fit: "inside",
+                  withoutEnlargement: false,
+                })
+                .flatten({ background: bg })
+                .png()
+                .toBuffer();
+              pngBase64 = pngBuffer.toString("base64");
+            } catch {
+              // exotic SVG features may break sharp; skip caption rather than block
+              return { file: relPath, caption: "" };
             }
             const response = await ai.models.generateContent({
               model,
@@ -264,12 +290,13 @@ export async function captionImagesWithGemini(
                 {
                   role: "user",
                   parts: [
+                    { inlineData: { mimeType: "image/png", data: pngBase64 } },
                     {
                       text:
-                        "This SVG code is from a website. Describe what it renders in ONE short sentence " +
-                        "for a video storyboard. Focus on: what shape/icon/illustration it is, its colors. " +
-                        "Be factual.\n\n" +
-                        svgText,
+                        "Describe this SVG asset rendered from a website in ONE short sentence for a video storyboard. " +
+                        "Focus on: what shape/icon/illustration/wordmark it is, its colors, any text it contains. " +
+                        "If you see a wordmark, READ THE LETTERS LITERALLY — do not guess a brand from context. " +
+                        "Be factual.",
                     },
                   ],
                 },
@@ -358,11 +385,6 @@ export function generateAssetDescriptions(
     const svgsPath = join(assetsPath, "svgs");
     for (const file of readdirSync(svgsPath)) {
       if (!file.endsWith(".svg")) continue;
-      const geminiCaption = geminiCaptions[`svgs/${file}`];
-      if (geminiCaption) {
-        svgLines.push(`svgs/${file} — ${geminiCaption}`);
-        continue;
-      }
       const svgMatch = tokens.svgs.find(
         (s) =>
           s.label &&
@@ -373,9 +395,13 @@ export function generateAssetDescriptions(
               .slice(0, 15),
           ),
       );
+      const geminiCaption = geminiCaptions[`svgs/${file}`];
+      if (geminiCaption) {
+        svgLines.push(`svgs/${file} — ${geminiCaption}`);
+        continue;
+      }
       const label = svgMatch?.label || file.replace(".svg", "").replace(/-/g, " ");
-      const isLogo = svgMatch?.isLogo || file.includes("logo");
-      svgLines.push(`svgs/${file} — ${isLogo ? "logo: " : "icon: "}${label}`);
+      svgLines.push(`svgs/${file} — ${label}`);
     }
   } catch {
     /* no svgs dir */

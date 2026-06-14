@@ -135,6 +135,7 @@ const subCommands = {
   validate: () => import("./commands/validate.js").then((m) => m.default),
   snapshot: () => import("./commands/snapshot.js").then((m) => m.default),
   capture: () => import("./commands/capture.js").then((m) => m.default),
+  "capture-video": () => import("./commands/capture-video.js").then((m) => m.default),
   lambda: () => import("./commands/lambda.js").then((m) => m.default),
   cloudrun: () => import("./commands/cloudrun.js").then((m) => m.default),
   cloud: () => import("./commands/cloud.js").then((m) => m.default),
