@@ -149,3 +149,68 @@ describe("batch rollback on throw", () => {
     expect(comp.getElement("hf-title")?.inlineStyles["color"]).toBe("#fff");
   });
 });
+
+// ─── canUndo / canRedo ────────────────────────────────────────────────────────
+
+describe("canUndo / canRedo", () => {
+  it("returns false before any mutation", async () => {
+    const comp = await openComposition(BASE_HTML);
+    expect(comp.canUndo()).toBe(false);
+    expect(comp.canRedo()).toBe(false);
+  });
+
+  it("canUndo true after a mutation, false after undoing back to start", async () => {
+    const comp = await openComposition(BASE_HTML);
+    comp.setStyle("hf-title", { color: "#ff0000" });
+    expect(comp.canUndo()).toBe(true);
+    expect(comp.canRedo()).toBe(false);
+
+    comp.undo();
+    expect(comp.canUndo()).toBe(false);
+    expect(comp.canRedo()).toBe(true);
+  });
+
+  it("canRedo cleared after a new mutation", async () => {
+    const comp = await openComposition(BASE_HTML);
+    comp.setStyle("hf-title", { color: "#ff0000" });
+    comp.undo();
+    expect(comp.canRedo()).toBe(true);
+
+    comp.setStyle("hf-title", { color: "#00ff00" });
+    expect(comp.canRedo()).toBe(false);
+  });
+
+  it("returns false in embedded (T3) mode — no history", async () => {
+    const comp = await openComposition(BASE_HTML, { overrides: {} });
+    comp.setStyle("hf-title", { color: "#ff0000" });
+    expect(comp.canUndo()).toBe(false);
+    expect(comp.canRedo()).toBe(false);
+  });
+});
+
+// ─── override-set orphan cleanup ──────────────────────────────────────────────
+
+describe("override-set orphan cleanup on removeElement", () => {
+  it("purges property keys for removed element from the override-set", async () => {
+    const comp = await openComposition(BASE_HTML);
+    comp.setStyle("hf-title", { color: "#ff0000", fontSize: "96px" });
+    expect(Object.keys(comp.getOverrides())).toContain("hf-title.style.color");
+
+    comp.removeElement("hf-title");
+    const overrides = comp.getOverrides();
+    // removal marker present
+    expect(overrides["hf-title"]).toBeNull();
+    // orphan property keys gone
+    expect(Object.keys(overrides)).not.toContain("hf-title.style.color");
+    expect(Object.keys(overrides)).not.toContain("hf-title.style.fontSize");
+  });
+
+  it("property keys for other elements are unaffected", async () => {
+    const comp = await openComposition(BASE_HTML);
+    comp.setStyle("hf-title", { color: "#ff0000" });
+    comp.setStyle("hf-sub", { opacity: "1" });
+    comp.removeElement("hf-title");
+    const overrides = comp.getOverrides();
+    expect(overrides["hf-sub.style.opacity"]).toBe("1");
+  });
+});

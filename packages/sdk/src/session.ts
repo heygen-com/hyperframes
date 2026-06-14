@@ -147,6 +147,14 @@ class CompositionImpl implements Composition {
     this.historyModule?.redo();
   }
 
+  canUndo(): boolean {
+    return this.historyModule?.canUndo() ?? false;
+  }
+
+  canRedo(): boolean {
+    return this.historyModule?.canRedo() ?? false;
+  }
+
   // ── Query API (F1) ───────────────────────────────────────────────────────────
 
   getElements(): ElementSnapshot[] {
@@ -225,6 +233,19 @@ class CompositionImpl implements Composition {
       if (key !== null) {
         this.overrides[key] =
           p.op === "remove" ? null : (p.value as string | number | boolean | null);
+      }
+    }
+
+    // Purge orphan property keys for removed elements so the override-set stays
+    // compact and a future T3 session doesn't replay stale properties onto a
+    // non-existent element.
+    for (const p of forward) {
+      const elemMatch = /^\/elements\/([^/]+)$/.exec(p.path);
+      if (p.op === "remove" && elemMatch) {
+        const id = elemMatch[1]!;
+        for (const key of Object.keys(this.overrides)) {
+          if (key.startsWith(`${id}.`)) delete this.overrides[key];
+        }
       }
     }
 

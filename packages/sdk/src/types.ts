@@ -229,6 +229,8 @@ export interface Composition {
   removeGsapTween(animationId: string): void;
   undo(): void;
   redo(): void;
+  canUndo(): boolean;
+  canRedo(): boolean;
 
   // ── Query API (F1) ─────────────────────────────────────────────────────────
   getElements(): ElementSnapshot[];

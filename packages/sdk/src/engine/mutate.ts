@@ -344,9 +344,7 @@ function handleSetTiming(
     // so without this the runtime would overwrite our attribute edits on next init.
     if (parsedGsap && currentScript) {
       for (const { id: animId, animation } of parsedGsap.located) {
-        const sel = animation.targetSelector;
-        if (sel !== `[data-hf-id="${id}"]` && sel !== `[data-hf-id='${id}']` && sel !== `#${id}`)
-          continue;
+        if (!selectorMatchesId(animation.targetSelector, id)) continue;
         const updates: Partial<GsapAnimation> = {};
         if (timing.start !== undefined && newStart !== null) updates.position = newStart;
         if (timing.duration !== undefined && newDuration !== null) updates.duration = newDuration;
@@ -398,6 +396,9 @@ function handleSetHold(
 
 function handleRemoveElement(parsed: ParsedDocument, ids: HfId[]): MutationResult {
   const result: MutationResult = { forward: [], inverse: [] };
+  const origScript = getGsapScript(parsed.document);
+  let currentScript = origScript;
+
   for (const id of ids) {
     const el = findById(parsed.document, id);
     if (!el) continue;
@@ -411,7 +412,17 @@ function handleRemoveElement(parsed: ParsedDocument, ids: HfId[]): MutationResul
     const path = elementPath(id);
     result.forward.push(patchRemove(path));
     result.inverse.push(patchAdd(path, { html, parentId, siblingIndex }));
+
+    if (currentScript) currentScript = cascadeRemoveAnimations(currentScript, id);
   }
+
+  if (origScript && currentScript && currentScript !== origScript) {
+    setGsapScript(parsed.document, currentScript);
+    const gsapResult = gsapScriptChange(origScript, currentScript);
+    result.forward.push(...gsapResult.forward);
+    result.inverse.push(...gsapResult.inverse);
+  }
+
   return result;
 }
 
@@ -485,6 +496,28 @@ function handleSetVariableValue(
   const path = variablePath(id);
   const p = scalarChange(path, oldValue, newVal);
   return { forward: [p.forward], inverse: [p.inverse] };
+}
+
+// ─── GSAP selector helpers ───────────────────────────────────────────────────
+
+function selectorMatchesId(selector: string, id: HfId): boolean {
+  return (
+    selector === `[data-hf-id="${id}"]` ||
+    selector === `[data-hf-id='${id}']` ||
+    selector === `#${id}`
+  );
+}
+
+function cascadeRemoveAnimations(script: string, id: HfId): string {
+  const parsedGsap = parseGsapScriptAcornForWrite(script);
+  if (!parsedGsap) return script;
+  let current = script;
+  for (const { id: animId, animation } of parsedGsap.located) {
+    if (selectorMatchesId(animation.targetSelector, id)) {
+      current = removeAnimationFromScript(current, animId);
+    }
+  }
+  return current;
 }
 
 // ─── setClassStyle handler ────────────────────────────────────────────────────
