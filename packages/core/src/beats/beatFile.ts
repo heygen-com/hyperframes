@@ -63,9 +63,13 @@ export function parseBeats(content: string): { times: number[]; strengths: numbe
     const times: number[] = [];
     const strengths: number[] = [];
     for (const b of data.beats) {
-      if (b && typeof b.time === "number") {
+      if (b && typeof b.time === "number" && Number.isFinite(b.time)) {
         times.push(b.time);
-        strengths.push(typeof b.strength === "number" ? b.strength : 0.5);
+        // Clamp to [0,1] — a hand-edited file could carry an out-of-range or
+        // non-finite strength, and the renderers feed it into Math.pow(s, 2.2)
+        // (NaN for a negative base).
+        const s = typeof b.strength === "number" && Number.isFinite(b.strength) ? b.strength : 0.5;
+        strengths.push(Math.max(0, Math.min(1, s)));
       }
     }
     return { times, strengths };

@@ -92,20 +92,31 @@ export function addUserBeat(
   return next;
 }
 
-/** Remove the beat nearest `time` — drops a user-added beat or hides a detected one. */
+/**
+ * Remove the beat nearest `time` — drops a user-added beat or hides a detected
+ * one. Returns the SAME reference when nothing changed (no added beat near
+ * `time`, and no live detected beat to hide) so callers can skip persisting a
+ * phantom edit/undo/write.
+ */
 export function removeUserBeat(
   edits: BeatEditState | null,
   src: string,
   detectedTimes: number[],
   time: number,
-): BeatEditState {
+): BeatEditState | null {
+  const active = activeEdits(edits, src);
+  const hasAdded = (active?.added ?? []).some((b) => near(b.time, time));
+  const detected = detectedTimes.find((t) => near(t, time));
+  const alreadyHidden =
+    detected !== undefined && (active?.removed ?? []).some((r) => near(r, detected));
+  if (!hasAdded && (detected === undefined || alreadyHidden)) return edits;
+
   const next = base(edits, src);
   const ai = next.added.findIndex((b) => near(b.time, time));
   if (ai >= 0) {
     next.added.splice(ai, 1);
     return next;
   }
-  const detected = detectedTimes.find((t) => near(t, time));
   if (detected !== undefined && !next.removed.some((r) => near(r, detected))) {
     next.removed.push(detected);
   }
@@ -119,7 +130,7 @@ export function moveUserBeat(
   detectedTimes: number[],
   fromTime: number,
   toBeat: UserBeat,
-): BeatEditState {
+): BeatEditState | null {
   const removed = removeUserBeat(edits, src, detectedTimes, fromTime);
   return addUserBeat(removed, src, toBeat, detectedTimes) ?? removed;
 }

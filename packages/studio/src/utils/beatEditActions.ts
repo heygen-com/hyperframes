@@ -87,10 +87,9 @@ export function deleteBeatAtCompositionTime(compT: number): void {
   const c = ctx();
   if (!c) return;
   const audioT = compToAudio(c.music.start, c.music.playbackStart ?? 0, compT);
-  c.s.commitBeatEdits(
-    removeUserBeat(c.s.beatEdits, c.src, c.analysis.beatTimes, audioT),
-    "delete beat",
-  );
+  const next = removeUserBeat(c.s.beatEdits, c.src, c.analysis.beatTimes, audioT);
+  // No-op when there was no beat to remove — skip the undo entry + write.
+  if (next !== c.s.beatEdits) c.s.commitBeatEdits(next, "delete beat");
 }
 
 export function moveBeatCompositionTime(fromCompT: number, toCompT: number): void {
@@ -101,11 +100,10 @@ export function moveBeatCompositionTime(fromCompT: number, toCompT: number): voi
   const toAudio = compToAudio(c.music.start, playbackStart, toCompT);
   const clamped = Math.max(playbackStart, Math.min(playbackStart + clipDuration(c.music), toAudio));
   const strength = strengthAtTime(c.analysis, clamped);
-  c.s.commitBeatEdits(
-    moveUserBeat(c.s.beatEdits, c.src, c.analysis.beatTimes, fromAudio, {
-      time: clamped,
-      strength,
-    }),
-    "move beat",
-  );
+  const next = moveUserBeat(c.s.beatEdits, c.src, c.analysis.beatTimes, fromAudio, {
+    time: clamped,
+    strength,
+  });
+  // No-op when the move resolves to no change — skip the undo entry + write.
+  if (next !== c.s.beatEdits) c.s.commitBeatEdits(next, "move beat");
 }

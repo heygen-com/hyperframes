@@ -338,5 +338,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       selectedKeyframes: new Set(),
       selectedElementIds: new Set(),
       keyframeCache: new Map(),
+      // Beat state is project-specific — clear it so a project switch can't
+      // apply the previous project's beats/undo/persist to the new one.
+      beatAnalysis: null,
+      beatEdits: null,
+      beatUndo: [],
+      beatRedo: [],
+      beatPersist: null,
     }),
 }));

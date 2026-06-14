@@ -64,11 +64,12 @@ export function useTimelinePlayhead({
     const scroll = scrollRef.current;
     const prevPps = previousAnchorPpsRef.current;
     previousAnchorPpsRef.current = pps;
-    if (!scroll || pps === prevPps) return;
-    if (skipCenterAnchorRef.current) {
-      skipCenterAnchorRef.current = false;
-      return;
-    }
+    // Always consume the skip flag, even when pps didn't change — otherwise a
+    // pinch that produced no pps change (already at the zoom clamp) would strand
+    // it true and the next toolbar zoom would wrongly skip center-anchoring.
+    const skip = skipCenterAnchorRef.current;
+    skipCenterAnchorRef.current = false;
+    if (!scroll || pps === prevPps || skip) return;
     const nextScrollLeft = getTimelineScrollLeftForZoomAnchor({
       pointerX: scroll.clientWidth / 2,
       currentScrollLeft: scroll.scrollLeft,

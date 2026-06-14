@@ -89,10 +89,21 @@ function inPageAnalyze(data: string) {
   };
   if (typeof win.__hfAnalyze !== "function") throw new Error("beat analyzer not loaded");
   const ctx = new (win.AudioContext || win.webkitAudioContext!)();
-  return ctx
-    .decodeAudioData(bytes.buffer)
-    .then((buf) => win.__hfAnalyze!(buf))
-    .finally(() => ctx.close());
+  return (
+    ctx
+      .decodeAudioData(bytes.buffer)
+      .then((buf) => win.__hfAnalyze!(buf))
+      // analyzeMusicFromBuffer also returns the decoded PCM (channelData) + sampleRate;
+      // project to only the fields we need so page.evaluate doesn't serialize an
+      // ~8-million-element Float32Array back across the CDP boundary.
+      .then((r) => ({
+        beatTimes: r.beatTimes,
+        beatStrengths: r.beatStrengths,
+        bpm: r.bpm,
+        bpmConfidence: r.bpmConfidence,
+      }))
+      .finally(() => ctx.close())
+  );
 }
 
 // Load the analyzer bundle into the page, run analysis, and surface in-page

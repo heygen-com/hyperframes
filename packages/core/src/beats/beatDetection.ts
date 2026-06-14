@@ -144,6 +144,10 @@ function octaveAlignBpm(bpm: number, reference: number): number {
 function regularizeBeats(rawBeats: number[], bpm: number, duration: number): number[] {
   if (rawBeats.length === 0 || bpm <= 0 || duration <= 0) return rawBeats;
   const beatInterval = 60 / bpm;
+  // Guard against a pathological (octave-misread) tempo producing a millisecond
+  // interval → tens of thousands of grid beats that freeze the timeline. 480 BPM
+  // (0.125s) is well above any real music tempo; bail to the raw onsets instead.
+  if (beatInterval < 0.125) return rawBeats;
   const threshold = beatInterval * 0.25;
 
   // Find phase offset that maximally aligns with raw onsets

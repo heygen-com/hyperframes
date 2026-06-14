@@ -365,11 +365,19 @@ export function useTimelineClipDrag({
               nextResize.playbackStart != null
                 ? nextResize.playbackStart / playbackRate
                 : Number.POSITIVE_INFINITY;
-            if (snapped !== nextResize.start && snapped >= 0 && delta <= maxLeftDelta + 1e-6) {
+            // Also require the resulting duration to stay >= minDuration so a
+            // rightward snap (delta < 0) can't collapse the clip to zero/negative.
+            const snappedDuration = Math.round((nextResize.duration + delta) * 1000) / 1000;
+            if (
+              snapped !== nextResize.start &&
+              snapped >= 0 &&
+              delta <= maxLeftDelta + 1e-6 &&
+              snappedDuration >= 0.05
+            ) {
               nextResize = {
                 ...nextResize,
                 start: snapped,
-                duration: Math.round((nextResize.duration + delta) * 1000) / 1000,
+                duration: snappedDuration,
                 playbackStart:
                   nextResize.playbackStart != null
                     ? Math.round(
