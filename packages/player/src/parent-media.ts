@@ -129,6 +129,16 @@ export class ParentMediaManager {
     m.el.play().catch((err: unknown) => this._reportPlaybackError(err));
   }
 
+  // Play only if the current playhead is inside the clip's (live) window, so
+  // bulk starts (playAll / adopt) don't blip audio for clips outside their
+  // window until the next mirrorTime tick gates them off.
+  private _playEntryIfActive(m: ProxyEntry): void {
+    this._refreshEntryBounds(m);
+    const relTime = this._getCurrentTime() - m.start;
+    if (relTime < 0 || relTime >= m.duration) return;
+    this._playEntry(m);
+  }
+
   // Re-read the source clip's live timing so trims/moves bound the proxy
   // (adopt-time values go stale when the timeline is edited).
   private _refreshEntryBounds(m: ProxyEntry): void {
@@ -150,7 +160,7 @@ export class ParentMediaManager {
   }
 
   playAll(): void {
-    for (const m of this._entries) this._playEntry(m);
+    for (const m of this._entries) this._playEntryIfActive(m);
   }
 
   pauseAll(): void {
@@ -159,6 +169,9 @@ export class ParentMediaManager {
 
   seekAll(timeInSeconds: number): void {
     for (const m of this._entries) {
+      // Re-read live bounds so a trim/move just before a paused scrub gates and
+      // positions against the current clip window, not the adopt-time one.
+      this._refreshEntryBounds(m);
       const relTime = timeInSeconds - m.start;
       if (relTime >= 0 && relTime < m.duration) m.el.currentTime = relTime;
     }
@@ -345,7 +358,7 @@ export class ParentMediaManager {
     // up immediately — bypass the jitter-coalescing gate.
     if (created && this._audioOwner === "parent") {
       this.mirrorTime(this._getCurrentTime(), { force: true });
-      if (!this._isPaused()) this._playEntry(created);
+      if (!this._isPaused()) this._playEntryIfActive(created);
     }
   }
 

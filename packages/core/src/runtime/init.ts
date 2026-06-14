@@ -2176,13 +2176,29 @@ export function initSandboxRuntimeModular(): void {
           Number.parseFloat(rawEl.dataset.playbackStart ?? rawEl.dataset.mediaStart ?? "0") || 0;
         const volumeAttr = Number.parseFloat(rawEl.dataset.volume ?? "");
         const vol = Number.isFinite(volumeAttr) ? volumeAttr : 1;
-        // The clip's authored window bounds the WebAudio buffer so a trimmed
-        // clip stops at its edge instead of running to the source's end.
+        // Bound the WebAudio buffer the same way the HTMLMedia resolver
+        // (resolveDurationSeconds) does: by the clip's own data-duration AND by
+        // the remaining host-composition window, so a trimmed or sub-composition
+        // -nested clip stops at the same edge on both playback paths. (Source
+        // length is bounded naturally by the decoded buffer.)
         const durationAttr = Number.parseFloat(rawEl.dataset.duration ?? "");
-        const clipDuration =
+        let clipDuration =
           Number.isFinite(durationAttr) && durationAttr > 0
             ? durationAttr
             : Number.POSITIVE_INFINITY;
+        const compositionRoot = rawEl.closest("[data-composition-id]");
+        if (compositionRoot) {
+          const inheritedStart = resolveStartForElement(compositionRoot, 0);
+          const inheritedDuration = resolveDurationForElement(compositionRoot, {
+            includeAuthoredTimingAttrs: true,
+          });
+          if (inheritedDuration != null && inheritedDuration > 0) {
+            clipDuration = Math.min(
+              clipDuration,
+              Math.max(0, inheritedStart + inheritedDuration - compStart),
+            );
+          }
+        }
         void webAudio.decodeAudioElement(rawEl).then((buffer) => {
           if (!buffer || !clock.isPlaying()) return;
           void webAudio.schedulePlayback(
