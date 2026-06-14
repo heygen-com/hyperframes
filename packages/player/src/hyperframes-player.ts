@@ -1,4 +1,4 @@
-import { CompositionProbe, type ProbeResult } from "./composition-probe.js";
+import { CompositionProbe, type ProbeResult, readPositiveDimension } from "./composition-probe.js";
 import { isControlsClick, setupControls, setupPoster } from "./controls-setup.js";
 import { adoptShadowStyles, createCompositionIframe, scaleIframeToFit } from "./iframe-dom.js";
 import { DirectTimelineClock } from "./direct-timeline-clock.js";
@@ -179,12 +179,16 @@ class HyperframesPlayer extends HTMLElement {
         if (val !== null) this.iframe.srcdoc = prepareSrcdocForElement(this, val);
         else this.iframe.removeAttribute("srcdoc");
         break;
+      // Reject NaN/zero/negative dimensions the same way the composition
+      // probe does (a typo like width="abc" or width="0" would otherwise
+      // reach scaleIframeToFit as scale(NaN) or a division by zero and
+      // blank the player); fall back to the defaults instead.
       case "width":
-        this._compositionWidth = parseInt(val || "1920", 10);
+        this._compositionWidth = readPositiveDimension(val) ?? 1920;
         this._rescale();
         break;
       case "height":
-        this._compositionHeight = parseInt(val || "1080", 10);
+        this._compositionHeight = readPositiveDimension(val) ?? 1080;
         this._rescale();
         break;
       case "controls":

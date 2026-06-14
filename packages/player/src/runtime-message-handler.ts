@@ -95,7 +95,11 @@ export function handleRuntimeMessage(
 
   if (
     data["type"] === "stage-size" &&
+    // Finite-check like the timeline branch above: `> 0` alone lets
+    // Infinity through, which scales the iframe to 0 and blanks it.
+    Number.isFinite(data["width"]) &&
     (data["width"] as number) > 0 &&
+    Number.isFinite(data["height"]) &&
     (data["height"] as number) > 0
   ) {
     callbacks.setCompositionSize(data["width"] as number, data["height"] as number);

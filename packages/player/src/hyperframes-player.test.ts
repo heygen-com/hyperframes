@@ -1946,3 +1946,63 @@ describe("HyperframesPlayer playback rate", () => {
     expect(player.playbackRate).toBe(5);
   });
 });
+
+// ── Composition dimension attributes ──
+//
+// width/height feed scaleIframeToFit's `w / compositionWidth` division. A
+// non-numeric, zero, or negative attribute must fall back to the defaults
+// instead of reaching the scale math as NaN (invalid `scale(NaN)` transform)
+// or zero (division by zero) — both blank the player with no signal.
+
+describe("HyperframesPlayer composition dimension attributes", () => {
+  type PlayerWithDimensions = HTMLElement & {
+    _compositionWidth?: number;
+    _compositionHeight?: number;
+  };
+
+  let player: PlayerWithDimensions;
+
+  beforeEach(async () => {
+    await import("./hyperframes-player.js");
+    player = document.createElement("hyperframes-player") as PlayerWithDimensions;
+    document.body.appendChild(player);
+  });
+
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  it("applies a valid width and height", () => {
+    player.setAttribute("width", "1280");
+    player.setAttribute("height", "720");
+    expect(player._compositionWidth).toBe(1280);
+    expect(player._compositionHeight).toBe(720);
+  });
+
+  it("falls back to defaults for non-numeric values", () => {
+    player.setAttribute("width", "abc");
+    player.setAttribute("height", "abc");
+    expect(player._compositionWidth).toBe(1920);
+    expect(player._compositionHeight).toBe(1080);
+  });
+
+  it("falls back to defaults for zero", () => {
+    player.setAttribute("width", "0");
+    player.setAttribute("height", "0");
+    expect(player._compositionWidth).toBe(1920);
+    expect(player._compositionHeight).toBe(1080);
+  });
+
+  it("falls back to defaults for negative values", () => {
+    player.setAttribute("width", "-500");
+    player.setAttribute("height", "-500");
+    expect(player._compositionWidth).toBe(1920);
+    expect(player._compositionHeight).toBe(1080);
+  });
+
+  it("recovers the defaults when the attribute is removed", () => {
+    player.setAttribute("width", "1280");
+    player.removeAttribute("width");
+    expect(player._compositionWidth).toBe(1920);
+  });
+});
