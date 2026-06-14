@@ -88,6 +88,7 @@ export {
   injectVideoFramesBatch,
   syncVideoFrameVisibility,
   cdpSessionCache,
+  probeBeginFrameLiveness,
   initTransparentBackground,
   captureAlphaPng,
   applyDomLayerMask,

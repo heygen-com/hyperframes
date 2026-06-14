@@ -53,6 +53,8 @@ export interface DockerRenderOptions {
   /** Output resolution preset (e.g. "landscape-4k"). Forwarded as `--resolution`. */
   outputResolution?: string;
   pageSideCompositing?: boolean;
+  /** EXPERIMENTAL. drawElementImage frame capture; forwarded as `--experimental-fast-capture`. */
+  experimentalFastCapture?: boolean;
   /**
    * Puppeteer page-navigation timeout, in milliseconds. Forwarded to the
    * in-container CLI as `--browser-timeout <seconds>` (the CLI takes
@@ -132,6 +134,7 @@ export function buildDockerRunArgs(input: DockerRunArgsInput): string[] {
     ...(options.entryFile ? ["--composition", options.entryFile] : []),
     ...(options.outputResolution ? ["--resolution", options.outputResolution] : []),
     ...(options.pageSideCompositing === false ? ["--no-page-side-compositing"] : []),
+    ...(options.experimentalFastCapture ? ["--experimental-fast-capture"] : []),
     ...(options.pageNavigationTimeoutMs != null
       ? ["--browser-timeout", String(options.pageNavigationTimeoutMs / 1000)]
       : []),

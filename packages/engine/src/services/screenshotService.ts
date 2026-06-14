@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication complexity
 /**
  * Screenshot Service
  *
@@ -25,6 +26,55 @@ export async function getCdpSession(page: Page): Promise<import("puppeteer-core"
 export interface BeginFrameResult {
   buffer: Buffer;
   hasDamage: boolean;
+}
+
+/**
+ * Issue a single no-output BeginFrame and race it against `timeoutMs`.
+ *
+ * On SwiftShader, compositions with many promoted layers (multi-group nested
+ * opacity caption animations) can stall the FIRST BeginFrame indefinitely —
+ * tested to 30 minutes without completion (style-7/8/10/15-prod). The
+ * auto-worker calibration path catches this with its own capped protocol
+ * timeout, but renders with an explicit `--workers N` skip calibration and
+ * would hang for the full protocol timeout (and never succeed). This probe
+ * gives the producer a cheap liveness signal right after session init:
+ * `false` means route the render through screenshot capture instead.
+ *
+ * Healthy comps complete the probe in well under a second on GPU and within
+ * a few seconds on SwiftShader. A protocol error also resolves `false` —
+ * the safe direction (screenshot capture always works).
+ */
+export async function probeBeginFrameLiveness(
+  page: Page,
+  timeoutMs: number,
+  // BeginFrame frameTimeTicks must be monotonic per session. The capture loop
+  // sends `session.beginFrameTimeTicks + frameIndex * interval`, where the
+  // base carries a 10-interval cushion above the warmup loop's last tick —
+  // callers probing an initialized session should pass a tick INSIDE that
+  // cushion (e.g. base − 5·interval) so warmup < probe < first capture stays
+  // monotonic. Omit both params only for a session that will not issue
+  // further BeginFrames.
+  frameTimeTicks?: number,
+  intervalMs?: number,
+): Promise<boolean> {
+  const client = await getCdpSession(page);
+  const params: { frameTimeTicks?: number; interval?: number } = {};
+  if (typeof frameTimeTicks === "number") params.frameTimeTicks = frameTimeTicks;
+  if (typeof intervalMs === "number") params.interval = intervalMs;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      client
+        .send("HeadlessExperimental.beginFrame", params)
+        .then(() => true)
+        .catch(() => false),
+      new Promise<boolean>((resolve) => {
+        timer = setTimeout(() => resolve(false), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 /**
@@ -421,6 +471,7 @@ export async function injectVideoFramesBatch(
       // shorter than the host's authored data-duration, where the runtime
       // truncates visibility but the replacement <img> must hold its last
       // frame) — those must NOT be skipped here.
+      // fallow-ignore-next-line code-duplication
       const isVisualAncestorHidden = (el: HTMLElement): boolean => {
         let parent = el.parentElement;
         while (parent !== null && parent !== document.documentElement) {
@@ -562,6 +613,7 @@ export async function syncVideoFrameVisibility(
     // See that copy for the full rationale on why `visibility: hidden` is
     // narrowed to sub-composition hosts only — keep these two functions in
     // sync so the inactive-arm decision matches the inject-time decision.
+    // fallow-ignore-next-line code-duplication
     const isVisualAncestorHidden = (el: HTMLElement): boolean => {
       let parent = el.parentElement;
       while (parent !== null && parent !== document.documentElement) {

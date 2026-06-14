@@ -14,6 +14,7 @@
     "packages/producer/src/runtime-conformance.ts",
     "packages/producer/src/benchmark.ts",
     "packages/producer/scripts/generate-font-data.ts",
+    "packages/producer/scripts/validate-fast-video.ts",
     "packages/cli/scripts/generate-font-data.ts",
     "packages/engine/scripts/test-fitTextFontSize-browser.ts",
     "packages/aws-lambda/scripts/*.ts",
@@ -40,6 +41,11 @@
   ],
   "ignorePatterns": [
     "docs/**",
+    // Chrome browser binaries downloaded by puppeteer — not project source.
+    "chrome/**",
+    // Standalone spike scripts and benchmark runners used during R&D.
+    "packages/engine/spikes/**",
+    "packages/producer/de-*.mjs",
     "packages/producer/tests/**",
     "packages/player/tests/**",
     "packages/engine/tests/**",
@@ -113,6 +119,12 @@
     {
       "file": "packages/cli/src/commands/render.ts",
       "exports": ["resolveBrowserGpuForCli", "renderLocal"],
+    },
+    // initThreeDProjectionInPage: passed to page.evaluate() for browser-side execution —
+    // Puppeteer serializes it at runtime, not an import-graph consumer.
+    {
+      "file": "packages/engine/src/services/threeDProjection.ts",
+      "exports": ["initThreeDProjectionInPage"],
     },
     // captureCost.ts: constants and helpers consumed by the runCaptureCalibration
     // orchestration function and tests, but the entry-point graph doesn't
