@@ -38,6 +38,7 @@ import { join, relative, sep } from "node:path";
 import { type CanvasResolution } from "@hyperframes/core";
 import { type EngineConfig, getEncoderPreset, resolveConfig } from "@hyperframes/engine";
 import { defaultLogger, type ProducerLogger } from "../../logger.js";
+import { closeFileServerSafely } from "../fileServer.js";
 import { runAudioStage } from "../render/stages/audioStage.js";
 import { runCompileStage } from "../render/stages/compileStage.js";
 import { runExtractVideosStage } from "../render/stages/extractVideosStage.js";
@@ -833,7 +834,7 @@ export async function plan(
   job.duration = probeResult.duration;
   job.totalFrames = probeResult.totalFrames;
   const totalFrames = probeResult.totalFrames;
-  if (probeResult.fileServer) probeResult.fileServer.close();
+  if (probeResult.fileServer) closeFileServerSafely(probeResult.fileServer, "plan", log);
   if (probeResult.probeSession) {
     // Close inside a try/catch — leaking a Chrome process here would mask
     // the original plan() result on cancellation paths.

@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node
 import path, { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
+  closeFileServerSafely,
   createFileServer,
   HF_BRIDGE_SCRIPT,
   HF_EARLY_STUB,
@@ -10,6 +11,45 @@ import {
   isPathInside,
   VIRTUAL_TIME_SHIM,
 } from "./fileServer.js";
+
+function captureLogger() {
+  const warnings: { message: string; meta?: Record<string, unknown> }[] = [];
+  return {
+    warnings,
+    log: {
+      error() {},
+      warn(message: string, meta?: Record<string, unknown>) {
+        warnings.push({ message, meta });
+      },
+      info() {},
+      debug() {},
+    },
+  };
+}
+
+describe("closeFileServerSafely", () => {
+  it("swallows and logs a throwing close instead of propagating", () => {
+    const { log, warnings } = captureLogger();
+    const fileServer = {
+      close: () => {
+        // http.Server.close() throws ERR_SERVER_NOT_RUNNING on a second close.
+        throw new Error("Server is not running.");
+      },
+    };
+    expect(() => closeFileServerSafely(fileServer, "plan", log)).not.toThrow();
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].message).toContain("[plan]");
+    expect(warnings[0].meta?.error).toBe("Server is not running.");
+  });
+
+  it("closes once and stays quiet on the happy path", () => {
+    const { log, warnings } = captureLogger();
+    let closed = 0;
+    closeFileServerSafely({ close: () => closed++ }, "renderChunk", log);
+    expect(closed).toBe(1);
+    expect(warnings).toHaveLength(0);
+  });
+});
 
 describe("injectScriptsIntoHtml", () => {
   it("injects the virtual time shim into head content before authored scripts", () => {

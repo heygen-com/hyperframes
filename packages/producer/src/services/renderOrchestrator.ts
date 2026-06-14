@@ -70,6 +70,7 @@ import { join, dirname, resolve } from "path";
 import { randomUUID } from "crypto";
 import { fileURLToPath } from "url";
 import {
+  closeFileServerSafely,
   createFileServer,
   type FileServerHandle,
   HF_PAGE_SIDE_COMPOSITING_STUB,
@@ -1567,7 +1568,7 @@ export async function executeRenderJob(
     if (frameLookup) frameLookup.cleanup();
 
     // Stop file server
-    fileServer.close();
+    closeFileServerSafely(fileServer, "renderOrchestrator", log);
     fileServer = null;
 
     // ── Stage 6: Assemble ───────────────────────────────────────────────
