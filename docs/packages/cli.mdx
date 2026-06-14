@@ -217,6 +217,8 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
 
     `add` reads [`hyperframes.json`](#hyperframes-json) at the project root to know which registry to pull from and where to drop files. If the file is missing but the directory looks like a Hyperframes project (has `index.html`), a default `hyperframes.json` is written the first time you run `add`.
 
+    If a registry item declares `registryDependencies`, `add` resolves them transitively and installs dependencies before the requested item. Compatibility metadata is checked for every resolved item before any files are written: `minCliVersion` stops incompatible installs with upgrade guidance, while `deprecated` shows a warning and still installs.
+
     Output for a block or component is a set of files plus a **paste snippet** — the `<iframe>` tag (for blocks) or the fragment path (for components) to include in your host composition. The snippet is copied to the clipboard by default; add `--no-clipboard` for CI or headless environments.
 
     Trying `add` with an example's name (e.g. `hyperframes add warm-grain`) emits a clear error pointing you at `init --example`.
