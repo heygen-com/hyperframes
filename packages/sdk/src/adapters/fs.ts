@@ -1,44 +1,110 @@
 import type { PersistAdapter, PersistVersionEntry } from "./types.js";
 import type { PersistErrorEvent } from "../types.js";
+import { readFile, writeFile, mkdir, readdir, unlink } from "node:fs/promises";
+import { join, dirname } from "node:path";
 
 export interface FsAdapterOptions {
   /** Root directory for composition files */
   root: string;
+  /** Max versions to keep per file. Default: 20 */
+  maxVersions?: number;
 }
 
-// Phase 4 — fs adapter stub. Full implementation in SDK Phase 4 (adapters stage).
-// Uses Node.js fs/promises; not browser-safe (must be conditionally imported by consumers).
+const DEFAULT_MAX_VERSIONS = 20;
 
 class FsAdapter implements PersistAdapter {
   private readonly root: string;
+  private readonly maxVersions: number;
+  private errorHandlers: Array<(e: PersistErrorEvent) => void> = [];
 
   constructor(opts: FsAdapterOptions) {
     this.root = opts.root;
+    this.maxVersions = opts.maxVersions ?? DEFAULT_MAX_VERSIONS;
   }
 
-  async read(_path: string): Promise<string | undefined> {
-    throw new Error("FsAdapter: Phase 4 — not yet implemented");
+  async read(path: string): Promise<string | undefined> {
+    try {
+      return await readFile(this.abs(path), "utf8");
+    } catch (err: unknown) {
+      if (isNotFound(err)) return undefined;
+      throw err;
+    }
   }
 
-  async write(_path: string, _content: string): Promise<void> {
-    throw new Error("FsAdapter: Phase 4 — not yet implemented");
+  async write(path: string, content: string): Promise<void> {
+    try {
+      const abs = this.abs(path);
+      await mkdir(dirname(abs), { recursive: true });
+      await writeFile(abs, content, "utf8");
+      await this.appendVersion(path, content);
+    } catch (err) {
+      for (const h of this.errorHandlers) h({ error: { message: String(err), cause: err } });
+    }
   }
 
-  async flush(): Promise<void> {
-    throw new Error("FsAdapter: Phase 4 — not yet implemented");
+  async flush(): Promise<void> {}
+
+  async listVersions(path: string): Promise<PersistVersionEntry[]> {
+    const dir = this.versionsDir(path);
+    try {
+      const entries = await readdir(dir);
+      const sorted = entries
+        .filter((f) => f.endsWith(".html"))
+        .sort()
+        .reverse();
+      return Promise.all(
+        sorted.map(async (f) => ({
+          key: f.replace(/\.html$/, ""),
+          content: await readFile(join(dir, f), "utf8"),
+          timestamp: Number(f.replace(/\.html$/, "")),
+        })),
+      );
+    } catch {
+      return [];
+    }
   }
 
-  async listVersions(_path: string): Promise<PersistVersionEntry[]> {
-    throw new Error("FsAdapter: Phase 4 — not yet implemented");
+  async loadFrom(path: string, versionKey: string): Promise<string | undefined> {
+    try {
+      return await readFile(join(this.versionsDir(path), `${versionKey}.html`), "utf8");
+    } catch {
+      return undefined;
+    }
   }
 
-  async loadFrom(_path: string, _versionKey: string): Promise<string | undefined> {
-    throw new Error("FsAdapter: Phase 4 — not yet implemented");
+  on(event: "persist:error", handler: (e: PersistErrorEvent) => void): () => void {
+    if (event !== "persist:error") return () => {};
+    this.errorHandlers.push(handler);
+    return () => {
+      const i = this.errorHandlers.indexOf(handler);
+      if (i !== -1) this.errorHandlers.splice(i, 1);
+    };
   }
 
-  on(_event: "persist:error", _handler: (e: PersistErrorEvent) => void): () => void {
-    return () => {};
+  private abs(path: string): string {
+    return join(this.root, path);
   }
+
+  private versionsDir(path: string): string {
+    return join(this.root, ".hf-versions", path);
+  }
+
+  private async appendVersion(path: string, content: string): Promise<void> {
+    const dir = this.versionsDir(path);
+    await mkdir(dir, { recursive: true });
+    const key = String(Date.now());
+    await writeFile(join(dir, `${key}.html`), content, "utf8");
+    // prune oldest beyond maxVersions
+    const all = (await readdir(dir)).filter((f) => f.endsWith(".html")).sort();
+    const excess = all.length - this.maxVersions;
+    if (excess > 0) {
+      await Promise.all(all.slice(0, excess).map((f) => unlink(join(dir, f)).catch(() => {})));
+    }
+  }
+}
+
+function isNotFound(err: unknown): boolean {
+  return (err as NodeJS.ErrnoException)?.code === "ENOENT";
 }
 
 export function createFsAdapter(opts: FsAdapterOptions): PersistAdapter {

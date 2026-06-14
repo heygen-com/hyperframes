@@ -285,6 +285,12 @@ function handleSetTiming(
   timing: { start?: number; duration?: number; trackIndex?: number },
 ): MutationResult {
   const result: MutationResult = { forward: [], inverse: [] };
+
+  // Pre-parse GSAP script once; sync tween positions for GSAP-scripted compositions.
+  const origScript = getGsapScript(parsed.document);
+  const parsedGsap = origScript ? parseGsapScriptAcornForWrite(origScript) : null;
+  let currentScript = origScript;
+
   for (const id of ids) {
     const el = findById(parsed.document, id);
     if (!el) continue;
@@ -332,7 +338,32 @@ function handleSetTiming(
       result.inverse.push(p.inverse);
       el.setAttribute("data-track-index", String(newTrack));
     }
+
+    // Sync GSAP tween positions so GSAP-scripted and clip-model compositions stay
+    // consistent. The runtime stamps data-start/data-duration FROM the GSAP script,
+    // so without this the runtime would overwrite our attribute edits on next init.
+    if (parsedGsap && currentScript) {
+      for (const { id: animId, animation } of parsedGsap.located) {
+        const sel = animation.targetSelector;
+        if (sel !== `[data-hf-id="${id}"]` && sel !== `[data-hf-id='${id}']` && sel !== `#${id}`)
+          continue;
+        const updates: Partial<GsapAnimation> = {};
+        if (timing.start !== undefined && newStart !== null) updates.position = newStart;
+        if (timing.duration !== undefined && newDuration !== null) updates.duration = newDuration;
+        if (Object.keys(updates).length === 0) continue;
+        currentScript = updateAnimationInScript(currentScript, animId, updates);
+      }
+    }
   }
+
+  // Flush accumulated GSAP script changes as a single patch pair.
+  if (origScript && currentScript && currentScript !== origScript) {
+    setGsapScript(parsed.document, currentScript);
+    const gsapResult = gsapScriptChange(origScript, currentScript);
+    result.forward.push(...gsapResult.forward);
+    result.inverse.push(...gsapResult.inverse);
+  }
+
   return result;
 }
 
