@@ -589,6 +589,8 @@ function removeSelected() {
   const id = selectedId;
   comp.element(id).removeElement();
   logEntry("op", { removeElement: id });
+  // Stage 4: GSAP cascade + orphan cleanup — overrides show purged keys
+  logEntry("info", { "overrides after cascade": comp.getOverrides() });
   setSelection(null);
 }
 
@@ -983,7 +985,16 @@ async function loadVersion(
   logEntry("info", `loaded version ${key}`);
 }
 
+function stateBadge(label: string, enabled: boolean): HTMLDivElement {
+  const n = mkNote(`${label}: ${enabled}`);
+  n.style.color = enabled ? "#34d399" : "#6b7280";
+  return n;
+}
+
 function buildHistorySection(): HTMLDivElement {
+  const undoState = stateBadge("canUndo", comp?.canUndo() ?? false);
+  const redoState = stateBadge("canRedo", comp?.canRedo() ?? false);
+
   const undo = mkBtn("← Undo", "", () => {
     comp!.undo();
     logEntry("undo", "dispatched");
@@ -1020,6 +1031,7 @@ function buildHistorySection(): HTMLDivElement {
   });
   return opSection(
     "History / inspect",
+    opRow(undoState, redoState),
     opRow(undo, redo),
     opRow(canCheck, canResult),
     opRow(overrides, flush),
@@ -1083,6 +1095,7 @@ function wireCompositionEvents(c: Composition) {
     renderElementList();
     renderInspectorContent();
     renderTimeline();
+    updateUndoRedoState();
   });
   c.on("persist:error", (e) => logEntry("persist:error", e));
   c.on("selectionchange", onSelectionChange);
@@ -1111,6 +1124,7 @@ async function openEditor(html: string, name = "untitled") {
 
   comp = await openComposition(html, { persist, preview, coalesceMs: 150 });
   wireCompositionEvents(comp);
+  updateUndoRedoState();
 
   renderElementList();
   renderInspectorContent();
@@ -1395,11 +1409,20 @@ function wireUndoRedo() {
   document.getElementById("btn-undo")!.addEventListener("click", () => {
     comp?.undo();
     logEntry("undo", "dispatched");
+    updateUndoRedoState();
   });
   document.getElementById("btn-redo")!.addEventListener("click", () => {
     comp?.redo();
     logEntry("redo", "dispatched");
+    updateUndoRedoState();
   });
+}
+
+function updateUndoRedoState() {
+  const undoBtn = document.getElementById("btn-undo") as HTMLButtonElement;
+  const redoBtn = document.getElementById("btn-redo") as HTMLButtonElement;
+  undoBtn.disabled = !(comp?.canUndo() ?? false);
+  redoBtn.disabled = !(comp?.canRedo() ?? false);
 }
 
 function wirePlayToggle() {

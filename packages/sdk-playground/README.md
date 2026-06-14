@@ -16,12 +16,12 @@ The playground exercises the full SDK surface end-to-end in a real browser again
 file-backed persist adapter. It was built to verify SDK stages 3b and 4 before Studio
 migration begins:
 
-| SDK stage              | What is exercised                                                                                                                                       |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Stage 3a — Session API | `openComposition`, `dispatch`, `undo`/`redo`, `batch`, `on('patch')`, `on('selectionchange')`, `on('persist:error')`, `flush`                           |
-| Stage 3b — GSAP engine | `addGsapTween`, `setGsapTween`, `removeGsapTween`, `addLabel`, `removeLabel`, `setClassStyle`, `setTiming` (GSAP-script sync)                           |
-| Stage 4 (partial)      | `can()` returning `CanResult`, `getOverrides()`, `selection()` proxy, `find()`, `setVariableValue`                                                      |
-| Stage 5 (partial)      | `FsAdapter` — file-backed persistence with version history; `FileAdapter` — browser fetch adapter; `PlaygroundPreview` — concrete `PreviewAdapter` impl |
+| SDK stage              | What is exercised                                                                                                                                                                                                                       |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Stage 3a — Session API | `openComposition`, `dispatch`, `undo`/`redo`, `batch`, `on('patch')`, `on('selectionchange')`, `on('persist:error')`, `flush`                                                                                                           |
+| Stage 3b — GSAP engine | `addGsapTween`, `setGsapTween`, `removeGsapTween`, `addLabel`, `removeLabel`, `setClassStyle`, `setTiming` (GSAP-script sync)                                                                                                           |
+| Stage 4                | `canUndo()`/`canRedo()` (live button + Ops badge), `removeElement` GSAP cascade (logs override-set after cascade to confirm orphan cleanup), `can()` → `CanResult`, `getOverrides()`, `selection()` proxy, `find()`, `setVariableValue` |
+| Stage 5 (partial)      | `FsAdapter` — file-backed persistence with version history; `FileAdapter` — browser fetch adapter; `PlaygroundPreview` — concrete `PreviewAdapter` impl                                                                                 |
 
 ## Features
 
@@ -45,14 +45,14 @@ Lists all non-root elements. Click any row to select it.
 
 Editable per-element properties for the selected element:
 
-| Section    | SDK op                                                                      |
-| ---------- | --------------------------------------------------------------------------- |
-| Content    | `comp.setText(id, value)`                                                   |
-| Typography | `comp.setStyle(id, { fontSize, fontWeight, color })`                        |
-| Box        | `comp.setStyle(id, { background, opacity, left, top })`                     |
-| Attributes | `comp.element(id).setAttribute(name, value)` — all non-internal attrs       |
-| Danger     | `comp.element(id).removeElement()`                                          |
-| Animations | Lists tween IDs + inline "Add tween" form via `comp.addGsapTween(id, spec)` |
+| Section    | SDK op                                                                                                                                                 |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Content    | `comp.setText(id, value)`                                                                                                                              |
+| Typography | `comp.setStyle(id, { fontSize, fontWeight, color })`                                                                                                   |
+| Box        | `comp.setStyle(id, { background, opacity, left, top })`                                                                                                |
+| Attributes | `comp.element(id).setAttribute(name, value)` — all non-internal attrs                                                                                  |
+| Danger     | `comp.element(id).removeElement()` — Stage 4: cascades to remove targeting GSAP animations; logs override-set so you can verify orphan keys are purged |
+| Animations | Lists tween IDs + inline "Add tween" form via `comp.addGsapTween(id, spec)`                                                                            |
 
 ### Timeline
 
@@ -62,21 +62,23 @@ DAW-style per-element tween blocks. Drag handles to trim start/end; drag body to
 
 Full op surface, grouped by feature:
 
-| Section                        | SDK op                                                                                          |
-| ------------------------------ | ----------------------------------------------------------------------------------------------- |
-| PreviewAdapter.select()        | `preview.select([id])`                                                                          |
-| setStyle                       | `comp.setStyle(id, styles)`                                                                     |
-| setText                        | `comp.setText(id, value)`                                                                       |
-| addGsapTween                   | `comp.addGsapTween(target, spec)`                                                               |
-| setGsapTween / removeGsapTween | `comp.setGsapTween(animId, { duration })` / `comp.removeGsapTween(animId)`                      |
-| addLabel / removeLabel         | `comp.dispatch({ type: "addLabel", name, position })` / `removeLabel`                           |
-| setClassStyle                  | `comp.dispatch({ type: "setClassStyle", selector, styles })`                                    |
-| setAttribute / removeElement   | `comp.element(id).setAttribute()` / `.removeElement()`                                          |
-| setVariableValue               | `comp.setVariableValue(id, value)`                                                              |
-| find(query)                    | `comp.find({ tag, text })`                                                                      |
-| selection() proxy              | `comp.selection().setStyle()` / `.removeElement()`                                              |
-| listVersions / loadFrom        | `adapter.listVersions(path)` / `adapter.loadFrom(path, key)`                                    |
-| History / inspect              | `comp.undo()`, `comp.redo()`, `comp.can(op) → CanResult`, `comp.getOverrides()`, `comp.flush()` |
+| Section                        | SDK op                                                                                                                                           |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| PreviewAdapter.select()        | `preview.select([id])`                                                                                                                           |
+| setStyle                       | `comp.setStyle(id, styles)`                                                                                                                      |
+| setText                        | `comp.setText(id, value)`                                                                                                                        |
+| addGsapTween                   | `comp.addGsapTween(target, spec)`                                                                                                                |
+| setGsapTween / removeGsapTween | `comp.setGsapTween(animId, { duration })` / `comp.removeGsapTween(animId)`                                                                       |
+| addLabel / removeLabel         | `comp.dispatch({ type: "addLabel", name, position })` / `removeLabel`                                                                            |
+| setClassStyle                  | `comp.dispatch({ type: "setClassStyle", selector, styles })`                                                                                     |
+| setAttribute / removeElement   | `comp.element(id).setAttribute()` / `.removeElement()`                                                                                           |
+| setVariableValue               | `comp.setVariableValue(id, value)`                                                                                                               |
+| find(query)                    | `comp.find({ tag, text })`                                                                                                                       |
+| selection() proxy              | `comp.selection().setStyle()` / `.removeElement()`                                                                                               |
+| listVersions / loadFrom        | `adapter.listVersions(path)` / `adapter.loadFrom(path, key)`                                                                                     |
+| History / inspect              | `comp.canUndo()`/`comp.canRedo()` (live badges), `comp.undo()`, `comp.redo()`, `comp.can(op) → CanResult`, `comp.getOverrides()`, `comp.flush()` |
+
+`canUndo()`/`canRedo()` drive both the header buttons (disabled when false) and live status badges in the Ops panel that update on every patch.
 
 `can(op)` returns a `CanResult`: `{ok: true}` or `{ok: false, code, message, hint?}`. The ops panel logs the full result object so you can inspect validation failures in real time.
 
