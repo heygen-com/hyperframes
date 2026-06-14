@@ -33,6 +33,11 @@ describe("pickKeyframeTween", () => {
   it("returns undefined when there are no tweens", () => {
     expect(pickKeyframeTween([], el, 1, undefined)).toBeUndefined();
   });
+
+  it("returns undefined rather than editing another element on a selector mismatch", () => {
+    const anims = [flat("a", "#other", 0, 5), flat("b", ".unrelated", 2, 3)];
+    expect(pickKeyframeTween(anims, el, 3, undefined)).toBeUndefined();
+  });
 });
 
 describe("computeKeyframeMovePlan — flat tween", () => {
@@ -84,5 +89,13 @@ describe("computeKeyframeMovePlan — keyframe-array tween", () => {
     expect(plan.removes).toContain(50);
     const mid = plan.adds.find((a) => a.properties.x === 50);
     expect(mid?.pct).toBeCloseTo(37.5, 1);
+  });
+
+  it("is a no-op when the dragged keyframe can't be located (stale cache)", () => {
+    // tweenOldPct 33 matches no keyframe (0/50/100) → must NOT resize the tween.
+    const plan = computeKeyframeMovePlan(anim, 33, el, 70);
+    expect(plan.meta).toBeUndefined();
+    expect(plan.removes).toEqual([]);
+    expect(plan.adds).toEqual([]);
   });
 });

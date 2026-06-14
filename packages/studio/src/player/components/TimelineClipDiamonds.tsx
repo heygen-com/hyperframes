@@ -66,16 +66,35 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
   // until the cache reflects the change (the file round-trip rewrites
   // keyframesData), so it doesn't flash back to the old spot in between.
   const pendingRef = useRef(false);
+  const pendingHeldPctRef = useRef<number | null>(null);
   const pendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Cleanup for an in-flight drag's document listeners, so an unmount mid-drag
+  // (clip deleted, comp switch, zoom-out → early return) doesn't leak them.
+  const dragCleanupRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     if (!pendingRef.current) return;
+    // Only release the optimistic hold once the cache actually reflects the
+    // committed position (a keyframe near the held %). An unrelated cache
+    // rebuild (e.g. elementCount change) rebuilds keyframesData with the SAME
+    // percentages — releasing then would flash the diamond back to the old spot.
+    const held = pendingHeldPctRef.current;
+    if (held != null && !keyframesData.keyframes.some((k) => Math.abs(k.percentage - held) < 0.3)) {
+      return;
+    }
     pendingRef.current = false;
+    pendingHeldPctRef.current = null;
     if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
     setDrag(null);
   }, [keyframesData]);
 
-  useEffect(() => () => clearTimeout(pendingTimerRef.current ?? undefined), []);
+  useEffect(
+    () => () => {
+      clearTimeout(pendingTimerRef.current ?? undefined);
+      dragCleanupRef.current?.();
+    },
+    [],
+  );
 
   if (clipWidthPx < 20) return null;
 
@@ -119,6 +138,7 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
     const handleUp = () => {
       document.removeEventListener("pointermove", handleMove);
       document.removeEventListener("pointerup", handleUp);
+      dragCleanupRef.current = null;
       const d = dragRef.current;
       dragRef.current = null;
       const willCommit = !!(d && d.moved && Math.abs(d.pct - d.origPct) > 0.5);
@@ -126,16 +146,23 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
         // Hold the dropped position optimistically; the effect clears it once the
         // cache round-trip lands (fallback timeout in case it never does).
         pendingRef.current = true;
+        pendingHeldPctRef.current = d.pct;
         setDrag({ origPct: d.origPct, pct: d.pct });
         if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
         pendingTimerRef.current = setTimeout(() => {
           pendingRef.current = false;
+          pendingHeldPctRef.current = null;
           setDrag(null);
         }, 2000);
         onDragKeyframeRef.current?.(d.origPct, d.pct);
       } else {
         setDrag(null);
       }
+    };
+
+    dragCleanupRef.current = () => {
+      document.removeEventListener("pointermove", handleMove);
+      document.removeEventListener("pointerup", handleUp);
     };
 
     document.addEventListener("pointermove", handleMove);

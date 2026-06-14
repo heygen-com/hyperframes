@@ -383,9 +383,12 @@ export function usePopulateKeyframeCacheForFile(
         const elDuration = timelineEl?.duration ?? 1;
         const clipKeyframes = kfData.keyframes.map((kf) => {
           const absTime = toAbsoluteTime(tweenPos, tweenDur, kf.percentage);
+          // 0.001% precision (matching useGsapAnimationsForElement above) so a
+          // beat-snapped keyframe centers exactly on the beat dot and the two
+          // caches agree on a keyframe's percentage.
           const clipPct =
             elDuration > 0
-              ? Math.round(((absTime - elStart) / elDuration) * 1000) / 10
+              ? Math.round(((absTime - elStart) / elDuration) * 100000) / 1000
               : kf.percentage;
           return {
             ...kf,

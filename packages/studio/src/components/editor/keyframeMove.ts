@@ -85,10 +85,12 @@ export function pickKeyframeTween<T extends TweenLike>(
 ): T | undefined {
   const selectors = [el.domId ? `#${el.domId}` : null, el.selector].filter(Boolean);
   const forEl = anims.filter((a) => selectors.includes(a.targetSelector));
-  const pool = forEl.length > 0 ? forEl : anims;
-  const groupPool = group ? pool.filter((a) => a.propertyGroup === group) : [];
-  const candidates = groupPool.length > 0 ? groupPool : pool;
-  if (candidates.length === 0) return undefined;
+  // Only ever pick among THIS element's tweens. Don't fall back to all
+  // animations — a selector mismatch (e.g. a class/compound-selector tween)
+  // would otherwise edit a different element's keyframes. No match → no-op.
+  if (forEl.length === 0) return undefined;
+  const groupPool = group ? forEl.filter((a) => a.propertyGroup === group) : [];
+  const candidates = groupPool.length > 0 ? groupPool : forEl;
   const dist = (a: T): number => {
     const { start, dur } = tweenWindow(a);
     if (origAbsTime >= start && origAbsTime <= start + dur) return 0;
@@ -118,6 +120,11 @@ export function computeKeyframeMovePlan(
     ? anim.keyframes.keyframes.slice().sort((a, b) => a.percentage - b.percentage)
     : null;
   const idx = kfs ? kfs.findIndex((k) => Math.abs(k.percentage - tweenOldPct) < 0.5) : -1;
+
+  // Keyframe-array tween but the dragged keyframe couldn't be located (stale
+  // cache / precision drift): no-op rather than falling through to an end-point
+  // resize that would silently rescale the whole tween and re-time every key.
+  if (kfs && idx === -1) return { removes: [], adds: [] };
 
   if (kfs && idx > 0 && idx < kfs.length - 1) {
     const movedPct = tweenDur > 0 ? clampPct(((newAbsTime - tweenStart) / tweenDur) * 100) : 0;
