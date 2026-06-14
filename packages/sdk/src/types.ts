@@ -3,6 +3,14 @@
 /** Full DOM-level view of one editable element. Built by the SDK adaptation layer. */
 export interface HyperFramesElement {
   readonly id: string;
+  /**
+   * Fully-qualified scoped id — host-chain prefix + leaf, separated by "/".
+   * For top-level elements: scopedId === id.
+   * For elements inside inlined sub-compositions: "hf-HOST/hf-LEAF" (any depth).
+   * This is the canonical identifier to use in dispatch targets, getElement(),
+   * find(), and override-set keys when addressing sub-composition elements.
+   */
+  readonly scopedId: string;
   readonly tag: string;
   readonly children: readonly HyperFramesElement[];
   /** camelCase property names — mirrors CSSStyleDeclaration convention */
@@ -178,6 +186,8 @@ export interface FindQuery {
   text?: string;
   name?: string;
   track?: number;
+  /** Filter to elements inside a specific sub-composition host (by host hf-id). */
+  composition?: string;
 }
 
 // ─── Typed method sugar (F10) ─────────────────────────────────────────────────

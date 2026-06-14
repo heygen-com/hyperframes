@@ -30,30 +30,45 @@ import type { JsonPatchOp, PatchEvent } from "../types.js";
 
 // ─── Path builders ────────────────────────────────────────────────────────────
 
+/**
+ * RFC 6902 JSON Pointer escaping for an hf-id (bare or scoped).
+ * Scoped ids contain "/" which must be encoded as "~1" in a path segment.
+ * "~" must be encoded as "~0" first (order matters per RFC 6902 §3).
+ */
+function escapeIdForPath(id: string): string {
+  return id.replace(/~/g, "~0").replace(/\//g, "~1");
+}
+
+/** Decode a path segment that may contain RFC 6902-escaped characters back to an hf-id. */
+function decodePathSegment(segment: string): string {
+  // RFC 6902 §3: unescape ~1 → /, then ~0 → ~ (reverse order)
+  return segment.replace(/~1/g, "/").replace(/~0/g, "~");
+}
+
 export function stylePath(id: string, prop: string): string {
-  return `/elements/${id}/inlineStyles/${prop}`;
+  return `/elements/${escapeIdForPath(id)}/inlineStyles/${prop}`;
 }
 
 export function textPath(id: string): string {
-  return `/elements/${id}/text`;
+  return `/elements/${escapeIdForPath(id)}/text`;
 }
 
 export function attrPath(id: string, name: string): string {
   // RFC 6902 JSON Pointer: ~ → ~0, / → ~1
-  const escaped = name.replace(/~/g, "~0").replace(/\//g, "~1");
-  return `/elements/${id}/attributes/${escaped}`;
+  const escapedName = name.replace(/~/g, "~0").replace(/\//g, "~1");
+  return `/elements/${escapeIdForPath(id)}/attributes/${escapedName}`;
 }
 
 export function timingPath(id: string, field: "start" | "end" | "trackIndex"): string {
-  return `/elements/${id}/timing/${field}`;
+  return `/elements/${escapeIdForPath(id)}/timing/${field}`;
 }
 
 export function holdPath(id: string, field: "start" | "end" | "fill"): string {
-  return `/elements/${id}/hold/${field}`;
+  return `/elements/${escapeIdForPath(id)}/hold/${field}`;
 }
 
 export function elementPath(id: string): string {
-  return `/elements/${id}`;
+  return `/elements/${escapeIdForPath(id)}`;
 }
 
 export function variablePath(id: string): string {
@@ -80,29 +95,30 @@ export function styleSheetPath(): string {
  */
 export function pathToKey(path: string): string | null {
   // /elements/{id}/inlineStyles/{prop} → "{id}.style.{prop}"
+  // id segment may contain ~1 (RFC 6902-escaped "/") for scoped ids
   const styleMatch = /^\/elements\/([^/]+)\/inlineStyles\/(.+)$/.exec(path);
-  if (styleMatch) return `${styleMatch[1]}.style.${styleMatch[2]}`;
+  if (styleMatch) return `${decodePathSegment(styleMatch[1]!)}.style.${styleMatch[2]}`;
 
   // /elements/{id}/text → "{id}.text"
   const textMatch = /^\/elements\/([^/]+)\/text$/.exec(path);
-  if (textMatch) return `${textMatch[1]}.text`;
+  if (textMatch) return `${decodePathSegment(textMatch[1]!)}.text`;
 
   // /elements/{id}/attributes/{name} → "{id}.attr.{name}"
   const attrMatch = /^\/elements\/([^/]+)\/attributes\/(.+)$/.exec(path);
-  if (attrMatch) return `${attrMatch[1]}.attr.${attrMatch[2]}`;
+  if (attrMatch) return `${decodePathSegment(attrMatch[1]!)}.attr.${attrMatch[2]}`;
 
   // /elements/{id}/timing/{field} → "{id}.timing.{field}"
   // Note: field "end" maps to the computed data-end attribute value.
   const timingMatch = /^\/elements\/([^/]+)\/timing\/(.+)$/.exec(path);
-  if (timingMatch) return `${timingMatch[1]}.timing.${timingMatch[2]}`;
+  if (timingMatch) return `${decodePathSegment(timingMatch[1]!)}.timing.${timingMatch[2]}`;
 
   // /elements/{id}/hold/{field} → "{id}.hold.{field}"
   const holdMatch = /^\/elements\/([^/]+)\/hold\/(.+)$/.exec(path);
-  if (holdMatch) return `${holdMatch[1]}.hold.${holdMatch[2]}`;
+  if (holdMatch) return `${decodePathSegment(holdMatch[1]!)}.hold.${holdMatch[2]}`;
 
   // /elements/{id} (whole element) → "{id}"
   const elemMatch = /^\/elements\/([^/]+)$/.exec(path);
-  if (elemMatch) return elemMatch[1] ?? null;
+  if (elemMatch) return decodePathSegment(elemMatch[1]!) ?? null;
 
   // /variables/{id} → "var.{id}"
   const varMatch = /^\/variables\/(.+)$/.exec(path);
@@ -133,9 +149,10 @@ export function keyToPath(key: string): string | null {
   if (text?.[1]) return textPath(text[1]);
 
   const attr = /^([^.]+)\.attr\.(.+)$/.exec(key);
-  // pathToKey stores the RFC 6902-encoded segment verbatim; do NOT call attrPath()
-  // here (it would re-escape '~' → '~0'), just reconstruct the path directly.
-  if (attr?.[1] && attr[2]) return `/elements/${attr[1]}/attributes/${attr[2]}`;
+  // The attr name segment in the key is already RFC 6902-encoded (pathToKey stored it verbatim).
+  // The id may be a scoped id (contains "/") so we must escape it, but must NOT re-escape
+  // the already-encoded attr segment. Reconstruct manually.
+  if (attr?.[1] && attr[2]) return `/elements/${escapeIdForPath(attr[1])}/attributes/${attr[2]}`;
 
   const timing = /^([^.]+)\.timing\.(start|end|trackIndex)$/.exec(key);
   if (timing?.[1]) return timingPath(timing[1], timing[2] as "start" | "end" | "trackIndex");

@@ -10,7 +10,7 @@
 
 import { parseHTML } from "linkedom";
 import { ensureHfIds } from "@hyperframes/core/hf-ids";
-import { findRoot, getElementStyles } from "./engine/model.js";
+import { findRoot, getElementStyles, isNewHostBoundary } from "./engine/model.js";
 import type { HyperFramesElement, SdkDocument } from "./types.js";
 
 // Tags that carry no editable content and must not enter the element tree.
@@ -38,12 +38,22 @@ function ownText(el: Element): string | null {
 }
 
 // fallow-ignore-next-line complexity
-function buildElement(el: Element): HyperFramesElement | null {
+function buildElement(el: Element, scopePrefix: string): HyperFramesElement | null {
   const tag = el.tagName.toLowerCase();
   if (EXCLUDED_TAGS.has(tag)) return null;
 
   const id = el.getAttribute("data-hf-id") ?? "";
   if (!id) return null; // should never happen after ensureHfIds, but guard defensively
+
+  // scopedId: if we're inside a sub-comp scope, prefix with "scopePrefix/".
+  // The host element itself is in the PARENT scope (no prefix change for its own id).
+  const scopedId = scopePrefix ? `${scopePrefix}/${id}` : id;
+
+  // Children inherit the scope prefix from their parent.
+  // If this element is a new host boundary (starts a new sub-comp scope), its
+  // children use THIS element's scopedId as their prefix.
+  // Otherwise, children inherit the same prefix that this element used.
+  const childPrefix = isNewHostBoundary(el) ? scopedId : scopePrefix;
 
   const inlineStyles = getElementStyles(el);
 
@@ -72,12 +82,13 @@ function buildElement(el: Element): HyperFramesElement | null {
 
   const children: HyperFramesElement[] = [];
   for (const child of Array.from(el.children)) {
-    const built = buildElement(child);
+    const built = buildElement(child, childPrefix);
     if (built) children.push(built);
   }
 
   return {
     id,
+    scopedId,
     tag,
     children,
     inlineStyles,
@@ -142,7 +153,7 @@ export function buildRoots(document: Document): HyperFramesElement[] {
   const roots: HyperFramesElement[] = [];
   if (body) {
     for (const child of Array.from(body.children)) {
-      const built = buildElement(child);
+      const built = buildElement(child, "");
       if (built) roots.push(built);
     }
   }
