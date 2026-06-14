@@ -41,6 +41,7 @@ import {
   setPreviewPlaybackRate,
   shouldMutePreviewAudio,
 } from "../lib/timelineIframeHelpers";
+import { scrubMusicAtSeek, stopScrubPreviewAudio } from "../lib/playbackScrub";
 import { probeMediaUrl, getCachedProbe } from "../lib/mediaProbe";
 import { shouldResumeForwardPlaybackAfterSeek, shouldStopAfterSeek } from "../lib/playbackSeek";
 
@@ -280,6 +281,7 @@ export function useTimelinePlayer() {
   const play = useCallback(() => {
     stopRAFLoop();
     stopReverseLoop();
+    stopScrubPreviewAudio();
     const adapter = getAdapter();
     if (!adapter) return;
     if (adapter.getTime() >= adapter.getDuration()) {
@@ -392,6 +394,7 @@ export function useTimelinePlayer() {
       adapter.seek(nextTime, options);
       liveTime.notify(nextTime); // Direct DOM updates (playhead, timecode, progress) — no re-render
       setCurrentTime(nextTime); // sync store so Split/Delete have accurate time
+      if (!shouldResumeAfterSeek && !keepPlaying) scrubMusicAtSeek(iframeRef.current, nextTime);
       if (shouldResumeAfterSeek) {
         stopRAFLoop();
         applyPlaybackRate(usePlayerStore.getState().playbackRate);
@@ -557,6 +560,7 @@ export function useTimelinePlayer() {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       stopRAFLoop();
       stopReverseLoop();
+      stopScrubPreviewAudio();
       releaseStaticSeekCache(staticSeekAdapterRef, staticSeekWarnedRef);
       if (probeIntervalRef.current) clearInterval(probeIntervalRef.current);
     };

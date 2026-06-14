@@ -1,7 +1,9 @@
 import { memo, type ReactNode } from "react";
+import { BeatStrip } from "./BeatStrip";
 import { TimelineClip } from "./TimelineClip";
 import { TimelineClipDiamonds } from "./TimelineClipDiamonds";
 import { TimelineRuler } from "./TimelineRuler";
+import type { MusicBeatAnalysis } from "@hyperframes/core/beats";
 import { PlayheadIndicator } from "./PlayheadIndicator";
 import {
   getTimelineEditCapabilities,
@@ -91,6 +93,7 @@ interface TimelineCanvasProps {
   onDragKeyframe?: (element: TimelineElement, oldPct: number, newPct: number) => void;
   onContextMenuKeyframe?: (e: React.MouseEvent, elementId: string, percentage: number) => void;
   onContextMenuClip?: (e: React.MouseEvent, element: TimelineElement) => void;
+  beatAnalysis?: MusicBeatAnalysis | null;
 }
 
 export const TimelineCanvas = memo(function TimelineCanvas({
@@ -138,6 +141,7 @@ export const TimelineCanvas = memo(function TimelineCanvas({
   onDragKeyframe,
   onContextMenuKeyframe,
   onContextMenuClip,
+  beatAnalysis,
 }: TimelineCanvasProps) {
   const { onResizeElement, onMoveElement, onRazorSplit, onRazorSplitAll } =
     useTimelineEditContext();
@@ -197,6 +201,7 @@ export const TimelineCanvas = memo(function TimelineCanvas({
         shiftHeld={shiftHeld}
         rangeSelection={rangeSelection}
         theme={theme}
+        beatAnalysis={beatAnalysis}
       />
 
       {displayTrackOrder.map((trackNum) => {
@@ -237,6 +242,14 @@ export const TimelineCanvas = memo(function TimelineCanvas({
               </div>
             </div>
             <div style={{ width: trackContentWidth }} className="relative">
+              {/* Beat dots only on the active track (the one holding the selection). */}
+              {els.some((e) => (e.key ?? e.id) === selectedElementId) && (
+                <BeatStrip
+                  beatTimes={beatAnalysis?.beatTimes}
+                  beatStrengths={beatAnalysis?.beatStrengths}
+                  pps={pps}
+                />
+              )}
               {isPendingTrack && (
                 <div
                   className="absolute inset-0 flex items-center"

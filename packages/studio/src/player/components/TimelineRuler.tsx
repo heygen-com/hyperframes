@@ -2,6 +2,7 @@ import { memo } from "react";
 import type { TimelineTheme } from "./timelineTheme";
 import type { TimelineRangeSelection } from "./timelineEditing";
 import { GUTTER, RULER_H, formatTimelineTickLabel } from "./timelineLayout";
+import type { MusicBeatAnalysis } from "@hyperframes/core/beats";
 
 interface TimelineRulerProps {
   major: number[];
@@ -14,6 +15,7 @@ interface TimelineRulerProps {
   shiftHeld: boolean;
   rangeSelection: TimelineRangeSelection | null;
   theme: TimelineTheme;
+  beatAnalysis?: MusicBeatAnalysis | null;
 }
 
 export const TimelineRuler = memo(function TimelineRuler({
@@ -27,13 +29,25 @@ export const TimelineRuler = memo(function TimelineRuler({
   shiftHeld,
   rangeSelection,
   theme,
+  beatAnalysis,
 }: TimelineRulerProps) {
+  const beatTimes = beatAnalysis?.beatTimes ?? [];
+  const beatStrengths = beatAnalysis?.beatStrengths ?? [];
+
+  // Only draw beat lines when they'd be at least 5px apart
+  const avgBeatInterval =
+    beatTimes.length > 1
+      ? (beatTimes[beatTimes.length - 1]! - beatTimes[0]!) / (beatTimes.length - 1)
+      : null;
+  const showBeats = avgBeatInterval !== null && avgBeatInterval * pps >= 5;
+
   return (
     <>
-      {/* Grid lines */}
+      {/* Grid lines (major ticks + beat lines) — behind the tracks (background).
+          Opaque track rows hide them; only the beat dots show on tracks. */}
       <svg
         className="absolute pointer-events-none"
-        style={{ left: GUTTER, width: trackContentWidth }}
+        style={{ left: GUTTER, width: trackContentWidth, zIndex: 0 }}
         height={totalH}
       >
         {major.map((t) => {
@@ -50,6 +64,24 @@ export const TimelineRuler = memo(function TimelineRuler({
             />
           );
         })}
+        {showBeats &&
+          beatTimes.map((t, i) => {
+            const x = t * pps;
+            // Louder beats → brighter line. Gamma curve widens the contrast.
+            const strength = Math.pow(Math.min(1, beatStrengths[i] ?? 0.5), 2.2);
+            const opacity = 0.08 + strength * 0.62;
+            return (
+              <line
+                key={`b-${t}-${i}`}
+                x1={x}
+                y1={0}
+                x2={x}
+                y2={totalH}
+                stroke={`rgba(34, 197, 94, ${opacity.toFixed(3)})`}
+                strokeWidth="1"
+              />
+            );
+          })}
       </svg>
 
       {/* Ruler */}
@@ -64,11 +96,13 @@ export const TimelineRuler = memo(function TimelineRuler({
             </span>
           </div>
         )}
+
         {minor.map((t) => (
           <div key={`m-${t}`} className="absolute bottom-0" style={{ left: t * pps }}>
             <div className="w-px h-[3px]" style={{ background: theme.tickMinor }} />
           </div>
         ))}
+
         {major.map((t) => (
           <div
             key={`M-${t}`}

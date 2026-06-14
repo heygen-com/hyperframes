@@ -1,4 +1,7 @@
 import { useRef, useMemo, useCallback, useState, useEffect, memo, type ReactNode } from "react";
+import { useMusicBeatAnalysis } from "../../hooks/useMusicBeatAnalysis";
+import { isMusicTrack } from "../../utils/timelineInspector";
+import { remapBeatAnalysisToComposition } from "../../utils/beatEditActions";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { EditPopover } from "./EditModal";
@@ -78,7 +81,17 @@ export const Timeline = memo(function Timeline({
     onMoveKeyframe,
   } = useTimelineEditContext();
   const theme = useMemo(() => ({ ...defaultTimelineTheme, ...themeOverrides }), [themeOverrides]);
+  useMusicBeatAnalysis();
   const elements = usePlayerStore((s) => s.elements);
+  const beatAnalysis = usePlayerStore((s) => s.beatAnalysis);
+  const musicElement = usePlayerStore((s) => s.elements.find(isMusicTrack) ?? null);
+
+  // Merge user edits + remap beats from audio-file → composition coordinates.
+  const beatEdits = usePlayerStore((s) => s.beatEdits);
+  const adjustedBeatAnalysis = useMemo(
+    () => remapBeatAnalysisToComposition(beatAnalysis, musicElement, beatEdits),
+    [beatAnalysis, musicElement, beatEdits],
+  );
   const duration = usePlayerStore((s) => s.duration);
   const timelineReady = usePlayerStore((s) => s.timelineReady);
   const selectedElementId = usePlayerStore((s) => s.selectedElementId);
@@ -439,6 +452,7 @@ export const Timeline = memo(function Timeline({
           keyframeCache={keyframeCache}
           selectedKeyframes={selectedKeyframes}
           currentTime={currentTime}
+          beatAnalysis={adjustedBeatAnalysis}
           onClickKeyframe={(el, pct) => {
             usePlayerStore.getState().clearSelectedKeyframes();
             const elKey = el.key ?? el.id;

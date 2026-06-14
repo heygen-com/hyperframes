@@ -22,7 +22,7 @@
     },
     "packages/aws-lambda": {
       "name": "@hyperframes/aws-lambda",
-      "version": "0.6.90",
+      "version": "0.6.95",
       "dependencies": {
         "@aws-sdk/client-s3": "^3.700.0",
         "@aws-sdk/client-sfn": "^3.700.0",
@@ -54,7 +54,7 @@
     },
     "packages/cli": {
       "name": "@hyperframes/cli",
-      "version": "0.6.90",
+      "version": "0.6.95",
       "bin": {
         "hyperframes": "./dist/cli.js",
       },
@@ -101,10 +101,11 @@
     },
     "packages/core": {
       "name": "@hyperframes/core",
-      "version": "0.6.90",
+      "version": "0.6.95",
       "dependencies": {
         "@babel/parser": "^7.27.0",
         "@chenglou/pretext": "^0.0.5",
+        "bpm-detective": "^2.0.5",
         "postcss": "^8.5.8",
         "postcss-selector-parser": "^7.1.2",
         "recast": "^0.23.11",
@@ -131,7 +132,7 @@
     },
     "packages/engine": {
       "name": "@hyperframes/engine",
-      "version": "0.6.90",
+      "version": "0.6.95",
       "dependencies": {
         "@hono/node-server": "^1.13.0",
         "@hyperframes/core": "workspace:^",
@@ -149,7 +150,7 @@
     },
     "packages/gcp-cloud-run": {
       "name": "@hyperframes/gcp-cloud-run",
-      "version": "0.6.90",
+      "version": "0.6.95",
       "dependencies": {
         "@google-cloud/storage": "^7.14.0",
         "@google-cloud/workflows": "^4.2.0",
@@ -169,7 +170,7 @@
     },
     "packages/player": {
       "name": "@hyperframes/player",
-      "version": "0.6.90",
+      "version": "0.6.95",
       "devDependencies": {
         "@types/bun": "^1.1.0",
         "gsap": "^3.12.5",
@@ -181,7 +182,7 @@
     },
     "packages/producer": {
       "name": "@hyperframes/producer",
-      "version": "0.6.90",
+      "version": "0.6.95",
       "dependencies": {
         "@fontsource/archivo-black": "^5.2.8",
         "@fontsource/eb-garamond": "^5.2.7",
@@ -222,7 +223,7 @@
     },
     "packages/sdk": {
       "name": "@hyperframes/sdk",
-      "version": "0.6.86",
+      "version": "0.6.91",
       "dependencies": {
         "@hyperframes/core": "workspace:*",
         "linkedom": "^0.18.12",
@@ -235,7 +236,7 @@
     },
     "packages/shader-transitions": {
       "name": "@hyperframes/shader-transitions",
-      "version": "0.6.90",
+      "version": "0.6.95",
       "dependencies": {
         "html2canvas": "^1.4.1",
       },
@@ -247,7 +248,7 @@
     },
     "packages/studio": {
       "name": "@hyperframes/studio",
-      "version": "0.6.90",
+      "version": "0.6.95",
       "dependencies": {
         "@codemirror/autocomplete": "^6.20.1",
         "@codemirror/commands": "^6.10.3",
@@ -262,6 +263,7 @@
         "@hyperframes/core": "workspace:*",
         "@hyperframes/player": "workspace:*",
         "@phosphor-icons/react": "^2.1.10",
+        "bpm-detective": "^2.0.5",
         "mediabunny": "^1.45.3",
       },
       "devDependencies": {
@@ -1157,6 +1159,8 @@
     "boolbase": ["boolbase@1.0.0", "", {}, "sha512-JZOSA7Mo9sNGB8+UjSgzdLtokWAky1zbztM3WRLCbZ70/3cTANmQmOdR7y2g+J0e2WXywy1yS468tY+IruqEww=="],
 
     "bowser": ["bowser@2.14.1", "", {}, "sha512-tzPjzCxygAKWFOJP011oxFHs57HzIhOEracIgAePE4pqB3LikALKnSzUyU4MGs9/iCEUuHlAJTjTc5M+u7YEGg=="],
+
+    "bpm-detective": ["bpm-detective@2.0.5", "", {}, "sha512-FaHFT5WDCR5zwtjVTqxk01o2MDaf22ORHityX1lxMamBcVNX6NWXB6hw7nx4fmlEseRMv0xfuSybINZylljLfA=="],
 
     "brace-expansion": ["brace-expansion@5.0.6", "", { "dependencies": { "balanced-match": "^4.0.2" } }, "sha512-kLpxurY4Z4r9sgMsyG0Z9uzsBlgiU/EFKhj/h91/8yHu0edo7XuixOIH3VcJ8kkxs6/jPzoI6U9Vj3WqbMQ94g=="],
 

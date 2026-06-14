@@ -117,6 +117,7 @@ const subCommands = {
   publish: () => import("./commands/publish.js").then((m) => m.default),
   render: () => import("./commands/render.js").then((m) => m.default),
   lint: () => import("./commands/lint.js").then((m) => m.default),
+  beats: () => import("./commands/beats.js").then((m) => m.default),
   inspect: () => import("./commands/inspect.js").then((m) => m.default),
   layout: () => import("./commands/layout.js").then((m) => m.default),
   info: () => import("./commands/info.js").then((m) => m.default),

@@ -16,7 +16,8 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./tailwind-preset": "./src/styles/tailwind-preset.ts"
+    "./tailwind-preset": "./src/styles/tailwind-preset.ts",
+    "./package.json": "./package.json"
   },
   "scripts": {
     "dev": "vite",
@@ -39,6 +40,7 @@
     "@hyperframes/core": "workspace:*",
     "@hyperframes/player": "workspace:*",
     "@phosphor-icons/react": "^2.1.10",
+    "bpm-detective": "^2.0.5",
     "mediabunny": "^1.45.3"
   },
   "devDependencies": {

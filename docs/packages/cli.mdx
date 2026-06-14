@@ -512,6 +512,33 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
 
     The linter detects missing attributes, missing adapter libraries (GSAP, Lottie, Three.js), structural problems, and more. See [Common Mistakes](/guides/common-mistakes) for details on each rule.
 
+    ### `beats`
+
+    Detect the beats in a composition's music track and write them to a beat file the Studio uses to draw beat guides on the timeline:
+
+    ```bash
+    npx hyperframes beats [dir]
+    npx hyperframes beats [dir] --json   # machine-readable JSON output
+    ```
+
+    The command finds the music track (an `<audio>` element with `data-timeline-role="music"`, or an id like `music`/`bgm`/`soundtrack`), runs the **same** detection the Studio uses inside a headless Chrome (identical decode + BPM analysis), and writes `beats/<audio-path>.json`:
+
+    ```json
+    {
+      "version": 1,
+      "audio": "music.wav",
+      "beats": [{ "time": 2.027, "strength": 0.924 }]
+    }
+    ```
+
+    Run it when authoring a composition so the beat file exists **before** the Studio is opened — the Studio loads this file as-is (it only auto-generates one when none exists). `time` is in seconds into the audio file; `strength` (0–1) is the beat's relative loudness. Beats edited in the Studio (add/move/delete) persist back to the same file.
+
+    | Flag | Description |
+    |------|-------------|
+    | `--json` | Output `{ ok, file, count, bpm }` as JSON |
+
+    Requires a local Chrome (the same one used by `render`; run `npx hyperframes browser ensure` if missing). Detection runs the **same** algorithm the Studio uses; results are near-identical (a different headless-Chrome audio sample rate can shift beat times by a frame or two).
+
     ### `inspect`
 
     Inspect rendered visual layout across the composition timeline:
