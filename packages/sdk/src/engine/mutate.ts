@@ -10,7 +10,7 @@
 import type { CanResult, EditOp, GsapTweenSpec, HfId, JsonPatchOp } from "../types.js";
 import type { ParsedDocument } from "./model.js";
 import {
-  findById,
+  resolveScoped,
   findRoot,
   getElementStyles,
   setElementStyles,
@@ -194,7 +194,7 @@ function handleSetStyle(
 ): MutationResult {
   const result: MutationResult = { forward: [], inverse: [] };
   for (const id of ids) {
-    const el = findById(parsed.document, id);
+    const el = resolveScoped(parsed.document, id);
     if (!el) continue;
     const old = getElementStyles(el);
     setElementStyles(el, styles);
@@ -234,7 +234,7 @@ function handleMoveElement(
 function handleSetText(parsed: ParsedDocument, ids: HfId[], value: string): MutationResult {
   const result: MutationResult = { forward: [], inverse: [] };
   for (const id of ids) {
-    const el = findById(parsed.document, id);
+    const el = resolveScoped(parsed.document, id);
     if (!el) continue;
     const oldText = getOwnText(el);
     setOwnText(el, value);
@@ -259,7 +259,7 @@ function handleSetAttribute(
   validateSetAttribute(name, value);
   const result: MutationResult = { forward: [], inverse: [] };
   for (const id of ids) {
-    const el = findById(parsed.document, id);
+    const el = resolveScoped(parsed.document, id);
     if (!el) continue;
     const oldValue = el.getAttribute(name);
     const path = attrPath(id, name);
@@ -293,7 +293,7 @@ function handleSetTiming(
   let currentScript = origScript;
 
   for (const id of ids) {
-    const el = findById(parsed.document, id);
+    const el = resolveScoped(parsed.document, id);
     if (!el) continue;
 
     const oldStartStr = el.getAttribute("data-start");
@@ -373,7 +373,7 @@ function handleSetHold(
 ): MutationResult {
   const result: MutationResult = { forward: [], inverse: [] };
   for (const id of ids) {
-    const el = findById(parsed.document, id);
+    const el = resolveScoped(parsed.document, id);
     if (!el) continue;
 
     const fields: Array<["start" | "end" | "fill", string]> = [
@@ -401,12 +401,16 @@ function handleRemoveElement(parsed: ParsedDocument, ids: HfId[]): MutationResul
   let currentScript = origScript;
 
   for (const id of ids) {
-    const el = findById(parsed.document, id);
+    const el = resolveScoped(parsed.document, id);
     if (!el) continue;
     const parentEl = el.parentElement;
     const parentId = parentEl?.getAttribute("data-hf-id") ?? null;
     const siblingIndex = getSiblingIndex(el);
     const html = el.outerHTML;
+
+    // Collect all bare hf-ids in the subtree BEFORE removal so GSAP cascade
+    // removes animations targeting any sub-composition element, not just the host.
+    const subtreeIds = collectSubtreeHfIds(el);
 
     el.remove();
 
@@ -414,7 +418,11 @@ function handleRemoveElement(parsed: ParsedDocument, ids: HfId[]): MutationResul
     result.forward.push(patchRemove(path));
     result.inverse.push(patchAdd(path, { html, parentId, siblingIndex }));
 
-    if (currentScript) currentScript = cascadeRemoveAnimations(currentScript, id);
+    if (currentScript) {
+      for (const subtreeId of subtreeIds) {
+        currentScript = cascadeRemoveAnimations(currentScript, subtreeId);
+      }
+    }
   }
 
   if (origScript && currentScript && currentScript !== origScript) {
@@ -509,10 +517,24 @@ function selectorMatchesId(selector: string, id: HfId): boolean {
   );
 }
 
-// v1 limitation: uses bare-id matching across the whole script, so a selector targeting
-// "hf-leaf" will cascade-remove animations for both "hf-parent/hf-leaf" and any other
-// element whose scoped or bare id matches "hf-leaf". Acceptable for typical single-comp
-// use; sub-composition authors with leaf-id collisions should use fully-qualified selectors.
+// v1 limitation: selectorMatchesId uses bare-id matching across the whole script, so a
+// selector targeting "hf-leaf" will cascade-remove animations for both "hf-parent/hf-leaf"
+// and any other element whose scoped or bare id matches "hf-leaf". Acceptable for typical
+// single-comp use; sub-composition authors with leaf-id collisions should use
+// fully-qualified selectors.
+
+/** Collect all bare data-hf-id values from el and all its descendants. */
+function collectSubtreeHfIds(el: Element): string[] {
+  const ids: string[] = [];
+  const own = el.getAttribute("data-hf-id");
+  if (own) ids.push(own);
+  for (const child of Array.from(el.querySelectorAll("[data-hf-id]"))) {
+    const id = child.getAttribute("data-hf-id");
+    if (id) ids.push(id);
+  }
+  return ids;
+}
+
 function cascadeRemoveAnimations(script: string, id: HfId): string {
   const parsedGsap = parseGsapScriptAcornForWrite(script);
   if (!parsedGsap) return script;
@@ -753,7 +775,7 @@ export function validateOp(parsed: ParsedDocument, op: EditOp): CanResult {
     case "removeElement": {
       const ids = targets(op.target);
       if (ids.length === 0) return canErr("E_TARGET_NOT_FOUND", "No target ids provided.");
-      const missing = ids.filter((id) => findById(parsed.document, id) === null);
+      const missing = ids.filter((id) => resolveScoped(parsed.document, id) === null);
       if (missing.length > 0)
         return canErr(
           "E_TARGET_NOT_FOUND",

@@ -167,7 +167,14 @@ class CompositionImpl implements Composition {
   }
 
   getElement(id: HfId): ElementSnapshot | null {
-    return this.getElements().find((el) => el.id === id) ?? null;
+    // Accept both bare ids (top-level) and scoped ids (sub-composition elements).
+    // Match by scopedId first (canonical); bare-id fallback keeps top-level compat
+    // for callers that don't yet use scoped ids.
+    return (
+      this.getElements().find((el) => el.scopedId === id) ??
+      this.getElements().find((el) => el.id === id && el.scopedId === el.id) ??
+      null
+    );
   }
 
   find(query: FindQuery): string[] {
@@ -181,7 +188,7 @@ class CompositionImpl implements Composition {
           if (query.track !== undefined && el.trackIndex !== query.track) return false;
           return true;
         })
-        .map((el) => el.id)
+        .map((el) => el.scopedId)
     );
   }
 
@@ -248,13 +255,19 @@ class CompositionImpl implements Composition {
 
     // Purge orphan property keys for removed elements so the override-set stays
     // compact and a future T3 session doesn't replay stale properties onto a
-    // non-existent element.
+    // non-existent element. Override-set keys use decoded scoped ids ("hf-host/hf-leaf")
+    // while path segments use RFC 6902 encoding ("hf-host~1hf-leaf") — decode before compare.
     for (const p of forward) {
       const elemMatch = /^\/elements\/([^/]+)$/.exec(p.path);
       if (p.op === "remove" && elemMatch) {
-        const id = elemMatch[1]!;
+        // Decode RFC 6902 escaping: ~1 → /, ~0 → ~
+        const id = elemMatch[1]!.replace(/~1/g, "/").replace(/~0/g, "~");
         for (const key of Object.keys(this.overrides)) {
-          if (key.startsWith(`${id}.`)) delete this.overrides[key];
+          // Purge property sub-keys (e.g. "hf-x.style.color") but preserve
+          // the removal marker itself (key === id, set to null in the loop above).
+          if (key.startsWith(`${id}.`) || key.startsWith(`${id}/`)) {
+            delete this.overrides[key];
+          }
         }
       }
     }

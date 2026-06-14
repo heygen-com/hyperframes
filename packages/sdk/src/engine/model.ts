@@ -34,6 +34,49 @@ export function findById(document: Document, id: string): Element | null {
   return document.querySelector(`[data-hf-id="${escaped}"]`);
 }
 
+function escapeHfId(id: string): string {
+  return id.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+/**
+ * Resolve a bare or scoped hf-id to its DOM element.
+ *
+ * Bare id ("hf-x"): equivalent to findById — top-level document search.
+ * Scoped id ("hf-HOST/hf-LEAF", any depth): each segment narrows the search
+ * into the subtree of the previous match. This unambiguously addresses an
+ * element inside a sub-composition even when bare ids collide.
+ */
+export function resolveScoped(document: Document, id: string): Element | null {
+  const parts = id.split("/");
+  let context: Element | Document = document;
+  for (const part of parts) {
+    const escaped = escapeHfId(part);
+    const found: Element | null =
+      context === document
+        ? (context as Document).querySelector(`[data-hf-id="${escaped}"]`)
+        : (context as Element).querySelector(`[data-hf-id="${escaped}"]`);
+    if (!found) return null;
+    context = found;
+  }
+  return context as Element;
+}
+
+/**
+ * Returns true when this element starts a new sub-composition scope — i.e. it
+ * is a host element (has data-composition-file) and is NOT the outerHTML
+ * innerRoot of the SAME sub-composition (same dcf value as parent).
+ *
+ * outerHTML case: both host and innerRoot carry data-composition-file="sub.html".
+ * The innerRoot has the SAME value as the host (its parent) → not a new boundary.
+ * A genuine nested host inside a sub-comp has a DIFFERENT dcf value.
+ */
+export function isNewHostBoundary(el: Element): boolean {
+  const dcf = el.getAttribute("data-composition-file");
+  if (!dcf) return false;
+  const parentDcf = el.parentElement?.getAttribute("data-composition-file") ?? null;
+  return dcf !== parentDcf;
+}
+
 export function findRoot(document: Document): Element | null {
   return (
     document.querySelector("[data-hf-root]") ??
