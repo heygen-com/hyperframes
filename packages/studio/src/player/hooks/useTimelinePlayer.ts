@@ -42,8 +42,28 @@ import {
   shouldMutePreviewAudio,
 } from "../lib/timelineIframeHelpers";
 import { scrubMusicAtSeek, stopScrubPreviewAudio } from "../lib/playbackScrub";
-import { probeMediaUrl, getCachedProbe } from "../lib/mediaProbe";
+import { applyCachedSourceDurations, probeMissingSourceDurations } from "../lib/mediaProbe";
 import { shouldResumeForwardPlaybackAfterSeek, shouldStopAfterSeek } from "../lib/playbackSeek";
+
+/**
+ * Whether the derived elements differ from the current ones in any field that
+ * affects rendering (identity, timing, track, or source length) — used to skip
+ * redundant store writes.
+ */
+function timelineElementsChanged(prev: TimelineElement[], next: TimelineElement[]): boolean {
+  if (next.length !== prev.length) return true;
+  return next.some((el, i) => {
+    const p = prev[i];
+    return (
+      !p ||
+      el.id !== p.id ||
+      el.start !== p.start ||
+      el.duration !== p.duration ||
+      el.track !== p.track ||
+      el.sourceDuration !== p.sourceDuration
+    );
+  });
+}
 
 export function useTimelinePlayer() {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -66,27 +86,19 @@ export function useTimelinePlayer() {
     (elements: TimelineElement[], nextDuration?: number) => {
       const state = usePlayerStore.getState();
       const resolvedDuration = nextDuration ?? state.duration;
-      const mergedElements = mergeTimelineElementsPreservingDowngrades(
-        state.elements,
-        elements,
-        state.duration,
-        resolvedDuration,
+      // applyCachedSourceDurations re-applies the cached probe duration: re-derived
+      // elements (e.g. after a clip move) can arrive without sourceDuration, which
+      // otherwise makes trimmed waveforms lose their window.
+      const mergedElements = applyCachedSourceDurations(
+        mergeTimelineElementsPreservingDowngrades(
+          state.elements,
+          elements,
+          state.duration,
+          resolvedDuration,
+        ),
       );
 
-      const elementsChanged =
-        mergedElements.length !== state.elements.length ||
-        mergedElements.some((el, i) => {
-          const prev = state.elements[i];
-          return (
-            !prev ||
-            el.id !== prev.id ||
-            el.start !== prev.start ||
-            el.duration !== prev.duration ||
-            el.track !== prev.track
-          );
-        });
-
-      if (elementsChanged) {
+      if (timelineElementsChanged(state.elements, mergedElements)) {
         setElements(mergedElements);
       }
       if (
@@ -100,31 +112,17 @@ export function useTimelinePlayer() {
         setTimelineReady(true);
       }
 
-      // Asynchronously enrich media elements missing sourceDuration via mediabunny.
-      // The probe reads file headers only — no full decode — so this is cheap.
-      const needsProbe = mergedElements.filter(
-        (el) =>
-          el.src &&
-          el.sourceDuration == null &&
-          ["video", "audio"].includes(el.tag.toLowerCase()) &&
-          !getCachedProbe(el.src),
-      );
-      if (needsProbe.length > 0) {
-        void Promise.allSettled(
-          needsProbe.map(async (el) => {
-            const result = await probeMediaUrl(el.src!);
-            if (!result) return;
-            const key = el.key ?? el.id;
-            usePlayerStore.setState((state) => {
-              const idx = state.elements.findIndex((e) => (e.key ?? e.id) === key);
-              if (idx === -1 || state.elements[idx].sourceDuration != null) return {};
-              const patched = state.elements.slice();
-              patched[idx] = { ...state.elements[idx], sourceDuration: result.duration };
-              return { elements: patched };
-            });
-          }),
-        );
-      }
+      // Asynchronously enrich media elements still missing sourceDuration
+      // (header-only probe, cheap), applying each resolved value to the store.
+      void probeMissingSourceDurations(mergedElements, (key, durationSeconds) => {
+        usePlayerStore.setState((state) => {
+          const idx = state.elements.findIndex((e) => (e.key ?? e.id) === key);
+          if (idx === -1 || state.elements[idx].sourceDuration != null) return {};
+          const patched = state.elements.slice();
+          patched[idx] = { ...state.elements[idx], sourceDuration: durationSeconds };
+          return { elements: patched };
+        });
+      });
     },
     [setElements, setTimelineReady, setDuration],
   );
