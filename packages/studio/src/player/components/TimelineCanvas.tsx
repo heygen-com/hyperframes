@@ -242,11 +242,13 @@ export const TimelineCanvas = memo(function TimelineCanvas({
               </div>
             </div>
             <div style={{ width: trackContentWidth }} className="relative">
-              {/* Faint beat lines in every track's background (behind the clips). */}
+              {/* Faint beat lines in every track's background (behind the clips);
+                  the active move-snap target is highlighted. */}
               <BeatBackgroundLines
                 beatTimes={beatAnalysis?.beatTimes}
                 beatStrengths={beatAnalysis?.beatStrengths}
                 pps={pps}
+                highlightTime={draggedClip?.started ? draggedClip.snapBeatTime : null}
               />
               {/* Beat dots only on the active track (the one holding the selection). */}
               {els.some((e) => (e.key ?? e.id) === selectedElementId) && (
@@ -370,6 +372,7 @@ export const TimelineCanvas = memo(function TimelineCanvas({
                         pointerOffsetY: e.clientY - rect.top,
                         previewStart: el.start,
                         previewTrack: el.track,
+                        snapBeatTime: null,
                         started: false,
                       });
                       syncClipDragAutoScroll(e.clientX, e.clientY);

@@ -30,8 +30,9 @@ function snapToNearestBeat(time: number, beatTimes: number[], thresholdSecs: num
 
 /**
  * Snap a moved clip so whichever edge (start or end) is nearest a beat lands on
- * it, keeping the duration fixed. Returns the (clamped) start. No snap when
- * there are no beats or neither edge is within threshold.
+ * it, keeping the duration fixed. Returns the (clamped) start plus the beat time
+ * it snapped to (for the grid-line highlight), or `beat: null` when no edge is
+ * within threshold.
  */
 function snapMoveStartToBeat(
   start: number,
@@ -39,8 +40,8 @@ function snapMoveStartToBeat(
   beatTimes: number[],
   pixelsPerSecond: number,
   timelineDuration: number,
-): number {
-  if (beatTimes.length === 0) return start;
+): { start: number; beat: number | null } {
+  if (beatTimes.length === 0) return { start, beat: null };
   const snapSecs = BEAT_SNAP_PX / Math.max(pixelsPerSecond, 1);
   const snappedStart = snapToNearestBeat(start, beatTimes, snapSecs);
   const snappedEnd = snapToNearestBeat(start + duration, beatTimes, snapSecs);
@@ -48,17 +49,23 @@ function snapMoveStartToBeat(
   const endMoved = snappedEnd !== start + duration;
 
   let candidate = start;
+  let beat: number | null = null;
   if (
     startMoved &&
     (!endMoved || Math.abs(snappedStart - start) <= Math.abs(snappedEnd - (start + duration)))
   ) {
     candidate = snappedStart;
+    beat = snappedStart;
   } else if (endMoved) {
     candidate = snappedEnd - duration;
+    beat = snappedEnd;
   }
 
   const maxStart = Math.max(0, timelineDuration - duration);
-  return Math.max(0, Math.min(maxStart, Math.round(candidate * 1000) / 1000));
+  const clamped = Math.max(0, Math.min(maxStart, Math.round(candidate * 1000) / 1000));
+  // If clamping pulled the clip off the snap target, drop the highlight.
+  if (beat != null && Math.abs(clamped - candidate) > 1e-6) beat = null;
+  return { start: clamped, beat };
 }
 
 /* ── Shared state types ─────────────────────────────────────────── */
@@ -74,6 +81,8 @@ export interface DraggedClipState {
   pointerOffsetY: number;
   previewStart: number;
   previewTrack: number;
+  /** Beat time the clip will snap to on drop, for the grid-line highlight. */
+  snapBeatTime: number | null;
   started: boolean;
 }
 
@@ -199,19 +208,24 @@ export function useTimelineClipDrag({
         clientX,
         clientY,
       );
+      // The music track defines the beats, so it must not snap to itself.
+      const snap = isMusicTrack(drag.element)
+        ? { start: nextMove.start, beat: null }
+        : snapMoveStartToBeat(
+            nextMove.start,
+            drag.element.duration,
+            beatTimesRef.current,
+            ppsRef.current,
+            durationRef.current,
+          );
       return {
         ...drag,
         started: true,
         pointerClientX: clientX,
         pointerClientY: clientY,
-        previewStart: snapMoveStartToBeat(
-          nextMove.start,
-          drag.element.duration,
-          beatTimesRef.current,
-          ppsRef.current,
-          durationRef.current,
-        ),
+        previewStart: snap.start,
         previewTrack: nextMove.track,
+        snapBeatTime: snap.beat,
       };
     },
     [scrollRef, ppsRef, durationRef, trackOrderRef],
@@ -330,8 +344,9 @@ export function useTimelineClipDrag({
         // Snap edge to beat grid when beat analysis is available. The snap must
         // stay inside the same limits resolveTimelineResize enforces, or it would
         // push the edge past the available source media / composition end.
+        // The music track defines the beats, so it must not snap to itself.
         const beatTimes = beatTimesRef.current;
-        if (beatTimes.length > 0) {
+        if (beatTimes.length > 0 && !isMusicTrack(resize.element)) {
           const snapSecs = BEAT_SNAP_PX / Math.max(ppsRef.current, 1);
           if (resize.edge === "end") {
             const edgeTime = nextResize.start + nextResize.duration;

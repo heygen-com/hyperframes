@@ -23,22 +23,32 @@ export const BeatBackgroundLines = memo(function BeatBackgroundLines({
   beatTimes,
   beatStrengths,
   pps,
+  highlightTime,
 }: {
   beatTimes: number[] | undefined;
   beatStrengths: number[] | undefined;
   pps: number;
+  /** Beat time a dragged clip will snap to — drawn as a bright neon line. */
+  highlightTime?: number | null;
 }) {
   if (!beatTimes || beatsTooDense(beatTimes, pps)) return null;
   return (
     <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 0 }}>
       {beatTimes.map((t, i) => {
+        const isHighlight = highlightTime != null && Math.abs(t - highlightTime) < 1e-3;
         const strength = Math.pow(Math.min(1, beatStrengths?.[i] ?? 0.5), 2.2);
-        const opacity = 0.06 + strength * 0.16;
+        const opacity = isHighlight ? 1 : 0.06 + strength * 0.16;
         return (
           <div
             key={`${t}-${i}`}
             className="absolute top-0 bottom-0"
-            style={{ left: t * pps, width: 1, background: `rgba(34,197,94,${opacity.toFixed(3)})` }}
+            style={{
+              left: t * pps,
+              width: isHighlight ? 2 : 1,
+              background: `rgba(34,197,94,${opacity.toFixed(3)})`,
+              boxShadow: isHighlight ? "0 0 6px rgba(34,197,94,0.9)" : undefined,
+              zIndex: isHighlight ? 1 : undefined,
+            }}
           />
         );
       })}
