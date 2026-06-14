@@ -111,6 +111,34 @@ export function resolveTimelineMove(
   };
 }
 
+/**
+ * Snap a keyframe's clip-relative percentage to the nearest beat within ~8px,
+ * mapping through composition time (pct → time → nearest beat → pct). Returns
+ * the percentage unchanged when no beat is in range, so dragging stays free
+ * between beats.
+ */
+export function snapKeyframePctToBeat(
+  el: { start: number; duration: number },
+  pct: number,
+  beatTimes: number[] | undefined,
+  pixelsPerSecond: number,
+): number {
+  if (!beatTimes || beatTimes.length === 0 || el.duration <= 0) return pct;
+  const t = el.start + (pct / 100) * el.duration;
+  const snapSecs = 8 / Math.max(pixelsPerSecond, 1);
+  let best = t;
+  let bestDist = snapSecs;
+  for (const bt of beatTimes) {
+    const d = Math.abs(bt - t);
+    if (d < bestDist) {
+      bestDist = d;
+      best = bt;
+    }
+  }
+  if (best === t) return pct;
+  return Math.max(0, Math.min(100, ((best - el.start) / el.duration) * 100));
+}
+
 export function resolveTimelineResize(
   input: TimelineResizeInput,
   edge: "start" | "end",

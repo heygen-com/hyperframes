@@ -1,4 +1,4 @@
-import { memo, useRef } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 
 interface KeyframeEntry {
   percentage: number;
@@ -26,6 +26,13 @@ interface TimelineClipDiamondsProps {
   onShiftClickKeyframe?: (elementId: string, percentage: number) => void;
   onDragKeyframe?: (percentage: number, newPercentage: number) => void;
   onContextMenuKeyframe?: (e: React.MouseEvent, elementId: string, percentage: number) => void;
+  /** Snap a clip-relative percentage to the nearest beat (returns it unchanged
+   *  when no beat is within range). Drives live beat-snapping while dragging. */
+  snapPct?: (percentage: number) => number;
+  /** Select this element when a keyframe drag begins, so its GSAP session is
+   *  loaded by the time the move commits (diamonds render on unselected clips
+   *  too, and a drag suppresses the selecting click). */
+  onPickForDrag?: () => void;
 }
 
 const DIAMOND_RATIO = 0.8;
@@ -43,8 +50,32 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
   onShiftClickKeyframe,
   onDragKeyframe,
   onContextMenuKeyframe,
+  snapPct,
+  onPickForDrag,
 }: TimelineClipDiamondsProps) {
-  const dragRef = useRef<{ startX: number; startPct: number } | null>(null);
+  // Live drag: which keyframe (by original %) is being dragged and its current
+  // (beat-snapped) %, so the diamond + its connecting lines follow the cursor.
+  const dragRef = useRef<{ origPct: number; pct: number; moved: boolean } | null>(null);
+  const [drag, setDrag] = useState<{ origPct: number; pct: number } | null>(null);
+  // Commit through the latest callback, not the one captured at pointer-down:
+  // selecting the element on drag-start loads its GSAP session asynchronously,
+  // and the commit must use the closure that sees the loaded session.
+  const onDragKeyframeRef = useRef(onDragKeyframe);
+  onDragKeyframeRef.current = onDragKeyframe;
+  // Optimistic hold: after a commit, keep the diamond at the dropped position
+  // until the cache reflects the change (the file round-trip rewrites
+  // keyframesData), so it doesn't flash back to the old spot in between.
+  const pendingRef = useRef(false);
+  const pendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!pendingRef.current) return;
+    pendingRef.current = false;
+    if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
+    setDrag(null);
+  }, [keyframesData]);
+
+  useEffect(() => () => clearTimeout(pendingTimerRef.current ?? undefined), []);
 
   if (clipWidthPx < 20) return null;
 
@@ -66,26 +97,44 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
   const handlePointerDown = (e: React.PointerEvent, pct: number) => {
     if (e.button !== 0) return;
     e.stopPropagation();
+    // Select the element up front so its GSAP session loads during the drag and
+    // the commit (which resolves the animation from the selection) isn't a no-op.
+    onPickForDrag?.();
     const startX = e.clientX;
+    dragRef.current = { origPct: pct, pct, moved: false };
 
     const handleMove = (me: PointerEvent) => {
+      const d = dragRef.current;
+      if (!d) return;
       const dx = me.clientX - startX;
-      if (Math.abs(dx) > 4) {
-        dragRef.current = { startX, startPct: pct };
-      }
+      // 4px dead zone so a click doesn't register as a drag.
+      if (!d.moved && Math.abs(dx) <= 4) return;
+      d.moved = true;
+      const rawPct = Math.max(0, Math.min(100, pct + (dx / clipWidthPx) * 100));
+      const snapped = snapPct ? snapPct(rawPct) : rawPct;
+      d.pct = snapped;
+      setDrag({ origPct: pct, pct: snapped });
     };
 
-    const handleUp = (ue: PointerEvent) => {
+    const handleUp = () => {
       document.removeEventListener("pointermove", handleMove);
       document.removeEventListener("pointerup", handleUp);
-      const start = dragRef.current;
+      const d = dragRef.current;
       dragRef.current = null;
-      if (!start) return;
-      const dx = ue.clientX - start.startX;
-      const dPct = (dx / clipWidthPx) * 100;
-      const newPct = Math.max(0, Math.min(100, Math.round(start.startPct + dPct)));
-      if (Math.abs(newPct - start.startPct) > 0.5) {
-        onDragKeyframe?.(start.startPct, newPct);
+      const willCommit = !!(d && d.moved && Math.abs(d.pct - d.origPct) > 0.5);
+      if (willCommit && d) {
+        // Hold the dropped position optimistically; the effect clears it once the
+        // cache round-trip lands (fallback timeout in case it never does).
+        pendingRef.current = true;
+        setDrag({ origPct: d.origPct, pct: d.pct });
+        if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
+        pendingTimerRef.current = setTimeout(() => {
+          pendingRef.current = false;
+          setDrag(null);
+        }, 2000);
+        onDragKeyframeRef.current?.(d.origPct, d.pct);
+      } else {
+        setDrag(null);
       }
     };
 
@@ -93,13 +142,16 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
     document.addEventListener("pointerup", handleUp);
   };
 
+  // Effective % for rendering: the dragged keyframe follows the (snapped) cursor.
+  const effPct = (p: number): number => (drag && drag.origPct === p ? drag.pct : p);
+
   return (
     <div className="absolute inset-0" style={{ zIndex: 3, pointerEvents: "none" }}>
       {sorted.map((kf, i) => {
         if (i === 0) return null;
         const prev = sorted[i - 1]!;
-        const x1 = (prev.percentage / 100) * clipWidthPx;
-        const x2 = (kf.percentage / 100) * clipWidthPx;
+        const x1 = (effPct(prev.percentage) / 100) * clipWidthPx;
+        const x2 = (effPct(kf.percentage) / 100) * clipWidthPx;
         return (
           <div
             key={`line-${i}-${prev.percentage}-${kf.percentage}`}
@@ -119,7 +171,7 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
       })}
 
       {sorted.map((kf, i) => {
-        const leftPx = (kf.percentage / 100) * clipWidthPx - half;
+        const leftPx = (effPct(kf.percentage) / 100) * clipWidthPx - half;
         const kfKey = `${elementId}:${kf.percentage}`;
         const isKfSelected = selectedKeyframes.has(kfKey);
         const atPlayhead = isSelected && Math.abs(kf.percentage - currentPercentage) < 0.5;

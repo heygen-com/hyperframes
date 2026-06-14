@@ -19,6 +19,7 @@ import {
   type KeyframeDiamondContextMenuState,
 } from "./KeyframeDiamondContextMenu";
 import { useTimelineClipDrag } from "./useTimelineClipDrag";
+import { snapKeyframePctToBeat } from "./timelineEditing";
 import { ClipContextMenu } from "./ClipContextMenu";
 import {
   GUTTER,
@@ -469,6 +470,16 @@ export const Timeline = memo(function Timeline({
           }}
           onDragKeyframe={(el, oldPct, newPct) => {
             onMoveKeyframe?.(el, oldPct, newPct);
+          }}
+          onSnapKeyframePct={(el, pct) =>
+            snapKeyframePctToBeat(el, pct, adjustedBeatAnalysis?.beatTimes, pps)
+          }
+          onPickKeyframeElement={(el) => {
+            const elKey = el.key ?? el.id;
+            if (selectedElementId !== elKey) {
+              setSelectedElementId(elKey);
+              onSelectElement?.(el);
+            }
           }}
           onContextMenuKeyframe={(e, elId, pct) => {
             const el = elements.find((x) => (x.key ?? x.id) === elId);

@@ -283,9 +283,11 @@ export function useGsapAnimationsForElement(
       const tweenDur = anim.duration ?? elDuration;
       for (const k of kf.keyframes) {
         const absTime = toAbsoluteTime(tweenPos, tweenDur, k.percentage);
+        // 0.001% precision (was 0.1%) so a beat-snapped keyframe centers exactly
+        // on the beat dot, which is rendered at the true beat time.
         const clipPct =
           elDuration > 0
-            ? Math.round(((absTime - elStart) / elDuration) * 1000) / 10
+            ? Math.round(((absTime - elStart) / elDuration) * 100000) / 1000
             : k.percentage;
         allKeyframes.push({
           ...k,
