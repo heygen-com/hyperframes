@@ -39,6 +39,7 @@
     "@codemirror/view": "6.40.0",
     "@hyperframes/core": "workspace:*",
     "@hyperframes/player": "workspace:*",
+    "@hyperframes/sdk": "workspace:*",
     "@phosphor-icons/react": "^2.1.10",
     "bpm-detective": "^2.0.5",
     "mediabunny": "^1.45.3"

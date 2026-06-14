@@ -13,6 +13,7 @@ import { usePreviewPersistence } from "./hooks/usePreviewPersistence";
 import { useTimelineEditing } from "./hooks/useTimelineEditing";
 import type { BlockPreviewInfo } from "./components/sidebar/BlocksTab";
 import { useDomEditSession } from "./hooks/useDomEditSession";
+import { useSdkSession } from "./hooks/useSdkSession";
 import { useBlockHandlers } from "./hooks/useBlockHandlers";
 import { useAppHotkeys } from "./hooks/useAppHotkeys";
 import { useClipboard } from "./hooks/useClipboard";
