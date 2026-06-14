@@ -240,6 +240,33 @@ describe("persist adapter", () => {
     await new Promise((r) => setTimeout(r, 20));
     expect(errors).toHaveLength(1);
   });
+
+  it("defaults the write path to composition.html when persistPath is omitted", async () => {
+    const adapter = createMemoryAdapter();
+    const writeSpy = vi.spyOn(adapter, "write");
+
+    const comp = await openComposition(BASE_HTML, { persist: adapter });
+    comp.setStyle("hf-title", { color: "#f00" });
+    await comp.flush();
+
+    const [path] = writeSpy.mock.calls[0] as [string, string];
+    expect(path).toBe("composition.html");
+  });
+
+  it("writes to persistPath when supplied", async () => {
+    const adapter = createMemoryAdapter();
+    const writeSpy = vi.spyOn(adapter, "write");
+
+    const comp = await openComposition(BASE_HTML, {
+      persist: adapter,
+      persistPath: "scenes/intro.html",
+    });
+    comp.setStyle("hf-title", { color: "#f00" });
+    await comp.flush();
+
+    const [path] = writeSpy.mock.calls[0] as [string, string];
+    expect(path).toBe("scenes/intro.html");
+  });
 });
 
 // ─── T3 embedded mode (override-set) ─────────────────────────────────────────
