@@ -1,5 +1,5 @@
 import { memo, type ReactNode } from "react";
-import { BeatStrip } from "./BeatStrip";
+import { BeatStrip, BeatBackgroundLines } from "./BeatStrip";
 import { TimelineClip } from "./TimelineClip";
 import { TimelineClipDiamonds } from "./TimelineClipDiamonds";
 import { TimelineRuler } from "./TimelineRuler";
@@ -242,6 +242,12 @@ export const TimelineCanvas = memo(function TimelineCanvas({
               </div>
             </div>
             <div style={{ width: trackContentWidth }} className="relative">
+              {/* Faint beat lines in every track's background (behind the clips). */}
+              <BeatBackgroundLines
+                beatTimes={beatAnalysis?.beatTimes}
+                beatStrengths={beatAnalysis?.beatStrengths}
+                pps={pps}
+              />
               {/* Beat dots only on the active track (the one holding the selection). */}
               {els.some((e) => (e.key ?? e.id) === selectedElementId) && (
                 <BeatStrip

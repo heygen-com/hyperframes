@@ -1,9 +1,50 @@
 import { memo, useRef, useState } from "react";
 import { moveBeatCompositionTime, deleteBeatAtCompositionTime } from "../../utils/beatEditActions";
 import { usePlayerStore } from "../store/playerStore";
+import { CLIP_Y } from "./timelineLayout";
 
 const BEAT_BAND_H = 14; // dark band height at top of track
 const BEAT_HIT_W = 12; // grab width per beat (px)
+
+/** Hide both layers when beats are packed tighter than this (px) — too dense to read. */
+function beatsTooDense(beatTimes: number[], pps: number): boolean {
+  if (beatTimes.length < 2) return true;
+  const avgInterval = (beatTimes[beatTimes.length - 1]! - beatTimes[0]!) / (beatTimes.length - 1);
+  return avgInterval * pps < 5;
+}
+
+/**
+ * Faint full-height beat lines painted into a track lane's background. Rendered
+ * behind the clips so they only show through the empty track area (the dots in
+ * BeatStrip mark beats on the clips themselves). Brightness scales with beat
+ * loudness. Drawn on every track lane for a global beat grid.
+ */
+export const BeatBackgroundLines = memo(function BeatBackgroundLines({
+  beatTimes,
+  beatStrengths,
+  pps,
+}: {
+  beatTimes: number[] | undefined;
+  beatStrengths: number[] | undefined;
+  pps: number;
+}) {
+  if (!beatTimes || beatsTooDense(beatTimes, pps)) return null;
+  return (
+    <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 0 }}>
+      {beatTimes.map((t, i) => {
+        const strength = Math.pow(Math.min(1, beatStrengths?.[i] ?? 0.5), 2.2);
+        const opacity = 0.06 + strength * 0.16;
+        return (
+          <div
+            key={`${t}-${i}`}
+            className="absolute top-0 bottom-0"
+            style={{ left: t * pps, width: 1, background: `rgba(34,197,94,${opacity.toFixed(3)})` }}
+          />
+        );
+      })}
+    </div>
+  );
+});
 
 /**
  * Green beat dots on the music track's row. Drag a dot to move its beat,
@@ -23,15 +64,13 @@ export const BeatStrip = memo(function BeatStrip({
   const [drag, setDrag] = useState<{ index: number; dx: number } | null>(null);
   const dragRef = useRef<{ index: number; startX: number; origTime: number } | null>(null);
 
-  if (!beatTimes || beatTimes.length < 2) return null;
-  const avgInterval = (beatTimes[beatTimes.length - 1]! - beatTimes[0]!) / (beatTimes.length - 1);
-  if (avgInterval * pps < 5) return null;
+  if (!beatTimes || beatsTooDense(beatTimes, pps)) return null;
   const cy = BEAT_BAND_H / 2;
 
   return (
     <div
-      className="absolute left-0 right-0 top-0 pointer-events-none"
-      style={{ height: BEAT_BAND_H, background: "rgba(0,0,0,0.28)", zIndex: 11 }}
+      className="absolute left-0 right-0 pointer-events-none"
+      style={{ top: CLIP_Y, height: BEAT_BAND_H, background: "rgba(0,0,0,0.28)", zIndex: 11 }}
     >
       {beatTimes.map((t, i) => {
         // Louder beats → larger, brighter dot. Gamma curve widens the contrast.

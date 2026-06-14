@@ -137,13 +137,17 @@ export const AudioWaveform = memo(function AudioWaveform({
     const hi = Math.max(lo + 1, Math.ceil(winEnd * peaks.length));
     const span = hi - lo;
 
+    // Fill the full (possibly zoomed) clip width with STEP-spaced bars, resampling
+    // the windowed peaks across them — upsampling (repeating peaks) when the clip
+    // is wider than the slice has samples, so the waveform stretches with zoom
+    // instead of stopping partway across.
     const w = container.clientWidth || 400;
-    const barCount = Math.min(Math.floor(w / STEP), span);
+    const barCount = Math.max(0, Math.floor(w / STEP));
 
     let html = "";
     for (let i = 0; i < barCount; i++) {
       // Map bar index to peak index within the windowed range (resample)
-      const peakIdx = lo + Math.floor((i / barCount) * span);
+      const peakIdx = lo + Math.min(span - 1, Math.floor((i / barCount) * span));
       const amp = peaks[peakIdx] ?? 0;
       const pct = Math.max(3, Math.round(amp * 100));
       const opacity = (0.45 + amp * 0.4).toFixed(2);

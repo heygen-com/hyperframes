@@ -28,6 +28,39 @@ function snapToNearestBeat(time: number, beatTimes: number[], thresholdSecs: num
   return best;
 }
 
+/**
+ * Snap a moved clip so whichever edge (start or end) is nearest a beat lands on
+ * it, keeping the duration fixed. Returns the (clamped) start. No snap when
+ * there are no beats or neither edge is within threshold.
+ */
+function snapMoveStartToBeat(
+  start: number,
+  duration: number,
+  beatTimes: number[],
+  pixelsPerSecond: number,
+  timelineDuration: number,
+): number {
+  if (beatTimes.length === 0) return start;
+  const snapSecs = BEAT_SNAP_PX / Math.max(pixelsPerSecond, 1);
+  const snappedStart = snapToNearestBeat(start, beatTimes, snapSecs);
+  const snappedEnd = snapToNearestBeat(start + duration, beatTimes, snapSecs);
+  const startMoved = snappedStart !== start;
+  const endMoved = snappedEnd !== start + duration;
+
+  let candidate = start;
+  if (
+    startMoved &&
+    (!endMoved || Math.abs(snappedStart - start) <= Math.abs(snappedEnd - (start + duration)))
+  ) {
+    candidate = snappedStart;
+  } else if (endMoved) {
+    candidate = snappedEnd - duration;
+  }
+
+  const maxStart = Math.max(0, timelineDuration - duration);
+  return Math.max(0, Math.min(maxStart, Math.round(candidate * 1000) / 1000));
+}
+
 /* ── Shared state types ─────────────────────────────────────────── */
 export interface DraggedClipState {
   element: TimelineElement;
@@ -171,7 +204,13 @@ export function useTimelineClipDrag({
         started: true,
         pointerClientX: clientX,
         pointerClientY: clientY,
-        previewStart: nextMove.start,
+        previewStart: snapMoveStartToBeat(
+          nextMove.start,
+          drag.element.duration,
+          beatTimesRef.current,
+          ppsRef.current,
+          durationRef.current,
+        ),
         previewTrack: nextMove.track,
       };
     },
