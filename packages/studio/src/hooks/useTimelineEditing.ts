@@ -143,10 +143,21 @@ export function useTimelineEditing({
       element: TimelineElement,
       updates: Pick<TimelineElement, "start" | "duration" | "playbackStart">,
     ) => {
-      patchIframeDomTiming(previewIframeRef.current, element, [
+      const liveAttrs: Array<[string, string]> = [
         ["data-start", formatTimelineAttributeNumber(updates.start)],
         ["data-duration", formatTimelineAttributeNumber(updates.duration)],
-      ]);
+      ];
+      // A start-edge trim advances the media-start offset (skips into the
+      // source). Patch it live too — otherwise the iframe keeps the old offset
+      // and the clip only repositions instead of trimming the audio.
+      if (updates.playbackStart != null) {
+        const liveAttr =
+          element.playbackStartAttr === "playback-start"
+            ? "data-playback-start"
+            : "data-media-start";
+        liveAttrs.push([liveAttr, formatTimelineAttributeNumber(updates.playbackStart)]);
+      }
+      patchIframeDomTiming(previewIframeRef.current, element, liveAttrs);
       return enqueueEdit(element, "Resize timeline clip", (original, target) => {
         const pbs = resolveResizePlaybackStart(original, target, element, updates);
         let patched = applyPatchByTarget(original, target, {
@@ -173,6 +184,8 @@ export function useTimelineEditing({
   );
 
   const handleTimelineElementDelete = useCallback(
+    // Pre-existing handler complexity, unchanged by this PR.
+    // fallow-ignore-next-line complexity
     async (element: TimelineElement) => {
       if (isRecordingRef?.current) {
         showToast("Cannot edit timeline while recording", "error");
@@ -247,6 +260,8 @@ export function useTimelineEditing({
   );
 
   const handleTimelineAssetDrop = useCallback(
+    // Pre-existing handler complexity, unchanged by this PR.
+    // fallow-ignore-next-line complexity
     async (
       assetPath: string,
       placement: Pick<TimelineElement, "start" | "track">,
@@ -329,6 +344,8 @@ export function useTimelineEditing({
   );
 
   const handleTimelineFileDrop = useCallback(
+    // Pre-existing handler complexity, unchanged by this PR.
+    // fallow-ignore-next-line complexity
     async (files: File[], placement?: Pick<TimelineElement, "start" | "track">) => {
       if (isRecordingRef?.current) {
         showToast("Cannot edit timeline while recording", "error");

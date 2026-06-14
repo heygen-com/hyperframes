@@ -1469,10 +1469,18 @@ export function initSandboxRuntimeModular(): void {
           Number.isFinite(element.duration) && element.duration > mediaStart
             ? Math.max(0, element.duration - mediaStart)
             : null;
-        if (sourceDuration != null && hostRemaining != null) {
-          return Math.min(sourceDuration, hostRemaining);
-        }
-        return sourceDuration ?? hostRemaining;
+        // The element's own data-duration is an explicit clip-length trim
+        // (the studio writes it when you drag the clip edge). It must bound
+        // playback so a trimmed track stops at its edge instead of running on
+        // to the source-file or host-composition end. Absent → no cap (an
+        // untrimmed clip plays its natural source length).
+        const ownDuration = Number.parseFloat(element.dataset.duration ?? "");
+        const explicitDuration =
+          Number.isFinite(ownDuration) && ownDuration > 0 ? ownDuration : null;
+        const candidates = [sourceDuration, hostRemaining, explicitDuration].filter(
+          (value): value is number => value != null,
+        );
+        return candidates.length > 0 ? Math.min(...candidates) : null;
       },
     });
     // Attach probed volume keyframes to clips so syncRuntimeMedia can use the
@@ -2168,6 +2176,13 @@ export function initSandboxRuntimeModular(): void {
           Number.parseFloat(rawEl.dataset.playbackStart ?? rawEl.dataset.mediaStart ?? "0") || 0;
         const volumeAttr = Number.parseFloat(rawEl.dataset.volume ?? "");
         const vol = Number.isFinite(volumeAttr) ? volumeAttr : 1;
+        // The clip's authored window bounds the WebAudio buffer so a trimmed
+        // clip stops at its edge instead of running to the source's end.
+        const durationAttr = Number.parseFloat(rawEl.dataset.duration ?? "");
+        const clipDuration =
+          Number.isFinite(durationAttr) && durationAttr > 0
+            ? durationAttr
+            : Number.POSITIVE_INFINITY;
         void webAudio.decodeAudioElement(rawEl).then((buffer) => {
           if (!buffer || !clock.isPlaying()) return;
           void webAudio.schedulePlayback(
@@ -2179,6 +2194,7 @@ export function initSandboxRuntimeModular(): void {
             vol * state.bridgeVolume,
             gen,
             state.playbackRate,
+            clipDuration,
           );
         });
       }

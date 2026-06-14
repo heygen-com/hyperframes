@@ -5,6 +5,42 @@ function normalizeRate(rate: number): number {
   return rate;
 }
 
+/**
+ * Start a buffer source, bounding it to the clip's authored window
+ * (`data-duration`) so a trimmed clip stops at its edge instead of running the
+ * buffer to the source file's natural end. `clipSourceLen` is the clip span in
+ * buffer seconds; the third `start()` arg is the portion to play from the
+ * offset. An infinite `clipDuration` plays unbounded (legacy behavior).
+ *
+ * Returns false when the playhead is already past the clip end (nothing to
+ * play); the caller should discard the source.
+ */
+function startBoundedSource(
+  node: AudioBufferSourceNode,
+  opts: {
+    elapsed: number;
+    mediaStart: number;
+    scheduledAt: number;
+    safeRate: number;
+    clipDuration: number;
+  },
+): boolean {
+  const { elapsed, mediaStart, scheduledAt, safeRate, clipDuration } = opts;
+  const hasBound = Number.isFinite(clipDuration) && clipDuration > 0;
+  const clipSourceLen = clipDuration * safeRate;
+  if (elapsed >= 0) {
+    const remaining = clipSourceLen - elapsed;
+    if (hasBound && remaining <= 0) return false;
+    if (hasBound) node.start(0, elapsed + mediaStart, remaining);
+    else node.start(0, elapsed + mediaStart);
+    return true;
+  }
+  const delay = -elapsed / safeRate;
+  if (hasBound) node.start(scheduledAt + delay, mediaStart, clipSourceLen);
+  else node.start(scheduledAt + delay, mediaStart);
+  return true;
+}
+
 export type ScheduledSource = {
   el: HTMLMediaElement;
   sourceNode: AudioBufferSourceNode;
@@ -92,6 +128,7 @@ export class WebAudioTransport {
     volume: number,
     generation: number,
     rate = 1,
+    clipDuration = Number.POSITIVE_INFINITY,
   ): Promise<ScheduledSource | null> {
     if (!this._ctx || !this._masterGain) return null;
     if (generation !== this._playGeneration) return null;
@@ -119,11 +156,19 @@ export class WebAudioTransport {
       this._rateAnchorCtx = scheduledAt;
       this._rateAnchorComp = compositionTime;
 
-      if (elapsed >= 0) {
-        sourceNode.start(0, elapsed + mediaStart);
-      } else {
-        const delay = -elapsed / safeRate;
-        sourceNode.start(scheduledAt + delay, mediaStart);
+      if (
+        !startBoundedSource(sourceNode, {
+          elapsed,
+          mediaStart,
+          scheduledAt,
+          safeRate,
+          clipDuration,
+        })
+      ) {
+        // Playhead already past the clip end — discard the nodes we built.
+        sourceNode.disconnect();
+        gainNode.disconnect();
+        return null;
       }
 
       const priorMuted = el.muted;
