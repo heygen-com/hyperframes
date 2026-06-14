@@ -71,6 +71,7 @@ export {
   closeCaptureSession,
   captureFrame,
   captureFrameToBuffer,
+  captureFrameToBufferPipelined,
   discardWarmupCapture,
   getCompositionDuration,
   getCapturePerfSummary,
