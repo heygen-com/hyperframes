@@ -402,6 +402,12 @@
     return !!element.closest("[data-layout-allow-overlap]");
   }
 
+  function isTransparentColor(color) {
+    return (
+      !color || color === "transparent" || color === "rgba(0, 0, 0, 0)" || color.endsWith(", 0)")
+    );
+  }
+
   function alphaFromParts(parts, index) {
     return parts.length > index ? parsePx(parts[index]) : 1;
   }
@@ -483,6 +489,79 @@
     return issues;
   }
 
+  function hasOpaqueBackground(style) {
+    if (style.backgroundImage && style.backgroundImage !== "none") return true;
+    if (isTransparentColor(style.backgroundColor)) return false;
+    return colorAlpha(style.backgroundColor) > 0.6;
+  }
+
+  const RASTER_TAGS = new Set(["IMG", "VIDEO", "CANVAS"]);
+
+  // An element hides text beneath it when it paints opaque pixels at near-full
+  // opacity: raster content (img/video/canvas), a background image, or a solid
+  // background colour. Low-opacity overlays (grain, scrims) do not occlude.
+  function isOpaqueOccluder(element) {
+    if (opacityChain(element) < 0.6) return false;
+    if (IGNORE_TAGS.has(element.tagName)) return false;
+    if (RASTER_TAGS.has(element.tagName)) return true;
+    return hasOpaqueBackground(getComputedStyle(element));
+  }
+
+  function hasAllowOcclusionFlag(element) {
+    return !!element.closest("[data-layout-allow-occlusion]");
+  }
+
+  // A foreign element is one painted independently of the text — not the text
+  // itself, its own subtree, or an ancestor it shares a background with.
+  function isForeignElement(element, hit) {
+    return !!hit && hit !== element && !element.contains(hit) && !hit.contains(element);
+  }
+
+  // The opaque element painted over (x, y), or null when the topmost element
+  // there is related to the text or non-opaque.
+  function occluderAt(element, x, y) {
+    if (typeof document.elementFromPoint !== "function") return null;
+    const hit = document.elementFromPoint(x, y);
+    if (!isForeignElement(element, hit)) return null;
+    return isOpaqueOccluder(hit) ? hit : null;
+  }
+
+  // Sweep a grid across the text box (three rows, not just the mid-line, so
+  // overlays covering only part of a multi-line block are caught) and return
+  // the first opaque element painted over any sample point.
+  function firstOccluder(element, textRect) {
+    for (const yFraction of [0.25, 0.5, 0.75]) {
+      const y = textRect.top + textRect.height * yFraction;
+      for (const xFraction of [0.03, 0.1, 0.2, 0.35, 0.5, 0.65, 0.8, 0.9, 0.97]) {
+        const occluder = occluderAt(element, textRect.left + textRect.width * xFraction, y);
+        if (occluder) return occluder;
+      }
+    }
+    return null;
+  }
+
+  // Catches the blind spot the overflow checks miss: text that fits its box
+  // perfectly but is covered by a later sibling/overlay.
+  function occludedTextIssue(element, time) {
+    if (hasAllowOcclusionFlag(element)) return null;
+    const textRect = textRectFor(element);
+    if (!textRect) return null;
+    const occluder = firstOccluder(element, textRect);
+    if (!occluder) return null;
+    return {
+      code: "text_occluded",
+      severity: "error",
+      time,
+      selector: selectorFor(element),
+      containerSelector: selectorFor(occluder),
+      text: textContentFor(element),
+      message: "Text is hidden beneath an opaque element.",
+      rect: textRect,
+      fixHint:
+        "Give the text its own zone, raise its stacking order above the covering element, or mark intentional layering with data-layout-allow-occlusion.",
+    };
+  }
+
   window.__hyperframesLayoutAudit = function auditLayout(options) {
     const time = options && typeof options.time === "number" ? options.time : 0;
     const tolerance =
@@ -500,6 +579,8 @@
       const clipped = clippedTextIssue(element, time, tolerance);
       if (clipped) issues.push(clipped);
       issues.push(...textOverflowIssues(element, root, rootRect, time, tolerance));
+      const occluded = occludedTextIssue(element, time);
+      if (occluded) issues.push(occluded);
     }
 
     issues.push(...containerOverflowIssues(root, time, tolerance));

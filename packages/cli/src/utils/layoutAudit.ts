@@ -14,7 +14,8 @@ export type LayoutIssueCode =
   | "clipped_text"
   | "canvas_overflow"
   | "container_overflow"
-  | "content_overlap";
+  | "content_overlap"
+  | "text_occluded";
 
 export type LayoutIssueSeverity = "error" | "warning" | "info";
 

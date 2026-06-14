@@ -559,7 +559,7 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
     ◇  1 error(s), 0 warning(s), 0 info(s)
     ```
 
-    `inspect` bundles the project, serves it locally, opens headless Chrome, seeks through the composition, and reports text or elements that escape their intended boxes, plus pairs of text blocks that overlap each other (`content_overlap`). It is designed for agent workflows: each finding includes a schema version, timestamp or collapsed timestamp range, selector, nearest container selector, measured bounding boxes, overflow sides, and a fix hint.
+    `inspect` bundles the project, serves it locally, opens headless Chrome, seeks through the composition, and reports text or elements that escape their intended boxes, plus pairs of text blocks that overlap each other (`content_overlap`) and text that is hidden beneath an opaque element (`text_occluded`). It is designed for agent workflows: each finding includes a schema version, timestamp or collapsed timestamp range, selector, nearest container selector, measured bounding boxes, overflow sides, and a fix hint.
 
     | Flag | Description |
     |------|-------------|
@@ -572,7 +572,7 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
     | `--max-issues` | Maximum findings to print or return after static collapse (default: 80) |
     | `--strict` | Exit non-zero on warnings as well as errors |
 
-    Use `data-layout-allow-overflow` on an element or ancestor when overflow is intentional, such as a planned off-canvas entrance. Use `data-layout-ignore` for decorative elements that should not be audited. Use `data-layout-allow-overlap` on a text element that is intentionally stacked over another (for example a lower-third caption above a heading).
+    Use `data-layout-allow-overflow` on an element or ancestor when overflow is intentional, such as a planned off-canvas entrance. Use `data-layout-ignore` for decorative elements that should not be audited. Use `data-layout-allow-overlap` on a text element that is intentionally stacked over another (for example a lower-third caption above a heading). Use `data-layout-allow-occlusion` when text is intentionally layered beneath another element (for example a caption behind a foreground prop).
 
     `layout` remains available as a compatibility alias for the same visual inspection pass:
 
