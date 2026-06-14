@@ -1,4 +1,4 @@
-import { openComposition } from "@hyperframes/sdk";
+import { openComposition, createHeadlessAdapter, createMemoryAdapter } from "@hyperframes/sdk";
 import { createFileAdapter } from "./fileAdapter.js";
 import type { Composition, GsapTweenSpec, PreviewAdapter, FindQuery } from "@hyperframes/sdk";
 import { parseGsapScriptAcorn } from "@hyperframes/core/gsap-parser-acorn";
@@ -9,18 +9,26 @@ import gsapRaw from "gsap/dist/gsap.min.js?raw";
 
 const DEMO_HTML = `
 <div data-hf-id="hf-stage" data-hf-root style="width:1280px;height:720px;background:#111827;position:relative;" data-duration="6">
-  <style>.badge{background:#3b82f6;border-radius:6px;}</style>
-  <div data-hf-id="hf-headline" style="position:absolute;top:200px;left:140px;font-size:72px;font-weight:700;color:#f9fafb;font-family:system-ui,sans-serif;">SDK Playground</div>
-  <div data-hf-id="hf-sub" style="position:absolute;top:300px;left:142px;font-size:28px;color:#9ca3af;font-family:system-ui,sans-serif;">@hyperframes/sdk &middot; Phase 3b + 4</div>
-  <div data-hf-id="hf-badge" class="badge" style="position:absolute;top:390px;left:142px;padding:10px 24px;font-size:20px;font-weight:600;color:#fff;font-family:system-ui,sans-serif;">v0.6</div>
+  <style>.badge{background:#3b82f6;border-radius:6px;} .card{background:#1f2937;border-radius:12px;}</style>
+  <div data-hf-id="hf-headline" style="position:absolute;top:160px;left:140px;font-size:72px;font-weight:700;color:#f9fafb;font-family:system-ui,sans-serif;">SDK Playground</div>
+  <div data-hf-id="hf-sub" style="position:absolute;top:260px;left:142px;font-size:28px;color:#9ca3af;font-family:system-ui,sans-serif;">@hyperframes/sdk &middot; Stages 1–6</div>
+  <div data-hf-id="hf-badge" class="badge" style="position:absolute;top:350px;left:142px;padding:10px 24px;font-size:20px;font-weight:600;color:#fff;font-family:system-ui,sans-serif;">v0.6</div>
+  <!-- Simulated inlined sub-composition — data-composition-file marks the host boundary.
+       Elements inside get scoped ids: hf-card/hf-card-title, hf-card/hf-card-body. -->
+  <div data-hf-id="hf-card" data-composition-file="card.html" class="card" style="position:absolute;top:470px;left:140px;padding:24px 32px;width:400px;">
+    <div data-hf-id="hf-card-title" style="font-size:20px;font-weight:600;color:#f9fafb;font-family:system-ui,sans-serif;">Sub-composition</div>
+    <div data-hf-id="hf-card-body" style="font-size:14px;color:#9ca3af;font-family:system-ui,sans-serif;margin-top:8px;">Target with hf-card/hf-card-title</div>
+  </div>
   <script>
 var tl = gsap.timeline({ paused: true });
 var headline = document.querySelector("[data-hf-id='hf-headline']");
 var sub = document.querySelector("[data-hf-id='hf-sub']");
 var badge = document.querySelector("[data-hf-id='hf-badge']");
+var card = document.querySelector("[data-hf-id='hf-card']");
 tl.from(headline, { y: 40, opacity: 0, duration: 0.7, ease: "power3.out" }, 0);
 tl.from(sub, { y: 20, opacity: 0, duration: 0.5, ease: "power3.out" }, 0.2);
 tl.from(badge, { scale: 0.85, opacity: 0, duration: 0.4, ease: "back.out(1.5)" }, 0.4);
+tl.from(card, { y: 20, opacity: 0, duration: 0.4, ease: "power2.out" }, 0.6);
 window.__timelines = window.__timelines || {};
 window.__timelines["demo"] = tl;
   </script>
@@ -366,14 +374,21 @@ function renderTimeline() {
 
 // ── Element list ──────────────────────────────────────────────────────────────
 
-function buildElItem(el: { id: string; tag: string; text: string | null }): HTMLDivElement {
+function buildElItem(el: {
+  id: string;
+  scopedId: string;
+  tag: string;
+  text: string | null;
+}): HTMLDivElement {
   const item = document.createElement("div");
-  item.className = "el-item" + (el.id === selectedId ? " selected" : "");
+  item.className = "el-item" + (el.scopedId === selectedId ? " selected" : "");
+  const scopeLabel = el.scopedId !== el.id ? `<span class="el-scoped">${el.scopedId}</span>` : "";
   item.innerHTML =
     `<span class="el-tag">&lt;${el.tag}&gt;</span>` +
     `<span class="el-id">${el.id}</span>` +
+    scopeLabel +
     (el.text ? `<span class="el-text">${el.text}</span>` : "");
-  item.addEventListener("click", () => setSelection(el.id));
+  item.addEventListener("click", () => setSelection(el.scopedId));
   return item;
 }
 
@@ -901,21 +916,34 @@ function buildVariableSection(): HTMLDivElement {
   return opSection("setVariableValue", opRow(id, val, set));
 }
 
+function buildFindQuery(tag: string, text: string, composition: string): FindQuery {
+  const q: FindQuery = {};
+  if (tag) q.tag = tag;
+  if (text) q.text = text;
+  if (composition) q.composition = composition;
+  return q;
+}
+
 function buildFindSection(): HTMLDivElement {
   const tag = mkInput("tag", "");
   tag.style.width = "60px";
   const text = mkInput("text", "");
   text.style.width = "80px";
+  const composition = mkInput("composition (host id)", "");
+  composition.style.width = "140px";
   const results = mkNote("");
   const find = mkBtn("Find", "primary", () => {
-    const query: FindQuery = {};
-    if (tag.value.trim()) query.tag = tag.value.trim();
-    if (text.value.trim()) query.text = text.value.trim();
+    const query = buildFindQuery(tag.value.trim(), text.value.trim(), composition.value.trim());
     const ids = comp!.find(query);
-    results.textContent = ids.length ? ids.join(", ") : "(none)";
+    results.textContent = ids.join(", ") || "(none)";
     logEntry("op", { find: { query, result: ids } });
   });
-  return opSection("find(query)", opRow(mkLabel("tag"), tag, mkLabel("text"), text, find), results);
+  return opSection(
+    "find(query)",
+    opRow(mkLabel("tag"), tag, mkLabel("text"), text),
+    opRow(mkLabel("composition"), composition, find),
+    results,
+  );
 }
 
 function buildSelectionProxySection(): HTMLDivElement {
@@ -1038,6 +1066,53 @@ function buildHistorySection(): HTMLDivElement {
   );
 }
 
+function buildScopedDispatchSection(): HTMLDivElement {
+  const idInput = mkInput("scopedId (e.g. hf-card/hf-card-title)", "hf-card/hf-card-title");
+  idInput.style.width = "240px";
+  const prop = mkInput("prop", "color");
+  prop.style.width = "80px";
+  const val = mkInput("value", "#f59e0b");
+  val.style.width = "80px";
+  const apply = mkBtn("setStyle", "primary", () => {
+    const id = idInput.value.trim();
+    if (!id) return;
+    comp!.setStyle(id, { [prop.value.trim()]: val.value.trim() || null });
+    logEntry("op", { "setStyle(scopedId)": { id, [prop.value]: val.value } });
+  });
+  const note = mkNote(
+    "Scoped ids address elements inside inlined sub-comps: hf-HOST/hf-LEAF. " +
+      "The demo composition includes hf-card (data-composition-file) with hf-card-title and hf-card-body inside.",
+  );
+  return opSection(
+    "Scoped dispatch (Stage 6 / F9)",
+    opRow(idInput),
+    opRow(mkLabel("prop"), prop, mkLabel("value"), val, apply),
+    note,
+  );
+}
+
+function buildAdaptersSection(): HTMLDivElement {
+  const headless = mkBtn("headless round-trip", "", () => {
+    const preview = createHeadlessAdapter();
+    openComposition(comp!.serialize(), { preview }).then((c) => {
+      const ids = c.getElements().map((e) => e.scopedId);
+      logEntry("info", { "headless adapter — elements": ids });
+      c.dispose();
+    });
+  });
+  const memory = mkBtn("memory adapter", "", async () => {
+    const adapter = createMemoryAdapter();
+    const html = comp!.serialize();
+    await adapter.save("demo.html", html);
+    const loaded = await adapter.load("demo.html");
+    logEntry("info", { "memory adapter": { saved: html.length + " bytes", loaded: !!loaded } });
+  });
+  const note = mkNote(
+    "createHeadlessAdapter / createMemoryAdapter / createFsAdapter — all exported from @hyperframes/sdk (Stage 5).",
+  );
+  return opSection("Adapters (Stage 5)", opRow(headless, memory), note);
+}
+
 const OPS_SECTIONS = [
   buildPreviewSelectSection,
   buildSetStyleSection,
@@ -1049,9 +1124,11 @@ const OPS_SECTIONS = [
   buildAttributeSection,
   buildVariableSection,
   buildFindSection,
+  buildScopedDispatchSection,
   buildSelectionProxySection,
   buildVersionsSection,
   buildHistorySection,
+  buildAdaptersSection,
 ];
 
 function renderOpsContent(container: HTMLElement) {

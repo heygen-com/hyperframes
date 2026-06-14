@@ -10,18 +10,18 @@ bun run --cwd packages/sdk-playground dev
 
 Serves at `http://localhost:5173`. On first load it reads `packages/sdk-playground/composition.html` from disk (if present) or falls back to a built-in demo composition.
 
-## What this demonstrates
+## Stage coverage
 
 The playground exercises the full SDK surface end-to-end in a real browser against a
-file-backed persist adapter. It was built to verify SDK stages 3b and 4 before Studio
-migration begins:
+file-backed persist adapter:
 
-| SDK stage              | What is exercised                                                                                                                                                                                                                       |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Stage 3a — Session API | `openComposition`, `dispatch`, `undo`/`redo`, `batch`, `on('patch')`, `on('selectionchange')`, `on('persist:error')`, `flush`                                                                                                           |
-| Stage 3b — GSAP engine | `addGsapTween`, `setGsapTween`, `removeGsapTween`, `addLabel`, `removeLabel`, `setClassStyle`, `setTiming` (GSAP-script sync)                                                                                                           |
-| Stage 4                | `canUndo()`/`canRedo()` (live button + Ops badge), `removeElement` GSAP cascade (logs override-set after cascade to confirm orphan cleanup), `can()` → `CanResult`, `getOverrides()`, `selection()` proxy, `find()`, `setVariableValue` |
-| Stage 5 (partial)      | `FsAdapter` — file-backed persistence with version history; `FileAdapter` — browser fetch adapter; `PlaygroundPreview` — concrete `PreviewAdapter` impl                                                                                 |
+| SDK stage              | What is exercised                                                                                                                                                                                                                         |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Stage 3a — Session API | `openComposition`, `dispatch`, `undo`/`redo`, `batch`, `on('patch')`, `on('selectionchange')`, `on('persist:error')`, `flush`                                                                                                             |
+| Stage 3b — GSAP engine | `addGsapTween`, `setGsapTween`, `removeGsapTween`, `addLabel`, `removeLabel`, `setClassStyle`, `setTiming` (GSAP-script sync)                                                                                                             |
+| Stage 4                | `canUndo()`/`canRedo()` (live button + Ops badge), `removeElement` GSAP cascade (logs override-set after cascade to confirm orphan cleanup), `can()` → `CanResult`, `getOverrides()`, `selection()` proxy, `find()`, `setVariableValue`   |
+| Stage 5                | `createHeadlessAdapter()` and `createMemoryAdapter()` exported from package root; `FsAdapter` — file-backed persistence with version history; `FileAdapter` — browser fetch adapter; `PlaygroundPreview` — concrete `PreviewAdapter` impl |
+| Stage 6                | Scoped ids (`hf-HOST/hf-LEAF`), `find({ composition })` filter, ops targeting sub-composition elements via `comp.setStyle("hf-card/hf-card-title", styles)`                                                                               |
 
 ## Features
 
@@ -39,7 +39,7 @@ Full composition rendered in a sandboxed `<iframe>`. Supports:
 
 ### Element tree
 
-Lists all non-root elements. Click any row to select it.
+Lists all non-root elements. Click any row to select it. Sub-composition elements show their scoped id (`hf-HOST/hf-LEAF`) in indigo alongside the bare element id.
 
 ### Properties panel
 
@@ -73,10 +73,12 @@ Full op surface, grouped by feature:
 | setClassStyle                  | `comp.dispatch({ type: "setClassStyle", selector, styles })`                                                                                     |
 | setAttribute / removeElement   | `comp.element(id).setAttribute()` / `.removeElement()`                                                                                           |
 | setVariableValue               | `comp.setVariableValue(id, value)`                                                                                                               |
-| find(query)                    | `comp.find({ tag, text })`                                                                                                                       |
+| find(query)                    | `comp.find({ tag, text, name, track, composition })` — Stage 6: `composition` filter scopes results to a sub-composition host                    |
+| Scoped dispatch                | `comp.setStyle("hf-card/hf-card-title", styles)` — Stage 6: address elements inside inlined sub-compositions                                     |
 | selection() proxy              | `comp.selection().setStyle()` / `.removeElement()`                                                                                               |
 | listVersions / loadFrom        | `adapter.listVersions(path)` / `adapter.loadFrom(path, key)`                                                                                     |
 | History / inspect              | `comp.canUndo()`/`comp.canRedo()` (live badges), `comp.undo()`, `comp.redo()`, `comp.can(op) → CanResult`, `comp.getOverrides()`, `comp.flush()` |
+| Adapters                       | `createHeadlessAdapter()`, `createMemoryAdapter()` — Stage 5: exported from package root; both shown with live demo in the Adapters section      |
 
 `canUndo()`/`canRedo()` drive both the header buttons (disabled when false) and live status badges in the Ops panel that update on every patch.
 
