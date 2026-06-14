@@ -221,6 +221,11 @@ class CompositionImpl implements Composition {
     return [...this.currentSelection];
   }
 
+  setSelection(ids: string[]): void {
+    this.currentSelection = [...ids];
+    this.selectionHandlers.forEach((h) => h([...this.currentSelection]));
+  }
+
   // ── Dispatch / batch ─────────────────────────────────────────────────────────
 
   // fallow-ignore-next-line complexity
