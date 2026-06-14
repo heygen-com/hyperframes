@@ -23,3 +23,4 @@ If you'd rather not be listed publicly, that's fine — drop a note in [our Disc
 | [TanStack](https://tanstack.com)         | [@AlemTuzlak](https://github.com/AlemTuzlak)   | Exploring HyperFrames for short-form code demo videos and documentation.                                      |
 | [OptinMonster](https://optinmonster.com) | Angie Meeker                                   | Exploring HyperFrames for marketing and product video content.                                                |
 | [reap](https://reap.video)               | [@usamaabid](https://github.com/usamaabid)     | Powers agent-first AI video clipping, editing, and rendering across reap.video's creator and agent workflows. |
+| [Mini Course Generator](https://minicoursegenerator.com)               | [@eren-commits](https://github.com/eren-commits)     | PPowers course generation with AI-composed videos via HyperFrames. |
