@@ -11,6 +11,7 @@ import {
   readGsapBorderRadiusForPanel,
 } from "./propertyPanelHelpers";
 import { MetricField, Section } from "./propertyPanelPrimitives";
+import { createTransformCommitHandlers } from "./propertyPanelTransformCommit";
 import { classifyPropertyGroup } from "@hyperframes/core/gsap-parser";
 import { isMediaElement, MediaSection } from "./propertyPanelMediaSection";
 import { TextSection, StyleSections } from "./propertyPanelSections";
@@ -158,93 +159,7 @@ export const PropertyPanel = memo(function PropertyPanel({
       ? manualSize.height
       : (parsePxMetricValue(styles.height ?? "") ?? element.boundingBox.height);
 
-  // Route a transform value into the GSAP animation (or a new keyframe) when the
-  // element is animated. Returns true when handled, so callers fall through to
-  // the manual-transform path only for non-animated elements.
-  const commitAnimatedTransformValue = (
-    property: string,
-    value: number,
-    noCallbacksMessage: string,
-  ): boolean => {
-    if (onCommitAnimatedProperty && hasGsapAnimation) {
-      void onCommitAnimatedProperty(element, property, value);
-      return true;
-    }
-    if (gsapKeyframes && gsapAnimId && onAddKeyframe) {
-      const pct = Math.max(0, Math.min(100, Math.round(currentPct * 10) / 10));
-      onAddKeyframe(gsapAnimId, pct, property, value);
-      return true;
-    }
-    if (hasGsapAnimation) {
-      showToast?.(noCallbacksMessage);
-      return true;
-    }
-    return false;
-  };
-
-  const commitManualOffset = (axis: "x" | "y", nextValue: string) => {
-    const parsed = parsePxMetricValue(nextValue);
-    if (parsed == null) return;
-    if (
-      commitAnimatedTransformValue(
-        axis,
-        parsed,
-        "Cannot edit position — animation callbacks not available",
-      )
-    )
-      return;
-    const current = readStudioPathOffset(element.element);
-    void Promise.resolve(
-      onSetManualOffset(element, {
-        x: axis === "x" ? parsed : current.x,
-        y: axis === "y" ? parsed : current.y,
-      }),
-    ).catch(() => undefined);
-  };
-
-  // fallow-ignore-next-line complexity
-  const commitManualSize = (axis: "width" | "height", nextValue: string) => {
-    const parsed = parsePxMetricValue(nextValue);
-    if (parsed == null || parsed <= 0) return;
-    if (onCommitAnimatedProperty && hasGsapAnimation) {
-      void onCommitAnimatedProperty(element, axis, parsed);
-      return;
-    }
-    if (hasGsapAnimation) {
-      showToast?.("Cannot edit size — animation callbacks not available");
-      return;
-    }
-    const current = readStudioBoxSize(element.element);
-    const width =
-      current.width > 0
-        ? current.width
-        : (parsePxMetricValue(styles.width ?? "") ?? element.boundingBox.width);
-    const height =
-      current.height > 0
-        ? current.height
-        : (parsePxMetricValue(styles.height ?? "") ?? element.boundingBox.height);
-    void Promise.resolve(
-      onSetManualSize(element, {
-        width: axis === "width" ? parsed : width,
-        height: axis === "height" ? parsed : height,
-      }),
-    ).catch(() => undefined);
-  };
-
   const manualRotation = readStudioRotation(element.element);
-  const commitManualRotation = (nextValue: string) => {
-    const parsed = Number.parseFloat(nextValue);
-    if (!Number.isFinite(parsed)) return;
-    if (
-      commitAnimatedTransformValue(
-        "rotation",
-        parsed,
-        "Cannot edit rotation — animation callbacks not available",
-      )
-    )
-      return;
-    void Promise.resolve(onSetManualRotation(element, { angle: parsed })).catch(() => undefined);
-  };
 
   const elStart = Number.parseFloat(element?.dataAttributes?.start ?? "0") || 0;
   const elDuration = Number.parseFloat(element?.dataAttributes?.duration ?? "1") || 0;
@@ -254,6 +169,21 @@ export const PropertyPanel = memo(function PropertyPanel({
   const gsapKeyframes = gsapKfAnim?.keyframes?.keyframes ?? null;
   const gsapAnimId = gsapKfAnim?.id ?? gsapAnimations?.[0]?.id ?? null;
   const hasGsapAnimation = !!(gsapAnimId || gsapAnimations.length > 0);
+  const { commitManualOffset, commitManualSize, commitManualRotation } =
+    createTransformCommitHandlers({
+      element,
+      styles,
+      hasGsapAnimation,
+      gsapAnimId,
+      gsapKeyframes,
+      currentPct,
+      onCommitAnimatedProperty,
+      onAddKeyframe,
+      onSetManualOffset,
+      onSetManualSize,
+      onSetManualRotation,
+      showToast,
+    });
   const navKeyframes = cacheEntry?.keyframes ?? gsapKeyframes;
   const seekFromKfPct = (pct: number) => onSeekToTime?.(elStart + (pct / 100) * elDuration);
 
