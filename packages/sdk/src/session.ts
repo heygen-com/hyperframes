@@ -9,6 +9,7 @@
  */
 
 import type {
+  CanResult,
   Composition,
   EditOp,
   ElementSnapshot,
@@ -321,7 +322,7 @@ class CompositionImpl implements Composition {
     this.batchOverridesSnapshot = {};
   }
 
-  can(op: EditOp): boolean {
+  can(op: EditOp): CanResult {
     return validateOp(this.parsed, op);
   }
 

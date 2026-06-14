@@ -44,6 +44,17 @@ export interface SdkDocument {
  */
 export type OverrideSet = Record<string, string | number | boolean | null>;
 
+// ─── can() result ─────────────────────────────────────────────────────────────
+
+/**
+ * Structured result from can(op).
+ *
+ * `ok: true` — dispatch(op) will succeed.
+ * `ok: false` — dispatch would be a no-op or error; `code` is stable for switch.
+ *   Codes: E_TARGET_NOT_FOUND | E_NO_ROOT | E_NO_GSAP_TIMELINE | E_NO_GSAP_SCRIPT
+ */
+export type CanResult = { ok: true } | { ok: false; code: string; message: string; hint?: string };
+
 // ─── Edit operations (F1: explicit target on every element op) ────────────────
 
 export type HfId = string;
@@ -236,11 +247,11 @@ export interface Composition {
   batch(fn: () => void, opts?: { origin?: unknown }): void;
   /**
    * Dry-run validation — would dispatch(op) succeed?
-   * Returns false for: unknown element id, missing root, unimplemented Phase 3b ops, unknown op types.
-   * Use as a feature-detection gate: `if (!comp.can(op)) return;` — Phase 3b ops always return false
-   * until the parser-backed engine ships. This is intentional: silent no-op is worse than skipping.
+   * Returns {ok:true} when dispatch would mutate the document, {ok:false,code,message} otherwise.
+   * Use as a feature-detection gate: `const r = comp.can(op); if (!r.ok) return;`
+   * Phase 3b ops return {ok:false,code:'E_NO_GSAP_TIMELINE'} until parser engine ships.
    */
-  can(op: EditOp): boolean;
+  can(op: EditOp): CanResult;
 
   // ── Events (one typed emitter — F10) ──────────────────────────────────────
   on(event: "change", handler: () => void): () => void;
