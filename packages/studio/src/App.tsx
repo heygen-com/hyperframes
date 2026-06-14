@@ -303,6 +303,7 @@ export function StudioApp() {
     openSourceForSelection: fileManager.openSourceForSelection,
     selectSidebarTab: selectSidebarTabStable,
     getSidebarTab: getSidebarTabStable,
+    sdkSession,
   });
   domEditSelectionBridgeRef.current = domEditSession.domEditSelection;
   clearDomSelectionRef.current = domEditSession.clearDomSelection;

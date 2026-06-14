@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
+import type { Composition } from "@hyperframes/sdk";
 import type { TimelineElement } from "../player";
 import { usePlayerStore } from "../player";
 import {
@@ -16,6 +17,7 @@ import { useAskAgentModal } from "./useAskAgentModal";
 import { useDomSelection } from "./useDomSelection";
 import { usePreviewInteraction } from "./usePreviewInteraction";
 import { useDomEditCommits } from "./useDomEditCommits";
+import { reportShadowDispatch } from "../utils/sdkShadow";
 import { useGsapScriptCommits } from "./useGsapScriptCommits";
 import {
   useGsapAnimationsForElement,
@@ -77,6 +79,8 @@ export interface UseDomEditSessionParams {
   openSourceForSelection?: (sourceFile: string, target: PatchTarget) => void;
   selectSidebarTab?: (tab: SidebarTab) => void;
   getSidebarTab?: () => SidebarTab;
+  /** Stage 7 Step 3b: SDK session for shadow dispatch parity tracking. */
+  sdkSession?: Composition | null;
 }
 
 // ── Hook ──
@@ -116,6 +120,7 @@ export function useDomEditSession({
   openSourceForSelection,
   selectSidebarTab,
   getSidebarTab,
+  sdkSession,
 }: UseDomEditSessionParams) {
   void _setRefreshKey;
 
@@ -325,6 +330,9 @@ export function useDomEditSession({
     clearDomSelection,
     refreshDomEditSelectionFromPreview,
     buildDomSelectionFromTarget,
+    onDomEditPersisted: sdkSession
+      ? (sel, ops) => reportShadowDispatch(sdkSession, sel, ops)
+      : undefined,
   });
 
   // GSAP-aware: intercept offset/resize/rotation to commit via script mutation when animated.
