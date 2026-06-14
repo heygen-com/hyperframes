@@ -31,6 +31,12 @@ function makeDoc(html: string) {
   return document;
 }
 
+/** Parse inlined HTML and return the scopedId of the element with the given hf-id. */
+function scopedIdOf(inner: string, id: string): string | undefined {
+  const parsed = parseMutable(inlinedHtml(inner));
+  return flatElements(buildRoots(parsed.document)).find((e) => e.id === id)?.scopedId;
+}
+
 // ─── 1. resolveScoped ─────────────────────────────────────────────────────────
 
 describe("resolveScoped — flat id", () => {
@@ -128,50 +134,44 @@ describe("ElementSnapshot.scopedId", () => {
   });
 
   it("element inside sub-comp gets hf-HOST/hf-LEAF scopedId", () => {
-    const parsed = parseMutable(
-      inlinedHtml(`
-      <div data-hf-id="hf-root" data-hf-root>
-        <div data-hf-id="hf-host" data-composition-file="sub.html">
-          <p data-hf-id="hf-leaf">text</p>
-        </div>
-      </div>
-    `),
-    );
-    const elements = flatElements(buildRoots(parsed.document));
-    const leaf = elements.find((e) => e.id === "hf-leaf");
-    expect(leaf?.scopedId).toBe("hf-host/hf-leaf");
+    expect(
+      scopedIdOf(
+        `<div data-hf-id="hf-root" data-hf-root>
+          <div data-hf-id="hf-host" data-composition-file="sub.html">
+            <p data-hf-id="hf-leaf">text</p>
+          </div>
+        </div>`,
+        "hf-leaf",
+      ),
+    ).toBe("hf-host/hf-leaf");
   });
 
   it("host element itself has bare scopedId (it lives in parent scope)", () => {
-    const parsed = parseMutable(
-      inlinedHtml(`
-      <div data-hf-id="hf-root" data-hf-root>
-        <div data-hf-id="hf-host" data-composition-file="sub.html">
-          <p data-hf-id="hf-leaf">text</p>
-        </div>
-      </div>
-    `),
-    );
-    const elements = flatElements(buildRoots(parsed.document));
-    const host = elements.find((e) => e.id === "hf-host");
-    expect(host?.scopedId).toBe("hf-host");
+    expect(
+      scopedIdOf(
+        `<div data-hf-id="hf-root" data-hf-root>
+          <div data-hf-id="hf-host" data-composition-file="sub.html">
+            <p data-hf-id="hf-leaf">text</p>
+          </div>
+        </div>`,
+        "hf-host",
+      ),
+    ).toBe("hf-host");
   });
 
   it("3-level nesting produces hf-H1/hf-H2/hf-LEAF", () => {
-    const parsed = parseMutable(
-      inlinedHtml(`
-      <div data-hf-id="hf-root" data-hf-root>
-        <div data-hf-id="hf-h1" data-composition-file="sub1.html">
-          <div data-hf-id="hf-h2" data-composition-file="sub2.html">
-            <span data-hf-id="hf-leaf">deep</span>
+    expect(
+      scopedIdOf(
+        `<div data-hf-id="hf-root" data-hf-root>
+          <div data-hf-id="hf-h1" data-composition-file="sub1.html">
+            <div data-hf-id="hf-h2" data-composition-file="sub2.html">
+              <span data-hf-id="hf-leaf">deep</span>
+            </div>
           </div>
-        </div>
-      </div>
-    `),
-    );
-    const elements = flatElements(buildRoots(parsed.document));
-    const leaf = elements.find((e) => e.id === "hf-leaf");
-    expect(leaf?.scopedId).toBe("hf-h1/hf-h2/hf-leaf");
+        </div>`,
+        "hf-leaf",
+      ),
+    ).toBe("hf-h1/hf-h2/hf-leaf");
   });
 
   it("same sub-comp mounted twice gets different scopedIds", () => {
@@ -198,21 +198,19 @@ describe("ElementSnapshot.scopedId", () => {
 
   it("outerHTML innerRoot (same dcf as parent) is NOT itself a new host boundary", () => {
     // outerHTML case: host and innerRoot both get data-composition-file="sub.html"
-    const parsed = parseMutable(
-      inlinedHtml(`
-      <div data-hf-id="hf-root" data-hf-root>
-        <div data-hf-id="hf-host" data-composition-file="sub.html">
-          <div data-hf-id="hf-inner" data-composition-id="my-sub" data-composition-file="sub.html">
-            <p data-hf-id="hf-leaf">text</p>
-          </div>
-        </div>
-      </div>
-    `),
-    );
-    const elements = flatElements(buildRoots(parsed.document));
-    const leaf = elements.find((e) => e.id === "hf-leaf");
     // Leaf should be scoped under hf-host, not hf-host/hf-inner
-    expect(leaf?.scopedId).toBe("hf-host/hf-leaf");
+    expect(
+      scopedIdOf(
+        `<div data-hf-id="hf-root" data-hf-root>
+          <div data-hf-id="hf-host" data-composition-file="sub.html">
+            <div data-hf-id="hf-inner" data-composition-id="my-sub" data-composition-file="sub.html">
+              <p data-hf-id="hf-leaf">text</p>
+            </div>
+          </div>
+        </div>`,
+        "hf-leaf",
+      ),
+    ).toBe("hf-host/hf-leaf");
   });
 });
 

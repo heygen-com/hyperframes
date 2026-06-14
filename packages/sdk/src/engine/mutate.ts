@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication
 /**
  * Op handlers for Phase 3a (non-parser ops).
  *
