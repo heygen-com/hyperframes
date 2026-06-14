@@ -22,6 +22,7 @@ const GROUPS: Group[] = [
       ["init", "Scaffold a new composition project"],
       ["add", "Install a block or component from the registry"],
       ["capture", "Capture a website for video production"],
+      ["capture-video", "Download a video referenced in a capture manifest"],
       ["catalog", "Browse and install blocks and components"],
       ["preview", "Start the studio for previewing compositions"],
       ["publish", "Upload a project and get a stable public URL"],
