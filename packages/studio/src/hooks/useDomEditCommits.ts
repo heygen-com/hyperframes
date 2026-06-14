@@ -41,7 +41,6 @@ import type { DomEditGroupPathOffsetCommit } from "../components/editor/DomEditO
 import type { EditHistoryKind } from "../utils/editHistory";
 import { useDomEditTextCommits } from "./useDomEditTextCommits";
 
-// ── Helpers ──
 type TimelineLike = { getChildren?: (nested: boolean) => Array<{ targets?: () => Element[] }> };
 
 // fallow-ignore-next-line complexity
@@ -74,8 +73,6 @@ function isElementGsapTargeted(iframe: HTMLIFrameElement | null, element: HTMLEl
   }
   return false;
 }
-
-// ── Types ──
 
 interface RecordEditInput {
   label: string;
@@ -122,9 +119,9 @@ export interface UseDomEditCommitsParams {
     target: HTMLElement,
     options?: { preferClipAncestor?: boolean },
   ) => Promise<DomEditSelection | null>;
+  /** Stage 7 Step 3b: called after a successful server-side element patch. */
+  onDomEditPersisted?: (selection: DomEditSelection, operations: PatchOperation[]) => void;
 }
-
-// ── Hook ──
 
 export function useDomEditCommits({
   activeCompPath,
@@ -144,6 +141,7 @@ export function useDomEditCommits({
   clearDomSelection,
   refreshDomEditSelectionFromPreview,
   buildDomSelectionFromTarget,
+  onDomEditPersisted,
 }: UseDomEditCommitsParams) {
   const resolveImportedFontAsset = useCallback(
     (fontFamilyValue: string): ImportedFontAsset | null => {
@@ -253,6 +251,7 @@ export function useDomEditCommits({
         coalesceKey: options?.coalesceKey,
         files: { [targetPath]: { before: originalContent, after: finalContent } },
       });
+      onDomEditPersisted?.(selection, operations);
 
       if (!options?.skipRefresh) {
         reloadPreview();
@@ -265,6 +264,7 @@ export function useDomEditCommits({
       projectIdRef,
       domEditSaveTimestampRef,
       reloadPreview,
+      onDomEditPersisted,
     ],
   );
 
