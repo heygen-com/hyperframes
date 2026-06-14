@@ -416,6 +416,12 @@ interface WorkerEncodeState {
 }
 
 const workerEncodeStates = new WeakMap<Page, WorkerEncodeState>();
+// Pages that already have the `__hfFrameReady` binding installed. The binding
+// survives navigation and cannot be cleanly removed, so its lifetime is
+// tracked separately from WorkerEncodeState (which is recreated per session).
+// Without this, a re-init after cleanup would call exposeFunction twice and
+// throw "already exists".
+const workerEncodeBoundPages = new WeakSet<Page>();
 
 /**
  * Initialize the in-page JPEG encode Worker for a session. Must be called
@@ -431,60 +437,95 @@ export async function initDrawElementWorkerEncode(page: Page): Promise<void> {
   const existing = workerEncodeStates.get(page);
 
   if (existing) {
-    // Session reused after navigation — reject stale pending promises.
+    // Session reused after navigation — reject stale pending promises and
+    // reset the frame-id counter so ids track the new render's frame indices.
     for (const entry of existing.pending.values()) {
       entry.reject(new Error("drawElement worker encode: session reused, frame dropped"));
     }
     existing.pending.clear();
+    existing.nextId = 0;
   } else {
-    // First init for this page: register the node-side callback.
     const state: WorkerEncodeState = { nextId: 0, pending: new Map() };
     workerEncodeStates.set(page, state);
-    await page.exposeFunction("__hfFrameReady", (id: number, b64: string) => {
+  }
+
+  // Register the node-side callback ONCE per page. The exposeFunction binding
+  // survives navigation and cannot be re-added (throws "already exists"), so
+  // guard with workerEncodeBoundPages rather than the per-session state. The
+  // callback reads the CURRENT WorkerEncodeState live, so it works across
+  // re-inits where the state object is replaced.
+  if (!workerEncodeBoundPages.has(page)) {
+    workerEncodeBoundPages.add(page);
+    await page.exposeFunction("__hfFrameReady", (id: number, b64: string, error?: string) => {
       const s = workerEncodeStates.get(page);
       if (!s) return;
+      // id < 0 is a fatal worker signal (e.g. worker onerror): the worker is
+      // dead and no frame will ever come back — reject every in-flight frame
+      // so awaiters fail fast instead of hanging forever.
+      if (id < 0) {
+        for (const entry of s.pending.values()) {
+          entry.reject(new Error(`drawElement worker encode failed: ${error ?? "worker error"}`));
+        }
+        s.pending.clear();
+        return;
+      }
       const entry = s.pending.get(id);
       if (!entry) return;
       s.pending.delete(id);
-      entry.resolve(Buffer.from(b64, "base64"));
+      if (error) entry.reject(new Error(`drawElement worker encode failed: ${error}`));
+      else entry.resolve(Buffer.from(b64, "base64"));
     });
   }
 
   // Inject (or re-create) the in-page Worker after each navigation.
   await page.evaluate(() => {
-    type EncWin = Window & { __hfEncWorker?: Worker };
+    type EncWin = Window & {
+      __hfEncWorker?: Worker;
+      __hfFrameReady?: (id: number, b64: string, error?: string) => void;
+    };
     const ew = window as EncWin;
     if (ew.__hfEncWorker) {
       ew.__hfEncWorker.terminate();
       ew.__hfEncWorker = undefined;
     }
+    // Base64 is done INSIDE the worker (off the main thread) so it never
+    // competes with the produce phase; the worker posts a string the page
+    // relays to node. On any encode failure the worker posts an error for that
+    // frame's id so the node-side promise rejects instead of hanging.
     const workerSrc = `
       self.onmessage = async (e) => {
         const { bmp, id, w, h, q } = e.data;
-        const oc = new OffscreenCanvas(w, h);
-        const c = oc.getContext('2d');
-        c.drawImage(bmp, 0, 0);
-        bmp.close();
-        const blob = await oc.convertToBlob({ type: 'image/jpeg', quality: q });
-        const ab = await blob.arrayBuffer();
-        const u = new Uint8Array(ab);
-        let s = ''; const CH = 0x8000;
-        for (let i = 0; i < u.length; i += CH)
-          s += String.fromCharCode.apply(null, u.subarray(i, i + CH));
-        self.postMessage({ id, b64: btoa(s) });
+        try {
+          const oc = new OffscreenCanvas(w, h);
+          const c = oc.getContext('2d');
+          if (!c) throw new Error('OffscreenCanvas 2d context unavailable');
+          c.drawImage(bmp, 0, 0);
+          bmp.close();
+          const blob = await oc.convertToBlob({ type: 'image/jpeg', quality: q });
+          const ab = await blob.arrayBuffer();
+          const u = new Uint8Array(ab);
+          let s = ''; const CH = 0x8000;
+          for (let i = 0; i < u.length; i += CH)
+            s += String.fromCharCode.apply(null, u.subarray(i, i + CH));
+          self.postMessage({ id, b64: btoa(s) });
+        } catch (err) {
+          try { if (bmp) bmp.close(); } catch (_) {}
+          self.postMessage({ id, error: (err && err.message) || String(err) });
+        }
       };
     `;
     const url = URL.createObjectURL(new Blob([workerSrc], { type: "text/javascript" }));
-    ew.__hfEncWorker = new Worker(url);
-    ew.__hfEncWorker.onmessage = (ev: MessageEvent) => {
-      const { id, b64 } = ev.data as { id: number; b64: string };
-      (window as EncWin & { __hfFrameReady?: (id: number, b64: string) => void }).__hfFrameReady?.(
-        id,
-        b64,
-      );
+    const worker = new Worker(url);
+    URL.revokeObjectURL(url); // only needed for Worker construction
+    ew.__hfEncWorker = worker;
+    worker.onmessage = (ev: MessageEvent) => {
+      const d = ev.data as { id: number; b64?: string; error?: string };
+      ew.__hfFrameReady?.(d.id, d.b64 ?? "", d.error);
     };
-    ew.__hfEncWorker.onerror = (err: ErrorEvent) => {
-      console.error("[hfEncWorker] unhandled error:", err.message);
+    worker.onerror = (err: ErrorEvent) => {
+      // Fatal, not tied to a frame id — signal node (id = -1) to reject all
+      // in-flight frames so the pipeline fails fast instead of hanging.
+      ew.__hfFrameReady?.(-1, "", err.message || "worker fatal error");
     };
   });
 }
@@ -614,25 +655,28 @@ export async function produceDrawElementFrame(
             rejectCapture(e instanceof Error ? e : new Error(String(e)));
             return;
           }
-          // Snapshot canvas and hand off to encode worker. createImageBitmap
-          // captures a pixel snapshot at this point; after .then resolves, the
-          // canvas is safe to overwrite for the next frame.
-          setTimeout(() => {
-            createImageBitmap(canvas)
-              .then((bmp) => {
-                type EncWin = Window & { __hfEncWorker?: Worker };
-                const ew = window as EncWin;
-                if (!ew.__hfEncWorker) {
-                  rejectCapture(new Error("drawElement: encode worker not initialized"));
-                  return;
-                }
-                ew.__hfEncWorker.postMessage({ bmp, id: fid, w, h, q: q / 100 }, [bmp]);
-                resolveCapture();
-              })
-              .catch((e: unknown) => {
-                rejectCapture(e instanceof Error ? e : new Error(String(e)));
-              });
-          }, 0);
+          // Snapshot the canvas and hand off to the encode worker.
+          // createImageBitmap is async (does not block the paint handler) and
+          // captures a pixel snapshot now; resolveCapture only fires after the
+          // bitmap is transferred, so the canvas is safe to overwrite for the
+          // next frame once this evaluate's promise resolves. No setTimeout(0)
+          // wrapper — it added ~1-4ms/frame of macrotask latency on the produce
+          // critical path for no benefit (the heavy encode runs in the worker,
+          // not the paint handler).
+          createImageBitmap(canvas)
+            .then((bmp) => {
+              type EncWin = Window & { __hfEncWorker?: Worker };
+              const ew = window as EncWin;
+              if (!ew.__hfEncWorker) {
+                rejectCapture(new Error("drawElement: encode worker not initialized"));
+                return;
+              }
+              ew.__hfEncWorker.postMessage({ bmp, id: fid, w, h, q: q / 100 }, [bmp]);
+              resolveCapture();
+            })
+            .catch((e: unknown) => {
+              rejectCapture(e instanceof Error ? e : new Error(String(e)));
+            });
         };
 
         if (!sync) {

@@ -1665,40 +1665,50 @@ export async function captureFrameToBufferPipelined(
   const { page, options } = session;
   const startTime = Date.now();
 
-  const { quantizedTime, seekMs, beforeCaptureMs } = await prepareFrameForCapture(
-    session,
-    frameIndex,
-    time,
-  );
-  void quantizedTime;
+  try {
+    const { quantizedTime, seekMs, beforeCaptureMs } = await prepareFrameForCapture(
+      session,
+      frameIndex,
+      time,
+    );
+    void quantizedTime;
 
-  if (session.beginFrameTimeTicks > 0) {
-    const client = await getCdpSession(page);
-    await client.send("HeadlessExperimental.beginFrame", {
-      frameTimeTicks: session.beginFrameTimeTicks + frameIndex * session.beginFrameIntervalMs,
-      interval: session.beginFrameIntervalMs,
-      noDisplayUpdates: false,
-    });
+    // Worker-encode is gated to the macOS GPU path (beginFrameTimeTicks === 0,
+    // syncToPaintEvent = true); see initDrawElementOrTransparentBackground. The
+    // BeginFrame branch present in the synchronous captureFrameCore is therefore
+    // unreachable here and intentionally omitted.
+    const { encodeResult } = await produceDrawElementFrame(
+      page,
+      options.width,
+      options.height,
+      options.quality ?? 80,
+      true,
+    );
+
+    const captureTimeMs = Date.now() - startTime;
+
+    session.capturePerf.frames += 1;
+    session.capturePerf.seekMs += seekMs;
+    session.capturePerf.beforeCaptureMs += beforeCaptureMs;
+    // screenshotMs reflects produce time only (encode is async, not tracked here)
+    session.capturePerf.screenshotMs += captureTimeMs - seekMs - beforeCaptureMs;
+    session.capturePerf.totalMs += captureTimeMs;
+
+    return { encodeResult, captureTimeMs };
+  } catch (captureError) {
+    // Mirror captureFrameCore: capture per-frame diagnostics (frame-error
+    // PNG/HTML/JSON + console tail) before rethrowing so pipelined-path
+    // failures are debuggable like the serial path.
+    if (session.isInitialized) {
+      await captureFrameErrorDiagnostics(
+        session,
+        frameIndex,
+        time,
+        captureError instanceof Error ? captureError : new Error(String(captureError)),
+      );
+    }
+    throw captureError;
   }
-
-  const { encodeResult } = await produceDrawElementFrame(
-    page,
-    options.width,
-    options.height,
-    options.quality ?? 80,
-    session.beginFrameTimeTicks === 0,
-  );
-
-  const captureTimeMs = Date.now() - startTime;
-
-  session.capturePerf.frames += 1;
-  session.capturePerf.seekMs += seekMs;
-  session.capturePerf.beforeCaptureMs += beforeCaptureMs;
-  // screenshotMs reflects produce time only (encode is async, not tracked here)
-  session.capturePerf.screenshotMs += captureTimeMs - seekMs - beforeCaptureMs;
-  session.capturePerf.totalMs += captureTimeMs;
-
-  return { encodeResult, captureTimeMs };
 }
 
 /**

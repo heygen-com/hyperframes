@@ -138,6 +138,10 @@ async function runWorkerEncodePipelineLoop(
 
   const drainPrev = async (): Promise<void> => {
     if (!prev) return;
+    // Observe aborts while parked here (the encode wait + ffmpeg write are the
+    // longest stretch of the loop); without this an abort isn't seen until the
+    // next produce iteration.
+    assertNotAborted();
     const buf = await prev.encodeResult;
     await reorderBuffer.waitForFrame(prev.idx);
     ensureFrameWritten(await currentEncoder.writeFrame(buf), prev.idx);
@@ -152,14 +156,23 @@ async function runWorkerEncodePipelineLoop(
     );
   };
 
-  for (let i = 0; i < totalFrames; i++) {
-    assertNotAborted();
-    const time = (i * job.config.fps.den) / job.config.fps.num;
-    const { encodeResult } = await captureFrameToBufferPipelined(session, i, time);
+  try {
+    for (let i = 0; i < totalFrames; i++) {
+      assertNotAborted();
+      const time = (i * job.config.fps.den) / job.config.fps.num;
+      const { encodeResult } = await captureFrameToBufferPipelined(session, i, time);
+      await drainPrev();
+      prev = { idx: i, encodeResult };
+    }
     await drainPrev();
-    prev = { idx: i, encodeResult };
+  } catch (err) {
+    // On abort/throw the previously-produced frame's encode is still in flight
+    // and never awaited; closeCaptureSession → cleanupDrawElementWorkerEncode
+    // will reject it. Attach a no-op catch so that rejection is not an
+    // unhandled promise rejection (which can crash the producer worker).
+    if (prev) prev.encodeResult.catch(() => {});
+    throw err;
   }
-  await drainPrev();
 }
 
 export async function runCaptureStreamingStage(
