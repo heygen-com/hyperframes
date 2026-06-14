@@ -81,6 +81,13 @@ interface RecordEditInput {
   files: Record<string, { before: string; after: string }>;
 }
 
+type TrySdkPersist = (
+  s: DomEditSelection,
+  ops: PatchOperation[],
+  html: string,
+  path: string,
+) => Promise<boolean>;
+
 export type PersistDomEditOperations = (
   selection: DomEditSelection,
   operations: PatchOperation[],
@@ -119,8 +126,8 @@ export interface UseDomEditCommitsParams {
     target: HTMLElement,
     options?: { preferClipAncestor?: boolean },
   ) => Promise<DomEditSelection | null>;
-  /** Stage 7 Step 3b: called after a successful server-side element patch. */
   onDomEditPersisted?: (selection: DomEditSelection, operations: PatchOperation[]) => void;
+  onTrySdkPersist?: TrySdkPersist;
 }
 
 export function useDomEditCommits({
@@ -142,6 +149,7 @@ export function useDomEditCommits({
   refreshDomEditSelectionFromPreview,
   buildDomSelectionFromTarget,
   onDomEditPersisted,
+  onTrySdkPersist,
 }: UseDomEditCommitsParams) {
   const resolveImportedFontAsset = useCallback(
     (fontFamilyValue: string): ImportedFontAsset | null => {
@@ -190,11 +198,10 @@ export function useDomEditCommits({
 
       if (options?.shouldSave && !options.shouldSave()) return;
 
-      const patchTarget = buildDomEditPatchTarget(selection);
+      if (onTrySdkPersist)
+        if (await onTrySdkPersist(selection, operations, originalContent, targetPath)) return;
 
-      // Mark the save timestamp before the file write so the SSE file-change
-      // handler suppresses the reload even if the event arrives before the
-      // response (the server writes the file and emits SSE during the fetch).
+      const patchTarget = buildDomEditPatchTarget(selection);
       domEditSaveTimestampRef.current = Date.now();
 
       const patchResponse = await fetch(
@@ -265,10 +272,9 @@ export function useDomEditCommits({
       domEditSaveTimestampRef,
       reloadPreview,
       onDomEditPersisted,
+      onTrySdkPersist,
     ],
   );
-
-  // ── Text & style commits (delegated to useDomEditTextCommits) ──
 
   const {
     handleDomStyleCommit,
@@ -289,8 +295,6 @@ export function useDomEditCommits({
     persistDomEditOperations,
     resolveImportedFontAsset,
   });
-
-  // ── Position patch helper ──
 
   // fallow-ignore-next-line complexity
   const commitPositionPatchToHtml = useCallback(
@@ -321,8 +325,6 @@ export function useDomEditCommits({
     },
     [persistDomEditOperations, queueDomEditSave, showToast],
   );
-
-  // ── Position commits ──
 
   const handleDomPathOffsetCommit = useCallback(
     (selection: DomEditSelection, next: { x: number; y: number }) => {
@@ -399,8 +401,6 @@ export function useDomEditCommits({
     },
     [commitPositionPatchToHtml],
   );
-
-  // ── Motion commits (HTML-attribute–backed) ──
 
   // fallow-ignore-next-line complexity
   const handleDomMotionCommit = useCallback(
