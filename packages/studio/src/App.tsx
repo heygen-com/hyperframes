@@ -12,6 +12,8 @@ import { usePreviewPersistence } from "./hooks/usePreviewPersistence";
 import { useTimelineEditing } from "./hooks/useTimelineEditing";
 import type { BlockPreviewInfo } from "./components/sidebar/BlocksTab";
 import { useDomEditSession } from "./hooks/useDomEditSession";
+import { useSdkSession } from "./hooks/useSdkSession";
+import { useSdkSelectionSync } from "./hooks/useSdkSelectionSync";
 import { useBlockHandlers } from "./hooks/useBlockHandlers";
 import { useAppHotkeys } from "./hooks/useAppHotkeys";
 import { useClipboard } from "./hooks/useClipboard";
@@ -144,6 +146,8 @@ export function StudioApp() {
     domEditSaveTimestampRef,
     setRefreshKey,
   });
+
+  const sdkSession = useSdkSession(projectId, activeCompPath);
 
   useEffect(() => {
     if (activeCompPathHydrated) return;
@@ -314,6 +318,12 @@ export function StudioApp() {
       if (Number.isFinite(p)) domEditSession.handleGsapRemoveKeyframe(a.id, p);
     });
   };
+  useSdkSelectionSync(
+    sdkSession,
+    domEditSession.domEditSelection,
+    domEditSession.domEditGroupSelections,
+  );
+
   useCaptionDetection({
     projectId,
     activeCompPath,
