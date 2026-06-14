@@ -4,6 +4,7 @@ import {
   injectDurations,
   extractResolvedMedia,
   clampDurations,
+  parseTimingAttr,
 } from "./timingCompiler.js";
 
 describe("compileTimingAttrs", () => {
@@ -183,5 +184,65 @@ describe("clampDurations", () => {
 
     expect(result).toContain('data-duration="5"');
     expect(result).toContain('data-end="7"');
+  });
+});
+
+// ── Unparsable timing attributes ──
+//
+// A typo like data-start="abc" must not reach the compiled output: it would
+// otherwise be serialized as data-end="NaN" and parsed downstream as a NaN
+// duration. Unparsable values are treated as missing (data-start → 0,
+// data-duration/data-end → resolver path), mirroring the Number.isFinite
+// guard extractResolvedMedia already applies to data-duration.
+
+describe("unparsable timing attributes", () => {
+  it("normalizes an unparsable data-start to 0 and computes data-end from it", () => {
+    const html = '<video id="v1" src="a.mp4" data-start="abc" data-duration="5">';
+    const { html: compiled, unresolved } = compileTimingAttrs(html);
+
+    expect(compiled).toContain('data-start="0"');
+    expect(compiled).toContain('data-end="5"');
+    expect(compiled).not.toContain("NaN");
+    expect(unresolved).toHaveLength(0);
+  });
+
+  it("drops an unparsable data-duration and marks the element unresolved", () => {
+    const html = '<video id="v1" src="a.mp4" data-start="1" data-duration="oops">';
+    const { html: compiled, unresolved } = compileTimingAttrs(html);
+
+    expect(compiled).not.toContain("data-duration");
+    expect(compiled).not.toContain("NaN");
+    expect(unresolved).toHaveLength(1);
+    expect(unresolved[0].start).toBe(1);
+  });
+
+  it("strips an unparsable data-end and recomputes it from data-duration", () => {
+    const html = '<video id="v1" src="a.mp4" data-start="2" data-duration="3" data-end="oops">';
+    const { html: compiled, unresolved } = compileTimingAttrs(html);
+
+    expect(compiled).toContain('data-end="5"');
+    expect(compiled).not.toContain("oops");
+    expect(unresolved).toHaveLength(0);
+  });
+
+  it("treats an unparsable data-media-start as 0 on unresolved elements", () => {
+    const html = '<video id="v1" src="a.mp4" data-start="1" data-media-start="bad">';
+    const { unresolved } = compileTimingAttrs(html);
+
+    expect(unresolved).toHaveLength(1);
+    expect(unresolved[0].mediaStart).toBe(0);
+  });
+});
+
+describe("parseTimingAttr", () => {
+  it("parses finite values", () => {
+    expect(parseTimingAttr("2.5", 0)).toBe(2.5);
+    expect(parseTimingAttr("0", 7)).toBe(0);
+  });
+
+  it("falls back on null, unparsable, and non-finite values", () => {
+    expect(parseTimingAttr(null, 3)).toBe(3);
+    expect(parseTimingAttr("abc", 3)).toBe(3);
+    expect(parseTimingAttr("Infinity", 3)).toBe(3);
   });
 });

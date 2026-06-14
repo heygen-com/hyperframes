@@ -747,3 +747,50 @@ describe("extractCompositionMetadata", () => {
     expect(meta.variables.find((v) => v.id === "ok")).toBeDefined();
   });
 });
+
+describe("parseHtml unparsable timing attributes", () => {
+  it("treats an unparsable data-start as 0", () => {
+    const html = `
+      <html>
+      <body>
+        <div id="stage">
+          <div id="t1" data-start="abc" data-end="3"><div>x</div></div>
+        </div>
+      </body>
+      </html>
+    `;
+    const result = parseHtml(html);
+
+    expect(result.elements[0].startTime).toBe(0);
+    expect(result.elements[0].duration).toBe(3);
+  });
+
+  it("falls back to the 5s default duration for an unparsable data-end", () => {
+    const html = `
+      <html>
+      <body>
+        <div id="stage">
+          <div id="t1" data-start="1" data-end="oops"><div>x</div></div>
+        </div>
+      </body>
+      </html>
+    `;
+    const result = parseHtml(html);
+
+    // Math.max(0, NaN) is NaN — without the guard this propagated a NaN
+    // duration into the timeline model.
+    expect(result.elements[0].startTime).toBe(1);
+    expect(result.elements[0].duration).toBe(5);
+  });
+});
+
+describe("updateElementInHtml with unparsable data-start", () => {
+  it("recomputes data-end from 0 instead of writing NaN", () => {
+    const html =
+      '<html><body><div id="stage"><div id="t1" data-start="abc" data-end="9"><div>x</div></div></div></body></html>';
+    const updated = updateElementInHtml(html, "t1", { duration: 4 });
+
+    expect(updated).toContain('data-end="4"');
+    expect(updated).not.toContain("NaN");
+  });
+});

@@ -12,6 +12,7 @@ import type {
 } from "../core.types";
 import { validateCompositionGsap } from "./gsapSerialize";
 import { ensureHfIds } from "./hfIds.js";
+import { parseTimingAttr } from "../compiler/timingCompiler";
 import type { ValidationResult } from "../core.types";
 
 const MEDIA_TYPES = new Set<string>(["video", "image", "audio"]);
@@ -179,15 +180,12 @@ export function parseHtml(html: string): ParsedHtml {
     const type = getElementType(el);
     if (!type) return;
 
-    const start = parseFloat(el.getAttribute("data-start") || "0");
-    const dataEnd = el.getAttribute("data-end");
-
-    let duration: number;
-    if (dataEnd) {
-      duration = Math.max(0, parseFloat(dataEnd) - start);
-    } else {
-      duration = 5;
-    }
+    const start = parseTimingAttr(el.getAttribute("data-start"), 0);
+    // Missing and unparsable data-end both fall back to the 5s default —
+    // Math.max(0, NaN) is NaN, so a garbage data-end would otherwise
+    // propagate a NaN duration into the timeline model.
+    const end = parseTimingAttr(el.getAttribute("data-end"), start + 5);
+    const duration = Math.max(0, end - start);
 
     // R1: stable hf- id minted by ensureHfIds above; clips just read it.
     // Legacy/migration note: ensureHfIds pins a pre-existing `data-hf-id`, and
@@ -528,7 +526,7 @@ export function updateElementInHtml(
   }
 
   if (updates.duration !== undefined) {
-    const start = parseFloat(el.getAttribute("data-start") || "0");
+    const start = parseTimingAttr(el.getAttribute("data-start"), 0);
     el.setAttribute("data-end", String(start + updates.duration));
     el.removeAttribute("data-duration"); // Clean up legacy
   }
