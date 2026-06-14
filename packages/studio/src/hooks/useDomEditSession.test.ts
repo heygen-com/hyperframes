@@ -28,23 +28,14 @@ describe("shouldUseSdkCutover", () => {
     expect(shouldUseSdkCutover(true, true, undefined, [styleOp("color", "red")])).toBe(false);
   });
 
-  it("returns false when ops include non-inline-style types", () => {
-    expect(
-      shouldUseSdkCutover(true, true, "hf-abc", [styleOp("color", "red"), attrOp("data-x", "1")]),
-    ).toBe(false);
-  });
-
   it("returns false when ops array is empty", () => {
     expect(shouldUseSdkCutover(true, true, "hf-abc", [])).toBe(false);
   });
 
-  it("returns true when flag on, session present, hfId set, all ops inline-style", () => {
+  it("returns true when all conditions met with supported op types", () => {
     expect(shouldUseSdkCutover(true, true, "hf-abc", [styleOp("color", "red")])).toBe(true);
     expect(
-      shouldUseSdkCutover(true, true, "hf-abc", [
-        styleOp("color", "red"),
-        styleOp("opacity", "0.5"),
-      ]),
+      shouldUseSdkCutover(true, true, "hf-abc", [styleOp("color", "red"), attrOp("data-x", "1")]),
     ).toBe(true);
   });
 });

@@ -4,7 +4,15 @@ import type { DomEditSelection } from "../components/editor/domEditing";
 import type { EditHistoryKind } from "./editHistory";
 import type { PatchOperation } from "./sourcePatcher";
 import { STUDIO_SDK_CUTOVER_ENABLED } from "../components/editor/manualEditingAvailability";
+import { patchOpsToSdkEditOps } from "./sdkShadow";
 import { trackStudioEvent } from "./studioTelemetry";
+
+const CUTOVER_OP_TYPES = new Set<PatchOperation["type"]>([
+  "inline-style",
+  "text-content",
+  "attribute",
+  "html-attribute",
+]);
 
 export function shouldUseSdkCutover(
   flagEnabled: boolean,
@@ -17,7 +25,7 @@ export function shouldUseSdkCutover(
     hasSession &&
     !!hfId &&
     ops.length > 0 &&
-    ops.every((o) => o.type === "inline-style")
+    ops.every((o) => CUTOVER_OP_TYPES.has(o.type))
   );
 }
 
@@ -50,9 +58,9 @@ export async function sdkCutoverPersist(
   if (!hfId) return false;
   if (!sdkSession.getElement(hfId)) return false;
   try {
-    const styles: Record<string, string | null> = {};
-    for (const op of ops) styles[op.property] = op.value;
-    sdkSession.dispatch({ type: "setStyle", target: hfId, styles });
+    for (const editOp of patchOpsToSdkEditOps(hfId, ops)) {
+      sdkSession.dispatch(editOp);
+    }
     const after = sdkSession.serialize();
     deps.domEditSaveTimestampRef.current = Date.now();
     await deps.writeProjectFile(targetPath, after);

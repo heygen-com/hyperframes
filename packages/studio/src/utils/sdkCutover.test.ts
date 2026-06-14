@@ -16,8 +16,20 @@ const styleOp = (property: string, value: string): PatchOperation => ({
   value,
 });
 
+const textOp = (value: string): PatchOperation => ({
+  type: "text-content",
+  property: "text",
+  value,
+});
+
 const attrOp = (property: string, value: string): PatchOperation => ({
   type: "attribute",
+  property,
+  value,
+});
+
+const htmlAttrOp = (property: string, value: string): PatchOperation => ({
+  type: "html-attribute",
   property,
   value,
 });
@@ -36,18 +48,35 @@ describe("shouldUseSdkCutover", () => {
     expect(shouldUseSdkCutover(true, true, undefined, [styleOp("color", "red")])).toBe(false);
   });
 
-  it("returns false when ops include non-inline-style types", () => {
-    expect(
-      shouldUseSdkCutover(true, true, "hf-abc", [styleOp("color", "red"), attrOp("x", "1")]),
-    ).toBe(false);
-  });
-
   it("returns false when ops empty", () => {
     expect(shouldUseSdkCutover(true, true, "hf-abc", [])).toBe(false);
   });
 
-  it("returns true when all conditions met", () => {
+  it("returns true for inline-style ops", () => {
     expect(shouldUseSdkCutover(true, true, "hf-abc", [styleOp("color", "red")])).toBe(true);
+  });
+
+  it("returns true for text-content ops", () => {
+    expect(shouldUseSdkCutover(true, true, "hf-abc", [textOp("hello")])).toBe(true);
+  });
+
+  it("returns true for attribute ops", () => {
+    expect(shouldUseSdkCutover(true, true, "hf-abc", [attrOp("data-x", "10")])).toBe(true);
+  });
+
+  it("returns true for html-attribute ops", () => {
+    expect(shouldUseSdkCutover(true, true, "hf-abc", [htmlAttrOp("class", "foo")])).toBe(true);
+  });
+
+  it("returns true when ops mix all supported types", () => {
+    expect(
+      shouldUseSdkCutover(true, true, "hf-abc", [
+        styleOp("color", "red"),
+        textOp("hello"),
+        attrOp("x", "1"),
+        htmlAttrOp("class", "foo"),
+      ]),
+    ).toBe(true);
   });
 });
 
@@ -98,7 +127,7 @@ describe("sdkCutoverPersist", () => {
     expect(result).toBe(false);
   });
 
-  it("dispatches setStyle and writes file on success", async () => {
+  it("dispatches setStyle for inline-style ops", async () => {
     const deps = makeDeps();
     const session = makeSession(true);
     const sel = { hfId: "hf-abc" } as never;
@@ -118,6 +147,68 @@ describe("sdkCutoverPersist", () => {
     });
     expect(deps.writeProjectFile).toHaveBeenCalledWith("/comp.html", "<html></html>");
     expect(deps.reloadPreview).toHaveBeenCalled();
+  });
+
+  it("dispatches setText for text-content op", async () => {
+    const deps = makeDeps();
+    const session = makeSession(true);
+    const sel = { hfId: "hf-abc" } as never;
+    const result = await sdkCutoverPersist(
+      sel,
+      [textOp("Hello world")],
+      "before",
+      "/comp.html",
+      session,
+      deps,
+    );
+    expect(result).toBe(true);
+    expect(session!.dispatch).toHaveBeenCalledWith({
+      type: "setText",
+      target: "hf-abc",
+      value: "Hello world",
+    });
+  });
+
+  it("dispatches setAttribute for attribute op with data- prefix", async () => {
+    const deps = makeDeps();
+    const session = makeSession(true);
+    const sel = { hfId: "hf-abc" } as never;
+    const result = await sdkCutoverPersist(
+      sel,
+      [attrOp("x", "42")],
+      "before",
+      "/comp.html",
+      session,
+      deps,
+    );
+    expect(result).toBe(true);
+    expect(session!.dispatch).toHaveBeenCalledWith({
+      type: "setAttribute",
+      target: "hf-abc",
+      name: "data-x",
+      value: "42",
+    });
+  });
+
+  it("dispatches setAttribute for html-attribute op", async () => {
+    const deps = makeDeps();
+    const session = makeSession(true);
+    const sel = { hfId: "hf-abc" } as never;
+    const result = await sdkCutoverPersist(
+      sel,
+      [htmlAttrOp("class", "foo bar")],
+      "before",
+      "/comp.html",
+      session,
+      deps,
+    );
+    expect(result).toBe(true);
+    expect(session!.dispatch).toHaveBeenCalledWith({
+      type: "setAttribute",
+      target: "hf-abc",
+      name: "class",
+      value: "foo bar",
+    });
   });
 
   it("returns false and does not throw on dispatch error", async () => {
