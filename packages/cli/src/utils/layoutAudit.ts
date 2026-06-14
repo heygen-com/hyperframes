@@ -13,7 +13,8 @@ export type LayoutIssueCode =
   | "text_box_overflow"
   | "clipped_text"
   | "canvas_overflow"
-  | "container_overflow";
+  | "container_overflow"
+  | "content_overlap";
 
 export type LayoutIssueSeverity = "error" | "warning" | "info";
 

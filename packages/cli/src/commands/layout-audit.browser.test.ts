@@ -100,6 +100,100 @@ describe("layout-audit.browser", () => {
   });
 });
 
+describe("layout-audit.browser content overlap", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    document.body.innerHTML = "";
+    delete (window as unknown as { __hyperframesLayoutAudit?: unknown }).__hyperframesLayoutAudit;
+  });
+
+  it("flags two solid text blocks that overlap", () => {
+    const overlap = auditOverlapScene({
+      a: { textRect: rect({ left: 100, top: 100, width: 400, height: 100 }) },
+      b: { textRect: rect({ left: 300, top: 120, width: 400, height: 100 }) },
+    }).find((issue) => issue.code === "content_overlap");
+    expect(overlap).toMatchObject({ selector: "#a", containerSelector: "#b" });
+  });
+
+  it("ignores blocks that overlap by less than a fifth of the smaller box", () => {
+    const issues = auditOverlapScene({
+      a: { textRect: rect({ left: 100, top: 100, width: 400, height: 100 }) },
+      b: { textRect: rect({ left: 490, top: 100, width: 400, height: 100 }) },
+    });
+    expect(issues.some((issue) => issue.code === "content_overlap")).toBe(false);
+  });
+
+  it("ignores watermark-style text with low colour alpha", () => {
+    expectExemptFromOverlap({ color: "rgba(0, 0, 0, 0.2)" });
+  });
+
+  it("respects the data-layout-allow-overlap opt-out", () => {
+    expectExemptFromOverlap({ attrs: "data-layout-allow-overlap" });
+  });
+});
+
+// Both blocks overlap heavily; only the exemption on block A should suppress
+// the finding, so a missing exemption would surface as a failure here.
+function expectExemptFromOverlap(aOverrides: { color?: string; attrs?: string }): void {
+  const issues = auditOverlapScene({
+    a: { textRect: rect({ left: 100, top: 100, width: 400, height: 100 }), ...aOverrides },
+    b: { textRect: rect({ left: 300, top: 120, width: 400, height: 100 }) },
+  });
+  expect(issues.some((issue) => issue.code === "content_overlap")).toBe(false);
+}
+
+function auditOverlapScene(options: {
+  a: { textRect: DOMRect; color?: string; attrs?: string };
+  b: { textRect: DOMRect; color?: string; attrs?: string };
+}): ReturnType<typeof runAudit> {
+  document.body.innerHTML = `
+    <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+      <div id="a" ${options.a.attrs ?? ""}>Block A copy</div>
+      <div id="b" ${options.b.attrs ?? ""}>Block B copy</div>
+    </div>
+  `;
+  const colors: Record<string, string> = {
+    a: options.a.color ?? "rgb(0, 0, 0)",
+    b: options.b.color ?? "rgb(0, 0, 0)",
+  };
+  const textRects: Record<string, DOMRect> = { a: options.a.textRect, b: options.b.textRect };
+
+  vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
+    const id = (element as Element).id;
+    return {
+      display: "block",
+      visibility: "visible",
+      opacity: "1",
+      color: colors[id] ?? "rgb(0, 0, 0)",
+    } as unknown as CSSStyleDeclaration;
+  });
+
+  for (const element of Array.from(document.querySelectorAll("*"))) {
+    vi.spyOn(element, "getBoundingClientRect").mockReturnValue(
+      textRects[element.id] ?? rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+    );
+  }
+
+  vi.spyOn(document, "createRange").mockImplementation(() => {
+    let selected: Node | null = null;
+    return {
+      selectNodeContents(node: Node) {
+        selected = node;
+      },
+      getClientRects() {
+        const id = (selected as Element | null)?.id ?? "";
+        return textRects[id]
+          ? ([textRects[id]] as unknown as DOMRectList)
+          : ([] as unknown as DOMRectList);
+      },
+      detach() {},
+    } as unknown as Range;
+  });
+
+  installAuditScript();
+  return runAudit();
+}
+
 function installAuditScript(): void {
   window.eval(script);
 }

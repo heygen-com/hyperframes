@@ -398,6 +398,91 @@
     return issues;
   }
 
+  function hasAllowOverlapFlag(element) {
+    return !!element.closest("[data-layout-allow-overlap]");
+  }
+
+  function alphaFromParts(parts, index) {
+    return parts.length > index ? parsePx(parts[index]) : 1;
+  }
+
+  // Alpha of a CSS colour; 1 when no alpha component is present. Handles both
+  // legacy `rgba(r, g, b, a)` and modern `rgb(r g b / a)` syntaxes.
+  function colorAlpha(color) {
+    const match = (color || "").match(/rgba?\(([^)]+)\)/);
+    if (!match) return 1;
+    const body = match[1];
+    return body.includes(",")
+      ? alphaFromParts(body.split(","), 3)
+      : alphaFromParts(body.split("/"), 1);
+  }
+
+  // A text block competes for space only when it is solid: watermark-style text
+  // (low colour alpha) is decorative and exempt, as are elements opted out with
+  // data-layout-allow-overlap.
+  function isSolidTextBlock(element) {
+    if (!isVisibleElement(element) || !hasOwnTextCandidate(element)) return false;
+    if (hasAllowOverlapFlag(element)) return false;
+    return colorAlpha(getComputedStyle(element).color) >= 0.35;
+  }
+
+  function collectSolidTextBlocks(root) {
+    const blocks = [];
+    for (const element of Array.from(root.querySelectorAll("*"))) {
+      if (!isSolidTextBlock(element)) continue;
+      const rect = textRectFor(element);
+      if (rect) blocks.push({ element, rect });
+    }
+    return blocks;
+  }
+
+  function rectArea(rect) {
+    return rect.width * rect.height;
+  }
+
+  function intersectionArea(a, b) {
+    const overlapX = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+    const overlapY = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+    return overlapX > 0 && overlapY > 0 ? overlapX * overlapY : 0;
+  }
+
+  function isNested(a, b) {
+    return a.contains(b) || b.contains(a);
+  }
+
+  // Two solid text blocks whose boxes overlap by more than a fifth of the
+  // smaller block read as a collision — unreadable, and invisible to the
+  // overflow checks, which only compare an element against its container.
+  function overlapIssue(a, b, time) {
+    if (isNested(a.element, b.element)) return null;
+    const area = intersectionArea(a.rect, b.rect);
+    if (area <= Math.min(rectArea(a.rect), rectArea(b.rect)) * 0.2) return null;
+    return {
+      code: "content_overlap",
+      severity: "error",
+      time,
+      selector: selectorFor(a.element),
+      containerSelector: selectorFor(b.element),
+      text: textContentFor(a.element),
+      message: "Two text blocks overlap and render unreadable.",
+      rect: a.rect,
+      fixHint:
+        "Give each block its own zone, or mark intentional layering with data-layout-allow-overlap.",
+    };
+  }
+
+  function contentOverlapIssues(root, time) {
+    const blocks = collectSolidTextBlocks(root);
+    const issues = [];
+    for (let i = 0; i < blocks.length; i++) {
+      for (let j = i + 1; j < blocks.length; j++) {
+        const issue = overlapIssue(blocks[i], blocks[j], time);
+        if (issue) issues.push(issue);
+      }
+    }
+    return issues;
+  }
+
   window.__hyperframesLayoutAudit = function auditLayout(options) {
     const time = options && typeof options.time === "number" ? options.time : 0;
     const tolerance =
@@ -418,6 +503,7 @@
     }
 
     issues.push(...containerOverflowIssues(root, time, tolerance));
+    issues.push(...contentOverlapIssues(root, time));
     return issues;
   };
 })();
