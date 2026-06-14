@@ -139,3 +139,6 @@ docs/superpowers/
 .worktrees
 hyperframes-bench/
 tmp/
+
+# Local Chrome-for-Testing downloads (large binaries, never commit)
+chrome/
