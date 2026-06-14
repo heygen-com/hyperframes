@@ -39,6 +39,8 @@ import type { PersistQueueModule } from "./persist-queue.js";
 
 export interface OpenCompositionOptions {
   persist?: PersistAdapter;
+  /** Adapter path the persist queue writes to. Default: "composition.html". */
+  persistPath?: string;
   preview?: PreviewAdapter;
   /** T3 embedded mode: override-set applied on top of the base template. */
   overrides?: OverrideSet;
@@ -484,6 +486,7 @@ export async function openComposition(
 
     if (opts?.persist) {
       const pq = createPersistQueue(session, opts.persist, {
+        path: opts.persistPath,
         onError: (e) => session._fireError(e),
       });
       session.attachPersistQueue(pq);
