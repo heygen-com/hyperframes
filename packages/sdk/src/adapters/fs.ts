@@ -16,6 +16,8 @@ class FsAdapter implements PersistAdapter {
   private readonly root: string;
   private readonly maxVersions: number;
   private errorHandlers: Array<(e: PersistErrorEvent) => void> = [];
+  private readonly inflightWrites = new Set<Promise<void>>();
+  private versionCounter = 0;
 
   constructor(opts: FsAdapterOptions) {
     this.root = opts.root;
@@ -32,6 +34,16 @@ class FsAdapter implements PersistAdapter {
   }
 
   async write(path: string, content: string): Promise<void> {
+    const p = this.doWrite(path, content);
+    this.inflightWrites.add(p);
+    try {
+      await p;
+    } finally {
+      this.inflightWrites.delete(p);
+    }
+  }
+
+  private async doWrite(path: string, content: string): Promise<void> {
     try {
       const abs = this.abs(path);
       await mkdir(dirname(abs), { recursive: true });
@@ -42,7 +54,9 @@ class FsAdapter implements PersistAdapter {
     }
   }
 
-  async flush(): Promise<void> {}
+  async flush(): Promise<void> {
+    await Promise.all([...this.inflightWrites]);
+  }
 
   async listVersions(path: string): Promise<PersistVersionEntry[]> {
     const dir = this.versionsDir(path);
@@ -92,7 +106,8 @@ class FsAdapter implements PersistAdapter {
   private async appendVersion(path: string, content: string): Promise<void> {
     const dir = this.versionsDir(path);
     await mkdir(dir, { recursive: true });
-    const key = String(Date.now());
+    // Pad counter to 6 digits so lexicographic sort = insertion order within same ms.
+    const key = `${Date.now()}_${String(this.versionCounter++).padStart(6, "0")}`;
     await writeFile(join(dir, `${key}.html`), content, "utf8");
     // prune oldest beyond maxVersions
     const all = (await readdir(dir)).filter((f) => f.endsWith(".html")).sort();
