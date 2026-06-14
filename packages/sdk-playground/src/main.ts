@@ -11,7 +11,7 @@ const DEMO_HTML = `
 <div data-hf-id="hf-stage" data-hf-root style="width:1280px;height:720px;background:#111827;position:relative;" data-duration="6">
   <style>.badge{background:#3b82f6;border-radius:6px;}</style>
   <div data-hf-id="hf-headline" style="position:absolute;top:200px;left:140px;font-size:72px;font-weight:700;color:#f9fafb;font-family:system-ui,sans-serif;">SDK Playground</div>
-  <div data-hf-id="hf-sub" style="position:absolute;top:300px;left:142px;font-size:28px;color:#9ca3af;font-family:system-ui,sans-serif;">@hyperframes/sdk &middot; Phase 3b</div>
+  <div data-hf-id="hf-sub" style="position:absolute;top:300px;left:142px;font-size:28px;color:#9ca3af;font-family:system-ui,sans-serif;">@hyperframes/sdk &middot; Phase 3b + 4</div>
   <div data-hf-id="hf-badge" class="badge" style="position:absolute;top:390px;left:142px;padding:10px 24px;font-size:20px;font-weight:600;color:#fff;font-family:system-ui,sans-serif;">v0.6</div>
   <script>
 var tl = gsap.timeline({ paused: true });
@@ -936,37 +936,51 @@ function buildSelectionProxySection(): HTMLDivElement {
 }
 
 function buildVersionsSection(): HTMLDivElement {
-  const display = mkNote("");
-  display.style.maxHeight = "80px";
-  display.style.overflowY = "auto";
+  const display = document.createElement("div");
+  display.style.cssText = "max-height:100px;overflow-y:auto;margin-top:4px;";
   const list = mkBtn("List versions", "", () => listVersionsInto(display));
-  const loadOldest = mkBtn("Load oldest", "", () => loadOldestVersion());
-  return opSection("listVersions / loadFrom", opRow(list, loadOldest), display);
+  return opSection("listVersions / loadFrom", opRow(list), display);
 }
 
 async function listVersionsInto(display: HTMLElement) {
   const { adapter } = await createFileAdapter();
   const versions = await adapter.listVersions("composition.html");
-  display.textContent = versions.length ? versions.map(versionLabel).join("\n") : "(no versions)";
+  display.innerHTML = "";
+  if (!versions.length) {
+    display.textContent = "(no versions saved yet)";
+    return;
+  }
   logEntry("info", { versions: versions.map((v) => v.key) });
+  for (const v of versions) {
+    const row = document.createElement("div");
+    row.className = "op-note";
+    row.style.cssText += "cursor:pointer;padding:3px 4px;border-radius:3px;";
+    row.textContent = versionLabel(v);
+    row.title = `Click to restore ${v.key}`;
+    row.addEventListener("mouseenter", () => (row.style.background = "#374151"));
+    row.addEventListener("mouseleave", () => (row.style.background = ""));
+    row.addEventListener("click", () => loadVersion(adapter, v.key));
+    display.appendChild(row);
+  }
 }
 
 function versionLabel(v: { key: string; timestamp?: number }): string {
-  return `${v.key} (${new Date(v.timestamp ?? 0).toLocaleTimeString()})`;
+  const ts = v.timestamp ?? 0;
+  const time = ts > 0 ? new Date(ts).toLocaleTimeString() : "unknown time";
+  return `${time}  (${v.key})`;
 }
 
-async function loadOldestVersion() {
-  const { adapter } = await createFileAdapter();
-  const versions = await adapter.listVersions("composition.html");
-  const oldest = versions[versions.length - 1];
-  if (!oldest) {
-    logEntry("info", "no versions");
+async function loadVersion(
+  adapter: import("@hyperframes/sdk/adapters/types").PersistAdapter,
+  key: string,
+): Promise<void> {
+  const html = await adapter.loadFrom("composition.html", key);
+  if (!html) {
+    logEntry("info", `version ${key} not found`);
     return;
   }
-  const html = await adapter.loadFrom("composition.html", oldest.key);
-  if (!html) return;
-  await openEditor(html, `v${oldest.key}`);
-  logEntry("info", `loaded version ${oldest.key}`);
+  await openEditor(html, `restored ${key.split("_")[0]}`);
+  logEntry("info", `loaded version ${key}`);
 }
 
 function buildHistorySection(): HTMLDivElement {
@@ -978,6 +992,12 @@ function buildHistorySection(): HTMLDivElement {
     comp!.redo();
     logEntry("redo", "dispatched");
   });
+
+  const canResult = document.createElement("div");
+  canResult.className = "op-note";
+  canResult.style.cssText += "font-size:10px;padding:2px 4px;";
+  canResult.textContent = "—";
+
   const canCheck = mkBtn("can(addGsapTween)?", "", () => {
     const r = comp!.can({
       type: "addGsapTween",
@@ -985,12 +1005,25 @@ function buildHistorySection(): HTMLDivElement {
       tween: { method: "to", duration: 0.5 },
     });
     logEntry("info", { "can(addGsapTween)": r });
+    if (r.ok) {
+      canResult.textContent = "✓ ok";
+      canResult.style.color = "#34d399";
+    } else {
+      canResult.textContent = `✗ ${r.code}: ${r.message}`;
+      canResult.style.color = "#f87171";
+    }
   });
+
   const overrides = mkBtn("getOverrides()", "", () => logEntry("info", comp!.getOverrides()));
   const flush = mkBtn("flush", "", () => {
     comp!.flush().then(() => logEntry("info", "flush complete"));
   });
-  return opSection("History / inspect", opRow(undo, redo), opRow(canCheck, overrides, flush));
+  return opSection(
+    "History / inspect",
+    opRow(undo, redo),
+    opRow(canCheck, canResult),
+    opRow(overrides, flush),
+  );
 }
 
 const OPS_SECTIONS = [
