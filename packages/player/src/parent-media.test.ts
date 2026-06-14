@@ -1,6 +1,22 @@
 import { describe, it, expect } from "vitest";
 import { ParentMediaManager, type ProxyEntry } from "./parent-media";
 
+// A fake media element whose paused state is driven by play()/pause() stubs.
+function makeFakeAudio(initiallyPaused: boolean): HTMLMediaElement {
+  const el = new Audio();
+  let paused = initiallyPaused;
+  Object.defineProperty(el, "paused", { get: () => paused });
+  el.pause = () => {
+    paused = true;
+  };
+  el.play = () => {
+    paused = false;
+    return Promise.resolve();
+  };
+  el.src = "https://example.test/music.mp3";
+  return el;
+}
+
 function makeManager(overrides: Partial<{ isPaused: boolean; owner: "runtime" | "parent" }> = {}) {
   const mgr = new ParentMediaManager({
     dispatchEvent: () => {},
@@ -71,6 +87,39 @@ describe("ParentMediaManager audio-src proxy lifecycle", () => {
     const mgr = makeManager();
     expect(() => mgr.teardownUrlAudio()).not.toThrow();
     expect(mgr.entries).toHaveLength(0);
+  });
+
+  it("pauses a proxy once the playhead passes the clip end (trimmed clip)", () => {
+    const mgr = makeManager({ owner: "parent", isPaused: false });
+    const el = makeFakeAudio(false); // already playing within the clip
+    mgr.entries.push({ el, start: 0, duration: 5, driftSamples: 0 });
+
+    mgr.mirrorTime(3); // inside [0, 5) — stays playing
+    expect(el.paused).toBe(false);
+
+    mgr.mirrorTime(6); // past the trimmed end — must pause
+    expect(el.paused).toBe(true);
+  });
+
+  it("re-reads the source element's live data-duration so trims bound the proxy", () => {
+    const mgr = makeManager({ owner: "parent", isPaused: false });
+    const source = new Audio();
+    source.setAttribute("data-start", "0");
+    source.setAttribute("data-duration", "30");
+    // jsdom reports isConnected=false unless attached; attach it.
+    document.body.appendChild(source);
+
+    const el = makeFakeAudio(false);
+    mgr.entries.push({ el, start: 0, duration: 30, driftSamples: 0, source });
+
+    mgr.mirrorTime(20); // within 30 → playing
+    expect(el.paused).toBe(false);
+
+    // User trims the clip to 10s; the proxy must pick it up and pause at 20s.
+    source.setAttribute("data-duration", "10");
+    mgr.mirrorTime(20);
+    expect(el.paused).toBe(true);
+    source.remove();
   });
 
   it("does not duplicate or hijack a clip the composition already owns", () => {
