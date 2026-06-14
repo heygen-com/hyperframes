@@ -61,9 +61,22 @@ function parseCssRules(css: string): CssRule[] {
 function parseDeclarations(body: string): Record<string, string> {
   const decls: Record<string, string> = {};
   let depth = 0;
+  let quote: string | null = null;
   let start = 0;
   for (let i = 0; i <= body.length; i++) {
     const ch = i < body.length ? body[i]! : ";"; // sentinel flush
+    if (quote) {
+      if (ch === "\\") {
+        i++;
+        continue;
+      } // skip escaped char
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      continue;
+    }
     if (ch === "(") depth++;
     else if (ch === ")") depth--;
     else if (ch === ";" && depth === 0) {

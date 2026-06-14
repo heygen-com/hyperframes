@@ -32,7 +32,7 @@ class FileAdapter implements PersistAdapter {
     const res = await fetch("/api/composition/versions");
     if (!res.ok) return [];
     const rows = (await res.json()) as Array<{ key: string; timestamp?: number }>;
-    return rows.map((r) => ({ key: r.key, timestamp: r.timestamp }));
+    return rows.map((r) => ({ key: r.key, content: "", timestamp: r.timestamp }));
   }
 
   async loadFrom(_path: string, versionKey: string): Promise<string | undefined> {

@@ -177,7 +177,12 @@ export function getGsapScript(document: Document): string | null {
 }
 
 export function setGsapScript(document: Document, newScript: string): void {
-  let el = findGsapScriptElement(document);
+  const existing = findGsapScriptElement(document);
+  if (!newScript) {
+    existing?.remove();
+    return;
+  }
+  let el = existing;
   if (!el) {
     el = document.createElement("script") as unknown as Element;
     const head =

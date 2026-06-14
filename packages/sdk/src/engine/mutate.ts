@@ -501,7 +501,9 @@ function handleSetClassStyle(
   setStyleSheet(parsed.document, newCss);
   const path = styleSheetPath();
   return {
-    forward: [{ op: "replace", path, value: newCss }],
+    forward: [
+      oldCss === "" ? { op: "add", path, value: newCss } : { op: "replace", path, value: newCss },
+    ],
     inverse: [oldCss === "" ? { op: "remove", path } : { op: "replace", path, value: oldCss }],
   };
 }
@@ -603,7 +605,7 @@ function resolveKeyframe(parsed: ParsedDocument, animationId: string, keyframeIn
   const located = parsedForWrite?.located.find((l) => l.id === animationId);
   const kfs = located?.animation.keyframes?.keyframes;
   if (!kfs || keyframeIndex < 0 || keyframeIndex >= kfs.length) return null;
-  return { script, kf: kfs[keyframeIndex]! };
+  return { script, kf: kfs[keyframeIndex]!, kfs };
 }
 
 // fallow-ignore-next-line complexity
@@ -664,8 +666,11 @@ function handleRemoveGsapKeyframe(
 ): MutationResult {
   const resolved = resolveKeyframe(parsed, animationId, keyframeIndex);
   if (!resolved) return EMPTY;
-  const { script, kf } = resolved;
+  const { script, kf, kfs } = resolved;
   const pct = kf.percentage;
+  // removeKeyframeFromScript matches by percentage; bail if two keyframes share
+  // the same percentage to avoid removing the wrong one.
+  if (kfs.filter((k) => k.percentage === pct).length > 1) return EMPTY;
   const newScript = removeKeyframeFromScript(script, animationId, pct);
   if (newScript === script) return EMPTY;
   setGsapScript(parsed.document, newScript);
