@@ -35,18 +35,18 @@ function getStyleText(parsed: ReturnType<typeof parseMutable>): string {
 // ─── validateOp ───────────────────────────────────────────────────────────────
 
 describe("validateOp setClassStyle", () => {
-  it("returns true (always valid — creates <style> if absent)", () => {
+  it("returns ok:true (always valid — creates <style> if absent)", () => {
     expect(
-      validateOp(fresh(), { type: "setClassStyle", selector: ".box", styles: { opacity: "1" } }),
+      validateOp(fresh(), { type: "setClassStyle", selector: ".box", styles: { opacity: "1" } }).ok,
     ).toBe(true);
   });
 
-  it("returns true even when no <style> element present", () => {
+  it("returns ok:true even when no <style> element present", () => {
     const noStyle = parseMutable(
       `<div data-hf-id="hf-stage" data-hf-root><div data-hf-id="hf-box"></div></div>`,
     );
     expect(
-      validateOp(noStyle, { type: "setClassStyle", selector: ".box", styles: { opacity: "1" } }),
+      validateOp(noStyle, { type: "setClassStyle", selector: ".box", styles: { opacity: "1" } }).ok,
     ).toBe(true);
   });
 });
@@ -54,6 +54,15 @@ describe("validateOp setClassStyle", () => {
 // ─── setClassStyle: update existing rule ──────────────────────────────────────
 
 describe("setClassStyle — update existing rule", () => {
+  function applyBoxOpacity1() {
+    const result = applyOp(fresh(), {
+      type: "setClassStyle",
+      selector: ".box",
+      styles: { opacity: "1" },
+    });
+    return String(result.forward[0]?.value ?? "");
+  }
+
   it("adds a new property to an existing rule", () => {
     const parsed = fresh();
     const result = applyOp(parsed, {
@@ -69,13 +78,7 @@ describe("setClassStyle — update existing rule", () => {
   });
 
   it("overwrites an existing property value", () => {
-    const parsed = fresh();
-    const result = applyOp(parsed, {
-      type: "setClassStyle",
-      selector: ".box",
-      styles: { opacity: "1" },
-    });
-    const newCss = String(result.forward[0]?.value ?? "");
+    const newCss = applyBoxOpacity1();
     expect(newCss).toContain("opacity: 1");
     expect(newCss).not.toContain("opacity: 0");
     expect(newCss).toContain("translateX(-50px)");
@@ -94,13 +97,7 @@ describe("setClassStyle — update existing rule", () => {
   });
 
   it("leaves other rules untouched", () => {
-    const parsed = fresh();
-    const result = applyOp(parsed, {
-      type: "setClassStyle",
-      selector: ".box",
-      styles: { opacity: "1" },
-    });
-    const newCss = String(result.forward[0]?.value ?? "");
+    const newCss = applyBoxOpacity1();
     expect(newCss).toContain(".title");
     expect(newCss).toContain("color: #fff");
   });

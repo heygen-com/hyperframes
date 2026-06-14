@@ -7,7 +7,7 @@
  * Phase 3b (parser-backed) will add setClassStyle + 7 GSAP ops as additional handlers.
  */
 
-import type { EditOp, GsapTweenSpec, HfId, JsonPatchOp } from "../types.js";
+import type { CanResult, EditOp, GsapTweenSpec, HfId, JsonPatchOp } from "../types.js";
 import type { ParsedDocument } from "./model.js";
 import {
   findById,
@@ -500,7 +500,9 @@ function handleSetClassStyle(
   setStyleSheet(parsed.document, newCss);
   const path = styleSheetPath();
   return {
-    forward: [{ op: "replace", path, value: newCss }],
+    forward: [
+      oldCss === "" ? { op: "add", path, value: newCss } : { op: "replace", path, value: newCss },
+    ],
     inverse: [oldCss === "" ? { op: "remove", path } : { op: "replace", path, value: oldCss }],
   };
 }
@@ -595,6 +597,16 @@ function handleRemoveGsapTween(parsed: ParsedDocument, animationId: string): Mut
   return gsapScriptChange(script, newScript);
 }
 
+function resolveKeyframe(parsed: ParsedDocument, animationId: string, keyframeIndex: number) {
+  const script = getGsapScript(parsed.document);
+  if (!script) return null;
+  const parsedForWrite = parseGsapScriptAcornForWrite(script);
+  const located = parsedForWrite?.located.find((l) => l.id === animationId);
+  const kfs = located?.animation.keyframes?.keyframes;
+  if (!kfs || keyframeIndex < 0 || keyframeIndex >= kfs.length) return null;
+  return { script, kf: kfs[keyframeIndex]!, kfs };
+}
+
 // fallow-ignore-next-line complexity
 function handleSetGsapKeyframe(
   parsed: ParsedDocument,
@@ -604,15 +616,9 @@ function handleSetGsapKeyframe(
   value: Record<string, unknown> | undefined,
   ease: string | undefined,
 ): MutationResult {
-  const script = getGsapScript(parsed.document);
-  if (!script) return EMPTY;
-
-  const parsedForWrite = parseGsapScriptAcornForWrite(script);
-  const located = parsedForWrite?.located.find((l) => l.id === animationId);
-  const kfs = located?.animation.keyframes?.keyframes;
-  if (!kfs || keyframeIndex < 0 || keyframeIndex >= kfs.length) return EMPTY;
-
-  const existingKf = kfs[keyframeIndex]!;
+  const resolved = resolveKeyframe(parsed, animationId, keyframeIndex);
+  if (!resolved) return EMPTY;
+  const { script, kf: existingKf } = resolved;
   const currentPct = existingKf.percentage;
   const targetPct = position ?? currentPct;
   const props: Record<string, number | string> = value
@@ -657,15 +663,13 @@ function handleRemoveGsapKeyframe(
   animationId: string,
   keyframeIndex: number,
 ): MutationResult {
-  const script = getGsapScript(parsed.document);
-  if (!script) return EMPTY;
-
-  const parsedForWrite = parseGsapScriptAcornForWrite(script);
-  const located = parsedForWrite?.located.find((l) => l.id === animationId);
-  const kfs = located?.animation.keyframes?.keyframes;
-  if (!kfs || keyframeIndex < 0 || keyframeIndex >= kfs.length) return EMPTY;
-
-  const pct = kfs[keyframeIndex]!.percentage;
+  const resolved = resolveKeyframe(parsed, animationId, keyframeIndex);
+  if (!resolved) return EMPTY;
+  const { script, kf, kfs } = resolved;
+  const pct = kf.percentage;
+  // removeKeyframeFromScript matches by percentage; bail if two keyframes share
+  // the same percentage to avoid removing the wrong one.
+  if (kfs.filter((k) => k.percentage === pct).length > 1) return EMPTY;
   const newScript = removeKeyframeFromScript(script, animationId, pct);
   if (newScript === script) return EMPTY;
   setGsapScript(parsed.document, newScript);
@@ -692,9 +696,15 @@ function handleRemoveLabel(parsed: ParsedDocument, name: string): MutationResult
 
 // ─── Validation (can(op)) ────────────────────────────────────────────────────
 
-/** Returns true if the op can be applied to the current document state. */
+const CAN_OK: CanResult = { ok: true };
+
+function canErr(code: string, message: string, hint?: string): CanResult {
+  return hint ? { ok: false, code, message, hint } : { ok: false, code, message };
+}
+
+/** Dry-run validation — returns CanResult for the given op against current document state. */
 // fallow-ignore-next-line complexity
-export function validateOp(parsed: ParsedDocument, op: EditOp): boolean {
+export function validateOp(parsed: ParsedDocument, op: EditOp): CanResult {
   switch (op.type) {
     case "setStyle":
     case "setText":
@@ -704,19 +714,40 @@ export function validateOp(parsed: ParsedDocument, op: EditOp): boolean {
     case "moveElement":
     case "removeElement": {
       const ids = targets(op.target);
-      return ids.length > 0 && ids.every((id) => findById(parsed.document, id) !== null);
+      if (ids.length === 0) return canErr("E_TARGET_NOT_FOUND", "No target ids provided.");
+      const missing = ids.filter((id) => findById(parsed.document, id) === null);
+      if (missing.length > 0)
+        return canErr(
+          "E_TARGET_NOT_FOUND",
+          `Element(s) not found: ${missing.join(", ")}.`,
+          "Verify the id against comp.getElements() or comp.find().",
+        );
+      return CAN_OK;
     }
     case "setVariableValue":
-      return findRoot(parsed.document) !== null;
+      if (findRoot(parsed.document) === null)
+        return canErr("E_NO_ROOT", "Composition root element not found.");
+      return CAN_OK;
     case "setCompositionMetadata":
     case "setClassStyle":
-      return true;
+      return CAN_OK;
     case "addGsapTween":
     case "addLabel": {
       const script = getGsapScript(parsed.document);
-      if (!script) return false;
+      if (!script)
+        return canErr(
+          "E_NO_GSAP_SCRIPT",
+          "No GSAP script block found in the composition.",
+          "This composition does not use GSAP animations.",
+        );
       const p = parseGsapScriptAcornForWrite(script);
-      return p !== null && p.hasTimeline;
+      if (!p || !p.hasTimeline)
+        return canErr(
+          "E_NO_GSAP_TIMELINE",
+          "No gsap.timeline() declaration found in the GSAP script.",
+          "addGsapTween / addLabel require a timeline variable (e.g. var tl = gsap.timeline(...)).",
+        );
+      return CAN_OK;
     }
     case "setGsapTween":
     case "setGsapKeyframe":
@@ -724,9 +755,14 @@ export function validateOp(parsed: ParsedDocument, op: EditOp): boolean {
     case "removeGsapKeyframe":
     case "removeGsapTween":
     case "removeLabel":
-      return getGsapScript(parsed.document) !== null;
-    // Unknown ops — report false so callers can feature-detect.
+      if (getGsapScript(parsed.document) === null)
+        return canErr(
+          "E_NO_GSAP_SCRIPT",
+          "No GSAP script block found in the composition.",
+          "This composition does not use GSAP animations.",
+        );
+      return CAN_OK;
     default:
-      return false;
+      return canErr("E_UNKNOWN_OP", `Unknown op type: "${(op as EditOp).type}".`);
   }
 }

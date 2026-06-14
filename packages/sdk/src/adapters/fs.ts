@@ -44,13 +44,19 @@ class FsAdapter implements PersistAdapter {
   }
 
   private async doWrite(path: string, content: string): Promise<void> {
+    const abs = this.abs(path);
     try {
-      const abs = this.abs(path);
       await mkdir(dirname(abs), { recursive: true });
       await writeFile(abs, content, "utf8");
-      await this.appendVersion(path, content);
     } catch (err) {
       for (const h of this.errorHandlers) h({ error: { message: String(err), cause: err } });
+      return;
+    }
+    // Version archival is best-effort — failure here does not affect the primary write.
+    try {
+      await this.appendVersion(path, content);
+    } catch {
+      // version history unavailable; primary write succeeded
     }
   }
 
@@ -70,7 +76,7 @@ class FsAdapter implements PersistAdapter {
         sorted.map(async (f) => ({
           key: f.replace(/\.html$/, ""),
           content: await readFile(join(dir, f), "utf8"),
-          timestamp: Number(f.replace(/\.html$/, "")),
+          timestamp: Number(f.split("_")[0]),
         })),
       );
     } catch {

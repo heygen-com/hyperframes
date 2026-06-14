@@ -371,16 +371,18 @@ describe("moveElement", () => {
 // ─── validateOp (can()) ───────────────────────────────────────────────────────
 
 describe("validateOp", () => {
-  it("returns true for existing element", () => {
-    expect(validateOp(fresh(), { type: "setStyle", target: "hf-title", styles: {} })).toBe(true);
+  it("returns ok:true for existing element", () => {
+    expect(validateOp(fresh(), { type: "setStyle", target: "hf-title", styles: {} }).ok).toBe(true);
   });
 
-  it("returns false for unknown element id", () => {
-    expect(validateOp(fresh(), { type: "setStyle", target: "hf-unknown", styles: {} })).toBe(false);
+  it("returns ok:false / E_TARGET_NOT_FOUND for unknown element id", () => {
+    const r = validateOp(fresh(), { type: "setStyle", target: "hf-unknown", styles: {} });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe("E_TARGET_NOT_FOUND");
   });
 
-  it("returns true for setCompositionMetadata (no target)", () => {
-    expect(validateOp(fresh(), { type: "setCompositionMetadata", width: 100 })).toBe(true);
+  it("returns ok:true for setCompositionMetadata (no target)", () => {
+    expect(validateOp(fresh(), { type: "setCompositionMetadata", width: 100 }).ok).toBe(true);
   });
 });
 
@@ -397,15 +399,17 @@ describe("Phase 3b ops", () => {
     expect(result.inverse).toHaveLength(0);
   });
 
-  it("validateOp returns false when no GSAP script present", () => {
-    expect(validateOp(fresh(), { type: "removeGsapTween", animationId: "tw-1" })).toBe(false);
-    expect(
-      validateOp(fresh(), {
-        type: "addGsapTween",
-        target: "hf-title",
-        tween: { method: "from", properties: { opacity: 0 } },
-      }),
-    ).toBe(false);
+  it("validateOp returns ok:false / E_NO_GSAP_SCRIPT when no GSAP script present", () => {
+    const r1 = validateOp(fresh(), { type: "removeGsapTween", animationId: "tw-1" });
+    expect(r1.ok).toBe(false);
+    if (!r1.ok) expect(r1.code).toBe("E_NO_GSAP_SCRIPT");
+    const r2 = validateOp(fresh(), {
+      type: "addGsapTween",
+      target: "hf-title",
+      tween: { method: "from", properties: { opacity: 0 } },
+    });
+    expect(r2.ok).toBe(false);
+    if (!r2.ok) expect(r2.code).toBe("E_NO_GSAP_SCRIPT");
   });
 
   it("setClassStyle no longer throws — implemented in Phase 3b", () => {
