@@ -237,6 +237,17 @@
         "vitest": "^3.2.4",
       },
     },
+    "packages/sdk-playground": {
+      "name": "@hyperframes/sdk-playground",
+      "dependencies": {
+        "@hyperframes/core": "workspace:*",
+        "@hyperframes/sdk": "workspace:*",
+        "gsap": "^3.15.0",
+      },
+      "devDependencies": {
+        "vite": "^6.4.2",
+      },
+    },
     "packages/shader-transitions": {
       "name": "@hyperframes/shader-transitions",
       "version": "0.6.98",
@@ -650,6 +661,8 @@
     "@hyperframes/producer": ["@hyperframes/producer@workspace:packages/producer"],
 
     "@hyperframes/sdk": ["@hyperframes/sdk@workspace:packages/sdk"],
+
+    "@hyperframes/sdk-playground": ["@hyperframes/sdk-playground@workspace:packages/sdk-playground"],
 
     "@hyperframes/shader-transitions": ["@hyperframes/shader-transitions@workspace:packages/shader-transitions"],
 
