@@ -117,6 +117,39 @@ describe("write()", () => {
   });
 });
 
+// ── headers option ───────────────────────────────────────────────────────────
+
+describe("headers option", () => {
+  it("merges static headers into every PUT request", async () => {
+    const mock = stubFetch(() => ({ ok: true }));
+    const adapter = createHttpAdapter({
+      projectFilesUrl: BASE,
+      headers: { Authorization: "Bearer tok" },
+    });
+    await adapter.write("comp.html", "x");
+    expect(mock).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer tok" }),
+      }),
+    );
+  });
+
+  it("calls a headers function lazily on each write", async () => {
+    const mock = stubFetch(() => ({ ok: true }));
+    let n = 0;
+    const adapter = createHttpAdapter({
+      projectFilesUrl: BASE,
+      headers: () => ({ Authorization: `Bearer tok${++n}` }),
+    });
+    await adapter.write("comp.html", "a");
+    await adapter.write("comp.html", "b");
+    const calls = mock.mock.calls.filter((c) => c[1]?.method === "PUT");
+    expect((calls[0][1]?.headers as Record<string, string>)?.["Authorization"]).toBe("Bearer tok1");
+    expect((calls[1][1]?.headers as Record<string, string>)?.["Authorization"]).toBe("Bearer tok2");
+  });
+});
+
 // ── flush() ───────────────────────────────────────────────────────────────────
 
 describe("flush()", () => {
@@ -147,6 +180,35 @@ describe("flush()", () => {
     });
     expect(flushed).toBe(false);
     resolveFetch();
+    await flushDone;
+    expect(flushed).toBe(true);
+  });
+
+  it("waits for two concurrent in-flight writes before resolving", async () => {
+    const resolvers: Array<() => void> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(async (_url: string, init?: RequestInit) => {
+        if (init?.method === "PUT") {
+          await new Promise<void>((r) => resolvers.push(r));
+        }
+        return { ok: true, status: 200, json: async () => ({}) };
+      }),
+    );
+    const adapter = createHttpAdapter({ projectFilesUrl: BASE });
+    void adapter.write("a.html", "1");
+    void adapter.write("b.html", "2");
+    await Promise.resolve(); // let both start
+    await Promise.resolve();
+    let flushed = false;
+    const flushDone = adapter.flush().then(() => {
+      flushed = true;
+    });
+    expect(flushed).toBe(false);
+    resolvers[0]();
+    await Promise.resolve();
+    expect(flushed).toBe(false); // still waiting for second write
+    resolvers[1]();
     await flushDone;
     expect(flushed).toBe(true);
   });

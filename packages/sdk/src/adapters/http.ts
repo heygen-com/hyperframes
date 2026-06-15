@@ -7,16 +7,24 @@ export interface HttpAdapterOptions {
    * E.g. "/api/projects/proj-abc"
    */
   projectFilesUrl: string;
+  /**
+   * Extra headers to include on every PUT write request.
+   * Pass a function to compute them lazily (e.g. to refresh a bearer token on each request).
+   * Useful for cross-origin or CLI contexts where ambient cookies are not available.
+   */
+  headers?: HeadersInit | (() => HeadersInit);
 }
 
 class HttpAdapter implements PersistAdapter {
   private readonly baseUrl: string;
+  private readonly extraHeaders?: HttpAdapterOptions["headers"];
   private readonly errorListeners: Array<(e: PersistErrorEvent) => void> = [];
   private readonly inflightWrites = new Set<Promise<void>>();
   private readonly pathQueues = new Map<string, Promise<void>>();
 
   constructor(opts: HttpAdapterOptions) {
     this.baseUrl = opts.projectFilesUrl;
+    this.extraHeaders = opts.headers;
   }
 
   async read(path: string): Promise<string | undefined> {
@@ -46,9 +54,11 @@ class HttpAdapter implements PersistAdapter {
     const url = `${this.baseUrl}/files/${encodeURIComponent(path)}`;
     let res: Response;
     try {
+      const extra =
+        typeof this.extraHeaders === "function" ? this.extraHeaders() : this.extraHeaders;
       res = await fetch(url, {
         method: "PUT",
-        headers: { "Content-Type": "text/plain" },
+        headers: { "Content-Type": "text/plain", ...extra },
         body: content,
       });
     } catch (err) {
@@ -64,10 +74,12 @@ class HttpAdapter implements PersistAdapter {
     await Promise.all([...this.inflightWrites]);
   }
 
+  /** Server-side versioning is not exposed by this adapter; returns [] intentionally. */
   async listVersions(_path: string): Promise<PersistVersionEntry[]> {
     return [];
   }
 
+  /** Server-side versioning is not exposed by this adapter; returns undefined intentionally. */
   async loadFrom(_path: string, _versionKey: string): Promise<string | undefined> {
     return undefined;
   }
