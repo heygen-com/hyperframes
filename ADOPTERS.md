@@ -23,3 +23,4 @@ If you'd rather not be listed publicly, that's fine — drop a note in [our Disc
 | [TanStack](https://tanstack.com)         | [@AlemTuzlak](https://github.com/AlemTuzlak)   | Exploring HyperFrames for short-form code demo videos and documentation.                                      |
 | [OptinMonster](https://optinmonster.com) | Angie Meeker                                   | Exploring HyperFrames for marketing and product video content.                                                |
 | [reap](https://reap.video)               | [@usamaabid](https://github.com/usamaabid)     | Powers agent-first AI video clipping, editing, and rendering across reap.video's creator and agent workflows. |
+| [PandaStudio](https://www.writepanda.ai) | [@kamskans](https://github.com/kamskans) | Renders motion-graphics templates, animated captions, and overlays into deterministic MP4 exports in PandaStudio's local-first desktop video editor. |
