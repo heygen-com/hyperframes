@@ -1,5 +1,5 @@
 import type { MutableRefObject } from "react";
-import type { Composition, EditOp } from "@hyperframes/sdk";
+import type { Composition, EditOp, GsapTweenSpec } from "@hyperframes/sdk";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import type { EditHistoryKind } from "./editHistory";
 import type { PatchOperation } from "./sourcePatcher";
@@ -153,6 +153,38 @@ export async function sdkTimingPersist(
     return true;
   } catch (err) {
     trackStudioEvent("sdk_cutover_fallback", { hfId, error: String(err) });
+    return false;
+  }
+}
+
+type SdkGsapTweenOp =
+  | { kind: "add"; target: string; spec: GsapTweenSpec }
+  | { kind: "set"; animationId: string; properties: Partial<GsapTweenSpec> }
+  | { kind: "remove"; animationId: string };
+
+export async function sdkGsapTweenPersist(
+  targetPath: string,
+  op: SdkGsapTweenOp,
+  sdkSession: Composition | null | undefined,
+  deps: CutoverDeps,
+  options?: CutoverOptions,
+): Promise<boolean> {
+  if (!sdkSession) return false;
+  try {
+    const before = sdkSession.serialize();
+    if (op.kind === "add") {
+      if (!sdkSession.getElement(op.target)) return false;
+      sdkSession.addGsapTween(op.target, op.spec);
+    } else if (op.kind === "set") {
+      sdkSession.setGsapTween(op.animationId, op.properties);
+    } else {
+      sdkSession.removeGsapTween(op.animationId);
+    }
+    await persistSdkSerialize(sdkSession, targetPath, before, deps, options);
+    trackStudioEvent("sdk_cutover_success", { opCount: 1 });
+    return true;
+  } catch (err) {
+    trackStudioEvent("sdk_cutover_fallback", { error: String(err) });
     return false;
   }
 }

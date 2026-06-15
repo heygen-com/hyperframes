@@ -44,7 +44,7 @@ async function mutateGsapScript(
 
 // oxfmt-ignore
 // fallow-ignore-next-line complexity
-export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIframeRef, editHistory, domEditSaveTimestampRef, reloadPreview, onCacheInvalidate, onFileContentChanged, showToast }: GsapScriptCommitsParams) {
+export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIframeRef, editHistory, domEditSaveTimestampRef, reloadPreview, onCacheInvalidate, onFileContentChanged, showToast, sdkSession, writeProjectFile }: GsapScriptCommitsParams) {
   // Serializer for per-key commits (options.serializeKey). Keyed by
   // `gsap:${animationId}:meta`, it chains a meta commit onto the prior one for
   // the same animationId so their POSTs can't interleave. Held in a ref so the
@@ -98,8 +98,26 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
   );
   const trackGsapSaveFailure = useGsapSaveFailureTelemetry(activeCompPath);
   const commitMutationSafely = useSafeGsapCommitMutation(commitMutation, trackGsapSaveFailure, showToast);
-  const propertyOps = useGsapPropertyDebounce(commitMutationSafely);
-  const animationOps = useGsapAnimationOps({ projectIdRef, activeCompPath, commitMutation, commitMutationSafely, showToast });
+  const propertyOps = useGsapPropertyDebounce(commitMutationSafely, {
+    sdkSession,
+    writeProjectFile,
+    editHistory,
+    reloadPreview,
+    domEditSaveTimestampRef,
+    activeCompPath,
+  });
+  const animationOps = useGsapAnimationOps({
+    projectIdRef,
+    activeCompPath,
+    commitMutation,
+    commitMutationSafely,
+    showToast,
+    sdkSession,
+    writeProjectFile,
+    editHistory,
+    reloadPreview,
+    domEditSaveTimestampRef,
+  });
   const keyframeOps = useGsapKeyframeOps({ activeCompPath, commitMutation, commitMutationSafely, trackGsapSaveFailure });
   const arcPathOps = useGsapArcPathOps(commitMutationSafely);
   return { commitMutation, ...propertyOps, ...animationOps, ...keyframeOps, ...arcPathOps };

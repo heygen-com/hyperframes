@@ -1,13 +1,31 @@
 import { useCallback } from "react";
+import type { Composition } from "@hyperframes/sdk";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { roundTo3 } from "../utils/rounding";
+import { sdkGsapTweenPersist } from "../utils/sdkCutover";
 import {
   assignGsapTargetAutoIdIfNeeded,
   ensureElementAddressable,
 } from "./gsapScriptCommitHelpers";
 import type { CommitMutation, SafeGsapCommitMutation } from "./gsapScriptCommitTypes";
+import type { EditHistoryKind } from "../utils/editHistory";
 
-interface GsapAnimationOpsParams {
+interface SdkAnimationDeps {
+  sdkSession?: Composition | null;
+  writeProjectFile?: (path: string, content: string) => Promise<void>;
+  editHistory?: {
+    recordEdit: (entry: {
+      label: string;
+      kind: EditHistoryKind;
+      coalesceKey?: string;
+      files: Record<string, { before: string; after: string }>;
+    }) => Promise<void>;
+  };
+  reloadPreview?: () => void;
+  domEditSaveTimestampRef?: React.MutableRefObject<number>;
+}
+
+interface GsapAnimationOpsParams extends SdkAnimationDeps {
   projectIdRef: React.MutableRefObject<string | null>;
   activeCompPath: string | null;
   commitMutation: CommitMutation;
@@ -21,39 +39,91 @@ export function useGsapAnimationOps({
   commitMutation,
   commitMutationSafely,
   showToast,
+  sdkSession,
+  writeProjectFile,
+  editHistory,
+  reloadPreview,
+  domEditSaveTimestampRef,
 }: GsapAnimationOpsParams) {
   const updateGsapMeta = useCallback(
-    (
+    async (
       selection: DomEditSelection,
       animationId: string,
       updates: { duration?: number; ease?: string; position?: number },
     ) => {
-      // coalesceKey groups rapid meta edits into one history entry. Request
-      // serialization is now handled per-file at the commitMutation chokepoint
-      // (useGsapScriptCommits), so no per-op serializeKey is needed here.
-      const metaKey = `gsap:${animationId}:meta`;
+      if (
+        sdkSession &&
+        writeProjectFile &&
+        editHistory &&
+        reloadPreview &&
+        domEditSaveTimestampRef
+      ) {
+        const targetPath = selection.sourceFile || activeCompPath || "index.html";
+        const handled = await sdkGsapTweenPersist(
+          targetPath,
+          { kind: "set", animationId, properties: updates },
+          sdkSession,
+          { editHistory, writeProjectFile, reloadPreview, domEditSaveTimestampRef },
+          { label: "Edit GSAP animation", coalesceKey: `gsap:${animationId}:meta` },
+        );
+        if (handled) return;
+      }
       commitMutationSafely(
         selection,
         { type: "update-meta", animationId, updates },
-        { label: "Edit GSAP animation", coalesceKey: metaKey },
+        { label: "Edit GSAP animation", coalesceKey: `gsap:${animationId}:meta` },
       );
     },
-    [commitMutationSafely],
+    [
+      commitMutationSafely,
+      activeCompPath,
+      sdkSession,
+      writeProjectFile,
+      editHistory,
+      reloadPreview,
+      domEditSaveTimestampRef,
+    ],
   );
 
   const deleteGsapAnimation = useCallback(
-    (selection: DomEditSelection, animationId: string) => {
+    async (selection: DomEditSelection, animationId: string) => {
+      if (
+        sdkSession &&
+        writeProjectFile &&
+        editHistory &&
+        reloadPreview &&
+        domEditSaveTimestampRef
+      ) {
+        const targetPath = selection.sourceFile || activeCompPath || "index.html";
+        const handled = await sdkGsapTweenPersist(
+          targetPath,
+          { kind: "remove", animationId },
+          sdkSession,
+          { editHistory, writeProjectFile, reloadPreview, domEditSaveTimestampRef },
+          { label: "Delete GSAP animation" },
+        );
+        if (handled) return;
+      }
       commitMutationSafely(
         selection,
         { type: "delete", animationId, stripStudioEdits: true },
         { label: "Delete GSAP animation" },
       );
     },
-    [commitMutationSafely],
+    [
+      commitMutationSafely,
+      activeCompPath,
+      sdkSession,
+      writeProjectFile,
+      editHistory,
+      reloadPreview,
+      domEditSaveTimestampRef,
+    ],
   );
 
   const deleteAllForSelector = useCallback(
     (selection: DomEditSelection, targetSelector: string) => {
+      // ponytail: no SDK op for delete-all-for-selector; stays server-authoritative
       void commitMutation(
         selection,
         { type: "delete-all-for-selector", targetSelector },
@@ -63,6 +133,7 @@ export function useGsapAnimationOps({
     [commitMutation],
   );
 
+  // fallow-ignore-next-line complexity
   const addGsapAnimation = useCallback(
     // fallow-ignore-next-line complexity
     async (
@@ -97,6 +168,35 @@ export function useGsapAnimationOps({
         fromTo: { x: 0, y: 0, opacity: 1 },
       };
 
+      // SDK path: addGsapTween only supports from/to/fromTo; "set" stays server-side
+      if (
+        method !== "set" &&
+        selection.hfId &&
+        sdkSession &&
+        writeProjectFile &&
+        editHistory &&
+        reloadPreview &&
+        domEditSaveTimestampRef
+      ) {
+        const targetPath = selection.sourceFile || activeCompPath || "index.html";
+        const spec = {
+          method: method as "to" | "from" | "fromTo",
+          position,
+          duration,
+          ease: "power2.out" as const,
+          properties: toDefaults[method] ?? { opacity: 1 },
+          fromProperties: method === "fromTo" ? { opacity: 0 } : undefined,
+        };
+        const handled = await sdkGsapTweenPersist(
+          targetPath,
+          { kind: "add", target: selection.hfId, spec },
+          sdkSession,
+          { editHistory, writeProjectFile, reloadPreview, domEditSaveTimestampRef },
+          { label: `Add GSAP ${method} animation` },
+        );
+        if (handled) return;
+      }
+
       await commitMutation(
         selection,
         {
@@ -112,7 +212,17 @@ export function useGsapAnimationOps({
         { label: `Add GSAP ${method} animation` },
       );
     },
-    [activeCompPath, commitMutation, projectIdRef, showToast],
+    [
+      activeCompPath,
+      commitMutation,
+      projectIdRef,
+      showToast,
+      sdkSession,
+      writeProjectFile,
+      editHistory,
+      reloadPreview,
+      domEditSaveTimestampRef,
+    ],
   );
 
   return {

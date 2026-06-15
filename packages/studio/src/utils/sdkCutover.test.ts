@@ -4,6 +4,7 @@ import {
   sdkCutoverPersist,
   sdkDeletePersist,
   sdkTimingPersist,
+  sdkGsapTweenPersist,
 } from "./sdkCutover";
 import { openComposition } from "@hyperframes/sdk";
 import { createMemoryAdapter } from "@hyperframes/sdk/adapters/memory";
@@ -440,6 +441,116 @@ describe("sdkTimingPersist", () => {
       throw new Error("timing error");
     });
     const result = await sdkTimingPersist("hf-clip", "/comp.html", { start: 1 }, session, deps);
+    expect(result).toBe(false);
+    expect(deps.writeProjectFile).not.toHaveBeenCalled();
+  });
+});
+
+describe("sdkGsapTweenPersist", () => {
+  const makeRef = <T>(val: T): MutableRefObject<T> => ({ current: val });
+  const makeDeps = () => ({
+    editHistory: { recordEdit: vi.fn().mockResolvedValue(undefined) },
+    writeProjectFile: vi.fn().mockResolvedValue(undefined),
+    reloadPreview: vi.fn(),
+    domEditSaveTimestampRef: makeRef(0),
+  });
+
+  const makeSession = (opts?: { addGsapTween?: string; hasEl?: boolean }) =>
+    ({
+      getElement: vi.fn().mockReturnValue(opts?.hasEl !== false ? { id: "hf-box" } : null),
+      addGsapTween: vi.fn().mockReturnValue(opts?.addGsapTween ?? "tw-1"),
+      setGsapTween: vi.fn(),
+      removeGsapTween: vi.fn(),
+      serialize: vi
+        .fn()
+        .mockReturnValueOnce("<html>before</html>")
+        .mockReturnValue("<html>after</html>"),
+    }) as unknown as Parameters<typeof sdkGsapTweenPersist>[2];
+
+  it("returns false when session is null", async () => {
+    expect(
+      await sdkGsapTweenPersist(
+        "/comp.html",
+        { kind: "remove", animationId: "tw-1" },
+        null,
+        makeDeps(),
+      ),
+    ).toBe(false);
+  });
+
+  it("calls addGsapTween and writes for kind=add", async () => {
+    const deps = makeDeps();
+    const session = makeSession();
+    const result = await sdkGsapTweenPersist(
+      "/comp.html",
+      {
+        kind: "add",
+        target: "hf-box",
+        spec: { method: "to", duration: 1, properties: { opacity: 1 } },
+      },
+      session,
+      deps,
+    );
+    expect(result).toBe(true);
+    expect(session!.addGsapTween).toHaveBeenCalledWith(
+      "hf-box",
+      expect.objectContaining({ method: "to" }),
+    );
+    expect(deps.writeProjectFile).toHaveBeenCalledWith("/comp.html", "<html>after</html>");
+  });
+
+  it("returns false for kind=add when element not found", async () => {
+    const deps = makeDeps();
+    const session = makeSession({ hasEl: false });
+    const result = await sdkGsapTweenPersist(
+      "/comp.html",
+      { kind: "add", target: "hf-box", spec: { method: "to", properties: { x: 100 } } },
+      session,
+      deps,
+    );
+    expect(result).toBe(false);
+    expect(deps.writeProjectFile).not.toHaveBeenCalled();
+  });
+
+  it("calls setGsapTween and writes for kind=set", async () => {
+    const deps = makeDeps();
+    const session = makeSession();
+    const result = await sdkGsapTweenPersist(
+      "/comp.html",
+      { kind: "set", animationId: "tw-1", properties: { ease: "power3.in" } },
+      session,
+      deps,
+    );
+    expect(result).toBe(true);
+    expect(session!.setGsapTween).toHaveBeenCalledWith("tw-1", { ease: "power3.in" });
+    expect(deps.reloadPreview).toHaveBeenCalled();
+  });
+
+  it("calls removeGsapTween for kind=remove", async () => {
+    const deps = makeDeps();
+    const session = makeSession();
+    const result = await sdkGsapTweenPersist(
+      "/comp.html",
+      { kind: "remove", animationId: "tw-1" },
+      session,
+      deps,
+    );
+    expect(result).toBe(true);
+    expect(session!.removeGsapTween).toHaveBeenCalledWith("tw-1");
+  });
+
+  it("returns false and does not write on SDK error", async () => {
+    const deps = makeDeps();
+    const session = makeSession();
+    (session!.removeGsapTween as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      throw new Error("gsap error");
+    });
+    const result = await sdkGsapTweenPersist(
+      "/comp.html",
+      { kind: "remove", animationId: "tw-1" },
+      session,
+      deps,
+    );
     expect(result).toBe(false);
     expect(deps.writeProjectFile).not.toHaveBeenCalled();
   });

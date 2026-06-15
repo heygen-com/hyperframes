@@ -1,4 +1,5 @@
 import type { ParsedGsap } from "@hyperframes/core/gsap-parser";
+import type { Composition } from "@hyperframes/sdk";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import type { EditHistoryKind } from "../utils/editHistory";
 
@@ -63,4 +64,7 @@ export interface GsapScriptCommitsParams {
   onCacheInvalidate: () => void;
   onFileContentChanged?: (path: string, content: string) => void;
   showToast: (message: string, tone?: "error" | "info") => void;
+  /** Stage 7 §3.5: SDK session for routing GSAP tween ops through addGsapTween/setGsapTween/removeGsapTween. */
+  sdkSession?: Composition | null;
+  writeProjectFile?: (path: string, content: string) => Promise<void>;
 }
