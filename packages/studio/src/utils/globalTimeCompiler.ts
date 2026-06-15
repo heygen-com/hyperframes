@@ -26,11 +26,11 @@ export function isTimeWithinTween(
   return time >= tweenStart && time <= tweenStart + tweenDuration;
 }
 
-export function resolveTweenStart(animation: GsapAnimation): number | null {
-  if (animation.resolvedStart != null) return animation.resolvedStart;
-  if (typeof animation.position === "number") return animation.position;
+export function resolveTweenStart(animation: GsapAnimation, elementStart = 0): number | null {
+  if (animation.resolvedStart != null) return elementStart + animation.resolvedStart;
+  if (typeof animation.position === "number") return elementStart + animation.position;
   const parsed = Number.parseFloat(animation.position as string);
-  if (!Number.isNaN(parsed)) return parsed;
+  if (!Number.isNaN(parsed)) return elementStart + parsed;
   return null;
 }
 

@@ -144,5 +144,34 @@ export async function readFileContent(projectId: string, targetPath: string): Pr
   return data.content;
 }
 
+/**
+ * Shift all GSAP animation positions targeting a given element by a time delta.
+ * Calls the server-side GSAP mutation endpoint which uses the AST-based parser.
+ */
+export async function shiftGsapPositions(
+  projectId: string,
+  filePath: string,
+  elementId: string,
+  delta: number,
+): Promise<void> {
+  if (delta === 0 || !elementId) return;
+  const res = await fetch(
+    `/api/projects/${projectId}/gsap-mutations/${encodeURIComponent(filePath)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "shift-positions",
+        targetSelector: `#${elementId}`,
+        delta,
+      }),
+    },
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => null);
+    throw new Error((err as { error?: string })?.error ?? "shift-positions failed");
+  }
+}
+
 // Re-export applyPatchByTarget for use in the hook (avoids double import in callers)
 export { applyPatchByTarget, formatTimelineAttributeNumber };

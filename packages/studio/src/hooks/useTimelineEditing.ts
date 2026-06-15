@@ -26,6 +26,7 @@ import {
   readFileContent,
   applyPatchByTarget,
   formatTimelineAttributeNumber,
+  shiftGsapPositions,
 } from "./timelineEditingHelpers";
 import type { PersistTimelineEditInput } from "./timelineEditingHelpers";
 
@@ -122,6 +123,8 @@ export function useTimelineEditing({
         ["data-start", formatTimelineAttributeNumber(updates.start)],
         ["data-track-index", String(updates.track)],
       ]);
+      const delta = updates.start - element.start;
+      const filePath = element.sourceFile || activeCompPath || "index.html";
       return enqueueEdit(element, "Move timeline clip", (original, target) => {
         let patched = applyPatchByTarget(original, target, {
           type: "attribute",
@@ -133,9 +136,16 @@ export function useTimelineEditing({
           property: "track-index",
           value: String(updates.track),
         });
+      }).then(() => {
+        const pid = projectIdRef.current;
+        if (delta !== 0 && element.domId && pid) {
+          return shiftGsapPositions(pid, filePath, element.domId, delta)
+            .then(() => reloadPreview())
+            .catch((err) => console.error("[Timeline] Failed to shift GSAP positions", err));
+        }
       });
     },
-    [previewIframeRef, enqueueEdit],
+    [previewIframeRef, enqueueEdit, activeCompPath, reloadPreview],
   );
 
   const handleTimelineElementResize = useCallback(
@@ -147,9 +157,6 @@ export function useTimelineEditing({
         ["data-start", formatTimelineAttributeNumber(updates.start)],
         ["data-duration", formatTimelineAttributeNumber(updates.duration)],
       ];
-      // A start-edge trim advances the media-start offset (skips into the
-      // source). Patch it live too — otherwise the iframe keeps the old offset
-      // and the clip only repositions instead of trimming the audio.
       if (updates.playbackStart != null) {
         const liveAttr =
           element.playbackStartAttr === "playback-start"
@@ -158,6 +165,8 @@ export function useTimelineEditing({
         liveAttrs.push([liveAttr, formatTimelineAttributeNumber(updates.playbackStart)]);
       }
       patchIframeDomTiming(previewIframeRef.current, element, liveAttrs);
+      const startDelta = updates.start - element.start;
+      const filePath = element.sourceFile || activeCompPath || "index.html";
       return enqueueEdit(element, "Resize timeline clip", (original, target) => {
         const pbs = resolveResizePlaybackStart(original, target, element, updates);
         let patched = applyPatchByTarget(original, target, {
@@ -178,9 +187,17 @@ export function useTimelineEditing({
           });
         }
         return patched;
+      }).then(() => {
+        const pid = projectIdRef.current;
+        if (startDelta !== 0 && element.domId && pid) {
+          return shiftGsapPositions(pid, filePath, element.domId, startDelta)
+            .then(() => reloadPreview())
+            .catch((err) => console.error("[Timeline] Failed to shift GSAP positions", err));
+        }
+        return reloadPreview();
       });
     },
-    [previewIframeRef, enqueueEdit],
+    [previewIframeRef, enqueueEdit, activeCompPath, reloadPreview],
   );
 
   const handleTimelineElementDelete = useCallback(

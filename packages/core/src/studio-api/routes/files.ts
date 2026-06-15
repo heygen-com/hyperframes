@@ -466,6 +466,11 @@ type GsapMutationRequest =
   | {
       type: "delete-all-for-selector";
       targetSelector: string;
+    }
+  | {
+      type: "shift-positions";
+      targetSelector: string;
+      delta: number;
     };
 
 // ── GSAP mutation executor ──────────────────────────────────────────────────
@@ -714,6 +719,19 @@ async function executeGsapMutation(
     case "split-into-property-groups": {
       const result = splitIntoPropertyGroups(block.scriptText, body.animationId);
       return result.script;
+    }
+    case "shift-positions": {
+      const { targetSelector, delta } = body;
+      if (!targetSelector || typeof delta !== "number" || delta === 0) return block.scriptText;
+      const parsed = parseGsapScript(block.scriptText);
+      let script = block.scriptText;
+      for (const anim of parsed.animations) {
+        if (anim.targetSelector !== targetSelector) continue;
+        if (typeof anim.position !== "number") continue;
+        const newPos = Math.max(0, Math.round((anim.position + delta) * 1000) / 1000);
+        script = updateAnimationInScript(script, anim.id, { position: newPos });
+      }
+      return script;
     }
     default:
       return respond({ error: `unknown mutation type: ${(body as { type: string }).type}` }, 400);

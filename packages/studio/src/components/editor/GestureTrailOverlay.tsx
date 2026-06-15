@@ -6,7 +6,7 @@ interface GestureTrailOverlayProps {
   sampleCount?: number;
   trail?: Array<{ x: number; y: number }>;
   simplifiedPoints?: Map<number, Record<string, number>>;
-  canvasRect: { left: number; top: number; width: number; height: number };
+  canvasRect: { left: number; top: number; width: number; height: number } | null;
   compositionSize?: { width: number; height: number };
   mode: "recording" | "preview";
   accentColor?: string;
@@ -22,6 +22,8 @@ export const GestureTrailOverlay = memo(function GestureTrailOverlay({
   mode,
   accentColor = "#3CE6AC",
 }: GestureTrailOverlayProps) {
+  if (!canvasRect) return null;
+
   const trailPoints = useMemo(() => {
     if (trail && trail.length > 1) {
       return trail.map((p) => `${p.x - canvasRect.left},${p.y - canvasRect.top}`).join(" ");
