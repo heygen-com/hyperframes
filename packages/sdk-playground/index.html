@@ -1,454 +1,643 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>@hyperframes/sdk editor</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@hyperframes/sdk editor</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
 
-    body {
-      font-family: system-ui, -apple-system, sans-serif;
-      background: #0f1117;
-      color: #e5e7eb;
-      height: 100vh;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-    }
+      body {
+        font-family:
+          system-ui,
+          -apple-system,
+          sans-serif;
+        background: #0f1117;
+        color: #e5e7eb;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
 
-    /* ── Header ── */
-    #header {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 8px 14px;
-      background: #161b27;
-      border-bottom: 1px solid #1f2937;
-      flex-shrink: 0;
-    }
-    #header h1 { font-size: 14px; font-weight: 600; color: #f9fafb; }
-    #header .badge { font-size: 11px; background: #1d4ed8; color: #bfdbfe; padding: 2px 7px; border-radius: 10px; }
-    #header .spacer { flex: 1; }
-    #header .sel-label { font-size: 12px; color: #4b5563; }
-    #header #sel-display { font-size: 12px; color: #a78bfa; font-family: monospace; min-width: 80px; }
+      /* ── Header ── */
+      #header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 14px;
+        background: #161b27;
+        border-bottom: 1px solid #1f2937;
+        flex-shrink: 0;
+      }
+      #header h1 {
+        font-size: 14px;
+        font-weight: 600;
+        color: #f9fafb;
+      }
+      #header .badge {
+        font-size: 11px;
+        background: #1d4ed8;
+        color: #bfdbfe;
+        padding: 2px 7px;
+        border-radius: 10px;
+      }
+      #header .spacer {
+        flex: 1;
+      }
+      #header .sel-label {
+        font-size: 12px;
+        color: #4b5563;
+      }
+      #header #sel-display {
+        font-size: 12px;
+        color: #a78bfa;
+        font-family: monospace;
+        min-width: 80px;
+      }
 
-    /* ── Main grid ── */
-    #app-main {
-      display: grid;
-      grid-template-columns: 1fr 310px 260px;
-      flex: 1;
-      min-height: 0;
-      overflow: hidden;
-    }
+      /* ── Main grid ── */
+      #app-main {
+        display: grid;
+        grid-template-columns: 1fr 310px 260px;
+        flex: 1;
+        min-height: 0;
+        overflow: hidden;
+      }
 
-    /* ── Preview panel ── */
-    #preview-panel {
-      display: flex;
-      flex-direction: column;
-      padding: 10px;
-      gap: 8px;
-      overflow: hidden;
-      border-right: 1px solid #1f2937;
-    }
-    #preview-scaler-outer {
-      position: relative;
-      width: 100%;
-      background: #000;
-      border: 1px solid #1f2937;
-      border-radius: 4px;
-      overflow: hidden;
-      flex-shrink: 0;
-    }
-    #preview-scaler-inner { transform-origin: top left; }
-    #preview-frame { width: 1280px; height: 720px; border: none; display: block; }
-    #preview-hint {
-      font-size: 11px;
-      color: #374151;
-      text-align: center;
-    }
+      /* ── Preview panel ── */
+      #preview-panel {
+        display: flex;
+        flex-direction: column;
+        padding: 10px;
+        gap: 8px;
+        overflow: hidden;
+        border-right: 1px solid #1f2937;
+      }
+      #preview-scaler-outer {
+        position: relative;
+        width: 100%;
+        background: #000;
+        border: 1px solid #1f2937;
+        border-radius: 4px;
+        overflow: hidden;
+        flex-shrink: 0;
+      }
+      #preview-scaler-inner {
+        transform-origin: top left;
+      }
+      #preview-frame {
+        width: 1280px;
+        height: 720px;
+        border: none;
+        display: block;
+      }
+      #preview-hint {
+        font-size: 11px;
+        color: #374151;
+        text-align: center;
+      }
 
-    /* ── Inspector panel ── */
-    #inspector-panel {
-      display: flex;
-      flex-direction: column;
-      border-right: 1px solid #1f2937;
-      overflow: hidden;
-    }
-    #inspector-tabs {
-      display: flex;
-      border-bottom: 1px solid #1f2937;
-      flex-shrink: 0;
-    }
-    .ins-tab {
-      padding: 7px 16px;
-      font-size: 12px;
-      cursor: pointer;
-      color: #6b7280;
-      border-bottom: 2px solid transparent;
-      user-select: none;
-    }
-    .ins-tab.active { color: #60a5fa; border-bottom-color: #60a5fa; }
+      /* ── Inspector panel ── */
+      #inspector-panel {
+        display: flex;
+        flex-direction: column;
+        border-right: 1px solid #1f2937;
+        overflow: hidden;
+      }
+      #inspector-tabs {
+        display: flex;
+        border-bottom: 1px solid #1f2937;
+        flex-shrink: 0;
+      }
+      .ins-tab {
+        padding: 7px 16px;
+        font-size: 12px;
+        cursor: pointer;
+        color: #6b7280;
+        border-bottom: 2px solid transparent;
+        user-select: none;
+      }
+      .ins-tab.active {
+        color: #60a5fa;
+        border-bottom-color: #60a5fa;
+      }
 
-    /* Elements list */
-    #element-list {
-      border-bottom: 1px solid #1f2937;
-      overflow-y: auto;
-      max-height: 160px;
-      flex-shrink: 0;
-    }
-    .el-item {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      padding: 5px 10px;
-      cursor: pointer;
-      font-size: 12px;
-      border-bottom: 1px solid #111827;
-    }
-    .el-item:hover { background: #1a2235; }
-    .el-item.selected { background: #172554; }
-    .el-item .el-tag { color: #6b7280; font-family: monospace; font-size: 11px; }
-    .el-item .el-id { color: #d1d5db; font-family: monospace; }
-    .el-item .el-text { color: #4b5563; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100px; }
+      /* Elements list */
+      #element-list {
+        border-bottom: 1px solid #1f2937;
+        overflow-y: auto;
+        max-height: 160px;
+        flex-shrink: 0;
+      }
+      .el-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 10px;
+        cursor: pointer;
+        font-size: 12px;
+        border-bottom: 1px solid #111827;
+      }
+      .el-item:hover {
+        background: #1a2235;
+      }
+      .el-item.selected {
+        background: #172554;
+      }
+      .el-item .el-tag {
+        color: #6b7280;
+        font-family: monospace;
+        font-size: 11px;
+      }
+      .el-item .el-id {
+        color: #d1d5db;
+        font-family: monospace;
+      }
+      .el-item .el-text {
+        color: #4b5563;
+        font-size: 11px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        max-width: 100px;
+      }
 
-    /* Properties / Ops content */
-    #inspector-content {
-      flex: 1;
-      overflow-y: auto;
-      padding: 10px;
-    }
-    .prop-section { margin-bottom: 12px; }
-    .prop-section-title {
-      font-size: 10px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: #374151;
-      margin-bottom: 6px;
-    }
-    .prop-row {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      margin-bottom: 5px;
-    }
-    .prop-label {
-      font-size: 11px;
-      color: #6b7280;
-      width: 64px;
-      flex-shrink: 0;
-    }
-    .prop-input {
-      flex: 1;
-      padding: 3px 6px;
-      background: #111827;
-      color: #f9fafb;
-      border: 1px solid #374151;
-      border-radius: 3px;
-      font-size: 12px;
-      font-family: monospace;
-      min-width: 0;
-    }
-    .prop-input:focus { outline: none; border-color: #3b82f6; }
-    .prop-input.wide { width: 100%; }
-    input[type="color"].prop-color { width: 28px; height: 24px; padding: 1px 2px; cursor: pointer; flex-shrink: 0; border-radius: 3px; }
-    textarea.prop-input { resize: vertical; min-height: 48px; font-family: system-ui, sans-serif; }
-    select.prop-input { cursor: pointer; }
-    .prop-no-selection { font-size: 12px; color: #374151; padding: 8px 0; }
+      /* Properties / Ops content */
+      #inspector-content {
+        flex: 1;
+        overflow-y: auto;
+        padding: 10px;
+      }
+      .prop-section {
+        margin-bottom: 12px;
+      }
+      .prop-section-title {
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #374151;
+        margin-bottom: 6px;
+      }
+      .prop-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 5px;
+      }
+      .prop-label {
+        font-size: 11px;
+        color: #6b7280;
+        width: 64px;
+        flex-shrink: 0;
+      }
+      .prop-input {
+        flex: 1;
+        padding: 3px 6px;
+        background: #111827;
+        color: #f9fafb;
+        border: 1px solid #374151;
+        border-radius: 3px;
+        font-size: 12px;
+        font-family: monospace;
+        min-width: 0;
+      }
+      .prop-input:focus {
+        outline: none;
+        border-color: #3b82f6;
+      }
+      .prop-input.wide {
+        width: 100%;
+      }
+      input[type="color"].prop-color {
+        width: 28px;
+        height: 24px;
+        padding: 1px 2px;
+        cursor: pointer;
+        flex-shrink: 0;
+        border-radius: 3px;
+      }
+      textarea.prop-input {
+        resize: vertical;
+        min-height: 48px;
+        font-family: system-ui, sans-serif;
+      }
+      select.prop-input {
+        cursor: pointer;
+      }
+      .prop-no-selection {
+        font-size: 12px;
+        color: #374151;
+        padding: 8px 0;
+      }
 
-    /* Tween list */
-    .tween-id {
-      font-size: 11px;
-      font-family: monospace;
-      color: #34d399;
-      background: #064e3b;
-      padding: 2px 6px;
-      border-radius: 3px;
-      margin-bottom: 3px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    #add-tween-form { margin-top: 6px; display: none; }
-    #add-tween-form.open { display: block; }
+      /* Tween list */
+      .tween-id {
+        font-size: 11px;
+        font-family: monospace;
+        color: #34d399;
+        background: #064e3b;
+        padding: 2px 6px;
+        border-radius: 3px;
+        margin-bottom: 3px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      #add-tween-form {
+        margin-top: 6px;
+        display: none;
+      }
+      #add-tween-form.open {
+        display: block;
+      }
 
-    /* Op sections (test panel) */
-    .op-section {
-      border: 1px solid #1f2937;
-      border-radius: 5px;
-      padding: 8px;
-      margin-bottom: 7px;
-    }
-    .op-title {
-      font-size: 10px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: #374151;
-      margin-bottom: 6px;
-      font-family: monospace;
-    }
-    .op-row { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin-bottom: 4px; }
-    .op-note { font-size: 11px; color: #374151; margin-top: 3px; }
-    #anim-id-display {
-      font-size: 11px; font-family: monospace; color: #34d399;
-      background: #064e3b; padding: 2px 6px; border-radius: 3px; margin-top: 3px;
-    }
+      /* Op sections (test panel) */
+      .op-section {
+        border: 1px solid #1f2937;
+        border-radius: 5px;
+        padding: 8px;
+        margin-bottom: 7px;
+      }
+      .op-title {
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #374151;
+        margin-bottom: 6px;
+        font-family: monospace;
+      }
+      .op-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+        align-items: center;
+        margin-bottom: 4px;
+      }
+      .op-note {
+        font-size: 11px;
+        color: #374151;
+        margin-top: 3px;
+      }
+      #anim-id-display {
+        font-size: 11px;
+        font-family: monospace;
+        color: #34d399;
+        background: #064e3b;
+        padding: 2px 6px;
+        border-radius: 3px;
+        margin-top: 3px;
+      }
 
-    /* Shared button / input */
-    button {
-      padding: 4px 10px;
-      background: #1f2937;
-      color: #d1d5db;
-      border: 1px solid #374151;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 12px;
-    }
-    button:hover { background: #374151; color: #f9fafb; }
-    button.primary { background: #1d4ed8; border-color: #2563eb; color: #fff; }
-    button.primary:hover { background: #2563eb; }
-    button.danger { background: #7f1d1d; border-color: #991b1b; color: #fca5a5; }
-    button.danger:hover { background: #991b1b; }
-    button.ghost { background: transparent; border-color: transparent; color: #6b7280; }
-    button.ghost:hover { background: #1f2937; color: #d1d5db; }
-    input[type="text"], input[type="number"] {
-      padding: 3px 7px;
-      background: #111827;
-      color: #f9fafb;
-      border: 1px solid #374151;
-      border-radius: 4px;
-      font-size: 12px;
-      font-family: monospace;
-    }
-    input[type="text"] { width: 130px; }
-    input[type="number"] { width: 65px; }
+      /* Shared button / input */
+      button {
+        padding: 4px 10px;
+        background: #1f2937;
+        color: #d1d5db;
+        border: 1px solid #374151;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 12px;
+      }
+      button:hover {
+        background: #374151;
+        color: #f9fafb;
+      }
+      button.primary {
+        background: #1d4ed8;
+        border-color: #2563eb;
+        color: #fff;
+      }
+      button.primary:hover {
+        background: #2563eb;
+      }
+      button.danger {
+        background: #7f1d1d;
+        border-color: #991b1b;
+        color: #fca5a5;
+      }
+      button.danger:hover {
+        background: #991b1b;
+      }
+      button.ghost {
+        background: transparent;
+        border-color: transparent;
+        color: #6b7280;
+      }
+      button.ghost:hover {
+        background: #1f2937;
+        color: #d1d5db;
+      }
+      input[type="text"],
+      input[type="number"] {
+        padding: 3px 7px;
+        background: #111827;
+        color: #f9fafb;
+        border: 1px solid #374151;
+        border-radius: 4px;
+        font-size: 12px;
+        font-family: monospace;
+      }
+      input[type="text"] {
+        width: 130px;
+      }
+      input[type="number"] {
+        width: 65px;
+      }
 
-    /* ── Log panel ── */
-    #log-panel { display: flex; flex-direction: column; overflow: hidden; }
-    .panel-title {
-      font-size: 10px; font-weight: 700; text-transform: uppercase;
-      letter-spacing: 0.07em; color: #374151; padding: 7px 10px;
-      border-bottom: 1px solid #1f2937; flex-shrink: 0;
-    }
-    #log-entries { overflow-y: auto; padding: 6px; flex: 1; }
-    .log-entry {
-      border-left: 3px solid #374151;
-      padding: 3px 7px;
-      margin-bottom: 4px;
-      font-size: 11px;
-      font-family: monospace;
-      background: #111827;
-      border-radius: 0 3px 3px 0;
-    }
-    .log-entry .log-type { font-weight: 700; margin-right: 5px; }
-    .log-entry pre { color: #6b7280; white-space: pre-wrap; word-break: break-all; margin-top: 2px; font-size: 10px; }
+      /* ── Log panel ── */
+      #log-panel {
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      .panel-title {
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+        color: #374151;
+        padding: 7px 10px;
+        border-bottom: 1px solid #1f2937;
+        flex-shrink: 0;
+      }
+      #log-entries {
+        overflow-y: auto;
+        padding: 6px;
+        flex: 1;
+      }
+      .log-entry {
+        border-left: 3px solid #374151;
+        padding: 3px 7px;
+        margin-bottom: 4px;
+        font-size: 11px;
+        font-family: monospace;
+        background: #111827;
+        border-radius: 0 3px 3px 0;
+      }
+      .log-entry .log-type {
+        font-weight: 700;
+        margin-right: 5px;
+      }
+      .log-entry pre {
+        color: #6b7280;
+        white-space: pre-wrap;
+        word-break: break-all;
+        margin-top: 2px;
+        font-size: 10px;
+      }
 
-    /* ── Timeline panel ── */
-    #timeline-panel {
-      flex-shrink: 0;
-      height: 158px;
-      border-top: 1px solid #1f2937;
-      display: flex;
-      flex-direction: column;
-      background: #0a0d14;
-    }
-    #tl-controls {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 4px 10px;
-      border-bottom: 1px solid #1f2937;
-      flex-shrink: 0;
-    }
-    #tl-scrubber {
-      flex: 1;
-      accent-color: #3b82f6;
-      cursor: pointer;
-    }
-    #tl-time, #tl-dur {
-      font-size: 11px;
-      font-family: monospace;
-      color: #4b5563;
-      white-space: nowrap;
-      min-width: 32px;
-    }
-    #tl-dur { text-align: right; }
-    #tl-body {
-      flex: 1;
-      position: relative;
-      overflow: hidden;
-    }
-    #tl-tracks {
-      position: absolute;
-      inset: 0;
-      overflow-y: auto;
-      overflow-x: hidden;
-    }
-    .tl-row {
-      display: flex;
-      align-items: center;
-      height: 26px;
-      border-bottom: 1px solid #111827;
-    }
-    .tl-row:hover { background: rgba(255,255,255,0.02); }
-    .tl-label {
-      width: 120px;
-      flex-shrink: 0;
-      font-size: 11px;
-      font-family: monospace;
-      color: #4b5563;
-      padding: 0 8px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      border-right: 1px solid #1f2937;
-    }
-    .tl-track {
-      flex: 1;
-      position: relative;
-      height: 100%;
-    }
-    .tl-block {
-      position: absolute;
-      top: 4px;
-      height: 17px;
-      border-radius: 3px;
-      cursor: grab;
-      opacity: 0.75;
-      min-width: 4px;
-      user-select: none;
-    }
-    .tl-block:hover { opacity: 1; }
-    .tl-block.dragging { opacity: 1; cursor: grabbing; }
-    .tl-handle {
-      position: absolute;
-      top: 0;
-      bottom: 0;
-      width: 6px;
-      cursor: ew-resize;
-    }
-    .tl-handle-l { left: 0; border-radius: 3px 0 0 3px; }
-    .tl-handle-r { right: 0; border-radius: 0 3px 3px 0; }
-    .tl-handle:hover { background: rgba(255,255,255,0.25); }
-    #tl-playhead {
-      position: absolute;
-      top: 0;
-      bottom: 0;
-      width: 1px;
-      background: #f87171;
-      pointer-events: none;
-      left: 120px;
-      z-index: 10;
-    }
+      /* ── Timeline panel ── */
+      #timeline-panel {
+        flex-shrink: 0;
+        height: 158px;
+        border-top: 1px solid #1f2937;
+        display: flex;
+        flex-direction: column;
+        background: #0a0d14;
+      }
+      #tl-controls {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 10px;
+        border-bottom: 1px solid #1f2937;
+        flex-shrink: 0;
+      }
+      #tl-scrubber {
+        flex: 1;
+        accent-color: #3b82f6;
+        cursor: pointer;
+      }
+      #tl-time,
+      #tl-dur {
+        font-size: 11px;
+        font-family: monospace;
+        color: #4b5563;
+        white-space: nowrap;
+        min-width: 32px;
+      }
+      #tl-dur {
+        text-align: right;
+      }
+      #tl-body {
+        flex: 1;
+        position: relative;
+        overflow: hidden;
+      }
+      #tl-tracks {
+        position: absolute;
+        inset: 0;
+        overflow-y: auto;
+        overflow-x: hidden;
+      }
+      .tl-row {
+        display: flex;
+        align-items: center;
+        height: 26px;
+        border-bottom: 1px solid #111827;
+      }
+      .tl-row:hover {
+        background: rgba(255, 255, 255, 0.02);
+      }
+      .tl-label {
+        width: 120px;
+        flex-shrink: 0;
+        font-size: 11px;
+        font-family: monospace;
+        color: #4b5563;
+        padding: 0 8px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        border-right: 1px solid #1f2937;
+      }
+      .tl-track {
+        flex: 1;
+        position: relative;
+        height: 100%;
+      }
+      .tl-block {
+        position: absolute;
+        top: 4px;
+        height: 17px;
+        border-radius: 3px;
+        cursor: grab;
+        opacity: 0.75;
+        min-width: 4px;
+        user-select: none;
+      }
+      .tl-block:hover {
+        opacity: 1;
+      }
+      .tl-block.dragging {
+        opacity: 1;
+        cursor: grabbing;
+      }
+      .tl-handle {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 6px;
+        cursor: ew-resize;
+      }
+      .tl-handle-l {
+        left: 0;
+        border-radius: 3px 0 0 3px;
+      }
+      .tl-handle-r {
+        right: 0;
+        border-radius: 0 3px 3px 0;
+      }
+      .tl-handle:hover {
+        background: rgba(255, 255, 255, 0.25);
+      }
+      #tl-playhead {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 1px;
+        background: #f87171;
+        pointer-events: none;
+        left: 120px;
+        z-index: 10;
+      }
 
-    /* ── Open overlay ── */
-    #open-overlay {
-      position: fixed; inset: 0;
-      background: rgba(0,0,0,0.7);
-      display: none;
-      align-items: center;
-      justify-content: center;
-      z-index: 100;
-    }
-    #open-overlay.visible { display: flex; }
-    #open-dialog {
-      background: #161b27;
-      border: 1px solid #1f2937;
-      border-radius: 8px;
-      padding: 20px;
-      width: 680px;
-      max-height: 80vh;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-    #open-dialog h2 { font-size: 15px; font-weight: 600; color: #f9fafb; }
-    #open-dialog p { font-size: 12px; color: #6b7280; }
-    #open-textarea {
-      flex: 1;
-      min-height: 300px;
-      background: #0f1117;
-      color: #d1d5db;
-      border: 1px solid #374151;
-      border-radius: 4px;
-      padding: 10px;
-      font-size: 12px;
-      font-family: monospace;
-      resize: vertical;
-    }
-    #open-dialog .dialog-actions { display: flex; gap: 8px; justify-content: flex-end; }
-  </style>
-</head>
-<body>
-  <div id="header">
-    <h1>@hyperframes/sdk</h1>
-    <span class="badge">editor</span>
-    <span id="comp-name" style="font-size:12px;color:#4b5563;font-family:monospace;">demo</span>
-    <span class="spacer"></span>
-    <span class="sel-label">selection:</span>
-    <span id="sel-display">(none)</span>
-    <button id="btn-undo" class="ghost">← Undo</button>
-    <button id="btn-redo" class="ghost">Redo →</button>
-    <button id="btn-open" class="primary">Open…</button>
-  </div>
+      /* ── Open overlay ── */
+      #open-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.7);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 100;
+      }
+      #open-overlay.visible {
+        display: flex;
+      }
+      #open-dialog {
+        background: #161b27;
+        border: 1px solid #1f2937;
+        border-radius: 8px;
+        padding: 20px;
+        width: 680px;
+        max-height: 80vh;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      #open-dialog h2 {
+        font-size: 15px;
+        font-weight: 600;
+        color: #f9fafb;
+      }
+      #open-dialog p {
+        font-size: 12px;
+        color: #6b7280;
+      }
+      #open-textarea {
+        flex: 1;
+        min-height: 300px;
+        background: #0f1117;
+        color: #d1d5db;
+        border: 1px solid #374151;
+        border-radius: 4px;
+        padding: 10px;
+        font-size: 12px;
+        font-family: monospace;
+        resize: vertical;
+      }
+      #open-dialog .dialog-actions {
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="header">
+      <h1>@hyperframes/sdk</h1>
+      <span class="badge">editor</span>
+      <span id="comp-name" style="font-size: 12px; color: #4b5563; font-family: monospace"
+        >demo</span
+      >
+      <span class="spacer"></span>
+      <span class="sel-label">selection:</span>
+      <span id="sel-display">(none)</span>
+      <button id="btn-undo" class="ghost">← Undo</button>
+      <button id="btn-redo" class="ghost">Redo →</button>
+      <button id="btn-open" class="primary">Open…</button>
+    </div>
 
-  <div id="app-main">
-    <!-- Preview -->
-    <div id="preview-panel">
-      <div id="preview-scaler-outer">
-        <div id="preview-scaler-inner">
-          <iframe id="preview-frame" sandbox="allow-scripts" title="composition preview"></iframe>
+    <div id="app-main">
+      <!-- Preview -->
+      <div id="preview-panel">
+        <div id="preview-scaler-outer">
+          <div id="preview-scaler-inner">
+            <iframe id="preview-frame" sandbox="allow-scripts" title="composition preview"></iframe>
+          </div>
+        </div>
+        <div id="preview-hint">click to select</div>
+      </div>
+
+      <!-- Inspector -->
+      <div id="inspector-panel">
+        <div id="inspector-tabs">
+          <div class="ins-tab active" data-tab="properties">Properties</div>
+          <div class="ins-tab" data-tab="ops">Ops</div>
+        </div>
+        <div id="element-list"><!-- populated by JS --></div>
+        <div id="inspector-content"><!-- populated by JS --></div>
+      </div>
+
+      <!-- Log -->
+      <div id="log-panel">
+        <div class="panel-title">Patch log</div>
+        <div id="log-entries"><!-- populated by JS --></div>
+      </div>
+    </div>
+
+    <!-- Timeline -->
+    <div id="timeline-panel">
+      <div id="tl-controls">
+        <button id="btn-play" class="ghost" style="padding: 4px 8px; font-size: 13px">▶</button>
+        <span id="tl-time">0.0s</span>
+        <input type="range" id="tl-scrubber" min="0" max="1000" value="0" step="1" />
+        <span id="tl-dur">–</span>
+      </div>
+      <div id="tl-body">
+        <div id="tl-tracks"><!-- populated by JS --></div>
+        <div id="tl-playhead"></div>
+      </div>
+    </div>
+
+    <!-- Open dialog -->
+    <div id="open-overlay">
+      <div id="open-dialog">
+        <h2>Open composition</h2>
+        <p>
+          Paste any HyperFrames composition HTML — the outer <code>data-hf-root</code> element and
+          its contents.
+        </p>
+        <textarea
+          id="open-textarea"
+          spellcheck="false"
+          placeholder='<div data-hf-id="hf-stage" data-hf-root ...>'
+        ></textarea>
+        <div class="dialog-actions">
+          <button id="btn-open-cancel">Cancel</button>
+          <button id="btn-open-confirm" class="primary">Open</button>
         </div>
       </div>
-      <div id="preview-hint">click to select</div>
     </div>
 
-    <!-- Inspector -->
-    <div id="inspector-panel">
-      <div id="inspector-tabs">
-        <div class="ins-tab active" data-tab="properties">Properties</div>
-        <div class="ins-tab" data-tab="ops">Ops</div>
-      </div>
-      <div id="element-list"><!-- populated by JS --></div>
-      <div id="inspector-content"><!-- populated by JS --></div>
-    </div>
-
-    <!-- Log -->
-    <div id="log-panel">
-      <div class="panel-title">Patch log</div>
-      <div id="log-entries"><!-- populated by JS --></div>
-    </div>
-  </div>
-
-  <!-- Timeline -->
-  <div id="timeline-panel">
-    <div id="tl-controls">
-      <button id="btn-play" class="ghost" style="padding:4px 8px;font-size:13px;">▶</button>
-      <span id="tl-time">0.0s</span>
-      <input type="range" id="tl-scrubber" min="0" max="1000" value="0" step="1" />
-      <span id="tl-dur">–</span>
-    </div>
-    <div id="tl-body">
-      <div id="tl-tracks"><!-- populated by JS --></div>
-      <div id="tl-playhead"></div>
-    </div>
-  </div>
-
-  <!-- Open dialog -->
-  <div id="open-overlay">
-    <div id="open-dialog">
-      <h2>Open composition</h2>
-      <p>Paste any HyperFrames composition HTML — the outer <code>data-hf-root</code> element and its contents.</p>
-      <textarea id="open-textarea" spellcheck="false" placeholder="<div data-hf-id=&quot;hf-stage&quot; data-hf-root ...>"></textarea>
-      <div class="dialog-actions">
-        <button id="btn-open-cancel">Cancel</button>
-        <button id="btn-open-confirm" class="primary">Open</button>
-      </div>
-    </div>
-  </div>
-
-  <script type="module" src="/src/main.ts"></script>
-</body>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
 </html>

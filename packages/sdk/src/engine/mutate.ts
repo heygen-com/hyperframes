@@ -286,7 +286,8 @@ function handleSetTiming(
 ): MutationResult {
   const result: MutationResult = { forward: [], inverse: [] };
 
-  // Pre-parse GSAP script once; sync tween positions for GSAP-scripted compositions.
+  // Parse GSAP script once; updateAnimationInScript re-parses internally per call but
+  // we avoid re-fetching the script element on every iteration.
   const origScript = getGsapScript(parsed.document);
   const parsedGsap = origScript ? parseGsapScriptAcornForWrite(origScript) : null;
   let currentScript = origScript;
@@ -339,9 +340,9 @@ function handleSetTiming(
       el.setAttribute("data-track-index", String(newTrack));
     }
 
-    // Sync GSAP tween positions so GSAP-scripted and clip-model compositions stay
-    // consistent. The runtime stamps data-start/data-duration FROM the GSAP script,
-    // so without this the runtime would overwrite our attribute edits on next init.
+    // Sync GSAP tween positions: the GSAP script is the source of truth at play time —
+    // the timeline rebuilds from it on every seek. Without this, DOM attribute edits
+    // have zero playback effect; the script's position/duration silently overrides them.
     if (parsedGsap && currentScript) {
       for (const { id: animId, animation } of parsedGsap.located) {
         const sel = animation.targetSelector;

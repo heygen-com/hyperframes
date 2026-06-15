@@ -12,10 +12,13 @@ export interface FsAdapterOptions {
 
 const DEFAULT_MAX_VERSIONS = 20;
 
+let _versionCounter = 0;
+
 class FsAdapter implements PersistAdapter {
   private readonly root: string;
   private readonly maxVersions: number;
   private errorHandlers: Array<(e: PersistErrorEvent) => void> = [];
+  private _writeLocks = new Map<string, Promise<void>>();
 
   constructor(opts: FsAdapterOptions) {
     this.root = opts.root;
@@ -53,11 +56,14 @@ class FsAdapter implements PersistAdapter {
         .sort()
         .reverse();
       return Promise.all(
-        sorted.map(async (f) => ({
-          key: f.replace(/\.html$/, ""),
-          content: await readFile(join(dir, f), "utf8"),
-          timestamp: Number(f.replace(/\.html$/, "")),
-        })),
+        sorted.map(async (f) => {
+          const key = f.replace(/\.html$/, "");
+          return {
+            key,
+            content: await readFile(join(dir, f), "utf8"),
+            timestamp: Number(key.split("-")[0]),
+          };
+        }),
       );
     } catch {
       return [];
@@ -90,9 +96,19 @@ class FsAdapter implements PersistAdapter {
   }
 
   private async appendVersion(path: string, content: string): Promise<void> {
+    const prior = this._writeLocks.get(path) ?? Promise.resolve();
+    const next = prior.then(() => this._doAppendVersion(path, content));
+    this._writeLocks.set(
+      path,
+      next.catch(() => {}),
+    );
+    return next;
+  }
+
+  private async _doAppendVersion(path: string, content: string): Promise<void> {
     const dir = this.versionsDir(path);
     await mkdir(dir, { recursive: true });
-    const key = String(Date.now());
+    const key = `${Date.now()}-${String(++_versionCounter).padStart(4, "0")}`;
     await writeFile(join(dir, `${key}.html`), content, "utf8");
     // prune oldest beyond maxVersions
     const all = (await readdir(dir)).filter((f) => f.endsWith(".html")).sort();
