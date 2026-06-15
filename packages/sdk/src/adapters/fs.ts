@@ -57,6 +57,8 @@ class FsAdapter implements PersistAdapter {
   }
 
   async flush(): Promise<void> {
+    // Promise.all rejects on the first write failure; per-write errors are also
+    // surfaced individually through the persist:error event channel.
     await Promise.all([...this.inflightWrites]);
   }
 
