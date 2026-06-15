@@ -403,4 +403,19 @@ describe("setSelection", () => {
     comp.setSelection(["hf-sub", "hf-title"]); // order differs — must fire
     expect(calls).toHaveLength(2);
   });
+
+  it("setSelection de-duplicates repeated ids", async () => {
+    const comp = await openComposition(BASE_HTML);
+    comp.setSelection(["hf-title", "hf-title", "hf-sub", "hf-title"]);
+    expect(comp.getSelection()).toEqual(["hf-title", "hf-sub"]);
+  });
+
+  it("setSelection with duplicates matching stored selection does not fire selectionchange", async () => {
+    const comp = await openComposition(BASE_HTML);
+    const calls: string[][] = [];
+    comp.on("selectionchange", (ids) => calls.push(ids));
+    comp.setSelection(["hf-title"]);
+    comp.setSelection(["hf-title", "hf-title"]); // de-duped = ["hf-title"] — no change
+    expect(calls).toHaveLength(1);
+  });
 });

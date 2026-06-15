@@ -225,13 +225,14 @@ class CompositionImpl implements Composition {
   }
 
   setSelection(ids: string[]): void {
+    const deduped = Array.from(new Set(ids));
     if (
-      ids.length === this.currentSelection.length &&
-      ids.every((id, i) => id === this.currentSelection[i])
+      deduped.length === this.currentSelection.length &&
+      deduped.every((id, i) => id === this.currentSelection[i])
     ) {
       return;
     }
-    this.updateSelection(ids);
+    this.updateSelection(deduped);
   }
 
   private updateSelection(ids: readonly string[]): void {
