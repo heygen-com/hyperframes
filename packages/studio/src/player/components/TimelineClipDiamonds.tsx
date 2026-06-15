@@ -124,6 +124,11 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
   const handlePointerDown = (e: React.PointerEvent, pct: number) => {
     if (e.button !== 0) return;
     e.stopPropagation();
+    // Ignore a new drag while a prior drop is still settling: `pct` comes from
+    // props (the pre-drop position) but the diamond is held at its dropped spot
+    // via effPct(), so a re-grab would track from a stale origin and commit
+    // against the wrong tween. The hold clears on the cache round-trip (≤2s).
+    if (pendingRef.current) return;
     // Select the element up front so its GSAP session loads during the drag and
     // the commit (which resolves the animation from the selection) isn't a no-op.
     onPickForDrag?.();
