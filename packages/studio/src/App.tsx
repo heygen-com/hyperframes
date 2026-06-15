@@ -175,6 +175,7 @@ export function StudioApp() {
     reloadPreview: () => setRefreshKey((k) => k + 1),
     pendingTimelineEditPathRef,
   });
+  const sdkSession = useSdkSession(projectId, activeCompPath);
   const timelineEditing = useTimelineEditing({
     projectId,
     activeCompPath,
@@ -188,6 +189,7 @@ export function StudioApp() {
     pendingTimelineEditPathRef,
     uploadProjectFiles: fileManager.uploadProjectFiles,
     isRecordingRef: isGestureRecordingRef,
+    sdkSession,
   });
   const {
     activeBlockParams,
@@ -267,7 +269,6 @@ export function StudioApp() {
     () => leftSidebarRef.current?.getTab() ?? "compositions",
     [],
   );
-  const sdkSession = useSdkSession(projectId, activeCompPath);
   const domEditSession = useDomEditSession({
     projectId,
     activeCompPath,

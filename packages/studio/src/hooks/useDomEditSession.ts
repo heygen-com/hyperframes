@@ -194,6 +194,7 @@ export function useDomEditSession({
     onCacheInvalidate: bumpGsapCache,
     onFileContentChanged: updateEditingFileContent,
     showToast,
+    sdkSession,
   });
 
   // ── DOM commit handlers ──

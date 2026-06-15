@@ -1,4 +1,5 @@
 import type { ParsedGsap } from "@hyperframes/core/gsap-parser";
+import type { Composition } from "@hyperframes/sdk";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import type { EditHistoryKind } from "../utils/editHistory";
 
@@ -55,4 +56,6 @@ export interface GsapScriptCommitsParams {
   onCacheInvalidate: () => void;
   onFileContentChanged?: (path: string, content: string) => void;
   showToast: (message: string, tone?: "error" | "info") => void;
+  /** Stage 7 Step 3b: SDK session for shadow GSAP dispatch (server stays authoritative). */
+  sdkSession?: Composition | null;
 }
