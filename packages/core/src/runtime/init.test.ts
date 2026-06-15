@@ -1095,4 +1095,54 @@ describe("initSandboxRuntimeModular", () => {
     expect(video.muted).toBe(true);
     expect(audio.muted).toBe(false);
   });
+
+  it("skips the per-frame transport re-seek while a Studio manual-edit gesture is active", () => {
+    const raf = createManualRaf();
+    vi.spyOn(performance, "now").mockImplementation(() => raf.now());
+    window.requestAnimationFrame = raf.requestAnimationFrame as typeof window.requestAnimationFrame;
+    window.cancelAnimationFrame = raf.cancelAnimationFrame as typeof window.cancelAnimationFrame;
+
+    const seekTimes: number[] = [];
+    const tl = createMockTimeline(5);
+    const origTotalTime = tl.totalTime;
+    tl.totalTime = ((time: number, ...rest: unknown[]) => {
+      seekTimes.push(time);
+      (origTotalTime as Function).call(tl, time, ...rest);
+    }) as RuntimeTimelineLike["totalTime"];
+
+    document.body.innerHTML = `
+      <div data-composition-id="root" data-duration="5" data-width="1920" data-height="1080">
+        <div id="dragged" data-hf-studio-manual-edit-gesture="tok-1"></div>
+      </div>
+    `;
+    window.__timelines = { root: tl };
+    initSandboxRuntimeModular();
+
+    // (1) Paused + gesture active → the per-frame transport tick must NOT
+    // re-seek the timeline, otherwise it re-applies the animated value and
+    // clobbers the draft writer (gsap.set) that owns the dragged element,
+    // freezing it mid-drag.
+    const afterInit = seekTimes.length;
+    raf.step(16);
+    raf.step(16);
+    raf.step(16);
+    expect(seekTimes.length).toBe(afterInit);
+
+    // (2) Playback always wins: with the SAME gesture marker still present, a
+    // playing clock must keep re-seeking (the gate must never freeze playback).
+    // Guards the clock.isPlaying() short-circuit — a regression flipping `||`
+    // to `&&` would skip the seek here and this assertion would catch it.
+    const player = window.__player;
+    const beforePlaying = seekTimes.length;
+    player?.play();
+    raf.step(16);
+    expect(seekTimes.length).toBeGreaterThan(beforePlaying);
+    player?.pause();
+
+    // (3) Paused + marker cleared (drop/cancel) → the per-frame re-seek resumes.
+    document.getElementById("dragged")?.removeAttribute("data-hf-studio-manual-edit-gesture");
+    const beforeResume = seekTimes.length;
+    raf.step(16);
+    expect(seekTimes.length).toBeGreaterThan(beforeResume);
+  });
 });

@@ -25,6 +25,7 @@ import { applyCaptionOverrides } from "./captionOverrides";
 import { TransportClock } from "./clock";
 import { WebAudioTransport } from "./webAudioTransport";
 import { quantizeTimeToFrame } from "../inline-scripts/parityContract";
+import { STUDIO_MANUAL_EDIT_GESTURE_ATTR } from "../studio-api/helpers/draftMarkers";
 import type { RuntimeDeterministicAdapter, RuntimeJson, RuntimeTimelineLike } from "./types";
 import type { PlayerAPI } from "../core.types";
 import { swallow } from "./diagnostics";
@@ -1994,6 +1995,24 @@ export function initSandboxRuntimeModular(): void {
     }
   };
 
+  // True while the Studio is mid-drag on an element (the gesture marker is
+  // stamped on the gestured element for the duration of the drag). During a
+  // paused gesture the draft writer owns the element's transform, so the
+  // per-frame transport re-seek must yield to it (see transportTick).
+  //
+  // The query is document-global (fine for today's single-composition Studio;
+  // revisit if a multi-composition editor needs to scope this to one root).
+  // It only runs while the clock is paused — transportTick short-circuits on
+  // isPlaying() — so it is off the playback hot path; one attribute selector
+  // per paused frame is negligible.
+  const hasActiveStudioManualEditGesture = (): boolean => {
+    try {
+      return document.querySelector(`[${STUDIO_MANUAL_EDIT_GESTURE_ATTR}]`) != null;
+    } catch {
+      return false;
+    }
+  };
+
   const transportTick = () => {
     if (state.tornDown || inTransportTick) return;
     inTransportTick = true;
@@ -2084,7 +2103,17 @@ export function initSandboxRuntimeModular(): void {
 
       const t = clock.now();
       state.currentTime = t;
-      seekTimelineAndAdapters(t);
+      // During a paused Studio manual-edit drag, the draft writer owns the
+      // gestured element's transform (e.g. gsap.set for x/y). Re-seeking the
+      // timeline every frame re-applies the animated value and clobbers the
+      // draft, freezing the element while only the selection box tracks the
+      // cursor. The playhead does not advance during a paused gesture, so
+      // skipping the re-seek is a no-op for every other element; it resumes
+      // the frame the gesture marker clears (drop/cancel). Playback is never
+      // affected — the seek runs whenever the clock is playing.
+      if (clock.isPlaying() || !hasActiveStudioManualEditGesture()) {
+        seekTimelineAndAdapters(t);
+      }
 
       // Looping is handled at the player layer (<hyperframes-player>),
       // not the runtime. The clock pauses at duration; GSAP's repeat:-1
