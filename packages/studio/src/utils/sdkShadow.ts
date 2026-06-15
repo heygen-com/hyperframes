@@ -10,6 +10,9 @@
 
 import type { Composition } from "@hyperframes/sdk";
 import type { EditOp, GsapTweenSpec } from "@hyperframes/sdk";
+import { openComposition } from "@hyperframes/sdk";
+import { parseGsapScriptAcorn } from "@hyperframes/core/gsap-parser-acorn";
+import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { STUDIO_SDK_SHADOW_ENABLED } from "../components/editor/manualEditingAvailability";
 import { trackStudioEvent } from "./studioTelemetry";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
@@ -422,4 +425,131 @@ export function runShadowGsapTween(session: Composition, gsapOp: ShadowGsapOp): 
     }
     return [];
   });
+}
+
+// ─── GSAP value fidelity (serialize round-trip diff) ──────────────────────────
+//
+// Existence parity (above) confirms a tween was created/removed, but not that
+// its VALUES (duration / ease / position / properties) match the server. The
+// SDK exposes no per-tween property reader, so we compare the two writers'
+// output: apply the same op to a fresh SDK doc opened from the server's
+// pre-op file, then structurally diff the SDK's GSAP script against the
+// server's resulting script. Both are re-parsed, so formatting/whitespace
+// differences never produce false positives — only real value drift does.
+
+function extractGsapScript(html: string): string | null {
+  const scripts = html.match(/<script\b[^>]*>([\s\S]*?)<\/script>/gi);
+  if (!scripts) return null;
+  for (const block of scripts) {
+    const body = block.replace(/^<script\b[^>]*>/i, "").replace(/<\/script>$/i, "");
+    if (body.includes("gsap") || body.includes("__timelines")) return body;
+  }
+  return null;
+}
+
+function animById(script: string): Map<string, GsapAnimation> {
+  const map = new Map<string, GsapAnimation>();
+  const parsed = parseGsapScriptAcorn(script);
+  for (const anim of parsed.animations) map.set(anim.id, anim);
+  return map;
+}
+
+/**
+ * Structurally diff two GSAP scripts by tween id. Reports a tween present in
+ * one but not the other, and per-field value drift (method, position, duration,
+ * ease, properties, fromProperties).
+ */
+export function gsapFidelityMismatches(
+  sdkScript: string,
+  serverScript: string,
+): SdkShadowMismatch[] {
+  const sdk = animById(sdkScript);
+  const server = animById(serverScript);
+  const mismatches: SdkShadowMismatch[] = [];
+  const ids = new Set([...sdk.keys(), ...server.keys()]);
+  for (const id of ids) {
+    const a = sdk.get(id);
+    const b = server.get(id);
+    if (!a || !b) {
+      mismatches.push({
+        kind: "value_mismatch",
+        hfId: id,
+        property: "tween",
+        expected: b ? "present" : "absent",
+        actual: a ? "present" : "absent",
+      });
+      continue;
+    }
+    const fields: Array<[string, unknown, unknown]> = [
+      ["method", a.method, b.method],
+      ["position", a.position, b.position],
+      ["duration", a.duration, b.duration],
+      ["ease", a.ease, b.ease],
+      ["properties", JSON.stringify(a.properties ?? {}), JSON.stringify(b.properties ?? {})],
+      [
+        "fromProperties",
+        JSON.stringify(a.fromProperties ?? {}),
+        JSON.stringify(b.fromProperties ?? {}),
+      ],
+    ];
+    for (const [property, av, bv] of fields) {
+      if (av !== bv) {
+        mismatches.push({
+          kind: "value_mismatch",
+          hfId: id,
+          property,
+          expected: bv == null ? null : String(bv),
+          actual: av == null ? null : String(av),
+        });
+      }
+    }
+  }
+  return mismatches;
+}
+
+/**
+ * Shadow GSAP value fidelity: open a fresh SDK doc from the server's pre-op
+ * file, apply the same tween op, serialize, and diff the SDK's GSAP script
+ * against the server's resulting script. Emits sdk_shadow_dispatch op:
+ * "gsap_fidelity". Async, fire-and-forget; server stays authoritative.
+ */
+export async function runShadowGsapFidelity(
+  beforeHtml: string,
+  gsapOp: ShadowGsapOp,
+  serverScript: string,
+): Promise<void> {
+  if (!STUDIO_SDK_SHADOW_ENABLED) return;
+  try {
+    const session = await openComposition(beforeHtml);
+    session.batch(() => {
+      if (gsapOp.kind === "add") session.addGsapTween(gsapOp.target, gsapOp.tween);
+      else if (gsapOp.kind === "set") session.setGsapTween(gsapOp.animationId, gsapOp.properties);
+      else session.removeGsapTween(gsapOp.animationId);
+    });
+    const sdkScript = extractGsapScript(session.serialize());
+    if (sdkScript == null) {
+      trackStudioEvent("sdk_shadow_dispatch", {
+        op: "gsap_fidelity",
+        dispatched: false,
+        reason: "no_sdk_script",
+        mismatchCount: 0,
+      });
+      return;
+    }
+    const mismatches = gsapFidelityMismatches(sdkScript, serverScript);
+    trackStudioEvent("sdk_shadow_dispatch", {
+      op: "gsap_fidelity",
+      dispatched: true,
+      mismatchCount: mismatches.length,
+      mismatches: JSON.stringify(mismatches),
+    });
+  } catch (err) {
+    trackStudioEvent("sdk_shadow_dispatch", {
+      op: "gsap_fidelity",
+      dispatched: false,
+      reason: "fidelity_error",
+      error: String(err),
+      mismatchCount: 0,
+    });
+  }
 }

@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { findUnsafeMutationValues } from "@hyperframes/core/studio-api/finite-mutation";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { applySoftReload } from "../utils/gsapSoftReload";
+import { runShadowGsapFidelity } from "../utils/sdkShadow";
 import { updateKeyframeCacheFromParsed } from "./gsapKeyframeCacheHelpers";
 import {
   GsapMutationHttpError,
@@ -67,6 +68,11 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
     }
     if (result.changed === false) return;
     domEditSaveTimestampRef.current = Date.now();
+    // Shadow value fidelity: diff the SDK's GSAP writer output against the
+    // server's, from the same pre-op file. Fire-and-forget; server authoritative.
+    if (sdkSession && options.shadowGsapOp && result.before != null && result.scriptText != null) {
+      void runShadowGsapFidelity(result.before, options.shadowGsapOp, result.scriptText);
+    }
     if (result.before != null && result.after != null) {
       await editHistory.recordEdit({ label: options.label, kind: "manual", coalesceKey: options.coalesceKey, files: { [targetPath]: { before: result.before, after: result.after } } });
     }
@@ -80,7 +86,7 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
       reloadPreview();
     }
     onCacheInvalidate();
-  }, [projectIdRef, activeCompPath, previewIframeRef, editHistory, domEditSaveTimestampRef, reloadPreview, onCacheInvalidate, onFileContentChanged, showToast]);
+  }, [projectIdRef, activeCompPath, previewIframeRef, editHistory, domEditSaveTimestampRef, reloadPreview, onCacheInvalidate, onFileContentChanged, showToast, sdkSession]);
   const trackGsapSaveFailure = useGsapSaveFailureTelemetry(activeCompPath);
   const commitMutationSafely = useSafeGsapCommitMutation(commitMutation, trackGsapSaveFailure, showToast);
   const propertyOps = useGsapPropertyDebounce(commitMutationSafely);

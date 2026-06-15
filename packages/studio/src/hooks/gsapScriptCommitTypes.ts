@@ -2,6 +2,7 @@ import type { ParsedGsap } from "@hyperframes/core/gsap-parser";
 import type { Composition } from "@hyperframes/sdk";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import type { EditHistoryKind } from "../utils/editHistory";
+import type { ShadowGsapOp } from "../utils/sdkShadow";
 
 export interface MutationResult {
   ok: boolean;
@@ -18,6 +19,8 @@ export interface CommitMutationOptions {
   softReload?: boolean;
   skipReload?: boolean;
   beforeReload?: () => void;
+  /** Stage 7 Step 3b: typed SDK equivalent of this mutation for value-fidelity shadow. */
+  shadowGsapOp?: ShadowGsapOp;
 }
 
 export type CommitMutation = (
