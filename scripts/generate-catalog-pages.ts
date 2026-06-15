@@ -519,8 +519,8 @@ function main(): void {
   // Items with the same first tag are grouped together. Items without tags
   // go into an "Other" group. Groups are sorted with a priority order.
   const GROUP_ORDER: Record<string, number> = {
-    Captions: 0,
-    "Code Animations": 1,
+    "Code Animations": 0,
+    Captions: 1,
     "HTML-in-Canvas": 2,
     "Social Overlays": 3,
     "Shader Transitions": 4,

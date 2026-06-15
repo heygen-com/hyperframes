@@ -113,6 +113,20 @@
         "tab": "Catalog",
         "groups": [
           {
+            "group": "Code Animations",
+            "pages": [
+              "catalog/blocks/code-3d-extrude",
+              "catalog/blocks/code-shader-dissolve",
+              "catalog/blocks/code-particle-assemble",
+              "catalog/blocks/code-morph",
+              "catalog/blocks/code-snippet-flight",
+              "catalog/blocks/code-typing",
+              "catalog/blocks/code-diff",
+              "catalog/blocks/code-highlight",
+              "catalog/blocks/code-scroll"
+            ]
+          },
+          {
             "group": "Captions",
             "pages": [
               "catalog/components/caption-clip-wipe",
@@ -275,17 +289,6 @@
               "catalog/blocks/code-snippet-solarized-light",
               "catalog/blocks/code-snippet-visual-studio-dark",
               "catalog/blocks/code-snippet-visual-studio-light"
-            ]
-          },
-          {
-            "group": "Code Animations",
-            "pages": [
-              "catalog/blocks/code-morph",
-              "catalog/blocks/code-snippet-flight",
-              "catalog/blocks/code-typing",
-              "catalog/blocks/code-diff",
-              "catalog/blocks/code-highlight",
-              "catalog/blocks/code-scroll"
             ]
           }
         ]

@@ -635,8 +635,9 @@
         }
 
         function flight(tl, surface, states, start) {
-          var FLY = 1.0;
-          var STAGGER = 0.3;
+          var FLY = 0.95;
+          var STAGGER = 0.26;
+          var GAP = 20;
           var parts = makeScene(surface, false);
           parts.code.remove();
           var scene = parts.scene;
@@ -645,10 +646,7 @@
           scene.appendChild(target);
           var W = surface.clientWidth;
           var H = surface.clientHeight;
-          var leftCx = W * 0.27;
-          var rightCx = W * 0.71;
-          var midY = H * 0.46;
-          var gap = 70;
+
           var blocks = states.map(function (st) {
             var blk = document.createElement("div");
             blk.className = "flight-block";
@@ -657,68 +655,109 @@
             return blk;
           });
           var n = blocks.length;
+
+          // Pass 1: measure natural size, then make every chip the SAME width (symmetry).
           var maxW = 0;
-          var firstDestY = 0;
+          var chipH = 0;
+          blocks.forEach(function (blk) {
+            var r = blk.getBoundingClientRect();
+            if (r.width > maxW) maxW = r.width;
+            if (r.height > chipH) chipH = r.height;
+          });
+          blocks.forEach(function (blk) {
+            blk.style.width = maxW + "px";
+          });
+
+          // Pass 2: evenly-stacked, left-aligned, group centered in the surface.
+          var stackH = n * chipH + (n - 1) * GAP;
+          var destLeft = Math.round((W - maxW) / 2);
+          var topY = Math.round((H - stackH) / 2);
           blocks.forEach(function (blk, i) {
-            var bw = blk.getBoundingClientRect().width;
-            if (bw > maxW) maxW = bw;
-            var destX = rightCx - bw / 2;
-            var destY = midY + (i - (n - 1) / 2) * gap;
-            if (i === 0) firstDestY = destY;
-            var srcX = leftCx - bw / 2;
-            var srcY = midY + (i - (n - 1) / 2) * (gap + 16);
-            blk.style.left = destX + "px";
+            var destY = topY + i * (chipH + GAP);
+            blk.style.left = destLeft + "px";
             blk.style.top = destY + "px";
+            // fly straight in from the left to the shared left edge — clean, no skew
+            var srcX = destLeft - W * 0.32;
             tl.fromTo(
               blk,
-              { x: srcX - destX, y: srcY - destY, opacity: 0, rotation: -5, scale: 0.9 },
-              {
-                x: 0,
-                y: 0,
-                opacity: 1,
-                rotation: 0,
-                scale: 1,
-                duration: FLY,
-                ease: "power3.inOut",
-              },
+              { x: srcX - destLeft, opacity: 0, scale: 0.96 },
+              { x: 0, opacity: 1, scale: 1, duration: FLY, ease: "power3.out" },
               start + FADE + i * STAGGER,
             );
           });
-          target.style.left = rightCx - maxW / 2 - 26 + "px";
-          target.style.top = firstDestY - 18 + "px";
-          target.style.width = maxW + 52 + "px";
-          target.style.height = (n - 1) * gap + 62 + "px";
+
+          // Even-padded panel tightly wrapping the uniform stack.
+          var padX = 30;
+          var padY = 24;
+          target.style.left = destLeft - padX + "px";
+          target.style.top = topY - padY + "px";
+          target.style.width = maxW + padX * 2 + "px";
+          target.style.height = stackH + padY * 2 + "px";
           var landAt = start + FADE + (n - 1) * STAGGER + FLY;
           tl.set(scene, { opacity: 1 }, 0);
           tl.to(target, { opacity: 1, duration: 0.5, ease: "power1.out" }, landAt - 0.5);
         }
 
         function typing(tl, surface, state, start) {
-          var PER = 0.05;
+          var PER = 0.028; // seconds per character — smooth, fast typewriter
           var parts = makeScene(surface, true);
           var code = parts.code;
-          var keyToEl = renderState(code, state);
+
+          // Per-CHARACTER render (granular reveal reads smoother than per-token pops).
+          code.textContent = "";
+          var line = document.createElement("div");
+          line.className = "line";
+          code.appendChild(line);
+          var chars = [];
+          for (var i = 0; i < state.tokens.length; i++) {
+            var t = state.tokens[i];
+            if (t.content === "\n") {
+              line = document.createElement("div");
+              line.className = "line";
+              code.appendChild(line);
+              continue;
+            }
+            for (var c = 0; c < t.content.length; c++) {
+              var span = document.createElement("span");
+              span.className = "tok";
+              span.textContent = t.content[c];
+              span.style.color = t.color;
+              if (t.fontStyle & 1) span.style.fontStyle = "italic";
+              if (t.fontStyle & 2) span.style.fontWeight = "700";
+              line.appendChild(span);
+              chars.push({ el: span, ws: t.content[c] === " " });
+            }
+          }
+          var last = code.lastChild;
+          if (last && last.className === "line" && last.children.length === 0)
+            code.removeChild(last);
+
           fillGutter(parts.gutter, code.querySelectorAll(".line").length);
           var base = code.getBoundingClientRect();
           var caret = document.createElement("div");
           caret.className = "caret";
           code.appendChild(caret);
-          var toks = [];
-          keyToEl.forEach(function (el) {
-            toks.push(el);
-          });
+
           tl.set(parts.scene, { opacity: 0 }, 0);
           tl.to(parts.scene, { opacity: 1, duration: FADE, ease: "power1.out" }, start);
+
           var t0 = start + FADE;
-          if (toks.length) {
-            var r0 = toks[0].getBoundingClientRect();
+          if (chars.length) {
+            var r0 = chars[0].el.getBoundingClientRect();
             tl.set(caret, { x: r0.left - base.left, y: r0.top - base.top, opacity: 1 }, 0);
           }
-          toks.forEach(function (el, i) {
-            tl.set(el, { opacity: 0 }, 0);
-            tl.to(el, { opacity: 1, duration: 0.08, ease: "none" }, t0 + i * PER);
-            var r = el.getBoundingClientRect();
-            tl.set(caret, { x: r.right - base.left, y: r.top - base.top }, t0 + i * PER);
+          chars.forEach(function (c, i) {
+            var at = t0 + i * PER;
+            tl.set(c.el, { opacity: 0 }, 0);
+            // soft per-char fade (overlaps neighbors → smooth wave); whitespace appears instantly
+            tl.to(c.el, { opacity: 1, duration: c.ws ? 0.01 : 0.12, ease: "power1.out" }, at);
+            // caret glides at constant speed to each char's right edge (linear = no stop-start jitter)
+            var r = c.el.getBoundingClientRect();
+            tl.to(
+              caret,
+              { x: r.right - base.left, y: r.top - base.top, duration: PER, ease: "none" },
+              at,
+            );
           });
         }
 

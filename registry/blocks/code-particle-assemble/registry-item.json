@@ -1,0 +1,24 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "code-particle-assemble",
+  "type": "hyperframes:block",
+  "title": "Code Particle Assemble",
+  "description": "Thousands of GPU points scatter through space and fly to the exact glyph pixels of the code, resolving into readable syntax-highlighted text — a particle system, not a token tween.",
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 8,
+  "tags": ["code", "code-animation", "particles", "gpu", "webgl", "developer"],
+  "files": [
+    {
+      "path": "code-particle-assemble.html",
+      "target": "compositions/code-particle-assemble.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "preview": {
+    "video": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-particle-assemble.mp4",
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-particle-assemble.png"
+  }
+}
