@@ -7,6 +7,7 @@ import {
   cdpSessionCache,
   injectVideoFramesBatch,
   syncVideoFrameVisibility,
+  materializeInheritedTextColorsInDocument,
 } from "./screenshotService.js";
 
 // Stub a Page + CDPSession just enough that pageScreenshotCapture can call
@@ -20,15 +21,103 @@ function makeFakePageWithCdp(send: (method: string, params: object) => Promise<{
   return fakePage;
 }
 
+describe("materializeInheritedTextColorsInDocument", () => {
+  function withLinkedomDocument(html: string) {
+    const { window, document } = parseHTML(html);
+    Object.defineProperty(window, "getComputedStyle", {
+      configurable: true,
+      value: (el: Element) => {
+        let cur: Element | null = el;
+        while (cur) {
+          const inlineColor = (cur as HTMLElement).style?.color;
+          if (inlineColor) {
+            return { color: inlineColor };
+          }
+          cur = cur.parentElement;
+        }
+        return { color: "" };
+      },
+    });
+
+    const globals = globalThis as unknown as { window?: typeof window; document?: Document };
+    const previousWindow = globals.window;
+    const previousDocument = globals.document;
+    globals.window = window;
+    globals.document = document;
+    return {
+      window,
+      document,
+      teardown: () => {
+        globals.window = previousWindow;
+        globals.document = previousDocument;
+      },
+    };
+  }
+
+  it("sets inline color from computed style when text relies on CSS inheritance", () => {
+    const { document, teardown } = withLinkedomDocument(
+      '<html><body><div id="root" style="color:#e8e8e8"><div id="title" style="font-size:76px">Invisible in render</div><div id="subtitle" style="color:#67e8f9">Visible control</div></body></html>',
+    );
+    try {
+      materializeInheritedTextColorsInDocument();
+
+      const title = document.getElementById("title") as HTMLElement;
+      const subtitle = document.getElementById("subtitle") as HTMLElement;
+      expect(title.style.color).toBe("#e8e8e8");
+      expect(subtitle.style.color).toBe("#67e8f9");
+    } finally {
+      teardown();
+    }
+  });
+
+  it("does not override an existing inline color", () => {
+    const { document, teardown } = withLinkedomDocument(
+      '<html><body><div style="color:#e8e8e8"><div id="title" style="color:#ff0000">Explicit red</div></body></html>',
+    );
+    try {
+      materializeInheritedTextColorsInDocument();
+
+      const title = document.getElementById("title") as HTMLElement;
+      expect(title.style.color).toBe("#ff0000");
+    } finally {
+      teardown();
+    }
+  });
+
+  it("skips container elements whose text lives only in descendants", () => {
+    const { document, teardown } = withLinkedomDocument(
+      '<html><body><div style="color:#e8e8e8"><div id="wrap"><span id="label">Nested text</span></div></div></body></html>',
+    );
+    try {
+      materializeInheritedTextColorsInDocument();
+
+      const wrap = document.getElementById("wrap") as HTMLElement;
+      const label = document.getElementById("label") as HTMLElement;
+      expect(wrap.style.color ?? "").toBe("");
+      expect(label.style.color).toBe("#e8e8e8");
+    } finally {
+      teardown();
+    }
+  });
+});
+
 describe("pageScreenshotCapture supersample plumbing", () => {
   // Minimal 1×1 transparent PNG, base64. The function returns Buffer.from(data, "base64")
   // and we never inspect the bytes — only the params we pass to client.send.
   const ONE_PIXEL_PNG_B64 =
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkAAIAAAoAAv/lxKUAAAAASUVORK5CYII=";
 
+  function makeScreenshotPage(send: (method: string, params: object) => Promise<{ data: string }>) {
+    const page = makeFakePageWithCdp(send) as Page & {
+      evaluate: (fn: () => void) => Promise<void>;
+    };
+    page.evaluate = async () => {};
+    return page;
+  }
+
   it("passes `clip` with scale 1 when deviceScaleFactor is undefined (default 1)", async () => {
     const send = vi.fn().mockResolvedValue({ data: ONE_PIXEL_PNG_B64 });
-    const page = makeFakePageWithCdp(send);
+    const page = makeScreenshotPage(send);
 
     await pageScreenshotCapture(page, {
       width: 1920,
@@ -48,7 +137,7 @@ describe("pageScreenshotCapture supersample plumbing", () => {
 
   it("passes `clip` with scale 1 when deviceScaleFactor is exactly 1", async () => {
     const send = vi.fn().mockResolvedValue({ data: ONE_PIXEL_PNG_B64 });
-    const page = makeFakePageWithCdp(send);
+    const page = makeScreenshotPage(send);
 
     await pageScreenshotCapture(page, {
       width: 1920,
@@ -64,7 +153,7 @@ describe("pageScreenshotCapture supersample plumbing", () => {
 
   it("passes `clip` with `scale = dpr` when deviceScaleFactor > 1 (the supersample contract)", async () => {
     const send = vi.fn().mockResolvedValue({ data: ONE_PIXEL_PNG_B64 });
-    const page = makeFakePageWithCdp(send);
+    const page = makeScreenshotPage(send);
 
     await pageScreenshotCapture(page, {
       width: 1920,
@@ -84,7 +173,7 @@ describe("pageScreenshotCapture supersample plumbing", () => {
 
   it("propagates a non-2 supersample factor (e.g. 720p → 4K = 3×)", async () => {
     const send = vi.fn().mockResolvedValue({ data: ONE_PIXEL_PNG_B64 });
-    const page = makeFakePageWithCdp(send);
+    const page = makeScreenshotPage(send);
 
     await pageScreenshotCapture(page, {
       width: 1280,
