@@ -9,6 +9,7 @@ import { buildDomEditPatchTarget, type DomEditSelection } from "../components/ed
 import { fontFamilyFromAssetPath, type ImportedFontAsset } from "../components/editor/fontAssets";
 import type { EditHistoryKind } from "../utils/editHistory";
 import type { PersistDomEditOperations } from "./domEditCommitTypes";
+import type { PatchOperation } from "../utils/sourcePatcher";
 import { useDomEditPositionPatchCommit } from "./useDomEditPositionPatchCommit";
 import { useDomEditTextCommits } from "./useDomEditTextCommits";
 import { useDomGeometryCommits } from "./useDomGeometryCommits";

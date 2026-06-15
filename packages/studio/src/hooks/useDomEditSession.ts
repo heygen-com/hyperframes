@@ -9,7 +9,7 @@ import { useAskAgentModal } from "./useAskAgentModal";
 import { useDomSelection } from "./useDomSelection";
 import { usePreviewInteraction } from "./usePreviewInteraction";
 import { useDomEditCommits } from "./useDomEditCommits";
-import { reportShadowDispatch } from "../utils/sdkShadow";
+import { runShadowDispatch } from "../utils/sdkShadow";
 import { useGsapScriptCommits } from "./useGsapScriptCommits";
 import { useGsapCacheVersion } from "./useGsapTweenCache";
 import { useDomEditWiring } from "./useDomEditWiring";
@@ -233,7 +233,7 @@ export function useDomEditSession({
     refreshDomEditSelectionFromPreview,
     buildDomSelectionFromTarget,
     onDomEditPersisted: sdkSession
-      ? (sel, ops) => reportShadowDispatch(sdkSession, sel, ops)
+      ? (sel, ops) => runShadowDispatch(sdkSession, sel, ops)
       : undefined,
   });
 

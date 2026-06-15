@@ -151,9 +151,10 @@ export function sdkShadowDispatch(
     return { dispatched: false, mismatches: [{ kind: "element_not_found", hfId }] };
   }
   try {
-    for (const op of patchOpsToSdkEditOps(hfId, ops)) {
-      session.dispatch(op);
-    }
+    const sdkOps = patchOpsToSdkEditOps(hfId, ops);
+    session.batch(() => {
+      for (const op of sdkOps) session.dispatch(op);
+    });
   } catch (err) {
     return {
       dispatched: false,
@@ -171,9 +172,10 @@ export function sdkShadowDispatch(
 
 /**
  * Shadow-dispatch ops to the SDK session and emit sdk_shadow_dispatch telemetry.
- * No-op when STUDIO_SDK_SHADOW_ENABLED is false.
+ * Despite the telemetry focus, this function does mutate the SDK session — it
+ * is not read-only. No-op when STUDIO_SDK_SHADOW_ENABLED is false.
  */
-export function reportShadowDispatch(
+export function runShadowDispatch(
   session: Composition,
   selection: DomEditSelection,
   ops: PatchOperation[],
