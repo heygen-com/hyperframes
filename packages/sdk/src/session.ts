@@ -39,7 +39,7 @@ import type { PersistQueueModule } from "./persist-queue.js";
 
 export interface OpenCompositionOptions {
   persist?: PersistAdapter;
-  /** Adapter path the persist queue writes to. Default: "composition.html". */
+  /** Adapter path the persist queue writes to. Default: "composition.html". Immutable for the session lifetime. */
   persistPath?: string;
   preview?: PreviewAdapter;
   /** T3 embedded mode: override-set applied on top of the base template. */
