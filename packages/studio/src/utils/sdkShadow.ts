@@ -57,11 +57,12 @@ export function patchOpsToSdkEditOps(hfId: string, ops: PatchOperation[]): EditO
 // ─── Shadow result types ──────────────────────────────────────────────────────
 
 export interface SdkShadowMismatch {
-  kind: "element_not_found" | "value_mismatch";
+  kind: "element_not_found" | "value_mismatch" | "dispatch_error";
   hfId: string;
   property?: string;
   expected?: string | null;
   actual?: string | null | undefined;
+  error?: string;
 }
 
 export interface SdkShadowResult {
@@ -149,8 +150,15 @@ export function sdkShadowDispatch(
   if (!session.getElement(hfId)) {
     return { dispatched: false, mismatches: [{ kind: "element_not_found", hfId }] };
   }
-  for (const op of patchOpsToSdkEditOps(hfId, ops)) {
-    session.dispatch(op);
+  try {
+    for (const op of patchOpsToSdkEditOps(hfId, ops)) {
+      session.dispatch(op);
+    }
+  } catch (err) {
+    return {
+      dispatched: false,
+      mismatches: [{ kind: "dispatch_error", hfId, error: String(err) }],
+    };
   }
   const flat = flattenSnapshot(session.getElement(hfId));
   const mismatches = ops

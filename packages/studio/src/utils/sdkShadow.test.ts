@@ -120,4 +120,27 @@ describe("sdkShadowDispatch (integration)", () => {
 
     expect(session.getElement("hf-box")?.attributes["data-name"]).toBe("hero");
   });
+
+  it("returns dispatch_error when dispatch throws — does not propagate", async () => {
+    const { sdkShadowDispatch } = await import("./sdkShadow");
+    const session = await openComposition(BASE_HTML);
+    // Poison dispatch so it throws on any call
+    session.dispatch = () => {
+      throw new Error("sdk internal error");
+    };
+
+    const ops: PatchOperation[] = [{ type: "inline-style", property: "color", value: "red" }];
+    let result: ReturnType<typeof sdkShadowDispatch> | undefined;
+    expect(() => {
+      result = sdkShadowDispatch(session, "hf-box", ops);
+    }).not.toThrow();
+
+    expect(result!.dispatched).toBe(false);
+    expect(result!.mismatches).toHaveLength(1);
+    expect(result!.mismatches[0]).toMatchObject<SdkShadowMismatch>({
+      kind: "dispatch_error",
+      hfId: "hf-box",
+      error: expect.stringContaining("sdk internal error"),
+    });
+  });
 });
