@@ -17,6 +17,7 @@ import { useBlockHandlers } from "./hooks/useBlockHandlers";
 import { useAppHotkeys } from "./hooks/useAppHotkeys";
 import { useClipboard } from "./hooks/useClipboard";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "./utils/studioUiPreferences";
+import { selectedKeyframePercentagesForElement } from "./utils/keyframeSelection";
 import { useCaptionDetection } from "./hooks/useCaptionDetection";
 import { useRenderClipContent } from "./hooks/useRenderClipContent";
 import { useConsoleErrorCapture } from "./hooks/useConsoleErrorCapture";
@@ -305,13 +306,13 @@ export function StudioApp() {
   resetKeyframesRef.current = domEditSession.handleResetSelectedElementKeyframes;
   invalidateGsapCacheRef.current = domEditSession.invalidateGsapCache;
   deleteSelectedKeyframesRef.current = () => {
-    const sk = usePlayerStore.getState().selectedKeyframes;
+    const { selectedKeyframes, selectedElementId } = usePlayerStore.getState();
     const a = domEditSession.selectedGsapAnimations.find((x) => x.keyframes);
-    if (!a || sk.size === 0) return;
-    sk.forEach((k) => {
-      const p = Number(k.split(":")[1]);
-      if (Number.isFinite(p)) domEditSession.handleGsapRemoveKeyframe(a.id, p);
-    });
+    if (!a) return;
+    // Only the active element's keyframes; a stale cross-element selection must not delete here.
+    for (const p of selectedKeyframePercentagesForElement(selectedKeyframes, selectedElementId)) {
+      domEditSession.handleGsapRemoveKeyframe(a.id, p);
+    }
   };
   useCaptionDetection({
     projectId,
