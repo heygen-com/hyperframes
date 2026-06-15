@@ -13,19 +13,36 @@ Install the skills in your project (or globally for your agent):
 npx skills add heygen-com/hyperframes
 ```
 
-In Claude Code, restart the session after installing. Skills register as **slash commands**:
+The installer shows a picker. Select the **core skills** below — every project needs them. In Claude Code, restart the session after installing; the skills register as **slash commands**. Start at `/hyperframes`: it orients you to the whole surface and routes "make me a video" requests to the right workflow.
 
-| Slash command              | What it loads                                                              |
-| -------------------------- | -------------------------------------------------------------------------- |
-| `/hyperframes`             | Composition authoring — HTML structure, timing, captions, TTS, transitions |
-| `/hyperframes-cli`         | Dev-loop CLI — `init`, `lint`, `inspect`, `preview`, `render`, `doctor`    |
-| `/hyperframes-media`       | Asset preprocessing — `tts`, `transcribe`, `remove-background`             |
-| `/hyperframes-registry`    | Block and component installation via `hyperframes add`                     |
-| `/website-to-video`  | Capture a URL and turn it into a video; runs the full [Hyperframes pipeline](/guides/pipeline) |
-| `/gsap`                    | GSAP animation API — timelines, easing, ScrollTrigger, plugins             |
+**Core skills — install all of these**
+
+| Slash command           | What it loads                                                              |
+| ----------------------- | -------------------------------------------------------------------------- |
+| `/hyperframes`          | **Read first.** The entry skill — capability map + video router; sends "make me a video" intent to the right workflow |
+| `/hyperframes-core`     | Composition contract — HTML structure, `data-*` attributes, clips, tracks  |
+| `/hyperframes-animation`| All animation — motion rules, scene blueprints, transitions, and the runtime adapters (GSAP, Lottie, Three.js, Anime.js, CSS, WAAPI, TypeGPU) |
+| `/hyperframes-creative` | Creative direction — design spec, palettes, typography, narration, beats   |
+| `/hyperframes-cli`      | Dev-loop CLI — `init`, `lint`, `inspect`, `preview`, `render`, `doctor`    |
+| `/hyperframes-media`    | Asset preprocessing — `tts`, `transcribe`, `remove-background`             |
+| `/hyperframes-registry` | Block and component installation via `hyperframes add`                     |
+| `/general-video`        | The general authoring workflow — fallback for any video that doesn't match a specific workflow below |
+
+**Optional workflows — add the ones that match your inputs** (`/hyperframes` routes to whichever you've installed)
+
+| Slash command            | Input → output                                                              |
+| ------------------------ | --------------------------------------------------------------------------- |
+| `/product-launch-video`  | A product URL / brief / script → launch or promo video                      |
+| `/website-to-video`      | A general website / URL → a video of the site (tour / showcase / social clip) |
+| `/faceless-explainer`    | Arbitrary text (no URL) → faceless explainer with its own TTS narration     |
+| `/pr-to-video`           | A GitHub PR → code-change explainer                                         |
+| `/embedded-captions`     | An existing talking-head video → the same footage with captions / subtitles |
+| `/graphic-overlays`      | An existing talking-head video → footage packaged with designed graphic cards |
+| `/motion-graphics`       | A short, unnarrated, design-led motion graphic (logo sting, kinetic type, stat / chart) |
+| `/remotion-to-hyperframes` | Port an existing Remotion (React) composition to HyperFrames HTML         |
 
 <Tip>
-  Always prefix Hyperframes prompts with `/hyperframes` (or invoke the skill another way for non-Claude agents). This loads the skill context explicitly so the agent gets composition rules right the first time, instead of relying on whatever it remembers about web video.
+  To skip the picker and install everything (core + every workflow) in one shot, run `npx skills add heygen-com/hyperframes --all`. And start Hyperframes prompts with `/hyperframes` (or invoke the skill another way for non-Claude agents) — it loads the routing + composition context explicitly so the agent picks the right workflow and gets the rules right the first time.
 </Tip>
 
 ## Claude Design

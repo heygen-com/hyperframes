@@ -46,7 +46,7 @@ Prefix a skill name with `/` to load it explicitly:
 ```
 
 ```
-/gsap Add a scale-pop animation to the title element.
+/hyperframes-animation Add a scale-pop animation to the title element.
 ```
 
 ```
@@ -166,7 +166,7 @@ Authorize via OAuth when prompted. See the [MCP guide](/guides/mcp) for full det
 
 ## Tips
 
-- **Always start with `/hyperframes` for composition work.** This loads the full skill context — composition rules, data attributes, GSAP patterns, caption formats — that generic web knowledge doesn't cover.
+- **Always start with `/hyperframes`.** It's the entry skill — it orients you to the whole surface and routes your request to the right workflow, pulling in the domain skills (`/hyperframes-core` for composition rules and data attributes, `/hyperframes-animation` for GSAP and other runtime patterns) that generic web knowledge doesn't cover.
 - **Use `/skills` to check skill status.** If output looks wrong, open the skills picker to verify the HyperFrames skills are enabled.
 - **Run `npx hyperframes lint` before rendering.** The linter catches structural issues the agent might miss on complex multi-scene edits.
 - **Keep the preview server running in a separate terminal.** You see every edit reflected in real time while prompting in Copilot CLI.

@@ -1,6 +1,6 @@
 ---
 name: pr-to-video
-description: pr-to-video workflow - a GitHub pull request (URL like github.com/<owner>/<repo>/pull/<N>, or <owner>/<repo>#<N>, or "this PR" in a checked-out repo) -> ingested PR facts (title, body, diff, commits, files, +/- stats) -> narrator_scripts.json + audio (voice + BGM) + section_plan.md -> code-diff / before-after / impact explainer video. Input is a CODE CHANGE. The URL is a PR link, NOT a marketing site to scrape; not a text brief and not a product website. For a non-PR input (product site, general website, topic text), see /hyperframes-read-first.
+description: pr-to-video workflow - a GitHub pull request (URL like github.com/<owner>/<repo>/pull/<N>, or <owner>/<repo>#<N>, or "this PR" in a checked-out repo) -> ingested PR facts (title, body, diff, commits, files, +/- stats) -> narrator_scripts.json + audio (voice + BGM) + section_plan.md -> code-diff / before-after / impact explainer video. Input is a CODE CHANGE. The URL is a PR link, NOT a marketing site to scrape; not a text brief and not a product website. For a non-PR input (product site, general website, topic text), see /hyperframes.
 metadata:
   {
     "tags": "orchestrator, pipeline, pr-to-video, changelog, dev-rel, code-explainer, release-notes",
@@ -11,7 +11,7 @@ metadata:
 
 Input is a **GitHub pull request** (a code change), supplied as a PR URL, an `<owner>/<repo>#<N>` ref, or "this PR" while a repo with an open PR is checked out. Output is a **code-change explainer**: what shipped, why, and how it works — rendered from the diff/commits as before-after, diff-highlight, file-tree, and impact scenes. Default length **up to ~3 min** (sweet spot ~30-90s); a genuinely longer or exhaustive every-file walkthrough (5 min+) is a different register → `/general-video`. There is **no website scrape and no headless Chrome for ingest** — ingest is the `gh` CLI. The shipped style preset is always **claude** (warm editorial; signature navy code window).
 
-> **Confirm the route before Step 0.** This skill explains a **GitHub pull request** (a code change read via `gh`). If the input is a **marketing / product site** → `/product-launch-video`; a **general website** → `/website-to-video`; a **topic / article with no PR** → `/faceless-explainer`; a **whole-repo tour or multi-PR release** → `/general-video`. **Out of scope**: live / at-render-time data — PR facts are read once at author time and baked in. Handed a non-PR input, or unsure? **Read `/hyperframes-read-first` first.**
+> **Confirm the route before Step 0.** This skill explains a **GitHub pull request** (a code change read via `gh`). If the input is a **marketing / product site** → `/product-launch-video`; a **general website** → `/website-to-video`; a **topic / article with no PR** → `/faceless-explainer`; a **whole-repo tour or multi-PR release** → `/general-video`. **Out of scope**: live / at-render-time data — PR facts are read once at author time and baked in. Handed a non-PR input, or unsure? **Read `/hyperframes` first.**
 
 This workflow owns only the PR-specific front (**ingest + story-design**); every phase marked _shared_ reuses the engine copied from faceless-explainer unchanged (it lives under this skill's own `scripts/` + `agents/` + `phases/`, so `<SKILL_DIR>` resolves to pr-to-video).
 
@@ -46,7 +46,7 @@ macOS Apple Silicon or Linux x64. System tools: `brew install python@3.11 node f
 
 ### Step 0.0 - Confirm the brief (ALWAYS ask one round, then build)
 
-Before Step 0, **always pause and ask the brief in one message, then wait for the user — never skip this, even for a request that looks complete.** Lead with a recommended default for each field and pre-fill anything the user already gave (confirm it rather than re-asking blindly): the **angle** (changelog / feature reveal / fix / refactor — default: infer from the PR), the **audience** (developers vs general users — default: developers), **length** (default ~60-90s), and — if `/hyperframes-read-first` didn't set them — **aspect** (default 16:9) and **language**. Style is always `claude`. Proceed to Step 0 only after the user replies; a "go" / "use the defaults" is a valid reply that accepts every default.
+Before Step 0, **always pause and ask the brief in one message, then wait for the user — never skip this, even for a request that looks complete.** Lead with a recommended default for each field and pre-fill anything the user already gave (confirm it rather than re-asking blindly): the **angle** (changelog / feature reveal / fix / refactor — default: infer from the PR), the **audience** (developers vs general users — default: developers), **length** (default ~60-90s), and — if `/hyperframes` didn't set them — **aspect** (default 16:9) and **language**. Style is always `claude`. Proceed to Step 0 only after the user replies; a "go" / "use the defaults" is a valid reply that accepts every default.
 
 ### Step 0 - Initialize the video project
 
@@ -422,7 +422,7 @@ Read `$PROJECT_DIR/context.log` and resume from:
     └── renders/video.mp4
 ```
 
-## Routing note (for the hyperframes-read-first router)
+## Routing note (for the hyperframes router)
 
 - **Input:** a **GitHub PR** — a code change (PR URL, `owner/repo#N`, or "this PR"). A URL, but **a `github.com/.../pull/N` link, not a product/marketing website**.
 - **Output:** code-change explainer, up to ~3 min (sweet spot ~30-90s); 5 min+ exhaustive deep-dives → `/general-video`.

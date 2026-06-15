@@ -106,14 +106,16 @@ These rules are non-negotiable for any adapter. They are the foundation of Hyper
 
 First-party runtime adapters:
 
+All runtime adapters live in the `/hyperframes-animation` skill — invoke it for the runtime-specific seek API as well as motion rules, scene blueprints, and transitions.
+
 | Runtime | Seek Method | Skill |
 |---------|-------------|-------|
-| [GSAP](/guides/gsap-animation) | `timeline.totalTime(timeSeconds)` or `timeline.seek(timeSeconds)` | `/gsap` |
-| Anime.js | `instance.seek(timeMs)` for animations registered on `window.__hfAnime` | `/animejs` |
-| CSS keyframes | Browser `Animation.currentTime`, with paused negative-delay fallback | `/css-animations` |
-| Lottie / dotLottie | `goToAndStop(timeMs, false)`, raw-frame setters, or player seek APIs | `/lottie` |
-| Three.js / WebGL | `hf-seek` events plus `window.__hfThreeTime` for deterministic scene rendering | `/three` |
-| Web Animations API | `document.getAnimations()` and `animation.currentTime` | `/waapi` |
+| [GSAP](/guides/gsap-animation) | `timeline.totalTime(timeSeconds)` or `timeline.seek(timeSeconds)` | `/hyperframes-animation` |
+| Anime.js | `instance.seek(timeMs)` for animations registered on `window.__hfAnime` | `/hyperframes-animation` |
+| CSS keyframes | Browser `Animation.currentTime`, with paused negative-delay fallback | `/hyperframes-animation` |
+| Lottie / dotLottie | `goToAndStop(timeMs, false)`, raw-frame setters, or player seek APIs | `/hyperframes-animation` |
+| Three.js / WebGL | `hf-seek` events plus `window.__hfThreeTime` for deterministic scene rendering | `/hyperframes-animation` |
+| Web Animations API | `document.getAnimations()` and `animation.currentTime` | `/hyperframes-animation` |
 
 Community adapters are welcome -- if it can seek by frame, it belongs in Hyperframes.
 

@@ -13,7 +13,26 @@ Install the HyperFrames skills, then describe the video you want:
 npx skills add heygen-com/hyperframes
 ```
 
-This teaches your agent (Claude Code, Cursor, Gemini CLI, Codex, [Google Antigravity](/guides/antigravity), [GitHub Copilot CLI](/guides/copilot-cli)) how to write correct compositions, GSAP timelines, Tailwind v4 browser-runtime styles, and first-party adapter animations. In Claude Code the skills register as slash commands — `/hyperframes` for composition authoring, `/hyperframes-cli` for the dev-loop commands (init, lint, preview, render), `/hyperframes-media` for asset preprocessing (TTS, transcription, background removal), `/tailwind` for `init --tailwind` projects, `/gsap` for timeline animation help, and `/animejs`, `/css-animations`, `/lottie`, `/three`, or `/waapi` when a composition uses those runtimes. Invoking the slash command loads the skill context explicitly, which produces correct output the first time.
+The installer shows a picker. Select the **core set** every project needs — these register as slash commands in Claude Code (Cursor, Gemini CLI, Codex, [Google Antigravity](/guides/antigravity), and [GitHub Copilot CLI](/guides/copilot-cli) load them too):
+
+| Core skill (install all) | What it does |
+|--------------------------|--------------|
+| `/hyperframes` | **The entry skill — read it first.** Orients you to the whole surface and routes "make me a video" to the right workflow |
+| `/hyperframes-core` | Composition contract — HTML structure, `data-*` attributes, clips, tracks |
+| `/hyperframes-animation` | All animation + the GSAP / Lottie / Three.js / Anime.js / CSS / WAAPI / TypeGPU runtime adapters |
+| `/hyperframes-creative` | Design direction — palettes, typography, narration, beat planning |
+| `/hyperframes-cli` | Dev-loop CLI — init, lint, preview, render, doctor |
+| `/hyperframes-media` | Asset preprocessing — TTS, transcription, background removal |
+| `/hyperframes-registry` | Install catalog blocks and components |
+| `/general-video` | The general authoring workflow — the fallback for any video that doesn't match a specific workflow |
+
+The **workflow skills** are optional — add the ones that match your inputs, and `/hyperframes` routes to whichever you've installed: `/product-launch-video`, `/website-to-video`, `/faceless-explainer`, `/pr-to-video`, `/embedded-captions`, `/graphic-overlays`, `/motion-graphics`, `/remotion-to-hyperframes`.
+
+<Tip>
+  To skip the picker and install everything (core + every workflow) in one shot, run `npx skills add heygen-com/hyperframes --all`.
+</Tip>
+
+These skills teach your agent how to write correct compositions, GSAP and runtime-adapter animations, Tailwind v4 browser-runtime styles, captions, and voiceovers. Invoking a slash command loads its context explicitly, which produces correct output the first time — and **starting at `/hyperframes` lets it route your request to the right workflow.**
 
 <Note>
   Claude Design uses a different entry path. Open [`docs/guides/claude-design-hyperframes.md`](https://github.com/heygen-com/hyperframes/blob/main/docs/guides/claude-design-hyperframes.md) on GitHub, click the download button (↓) to save it, then attach to your Claude Design chat. It produces a valid first draft you can refine in any AI coding agent. See the [Claude Design guide](/guides/claude-design).

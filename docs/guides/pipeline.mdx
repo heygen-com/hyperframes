@@ -154,7 +154,7 @@ This is where the storyboard becomes runnable HTML. Each composition is a self-c
 
 For multi-beat videos, spawn a focused sub-agent per beat. Each one gets fresh context, the storyboard section for its beat, the asset paths it needs, and the relevant technique references. That produces noticeably better output than building every beat in one long-running context.
 
-After each composition is built, run a self-review for layout, asset placement, and animation quality. The [`/hyperframes`](/guides/prompting) skill encodes the composition rules: required `class="clip"` attributes, GSAP timeline registration, `data-*` attribute semantics, and adapter registries.
+After each composition is built, run a self-review for layout, asset placement, and animation quality. The [`/hyperframes-core`](/guides/prompting) skill encodes the composition rules — required `class="clip"` attributes, `data-*` attribute semantics — and [`/hyperframes-animation`](/guides/prompting) covers GSAP timeline registration and adapter registries.
 
 **Gate:** Every composition is self-reviewed. No overlapping elements, no misplaced assets, no static images sitting unanimated.
 

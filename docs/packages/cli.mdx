@@ -184,7 +184,7 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
 
     In non-interactive mode, `--example` is required — the CLI errors with a usage example if missing. In interactive mode (default on TTY), you choose the example interactively. Pass `--non-interactive` to require `--example` via flag. When `--video` or `--audio` is provided, the CLI automatically transcribes the audio with Whisper and patches captions into the composition (use `--skip-transcribe` to disable).
 
-    `--tailwind` injects the pinned Tailwind v4 browser runtime into scaffolded HTML and exposes a `window.__tailwindReady` promise that renders wait on before capturing frame 0. Use the `/tailwind` skill when editing these projects so agents follow v4 CSS-first patterns instead of v3 `tailwind.config.js` and `@tailwind` directive patterns. The browser runtime is still intended for scaffolded projects and quick iteration; for fully offline or locked-down production renders, compile Tailwind to CSS and include the stylesheet directly.
+    `--tailwind` injects the pinned Tailwind v4 browser runtime into scaffolded HTML and exposes a `window.__tailwindReady` promise that renders wait on before capturing frame 0. Use the `/hyperframes-core` skill when editing these projects so agents follow v4 CSS-first patterns instead of v3 `tailwind.config.js` and `@tailwind` directive patterns. The browser runtime is still intended for scaffolded projects and quick iteration; for fully offline or locked-down production renders, compile Tailwind to CSS and include the stylesheet directly.
 
     After scaffolding, the CLI installs AI coding skills for Claude Code, Gemini CLI, and Codex CLI (use `--skip-skills` to disable). See [`skills`](#skills) command.
 
@@ -888,7 +888,7 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
     | `--codex` | Install to Codex CLI (`~/.codex/skills/`) |
     | `--cursor` | Install to Cursor (`.cursor/skills/` in current project) |
 
-    Skills are fetched from GitHub and include composition authoring, Tailwind v4 browser-runtime guidance, GSAP animation patterns, Anime.js, CSS animation, Lottie, Three.js, and WAAPI adapter patterns, registry block/component wiring, and other domain-specific knowledge. The `init` command also offers to install skills automatically after scaffolding a project.
+    Skills are fetched from GitHub: the `/hyperframes` entry skill (routes "make me a video" to a workflow), the composition contract and Tailwind v4 browser-runtime guidance (`/hyperframes-core`), all animation including the GSAP / Anime.js / CSS / Lottie / Three.js / WAAPI / TypeGPU runtime adapters (`/hyperframes-animation`), creative direction (`/hyperframes-creative`), media preprocessing (`/hyperframes-media`), registry block/component wiring (`/hyperframes-registry`), and the video workflows. The `init` command also offers to install skills automatically after scaffolding a project.
 
     #### Troubleshooting: `fatal: active post-checkout hook found during git clone`
 

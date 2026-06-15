@@ -10,7 +10,7 @@ This repo ships AI agent skills via [vercel-labs/skills](https://github.com/verc
 npx skills add heygen-com/hyperframes
 ```
 
-**Video-creation workflows** route through one entry skill — `/hyperframes-read-first` orients you to the whole surface and maps "make me a video" intent to a concrete workflow. Consult it before invoking a specific workflow:
+**Video-creation workflows** route through one entry skill — read `/hyperframes` first: it orients you to the whole surface and maps "make me a video" intent to a concrete workflow. Consult it before invoking a specific workflow:
 
 - `/product-launch-video` — a **product** URL (or a pre-written script / text brief in no-capture mode) → product launch / promo video, up to ~3 min (sweet spot ~30-90s).
 - `/website-to-video` — a **general** website / URL → a video _of_ the site (tour / showcase / social clip from captured screenshots + assets); for a product **launch / promo**, use `/product-launch-video`.
