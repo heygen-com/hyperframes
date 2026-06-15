@@ -136,6 +136,27 @@ export async function sdkCutoverPersist(
   }
 }
 
+export async function sdkTimingPersist(
+  hfId: string,
+  targetPath: string,
+  timingUpdate: { start?: number; duration?: number; trackIndex?: number },
+  sdkSession: Composition | null | undefined,
+  deps: CutoverDeps,
+  options?: CutoverOptions,
+): Promise<boolean> {
+  if (!sdkSession || !sdkSession.getElement(hfId)) return false;
+  try {
+    const before = sdkSession.serialize();
+    sdkSession.setTiming(hfId, timingUpdate);
+    await persistSdkSerialize(sdkSession, targetPath, before, deps, options);
+    trackStudioEvent("sdk_cutover_success", { hfId, opCount: 1 });
+    return true;
+  } catch (err) {
+    trackStudioEvent("sdk_cutover_fallback", { hfId, error: String(err) });
+    return false;
+  }
+}
+
 export async function sdkDeletePersist(
   hfId: string,
   originalContent: string,

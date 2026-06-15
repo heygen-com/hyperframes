@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { shouldUseSdkCutover, sdkCutoverPersist, sdkDeletePersist } from "./sdkCutover";
+import {
+  shouldUseSdkCutover,
+  sdkCutoverPersist,
+  sdkDeletePersist,
+  sdkTimingPersist,
+} from "./sdkCutover";
 import { openComposition } from "@hyperframes/sdk";
 import { createMemoryAdapter } from "@hyperframes/sdk/adapters/memory";
 import type { PatchOperation } from "./sourcePatcher";
@@ -363,6 +368,80 @@ describe("sdkDeletePersist", () => {
     expect(result).toBe(false);
     expect(deps.writeProjectFile).not.toHaveBeenCalled();
     expect(deps.reloadPreview).not.toHaveBeenCalled();
+  });
+});
+
+describe("sdkTimingPersist", () => {
+  const makeRef = <T>(val: T): MutableRefObject<T> => ({ current: val });
+  const makeDeps = () => ({
+    editHistory: { recordEdit: vi.fn().mockResolvedValue(undefined) },
+    writeProjectFile: vi.fn().mockResolvedValue(undefined),
+    reloadPreview: vi.fn(),
+    domEditSaveTimestampRef: makeRef(0),
+  });
+
+  const makeSession = (hasEl = true) =>
+    ({
+      getElement: vi.fn().mockReturnValue(hasEl ? { id: "hf-clip" } : null),
+      setTiming: vi.fn(),
+      serialize: vi
+        .fn()
+        .mockReturnValueOnce("<html>before</html>")
+        .mockReturnValue("<html>after</html>"),
+    }) as unknown as Parameters<typeof sdkTimingPersist>[3];
+
+  it("returns false when session is null", async () => {
+    expect(await sdkTimingPersist("hf-clip", "/comp.html", { start: 1 }, null, makeDeps())).toBe(
+      false,
+    );
+  });
+
+  it("returns false when element not found in session", async () => {
+    const session = makeSession(false);
+    expect(await sdkTimingPersist("hf-clip", "/comp.html", { start: 1 }, session, makeDeps())).toBe(
+      false,
+    );
+  });
+
+  it("calls setTiming with provided update and writes serialized content", async () => {
+    const deps = makeDeps();
+    const session = makeSession(true);
+    const result = await sdkTimingPersist(
+      "hf-clip",
+      "/comp.html",
+      { start: 2, duration: 5, trackIndex: 1 },
+      session,
+      deps,
+    );
+    expect(result).toBe(true);
+    expect(session!.setTiming).toHaveBeenCalledWith("hf-clip", {
+      start: 2,
+      duration: 5,
+      trackIndex: 1,
+    });
+    expect(deps.writeProjectFile).toHaveBeenCalledWith("/comp.html", "<html>after</html>");
+  });
+
+  it("captures before-state before setTiming dispatch", async () => {
+    const deps = makeDeps();
+    const session = makeSession(true);
+    await sdkTimingPersist("hf-clip", "/comp.html", { start: 3 }, session, deps);
+    expect(deps.editHistory.recordEdit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        files: { "/comp.html": { before: "<html>before</html>", after: "<html>after</html>" } },
+      }),
+    );
+  });
+
+  it("returns false and does not write on setTiming error", async () => {
+    const deps = makeDeps();
+    const session = makeSession(true);
+    (session!.setTiming as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      throw new Error("timing error");
+    });
+    const result = await sdkTimingPersist("hf-clip", "/comp.html", { start: 1 }, session, deps);
+    expect(result).toBe(false);
+    expect(deps.writeProjectFile).not.toHaveBeenCalled();
   });
 });
 
