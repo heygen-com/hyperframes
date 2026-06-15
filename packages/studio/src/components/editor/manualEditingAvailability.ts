@@ -104,17 +104,6 @@ export const STUDIO_GSAP_DRAG_INTERCEPT_ENABLED = resolveStudioBooleanEnvFlag(
 
 export const STUDIO_PREVIEW_SELECTION_ENABLED = STUDIO_INSPECTOR_PANELS_ENABLED;
 
-// Stage 7 Step 3b: shadow dispatch parity mode — dispatches ops to the SDK
-// session alongside the server patch path and logs mismatches via telemetry.
-// Default on: server stays authoritative (no user-visible change), so we want
-// the sdk_shadow_dispatch parity signal from all traffic. Disable via
-// VITE_STUDIO_SDK_SHADOW_ENABLED=false.
-export const STUDIO_SDK_SHADOW_ENABLED = resolveStudioBooleanEnvFlag(
-  env,
-  ["VITE_STUDIO_SDK_SHADOW_ENABLED"],
-  true,
-);
-
 // Stage 7 Step 3c: SDK cutover — routes inline-style ops through SDK dispatch
 // instead of the server patch-element API. Default false; enable via
 // VITE_STUDIO_SDK_CUTOVER_ENABLED=true. Requires SDK session to be open.
