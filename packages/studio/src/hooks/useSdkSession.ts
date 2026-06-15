@@ -44,7 +44,8 @@ export function useSdkSession(
 
     return () => {
       cancelled = true;
-      comp?.dispose();
+      const c = comp;
+      if (c) void c.flush().finally(() => c.dispose());
     };
   }, [projectId, activeCompPath]);
 
