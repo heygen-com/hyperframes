@@ -19,7 +19,7 @@ npx hyperframes <command>
 - Preview compositions with live hot reload (`preview`)
 - Render compositions to MP4 locally or in Docker (`render`)
 - Lint compositions for structural issues (`lint`)
-- Inspect rendered visual layout for text overflow, clipped containers, and overlapping text (`inspect`)
+- Inspect rendered visual layout for text overflow, clipped containers, and overlapping text, plus verify motion intent against the seeked timeline (`inspect`)
 - Capture key frames as PNG screenshots (`snapshot`)
 - Check your environment for missing dependencies (`doctor`)
 
@@ -579,6 +579,31 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
     ```bash
     npx hyperframes layout [dir] --json
     ```
+
+    #### Motion verification
+
+    `inspect` also checks **motion intent** against the same seeked timeline the renderer uses — catching the render-≠-preview bugs that layout sampling can't, like an entrance reveal the seek skips, a broken stagger order, an element that drifts off-frame mid-tween, or a shot that freezes. Drop a `*.motion.json` sidecar next to the composition and `inspect` evaluates it automatically (no flag, no authoring changes); without a sidecar, `inspect` behaves exactly as before.
+
+    ```json
+    {
+      "duration": 6,
+      "assertions": [
+        { "kind": "appearsBy", "selector": "#headline", "bySec": 0.5 },
+        { "kind": "before", "a": "#headline", "b": "#cta" },
+        { "kind": "staysInFrame", "selector": ".card" },
+        { "kind": "keepsMoving", "withinSelector": ".scene" }
+      ]
+    }
+    ```
+
+    | Assertion | Checks |
+    |-----------|--------|
+    | `appearsBy(selector, bySec)` | the element is visible (opacity ≥ 0.5) no later than `bySec` — catches reveals the seek lands past (`motion_appears_late`) |
+    | `before(a, b)` | `a` first appears strictly before `b` — catches broken stagger order (`motion_out_of_order`) |
+    | `staysInFrame(selector)` | once visible, the element's box never leaves the canvas — catches off-frame drift (`motion_off_frame`) |
+    | `keepsMoving(withinSelector?)` | no fully-static window longer than `maxStaticSec` (default 2s) — catches frozen shots (`motion_frozen`) |
+
+    `duration`, `keepsMoving.withinSelector`, and `keepsMoving.maxStaticSec` are optional. Findings are reported in the same shape and JSON envelope as layout findings, are **errors by default** (a failed assertion fails the run), and a selector that matches nothing is reported as `motion_selector_missing` rather than silently passing.
 
     ### `snapshot`
 

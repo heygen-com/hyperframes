@@ -18,11 +18,22 @@ import {
   summarizeLayoutIssues,
   type LayoutIssue,
 } from "../utils/layoutAudit.js";
+import {
+  ambiguousIssue,
+  collectSamplingTargets,
+  evaluateMotion,
+  type MotionFrame,
+} from "../utils/motionAudit.js";
+import { findMotionSpec, readMotionSpec, type MotionSpec } from "../utils/motionSpec.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const SEEK_SETTLE_MS = 120;
+// All new envelope fields are optional (?); additive changes don't bump this.
 const INSPECT_SCHEMA_VERSION = 1;
+// Motion verification (#1437): dense sampling grid for the seeked-timeline checks.
+const MOTION_FPS = 20;
+const MOTION_MAX_SAMPLES = 300;
 
 export const examples: Example[] = [
   ["Inspect visual layout across the current composition", "hyperframes layout"],
@@ -33,6 +44,10 @@ export const examples: Example[] = [
     "Also sample at tween boundaries to catch transient overlaps",
     "hyperframes layout --at-transitions",
   ],
+  [
+    "Verify motion intent (add a *.motion.json sidecar next to the composition)",
+    "hyperframes layout --json",
+  ],
 ];
 
 interface LayoutAuditResult {
@@ -41,6 +56,14 @@ interface LayoutAuditResult {
   transitionSamples: number[];
   transitionSamplesDropped: number;
   rawIssues: LayoutIssue[];
+  motionSamples: number;
+}
+
+function buildMotionSampleTimes(duration: number): number[] {
+  if (!Number.isFinite(duration) || duration <= 0) return [];
+  const count = Math.min(MOTION_MAX_SAMPLES, Math.max(2, Math.ceil(duration * MOTION_FPS) + 1));
+  const step = duration / (count - 1);
+  return Array.from({ length: count }, (_, index) => Math.round(index * step * 1000) / 1000);
 }
 
 async function getCompositionDuration(page: import("puppeteer-core").Page): Promise<number> {
@@ -205,6 +228,7 @@ async function runLayoutAudit(
     maxTransitionSamples?: number;
     timeout: number;
     tolerance: number;
+    motion?: MotionSpec;
   },
 ): Promise<LayoutAuditResult> {
   const { ensureBrowser } = await import("../browser/manager.js");
@@ -259,25 +283,14 @@ async function runLayoutAudit(
       transitionSamplesDropped = transitions.dropped;
     }
     const samples = mergeSampleTimes(baseSamples, transitionSamples);
-    if (samples.length === 0) {
-      return { duration, samples, transitionSamples, transitionSamplesDropped, rawIssues: [] };
-    }
 
-    await page.addScriptTag({ content: loadLayoutAuditScript() });
+    const issues = await collectLayoutIssues(page, samples, opts.tolerance);
 
-    const issues: LayoutIssue[] = [];
-    for (const time of samples) {
-      await seekTo(page, time);
-      const sampleIssues = await page.evaluate(
-        (auditOptions: { time: number; tolerance: number }) => {
-          const win = window as unknown as {
-            __hyperframesLayoutAudit?: (options: { time: number; tolerance: number }) => unknown[];
-          };
-          return win.__hyperframesLayoutAudit?.(auditOptions) ?? [];
-        },
-        { time, tolerance: opts.tolerance },
-      );
-      issues.push(...(sampleIssues as LayoutIssue[]));
+    let motionSamples = 0;
+    if (opts.motion) {
+      const motion = await runMotionPass(page, opts.motion, duration);
+      issues.push(...motion.issues);
+      motionSamples = motion.sampleCount;
     }
 
     return {
@@ -286,6 +299,7 @@ async function runLayoutAudit(
       transitionSamples,
       transitionSamplesDropped,
       rawIssues: dedupeLayoutIssues(issues),
+      motionSamples,
     };
   } finally {
     await chromeBrowser?.close().catch(() => {});
@@ -293,17 +307,143 @@ async function runLayoutAudit(
   }
 }
 
-function loadLayoutAuditScript(): string {
-  const candidates = [
-    join(__dirname, "layout-audit.browser.js"),
-    join(__dirname, "commands", "layout-audit.browser.js"),
-  ];
-
+function loadBrowserScript(name: string): string {
+  const candidates = [join(__dirname, name), join(__dirname, "commands", name)];
   for (const candidate of candidates) {
     if (existsSync(candidate)) return readFileSync(candidate, "utf-8");
   }
+  throw new Error(`Missing browser script ${name}`);
+}
 
-  throw new Error("Missing layout audit browser script");
+function loadLayoutAuditScript(): string {
+  return loadBrowserScript("layout-audit.browser.js");
+}
+
+async function collectLayoutIssues(
+  page: import("puppeteer-core").Page,
+  samples: number[],
+  tolerance: number,
+): Promise<LayoutIssue[]> {
+  if (samples.length === 0) return [];
+  await page.addScriptTag({ content: loadLayoutAuditScript() });
+
+  const issues: LayoutIssue[] = [];
+  for (const time of samples) {
+    await seekTo(page, time);
+    const sampleIssues = await page.evaluate(
+      (auditOptions: { time: number; tolerance: number }) => {
+        const win = window as unknown as {
+          __hyperframesLayoutAudit?: (options: { time: number; tolerance: number }) => unknown[];
+        };
+        return win.__hyperframesLayoutAudit?.(auditOptions) ?? [];
+      },
+      { time, tolerance },
+    );
+    issues.push(...(sampleIssues as LayoutIssue[]));
+  }
+  return issues;
+}
+
+/** Reject selectors matching multiple elements — first-match-only sampling silently passes for siblings. */
+async function findAmbiguousSelectors(
+  page: import("puppeteer-core").Page,
+  selectors: string[],
+): Promise<LayoutIssue[]> {
+  if (selectors.length === 0) return [];
+  const multiMatch = await page.evaluate(
+    (sels: string[]) =>
+      sels.filter((sel) => {
+        try {
+          return document.querySelectorAll(sel).length > 1;
+        } catch {
+          return false;
+        }
+      }),
+    selectors,
+  );
+  return multiMatch.map(ambiguousIssue);
+}
+
+async function collectMotionFrames(
+  page: import("puppeteer-core").Page,
+  times: number[],
+  selectors: string[],
+  livenessScopes: string[],
+): Promise<MotionFrame[]> {
+  const frames: MotionFrame[] = [];
+  for (const time of times) {
+    await seekTo(page, time);
+    const sample = await page.evaluate(
+      (options: { selectors: string[]; livenessScopes: string[] }) => {
+        const win = window as unknown as {
+          __hyperframesMotionSample?: (o: { selectors: string[]; livenessScopes: string[] }) => {
+            data: MotionFrame["data"];
+            liveness: Record<string, string>;
+          };
+        };
+        return win.__hyperframesMotionSample?.(options) ?? { data: {}, liveness: {} };
+      },
+      { selectors, livenessScopes },
+    );
+    frames.push({ time, data: sample.data, liveness: sample.liveness });
+  }
+  return frames;
+}
+
+/**
+ * Motion verification (#1437): sample the asserted selectors on a dense grid
+ * against the same seeked timeline the renderer uses, then evaluate the spec's
+ * assertions in Node. Reuses the live page from the layout audit — no extra
+ * Chrome launch. Findings reuse the LayoutIssue shape.
+ */
+async function runMotionPass(
+  page: import("puppeteer-core").Page,
+  spec: MotionSpec,
+  duration: number,
+): Promise<{ issues: LayoutIssue[]; sampleCount: number }> {
+  const times = buildMotionSampleTimes(spec.duration ?? duration);
+  if (times.length === 0) return { issues: [], sampleCount: 0 };
+
+  const { selectors, livenessScopes } = collectSamplingTargets(spec.assertions);
+  const ambiguous = await findAmbiguousSelectors(page, selectors);
+  if (ambiguous.length > 0) return { issues: ambiguous, sampleCount: 0 };
+
+  const canvas = await page.evaluate(() => ({
+    width: window.innerWidth,
+    height: window.innerHeight,
+  }));
+  await page.addScriptTag({ content: loadBrowserScript("motion-sample.browser.js") });
+  const frames = await collectMotionFrames(page, times, selectors, livenessScopes);
+  return { issues: evaluateMotion(frames, spec.assertions, canvas), sampleCount: frames.length };
+}
+
+/** Read + validate the motion sidecar; print the error and exit on a bad spec. */
+function resolveMotionSpec(specPath: string, json: boolean): MotionSpec {
+  const parsed = readMotionSpec(specPath);
+  if (parsed.ok) return parsed.spec;
+
+  const message = `Invalid motion spec ${specPath}: ${parsed.errors.join("; ")}`;
+  if (json) {
+    console.log(
+      JSON.stringify(
+        withMeta({
+          schemaVersion: INSPECT_SCHEMA_VERSION,
+          ok: false,
+          error: message,
+          issues: [],
+          errorCount: 0,
+          warningCount: 0,
+          infoCount: 0,
+          issueCount: 0,
+        }),
+        null,
+        2,
+      ),
+    );
+  } else {
+    console.error(`${c.error("✗")} ${message}`);
+  }
+  process.exit(1);
 }
 
 function parseAt(value: unknown): number[] | undefined {
@@ -319,7 +459,8 @@ export function createInspectCommand(commandName: "inspect" | "layout") {
   return defineCommand({
     meta: {
       name: commandName,
-      description: "Inspect rendered composition layout for text and container overflow",
+      description:
+        "Inspect rendered composition layout for text/container overflow, plus optional motion verification via a *.motion.json sidecar",
     },
     args: {
       dir: { type: "positional", description: "Project directory", required: false },
@@ -386,11 +527,21 @@ export function createInspectCommand(commandName: "inspect" | "layout") {
       const strict = !!args.strict;
       const collapseStatic = args["collapse-static"] !== false;
 
+      // Motion verification (#1437): an optional `*.motion.json` sidecar opts the
+      // composition into seeked-timeline assertion checks. Absent → layout-only.
+      const motionSpecPath = findMotionSpec(project.dir);
+      const motionSpec = motionSpecPath
+        ? resolveMotionSpec(motionSpecPath, !!args.json)
+        : undefined;
+
       if (!args.json) {
         const baseLabel = at ? `${at.length} explicit timestamp(s)` : `${samples} timeline samples`;
         const sampleLabel = atTransitions ? `${baseLabel} + transition boundaries` : baseLabel;
+        const motionLabel = motionSpec
+          ? ` + motion spec (${motionSpec.assertions.length} assertion(s))`
+          : "";
         console.log(
-          `${c.accent("◆")}  Inspecting layout for ${c.accent(project.name)} (${sampleLabel})`,
+          `${c.accent("◆")}  Inspecting layout for ${c.accent(project.name)} (${sampleLabel}${motionLabel})`,
         );
       }
 
@@ -402,6 +553,7 @@ export function createInspectCommand(commandName: "inspect" | "layout") {
           maxTransitionSamples,
           timeout,
           tolerance,
+          motion: motionSpec,
         });
         if (!args.json && result.transitionSamplesDropped > 0) {
           console.log(
@@ -429,6 +581,8 @@ export function createInspectCommand(commandName: "inspect" | "layout") {
                 tolerance,
                 strict,
                 collapseStatic,
+                motionSpec: motionSpec ? motionSpecPath : undefined,
+                motionSamples: motionSpec ? result.motionSamples : undefined,
                 ...summary,
                 totalIssueCount: limited.totalIssueCount,
                 truncated: limited.truncated,

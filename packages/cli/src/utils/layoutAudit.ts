@@ -15,7 +15,14 @@ export type LayoutIssueCode =
   | "canvas_overflow"
   | "container_overflow"
   | "content_overlap"
-  | "text_occluded";
+  | "text_occluded"
+  // Motion-verification findings (#1437) — evaluated against the seeked timeline.
+  | "motion_appears_late"
+  | "motion_out_of_order"
+  | "motion_off_frame"
+  | "motion_frozen"
+  | "motion_selector_missing"
+  | "motion_selector_ambiguous";
 
 export type LayoutIssueSeverity = "error" | "warning" | "info";
 

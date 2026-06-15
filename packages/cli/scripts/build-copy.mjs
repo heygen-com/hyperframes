@@ -97,6 +97,11 @@ async function main() {
     cpSync(contrastAuditScript, join(DIST, "commands", "contrast-audit.browser.js"));
   }
 
+  const motionSampleScript = join(CLI_ROOT, "src", "commands", "motion-sample.browser.js");
+  if (existsSync(motionSampleScript)) {
+    cpSync(motionSampleScript, join(DIST, "commands", "motion-sample.browser.js"));
+  }
+
   copyMdFiles(join(CLI_ROOT, "src", "docs"), join(DIST, "docs"));
 
   console.log("[build-copy] done");

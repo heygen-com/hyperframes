@@ -25,6 +25,7 @@
     // path, never imported, so they have no import-graph referrer.
     "packages/cli/src/commands/layout-audit.browser.js",
     "packages/cli/src/commands/contrast-audit.browser.js",
+    "packages/cli/src/commands/motion-sample.browser.js",
     // Worker entry points loaded dynamically by their *Pool.ts companions.
     "packages/producer/src/services/pngDecodeBlitWorker.ts",
     "packages/producer/src/services/shaderTransitionWorker.ts",
