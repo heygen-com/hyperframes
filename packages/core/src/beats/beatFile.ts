@@ -59,7 +59,9 @@ export function serializeBeats(times: number[], strengths: number[], audio: stri
 export function parseBeats(content: string): { times: number[]; strengths: number[] } | null {
   try {
     const data = JSON.parse(content) as BeatFileData;
-    if (!data || !Array.isArray(data.beats)) return null;
+    // Gate on the schema version so a future v2 file (with changed semantics)
+    // isn't silently parsed as v1 — an unknown version is treated as absent.
+    if (!data || data.version !== 1 || !Array.isArray(data.beats)) return null;
     const times: number[] = [];
     const strengths: number[] = [];
     for (const b of data.beats) {
