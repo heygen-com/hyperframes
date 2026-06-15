@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>Code Typing</title>
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js" integrity="sha384-sG0Hv1tP1lZCk9KQmrIbY/XNwi+OY84GQqhMscbnsoBFqAz8KNCil1kvfL3Hbbk2" crossorigin="anonymous"></script>
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
       html, body { width: 1920px; height: 1080px; overflow: hidden; background: #05070b; }
@@ -190,121 +190,6 @@
   // ---- single-scene effect builders (fade in, play, hold to end) -------------
   var FADE = 0.45;
 
-  function morph(tl, surface, states, start) {
-    var STEP = 1.2;
-    var HOLD = 1.0;
-    var t = start;
-    for (var s = 0; s < states.length - 1; s++) {
-      var parts = makeScene(surface, false);
-      var code = parts.code;
-      var fromEls = renderState(code, states[s]);
-      var fromR = rectsOf(fromEls);
-      var toEls = renderState(code, states[s + 1]);
-      var toR = rectsOf(toEls);
-      var base = code.getBoundingClientRect();
-      var seg = gsap.timeline();
-      var ENTER_AT = STEP * 0.45;
-      var FD = STEP * 0.5;
-      toEls.forEach(function (el, k) {
-        var fr = fromR.get(k);
-        var tr = toR.get(k);
-        if (fr) {
-          seg.fromTo(el, { x: fr.left - tr.left, y: fr.top - tr.top }, { x: 0, y: 0, duration: STEP, ease: "power2.inOut" }, 0);
-        } else {
-          seg.fromTo(el, { opacity: 0 }, { opacity: 1, duration: FD, ease: "power1.out" }, ENTER_AT);
-        }
-      });
-      var toKeys = new Set(toEls.keys());
-      var fromState = states[s];
-      for (var i = 0; i < fromState.tokens.length; i++) {
-        var tok = fromState.tokens[i];
-        if (tok.content === "\n" || toKeys.has(tok.key) || !fromR.has(tok.key)) continue;
-        var r = fromR.get(tok.key);
-        var span = document.createElement("span");
-        span.className = "tok";
-        span.textContent = tok.content;
-        span.style.position = "absolute";
-        span.style.left = r.left - base.left + "px";
-        span.style.top = r.top - base.top + "px";
-        span.style.color = tok.color;
-        code.appendChild(span);
-        seg.fromTo(span, { opacity: 1 }, { opacity: 0, duration: FD, ease: "power1.in" }, 0);
-      }
-      var segStart = t + FADE;
-      var segEnd = segStart + STEP + HOLD;
-      var isLast = s === states.length - 2;
-      tl.set(parts.scene, { opacity: 0 }, 0);
-      tl.to(parts.scene, { opacity: 1, duration: FADE, ease: "power1.out" }, t);
-      if (!isLast) tl.to(parts.scene, { opacity: 0, duration: FADE, ease: "power1.in" }, segEnd - FADE);
-      tl.add(seg, segStart);
-      t = segEnd - FADE;
-    }
-  }
-
-  function flight(tl, surface, states, start) {
-    var FLY = 0.95;
-    var STAGGER = 0.26;
-    var GAP = 20;
-    var parts = makeScene(surface, false);
-    parts.code.remove();
-    var scene = parts.scene;
-    var target = document.createElement("div");
-    target.className = "flight-target";
-    scene.appendChild(target);
-    var W = surface.clientWidth;
-    var H = surface.clientHeight;
-
-    var blocks = states.map(function (st) {
-      var blk = document.createElement("div");
-      blk.className = "flight-block";
-      renderState(blk, st);
-      scene.appendChild(blk);
-      return blk;
-    });
-    var n = blocks.length;
-
-    // Pass 1: measure natural size, then make every chip the SAME width (symmetry).
-    var maxW = 0;
-    var chipH = 0;
-    blocks.forEach(function (blk) {
-      var r = blk.getBoundingClientRect();
-      if (r.width > maxW) maxW = r.width;
-      if (r.height > chipH) chipH = r.height;
-    });
-    blocks.forEach(function (blk) {
-      blk.style.width = maxW + "px";
-    });
-
-    // Pass 2: evenly-stacked, left-aligned, group centered in the surface.
-    var stackH = n * chipH + (n - 1) * GAP;
-    var destLeft = Math.round((W - maxW) / 2);
-    var topY = Math.round((H - stackH) / 2);
-    blocks.forEach(function (blk, i) {
-      var destY = topY + i * (chipH + GAP);
-      blk.style.left = destLeft + "px";
-      blk.style.top = destY + "px";
-      // fly straight in from the left to the shared left edge — clean, no skew
-      var srcX = destLeft - W * 0.32;
-      tl.fromTo(
-        blk,
-        { x: srcX - destLeft, opacity: 0, scale: 0.96 },
-        { x: 0, opacity: 1, scale: 1, duration: FLY, ease: "power3.out" },
-        start + FADE + i * STAGGER,
-      );
-    });
-
-    // Even-padded panel tightly wrapping the uniform stack.
-    var padX = 30;
-    var padY = 24;
-    target.style.left = destLeft - padX + "px";
-    target.style.top = topY - padY + "px";
-    target.style.width = maxW + padX * 2 + "px";
-    target.style.height = stackH + padY * 2 + "px";
-    var landAt = start + FADE + (n - 1) * STAGGER + FLY;
-    tl.set(scene, { opacity: 1 }, 0);
-    tl.to(target, { opacity: 1, duration: 0.5, ease: "power1.out" }, landAt - 0.5);
-  }
-
   function typing(tl, surface, state, start) {
     var PER = 0.028; // seconds per character — smooth, fast typewriter
     var parts = makeScene(surface, true);
@@ -363,112 +248,10 @@
     });
   }
 
-  function diff(tl, surface, states, start) {
-    var DEL = 0.55;
-    var ADD = 0.6;
-    var ops = lineDiff(splitLines(states[0]), splitLines(states[1]));
-    var parts = makeScene(surface, false);
-    var code = parts.code;
-    var delEls = [];
-    var addEls = [];
-    ops.forEach(function (op) {
-      var ln = document.createElement("div");
-      ln.className = "diff-line" + (op.type === "del" ? " diff-del" : op.type === "add" ? " diff-add" : "");
-      var sign = document.createElement("span");
-      sign.className = "diff-sign";
-      sign.textContent = op.type === "del" ? "- " : op.type === "add" ? "+ " : "  ";
-      ln.appendChild(sign);
-      op.line.tokens.forEach(function (t) {
-        var s = document.createElement("span");
-        s.className = "tok";
-        s.textContent = t.content;
-        s.style.color = t.color;
-        ln.appendChild(s);
-      });
-      code.appendChild(ln);
-      if (op.type === "del") delEls.push(ln);
-      if (op.type === "add") addEls.push(ln);
-    });
-    tl.set(parts.scene, { opacity: 0 }, 0);
-    tl.to(parts.scene, { opacity: 1, duration: FADE, ease: "power1.out" }, start);
-    var atDel = start + FADE + 0.3;
-    delEls.forEach(function (el, k) {
-      tl.fromTo(el, { height: 46, opacity: 1 }, { height: 0, opacity: 0, duration: DEL, ease: "power2.inOut" }, atDel + k * 0.08);
-    });
-    var atAdd = atDel + DEL + 0.15;
-    addEls.forEach(function (el, k) {
-      tl.set(el, { height: 0, opacity: 0 }, 0);
-      tl.fromTo(el, { height: 0, opacity: 0 }, { height: 46, opacity: 1, duration: ADD, ease: "power2.out" }, atAdd + k * 0.12);
-    });
-  }
-
-  function highlight(tl, surface, state, start, targetIdx) {
-    var SWEEP = 0.9;
-    var parts = makeScene(surface, true);
-    var code = parts.code;
-    renderState(code, state);
-    var lines = code.querySelectorAll(".line");
-    fillGutter(parts.gutter, lines.length);
-    var base = code.getBoundingClientRect();
-    var idx = Math.max(0, Math.min(lines.length - 1, targetIdx));
-    var lr = lines[idx].getBoundingClientRect();
-    var box = document.createElement("div");
-    box.className = "hl-box";
-    box.style.left = lr.left - base.left - 8 + "px";
-    box.style.top = lr.top - base.top - 1 + "px";
-    box.style.height = lr.height + 2 + "px";
-    code.insertBefore(box, code.firstChild);
-    tl.set(parts.scene, { opacity: 0 }, 0);
-    tl.to(parts.scene, { opacity: 1, duration: FADE, ease: "power1.out" }, start);
-    var at = start + FADE + 0.2;
-    tl.fromTo(box, { width: 0, opacity: 0 }, { width: lr.width + 18, opacity: 1, duration: SWEEP, ease: "power2.inOut" }, at);
-    for (var i = 0; i < lines.length; i++) {
-      if (i === idx) continue;
-      tl.fromTo(lines[i], { opacity: 1 }, { opacity: 0.45, duration: SWEEP, ease: "power2.inOut" }, at);
-    }
-  }
-
-  function scroll(tl, surface, state, start, targetLine) {
-    var SCROLL = 1.7;
-    var parts = makeScene(surface, true);
-    var code = parts.code;
-    renderState(code, state);
-    var lines = code.querySelectorAll(".line");
-    fillGutter(parts.gutter, lines.length);
-    var surfRect = surface.getBoundingClientRect();
-    var idx = Math.max(0, Math.min(lines.length - 1, targetLine - 1));
-    var lr = lines[idx].getBoundingClientRect();
-    var lineCenter = lr.top + lr.height / 2 - surfRect.top;
-    var dy = surfRect.height * 0.5 - lineCenter;
-    var box = document.createElement("div");
-    box.className = "hl-box";
-    box.style.left = lines[idx].offsetLeft - 8 + "px";
-    box.style.top = lines[idx].offsetTop - 1 + "px";
-    box.style.width = lr.width + 18 + "px";
-    box.style.height = lr.height + 2 + "px";
-    code.insertBefore(box, code.firstChild);
-    tl.set(parts.scene, { opacity: 0 }, 0);
-    tl.to(parts.scene, { opacity: 1, duration: FADE, ease: "power1.out" }, start);
-    tl.set(box, { opacity: 0 }, 0);
-    var at = start + FADE + 0.35;
-    tl.fromTo([code, parts.gutter], { y: 0 }, { y: dy, duration: SCROLL, ease: "power2.inOut" }, at);
-    var arrAt = at + SCROLL;
-    for (var i = 0; i < lines.length; i++) {
-      if (i === idx) continue;
-      tl.fromTo(lines[i], { opacity: 1 }, { opacity: 0.35, duration: 0.5, ease: "power1.out" }, arrAt - 0.35);
-    }
-    tl.to(box, { opacity: 1, duration: 0.45, ease: "power1.out" }, arrAt - 0.35);
-  }
-
   function buildEffect(tl, surface, spec) {
     var start = 0.45;
     var seq = T[spec.seq];
-    if (spec.effect === "morph") morph(tl, surface, seq.states, start);
-    else if (spec.effect === "flight") flight(tl, surface, seq.states, start);
-    else if (spec.effect === "typing") typing(tl, surface, seq.states[0], start);
-    else if (spec.effect === "diff") diff(tl, surface, seq.states, start);
-    else if (spec.effect === "highlight") highlight(tl, surface, seq.states[0], start, spec.line || 0);
-    else if (spec.effect === "scroll") scroll(tl, surface, seq.states[0], start, spec.line || 1);
+    if (spec.effect === "typing") typing(tl, surface, seq.states[0], start);
   }
 
   function go() {

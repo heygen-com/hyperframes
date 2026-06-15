@@ -4,8 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>Code Shader Dissolve</title>
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js" integrity="sha384-sG0Hv1tP1lZCk9KQmrIbY/XNwi+OY84GQqhMscbnsoBFqAz8KNCil1kvfL3Hbbk2" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js" integrity="sha384-vV17nr/rMaJqmeZkFUzXLpHdQ+ME5QHKdydaqqN+3Ga39RJlNrTatJxHwGV4ml2C" crossorigin="anonymous"></script>
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
       html, body { width: 1920px; height: 1080px; overflow: hidden; background: #05070b; }
@@ -118,94 +118,6 @@
     return { canvas: canvas, W: W, H: H, lines: lines.length, lineH: lineH, padY: padY, fontPx: fontPx };
   }
 
-  // ===========================================================================
-  // Effect 1 — code-3d-extrude: code on a lit, beveled slab that rotates to rest
-  // ===========================================================================
-  function fxExtrude(THREE, scene, camera, renderer, state, st, tl, dur) {
-    scene.background = new THREE.Color(0x05070b);
-    var code = drawCodeToCanvas(state, { fontPx: 38, lineH: 56, padX: 80, padY: 70, weight: 600 });
-    var tex = new THREE.CanvasTexture(code.canvas);
-    tex.minFilter = THREE.LinearFilter;
-    tex.magFilter = THREE.LinearFilter;
-    tex.generateMipmaps = false;
-
-    var aspect = code.W / code.H;
-    var slabH = 6.2;
-    var slabW = slabH * aspect;
-    var depth = 0.5;
-
-    // beveled slab: rounded extruded rectangle
-    var hw = slabW / 2;
-    var hh = slabH / 2;
-    var r = 0.18;
-    var shape = new THREE.Shape();
-    shape.moveTo(-hw + r, -hh);
-    shape.lineTo(hw - r, -hh);
-    shape.quadraticCurveTo(hw, -hh, hw, -hh + r);
-    shape.lineTo(hw, hh - r);
-    shape.quadraticCurveTo(hw, hh, hw - r, hh);
-    shape.lineTo(-hw + r, hh);
-    shape.quadraticCurveTo(-hw, hh, -hw, hh - r);
-    shape.lineTo(-hw, -hh + r);
-    shape.quadraticCurveTo(-hw, -hh, -hw + r, -hh);
-    var geo = new THREE.ExtrudeGeometry(shape, { depth: depth, bevelEnabled: true, bevelThickness: 0.12, bevelSize: 0.1, bevelSegments: 3, steps: 1 });
-    geo.center();
-    // UVs from ExtrudeGeometry don't map the texture nicely to the face; remap front-face UVs from XY bounds.
-    geo.computeBoundingBox();
-    var bb = geo.boundingBox;
-    var sizeX = bb.max.x - bb.min.x;
-    var sizeY = bb.max.y - bb.min.y;
-    var pos = geo.attributes.position;
-    var uv = geo.attributes.uv;
-    for (var vi = 0; vi < pos.count; vi++) {
-      uv.setXY(vi, (pos.getX(vi) - bb.min.x) / sizeX, (pos.getY(vi) - bb.min.y) / sizeY);
-    }
-    uv.needsUpdate = true;
-
-    // Face is an unlit "screen" — shows the exact vivid Shiki colors (no PBR/emissive wash).
-    // The 3D read comes from the lit, beveled EDGES + perspective, like a glowing monitor.
-    var faceMat = new THREE.MeshBasicMaterial({ map: tex });
-    var edgeMat = new THREE.MeshStandardMaterial({ color: 0x141d2b, roughness: 0.3, metalness: 0.4 });
-    // ExtrudeGeometry groups: 0 = front+back faces, 1 = sides. Front shows the code.
-    var slab = new THREE.Mesh(geo, [faceMat, edgeMat]);
-    scene.add(slab);
-
-    scene.add(new THREE.AmbientLight(0xffffff, 0.5));
-    var key = new THREE.DirectionalLight(0xbcd4ff, 1.25);
-    key.position.set(5, 7, 9);
-    scene.add(key);
-    var rim = new THREE.DirectionalLight(0x4fffa0, 0.45);
-    rim.position.set(-7, -3, 5);
-    scene.add(rim);
-
-    camera.position.set(0, 0, 10);
-
-    // fit camera distance so the WHOLE slab fits (width-limited for wide code), ~78% fill
-    var vfov = (camera.fov * Math.PI) / 180;
-    var screenAspect = 1920 / 1080;
-    var fitH = slabH / 2 / Math.tan(vfov / 2) / 0.78;
-    var fitW = slabW / 2 / (Math.tan(vfov / 2) * screenAspect) / 0.78;
-    var fitZ = Math.max(fitH, fitW);
-
-    st.rotY = -1.0;
-    st.rotX = 0.4;
-    st.camZ = fitZ + 6;
-    tl.to(st, { rotY: 0, rotX: 0, camZ: fitZ, duration: dur * 0.6, ease: "power3.out" }, 0);
-    // gentle breathing drift at rest (subtle — stays readable)
-    tl.to(st, { rotY: 0.06, rotX: -0.02, duration: dur * 0.4, ease: "sine.inOut" }, dur * 0.6);
-
-    return function () {
-      slab.rotation.y = st.rotY;
-      slab.rotation.x = st.rotX;
-      camera.position.z = st.camZ;
-      camera.lookAt(0, 0, 0);
-      // boot loop's render() issues the single renderer.render() — don't double-render here
-    };
-  }
-
-  // ===========================================================================
-  // Effect 2 — code-shader-dissolve: code "compiles" out of GPU noise, holds crisp
-  // ===========================================================================
   function fxDissolve(THREE, scene, camera, renderer, state, st, tl, dur, seed) {
     scene.background = new THREE.Color(0x05070b);
     var code = drawCodeToCanvas(state, { fontPx: 40, lineH: 60, padX: 90, padY: 80, weight: 600 });
@@ -279,124 +191,30 @@
     return function () {};
   }
 
-  // ===========================================================================
-  // Effect 3 — code-particle-assemble: GPU points scatter then fly to glyph pixels
-  // ===========================================================================
-  function fxParticles(THREE, scene, camera, renderer, state, st, tl, dur, seed) {
-    scene.background = new THREE.Color(0x05070b);
-    var code = drawCodeToCanvas(state, { fontPx: 46, lineH: 70, padX: 70, padY: 64, weight: 700 });
-    var cw = code.W;
-    var ch = code.H;
-    var data = code.canvas.getContext("2d").getImageData(0, 0, cw, ch).data;
-    var rng = mulberry32(((seed || 1) * 2654435761) >>> 0);
-
-    var worldW = 13.0;
-    var worldH = worldW * (ch / cw);
-
-    // sample glyph pixels (brighter than the dark bg) on a fixed grid
-    var step = 2;
-    var tx = [];
-    var col = [];
-    for (var y = 0; y < ch; y += step) {
-      for (var x = 0; x < cw; x += step) {
-        var idx = (y * cw + x) * 4;
-        var r = data[idx];
-        var g = data[idx + 1];
-        var b = data[idx + 2];
-        if (r + g + b < 120) continue; // skip background
-        tx.push((x / cw - 0.5) * worldW, -(y / ch - 0.5) * worldH, 0);
-        col.push(r / 255, g / 255, b / 255);
-      }
-    }
-    var n = tx.length / 3;
-
-    var positions = new Float32Array(n * 3);
-    var aOrigin = new Float32Array(n * 3);
-    var aTarget = new Float32Array(tx);
-    var aColor = new Float32Array(col);
-    var aDelay = new Float32Array(n);
-    for (var i = 0; i < n; i++) {
-      var sx = (rng() * 2 - 1) * worldW * 1.15;
-      var sy = (rng() * 2 - 1) * worldH * 1.7;
-      var sz = (rng() * 2 - 1) * 9.0 - 2.0;
-      aOrigin[i * 3] = sx;
-      aOrigin[i * 3 + 1] = sy;
-      aOrigin[i * 3 + 2] = sz;
-      positions[i * 3] = sx;
-      positions[i * 3 + 1] = sy;
-      positions[i * 3 + 2] = sz;
-      aDelay[i] = rng();
-    }
-
-    var geo = new THREE.BufferGeometry();
-    geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-    geo.setAttribute("aOrigin", new THREE.BufferAttribute(aOrigin, 3));
-    geo.setAttribute("aTarget", new THREE.BufferAttribute(aTarget, 3));
-    geo.setAttribute("aColor", new THREE.BufferAttribute(aColor, 3));
-    geo.setAttribute("aDelay", new THREE.BufferAttribute(aDelay, 1));
-
-    var uniforms = { uProgress: { value: 0 }, uSize: { value: 3.4 } };
-    var mat = new THREE.ShaderMaterial({
-      uniforms: uniforms,
-      transparent: true,
-      depthTest: false,
-      depthWrite: false,
-      blending: THREE.NormalBlending,
-      vertexShader: [
-        "attribute vec3 aOrigin; attribute vec3 aTarget; attribute vec3 aColor; attribute float aDelay;",
-        "uniform float uProgress; uniform float uSize;",
-        "varying vec3 vColor; varying float vP;",
-        "void main(){",
-        "  float span = 0.62;",
-        "  float p = clamp((uProgress - aDelay*(1.0-span)) / span, 0.0, 1.0);",
-        "  p = p*p*(3.0-2.0*p);",
-        "  vec3 pos = mix(aOrigin, aTarget, p);",
-        "  vec4 mv = modelViewMatrix * vec4(pos, 1.0);",
-        "  gl_Position = projectionMatrix * mv;",
-        "  gl_PointSize = uSize * (60.0 / -mv.z) * (0.45 + 0.55*p);",
-        "  vColor = aColor; vP = p;",
-        "}",
-      ].join("\n"),
-      fragmentShader: [
-        "precision highp float;",
-        "varying vec3 vColor; varying float vP;",
-        "void main(){",
-        "  vec2 d = gl_PointCoord - 0.5;",
-        "  float r2 = dot(d, d);",
-        "  if (r2 > 0.25) discard;",
-        "  float a = smoothstep(0.25, 0.02, r2);",
-        // brighter & whiter in flight, resolves to true color as it lands
-        "  vec3 c = mix(vColor + vec3(0.32)*(1.0-vP), vColor, vP);",
-        "  gl_FragColor = vec4(c, a * (0.7 + 0.3*vP));",
-        "}",
-      ].join("\n"),
-    });
-
-    var pts = new THREE.Points(geo, mat);
-    scene.add(pts);
-
-    camera.position.set(0, 0, 10);
-    var vfov = (camera.fov * Math.PI) / 180;
-    var sa = 1920 / 1080;
-    var fitH = worldH / 2 / Math.tan(vfov / 2) / 0.78;
-    var fitW = worldW / 2 / (Math.tan(vfov / 2) * sa) / 0.78;
-    camera.position.z = Math.max(fitH, fitW);
-    camera.lookAt(0, 0, 0);
-
-    tl.to(uniforms.uProgress, { value: 1.0, duration: dur * 0.72, ease: "power2.out" }, 0);
-
-    // uProgress is tweened by GSAP; the boot loop's render() draws once per frame.
-    return function () {};
-  }
-
   // ---- dispatch + boot ------------------------------------------------------
   function buildEffect(THREE, scene, camera, renderer, spec, st, tl) {
     var state = T[spec.seq].states[0];
     var dur = spec.duration;
-    if (spec.effect === "extrude") return fxExtrude(THREE, scene, camera, renderer, state, st, tl, dur);
     if (spec.effect === "dissolve") return fxDissolve(THREE, scene, camera, renderer, state, st, tl, dur, spec.seed);
-    if (spec.effect === "particles") return fxParticles(THREE, scene, camera, renderer, state, st, tl, dur, spec.seed);
     return function () {};
+  }
+
+  // Free GPU resources (renderer, geometries, materials, textures) on page teardown.
+  // One-shot renders exit per job so nothing leaks there; this guards long-lived
+  // Studio/player sessions that reload. Fires only on unload — never during capture.
+  function disposeGL(renderer, scene) {
+    scene.traverse(function (o) {
+      if (o.geometry && o.geometry.dispose) o.geometry.dispose();
+      var mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
+      mats.forEach(function (m) {
+        if (m.map && m.map.dispose) m.map.dispose();
+        if (m.uniforms && m.uniforms.uTex && m.uniforms.uTex.value && m.uniforms.uTex.value.dispose) {
+          m.uniforms.uTex.value.dispose();
+        }
+        if (m.dispose) m.dispose();
+      });
+    });
+    if (renderer.dispose) renderer.dispose();
   }
 
   function go() {
@@ -427,6 +245,9 @@
       var dur = parseFloat(root.dataset.duration) || tl.duration();
       tl.to({}, { duration: dur }, 0); // pad to full composition length
       render(); // paint frame 0
+      window.addEventListener("beforeunload", function () {
+        disposeGL(renderer, scene);
+      });
     });
   }
 
