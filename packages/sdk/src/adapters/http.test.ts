@@ -140,6 +140,7 @@ describe("flush()", () => {
     );
     const adapter = createHttpAdapter({ projectFilesUrl: BASE });
     void adapter.write("comp.html", "x"); // intentionally not awaited
+    await Promise.resolve(); // let path-queue microtask fire so doWrite starts
     let flushed = false;
     const flushDone = adapter.flush().then(() => {
       flushed = true;
@@ -164,6 +165,62 @@ describe("loadFrom()", () => {
   it("returns undefined (server versioning not exposed by this adapter)", async () => {
     const adapter = createHttpAdapter({ projectFilesUrl: BASE });
     expect(await adapter.loadFrom("comp.html", "v1")).toBeUndefined();
+  });
+});
+
+// ── write() — per-path serialization ─────────────────────────────────────────
+
+describe("write() — per-path serialization", () => {
+  it("serializes concurrent writes to the same path (second waits for first)", async () => {
+    const starts: number[] = [];
+    let resolveFirst!: () => void;
+    let callCount = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(async (_url: string, init?: RequestInit) => {
+        if (init?.method === "PUT") {
+          const n = ++callCount;
+          starts.push(n);
+          if (n === 1) await new Promise<void>((r) => (resolveFirst = r));
+        }
+        return { ok: true, status: 200, json: async () => ({}) };
+      }),
+    );
+    const adapter = createHttpAdapter({ projectFilesUrl: BASE });
+    const write1 = adapter.write("comp.html", "v1");
+    await Promise.resolve(); // let write1 start
+    const write2 = adapter.write("comp.html", "v2");
+    await Promise.resolve(); // let write2 attempt to start
+    expect(starts).toEqual([1]); // write2 has NOT started yet
+    resolveFirst();
+    await write1;
+    await write2;
+    expect(starts).toEqual([1, 2]); // write2 started only after write1 finished
+  });
+
+  it("does not block writes to different paths", async () => {
+    const starts: string[] = [];
+    let resolveFirst!: () => void;
+    let callCount = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+        if (init?.method === "PUT") {
+          const n = ++callCount;
+          starts.push(`${n}:${url.split("/").pop()}`);
+          if (n === 1) await new Promise<void>((r) => (resolveFirst = r));
+        }
+        return { ok: true, status: 200, json: async () => ({}) };
+      }),
+    );
+    const adapter = createHttpAdapter({ projectFilesUrl: BASE });
+    const write1 = adapter.write("a.html", "v1");
+    await Promise.resolve();
+    void adapter.write("b.html", "v2"); // different path — must not wait for write1
+    await Promise.resolve();
+    expect(starts.length).toBe(2); // both started concurrently
+    resolveFirst();
+    await write1;
   });
 });
 

@@ -13,6 +13,7 @@ class HttpAdapter implements PersistAdapter {
   private readonly baseUrl: string;
   private readonly errorListeners: Array<(e: PersistErrorEvent) => void> = [];
   private readonly inflightWrites = new Set<Promise<void>>();
+  private readonly pathQueues = new Map<string, Promise<void>>();
 
   constructor(opts: HttpAdapterOptions) {
     this.baseUrl = opts.projectFilesUrl;
@@ -27,7 +28,12 @@ class HttpAdapter implements PersistAdapter {
   }
 
   async write(path: string, content: string): Promise<void> {
-    const p = this.doWrite(path, content);
+    const prev = this.pathQueues.get(path) ?? Promise.resolve();
+    const p = prev.then(() => this.doWrite(path, content));
+    this.pathQueues.set(
+      path,
+      p.catch(() => {}),
+    );
     this.inflightWrites.add(p);
     try {
       await p;
