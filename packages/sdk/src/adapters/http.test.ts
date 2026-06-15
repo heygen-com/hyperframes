@@ -59,10 +59,31 @@ describe("read()", () => {
     expect(await adapter.read("missing.html")).toBeUndefined();
   });
 
-  it("returns undefined on non-ok response", async () => {
+  it("returns undefined on 404 response", async () => {
     stubFetch(() => ({ ok: false, status: 404 }));
     const adapter = createHttpAdapter({ projectFilesUrl: BASE });
     expect(await adapter.read("gone.html")).toBeUndefined();
+  });
+
+  it("throws on 5xx server error", async () => {
+    stubFetch(() => ({ ok: false, status: 503 }));
+    const adapter = createHttpAdapter({ projectFilesUrl: BASE });
+    await expect(adapter.read("comp.html")).rejects.toThrow("HTTP 503");
+  });
+
+  it("returns undefined when 200 response body is not valid JSON", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => {
+          throw new SyntaxError("Unexpected token");
+        },
+      }),
+    );
+    const adapter = createHttpAdapter({ projectFilesUrl: BASE });
+    await expect(adapter.read("comp.html")).resolves.toBeUndefined();
   });
 });
 

@@ -177,16 +177,34 @@ describe("addGsapTween", () => {
     expect(newScript).toContain("opacity: 1");
   });
 
-  it("returns EMPTY when no GSAP script", () => {
+  it("throws when no GSAP script block exists in composition", () => {
     const noScript = parseMutable(
       `<div data-hf-id="hf-stage" data-hf-root><div data-hf-id="hf-box"></div></div>`,
     );
-    const result = applyOp(noScript, {
+    expect(() =>
+      applyOp(noScript, {
+        type: "addGsapTween",
+        target: "hf-box",
+        tween: { method: "to", properties: { x: 1 } },
+      }),
+    ).toThrow("No GSAP script block found");
+  });
+
+  it("uses bare leaf id in selector when target is a scoped id", () => {
+    const html = `<div data-hf-id="hf-stage" data-hf-root>
+    <div data-hf-id="hf-box"></div>
+    <script>${GSAP_SCRIPT}</script>
+  </div>`.trim();
+    const parsed = parseMutable(html);
+    const result = applyOp(parsed, {
       type: "addGsapTween",
-      target: "hf-box",
-      tween: { method: "to", properties: { x: 1 } },
+      target: "hf-stage/hf-box",
+      tween: { method: "to", properties: { x: 100 } },
     });
-    expect(result.forward).toHaveLength(0);
+    expect(result.forward.length).toBeGreaterThan(0);
+    const newScript = String(result.forward[0]?.value ?? "");
+    expect(newScript).toContain("hf-box");
+    expect(newScript).not.toContain("hf-stage/hf-box");
   });
 });
 
@@ -475,5 +493,54 @@ window.__timelines["t"] = tl;`;
     const newScript = String(result.forward[1]?.value ?? "");
     expect(newScript).not.toContain("hf-box");
     expect(newScript).toContain("hf-stage");
+  });
+});
+
+// ─── GSAP ops on composition with no script block ────────────────────────────
+
+const NO_SCRIPT_HTML = `<div data-hf-id="hf-stage" data-hf-root style="width:1280px;height:720px">
+  <div data-hf-id="hf-box" style="opacity:0"></div>
+</div>`.trim();
+
+describe("GSAP ops on composition with no GSAP script block", () => {
+  function freshNoScript() {
+    return parseMutable(NO_SCRIPT_HTML);
+  }
+
+  it("addGsapTween throws instead of silent no-op", () => {
+    expect(() =>
+      applyOp(freshNoScript(), {
+        type: "addGsapTween",
+        target: "hf-box",
+        tween: { method: "to", properties: { x: 100 } },
+      }),
+    ).toThrow();
+  });
+
+  it("setGsapTween throws instead of silent no-op", () => {
+    expect(() =>
+      applyOp(freshNoScript(), {
+        type: "setGsapTween",
+        animationId: "anim-1",
+        properties: { ease: "power2.out" },
+      }),
+    ).toThrow();
+  });
+
+  it("removeGsapTween throws instead of silent no-op", () => {
+    expect(() =>
+      applyOp(freshNoScript(), { type: "removeGsapTween", animationId: "anim-1" }),
+    ).toThrow();
+  });
+
+  it("addGsapKeyframe throws when script element is null", () => {
+    expect(() =>
+      applyOp(freshNoScript(), {
+        type: "addGsapKeyframe",
+        animationId: "a1",
+        percentage: 0,
+        value: { opacity: 0 },
+      }),
+    ).toThrow("No GSAP script block found");
   });
 });

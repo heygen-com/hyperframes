@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import type { MutableRefObject } from "react";
 import { openComposition } from "@hyperframes/sdk";
 import { createHttpAdapter } from "@hyperframes/sdk/adapters/http";
 import type { Composition } from "@hyperframes/sdk";
@@ -27,9 +28,12 @@ export function shouldReloadSdkSession(payload: unknown, activeCompPath: string 
  * is therefore purely additive — no SDK self-write exists yet, so there is no
  * persist echo. Step 3c must add self-write suppression once dispatch writes.
  */
+const SELF_WRITE_SUPPRESS_MS = 2000;
+
 export function useSdkSession(
   projectId: string | null,
   activeCompPath: string | null,
+  domEditSaveTimestampRef?: MutableRefObject<number>,
 ): Composition | null {
   const [session, setSession] = useState<Composition | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
@@ -38,9 +42,14 @@ export function useSdkSession(
   useEffect(() => {
     if (!activeCompPath) return;
     const handler = (payload?: unknown) => {
-      if (shouldReloadSdkSession(payload, activeCompPath)) {
-        setReloadToken((t) => t + 1);
-      }
+      if (!shouldReloadSdkSession(payload, activeCompPath)) return;
+      // Suppress reload triggered by our own SDK cutover write.
+      if (
+        domEditSaveTimestampRef &&
+        Date.now() - domEditSaveTimestampRef.current < SELF_WRITE_SUPPRESS_MS
+      )
+        return;
+      setReloadToken((t) => t + 1);
     };
     if (import.meta.hot) {
       import.meta.hot.on("hf:file-change", handler);
@@ -50,6 +59,7 @@ export function useSdkSession(
     const es = new EventSource("/api/events");
     es.addEventListener("file-change", handler);
     return () => es.close();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeCompPath]);
 
   // ── Open / re-open the session ──
@@ -58,26 +68,36 @@ export function useSdkSession(
       setSession(null);
       return;
     }
+    setSession(null); // Immediately clear stale session before async open
 
     let cancelled = false;
-    let comp: Composition | null = null;
+    const compRef = { current: null as Composition | null };
 
     const url = `/api/projects/${projectId}/files/${encodeURIComponent(activeCompPath)}?optional=1`;
     fetch(url)
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
       .then(async (data: { content?: string }) => {
         if (cancelled || typeof data.content !== "string") return;
         const adapter = createHttpAdapter({
           projectFilesUrl: `/api/projects/${projectId}`,
         });
-        comp = await openComposition(data.content, {
+        const comp = await openComposition(data.content, {
           persist: adapter,
           persistPath: activeCompPath,
         });
         comp.on("persist:error", (e) => {
           console.warn("[sdk] persist:error", e.error);
         });
-        if (!cancelled) setSession(comp);
+        // If cleanup fired while we awaited openComposition, dispose immediately.
+        if (cancelled) {
+          comp.dispose();
+          return;
+        }
+        compRef.current = comp;
+        setSession(comp);
       })
       .catch(() => {
         if (!cancelled) setSession(null);
@@ -85,7 +105,7 @@ export function useSdkSession(
 
     return () => {
       cancelled = true;
-      comp?.dispose();
+      compRef.current?.dispose();
     };
   }, [projectId, activeCompPath, reloadToken]);
 

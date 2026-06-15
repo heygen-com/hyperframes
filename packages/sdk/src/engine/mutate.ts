@@ -509,10 +509,15 @@ function handleSetVariableValue(
 // ─── GSAP selector helpers ───────────────────────────────────────────────────
 
 function selectorMatchesId(selector: string, id: HfId): boolean {
+  const bareId = id.includes("/") ? id.split("/").pop()! : id;
   return (
     selector === `[data-hf-id="${id}"]` ||
     selector === `[data-hf-id='${id}']` ||
-    selector === `#${id}`
+    selector === `#${id}` ||
+    (bareId !== id &&
+      (selector === `[data-hf-id="${bareId}"]` ||
+        selector === `[data-hf-id='${bareId}']` ||
+        selector === `#${bareId}`))
   );
 }
 
@@ -579,6 +584,8 @@ function handleAddGsapTween(
   tween: GsapTweenSpec,
 ): MutationResult {
   const script = getGsapScript(parsed.document);
+  if (script === null)
+    throw new Error("No GSAP script block found. Use comp.can(op) to check first.");
   if (!script) return EMPTY;
 
   const extras: Record<string, unknown> = {};
@@ -591,8 +598,9 @@ function handleAddGsapTween(
       ? ((tween.toProperties ?? {}) as Record<string, number | string>)
       : ((tween.toProperties ?? tween.properties ?? {}) as Record<string, number | string>);
 
+  const selectorId = target.includes("/") ? target.split("/").pop()! : target;
   const animation: Omit<GsapAnimation, "id"> = {
-    targetSelector: `[data-hf-id="${target}"]`,
+    targetSelector: `[data-hf-id="${selectorId}"]`,
     method: tween.method,
     position: tween.position ?? 0,
     ...(tween.duration !== undefined ? { duration: tween.duration } : {}),
@@ -617,6 +625,8 @@ function handleSetGsapTween(
   properties: Partial<GsapTweenSpec>,
 ): MutationResult {
   const script = getGsapScript(parsed.document);
+  if (script === null)
+    throw new Error("No GSAP script block found. Use comp.can(op) to check first.");
   if (!script) return EMPTY;
 
   const updates: Partial<GsapAnimation> = {};
@@ -643,6 +653,8 @@ function handleSetGsapTween(
 
 function handleRemoveGsapTween(parsed: ParsedDocument, animationId: string): MutationResult {
   const script = getGsapScript(parsed.document);
+  if (script === null)
+    throw new Error("No GSAP script block found. Use comp.can(op) to check first.");
   if (!script) return EMPTY;
   const newScript = removeAnimationFromScript(script, animationId);
   if (newScript === script) return EMPTY;
@@ -699,6 +711,8 @@ function handleAddGsapKeyframe(
   value: Record<string, unknown>,
 ): MutationResult {
   const script = getGsapScript(parsed.document);
+  if (script === null)
+    throw new Error("No GSAP script block found. Use comp.can(op) to check first.");
   if (!script) return EMPTY;
   const newScript = addKeyframeToScript(
     script,

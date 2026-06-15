@@ -98,12 +98,12 @@ export function addBounceIn(comp: Composition, targetId: string): string | null 
     ease: "bounce.out",
     fromProperties: { y: 40, opacity: 0 },
   } as const;
-  if (!comp.can({ type: "addGsapTween", target: targetId, id: "preflight", tween })) return null;
+  if (!comp.can({ type: "addGsapTween", target: targetId, tween }).ok) return null;
   return comp.addGsapTween(targetId, tween);
 }
 
 export function updateEase(comp: Composition, animationId: string, ease: string): void {
-  if (!comp.can({ type: "setGsapTween", animationId, properties: { ease } })) return;
+  if (!comp.can({ type: "setGsapTween", animationId, properties: { ease } }).ok) return;
   comp.setGsapTween(animationId, { ease });
 }
 

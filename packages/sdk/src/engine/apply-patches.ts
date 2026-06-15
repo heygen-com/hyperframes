@@ -18,7 +18,7 @@ import {
   setGsapScript,
   setStyleSheet,
 } from "./model.js";
-import { keyToPath } from "./patches.js";
+import { keyToPath, gsapScriptPath, styleSheetPath } from "./patches.js";
 
 // ─── Path parser ────────────────────────────────────────────────────────────
 
@@ -70,8 +70,8 @@ function parsePath(path: string): ParsedPath | null {
   const metaM = /^\/metadata\/(.+)$/.exec(path);
   if (metaM) return { type: "metadata", field: metaM[1] };
 
-  if (path === "/script/gsap") return { type: "script" };
-  if (path === "/style/css") return { type: "stylesheet" };
+  if (path === gsapScriptPath()) return { type: "script" };
+  if (path === styleSheetPath()) return { type: "stylesheet" };
 
   return null;
 }

@@ -21,8 +21,14 @@ class HttpAdapter implements PersistAdapter {
   async read(path: string): Promise<string | undefined> {
     const url = `${this.baseUrl}/files/${encodeURIComponent(path)}?optional=1`;
     const res = await fetch(url);
-    if (!res.ok) return undefined;
-    const data = (await res.json()) as { content?: string };
+    if (res.status === 404) return undefined;
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    let data: { content?: string };
+    try {
+      data = (await res.json()) as { content?: string };
+    } catch {
+      return undefined;
+    }
     return typeof data.content === "string" ? data.content : undefined;
   }
 

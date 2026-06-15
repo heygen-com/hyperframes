@@ -185,7 +185,12 @@ class CompositionImpl implements Composition {
           if (query.text && !el.text?.includes(query.text)) return false;
           if (query.name && el.attributes["data-name"] !== query.name) return false;
           if (query.track !== undefined && el.trackIndex !== query.track) return false;
-          if (query.composition && !el.scopedId.startsWith(`${query.composition}/`)) return false;
+          if (
+            query.composition &&
+            el.scopedId !== query.composition &&
+            !el.scopedId.startsWith(`${query.composition}/`)
+          )
+            return false;
           return true;
         })
         .map((el) => el.scopedId)

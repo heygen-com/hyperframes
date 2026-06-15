@@ -11,13 +11,14 @@ import { useDomEditPreviewSync } from "./useDomEditPreviewSync";
 import type { ImportedFontAsset } from "../components/editor/fontAssets";
 import type { EditHistoryKind } from "../utils/editHistory";
 import type { RightPanelTab } from "../utils/studioHelpers";
-import type { PatchTarget } from "../utils/sourcePatcher";
+import type { PatchOperation, PatchTarget } from "../utils/sourcePatcher";
 import type { SidebarTab } from "../components/sidebar/LeftSidebar";
 import { useAskAgentModal } from "./useAskAgentModal";
 import { useDomSelection } from "./useDomSelection";
 import { usePreviewInteraction } from "./usePreviewInteraction";
 import { useDomEditCommits } from "./useDomEditCommits";
 import { reportShadowDispatch } from "../utils/sdkShadow";
+import { sdkCutoverPersist } from "../utils/sdkCutover";
 import { useGsapScriptCommits } from "./useGsapScriptCommits";
 import {
   useGsapAnimationsForElement,
@@ -33,16 +34,12 @@ import {
 } from "./gsapRuntimeBridge";
 import { useAnimatedPropertyCommit } from "./useAnimatedPropertyCommit";
 import { useGsapSelectionHandlers } from "./useGsapSelectionHandlers";
-
-// ── Types ──
-
 interface RecordEditInput {
   label: string;
   kind: EditHistoryKind;
   coalesceKey?: string;
   files: Record<string, { before: string; after: string }>;
 }
-
 export interface UseDomEditSessionParams {
   projectId: string | null;
   activeCompPath: string | null;
@@ -79,12 +76,8 @@ export interface UseDomEditSessionParams {
   openSourceForSelection?: (sourceFile: string, target: PatchTarget) => void;
   selectSidebarTab?: (tab: SidebarTab) => void;
   getSidebarTab?: () => SidebarTab;
-  /** Stage 7 Step 3b: SDK session for shadow dispatch parity tracking. */
   sdkSession?: Composition | null;
 }
-
-// ── Hook ──
-
 // fallow-ignore-next-line complexity
 export function useDomEditSession({
   projectId,
@@ -123,7 +116,6 @@ export function useDomEditSession({
   sdkSession,
 }: UseDomEditSessionParams) {
   void _setRefreshKey;
-
   const onClickToSource = useCallback(
     (selection: DomEditSelection) => {
       if (!openSourceForSelection || !selectSidebarTab) return;
@@ -137,8 +129,6 @@ export function useDomEditSession({
     },
     [openSourceForSelection, selectSidebarTab],
   );
-
-  // ── Selection (delegated to useDomSelection) ──
 
   const {
     domEditSelection,
@@ -170,8 +160,6 @@ export function useDomEditSession({
     rightPanelTab,
   });
 
-  // ── Agent modal (delegated to useAskAgentModal) ──
-
   const {
     agentModalOpen,
     agentModalAnchorPoint,
@@ -192,8 +180,6 @@ export function useDomEditSession({
     domEditSelection,
   });
 
-  // ── Preview interaction (delegated to usePreviewInteraction) ──
-
   const {
     handlePreviewCanvasMouseDown,
     handlePreviewCanvasPointerMove,
@@ -212,8 +198,7 @@ export function useDomEditSession({
     onClickToSource,
   });
 
-  // Sync DOM selection → timeline selectedElementId so that clip selection
-  // highlights and diamond playhead fills work on cold-load URL restore.
+  // Sync DOM selection → timeline selectedElementId for cold-load URL restore.
   useEffect(() => {
     if (!domEditSelection?.id) return;
     const { selectedElementId, elements, setSelectedElementId } = usePlayerStore.getState();
@@ -224,13 +209,8 @@ export function useDomEditSession({
     if (key && key !== selectedElementId) setSelectedElementId(key);
   }, [domEditSelection?.id]);
 
-  // ── GSAP script editing ──
-
   const { version: gsapCacheVersion, bump: bumpGsapCache } = useGsapCacheVersion();
-
-  // Bump GSAP cache when refreshKey changes (code-tab edits trigger iframe
-  // reload via refreshKey but don't go through commitMutation, so the cache
-  // would otherwise retain stale keyframe entries).
+  // Bump GSAP cache on refreshKey — code-tab edits bypass commitMutation.
   const prevRefreshKeyRef = useRef(refreshKey);
   // eslint-disable-next-line no-restricted-syntax
   useEffect(() => {
@@ -241,7 +221,6 @@ export function useDomEditSession({
   }, [refreshKey, bumpGsapCache]);
 
   const gsapSourceFile = domEditSelection?.sourceFile || activeCompPath || "index.html";
-
   usePopulateKeyframeCacheForFile(
     STUDIO_GSAP_PANEL_ENABLED ? (projectId ?? null) : null,
     gsapSourceFile,
@@ -292,7 +271,32 @@ export function useDomEditSession({
     onFileContentChanged: updateEditingFileContent,
   });
 
-  // ── Commit handlers (delegated to useDomEditCommits) ──
+  const sdkSessionRef = useRef<Composition | null>(null);
+  sdkSessionRef.current = sdkSession ?? null;
+  const onTrySdkPersist = useCallback(
+    (
+      sel: DomEditSelection,
+      ops: PatchOperation[],
+      html: string,
+      path: string,
+      opts?: { label?: string; coalesceKey?: string },
+    ) =>
+      sdkCutoverPersist(
+        sel,
+        ops,
+        html,
+        path,
+        sdkSessionRef.current,
+        {
+          editHistory,
+          writeProjectFile,
+          reloadPreview,
+          domEditSaveTimestampRef,
+        },
+        opts,
+      ),
+    [editHistory, writeProjectFile, reloadPreview, domEditSaveTimestampRef],
+  );
 
   const {
     resolveImportedFontAsset,
@@ -333,6 +337,7 @@ export function useDomEditSession({
     onDomEditPersisted: sdkSession
       ? (sel, ops) => reportShadowDispatch(sdkSession, sel, ops)
       : undefined,
+    onTrySdkPersist,
   });
 
   // GSAP-aware: intercept offset/resize/rotation to commit via script mutation when animated.
@@ -390,7 +395,6 @@ export function useDomEditSession({
     },
     [projectId, gsapSourceFile],
   );
-
   const handleGsapAwareBoxSizeCommit = useCallback(
     async (selection: DomEditSelection, next: { width: number; height: number }) => {
       if (STUDIO_GSAP_DRAG_INTERCEPT_ENABLED && gsapCommitMutation) {
@@ -476,7 +480,6 @@ export function useDomEditSession({
     handleDomManualEditsReset,
     selectedGsapAnimations,
   });
-
   const commitAnimatedProperty = useAnimatedPropertyCommit({
     selectedGsapAnimations,
     gsapCommitMutation,
@@ -485,7 +488,6 @@ export function useDomEditSession({
     previewIframeRef,
     bumpGsapCache,
   });
-
   const handleSetArcPath = useCallback(
     (animId: string, config: Parameters<typeof setArcPath>[2]) => {
       if (!domEditSelection) return;
@@ -493,7 +495,6 @@ export function useDomEditSession({
     },
     [domEditSelection, setArcPath],
   );
-
   const handleUpdateArcSegment = useCallback(
     (animId: string, segmentIndex: number, update: Parameters<typeof updateArcSegment>[3]) => {
       if (!domEditSelection) return;

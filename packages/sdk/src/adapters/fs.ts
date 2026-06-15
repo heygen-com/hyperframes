@@ -18,6 +18,7 @@ class FsAdapter implements PersistAdapter {
   private errorHandlers: Array<(e: PersistErrorEvent) => void> = [];
   private readonly inflightWrites = new Set<Promise<void>>();
   private versionCounter = 0;
+  private appendVersionQueue = Promise.resolve();
 
   constructor(opts: FsAdapterOptions) {
     this.root = opts.root;
@@ -61,7 +62,7 @@ class FsAdapter implements PersistAdapter {
   }
 
   async flush(): Promise<void> {
-    await Promise.all([...this.inflightWrites]);
+    await Promise.all([...this.inflightWrites, this.appendVersionQueue]);
   }
 
   async listVersions(path: string): Promise<PersistVersionEntry[]> {
@@ -109,7 +110,14 @@ class FsAdapter implements PersistAdapter {
     return join(this.root, ".hf-versions", path);
   }
 
-  private async appendVersion(path: string, content: string): Promise<void> {
+  private appendVersion(path: string, content: string): Promise<void> {
+    this.appendVersionQueue = this.appendVersionQueue
+      .then(() => this.doAppendVersion(path, content))
+      .catch(() => {});
+    return this.appendVersionQueue;
+  }
+
+  private async doAppendVersion(path: string, content: string): Promise<void> {
     const dir = this.versionsDir(path);
     await mkdir(dir, { recursive: true });
     // Pad counter to 6 digits so lexicographic sort = insertion order within same ms.

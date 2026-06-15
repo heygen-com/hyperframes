@@ -340,7 +340,7 @@ describe("find({ composition })", () => {
     const ids = comp.find({ composition: "hf-host" });
     expect(ids).toContain("hf-host/hf-leaf");
     expect(ids).not.toContain("hf-outer");
-    expect(ids).not.toContain("hf-host"); // host itself is in parent scope
+    expect(ids).toContain("hf-host"); // host element is included in its own composition scope
   });
 
   it("returns empty array for unknown host id", async () => {
@@ -349,6 +349,22 @@ describe("find({ composition })", () => {
     );
     const comp = await openComposition(html);
     expect(comp.find({ composition: "hf-no-such" })).toEqual([]);
+  });
+
+  it("find({ composition }) includes the host element itself", async () => {
+    const html = inlinedHtml(`
+      <div data-hf-id="hf-root" data-hf-root>
+        <div data-hf-id="hf-host" data-composition-file="sub.html">
+          <p data-hf-id="hf-leaf">inside</p>
+        </div>
+        <p data-hf-id="hf-outer">outside</p>
+      </div>
+    `);
+    const comp = await openComposition(html);
+    const ids = comp.find({ composition: "hf-host" });
+    expect(ids).toContain("hf-host");
+    expect(ids).toContain("hf-host/hf-leaf");
+    expect(ids).not.toContain("hf-outer");
   });
 
   it("can combine composition filter with other query fields", async () => {

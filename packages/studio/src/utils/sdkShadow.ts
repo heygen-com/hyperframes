@@ -38,7 +38,7 @@ export function patchOpsToSdkEditOps(hfId: string, ops: PatchOperation[]): EditO
       result.push({
         type: "setAttribute",
         target: hfId,
-        name: `data-${op.property}`,
+        name: op.property.startsWith("data-") ? op.property : `data-${op.property}`,
         value: op.value,
       });
     } else if (op.type === "html-attribute") {
@@ -97,18 +97,21 @@ function flattenSnapshot(snap: ElementSnapshot): FlatSnapshot {
 
 type OpFieldResolver = (op: PatchOperation, flat: FlatSnapshot) => OpFields;
 
-const OP_FIELD_RESOLVERS: Record<string, OpFieldResolver> = {
+const OP_FIELD_RESOLVERS: Record<PatchOperation["type"], OpFieldResolver> = {
   "inline-style": (op, flat) => ({
     property: op.property,
     expected: op.value,
     actual: flat.styles[op.property] ?? null,
   }),
   "text-content": (op, flat) => ({ property: "text", expected: op.value ?? "", actual: flat.text }),
-  attribute: (op, flat) => ({
-    property: `data-${op.property}`,
-    expected: op.value ?? null,
-    actual: flat.attrs[`data-${op.property}`] ?? null,
-  }),
+  attribute: (op, flat) => {
+    const attrName = op.property.startsWith("data-") ? op.property : `data-${op.property}`;
+    return {
+      property: attrName,
+      expected: op.value ?? null,
+      actual: flat.attrs[attrName] ?? null,
+    };
+  },
   "html-attribute": (op, flat) => ({
     property: op.property,
     expected: op.value ?? null,

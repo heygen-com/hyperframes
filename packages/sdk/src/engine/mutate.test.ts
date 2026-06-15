@@ -389,14 +389,14 @@ describe("validateOp", () => {
 // ─── Phase 3b ops — graceful when no GSAP script, feature-detectable ────────
 
 describe("Phase 3b ops", () => {
-  it("applyOp returns EMPTY when no GSAP script is present", () => {
-    const result = applyOp(fresh(), {
-      type: "addGsapTween",
-      target: "hf-title",
-      tween: { method: "from", properties: { opacity: 0 } },
-    });
-    expect(result.forward).toHaveLength(0);
-    expect(result.inverse).toHaveLength(0);
+  it("applyOp throws when no GSAP script block is present", () => {
+    expect(() =>
+      applyOp(fresh(), {
+        type: "addGsapTween",
+        target: "hf-title",
+        tween: { method: "from", properties: { opacity: 0 } },
+      }),
+    ).toThrow("No GSAP script block found");
   });
 
   it("validateOp returns ok:false / E_NO_GSAP_SCRIPT when no GSAP script present", () => {

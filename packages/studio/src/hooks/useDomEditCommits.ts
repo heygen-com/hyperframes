@@ -40,7 +40,6 @@ import { fontFamilyFromAssetPath, type ImportedFontAsset } from "../components/e
 import type { DomEditGroupPathOffsetCommit } from "../components/editor/DomEditOverlay";
 import type { EditHistoryKind } from "../utils/editHistory";
 import { useDomEditTextCommits } from "./useDomEditTextCommits";
-
 type TimelineLike = { getChildren?: (nested: boolean) => Array<{ targets?: () => Element[] }> };
 
 // fallow-ignore-next-line complexity
@@ -81,6 +80,14 @@ interface RecordEditInput {
   files: Record<string, { before: string; after: string }>;
 }
 
+type TrySdkPersist = (
+  s: DomEditSelection,
+  ops: PatchOperation[],
+  html: string,
+  path: string,
+  options?: { label?: string; coalesceKey?: string },
+) => Promise<boolean>;
+
 export type PersistDomEditOperations = (
   selection: DomEditSelection,
   operations: PatchOperation[],
@@ -119,8 +126,8 @@ export interface UseDomEditCommitsParams {
     target: HTMLElement,
     options?: { preferClipAncestor?: boolean },
   ) => Promise<DomEditSelection | null>;
-  /** Stage 7 Step 3b: called after a successful server-side element patch. */
   onDomEditPersisted?: (selection: DomEditSelection, operations: PatchOperation[]) => void;
+  onTrySdkPersist?: TrySdkPersist;
 }
 
 export function useDomEditCommits({
@@ -142,6 +149,7 @@ export function useDomEditCommits({
   refreshDomEditSelectionFromPreview,
   buildDomSelectionFromTarget,
   onDomEditPersisted,
+  onTrySdkPersist,
 }: UseDomEditCommitsParams) {
   const resolveImportedFontAsset = useCallback(
     (fontFamilyValue: string): ImportedFontAsset | null => {
@@ -167,7 +175,6 @@ export function useDomEditCommits({
   );
 
   const reportedUnresolvableRef = useRef(new Set<string>());
-
   // fallow-ignore-next-line complexity
   const persistDomEditOperations: PersistDomEditOperations = useCallback(
     // fallow-ignore-next-line complexity
@@ -175,9 +182,7 @@ export function useDomEditCommits({
       const pid = projectIdRef.current;
       if (!pid) throw new Error("No active project");
       if (options?.shouldSave && !options.shouldSave()) return;
-
       const targetPath = selection.sourceFile || activeCompPath || "index.html";
-
       const readResponse = await fetch(
         `/api/projects/${pid}/files/${encodeURIComponent(targetPath)}`,
       );
@@ -187,16 +192,24 @@ export function useDomEditCommits({
       if (typeof originalContent !== "string") {
         throw new Error(`Missing file contents for ${targetPath}`);
       }
-
       if (options?.shouldSave && !options.shouldSave()) return;
-
+      if (onTrySdkPersist) {
+        try {
+          if (
+            await onTrySdkPersist(selection, operations, originalContent, targetPath, {
+              label: options?.label,
+              coalesceKey: options?.coalesceKey,
+            })
+          ) {
+            onDomEditPersisted?.(selection, operations);
+            return;
+          }
+        } catch {
+          // SDK cutover failed unexpectedly; fall through to server-side patch
+        }
+      }
       const patchTarget = buildDomEditPatchTarget(selection);
-
-      // Mark the save timestamp before the file write so the SSE file-change
-      // handler suppresses the reload even if the event arrives before the
-      // response (the server writes the file and emits SSE during the fetch).
       domEditSaveTimestampRef.current = Date.now();
-
       const patchResponse = await fetch(
         `/api/projects/${pid}/file-mutations/patch-element/${encodeURIComponent(targetPath)}`,
         {
@@ -206,14 +219,12 @@ export function useDomEditCommits({
         },
       );
       if (!patchResponse.ok) throw new Error(`Failed to patch ${targetPath}`);
-
       const patchData = (await patchResponse.json()) as {
         ok?: boolean;
         changed?: boolean;
         matched?: boolean;
         content?: string;
       };
-
       if (!patchData.changed) {
         if (patchData.matched === false) {
           const targetKey = selection.selector ?? selection.id ?? "selection";
@@ -233,10 +244,8 @@ export function useDomEditCommits({
         }
         return;
       }
-
       const patchedContent =
         typeof patchData.content === "string" ? patchData.content : originalContent;
-
       let finalContent = patchedContent;
       if (options?.prepareContent) {
         finalContent = options.prepareContent(patchedContent, targetPath);
@@ -244,7 +253,6 @@ export function useDomEditCommits({
           await writeProjectFile(targetPath, finalContent);
         }
       }
-
       await editHistory.recordEdit({
         label: options?.label ?? "Edit layer",
         kind: "manual",
@@ -252,7 +260,6 @@ export function useDomEditCommits({
         files: { [targetPath]: { before: originalContent, after: finalContent } },
       });
       onDomEditPersisted?.(selection, operations);
-
       if (!options?.skipRefresh) {
         reloadPreview();
       }
@@ -265,10 +272,9 @@ export function useDomEditCommits({
       domEditSaveTimestampRef,
       reloadPreview,
       onDomEditPersisted,
+      onTrySdkPersist,
     ],
   );
-
-  // ── Text & style commits (delegated to useDomEditTextCommits) ──
 
   const {
     handleDomStyleCommit,
@@ -289,8 +295,6 @@ export function useDomEditCommits({
     persistDomEditOperations,
     resolveImportedFontAsset,
   });
-
-  // ── Position patch helper ──
 
   // fallow-ignore-next-line complexity
   const commitPositionPatchToHtml = useCallback(
@@ -321,8 +325,6 @@ export function useDomEditCommits({
     },
     [persistDomEditOperations, queueDomEditSave, showToast],
   );
-
-  // ── Position commits ──
 
   const handleDomPathOffsetCommit = useCallback(
     (selection: DomEditSelection, next: { x: number; y: number }) => {
@@ -399,8 +401,6 @@ export function useDomEditCommits({
     },
     [commitPositionPatchToHtml],
   );
-
-  // ── Motion commits (HTML-attribute–backed) ──
 
   // fallow-ignore-next-line complexity
   const handleDomMotionCommit = useCallback(
