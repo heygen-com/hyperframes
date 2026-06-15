@@ -10,6 +10,9 @@ dist/
 .env.local
 .env.*.local
 
+# Lefthook per-developer overrides (not shared; see lefthook.yml for shared hooks)
+lefthook-local.yml
+
 # OS
 .DS_Store
 Thumbs.db
