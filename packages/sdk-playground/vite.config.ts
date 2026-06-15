@@ -58,6 +58,39 @@ function methodNotAllowed(res: ServerResponse) {
   res.end();
 }
 
+async function handleHttpFileGet(
+  adapter: PersistAdapter,
+  filePath: string,
+  optional: boolean,
+  res: ServerResponse,
+) {
+  const content = await adapter.read(filePath);
+  if (content === undefined) {
+    res.statusCode = 404;
+    res.end(optional ? "{}" : "");
+    return;
+  }
+  res.setHeader("Content-Type", "application/json");
+  res.end(JSON.stringify({ content }));
+}
+
+async function handleHttpFilePut(
+  adapter: PersistAdapter,
+  filePath: string,
+  req: Connect.IncomingMessage,
+  res: ServerResponse,
+) {
+  const body = JSON.parse(await readBody(req)) as { content?: string };
+  if (typeof body.content !== "string") {
+    res.statusCode = 400;
+    res.end();
+    return;
+  }
+  await adapter.write(filePath, body.content);
+  res.statusCode = 200;
+  res.end();
+}
+
 function compositionPlugin(): Plugin {
   const adapter = createFsAdapter({ root: COMP_ROOT });
 
@@ -74,6 +107,26 @@ function compositionPlugin(): Plugin {
       server.middlewares.use("/api/composition", async (req, res) => {
         if (req.method === "GET") return handleCompositionGet(adapter, req, res);
         if (req.method === "PUT") return handleCompositionPut(adapter, req, res);
+        methodNotAllowed(res);
+      });
+
+      // Stage 7: HTTP adapter-compatible REST routes.
+      // createHttpAdapter expects GET /files/{path}?optional=1 → { content } and
+      // PUT /files/{path} body { content } → 200.
+      // fallow-ignore-next-line complexity
+      server.middlewares.use("/api/project/files/", async (req, res) => {
+        const url = new URL(req.url ?? "/", "http://localhost");
+        const filePath = decodeURIComponent(url.pathname.replace(/^\/api\/project\/files\//, ""));
+        if (!filePath) return methodNotAllowed(res);
+        if (req.method === "GET") {
+          return handleHttpFileGet(
+            adapter,
+            filePath,
+            url.searchParams.get("optional") === "1",
+            res,
+          );
+        }
+        if (req.method === "PUT") return handleHttpFilePut(adapter, filePath, req, res);
         methodNotAllowed(res);
       });
     },

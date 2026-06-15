@@ -1,4 +1,5 @@
 import { openComposition, createHeadlessAdapter, createMemoryAdapter } from "@hyperframes/sdk";
+import { createHttpAdapter } from "@hyperframes/sdk/adapters/http";
 import { createFileAdapter } from "./fileAdapter.js";
 import type { Composition, GsapTweenSpec, PreviewAdapter, FindQuery } from "@hyperframes/sdk";
 import { parseGsapScriptAcorn } from "@hyperframes/core/gsap-parser-acorn";
@@ -11,7 +12,7 @@ const DEMO_HTML = `
 <div data-hf-id="hf-stage" data-hf-root style="width:1280px;height:720px;background:#111827;position:relative;" data-duration="6">
   <style>.badge{background:#3b82f6;border-radius:6px;} .card{background:#1f2937;border-radius:12px;}</style>
   <div data-hf-id="hf-headline" style="position:absolute;top:160px;left:140px;font-size:72px;font-weight:700;color:#f9fafb;font-family:system-ui,sans-serif;">SDK Playground</div>
-  <div data-hf-id="hf-sub" style="position:absolute;top:260px;left:142px;font-size:28px;color:#9ca3af;font-family:system-ui,sans-serif;">@hyperframes/sdk &middot; Stages 1–6</div>
+  <div data-hf-id="hf-sub" style="position:absolute;top:260px;left:142px;font-size:28px;color:#9ca3af;font-family:system-ui,sans-serif;">@hyperframes/sdk &middot; Stages 1–7</div>
   <div data-hf-id="hf-badge" class="badge" style="position:absolute;top:350px;left:142px;padding:10px 24px;font-size:20px;font-weight:600;color:#fff;font-family:system-ui,sans-serif;">v0.6</div>
   <!-- Simulated inlined sub-composition — data-composition-file marks the host boundary.
        Elements inside get scoped ids: hf-card/hf-card-title, hf-card/hf-card-body. -->
@@ -1113,6 +1114,61 @@ function buildAdaptersSection(): HTMLDivElement {
   return opSection("Adapters (Stage 5)", opRow(headless, memory), note);
 }
 
+function buildHttpAdapterSection(): HTMLDivElement {
+  const readBtn = mkBtn("read via HTTP", "", async () => {
+    const adapter = createHttpAdapter({ projectFilesUrl: "/api/project" });
+    const html = await adapter.read("composition.html");
+    logEntry("info", {
+      "HTTP adapter read": html
+        ? { bytes: html.length, preview: html.slice(0, 80) + "…" }
+        : "not found",
+    });
+  });
+  const roundTrip = mkBtn("write + read round-trip", "", async () => {
+    const adapter = createHttpAdapter({ projectFilesUrl: "/api/project" });
+    const content = comp!.serialize();
+    await adapter.write("composition.html", content);
+    const readBack = await adapter.read("composition.html");
+    logEntry("info", {
+      "HTTP adapter write+read": {
+        wrote: content.length + " bytes",
+        readBack: readBack ? readBack.length + " bytes" : "null",
+        match: readBack === content,
+      },
+    });
+  });
+  const note = mkNote(
+    "createHttpAdapter({ projectFilesUrl }) — Stage 7. Reads/writes via REST: " +
+      "GET /files/{path}?optional=1 → {content}, PUT /files/{path} {content}. " +
+      "The playground's Vite server exposes matching routes at /api/project.",
+  );
+  return opSection("HTTP Adapter (Stage 7)", opRow(readBtn, roundTrip), note);
+}
+
+function buildSetSelectionSection(): HTMLDivElement {
+  const idInput = document.createElement("input");
+  idInput.type = "text";
+  idInput.placeholder = "hf-headline";
+  idInput.value = selectedId ?? "";
+  const setBtn = mkBtn("setSelection([id])", "", () => {
+    if (!comp) return;
+    const id = idInput.value.trim();
+    comp.setSelection(id ? [id] : []);
+    logEntry("op", { setSelection: id ? [id] : [] });
+  });
+  const clearBtn = mkBtn("clear", "", () => {
+    if (!comp) return;
+    comp.setSelection([]);
+    logEntry("op", { setSelection: [] });
+  });
+  const note = mkNote(
+    "comp.setSelection(ids) — Stage 7. Direct programmatic selection on the session; " +
+      "fires 'selectionchange' without going through the PreviewAdapter. " +
+      "Distinct from preview.select() which also syncs the iframe highlight.",
+  );
+  return opSection("setSelection (Stage 7)", opRow(idInput, setBtn, clearBtn), note);
+}
+
 const OPS_SECTIONS = [
   buildPreviewSelectSection,
   buildSetStyleSection,
@@ -1129,6 +1185,8 @@ const OPS_SECTIONS = [
   buildVersionsSection,
   buildHistorySection,
   buildAdaptersSection,
+  buildHttpAdapterSection,
+  buildSetSelectionSection,
 ];
 
 function renderOpsContent(container: HTMLElement) {

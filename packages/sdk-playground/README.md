@@ -22,12 +22,15 @@ file-backed persist adapter:
 | Stage 4                | `canUndo()`/`canRedo()` (live button + Ops badge), `removeElement` GSAP cascade (logs override-set after cascade to confirm orphan cleanup), `can()` → `CanResult`, `getOverrides()`, `selection()` proxy, `find()`, `setVariableValue`   |
 | Stage 5                | `createHeadlessAdapter()` and `createMemoryAdapter()` exported from package root; `FsAdapter` — file-backed persistence with version history; `FileAdapter` — browser fetch adapter; `PlaygroundPreview` — concrete `PreviewAdapter` impl |
 | Stage 6                | Scoped ids (`hf-HOST/hf-LEAF`), `find({ composition })` filter, ops targeting sub-composition elements via `comp.setStyle("hf-card/hf-card-title", styles)`                                                                               |
+| Stage 7                | `createHttpAdapter({ projectFilesUrl })` — REST-backed persist adapter (read/write via fetch); `comp.setSelection(ids)` — programmatic selection that fires `selectionchange` without going through the preview iframe                    |
 
 ## Features
 
 ### File persistence
 
 Composition state is persisted to `packages/sdk-playground/composition.html` via a Vite dev-server plugin backed by `@hyperframes/sdk/adapters/fs`. Every save writes a timestamped snapshot to `.hf-versions/composition.html/` (capped at 20). Reload the page and your last state is restored.
+
+The Stage 7 HTTP Adapter section demos `createHttpAdapter` against the same underlying file via a matching REST endpoint the Vite plugin exposes at `/api/project/files/`.
 
 ### Preview iframe
 
@@ -62,23 +65,25 @@ DAW-style per-element tween blocks. Drag handles to trim start/end; drag body to
 
 Full op surface, grouped by feature:
 
-| Section                        | SDK op                                                                                                                                           |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| PreviewAdapter.select()        | `preview.select([id])`                                                                                                                           |
-| setStyle                       | `comp.setStyle(id, styles)`                                                                                                                      |
-| setText                        | `comp.setText(id, value)`                                                                                                                        |
-| addGsapTween                   | `comp.addGsapTween(target, spec)`                                                                                                                |
-| setGsapTween / removeGsapTween | `comp.setGsapTween(animId, { duration })` / `comp.removeGsapTween(animId)`                                                                       |
-| addLabel / removeLabel         | `comp.dispatch({ type: "addLabel", name, position })` / `removeLabel`                                                                            |
-| setClassStyle                  | `comp.dispatch({ type: "setClassStyle", selector, styles })`                                                                                     |
-| setAttribute / removeElement   | `comp.element(id).setAttribute()` / `.removeElement()`                                                                                           |
-| setVariableValue               | `comp.setVariableValue(id, value)`                                                                                                               |
-| find(query)                    | `comp.find({ tag, text, name, track, composition })` — Stage 6: `composition` filter scopes results to a sub-composition host                    |
-| Scoped dispatch                | `comp.setStyle("hf-card/hf-card-title", styles)` — Stage 6: address elements inside inlined sub-compositions                                     |
-| selection() proxy              | `comp.selection().setStyle()` / `.removeElement()`                                                                                               |
-| listVersions / loadFrom        | `adapter.listVersions(path)` / `adapter.loadFrom(path, key)`                                                                                     |
-| History / inspect              | `comp.canUndo()`/`comp.canRedo()` (live badges), `comp.undo()`, `comp.redo()`, `comp.can(op) → CanResult`, `comp.getOverrides()`, `comp.flush()` |
-| Adapters                       | `createHeadlessAdapter()`, `createMemoryAdapter()` — Stage 5: exported from package root; both shown with live demo in the Adapters section      |
+| Section                        | SDK op                                                                                                                                                                                                                     |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PreviewAdapter.select()        | `preview.select([id])`                                                                                                                                                                                                     |
+| setStyle                       | `comp.setStyle(id, styles)`                                                                                                                                                                                                |
+| setText                        | `comp.setText(id, value)`                                                                                                                                                                                                  |
+| addGsapTween                   | `comp.addGsapTween(target, spec)`                                                                                                                                                                                          |
+| setGsapTween / removeGsapTween | `comp.setGsapTween(animId, { duration })` / `comp.removeGsapTween(animId)`                                                                                                                                                 |
+| addLabel / removeLabel         | `comp.dispatch({ type: "addLabel", name, position })` / `removeLabel`                                                                                                                                                      |
+| setClassStyle                  | `comp.dispatch({ type: "setClassStyle", selector, styles })`                                                                                                                                                               |
+| setAttribute / removeElement   | `comp.element(id).setAttribute()` / `.removeElement()`                                                                                                                                                                     |
+| setVariableValue               | `comp.setVariableValue(id, value)`                                                                                                                                                                                         |
+| find(query)                    | `comp.find({ tag, text, name, track, composition })` — Stage 6: `composition` filter scopes results to a sub-composition host                                                                                              |
+| Scoped dispatch                | `comp.setStyle("hf-card/hf-card-title", styles)` — Stage 6: address elements inside inlined sub-compositions                                                                                                               |
+| selection() proxy              | `comp.selection().setStyle()` / `.removeElement()`                                                                                                                                                                         |
+| listVersions / loadFrom        | `adapter.listVersions(path)` / `adapter.loadFrom(path, key)`                                                                                                                                                               |
+| History / inspect              | `comp.canUndo()`/`comp.canRedo()` (live badges), `comp.undo()`, `comp.redo()`, `comp.can(op) → CanResult`, `comp.getOverrides()`, `comp.flush()`                                                                           |
+| Adapters                       | `createHeadlessAdapter()`, `createMemoryAdapter()` — Stage 5: exported from package root; both shown with live demo in the Adapters section                                                                                |
+| HTTP Adapter (Stage 7)         | `createHttpAdapter({ projectFilesUrl })` — reads via `GET /files/{path}?optional=1`, writes via `PUT /files/{path} {content}`; playground Vite server exposes matching routes at `/api/project` for a live end-to-end demo |
+| setSelection (Stage 7)         | `comp.setSelection(ids)` — direct programmatic selection on the session; fires `selectionchange` without going through the preview iframe (contrast with `preview.select()`)                                               |
 
 `canUndo()`/`canRedo()` drive both the header buttons (disabled when false) and live status badges in the Ops panel that update on every patch.
 
