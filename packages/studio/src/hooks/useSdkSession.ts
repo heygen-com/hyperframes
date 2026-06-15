@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import type { MutableRefObject } from "react";
 import { openComposition } from "@hyperframes/sdk";
 import { createHttpAdapter } from "@hyperframes/sdk/adapters/http";
@@ -36,11 +36,21 @@ export function shouldReloadSdkSession(payload: unknown, activeCompPath: string 
 // comparison is exact rather than time-based.
 const SELF_WRITE_SUPPRESS_MS = 2000;
 
+export interface SdkSessionHandle {
+  session: Composition | null;
+  /**
+   * Force a session reload immediately, bypassing the self-write suppress
+   * window. Call after undo/redo writes the active composition file so the
+   * SDK in-memory document reflects the reverted content.
+   */
+  forceReload: () => void;
+}
+
 export function useSdkSession(
   projectId: string | null,
   activeCompPath: string | null,
   domEditSaveTimestampRef?: MutableRefObject<number>,
-): Composition | null {
+): SdkSessionHandle {
   const [session, setSession] = useState<Composition | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
 
@@ -111,5 +121,6 @@ export function useSdkSession(
     };
   }, [projectId, activeCompPath, reloadToken]);
 
-  return session;
+  const forceReload = useCallback(() => setReloadToken((t) => t + 1), []);
+  return { session, forceReload };
 }

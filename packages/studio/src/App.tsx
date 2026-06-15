@@ -145,9 +145,7 @@ export function StudioApp() {
   const domEditSaveTimestampRef = useRef(0);
   const pendingTimelineEditPathRef = useRef(new Set<string>());
   const isGestureRecordingRef = useRef(false);
-  const reloadPreview = useCallback(() => {
-    setRefreshKey((k) => k + 1);
-  }, []);
+  const reloadPreview = useCallback(() => setRefreshKey((k) => k + 1), []);
   const fileManager = useFileManager({
     projectId,
     showToast,
@@ -155,7 +153,7 @@ export function StudioApp() {
     domEditSaveTimestampRef,
     setRefreshKey,
   });
-  const sdkSession = useSdkSession(projectId, activeCompPath, domEditSaveTimestampRef);
+  const sdkHandle = useSdkSession(projectId, activeCompPath, domEditSaveTimestampRef);
   useEffect(() => {
     if (activeCompPathHydrated) return;
     if (!fileManager.fileTreeLoaded) return;
@@ -191,7 +189,7 @@ export function StudioApp() {
     pendingTimelineEditPathRef,
     uploadProjectFiles: fileManager.uploadProjectFiles,
     isRecordingRef: isGestureRecordingRef,
-    sdkSession,
+    sdkSession: sdkHandle.session,
   });
   const {
     activeBlockParams,
@@ -259,6 +257,8 @@ export function StudioApp() {
     onResetKeyframes: () => resetKeyframesRef.current(),
     onDeleteSelectedKeyframes: () => deleteSelectedKeyframesRef.current(),
     onAfterUndoRedo: () => invalidateGsapCacheRef.current(),
+    activeCompPath,
+    forceReloadSdkSession: sdkHandle.forceReload,
     onToggleRecording: STUDIO_KEYFRAMES_ENABLED
       ? () => handleToggleRecordingRef.current()
       : undefined,
@@ -305,7 +305,7 @@ export function StudioApp() {
     openSourceForSelection: fileManager.openSourceForSelection,
     selectSidebarTab: selectSidebarTabStable,
     getSidebarTab: getSidebarTabStable,
-    sdkSession,
+    sdkSession: sdkHandle.session,
   });
   domEditSelectionBridgeRef.current = domEditSession.domEditSelection;
   clearDomSelectionRef.current = domEditSession.clearDomSelection;
@@ -322,7 +322,7 @@ export function StudioApp() {
     }
   };
   useSdkSelectionSync(
-    sdkSession,
+    sdkHandle.session,
     domEditSession.domEditSelection,
     domEditSession.domEditGroupSelections,
   );
