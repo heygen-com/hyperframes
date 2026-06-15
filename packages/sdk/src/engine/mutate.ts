@@ -598,8 +598,11 @@ function handleAddGsapTween(
       ? ((tween.toProperties ?? {}) as Record<string, number | string>)
       : ((tween.toProperties ?? tween.properties ?? {}) as Record<string, number | string>);
 
+  // Scoped ids like "hf-host/hf-leaf" must use the bare leaf id in the GSAP
+  // selector — only the leaf part is written as data-hf-id on the DOM element.
+  const bareTarget = target.includes("/") ? (target.split("/").at(-1) ?? target) : target;
   const animation: Omit<GsapAnimation, "id"> = {
-    targetSelector: `[data-hf-id="${target}"]`,
+    targetSelector: `[data-hf-id="${bareTarget}"]`,
     method: tween.method,
     position: tween.position ?? 0,
     ...(tween.duration !== undefined ? { duration: tween.duration } : {}),
@@ -793,6 +796,12 @@ export function validateOp(parsed: ParsedDocument, op: EditOp): CanResult {
       return CAN_OK;
     case "addGsapTween":
     case "addLabel": {
+      if (op.type === "addGsapTween" && resolveScoped(parsed.document, op.target) === null)
+        return canErr(
+          "E_TARGET_NOT_FOUND",
+          `Element not found: ${op.target}.`,
+          "Verify the id against comp.getElements() or comp.find().",
+        );
       const script = getGsapScript(parsed.document);
       if (!script)
         return canErr(
