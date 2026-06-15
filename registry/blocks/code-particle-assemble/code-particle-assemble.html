@@ -344,18 +344,13 @@
           }
           uv.needsUpdate = true;
 
-          var faceMat = new THREE.MeshStandardMaterial({
-            map: tex,
-            roughness: 0.42,
-            metalness: 0.0,
-            emissive: 0xffffff,
-            emissiveMap: tex,
-            emissiveIntensity: 0.5,
-          });
+          // Face is an unlit "screen" — shows the exact vivid Shiki colors (no PBR/emissive wash).
+          // The 3D read comes from the lit, beveled EDGES + perspective, like a glowing monitor.
+          var faceMat = new THREE.MeshBasicMaterial({ map: tex });
           var edgeMat = new THREE.MeshStandardMaterial({
-            color: 0x121a26,
-            roughness: 0.35,
-            metalness: 0.3,
+            color: 0x141d2b,
+            roughness: 0.3,
+            metalness: 0.4,
           });
           // ExtrudeGeometry groups: 0 = front+back faces, 1 = sides. Front shows the code.
           var slab = new THREE.Mesh(geo, [faceMat, edgeMat]);
@@ -381,12 +376,7 @@
           st.rotY = -1.0;
           st.rotX = 0.4;
           st.camZ = fitZ + 6;
-          st.glow = 0.0;
-          tl.to(
-            st,
-            { rotY: 0, rotX: 0, camZ: fitZ, glow: 0.6, duration: dur * 0.6, ease: "power3.out" },
-            0,
-          );
+          tl.to(st, { rotY: 0, rotX: 0, camZ: fitZ, duration: dur * 0.6, ease: "power3.out" }, 0);
           // gentle breathing drift at rest (subtle — stays readable)
           tl.to(
             st,
@@ -397,7 +387,6 @@
           return function () {
             slab.rotation.y = st.rotY;
             slab.rotation.x = st.rotX;
-            faceMat.emissiveIntensity = st.glow;
             camera.position.z = st.camZ;
             camera.lookAt(0, 0, 0);
             renderer.render(scene, camera);
@@ -554,7 +543,8 @@
             uniforms: uniforms,
             transparent: true,
             depthTest: false,
-            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            blending: THREE.NormalBlending,
             vertexShader: [
               "attribute vec3 aOrigin; attribute vec3 aTarget; attribute vec3 aColor; attribute float aDelay;",
               "uniform float uProgress; uniform float uSize;",
@@ -579,8 +569,8 @@
               "  if (r2 > 0.25) discard;",
               "  float a = smoothstep(0.25, 0.02, r2);",
               // brighter & whiter in flight, resolves to true color as it lands
-              "  vec3 c = mix(vColor + vec3(0.5)*(1.0-vP), vColor, vP);",
-              "  gl_FragColor = vec4(c, a * (0.55 + 0.45*vP));",
+              "  vec3 c = mix(vColor + vec3(0.32)*(1.0-vP), vColor, vP);",
+              "  gl_FragColor = vec4(c, a * (0.7 + 0.3*vP));",
               "}",
             ].join("\n"),
           });
