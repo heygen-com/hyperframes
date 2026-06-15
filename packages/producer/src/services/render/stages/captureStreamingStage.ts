@@ -156,23 +156,19 @@ async function runWorkerEncodePipelineLoop(
     );
   };
 
-  try {
-    for (let i = 0; i < totalFrames; i++) {
-      assertNotAborted();
-      const time = (i * job.config.fps.den) / job.config.fps.num;
-      const { encodeResult } = await captureFrameToBufferPipelined(session, i, time);
-      await drainPrev();
-      prev = { idx: i, encodeResult };
-    }
+  // On abort/throw the just-produced frame's encode is still in flight and never
+  // awaited (it isn't `prev` yet); cleanupDrawElementWorkerEncode rejects it on
+  // close. produceDrawElementFrame attaches a no-op catch to every encodeResult
+  // at creation so that orphaned rejection is never an unhandled rejection — so
+  // the loop needs no special guard here.
+  for (let i = 0; i < totalFrames; i++) {
+    assertNotAborted();
+    const time = (i * job.config.fps.den) / job.config.fps.num;
+    const { encodeResult } = await captureFrameToBufferPipelined(session, i, time);
     await drainPrev();
-  } catch (err) {
-    // On abort/throw the previously-produced frame's encode is still in flight
-    // and never awaited; closeCaptureSession → cleanupDrawElementWorkerEncode
-    // will reject it. Attach a no-op catch so that rejection is not an
-    // unhandled promise rejection (which can crash the producer worker).
-    if (prev) prev.encodeResult.catch(() => {});
-    throw err;
+    prev = { idx: i, encodeResult };
   }
+  await drainPrev();
 }
 
 export async function runCaptureStreamingStage(

@@ -472,8 +472,15 @@ export async function initDrawElementWorkerEncode(page: Page): Promise<void> {
       const entry = s.pending.get(id);
       if (!entry) return;
       s.pending.delete(id);
-      if (error) entry.reject(new Error(`drawElement worker encode failed: ${error}`));
-      else entry.resolve(Buffer.from(b64, "base64"));
+      if (error) {
+        entry.reject(new Error(`drawElement worker encode failed: ${error}`));
+      } else if (!b64) {
+        // A success message with no payload would otherwise resolve a 0-byte
+        // Buffer and ffmpeg would write a corrupt/empty frame silently. Fail loud.
+        entry.reject(new Error(`drawElement worker encode returned empty frame (frame ${id})`));
+      } else {
+        entry.resolve(Buffer.from(b64, "base64"));
+      }
     });
   }
 
@@ -493,11 +500,17 @@ export async function initDrawElementWorkerEncode(page: Page): Promise<void> {
     // relays to node. On any encode failure the worker posts an error for that
     // frame's id so the node-side promise rejects instead of hanging.
     const workerSrc = `
+      // Reuse one OffscreenCanvas across frames (dimensions are constant for a
+      // render) — a fresh canvas per frame churns ~w*h*4 bytes of backing store
+      // every frame and pressures GC on the encode hot path.
+      let oc = null, c = null;
       self.onmessage = async (e) => {
         const { bmp, id, w, h, q } = e.data;
         try {
-          const oc = new OffscreenCanvas(w, h);
-          const c = oc.getContext('2d');
+          if (!oc || oc.width !== w || oc.height !== h) {
+            oc = new OffscreenCanvas(w, h);
+            c = oc.getContext('2d');
+          }
           if (!c) throw new Error('OffscreenCanvas 2d context unavailable');
           c.drawImage(bmp, 0, 0);
           bmp.close();
@@ -574,8 +587,34 @@ export async function produceDrawElementFrame(
 
   const frameId = ++state.nextId;
   const encodeResult = new Promise<Buffer>((resolve, reject) => {
-    state.pending.set(frameId, { resolve, reject });
+    // Watchdog: worker.onerror (→ id=-1, reject-all) covers worker CRASHES, but
+    // a lost message (page navigation, OOM-killed worker with no ErrorEvent, a
+    // dropped postMessage) would never settle this promise — `drainPrev`'s
+    // `await encodeResult` would then hang the whole render to the protocol
+    // timeout. Bound it so the render fails with a clear error. Generous vs the
+    // ~10ms encode to avoid false positives on large frames.
+    const timer = setTimeout(() => {
+      if (state.pending.delete(frameId)) {
+        reject(new Error(`drawElement worker encode timed out (frame ${frameId})`));
+      }
+    }, 30_000);
+    state.pending.set(frameId, {
+      resolve: (b) => {
+        clearTimeout(timer);
+        resolve(b);
+      },
+      reject: (e) => {
+        clearTimeout(timer);
+        reject(e);
+      },
+    });
   });
+  // Guard against an unhandled rejection if the caller never awaits this promise
+  // (the depth-2 pipeline loop orphans the just-produced frame's encode when an
+  // earlier frame's drain throws or the render aborts). The loop's own
+  // `await encodeResult` still observes rejections on its separate reaction
+  // chain; this only suppresses the no-awaiter case.
+  void encodeResult.catch(() => {});
 
   // Do paint-wait + drawElement composite + createImageBitmap + postMessage.
   // Resolves as soon as the bitmap is transferred (not when encode is done).
@@ -668,6 +707,7 @@ export async function produceDrawElementFrame(
               type EncWin = Window & { __hfEncWorker?: Worker };
               const ew = window as EncWin;
               if (!ew.__hfEncWorker) {
+                bmp.close(); // don't leak the GPU-backed ImageBitmap on this reject path
                 rejectCapture(new Error("drawElement: encode worker not initialized"));
                 return;
               }
