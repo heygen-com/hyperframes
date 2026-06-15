@@ -279,6 +279,26 @@ window.__timelines["t"] = tl;`;
     const mismatches = gsapFidelityMismatches(empty, SCRIPT_A);
     expect(mismatches.some((m) => m.property === "tween")).toBe(true);
   });
+
+  it("does NOT flag property key-order differences (canonical compare)", () => {
+    const ab = `var tl = gsap.timeline({ paused: true });
+tl.to("[data-hf-id=\\"hf-box\\"]", { x: 10, y: 20, duration: 0.5 }, 0);
+window.__timelines["t"] = tl;`;
+    const ba = `var tl = gsap.timeline({ paused: true });
+tl.to("[data-hf-id=\\"hf-box\\"]", { y: 20, x: 10, duration: 0.5 }, 0);
+window.__timelines["t"] = tl;`;
+    expect(gsapFidelityMismatches(ab, ba)).toEqual([]);
+  });
+
+  it("does NOT flag number-vs-string-equivalent property values", () => {
+    const numeric = `var tl = gsap.timeline({ paused: true });
+tl.to("[data-hf-id=\\"hf-box\\"]", { opacity: 1, duration: 0.5 }, 0);
+window.__timelines["t"] = tl;`;
+    const stringy = `var tl = gsap.timeline({ paused: true });
+tl.to("[data-hf-id=\\"hf-box\\"]", { opacity: "1", duration: 0.5 }, 0);
+window.__timelines["t"] = tl;`;
+    expect(gsapFidelityMismatches(numeric, stringy)).toEqual([]);
+  });
 });
 
 describe("runShadowGsapFidelity", () => {

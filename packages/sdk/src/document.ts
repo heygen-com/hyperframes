@@ -38,6 +38,24 @@ function ownText(el: Element): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+// Parsing the GSAP script (acorn AST walk) is the expensive part and depends
+// only on the script text, so memoize the {tween id, selector} pairs by script.
+// Selector→hf-id resolution still runs each call — it depends on the live DOM,
+// which changes on dispatch. Single-entry cache covers the hot path (same comp,
+// repeated getElements() rebuilds) and stays bounded.
+let gsapLocatedCacheKey: string | null = null;
+let gsapLocatedCacheVal: Array<{ id: string; selector: string }> = [];
+
+function parseLocatedCached(script: string): Array<{ id: string; selector: string }> {
+  if (gsapLocatedCacheKey === script) return gsapLocatedCacheVal;
+  const parsed = parseGsapScriptAcornForWrite(script);
+  gsapLocatedCacheVal = parsed
+    ? parsed.located.map(({ id, animation }) => ({ id, selector: animation.targetSelector }))
+    : [];
+  gsapLocatedCacheKey = script;
+  return gsapLocatedCacheVal;
+}
+
 /**
  * Map each element's data-hf-id → the GSAP tween ids targeting it. Tween ids
  * come from the acorn parser's stable `targetSelector-method-position` scheme —
@@ -49,10 +67,7 @@ function buildAnimationIdMap(document: Document): Map<string, string[]> {
   const map = new Map<string, string[]>();
   const script = extractGsapScript(document);
   if (!script) return map;
-  const parsed = parseGsapScriptAcornForWrite(script);
-  if (!parsed) return map;
-  for (const { id, animation } of parsed.located) {
-    const selector = animation.targetSelector;
+  for (const { id, selector } of parseLocatedCached(script)) {
     if (!selector) continue;
     let matches: Element[] = [];
     try {
@@ -142,10 +157,12 @@ function buildElement(
 
 // fallow-ignore-next-line complexity
 function extractGsapScript(doc: Document): string | null {
-  // GSAP script is the first <script> tag whose text references gsap
+  // GSAP script is the first <script> tag whose text references gsap. Marker
+  // set must match studio sdkShadow.ts isGsapScriptBody so both pick the same
+  // script from a given composition.
   for (const script of Array.from(doc.querySelectorAll("script"))) {
     const text = script.textContent ?? "";
-    if (text.includes("gsap") || text.includes("ScrollTrigger")) {
+    if (text.includes("gsap") || text.includes("__timelines") || text.includes("ScrollTrigger")) {
       return text;
     }
   }
