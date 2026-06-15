@@ -140,6 +140,13 @@ function checkOpParity(
  *
  * On success, verifies that the SDK element snapshot reflects the applied
  * values. Value mismatches indicate serialization or normalization drift.
+ *
+ * **persist:error drift risk**: the HTTP adapter fires persist:error on
+ * network failure but the SDK session is already mutated at that point. If
+ * the server file was not updated (e.g. 503), subsequent shadow parity
+ * comparisons here will see a diverged SDK session and produce false
+ * positives. Before flipping STUDIO_SDK_DISPATCH_ENABLED, verify the shadow
+ * window is clear of persist:error events.
  */
 
 export function sdkShadowDispatch(

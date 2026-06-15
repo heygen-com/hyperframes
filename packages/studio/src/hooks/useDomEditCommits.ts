@@ -15,9 +15,6 @@ import { useDomEditTextCommits } from "./useDomEditTextCommits";
 import { useDomGeometryCommits } from "./useDomGeometryCommits";
 import { useElementLifecycleOps } from "./useElementLifecycleOps";
 
-// Re-export so existing consumers keep their import path
-export { GSAP_CSS_FALLBACK_BLOCKED_MESSAGE } from "./useDomGeometryCommits";
-
 // ── Helpers ──
 
 function formatUnsafeFieldList(fields: Array<{ path: string }>): string {
@@ -47,8 +44,6 @@ interface RecordEditInput {
   coalesceKey?: string;
   files: Record<string, { before: string; after: string }>;
 }
-
-export type { PersistDomEditOperations } from "./domEditCommitTypes";
 
 export interface UseDomEditCommitsParams {
   activeCompPath: string | null;
