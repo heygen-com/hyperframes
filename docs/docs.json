@@ -276,6 +276,17 @@
               "catalog/blocks/code-snippet-visual-studio-dark",
               "catalog/blocks/code-snippet-visual-studio-light"
             ]
+          },
+          {
+            "group": "Code Animations",
+            "pages": [
+              "catalog/blocks/code-morph",
+              "catalog/blocks/code-snippet-flight",
+              "catalog/blocks/code-typing",
+              "catalog/blocks/code-diff",
+              "catalog/blocks/code-highlight",
+              "catalog/blocks/code-scroll"
+            ]
           }
         ]
       },

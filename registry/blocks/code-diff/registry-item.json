@@ -1,0 +1,24 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "code-diff",
+  "type": "hyperframes:block",
+  "title": "Code Diff",
+  "description": "An edit shown as a colored diff — removed lines collapse in red, added lines expand in green.",
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 6,
+  "tags": ["code", "code-animation", "diff", "developer"],
+  "files": [
+    {
+      "path": "code-diff.html",
+      "target": "compositions/code-diff.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "preview": {
+    "video": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-diff.mp4",
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-diff.png"
+  }
+}

@@ -1,11 +1,10 @@
 import {
   type BlockCategory,
-  type BlockCategoryMeta,
   BLOCK_CATEGORIES,
   resolveBlockCategory,
 } from "@hyperframes/core/registry";
 
-export type { BlockCategory, BlockCategoryMeta };
+export type { BlockCategory };
 export { BLOCK_CATEGORIES, resolveBlockCategory };
 
 const COLOR_MAP: Record<BlockCategory, { bg: string; text: string; dot: string }> = {
@@ -17,6 +16,7 @@ const COLOR_MAP: Record<BlockCategory, { bg: string; text: string; dot: string }
   captions: { bg: "bg-cyan-500/15", text: "text-cyan-400", dot: "bg-cyan-400" },
   effects: { bg: "bg-rose-500/15", text: "text-rose-400", dot: "bg-rose-400" },
   "text-effects": { bg: "bg-violet-500/15", text: "text-violet-400", dot: "bg-violet-400" },
+  "code-animation": { bg: "bg-emerald-500/15", text: "text-emerald-400", dot: "bg-emerald-400" },
 };
 
 export function getCategoryColors(category: BlockCategory) {

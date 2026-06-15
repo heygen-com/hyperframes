@@ -472,6 +472,30 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "code-morph",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "code-snippet-flight",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "code-typing",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "code-diff",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "code-highlight",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "code-scroll",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "flowchart-vertical",
       "type": "hyperframes:block"
     },

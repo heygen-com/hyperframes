@@ -1,0 +1,24 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "code-scroll",
+  "type": "hyperframes:block",
+  "title": "Code Scroll To Line",
+  "description": "The camera scrolls a long file to bring a target line to center and spotlights it — for walking through real modules.",
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 6,
+  "tags": ["code", "code-animation", "scroll", "developer"],
+  "files": [
+    {
+      "path": "code-scroll.html",
+      "target": "compositions/code-scroll.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "preview": {
+    "video": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-scroll.mp4",
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-scroll.png"
+  }
+}
