@@ -19,6 +19,8 @@ import {
   addAnimationWithKeyframesToScript,
   splitAnimationsInScript,
   splitIntoPropertyGroups,
+  shiftPositionsInScript,
+  scalePositionsInScript,
 } from "./gsapParser.js";
 import type { GsapAnimation } from "./gsapParser.js";
 import { classifyPropertyGroup, classifyTweenPropertyGroup } from "./gsapConstants.js";
@@ -2273,5 +2275,115 @@ describe("splitIntoPropertyGroups", () => {
       expect(kf.properties.scale).toBeDefined();
       expect(kf.properties.x).toBeUndefined();
     }
+  });
+});
+
+describe("shiftPositionsInScript", () => {
+  it("shifts all numeric positions for the target selector", () => {
+    const script = `const tl = gsap.timeline({ paused: true });
+tl.from("#hero", { opacity: 0, duration: 1 }, 0);
+tl.to("#hero", { opacity: 0, duration: 0.5 }, 2.5);
+tl.from("#bg", { scale: 0, duration: 1 }, 1);`;
+    const result = shiftPositionsInScript(script, "#hero", 3);
+    const parsed = parseGsapScript(result);
+    const hero = parsed.animations.filter((a) => a.targetSelector === "#hero");
+    expect(hero[0].position).toBe(3);
+    expect(hero[1].position).toBe(5.5);
+    const bg = parsed.animations.find((a) => a.targetSelector === "#bg");
+    expect(bg!.position).toBe(1);
+  });
+
+  it("clamps negative-going positions to zero", () => {
+    const script = `const tl = gsap.timeline({ paused: true });
+tl.to("#el", { x: 100, duration: 1 }, 0.3);
+tl.to("#el", { y: 50, duration: 1 }, 1.5);`;
+    const result = shiftPositionsInScript(script, "#el", -1.0);
+    const parsed = parseGsapScript(result);
+    const anims = parsed.animations.filter((a) => a.targetSelector === "#el");
+    expect(anims[0].position).toBe(0);
+    expect(anims[1].position).toBe(0.5);
+  });
+
+  it("returns the original script when delta is zero", () => {
+    const script = `const tl = gsap.timeline({ paused: true });
+tl.to("#el", { x: 100, duration: 1 }, 2);`;
+    expect(shiftPositionsInScript(script, "#el", 0)).toBe(script);
+  });
+
+  it("does not collide when two tweens have adjacent positions", () => {
+    const script = `const tl = gsap.timeline({ paused: true });
+tl.to("#burst", { opacity: 1, duration: 0.5 }, 1.0);
+tl.to("#burst", { opacity: 0, duration: 0.5 }, 1.5);`;
+    const result = shiftPositionsInScript(script, "#burst", 0.5);
+    const parsed = parseGsapScript(result);
+    const burst = parsed.animations.filter((a) => a.targetSelector === "#burst");
+    expect(burst[0].position).toBe(1.5);
+    expect(burst[1].position).toBe(2);
+  });
+
+  it("skips string positions", () => {
+    const script = `const tl = gsap.timeline({ paused: true });
+tl.to("#el", { x: 100, duration: 1 }, 2);
+tl.to("#el", { y: 50, duration: 1 }, "+=0.5");`;
+    const result = shiftPositionsInScript(script, "#el", 1);
+    const parsed = parseGsapScript(result);
+    expect(parsed.animations[0].position).toBe(3);
+    expect(parsed.animations[1].position).toBe("+=0.5");
+  });
+});
+
+describe("scalePositionsInScript", () => {
+  it("scales positions and durations proportionally for the target selector", () => {
+    const script = `const tl = gsap.timeline({ paused: true });
+tl.from("#hero", { opacity: 0, duration: 1 }, 0);
+tl.to("#hero", { opacity: 0, duration: 0.5 }, 2.5);
+tl.from("#bg", { scale: 0, duration: 1 }, 1);`;
+    const result = scalePositionsInScript(script, "#hero", 0, 3, 0, 2);
+    const parsed = parseGsapScript(result);
+    const hero = parsed.animations.filter((a) => a.targetSelector === "#hero");
+    expect(hero[0].position).toBe(0);
+    expect(hero[0].duration).toBeCloseTo(0.667, 2);
+    expect(hero[1].position).toBeCloseTo(1.667, 2);
+    expect(hero[1].duration).toBeCloseTo(0.333, 2);
+    const bg = parsed.animations.find((a) => a.targetSelector === "#bg");
+    expect(bg!.position).toBe(1);
+    expect(bg!.duration).toBe(1);
+  });
+
+  it("handles start-edge resize (new start + shorter duration)", () => {
+    const script = `const tl = gsap.timeline({ paused: true });
+tl.from("#el", { opacity: 0, duration: 1 }, 0);
+tl.to("#el", { y: 50, duration: 0.5 }, 2.5);`;
+    const result = scalePositionsInScript(script, "#el", 0, 3, 1, 2);
+    const parsed = parseGsapScript(result);
+    const anims = parsed.animations.filter((a) => a.targetSelector === "#el");
+    expect(anims[0].position).toBe(1);
+    expect(anims[0].duration).toBeCloseTo(0.667, 2);
+    expect(anims[1].position).toBeCloseTo(2.667, 2);
+    expect(anims[1].duration).toBeCloseTo(0.333, 2);
+  });
+
+  it("clamps negative-going positions to zero", () => {
+    const script = `const tl = gsap.timeline({ paused: true });
+tl.to("#el", { x: 100, duration: 1 }, 2);`;
+    const result = scalePositionsInScript(script, "#el", 2, 1, 0, 0.5);
+    const parsed = parseGsapScript(result);
+    expect(parsed.animations[0].position).toBe(0);
+  });
+
+  it("returns the original script when old and new timing are identical", () => {
+    const script = `const tl = gsap.timeline({ paused: true });
+tl.to("#el", { x: 100, duration: 1 }, 2);`;
+    expect(scalePositionsInScript(script, "#el", 0, 3, 0, 3)).toBe(script);
+  });
+
+  it("skips string positions", () => {
+    const script = `const tl = gsap.timeline({ paused: true });
+tl.to("#el", { x: 100, duration: 1 }, 2);
+tl.to("#el", { y: 50, duration: 1 }, "+=0.5");`;
+    const result = scalePositionsInScript(script, "#el", 0, 3, 0, 2);
+    const parsed = parseGsapScript(result);
+    expect(parsed.animations[0].position).toBeCloseTo(1.333, 2);
+    expect(parsed.animations[1].position).toBe("+=0.5");
   });
 });

@@ -466,6 +466,19 @@ type GsapMutationRequest =
   | {
       type: "delete-all-for-selector";
       targetSelector: string;
+    }
+  | {
+      type: "shift-positions";
+      targetSelector: string;
+      delta: number;
+    }
+  | {
+      type: "scale-positions";
+      targetSelector: string;
+      oldStart: number;
+      oldDuration: number;
+      newStart: number;
+      newDuration: number;
     };
 
 // ── GSAP mutation executor ──────────────────────────────────────────────────
@@ -714,6 +727,35 @@ async function executeGsapMutation(
     case "split-into-property-groups": {
       const result = splitIntoPropertyGroups(block.scriptText, body.animationId);
       return result.script;
+    }
+    case "shift-positions": {
+      const { targetSelector, delta } = body;
+      if (!targetSelector || !Number.isFinite(delta) || delta === 0) return block.scriptText;
+      const { shiftPositionsInScript } = parser;
+      return shiftPositionsInScript(block.scriptText, targetSelector, delta);
+    }
+    case "scale-positions": {
+      const { targetSelector, oldStart, oldDuration, newStart, newDuration } = body;
+      if (
+        !targetSelector ||
+        !Number.isFinite(oldStart) ||
+        !Number.isFinite(oldDuration) ||
+        !Number.isFinite(newStart) ||
+        !Number.isFinite(newDuration) ||
+        oldDuration <= 0 ||
+        newDuration <= 0
+      )
+        return block.scriptText;
+      if (oldStart === newStart && oldDuration === newDuration) return block.scriptText;
+      const { scalePositionsInScript } = parser;
+      return scalePositionsInScript(
+        block.scriptText,
+        targetSelector,
+        oldStart,
+        oldDuration,
+        newStart,
+        newDuration,
+      );
     }
     default:
       return respond({ error: `unknown mutation type: ${(body as { type: string }).type}` }, 400);

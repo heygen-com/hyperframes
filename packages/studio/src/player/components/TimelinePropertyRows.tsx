@@ -1,5 +1,6 @@
 import { memo } from "react";
 import type { KeyframeCacheEntry } from "../store/playerStore";
+import { KF_MIN_PCT, KF_MAX_PCT } from "./TimelineClipDiamonds";
 
 const SUB_TRACK_H = 24;
 const DIAMOND_SIZE = 6;
@@ -44,7 +45,9 @@ export const TimelinePropertyRows = memo(function TimelinePropertyRows({
   return (
     <div className="flex flex-col">
       {properties.map((prop) => {
-        const propKeyframes = keyframesData.keyframes.filter((kf) => prop in kf.properties);
+        const propKeyframes = keyframesData.keyframes
+          .filter((kf) => prop in kf.properties)
+          .filter((kf) => kf.percentage >= KF_MIN_PCT && kf.percentage <= KF_MAX_PCT);
         if (propKeyframes.length === 0) return null;
 
         return (
@@ -67,7 +70,10 @@ export const TimelinePropertyRows = memo(function TimelinePropertyRows({
                 strokeWidth={1}
               />
               {propKeyframes.map((kf) => {
-                const x = (kf.percentage / 100) * clipWidthPx;
+                const x = Math.max(
+                  HALF,
+                  Math.min(clipWidthPx - HALF, (kf.percentage / 100) * clipWidthPx),
+                );
                 const y = SUB_TRACK_H / 2;
                 const key = `${elementId}:${kf.percentage}`;
                 const isKfSelected = selectedKeyframes.has(key);

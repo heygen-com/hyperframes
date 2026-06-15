@@ -40,6 +40,15 @@ interface TimelineClipDiamondsProps {
 }
 
 const DIAMOND_RATIO = 0.8;
+// Percentage tolerance for rendering keyframes near clip boundaries. Keyframes
+// slightly outside [0, 100] (from rounding or stale cache during the async
+// persist → reload cycle) are clamped to the clip edge rather than hidden.
+export const KF_MIN_PCT = -5;
+export const KF_MAX_PCT = 105;
+
+function clampDiamondLeft(rawLeft: number, diamondSize: number, clipWidth: number): number {
+  return Math.max(0, Math.min(clipWidth - diamondSize, rawLeft));
+}
 
 export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
   keyframesData,
@@ -108,7 +117,9 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
   const diamondSize = Math.round(clipHeightPx * (beatsActive ? 0.45 : DIAMOND_RATIO));
   const half = diamondSize / 2;
   const centerY = beatsActive ? BEAT_BAND_H + (clipHeightPx - BEAT_BAND_H) / 2 : clipHeightPx / 2;
-  const sorted = keyframesData.keyframes.slice().sort((a, b) => a.percentage - b.percentage);
+  const sorted = keyframesData.keyframes
+    .filter((kf) => kf.percentage >= KF_MIN_PCT && kf.percentage <= KF_MAX_PCT)
+    .sort((a, b) => a.percentage - b.percentage);
   const baseColor = isSelected ? accentColor : "#a3a3a3";
   const baseOpacity = isSelected ? 0.4 : 0.25;
 
@@ -182,7 +193,6 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
     document.addEventListener("pointerup", handleUp);
   };
 
-  // Effective % for rendering: the dragged keyframe follows the (snapped) cursor.
   const effPct = (p: number): number => (drag && drag.origPct === p ? drag.pct : p);
 
   return (
@@ -190,8 +200,12 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
       {sorted.map((kf, i) => {
         if (i === 0) return null;
         const prev = sorted[i - 1]!;
-        const x1 = (effPct(prev.percentage) / 100) * clipWidthPx;
-        const x2 = (effPct(kf.percentage) / 100) * clipWidthPx;
+        const x1 = Math.max(
+          0,
+          Math.min(clipWidthPx, (effPct(prev.percentage) / 100) * clipWidthPx),
+        );
+        const x2 = Math.max(0, Math.min(clipWidthPx, (effPct(kf.percentage) / 100) * clipWidthPx));
+        if (x2 - x1 < 1) return null;
         return (
           <div
             key={`line-${i}-${prev.percentage}-${kf.percentage}`}
@@ -211,7 +225,11 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
       })}
 
       {sorted.map((kf, i) => {
-        const leftPx = (effPct(kf.percentage) / 100) * clipWidthPx - half;
+        const leftPx = clampDiamondLeft(
+          (effPct(kf.percentage) / 100) * clipWidthPx - half,
+          diamondSize,
+          clipWidthPx,
+        );
         const kfKey = `${elementId}:${kf.percentage}`;
         const isKfSelected = selectedKeyframes.has(kfKey);
         const atPlayhead = isSelected && Math.abs(kf.percentage - currentPercentage) < 0.5;
