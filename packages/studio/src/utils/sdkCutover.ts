@@ -189,6 +189,28 @@ export async function sdkGsapTweenPersist(
   }
 }
 
+export async function sdkGsapKeyframePersist(
+  targetPath: string,
+  animationId: string,
+  position: number,
+  value: Record<string, unknown>,
+  sdkSession: Composition | null | undefined,
+  deps: CutoverDeps,
+  options?: CutoverOptions,
+): Promise<boolean> {
+  if (!sdkSession) return false;
+  try {
+    const before = sdkSession.serialize();
+    sdkSession.dispatch({ type: "addGsapKeyframe", animationId, position, value });
+    await persistSdkSerialize(sdkSession, targetPath, before, deps, options);
+    trackStudioEvent("sdk_cutover_success", { opCount: 1 });
+    return true;
+  } catch (err) {
+    trackStudioEvent("sdk_cutover_fallback", { error: String(err) });
+    return false;
+  }
+}
+
 export async function sdkDeletePersist(
   hfId: string,
   originalContent: string,

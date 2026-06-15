@@ -118,7 +118,17 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
     reloadPreview,
     domEditSaveTimestampRef,
   });
-  const keyframeOps = useGsapKeyframeOps({ activeCompPath, commitMutation, commitMutationSafely, trackGsapSaveFailure });
+  const keyframeOps = useGsapKeyframeOps({
+    activeCompPath,
+    commitMutation,
+    commitMutationSafely,
+    trackGsapSaveFailure,
+    sdkSession,
+    writeProjectFile,
+    editHistory,
+    reloadPreview,
+    domEditSaveTimestampRef,
+  });
   const arcPathOps = useGsapArcPathOps(commitMutationSafely);
   return { commitMutation, ...propertyOps, ...animationOps, ...keyframeOps, ...arcPathOps };
 }
