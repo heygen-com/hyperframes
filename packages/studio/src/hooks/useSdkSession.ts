@@ -68,13 +68,17 @@ export function useSdkSession(
       setSession(null);
       return;
     }
+    setSession(null); // Immediately clear stale session before async open
 
     let cancelled = false;
     const compRef = { current: null as Composition | null };
 
     const url = `/api/projects/${projectId}/files/${encodeURIComponent(activeCompPath)}?optional=1`;
     fetch(url)
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
       .then(async (data: { content?: string }) => {
         if (cancelled || typeof data.content !== "string") return;
         const adapter = createHttpAdapter({

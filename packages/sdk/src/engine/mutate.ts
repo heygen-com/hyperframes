@@ -598,8 +598,9 @@ function handleAddGsapTween(
       ? ((tween.toProperties ?? {}) as Record<string, number | string>)
       : ((tween.toProperties ?? tween.properties ?? {}) as Record<string, number | string>);
 
+  const selectorId = target.includes("/") ? target.split("/").pop()! : target;
   const animation: Omit<GsapAnimation, "id"> = {
-    targetSelector: `[data-hf-id="${target}"]`,
+    targetSelector: `[data-hf-id="${selectorId}"]`,
     method: tween.method,
     position: tween.position ?? 0,
     ...(tween.duration !== undefined ? { duration: tween.duration } : {}),
@@ -710,6 +711,8 @@ function handleAddGsapKeyframe(
   value: Record<string, unknown>,
 ): MutationResult {
   const script = getGsapScript(parsed.document);
+  if (script === null)
+    throw new Error("No GSAP script block found. Use comp.can(op) to check first.");
   if (!script) return EMPTY;
   const newScript = addKeyframeToScript(
     script,

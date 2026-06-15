@@ -40,7 +40,6 @@ import { fontFamilyFromAssetPath, type ImportedFontAsset } from "../components/e
 import type { DomEditGroupPathOffsetCommit } from "../components/editor/DomEditOverlay";
 import type { EditHistoryKind } from "../utils/editHistory";
 import { useDomEditTextCommits } from "./useDomEditTextCommits";
-
 type TimelineLike = { getChildren?: (nested: boolean) => Array<{ targets?: () => Element[] }> };
 
 // fallow-ignore-next-line complexity
@@ -86,6 +85,7 @@ type TrySdkPersist = (
   ops: PatchOperation[],
   html: string,
   path: string,
+  options?: { label?: string; coalesceKey?: string },
 ) => Promise<boolean>;
 
 export type PersistDomEditOperations = (
@@ -175,7 +175,6 @@ export function useDomEditCommits({
   );
 
   const reportedUnresolvableRef = useRef(new Set<string>());
-
   // fallow-ignore-next-line complexity
   const persistDomEditOperations: PersistDomEditOperations = useCallback(
     // fallow-ignore-next-line complexity
@@ -183,7 +182,6 @@ export function useDomEditCommits({
       const pid = projectIdRef.current;
       if (!pid) throw new Error("No active project");
       if (options?.shouldSave && !options.shouldSave()) return;
-
       const targetPath = selection.sourceFile || activeCompPath || "index.html";
       const readResponse = await fetch(
         `/api/projects/${pid}/files/${encodeURIComponent(targetPath)}`,
@@ -195,12 +193,20 @@ export function useDomEditCommits({
         throw new Error(`Missing file contents for ${targetPath}`);
       }
       if (options?.shouldSave && !options.shouldSave()) return;
-      if (
-        onTrySdkPersist &&
-        (await onTrySdkPersist(selection, operations, originalContent, targetPath))
-      ) {
-        onDomEditPersisted?.(selection, operations);
-        return;
+      if (onTrySdkPersist) {
+        try {
+          if (
+            await onTrySdkPersist(selection, operations, originalContent, targetPath, {
+              label: options?.label,
+              coalesceKey: options?.coalesceKey,
+            })
+          ) {
+            onDomEditPersisted?.(selection, operations);
+            return;
+          }
+        } catch {
+          // SDK cutover failed unexpectedly; fall through to server-side patch
+        }
       }
       const patchTarget = buildDomEditPatchTarget(selection);
       domEditSaveTimestampRef.current = Date.now();
@@ -213,14 +219,12 @@ export function useDomEditCommits({
         },
       );
       if (!patchResponse.ok) throw new Error(`Failed to patch ${targetPath}`);
-
       const patchData = (await patchResponse.json()) as {
         ok?: boolean;
         changed?: boolean;
         matched?: boolean;
         content?: string;
       };
-
       if (!patchData.changed) {
         if (patchData.matched === false) {
           const targetKey = selection.selector ?? selection.id ?? "selection";
@@ -240,10 +244,8 @@ export function useDomEditCommits({
         }
         return;
       }
-
       const patchedContent =
         typeof patchData.content === "string" ? patchData.content : originalContent;
-
       let finalContent = patchedContent;
       if (options?.prepareContent) {
         finalContent = options.prepareContent(patchedContent, targetPath);
@@ -251,7 +253,6 @@ export function useDomEditCommits({
           await writeProjectFile(targetPath, finalContent);
         }
       }
-
       await editHistory.recordEdit({
         label: options?.label ?? "Edit layer",
         kind: "manual",
@@ -259,7 +260,6 @@ export function useDomEditCommits({
         files: { [targetPath]: { before: originalContent, after: finalContent } },
       });
       onDomEditPersisted?.(selection, operations);
-
       if (!options?.skipRefresh) {
         reloadPreview();
       }

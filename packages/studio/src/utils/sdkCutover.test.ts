@@ -211,6 +211,30 @@ describe("sdkCutoverPersist", () => {
     });
   });
 
+  it("passes caller label to recordEdit", async () => {
+    const deps = makeDeps();
+    const session = makeSession(true);
+    const sel = { hfId: "hf-abc" } as never;
+    await sdkCutoverPersist(sel, [styleOp("color", "red")], "before", "/comp.html", session, deps, {
+      label: "Resize layer box",
+    });
+    expect(deps.editHistory.recordEdit).toHaveBeenCalledWith(
+      expect.objectContaining({ label: "Resize layer box" }),
+    );
+  });
+
+  it("passes caller coalesceKey to recordEdit", async () => {
+    const deps = makeDeps();
+    const session = makeSession(true);
+    const sel = { hfId: "hf-abc" } as never;
+    await sdkCutoverPersist(sel, [styleOp("color", "red")], "before", "/comp.html", session, deps, {
+      coalesceKey: "my-key",
+    });
+    expect(deps.editHistory.recordEdit).toHaveBeenCalledWith(
+      expect.objectContaining({ coalesceKey: "my-key" }),
+    );
+  });
+
   it("returns false and does not throw on dispatch error", async () => {
     const deps = makeDeps();
     const session = makeSession(true);

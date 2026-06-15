@@ -189,6 +189,23 @@ describe("addGsapTween", () => {
       }),
     ).toThrow("No GSAP script block found");
   });
+
+  it("uses bare leaf id in selector when target is a scoped id", () => {
+    const html = `<div data-hf-id="hf-stage" data-hf-root>
+    <div data-hf-id="hf-box"></div>
+    <script>${GSAP_SCRIPT}</script>
+  </div>`.trim();
+    const parsed = parseMutable(html);
+    const result = applyOp(parsed, {
+      type: "addGsapTween",
+      target: "hf-stage/hf-box",
+      tween: { method: "to", properties: { x: 100 } },
+    });
+    expect(result.forward.length).toBeGreaterThan(0);
+    const newScript = String(result.forward[0]?.value ?? "");
+    expect(newScript).toContain("hf-box");
+    expect(newScript).not.toContain("hf-stage/hf-box");
+  });
 });
 
 // ─── Tween op test helpers ────────────────────────────────────────────────────
@@ -514,5 +531,16 @@ describe("GSAP ops on composition with no GSAP script block", () => {
     expect(() =>
       applyOp(freshNoScript(), { type: "removeGsapTween", animationId: "anim-1" }),
     ).toThrow();
+  });
+
+  it("addGsapKeyframe throws when script element is null", () => {
+    expect(() =>
+      applyOp(freshNoScript(), {
+        type: "addGsapKeyframe",
+        animationId: "a1",
+        percentage: 0,
+        value: { opacity: 0 },
+      }),
+    ).toThrow("No GSAP script block found");
   });
 });

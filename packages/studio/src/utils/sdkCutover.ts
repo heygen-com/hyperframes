@@ -43,6 +43,11 @@ interface CutoverDeps {
   domEditSaveTimestampRef: MutableRefObject<number>;
 }
 
+interface CutoverOptions {
+  label?: string;
+  coalesceKey?: string;
+}
+
 export async function sdkCutoverPersist(
   selection: DomEditSelection,
   ops: PatchOperation[],
@@ -50,6 +55,7 @@ export async function sdkCutoverPersist(
   targetPath: string,
   sdkSession: Composition | null | undefined,
   deps: CutoverDeps,
+  options?: CutoverOptions,
 ): Promise<boolean> {
   if (!shouldUseSdkCutover(STUDIO_SDK_CUTOVER_ENABLED, !!sdkSession, selection.hfId, ops))
     return false;
@@ -65,8 +71,9 @@ export async function sdkCutoverPersist(
     deps.domEditSaveTimestampRef.current = Date.now();
     await deps.writeProjectFile(targetPath, after);
     await deps.editHistory.recordEdit({
-      label: "Edit layer",
+      label: options?.label ?? "Edit layer",
       kind: "manual",
+      ...(options?.coalesceKey ? { coalesceKey: options.coalesceKey } : {}),
       files: { [targetPath]: { before: originalContent, after } },
     });
     deps.reloadPreview();

@@ -62,7 +62,7 @@ class FsAdapter implements PersistAdapter {
   }
 
   async flush(): Promise<void> {
-    await Promise.all([...this.inflightWrites]);
+    await Promise.all([...this.inflightWrites, this.appendVersionQueue]);
   }
 
   async listVersions(path: string): Promise<PersistVersionEntry[]> {
@@ -111,9 +111,9 @@ class FsAdapter implements PersistAdapter {
   }
 
   private appendVersion(path: string, content: string): Promise<void> {
-    this.appendVersionQueue = this.appendVersionQueue.then(() =>
-      this.doAppendVersion(path, content),
-    );
+    this.appendVersionQueue = this.appendVersionQueue
+      .then(() => this.doAppendVersion(path, content))
+      .catch(() => {});
     return this.appendVersionQueue;
   }
 

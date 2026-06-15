@@ -23,7 +23,12 @@ class HttpAdapter implements PersistAdapter {
     const res = await fetch(url);
     if (res.status === 404) return undefined;
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = (await res.json()) as { content?: string };
+    let data: { content?: string };
+    try {
+      data = (await res.json()) as { content?: string };
+    } catch {
+      return undefined;
+    }
     return typeof data.content === "string" ? data.content : undefined;
   }
 

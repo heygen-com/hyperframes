@@ -70,6 +70,21 @@ describe("read()", () => {
     const adapter = createHttpAdapter({ projectFilesUrl: BASE });
     await expect(adapter.read("comp.html")).rejects.toThrow("HTTP 503");
   });
+
+  it("returns undefined when 200 response body is not valid JSON", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => {
+          throw new SyntaxError("Unexpected token");
+        },
+      }),
+    );
+    const adapter = createHttpAdapter({ projectFilesUrl: BASE });
+    await expect(adapter.read("comp.html")).resolves.toBeUndefined();
+  });
 });
 
 // ── write() ───────────────────────────────────────────────────────────────────
