@@ -70,5 +70,7 @@ export interface PreviewAdapter {
   /** Set preview selection; fires selectionchange on the session */
   select(ids: string[], opts?: { additive?: boolean }): void;
 
+  // Stage 8 prep: fired when the preview host changes selection (e.g. user clicks an element).
+  // Not wired up in stage 7 — callers listen to the session's own selectionchange event instead.
   on(event: "selection", handler: (ids: string[]) => void): () => void;
 }
