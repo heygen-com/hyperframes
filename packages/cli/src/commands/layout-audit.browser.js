@@ -464,13 +464,16 @@
     const area = intersectionArea(a.rect, b.rect);
     if (area <= Math.min(rectArea(a.rect), rectArea(b.rect)) * 0.2) return null;
     return {
+      // Warning, not error: must not fail the exit code (ok = errorCount === 0)
+      // for compositions that intentionally layer text. Re-promote once the
+      // data-layout-allow-overlap opt-out is widely adopted.
       code: "content_overlap",
-      severity: "error",
+      severity: "warning",
       time,
       selector: selectorFor(a.element),
       containerSelector: selectorFor(b.element),
       text: textContentFor(a.element),
-      message: "Two text blocks overlap and render unreadable.",
+      message: "Two text blocks overlap and may render unreadable.",
       rect: a.rect,
       fixHint:
         "Give each block its own zone, or mark intentional layering with data-layout-allow-overlap.",

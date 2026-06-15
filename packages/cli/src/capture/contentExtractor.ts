@@ -11,7 +11,7 @@
 import type { Page } from "puppeteer-core";
 import { existsSync, readdirSync, statSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import sharp from "sharp";
+import type sharpType from "sharp";
 import type { CatalogedAsset } from "./assetCataloger.js";
 import type { DesignTokens } from "./types.js";
 
@@ -247,6 +247,20 @@ export async function captionImagesWithGemini(
     }
 
     if (svgFiles.length > 0) {
+      // sharp is an optional native module; its platform binary fails to load
+      // on some installs (omit-optional, musl/glibc, monorepo hoisting, broken
+      // cache). Load it lazily and degrade to skipping SVG captioning rather
+      // than crashing the whole capture command on import.
+      let sharp: typeof sharpType;
+      try {
+        sharp = (await import("sharp")).default as typeof sharpType;
+      } catch (err) {
+        warnings.push(
+          `Skipped ${svgFiles.length} SVG caption(s): sharp could not load (${(err as Error).message}). ` +
+            `Reinstall with optional dependencies enabled (e.g. \`npm i sharp\`) to caption SVG assets.`,
+        );
+        return geminiCaptions;
+      }
       progress("design", `Rasterizing + captioning ${svgFiles.length} SVGs via vision API...`);
       const SVG_BATCH = 20;
       const SVG_RENDER_SIZE = 256; // px — enough resolution for Gemini to read wordmarks, small enough to keep payload sub-MB
