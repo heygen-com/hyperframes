@@ -21,12 +21,8 @@ export function shouldReloadSdkSession(payload: unknown, activeCompPath: string 
  * (projectId, activeCompPath) change, disposes the old one on cleanup, and
  * re-opens it when the active composition file changes on disk (code editor,
  * agent, or server-side patch) so the in-memory linkedom document never goes
- * stale. The persist queue writes back to `activeCompPath` (not the
- * "composition.html" default).
- *
- * The session is idle until Step 3c routes dispatch ops through it; re-opening
- * is therefore purely additive — no SDK self-write exists yet, so there is no
- * persist echo. Step 3c must add self-write suppression once dispatch writes.
+ * stale. The session has NO persist queue — Studio is the sole file writer; see
+ * the open effect below.
  */
 // Time-window heuristic: suppress file-change reloads for 2 s after our own
 // SDK cutover write, to avoid an echo-reload on the write we just committed.
@@ -95,13 +91,13 @@ export function useSdkSession(
       .read(activeCompPath)
       .then(async (content) => {
         if (cancelled || typeof content !== "string") return;
-        const comp = await openComposition(content, {
-          persist: adapter,
-          persistPath: activeCompPath,
-        });
-        comp.on("persist:error", (e) => {
-          console.warn("[sdk] persist:error", e.error);
-        });
+        // No persist queue: Studio's writeProjectFile (via sdkCutover's
+        // persistSdkSerialize) is the SINGLE writer. Wiring the SDK persist
+        // queue too would double-write the file (queue auto-writes on every
+        // 'change' AND Studio writes explicitly) and race on disk; it would
+        // also write the full active-composition serialization to the fixed
+        // persistPath even when an edit targeted a sub-composition file.
+        const comp = await openComposition(content);
         // Cleanup may have fired while openComposition was awaited; dispose immediately.
         if (cancelled) {
           comp.dispose();
@@ -116,8 +112,9 @@ export function useSdkSession(
 
     return () => {
       cancelled = true;
-      const c = compRef.current;
-      if (c) void c.flush().finally(() => c.dispose());
+      // No queue to flush; dispose only. (Flushing here would serialize the
+      // pre-undo in-memory doc and race the revert write on undo/redo reload.)
+      compRef.current?.dispose();
     };
   }, [projectId, activeCompPath, reloadToken]);
 

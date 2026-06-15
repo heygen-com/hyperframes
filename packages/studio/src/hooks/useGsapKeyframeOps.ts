@@ -3,7 +3,7 @@ import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { Composition } from "@hyperframes/sdk";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { executeOptimistic } from "../utils/optimisticUpdate";
-import { sdkGsapKeyframePersist } from "../utils/sdkCutover";
+import { sdkGsapKeyframePersist, type CutoverDeps } from "../utils/sdkCutover";
 import type { KeyframeCacheEntry } from "../player/store/playerStore";
 import { commitKeyframeAtTimeImpl } from "./gsapKeyframeCommit";
 import { readKeyframeSnapshot, writeKeyframeCache } from "./gsapKeyframeCacheHelpers";
@@ -12,7 +12,6 @@ import type {
   SafeGsapCommitMutation,
   TrackGsapSaveFailure,
 } from "./gsapScriptCommitTypes";
-import type { EditHistoryKind } from "../utils/editHistory";
 
 function executeOptimisticKeyframeCacheUpdate(options: {
   sourceFile: string;
@@ -35,17 +34,7 @@ function executeOptimisticKeyframeCacheUpdate(options: {
 
 interface SdkKeyframeDeps {
   sdkSession?: Composition | null;
-  writeProjectFile?: (path: string, content: string) => Promise<void>;
-  editHistory?: {
-    recordEdit: (entry: {
-      label: string;
-      kind: EditHistoryKind;
-      coalesceKey?: string;
-      files: Record<string, { before: string; after: string }>;
-    }) => Promise<void>;
-  };
-  reloadPreview?: () => void;
-  domEditSaveTimestampRef?: React.MutableRefObject<number>;
+  sdkDeps?: CutoverDeps | null;
 }
 
 interface GsapKeyframeOpsParams extends SdkKeyframeDeps {
@@ -61,10 +50,7 @@ export function useGsapKeyframeOps({
   commitMutationSafely,
   trackGsapSaveFailure,
   sdkSession,
-  writeProjectFile,
-  editHistory,
-  reloadPreview,
-  domEditSaveTimestampRef,
+  sdkDeps,
 }: GsapKeyframeOpsParams) {
   const addKeyframe = useCallback(
     (
@@ -84,27 +70,37 @@ export function useGsapKeyframeOps({
       void executeOptimisticKeyframeCacheUpdate({
         sourceFile,
         elementId: selection.id,
-        apply: (prev) => ({
-          ...prev,
-          keyframes: [...prev.keyframes, { percentage, properties: { [property]: value } }].sort(
-            (a, b) => a.percentage - b.percentage,
-          ),
-        }),
+        // Merge into an existing keyframe at this percentage rather than
+        // appending a duplicate — matches addKeyframeToScript, which writes one
+        // keyframe per percentage (merging properties).
+        apply: (prev) => {
+          const idx = prev.keyframes.findIndex(
+            (kf) => Math.abs((kf.tweenPercentage ?? kf.percentage) - percentage) < 0.001,
+          );
+          if (idx >= 0) {
+            const keyframes = prev.keyframes.slice();
+            keyframes[idx] = {
+              ...keyframes[idx],
+              properties: { ...keyframes[idx].properties, [property]: value },
+            };
+            return { ...prev, keyframes };
+          }
+          return {
+            ...prev,
+            keyframes: [...prev.keyframes, { percentage, properties: { [property]: value } }].sort(
+              (a, b) => a.percentage - b.percentage,
+            ),
+          };
+        },
         persist: async () => {
-          if (
-            sdkSession &&
-            writeProjectFile &&
-            editHistory &&
-            reloadPreview &&
-            domEditSaveTimestampRef
-          ) {
+          if (sdkSession && sdkDeps) {
             const handled = await sdkGsapKeyframePersist(
               sourceFile,
               animationId,
               percentage,
               { [property]: value },
               sdkSession,
-              { editHistory, writeProjectFile, reloadPreview, domEditSaveTimestampRef },
+              sdkDeps,
               {
                 label: `Add keyframe at ${percentage}%`,
                 coalesceKey: `gsap:${animationId}:kf:${percentage}`,
@@ -121,16 +117,7 @@ export function useGsapKeyframeOps({
         trackGsapSaveFailure(error, selection, mutation, `Add keyframe at ${percentage}%`);
       });
     },
-    [
-      activeCompPath,
-      commitMutation,
-      trackGsapSaveFailure,
-      sdkSession,
-      writeProjectFile,
-      editHistory,
-      reloadPreview,
-      domEditSaveTimestampRef,
-    ],
+    [activeCompPath, commitMutation, trackGsapSaveFailure, sdkSession, sdkDeps],
   );
 
   const addKeyframeBatch = useCallback(
@@ -140,13 +127,7 @@ export function useGsapKeyframeOps({
       percentage: number,
       properties: Record<string, number | string>,
     ) => {
-      if (
-        sdkSession &&
-        writeProjectFile &&
-        editHistory &&
-        reloadPreview &&
-        domEditSaveTimestampRef
-      ) {
+      if (sdkSession && sdkDeps) {
         const sourceFile = selection.sourceFile || activeCompPath || "index.html";
         const handled = await sdkGsapKeyframePersist(
           sourceFile,
@@ -154,7 +135,7 @@ export function useGsapKeyframeOps({
           percentage,
           properties,
           sdkSession,
-          { editHistory, writeProjectFile, reloadPreview, domEditSaveTimestampRef },
+          sdkDeps,
           { label: `Add keyframe at ${percentage}%` },
         );
         if (handled) return;
@@ -165,15 +146,7 @@ export function useGsapKeyframeOps({
         { label: `Add keyframe at ${percentage}%`, softReload: true },
       );
     },
-    [
-      commitMutation,
-      activeCompPath,
-      sdkSession,
-      writeProjectFile,
-      editHistory,
-      reloadPreview,
-      domEditSaveTimestampRef,
-    ],
+    [commitMutation, activeCompPath, sdkSession, sdkDeps],
   );
 
   const removeKeyframe = useCallback(

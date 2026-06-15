@@ -67,4 +67,6 @@ export interface GsapScriptCommitsParams {
   /** Stage 7 §3.5: SDK session for routing GSAP tween ops through addGsapTween/setGsapTween/removeGsapTween. */
   sdkSession?: Composition | null;
   writeProjectFile?: (path: string, content: string) => Promise<void>;
+  /** Resync the in-memory SDK session after a server-authoritative write. */
+  forceReloadSdkSession?: () => void;
 }

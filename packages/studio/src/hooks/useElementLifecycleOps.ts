@@ -28,6 +28,8 @@ interface UseElementLifecycleOpsParams {
   clearDomSelection: () => void;
   /** Route delete through SDK when session resolves the hf-id; returns true if handled. */
   onTrySdkDelete?: (hfId: string, originalContent: string, targetPath: string) => Promise<boolean>;
+  /** Resync the SDK session after a server-fallback delete. */
+  forceReloadSdkSession?: () => void;
   commitPositionPatchToHtml: (
     selection: DomEditSelection,
     patches: PatchOperation[],
@@ -47,6 +49,7 @@ export function useElementLifecycleOps({
   reloadPreview,
   clearDomSelection,
   onTrySdkDelete,
+  forceReloadSdkSession,
   commitPositionPatchToHtml,
   onElementDeleted,
 }: UseElementLifecycleOpsParams) {
@@ -106,6 +109,12 @@ export function useElementLifecycleOps({
         const removeData = (await removeResponse.json()) as { changed?: boolean; content?: string };
         const patchedContent =
           typeof removeData.content === "string" ? removeData.content : originalContent;
+        // ponytail: the server remove-element route (removeElementFromHtml) strips
+        // only the element node — it does NOT cascade-remove GSAP tweens targeting
+        // it, unlike the SDK path (removeElement → cascadeRemoveAnimations). This
+        // fallback runs only when the element isn't in the SDK doc (e.g. runtime-
+        // generated / unaddressable), where targeting tweens are unlikely. Upgrade
+        // path: cascade in removeElementFromHtml by selector/hf-id to fully match.
         await saveProjectFilesWithHistory({
           projectId: pid,
           label: "Delete element",
@@ -118,6 +127,9 @@ export function useElementLifecycleOps({
 
         clearDomSelection();
         usePlayerStore.getState().setSelectedElementId(null);
+        // Server wrote the file; resync the stale in-memory SDK doc so a later
+        // SDK edit doesn't resurrect the deleted element.
+        forceReloadSdkSession?.();
         reloadPreview();
         onElementDeleted?.(selection);
         showToast(`Deleted ${label}. Use Undo to restore it.`, "info");
@@ -133,6 +145,7 @@ export function useElementLifecycleOps({
       editHistory.recordEdit,
       onTrySdkDelete,
       onElementDeleted,
+      forceReloadSdkSession,
       projectIdRef,
       reloadPreview,
       showToast,

@@ -64,7 +64,7 @@ export function shouldUseSdkCutover(
   );
 }
 
-interface CutoverDeps {
+export interface CutoverDeps {
   editHistory: {
     recordEdit: (entry: {
       label: string;
@@ -76,22 +76,44 @@ interface CutoverDeps {
   writeProjectFile: (path: string, content: string) => Promise<void>;
   reloadPreview: () => void;
   domEditSaveTimestampRef: MutableRefObject<number>;
+  /**
+   * Optional post-write refresh. When provided, it REPLACES the default
+   * reloadPreview() — the GSAP path passes one that soft-reloads (preserving
+   * the playhead) and invalidates the keyframe/gsap panel cache. Receives the
+   * serialized document just written.
+   */
+  refresh?: (after: string) => void;
+  /**
+   * Path of the composition the SDK session was opened for. The session models
+   * ONLY this file (serialize() emits the whole active composition), so any edit
+   * whose targetPath differs (a sub-composition file) must take the server path
+   * — otherwise we'd write the full active-comp serialization into that file.
+   */
+  compositionPath?: string | null;
+}
+
+/** True when targetPath isn't the composition the SDK session models. */
+function wrongCompositionFile(deps: CutoverDeps, targetPath: string): boolean {
+  return deps.compositionPath != null && targetPath !== deps.compositionPath;
 }
 
 interface CutoverOptions {
   label?: string;
   coalesceKey?: string;
+  /** Skip the preview reload (mirrors the server path's skipRefresh). */
+  skipRefresh?: boolean;
 }
 
-// ponytail: internal; export only if a third caller appears
+// ponytail: internal; export only if a third caller appears.
+// `after` is serialized once by the caller (which also did the no-op check
+// against its pre-dispatch snapshot), so this never re-serializes.
 async function persistSdkSerialize(
-  sdkSession: Composition,
+  after: string,
   targetPath: string,
   originalContent: string,
   deps: CutoverDeps,
   options?: CutoverOptions,
 ): Promise<void> {
-  const after = sdkSession.serialize();
   deps.domEditSaveTimestampRef.current = Date.now();
   await deps.writeProjectFile(targetPath, after);
   await deps.editHistory.recordEdit({
@@ -100,7 +122,8 @@ async function persistSdkSerialize(
     ...(options?.coalesceKey ? { coalesceKey: options.coalesceKey } : {}),
     files: { [targetPath]: { before: originalContent, after } },
   });
-  deps.reloadPreview();
+  if (deps.refresh) deps.refresh(after);
+  else if (!options?.skipRefresh) deps.reloadPreview();
 }
 
 export async function sdkCutoverPersist(
@@ -118,13 +141,17 @@ export async function sdkCutoverPersist(
   const hfId = selection.hfId;
   if (!hfId) return false;
   if (!sdkSession.getElement(hfId)) return false;
+  if (wrongCompositionFile(deps, targetPath)) return false;
   try {
+    const before = sdkSession.serialize();
     sdkSession.batch(() => {
       for (const editOp of patchOpsToSdkEditOps(hfId, ops)) {
         sdkSession.dispatch(editOp);
       }
     });
-    await persistSdkSerialize(sdkSession, targetPath, originalContent, deps, options);
+    const after = sdkSession.serialize();
+    if (after === before) return false;
+    await persistSdkSerialize(after, targetPath, originalContent, deps, options);
     trackStudioEvent("sdk_cutover_success", { hfId, opCount: ops.length });
     return true;
   } catch (err) {
@@ -145,10 +172,13 @@ export async function sdkTimingPersist(
   options?: CutoverOptions,
 ): Promise<boolean> {
   if (!sdkSession || !sdkSession.getElement(hfId)) return false;
+  if (wrongCompositionFile(deps, targetPath)) return false;
   try {
     const before = sdkSession.serialize();
-    sdkSession.setTiming(hfId, timingUpdate);
-    await persistSdkSerialize(sdkSession, targetPath, before, deps, options);
+    sdkSession.batch(() => sdkSession.setTiming(hfId, timingUpdate));
+    const after = sdkSession.serialize();
+    if (after === before) return false;
+    await persistSdkSerialize(after, targetPath, before, deps, options);
     trackStudioEvent("sdk_cutover_success", { hfId, opCount: 1 });
     return true;
   } catch (err) {
@@ -170,17 +200,26 @@ export async function sdkGsapTweenPersist(
   options?: CutoverOptions,
 ): Promise<boolean> {
   if (!sdkSession) return false;
+  if (wrongCompositionFile(deps, targetPath)) return false;
   try {
+    if (op.kind === "add" && !sdkSession.getElement(op.target)) return false;
     const before = sdkSession.serialize();
-    if (op.kind === "add") {
-      if (!sdkSession.getElement(op.target)) return false;
-      sdkSession.addGsapTween(op.target, op.spec);
-    } else if (op.kind === "set") {
-      sdkSession.setGsapTween(op.animationId, op.properties);
-    } else {
-      sdkSession.removeGsapTween(op.animationId);
-    }
-    await persistSdkSerialize(sdkSession, targetPath, before, deps, options);
+    sdkSession.batch(() => {
+      if (op.kind === "add") {
+        sdkSession.addGsapTween(op.target, op.spec);
+      } else if (op.kind === "set") {
+        sdkSession.setGsapTween(op.animationId, op.properties);
+      } else {
+        sdkSession.removeGsapTween(op.animationId);
+      }
+    });
+    const after = sdkSession.serialize();
+    // No-op (stale animationId, unsupported shape e.g. from-prop on a plain
+    // tween): fall back to the server path so it surfaces the proper error
+    // instead of writing a phantom before==after undo step. Subsumes a
+    // per-op existence guard for the set/remove branches.
+    if (after === before) return false;
+    await persistSdkSerialize(after, targetPath, before, deps, options);
     trackStudioEvent("sdk_cutover_success", { opCount: 1 });
     return true;
   } catch (err) {
@@ -199,10 +238,15 @@ export async function sdkGsapKeyframePersist(
   options?: CutoverOptions,
 ): Promise<boolean> {
   if (!sdkSession) return false;
+  if (wrongCompositionFile(deps, targetPath)) return false;
   try {
     const before = sdkSession.serialize();
-    sdkSession.dispatch({ type: "addGsapKeyframe", animationId, position, value });
-    await persistSdkSerialize(sdkSession, targetPath, before, deps, options);
+    sdkSession.batch(() =>
+      sdkSession.dispatch({ type: "addGsapKeyframe", animationId, position, value }),
+    );
+    const after = sdkSession.serialize();
+    if (after === before) return false;
+    await persistSdkSerialize(after, targetPath, before, deps, options);
     trackStudioEvent("sdk_cutover_success", { opCount: 1 });
     return true;
   } catch (err) {
@@ -219,9 +263,13 @@ export async function sdkDeletePersist(
   deps: CutoverDeps,
 ): Promise<boolean> {
   if (!sdkSession || !sdkSession.getElement(hfId)) return false;
+  if (wrongCompositionFile(deps, targetPath)) return false;
   try {
-    sdkSession.removeElement(hfId);
-    await persistSdkSerialize(sdkSession, targetPath, originalContent, deps, {
+    const before = sdkSession.serialize();
+    sdkSession.batch(() => sdkSession.removeElement(hfId));
+    const after = sdkSession.serialize();
+    if (after === before) return false;
+    await persistSdkSerialize(after, targetPath, originalContent, deps, {
       label: "Delete element",
     });
     trackStudioEvent("sdk_cutover_success", { hfId, opCount: 1 });

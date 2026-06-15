@@ -2,27 +2,16 @@ import { useCallback } from "react";
 import type { Composition } from "@hyperframes/sdk";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { roundTo3 } from "../utils/rounding";
-import { sdkGsapTweenPersist } from "../utils/sdkCutover";
+import { sdkGsapTweenPersist, type CutoverDeps } from "../utils/sdkCutover";
 import {
   assignGsapTargetAutoIdIfNeeded,
   ensureElementAddressable,
 } from "./gsapScriptCommitHelpers";
 import type { CommitMutation, SafeGsapCommitMutation } from "./gsapScriptCommitTypes";
-import type { EditHistoryKind } from "../utils/editHistory";
 
 interface SdkAnimationDeps {
   sdkSession?: Composition | null;
-  writeProjectFile?: (path: string, content: string) => Promise<void>;
-  editHistory?: {
-    recordEdit: (entry: {
-      label: string;
-      kind: EditHistoryKind;
-      coalesceKey?: string;
-      files: Record<string, { before: string; after: string }>;
-    }) => Promise<void>;
-  };
-  reloadPreview?: () => void;
-  domEditSaveTimestampRef?: React.MutableRefObject<number>;
+  sdkDeps?: CutoverDeps | null;
 }
 
 interface GsapAnimationOpsParams extends SdkAnimationDeps {
@@ -40,10 +29,7 @@ export function useGsapAnimationOps({
   commitMutationSafely,
   showToast,
   sdkSession,
-  writeProjectFile,
-  editHistory,
-  reloadPreview,
-  domEditSaveTimestampRef,
+  sdkDeps,
 }: GsapAnimationOpsParams) {
   const updateGsapMeta = useCallback(
     async (
@@ -51,19 +37,13 @@ export function useGsapAnimationOps({
       animationId: string,
       updates: { duration?: number; ease?: string; position?: number },
     ) => {
-      if (
-        sdkSession &&
-        writeProjectFile &&
-        editHistory &&
-        reloadPreview &&
-        domEditSaveTimestampRef
-      ) {
+      if (sdkSession && sdkDeps) {
         const targetPath = selection.sourceFile || activeCompPath || "index.html";
         const handled = await sdkGsapTweenPersist(
           targetPath,
           { kind: "set", animationId, properties: updates },
           sdkSession,
-          { editHistory, writeProjectFile, reloadPreview, domEditSaveTimestampRef },
+          sdkDeps,
           { label: "Edit GSAP animation", coalesceKey: `gsap:${animationId}:meta` },
         );
         if (handled) return;
@@ -74,32 +54,18 @@ export function useGsapAnimationOps({
         { label: "Edit GSAP animation", coalesceKey: `gsap:${animationId}:meta` },
       );
     },
-    [
-      commitMutationSafely,
-      activeCompPath,
-      sdkSession,
-      writeProjectFile,
-      editHistory,
-      reloadPreview,
-      domEditSaveTimestampRef,
-    ],
+    [commitMutationSafely, activeCompPath, sdkSession, sdkDeps],
   );
 
   const deleteGsapAnimation = useCallback(
     async (selection: DomEditSelection, animationId: string) => {
-      if (
-        sdkSession &&
-        writeProjectFile &&
-        editHistory &&
-        reloadPreview &&
-        domEditSaveTimestampRef
-      ) {
+      if (sdkSession && sdkDeps) {
         const targetPath = selection.sourceFile || activeCompPath || "index.html";
         const handled = await sdkGsapTweenPersist(
           targetPath,
           { kind: "remove", animationId },
           sdkSession,
-          { editHistory, writeProjectFile, reloadPreview, domEditSaveTimestampRef },
+          sdkDeps,
           { label: "Delete GSAP animation" },
         );
         if (handled) return;
@@ -110,15 +76,7 @@ export function useGsapAnimationOps({
         { label: "Delete GSAP animation" },
       );
     },
-    [
-      commitMutationSafely,
-      activeCompPath,
-      sdkSession,
-      writeProjectFile,
-      editHistory,
-      reloadPreview,
-      domEditSaveTimestampRef,
-    ],
+    [commitMutationSafely, activeCompPath, sdkSession, sdkDeps],
   );
 
   const deleteAllForSelector = useCallback(
@@ -168,16 +126,12 @@ export function useGsapAnimationOps({
         fromTo: { x: 0, y: 0, opacity: 1 },
       };
 
-      // SDK path: addGsapTween only supports from/to/fromTo; "set" stays server-side
-      if (
-        method !== "set" &&
-        selection.hfId &&
-        sdkSession &&
-        writeProjectFile &&
-        editHistory &&
-        reloadPreview &&
-        domEditSaveTimestampRef
-      ) {
+      // SDK path: addGsapTween only supports from/to/fromTo; "set" stays
+      // server-side. Skip the SDK path when an id was just assigned server-side
+      // (autoId): the SDK session hasn't reloaded that write yet, so persisting
+      // its serialization would clobber the new id — let the server add the
+      // tween atomically with the id it wrote.
+      if (!autoId && method !== "set" && selection.hfId && sdkSession && sdkDeps) {
         const targetPath = selection.sourceFile || activeCompPath || "index.html";
         const spec = {
           method: method as "to" | "from" | "fromTo",
@@ -191,7 +145,7 @@ export function useGsapAnimationOps({
           targetPath,
           { kind: "add", target: selection.hfId, spec },
           sdkSession,
-          { editHistory, writeProjectFile, reloadPreview, domEditSaveTimestampRef },
+          sdkDeps,
           { label: `Add GSAP ${method} animation` },
         );
         if (handled) return;
@@ -212,17 +166,7 @@ export function useGsapAnimationOps({
         { label: `Add GSAP ${method} animation` },
       );
     },
-    [
-      activeCompPath,
-      commitMutation,
-      projectIdRef,
-      showToast,
-      sdkSession,
-      writeProjectFile,
-      editHistory,
-      reloadPreview,
-      domEditSaveTimestampRef,
-    ],
+    [activeCompPath, commitMutation, projectIdRef, showToast, sdkSession, sdkDeps],
   );
 
   return {

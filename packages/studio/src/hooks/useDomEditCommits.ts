@@ -73,14 +73,17 @@ export interface UseDomEditCommitsParams {
     target: HTMLElement,
     options?: { preferClipAncestor?: boolean },
   ) => Promise<DomEditSelection | null>;
-  /** Stage 7 Step 3b: called after a successful server-side element patch. */
-  onDomEditPersisted?: (selection: DomEditSelection, operations: PatchOperation[]) => void;
+  /** Resync the in-memory SDK session after a SERVER-side write (NOT the SDK
+   * path, whose session is already current) so a later SDK edit doesn't
+   * serialize the pre-write doc and revert the server's change. */
+  forceReloadSdkSession?: () => void;
   /** Stage 7 Step 3c: called before the server-side patch path; returns true if SDK handled it. */
   onTrySdkPersist?: (
     selection: DomEditSelection,
     operations: PatchOperation[],
     originalContent: string,
     targetPath: string,
+    options?: { label?: string; coalesceKey?: string; skipRefresh?: boolean },
   ) => Promise<boolean>;
   /** Stage 7 §3.1: called before the server-side delete path; returns true if SDK handled it. */
   onTrySdkDelete?: (hfId: string, originalContent: string, targetPath: string) => Promise<boolean>;
@@ -104,7 +107,7 @@ export function useDomEditCommits({
   clearDomSelection,
   refreshDomEditSelectionFromPreview,
   buildDomSelectionFromTarget,
-  onDomEditPersisted,
+  forceReloadSdkSession,
   onTrySdkPersist,
   onTrySdkDelete,
 }: UseDomEditCommitsParams) {
@@ -156,19 +159,22 @@ export function useDomEditCommits({
       }
 
       if (options?.shouldSave && !options.shouldSave()) return;
-
       // Skip the SDK path when prepareContent is set (e.g. @font-face injection
       // for a custom font): sdkCutoverPersist serializes only the patched DOM
       // and would drop the injected content. Let the server path run prepareContent.
       if (
         onTrySdkPersist &&
         !options?.prepareContent &&
-        (await onTrySdkPersist(selection, operations, originalContent, targetPath))
+        (await onTrySdkPersist(selection, operations, originalContent, targetPath, {
+          label: options?.label,
+          coalesceKey: options?.coalesceKey,
+          skipRefresh: options?.skipRefresh,
+        }))
       ) {
-        // SDK handled it — its in-memory doc is already current.
+        // SDK handled it — its in-memory doc is already current, so do NOT
+        // forceReload (that would echo-reload the session we just wrote).
         return;
       }
-
       const patchTarget = buildDomEditPatchTarget(selection);
       const patchBody = { target: patchTarget, operations };
       const unsafeFields = findUnsafeDomPatchValues(patchBody);
@@ -240,7 +246,7 @@ export function useDomEditCommits({
         coalesceKey: options?.coalesceKey,
         files: { [targetPath]: { before: originalContent, after: finalContent } },
       });
-      onDomEditPersisted?.(selection, operations);
+      forceReloadSdkSession?.();
 
       if (!options?.skipRefresh) {
         reloadPreview();
@@ -254,7 +260,7 @@ export function useDomEditCommits({
       domEditSaveTimestampRef,
       reloadPreview,
       showToast,
-      onDomEditPersisted,
+      forceReloadSdkSession,
       onTrySdkPersist,
     ],
   );
@@ -317,6 +323,7 @@ export function useDomEditCommits({
     reloadPreview,
     clearDomSelection,
     onTrySdkDelete,
+    forceReloadSdkSession,
     commitPositionPatchToHtml,
   });
 

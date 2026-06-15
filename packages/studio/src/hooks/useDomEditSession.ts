@@ -61,6 +61,7 @@ export interface UseDomEditSessionParams {
   selectSidebarTab?: (tab: SidebarTab) => void;
   getSidebarTab?: () => SidebarTab;
   sdkSession?: Composition | null;
+  forceReloadSdkSession?: () => void;
 }
 
 // ── Hook ──
@@ -100,6 +101,7 @@ export function useDomEditSession({
   selectSidebarTab,
   getSidebarTab,
   sdkSession,
+  forceReloadSdkSession,
 }: UseDomEditSessionParams) {
   void _setRefreshKey;
   void _readProjectFile;
@@ -195,6 +197,7 @@ export function useDomEditSession({
     showToast,
     sdkSession,
     writeProjectFile,
+    forceReloadSdkSession,
   });
 
   // ── DOM commit handlers ──
@@ -234,14 +237,24 @@ export function useDomEditSession({
     clearDomSelection,
     refreshDomEditSelectionFromPreview,
     buildDomSelectionFromTarget,
+    forceReloadSdkSession,
     onTrySdkPersist: sdkSession
-      ? (selection, operations, originalContent, targetPath) =>
-          sdkCutoverPersist(selection, operations, originalContent, targetPath, sdkSession, {
-            editHistory,
-            writeProjectFile,
-            reloadPreview,
-            domEditSaveTimestampRef,
-          })
+      ? (selection, operations, originalContent, targetPath, options) =>
+          sdkCutoverPersist(
+            selection,
+            operations,
+            originalContent,
+            targetPath,
+            sdkSession,
+            {
+              editHistory,
+              writeProjectFile,
+              reloadPreview,
+              domEditSaveTimestampRef,
+              compositionPath: activeCompPath,
+            },
+            options,
+          )
       : undefined,
     onTrySdkDelete: sdkSession
       ? (hfId, originalContent, targetPath) =>
@@ -250,6 +263,7 @@ export function useDomEditSession({
             writeProjectFile,
             reloadPreview,
             domEditSaveTimestampRef,
+            compositionPath: activeCompPath,
           })
       : undefined,
   });

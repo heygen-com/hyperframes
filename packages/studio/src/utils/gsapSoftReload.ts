@@ -31,6 +31,19 @@ function findGsapScriptElements(doc: Document): HTMLScriptElement[] {
   return results;
 }
 
+/**
+ * Extract the GSAP timeline script text from a serialized HTML document, for
+ * feeding into applySoftReload. Returns null when zero or multiple GSAP scripts
+ * are present (ambiguous — caller should fall back to a full reload), matching
+ * applySoftReload's own single-script requirement.
+ */
+export function extractGsapScriptText(html: string): string | null {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const scripts = findGsapScriptElements(doc);
+  if (scripts.length !== 1) return null;
+  return scripts[0].textContent || null;
+}
+
 /** Check that the new script repopulated __timelines with at least one entry. */
 function verifyTimelinesPopulated(win: IframeWindow): boolean {
   const tlKeys = win.__timelines
@@ -73,6 +86,7 @@ export function applySoftReload(iframe: HTMLIFrameElement | null, scriptText: st
   // full iframe reload that destroys the very WebGL context we're preserving.
   let deferredToAsync = false;
 
+  // fallow-ignore-next-line complexity
   const doReload = () => {
     const timelines = win.__timelines;
     const allTargets: Element[] = [];

@@ -1,7 +1,8 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { findUnsafeMutationValues } from "@hyperframes/core/studio-api/finite-mutation";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
-import { applySoftReload } from "../utils/gsapSoftReload";
+import { applySoftReload, extractGsapScriptText } from "../utils/gsapSoftReload";
+import type { CutoverDeps } from "../utils/sdkCutover";
 import { updateKeyframeCacheFromParsed } from "./gsapKeyframeCacheHelpers";
 import { createKeyedSerializer } from "./serializeByKey";
 import {
@@ -44,7 +45,7 @@ async function mutateGsapScript(
 
 // oxfmt-ignore
 // fallow-ignore-next-line complexity
-export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIframeRef, editHistory, domEditSaveTimestampRef, reloadPreview, onCacheInvalidate, onFileContentChanged, showToast, sdkSession, writeProjectFile }: GsapScriptCommitsParams) {
+export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIframeRef, editHistory, domEditSaveTimestampRef, reloadPreview, onCacheInvalidate, onFileContentChanged, showToast, sdkSession, writeProjectFile, forceReloadSdkSession }: GsapScriptCommitsParams) {
   // Serializer for per-key commits (options.serializeKey). Keyed by
   // `gsap:${animationId}:meta`, it chains a meta commit onto the prior one for
   // the same animationId so their POSTs can't interleave. Held in a ref so the
@@ -75,6 +76,9 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
       await editHistory.recordEdit({ label: options.label, kind: "manual", coalesceKey: options.coalesceKey, files: { [targetPath]: { before: result.before, after: result.after } } });
     }
     if (result.after != null) onFileContentChanged?.(targetPath, result.after);
+    // Server wrote the file; the in-memory SDK doc is now stale. Resync it so a
+    // later SDK-routed edit doesn't serialize the pre-write doc and revert this.
+    forceReloadSdkSession?.();
     if (options.skipReload) return;
     if (result.parsed?.animations) updateKeyframeCacheFromParsed(result.parsed.animations, targetPath, selection.id ?? undefined, mutation);
     options.beforeReload?.();
@@ -84,7 +88,7 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
       reloadPreview();
     }
     onCacheInvalidate();
-  }, [projectIdRef, activeCompPath, previewIframeRef, editHistory, domEditSaveTimestampRef, reloadPreview, onCacheInvalidate, onFileContentChanged, showToast]);
+  }, [projectIdRef, activeCompPath, previewIframeRef, editHistory, domEditSaveTimestampRef, reloadPreview, onCacheInvalidate, onFileContentChanged, showToast, forceReloadSdkSession]);
   // Every GSAP-script commit is a read-modify-write of one file. Overlapping
   // commits to the SAME file (any op type, any animation) interleave server-side,
   // so serialize per target file by default; an explicit serializeKey overrides.
@@ -98,12 +102,44 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
   );
   const trackGsapSaveFailure = useGsapSaveFailureTelemetry(activeCompPath);
   const commitMutationSafely = useSafeGsapCommitMutation(commitMutation, trackGsapSaveFailure, showToast);
+
+  // One stable SDK-deps object shared by all GSAP child hooks. Memoized so the
+  // hooks' callbacks keep a stable identity (an inline literal here re-fired the
+  // property-debounce flush on every render). refresh() soft-reloads (preserving
+  // the playhead) and invalidates the panel cache, matching the server path.
+  const sdkRefresh = useCallback(
+    (after: string) => {
+      const script = extractGsapScriptText(after);
+      if (!(script && applySoftReload(previewIframeRef.current, script))) reloadPreview();
+      onCacheInvalidate();
+    },
+    [previewIframeRef, reloadPreview, onCacheInvalidate],
+  );
+  const sdkDeps = useMemo<CutoverDeps | null>(
+    () =>
+      writeProjectFile
+        ? {
+            editHistory: { recordEdit: editHistory.recordEdit },
+            writeProjectFile,
+            reloadPreview,
+            domEditSaveTimestampRef,
+            refresh: sdkRefresh,
+            compositionPath: activeCompPath,
+          }
+        : null,
+    [
+      editHistory.recordEdit,
+      writeProjectFile,
+      reloadPreview,
+      domEditSaveTimestampRef,
+      sdkRefresh,
+      activeCompPath,
+    ],
+  );
+
   const propertyOps = useGsapPropertyDebounce(commitMutationSafely, {
     sdkSession,
-    writeProjectFile,
-    editHistory,
-    reloadPreview,
-    domEditSaveTimestampRef,
+    sdkDeps,
     activeCompPath,
   });
   const animationOps = useGsapAnimationOps({
@@ -113,10 +149,7 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
     commitMutationSafely,
     showToast,
     sdkSession,
-    writeProjectFile,
-    editHistory,
-    reloadPreview,
-    domEditSaveTimestampRef,
+    sdkDeps,
   });
   const keyframeOps = useGsapKeyframeOps({
     activeCompPath,
@@ -124,10 +157,7 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
     commitMutationSafely,
     trackGsapSaveFailure,
     sdkSession,
-    writeProjectFile,
-    editHistory,
-    reloadPreview,
-    domEditSaveTimestampRef,
+    sdkDeps,
   });
   const arcPathOps = useGsapArcPathOps(commitMutationSafely);
   return { commitMutation, ...propertyOps, ...animationOps, ...keyframeOps, ...arcPathOps };

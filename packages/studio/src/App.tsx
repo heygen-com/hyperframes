@@ -190,6 +190,7 @@ export function StudioApp() {
     uploadProjectFiles: fileManager.uploadProjectFiles,
     isRecordingRef: isGestureRecordingRef,
     sdkSession: sdkHandle.session,
+    forceReloadSdkSession: sdkHandle.forceReload,
   });
   const {
     activeBlockParams,
@@ -263,14 +264,10 @@ export function StudioApp() {
       ? () => handleToggleRecordingRef.current()
       : undefined,
   });
-  const selectSidebarTabStable = useCallback(
-    (tab: SidebarTab) => leftSidebarRef.current?.selectTab(tab),
-    [],
-  );
-  const getSidebarTabStable = useCallback(
-    () => leftSidebarRef.current?.getTab() ?? "compositions",
-    [],
-  );
+  const sidebarTabRef = useRef({
+    select: (t: SidebarTab) => leftSidebarRef.current?.selectTab(t),
+    get: () => leftSidebarRef.current?.getTab() ?? "compositions",
+  });
   const domEditSession = useDomEditSession({
     projectId,
     activeCompPath,
@@ -303,9 +300,10 @@ export function StudioApp() {
     reloadPreview,
     setRefreshKey,
     openSourceForSelection: fileManager.openSourceForSelection,
-    selectSidebarTab: selectSidebarTabStable,
-    getSidebarTab: getSidebarTabStable,
+    selectSidebarTab: sidebarTabRef.current.select,
+    getSidebarTab: sidebarTabRef.current.get,
     sdkSession: sdkHandle.session,
+    forceReloadSdkSession: sdkHandle.forceReload,
   });
   domEditSelectionBridgeRef.current = domEditSession.domEditSelection;
   clearDomSelectionRef.current = domEditSession.clearDomSelection;

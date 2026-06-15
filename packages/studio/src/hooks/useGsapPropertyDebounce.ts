@@ -1,32 +1,21 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { Composition } from "@hyperframes/sdk";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
-import { sdkGsapTweenPersist } from "../utils/sdkCutover";
+import { sdkGsapTweenPersist, type CutoverDeps } from "../utils/sdkCutover";
 import { PROPERTY_DEFAULTS } from "./gsapScriptCommitHelpers";
 import type { SafeGsapCommitMutation } from "./gsapScriptCommitTypes";
-import type { EditHistoryKind } from "../utils/editHistory";
 
 const DEBOUNCE_MS = 150;
 
 interface SdkPropertyDeps {
   sdkSession?: Composition | null;
-  writeProjectFile?: (path: string, content: string) => Promise<void>;
-  editHistory?: {
-    recordEdit: (entry: {
-      label: string;
-      kind: EditHistoryKind;
-      coalesceKey?: string;
-      files: Record<string, { before: string; after: string }>;
-    }) => Promise<void>;
-  };
-  reloadPreview?: () => void;
-  domEditSaveTimestampRef?: React.MutableRefObject<number>;
+  sdkDeps?: CutoverDeps | null;
   activeCompPath?: string | null;
 }
 
 export function useGsapPropertyDebounce(
   commitMutationSafely: SafeGsapCommitMutation,
-  sdkDeps?: SdkPropertyDeps,
+  sdk?: SdkPropertyDeps,
 ) {
   const pendingPropertyEditRef = useRef<{
     selection: DomEditSelection;
@@ -36,51 +25,33 @@ export function useGsapPropertyDebounce(
   } | null>(null);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // fallow-ignore-next-line complexity
-  const flushPendingPropertyEdit = useCallback(
-    // fallow-ignore-next-line complexity
-    async () => {
-      const pending = pendingPropertyEditRef.current;
-      if (!pending) return;
-      pendingPropertyEditRef.current = null;
-      const { selection, animationId, property, value } = pending;
-      const {
+  const flushPendingPropertyEdit = useCallback(async () => {
+    const pending = pendingPropertyEditRef.current;
+    if (!pending) return;
+    pendingPropertyEditRef.current = null;
+    const { selection, animationId, property, value } = pending;
+    const { sdkSession, sdkDeps, activeCompPath } = sdk ?? {};
+    if (sdkSession && sdkDeps) {
+      const targetPath = selection.sourceFile || activeCompPath || "index.html";
+      const handled = await sdkGsapTweenPersist(
+        targetPath,
+        { kind: "set", animationId, properties: { properties: { [property]: value } } },
         sdkSession,
-        writeProjectFile,
-        editHistory,
-        reloadPreview,
-        domEditSaveTimestampRef,
-        activeCompPath,
-      } = sdkDeps ?? {};
-      if (
-        sdkSession &&
-        writeProjectFile &&
-        editHistory &&
-        reloadPreview &&
-        domEditSaveTimestampRef
-      ) {
-        const targetPath = selection.sourceFile || activeCompPath || "index.html";
-        const handled = await sdkGsapTweenPersist(
-          targetPath,
-          { kind: "set", animationId, properties: { properties: { [property]: value } } },
-          sdkSession,
-          { editHistory, writeProjectFile, reloadPreview, domEditSaveTimestampRef },
-          { label: `Edit GSAP ${property}`, coalesceKey: `gsap:${animationId}:${property}` },
-        );
-        if (handled) return;
-      }
-      commitMutationSafely(
-        selection,
-        { type: "update-property", animationId, property, value },
-        {
-          label: `Edit GSAP ${property}`,
-          coalesceKey: `gsap:${animationId}:${property}`,
-          softReload: true,
-        },
+        sdkDeps,
+        { label: `Edit GSAP ${property}`, coalesceKey: `gsap:${animationId}:${property}` },
       );
-    },
-    [commitMutationSafely, sdkDeps],
-  );
+      if (handled) return;
+    }
+    commitMutationSafely(
+      selection,
+      { type: "update-property", animationId, property, value },
+      {
+        label: `Edit GSAP ${property}`,
+        coalesceKey: `gsap:${animationId}:${property}`,
+        softReload: true,
+      },
+    );
+  }, [commitMutationSafely, sdk]);
 
   const updateGsapProperty = useCallback(
     (
@@ -118,27 +89,14 @@ export function useGsapPropertyDebounce(
         const cs = el.ownerDocument.defaultView?.getComputedStyle(el);
         defaultValue = cs ? Number.parseFloat(cs.opacity) || 1 : 1;
       }
-      const {
-        sdkSession,
-        writeProjectFile,
-        editHistory,
-        reloadPreview,
-        domEditSaveTimestampRef,
-        activeCompPath,
-      } = sdkDeps ?? {};
-      if (
-        sdkSession &&
-        writeProjectFile &&
-        editHistory &&
-        reloadPreview &&
-        domEditSaveTimestampRef
-      ) {
+      const { sdkSession, sdkDeps, activeCompPath } = sdk ?? {};
+      if (sdkSession && sdkDeps) {
         const targetPath = selection.sourceFile || activeCompPath || "index.html";
         const handled = await sdkGsapTweenPersist(
           targetPath,
           { kind: "set", animationId, properties: { properties: { [property]: defaultValue } } },
           sdkSession,
-          { editHistory, writeProjectFile, reloadPreview, domEditSaveTimestampRef },
+          sdkDeps,
           { label: `Add GSAP ${property}` },
         );
         if (handled) return;
@@ -149,7 +107,7 @@ export function useGsapPropertyDebounce(
         { label: `Add GSAP ${property}` },
       );
     },
-    [commitMutationSafely, sdkDeps],
+    [commitMutationSafely, sdk],
   );
 
   const removeGsapProperty = useCallback(
@@ -164,36 +122,21 @@ export function useGsapPropertyDebounce(
     [commitMutationSafely],
   );
 
-  // fallow-ignore-next-line complexity
   const updateGsapFromProperty = useCallback(
-    // fallow-ignore-next-line complexity
     async (
       selection: DomEditSelection,
       animationId: string,
       property: string,
       value: number | string,
     ) => {
-      const {
-        sdkSession,
-        writeProjectFile,
-        editHistory,
-        reloadPreview,
-        domEditSaveTimestampRef,
-        activeCompPath,
-      } = sdkDeps ?? {};
-      if (
-        sdkSession &&
-        writeProjectFile &&
-        editHistory &&
-        reloadPreview &&
-        domEditSaveTimestampRef
-      ) {
+      const { sdkSession, sdkDeps, activeCompPath } = sdk ?? {};
+      if (sdkSession && sdkDeps) {
         const targetPath = selection.sourceFile || activeCompPath || "index.html";
         const handled = await sdkGsapTweenPersist(
           targetPath,
           { kind: "set", animationId, properties: { fromProperties: { [property]: value } } },
           sdkSession,
-          { editHistory, writeProjectFile, reloadPreview, domEditSaveTimestampRef },
+          sdkDeps,
           {
             label: `Edit GSAP from-${property}`,
             coalesceKey: `gsap:${animationId}:from:${property}`,
@@ -210,29 +153,14 @@ export function useGsapPropertyDebounce(
         },
       );
     },
-    [commitMutationSafely, sdkDeps],
+    [commitMutationSafely, sdk],
   );
 
-  // fallow-ignore-next-line complexity
   const addGsapFromProperty = useCallback(
-    // fallow-ignore-next-line complexity
     async (selection: DomEditSelection, animationId: string, property: string) => {
       const defaultValue = PROPERTY_DEFAULTS[property] ?? 0;
-      const {
-        sdkSession,
-        writeProjectFile,
-        editHistory,
-        reloadPreview,
-        domEditSaveTimestampRef,
-        activeCompPath,
-      } = sdkDeps ?? {};
-      if (
-        sdkSession &&
-        writeProjectFile &&
-        editHistory &&
-        reloadPreview &&
-        domEditSaveTimestampRef
-      ) {
+      const { sdkSession, sdkDeps, activeCompPath } = sdk ?? {};
+      if (sdkSession && sdkDeps) {
         const targetPath = selection.sourceFile || activeCompPath || "index.html";
         const handled = await sdkGsapTweenPersist(
           targetPath,
@@ -242,7 +170,7 @@ export function useGsapPropertyDebounce(
             properties: { fromProperties: { [property]: defaultValue } },
           },
           sdkSession,
-          { editHistory, writeProjectFile, reloadPreview, domEditSaveTimestampRef },
+          sdkDeps,
           { label: `Add GSAP from-${property}` },
         );
         if (handled) return;
@@ -253,7 +181,7 @@ export function useGsapPropertyDebounce(
         { label: `Add GSAP from-${property}` },
       );
     },
-    [commitMutationSafely, sdkDeps],
+    [commitMutationSafely, sdk],
   );
 
   const removeGsapFromProperty = useCallback(
