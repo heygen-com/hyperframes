@@ -1768,7 +1768,7 @@ export function initSandboxRuntimeModular(): void {
     onSetPlaybackRate: (rate) => {
       applyPlaybackRate(rate);
       if (state.transportClock) state.transportClock.setRate(state.playbackRate);
-      webAudio.setRate(state.playbackRate);
+      applyWebAudioRate();
     },
     onTick: () => {
       if (state.tornDown || !clock.isPlaying()) return;
@@ -2141,6 +2141,67 @@ export function initSandboxRuntimeModular(): void {
   };
 
   // Player methods route through the TransportClock.
+  // Schedule WebAudio playback for every in-window audio clip, bounding each
+  // buffer to its clip window (own data-duration AND the remaining host
+  // composition window) so trimmed / sub-composition-nested clips stop at the
+  // same edge as the HTMLMedia path. Reused by play() and by the rate-change
+  // handler (a rate change can't rescale a bounded source in place).
+  const scheduleWebAudioForActiveClips = () => {
+    const gen = webAudio.startGeneration();
+    const audioEls = document.querySelectorAll("audio[data-start]");
+    for (const rawEl of audioEls) {
+      if (!(rawEl instanceof HTMLMediaElement) || !rawEl.isConnected) continue;
+      const compStart = Number.parseFloat(rawEl.dataset.start ?? "");
+      if (!Number.isFinite(compStart)) continue;
+      const mediaStart =
+        Number.parseFloat(rawEl.dataset.playbackStart ?? rawEl.dataset.mediaStart ?? "0") || 0;
+      const volumeAttr = Number.parseFloat(rawEl.dataset.volume ?? "");
+      const vol = Number.isFinite(volumeAttr) ? volumeAttr : 1;
+      const durationAttr = Number.parseFloat(rawEl.dataset.duration ?? "");
+      let clipDuration =
+        Number.isFinite(durationAttr) && durationAttr > 0 ? durationAttr : Number.POSITIVE_INFINITY;
+      const compositionRoot = rawEl.closest("[data-composition-id]");
+      if (compositionRoot) {
+        const inheritedStart = resolveStartForElement(compositionRoot, 0);
+        const inheritedDuration = resolveDurationForElement(compositionRoot, {
+          includeAuthoredTimingAttrs: true,
+        });
+        if (inheritedDuration != null && inheritedDuration > 0) {
+          clipDuration = Math.min(
+            clipDuration,
+            Math.max(0, inheritedStart + inheritedDuration - compStart),
+          );
+        }
+      }
+      void webAudio.decodeAudioElement(rawEl).then((buffer) => {
+        if (!buffer || !clock.isPlaying()) return;
+        void webAudio.schedulePlayback(
+          rawEl,
+          buffer,
+          compStart,
+          mediaStart,
+          clock.now(),
+          vol * state.bridgeVolume,
+          gen,
+          state.playbackRate,
+          clipDuration,
+        );
+      });
+    }
+  };
+
+  // Apply a new playback rate to the WebAudio transport. Unbounded sources are
+  // rescaled in place; but a bounded source's window was baked into start()'s
+  // duration at its prior rate and can't be rescaled, so when one is active we
+  // stopAll()+reschedule at the new rate to keep trimmed clips ending on time.
+  const applyWebAudioRate = () => {
+    const changed = webAudio.setRate(state.playbackRate);
+    if (changed && webAudioReady && clock.isPlaying() && webAudio.hasBoundedActiveSources()) {
+      webAudio.stopAll();
+      scheduleWebAudioForActiveClips();
+    }
+  };
+
   player.play = () => {
     const tl = state.capturedTimeline;
     if (clock.isPlaying()) return;
@@ -2165,56 +2226,7 @@ export function initSandboxRuntimeModular(): void {
     // Schedule audio through WebAudio for sample-accurate timing.
     // Falls back to HTMLMediaElement playback if WebAudio isn't ready
     // or decoding fails (the syncRuntimeMedia path handles that).
-    if (webAudioReady) {
-      const gen = webAudio.startGeneration();
-      const audioEls = document.querySelectorAll("audio[data-start]");
-      for (const rawEl of audioEls) {
-        if (!(rawEl instanceof HTMLMediaElement) || !rawEl.isConnected) continue;
-        const compStart = Number.parseFloat(rawEl.dataset.start ?? "");
-        if (!Number.isFinite(compStart)) continue;
-        const mediaStart =
-          Number.parseFloat(rawEl.dataset.playbackStart ?? rawEl.dataset.mediaStart ?? "0") || 0;
-        const volumeAttr = Number.parseFloat(rawEl.dataset.volume ?? "");
-        const vol = Number.isFinite(volumeAttr) ? volumeAttr : 1;
-        // Bound the WebAudio buffer the same way the HTMLMedia resolver
-        // (resolveDurationSeconds) does: by the clip's own data-duration AND by
-        // the remaining host-composition window, so a trimmed or sub-composition
-        // -nested clip stops at the same edge on both playback paths. (Source
-        // length is bounded naturally by the decoded buffer.)
-        const durationAttr = Number.parseFloat(rawEl.dataset.duration ?? "");
-        let clipDuration =
-          Number.isFinite(durationAttr) && durationAttr > 0
-            ? durationAttr
-            : Number.POSITIVE_INFINITY;
-        const compositionRoot = rawEl.closest("[data-composition-id]");
-        if (compositionRoot) {
-          const inheritedStart = resolveStartForElement(compositionRoot, 0);
-          const inheritedDuration = resolveDurationForElement(compositionRoot, {
-            includeAuthoredTimingAttrs: true,
-          });
-          if (inheritedDuration != null && inheritedDuration > 0) {
-            clipDuration = Math.min(
-              clipDuration,
-              Math.max(0, inheritedStart + inheritedDuration - compStart),
-            );
-          }
-        }
-        void webAudio.decodeAudioElement(rawEl).then((buffer) => {
-          if (!buffer || !clock.isPlaying()) return;
-          void webAudio.schedulePlayback(
-            rawEl,
-            buffer,
-            compStart,
-            mediaStart,
-            clock.now(),
-            vol * state.bridgeVolume,
-            gen,
-            state.playbackRate,
-            clipDuration,
-          );
-        });
-      }
-    }
+    if (webAudioReady) scheduleWebAudioForActiveClips();
     runAdapters("play");
     syncMediaForCurrentState();
     postState(true);
@@ -2281,7 +2293,7 @@ export function initSandboxRuntimeModular(): void {
   player.setPlaybackRate = (rate: number) => {
     applyPlaybackRate(rate);
     clock.setRate(state.playbackRate);
-    webAudio.setRate(state.playbackRate);
+    applyWebAudioRate();
   };
 
   // Sync clock duration from any captured timeline

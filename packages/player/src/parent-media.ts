@@ -143,8 +143,13 @@ export class ParentMediaManager {
   // (adopt-time values go stale when the timeline is edited).
   private _refreshEntryBounds(m: ProxyEntry): void {
     if (!m.source?.isConnected) return;
-    m.start = parseFloat(m.source.getAttribute("data-start") || "0");
-    m.duration = parseFloat(m.source.getAttribute("data-duration") || "Infinity");
+    // Guard against a malformed (non-numeric) attribute parsing to NaN: an NaN
+    // duration makes every `relTime >= m.duration` window check false, so the
+    // gate never closes and the proxy plays past its clip end.
+    const start = parseFloat(m.source.getAttribute("data-start") || "0");
+    m.start = Number.isFinite(start) ? start : 0;
+    const duration = parseFloat(m.source.getAttribute("data-duration") || "");
+    m.duration = Number.isFinite(duration) && duration > 0 ? duration : Number.POSITIVE_INFINITY;
   }
 
   // Pause the proxy outside its clip window; resume it on re-entry during

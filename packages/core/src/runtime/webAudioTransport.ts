@@ -49,6 +49,10 @@ export type ScheduledSource = {
   mediaStart: number;
   scheduledAt: number;
   priorMuted: boolean;
+  // The clip had a finite window, so start() was given a fixed duration in
+  // buffer-sample seconds. That bound can't be rescaled in place on a rate
+  // change — callers must stopAll()+reschedule (see hasBoundedActiveSources).
+  bounded: boolean;
 };
 
 export class WebAudioTransport {
@@ -182,6 +186,7 @@ export class WebAudioTransport {
         mediaStart,
         scheduledAt,
         priorMuted,
+        bounded: Number.isFinite(clipDuration) && clipDuration > 0,
       };
       this._activeSources.push(scheduled);
       this._paused = false;
@@ -208,9 +213,9 @@ export class WebAudioTransport {
    * start in the future keep their original wallclock start time — callers
    * that need rate-correct future starts should `stopAll()` and reschedule.
    */
-  setRate(rate: number): void {
+  setRate(rate: number): boolean {
     const safeRate = normalizeRate(rate);
-    if (safeRate === this._rate) return;
+    if (safeRate === this._rate) return false;
     if (this._ctx && !this._paused) {
       this._rateAnchorComp = this.getTime();
       this._rateAnchorCtx = this._ctx.currentTime;
@@ -223,6 +228,14 @@ export class WebAudioTransport {
         swallow("webAudioTransport.setRate", err);
       }
     }
+    return true;
+  }
+
+  // A bounded source's wall-clock duration was baked into start()'s duration
+  // arg at its original rate; a later rate change can't rescale it in place, so
+  // the caller must stopAll()+reschedule to keep trimmed clips ending on time.
+  hasBoundedActiveSources(): boolean {
+    return this._activeSources.some((s) => s.bounded);
   }
 
   stopAll(): void {
