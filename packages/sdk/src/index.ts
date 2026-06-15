@@ -14,6 +14,7 @@ export type {
   SelectionProxy,
   ElementHandle,
   Composition,
+  CanResult,
 } from "./types.js";
 
 export { ORIGIN_APPLY_PATCHES, ORIGIN_LOCAL } from "./types.js";
