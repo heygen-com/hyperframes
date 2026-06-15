@@ -9,7 +9,7 @@ import { useAskAgentModal } from "./useAskAgentModal";
 import { useDomSelection } from "./useDomSelection";
 import { usePreviewInteraction } from "./usePreviewInteraction";
 import { useDomEditCommits } from "./useDomEditCommits";
-import { runShadowDispatch } from "../utils/sdkShadow";
+import { runShadowDispatch, runShadowDelete } from "../utils/sdkShadow";
 import { useGsapScriptCommits } from "./useGsapScriptCommits";
 import { useGsapCacheVersion } from "./useGsapTweenCache";
 import { useDomEditWiring } from "./useDomEditWiring";
@@ -235,6 +235,7 @@ export function useDomEditSession({
     onDomEditPersisted: sdkSession
       ? (sel, ops) => runShadowDispatch(sdkSession, sel, ops)
       : undefined,
+    onElementDeleted: sdkSession ? (sel) => runShadowDelete(sdkSession, sel.hfId) : undefined,
   });
 
   // ── Wiring: selection sync, GSAP cache, preview sync, selection handlers ──
