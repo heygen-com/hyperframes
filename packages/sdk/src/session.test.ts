@@ -385,4 +385,22 @@ describe("setSelection", () => {
     comp.setSelection(["hf-title"]);
     expect(patches).toHaveLength(0);
   });
+
+  it("setSelection with same ids does not fire selectionchange again", async () => {
+    const comp = await openComposition(BASE_HTML);
+    const calls: string[][] = [];
+    comp.on("selectionchange", (ids) => calls.push(ids));
+    comp.setSelection(["hf-title"]);
+    comp.setSelection(["hf-title"]); // same ids — must be a no-op
+    expect(calls).toHaveLength(1);
+  });
+
+  it("setSelection with same ids in different order fires selectionchange", async () => {
+    const comp = await openComposition(BASE_HTML);
+    const calls: string[][] = [];
+    comp.on("selectionchange", (ids) => calls.push(ids));
+    comp.setSelection(["hf-title", "hf-sub"]);
+    comp.setSelection(["hf-sub", "hf-title"]); // order differs — must fire
+    expect(calls).toHaveLength(2);
+  });
 });
