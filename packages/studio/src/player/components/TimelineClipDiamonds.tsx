@@ -108,7 +108,9 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
   const diamondSize = Math.round(clipHeightPx * (beatsActive ? 0.45 : DIAMOND_RATIO));
   const half = diamondSize / 2;
   const centerY = beatsActive ? BEAT_BAND_H + (clipHeightPx - BEAT_BAND_H) / 2 : clipHeightPx / 2;
-  const sorted = keyframesData.keyframes.slice().sort((a, b) => a.percentage - b.percentage);
+  const sorted = keyframesData.keyframes
+    .filter((kf) => kf.percentage >= 0 && kf.percentage <= 100)
+    .sort((a, b) => a.percentage - b.percentage);
   const baseColor = isSelected ? accentColor : "#a3a3a3";
   const baseOpacity = isSelected ? 0.4 : 0.25;
 
