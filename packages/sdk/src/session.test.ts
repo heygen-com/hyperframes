@@ -419,3 +419,35 @@ describe("setSelection", () => {
     expect(calls).toHaveLength(1);
   });
 });
+
+describe("animationIds population", () => {
+  const GSAP_HTML = `
+<div data-hf-id="hf-stage" data-hf-root style="width: 1280px; height: 720px">
+  <div data-hf-id="hf-box" style="opacity: 0">box</div>
+  <div data-hf-id="hf-plain">plain</div>
+  <script>var tl = gsap.timeline({ paused: true });
+tl.to("[data-hf-id=\\"hf-box\\"]", { opacity: 1, duration: 0.5 }, 0.2);
+window.__timelines["t"] = tl;</script>
+</div>`.trim();
+
+  it("attaches the parser's stable tween id to the targeted element", async () => {
+    const comp = await openComposition(GSAP_HTML);
+    const box = comp.getElement("hf-box");
+    expect(box?.animationIds.length).toBe(1);
+    // Stable id-space shared with studio-api / GSAP ops: targetSelector-method-position.
+    expect(box?.animationIds[0]).toContain("hf-box");
+    expect(box?.animationIds[0]).toContain("-to-");
+  });
+
+  it("leaves untargeted elements with an empty animationIds", async () => {
+    const comp = await openComposition(GSAP_HTML);
+    expect(comp.getElement("hf-plain")?.animationIds).toEqual([]);
+  });
+
+  it("the populated id is dispatchable as a removeGsapTween target", async () => {
+    const comp = await openComposition(GSAP_HTML);
+    const id = comp.getElement("hf-box")?.animationIds[0];
+    expect(id).toBeDefined();
+    if (id) expect(comp.can({ type: "removeGsapTween", animationId: id }).ok).toBe(true);
+  });
+});

@@ -219,13 +219,24 @@ describe("runShadowTiming", () => {
 });
 
 describe("runShadowGsapTween", () => {
-  it("dispatches add against a real timeline and reports success", async () => {
+  it("add reports success and the new tween lands on the target's animationIds", async () => {
     const session = await openComposition(GSAP_HTML);
+    const before = session.getElement("hf-box")?.animationIds.length ?? 0;
     runShadowGsapTween(session, {
       kind: "add",
       target: "hf-box",
       tween: { method: "to", properties: { x: 100 }, duration: 0.5 },
     });
+    expect(session.getElement("hf-box")!.animationIds.length).toBe(before + 1);
+    expect(lastShadow()).toMatchObject({ op: "gsap", dispatched: true, mismatchCount: 0 });
+  });
+
+  it("remove drops the tween from animationIds and reports parity", async () => {
+    const session = await openComposition(GSAP_HTML);
+    const animationId = session.getElement("hf-box")?.animationIds[0];
+    expect(animationId).toBeDefined();
+    runShadowGsapTween(session, { kind: "remove", animationId: animationId! });
+    expect(session.getElement("hf-box")?.animationIds ?? []).not.toContain(animationId);
     expect(lastShadow()).toMatchObject({ op: "gsap", dispatched: true, mismatchCount: 0 });
   });
 

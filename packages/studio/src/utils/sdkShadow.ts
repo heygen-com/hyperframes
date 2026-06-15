@@ -367,12 +367,15 @@ export type ShadowGsapOp =
   | { kind: "remove"; animationId: string };
 
 /**
- * Shadow a GSAP tween mutation. Snapshot value-parity is NOT available: the
- * tween lives in the GSAP <script>, and ElementSnapshot.animationIds is a stub
- * (always [] — see sdk document.ts). So the signal here is can() addressing /
- * validity + dispatch-didn't-throw, plus (for add) that the SDK returned a
- * non-empty tween id. Full fidelity needs serialize()-script round-trip diffing,
- * out of scope for shadow. // ponytail: upgrade when animationIds is populated.
+ * Shadow a GSAP tween mutation (add / set / remove). The server's animationId
+ * shares the SDK's id-space (both derive `targetSelector-method-position` from
+ * the same acorn parser — see sdk assignStableIds), so it is dispatchable as-is.
+ *
+ * Parity via the now-populated ElementSnapshot.animationIds:
+ *   add    → the returned tween id is present on the target element
+ *   remove → the id is gone from every element
+ *   set    → existence only (the SDK exposes no per-tween property reader; value
+ *            fidelity would need serialize()-script round-trip diffing).
  */
 export function runShadowGsapTween(session: Composition, gsapOp: ShadowGsapOp): void {
   if (!STUDIO_SDK_SHADOW_ENABLED) return;
@@ -388,16 +391,34 @@ export function runShadowGsapTween(session: Composition, gsapOp: ShadowGsapOp): 
       if (gsapOp.kind === "add") newId = session.addGsapTween(gsapOp.target, gsapOp.tween);
       else session.dispatch(op);
     });
-    if (gsapOp.kind === "add" && !newId) {
-      return [
-        {
-          kind: "value_mismatch",
-          hfId: gsapOp.target,
-          property: "tweenId",
-          expected: "non-empty",
-          actual: null,
-        },
-      ];
+    if (gsapOp.kind === "add") {
+      const onTarget = session.getElement(gsapOp.target)?.animationIds ?? [];
+      if (!newId || !onTarget.includes(newId)) {
+        return [
+          {
+            kind: "value_mismatch",
+            hfId: gsapOp.target,
+            property: "animationIds",
+            expected: newId ?? "non-empty",
+            actual: onTarget.join(",") || null,
+          },
+        ];
+      }
+    } else if (gsapOp.kind === "remove") {
+      const stillPresent = session
+        .getElements()
+        .some((el) => el.animationIds.includes(gsapOp.animationId));
+      if (stillPresent) {
+        return [
+          {
+            kind: "value_mismatch",
+            hfId: gsapOp.animationId,
+            property: "animationIds",
+            expected: "removed",
+            actual: "present",
+          },
+        ];
+      }
     }
     return [];
   });

@@ -10,6 +10,7 @@
 
 import { parseHTML } from "linkedom";
 import { ensureHfIds } from "@hyperframes/core/hf-ids";
+import { parseGsapScriptAcornForWrite } from "@hyperframes/core/gsap-parser-acorn";
 import { findRoot, getElementStyles, isNewHostBoundary } from "./engine/model.js";
 import type { HyperFramesElement, SdkDocument } from "./types.js";
 
@@ -37,8 +38,45 @@ function ownText(el: Element): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+/**
+ * Map each element's data-hf-id → the GSAP tween ids targeting it. Tween ids
+ * come from the acorn parser's stable `targetSelector-method-position` scheme —
+ * the SAME id-space the studio-api read path and the SDK GSAP ops use, so these
+ * ids are dispatchable as-is via setGsapTween/removeGsapTween. Best-effort: a
+ * malformed selector or unparseable script yields no entries (animationIds: []).
+ */
+function buildAnimationIdMap(document: Document): Map<string, string[]> {
+  const map = new Map<string, string[]>();
+  const script = extractGsapScript(document);
+  if (!script) return map;
+  const parsed = parseGsapScriptAcornForWrite(script);
+  if (!parsed) return map;
+  for (const { id, animation } of parsed.located) {
+    const selector = animation.targetSelector;
+    if (!selector) continue;
+    let matches: Element[] = [];
+    try {
+      matches = Array.from(document.querySelectorAll(selector));
+    } catch {
+      continue; // selector not valid for querySelectorAll — skip
+    }
+    for (const el of matches) {
+      const hfId = el.getAttribute("data-hf-id");
+      if (!hfId) continue;
+      const list = map.get(hfId);
+      if (list) list.push(id);
+      else map.set(hfId, [id]);
+    }
+  }
+  return map;
+}
+
 // fallow-ignore-next-line complexity
-function buildElement(el: Element, scopePrefix: string): HyperFramesElement | null {
+function buildElement(
+  el: Element,
+  scopePrefix: string,
+  animationIdsByHfId: Map<string, string[]>,
+): HyperFramesElement | null {
   const tag = el.tagName.toLowerCase();
   if (EXCLUDED_TAGS.has(tag)) return null;
 
@@ -82,7 +120,7 @@ function buildElement(el: Element, scopePrefix: string): HyperFramesElement | nu
 
   const children: HyperFramesElement[] = [];
   for (const child of Array.from(el.children)) {
-    const built = buildElement(child, childPrefix);
+    const built = buildElement(child, childPrefix, animationIdsByHfId);
     if (built) children.push(built);
   }
 
@@ -98,7 +136,7 @@ function buildElement(el: Element, scopePrefix: string): HyperFramesElement | nu
     start,
     duration,
     trackIndex,
-    animationIds: [],
+    animationIds: animationIdsByHfId.get(id) ?? [],
   };
 }
 
@@ -151,9 +189,10 @@ function extractDuration(doc: Document): number | null {
 export function buildRoots(document: Document): HyperFramesElement[] {
   const body = document.body;
   const roots: HyperFramesElement[] = [];
+  const animationIdsByHfId = buildAnimationIdMap(document);
   if (body) {
     for (const child of Array.from(body.children)) {
-      const built = buildElement(child, "");
+      const built = buildElement(child, "", animationIdsByHfId);
       if (built) roots.push(built);
     }
   }

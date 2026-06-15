@@ -41,8 +41,19 @@ export function useGsapAnimationOps({
           coalesceKey: `gsap:${animationId}:meta`,
         },
       );
+      // Shadow: server animationId shares the SDK id-space, so dispatch as-is.
+      if (sdkSession)
+        runShadowGsapTween(sdkSession, {
+          kind: "set",
+          animationId,
+          properties: {
+            duration: updates.duration,
+            ease: updates.ease,
+            position: updates.position,
+          },
+        });
     },
-    [commitMutationSafely],
+    [commitMutationSafely, sdkSession],
   );
 
   const deleteGsapAnimation = useCallback(
@@ -52,8 +63,9 @@ export function useGsapAnimationOps({
         { type: "delete", animationId, stripStudioEdits: true },
         { label: "Delete GSAP animation" },
       );
+      if (sdkSession) runShadowGsapTween(sdkSession, { kind: "remove", animationId });
     },
-    [commitMutationSafely],
+    [commitMutationSafely, sdkSession],
   );
 
   const deleteAllForSelector = useCallback(
@@ -120,8 +132,6 @@ export function useGsapAnimationOps({
 
       // Shadow: dispatch the equivalent addGsapTween to the SDK (server stays
       // authoritative). "set" has no SDK method, so it is not shadowed.
-      // ponytail: only add is shadowed — delete/update key on the server's
-      // animationId, which doesn't resolve in the SDK's independent id-space.
       if (sdkSession && selection.hfId && method !== "set") {
         const tween: GsapTweenSpec = {
           method,
