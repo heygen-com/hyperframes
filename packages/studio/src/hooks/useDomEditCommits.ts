@@ -77,6 +77,13 @@ export interface UseDomEditCommitsParams {
   onDomEditPersisted?: (selection: DomEditSelection, operations: PatchOperation[]) => void;
   /** Stage 7 Step 3b: called after a successful server-side element delete. */
   onElementDeleted?: (selection: DomEditSelection) => void;
+  /** Stage 7 Step 3c: called before the server-side patch path; returns true if SDK handled it. */
+  onTrySdkPersist?: (
+    selection: DomEditSelection,
+    operations: PatchOperation[],
+    originalContent: string,
+    targetPath: string,
+  ) => Promise<boolean>;
 }
 
 export function useDomEditCommits({
@@ -99,6 +106,7 @@ export function useDomEditCommits({
   buildDomSelectionFromTarget,
   onDomEditPersisted,
   onElementDeleted,
+  onTrySdkPersist,
 }: UseDomEditCommitsParams) {
   const resolveImportedFontAsset = useCallback(
     (fontFamilyValue: string): ImportedFontAsset | null => {
@@ -148,6 +156,18 @@ export function useDomEditCommits({
       }
 
       if (options?.shouldSave && !options.shouldSave()) return;
+
+      // Skip the SDK path when prepareContent is set (e.g. @font-face injection
+      // for a custom font): sdkCutoverPersist serializes only the patched DOM
+      // and would drop the injected content. Let the server path run prepareContent.
+      if (
+        onTrySdkPersist &&
+        !options?.prepareContent &&
+        (await onTrySdkPersist(selection, operations, originalContent, targetPath))
+      ) {
+        // SDK handled it — its in-memory doc is already current.
+        return;
+      }
 
       const patchTarget = buildDomEditPatchTarget(selection);
       const patchBody = { target: patchTarget, operations };
@@ -235,6 +255,7 @@ export function useDomEditCommits({
       reloadPreview,
       showToast,
       onDomEditPersisted,
+      onTrySdkPersist,
     ],
   );
 

@@ -4,6 +4,8 @@ import type { EditHistoryKind } from "../utils/editHistory";
 import type { RightPanelTab } from "../utils/studioHelpers";
 import type { PatchTarget } from "../utils/sourcePatcher";
 import type { SidebarTab } from "../components/sidebar/LeftSidebar";
+import type { Composition } from "@hyperframes/sdk";
+import { sdkCutoverPersist } from "../utils/sdkCutover";
 import { useAskAgentModal } from "./useAskAgentModal";
 import { useDomSelection } from "./useDomSelection";
 import { usePreviewInteraction } from "./usePreviewInteraction";
@@ -58,6 +60,7 @@ export interface UseDomEditSessionParams {
   openSourceForSelection?: (sourceFile: string, target: PatchTarget) => void;
   selectSidebarTab?: (tab: SidebarTab) => void;
   getSidebarTab?: () => SidebarTab;
+  sdkSession?: Composition | null;
 }
 
 // ── Hook ──
@@ -96,6 +99,7 @@ export function useDomEditSession({
   openSourceForSelection,
   selectSidebarTab,
   getSidebarTab,
+  sdkSession,
 }: UseDomEditSessionParams) {
   void _setRefreshKey;
   void _readProjectFile;
@@ -228,6 +232,15 @@ export function useDomEditSession({
     clearDomSelection,
     refreshDomEditSelectionFromPreview,
     buildDomSelectionFromTarget,
+    onTrySdkPersist: sdkSession
+      ? (selection, operations, originalContent, targetPath) =>
+          sdkCutoverPersist(selection, operations, originalContent, targetPath, sdkSession, {
+            editHistory,
+            writeProjectFile,
+            reloadPreview,
+            domEditSaveTimestampRef,
+          })
+      : undefined,
   });
 
   // ── Wiring: selection sync, GSAP cache, preview sync, selection handlers ──
