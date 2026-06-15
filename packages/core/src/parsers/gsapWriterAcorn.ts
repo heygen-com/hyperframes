@@ -345,7 +345,17 @@ export function addKeyframeToScript(
 
   const existing = findKfPropByPct(kfNode, percentage);
   if (existing) {
-    ms.overwrite(existing.prop.value.start, existing.prop.value.end, valueCode);
+    // Merge into the existing keyframe at this percentage, preserving sibling
+    // properties — overwrite only the given keys. (A whole-value overwrite here
+    // would silently drop other properties already keyframed at this percent.)
+    if (existing.prop.value?.type === "ObjectExpression") {
+      for (const [k, v] of Object.entries(properties)) {
+        upsertProp(ms, existing.prop.value, k, v);
+      }
+      if (ease !== undefined) upsertProp(ms, existing.prop.value, "ease", ease);
+    } else {
+      ms.overwrite(existing.prop.value.start, existing.prop.value.end, valueCode);
+    }
   } else {
     const allProps = (kfNode.properties ?? []).filter((p: any) => isObjectProperty(p));
     let insertBeforeProp: any = null;

@@ -269,6 +269,14 @@ describe("T6c — keyframe write ops", () => {
     expect((result.match(/"50%"/g) ?? []).length).toBe(1);
   });
 
+  it("addKeyframeToScript merges a new property into an existing keyframe, preserving siblings", () => {
+    // 50% already holds { opacity: 0.7 }; adding x must NOT drop opacity.
+    const result = addKeyframeToScript(SCRIPT_D, "#box-to-200-visual", 50, { x: 100 });
+    expect(result).toContain("opacity: 0.7");
+    expect(result).toContain("x: 100");
+    expect((result.match(/"50%"/g) ?? []).length).toBe(1);
+  });
+
   it("removeKeyframeFromScript removes the target percentage", () => {
     // Remove 50% from 0%/50%/100% → leaves 0%/100% (no collapse in T6c)
     const result = removeKeyframeFromScript(SCRIPT_D, "#box-to-200-visual", 50);

@@ -5,6 +5,7 @@ import {
   sdkDeletePersist,
   sdkTimingPersist,
   sdkGsapTweenPersist,
+  sdkGsapKeyframePersist,
 } from "./sdkCutover";
 import { openComposition } from "@hyperframes/sdk";
 import { createMemoryAdapter } from "@hyperframes/sdk/adapters/memory";
@@ -541,6 +542,71 @@ describe("sdkGsapTweenPersist", () => {
     const result = await sdkGsapTweenPersist(
       "/comp.html",
       { kind: "remove", animationId: "tw-1" },
+      session,
+      deps,
+    );
+    expect(result).toBe(false);
+    expect(deps.writeProjectFile).not.toHaveBeenCalled();
+  });
+});
+
+describe("sdkGsapKeyframePersist", () => {
+  const makeRef = <T>(val: T): MutableRefObject<T> => ({ current: val });
+  const makeDeps = () => ({
+    editHistory: { recordEdit: vi.fn().mockResolvedValue(undefined) },
+    writeProjectFile: vi.fn().mockResolvedValue(undefined),
+    reloadPreview: vi.fn(),
+    domEditSaveTimestampRef: makeRef(0),
+  });
+
+  const makeSession = () =>
+    ({
+      dispatch: vi.fn(),
+      serialize: vi
+        .fn()
+        .mockReturnValueOnce("<html>before</html>")
+        .mockReturnValue("<html>after</html>"),
+    }) as unknown as Parameters<typeof sdkGsapKeyframePersist>[4];
+
+  it("returns false when session is null", async () => {
+    expect(
+      await sdkGsapKeyframePersist("/comp.html", "tw-1", 50, { opacity: 0.5 }, null, makeDeps()),
+    ).toBe(false);
+  });
+
+  it("dispatches addGsapKeyframe and writes serialized content", async () => {
+    const deps = makeDeps();
+    const session = makeSession();
+    const result = await sdkGsapKeyframePersist(
+      "/comp.html",
+      "tw-1",
+      50,
+      { opacity: 0.5 },
+      session,
+      deps,
+    );
+    expect(result).toBe(true);
+    expect(session!.dispatch).toHaveBeenCalledWith({
+      type: "addGsapKeyframe",
+      animationId: "tw-1",
+      position: 50,
+      value: { opacity: 0.5 },
+    });
+    expect(deps.writeProjectFile).toHaveBeenCalledWith("/comp.html", "<html>after</html>");
+    expect(deps.reloadPreview).toHaveBeenCalled();
+  });
+
+  it("returns false and does not write on dispatch error", async () => {
+    const deps = makeDeps();
+    const session = makeSession();
+    (session!.dispatch as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      throw new Error("dispatch failed");
+    });
+    const result = await sdkGsapKeyframePersist(
+      "/comp.html",
+      "tw-1",
+      25,
+      { x: 100 },
       session,
       deps,
     );
