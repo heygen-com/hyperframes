@@ -723,15 +723,8 @@ async function executeGsapMutation(
     case "shift-positions": {
       const { targetSelector, delta } = body;
       if (!targetSelector || typeof delta !== "number" || delta === 0) return block.scriptText;
-      const parsed = parseGsapScript(block.scriptText);
-      let script = block.scriptText;
-      for (const anim of parsed.animations) {
-        if (anim.targetSelector !== targetSelector) continue;
-        if (typeof anim.position !== "number") continue;
-        const newPos = Math.max(0, Math.round((anim.position + delta) * 1000) / 1000);
-        script = updateAnimationInScript(script, anim.id, { position: newPos });
-      }
-      return script;
+      const { shiftPositionsInScript } = parser;
+      return shiftPositionsInScript(block.scriptText, targetSelector, delta);
     }
     default:
       return respond({ error: `unknown mutation type: ${(body as { type: string }).type}` }, 400);
