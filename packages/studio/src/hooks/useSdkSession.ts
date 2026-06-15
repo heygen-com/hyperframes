@@ -25,15 +25,14 @@ export function useSdkSession(
     let cancelled = false;
     let comp: Composition | null = null;
 
-    const url = `/api/projects/${projectId}/files/${encodeURIComponent(activeCompPath)}?optional=1`;
-    fetch(url)
-      .then((r) => r.json())
-      .then(async (data: { content?: string }) => {
-        if (cancelled || typeof data.content !== "string") return;
-        const adapter = createHttpAdapter({
-          projectFilesUrl: `/api/projects/${projectId}`,
-        });
-        comp = await openComposition(data.content, { persist: adapter });
+    const adapter = createHttpAdapter({
+      projectFilesUrl: `/api/projects/${projectId}`,
+    });
+    adapter
+      .read(activeCompPath)
+      .then(async (content) => {
+        if (cancelled || typeof content !== "string") return;
+        comp = await openComposition(content, { persist: adapter });
         comp.on("persist:error", (e) => {
           console.warn("[sdk] persist:error", e.error);
         });
