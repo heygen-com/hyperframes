@@ -267,6 +267,7 @@ export function StudioApp() {
     () => leftSidebarRef.current?.getTab() ?? "compositions",
     [],
   );
+  const sdkSession = useSdkSession(projectId, activeCompPath);
   const domEditSession = useDomEditSession({
     projectId,
     activeCompPath,
@@ -427,17 +428,6 @@ export function StudioApp() {
     applyDomSelection: domEditSession.applyDomSelection,
     initialState: initialUrlStateRef.current,
   });
-  const { jobs, isRendering, deleteRender, clearCompleted, startRender } = renderQueue;
-  const stableRenderQueue = useMemo(
-    () => ({
-      jobs,
-      isRendering,
-      deleteRender,
-      clearCompleted,
-      startRender: startRender as (options: unknown) => Promise<void>,
-    }),
-    [jobs, isRendering, deleteRender, clearCompleted, startRender],
-  );
   const studioCtxValue = buildStudioContextValue({
     projectId: projectId!,
     activeCompPath,
@@ -453,7 +443,7 @@ export function StudioApp() {
     editHistory,
     handleUndo: appHotkeys.handleUndo,
     handleRedo: appHotkeys.handleRedo,
-    renderQueue: stableRenderQueue,
+    renderQueue,
     compositionDimensions,
     waitForPendingDomEditSaves: previewPersistence.waitForPendingDomEditSaves,
     handlePreviewIframeRef,
@@ -493,7 +483,7 @@ export function StudioApp() {
                   refreshCaptureFrameTime={frameCapture.refreshCaptureFrameTime}
                   inspectorButtonActive={inspectorButtonActive}
                   inspectorPanelActive={inspectorPanelActive}
-                  onExport={() => void renderQueue.startRender()}
+                  onExport={() => void renderQueue.startRender(undefined)}
                 />
                 {previewPersistence.domEditSaveQueuePaused && (
                   <SaveQueuePausedBanner

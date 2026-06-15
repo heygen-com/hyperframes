@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { trackStudioRenderStart } from "../../telemetry/events";
 
 export interface RenderJob {
@@ -238,11 +238,15 @@ export function useRenderQueue(projectId: string | null) {
     };
   }, [projectId]);
 
-  return {
-    jobs,
-    startRender,
-    deleteRender,
-    clearCompleted,
-    isRendering: jobs.some((j) => j.status === "rendering"),
-  };
+  const isRendering = jobs.some((j) => j.status === "rendering");
+  return useMemo(
+    () => ({
+      jobs,
+      isRendering,
+      deleteRender,
+      clearCompleted,
+      startRender: startRender as (options: unknown) => Promise<void>,
+    }),
+    [jobs, isRendering, deleteRender, clearCompleted, startRender],
+  );
 }

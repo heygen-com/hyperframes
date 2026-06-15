@@ -36,7 +36,12 @@ export function useSdkSession(
         comp.on("persist:error", (e) => {
           console.warn("[sdk] persist:error", e.error);
         });
-        if (!cancelled) setSession(comp);
+        // Cleanup may have fired while openComposition was awaited; dispose immediately.
+        if (cancelled) {
+          comp.dispose();
+          return;
+        }
+        setSession(comp);
       })
       .catch(() => {
         if (!cancelled) setSession(null);
