@@ -42,6 +42,20 @@ describe("patchOpsToSdkEditOps", () => {
     });
   });
 
+  it("does not double-prefix attribute op whose property already starts with data-", () => {
+    const ops: PatchOperation[] = [
+      { type: "attribute", property: "data-hf-studio-path-offset", value: "true" },
+    ];
+    const result = patchOpsToSdkEditOps("hf-box", ops);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual({
+      type: "setAttribute",
+      target: "hf-box",
+      name: "data-hf-studio-path-offset",
+      value: "true",
+    });
+  });
+
   it("maps html-attribute op to setAttribute without prefix", () => {
     const ops: PatchOperation[] = [
       { type: "html-attribute", property: "contenteditable", value: "true" },

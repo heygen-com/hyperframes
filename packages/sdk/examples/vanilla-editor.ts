@@ -113,7 +113,7 @@ export function addFadeIn(comp: Composition, targetId: string, delay = 0): strin
     ease: "power2.out",
     fromProperties: { opacity: 0 },
   };
-  if (!comp.can({ type: "addGsapTween", target: targetId, id: "preflight", tween })) return null;
+  if (!comp.can({ type: "addGsapTween", target: targetId, tween }).ok) return null;
   return comp.addGsapTween(targetId, tween);
 }
 
@@ -130,7 +130,7 @@ export function addBounce(
     fromProperties: { y: 60, opacity: 0 },
     ...overrides,
   };
-  if (!comp.can({ type: "addGsapTween", target: targetId, id: "preflight", tween })) return null;
+  if (!comp.can({ type: "addGsapTween", target: targetId, tween }).ok) return null;
   return comp.addGsapTween(targetId, tween);
 }
 

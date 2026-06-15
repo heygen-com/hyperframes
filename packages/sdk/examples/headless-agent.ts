@@ -121,10 +121,7 @@ export async function addStaggeredEntrance(html: string, staggerDelay = 0.15): P
     fromProperties: { opacity: 0, y: 30 },
   } as const;
   const first = textEls[0];
-  if (
-    !first ||
-    !comp.can({ type: "addGsapTween", target: first, id: "preflight", tween: probeTween })
-  ) {
+  if (!first || !comp.can({ type: "addGsapTween", target: first, tween: probeTween }).ok) {
     return comp.serialize();
   }
 

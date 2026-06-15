@@ -185,7 +185,6 @@ export function useDomEditCommits({
       if (options?.shouldSave && !options.shouldSave()) return;
 
       const targetPath = selection.sourceFile || activeCompPath || "index.html";
-
       const readResponse = await fetch(
         `/api/projects/${pid}/files/${encodeURIComponent(targetPath)}`,
       );
@@ -195,15 +194,16 @@ export function useDomEditCommits({
       if (typeof originalContent !== "string") {
         throw new Error(`Missing file contents for ${targetPath}`);
       }
-
       if (options?.shouldSave && !options.shouldSave()) return;
-
-      if (onTrySdkPersist)
-        if (await onTrySdkPersist(selection, operations, originalContent, targetPath)) return;
-
+      if (
+        onTrySdkPersist &&
+        (await onTrySdkPersist(selection, operations, originalContent, targetPath))
+      ) {
+        onDomEditPersisted?.(selection, operations);
+        return;
+      }
       const patchTarget = buildDomEditPatchTarget(selection);
       domEditSaveTimestampRef.current = Date.now();
-
       const patchResponse = await fetch(
         `/api/projects/${pid}/file-mutations/patch-element/${encodeURIComponent(targetPath)}`,
         {
