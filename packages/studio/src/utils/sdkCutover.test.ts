@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { shouldUseSdkCutover, sdkCutoverPersist } from "./sdkCutover";
+import { shouldUseSdkCutover, sdkCutoverPersist, sdkDeletePersist } from "./sdkCutover";
 import { openComposition } from "@hyperframes/sdk";
 import { createMemoryAdapter } from "@hyperframes/sdk/adapters/memory";
 import type { PatchOperation } from "./sourcePatcher";
@@ -292,6 +292,74 @@ describe("sdkCutoverPersist", () => {
       session,
       deps,
     );
+    expect(result).toBe(false);
+    expect(deps.writeProjectFile).not.toHaveBeenCalled();
+    expect(deps.reloadPreview).not.toHaveBeenCalled();
+  });
+});
+
+describe("sdkDeletePersist", () => {
+  const makeRef = <T>(val: T): MutableRefObject<T> => ({ current: val });
+  const makeDeps = () => ({
+    editHistory: { recordEdit: vi.fn().mockResolvedValue(undefined) },
+    writeProjectFile: vi.fn().mockResolvedValue(undefined),
+    reloadPreview: vi.fn(),
+    domEditSaveTimestampRef: makeRef(0),
+  });
+
+  const makeSession = (hasEl = true) =>
+    ({
+      getElement: vi.fn().mockReturnValue(hasEl ? { id: "hf-abc" } : null),
+      removeElement: vi.fn(),
+      serialize: vi.fn().mockReturnValue("<html>after</html>"),
+    }) as unknown as Parameters<typeof sdkDeletePersist>[3];
+
+  it("returns false when session is null", async () => {
+    expect(await sdkDeletePersist("hf-abc", "before", "/comp.html", null, makeDeps())).toBe(false);
+  });
+
+  it("returns false when element not found in session", async () => {
+    const session = makeSession(false);
+    expect(await sdkDeletePersist("hf-abc", "before", "/comp.html", session, makeDeps())).toBe(
+      false,
+    );
+  });
+
+  it("calls removeElement and writes serialized content", async () => {
+    const deps = makeDeps();
+    const session = makeSession(true);
+    const result = await sdkDeletePersist("hf-abc", "before", "/comp.html", session, deps);
+    expect(result).toBe(true);
+    expect(session!.removeElement).toHaveBeenCalledWith("hf-abc");
+    expect(deps.writeProjectFile).toHaveBeenCalledWith("/comp.html", "<html>after</html>");
+  });
+
+  it("records edit history with before/after diff", async () => {
+    const deps = makeDeps();
+    const session = makeSession(true);
+    await sdkDeletePersist("hf-abc", "before-content", "/comp.html", session, deps);
+    expect(deps.editHistory.recordEdit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        label: "Delete element",
+        files: { "/comp.html": { before: "before-content", after: "<html>after</html>" } },
+      }),
+    );
+  });
+
+  it("calls reloadPreview on success", async () => {
+    const deps = makeDeps();
+    const session = makeSession(true);
+    await sdkDeletePersist("hf-abc", "before", "/comp.html", session, deps);
+    expect(deps.reloadPreview).toHaveBeenCalled();
+  });
+
+  it("returns false and does not write on removeElement error", async () => {
+    const deps = makeDeps();
+    const session = makeSession(true);
+    (session!.removeElement as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      throw new Error("remove failed");
+    });
+    const result = await sdkDeletePersist("hf-abc", "before", "/comp.html", session, deps);
     expect(result).toBe(false);
     expect(deps.writeProjectFile).not.toHaveBeenCalled();
     expect(deps.reloadPreview).not.toHaveBeenCalled();

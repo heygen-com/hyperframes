@@ -5,7 +5,7 @@ import type { RightPanelTab } from "../utils/studioHelpers";
 import type { PatchTarget } from "../utils/sourcePatcher";
 import type { SidebarTab } from "../components/sidebar/LeftSidebar";
 import type { Composition } from "@hyperframes/sdk";
-import { sdkCutoverPersist } from "../utils/sdkCutover";
+import { sdkCutoverPersist, sdkDeletePersist } from "../utils/sdkCutover";
 import { useAskAgentModal } from "./useAskAgentModal";
 import { useDomSelection } from "./useDomSelection";
 import { usePreviewInteraction } from "./usePreviewInteraction";
@@ -235,6 +235,15 @@ export function useDomEditSession({
     onTrySdkPersist: sdkSession
       ? (selection, operations, originalContent, targetPath) =>
           sdkCutoverPersist(selection, operations, originalContent, targetPath, sdkSession, {
+            editHistory,
+            writeProjectFile,
+            reloadPreview,
+            domEditSaveTimestampRef,
+          })
+      : undefined,
+    onTrySdkDelete: sdkSession
+      ? (hfId, originalContent, targetPath) =>
+          sdkDeletePersist(hfId, originalContent, targetPath, sdkSession, {
             editHistory,
             writeProjectFile,
             reloadPreview,

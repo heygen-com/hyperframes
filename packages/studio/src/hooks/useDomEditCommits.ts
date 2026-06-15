@@ -75,8 +75,6 @@ export interface UseDomEditCommitsParams {
   ) => Promise<DomEditSelection | null>;
   /** Stage 7 Step 3b: called after a successful server-side element patch. */
   onDomEditPersisted?: (selection: DomEditSelection, operations: PatchOperation[]) => void;
-  /** Stage 7 Step 3b: called after a successful server-side element delete. */
-  onElementDeleted?: (selection: DomEditSelection) => void;
   /** Stage 7 Step 3c: called before the server-side patch path; returns true if SDK handled it. */
   onTrySdkPersist?: (
     selection: DomEditSelection,
@@ -84,6 +82,8 @@ export interface UseDomEditCommitsParams {
     originalContent: string,
     targetPath: string,
   ) => Promise<boolean>;
+  /** Stage 7 §3.1: called before the server-side delete path; returns true if SDK handled it. */
+  onTrySdkDelete?: (hfId: string, originalContent: string, targetPath: string) => Promise<boolean>;
 }
 
 export function useDomEditCommits({
@@ -105,8 +105,8 @@ export function useDomEditCommits({
   refreshDomEditSelectionFromPreview,
   buildDomSelectionFromTarget,
   onDomEditPersisted,
-  onElementDeleted,
   onTrySdkPersist,
+  onTrySdkDelete,
 }: UseDomEditCommitsParams) {
   const resolveImportedFontAsset = useCallback(
     (fontFamilyValue: string): ImportedFontAsset | null => {
@@ -316,8 +316,8 @@ export function useDomEditCommits({
     projectIdRef,
     reloadPreview,
     clearDomSelection,
+    onTrySdkDelete,
     commitPositionPatchToHtml,
-    onElementDeleted,
   });
 
   return {

@@ -83,6 +83,26 @@ interface CutoverOptions {
   coalesceKey?: string;
 }
 
+// ponytail: internal; export only if a third caller appears
+async function persistSdkSerialize(
+  sdkSession: Composition,
+  targetPath: string,
+  originalContent: string,
+  deps: CutoverDeps,
+  options?: CutoverOptions,
+): Promise<void> {
+  const after = sdkSession.serialize();
+  deps.domEditSaveTimestampRef.current = Date.now();
+  await deps.writeProjectFile(targetPath, after);
+  await deps.editHistory.recordEdit({
+    label: options?.label ?? "Edit layer",
+    kind: "manual",
+    ...(options?.coalesceKey ? { coalesceKey: options.coalesceKey } : {}),
+    files: { [targetPath]: { before: originalContent, after } },
+  });
+  deps.reloadPreview();
+}
+
 export async function sdkCutoverPersist(
   selection: DomEditSelection,
   ops: PatchOperation[],
@@ -104,16 +124,7 @@ export async function sdkCutoverPersist(
         sdkSession.dispatch(editOp);
       }
     });
-    const after = sdkSession.serialize();
-    deps.domEditSaveTimestampRef.current = Date.now();
-    await deps.writeProjectFile(targetPath, after);
-    await deps.editHistory.recordEdit({
-      label: options?.label ?? "Edit layer",
-      kind: "manual",
-      ...(options?.coalesceKey ? { coalesceKey: options.coalesceKey } : {}),
-      files: { [targetPath]: { before: originalContent, after } },
-    });
-    deps.reloadPreview();
+    await persistSdkSerialize(sdkSession, targetPath, originalContent, deps, options);
     trackStudioEvent("sdk_cutover_success", { hfId, opCount: ops.length });
     return true;
   } catch (err) {
@@ -121,6 +132,27 @@ export async function sdkCutoverPersist(
       hfId: selection.hfId ?? null,
       error: String(err),
     });
+    return false;
+  }
+}
+
+export async function sdkDeletePersist(
+  hfId: string,
+  originalContent: string,
+  targetPath: string,
+  sdkSession: Composition | null | undefined,
+  deps: CutoverDeps,
+): Promise<boolean> {
+  if (!sdkSession || !sdkSession.getElement(hfId)) return false;
+  try {
+    sdkSession.removeElement(hfId);
+    await persistSdkSerialize(sdkSession, targetPath, originalContent, deps, {
+      label: "Delete element",
+    });
+    trackStudioEvent("sdk_cutover_success", { hfId, opCount: 1 });
+    return true;
+  } catch (err) {
+    trackStudioEvent("sdk_cutover_fallback", { hfId, error: String(err) });
     return false;
   }
 }

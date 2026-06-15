@@ -26,6 +26,8 @@ interface UseElementLifecycleOpsParams {
   projectIdRef: React.MutableRefObject<string | null>;
   reloadPreview: () => void;
   clearDomSelection: () => void;
+  /** Route delete through SDK when session resolves the hf-id; returns true if handled. */
+  onTrySdkDelete?: (hfId: string, originalContent: string, targetPath: string) => Promise<boolean>;
   commitPositionPatchToHtml: (
     selection: DomEditSelection,
     patches: PatchOperation[],
@@ -44,6 +46,7 @@ export function useElementLifecycleOps({
   projectIdRef,
   reloadPreview,
   clearDomSelection,
+  onTrySdkDelete,
   commitPositionPatchToHtml,
   onElementDeleted,
 }: UseElementLifecycleOpsParams) {
@@ -72,6 +75,16 @@ export function useElementLifecycleOps({
         const patchTarget = buildDomEditPatchTarget(selection);
         if (!patchTarget.id && !patchTarget.selector && !patchTarget.hfId) {
           throw new Error("Selected element has no patchable target");
+        }
+
+        if (onTrySdkDelete && selection.hfId) {
+          const handled = await onTrySdkDelete(selection.hfId, originalContent, targetPath);
+          if (handled) {
+            clearDomSelection();
+            usePlayerStore.getState().setSelectedElementId(null);
+            showToast(`Deleted ${label}. Use Undo to restore it.`, "info");
+            return;
+          }
         }
 
         domEditSaveTimestampRef.current = Date.now();
@@ -118,6 +131,7 @@ export function useElementLifecycleOps({
       clearDomSelection,
       domEditSaveTimestampRef,
       editHistory.recordEdit,
+      onTrySdkDelete,
       onElementDeleted,
       projectIdRef,
       reloadPreview,
@@ -126,6 +140,9 @@ export function useElementLifecycleOps({
     ],
   );
 
+  // ponytail: z-index reorder writes inline-style patches via commitPositionPatchToHtml →
+  // persistDomEditOperations → onTrySdkPersist, so it is already SDK-cut-over as setStyle.
+  // No SDK reorder/reparent op exists; DOM sibling order stays server-authoritative if ever needed.
   const handleDomZIndexReorderCommit = useCallback(
     (
       entries: Array<{
