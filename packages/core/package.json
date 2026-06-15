@@ -238,7 +238,7 @@
     }
   },
   "optionalDependencies": {
-    "esbuild": "^0.25.12",
+    "esbuild": "^0.28.1",
     "linkedom": "^0.18.12"
   }
 }
