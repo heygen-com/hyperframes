@@ -392,3 +392,355 @@ export async function captureDrawElementFrame(
   if (!base64) throw new Error("drawElement: toDataURL returned no base64 payload");
   return Buffer.from(base64, "base64");
 }
+
+// ── Worker-encode pipeline ────────────────────────────────────────────────────
+//
+// Architecture: an in-page OffscreenCanvas Worker encodes JPEG frames off the
+// main thread. The main thread does seek+paint+drawElement+createImageBitmap
+// (the "produce" phase) and immediately transfers the bitmap to the worker.
+// The worker encodes it concurrently while the main thread processes the next
+// frame — hiding ~7.4ms of encode cost behind ~8.4ms of produce work.
+//
+// The worker posts the encoded bytes back by calling window.__hfFrameReady
+// (a Puppeteer exposeFunction binding that calls a node-side callback).
+// Node resolves the per-frame Promise from that callback.
+
+interface WorkerEncodeEntry {
+  resolve: (buf: Buffer) => void;
+  reject: (err: Error) => void;
+}
+
+interface WorkerEncodeState {
+  nextId: number;
+  pending: Map<number, WorkerEncodeEntry>;
+}
+
+const workerEncodeStates = new WeakMap<Page, WorkerEncodeState>();
+// Pages that already have the `__hfFrameReady` binding installed. The binding
+// survives navigation and cannot be cleanly removed, so its lifetime is
+// tracked separately from WorkerEncodeState (which is recreated per session).
+// Without this, a re-init after cleanup would call exposeFunction twice and
+// throw "already exists".
+const workerEncodeBoundPages = new WeakSet<Page>();
+
+/**
+ * Initialize the in-page JPEG encode Worker for a session. Must be called
+ * after page navigation (post-`initializeSession`) and before any
+ * `produceDrawElementFrame` calls.
+ *
+ * Safe to call multiple times for the same page (e.g. session reuse after
+ * navigation): the exposeFunction binding survives navigation, but the
+ * in-page Worker is re-created. Pending promises from a prior navigation are
+ * rejected with a "session reused" error.
+ */
+export async function initDrawElementWorkerEncode(page: Page): Promise<void> {
+  const existing = workerEncodeStates.get(page);
+
+  if (existing) {
+    // Session reused after navigation — reject stale pending promises and
+    // reset the frame-id counter so ids track the new render's frame indices.
+    for (const entry of existing.pending.values()) {
+      entry.reject(new Error("drawElement worker encode: session reused, frame dropped"));
+    }
+    existing.pending.clear();
+    existing.nextId = 0;
+  } else {
+    const state: WorkerEncodeState = { nextId: 0, pending: new Map() };
+    workerEncodeStates.set(page, state);
+  }
+
+  // Register the node-side callback ONCE per page. The exposeFunction binding
+  // survives navigation and cannot be re-added (throws "already exists"), so
+  // guard with workerEncodeBoundPages rather than the per-session state. The
+  // callback reads the CURRENT WorkerEncodeState live, so it works across
+  // re-inits where the state object is replaced.
+  if (!workerEncodeBoundPages.has(page)) {
+    workerEncodeBoundPages.add(page);
+    await page.exposeFunction("__hfFrameReady", (id: number, b64: string, error?: string) => {
+      const s = workerEncodeStates.get(page);
+      if (!s) return;
+      // id < 0 is a fatal worker signal (e.g. worker onerror): the worker is
+      // dead and no frame will ever come back — reject every in-flight frame
+      // so awaiters fail fast instead of hanging forever.
+      if (id < 0) {
+        for (const entry of s.pending.values()) {
+          entry.reject(new Error(`drawElement worker encode failed: ${error ?? "worker error"}`));
+        }
+        s.pending.clear();
+        return;
+      }
+      const entry = s.pending.get(id);
+      if (!entry) return;
+      s.pending.delete(id);
+      if (error) {
+        entry.reject(new Error(`drawElement worker encode failed: ${error}`));
+      } else if (!b64) {
+        // A success message with no payload would otherwise resolve a 0-byte
+        // Buffer and ffmpeg would write a corrupt/empty frame silently. Fail loud.
+        entry.reject(new Error(`drawElement worker encode returned empty frame (frame ${id})`));
+      } else {
+        entry.resolve(Buffer.from(b64, "base64"));
+      }
+    });
+  }
+
+  // Inject (or re-create) the in-page Worker after each navigation.
+  await page.evaluate(() => {
+    type EncWin = Window & {
+      __hfEncWorker?: Worker;
+      __hfFrameReady?: (id: number, b64: string, error?: string) => void;
+    };
+    const ew = window as EncWin;
+    if (ew.__hfEncWorker) {
+      ew.__hfEncWorker.terminate();
+      ew.__hfEncWorker = undefined;
+    }
+    // Base64 is done INSIDE the worker (off the main thread) so it never
+    // competes with the produce phase; the worker posts a string the page
+    // relays to node. On any encode failure the worker posts an error for that
+    // frame's id so the node-side promise rejects instead of hanging.
+    const workerSrc = `
+      // Reuse one OffscreenCanvas across frames (dimensions are constant for a
+      // render) — a fresh canvas per frame churns ~w*h*4 bytes of backing store
+      // every frame and pressures GC on the encode hot path.
+      let oc = null, c = null;
+      self.onmessage = async (e) => {
+        const { bmp, id, w, h, q } = e.data;
+        try {
+          if (!oc || oc.width !== w || oc.height !== h) {
+            oc = new OffscreenCanvas(w, h);
+            c = oc.getContext('2d');
+          }
+          if (!c) throw new Error('OffscreenCanvas 2d context unavailable');
+          c.drawImage(bmp, 0, 0);
+          bmp.close();
+          const blob = await oc.convertToBlob({ type: 'image/jpeg', quality: q });
+          const ab = await blob.arrayBuffer();
+          const u = new Uint8Array(ab);
+          let s = ''; const CH = 0x8000;
+          for (let i = 0; i < u.length; i += CH)
+            s += String.fromCharCode.apply(null, u.subarray(i, i + CH));
+          self.postMessage({ id, b64: btoa(s) });
+        } catch (err) {
+          try { if (bmp) bmp.close(); } catch (_) {}
+          self.postMessage({ id, error: (err && err.message) || String(err) });
+        }
+      };
+    `;
+    const url = URL.createObjectURL(new Blob([workerSrc], { type: "text/javascript" }));
+    const worker = new Worker(url);
+    URL.revokeObjectURL(url); // only needed for Worker construction
+    ew.__hfEncWorker = worker;
+    worker.onmessage = (ev: MessageEvent) => {
+      const d = ev.data as { id: number; b64?: string; error?: string };
+      ew.__hfFrameReady?.(d.id, d.b64 ?? "", d.error);
+    };
+    worker.onerror = (err: ErrorEvent) => {
+      // Fatal, not tied to a frame id — signal node (id = -1) to reject all
+      // in-flight frames so the pipeline fails fast instead of hanging.
+      ew.__hfFrameReady?.(-1, "", err.message || "worker fatal error");
+    };
+  });
+}
+
+/**
+ * Clean up the worker encode state for a session being closed. Rejects any
+ * pending frame promises and removes the WeakMap entry. Safe to call even if
+ * `initDrawElementWorkerEncode` was never called for this page.
+ */
+export function cleanupDrawElementWorkerEncode(page: Page): void {
+  const state = workerEncodeStates.get(page);
+  if (!state) return;
+  for (const entry of state.pending.values()) {
+    entry.reject(new Error("drawElement worker encode: session closed"));
+  }
+  state.pending.clear();
+  workerEncodeStates.delete(page);
+}
+
+/**
+ * Pipelined drawElement frame capture: produce phase only.
+ *
+ * Performs seek-prep, paint-wait, drawElementImage, compositing, and
+ * `createImageBitmap` on the main thread, then transfers the bitmap to the
+ * in-page encode worker. Returns as soon as the bitmap is transferred — the
+ * worker encodes asynchronously. The returned `encodeResult` resolves when
+ * the worker posts the encoded frame back to node.
+ *
+ * Call `initDrawElementWorkerEncode` once per page before using this function.
+ *
+ * JPEG only (png falls back to synchronous `captureDrawElementFrame`).
+ */
+export async function produceDrawElementFrame(
+  page: Page,
+  width: number,
+  height: number,
+  quality = 80,
+  syncToPaintEvent = true,
+): Promise<{ encodeResult: Promise<Buffer> }> {
+  const state = workerEncodeStates.get(page);
+  if (!state) {
+    throw new Error(
+      "drawElement worker encode not initialized; call initDrawElementWorkerEncode first",
+    );
+  }
+
+  const frameId = ++state.nextId;
+  const encodeResult = new Promise<Buffer>((resolve, reject) => {
+    // Watchdog: worker.onerror (→ id=-1, reject-all) covers worker CRASHES, but
+    // a lost message (page navigation, OOM-killed worker with no ErrorEvent, a
+    // dropped postMessage) would never settle this promise — `drainPrev`'s
+    // `await encodeResult` would then hang the whole render to the protocol
+    // timeout. Bound it so the render fails with a clear error. Generous vs the
+    // ~10ms encode to avoid false positives on large frames.
+    const timer = setTimeout(() => {
+      if (state.pending.delete(frameId)) {
+        reject(new Error(`drawElement worker encode timed out (frame ${frameId})`));
+      }
+    }, 30_000);
+    state.pending.set(frameId, {
+      resolve: (b) => {
+        clearTimeout(timer);
+        resolve(b);
+      },
+      reject: (e) => {
+        clearTimeout(timer);
+        reject(e);
+      },
+    });
+  });
+  // Guard against an unhandled rejection if the caller never awaits this promise
+  // (the depth-2 pipeline loop orphans the just-produced frame's encode when an
+  // earlier frame's drain throws or the render aborts). The loop's own
+  // `await encodeResult` still observes rejections on its separate reaction
+  // chain; this only suppresses the no-awaiter case.
+  void encodeResult.catch(() => {});
+
+  // Do paint-wait + drawElement composite + createImageBitmap + postMessage.
+  // Resolves as soon as the bitmap is transferred (not when encode is done).
+  await page.evaluate(
+    ({ w, h, q, sync, fid }: { w: number; h: number; q: number; sync: boolean; fid: number }) => {
+      const canvas = document.getElementById("__hf_de_canvas") as HTMLCanvasElement | null;
+      const root = document.querySelector("[data-composition-id]") as HTMLElement | null;
+      if (!canvas || !root) throw new Error("drawElement canvas not initialized");
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("drawElement: 2d context unavailable");
+
+      type AccelWindow = Window & {
+        __hf_accel_canvases?: HTMLCanvasElement[];
+        __hf_canvas_2d?: HTMLCanvasElement[];
+        __hf3d?: { update: () => void };
+      };
+      const aw = window as AccelWindow;
+      aw.__hf3d?.update();
+      const accel = (aw.__hf_accel_canvases ?? []).filter((c) => root.contains(c));
+      if (!sync) {
+        for (const c of (aw.__hf_canvas_2d ?? []).filter((c2) => root.contains(c2))) {
+          if (!accel.includes(c)) accel.push(c);
+        }
+        accel.sort((a, b) =>
+          a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1,
+        );
+      }
+      for (const c of accel) {
+        if (c.style.visibility !== "hidden") c.style.visibility = "hidden";
+      }
+
+      return new Promise<void>((resolveCapture, rejectCapture) => {
+        let settled = false;
+        const drawAndKick = () => {
+          if (settled) return;
+          settled = true;
+          try {
+            ctx.clearRect(0, 0, w, h);
+            let bg = "";
+            for (let el = root.parentElement; el; el = el.parentElement) {
+              const c = getComputedStyle(el).backgroundColor;
+              if (c && c !== "transparent" && c !== "rgba(0, 0, 0, 0)") {
+                bg = c;
+                break;
+              }
+            }
+            if (!bg) bg = "#fff";
+            if (bg) {
+              ctx.fillStyle = bg;
+              ctx.fillRect(0, 0, w, h);
+            }
+            // fallow-ignore-next-line code-duplication
+            const rootRect = root.getBoundingClientRect();
+            for (const c of accel) {
+              if (c.hasAttribute("data-hf-3d")) continue;
+              const r = c.getBoundingClientRect();
+              try {
+                ctx.drawImage(c, r.left - rootRect.left, r.top - rootRect.top, r.width, r.height);
+              } catch {
+                // skip
+              }
+            }
+            (
+              ctx as unknown as { drawElementImage(el: Element, x: number, y: number): void }
+            ).drawElementImage(root, 0, 0);
+            // fallow-ignore-next-line code-duplication
+            for (const c of accel) {
+              if (!c.hasAttribute("data-hf-3d")) continue;
+              const r = c.getBoundingClientRect();
+              try {
+                ctx.drawImage(c, r.left - rootRect.left, r.top - rootRect.top, r.width, r.height);
+              } catch {
+                // skip
+              }
+            }
+          } catch (e) {
+            rejectCapture(e instanceof Error ? e : new Error(String(e)));
+            return;
+          }
+          // Snapshot the canvas and hand off to the encode worker.
+          // createImageBitmap is async (does not block the paint handler) and
+          // captures a pixel snapshot now; resolveCapture only fires after the
+          // bitmap is transferred, so the canvas is safe to overwrite for the
+          // next frame once this evaluate's promise resolves. No setTimeout(0)
+          // wrapper — it added ~1-4ms/frame of macrotask latency on the produce
+          // critical path for no benefit (the heavy encode runs in the worker,
+          // not the paint handler).
+          createImageBitmap(canvas)
+            .then((bmp) => {
+              type EncWin = Window & { __hfEncWorker?: Worker };
+              const ew = window as EncWin;
+              if (!ew.__hfEncWorker) {
+                bmp.close(); // don't leak the GPU-backed ImageBitmap on this reject path
+                rejectCapture(new Error("drawElement: encode worker not initialized"));
+                return;
+              }
+              ew.__hfEncWorker.postMessage({ bmp, id: fid, w, h, q: q / 100 }, [bmp]);
+              resolveCapture();
+            })
+            .catch((e: unknown) => {
+              rejectCapture(e instanceof Error ? e : new Error(String(e)));
+            });
+        };
+
+        if (!sync) {
+          drawAndKick();
+          return;
+        }
+        const onPaint = () => {
+          canvas.removeEventListener("paint", onPaint);
+          drawAndKick();
+        };
+        canvas.addEventListener("paint", onPaint);
+        const tick = document.getElementById("__hf_de_tick");
+        if (tick) {
+          tick.style.backgroundColor =
+            tick.style.backgroundColor === "rgb(0, 0, 0)" ? "rgb(1, 1, 1)" : "rgb(0, 0, 0)";
+        }
+        setTimeout(() => {
+          canvas.removeEventListener("paint", onPaint);
+          drawAndKick();
+        }, 250);
+      });
+    },
+    { w: width, h: height, q: quality, sync: syncToPaintEvent, fid: frameId },
+  );
+
+  return { encodeResult };
+}

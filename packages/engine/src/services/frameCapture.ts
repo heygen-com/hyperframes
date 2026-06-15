@@ -35,6 +35,9 @@ import {
   captureDrawElementFrame,
   resolveDrawElementCaptureMode,
   instrumentAcceleratedCanvases,
+  initDrawElementWorkerEncode,
+  cleanupDrawElementWorkerEncode,
+  produceDrawElementFrame,
 } from "./drawElementService.js";
 import {
   initThreeDProjection,
@@ -99,6 +102,12 @@ export interface CaptureSession {
   isSwiftShader?: boolean;
   /** drawElementImage canvas was injected and is ready for capture. */
   drawElementReady?: boolean;
+  /**
+   * Worker-encode pipeline is active for this session. Set by
+   * `initDrawElementOrTransparentBackground` when `enableDrawElementWorkerEncode`
+   * is true and capture mode resolved to "drawelement".
+   */
+  workerEncodeEnabled?: boolean;
 }
 
 // Circular buffer for browser console messages dumped on render failure diagnostics.
@@ -485,6 +494,18 @@ async function initDrawElementOrTransparentBackground(
       session.captureMode = "drawelement";
       session.drawElementReady = true;
       logInitPhase("drawElement canvas injected");
+      // Worker-encode pipeline: macOS hardware GPU path only (syncToPaintEvent=true,
+      // beginFrameTimeTicks=0). Skip for BeginFrame (Linux/Docker) and transparent
+      // (PNG) output — those use the existing synchronous path unchanged.
+      const workerEncodeEnabled =
+        (session.config?.enableDrawElementWorkerEncode ?? false) &&
+        !transparent &&
+        session.beginFrameTimeTicks === 0;
+      if (workerEncodeEnabled) {
+        await initDrawElementWorkerEncode(page);
+        session.workerEncodeEnabled = true;
+        logInitPhase("drawElement worker encode initialized");
+      }
     }
   } else if (session.options.format === "png") {
     await initTransparentBackground(session.page);
@@ -1642,6 +1663,75 @@ export async function captureFrameToBuffer(
 }
 
 /**
+ * Pipelined drawElement frame capture for the worker-encode path.
+ *
+ * Performs seek prep + paint-wait + drawElementImage + composite +
+ * `createImageBitmap` + transfers the bitmap to the in-page encode worker.
+ * Returns `encodeResult` immediately (before the worker finishes encoding).
+ * The caller overlaps frame N's encode with frame N+1's produce phase.
+ *
+ * Requirements:
+ *  - `session.workerEncodeEnabled` must be true (set by initializeSession when
+ *    `config.enableDrawElementWorkerEncode` is true and mode resolved to drawelement).
+ *  - JPEG format only. PNG falls back to `captureFrameToBuffer`.
+ *  - macOS hardware GPU path (syncToPaintEvent=true, beginFrameTimeTicks=0).
+ *    BeginFrame (Linux) uses the standard synchronous path unchanged.
+ */
+export async function captureFrameToBufferPipelined(
+  session: CaptureSession,
+  frameIndex: number,
+  time: number,
+): Promise<{ encodeResult: Promise<Buffer>; captureTimeMs: number }> {
+  const { page, options } = session;
+  const startTime = Date.now();
+
+  try {
+    const { quantizedTime, seekMs, beforeCaptureMs } = await prepareFrameForCapture(
+      session,
+      frameIndex,
+      time,
+    );
+    void quantizedTime;
+
+    // Worker-encode is gated to the macOS GPU path (beginFrameTimeTicks === 0,
+    // syncToPaintEvent = true); see initDrawElementOrTransparentBackground. The
+    // BeginFrame branch present in the synchronous captureFrameCore is therefore
+    // unreachable here and intentionally omitted.
+    const { encodeResult } = await produceDrawElementFrame(
+      page,
+      options.width,
+      options.height,
+      options.quality ?? 80,
+      true,
+    );
+
+    const captureTimeMs = Date.now() - startTime;
+
+    session.capturePerf.frames += 1;
+    session.capturePerf.seekMs += seekMs;
+    session.capturePerf.beforeCaptureMs += beforeCaptureMs;
+    // screenshotMs reflects produce time only (encode is async, not tracked here)
+    session.capturePerf.screenshotMs += captureTimeMs - seekMs - beforeCaptureMs;
+    session.capturePerf.totalMs += captureTimeMs;
+
+    return { encodeResult, captureTimeMs };
+  } catch (captureError) {
+    // Mirror captureFrameCore: capture per-frame diagnostics (frame-error
+    // PNG/HTML/JSON + console tail) before rethrowing so pipelined-path
+    // failures are debuggable like the serial path.
+    if (session.isInitialized) {
+      await captureFrameErrorDiagnostics(
+        session,
+        frameIndex,
+        time,
+        captureError instanceof Error ? captureError : new Error(String(captureError)),
+      );
+    }
+    throw captureError;
+  }
+}
+
+/**
  * Type of the "inner capture" function consumed by
  * {@link discardWarmupCapture}. Matches the real `captureFrameCore` signature
  * with the buffer-bearing result trimmed to what the caller actually uses
@@ -1720,6 +1810,9 @@ export async function closeCaptureSession(session: CaptureSession): Promise<void
   // Example: page release succeeds, browser release throws → pageReleased=true
   // but browserReleased=false → second call no-ops on page and retries browser.
   // This matches the orchestrator's intent for HDR cleanup.
+  if (session.workerEncodeEnabled && session.page && !session.pageReleased) {
+    cleanupDrawElementWorkerEncode(session.page);
+  }
   if (!session.pageReleased && session.page) {
     const pageClosed = await waitForCloseWithTimeout(session.page.close());
     if (!pageClosed) {

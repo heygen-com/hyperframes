@@ -62,6 +62,14 @@ export interface EngineConfig {
    */
   useDrawElement: boolean;
   /**
+   * EXPERIMENTAL. Pipeline JPEG encode into an in-page OffscreenCanvas Worker
+   * for the drawElement fast-capture path (macOS hardware GPU only). The worker
+   * encodes frame N while the main thread seeks+paints frame N+1, targeting
+   * ~1.65–1.96× wall-time speedup. No-op unless `useDrawElement` is also true.
+   * Default: off. Env: `HF_DE_WORKER_ENCODE=true`.
+   */
+  enableDrawElementWorkerEncode: boolean;
+  /**
    * Low-memory render profile. When `true`, the orchestrator collapses the
    * pipeline to its cheapest shape on memory-constrained hosts: it skips the
    * throwaway auto-worker calibration browser, pins capture to a single
@@ -216,6 +224,7 @@ export const DEFAULT_CONFIG: EngineConfig = {
   protocolTimeout: 300_000,
   forceScreenshot: false,
   useDrawElement: false,
+  enableDrawElementWorkerEncode: false,
   // Auto-detected per host in `resolveConfig`; defaults off for the raw
   // DEFAULT_CONFIG (used directly by tests and worker-sizing fallbacks).
   lowMemoryMode: false,
@@ -316,6 +325,10 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
 
     forceScreenshot: envBool("PRODUCER_FORCE_SCREENSHOT", DEFAULT_CONFIG.forceScreenshot),
     useDrawElement: envBool("PRODUCER_EXPERIMENTAL_FAST_CAPTURE", DEFAULT_CONFIG.useDrawElement),
+    enableDrawElementWorkerEncode: envBool(
+      "HF_DE_WORKER_ENCODE",
+      DEFAULT_CONFIG.enableDrawElementWorkerEncode,
+    ),
     lowMemoryMode: resolveLowMemoryMode(),
     enablePageSideCompositing: envBool(
       "HF_PAGE_SIDE_COMPOSITING",
