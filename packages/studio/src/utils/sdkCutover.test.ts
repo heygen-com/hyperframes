@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { shouldUseSdkCutover, sdkCutoverPersist } from "./sdkCutover";
+import { openComposition } from "@hyperframes/sdk";
+import { createMemoryAdapter } from "@hyperframes/sdk/adapters/memory";
 import type { PatchOperation } from "./sourcePatcher";
 import type { MutableRefObject } from "react";
 
@@ -96,6 +98,7 @@ describe("sdkCutoverPersist", () => {
       getElement: vi.fn().mockReturnValue(hasEl ? { inlineStyles: {} } : null),
       dispatch: vi.fn(),
       serialize: vi.fn().mockReturnValue("<html></html>"),
+      batch: vi.fn((fn: () => void) => fn()),
     }) as unknown as Parameters<typeof sdkCutoverPersist>[4];
 
   it("returns false when session is null", async () => {
@@ -252,5 +255,81 @@ describe("sdkCutoverPersist", () => {
     );
     expect(result).toBe(false);
     expect(deps.reloadPreview).not.toHaveBeenCalled();
+  });
+
+  it("wraps all dispatches in session.batch() for atomic rollback", async () => {
+    const deps = makeDeps();
+    const session = makeSession(true);
+    const sel = { hfId: "hf-abc" } as never;
+    await sdkCutoverPersist(
+      sel,
+      [styleOp("color", "red"), styleOp("opacity", "0.5")],
+      "before",
+      "/comp.html",
+      session,
+      deps,
+    );
+    expect(
+      (session as unknown as { batch: ReturnType<typeof vi.fn> }).batch,
+    ).toHaveBeenCalledOnce();
+  });
+
+  it("returns false when second dispatch throws (batch prevents partial mutation)", async () => {
+    // inline-style ops coalesce into one setStyle dispatch; use style+text to produce two dispatches.
+    const deps = makeDeps();
+    const session = makeSession(true);
+    let callCount = 0;
+    (session!.dispatch as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      callCount++;
+      if (callCount === 2) throw new Error("2nd op failed");
+    });
+    const sel = { hfId: "hf-abc" } as never;
+    const result = await sdkCutoverPersist(
+      sel,
+      [styleOp("color", "red"), textOp("hello")],
+      "before",
+      "/comp.html",
+      session,
+      deps,
+    );
+    expect(result).toBe(false);
+    expect(deps.writeProjectFile).not.toHaveBeenCalled();
+    expect(deps.reloadPreview).not.toHaveBeenCalled();
+  });
+});
+
+describe("sdkCutoverPersist — GSAP script preservation (integration)", () => {
+  const makeRef = <T>(val: T): MutableRefObject<T> => ({ current: val });
+  const makeDeps = () => ({
+    editHistory: { recordEdit: vi.fn().mockResolvedValue(undefined) },
+    writeProjectFile: vi.fn().mockResolvedValue(undefined),
+    reloadPreview: vi.fn(),
+    domEditSaveTimestampRef: makeRef(0),
+  });
+
+  it("preserves GSAP <script> block and data-position-mode through setStyle dispatch", async () => {
+    const html = `<!DOCTYPE html><html><head></head><body>
+<div data-hf-id="hf-layer" style="color: blue; opacity: 1"></div>
+<script data-hf-gsap data-position-mode="relative">
+gsap.timeline().to('[data-hf-id="hf-layer"]', { duration: 1, x: 100 });
+</script>
+</body></html>`;
+    const comp = await openComposition(html, { persist: createMemoryAdapter() });
+    const deps = makeDeps();
+    const sel = { hfId: "hf-layer" } as never;
+    const result = await sdkCutoverPersist(
+      sel,
+      [{ type: "inline-style", property: "color", value: "red" }],
+      html,
+      "/comp.html",
+      comp,
+      deps,
+    );
+    expect(result).toBe(true);
+    const written = (deps.writeProjectFile as ReturnType<typeof vi.fn>).mock
+      .calls[0]?.[1] as string;
+    expect(written).toContain("data-hf-gsap");
+    expect(written).toContain('data-position-mode="relative"');
+    expect(written).toContain("gsap.timeline()");
   });
 });

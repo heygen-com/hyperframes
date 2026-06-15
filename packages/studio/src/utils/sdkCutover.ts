@@ -64,9 +64,11 @@ export async function sdkCutoverPersist(
   if (!hfId) return false;
   if (!sdkSession.getElement(hfId)) return false;
   try {
-    for (const editOp of patchOpsToSdkEditOps(hfId, ops)) {
-      sdkSession.dispatch(editOp);
-    }
+    sdkSession.batch(() => {
+      for (const editOp of patchOpsToSdkEditOps(hfId, ops)) {
+        sdkSession.dispatch(editOp);
+      }
+    });
     const after = sdkSession.serialize();
     deps.domEditSaveTimestampRef.current = Date.now();
     await deps.writeProjectFile(targetPath, after);
