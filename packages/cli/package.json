@@ -35,10 +35,12 @@
     "fontkit": "^2.0.4",
     "giget": "^3.2.0",
     "hono": "^4.0.0",
+    "onnxruntime-node": "^1.20.0",
     "open": "^10.0.0",
     "postcss": "^8.5.8",
     "prettier": "^3.8.1",
-    "puppeteer-core": "^24.39.1"
+    "puppeteer-core": "^24.39.1",
+    "sharp": "^0.34.5"
   },
   "devDependencies": {
     "@clack/prompts": "^1.1.0",
@@ -60,9 +62,7 @@
     "vitest": "^3.2.4"
   },
   "optionalDependencies": {
-    "@google/genai": "^1.50.1",
-    "onnxruntime-node": "^1.20.0",
-    "sharp": "^0.34.5"
+    "@google/genai": "^1.50.1"
   },
   "engines": {
     "node": ">=22"

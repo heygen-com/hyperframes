@@ -5,6 +5,7 @@ import * as clack from "@clack/prompts";
 import { c } from "../ui/colors.js";
 import { isDevice, DEVICES } from "../background-removal/manager.js";
 import { DEFAULT_QUALITY, QUALITIES, isQuality } from "../background-removal/pipeline.js";
+import { trackCommandFailure } from "../telemetry/events.js";
 import type { Example } from "./_examples.js";
 
 export const examples: Example[] = [
@@ -175,6 +176,9 @@ export default defineCommand({
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
+      // Self-exits, so the cli.ts dispatch wrapper never sees it — report the
+      // reason inline (e.g. a missing native module) before exiting.
+      trackCommandFailure("remove-background", err);
       if (args.json) {
         console.log(JSON.stringify({ ok: false, error: message }));
       } else {
