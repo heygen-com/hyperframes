@@ -20,7 +20,7 @@ import type { GsapProvenance } from "./gsapSerialize.js";
 type Node = any;
 
 /** Node keys that are metadata, not child AST to traverse/substitute. */
-const SKIP_KEYS = new Set(["type", "start", "end", "loc", "range", "__hfProvenance"]);
+const SKIP_KEYS = new Set(["type", "start", "end", "loc", "range", "__hfProvenance", "__hfOrder"]);
 
 const FUNCTION_TYPES = new Set([
   "ArrowFunctionExpression",
@@ -153,6 +153,8 @@ interface ExpandCtx {
   depth: number;
   /** Mutable source-order counter for provenance call-site ordinals. */
   site: { n: number };
+  /** Mutable counter stamping expansion order onto tweens (clones share source loc). */
+  order: { n: number };
 }
 
 function walkNodes(node: Node, fn: (n: Node) => void): void {
@@ -317,11 +319,13 @@ function bodyStatements(node: Node): Node[] {
   return node ? [{ type: "ExpressionStatement", expression: node }] : [];
 }
 
-function tagTimelineCalls(stmts: Node[], timelineVar: string, prov: GsapProvenance): void {
+/** Tag this body's direct timeline tweens with provenance + a monotonic expansion-order stamp. */
+function tagTimelineCalls(stmts: Node[], prov: GsapProvenance, ctx: ExpandCtx): void {
   for (const stmt of stmts) {
     walkNodes(stmt, (n) => {
-      if (n.type === "CallExpression" && isTimelineRooted(n, timelineVar)) {
+      if (n.type === "CallExpression" && isTimelineRooted(n, ctx.timelineVar)) {
         tagProvenance(n, { ...prov });
+        n.__hfOrder = ctx.order.n++;
       }
     });
   }
@@ -335,7 +339,7 @@ function expandBody(
   ctx: ExpandCtx,
 ): Node[] {
   const block = substituteParams(cloneNode({ type: "BlockStatement", body: bodyStmts }), bindings);
-  tagTimelineCalls(block.body, ctx.timelineVar, prov);
+  tagTimelineCalls(block.body, prov, ctx);
   return expandStatements(block.body, { ...ctx, depth: ctx.depth + 1 });
 }
 
@@ -567,7 +571,14 @@ export function inlineComputedTimelines(
   resolve: LiteralResolver,
 ): void {
   const helpers = collectInlinableHelpers(ast, timelineVar);
-  const ctx: ExpandCtx = { helpers, timelineVar, resolve, depth: 0, site: { n: 0 } };
+  const ctx: ExpandCtx = {
+    helpers,
+    timelineVar,
+    resolve,
+    depth: 0,
+    site: { n: 0 },
+    order: { n: 0 },
+  };
   const body = (ast.body ?? []).filter((stmt: Node) => !isHelperDecl(stmt, helpers));
   ast.body = expandStatements(body, ctx);
 }

@@ -20,6 +20,7 @@ import type {
   ParsedGsap,
 } from "./gsapSerialize.js";
 import { classifyTweenPropertyGroup } from "./gsapConstants.js";
+import { inlineComputedTimelines, readProvenance } from "./gsapInline.js";
 
 const GSAP_METHODS = new Set<string>(["set", "to", "from", "fromTo"]);
 const QUERY_METHODS = new Set(["querySelector", "querySelectorAll"]);
@@ -942,6 +943,8 @@ function tweenCallToAnimation(
   if (motionPathResult) anim.arcPath = motionPathResult.arcPath;
   if (hasUnresolvedKeyframes) anim.hasUnresolvedKeyframes = true;
   if (call.selector === "__unresolved__") anim.hasUnresolvedSelector = true;
+  const provenance = readProvenance(call.node);
+  if (provenance) anim.provenance = provenance;
   return anim;
 }
 
@@ -1016,13 +1019,26 @@ function resolveTimelinePositions(anims: Omit<GsapAnimation, "id">[]): void {
   }
 }
 
+function compareByLoc(a: TweenCallInfo, b: TweenCallInfo): number {
+  const aLoc = a.node.callee?.property?.loc?.start;
+  const bLoc = b.node.callee?.property?.loc?.start;
+  if (!aLoc || !bLoc) return 0;
+  return aLoc.line - bLoc.line || aLoc.column - bLoc.column;
+}
+
+// Inlined tweens carry a monotonic __hfOrder (clones share source loc, so loc
+// can't order them); they sort by that, after all literal (loc-ordered) tweens.
+function compareCallOrder(a: TweenCallInfo, b: TweenCallInfo): number {
+  const ao = a.node.__hfOrder;
+  const bo = b.node.__hfOrder;
+  if (ao === undefined && bo === undefined) return compareByLoc(a, b);
+  if (ao === undefined) return -1;
+  if (bo === undefined) return 1;
+  return ao - bo;
+}
+
 function sortBySourcePosition(calls: TweenCallInfo[]): void {
-  calls.sort((a, b) => {
-    const aLoc = a.node.callee?.property?.loc?.start;
-    const bLoc = b.node.callee?.property?.loc?.start;
-    if (!aLoc || !bLoc) return 0;
-    return aLoc.line - bLoc.line || aLoc.column - bLoc.column;
-  });
+  calls.sort(compareCallOrder);
 }
 
 // ── Stable ID generation ──────────────────────────────────────────────────────
@@ -1098,9 +1114,17 @@ export function parseGsapScriptAcorn(script: string): ParsedGsap {
       locations: true,
     });
     const scope = collectScopeBindings(ast);
-    const targetBindings = collectTargetBindings(ast, scope);
     const detection = findTimelineVar(ast, scope);
     const timelineVar = detection.timelineVar ?? "tl";
+    // Expand helper-built / bounded-loop timelines before analysis so their
+    // tweens resolve at true positions (read path only — the write path keeps
+    // original source nodes). Degrades to the un-inlined AST on any failure.
+    try {
+      inlineComputedTimelines(ast, timelineVar, (node) => resolveNode(node, scope));
+    } catch {
+      /* fall back to current behavior */
+    }
+    const targetBindings = collectTargetBindings(ast, scope);
     const calls = findAllTweenCalls(ast, timelineVar, scope, targetBindings);
     sortBySourcePosition(calls);
     const rawAnims = calls.map((call) => tweenCallToAnimation(call, scope, script));
