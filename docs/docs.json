@@ -101,6 +101,7 @@
           {
             "group": "Deploy",
             "pages": [
+              "deploy/cloud",
               "guides/deploy",
               "deploy/aws-lambda",
               "deploy/gcp-cloud-run",

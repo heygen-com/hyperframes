@@ -1,0 +1,210 @@
+---
+title: Cloud Rendering
+description: "Render a composition on HeyGen's hosted cloud — no local Chrome, no FFmpeg, no AWS to manage."
+---
+
+Render any HyperFrames composition on HeyGen's managed cloud: the CLI zips your project, uploads it, runs the render on HeyGen's infrastructure, and downloads the finished video. There's nothing to deploy and no Chrome or FFmpeg to install — you pay per credit.
+
+```bash
+hyperframes auth login            # one-time sign-in
+hyperframes cloud render          # zip → upload → render → download
+```
+
+```bash
+# ◆  Zipping my-video
+#    42 files · 3.1 MB
+# ◆  Uploading to /v3/assets
+#    asset_id: asst_abc123 · 1.2s
+#   Polling hfr_def456 every 10s …
+#   completed  47s
+# ◆  Downloading to renders/hfr_def456.mp4
+#    8.4 MB written
+```
+
+This is the zero-infra alternative to running your own renderer. If you'd rather own the compute, see [AWS Lambda](/deploy/aws-lambda), [GCP Cloud Run](/deploy/gcp-cloud-run), or the [one-click Vercel/Cloudflare templates](/guides/deploy). For local iteration during authoring, use [`hyperframes render`](/guides/rendering).
+
+## Authenticate
+
+Cloud rendering needs a HeyGen credential. Sign in once — the CLI stores it in `~/.heygen/credentials` (mode `0600`), and the same credential drives every `cloud` subcommand.
+
+<Steps>
+  <Step title="Sign in">
+    The default flow opens your browser for OAuth 2.0 + PKCE and captures the token on a loopback port:
+
+    ```bash
+    hyperframes auth login
+    # ✓ Signed in as you@example.com.
+    ```
+
+    For CI or headless machines, use a long-lived API key instead:
+
+    ```bash
+    # Interactive hidden-input prompt
+    hyperframes auth login --api-key
+
+    # Or pipe a key from stdin
+    echo "$HEYGEN_API_KEY" | hyperframes auth login --api-key
+    ```
+  </Step>
+  <Step title="Confirm you're signed in">
+    ```bash
+    hyperframes auth status
+    # Shows the active credential's source, identity, and billing snapshot.
+    ```
+  </Step>
+</Steps>
+
+The credential is **shared with the [`heygen` CLI](https://github.com/heygen-com/heygen-cli)** — sign in with one and the other picks up the session. Credentials resolve in this order (first match wins):
+
+1. `HEYGEN_API_KEY` environment variable
+2. `HYPERFRAMES_API_KEY` environment variable (hyperframes alias)
+3. `~/.heygen/credentials`
+
+<Note>
+  Point the CLI at a different backend with `HEYGEN_API_URL` (default `https://api.heygen.com`). Use `hyperframes auth refresh` to force-refresh an OAuth token before a long job; `hyperframes auth logout` clears the stored credential.
+</Note>
+
+## How a cloud render flows
+
+`hyperframes cloud render` runs the whole pipeline end-to-end:
+
+```
+ Your machine                          HeyGen cloud
+┌─────────────────────────┐          ┌──────────────────────────────┐
+│ zip project             │ ──POST──▶│ /v3/assets                    │
+│ (excludes .git,         │  upload  │  → asset_id                   │
+│  node_modules, dist…)   │          │                               │
+│                         │ ──POST──▶│ /v3/hyperframes/renders        │
+│                         │  submit  │  → render_id (queued)         │
+│                         │          │  Chromium + FFmpeg render     │
+│ poll GET /renders/{id}  │ ◀────────│  queued → rendering → done    │
+│ stream video to disk    │ ◀────────│  signed video_url             │
+└─────────────────────────┘          └──────────────────────────────┘
+```
+
+1. **Resolve the project** — a local directory (default `.`), or skip the upload with `--asset-id` / `--url`.
+2. **Auto-detect the aspect ratio** from the entry HTML's `data-width`/`data-height` so you rarely set it by hand.
+3. **Zip** the project (same ignore set as `hyperframes publish`).
+4. **Upload** the zip to `POST /v3/assets`, yielding an `asset_id`.
+5. **Submit** the render to `POST /v3/hyperframes/renders`.
+6. **Poll** `GET /v3/hyperframes/renders/{id}` until it completes or fails (skip with `--no-wait`).
+7. **Download** the signed video URL to disk.
+
+## Render options
+
+The most-used flags — see the [CLI reference](/packages/cli#hyperframes-cloud) for the full list.
+
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `--fps` | `30` | Frames per second, 1–240. |
+| `--quality` | `standard` | `draft`, `standard`, or `high`. |
+| `--format` | `mp4` | `mp4`, `webm`, or `mov` (webm/mov carry alpha). |
+| `--resolution` | `1080p` | `1080p` or `4k`. 4k is billed at 1.5×. |
+| `--aspect-ratio` | auto | `16:9`, `9:16`, or `1:1`. Auto-detected from the composition; only set it to override. |
+| `--composition` / `-c` | `index.html` | Entry HTML file inside the zip. |
+| `--output` / `-o` | `renders/<render_id>.<ext>` | Local destination for the download. |
+
+```bash
+# Pick a composition and an output path.
+hyperframes cloud render . \
+  --composition compositions/intro.html \
+  --output ./renders/intro.mp4
+
+# Higher quality at 60fps.
+hyperframes cloud render --quality high --fps 60
+```
+
+<Warning>
+  `--resolution 4k` can't be combined with `--format webm` or `--format mov`. The 4k supersampling path runs through the screenshot capture pipeline, which has no alpha channel. Render 4k as `mp4`, or render alpha at the composition's native resolution.
+</Warning>
+
+## Templates and variables
+
+Cloud rendering supports [variables](/concepts/variables) — the same mechanism that powers templates everywhere else in HyperFrames. Declare `data-composition-variables` on your composition, then fill them at render time:
+
+```bash
+# Inline JSON
+hyperframes cloud render --variables '{"title":"Q4 Recap","theme":"dark"}'
+
+# From a file
+hyperframes cloud render --variables-file ./vars.json
+
+# Fail fast on undeclared keys or wrong types
+hyperframes cloud render --variables '{"title":"Q4 Recap"}' --strict-variables
+```
+
+For a **local project**, the CLI validates your `--variables` against the composition's declared schema *before* uploading. For `--asset-id` / `--url` the schema lives server-side, so mismatches surface as a `hyperframes_project_invalid` API error.
+
+The idiomatic template workflow is **upload once, re-render many**: render a local project to get its `asset_id`, then submit new renders against that same asset with different variables — no re-zip, no re-upload.
+
+```bash
+# 1. Upload + render once; note the asset_id printed during upload.
+hyperframes cloud render ./card-template
+
+# 2. Re-render the same asset with new values (skips zip + upload).
+hyperframes cloud render --asset-id asst_abc123 --variables '{"name":"Ada"}'
+hyperframes cloud render --asset-id asst_abc123 --variables '{"name":"Linus"}'
+```
+
+For high-volume personalized batches, the bring-your-own-AWS path adds a JSONL fan-out — see [Templates on Lambda](/deploy/templates-on-lambda).
+
+## Fire-and-forget and webhooks
+
+By default the CLI blocks, polls, and downloads. Pass `--no-wait` to submit and exit with just the `render_id`, and `--callback-url` to get an HTTPS webhook when the render terminates. The webhook fires whether or not the CLI is still polling, so combine them for true fire-and-forget:
+
+```bash
+hyperframes cloud render --callback-url https://example.com/hf-hook --no-wait
+# ✓  Submitted hfr_def456
+#    Poll with: hyperframes cloud get hfr_def456
+```
+
+| Flag | Meaning |
+| --- | --- |
+| `--no-wait` | Submit and exit immediately; print the `render_id`. |
+| `--callback-url` | HTTPS webhook fired when the render terminates. |
+| `--callback-id` | Opaque tracking ID echoed in webhook payloads. |
+| `--poll-interval` | Poll cadence in seconds (default `10`). |
+| `--max-wait` | Max poll duration in minutes (default `60`). |
+
+## Managing renders
+
+```bash
+hyperframes cloud list                 # recent renders (--limit, --token, --all)
+hyperframes cloud get hfr_def456       # full detail + short-lived signed video_url
+hyperframes cloud delete hfr_def456    # soft-delete (--no-confirm to skip the prompt)
+```
+
+`video_url` and `thumbnail_url` are short-lived presigned URLs — re-fetch with `cloud get` rather than caching them.
+
+## Safe retries
+
+The CLI transparently retries on a `401 Unauthorized` by force-refreshing the OAuth token and replaying the request. That's harmless for reads, but the zip upload (`POST /v3/assets`) is **not** idempotent on its own — a blind retry would create a duplicate asset and bill the workspace twice. Pass `--idempotency-key` so retries are safe:
+
+```bash
+hyperframes cloud render . --idempotency-key "$(uuidgen)"
+```
+
+The key is forwarded to both the upload and submit calls; the server scopes idempotency per-endpoint, so reusing one value across both steps is safe. Use any opaque string in `[A-Za-z0-9_:.-]` (1–255 chars).
+
+## Cloud vs. Lambda vs. local
+
+- **`hyperframes render`** (local) — fastest iteration loop; use while authoring. See [Rendering](/guides/rendering).
+- **`hyperframes cloud render`** — zero-infra; HeyGen runs the render and you pay per credit. Use when you don't want to manage Chrome/FFmpeg/AWS.
+- **`hyperframes lambda render`** — bring-your-own-AWS distributed rendering with chunked parallelism. Use when you've already invested in AWS. See [AWS Lambda](/deploy/aws-lambda).
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Variables" icon="sliders" href="/concepts/variables">
+    Declare and fill template slots in a composition
+  </Card>
+  <Card title="Templates on Lambda" icon="layer-group" href="/deploy/templates-on-lambda">
+    High-volume personalized renders on your own AWS
+  </Card>
+  <Card title="Local rendering" icon="film" href="/guides/rendering">
+    Render locally or in Docker during authoring
+  </Card>
+  <Card title="CLI reference" icon="terminal" href="/packages/cli#hyperframes-cloud">
+    Every `cloud` and `auth` flag in detail
+  </Card>
+</CardGroup>
