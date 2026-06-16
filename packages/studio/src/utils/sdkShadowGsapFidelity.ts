@@ -46,6 +46,13 @@ function posKey(position: unknown): string {
 // position. The SDK writer emits [data-hf-id="X"] selectors while the server
 // emits class/other selectors for the SAME element; keying by resolved element
 // matches them so the diff compares values instead of flagging present/absent.
+//
+// ponytail: one-tween-per-(element, method, position) assumption — coincident
+// tweens (same element+method+position, different props) collapse, last wins,
+// so the diff under-reports them. Props can't go in the key (a matched pair
+// must share a key for the field-diff to run; raw props would split real value
+// drift into present/absent). Not seen in studio-emitted templates; add a
+// property-NAME hash to the key if coincident tweens show up in the wild.
 function tweenKey(anim: GsapAnimation, resolveSelector?: (sel: string) => string): string {
   const sel = resolveSelector ? resolveSelector(anim.targetSelector) : anim.targetSelector;
   return `${sel}|${anim.method}|${posKey(anim.position)}`;
@@ -184,6 +191,12 @@ export function resolveGsapFidelityArgs(
 // document, so tweens that target the same element via different selectors
 // ([data-hf-id="X"] vs .X) match in the fidelity diff. Falls back to the raw
 // selector when it can't resolve (DOMParser unavailable, no match, bad selector).
+//
+// ponytail: first-match heuristic — querySelector returns the FIRST match, so an
+// ambiguous selector (e.g. .x shared by two elements) may map to a different id
+// than the SDK side's [data-hf-id] target and still flag present/absent. Safe
+// for studio templates (one tween per data-hf-id); upgrade to querySelectorAll +
+// uniqueness check if ambiguous selectors appear.
 function makeSelectorResolver(html: string): (sel: string) => string {
   let doc: Document | null = null;
   try {
