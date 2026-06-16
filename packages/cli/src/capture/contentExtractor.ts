@@ -1,7 +1,7 @@
 /**
  * Content extraction helpers for the website capture pipeline.
  *
- * Handles library detection, visible text extraction, Gemini captioning,
+ * Handles library detection, visible text extraction, vision captioning,
  * and asset description generation.
  *
  * All page.evaluate() calls use string expressions to avoid
@@ -156,7 +156,11 @@ export async function extractVisibleText(page: Page): Promise<string> {
 }
 
 /**
- * Caption downloaded images using Gemini vision API.
+ * Caption downloaded images using a vision model.
+ *
+ * Provider is chosen by which API key is present: OPENROUTER_API_KEY → OpenRouter
+ * (any vision model via its OpenAI-style API), else GEMINI_API_KEY/GOOGLE_API_KEY
+ * → Google Gemini, else no captioning. OpenRouter wins if both are set.
  *
  * Batches requests to stay under free-tier rate limits.
  * Returns a map of filename -> caption string.
@@ -167,26 +171,90 @@ export async function captionImagesWithGemini(
   warnings: string[],
 ): Promise<Record<string, string>> {
   const geminiCaptions: Record<string, string> = {};
+  const openRouterKey = process.env.OPENROUTER_API_KEY;
   const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-  if (!geminiKey) return geminiCaptions;
+  if (!openRouterKey && !geminiKey) return geminiCaptions;
 
-  progress("design", "Captioning images with Gemini vision...");
+  // OpenRouter takes priority when both keys are set — it's the explicit opt-in
+  // for users without Google access. Both providers satisfy the same
+  // single-image → one-line-caption contract (`captionOne`), so the batching and
+  // SVG-rasterization loops below stay provider-agnostic.
+  const useOpenRouter = Boolean(openRouterKey);
+  const providerName = useOpenRouter ? "OpenRouter" : "Gemini";
+  // Default mirrors the Gemini path's tier (3.x flash-lite). Override per
+  // provider via HYPERFRAMES_OPENROUTER_MODEL / HYPERFRAMES_GEMINI_MODEL.
+  const model = useOpenRouter
+    ? process.env.HYPERFRAMES_OPENROUTER_MODEL || "google/gemini-3.1-flash-lite"
+    : process.env.HYPERFRAMES_GEMINI_MODEL || "gemini-3.1-flash-lite-preview";
+
+  progress("design", `Captioning images with ${providerName} vision...`);
   try {
-    const { GoogleGenAI } = await import("@google/genai");
-    const ai = new GoogleGenAI({ apiKey: geminiKey });
+    // One image → one short caption. Each provider implements this contract;
+    // everything below is provider-agnostic.
+    type CaptionOne = (args: {
+      mimeType: string;
+      base64: string;
+      prompt: string;
+      maxTokens: number;
+    }) => Promise<string>;
+
+    let captionOne: CaptionOne;
+    if (openRouterKey) {
+      captionOne = async ({ mimeType, base64, prompt, maxTokens }) => {
+        const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${openRouterKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model,
+            messages: [
+              {
+                role: "user",
+                content: [
+                  { type: "text", text: prompt },
+                  { type: "image_url", image_url: { url: `data:${mimeType};base64,${base64}` } },
+                ],
+              },
+            ],
+            max_tokens: maxTokens,
+          }),
+        });
+        if (!res.ok) {
+          const detail = await res.text().catch(() => "");
+          throw new Error(`OpenRouter ${res.status} ${res.statusText}: ${detail.slice(0, 200)}`);
+        }
+        const data = (await res.json()) as {
+          choices?: Array<{ message?: { content?: string } }>;
+        };
+        return data.choices?.[0]?.message?.content?.trim() || "";
+      };
+    } else {
+      // Unreachable when geminiKey is unset (guarded above); re-narrow for TS.
+      if (!geminiKey) return geminiCaptions;
+      const { GoogleGenAI } = await import("@google/genai");
+      const ai = new GoogleGenAI({ apiKey: geminiKey });
+      captionOne = async ({ mimeType, base64, prompt, maxTokens }) => {
+        const response = await ai.models.generateContent({
+          model,
+          contents: [
+            { role: "user", parts: [{ inlineData: { mimeType, data: base64 } }, { text: prompt }] },
+          ],
+          config: { maxOutputTokens: maxTokens },
+        });
+        return response.text?.trim() || "";
+      };
+    }
+
     const imageFiles = readdirSync(join(outputDir, "assets")).filter((f: string) =>
       /\.(png|jpg|jpeg|webp|gif)$/i.test(f),
     );
 
-    // Caption in parallel batches via Gemini vision API.
-    // Free tier: 5 RPM → batch 5, 12s pause (~$0 but slow)
-    // Paid tier: 2000 RPM → batch 20, 1s pause (~$0.001/image, fast)
-    // We try a larger batch first; if rate-limited, fall back to smaller batches.
-    // Default is a preview model — update when GA ships.
-    // Benchmark (49 images, paid tier): 3.1-flash-lite-preview ~507ms/img 131ch avg,
-    // 2.5-flash-lite ~230ms/img 117ch avg. Preview has richer captions but higher variance.
-    // Override: HYPERFRAMES_GEMINI_MODEL=gemini-2.5-flash-lite
-    const model = process.env.HYPERFRAMES_GEMINI_MODEL || "gemini-3.1-flash-lite-preview";
+    // Caption in parallel batches. Gemini free tier is ~5 RPM (slow but $0),
+    // paid/OpenRouter ~2000 RPM. We batch 20 with a 2s inter-batch pause and rely
+    // on Promise.allSettled so a rate-limited image degrades to "" rather than
+    // failing the batch.
     const BATCH_SIZE = 20;
     for (let i = 0; i < imageFiles.length; i += BATCH_SIZE) {
       const batch = imageFiles.slice(i, i + BATCH_SIZE);
@@ -194,27 +262,19 @@ export async function captionImagesWithGemini(
         batch.map(async (file: string) => {
           const filePath = join(outputDir, "assets", file);
           const stat = statSync(filePath);
-          if (stat.size > 4_000_000) return { file, caption: "" }; // skip images > 4 MB (Gemini inline limit)
+          if (stat.size > 4_000_000) return { file, caption: "" }; // skip images > 4 MB (provider inline limit)
           const buffer = readFileSync(filePath);
           const base64 = buffer.toString("base64");
           const ext = file.split(".").pop()?.toLowerCase() || "png";
           const mimeType = ext === "jpg" ? "image/jpeg" : `image/${ext}`;
-          const response = await ai.models.generateContent({
-            model,
-            contents: [
-              {
-                role: "user",
-                parts: [
-                  { inlineData: { mimeType, data: base64 } },
-                  {
-                    text: "Describe this website image in ONE short sentence for a video storyboard. Focus on: what it shows, dominant colors, whether background is light or dark. Be factual, not creative.",
-                  },
-                ],
-              },
-            ],
-            config: { maxOutputTokens: 500 },
+          const caption = await captionOne({
+            mimeType,
+            base64,
+            prompt:
+              "Describe this website image in ONE short sentence for a video storyboard. Focus on: what it shows, dominant colors, whether background is light or dark. Be factual, not creative.",
+            maxTokens: 500,
           });
-          return { file, caption: response.text?.trim() || "" };
+          return { file, caption };
         }),
       );
       for (const result of results) {
@@ -231,7 +291,10 @@ export async function captionImagesWithGemini(
         `Captioned ${Math.min(i + BATCH_SIZE, imageFiles.length)}/${imageFiles.length} images...`,
       );
     }
-    progress("design", `${Object.keys(geminiCaptions).length} images captioned with Gemini`);
+    progress(
+      "design",
+      `${Object.keys(geminiCaptions).length} images captioned with ${providerName}`,
+    );
 
     // Rasterize SVGs to PNG before captioning — Vision hallucinates wordmarks when reading SVG path text.
     const svgFiles: Array<{ file: string; relPath: string }> = [];
@@ -301,26 +364,17 @@ export async function captionImagesWithGemini(
               svgsSkipped++;
               return { file: relPath, caption: "" };
             }
-            const response = await ai.models.generateContent({
-              model,
-              contents: [
-                {
-                  role: "user",
-                  parts: [
-                    { inlineData: { mimeType: "image/png", data: pngBase64 } },
-                    {
-                      text:
-                        "Describe this SVG asset rendered from a website in ONE short sentence for a video storyboard. " +
-                        "Focus on: what shape/icon/illustration/wordmark it is, its colors, any text it contains. " +
-                        "If you see a wordmark, READ THE LETTERS LITERALLY — do not guess a brand from context. " +
-                        "Be factual.",
-                    },
-                  ],
-                },
-              ],
-              config: { maxOutputTokens: 300 },
+            const caption = await captionOne({
+              mimeType: "image/png",
+              base64: pngBase64,
+              prompt:
+                "Describe this SVG asset rendered from a website in ONE short sentence for a video storyboard. " +
+                "Focus on: what shape/icon/illustration/wordmark it is, its colors, any text it contains. " +
+                "If you see a wordmark, READ THE LETTERS LITERALLY — do not guess a brand from context. " +
+                "Be factual.",
+              maxTokens: 300,
             });
-            return { file: relPath, caption: response.text?.trim() || "" };
+            return { file: relPath, caption };
           }),
         );
         for (const result of results) {
@@ -345,7 +399,7 @@ export async function captionImagesWithGemini(
       }
     }
   } catch (err) {
-    warnings.push(`Gemini captioning failed: ${err}`);
+    warnings.push(`${providerName} captioning failed: ${err}`);
   }
 
   return geminiCaptions;
