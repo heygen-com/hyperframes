@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   getCompiledGpuEncoders,
   getGpuEncoderName,
+  getProbeArgs,
   mapPresetForGpuEncoder,
   selectUsableGpuEncoder,
 } from "./gpuEncoder.js";
@@ -125,5 +126,15 @@ describe("mapPresetForGpuEncoder", () => {
     it("passes preset through unchanged when encoder is null (CPU)", () => {
       expect(mapPresetForGpuEncoder(null, "ultrafast")).toBe("ultrafast");
     });
+  });
+});
+
+describe("getProbeArgs", () => {
+  it("uses 320x240 probe dimensions for all GPU encoders", () => {
+    const encoders = ["nvenc", "videotoolbox", "vaapi", "qsv", "amf"] as const;
+    for (const encoder of encoders) {
+      const args = getProbeArgs(encoder);
+      expect(args).toContain("color=size=320x240:rate=1:duration=1");
+    }
   });
 });
