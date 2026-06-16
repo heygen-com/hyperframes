@@ -140,10 +140,15 @@ All packages use **fixed versioning** — every release bumps all packages to th
 
 ```bash
 bun run release:prepare 0.2.0        # drafts changelog if needed, then creates the release commit/tag after review
-git push origin main --tags           # triggers the publish workflow
+git push origin main                  # push the release commit
+git push origin v0.2.0                # push the tag → triggers the publish workflow
 ```
 
+> Push the **specific tag**, not `git push --tags` — the latter pushes every local tag and the whole push is rejected if any one already exists on the remote.
+
 The `release:prepare` script drafts missing release notes on the first run and stops for manual review. After the generated TODO summary is rewritten, rerun the same command; it delegates to `set-version`, which creates a `chore: release v<version>` commit and a `v<version>` git tag. Pushing the tag triggers CI to publish all packages to npm and create a GitHub Release.
+
+`set-version` also refuses to tag if a **higher** semver tag already exists (a stale higher tag would hijack tag-sorting installers like `npx skills`). Delete the stray tag (`git tag -d <tag> && git push origin :refs/tags/<tag>`) or, only if intentional, pass `--skip-monotonicity-check`.
 
 ### Pre-releases (alpha / beta / rc)
 

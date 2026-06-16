@@ -130,7 +130,13 @@ function createReleaseCommitAndTag(version: string, skipMonotonicityCheck: boole
     cwd: ROOT,
     stdio: "inherit",
   });
-  execFileSync("git", ["tag", `v${version}`], { cwd: ROOT, stdio: "inherit" });
+  // Annotated tag (-a -m): works regardless of a contributor's git config; a
+  // lightweight `git tag` fails ("no tag message?") when tag.forceSignAnnotated
+  // or similar is set globally.
+  execFileSync("git", ["tag", "-a", `v${version}`, "-m", `v${version}`], {
+    cwd: ROOT,
+    stdio: "inherit",
+  });
   console.log(`\nCreated commit and tag v${version}`);
 }
 
