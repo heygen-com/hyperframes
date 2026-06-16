@@ -23,7 +23,7 @@ describe("caption rules", () => {
     const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "caption_exit_missing_hard_kill");
     expect(finding).toBeDefined();
-    expect(finding?.severity).toBe("warning");
+    expect(finding?.severity).toBe("error");
   });
 
   it("does not warn when caption exit has hard kill tl.set", async () => {
@@ -141,6 +141,6 @@ describe("caption rules", () => {
     const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "caption_container_relative_position");
     expect(finding).toBeDefined();
-    expect(finding?.severity).toBe("warning");
+    expect(finding?.severity).toBe("error");
   });
 });

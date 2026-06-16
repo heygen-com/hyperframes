@@ -402,7 +402,7 @@ export const gsapRules: LintRule<LintContext>[] = [
 
           findings.push({
             code: "gsap_exit_missing_hard_kill",
-            severity: "warning",
+            severity: "error",
             message:
               `GSAP exit on "${win.targetSelector}" ends at the ${boundary.toFixed(2)}s clip start boundary ` +
               "without a matching tl.set hard kill. Non-linear seeking can land after the fade and leave stale visibility state.",
@@ -445,7 +445,7 @@ export const gsapRules: LintRule<LintContext>[] = [
         if (className && (classUsage.get(className) || 0) < 2) continue;
         findings.push({
           code: "unscoped_gsap_selector",
-          severity: "warning",
+          severity: "error",
           message: `Timeline "${localTimelineCompId}" uses unscoped selector "${win.targetSelector}" that will target elements in ALL compositions when bundled, causing data loss (opacity, transforms, etc.).`,
           selector: win.targetSelector,
           fixHint: `Scope the selector: \`[data-composition-id="${localTimelineCompId}"] ${win.targetSelector}\` or use a unique id.`,
@@ -510,7 +510,9 @@ export const gsapRules: LintRule<LintContext>[] = [
       const conflicts = new Map<string, Conflict>();
 
       for (const win of windows) {
-        if (win.method === "fromTo") continue;
+        // from() and fromTo() both supply explicit start values so GSAP owns
+        // the full transform from t=0, making the CSS conflict moot
+        if (win.method === "fromTo" || win.method === "from") continue;
         const sel = win.targetSelector;
         const cssKey = sel.startsWith("#") || sel.startsWith(".") ? sel : `#${sel}`;
         const translateProps = win.properties.filter((p) =>
@@ -542,7 +544,7 @@ export const gsapRules: LintRule<LintContext>[] = [
             `the full transform state. tl.fromTo is exempt from this rule.`;
         findings.push({
           code: "gsap_css_transform_conflict",
-          severity: "warning",
+          severity: "error",
           message:
             `"${sel}" has CSS \`transform: ${cssTransform}\` and a GSAP tween animates ` +
             `${propList}. GSAP will overwrite the full CSS transform, discarding any ` +
@@ -711,7 +713,7 @@ export const gsapRules: LintRule<LintContext>[] = [
     if (sceneElements.length < 2) return findings;
 
     for (const script of scripts) {
-      const content = script.content;
+      const content = stripJsComments(script.content);
       // For each scene, check if there's a visibility:hidden set after exit tweens
       for (const tag of sceneElements) {
         const id = readAttr(tag.raw, "id") || "";
@@ -726,7 +728,7 @@ export const gsapRules: LintRule<LintContext>[] = [
         if (!hasKill) {
           findings.push({
             code: "scene_layer_missing_visibility_kill",
-            severity: "warning",
+            severity: "error",
             elementId: id,
             message:
               `Scene layer "#${id}" exits via opacity tween but has no visibility: hidden hard kill. ` +
@@ -752,7 +754,7 @@ export const gsapRules: LintRule<LintContext>[] = [
       if (hasRegistration || canInheritFromHost) continue;
       findings.push({
         code: "gsap_timeline_not_registered",
-        severity: "warning",
+        severity: "error",
         message:
           "GSAP timeline is created but never registered in window.__timelines. " +
           "The runtime discovers timelines from this registry — without registration, " +
@@ -800,6 +802,8 @@ export const gsapRules: LintRule<LintContext>[] = [
       for (const win of windows) {
         if (win.method !== "from") continue;
         if (!win.properties.includes("opacity")) continue;
+        // Only a noop when the tween animates FROM 0 (same as the CSS value)
+        if (win.propertyValues["opacity"] !== 0) continue;
         const sel = win.targetSelector;
         const cssKey = sel.startsWith("#") || sel.startsWith(".") ? sel : `#${sel}`;
         if (!cssOpacityZeroSelectors.has(cssKey)) continue;

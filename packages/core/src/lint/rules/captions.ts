@@ -1,5 +1,33 @@
 import type { LintContext, HyperframeLintFinding } from "../context";
 
+/** Extract a bracket-balanced array literal starting at the `[` found by `varMatch`. */
+// fallow-ignore-next-line complexity
+function extractArrayLiteral(src: string, varMatch: RegExpExecArray): string | null {
+  const openIdx = varMatch.index + varMatch[0].length - 1;
+  let depth = 0;
+  let inStr = false;
+  let strChar = "";
+  for (let i = openIdx; i < src.length; i++) {
+    const c = src[i]!;
+    if (inStr) {
+      if (c === "\\") {
+        i++;
+        continue;
+      }
+      if (c === strChar) inStr = false;
+    } else if (c === '"' || c === "'") {
+      inStr = true;
+      strChar = c;
+    } else if (c === "[") {
+      depth++;
+    } else if (c === "]") {
+      depth--;
+      if (depth === 0) return src.slice(openIdx, i + 1);
+    }
+  }
+  return null;
+}
+
 export const captionRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   // caption_exit_missing_hard_kill
   ({ scripts }) => {
@@ -17,7 +45,7 @@ export const captionRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> 
       if (hasCaptionLoop && hasExitTween && !hasHardKill) {
         findings.push({
           code: "caption_exit_missing_hard_kill",
-          severity: "warning",
+          severity: "error",
           message:
             "Caption exit animations (tl.to with opacity: 0) detected without a hard tl.set kill. " +
             "Exit tweens can fail when karaoke word-level tweens conflict, leaving captions stuck on screen.",
@@ -57,6 +85,7 @@ export const captionRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> 
   },
 
   // caption_transcript_not_inline
+  // fallow-ignore-next-line complexity
   ({ scripts, styles, options }) => {
     const findings: HyperframeLintFinding[] = [];
     // Only check files that look like caption compositions
@@ -74,7 +103,7 @@ export const captionRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> 
     if (!hasInlineTranscript && hasFetchTranscript) {
       findings.push({
         code: "caption_transcript_not_inline",
-        severity: "warning",
+        severity: "error",
         message:
           "Captions composition loads transcript via fetch(). The studio caption editor " +
           "requires an inline `var TRANSCRIPT = [...]` array to detect and edit captions.",
@@ -85,16 +114,18 @@ export const captionRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> 
     }
 
     if (hasInlineTranscript) {
-      // Verify the inline transcript can be parsed
-      const varPattern = /(?:const|let|var)\s+(?:TRANSCRIPT|script)\s*=\s*(\[[\s\S]*?\]);/;
-      const match = allScript.match(varPattern);
-      if (match?.[1]) {
+      // Verify the inline transcript can be parsed.
+      // Use a balanced-bracket scan instead of a regex to correctly handle
+      // nested arrays (e.g. word-level timing arrays inside each entry).
+      const varStart = /(?:const|let|var)\s+(?:TRANSCRIPT|script)\s*=\s*\[/.exec(allScript);
+      const transcriptJson = varStart ? extractArrayLiteral(allScript, varStart) : null;
+      if (transcriptJson) {
         try {
-          JSON.parse(match[1]);
+          JSON.parse(transcriptJson);
         } catch {
           findings.push({
             code: "caption_transcript_parse_error",
-            severity: "warning",
+            severity: "error",
             message:
               "Inline TRANSCRIPT array is not valid JSON. The studio caption editor may fail " +
               "to parse it. Common cause: unquoted property keys with apostrophes in text.",
@@ -121,7 +152,7 @@ export const captionRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> 
         if (/position\s*:\s*relative/i.test(body)) {
           findings.push({
             code: "caption_container_relative_position",
-            severity: "warning",
+            severity: "error",
             selector: (selector ?? "").trim(),
             message: `Caption selector "${(selector ?? "").trim()}" uses position: relative which causes overflow and breaks caption stacking.`,
             fixHint: "Use position: absolute for all caption elements.",
@@ -149,7 +180,7 @@ export const captionRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> 
         if (/overflow\s*:\s*hidden/i.test(body)) {
           findings.push({
             code: "caption_overflow_clips_scaled_words",
-            severity: "warning",
+            severity: "error",
             selector: (selector ?? "").trim(),
             message: `"${(selector ?? "").trim()}" has overflow: hidden but GSAP scales caption words above 1.0x. Scaled emphasis words and their glow effects will be clipped.`,
             fixHint:
@@ -192,6 +223,7 @@ export const captionRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> 
   },
 
   // caption_fittext_scale_mismatch
+  // fallow-ignore-next-line complexity
   ({ scripts }) => {
     const findings: HyperframeLintFinding[] = [];
     for (const script of scripts) {

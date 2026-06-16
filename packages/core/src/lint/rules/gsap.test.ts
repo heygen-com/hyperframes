@@ -266,7 +266,7 @@ describe("GSAP rules", () => {
     const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "gsap_css_transform_conflict");
     expect(finding).toBeDefined();
-    expect(finding?.severity).toBe("warning");
+    expect(finding?.severity).toBe("error");
     expect(finding?.selector).toBe("#title");
     expect(finding?.fixHint).toMatch(/fromTo/);
     expect(finding?.fixHint).toMatch(/xPercent/);
@@ -291,7 +291,7 @@ describe("GSAP rules", () => {
     const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "gsap_css_transform_conflict");
     expect(finding).toBeDefined();
-    expect(finding?.severity).toBe("warning");
+    expect(finding?.severity).toBe("error");
     expect(finding?.selector).toBe("#hero");
   });
 
@@ -676,7 +676,7 @@ describe("GSAP rules", () => {
     const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "gsap_exit_missing_hard_kill");
     expect(finding).toBeDefined();
-    expect(finding?.severity).toBe("warning");
+    expect(finding?.severity).toBe("error");
     expect(finding?.selector).toBe("#headline");
     expect(finding?.message).toContain("3.00s");
   });
@@ -882,7 +882,7 @@ describe("GSAP rules", () => {
     const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "gsap_timeline_not_registered");
     expect(finding).toBeDefined();
-    expect(finding?.severity).toBe("warning");
+    expect(finding?.severity).toBe("error");
   });
 
   it("does NOT warn when timeline is registered in __timelines", async () => {

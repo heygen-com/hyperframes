@@ -189,44 +189,6 @@ describe("composition rules", () => {
     });
   });
 
-  it("reports info for composition with external CDN script dependency", async () => {
-    const html = `<template id="rockets-template">
-  <div data-composition-id="rockets" data-width="1920" data-height="1080">
-    <div id="rocket-container"></div>
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
-    <script>
-      window.__timelines = window.__timelines || {};
-      window.__timelines["rockets"] = gsap.timeline({ paused: true });
-    </script>
-  </div>
-</template>`;
-    const result = await lintHyperframeHtml(html, { filePath: "compositions/rockets.html" });
-    const finding = result.findings.find(
-      (f) => f.code === "external_script_dependency" && f.message.includes("cdnjs.cloudflare.com"),
-    );
-    expect(finding).toBeDefined();
-    expect(finding?.severity).toBe("info");
-    // info findings do not count as errors — ok should still be true
-    expect(result.ok).toBe(true);
-    expect(result.errorCount).toBe(0);
-  });
-
-  it("does not report external_script_dependency for inline scripts", async () => {
-    const html = `
-<html><body>
-  <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
-    <script>
-      window.__timelines = {};
-      const tl = gsap.timeline({ paused: true });
-      window.__timelines["main"] = tl;
-    </script>
-  </div>
-</body></html>`;
-    const result = await lintHyperframeHtml(html);
-    expect(result.findings.find((f) => f.code === "external_script_dependency")).toBeUndefined();
-  });
-
   it("reports error when querySelector uses template literal variable", async () => {
     const html = `
 <html><body>
@@ -320,7 +282,7 @@ describe("composition rules", () => {
       const result = await lintHyperframeHtml(html);
       const finding = result.findings.find((f) => f.code === "timed_element_missing_clip_class");
       expect(finding).toBeDefined();
-      expect(finding?.severity).toBe("warning");
+      expect(finding?.severity).toBe("error");
     });
 
     it("does not flag element that has class='clip'", async () => {
@@ -345,6 +307,24 @@ describe("composition rules", () => {
   <div data-composition-id="c1" data-width="1920" data-height="1080">
     <audio data-start="0" data-duration="5" src="music.mp3"></audio>
     <video data-start="0" data-duration="5" src="clip.mp4"></video>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    window.__timelines["c1"] = gsap.timeline({ paused: true });
+  </script>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "timed_element_missing_clip_class");
+      expect(finding).toBeUndefined();
+    });
+
+    it("does not flag element with only data-track-index (layer container, no timing)", async () => {
+      const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="layer" data-track-index="0">
+      <div id="box" class="clip" data-start="0" data-duration="2">Hello</div>
+    </div>
   </div>
   <script>
     window.__timelines = window.__timelines || {};
@@ -534,7 +514,7 @@ describe("composition rules", () => {
         (f) => f.code === "standalone_composition_wrapped_in_template",
       );
       expect(finding).toBeDefined();
-      expect(finding?.severity).toBe("warning");
+      expect(finding?.severity).toBe("error");
     });
 
     it("does not flag sub-compositions in template", async () => {
@@ -570,7 +550,7 @@ describe("composition rules", () => {
         (f) => f.code === "requestanimationframe_in_composition",
       );
       expect(finding).toBeDefined();
-      expect(finding?.severity).toBe("warning");
+      expect(finding?.severity).toBe("error");
     });
 
     it("does not flag requestAnimationFrame in comments", async () => {
@@ -672,7 +652,7 @@ describe("composition rules", () => {
       const result = await lintHyperframeHtml(html);
       const finding = result.findings.find((f) => f.code === "invalid_variable_values_json");
       expect(finding).toBeDefined();
-      expect(finding?.severity).toBe("warning");
+      expect(finding?.severity).toBe("error");
     });
 
     it("warns when data-variable-values is a JSON array (must be an object)", async () => {

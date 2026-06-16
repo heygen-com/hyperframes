@@ -14,7 +14,7 @@ describe("font rules", () => {
       </div>`;
       const findings = await findByCode(html, "google_fonts_import");
       expect(findings).toHaveLength(1);
-      expect(findings[0]!.severity).toBe("warning");
+      expect(findings[0]!.severity).toBe("error");
     });
 
     it("flags <link> to fonts.googleapis.com", async () => {

@@ -1,5 +1,6 @@
 import { FONT_ALIAS_KEYS, resolveAliasDisplayName } from "../../fonts/aliases";
 import type { LintContext, HyperframeLintFinding } from "../context";
+import { isRegistrySourceFile, isRegistryInstalledFile } from "./composition";
 
 const GENERIC_FAMILIES = new Set([
   "serif",
@@ -76,7 +77,8 @@ function collectAliasedFonts(used: string[], declared: Set<string>): string[] {
 
 export const fontRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   // google_fonts_import
-  ({ styles, source }) => {
+  ({ styles, source, rawSource, options }) => {
+    if (isRegistrySourceFile(options.filePath) || isRegistryInstalledFile(rawSource)) return [];
     const findings: HyperframeLintFinding[] = [];
     const googleFontsInLink = /<link\b[^>]*fonts\.googleapis\.com[^>]*>/i.test(source);
     const googleFontsInImport = styles.some((s) =>
@@ -86,7 +88,7 @@ export const fontRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
     if (googleFontsInLink || googleFontsInImport) {
       findings.push({
         code: "google_fonts_import",
-        severity: "warning",
+        severity: "error",
         message:
           "Composition loads fonts from fonts.googleapis.com. External font requests " +
           "fail in sandboxed/offline renders and add latency. Use local @font-face " +
@@ -123,7 +125,8 @@ export const fontRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   },
 
   // font_family_without_font_face
-  ({ styles }) => {
+  ({ styles, rawSource, options }) => {
+    if (isRegistrySourceFile(options.filePath) || isRegistryInstalledFile(rawSource)) return [];
     const findings: HyperframeLintFinding[] = [];
     const declared = extractFontFaceFamilies(styles);
     const used = extractUsedFontFamilies(styles);
@@ -133,7 +136,7 @@ export const fontRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
 
     findings.push({
       code: "font_family_without_font_face",
-      severity: "warning",
+      severity: "error",
       message:
         `Font ${undeclared.length === 1 ? "family" : "families"} used without @font-face declaration: ${undeclared.join(", ")}. ` +
         "These are not in the auto-resolved font list, so the renderer cannot supply them automatically. " +

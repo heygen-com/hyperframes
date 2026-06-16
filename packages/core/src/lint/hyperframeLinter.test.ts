@@ -5,7 +5,7 @@ describe("lintHyperframeHtml — orchestrator", () => {
   const validComposition = `
 <html>
 <body>
-  <div id="root" data-composition-id="comp-1" data-width="1920" data-height="1080">
+  <div id="root" data-composition-id="comp-1" data-width="1920" data-height="1080" data-start="0">
     <div id="stage"></div>
   </div>
   <script src="https://cdn.gsap.com/gsap.min.js"></script>
