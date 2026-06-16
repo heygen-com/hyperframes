@@ -36,6 +36,7 @@ import {
   type RenderConfig,
 } from "./services/renderOrchestrator.js";
 import { prepareHyperframeLintBody, runHyperframeLint } from "./services/hyperframeLint.js";
+import { isVideoFrameFormat } from "@hyperframes/engine";
 import { resolveRenderPaths } from "./utils/paths.js";
 import { defaultLogger, type ProducerLogger } from "./logger.js";
 import { Semaphore } from "./utils/semaphore.js";
@@ -128,11 +129,9 @@ export function parseRenderOptions(body: Record<string, unknown>): Omit<RenderIn
   const format = (
     ["mp4", "webm", "mov"].includes(body.format as string) ? body.format : undefined
   ) as RenderInput["format"];
-  const videoFrameFormat = (
-    ["auto", "jpg", "png"].includes(body.videoFrameFormat as string)
-      ? body.videoFrameFormat
-      : undefined
-  ) as RenderConfig["videoFrameFormat"];
+  const videoFrameFormat = isVideoFrameFormat(body.videoFrameFormat)
+    ? body.videoFrameFormat
+    : undefined;
 
   const { variables, outputResolution } = parseRenderOverrides(body);
 

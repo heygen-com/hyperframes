@@ -17,6 +17,7 @@
  * needs the actual planner.
  */
 
+import { VIDEO_FRAME_FORMATS, isVideoFrameFormat } from "@hyperframes/engine";
 import { type DistributedFormat } from "./shared.js";
 import { type DistributedRenderConfig } from "./plan.js";
 
@@ -52,7 +53,6 @@ const ALLOWED_FORMATS = [
 ] as const satisfies readonly DistributedFormat[];
 const ALLOWED_CODECS = ["h264", "h265"] as const;
 const ALLOWED_QUALITIES = ["draft", "standard", "high"] as const;
-const ALLOWED_VIDEO_FRAME_FORMATS = ["auto", "jpg", "png"] as const;
 const ALLOWED_RUNTIME_CAPS = ["lambda", "temporal", "cloud-run-job", "k8s-job", "none"] as const;
 const ALLOWED_HDR_MODES = ["auto", "force-sdr"] as const;
 
@@ -115,13 +115,10 @@ export function validateDistributedRenderConfig(
     );
   }
 
-  if (
-    config.videoFrameFormat !== undefined &&
-    !ALLOWED_VIDEO_FRAME_FORMATS.includes(config.videoFrameFormat)
-  ) {
+  if (config.videoFrameFormat !== undefined && !isVideoFrameFormat(config.videoFrameFormat)) {
     throw new InvalidConfigError(
       "config.videoFrameFormat",
-      `must be one of ${ALLOWED_VIDEO_FRAME_FORMATS.join(", ")}; got ${String(config.videoFrameFormat)}`,
+      `must be one of ${VIDEO_FRAME_FORMATS.join(", ")}; got ${String(config.videoFrameFormat)}`,
     );
   }
 

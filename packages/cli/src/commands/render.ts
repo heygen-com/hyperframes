@@ -71,6 +71,7 @@ import { buildDockerRunArgs, resolveDockerPlatform } from "../utils/dockerRunArg
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { runEnvironmentChecks } from "../browser/preflight.js";
 import type { ProducerLogger, RenderJob } from "@hyperframes/producer";
+import { isVideoFrameFormat, type VideoFrameFormat } from "@hyperframes/engine";
 import {
   normalizeResolutionFlag,
   parseFps,
@@ -82,13 +83,6 @@ import {
 } from "@hyperframes/core";
 
 const VALID_QUALITY = new Set(["draft", "standard", "high"]);
-const VIDEO_FRAME_FORMATS = ["auto", "jpg", "png"] as const;
-type VideoFrameFormat = (typeof VIDEO_FRAME_FORMATS)[number];
-const VALID_VIDEO_FRAME_FORMAT = new Set<string>(VIDEO_FRAME_FORMATS);
-
-function isVideoFrameFormat(value: string): value is VideoFrameFormat {
-  return VALID_VIDEO_FRAME_FORMAT.has(value);
-}
 
 /**
  * Map a {@link FpsParseResult} failure reason to a human-friendly
