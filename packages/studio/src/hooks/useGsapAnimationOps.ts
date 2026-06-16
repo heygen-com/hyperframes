@@ -2,7 +2,11 @@ import { useCallback } from "react";
 import type { Composition } from "@hyperframes/sdk";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { roundTo3 } from "../utils/rounding";
-import { sdkGsapTweenPersist, type CutoverDeps } from "../utils/sdkCutover";
+import {
+  sdkGsapTweenPersist,
+  sdkGsapDeleteAllForSelectorPersist,
+  type CutoverDeps,
+} from "../utils/sdkCutover";
 import {
   assignGsapTargetAutoIdIfNeeded,
   ensureElementAddressable,
@@ -80,15 +84,25 @@ export function useGsapAnimationOps({
   );
 
   const deleteAllForSelector = useCallback(
-    (selection: DomEditSelection, targetSelector: string) => {
-      // ponytail: no SDK op for delete-all-for-selector; stays server-authoritative
+    async (selection: DomEditSelection, targetSelector: string) => {
+      if (sdkSession && sdkDeps) {
+        const targetPath = selection.sourceFile || activeCompPath || "index.html";
+        const handled = await sdkGsapDeleteAllForSelectorPersist(
+          targetPath,
+          targetSelector,
+          sdkSession,
+          sdkDeps,
+          { label: "Delete all animations for element" },
+        );
+        if (handled) return;
+      }
       void commitMutation(
         selection,
         { type: "delete-all-for-selector", targetSelector },
         { label: "Delete all animations for element" },
       );
     },
-    [commitMutation],
+    [commitMutation, activeCompPath, sdkSession, sdkDeps],
   );
 
   // fallow-ignore-next-line complexity

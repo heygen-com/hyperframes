@@ -156,6 +156,8 @@ function applyGsapOp(parsed: ParsedDocument, op: EditOp): MutationResult | undef
       return handleRemoveGsapProperty(parsed, op.animationId, op.property, op.from);
     case "removeGsapTween":
       return handleRemoveGsapTween(parsed, op.animationId);
+    case "deleteAllForSelector":
+      return handleDeleteAllForSelector(parsed, op.selector);
     case "setGsapKeyframe":
       return handleSetGsapKeyframe(
         parsed,
@@ -735,6 +737,24 @@ function handleRemoveGsapTween(parsed: ParsedDocument, animationId: string): Mut
   return gsapScriptChange(script, newScript);
 }
 
+function handleDeleteAllForSelector(parsed: ParsedDocument, selector: string): MutationResult {
+  const script = getGsapScript(parsed.document);
+  if (!script) return EMPTY;
+  const parsedForWrite = parseGsapScriptAcornForWrite(script);
+  if (!parsedForWrite) return EMPTY;
+  const matching = parsedForWrite.located.filter((l) => l.animation.targetSelector === selector);
+  if (matching.length === 0) return EMPTY;
+  let newScript = script;
+  for (const m of [...matching].reverse()) {
+    newScript = removeAnimationFromScript(newScript, m.id);
+  }
+  if (newScript === script) return EMPTY;
+  setGsapScript(parsed.document, newScript);
+  // ponytail: skips stripStudioEditsFromTarget (data-hf-studio-path-offset cleanup) —
+  // studio path offset is cosmetic once all animations are gone; session reloads after write
+  return gsapScriptChange(script, newScript);
+}
+
 function resolveKeyframe(parsed: ParsedDocument, animationId: string, keyframeIndex: number) {
   const script = getGsapScript(parsed.document);
   if (!script) return null;
@@ -934,6 +954,7 @@ export function validateOp(parsed: ParsedDocument, op: EditOp): CanResult {
     case "removeGsapKeyframe":
     case "removeGsapProperty":
     case "removeGsapTween":
+    case "deleteAllForSelector":
     case "removeLabel":
       if (getGsapScript(parsed.document) === null)
         return canErr(

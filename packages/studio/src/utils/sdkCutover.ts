@@ -281,6 +281,18 @@ export function sdkGsapRemovePropertyPersist(
   );
 }
 
+export function sdkGsapDeleteAllForSelectorPersist(
+  targetPath: string,
+  selector: string,
+  sdkSession: Composition | null | undefined,
+  deps: CutoverDeps,
+  options?: CutoverOptions,
+): Promise<boolean> {
+  return dispatchGsapOpAndPersist(targetPath, sdkSession, deps, options, (s) =>
+    s.dispatch({ type: "deleteAllForSelector", selector }),
+  );
+}
+
 export async function sdkDeletePersist(
   hfId: string,
   originalContent: string,

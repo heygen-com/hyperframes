@@ -105,6 +105,7 @@ export type EditOp =
   | { type: "removeGsapKeyframe"; animationId: string; percentage: number }
   | { type: "removeGsapProperty"; animationId: string; property: string; from?: boolean }
   | { type: "removeGsapTween"; animationId: string }
+  | { type: "deleteAllForSelector"; selector: string }
   | { type: "addLabel"; name: string; position: number }
   | { type: "removeLabel"; name: string };
 
