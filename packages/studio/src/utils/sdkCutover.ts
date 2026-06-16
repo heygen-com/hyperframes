@@ -293,6 +293,18 @@ export function sdkGsapDeleteAllForSelectorPersist(
   );
 }
 
+export function sdkGsapRemoveAllKeyframesPersist(
+  targetPath: string,
+  animationId: string,
+  sdkSession: Composition | null | undefined,
+  deps: CutoverDeps,
+  options?: CutoverOptions,
+): Promise<boolean> {
+  return dispatchGsapOpAndPersist(targetPath, sdkSession, deps, options, (s) =>
+    s.dispatch({ type: "removeAllKeyframes", animationId }),
+  );
+}
+
 export async function sdkDeletePersist(
   hfId: string,
   originalContent: string,
