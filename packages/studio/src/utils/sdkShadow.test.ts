@@ -321,7 +321,7 @@ window.__timelines["t"] = tl;</script>
     } as const;
     ref.addGsapTween(op.target, op.tween);
     const serverScript =
-      ref.serialize().match(/<script\b[^>]*>([\s\S]*?)<\/script\s*>/i)?.[1] ?? "";
+      ref.serialize().match(/<script\b[^>]*>([\s\S]*?)<\/script[^>]*>/i)?.[1] ?? "";
 
     await runShadowGsapFidelity(BEFORE_HTML, op, serverScript);
     expect(lastShadow()).toMatchObject({ op: "gsap_fidelity", dispatched: true, mismatchCount: 0 });
@@ -336,7 +336,7 @@ window.__timelines["t"] = tl;</script>
     const ref = await openComposition(BEFORE_HTML);
     ref.addGsapTween(op.target, op.tween);
     const serverScript = (
-      ref.serialize().match(/<script\b[^>]*>([\s\S]*?)<\/script\s*>/i)?.[1] ?? ""
+      ref.serialize().match(/<script\b[^>]*>([\s\S]*?)<\/script[^>]*>/i)?.[1] ?? ""
     ).replace("100", "999");
 
     await runShadowGsapFidelity(BEFORE_HTML, op, serverScript);

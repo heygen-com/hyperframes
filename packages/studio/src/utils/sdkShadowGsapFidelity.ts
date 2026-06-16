@@ -25,12 +25,12 @@ function isGsapScriptBody(body: string): boolean {
 }
 
 function extractGsapScript(html: string): string | null {
-  // `</script\s*>` (not just `</script>`) — match the whitespace-before-close
-  // variant too (CodeQL js/bad-tag-filter).
-  const scripts = html.match(/<script\b[^>]*>([\s\S]*?)<\/script\s*>/gi);
+  // Close tag is `</script[^>]*>` (not just `</script>`) — HTML5 ignores junk
+  // before the `>`, e.g. `</script >` or `</script foo>` (CodeQL js/bad-tag-filter).
+  const scripts = html.match(/<script\b[^>]*>([\s\S]*?)<\/script[^>]*>/gi);
   if (!scripts) return null;
   for (const block of scripts) {
-    const body = block.replace(/^<script\b[^>]*>/i, "").replace(/<\/script\s*>$/i, "");
+    const body = block.replace(/^<script\b[^>]*>/i, "").replace(/<\/script[^>]*>$/i, "");
     if (isGsapScriptBody(body)) return body;
   }
   return null;
