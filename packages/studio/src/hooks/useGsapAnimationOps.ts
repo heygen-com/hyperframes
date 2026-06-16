@@ -40,10 +40,14 @@ export function useGsapAnimationOps({
         animationId,
         properties: { duration: updates.duration, ease: updates.ease, position: updates.position },
       };
+      // coalesceKey groups rapid meta edits into one history entry. Request
+      // serialization is now handled per-file at the commitMutation chokepoint
+      // (useGsapScriptCommits), so no per-op serializeKey is needed here.
+      const metaKey = `gsap:${animationId}:meta`;
       commitMutationSafely(
         selection,
         { type: "update-meta", animationId, updates },
-        { label: "Edit GSAP animation", coalesceKey: `gsap:${animationId}:meta`, shadowGsapOp },
+        { label: "Edit GSAP animation", coalesceKey: metaKey, shadowGsapOp },
       );
       if (sdkSession) runShadowGsapTween(sdkSession, shadowGsapOp);
     },

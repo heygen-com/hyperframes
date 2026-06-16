@@ -1,10 +1,11 @@
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import { findUnsafeMutationValues } from "@hyperframes/core/studio-api/finite-mutation";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { applySoftReload } from "../utils/gsapSoftReload";
 import { resolveGsapFidelityArgs, runShadowGsapFidelity } from "../utils/sdkShadowGsapFidelity";
 import { runShadowGsapKeyframeFidelity } from "../utils/sdkShadowGsapKeyframe";
 import { updateKeyframeCacheFromParsed } from "./gsapKeyframeCacheHelpers";
+import { createKeyedSerializer } from "./serializeByKey";
 import {
   GsapMutationHttpError,
   formatGsapMutationRejectionToast,
@@ -46,10 +47,16 @@ async function mutateGsapScript(
 // oxfmt-ignore
 // fallow-ignore-next-line complexity
 export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIframeRef, editHistory, domEditSaveTimestampRef, reloadPreview, onCacheInvalidate, onFileContentChanged, showToast, sdkSession }: GsapScriptCommitsParams) {
+  // Serializer for per-key commits (options.serializeKey). Keyed by
+  // `gsap:${animationId}:meta`, it chains a meta commit onto the prior one for
+  // the same animationId so their POSTs can't interleave — which is what made
+  // the shadow fidelity diff pair an op with a stale server result and report
+  // false ease mismatches. Held in a ref so the chain survives re-renders.
+  const serializerRef = useRef(createKeyedSerializer());
   // Pre-existing complexity (server mutate + history + reload branches); this PR
   // adds only a guarded shadow-fidelity dispatch.
   // fallow-ignore-next-line complexity
-  const commitMutation = useCallback(async (selection: DomEditSelection, mutation: Record<string, unknown>, options: CommitMutationOptions) => {
+  const runCommit = useCallback(async (selection: DomEditSelection, mutation: Record<string, unknown>, options: CommitMutationOptions) => {
     const pid = projectIdRef.current;
     if (!pid) return;
     const unsafeFields = findUnsafeMutationValues(mutation);
@@ -105,6 +112,19 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
     }
     onCacheInvalidate();
   }, [projectIdRef, activeCompPath, previewIframeRef, editHistory, domEditSaveTimestampRef, reloadPreview, onCacheInvalidate, onFileContentChanged, showToast, sdkSession]);
+  // Every GSAP-script commit is a read-modify-write of one file. Overlapping
+  // commits to the SAME file (any op type, any animation) interleave server-side
+  // and make the shadow fidelity diff pair an op with a stale server result —
+  // the false ease/value mismatches this serializer exists to prevent. So
+  // serialize per target file by default; an explicit serializeKey overrides.
+  const commitMutation = useCallback(
+    (selection: DomEditSelection, mutation: Record<string, unknown>, options: CommitMutationOptions) => {
+      const file = selection.sourceFile || activeCompPath || "index.html";
+      const key = options.serializeKey ?? `gsap-file:${file}`;
+      return serializerRef.current(key, () => runCommit(selection, mutation, options));
+    },
+    [runCommit, activeCompPath],
+  );
   const trackGsapSaveFailure = useGsapSaveFailureTelemetry(activeCompPath);
   const commitMutationSafely = useSafeGsapCommitMutation(commitMutation, trackGsapSaveFailure, showToast);
   const propertyOps = useGsapPropertyDebounce(commitMutationSafely);

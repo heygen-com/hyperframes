@@ -20,6 +20,14 @@ export interface CommitMutationOptions {
   softReload?: boolean;
   skipReload?: boolean;
   beforeReload?: () => void;
+  /**
+   * Serialize this commit against others sharing the same key. Used to chain
+   * per-animationId GSAP meta updates so overlapping read-modify-write POSTs to
+   * one file can't interleave — which would pair the shadow fidelity diff with a
+   * stale server result and report false ease mismatches. Commits without a key
+   * (and under distinct keys) run concurrently as before.
+   */
+  serializeKey?: string;
   /** Stage 7 Step 3b: typed SDK equivalent of this mutation for value-fidelity shadow. */
   shadowGsapOp?: ShadowGsapOp;
   /** Typed SDK equivalent of a keyframe mutation for keyframe value-fidelity shadow (gsap_keyframe). */
