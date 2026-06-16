@@ -11,13 +11,13 @@ interface LintParsedGsap {
   timelineVar: string;
 }
 
-// The recast-based GSAP parser lives behind the Node-only
-// `@hyperframes/core/gsap-parser` subpath. The linter runs server-side only
-// (CLI + studio-api `/lint` route), so loading it via dynamic import keeps
-// recast out of any browser/SSR-traced static graph.
+// Use the acorn read parser: it resolves computed timelines (helpers, bounded
+// loops) so lint findings like overlapping_gsap_tweens reflect true positions
+// instead of all-collapsed-at-0. It's also browser-safe, so this keeps recast
+// out of the lint graph entirely. Dynamic import preserves the lazy load.
 async function loadParseGsapScript(): Promise<(script: string) => LintParsedGsap> {
-  const mod = await import("../../parsers/gsapParser.js");
-  return mod.parseGsapScript as unknown as (script: string) => LintParsedGsap;
+  const mod = await import("../../parsers/gsapParserAcorn.js");
+  return mod.parseGsapScriptAcorn as unknown as (script: string) => LintParsedGsap;
 }
 import type { LintContext } from "../context";
 import type { HyperframeLintFinding, LintRule } from "../types";
