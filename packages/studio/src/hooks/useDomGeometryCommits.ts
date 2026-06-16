@@ -42,7 +42,15 @@ export function useDomGeometryCommits({
 }: UseDomGeometryCommitsParams) {
   const handleDomPathOffsetCommit = useCallback(
     (selection: DomEditSelection, next: { x: number; y: number }) => {
-      if (isElementGsapTargeted(previewIframeRef.current, selection.element)) {
+      const gsapBlocked = isElementGsapTargeted(previewIframeRef.current, selection.element);
+      console.log(
+        "[drag:7] handleDomPathOffsetCommit (CSS path)",
+        JSON.stringify({
+          sel: selection.id,
+          gsapBlocked,
+        }),
+      );
+      if (gsapBlocked) {
         const error = new Error(GSAP_CSS_FALLBACK_BLOCKED_MESSAGE);
         showToast(error.message, "error");
         return Promise.reject(error);
