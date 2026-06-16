@@ -121,13 +121,29 @@ function kebabToCamel(prop: string): string {
   return prop.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
 }
 
+// Text parity: the SDK snapshot.text is trimmed, so trim the op value too.
+// An empty string and absent text (null) are treated as equivalent (collapsed
+// to null) so "" vs null does not flag — both mean "no text content".
+function normalizeText(value: string | null | undefined): string | null {
+  if (value == null) return null;
+  const trimmed = value.trim();
+  return trimmed === "" ? null : trimmed;
+}
+
 const OP_FIELD_RESOLVERS: Record<string, OpFieldResolver> = {
   "inline-style": (op, flat) => ({
     property: op.property,
     expected: op.value,
     actual: flat.styles[kebabToCamel(op.property)] ?? flat.styles[op.property] ?? null,
   }),
-  "text-content": (op, flat) => ({ property: "text", expected: op.value ?? "", actual: flat.text }),
+  // snapshot.text is already TRIMMED; trim the expected op value to match, so
+  // trailing-whitespace differences don't flag. Empty-vs-absent ("" vs null) is
+  // collapsed in checkOpParity. A genuinely different text value still flags.
+  "text-content": (op, flat) => ({
+    property: "text",
+    expected: normalizeText(op.value),
+    actual: normalizeText(flat.text),
+  }),
   attribute: (op, flat) => ({
     property: attrName(op.property),
     expected: op.value ?? null,
@@ -345,6 +361,28 @@ export interface ShadowTiming {
   trackIndex?: number;
 }
 
+// Timing start/duration are computed arithmetically by the SDK (e.g. 21.36 -
+// 0 + drag delta) but stored as a rounded literal server-side, so exact compare
+// flags float-precision noise like 3.1 vs 3.0999999999999996 (~1e-16). Compare
+// with a relative epsilon; a genuinely different value (3.1 vs 3.5) still flags.
+// trackIndex is an integer track slot — compared exactly by the caller.
+function timingValuesEqual(a: number, b: number): boolean {
+  if (a === b) return true;
+  return Math.abs(a - b) <= 1e-6 * Math.max(1, Math.abs(a), Math.abs(b));
+}
+
+// start/duration tolerate float-precision drift; trackIndex (integer slot) is exact.
+function timingFieldEqual(
+  key: keyof ShadowTiming,
+  actual: number | null | undefined,
+  expected: number,
+): boolean {
+  if (typeof actual === "number" && key !== "trackIndex") {
+    return timingValuesEqual(actual, expected);
+  }
+  return actual === expected;
+}
+
 /** Shadow a timing edit. Parity: snapshot start/duration/trackIndex match. */
 export function runShadowTiming(
   session: Composition,
@@ -373,15 +411,14 @@ export function runShadowTiming(
     ];
     for (const [key, actual] of fields) {
       const expected = timing[key];
-      if (expected !== undefined && actual !== expected) {
-        mismatches.push({
-          kind: "value_mismatch",
-          hfId,
-          property: key,
-          expected: String(expected),
-          actual: actual == null ? null : String(actual),
-        });
-      }
+      if (expected === undefined || timingFieldEqual(key, actual, expected)) continue;
+      mismatches.push({
+        kind: "value_mismatch",
+        hfId,
+        property: key,
+        expected: String(expected),
+        actual: actual == null ? null : String(actual),
+      });
     }
     return mismatches;
   });

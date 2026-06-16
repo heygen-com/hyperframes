@@ -110,6 +110,7 @@ describe("sdkShadowDispatch (integration)", () => {
     expect(session.getElement("hf-box")?.inlineStyles.color).toBe("#00f");
   });
 
+  // fallow-ignore-next-line code-duplication
   it("does NOT false-mismatch a hyphenated style property (kebab op vs camelCase snapshot)", async () => {
     const { sdkShadowDispatch } = await import("./sdkShadow");
     const session = await openComposition(BASE_HTML);
@@ -147,6 +148,65 @@ describe("sdkShadowDispatch (integration)", () => {
     sdkShadowDispatch(session, "hf-box", ops);
 
     expect(session.getElement("hf-box")?.text).toBe("Updated");
+  });
+
+  // Fix 2: text parity normalization. snapshot.text is trimmed by the SDK, so a
+  // trailing-whitespace-only difference between the op value and the snapshot must
+  // not flag.
+  it("does NOT false-mismatch trailing-whitespace-only text difference", async () => {
+    const { sdkShadowDispatch } = await import("./sdkShadow");
+    const session = await openComposition(BASE_HTML);
+
+    const ops: PatchOperation[] = [{ type: "text-content", property: "text", value: "World   " }];
+    const result = sdkShadowDispatch(session, "hf-box", ops);
+
+    expect(result.dispatched).toBe(true);
+    expect(result.mismatches).toHaveLength(0); // trimmed both sides
+  });
+
+  // Empty-string op value vs an absent (null) snapshot text must collapse to equal
+  // — both mean "no text content".
+  it("treats empty-string text op and null snapshot text as equal", async () => {
+    const { sdkShadowDispatch } = await import("./sdkShadow");
+    const EMPTY_HTML = /* html */ `<!DOCTYPE html>
+<html><body><img data-hf-id="hf-img" src="x.png" /></body></html>`;
+    const session = await openComposition(EMPTY_HTML);
+
+    const ops: PatchOperation[] = [{ type: "text-content", property: "text", value: "" }];
+    const result = sdkShadowDispatch(session, "hf-img", ops);
+
+    expect(result.dispatched).toBe(true);
+    expect(result.mismatches).toHaveLength(0); // "" vs null → both null
+  });
+
+  // Fix 3 verdict (REAL DIVERGENCE, not a readback artifact): the inline-style
+  // read-back already reads only the AUTHORED style attribute (getElementStyles →
+  // parseStyleAttr), never computed styles. The transform-origin event
+  // (expected null actual "center center") is a genuine SDK bug: setStyle removal
+  // of a HYPHENATED property silently no-ops because setElementStyles deletes the
+  // kebab key while the style map is keyed camelCase. The shadow CORRECTLY flags
+  // it; the fix belongs in the SDK (packages/sdk/src/engine/model.ts), not here.
+  it("CORRECTLY flags the SDK transform-origin removal no-op (real divergence)", async () => {
+    const { sdkShadowDispatch } = await import("./sdkShadow");
+    const TO_HTML = /* html */ `<!DOCTYPE html>
+<html><body><div data-hf-id="hf-box" style="transform-origin: center center">x</div></body></html>`;
+    const session = await openComposition(TO_HTML);
+
+    // op intends to REMOVE transform-origin (value null) ...
+    const ops: PatchOperation[] = [
+      { type: "inline-style", property: "transform-origin", value: null },
+    ];
+    const result = sdkShadowDispatch(session, "hf-box", ops);
+
+    // ... but the SDK still has it → genuine value_mismatch, not suppressed.
+    expect(result.dispatched).toBe(true);
+    expect(result.mismatches).toHaveLength(1);
+    expect(result.mismatches[0]).toMatchObject({
+      kind: "value_mismatch",
+      property: "transform-origin",
+      expected: null,
+      actual: "center center",
+    });
   });
 
   it("applies attribute op and reads back via session.getElement", async () => {
@@ -239,6 +299,32 @@ describe("runShadowDelete", () => {
       reason: "cannot_dispatch",
     });
   });
+
+  // Fix 4 verdict (REAL SDK id-resolution divergence, NOT a readback bug): when a
+  // bare hf-id collides between a sub-composition element (scopedId
+  // "hf-host/hf-dup") and a top-level sibling (scopedId "hf-dup"), removeElement
+  // resolves the bare id via resolveScoped → querySelector (document-order-first,
+  // removes the INNER instance), but getElement prefers the canonical top-level
+  // match (scopedId === id) which SURVIVES. The shadow then correctly reports
+  // expected "removed" / actual "present". The readback here is correct (it checks
+  // the same id it dispatched); the fix belongs in the SDK's id resolution
+  // (resolveScoped vs getElement agreement), not in this file.
+  const DUP_ID_HTML = /* html */ `<!DOCTYPE html><html><body>
+    <div data-hf-id="hf-root" data-hf-root>
+      <div data-hf-id="hf-host" data-composition-file="sub.html">
+        <div data-hf-id="hf-dup">inner</div>
+      </div>
+      <div data-hf-id="hf-dup">outer</div>
+    </div>
+  </body></html>`;
+
+  it("CORRECTLY reports present/removed for the SDK duplicate-bare-id delete divergence", async () => {
+    const session = await openComposition(DUP_ID_HTML);
+    runShadowDelete(session, "hf-dup");
+    // removeElement dropped the inner instance; the top-level one survives, so the
+    // readback truthfully flags one mismatch (not silently passed).
+    expect(lastShadow()).toMatchObject({ op: "delete", dispatched: true, mismatchCount: 1 });
+  });
 });
 
 describe("runShadowTiming", () => {
@@ -250,6 +336,38 @@ describe("runShadowTiming", () => {
     expect(el?.duration).toBe(3);
     expect(el?.trackIndex).toBe(1);
     expect(lastShadow()).toMatchObject({ op: "timing", dispatched: true, mismatchCount: 0 });
+  });
+
+  // Fix 1: float-precision tolerance. The SDK computes durations arithmetically
+  // (returning e.g. 3.0999999999999996); the server stores the rounded literal
+  // (3.1). A relative epsilon must treat these as equal, while a real difference
+  // still flags. A fake session returns the imprecise value on read-back.
+  type FakeTiming = { start?: number; duration?: number; trackIndex?: number };
+  function fakeTimingSession(readback: FakeTiming) {
+    return {
+      can: () => ({ ok: true }),
+      batch: (fn: () => void) => fn(),
+      dispatch: () => {},
+      getElement: () => readback,
+    } as unknown as Parameters<typeof runShadowTiming>[0];
+  }
+
+  it("does NOT flag float-precision duration drift (3.1 vs 3.0999999999999996)", () => {
+    const session = fakeTimingSession({ duration: 3.0999999999999996 });
+    runShadowTiming(session, "hf-clip", { duration: 3.1 });
+    expect(lastShadow()).toMatchObject({ op: "timing", dispatched: true, mismatchCount: 0 });
+  });
+
+  it("does NOT flag float-precision start drift (21.36 vs 21.360000000000014)", () => {
+    const session = fakeTimingSession({ start: 21.360000000000014 });
+    runShadowTiming(session, "hf-clip", { start: 21.36 });
+    expect(lastShadow()).toMatchObject({ op: "timing", dispatched: true, mismatchCount: 0 });
+  });
+
+  it("STILL flags a real duration difference (3.1 vs 3.5)", () => {
+    const session = fakeTimingSession({ duration: 3.5 });
+    runShadowTiming(session, "hf-clip", { duration: 3.1 });
+    expect(lastShadow()).toMatchObject({ op: "timing", dispatched: true, mismatchCount: 1 });
   });
 });
 
