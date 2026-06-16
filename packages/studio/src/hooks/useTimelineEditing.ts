@@ -5,7 +5,7 @@
 // fallow-ignore-file complexity
 import { useCallback, useRef } from "react";
 import type { Composition } from "@hyperframes/sdk";
-import { runShadowTiming } from "../utils/sdkShadow";
+import { runShadowDelete, runShadowTiming } from "../utils/sdkShadow";
 import type { TimelineElement } from "../player";
 import { usePlayerStore } from "../player";
 import { useRazorSplit } from "./useRazorSplit";
@@ -288,6 +288,7 @@ export function useTimelineEditing({
           );
         usePlayerStore.getState().setSelectedElementId(null);
         reloadPreview();
+        if (sdkSession) runShadowDelete(sdkSession, element.hfId);
         showToast(`Deleted ${label}. Use Undo to restore it.`, "info");
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to delete timeline clip";
@@ -303,6 +304,7 @@ export function useTimelineEditing({
       domEditSaveTimestampRef,
       reloadPreview,
       isRecordingRef,
+      sdkSession,
     ],
   );
 
