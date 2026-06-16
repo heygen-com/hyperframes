@@ -182,6 +182,26 @@ export function sdkShadowDispatch(
  * Despite the telemetry focus, this function does mutate the SDK session — it
  * is not read-only. No-op when STUDIO_SDK_SHADOW_ENABLED is false.
  */
+// Property-path mismatches carry user content (inline-style values, edited
+// text) in expected/actual. Scrub before telemetry: fully redact text-content
+// values, length-cap the rest. The in-memory parity result keeps raw values.
+function redactValueForTelemetry(
+  property: string | undefined,
+  value: string | null | undefined,
+): string | null | undefined {
+  if (value == null) return value;
+  if (property === "text") return `[redacted len=${value.length}]`;
+  return value.length > 64 ? `${value.slice(0, 64)}…` : value;
+}
+
+function redactMismatchesForTelemetry(mismatches: SdkShadowMismatch[]): SdkShadowMismatch[] {
+  return mismatches.map((m) => ({
+    ...m,
+    expected: redactValueForTelemetry(m.property, m.expected),
+    actual: redactValueForTelemetry(m.property, m.actual),
+  }));
+}
+
 export function runShadowDispatch(
   session: Composition,
   selection: DomEditSelection,
@@ -203,7 +223,7 @@ export function runShadowDispatch(
     op: "property",
     dispatched: result.dispatched,
     mismatchCount: result.mismatches.length,
-    mismatches: JSON.stringify(result.mismatches),
+    mismatches: JSON.stringify(redactMismatchesForTelemetry(result.mismatches)),
   });
 }
 
