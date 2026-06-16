@@ -878,6 +878,27 @@ export function removeKeyframeFromScript(
   return ms.toString();
 }
 
+export function removePropertyFromAnimation(
+  script: string,
+  animationId: string,
+  property: string,
+  from = false,
+): string {
+  const parsed = parseGsapScriptAcornForWrite(script);
+  if (!parsed) return script;
+  const target = parsed.located.find((l) => l.id === animationId);
+  if (!target) return script;
+  const { call } = target;
+  const objNode = from ? (call.method === "fromTo" ? call.fromArg : null) : call.varsArg;
+  if (!objNode) return script;
+  const propNode = findPropertyNode(objNode, property);
+  if (!propNode) return script;
+  const allProps = (objNode.properties ?? []).filter((p: any) => isObjectProperty(p));
+  const ms = new MagicString(script);
+  removeProp(ms, propNode, allProps);
+  return ms.toString();
+}
+
 // ── Label write ops ───────────────────────────────────────────────────────────
 
 export function addLabelToScript(script: string, name: string, position: number): string {

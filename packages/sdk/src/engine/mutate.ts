@@ -47,6 +47,7 @@ import {
   addAnimationToScript,
   updateAnimationInScript,
   removeAnimationFromScript,
+  removePropertyFromAnimation,
   addKeyframeToScript,
   removeKeyframeFromScript,
   updateKeyframeInScript,
@@ -136,7 +137,46 @@ function targets(target: HfId | HfId[]): HfId[] {
 
 // ─── Op dispatch ────────────────────────────────────────────────────────────
 
+function dispatchRemoveGsapKeyframe(
+  parsed: ParsedDocument,
+  op: Extract<EditOp, { type: "removeGsapKeyframe" }>,
+): MutationResult {
+  return "percentage" in op
+    ? handleRemoveGsapKeyframeByPercentage(parsed, op.animationId, op.percentage)
+    : handleRemoveGsapKeyframe(parsed, op.animationId, op.keyframeIndex);
+}
+
+function applyGsapOp(parsed: ParsedDocument, op: EditOp): MutationResult | undefined {
+  switch (op.type) {
+    case "addGsapTween":
+      return handleAddGsapTween(parsed, op.target, op.tween);
+    case "setGsapTween":
+      return handleSetGsapTween(parsed, op.animationId, op.properties);
+    case "removeGsapProperty":
+      return handleRemoveGsapProperty(parsed, op.animationId, op.property, op.from);
+    case "removeGsapTween":
+      return handleRemoveGsapTween(parsed, op.animationId);
+    case "setGsapKeyframe":
+      return handleSetGsapKeyframe(
+        parsed,
+        op.animationId,
+        op.keyframeIndex,
+        op.position,
+        op.value,
+        op.ease,
+      );
+    case "addGsapKeyframe":
+      return handleAddGsapKeyframe(parsed, op.animationId, op.position, op.value);
+    case "removeGsapKeyframe":
+      return dispatchRemoveGsapKeyframe(parsed, op);
+    default:
+      return undefined;
+  }
+}
+
 export function applyOp(parsed: ParsedDocument, op: EditOp): MutationResult {
+  const gsap = applyGsapOp(parsed, op);
+  if (gsap !== undefined) return gsap;
   switch (op.type) {
     case "setStyle":
       return handleSetStyle(parsed, targets(op.target), op.styles);
@@ -160,33 +200,14 @@ export function applyOp(parsed: ParsedDocument, op: EditOp): MutationResult {
       return handleSetCompositionMetadata(parsed, op);
     case "setVariableValue":
       return handleSetVariableValue(parsed, op.id, op.value);
-    case "addGsapTween":
-      return handleAddGsapTween(parsed, op.target, op.tween);
-    case "setGsapTween":
-      return handleSetGsapTween(parsed, op.animationId, op.properties);
-    case "removeGsapTween":
-      return handleRemoveGsapTween(parsed, op.animationId);
-    case "setGsapKeyframe":
-      return handleSetGsapKeyframe(
-        parsed,
-        op.animationId,
-        op.keyframeIndex,
-        op.position,
-        op.value,
-        op.ease,
-      );
-    case "addGsapKeyframe":
-      return handleAddGsapKeyframe(parsed, op.animationId, op.position, op.value);
-    case "removeGsapKeyframe":
-      return "percentage" in op
-        ? handleRemoveGsapKeyframeByPercentage(parsed, op.animationId, op.percentage)
-        : handleRemoveGsapKeyframe(parsed, op.animationId, op.keyframeIndex);
+    case "setClassStyle":
+      return handleSetClassStyle(parsed, op.selector, op.styles);
     case "addLabel":
       return handleAddLabel(parsed, op.name, op.position);
     case "removeLabel":
       return handleRemoveLabel(parsed, op.name);
-    case "setClassStyle":
-      return handleSetClassStyle(parsed, op.selector, op.styles);
+    default:
+      throw new UnsupportedOpError((op as EditOp).type);
   }
 }
 
@@ -691,6 +712,20 @@ function handleSetGsapTween(
   return gsapScriptChange(script, newScript);
 }
 
+function handleRemoveGsapProperty(
+  parsed: ParsedDocument,
+  animationId: string,
+  property: string,
+  from: boolean | undefined,
+): MutationResult {
+  const script = getGsapScript(parsed.document);
+  if (!script) return EMPTY;
+  const newScript = removePropertyFromAnimation(script, animationId, property, from ?? false);
+  if (newScript === script) return EMPTY;
+  setGsapScript(parsed.document, newScript);
+  return gsapScriptChange(script, newScript);
+}
+
 function handleRemoveGsapTween(parsed: ParsedDocument, animationId: string): MutationResult {
   const script = getGsapScript(parsed.document);
   if (!script) return EMPTY;
@@ -897,6 +932,7 @@ export function validateOp(parsed: ParsedDocument, op: EditOp): CanResult {
     case "setGsapKeyframe":
     case "addGsapKeyframe":
     case "removeGsapKeyframe":
+    case "removeGsapProperty":
     case "removeGsapTween":
     case "removeLabel":
       if (getGsapScript(parsed.document) === null)

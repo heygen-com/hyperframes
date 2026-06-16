@@ -192,32 +192,44 @@ type SdkGsapTweenOp =
   | { kind: "set"; animationId: string; properties: Partial<GsapTweenSpec> }
   | { kind: "remove"; animationId: string };
 
-export async function sdkGsapTweenPersist(
+export function sdkGsapTweenPersist(
   targetPath: string,
   op: SdkGsapTweenOp,
   sdkSession: Composition | null | undefined,
   deps: CutoverDeps,
   options?: CutoverOptions,
 ): Promise<boolean> {
+  if (op.kind === "add" && sdkSession && !sdkSession.getElement(op.target))
+    return Promise.resolve(false);
+  // dispatchGsapOpAndPersist returns false on before===after — that catches stale
+  // animationIds and unsupported shapes (e.g. from-prop on a plain tween), falling
+  // back to the server path. This subsumes explicit existence guards for set/remove.
+  return dispatchGsapOpAndPersist(targetPath, sdkSession, deps, options, (s) => {
+    s.batch(() => {
+      if (op.kind === "add") {
+        s.addGsapTween(op.target, op.spec);
+      } else if (op.kind === "set") {
+        s.setGsapTween(op.animationId, op.properties);
+      } else {
+        s.removeGsapTween(op.animationId);
+      }
+    });
+  });
+}
+
+async function dispatchGsapOpAndPersist(
+  targetPath: string,
+  sdkSession: Composition | null | undefined,
+  deps: CutoverDeps,
+  options: CutoverOptions | undefined,
+  dispatch: (s: Composition) => void,
+): Promise<boolean> {
   if (!sdkSession) return false;
   if (wrongCompositionFile(deps, targetPath)) return false;
   try {
-    if (op.kind === "add" && !sdkSession.getElement(op.target)) return false;
     const before = sdkSession.serialize();
-    sdkSession.batch(() => {
-      if (op.kind === "add") {
-        sdkSession.addGsapTween(op.target, op.spec);
-      } else if (op.kind === "set") {
-        sdkSession.setGsapTween(op.animationId, op.properties);
-      } else {
-        sdkSession.removeGsapTween(op.animationId);
-      }
-    });
+    dispatch(sdkSession);
     const after = sdkSession.serialize();
-    // No-op (stale animationId, unsupported shape e.g. from-prop on a plain
-    // tween): fall back to the server path so it surfaces the proper error
-    // instead of writing a phantom before==after undo step. Subsumes a
-    // per-op existence guard for the set/remove branches.
     if (after === before) return false;
     await persistSdkSerialize(after, targetPath, before, deps, options);
     trackStudioEvent("sdk_cutover_success", { opCount: 1 });
@@ -228,7 +240,7 @@ export async function sdkGsapTweenPersist(
   }
 }
 
-export async function sdkGsapKeyframePersist(
+export function sdkGsapKeyframePersist(
   targetPath: string,
   animationId: string,
   position: number,
@@ -237,25 +249,12 @@ export async function sdkGsapKeyframePersist(
   deps: CutoverDeps,
   options?: CutoverOptions,
 ): Promise<boolean> {
-  if (!sdkSession) return false;
-  if (wrongCompositionFile(deps, targetPath)) return false;
-  try {
-    const before = sdkSession.serialize();
-    sdkSession.batch(() =>
-      sdkSession.dispatch({ type: "addGsapKeyframe", animationId, position, value }),
-    );
-    const after = sdkSession.serialize();
-    if (after === before) return false;
-    await persistSdkSerialize(after, targetPath, before, deps, options);
-    trackStudioEvent("sdk_cutover_success", { opCount: 1 });
-    return true;
-  } catch (err) {
-    trackStudioEvent("sdk_cutover_fallback", { error: String(err) });
-    return false;
-  }
+  return dispatchGsapOpAndPersist(targetPath, sdkSession, deps, options, (s) =>
+    s.batch(() => s.dispatch({ type: "addGsapKeyframe", animationId, position, value })),
+  );
 }
 
-export async function sdkGsapRemoveKeyframePersist(
+export function sdkGsapRemoveKeyframePersist(
   targetPath: string,
   animationId: string,
   percentage: number,
@@ -263,20 +262,23 @@ export async function sdkGsapRemoveKeyframePersist(
   deps: CutoverDeps,
   options?: CutoverOptions,
 ): Promise<boolean> {
-  if (!sdkSession) return false;
-  if (wrongCompositionFile(deps, targetPath)) return false;
-  try {
-    const before = sdkSession.serialize();
-    sdkSession.dispatch({ type: "removeGsapKeyframe", animationId, percentage });
-    const after = sdkSession.serialize();
-    if (after === before) return false;
-    await persistSdkSerialize(after, targetPath, before, deps, options);
-    trackStudioEvent("sdk_cutover_success", { opCount: 1 });
-    return true;
-  } catch (err) {
-    trackStudioEvent("sdk_cutover_fallback", { error: String(err) });
-    return false;
-  }
+  return dispatchGsapOpAndPersist(targetPath, sdkSession, deps, options, (s) =>
+    s.dispatch({ type: "removeGsapKeyframe", animationId, percentage }),
+  );
+}
+
+export function sdkGsapRemovePropertyPersist(
+  targetPath: string,
+  animationId: string,
+  property: string,
+  from: boolean,
+  sdkSession: Composition | null | undefined,
+  deps: CutoverDeps,
+  options?: CutoverOptions,
+): Promise<boolean> {
+  return dispatchGsapOpAndPersist(targetPath, sdkSession, deps, options, (s) =>
+    s.dispatch({ type: "removeGsapProperty", animationId, property, from }),
+  );
 }
 
 export async function sdkDeletePersist(

@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { Composition } from "@hyperframes/sdk";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
-import { sdkGsapTweenPersist, type CutoverDeps } from "../utils/sdkCutover";
+import {
+  sdkGsapTweenPersist,
+  sdkGsapRemovePropertyPersist,
+  type CutoverDeps,
+} from "../utils/sdkCutover";
 import { PROPERTY_DEFAULTS } from "./gsapScriptCommitHelpers";
 import type { SafeGsapCommitMutation } from "./gsapScriptCommitTypes";
 
@@ -110,16 +114,47 @@ export function useGsapPropertyDebounce(
     [commitMutationSafely, sdk],
   );
 
-  const removeGsapProperty = useCallback(
-    (selection: DomEditSelection, animationId: string, property: string) => {
-      // ponytail: null ≠ removal in upsertProp; remove-property stays server-authoritative
-      commitMutationSafely(
-        selection,
-        { type: "remove-property", animationId, property },
-        { label: `Remove GSAP ${property}` },
-      );
+  const removeProperty = useCallback(
+    async (selection: DomEditSelection, animationId: string, property: string, from: boolean) => {
+      const { sdkSession, sdkDeps, activeCompPath } = sdk ?? {};
+      if (sdkSession && sdkDeps) {
+        const targetPath = selection.sourceFile || activeCompPath || "index.html";
+        const handled = await sdkGsapRemovePropertyPersist(
+          targetPath,
+          animationId,
+          property,
+          from,
+          sdkSession,
+          sdkDeps,
+          { label: `Remove GSAP ${from ? `from-${property}` : property}` },
+        );
+        if (handled) return;
+      }
+      if (from) {
+        commitMutationSafely(
+          selection,
+          { type: "remove-from-property", animationId, property },
+          {
+            label: `Remove GSAP from-${property}`,
+          },
+        );
+      } else {
+        commitMutationSafely(
+          selection,
+          { type: "remove-property", animationId, property },
+          {
+            label: `Remove GSAP ${property}`,
+          },
+        );
+      }
     },
-    [commitMutationSafely],
+    [commitMutationSafely, sdk],
+  );
+
+  const removeGsapProperty = useCallback(
+    (selection: DomEditSelection, animationId: string, property: string) =>
+      removeProperty(selection, animationId, property, false),
+    [removeProperty],
   );
 
   const updateGsapFromProperty = useCallback(
@@ -185,15 +220,9 @@ export function useGsapPropertyDebounce(
   );
 
   const removeGsapFromProperty = useCallback(
-    (selection: DomEditSelection, animationId: string, property: string) => {
-      // ponytail: null ≠ removal in upsertProp; remove-from-property stays server-authoritative
-      commitMutationSafely(
-        selection,
-        { type: "remove-from-property", animationId, property },
-        { label: `Remove GSAP from-${property}` },
-      );
-    },
-    [commitMutationSafely],
+    (selection: DomEditSelection, animationId: string, property: string) =>
+      removeProperty(selection, animationId, property, true),
+    [removeProperty],
   );
 
   return {
