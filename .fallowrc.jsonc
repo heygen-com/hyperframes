@@ -231,19 +231,6 @@
     // and runtime-scan effects, the per-element animations memo) whose
     // complexity pre-dates the computed-timeline work. Exempted at file level
     // for the same reason as files.ts rather than refactored as scope creep.
-    "ignore": [
-      "packages/core/src/studio-api/routes/files.ts",
-      "packages/studio/src/hooks/useGsapTweenCache.ts",
-      // AnimationCard.tsx: pre-existing large presentational components
-      // (PropertyRow, the card body — the latter already carries an inline
-      // fallow-ignore). Exempted at file level to avoid scope-creep refactors.
-      "packages/studio/src/components/editor/AnimationCard.tsx",
-      // propertyPanelHelpers.ts + PropertyPanel.tsx: pre-existing complexity
-      // (readGsapRuntimeValuesForPanel, the panel body) whose inherited
-      // fingerprint shifted when the onUnroll prop threaded through. Exempted at
-      // file level per the line-shift rationale above rather than refactored.
-      "packages/studio/src/components/editor/propertyPanelHelpers.ts",
-      "packages/studio/src/components/editor/PropertyPanel.tsx",
-    ],
+    "ignore": ["packages/core/src/studio-api/routes/files.ts"],
   },
 }
