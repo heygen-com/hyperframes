@@ -27,6 +27,7 @@ import {
   setArcPathInScript as setArcAcorn,
   updateArcSegmentInScript as updateArcSegmentAcorn,
   removeArcPathFromScript as removeArcAcorn,
+  unrollDynamicAnimations as unrollAcorn,
 } from "./gsapWriterAcorn.js";
 function acornId(script: string): string {
   const parsed = parseGsapScriptAcornForWrite(script) as ParsedGsapAcornForWrite;
@@ -458,5 +459,73 @@ describe("removeArcPathFromScript: acorn output correctness", () => {
   it("arcPath=undefined after removal", () => {
     const { id, enabled } = arcFixture();
     expect(arcShapeOf(removeArcAcorn(enabled, id)).arcPath).toBeUndefined();
+  });
+});
+
+// ─── unrollDynamicAnimations correctness ──────────────────────────────────────
+
+const UNROLL_LOOP_SCRIPT = `
+  const tl = gsap.timeline({ paused: true });
+  const items = ["#a", "#b"];
+  for (let i = 0; i < items.length; i++) {
+    tl.to(items[i], { opacity: 1, duration: 1 }, 0);
+  }
+`;
+
+const UNROLL_FOREACH_SCRIPT = `
+  const tl = gsap.timeline({ paused: true });
+  ["#a", "#b"].forEach(function(sel) {
+    tl.to(sel, { opacity: 1, duration: 2 }, 1);
+  });
+`;
+
+const UNROLL_ELEMENTS = [
+  {
+    selector: "#hero",
+    keyframes: [
+      { percentage: 0, properties: { opacity: 0 } },
+      { percentage: 100, properties: { opacity: 1 } },
+    ],
+  },
+  {
+    selector: "#sub",
+    keyframes: [
+      { percentage: 0, properties: { x: 0 } },
+      { percentage: 100, properties: { x: 200 } },
+    ],
+  },
+];
+
+function unrollId(script: string): string {
+  const p = acornId(script);
+  return p;
+}
+
+describe("unrollDynamicAnimations: acorn output correctness", () => {
+  it("for-loop: loop replaced with individual tl.to() calls", () => {
+    const id = unrollId(UNROLL_LOOP_SCRIPT);
+    const out = unrollAcorn(UNROLL_LOOP_SCRIPT, id, UNROLL_ELEMENTS);
+    expect(out).not.toBe(UNROLL_LOOP_SCRIPT);
+    expect(out).toContain('tl.to("#hero"');
+    expect(out).toContain('tl.to("#sub"');
+    expect(out).not.toContain("for (");
+  });
+
+  it("forEach: loop replaced with individual tl.to() calls", () => {
+    const id = unrollId(UNROLL_FOREACH_SCRIPT);
+    const out = unrollAcorn(UNROLL_FOREACH_SCRIPT, id, UNROLL_ELEMENTS);
+    expect(out).toContain('tl.to("#hero"');
+    expect(out).not.toContain("forEach");
+  });
+
+  it("preserves duration and position from original tween", () => {
+    const id = unrollId(UNROLL_LOOP_SCRIPT);
+    const out = unrollAcorn(UNROLL_LOOP_SCRIPT, id, UNROLL_ELEMENTS);
+    expect(out).toContain("duration: 1");
+    expect(out).toContain("}, 0)");
+  });
+
+  it("no-op when animationId not found", () => {
+    expect(unrollAcorn(UNROLL_LOOP_SCRIPT, "nope", UNROLL_ELEMENTS)).toBe(UNROLL_LOOP_SCRIPT);
   });
 });

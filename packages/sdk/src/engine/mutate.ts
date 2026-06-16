@@ -61,6 +61,7 @@ import {
   setArcPathInScript,
   updateArcSegmentInScript,
   removeArcPathFromScript,
+  unrollDynamicAnimations,
 } from "@hyperframes/core/gsap-writer-acorn";
 import { deriveKeyframeBackfillDefaults } from "./keyframeBackfill.js";
 
@@ -208,6 +209,12 @@ function applyArcPathOp(parsed: ParsedDocument, op: EditOp): MutationResult | un
       );
     case "removeArcPath":
       return handleArcPathScript(parsed, s, removeArcPathFromScript(s, op.animationId));
+    case "unrollDynamicAnimations":
+      return handleArcPathScript(
+        parsed,
+        s,
+        unrollDynamicAnimations(s, op.animationId, op.elements),
+      );
     default:
       return undefined;
   }
@@ -1107,6 +1114,7 @@ export function validateOp(parsed: ParsedDocument, op: EditOp): CanResult {
     case "setArcPath":
     case "updateArcSegment":
     case "removeArcPath":
+    case "unrollDynamicAnimations":
     case "deleteAllForSelector":
     case "removeLabel":
       if (getGsapScript(parsed.document) === null)

@@ -157,7 +157,16 @@ export type EditOp =
         cp2?: { x: number; y: number };
       };
     }
-  | { type: "removeArcPath"; animationId: string };
+  | { type: "removeArcPath"; animationId: string }
+  | {
+      type: "unrollDynamicAnimations";
+      animationId: string;
+      elements: Array<{
+        selector: string;
+        keyframes: Array<{ percentage: number; properties: Record<string, number | string> }>;
+        easeEach?: string;
+      }>;
+    };
 
 export interface ElasticHold {
   start: number;

@@ -1632,3 +1632,88 @@ export function splitAnimationsInScript(
 
   return { script: result, skippedSelectors };
 }
+
+// ── Unroll dynamic animations ────────────────────────────────────────────────
+
+function isLoopNode(node: any): boolean {
+  const t = node?.type;
+  return (
+    t === "ForStatement" ||
+    t === "ForInStatement" ||
+    t === "ForOfStatement" ||
+    t === "WhileStatement"
+  );
+}
+
+function isForEachStatement(node: any): boolean {
+  return (
+    node?.type === "ExpressionStatement" &&
+    node.expression?.type === "CallExpression" &&
+    node.expression.callee?.property?.name === "forEach"
+  );
+}
+
+function findEnclosingLoop(ancestors: any[]): { start: number; end: number } | null {
+  for (let i = ancestors.length - 2; i >= 0; i--) {
+    const node = ancestors[i];
+    if (isLoopNode(node) || isForEachStatement(node)) {
+      return { start: node.start as number, end: node.end as number };
+    }
+  }
+  return null;
+}
+
+function buildUnrollReplacement(
+  timelineVar: string,
+  animation: GsapAnimation,
+  elements: Array<{
+    selector: string;
+    keyframes: Array<{ percentage: number; properties: Record<string, number | string> }>;
+    easeEach?: string;
+  }>,
+): string {
+  const duration = typeof animation.duration === "number" ? animation.duration : 8;
+  const ease = typeof animation.ease === "string" ? animation.ease : "none";
+  const pos = animation.position ?? 0;
+  const posCode = typeof pos === "number" ? String(pos) : JSON.stringify(pos);
+  const calls = elements.map((el) => {
+    const sorted = [...el.keyframes].sort((a, b) => a.percentage - b.percentage);
+    const kfCode = buildKeyframeObjectCode(sorted, el.easeEach);
+    return `${timelineVar}.to(${JSON.stringify(el.selector)}, { keyframes: ${kfCode}, duration: ${duration}, ease: ${JSON.stringify(ease)} }, ${posCode});`;
+  });
+  return calls.join("\n  ");
+}
+
+export type UnrollElement = {
+  selector: string;
+  keyframes: Array<{ percentage: number; properties: Record<string, number | string> }>;
+  easeEach?: string;
+};
+
+/**
+ * Replace a dynamic loop that generates multiple tween calls with individual
+ * static `tl.to()` calls — one per element. Finds the loop containing the
+ * animation and replaces the entire loop body with unrolled static calls.
+ */
+export function unrollDynamicAnimations(
+  script: string,
+  animationId: string,
+  elements: UnrollElement[],
+): string {
+  const parsed = parseGsapScriptAcornForWrite(script);
+  if (!parsed) return script;
+  const target = parsed.located.find((l) => l.id === animationId);
+  if (!target) return script;
+
+  const replacement = buildUnrollReplacement(parsed.timelineVar, target.animation, elements);
+  const ms = new MagicString(script);
+  const loop = findEnclosingLoop(target.call.ancestors);
+  if (loop) {
+    ms.overwrite(loop.start, loop.end, replacement);
+  } else {
+    const stmt = findEnclosingExpressionStatement(target.call.ancestors);
+    if (!stmt) return script;
+    ms.overwrite(stmt.start as number, stmt.end as number, replacement);
+  }
+  return ms.toString();
+}
