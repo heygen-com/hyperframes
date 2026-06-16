@@ -12,7 +12,6 @@ import * as acorn from "acorn";
 import * as acornWalk from "acorn-walk";
 import type {
   ArcPathConfig,
-  ArcPathSegment,
   GsapAnimation,
   GsapKeyframesData,
   GsapMethod,
@@ -20,7 +19,13 @@ import type {
   ParsedGsap,
 } from "./gsapSerialize.js";
 import { classifyTweenPropertyGroup } from "./gsapConstants.js";
+import { buildArcPath } from "./gsapSerialize.js";
 import { inlineComputedTimelines, readProvenance } from "./gsapInline.js";
+
+// Browser-safe re-exports so studio code can build arc config without importing
+// the recast parser (this acorn module is the browser-safe gsap subpath).
+export { buildArcPath } from "./gsapSerialize.js";
+export type { ArcPathConfig, ArcPathSegment, MotionPathShape } from "./gsapSerialize.js";
 
 const GSAP_METHODS = new Set<string>(["set", "to", "from", "fromTo"]);
 const QUERY_METHODS = new Set(["querySelector", "querySelectorAll"]);
@@ -791,34 +796,7 @@ function parseMotionPathNode(
     if (x !== undefined && y !== undefined) coords.push({ x, y });
   }
 
-  if (coords.length < 2) return undefined;
-
-  let waypoints: Array<{ x: number; y: number }>;
-  const segments: ArcPathSegment[] = [];
-
-  if (isCubic && coords.length >= 4) {
-    waypoints = [];
-    const first = coords[0];
-    if (first) waypoints.push(first);
-    for (let i = 1; i + 2 < coords.length; i += 3) {
-      const cp1 = coords[i];
-      const cp2 = coords[i + 1];
-      const anchor = coords[i + 2];
-      if (!cp1 || !cp2 || !anchor) continue;
-      waypoints.push(anchor);
-      segments.push({ curviness, cp1, cp2 });
-    }
-  } else {
-    waypoints = coords;
-    for (let i = 0; i < waypoints.length - 1; i++) {
-      segments.push({ curviness });
-    }
-  }
-
-  return {
-    arcPath: { enabled: true, autoRotate, segments },
-    waypoints,
-  };
+  return buildArcPath(coords, curviness, autoRotate, isCubic);
 }
 
 // ── Animation assembly ────────────────────────────────────────────────────────

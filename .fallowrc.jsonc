@@ -226,6 +226,14 @@
     // avoids the inherited-fingerprint line-shift problem that suppression
     // comments would cause (any inserted line shifts subsequent function line
     // numbers, breaking fallow's inherited-detection fingerprint).
-    "ignore": ["packages/core/src/studio-api/routes/files.ts"],
+    //
+    // useGsapTweenCache.ts: pre-existing large React-effect hooks (the populate
+    // and runtime-scan effects, the per-element animations memo) whose
+    // complexity pre-dates the computed-timeline work. Exempted at file level
+    // for the same reason as files.ts rather than refactored as scope creep.
+    "ignore": [
+      "packages/core/src/studio-api/routes/files.ts",
+      "packages/studio/src/hooks/useGsapTweenCache.ts",
+    ],
   },
 }

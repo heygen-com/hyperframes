@@ -211,6 +211,7 @@ export function useGsapAnimationsForElement(
             keyframes: runtime.keyframes,
             ...(runtime.easeEach ? { easeEach: runtime.easeEach } : {}),
           },
+          ...(runtime.arcPath ? { arcPath: runtime.arcPath } : {}),
         };
       });
     }
@@ -243,6 +244,7 @@ export function useGsapAnimationsForElement(
                     keyframes: runtimeEntry.keyframes,
                     ...(runtimeEntry.easeEach ? { easeEach: runtimeEntry.easeEach } : {}),
                   },
+                  ...(runtimeEntry.arcPath ? { arcPath: runtimeEntry.arcPath } : {}),
                 },
               ];
             }
@@ -369,6 +371,9 @@ export function usePopulateKeyframeCacheForFile(
       for (const anim of parsed.animations) {
         const id = extractIdFromSelector(anim.targetSelector);
         if (!id) continue;
+        // Leave statically-unresolvable tweens to the runtime scan below, which
+        // reads the live timeline — don't claim them with a (wrong) static entry.
+        if (anim.hasUnresolvedKeyframes) continue;
         const kfData = anim.keyframes ?? synthesizeFlatTweenKeyframes(anim);
         if (!kfData) continue;
         const tweenPos =
@@ -428,7 +433,13 @@ export function usePopulateKeyframeCacheForFile(
       const iframe =
         iframeRef?.current ?? document.querySelector<HTMLIFrameElement>("iframe[src*='/preview/']");
       if (!iframe) return false;
-      const scanned = scanAllRuntimeKeyframes(iframe);
+      // Clip dims per element so the scan converts tween-relative keyframes to
+      // clip-relative (matching the static path) instead of timeline-relative.
+      const clipById = new Map<string, { start: number; duration: number }>();
+      for (const el of usePlayerStore.getState().elements) {
+        if (el.domId) clipById.set(el.domId, { start: el.start, duration: el.duration });
+      }
+      const scanned = scanAllRuntimeKeyframes(iframe, clipById);
       if (scanned.size === 0) return false;
       const { setKeyframeCache, keyframeCache } = usePlayerStore.getState();
       for (const [id, data] of scanned) {

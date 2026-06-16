@@ -89,6 +89,39 @@ export interface ArcPathConfig {
   segments: ArcPathSegment[];
 }
 
+export interface MotionPathShape {
+  arcPath: ArcPathConfig;
+  waypoints: Array<{ x: number; y: number }>;
+}
+
+/**
+ * Build arcPath segments + waypoints from resolved path coordinates. Shared by
+ * the AST parser (coords from literal nodes) and the runtime scanner (coords
+ * from a live `vars.motionPath`), so both produce identical arc config.
+ */
+export function buildArcPath(
+  coords: Array<{ x: number; y: number }>,
+  curviness: number,
+  autoRotate: boolean | number,
+  isCubic: boolean,
+): MotionPathShape | undefined {
+  if (coords.length < 2) return undefined;
+  const segments: ArcPathSegment[] = [];
+  let waypoints: Array<{ x: number; y: number }>;
+  if (isCubic && coords.length >= 4) {
+    // coords are [anchor, cp1, cp2, anchor, cp1, cp2, anchor, ...].
+    waypoints = [coords[0]!];
+    for (let i = 1; i + 2 < coords.length; i += 3) {
+      waypoints.push(coords[i + 2]!);
+      segments.push({ curviness, cp1: coords[i]!, cp2: coords[i + 1]! });
+    }
+  } else {
+    waypoints = coords;
+    for (let i = 0; i < waypoints.length - 1; i++) segments.push({ curviness });
+  }
+  return { arcPath: { enabled: true, autoRotate, segments }, waypoints };
+}
+
 export interface ParsedGsap {
   animations: GsapAnimation[];
   timelineVar: string;
