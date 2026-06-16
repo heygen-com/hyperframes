@@ -230,6 +230,15 @@ export function useGsapAwareEditing({
     [domEditSelection, gsapCommitMutation],
   );
 
+  // Unroll all computed (helper/loop) tweens in the active timeline into literal
+  // tweens, so the clicked keyframe becomes directly editable. Visual no-op.
+  const handleUnroll = useCallback(() => {
+    void commitMutation(
+      { type: "unroll-timeline" },
+      { label: "Unroll to literal tweens", softReload: true },
+    );
+  }, [commitMutation]);
+
   return {
     handleGsapAwarePathOffsetCommit,
     handleGsapAwareBoxSizeCommit,
@@ -237,6 +246,7 @@ export function useGsapAwareEditing({
     commitAnimatedProperty,
     handleSetArcPath,
     handleUpdateArcSegment,
+    handleUnroll,
     commitMutation,
   };
 }

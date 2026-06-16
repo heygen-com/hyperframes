@@ -74,6 +74,7 @@ export const PropertyPanel = memo(function PropertyPanel({
   onAddGsapAnimation,
   onSetArcPath,
   onUpdateArcSegment,
+  onUnroll,
   onAddKeyframe,
   onRemoveKeyframe,
   onConvertToKeyframes,
@@ -531,6 +532,7 @@ export const PropertyPanel = memo(function PropertyPanel({
               onAddAnimation={onAddGsapAnimation}
               onSetArcPath={onSetArcPath}
               onUpdateArcSegment={onUpdateArcSegment}
+              onUnroll={onUnroll}
             />
           )}
 

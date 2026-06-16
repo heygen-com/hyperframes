@@ -239,8 +239,6 @@ function parseNumericOrString(raw: string): number | string {
 interface AnimationCardProps extends GsapAnimationEditCallbacks {
   animation: GsapAnimation;
   defaultExpanded: boolean;
-  /** Unroll a computed (helper/loop) tween into literal tweens so it edits directly. */
-  onUnroll?: (animationId: string) => void;
 }
 
 // fallow-ignore-next-line complexity

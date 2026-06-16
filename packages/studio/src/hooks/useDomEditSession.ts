@@ -334,6 +334,7 @@ export function useDomEditSession({
     commitAnimatedProperty,
     handleSetArcPath,
     handleUpdateArcSegment,
+    handleUnroll,
     commitMutation,
   } = useGsapAwareEditing({
     domEditSelection,
@@ -420,6 +421,7 @@ export function useDomEditSession({
     commitAnimatedProperty,
     handleSetArcPath,
     handleUpdateArcSegment,
+    handleUnroll,
     invalidateGsapCache: bumpGsapCache,
     previewIframeRef,
     commitMutation,

@@ -56,6 +56,8 @@ export interface PropertyPanelProps {
     segmentIndex: number,
     update: Partial<import("@hyperframes/core/gsap-parser").ArcPathSegment>,
   ) => void;
+  /** Unroll computed (helper/loop) tweens into literal tweens for direct editing. */
+  onUnroll?: (animationId: string) => void;
   onAddKeyframe?: (
     animationId: string,
     percentage: number,

@@ -25,6 +25,7 @@ import {
 } from "../helpers/finiteMutation.js";
 import type { GsapAnimation } from "../../parsers/gsapSerialize.js";
 import { parseGsapScriptAcorn } from "../../parsers/gsapParserAcorn.js";
+import { unrollComputedTimeline } from "../../parsers/gsapUnroll.js";
 import {
   removeElementFromHtml,
   patchElementInHtml,
@@ -475,6 +476,11 @@ type GsapMutationRequest =
       targetSelector: string;
     }
   | {
+      // Rewrite all top-level helper/loop constructs into literal tweens so
+      // computed keyframes become directly editable (visual no-op).
+      type: "unroll-timeline";
+    }
+  | {
       type: "shift-positions";
       targetSelector: string;
       delta: number;
@@ -733,6 +739,9 @@ async function executeGsapMutation(
     case "split-into-property-groups": {
       const result = splitIntoPropertyGroups(block.scriptText, body.animationId);
       return result.script;
+    }
+    case "unroll-timeline": {
+      return unrollComputedTimeline(block.scriptText);
     }
     case "shift-positions": {
       const { targetSelector, delta } = body;

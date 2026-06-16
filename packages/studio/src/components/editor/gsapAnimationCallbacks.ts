@@ -28,4 +28,6 @@ export interface GsapAnimationEditCallbacks {
     segmentIndex: number,
     update: Partial<ArcPathSegment>,
   ) => void;
+  /** Unroll a computed (helper/loop) tween into literal tweens so it edits directly. */
+  onUnroll?: (animationId: string) => void;
 }
