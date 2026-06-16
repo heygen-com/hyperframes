@@ -315,6 +315,21 @@ tl.to("[data-hf-id=\\"hf-box\\"]", { opacity: "1", duration: 0.5 }, 0);
 window.__timelines["t"] = tl;`;
     expect(gsapFidelityMismatches(numeric, stringy)).toEqual([]);
   });
+
+  it("matches the same element across different selector forms when a resolver is given", () => {
+    // SDK writes [data-hf-id="hf-x"], server writes .x — same element, same tween.
+    const sdk = `var tl = gsap.timeline({ paused: true });
+tl.to("[data-hf-id=\\"hf-x\\"]", { x: 200, duration: 0.8 }, 0.5);
+window.__timelines["t"] = tl;`;
+    const server = `var tl = gsap.timeline({ paused: true });
+tl.to(".x", { x: 200, duration: 0.8 }, 0.5);
+window.__timelines["t"] = tl;`;
+    const resolve = (sel: string) => (/hf-x|\.x/.test(sel) ? "hf-x" : sel);
+    // Without a resolver: selector-form divergence → present/absent mismatch.
+    expect(gsapFidelityMismatches(sdk, server).length).toBeGreaterThan(0);
+    // With a resolver: matched by element → no mismatch.
+    expect(gsapFidelityMismatches(sdk, server, resolve)).toEqual([]);
+  });
 });
 
 describe("runShadowGsapFidelity", () => {

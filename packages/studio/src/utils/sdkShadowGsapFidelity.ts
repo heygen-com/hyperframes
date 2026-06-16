@@ -36,10 +36,28 @@ function extractGsapScript(html: string): string | null {
   return null;
 }
 
-function animById(script: string): Map<string, GsapAnimation> {
+function posKey(position: unknown): string {
+  if (typeof position === "number") return String(position);
+  const n = Number(position);
+  return Number.isNaN(n) ? String(position) : String(n);
+}
+
+// Key a tween by its RESOLVED target element (not raw selector) + method +
+// position. The SDK writer emits [data-hf-id="X"] selectors while the server
+// emits class/other selectors for the SAME element; keying by resolved element
+// matches them so the diff compares values instead of flagging present/absent.
+function tweenKey(anim: GsapAnimation, resolveSelector?: (sel: string) => string): string {
+  const sel = resolveSelector ? resolveSelector(anim.targetSelector) : anim.targetSelector;
+  return `${sel}|${anim.method}|${posKey(anim.position)}`;
+}
+
+function animByKey(
+  script: string,
+  resolveSelector?: (sel: string) => string,
+): Map<string, GsapAnimation> {
   const map = new Map<string, GsapAnimation>();
   const parsed = parseGsapScriptAcorn(script);
-  for (const anim of parsed.animations) map.set(anim.id, anim);
+  for (const anim of parsed.animations) map.set(tweenKey(anim, resolveSelector), anim);
   return map;
 }
 
@@ -73,37 +91,41 @@ function canonicalProps(obj: Record<string, unknown> | undefined): string {
 }
 
 /**
- * Structurally diff two GSAP scripts by tween id. Reports a tween present in
- * one but not the other, and per-field value drift (method, position, duration,
- * ease, properties, fromProperties). Comparison is canonical (see above) so
- * writer formatting differences do not produce false mismatches.
+ * Structurally diff two GSAP scripts. Tweens are matched by resolved target
+ * element + method + position (see tweenKey), so the SDK's [data-hf-id]
+ * selectors and the server's class selectors for the same element don't
+ * false-flag present/absent. Reports a tween present in one but not the other,
+ * and per-field value drift (duration, ease, properties, fromProperties).
+ * Comparison is canonical so writer formatting differences don't register.
+ *
+ * Pass resolveSelector (selector → canonical element id) to enable the
+ * element-based matching; without it, matching falls back to raw selector.
  */
 // fallow-ignore-next-line complexity
 export function gsapFidelityMismatches(
   sdkScript: string,
   serverScript: string,
+  resolveSelector?: (sel: string) => string,
 ): SdkShadowMismatch[] {
-  const sdk = animById(sdkScript);
-  const server = animById(serverScript);
+  const sdk = animByKey(sdkScript, resolveSelector);
+  const server = animByKey(serverScript, resolveSelector);
   const mismatches: SdkShadowMismatch[] = [];
-  const ids = new Set([...sdk.keys(), ...server.keys()]);
-  for (const id of ids) {
-    const a = sdk.get(id);
-    const b = server.get(id);
+  const keys = new Set([...sdk.keys(), ...server.keys()]);
+  for (const key of keys) {
+    const a = sdk.get(key);
+    const b = server.get(key);
     if (!a || !b) {
       mismatches.push({
         kind: "value_mismatch",
-        hfId: id,
+        hfId: key,
         property: "tween",
         expected: b ? "present" : "absent",
         actual: a ? "present" : "absent",
       });
       continue;
     }
-    // [property, sdk-value, server-value, equal?]
+    // method + position are part of the key (already equal); compare values.
     const fields: Array<[string, unknown, unknown, boolean]> = [
-      ["method", a.method, b.method, a.method === b.method],
-      ["position", a.position, b.position, numericEqual(a.position, b.position)],
       ["duration", a.duration, b.duration, numericEqual(a.duration, b.duration)],
       ["ease", a.ease, b.ease, a.ease === b.ease],
       [
@@ -123,7 +145,7 @@ export function gsapFidelityMismatches(
       if (!equal) {
         mismatches.push({
           kind: "value_mismatch",
-          hfId: id,
+          hfId: key,
           property,
           expected: bv == null ? null : JSON.stringify(bv),
           actual: av == null ? null : JSON.stringify(av),
@@ -158,6 +180,27 @@ export function resolveGsapFidelityArgs(
   return { before, op: shadowGsapOp, serverScript };
 }
 
+// Resolve a CSS selector to a canonical element id (data-hf-id) using the pre-op
+// document, so tweens that target the same element via different selectors
+// ([data-hf-id="X"] vs .X) match in the fidelity diff. Falls back to the raw
+// selector when it can't resolve (DOMParser unavailable, no match, bad selector).
+function makeSelectorResolver(html: string): (sel: string) => string {
+  let doc: Document | null = null;
+  try {
+    doc = new DOMParser().parseFromString(html, "text/html");
+  } catch {
+    doc = null;
+  }
+  return (sel) => {
+    if (!doc) return sel;
+    try {
+      return doc.querySelector(sel)?.getAttribute("data-hf-id") ?? sel;
+    } catch {
+      return sel;
+    }
+  };
+}
+
 /**
  * Shadow GSAP value fidelity: open a fresh SDK doc from the server's pre-op
  * file, apply the same tween op, serialize, and diff the SDK's GSAP script
@@ -189,7 +232,11 @@ export async function runShadowGsapFidelity(
       });
       return;
     }
-    const mismatches = gsapFidelityMismatches(sdkScript, serverScript);
+    const mismatches = gsapFidelityMismatches(
+      sdkScript,
+      serverScript,
+      makeSelectorResolver(beforeHtml),
+    );
     trackStudioEvent("sdk_shadow_dispatch", {
       op: "gsap_fidelity",
       dispatched: true,
