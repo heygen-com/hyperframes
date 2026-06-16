@@ -33,13 +33,18 @@ describe("captionImagesWithGemini — OpenRouter provider", () => {
     vi.stubEnv("OPENROUTER_API_KEY", "or-test-key");
     vi.stubEnv("HYPERFRAMES_OPENROUTER_MODEL", "google/gemini-3.1-flash-lite");
 
-    const fetchMock = vi.fn(
-      async () =>
-        new Response(
-          JSON.stringify({ choices: [{ message: { content: "A dark hero with blue accents." } }] }),
-          { status: 200, headers: { "content-type": "application/json" } },
-        ),
-    );
+    // Capture the request inside the mock, where the args are well-typed —
+    // avoids casting `mock.calls` (and the repo's ban on `as` assertions).
+    let capturedUrl: string | undefined;
+    let capturedInit: RequestInit | undefined;
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      capturedUrl = url;
+      capturedInit = init;
+      return new Response(
+        JSON.stringify({ choices: [{ message: { content: "A dark hero with blue accents." } }] }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     const warnings: string[] = [];
@@ -49,13 +54,11 @@ describe("captionImagesWithGemini — OpenRouter provider", () => {
     expect(warnings).toEqual([]);
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("https://openrouter.ai/api/v1/chat/completions");
-    expect((init.headers as Record<string, string>).Authorization).toBe("Bearer or-test-key");
-    const body = JSON.parse(init.body as string);
+    expect(capturedUrl).toBe("https://openrouter.ai/api/v1/chat/completions");
+    expect(new Headers(capturedInit?.headers).get("authorization")).toBe("Bearer or-test-key");
+    const body = JSON.parse(typeof capturedInit?.body === "string" ? capturedInit.body : "{}");
     expect(body.model).toBe("google/gemini-3.1-flash-lite");
-    const parts = body.messages[0].content as Array<{ type: string; image_url?: { url: string } }>;
-    const image = parts.find((p) => p.type === "image_url");
+    const image = body.messages[0].content.find((p: { type: string }) => p.type === "image_url");
     expect(image?.image_url?.url).toMatch(/^data:image\/png;base64,/);
   });
 
