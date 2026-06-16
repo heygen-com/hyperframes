@@ -182,10 +182,16 @@ function resolveAssetDir(devSegments: string[], builtSegments: string[]): string
 
 // Resolves bundled templates shipped inside the CLI package
 // (packages/cli/src/templates/<id> in dev, dist/templates/<id> when packed).
-// Not to be confused with the repo-root registry/examples/ directory, which
-// is fetched remotely via fetchRemoteTemplate.
+// Dev-mode also checks registry/examples/<id> so that smoke CI tests pick up
+// PR-branch template changes before the PR is merged to main.
 function getStaticTemplateDir(templateId: string): string {
-  return resolveAssetDir(["..", "templates", templateId], ["templates", templateId]);
+  const base = dirname(fileURLToPath(import.meta.url));
+  const devPath = resolve(base, "..", "templates", templateId);
+  if (existsSync(devPath)) return devPath;
+  // fallback: repo-root registry/examples/<id> (4 levels up from src/commands/)
+  const registryPath = resolve(base, "..", "..", "..", "..", "registry", "examples", templateId);
+  if (existsSync(registryPath)) return registryPath;
+  return resolve(base, "templates", templateId);
 }
 
 function getSharedTemplateDir(): string {

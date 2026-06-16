@@ -70,6 +70,13 @@ async function main() {
     copyDir(join(CLI_ROOT, "src", "templates", tmpl), join(DIST, "templates", tmpl));
   }
 
+  // Bundle warm-grain from the repo registry so the built CLI can scaffold it
+  // offline and CI smoke tests pick up PR-branch changes before merge to main.
+  const warmGrainSrc = join(REPO_ROOT, "registry", "examples", "warm-grain");
+  if (existsSync(warmGrainSrc)) {
+    copyDir(warmGrainSrc, join(DIST, "templates", "warm-grain"));
+  }
+
   // Skills bundled into the published CLI. Branches don't all carry the same
   // skills/ tree (it gets restructured), so each entry is existsSync-guarded:
   // a missing skill dir warns + skips instead of crashing the build.
