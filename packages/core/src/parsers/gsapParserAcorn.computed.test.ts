@@ -14,7 +14,7 @@ describe("editabilityForProvenance", () => {
       "unroll",
     );
     expect(editabilityForProvenance({ kind: "loop", callSite: 1, iteration: 0 })).toBe("unroll");
-    expect(editabilityForProvenance({ kind: "runtime-dynamic" })).toBe("override");
+    expect(editabilityForProvenance({ kind: "runtime-dynamic" })).toBe("source");
   });
 });
 

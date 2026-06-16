@@ -2,8 +2,8 @@ import { editabilityForProvenance, type GsapProvenance } from "@hyperframes/core
 
 /**
  * Notice shown for computed tweens: helper/loop tweens offer an "unroll to
- * edit" action; dynamic tweens explain edits persist as composition overrides.
- * Literal tweens render nothing.
+ * edit" action; runtime-computed values point to the Code tab. Literal tweens
+ * render nothing.
  */
 export function ComputedTweenNotice({
   provenance,
@@ -14,10 +14,10 @@ export function ComputedTweenNotice({
 }) {
   const editability = editabilityForProvenance(provenance);
   if (editability === "direct") return null;
-  if (editability === "override") {
+  if (editability === "source") {
     return (
       <div className="rounded-md border border-neutral-800 bg-neutral-900/50 px-2 py-1.5 text-[9px] text-neutral-400">
-        Dynamic value — edits are saved as composition overrides.
+        Computed value — edit it in the Code tab.
       </div>
     );
   }

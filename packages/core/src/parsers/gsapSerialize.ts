@@ -33,17 +33,17 @@ export interface GsapProvenance {
 }
 
 /** How a tween's keyframes can be edited, derived from its provenance. */
-export type KeyframeEditability = "direct" | "unroll" | "override";
+export type KeyframeEditability = "direct" | "unroll" | "source";
 
 /**
  * Map provenance to an editing strategy:
- * - `direct`   — literal tween, maps 1:1 to source; edit in place.
- * - `unroll`   — helper/loop expansion; unroll to literal tweens first.
- * - `override` — runtime-dynamic; edits persist as a composition override.
+ * - `direct` — literal tween, maps 1:1 to source; edit in place.
+ * - `unroll` — helper/loop expansion; unroll to literal tweens, then edit.
+ * - `source` — runtime-dynamic value; not statically editable, edit the code.
  */
 export function editabilityForProvenance(provenance?: GsapProvenance): KeyframeEditability {
   if (!provenance || provenance.kind === "literal") return "direct";
-  if (provenance.kind === "runtime-dynamic") return "override";
+  if (provenance.kind === "runtime-dynamic") return "source";
   return "unroll";
 }
 
