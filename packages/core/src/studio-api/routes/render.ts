@@ -216,7 +216,13 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     const filename = c.req.path.split("/renders/file/")[1];
     if (!filename) return c.json({ error: "missing filename" }, 400);
     const rendersDir = adapter.rendersDir(project);
-    const fp = join(rendersDir, filename);
+    // Containment guard: the filename is attacker-controlled wildcard input, so
+    // route it through the same chokepoint every other project-scoped path uses.
+    // Literal `..` is collapsed upstream by the URL parser, but a bare join() +
+    // readFileSync still followed an in-rendersDir symlink pointing outside the
+    // dir; resolveWithinProject canonicalizes with realpath before serving.
+    const fp = resolveWithinProject(rendersDir, filename);
+    if (!fp) return c.json({ error: "forbidden" }, 403);
     if (!existsSync(fp)) return c.json({ error: "not found" }, 404);
     const contentType = renderContentType(fp);
     const content = readFileSync(fp);

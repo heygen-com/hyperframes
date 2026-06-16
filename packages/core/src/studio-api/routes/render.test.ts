@@ -354,3 +354,77 @@ describe("POST /projects/:id/render — composition path safety", () => {
     expect(spy).toHaveBeenCalledOnce();
   });
 });
+
+describe("GET /projects/:id/renders/file/* — path safety", () => {
+  const tmpDirs: string[] = [];
+
+  function buildApp(): { app: Hono; rendersDir: string } {
+    const rendersDir = mkdtempSync(join(tmpdir(), "hf-renders-out-"));
+    tmpDirs.push(rendersDir);
+    const adapter: StudioApiAdapter = {
+      listProjects: () => [],
+      resolveProject: async (id: string) => ({ id, dir: tmpdir() }),
+      bundle: async () => null,
+      lint: async () => ({ findings: [] }),
+      runtimeUrl: "/api/runtime.js",
+      rendersDir: () => rendersDir,
+      startRender: (opts) => ({
+        id: opts.jobId,
+        status: "rendering",
+        progress: 0,
+        outputPath: opts.outputPath,
+      }),
+    };
+    const app = new Hono();
+    registerRenderRoutes(app, adapter);
+    return { app, rendersDir };
+  }
+
+  // Mirror the repo convention (preview.test.ts / composition tests above):
+  // skip symlink cases on non-symlink-privileged Windows runners.
+  function tryCreateSymlink(target: string, path: string, type: "dir" | "file"): boolean {
+    try {
+      symlinkSync(target, path, type);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  afterEach(() => {
+    for (const d of tmpDirs) rmSync(d, { recursive: true, force: true });
+    tmpDirs.length = 0;
+  });
+
+  it("serves a render file that lives inside rendersDir", async () => {
+    const { app, rendersDir } = buildApp();
+    writeFileSync(join(rendersDir, "demo.mp4"), "render-bytes");
+    const res = await app.request("http://localhost/projects/demo/renders/file/demo.mp4");
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("render-bytes");
+  });
+
+  it("rejects a file reached through a symlink inside rendersDir pointing outside it", async () => {
+    const { app, rendersDir } = buildApp();
+    // A bare join()+readFileSync followed the symlink and leaked the target;
+    // the resolveWithinProject chokepoint canonicalizes with realpath first.
+    const external = mkdtempSync(join(tmpdir(), "hf-renders-external-"));
+    tmpDirs.push(external);
+    writeFileSync(join(external, "secret.txt"), "TOP-SECRET");
+    if (!tryCreateSymlink(join(external, "secret.txt"), join(rendersDir, "leak.txt"), "file"))
+      return;
+    const res = await app.request("http://localhost/projects/demo/renders/file/leak.txt");
+    expect(res.status).toBe(403);
+    expect(await res.text()).not.toContain("TOP-SECRET");
+  });
+
+  it("serves a render file reached through a symlink that stays inside rendersDir", async () => {
+    const { app, rendersDir } = buildApp();
+    mkdirSync(join(rendersDir, "nested"));
+    writeFileSync(join(rendersDir, "nested", "clip.mp4"), "nested-bytes");
+    if (!tryCreateSymlink(join(rendersDir, "nested"), join(rendersDir, "alias"), "dir")) return;
+    const res = await app.request("http://localhost/projects/demo/renders/file/alias/clip.mp4");
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("nested-bytes");
+  });
+});
