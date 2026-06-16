@@ -178,7 +178,9 @@ export function applyOp(parsed: ParsedDocument, op: EditOp): MutationResult {
     case "addGsapKeyframe":
       return handleAddGsapKeyframe(parsed, op.animationId, op.position, op.value);
     case "removeGsapKeyframe":
-      return handleRemoveGsapKeyframe(parsed, op.animationId, op.keyframeIndex);
+      return "percentage" in op
+        ? handleRemoveGsapKeyframeByPercentage(parsed, op.animationId, op.percentage)
+        : handleRemoveGsapKeyframe(parsed, op.animationId, op.keyframeIndex);
     case "addLabel":
       return handleAddLabel(parsed, op.name, op.position);
     case "removeLabel":
@@ -767,6 +769,28 @@ function handleAddGsapKeyframe(
     undefined,
     deriveKeyframeBackfillDefaults(props),
   );
+  if (newScript === script) return EMPTY;
+  setGsapScript(parsed.document, newScript);
+  return gsapScriptChange(script, newScript);
+}
+
+function handleRemoveGsapKeyframeByPercentage(
+  parsed: ParsedDocument,
+  animationId: string,
+  percentage: number,
+): MutationResult {
+  const script = getGsapScript(parsed.document);
+  if (!script) return EMPTY;
+  const parsedForWrite = parseGsapScriptAcornForWrite(script);
+  const located = parsedForWrite?.located.find((l) => l.id === animationId);
+  const kfs = located?.animation.keyframes?.keyframes;
+  if (!kfs) return EMPTY;
+  // No-op on ambiguity: duplicate-percentage keyframes can't be disambiguated.
+  const TOLERANCE = 0.001;
+  const matches = kfs.filter((k) => Math.abs(k.percentage - percentage) <= TOLERANCE);
+  if (matches.length !== 1) return EMPTY;
+  const pct = matches[0]!.percentage;
+  const newScript = removeKeyframeFromScript(script, animationId, pct);
   if (newScript === script) return EMPTY;
   setGsapScript(parsed.document, newScript);
   return gsapScriptChange(script, newScript);

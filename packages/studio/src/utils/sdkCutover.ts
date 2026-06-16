@@ -255,6 +255,30 @@ export async function sdkGsapKeyframePersist(
   }
 }
 
+export async function sdkGsapRemoveKeyframePersist(
+  targetPath: string,
+  animationId: string,
+  percentage: number,
+  sdkSession: Composition | null | undefined,
+  deps: CutoverDeps,
+  options?: CutoverOptions,
+): Promise<boolean> {
+  if (!sdkSession) return false;
+  if (wrongCompositionFile(deps, targetPath)) return false;
+  try {
+    const before = sdkSession.serialize();
+    sdkSession.dispatch({ type: "removeGsapKeyframe", animationId, percentage });
+    const after = sdkSession.serialize();
+    if (after === before) return false;
+    await persistSdkSerialize(after, targetPath, before, deps, options);
+    trackStudioEvent("sdk_cutover_success", { opCount: 1 });
+    return true;
+  } catch (err) {
+    trackStudioEvent("sdk_cutover_fallback", { error: String(err) });
+    return false;
+  }
+}
+
 export async function sdkDeletePersist(
   hfId: string,
   originalContent: string,

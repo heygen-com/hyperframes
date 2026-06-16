@@ -3,7 +3,11 @@ import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { Composition } from "@hyperframes/sdk";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { executeOptimistic } from "../utils/optimisticUpdate";
-import { sdkGsapKeyframePersist, type CutoverDeps } from "../utils/sdkCutover";
+import {
+  sdkGsapKeyframePersist,
+  sdkGsapRemoveKeyframePersist,
+  type CutoverDeps,
+} from "../utils/sdkCutover";
 import type { KeyframeCacheEntry } from "../player/store/playerStore";
 import { commitKeyframeAtTimeImpl } from "./gsapKeyframeCommit";
 import { readKeyframeSnapshot, writeKeyframeCache } from "./gsapKeyframeCacheHelpers";
@@ -151,9 +155,6 @@ export function useGsapKeyframeOps({
 
   const removeKeyframe = useCallback(
     (selection: DomEditSelection, animationId: string, percentage: number) => {
-      // ponytail: SDK removeGsapKeyframe uses keyframeIndex (not percentage); mismatch with
-      // Studio's percentage-based API. Resolving index requires parsing GSAP state at call
-      // time — deferred. removeKeyframe stays server-authoritative.
       const sourceFile = selection.sourceFile || activeCompPath || "index.html";
       const mutation = { type: "remove-keyframe", animationId, percentage };
       void executeOptimisticKeyframeCacheUpdate({
@@ -162,19 +163,31 @@ export function useGsapKeyframeOps({
         apply: (prev) => ({
           ...prev,
           keyframes: prev.keyframes.filter(
-            (kf) => Math.abs((kf.tweenPercentage ?? kf.percentage) - percentage) > 0.2,
+            (kf) => Math.abs((kf.tweenPercentage ?? kf.percentage) - percentage) > 0.001,
           ),
         }),
-        persist: () =>
-          commitMutation(selection, mutation, {
+        persist: async () => {
+          if (sdkSession && sdkDeps) {
+            const handled = await sdkGsapRemoveKeyframePersist(
+              sourceFile,
+              animationId,
+              percentage,
+              sdkSession,
+              sdkDeps,
+              { label: `Remove keyframe at ${percentage}%` },
+            );
+            if (handled) return;
+          }
+          await commitMutation(selection, mutation, {
             label: `Remove keyframe at ${percentage}%`,
             softReload: true,
-          }),
+          });
+        },
       }).catch((error) => {
         trackGsapSaveFailure(error, selection, mutation, `Remove keyframe at ${percentage}%`);
       });
     },
-    [activeCompPath, commitMutation, trackGsapSaveFailure],
+    [activeCompPath, commitMutation, trackGsapSaveFailure, sdkSession, sdkDeps],
   );
 
   const convertToKeyframes = useCallback(
