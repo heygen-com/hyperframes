@@ -11,6 +11,27 @@ import type { PropertyGroupName } from "./gsapConstants";
 
 export type GsapMethod = "set" | "to" | "from" | "fromTo";
 
+/** How a tween was constructed in source — drives display classification and editability. */
+export type GsapProvenanceKind = "literal" | "helper" | "loop" | "runtime-dynamic";
+
+/**
+ * Origin of a parsed tween. `literal` tweens map 1:1 to a source call and edit
+ * directly; `helper`/`loop` tweens are expanded from a reused construct (unroll
+ * to edit); `runtime-dynamic` tweens come from live introspection (override to
+ * edit). Absent provenance is treated as `literal`.
+ */
+export interface GsapProvenance {
+  kind: GsapProvenanceKind;
+  /** Helper function name (kind === "helper"). */
+  fn?: string;
+  /** 1-based ordinal of the originating call site / loop construct in source order. */
+  callSite?: number;
+  /** 0-based iteration index (kind === "loop"). */
+  iteration?: number;
+  /** Source offset [start, end] of the originating call/loop, when known. */
+  sourceRange?: [number, number];
+}
+
 export interface GsapAnimation {
   id: string;
   targetSelector: string;
@@ -37,6 +58,8 @@ export interface GsapAnimation {
   /** Which property group this tween belongs to (position, scale, size, rotation, visual, other).
    *  Undefined for legacy mixed tweens that bundle multiple groups. */
   propertyGroup?: PropertyGroupName;
+  /** How this tween was constructed in source. Absent ⇒ literal. */
+  provenance?: GsapProvenance;
 }
 
 export interface GsapPercentageKeyframe {
