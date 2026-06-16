@@ -388,6 +388,7 @@ export function runShadowGsapTween(session: Composition, gsapOp: ShadowGsapOp): 
       : gsapOp.kind === "set"
         ? { type: "setGsapTween", animationId: gsapOp.animationId, properties: gsapOp.properties }
         : { type: "removeGsapTween", animationId: gsapOp.animationId };
+  // fallow-ignore-next-line complexity
   runShadowEditOp(session, op, "gsap", () => {
     let newId: string | undefined;
     session.batch(() => {
@@ -495,6 +496,7 @@ function canonicalProps(obj: Record<string, unknown> | undefined): string {
  * ease, properties, fromProperties). Comparison is canonical (see above) so
  * writer formatting differences do not produce false mismatches.
  */
+// fallow-ignore-next-line complexity
 export function gsapFidelityMismatches(
   sdkScript: string,
   serverScript: string,

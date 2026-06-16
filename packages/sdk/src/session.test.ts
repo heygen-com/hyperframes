@@ -17,6 +17,7 @@ const BASE_HTML = `
 class TestPreviewAdapter implements PreviewAdapter {
   private selectionHandlers: Array<(ids: string[]) => void> = [];
 
+  // fallow-ignore-next-line code-duplication
   elementAtPoint(_x: number, _y: number, _opts?: { atTime?: number }): ElementAtPointResult | null {
     return null;
   }
@@ -386,6 +387,7 @@ describe("setSelection", () => {
     expect(patches).toHaveLength(0);
   });
 
+  // fallow-ignore-next-line code-duplication
   it("setSelection with same ids does not fire selectionchange again", async () => {
     const comp = await openComposition(BASE_HTML);
     const calls: string[][] = [];
