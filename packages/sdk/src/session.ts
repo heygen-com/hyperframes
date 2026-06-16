@@ -48,6 +48,12 @@ export interface OpenCompositionOptions {
   trackedOrigins?: unknown[];
   /** Auto-coalesce window for history entries (ms). Default: 300. */
   coalesceMs?: number;
+  /**
+   * Pass `false` to skip attaching the history module (undo/redo).
+   * Default: history is attached in standalone (non-embedded) mode.
+   * Use when the host owns the undo stack and SDK undo is dead weight.
+   */
+  history?: false;
 }
 
 // ─── Implementation ───────────────────────────────────────────────────────────
@@ -495,7 +501,7 @@ export async function openComposition(
 
   const isEmbedded = opts?.overrides !== undefined;
 
-  if (!isEmbedded) {
+  if (!isEmbedded && opts?.history !== false) {
     const history = createHistory(session, {
       coalesceMs: opts?.coalesceMs ?? 300,
       trackedOrigins: opts?.trackedOrigins,

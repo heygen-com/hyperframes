@@ -97,7 +97,9 @@ export function useSdkSession(
         // 'change' AND Studio writes explicitly) and race on disk; it would
         // also write the full active-composition serialization to the fixed
         // persistPath even when an edit targeted a sub-composition file.
-        const comp = await openComposition(content);
+        // Studio's editHistory is the authoritative undo stack — SDK history
+        // is unused dead weight here (forceReloadSdkSession discards it on undo).
+        const comp = await openComposition(content, { history: false });
         // Cleanup may have fired while openComposition was awaited; dispose immediately.
         if (cancelled) {
           comp.dispose();
