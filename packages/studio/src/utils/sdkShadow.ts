@@ -12,6 +12,7 @@ import type { Composition } from "@hyperframes/sdk";
 import type { EditOp, GsapTweenSpec } from "@hyperframes/sdk";
 import { STUDIO_SDK_SHADOW_ENABLED } from "../components/editor/manualEditingAvailability";
 import { trackStudioEvent } from "./studioTelemetry";
+import { relEqual } from "./sdkShadowNumeric";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import type { PatchOperation } from "./sourcePatcher";
 
@@ -388,24 +389,16 @@ export interface ShadowTiming {
   trackIndex?: number;
 }
 
-// Timing start/duration are computed arithmetically by the SDK (e.g. 21.36 -
-// 0 + drag delta) but stored as a rounded literal server-side, so exact compare
-// flags float-precision noise like 3.1 vs 3.0999999999999996 (~1e-16). Compare
-// with a relative epsilon; a genuinely different value (3.1 vs 3.5) still flags.
-// trackIndex is an integer track slot — compared exactly by the caller.
-function timingValuesEqual(a: number, b: number): boolean {
-  if (a === b) return true;
-  return Math.abs(a - b) <= 1e-6 * Math.max(1, Math.abs(a), Math.abs(b));
-}
-
-// start/duration tolerate float-precision drift; trackIndex (integer slot) is exact.
+// start/duration tolerate float-precision drift (SDK computes them
+// arithmetically, server stores a rounded literal) via the shared relative
+// epsilon; trackIndex (integer track slot) is compared exactly.
 function timingFieldEqual(
   key: keyof ShadowTiming,
   actual: number | null | undefined,
   expected: number,
 ): boolean {
   if (typeof actual === "number" && key !== "trackIndex") {
-    return timingValuesEqual(actual, expected);
+    return relEqual(actual, expected);
   }
   return actual === expected;
 }

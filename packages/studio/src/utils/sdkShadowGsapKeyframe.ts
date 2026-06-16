@@ -31,7 +31,11 @@ import type { GsapPercentageKeyframe } from "@hyperframes/core/gsap-parser";
 import { STUDIO_SDK_SHADOW_ENABLED } from "../components/editor/manualEditingAvailability";
 import { trackStudioEvent } from "./studioTelemetry";
 import type { SdkShadowMismatch } from "./sdkShadow";
-import { gsapFidelityMismatches, makeSelectorResolver } from "./sdkShadowGsapFidelity";
+import {
+  extractGsapScript,
+  gsapFidelityMismatches,
+  makeSelectorResolver,
+} from "./sdkShadowGsapFidelity";
 
 // Match the GSAP writer's percentage equality tolerance so a remove resolves to
 // the same keyframe the server would pick (writer rounds to ~3 decimals).
@@ -45,23 +49,6 @@ export type ShadowKeyframeOp =
       properties: Record<string, number | string>;
     }
   | { kind: "remove"; animationId: string; percentage: number };
-
-// ─── Script helpers (mirror sdkShadowGsapFidelity's extraction) ───────────────
-
-function isGsapScriptBody(body: string): boolean {
-  return body.includes("gsap") || body.includes("__timelines") || body.includes("ScrollTrigger");
-}
-
-function extractGsapScript(html: string): string | null {
-  // Close tag is `</script[^>]*>` (HTML5 ignores junk before `>`).
-  const scripts = html.match(/<script\b[^>]*>([\s\S]*?)<\/script[^>]*>/gi);
-  if (!scripts) return null;
-  for (const block of scripts) {
-    const body = block.replace(/^<script\b[^>]*>/i, "").replace(/<\/script[^>]*>$/i, "");
-    if (isGsapScriptBody(body)) return body;
-  }
-  return null;
-}
 
 // ─── percentage → SDK op mapping ──────────────────────────────────────────────
 

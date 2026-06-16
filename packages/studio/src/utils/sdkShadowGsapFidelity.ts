@@ -16,6 +16,7 @@ import { parseGsapScriptAcorn } from "@hyperframes/core/gsap-parser-acorn";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { STUDIO_SDK_SHADOW_ENABLED } from "../components/editor/manualEditingAvailability";
 import { trackStudioEvent } from "./studioTelemetry";
+import { relEqual } from "./sdkShadowNumeric";
 import type { SdkShadowMismatch, ShadowGsapOp } from "./sdkShadow";
 
 // Marker set must match document.ts extractGsapScript so both pick the same
@@ -24,7 +25,7 @@ function isGsapScriptBody(body: string): boolean {
   return body.includes("gsap") || body.includes("__timelines") || body.includes("ScrollTrigger");
 }
 
-function extractGsapScript(html: string): string | null {
+export function extractGsapScript(html: string): string | null {
   // Close tag is `</script[^>]*>` (not just `</script>`) — HTML5 ignores junk
   // before the `>`, e.g. `</script >` or `</script foo>` (CodeQL js/bad-tag-filter).
   const scripts = html.match(/<script\b[^>]*>([\s\S]*?)<\/script[^>]*>/gi);
@@ -73,12 +74,9 @@ function animByKey(
 // number-vs-string forms. Compare canonically — sort keys, coerce numeric
 // strings — so only real value drift registers, not formatting differences.
 
-// Relative-epsilon compare: the two writers round-trip durations through JS
-// number formatting, so a value like 3.1 can come back as 3.0999999999999996.
-// An exact `===` flags that sub-ULP delta as drift. Treat values as equal when
-// they're within 1e-6 * max(1, |a|, |b|) of each other — tight enough that a
-// real 2 vs 1 (or 0.5 vs 0.49) drift still flags, loose enough to absorb
-// float-formatting noise.
+// Coerce string operands to numbers, then compare with the shared relative
+// epsilon (relEqual) so float-formatting noise (3.1 vs 3.0999999999999996)
+// isn't flagged as drift while a real 2 vs 1 still is.
 function numericEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true;
   const na = typeof a === "string" ? Number(a) : a;
@@ -86,9 +84,7 @@ function numericEqual(a: unknown, b: unknown): boolean {
   if (typeof na !== "number" || typeof nb !== "number" || Number.isNaN(na) || Number.isNaN(nb)) {
     return false;
   }
-  if (na === nb) return true;
-  const tolerance = 1e-6 * Math.max(1, Math.abs(na), Math.abs(nb));
-  return Math.abs(na - nb) <= tolerance;
+  return relEqual(na, nb);
 }
 
 function canonicalProps(obj: Record<string, unknown> | undefined): string {
