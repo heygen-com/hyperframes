@@ -3,6 +3,7 @@ import { findUnsafeMutationValues } from "@hyperframes/core/studio-api/finite-mu
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { applySoftReload } from "../utils/gsapSoftReload";
 import { resolveGsapFidelityArgs, runShadowGsapFidelity } from "../utils/sdkShadowGsapFidelity";
+import { runShadowGsapKeyframeFidelity } from "../utils/sdkShadowGsapKeyframe";
 import { updateKeyframeCacheFromParsed } from "./gsapKeyframeCacheHelpers";
 import {
   GsapMutationHttpError,
@@ -70,9 +71,10 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
     domEditSaveTimestampRef.current = Date.now();
     // Shadow value fidelity: diff the SDK's GSAP writer output against the
     // server's, from the same pre-op file. Fire-and-forget; server authoritative.
-    // Only meta-level ops carry shadowGsapOp today (add / update-meta / delete via
-    // useGsapAnimationOps). Per-property and keyframe handlers (useGsapPropertyDebounce,
-    // useGsapKeyframeOps) intentionally don't synthesize one yet — deferred follow-up.
+    // Meta-level ops carry shadowGsapOp (add / update-meta / delete via
+    // useGsapAnimationOps); keyframe ops carry shadowKeyframeOp (add/remove via
+    // useGsapKeyframeOps, handled by the gsap_keyframe block below). Per-property
+    // handlers (useGsapPropertyDebounce) don't synthesize one yet — deferred follow-up.
     // scriptText is null when the composition has no GSAP script; nothing to diff.
     const fidelityArgs = resolveGsapFidelityArgs(
       sdkSession,
@@ -82,6 +84,12 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
     );
     if (fidelityArgs) {
       void runShadowGsapFidelity(fidelityArgs.before, fidelityArgs.op, fidelityArgs.serverScript);
+    }
+    // Keyframe value fidelity (gsap_keyframe): same serialize-diff approach, but
+    // the SDK has no keyframe reader so there is no live-existence path — the diff
+    // is the only signal. Guarded on a live session + both scripts to diff.
+    if (sdkSession && options.shadowKeyframeOp && result.before != null && result.scriptText != null) {
+      void runShadowGsapKeyframeFidelity(result.before, options.shadowKeyframeOp, result.scriptText);
     }
     if (result.before != null && result.after != null) {
       await editHistory.recordEdit({ label: options.label, kind: "manual", coalesceKey: options.coalesceKey, files: { [targetPath]: { before: result.before, after: result.after } } });

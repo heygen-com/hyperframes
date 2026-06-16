@@ -3,6 +3,7 @@ import type { Composition } from "@hyperframes/sdk";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import type { EditHistoryKind } from "../utils/editHistory";
 import type { ShadowGsapOp } from "../utils/sdkShadow";
+import type { ShadowKeyframeOp } from "../utils/sdkShadowGsapKeyframe";
 
 export interface MutationResult {
   ok: boolean;
@@ -21,6 +22,8 @@ export interface CommitMutationOptions {
   beforeReload?: () => void;
   /** Stage 7 Step 3b: typed SDK equivalent of this mutation for value-fidelity shadow. */
   shadowGsapOp?: ShadowGsapOp;
+  /** Typed SDK equivalent of a keyframe mutation for keyframe value-fidelity shadow (gsap_keyframe). */
+  shadowKeyframeOp?: ShadowKeyframeOp;
 }
 
 export type CommitMutation = (

@@ -39,6 +39,16 @@ function isShadowableOp(op: PatchOperation): boolean {
   return true;
 }
 
+// PatchOperation types patchOpsToSdkEditOps knows how to map. Used by
+// runShadowDispatch to flag any unmapped type as visible telemetry rather than
+// silently dropping it (see the unmapped_type guard there).
+const MAPPED_PATCH_OP_TYPES: ReadonlySet<string> = new Set([
+  "inline-style",
+  "text-content",
+  "attribute",
+  "html-attribute",
+]);
+
 export function patchOpsToSdkEditOps(hfId: string, ops: PatchOperation[]): EditOp[] {
   const result: EditOp[] = [];
   const styles: Record<string, string | null> = {};
@@ -256,6 +266,23 @@ export function runShadowDispatch(
       op: "property",
       dispatched: false,
       reason: "no_hf_id",
+      mismatchCount: 0,
+    });
+    return;
+  }
+  // Defensive: patchOpsToSdkEditOps silently drops PatchOperation types it
+  // doesn't map. PatchOperation.type is a closed union today, but emit a visible
+  // unmapped_type event if a future type ever slips through, so the gap surfaces
+  // in telemetry instead of vanishing.
+  // Map to the type string before find, so a future unmapped type is read as a
+  // plain string (no object cast; find on the closed union narrows to never).
+  const unmappedType = ops.map((op) => op.type).find((t) => !MAPPED_PATCH_OP_TYPES.has(t));
+  if (unmappedType !== undefined) {
+    trackStudioEvent("sdk_shadow_dispatch", {
+      op: "property",
+      dispatched: false,
+      reason: "unmapped_type",
+      type: unmappedType,
       mismatchCount: 0,
     });
     return;
