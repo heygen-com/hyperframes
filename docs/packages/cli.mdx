@@ -1020,7 +1020,7 @@ Render parameters mirror the local `hyperframes render` UX where they overlap:
 | `--quality` | `standard` | `draft`, `standard`, or `high`. |
 | `--format` | `mp4` | `mp4`, `webm`, or `mov`. |
 | `--resolution` | `1080p` | `1080p` or `4k`. 4k is billed at 1.5× and can't be combined with `webm`/`mov`. |
-| `--aspect-ratio` | auto | `16:9`, `9:16`, or `1:1`. Auto-detected from the composition's `data-width`/`data-height`; pass it only to override. |
+| `--aspect-ratio` | auto | `16:9`, `9:16`, or `1:1`. Auto-detected from a local project's `data-width`/`data-height`; for `--asset-id`/`--url` it defaults to `16:9` unless set. |
 | `--composition` / `-c` | `index.html` | Entry HTML file inside the zip. |
 | `--variables` | — | Inline JSON object overriding `data-composition-variables`. |
 | `--variables-file` | — | Path to a JSON file (alternative to `--variables`). |

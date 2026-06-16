@@ -70,16 +70,16 @@ The credential is **shared with the [`heygen` CLI](https://github.com/heygen-com
 
 ```
  Your machine                          HeyGen cloud
-┌─────────────────────────┐          ┌──────────────────────────────┐
-│ zip project             │ ──POST──▶│ /v3/assets                    │
-│ (excludes .git,         │  upload  │  → asset_id                   │
-│  node_modules, dist…)   │          │                               │
-│                         │ ──POST──▶│ /v3/hyperframes/renders        │
-│                         │  submit  │  → render_id (queued)         │
-│                         │          │  Chromium + FFmpeg render     │
-│ poll GET /renders/{id}  │ ◀────────│  queued → rendering → done    │
-│ stream video to disk    │ ◀────────│  signed video_url             │
-└─────────────────────────┘          └──────────────────────────────┘
+┌─────────────────────────┐          ┌─────────────────────────────────┐
+│ zip project             │ ──POST──▶│ /v3/assets                      │
+│ (excludes .git,         │  upload  │  → asset_id                     │
+│  node_modules, dist…)   │          │                                 │
+│                         │ ──POST──▶│ /v3/hyperframes/renders         │
+│                         │  submit  │  → render_id (queued)           │
+│                         │          │  Chromium + FFmpeg render       │
+│ poll GET /renders/{id}  │ ◀────────│  queued → rendering → completed │
+│ stream video to disk    │ ◀────────│  signed video_url               │
+└─────────────────────────┘          └─────────────────────────────────┘
 ```
 
 1. **Resolve the project** — a local directory (default `.`), or skip the upload with `--asset-id` / `--url`.
@@ -100,7 +100,7 @@ The most-used flags — see the [CLI reference](/packages/cli#hyperframes-cloud)
 | `--quality` | `standard` | `draft`, `standard`, or `high`. |
 | `--format` | `mp4` | `mp4`, `webm`, or `mov` (webm/mov carry alpha). |
 | `--resolution` | `1080p` | `1080p` or `4k`. 4k is billed at 1.5×. |
-| `--aspect-ratio` | auto | `16:9`, `9:16`, or `1:1`. Auto-detected from the composition; only set it to override. |
+| `--aspect-ratio` | auto | `16:9`, `9:16`, or `1:1`. Auto-detected from a local project's `data-width`/`data-height`; for `--asset-id`/`--url` it defaults to `16:9` unless set. |
 | `--composition` / `-c` | `index.html` | Entry HTML file inside the zip. |
 | `--output` / `-o` | `renders/<render_id>.<ext>` | Local destination for the download. |
 
