@@ -5,7 +5,8 @@ vi.mock("./client.js", () => ({
   trackEvent: (...args: unknown[]) => trackEvent(...args),
 }));
 
-const { trackRenderError, trackRenderObservation } = await import("./events.js");
+const { trackRenderError, trackRenderObservation, trackCommandFailure } =
+  await import("./events.js");
 
 describe("render telemetry events", () => {
   beforeEach(() => {
@@ -46,6 +47,41 @@ describe("render telemetry events", () => {
         render_job_id: "render-123",
         composition_hash: "abc123",
         message: "Navigation failed for [path]",
+      }),
+    );
+  });
+});
+
+describe("trackCommandFailure", () => {
+  beforeEach(() => {
+    trackEvent.mockClear();
+  });
+
+  it("reports an Error as a command_error with name/message/stack", () => {
+    const err = new Error("ffmpeg is required to extract audio");
+    trackCommandFailure("transcribe", err);
+
+    expect(trackEvent).toHaveBeenCalledWith(
+      "cli_error",
+      expect.objectContaining({
+        kind: "command_error",
+        command: "transcribe",
+        error_name: "Error",
+        error_message: "ffmpeg is required to extract audio",
+        stack_trace: err.stack,
+      }),
+    );
+  });
+
+  it("coerces a non-Error reason (e.g. a string) into the message", () => {
+    trackCommandFailure("transcribe", "No words found in transcript.");
+
+    expect(trackEvent).toHaveBeenCalledWith(
+      "cli_error",
+      expect.objectContaining({
+        kind: "command_error",
+        command: "transcribe",
+        error_message: "No words found in transcript.",
       }),
     );
   });

@@ -14,6 +14,7 @@ import { resolve, join, extname, dirname } from "node:path";
 import * as clack from "@clack/prompts";
 import { c } from "../ui/colors.js";
 import { DEFAULT_MODEL } from "../whisper/manager.js";
+import { trackCommandFailure } from "../telemetry/events.js";
 
 export default defineCommand({
   meta: {
@@ -52,7 +53,9 @@ export default defineCommand({
   async run({ args }) {
     const inputPath = resolve(args.input);
     if (!existsSync(inputPath)) {
-      console.error(c.error(`File not found: ${args.input}`));
+      const message = `File not found: ${args.input}`;
+      trackCommandFailure("transcribe", message);
+      console.error(c.error(message));
       process.exit(1);
     }
 
@@ -87,7 +90,9 @@ async function importTranscript(inputPath: string, dir: string, json: boolean): 
   const { words, format } = loadTranscript(inputPath);
 
   if (words.length === 0) {
-    console.error(c.error("No words found in transcript."));
+    const message = "No words found in transcript.";
+    trackCommandFailure("transcribe", message);
+    console.error(c.error(message));
     process.exit(1);
   }
 
@@ -170,6 +175,7 @@ async function transcribeAudio(
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    trackCommandFailure("transcribe", err);
     if (opts.json) {
       console.log(JSON.stringify({ ok: false, error: message }));
     } else {
