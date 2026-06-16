@@ -113,7 +113,7 @@ export interface ElasticHold {
 }
 
 export interface GsapTweenSpec {
-  method: "from" | "to" | "fromTo";
+  method: "from" | "to" | "fromTo" | "set";
   position?: number | string;
   duration?: number;
   ease?: string;

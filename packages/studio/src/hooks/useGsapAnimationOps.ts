@@ -126,20 +126,18 @@ export function useGsapAnimationOps({
         fromTo: { x: 0, y: 0, opacity: 1 },
       };
 
-      // SDK path: addGsapTween only supports from/to/fromTo; "set" stays
-      // server-side. Skip the SDK path when an id was just assigned server-side
-      // (autoId): the SDK session hasn't reloaded that write yet, so persisting
-      // its serialization would clobber the new id — let the server add the
-      // tween atomically with the id it wrote.
-      if (!autoId && method !== "set" && selection.hfId && sdkSession && sdkDeps) {
+      // Skip SDK path when an id was just assigned server-side (autoId): the
+      // SDK session hasn't reloaded that write yet, so persisting its
+      // serialization would clobber the new id — let the server add the tween
+      // atomically with the id it wrote.
+      if (!autoId && selection.hfId && sdkSession && sdkDeps) {
         const targetPath = selection.sourceFile || activeCompPath || "index.html";
         const spec = {
-          method: method as "to" | "from" | "fromTo",
+          method,
           position,
-          duration,
-          ease: "power2.out" as const,
+          ...(method !== "set" ? { duration, ease: "power2.out" as const } : {}),
           properties: toDefaults[method] ?? { opacity: 1 },
-          fromProperties: method === "fromTo" ? { opacity: 0 } : undefined,
+          ...(method === "fromTo" ? { fromProperties: { opacity: 0 } } : {}),
         };
         const handled = await sdkGsapTweenPersist(
           targetPath,
