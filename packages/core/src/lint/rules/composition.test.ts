@@ -569,6 +569,24 @@ describe("composition rules", () => {
       );
       expect(finding).toBeUndefined();
     });
+
+    it("does not flag installed registry blocks that use rAF (e.g. particle effects)", async () => {
+      const html =
+        `<!-- hyperframes-registry-item: particles -->\n` +
+        `<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    requestAnimationFrame(function loop() { requestAnimationFrame(loop); });
+    window.__timelines["c1"] = gsap.timeline({ paused: true });
+  </script>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find(
+        (f) => f.code === "requestanimationframe_in_composition",
+      );
+      expect(finding).toBeUndefined();
+    });
   });
 
   describe("root_composition_missing_data_duration (removed)", () => {

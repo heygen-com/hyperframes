@@ -337,6 +337,27 @@ describe("GSAP rules", () => {
     expect(conflict).toBeUndefined();
   });
 
+  it("does NOT warn when tl.from targets element WITH CSS transform (from() owns start values)", async () => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="badge"></div>
+  </div>
+  <style>
+    #badge { position: absolute; left: 50%; transform: translateX(-50%); }
+  </style>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.from("#badge", { xPercent: -50, x: -200, opacity: 0, duration: 0.4 }, 0.5);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const conflict = result.findings.find((f) => f.code === "gsap_css_transform_conflict");
+    expect(conflict).toBeUndefined();
+  });
+
   it("emits one warning when a combined CSS transform conflicts with multiple GSAP properties", async () => {
     const html = `
 <html><body>
@@ -867,6 +888,24 @@ describe("GSAP rules", () => {
     expect(finding).toBeUndefined();
   });
 
+  it("does NOT error when gsap.from({opacity: 0.5}) — non-zero opacity is a valid reveal", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="ghost" style="opacity: 0;">Hello</div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.from("#ghost", { opacity: 0.5, duration: 0.4 }, 0.1);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_from_opacity_noop");
+    expect(finding).toBeUndefined();
+  });
+
   it("warns when gsap.timeline is created but not registered in __timelines", async () => {
     const html = `
 <html><body>
@@ -1037,5 +1076,66 @@ describe("GSAP rules", () => {
     expect(finding).toBeDefined();
     expect(finding?.message).toContain('"#title"');
     expect(finding?.message).toContain('"#sub"');
+  });
+
+  it("scene_layer_missing_visibility_kill: fires when multi-scene exit lacks hard kill", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="scene1"></div>
+    <div id="scene2"></div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#scene1", { opacity: 0, duration: 0.5 }, 2.0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "scene_layer_missing_visibility_kill");
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("error");
+    expect(finding?.elementId).toBe("scene1");
+  });
+
+  it("scene_layer_missing_visibility_kill: DOES fire when kill is only in a comment (stripJsComments guard)", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="scene1"></div>
+    <div id="scene2"></div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    // tl.set("#scene1", { visibility: "hidden" }, 2.5);
+    tl.to("#scene1", { opacity: 0, duration: 0.5 }, 2.0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "scene_layer_missing_visibility_kill");
+    expect(finding).toBeDefined();
+  });
+
+  it("scene_layer_missing_visibility_kill: does NOT fire when hard kill is present", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="scene1"></div>
+    <div id="scene2"></div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#scene1", { opacity: 0, duration: 0.5 }, 2.0);
+    tl.set("#scene1", { visibility: "hidden" }, 2.5);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "scene_layer_missing_visibility_kill");
+    expect(finding).toBeUndefined();
   });
 });

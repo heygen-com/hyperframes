@@ -39,6 +39,19 @@ describe("core rules", () => {
     expect(finding).toBeDefined();
   });
 
+  it("does not flag missing_timeline_registry on a sub-composition (inherits from host)", async () => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080"></div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html, { isSubComposition: true });
+    const finding = result.findings.find((f) => f.code === "missing_timeline_registry");
+    expect(finding).toBeUndefined();
+  });
+
   it("reports error for composition host missing data-composition-id", async () => {
     const html = `
 <html><body>
