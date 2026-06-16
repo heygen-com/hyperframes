@@ -23,6 +23,7 @@ import { createRuntimeStartTimeResolver } from "./startResolver";
 import { createClipTree } from "./clipTree";
 import { loadExternalCompositions, loadInlineTemplateCompositions } from "./compositionLoader";
 import { applyCaptionOverrides } from "./captionOverrides";
+import { applyKeyframeOverrides } from "./gsapKeyframeOverrides";
 import { TransportClock } from "./clock";
 import { WebAudioTransport } from "./webAudioTransport";
 import { quantizeTimeToFrame } from "../inline-scripts/parityContract";
@@ -1666,11 +1667,13 @@ export function initSandboxRuntimeModular(): void {
         bindMediaMetadataListeners();
         installAssetFailureDiagnostics();
         applyCaptionOverrides();
+        applyKeyframeOverrides();
         maybePublishRenderReady();
       });
   } else {
-    // No external/inline compositions to load — apply caption overrides immediately
+    // No external/inline compositions to load — apply overrides immediately
     applyCaptionOverrides();
+    applyKeyframeOverrides();
   }
 
   const picker = createPickerModule({
