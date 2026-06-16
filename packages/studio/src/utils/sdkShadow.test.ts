@@ -108,6 +108,20 @@ describe("sdkShadowDispatch (integration)", () => {
     expect(session.getElement("hf-box")?.inlineStyles.color).toBe("#00f");
   });
 
+  it("does NOT false-mismatch a hyphenated style property (kebab op vs camelCase snapshot)", async () => {
+    const { sdkShadowDispatch } = await import("./sdkShadow");
+    const session = await openComposition(BASE_HTML);
+
+    const ops: PatchOperation[] = [
+      { type: "inline-style", property: "background-color", value: "rgb(255, 79, 88)" },
+    ];
+    const result = sdkShadowDispatch(session, "hf-box", ops);
+
+    expect(result.dispatched).toBe(true);
+    expect(result.mismatches).toHaveLength(0); // was 1 before the kebab→camel read-back fix
+    expect(session.getElement("hf-box")?.inlineStyles.backgroundColor).toBe("rgb(255, 79, 88)");
+  });
+
   it("returns dispatched:false when hfId not found in session", async () => {
     const { sdkShadowDispatch } = await import("./sdkShadow");
     const session = await openComposition(BASE_HTML);

@@ -98,11 +98,18 @@ function flattenSnapshot(snap: ElementSnapshot): FlatSnapshot {
 
 type OpFieldResolver = (op: PatchOperation, flat: FlatSnapshot) => OpFields;
 
+// Snapshot inlineStyles are camelCase (CSSStyleDeclaration convention); PatchOperation
+// style properties are kebab-case ("background-color"). Convert for read-back, else
+// every hyphenated property false-mismatches against a null actual.
+function kebabToCamel(prop: string): string {
+  return prop.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
+}
+
 const OP_FIELD_RESOLVERS: Record<string, OpFieldResolver> = {
   "inline-style": (op, flat) => ({
     property: op.property,
     expected: op.value,
-    actual: flat.styles[op.property] ?? null,
+    actual: flat.styles[kebabToCamel(op.property)] ?? flat.styles[op.property] ?? null,
   }),
   "text-content": (op, flat) => ({ property: "text", expected: op.value ?? "", actual: flat.text }),
   attribute: (op, flat) => ({
