@@ -452,4 +452,34 @@ window.__timelines["t"] = tl;</script>
     expect(id).toBeDefined();
     if (id) expect(comp.can({ type: "removeGsapTween", animationId: id }).ok).toBe(true);
   });
+
+  it("attaches multiple distinct tween ids when one element has several tweens", async () => {
+    const html = `
+<div data-hf-id="hf-stage" data-hf-root style="width: 1280px; height: 720px">
+  <div data-hf-id="hf-box" style="opacity: 0">box</div>
+  <script>var tl = gsap.timeline({ paused: true });
+tl.to("[data-hf-id=\\"hf-box\\"]", { opacity: 1, duration: 0.5 }, 0);
+tl.from("[data-hf-id=\\"hf-box\\"]", { x: -100, duration: 0.5 }, 1);
+window.__timelines["t"] = tl;</script>
+</div>`.trim();
+    const ids = (await openComposition(html)).getElement("hf-box")?.animationIds ?? [];
+    expect(ids.length).toBe(2);
+    expect(new Set(ids).size).toBe(2); // distinct
+  });
+
+  it("fans a shared-selector tween out to every matched element", async () => {
+    const html = `
+<div data-hf-id="hf-stage" data-hf-root style="width: 1280px; height: 720px">
+  <div data-hf-id="hf-a" class="fade">a</div>
+  <div data-hf-id="hf-b" class="fade">b</div>
+  <script>var tl = gsap.timeline({ paused: true });
+tl.to(".fade", { opacity: 1, duration: 0.5 }, 0);
+window.__timelines["t"] = tl;</script>
+</div>`.trim();
+    const comp = await openComposition(html);
+    const a = comp.getElement("hf-a")?.animationIds ?? [];
+    const b = comp.getElement("hf-b")?.animationIds ?? [];
+    expect(a.length).toBe(1);
+    expect(b).toEqual(a); // same tween id on both matched elements
+  });
 });

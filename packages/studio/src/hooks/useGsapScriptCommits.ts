@@ -2,7 +2,7 @@ import { useCallback } from "react";
 import { findUnsafeMutationValues } from "@hyperframes/core/studio-api/finite-mutation";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { applySoftReload } from "../utils/gsapSoftReload";
-import { runShadowGsapFidelity } from "../utils/sdkShadow";
+import { resolveGsapFidelityArgs, runShadowGsapFidelity } from "../utils/sdkShadowGsapFidelity";
 import { updateKeyframeCacheFromParsed } from "./gsapKeyframeCacheHelpers";
 import {
   GsapMutationHttpError,
@@ -70,8 +70,18 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
     domEditSaveTimestampRef.current = Date.now();
     // Shadow value fidelity: diff the SDK's GSAP writer output against the
     // server's, from the same pre-op file. Fire-and-forget; server authoritative.
-    if (sdkSession && options.shadowGsapOp && result.before != null && result.scriptText != null) {
-      void runShadowGsapFidelity(result.before, options.shadowGsapOp, result.scriptText);
+    // Only meta-level ops carry shadowGsapOp today (add / update-meta / delete via
+    // useGsapAnimationOps). Per-property and keyframe handlers (useGsapPropertyDebounce,
+    // useGsapKeyframeOps) intentionally don't synthesize one yet — deferred follow-up.
+    // scriptText is null when the composition has no GSAP script; nothing to diff.
+    const fidelityArgs = resolveGsapFidelityArgs(
+      sdkSession,
+      options.shadowGsapOp,
+      result.before,
+      result.scriptText,
+    );
+    if (fidelityArgs) {
+      void runShadowGsapFidelity(fidelityArgs.before, fidelityArgs.op, fidelityArgs.serverScript);
     }
     if (result.before != null && result.after != null) {
       await editHistory.recordEdit({ label: options.label, kind: "manual", coalesceKey: options.coalesceKey, files: { [targetPath]: { before: result.before, after: result.after } } });

@@ -25,10 +25,12 @@ function isGsapScriptBody(body: string): boolean {
 }
 
 function extractGsapScript(html: string): string | null {
-  const scripts = html.match(/<script\b[^>]*>([\s\S]*?)<\/script>/gi);
+  // `</script\s*>` (not just `</script>`) — match the whitespace-before-close
+  // variant too (CodeQL js/bad-tag-filter).
+  const scripts = html.match(/<script\b[^>]*>([\s\S]*?)<\/script\s*>/gi);
   if (!scripts) return null;
   for (const block of scripts) {
-    const body = block.replace(/^<script\b[^>]*>/i, "").replace(/<\/script>$/i, "");
+    const body = block.replace(/^<script\b[^>]*>/i, "").replace(/<\/script\s*>$/i, "");
     if (isGsapScriptBody(body)) return body;
   }
   return null;
@@ -130,6 +132,30 @@ export function gsapFidelityMismatches(
     }
   }
   return mismatches;
+}
+
+export interface GsapFidelityArgs {
+  before: string;
+  op: ShadowGsapOp;
+  serverScript: string;
+}
+
+/**
+ * Wiring gate for the commitMutation chokepoint: return the narrowed fidelity
+ * args only when there is a live session, a typed shadow op, and both the
+ * pre-op file and the server's resulting script to diff against (scriptText is
+ * null when the composition has no GSAP script). Returns null otherwise. Pure +
+ * narrowing so the wiring decision is unit-testable without rendering the hook
+ * and the caller needs no non-null assertions.
+ */
+export function resolveGsapFidelityArgs(
+  sdkSession: unknown,
+  shadowGsapOp: ShadowGsapOp | undefined,
+  before: string | null | undefined,
+  serverScript: string | null | undefined,
+): GsapFidelityArgs | null {
+  if (!sdkSession || !shadowGsapOp || before == null || serverScript == null) return null;
+  return { before, op: shadowGsapOp, serverScript };
 }
 
 /**

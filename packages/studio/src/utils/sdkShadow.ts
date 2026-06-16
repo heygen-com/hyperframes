@@ -427,4 +427,8 @@ export function runShadowGsapTween(session: Composition, gsapOp: ShadowGsapOp): 
 
 // GSAP value-fidelity diff lives in its own module to keep this file under the
 // 600-line studio cap; re-exported here so the shadow surface stays in one place.
-export { gsapFidelityMismatches, runShadowGsapFidelity } from "./sdkShadowGsapFidelity";
+export {
+  gsapFidelityMismatches,
+  resolveGsapFidelityArgs,
+  runShadowGsapFidelity,
+} from "./sdkShadowGsapFidelity";
