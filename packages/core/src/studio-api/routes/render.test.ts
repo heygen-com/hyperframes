@@ -428,3 +428,63 @@ describe("GET /projects/:id/renders/file/* — path safety", () => {
     expect(await res.text()).toBe("nested-bytes");
   });
 });
+
+describe("POST /projects/:id/render — telemetryDistinctId forwarding", () => {
+  it("forwards the browser telemetryDistinctId to the adapter as distinctId", async () => {
+    const spy = vi.fn();
+    const { app, cleanup } = buildApp(spy);
+    try {
+      const res = await app.request("http://localhost/projects/demo/render", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          fps: 30,
+          quality: "standard",
+          format: "mp4",
+          telemetryDistinctId: "browser-user-123",
+        }),
+      });
+      expect(res.status).toBe(200);
+      expect(spy.mock.calls[0][0].distinctId).toBe("browser-user-123");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("passes undefined when no telemetryDistinctId is sent (older clients)", async () => {
+    const spy = vi.fn();
+    const { app, cleanup } = buildApp(spy);
+    try {
+      const res = await app.request("http://localhost/projects/demo/render", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ fps: 30, quality: "standard", format: "mp4" }),
+      });
+      expect(res.status).toBe(200);
+      expect(spy.mock.calls[0][0].distinctId).toBeUndefined();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("ignores a non-string telemetryDistinctId", async () => {
+    const spy = vi.fn();
+    const { app, cleanup } = buildApp(spy);
+    try {
+      const res = await app.request("http://localhost/projects/demo/render", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          fps: 30,
+          quality: "standard",
+          format: "mp4",
+          telemetryDistinctId: 42,
+        }),
+      });
+      expect(res.status).toBe(200);
+      expect(spy.mock.calls[0][0].distinctId).toBeUndefined();
+    } finally {
+      cleanup();
+    }
+  });
+});

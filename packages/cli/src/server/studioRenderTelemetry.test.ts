@@ -132,6 +132,16 @@ describe("studioRenderTelemetry", () => {
       expect(payload.gpu).toBe(false);
     });
 
+    it("forwards the browser user's distinctId so the render funnel is joinable", () => {
+      emitStudioRenderComplete({ ...opts, distinctId: "browser-user-123" }, 5000, fullPerf);
+      expect(trackRenderComplete.mock.calls[0]![0].distinctId).toBe("browser-user-123");
+    });
+
+    it("leaves distinctId undefined for older clients that don't send one", () => {
+      emitStudioRenderComplete(opts, 5000, fullPerf);
+      expect(trackRenderComplete.mock.calls[0]![0].distinctId).toBeUndefined();
+    });
+
     it("maps every RenderPerfSummary field to the expected payload key", () => {
       emitStudioRenderComplete(opts, 5000, fullPerf);
       const p = trackRenderComplete.mock.calls[0]![0];

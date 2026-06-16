@@ -91,6 +91,13 @@ export interface StudioApiAdapter {
     outputResolution?: CanvasResolution;
     /** Entry file relative to projectDir (e.g. "compositions/intro.html"). Defaults to index.html. */
     composition?: string;
+    /**
+     * Telemetry id of the browser user who triggered the render. Lets the
+     * adapter attribute the server-emitted render_complete/render_error to
+     * that user so the studio render funnel is joinable. Undefined for older
+     * clients → falls back to the install's anonymous id.
+     */
+    distinctId?: string;
   }): RenderJobState;
 
   /** Optional: generate a JPEG thumbnail via Puppeteer or similar. */

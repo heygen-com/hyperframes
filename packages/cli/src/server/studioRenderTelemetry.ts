@@ -20,6 +20,10 @@ import { bytesToMb } from "../telemetry/system.js";
 export interface StudioRenderOpts {
   fps: Fps;
   quality: string;
+  // Telemetry id of the browser user who triggered the render, so the render
+  // outcome joins their studio_session_start / studio_render_start events.
+  // Undefined for older studio clients → falls back to the install anonymousId.
+  distinctId?: string;
 }
 
 type RenderCompleteProps = Parameters<typeof trackRenderComplete>[0];
@@ -105,6 +109,7 @@ export function emitStudioRenderError(
     failedStage,
     errorMessage: err instanceof Error ? err.message : String(err),
     elapsedMs,
+    distinctId: opts.distinctId,
     ...renderJobObservabilityTelemetryPayload(job),
     ...memSnapshot(),
   });
@@ -122,6 +127,7 @@ export function emitStudioRenderComplete(
     docker: false,
     gpu: false,
     source: "studio",
+    distinctId: opts.distinctId,
     ...perfPayload(perf, elapsedMs),
     ...memSnapshot(),
   });

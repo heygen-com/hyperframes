@@ -61,6 +61,9 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
       format?: string;
       resolution?: string;
       composition?: string;
+      // Browser telemetry id, so the server-emitted render outcome is
+      // attributed to the user who triggered the render (joinable funnel).
+      telemetryDistinctId?: string;
     };
     const VALID_FORMATS = new Set(["mp4", "webm", "mov"]);
     const FORMAT_EXT: Record<string, string> = { mp4: ".mp4", webm: ".webm", mov: ".mov" };
@@ -108,6 +111,8 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
       jobId,
       outputResolution,
       composition,
+      distinctId:
+        typeof body.telemetryDistinctId === "string" ? body.telemetryDistinctId : undefined,
     });
     (jobState as RenderJobState & { createdAt: number }).createdAt = Date.now();
     renderJobs.set(jobId, jobState as RenderJobState & { createdAt: number });

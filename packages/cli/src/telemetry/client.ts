@@ -24,6 +24,10 @@ let eventQueue: Array<{
   event: string;
   properties: EventProperties;
   timestamp: string;
+  // Override for the batch distinct_id. Defaults to the install's anonymousId.
+  // Used to attribute server-side studio renders to the browser user who
+  // triggered them, so the render funnel is joinable across processes.
+  distinctId?: string;
 }> = [];
 
 let telemetryEnabled: boolean | null = null;
@@ -59,12 +63,17 @@ export function shouldTrack(): boolean {
 /**
  * Queue a telemetry event. Non-blocking, fail-silent.
  */
-export function trackEvent(event: string, properties: EventProperties = {}): void {
+export function trackEvent(
+  event: string,
+  properties: EventProperties = {},
+  distinctId?: string,
+): void {
   if (!shouldTrack()) return;
 
   const sys = getSystemMeta();
   eventQueue.push({
     event,
+    distinctId,
     properties: {
       ...properties,
       cli_version: VERSION,
@@ -102,7 +111,7 @@ function drainQueueToPayload(): string | null {
   const batch = eventQueue.map((e) => ({
     event: e.event,
     properties: { ...e.properties, $ip: null },
-    distinct_id: config.anonymousId,
+    distinct_id: e.distinctId ?? config.anonymousId,
     timestamp: e.timestamp,
   }));
   eventQueue = [];

@@ -29,6 +29,23 @@ describe("render telemetry events", () => {
         error_message: "ENOENT: open '[path]' https://example.com/video.mp4?…",
         observability_composition_hash: "abc123",
       }),
+      undefined,
+    );
+  });
+
+  it("forwards distinctId to trackEvent so studio renders attribute to the browser user", () => {
+    trackRenderError({
+      fps: 30,
+      quality: "standard",
+      docker: false,
+      source: "studio",
+      distinctId: "browser-user-123",
+    });
+
+    expect(trackEvent).toHaveBeenCalledWith(
+      "render_error",
+      expect.objectContaining({ source: "studio" }),
+      "browser-user-123",
     );
   });
 
