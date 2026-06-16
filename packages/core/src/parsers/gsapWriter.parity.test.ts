@@ -8,9 +8,16 @@
  * gets a fixture row here proving it matches the battle-tested original.
  */
 import { describe, expect, it } from "vitest";
-import { parseGsapScript, removeAllKeyframesFromScript as removeAllRecast } from "./gsapParser.js";
+import {
+  parseGsapScript,
+  removeAllKeyframesFromScript as removeAllRecast,
+  convertToKeyframesInScript as convertRecast,
+} from "./gsapParser.js";
 import { parseGsapScriptAcornForWrite, type ParsedGsapAcornForWrite } from "./gsapParserAcorn.js";
-import { removeAllKeyframesFromScript as removeAllAcorn } from "./gsapWriterAcorn.js";
+import {
+  removeAllKeyframesFromScript as removeAllAcorn,
+  convertToKeyframesFromScript as convertAcorn,
+} from "./gsapWriterAcorn.js";
 
 function acornId(script: string): string {
   const parsed = parseGsapScriptAcornForWrite(script) as ParsedGsapAcornForWrite;
@@ -93,5 +100,79 @@ describe("parity: removeAllKeyframesFromScript (recast vs acorn)", () => {
     `;
     const id = acornId(script);
     expect(removeAllAcorn(script, id)).toBe(script);
+  });
+});
+
+const CONVERT_FIXTURES: Array<{
+  name: string;
+  script: string;
+  resolvedFromValues?: Record<string, number | string>;
+}> = [
+  {
+    name: "to() — builds 0%/100% keyframes with identity from",
+    script: `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#hero", { x: 200, opacity: 0.5, duration: 1.5 }, 0);
+    `,
+  },
+  {
+    name: "to() — with ease becomes easeEach + ease: none",
+    script: `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#box", { x: 100, duration: 1, ease: "power2.out" }, 0);
+    `,
+  },
+  {
+    name: "from() — method renamed to to()",
+    script: `
+      const tl = gsap.timeline({ paused: true });
+      tl.from("#card", { y: -50, opacity: 0, duration: 0.8 }, 0);
+    `,
+  },
+  {
+    name: "fromTo() — method renamed, fromArg removed",
+    script: `
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo("#text", { x: 0 }, { x: 300, duration: 2 }, 0);
+    `,
+  },
+  {
+    name: "to() — with resolvedFromValues overrides 0%",
+    script: `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#el", { x: 100, duration: 1 }, 0);
+    `,
+    resolvedFromValues: { x: 42 },
+  },
+];
+
+describe("parity: convertToKeyframesFromScript (recast vs acorn)", () => {
+  for (const { name, script, resolvedFromValues } of CONVERT_FIXTURES) {
+    it(name, () => {
+      const id = acornId(script);
+      const recastOut = convertRecast(script, id, resolvedFromValues);
+      const acornOut = convertAcorn(script, id, resolvedFromValues);
+
+      const recastShape = shapeOf(recastOut);
+      const acornShape = shapeOf(acornOut);
+
+      expect(acornShape.keyframes).toBeDefined();
+      expect(acornShape.method).toBe("to");
+      expect(acornShape).toEqual(recastShape);
+    });
+  }
+
+  it("no-op when id not found", () => {
+    const script = CONVERT_FIXTURES[0]!.script;
+    expect(convertAcorn(script, "nonexistent-id")).toBe(script);
+  });
+
+  it("no-op when tween already has keyframes", () => {
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#el", { keyframes: { "0%": { x: 0 }, "100%": { x: 100 } }, duration: 1 }, 0);
+    `;
+    const id = acornId(script);
+    expect(convertAcorn(script, id)).toBe(script);
   });
 });

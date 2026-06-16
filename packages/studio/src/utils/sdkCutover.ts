@@ -305,6 +305,19 @@ export function sdkGsapRemoveAllKeyframesPersist(
   );
 }
 
+export function sdkGsapConvertToKeyframesPersist(
+  targetPath: string,
+  animationId: string,
+  resolvedFromValues: Record<string, number | string> | undefined,
+  sdkSession: Composition | null | undefined,
+  deps: CutoverDeps,
+  options?: CutoverOptions,
+): Promise<boolean> {
+  return dispatchGsapOpAndPersist(targetPath, sdkSession, deps, options, (s) =>
+    s.dispatch({ type: "convertToKeyframes", animationId, resolvedFromValues }),
+  );
+}
+
 export async function sdkDeletePersist(
   hfId: string,
   originalContent: string,

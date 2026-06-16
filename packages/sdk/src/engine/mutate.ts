@@ -51,6 +51,7 @@ import {
   addKeyframeToScript,
   removeKeyframeFromScript,
   removeAllKeyframesFromScript,
+  convertToKeyframesFromScript,
   updateKeyframeInScript,
   addLabelToScript,
   removeLabelFromScript,
@@ -164,6 +165,8 @@ function applyGsapKeyframeOp(parsed: ParsedDocument, op: EditOp): MutationResult
       return dispatchRemoveGsapKeyframe(parsed, op);
     case "removeAllKeyframes":
       return handleRemoveAllKeyframes(parsed, op.animationId);
+    case "convertToKeyframes":
+      return handleConvertToKeyframes(parsed, op.animationId, op.resolvedFromValues);
     default:
       return undefined;
   }
@@ -758,6 +761,19 @@ function handleRemoveAllKeyframes(parsed: ParsedDocument, animationId: string): 
   return gsapScriptChange(script, newScript);
 }
 
+function handleConvertToKeyframes(
+  parsed: ParsedDocument,
+  animationId: string,
+  resolvedFromValues?: Record<string, number | string>,
+): MutationResult {
+  const script = getGsapScript(parsed.document);
+  if (!script) return EMPTY;
+  const newScript = convertToKeyframesFromScript(script, animationId, resolvedFromValues);
+  if (newScript === script) return EMPTY;
+  setGsapScript(parsed.document, newScript);
+  return gsapScriptChange(script, newScript);
+}
+
 function handleDeleteAllForSelector(parsed: ParsedDocument, selector: string): MutationResult {
   const script = getGsapScript(parsed.document);
   if (!script) return EMPTY;
@@ -976,6 +992,7 @@ export function validateOp(parsed: ParsedDocument, op: EditOp): CanResult {
     case "removeGsapProperty":
     case "removeGsapTween":
     case "removeAllKeyframes":
+    case "convertToKeyframes":
     case "deleteAllForSelector":
     case "removeLabel":
       if (getGsapScript(parsed.document) === null)

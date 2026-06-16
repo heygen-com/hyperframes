@@ -536,6 +536,53 @@ describe("removeAllKeyframes", () => {
   });
 });
 
+// ─── convertToKeyframes ────────────────────────────────────────────────────────
+
+describe("convertToKeyframes", () => {
+  // GSAP_SCRIPT: position 0.2 → id suffix "200"; opacity = visual group
+  it("converts flat to() tween to percentage keyframes", () => {
+    const parsed = fresh();
+    const result = applyOp(parsed, { type: "convertToKeyframes", animationId: TWEEN_ANIM_ID });
+    expect(result.forward).toHaveLength(1);
+    const newScript = String(result.forward[0]?.value ?? "");
+    expect(newScript).toContain("keyframes");
+    expect(newScript).toContain('"0%"');
+    expect(newScript).toContain('"100%"');
+    expect(newScript).toContain("easeEach");
+    expect(newScript).toContain('ease: "none"');
+  });
+
+  it("passes resolvedFromValues into 0% endpoint", () => {
+    const script = `var tl = gsap.timeline({ paused: true });
+tl.to("[data-hf-id=\\"hf-box\\"]", { x: 200, duration: 1 }, 0);
+window.__timelines["t"] = tl;`;
+    const parsed = fresh(script);
+    // position 0 → "0"; x = position group
+    const animId = `[data-hf-id="hf-box"]-to-0-position`;
+    const result = applyOp(parsed, {
+      type: "convertToKeyframes",
+      animationId: animId,
+      resolvedFromValues: { x: 42 },
+    });
+    expect(result.forward).toHaveLength(1);
+    const newScript = String(result.forward[0]?.value ?? "");
+    expect(newScript).toContain("42");
+  });
+
+  it("no-op when animation already has keyframes", () => {
+    const parsed = fresh(KF_SCRIPT);
+    const animId = `[data-hf-id="hf-box"]-to-0-visual`;
+    const result = applyOp(parsed, { type: "convertToKeyframes", animationId: animId });
+    expect(result.forward).toHaveLength(0);
+  });
+
+  it("no-op when animation id not found", () => {
+    const parsed = fresh();
+    const result = applyOp(parsed, { type: "convertToKeyframes", animationId: "nope" });
+    expect(result.forward).toHaveLength(0);
+  });
+});
+
 // ─── Label ops ────────────────────────────────────────────────────────────────
 
 describe("addLabel", () => {

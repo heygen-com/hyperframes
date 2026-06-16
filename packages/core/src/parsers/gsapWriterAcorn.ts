@@ -7,7 +7,8 @@
  * pretty-printer churn. Consumes ParsedGsapAcornForWrite from gsapParserAcorn.ts.
  */
 import MagicString from "magic-string";
-import { serializeValue, safeJsKey, type GsapAnimation } from "./gsapSerialize.js";
+import type { GsapAnimation } from "./gsapSerialize.js";
+import { resolveConversionProps } from "./gsapSerialize.js";
 import {
   parseGsapScriptAcornForWrite,
   type ParsedGsapAcornForWrite,
@@ -519,7 +520,7 @@ function percentageFromKey(key: string): number {
 
 /** Serialize a final keyframe property record (number|string values) to code. */
 function recordToCode(record: Record<string, number | string>): string {
-  const entries = Object.entries(record).map(([k, v]) => `${safeJsKey(k)}: ${serializeValue(v)}`);
+  const entries = Object.entries(record).map(([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`);
   return `{ ${entries.join(", ")} }`;
 }
 
@@ -942,6 +943,57 @@ export function removeAllKeyframesFromScript(script: string, animationId: string
 
   const ms = new MagicString(script);
   overwriteVarsArg(ms, target.call, buildVarsObjectCode(flat));
+  return ms.toString();
+}
+
+/** Build the full replacement vars object for a tween being converted to keyframes. */
+function buildKeyframesVarsCode(
+  animation: GsapAnimation,
+  fromProps: Record<string, number | string>,
+  toProps: Record<string, number | string>,
+): string {
+  const fromEntries = Object.entries(fromProps).map(([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`);
+  const toEntries = Object.entries(toProps).map(([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`);
+  const easeEntry = animation.ease ? `, easeEach: ${JSON.stringify(animation.ease)}` : "";
+  const kfCode = `{ "0%": { ${fromEntries.join(", ")} }, "100%": { ${toEntries.join(", ")} }${easeEntry} }`;
+  const parts: string[] = [`keyframes: ${kfCode}`];
+  if (animation.duration !== undefined) parts.push(`duration: ${valueToCode(animation.duration)}`);
+  if (animation.ease) parts.push(`ease: "none"`);
+  for (const [k, v] of Object.entries(animation.extras ?? {})) {
+    if (typeof v === "number" || typeof v === "string")
+      parts.push(`${safeKey(k)}: ${valueToCode(v)}`);
+  }
+  return `{ ${parts.join(", ")} }`;
+}
+
+/**
+ * Convert a flat tween (to/from/fromTo) to percentage-keyframes format.
+ * `resolvedFromValues` supplies the current DOM state: overrides the 0% endpoint
+ * for `to()`, the 100% endpoint for `from()`, or merges into toProps for `fromTo()`.
+ */
+export function convertToKeyframesFromScript(
+  script: string,
+  animationId: string,
+  resolvedFromValues?: Record<string, number | string>,
+): string {
+  const parsed = parseGsapScriptAcornForWrite(script);
+  if (!parsed) return script;
+  const target = parsed.located.find((l) => l.id === animationId);
+  if (!target) return script;
+  const { animation, call } = target;
+  if (animation.keyframes || call.method === "set") return script;
+
+  const { fromProps, toProps } = resolveConversionProps(animation, resolvedFromValues);
+  const ms = new MagicString(script);
+
+  if (call.method === "from" || call.method === "fromTo") {
+    ms.overwrite(call.node.callee.property.start, call.node.callee.property.end, "to");
+  }
+  if (call.method === "fromTo" && call.fromArg) {
+    ms.remove(call.fromArg.start, call.varsArg.start);
+  }
+  overwriteVarsArg(ms, call, buildKeyframesVarsCode(animation, fromProps, toProps));
+
   return ms.toString();
 }
 
