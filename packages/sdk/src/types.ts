@@ -133,7 +133,31 @@ export type EditOp =
       elementDuration: number;
     }
   | { type: "addLabel"; name: string; position: number }
-  | { type: "removeLabel"; name: string };
+  | { type: "removeLabel"; name: string }
+  | {
+      type: "setArcPath";
+      animationId: string;
+      config: {
+        enabled: boolean;
+        autoRotate: boolean | number;
+        segments: Array<{
+          curviness?: number;
+          cp1?: { x: number; y: number };
+          cp2?: { x: number; y: number };
+        }>;
+      };
+    }
+  | {
+      type: "updateArcSegment";
+      animationId: string;
+      segmentIndex: number;
+      update: {
+        curviness?: number;
+        cp1?: { x: number; y: number };
+        cp2?: { x: number; y: number };
+      };
+    }
+  | { type: "removeArcPath"; animationId: string };
 
 export interface ElasticHold {
   start: number;

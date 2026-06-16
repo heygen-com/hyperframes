@@ -58,6 +58,9 @@ import {
   updateKeyframeInScript,
   addLabelToScript,
   removeLabelFromScript,
+  setArcPathInScript,
+  updateArcSegmentInScript,
+  removeArcPathFromScript,
 } from "@hyperframes/core/gsap-writer-acorn";
 import { deriveKeyframeBackfillDefaults } from "./keyframeBackfill.js";
 
@@ -187,9 +190,34 @@ function applyGsapKeyframeOp(parsed: ParsedDocument, op: EditOp): MutationResult
   }
 }
 
+function applyArcPathOp(parsed: ParsedDocument, op: EditOp): MutationResult | undefined {
+  const s = getGsapScript(parsed.document) ?? "";
+  switch (op.type) {
+    case "setArcPath": {
+      const cfg = {
+        ...op.config,
+        segments: op.config.segments.map((seg) => ({ ...seg, curviness: seg.curviness ?? 1 })),
+      };
+      return handleArcPathScript(parsed, s, setArcPathInScript(s, op.animationId, cfg));
+    }
+    case "updateArcSegment":
+      return handleArcPathScript(
+        parsed,
+        s,
+        updateArcSegmentInScript(s, op.animationId, op.segmentIndex, op.update),
+      );
+    case "removeArcPath":
+      return handleArcPathScript(parsed, s, removeArcPathFromScript(s, op.animationId));
+    default:
+      return undefined;
+  }
+}
+
 function applyGsapOp(parsed: ParsedDocument, op: EditOp): MutationResult | undefined {
   const kf = applyGsapKeyframeOp(parsed, op);
   if (kf !== undefined) return kf;
+  const arc = applyArcPathOp(parsed, op);
+  if (arc !== undefined) return arc;
   switch (op.type) {
     case "addGsapTween":
       return handleAddGsapTween(parsed, op.target, op.tween);
@@ -679,7 +707,7 @@ function handleAddGsapTween(
   tween: GsapTweenSpec,
 ): MutationResult {
   const script = getGsapScript(parsed.document);
-  if (!script) return EMPTY;
+  if (!script) throw new Error("No GSAP script block found in the composition.");
 
   const extras: Record<string, unknown> = {};
   if (tween.repeat !== undefined) extras.repeat = tween.repeat;
@@ -720,7 +748,7 @@ function handleSetGsapTween(
   properties: Partial<GsapTweenSpec>,
 ): MutationResult {
   const script = getGsapScript(parsed.document);
-  if (!script) return EMPTY;
+  if (!script) throw new Error("No GSAP script block found in the composition.");
 
   const updates: Partial<GsapAnimation> = {};
   if (properties.duration !== undefined) updates.duration = properties.duration;
@@ -760,7 +788,7 @@ function handleRemoveGsapProperty(
 
 function handleRemoveGsapTween(parsed: ParsedDocument, animationId: string): MutationResult {
   const script = getGsapScript(parsed.document);
-  if (!script) return EMPTY;
+  if (!script) throw new Error("No GSAP script block found in the composition.");
   const newScript = removeAnimationFromScript(script, animationId);
   if (newScript === script) return EMPTY;
   setGsapScript(parsed.document, newScript);
@@ -844,6 +872,16 @@ function handleSplitAnimations(
   return gsapScriptChange(script, newScript);
 }
 
+function handleArcPathScript(
+  parsed: ParsedDocument,
+  oldScript: string,
+  newScript: string,
+): MutationResult {
+  if (newScript === oldScript) return EMPTY;
+  setGsapScript(parsed.document, newScript);
+  return gsapScriptChange(oldScript, newScript);
+}
+
 function handleDeleteAllForSelector(parsed: ParsedDocument, selector: string): MutationResult {
   const script = getGsapScript(parsed.document);
   if (!script) return EMPTY;
@@ -921,7 +959,7 @@ function handleAddGsapKeyframe(
   value: Record<string, unknown>,
 ): MutationResult {
   const script = getGsapScript(parsed.document);
-  if (!script) return EMPTY;
+  if (!script) throw new Error("No GSAP script block found in the composition.");
   const props = value as Record<string, number | string>;
   const newScript = addKeyframeToScript(
     script,
@@ -1066,6 +1104,9 @@ export function validateOp(parsed: ParsedDocument, op: EditOp): CanResult {
     case "materializeKeyframes":
     case "splitIntoPropertyGroups":
     case "splitAnimations":
+    case "setArcPath":
+    case "updateArcSegment":
+    case "removeArcPath":
     case "deleteAllForSelector":
     case "removeLabel":
       if (getGsapScript(parsed.document) === null)

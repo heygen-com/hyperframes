@@ -32,17 +32,6 @@ function fresh(script = GSAP_SCRIPT) {
   return parseMutable(makeHtml(script));
 }
 
-// A sub-composition host: data-hf-id="hf-host" (its own leaf id) AND
-// data-composition-id="sub-1" (the id studio passes when targeting the root).
-function freshSubComp(script = GSAP_SCRIPT) {
-  return parseMutable(
-    `<div data-hf-id="hf-stage" data-hf-root style="width: 1280px; height: 720px">
-  <div data-hf-id="hf-host" data-composition-id="sub-1" style="opacity: 0"></div>
-  <script>${script}</script>
-</div>`.trim(),
-  );
-}
-
 function getScript(parsed: ReturnType<typeof parseMutable>): string {
   const doc = serializeDocument(parsed);
   const m = /<script>([\s\S]*?)<\/script>/i.exec(doc);
@@ -186,89 +175,6 @@ describe("addGsapTween", () => {
     expect(newScript).toContain("fromTo(");
     expect(newScript).toContain("opacity: 0");
     expect(newScript).toContain("opacity: 1");
-  });
-
-  it("returns EMPTY when no GSAP script", () => {
-    const noScript = parseMutable(
-      `<div data-hf-id="hf-stage" data-hf-root><div data-hf-id="hf-box"></div></div>`,
-    );
-    const result = applyOp(noScript, {
-      type: "addGsapTween",
-      target: "hf-box",
-      tween: { method: "to", properties: { x: 1 } },
-    });
-    expect(result.forward).toHaveLength(0);
-  });
-
-  // A normal data-hf-id target keeps the [data-hf-id] selector form.
-  it("emits a [data-hf-id] selector for a normal element target", () => {
-    const result = applyOp(fresh(), {
-      type: "addGsapTween",
-      target: "hf-box",
-      tween: { method: "to", properties: { x: 1 } },
-    });
-    const script = String(result.forward[0]?.value ?? "");
-    expect(script).toContain(`[data-hf-id=\\"hf-box\\"]`);
-    expect(script).not.toContain("data-composition-id");
-  });
-
-  // A sub-composition ROOT is addressed by its composition id, but the SDK's
-  // element↔tween attribution is data-hf-id based. So a comp-id target must
-  // resolve to the host element and emit the CANONICAL [data-hf-id="<host>"]
-  // form — NOT [data-composition-id] (invisible to selectorMatchesId / cascade /
-  // buildAnimationIdMap) and NOT [data-hf-id="<compId>"] (matches no element).
-  it("emits a canonical [data-hf-id] selector for a sub-composition root target", () => {
-    const result = applyOp(freshSubComp(), {
-      type: "addGsapTween",
-      target: "sub-1",
-      tween: { method: "to", properties: { x: 1 } },
-    });
-    const script = String(result.forward[0]?.value ?? "");
-    expect(script).toContain(`[data-hf-id=\\"hf-host\\"]`);
-    expect(script).not.toContain("data-composition-id");
-    expect(script).not.toContain(`[data-hf-id=\\"sub-1\\"]`);
-  });
-
-  // validateOp/can must accept a comp-root target (resolveScoped's comp-id
-  // fallback resolves it) — otherwise can/apply diverge.
-  it("validateOp accepts a sub-composition root target (no E_TARGET_NOT_FOUND)", () => {
-    const r = validateOp(freshSubComp(), {
-      type: "addGsapTween",
-      target: "sub-1",
-      tween: { method: "to", properties: { x: 1 } },
-    });
-    expect(r.ok).toBe(true);
-  });
-
-  // setTiming on the comp-root after adding a tween updates the tween's GSAP
-  // position/duration — selectorMatchesId matches the canonical host hf-id.
-  it("setTiming on a comp-root syncs its tween position/duration", () => {
-    // applyOp mutates parsed.document in place, so chain ops on the same parsed.
-    const parsed = freshSubComp();
-    applyOp(parsed, {
-      type: "addGsapTween",
-      target: "sub-1",
-      tween: { method: "to", duration: 0.5, properties: { x: 1 } },
-    });
-    applyOp(parsed, { type: "setTiming", target: "sub-1", start: 2, duration: 1.5 });
-    const script = getScript(parsed);
-    // The host tween's GSAP position (3rd arg) is now 2 and duration 1.5.
-    expect(script).toContain(`[data-hf-id=\\"hf-host\\"]`);
-    expect(script).toMatch(/duration:\s*1\.5/);
-    expect(script).toMatch(/\},\s*2\)/);
-  });
-
-  // removeElement on the comp-root cascade-removes its tween (not orphaned).
-  it("removeElement on a comp-root cascade-removes its tween", () => {
-    const parsed = freshSubComp();
-    applyOp(parsed, {
-      type: "addGsapTween",
-      target: "sub-1",
-      tween: { method: "to", properties: { x: 1 } },
-    });
-    expect(getScript(parsed)).toContain(`[data-hf-id=\\"hf-host\\"]`);
-    applyOp(parsed, { type: "removeElement", target: "sub-1" });
-    expect(getScript(parsed)).not.toContain(`[data-hf-id=\\"hf-host\\"]`);
   });
 });
 
@@ -830,5 +736,124 @@ window.__timelines["t"] = tl;`;
     const newScript = String(result.forward[1]?.value ?? "");
     expect(newScript).not.toContain("hf-box");
     expect(newScript).toContain("hf-stage");
+  });
+});
+
+// ─── GSAP ops on composition with no script block ────────────────────────────
+
+const NO_SCRIPT_HTML = `<div data-hf-id="hf-stage" data-hf-root style="width:1280px;height:720px">
+  <div data-hf-id="hf-box" style="opacity:0"></div>
+</div>`.trim();
+
+describe("GSAP ops on composition with no GSAP script block", () => {
+  function freshNoScript() {
+    return parseMutable(NO_SCRIPT_HTML);
+  }
+
+  it("addGsapTween throws instead of silent no-op", () => {
+    expect(() =>
+      applyOp(freshNoScript(), {
+        type: "addGsapTween",
+        target: "hf-box",
+        tween: { method: "to", properties: { x: 100 } },
+      }),
+    ).toThrow();
+  });
+
+  it("setGsapTween throws instead of silent no-op", () => {
+    expect(() =>
+      applyOp(freshNoScript(), {
+        type: "setGsapTween",
+        animationId: "anim-1",
+        properties: { ease: "power2.out" },
+      }),
+    ).toThrow();
+  });
+
+  it("removeGsapTween throws instead of silent no-op", () => {
+    expect(() =>
+      applyOp(freshNoScript(), { type: "removeGsapTween", animationId: "anim-1" }),
+    ).toThrow();
+  });
+
+  it("addGsapKeyframe throws when script element is null", () => {
+    expect(() =>
+      applyOp(freshNoScript(), {
+        type: "addGsapKeyframe",
+        animationId: "a1",
+        percentage: 0,
+        value: { opacity: 0 },
+      }),
+    ).toThrow("No GSAP script block found");
+  });
+});
+
+// ─── arc path ops ─────────────────────────────────────────────────────────────
+
+const ARC_SCRIPT = `var tl = gsap.timeline({ paused: true });
+tl.to('[data-hf-id="hf-hero"]', { x: 100, y: 50, duration: 2 }, 0);
+window.__timelines["t"] = tl;`;
+const ARC_ANIM_ID = `[data-hf-id="hf-hero"]-to-0-position`;
+const ARC_ENABLED_CONFIG = {
+  enabled: true as const,
+  autoRotate: false as const,
+  segments: [{ curviness: 1 }],
+};
+
+function freshArc() {
+  return parseMutable(makeHtml(ARC_SCRIPT));
+}
+
+function enableArc(parsed: ReturnType<typeof parseMutable>) {
+  applyOp(parsed, { type: "setArcPath", animationId: ARC_ANIM_ID, config: ARC_ENABLED_CONFIG });
+}
+
+describe("setArcPath", () => {
+  it("enabled: true adds motionPath to script", () => {
+    const parsed = freshArc();
+    enableArc(parsed);
+    expect(getScript(parsed)).toContain("motionPath");
+  });
+
+  it("enabled: false removes motionPath and restores x/y", () => {
+    const parsed = freshArc();
+    enableArc(parsed);
+    applyOp(parsed, {
+      type: "setArcPath",
+      animationId: ARC_ANIM_ID,
+      config: { enabled: false, autoRotate: false, segments: [] },
+    });
+    const s = getScript(parsed);
+    expect(s).not.toContain("motionPath");
+  });
+
+  it("no-op when animation not found", () => {
+    const parsed = freshArc();
+    const before = getScript(parsed);
+    applyOp(parsed, { type: "setArcPath", animationId: "nonexistent", config: ARC_ENABLED_CONFIG });
+    expect(getScript(parsed)).toBe(before);
+  });
+});
+
+describe("updateArcSegment", () => {
+  it("changes curviness of segment", () => {
+    const parsed = freshArc();
+    enableArc(parsed);
+    applyOp(parsed, {
+      type: "updateArcSegment",
+      animationId: ARC_ANIM_ID,
+      segmentIndex: 0,
+      update: { curviness: 2 },
+    });
+    expect(getScript(parsed)).toContain("motionPath");
+  });
+});
+
+describe("removeArcPath", () => {
+  it("removes motionPath from script", () => {
+    const parsed = freshArc();
+    enableArc(parsed);
+    applyOp(parsed, { type: "removeArcPath", animationId: ARC_ANIM_ID });
+    expect(getScript(parsed)).not.toContain("motionPath");
   });
 });

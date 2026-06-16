@@ -475,3 +475,80 @@ export function resolveConversionProps(
     : { ...anim.properties };
   return { fromProps: { ...(anim.fromProperties ?? {}) }, toProps };
 }
+
+// ── Arc path serialization helpers (shared by recast + acorn writers) ─────────
+
+function numericXY(props: Record<string, number | string>): { x: number; y: number } | null {
+  const vx = props.x;
+  const vy = props.y;
+  return typeof vx === "number" && typeof vy === "number" ? { x: vx, y: vy } : null;
+}
+
+export function extractArcWaypoints(anim: GsapAnimation): Array<{ x: number; y: number }> {
+  const keyframeWps = (anim.keyframes?.keyframes ?? [])
+    .map((kf) => numericXY(kf.properties))
+    .filter((pt): pt is { x: number; y: number } => pt !== null);
+  if (keyframeWps.length >= 2) return keyframeWps;
+  const propX = anim.properties.x;
+  const propY = anim.properties.y;
+  if (typeof propX !== "number" && typeof propY !== "number") return keyframeWps;
+  const destX = typeof propX === "number" ? propX : 0;
+  const destY = typeof propY === "number" ? propY : 0;
+  return [
+    { x: 0, y: 0 },
+    { x: destX, y: destY },
+  ];
+}
+
+function autoRotateSuffix(autoRotate: boolean | number): string {
+  if (autoRotate === true) return ", autoRotate: true";
+  if (typeof autoRotate === "number") return `, autoRotate: ${autoRotate}`;
+  return "";
+}
+
+function cubicControlPoints(
+  seg: ArcPathSegment,
+  wp: { x: number; y: number },
+  nextWp: { x: number; y: number },
+): string[] {
+  if (seg.cp1 && seg.cp2) {
+    return [`{x: ${seg.cp1.x}, y: ${seg.cp1.y}}`, `{x: ${seg.cp2.x}, y: ${seg.cp2.y}}`];
+  }
+  const dx = nextWp.x - wp.x;
+  const dy = nextWp.y - wp.y;
+  const c = seg.curviness ?? 1;
+  return [
+    `{x: ${wp.x + dx * 0.33}, y: ${wp.y + dy * 0.33 - c * Math.abs(dx) * 0.25}}`,
+    `{x: ${wp.x + dx * 0.66}, y: ${wp.y + dy * 0.66 - c * Math.abs(dx) * 0.25}}`,
+  ];
+}
+
+function buildCubicPathEntries(
+  waypoints: Array<{ x: number; y: number }>,
+  segments: ArcPathSegment[],
+): string[] {
+  const entries = [`{x: ${waypoints[0]!.x}, y: ${waypoints[0]!.y}}`];
+  for (let i = 0; i < segments.length; i++) {
+    const nextWp = waypoints[i + 1]!;
+    entries.push(...cubicControlPoints(segments[i]!, waypoints[i]!, nextWp));
+    entries.push(`{x: ${nextWp.x}, y: ${nextWp.y}}`);
+  }
+  return entries;
+}
+
+export function buildMotionPathObjectCode(config: {
+  waypoints: Array<{ x: number; y: number }>;
+  segments: ArcPathSegment[];
+  autoRotate: boolean | number;
+}): string {
+  const { waypoints, segments, autoRotate } = config;
+  const arSuffix = autoRotateSuffix(autoRotate);
+  if (segments.some((s) => s.cp1 && s.cp2) && waypoints.length >= 2) {
+    const pathStr = buildCubicPathEntries(waypoints, segments).join(", ");
+    return `{ path: [${pathStr}], type: "cubic"${arSuffix} }`;
+  }
+  const pathEntries = waypoints.map((wp) => `{x: ${wp.x}, y: ${wp.y}}`);
+  const curviness = segments[0]?.curviness ?? 1;
+  const curvPart = curviness !== 1 ? `, curviness: ${curviness}` : "";
+  return `{ path: [${pathEntries.join(", ")}]${curvPart}${arSuffix} }`;
+}

@@ -24,11 +24,18 @@ import {
   materializeKeyframesFromScript as materializeAcorn,
   splitIntoPropertyGroupsFromScript as splitGroupsAcorn,
   splitAnimationsInScript as splitAnimsAcorn,
+  setArcPathInScript as setArcAcorn,
+  updateArcSegmentInScript as updateArcSegmentAcorn,
+  removeArcPathFromScript as removeArcAcorn,
 } from "./gsapWriterAcorn.js";
-
 function acornId(script: string): string {
   const parsed = parseGsapScriptAcornForWrite(script) as ParsedGsapAcornForWrite;
   return parsed.located[0]!.id;
+}
+
+function arcShapeOf(script: string) {
+  const anim = parseGsapScript(script).animations[0]!;
+  return { arcPath: anim.arcPath, properties: anim.properties };
 }
 
 /** Reparse a written script and return the first animation's editable shape. */
@@ -388,5 +395,68 @@ describe("parity: splitAnimationsInScript (recast vs acorn)", () => {
       elementDuration: 4,
     };
     expect(splitAnimsAcorn(script, opts).script).toBe(script);
+  });
+});
+
+// ─── arc path parity ──────────────────────────────────────────────────────────
+
+const ARC_FLAT_SCRIPT = `
+  const tl = gsap.timeline({ paused: true });
+  tl.to("#hero", { x: 100, y: 50, duration: 2 }, 0);
+`;
+const ARC_CFG = {
+  enabled: true as const,
+  autoRotate: false as const,
+  segments: [{ curviness: 1 }],
+};
+const DISABLE_CFG = {
+  enabled: false as const,
+  autoRotate: false as const,
+  segments: [] as never[],
+};
+
+function arcFixture() {
+  const id = acornId(ARC_FLAT_SCRIPT);
+  const enabled = setArcAcorn(ARC_FLAT_SCRIPT, id, ARC_CFG);
+  return { id, enabled };
+}
+
+describe("setArcPathInScript: acorn output correctness", () => {
+  it("enable: arcPath.enabled=true, segments preserved", () => {
+    const id = acornId(ARC_FLAT_SCRIPT);
+    const shape = arcShapeOf(setArcAcorn(ARC_FLAT_SCRIPT, id, ARC_CFG));
+    expect(shape.arcPath?.enabled).toBe(true);
+    expect(shape.arcPath?.segments).toHaveLength(1);
+  });
+
+  it("disable: arcPath=undefined, x/y restored", () => {
+    const { id, enabled } = arcFixture();
+    const shape = arcShapeOf(setArcAcorn(enabled, id, DISABLE_CFG));
+    expect(shape.arcPath).toBeUndefined();
+    expect(typeof shape.properties.x).toBe("number");
+  });
+
+  it("no-op when animation not found", () => {
+    expect(setArcAcorn(ARC_FLAT_SCRIPT, "nope", ARC_CFG)).toBe(ARC_FLAT_SCRIPT);
+  });
+});
+
+describe("updateArcSegmentInScript: acorn output correctness", () => {
+  it("curviness update reflected in parsed shape", () => {
+    const { id, enabled } = arcFixture();
+    const shape = arcShapeOf(updateArcSegmentAcorn(enabled, id, 0, { curviness: 2 }));
+    expect(shape.arcPath?.segments[0]?.curviness).toBe(2);
+  });
+
+  it("no-op when index out of range", () => {
+    const { id, enabled } = arcFixture();
+    expect(updateArcSegmentAcorn(enabled, id, 99, { curviness: 2 })).toBe(enabled);
+  });
+});
+
+describe("removeArcPathFromScript: acorn output correctness", () => {
+  it("arcPath=undefined after removal", () => {
+    const { id, enabled } = arcFixture();
+    expect(arcShapeOf(removeArcAcorn(enabled, id)).arcPath).toBeUndefined();
   });
 });

@@ -7,8 +7,17 @@
  * pretty-printer churn. Consumes ParsedGsapAcornForWrite from gsapParserAcorn.ts.
  */
 import MagicString from "magic-string";
-import type { GsapAnimation, GsapPercentageKeyframe } from "./gsapSerialize.js";
-import { resolveConversionProps } from "./gsapSerialize.js";
+import type {
+  GsapAnimation,
+  GsapPercentageKeyframe,
+  ArcPathConfig,
+  ArcPathSegment,
+} from "./gsapSerialize.js";
+import {
+  resolveConversionProps,
+  extractArcWaypoints,
+  buildMotionPathObjectCode,
+} from "./gsapSerialize.js";
 import {
   parseGsapScriptAcornForWrite,
   type ParsedGsapAcornForWrite,
@@ -1302,6 +1311,160 @@ export function removeLabelFromScript(script: string, name: string): string {
     ms.remove(target.start, end);
   }
   return ms.toString();
+}
+
+// ── Arc path helpers ─────────────────────────────────────────────────────────
+
+/**
+ * Remove a set of properties from an ObjectExpression in a single pass.
+ * Groups consecutive marked props into blocks to avoid overlapping remove ranges.
+ */
+function removePropsByKey(ms: MagicString, objNode: any, keys: Set<string>): void {
+  if (objNode?.type !== "ObjectExpression") return;
+  const allProps = (objNode.properties ?? []).filter(isObjectProperty);
+  const marked = allProps.map((p: any) => keys.has(propKeyName(p) ?? ""));
+  let i = 0;
+  while (i < allProps.length) {
+    if (!marked[i]) {
+      i++;
+      continue;
+    }
+    const blockStart = i;
+    while (i < allProps.length && marked[i]) i++;
+    ms.remove(...blockRemoveRange(allProps, blockStart, i));
+  }
+}
+
+function blockRemoveRange(allProps: any[], blockStart: number, blockEnd: number): [number, number] {
+  if (blockStart === 0 && blockEnd === allProps.length)
+    return [allProps[0].start, allProps[allProps.length - 1].end];
+  if (blockStart === 0) return [allProps[0].start, allProps[blockEnd].start];
+  return [allProps[blockStart - 1].end, allProps[blockEnd - 1].end];
+}
+
+// fallow-ignore-next-line complexity
+function readLastWaypointXY(mpVal: any): { x: number | null; y: number | null } {
+  if (mpVal?.type !== "ObjectExpression") return { x: null, y: null };
+  const pathProp = findPropertyNode(mpVal, "path");
+  if (pathProp?.value?.type !== "ArrayExpression") return { x: null, y: null };
+  const elems: any[] = pathProp.value.elements ?? [];
+  const last = elems[elems.length - 1];
+  if (last?.type !== "ObjectExpression") return { x: null, y: null };
+  const xRaw = findPropertyNode(last, "x")?.value?.value;
+  const yRaw = findPropertyNode(last, "y")?.value?.value;
+  return { x: typeof xRaw === "number" ? xRaw : null, y: typeof yRaw === "number" ? yRaw : null };
+}
+
+function disableArcPath(ms: MagicString, call: TweenCallInfo): boolean {
+  const mpProp = findPropertyNode(call.varsArg, "motionPath");
+  if (!mpProp) return false;
+  const { x, y } = readLastWaypointXY(mpProp.value);
+  if (x === null && y === null) {
+    const allProps = (call.varsArg.properties ?? []).filter(isObjectProperty);
+    removeProp(ms, mpProp, allProps);
+    return true;
+  }
+  // Overwrite the entire motionPath property with the recovered x/y pair — avoids
+  // the appendLeft+remove range-boundary issue in MagicString.
+  const parts: string[] = [];
+  if (x !== null) parts.push(`x: ${x}`);
+  if (y !== null) parts.push(`y: ${y}`);
+  ms.overwrite(mpProp.start, mpProp.end, parts.join(", "));
+  return true;
+}
+
+function stripXYFromKeyframes(ms: MagicString, kfPropNode: any): void {
+  if (kfPropNode?.value?.type !== "ObjectExpression") return;
+  const xyKeys = new Set(["x", "y"]);
+  for (const pctProp of (kfPropNode.value.properties ?? []).filter(isObjectProperty)) {
+    const k = propKeyName(pctProp);
+    if (typeof k === "string" && k.endsWith("%") && pctProp.value?.type === "ObjectExpression") {
+      removePropsByKey(ms, pctProp.value, xyKeys);
+    }
+  }
+}
+
+function enableArcPath(
+  ms: MagicString,
+  call: TweenCallInfo,
+  animation: GsapAnimation,
+  config: ArcPathConfig,
+): boolean {
+  const waypoints = extractArcWaypoints(animation);
+  if (waypoints.length < 2) return false;
+  const segments: ArcPathSegment[] =
+    config.segments.length === waypoints.length - 1
+      ? config.segments
+      : Array.from({ length: waypoints.length - 1 }, () => ({ curviness: 1 }));
+  const motionPathCode = buildMotionPathObjectCode({
+    waypoints,
+    segments,
+    autoRotate: config.autoRotate,
+  });
+  upsertProp(ms, call.varsArg, "motionPath", `__raw:${motionPathCode}`);
+  stripXYFromKeyframes(ms, findPropertyNode(call.varsArg, "keyframes"));
+  removePropsByKey(ms, call.varsArg, new Set(["x", "y"]));
+  return true;
+}
+
+export function setArcPathInScript(
+  script: string,
+  animationId: string,
+  config: ArcPathConfig,
+): string {
+  const parsed = parseGsapScriptAcornForWrite(script);
+  if (!parsed) return script;
+  const target = parsed.located.find((l) => l.id === animationId);
+  if (!target) return script;
+  const ms = new MagicString(script);
+  const handled = config.enabled
+    ? enableArcPath(ms, target.call, target.animation, config)
+    : disableArcPath(ms, target.call);
+  return handled ? ms.toString() : script;
+}
+
+export function updateArcSegmentInScript(
+  script: string,
+  animationId: string,
+  segmentIndex: number,
+  update: Partial<ArcPathSegment>,
+): string {
+  const parsed = parseGsapScriptAcornForWrite(script);
+  if (!parsed) return script;
+  const target = parsed.located.find((l) => l.id === animationId);
+  if (!target) return script;
+
+  const { call, animation } = target;
+  if (!animation.arcPath?.enabled) return script;
+
+  const segments = [...animation.arcPath.segments];
+  if (segmentIndex < 0 || segmentIndex >= segments.length) return script;
+
+  segments[segmentIndex] = { ...segments[segmentIndex]!, ...update };
+
+  const waypoints = extractArcWaypoints(animation);
+  if (waypoints.length < 2) return script;
+
+  const motionPathCode = buildMotionPathObjectCode({
+    waypoints,
+    segments,
+    autoRotate: animation.arcPath.autoRotate,
+  });
+
+  const mpProp = findPropertyNode(call.varsArg, "motionPath");
+  if (!mpProp) return script;
+
+  const ms = new MagicString(script);
+  ms.overwrite(mpProp.value.start, mpProp.value.end, motionPathCode);
+  return ms.toString();
+}
+
+export function removeArcPathFromScript(script: string, animationId: string): string {
+  return setArcPathInScript(script, animationId, {
+    enabled: false,
+    autoRotate: false,
+    segments: [],
+  });
 }
 
 // ── splitAnimationsInScript helpers ──────────────────────────────────────────
