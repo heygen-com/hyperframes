@@ -3,6 +3,10 @@ import type { GsapAnimation, GsapKeyframesData, ParsedGsap } from "@hyperframes/
 import type { GsapPercentageKeyframe } from "@hyperframes/core/gsap-parser";
 import { usePlayerStore } from "../player/store/playerStore";
 import { readRuntimeKeyframes, scanAllRuntimeKeyframes } from "./gsapRuntimeBridge";
+import {
+  clearKeyframeCacheForElement,
+  clearKeyframeCacheForFile,
+} from "./gsapKeyframeCacheHelpers";
 import { PROPERTY_DEFAULTS, toAbsoluteTime } from "./gsapShared";
 
 function deduplicateKeyframes(keyframes: GsapPercentageKeyframe[]): GsapPercentageKeyframe[] {
@@ -301,10 +305,7 @@ export function useGsapAnimationsForElement(
       if (kf.easeEach) easeEach = kf.easeEach;
     }
     if (allKeyframes.length === 0) {
-      const { keyframeCache, setKeyframeCache } = usePlayerStore.getState();
-      if (keyframeCache.has(`${sourceFile}#${elementId}`)) {
-        setKeyframeCache(`${sourceFile}#${elementId}`, undefined);
-      }
+      clearKeyframeCacheForElement(sourceFile, elementId);
       return;
     }
     const dedupedKeyframes = deduplicateKeyframes(allKeyframes);
@@ -358,14 +359,11 @@ export function usePopulateKeyframeCacheForFile(
     const sf = sourceFile;
     fetchParsedAnimations(projectId, sf).then((parsed) => {
       if (!parsed) return;
-      const { setKeyframeCache, keyframeCache } = usePlayerStore.getState();
-      const sfPrefix = `${sf}#`;
-      const fallbackPrefix = "index.html#";
-      for (const key of keyframeCache.keys()) {
-        if (key.startsWith(sfPrefix) || (sf !== "index.html" && key.startsWith(fallbackPrefix))) {
-          setKeyframeCache(key, undefined);
-        }
-      }
+      const { setKeyframeCache } = usePlayerStore.getState();
+      // Drop the file's stale entries (including the bare keys consumers read)
+      // before repopulating, so an element whose keyframes were removed and is
+      // absent from this scan doesn't keep showing diamonds.
+      clearKeyframeCacheForFile(sf);
       const { elements } = usePlayerStore.getState();
       const mergedByElement = new Map<string, GsapKeyframesData>();
       for (const anim of parsed.animations) {
