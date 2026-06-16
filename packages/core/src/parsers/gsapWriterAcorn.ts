@@ -7,13 +7,15 @@
  * pretty-printer churn. Consumes ParsedGsapAcornForWrite from gsapParserAcorn.ts.
  */
 import MagicString from "magic-string";
-import type { GsapAnimation } from "./gsapSerialize.js";
+import type { GsapAnimation, GsapPercentageKeyframe } from "./gsapSerialize.js";
 import { resolveConversionProps } from "./gsapSerialize.js";
 import {
   parseGsapScriptAcornForWrite,
   type ParsedGsapAcornForWrite,
   type TweenCallInfo,
 } from "./gsapParserAcorn.js";
+import { classifyPropertyGroup } from "./gsapConstants.js";
+import type { PropertyGroupName } from "./gsapConstants.js";
 import * as acornWalk from "acorn-walk";
 
 // ── Code generation helpers ──────────────────────────────────────────────────
@@ -995,6 +997,262 @@ export function convertToKeyframesFromScript(
   overwriteVarsArg(ms, call, buildKeyframesVarsCode(animation, fromProps, toProps));
 
   return ms.toString();
+}
+
+// ── Keyframe-object code builder ─────────────────────────────────────────────
+
+/** Build a percentage-keyframes object literal: `{ "0%": { x: 0 }, "100%": { x: 100 } }`. */
+function buildKeyframeObjectCode(
+  keyframes: Array<{
+    percentage: number;
+    properties: Record<string, number | string>;
+    ease?: string;
+  }>,
+  easeEach?: string,
+): string {
+  const entries = keyframes.map((kf) => {
+    const props = Object.entries(kf.properties).map(([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`);
+    if (kf.ease) props.push(`ease: ${JSON.stringify(kf.ease)}`);
+    return `${JSON.stringify(`${kf.percentage}%`)}: { ${props.join(", ")} }`;
+  });
+  if (easeEach) entries.push(`easeEach: ${JSON.stringify(easeEach)}`);
+  return `{ ${entries.join(", ")} }`;
+}
+
+// ── Materialize keyframes ────────────────────────────────────────────────────
+
+/**
+ * Replace a dynamic or static keyframes expression with a fully-resolved
+ * percentage-keyframes object. Called when a user first edits a dynamically-
+ * generated keyframe in the studio so it becomes statically editable.
+ */
+export function materializeKeyframesFromScript(
+  script: string,
+  animationId: string,
+  keyframes: Array<{
+    percentage: number;
+    properties: Record<string, number | string>;
+    ease?: string;
+  }>,
+  easeEach?: string,
+  resolvedSelector?: string,
+): string {
+  const parsed = parseGsapScriptAcornForWrite(script);
+  if (!parsed) return script;
+  const target = parsed.located.find((l) => l.id === animationId);
+  if (!target) return script;
+
+  const { call } = target;
+  const sorted = [...keyframes].sort((a, b) => a.percentage - b.percentage);
+  const kfObjCode = buildKeyframeObjectCode(sorted, easeEach);
+  const ms = new MagicString(script);
+
+  if (resolvedSelector) {
+    const selectorArg = call.node.arguments[0];
+    if (selectorArg)
+      ms.overwrite(selectorArg.start, selectorArg.end, JSON.stringify(resolvedSelector));
+  }
+
+  const kfProp = findPropertyNode(call.varsArg, "keyframes");
+  if (kfProp) {
+    ms.overwrite(kfProp.value.start, kfProp.value.end, kfObjCode);
+  } else if (call.varsArg?.type === "ObjectExpression") {
+    const vars = call.varsArg;
+    if (vars.properties.length > 0) {
+      ms.prependLeft(vars.properties[0].start, `keyframes: ${kfObjCode}, `);
+    } else {
+      ms.appendLeft(vars.end - 1, `keyframes: ${kfObjCode}`);
+    }
+  }
+
+  const eachProp = findPropertyNode(call.varsArg, "easeEach");
+  if (eachProp) {
+    const allProps = (call.varsArg.properties ?? []).filter((p: any) => isObjectProperty(p));
+    removeProp(ms, eachProp, allProps);
+  }
+
+  return ms.toString();
+}
+
+// ── Add animation with keyframes ──────────────────────────────────────────────
+
+/** Insert a new keyframed `to()` call and return the new animation ID. */
+export function addAnimationWithKeyframesToScript(
+  script: string,
+  targetSelector: string,
+  position: number,
+  duration: number,
+  keyframes: Array<{
+    percentage: number;
+    properties: Record<string, number | string>;
+    ease?: string;
+  }>,
+  ease?: string,
+): { script: string; id: string } {
+  const parsed = parseGsapScriptAcornForWrite(script);
+  if (!parsed) return { script, id: "" };
+  const insertionPoint = findInsertionPoint(parsed);
+  if (insertionPoint === null) return { script, id: "" };
+
+  const sorted = [...keyframes].sort((a, b) => a.percentage - b.percentage);
+  const kfObjCode = buildKeyframeObjectCode(sorted);
+  const varParts = [`keyframes: ${kfObjCode}`, `duration: ${valueToCode(duration)}`];
+  if (ease) varParts.push(`ease: ${JSON.stringify(ease)}`);
+  const stmtCode = `${parsed.timelineVar}.to(${JSON.stringify(targetSelector)}, { ${varParts.join(", ")} }, ${valueToCode(position)});`;
+
+  const ms = new MagicString(script);
+  ms.appendLeft(insertionPoint, "\n" + stmtCode);
+
+  const result = ms.toString();
+  const reParsed = parseGsapScriptAcornForWrite(result);
+  const newId = reParsed?.located[reParsed.located.length - 1]?.id ?? "";
+  return { script: result, id: newId };
+}
+
+// ── Split into property groups ────────────────────────────────────────────────
+
+function collectPropertyKeys(anim: GsapAnimation): Set<string> {
+  const keys = new Set<string>();
+  if (anim.keyframes) {
+    for (const kf of anim.keyframes.keyframes) {
+      for (const k of Object.keys(kf.properties)) keys.add(k);
+    }
+  } else {
+    for (const k of Object.keys(anim.properties)) keys.add(k);
+  }
+  return keys;
+}
+
+function partitionPropertyGroups(keys: Set<string>): Map<PropertyGroupName, string[]> {
+  const groups = new Map<PropertyGroupName, string[]>();
+  for (const key of keys) {
+    if (key === "transformOrigin") continue;
+    const group = classifyPropertyGroup(key);
+    let arr = groups.get(group);
+    if (!arr) {
+      arr = [];
+      groups.set(group, arr);
+    }
+    arr.push(key);
+  }
+  return groups;
+}
+
+function assignTransformOrigin(groupProps: Map<PropertyGroupName, string[]>): void {
+  let largestGroup: PropertyGroupName | undefined;
+  let largestCount = 0;
+  for (const [group, props] of groupProps) {
+    if (props.length > largestCount) {
+      largestCount = props.length;
+      largestGroup = group;
+    }
+  }
+  if (largestGroup) groupProps.get(largestGroup)!.push("transformOrigin");
+}
+
+function filterGroupKeyframes(
+  kfs: GsapPercentageKeyframe[],
+  propSet: Set<string>,
+): Array<{ percentage: number; properties: Record<string, number | string>; ease?: string }> {
+  const result: Array<{
+    percentage: number;
+    properties: Record<string, number | string>;
+    ease?: string;
+  }> = [];
+  for (const kf of kfs) {
+    const filtered: Record<string, number | string> = {};
+    for (const [k, v] of Object.entries(kf.properties)) {
+      if (propSet.has(k)) filtered[k] = v;
+    }
+    if (Object.keys(filtered).length > 0) {
+      result.push({
+        percentage: kf.percentage,
+        properties: filtered,
+        ...(kf.ease ? { ease: kf.ease } : {}),
+      });
+    }
+  }
+  return result;
+}
+
+function filterGroupProperties(
+  properties: Record<string, number | string>,
+  propSet: Set<string>,
+): Record<string, number | string> {
+  const result: Record<string, number | string> = {};
+  for (const [k, v] of Object.entries(properties)) {
+    if (propSet.has(k)) result[k] = v;
+  }
+  return result;
+}
+
+function addGroupAnimToScript(
+  script: string,
+  anim: GsapAnimation,
+  propSet: Set<string>,
+): { script: string; id: string } {
+  if (anim.keyframes) {
+    const groupKeyframes = filterGroupKeyframes(anim.keyframes.keyframes, propSet);
+    if (groupKeyframes.length === 0) return { script, id: "" };
+    const pos = typeof anim.position === "number" ? anim.position : 0;
+    return addAnimationWithKeyframesToScript(
+      script,
+      anim.targetSelector,
+      pos,
+      anim.duration ?? 0.5,
+      groupKeyframes,
+      anim.keyframes.easeEach ?? anim.ease,
+    );
+  }
+  const groupProperties = filterGroupProperties(anim.properties, propSet);
+  if (Object.keys(groupProperties).length === 0) return { script, id: "" };
+  const fromProperties =
+    anim.method === "fromTo" && anim.fromProperties
+      ? filterGroupProperties(anim.fromProperties, propSet)
+      : undefined;
+  return addAnimationToScript(script, {
+    targetSelector: anim.targetSelector,
+    method: anim.method,
+    position: anim.position,
+    duration: anim.duration,
+    ease: anim.ease,
+    properties: groupProperties,
+    fromProperties,
+    extras: anim.extras,
+  });
+}
+
+/**
+ * Split a mixed-property tween into one tween per property group (position,
+ * scale, visual, etc.) so each group can be edited independently.
+ * Returns the updated script and the IDs of the newly-created tweens.
+ */
+export function splitIntoPropertyGroupsFromScript(
+  script: string,
+  animationId: string,
+): { script: string; ids: string[] } {
+  const parsed = parseGsapScriptAcornForWrite(script);
+  if (!parsed) return { script, ids: [animationId] };
+  const target = parsed.located.find((l) => l.id === animationId);
+  if (!target) return { script, ids: [animationId] };
+  const { animation } = target;
+
+  const allPropKeys = collectPropertyKeys(animation);
+  const groupProps = partitionPropertyGroups(allPropKeys);
+  if (groupProps.size <= 1) return { script, ids: [animationId] };
+  if (allPropKeys.has("transformOrigin")) assignTransformOrigin(groupProps);
+
+  let result = removeAnimationFromScript(script, animationId);
+  for (const [, props] of groupProps) {
+    const { script: next, id } = addGroupAnimToScript(result, animation, new Set(props));
+    if (id) result = next;
+  }
+
+  const reParsed = parseGsapScriptAcornForWrite(result);
+  const newIds = (reParsed?.located ?? [])
+    .filter((l) => l.animation.targetSelector === animation.targetSelector)
+    .map((l) => l.id);
+  return { script: result, ids: newIds };
 }
 
 // ── Label write ops ───────────────────────────────────────────────────────────

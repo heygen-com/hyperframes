@@ -12,11 +12,15 @@ import {
   parseGsapScript,
   removeAllKeyframesFromScript as removeAllRecast,
   convertToKeyframesInScript as convertRecast,
+  materializeKeyframesInScript as materializeRecast,
+  splitIntoPropertyGroups as splitGroupsRecast,
 } from "./gsapParser.js";
 import { parseGsapScriptAcornForWrite, type ParsedGsapAcornForWrite } from "./gsapParserAcorn.js";
 import {
   removeAllKeyframesFromScript as removeAllAcorn,
   convertToKeyframesFromScript as convertAcorn,
+  materializeKeyframesFromScript as materializeAcorn,
+  splitIntoPropertyGroupsFromScript as splitGroupsAcorn,
 } from "./gsapWriterAcorn.js";
 
 function acornId(script: string): string {
@@ -174,5 +178,126 @@ describe("parity: convertToKeyframesFromScript (recast vs acorn)", () => {
     `;
     const id = acornId(script);
     expect(convertAcorn(script, id)).toBe(script);
+  });
+});
+
+// ── materializeKeyframes parity ───────────────────────────────────────────────
+
+const MATERIALIZE_KFS = [
+  { percentage: 0, properties: { x: 0, opacity: 1 } },
+  { percentage: 50, properties: { x: 150, opacity: 0.5 } },
+  { percentage: 100, properties: { x: 300, opacity: 0 } },
+];
+
+const MATERIALIZE_FIXTURES: Array<{
+  name: string;
+  script: string;
+  kfs: typeof MATERIALIZE_KFS;
+  easeEach?: string;
+}> = [
+  {
+    name: "flat tween — adds keyframes property",
+    script: `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#hero", { x: 300, duration: 2 }, 0);
+    `,
+    kfs: MATERIALIZE_KFS,
+  },
+  {
+    name: "with easeEach",
+    script: `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#box", { opacity: 0, duration: 1 }, 0);
+    `,
+    kfs: [
+      { percentage: 0, properties: { opacity: 1 } },
+      { percentage: 100, properties: { opacity: 0 } },
+    ],
+    easeEach: "power2.inOut",
+  },
+];
+
+describe("parity: materializeKeyframesFromScript (recast vs acorn)", () => {
+  for (const { name, script, kfs, easeEach } of MATERIALIZE_FIXTURES) {
+    it(name, () => {
+      const id = acornId(script);
+      const recastOut = materializeRecast(script, id, kfs, easeEach);
+      const acornOut = materializeAcorn(script, id, kfs, easeEach);
+      const recastShape = shapeOf(recastOut);
+      const acornShape = shapeOf(acornOut);
+      expect(acornShape.keyframes).toBeDefined();
+      expect(acornShape).toEqual(recastShape);
+    });
+  }
+
+  it("no-op when id not found", () => {
+    const script = MATERIALIZE_FIXTURES[0]!.script;
+    expect(materializeAcorn(script, "nope", MATERIALIZE_KFS)).toBe(script);
+  });
+});
+
+// ── splitIntoPropertyGroups parity ────────────────────────────────────────────
+
+function shapesOf(script: string) {
+  return parseGsapScript(script).animations.map((a) => ({
+    method: a.method,
+    properties: a.properties,
+    keyframes: a.keyframes,
+    duration: a.duration,
+    ease: a.ease,
+    selector: a.targetSelector,
+    propertyGroup: a.propertyGroup,
+  }));
+}
+
+const SPLIT_FIXTURES: Array<{ name: string; script: string }> = [
+  {
+    name: "flat mixed tween — splits into position + visual groups",
+    script: `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#hero", { x: 100, y: 50, opacity: 0.5, duration: 1 }, 0);
+    `,
+  },
+  {
+    name: "keyframed mixed tween — splits per group",
+    script: `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#box", { keyframes: { "0%": { x: 0, opacity: 1 }, "100%": { x: 200, opacity: 0 } }, duration: 1 }, 0);
+    `,
+  },
+];
+
+describe("parity: splitIntoPropertyGroupsFromScript (recast vs acorn)", () => {
+  for (const { name, script } of SPLIT_FIXTURES) {
+    it(name, () => {
+      const id = acornId(script);
+      const { script: recastOut } = splitGroupsRecast(script, id);
+      const { script: acornOut } = splitGroupsAcorn(script, id);
+      const recastShapes = shapesOf(recastOut);
+      const acornShapes = shapesOf(acornOut);
+      expect(acornShapes).toHaveLength(recastShapes.length);
+      expect(acornShapes.length).toBeGreaterThan(1);
+      // Each produced group should match its counterpart by propertyGroup
+      const sortByGroup = (arr: typeof recastShapes) =>
+        arr.slice().sort((a, b) => (a.propertyGroup ?? "").localeCompare(b.propertyGroup ?? ""));
+      expect(sortByGroup(acornShapes)).toEqual(sortByGroup(recastShapes));
+    });
+  }
+
+  it("no-op when id not found", () => {
+    const script = SPLIT_FIXTURES[0]!.script;
+    const { script: out, ids } = splitGroupsAcorn(script, "nope");
+    expect(out).toBe(script);
+    expect(ids).toEqual(["nope"]);
+  });
+
+  it("no-op when single-group tween", () => {
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#el", { x: 100, y: 50, duration: 1 }, 0);
+    `;
+    const id = acornId(script);
+    const { script: out } = splitGroupsAcorn(script, id);
+    expect(out).toBe(script);
   });
 });

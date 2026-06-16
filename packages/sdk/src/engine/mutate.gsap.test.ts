@@ -583,6 +583,89 @@ window.__timelines["t"] = tl;`;
   });
 });
 
+// ─── materializeKeyframes ─────────────────────────────────────────────────────
+
+describe("materializeKeyframes", () => {
+  it("adds keyframes property to flat tween", () => {
+    const parsed = fresh();
+    const result = applyOp(parsed, {
+      type: "materializeKeyframes",
+      animationId: TWEEN_ANIM_ID,
+      keyframes: [
+        { percentage: 0, properties: { opacity: 0 } },
+        { percentage: 100, properties: { opacity: 1 } },
+      ],
+    });
+    expect(result.forward).toHaveLength(1);
+    const newScript = String(result.forward[0]?.value ?? "");
+    expect(newScript).toContain("keyframes");
+    expect(newScript).toContain('"0%"');
+    expect(newScript).toContain('"100%"');
+  });
+
+  it("injects easeEach into keyframes object", () => {
+    const parsed = fresh();
+    const result = applyOp(parsed, {
+      type: "materializeKeyframes",
+      animationId: TWEEN_ANIM_ID,
+      keyframes: [
+        { percentage: 0, properties: { opacity: 0 } },
+        { percentage: 100, properties: { opacity: 1 } },
+      ],
+      easeEach: "power2.out",
+    });
+    const newScript = String(result.forward[0]?.value ?? "");
+    expect(newScript).toContain("easeEach");
+    expect(newScript).toContain("power2.out");
+  });
+
+  it("no-op when animation id not found", () => {
+    const parsed = fresh();
+    const result = applyOp(parsed, {
+      type: "materializeKeyframes",
+      animationId: "nope",
+      keyframes: [{ percentage: 0, properties: { opacity: 0 } }],
+    });
+    expect(result.forward).toHaveLength(0);
+  });
+});
+
+// ─── splitIntoPropertyGroups ──────────────────────────────────────────────────
+
+describe("splitIntoPropertyGroups", () => {
+  it("splits mixed tween into multiple group tweens", () => {
+    const script = `var tl = gsap.timeline({ paused: true });
+tl.to("[data-hf-id=\\"hf-box\\"]", { x: 100, opacity: 0.5, duration: 1 }, 0);
+window.__timelines["t"] = tl;`;
+    const parsed = fresh(script);
+    // mixed tween has no propertyGroup → no group suffix in id
+    const animId = `[data-hf-id="hf-box"]-to-0`;
+    const result = applyOp(parsed, { type: "splitIntoPropertyGroups", animationId: animId });
+    expect(result.forward).toHaveLength(1);
+    const newScript = String(result.forward[0]?.value ?? "");
+    // x is position group, opacity is visual group — expect 2 tweens
+    const toCount = (newScript.match(/\.to\(/g) ?? []).length;
+    expect(toCount).toBe(2);
+  });
+
+  it("no-op when animation id not found", () => {
+    const parsed = fresh();
+    const result = applyOp(parsed, { type: "splitIntoPropertyGroups", animationId: "nope" });
+    expect(result.forward).toHaveLength(0);
+  });
+
+  it("no-op when tween has only one property group", () => {
+    // x + y = same "position" group → nothing to split
+    const script = `var tl = gsap.timeline({ paused: true });
+tl.to("[data-hf-id=\\"hf-box\\"]", { x: 100, y: 50, duration: 1 }, 0);
+window.__timelines["t"] = tl;`;
+    const parsed = fresh(script);
+    const animId = `[data-hf-id="hf-box"]-to-0-position`;
+    const result = applyOp(parsed, { type: "splitIntoPropertyGroups", animationId: animId });
+    expect(result.forward).toHaveLength(0);
+  });
+});
+
 // ─── Label ops ────────────────────────────────────────────────────────────────
 
 describe("addLabel", () => {

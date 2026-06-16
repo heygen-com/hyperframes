@@ -112,6 +112,18 @@ export type EditOp =
       resolvedFromValues?: Record<string, number | string>;
     }
   | { type: "deleteAllForSelector"; selector: string }
+  | {
+      type: "materializeKeyframes";
+      animationId: string;
+      keyframes: Array<{
+        percentage: number;
+        properties: Record<string, number | string>;
+        ease?: string;
+      }>;
+      easeEach?: string;
+      resolvedSelector?: string;
+    }
+  | { type: "splitIntoPropertyGroups"; animationId: string }
   | { type: "addLabel"; name: string; position: number }
   | { type: "removeLabel"; name: string };
 

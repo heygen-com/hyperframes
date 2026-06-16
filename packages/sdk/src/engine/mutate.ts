@@ -52,6 +52,8 @@ import {
   removeKeyframeFromScript,
   removeAllKeyframesFromScript,
   convertToKeyframesFromScript,
+  materializeKeyframesFromScript,
+  splitIntoPropertyGroupsFromScript,
   updateKeyframeInScript,
   addLabelToScript,
   removeLabelFromScript,
@@ -167,6 +169,16 @@ function applyGsapKeyframeOp(parsed: ParsedDocument, op: EditOp): MutationResult
       return handleRemoveAllKeyframes(parsed, op.animationId);
     case "convertToKeyframes":
       return handleConvertToKeyframes(parsed, op.animationId, op.resolvedFromValues);
+    case "materializeKeyframes":
+      return handleMaterializeKeyframes(
+        parsed,
+        op.animationId,
+        op.keyframes,
+        op.easeEach,
+        op.resolvedSelector,
+      );
+    case "splitIntoPropertyGroups":
+      return handleSplitIntoPropertyGroups(parsed, op.animationId);
     default:
       return undefined;
   }
@@ -774,6 +786,43 @@ function handleConvertToKeyframes(
   return gsapScriptChange(script, newScript);
 }
 
+function handleMaterializeKeyframes(
+  parsed: ParsedDocument,
+  animationId: string,
+  keyframes: Array<{
+    percentage: number;
+    properties: Record<string, number | string>;
+    ease?: string;
+  }>,
+  easeEach?: string,
+  resolvedSelector?: string,
+): MutationResult {
+  const script = getGsapScript(parsed.document);
+  if (!script) return EMPTY;
+  const newScript = materializeKeyframesFromScript(
+    script,
+    animationId,
+    keyframes,
+    easeEach,
+    resolvedSelector,
+  );
+  if (newScript === script) return EMPTY;
+  setGsapScript(parsed.document, newScript);
+  return gsapScriptChange(script, newScript);
+}
+
+function handleSplitIntoPropertyGroups(
+  parsed: ParsedDocument,
+  animationId: string,
+): MutationResult {
+  const script = getGsapScript(parsed.document);
+  if (!script) return EMPTY;
+  const { script: newScript } = splitIntoPropertyGroupsFromScript(script, animationId);
+  if (newScript === script) return EMPTY;
+  setGsapScript(parsed.document, newScript);
+  return gsapScriptChange(script, newScript);
+}
+
 function handleDeleteAllForSelector(parsed: ParsedDocument, selector: string): MutationResult {
   const script = getGsapScript(parsed.document);
   if (!script) return EMPTY;
@@ -993,6 +1042,8 @@ export function validateOp(parsed: ParsedDocument, op: EditOp): CanResult {
     case "removeGsapTween":
     case "removeAllKeyframes":
     case "convertToKeyframes":
+    case "materializeKeyframes":
+    case "splitIntoPropertyGroups":
     case "deleteAllForSelector":
     case "removeLabel":
       if (getGsapScript(parsed.document) === null)
