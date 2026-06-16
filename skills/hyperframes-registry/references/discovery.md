@@ -38,7 +38,7 @@ Where `<type-dir>` is `examples`, `blocks`, or `components`.
 
 ### Blocks
 
-For an always-current list run `npx hyperframes catalog --type block`. The tables below group the 88 blocks by category. **Block name ≠ shader name**: shader-transition blocks (e.g. `domain-warp-dissolve`) wrap a HyperShader runtime whose internal name omits the `-dissolve`/`-warp` suffix — see the showcase HTML installed alongside the block for the canonical name.
+For an always-current list run `npx hyperframes catalog --type block`. The tables below group the 97 blocks by category. **Block name ≠ shader name**: shader-transition blocks (e.g. `domain-warp-dissolve`) wrap a HyperShader runtime whose internal name omits the `-dissolve`/`-warp` suffix — see the showcase HTML installed alongside the block for the canonical name.
 
 #### Shader transitions (14)
 
@@ -179,6 +179,29 @@ A code/terminal window that **types a code or shell session per-character**. The
 | `code-snippet-apple-terminal-red-sands`      | Deep red bg, sandy text                  |
 | `code-snippet-apple-terminal-silver-aerogel` | Dark grey bg, white text                 |
 | `code-snippet-apple-terminal-solid-colors`   | Deep purple bg, white text               |
+
+#### Code Animations (9)
+
+The richer, motion-first counterpart to the static `code-snippet-*` window themes above: each is a self-contained 1920×1080 block (~5–8s) with a paused, deterministic GSAP timeline that _animates_ code — typing, diffing, morphing, spotlighting, or GPU hero reveals — rather than typing a fixed snippet inside editor/terminal chrome. **Reuse-first**: `npx hyperframes add <name>`, then customize the baked code/diff content in place; hand-author only when no block covers the motion you need.
+
+**DOM / text reveal (6):**
+
+| Name                  | Description                                                                                                                |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `code-typing`         | Token-streamed typing reveal, caret tracks the frontier (no CSS animation) — live-coding on screen                         |
+| `code-diff`           | An edit shown as a colored diff: removed lines collapse red, added expand green — before/after at line level               |
+| `code-morph`          | One snippet transforms into another, tokens glide between positions (Shiki Magic Move) — a refactor / one state to another |
+| `code-highlight`      | A highlight band sweeps a target line while surrounding context dims — spotlight one line                                  |
+| `code-scroll`         | Camera scrolls a long file to center + spotlight a target line — walk through a real module                                |
+| `code-snippet-flight` | Discrete snippets fly in from the side and assemble into a stacked program (block-level FLIP)                              |
+
+**GPU / WebGL hero reveals (3):** heavier, for a title-card / hero code moment.
+
+| Name                     | Description                                                                                                     |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| `code-3d-extrude`        | Syntax-highlighted code on a lit beveled 3D slab that rotates through real space and settles (true WebGL depth) |
+| `code-shader-dissolve`   | Code resolves out of seeded noise with a chromatic dissolve front + edge glow, then holds crisp                 |
+| `code-particle-assemble` | Thousands of GPU points fly to the exact glyph pixels and resolve into readable syntax-highlighted code         |
 
 ### Components
 
