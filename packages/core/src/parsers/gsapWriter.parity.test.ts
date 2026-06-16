@@ -14,6 +14,8 @@ import {
   convertToKeyframesInScript as convertRecast,
   materializeKeyframesInScript as materializeRecast,
   splitIntoPropertyGroups as splitGroupsRecast,
+  splitAnimationsInScript as splitAnimsRecast,
+  type SplitAnimationsOptions,
 } from "./gsapParser.js";
 import { parseGsapScriptAcornForWrite, type ParsedGsapAcornForWrite } from "./gsapParserAcorn.js";
 import {
@@ -21,6 +23,7 @@ import {
   convertToKeyframesFromScript as convertAcorn,
   materializeKeyframesFromScript as materializeAcorn,
   splitIntoPropertyGroupsFromScript as splitGroupsAcorn,
+  splitAnimationsInScript as splitAnimsAcorn,
 } from "./gsapWriterAcorn.js";
 
 function acornId(script: string): string {
@@ -299,5 +302,91 @@ describe("parity: splitIntoPropertyGroupsFromScript (recast vs acorn)", () => {
     const id = acornId(script);
     const { script: out } = splitGroupsAcorn(script, id);
     expect(out).toBe(script);
+  });
+});
+
+// ── splitAnimationsInScript parity ────────────────────────────────────────────
+
+function animShapesOf(script: string) {
+  return parseGsapScript(script).animations.map((a) => ({
+    method: a.method,
+    selector: a.targetSelector,
+    properties: a.properties,
+    fromProperties: a.fromProperties,
+    duration: a.duration,
+    position: a.position,
+  }));
+}
+
+const SPLIT_ANIM_CASES: Array<{ name: string; script: string; opts: SplitAnimationsOptions }> = [
+  {
+    name: "all tweens before split — retargets none",
+    script: `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#hero", { x: 100, duration: 1 }, 0);
+    `,
+    opts: {
+      originalId: "hero",
+      newId: "hero-2",
+      splitTime: 2,
+      elementStart: 0,
+      elementDuration: 4,
+    },
+  },
+  {
+    name: "tween entirely after split — retargeted to newId",
+    script: `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#hero", { opacity: 0, duration: 0.5 }, 3);
+    `,
+    opts: {
+      originalId: "hero",
+      newId: "hero-2",
+      splitTime: 2,
+      elementStart: 0,
+      elementDuration: 4,
+    },
+  },
+  {
+    name: "tween spanning split — truncated first half + fromTo second half",
+    script: `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#hero", { x: 200, duration: 4 }, 0);
+    `,
+    opts: {
+      originalId: "hero",
+      newId: "hero-2",
+      splitTime: 2,
+      elementStart: 0,
+      elementDuration: 4,
+    },
+  },
+];
+
+describe("parity: splitAnimationsInScript (recast vs acorn)", () => {
+  for (const { name, script, opts } of SPLIT_ANIM_CASES) {
+    it(name, () => {
+      const { script: recastOut } = splitAnimsRecast(script, opts);
+      const { script: acornOut } = splitAnimsAcorn(script, opts);
+      const sortByPos = (arr: ReturnType<typeof animShapesOf>) =>
+        arr.slice().sort((a, b) => {
+          const pa = typeof a.position === "number" ? a.position : 0;
+          const pb = typeof b.position === "number" ? b.position : 0;
+          return pa - pb || (a.selector ?? "").localeCompare(b.selector ?? "");
+        });
+      expect(sortByPos(animShapesOf(acornOut))).toEqual(sortByPos(animShapesOf(recastOut)));
+    });
+  }
+
+  it("no-op when originalId not found in script", () => {
+    const script = SPLIT_ANIM_CASES[0]!.script;
+    const opts: SplitAnimationsOptions = {
+      originalId: "nonexistent",
+      newId: "x",
+      splitTime: 2,
+      elementStart: 0,
+      elementDuration: 4,
+    };
+    expect(splitAnimsAcorn(script, opts).script).toBe(script);
   });
 });

@@ -124,6 +124,14 @@ export type EditOp =
       resolvedSelector?: string;
     }
   | { type: "splitIntoPropertyGroups"; animationId: string }
+  | {
+      type: "splitAnimations";
+      originalId: string;
+      newId: string;
+      splitTime: number;
+      elementStart: number;
+      elementDuration: number;
+    }
   | { type: "addLabel"; name: string; position: number }
   | { type: "removeLabel"; name: string };
 

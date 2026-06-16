@@ -54,6 +54,7 @@ import {
   convertToKeyframesFromScript,
   materializeKeyframesFromScript,
   splitIntoPropertyGroupsFromScript,
+  splitAnimationsInScript,
   updateKeyframeInScript,
   addLabelToScript,
   removeLabelFromScript,
@@ -179,6 +180,8 @@ function applyGsapKeyframeOp(parsed: ParsedDocument, op: EditOp): MutationResult
       );
     case "splitIntoPropertyGroups":
       return handleSplitIntoPropertyGroups(parsed, op.animationId);
+    case "splitAnimations":
+      return handleSplitAnimations(parsed, op);
     default:
       return undefined;
   }
@@ -823,6 +826,24 @@ function handleSplitIntoPropertyGroups(
   return gsapScriptChange(script, newScript);
 }
 
+function handleSplitAnimations(
+  parsed: ParsedDocument,
+  op: Extract<EditOp, { type: "splitAnimations" }>,
+): MutationResult {
+  const script = getGsapScript(parsed.document);
+  if (!script) return EMPTY;
+  const { script: newScript } = splitAnimationsInScript(script, {
+    originalId: op.originalId,
+    newId: op.newId,
+    splitTime: op.splitTime,
+    elementStart: op.elementStart,
+    elementDuration: op.elementDuration,
+  });
+  if (newScript === script) return EMPTY;
+  setGsapScript(parsed.document, newScript);
+  return gsapScriptChange(script, newScript);
+}
+
 function handleDeleteAllForSelector(parsed: ParsedDocument, selector: string): MutationResult {
   const script = getGsapScript(parsed.document);
   if (!script) return EMPTY;
@@ -1044,6 +1065,7 @@ export function validateOp(parsed: ParsedDocument, op: EditOp): CanResult {
     case "convertToKeyframes":
     case "materializeKeyframes":
     case "splitIntoPropertyGroups":
+    case "splitAnimations":
     case "deleteAllForSelector":
     case "removeLabel":
       if (getGsapScript(parsed.document) === null)

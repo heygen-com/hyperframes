@@ -666,6 +666,64 @@ window.__timelines["t"] = tl;`;
   });
 });
 
+// ─── splitAnimations ──────────────────────────────────────────────────────────
+
+describe("splitAnimations", () => {
+  const SPLIT_SCRIPT = `var tl = gsap.timeline({ paused: true });
+tl.to("#hero", { x: 200, duration: 4 }, 0);
+window.__timelines["t"] = tl;`;
+
+  function freshSplit() {
+    return parseMutable(`<div data-hf-id="hf-stage" data-hf-root style="width:1280px;height:720px">
+  <div data-hf-id="hf-hero"></div>
+  <script>${SPLIT_SCRIPT}</script>
+</div>`);
+  }
+
+  it("retargets post-split tween to newId", () => {
+    const parsed = freshSplit();
+    const result = applyOp(parsed, {
+      type: "splitAnimations",
+      originalId: "hero",
+      newId: "hero-2",
+      splitTime: 3,
+      elementStart: 0,
+      elementDuration: 4,
+    });
+    expect(result.forward).toHaveLength(1);
+    const newScript = String(result.forward[0]?.value ?? "");
+    expect(newScript).toContain("#hero-2");
+  });
+
+  it("spanning tween produces fromTo on new element", () => {
+    const parsed = freshSplit();
+    const result = applyOp(parsed, {
+      type: "splitAnimations",
+      originalId: "hero",
+      newId: "hero-2",
+      splitTime: 2,
+      elementStart: 0,
+      elementDuration: 4,
+    });
+    const newScript = String(result.forward[0]?.value ?? "");
+    expect(newScript).toContain(".fromTo(");
+    expect(newScript).toContain("#hero-2");
+  });
+
+  it("no-op when originalId not found", () => {
+    const parsed = freshSplit();
+    const result = applyOp(parsed, {
+      type: "splitAnimations",
+      originalId: "nonexistent",
+      newId: "x",
+      splitTime: 2,
+      elementStart: 0,
+      elementDuration: 4,
+    });
+    expect(result.forward).toHaveLength(0);
+  });
+});
+
 // ─── Label ops ────────────────────────────────────────────────────────────────
 
 describe("addLabel", () => {

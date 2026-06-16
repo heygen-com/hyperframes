@@ -16,6 +16,7 @@ import {
 } from "./gsapParserAcorn.js";
 import { classifyPropertyGroup } from "./gsapConstants.js";
 import type { PropertyGroupName } from "./gsapConstants.js";
+import type { SplitAnimationsOptions, SplitAnimationsResult } from "./gsapParser.js";
 import * as acornWalk from "acorn-walk";
 
 // ── Code generation helpers ──────────────────────────────────────────────────
@@ -1301,4 +1302,170 @@ export function removeLabelFromScript(script: string, name: string): string {
     ms.remove(target.start, end);
   }
   return ms.toString();
+}
+
+// ── splitAnimationsInScript helpers ──────────────────────────────────────────
+
+/** Overwrite the selector (first arg) of a tween call. */
+function updateAnimationSelectorInScript(
+  script: string,
+  animationId: string,
+  newSelector: string,
+): string {
+  const parsed = parseGsapScriptAcornForWrite(script);
+  if (!parsed) return script;
+  const target = parsed.located.find((l) => l.id === animationId);
+  if (!target) return script;
+  const selectorArg = target.call.node.arguments?.[0];
+  if (!selectorArg) return script;
+  const ms = new MagicString(script);
+  ms.overwrite(selectorArg.start, selectorArg.end, JSON.stringify(newSelector));
+  return ms.toString();
+}
+
+/**
+ * Insert a `tl.set()` call immediately after the timeline declaration
+ * (before existing tweens) to establish inherited state on a new element.
+ */
+function insertInheritedStateSetInScript(
+  script: string,
+  selector: string,
+  position: number,
+  properties: Record<string, number | string>,
+): string {
+  const parsed = parseGsapScriptAcornForWrite(script);
+  if (!parsed) return script;
+  const props = Object.entries(properties)
+    .map(([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`)
+    .join(", ");
+  const code = `${parsed.timelineVar}.set(${JSON.stringify(selector)}, { ${props} }, ${position});`;
+  const ms = new MagicString(script);
+  const tlDecl = findTimelineDeclarationStatement(parsed.ast, parsed.timelineVar);
+  if (tlDecl) {
+    ms.appendLeft(tlDecl.end, "\n" + code);
+  } else if (parsed.located.length > 0) {
+    const firstCall = parsed.located[0]!.call;
+    const exprStmt = findEnclosingExpressionStatement(firstCall.ancestors);
+    const insertAt = exprStmt?.start ?? firstCall.node.start;
+    ms.prependLeft(insertAt, code + "\n");
+  } else {
+    ms.append("\n" + code);
+  }
+  return ms.toString();
+}
+
+// fallow-ignore-next-line complexity
+export function splitAnimationsInScript(
+  script: string,
+  opts: SplitAnimationsOptions,
+): SplitAnimationsResult {
+  const parsed = parseGsapScriptAcornForWrite(script);
+  if (!parsed) return { script, skippedSelectors: [] };
+
+  const originalSelector = `#${opts.originalId}`;
+  const newSelector = `#${opts.newId}`;
+
+  const animations = parsed.located.map((l) => l.animation);
+  const skippedSelectors: string[] = [];
+
+  for (const a of animations) {
+    if (a.targetSelector !== originalSelector && a.targetSelector.includes(opts.originalId)) {
+      skippedSelectors.push(a.targetSelector);
+    }
+  }
+
+  const matching = animations.filter((a) => a.targetSelector === originalSelector);
+  if (matching.length === 0) return { script, skippedSelectors };
+
+  let result = script;
+  const newElementStart = opts.splitTime;
+  const inheritedProps: Record<string, number | string> = {};
+
+  // Reverse iteration: updateAnimationSelectorInScript mutates selectors which
+  // can shift count-based ID suffixes for later animations.
+  for (let i = matching.length - 1; i >= 0; i--) {
+    const anim = matching[i]!;
+    const pos = typeof anim.position === "number" ? anim.position : 0;
+    const dur = anim.duration ?? 0;
+    const animEnd = pos + dur;
+
+    if (anim.keyframes) {
+      if (pos >= opts.splitTime) {
+        result = updateAnimationSelectorInScript(result, anim.id, newSelector);
+      } else if (animEnd > opts.splitTime) {
+        skippedSelectors.push(`${originalSelector} (keyframes spanning split)`);
+        const kfs = anim.keyframes.keyframes;
+        for (const kf of kfs) {
+          const kfTime = pos + (kf.percentage / 100) * dur;
+          if (kfTime <= opts.splitTime) {
+            for (const [k, v] of Object.entries(kf.properties)) {
+              inheritedProps[k] = v;
+            }
+          }
+        }
+      } else {
+        const kfs = anim.keyframes.keyframes;
+        if (kfs.length > 0) {
+          for (const [k, v] of Object.entries(kfs[kfs.length - 1]!.properties)) {
+            inheritedProps[k] = v;
+          }
+        }
+      }
+      continue;
+    }
+
+    if (animEnd <= opts.splitTime) {
+      for (const [k, v] of Object.entries(anim.properties)) {
+        inheritedProps[k] = v;
+      }
+      continue;
+    }
+
+    if (pos >= opts.splitTime) {
+      result = updateAnimationSelectorInScript(result, anim.id, newSelector);
+      continue;
+    }
+
+    // Spans the split — linear interpolation to compute mid-values.
+    const progress = dur > 0 ? (opts.splitTime - pos) / dur : 0;
+    const fromSource = anim.fromProperties ?? inheritedProps;
+    const midProps: Record<string, number | string> = {};
+    for (const [k, v] of Object.entries(anim.properties)) {
+      if (typeof v !== "number") {
+        midProps[k] = v;
+        continue;
+      }
+      const fromVal = typeof fromSource[k] === "number" ? (fromSource[k] as number) : 0;
+      midProps[k] = fromVal + (v - fromVal) * progress;
+    }
+
+    const firstHalfDuration = opts.splitTime - pos;
+    result = updateAnimationInScript(result, anim.id, {
+      duration: firstHalfDuration,
+      properties: midProps,
+    });
+
+    const secondHalfDuration = animEnd - opts.splitTime;
+    const addResult = addAnimationToScript(result, {
+      targetSelector: newSelector,
+      method: "fromTo",
+      position: newElementStart,
+      duration: secondHalfDuration,
+      properties: { ...anim.properties },
+      fromProperties: { ...midProps },
+      ease: anim.ease,
+      extras: anim.extras,
+    });
+    result = addResult.script;
+
+    for (const [k, v] of Object.entries(midProps)) {
+      inheritedProps[k] = v;
+    }
+  }
+
+  if (Object.keys(inheritedProps).length > 0) {
+    result = insertInheritedStateSetInScript(result, newSelector, newElementStart, inheritedProps);
+  }
+
+  return { script: result, skippedSelectors };
 }
