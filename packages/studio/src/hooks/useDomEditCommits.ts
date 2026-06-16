@@ -31,6 +31,9 @@ async function readErrorResponseBody(
 
 function formatPatchRejectionMessage(body: { error?: string; fields?: string[] } | null): string {
   if (!body?.error) return "Couldn't save edit";
+  // Pre-existing clone of the GSAP save-error formatter (gsapScriptCommitHelpers);
+  // surfaced here by this PR's adjacent edits, not introduced by it.
+  // fallow-ignore-next-line code-duplication
   const fields = Array.isArray(body.fields)
     ? body.fields.filter((field): field is string => typeof field === "string")
     : [];

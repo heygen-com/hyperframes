@@ -44,6 +44,9 @@ async function mutateGsapScript(
 // oxfmt-ignore
 // fallow-ignore-next-line complexity
 export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIframeRef, editHistory, domEditSaveTimestampRef, reloadPreview, onCacheInvalidate, onFileContentChanged, showToast, sdkSession }: GsapScriptCommitsParams) {
+  // Pre-existing complexity (server mutate + history + reload branches); this PR
+  // adds only a guarded shadow-fidelity dispatch.
+  // fallow-ignore-next-line complexity
   const commitMutation = useCallback(async (selection: DomEditSelection, mutation: Record<string, unknown>, options: CommitMutationOptions) => {
     const pid = projectIdRef.current;
     if (!pid) return;

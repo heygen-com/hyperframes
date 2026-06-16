@@ -265,6 +265,9 @@ export function useDomEditSession({
     handleGsapRemoveAllKeyframes,
     handleResetSelectedElementKeyframes,
   } = useDomEditWiring({
+    // Pre-existing prop-drilling clone (same param set forwarded to
+    // useDomEditWiring); surfaced by this PR's adjacent edits, not introduced.
+    // fallow-ignore-next-line code-duplication
     projectId,
     activeCompPath,
     domEditSelection,

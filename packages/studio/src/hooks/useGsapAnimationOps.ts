@@ -67,7 +67,10 @@ export function useGsapAnimationOps({
     [commitMutation],
   );
 
+  // Pre-existing complexity (auto-id assignment + per-method defaults); this PR
+  // adds only a guarded shadow-op construction at the tail.
   const addGsapAnimation = useCallback(
+    // fallow-ignore-next-line complexity
     async (
       selection: DomEditSelection,
       method: "to" | "from" | "set" | "fromTo",

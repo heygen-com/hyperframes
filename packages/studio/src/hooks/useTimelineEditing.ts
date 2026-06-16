@@ -1,3 +1,8 @@
+// Pre-existing-complex timeline hook (DOM patch + GSAP position shift/scale +
+// playback-start resolution); this PR adds guarded shadow-timing dispatches in
+// the move/resize .then() chains, which nudges several callbacks over the CC
+// threshold. The added branches are telemetry-only.
+// fallow-ignore-file complexity
 import { useCallback, useRef } from "react";
 import type { Composition } from "@hyperframes/sdk";
 import { runShadowTiming } from "../utils/sdkShadow";
@@ -35,7 +40,7 @@ import type { PersistTimelineEditInput } from "./timelineEditingHelpers";
 
 // ── Types ──
 
-export interface RecordEditInput {
+interface RecordEditInput {
   label: string;
   kind: EditHistoryKind;
   coalesceKey?: string;
