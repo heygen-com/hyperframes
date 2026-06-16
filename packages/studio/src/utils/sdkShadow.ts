@@ -23,6 +23,22 @@ import type { PatchOperation } from "./sourcePatcher";
  * Multiple inline-style ops are coalesced into a single setStyle (SDK batches
  * style changes naturally). One SDK op is emitted per non-style op.
  */
+// "attribute" PatchOperations carry the data- attribute NAME. Studio passes
+// some already prefixed (e.g. "data-hf-studio-path-offset") and some bare
+// (e.g. "name"); prefix only when needed, never double-prefix.
+function attrName(property: string): string {
+  return property.startsWith("data-") ? property : `data-${property}`;
+}
+
+// The SDK element model excludes data-hf-* attributes (document.ts skips them),
+// so shadowing studio-internal markers (data-hf-studio-path-offset, etc.) can
+// never match — drop those ops from the shadow instead of false-mismatching.
+function isShadowableOp(op: PatchOperation): boolean {
+  if (op.type === "attribute") return !attrName(op.property).startsWith("data-hf-");
+  if (op.type === "html-attribute") return !op.property.startsWith("data-hf-");
+  return true;
+}
+
 export function patchOpsToSdkEditOps(hfId: string, ops: PatchOperation[]): EditOp[] {
   const result: EditOp[] = [];
   const styles: Record<string, string | null> = {};
@@ -38,7 +54,7 @@ export function patchOpsToSdkEditOps(hfId: string, ops: PatchOperation[]): EditO
       result.push({
         type: "setAttribute",
         target: hfId,
-        name: `data-${op.property}`,
+        name: attrName(op.property),
         value: op.value,
       });
     } else if (op.type === "html-attribute") {
@@ -113,9 +129,9 @@ const OP_FIELD_RESOLVERS: Record<string, OpFieldResolver> = {
   }),
   "text-content": (op, flat) => ({ property: "text", expected: op.value ?? "", actual: flat.text }),
   attribute: (op, flat) => ({
-    property: `data-${op.property}`,
+    property: attrName(op.property),
     expected: op.value ?? null,
-    actual: flat.attrs[`data-${op.property}`] ?? null,
+    actual: flat.attrs[attrName(op.property)] ?? null,
   }),
   "html-attribute": (op, flat) => ({
     property: op.property,
@@ -164,8 +180,11 @@ export function sdkShadowDispatch(
   if (!session.getElement(hfId)) {
     return { dispatched: false, mismatches: [{ kind: "element_not_found", hfId }] };
   }
+  // Drop studio-internal markers the SDK model can't represent (data-hf-*), so
+  // canvas-drag/path-offset edits don't false-mismatch on bookkeeping attrs.
+  const shadowable = ops.filter(isShadowableOp);
   try {
-    const sdkOps = patchOpsToSdkEditOps(hfId, ops);
+    const sdkOps = patchOpsToSdkEditOps(hfId, shadowable);
     session.batch(() => {
       for (const op of sdkOps) session.dispatch(op);
     });
@@ -176,7 +195,7 @@ export function sdkShadowDispatch(
     };
   }
   const flat = flattenSnapshot(session.getElement(hfId));
-  const mismatches = ops
+  const mismatches = shadowable
     .map((op) => checkOpParity(op, flat, hfId))
     .filter((m): m is SdkShadowMismatch => m !== null);
   return { dispatched: true, mismatches };

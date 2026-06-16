@@ -157,6 +157,21 @@ describe("sdkShadowDispatch (integration)", () => {
     expect(session.getElement("hf-box")?.attributes["data-name"]).toBe("hero");
   });
 
+  // fallow-ignore-next-line code-duplication
+  it("does NOT false-mismatch studio-internal data-hf-* marker attributes", async () => {
+    const { sdkShadowDispatch } = await import("./sdkShadow");
+    const session = await openComposition(BASE_HTML);
+
+    // path-offset drags emit these already-data-prefixed, SDK-excluded markers.
+    const ops: PatchOperation[] = [
+      { type: "attribute", property: "data-hf-studio-path-offset", value: "true" },
+    ];
+    const result = sdkShadowDispatch(session, "hf-box", ops);
+
+    expect(result.dispatched).toBe(true);
+    expect(result.mismatches).toHaveLength(0); // filtered, not double-prefixed + flagged
+  });
+
   it("returns dispatch_error when dispatch throws — does not propagate", async () => {
     const { sdkShadowDispatch } = await import("./sdkShadow");
     const session = await openComposition(BASE_HTML);
