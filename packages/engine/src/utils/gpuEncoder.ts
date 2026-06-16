@@ -116,7 +116,7 @@ function getProbeArgs(encoder: ConcreteGpuEncoder): string[] {
     "-f",
     "lavfi",
     "-i",
-    "color=size=16x16:rate=1:duration=1",
+    "color=size=320x240:rate=1:duration=1",
     "-frames:v",
     "1",
     "-an",

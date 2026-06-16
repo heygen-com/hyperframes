@@ -650,7 +650,13 @@ function getBrowserGpuArgs(
     case "win32":
       return ["--use-gl=angle", "--use-angle=d3d11", "--enable-gpu-rasterization"];
     case "linux":
-      return ["--use-gl=egl", "--enable-gpu-rasterization"];
+      return [
+        "--use-gl=angle",
+        "--use-angle=gl-egl",
+        "--enable-gpu-rasterization",
+        "--ignore-gpu-blocklist",
+        "--disable-software-rasterizer",
+      ];
     default:
       return ["--enable-gpu-rasterization"];
   }
