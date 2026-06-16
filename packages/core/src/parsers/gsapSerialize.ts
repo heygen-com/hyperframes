@@ -413,3 +413,65 @@ export function gsapAnimationsToKeyframes(
       .filter((kf): kf is NonNullable<typeof kf> => kf !== null)
   );
 }
+
+// ── Keyframe-conversion transforms (pure; shared by recast + acorn writers) ────
+
+/**
+ * CSS identity values for properties whose "rest" state isn't 0 — used to
+ * synthesize the missing endpoint when converting a flat tween to keyframes.
+ */
+const CSS_IDENTITY: Record<string, number> = {
+  opacity: 1,
+  autoAlpha: 1,
+  scale: 1,
+  scaleX: 1,
+  scaleY: 1,
+};
+
+function cssIdentityValue(prop: string): number {
+  return CSS_IDENTITY[prop] ?? 0;
+}
+
+/** Build the identity-endpoint map for a flat tween's properties. */
+function buildIdentityMap(props: Record<string, number | string>): Record<string, number | string> {
+  const identity: Record<string, number | string> = {};
+  for (const [key, val] of Object.entries(props)) {
+    if (val != null) identity[key] = typeof val === "number" ? cssIdentityValue(key) : val;
+  }
+  return identity;
+}
+
+/**
+ * Resolve the 0% (from) and 100% (to) property maps for a tween being
+ * converted to percentage keyframes.
+ *
+ * @param resolvedFromValues — Despite the "from" in the name (historical), these
+ *   are runtime-captured DOM values that override the conversion endpoint:
+ *   - For to():    overrides fromProps (the 0% state / where the element is now).
+ *   - For from():  overrides toProps  (the 100% state / where the element rests).
+ *   - For fromTo(): merges into toProps (the 100% endpoint the user is editing).
+ */
+export function resolveConversionProps(
+  anim: GsapAnimation,
+  resolvedFromValues?: Record<string, number | string>,
+): { fromProps: Record<string, number | string>; toProps: Record<string, number | string> } {
+  if (anim.method === "to") {
+    const identity = buildIdentityMap(anim.properties);
+    const fromProps = resolvedFromValues ? { ...identity, ...resolvedFromValues } : identity;
+    return { fromProps, toProps: { ...anim.properties } };
+  }
+  if (anim.method === "from") {
+    const identity = buildIdentityMap(anim.properties);
+    const toProps = resolvedFromValues ? { ...identity, ...resolvedFromValues } : identity;
+    return { fromProps: { ...anim.properties }, toProps };
+  }
+  // fromTo(fromVars, toVars): anim.fromProperties = fromVars (0% state),
+  // anim.properties = toVars (100% state). resolvedFromValues contains the
+  // current DOM position from a drag — it represents the NEW destination, so
+  // it merges into toProps (the 100% endpoint the user is editing), NOT into
+  // fromProps. This is intentional and not inverted.
+  const toProps = resolvedFromValues
+    ? { ...anim.properties, ...resolvedFromValues }
+    : { ...anim.properties };
+  return { fromProps: { ...(anim.fromProperties ?? {}) }, toProps };
+}

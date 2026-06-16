@@ -510,6 +510,32 @@ describe("removeGsapKeyframe", () => {
   });
 });
 
+describe("removeAllKeyframes", () => {
+  it("collapses keyframed to() tween to last keyframe's props", () => {
+    const parsed = fresh(KF_SCRIPT);
+    const animId = `[data-hf-id="hf-box"]-to-0-visual`;
+    const result = applyOp(parsed, { type: "removeAllKeyframes", animationId: animId });
+    expect(result.forward).toHaveLength(1);
+    const newScript = String(result.forward[0]?.value ?? "");
+    expect(newScript).not.toContain("keyframes");
+    expect(newScript).not.toContain('"50%"');
+    expect(newScript).toContain("opacity: 1");
+  });
+
+  it("no-op (empty patch) when animation id not found", () => {
+    const parsed = fresh(KF_SCRIPT);
+    const result = applyOp(parsed, { type: "removeAllKeyframes", animationId: "nope" });
+    expect(result.forward).toHaveLength(0);
+  });
+
+  it("no-op when tween has no keyframes", () => {
+    const parsed = fresh(GSAP_SCRIPT);
+    const animId = `[data-hf-id="hf-box"]-to-0-visual`;
+    const result = applyOp(parsed, { type: "removeAllKeyframes", animationId: animId });
+    expect(result.forward).toHaveLength(0);
+  });
+});
+
 // ─── Label ops ────────────────────────────────────────────────────────────────
 
 describe("addLabel", () => {

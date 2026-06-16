@@ -127,6 +127,18 @@ function removeProp(ms: MagicString, propNode: any, editableProps: any[]): void 
   }
 }
 
+/** Serialize a vars record to an object-literal source: `{ k: v, ... }`. */
+function buildVarsObjectCode(record: Record<string, number | string>): string {
+  const entries = Object.entries(record).map(([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`);
+  return entries.length > 0 ? `{ ${entries.join(", ")} }` : "{}";
+}
+
+/** Overwrite a tween call's vars ObjectExpression with freshly-built source. */
+function overwriteVarsArg(ms: MagicString, call: TweenCallInfo, objCode: string): void {
+  if (!call.varsArg) return;
+  ms.overwrite(call.varsArg.start, call.varsArg.end, objCode);
+}
+
 /**
  * Update a property value if it exists, or append a new key: val before the
  * closing `}`. Call with the full ObjectExpression node.
@@ -896,6 +908,40 @@ export function removePropertyFromAnimation(
   const allProps = (objNode.properties ?? []).filter((p: any) => isObjectProperty(p));
   const ms = new MagicString(script);
   removeProp(ms, propNode, allProps);
+  return ms.toString();
+}
+
+/**
+ * Remove all keyframes from a tween, collapsing to a flat tween with one
+ * keyframe's properties: the first for `from()`, the last otherwise (the
+ * destination = the visible resting state).
+ */
+export function removeAllKeyframesFromScript(script: string, animationId: string): string {
+  const parsed = parseGsapScriptAcornForWrite(script);
+  if (!parsed) return script;
+  const target = parsed.located.find((l) => l.id === animationId);
+  if (!target) return script;
+  const kfs = target.animation.keyframes?.keyframes;
+  if (!kfs || kfs.length === 0) return script;
+
+  const sorted = [...kfs].sort((a, b) => a.percentage - b.percentage);
+  const collapse = target.call.method === "from" ? sorted[0]! : sorted[sorted.length - 1]!;
+
+  // Flat vars = existing top-level props, then collapse-keyframe props (these
+  // win; skip the per-keyframe `ease` key), then duration/ease/extras. Drops
+  // keyframes + easeEach by reconstruction.
+  const flat: Record<string, number | string> = { ...target.animation.properties };
+  for (const [k, v] of Object.entries(collapse.properties)) {
+    if (k !== "ease") flat[k] = v;
+  }
+  if (target.animation.duration !== undefined) flat.duration = target.animation.duration;
+  if (target.animation.ease) flat.ease = target.animation.ease;
+  for (const [k, v] of Object.entries(target.animation.extras ?? {})) {
+    if (typeof v === "number" || typeof v === "string") flat[k] = v;
+  }
+
+  const ms = new MagicString(script);
+  overwriteVarsArg(ms, target.call, buildVarsObjectCode(flat));
   return ms.toString();
 }
 

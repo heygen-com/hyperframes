@@ -50,6 +50,7 @@ import {
   removePropertyFromAnimation,
   addKeyframeToScript,
   removeKeyframeFromScript,
+  removeAllKeyframesFromScript,
   updateKeyframeInScript,
   addLabelToScript,
   removeLabelFromScript,
@@ -146,18 +147,8 @@ function dispatchRemoveGsapKeyframe(
     : handleRemoveGsapKeyframe(parsed, op.animationId, op.keyframeIndex);
 }
 
-function applyGsapOp(parsed: ParsedDocument, op: EditOp): MutationResult | undefined {
+function applyGsapKeyframeOp(parsed: ParsedDocument, op: EditOp): MutationResult | undefined {
   switch (op.type) {
-    case "addGsapTween":
-      return handleAddGsapTween(parsed, op.target, op.tween);
-    case "setGsapTween":
-      return handleSetGsapTween(parsed, op.animationId, op.properties);
-    case "removeGsapProperty":
-      return handleRemoveGsapProperty(parsed, op.animationId, op.property, op.from);
-    case "removeGsapTween":
-      return handleRemoveGsapTween(parsed, op.animationId);
-    case "deleteAllForSelector":
-      return handleDeleteAllForSelector(parsed, op.selector);
     case "setGsapKeyframe":
       return handleSetGsapKeyframe(
         parsed,
@@ -171,6 +162,27 @@ function applyGsapOp(parsed: ParsedDocument, op: EditOp): MutationResult | undef
       return handleAddGsapKeyframe(parsed, op.animationId, op.position, op.value);
     case "removeGsapKeyframe":
       return dispatchRemoveGsapKeyframe(parsed, op);
+    case "removeAllKeyframes":
+      return handleRemoveAllKeyframes(parsed, op.animationId);
+    default:
+      return undefined;
+  }
+}
+
+function applyGsapOp(parsed: ParsedDocument, op: EditOp): MutationResult | undefined {
+  const kf = applyGsapKeyframeOp(parsed, op);
+  if (kf !== undefined) return kf;
+  switch (op.type) {
+    case "addGsapTween":
+      return handleAddGsapTween(parsed, op.target, op.tween);
+    case "setGsapTween":
+      return handleSetGsapTween(parsed, op.animationId, op.properties);
+    case "removeGsapProperty":
+      return handleRemoveGsapProperty(parsed, op.animationId, op.property, op.from);
+    case "removeGsapTween":
+      return handleRemoveGsapTween(parsed, op.animationId);
+    case "deleteAllForSelector":
+      return handleDeleteAllForSelector(parsed, op.selector);
     default:
       return undefined;
   }
@@ -737,6 +749,15 @@ function handleRemoveGsapTween(parsed: ParsedDocument, animationId: string): Mut
   return gsapScriptChange(script, newScript);
 }
 
+function handleRemoveAllKeyframes(parsed: ParsedDocument, animationId: string): MutationResult {
+  const script = getGsapScript(parsed.document);
+  if (!script) return EMPTY;
+  const newScript = removeAllKeyframesFromScript(script, animationId);
+  if (newScript === script) return EMPTY;
+  setGsapScript(parsed.document, newScript);
+  return gsapScriptChange(script, newScript);
+}
+
 function handleDeleteAllForSelector(parsed: ParsedDocument, selector: string): MutationResult {
   const script = getGsapScript(parsed.document);
   if (!script) return EMPTY;
@@ -954,6 +975,7 @@ export function validateOp(parsed: ParsedDocument, op: EditOp): CanResult {
     case "removeGsapKeyframe":
     case "removeGsapProperty":
     case "removeGsapTween":
+    case "removeAllKeyframes":
     case "deleteAllForSelector":
     case "removeLabel":
       if (getGsapScript(parsed.document) === null)
