@@ -73,17 +73,22 @@ function animByKey(
 // number-vs-string forms. Compare canonically — sort keys, coerce numeric
 // strings — so only real value drift registers, not formatting differences.
 
+// Relative-epsilon compare: the two writers round-trip durations through JS
+// number formatting, so a value like 3.1 can come back as 3.0999999999999996.
+// An exact `===` flags that sub-ULP delta as drift. Treat values as equal when
+// they're within 1e-6 * max(1, |a|, |b|) of each other — tight enough that a
+// real 2 vs 1 (or 0.5 vs 0.49) drift still flags, loose enough to absorb
+// float-formatting noise.
 function numericEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true;
   const na = typeof a === "string" ? Number(a) : a;
   const nb = typeof b === "string" ? Number(b) : b;
-  return (
-    typeof na === "number" &&
-    typeof nb === "number" &&
-    !Number.isNaN(na) &&
-    !Number.isNaN(nb) &&
-    na === nb
-  );
+  if (typeof na !== "number" || typeof nb !== "number" || Number.isNaN(na) || Number.isNaN(nb)) {
+    return false;
+  }
+  if (na === nb) return true;
+  const tolerance = 1e-6 * Math.max(1, Math.abs(na), Math.abs(nb));
+  return Math.abs(na - nb) <= tolerance;
 }
 
 function canonicalProps(obj: Record<string, unknown> | undefined): string {
@@ -187,27 +192,54 @@ export function resolveGsapFidelityArgs(
   return { before, op: shadowGsapOp, serverScript };
 }
 
-// Resolve a CSS selector to a canonical element id (data-hf-id) using the pre-op
-// document, so tweens that target the same element via different selectors
-// ([data-hf-id="X"] vs .X) match in the fidelity diff. Falls back to the raw
-// selector when it can't resolve (DOMParser unavailable, no match, bad selector).
+// Resolve a CSS selector to a canonical element key using the pre-op document,
+// so tweens that target the same element via different selectors
+// ([data-hf-id="X"] vs .X vs #X) collapse to one key in the fidelity diff.
+//
+// The SDK writer emits [data-hf-id="X"] while the server may emit a class/id
+// selector for the SAME element. Keying both forms to the same node prevents a
+// false present/absent mismatch. Resolution order, for whatever element the
+// selector matches:
+//   1. data-hf-id present  → "hfid:<id>"  (the common, stable case)
+//   2. no data-hf-id       → "node:<n>"   (per-document node index; identical
+//      regardless of which selector form found the node, so .x and [data-hf-id]
+//      pointing at the same attribute-less node still collapse)
+//   3. selector resolves to no node / parse error / no DOM → the raw selector
+//      (last resort; only diverges when the two writers genuinely target
+//      different — or unresolvable — nodes, which is real drift to surface)
+// The "hfid:"/"node:" prefixes are namespaced so a canonical key can never
+// collide with a raw-selector fallback.
 //
 // ponytail: first-match heuristic — querySelector returns the FIRST match, so an
-// ambiguous selector (e.g. .x shared by two elements) may map to a different id
-// than the SDK side's [data-hf-id] target and still flag present/absent. Safe
-// for studio templates (one tween per data-hf-id); upgrade to querySelectorAll +
-// uniqueness check if ambiguous selectors appear.
-function makeSelectorResolver(html: string): (sel: string) => string {
+// ambiguous selector (e.g. .x shared by two elements) may map to a different
+// node than the SDK side's [data-hf-id] target and still flag present/absent.
+// Safe for studio templates (one tween per element); upgrade to querySelectorAll
+// + uniqueness check if ambiguous selectors appear.
+export function makeSelectorResolver(html: string): (sel: string) => string {
   let doc: Document | null = null;
   try {
     doc = new DOMParser().parseFromString(html, "text/html");
   } catch {
     doc = null;
   }
+  // Stable per-node index so an attribute-less element keys identically no
+  // matter which selector form (class vs id vs [data-hf-id]) resolved it.
+  const nodeKeys = new WeakMap<Element, string>();
+  let nextNode = 0;
+  const keyForNode = (el: Element): string => {
+    const hfId = el.getAttribute("data-hf-id");
+    if (hfId != null && hfId !== "") return `hfid:${hfId}`;
+    const existing = nodeKeys.get(el);
+    if (existing != null) return existing;
+    const key = `node:${nextNode++}`;
+    nodeKeys.set(el, key);
+    return key;
+  };
   return (sel) => {
     if (!doc) return sel;
     try {
-      return doc.querySelector(sel)?.getAttribute("data-hf-id") ?? sel;
+      const el = doc.querySelector(sel);
+      return el ? keyForNode(el) : sel;
     } catch {
       return sel;
     }

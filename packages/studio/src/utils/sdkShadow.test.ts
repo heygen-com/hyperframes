@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import {
   patchOpsToSdkEditOps,
   runShadowDelete,
@@ -10,8 +10,10 @@ import {
   SdkShadowMismatch,
 } from "./sdkShadow";
 import type { ShadowGsapOp } from "./sdkShadow";
+import { makeSelectorResolver } from "./sdkShadowGsapFidelity";
 import type { PatchOperation } from "./sourcePatcher";
 import { openComposition } from "@hyperframes/sdk";
+import { Window } from "happy-dom";
 
 // Capture sdk_shadow_dispatch telemetry for the non-PatchOperation runners.
 const trackedEvents: Array<{ event: string; props: Record<string, unknown> }> = [];
@@ -304,6 +306,29 @@ describe("gsapFidelityMismatches", () => {
     expect(mismatches.some((m) => m.property === "duration")).toBe(true);
   });
 
+  it("does NOT flag sub-ULP float-formatting noise in duration", () => {
+    // 3.1 vs 3.0999999999999996 is the same value after writer round-trips;
+    // relative-epsilon compare must treat it as equal, not drift.
+    const sdk = `var tl = gsap.timeline({ paused: true });
+tl.to("[data-hf-id=\\"hf-box\\"]", { opacity: 1, duration: 3.1 }, 0);
+window.__timelines["t"] = tl;`;
+    const server = `var tl = gsap.timeline({ paused: true });
+tl.to("[data-hf-id=\\"hf-box\\"]", { opacity: 1, duration: 3.0999999999999996 }, 0);
+window.__timelines["t"] = tl;`;
+    expect(gsapFidelityMismatches(sdk, server)).toEqual([]);
+  });
+
+  it("STILL flags a real integer duration drift (2 vs 1) past the epsilon", () => {
+    const sdk = `var tl = gsap.timeline({ paused: true });
+tl.to("[data-hf-id=\\"hf-box\\"]", { opacity: 1, duration: 1 }, 0);
+window.__timelines["t"] = tl;`;
+    const server = `var tl = gsap.timeline({ paused: true });
+tl.to("[data-hf-id=\\"hf-box\\"]", { opacity: 1, duration: 2 }, 0);
+window.__timelines["t"] = tl;`;
+    const mismatches = gsapFidelityMismatches(sdk, server);
+    expect(mismatches.some((m) => m.property === "duration")).toBe(true);
+  });
+
   it("flags a tween present in one script but not the other", () => {
     const empty = `var tl = gsap.timeline({ paused: true });
 window.__timelines["t"] = tl;`;
@@ -344,6 +369,52 @@ window.__timelines["t"] = tl;`;
     expect(gsapFidelityMismatches(sdk, server).length).toBeGreaterThan(0);
     // With a resolver: matched by element → no mismatch.
     expect(gsapFidelityMismatches(sdk, server, resolve)).toEqual([]);
+  });
+
+  // Drive makeSelectorResolver against a real DOM (happy-dom shims the
+  // browser-only DOMParser the resolver depends on; the studio test env is node).
+  describe("makeSelectorResolver unifies selector forms (real DOM)", () => {
+    const origDomParser = (globalThis as { DOMParser?: unknown }).DOMParser;
+    beforeEach(() => {
+      (globalThis as { DOMParser?: unknown }).DOMParser = new Window().DOMParser;
+    });
+    afterEach(() => {
+      (globalThis as { DOMParser?: unknown }).DOMParser = origDomParser;
+    });
+
+    it("collapses #id / .class / [data-hf-id] for the SAME element to one key", () => {
+      // Element carries all three forms; the server may emit #id or .class while
+      // the SDK emits [data-hf-id]. All must resolve to the same canonical key.
+      const html = `<div data-hf-id="hf-9flp" class="caption-layer" id="intro-layer"></div>`;
+      const resolve = makeSelectorResolver(html);
+      const viaHfId = resolve('[data-hf-id="hf-9flp"]');
+      expect(resolve(".caption-layer")).toBe(viaHfId);
+      expect(resolve("#intro-layer")).toBe(viaHfId);
+    });
+
+    it("unifies SDK [data-hf-id] and server .class tweens in the fidelity diff", () => {
+      const html = `<div data-hf-id="hf-9flp" class="caption-layer"></div>`;
+      const resolve = makeSelectorResolver(html);
+      const sdkScript = `var tl = gsap.timeline({ paused: true });
+tl.from("[data-hf-id=\\"hf-9flp\\"]", { opacity: 0, duration: 1 }, 0);
+window.__timelines["t"] = tl;`;
+      const serverScript = `var tl = gsap.timeline({ paused: true });
+tl.from(".caption-layer", { opacity: 0, duration: 1 }, 0);
+window.__timelines["t"] = tl;`;
+      // Without unification these flag present/absent; the resolver collapses them.
+      expect(gsapFidelityMismatches(sdkScript, serverScript).length).toBeGreaterThan(0);
+      expect(gsapFidelityMismatches(sdkScript, serverScript, resolve)).toEqual([]);
+    });
+
+    it("collapses different selector forms for an element WITHOUT a data-hf-id", () => {
+      // No hf-id present: the resolver must still key both forms to the same node
+      // (not leave .class vs #id as distinct raw-selector keys).
+      const html = `<div class="caption-layer" id="intro-layer"></div>`;
+      const resolve = makeSelectorResolver(html);
+      expect(resolve(".caption-layer")).toBe(resolve("#intro-layer"));
+      // And it is NOT the raw selector fallback.
+      expect(resolve(".caption-layer")).not.toBe(".caption-layer");
+    });
   });
 });
 
