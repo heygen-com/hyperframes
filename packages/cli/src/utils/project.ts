@@ -1,6 +1,7 @@
 import { existsSync, statSync } from "node:fs";
 import { resolve, basename } from "node:path";
 import { errorBox } from "../ui/format.js";
+import { trackCommandFailure } from "../telemetry/events.js";
 
 export interface ProjectDir {
   dir: string;
@@ -55,6 +56,11 @@ export function resolveProject(dirArg: string | undefined): ProjectDir {
     return resolveProjectOrThrow(dirArg);
   } catch (err) {
     if (err instanceof InvalidProjectError) {
+      // Self-exit (not a throw) so the cli.ts wrapper never sees it — report
+      // inline. argv[2] is the running command (info / inspect / render / ...).
+      // This is the dominant failure for read-only commands like `info` run
+      // outside a project; the redaction in trackCliError strips the dir path.
+      trackCommandFailure(process.argv[2] ?? "unknown", err);
       errorBox(err.title, err.hint, err.suggestion);
       process.exit(1);
     }

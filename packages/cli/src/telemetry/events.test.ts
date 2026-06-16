@@ -5,7 +5,7 @@ vi.mock("./client.js", () => ({
   trackEvent: (...args: unknown[]) => trackEvent(...args),
 }));
 
-const { trackRenderError, trackRenderObservation, trackCommandFailure } =
+const { trackRenderError, trackRenderObservation, trackCommandFailure, trackCliError } =
   await import("./events.js");
 
 describe("render telemetry events", () => {
@@ -52,6 +52,27 @@ describe("render telemetry events", () => {
   });
 });
 
+describe("trackCliError", () => {
+  beforeEach(() => {
+    trackEvent.mockClear();
+  });
+
+  it("redacts install paths from error_message and stack_trace", () => {
+    trackCliError({
+      error_name: "Error",
+      error_message: "ENOENT: open '/Users/alice/project/index.html'",
+      stack_trace: "Error: boom\n    at /Users/alice/.cache/hyperframes/chrome/headless",
+      command: "info",
+      kind: "command_error",
+    });
+
+    const [, props] = trackEvent.mock.calls[0] as [string, Record<string, string>];
+    expect(props.error_message).not.toContain("/Users/alice");
+    expect(props.error_message).toContain("[path]");
+    expect(props.stack_trace).not.toContain("/Users/alice");
+  });
+});
+
 describe("trackCommandFailure", () => {
   beforeEach(() => {
     trackEvent.mockClear();
@@ -68,7 +89,8 @@ describe("trackCommandFailure", () => {
         command: "transcribe",
         error_name: "Error",
         error_message: "ffmpeg is required to extract audio",
-        stack_trace: err.stack,
+        // stack_trace is asserted (redacted) in the trackCliError suite; the
+        // raw err.stack no longer matches once paths are stripped.
       }),
     );
   });

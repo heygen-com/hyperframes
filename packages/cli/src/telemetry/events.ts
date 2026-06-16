@@ -277,8 +277,13 @@ export function trackCliError(props: {
 }): void {
   trackEvent("cli_error", {
     error_name: props.error_name,
-    error_message: props.error_message.slice(0, 1000),
-    stack_trace: props.stack_trace?.slice(0, 2000),
+    // Redact before truncating — CLI messages and stack traces carry absolute
+    // install paths (/Users/...), cache dirs, and user-supplied args. Same
+    // redaction the render_* events already apply.
+    error_message: redactTelemetryMessage(props.error_message).slice(0, 1000),
+    stack_trace: props.stack_trace
+      ? redactTelemetryMessage(props.stack_trace).slice(0, 2000)
+      : undefined,
     command: props.command,
     kind: props.kind,
   });
