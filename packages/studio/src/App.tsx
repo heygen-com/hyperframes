@@ -175,7 +175,7 @@ export function StudioApp() {
     reloadPreview: () => setRefreshKey((k) => k + 1),
     pendingTimelineEditPathRef,
   });
-  const sdkSession = useSdkSession(projectId, activeCompPath);
+  const sdkSession = useSdkSession(projectId, activeCompPath ?? "index.html");
   const timelineEditing = useTimelineEditing({
     projectId,
     activeCompPath,
