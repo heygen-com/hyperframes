@@ -12,6 +12,8 @@ import type {
 } from "../core.types";
 import { validateCompositionGsap } from "./gsapSerialize";
 import { ensureHfIds } from "./hfIds.js";
+import { parseGsapScriptAcornForWrite } from "./gsapParserAcorn.js";
+import { removeAnimationFromScript } from "./gsapWriterAcorn.js";
 import type { ValidationResult } from "../core.types";
 
 const MEDIA_TYPES = new Set<string>(["video", "image", "audio"]);
@@ -672,15 +674,40 @@ export function addElementToHtml(
   };
 }
 
+function selectorTargetsId(selector: string, id: string): boolean {
+  return (
+    selector === `#${id}` ||
+    selector === `[data-hf-id="${id}"]` ||
+    selector === `[data-hf-id='${id}']`
+  );
+}
+
+function stripGsapForId(script: string, elementId: string): string {
+  const parsed = parseGsapScriptAcornForWrite(script);
+  if (!parsed) return script;
+  let current = script;
+  for (const { id: animId, animation } of parsed.located) {
+    if (selectorTargetsId(animation.targetSelector, elementId)) {
+      current = removeAnimationFromScript(current, animId);
+    }
+  }
+  return current;
+}
+
+function cascadeRemoveGsapById(doc: Document, elementId: string): void {
+  for (const script of Array.from(doc.querySelectorAll("script"))) {
+    const text = script.textContent ?? "";
+    if (!text.includes("gsap") && !text.includes("ScrollTrigger")) continue;
+    const updated = stripGsapForId(text, elementId);
+    if (updated !== text) script.textContent = updated;
+  }
+}
+
 export function removeElementFromHtml(html: string, elementId: string): string {
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, "text/html");
-
-  const el = doc.getElementById(elementId);
-  if (el) {
-    el.remove();
-  }
-
+  doc.getElementById(elementId)?.remove();
+  cascadeRemoveGsapById(doc, elementId);
   return "<!DOCTYPE html>\n" + doc.documentElement.outerHTML;
 }
 
