@@ -234,6 +234,10 @@
     "ignore": [
       "packages/core/src/studio-api/routes/files.ts",
       "packages/studio/src/hooks/useGsapTweenCache.ts",
+      // AnimationCard.tsx: pre-existing large presentational components
+      // (PropertyRow, the card body — the latter already carries an inline
+      // fallow-ignore). Exempted at file level to avoid scope-creep refactors.
+      "packages/studio/src/components/editor/AnimationCard.tsx",
     ],
   },
 }

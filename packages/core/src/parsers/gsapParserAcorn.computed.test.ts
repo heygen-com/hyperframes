@@ -4,7 +4,19 @@
  * regression coverage that literal-position compositions are unchanged.
  */
 import { describe, it, expect } from "vitest";
-import { parseGsapScriptAcorn } from "./gsapParserAcorn.js";
+import { parseGsapScriptAcorn, editabilityForProvenance } from "./gsapParserAcorn.js";
+
+describe("editabilityForProvenance", () => {
+  it("maps provenance kinds to an editing strategy", () => {
+    expect(editabilityForProvenance(undefined)).toBe("direct");
+    expect(editabilityForProvenance({ kind: "literal" })).toBe("direct");
+    expect(editabilityForProvenance({ kind: "helper", fn: "addCycle", callSite: 1 })).toBe(
+      "unroll",
+    );
+    expect(editabilityForProvenance({ kind: "loop", callSite: 1, iteration: 0 })).toBe("unroll");
+    expect(editabilityForProvenance({ kind: "runtime-dynamic" })).toBe("override");
+  });
+});
 
 const start = (a: { resolvedStart?: number }): number | undefined => a.resolvedStart;
 

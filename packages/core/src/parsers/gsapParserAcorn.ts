@@ -24,8 +24,15 @@ import { inlineComputedTimelines, readProvenance } from "./gsapInline.js";
 
 // Browser-safe re-exports so studio code can build arc config without importing
 // the recast parser (this acorn module is the browser-safe gsap subpath).
-export { buildArcPath } from "./gsapSerialize.js";
-export type { ArcPathConfig, ArcPathSegment, MotionPathShape } from "./gsapSerialize.js";
+export { buildArcPath, editabilityForProvenance } from "./gsapSerialize.js";
+export type {
+  ArcPathConfig,
+  ArcPathSegment,
+  MotionPathShape,
+  GsapProvenance,
+  GsapProvenanceKind,
+  KeyframeEditability,
+} from "./gsapSerialize.js";
 
 const GSAP_METHODS = new Set<string>(["set", "to", "from", "fromTo"]);
 const QUERY_METHODS = new Set(["querySelector", "querySelectorAll"]);
