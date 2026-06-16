@@ -1,14 +1,23 @@
 /**
- * Unit tests for resolveNearestHfElement (pure resolver — no browser needed).
+ * Unit tests for the pure functions in iframe.ts (no browser needed).
  *
- * elementFromPoint itself requires a real browser layout engine. The adapter's
- * elementAtPoint() method is therefore NOT tested here; cover it with an
- * integration test that mounts a real same-origin iframe (WS-A1 follow-on).
+ * elementFromPoint requires a real layout engine — the adapter's elementAtPoint()
+ * is NOT tested here. Cover it with an integration test mounting a same-origin
+ * iframe (WS-A1 follow-on).
+ *
+ * applyDraft / commitPreview / cancelPreview require HTMLElement.style + querySelector
+ * which are also browser-only. They are tested via a lightweight fake-DOM helper
+ * that simulates style.setProperty / getAttribute / removeProperty.
  */
 
 import { describe, it, expect, vi } from "vitest";
-import { resolveNearestHfElement } from "./iframe.js";
+import {
+  resolveNearestHfElement,
+  computeDraftPosition,
+  createIframePreviewAdapter,
+} from "./iframe.js";
 import type { ElementAtPointResult } from "./types.js";
+import type { EditOp } from "../types.js";
 
 // ─── Minimal fake element ────────────────────────────────────────────────────
 
@@ -41,7 +50,7 @@ function fakeEl(
 const visible = () => true;
 const invisible = () => false;
 
-// ─── Tests ────────────────────────────────────────────────────────────────────
+// ─── resolveNearestHfElement ──────────────────────────────────────────────────
 
 describe("resolveNearestHfElement", () => {
   it("returns null for a null input", () => {
@@ -78,16 +87,13 @@ describe("resolveNearestHfElement", () => {
   });
 
   it("skips an opacity-0 element and returns null (isVisible called on the resolved node)", () => {
-    // isVisible is only checked on the RESOLVED node, not intermediary nodes.
     const parent = fakeEl({ "data-hf-id": "hf-parent" }, "div");
     const child = fakeEl({}, "span", parent);
-    // Make parent invisible
     const isVisible = vi.fn((el: Element) => {
       const fe = el as unknown as FakeEl;
       return fe.attrs["data-hf-id"] !== "hf-parent";
     });
     expect(resolveNearestHfElement(child as unknown as Element, isVisible)).toBeNull();
-    // isVisible was called once (on the resolved parent node)
     expect(isVisible).toHaveBeenCalledTimes(1);
   });
 
@@ -113,11 +119,31 @@ describe("resolveNearestHfElement", () => {
   });
 });
 
-// ─── select + on('selection') wiring ─────────────────────────────────────────
-// These cover the adapter-level selection state without needing a real iframe.
-// We import createIframePreviewAdapter and pass a stub iframe.
+// ─── computeDraftPosition ─────────────────────────────────────────────────────
 
-import { createIframePreviewAdapter } from "./iframe.js";
+describe("computeDraftPosition", () => {
+  it("applies delta to base data-x/data-y", () => {
+    expect(computeDraftPosition("100", "200", 30, -10)).toEqual({ x: 130, y: 190 });
+  });
+
+  it("defaults missing data-x/data-y to 0", () => {
+    expect(computeDraftPosition(null, null, 50, 25)).toEqual({ x: 50, y: 25 });
+  });
+
+  it("defaults non-numeric data-x/data-y to 0", () => {
+    expect(computeDraftPosition("abc", "xyz", 10, 5)).toEqual({ x: 10, y: 5 });
+  });
+
+  it("works with zero delta (no-move commit)", () => {
+    expect(computeDraftPosition("40", "80", 0, 0)).toEqual({ x: 40, y: 80 });
+  });
+
+  it("handles negative base positions", () => {
+    expect(computeDraftPosition("-20", "0", 5, 10)).toEqual({ x: -15, y: 10 });
+  });
+});
+
+// ─── IframePreviewAdapter selection ──────────────────────────────────────────
 
 function stubIframe() {
   return {} as HTMLIFrameElement;
@@ -168,5 +194,160 @@ describe("IframePreviewAdapter selection", () => {
     adapter.select(["hf-abc"]);
     expect(cb1).toHaveBeenCalledOnce();
     expect(cb2).toHaveBeenCalledOnce();
+  });
+});
+
+// ─── applyDraft / commitPreview / cancelPreview ───────────────────────────────
+// Tests use a fake iframe+element because HTMLElement.style requires a browser.
+
+interface FakeStyle {
+  _props: Record<string, string>;
+  setProperty(name: string, value: string): void;
+  getPropertyValue(name: string): string;
+  removeProperty(name: string): void;
+}
+
+interface FakeDomEl {
+  "data-hf-id": string;
+  "data-x": string | null;
+  "data-y": string | null;
+  style: FakeStyle;
+  getAttribute(name: string): string | null;
+  querySelector(sel: string): FakeDomEl | null;
+}
+
+function fakeDomEl(id: string, dataX: string | null, dataY: string | null): FakeDomEl {
+  const style: FakeStyle = {
+    _props: {},
+    setProperty(name, value) {
+      this._props[name] = value;
+    },
+    getPropertyValue(name) {
+      return this._props[name] ?? "";
+    },
+    removeProperty(name) {
+      delete this._props[name];
+    },
+  };
+  const el: FakeDomEl = {
+    "data-hf-id": id,
+    "data-x": dataX,
+    "data-y": dataY,
+    style,
+    getAttribute(name) {
+      if (name === "data-x") return this["data-x"];
+      if (name === "data-y") return this["data-y"];
+      if (name === "data-hf-id") return this["data-hf-id"];
+      return null;
+    },
+    querySelector(_sel: string) {
+      return null;
+    },
+  };
+  return el;
+}
+
+function fakeIframe(el: FakeDomEl | null): HTMLIFrameElement {
+  return {
+    contentDocument: {
+      querySelector(_sel: string) {
+        return el;
+      },
+    },
+  } as unknown as HTMLIFrameElement;
+}
+
+describe("IframePreviewAdapter draft / commit / cancel", () => {
+  it("commitPreview without applyDraft is a no-op", () => {
+    const dispatch = vi.fn();
+    const adapter = createIframePreviewAdapter(stubIframe(), dispatch);
+    adapter.commitPreview();
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it("cancelPreview without applyDraft is a no-op", () => {
+    const dispatch = vi.fn();
+    const adapter = createIframePreviewAdapter(stubIframe(), dispatch);
+    adapter.cancelPreview();
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it("commitPreview dispatches moveElement with correct absolute position", () => {
+    const dispatch = vi.fn();
+    const el = fakeDomEl("hf-abc", "100", "200");
+    const adapter = createIframePreviewAdapter(fakeIframe(el), dispatch);
+
+    adapter.applyDraft("hf-abc", { dx: 30, dy: -20 });
+    adapter.commitPreview();
+
+    expect(dispatch).toHaveBeenCalledWith<[EditOp]>({
+      type: "moveElement",
+      target: "hf-abc",
+      x: 130,
+      y: 180,
+    });
+  });
+
+  it("commitPreview with missing data-x/data-y defaults base to 0", () => {
+    const dispatch = vi.fn();
+    const el = fakeDomEl("hf-abc", null, null);
+    const adapter = createIframePreviewAdapter(fakeIframe(el), dispatch);
+
+    adapter.applyDraft("hf-abc", { dx: 50, dy: 25 });
+    adapter.commitPreview();
+
+    expect(dispatch).toHaveBeenCalledWith<[EditOp]>({
+      type: "moveElement",
+      target: "hf-abc",
+      x: 50,
+      y: 25,
+    });
+  });
+
+  it("commitPreview without a dispatch callback is a no-op", () => {
+    const el = fakeDomEl("hf-abc", "0", "0");
+    const adapter = createIframePreviewAdapter(fakeIframe(el));
+
+    adapter.applyDraft("hf-abc", { dx: 10, dy: 10 });
+    // should not throw
+    adapter.commitPreview();
+  });
+
+  it("cancelPreview clears draft vars without dispatching", () => {
+    const dispatch = vi.fn();
+    const el = fakeDomEl("hf-abc", "100", "200");
+    const adapter = createIframePreviewAdapter(fakeIframe(el), dispatch);
+
+    adapter.applyDraft("hf-abc", { dx: 30, dy: 20 });
+    adapter.cancelPreview();
+
+    expect(dispatch).not.toHaveBeenCalled();
+    // CSS vars cleared
+    expect(el.style.getPropertyValue("--hf-studio-dx")).toBe("");
+    expect(el.style.getPropertyValue("--hf-studio-dy")).toBe("");
+  });
+
+  it("commitPreview clears draft vars after dispatching", () => {
+    const dispatch = vi.fn();
+    const el = fakeDomEl("hf-abc", "0", "0");
+    const adapter = createIframePreviewAdapter(fakeIframe(el), dispatch);
+
+    adapter.applyDraft("hf-abc", { dx: 10, dy: 5 });
+    adapter.commitPreview();
+
+    expect(el.style.getPropertyValue("--hf-studio-dx")).toBe("");
+    expect(el.style.getPropertyValue("--hf-studio-dy")).toBe("");
+  });
+
+  it("second commitPreview after first is a no-op (draft cleared)", () => {
+    const dispatch = vi.fn();
+    const el = fakeDomEl("hf-abc", "0", "0");
+    const adapter = createIframePreviewAdapter(fakeIframe(el), dispatch);
+
+    adapter.applyDraft("hf-abc", { dx: 10, dy: 5 });
+    adapter.commitPreview();
+    adapter.commitPreview();
+
+    expect(dispatch).toHaveBeenCalledTimes(1);
   });
 });

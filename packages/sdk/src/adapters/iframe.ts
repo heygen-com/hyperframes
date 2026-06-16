@@ -1,14 +1,20 @@
 /**
- * Same-origin iframe PreviewAdapter — WS-A1 (hit-test + selection).
+ * Same-origin iframe PreviewAdapter — WS-A1 (hit-test + selection) +
+ * WS-A2 (applyDraft / commitPreview / cancelPreview → moveElement).
  *
  * Requirements:
  * - The iframe MUST be same-origin (srcdoc / blob URL). Cross-origin access to
  *   contentDocument throws a DOMException; this adapter does not guard that —
  *   the caller is responsible for ensuring same-origin.
- * - applyDraft / commitPreview / cancelPreview are WS-A2 scope — stubbed here.
  */
 
 import type { PreviewAdapter, ElementAtPointResult, DraftProps } from "./types.js";
+import type { EditOp } from "../types.js";
+
+// ─── CSS var names written onto elements during drag ─────────────────────────
+
+const VAR_DX = "--hf-studio-dx";
+const VAR_DY = "--hf-studio-dy";
 
 // ─── Pure resolver (testable without a browser) ───────────────────────────────
 
@@ -41,6 +47,26 @@ export function resolveNearestHfElement(
   return null;
 }
 
+// ─── Draft position math (pure — testable without a browser) ─────────────────
+
+/**
+ * Compute the new absolute x/y for a moveElement op given:
+ * - the element's current `data-x` / `data-y` string values (may be null)
+ * - the accumulated drag delta (dx, dy) from applyDraft calls
+ *
+ * `data-x` / `data-y` default to 0 when absent or non-numeric.
+ */
+export function computeDraftPosition(
+  dataX: string | null,
+  dataY: string | null,
+  dx: number,
+  dy: number,
+): { x: number; y: number } {
+  const baseX = parseFloat(dataX ?? "0") || 0;
+  const baseY = parseFloat(dataY ?? "0") || 0;
+  return { x: baseX + dx, y: baseY + dy };
+}
+
 // ─── Visibility check ─────────────────────────────────────────────────────────
 
 /**
@@ -69,11 +95,18 @@ type SelectionHandler = (ids: string[]) => void;
 
 class IframePreviewAdapter implements PreviewAdapter {
   private readonly iframe: HTMLIFrameElement;
+  private readonly _dispatch: ((op: EditOp) => void) | undefined;
+
   private _selection: string[] = [];
   private _handlers: SelectionHandler[] = [];
 
-  constructor(iframe: HTMLIFrameElement) {
+  /** Tracked id and element for the in-progress drag. */
+  private _draftId: string | null = null;
+  private _draftEl: Element | null = null;
+
+  constructor(iframe: HTMLIFrameElement, dispatch?: (op: EditOp) => void) {
     this.iframe = iframe;
+    this._dispatch = dispatch;
   }
 
   /**
@@ -94,13 +127,71 @@ class IframePreviewAdapter implements PreviewAdapter {
     return resolveNearestHfElement(hit, (el) => isOpacityVisible(el, win));
   }
 
-  // WS-A2 stubs — commitPreview / applyDraft derive the moveElement op --------
+  /**
+   * Write draft CSS custom properties (`--hf-studio-dx`, `--hf-studio-dy`) onto
+   * the target element inside the iframe at 60fps. The composition's CSS uses
+   * these vars to visually translate the element without touching the model.
+   *
+   * Calling applyDraft with a new id replaces the tracked element (does not
+   * cancel the prior draft — call cancelPreview first if switching targets).
+   *
+   * width/height in DraftProps are not yet wired (resize → setStyle, future op).
+   */
+  applyDraft(id: string, props: DraftProps): void {
+    const doc = this.iframe.contentDocument;
+    if (!doc) return;
 
-  applyDraft(_id: string, _props: DraftProps): void {}
+    const el = doc.querySelector<HTMLElement>(
+      `[data-hf-id="${id.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"]`,
+    );
+    if (!el) return;
 
-  commitPreview(): void {}
+    this._draftId = id;
+    this._draftEl = el;
 
-  cancelPreview(): void {}
+    if (props.dx !== undefined) el.style.setProperty(VAR_DX, String(props.dx));
+    if (props.dy !== undefined) el.style.setProperty(VAR_DY, String(props.dy));
+  }
+
+  /**
+   * Read the accumulated draft deltas, derive a moveElement op, dispatch it,
+   * then clear the CSS vars and draft state.
+   *
+   * No-ops when:
+   * - No applyDraft was called (nothing to commit)
+   * - No dispatch callback was provided at construction
+   */
+  commitPreview(): void {
+    if (!this._draftId || !this._draftEl || !this._dispatch) {
+      this._clearDraft();
+      return;
+    }
+
+    const el = this._draftEl as HTMLElement;
+    const dx = parseFloat(el.style.getPropertyValue(VAR_DX) || "0") || 0;
+    const dy = parseFloat(el.style.getPropertyValue(VAR_DY) || "0") || 0;
+    const dataX = (this._draftEl as Element).getAttribute("data-x");
+    const dataY = (this._draftEl as Element).getAttribute("data-y");
+    const { x, y } = computeDraftPosition(dataX, dataY, dx, dy);
+
+    this._dispatch({ type: "moveElement", target: this._draftId, x, y });
+    this._clearDraft();
+  }
+
+  /** Revert draft CSS vars without dispatching any op. */
+  cancelPreview(): void {
+    this._clearDraft();
+  }
+
+  private _clearDraft(): void {
+    if (this._draftEl) {
+      const el = this._draftEl as HTMLElement;
+      el.style.removeProperty(VAR_DX);
+      el.style.removeProperty(VAR_DY);
+    }
+    this._draftId = null;
+    this._draftEl = null;
+  }
 
   // Selection -----------------------------------------------------------------
 
@@ -128,6 +219,9 @@ class IframePreviewAdapter implements PreviewAdapter {
   }
 }
 
-export function createIframePreviewAdapter(iframe: HTMLIFrameElement): PreviewAdapter {
-  return new IframePreviewAdapter(iframe);
+export function createIframePreviewAdapter(
+  iframe: HTMLIFrameElement,
+  dispatch?: (op: EditOp) => void,
+): PreviewAdapter {
+  return new IframePreviewAdapter(iframe, dispatch);
 }
