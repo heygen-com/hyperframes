@@ -13,9 +13,13 @@ const RUNTIME_INLINE_MARKERS = [
   "__hyperframeRuntimeBootstrapped",
   "__hyperframeRuntime",
   "__hyperframeRuntimeTeardown",
+  "__HF_EXPORT_RENDER_SEEK_CONFIG",
   "window.__player =",
-  "window.__playerReady",
-  "window.__renderReady",
+];
+
+const SIMPLE_RUNTIME_FLAG_ASSIGNMENTS = [
+  /^window\.__playerReady\s*=\s*(?:true|false)\s*;?$/,
+  /^window\.__renderReady\s*=\s*(?:true|false)\s*;?$/,
 ];
 
 /**
@@ -115,7 +119,20 @@ function shouldStripRuntimeScriptBlock(block: string): boolean {
   for (const marker of RUNTIME_INLINE_MARKERS) {
     if (block.includes(marker)) return true;
   }
+  const scriptSource = getScriptSource(block).trim();
+  for (const pattern of SIMPLE_RUNTIME_FLAG_ASSIGNMENTS) {
+    if (pattern.test(scriptSource)) return true;
+  }
   return false;
+}
+
+function getScriptSource(block: string): string {
+  const startTagEnd = findTagEnd(block, 1);
+  if (startTagEnd === -1) return "";
+  const loweredBlock = block.toLowerCase();
+  const closeTagStart = loweredBlock.lastIndexOf("</script");
+  const end = closeTagStart === -1 ? block.length : closeTagStart;
+  return block.slice(startTagEnd + 1, end);
 }
 
 function isTagBoundary(char: string): boolean {

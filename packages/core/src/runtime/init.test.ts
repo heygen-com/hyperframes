@@ -109,6 +109,7 @@ describe("initSandboxRuntimeModular", () => {
     delete window.__player;
     delete window.__playerReady;
     delete window.__renderReady;
+    delete window.__hyperframesReady;
     delete window.__hfTimelinesBuilding;
     vi.restoreAllMocks();
     window.requestAnimationFrame = originalRequestAnimationFrame;
@@ -962,6 +963,37 @@ describe("initSandboxRuntimeModular", () => {
     timelineDuration = 10;
     window.__hfTimelinesBuilding = false;
     window.dispatchEvent(new CustomEvent("hf-timelines-built"));
+
+    expect(window.__renderReady).toBe(true);
+    expect(window.__player?.getDuration()).toBe(10);
+  });
+
+  it("waits for authored async readiness before publishing render readiness", async () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    window.__timelines = {
+      main: createMockTimeline(10),
+    };
+
+    let resolveReady!: () => void;
+    window.__hyperframesReady = new Promise<void>((resolve) => {
+      resolveReady = resolve;
+    });
+
+    initSandboxRuntimeModular();
+
+    expect(window.__playerReady).toBe(true);
+    expect(window.__renderReady).toBe(false);
+    expect(window.__player?.getDuration()).toBe(10);
+
+    resolveReady();
+    await Promise.resolve();
 
     expect(window.__renderReady).toBe(true);
     expect(window.__player?.getDuration()).toBe(10);

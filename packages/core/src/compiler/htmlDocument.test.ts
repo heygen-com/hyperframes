@@ -19,6 +19,7 @@ describe("htmlDocument helpers", () => {
 <script src="hyperframe-runtime.modular-runtime.inline.js"></script>
 <script data-hyperframes-preview-runtime="1"></script>
 <script>window.__playerReady = true;</script >
+<script>window.__renderReady = false;</script>
 <script>window.authored = true;</script>`;
 
     const stripped = stripEmbeddedRuntimeScripts(html);
@@ -28,7 +29,22 @@ describe("htmlDocument helpers", () => {
     expect(stripped).not.toContain("hyperframe-runtime.modular-runtime.inline.js");
     expect(stripped).not.toContain("data-hyperframes-preview-runtime");
     expect(stripped).not.toContain("window.__playerReady");
+    expect(stripped).not.toContain("window.__renderReady");
     expect(stripped).toContain("window.authored = true");
+  });
+
+  it("keeps authored scripts that reference runtime readiness flags", () => {
+    const html = `
+<script>
+  window.__timelines = window.__timelines || {};
+  if (window.__renderReady) window.authoredReadySeen = true;
+  window.__timelines["main"] = {};
+</script>`;
+
+    const stripped = stripEmbeddedRuntimeScripts(html);
+
+    expect(stripped).toContain('window.__timelines["main"]');
+    expect(stripped).toContain("window.__renderReady");
   });
 
   it("does not treat non-script tags as scripts when stripping runtimes", () => {

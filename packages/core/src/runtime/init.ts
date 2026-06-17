@@ -1643,6 +1643,44 @@ export function initSandboxRuntimeModular(): void {
   let maybePublishRenderReady = () => {
     window.__renderReady = false;
   };
+  let authoredRenderReadyPromise: PromiseLike<unknown> | null = null;
+  let authoredRenderReadySettled = true;
+
+  const getAuthoredRenderReadyPromise = (): PromiseLike<unknown> | null => {
+    const ready = window.__hyperframesReady;
+    if (ready == null) return null;
+    if (typeof ready !== "object" && typeof ready !== "function") return null;
+    return typeof (ready as { then?: unknown }).then === "function"
+      ? (ready as PromiseLike<unknown>)
+      : null;
+  };
+
+  const isAuthoredRenderReadySettled = (): boolean => {
+    const ready = getAuthoredRenderReadyPromise();
+    if (!ready) {
+      authoredRenderReadyPromise = null;
+      authoredRenderReadySettled = true;
+      return true;
+    }
+    if (ready !== authoredRenderReadyPromise) {
+      authoredRenderReadyPromise = ready;
+      authoredRenderReadySettled = false;
+      void Promise.resolve(ready).then(
+        () => {
+          if (authoredRenderReadyPromise !== ready) return;
+          authoredRenderReadySettled = true;
+          maybePublishRenderReady();
+        },
+        (err) => {
+          if (authoredRenderReadyPromise !== ready) return;
+          authoredRenderReadySettled = true;
+          swallow("runtime.init.authoredRenderReady", err);
+          maybePublishRenderReady();
+        },
+      );
+    }
+    return authoredRenderReadySettled;
+  };
 
   if (!externalCompositionsReady) {
     const compositionLoaderParams = {
@@ -1906,7 +1944,11 @@ export function initSandboxRuntimeModular(): void {
   };
 
   maybePublishRenderReady = () => {
-    if (!externalCompositionsReady || window.__hfTimelinesBuilding) {
+    if (
+      !externalCompositionsReady ||
+      window.__hfTimelinesBuilding ||
+      !isAuthoredRenderReadySettled()
+    ) {
       window.__renderReady = false;
       return;
     }
