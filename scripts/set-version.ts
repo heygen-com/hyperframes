@@ -319,7 +319,12 @@ function printReleaseNextSteps(version: string) {
     console.log(`Consumers install with: npm install @hyperframes/core@${distTag}`);
     console.log(`\nRun 'git push origin v${version}' to trigger the publish workflow.`);
   } else {
-    console.log(`Run 'git push origin main --tags' to trigger the publish workflow.`);
+    console.log(`\nRun the following to trigger the publish workflow:`);
+    console.log(`  git push origin main`);
+    console.log(`  git push origin v${version}`);
+    console.log(
+      `(push the specific tag, NOT 'git push --tags' — that fails on any pre-existing tag).`,
+    );
   }
 }
 
