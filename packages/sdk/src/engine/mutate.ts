@@ -684,15 +684,20 @@ function collectSubtreeHfIds(el: Element): string[] {
 }
 
 function cascadeRemoveAnimations(script: string, id: HfId): string {
-  const parsedGsap = parseGsapScriptAcornForWrite(script);
-  if (!parsedGsap) return script;
+  // Re-parse after each removal: animation ids are positional, so removing one
+  // tween renumbers the survivors — ids from a single up-front parse go stale and
+  // no-op, orphaning later tweens on the removed element. Same fix as
+  // stripGsapForId in htmlParser.ts (R3 #3); this is its SDK-side twin.
   let current = script;
-  for (const { id: animId, animation } of parsedGsap.located) {
-    if (selectorMatchesId(animation.targetSelector, id)) {
-      current = removeAnimationFromScript(current, animId);
-    }
+  for (;;) {
+    const parsedGsap = parseGsapScriptAcornForWrite(current);
+    if (!parsedGsap) return current;
+    const match = parsedGsap.located.find((l) => selectorMatchesId(l.animation.targetSelector, id));
+    if (!match) return current;
+    const next = removeAnimationFromScript(current, match.id);
+    if (next === current) return current; // guard against a non-removing match
+    current = next;
   }
-  return current;
 }
 
 // ─── setClassStyle handler ────────────────────────────────────────────────────
