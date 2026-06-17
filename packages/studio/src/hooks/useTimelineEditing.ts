@@ -188,6 +188,9 @@ export function useTimelineEditing({
             reloadPreview,
             domEditSaveTimestampRef,
             compositionPath: activeCompPath,
+            // Capture on-disk bytes as the undo `before` so undoing a timing move
+            // restores the file verbatim, not a normalized full-DOM re-emit.
+            readProjectFile: (path) => readFileContent(projectIdRef.current ?? "", path),
           },
           { label: "Move timeline clip", coalesceKey },
         ).then((handled) => {
@@ -297,6 +300,9 @@ export function useTimelineEditing({
             reloadPreview,
             domEditSaveTimestampRef,
             compositionPath: activeCompPath,
+            // Capture on-disk bytes as the undo `before` so undoing a timing
+            // resize restores the file verbatim, not a normalized full-DOM re-emit.
+            readProjectFile: (path) => readFileContent(projectIdRef.current ?? "", path),
           },
           { label: "Resize timeline clip", coalesceKey },
         ).then((handled) => {
