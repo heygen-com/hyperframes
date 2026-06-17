@@ -32,6 +32,7 @@
     "@codemirror/lang-css": "^6.3.1",
     "@codemirror/lang-html": "^6.4.9",
     "@codemirror/lang-javascript": "^6.2.2",
+    "@codemirror/lang-markdown": "^6.3.4",
     "@codemirror/language": "^6.12.2",
     "@codemirror/search": "^6.6.0",
     "@codemirror/state": "^6.6.0",
@@ -42,6 +43,8 @@
     "@hyperframes/sdk": "workspace:*",
     "@phosphor-icons/react": "^2.1.10",
     "bpm-detective": "^2.0.5",
+    "dompurify": "^3.2.4",
+    "marked": "^14.1.4",
     "mediabunny": "^1.45.3"
   },
   "devDependencies": {

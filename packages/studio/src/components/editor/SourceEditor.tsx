@@ -12,26 +12,26 @@ import { bracketMatching, foldGutter, indentOnInput } from "@codemirror/language
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
 import { oneDark } from "@codemirror/theme-one-dark";
+import type { Extension } from "@codemirror/state";
 import { html } from "@codemirror/lang-html";
 import { css } from "@codemirror/lang-css";
 import { javascript } from "@codemirror/lang-javascript";
+import { markdown } from "@codemirror/lang-markdown";
 
-function getLanguageExtension(language: string) {
-  switch (language) {
-    case "html":
-      return html();
-    case "css":
-      return css();
-    case "javascript":
-    case "js":
-    case "typescript":
-    case "ts":
-      return javascript({
-        typescript: language === "typescript" || language === "ts",
-      });
-    default:
-      return html();
-  }
+const LANGUAGE_EXTENSIONS: Record<string, () => Extension> = {
+  html: () => html(),
+  css: () => css(),
+  markdown: () => markdown(),
+  md: () => markdown(),
+  javascript: () => javascript(),
+  js: () => javascript(),
+  typescript: () => javascript({ typescript: true }),
+  ts: () => javascript({ typescript: true }),
+};
+
+function getLanguageExtension(language: string): Extension {
+  const factory = LANGUAGE_EXTENSIONS[language] ?? html;
+  return factory();
 }
 
 function detectLanguage(filePath: string): string {
@@ -45,6 +45,8 @@ function detectLanguage(filePath: string): string {
     jsx: "javascript",
     tsx: "typescript",
     json: "javascript",
+    md: "markdown",
+    markdown: "markdown",
   };
   return map[ext] ?? "html";
 }
@@ -74,6 +76,7 @@ export const SourceEditor = memo(function SourceEditor({
   const contentRef = useRef(content);
   contentRef.current = content;
 
+  // fallow-ignore-next-line complexity
   const mountEditor = useCallback(
     (node: HTMLDivElement | null) => {
       if (editorRef.current) {

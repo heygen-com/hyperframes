@@ -1,9 +1,6 @@
 import type { ReactNode } from "react";
 import { useStoryboard } from "../../hooks/useStoryboard";
-import { StoryboardDirection } from "./StoryboardDirection";
-import { StoryboardGrid } from "./StoryboardGrid";
-import { StoryboardStatusLegend } from "./StoryboardStatusLegend";
-import { StoryboardScriptPanel } from "./StoryboardScriptPanel";
+import { StoryboardLoaded } from "./StoryboardLoaded";
 
 export interface StoryboardViewProps {
   projectId: string;
@@ -11,12 +8,12 @@ export interface StoryboardViewProps {
 
 /**
  * Top-level storyboard stage. Replaces the timeline/preview when the view mode
- * is `storyboard`: renders the global direction plus the frame contact sheet,
- * with loading / error / empty states.
+ * is `storyboard`. Handles the load states here; once a storyboard exists,
+ * {@link StoryboardLoaded} owns the Board ↔ Source experience.
  */
 // fallow-ignore-next-line complexity
 export function StoryboardView({ projectId }: StoryboardViewProps) {
-  const { data, loading, error } = useStoryboard(projectId);
+  const { data, loading, error, reload } = useStoryboard(projectId);
 
   if (loading) return <StoryboardFrame>{<Message>Loading storyboard…</Message>}</StoryboardFrame>;
   if (error) {
@@ -35,16 +32,7 @@ export function StoryboardView({ projectId }: StoryboardViewProps) {
     );
   }
 
-  return (
-    <StoryboardFrame>
-      <StoryboardDirection globals={data.globals} frameCount={data.frames.length} />
-      <div className="mt-5">
-        <StoryboardStatusLegend />
-      </div>
-      <StoryboardGrid projectId={projectId} frames={data.frames} />
-      {data.script && <StoryboardScriptPanel script={data.script} />}
-    </StoryboardFrame>
-  );
+  return <StoryboardLoaded projectId={projectId} data={data} reload={reload} />;
 }
 
 function StoryboardFrame({ children }: { children: ReactNode }) {
