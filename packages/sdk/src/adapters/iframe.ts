@@ -102,7 +102,7 @@ class IframePreviewAdapter implements PreviewAdapter {
 
   /** Tracked id and element for the in-progress drag. */
   private _draftId: string | null = null;
-  private _draftEl: Element | null = null;
+  private _draftEl: HTMLElement | null = null;
 
   constructor(iframe: HTMLIFrameElement, dispatch?: (op: EditOp) => void) {
     this.iframe = iframe;
@@ -141,9 +141,14 @@ class IframePreviewAdapter implements PreviewAdapter {
     const doc = this.iframe.contentDocument;
     if (!doc) return;
 
-    const el = doc.querySelector<HTMLElement>(
-      `[data-hf-id="${id.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"]`,
-    );
+    // Reuse the tracked element across the 60fps drag; only re-query when the id
+    // changes or the cached node detached (e.g. an iframe reload mid-drag).
+    const cached = id === this._draftId && this._draftEl?.isConnected ? this._draftEl : null;
+    const el =
+      cached ??
+      doc.querySelector<HTMLElement>(
+        `[data-hf-id="${id.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"]`,
+      );
     if (!el) return;
 
     this._draftId = id;
@@ -167,11 +172,11 @@ class IframePreviewAdapter implements PreviewAdapter {
       return;
     }
 
-    const el = this._draftEl as HTMLElement;
+    const el = this._draftEl;
     const dx = parseFloat(el.style.getPropertyValue(VAR_DX) || "0") || 0;
     const dy = parseFloat(el.style.getPropertyValue(VAR_DY) || "0") || 0;
-    const dataX = (this._draftEl as Element).getAttribute("data-x");
-    const dataY = (this._draftEl as Element).getAttribute("data-y");
+    const dataX = el.getAttribute("data-x");
+    const dataY = el.getAttribute("data-y");
     const { x, y } = computeDraftPosition(dataX, dataY, dx, dy);
 
     this._dispatch({ type: "moveElement", target: this._draftId, x, y });
@@ -185,9 +190,8 @@ class IframePreviewAdapter implements PreviewAdapter {
 
   private _clearDraft(): void {
     if (this._draftEl) {
-      const el = this._draftEl as HTMLElement;
-      el.style.removeProperty(VAR_DX);
-      el.style.removeProperty(VAR_DY);
+      this._draftEl.style.removeProperty(VAR_DX);
+      this._draftEl.style.removeProperty(VAR_DY);
     }
     this._draftId = null;
     this._draftEl = null;

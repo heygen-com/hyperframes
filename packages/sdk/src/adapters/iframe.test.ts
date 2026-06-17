@@ -212,6 +212,7 @@ interface FakeDomEl {
   "data-x": string | null;
   "data-y": string | null;
   style: FakeStyle;
+  isConnected: boolean;
   getAttribute(name: string): string | null;
   querySelector(sel: string): FakeDomEl | null;
 }
@@ -234,6 +235,7 @@ function fakeDomEl(id: string, dataX: string | null, dataY: string | null): Fake
     "data-x": dataX,
     "data-y": dataY,
     style,
+    isConnected: true,
     getAttribute(name) {
       if (name === "data-x") return this["data-x"];
       if (name === "data-y") return this["data-y"];
@@ -302,6 +304,25 @@ describe("IframePreviewAdapter draft / commit / cancel", () => {
       x: 50,
       y: 25,
     });
+  });
+
+  it("applyDraft reuses the cached element across repeated calls (no re-query)", () => {
+    const el = fakeDomEl("hf-abc", "0", "0");
+    let queryCount = 0;
+    const iframe = {
+      contentDocument: {
+        querySelector(_sel: string) {
+          queryCount++;
+          return el;
+        },
+      },
+    } as unknown as HTMLIFrameElement;
+    const adapter = createIframePreviewAdapter(iframe);
+    adapter.applyDraft("hf-abc", { dx: 1, dy: 1 });
+    adapter.applyDraft("hf-abc", { dx: 2, dy: 2 });
+    adapter.applyDraft("hf-abc", { dx: 3, dy: 3 });
+    // Queried once on the first call; the next two reuse the connected cache.
+    expect(queryCount).toBe(1);
   });
 
   it("commitPreview without a dispatch callback is a no-op", () => {
