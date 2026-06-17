@@ -395,11 +395,22 @@ function handleSetTiming(
 
     const oldStartStr = el.getAttribute("data-start");
     const oldEndStr = el.getAttribute("data-end");
+    const oldDurationStr = el.getAttribute("data-duration");
     const oldTrackStr = el.getAttribute("data-track-index");
 
     const oldStart = oldStartStr !== null ? parseFloat(oldStartStr) : null;
     const oldEnd = oldEndStr !== null ? parseFloat(oldEndStr) : null;
-    const oldDuration = oldStart !== null && oldEnd !== null ? oldEnd - oldStart : null;
+    const oldDurationAttr = oldDurationStr !== null ? parseFloat(oldDurationStr) : null;
+    // Prefer an explicit data-duration — the attribute clips are authored with and
+    // the runtime reads — falling back to data-end − data-start. Reading only
+    // data-end left oldDuration null for duration-authored clips, collapsing the
+    // GSAP duration-scale ratio to 1 and scaling nothing.
+    const oldDuration =
+      oldDurationAttr !== null
+        ? oldDurationAttr
+        : oldStart !== null && oldEnd !== null
+          ? oldEnd - oldStart
+          : null;
     const oldTrack = oldTrackStr !== null ? parseInt(oldTrackStr, 10) : null;
 
     const newStart = timing.start ?? oldStart;
@@ -413,7 +424,20 @@ function handleSetTiming(
       el.setAttribute("data-start", String(newStart));
     }
 
-    if (
+    // Write to whichever timing attribute the clip actually uses. A data-duration
+    // clip updates data-duration only on a real resize (duration is invariant
+    // under a move); a data-end clip updates data-end whenever start or duration
+    // changes (end = start + duration). Writing a fresh data-end beside a stale
+    // data-duration had no playback effect.
+    if (oldDurationStr !== null) {
+      if (timing.duration !== undefined && newDuration !== null) {
+        const path = timingPath(id, "duration");
+        const p = scalarChange(path, oldDurationAttr, newDuration);
+        result.forward.push(p.forward);
+        result.inverse.push(p.inverse);
+        el.setAttribute("data-duration", String(newDuration));
+      }
+    } else if (
       (timing.duration !== undefined || timing.start !== undefined) &&
       newStart !== null &&
       newDuration !== null
@@ -440,10 +464,12 @@ function handleSetTiming(
     // Sync GSAP tween positions: the GSAP script is the source of truth at play time —
     // the timeline rebuilds from it on every seek. Without this, DOM attribute edits
     // have zero playback effect; the script's position/duration silently overrides them.
-    // Match against the resolved element's own data-hf-id (the canonical form
-    // tweens are stored under) so a comp-root target ("sub-1") whose tween lives
-    // at [data-hf-id="hf-host"] still syncs.
-    const matchId = el.getAttribute("data-hf-id") ?? id;
+    // Match against BOTH the element's data-hf-id (the canonical form) AND its DOM
+    // id: the Studio GSAP panel / ensureElementAddressable author tweens as
+    // `#domId`, which selectorMatchesId(hfId) never matched — so moving/resizing
+    // those clips left their tweens unsynced.
+    const matchHfId = el.getAttribute("data-hf-id") ?? id;
+    const matchDomId = el.getAttribute("id");
     if (parsedGsap && currentScript && oldStart !== null) {
       // Per-tween shift/scale (mirrors shiftGsapPositions/scaleGsapPositions): a
       // multi-tween stagger maps each tween's own intra-clip position by the
@@ -458,7 +484,10 @@ function handleSetTiming(
           : 1;
       const remapStart = startChanged && newStart !== null ? newStart : oldStart;
       for (const { id: animId, animation } of parsedGsap.located) {
-        if (!selectorMatchesId(animation.targetSelector, matchId)) continue;
+        const matches =
+          selectorMatchesId(animation.targetSelector, matchHfId) ||
+          (matchDomId !== null && selectorMatchesId(animation.targetSelector, matchDomId));
+        if (!matches) continue;
         if (typeof animation.position !== "number") continue;
         const updates: Partial<GsapAnimation> = {};
         if (startChanged || durChanged) {
@@ -910,7 +939,13 @@ function handleDeleteAllForSelector(parsed: ParsedDocument, selector: string): M
   if (!script) return EMPTY;
   const parsedForWrite = parseGsapScriptAcornForWrite(script);
   if (!parsedForWrite) return EMPTY;
-  const matching = parsedForWrite.located.filter((l) => l.animation.targetSelector === selector);
+  // Compare quote-insensitively: [data-hf-id='x'] and [data-hf-id="x"] are the
+  // same selector. A strict === missed the alternate quote style and matched
+  // nothing while can() reported ok.
+  const wanted = selector.replace(/'/g, '"');
+  const matching = parsedForWrite.located.filter(
+    (l) => l.animation.targetSelector.replace(/'/g, '"') === wanted,
+  );
   if (matching.length === 0) return EMPTY;
   let newScript = script;
   for (const m of [...matching].reverse()) {
@@ -1058,6 +1093,49 @@ function gsapScriptMissing(parsed: ParsedDocument): CanResult | null {
     : null;
 }
 
+/** The located GSAP animation for `animationId`, or undefined. */
+function locateGsapAnimation(parsed: ParsedDocument, animationId: string) {
+  const script = getGsapScript(parsed.document);
+  if (!script) return undefined;
+  return parseGsapScriptAcornForWrite(script)?.located.find((l) => l.id === animationId);
+}
+
+/**
+ * E_TARGET_NOT_FOUND CanResult when no GSAP animation resolves to `animationId`,
+ * else null. Without this, can() returned ok for stale/positional ids that then
+ * no-op'd at apply — the caller believed the edit would land.
+ */
+function gsapAnimationMissing(parsed: ParsedDocument, animationId: string): CanResult | null {
+  if (getGsapScript(parsed.document) === null) return null; // reported by gsapScriptMissing
+  return locateGsapAnimation(parsed, animationId)
+    ? null
+    : canErr(
+        "E_TARGET_NOT_FOUND",
+        `No GSAP animation found with id "${animationId}".`,
+        "Animation ids are positional and shift after edits — re-read them from comp before dispatching.",
+      );
+}
+
+/** Validate updateArcSegment: the tween must have an enabled arc with that segment. */
+function validateArcSegment(
+  parsed: ParsedDocument,
+  op: Extract<EditOp, { type: "updateArcSegment" }>,
+): CanResult {
+  const arc = locateGsapAnimation(parsed, op.animationId)?.animation.arcPath;
+  if (!arc?.enabled)
+    return canErr(
+      "E_ARC_NOT_ENABLED",
+      `Animation "${op.animationId}" has no enabled arc path.`,
+      "Call setArcPath({ enabled: true }) before updating a segment.",
+    );
+  if (op.segmentIndex < 0 || op.segmentIndex >= arc.segments.length)
+    return canErr(
+      "E_INVALID_ARGS",
+      `Segment index ${op.segmentIndex} is out of range (0..${arc.segments.length - 1}).`,
+    );
+  return CAN_OK;
+}
+
 /** Dry-run validation — returns CanResult for the given op against current document state. */
 // fallow-ignore-next-line complexity
 export function validateOp(parsed: ParsedDocument, op: EditOp): CanResult {
@@ -1120,16 +1198,23 @@ export function validateOp(parsed: ParsedDocument, op: EditOp): CanResult {
     case "removeAllKeyframes":
     case "convertToKeyframes":
     case "splitIntoPropertyGroups":
-    case "splitAnimations":
     case "setArcPath":
-    case "updateArcSegment":
     case "removeArcPath":
+      return gsapScriptMissing(parsed) ?? gsapAnimationMissing(parsed, op.animationId) ?? CAN_OK;
+    case "updateArcSegment":
+      return (
+        gsapScriptMissing(parsed) ??
+        gsapAnimationMissing(parsed, op.animationId) ??
+        validateArcSegment(parsed, op)
+      );
+    case "splitAnimations":
     case "deleteAllForSelector":
     case "removeLabel":
       return gsapScriptMissing(parsed) ?? CAN_OK;
     case "unrollDynamicAnimations":
       return (
         gsapScriptMissing(parsed) ??
+        gsapAnimationMissing(parsed, op.animationId) ??
         (op.elements.length === 0
           ? canErr(
               "E_INVALID_ARGS",
@@ -1141,6 +1226,7 @@ export function validateOp(parsed: ParsedDocument, op: EditOp): CanResult {
     case "materializeKeyframes":
       return (
         gsapScriptMissing(parsed) ??
+        gsapAnimationMissing(parsed, op.animationId) ??
         (op.keyframes.length === 0
           ? canErr(
               "E_INVALID_ARGS",

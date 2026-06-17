@@ -90,8 +90,16 @@ describe("validateOp with GSAP script", () => {
     ).toBe(true);
   });
 
-  it("removeGsapTween → ok:true", () => {
-    expect(validateOp(fresh(), { type: "removeGsapTween", animationId: "some-id" }).ok).toBe(true);
+  it("removeGsapTween → ok:true for a resolvable id", () => {
+    expect(validateOp(fresh(), { type: "removeGsapTween", animationId: TWEEN_ANIM_ID }).ok).toBe(
+      true,
+    );
+  });
+
+  it("removeGsapTween → E_TARGET_NOT_FOUND for an unresolved id (can/apply agreement)", () => {
+    const r = validateOp(fresh(), { type: "removeGsapTween", animationId: "no-such-id" });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe("E_TARGET_NOT_FOUND");
   });
 
   it("addLabel → ok:true", () => {
@@ -920,5 +928,88 @@ describe("removeArcPath", () => {
     enableArc(parsed);
     applyOp(parsed, { type: "removeArcPath", animationId: ARC_ANIM_ID });
     expect(getScript(parsed)).not.toContain("motionPath");
+  });
+});
+
+// ─── R3 #6 — validateOp rejects unappliable arc-segment edits ─────────────────
+
+describe("validateOp updateArcSegment (R3 #6)", () => {
+  it("E_ARC_NOT_ENABLED when the tween has no enabled arc path", () => {
+    const r = validateOp(freshArc(), {
+      type: "updateArcSegment",
+      animationId: ARC_ANIM_ID,
+      segmentIndex: 0,
+      update: { curviness: 2 },
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe("E_ARC_NOT_ENABLED");
+  });
+
+  it("E_INVALID_ARGS when the segment index is out of range", () => {
+    const parsed = freshArc();
+    enableArc(parsed);
+    const r = validateOp(parsed, {
+      type: "updateArcSegment",
+      animationId: ARC_ANIM_ID,
+      segmentIndex: 9,
+      update: { curviness: 2 },
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe("E_INVALID_ARGS");
+  });
+});
+
+// ─── R3 #13b — deleteAllForSelector matches across quote styles ────────────────
+
+describe("deleteAllForSelector quote-insensitive match (R3 #13b)", () => {
+  it("removes a tween authored with double quotes when given a single-quoted selector", () => {
+    const html = `<div data-hf-id="hf-stage" data-hf-root style="width: 1280px; height: 720px">
+  <div data-hf-id="hf-box"></div>
+  <script>var tl = gsap.timeline({ paused: true }); tl.to("[data-hf-id=\\"hf-box\\"]", { x: 1, duration: 1 }, 0); window.__timelines["t"] = tl;</script>
+</div>`;
+    const parsed = parseMutable(html);
+    const result = applyOp(parsed, {
+      type: "deleteAllForSelector",
+      selector: `[data-hf-id='hf-box']`,
+    });
+    expect(result.forward.length).toBeGreaterThan(0);
+    expect(getScript(parsed)).not.toContain("tl.to(");
+  });
+});
+
+// ─── CF2 #15/#16 — handleSetTiming syncs #domId tweens + resizes data-duration ─
+
+describe("handleSetTiming GSAP sync (CF2 #15/#16)", () => {
+  function timingDoc(attrs: string, tween: string) {
+    return parseMutable(
+      `<div data-hf-id="hf-stage" data-hf-root style="width: 1280px; height: 720px">
+  <div id="box" data-hf-id="hf-box" ${attrs}></div>
+  <script>var tl = gsap.timeline({ paused: true }); ${tween} window.__timelines["t"] = tl;</script>
+</div>`,
+    );
+  }
+
+  it("#15: a #domId-targeted tween shifts when the clip moves", () => {
+    const parsed = timingDoc(
+      `data-start="2" data-end="5"`,
+      `tl.to("#box", { x: 100, duration: 1 }, 2);`,
+    );
+    applyOp(parsed, { type: "setTiming", target: "hf-box", start: 5 });
+    // position remapped 2 → 5 (delta +3); the bug left it at 2.
+    expect(getScript(parsed)).toMatch(/tl\.to\("#box",[^)]*\}, 5\)/);
+  });
+
+  it("#16: a data-duration clip updates data-duration and scales its tween", () => {
+    const parsed = timingDoc(
+      `data-start="2" data-duration="4"`,
+      `tl.to("#box", { x: 100, duration: 4 }, 2);`,
+    );
+    applyOp(parsed, { type: "setTiming", target: "hf-box", duration: 8 });
+    const el = parsed.document.querySelector('[data-hf-id="hf-box"]');
+    // data-duration updated (not a stale value beside a fresh data-end).
+    expect(el?.getAttribute("data-duration")).toBe("8");
+    expect(el?.getAttribute("data-end")).toBeNull();
+    // tween duration scaled 4 → 8 (ratio 2).
+    expect(getScript(parsed)).toContain("duration: 8");
   });
 });

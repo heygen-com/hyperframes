@@ -499,7 +499,7 @@ describe("Phase 3b ops", () => {
     );
     const r = validateOp(parsed, {
       type: "unrollDynamicAnimations",
-      animationId: "tw-1",
+      animationId: "#x-to-0-position",
       elements: [],
     });
     expect(r.ok).toBe(false);
@@ -513,7 +513,7 @@ describe("Phase 3b ops", () => {
     );
     const r = validateOp(parsed, {
       type: "materializeKeyframes",
-      animationId: "tw-1",
+      animationId: "#x-to-0-position",
       keyframes: [],
     });
     expect(r.ok).toBe(false);

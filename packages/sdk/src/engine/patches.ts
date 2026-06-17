@@ -59,7 +59,7 @@ export function attrPath(id: string, name: string): string {
   return `/elements/${escapeIdForPath(id)}/attributes/${escapedName}`;
 }
 
-export function timingPath(id: string, field: "start" | "end" | "trackIndex"): string {
+export function timingPath(id: string, field: "start" | "end" | "duration" | "trackIndex"): string {
   return `/elements/${escapeIdForPath(id)}/timing/${field}`;
 }
 
