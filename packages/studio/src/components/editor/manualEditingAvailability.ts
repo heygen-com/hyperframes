@@ -105,4 +105,13 @@ export const STUDIO_SDK_SHADOW_ENABLED = resolveStudioBooleanEnvFlag(
   true,
 );
 
+// Stage 7 Step 3c: SDK cutover — routes inline-style ops through SDK dispatch
+// instead of the server patch-element API. Default false; enable via
+// VITE_STUDIO_SDK_CUTOVER_ENABLED=true. Requires SDK session to be open.
+export const STUDIO_SDK_CUTOVER_ENABLED = resolveStudioBooleanEnvFlag(
+  env,
+  ["VITE_STUDIO_SDK_CUTOVER_ENABLED"],
+  false,
+);
+
 export const STUDIO_MANUAL_EDITING_DISABLED_TITLE = "Manual editing is temporarily disabled";
