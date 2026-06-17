@@ -171,6 +171,10 @@ export async function sdkTimingPersist(
   deps: CutoverDeps,
   options?: CutoverOptions,
 ): Promise<boolean> {
+  // Dark-launch gate: without this, timing cutover runs whenever an SDK session
+  // exists (it always does, for shadow/selection) — flipping the flag OFF would
+  // NOT disable it. Gate here so flag-off routes back to the legacy server path.
+  if (!STUDIO_SDK_CUTOVER_ENABLED) return false;
   if (!sdkSession || !sdkSession.getElement(hfId)) return false;
   if (wrongCompositionFile(deps, targetPath)) return false;
   try {
@@ -229,6 +233,9 @@ async function dispatchGsapOpAndPersist(
   options: CutoverOptions | undefined,
   dispatch: (s: Composition) => void,
 ): Promise<boolean> {
+  // Dark-launch gate (shared chokepoint for every GSAP-op cutover persist):
+  // flag OFF → return false → caller falls back to the legacy server path.
+  if (!STUDIO_SDK_CUTOVER_ENABLED) return false;
   if (!sdkSession) return false;
   if (wrongCompositionFile(deps, targetPath)) return false;
   try {
@@ -330,6 +337,8 @@ export async function sdkDeletePersist(
   sdkSession: Composition | null | undefined,
   deps: CutoverDeps,
 ): Promise<boolean> {
+  // Dark-launch gate: flag OFF → legacy server delete path.
+  if (!STUDIO_SDK_CUTOVER_ENABLED) return false;
   if (!sdkSession || !sdkSession.getElement(hfId)) return false;
   if (wrongCompositionFile(deps, targetPath)) return false;
   try {
