@@ -157,6 +157,13 @@ For the runtime end-to-end check (a fast `snapshot` pass + per-scene frame eyeba
 
 **Do not** manually `master.add(child)` a sub-composition timeline into the host timeline. HyperFrames already drives them independently — nesting them in GSAP causes double-seeks.
 
+### The host clip's `data-duration` is the slot's visible window
+
+`data-duration` on the host clip defines **how long the slot is visible**, and it takes precedence over the sub-composition's internal GSAP timeline length. Two consequences follow:
+
+- **Internal timeline shorter than the slot → the slot holds.** If the sub-composition's GSAP timeline finishes before `data-duration` elapses, the slot keeps showing its final frame for the rest of the window. You do **not** need to pad the timeline with empty tweens.
+- **`data-duration` shorter than the host composition → the slot ends (and goes blank) when its own `data-duration` elapses.** This is intended: the clip is a fixed-length window on the timeline, not "fill until the composition ends." To keep a sub-composition visible for the whole composition, set its `data-duration` to span the host window (or add another clip to cover the remaining time). Leaving a single full-bleed sub-composition shorter than the composition is almost always a mistake — the linter flags it as `subcomposition_blanks_before_host`.
+
 ## Animations Inside Sub-Compositions
 
 Prefer `gsap.fromTo()` over `gsap.from()` for entrance tweens. The host re-seeks the sub-composition every time its clip becomes visible; `gsap.from()` records the starting state at registration and can desync on seek-back, while `gsap.fromTo()` declares both endpoints explicitly and replays cleanly.

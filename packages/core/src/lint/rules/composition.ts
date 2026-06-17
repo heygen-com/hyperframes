@@ -514,4 +514,66 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     }
     return findings;
   },
+
+  // subcomposition_blanks_before_host
+  // Warns when a full-bleed sub-composition slot ends before the host composition
+  // does, leaving the slot blank for the remainder (issue #1540). Scoped narrowly to
+  // the high-signal shape — a sole/dominant external mount starting at ~0 — so it
+  // stays silent on intentional short clips (an intro followed by other clips that
+  // carry the timeline forward).
+  // fallow-ignore-next-line complexity
+  ({ tags, rootTag }) => {
+    if (!rootTag) return [];
+    const rootDuration = Number(readAttr(rootTag.raw, "data-duration"));
+    if (!Number.isFinite(rootDuration) || rootDuration <= 0) return [];
+
+    // Two independent knobs that happen to share a 0.5s magnitude. Tuned for
+    // real hosts (tens to hundreds of seconds); on a very short host (~6s) the
+    // EPSILON slack would let a ~10% blank tail pass unflagged — acceptable
+    // because the silent-blank trap this rule targets only matters at scale.
+    const EPSILON = 0.5; // seconds; tolerance for "ends/covers near the host end"
+    const START_TOLERANCE = 0.5; // seconds; "starts at the composition start"
+    const round3 = (n: number) => Math.round(n * 1000) / 1000;
+
+    // Timed children of the root. An element with data-start but no usable
+    // data-duration is treated as covering the tail (end = Infinity), so an
+    // unknown-length sibling suppresses the warning rather than triggering it.
+    const timed = tags
+      .filter((tag) => tag.index !== rootTag.index && readAttr(tag.raw, "data-start") !== null)
+      .map((tag) => {
+        const start = Number(readAttr(tag.raw, "data-start")) || 0;
+        const dur = Number(readAttr(tag.raw, "data-duration"));
+        const end = Number.isFinite(dur) && dur > 0 ? start + dur : Infinity;
+        return { tag, start, end };
+      });
+
+    // `tags` is a flat list (no nesting depth), so a timed element nested
+    // *inside* a candidate slot is treated as a tail-covering sibling rather
+    // than a descendant. Acceptable: external src mounts are empty by
+    // convention (content is loaded from the linked file), so the only
+    // false-negative path is rare and matches the flat-tag scope of the
+    // sibling rules in this file.
+    const tailCovered = (exceptIndex: number) =>
+      timed.some((t) => t.tag.index !== exceptIndex && t.end >= rootDuration - EPSILON);
+
+    const findings: HyperframeLintFinding[] = [];
+    for (const t of timed) {
+      if (readAttr(t.tag.raw, "data-composition-src") === null) continue; // external slot only
+      if (t.start > START_TOLERANCE) continue; // must start at the composition start
+      if (!Number.isFinite(t.end)) continue; // known, finite slot length
+      if (t.end >= rootDuration - EPSILON) continue; // already fills the host window
+      if (tailCovered(t.tag.index)) continue; // another clip covers the tail — not full-bleed
+      const elementId = readAttr(t.tag.raw, "id") || undefined;
+      const gap = round3(rootDuration - t.end);
+      findings.push({
+        code: "subcomposition_blanks_before_host",
+        severity: "warning",
+        message: `<${t.tag.name}${elementId ? ` id="${elementId}"` : ""}> sub-composition ends at ${round3(t.end)}s but the composition runs to ${round3(rootDuration)}s — its slot will be blank for ~${gap}s.`,
+        elementId,
+        fixHint: `data-duration is the slot's visible window. Set this sub-composition's data-duration to ${round3(rootDuration - t.start)} to fill the host window, or add another clip to cover the remaining ~${gap}s.`,
+        snippet: truncateSnippet(t.tag.raw),
+      });
+    }
+    return findings;
+  },
 ];

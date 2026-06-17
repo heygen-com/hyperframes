@@ -820,4 +820,115 @@ describe("composition rules", () => {
       expect(finding).toBeUndefined();
     });
   });
+
+  describe("subcomposition_blanks_before_host", () => {
+    const find = (findings: Array<{ code: string }>) =>
+      findings.find((f) => f.code === "subcomposition_blanks_before_host");
+
+    it("fires on the issue #1540 shape (child shorter than host)", async () => {
+      const html = `<html><body>
+        <div id="root" data-composition-id="main" data-start="0" data-duration="331.224" data-width="1920" data-height="1080">
+          <div id="decision-tree-comp" data-composition-id="decision-tree" data-composition-src="compositions/decision_tree.html" data-start="0" data-duration="15"></div>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html, { filePath: "/project/index.html" });
+      const finding = find(result.findings);
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("warning");
+      expect(finding?.message).toContain("blank");
+      expect(finding?.message).toContain("331.224");
+    });
+
+    it("fires when the mount starts within the start tolerance", async () => {
+      const html = `<html><body>
+        <div id="root" data-composition-id="main" data-start="0" data-duration="60">
+          <div data-composition-id="sub" data-composition-src="compositions/sub.html" data-start="0.3" data-duration="15"></div>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html, { filePath: "/project/index.html" });
+      expect(find(result.findings)).toBeDefined();
+    });
+
+    it("fires at exactly the start tolerance boundary (start=0.5)", async () => {
+      const html = `<html><body>
+        <div id="root" data-composition-id="main" data-start="0" data-duration="60">
+          <div data-composition-id="sub" data-composition-src="compositions/sub.html" data-start="0.5" data-duration="15"></div>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html, { filePath: "/project/index.html" });
+      expect(find(result.findings)).toBeDefined();
+    });
+
+    it("stays silent on an intentional short intro followed by another clip", async () => {
+      const html = `<html><body>
+        <div id="root" data-composition-id="main" data-start="0" data-duration="60">
+          <div data-composition-id="intro" data-composition-src="compositions/intro.html" data-start="0" data-duration="15"></div>
+          <div data-composition-id="body" data-composition-src="compositions/body.html" data-start="15" data-duration="45"></div>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html, { filePath: "/project/index.html" });
+      expect(find(result.findings)).toBeUndefined();
+    });
+
+    it("stays silent when the child matches the host window", async () => {
+      const html = `<html><body>
+        <div id="root" data-composition-id="main" data-start="0" data-duration="15">
+          <div data-composition-id="sub" data-composition-src="compositions/sub.html" data-start="0" data-duration="15"></div>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html, { filePath: "/project/index.html" });
+      expect(find(result.findings)).toBeUndefined();
+    });
+
+    it("stays silent when the child is longer than the host", async () => {
+      const html = `<html><body>
+        <div id="root" data-composition-id="main" data-start="0" data-duration="15">
+          <div data-composition-id="sub" data-composition-src="compositions/sub.html" data-start="0" data-duration="30"></div>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html, { filePath: "/project/index.html" });
+      expect(find(result.findings)).toBeUndefined();
+    });
+
+    it("stays silent for a non-sub-composition timed element", async () => {
+      const html = `<html><body>
+        <div id="root" data-composition-id="main" data-start="0" data-duration="60">
+          <div class="clip" data-start="0" data-duration="15"></div>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html, { filePath: "/project/index.html" });
+      expect(find(result.findings)).toBeUndefined();
+    });
+
+    it("stays silent when the root has no numeric data-duration", async () => {
+      const html = `<html><body>
+        <div id="root" data-composition-id="main" data-start="0">
+          <div data-composition-id="sub" data-composition-src="compositions/sub.html" data-start="0" data-duration="15"></div>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html, { filePath: "/project/index.html" });
+      expect(find(result.findings)).toBeUndefined();
+    });
+
+    it("stays silent for a late-starting clip", async () => {
+      const html = `<html><body>
+        <div id="root" data-composition-id="main" data-start="0" data-duration="60">
+          <div data-composition-id="sub" data-composition-src="compositions/sub.html" data-start="40" data-duration="5"></div>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html, { filePath: "/project/index.html" });
+      expect(find(result.findings)).toBeUndefined();
+    });
+
+    it("stays silent when an unknown-duration sibling covers the tail", async () => {
+      const html = `<html><body>
+        <div id="root" data-composition-id="main" data-start="0" data-duration="60">
+          <div data-composition-id="sub" data-composition-src="compositions/sub.html" data-start="0" data-duration="15"></div>
+          <div class="clip" data-start="0"></div>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html, { filePath: "/project/index.html" });
+      expect(find(result.findings)).toBeUndefined();
+    });
+  });
 });
