@@ -22,6 +22,8 @@ import {
   addKeyframeToScript as addKeyframeRecast,
   removeKeyframeFromScript as removeKeyframeRecast,
   addAnimationWithKeyframesToScript as addWithKfRecast,
+  shiftPositionsInScript as shiftRecast,
+  scalePositionsInScript as scaleRecast,
   type SplitAnimationsOptions,
 } from "./gsapParser.js";
 import {
@@ -42,6 +44,8 @@ import {
   addKeyframeToScript as addKeyframeAcorn,
   removeKeyframeFromScript as removeKeyframeAcorn,
   addAnimationWithKeyframesToScript as addWithKfAcorn,
+  shiftPositionsInScript as shiftAcorn,
+  scalePositionsInScript as scaleAcorn,
 } from "./gsapWriterAcorn.js";
 function acornId(script: string): string {
   const parsed = parseGsapScriptAcornForWrite(script) as ParsedGsapAcornForWrite;
@@ -912,5 +916,76 @@ describe("parity: addAnimationWithKeyframesToScript (recast vs acorn)", () => {
     const acorn = addWithKfAcorn(ADD_WITH_KF_BASE, "#card", 1.5, 2.25, kfs, "none").script;
     const recast = addWithKfRecast(ADD_WITH_KF_BASE, "#card", 1.5, 2.25, kfs, "none").script;
     expect(lastModelOf(acorn)).toEqual(lastModelOf(recast));
+  });
+});
+
+// ── shiftPositionsInScript / scalePositionsInScript (timeline clip move/resize) ──
+
+const POSITIONS_MULTI = `const tl = gsap.timeline({ paused: true });
+tl.from("#hero", { opacity: 0, duration: 1 }, 0);
+tl.to("#hero", { opacity: 0, duration: 0.5 }, 2.5);
+tl.from("#bg", { scale: 0, duration: 1 }, 1);`;
+
+describe("parity: shiftPositionsInScript (recast vs acorn)", () => {
+  it("shifts only the target selector's numeric positions", () => {
+    const a = shiftAcorn(POSITIONS_MULTI, "#hero", 3);
+    const r = shiftRecast(POSITIONS_MULTI, "#hero", 3);
+    expect(modelOf(a)).toEqual(modelOf(r));
+  });
+
+  it("clamps negative-going positions to zero", () => {
+    const s = `const tl = gsap.timeline({ paused: true });
+tl.to("#el", { x: 100, duration: 1 }, 0.3);
+tl.to("#el", { y: 50, duration: 1 }, 1.5);`;
+    expect(modelOf(shiftAcorn(s, "#el", -1))).toEqual(modelOf(shiftRecast(s, "#el", -1)));
+  });
+
+  it("skips string (relative) positions", () => {
+    const s = `const tl = gsap.timeline({ paused: true });
+tl.to("#el", { x: 100, duration: 1 }, 2);
+tl.to("#el", { y: 50, duration: 1 }, "+=0.5");`;
+    expect(modelOf(shiftAcorn(s, "#el", 1))).toEqual(modelOf(shiftRecast(s, "#el", 1)));
+  });
+
+  it("adjacent positions do not collide", () => {
+    const s = `const tl = gsap.timeline({ paused: true });
+tl.to("#burst", { opacity: 1, duration: 0.5 }, 1.0);
+tl.to("#burst", { opacity: 0, duration: 0.5 }, 1.5);`;
+    expect(modelOf(shiftAcorn(s, "#burst", 0.5))).toEqual(modelOf(shiftRecast(s, "#burst", 0.5)));
+  });
+
+  it("implicit-position tween gains an explicit shifted position", () => {
+    const s = `const tl = gsap.timeline({ paused: true });
+tl.to("#el", { x: 1, duration: 1 });`;
+    expect(modelOf(shiftAcorn(s, "#el", 2))).toEqual(modelOf(shiftRecast(s, "#el", 2)));
+  });
+
+  it("no matching selector is a no-op", () => {
+    expect(shiftAcorn(POSITIONS_MULTI, "#nope", 3)).toBe(POSITIONS_MULTI);
+  });
+});
+
+describe("parity: scalePositionsInScript (recast vs acorn)", () => {
+  it("scales positions and durations proportionally for the target", () => {
+    const a = scaleAcorn(POSITIONS_MULTI, "#hero", 0, 1, 2, 2);
+    const r = scaleRecast(POSITIONS_MULTI, "#hero", 0, 1, 2, 2);
+    expect(modelOf(a)).toEqual(modelOf(r));
+  });
+
+  it("skips string (relative) positions", () => {
+    const s = `const tl = gsap.timeline({ paused: true });
+tl.to("#el", { x: 100, duration: 1 }, 2);
+tl.to("#el", { y: 50, duration: 1 }, "+=0.5");`;
+    expect(modelOf(scaleAcorn(s, "#el", 0, 1, 1, 2))).toEqual(
+      modelOf(scaleRecast(s, "#el", 0, 1, 1, 2)),
+    );
+  });
+
+  it("no-op when oldDuration <= 0", () => {
+    expect(scaleAcorn(POSITIONS_MULTI, "#hero", 0, 0, 2, 2)).toBe(POSITIONS_MULTI);
+  });
+
+  it("no-op when newDuration <= 0", () => {
+    expect(scaleAcorn(POSITIONS_MULTI, "#hero", 0, 1, 2, 0)).toBe(POSITIONS_MULTI);
   });
 });
