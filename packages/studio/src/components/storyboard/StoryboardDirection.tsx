@@ -13,6 +13,7 @@ export function StoryboardDirection({ globals, frameCount }: StoryboardDirection
   const meta = [
     { label: "Arc", value: globals.arc },
     { label: "Audience", value: globals.audience },
+    { label: "Voice", value: globals.extra.voice },
     { label: "Format", value: globals.format },
     { label: "Frames", value: String(frameCount) },
   ].filter((item): item is { label: string; value: string } => Boolean(item.value));

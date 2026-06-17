@@ -1,6 +1,9 @@
 import type { ReactNode } from "react";
 import { useStoryboard } from "../../hooks/useStoryboard";
 import { StoryboardDirection } from "./StoryboardDirection";
+import { StoryboardGrid } from "./StoryboardGrid";
+import { StoryboardStatusLegend } from "./StoryboardStatusLegend";
+import { StoryboardScriptPanel } from "./StoryboardScriptPanel";
 
 export interface StoryboardViewProps {
   projectId: string;
@@ -8,8 +11,8 @@ export interface StoryboardViewProps {
 
 /**
  * Top-level storyboard stage. Replaces the timeline/preview when the view mode
- * is `storyboard`. PR2 lands the shell (global direction + states); the frame
- * contact-sheet grid arrives in PR3.
+ * is `storyboard`: renders the global direction plus the frame contact sheet,
+ * with loading / error / empty states.
  */
 // fallow-ignore-next-line complexity
 export function StoryboardView({ projectId }: StoryboardViewProps) {
@@ -35,11 +38,11 @@ export function StoryboardView({ projectId }: StoryboardViewProps) {
   return (
     <StoryboardFrame>
       <StoryboardDirection globals={data.globals} frameCount={data.frames.length} />
-      {/* PR3: frame contact-sheet grid renders here. */}
-      <div className="mt-8 rounded-lg border border-dashed border-neutral-800 px-6 py-12 text-center text-sm text-neutral-500">
-        {data.frames.length} frame{data.frames.length === 1 ? "" : "s"} parsed — the contact sheet
-        renders here next.
+      <div className="mt-5">
+        <StoryboardStatusLegend />
       </div>
+      <StoryboardGrid projectId={projectId} frames={data.frames} />
+      {data.script && <StoryboardScriptPanel script={data.script} />}
     </StoryboardFrame>
   );
 }

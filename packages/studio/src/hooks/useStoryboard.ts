@@ -12,6 +12,13 @@ export interface StoryboardFrameView extends StoryboardFrame {
   srcExists: boolean;
 }
 
+/** The companion narration script (SCRIPT.md), when present alongside the storyboard. */
+export interface StoryboardScript {
+  exists: boolean;
+  path: string;
+  content: string;
+}
+
 /** Shape of `GET /api/projects/:id/storyboard`. */
 export interface StoryboardResponse {
   exists: boolean;
@@ -19,6 +26,7 @@ export interface StoryboardResponse {
   globals: StoryboardGlobals;
   frames: StoryboardFrameView[];
   warnings: StoryboardWarning[];
+  script?: StoryboardScript;
 }
 
 export interface UseStoryboardResult {
