@@ -227,6 +227,20 @@ describe("persist adapter", () => {
     expect(content).toContain("color: #f00");
   });
 
+  it("still persists when history:false (undo opt-out must not disable auto-save)", async () => {
+    const adapter = createMemoryAdapter();
+    const writeSpy = vi.spyOn(adapter, "write");
+
+    const comp = await openComposition(BASE_HTML, { persist: adapter, history: false });
+    expect(comp.canUndo()).toBe(false); // undo is off…
+    comp.setStyle("hf-title", { color: "#f00" });
+    await comp.flush();
+
+    expect(writeSpy).toHaveBeenCalled(); // …but the write still happened
+    const [, content] = writeSpy.mock.calls[0] as [string, string];
+    expect(content).toContain("color: #f00");
+  });
+
   it("surfaces persist errors via on('persist:error')", async () => {
     const adapter = createMemoryAdapter();
     const errors: unknown[] = [];

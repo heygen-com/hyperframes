@@ -442,6 +442,26 @@ describe("removeAllKeyframes", () => {
   });
 });
 
+// ─── materializeKeyframes ──────────────────────────────────────────────────────
+
+describe("materializeKeyframes", () => {
+  // dispatch bypasses validateOp, so the writer guard is the protection: an empty
+  // keyframe list must no-op rather than rebuild vars with an empty keyframes
+  // object (which would empty the animation). Uses the real anim id so the no-op
+  // is attributable to the empty list, not an unresolved id.
+  it("empty keyframe list no-ops on the dispatch path (writer guard)", () => {
+    const parsed = fresh();
+    const before = getScript(parsed);
+    const result = applyOp(parsed, {
+      type: "materializeKeyframes",
+      animationId: TWEEN_ANIM_ID,
+      keyframes: [],
+    });
+    expect(result.forward).toHaveLength(0);
+    expect(getScript(parsed)).toBe(before);
+  });
+});
+
 // ─── convertToKeyframes ────────────────────────────────────────────────────────
 
 describe("convertToKeyframes", () => {

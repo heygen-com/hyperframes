@@ -299,6 +299,26 @@ describe("override-set orphan cleanup on removeElement", () => {
   });
 });
 
+describe("single-dispatch undo reverses the inverse patch list", () => {
+  // A single dispatch that emits order-dependent inverse patches (here a nested
+  // parent+child removeElement) must undo in reverse application order. Without
+  // the reverse, undo replays 'add child' before 'add parent' → the child has no
+  // parent to attach to and is dropped.
+  it("removeElement([child, parent]) undo restores both, child included", async () => {
+    const NESTED = `<div data-hf-id="hf-root" data-hf-root data-duration="5">
+  <div data-hf-id="hf-parent"><span data-hf-id="hf-child">x</span></div>
+</div>`;
+    const comp = await openComposition(NESTED);
+    comp.dispatch({ type: "removeElement", target: ["hf-child", "hf-parent"] });
+    expect(comp.getElement("hf-parent")).toBeNull();
+    expect(comp.getElement("hf-child")).toBeNull();
+
+    comp.undo();
+    expect(comp.getElement("hf-parent")).not.toBeNull();
+    expect(comp.getElement("hf-child")).not.toBeNull();
+  });
+});
+
 // ─── setSelection / getSelection / selectionchange ───────────────────────────
 
 describe("setSelection", () => {

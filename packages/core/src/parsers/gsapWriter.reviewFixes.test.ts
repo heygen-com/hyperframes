@@ -139,29 +139,74 @@ for (let i = 0; i < 2; i++) {
   });
 });
 
-// ── R2 #1 — non-`for` loops must not leave preserved siblings with an unbound index var ──
+// ── R3 — unsafe sibling reproduction must refuse (no-op), never corrupt/drop ──
 
-describe("R2 — unroll on a forEach does not emit an unbound loop variable", () => {
-  const FOREACH = `var tl = gsap.timeline({ paused: true });
+const TWO_EL = [
+  { selector: "#a", keyframes: [{ percentage: 100, properties: { opacity: 1 } }] },
+  { selector: "#b", keyframes: [{ percentage: 100, properties: { opacity: 1 } }] },
+];
+function targetToId(script: string): string {
+  return (
+    parseGsapScriptAcornForWrite(script)?.located.find((l) => l.animation.method === "to")?.id ?? ""
+  );
+}
+function parses(src: string): boolean {
+  try {
+    new Function(src);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+describe("R3 — unroll refuses (no-ops) when siblings can't be safely reproduced", () => {
+  // R2 carried a forEach WITH a sibling tl.set to the blanket overwrite, which
+  // dropped the tl.set (elements start visible instead of hidden). The numeric
+  // index a `for` loop provides isn't available, so we now refuse instead.
+  it("forEach with a sibling statement is left untouched, not flattened-and-dropped", () => {
+    const FOREACH = `var tl = gsap.timeline({ paused: true });
 items.forEach((item, i) => {
   tl.set(item, { autoAlpha: 0 }, 0);
   tl.to(item, { opacity: 1, duration: 1 }, 0);
 });`;
+    expect(unrollDynamicAnimations(FOREACH, targetToId(FOREACH), TWO_EL)).toBe(FOREACH);
+  });
 
-  it("falls back to the blanket overwrite (valid code, no dangling `item`)", () => {
-    const parsed = parseGsapScriptAcornForWrite(FOREACH);
-    const targetId = parsed?.located.find((l) => l.animation.method === "to")?.id ?? "";
-    const out = unrollDynamicAnimations(FOREACH, targetId, [
-      { selector: "#a", keyframes: [{ percentage: 100, properties: { opacity: 1 } }] },
-      { selector: "#b", keyframes: [{ percentage: 100, properties: { opacity: 1 } }] },
-    ]);
-    // The forEach (and its `item` param) is gone — no preserved sibling can
-    // reference a now-undefined `item` (the bug emitted `tl.set(item, …)` with
-    // `item` unbound → ReferenceError at render).
-    expect(out).not.toContain("item");
-    expect(out).not.toContain("forEach");
-    expect(out).toContain('tl.to("#a"');
-    expect(out).toContain('tl.to("#b"');
+  // R3 #1 — object shorthand { i }: substituting the value yields `{ 0 }` (invalid).
+  it("object shorthand using the index refuses rather than emit invalid `{ 0 }`", () => {
+    const SHORTHAND = `var tl = gsap.timeline({ paused: true });
+for (let i = 0; i < 2; i++) {
+  tl.set(items[i], { data: { i } }, 0);
+  tl.to(items[i], { opacity: 1, duration: 1 }, 0);
+}`;
+    const out = unrollDynamicAnimations(SHORTHAND, targetToId(SHORTHAND), TWO_EL);
+    expect(out).toBe(SHORTHAND);
+    expect(parses(out)).toBe(true);
+  });
+
+  // R3 #2 — a sibling that re-declares the index (nested for / shadowing).
+  it("a sibling shadowing the index refuses rather than rewrite the inner binding", () => {
+    const SHADOW = `var tl = gsap.timeline({ paused: true });
+for (let i = 0; i < 2; i++) {
+  tl.set(items[i], { onStart() { for (let i = 0; i < 3; i++) log(i); } }, 0);
+  tl.to(items[i], { opacity: 1, duration: 1 }, 0);
+}`;
+    const out = unrollDynamicAnimations(SHADOW, targetToId(SHADOW), TWO_EL);
+    expect(out).toBe(SHADOW);
+    expect(parses(out)).toBe(true);
+  });
+
+  // The safe for-loop sibling case must still unroll (regression guard).
+  it("a plain for-loop with an items[i] sibling still unrolls and preserves it", () => {
+    const SAFE = `var tl = gsap.timeline({ paused: true });
+for (let i = 0; i < 2; i++) {
+  tl.set(items[i], { autoAlpha: 0 }, 0);
+  tl.to(items[i], { opacity: 1, duration: 1 }, 0);
+}`;
+    const out = unrollDynamicAnimations(SAFE, targetToId(SAFE), TWO_EL);
+    expect((out.match(/tl\.set\(/g) ?? []).length).toBe(2);
+    expect(out).not.toContain("for (");
+    expect(parses(out)).toBe(true);
   });
 });
 

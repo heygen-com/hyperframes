@@ -1139,6 +1139,9 @@ export function materializeKeyframesFromScript(
   easeEach?: string,
   resolvedSelector?: string,
 ): string {
+  // An empty keyframe list has no materialized form — rebuilding vars with an
+  // empty keyframes object would empty the animation. No-op instead.
+  if (keyframes.length === 0) return script;
   const parsed = parseGsapScriptAcornForWrite(script);
   if (!parsed) return script;
   const target = parsed.located.find((l) => l.id === animationId);
@@ -1972,13 +1975,111 @@ function buildUnrollCallForElement(
   return `${timelineVar}.to(${JSON.stringify(el.selector)}, { keyframes: ${kfCode}, duration: ${duration}, ease: ${JSON.stringify(ease)} }, ${posCode});`;
 }
 
+/** Sentinel: the unroll cannot safely reproduce the loop body — caller no-ops. */
+const REFUSE_UNROLL = Symbol("refuse-unroll");
+
+/** Every statement in a loop's body block (unfiltered), or [] when not a block. */
+function loopBodyRawStatements(loopNode: any): any[] {
+  const body =
+    loopNode?.type === "ExpressionStatement"
+      ? loopNode.expression?.arguments?.[0]?.body
+      : loopNode?.body;
+  return body?.type === "BlockStatement" ? (body.body ?? []) : [];
+}
+
+/** A node that re-binds `indexVar`: a re-declaration or a function param. */
+function rebindsIndex(node: any, indexVar: string): boolean {
+  if (node.type === "VariableDeclarator") return node.id?.name === indexVar;
+  if (
+    node.type === "FunctionExpression" ||
+    node.type === "FunctionDeclaration" ||
+    node.type === "ArrowFunctionExpression"
+  ) {
+    return (node.params ?? []).some((p: any) => p?.name === indexVar);
+  }
+  return false;
+}
+
+/** Object shorthand `{ i }` — substituting the value would yield invalid `{ 0 }`. */
+function isShorthandIndexUse(node: any, indexVar: string): boolean {
+  return (
+    (node.type === "Property" || node.type === "ObjectProperty") &&
+    node.shorthand === true &&
+    propKeyName(node) === indexVar
+  );
+}
+
+/**
+ * A sibling statement can't be safely index-substituted when it re-binds the
+ * loop index (shadowing — a nested `for (let i …)`, a callback param `i`) or
+ * uses it in object shorthand (`{ i }`, which would splice to the invalid
+ * `{ 0 }`). substituteLoopIndex has no scope analysis, so in these cases it
+ * would emit broken or wrong code — the unroll must refuse instead.
+ */
+function hasUnsafeLoopIndexUse(stmt: any, indexVar: string): boolean {
+  let unsafe = false;
+  acornWalk.full(stmt, (node: any) => {
+    if (!unsafe && (isShorthandIndexUse(node, indexVar) || rebindsIndex(node, indexVar))) {
+      unsafe = true;
+    }
+  });
+  return unsafe;
+}
+
+/** How to handle the loop body's non-target siblings when unrolling. */
+function unrollSiblingStrategy(
+  loopNode: any,
+  targetStmt: any,
+  stmts: any[],
+  indexVar: string | null,
+): "blanket" | "refuse" | "preserve" {
+  const siblings = stmts.filter((s) => s !== targetStmt);
+  // A sibling the filtered statement list doesn't model (non-ExpressionStatement)
+  // would be silently lost by either path — refuse if any exists.
+  const hasUnmodeledSibling = loopBodyRawStatements(loopNode).some(
+    (s) => s !== targetStmt && !stmts.includes(s),
+  );
+  if (siblings.length === 0 && !hasUnmodeledSibling) return "blanket";
+  if (hasUnmodeledSibling || !indexVar) return "refuse";
+  return siblings.some((s) => hasUnsafeLoopIndexUse(s, indexVar)) ? "refuse" : "preserve";
+}
+
+/** Emit the per-iteration unrolled lines (target → static tl.to, siblings → index-substituted). */
+function emitUnrolledLines(
+  stmts: any[],
+  targetStmt: any,
+  elements: UnrollElement[],
+  timelineVar: string,
+  animation: GsapAnimation,
+  indexVar: string,
+  script: string,
+): string {
+  const lines: string[] = [];
+  for (let idx = 0; idx < elements.length; idx++) {
+    const el = elements[idx];
+    if (!el) continue;
+    for (const stmt of stmts) {
+      lines.push(
+        stmt === targetStmt
+          ? buildUnrollCallForElement(timelineVar, animation, el)
+          : substituteLoopIndex(stmt, indexVar, idx, script),
+      );
+    }
+  }
+  return lines.join("\n  ");
+}
+
 /**
  * Unroll the loop body, preserving every statement that is NOT the target tween.
  * For each iteration, emit each non-target statement with the loop index
  * substituted (e.g. `tl.set(items[i], …)` → `tl.set(items[0], …)`), and replace
- * the target tween statement with that element's static `tl.to()` call. Without
- * this, a blanket overwrite of the loop body discards sibling statements such as
- * an initial-state `tl.set(...)`.
+ * the target tween statement with that element's static `tl.to()` call.
+ *
+ * Returns null when a blanket overwrite is lossless (no sibling statements), and
+ * REFUSE_UNROLL when siblings exist but can't be safely reproduced — a non-`for`
+ * loop (no numeric index to splice), a statement we don't model, or an unsafe
+ * index use (shadowing / shorthand). Refusing no-ops the unroll, which is safe:
+ * the dynamic loop keeps rendering correctly, just un-flattened.
  */
 function buildLoopUnrollPreserving(
   script: string,
@@ -1987,30 +2088,14 @@ function buildLoopUnrollPreserving(
   elements: UnrollElement[],
   loopNode: any,
   targetStmt: any,
-): string | null {
+): string | null | typeof REFUSE_UNROLL {
   const stmts = loopBodyStatements(loopNode);
   if (!stmts || !stmts.includes(targetStmt)) return null;
   const indexVar = loopIndexVarName(loopNode);
-  // Only preserve siblings when we have a bound numeric index to substitute
-  // (`for (let i …)`). For forEach/for-of/for-in/while the iteration variable
-  // isn't a numeric index we can splice, so substituting would leave preserved
-  // siblings referencing a now-undefined loop variable (ReferenceError at
-  // render). Return null → caller falls back to the blanket loop overwrite,
-  // which drops the siblings but emits valid code.
-  if (!indexVar) return null;
-  const lines: string[] = [];
-  for (let idx = 0; idx < elements.length; idx++) {
-    const el = elements[idx];
-    if (!el) continue;
-    for (const stmt of stmts) {
-      if (stmt === targetStmt) {
-        lines.push(buildUnrollCallForElement(timelineVar, animation, el));
-      } else {
-        lines.push(substituteLoopIndex(stmt, indexVar, idx, script));
-      }
-    }
-  }
-  return lines.join("\n  ");
+  const strategy = unrollSiblingStrategy(loopNode, targetStmt, stmts, indexVar);
+  if (strategy === "blanket") return null;
+  if (strategy === "refuse" || !indexVar) return REFUSE_UNROLL;
+  return emitUnrolledLines(stmts, targetStmt, elements, timelineVar, animation, indexVar, script);
 }
 
 /**
@@ -2046,6 +2131,9 @@ export function unrollDynamicAnimations(
           targetStmt,
         )
       : null;
+    // Siblings exist but can't be safely reproduced — leave the loop untouched
+    // rather than drop or corrupt them. The op no-ops (before === after).
+    if (preserving === REFUSE_UNROLL) return script;
     // Fall back to the simple whole-body replacement when the body isn't a plain
     // block of statements we can preserve.
     const replacement =

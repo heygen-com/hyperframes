@@ -506,6 +506,20 @@ describe("Phase 3b ops", () => {
     if (!r.ok) expect(r.code).toBe("E_INVALID_ARGS");
   });
 
+  it("materializeKeyframes rejects an empty keyframe list (would empty the animation)", () => {
+    const parsed = parseMutable(
+      `<div data-hf-id="hf-r" data-hf-root></div>` +
+        `<script>var tl = gsap.timeline({ paused: true }); tl.to("#x", { x: 1 }, 0);</script>`,
+    );
+    const r = validateOp(parsed, {
+      type: "materializeKeyframes",
+      animationId: "tw-1",
+      keyframes: [],
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe("E_INVALID_ARGS");
+  });
+
   it("setClassStyle no longer throws — implemented in Phase 3b", () => {
     expect(() =>
       applyOp(fresh(), {
