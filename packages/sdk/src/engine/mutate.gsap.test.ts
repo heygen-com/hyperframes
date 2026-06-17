@@ -810,6 +810,21 @@ window.__timelines["t"] = tl;`;
     expect(newScript).not.toContain("hf-box");
     expect(newScript).toContain("hf-stage");
   });
+
+  it("strips ALL tweens for the element, not just the first (positional-id renumber)", () => {
+    // Two tweens on the same element: removing the first renumbers the survivor's
+    // count-based id, so a single up-front parse left the second tween orphaned.
+    const twoOwnTweens = `var tl = gsap.timeline({ paused: true });
+tl.to("[data-hf-id=\\"hf-box\\"]", { x: 100, duration: 1 }, 0);
+tl.to("[data-hf-id=\\"hf-box\\"]", { x: 200, duration: 1 }, 1);
+window.__timelines["t"] = tl;`;
+    const parsed = fresh(twoOwnTweens);
+    const result = applyOp(parsed, { type: "removeElement", target: "hf-box" });
+    const newScript = String(result.forward[1]?.value ?? "");
+    expect(newScript).not.toContain("hf-box");
+    expect(newScript).not.toContain("x: 100");
+    expect(newScript).not.toContain("x: 200");
+  });
 });
 
 // ─── GSAP ops on composition with no script block ────────────────────────────

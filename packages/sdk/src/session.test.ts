@@ -317,6 +317,21 @@ describe("single-dispatch undo reverses the inverse patch list", () => {
     expect(comp.getElement("hf-parent")).not.toBeNull();
     expect(comp.getElement("hf-child")).not.toBeNull();
   });
+
+  // Defense-in-depth: an aliased multi-target (the same element twice) makes the
+  // 2nd id capture the value the 1st already wrote; undo must replay the inverse
+  // in reverse to land on the ORIGINAL, not the intermediate.
+  it("setStyle with a duplicate target undoes to the original, not the intermediate", async () => {
+    const comp = await openComposition(BASE_HTML);
+    comp.dispatch({
+      type: "setStyle",
+      target: ["hf-title", "hf-title"],
+      styles: { fontSize: "96px" },
+    });
+    expect(comp.getElement("hf-title")?.inlineStyles.fontSize).toBe("96px");
+    comp.undo();
+    expect(comp.getElement("hf-title")?.inlineStyles.fontSize).toBe("64px");
+  });
 });
 
 // ─── setSelection / getSelection / selectionchange ───────────────────────────
