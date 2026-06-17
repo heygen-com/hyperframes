@@ -15,6 +15,8 @@ import {
   updateArcSegmentInScript,
   splitAnimationsInScript,
   unrollDynamicAnimations,
+  updateAnimationInScript,
+  convertToKeyframesFromScript,
 } from "./gsapWriterAcorn.js";
 import { parseGsapScriptAcornForWrite } from "./gsapParserAcorn.js";
 
@@ -281,5 +283,35 @@ tl.to("#h", { x: -120, y: -40, duration: 1 }, 0);`;
     expect(disabled).toContain("x: -120");
     expect(disabled).toContain("y: -40");
     expect(disabled).not.toContain("motionPath");
+  });
+});
+
+// ── #7 — updating ease on a keyframe tween routes to easeEach, not top-level ──
+
+describe("#7 — ease update on a keyframe tween targets keyframes.easeEach", () => {
+  const KF = `var tl = gsap.timeline({ paused: true });
+tl.to(".a", { keyframes: { "0%": { x: 0 }, "100%": { x: 100 } }, duration: 1, ease: "none" }, 0);`;
+
+  it("writes easeEach (per-keyframe), not a no-op top-level ease", () => {
+    const id = parseGsapScriptAcornForWrite(KF)?.located[0]?.id ?? "";
+    const out = updateAnimationInScript(KF, id, { ease: "power2.inOut" });
+    expect(out).toContain('easeEach: "power2.inOut"');
+    // The original top-level `ease: "none"` is untouched (no second top-level ease).
+    expect((out.match(/ease: "power2.inOut"/g) ?? []).length).toBe(0);
+  });
+});
+
+// ── #8 — convertToKeyframes preserves builtin vars like `delay` ──
+
+describe("#8 — convertToKeyframes keeps delay (was dropped, shifting start time)", () => {
+  const DELAY = `var tl = gsap.timeline({ paused: true });
+tl.to(".a", { x: 100, duration: 1, delay: 0.3 }, 0);`;
+
+  it("preserves delay on the converted vars object", () => {
+    const id = parseGsapScriptAcornForWrite(DELAY)?.located[0]?.id ?? "";
+    const out = convertToKeyframesFromScript(DELAY, id);
+    expect(out).toContain("keyframes:");
+    expect(out).toContain("delay: 0.3"); // was lost → tween started 0.3s early
+    expect(out).toContain("duration: 1");
   });
 });

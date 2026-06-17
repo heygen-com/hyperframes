@@ -616,17 +616,19 @@ describe("correctness — addLabelToScript / removeLabelFromScript", () => {
     expect(removeLabelFromScript(SYN_SINGLE, "nope")).toBe(SYN_SINGLE);
   });
 
-  it("adding the same label twice yields two addLabel calls (no dedup contract)", () => {
+  it("adding the same label twice MOVES it instead of duplicating (dedup contract)", () => {
+    // A second addLabel for an existing name must not append a duplicate —
+    // duplicates make removeLabel over-remove. It moves the label's position.
     const once = addLabelToScript(SYN_SINGLE, "mid", 1.0);
     const twice = addLabelToScript(once, "mid", 2.0);
-    expect(labelCallCount(twice, "mid")).toBe(2);
+    expect(labelCallCount(twice, "mid")).toBe(1);
+    expect(twice).toContain('tl.addLabel("mid", 2)');
   });
 
-  it("removeLabel deletes ALL matching addLabel calls for the name", () => {
-    const once = addLabelToScript(SYN_SINGLE, "mid", 1.0);
-    const twice = addLabelToScript(once, "mid", 2.0);
-    const cleared = removeLabelFromScript(twice, "mid");
-    expect(labelCallCount(cleared, "mid")).toBe(0);
+  it("removeLabel deletes ALL matching addLabel calls for the name (hand-authored dups)", () => {
+    const dup = `var tl = gsap.timeline({ paused: true });\ntl.addLabel("mid", 1);\ntl.addLabel("mid", 2);\nwindow.__timelines["t"] = tl;`;
+    expect(labelCallCount(dup, "mid")).toBe(2);
+    expect(labelCallCount(removeLabelFromScript(dup, "mid"), "mid")).toBe(0);
   });
 
   it("the added label is observable by the parser when a tween references it", () => {

@@ -90,6 +90,12 @@ function findPropertyNode(varsArgNode: any, key: string): any | undefined {
   return undefined;
 }
 
+/** The `keyframes` property's ObjectExpression value, or null when not a keyframe tween. */
+function keyframesObjectNode(varsNode: any): any | null {
+  const kfProp = findPropertyNode(varsNode, "keyframes");
+  return kfProp?.value?.type === "ObjectExpression" ? kfProp.value : null;
+}
+
 function findEnclosingExpressionStatement(ancestors: any[]): any | null {
   for (let i = ancestors.length - 2; i >= 0; i--) {
     if (ancestors[i]?.type === "ExpressionStatement") return ancestors[i];
@@ -315,7 +321,12 @@ export function updateAnimationInScript(
       upsertProp(ms, call.varsArg, "duration", updates.duration);
     }
     if (updates.ease !== undefined) {
-      upsertProp(ms, call.varsArg, "ease", updates.ease);
+      // For a keyframe tween, easing lives at keyframes.easeEach (per-keyframe),
+      // not a top-level ease. Writing top-level ease would leave the per-keyframe
+      // easing unchanged — the user's edit would silently do nothing.
+      const kfNode = keyframesObjectNode(call.varsArg);
+      if (kfNode) upsertProp(ms, kfNode, "easeEach", updates.ease);
+      else upsertProp(ms, call.varsArg, "ease", updates.ease);
     }
     if (updates.extras) {
       for (const [key, value] of Object.entries(updates.extras)) {
@@ -1055,18 +1066,18 @@ function buildKeyframesVarsCode(
   animation: GsapAnimation,
   fromProps: Record<string, number | string>,
   toProps: Record<string, number | string>,
+  varsNode: any,
+  source: string,
 ): string {
   const fromEntries = Object.entries(fromProps).map(([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`);
   const toEntries = Object.entries(toProps).map(([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`);
   const easeEntry = animation.ease ? `, easeEach: ${JSON.stringify(animation.ease)}` : "";
   const kfCode = `{ "0%": { ${fromEntries.join(", ")} }, "100%": { ${toEntries.join(", ")} }${easeEntry} }`;
-  const parts: string[] = [`keyframes: ${kfCode}`];
-  if (animation.duration !== undefined) parts.push(`duration: ${valueToCode(animation.duration)}`);
+  // Preserve every non-editable key (duration/delay/callbacks/stagger/yoyo/…)
+  // verbatim from source — rebuilding from the animation object alone dropped
+  // `delay` (not a GsapAnimation field), shifting the tween's start time.
+  const parts: string[] = [`keyframes: ${kfCode}`, ...preservedVarsEntries(varsNode, source)];
   if (animation.ease) parts.push(`ease: "none"`);
-  for (const [k, v] of Object.entries(animation.extras ?? {})) {
-    if (typeof v === "number" || typeof v === "string")
-      parts.push(`${safeKey(k)}: ${valueToCode(v)}`);
-  }
   return `{ ${parts.join(", ")} }`;
 }
 
@@ -1096,7 +1107,11 @@ export function convertToKeyframesFromScript(
   if (call.method === "fromTo" && call.fromArg) {
     ms.remove(call.fromArg.start, call.varsArg.start);
   }
-  overwriteVarsArg(ms, call, buildKeyframesVarsCode(animation, fromProps, toProps));
+  overwriteVarsArg(
+    ms,
+    call,
+    buildKeyframesVarsCode(animation, fromProps, toProps, call.varsArg, script),
+  );
 
   return ms.toString();
 }
@@ -1363,9 +1378,53 @@ export function splitIntoPropertyGroupsFromScript(
 
 // ── Label write ops ───────────────────────────────────────────────────────────
 
+/** True when `expr` is `tl.<method>(…)` rooted at the timeline var. */
+function isTimelineMethodCall(expr: any, timelineVar: string, method: string): boolean {
+  return (
+    expr?.type === "CallExpression" &&
+    expr.callee?.type === "MemberExpression" &&
+    isTimelineRooted(expr.callee.object, timelineVar) &&
+    expr.callee.property?.name === method
+  );
+}
+
+/** True when `expr` is `tl.addLabel("<name>", …)` rooted at the timeline var. */
+function isAddLabelCall(expr: any, timelineVar: string, name: string): boolean {
+  const firstArg = expr?.arguments?.[0];
+  return (
+    isTimelineMethodCall(expr, timelineVar, "addLabel") &&
+    firstArg?.type === "Literal" &&
+    firstArg.value === name
+  );
+}
+
+/** Every `tl.addLabel("<name>", …)` ExpressionStatement in the script. */
+function findLabelStatements(parsed: ParsedGsapAcornForWrite, name: string): any[] {
+  const targets: any[] = [];
+  acornWalk.simple(parsed.ast, {
+    ExpressionStatement(node: any) {
+      if (isAddLabelCall(node.expression, parsed.timelineVar, name)) targets.push(node);
+    },
+  });
+  return targets;
+}
+
 export function addLabelToScript(script: string, name: string, position: number): string {
   const parsed = parseGsapScriptAcornForWrite(script);
   if (!parsed) return script;
+
+  // If the label already exists, MOVE it (overwrite its position) rather than
+  // appending a duplicate. Two same-named addLabel statements make removeLabel
+  // over-remove — it deletes every match, including a pre-existing label the
+  // user never touched.
+  const existing = findLabelStatements(parsed, name)[0];
+  if (existing) {
+    const ms = new MagicString(script);
+    const posArg = existing.expression.arguments?.[1];
+    if (posArg) ms.overwrite(posArg.start, posArg.end, valueToCode(position));
+    else ms.appendLeft(existing.expression.end - 1, `, ${valueToCode(position)}`);
+    return ms.toString();
+  }
 
   const insertionPoint = findInsertionPoint(parsed);
   if (insertionPoint === null) return script;
@@ -1380,24 +1439,7 @@ export function removeLabelFromScript(script: string, name: string): string {
   const parsed = parseGsapScriptAcornForWrite(script);
   if (!parsed) return script;
 
-  const targets: any[] = [];
-  acornWalk.simple(parsed.ast, {
-    // fallow-ignore-next-line complexity
-    ExpressionStatement(node: any) {
-      const expr = node.expression;
-      if (
-        expr?.type === "CallExpression" &&
-        expr.callee?.type === "MemberExpression" &&
-        isTimelineRooted(expr.callee.object, parsed.timelineVar) &&
-        expr.callee.property?.name === "addLabel" &&
-        expr.arguments?.[0]?.type === "Literal" &&
-        expr.arguments[0].value === name
-      ) {
-        targets.push(node);
-      }
-    },
-  });
-
+  const targets = findLabelStatements(parsed, name);
   if (!targets.length) return script;
 
   const ms = new MagicString(script);
