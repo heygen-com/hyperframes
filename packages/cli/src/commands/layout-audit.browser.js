@@ -398,6 +398,173 @@
     return issues;
   }
 
+  function hasAllowOverlapFlag(element) {
+    return !!element.closest("[data-layout-allow-overlap]");
+  }
+
+  function isTransparentColor(color) {
+    return (
+      !color || color === "transparent" || color === "rgba(0, 0, 0, 0)" || color.endsWith(", 0)")
+    );
+  }
+
+  function alphaFromParts(parts, index) {
+    return parts.length > index ? parsePx(parts[index]) : 1;
+  }
+
+  // Alpha of a CSS colour; 1 when no alpha component is present. Handles both
+  // legacy `rgba(r, g, b, a)` and modern `rgb(r g b / a)` syntaxes.
+  function colorAlpha(color) {
+    const match = (color || "").match(/rgba?\(([^)]+)\)/);
+    if (!match) return 1;
+    const body = match[1];
+    return body.includes(",")
+      ? alphaFromParts(body.split(","), 3)
+      : alphaFromParts(body.split("/"), 1);
+  }
+
+  // A text block competes for space only when it is solid: watermark-style text
+  // (low colour alpha) is decorative and exempt, as are elements opted out with
+  // data-layout-allow-overlap.
+  function isSolidTextBlock(element) {
+    if (!isVisibleElement(element) || !hasOwnTextCandidate(element)) return false;
+    if (hasAllowOverlapFlag(element)) return false;
+    return colorAlpha(getComputedStyle(element).color) >= 0.35;
+  }
+
+  function collectSolidTextBlocks(root) {
+    const blocks = [];
+    for (const element of Array.from(root.querySelectorAll("*"))) {
+      if (!isSolidTextBlock(element)) continue;
+      const rect = textRectFor(element);
+      if (rect) blocks.push({ element, rect });
+    }
+    return blocks;
+  }
+
+  function rectArea(rect) {
+    return rect.width * rect.height;
+  }
+
+  function intersectionArea(a, b) {
+    const overlapX = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+    const overlapY = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+    return overlapX > 0 && overlapY > 0 ? overlapX * overlapY : 0;
+  }
+
+  function isNested(a, b) {
+    return a.contains(b) || b.contains(a);
+  }
+
+  // Two solid text blocks whose boxes overlap by more than a fifth of the
+  // smaller block read as a collision — unreadable, and invisible to the
+  // overflow checks, which only compare an element against its container.
+  function overlapIssue(a, b, time) {
+    if (isNested(a.element, b.element)) return null;
+    const area = intersectionArea(a.rect, b.rect);
+    if (area <= Math.min(rectArea(a.rect), rectArea(b.rect)) * 0.2) return null;
+    return {
+      // Warning, not error: must not fail the exit code (ok = errorCount === 0)
+      // for compositions that intentionally layer text. Re-promote once the
+      // data-layout-allow-overlap opt-out is widely adopted.
+      code: "content_overlap",
+      severity: "warning",
+      time,
+      selector: selectorFor(a.element),
+      containerSelector: selectorFor(b.element),
+      text: textContentFor(a.element),
+      message: "Two text blocks overlap and may render unreadable.",
+      rect: a.rect,
+      fixHint:
+        "Give each block its own zone, or mark intentional layering with data-layout-allow-overlap.",
+    };
+  }
+
+  function contentOverlapIssues(root, time) {
+    const blocks = collectSolidTextBlocks(root);
+    const issues = [];
+    for (let i = 0; i < blocks.length; i++) {
+      for (let j = i + 1; j < blocks.length; j++) {
+        const issue = overlapIssue(blocks[i], blocks[j], time);
+        if (issue) issues.push(issue);
+      }
+    }
+    return issues;
+  }
+
+  function hasOpaqueBackground(style) {
+    if (style.backgroundImage && style.backgroundImage !== "none") return true;
+    if (isTransparentColor(style.backgroundColor)) return false;
+    return colorAlpha(style.backgroundColor) > 0.6;
+  }
+
+  const RASTER_TAGS = new Set(["IMG", "VIDEO", "CANVAS"]);
+
+  // An element hides text beneath it when it paints opaque pixels at near-full
+  // opacity: raster content (img/video/canvas), a background image, or a solid
+  // background colour. Low-opacity overlays (grain, scrims) do not occlude.
+  function isOpaqueOccluder(element) {
+    if (opacityChain(element) < 0.6) return false;
+    if (IGNORE_TAGS.has(element.tagName)) return false;
+    if (RASTER_TAGS.has(element.tagName)) return true;
+    return hasOpaqueBackground(getComputedStyle(element));
+  }
+
+  function hasAllowOcclusionFlag(element) {
+    return !!element.closest("[data-layout-allow-occlusion]");
+  }
+
+  // A foreign element is one painted independently of the text — not the text
+  // itself, its own subtree, or an ancestor it shares a background with.
+  function isForeignElement(element, hit) {
+    return !!hit && hit !== element && !element.contains(hit) && !hit.contains(element);
+  }
+
+  // The opaque element painted over (x, y), or null when the topmost element
+  // there is related to the text or non-opaque.
+  function occluderAt(element, x, y) {
+    if (typeof document.elementFromPoint !== "function") return null;
+    const hit = document.elementFromPoint(x, y);
+    if (!isForeignElement(element, hit)) return null;
+    return isOpaqueOccluder(hit) ? hit : null;
+  }
+
+  // Sweep a grid across the text box (three rows, not just the mid-line, so
+  // overlays covering only part of a multi-line block are caught) and return
+  // the first opaque element painted over any sample point.
+  function firstOccluder(element, textRect) {
+    for (const yFraction of [0.25, 0.5, 0.75]) {
+      const y = textRect.top + textRect.height * yFraction;
+      for (const xFraction of [0.03, 0.1, 0.2, 0.35, 0.5, 0.65, 0.8, 0.9, 0.97]) {
+        const occluder = occluderAt(element, textRect.left + textRect.width * xFraction, y);
+        if (occluder) return occluder;
+      }
+    }
+    return null;
+  }
+
+  // Catches the blind spot the overflow checks miss: text that fits its box
+  // perfectly but is covered by a later sibling/overlay.
+  function occludedTextIssue(element, time) {
+    if (hasAllowOcclusionFlag(element)) return null;
+    const textRect = textRectFor(element);
+    if (!textRect) return null;
+    const occluder = firstOccluder(element, textRect);
+    if (!occluder) return null;
+    return {
+      code: "text_occluded",
+      severity: "error",
+      time,
+      selector: selectorFor(element),
+      containerSelector: selectorFor(occluder),
+      text: textContentFor(element),
+      message: "Text is hidden beneath an opaque element.",
+      rect: textRect,
+      fixHint:
+        "Give the text its own zone, raise its stacking order above the covering element, or mark intentional layering with data-layout-allow-occlusion.",
+    };
+  }
+
   window.__hyperframesLayoutAudit = function auditLayout(options) {
     const time = options && typeof options.time === "number" ? options.time : 0;
     const tolerance =
@@ -415,9 +582,12 @@
       const clipped = clippedTextIssue(element, time, tolerance);
       if (clipped) issues.push(clipped);
       issues.push(...textOverflowIssues(element, root, rootRect, time, tolerance));
+      const occluded = occludedTextIssue(element, time);
+      if (occluded) issues.push(occluded);
     }
 
     issues.push(...containerOverflowIssues(root, time, tolerance));
+    issues.push(...contentOverlapIssues(root, time));
     return issues;
   };
 })();

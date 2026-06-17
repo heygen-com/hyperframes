@@ -9,13 +9,12 @@ import { buildDomEditPatchTarget, type DomEditSelection } from "../components/ed
 import { fontFamilyFromAssetPath, type ImportedFontAsset } from "../components/editor/fontAssets";
 import type { EditHistoryKind } from "../utils/editHistory";
 import type { PersistDomEditOperations } from "./domEditCommitTypes";
+import type { PatchOperation } from "../utils/sourcePatcher";
 import { useDomEditPositionPatchCommit } from "./useDomEditPositionPatchCommit";
 import { useDomEditTextCommits } from "./useDomEditTextCommits";
 import { useDomGeometryCommits } from "./useDomGeometryCommits";
 import { useElementLifecycleOps } from "./useElementLifecycleOps";
-
-// Re-export so existing consumers keep their import path
-export { GSAP_CSS_FALLBACK_BLOCKED_MESSAGE } from "./useDomGeometryCommits";
+import { formatFieldsSuffix } from "./gsapScriptCommitHelpers";
 
 // ── Helpers ──
 
@@ -33,14 +32,8 @@ async function readErrorResponseBody(
 
 function formatPatchRejectionMessage(body: { error?: string; fields?: string[] } | null): string {
   if (!body?.error) return "Couldn't save edit";
-  const fields = Array.isArray(body.fields)
-    ? body.fields.filter((field): field is string => typeof field === "string")
-    : [];
-  const suffix = fields.length > 0 ? ` (${fields.join(", ")})` : "";
-  return `Couldn't save edit: ${body.error}${suffix}`;
+  return `Couldn't save edit: ${body.error}${formatFieldsSuffix(body.fields)}`;
 }
-
-// ── Types ──
 
 interface RecordEditInput {
   label: string;
@@ -48,8 +41,6 @@ interface RecordEditInput {
   coalesceKey?: string;
   files: Record<string, { before: string; after: string }>;
 }
-
-export type { PersistDomEditOperations } from "./domEditCommitTypes";
 
 export interface UseDomEditCommitsParams {
   activeCompPath: string | null;
@@ -77,9 +68,11 @@ export interface UseDomEditCommitsParams {
     target: HTMLElement,
     options?: { preferClipAncestor?: boolean },
   ) => Promise<DomEditSelection | null>;
+  /** Stage 7 Step 3b: called after a successful server-side element patch. */
+  onDomEditPersisted?: (selection: DomEditSelection, operations: PatchOperation[]) => void;
+  /** Stage 7 Step 3b: called after a successful server-side element delete. */
+  onElementDeleted?: (selection: DomEditSelection) => void;
 }
-
-// ── Hook ──
 
 export function useDomEditCommits({
   activeCompPath,
@@ -99,6 +92,8 @@ export function useDomEditCommits({
   clearDomSelection,
   refreshDomEditSelectionFromPreview,
   buildDomSelectionFromTarget,
+  onDomEditPersisted,
+  onElementDeleted,
 }: UseDomEditCommitsParams) {
   const resolveImportedFontAsset = useCallback(
     (fontFamilyValue: string): ImportedFontAsset | null => {
@@ -220,6 +215,7 @@ export function useDomEditCommits({
         coalesceKey: options?.coalesceKey,
         files: { [targetPath]: { before: originalContent, after: finalContent } },
       });
+      onDomEditPersisted?.(selection, operations);
 
       if (!options?.skipRefresh) {
         reloadPreview();
@@ -233,6 +229,7 @@ export function useDomEditCommits({
       domEditSaveTimestampRef,
       reloadPreview,
       showToast,
+      onDomEditPersisted,
     ],
   );
 
@@ -293,6 +290,7 @@ export function useDomEditCommits({
     reloadPreview,
     clearDomSelection,
     commitPositionPatchToHtml,
+    onElementDeleted,
   });
 
   return {

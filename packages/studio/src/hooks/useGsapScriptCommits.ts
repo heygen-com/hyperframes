@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { findUnsafeMutationValues } from "@hyperframes/core/studio-api/finite-mutation";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { applySoftReload } from "../utils/gsapSoftReload";
+import { resolveGsapFidelityArgs, runShadowGsapFidelity } from "../utils/sdkShadowGsapFidelity";
 import { updateKeyframeCacheFromParsed } from "./gsapKeyframeCacheHelpers";
 import {
   GsapMutationHttpError,
@@ -43,7 +44,10 @@ async function mutateGsapScript(
 
 // oxfmt-ignore
 // fallow-ignore-next-line complexity
-export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIframeRef, editHistory, domEditSaveTimestampRef, reloadPreview, onCacheInvalidate, onFileContentChanged, showToast }: GsapScriptCommitsParams) {
+export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIframeRef, editHistory, domEditSaveTimestampRef, reloadPreview, onCacheInvalidate, onFileContentChanged, showToast, sdkSession }: GsapScriptCommitsParams) {
+  // Pre-existing complexity (server mutate + history + reload branches); this PR
+  // adds only a guarded shadow-fidelity dispatch.
+  // fallow-ignore-next-line complexity
   const commitMutation = useCallback(async (selection: DomEditSelection, mutation: Record<string, unknown>, options: CommitMutationOptions) => {
     const pid = projectIdRef.current;
     if (!pid) return;
@@ -64,6 +68,21 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
     }
     if (result.changed === false) return;
     domEditSaveTimestampRef.current = Date.now();
+    // Shadow value fidelity: diff the SDK's GSAP writer output against the
+    // server's, from the same pre-op file. Fire-and-forget; server authoritative.
+    // Only meta-level ops carry shadowGsapOp today (add / update-meta / delete via
+    // useGsapAnimationOps). Per-property and keyframe handlers (useGsapPropertyDebounce,
+    // useGsapKeyframeOps) intentionally don't synthesize one yet — deferred follow-up.
+    // scriptText is null when the composition has no GSAP script; nothing to diff.
+    const fidelityArgs = resolveGsapFidelityArgs(
+      sdkSession,
+      options.shadowGsapOp,
+      result.before,
+      result.scriptText,
+    );
+    if (fidelityArgs) {
+      void runShadowGsapFidelity(fidelityArgs.before, fidelityArgs.op, fidelityArgs.serverScript);
+    }
     if (result.before != null && result.after != null) {
       await editHistory.recordEdit({ label: options.label, kind: "manual", coalesceKey: options.coalesceKey, files: { [targetPath]: { before: result.before, after: result.after } } });
     }
@@ -77,11 +96,11 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
       reloadPreview();
     }
     onCacheInvalidate();
-  }, [projectIdRef, activeCompPath, previewIframeRef, editHistory, domEditSaveTimestampRef, reloadPreview, onCacheInvalidate, onFileContentChanged, showToast]);
+  }, [projectIdRef, activeCompPath, previewIframeRef, editHistory, domEditSaveTimestampRef, reloadPreview, onCacheInvalidate, onFileContentChanged, showToast, sdkSession]);
   const trackGsapSaveFailure = useGsapSaveFailureTelemetry(activeCompPath);
   const commitMutationSafely = useSafeGsapCommitMutation(commitMutation, trackGsapSaveFailure, showToast);
   const propertyOps = useGsapPropertyDebounce(commitMutationSafely);
-  const animationOps = useGsapAnimationOps({ projectIdRef, activeCompPath, commitMutation, commitMutationSafely, showToast });
+  const animationOps = useGsapAnimationOps({ projectIdRef, activeCompPath, commitMutation, commitMutationSafely, showToast, sdkSession });
   const keyframeOps = useGsapKeyframeOps({ activeCompPath, commitMutation, commitMutationSafely, trackGsapSaveFailure });
   const arcPathOps = useGsapArcPathOps(commitMutationSafely);
   return { commitMutation, ...propertyOps, ...animationOps, ...keyframeOps, ...arcPathOps };

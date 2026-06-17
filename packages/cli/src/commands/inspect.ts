@@ -10,6 +10,10 @@ export const examples: Example[] = [
     "Also sample at tween boundaries to catch transient overlaps",
     "hyperframes inspect --at-transitions",
   ],
+  [
+    "Verify motion intent (add a *.motion.json sidecar next to the composition)",
+    "hyperframes inspect --json",
+  ],
   ["Run the compatibility alias", "hyperframes layout --json"],
 ];
 

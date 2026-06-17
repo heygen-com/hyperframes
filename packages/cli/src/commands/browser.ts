@@ -17,7 +17,7 @@ import {
   CACHE_DIR,
   isLinuxArm,
 } from "../browser/manager.js";
-import { trackBrowserInstall } from "../telemetry/events.js";
+import { trackBrowserInstall, trackCommandFailure } from "../telemetry/events.js";
 
 async function runEnsure(): Promise<void> {
   clack.intro(c.bold("hyperframes browser ensure"));
@@ -50,8 +50,12 @@ async function runEnsure(): Promise<void> {
       console.log();
       clack.outro(c.success("Chromium ready. You can now render on ARM64."));
     } catch (err) {
+      // The ARM64 auto-install failed: the browser is NOT ready, so this is a
+      // real failure (exit 1), not a success. Report it and stop swallowing.
+      trackCommandFailure("browser", err);
       clack.log.error(err instanceof Error ? err.message : String(err));
       clack.outro(c.warn("Manual setup required (see instructions above)."));
+      process.exit(1);
     }
     return;
   }
@@ -108,6 +112,7 @@ async function runPath(): Promise<void> {
       const ensured = await ensureBrowser();
       process.stdout.write(ensured.executablePath + "\n");
     } catch (err: unknown) {
+      trackCommandFailure("browser", err);
       console.error(err instanceof Error ? err.message : "Failed to find browser");
       process.exit(1);
     }
@@ -167,6 +172,7 @@ ${c.bold("EXAMPLES:")}
       case "clear":
         return runClear();
       default:
+        trackCommandFailure("browser", `Unknown subcommand: ${subcommand}`);
         console.error(
           `${c.error("Unknown subcommand:")} ${subcommand}\n\nRun ${c.accent("hyperframes browser --help")} for usage.`,
         );

@@ -110,9 +110,14 @@ export function useGsapSelectionHandlers({
   );
 
   const handleGsapUpdateMeta = useCallback(
-    (animId: string, updates: { duration?: number; ease?: string; position?: number }) => {
-      if (!domEditSelection) return;
-      updateGsapMeta(domEditSelection, animId, updates);
+    (
+      animId: string,
+      updates: { duration?: number; ease?: string; position?: number },
+      selectionOverride?: DomEditSelection | null,
+    ) => {
+      const sel = selectionOverride ?? domEditSelection ?? lastSelectionRef.current;
+      if (!sel) return;
+      updateGsapMeta(sel, animId, updates);
     },
     [domEditSelection, updateGsapMeta],
   );
@@ -191,9 +196,16 @@ export function useGsapSelectionHandlers({
   );
 
   const handleGsapAddKeyframe = useCallback(
-    (animId: string, percentage: number, property: string, value: number | string) => {
-      if (!domEditSelection) return;
-      addKeyframe(domEditSelection, animId, percentage, property, value);
+    (
+      animId: string,
+      percentage: number,
+      property: string,
+      value: number | string,
+      selectionOverride?: DomEditSelection | null,
+    ) => {
+      const sel = selectionOverride ?? domEditSelection ?? lastSelectionRef.current;
+      if (!sel) return;
+      addKeyframe(sel, animId, percentage, property, value);
     },
     [domEditSelection, addKeyframe],
   );
@@ -208,9 +220,10 @@ export function useGsapSelectionHandlers({
     [domEditSelection, addKeyframeBatch, trackGsapHandlerFailure],
   );
   const handleGsapRemoveKeyframe = useCallback(
-    (animId: string, percentage: number) => {
-      if (!domEditSelection) return;
-      removeKeyframe(domEditSelection, animId, percentage);
+    (animId: string, percentage: number, selectionOverride?: DomEditSelection | null) => {
+      const sel = selectionOverride ?? domEditSelection ?? lastSelectionRef.current;
+      if (!sel) return;
+      removeKeyframe(sel, animId, percentage);
     },
     [domEditSelection, removeKeyframe],
   );

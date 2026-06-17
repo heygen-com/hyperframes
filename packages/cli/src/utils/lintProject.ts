@@ -223,6 +223,7 @@ export async function lintProject(project: ProjectDir): Promise<ProjectLintResul
   const projectFindings = [
     ...lintProjectAudioFiles(project.dir, allHtmlSources),
     ...lintAudioSrcNotFound(project.dir, allHtmlSources),
+    ...lintMissingLocalAsset(project.dir, allHtmlSources),
     ...lintTextureMaskAssetNotFound(project.dir, allHtmlSources),
     ...lintMultipleRootCompositions(project.dir),
     ...lintDuplicateAudioTracks(allHtmlSources),
@@ -331,6 +332,79 @@ function lintAudioSrcNotFound(
         unique.length === 1
           ? `Add the file "${unique[0]}" to the project directory, or update the src attribute to point to an existing file.`
           : `Add the missing files to the project directory, or update the src attributes to point to existing files.`,
+    });
+  }
+
+  return findings;
+}
+
+// Same-length whitespace preserves offsets.
+function maskRange(src: string, pattern: RegExp): string {
+  return src.replace(pattern, (m) => " ".repeat(m.length));
+}
+
+// Closing tags allow junk before `>` (`</script foo>` is valid HTML); use `[^>]*` to mask permissively.
+function maskNonScannableRanges(html: string): string {
+  let out = maskRange(html, /<!--[\s\S]*?-->/g);
+  out = maskRange(out, /<style\b[^>]*>[\s\S]*?<\/style\b[^>]*>/gi);
+  out = maskRange(out, /<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi);
+  return out;
+}
+
+// <audio> is handled by lintAudioSrcNotFound — its "silent video" message is tailored.
+// fallow-ignore-next-line complexity
+function lintMissingLocalAsset(
+  projectDir: string,
+  htmlSources: HtmlSource[],
+): HyperframeLintFinding[] {
+  const findings: HyperframeLintFinding[] = [];
+
+  const localAssetSrcRe = /<(video|img|source)\b[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>/gi;
+
+  // Dedup by resolved path: same missing file from root + sub-comp → ONE finding.
+  const missingByTag = new Map<string, Map<string, string>>();
+
+  for (const { html, compSrcPath } of htmlSources) {
+    const scannable = maskNonScannableRanges(html);
+    const re = new RegExp(localAssetSrcRe.source, localAssetSrcRe.flags);
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(scannable)) !== null) {
+      const tagName = (match[1] ?? "").toLowerCase();
+      const rawSrc = match[2] ?? "";
+      const src = cleanAssetUrl(rawSrc);
+      if (!src) continue;
+      if (isRemoteOrInlineUrl(src)) continue;
+      if (/^__[A-Z_]+__$/.test(src)) continue; // template placeholder
+      const rootRelative = compSrcPath ? rewriteAssetPath(compSrcPath, src) : src;
+      // resolveExistingLocalAsset matches the bundler's notion of "resolves" (handles root-absolute, rejects escapes).
+      const resolvedAsset = resolveExistingLocalAsset(projectDir, rootRelative);
+      if (resolvedAsset) continue;
+
+      const resolvedKey = resolve(projectDir, rootRelative);
+      let bucket = missingByTag.get(tagName);
+      if (!bucket) {
+        bucket = new Map<string, string>();
+        missingByTag.set(tagName, bucket);
+      }
+      if (!bucket.has(resolvedKey)) bucket.set(resolvedKey, src);
+    }
+  }
+
+  for (const [tagName, byResolved] of missingByTag) {
+    const unique = [...byResolved.values()];
+    findings.push({
+      code: "missing_local_asset",
+      severity: "error",
+      message:
+        `<${tagName}> element references local file(s) not found in the project: ${unique.join(", ")}. ` +
+        "The renderer will silently skip these and produce a video with missing visuals.",
+      fixHint:
+        unique.length === 1
+          ? `Add "${unique[0]}" to the project directory, or update the src attribute to point to an existing file. ` +
+            "Common cause: captured asset filenames are unreliable (heygen-logo.svg often contains Google, nvidia-logo.svg may contain Autodesk, etc.). " +
+            "Open the contact sheets and verify the file actually exists at this path before referencing it."
+          : "Add the missing files to the project directory, or update the src attributes to point to existing files. " +
+            "Captured asset filenames are unreliable — verify against capture/contact-sheets/ and capture/extracted/asset-descriptions.md.",
     });
   }
 

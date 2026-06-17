@@ -61,11 +61,25 @@ export interface ExtractedFrames {
   ownedByLookup?: boolean;
 }
 
+/**
+ * The single source of truth for the source-video frame-extraction allow-list.
+ * The CLI flag parser, the producer HTTP server, and the distributed-config
+ * validator all validate against this same set via {@link isVideoFrameFormat}
+ * so the boundaries can't drift when a new format is added.
+ */
+export const VIDEO_FRAME_FORMATS = ["auto", "jpg", "png"] as const;
+export type VideoFrameFormat = (typeof VIDEO_FRAME_FORMATS)[number];
+
+/** Runtime guard for {@link VideoFrameFormat} over an untrusted value. */
+export function isVideoFrameFormat(value: unknown): value is VideoFrameFormat {
+  return typeof value === "string" && (VIDEO_FRAME_FORMATS as readonly string[]).includes(value);
+}
+
 export interface ExtractionOptions {
   fps: number;
   outputDir: string;
   quality?: number;
-  format?: "jpg" | "png";
+  format?: VideoFrameFormat;
 }
 
 /**
@@ -433,9 +447,12 @@ export function decoderForCodec(codec: string | undefined): string {
   return c;
 }
 
-function resolveFrameFormat(metadata: VideoMetadata, requested?: "jpg" | "png"): CacheFrameFormat {
-  if (requested) return requested;
+export function resolveFrameFormat(
+  metadata: VideoMetadata,
+  requested?: VideoFrameFormat,
+): CacheFrameFormat {
   if (metadata.hasAlpha || codecMayHaveAlpha(metadata.videoCodec)) return "png";
+  if (requested === "png" || requested === "jpg") return requested;
   return "jpg";
 }
 

@@ -6,7 +6,7 @@ interface GestureTrailOverlayProps {
   sampleCount?: number;
   trail?: Array<{ x: number; y: number }>;
   simplifiedPoints?: Map<number, Record<string, number>>;
-  canvasRect: { left: number; top: number; width: number; height: number };
+  canvasRect: { left: number; top: number; width: number; height: number } | null;
   compositionSize?: { width: number; height: number };
   mode: "recording" | "preview";
   accentColor?: string;
@@ -23,6 +23,7 @@ export const GestureTrailOverlay = memo(function GestureTrailOverlay({
   accentColor = "#3CE6AC",
 }: GestureTrailOverlayProps) {
   const trailPoints = useMemo(() => {
+    if (!canvasRect) return "";
     if (trail && trail.length > 1) {
       return trail.map((p) => `${p.x - canvasRect.left},${p.y - canvasRect.top}`).join(" ");
     }
@@ -32,7 +33,7 @@ export const GestureTrailOverlay = memo(function GestureTrailOverlay({
       .map((s) => `${s.properties.x},${s.properties.y}`)
       .join(" ");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [samples, trail, sampleCount, canvasRect.left, canvasRect.top]);
+  }, [samples, trail, sampleCount, canvasRect?.left, canvasRect?.top]);
 
   const simplifiedPath = useMemo(() => {
     if (!simplifiedPoints || simplifiedPoints.size === 0) return "";
@@ -58,7 +59,7 @@ export const GestureTrailOverlay = memo(function GestureTrailOverlay({
     return pts.sort((a, b) => a.pct - b.pct);
   }, [simplifiedPoints]);
 
-  if (samples.length < 2 && !simplifiedPoints) return null;
+  if (!canvasRect || (samples.length < 2 && !simplifiedPoints)) return null;
 
   return (
     <svg

@@ -1,6 +1,6 @@
 ---
 name: graphic-overlays
-description: Package an existing talking-head / interview / podcast video by layering timed, designed GRAPHIC OVERLAY cards onto the playing video — titles, lower-thirds, data callouts, quotes, side panels, picture-in-picture — synced to the transcript. The source video plays in full; the agent designs and writes each card's HTML in conversation, then renders to MP4 via hyperframes. Use when the user asks for graphic overlays, on-screen graphics / lower-thirds / data callouts / kinetic titles on a video, "package / dress up my video", "add overlay cards / graphic cards", or AI-composed graphic packaging of an existing video. NOT for plain subtitles (→ embedded-captions) or building a video from scratch (→ the creation workflows); when unsure overlays-vs-captions, see /hyperframes-read-first.
+description: Package an existing talking-head / interview / podcast video by layering timed, designed GRAPHIC OVERLAY cards onto the playing video — titles, lower-thirds, data callouts, quotes, side panels, picture-in-picture — synced to the transcript. The source video plays in full; the agent designs and writes each card's HTML in conversation, then renders to MP4 via hyperframes. Use when the user asks for graphic overlays, on-screen graphics / lower-thirds / data callouts / kinetic titles on a video, "package / dress up my video", "add overlay cards / graphic cards", or AI-composed graphic packaging of an existing video. NOT for plain subtitles (→ embedded-captions) or building a video from scratch (→ the creation workflows); when unsure overlays-vs-captions, see /hyperframes.
 ---
 
 # Graphic Overlays
@@ -13,7 +13,7 @@ conversation**, then assembles a single composition HTML and renders it to MP4 v
 `hyperframes`. There is no fixed archetype list and no prescribed card structure —
 the overlays emerge from what the transcript actually says.
 
-> **Confirm the route before you build.** This skill packages an **existing talking-head clip** with **designed graphic cards** (titles, lower-thirds, data callouts, quotes, side panels, PiP). If the user wants **plain captions / subtitles** (the spoken words as text) → `/embedded-captions`; a **single short unnarrated** element (one logo sting / lower-third) → `/motion-graphics`. **The clip plays untouched** — re-timing, recoloring, reframing, reordering, or audio is NLE editing and **out of scope**. Building from a URL / topic / PR → the creation workflows. Unsure overlays-vs-captions? **Read `/hyperframes-read-first` first.**
+> **Confirm the route before you build.** This skill packages an **existing talking-head clip** with **designed graphic cards** (titles, lower-thirds, data callouts, quotes, side panels, PiP). If the user wants **plain captions / subtitles** (the spoken words as text) → `/embedded-captions`; a **single short unnarrated** element (one logo sting / lower-third) → `/motion-graphics`. **The clip plays untouched** — re-timing, recoloring, reframing, reordering, or audio is NLE editing and **out of scope**. Building from a URL / topic / PR → the creation workflows. Unsure overlays-vs-captions? **Read `/hyperframes` first.**
 
 > **Graphic-packaging sibling of `embedded-captions`.** Captions add the _spoken words_
 > as a readable subtitle; this adds _designed graphics_ on top of the playing video.

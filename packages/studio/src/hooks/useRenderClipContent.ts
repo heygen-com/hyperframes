@@ -22,6 +22,49 @@ export function normalizeCompositionSrc(
   return compSrc;
 }
 
+/** Resolve a media src to its project-relative preview path, or null. */
+function resolvePreviewRelative(src: string | undefined, pid: string): string | null {
+  if (!src) return null;
+  if (!src.startsWith("http")) return src;
+  const base = `/api/projects/${pid}/preview/`;
+  const idx = src.indexOf(base);
+  return idx !== -1 ? decodeURIComponent(src.slice(idx + base.length)) : null;
+}
+
+/**
+ * The trimmed source slice as start/end fractions (0–1) of the source, so the
+ * waveform can window its peaks to the clip edges. Undefined when the source
+ * length is unknown (renders full).
+ */
+function trimFractions(el: TimelineElement): { start?: number; end?: number } {
+  const sourceDur = el.sourceDuration;
+  if (sourceDur == null || sourceDur <= 0) return {};
+  const mediaStart = el.playbackStart ?? 0;
+  const rate = el.playbackRate ?? 1;
+  const start = Math.max(0, Math.min(1, mediaStart / sourceDur));
+  const end = Math.max(start, Math.min(1, (mediaStart + el.duration * rate) / sourceDur));
+  return { start, end };
+}
+
+/**
+ * Build the waveform element for an audio clip, windowing the rendered peaks to
+ * the trimmed source slice so the bars track the clip edges.
+ */
+function renderAudioClip(el: TimelineElement, pid: string, labelColor: string): ReactNode {
+  const srcRelative = resolvePreviewRelative(el.src, pid);
+  const audioUrl = srcRelative ? `/api/projects/${pid}/preview/${srcRelative}` : (el.src ?? "");
+  const waveformUrl = srcRelative ? `/api/projects/${pid}/waveform/${srcRelative}` : undefined;
+  const { start, end } = trimFractions(el);
+  return createElement(AudioWaveform, {
+    audioUrl,
+    waveformUrl,
+    label: getTimelineElementLabel(el),
+    labelColor,
+    trimStartFraction: start,
+    trimEndFraction: end,
+  });
+}
+
 interface UseRenderClipContentOptions {
   projectIdRef: { current: string | null };
   compIdToSrc: Map<string, string>;
@@ -36,6 +79,8 @@ export function useRenderClipContent({
   effectiveTimelineDuration,
 }: UseRenderClipContentOptions) {
   return useCallback(
+    // Pre-existing clip-content dispatcher; reduced by extracting renderAudioClip.
+    // fallow-ignore-next-line complexity
     (el: TimelineElement, style: { clip: string; label: string }): ReactNode => {
       const pid = projectIdRef.current;
       if (!pid) return null;
@@ -88,27 +133,7 @@ export function useRenderClipContent({
 
       // Audio clips — waveform visualization
       if (el.tag === "audio") {
-        const previewBase = `/api/projects/${pid}/preview/`;
-        const previewIdx = el.src?.startsWith("http") ? el.src.indexOf(previewBase) : -1;
-        const srcRelative = el.src
-          ? previewIdx !== -1
-            ? decodeURIComponent(el.src.slice(previewIdx + previewBase.length))
-            : el.src.startsWith("http")
-              ? null
-              : el.src
-          : null;
-        const audioUrl = srcRelative
-          ? `/api/projects/${pid}/preview/${srcRelative}`
-          : (el.src ?? "");
-        const waveformUrl = srcRelative
-          ? `/api/projects/${pid}/waveform/${srcRelative}`
-          : undefined;
-        return createElement(AudioWaveform, {
-          audioUrl,
-          waveformUrl,
-          label: getTimelineElementLabel(el),
-          labelColor: style.label,
-        });
+        return renderAudioClip(el, pid, style.label);
       }
 
       if ((el.tag === "video" || el.tag === "img") && el.src) {

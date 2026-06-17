@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useMemo } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import {
   resolveTimelineMove,
@@ -9,6 +9,64 @@ import {
 import { usePlayerStore } from "../store/playerStore";
 import type { TimelineElement } from "../store/playerStore";
 import { TRACK_H } from "./timelineLayout";
+import { isMusicTrack } from "../../utils/timelineInspector";
+import { mergeUserBeats } from "../../utils/beatEditing";
+
+const BEAT_SNAP_PX = 8;
+const EMPTY_BEAT_TIMES: number[] = [];
+
+function snapToNearestBeat(time: number, beatTimes: number[], thresholdSecs: number): number {
+  let best = time;
+  let bestDist = thresholdSecs;
+  for (const bt of beatTimes) {
+    const d = Math.abs(bt - time);
+    if (d < bestDist) {
+      bestDist = d;
+      best = bt;
+    }
+  }
+  return best;
+}
+
+/**
+ * Snap a moved clip so whichever edge (start or end) is nearest a beat lands on
+ * it, keeping the duration fixed. Returns the (clamped) start plus the beat time
+ * it snapped to (for the grid-line highlight), or `beat: null` when no edge is
+ * within threshold.
+ */
+function snapMoveStartToBeat(
+  start: number,
+  duration: number,
+  beatTimes: number[],
+  pixelsPerSecond: number,
+  timelineDuration: number,
+): { start: number; beat: number | null } {
+  if (beatTimes.length === 0) return { start, beat: null };
+  const snapSecs = BEAT_SNAP_PX / Math.max(pixelsPerSecond, 1);
+  const snappedStart = snapToNearestBeat(start, beatTimes, snapSecs);
+  const snappedEnd = snapToNearestBeat(start + duration, beatTimes, snapSecs);
+  const startMoved = snappedStart !== start;
+  const endMoved = snappedEnd !== start + duration;
+
+  let candidate = start;
+  let beat: number | null = null;
+  if (
+    startMoved &&
+    (!endMoved || Math.abs(snappedStart - start) <= Math.abs(snappedEnd - (start + duration)))
+  ) {
+    candidate = snappedStart;
+    beat = snappedStart;
+  } else if (endMoved) {
+    candidate = snappedEnd - duration;
+    beat = snappedEnd;
+  }
+
+  const maxStart = Math.max(0, timelineDuration - duration);
+  const clamped = Math.max(0, Math.min(maxStart, Math.round(candidate * 1000) / 1000));
+  // If clamping pulled the clip off the snap target, drop the highlight.
+  if (beat != null && Math.abs(clamped - candidate) > 1e-6) beat = null;
+  return { start: clamped, beat };
+}
 
 /* ── Shared state types ─────────────────────────────────────────── */
 export interface DraggedClipState {
@@ -23,6 +81,8 @@ export interface DraggedClipState {
   pointerOffsetY: number;
   previewStart: number;
   previewTrack: number;
+  /** Beat time the clip will snap to on drop, for the grid-line highlight. */
+  snapBeatTime: number | null;
   started: boolean;
 }
 
@@ -76,6 +136,36 @@ export function useTimelineClipDrag({
   setRangeSelectionRef,
 }: UseTimelineClipDragInput) {
   const updateElement = usePlayerStore((s) => s.updateElement);
+  const rawBeatTimes = usePlayerStore((s) => s.beatAnalysis?.beatTimes ?? EMPTY_BEAT_TIMES);
+  const rawBeatStrengths = usePlayerStore((s) => s.beatAnalysis?.beatStrengths ?? EMPTY_BEAT_TIMES);
+  const beatEdits = usePlayerStore((s) => s.beatEdits);
+  const musicStart = usePlayerStore((s) => s.elements.find(isMusicTrack)?.start ?? 0);
+  const musicPlaybackStart = usePlayerStore(
+    (s) => s.elements.find(isMusicTrack)?.playbackStart ?? 0,
+  );
+  const musicDuration = usePlayerStore((s) => s.elements.find(isMusicTrack)?.duration ?? 0);
+  const musicSrc = usePlayerStore((s) => s.elements.find(isMusicTrack)?.src ?? null);
+
+  const adjustedBeatTimes = useMemo(() => {
+    if (rawBeatTimes === EMPTY_BEAT_TIMES || musicDuration === 0) return EMPTY_BEAT_TIMES;
+    const merged = mergeUserBeats(rawBeatTimes, rawBeatStrengths, beatEdits, musicSrc);
+    const clipEnd = musicPlaybackStart + musicDuration;
+    const offset = musicStart - musicPlaybackStart;
+    return merged.times
+      .filter((t) => t >= musicPlaybackStart && t <= clipEnd)
+      .map((t) => Math.round((t + offset) * 1000) / 1000);
+  }, [
+    rawBeatTimes,
+    rawBeatStrengths,
+    beatEdits,
+    musicSrc,
+    musicStart,
+    musicPlaybackStart,
+    musicDuration,
+  ]);
+
+  const beatTimesRef = useRef<number[]>([]);
+  beatTimesRef.current = adjustedBeatTimes;
 
   const [draggedClip, setDraggedClip] = useState<DraggedClipState | null>(null);
   const draggedClipRef = useRef<DraggedClipState | null>(null);
@@ -118,13 +208,24 @@ export function useTimelineClipDrag({
         clientX,
         clientY,
       );
+      // The music track defines the beats, so it must not snap to itself.
+      const snap = isMusicTrack(drag.element)
+        ? { start: nextMove.start, beat: null }
+        : snapMoveStartToBeat(
+            nextMove.start,
+            drag.element.duration,
+            beatTimesRef.current,
+            ppsRef.current,
+            durationRef.current,
+          );
       return {
         ...drag,
         started: true,
         pointerClientX: clientX,
         pointerClientY: clientY,
-        previewStart: nextMove.start,
+        previewStart: snap.start,
         previewTrack: nextMove.track,
+        snapBeatTime: snap.beat,
       };
     },
     [scrollRef, ppsRef, durationRef, trackOrderRef],
@@ -220,14 +321,16 @@ export function useTimelineClipDrag({
             : Number.POSITIVE_INFINITY;
         const normalizedTag = resize.element.tag.toLowerCase();
         const canSeedPlaybackStart = normalizedTag === "audio" || normalizedTag === "video";
-        const nextResize = resolveTimelineResize(
+        const playbackRate = Math.max(resize.element.playbackRate ?? 1, 0.1);
+        const maxEnd = Math.min(durationRef.current, resize.element.start + sourceRemaining);
+        let nextResize = resolveTimelineResize(
           {
             start: resize.element.start,
             duration: resize.element.duration,
             originClientX: resize.originClientX,
             pixelsPerSecond: ppsRef.current,
             minStart: 0,
-            maxEnd: Math.min(durationRef.current, resize.element.start + sourceRemaining),
+            maxEnd,
             playbackStart:
               resize.edge === "start" && canSeedPlaybackStart
                 ? (resize.element.playbackStart ?? 0)
@@ -237,6 +340,54 @@ export function useTimelineClipDrag({
           resize.edge,
           e.clientX,
         );
+
+        // Snap edge to beat grid when beat analysis is available. The snap must
+        // stay inside the same limits resolveTimelineResize enforces, or it would
+        // push the edge past the available source media / composition end.
+        // The music track defines the beats, so it must not snap to itself.
+        const beatTimes = beatTimesRef.current;
+        if (beatTimes.length > 0 && !isMusicTrack(resize.element)) {
+          const snapSecs = BEAT_SNAP_PX / Math.max(ppsRef.current, 1);
+          if (resize.edge === "end") {
+            const edgeTime = nextResize.start + nextResize.duration;
+            const snapped = snapToNearestBeat(edgeTime, beatTimes, snapSecs);
+            // Stay within [start+minDuration, maxEnd] so the snap can't create a
+            // degenerate clip or run past the source/composition limit.
+            const snappedDuration = Math.round((snapped - nextResize.start) * 1000) / 1000;
+            if (snapped !== edgeTime && snapped <= maxEnd + 1e-6 && snappedDuration >= 0.05) {
+              nextResize = { ...nextResize, duration: snappedDuration };
+            }
+          } else {
+            const snapped = snapToNearestBeat(nextResize.start, beatTimes, snapSecs);
+            const delta = nextResize.start - snapped; // >0 when snapping left
+            // Leftward snap reveals more source; cap so playbackStart can't go < 0.
+            const maxLeftDelta =
+              nextResize.playbackStart != null
+                ? nextResize.playbackStart / playbackRate
+                : Number.POSITIVE_INFINITY;
+            // Also require the resulting duration to stay >= minDuration so a
+            // rightward snap (delta < 0) can't collapse the clip to zero/negative.
+            const snappedDuration = Math.round((nextResize.duration + delta) * 1000) / 1000;
+            if (
+              snapped !== nextResize.start &&
+              snapped >= 0 &&
+              delta <= maxLeftDelta + 1e-6 &&
+              snappedDuration >= 0.05
+            ) {
+              nextResize = {
+                ...nextResize,
+                start: snapped,
+                duration: snappedDuration,
+                playbackStart:
+                  nextResize.playbackStart != null
+                    ? Math.round(
+                        Math.max(0, nextResize.playbackStart - delta * playbackRate) * 1000,
+                      ) / 1000
+                    : undefined,
+              };
+            }
+          }
+        }
 
         setResizingClip((prev) =>
           prev

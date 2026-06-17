@@ -1,6 +1,7 @@
 import type { RuntimeTimelineMessage, RuntimeTimelineLike } from "./types";
 import type { HyperframePickerApi } from "../inline-scripts/pickerApi";
 import type { PlayerAPI } from "../core.types";
+import type { ClipTree } from "./clipTree";
 
 type ThreeClockLike = {
   elapsedTime: number;
@@ -29,6 +30,7 @@ declare global {
     __timelines: Record<string, RuntimeTimelineLike>;
     __player?: PlayerAPI;
     __clipManifest?: RuntimeTimelineMessage;
+    __clipTree?: ClipTree;
     __playerReady?: boolean;
     __renderReady?: boolean;
     __hfRuntimeTeardown?: (() => void) | null;

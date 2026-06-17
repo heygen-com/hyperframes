@@ -20,12 +20,15 @@ export function shouldReloadSdkSession(payload: unknown, activeCompPath: string 
  * (projectId, activeCompPath) change, disposes the old one on cleanup, and
  * re-opens it when the active composition file changes on disk (code editor,
  * agent, or server-side patch) so the in-memory linkedom document never goes
- * stale. The persist queue writes back to `activeCompPath` (not the
- * "composition.html" default).
+ * stale.
  *
- * The session is idle until Step 3c routes dispatch ops through it; re-opening
- * is therefore purely additive — no SDK self-write exists yet, so there is no
- * persist echo. Step 3c must add self-write suppression once dispatch writes.
+ * Opened WITHOUT a persist queue: this session is shadow-telemetry +
+ * selection-sync only — it reads from the server but must NEVER write back.
+ * Shadow dispatch ops mutate the in-memory model and are discarded on the next
+ * reload-on-change (the studio's own authoritative write triggers it). Routing
+ * authoritative writes through this session (cutover, Step 3c+) must re-add
+ * persist TOGETHER WITH self-write suppression — without it, the SDK's
+ * serialize() output races and clobbers the studio's authoritative write.
  */
 export function useSdkSession(
   projectId: string | null,
@@ -37,6 +40,9 @@ export function useSdkSession(
   // ── Re-open on external change to the active composition ──
   useEffect(() => {
     if (!activeCompPath) return;
+    // Pre-existing clone of the file-change reload handler (usePreviewPersistence);
+    // surfaced by this PR's adjacent edits, not introduced by it.
+    // fallow-ignore-next-line code-duplication
     const handler = (payload?: unknown) => {
       if (shouldReloadSdkSession(payload, activeCompPath)) {
         setReloadToken((t) => t + 1);
@@ -69,13 +75,10 @@ export function useSdkSession(
       .read(activeCompPath)
       .then(async (content) => {
         if (cancelled || typeof content !== "string") return;
-        comp = await openComposition(content, {
-          persist: adapter,
-          persistPath: activeCompPath,
-        });
-        comp.on("persist:error", (e) => {
-          console.warn("[sdk] persist:error", e.error);
-        });
+        // No persist — shadow/selection only; see the hook docstring. The SDK
+        // must not write back to the server while it shadows the authoritative
+        // studio path.
+        comp = await openComposition(content);
         // Cleanup may have fired while openComposition was awaited; dispose immediately.
         if (cancelled) {
           comp.dispose();

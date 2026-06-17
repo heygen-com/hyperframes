@@ -10,10 +10,13 @@ import {
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { useTimelinePlayer, PlayerControls, Timeline, usePlayerStore } from "../../player";
 import type { TimelineElement } from "../../player";
+import type { BlockedTimelineEditIntent } from "../../player/components/timelineEditing";
 import { NLEPreview } from "./NLEPreview";
 import { CompositionBreadcrumb } from "./CompositionBreadcrumb";
 import { usePreviewBlockDrop } from "./usePreviewBlockDrop";
 import { useCompositionStack } from "./useCompositionStack";
+import { useTimelineEditContext } from "../../contexts/TimelineEditContext";
+import { trackStudioExpandedClipEdit } from "../../telemetry/events";
 import {
   TIMELINE_TOGGLE_SHORTCUT_LABEL,
   getTimelineToggleTitle,
@@ -58,6 +61,7 @@ interface NLELayoutProps {
     blockName: string,
     position: { left: number; top: number },
   ) => Promise<void> | void;
+  onBlockedEditAttempt?: (element: TimelineElement, intent: BlockedTimelineEditIntent) => void;
   onSelectTimelineElement?: (element: TimelineElement | null) => void;
   /** Exposes the compIdToSrc map for parent components (e.g., useRenderClipContent) */
   onCompIdToSrcChange?: (map: Map<string, string>) => void;
@@ -103,6 +107,7 @@ export const NLELayout = memo(function NLELayout({
   onAssetDrop,
   onBlockDrop,
   onPreviewBlockDrop,
+  onBlockedEditAttempt,
   onSelectTimelineElement,
   onCompIdToSrcChange,
   timelineVisible,
@@ -175,6 +180,7 @@ export const NLELayout = memo(function NLELayout({
   const handleDrillDown = useCallback(
     (element: TimelineElement) => {
       if (!element.compositionSrc) return;
+      usePlayerStore.getState().setSelectedElementId(null);
       // Check compIdToSrc map first; then scan iframe DOM; then fall through to drillDown
       const compId = element.id;
       let resolvedPath = compIdToSrc.get(compId);
@@ -200,6 +206,73 @@ export const NLELayout = memo(function NLELayout({
       });
     },
     [compIdToSrc, drillDown, iframeRef_],
+  );
+
+  // Move/resize/split come from the timeline edit context, not props — the
+  // wrappers below intercept expanded clips and must call the *real* handlers.
+  // (Delete is a direct prop; it stays that way.)
+  const { onMoveElement, onResizeElement, onSplitElement } = useTimelineEditContext();
+
+  // An expanded sub-comp child reaches the normal edit handlers in its own
+  // local coordinates: addressed by its real DOM id, with timeline time rebased
+  // onto the sub-comp it lives in. The handlers then save + reloadPreview exactly
+  // as they do for top-level clips — no separate live-DOM path.
+  const toLocalElement = useCallback(
+    (element: TimelineElement, basis: number): TimelineElement => ({
+      ...element,
+      id: element.domId ?? element.id,
+      start: element.start - basis,
+    }),
+    [],
+  );
+
+  const handleMoveElement = useCallback(
+    (element: TimelineElement, updates: Pick<TimelineElement, "start" | "track">) => {
+      const basis = element.expandedParentStart;
+      if (basis === undefined) return onMoveElement?.(element, updates);
+      trackStudioExpandedClipEdit({ action: "move" });
+      onMoveElement?.(toLocalElement(element, basis), {
+        ...updates,
+        start: Math.max(0, updates.start - basis),
+      });
+    },
+    [onMoveElement, toLocalElement],
+  );
+
+  const handleResizeElement = useCallback(
+    (
+      element: TimelineElement,
+      updates: Pick<TimelineElement, "start" | "duration" | "playbackStart">,
+    ) => {
+      const basis = element.expandedParentStart;
+      if (basis === undefined) return onResizeElement?.(element, updates);
+      trackStudioExpandedClipEdit({ action: "resize" });
+      onResizeElement?.(toLocalElement(element, basis), {
+        ...updates,
+        start: Math.max(0, updates.start - basis),
+      });
+    },
+    [onResizeElement, toLocalElement],
+  );
+
+  const handleDeleteElement = useCallback(
+    (element: TimelineElement) => {
+      const basis = element.expandedParentStart;
+      if (basis === undefined) return onDeleteElement?.(element);
+      trackStudioExpandedClipEdit({ action: "delete" });
+      return onDeleteElement?.(toLocalElement(element, basis));
+    },
+    [onDeleteElement, toLocalElement],
+  );
+
+  const handleSplitElement = useCallback(
+    (element: TimelineElement, splitTime: number) => {
+      const basis = element.expandedParentStart;
+      if (basis === undefined) return onSplitElement?.(element, splitTime);
+      trackStudioExpandedClipEdit({ action: "split" });
+      return onSplitElement?.(toLocalElement(element, basis), Math.max(0, splitTime - basis));
+    },
+    [onSplitElement, toLocalElement],
   );
 
   // Composition ID → file path map from raw index.html
@@ -356,6 +429,17 @@ export const NLELayout = memo(function NLELayout({
         <div
           className="flex-1 min-h-0 relative"
           data-preview-pan-surface="true"
+          onPointerDown={(e) => {
+            const el = iframeRef.current?.parentElement ?? iframeRef.current;
+            if (!el) return;
+            const rect = el.getBoundingClientRect();
+            const inside =
+              e.clientX >= rect.left &&
+              e.clientX <= rect.right &&
+              e.clientY >= rect.top &&
+              e.clientY <= rect.bottom;
+            if (!inside) onSelectTimelineElement?.(null);
+          }}
           onDragOver={handlePreviewDragOver}
           onDragLeave={handlePreviewDragLeave}
           onDrop={handlePreviewDrop}
@@ -429,9 +513,13 @@ export const NLELayout = memo(function NLELayout({
                 onDrillDown={handleDrillDown}
                 renderClipContent={renderClipContent}
                 onFileDrop={onFileDrop}
-                onDeleteElement={onDeleteElement}
+                onDeleteElement={handleDeleteElement}
                 onAssetDrop={onAssetDrop}
                 onBlockDrop={onBlockDrop}
+                onMoveElement={handleMoveElement}
+                onResizeElement={handleResizeElement}
+                onBlockedEditAttempt={onBlockedEditAttempt}
+                onSplitElement={handleSplitElement}
                 onSelectElement={onSelectTimelineElement}
               />
             </div>

@@ -160,14 +160,93 @@ async function commitFlatViaKeyframes(
   properties: Record<string, number>,
   callbacks: GsapDragCommitCallbacks,
   beforeReload?: () => void,
+  iframe?: HTMLIFrameElement | null,
+  selector?: string,
 ): Promise<void> {
+  const ct = usePlayerStore.getState().currentTime;
+  const ts = resolveTweenStart(anim);
+  const td = resolveTweenDuration(anim);
+  const outsideRange = ts !== null && td > 0 && (ct < ts - 0.01 || ct > ts + td + 0.01);
+
+  // Read the runtime position at the tween's start time so the 0% keyframe
+  // captures the actual interpolated value (e.g. x=300 after a preceding slide),
+  // not the identity value (x=0) that a blind convert would produce.
+  const resolvedFromValues: Record<string, number | string> = {};
+  if (iframe && selector && ts !== null) {
+    try {
+      const iframeWin = iframe.contentWindow as any;
+      const gsapLib = iframeWin?.gsap;
+      const el = iframe.contentDocument?.querySelector(selector);
+      const timelines = iframeWin?.__timelines;
+      const mainTl = timelines ? (Object.values(timelines)[0] as any) : null;
+      if (gsapLib && el && mainTl?.seek) {
+        mainTl.seek(ts);
+        for (const key of Object.keys(properties)) {
+          const v = Number(gsapLib.getProperty(el, key));
+          if (Number.isFinite(v)) resolvedFromValues[key] = roundTo3(v);
+        }
+        mainTl.seek(ct);
+      }
+    } catch {
+      /* iframe access failed — fall back to identity values */
+    }
+  }
+
+  if (outsideRange && ts !== null) {
+    // Outside the tween's range: add a brand new keyframed tween at the drag
+    // time instead of extending/replacing the existing one. This keeps all
+    // existing tweens untouched and creates a clean hold at the dragged position.
+    const tweenEnd = ts + td;
+    const holdStart = ct > tweenEnd ? tweenEnd : ct;
+    const holdEnd = ct > tweenEnd ? ct : ts;
+    const holdDur = Math.max(0.01, holdEnd - holdStart);
+    const kfs =
+      ct > tweenEnd
+        ? [
+            { percentage: 0, properties: resolvedFromValues },
+            { percentage: 100, properties },
+          ]
+        : [
+            { percentage: 0, properties },
+            { percentage: 100, properties: resolvedFromValues },
+          ];
+    console.log(
+      "[drag:5] outside range — adding new tween",
+      JSON.stringify({
+        ct,
+        ts,
+        td,
+        holdStart: roundTo3(holdStart),
+        holdDur: roundTo3(holdDur),
+        from: resolvedFromValues,
+        to: properties,
+      }),
+    );
+    await callbacks.commitMutation(
+      selection,
+      {
+        type: "add-with-keyframes",
+        targetSelector: anim.targetSelector,
+        position: roundTo3(holdStart),
+        duration: roundTo3(holdDur),
+        keyframes: kfs,
+      },
+      { label: "Move layer (new keyframe)", softReload: true, beforeReload },
+    );
+    return;
+  }
+
+  // Inside range: convert the flat tween to keyframes, then add at current %.
   const coalesceKey = `gsap:convert-drag:${anim.id}`;
   await callbacks.commitMutation(
     selection,
-    { type: "convert-to-keyframes", animationId: anim.id },
+    {
+      type: "convert-to-keyframes",
+      animationId: anim.id,
+      ...(Object.keys(resolvedFromValues).length > 0 ? { resolvedFromValues } : {}),
+    },
     { label: "Convert to keyframes for drag", skipReload: true, coalesceKey },
   );
-
   const pct = computeCurrentPercentage(selection, anim);
 
   await callbacks.commitMutation(
@@ -350,6 +429,14 @@ export async function commitGsapPositionFromDrag(
       );
     }
   } else {
-    await commitFlatViaKeyframes(selection, anim, { x: newX, y: newY }, callbacks, restoreOffset);
+    await commitFlatViaKeyframes(
+      selection,
+      anim,
+      { x: newX, y: newY },
+      callbacks,
+      restoreOffset,
+      iframe,
+      selector,
+    );
   }
 }

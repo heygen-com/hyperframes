@@ -171,6 +171,43 @@ describe("WebAudioTransport", () => {
     });
   });
 
+  describe("clip duration bound (trim)", () => {
+    it("bounds an in-progress clip to its remaining authored window", async () => {
+      const { transport, mock, gen } = setupTransport(100);
+      // compStart=5, mediaStart=0, compTime=8 → elapsed=3; clipDuration=10 → 7 left
+      await transport.schedulePlayback(mockEl, mockBuffer, 5, 0, 8, 1, gen, 1, 10);
+      expect(mock.startFn).toHaveBeenCalledWith(0, 3, 7);
+    });
+
+    it("bounds a future clip to its full authored window", async () => {
+      const { transport, mock, gen } = setupTransport(100);
+      // compStart=10, mediaStart=1.5, compTime=2 → elapsed=-8 → delay 8; clipDuration=4
+      await transport.schedulePlayback(mockEl, mockBuffer, 10, 1.5, 2, 1, gen, 1, 4);
+      expect(mock.startFn).toHaveBeenCalledWith(108, 1.5, 4);
+    });
+
+    it("does not schedule a clip whose window has already elapsed", async () => {
+      const { transport, mock, gen } = setupTransport(100);
+      // elapsed=15 > clipDuration=10 → nothing to play
+      const result = await transport.schedulePlayback(mockEl, mockBuffer, 5, 0, 20, 1, gen, 1, 10);
+      expect(result).toBeNull();
+      expect(mock.startFn).not.toHaveBeenCalled();
+    });
+
+    it("scales the bound by playback rate (buffer seconds)", async () => {
+      const { transport, mock, gen } = setupTransport(100);
+      // rate=2, clipDuration=10 → clipSourceLen=20; elapsed=3 → 17 buffer seconds left
+      await transport.schedulePlayback(mockEl, mockBuffer, 5, 0, 8, 1, gen, 2, 10);
+      expect(mock.startFn).toHaveBeenCalledWith(0, 3, 17);
+    });
+
+    it("plays unbounded when clipDuration is omitted (legacy behavior)", async () => {
+      const { transport, mock, gen } = setupTransport(100);
+      await transport.schedulePlayback(mockEl, mockBuffer, 5, 0, 8, 1, gen);
+      expect(mock.startFn).toHaveBeenCalledWith(0, 3);
+    });
+  });
+
   describe("playback rate", () => {
     it("sets sourceNode.playbackRate.value when rate is provided", async () => {
       const { transport, mock, gen } = setupTransport(100);

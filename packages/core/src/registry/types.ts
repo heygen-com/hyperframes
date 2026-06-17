@@ -182,7 +182,8 @@ export type BlockCategory =
   | "scenes"
   | "captions"
   | "effects"
-  | "text-effects";
+  | "text-effects"
+  | "code-animation";
 
 export interface BlockCategoryMeta {
   id: BlockCategory;
@@ -192,6 +193,7 @@ export interface BlockCategoryMeta {
 
 export const BLOCK_CATEGORIES: BlockCategoryMeta[] = [
   { id: "captions", label: "Captions", color: "cyan" },
+  { id: "code-animation", label: "Code Animations", color: "emerald" },
   { id: "vfx", label: "VFX", color: "purple" },
   { id: "transitions", label: "Transitions", color: "blue" },
   { id: "effects", label: "Effects", color: "rose" },
@@ -205,6 +207,7 @@ export function resolveBlockCategory(tags: string[] | undefined): BlockCategory 
   if (!tags || tags.length === 0) return "scenes";
   const set = new Set(tags);
   if (set.has("captions") || set.has("caption-style")) return "captions";
+  if (set.has("code-animation")) return "code-animation";
   if (set.has("transition")) return "transitions";
   if (set.has("social") || set.has("overlay")) return "social";
   if (set.has("data") || set.has("chart") || set.has("map")) return "data";

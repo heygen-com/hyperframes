@@ -378,8 +378,11 @@ async function launchBrowser(
   });
 
   const browserVersion = await browser.version().catch(() => "unknown");
+  const gpuFlags = chromeArgs.filter(
+    (a) => a.startsWith("--use-gl=") || a.startsWith("--use-angle="),
+  );
   console.log(
-    `[BrowserManager] Browser launched (${browserVersion}, ${captureMode}, headlessShell=${!!headlessShell}, platform=${process.platform})`,
+    `[BrowserManager] Browser launched (${browserVersion}, ${captureMode}, gl=${gpuFlags.join(" ") || "default"}, headlessShell=${!!headlessShell}, platform=${process.platform})`,
   );
 
   if (captureMode === "beginframe") {
@@ -650,7 +653,17 @@ function getBrowserGpuArgs(
     case "win32":
       return ["--use-gl=angle", "--use-angle=d3d11", "--enable-gpu-rasterization"];
     case "linux":
-      return ["--use-gl=egl", "--enable-gpu-rasterization"];
+      // Chrome 131+ headless shell only accepts (gl=angle, angle=gl-egl);
+      // the old --use-gl=egl causes the GPU process to exit silently.
+      // --ignore-gpu-blocklist: the operator explicitly opted into
+      // browserGpuMode="hardware", so trust their driver/GPU choice.
+      return [
+        "--use-gl=angle",
+        "--use-angle=gl-egl",
+        "--enable-gpu-rasterization",
+        "--ignore-gpu-blocklist",
+        "--disable-software-rasterizer",
+      ];
     default:
       return ["--enable-gpu-rasterization"];
   }

@@ -18,6 +18,8 @@ import { useDomEditContext } from "../contexts/DomEditContext";
 import { TimelineEditProvider } from "../contexts/TimelineEditContext";
 import type { BlockPreviewInfo } from "./sidebar/BlocksTab";
 import { readStudioUiPreferences } from "../utils/studioUiPreferences";
+import { fetchParsedAnimations } from "../hooks/useGsapTweenCache";
+import { pickKeyframeTween, computeKeyframeMovePlan } from "./editor/keyframeMove";
 import type { GestureRecordingState } from "./editor/GestureRecordControl";
 
 export interface StudioPreviewAreaProps {
@@ -128,6 +130,7 @@ export function StudioPreviewArea({
     handleGsapAddKeyframe,
     handleGsapConvertToKeyframes,
     handleGsapDeleteAllForElement,
+    buildDomSelectionForTimelineElement,
   } = useDomEditContext();
 
   const [snapPrefs, setSnapPrefs] = useState(() => {
@@ -169,31 +172,43 @@ export function StudioPreviewArea({
           if (anim.keyframes) handleGsapUpdateMeta(anim.id, { ease });
         }
       },
-      onMoveKeyframe: (_el: TimelineElement, oldPct: number, newPct: number) => {
-        const cacheKey = domEditSelection?.id ?? "";
-        const cached = usePlayerStore.getState().keyframeCache.get(cacheKey);
+      // fallow-ignore-next-line complexity
+      onMoveKeyframe: async (_el: TimelineElement, oldPct: number, newPct: number) => {
+        // Resolve the dragged element's selection + parsed animations on demand
+        // (both awaited and cached) rather than relying on the async DOM-edit
+        // session being loaded for this element — that coupling made the commit
+        // intermittently no-op (revert) when dragging before the session caught up.
+        if (!projectId) return;
+        const sourceFile = _el.sourceFile || activeCompPath || "index.html";
+        const [selection, parsed] = await Promise.all([
+          buildDomSelectionForTimelineElement(_el),
+          fetchParsedAnimations(projectId, sourceFile),
+        ]);
+        if (!selection || !parsed) return;
+
+        const cached = usePlayerStore.getState().keyframeCache.get(_el.key ?? _el.id);
         const cachedKf = cached?.keyframes.find((k) => Math.abs(k.percentage - oldPct) < 0.2);
-        const group = cachedKf?.propertyGroup;
-        const anim =
-          (group ? selectedGsapAnimations.find((a) => a.propertyGroup === group) : undefined) ??
-          selectedGsapAnimations.find((a) => a.keyframes);
-        if (!anim?.keyframes) return;
-        const tweenOldPct = cachedKf?.tweenPercentage ?? oldPct;
-        const kf = anim.keyframes.keyframes.find((k) => Math.abs(k.percentage - tweenOldPct) < 0.2);
-        if (!kf) return;
-        const tweenStart = anim.resolvedStart ?? 0;
-        const tweenDur = anim.duration ?? 1;
-        const newAbsTime = _el.start + (newPct / 100) * _el.duration;
-        const tweenNewPct =
-          tweenDur > 0
-            ? Math.max(
-                0,
-                Math.min(100, Math.round(((newAbsTime - tweenStart) / tweenDur) * 1000) / 10),
-              )
-            : 0;
-        handleGsapRemoveKeyframe(anim.id, tweenOldPct);
-        for (const [prop, val] of Object.entries(kf.properties)) {
-          handleGsapAddKeyframe(anim.id, tweenNewPct, prop, val);
+        const origAbsTime = _el.start + (oldPct / 100) * _el.duration;
+        const anim = pickKeyframeTween(
+          parsed.animations,
+          _el,
+          origAbsTime,
+          cachedKf?.propertyGroup,
+        );
+        if (!anim) return;
+
+        const plan = computeKeyframeMovePlan(
+          anim,
+          cachedKf?.tweenPercentage ?? oldPct,
+          _el,
+          newPct,
+        );
+        if (plan.meta) handleGsapUpdateMeta(anim.id, plan.meta, selection);
+        for (const pct of plan.removes) handleGsapRemoveKeyframe(anim.id, pct, selection);
+        for (const add of plan.adds) {
+          for (const [prop, val] of Object.entries(add.properties)) {
+            handleGsapAddKeyframe(anim.id, add.pct, prop, val, selection);
+          }
         }
       },
       onToggleKeyframeAtPlayhead: (el: TimelineElement) => {
@@ -231,6 +246,9 @@ export function StudioPreviewArea({
       handleGsapUpdateMeta,
       handleGsapAddKeyframe,
       handleGsapConvertToKeyframes,
+      buildDomSelectionForTimelineElement,
+      projectId,
+      activeCompPath,
     ],
   );
 

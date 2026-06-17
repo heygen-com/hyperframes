@@ -35,6 +35,12 @@ class HttpAdapter implements PersistAdapter {
     return typeof data.content === "string" ? data.content : undefined;
   }
 
+  /**
+   * Enqueue a write for path. Same-path writes are serialized via pathQueues
+   * so concurrent saves never interleave. Each write is a single-shot PUT —
+   * on network error or non-2xx response, persist:error fires and the write
+   * is not retried. Retry is the caller's responsibility.
+   */
   async write(path: string, content: string): Promise<void> {
     const prev = this.pathQueues.get(path) ?? Promise.resolve();
     const p = prev.then(() => this.doWrite(path, content));

@@ -1322,6 +1322,67 @@ export function updateAnimationInScript(
   return recast.print(parsed.ast).code;
 }
 
+export function shiftPositionsInScript(
+  script: string,
+  targetSelector: string,
+  delta: number,
+): string {
+  let parsed: ParsedGsapAst;
+  try {
+    parsed = parseGsapAst(script);
+  } catch (e) {
+    console.warn("[gsap-parser] shiftPositionsInScript parse failed:", e);
+    return script;
+  }
+  let changed = false;
+  for (const entry of parsed.located) {
+    if (entry.animation.targetSelector !== targetSelector) continue;
+    if (typeof entry.animation.position !== "number") continue;
+    const newPos = Math.max(0, Math.round((entry.animation.position + delta) * 1000) / 1000);
+    applyUpdatesToCall(entry.call, { position: newPos });
+    changed = true;
+  }
+  return changed ? recast.print(parsed.ast).code : script;
+}
+
+export function scalePositionsInScript(
+  script: string,
+  targetSelector: string,
+  oldStart: number,
+  oldDuration: number,
+  newStart: number,
+  newDuration: number,
+): string {
+  if (oldDuration <= 0 || newDuration <= 0) return script;
+  const ratio = newDuration / oldDuration;
+  let parsed: ParsedGsapAst;
+  try {
+    parsed = parseGsapAst(script);
+  } catch (e) {
+    console.warn("[gsap-parser] scalePositionsInScript parse failed:", e);
+    return script;
+  }
+  let changed = false;
+  for (const entry of parsed.located) {
+    if (entry.animation.targetSelector !== targetSelector) continue;
+    if (typeof entry.animation.position !== "number") continue;
+    const newPos = Math.max(
+      0,
+      Math.round((newStart + (entry.animation.position - oldStart) * ratio) * 1000) / 1000,
+    );
+    const updates: Partial<GsapAnimation> = { position: newPos };
+    if (typeof entry.animation.duration === "number" && entry.animation.duration > 0) {
+      updates.duration = Math.max(
+        0.001,
+        Math.round(entry.animation.duration * ratio * 1000) / 1000,
+      );
+    }
+    applyUpdatesToCall(entry.call, updates);
+    changed = true;
+  }
+  return changed ? recast.print(parsed.ast).code : script;
+}
+
 function updateAnimationSelector(script: string, animationId: string, newSelector: string): string {
   let parsed: ParsedGsapAst;
   try {

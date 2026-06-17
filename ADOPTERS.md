@@ -16,10 +16,11 @@ If you'd rather not be listed publicly, that's fine — drop a note in [our Disc
 
 ## Production
 
-| Organization                             | Contact                                        | How HyperFrames is used                                                                                       |
-| ---------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| [HeyGen](https://www.heygen.com)         | [@jrusso1020](https://github.com/jrusso1020)   | Powers AI-generated video composition and rendering across HeyGen's video product surface.                    |
-| [tldraw](https://tldraw.com)             | [@steveruizok](https://github.com/steveruizok) | Generates automated pull-request walkthrough videos with GSAP-animated code diffs, narration, and captions.   |
-| [TanStack](https://tanstack.com)         | [@AlemTuzlak](https://github.com/AlemTuzlak)   | Exploring HyperFrames for short-form code demo videos and documentation.                                      |
-| [OptinMonster](https://optinmonster.com) | Angie Meeker                                   | Exploring HyperFrames for marketing and product video content.                                                |
-| [reap](https://reap.video)               | [@usamaabid](https://github.com/usamaabid)     | Powers agent-first AI video clipping, editing, and rendering across reap.video's creator and agent workflows. |
+| Organization                             | Contact                                          | How HyperFrames is used                                                                                       |
+| ---------------------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| [HeyGen](https://www.heygen.com)         | [@jrusso1020](https://github.com/jrusso1020)     | Powers AI-generated video composition and rendering across HeyGen's video product surface.                    |
+| [tldraw](https://tldraw.com)             | [@steveruizok](https://github.com/steveruizok)   | Generates automated pull-request walkthrough videos with GSAP-animated code diffs, narration, and captions.   |
+| [TanStack](https://tanstack.com)         | [@AlemTuzlak](https://github.com/AlemTuzlak)     | Exploring HyperFrames for short-form code demo videos and documentation.                                      |
+| [OptinMonster](https://optinmonster.com) | Angie Meeker                                     | Exploring HyperFrames for marketing and product video content.                                                |
+| [reap](https://reap.video)               | [@usamaabid](https://github.com/usamaabid)       | Powers agent-first AI video clipping, editing, and rendering across reap.video's creator and agent workflows. |
+| [Typeframe](https://typeframe.app)       | [@kiyeonjeon21](https://github.com/kiyeonjeon21) | Renders speech videos into shareable MP4 exports with word-timed typing captions and styled caption layouts.  |

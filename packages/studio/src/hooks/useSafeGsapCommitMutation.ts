@@ -1,20 +1,7 @@
 import { useCallback } from "react";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { getStudioSaveErrorMessage, trackStudioSaveFailure } from "../utils/studioSaveDiagnostics";
-
-type CommitMutationOptions = {
-  label: string;
-  coalesceKey?: string;
-  softReload?: boolean;
-  skipReload?: boolean;
-  beforeReload?: () => void;
-};
-
-type CommitMutation = (
-  selection: DomEditSelection,
-  mutation: Record<string, unknown>,
-  options: CommitMutationOptions,
-) => Promise<void>;
+import type { CommitMutation, CommitMutationOptions } from "./gsapScriptCommitTypes";
 
 type TrackGsapSaveFailure = (
   error: unknown,

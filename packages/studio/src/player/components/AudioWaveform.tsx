@@ -5,6 +5,17 @@ interface AudioWaveformProps {
   waveformUrl?: string;
   label: string;
   labelColor: string;
+  /**
+   * Fraction (0–1) of the source the clip starts at, after the media-start
+   * trim. Defaults to 0 (no front trim).
+   */
+  trimStartFraction?: number;
+  /**
+   * Fraction (0–1) of the source the clip ends at. Defaults to 1 (no tail
+   * trim). Together these window the rendered peaks to the trimmed slice so the
+   * waveform tracks the clip edges instead of squeezing the whole file in.
+   */
+  trimEndFraction?: number;
 }
 
 const BAR_W = 2;
@@ -62,6 +73,8 @@ export const AudioWaveform = memo(function AudioWaveform({
   waveformUrl,
   label,
   labelColor,
+  trimStartFraction,
+  trimEndFraction,
 }: AudioWaveformProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const barsRef = useRef<HTMLDivElement | null>(null);
@@ -116,20 +129,32 @@ export const AudioWaveform = memo(function AudioWaveform({
     const barsEl = barsRef.current;
     if (!container || !barsEl || !peaks) return;
 
+    // Window the peaks to the trimmed slice [start, end) of the source so the
+    // bars track the clip edges. Clamp to a valid, non-empty range.
+    const winStart = Math.max(0, Math.min(1, trimStartFraction ?? 0));
+    const winEnd = Math.max(winStart, Math.min(1, trimEndFraction ?? 1));
+    const lo = Math.floor(winStart * peaks.length);
+    const hi = Math.max(lo + 1, Math.ceil(winEnd * peaks.length));
+    const span = hi - lo;
+
+    // Fill the full (possibly zoomed) clip width with STEP-spaced bars, resampling
+    // the windowed peaks across them — upsampling (repeating peaks) when the clip
+    // is wider than the slice has samples, so the waveform stretches with zoom
+    // instead of stopping partway across.
     const w = container.clientWidth || 400;
-    const barCount = Math.min(Math.floor(w / STEP), peaks.length);
+    const barCount = Math.max(0, Math.floor(w / STEP));
 
     let html = "";
     for (let i = 0; i < barCount; i++) {
-      // Map bar index to peak index (resample)
-      const peakIdx = Math.floor((i / barCount) * peaks.length);
+      // Map bar index to peak index within the windowed range (resample)
+      const peakIdx = lo + Math.min(span - 1, Math.floor((i / barCount) * span));
       const amp = peaks[peakIdx] ?? 0;
       const pct = Math.max(3, Math.round(amp * 100));
       const opacity = (0.45 + amp * 0.4).toFixed(2);
       html += `<div style="position:absolute;bottom:0;left:${i * STEP}px;width:${BAR_W}px;height:${pct}%;background:rgba(75,163,210,${opacity})"></div>`;
     }
     barsEl.innerHTML = html;
-  }, [peaks]);
+  }, [peaks, trimStartFraction, trimEndFraction]);
 
   // Observe container size and redraw
   const setContainerRef = useCallback(

@@ -1,0 +1,124 @@
+---
+title: Video Components
+description: "Install production-ready video blocks and components from the HyperFrames catalog with one command — or contribute your own."
+---
+
+The HyperFrames **catalog** is a registry of 50+ production-ready video components — captions, code animations, social overlays, shader transitions, data viz, and more. Each one installs into any project with a single command and renders to a deterministic MP4. Don't rebuild a scene from scratch — install the one that already exists.
+
+```bash Terminal
+npx hyperframes add x-post
+```
+
+## Browse the catalog
+
+<CardGroup cols={2}>
+  <Card title="Code Animations" icon="code" href="/catalog/blocks/code-morph">
+    Typing, diff, morph, highlight, scroll, and GPU 3D/particle/shader code reveals
+  </Card>
+  <Card title="Captions" icon="closed-captioning" href="/catalog/components/caption-highlight">
+    15 caption styles — karaoke, kinetic slam, neon, gradient, glitch, emoji pop
+  </Card>
+  <Card title="Social Overlays" icon="share-nodes" href="/catalog/blocks/x-post">
+    X posts, TikTok / Instagram follow cards, Reddit, Spotify, lower thirds
+  </Card>
+  <Card title="Shader Transitions" icon="bolt" href="/catalog/blocks/whip-pan">
+    14 WebGL transitions — whip pan, glitch, light leak, vortex, iris, burn
+  </Card>
+  <Card title="Liquid Glass &amp; VFX" icon="wand-magic-sparkles" href="/catalog/blocks/ios26-liquid-glass">
+    HTML-in-canvas effects — iOS 26 glass, device frames, portals, shatter, magnetic
+  </Card>
+  <Card title="Data" icon="chart-column" href="/catalog/blocks/data-chart">
+    Animated charts and US / world / region maps with bubbles, flows, and hexes
+  </Card>
+  <Card title="CSS Transitions" icon="right-left" href="/catalog/blocks/transitions-3d">
+    13 zero-dependency transitions — 3D, blur, cover, dissolve, push, radial
+  </Card>
+  <Card title="Code Snippets" icon="terminal" href="/catalog/blocks/code-snippet-dark-modern">
+    24 syntax-highlighted code cards and Apple-terminal themes
+  </Card>
+</CardGroup>
+
+Plus **Effects** (grain, vignette, shimmer, parallax), **Text Effects** (morph text, texture mask), and **Showcases** — browse them all under the [Catalog](/catalog/blocks/data-chart) tab.
+
+## Blocks vs components
+
+The catalog ships two kinds of item, installed the same way but wired differently:
+
+| | **Blocks** | **Components** |
+|---|---|---|
+| What it is | A full standalone scene | A reusable snippet / effect |
+| Has its own size & duration | Yes | No — adapts to the host |
+| Installs to | `compositions/<name>.html` | `compositions/components/<name>.html` |
+| Wired by | `data-composition-src` on a host element | Pasting its HTML / CSS / JS into your composition |
+| Examples | `x-post`, `data-chart`, `code-morph` | `grain-overlay`, `caption-highlight`, `shimmer-sweep` |
+
+## Install and wire
+
+<Steps>
+  <Step title="Find it">
+    Browse the [Catalog](/catalog/blocks/data-chart) tab, or have your AI agent consult the registry — every item lists its name, description, tags, dimensions, and duration.
+  </Step>
+  <Step title="Add it">
+    ```bash Terminal
+    npx hyperframes add data-chart
+    ```
+    The CLI writes the files and prints a snippet to paste into your host composition.
+  </Step>
+  <Step title="Wire a block">
+    Blocks are standalone compositions — include them with `data-composition-src` and a timeline position:
+    ```html index.html
+    <div
+      data-composition-id="data-chart"
+      data-composition-src="compositions/data-chart.html"
+      data-start="0"
+      data-duration="15"
+      data-track-index="1"
+      data-width="1920"
+      data-height="1080"
+    ></div>
+    ```
+  </Step>
+  <Step title="Wire a component">
+    Components are snippets — paste their HTML into your composition's markup, their CSS into your styles, and any JS into your script, then hook their timeline calls into yours.
+  </Step>
+</Steps>
+
+<Tip>
+  Using an AI agent? Install the HyperFrames skills with `npx skills add heygen-com/hyperframes` and ask it to "add a chart block" — the `/hyperframes-registry` skill discovers, installs, and wires the catalog item for you.
+</Tip>
+
+## Contribute a video component
+
+Your agent already knows how to build video components — it writes HTML, HyperFrames renders it. The registry is where that work ships to **every** HyperFrames user. Spotted a caption style on TikTok that doesn't exist yet, or built a transition worth sharing? Add it to the catalog.
+
+<Info>
+**Quick version** — Fork the repo. Write one HTML file with a paused GSAP timeline. Add `registry-item.json`. Run `hyperframes lint` + `validate`. Publish with `npx hyperframes publish`. Open a PR.
+</Info>
+
+Every item is a single self-contained HTML file with a paused GSAP timeline — no build step, no framework. It must be deterministic (seeded randomness only, no `Date.now()` / `Math.random()`), register its timeline on `window.__timelines`, and meet the production-quality bar.
+
+<CardGroup cols={2}>
+  <Card title="Contributing to the Catalog" icon="cube" href="/contributing/catalog">
+    The full idea → scaffold → build → validate → preview → ship workflow, the `registry-item.json` schema, the rules, and the quality bar
+  </Card>
+  <Card title="Open a component request" icon="lightbulb" href="https://github.com/heygen-com/hyperframes/issues/new">
+    No code needed — share a visual reference and tag it <code>component-request</code>
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Compositions" icon="layer-group" href="/concepts/compositions">
+    How blocks nest into a host composition
+  </Card>
+  <Card title="Variables" icon="sliders" href="/concepts/variables">
+    Parameterize an installed block to stay on-brand
+  </Card>
+  <Card title="The Pipeline" icon="diagram-project" href="/guides/pipeline">
+    Design → plan → layout → build → validate → render
+  </Card>
+  <Card title="Contributing to the Catalog" icon="cube" href="/contributing/catalog">
+    Add your own block or component to the registry
+  </Card>
+</CardGroup>

@@ -10,6 +10,7 @@ When the composition is animation-driven, run the checks before you reach for `p
 - Capture `snapshot` at meaningful timeline states; look at the PNGs.
 - Inspect snapshots _before_ tuning automated warnings — your eye catches what the auditor misses.
 - Treat layout warnings as defects unless a snapshot proves the overflow is intentional, in which case mark it with `data-layout-allow-overflow`.
+- State motion intent in a `*.motion.json` sidecar so `inspect` checks it automatically — entrances firing under seek, stagger order, in-frame, liveness. This is the closest automated proxy for "watch the MP4" and catches render-≠-preview bugs the eye misses (see **Motion verification** below).
 
 ## lint
 
@@ -81,6 +82,33 @@ Errors should be fixed before rendering. Warnings are surfaced for agent review;
 - `data-layout-ignore` — mark a decorative element that should never be audited.
 
 `npx hyperframes layout` remains available as a compatibility alias for the same visual inspection pass.
+
+### Motion verification (`*.motion.json` sidecar)
+
+`inspect` also checks **motion intent** against the same seeked timeline the renderer uses — the closest automated proxy for "render the MP4 and watch it". It catches render-≠-preview bugs layout sampling can't: an entrance reveal the seek lands past, a broken stagger order, an element drifting off-frame mid-tween, a frozen shot.
+
+Drop a `*.motion.json` sidecar next to the composition (matching the html basename when several compositions share a dir). `inspect` discovers it automatically — no flag, no authoring-framework changes. With no sidecar, `inspect` behaves exactly as before.
+
+```json
+{
+  "duration": 6,
+  "assertions": [
+    { "kind": "appearsBy", "selector": "#headline", "bySec": 0.5 },
+    { "kind": "before", "a": "#headline", "b": "#cta" },
+    { "kind": "staysInFrame", "selector": ".card" },
+    { "kind": "keepsMoving", "withinSelector": ".scene" }
+  ]
+}
+```
+
+| Assertion                      | Fails (code) when                                                           |
+| ------------------------------ | --------------------------------------------------------------------------- |
+| `appearsBy(selector, bySec)`   | not visible (opacity ≥ 0.5) by `bySec` — `motion_appears_late`              |
+| `before(a, b)`                 | `a` does not first appear strictly before `b` — `motion_out_of_order`       |
+| `staysInFrame(selector)`       | once visible, its box leaves the canvas — `motion_off_frame`                |
+| `keepsMoving(withinSelector?)` | a fully-static window exceeds `maxStaticSec` (default 2s) — `motion_frozen` |
+
+`duration`, `withinSelector`, and `maxStaticSec` are optional. Findings are **errors by default** (a failed assertion fails the run, like a layout error — `--strict` still gates warnings) and appear in the same human and `--json` output as layout findings. A selector that matches nothing is reported as `motion_selector_missing` rather than silently passing — so a typo'd selector fails loudly. Use this in the feedback loop instead of eyeballing the render: assert what the motion is supposed to do, and let `inspect` tell you when the seek diverges from intent.
 
 ## snapshot
 

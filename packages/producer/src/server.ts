@@ -33,8 +33,10 @@ import {
   RenderCancelledError,
   createRenderJob,
   executeRenderJob,
+  type RenderConfig,
 } from "./services/renderOrchestrator.js";
 import { prepareHyperframeLintBody, runHyperframeLint } from "./services/hyperframeLint.js";
+import { isVideoFrameFormat } from "@hyperframes/engine";
 import { resolveRenderPaths } from "./utils/paths.js";
 import { defaultLogger, type ProducerLogger } from "./logger.js";
 import { Semaphore } from "./utils/semaphore.js";
@@ -72,6 +74,7 @@ interface RenderInput {
   fps: import("@hyperframes/core").Fps;
   quality: "draft" | "standard" | "high";
   format?: "mp4" | "webm" | "mov";
+  videoFrameFormat?: RenderConfig["videoFrameFormat"];
   workers?: number;
   useGpu: boolean;
   debug: boolean;
@@ -125,7 +128,10 @@ export function parseRenderOptions(body: Record<string, unknown>): Omit<RenderIn
 
   const format = (
     ["mp4", "webm", "mov"].includes(body.format as string) ? body.format : undefined
-  ) as "mp4" | "webm" | "mov" | undefined;
+  ) as RenderInput["format"];
+  const videoFrameFormat = isVideoFrameFormat(body.videoFrameFormat)
+    ? body.videoFrameFormat
+    : undefined;
 
   const { variables, outputResolution } = parseRenderOverrides(body);
 
@@ -140,6 +146,7 @@ export function parseRenderOptions(body: Record<string, unknown>): Omit<RenderIn
     format,
     variables,
     outputResolution,
+    videoFrameFormat,
   };
 }
 
@@ -183,6 +190,7 @@ function buildRenderJobConfig(input: RenderInput, log: ProducerLogger) {
     entryFile: input.entryFile,
     variables: input.variables,
     outputResolution: input.outputResolution,
+    videoFrameFormat: input.videoFrameFormat,
     logger: log,
   };
 }

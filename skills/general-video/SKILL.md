@@ -11,13 +11,13 @@ description: >
   Remotion ports (remotion-to-hyperframes), or short unnarrated motion-graphics
   hits such as logo stings, kinetic type, stat/chart pops, lower-thirds,
   animated tweets/headlines, or page highlights. If a specialized workflow clearly fits the input, prefer it
-  (see /hyperframes-read-first); use this only as the input/length-agnostic fallback.
+  (see /hyperframes); use this only as the input/length-agnostic fallback.
 metadata: { "tags": "orchestrator, general-video, fallback, freeform, composition-authoring" }
 ---
 
 # general-video — general composition authoring
 
-> **Confirm the route before you build.** This is the **fallback** for custom composition authoring. If the input clearly fits a specialized workflow, prefer it: marketed product → `/product-launch-video`; general site → `/website-to-video`; topic explainer → `/faceless-explainer`; GitHub PR → `/pr-to-video`; existing footage → `/embedded-captions` · `/graphic-overlays`; short unnarrated motion graphic → `/motion-graphics`; Remotion port → `/remotion-to-hyperframes`. **Out of scope**: live / at-render-time data, NLE-style editing of a finished video, or producing footage HyperFrames can't capture. Unsure? **Read `/hyperframes-read-first` first.**
+> **Confirm the route before you build.** This is the **fallback** for custom composition authoring. If the input clearly fits a specialized workflow, prefer it: marketed product → `/product-launch-video`; general site → `/website-to-video`; topic explainer → `/faceless-explainer`; GitHub PR → `/pr-to-video`; existing footage → `/embedded-captions` · `/graphic-overlays`; short unnarrated motion graphic → `/motion-graphics`; Remotion port → `/remotion-to-hyperframes`. **Out of scope**: live / at-render-time data, NLE-style editing of a finished video, or producing footage HyperFrames can't capture. Unsure? **Read `/hyperframes` first.**
 
 **Build exactly what was asked.** A title card is a title card — not a title card + three supporting scenes + ambient music + captions. If extra scenes or elements would genuinely improve the piece, _propose_ them; don't add them silently. For small edits (fix a color, adjust one duration, add one element), skip the planning steps and go straight to the build.
 

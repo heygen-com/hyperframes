@@ -102,7 +102,7 @@ export const TimelineClip = memo(function TimelineClip({
       onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}
     >
-      {/* Left accent stripe */}
+      {/* Left accent stripe — wider + brighter for expanded sub-comp children */}
       <div
         aria-hidden="true"
         style={{
@@ -110,9 +110,9 @@ export const TimelineClip = memo(function TimelineClip({
           left: 0,
           top: 0,
           bottom: 0,
-          width: 3,
+          width: el.expandedParentStart !== undefined ? 4 : 3,
           background: trackStyle.accent,
-          opacity: isSelected ? 0.7 : 0.3,
+          opacity: el.expandedParentStart !== undefined ? 0.8 : isSelected ? 0.7 : 0.3,
           borderRadius: `${theme.clipRadius} 0 0 ${theme.clipRadius}`,
           zIndex: 2,
           pointerEvents: "none",

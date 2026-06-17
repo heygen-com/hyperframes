@@ -45,11 +45,13 @@ describe("buildChromeArgs browser GPU mode", () => {
     expect(args).not.toContain("--use-angle=swiftshader");
   });
 
-  it("uses EGL for hardware browser GPU mode on Linux", () => {
+  it("uses ANGLE-EGL for hardware browser GPU mode on Linux", () => {
     const args = buildChromeArgs({ ...base, platform: "linux" }, { browserGpuMode: "hardware" });
-    expect(args).toContain("--use-gl=egl");
+    expect(args).toContain("--use-gl=angle");
+    expect(args).toContain("--use-angle=gl-egl");
     expect(args).toContain("--enable-gpu-rasterization");
-    expect(args).not.toContain("--use-gl=angle");
+    expect(args).toContain("--ignore-gpu-blocklist");
+    expect(args).toContain("--disable-software-rasterizer");
     expect(args).not.toContain("--use-angle=swiftshader");
   });
 

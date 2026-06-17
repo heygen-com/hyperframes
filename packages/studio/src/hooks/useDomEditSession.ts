@@ -1,3 +1,4 @@
+import type { Composition } from "@hyperframes/sdk";
 import type { TimelineElement } from "../player";
 import type { ImportedFontAsset } from "../components/editor/fontAssets";
 import type { EditHistoryKind } from "../utils/editHistory";
@@ -8,6 +9,7 @@ import { useAskAgentModal } from "./useAskAgentModal";
 import { useDomSelection } from "./useDomSelection";
 import { usePreviewInteraction } from "./usePreviewInteraction";
 import { useDomEditCommits } from "./useDomEditCommits";
+import { runShadowDispatch, runShadowDelete } from "../utils/sdkShadow";
 import { useGsapScriptCommits } from "./useGsapScriptCommits";
 import { useGsapCacheVersion } from "./useGsapTweenCache";
 import { useDomEditWiring } from "./useDomEditWiring";
@@ -58,6 +60,8 @@ export interface UseDomEditSessionParams {
   openSourceForSelection?: (sourceFile: string, target: PatchTarget) => void;
   selectSidebarTab?: (tab: SidebarTab) => void;
   getSidebarTab?: () => SidebarTab;
+  /** Stage 7 Step 3b: SDK session for shadow dispatch parity tracking. */
+  sdkSession?: Composition | null;
 }
 
 // ── Hook ──
@@ -96,6 +100,7 @@ export function useDomEditSession({
   openSourceForSelection,
   selectSidebarTab,
   getSidebarTab,
+  sdkSession,
 }: UseDomEditSessionParams) {
   void _setRefreshKey;
   void _readProjectFile;
@@ -189,6 +194,7 @@ export function useDomEditSession({
     onCacheInvalidate: bumpGsapCache,
     onFileContentChanged: updateEditingFileContent,
     showToast,
+    sdkSession,
   });
 
   // ── DOM commit handlers ──
@@ -227,6 +233,10 @@ export function useDomEditSession({
     clearDomSelection,
     refreshDomEditSelectionFromPreview,
     buildDomSelectionFromTarget,
+    onDomEditPersisted: sdkSession
+      ? (sel, ops) => runShadowDispatch(sdkSession, sel, ops)
+      : undefined,
+    onElementDeleted: sdkSession ? (sel) => runShadowDelete(sdkSession, sel.hfId) : undefined,
   });
 
   // ── Wiring: selection sync, GSAP cache, preview sync, selection handlers ──
@@ -255,6 +265,9 @@ export function useDomEditSession({
     handleGsapRemoveAllKeyframes,
     handleResetSelectedElementKeyframes,
   } = useDomEditWiring({
+    // Pre-existing prop-drilling clone (same param set forwarded to
+    // useDomEditWiring); surfaced by this PR's adjacent edits, not introduced.
+    // fallow-ignore-next-line code-duplication
     projectId,
     activeCompPath,
     domEditSelection,
@@ -321,6 +334,7 @@ export function useDomEditSession({
     commitAnimatedProperty,
     handleSetArcPath,
     handleUpdateArcSegment,
+    handleUnroll,
     commitMutation,
   } = useGsapAwareEditing({
     domEditSelection,
@@ -407,6 +421,7 @@ export function useDomEditSession({
     commitAnimatedProperty,
     handleSetArcPath,
     handleUpdateArcSegment,
+    handleUnroll,
     invalidateGsapCache: bumpGsapCache,
     previewIframeRef,
     commitMutation,

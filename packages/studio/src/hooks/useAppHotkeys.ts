@@ -48,6 +48,31 @@ function handleUndoRedoKey(event: KeyboardEvent, onUndo: () => void, onRedo: () 
   return false;
 }
 
+// Beat edits live in an in-memory stack interleaved with file history by
+// timestamp. Undo steps to the NEWER op (beatAt >= fileAt); redo replays the
+// inverse, stepping to the OLDER op (beatAt <= fileAt). Returns true when it
+// handled the keystroke (so the file-history path is skipped).
+// fallow-ignore-next-line complexity
+function tryApplyBeatHistory(
+  direction: "undo" | "redo",
+  fileState: {
+    undo: ReadonlyArray<{ createdAt: number }>;
+    redo: ReadonlyArray<{ createdAt: number }>;
+  },
+  showToast: (message: string, tone?: "error" | "info") => void,
+): boolean {
+  const ps = usePlayerStore.getState();
+  const beatStack = direction === "undo" ? ps.beatUndo : ps.beatRedo;
+  const beatAt = beatStack[beatStack.length - 1]?.at ?? null;
+  if (beatAt === null) return false;
+  const fileStack = fileState[direction];
+  const fileAt = fileStack[fileStack.length - 1]?.createdAt ?? null;
+  if (fileAt !== null && (direction === "undo" ? beatAt < fileAt : beatAt > fileAt)) return false;
+  const label = direction === "undo" ? ps.undoBeatEdits() : ps.redoBeatEdits();
+  if (label) showToast(`${direction === "undo" ? "Undid" : "Redid"} ${label}`, "info");
+  return true;
+}
+
 // ── Types ──
 
 interface HistoryResult {
@@ -63,6 +88,10 @@ interface HistoryFileCallbacks {
 interface EditHistoryHandle {
   undo: (cb: HistoryFileCallbacks) => Promise<HistoryResult>;
   redo: (cb: HistoryFileCallbacks) => Promise<HistoryResult>;
+  state: {
+    undo: ReadonlyArray<{ createdAt: number }>;
+    redo: ReadonlyArray<{ createdAt: number }>;
+  };
 }
 
 interface UseAppHotkeysParams {
@@ -107,6 +136,7 @@ interface HotkeyCallbacks {
   onToggleRecording?: () => void;
   leftSidebarRef: React.RefObject<LeftSidebarHandle | null>;
   domEditSelectionRef: React.MutableRefObject<DomEditSelection | null>;
+  showToast: (message: string, tone?: "error" | "info") => void;
 }
 
 function dispatchModifierKey(event: KeyboardEvent, key: string, cb: HotkeyCallbacks): boolean {
@@ -174,6 +204,14 @@ function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCallbacks
       ) {
         event.preventDefault();
         void cb.handleTimelineElementSplit(el, currentTime);
+        return;
+      }
+      // Expanded sub-comp children carry a qualified `sourceFile#id` selection
+      // that isn't in the raw `elements` list, so the s-key can't resolve them.
+      // Nudge toward the razor tool instead of failing silently.
+      if (!el && selectedElementId.includes("#")) {
+        event.preventDefault();
+        cb.showToast("Use the razor tool (B) to split clips inside a sub-composition", "info");
         return;
       }
     }
@@ -294,6 +332,9 @@ export function useAppHotkeys({
 
   const applyHistory = useCallback(
     async (direction: "undo" | "redo") => {
+      // Beat edits interleave with file history by timestamp; handle them first.
+      if (tryApplyBeatHistory(direction, editHistory.state, showToast)) return;
+
       await waitForPendingDomEditSaves();
       const result = await editHistory[direction]({
         readFile: readHistoryFile,
@@ -344,6 +385,7 @@ export function useAppHotkeys({
     onToggleRecording,
     leftSidebarRef,
     domEditSelectionRef,
+    showToast,
   };
 
   // ── Keydown dispatch ──

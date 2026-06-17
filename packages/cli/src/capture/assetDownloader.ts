@@ -7,8 +7,15 @@
 
 import { writeFileSync, mkdirSync } from "node:fs";
 import { join, extname } from "node:path";
+import { createHash } from "node:crypto";
 import type { DesignTokens, DownloadedAsset } from "./types.js";
 import type { CatalogedAsset } from "./assetCataloger.js";
+
+// SVGs: hash-of-bytes filename so it can't drift from content; label-derived names mis-assigned brands.
+function svgContentHashSlug(svgSource: string | Buffer, isLogo: boolean): string {
+  const hash = createHash("sha1").update(svgSource).digest("hex").slice(0, 8);
+  return isLogo ? `logo-${hash}` : `svg-${hash}`;
+}
 
 export async function downloadAssets(
   tokens: DesignTokens,
@@ -22,15 +29,12 @@ export async function downloadAssets(
   const assets: DownloadedAsset[] = [];
   const downloadedUrls = new Set<string>();
 
-  // 1. ALL inline SVGs — save as files (logos get priority naming)
   mkdirSync(join(outputDir, "assets", "svgs"), { recursive: true });
   const usedSvgNames = new Set<string>();
   for (let i = 0; i < tokens.svgs.length && i < 30; i++) {
     const svg = tokens.svgs[i]!;
     if (!svg.outerHTML || svg.outerHTML.length < 50) continue;
-    const label = svg.label?.replace(/[^a-zA-Z0-9-_ ]/g, "").trim();
-    let slug = label ? slugify(label) : svg.isLogo ? `logo-${i}` : `icon-${i}`;
-    // Deduplicate — two SVGs with same aria-label get suffixed
+    const slug = svgContentHashSlug(svg.outerHTML, !!svg.isLogo);
     let finalSlug = slug;
     let suffix = 2;
     while (usedSvgNames.has(finalSlug)) {
@@ -135,8 +139,23 @@ export async function downloadAssets(
       if (result.status !== "fulfilled" || !result.value) continue;
       const { url, isPoster, parsedUrl, ext, buffer, catalog } = result.value;
       try {
-        // Generate human-readable name from catalog context
-        const slug = deriveAssetName(parsedUrl, catalog, isPoster, imgIdx, usedNames);
+        let slug: string;
+        if (ext === ".svg") {
+          const c = catalog;
+          const brandRe = /logo|brand|wordmark/i;
+          const isLogo = !!(
+            c?.inBanner ||
+            c?.inHomeLink ||
+            c?.matchesTitleBrand ||
+            c?.contexts?.some((s) => brandRe.test(s)) ||
+            (c?.description && brandRe.test(c.description)) ||
+            (c?.nearestHeading && brandRe.test(c.nearestHeading)) ||
+            (c?.sectionClasses && brandRe.test(c.sectionClasses))
+          );
+          slug = svgContentHashSlug(buffer, isLogo);
+        } else {
+          slug = deriveAssetName(parsedUrl, catalog, isPoster, imgIdx, usedNames);
+        }
         const name = `${slug}${ext}`;
         usedNames.add(slug);
         const localPath = `assets/${name}`;

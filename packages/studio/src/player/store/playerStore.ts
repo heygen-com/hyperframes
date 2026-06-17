@@ -1,4 +1,7 @@
 import { create } from "zustand";
+import type { MusicBeatAnalysis } from "@hyperframes/core/beats";
+import type { BeatEditState } from "../../utils/beatEditing";
+import type { ClipManifestClip } from "../lib/playbackTypes";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
 
 /** Minimal keyframe cache types — mirrors GsapKeyframesData without pulling in Node-only gsap-parser. */
@@ -46,6 +49,15 @@ export interface TimelineElement {
   timingSource?: "authored" | "implicit";
   /** Set by data-timeline-locked on the host element — disables move and trim in Studio. */
   timelineLocked?: boolean;
+  /** Value of data-timeline-role attribute — used to identify music vs. voiceover. */
+  timelineRole?: string;
+  /**
+   * Set by useExpandedTimelineElements on an inline-expanded sub-composition
+   * child: the absolute master-timeline start of the sub-comp host the child
+   * lives in. Presence marks the element as expanded; edits subtract it to get
+   * the child's local (sourceFile-relative) time. Works at any nesting depth.
+   */
+  expandedParentStart?: number;
 }
 
 export type ZoomMode = "fit" | "manual";
@@ -56,6 +68,8 @@ interface PlayerState {
   currentTime: number;
   duration: number;
   timelineReady: boolean;
+  /** True while a beat dot is being dragged — hides the playhead guideline. */
+  beatDragging: boolean;
   elements: TimelineElement[];
   selectedElementId: string | null;
   playbackRate: number;
@@ -99,6 +113,7 @@ interface PlayerState {
   setAudioMuted: (muted: boolean) => void;
   setLoopEnabled: (enabled: boolean) => void;
   setTimelineReady: (ready: boolean) => void;
+  setBeatDragging: (dragging: boolean) => void;
   setElements: (elements: TimelineElement[]) => void;
   setSelectedElementId: (id: string | null) => void;
   updateElement: (
@@ -121,6 +136,33 @@ interface PlayerState {
 
   lintFindingsByElement: Map<string, { count: number; messages: string[] }>;
   setLintFindingsByElement: (map: Map<string, { count: number; messages: string[] }>) => void;
+
+  beatAnalysis: MusicBeatAnalysis | null;
+  setBeatAnalysis: (analysis: MusicBeatAnalysis | null) => void;
+
+  /** User edits (add/move/delete) layered over the detected beat grid. */
+  beatEdits: BeatEditState | null;
+  setBeatEdits: (edits: BeatEditState | null) => void;
+  /** Undo/redo stacks for beat edits (in-memory, session-only). */
+  beatUndo: BeatHistoryEntry[];
+  beatRedo: BeatHistoryEntry[];
+  commitBeatEdits: (next: BeatEditState | null, label: string) => void;
+  undoBeatEdits: () => string | null;
+  redoBeatEdits: () => string | null;
+  resetBeatHistory: () => void;
+  beatPersist: (() => void) | null;
+  setBeatPersist: (fn: (() => void) | null) => void;
+
+  clipManifest: ClipManifestClip[] | null;
+  setClipManifest: (clips: ClipManifestClip[] | null) => void;
+  clipParentMap: Map<string, string>;
+  setClipParentMap: (map: Map<string, string>) => void;
+}
+
+interface BeatHistoryEntry {
+  restore: BeatEditState | null;
+  at: number;
+  label: string;
 }
 
 // Lightweight pub-sub for current time during playback.
@@ -141,6 +183,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   currentTime: 0,
   duration: 0,
   timelineReady: false,
+  beatDragging: false,
   elements: [],
   selectedElementId: null,
   playbackRate: readStudioUiPreferences().playbackRate ?? 1,
@@ -193,6 +236,55 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   lintFindingsByElement: new Map(),
   setLintFindingsByElement: (map) => set({ lintFindingsByElement: map }),
 
+  beatAnalysis: null,
+  setBeatAnalysis: (analysis) => set({ beatAnalysis: analysis }),
+
+  beatEdits: null,
+  setBeatEdits: (edits) => set({ beatEdits: edits }),
+
+  beatUndo: [],
+  beatRedo: [],
+  beatPersist: null,
+  setBeatPersist: (fn) => set({ beatPersist: fn }),
+  commitBeatEdits: (next, label) => {
+    set((s) => ({
+      beatEdits: next,
+      beatUndo: [...s.beatUndo, { restore: s.beatEdits, at: Date.now(), label }],
+      beatRedo: [],
+    }));
+    get().beatPersist?.();
+  },
+  undoBeatEdits: () => {
+    const s = get();
+    const entry = s.beatUndo[s.beatUndo.length - 1];
+    if (!entry) return null;
+    set({
+      beatEdits: entry.restore,
+      beatUndo: s.beatUndo.slice(0, -1),
+      beatRedo: [...s.beatRedo, { restore: s.beatEdits, at: entry.at, label: entry.label }],
+    });
+    get().beatPersist?.();
+    return entry.label;
+  },
+  resetBeatHistory: () => set({ beatUndo: [], beatRedo: [] }),
+  redoBeatEdits: () => {
+    const s = get();
+    const entry = s.beatRedo[s.beatRedo.length - 1];
+    if (!entry) return null;
+    set({
+      beatEdits: entry.restore,
+      beatRedo: s.beatRedo.slice(0, -1),
+      beatUndo: [...s.beatUndo, { restore: s.beatEdits, at: entry.at, label: entry.label }],
+    });
+    get().beatPersist?.();
+    return entry.label;
+  },
+
+  clipManifest: null,
+  setClipManifest: (clips) => set({ clipManifest: clips }),
+  clipParentMap: new Map(),
+  setClipParentMap: (map) => set({ clipParentMap: map }),
+
   setIsPlaying: (playing) => {
     if (get().isPlaying === playing) return;
     set({ isPlaying: playing });
@@ -233,6 +325,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   setCurrentTime: (time) => set({ currentTime: Number.isFinite(time) ? time : 0 }),
   setDuration: (duration) => set({ duration: Number.isFinite(duration) ? duration : 0 }),
   setTimelineReady: (ready) => set({ timelineReady: ready }),
+  setBeatDragging: (dragging) => set({ beatDragging: dragging }),
   setElements: (elements) => set({ elements }),
   setSelectedElementId: (id) => set({ selectedElementId: id }),
   updateElement: (elementId, updates) =>
@@ -250,6 +343,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       currentTime: 0,
       duration: 0,
       timelineReady: false,
+      beatDragging: false,
       elements: [],
       selectedElementId: null,
       inPoint: null,
@@ -258,5 +352,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       selectedKeyframes: new Set(),
       selectedElementIds: new Set(),
       keyframeCache: new Map(),
+      beatAnalysis: null,
+      beatEdits: null,
+      beatUndo: [],
+      beatRedo: [],
+      beatPersist: null,
+      clipManifest: null,
+      clipParentMap: new Map(),
     }),
 }));

@@ -47,15 +47,16 @@ await startServer({ port: 8080 });
 
 `RenderConfig` controls the render pipeline:
 
-| Option       | Default      | Description                                                                                                                          |
-| ------------ | ------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `inputPath`  | —            | Path to the HTML composition                                                                                                         |
-| `outputPath` | —            | Output video file path (or directory, for `format: "png-sequence"`)                                                                  |
-| `width`      | 1920         | Frame width in pixels                                                                                                                |
-| `height`     | 1080         | Frame height in pixels                                                                                                               |
-| `fps`        | 30           | Frames per second (24, 30, or 60)                                                                                                    |
-| `quality`    | `"standard"` | Encoder preset (`"draft"`, `"standard"`, `"high"`)                                                                                   |
-| `format`     | `"mp4"`      | Output container — `"mp4"`, `"webm"`, `"mov"`, or `"png-sequence"`. See [Transparent Video Output](#transparent-video-output) below. |
+| Option             | Default      | Description                                                                                                                                              |
+| ------------------ | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `inputPath`        | —            | Path to the HTML composition                                                                                                                             |
+| `outputPath`       | —            | Output video file path (or directory, for `format: "png-sequence"`)                                                                                      |
+| `width`            | 1920         | Frame width in pixels                                                                                                                                    |
+| `height`           | 1080         | Frame height in pixels                                                                                                                                   |
+| `fps`              | 30           | Frames per second (24, 30, or 60)                                                                                                                        |
+| `quality`          | `"standard"` | Encoder preset (`"draft"`, `"standard"`, `"high"`)                                                                                                       |
+| `format`           | `"mp4"`      | Output container — `"mp4"`, `"webm"`, `"mov"`, or `"png-sequence"`. See [Transparent Video Output](#transparent-video-output) below.                     |
+| `videoFrameFormat` | `"auto"`     | Source video frame extraction format — `"auto"`, `"jpg"`, or `"png"`. Use `"png"` for UI recordings, screen captures, and color-sensitive source videos. |
 
 ## Transparent Video Output
 

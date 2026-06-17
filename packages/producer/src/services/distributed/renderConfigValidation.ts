@@ -17,6 +17,7 @@
  * needs the actual planner.
  */
 
+import { VIDEO_FRAME_FORMATS, isVideoFrameFormat } from "@hyperframes/engine";
 import { type DistributedFormat } from "./shared.js";
 import { type DistributedRenderConfig } from "./plan.js";
 
@@ -111,6 +112,13 @@ export function validateDistributedRenderConfig(
     throw new InvalidConfigError(
       "config.quality",
       `must be one of ${ALLOWED_QUALITIES.join(", ")}; got ${String(config.quality)}`,
+    );
+  }
+
+  if (config.videoFrameFormat !== undefined && !isVideoFrameFormat(config.videoFrameFormat)) {
+    throw new InvalidConfigError(
+      "config.videoFrameFormat",
+      `must be one of ${VIDEO_FRAME_FORMATS.join(", ")}; got ${String(config.videoFrameFormat)}`,
     );
   }
 

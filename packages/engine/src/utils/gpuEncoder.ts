@@ -108,7 +108,17 @@ export function getGpuEncoderName(encoder: GpuEncoder, codec: "h264" | "h265"): 
   }
 }
 
-function getProbeArgs(encoder: ConcreteGpuEncoder): string[] {
+// Minimum probe dimensions must clear every GPU encoder's hardware minimum.
+// NVIDIA data-center SKUs (L4/T4/A10/A100) reject frames below ~257px on
+// either dimension with "Frame Dimension less than the minimum supported
+// value" (observed on driver 595.58.03, CUDA 13.2). The documented SDK
+// minimums (145×49 H.264, 129×33 HEVC) are lower, but the driver enforces
+// a stricter per-SKU alignment. 320×240 clears all known GPU encoder
+// minimums (NVENC, VideoToolbox, VAAPI, QSV, AMF) while staying cheap.
+const GPU_PROBE_WIDTH = 320;
+const GPU_PROBE_HEIGHT = 240;
+
+export function getProbeArgs(encoder: ConcreteGpuEncoder): string[] {
   const args = [
     "-hide_banner",
     "-loglevel",
@@ -116,7 +126,7 @@ function getProbeArgs(encoder: ConcreteGpuEncoder): string[] {
     "-f",
     "lavfi",
     "-i",
-    "color=size=16x16:rate=1:duration=1",
+    `color=size=${GPU_PROBE_WIDTH}x${GPU_PROBE_HEIGHT}:rate=1:duration=1`,
     "-frames:v",
     "1",
     "-an",

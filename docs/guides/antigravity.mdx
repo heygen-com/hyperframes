@@ -31,7 +31,7 @@ Verify the skills are installed:
 ls .agents/skills/
 ```
 
-You should see directories like `hyperframes/`, `hyperframes-cli/`, `gsap/`, `tailwind/`, and others — each containing a `SKILL.md` that the agent reads on demand.
+You should see directories like `hyperframes/` (the entry skill), `hyperframes-core/`, `hyperframes-animation/`, `hyperframes-cli/`, and others — each containing a `SKILL.md` that the agent reads on demand.
 
 ## How skills work in Antigravity
 
@@ -39,9 +39,9 @@ Antigravity uses **semantic matching** — when you type a prompt, the agent com
 
 | You say | Agent loads |
 |---|---|
-| "Create a 10-second product intro with captions" | `hyperframes`, `hyperframes-cli` |
-| "Add a GSAP scale-pop to the title" | `gsap` |
-| "Use Tailwind for styling" | `tailwind` |
+| "Create a 10-second product intro with captions" | `hyperframes`, `hyperframes-core` |
+| "Add a GSAP scale-pop to the title" | `hyperframes-animation` |
+| "Use Tailwind for styling" | `hyperframes-core` |
 | "Transcribe this audio and add captions" | `hyperframes-media` |
 | "Add a shimmer sweep transition" | `hyperframes-registry` |
 

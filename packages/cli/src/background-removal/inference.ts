@@ -52,10 +52,26 @@ export interface CreateSessionOptions {
   onProgress?: (message: string) => void;
 }
 
+// onnxruntime-node and sharp are optional native modules — their platform
+// binaries don't install everywhere. Surface an actionable error instead of a
+// raw "Cannot find module" when one can't load.
+async function loadNative<T>(name: string, load: () => Promise<T>): Promise<T> {
+  try {
+    return await load();
+  } catch (err) {
+    throw new Error(
+      `remove-background needs the optional native module '${name}', which isn't available ` +
+        `(${(err as Error).message}). Install it with \`npm i ${name}\`, or reinstall hyperframes with optional dependencies enabled.`,
+    );
+  }
+}
+
 export async function createSession(options: CreateSessionOptions = {}): Promise<Session> {
-  const ort = (await import("onnxruntime-node")) as unknown as OrtModule;
-  const sharpMod = await import("sharp");
-  const sharp = sharpMod.default as Sharp;
+  const ort = (await loadNative(
+    "onnxruntime-node",
+    () => import("onnxruntime-node"),
+  )) as unknown as OrtModule;
+  const sharp = (await loadNative("sharp", () => import("sharp"))).default as Sharp;
 
   const choice = selectProviders(options.device ?? "auto");
   const path = await ensureModel(options.model, { onProgress: options.onProgress });

@@ -1,37 +1,16 @@
 import { memo, useState } from "react";
-import type { ArcPathSegment, GsapAnimation } from "@hyperframes/core/gsap-parser";
+import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { Film } from "../../icons/SystemIcons";
 import { Section } from "./propertyPanelPrimitives";
 import { ADD_METHODS, ADD_METHOD_LABELS, METHOD_TOOLTIPS } from "./gsapAnimationConstants";
 import { AnimationCard } from "./AnimationCard";
+import type { GsapAnimationEditCallbacks } from "./gsapAnimationCallbacks";
 
-interface GsapAnimationSectionProps {
+interface GsapAnimationSectionProps extends GsapAnimationEditCallbacks {
   animations: GsapAnimation[];
   multipleTimelines?: boolean;
   unsupportedTimelinePattern?: boolean;
-  onUpdateProperty: (animationId: string, property: string, value: number | string) => void;
-  onUpdateMeta: (
-    animationId: string,
-    updates: { duration?: number; ease?: string; position?: number },
-  ) => void;
-  onDeleteAnimation: (animationId: string) => void;
-  onAddProperty: (animationId: string, property: string) => void;
-  onRemoveProperty: (animationId: string, property: string) => void;
-  onUpdateFromProperty?: (animationId: string, property: string, value: number | string) => void;
-  onAddFromProperty?: (animationId: string, property: string) => void;
-  onRemoveFromProperty?: (animationId: string, property: string) => void;
   onAddAnimation: (method: "to" | "from" | "set" | "fromTo") => void;
-  onLivePreview?: (property: string, value: number | string) => void;
-  onLivePreviewEnd?: () => void;
-  onSetArcPath?: (
-    animationId: string,
-    config: { enabled: boolean; autoRotate?: boolean | number; segments?: ArcPathSegment[] },
-  ) => void;
-  onUpdateArcSegment?: (
-    animationId: string,
-    segmentIndex: number,
-    update: Partial<ArcPathSegment>,
-  ) => void;
 }
 
 export const GsapAnimationSection = memo(function GsapAnimationSection({
@@ -51,6 +30,7 @@ export const GsapAnimationSection = memo(function GsapAnimationSection({
   onLivePreviewEnd,
   onSetArcPath,
   onUpdateArcSegment,
+  onUnroll,
 }: GsapAnimationSectionProps) {
   const [addMenuOpen, setAddMenuOpen] = useState(false);
 
@@ -88,6 +68,7 @@ export const GsapAnimationSection = memo(function GsapAnimationSection({
               onLivePreviewEnd={onLivePreviewEnd}
               onSetArcPath={onSetArcPath}
               onUpdateArcSegment={onUpdateArcSegment}
+              onUnroll={onUnroll}
             />
           ))}
 

@@ -19,7 +19,7 @@ npx hyperframes <command>
 - Preview compositions with live hot reload (`preview`)
 - Render compositions to MP4 locally or in Docker (`render`)
 - Lint compositions for structural issues (`lint`)
-- Inspect rendered visual layout for text overflow and clipped containers (`inspect`)
+- Inspect rendered visual layout for text overflow, clipped containers, and overlapping text, plus verify motion intent against the seeked timeline (`inspect`)
 - Capture key frames as PNG screenshots (`snapshot`)
 - Check your environment for missing dependencies (`doctor`)
 
@@ -184,7 +184,7 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
 
     In non-interactive mode, `--example` is required — the CLI errors with a usage example if missing. In interactive mode (default on TTY), you choose the example interactively. Pass `--non-interactive` to require `--example` via flag. When `--video` or `--audio` is provided, the CLI automatically transcribes the audio with Whisper and patches captions into the composition (use `--skip-transcribe` to disable).
 
-    `--tailwind` injects the pinned Tailwind v4 browser runtime into scaffolded HTML and exposes a `window.__tailwindReady` promise that renders wait on before capturing frame 0. Use the `/tailwind` skill when editing these projects so agents follow v4 CSS-first patterns instead of v3 `tailwind.config.js` and `@tailwind` directive patterns. The browser runtime is still intended for scaffolded projects and quick iteration; for fully offline or locked-down production renders, compile Tailwind to CSS and include the stylesheet directly.
+    `--tailwind` injects the pinned Tailwind v4 browser runtime into scaffolded HTML and exposes a `window.__tailwindReady` promise that renders wait on before capturing frame 0. Use the `/hyperframes-core` skill when editing these projects so agents follow v4 CSS-first patterns instead of v3 `tailwind.config.js` and `@tailwind` directive patterns. The browser runtime is still intended for scaffolded projects and quick iteration; for fully offline or locked-down production renders, compile Tailwind to CSS and include the stylesheet directly.
 
     After scaffolding, the CLI installs AI coding skills for Claude Code, Gemini CLI, and Codex CLI (use `--skip-skills` to disable). See [`skills`](#skills) command.
 
@@ -432,7 +432,7 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
 
     Output is a self-contained directory with a `CLAUDE.md` file that any AI agent can read to understand the captured site. Used by the `/website-to-video` skill as step 1 of the video production pipeline.
 
-    Set `GEMINI_API_KEY` in a `.env` file for AI-powered image descriptions via Gemini vision (~$0.001/image). See the [Website to Video](/guides/website-to-video#enriching-captures-with-gemini-vision) guide for details.
+    Set `GEMINI_API_KEY` in a `.env` file for AI-powered image descriptions via Gemini vision (~$0.001/image), or set `OPENROUTER_API_KEY` to use any vision model through [OpenRouter](https://openrouter.ai) instead (takes priority if both are set; override the model with `HYPERFRAMES_OPENROUTER_MODEL`). See the [Website to Video](/guides/website-to-video#enriching-captures-with-gemini-vision) guide for details.
 
   </Tab>
   <Tab title="Preview">
@@ -512,6 +512,33 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
 
     The linter detects missing attributes, missing adapter libraries (GSAP, Lottie, Three.js), structural problems, and more. See [Common Mistakes](/guides/common-mistakes) for details on each rule.
 
+    ### `beats`
+
+    Detect the beats in a composition's music track and write them to a beat file the Studio uses to draw beat guides on the timeline:
+
+    ```bash
+    npx hyperframes beats [dir]
+    npx hyperframes beats [dir] --json   # machine-readable JSON output
+    ```
+
+    The command finds the music track (an `<audio>` element with `data-timeline-role="music"`, or an id like `music`/`bgm`/`soundtrack`), runs the **same** detection the Studio uses inside a headless Chrome (identical decode + BPM analysis), and writes `beats/<audio-path>.json`:
+
+    ```json
+    {
+      "version": 1,
+      "audio": "music.wav",
+      "beats": [{ "time": 2.027, "strength": 0.924 }]
+    }
+    ```
+
+    Run it when authoring a composition so the beat file exists **before** the Studio is opened — the Studio loads this file as-is (it only auto-generates one when none exists). `time` is in seconds into the audio file; `strength` (0–1) is the beat's relative loudness. Beats edited in the Studio (add/move/delete) persist back to the same file.
+
+    | Flag | Description |
+    |------|-------------|
+    | `--json` | Output `{ ok, file, count, bpm }` as JSON |
+
+    Requires a local Chrome (the same one used by `render`; run `npx hyperframes browser ensure` if missing). Detection runs the **same** algorithm the Studio uses; results are near-identical (a different headless-Chrome audio sample rate can shift beat times by a frame or two).
+
     ### `inspect`
 
     Inspect rendered visual layout across the composition timeline:
@@ -532,7 +559,7 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
     ◇  1 error(s), 0 warning(s), 0 info(s)
     ```
 
-    `inspect` bundles the project, serves it locally, opens headless Chrome, seeks through the composition, and reports text or elements that escape their intended boxes. It is designed for agent workflows: each finding includes a schema version, timestamp or collapsed timestamp range, selector, nearest container selector, measured bounding boxes, overflow sides, and a fix hint.
+    `inspect` bundles the project, serves it locally, opens headless Chrome, seeks through the composition, and reports text or elements that escape their intended boxes, plus pairs of text blocks that overlap each other (`content_overlap`) and text that is hidden beneath an opaque element (`text_occluded`). It is designed for agent workflows: each finding includes a schema version, timestamp or collapsed timestamp range, selector, nearest container selector, measured bounding boxes, overflow sides, and a fix hint.
 
     | Flag | Description |
     |------|-------------|
@@ -545,13 +572,38 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
     | `--max-issues` | Maximum findings to print or return after static collapse (default: 80) |
     | `--strict` | Exit non-zero on warnings as well as errors |
 
-    Use `data-layout-allow-overflow` on an element or ancestor when overflow is intentional, such as a planned off-canvas entrance. Use `data-layout-ignore` for decorative elements that should not be audited.
+    Use `data-layout-allow-overflow` on an element or ancestor when overflow is intentional, such as a planned off-canvas entrance. Use `data-layout-ignore` for decorative elements that should not be audited. Use `data-layout-allow-overlap` on a text element that is intentionally stacked over another (for example a lower-third caption above a heading). Use `data-layout-allow-occlusion` when text is intentionally layered beneath another element (for example a caption behind a foreground prop).
 
     `layout` remains available as a compatibility alias for the same visual inspection pass:
 
     ```bash
     npx hyperframes layout [dir] --json
     ```
+
+    #### Motion verification
+
+    `inspect` also checks **motion intent** against the same seeked timeline the renderer uses — catching the render-≠-preview bugs that layout sampling can't, like an entrance reveal the seek skips, a broken stagger order, an element that drifts off-frame mid-tween, or a shot that freezes. Drop a `*.motion.json` sidecar next to the composition and `inspect` evaluates it automatically (no flag, no authoring changes); without a sidecar, `inspect` behaves exactly as before.
+
+    ```json
+    {
+      "duration": 6,
+      "assertions": [
+        { "kind": "appearsBy", "selector": "#headline", "bySec": 0.5 },
+        { "kind": "before", "a": "#headline", "b": "#cta" },
+        { "kind": "staysInFrame", "selector": ".card" },
+        { "kind": "keepsMoving", "withinSelector": ".scene" }
+      ]
+    }
+    ```
+
+    | Assertion | Checks |
+    |-----------|--------|
+    | `appearsBy(selector, bySec)` | the element is visible (opacity ≥ 0.5) no later than `bySec` — catches reveals the seek lands past (`motion_appears_late`) |
+    | `before(a, b)` | `a` first appears strictly before `b` — catches broken stagger order (`motion_out_of_order`) |
+    | `staysInFrame(selector)` | once visible, the element's box never leaves the canvas — catches off-frame drift (`motion_off_frame`) |
+    | `keepsMoving(withinSelector?)` | no fully-static window longer than `maxStaticSec` (default 2s) — catches frozen shots (`motion_frozen`) |
+
+    `duration`, `keepsMoving.withinSelector`, and `keepsMoving.maxStaticSec` are optional. Findings are reported in the same shape and JSON envelope as layout findings, are **errors by default** (a failed assertion fails the run), and a selector that matches nothing is reported as `motion_selector_missing` rather than silently passing.
 
     ### `snapshot`
 
@@ -612,6 +664,7 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
     | `--quality` | draft, standard, high | standard | Encoding quality preset (drives CRF/bitrate) |
     | `--crf` | 0-51 | — | Override encoder CRF (lower = higher quality). Mutually exclusive with `--video-bitrate` |
     | `--video-bitrate` | e.g. `10M`, `5000k` | — | Target video bitrate. Mutually exclusive with `--crf` |
+    | `--video-frame-format` | auto, jpg, png | auto | Source video frame extraction format. Use `png` for UI recordings, screen captures, and color-sensitive source videos |
     | `--resolution` | landscape, portrait, landscape-4k, portrait-4k, square, square-4k (aliases: `1080p`, `4k`, `uhd`, `1080p-square`, `square-1080p`, `4k-square`) | — | Output resolution preset. Supersamples a smaller composition via Chrome `deviceScaleFactor` so the screenshot lands at the requested dimensions. Aspect ratio must match the composition; the scale must be an integer multiple. Not supported with `--hdr`. See [4K Rendering](/guides/4k-rendering) |
     | `--hdr` | — | off | Force HDR output even if no HDR sources are detected. MP4 only. See [HDR Rendering](/guides/hdr) |
     | `--sdr` | — | off | Force SDR output even if HDR sources are detected |
@@ -626,7 +679,7 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
     | `--strict-variables` | — | off | Fail render if any `--variables` key is undeclared or has a wrong type vs the composition's `data-composition-variables`. Without this flag, mismatches print as warnings and the render continues. |
     | `--browser-timeout` | seconds (0.001–86400) | 60 | Puppeteer page-navigation timeout for the entry HTML. Increase when heavy compositions (many videos, fonts, or asset requests) cannot reach `domcontentloaded` within the default 60 s. The flag takes **seconds**; the env fallback `PRODUCER_PAGE_NAVIGATION_TIMEOUT_MS` takes **milliseconds**. This controls `page.goto` only — very heavy compositions may also need `PRODUCER_PUPPETEER_PROTOCOL_TIMEOUT_MS` and/or `PRODUCER_PLAYER_READY_TIMEOUT_MS` bumped (post-navigation `window.__hf` readiness has its own 45 s budget). |
 
-    CRF and target bitrate default to the `--quality` preset. Use `--crf` or `--video-bitrate` for fine-grained overrides; `RenderConfig.crf` and `RenderConfig.videoBitrate` accept the same overrides programmatically.
+    CRF and target bitrate default to the `--quality` preset. Use `--crf` or `--video-bitrate` for fine-grained overrides; `RenderConfig.crf` and `RenderConfig.videoBitrate` accept the same overrides programmatically. Use `--video-frame-format png` when source videos are UI recordings, screen captures, or other color-sensitive clips that should avoid JPEG frame extraction.
 
     #### Parametrized renders
 
@@ -861,7 +914,7 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
     | `--codex` | Install to Codex CLI (`~/.codex/skills/`) |
     | `--cursor` | Install to Cursor (`.cursor/skills/` in current project) |
 
-    Skills are fetched from GitHub and include composition authoring, Tailwind v4 browser-runtime guidance, GSAP animation patterns, Anime.js, CSS animation, Lottie, Three.js, and WAAPI adapter patterns, registry block/component wiring, and other domain-specific knowledge. The `init` command also offers to install skills automatically after scaffolding a project.
+    Skills are fetched from GitHub: the `/hyperframes` entry skill (routes "make me a video" to a workflow), the composition contract and Tailwind v4 browser-runtime guidance (`/hyperframes-core`), all animation including the GSAP / Anime.js / CSS / Lottie / Three.js / WAAPI / TypeGPU runtime adapters (`/hyperframes-animation`), creative direction (`/hyperframes-creative`), media preprocessing (`/hyperframes-media`), registry block/component wiring (`/hyperframes-registry`), and the video workflows. The `init` command also offers to install skills automatically after scaffolding a project.
 
     #### Troubleshooting: `fatal: active post-checkout hook found during git clone`
 

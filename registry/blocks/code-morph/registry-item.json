@@ -1,0 +1,24 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "code-morph",
+  "type": "hyperframes:block",
+  "title": "Code Morph",
+  "description": "One snippet transforms into another — tokens glide between positions, leavers fade out, enterers fade in. Shiki Magic Move re-driven as a paused GSAP timeline.",
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 7,
+  "tags": ["code", "code-animation", "morph", "refactor", "developer"],
+  "files": [
+    {
+      "path": "code-morph.html",
+      "target": "compositions/code-morph.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "preview": {
+    "video": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-morph.mp4",
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-morph.png"
+  }
+}

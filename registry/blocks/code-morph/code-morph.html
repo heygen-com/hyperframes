@@ -1,0 +1,1207 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Code Morph</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #05070b;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        font-family: "JetBrains Mono", monospace;
+        color: #e6edf3;
+      }
+      .bg-field {
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(1200px 700px at 50% 18%, #0e1726 0%, #070b12 55%, #05070b 100%);
+      }
+      .bg-grid {
+        position: absolute;
+        inset: 0;
+        background-image:
+          linear-gradient(rgba(88, 166, 255, 0.05) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(88, 166, 255, 0.05) 1px, transparent 1px);
+        background-size: 64px 64px;
+        mask-image: radial-gradient(1100px 620px at 50% 42%, #000 0%, transparent 78%);
+      }
+      .bg-glow {
+        position: absolute;
+        width: 900px;
+        height: 900px;
+        border-radius: 50%;
+        filter: blur(120px);
+        opacity: 0.5;
+      }
+      .bg-glow.a {
+        background: #1f6feb55;
+        left: -180px;
+        top: -200px;
+      }
+      .bg-glow.b {
+        background: #2ea04355;
+        right: -200px;
+        bottom: -260px;
+      }
+      .editor {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        width: 1380px;
+        height: 800px;
+        background: #0b0f17;
+        border: 1px solid #1d2733;
+        border-radius: 16px;
+        box-shadow:
+          0 40px 120px rgba(0, 0, 0, 0.6),
+          0 2px 0 rgba(255, 255, 255, 0.03) inset;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+      .titlebar {
+        height: 56px;
+        flex: 0 0 56px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 0 22px;
+        background: linear-gradient(#11161f, #0c111a);
+        border-bottom: 1px solid #1b2430;
+      }
+      .dots {
+        display: flex;
+        gap: 10px;
+      }
+      .dot {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+      }
+      .dot.r {
+        background: #ff5f57;
+      }
+      .dot.y {
+        background: #febc2e;
+      }
+      .dot.g {
+        background: #28c840;
+      }
+      .filename {
+        font-size: 19px;
+        color: #8b98a9;
+        letter-spacing: 0.2px;
+      }
+      .filename .accent {
+        color: #d6e2f0;
+      }
+      .code-surface {
+        position: relative;
+        flex: 1 1 auto;
+        overflow: hidden;
+      }
+      .scene {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        will-change: opacity;
+      }
+      .code {
+        position: absolute;
+        top: 38px;
+        left: 0;
+        right: 0;
+        padding: 0 44px 0 104px;
+        font-size: 30px;
+        line-height: 46px;
+        font-variant-ligatures: none;
+        tab-size: 2;
+      }
+      .gutter {
+        position: absolute;
+        top: 38px;
+        left: 0;
+        width: 84px;
+        padding-right: 18px;
+        font-size: 30px;
+        line-height: 46px;
+        text-align: right;
+        color: #828c9b;
+        user-select: none;
+      }
+      .ln {
+        display: block;
+        height: 46px;
+      }
+      .line {
+        display: block;
+        min-height: 46px;
+        white-space: pre;
+        position: relative;
+        z-index: 1;
+      }
+      .tok {
+        display: inline-block;
+        white-space: pre;
+        will-change: transform, opacity;
+      }
+      .caret {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 3px;
+        height: 32px;
+        margin-top: 6px;
+        background: #58a6ff;
+        border-radius: 1px;
+        z-index: 3;
+      }
+      .hl-box {
+        position: absolute;
+        background: rgba(88, 166, 255, 0.16);
+        border-left: 3px solid #58a6ff;
+        border-radius: 6px;
+        z-index: 0;
+        overflow: hidden;
+      }
+      .diff-line {
+        display: block;
+        min-height: 0;
+        line-height: 46px;
+        white-space: pre;
+        position: relative;
+        overflow: hidden;
+        padding-left: 14px;
+      }
+      .diff-sign {
+        display: inline-block;
+        width: 22px;
+        color: #41506220;
+      }
+      .diff-del {
+        background: rgba(248, 81, 73, 0.12);
+        box-shadow: inset 3px 0 #f85149;
+      }
+      .diff-add {
+        background: rgba(63, 185, 80, 0.12);
+        box-shadow: inset 3px 0 #3fb950;
+      }
+      .diff-del .diff-sign {
+        color: #f85149;
+      }
+      .diff-add .diff-sign {
+        color: #3fb950;
+      }
+      .flight-block {
+        position: absolute;
+        white-space: pre;
+        font-size: 27px;
+        line-height: 40px;
+        padding: 11px 22px;
+        border-radius: 11px;
+        background: #0f1722;
+        border: 1px solid #233044;
+        box-shadow: 0 16px 44px rgba(0, 0, 0, 0.5);
+        will-change: transform, opacity;
+      }
+      .flight-target {
+        position: absolute;
+        border: 1.5px dashed #2a3a4f;
+        border-radius: 14px;
+        opacity: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="code-morph"
+      data-start="0"
+      data-duration="7"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div class="bg-field" data-layout-ignore></div>
+      <div class="bg-grid" data-layout-ignore></div>
+      <div class="bg-glow a" data-layout-ignore></div>
+      <div class="bg-glow b" data-layout-ignore></div>
+      <div class="editor" id="editor" data-layout-ignore>
+        <div class="titlebar">
+          <div class="dots">
+            <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+          </div>
+          <span class="filename"><span class="accent">refactor.js</span> — Code Morph</span>
+        </div>
+        <div class="code-surface" id="surface"></div>
+      </div>
+    </div>
+    <script>
+      window.__TOKENS = {
+        morph: {
+          lang: "js",
+          theme: "github-dark",
+          bg: "#24292e",
+          fg: "#e1e4e8",
+          states: [
+            {
+              code: "function activeNames(users) {\n  const out = []\n  for (const u of users) {\n    if (u.active) {\n      out.push(u.name)\n    }\n  }\n  return out\n}",
+              tokens: [
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-0",
+                  content: "function",
+                  color: "#F97583",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-1",
+                  content: " ",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-2",
+                  content: "activeNames",
+                  color: "#B392F0",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-3",
+                  content: "(",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-4",
+                  content: "users",
+                  color: "#FFAB70",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-5",
+                  content: ") {",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-6",
+                  content: "\n",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-7",
+                  content: "  ",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-8",
+                  content: "const",
+                  color: "#F97583",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-9",
+                  content: " ",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-10",
+                  content: "out",
+                  color: "#79B8FF",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-11",
+                  content: " ",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-12",
+                  content: "=",
+                  color: "#F97583",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-13",
+                  content: " ",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-14",
+                  content: "[]",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-15",
+                  content: "\n",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-16",
+                  content: "  ",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-17",
+                  content: "for",
+                  color: "#F97583",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-18",
+                  content: " ",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-19",
+                  content: "(",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-20",
+                  content: "const",
+                  color: "#F97583",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-21",
+                  content: " ",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-22",
+                  content: "u",
+                  color: "#79B8FF",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-23",
+                  content: " ",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-24",
+                  content: "of",
+                  color: "#F97583",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-25",
+                  content: " ",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-26",
+                  content: "users) {",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-27",
+                  content: "\n",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-28",
+                  content: "    ",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-29",
+                  content: "if",
+                  color: "#F97583",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-30",
+                  content: " ",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-31",
+                  content: "(u.active) {",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-32",
+                  content: "\n",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-33",
+                  content: "      ",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-34",
+                  content: "out.",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-35",
+                  content: "push",
+                  color: "#B392F0",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-36",
+                  content: "(u.name)",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-37",
+                  content: "\n",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-38",
+                  content: "    ",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-39",
+                  content: "}",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-40",
+                  content: "\n",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-41",
+                  content: "  ",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-42",
+                  content: "}",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-43",
+                  content: "\n",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-44",
+                  content: "  ",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-45",
+                  content: "return",
+                  color: "#F97583",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-46",
+                  content: " ",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-47",
+                  content: "out",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-48",
+                  content: "\n",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-49",
+                  content: "}",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-50",
+                  content: "\n",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+              ],
+            },
+            {
+              code: "function activeNames(users) {\n  return users\n    .filter((u) => u.active)\n    .map((u) => u.name)\n}",
+              tokens: [
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-0",
+                  content: "function",
+                  color: "#F97583",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-1",
+                  content: " ",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-2",
+                  content: "activeNames",
+                  color: "#B392F0",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-3",
+                  content: "(",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-4",
+                  content: "users",
+                  color: "#FFAB70",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-5",
+                  content: ") {",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-6",
+                  content: "\n",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-7",
+                  content: "  ",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-45",
+                  content: "return",
+                  color: "#F97583",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-25",
+                  content: " ",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "KLQk7s1CBJrsZpvwO8c9gegRDNZCQJPa3bwM3fTRST0-10",
+                  content: "users",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-27",
+                  content: "\n",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-28",
+                  content: "    ",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "KLQk7s1CBJrsZpvwO8c9gegRDNZCQJPa3bwM3fTRST0-13",
+                  content: ".",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "KLQk7s1CBJrsZpvwO8c9gegRDNZCQJPa3bwM3fTRST0-14",
+                  content: "filter",
+                  color: "#B392F0",
+                  fontStyle: 0,
+                },
+                {
+                  key: "KLQk7s1CBJrsZpvwO8c9gegRDNZCQJPa3bwM3fTRST0-15",
+                  content: "((",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "KLQk7s1CBJrsZpvwO8c9gegRDNZCQJPa3bwM3fTRST0-16",
+                  content: "u",
+                  color: "#FFAB70",
+                  fontStyle: 0,
+                },
+                {
+                  key: "KLQk7s1CBJrsZpvwO8c9gegRDNZCQJPa3bwM3fTRST0-17",
+                  content: ")",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "KLQk7s1CBJrsZpvwO8c9gegRDNZCQJPa3bwM3fTRST0-18",
+                  content: " ",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "KLQk7s1CBJrsZpvwO8c9gegRDNZCQJPa3bwM3fTRST0-19",
+                  content: "=>",
+                  color: "#F97583",
+                  fontStyle: 0,
+                },
+                {
+                  key: "KLQk7s1CBJrsZpvwO8c9gegRDNZCQJPa3bwM3fTRST0-20",
+                  content: " ",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "KLQk7s1CBJrsZpvwO8c9gegRDNZCQJPa3bwM3fTRST0-21",
+                  content: "u.active)",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-32",
+                  content: "\n",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "KLQk7s1CBJrsZpvwO8c9gegRDNZCQJPa3bwM3fTRST0-23",
+                  content: "    ",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "KLQk7s1CBJrsZpvwO8c9gegRDNZCQJPa3bwM3fTRST0-24",
+                  content: ".",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "KLQk7s1CBJrsZpvwO8c9gegRDNZCQJPa3bwM3fTRST0-25",
+                  content: "map",
+                  color: "#B392F0",
+                  fontStyle: 0,
+                },
+                {
+                  key: "KLQk7s1CBJrsZpvwO8c9gegRDNZCQJPa3bwM3fTRST0-26",
+                  content: "((",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "KLQk7s1CBJrsZpvwO8c9gegRDNZCQJPa3bwM3fTRST0-27",
+                  content: "u",
+                  color: "#FFAB70",
+                  fontStyle: 0,
+                },
+                {
+                  key: "KLQk7s1CBJrsZpvwO8c9gegRDNZCQJPa3bwM3fTRST0-28",
+                  content: ")",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "KLQk7s1CBJrsZpvwO8c9gegRDNZCQJPa3bwM3fTRST0-29",
+                  content: " ",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "KLQk7s1CBJrsZpvwO8c9gegRDNZCQJPa3bwM3fTRST0-30",
+                  content: "=>",
+                  color: "#F97583",
+                  fontStyle: 0,
+                },
+                {
+                  key: "KLQk7s1CBJrsZpvwO8c9gegRDNZCQJPa3bwM3fTRST0-31",
+                  content: " ",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "KLQk7s1CBJrsZpvwO8c9gegRDNZCQJPa3bwM3fTRST0-32",
+                  content: "u.name)",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-48",
+                  content: "\n",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-49",
+                  content: "}",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "KLQk7s1CBJrsZpvwO8c9gegRDNZCQJPa3bwM3fTRST0-35",
+                  content: "\n",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+              ],
+            },
+            {
+              code: "const activeNames = (users) =>\n  users.filter((u) => u.active).map((u) => u.name)",
+              tokens: [
+                {
+                  key: "VbRPavhdCez1s__eeEAO0aeZdY95Uxi4jXsI1pxJzag-0",
+                  content: "const",
+                  color: "#F97583",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-1",
+                  content: " ",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-2",
+                  content: "activeNames",
+                  color: "#B392F0",
+                  fontStyle: 0,
+                },
+                {
+                  key: "VbRPavhdCez1s__eeEAO0aeZdY95Uxi4jXsI1pxJzag-3",
+                  content: " ",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "VbRPavhdCez1s__eeEAO0aeZdY95Uxi4jXsI1pxJzag-4",
+                  content: "=",
+                  color: "#F97583",
+                  fontStyle: 0,
+                },
+                {
+                  key: "VbRPavhdCez1s__eeEAO0aeZdY95Uxi4jXsI1pxJzag-5",
+                  content: " ",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-3",
+                  content: "(",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-4",
+                  content: "users",
+                  color: "#FFAB70",
+                  fontStyle: 0,
+                },
+                {
+                  key: "VbRPavhdCez1s__eeEAO0aeZdY95Uxi4jXsI1pxJzag-8",
+                  content: ")",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "VbRPavhdCez1s__eeEAO0aeZdY95Uxi4jXsI1pxJzag-9",
+                  content: " ",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "VbRPavhdCez1s__eeEAO0aeZdY95Uxi4jXsI1pxJzag-10",
+                  content: "=>",
+                  color: "#F97583",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-6",
+                  content: "\n",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "cfXrCrtsS58oX7T9biOwW03CrZ_pwg-hqJg3fwn5hnI-7",
+                  content: "  ",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "VbRPavhdCez1s__eeEAO0aeZdY95Uxi4jXsI1pxJzag-13",
+                  content: "users.",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "KLQk7s1CBJrsZpvwO8c9gegRDNZCQJPa3bwM3fTRST0-14",
+                  content: "filter",
+                  color: "#B392F0",
+                  fontStyle: 0,
+                },
+                {
+                  key: "KLQk7s1CBJrsZpvwO8c9gegRDNZCQJPa3bwM3fTRST0-15",
+                  content: "((",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "KLQk7s1CBJrsZpvwO8c9gegRDNZCQJPa3bwM3fTRST0-16",
+                  content: "u",
+                  color: "#FFAB70",
+                  fontStyle: 0,
+                },
+                {
+                  key: "KLQk7s1CBJrsZpvwO8c9gegRDNZCQJPa3bwM3fTRST0-17",
+                  content: ")",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "KLQk7s1CBJrsZpvwO8c9gegRDNZCQJPa3bwM3fTRST0-18",
+                  content: " ",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "KLQk7s1CBJrsZpvwO8c9gegRDNZCQJPa3bwM3fTRST0-19",
+                  content: "=>",
+                  color: "#F97583",
+                  fontStyle: 0,
+                },
+                {
+                  key: "KLQk7s1CBJrsZpvwO8c9gegRDNZCQJPa3bwM3fTRST0-20",
+                  content: " ",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "VbRPavhdCez1s__eeEAO0aeZdY95Uxi4jXsI1pxJzag-21",
+                  content: "u.active).",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "KLQk7s1CBJrsZpvwO8c9gegRDNZCQJPa3bwM3fTRST0-25",
+                  content: "map",
+                  color: "#B392F0",
+                  fontStyle: 0,
+                },
+                {
+                  key: "KLQk7s1CBJrsZpvwO8c9gegRDNZCQJPa3bwM3fTRST0-26",
+                  content: "((",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "KLQk7s1CBJrsZpvwO8c9gegRDNZCQJPa3bwM3fTRST0-27",
+                  content: "u",
+                  color: "#FFAB70",
+                  fontStyle: 0,
+                },
+                {
+                  key: "KLQk7s1CBJrsZpvwO8c9gegRDNZCQJPa3bwM3fTRST0-28",
+                  content: ")",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "KLQk7s1CBJrsZpvwO8c9gegRDNZCQJPa3bwM3fTRST0-29",
+                  content: " ",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "KLQk7s1CBJrsZpvwO8c9gegRDNZCQJPa3bwM3fTRST0-30",
+                  content: "=>",
+                  color: "#F97583",
+                  fontStyle: 0,
+                },
+                {
+                  key: "KLQk7s1CBJrsZpvwO8c9gegRDNZCQJPa3bwM3fTRST0-31",
+                  content: " ",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "KLQk7s1CBJrsZpvwO8c9gegRDNZCQJPa3bwM3fTRST0-32",
+                  content: "u.name)",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "VbRPavhdCez1s__eeEAO0aeZdY95Uxi4jXsI1pxJzag-30",
+                  content: "\n",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+              ],
+            },
+          ],
+        },
+      };
+      window.__BLOCK = { id: "code-morph", effect: "morph", seq: "morph", duration: 7 };
+    </script>
+    <script>
+      // hf-code-anim.js — self-contained code-animation engine for HyperFrames registry blocks.
+      //
+      // Reuses Shiki Magic Move's baked output (window.__TOKENS, baked at author time) and
+      // drives the animation as a PAUSED GSAP timeline the HyperFrames engine seeks per frame —
+      // NOT CSS transitions (those break under non-sequential frame seeking). FLIP measurement
+      // runs once inside document.fonts.ready (glyph metrics must be final). Each block sets
+      // window.__BLOCK = { id, effect, seq, line?, duration } and includes this engine; the
+      // engine builds one scene that fills the composition and registers window.__timelines[id].
+      (function () {
+        "use strict";
+        var T = window.__TOKENS || {};
+
+        function lineDiv() {
+          var d = document.createElement("div");
+          d.className = "line";
+          return d;
+        }
+
+        // Render a code state's keyed tokens into codeEl as lines of inline-block .tok spans.
+        function renderState(codeEl, state) {
+          codeEl.textContent = "";
+          var keyToEl = new Map();
+          var line = lineDiv();
+          codeEl.appendChild(line);
+          for (var i = 0; i < state.tokens.length; i++) {
+            var t = state.tokens[i];
+            if (t.content === "\n") {
+              line = lineDiv();
+              codeEl.appendChild(line);
+              continue;
+            }
+            var span = document.createElement("span");
+            span.className = "tok";
+            span.textContent = t.content;
+            span.style.color = t.color;
+            if (t.fontStyle & 1) span.style.fontStyle = "italic";
+            if (t.fontStyle & 2) span.style.fontWeight = "700";
+            line.appendChild(span);
+            keyToEl.set(t.key, span);
+          }
+          var last = codeEl.lastChild;
+          if (last && last.className === "line" && last.children.length === 0)
+            codeEl.removeChild(last);
+          return keyToEl;
+        }
+
+        function rectsOf(keyToEl) {
+          var m = new Map();
+          keyToEl.forEach(function (el, k) {
+            var r = el.getBoundingClientRect();
+            m.set(k, { left: r.left, top: r.top });
+          });
+          return m;
+        }
+
+        function makeScene(surface, withGutter) {
+          var scene = document.createElement("div");
+          scene.className = "scene";
+          if (withGutter) {
+            var g = document.createElement("div");
+            g.className = "gutter";
+            scene.appendChild(g);
+          }
+          var code = document.createElement("div");
+          code.className = "code";
+          scene.appendChild(code);
+          surface.appendChild(scene);
+          return { scene: scene, code: code, gutter: scene.querySelector(".gutter") };
+        }
+
+        function fillGutter(g, n) {
+          var html = "";
+          for (var i = 1; i <= n; i++) html += '<span class="ln">' + i + "</span>";
+          g.innerHTML = html;
+        }
+
+        function splitLines(state) {
+          var lines = [{ text: "", tokens: [] }];
+          for (var i = 0; i < state.tokens.length; i++) {
+            var t = state.tokens[i];
+            if (t.content === "\n") {
+              lines.push({ text: "", tokens: [] });
+              continue;
+            }
+            var cur = lines[lines.length - 1];
+            cur.tokens.push(t);
+            cur.text += t.content;
+          }
+          if (lines.length && lines[lines.length - 1].tokens.length === 0) lines.pop();
+          return lines;
+        }
+
+        function lineDiff(a, b) {
+          var n = a.length;
+          var m = b.length;
+          var dp = [];
+          for (var i = 0; i <= n; i++) dp.push(new Array(m + 1).fill(0));
+          for (var i = n - 1; i >= 0; i--) {
+            for (var j = m - 1; j >= 0; j--) {
+              dp[i][j] =
+                a[i].text === b[j].text
+                  ? dp[i + 1][j + 1] + 1
+                  : Math.max(dp[i + 1][j], dp[i][j + 1]);
+            }
+          }
+          var ops = [];
+          var i = 0;
+          var j = 0;
+          while (i < n && j < m) {
+            if (a[i].text === b[j].text) {
+              ops.push({ type: "same", line: b[j] });
+              i++;
+              j++;
+            } else if (dp[i + 1][j] >= dp[i][j + 1]) {
+              ops.push({ type: "del", line: a[i] });
+              i++;
+            } else {
+              ops.push({ type: "add", line: b[j] });
+              j++;
+            }
+          }
+          while (i < n) ops.push({ type: "del", line: a[i++] });
+          while (j < m) ops.push({ type: "add", line: b[j++] });
+          return ops;
+        }
+
+        // ---- single-scene effect builders (fade in, play, hold to end) -------------
+        var FADE = 0.45;
+
+        function morph(tl, surface, states, start) {
+          var STEP = 1.2;
+          var HOLD = 1.0;
+          var t = start;
+          for (var s = 0; s < states.length - 1; s++) {
+            var parts = makeScene(surface, false);
+            var code = parts.code;
+            var fromEls = renderState(code, states[s]);
+            var fromR = rectsOf(fromEls);
+            var toEls = renderState(code, states[s + 1]);
+            var toR = rectsOf(toEls);
+            var base = code.getBoundingClientRect();
+            var seg = gsap.timeline();
+            var ENTER_AT = STEP * 0.45;
+            var FD = STEP * 0.5;
+            toEls.forEach(function (el, k) {
+              var fr = fromR.get(k);
+              var tr = toR.get(k);
+              if (fr) {
+                seg.fromTo(
+                  el,
+                  { x: fr.left - tr.left, y: fr.top - tr.top },
+                  { x: 0, y: 0, duration: STEP, ease: "power2.inOut" },
+                  0,
+                );
+              } else {
+                seg.fromTo(
+                  el,
+                  { opacity: 0 },
+                  { opacity: 1, duration: FD, ease: "power1.out" },
+                  ENTER_AT,
+                );
+              }
+            });
+            var toKeys = new Set(toEls.keys());
+            var fromState = states[s];
+            for (var i = 0; i < fromState.tokens.length; i++) {
+              var tok = fromState.tokens[i];
+              if (tok.content === "\n" || toKeys.has(tok.key) || !fromR.has(tok.key)) continue;
+              var r = fromR.get(tok.key);
+              var span = document.createElement("span");
+              span.className = "tok";
+              span.textContent = tok.content;
+              span.style.position = "absolute";
+              span.style.left = r.left - base.left + "px";
+              span.style.top = r.top - base.top + "px";
+              span.style.color = tok.color;
+              code.appendChild(span);
+              seg.fromTo(span, { opacity: 1 }, { opacity: 0, duration: FD, ease: "power1.in" }, 0);
+            }
+            var segStart = t + FADE;
+            var segEnd = segStart + STEP + HOLD;
+            var isLast = s === states.length - 2;
+            tl.set(parts.scene, { opacity: 0 }, 0);
+            tl.to(parts.scene, { opacity: 1, duration: FADE, ease: "power1.out" }, t);
+            if (!isLast)
+              tl.to(parts.scene, { opacity: 0, duration: FADE, ease: "power1.in" }, segEnd - FADE);
+            tl.add(seg, segStart);
+            t = segEnd - FADE;
+          }
+        }
+
+        function buildEffect(tl, surface, spec) {
+          var start = 0.45;
+          var seq = T[spec.seq];
+          if (spec.effect === "morph") morph(tl, surface, seq.states, start);
+        }
+
+        function go() {
+          var spec = window.__BLOCK;
+          var surface = document.getElementById("surface");
+          var root = document.getElementById("root");
+          window.__timelines = window.__timelines || {};
+          var tl = gsap.timeline({ paused: true });
+          window.__timelines["code-morph"] = tl; // register synchronously
+          document.fonts.ready.then(function () {
+            tl.from("#editor", { opacity: 0, scale: 0.985, duration: 0.5, ease: "power2.out" }, 0);
+            buildEffect(tl, surface, spec);
+            var dur = parseFloat(root.dataset.duration) || tl.duration();
+            tl.to({}, { duration: dur }, 0); // pad to full composition length
+          });
+        }
+
+        if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", go);
+        else go();
+      })();
+    </script>
+  </body>
+</html>

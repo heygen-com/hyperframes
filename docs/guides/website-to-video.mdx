@@ -93,13 +93,21 @@ The prompt determines the format. Include a duration and creative direction:
 
 ## Enriching Captures with Gemini Vision
 
-By default, captures describe assets using DOM context — alt text, nearby headings, CSS classes. Add a [Gemini API key](https://aistudio.google.com/apikey) for richer AI-powered descriptions using vision.
+By default, captures describe assets using DOM context — alt text, nearby headings, CSS classes. Add a vision API key for richer AI-powered descriptions.
 
-Create a `.env` file in your project root:
+Create a `.env` file in your project root with **either** a [Gemini API key](https://aistudio.google.com/apikey):
 
 ```bash
 echo "GEMINI_API_KEY=your-key-here" > .env
 ```
+
+…**or**, if you don't have Google access, an [OpenRouter key](https://openrouter.ai/keys) — a single API that fronts many vision models:
+
+```bash
+echo "OPENROUTER_API_KEY=your-key-here" > .env
+```
+
+OpenRouter is used when its key is present (it takes priority if both are set). The default model is `google/gemini-3.1-flash-lite`; override it with `HYPERFRAMES_OPENROUTER_MODEL` (any vision-capable OpenRouter model), just as `HYPERFRAMES_GEMINI_MODEL` overrides the Gemini default.
 
 <Tabs>
   <Tab title="Without Gemini">

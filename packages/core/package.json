@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/core",
-  "version": "0.6.97",
+  "version": "0.6.106",
   "description": "",
   "repository": {
     "type": "git",
@@ -21,6 +21,11 @@
       "import": "./src/index.ts",
       "types": "./src/index.ts"
     },
+    "./package.json": "./package.json",
+    "./beats": {
+      "import": "./src/beats/index.ts",
+      "types": "./src/beats/index.ts"
+    },
     "./lint": {
       "import": "./src/lint/index.ts",
       "types": "./src/lint/index.ts"
@@ -30,6 +35,10 @@
       "types": "./src/compiler/index.ts"
     },
     "./runtime": "./dist/hyperframe.runtime.iife.js",
+    "./runtime/clipTree": {
+      "import": "./src/runtime/clipTree.ts",
+      "types": "./src/runtime/clipTree.ts"
+    },
     "./runtime/lottie-readiness": {
       "import": "./src/lottieReadiness.ts",
       "types": "./src/lottieReadiness.ts"
@@ -226,6 +235,7 @@
     "@chenglou/pretext": "^0.0.5",
     "acorn": "^8.17.0",
     "acorn-walk": "^8.3.5",
+    "bpm-detective": "^2.0.5",
     "magic-string": "^0.30.21",
     "postcss": "^8.5.8",
     "postcss-selector-parser": "^7.1.2",

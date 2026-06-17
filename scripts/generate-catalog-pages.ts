@@ -519,17 +519,19 @@ function main(): void {
   // Items with the same first tag are grouped together. Items without tags
   // go into an "Other" group. Groups are sorted with a priority order.
   const GROUP_ORDER: Record<string, number> = {
-    Captions: 0,
-    "HTML-in-Canvas": 1,
-    "Social Overlays": 2,
-    "Shader Transitions": 3,
-    "CSS Transitions": 4,
-    Showcases: 5,
-    Data: 6,
-    Effects: 7,
-    Blocks: 8,
+    "Code Animations": 0,
+    Captions: 1,
+    "HTML-in-Canvas": 2,
+    "Social Overlays": 3,
+    "Shader Transitions": 4,
+    "CSS Transitions": 5,
+    Showcases: 6,
+    Data: 7,
+    Effects: 8,
+    Blocks: 9,
   };
 
+  // fallow-ignore-next-line complexity
   function groupForItem(entry: CatalogEntry): string {
     const tags = entry.tags;
     // Two-tag combos for specific grouping
@@ -537,6 +539,9 @@ function main(): void {
     if (tags.includes("transition") && tags.includes("showcase")) return "CSS Transitions";
     if (tags.includes("captions")) return "Captions";
     if (tags.includes("html-in-canvas")) return "HTML-in-Canvas";
+    // Code animations (morph, flight, diff, …) — keyed on the code-animation tag so
+    // they group separately from the static code-snippet themes.
+    if (tags.includes("code-animation")) return "Code Animations";
     // Single-tag mapping
     if (tags.includes("social")) return "Social Overlays";
     if (tags.includes("transition"))

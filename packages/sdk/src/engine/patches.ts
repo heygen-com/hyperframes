@@ -118,7 +118,7 @@ export function pathToKey(path: string): string | null {
 
   // /elements/{id} (whole element) → "{id}"
   const elemMatch = /^\/elements\/([^/]+)$/.exec(path);
-  if (elemMatch) return decodePathSegment(elemMatch[1]!) ?? null;
+  if (elemMatch) return decodePathSegment(elemMatch[1]!);
 
   // /variables/{id} → "var.{id}"
   const varMatch = /^\/variables\/(.+)$/.exec(path);

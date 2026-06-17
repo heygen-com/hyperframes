@@ -61,6 +61,9 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
       format?: string;
       resolution?: string;
       composition?: string;
+      // Browser telemetry id, so the server-emitted render outcome is
+      // attributed to the user who triggered the render (joinable funnel).
+      telemetryDistinctId?: string;
     };
     const VALID_FORMATS = new Set(["mp4", "webm", "mov"]);
     const FORMAT_EXT: Record<string, string> = { mp4: ".mp4", webm: ".webm", mov: ".mov" };
@@ -108,6 +111,8 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
       jobId,
       outputResolution,
       composition,
+      distinctId:
+        typeof body.telemetryDistinctId === "string" ? body.telemetryDistinctId : undefined,
     });
     (jobState as RenderJobState & { createdAt: number }).createdAt = Date.now();
     renderJobs.set(jobId, jobState as RenderJobState & { createdAt: number });
@@ -216,7 +221,13 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     const filename = c.req.path.split("/renders/file/")[1];
     if (!filename) return c.json({ error: "missing filename" }, 400);
     const rendersDir = adapter.rendersDir(project);
-    const fp = join(rendersDir, filename);
+    // Containment guard: the filename is attacker-controlled wildcard input, so
+    // route it through the same chokepoint every other project-scoped path uses.
+    // Literal `..` is collapsed upstream by the URL parser, but a bare join() +
+    // readFileSync still followed an in-rendersDir symlink pointing outside the
+    // dir; resolveWithinProject canonicalizes with realpath before serving.
+    const fp = resolveWithinProject(rendersDir, filename);
+    if (!fp) return c.json({ error: "forbidden" }, 403);
     if (!existsSync(fp)) return c.json({ error: "not found" }, 404);
     const contentType = renderContentType(fp);
     const content = readFileSync(fp);

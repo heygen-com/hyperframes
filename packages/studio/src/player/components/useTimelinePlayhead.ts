@@ -1,4 +1,4 @@
-import { useRef, useCallback, useEffect } from "react";
+import { useRef, useCallback, useEffect, useLayoutEffect } from "react";
 import { liveTime, usePlayerStore, type ZoomMode } from "../store/playerStore";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { getPinchTimelineZoomPercent } from "./timelineZoom";
@@ -54,6 +54,33 @@ export function useTimelinePlayhead({
 }: UseTimelinePlayheadInput) {
   const dragScrollRaf = useRef(0);
   const previousZoomModeRef = useRef<ZoomMode | null>(zoomMode);
+  // Center-anchored magnify: keep the time at the viewport center fixed when
+  // the zoom level (pps) changes via the toolbar / slider. The pinch handler
+  // anchors at the cursor instead, so it opts out via `skipCenterAnchorRef`.
+  const previousAnchorPpsRef = useRef(pps);
+  const skipCenterAnchorRef = useRef(false);
+
+  useLayoutEffect(() => {
+    const scroll = scrollRef.current;
+    const prevPps = previousAnchorPpsRef.current;
+    previousAnchorPpsRef.current = pps;
+    // Always consume the skip flag, even when pps didn't change — otherwise a
+    // pinch that produced no pps change (already at the zoom clamp) would strand
+    // it true and the next toolbar zoom would wrongly skip center-anchoring.
+    const skip = skipCenterAnchorRef.current;
+    skipCenterAnchorRef.current = false;
+    if (!scroll || pps === prevPps || skip) return;
+    const nextScrollLeft = getTimelineScrollLeftForZoomAnchor({
+      pointerX: scroll.clientWidth / 2,
+      currentScrollLeft: scroll.scrollLeft,
+      gutter: GUTTER,
+      currentPixelsPerSecond: prevPps,
+      nextPixelsPerSecond: pps,
+      duration: durationRef.current,
+    });
+    const maxScrollLeft = Math.max(0, scroll.scrollWidth - scroll.clientWidth);
+    scroll.scrollLeft = Math.max(0, Math.min(maxScrollLeft, nextScrollLeft));
+  }, [pps, scrollRef, durationRef]);
 
   const syncPlayheadPosition = useCallback(
     (time: number) => {
@@ -169,6 +196,8 @@ export function useTimelinePlayhead({
         nextPixelsPerSecond: nextPps,
         duration: durationRef.current,
       });
+      // Pinch anchors at the cursor (below), so skip the center-anchor effect.
+      skipCenterAnchorRef.current = true;
       setZoomMode("manual");
       setManualZoomPercent(nextZoomPercent);
       requestAnimationFrame(() => {

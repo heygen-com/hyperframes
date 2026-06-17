@@ -1,0 +1,807 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Code Diff</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #05070b;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        font-family: "JetBrains Mono", monospace;
+        color: #e6edf3;
+      }
+      .bg-field {
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(1200px 700px at 50% 18%, #0e1726 0%, #070b12 55%, #05070b 100%);
+      }
+      .bg-grid {
+        position: absolute;
+        inset: 0;
+        background-image:
+          linear-gradient(rgba(88, 166, 255, 0.05) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(88, 166, 255, 0.05) 1px, transparent 1px);
+        background-size: 64px 64px;
+        mask-image: radial-gradient(1100px 620px at 50% 42%, #000 0%, transparent 78%);
+      }
+      .bg-glow {
+        position: absolute;
+        width: 900px;
+        height: 900px;
+        border-radius: 50%;
+        filter: blur(120px);
+        opacity: 0.5;
+      }
+      .bg-glow.a {
+        background: #1f6feb55;
+        left: -180px;
+        top: -200px;
+      }
+      .bg-glow.b {
+        background: #2ea04355;
+        right: -200px;
+        bottom: -260px;
+      }
+      .editor {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        width: 1380px;
+        height: 800px;
+        background: #0b0f17;
+        border: 1px solid #1d2733;
+        border-radius: 16px;
+        box-shadow:
+          0 40px 120px rgba(0, 0, 0, 0.6),
+          0 2px 0 rgba(255, 255, 255, 0.03) inset;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+      .titlebar {
+        height: 56px;
+        flex: 0 0 56px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 0 22px;
+        background: linear-gradient(#11161f, #0c111a);
+        border-bottom: 1px solid #1b2430;
+      }
+      .dots {
+        display: flex;
+        gap: 10px;
+      }
+      .dot {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+      }
+      .dot.r {
+        background: #ff5f57;
+      }
+      .dot.y {
+        background: #febc2e;
+      }
+      .dot.g {
+        background: #28c840;
+      }
+      .filename {
+        font-size: 19px;
+        color: #8b98a9;
+        letter-spacing: 0.2px;
+      }
+      .filename .accent {
+        color: #d6e2f0;
+      }
+      .code-surface {
+        position: relative;
+        flex: 1 1 auto;
+        overflow: hidden;
+      }
+      .scene {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        will-change: opacity;
+      }
+      .code {
+        position: absolute;
+        top: 38px;
+        left: 0;
+        right: 0;
+        padding: 0 44px 0 104px;
+        font-size: 30px;
+        line-height: 46px;
+        font-variant-ligatures: none;
+        tab-size: 2;
+      }
+      .gutter {
+        position: absolute;
+        top: 38px;
+        left: 0;
+        width: 84px;
+        padding-right: 18px;
+        font-size: 30px;
+        line-height: 46px;
+        text-align: right;
+        color: #828c9b;
+        user-select: none;
+      }
+      .ln {
+        display: block;
+        height: 46px;
+      }
+      .line {
+        display: block;
+        min-height: 46px;
+        white-space: pre;
+        position: relative;
+        z-index: 1;
+      }
+      .tok {
+        display: inline-block;
+        white-space: pre;
+        will-change: transform, opacity;
+      }
+      .caret {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 3px;
+        height: 32px;
+        margin-top: 6px;
+        background: #58a6ff;
+        border-radius: 1px;
+        z-index: 3;
+      }
+      .hl-box {
+        position: absolute;
+        background: rgba(88, 166, 255, 0.16);
+        border-left: 3px solid #58a6ff;
+        border-radius: 6px;
+        z-index: 0;
+        overflow: hidden;
+      }
+      .diff-line {
+        display: block;
+        min-height: 0;
+        line-height: 46px;
+        white-space: pre;
+        position: relative;
+        overflow: hidden;
+        padding-left: 14px;
+      }
+      .diff-sign {
+        display: inline-block;
+        width: 22px;
+        color: #41506220;
+      }
+      .diff-del {
+        background: rgba(248, 81, 73, 0.12);
+        box-shadow: inset 3px 0 #f85149;
+      }
+      .diff-add {
+        background: rgba(63, 185, 80, 0.12);
+        box-shadow: inset 3px 0 #3fb950;
+      }
+      .diff-del .diff-sign {
+        color: #f85149;
+      }
+      .diff-add .diff-sign {
+        color: #3fb950;
+      }
+      .flight-block {
+        position: absolute;
+        white-space: pre;
+        font-size: 27px;
+        line-height: 40px;
+        padding: 11px 22px;
+        border-radius: 11px;
+        background: #0f1722;
+        border: 1px solid #233044;
+        box-shadow: 0 16px 44px rgba(0, 0, 0, 0.5);
+        will-change: transform, opacity;
+      }
+      .flight-target {
+        position: absolute;
+        border: 1.5px dashed #2a3a4f;
+        border-radius: 14px;
+        opacity: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="code-diff"
+      data-start="0"
+      data-duration="6"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div class="bg-field" data-layout-ignore></div>
+      <div class="bg-grid" data-layout-ignore></div>
+      <div class="bg-glow a" data-layout-ignore></div>
+      <div class="bg-glow b" data-layout-ignore></div>
+      <div class="editor" id="editor" data-layout-ignore>
+        <div class="titlebar">
+          <div class="dots">
+            <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+          </div>
+          <span class="filename"><span class="accent">greet.js</span> — Code Diff</span>
+        </div>
+        <div class="code-surface" id="surface"></div>
+      </div>
+    </div>
+    <script>
+      window.__TOKENS = {
+        diff: {
+          lang: "js",
+          theme: "github-dark",
+          bg: "#24292e",
+          fg: "#e1e4e8",
+          states: [
+            {
+              code: 'function greet(name) {\n  console.log("hi " + name)\n}',
+              tokens: [
+                {
+                  key: "97wperY-uI8_OA5W5UX94Q5keKEoIobaKXQ6V8Tcd5I-0",
+                  content: "function",
+                  color: "#F97583",
+                  fontStyle: 0,
+                },
+                {
+                  key: "97wperY-uI8_OA5W5UX94Q5keKEoIobaKXQ6V8Tcd5I-1",
+                  content: " ",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "97wperY-uI8_OA5W5UX94Q5keKEoIobaKXQ6V8Tcd5I-2",
+                  content: "greet",
+                  color: "#B392F0",
+                  fontStyle: 0,
+                },
+                {
+                  key: "97wperY-uI8_OA5W5UX94Q5keKEoIobaKXQ6V8Tcd5I-3",
+                  content: "(",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "97wperY-uI8_OA5W5UX94Q5keKEoIobaKXQ6V8Tcd5I-4",
+                  content: "name",
+                  color: "#FFAB70",
+                  fontStyle: 0,
+                },
+                {
+                  key: "97wperY-uI8_OA5W5UX94Q5keKEoIobaKXQ6V8Tcd5I-5",
+                  content: ") {",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "97wperY-uI8_OA5W5UX94Q5keKEoIobaKXQ6V8Tcd5I-6",
+                  content: "\n",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "97wperY-uI8_OA5W5UX94Q5keKEoIobaKXQ6V8Tcd5I-7",
+                  content: "  ",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "97wperY-uI8_OA5W5UX94Q5keKEoIobaKXQ6V8Tcd5I-8",
+                  content: "console.",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "97wperY-uI8_OA5W5UX94Q5keKEoIobaKXQ6V8Tcd5I-9",
+                  content: "log",
+                  color: "#B392F0",
+                  fontStyle: 0,
+                },
+                {
+                  key: "97wperY-uI8_OA5W5UX94Q5keKEoIobaKXQ6V8Tcd5I-10",
+                  content: "(",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "97wperY-uI8_OA5W5UX94Q5keKEoIobaKXQ6V8Tcd5I-11",
+                  content: '"hi "',
+                  color: "#9ECBFF",
+                  fontStyle: 0,
+                },
+                {
+                  key: "97wperY-uI8_OA5W5UX94Q5keKEoIobaKXQ6V8Tcd5I-12",
+                  content: " ",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "97wperY-uI8_OA5W5UX94Q5keKEoIobaKXQ6V8Tcd5I-13",
+                  content: "+",
+                  color: "#F97583",
+                  fontStyle: 0,
+                },
+                {
+                  key: "97wperY-uI8_OA5W5UX94Q5keKEoIobaKXQ6V8Tcd5I-14",
+                  content: " ",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "97wperY-uI8_OA5W5UX94Q5keKEoIobaKXQ6V8Tcd5I-15",
+                  content: "name)",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "97wperY-uI8_OA5W5UX94Q5keKEoIobaKXQ6V8Tcd5I-16",
+                  content: "\n",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "97wperY-uI8_OA5W5UX94Q5keKEoIobaKXQ6V8Tcd5I-17",
+                  content: "}",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "97wperY-uI8_OA5W5UX94Q5keKEoIobaKXQ6V8Tcd5I-18",
+                  content: "\n",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+              ],
+            },
+            {
+              code: 'function greet(name, lang) {\n  const msg = translate("hi", lang)\n  console.log(`${msg} ${name}`)\n}',
+              tokens: [
+                {
+                  key: "97wperY-uI8_OA5W5UX94Q5keKEoIobaKXQ6V8Tcd5I-0",
+                  content: "function",
+                  color: "#F97583",
+                  fontStyle: 0,
+                },
+                {
+                  key: "97wperY-uI8_OA5W5UX94Q5keKEoIobaKXQ6V8Tcd5I-1",
+                  content: " ",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "97wperY-uI8_OA5W5UX94Q5keKEoIobaKXQ6V8Tcd5I-2",
+                  content: "greet",
+                  color: "#B392F0",
+                  fontStyle: 0,
+                },
+                {
+                  key: "97wperY-uI8_OA5W5UX94Q5keKEoIobaKXQ6V8Tcd5I-3",
+                  content: "(",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "97wperY-uI8_OA5W5UX94Q5keKEoIobaKXQ6V8Tcd5I-4",
+                  content: "name",
+                  color: "#FFAB70",
+                  fontStyle: 0,
+                },
+                {
+                  key: "w2rmoAdPXgC70S4pDXgHIIwz8Jqq0QKYf1B6jvTMUJ8-5",
+                  content: ",",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "w2rmoAdPXgC70S4pDXgHIIwz8Jqq0QKYf1B6jvTMUJ8-6",
+                  content: " ",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "w2rmoAdPXgC70S4pDXgHIIwz8Jqq0QKYf1B6jvTMUJ8-7",
+                  content: "lang",
+                  color: "#FFAB70",
+                  fontStyle: 0,
+                },
+                {
+                  key: "97wperY-uI8_OA5W5UX94Q5keKEoIobaKXQ6V8Tcd5I-5",
+                  content: ") {",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "97wperY-uI8_OA5W5UX94Q5keKEoIobaKXQ6V8Tcd5I-6",
+                  content: "\n",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "97wperY-uI8_OA5W5UX94Q5keKEoIobaKXQ6V8Tcd5I-7",
+                  content: "  ",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "w2rmoAdPXgC70S4pDXgHIIwz8Jqq0QKYf1B6jvTMUJ8-11",
+                  content: "const",
+                  color: "#F97583",
+                  fontStyle: 0,
+                },
+                {
+                  key: "w2rmoAdPXgC70S4pDXgHIIwz8Jqq0QKYf1B6jvTMUJ8-12",
+                  content: " ",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "w2rmoAdPXgC70S4pDXgHIIwz8Jqq0QKYf1B6jvTMUJ8-13",
+                  content: "msg",
+                  color: "#79B8FF",
+                  fontStyle: 0,
+                },
+                {
+                  key: "w2rmoAdPXgC70S4pDXgHIIwz8Jqq0QKYf1B6jvTMUJ8-14",
+                  content: " ",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "w2rmoAdPXgC70S4pDXgHIIwz8Jqq0QKYf1B6jvTMUJ8-15",
+                  content: "=",
+                  color: "#F97583",
+                  fontStyle: 0,
+                },
+                {
+                  key: "w2rmoAdPXgC70S4pDXgHIIwz8Jqq0QKYf1B6jvTMUJ8-16",
+                  content: " ",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "w2rmoAdPXgC70S4pDXgHIIwz8Jqq0QKYf1B6jvTMUJ8-17",
+                  content: "translate",
+                  color: "#B392F0",
+                  fontStyle: 0,
+                },
+                {
+                  key: "97wperY-uI8_OA5W5UX94Q5keKEoIobaKXQ6V8Tcd5I-10",
+                  content: "(",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "w2rmoAdPXgC70S4pDXgHIIwz8Jqq0QKYf1B6jvTMUJ8-19",
+                  content: '"hi"',
+                  color: "#9ECBFF",
+                  fontStyle: 0,
+                },
+                {
+                  key: "w2rmoAdPXgC70S4pDXgHIIwz8Jqq0QKYf1B6jvTMUJ8-20",
+                  content: ", lang)",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "w2rmoAdPXgC70S4pDXgHIIwz8Jqq0QKYf1B6jvTMUJ8-21",
+                  content: "\n",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "w2rmoAdPXgC70S4pDXgHIIwz8Jqq0QKYf1B6jvTMUJ8-22",
+                  content: "  ",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "w2rmoAdPXgC70S4pDXgHIIwz8Jqq0QKYf1B6jvTMUJ8-23",
+                  content: "console.",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "97wperY-uI8_OA5W5UX94Q5keKEoIobaKXQ6V8Tcd5I-9",
+                  content: "log",
+                  color: "#B392F0",
+                  fontStyle: 0,
+                },
+                {
+                  key: "w2rmoAdPXgC70S4pDXgHIIwz8Jqq0QKYf1B6jvTMUJ8-25",
+                  content: "(",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "w2rmoAdPXgC70S4pDXgHIIwz8Jqq0QKYf1B6jvTMUJ8-26",
+                  content: "`${",
+                  color: "#9ECBFF",
+                  fontStyle: 0,
+                },
+                {
+                  key: "w2rmoAdPXgC70S4pDXgHIIwz8Jqq0QKYf1B6jvTMUJ8-27",
+                  content: "msg",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "w2rmoAdPXgC70S4pDXgHIIwz8Jqq0QKYf1B6jvTMUJ8-28",
+                  content: "} ${",
+                  color: "#9ECBFF",
+                  fontStyle: 0,
+                },
+                {
+                  key: "w2rmoAdPXgC70S4pDXgHIIwz8Jqq0QKYf1B6jvTMUJ8-29",
+                  content: "name",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "w2rmoAdPXgC70S4pDXgHIIwz8Jqq0QKYf1B6jvTMUJ8-30",
+                  content: "}`",
+                  color: "#9ECBFF",
+                  fontStyle: 0,
+                },
+                {
+                  key: "w2rmoAdPXgC70S4pDXgHIIwz8Jqq0QKYf1B6jvTMUJ8-31",
+                  content: ")",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "97wperY-uI8_OA5W5UX94Q5keKEoIobaKXQ6V8Tcd5I-16",
+                  content: "\n",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "97wperY-uI8_OA5W5UX94Q5keKEoIobaKXQ6V8Tcd5I-17",
+                  content: "}",
+                  color: "#E1E4E8",
+                  fontStyle: 0,
+                },
+                {
+                  key: "w2rmoAdPXgC70S4pDXgHIIwz8Jqq0QKYf1B6jvTMUJ8-34",
+                  content: "\n",
+                  color: "#e1e4e8",
+                  fontStyle: 0,
+                },
+              ],
+            },
+          ],
+        },
+      };
+      window.__BLOCK = { id: "code-diff", effect: "diff", seq: "diff", duration: 6 };
+    </script>
+    <script>
+      // hf-code-anim.js — self-contained code-animation engine for HyperFrames registry blocks.
+      //
+      // Reuses Shiki Magic Move's baked output (window.__TOKENS, baked at author time) and
+      // drives the animation as a PAUSED GSAP timeline the HyperFrames engine seeks per frame —
+      // NOT CSS transitions (those break under non-sequential frame seeking). FLIP measurement
+      // runs once inside document.fonts.ready (glyph metrics must be final). Each block sets
+      // window.__BLOCK = { id, effect, seq, line?, duration } and includes this engine; the
+      // engine builds one scene that fills the composition and registers window.__timelines[id].
+      (function () {
+        "use strict";
+        var T = window.__TOKENS || {};
+
+        function lineDiv() {
+          var d = document.createElement("div");
+          d.className = "line";
+          return d;
+        }
+
+        // Render a code state's keyed tokens into codeEl as lines of inline-block .tok spans.
+        function renderState(codeEl, state) {
+          codeEl.textContent = "";
+          var keyToEl = new Map();
+          var line = lineDiv();
+          codeEl.appendChild(line);
+          for (var i = 0; i < state.tokens.length; i++) {
+            var t = state.tokens[i];
+            if (t.content === "\n") {
+              line = lineDiv();
+              codeEl.appendChild(line);
+              continue;
+            }
+            var span = document.createElement("span");
+            span.className = "tok";
+            span.textContent = t.content;
+            span.style.color = t.color;
+            if (t.fontStyle & 1) span.style.fontStyle = "italic";
+            if (t.fontStyle & 2) span.style.fontWeight = "700";
+            line.appendChild(span);
+            keyToEl.set(t.key, span);
+          }
+          var last = codeEl.lastChild;
+          if (last && last.className === "line" && last.children.length === 0)
+            codeEl.removeChild(last);
+          return keyToEl;
+        }
+
+        function rectsOf(keyToEl) {
+          var m = new Map();
+          keyToEl.forEach(function (el, k) {
+            var r = el.getBoundingClientRect();
+            m.set(k, { left: r.left, top: r.top });
+          });
+          return m;
+        }
+
+        function makeScene(surface, withGutter) {
+          var scene = document.createElement("div");
+          scene.className = "scene";
+          if (withGutter) {
+            var g = document.createElement("div");
+            g.className = "gutter";
+            scene.appendChild(g);
+          }
+          var code = document.createElement("div");
+          code.className = "code";
+          scene.appendChild(code);
+          surface.appendChild(scene);
+          return { scene: scene, code: code, gutter: scene.querySelector(".gutter") };
+        }
+
+        function fillGutter(g, n) {
+          var html = "";
+          for (var i = 1; i <= n; i++) html += '<span class="ln">' + i + "</span>";
+          g.innerHTML = html;
+        }
+
+        function splitLines(state) {
+          var lines = [{ text: "", tokens: [] }];
+          for (var i = 0; i < state.tokens.length; i++) {
+            var t = state.tokens[i];
+            if (t.content === "\n") {
+              lines.push({ text: "", tokens: [] });
+              continue;
+            }
+            var cur = lines[lines.length - 1];
+            cur.tokens.push(t);
+            cur.text += t.content;
+          }
+          if (lines.length && lines[lines.length - 1].tokens.length === 0) lines.pop();
+          return lines;
+        }
+
+        function lineDiff(a, b) {
+          var n = a.length;
+          var m = b.length;
+          var dp = [];
+          for (var i = 0; i <= n; i++) dp.push(new Array(m + 1).fill(0));
+          for (var i = n - 1; i >= 0; i--) {
+            for (var j = m - 1; j >= 0; j--) {
+              dp[i][j] =
+                a[i].text === b[j].text
+                  ? dp[i + 1][j + 1] + 1
+                  : Math.max(dp[i + 1][j], dp[i][j + 1]);
+            }
+          }
+          var ops = [];
+          var i = 0;
+          var j = 0;
+          while (i < n && j < m) {
+            if (a[i].text === b[j].text) {
+              ops.push({ type: "same", line: b[j] });
+              i++;
+              j++;
+            } else if (dp[i + 1][j] >= dp[i][j + 1]) {
+              ops.push({ type: "del", line: a[i] });
+              i++;
+            } else {
+              ops.push({ type: "add", line: b[j] });
+              j++;
+            }
+          }
+          while (i < n) ops.push({ type: "del", line: a[i++] });
+          while (j < m) ops.push({ type: "add", line: b[j++] });
+          return ops;
+        }
+
+        // ---- single-scene effect builders (fade in, play, hold to end) -------------
+        var FADE = 0.45;
+
+        function diff(tl, surface, states, start) {
+          var DEL = 0.55;
+          var ADD = 0.6;
+          var ops = lineDiff(splitLines(states[0]), splitLines(states[1]));
+          var parts = makeScene(surface, false);
+          var code = parts.code;
+          var delEls = [];
+          var addEls = [];
+          ops.forEach(function (op) {
+            var ln = document.createElement("div");
+            ln.className =
+              "diff-line" +
+              (op.type === "del" ? " diff-del" : op.type === "add" ? " diff-add" : "");
+            var sign = document.createElement("span");
+            sign.className = "diff-sign";
+            sign.textContent = op.type === "del" ? "- " : op.type === "add" ? "+ " : "  ";
+            ln.appendChild(sign);
+            op.line.tokens.forEach(function (t) {
+              var s = document.createElement("span");
+              s.className = "tok";
+              s.textContent = t.content;
+              s.style.color = t.color;
+              ln.appendChild(s);
+            });
+            code.appendChild(ln);
+            if (op.type === "del") delEls.push(ln);
+            if (op.type === "add") addEls.push(ln);
+          });
+          tl.set(parts.scene, { opacity: 0 }, 0);
+          tl.to(parts.scene, { opacity: 1, duration: FADE, ease: "power1.out" }, start);
+          var atDel = start + FADE + 0.3;
+          delEls.forEach(function (el, k) {
+            tl.fromTo(
+              el,
+              { height: 46, opacity: 1 },
+              { height: 0, opacity: 0, duration: DEL, ease: "power2.inOut" },
+              atDel + k * 0.08,
+            );
+          });
+          var atAdd = atDel + DEL + 0.15;
+          addEls.forEach(function (el, k) {
+            tl.set(el, { height: 0, opacity: 0 }, 0);
+            tl.fromTo(
+              el,
+              { height: 0, opacity: 0 },
+              { height: 46, opacity: 1, duration: ADD, ease: "power2.out" },
+              atAdd + k * 0.12,
+            );
+          });
+        }
+
+        function buildEffect(tl, surface, spec) {
+          var start = 0.45;
+          var seq = T[spec.seq];
+          if (spec.effect === "diff") diff(tl, surface, seq.states, start);
+        }
+
+        function go() {
+          var spec = window.__BLOCK;
+          var surface = document.getElementById("surface");
+          var root = document.getElementById("root");
+          window.__timelines = window.__timelines || {};
+          var tl = gsap.timeline({ paused: true });
+          window.__timelines["code-diff"] = tl; // register synchronously
+          document.fonts.ready.then(function () {
+            tl.from("#editor", { opacity: 0, scale: 0.985, duration: 0.5, ease: "power2.out" }, 0);
+            buildEffect(tl, surface, spec);
+            var dur = parseFloat(root.dataset.duration) || tl.duration();
+            tl.to({}, { duration: dur }, 0); // pad to full composition length
+          });
+        }
+
+        if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", go);
+        else go();
+      })();
+    </script>
+  </body>
+</html>

@@ -98,6 +98,17 @@ export function useGsapAwareEditing({
   const handleGsapAwarePathOffsetCommit = useCallback(
     async (selection: DomEditSelection, next: { x: number; y: number }) => {
       const hasGsapAnims = selectedGsapAnimations.length > 0;
+      console.log(
+        "[drag:3] handleGsapAwarePathOffsetCommit",
+        JSON.stringify({
+          sel: selection.id,
+          offset: next,
+          hasGsapAnims,
+          interceptEnabled: STUDIO_GSAP_DRAG_INTERCEPT_ENABLED,
+          animCount: selectedGsapAnimations.length,
+          animIds: selectedGsapAnimations.map((a) => a.id).slice(0, 5),
+        }),
+      );
       if (hasGsapAnims && !STUDIO_GSAP_DRAG_INTERCEPT_ENABLED) {
         showToast(GSAP_CSS_FALLBACK_BLOCKED_MESSAGE, "error");
         throw new Error(GSAP_CSS_FALLBACK_BLOCKED_MESSAGE);
@@ -230,6 +241,15 @@ export function useGsapAwareEditing({
     [domEditSelection, gsapCommitMutation],
   );
 
+  // Unroll all computed (helper/loop) tweens in the active timeline into literal
+  // tweens, so the clicked keyframe becomes directly editable. Visual no-op.
+  const handleUnroll = useCallback(() => {
+    void commitMutation(
+      { type: "unroll-timeline" },
+      { label: "Unroll to literal tweens", softReload: true },
+    );
+  }, [commitMutation]);
+
   return {
     handleGsapAwarePathOffsetCommit,
     handleGsapAwareBoxSizeCommit,
@@ -237,6 +257,7 @@ export function useGsapAwareEditing({
     commitAnimatedProperty,
     handleSetArcPath,
     handleUpdateArcSegment,
+    handleUnroll,
     commitMutation,
   };
 }

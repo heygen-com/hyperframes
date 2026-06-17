@@ -43,6 +43,7 @@ function main() {
     const sourcePackageJson = JSON.parse(
       readFileSync(join(ROOT, workspace, "package.json"), "utf8"),
     );
+    if (sourcePackageJson.private) continue;
     if (listWorkspaceRefs(sourcePackageJson).length === 0) continue;
 
     const packDir = mkdtempSync(join(tmpdir(), "hyperframes-pack-"));

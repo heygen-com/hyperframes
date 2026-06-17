@@ -135,44 +135,51 @@ export function trackRenderComplete(
     extractPhase3Ms?: number;
     extractCacheHits?: number;
     extractCacheMisses?: number;
+    // Attribute this event to a specific user (e.g. the browser user who
+    // triggered a studio render); defaults to the install anonymousId.
+    distinctId?: string;
   } & RenderObservabilityTelemetryPayload,
 ): void {
-  trackEvent("render_complete", {
-    duration_ms: props.durationMs,
-    fps: props.fps,
-    quality: props.quality,
-    workers: props.workers,
-    docker: props.docker,
-    gpu: props.gpu,
-    source: props.source ?? "cli",
-    composition_duration_ms: props.compositionDurationMs,
-    composition_width: props.compositionWidth,
-    composition_height: props.compositionHeight,
-    total_frames: props.totalFrames,
-    speed_ratio: props.speedRatio,
-    capture_avg_ms: props.captureAvgMs,
-    capture_peak_ms: props.capturePeakMs,
-    peak_memory_mb: props.peakMemoryMb,
-    memory_free_mb: props.memoryFreeMb,
-    tmp_peak_bytes: props.tmpPeakBytes,
-    stage_compile_ms: props.stageCompileMs,
-    stage_video_extract_ms: props.stageVideoExtractMs,
-    stage_audio_process_ms: props.stageAudioProcessMs,
-    stage_capture_ms: props.stageCaptureMs,
-    stage_encode_ms: props.stageEncodeMs,
-    stage_assemble_ms: props.stageAssembleMs,
-    extract_resolve_ms: props.extractResolveMs,
-    extract_hdr_probe_ms: props.extractHdrProbeMs,
-    extract_hdr_preflight_ms: props.extractHdrPreflightMs,
-    extract_hdr_preflight_count: props.extractHdrPreflightCount,
-    extract_vfr_probe_ms: props.extractVfrProbeMs,
-    extract_vfr_preflight_ms: props.extractVfrPreflightMs,
-    extract_vfr_preflight_count: props.extractVfrPreflightCount,
-    extract_phase3_ms: props.extractPhase3Ms,
-    extract_cache_hits: props.extractCacheHits,
-    extract_cache_misses: props.extractCacheMisses,
-    ...renderObservabilityEventProperties(props),
-  });
+  trackEvent(
+    "render_complete",
+    {
+      duration_ms: props.durationMs,
+      fps: props.fps,
+      quality: props.quality,
+      workers: props.workers,
+      docker: props.docker,
+      gpu: props.gpu,
+      source: props.source ?? "cli",
+      composition_duration_ms: props.compositionDurationMs,
+      composition_width: props.compositionWidth,
+      composition_height: props.compositionHeight,
+      total_frames: props.totalFrames,
+      speed_ratio: props.speedRatio,
+      capture_avg_ms: props.captureAvgMs,
+      capture_peak_ms: props.capturePeakMs,
+      peak_memory_mb: props.peakMemoryMb,
+      memory_free_mb: props.memoryFreeMb,
+      tmp_peak_bytes: props.tmpPeakBytes,
+      stage_compile_ms: props.stageCompileMs,
+      stage_video_extract_ms: props.stageVideoExtractMs,
+      stage_audio_process_ms: props.stageAudioProcessMs,
+      stage_capture_ms: props.stageCaptureMs,
+      stage_encode_ms: props.stageEncodeMs,
+      stage_assemble_ms: props.stageAssembleMs,
+      extract_resolve_ms: props.extractResolveMs,
+      extract_hdr_probe_ms: props.extractHdrProbeMs,
+      extract_hdr_preflight_ms: props.extractHdrPreflightMs,
+      extract_hdr_preflight_count: props.extractHdrPreflightCount,
+      extract_vfr_probe_ms: props.extractVfrProbeMs,
+      extract_vfr_preflight_ms: props.extractVfrPreflightMs,
+      extract_vfr_preflight_count: props.extractVfrPreflightCount,
+      extract_phase3_ms: props.extractPhase3Ms,
+      extract_cache_hits: props.extractCacheHits,
+      extract_cache_misses: props.extractCacheMisses,
+      ...renderObservabilityEventProperties(props),
+    },
+    props.distinctId,
+  );
 }
 
 export function trackRenderError(
@@ -188,22 +195,29 @@ export function trackRenderError(
     elapsedMs?: number;
     peakMemoryMb?: number;
     memoryFreeMb?: number;
+    // Attribute this event to a specific user (e.g. the browser user who
+    // triggered a studio render); defaults to the install anonymousId.
+    distinctId?: string;
   } & RenderObservabilityTelemetryPayload,
 ): void {
-  trackEvent("render_error", {
-    fps: props.fps,
-    quality: props.quality,
-    docker: props.docker,
-    workers: props.workers,
-    gpu: props.gpu,
-    source: props.source ?? "cli",
-    failed_stage: props.failedStage,
-    error_message: props.errorMessage ? redactTelemetryMessage(props.errorMessage) : undefined,
-    elapsed_ms: props.elapsedMs,
-    peak_memory_mb: props.peakMemoryMb,
-    memory_free_mb: props.memoryFreeMb,
-    ...renderObservabilityEventProperties(props),
-  });
+  trackEvent(
+    "render_error",
+    {
+      fps: props.fps,
+      quality: props.quality,
+      docker: props.docker,
+      workers: props.workers,
+      gpu: props.gpu,
+      source: props.source ?? "cli",
+      failed_stage: props.failedStage,
+      error_message: props.errorMessage ? redactTelemetryMessage(props.errorMessage) : undefined,
+      elapsed_ms: props.elapsedMs,
+      peak_memory_mb: props.peakMemoryMb,
+      memory_free_mb: props.memoryFreeMb,
+      ...renderObservabilityEventProperties(props),
+    },
+    props.distinctId,
+  );
 }
 
 export function trackRenderObservation(props: {
@@ -277,10 +291,30 @@ export function trackCliError(props: {
 }): void {
   trackEvent("cli_error", {
     error_name: props.error_name,
-    error_message: props.error_message.slice(0, 1000),
-    stack_trace: props.stack_trace?.slice(0, 2000),
+    // Redact before truncating — CLI messages and stack traces carry absolute
+    // install paths (/Users/...), cache dirs, and user-supplied args. Same
+    // redaction the render_* events already apply.
+    error_message: redactTelemetryMessage(props.error_message).slice(0, 1000),
+    stack_trace: props.stack_trace
+      ? redactTelemetryMessage(props.stack_trace).slice(0, 2000)
+      : undefined,
     command: props.command,
     kind: props.kind,
+  });
+}
+
+// Report why a command failed before it exits non-zero. cli_command_result
+// records the failure but not the reason; this fills that gap via cli_error so
+// command failures are diagnosable. Enqueues synchronously — the process `exit`
+// handler flushes it. Drop this into any command's failure path.
+export function trackCommandFailure(command: string, err: unknown): void {
+  const error = err instanceof Error ? err : new Error(String(err));
+  trackCliError({
+    error_name: error.name,
+    error_message: error.message,
+    stack_trace: error.stack,
+    command,
+    kind: "command_error",
   });
 }
 

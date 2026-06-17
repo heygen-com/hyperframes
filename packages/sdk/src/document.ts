@@ -10,6 +10,7 @@
 
 import { parseHTML } from "linkedom";
 import { ensureHfIds } from "@hyperframes/core/hf-ids";
+import { parseGsapScriptAcornForWrite } from "@hyperframes/core/gsap-parser-acorn";
 import { findRoot, getElementStyles, isNewHostBoundary } from "./engine/model.js";
 import type { HyperFramesElement, SdkDocument } from "./types.js";
 
@@ -37,8 +38,60 @@ function ownText(el: Element): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+// Parsing the GSAP script (acorn AST walk) is the expensive part and depends
+// only on the script text, so memoize the {tween id, selector} pairs by script.
+// Selector→hf-id resolution still runs each call — it depends on the live DOM,
+// which changes on dispatch. Single-entry cache covers the hot path (same comp,
+// repeated getElements() rebuilds) and stays bounded.
+let gsapLocatedCacheKey: string | null = null;
+let gsapLocatedCacheVal: Array<{ id: string; selector: string }> = [];
+
+function parseLocatedCached(script: string): Array<{ id: string; selector: string }> {
+  if (gsapLocatedCacheKey === script) return gsapLocatedCacheVal;
+  const parsed = parseGsapScriptAcornForWrite(script);
+  gsapLocatedCacheVal = parsed
+    ? parsed.located.map(({ id, animation }) => ({ id, selector: animation.targetSelector }))
+    : [];
+  gsapLocatedCacheKey = script;
+  return gsapLocatedCacheVal;
+}
+
+/**
+ * Map each element's data-hf-id → the GSAP tween ids targeting it. Tween ids
+ * come from the acorn parser's stable `targetSelector-method-position` scheme —
+ * the SAME id-space the studio-api read path and the SDK GSAP ops use, so these
+ * ids are dispatchable as-is via setGsapTween/removeGsapTween. Best-effort: a
+ * malformed selector or unparseable script yields no entries (animationIds: []).
+ */
+function buildAnimationIdMap(document: Document): Map<string, string[]> {
+  const map = new Map<string, string[]>();
+  const script = extractGsapScript(document);
+  if (!script) return map;
+  for (const { id, selector } of parseLocatedCached(script)) {
+    if (!selector) continue;
+    let matches: Element[] = [];
+    try {
+      matches = Array.from(document.querySelectorAll(selector));
+    } catch {
+      continue; // selector not valid for querySelectorAll — skip
+    }
+    for (const el of matches) {
+      const hfId = el.getAttribute("data-hf-id");
+      if (!hfId) continue;
+      const list = map.get(hfId);
+      if (list) list.push(id);
+      else map.set(hfId, [id]);
+    }
+  }
+  return map;
+}
+
 // fallow-ignore-next-line complexity
-function buildElement(el: Element, scopePrefix: string): HyperFramesElement | null {
+function buildElement(
+  el: Element,
+  scopePrefix: string,
+  animationIdsByHfId: Map<string, string[]>,
+): HyperFramesElement | null {
   const tag = el.tagName.toLowerCase();
   if (EXCLUDED_TAGS.has(tag)) return null;
 
@@ -82,7 +135,7 @@ function buildElement(el: Element, scopePrefix: string): HyperFramesElement | nu
 
   const children: HyperFramesElement[] = [];
   for (const child of Array.from(el.children)) {
-    const built = buildElement(child, childPrefix);
+    const built = buildElement(child, childPrefix, animationIdsByHfId);
     if (built) children.push(built);
   }
 
@@ -98,16 +151,18 @@ function buildElement(el: Element, scopePrefix: string): HyperFramesElement | nu
     start,
     duration,
     trackIndex,
-    animationIds: [],
+    animationIds: animationIdsByHfId.get(id) ?? [],
   };
 }
 
 // fallow-ignore-next-line complexity
 function extractGsapScript(doc: Document): string | null {
-  // GSAP script is the first <script> tag whose text references gsap
+  // GSAP script is the first <script> tag whose text references gsap. Marker
+  // set must match studio sdkShadow.ts isGsapScriptBody so both pick the same
+  // script from a given composition.
   for (const script of Array.from(doc.querySelectorAll("script"))) {
     const text = script.textContent ?? "";
-    if (text.includes("gsap") || text.includes("ScrollTrigger")) {
+    if (text.includes("gsap") || text.includes("__timelines") || text.includes("ScrollTrigger")) {
       return text;
     }
   }
@@ -151,9 +206,10 @@ function extractDuration(doc: Document): number | null {
 export function buildRoots(document: Document): HyperFramesElement[] {
   const body = document.body;
   const roots: HyperFramesElement[] = [];
+  const animationIdsByHfId = buildAnimationIdMap(document);
   if (body) {
     for (const child of Array.from(body.children)) {
-      const built = buildElement(child, "");
+      const built = buildElement(child, "", animationIdsByHfId);
       if (built) roots.push(built);
     }
   }

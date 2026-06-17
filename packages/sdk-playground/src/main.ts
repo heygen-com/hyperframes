@@ -3,6 +3,7 @@ import { createFileAdapter } from "./fileAdapter.js";
 import type { Composition, GsapTweenSpec, PreviewAdapter, FindQuery } from "@hyperframes/sdk";
 import { parseGsapScriptAcorn } from "@hyperframes/core/gsap-parser-acorn";
 import type { GsapAnimation } from "@hyperframes/core";
+// fallow-ignore-next-line unresolved-imports
 import gsapRaw from "gsap/dist/gsap.min.js?raw";
 
 // ── Demo composition ──────────────────────────────────────────────────────────

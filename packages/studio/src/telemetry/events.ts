@@ -48,6 +48,21 @@ function getBrowserDoctorSummary(): string {
   }
 }
 
+export function trackStudioRazorSplit(props: { mode: "single" | "all"; count: number }): void {
+  trackEvent("studio_razor_split", {
+    mode: props.mode,
+    count: props.count,
+  });
+}
+
+// Adoption signal for the inline timeline-expansion surface: edits applied to a
+// sub-composition child clip while its parent scene is expanded.
+export function trackStudioExpandedClipEdit(props: {
+  action: "move" | "resize" | "delete" | "split";
+}): void {
+  trackEvent("studio_expanded_clip_edit", { action: props.action });
+}
+
 export function trackStudioFeedback(props: { rating: number; comment?: string }): void {
   trackEvent("survey sent", {
     $survey_id: "studio_experience",

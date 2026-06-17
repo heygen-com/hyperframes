@@ -101,6 +101,7 @@ try {
 
 import { defineCommand, runMain } from "citty";
 import type { ArgsDef, CommandDef } from "citty";
+import { reportCommandFailure, trackCommandFailures } from "./utils/command-failure-tracking.js";
 
 const isHelp = process.argv.includes("--help") || process.argv.includes("-h");
 
@@ -108,7 +109,7 @@ const isHelp = process.argv.includes("--help") || process.argv.includes("-h");
 // CLI definition — all commands are lazy-loaded via dynamic import()
 // ---------------------------------------------------------------------------
 
-const subCommands = {
+const commandLoaders = {
   init: () => import("./commands/init.js").then((m) => m.default),
   add: () => import("./commands/add.js").then((m) => m.default),
   catalog: () => import("./commands/catalog.js").then((m) => m.default),
@@ -117,6 +118,7 @@ const subCommands = {
   publish: () => import("./commands/publish.js").then((m) => m.default),
   render: () => import("./commands/render.js").then((m) => m.default),
   lint: () => import("./commands/lint.js").then((m) => m.default),
+  beats: () => import("./commands/beats.js").then((m) => m.default),
   inspect: () => import("./commands/inspect.js").then((m) => m.default),
   layout: () => import("./commands/layout.js").then((m) => m.default),
   info: () => import("./commands/info.js").then((m) => m.default),
@@ -141,6 +143,17 @@ const subCommands = {
   auth: () => import("./commands/auth.js").then((m) => m.default),
 };
 
+// Wrap each command's run() so a thrown failure reports its reason to telemetry
+// before citty catches the error and exits 1. The error is re-thrown unchanged,
+// preserving citty's print + exit-1 behavior. Commands that call process.exit()
+// themselves (e.g. `browser path`) bypass this and report inline.
+const subCommands = Object.fromEntries(
+  Object.entries(commandLoaders).map(([name, load]) => [
+    name,
+    trackCommandFailures(load, (err) => reportCommandFailure(command, err)),
+  ]),
+);
+
 const main = defineCommand({
   meta: {
     name: "hyperframes",
@@ -155,7 +168,10 @@ const main = defineCommand({
 // ---------------------------------------------------------------------------
 
 const cliCommandArg = process.argv[2];
-const command = cliCommandArg && cliCommandArg in subCommands ? cliCommandArg : "unknown";
+// Explicit annotation breaks a type cycle: `subCommands` references `command`
+// (in the failure reporter) and `command` references `subCommands` (the `in`
+// check), so its type can't be inferred from its own initializer.
+const command: string = cliCommandArg && cliCommandArg in subCommands ? cliCommandArg : "unknown";
 const hasJsonFlag = process.argv.includes("--json");
 
 // Captured references — populated when the lazy imports resolve.

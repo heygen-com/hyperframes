@@ -16,6 +16,7 @@ import { Scissors } from "../icons/SystemIcons";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "./editor/domEditingTypes";
 import { canSplitElement } from "../utils/timelineElementSplit";
+import { canAddBeatAt, addBeatAtCompositionTime } from "../utils/beatEditActions";
 
 interface DomEditSessionSlice extends EnableKeyframesSession {
   domEditSelection: DomEditSelection | null;
@@ -70,6 +71,9 @@ export function TimelineToolbar({
 }: TimelineToolbarProps) {
   const activeTool = usePlayerStore((s) => s.activeTool);
   const setActiveTool = usePlayerStore((s) => s.setActiveTool);
+  // Subscribe so the add-beat button reacts to playhead movement and analysis load.
+  const currentTime = usePlayerStore((s) => s.currentTime);
+  const beatAnalysisReady = usePlayerStore((s) => s.beatAnalysis !== null);
   const { zoomMode, manualZoomPercent, setZoomMode, setManualZoomPercent } = useTimelineZoom();
   const displayedTimelineZoomPercent = getTimelineZoomPercent(zoomMode, manualZoomPercent);
   const { state: keyframeState, onToggle: onToggleKeyframe } = useKeyframeToggle(domEditSession);
@@ -178,6 +182,27 @@ export function TimelineToolbar({
                 </Tooltip>
               );
             })()}
+          {beatAnalysisReady &&
+            canAddBeatAt(currentTime) &&
+            (() => (
+              <Tooltip label="Add beat at playhead">
+                <button
+                  type="button"
+                  onClick={() => addBeatAtCompositionTime(currentTime)}
+                  className="flex h-7 w-7 items-center justify-center rounded text-neutral-500 transition-colors hover:text-[#22c55e]"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                    <path
+                      d="M21 10C21 12.2091 16.9706 14 12 14M21 10C21 7.79086 16.9706 6 12 6C7.02944 6 3 7.79086 3 10M21 10V16C21 18.2091 16.9706 20 12 20M12 14C7.02944 14 3 12.2091 3 10M12 14V20M3 10V16C3 18.2091 7.02944 20 12 20M7 19.3264V13.3264M17 19.3264V13.3264M12 10L20 4"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
+              </Tooltip>
+            ))()}
         </div>
         <div className="flex items-center gap-1">
           <Tooltip label="Fit timeline to width">

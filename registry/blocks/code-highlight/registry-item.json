@@ -1,0 +1,24 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "code-highlight",
+  "type": "hyperframes:block",
+  "title": "Code Highlight Sweep",
+  "description": "A highlight band sweeps across a target line while the surrounding context dims — draws the eye to one line.",
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 5,
+  "tags": ["code", "code-animation", "highlight", "developer"],
+  "files": [
+    {
+      "path": "code-highlight.html",
+      "target": "compositions/code-highlight.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "preview": {
+    "video": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-highlight.mp4",
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-highlight.png"
+  }
+}

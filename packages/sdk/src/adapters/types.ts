@@ -5,7 +5,8 @@ import type { PersistErrorEvent } from "../types.js";
 export interface PersistVersionEntry {
   /** Opaque key identifying this version (adapter-defined format) */
   key: string;
-  content: string;
+  /** Full HTML content — may be omitted by adapters that load content lazily via loadFrom() */
+  content?: string;
   timestamp?: number;
 }
 

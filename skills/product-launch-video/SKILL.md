@@ -11,13 +11,13 @@ description: >
   general non-launch website videos (website-to-video), captions on
   existing video (embedded-captions), or short design-led motion graphics
   (motion-graphics). When product-vs-topic or launch-vs-general-site is unclear,
-  do not assume — start at /hyperframes-read-first.
+  do not assume — start at /hyperframes.
 metadata: { "tags": "orchestrator, pipeline, product-launch" }
 ---
 
 # product-launch-video - dispatch entry
 
-> **Confirm the route before Step 0.** This skill makes a video for a **product being marketed / launched / promoted**. If it's really a **general (non-launch) site → video** (site tour / showcase, not selling a product) → `/website-to-video`; a **topic / concept with no product** → `/faceless-explainer`; a **GitHub PR** → `/pr-to-video`; an **existing video to caption / package** → `/embedded-captions` · `/graphic-overlays`. **Out of scope** (decline, don't fake): live / at-render-time data (every value is baked in at author time), or footage / screenshots / an avatar that doesn't exist yet (HyperFrames can't record or capture). Routed here on a vague "make a video", or unsure product-vs-topic / launch-vs-general-site? **Read `/hyperframes-read-first` first.**
+> **Confirm the route before Step 0.** This skill makes a video for a **product being marketed / launched / promoted**. If it's really a **general (non-launch) site → video** (site tour / showcase, not selling a product) → `/website-to-video`; a **topic / concept with no product** → `/faceless-explainer`; a **GitHub PR** → `/pr-to-video`; an **existing video to caption / package** → `/embedded-captions` · `/graphic-overlays`. **Out of scope** (decline, don't fake): live / at-render-time data (every value is baked in at author time), or footage / screenshots / an avatar that doesn't exist yet (HyperFrames can't record or capture). Routed here on a vague "make a video", or unsure product-vs-topic / launch-vs-general-site? **Read `/hyperframes` first.**
 
 All artifacts are written to `PROJECT_DIR = videos/<project-name>/` (created in Step 0). Paths below are relative to `PROJECT_DIR`. You (the orchestrator) run the Bash steps and dispatch the subagents; per-phase details live in the linked guides/agents/scripts — do not expand them here. Dispatch is harness-portable: before the first subagent dispatch, read `<SKILL_DIR>/../hyperframes-core/references/subagent-dispatch.md` once — it maps the dispatch verbs (parallel fan-out / background / wait) to your harness's primitives; a concurrency cap below N means waves of the cap size, never fewer scenes. **This file is a binding runbook, not background reading**: execute the steps in order and produce every phase artifact with its designated script or agent role — do not substitute a freestyle pipeline (hand-written narration, ad-hoc TTS calls, one hand-authored composition), and do not skip a pause step because the request seems clear. A step you cannot perform → stop and report; improvising past it breaks every downstream contract.
 
@@ -60,7 +60,7 @@ Optional API keys (unset -> local fallbacks; injection in Step 0.5; `GEMINI_API_
 
 ### Step 0.0 - Confirm the brief (one round, then build)
 
-Before Step 0, in **one** message confirm only what materially shapes the launch video and you can't infer — lead with a recommended default, skip anything the user already gave: the **angle / focus** (the product overall, a headline feature, an offer / CTA), **length** (default ~30-90s; up to ~3 min), and — if `/hyperframes-read-first` did not already set them — **aspect** (default 16:9; 9:16 for vertical / social) and **language**. The preset is derived from brand capture, not asked. For a fully specified request, skip this and build.
+Before Step 0, in **one** message confirm only what materially shapes the launch video and you can't infer — lead with a recommended default, skip anything the user already gave: the **angle / focus** (the product overall, a headline feature, an offer / CTA), **length** (default ~30-90s; up to ~3 min), and — if `/hyperframes` did not already set them — **aspect** (default 16:9; 9:16 for vertical / social) and **language**. The preset is derived from brand capture, not asked. For a fully specified request, skip this and build.
 
 ### Step 0 - Initialize the video project
 

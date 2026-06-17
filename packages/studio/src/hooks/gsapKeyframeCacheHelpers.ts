@@ -67,8 +67,54 @@ export function updateKeyframeCacheFromParsed(
     (mutation as { targetSelector?: string }).targetSelector?.match(/^#([\w-]+)/)?.[1] ??
     selectionId;
   if (targetId && !idsWithKeyframes.has(targetId)) {
-    setKeyframeCache(`${targetPath}#${targetId}`, undefined);
-    if (targetPath !== "index.html") setKeyframeCache(`index.html#${targetId}`, undefined);
+    clearKeyframeCacheForElement(targetPath, targetId);
+  }
+}
+
+/**
+ * Clear every keyframe-cache key variant written for an element: the
+ * source-prefixed key, the index.html fallback, and the bare element id.
+ * Writes set all three (see updateKeyframeCacheFromParsed and
+ * usePopulateKeyframeCacheForFile). PropertyPanel's keyframe nav reads the bare
+ * id directly (`element.id`), and other consumers (timeline diamonds, the
+ * preview overlay) fall back to the bare id when an element has no
+ * source-prefixed key — so a clear that drops only the prefixed keys leaves the
+ * bare entry behind and those readers keep showing keyframes the element no
+ * longer has. Each delete is guarded by `has` so an absent key doesn't allocate
+ * a new cache map and re-render every subscriber.
+ */
+export function clearKeyframeCacheForElement(sourceFile: string, elementId: string): void {
+  const { keyframeCache, setKeyframeCache } = usePlayerStore.getState();
+  const keys =
+    sourceFile === "index.html"
+      ? [`index.html#${elementId}`, elementId]
+      : [`${sourceFile}#${elementId}`, `index.html#${elementId}`, elementId];
+  for (const key of keys) {
+    if (keyframeCache.has(key)) setKeyframeCache(key, undefined);
+  }
+}
+
+/**
+ * Clear every cached element of `sourceFile` before a full re-scan repopulates
+ * it. Collects the element ids that currently have a prefixed or index.html
+ * fallback key for the file and drops each through clearKeyframeCacheForElement
+ * so the bare key goes too — an element whose keyframes were removed (and so is
+ * absent from the re-scan) leaves no stale bare entry behind.
+ */
+export function clearKeyframeCacheForFile(sourceFile: string): void {
+  const { keyframeCache } = usePlayerStore.getState();
+  const sfPrefix = `${sourceFile}#`;
+  const fallbackPrefix = "index.html#";
+  const ids = new Set<string>();
+  for (const key of keyframeCache.keys()) {
+    const matchesFile =
+      key.startsWith(sfPrefix) || (sourceFile !== "index.html" && key.startsWith(fallbackPrefix));
+    if (!matchesFile) continue;
+    const hashIdx = key.indexOf("#");
+    if (hashIdx !== -1) ids.add(key.slice(hashIdx + 1));
+  }
+  for (const id of ids) {
+    clearKeyframeCacheForElement(sourceFile, id);
   }
 }
 

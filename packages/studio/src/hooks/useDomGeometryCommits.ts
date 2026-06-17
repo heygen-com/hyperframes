@@ -1,5 +1,4 @@
 import { useCallback } from "react";
-import { STUDIO_GSAP_DRAG_INTERCEPT_ENABLED } from "../components/editor/manualEditingAvailability";
 import { getDomEditTargetKey, type DomEditSelection } from "../components/editor/domEditing";
 import {
   applyStudioPathOffset,
@@ -19,44 +18,10 @@ import {
 } from "../components/editor/manualEditsDomPatches";
 import type { DomEditGroupPathOffsetCommit } from "../components/editor/DomEditOverlay";
 import type { PatchOperation } from "../utils/sourcePatcher";
+import { isElementGsapTargeted } from "./gsapTargetCache";
 
 export const GSAP_CSS_FALLBACK_BLOCKED_MESSAGE =
   "This element is GSAP-animated — dragging via CSS would corrupt keyframes";
-
-// ── Helpers ──
-
-type TimelineLike = { getChildren?: (nested: boolean) => Array<{ targets?: () => Element[] }> };
-
-// fallow-ignore-next-line complexity
-function isElementGsapTargeted(iframe: HTMLIFrameElement | null, element: HTMLElement): boolean {
-  // When the GSAP drag intercept is disabled for debugging, treat every
-  // element as un-targeted so commits take the plain CSS persist path.
-  if (!STUDIO_GSAP_DRAG_INTERCEPT_ENABLED) return false;
-  if (!iframe?.contentWindow) return false;
-  let timelines: Record<string, TimelineLike> | undefined;
-  try {
-    timelines = (iframe.contentWindow as Window & { __timelines?: Record<string, TimelineLike> })
-      .__timelines;
-  } catch {
-    return false;
-  }
-  if (!timelines) return false;
-  const id = element.id;
-  for (const tl of Object.values(timelines)) {
-    if (!tl?.getChildren) continue;
-    try {
-      for (const child of tl.getChildren(true)) {
-        if (!child.targets) continue;
-        for (const t of child.targets()) {
-          if (t === element || (id && t.id === id)) return true;
-        }
-      }
-    } catch {
-      continue;
-    }
-  }
-  return false;
-}
 
 // ── Hook ──
 
@@ -77,7 +42,15 @@ export function useDomGeometryCommits({
 }: UseDomGeometryCommitsParams) {
   const handleDomPathOffsetCommit = useCallback(
     (selection: DomEditSelection, next: { x: number; y: number }) => {
-      if (isElementGsapTargeted(previewIframeRef.current, selection.element)) {
+      const gsapBlocked = isElementGsapTargeted(previewIframeRef.current, selection.element);
+      console.log(
+        "[drag:7] handleDomPathOffsetCommit (CSS path)",
+        JSON.stringify({
+          sel: selection.id,
+          gsapBlocked,
+        }),
+      );
+      if (gsapBlocked) {
         const error = new Error(GSAP_CSS_FALLBACK_BLOCKED_MESSAGE);
         showToast(error.message, "error");
         return Promise.reject(error);

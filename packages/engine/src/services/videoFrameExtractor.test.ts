@@ -18,13 +18,14 @@ import {
   extractAllVideoFrames,
   createFrameLookupTable,
   resolveProjectRelativeSrc,
+  resolveFrameFormat,
   codecMayHaveAlpha,
   decoderForCodec,
   getFrameAtTime,
   type VideoElement,
   type ExtractedFrames,
 } from "./videoFrameExtractor.js";
-import { extractVideoMetadata } from "../utils/ffprobe.js";
+import { extractVideoMetadata, type VideoMetadata } from "../utils/ffprobe.js";
 import { runFfmpeg } from "../utils/runFfmpeg.js";
 
 // ffmpeg is not preinstalled on GitHub's ubuntu-24.04 runners. The producer
@@ -68,6 +69,45 @@ describe("codec alpha capability", () => {
     expect(decoderForCodec("vp9")).toBe("libvpx-vp9");
     expect(decoderForCodec("VP9")).toBe("libvpx-vp9");
     expect(decoderForCodec("vp8")).toBe("libvpx");
+  });
+});
+
+describe("resolveFrameFormat", () => {
+  function metadata(overrides: Partial<VideoMetadata> = {}): VideoMetadata {
+    return {
+      durationSeconds: 1,
+      width: 320,
+      height: 180,
+      fps: 30,
+      hasAudio: false,
+      videoCodec: "h264",
+      colorSpace: {
+        colorTransfer: "bt709",
+        colorPrimaries: "bt709",
+        colorSpace: "bt709",
+      },
+      isVFR: false,
+      hasAlpha: false,
+      ...overrides,
+    };
+  }
+
+  it("keeps opaque non-alpha sources on jpg by default", () => {
+    expect(resolveFrameFormat(metadata(), undefined)).toBe("jpg");
+    expect(resolveFrameFormat(metadata(), "auto")).toBe("jpg");
+  });
+
+  it("honors explicit png for opaque videos", () => {
+    expect(resolveFrameFormat(metadata(), "png")).toBe("png");
+  });
+
+  it("honors explicit jpg for opaque videos", () => {
+    expect(resolveFrameFormat(metadata(), "jpg")).toBe("jpg");
+  });
+
+  it("forces png when alpha is present or the codec can carry alpha", () => {
+    expect(resolveFrameFormat(metadata({ hasAlpha: true }), "jpg")).toBe("png");
+    expect(resolveFrameFormat(metadata({ videoCodec: "vp9" }), "jpg")).toBe("png");
   });
 });
 
@@ -337,6 +377,198 @@ describe("parseImageElements", () => {
     );
     expect(images[0]!.end).toBe(5);
   });
+});
+
+type Rgb = [number, number, number];
+
+const UI_FIXTURE_WIDTH = 240;
+const UI_FIXTURE_HEIGHT = 160;
+const RED_SAMPLE_PIXELS = [
+  [70, 72],
+  [118, 82],
+  [178, 92],
+] as const;
+
+function readFirstFramePixel(mediaPath: string, x: number, y: number): Rgb {
+  const result = spawnSync(
+    "ffmpeg",
+    [
+      "-v",
+      "error",
+      "-i",
+      mediaPath,
+      "-frames:v",
+      "1",
+      "-f",
+      "rawvideo",
+      "-pix_fmt",
+      "rgb24",
+      "pipe:1",
+    ],
+    { maxBuffer: UI_FIXTURE_WIDTH * UI_FIXTURE_HEIGHT * 3 + 1024 },
+  );
+  if (result.status !== 0) {
+    throw new Error(`ffmpeg pixel decode failed: ${result.stderr.toString().slice(-400)}`);
+  }
+
+  const offset = (y * UI_FIXTURE_WIDTH + x) * 3;
+  return [
+    result.stdout[offset] ?? 0,
+    result.stdout[offset + 1] ?? 0,
+    result.stdout[offset + 2] ?? 0,
+  ];
+}
+
+function maxChannelDelta(a: Rgb, b: Rgb): number {
+  return Math.max(Math.abs(a[0] - b[0]), Math.abs(a[1] - b[1]), Math.abs(a[2] - b[2]));
+}
+
+// Regression for saturated UI recordings: default JPEG extraction can shift
+// high-chroma reds before browser capture. Forcing PNG should keep extracted
+// source-video frames effectively identical to the decoded source pixels.
+describe.skipIf(!HAS_FFMPEG)("video frame extraction format", () => {
+  const FIXTURE_DIR = mkdtempSync(join(tmpdir(), "hf-video-frame-format-"));
+  const UI_FIXTURE = join(FIXTURE_DIR, "ui-red.mp4");
+
+  beforeAll(async () => {
+    const result = await runFfmpeg([
+      "-y",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      `color=c=0xffe7ee:s=${UI_FIXTURE_WIDTH}x${UI_FIXTURE_HEIGHT}:d=1:r=1`,
+      "-vf",
+      "drawbox=x=44:y=58:w=152:h=44:color=0xdd382e@1:t=fill,drawbox=x=64:y=75:w=112:h=10:color=0xfff0f0@1:t=fill",
+      "-c:v",
+      "libx264",
+      "-preset",
+      "ultrafast",
+      "-crf",
+      "0",
+      "-pix_fmt",
+      "yuv420p",
+      "-color_primaries",
+      "bt709",
+      "-color_trc",
+      "bt709",
+      "-colorspace",
+      "bt709",
+      UI_FIXTURE,
+    ]);
+    if (!result.success) {
+      throw new Error(`UI color fixture synthesis failed: ${result.stderr.slice(-400)}`);
+    }
+  }, 30_000);
+
+  afterAll(() => {
+    if (existsSync(FIXTURE_DIR)) rmSync(FIXTURE_DIR, { recursive: true, force: true });
+  });
+
+  function fixtureVideo(): VideoElement {
+    return {
+      id: "ui",
+      src: UI_FIXTURE,
+      start: 0,
+      end: 1,
+      mediaStart: 0,
+      loop: false,
+      hasAudio: false,
+    };
+  }
+
+  it("keeps color-sensitive UI reds closer to source when extraction is forced to png", async () => {
+    const defaultOut = join(FIXTURE_DIR, "out-default");
+    const pngOut = join(FIXTURE_DIR, "out-png");
+    mkdirSync(defaultOut, { recursive: true });
+    mkdirSync(pngOut, { recursive: true });
+
+    const defaultResult = await extractAllVideoFrames([fixtureVideo()], FIXTURE_DIR, {
+      fps: 1,
+      outputDir: defaultOut,
+    });
+    const pngResult = await extractAllVideoFrames([fixtureVideo()], FIXTURE_DIR, {
+      fps: 1,
+      outputDir: pngOut,
+      format: "png",
+    });
+
+    expect(defaultResult.errors).toEqual([]);
+    expect(pngResult.errors).toEqual([]);
+    const defaultFrame = defaultResult.extracted[0]!.framePaths.get(0)!;
+    const pngFrame = pngResult.extracted[0]!.framePaths.get(0)!;
+    expect(defaultFrame.endsWith(".jpg")).toBe(true);
+    expect(pngFrame.endsWith(".png")).toBe(true);
+
+    let worstDefaultDelta = 0;
+    let worstPngDelta = 0;
+    for (const [x, y] of RED_SAMPLE_PIXELS) {
+      const sourcePixel = readFirstFramePixel(UI_FIXTURE, x, y);
+      worstDefaultDelta = Math.max(
+        worstDefaultDelta,
+        maxChannelDelta(sourcePixel, readFirstFramePixel(defaultFrame, x, y)),
+      );
+      worstPngDelta = Math.max(
+        worstPngDelta,
+        maxChannelDelta(sourcePixel, readFirstFramePixel(pngFrame, x, y)),
+      );
+    }
+
+    expect(worstPngDelta).toBeLessThanOrEqual(5);
+    expect(worstPngDelta).toBeLessThanOrEqual(worstDefaultDelta);
+  }, 60_000);
+
+  it("keeps jpg and png extraction caches separate", async () => {
+    const cacheDir = mkdtempSync(join(tmpdir(), "hf-extract-format-cache-"));
+    try {
+      const defaultOut = join(FIXTURE_DIR, "cache-default");
+      const pngOut = join(FIXTURE_DIR, "cache-png");
+      const pngHitOut = join(FIXTURE_DIR, "cache-png-hit");
+      mkdirSync(defaultOut, { recursive: true });
+      mkdirSync(pngOut, { recursive: true });
+      mkdirSync(pngHitOut, { recursive: true });
+
+      const defaultResult = await extractAllVideoFrames(
+        [fixtureVideo()],
+        FIXTURE_DIR,
+        { fps: 1, outputDir: defaultOut },
+        undefined,
+        { extractCacheDir: cacheDir },
+      );
+      expect(defaultResult.errors).toEqual([]);
+      expect(defaultResult.phaseBreakdown.cacheHits).toBe(0);
+      expect(defaultResult.phaseBreakdown.cacheMisses).toBe(1);
+      expect(defaultResult.extracted[0]!.framePaths.get(0)!.endsWith(".jpg")).toBe(true);
+
+      const pngMiss = await extractAllVideoFrames(
+        [fixtureVideo()],
+        FIXTURE_DIR,
+        { fps: 1, outputDir: pngOut, format: "png" },
+        undefined,
+        { extractCacheDir: cacheDir },
+      );
+      expect(pngMiss.errors).toEqual([]);
+      expect(pngMiss.phaseBreakdown.cacheHits).toBe(0);
+      expect(pngMiss.phaseBreakdown.cacheMisses).toBe(1);
+      expect(pngMiss.extracted[0]!.framePaths.get(0)!.endsWith(".png")).toBe(true);
+
+      const pngHit = await extractAllVideoFrames(
+        [fixtureVideo()],
+        FIXTURE_DIR,
+        { fps: 1, outputDir: pngHitOut, format: "png" },
+        undefined,
+        { extractCacheDir: cacheDir },
+      );
+      expect(pngHit.errors).toEqual([]);
+      expect(pngHit.phaseBreakdown.cacheHits).toBe(1);
+      expect(pngHit.phaseBreakdown.cacheMisses).toBe(0);
+      expect(pngHit.extracted[0]!.framePaths.get(0)!.endsWith(".png")).toBe(true);
+    } finally {
+      rmSync(cacheDir, { recursive: true, force: true });
+    }
+  }, 60_000);
 });
 
 // Regression test for the VFR (variable frame rate) freeze bug.

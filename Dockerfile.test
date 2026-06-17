@@ -66,10 +66,13 @@ RUN npx --yes @puppeteer/browsers install chrome-headless-shell@148.0.7778.167 \
 WORKDIR /app
 
 # Install bun
-RUN curl -fsSL https://bun.sh/install | bash
+RUN curl -fsSL https://bun.sh/install | BUN_INSTALL="/root/.bun" bash -s "bun-v1.3.13"
 ENV PATH="/root/.bun/bin:$PATH"
 
-# Install dependencies (full, including devDependencies for tsx + test harness)
+# Install dependencies (full, including devDependencies for tsx + test harness).
+# Every workspace member (packages/*) must be COPYed here — `bun install
+# --frozen-lockfile` treats any member missing from the build context as a
+# lockfile change and fails.
 COPY package.json bun.lock ./
 COPY packages/core/package.json packages/core/package.json
 COPY packages/engine/package.json packages/engine/package.json
@@ -81,6 +84,7 @@ COPY packages/shader-transitions/package.json packages/shader-transitions/packag
 COPY packages/aws-lambda/package.json packages/aws-lambda/package.json
 COPY packages/gcp-cloud-run/package.json packages/gcp-cloud-run/package.json
 COPY packages/sdk/package.json packages/sdk/package.json
+COPY packages/sdk-playground/package.json packages/sdk-playground/package.json
 RUN bun install --frozen-lockfile
 
 # Copy source

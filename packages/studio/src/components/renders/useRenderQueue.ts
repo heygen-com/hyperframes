@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { trackStudioRenderStart } from "../../telemetry/events";
+import { getAnonymousId } from "../../telemetry/config";
 
 export interface RenderJob {
   id: string;
@@ -109,10 +110,15 @@ export function useRenderQueue(projectId: string | null) {
         format: string;
         resolution?: string;
         composition?: string;
+        telemetryDistinctId: string;
       } = {
         fps,
         quality,
         format,
+        // So the server-emitted render_complete/render_error is attributed to
+        // this browser user (same id studio_* events use), making the render
+        // funnel joinable. Matches studio_render_start fired just above.
+        telemetryDistinctId: getAnonymousId(),
       };
       if (resolution && resolution !== "auto") body.resolution = resolution;
       if (composition) body.composition = composition;

@@ -1,13 +1,13 @@
 ---
 name: website-to-video
-description: "Capture a general website/URL and turn it into a HyperFrames video (site tour, showcase, or social clip from the site's own visuals). Uses headless Chrome screenshots + brand assets. Use when intent is general — portfolio/blog/landing-page showcase or social clip from the site. NOT for: product/SaaS launch or promo (→ /product-launch-video, even from a URL); topic explainer with no site (→ /faceless-explainer); GitHub PR (→ /pr-to-video); adding captions to existing video (→ /embedded-captions); short unnarrated page-highlight motion graphic (→ /motion-graphics). Unclear launch-vs-general-site? Ask one question or start at /hyperframes-read-first."
+description: "Capture a general website/URL and turn it into a HyperFrames video (site tour, showcase, or social clip from the site's own visuals). Uses headless Chrome screenshots + brand assets. Use when intent is general — portfolio/blog/landing-page showcase or social clip from the site. NOT for: product/SaaS launch or promo (→ /product-launch-video, even from a URL); topic explainer with no site (→ /faceless-explainer); GitHub PR (→ /pr-to-video); adding captions to existing video (→ /embedded-captions); short unnarrated page-highlight motion graphic (→ /motion-graphics). Unclear launch-vs-general-site? Ask one question or start at /hyperframes."
 ---
 
 # Website to HyperFrames
 
 Capture a website, then produce a professional video from it.
 
-> **Confirm the route before Step 0.** This skill makes a video _of / from a general site_. If the user is really **marketing / launching / promoting a product** (even from this URL, even "promo for our site") → `/product-launch-video`. A **topic explainer with no site** → `/faceless-explainer`; a **GitHub PR** → `/pr-to-video`; **re-cutting / recoloring / reordering an existing video file** → out of scope. Routed here on a vague "make a video", or unsure launch-vs-general-site? **Read `/hyperframes-read-first` first** (full routing table + § What HyperFrames cannot do).
+> **Confirm the route before Step 0.** This skill makes a video _of / from a general site_. If the user is really **marketing / launching / promoting a product** (even from this URL, even "promo for our site") → `/product-launch-video`. A **topic explainer with no site** → `/faceless-explainer`; a **GitHub PR** → `/pr-to-video`; **re-cutting / recoloring / reordering an existing video file** → out of scope. Routed here on a vague "make a video", or unsure launch-vs-general-site? **Read `/hyperframes` first** (full routing table + § What HyperFrames cannot do).
 
 Users say things like:
 

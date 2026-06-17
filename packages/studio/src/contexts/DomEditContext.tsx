@@ -56,6 +56,7 @@ export interface DomEditActionsValue extends Pick<
   | "commitAnimatedProperty"
   | "handleSetArcPath"
   | "handleUpdateArcSegment"
+  | "handleUnroll"
   | "invalidateGsapCache"
   | "previewIframeRef"
   | "commitMutation"
@@ -160,6 +161,7 @@ export function DomEditProvider({
     commitAnimatedProperty,
     handleSetArcPath,
     handleUpdateArcSegment,
+    handleUnroll,
     invalidateGsapCache,
     previewIframeRef,
     commitMutation,
@@ -229,6 +231,7 @@ export function DomEditProvider({
       commitAnimatedProperty,
       handleSetArcPath,
       handleUpdateArcSegment,
+      handleUnroll,
       invalidateGsapCache,
       previewIframeRef,
       commitMutation: stableCommitMutation,
@@ -284,6 +287,7 @@ export function DomEditProvider({
       commitAnimatedProperty,
       handleSetArcPath,
       handleUpdateArcSegment,
+      handleUnroll,
       invalidateGsapCache,
       previewIframeRef,
       stableCommitMutation,

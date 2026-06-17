@@ -31,6 +31,8 @@ interface UseElementLifecycleOpsParams {
     patches: PatchOperation[],
     options: { label: string; coalesceKey: string; skipRefresh?: boolean },
   ) => Promise<void>;
+  /** Stage 7 Step 3b: called after a successful server-side element delete (shadow). */
+  onElementDeleted?: (selection: DomEditSelection) => void;
 }
 
 export function useElementLifecycleOps({
@@ -43,6 +45,7 @@ export function useElementLifecycleOps({
   reloadPreview,
   clearDomSelection,
   commitPositionPatchToHtml,
+  onElementDeleted,
 }: UseElementLifecycleOpsParams) {
   // fallow-ignore-next-line complexity
   const handleDomEditElementDelete = useCallback(
@@ -103,6 +106,7 @@ export function useElementLifecycleOps({
         clearDomSelection();
         usePlayerStore.getState().setSelectedElementId(null);
         reloadPreview();
+        onElementDeleted?.(selection);
         showToast(`Deleted ${label}. Use Undo to restore it.`, "info");
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to delete element";
@@ -114,6 +118,7 @@ export function useElementLifecycleOps({
       clearDomSelection,
       domEditSaveTimestampRef,
       editHistory.recordEdit,
+      onElementDeleted,
       projectIdRef,
       reloadPreview,
       showToast,

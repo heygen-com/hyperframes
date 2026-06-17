@@ -50,6 +50,7 @@ import {
   resolveConfig,
   type ExtractionResult,
   type ExtractionPhaseBreakdown,
+  type VideoFrameFormat,
   closeCaptureSession,
   type CaptureOptions,
   type CaptureVideoMetadataHint,
@@ -70,6 +71,7 @@ import { join, dirname, resolve } from "path";
 import { randomUUID } from "crypto";
 import { fileURLToPath } from "url";
 import {
+  closeFileServerSafely,
   createFileServer,
   type FileServerHandle,
   HF_PAGE_SIDE_COMPOSITING_STUB,
@@ -244,6 +246,14 @@ export interface RenderConfig {
   crf?: number;
   /** Target video bitrate (e.g. "10M"). Mutually exclusive with `crf`. */
   videoBitrate?: string;
+  /**
+   * Source-video frame extraction format. Defaults to `"auto"`, which preserves
+   * the historical behavior: alpha/alpha-capable sources extract as PNG, all
+   * other videos extract as JPG. Set to `"png"` for lossless source-frame
+   * extraction on UI recordings, screen captures, or other color-sensitive
+   * videos.
+   */
+  videoFrameFormat?: VideoFrameFormat;
   /** HDR rendering mode.
    * - `auto` (default): probe sources; enable HDR if any HDR content is found.
    * - `force-hdr`: enable HDR even on SDR-only compositions (falls back to HLG transfer).
@@ -1567,7 +1577,7 @@ export async function executeRenderJob(
     if (frameLookup) frameLookup.cleanup();
 
     // Stop file server
-    fileServer.close();
+    closeFileServerSafely(fileServer, "renderOrchestrator", log);
     fileServer = null;
 
     // ── Stage 6: Assemble ───────────────────────────────────────────────

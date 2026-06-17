@@ -6,6 +6,14 @@ export const examples: Example[] = [
   ["Capture a website", "hyperframes capture https://stripe.com"],
   ["Capture to a specific directory", "hyperframes capture https://linear.app -o linear-video"],
   ["JSON output for AI agents", "hyperframes capture https://example.com --json"],
+  [
+    "Pull a video from the captured manifest by index",
+    "hyperframes capture --video ./linear-video --index 0",
+  ],
+  [
+    "List videos referenced in the captured manifest",
+    "hyperframes capture --video ./linear-video --list",
+  ],
 ];
 
 export default defineCommand({
@@ -16,8 +24,8 @@ export default defineCommand({
   args: {
     url: {
       type: "positional",
-      description: "Website URL to capture",
-      required: true,
+      description: "Website URL to capture (omit when using --video)",
+      required: false,
     },
     output: {
       type: "string",
@@ -42,11 +50,45 @@ export default defineCommand({
       description: "Output JSON (for AI agents / programmatic use)",
       default: false,
     },
+    video: {
+      type: "string",
+      description:
+        "Switch to video-download mode: path to a captured project directory whose video-manifest.json should be read. Pair with --index, --video-url, or --list.",
+    },
+    index: {
+      type: "string",
+      description: "(--video mode) Manifest entry index to download (0-based)",
+    },
+    "video-url": {
+      type: "string",
+      description: "(--video mode) Exact video URL to download (must match a manifest entry)",
+    },
+    list: {
+      type: "boolean",
+      description: "(--video mode) List manifest entries and exit",
+      default: false,
+    },
   },
   async run({ args }) {
-    const url = args.url as string;
+    if (args.video) {
+      const { runVideoMode } = await import("./capture/video.js");
+      await runVideoMode({
+        project: args.video as string,
+        index: (args.index as string | undefined) ?? null,
+        url: (args["video-url"] as string | undefined) ?? null,
+        list: args.list as boolean,
+      });
+      return;
+    }
 
-    // Validate URL
+    const url = args.url as string | undefined;
+    if (!url) {
+      console.error(
+        "Missing URL. Pass a website URL, or use --video <project> for video download.",
+      );
+      process.exit(1);
+    }
+
     try {
       new URL(url);
     } catch {

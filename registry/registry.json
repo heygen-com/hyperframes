@@ -472,6 +472,42 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "code-morph",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "code-snippet-flight",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "code-typing",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "code-diff",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "code-highlight",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "code-scroll",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "code-3d-extrude",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "code-shader-dissolve",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "code-particle-assemble",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "flowchart-vertical",
       "type": "hyperframes:block"
     },

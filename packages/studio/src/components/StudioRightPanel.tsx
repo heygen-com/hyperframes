@@ -87,6 +87,7 @@ export function StudioRightPanel({
     commitAnimatedProperty,
     handleSetArcPath,
     handleUpdateArcSegment,
+    handleUnroll,
     handleGsapAddKeyframe,
     handleGsapRemoveKeyframe,
     handleGsapConvertToKeyframes,
@@ -215,6 +216,7 @@ export function StudioRightPanel({
                   onSeekToTime={(t) => usePlayerStore.getState().requestSeek(t)}
                   onSetArcPath={handleSetArcPath}
                   onUpdateArcSegment={handleUpdateArcSegment}
+                  onUnroll={handleUnroll}
                   recordingState={recordingState}
                   recordingDuration={recordingDuration}
                   onToggleRecording={onToggleRecording}

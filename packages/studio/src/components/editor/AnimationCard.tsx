@@ -18,7 +18,8 @@ import {
 import { buildTweenSummary } from "./gsapAnimationHelpers";
 import { EaseCurveSection } from "./EaseCurveSection";
 import { ArcPathControls } from "./ArcPathControls";
-import type { ArcPathSegment } from "@hyperframes/core/gsap-parser";
+import type { GsapAnimationEditCallbacks } from "./gsapAnimationCallbacks";
+import { ComputedTweenNotice } from "./ComputedTweenNotice";
 import { P } from "./panelTokens";
 const BOOLEAN_PROPS = new Set(["visibility"]);
 const STRING_PROPS = new Set(["filter", "clipPath"]);
@@ -235,31 +236,9 @@ function parseNumericOrString(raw: string): number | string {
   return Number.isFinite(num) ? num : raw;
 }
 
-interface AnimationCardProps {
+interface AnimationCardProps extends GsapAnimationEditCallbacks {
   animation: GsapAnimation;
   defaultExpanded: boolean;
-  onUpdateProperty: (animationId: string, property: string, value: number | string) => void;
-  onUpdateMeta: (
-    animationId: string,
-    updates: { duration?: number; ease?: string; position?: number },
-  ) => void;
-  onDeleteAnimation: (animationId: string) => void;
-  onAddProperty: (animationId: string, property: string) => void;
-  onRemoveProperty: (animationId: string, property: string) => void;
-  onUpdateFromProperty?: (animationId: string, property: string, value: number | string) => void;
-  onAddFromProperty?: (animationId: string, property: string) => void;
-  onRemoveFromProperty?: (animationId: string, property: string) => void;
-  onLivePreview?: (property: string, value: number | string) => void;
-  onLivePreviewEnd?: () => void;
-  onSetArcPath?: (
-    animationId: string,
-    config: { enabled: boolean; autoRotate?: boolean | number; segments?: ArcPathSegment[] },
-  ) => void;
-  onUpdateArcSegment?: (
-    animationId: string,
-    segmentIndex: number,
-    update: Partial<ArcPathSegment>,
-  ) => void;
 }
 
 // fallow-ignore-next-line complexity
@@ -278,6 +257,7 @@ export const AnimationCard = memo(function AnimationCard({
   onLivePreviewEnd,
   onSetArcPath,
   onUpdateArcSegment,
+  onUnroll,
 }: AnimationCardProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [addingProp, setAddingProp] = useState(false);
@@ -397,6 +377,10 @@ export const AnimationCard = memo(function AnimationCard({
       {expanded && (
         <div className="pt-2">
           <div className="space-y-3">
+            <ComputedTweenNotice
+              provenance={animation.provenance}
+              onUnroll={onUnroll ? () => onUnroll(animation.id) : undefined}
+            />
             <div className="flex items-start gap-2">
               <div className="flex-1">
                 <p className="text-[10px] leading-relaxed text-neutral-400 italic">{summary}</p>

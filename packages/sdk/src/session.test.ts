@@ -17,6 +17,7 @@ const BASE_HTML = `
 class TestPreviewAdapter implements PreviewAdapter {
   private selectionHandlers: Array<(ids: string[]) => void> = [];
 
+  // fallow-ignore-next-line code-duplication
   elementAtPoint(_x: number, _y: number, _opts?: { atTime?: number }): ElementAtPointResult | null {
     return null;
   }
@@ -386,6 +387,7 @@ describe("setSelection", () => {
     expect(patches).toHaveLength(0);
   });
 
+  // fallow-ignore-next-line code-duplication
   it("setSelection with same ids does not fire selectionchange again", async () => {
     const comp = await openComposition(BASE_HTML);
     const calls: string[][] = [];
@@ -417,5 +419,67 @@ describe("setSelection", () => {
     comp.setSelection(["hf-title"]);
     comp.setSelection(["hf-title", "hf-title"]); // de-duped = ["hf-title"] — no change
     expect(calls).toHaveLength(1);
+  });
+});
+
+describe("animationIds population", () => {
+  const GSAP_HTML = `
+<div data-hf-id="hf-stage" data-hf-root style="width: 1280px; height: 720px">
+  <div data-hf-id="hf-box" style="opacity: 0">box</div>
+  <div data-hf-id="hf-plain">plain</div>
+  <script>var tl = gsap.timeline({ paused: true });
+tl.to("[data-hf-id=\\"hf-box\\"]", { opacity: 1, duration: 0.5 }, 0.2);
+window.__timelines["t"] = tl;</script>
+</div>`.trim();
+
+  it("attaches the parser's stable tween id to the targeted element", async () => {
+    const comp = await openComposition(GSAP_HTML);
+    const box = comp.getElement("hf-box");
+    expect(box?.animationIds.length).toBe(1);
+    // Stable id-space shared with studio-api / GSAP ops: targetSelector-method-position.
+    expect(box?.animationIds[0]).toContain("hf-box");
+    expect(box?.animationIds[0]).toContain("-to-");
+  });
+
+  it("leaves untargeted elements with an empty animationIds", async () => {
+    const comp = await openComposition(GSAP_HTML);
+    expect(comp.getElement("hf-plain")?.animationIds).toEqual([]);
+  });
+
+  it("the populated id is dispatchable as a removeGsapTween target", async () => {
+    const comp = await openComposition(GSAP_HTML);
+    const id = comp.getElement("hf-box")?.animationIds[0];
+    expect(id).toBeDefined();
+    if (id) expect(comp.can({ type: "removeGsapTween", animationId: id }).ok).toBe(true);
+  });
+
+  it("attaches multiple distinct tween ids when one element has several tweens", async () => {
+    const html = `
+<div data-hf-id="hf-stage" data-hf-root style="width: 1280px; height: 720px">
+  <div data-hf-id="hf-box" style="opacity: 0">box</div>
+  <script>var tl = gsap.timeline({ paused: true });
+tl.to("[data-hf-id=\\"hf-box\\"]", { opacity: 1, duration: 0.5 }, 0);
+tl.from("[data-hf-id=\\"hf-box\\"]", { x: -100, duration: 0.5 }, 1);
+window.__timelines["t"] = tl;</script>
+</div>`.trim();
+    const ids = (await openComposition(html)).getElement("hf-box")?.animationIds ?? [];
+    expect(ids.length).toBe(2);
+    expect(new Set(ids).size).toBe(2); // distinct
+  });
+
+  it("fans a shared-selector tween out to every matched element", async () => {
+    const html = `
+<div data-hf-id="hf-stage" data-hf-root style="width: 1280px; height: 720px">
+  <div data-hf-id="hf-a" class="fade">a</div>
+  <div data-hf-id="hf-b" class="fade">b</div>
+  <script>var tl = gsap.timeline({ paused: true });
+tl.to(".fade", { opacity: 1, duration: 0.5 }, 0);
+window.__timelines["t"] = tl;</script>
+</div>`.trim();
+    const comp = await openComposition(html);
+    const a = comp.getElement("hf-a")?.animationIds ?? [];
+    const b = comp.getElement("hf-b")?.animationIds ?? [];
+    expect(a.length).toBe(1);
+    expect(b).toEqual(a); // same tween id on both matched elements
   });
 });

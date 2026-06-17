@@ -180,6 +180,9 @@ export default defineConfig({
     outDir: "dist",
     emptyOutDir: true,
   },
+  optimizeDeps: {
+    include: ["bpm-detective"],
+  },
   server: {
     port: 5190,
   },

@@ -115,6 +115,8 @@ export function createTimelineElementFromManifestClip(params: {
 
   if (hostEl) {
     applyMediaMetadataFromElement(entry, hostEl);
+    const timelineRole = hostEl.getAttribute("data-timeline-role");
+    if (timelineRole) entry.timelineRole = timelineRole;
   }
   if (clip.assetUrl) entry.src = clip.assetUrl;
   if (clip.kind === "composition" && clip.compositionId) {
@@ -286,16 +288,22 @@ export function parseTimelineFromDOM(doc: Document, rootDuration: number): Timel
       if (mediaEl.tagName === "IMG") {
         entry.tag = "img";
       }
-      const src = mediaEl.getAttribute("src");
-      if (src) entry.src = src;
       const vol = el.getAttribute("data-volume") ?? mediaEl.getAttribute("data-volume");
       if (vol) entry.volume = parseFloat(vol);
       applyMediaMetadataFromElement(entry, el);
+      // Override AFTER the helper (which sets the raw relative attribute) so the
+      // resolved absolute URL wins — the Studio can then fetch the asset
+      // regardless of whether the attribute value was relative or absolute.
+      const resolvedSrc = (mediaEl as HTMLMediaElement | HTMLImageElement).src || undefined;
+      if (resolvedSrc) entry.src = resolvedSrc;
     }
 
     if (el.hasAttribute("data-timeline-locked")) {
       entry.timelineLocked = true;
     }
+
+    const timelineRole = el.getAttribute("data-timeline-role");
+    if (timelineRole) entry.timelineRole = timelineRole;
 
     // Sub-compositions
     const compSrc =

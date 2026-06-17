@@ -75,6 +75,7 @@
             "group": "Guides",
             "pages": [
               "guides/pipeline",
+              "guides/video-components",
               "guides/html-in-canvas",
               "guides/website-to-video",
               "guides/antigravity",
@@ -112,6 +113,20 @@
       {
         "tab": "Catalog",
         "groups": [
+          {
+            "group": "Code Animations",
+            "pages": [
+              "catalog/blocks/code-3d-extrude",
+              "catalog/blocks/code-shader-dissolve",
+              "catalog/blocks/code-particle-assemble",
+              "catalog/blocks/code-morph",
+              "catalog/blocks/code-snippet-flight",
+              "catalog/blocks/code-typing",
+              "catalog/blocks/code-diff",
+              "catalog/blocks/code-highlight",
+              "catalog/blocks/code-scroll"
+            ]
+          },
           {
             "group": "Captions",
             "pages": [

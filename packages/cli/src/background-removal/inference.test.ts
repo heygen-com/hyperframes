@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MEAN, STD, applyMask } from "./inference.js";
 
 // Regression: the u2net_human_seg model was trained with ImageNet
@@ -123,5 +123,36 @@ describe("background-removal/inference — applyMask invariants", () => {
     expect(bg[3]).toBe(255);
     expect(fg[7]).toBe(255);
     expect(bg[7]).toBe(0);
+  });
+});
+
+// onnxruntime-node and sharp are optional native modules; when their platform
+// binary can't load, createSession must fail with an actionable install hint
+// (and before touching the network / model download), not a raw module error.
+describe("background-removal/inference — missing optional native modules", () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  it("createSession throws an actionable error when onnxruntime-node can't load", async () => {
+    vi.doMock("onnxruntime-node", () => {
+      throw new Error("Cannot find module 'onnxruntime-node'");
+    });
+    const { createSession } = await import("./inference.js");
+    await expect(createSession()).rejects.toThrow(
+      /onnxruntime-node.*isn't available[\s\S]*npm i onnxruntime-node/,
+    );
+    vi.doUnmock("onnxruntime-node");
+  });
+
+  it("createSession throws an actionable error when sharp can't load", async () => {
+    vi.doMock("onnxruntime-node", () => ({ InferenceSession: {}, Tensor: {} }));
+    vi.doMock("sharp", () => {
+      throw new Error("Could not load the sharp module");
+    });
+    const { createSession } = await import("./inference.js");
+    await expect(createSession()).rejects.toThrow(/sharp.*isn't available[\s\S]*npm i sharp/);
+    vi.doUnmock("onnxruntime-node");
+    vi.doUnmock("sharp");
   });
 });

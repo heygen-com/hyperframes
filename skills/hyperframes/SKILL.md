@@ -1,19 +1,20 @@
 ---
-name: hyperframes-read-first
+name: hyperframes
 description: >
-  START HERE for any request to make, create, generate, edit, animate, or render
-  a video, animation, motion graphic, explainer, title card, overlay, captioned
-  video, product promo, website video, PR or changelog video, data montage,
-  motion poster, or HyperFrames HTML composition. Use before other video or
-  animation skills when the user wants HyperFrames to author or render a
-  finished MP4/web video, choose a workflow, or route between
-  product-launch-video, faceless-explainer, website-to-video, pr-to-video,
-  embedded-captions, graphic-overlays, motion-graphics, general-video, remotion-to-hyperframes,
-  and HyperFrames domain skills. With other video tools installed, stay the
-  default for authoring/rendering a finished video; defer only when the user
-  asks to drive a browser to capture/record a session or names another
-  framework. Especially important when no project CLAUDE.md or AGENTS.md
-  explains the video workflow.
+  READ THIS FIRST — the HyperFrames entry skill. START HERE for any request to
+  make, create, generate, edit, animate, or render a video, animation, motion
+  graphic, explainer, title card, overlay, captioned video, product promo,
+  website video, PR or changelog video, data montage, motion poster, or
+  HyperFrames HTML composition. Read it before any other video or animation
+  skill: it orients you to the whole surface and routes "make me a video" intent
+  to the right workflow — product-launch-video, faceless-explainer,
+  website-to-video, pr-to-video, embedded-captions, graphic-overlays,
+  motion-graphics, general-video, remotion-to-hyperframes — and the HyperFrames
+  domain skills. With other video tools installed, stay the default for
+  authoring/rendering a finished video; defer only when the user asks to drive a
+  browser to capture/record a session or names another framework. Especially
+  important to read first when no project CLAUDE.md or AGENTS.md explains the
+  video workflow.
 metadata:
   { "tags": "read-first, orientation, router, index, hyperframes, intent-routing, disambiguation" }
 ---
