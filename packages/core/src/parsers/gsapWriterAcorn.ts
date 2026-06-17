@@ -1022,22 +1022,32 @@ export function removeAllKeyframesFromScript(script: string, animationId: string
   const collapse = target.call.method === "from" ? sorted[0] : sorted[sorted.length - 1];
   if (!collapse) return script;
 
-  // Flat vars = existing top-level props, then collapse-keyframe props (these
-  // win; skip the per-keyframe `ease` key), then duration/ease/extras. Drops
-  // keyframes + easeEach by reconstruction.
-  const flat: Record<string, number | string> = { ...target.animation.properties };
+  const ms = new MagicString(script);
+  overwriteVarsArg(
+    ms,
+    target.call,
+    buildVarsObjectCode(buildCollapsedFlatVars(target.animation, collapse)),
+  );
+  return ms.toString();
+}
+
+// Flat vars for a tween collapsing its keyframes onto one stop: existing
+// top-level props, then the collapse keyframe's props (skip per-keyframe
+// `ease`), then duration/ease/extras. Drops keyframes + easeEach by omission.
+function buildCollapsedFlatVars(
+  animation: GsapAnimation,
+  collapse: { properties: Record<string, number | string> },
+): Record<string, number | string> {
+  const flat: Record<string, number | string> = { ...animation.properties };
   for (const [k, v] of Object.entries(collapse.properties)) {
     if (k !== "ease") flat[k] = v;
   }
-  if (target.animation.duration !== undefined) flat.duration = target.animation.duration;
-  if (target.animation.ease) flat.ease = target.animation.ease;
-  for (const [k, v] of Object.entries(target.animation.extras ?? {})) {
+  if (animation.duration !== undefined) flat.duration = animation.duration;
+  if (animation.ease) flat.ease = animation.ease;
+  for (const [k, v] of Object.entries(animation.extras ?? {})) {
     if (typeof v === "number" || typeof v === "string") flat[k] = v;
   }
-
-  const ms = new MagicString(script);
-  overwriteVarsArg(ms, target.call, buildVarsObjectCode(flat));
-  return ms.toString();
+  return flat;
 }
 
 /** Build the full replacement vars object for a tween being converted to keyframes. */
@@ -1697,7 +1707,84 @@ function computeForwardBaselines(
   return { before, final: { ...acc } };
 }
 
-// fallow-ignore-next-line complexity
+// Split one tween that straddles the split point: trim the original to the
+// first half (interpolated midpoint as its new end) and add a fromTo for the
+// second half on the new element. `fromSource` is the forward baseline.
+function buildSpanningSplit(
+  result: string,
+  anim: GsapAnimation,
+  pos: number,
+  dur: number,
+  fromSource: Record<string, number | string>,
+  ctx: { splitTime: number; newSelector: string; newElementStart: number },
+): string {
+  const progress = dur > 0 ? (ctx.splitTime - pos) / dur : 0;
+  const midProps: Record<string, number | string> = {};
+  for (const [k, v] of Object.entries(anim.properties)) {
+    if (typeof v !== "number") {
+      midProps[k] = v;
+      continue;
+    }
+    const fromVal = typeof fromSource[k] === "number" ? (fromSource[k] as number) : 0;
+    midProps[k] = fromVal + (v - fromVal) * progress;
+  }
+  const trimmed = updateAnimationInScript(result, anim.id, {
+    duration: ctx.splitTime - pos,
+    properties: midProps,
+  });
+  return addAnimationToScript(trimmed, {
+    targetSelector: ctx.newSelector,
+    method: "fromTo",
+    position: ctx.newElementStart,
+    duration: pos + dur - ctx.splitTime,
+    properties: { ...anim.properties },
+    fromProperties: { ...midProps },
+    ease: anim.ease,
+    extras: anim.extras,
+  }).script;
+}
+
+type SplitCtx = {
+  splitTime: number;
+  originalSelector: string;
+  newSelector: string;
+  newElementStart: number;
+};
+
+// Decide what one matching tween does at the split point: move to the new
+// element (wholly after), stay (wholly before / keyframes before), get skipped
+// (keyframes spanning), or get interpolated in half (spanning). Returns the
+// updated script; pushes any skip reason into `skippedSelectors`.
+function applyTweenSplit(
+  result: string,
+  anim: GsapAnimation,
+  baselineBefore: Record<string, number | string>,
+  ctx: SplitCtx,
+  skippedSelectors: string[],
+): string {
+  const pos = typeof anim.position === "number" ? anim.position : 0;
+  const dur = anim.duration ?? 0;
+  const animEnd = pos + dur;
+
+  if (anim.keyframes) {
+    if (pos >= ctx.splitTime)
+      return updateAnimationSelectorInScript(result, anim.id, ctx.newSelector);
+    if (animEnd > ctx.splitTime) {
+      skippedSelectors.push(`${ctx.originalSelector} (keyframes spanning split)`);
+    }
+    // Inherited-state for kf tweens is handled by computeForwardBaselines.
+    return result;
+  }
+  // Wholly before the split — kept on the original element.
+  if (animEnd <= ctx.splitTime) return result;
+  // Wholly after — move to the new element.
+  if (pos >= ctx.splitTime)
+    return updateAnimationSelectorInScript(result, anim.id, ctx.newSelector);
+  // Spans the split — interpolate the midpoint from the FORWARD baseline.
+  const fromSource = anim.fromProperties ?? baselineBefore;
+  return buildSpanningSplit(result, anim, pos, dur, fromSource, ctx);
+}
+
 export function splitAnimationsInScript(
   script: string,
   opts: SplitAnimationsOptions,
@@ -1736,67 +1823,11 @@ export function splitAnimationsInScript(
 
   // Reverse iteration: updateAnimationSelectorInScript mutates selectors which
   // can shift count-based ID suffixes for later animations.
+  const ctx = { splitTime: opts.splitTime, originalSelector, newSelector, newElementStart };
   for (let i = matching.length - 1; i >= 0; i--) {
     const anim = matching[i];
     if (!anim) continue;
-    const pos = typeof anim.position === "number" ? anim.position : 0;
-    const dur = anim.duration ?? 0;
-    const animEnd = pos + dur;
-
-    if (anim.keyframes) {
-      if (pos >= opts.splitTime) {
-        result = updateAnimationSelectorInScript(result, anim.id, newSelector);
-      } else if (animEnd > opts.splitTime) {
-        skippedSelectors.push(`${originalSelector} (keyframes spanning split)`);
-      }
-      // Inherited-state accumulation for kf tweens is handled in the forward
-      // pre-pass (computeForwardBaselines).
-      continue;
-    }
-
-    if (animEnd <= opts.splitTime) {
-      // Wholly before the split — kept on the original element; its contribution
-      // to the inherited baseline is computed in the forward pre-pass.
-      continue;
-    }
-
-    if (pos >= opts.splitTime) {
-      result = updateAnimationSelectorInScript(result, anim.id, newSelector);
-      continue;
-    }
-
-    // Spans the split — linear interpolation to compute mid-values, using the
-    // FORWARD baseline (props from earlier tweens), not a reverse accumulator.
-    const progress = dur > 0 ? (opts.splitTime - pos) / dur : 0;
-    const fromSource = anim.fromProperties ?? baselineBefore[i] ?? {};
-    const midProps: Record<string, number | string> = {};
-    for (const [k, v] of Object.entries(anim.properties)) {
-      if (typeof v !== "number") {
-        midProps[k] = v;
-        continue;
-      }
-      const fromVal = typeof fromSource[k] === "number" ? (fromSource[k] as number) : 0;
-      midProps[k] = fromVal + (v - fromVal) * progress;
-    }
-
-    const firstHalfDuration = opts.splitTime - pos;
-    result = updateAnimationInScript(result, anim.id, {
-      duration: firstHalfDuration,
-      properties: midProps,
-    });
-
-    const secondHalfDuration = animEnd - opts.splitTime;
-    const addResult = addAnimationToScript(result, {
-      targetSelector: newSelector,
-      method: "fromTo",
-      position: newElementStart,
-      duration: secondHalfDuration,
-      properties: { ...anim.properties },
-      fromProperties: { ...midProps },
-      ease: anim.ease,
-      extras: anim.extras,
-    });
-    result = addResult.script;
+    result = applyTweenSplit(result, anim, baselineBefore[i] ?? {}, ctx, skippedSelectors);
   }
 
   if (Object.keys(finalInheritedProps).length > 0) {
