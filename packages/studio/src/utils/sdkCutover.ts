@@ -174,6 +174,11 @@ export async function sdkTimingPersist(
   if (!sdkSession || !sdkSession.getElement(hfId)) return false;
   if (wrongCompositionFile(deps, targetPath)) return false;
   try {
+    // `before` is the SDK's serialized state, which is the true pre-edit
+    // content only while every edit routes through this session. During the
+    // dark-launch transition (server still writes some paths) the in-memory
+    // SDK doc can drift from disk, so this `before` may not match the file's
+    // actual prior bytes. Acceptable for v1; revisit once cutover is always-on.
     const before = sdkSession.serialize();
     sdkSession.batch(() => sdkSession.setTiming(hfId, timingUpdate));
     const after = sdkSession.serialize();

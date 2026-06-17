@@ -29,6 +29,8 @@ import {
   readFileContent,
   applyPatchByTarget,
   formatTimelineAttributeNumber,
+  shiftGsapPositions,
+  scaleGsapPositions,
 } from "./timelineEditingHelpers";
 import type { PersistTimelineEditInput } from "./timelineEditingHelpers";
 import { sdkTimingPersist } from "../utils/sdkCutover";
@@ -91,6 +93,7 @@ export function useTimelineEditing({
       element: TimelineElement,
       label: string,
       buildPatches: PersistTimelineEditInput["buildPatches"],
+      coalesceKey?: string,
     ): Promise<void> => {
       if (isRecordingRef?.current) {
         showToast("Cannot edit timeline while recording", "error");
@@ -110,6 +113,7 @@ export function useTimelineEditing({
             recordEdit,
             domEditSaveTimestampRef,
             pendingTimelineEditPathRef,
+            coalesceKey,
           }),
         )
         .then(() => {
@@ -154,6 +158,24 @@ export function useTimelineEditing({
           value: String(updates.track),
         });
       };
+      // Server-path fallback (no SDK session): persist the attr patch, then
+      // shift GSAP tween positions on the server and reload the preview — the
+      // SDK path folds both into setTiming, but the fallback must do them
+      // explicitly or the clip moves while its GSAP tweens stay put + the
+      // preview never refreshes. coalesceKey mirrors the SDK branch so undo
+      // granularity is identical on either path.
+      const coalesceKey = `timeline-move:${element.hfId ?? element.id}`;
+      const moveFallback = () =>
+        enqueueEdit(element, "Move timeline clip", buildMovePatches, coalesceKey).then(() => {
+          const pid = projectIdRef.current;
+          const delta = updates.start - element.start;
+          if (delta !== 0 && element.domId && pid) {
+            return shiftGsapPositions(pid, targetPath, element.domId, delta)
+              .then(() => reloadPreview())
+              .catch((err) => console.error("[Timeline] Failed to shift GSAP positions", err));
+          }
+          return reloadPreview();
+        });
       if (sdkSession && element.hfId) {
         return sdkTimingPersist(
           element.hfId,
@@ -167,12 +189,12 @@ export function useTimelineEditing({
             domEditSaveTimestampRef,
             compositionPath: activeCompPath,
           },
-          { label: "Move timeline clip", coalesceKey: `timeline-move:${element.hfId}` },
+          { label: "Move timeline clip", coalesceKey },
         ).then((handled) => {
-          if (!handled) return enqueueEdit(element, "Move timeline clip", buildMovePatches);
+          if (!handled) return moveFallback();
         });
       }
-      return enqueueEdit(element, "Move timeline clip", buildMovePatches);
+      return moveFallback();
     },
     [
       previewIframeRef,
@@ -193,10 +215,21 @@ export function useTimelineEditing({
       element: TimelineElement,
       updates: Pick<TimelineElement, "start" | "duration" | "playbackStart">,
     ) => {
-      patchIframeDomTiming(previewIframeRef.current, element, [
+      const liveAttrs: Array<[string, string]> = [
         ["data-start", formatTimelineAttributeNumber(updates.start)],
         ["data-duration", formatTimelineAttributeNumber(updates.duration)],
-      ]);
+      ];
+      // Patch the live playback-start/media-start attr too, or a resize that
+      // trims the playback start leaves the preview showing the old in-point
+      // until the next reload (the persisted patch handles it via pbs below).
+      if (updates.playbackStart != null) {
+        const liveAttr =
+          element.playbackStartAttr === "playback-start"
+            ? "data-playback-start"
+            : "data-media-start";
+        liveAttrs.push([liveAttr, formatTimelineAttributeNumber(updates.playbackStart)]);
+      }
+      patchIframeDomTiming(previewIframeRef.current, element, liveAttrs);
       const targetPath = element.sourceFile || activeCompPath || "index.html";
       const buildResizePatches: PersistTimelineEditInput["buildPatches"] = (original, target) => {
         const pbs = resolveResizePlaybackStart(original, target, element, updates);
@@ -220,10 +253,38 @@ export function useTimelineEditing({
         return patched;
       };
       // SDK path: skip when a playback-start adjustment is needed (setTiming has no pbs field).
-      // Condition: no explicit pbs override AND (no start change OR element has no pbs attribute).
+      // The second clause fires because trimming the start of a clip that has a
+      // playback-start attribute implicitly shifts that in-point — which the SDK
+      // setTiming op can't express — so those resizes must take the server path.
       const hasPbsAdjustment =
         updates.playbackStart != null ||
         (updates.start !== element.start && element.playbackStart != null);
+      // Server-path fallback: after persisting the attr patch, scale GSAP tween
+      // positions/durations on the server and reload the preview. The SDK path
+      // folds both into setTiming; the fallback must do them explicitly or the
+      // clip resizes while its GSAP tweens keep their old timing + the preview
+      // never refreshes. coalesceKey mirrors the SDK branch for undo parity.
+      const coalesceKey = `timeline-resize:${element.hfId ?? element.id}`;
+      const timingChanged =
+        updates.start !== element.start || updates.duration !== element.duration;
+      const resizeFallback = () =>
+        enqueueEdit(element, "Resize timeline clip", buildResizePatches, coalesceKey).then(() => {
+          const pid = projectIdRef.current;
+          if (timingChanged && element.domId && pid) {
+            return scaleGsapPositions(
+              pid,
+              targetPath,
+              element.domId,
+              element.start,
+              element.duration,
+              updates.start,
+              updates.duration,
+            )
+              .then(() => reloadPreview())
+              .catch((err) => console.error("[Timeline] Failed to scale GSAP positions", err));
+          }
+          return reloadPreview();
+        });
       if (sdkSession && element.hfId && !hasPbsAdjustment) {
         return sdkTimingPersist(
           element.hfId,
@@ -237,12 +298,12 @@ export function useTimelineEditing({
             domEditSaveTimestampRef,
             compositionPath: activeCompPath,
           },
-          { label: "Resize timeline clip", coalesceKey: `timeline-resize:${element.hfId}` },
+          { label: "Resize timeline clip", coalesceKey },
         ).then((handled) => {
-          if (!handled) return enqueueEdit(element, "Resize timeline clip", buildResizePatches);
+          if (!handled) return resizeFallback();
         });
       }
-      return enqueueEdit(element, "Resize timeline clip", buildResizePatches);
+      return resizeFallback();
     },
     [
       previewIframeRef,

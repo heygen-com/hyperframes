@@ -97,6 +97,7 @@ export interface PersistTimelineEditInput {
   recordEdit: (input: RecordEditInput) => Promise<void>;
   domEditSaveTimestampRef: React.MutableRefObject<number>;
   pendingTimelineEditPathRef: React.MutableRefObject<Set<string>>;
+  coalesceKey?: string;
 }
 
 export async function persistTimelineEdit(input: PersistTimelineEditInput): Promise<void> {
@@ -119,6 +120,7 @@ export async function persistTimelineEdit(input: PersistTimelineEditInput): Prom
     projectId: input.projectId,
     label: input.label,
     kind: "timeline",
+    coalesceKey: input.coalesceKey,
     files: { [targetPath]: patchedContent },
     readFile: async () => originalContent,
     writeFile: input.writeProjectFile,
