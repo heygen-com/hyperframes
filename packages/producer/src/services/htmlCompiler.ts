@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication complexity
 /**
  * HTML Compiler for Producer
  *
@@ -57,6 +58,10 @@ export interface CompiledComposition {
   staticDuration: number;
   renderModeHints: RenderModeHints;
   hasShaderTransitions: boolean;
+  /** Author HTML/CSS/scripts use a CSS 3D rendering context (pre-CDN-inline scan). */
+  usesThreeDTransforms: boolean;
+  /** Author HTML/CSS use mix-blend-mode (pre-CDN-inline scan). */
+  usesMixBlendMode: boolean;
 }
 
 export type RenderModeHintCode = "iframe" | "requestAnimationFrame" | "htmlInCanvas";
@@ -136,6 +141,35 @@ export function detectRenderModeHints(html: string): RenderModeHints {
     recommendScreenshot: reasons.length > 0,
     reasons,
   };
+}
+
+/**
+ * 3D rendering-context signals. drawElementImage paints elements inside a
+ * CSS 3D rendering context incorrectly: backface-visibility:hidden is
+ * ignored (mid-flip elements show their mirrored backface), sibling content
+ * of the 3D context can drop out of the capture, and the context's
+ * background is lost. Observed on real-world gen_os comps (flip-card and
+ * rotationX scene-entrance patterns) on macOS hardware GPU — this is a
+ * drawElementImage limitation, not a SwiftShader artifact.
+ *
+ * Only genuine 3D-context signals are matched: `perspective` (property or
+ * transform function), `transform-style: preserve-3d`, `backface-visibility`,
+ * `matrix3d(` / `rotate3d(`, and GSAP's `transformPerspective`. Flat
+ * rotationX/Y tweens without a perspective context render as 2D and are
+ * deliberately NOT matched, nor is the ubiquitous `translateZ(0)` promotion
+ * hack.
+ */
+const THREE_D_CONTEXT_PATTERN =
+  /transform-style\s*:\s*preserve-3d|backface-visibility\s*:|perspective\s*:\s*[0-9]|perspective\s*\(|matrix3d\s*\(|rotate3d\s*\(|\btransformPerspective\b/i;
+
+export function detectThreeDTransformUsage(html: string): boolean {
+  return THREE_D_CONTEXT_PATTERN.test(html);
+}
+
+const MIX_BLEND_MODE_PATTERN = /mix-blend-mode\s*:/i;
+
+function detectMixBlendModeUsage(html: string): boolean {
+  return MIX_BLEND_MODE_PATTERN.test(html);
 }
 
 const SHADER_TRANSITION_USAGE_PATTERN =
@@ -1381,6 +1415,11 @@ export async function compileForRender(
   );
   const renderModeHints = detectRenderModeHints(sanitizedHtml);
   const hasShaderTransitions = detectShaderTransitionUsage(sanitizedHtml);
+  // Detected BEFORE inlineExternalScripts: GSAP's own source contains
+  // `transformPerspective`, so scanning post-inline HTML would flag every
+  // composition that loads GSAP from a CDN.
+  const usesThreeDTransforms = detectThreeDTransformUsage(sanitizedHtml);
+  const usesMixBlendMode = detectMixBlendModeUsage(sanitizedHtml);
 
   const coalescedHtml = await injectDeterministicFontFaces(
     injectTextRenderingRule(
@@ -1543,6 +1582,8 @@ export async function compileForRender(
     staticDuration,
     renderModeHints,
     hasShaderTransitions,
+    usesThreeDTransforms,
+    usesMixBlendMode,
   };
 }
 

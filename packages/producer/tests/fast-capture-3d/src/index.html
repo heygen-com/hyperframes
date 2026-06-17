@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>fast-capture-3d</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { background: #ece8dd; }
+  #stage { position: relative; width: 960px; height: 540px; background: #ece8dd; overflow: hidden; }
+  .headline {
+    position: absolute; top: 40px; left: 0; width: 100%; text-align: center;
+    font: 700 44px Georgia, serif; color: #1a2640;
+  }
+  /* classic flip card: perspective container + preserve-3d + backface culling */
+  .flip-wrap {
+    position: absolute; top: 140px; left: 330px; width: 300px; height: 90px;
+    perspective: 1000px;
+  }
+  .flip-card { position: relative; width: 100%; height: 100%; transform-style: preserve-3d; }
+  .face {
+    position: absolute; inset: 0; backface-visibility: hidden;
+    display: flex; align-items: center; justify-content: center;
+    font: 700 34px Georgia, serif; border-radius: 8px;
+  }
+  .front { background: #1a2640; color: #fff; }
+  .back { background: #c8a870; color: #1a2640; font-style: italic; transform: rotateX(-180deg); }
+  /* standalone 3D entrance: GSAP rotationX on a sized div, static content */
+  .badge {
+    position: absolute; top: 300px; left: 380px; width: 200px; height: 64px;
+    background: #406080; color: #fff; font: 700 26px Georgia, serif;
+    text-align: center; line-height: 64px; border-radius: 8px;
+  }
+  .footer {
+    position: absolute; top: 430px; left: 0; width: 100%; text-align: center;
+    font: 700 28px Georgia, serif; color: #406080;
+  }
+</style>
+</head>
+<body>
+<div id="stage" data-composition-id="fast-capture-3d" data-width="960" data-height="540" data-duration="4">
+  <div class="headline">3D PROJECTION TEST</div>
+  <div class="flip-wrap"><div class="flip-card" id="card">
+    <div class="face front">FRONT</div>
+    <div class="face back">BACK</div>
+  </div></div>
+  <div class="badge" id="badge">ENTRANCE</div>
+  <div class="footer">STATIC FOOTER</div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+<script>
+  const tl = gsap.timeline({ paused: true });
+  // flip card: two half-turns with rests between
+  tl.to("#card", { rotationX: 180, duration: 1.2, ease: "power2.inOut" }, 0.4);
+  tl.to("#card", { rotationX: 360, duration: 1.2, ease: "power2.inOut" }, 2.4);
+  // standalone 3D entrance (perspective-free rotationX — drawElementImage
+  // silently drops the rotation without projection)
+  tl.fromTo("#badge",
+    { rotationX: -90, opacity: 0, transformPerspective: 800 },
+    { rotationX: 0, opacity: 1, duration: 1.0, ease: "back.out(1.7)" }, 0.2);
+  window.__timelines = window.__timelines || {};
+  window.__timelines["fast-capture-3d"] = tl;
+</script>
+</body>
+</html>

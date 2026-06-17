@@ -55,6 +55,13 @@ export interface EngineConfig {
   /** Force screenshot capture mode (skip BeginFrame even on Linux). */
   forceScreenshot: boolean;
   /**
+   * EXPERIMENTAL. Use drawElementImage for frame capture (requires the
+   * CanvasDrawElement Chrome flag, added globally in buildChromeArgs).
+   * Surfaced via the CLI `--experimental-fast-capture` flag.
+   * Env fallback: `PRODUCER_EXPERIMENTAL_FAST_CAPTURE`.
+   */
+  useDrawElement: boolean;
+  /**
    * Low-memory render profile. When `true`, the orchestrator collapses the
    * pipeline to its cheapest shape on memory-constrained hosts: it skips the
    * throwaway auto-worker calibration browser, pins capture to a single
@@ -208,6 +215,7 @@ export const DEFAULT_CONFIG: EngineConfig = {
   browserTimeout: 120_000,
   protocolTimeout: 300_000,
   forceScreenshot: false,
+  useDrawElement: false,
   // Auto-detected per host in `resolveConfig`; defaults off for the raw
   // DEFAULT_CONFIG (used directly by tests and worker-sizing fallbacks).
   lowMemoryMode: false,
@@ -307,6 +315,7 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
       : undefined,
 
     forceScreenshot: envBool("PRODUCER_FORCE_SCREENSHOT", DEFAULT_CONFIG.forceScreenshot),
+    useDrawElement: envBool("PRODUCER_EXPERIMENTAL_FAST_CAPTURE", DEFAULT_CONFIG.useDrawElement),
     lowMemoryMode: resolveLowMemoryMode(),
     enablePageSideCompositing: envBool(
       "HF_PAGE_SIDE_COMPOSITING",
@@ -379,9 +388,22 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
   // Remove undefined values so they don't override defaults
   const cleanEnv = Object.fromEntries(Object.entries(fromEnv).filter(([, v]) => v !== undefined));
 
-  return {
+  const merged = {
     ...DEFAULT_CONFIG,
     ...cleanEnv,
     ...overrides,
   };
+
+  // drawElement capture and page-side shader compositing are mutually
+  // incompatible capture strategies (drawElement reads paint records directly
+  // and bypasses the page-side prepare→composite→resolve protocol). When
+  // experimental fast capture is on, force page-side compositing off so shader
+  // transitions fall back to the Node-side layered blend rather than silently
+  // dropping. This keeps the flag self-consistent and avoids a per-session
+  // incompatibility warning on every fast-capture render.
+  if (merged.useDrawElement) {
+    merged.enablePageSideCompositing = false;
+  }
+
+  return merged;
 }

@@ -1,4 +1,4 @@
-// fallow-ignore-file complexity
+// fallow-ignore-file complexity code-duplication
 /**
  * Frame Capture Service
  *
@@ -29,6 +29,18 @@ import {
   pageScreenshotCapture,
   initTransparentBackground,
 } from "./screenshotService.js";
+import {
+  detectSwiftShader,
+  injectDrawElementCanvas,
+  captureDrawElementFrame,
+  resolveDrawElementCaptureMode,
+  instrumentAcceleratedCanvases,
+} from "./drawElementService.js";
+import {
+  initThreeDProjection,
+  detectStackedFadeRisk,
+  detectCssEffectRisk,
+} from "./threeDProjection.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import type {
   CaptureOptions,
@@ -69,6 +81,13 @@ export interface CaptureSession {
     totalMs: number;
   };
   captureMode: CaptureMode;
+  /**
+   * Browser LAUNCH mode, immutable after createCaptureSession. `captureMode`
+   * is reassigned by initializeSession (e.g. to "drawelement"), so callers
+   * that need to know whether this browser actually drives BeginFrame (the
+   * SwiftShader liveness probe) read this field instead.
+   */
+  launchCaptureMode: CaptureMode;
   // BeginFrame state
   beginFrameTimeTicks: number;
   beginFrameIntervalMs: number;
@@ -76,6 +95,10 @@ export interface CaptureSession {
   beginFrameNoDamageCount: number;
   /** Optional producer config — when set, overrides module-level env var constants. */
   config?: Partial<EngineConfig>;
+  /** True if running on SwiftShader (detected at init). Undefined before init. */
+  isSwiftShader?: boolean;
+  /** drawElementImage canvas was injected and is ready for capture. */
+  drawElementReady?: boolean;
 }
 
 // Circular buffer for browser console messages dumped on render failure diagnostics.
@@ -305,6 +328,169 @@ async function waitForCloseWithTimeout(promise: Promise<unknown>): Promise<boole
   return !timedOut;
 }
 
+/**
+ * Post-readiness capture-surface init, shared by the screenshot and BeginFrame
+ * init paths (called after the page is fully ready). When `useDrawElement` is
+ * set, detect SwiftShader and route: transparent+SwiftShader falls back to
+ * screenshot capture (the drawElement transparent path is broken on SwiftShader),
+ * everything else injects the drawElement canvas and switches to "drawelement"
+ * mode. Otherwise, for PNG output, force a transparent page background so the
+ * screenshots carry a real alpha channel (Chrome resets the override on every
+ * navigation, so this must run after page load).
+ *
+ * drawElement is also skipped when supersampling (deviceScaleFactor > 1):
+ * `drawElementImage` reads the canvas at CSS pixels and has no equivalent of
+ * `Page.captureScreenshot`'s clip+scale, so it would silently capture at 1x and
+ * drop the requested supersample. Such renders fall through to the screenshot
+ * path (preMode already forces "screenshot" for DPR > 1).
+ */
+async function initDrawElementOrTransparentBackground(
+  session: CaptureSession,
+  page: Page,
+  logInitPhase: (phase: string) => void,
+): Promise<void> {
+  const supersampling = (session.options.deviceScaleFactor ?? 1) > 1;
+  // forceScreenshot is an explicit routing decision made upstream (render-mode
+  // compat hints like raw requestAnimationFrame, alpha formats, low-memory) —
+  // drawElement must not override it. Concretely: an rAF-compat comp on
+  // SwiftShader gets a screenshot-launched (free-running) browser, where
+  // drawElement runs in paint-event-sync mode; SwiftShader never refreshes a
+  // 2d canvas bitmap inside a cached paint record there, so every canvas
+  // captures frozen-blank (raf-ball rendered fully black). On a GPU the same
+  // path happens to work, but the hint asked for screenshot — honor it.
+  const forceScreenshot = session.config?.forceScreenshot ?? false;
+  const useDrawElement =
+    (session.config?.useDrawElement ?? false) && !supersampling && !forceScreenshot;
+  if ((session.config?.useDrawElement ?? false) && supersampling) {
+    console.log(
+      "[engine] --experimental-fast-capture disabled for this render: drawElementImage " +
+        "ignores deviceScaleFactor, so supersampled (DPR > 1) output uses screenshot capture.",
+    );
+  }
+  if ((session.config?.useDrawElement ?? false) && !supersampling && forceScreenshot) {
+    console.log(
+      "[engine] fast capture: falling back to screenshot — render-mode compatibility " +
+        "hint forced screenshot capture (e.g. raw requestAnimationFrame composition).",
+    );
+  }
+  // Retract the per-page autoAlpha rewrite flag when a runtime gate routes the
+  // session to screenshot mode. evaluateOnNewDocument already fired; a follow-up
+  // evaluate overrides it in the live page context so hideTransparentAutoAlpha-
+  // Targets does not hide elements on the fallback screenshot render
+  // (up to 21 dB damage if not retracted, A/B proven 2026-06-12).
+  async function retractAutoAlphaFlag(): Promise<void> {
+    await page.evaluate(() => {
+      (
+        window as Window & { __HF_FAST_CAPTURE_AUTOALPHA__?: boolean }
+      ).__HF_FAST_CAPTURE_AUTOALPHA__ = false;
+    });
+  }
+  if (useDrawElement) {
+    session.isSwiftShader = await detectSwiftShader(page);
+    const transparent = session.options.format === "png";
+    async function routeToFallback(): Promise<void> {
+      session.captureMode = session.launchCaptureMode;
+      if (transparent) {
+        await initTransparentBackground(session.page);
+      }
+      await retractAutoAlphaFlag();
+    }
+    // Video compositions fall back to screenshot capture. <video> is a PROXY
+    // signal: the actual trigger (bisect + standalone repro, 2026-06-09) is the
+    // word-by-word caption opacity pattern — per-frame JS opacity writes on >=2
+    // stacked containers with fully-transparent children, inside a transformed
+    // container that overflows the capture canvas, read back via toDataURL.
+    // drawElementImage then captures fully-transparent frames (~12 dB
+    // fast-vs-baseline on macOS GPU and native amd64 Linux alike). Video itself
+    // captures fine — a caption-free bg-video probe scores 54 dB — but real
+    // video comps almost always carry captions, so the gate keys on <video>.
+    // Chromium-side, same family as crbug 521434899 but reproduces on real
+    // GPUs; see docs/fast-capture-limitations.md Lim 2 for the ablation table.
+    // HF_FAST_CAPTURE_VIDEO=true bypasses the gate for future R&D probing.
+    const hasVideo =
+      process.env.HF_FAST_CAPTURE_VIDEO === "true"
+        ? false
+        : await page.evaluate(() => document.querySelector("video") !== null);
+    const mode = resolveDrawElementCaptureMode(session.isSwiftShader, transparent, hasVideo);
+    if (mode === "screenshot") {
+      const reason = session.isSwiftShader
+        ? "SwiftShader (software rasterizer — no GPU egress to skip, drawElement is parity-or-slower; see fast-capture-limitations.md)"
+        : "composition contains <video> (proxy for the caption-pattern capture bug — see fast-capture-limitations.md Lim 2)";
+      // Fall back to the browser's LAUNCH mode, not unconditionally to
+      // "screenshot": on a BeginFrame-launched browser (Linux fast capture)
+      // Page.captureScreenshot hangs for the full protocol timeout, while
+      // beginFrameCapture is the platform's normal baseline path. The
+      // transparent+SwiftShader case always arrives on a screenshot-launched
+      // browser (drawElementTransparent forces that at launch), so alpha
+      // still routes through captureScreenshot.
+      console.log(
+        `[engine] fast capture: falling back to ${session.launchCaptureMode} capture — ${reason}`,
+      );
+      await routeToFallback();
+    } else {
+      // Stacked-fade gate: >=2 overlapping viewport-scale fade targets
+      // reproduce the drawElementImage mid-fade blackout (crbug 521861819).
+      // Mechanism-based — resolved from the producer stub's recorded fade
+      // tween targets, independent of any authoring convention. Falls back
+      // to the platform's baseline route, same contract as the video gate.
+      // HF_FAST_CAPTURE_CROSSFADE=true bypasses for R&D.
+      if (process.env.HF_FAST_CAPTURE_CROSSFADE !== "true" && (await detectStackedFadeRisk(page))) {
+        console.log(
+          `[engine] fast capture: falling back to ${session.launchCaptureMode} capture — ` +
+            "stacked viewport-scale fade targets detected (drawElementImage drops " +
+            "mid-fade content, crbug 521861819)",
+        );
+        await routeToFallback();
+        return;
+      }
+      // CSS-effect gate: backdrop-filter samples the compositor backdrop and
+      // filter:blur/drop-shadow render differently through the paint-record
+      // path — drawElementImage can't reproduce either, producing 18–49 dB
+      // damaged frames (community eval). Fall back to the platform baseline.
+      // HF_FAST_CAPTURE_CSSFX=true bypasses for R&D.
+      if (process.env.HF_FAST_CAPTURE_CSSFX !== "true") {
+        const cssFx = await detectCssEffectRisk(page);
+        if (cssFx) {
+          console.log(
+            `[engine] fast capture: falling back to ${session.launchCaptureMode} capture — ` +
+              `${cssFx} detected (drawElementImage cannot reproduce it; see fast-capture-limitations.md)`,
+          );
+          await routeToFallback();
+          return;
+        }
+      }
+      // Rewrite CSS 3D contexts into WebGL-projected canvases BEFORE the
+      // layoutsubtree canvas goes in (rects are measured in normal layout).
+      // drawElementImage cannot paint 3D rendering contexts — see
+      // threeDProjection.ts. No-op for compositions without 3D content.
+      const threeD = await initThreeDProjection(page);
+      if (!threeD.ok) {
+        console.log(
+          `[engine] fast capture: falling back to ${session.launchCaptureMode} capture — ` +
+            `3D projection init failed (${threeD.reason ?? "unknown"})`,
+        );
+        await routeToFallback();
+        return;
+      }
+      if (threeD.groups > 0) {
+        logInitPhase(
+          `3D projection active: ${threeD.groups} context(s), ${threeD.quads} quad(s), ` +
+            `${threeD.selfQuads ?? 0} self-quad el(s), ${threeD.stubTargets ?? 0} stub target(s)`,
+        );
+      }
+      await injectDrawElementCanvas(page, session.options.width, session.options.height);
+      if (transparent) {
+        await initTransparentBackground(session.page);
+      }
+      session.captureMode = "drawelement";
+      session.drawElementReady = true;
+      logInitPhase("drawElement canvas injected");
+    }
+  } else if (session.options.format === "png") {
+    await initTransparentBackground(session.page);
+  }
+}
+
 // fallow-ignore-next-line unit-size
 export async function createCaptureSession(
   serverUrl: string,
@@ -320,9 +506,33 @@ export async function createCaptureSession(
   // `options.format === "png"` for transparent capture should also set
   // `config.forceScreenshot = true` (the producer's renderOrchestrator does this
   // automatically when `RenderConfig.format` is an alpha-capable value).
+  // Exception: `useDrawElement=true` with png self-manages the screenshot-browser
+  // requirement (both the SwiftShader fallback and the GPU transparent path need
+  // a screenshot-launched browser — the SwiftShader path calls Page.captureScreenshot
+  // which hangs on a BeginFrame browser, and the GPU path doesn't need BeginFrame
+  // because the compositor runs freely on a screenshot-launched browser).
   const headlessShell = resolveHeadlessShellPath(config);
   const isLinux = process.platform === "linux";
   const forceScreenshot = config?.forceScreenshot ?? DEFAULT_CONFIG.forceScreenshot;
+  const useDrawElement = config?.useDrawElement ?? false;
+  const drawElementTransparent = useDrawElement && options.format === "png";
+  // drawElement and page-side shader compositing are mutually incompatible
+  // capture strategies: drawElement reads the composition root's paint records
+  // directly and skips the prepare→micro-screenshot→resolve protocol (the
+  // micro-screenshot would also hang on an opaque/beginframe-launched browser).
+  // `resolveConfig` forces page-side compositing off whenever useDrawElement is
+  // set, so this only trips for a direct caller that bypassed resolveConfig and
+  // passed both flags — warn once and treat page-side as disabled.
+  if (
+    useDrawElement &&
+    (config?.enablePageSideCompositing ?? DEFAULT_CONFIG.enablePageSideCompositing)
+  ) {
+    console.warn(
+      "[engine] useDrawElement is incompatible with page-side shader compositing — " +
+        "ignoring enablePageSideCompositing for this render. Prefer resolveConfig, " +
+        "which disables page-side compositing automatically for fast-capture renders.",
+    );
+  }
   // BeginFrame's screenshot does not honor a viewport `deviceScaleFactor`
   // (the captured surface is sized by the OS window in CSS pixels regardless
   // of `Emulation.setDeviceMetricsOverride`'s DPR). When supersampling we
@@ -330,7 +540,9 @@ export async function createCaptureSession(
   // the screenshot path for any DPR > 1.
   const supersampling = (options.deviceScaleFactor ?? 1) > 1;
   const preMode: CaptureMode =
-    headlessShell && isLinux && !forceScreenshot && !supersampling ? "beginframe" : "screenshot";
+    headlessShell && isLinux && !forceScreenshot && !supersampling && !drawElementTransparent
+      ? "beginframe"
+      : "screenshot";
   const requestedGpuMode = config?.browserGpuMode ?? DEFAULT_CONFIG.browserGpuMode;
   const resolvedGpuMode = await resolveBrowserGpuMode(requestedGpuMode, {
     chromePath: headlessShell ?? undefined,
@@ -376,6 +588,32 @@ export async function createCaptureSession(
       w.__name = <T>(fn: T, _name: string): T => fn;
     }
   });
+  // Fast capture: record accelerated canvases (webgl/webgl2/webgpu) and force
+  // preserveDrawingBuffer before any page script can create a context — their
+  // paint records freeze at the first frame, so captureDrawElementFrame
+  // composites their live content via drawImage instead (see
+  // instrumentAcceleratedCanvases). Must be registered before navigation.
+  if (useDrawElement) {
+    await page.evaluateOnNewDocument(instrumentAcceleratedCanvases);
+  }
+  // Signal the producer's GSAP stub to rewrite `opacity` → `autoAlpha` in
+  // tween vars: stacked opacity-0 containers (the caption pattern) keep
+  // painting as transparent promoted layers, which breaks drawElementImage
+  // capture. Keyed on per-render useDrawElement (not the global fast-capture
+  // env) — compile-time-gated renders (video, 3D) set useDrawElement=false
+  // in compileStage and must NOT receive the rewrite; applying it to a
+  // screenshot render causes up to 21 dB min damage (A/B proven 2026-06-12
+  // on gos-pro-promo, 3D-gated). The stub records __hfFadeTargets regardless
+  // of this flag (see convertTweenArgs in hf-early-stub.ts) so the
+  // stacked-fade gate is always armed even when the rewrite is off.
+  // Opt out with HF_FAST_CAPTURE_AUTOALPHA=false.
+  if (useDrawElement && process.env.HF_FAST_CAPTURE_AUTOALPHA !== "false") {
+    await page.evaluateOnNewDocument(() => {
+      (
+        window as Window & { __HF_FAST_CAPTURE_AUTOALPHA__?: boolean }
+      ).__HF_FAST_CAPTURE_AUTOALPHA__ = true;
+    });
+  }
   // Inject render-time variable overrides before any page script runs, so the
   // runtime helper `getVariables()` returns the merged result on its first
   // call. Pass the JSON string and parse inside the page so we don't require
@@ -436,6 +674,7 @@ export async function createCaptureSession(
       totalMs: 0,
     },
     captureMode,
+    launchCaptureMode: captureMode,
     beginFrameTimeTicks: 0,
     // Frame interval in ms: 1000 * den / num. For 30/1 → 33.333…, for
     // 30000/1001 (NTSC) → 33.366…. JavaScript number precision is fine at
@@ -606,11 +845,16 @@ async function pollSubCompositionTimelines(
   timeoutMs: number,
   intervalMs: number = 150,
 ): Promise<void> {
+  // Hosts may opt out of the timeline wait with `data-no-timeline` —
+  // compositions driven purely by CSS animations / rAF (the render-compat
+  // contract) never register window.__timelines[id], and without the opt-out
+  // they stall here for the full playerReadyTimeout (45 s) on every render.
   const expression = `(function() {
     var hosts = document.querySelectorAll("[data-composition-id]");
     if (hosts.length === 0) return true;
     var timelines = window.__timelines || {};
     for (var i = 0; i < hosts.length; i++) {
+      if (hosts[i].hasAttribute("data-no-timeline")) continue;
       var id = hosts[i].getAttribute("data-composition-id");
       if (!id) continue;
       if (!timelines[id]) return false;
@@ -638,6 +882,7 @@ async function pollSubCompositionTimelines(
       var timelines = window.__timelines || {};
       var m = [];
       for (var i = 0; i < hosts.length; i++) {
+        if (hosts[i].hasAttribute("data-no-timeline")) continue;
         var id = hosts[i].getAttribute("data-composition-id");
         if (id && !timelines[id]) m.push(id);
       }
@@ -645,7 +890,8 @@ async function pollSubCompositionTimelines(
     })()`);
     console.warn(
       `[FrameCapture] Sub-composition timelines not registered after ${timeoutMs}ms: ${missing}. ` +
-        `Compositions that load data asynchronously (e.g. fetch) must register window.__timelines[id] after setup completes.`,
+        `Compositions that load data asynchronously (e.g. fetch) must register window.__timelines[id] after setup completes. ` +
+        `Compositions intentionally driven without GSAP timelines (CSS animations / rAF) can mark the host with data-no-timeline to skip this wait.`,
     );
   }
 }
@@ -1010,16 +1256,8 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     logInitPhase("tailwind ready");
     await recordSessionInitTelemetry(session, initStart);
 
-    // For PNG captures, force the page background fully transparent so the
-    // captured screenshots carry a real alpha channel. Must run AFTER
-    // navigation (Chrome resets the override on every goto) and AFTER the
-    // page is loaded (the injected stylesheet needs a real document.head).
-    // The override is overridden by `body { background: ... }` and
-    // `#root { background: ... }` rules — the helper handles that with a
-    // `[data-composition-id]{background:transparent !important}` injection.
-    if (session.options.format === "png") {
-      await initTransparentBackground(session.page);
-    }
+    // drawElement or transparent-background init — runs after page is fully ready.
+    await initDrawElementOrTransparentBackground(session, page, logInitPhase);
 
     session.isInitialized = true;
     return;
@@ -1160,15 +1398,15 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
   const baseTickCount = lockWarmupTicks ? LOCKED_WARMUP_TICKS : warmupState.ticks;
   session.beginFrameTimeTicks = (baseTickCount + 10) * session.beginFrameIntervalMs;
 
-  // For PNG captures, inject the transparent-background override + stylesheet
-  // (see the screenshot-mode branch above for the rationale). BeginFrame mode
-  // does not actually preserve alpha through its compositor — callers that
-  // need transparent output should set `forceScreenshot: true` so this branch
-  // is bypassed entirely. The call is left here as defense-in-depth for any
-  // future BeginFrame alpha support.
-  if (session.options.format === "png") {
-    await initTransparentBackground(session.page);
-  }
+  // drawElement or transparent-background init — runs after page is fully ready.
+  // IMPORTANT: must stay after beginFrameTimeTicks is set above. The per-frame
+  // drawelement branch gates its BeginFrame call on `beginFrameTimeTicks > 0`;
+  // if this ran first, ticks would be 0 and the paused compositor would never
+  // advance for opaque drawElement on Linux. (In beginframe-launched mode,
+  // transparent is always false — useDrawElement+png forces preMode="screenshot"
+  // upstream — so the SwiftShader fallback inside the helper is dead-but-harmless
+  // defense-in-depth here.)
+  await initDrawElementOrTransparentBackground(session, page, logInitPhase);
 
   session.isInitialized = true;
 }
@@ -1256,7 +1494,11 @@ async function prepareFrameForCapture(
   //  1. prepare — clone scenes (now containing injected video <img>s)
   //  2. micro-screenshot — force browser to paint cloned elements
   //  3. resolve — drawElementImage reads paint records, shader composites
-  if (hasPendingComposite && session.captureMode !== "beginframe") {
+  if (
+    hasPendingComposite &&
+    session.captureMode !== "beginframe" &&
+    session.captureMode !== "drawelement"
+  ) {
     await page.evaluate(async () => {
       const w = window as unknown as { __hf_page_composite_prepare?: () => Promise<boolean> };
       if (typeof w.__hf_page_composite_prepare === "function") {
@@ -1315,6 +1557,29 @@ async function captureFrameCore(
       if (result.hasDamage) session.beginFrameHasDamageCount++;
       else session.beginFrameNoDamageCount++;
       screenshotBuffer = result.buffer;
+    } else if (session.captureMode === "drawelement") {
+      // Advance compositor state via BeginFrame when available (Linux headless-shell);
+      // on macOS the compositor advances naturally without BeginFrame.
+      if (session.beginFrameTimeTicks > 0) {
+        const client = await getCdpSession(page);
+        await client.send("HeadlessExperimental.beginFrame", {
+          frameTimeTicks: session.beginFrameTimeTicks + frameIndex * session.beginFrameIntervalMs,
+          interval: session.beginFrameIntervalMs,
+          noDisplayUpdates: false,
+          // no screenshot param — we capture via canvas
+        });
+      }
+      screenshotBuffer = await captureDrawElementFrame(
+        page,
+        options.width,
+        options.height,
+        options.format ?? "jpeg",
+        options.quality ?? 80,
+        // Paint-event sync only without BeginFrame (macOS / screenshot-launched):
+        // under BeginFrame control the per-frame beginFrame above already painted
+        // a fresh snapshot, and no further paint would arrive during a wait.
+        session.beginFrameTimeTicks === 0,
+      );
     } else {
       screenshotBuffer = await pageScreenshotCapture(page, options);
     }

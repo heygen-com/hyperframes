@@ -9,6 +9,7 @@
     "coverage/",
     "node_modules/",
     "playground/",
-    "registry/blocks/**/lib/*.iife.js"
+    "registry/blocks/**/lib/*.iife.js",
+    "chrome/"
   ]
 }

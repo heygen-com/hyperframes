@@ -1039,10 +1039,19 @@ export async function executeRenderJob(
     const totalFrames = probeResult.totalFrames;
     perfStages.browserProbeMs = probeResult.browserProbeMs;
     perfStages.compileMs = Date.now() - stage1Start;
+    // BeginFrame liveness: the probe stage already relaunched its session in
+    // screenshot mode when the first BeginFrame stalled (SwiftShader
+    // heavy-layer comps) — flip the sequencer's capture routing to match so
+    // calibration and capture stages never issue another BeginFrame.
+    if (probeResult.beginFrameStalled && !captureForceScreenshot) {
+      captureForceScreenshot = true;
+      updateCaptureObservability({ forceScreenshot: captureForceScreenshot });
+    }
     observability.checkpoint("browser_probe", "duration resolved", {
       durationSeconds: probeResult.duration,
       totalFrames,
       compositionHash,
+      beginFrameStalled: probeResult.beginFrameStalled,
     });
 
     // ── Stage 2: Video frame extraction ─────────────────────────────────
