@@ -5,7 +5,7 @@
  *   /elements/{hfId}/inlineStyles/{camelCaseProp}
  *   /elements/{hfId}/text
  *   /elements/{hfId}/attributes/{name}
- *   /elements/{hfId}/timing/{start|end|trackIndex}   ← end = computed absolute data-end
+ *   /elements/{hfId}/timing/{start|end|duration|trackIndex}   ← end = computed absolute data-end
  *   /elements/{hfId}/hold/{start|end|fill}
  *   /elements/{hfId}                        ← whole subtree (removeElement)
  *   /variables/{variableId}
@@ -154,8 +154,9 @@ export function keyToPath(key: string): string | null {
   // the already-encoded attr segment. Reconstruct manually.
   if (attr?.[1] && attr[2]) return `/elements/${escapeIdForPath(attr[1])}/attributes/${attr[2]}`;
 
-  const timing = /^([^.]+)\.timing\.(start|end|trackIndex)$/.exec(key);
-  if (timing?.[1]) return timingPath(timing[1], timing[2] as "start" | "end" | "trackIndex");
+  const timing = /^([^.]+)\.timing\.(start|end|duration|trackIndex)$/.exec(key);
+  if (timing?.[1])
+    return timingPath(timing[1], timing[2] as "start" | "end" | "duration" | "trackIndex");
 
   const hold = /^([^.]+)\.hold\.(start|end|fill)$/.exec(key);
   if (hold?.[1]) return holdPath(hold[1], hold[2] as "start" | "end" | "fill");

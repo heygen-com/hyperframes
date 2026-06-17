@@ -28,6 +28,10 @@ import type { PropertyGroupName } from "./gsapConstants.js";
 import type { SplitAnimationsOptions, SplitAnimationsResult } from "./gsapParser.js";
 import * as acornWalk from "acorn-walk";
 
+// acorn ESTree nodes are structurally untyped here; mirror gsapParserAcorn.ts /
+// gsapInline.ts rather than re-deriving the full ESTree union for every access.
+type Node = any;
+
 // ── Code generation helpers ──────────────────────────────────────────────────
 
 // Local serializer for the tween-statement path, which may carry boolean/object
@@ -73,15 +77,15 @@ function buildTweenStatementCode(timelineVar: string, anim: Omit<GsapAnimation, 
 
 // ── AST node helpers ─────────────────────────────────────────────────────────
 
-function isObjectProperty(prop: any): boolean {
+function isObjectProperty(prop: Node): boolean {
   return prop?.type === "ObjectProperty" || prop?.type === "Property";
 }
 
-function propKeyName(prop: any): string | undefined {
+function propKeyName(prop: Node): string | undefined {
   return prop?.key?.name ?? prop?.key?.value;
 }
 
-function findPropertyNode(varsArgNode: any, key: string): any | undefined {
+function findPropertyNode(varsArgNode: Node, key: string): Node | undefined {
   if (varsArgNode?.type !== "ObjectExpression") return undefined;
   for (const prop of varsArgNode.properties ?? []) {
     if (!isObjectProperty(prop)) continue;
@@ -91,12 +95,12 @@ function findPropertyNode(varsArgNode: any, key: string): any | undefined {
 }
 
 /** The `keyframes` property's ObjectExpression value, or null when not a keyframe tween. */
-function keyframesObjectNode(varsNode: any): any | null {
+function keyframesObjectNode(varsNode: Node): Node | null {
   const kfProp = findPropertyNode(varsNode, "keyframes");
   return kfProp?.value?.type === "ObjectExpression" ? kfProp.value : null;
 }
 
-function findEnclosingExpressionStatement(ancestors: any[]): any | null {
+function findEnclosingExpressionStatement(ancestors: Node[]): Node | null {
   for (let i = ancestors.length - 2; i >= 0; i--) {
     if (ancestors[i]?.type === "ExpressionStatement") return ancestors[i];
   }
@@ -104,11 +108,11 @@ function findEnclosingExpressionStatement(ancestors: any[]): any | null {
 }
 
 /** Find the VariableDeclaration statement for `tl = gsap.timeline(...)`. */
-function findTimelineDeclarationStatement(ast: any, timelineVar: string): any | null {
-  let found: any = null;
+function findTimelineDeclarationStatement(ast: Node, timelineVar: string): Node | null {
+  let found: Node = null;
   acornWalk.simple(ast, {
     // fallow-ignore-next-line complexity
-    VariableDeclaration(node: any) {
+    VariableDeclaration(node: Node) {
       if (found) return;
       for (const decl of node.declarations ?? []) {
         if (
@@ -132,7 +136,7 @@ function findTimelineDeclarationStatement(ast: any, timelineVar: string): any | 
  * Remove a property from a properties array, handling its comma.
  * `editableProps` must be the isObjectProperty-filtered subset in source order.
  */
-function removeProp(ms: MagicString, propNode: any, editableProps: any[]): void {
+function removeProp(ms: MagicString, propNode: Node, editableProps: Node[]): void {
   const idx = editableProps.indexOf(propNode);
   if (idx === -1) return;
   if (editableProps.length === 1) {
@@ -162,7 +166,7 @@ function overwriteVarsArg(ms: MagicString, call: TweenCallInfo, objCode: string)
  * Update a property value if it exists, or append a new key: val before the
  * closing `}`. Call with the full ObjectExpression node.
  */
-function upsertProp(ms: MagicString, objNode: any, key: string, value: unknown): void {
+function upsertProp(ms: MagicString, objNode: Node, key: string, value: unknown): void {
   if (objNode?.type !== "ObjectExpression") return;
   const existing = findPropertyNode(objNode, key);
   if (existing) {
@@ -214,7 +218,7 @@ function isEditableVarKey(key: string): boolean {
  * the entries plus the set of keys it kept, so callers can append new keys.
  */
 function preservedEntries(
-  objNode: any,
+  objNode: Node,
   source: string,
   drop: (key: string) => boolean,
   overrides: Record<string, unknown>,
@@ -246,7 +250,7 @@ function preservedEntries(
  */
 function reconcileEditableProps(
   ms: MagicString,
-  objNode: any,
+  objNode: Node,
   source: string,
   newProps: Record<string, number | string>,
   nonEditableOverrides?: Record<string, unknown>,
@@ -266,7 +270,7 @@ function reconcileEditableProps(
 // ── Insertion helpers ─────────────────────────────────────────────────────────
 
 /** Traverse callee.object chain to check if a call ultimately roots at timelineVar. */
-function isTimelineRooted(node: any, timelineVar: string): boolean {
+function isTimelineRooted(node: Node, timelineVar: string): boolean {
   if (node?.type === "Identifier") return node.name === timelineVar;
   if (node?.type === "CallExpression") return isTimelineRooted(node.callee?.object, timelineVar);
   return false;
@@ -539,7 +543,7 @@ function conversionEndpoints(animation: GsapAnimation): {
 }
 
 /** Collect preserved (non-editable) `key: value` entries from the original vars node. */
-function preservedVarsEntries(varsNode: any, source: string): string[] {
+function preservedVarsEntries(varsNode: Node, source: string): string[] {
   const entries: string[] = [];
   if (varsNode?.type !== "ObjectExpression") return entries;
   for (const prop of varsNode.properties ?? []) {
@@ -552,7 +556,7 @@ function preservedVarsEntries(varsNode: any, source: string): string[] {
 }
 
 /** Build the rebuilt vars-object code for a converted flat tween. */
-function buildConvertedVarsCode(animation: GsapAnimation, varsNode: any, source: string): string {
+function buildConvertedVarsCode(animation: GsapAnimation, varsNode: Node, source: string): string {
   const { fromProps, toProps } = conversionEndpoints(animation);
   const easeEach = animation.ease;
   const easeEachEntry = easeEach ? `, easeEach: ${JSON.stringify(easeEach)}` : "";
@@ -566,8 +570,8 @@ function buildConvertedVarsCode(animation: GsapAnimation, varsNode: any, source:
 function convertMethodToTo(
   ms: MagicString,
   animation: GsapAnimation,
-  call: any,
-  varsNode: any,
+  call: Node,
+  varsNode: Node,
 ): void {
   if (animation.method !== "from" && animation.method !== "fromTo") return;
   const calleeProp = call.node.callee?.property;
@@ -576,7 +580,7 @@ function convertMethodToTo(
   if (animation.method === "fromTo" && call.fromArg) ms.remove(call.fromArg.start, varsNode.start);
 }
 
-function convertFlatTweenToKeyframes(script: string, target: any): string {
+function convertFlatTweenToKeyframes(script: string, target: Node): string {
   const animation: GsapAnimation = target.animation;
   if (animation.keyframes || animation.method === "set") return script;
   const call = target.call;
@@ -618,8 +622,8 @@ function recordToCode(record: Record<string, number | string>): string {
 }
 
 /** Percentage-keyed property nodes of a keyframes ObjectExpression, in source order. */
-function percentagePropsOf(kfNode: any): any[] {
-  return (kfNode.properties ?? []).filter((p: any) => {
+function percentagePropsOf(kfNode: Node): Node[] {
+  return (kfNode.properties ?? []).filter((p: Node) => {
     if (!isObjectProperty(p)) return false;
     const key = propKeyName(p);
     return typeof key === "string" && PERCENTAGE_KEY_RE.test(key);
@@ -630,7 +634,7 @@ const LITERAL_NODE_TYPES = new Set(["Literal", "NumericLiteral", "StringLiteral"
 
 /** Read one value node: a number/string literal, a negative number, or raw source. */
 // fallow-ignore-next-line complexity
-function readValueNode(v: any, source: string): number | string {
+function readValueNode(v: Node, source: string): number | string {
   if (
     LITERAL_NODE_TYPES.has(v?.type) &&
     (typeof v.value === "number" || typeof v.value === "string")
@@ -653,7 +657,7 @@ function readValueNode(v: any, source: string): number | string {
  * preserved as `__raw:<source>` so serializeValue round-trips it verbatim.
  * Keyframe values are literals in practice, so the raw fallback is rarely hit.
  */
-function valueNodeToRecord(valueNode: any, source: string): Record<string, number | string> {
+function valueNodeToRecord(valueNode: Node, source: string): Record<string, number | string> {
   const record: Record<string, number | string> = {};
   if (valueNode?.type !== "ObjectExpression") return record;
   for (const prop of valueNode.properties ?? []) {
@@ -678,7 +682,7 @@ function recordHasAuto(record: Record<string, number | string>): boolean {
  * records (never a separate splice).
  */
 function autoEndpointOverwrites(
-  kfNode: any,
+  kfNode: Node,
   source: string,
   percentage: number,
   properties: Record<string, number | string>,
@@ -687,7 +691,7 @@ function autoEndpointOverwrites(
   if (percentage <= 0 || percentage >= 100) return result;
   const pctProps = percentagePropsOf(kfNode);
   const allPcts = pctProps
-    .map((p: any) => percentageFromKey(propKeyName(p) ?? ""))
+    .map((p: Node) => percentageFromKey(propKeyName(p) ?? ""))
     .filter((n: number) => !Number.isNaN(n) && n !== percentage)
     .sort((a: number, b: number) => a - b);
   const leftNeighbor = allPcts.filter((p: number) => p < percentage).pop();
@@ -695,7 +699,7 @@ function autoEndpointOverwrites(
   for (const endPct of [0, 100]) {
     const isNeighbor = endPct === 0 ? leftNeighbor === 0 : rightNeighbor === 100;
     if (!isNeighbor) continue;
-    const endProp = pctProps.find((p: any) => percentageFromKey(propKeyName(p) ?? "") === endPct);
+    const endProp = pctProps.find((p: Node) => percentageFromKey(propKeyName(p) ?? "") === endPct);
     if (!endProp) continue;
     const rec = valueNodeToRecord(endProp.value, source);
     if (!recordHasAuto(rec)) continue;
@@ -704,14 +708,14 @@ function autoEndpointOverwrites(
   return result;
 }
 
-function findKfPropByPct(kfNode: any, percentage: number): { prop: any; idx: number } | null {
+function findKfPropByPct(kfNode: Node, percentage: number): { prop: Node; idx: number } | null {
   // Match the CLOSEST keyframe within tolerance, not the first one within range.
   // Keyframes at e.g. 0/49/50/100 are all valid (the SDK dedups to a unique
   // match at TOLERANCE=0.001 upstream); picking the first-within-PCT_TOLERANCE=2
   // would hit 49% when the caller meant 50%. Tie-break on the earliest index so
   // the choice stays deterministic.
   const props = kfNode.properties ?? [];
-  let best: { prop: any; idx: number } | null = null;
+  let best: { prop: Node; idx: number } | null = null;
   let bestDist = Number.POSITIVE_INFINITY;
   for (let i = 0; i < props.length; i++) {
     const prop = props[i];
@@ -759,7 +763,7 @@ export function updateKeyframeInScript(
  * ease when the op omits one); otherwise it's just the new props.
  */
 function buildTargetRecord(
-  existing: { prop: any; idx: number } | null,
+  existing: { prop: Node; idx: number } | null,
   source: string,
   properties: Record<string, number | string>,
   ease: string | undefined,
@@ -785,7 +789,7 @@ function buildTargetRecord(
  * nothing changes (so the caller emits no overwrite for it).
  */
 function backfilledSiblingRecord(
-  valueNode: any,
+  valueNode: Node,
   source: string,
   newPropKeys: string[],
   backfillDefaults: Record<string, number | string>,
@@ -806,7 +810,7 @@ function backfilledSiblingRecord(
 function locateWithKeyframes(
   script: string,
   animationId: string,
-): { script: string; parsed: ParsedGsapAcornForWrite; target: any; kfNode: any } | null {
+): { script: string; parsed: ParsedGsapAcornForWrite; target: Node; kfNode: Node } | null {
   const parsed = parseGsapScriptAcornForWrite(script);
   if (!parsed) return null;
   // Converting from()/fromTo() to to() rewrites the content-derived id; match
@@ -825,7 +829,7 @@ function locateWithKeyframes(
 function ensureKeyframesNode(
   script: string,
   animationId: string,
-): { script: string; parsed: ParsedGsapAcornForWrite; target: any; kfNode: any } | null {
+): { script: string; parsed: ParsedGsapAcornForWrite; target: Node; kfNode: Node } | null {
   const direct = locateWithKeyframes(script, animationId);
   if (direct) return direct;
 
@@ -843,11 +847,11 @@ function ensureKeyframesNode(
  * target keyframe and any node already being overwritten as an `_auto` endpoint.
  */
 function collectBackfillOverwrites(
-  kfNode: any,
+  kfNode: Node,
   src: string,
   properties: Record<string, number | string>,
   backfillDefaults: Record<string, number | string> | undefined,
-  skip: { existingProp: any; endpoints: Map<any, unknown> },
+  skip: { existingProp: Node; endpoints: Map<any, unknown> },
 ): Map<any, Record<string, number | string>> {
   const result = new Map<any, Record<string, number | string>>();
   if (!backfillDefaults) return result;
@@ -914,13 +918,13 @@ export function addKeyframeToScript(
 /** Insert a brand-new `"pct%": {...}` property in sorted order. */
 function insertNewKeyframe(
   ms: MagicString,
-  kfNode: any,
+  kfNode: Node,
   percentage: number,
   pctKey: string,
   valueCode: string,
 ): void {
-  const allProps = (kfNode.properties ?? []).filter((p: any) => isObjectProperty(p));
-  let insertBeforeProp: any = null;
+  const allProps = (kfNode.properties ?? []).filter((p: Node) => isObjectProperty(p));
+  let insertBeforeProp: Node = null;
   for (const prop of allProps) {
     const key = propKeyName(prop);
     if (typeof key === "string" && percentageFromKey(key) > percentage) {
@@ -946,7 +950,7 @@ function insertNewKeyframe(
  */
 function collapseKeyframesToFlat(
   ms: MagicString,
-  varsNode: any,
+  varsNode: Node,
   source: string,
   remainingRecord: Record<string, number | string>,
 ): void {
@@ -990,7 +994,7 @@ export function removeKeyframeFromScript(
     return ms.toString();
   }
 
-  const allProps = (kfNode.properties ?? []).filter((p: any) => isObjectProperty(p));
+  const allProps = (kfNode.properties ?? []).filter((p: Node) => isObjectProperty(p));
   removeProp(ms, match.prop, allProps);
   return ms.toString();
 }
@@ -1010,7 +1014,7 @@ export function removePropertyFromAnimation(
   if (!objNode) return script;
   const propNode = findPropertyNode(objNode, property);
   if (!propNode) return script;
-  const allProps = (objNode.properties ?? []).filter((p: any) => isObjectProperty(p));
+  const allProps = (objNode.properties ?? []).filter((p: Node) => isObjectProperty(p));
   const ms = new MagicString(script);
   removeProp(ms, propNode, allProps);
   return ms.toString();
@@ -1066,7 +1070,7 @@ function buildKeyframesVarsCode(
   animation: GsapAnimation,
   fromProps: Record<string, number | string>,
   toProps: Record<string, number | string>,
-  varsNode: any,
+  varsNode: Node,
   source: string,
 ): string {
   const fromEntries = Object.entries(fromProps).map(([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`);
@@ -1187,7 +1191,7 @@ export function materializeKeyframesFromScript(
 
   const eachProp = findPropertyNode(call.varsArg, "easeEach");
   if (eachProp) {
-    const allProps = (call.varsArg.properties ?? []).filter((p: any) => isObjectProperty(p));
+    const allProps = (call.varsArg.properties ?? []).filter((p: Node) => isObjectProperty(p));
     removeProp(ms, eachProp, allProps);
   }
 
@@ -1379,7 +1383,7 @@ export function splitIntoPropertyGroupsFromScript(
 // ── Label write ops ───────────────────────────────────────────────────────────
 
 /** True when `expr` is `tl.<method>(…)` rooted at the timeline var. */
-function isTimelineMethodCall(expr: any, timelineVar: string, method: string): boolean {
+function isTimelineMethodCall(expr: Node, timelineVar: string, method: string): boolean {
   return (
     expr?.type === "CallExpression" &&
     expr.callee?.type === "MemberExpression" &&
@@ -1389,7 +1393,7 @@ function isTimelineMethodCall(expr: any, timelineVar: string, method: string): b
 }
 
 /** True when `expr` is `tl.addLabel("<name>", …)` rooted at the timeline var. */
-function isAddLabelCall(expr: any, timelineVar: string, name: string): boolean {
+function isAddLabelCall(expr: Node, timelineVar: string, name: string): boolean {
   const firstArg = expr?.arguments?.[0];
   return (
     isTimelineMethodCall(expr, timelineVar, "addLabel") &&
@@ -1399,10 +1403,10 @@ function isAddLabelCall(expr: any, timelineVar: string, name: string): boolean {
 }
 
 /** Every `tl.addLabel("<name>", …)` ExpressionStatement in the script. */
-function findLabelStatements(parsed: ParsedGsapAcornForWrite, name: string): any[] {
-  const targets: any[] = [];
+function findLabelStatements(parsed: ParsedGsapAcornForWrite, name: string): Node[] {
+  const targets: Node[] = [];
   acornWalk.simple(parsed.ast, {
-    ExpressionStatement(node: any) {
+    ExpressionStatement(node: Node) {
       if (isAddLabelCall(node.expression, parsed.timelineVar, name)) targets.push(node);
     },
   });
@@ -1457,10 +1461,10 @@ export function removeLabelFromScript(script: string, name: string): string {
  * Remove a set of properties from an ObjectExpression in a single pass.
  * Groups consecutive marked props into blocks to avoid overlapping remove ranges.
  */
-function removePropsByKey(ms: MagicString, objNode: any, keys: Set<string>): void {
+function removePropsByKey(ms: MagicString, objNode: Node, keys: Set<string>): void {
   if (objNode?.type !== "ObjectExpression") return;
   const allProps = (objNode.properties ?? []).filter(isObjectProperty);
-  const marked = allProps.map((p: any) => keys.has(propKeyName(p) ?? ""));
+  const marked = allProps.map((p: Node) => keys.has(propKeyName(p) ?? ""));
   let i = 0;
   while (i < allProps.length) {
     if (!marked[i]) {
@@ -1473,7 +1477,11 @@ function removePropsByKey(ms: MagicString, objNode: any, keys: Set<string>): voi
   }
 }
 
-function blockRemoveRange(allProps: any[], blockStart: number, blockEnd: number): [number, number] {
+function blockRemoveRange(
+  allProps: Node[],
+  blockStart: number,
+  blockEnd: number,
+): [number, number] {
   if (blockStart === 0 && blockEnd === allProps.length)
     return [allProps[0].start, allProps[allProps.length - 1].end];
   if (blockStart === 0) return [allProps[0].start, allProps[blockEnd].start];
@@ -1481,11 +1489,11 @@ function blockRemoveRange(allProps: any[], blockStart: number, blockEnd: number)
 }
 
 // fallow-ignore-next-line complexity
-function readLastWaypointXY(mpVal: any): { x: number | null; y: number | null } {
+function readLastWaypointXY(mpVal: Node): { x: number | null; y: number | null } {
   if (mpVal?.type !== "ObjectExpression") return { x: null, y: null };
   const pathProp = findPropertyNode(mpVal, "path");
   if (pathProp?.value?.type !== "ArrayExpression") return { x: null, y: null };
-  const elems: any[] = pathProp.value.elements ?? [];
+  const elems: Node[] = pathProp.value.elements ?? [];
   const last = elems[elems.length - 1];
   if (last?.type !== "ObjectExpression") return { x: null, y: null };
   return {
@@ -1500,7 +1508,7 @@ function readLastWaypointXY(mpVal: any): { x: number | null; y: number | null } 
  * UnaryExpression branch, negative waypoint coords (parsed as a UnaryExpression
  * with no `.value`) would be lost when disabling an arc path.
  */
-function readNumericLiteralNode(v: any): number | null {
+function readNumericLiteralNode(v: Node): number | null {
   if (LITERAL_NODE_TYPES.has(v?.type) && typeof v.value === "number") return v.value;
   if (
     v?.type === "UnaryExpression" &&
@@ -1530,7 +1538,7 @@ function disableArcPath(ms: MagicString, call: TweenCallInfo): boolean {
   return true;
 }
 
-function stripXYFromKeyframes(ms: MagicString, kfPropNode: any): void {
+function stripXYFromKeyframes(ms: MagicString, kfPropNode: Node): void {
   if (kfPropNode?.value?.type !== "ObjectExpression") return;
   const xyKeys = new Set(["x", "y"]);
   for (const pctProp of (kfPropNode.value.properties ?? []).filter(isObjectProperty)) {
@@ -1566,7 +1574,7 @@ function enableArcPath(
   // remove-range that ends at the same offset when x/y are the only props —
   // MagicString then discards the append and the output loses everything.
   const editable = (vars.properties ?? []).filter(isObjectProperty);
-  const survivesRemoval = editable.some((p: any) => {
+  const survivesRemoval = editable.some((p: Node) => {
     const k = propKeyName(p);
     return k !== "x" && k !== "y";
   });
@@ -1889,7 +1897,7 @@ export function splitAnimationsInScript(
 
 // ── Unroll dynamic animations ────────────────────────────────────────────────
 
-function isLoopNode(node: any): boolean {
+function isLoopNode(node: Node): boolean {
   const t = node?.type;
   return (
     t === "ForStatement" ||
@@ -1899,7 +1907,7 @@ function isLoopNode(node: any): boolean {
   );
 }
 
-function isForEachStatement(node: any): boolean {
+function isForEachStatement(node: Node): boolean {
   return (
     node?.type === "ExpressionStatement" &&
     node.expression?.type === "CallExpression" &&
@@ -1908,7 +1916,7 @@ function isForEachStatement(node: any): boolean {
 }
 
 /** The nearest enclosing loop / forEach AST node (not just its byte range). */
-function findEnclosingLoopNode(ancestors: any[]): any | null {
+function findEnclosingLoopNode(ancestors: Node[]): Node | null {
   for (let i = ancestors.length - 2; i >= 0; i--) {
     const node = ancestors[i];
     if (isLoopNode(node) || isForEachStatement(node)) return node;
@@ -1917,8 +1925,8 @@ function findEnclosingLoopNode(ancestors: any[]): any | null {
 }
 
 /** Statements making up a loop's body block, or null when not a simple block. */
-function loopBodyStatements(loopNode: any): any[] | null {
-  let body: any;
+function loopBodyStatements(loopNode: Node): Node[] | null {
+  let body: Node;
   if (loopNode?.type === "ExpressionStatement") {
     // forEach(cb): body is the callback's block.
     const cb = loopNode.expression?.arguments?.[0];
@@ -1927,11 +1935,11 @@ function loopBodyStatements(loopNode: any): any[] | null {
     body = loopNode?.body;
   }
   if (body?.type !== "BlockStatement") return null;
-  return (body.body ?? []).filter((s: any) => s?.type === "ExpressionStatement");
+  return (body.body ?? []).filter((s: Node) => s?.type === "ExpressionStatement");
 }
 
 /** The loop's index identifier name (`for (let i …)`), used for per-iteration substitution. */
-function loopIndexVarName(loopNode: any): string | null {
+function loopIndexVarName(loopNode: Node): string | null {
   if (loopNode?.type === "ForStatement") {
     const decl = loopNode.init?.declarations?.[0];
     return typeof decl?.id?.name === "string" ? decl.id.name : null;
@@ -1949,7 +1957,7 @@ function loopIndexVarName(loopNode: any): string | null {
 // An identifier in "binding position" is a name, not a value reference: a
 // non-computed member property (`obj.i`) or object-literal key (`{ i: … }`).
 // Those must NOT be substituted with the iteration index.
-function isIndexBindingPosition(node: any, parent: any): boolean {
+function isIndexBindingPosition(node: Node, parent: Node): boolean {
   if (parent?.type === "MemberExpression") return parent.property === node && !parent.computed;
   if (parent?.type === "Property" || parent?.type === "ObjectProperty") {
     return parent.key === node && !parent.computed;
@@ -1957,12 +1965,12 @@ function isIndexBindingPosition(node: any, parent: any): boolean {
   return false;
 }
 
-function substituteLoopIndex(stmt: any, indexVar: string, idx: number, script: string): string {
+function substituteLoopIndex(stmt: Node, indexVar: string, idx: number, script: string): string {
   const base = stmt.start as number;
   const src = script.slice(base, stmt.end as number);
   const ranges: Array<[number, number]> = [];
   acornWalk.ancestor(stmt, {
-    Identifier(node: any, _state: unknown, ancestors: any[]) {
+    Identifier(node: Node, _state: unknown, ancestors: Node[]) {
       if (node.name !== indexVar) return;
       if (isIndexBindingPosition(node, ancestors[ancestors.length - 2])) return;
       ranges.push([(node.start as number) - base, (node.end as number) - base]);
@@ -2021,7 +2029,7 @@ function buildUnrollCallForElement(
 const REFUSE_UNROLL = Symbol("refuse-unroll");
 
 /** Every statement in a loop's body block (unfiltered), or [] when not a block. */
-function loopBodyRawStatements(loopNode: any): any[] {
+function loopBodyRawStatements(loopNode: Node): Node[] {
   const body =
     loopNode?.type === "ExpressionStatement"
       ? loopNode.expression?.arguments?.[0]?.body
@@ -2030,20 +2038,20 @@ function loopBodyRawStatements(loopNode: any): any[] {
 }
 
 /** A node that re-binds `indexVar`: a re-declaration or a function param. */
-function rebindsIndex(node: any, indexVar: string): boolean {
+function rebindsIndex(node: Node, indexVar: string): boolean {
   if (node.type === "VariableDeclarator") return node.id?.name === indexVar;
   if (
     node.type === "FunctionExpression" ||
     node.type === "FunctionDeclaration" ||
     node.type === "ArrowFunctionExpression"
   ) {
-    return (node.params ?? []).some((p: any) => p?.name === indexVar);
+    return (node.params ?? []).some((p: Node) => p?.name === indexVar);
   }
   return false;
 }
 
 /** Object shorthand `{ i }` — substituting the value would yield invalid `{ 0 }`. */
-function isShorthandIndexUse(node: any, indexVar: string): boolean {
+function isShorthandIndexUse(node: Node, indexVar: string): boolean {
   return (
     (node.type === "Property" || node.type === "ObjectProperty") &&
     node.shorthand === true &&
@@ -2058,9 +2066,9 @@ function isShorthandIndexUse(node: any, indexVar: string): boolean {
  * `{ 0 }`). substituteLoopIndex has no scope analysis, so in these cases it
  * would emit broken or wrong code — the unroll must refuse instead.
  */
-function hasUnsafeLoopIndexUse(stmt: any, indexVar: string): boolean {
+function hasUnsafeLoopIndexUse(stmt: Node, indexVar: string): boolean {
   let unsafe = false;
-  acornWalk.full(stmt, (node: any) => {
+  acornWalk.full(stmt, (node: Node) => {
     if (!unsafe && (isShorthandIndexUse(node, indexVar) || rebindsIndex(node, indexVar))) {
       unsafe = true;
     }
@@ -2070,9 +2078,9 @@ function hasUnsafeLoopIndexUse(stmt: any, indexVar: string): boolean {
 
 /** How to handle the loop body's non-target siblings when unrolling. */
 function unrollSiblingStrategy(
-  loopNode: any,
-  targetStmt: any,
-  stmts: any[],
+  loopNode: Node,
+  targetStmt: Node,
+  stmts: Node[],
   indexVar: string | null,
 ): "blanket" | "refuse" | "preserve" {
   const siblings = stmts.filter((s) => s !== targetStmt);
@@ -2088,8 +2096,8 @@ function unrollSiblingStrategy(
 
 /** Emit the per-iteration unrolled lines (target → static tl.to, siblings → index-substituted). */
 function emitUnrolledLines(
-  stmts: any[],
-  targetStmt: any,
+  stmts: Node[],
+  targetStmt: Node,
   elements: UnrollElement[],
   timelineVar: string,
   animation: GsapAnimation,
@@ -2128,8 +2136,8 @@ function buildLoopUnrollPreserving(
   timelineVar: string,
   animation: GsapAnimation,
   elements: UnrollElement[],
-  loopNode: any,
-  targetStmt: any,
+  loopNode: Node,
+  targetStmt: Node,
 ): string | null | typeof REFUSE_UNROLL {
   const stmts = loopBodyStatements(loopNode);
   if (!stmts || !stmts.includes(targetStmt)) return null;
