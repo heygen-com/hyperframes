@@ -3,11 +3,13 @@ import { RotateCcw, RotateCw, Camera } from "../icons/SystemIcons";
 import {
   STUDIO_INSPECTOR_PANELS_ENABLED,
   STUDIO_MANUAL_EDITING_DISABLED_TITLE,
+  STUDIO_STORYBOARD_ENABLED,
 } from "./editor/manualEditingAvailability";
 import { getHistoryShortcutLabel } from "../utils/studioHelpers";
 import { useStudioShellContext } from "../contexts/StudioContext";
 import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
 import { useDomEditActionsContext } from "../contexts/DomEditContext";
+import { useViewMode, type StudioViewMode } from "../contexts/ViewModeContext";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 
 export interface StudioHeaderProps {
@@ -141,6 +143,46 @@ function HyperframesLogo() {
   );
 }
 
+const VIEW_MODE_OPTIONS: Array<{ mode: StudioViewMode; label: string }> = [
+  { mode: "storyboard", label: "Storyboard" },
+  { mode: "timeline", label: "Preview" },
+];
+
+/** Segmented control switching the main stage between storyboard and preview. */
+function ViewModeToggle() {
+  const { viewMode, setViewMode } = useViewMode();
+  return (
+    <div
+      className="flex items-center gap-0.5 rounded-md bg-neutral-800 p-0.5"
+      role="tablist"
+      aria-label="Studio view"
+    >
+      {VIEW_MODE_OPTIONS.map(({ mode, label }) => {
+        const active = viewMode === mode;
+        return (
+          <button
+            key={mode}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            onClick={() => {
+              if (active) return;
+              trackStudioEvent("view_mode_toggle", { mode });
+              setViewMode(mode);
+            }}
+            className={`rounded px-3 py-1 text-[11px] font-medium transition-colors ${
+              active ? "bg-neutral-200 text-neutral-900" : "text-neutral-400 hover:text-neutral-200"
+            }`}
+          >
+            {label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// fallow-ignore-next-line complexity
 export function StudioHeader({
   captureFrameHref,
   captureFrameFilename,
@@ -164,6 +206,8 @@ export function StudioHeader({
         </span>
         <span className="text-[11px] font-medium text-neutral-300">{projectId}</span>
       </div>
+      {/* Center: storyboard / preview toggle (flag-gated) */}
+      {STUDIO_STORYBOARD_ENABLED && <ViewModeToggle />}
       {/* Right: toolbar buttons */}
       <div className="flex items-center gap-1.5">
         <button

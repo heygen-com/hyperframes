@@ -82,6 +82,16 @@ export const STUDIO_RAZOR_TOOL_ENABLED = resolveStudioBooleanEnvFlag(
   true,
 );
 
+// Storyboard view: a top-level, toggleable view that renders STORYBOARD.md as a
+// contact sheet of live HTML frame tiles, replacing the timeline/preview stage.
+// Opt-in / off by default until the experience is ready for broad exposure.
+//   VITE_STUDIO_ENABLE_STORYBOARD=1 npx hyperframes preview
+export const STUDIO_STORYBOARD_ENABLED = resolveStudioBooleanEnvFlag(
+  env,
+  ["VITE_STUDIO_ENABLE_STORYBOARD", "VITE_STUDIO_STORYBOARD_ENABLED"],
+  false,
+);
+
 // When disabled (the default), drag/resize/rotate commits always take the CSS
 // persist path instead of being intercepted into GSAP script keyframe
 // mutations. The keyframe intercept rewrites timeline tweens from drag
