@@ -437,6 +437,17 @@ function handleSetTiming(
         result.inverse.push(p.inverse);
         el.setAttribute("data-duration", String(newDuration));
       }
+      // A clip carrying BOTH data-duration and data-end must keep data-end in
+      // sync (end = start + duration) on any start/duration change, else the
+      // stale data-end inverts the clip (end < start) for runtimes that read it.
+      if (oldEndStr !== null && newStart !== null && newDuration !== null) {
+        const newEnd = newStart + newDuration;
+        const endPath = timingPath(id, "end");
+        const ep = scalarChange(endPath, oldEnd, newEnd);
+        result.forward.push(ep.forward);
+        result.inverse.push(ep.inverse);
+        el.setAttribute("data-end", String(newEnd));
+      }
     } else if (
       (timing.duration !== undefined || timing.start !== undefined) &&
       newStart !== null &&
@@ -470,7 +481,12 @@ function handleSetTiming(
     // those clips left their tweens unsynced.
     const matchHfId = el.getAttribute("data-hf-id") ?? id;
     const matchDomId = el.getAttribute("id");
-    if (parsedGsap && currentScript && oldStart !== null) {
+    if (parsedGsap && currentScript) {
+      // A missing data-start means an implicit start of 0 (matching the server
+      // shiftGsapPositions path); a malformed attr parses to NaN. Sanitize to a
+      // finite number so a start-less/blank clip still shifts and never feeds
+      // NaN into the tween positions.
+      const oldStartNum = oldStart !== null && Number.isFinite(oldStart) ? oldStart : 0;
       // Per-tween shift/scale (mirrors shiftGsapPositions/scaleGsapPositions): a
       // multi-tween stagger maps each tween's own intra-clip position by the
       // start DELTA and scales its duration by the clip-duration RATIO. Writing
@@ -482,16 +498,25 @@ function handleSetTiming(
         durChanged && oldDuration !== null && oldDuration > 0 && newDuration !== null
           ? newDuration / oldDuration
           : 1;
-      const remapStart = startChanged && newStart !== null ? newStart : oldStart;
+      const remapStart = startChanged && newStart !== null ? newStart : oldStartNum;
       for (const { id: animId, animation } of parsedGsap.located) {
         const matches =
           selectorMatchesId(animation.targetSelector, matchHfId) ||
           (matchDomId !== null && selectorMatchesId(animation.targetSelector, matchDomId));
         if (!matches) continue;
+        // Skip tweens whose position is a label or relative string ("+=0.5",
+        // "<", ">"): relative positions already track their neighbours, and a
+        // string position can't be safely shifted by the clip delta here.
+        // ponytail: known ceiling — string positions are not re-synced on
+        // move/resize; numeric positions only.
         if (typeof animation.position !== "number") continue;
         const updates: Partial<GsapAnimation> = {};
-        if (startChanged || durChanged) {
-          const shifted = remapStart + (animation.position - oldStart) * ratio;
+        // Don't write an absolute position onto an auto-sequenced tween (no
+        // explicit position arg → parsed as implicitPosition): the writer would
+        // APPEND a position arg, collapsing the stagger onto one point. Duration
+        // still scales below.
+        if ((startChanged || durChanged) && animation.implicitPosition !== true) {
+          const shifted = remapStart + (animation.position - oldStartNum) * ratio;
           updates.position = Math.max(0, Math.round(shifted * 1000) / 1000);
         }
         if (durChanged && typeof animation.duration === "number" && animation.duration > 0) {
@@ -771,10 +796,11 @@ function handleAddGsapTween(
   if (tween.yoyo !== undefined) extras.yoyo = tween.yoyo;
   if (tween.stagger !== undefined) extras.stagger = tween.stagger;
 
-  const toProps =
-    tween.method === "fromTo"
-      ? ((tween.toProperties ?? {}) as Record<string, number | string>)
-      : ((tween.toProperties ?? tween.properties ?? {}) as Record<string, number | string>);
+  // A fromTo's destination may arrive as either `toProperties` or `properties`
+  // (the Studio add path sets `properties`). Fall back the same way for every
+  // method — the old fromTo-only branch read `toProperties` alone and wrote an
+  // empty to-vars object, so fromTo animations added via cutover animated to {}.
+  const toProps = (tween.toProperties ?? tween.properties ?? {}) as Record<string, number | string>;
 
   // Scoped ids like "hf-host/hf-leaf" must use the bare leaf id in the GSAP
   // selector — only the leaf part is written as data-hf-id on the DOM element.

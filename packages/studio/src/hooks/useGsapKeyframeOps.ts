@@ -80,8 +80,12 @@ export function useGsapKeyframeOps({
         // appending a duplicate — matches addKeyframeToScript, which writes one
         // keyframe per percentage (merging properties).
         apply: (prev) => {
+          // Match addKeyframeToScript's merge tolerance (PCT_TOLERANCE = 2 in
+          // gsapWriterAcorn): a keyframe added within 2% of an existing one
+          // merges on disk, so the optimistic cache must merge it too — else the
+          // UI shows a phantom keyframe that vanishes on the next reload.
           const idx = prev.keyframes.findIndex(
-            (kf) => Math.abs((kf.tweenPercentage ?? kf.percentage) - percentage) < 0.001,
+            (kf) => Math.abs((kf.tweenPercentage ?? kf.percentage) - percentage) <= 2,
           );
           if (idx >= 0) {
             const keyframes = prev.keyframes.slice();

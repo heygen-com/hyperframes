@@ -136,7 +136,10 @@ export function useGsapPropertyDebounce(
         defaultValue = Math.round(property === "width" ? rect.width : rect.height);
       } else if (property === "opacity" || property === "autoAlpha") {
         const cs = el.ownerDocument.defaultView?.getComputedStyle(el);
-        defaultValue = cs ? Number.parseFloat(cs.opacity) || 1 : 1;
+        // Use `|| 1` only as a non-finite fallback, not a falsy fallback: an
+        // element currently at opacity 0 must seed 0, not 1.
+        const current = cs ? Number.parseFloat(cs.opacity) : Number.NaN;
+        defaultValue = Number.isFinite(current) ? current : 1;
       }
       const { sdkSession, sdkDeps, activeCompPath } = sdkRef.current ?? {};
       if (sdkSession && sdkDeps) {

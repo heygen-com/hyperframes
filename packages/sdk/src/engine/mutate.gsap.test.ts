@@ -184,6 +184,26 @@ describe("addGsapTween", () => {
     expect(newScript).toContain("opacity: 0");
     expect(newScript).toContain("opacity: 1");
   });
+
+  it("R5 #1: fromTo destination supplied via `properties` (Studio add path) is not dropped", () => {
+    const parsed = fresh();
+    const result = applyOp(parsed, {
+      type: "addGsapTween",
+      target: "hf-box",
+      tween: {
+        method: "fromTo",
+        duration: 0.5,
+        fromProperties: { opacity: 0 },
+        // Studio's add path puts the destination in `properties`, not `toProperties`.
+        properties: { x: 400, opacity: 1 },
+      },
+    });
+    const newScript = String(result.forward[0]?.value ?? "");
+    expect(newScript).toContain("fromTo(");
+    // Regression: fromTo previously read only `toProperties` and wrote empty
+    // to-vars, so the destination vanished.
+    expect(newScript).toContain("x: 400");
+  });
 });
 
 // ─── Tween op test helpers ────────────────────────────────────────────────────
@@ -1026,5 +1046,50 @@ describe("handleSetTiming GSAP sync (CF2 #15/#16)", () => {
     expect(el?.getAttribute("data-end")).toBeNull();
     // tween duration scaled 4 → 8 (ratio 2).
     expect(getScript(parsed)).toContain("duration: 8");
+  });
+
+  it("R5 #3: a start-less clip (no data-start) still shifts its tween (implicit start 0)", () => {
+    const parsed = timingDoc(`data-duration="4"`, `tl.to("#box", { x: 100, duration: 1 }, 2);`);
+    applyOp(parsed, { type: "setTiming", target: "hf-box", start: 3 });
+    // oldStart defaults to 0, so position remaps 2 → 3 + (2 − 0) = 5.
+    // The bug skipped the whole sync block when data-start was absent.
+    expect(getScript(parsed)).toMatch(/tl\.to\("#box",[^)]*\}, 5\)/);
+  });
+
+  it("R5 #3: a malformed data-start never writes position: NaN", () => {
+    const parsed = timingDoc(
+      `data-start="" data-duration="4"`,
+      `tl.to("#box", { x: 100, duration: 1 }, 2);`,
+    );
+    applyOp(parsed, { type: "setTiming", target: "hf-box", start: 3 });
+    const script = getScript(parsed);
+    expect(script).not.toContain("NaN");
+    expect(script).toMatch(/tl\.to\("#box",[^)]*\}, 5\)/);
+  });
+
+  it("R5 #2: an implicit-position tween is not collapsed to an absolute position on move", () => {
+    const parsed = timingDoc(
+      `data-start="2" data-end="5"`,
+      `tl.to("#box", { x: 100, duration: 1 });`,
+    );
+    applyOp(parsed, { type: "setTiming", target: "hf-box", start: 5 });
+    const script = getScript(parsed);
+    // The tween had no position arg (auto-sequenced); it must stay that way —
+    // appending an absolute position would collapse the stagger.
+    expect(script).toContain('tl.to("#box", { x: 100, duration: 1 })');
+    expect(script).not.toMatch(/tl\.to\("#box",[^)]*\}, \d/);
+  });
+
+  it("R5 #7: a clip with BOTH data-duration and data-end keeps data-end in sync on move", () => {
+    const parsed = timingDoc(
+      `data-start="1" data-duration="2" data-end="3"`,
+      `tl.to("#box", { x: 1, duration: 2 }, 1);`,
+    );
+    applyOp(parsed, { type: "setTiming", target: "hf-box", start: 5 });
+    const el = parsed.document.querySelector('[data-hf-id="hf-box"]');
+    expect(el?.getAttribute("data-start")).toBe("5");
+    expect(el?.getAttribute("data-duration")).toBe("2");
+    // data-end recomputed (5 + 2); the bug left it stale at 3 → inverted clip.
+    expect(el?.getAttribute("data-end")).toBe("7");
   });
 });

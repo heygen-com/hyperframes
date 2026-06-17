@@ -77,6 +77,14 @@ describe("shouldUseSdkCutover", () => {
     expect(shouldUseSdkCutover(true, true, "hf-abc", [htmlAttrOp("class", "foo")])).toBe(true);
   });
 
+  it("returns false for an attribute op that maps to a reserved data-* name", () => {
+    // {type:'attribute', property:'end'} → 'data-end', which the SDK's
+    // validateSetAttribute rejects. Decline the batch so it takes the server
+    // path cleanly instead of throwing inside dispatch and falling back per op.
+    expect(shouldUseSdkCutover(true, true, "hf-abc", [attrOp("end", "2")])).toBe(false);
+    expect(shouldUseSdkCutover(true, true, "hf-abc", [attrOp("data-start", "1")])).toBe(false);
+  });
+
   it("returns true when ops mix all supported types", () => {
     expect(
       shouldUseSdkCutover(true, true, "hf-abc", [

@@ -14,6 +14,32 @@ const CUTOVER_OP_TYPES = new Set<PatchOperation["type"]>([
   "html-attribute",
 ]);
 
+// Mirrors the SDK's RESERVED_ATTRS (mutate.ts): a bare `attribute` op is
+// force-prefixed `data-`, so e.g. property "end" → "data-end", which the SDK
+// rejects with a throw. Detect that up front and decline the whole batch so it
+// takes the server path cleanly, instead of throwing inside the dispatch and
+// silently falling back per op.
+// ponytail: small mirror of the SDK set; if the SDK adds a reserved attr, a new
+// op for it just reverts to the (working) throw→fallback path until synced.
+const RESERVED_CUTOVER_ATTRS = new Set<string>([
+  "data-hf-id",
+  "data-composition-id",
+  "data-width",
+  "data-height",
+  "data-start",
+  "data-end",
+  "data-track-index",
+  "data-hold-start",
+  "data-hold-end",
+  "data-hold-fill",
+]);
+
+function mapsToReservedAttr(op: PatchOperation): boolean {
+  if (op.type !== "attribute") return false;
+  const name = op.property.startsWith("data-") ? op.property : `data-${op.property}`;
+  return RESERVED_CUTOVER_ATTRS.has(name);
+}
+
 /**
  * Map Studio PatchOperations for a given hf-id to SDK EditOps.
  *
@@ -61,7 +87,8 @@ export function shouldUseSdkCutover(
     hasSession &&
     !!hfId &&
     ops.length > 0 &&
-    ops.every((o) => CUTOVER_OP_TYPES.has(o.type))
+    ops.every((o) => CUTOVER_OP_TYPES.has(o.type)) &&
+    !ops.some(mapsToReservedAttr)
   );
 }
 

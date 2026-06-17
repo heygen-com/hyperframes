@@ -154,6 +154,20 @@ export function useDomEditCommits({
       }
 
       if (options?.shouldSave && !options.shouldSave()) return;
+
+      // Validate layout values BEFORE any persist path runs. The SDK cutover
+      // path (onTrySdkPersist) returns early on success, so leaving this check
+      // after it let invalid numeric values bypass the guard whenever the
+      // cutover flag was on.
+      const patchTarget = buildDomEditPatchTarget(selection);
+      const patchBody = { target: patchTarget, operations };
+      const unsafeFields = findUnsafeDomPatchValues(patchBody);
+      if (unsafeFields.length > 0) {
+        const fields = formatUnsafeFieldList(unsafeFields);
+        showToast("Couldn't save edit because it contains invalid layout values", "error");
+        throw new Error(`DOM patch contains unsafe values: ${fields}`);
+      }
+
       // Skip the SDK path when prepareContent is set (e.g. @font-face injection
       // for a custom font): sdkCutoverPersist serializes only the patched DOM
       // and would drop the injected content. Let the server path run prepareContent.
@@ -169,14 +183,6 @@ export function useDomEditCommits({
         // SDK handled it — its in-memory doc is already current, so do NOT
         // forceReload (that would echo-reload the session we just wrote).
         return;
-      }
-      const patchTarget = buildDomEditPatchTarget(selection);
-      const patchBody = { target: patchTarget, operations };
-      const unsafeFields = findUnsafeDomPatchValues(patchBody);
-      if (unsafeFields.length > 0) {
-        const fields = formatUnsafeFieldList(unsafeFields);
-        showToast("Couldn't save edit because it contains invalid layout values", "error");
-        throw new Error(`DOM patch contains unsafe values: ${fields}`);
       }
 
       // Mark the save timestamp before the file write so the SSE file-change
