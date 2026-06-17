@@ -22,13 +22,25 @@ const GENERIC_FAMILIES = new Set([
   "revert",
 ]);
 
+// A CSS comment can contain a `}` (e.g. `@font-face { /* 400 } regular */
+// font-family: 'X'; ... }`), which truncates the naive `@font-face\s*\{[^}]*\}`
+// block match at the comment's brace — so the rule never sees the real
+// `font-family` and reports a false-positive font_family_without_font_face.
+// Large/"framework" stylesheets hit this far more often than minimal ones,
+// which is why a simple <style> passes while a complex one fails. Strip
+// comments before scanning so a brace inside one cannot split a block. See #1534.
+function stripCssComments(css: string): string {
+  return css.replace(/\/\*[\s\S]*?\*\//g, " ");
+}
+
 function extractFontFaceFamilies(styles: Array<{ content: string }>): Set<string> {
   const families = new Set<string>();
   const fontFaceRe = /@font-face\s*\{[^}]*\}/gi;
   const familyRe = /font-family\s*:\s*(['"]?)([^;'"]+)\1/i;
   for (const style of styles) {
+    const content = stripCssComments(style.content);
     let match: RegExpExecArray | null;
-    while ((match = fontFaceRe.exec(style.content)) !== null) {
+    while ((match = fontFaceRe.exec(content)) !== null) {
       const familyMatch = match[0].match(familyRe);
       if (familyMatch?.[2]) {
         families.add(familyMatch[2].trim().toLowerCase());
@@ -43,7 +55,7 @@ function extractUsedFontFamilies(styles: Array<{ content: string }>): string[] {
   const seen = new Set<string>();
   const propRe = /font-family\s*:\s*([^;}{]+)/gi;
   for (const style of styles) {
-    const withoutFontFace = style.content.replace(/@font-face\s*\{[^}]*\}/gi, "");
+    const withoutFontFace = stripCssComments(style.content).replace(/@font-face\s*\{[^}]*\}/gi, "");
     let match: RegExpExecArray | null;
     while ((match = propRe.exec(withoutFontFace)) !== null) {
       const stack = match[1]!;

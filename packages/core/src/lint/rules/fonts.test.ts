@@ -215,5 +215,16 @@ describe("font rules", () => {
       const findings = await findByCode(html, "font_family_without_font_face");
       expect(findings).toHaveLength(0);
     });
+
+    it("matches @font-face even when a CSS comment inside the block contains a brace (#1534)", async () => {
+      const html = `<div data-composition-id="test" data-width="1920" data-height="1080">
+        <style>
+          @font-face { /* weight 400 } regular */ font-family: 'Noto Sans SC'; src: url('../fonts/noto-400.woff2'); }
+          .title { font-family: 'Noto Sans SC'; }
+        </style>
+      </div>`;
+      const findings = await findByCode(html, "font_family_without_font_face");
+      expect(findings).toHaveLength(0);
+    });
   });
 });
