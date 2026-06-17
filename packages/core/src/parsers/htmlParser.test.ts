@@ -536,6 +536,29 @@ describe("removeElementFromHtml", () => {
     expect(updated).not.toContain('id="el1"');
     expect(updated).toContain('id="el2"');
   });
+
+  it("strips ALL gsap tweens for the removed element, not just the first", () => {
+    // Two tweens on the same element → count-based ids renumber when the first is
+    // removed, so a single up-front parse left the second tween orphaned.
+    const html = `<!DOCTYPE html>
+<html><body>
+  <div id="stage">
+    <div id="box" data-hf-id="box" data-start="0" data-end="5">box</div>
+  </div>
+  <script>
+    var tl = gsap.timeline({ paused: true });
+    tl.to("[data-hf-id=\\"box\\"]", { x: 100, duration: 1 }, 0);
+    tl.to("[data-hf-id=\\"box\\"]", { x: 200, duration: 1 }, 1);
+  </script>
+</body></html>`;
+
+    const updated = removeElementFromHtml(html, "box");
+
+    expect(updated).not.toContain('data-hf-id="box"');
+    // Neither tween may survive — the orphaned second tl.to referenced a deleted element.
+    expect(updated).not.toContain("x: 100");
+    expect(updated).not.toContain("x: 200");
+  });
 });
 
 describe("validateCompositionHtml", () => {

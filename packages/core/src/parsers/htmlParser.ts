@@ -683,15 +683,24 @@ function selectorTargetsId(selector: string, id: string): boolean {
 }
 
 function stripGsapForId(script: string, elementId: string): string {
-  const parsed = parseGsapScriptAcornForWrite(script);
-  if (!parsed) return script;
+  // Re-parse after every removal. Animation ids are count-based (positional), so
+  // removing one tween renumbers the survivors — ids captured from a single
+  // up-front parse go stale and silently no-op, orphaning later tweens on the
+  // now-deleted element. Always remove the FIRST still-matching animation in a
+  // freshly-parsed script until none remain.
   let current = script;
-  for (const { id: animId, animation } of parsed.located) {
-    if (selectorTargetsId(animation.targetSelector, elementId)) {
-      current = removeAnimationFromScript(current, animId);
-    }
+  for (;;) {
+    const parsed = parseGsapScriptAcornForWrite(current);
+    if (!parsed) return current;
+    const match = parsed.located.find((l) =>
+      selectorTargetsId(l.animation.targetSelector, elementId),
+    );
+    if (!match) return current;
+    const updated = removeAnimationFromScript(current, match.id);
+    // Guard against a non-removing match (would otherwise loop forever).
+    if (updated === current) return current;
+    current = updated;
   }
-  return current;
 }
 
 function cascadeRemoveGsapById(doc: Document, elementId: string): void {
