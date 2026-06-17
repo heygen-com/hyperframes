@@ -1,21 +1,15 @@
-import { useState } from "react";
 import type { StoryboardFrameView } from "../../hooks/useStoryboard";
-import { buildCompositionThumbnailUrl } from "../../player/components/CompositionThumbnail";
+import { FramePoster, posterTime } from "./FramePoster";
 import { FRAME_STATUS_META } from "./frameStatus";
 
 export interface StoryboardFrameTileProps {
   projectId: string;
   frame: StoryboardFrameView;
+  /** Open this frame in the full-area focus view. */
+  onOpen: (index: number) => void;
 }
 
 const TILE_WIDTH = 360;
-
-/** Time (seconds) to show a tile at — past the intro so the key moment is visible. */
-function posterTime(frame: StoryboardFrameView): number {
-  if (frame.poster != null) return frame.poster;
-  if (frame.durationSeconds != null) return frame.durationSeconds * 0.66;
-  return 1.5;
-}
 
 function firstLine(text: string): string {
   return (
@@ -32,9 +26,9 @@ function placeholderMessage(frame: StoryboardFrameView): string {
   return "No preview";
 }
 
-/** A single contact-sheet tile: poster preview + its metadata. */
+/** A single contact-sheet tile: poster preview + its metadata. Click to focus. */
 // fallow-ignore-next-line complexity
-export function StoryboardFrameTile({ projectId, frame }: StoryboardFrameTileProps) {
+export function StoryboardFrameTile({ projectId, frame, onOpen }: StoryboardFrameTileProps) {
   const meta = FRAME_STATUS_META[frame.status];
   const renderable = frame.srcExists && frame.status !== "outline";
   const title = frame.title ?? `Frame ${frame.index}`;
@@ -42,7 +36,11 @@ export function StoryboardFrameTile({ projectId, frame }: StoryboardFrameTilePro
 
   return (
     <article style={{ width: TILE_WIDTH }}>
-      <div className="relative aspect-video overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900">
+      <button
+        type="button"
+        onClick={() => onOpen(frame.index)}
+        className="group relative block aspect-video w-full overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900 text-left transition-colors hover:border-neutral-600"
+      >
         <div className="absolute left-2 top-2 z-10 flex h-6 min-w-6 items-center justify-center rounded-full bg-black/70 px-1.5 text-xs font-semibold text-neutral-100">
           {frame.number ?? frame.index}
         </div>
@@ -56,7 +54,7 @@ export function StoryboardFrameTile({ projectId, frame }: StoryboardFrameTilePro
         ) : (
           <FrameTilePlaceholder frame={frame} />
         )}
-      </div>
+      </button>
 
       <div className="mt-2 flex items-start justify-between gap-2">
         <h3 className="truncate text-sm font-medium text-neutral-200">{title}</h3>
@@ -78,48 +76,6 @@ export function StoryboardFrameTile({ projectId, frame }: StoryboardFrameTilePro
         {frame.transitionIn && <span>↘ {frame.transitionIn}</span>}
       </div>
     </article>
-  );
-}
-
-/**
- * Server-rendered poster for a frame. The thumbnail route seeks the composition
- * by time (at its real fps) and caches the result, so there's no live iframe,
- * no postMessage seek, and no client-side fps assumption.
- */
-function FramePoster({
-  projectId,
-  src,
-  seconds,
-  title,
-}: {
-  projectId: string;
-  src: string;
-  seconds: number;
-  title: string;
-}) {
-  const [failed, setFailed] = useState(false);
-  if (failed) {
-    return (
-      <div className="flex h-full w-full items-center justify-center text-[11px] text-neutral-600">
-        Preview unavailable
-      </div>
-    );
-  }
-  const url = buildCompositionThumbnailUrl({
-    previewUrl: `/api/projects/${projectId}/preview/comp/${src}`,
-    seekTime: seconds,
-    duration: 0,
-    origin: window.location.origin,
-  });
-  return (
-    <img
-      src={url}
-      alt={title}
-      draggable={false}
-      loading="lazy"
-      onError={() => setFailed(true)}
-      className="h-full w-full object-cover"
-    />
   );
 }
 

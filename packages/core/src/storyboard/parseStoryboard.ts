@@ -46,7 +46,7 @@ export function parseStoryboard(source: string): StoryboardManifest {
 // Detection-only (ends at the keyword) — the title is sliced off in code. A single
 // `[ \t]+` before the required keyword stays linear; avoids the polynomial backtracking
 // a trailing `[\s…]*(.*)$` would add on tab-heavy input (CodeQL js/polynomial-redos).
-const FRAME_HEADING_RE = /^(#{2,3})[ \t]+(?:frame|beat|scene)\b/i;
+export const FRAME_HEADING_RE = /^(#{2,3})[ \t]+(?:frame|beat|scene)\b/i;
 /** Leading separators between the frame keyword and its title text. */
 const FRAME_TITLE_SEP_RE = /^[\s.:—-]+/;
 /** Any markdown heading; captures the `#` run so section depth can be compared. */
@@ -61,8 +61,13 @@ const DURATION_NUM_RE = /(\d+(?:\.\d+)?)/;
 const TRANSITION_KEYS = new Set(["transition_in", "transitionin", "transition"]);
 /** Metadata keys that all map to the one-line scene description. */
 const SCENE_KEYS = new Set(["scene", "description", "summary", "caption"]);
-/** Metadata keys that all map to the voiceover/narration line. */
-const VOICEOVER_KEYS = new Set(["voiceover", "vo", "voice_over", "narration"]);
+/**
+ * Aliases that all map to the voiceover/narration line. The single source of
+ * truth — `editStoryboard.ts` imports this so the read and write sides can't
+ * drift (one would silently fail to match the other's field name).
+ */
+export const VOICEOVER_ALIASES = ["voiceover", "vo", "voice_over", "narration"] as const;
+const VOICEOVER_KEYS = new Set<string>(VOICEOVER_ALIASES);
 
 interface FrontmatterResult {
   globals: StoryboardGlobals;

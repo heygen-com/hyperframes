@@ -4,6 +4,8 @@ import { StoryboardLoaded } from "./StoryboardLoaded";
 
 export interface StoryboardViewProps {
   projectId: string;
+  /** Select a composition in the timeline (used by the frame focus "Open in Preview"). */
+  onSelectComposition: (path: string) => void;
 }
 
 /**
@@ -12,7 +14,7 @@ export interface StoryboardViewProps {
  * {@link StoryboardLoaded} owns the Board ↔ Source experience.
  */
 // fallow-ignore-next-line complexity
-export function StoryboardView({ projectId }: StoryboardViewProps) {
+export function StoryboardView({ projectId, onSelectComposition }: StoryboardViewProps) {
   const { data, loading, error, reload } = useStoryboard(projectId);
 
   if (loading) return <StoryboardFrame>{<Message>Loading storyboard…</Message>}</StoryboardFrame>;
@@ -32,7 +34,14 @@ export function StoryboardView({ projectId }: StoryboardViewProps) {
     );
   }
 
-  return <StoryboardLoaded projectId={projectId} data={data} reload={reload} />;
+  return (
+    <StoryboardLoaded
+      projectId={projectId}
+      data={data}
+      reload={reload}
+      onSelectComposition={onSelectComposition}
+    />
+  );
 }
 
 function StoryboardFrame({ children }: { children: ReactNode }) {

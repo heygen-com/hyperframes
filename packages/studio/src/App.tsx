@@ -498,7 +498,10 @@ export function StudioApp() {
                     />
                   )}
                   {viewModeValue.viewMode === "storyboard" && (
-                    <StoryboardView projectId={projectId} />
+                    <StoryboardView
+                      projectId={projectId}
+                      onSelectComposition={handleSelectComposition}
+                    />
                   )}
                   {/* Timeline stage stays mounted (just hidden) in storyboard mode,
                       so preview/player/gesture/render state survives the toggle. */}

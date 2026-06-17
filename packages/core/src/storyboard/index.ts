@@ -10,3 +10,9 @@ export {
   type StoryboardManifest,
 } from "./types.js";
 export { parseStoryboard } from "./parseStoryboard.js";
+export {
+  setFrameField,
+  setFrameVoiceover,
+  setFrameStatus,
+  VOICEOVER_ALIASES,
+} from "./editStoryboard.js";

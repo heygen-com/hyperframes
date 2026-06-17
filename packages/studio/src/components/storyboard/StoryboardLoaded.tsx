@@ -5,6 +5,7 @@ import { StoryboardGrid } from "./StoryboardGrid";
 import { StoryboardStatusLegend } from "./StoryboardStatusLegend";
 import { StoryboardScriptPanel } from "./StoryboardScriptPanel";
 import { StoryboardSourceEditor, type SourceFile } from "./StoryboardSourceEditor";
+import { StoryboardFrameFocus } from "./StoryboardFrameFocus";
 
 type SubView = "board" | "source";
 
@@ -13,12 +14,25 @@ export interface StoryboardLoadedProps {
   data: StoryboardResponse;
   /** Re-fetch the manifest after a source edit is saved. */
   reload: () => void;
+  /** Select a composition in the timeline (used by "Open in Preview"). */
+  onSelectComposition: (path: string) => void;
 }
 
-/** A storyboard that exists on disk: Board (contact sheet) ↔ Source (markdown editor). */
-export function StoryboardLoaded({ projectId, data, reload }: StoryboardLoadedProps) {
+function clampIndex(index: number, count: number): number {
+  return Math.max(1, Math.min(count, index));
+}
+
+/** A storyboard that exists on disk: Board (contact sheet) ↔ Source ↔ frame focus. */
+// fallow-ignore-next-line complexity
+export function StoryboardLoaded({
+  projectId,
+  data,
+  reload,
+  onSelectComposition,
+}: StoryboardLoadedProps) {
   const [subView, setSubView] = useState<SubView>("board");
   const [sourceDirty, setSourceDirty] = useState(false);
+  const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
   const sourceFiles = useMemo<SourceFile[]>(() => {
     const files: SourceFile[] = [{ path: data.path, label: data.path }];
     if (data.script?.exists) files.push({ path: data.script.path, label: data.script.path });
@@ -39,6 +53,27 @@ export function StoryboardLoaded({ projectId, data, reload }: StoryboardLoadedPr
     setSubView(next);
   };
 
+  const focusedFrame =
+    focusedIndex != null ? (data.frames.find((f) => f.index === focusedIndex) ?? null) : null;
+
+  if (focusedFrame) {
+    return (
+      <StoryboardFrameFocus
+        key={focusedFrame.index}
+        projectId={projectId}
+        storyboardPath={data.path}
+        frame={focusedFrame}
+        frameCount={data.frames.length}
+        onBack={() => setFocusedIndex(null)}
+        onNavigate={(delta) =>
+          setFocusedIndex(clampIndex(focusedFrame.index + delta, data.frames.length))
+        }
+        onSaved={reload}
+        onSelectComposition={onSelectComposition}
+      />
+    );
+  }
+
   return (
     <div className="flex flex-1 min-h-0 flex-col bg-neutral-950 text-neutral-200">
       <div className="flex items-center border-b border-neutral-800 px-4 py-2">
@@ -51,7 +86,11 @@ export function StoryboardLoaded({ projectId, data, reload }: StoryboardLoadedPr
             <div className="mt-5">
               <StoryboardStatusLegend />
             </div>
-            <StoryboardGrid projectId={projectId} frames={data.frames} />
+            <StoryboardGrid
+              projectId={projectId}
+              frames={data.frames}
+              onOpenFrame={setFocusedIndex}
+            />
             {data.script && <StoryboardScriptPanel script={data.script} />}
           </div>
         </div>

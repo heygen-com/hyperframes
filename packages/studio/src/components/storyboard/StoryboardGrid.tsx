@@ -4,10 +4,12 @@ import { StoryboardFrameTile } from "./StoryboardFrameTile";
 export interface StoryboardGridProps {
   projectId: string;
   frames: StoryboardFrameView[];
+  /** Open a frame in the full-area focus view. */
+  onOpenFrame: (index: number) => void;
 }
 
 /** The contact sheet: ordered frame tiles in a responsive grid. */
-export function StoryboardGrid({ projectId, frames }: StoryboardGridProps) {
+export function StoryboardGrid({ projectId, frames, onOpenFrame }: StoryboardGridProps) {
   if (frames.length === 0) {
     return (
       <div className="mt-8 rounded-lg border border-dashed border-neutral-800 px-6 py-12 text-center text-sm text-neutral-500">
@@ -19,7 +21,12 @@ export function StoryboardGrid({ projectId, frames }: StoryboardGridProps) {
   return (
     <div className="mt-8 flex flex-wrap gap-x-6 gap-y-8">
       {frames.map((frame) => (
-        <StoryboardFrameTile key={frame.index} projectId={projectId} frame={frame} />
+        <StoryboardFrameTile
+          key={frame.index}
+          projectId={projectId}
+          frame={frame}
+          onOpen={onOpenFrame}
+        />
       ))}
     </div>
   );
