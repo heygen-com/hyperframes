@@ -249,6 +249,9 @@ export function sdkGsapTweenPersist(
   deps: CutoverDeps,
   options?: CutoverOptions,
 ): Promise<boolean> {
+  // Leading dark-launch gate so flag-off does no SDK touch (getElement) at all —
+  // matches the other three chokepoints' discipline.
+  if (!STUDIO_SDK_CUTOVER_ENABLED) return Promise.resolve(false);
   if (op.kind === "add" && sdkSession && !sdkSession.getElement(op.target))
     return Promise.resolve(false);
   // dispatchGsapOpAndPersist returns false on before===after — that catches stale
