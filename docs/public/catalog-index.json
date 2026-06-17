@@ -363,6 +363,20 @@
         "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/flowchart.png"
     },
     {
+        "name": "flowchart-vertical",
+        "type": "block",
+        "title": "Flowchart Vertical",
+        "description": "Portrait animated decision tree with SVG connectors, sticky-note nodes, cursor interaction, and typing correction",
+        "tags": [
+            "diagram",
+            "flowchart",
+            "interactive",
+            "portrait"
+        ],
+        "href": "/catalog/blocks/flowchart-vertical",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/flowchart-vertical.png"
+    },
+    {
         "name": "glitch",
         "type": "block",
         "title": "Glitch",
@@ -1032,6 +1046,18 @@
         ],
         "href": "/catalog/blocks/vfx-liquid-background",
         "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-liquid-background.png"
+    },
+    {
+        "name": "vfx-liquid-glass",
+        "type": "block",
+        "title": "Liquid Glass",
+        "description": "VFX composition block",
+        "tags": [
+            "html-in-canvas",
+            "webgl"
+        ],
+        "href": "/catalog/blocks/vfx-liquid-glass",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-liquid-glass.png"
     },
     {
         "name": "vfx-magnetic",
