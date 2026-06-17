@@ -4,6 +4,7 @@ import { openComposition } from "@hyperframes/sdk";
 import { createHttpAdapter } from "@hyperframes/sdk/adapters/http";
 import type { Composition } from "@hyperframes/sdk";
 import { readStudioFileChangePath } from "../components/editor/manualEdits";
+import { isSelfWriteEcho } from "./sdkSelfWriteRegistry";
 
 /**
  * True when an external file-change payload targets the active composition and
@@ -24,13 +25,39 @@ export function shouldReloadSdkSession(payload: unknown, activeCompPath: string 
  * stale. The session has NO persist queue — Studio is the sole file writer; see
  * the open effect below.
  */
-// Time-window heuristic: suppress file-change reloads for 2 s after our own
-// SDK cutover write, to avoid an echo-reload on the write we just committed.
-// Footgun: if 2 s is too short (slow FS / network) the reload fires anyway;
-// if too long it masks a legitimate external edit. The long-term shape is a
-// sequence number or content hash threaded through the persist event so the
-// comparison is exact rather than time-based.
+// Reload-suppression baseline: a file-change within this window of our own SDK
+// cutover write is a CANDIDATE echo, but the decision is content-identity based
+// (isSelfWriteEcho) not time-only — so an undo write that lands inside the window
+// still reloads (its reverted bytes were never registered as a self-write). The
+// window only bounds how long a registered self-write stays suppressible.
 const SELF_WRITE_SUPPRESS_MS = 2000;
+
+/** Best-effort read of the changed file's content from a file-change payload. */
+function readFileChangeContent(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  const record = payload as Record<string, unknown>;
+  if (typeof record.content === "string") return record.content;
+  if ("data" in record) return readFileChangeContent(record.data);
+  return null;
+}
+
+/**
+ * Decide whether a file-change for the active composition should reload the SDK
+ * session. `content` is the new on-disk bytes (from the payload or a re-read);
+ * pass null when unavailable. Content-identity wins: a change whose bytes match a
+ * registered self-write is our own echo (suppress). Without content we can't prove
+ * identity, so we fall back to the time window ONLY to suppress an echo — an undo
+ * write outside the window (or any non-self-write) still reloads. Exported for test.
+ */
+export function shouldReloadOnFileChange(
+  activeCompPath: string,
+  content: string | null,
+  withinSuppressWindow: boolean,
+): boolean {
+  if (content != null) return !isSelfWriteEcho(activeCompPath, content);
+  // No content to compare — preserve the old time-window echo suppression.
+  return !withinSuppressWindow;
+}
 
 export interface SdkSessionHandle {
   session: Composition | null;
@@ -53,15 +80,30 @@ export function useSdkSession(
   // ── Re-open on external change to the active composition ──
   useEffect(() => {
     if (!activeCompPath) return;
+    const compPath = activeCompPath;
+    const readAdapter =
+      projectId != null
+        ? createHttpAdapter({ projectFilesUrl: `/api/projects/${projectId}` })
+        : null;
     const handler = (payload?: unknown) => {
-      if (!shouldReloadSdkSession(payload, activeCompPath)) return;
-      // Suppress reload triggered by our own SDK cutover write.
-      if (
-        domEditSaveTimestampRef &&
-        Date.now() - domEditSaveTimestampRef.current < SELF_WRITE_SUPPRESS_MS
-      )
+      if (!shouldReloadSdkSession(payload, compPath)) return;
+      const withinWindow =
+        !!domEditSaveTimestampRef &&
+        Date.now() - domEditSaveTimestampRef.current < SELF_WRITE_SUPPRESS_MS;
+      const decide = (content: string | null) => {
+        if (shouldReloadOnFileChange(compPath, content, withinWindow)) setReloadToken((t) => t + 1);
+      };
+      const payloadContent = readFileChangeContent(payload);
+      // Prefer payload content; otherwise re-read so the decision is by IDENTITY
+      // (an undo's reverted bytes won't match a registered self-write → reload).
+      if (payloadContent != null || !readAdapter) {
+        decide(payloadContent);
         return;
-      setReloadToken((t) => t + 1);
+      }
+      readAdapter
+        .read(compPath)
+        .then((c) => decide(typeof c === "string" ? c : null))
+        .catch(() => decide(null));
     };
     if (import.meta.hot) {
       import.meta.hot.on("hf:file-change", handler);
@@ -72,7 +114,7 @@ export function useSdkSession(
     es.addEventListener("file-change", handler);
     return () => es.close();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeCompPath]);
+  }, [activeCompPath, projectId]);
 
   // ── Open / re-open the session ──
   useEffect(() => {

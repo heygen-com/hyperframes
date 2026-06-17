@@ -115,6 +115,28 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
     },
     [previewIframeRef, reloadPreview, onCacheInvalidate],
   );
+  // Reuse the SAME per-file serializer the legacy commitMutation path uses, so
+  // SDK gsap-write flushes serialize against legacy commits AND each other —
+  // overlapping same-file read-modify-writes can't interleave and lose an edit.
+  const serializeByFile = useCallback(
+    <T>(key: string, task: () => Promise<T>): Promise<T> => serializerRef.current(key, task),
+    [],
+  );
+  // Read the on-disk bytes of targetPath so the SDK GSAP persist captures the
+  // exact prior content as its undo `before` (matching the style/delete paths),
+  // instead of a normalized full-DOM re-emit that would reformat the whole file.
+  const readProjectFileContent = useCallback(
+    async (path: string): Promise<string> => {
+      const pid = projectIdRef.current;
+      if (!pid) throw new Error("No active project");
+      const res = await fetch(`/api/projects/${pid}/files/${encodeURIComponent(path)}`);
+      if (!res.ok) throw new Error(`Failed to read ${path}`);
+      const data = (await res.json()) as { content?: string };
+      if (typeof data.content !== "string") throw new Error(`Missing file contents for ${path}`);
+      return data.content;
+    },
+    [projectIdRef],
+  );
   const sdkDeps = useMemo<CutoverDeps | null>(
     () =>
       writeProjectFile
@@ -125,6 +147,8 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
             domEditSaveTimestampRef,
             refresh: sdkRefresh,
             compositionPath: activeCompPath,
+            serialize: serializeByFile,
+            readProjectFile: readProjectFileContent,
           }
         : null,
     [
@@ -134,6 +158,8 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
       domEditSaveTimestampRef,
       sdkRefresh,
       activeCompPath,
+      serializeByFile,
+      readProjectFileContent,
     ],
   );
 

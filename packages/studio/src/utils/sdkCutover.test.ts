@@ -455,6 +455,153 @@ describe("sdkTimingPersist", () => {
     expect(result).toBe(false);
     expect(deps.writeProjectFile).not.toHaveBeenCalled();
   });
+
+  // Finding #12: undo baseline must be the EXACT on-disk bytes (matching the
+  // style/delete paths), not a normalized SDK serialize() re-emit — otherwise
+  // undoing a timing edit reformats the whole file.
+  it("records the on-disk content (not serialize()) as the undo before when a reader is provided", async () => {
+    const deps = {
+      ...makeDeps(),
+      readProjectFile: vi.fn().mockResolvedValue("<html>EXACT ON-DISK BYTES</html>"),
+    };
+    const session = makeSession(true);
+    await sdkTimingPersist("hf-clip", "/comp.html", { start: 3 }, session, deps);
+    expect(deps.readProjectFile).toHaveBeenCalledWith("/comp.html");
+    expect(deps.editHistory.recordEdit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        files: {
+          "/comp.html": { before: "<html>EXACT ON-DISK BYTES</html>", after: "<html>after</html>" },
+        },
+      }),
+    );
+  });
+
+  it("falls back to serialize() before when the reader throws", async () => {
+    const deps = {
+      ...makeDeps(),
+      readProjectFile: vi.fn().mockRejectedValue(new Error("read failed")),
+    };
+    const session = makeSession(true);
+    await sdkTimingPersist("hf-clip", "/comp.html", { start: 3 }, session, deps);
+    expect(deps.editHistory.recordEdit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        files: { "/comp.html": { before: "<html>before</html>", after: "<html>after</html>" } },
+      }),
+    );
+  });
+});
+
+describe("sdkGsapTweenPersist — undo baseline (finding #12)", () => {
+  const makeRef = <T>(val: T): MutableRefObject<T> => ({ current: val });
+  const makeSession = () =>
+    ({
+      getElement: vi.fn().mockReturnValue({ id: "hf-box" }),
+      setGsapTween: vi.fn(),
+      serialize: vi
+        .fn()
+        .mockReturnValueOnce("<html>serialized-before</html>")
+        .mockReturnValue("<html>after</html>"),
+      batch: vi.fn((fn: () => void) => fn()),
+    }) as unknown as Parameters<typeof sdkGsapTweenPersist>[2];
+
+  it("records the on-disk content as the undo before, not serialize()", async () => {
+    const deps = {
+      editHistory: { recordEdit: vi.fn().mockResolvedValue(undefined) },
+      writeProjectFile: vi.fn().mockResolvedValue(undefined),
+      reloadPreview: vi.fn(),
+      domEditSaveTimestampRef: makeRef(0),
+      readProjectFile: vi.fn().mockResolvedValue("<html>on-disk gsap bytes</html>"),
+    };
+    const session = makeSession();
+    await sdkGsapTweenPersist(
+      "/comp.html",
+      { kind: "set", animationId: "tw-1", properties: { ease: "power3.in" } },
+      session,
+      deps,
+    );
+    expect(deps.editHistory.recordEdit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        files: {
+          "/comp.html": { before: "<html>on-disk gsap bytes</html>", after: "<html>after</html>" },
+        },
+      }),
+    );
+  });
+});
+
+describe("sdkGsapTweenPersist — per-file serialization (finding #8)", () => {
+  const makeRef = <T>(val: T): MutableRefObject<T> => ({ current: val });
+
+  it("routes the read-modify-write through the keyed serializer so same-file flushes can't interleave", async () => {
+    const order: string[] = [];
+    let writeResolve: (() => void) | null = null;
+    const deps = {
+      editHistory: { recordEdit: vi.fn().mockResolvedValue(undefined) },
+      // First write blocks until we release it, so without serialization the
+      // second op's serialize()/dispatch would interleave ahead of it.
+      writeProjectFile: vi.fn().mockImplementation((_p: string, content: string) => {
+        order.push(`write-start:${content}`);
+        if (content === "<html>after-1</html>") {
+          return new Promise<void>((res) => {
+            writeResolve = () => {
+              order.push(`write-done:${content}`);
+              res();
+            };
+          });
+        }
+        order.push(`write-done:${content}`);
+        return Promise.resolve();
+      }),
+      reloadPreview: vi.fn(),
+      domEditSaveTimestampRef: makeRef(0),
+      // A real per-key serializer: tasks under the same key run strictly in order.
+      serialize: (() => {
+        const inFlight = new Map<string, Promise<unknown>>();
+        return <T>(key: string, task: () => Promise<T>): Promise<T> => {
+          const prior = inFlight.get(key) ?? Promise.resolve();
+          const next = prior.then(task, task);
+          inFlight.set(key, next);
+          return next as Promise<T>;
+        };
+      })(),
+    };
+
+    let serializeCall = 0;
+    const session = {
+      getElement: vi.fn().mockReturnValue({ id: "hf-box" }),
+      setGsapTween: vi.fn(() => order.push("dispatch")),
+      serialize: vi.fn(() => {
+        serializeCall++;
+        // before-1, after-1, before-2, after-2
+        return `<html>${serializeCall % 2 === 1 ? "before" : "after"}-${Math.ceil(serializeCall / 2)}</html>`;
+      }),
+      batch: vi.fn((fn: () => void) => fn()),
+    } as unknown as Parameters<typeof sdkGsapTweenPersist>[2];
+
+    const p1 = sdkGsapTweenPersist(
+      "/comp.html",
+      { kind: "set", animationId: "tw-1", properties: { ease: "a" } },
+      session,
+      deps,
+    );
+    const p2 = sdkGsapTweenPersist(
+      "/comp.html",
+      { kind: "set", animationId: "tw-1", properties: { ease: "b" } },
+      session,
+      deps,
+    );
+    // Let the first op reach its (blocked) write before releasing it.
+    await Promise.resolve();
+    await Promise.resolve();
+    writeResolve?.();
+    await Promise.all([p1, p2]);
+
+    // The second op's write must NOT start before the first op's write completes.
+    const firstWriteDone = order.indexOf("write-done:<html>after-1</html>");
+    const secondWriteStart = order.indexOf("write-start:<html>after-2</html>");
+    expect(firstWriteDone).toBeGreaterThanOrEqual(0);
+    expect(secondWriteStart).toBeGreaterThan(firstWriteDone);
+  });
 });
 
 describe("sdkGsapTweenPersist", () => {
