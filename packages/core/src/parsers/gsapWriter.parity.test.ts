@@ -15,9 +15,20 @@ import {
   materializeKeyframesInScript as materializeRecast,
   splitIntoPropertyGroups as splitGroupsRecast,
   splitAnimationsInScript as splitAnimsRecast,
+  setArcPathInScript as setArcRecast,
+  updateArcSegmentInScript as updateArcSegmentRecast,
+  removeArcPathFromScript as removeArcRecast,
+  unrollDynamicAnimations as unrollRecast,
+  addKeyframeToScript as addKeyframeRecast,
+  removeKeyframeFromScript as removeKeyframeRecast,
+  addAnimationWithKeyframesToScript as addWithKfRecast,
   type SplitAnimationsOptions,
 } from "./gsapParser.js";
-import { parseGsapScriptAcornForWrite, type ParsedGsapAcornForWrite } from "./gsapParserAcorn.js";
+import {
+  parseGsapScriptAcorn,
+  parseGsapScriptAcornForWrite,
+  type ParsedGsapAcornForWrite,
+} from "./gsapParserAcorn.js";
 import {
   removeAllKeyframesFromScript as removeAllAcorn,
   convertToKeyframesFromScript as convertAcorn,
@@ -28,10 +39,34 @@ import {
   updateArcSegmentInScript as updateArcSegmentAcorn,
   removeArcPathFromScript as removeArcAcorn,
   unrollDynamicAnimations as unrollAcorn,
+  addKeyframeToScript as addKeyframeAcorn,
+  removeKeyframeFromScript as removeKeyframeAcorn,
+  addAnimationWithKeyframesToScript as addWithKfAcorn,
 } from "./gsapWriterAcorn.js";
 function acornId(script: string): string {
   const parsed = parseGsapScriptAcornForWrite(script) as ParsedGsapAcornForWrite;
   return parsed.located[0]!.id;
+}
+
+/**
+ * True recast-vs-acorn differential: parse a written script with the acorn
+ * parser and strip per-parse metadata, leaving only the AUTHORED animation
+ * shape. Both writers must produce scripts that reparse to the same model
+ * (raw text differs — recast pretty-prints, acorn splices in place).
+ */
+function modelOf(script: string) {
+  return parseGsapScriptAcorn(script).animations.map((a) => {
+    // Drop per-parse metadata; compare AUTHORED shape only.
+    const {
+      id: _id,
+      resolvedStart: _resolvedStart,
+      implicitPosition: _implicitPosition,
+      propertyGroup: _propertyGroup,
+      provenance: _provenance,
+      ...rest
+    } = a;
+    return rest;
+  });
 }
 
 function arcShapeOf(script: string) {
@@ -422,6 +457,21 @@ function arcFixture() {
   return { id, enabled };
 }
 
+// Multi-waypoint fixture: keyframes drive >2 path waypoints and >1 segment, and
+// autoRotate is on — exercises the multi-segment branch of buildMotionPathObjectCode.
+const ARC_KEYFRAME_SCRIPT = `
+  const tl = gsap.timeline({ paused: true });
+  tl.to("#hero", {
+    keyframes: { "0%": { x: 0, y: 0 }, "50%": { x: 50, y: 100 }, "100%": { x: 200, y: 0 } },
+    duration: 2
+  }, 0);
+`;
+const ARC_KEYFRAME_CFG = {
+  enabled: true as const,
+  autoRotate: true as const,
+  segments: [{ curviness: 1.5 }, { curviness: 0.5 }],
+};
+
 describe("setArcPathInScript: acorn output correctness", () => {
   it("enable: arcPath.enabled=true, segments preserved", () => {
     const id = acornId(ARC_FLAT_SCRIPT);
@@ -527,5 +577,340 @@ describe("unrollDynamicAnimations: acorn output correctness", () => {
 
   it("no-op when animationId not found", () => {
     expect(unrollAcorn(UNROLL_LOOP_SCRIPT, "nope", UNROLL_ELEMENTS)).toBe(UNROLL_LOOP_SCRIPT);
+  });
+});
+
+// ── True recast-vs-acorn differential for the arc trio ──────────────────────
+// For each representative input, apply the op via BOTH the recast writer
+// (gsapParser.ts) and the acorn writer (gsapWriterAcorn.ts), then assert the
+// reparsed authored model is identical. This is the WS-3.F parity safety net:
+// acorn cannot drop or mis-serialize a path/segment/restored-xy that recast keeps.
+describe("parity: arc path trio (recast vs acorn)", () => {
+  for (const { name, script, cfg } of [
+    { name: "flat x/y — single segment", script: ARC_FLAT_SCRIPT, cfg: ARC_CFG },
+    {
+      name: "keyframes — multi-segment + autoRotate",
+      script: ARC_KEYFRAME_SCRIPT,
+      cfg: ARC_KEYFRAME_CFG,
+    },
+  ]) {
+    describe(name, () => {
+      it("setArcPath enable: models match", () => {
+        const id = acornId(script);
+        expect(parseGsapScript(script).animations[0]!.id).toBe(id);
+        expect(modelOf(setArcAcorn(script, id, cfg))).toEqual(
+          modelOf(setArcRecast(script, id, cfg)),
+        );
+      });
+
+      it("updateArcSegment: models match", () => {
+        const recastEnabled = setArcRecast(script, acornId(script), cfg);
+        const acornEnabled = setArcAcorn(script, acornId(script), cfg);
+        const idx = cfg.segments.length - 1;
+        expect(
+          modelOf(
+            updateArcSegmentAcorn(acornEnabled, acornId(acornEnabled), idx, { curviness: 3 }),
+          ),
+        ).toEqual(
+          modelOf(
+            updateArcSegmentRecast(recastEnabled, acornId(recastEnabled), idx, { curviness: 3 }),
+          ),
+        );
+      });
+
+      it("removeArcPath: models match (x/y restored, motionPath gone)", () => {
+        const recastEnabled = setArcRecast(script, acornId(script), cfg);
+        const acornEnabled = setArcAcorn(script, acornId(script), cfg);
+        expect(modelOf(removeArcAcorn(acornEnabled, acornId(acornEnabled)))).toEqual(
+          modelOf(removeArcRecast(recastEnabled, acornId(recastEnabled))),
+        );
+      });
+    });
+  }
+});
+
+// ── forEach with explicit ease + nonzero position — the acorn writer reads
+// duration/ease/position from the parsed animation model, recast reads them
+// straight from the original tween's AST var/position args. ────────────────────
+const UNROLL_FOREACH_EASE_SCRIPT = `
+  const tl = gsap.timeline({ paused: true });
+  ["#a", "#b"].forEach(function(sel) {
+    tl.to(sel, { opacity: 1, duration: 2, ease: "power2.out" }, 1);
+  });
+`;
+
+// Dynamic tween NOT inside a loop — both writers fall back to replacing the
+// enclosing expression statement. String (label) position, no duration/ease,
+// so the default duration: 8 / ease: "none" path is exercised on both sides.
+const UNROLL_FALLBACK_SCRIPT = `
+  const tl = gsap.timeline({ paused: true });
+  tl.to("#dyn", { opacity: 1 }, "intro");
+`;
+
+const UNROLL_ELEMENTS_EASE = [
+  {
+    selector: "#hero",
+    keyframes: [
+      { percentage: 0, properties: { opacity: 0 } },
+      { percentage: 100, properties: { opacity: 1 } },
+    ],
+    easeEach: "power1.in",
+  },
+  {
+    selector: "#sub",
+    keyframes: [
+      { percentage: 0, properties: { x: 0 } },
+      { percentage: 100, properties: { x: 200 } },
+    ],
+  },
+];
+
+// True recast-vs-acorn differential: apply unroll via BOTH writers, then assert
+// the reparsed (authored-shape) models are identical. Covers a for-loop, a
+// forEach with explicit ease + nonzero position, and a non-loop (fallback)
+// tween with a label position + defaulted duration/ease.
+const UNROLL_PARITY_CASES: Array<{
+  name: string;
+  script: string;
+  elements: typeof UNROLL_ELEMENTS;
+}> = [
+  { name: "for-loop", script: UNROLL_LOOP_SCRIPT, elements: UNROLL_ELEMENTS },
+  { name: "forEach", script: UNROLL_FOREACH_SCRIPT, elements: UNROLL_ELEMENTS },
+  {
+    name: "forEach with ease + nonzero position",
+    script: UNROLL_FOREACH_EASE_SCRIPT,
+    elements: UNROLL_ELEMENTS_EASE,
+  },
+  {
+    name: "non-loop fallback — label position, defaulted duration/ease",
+    script: UNROLL_FALLBACK_SCRIPT,
+    elements: UNROLL_ELEMENTS_EASE,
+  },
+];
+
+describe("parity: unrollDynamicAnimations (recast vs acorn)", () => {
+  for (const { name, script, elements } of UNROLL_PARITY_CASES) {
+    it(name, () => {
+      const id = unrollId(script);
+      // Sanity: recast and acorn agree on the id for the dynamic tween.
+      expect(parseGsapScript(script).animations[0]!.id).toBe(id);
+
+      const recastOut = unrollRecast(script, id, elements);
+      const acornOut = unrollAcorn(script, id, elements);
+
+      // Both writers must actually unroll (not no-op).
+      expect(recastOut).not.toBe(script);
+      expect(acornOut).not.toBe(script);
+
+      // Reparsed authored models must be identical.
+      expect(modelOf(acornOut)).toEqual(modelOf(recastOut));
+    });
+  }
+
+  it("no-op parity when animationId not found", () => {
+    expect(unrollAcorn(UNROLL_LOOP_SCRIPT, "nope", UNROLL_ELEMENTS)).toBe(UNROLL_LOOP_SCRIPT);
+    expect(unrollRecast(UNROLL_LOOP_SCRIPT, "nope", UNROLL_ELEMENTS)).toBe(UNROLL_LOOP_SCRIPT);
+  });
+});
+
+// ── addKeyframeToScript parity (recast vs acorn) ────────────────────────────
+// PR #1470 routes Studio's GSAP keyframe-add through the acorn writer. Each
+// case applies the op via BOTH writers and asserts the parsed authored models
+// are equal — closing the parity gap the keyframe-add fix enforces (the acorn
+// whole-value overwrite branch must emit recordToCode, not a stale valueCode).
+
+// Two distinct percentages so adding/merging exercises the insert + merge paths.
+const KF_ADD_SCRIPT = `
+  const tl = gsap.timeline({ paused: true });
+  tl.to("#box", { keyframes: { "0%": { opacity: 0 }, "100%": { opacity: 1 } }, duration: 0.5 }, 0.2);
+`;
+
+// `_auto`-marked endpoints exercise the adjacent-endpoint sync branch.
+const KF_ADD_AUTO_SCRIPT = `
+  const tl = gsap.timeline({ paused: true });
+  tl.to("#box", { keyframes: { "0%": { opacity: 0, _auto: 1 }, "100%": { opacity: 1, _auto: 1 } }, duration: 0.5 }, 0.2);
+`;
+
+// Flat tween — adding a keyframe runs the convert-to-keyframes path first.
+const KF_ADD_FLAT_SCRIPT = `
+  const tl = gsap.timeline({ paused: true });
+  tl.to("#hero", { opacity: 1, duration: 0.5, ease: "power3.out" }, 0.2);
+`;
+
+// A percentage entry whose value is NOT an object literal — exercises the
+// whole-value overwrite branch (the acorn path here once referenced an
+// undefined `valueCode`; recast emits the new value node).
+const KF_ADD_NON_OBJECT_SCRIPT = `
+  const tl = gsap.timeline({ paused: true });
+  tl.to("#box", { keyframes: { "0%": { opacity: 0 }, "50%": 0.7, "100%": { opacity: 1 } }, duration: 0.5 }, 0.2);
+`;
+
+describe("parity: addKeyframeToScript (recast vs acorn)", () => {
+  function expectParity(
+    script: string,
+    percentage: number,
+    properties: Record<string, number | string>,
+    ease?: string,
+    backfillDefaults?: Record<string, number | string>,
+  ) {
+    const id = acornId(script);
+    expect(parseGsapScript(script).animations[0]!.id).toBe(id);
+    const acorn = addKeyframeAcorn(script, id, percentage, properties, ease, backfillDefaults);
+    const recast = addKeyframeRecast(script, id, percentage, properties, ease, backfillDefaults);
+    expect(modelOf(acorn)).toEqual(modelOf(recast));
+  }
+
+  it("inserts a new percentage in sorted order", () => {
+    expectParity(KF_ADD_SCRIPT, 25, { opacity: 0.3 });
+  });
+
+  it("replaces the value when the percentage already exists", () => {
+    expectParity(KF_ADD_SCRIPT, 100, { opacity: 0.99 });
+  });
+
+  it("merges a new property into an existing keyframe, preserving siblings", () => {
+    expectParity(KF_ADD_SCRIPT, 100, { x: 100 });
+  });
+
+  it("carries an ease onto the new keyframe", () => {
+    expectParity(KF_ADD_SCRIPT, 30, { opacity: 0.4 }, "power2.out");
+  });
+
+  it("backfills a new property across sibling keyframes", () => {
+    expectParity(KF_ADD_SCRIPT, 25, { x: 50 }, undefined, { x: 0 });
+  });
+
+  it("syncs an adjacent _auto 0% endpoint", () => {
+    expectParity(KF_ADD_AUTO_SCRIPT, 10, { opacity: 0.2 });
+  });
+
+  it("syncs an adjacent _auto 100% endpoint", () => {
+    expectParity(KF_ADD_AUTO_SCRIPT, 90, { opacity: 0.8 });
+  });
+
+  it("converts a flat tween to keyframes before inserting", () => {
+    expectParity(KF_ADD_FLAT_SCRIPT, 50, { opacity: 0.5 });
+  });
+
+  it("overwrites a non-object keyframe value with the new properties", () => {
+    expectParity(KF_ADD_NON_OBJECT_SCRIPT, 50, { opacity: 0.5 });
+  });
+
+  it("no-op on unknown id agrees between writers", () => {
+    expect(addKeyframeAcorn(KF_ADD_SCRIPT, "bad-id", 50, { opacity: 0.5 })).toBe(KF_ADD_SCRIPT);
+    expect(addKeyframeRecast(KF_ADD_SCRIPT, "bad-id", 50, { opacity: 0.5 })).toBe(KF_ADD_SCRIPT);
+  });
+});
+
+// ── removeKeyframeFromScript parity (recast vs acorn) ───────────────────────
+// When removal drops a keyframes block below two stops it must collapse back to
+// a flat tween (recast via collapseKeyframesToFlat). The acorn writer must
+// mirror this — folding the survivor (incl. `_auto`), dropping per-keyframe
+// `ease` and the sibling `easeEach` — or the SDK/server paths diverge.
+
+// Three plain keyframes — removing the interior one stays a keyframes block.
+const RM_PLAIN_SCRIPT = `
+  const tl = gsap.timeline({ paused: true });
+  tl.to("#box", { keyframes: { "0%": { opacity: 0 }, "50%": { opacity: 0.5 }, "100%": { opacity: 1 } }, duration: 0.5 }, 0.2);
+`;
+
+// Two plain keyframes — removing one drops below 2 → collapse to flat tween.
+const RM_TWO_KF_SCRIPT = `
+  const tl = gsap.timeline({ paused: true });
+  tl.to("#box", { keyframes: { "0%": { opacity: 0 }, "100%": { opacity: 1 } }, duration: 0.5 }, 0.2);
+`;
+
+// Two _auto endpoints — collapse must carry the surviving `_auto` marker.
+const RM_TWO_KF_AUTO_SCRIPT = `
+  const tl = gsap.timeline({ paused: true });
+  tl.to("#box", { keyframes: { "0%": { opacity: 1, _auto: 1 }, "100%": { opacity: 0, _auto: 1 } }, duration: 0.5 }, 0.2);
+`;
+
+// Survivor carries a per-keyframe `ease`, plus a sibling `easeEach`. Collapse
+// must drop both `ease` (per-keyframe) and `easeEach` (keyframes-only).
+const RM_TWO_KF_EASE_SCRIPT = `
+  const tl = gsap.timeline({ paused: true });
+  tl.to("#box", { keyframes: { "0%": { opacity: 0 }, "100%": { opacity: 1, ease: "power2.in" }, easeEach: "none" }, duration: 0.5 }, 0.2);
+`;
+
+// Survivor is empty — collapse yields a tween with NO authored props.
+const RM_TWO_KF_EMPTY_SCRIPT = `
+  const tl = gsap.timeline({ paused: true });
+  tl.to("#box", { keyframes: { "0%": {}, "100%": { opacity: 1 } }, duration: 0.5 }, 0.2);
+`;
+
+describe("parity: removeKeyframeFromScript (recast vs acorn)", () => {
+  function expectParity(script: string, percentage: number) {
+    const id = acornId(script);
+    expect(parseGsapScript(script).animations[0]!.id).toBe(id);
+    expect(modelOf(removeKeyframeAcorn(script, id, percentage))).toEqual(
+      modelOf(removeKeyframeRecast(script, id, percentage)),
+    );
+  }
+
+  it("removes an interior keyframe and stays a keyframes block (3 → 2)", () => {
+    expectParity(RM_PLAIN_SCRIPT, 50);
+  });
+
+  it("targets a near-coincident percentage (51 → the 50% keyframe) at parity", () => {
+    expectParity(RM_PLAIN_SCRIPT, 51);
+  });
+
+  it("collapses to a flat tween when only one keyframe would remain (2 → 1)", () => {
+    expectParity(RM_TWO_KF_SCRIPT, 0);
+  });
+
+  it("collapses an _auto endpoint pair, carrying the surviving _auto marker", () => {
+    expectParity(RM_TWO_KF_AUTO_SCRIPT, 0);
+  });
+
+  it("collapses and drops per-keyframe ease + easeEach", () => {
+    expectParity(RM_TWO_KF_EASE_SCRIPT, 0);
+  });
+
+  it("collapses to a propless flat tween when the surviving keyframe is empty", () => {
+    expectParity(RM_TWO_KF_EMPTY_SCRIPT, 100);
+  });
+
+  it("no-op on unknown id agrees between writers", () => {
+    expect(removeKeyframeAcorn(RM_TWO_KF_SCRIPT, "bad-id", 0)).toBe(RM_TWO_KF_SCRIPT);
+    expect(removeKeyframeRecast(RM_TWO_KF_SCRIPT, "bad-id", 0)).toBe(RM_TWO_KF_SCRIPT);
+  });
+});
+
+// ── addAnimationWithKeyframesToScript parity (recast vs acorn) ───────────────
+// WS-3.C add path: both writers insert a new keyframed tl.to() call. The
+// inserted statement's authored model (selector, keyframes, duration, ease,
+// position) must match — comparing the LAST animation each writer produced.
+const ADD_WITH_KF_BASE = `
+  const tl = gsap.timeline({ paused: true });
+  tl.to("#existing", { opacity: 1, duration: 1 }, 0);
+`;
+
+function lastModelOf(script: string) {
+  const arr = modelOf(script);
+  return arr[arr.length - 1];
+}
+
+describe("parity: addAnimationWithKeyframesToScript (recast vs acorn)", () => {
+  it("minimal: two-keyframe insert, no ease", () => {
+    const kfs = [
+      { percentage: 0, properties: { x: 0 } },
+      { percentage: 100, properties: { x: 200 } },
+    ];
+    const acorn = addWithKfAcorn(ADD_WITH_KF_BASE, "#hero", 0, 1, kfs).script;
+    const recast = addWithKfRecast(ADD_WITH_KF_BASE, "#hero", 0, 1, kfs).script;
+    expect(lastModelOf(acorn)).toEqual(lastModelOf(recast));
+  });
+
+  it("moderate: three keyframes, per-keyframe ease, easeEach, nonzero position", () => {
+    const kfs = [
+      { percentage: 0, properties: { x: 0, opacity: 0 } },
+      { percentage: 50, properties: { x: 100, opacity: 0.5 }, ease: "power2.out" },
+      { percentage: 100, properties: { x: 300, opacity: 1 } },
+    ];
+    const acorn = addWithKfAcorn(ADD_WITH_KF_BASE, "#card", 1.5, 2.25, kfs, "none").script;
+    const recast = addWithKfRecast(ADD_WITH_KF_BASE, "#card", 1.5, 2.25, kfs, "none").script;
+    expect(lastModelOf(acorn)).toEqual(lastModelOf(recast));
   });
 });
