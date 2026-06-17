@@ -129,6 +129,14 @@ for (let i = 0; i < 2; i++) {
     expect(out).toContain('tl.to("#a"');
     expect(out).toContain('tl.to("#b"');
   });
+
+  it("an empty element list is a no-op, not an animation-deleting overwrite", () => {
+    const parsed = parseGsapScriptAcornForWrite(LOOP);
+    const targetId = parsed?.located.find((l) => l.animation.method === "to")?.id ?? "";
+    // Empty elements has no unrolled form — overwriting the loop with zero calls
+    // would silently delete the animation. Writer must return the script verbatim.
+    expect(unrollDynamicAnimations(LOOP, targetId, [])).toBe(LOOP);
+  });
 });
 
 // ── R2 #1 — non-`for` loops must not leave preserved siblings with an unbound index var ──

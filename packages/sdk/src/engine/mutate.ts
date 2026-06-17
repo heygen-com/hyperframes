@@ -1114,7 +1114,6 @@ export function validateOp(parsed: ParsedDocument, op: EditOp): CanResult {
     case "setArcPath":
     case "updateArcSegment":
     case "removeArcPath":
-    case "unrollDynamicAnimations":
     case "deleteAllForSelector":
     case "removeLabel":
       if (getGsapScript(parsed.document) === null)
@@ -1122,6 +1121,20 @@ export function validateOp(parsed: ParsedDocument, op: EditOp): CanResult {
           "E_NO_GSAP_SCRIPT",
           "No GSAP script block found in the composition.",
           "This composition does not use GSAP animations.",
+        );
+      return CAN_OK;
+    case "unrollDynamicAnimations":
+      if (getGsapScript(parsed.document) === null)
+        return canErr(
+          "E_NO_GSAP_SCRIPT",
+          "No GSAP script block found in the composition.",
+          "This composition does not use GSAP animations.",
+        );
+      if (op.elements.length === 0)
+        return canErr(
+          "E_INVALID_ARGS",
+          "unrollDynamicAnimations requires at least one element.",
+          "An empty element list would delete the animation; pass the resolved element list.",
         );
       return CAN_OK;
     default:

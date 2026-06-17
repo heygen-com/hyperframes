@@ -2024,6 +2024,9 @@ export function unrollDynamicAnimations(
   animationId: string,
   elements: UnrollElement[],
 ): string {
+  // An empty element list has no unrolled form — replacing the loop/statement
+  // with zero calls would silently delete the animation. No-op instead.
+  if (elements.length === 0) return script;
   const parsed = parseGsapScriptAcornForWrite(script);
   if (!parsed) return script;
   const target = parsed.located.find((l) => l.id === animationId);
