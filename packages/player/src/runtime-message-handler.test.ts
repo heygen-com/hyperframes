@@ -11,6 +11,7 @@ const makeCallbacks = (): MessageHandlerCallbacks => ({
   updateControlsTime: vi.fn(),
   updateControlsPlaying: vi.fn(),
   dispatchEvent: vi.fn(),
+  onRuntimeReady: vi.fn(),
   seek: vi.fn(),
   play: vi.fn(),
   getLoop: vi.fn(() => false),

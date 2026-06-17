@@ -24,13 +24,30 @@ function findOnPath(name: "ffmpeg" | "ffprobe"): string | undefined {
   }
 }
 
+// GUI/Dock/launchd-spawned processes on macOS don't inherit the shell PATH, so
+// `which ffmpeg` fails even when ffmpeg is installed via Homebrew. Probe the
+// well-known install dirs as a fallback. (No-op on Windows, where `where` and
+// installer-added PATH entries cover it.)
+const COMMON_BIN_DIRS =
+  process.platform === "win32"
+    ? []
+    : ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/snap/bin"];
+
+function findInCommonDirs(name: "ffmpeg" | "ffprobe"): string | undefined {
+  for (const dir of COMMON_BIN_DIRS) {
+    const candidate = `${dir}/${name}`;
+    if (existsSync(candidate)) return candidate;
+  }
+  return undefined;
+}
+
 function findConfiguredBinary(
   envName: string,
   binaryName: "ffmpeg" | "ffprobe",
 ): string | undefined {
   const configured = process.env[envName]?.trim();
   if (configured) return existsSync(configured) ? resolve(configured) : undefined;
-  return findOnPath(binaryName);
+  return findOnPath(binaryName) ?? findInCommonDirs(binaryName);
 }
 
 export function findFFmpeg(): string | undefined {

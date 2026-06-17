@@ -366,13 +366,6 @@ export function usePopulateKeyframeCacheForFile(
       const { setKeyframeCache } = usePlayerStore.getState();
       clearKeyframeCacheForFile(sf);
       const { elements } = usePlayerStore.getState();
-      console.log(
-        "[kf:static] elements in store:",
-        elements
-          .map((e) => e.domId)
-          .filter(Boolean)
-          .join(", "),
-      );
       const mergedByElement = new Map<string, GsapKeyframesData>();
       for (const anim of parsed.animations) {
         const id = extractIdFromSelector(anim.targetSelector);
@@ -415,12 +408,6 @@ export function usePopulateKeyframeCacheForFile(
           mergedByElement.set(id, { ...kfData, keyframes: clipKeyframes });
         }
       }
-      console.log(
-        "[kf:static] merged elements:",
-        [...mergedByElement.keys()].join(", "),
-        "kf counts:",
-        [...mergedByElement.entries()].map(([k, v]) => `${k}:${v.keyframes.length}`).join(", "),
-      );
       for (const [id, kfData] of mergedByElement) {
         setKeyframeCache(`${sf}#${id}`, kfData);
         setKeyframeCache(id, kfData);
@@ -454,12 +441,6 @@ export function usePopulateKeyframeCacheForFile(
         if (el.domId) clipById.set(el.domId, { start: el.start, duration: el.duration });
       }
       const scanned = scanAllRuntimeKeyframes(iframe, clipById);
-      console.log(
-        "[kf:runtime] scanned",
-        scanned.size,
-        "elements:",
-        [...scanned.keys()].join(", "),
-      );
       if (scanned.size === 0) return false;
       const { setKeyframeCache, keyframeCache } = usePlayerStore.getState();
       for (const [id, data] of scanned) {
@@ -470,14 +451,6 @@ export function usePopulateKeyframeCacheForFile(
         if (alreadyCached) {
           continue;
         }
-        console.log(
-          "[kf:runtime] adding runtime entry:",
-          id,
-          "kfs:",
-          data.keyframes.length,
-          "arc:",
-          !!data.arcPath,
-        );
         const entry = {
           format: "percentage" as const,
           keyframes: data.keyframes,
