@@ -142,6 +142,96 @@ function upsertProp(ms: MagicString, objNode: any, key: string, value: unknown):
   }
 }
 
+/**
+ * Vars keys that are NOT editable transform/style props: builtins
+ * (duration/ease/delay), dropped callbacks, and extras (stagger/yoyo/repeat/…).
+ * The exact union of recast's BUILTIN_VAR_KEYS + DROPPED_VAR_KEYS + EXTRAS_KEYS,
+ * so both writers classify vars keys identically. (Distinct from the keyframe-
+ * conversion NON_EDITABLE_VAR_KEYS below, which intentionally omits `ease`
+ * because that path re-emits ease separately.)
+ */
+const NON_EDITABLE_PROP_KEYS = new Set([
+  "duration",
+  "ease",
+  "delay",
+  "onComplete",
+  "onStart",
+  "onUpdate",
+  "onRepeat",
+  "stagger",
+  "yoyo",
+  "repeat",
+  "repeatDelay",
+  "snap",
+  "overwrite",
+  "immediateRender",
+]);
+
+/**
+ * Editable transform/style key test: anything NOT a builtin, dropped callback, or
+ * extras key. Mirrors recast's isEditablePropertyKey so both writers classify
+ * vars keys identically.
+ */
+function isEditableVarKey(key: string): boolean {
+  return !NON_EDITABLE_PROP_KEYS.has(key);
+}
+
+/**
+ * Collect verbatim `key: value` entries to PRESERVE from a vars/keyframe
+ * ObjectExpression: every property whose key `drop` does not reject, sliced from
+ * source — except keys present in `overrides`, whose value is replaced. Returns
+ * the entries plus the set of keys it kept, so callers can append new keys.
+ */
+function preservedEntries(
+  objNode: any,
+  source: string,
+  drop: (key: string) => boolean,
+  overrides: Record<string, unknown>,
+): { entries: string[]; keys: Set<string> } {
+  const entries: string[] = [];
+  const keys = new Set<string>();
+  for (const prop of objNode.properties ?? []) {
+    if (!isObjectProperty(prop)) continue;
+    const key = propKeyName(prop);
+    if (typeof key !== "string" || drop(key)) continue;
+    keys.add(key);
+    const code =
+      key in overrides
+        ? valueToCode(overrides[key])
+        : source.slice(prop.value.start, prop.value.end);
+    entries.push(`${safeKey(key)}: ${code}`);
+  }
+  return { entries, keys };
+}
+
+/**
+ * Replace the editable-property keys on a vars ObjectExpression with exactly
+ * `newProps`, leaving non-editable keys (duration/ease/stagger/callbacks/…)
+ * untouched unless overridden in `nonEditableOverrides`. Mirrors recast's
+ * reconcileEditableProperties: editable keys absent from `newProps` are DROPPED,
+ * not merged. Rebuilt in a single ms.overwrite so the splice can never overlap a
+ * sibling edit — non-editable updates that also target this node (duration/ease/
+ * extras) are folded into the same rebuild rather than spliced separately.
+ */
+function reconcileEditableProps(
+  ms: MagicString,
+  objNode: any,
+  source: string,
+  newProps: Record<string, number | string>,
+  nonEditableOverrides?: Record<string, unknown>,
+): void {
+  if (objNode?.type !== "ObjectExpression") return;
+  const overrides = nonEditableOverrides ?? {};
+  const { entries, keys } = preservedEntries(objNode, source, isEditableVarKey, overrides);
+  for (const [key, value] of Object.entries(overrides)) {
+    if (!keys.has(key)) entries.push(`${safeKey(key)}: ${valueToCode(value)}`);
+  }
+  for (const [key, value] of Object.entries(newProps)) {
+    entries.push(`${safeKey(key)}: ${valueToCode(value)}`);
+  }
+  ms.overwrite(objNode.start, objNode.end, `{ ${entries.join(", ")} }`);
+}
+
 // ── Insertion helpers ─────────────────────────────────────────────────────────
 
 /** Traverse callee.object chain to check if a call ultimately roots at timelineVar. */
@@ -184,24 +274,35 @@ export function updateAnimationInScript(
   const ms = new MagicString(script);
   const { call }: { call: TweenCallInfo } = target;
 
-  if (updates.duration !== undefined) {
-    upsertProp(ms, call.varsArg, "duration", updates.duration);
-  }
-
-  if (updates.ease !== undefined) {
-    upsertProp(ms, call.varsArg, "ease", updates.ease);
-  }
-
+  // When `properties` is present we REPLACE the editable set (recast parity:
+  // editable keys absent from the update are dropped). Fold any concurrent
+  // non-editable updates (duration/ease/extras) into the single varsArg rebuild
+  // so their splices can't overlap the rebuild's overwrite of the whole node.
   if (updates.properties) {
-    for (const [key, value] of Object.entries(updates.properties)) {
-      upsertProp(ms, call.varsArg, key, value);
+    const overrides: Record<string, unknown> = {};
+    if (updates.duration !== undefined) overrides.duration = updates.duration;
+    if (updates.ease !== undefined) overrides.ease = updates.ease;
+    if (updates.extras) Object.assign(overrides, updates.extras);
+    reconcileEditableProps(ms, call.varsArg, script, updates.properties, overrides);
+  } else {
+    if (updates.duration !== undefined) {
+      upsertProp(ms, call.varsArg, "duration", updates.duration);
+    }
+    if (updates.ease !== undefined) {
+      upsertProp(ms, call.varsArg, "ease", updates.ease);
+    }
+    if (updates.extras) {
+      for (const [key, value] of Object.entries(updates.extras)) {
+        upsertProp(ms, call.varsArg, key, value);
+      }
     }
   }
 
   if (updates.fromProperties && call.method === "fromTo" && call.fromArg) {
-    for (const [key, value] of Object.entries(updates.fromProperties)) {
-      upsertProp(ms, call.fromArg, key, value);
-    }
+    // fromTo's from-vars carry only editable props — REPLACE them too (recast
+    // parity). fromArg is a distinct node from varsArg, so this rebuild never
+    // overlaps the varsArg edits above.
+    reconcileEditableProps(ms, call.fromArg, script, updates.fromProperties);
   }
 
   if (updates.position !== undefined) {
@@ -211,12 +312,6 @@ export function updateAnimationInScript(
       ms.overwrite(posArgNode.start, posArgNode.end, valueToCode(updates.position));
     } else {
       ms.appendLeft(call.node.end - 1, `, ${valueToCode(updates.position)}`);
-    }
-  }
-
-  if (updates.extras) {
-    for (const [key, value] of Object.entries(updates.extras)) {
-      upsertProp(ms, call.varsArg, key, value);
     }
   }
 
@@ -715,6 +810,29 @@ function insertNewKeyframe(
   }
 }
 
+/**
+ * Rebuild a vars ObjectExpression that has just dropped below two keyframes,
+ * collapsing `keyframes: {…}` back to a flat tween. Mirrors recast's
+ * collapseKeyframesToFlat: drop the `keyframes` + `easeEach` keys, preserve every
+ * other vars key verbatim, and splice the remaining keyframe's properties (minus
+ * its per-keyframe `ease`) in as flat vars keys. Single ms.overwrite of the whole
+ * vars node so the splice can't overlap the keyframe removal.
+ */
+function collapseKeyframesToFlat(
+  ms: MagicString,
+  varsNode: any,
+  source: string,
+  remainingRecord: Record<string, number | string>,
+): void {
+  if (varsNode?.type !== "ObjectExpression") return;
+  const dropKeyframeKeys = (key: string) => key === "keyframes" || key === "easeEach";
+  const { entries } = preservedEntries(varsNode, source, dropKeyframeKeys, {});
+  for (const [k, v] of Object.entries(remainingRecord)) {
+    if (k !== "ease") entries.push(`${safeKey(k)}: ${valueToCode(v)}`);
+  }
+  ms.overwrite(varsNode.start, varsNode.end, `{ ${entries.join(", ")} }`);
+}
+
 export function removeKeyframeFromScript(
   script: string,
   animationId: string,
@@ -732,8 +850,20 @@ export function removeKeyframeFromScript(
   const match = findKfPropByPct(kfNode, percentage);
   if (!match) return script;
 
-  const allProps = (kfNode.properties ?? []).filter((p: any) => isObjectProperty(p));
   const ms = new MagicString(script);
+
+  // If removing this keyframe leaves fewer than two, collapse the keyframes
+  // object back to a flat tween (recast parity) instead of leaving a lone
+  // keyframe. We rebuild the whole vars node, so we never also splice the kf
+  // node — the two edits would overlap.
+  const remaining = percentagePropsOf(kfNode).filter((p) => p !== match.prop);
+  if (remaining.length < 2) {
+    const record = remaining.length === 1 ? valueNodeToRecord(remaining[0]!.value, script) : {};
+    collapseKeyframesToFlat(ms, target.call.varsArg, script, record);
+    return ms.toString();
+  }
+
+  const allProps = (kfNode.properties ?? []).filter((p: any) => isObjectProperty(p));
   removeProp(ms, match.prop, allProps);
   return ms.toString();
 }
