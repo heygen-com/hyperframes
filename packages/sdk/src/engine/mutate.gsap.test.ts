@@ -288,6 +288,38 @@ describe("addGsapKeyframe", () => {
     expect(newScript).toContain('"25%"');
     expect(newScript).toContain("opacity: 0.3");
   });
+
+  it("backfills a NEW property into the other keyframes, matching the recast writer", async () => {
+    const parsed = fresh(KF_SCRIPT);
+    const animId = `[data-hf-id="hf-box"]-to-0-visual`;
+    const result = applyOp(parsed, {
+      type: "addGsapKeyframe",
+      animationId: animId,
+      position: 25,
+      // `x` is brand-new to this keyframe set: it must be backfilled into the
+      // existing keyframes so GSAP interpolates rather than snaps.
+      value: { opacity: 0.3, x: 120 },
+    });
+    expect(result.forward).toHaveLength(1);
+    const newScript = String(result.forward[0]?.value ?? "");
+
+    // Parse the SDK-written script and compare against the recast writer fed the
+    // same backfillDefaults the studio always sends (`PROPERTY_DEFAULTS[k] ?? 0`).
+    const { parseGsapScript, addKeyframeToScript } = await import("@hyperframes/core/gsap-parser");
+    const recast = addKeyframeToScript(KF_SCRIPT, animId, 25, { opacity: 0.3, x: 120 }, undefined, {
+      opacity: 1,
+      x: 0,
+    });
+    const kfOf = (s: string) =>
+      parseGsapScript(s)
+        .animations[0]?.keyframes?.keyframes?.slice()
+        .sort((a, b) => a.percentage - b.percentage)
+        .map((k) => ({ percentage: k.percentage, properties: k.properties }));
+    expect(kfOf(newScript)).toEqual(kfOf(recast));
+
+    // Every keyframe carries `x` (the new prop backfilled at its default 0).
+    expect(newScript).toContain("x: 0");
+  });
 });
 
 describe("setGsapKeyframe", () => {
@@ -331,6 +363,33 @@ describe("setGsapKeyframe", () => {
     expect(newScript).toContain('"60%"');
     expect(newScript).not.toContain('"50%"');
     expect(newScript).toContain("opacity: 0.7");
+  });
+
+  it("move with a new prop threads backfill defaults into sibling keyframes (matches add path)", async () => {
+    const parsed = fresh(KF_SCRIPT);
+    const animId = `[data-hf-id="hf-box"]-to-0-visual`;
+    // Move the 50% keyframe to 60% while introducing a NEW prop `x`. The move
+    // path (remove + re-add) must seed `x` into the other keyframes with its
+    // default, exactly like the add path does.
+    const result = applyOp(parsed, {
+      type: "setGsapKeyframe",
+      animationId: animId,
+      keyframeIndex: 1,
+      position: 60,
+      value: { opacity: 0.5, x: 120 },
+    });
+    expect(result.forward).toHaveLength(1);
+    const newScript = String(result.forward[0]?.value ?? "");
+
+    // The 0% and 100% keyframes should now carry `x` backfilled at its default 0.
+    const { parseGsapScript } = await import("@hyperframes/core/gsap-parser");
+    const kfs = parseGsapScript(newScript)
+      .animations[0]?.keyframes?.keyframes?.slice()
+      .sort((a, b) => a.percentage - b.percentage);
+    expect(kfs?.map((k) => k.percentage)).toEqual([0, 60, 100]);
+    expect(kfs?.find((k) => k.percentage === 0)?.properties.x).toBe(0);
+    expect(kfs?.find((k) => k.percentage === 100)?.properties.x).toBe(0);
+    expect(kfs?.find((k) => k.percentage === 60)?.properties.x).toBe(120);
   });
 
   it("ease-only update (same position, no value) does not corrupt keyframe", () => {

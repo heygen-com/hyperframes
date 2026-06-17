@@ -52,6 +52,7 @@ import {
   addLabelToScript,
   removeLabelFromScript,
 } from "@hyperframes/core/gsap-writer-acorn";
+import { deriveKeyframeBackfillDefaults } from "./keyframeBackfill.js";
 
 export interface MutationResult {
   forward: JsonPatchOp[];
@@ -699,7 +700,17 @@ function handleSetGsapKeyframe(
   let newScript = script;
   if (targetPct !== currentPct) {
     newScript = removeKeyframeFromScript(newScript, animationId, currentPct);
-    newScript = addKeyframeToScript(newScript, animationId, targetPct, props, resolvedEase);
+    // Thread the same backfill defaults the add path uses so a move (remove +
+    // re-add at a new percentage) seeds new props into sibling keyframes the same
+    // way, keeping both entry points behaviorally identical.
+    newScript = addKeyframeToScript(
+      newScript,
+      animationId,
+      targetPct,
+      props,
+      resolvedEase,
+      deriveKeyframeBackfillDefaults(props),
+    );
   } else {
     newScript = updateKeyframeInScript(newScript, animationId, currentPct, props, resolvedEase);
   }
@@ -717,11 +728,14 @@ function handleAddGsapKeyframe(
 ): MutationResult {
   const script = getGsapScript(parsed.document);
   if (!script) return EMPTY;
+  const props = value as Record<string, number | string>;
   const newScript = addKeyframeToScript(
     script,
     animationId,
     percentage,
-    value as Record<string, number | string>,
+    props,
+    undefined,
+    deriveKeyframeBackfillDefaults(props),
   );
   if (newScript === script) return EMPTY;
   setGsapScript(parsed.document, newScript);
