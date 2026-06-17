@@ -150,9 +150,7 @@ function dispatchRemoveGsapKeyframe(
   parsed: ParsedDocument,
   op: Extract<EditOp, { type: "removeGsapKeyframe" }>,
 ): MutationResult {
-  return "percentage" in op
-    ? handleRemoveGsapKeyframeByPercentage(parsed, op.animationId, op.percentage)
-    : handleRemoveGsapKeyframe(parsed, op.animationId, op.keyframeIndex);
+  return handleRemoveGsapKeyframeByPercentage(parsed, op.animationId, op.percentage);
 }
 
 function applyGsapKeyframeOp(parsed: ParsedDocument, op: EditOp): MutationResult | undefined {
@@ -997,24 +995,6 @@ function handleRemoveGsapKeyframeByPercentage(
   const matches = kfs.filter((k) => Math.abs(k.percentage - percentage) <= TOLERANCE);
   if (matches.length !== 1) return EMPTY;
   const pct = matches[0]!.percentage;
-  const newScript = removeKeyframeFromScript(script, animationId, pct);
-  if (newScript === script) return EMPTY;
-  setGsapScript(parsed.document, newScript);
-  return gsapScriptChange(script, newScript);
-}
-
-function handleRemoveGsapKeyframe(
-  parsed: ParsedDocument,
-  animationId: string,
-  keyframeIndex: number,
-): MutationResult {
-  const resolved = resolveKeyframe(parsed, animationId, keyframeIndex);
-  if (!resolved) return EMPTY;
-  const { script, kf, kfs } = resolved;
-  const pct = kf.percentage;
-  // removeKeyframeFromScript matches by percentage; bail if two keyframes share
-  // the same percentage to avoid removing the wrong one.
-  if (kfs.filter((k) => k.percentage === pct).length > 1) return EMPTY;
   const newScript = removeKeyframeFromScript(script, animationId, pct);
   if (newScript === script) return EMPTY;
   setGsapScript(parsed.document, newScript);

@@ -400,13 +400,13 @@ describe("setGsapKeyframe", () => {
 });
 
 describe("removeGsapKeyframe", () => {
-  it("removes keyframe at index 1 (50%)", () => {
+  it("removes keyframe at 50%", () => {
     const parsed = fresh(KF_SCRIPT);
     const animId = `[data-hf-id="hf-box"]-to-0-visual`;
     const result = applyOp(parsed, {
       type: "removeGsapKeyframe",
       animationId: animId,
-      keyframeIndex: 1,
+      percentage: 50,
     });
     expect(result.forward).toHaveLength(1);
     const newScript = String(result.forward[0]?.value ?? "");

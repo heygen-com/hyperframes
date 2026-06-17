@@ -101,7 +101,6 @@ export type EditOp =
       position: number;
       value: Record<string, unknown>;
     }
-  | { type: "removeGsapKeyframe"; animationId: string; keyframeIndex: number }
   | { type: "removeGsapKeyframe"; animationId: string; percentage: number }
   | { type: "removeGsapProperty"; animationId: string; property: string; from?: boolean }
   | { type: "removeGsapTween"; animationId: string }
