@@ -50,6 +50,35 @@ describe("resolveScoped — flat id", () => {
     expect(resolveScoped(doc as unknown as Document, "hf-xxxx")).toBeNull();
   });
 
+  // A sub-composition ROOT is addressed by its composition id. When no element
+  // carries that as a data-hf-id, fall back to [data-composition-id]: comp-ids
+  // become first-class resolvable addresses (fixes validate / getElement).
+  it("resolves a bare id to a sub-comp root via data-composition-id fallback", () => {
+    const doc = makeDoc(
+      `<!DOCTYPE html><html><body><div data-hf-id="hf-host" data-composition-id="sub-1"></div></body></html>`,
+    ) as unknown as Document;
+    const viaComp = resolveScoped(doc, "sub-1");
+    const viaHf = resolveScoped(doc, "hf-host");
+    expect(viaComp).not.toBeNull();
+    expect(viaComp?.getAttribute("data-hf-id")).toBe("hf-host");
+    // Both addresses resolve to the SAME host element.
+    expect(viaComp).toBe(viaHf);
+  });
+
+  // data-hf-id MUST take precedence: a bare id that matches a real data-hf-id
+  // never falls back to data-composition-id, even if some other element carries
+  // that string as its composition id.
+  it("data-hf-id takes precedence over data-composition-id for a bare id", () => {
+    const doc = makeDoc(
+      `<!DOCTYPE html><html><body>
+        <div data-hf-id="dup" class="byHfId"></div>
+        <div data-hf-id="hf-host" data-composition-id="dup" class="byCompId"></div>
+      </body></html>`,
+    ) as unknown as Document;
+    const el = resolveScoped(doc, "dup");
+    expect(el?.getAttribute("class")).toBe("byHfId");
+  });
+
   // Regression: findById is the patch-replay/undo resolver. It must agree with
   // resolveScoped (forward dispatch) on an ambiguous bare id — both pick the
   // canonical (top-level) instance — or undo reverts the wrong duplicate.
@@ -302,6 +331,33 @@ describe("dispatch — scoped target", () => {
     const ids = comp.find({ tag: "p" });
     expect(ids).toContain("hf-host/hf-leaf");
     expect(ids).toContain("hf-outer");
+  });
+});
+
+// ─── 3b. Comp-root GSAP tween attribution ─────────────────────────────────────
+
+describe("sub-comp root GSAP tween — canonical hf-id attribution", () => {
+  it("getElement(host).animationIds includes a tween added by comp-id target", async () => {
+    const html = inlinedHtml(`
+      <div data-hf-id="hf-root" data-hf-root>
+        <div data-hf-id="hf-host" data-composition-id="sub-1" data-composition-file="sub.html">
+          <p data-hf-id="hf-leaf">text</p>
+        </div>
+        <script>var tl = gsap.timeline({ paused: true });
+window.__timelines = { t: tl };</script>
+      </div>
+    `);
+    const comp = await openComposition(html);
+    // Target the sub-comp ROOT by its composition id.
+    const animId = comp.addGsapTween("sub-1", {
+      method: "to",
+      duration: 0.3,
+      properties: { x: 200 },
+    });
+    // The tween is filed under the host's own data-hf-id (canonical form), so
+    // it surfaces on the host element snapshot.
+    const host = comp.getElement("hf-host");
+    expect(host?.animationIds).toContain(animId);
   });
 });
 

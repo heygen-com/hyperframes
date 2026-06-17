@@ -11,6 +11,7 @@ import type { CanResult, EditOp, GsapTweenSpec, HfId, JsonPatchOp } from "../typ
 import type { ParsedDocument } from "./model.js";
 import {
   resolveScoped,
+  escapeHfId,
   findRoot,
   getElementStyles,
   setElementStyles,
@@ -351,9 +352,13 @@ function handleSetTiming(
     // Sync GSAP tween positions: the GSAP script is the source of truth at play time —
     // the timeline rebuilds from it on every seek. Without this, DOM attribute edits
     // have zero playback effect; the script's position/duration silently overrides them.
+    // Match against the resolved element's own data-hf-id (the canonical form
+    // tweens are stored under) so a comp-root target ("sub-1") whose tween lives
+    // at [data-hf-id="hf-host"] still syncs.
+    const matchId = el.getAttribute("data-hf-id") ?? id;
     if (parsedGsap && currentScript) {
       for (const { id: animId, animation } of parsedGsap.located) {
-        if (!selectorMatchesId(animation.targetSelector, id)) continue;
+        if (!selectorMatchesId(animation.targetSelector, matchId)) continue;
         const updates: Partial<GsapAnimation> = {};
         if (timing.start !== undefined && newStart !== null) updates.position = newStart;
         if (timing.duration !== undefined && newDuration !== null) updates.duration = newDuration;
@@ -587,6 +592,31 @@ function gsapScriptChange(oldScript: string, newScript: string): MutationResult 
 
 // ─── Phase 3b handlers ───────────────────────────────────────────────────────
 
+// Build the GSAP target selector for an add op. The SDK's whole element↔tween
+// attribution is data-hf-id based (selectorMatchesId, cascadeRemoveAnimations,
+// buildAnimationIdMap), so ALWAYS emit the canonical [data-hf-id="…"] form.
+//
+// Resolve the target first: a normal element resolves to itself (hf-id ==
+// target). A sub-composition ROOT addressed by its composition id resolves —
+// via resolveScoped's comp-id fallback — to the host element, whose own
+// data-hf-id we then emit. The fidelity resolver unifies this with the server
+// writer's [data-composition-id="…"] form because both querySelector to the
+// same host node.
+function gsapTargetSelector(
+  document: Parameters<typeof resolveScoped>[0],
+  bareTarget: string,
+): string {
+  const el = resolveScoped(document, bareTarget);
+  if (!el) return `[data-hf-id="${escapeHfId(bareTarget)}"]`;
+  const hfId = el.getAttribute("data-hf-id");
+  if (hfId) return `[data-hf-id="${escapeHfId(hfId)}"]`;
+  // Resolved a sub-comp root that carries data-composition-id but no own
+  // data-hf-id (rare/defensive) — address it by its composition id.
+  const compId = el.getAttribute("data-composition-id");
+  if (compId) return `[data-composition-id="${escapeHfId(compId)}"]`;
+  return `[data-hf-id="${escapeHfId(bareTarget)}"]`;
+}
+
 // fallow-ignore-next-line complexity
 function handleAddGsapTween(
   parsed: ParsedDocument,
@@ -610,7 +640,7 @@ function handleAddGsapTween(
   // selector — only the leaf part is written as data-hf-id on the DOM element.
   const bareTarget = target.includes("/") ? (target.split("/").at(-1) ?? target) : target;
   const animation: Omit<GsapAnimation, "id"> = {
-    targetSelector: `[data-hf-id="${bareTarget}"]`,
+    targetSelector: gsapTargetSelector(parsed.document, bareTarget),
     method: tween.method,
     position: tween.position ?? 0,
     ...(tween.duration !== undefined ? { duration: tween.duration } : {}),

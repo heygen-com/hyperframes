@@ -32,6 +32,17 @@ function fresh(script = GSAP_SCRIPT) {
   return parseMutable(makeHtml(script));
 }
 
+// A sub-composition host: data-hf-id="hf-host" (its own leaf id) AND
+// data-composition-id="sub-1" (the id studio passes when targeting the root).
+function freshSubComp(script = GSAP_SCRIPT) {
+  return parseMutable(
+    `<div data-hf-id="hf-stage" data-hf-root style="width: 1280px; height: 720px">
+  <div data-hf-id="hf-host" data-composition-id="sub-1" style="opacity: 0"></div>
+  <script>${script}</script>
+</div>`.trim(),
+  );
+}
+
 function getScript(parsed: ReturnType<typeof parseMutable>): string {
   const doc = serializeDocument(parsed);
   const m = /<script>([\s\S]*?)<\/script>/i.exec(doc);
@@ -187,6 +198,77 @@ describe("addGsapTween", () => {
       tween: { method: "to", properties: { x: 1 } },
     });
     expect(result.forward).toHaveLength(0);
+  });
+
+  // A normal data-hf-id target keeps the [data-hf-id] selector form.
+  it("emits a [data-hf-id] selector for a normal element target", () => {
+    const result = applyOp(fresh(), {
+      type: "addGsapTween",
+      target: "hf-box",
+      tween: { method: "to", properties: { x: 1 } },
+    });
+    const script = String(result.forward[0]?.value ?? "");
+    expect(script).toContain(`[data-hf-id=\\"hf-box\\"]`);
+    expect(script).not.toContain("data-composition-id");
+  });
+
+  // A sub-composition ROOT is addressed by its composition id, but the SDK's
+  // element↔tween attribution is data-hf-id based. So a comp-id target must
+  // resolve to the host element and emit the CANONICAL [data-hf-id="<host>"]
+  // form — NOT [data-composition-id] (invisible to selectorMatchesId / cascade /
+  // buildAnimationIdMap) and NOT [data-hf-id="<compId>"] (matches no element).
+  it("emits a canonical [data-hf-id] selector for a sub-composition root target", () => {
+    const result = applyOp(freshSubComp(), {
+      type: "addGsapTween",
+      target: "sub-1",
+      tween: { method: "to", properties: { x: 1 } },
+    });
+    const script = String(result.forward[0]?.value ?? "");
+    expect(script).toContain(`[data-hf-id=\\"hf-host\\"]`);
+    expect(script).not.toContain("data-composition-id");
+    expect(script).not.toContain(`[data-hf-id=\\"sub-1\\"]`);
+  });
+
+  // validateOp/can must accept a comp-root target (resolveScoped's comp-id
+  // fallback resolves it) — otherwise can/apply diverge.
+  it("validateOp accepts a sub-composition root target (no E_TARGET_NOT_FOUND)", () => {
+    const r = validateOp(freshSubComp(), {
+      type: "addGsapTween",
+      target: "sub-1",
+      tween: { method: "to", properties: { x: 1 } },
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  // setTiming on the comp-root after adding a tween updates the tween's GSAP
+  // position/duration — selectorMatchesId matches the canonical host hf-id.
+  it("setTiming on a comp-root syncs its tween position/duration", () => {
+    // applyOp mutates parsed.document in place, so chain ops on the same parsed.
+    const parsed = freshSubComp();
+    applyOp(parsed, {
+      type: "addGsapTween",
+      target: "sub-1",
+      tween: { method: "to", duration: 0.5, properties: { x: 1 } },
+    });
+    applyOp(parsed, { type: "setTiming", target: "sub-1", start: 2, duration: 1.5 });
+    const script = getScript(parsed);
+    // The host tween's GSAP position (3rd arg) is now 2 and duration 1.5.
+    expect(script).toContain(`[data-hf-id=\\"hf-host\\"]`);
+    expect(script).toMatch(/duration:\s*1\.5/);
+    expect(script).toMatch(/\},\s*2\)/);
+  });
+
+  // removeElement on the comp-root cascade-removes its tween (not orphaned).
+  it("removeElement on a comp-root cascade-removes its tween", () => {
+    const parsed = freshSubComp();
+    applyOp(parsed, {
+      type: "addGsapTween",
+      target: "sub-1",
+      tween: { method: "to", properties: { x: 1 } },
+    });
+    expect(getScript(parsed)).toContain(`[data-hf-id=\\"hf-host\\"]`);
+    applyOp(parsed, { type: "removeElement", target: "sub-1" });
+    expect(getScript(parsed)).not.toContain(`[data-hf-id=\\"hf-host\\"]`);
   });
 });
 

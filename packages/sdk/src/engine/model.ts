@@ -37,7 +37,7 @@ export function findById(document: Document, id: string): Element | null {
   return resolveScoped(document, id);
 }
 
-function escapeHfId(id: string): string {
+export function escapeHfId(id: string): string {
   return id.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
@@ -76,8 +76,15 @@ export function resolveScoped(document: Document, id: string): Element | null {
   if (parts.length === 1) {
     const escaped = escapeHfId(id);
     const matches = Array.from(document.querySelectorAll(`[data-hf-id="${escaped}"]`));
-    if (matches.length === 0) return null;
-    return matches.find((el) => isCanonicalScope(el)) ?? matches[0] ?? null;
+    if (matches.length > 0) {
+      return matches.find((el) => isCanonicalScope(el)) ?? matches[0] ?? null;
+    }
+    // Fall back to a sub-composition ROOT addressed by its composition id. A
+    // host element carries data-hf-id (its own leaf id) AND data-composition-id
+    // (the id studio passes when targeting the sub-comp root). data-hf-id takes
+    // precedence above; only when no hf-id matches do we treat the bare id as a
+    // composition id, making comp-ids first-class resolvable addresses.
+    return document.querySelector(`[data-composition-id="${escaped}"]`);
   }
 
   let context: Element | Document = document;
