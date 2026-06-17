@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Storyboard Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #07060f;
+      }
+      .scene {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="16"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div
+        id="frame-1"
+        class="scene"
+        data-composition-id="frame-01-hook"
+        data-composition-src="compositions/frames/01-hook.html"
+        data-start="0"
+        data-duration="3"
+        data-track-index="1"
+      ></div>
+      <div
+        id="frame-2"
+        class="scene"
+        data-composition-id="frame-02-problem"
+        data-composition-src="compositions/frames/02-problem.html"
+        data-start="3"
+        data-duration="4"
+        data-track-index="1"
+      ></div>
+      <div
+        id="frame-3"
+        class="scene"
+        data-composition-id="frame-03-feature"
+        data-composition-src="compositions/frames/03-feature.html"
+        data-start="7"
+        data-duration="5"
+        data-track-index="1"
+      ></div>
+      <div
+        id="frame-4"
+        class="scene"
+        data-composition-id="frame-04-proof"
+        data-composition-src="compositions/frames/04-proof.html"
+        data-start="12"
+        data-duration="4"
+        data-track-index="1"
+      ></div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["main"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

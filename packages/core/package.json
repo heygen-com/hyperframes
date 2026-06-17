@@ -42,6 +42,10 @@
       "import": "./src/colorLuts.ts",
       "types": "./src/colorLuts.ts"
     },
+    "./storyboard": {
+      "import": "./src/storyboard/index.ts",
+      "types": "./src/storyboard/index.ts"
+    },
     "./runtime": "./dist/hyperframe.runtime.iife.js",
     "./runtime/clipTree": {
       "import": "./src/runtime/clipTree.ts",

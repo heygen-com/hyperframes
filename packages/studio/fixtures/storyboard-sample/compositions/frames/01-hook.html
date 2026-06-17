@@ -1,0 +1,50 @@
+<template id="frame-01-hook-template">
+  <div data-composition-id="frame-01-hook" data-width="1920" data-height="1080" data-duration="3">
+    <div class="canvas">
+      <h1 class="headline">Ship a launch video<br /><em>in an afternoon</em></h1>
+    </div>
+
+    <style>
+      [data-composition-id="frame-01-hook"] .canvas {
+        width: 1920px;
+        height: 1080px;
+        background: radial-gradient(circle at 50% 40%, #1b1140 0%, #07060f 70%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: "Inter", system-ui, sans-serif;
+        overflow: hidden;
+      }
+      [data-composition-id="frame-01-hook"] .headline {
+        color: #fff;
+        font-size: 120px;
+        font-weight: 800;
+        line-height: 1.05;
+        letter-spacing: -0.03em;
+        text-align: center;
+        opacity: 0;
+      }
+      [data-composition-id="frame-01-hook"] .headline em {
+        color: #8b7bff;
+        font-style: normal;
+      }
+    </style>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      (function () {
+        const tl = gsap.timeline({ paused: true });
+        const h = '[data-composition-id="frame-01-hook"] .headline';
+        tl.fromTo(
+          h,
+          { opacity: 0, scale: 0.86 },
+          { opacity: 1, scale: 1, duration: 0.6, ease: "back.out(1.4)" },
+          0.1,
+        );
+        tl.to(h, { scale: 1.04, duration: 2, ease: "none" }, 0.7);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["frame-01-hook"] = tl;
+      })();
+    </script>
+  </div>
+</template>

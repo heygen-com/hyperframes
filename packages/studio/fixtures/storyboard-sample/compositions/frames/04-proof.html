@@ -1,0 +1,68 @@
+<template id="frame-04-proof-template">
+  <div data-composition-id="frame-04-proof" data-width="1920" data-height="1080" data-duration="4">
+    <div class="canvas">
+      <div class="stat"><span class="num">0</span><span class="unit">%</span></div>
+      <div class="cap">fewer re-renders per finished video</div>
+    </div>
+
+    <style>
+      [data-composition-id="frame-04-proof"] .canvas {
+        width: 1920px;
+        height: 1080px;
+        background: linear-gradient(160deg, #07060f 0%, #161033 100%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 24px;
+        font-family: "Inter", system-ui, sans-serif;
+        overflow: hidden;
+      }
+      [data-composition-id="frame-04-proof"] .stat {
+        display: flex;
+        align-items: baseline;
+        color: #8b7bff;
+        font-weight: 800;
+        letter-spacing: -0.04em;
+      }
+      [data-composition-id="frame-04-proof"] .num {
+        font-size: 320px;
+        font-variant-numeric: tabular-nums;
+      }
+      [data-composition-id="frame-04-proof"] .unit {
+        font-size: 160px;
+      }
+      [data-composition-id="frame-04-proof"] .cap {
+        color: #cfc9ec;
+        font-size: 44px;
+        font-weight: 500;
+        opacity: 0;
+      }
+    </style>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      (function () {
+        const id = '[data-composition-id="frame-04-proof"]';
+        const numEl = document.querySelector(id + " .num");
+        const tl = gsap.timeline({ paused: true });
+        const counter = { v: 0 };
+        tl.to(
+          counter,
+          {
+            v: 41,
+            duration: 1.6,
+            ease: "power2.out",
+            onUpdate() {
+              if (numEl) numEl.textContent = String(Math.round(counter.v));
+            },
+          },
+          0.3,
+        );
+        tl.to(id + " .cap", { opacity: 1, duration: 0.6, ease: "power2.out" }, 1.4);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["frame-04-proof"] = tl;
+      })();
+    </script>
+  </div>
+</template>
