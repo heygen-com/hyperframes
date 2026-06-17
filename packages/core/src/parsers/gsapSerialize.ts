@@ -120,15 +120,20 @@ export function buildArcPath(
   autoRotate: boolean | number,
   isCubic: boolean,
 ): MotionPathShape | undefined {
-  if (coords.length < 2) return undefined;
+  const first = coords[0];
+  if (coords.length < 2 || !first) return undefined;
   const segments: ArcPathSegment[] = [];
   let waypoints: Array<{ x: number; y: number }>;
   if (isCubic && coords.length >= 4) {
     // coords are [anchor, cp1, cp2, anchor, cp1, cp2, anchor, ...].
-    waypoints = [coords[0]!];
+    waypoints = [first];
     for (let i = 1; i + 2 < coords.length; i += 3) {
-      waypoints.push(coords[i + 2]!);
-      segments.push({ curviness, cp1: coords[i]!, cp2: coords[i + 1]! });
+      const cp1 = coords[i];
+      const cp2 = coords[i + 1];
+      const anchor = coords[i + 2];
+      if (!cp1 || !cp2 || !anchor) continue;
+      waypoints.push(anchor);
+      segments.push({ curviness, cp1, cp2 });
     }
   } else {
     waypoints = coords;
@@ -527,10 +532,15 @@ function buildCubicPathEntries(
   waypoints: Array<{ x: number; y: number }>,
   segments: ArcPathSegment[],
 ): string[] {
-  const entries = [`{x: ${waypoints[0]!.x}, y: ${waypoints[0]!.y}}`];
+  const first = waypoints[0];
+  if (!first) return [];
+  const entries = [`{x: ${first.x}, y: ${first.y}}`];
   for (let i = 0; i < segments.length; i++) {
-    const nextWp = waypoints[i + 1]!;
-    entries.push(...cubicControlPoints(segments[i]!, waypoints[i]!, nextWp));
+    const seg = segments[i];
+    const wp = waypoints[i];
+    const nextWp = waypoints[i + 1];
+    if (!seg || !wp || !nextWp) continue;
+    entries.push(...cubicControlPoints(seg, wp, nextWp));
     entries.push(`{x: ${nextWp.x}, y: ${nextWp.y}}`);
   }
   return entries;
@@ -543,7 +553,17 @@ export function buildMotionPathObjectCode(config: {
 }): string {
   const { waypoints, segments, autoRotate } = config;
   const arSuffix = autoRotateSuffix(autoRotate);
-  if (segments.some((s) => s.cp1 && s.cp2) && waypoints.length >= 2) {
+  // GSAP's simple `path` array supports only ONE scalar `curviness` for the whole
+  // path, so per-segment curviness can only be expressed in the cubic form (each
+  // segment's curviness baked into its control points). Emit cubic when segments
+  // carry explicit control points OR when their curviness values differ — the
+  // simple branch would otherwise serialize only segments[0].curviness and drop
+  // every other segment's curve.
+  const hasExplicitCp = segments.some((s) => s.cp1 && s.cp2);
+  const curvinessVaries = segments.some(
+    (s) => (s.curviness ?? 1) !== (segments[0]?.curviness ?? 1),
+  );
+  if ((hasExplicitCp || curvinessVaries) && waypoints.length >= 2) {
     const pathStr = buildCubicPathEntries(waypoints, segments).join(", ");
     return `{ path: [${pathStr}], type: "cubic"${arSuffix} }`;
   }

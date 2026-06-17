@@ -444,12 +444,30 @@ function handleSetTiming(
     // tweens are stored under) so a comp-root target ("sub-1") whose tween lives
     // at [data-hf-id="hf-host"] still syncs.
     const matchId = el.getAttribute("data-hf-id") ?? id;
-    if (parsedGsap && currentScript) {
+    if (parsedGsap && currentScript && oldStart !== null) {
+      // Per-tween shift/scale (mirrors shiftGsapPositions/scaleGsapPositions): a
+      // multi-tween stagger maps each tween's own intra-clip position by the
+      // start DELTA and scales its duration by the clip-duration RATIO. Writing
+      // the absolute newStart/newDuration onto every tween would collapse the
+      // stagger onto one point and blow each tween's duration to the full clip.
+      const startChanged = timing.start !== undefined && newStart !== null;
+      const durChanged = timing.duration !== undefined && newDuration !== null;
+      const ratio =
+        durChanged && oldDuration !== null && oldDuration > 0 && newDuration !== null
+          ? newDuration / oldDuration
+          : 1;
+      const remapStart = startChanged && newStart !== null ? newStart : oldStart;
       for (const { id: animId, animation } of parsedGsap.located) {
         if (!selectorMatchesId(animation.targetSelector, matchId)) continue;
+        if (typeof animation.position !== "number") continue;
         const updates: Partial<GsapAnimation> = {};
-        if (timing.start !== undefined && newStart !== null) updates.position = newStart;
-        if (timing.duration !== undefined && newDuration !== null) updates.duration = newDuration;
+        if (startChanged || durChanged) {
+          const shifted = remapStart + (animation.position - oldStart) * ratio;
+          updates.position = Math.max(0, Math.round(shifted * 1000) / 1000);
+        }
+        if (durChanged && typeof animation.duration === "number" && animation.duration > 0) {
+          updates.duration = Math.max(0.001, Math.round(animation.duration * ratio * 1000) / 1000);
+        }
         if (Object.keys(updates).length === 0) continue;
         currentScript = updateAnimationInScript(currentScript, animId, updates);
       }
@@ -911,8 +929,9 @@ function resolveKeyframe(parsed: ParsedDocument, animationId: string, keyframeIn
   const parsedForWrite = parseGsapScriptAcornForWrite(script);
   const located = parsedForWrite?.located.find((l) => l.id === animationId);
   const kfs = located?.animation.keyframes?.keyframes;
-  if (!kfs || keyframeIndex < 0 || keyframeIndex >= kfs.length) return null;
-  return { script, kf: kfs[keyframeIndex]!, kfs };
+  const kf = kfs?.[keyframeIndex];
+  if (!kfs || !kf || keyframeIndex < 0) return null;
+  return { script, kf, kfs };
 }
 
 // fallow-ignore-next-line complexity
@@ -993,8 +1012,9 @@ function handleRemoveGsapKeyframeByPercentage(
   // No-op on ambiguity: duplicate-percentage keyframes can't be disambiguated.
   const TOLERANCE = 0.001;
   const matches = kfs.filter((k) => Math.abs(k.percentage - percentage) <= TOLERANCE);
-  if (matches.length !== 1) return EMPTY;
-  const pct = matches[0]!.percentage;
+  const sole = matches[0];
+  if (matches.length !== 1 || !sole) return EMPTY;
+  const pct = sole.percentage;
   const newScript = removeKeyframeFromScript(script, animationId, pct);
   if (newScript === script) return EMPTY;
   setGsapScript(parsed.document, newScript);

@@ -630,6 +630,51 @@ window.__timelines["t"] = tl;`;
   });
 });
 
+// ─── setTiming — per-tween GSAP shift/scale (review #3) ───────────────────────
+
+describe("setTiming — GSAP sync shifts/scales each tween (not absolute)", () => {
+  // Two staggered tweens on ONE element: positions 2.0 and 5.0, clip [2, 7].
+  const STAGGER_SCRIPT = `var tl = gsap.timeline({ paused: true });
+tl.to("[data-hf-id=\\"hf-box\\"]", { x: 100, duration: 1 }, 2);
+tl.to("[data-hf-id=\\"hf-box\\"]", { x: 200, duration: 1 }, 5);
+window.__timelines["t"] = tl;`;
+
+  function freshStagger() {
+    return parseMutable(`<div data-hf-id="hf-stage" data-hf-root style="width:1280px;height:720px">
+  <div data-hf-id="hf-box" data-start="2" data-end="7"></div>
+  <script>${STAGGER_SCRIPT}</script>
+</div>`);
+  }
+
+  function gsapPatch(result: ReturnType<typeof applyOp>): string {
+    const v = result.forward
+      .map((p) => p.value)
+      .find((val) => typeof val === "string" && val.includes("tl."));
+    return typeof v === "string" ? v : "";
+  }
+
+  it("moving the clip +1 shifts BOTH tweens by the delta, preserving the stagger", () => {
+    const result = applyOp(freshStagger(), { type: "setTiming", target: "hf-box", start: 3 });
+    const script = gsapPatch(result);
+    // 2.0 → 3.0 and 5.0 → 6.0 — NOT both collapsed onto the new absolute start.
+    expect(script).toContain("{ x: 100, duration: 1 }, 3)");
+    expect(script).toContain("{ x: 200, duration: 1 }, 6)");
+    // The stagger gap (3s) is preserved; durations are untouched.
+    expect(script).not.toContain("duration: 5");
+  });
+
+  it("resizing the clip x2 scales each tween's duration by the ratio (not full clip)", () => {
+    // duration 5 → 10 (ratio 2); positions remap about the clip start (2).
+    const result = applyOp(freshStagger(), { type: "setTiming", target: "hf-box", duration: 10 });
+    const script = gsapPatch(result);
+    // pos 2 (offset 0) stays 2; pos 5 → 2 + (5-2)*2 = 8. durations 1 → 2.
+    expect(script).toContain("{ x: 100, duration: 2 }, 2)");
+    expect(script).toContain("{ x: 200, duration: 2 }, 8)");
+    // The bug blew every duration up to the full clip duration (10).
+    expect(script).not.toContain("duration: 10");
+  });
+});
+
 // ─── Label ops ────────────────────────────────────────────────────────────────
 
 describe("addLabel", () => {

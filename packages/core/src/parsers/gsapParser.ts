@@ -2170,9 +2170,16 @@ function buildMotionPathObjectCode(config: {
 }): string {
   const { waypoints, segments, autoRotate } = config;
   const hasExplicitControlPoints = segments.some((s) => s.cp1 && s.cp2);
+  // The simple `path` array supports only one scalar curviness for the whole
+  // path, so per-segment curviness must use the cubic form (curviness baked into
+  // each segment's control points). Without this, the simple branch serializes
+  // only segments[0].curviness and silently drops every other segment's curve.
+  const curvinessVaries = segments.some(
+    (s) => (s.curviness ?? 1) !== (segments[0]?.curviness ?? 1),
+  );
 
   let pathEntries: string[];
-  if (hasExplicitControlPoints && waypoints.length >= 2) {
+  if ((hasExplicitControlPoints || curvinessVaries) && waypoints.length >= 2) {
     // type: "cubic" — interleave control points: [anchor, cp1, cp2, anchor, ...]
     pathEntries = [`{x: ${waypoints[0]!.x}, y: ${waypoints[0]!.y}}`];
     for (let i = 0; i < segments.length; i++) {

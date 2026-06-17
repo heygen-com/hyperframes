@@ -272,8 +272,9 @@ function isTimelineRooted(node: any, timelineVar: string): boolean {
  * not emit `tl.xxx()` calls in that case as `tl` would be undefined at render.
  */
 function findInsertionPoint(parsed: ParsedGsapAcornForWrite): number | null {
-  if (parsed.located.length > 0) {
-    const lastCall = parsed.located[parsed.located.length - 1]!.call;
+  const lastLocated = parsed.located[parsed.located.length - 1];
+  if (lastLocated) {
+    const lastCall = lastLocated.call;
     const exprStmt = findEnclosingExpressionStatement(lastCall.ancestors);
     return exprStmt?.end ?? lastCall.node.end;
   }
@@ -693,16 +694,26 @@ function autoEndpointOverwrites(
 }
 
 function findKfPropByPct(kfNode: any, percentage: number): { prop: any; idx: number } | null {
+  // Match the CLOSEST keyframe within tolerance, not the first one within range.
+  // Keyframes at e.g. 0/49/50/100 are all valid (the SDK dedups to a unique
+  // match at TOLERANCE=0.001 upstream); picking the first-within-PCT_TOLERANCE=2
+  // would hit 49% when the caller meant 50%. Tie-break on the earliest index so
+  // the choice stays deterministic.
   const props = kfNode.properties ?? [];
+  let best: { prop: any; idx: number } | null = null;
+  let bestDist = Number.POSITIVE_INFINITY;
   for (let i = 0; i < props.length; i++) {
     const prop = props[i];
     if (!isObjectProperty(prop)) continue;
     const key = propKeyName(prop);
-    if (typeof key === "string" && Math.abs(percentageFromKey(key) - percentage) <= PCT_TOLERANCE) {
-      return { prop, idx: i };
+    if (typeof key !== "string") continue;
+    const dist = Math.abs(percentageFromKey(key) - percentage);
+    if (dist <= PCT_TOLERANCE && dist < bestDist) {
+      best = { prop, idx: i };
+      bestDist = dist;
     }
   }
-  return null;
+  return best;
 }
 
 export function updateKeyframeInScript(
@@ -962,7 +973,8 @@ export function removeKeyframeFromScript(
   // node — the two edits would overlap.
   const remaining = percentagePropsOf(kfNode).filter((p) => p !== match.prop);
   if (remaining.length < 2) {
-    const record = remaining.length === 1 ? valueNodeToRecord(remaining[0]!.value, script) : {};
+    const sole = remaining[0];
+    const record = sole ? valueNodeToRecord(sole.value, script) : {};
     collapseKeyframesToFlat(ms, target.call.varsArg, script, record);
     return ms.toString();
   }
@@ -1007,7 +1019,8 @@ export function removeAllKeyframesFromScript(script: string, animationId: string
   if (!kfs || kfs.length === 0) return script;
 
   const sorted = [...kfs].sort((a, b) => a.percentage - b.percentage);
-  const collapse = target.call.method === "from" ? sorted[0]! : sorted[sorted.length - 1]!;
+  const collapse = target.call.method === "from" ? sorted[0] : sorted[sorted.length - 1];
+  if (!collapse) return script;
 
   // Flat vars = existing top-level props, then collapse-keyframe props (these
   // win; skip the per-keyframe `ease` key), then duration/ease/extras. Drops
@@ -1226,7 +1239,8 @@ function assignTransformOrigin(groupProps: Map<PropertyGroupName, string[]>): vo
       largestGroup = group;
     }
   }
-  if (largestGroup) groupProps.get(largestGroup)!.push("transformOrigin");
+  const largest = largestGroup ? groupProps.get(largestGroup) : undefined;
+  if (largest) largest.push("transformOrigin");
 }
 
 function filterGroupKeyframes(
@@ -1419,9 +1433,28 @@ function readLastWaypointXY(mpVal: any): { x: number | null; y: number | null } 
   const elems: any[] = pathProp.value.elements ?? [];
   const last = elems[elems.length - 1];
   if (last?.type !== "ObjectExpression") return { x: null, y: null };
-  const xRaw = findPropertyNode(last, "x")?.value?.value;
-  const yRaw = findPropertyNode(last, "y")?.value?.value;
-  return { x: typeof xRaw === "number" ? xRaw : null, y: typeof yRaw === "number" ? yRaw : null };
+  return {
+    x: readNumericLiteralNode(findPropertyNode(last, "x")?.value),
+    y: readNumericLiteralNode(findPropertyNode(last, "y")?.value),
+  };
+}
+
+/**
+ * Read a numeric value node — a plain numeric literal or a unary-minus negative
+ * literal (e.g. `-120`). Returns null for anything non-numeric. Without the
+ * UnaryExpression branch, negative waypoint coords (parsed as a UnaryExpression
+ * with no `.value`) would be lost when disabling an arc path.
+ */
+function readNumericLiteralNode(v: any): number | null {
+  if (LITERAL_NODE_TYPES.has(v?.type) && typeof v.value === "number") return v.value;
+  if (
+    v?.type === "UnaryExpression" &&
+    v.operator === "-" &&
+    typeof v.argument?.value === "number"
+  ) {
+    return -v.argument.value;
+  }
+  return null;
 }
 
 function disableArcPath(ms: MagicString, call: TweenCallInfo): boolean {
@@ -1470,7 +1503,20 @@ function enableArcPath(
     segments,
     autoRotate: config.autoRotate,
   });
-  upsertProp(ms, call.varsArg, "motionPath", `__raw:${motionPathCode}`);
+  const vars = call.varsArg;
+  if (vars?.type !== "ObjectExpression") return false;
+  // Insert motionPath right after the opening `{` (appendRight at start+1) so the
+  // insertion point can never coincide with the end boundary of the x/y removal
+  // range. upsertProp would appendLeft at `end - 1`, which collides with a
+  // remove-range that ends at the same offset when x/y are the only props —
+  // MagicString then discards the append and the output loses everything.
+  const editable = (vars.properties ?? []).filter(isObjectProperty);
+  const survivesRemoval = editable.some((p: any) => {
+    const k = propKeyName(p);
+    return k !== "x" && k !== "y";
+  });
+  const sep = survivesRemoval ? ", " : "";
+  ms.appendRight(vars.start + 1, ` motionPath: ${motionPathCode}${sep}`);
   stripXYFromKeyframes(ms, findPropertyNode(call.varsArg, "keyframes"));
   removePropsByKey(ms, call.varsArg, new Set(["x", "y"]));
   return true;
@@ -1507,9 +1553,10 @@ export function updateArcSegmentInScript(
   if (!animation.arcPath?.enabled) return script;
 
   const segments = [...animation.arcPath.segments];
-  if (segmentIndex < 0 || segmentIndex >= segments.length) return script;
+  const existingSeg = segments[segmentIndex];
+  if (segmentIndex < 0 || segmentIndex >= segments.length || !existingSeg) return script;
 
-  segments[segmentIndex] = { ...segments[segmentIndex]!, ...update };
+  segments[segmentIndex] = { ...existingSeg, ...update };
 
   const waypoints = extractArcWaypoints(animation);
   if (waypoints.length < 2) return script;
@@ -1573,10 +1620,11 @@ function insertInheritedStateSetInScript(
   const code = `${parsed.timelineVar}.set(${JSON.stringify(selector)}, { ${props} }, ${position});`;
   const ms = new MagicString(script);
   const tlDecl = findTimelineDeclarationStatement(parsed.ast, parsed.timelineVar);
+  const firstLocated = parsed.located[0];
   if (tlDecl) {
     ms.appendLeft(tlDecl.end, "\n" + code);
-  } else if (parsed.located.length > 0) {
-    const firstCall = parsed.located[0]!.call;
+  } else if (firstLocated) {
+    const firstCall = firstLocated.call;
     const exprStmt = findEnclosingExpressionStatement(firstCall.ancestors);
     const insertAt = exprStmt?.start ?? firstCall.node.start;
     ms.prependLeft(insertAt, code + "\n");
@@ -1584,6 +1632,69 @@ function insertInheritedStateSetInScript(
     ms.append("\n" + code);
   }
   return ms.toString();
+}
+
+/**
+ * Compute, in forward (timeline) order, the inherited-props baseline available
+ * BEFORE each matching tween, plus the final cumulative state at the split point.
+ * A tween contributes to later baselines when it ends at/before the split (full
+ * props or last keyframe), spans the split via keyframes (kfs at/before split),
+ * or spans the split as a flat tween (its interpolated midpoint). Decoupled from
+ * the reverse write loop so the spanning-tween midpoint reads earlier tweens.
+ */
+// fallow-ignore-next-line complexity
+function computeForwardBaselines(
+  matching: GsapAnimation[],
+  splitTime: number,
+): { before: Array<Record<string, number | string>>; final: Record<string, number | string> } {
+  const before: Array<Record<string, number | string>> = [];
+  const acc: Record<string, number | string> = {};
+  for (const anim of matching) {
+    before.push({ ...acc });
+    const pos = typeof anim.position === "number" ? anim.position : 0;
+    const dur = anim.duration ?? 0;
+    const animEnd = pos + dur;
+
+    if (anim.keyframes) {
+      const kfs = anim.keyframes.keyframes;
+      if (pos >= splitTime) {
+        // Moves wholly to the new element — contributes nothing to the baseline.
+      } else if (animEnd > splitTime) {
+        for (const kf of kfs) {
+          const kfTime = pos + (kf.percentage / 100) * dur;
+          if (kfTime <= splitTime) {
+            for (const [k, v] of Object.entries(kf.properties)) acc[k] = v;
+          }
+        }
+      } else {
+        const lastKf = kfs[kfs.length - 1];
+        if (lastKf) {
+          for (const [k, v] of Object.entries(lastKf.properties)) acc[k] = v;
+        }
+      }
+      continue;
+    }
+
+    if (animEnd <= splitTime) {
+      for (const [k, v] of Object.entries(anim.properties)) acc[k] = v;
+      continue;
+    }
+
+    if (pos >= splitTime) continue;
+
+    // Flat tween spanning the split — its midpoint becomes the inherited value.
+    const progress = dur > 0 ? (splitTime - pos) / dur : 0;
+    const fromSource = anim.fromProperties ?? acc;
+    for (const [k, v] of Object.entries(anim.properties)) {
+      if (typeof v !== "number") {
+        acc[k] = v;
+        continue;
+      }
+      const fromVal = typeof fromSource[k] === "number" ? (fromSource[k] as number) : 0;
+      acc[k] = fromVal + (v - fromVal) * progress;
+    }
+  }
+  return { before, final: { ...acc } };
 }
 
 // fallow-ignore-next-line complexity
@@ -1611,12 +1722,23 @@ export function splitAnimationsInScript(
 
   let result = script;
   const newElementStart = opts.splitTime;
-  const inheritedProps: Record<string, number | string> = {};
+
+  // Forward pre-pass: compute the inherited-props baseline available BEFORE each
+  // matching tween, in source/timeline order. The write loop below runs in
+  // REVERSE (so updateAnimationSelectorInScript's selector edits can't shift the
+  // count-based IDs of not-yet-processed tweens), but the spanning-tween midpoint
+  // interpolation needs the baseline from EARLIER tweens — which a reverse
+  // accumulator hasn't seen yet. Decoupling the two fixes the wrong midpoint.
+  const { before: baselineBefore, final: finalInheritedProps } = computeForwardBaselines(
+    matching,
+    opts.splitTime,
+  );
 
   // Reverse iteration: updateAnimationSelectorInScript mutates selectors which
   // can shift count-based ID suffixes for later animations.
   for (let i = matching.length - 1; i >= 0; i--) {
-    const anim = matching[i]!;
+    const anim = matching[i];
+    if (!anim) continue;
     const pos = typeof anim.position === "number" ? anim.position : 0;
     const dur = anim.duration ?? 0;
     const animEnd = pos + dur;
@@ -1626,30 +1748,15 @@ export function splitAnimationsInScript(
         result = updateAnimationSelectorInScript(result, anim.id, newSelector);
       } else if (animEnd > opts.splitTime) {
         skippedSelectors.push(`${originalSelector} (keyframes spanning split)`);
-        const kfs = anim.keyframes.keyframes;
-        for (const kf of kfs) {
-          const kfTime = pos + (kf.percentage / 100) * dur;
-          if (kfTime <= opts.splitTime) {
-            for (const [k, v] of Object.entries(kf.properties)) {
-              inheritedProps[k] = v;
-            }
-          }
-        }
-      } else {
-        const kfs = anim.keyframes.keyframes;
-        if (kfs.length > 0) {
-          for (const [k, v] of Object.entries(kfs[kfs.length - 1]!.properties)) {
-            inheritedProps[k] = v;
-          }
-        }
       }
+      // Inherited-state accumulation for kf tweens is handled in the forward
+      // pre-pass (computeForwardBaselines).
       continue;
     }
 
     if (animEnd <= opts.splitTime) {
-      for (const [k, v] of Object.entries(anim.properties)) {
-        inheritedProps[k] = v;
-      }
+      // Wholly before the split — kept on the original element; its contribution
+      // to the inherited baseline is computed in the forward pre-pass.
       continue;
     }
 
@@ -1658,9 +1765,10 @@ export function splitAnimationsInScript(
       continue;
     }
 
-    // Spans the split — linear interpolation to compute mid-values.
+    // Spans the split — linear interpolation to compute mid-values, using the
+    // FORWARD baseline (props from earlier tweens), not a reverse accumulator.
     const progress = dur > 0 ? (opts.splitTime - pos) / dur : 0;
-    const fromSource = anim.fromProperties ?? inheritedProps;
+    const fromSource = anim.fromProperties ?? baselineBefore[i] ?? {};
     const midProps: Record<string, number | string> = {};
     for (const [k, v] of Object.entries(anim.properties)) {
       if (typeof v !== "number") {
@@ -1689,14 +1797,15 @@ export function splitAnimationsInScript(
       extras: anim.extras,
     });
     result = addResult.script;
-
-    for (const [k, v] of Object.entries(midProps)) {
-      inheritedProps[k] = v;
-    }
   }
 
-  if (Object.keys(inheritedProps).length > 0) {
-    result = insertInheritedStateSetInScript(result, newSelector, newElementStart, inheritedProps);
+  if (Object.keys(finalInheritedProps).length > 0) {
+    result = insertInheritedStateSetInScript(
+      result,
+      newSelector,
+      newElementStart,
+      finalInheritedProps,
+    );
   }
 
   return { script: result, skippedSelectors };
@@ -1722,14 +1831,47 @@ function isForEachStatement(node: any): boolean {
   );
 }
 
-function findEnclosingLoop(ancestors: any[]): { start: number; end: number } | null {
+/** The nearest enclosing loop / forEach AST node (not just its byte range). */
+function findEnclosingLoopNode(ancestors: any[]): any | null {
   for (let i = ancestors.length - 2; i >= 0; i--) {
     const node = ancestors[i];
-    if (isLoopNode(node) || isForEachStatement(node)) {
-      return { start: node.start as number, end: node.end as number };
-    }
+    if (isLoopNode(node) || isForEachStatement(node)) return node;
   }
   return null;
+}
+
+/** Statements making up a loop's body block, or null when not a simple block. */
+function loopBodyStatements(loopNode: any): any[] | null {
+  let body: any;
+  if (loopNode?.type === "ExpressionStatement") {
+    // forEach(cb): body is the callback's block.
+    const cb = loopNode.expression?.arguments?.[0];
+    body = cb?.body;
+  } else {
+    body = loopNode?.body;
+  }
+  if (body?.type !== "BlockStatement") return null;
+  return (body.body ?? []).filter((s: any) => s?.type === "ExpressionStatement");
+}
+
+/** The loop's index identifier name (`for (let i …)`), used for per-iteration substitution. */
+function loopIndexVarName(loopNode: any): string | null {
+  if (loopNode?.type === "ForStatement") {
+    const decl = loopNode.init?.declarations?.[0];
+    return typeof decl?.id?.name === "string" ? decl.id.name : null;
+  }
+  return null;
+}
+
+/**
+ * Rewrite one body statement's source for iteration `idx`: replace whole-word
+ * occurrences of the loop index variable with the literal index. Keeps non-target
+ * statements (e.g. `tl.set(items[i], …)`) alive instead of discarding them.
+ */
+function substituteLoopIndex(stmtSource: string, indexVar: string | null, idx: number): string {
+  if (!indexVar) return stmtSource;
+  const re = new RegExp(`\\b${indexVar.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "g");
+  return stmtSource.replace(re, String(idx));
 }
 
 function buildUnrollReplacement(
@@ -1759,10 +1901,61 @@ export type UnrollElement = {
   easeEach?: string;
 };
 
+/** Build one element's unrolled `tl.to(...)` call from the target animation. */
+function buildUnrollCallForElement(
+  timelineVar: string,
+  animation: GsapAnimation,
+  el: UnrollElement,
+): string {
+  const duration = typeof animation.duration === "number" ? animation.duration : 8;
+  const ease = typeof animation.ease === "string" ? animation.ease : "none";
+  const pos = animation.position ?? 0;
+  const posCode = typeof pos === "number" ? String(pos) : JSON.stringify(pos);
+  const sorted = [...el.keyframes].sort((a, b) => a.percentage - b.percentage);
+  const kfCode = buildKeyframeObjectCode(sorted, el.easeEach);
+  return `${timelineVar}.to(${JSON.stringify(el.selector)}, { keyframes: ${kfCode}, duration: ${duration}, ease: ${JSON.stringify(ease)} }, ${posCode});`;
+}
+
+/**
+ * Unroll the loop body, preserving every statement that is NOT the target tween.
+ * For each iteration, emit each non-target statement with the loop index
+ * substituted (e.g. `tl.set(items[i], …)` → `tl.set(items[0], …)`), and replace
+ * the target tween statement with that element's static `tl.to()` call. Without
+ * this, a blanket overwrite of the loop body discards sibling statements such as
+ * an initial-state `tl.set(...)`.
+ */
+function buildLoopUnrollPreserving(
+  script: string,
+  timelineVar: string,
+  animation: GsapAnimation,
+  elements: UnrollElement[],
+  loopNode: any,
+  targetStmt: any,
+): string | null {
+  const stmts = loopBodyStatements(loopNode);
+  if (!stmts || !stmts.includes(targetStmt)) return null;
+  const indexVar = loopIndexVarName(loopNode);
+  const lines: string[] = [];
+  for (let idx = 0; idx < elements.length; idx++) {
+    const el = elements[idx];
+    if (!el) continue;
+    for (const stmt of stmts) {
+      if (stmt === targetStmt) {
+        lines.push(buildUnrollCallForElement(timelineVar, animation, el));
+      } else {
+        const src = script.slice(stmt.start as number, stmt.end as number);
+        lines.push(substituteLoopIndex(src, indexVar, idx));
+      }
+    }
+  }
+  return lines.join("\n  ");
+}
+
 /**
  * Replace a dynamic loop that generates multiple tween calls with individual
  * static `tl.to()` calls — one per element. Finds the loop containing the
- * animation and replaces the entire loop body with unrolled static calls.
+ * animation and replaces the loop with unrolled static calls, preserving every
+ * non-target statement in the loop body per iteration.
  */
 export function unrollDynamicAnimations(
   script: string,
@@ -1774,14 +1967,29 @@ export function unrollDynamicAnimations(
   const target = parsed.located.find((l) => l.id === animationId);
   if (!target) return script;
 
-  const replacement = buildUnrollReplacement(parsed.timelineVar, target.animation, elements);
   const ms = new MagicString(script);
-  const loop = findEnclosingLoop(target.call.ancestors);
-  if (loop) {
-    ms.overwrite(loop.start, loop.end, replacement);
+  const loopNode = findEnclosingLoopNode(target.call.ancestors);
+  if (loopNode) {
+    const targetStmt = findEnclosingExpressionStatement(target.call.ancestors);
+    const preserving = targetStmt
+      ? buildLoopUnrollPreserving(
+          script,
+          parsed.timelineVar,
+          target.animation,
+          elements,
+          loopNode,
+          targetStmt,
+        )
+      : null;
+    // Fall back to the simple whole-body replacement when the body isn't a plain
+    // block of statements we can preserve.
+    const replacement =
+      preserving ?? buildUnrollReplacement(parsed.timelineVar, target.animation, elements);
+    ms.overwrite(loopNode.start as number, loopNode.end as number, replacement);
   } else {
     const stmt = findEnclosingExpressionStatement(target.call.ancestors);
     if (!stmt) return script;
+    const replacement = buildUnrollReplacement(parsed.timelineVar, target.animation, elements);
     ms.overwrite(stmt.start as number, stmt.end as number, replacement);
   }
   return ms.toString();
