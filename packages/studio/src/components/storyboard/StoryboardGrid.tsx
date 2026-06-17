@@ -19,7 +19,7 @@ export function StoryboardGrid({ projectId, frames, onOpenFrame }: StoryboardGri
   }
 
   return (
-    <div className="mt-8 flex flex-wrap gap-x-6 gap-y-8">
+    <div className="mt-8 grid gap-x-6 gap-y-8 [grid-template-columns:repeat(auto-fill,minmax(300px,1fr))]">
       {frames.map((frame) => (
         <StoryboardFrameTile
           key={frame.index}

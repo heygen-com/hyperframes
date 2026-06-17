@@ -9,8 +9,6 @@ export interface StoryboardFrameTileProps {
   onOpen: (index: number) => void;
 }
 
-const TILE_WIDTH = 360;
-
 function firstLine(text: string): string {
   return (
     text
@@ -35,7 +33,7 @@ export function StoryboardFrameTile({ projectId, frame, onOpen }: StoryboardFram
   const sceneLine = frame.scene ?? firstLine(frame.narrative);
 
   return (
-    <article style={{ width: TILE_WIDTH }}>
+    <article className="min-w-0">
       <button
         type="button"
         onClick={() => onOpen(frame.index)}
@@ -60,6 +58,7 @@ export function StoryboardFrameTile({ projectId, frame, onOpen }: StoryboardFram
         <h3 className="truncate text-sm font-medium text-neutral-200">{title}</h3>
         <span
           title={meta.tooltip}
+          aria-label={`Status: ${meta.label} — ${meta.tooltip}`}
           className={`shrink-0 cursor-default rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide ${meta.chipClass}`}
         >
           {meta.label}

@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { setFrameStatus, setFrameVoiceover, type FrameStatus } from "@hyperframes/core/storyboard";
 import type { StoryboardFrameView } from "../../hooks/useStoryboard";
 import { useFileManagerContext } from "../../contexts/FileManagerContext";
@@ -47,6 +47,7 @@ export function StoryboardFrameFocus({
 
   const applyEdit = useCallback(
     async (edit: (source: string) => string) => {
+      if (busy) return; // one read-modify-write at a time; avoids a lost update
       setBusy(true);
       setError(null);
       try {
@@ -59,7 +60,7 @@ export function StoryboardFrameFocus({
         setBusy(false);
       }
     },
-    [readProjectFile, writeProjectFile, storyboardPath, onSaved],
+    [readProjectFile, writeProjectFile, storyboardPath, onSaved, busy],
   );
 
   const title = frame.title ?? `Frame ${frame.index}`;
@@ -74,6 +75,20 @@ export function StoryboardFrameFocus({
   const handleNavigate = (delta: number) => {
     if (confirmLeave()) onNavigate(delta);
   };
+
+  // ←/→ navigate frames, Esc returns to the Board — but never while typing in a field.
+  useEffect(() => {
+    // fallow-ignore-next-line complexity
+    const onKey = (e: KeyboardEvent) => {
+      const el = document.activeElement;
+      if (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement) return;
+      if (e.key === "Escape") handleBack();
+      else if (e.key === "ArrowLeft" && frame.index > 1) handleNavigate(-1);
+      else if (e.key === "ArrowRight" && frame.index < frameCount) handleNavigate(1);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
 
   const openInPreview = () => {
     if (frame.src) onSelectComposition(frame.src);
@@ -229,6 +244,7 @@ function StatusRow({
             key={option}
             type="button"
             disabled={busy}
+            aria-pressed={status === option}
             title={FRAME_STATUS_META[option].tooltip}
             onClick={() => onSet(option)}
             className={`rounded px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-50 ${

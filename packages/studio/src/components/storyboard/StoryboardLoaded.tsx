@@ -37,7 +37,9 @@ export function StoryboardLoaded({
     const files: SourceFile[] = [{ path: data.path, label: data.path }];
     if (data.script?.exists) files.push({ path: data.script.path, label: data.script.path });
     return files;
-  }, [data.path, data.script]);
+    // Depend on the stable fields, not the `data.script` object — every reload()
+    // produces a fresh object and would needlessly re-create this array.
+  }, [data.path, data.script?.path, data.script?.exists]);
 
   // Leaving the source editor drops its in-memory buffer; confirm when it's dirty.
   // fallow-ignore-next-line complexity

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 import { SourceEditor } from "../editor/SourceEditor";
@@ -61,6 +61,7 @@ function useEditableFile(path: string, onSaved: () => void): EditableFile {
   }, [path, readProjectFile]);
 
   const save = useCallback(() => {
+    if (saving) return; // coalesce a fast double Cmd+S into one PUT
     setSaving(true);
     setError(null);
     writeProjectFile(path, content)
@@ -70,22 +71,45 @@ function useEditableFile(path: string, onSaved: () => void): EditableFile {
       })
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "failed to save"))
       .finally(() => setSaving(false));
-  }, [writeProjectFile, path, content, onSaved]);
+  }, [writeProjectFile, path, content, onSaved, saving]);
 
   return { content, setContent, dirty: content !== saved, loading, saving, error, save };
+}
+
+/** Preview links open in a new tab with the `window.opener` back-channel severed. */
+function hardenLinks(node: Element): void {
+  if (node.tagName === "A" && node.hasAttribute("href")) {
+    node.setAttribute("target", "_blank");
+    node.setAttribute("rel", "noopener noreferrer");
+  }
 }
 
 /** Render markdown to sanitized HTML, debounced so we don't re-parse on every keystroke. */
 function useMarkdownPreview(source: string): string {
   const [debounced, setDebounced] = useState(source);
+  const primed = useRef(false);
   useEffect(() => {
+    // Paint the first non-empty content immediately (no 200ms blank window after a file
+    // loads), exactly once, then debounce all subsequent keystrokes.
+    if (!primed.current && source !== "") {
+      primed.current = true;
+      setDebounced(source);
+      return;
+    }
     const id = window.setTimeout(() => setDebounced(source), 200);
     return () => window.clearTimeout(id);
   }, [source]);
   return useMemo(() => {
-    const raw = marked.parse(debounced);
-    const html = typeof raw === "string" ? raw : "";
-    return DOMPurify.sanitize(html);
+    // `{ async: false }` pins the synchronous string return (no Promise union to narrow).
+    const html = marked.parse(debounced, { async: false });
+    // Scope the link-hardening hook to this call; `finally` guarantees removal even if
+    // `sanitize` throws, so the hook can never leak into other DOMPurify consumers.
+    DOMPurify.addHook("afterSanitizeAttributes", hardenLinks);
+    try {
+      return DOMPurify.sanitize(html);
+    } finally {
+      DOMPurify.removeHook("afterSanitizeAttributes");
+    }
   }, [debounced]);
 }
 
@@ -104,6 +128,7 @@ const PREVIEW_PROSE =
   "[&_pre]:my-3 [&_pre]:overflow-auto [&_pre]:rounded [&_pre]:bg-neutral-900 [&_pre]:p-3 " +
   "[&_pre_code]:bg-transparent [&_pre_code]:p-0 " +
   "[&_hr]:my-4 [&_hr]:border-neutral-800 [&_a]:text-sky-400 [&_strong]:text-neutral-100 " +
+  "[&_img]:my-2 [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded " +
   "[&_table]:my-3 [&_th]:border [&_th]:border-neutral-800 [&_th]:px-2 [&_th]:py-1 " +
   "[&_td]:border [&_td]:border-neutral-800 [&_td]:px-2 [&_td]:py-1";
 

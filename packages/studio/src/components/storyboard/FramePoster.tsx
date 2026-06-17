@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { buildCompositionThumbnailUrl } from "../../player/components/CompositionThumbnail";
 
 export interface FramePosterProps {
@@ -20,6 +20,9 @@ export interface FramePosterProps {
  */
 export function FramePoster({ projectId, src, seconds, title, fit = "cover" }: FramePosterProps) {
   const [failed, setFailed] = useState(false);
+  // The <img> is reused (no key) when a tile/hero swaps to a different frame, so a
+  // prior load error would stick. Reset when the poster target changes.
+  useEffect(() => setFailed(false), [src, seconds]);
   if (failed) {
     return (
       <div className="flex h-full w-full items-center justify-center text-[11px] text-neutral-600">

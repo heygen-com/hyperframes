@@ -53,7 +53,12 @@ export function useViewModeState(enabled: boolean): ViewModeValue {
     enabled ? readViewModeFromUrl() : "timeline",
   );
 
-  // Reflect back/forward navigation and agent-driven URL changes.
+  // Reflect genuine browser back/forward between history entries with a different
+  // `?view=`. Note: our own writes use `replaceState` (below), which does NOT fire
+  // `popstate`, so this listener never sees them — `setViewMode` updates state directly.
+  // An agent deep-links by doing a full navigation to `?view=storyboard` (picked up by
+  // the mount-time read); a scripted `pushState`/`replaceState` to `?view=` would not be
+  // reflected here, by design.
   useEffect(() => {
     if (!enabled) return;
     const onPopState = () => setMode(readViewModeFromUrl());
