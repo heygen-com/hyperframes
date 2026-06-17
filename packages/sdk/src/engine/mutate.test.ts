@@ -565,3 +565,69 @@ describe("setCompositionMetadata data-* channel", () => {
     expect(root?.getAttribute("style")).toContain("width: 1920px");
   });
 });
+
+// ─── reorderElements ─────────────────────────────────────────────────────────
+
+describe("reorderElements", () => {
+  it("sets zIndex on each entry", () => {
+    const parsed = fresh();
+    applyOp(parsed, {
+      type: "reorderElements",
+      entries: [
+        { target: "hf-title", zIndex: 2 },
+        { target: "hf-logo", zIndex: 1 },
+      ],
+    });
+    const title = parsed.document.querySelector("[data-hf-id='hf-title']") as HTMLElement | null;
+    const logo = parsed.document.querySelector("[data-hf-id='hf-logo']") as HTMLElement | null;
+    expect(title?.style.zIndex).toBe("2");
+    expect(logo?.style.zIndex).toBe("1");
+  });
+
+  it("inverse restores original zIndex values", () => {
+    const parsed = fresh();
+    const before = serializeDocument(parsed);
+    const { inverse } = applyOp(parsed, {
+      type: "reorderElements",
+      entries: [{ target: "hf-title", zIndex: 5 }],
+    });
+    applyPatchesToDocument(parsed, inverse);
+    expect(serializeDocument(parsed)).toBe(before);
+  });
+
+  it("validateOp returns ok:true for existing targets", () => {
+    const r = validateOp(fresh(), {
+      type: "reorderElements",
+      entries: [{ target: "hf-title", zIndex: 1 }],
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it("validateOp returns E_TARGET_NOT_FOUND for unknown target", () => {
+    const r = validateOp(fresh(), {
+      type: "reorderElements",
+      entries: [{ target: "hf-unknown", zIndex: 1 }],
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe("E_TARGET_NOT_FOUND");
+  });
+
+  it("duplicate target collapses to last-wins and inverse restores cleanly", () => {
+    const parsed = fresh();
+    const before = serializeDocument(parsed);
+    const { forward, inverse } = applyOp(parsed, {
+      type: "reorderElements",
+      entries: [
+        { target: "hf-title", zIndex: 2 },
+        { target: "hf-title", zIndex: 9 },
+      ],
+    });
+    const title = parsed.document.querySelector("[data-hf-id='hf-title']") as HTMLElement | null;
+    expect(title?.style.zIndex).toBe("9"); // last write wins
+    expect(forward.length).toBe(1); // one patch, not two on the same path
+    // Inverse must be applied in reverse order (session reverses single-dispatch
+    // inverse) to land back on the original, not the intermediate "2".
+    applyPatchesToDocument(parsed, [...inverse].reverse());
+    expect(serializeDocument(parsed)).toBe(before);
+  });
+});

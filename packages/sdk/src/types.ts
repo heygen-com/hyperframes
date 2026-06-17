@@ -82,6 +82,11 @@ export type EditOp =
   | { type: "setHold"; target: HfId | HfId[]; hold: ElasticHold }
   | { type: "moveElement"; target: HfId | HfId[]; x: number; y: number }
   | { type: "removeElement"; target: HfId | HfId[] }
+  | {
+      type: "reorderElements";
+      /** Each entry sets inline zIndex on one element. Positioning is unchanged — z-index only takes effect on non-static elements, so the caller must ensure the target is positioned. */
+      entries: Array<{ target: HfId; zIndex: number }>;
+    }
   | { type: "setClassStyle"; selector: string; styles: Record<string, string | null> }
   | { type: "setCompositionMetadata"; width?: number; height?: number; duration?: number }
   | { type: "setVariableValue"; id: string; value: string | number | boolean }

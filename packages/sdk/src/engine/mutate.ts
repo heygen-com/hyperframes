@@ -261,6 +261,8 @@ export function applyOp(parsed: ParsedDocument, op: EditOp): MutationResult {
       return handleMoveElement(parsed, targets(op.target), op.x, op.y);
     case "removeElement":
       return handleRemoveElement(parsed, targets(op.target));
+    case "reorderElements":
+      return handleReorderElements(parsed, op.entries);
     case "setCompositionMetadata":
       return handleSetCompositionMetadata(parsed, op);
     case "setVariableValue":
@@ -605,6 +607,23 @@ function handleRemoveElement(parsed: ParsedDocument, ids: HfId[]): MutationResul
     result.inverse.push(...gsapResult.inverse);
   }
 
+  return result;
+}
+
+function handleReorderElements(
+  parsed: ParsedDocument,
+  entries: Array<{ target: HfId; zIndex: number }>,
+): MutationResult {
+  const result: MutationResult = { forward: [], inverse: [] };
+  // Last write wins per target — a duplicated target collapses to one zIndex
+  // patch instead of emitting redundant same-path patches in one dispatch.
+  const lastByTarget = new Map<HfId, number>();
+  for (const { target, zIndex } of entries) lastByTarget.set(target, zIndex);
+  for (const [target, zIndex] of lastByTarget) {
+    const sub = handleSetStyle(parsed, [target], { zIndex: String(zIndex) });
+    result.forward.push(...sub.forward);
+    result.inverse.push(...sub.inverse);
+  }
   return result;
 }
 
@@ -1181,6 +1200,19 @@ export function validateOp(parsed: ParsedDocument, op: EditOp): CanResult {
       const ids = targets(op.target);
       if (ids.length === 0) return canErr("E_TARGET_NOT_FOUND", "No target ids provided.");
       const missing = ids.filter((id) => resolveScoped(parsed.document, id) === null);
+      if (missing.length > 0)
+        return canErr(
+          "E_TARGET_NOT_FOUND",
+          `Element(s) not found: ${missing.join(", ")}.`,
+          "Verify the id against comp.getElements() or comp.find().",
+        );
+      return CAN_OK;
+    }
+    case "reorderElements": {
+      if (op.entries.length === 0) return CAN_OK;
+      const missing = op.entries
+        .map((e) => e.target)
+        .filter((id) => resolveScoped(parsed.document, id) === null);
       if (missing.length > 0)
         return canErr(
           "E_TARGET_NOT_FOUND",
