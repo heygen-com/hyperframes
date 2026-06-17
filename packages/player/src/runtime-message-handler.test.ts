@@ -10,6 +10,7 @@ import type { ShaderLoaderState } from "./shader-loader-state.js";
 const makeCallbacks = (): MessageHandlerCallbacks => ({
   updateControlsTime: vi.fn(),
   updateControlsPlaying: vi.fn(),
+  onRuntimeReady: vi.fn(),
   dispatchEvent: vi.fn(),
   seek: vi.fn(),
   play: vi.fn(),
