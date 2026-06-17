@@ -1895,14 +1895,39 @@ function loopIndexVarName(loopNode: any): string | null {
 }
 
 /**
- * Rewrite one body statement's source for iteration `idx`: replace whole-word
- * occurrences of the loop index variable with the literal index. Keeps non-target
- * statements (e.g. `tl.set(items[i], …)`) alive instead of discarding them.
+ * Rewrite one body statement's source for iteration `idx`: replace USES of the
+ * loop index variable (AST Identifier nodes) with the literal index. AST-based,
+ * not a text regex, so the index name appearing inside a string literal (e.g. a
+ * selector ".row-i") or as a non-computed member/key (`obj.i`, `{ i: … }`) is
+ * left untouched — only real references to the variable are substituted.
  */
-function substituteLoopIndex(stmtSource: string, indexVar: string | null, idx: number): string {
-  if (!indexVar) return stmtSource;
-  const re = new RegExp(`\\b${indexVar.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "g");
-  return stmtSource.replace(re, String(idx));
+// An identifier in "binding position" is a name, not a value reference: a
+// non-computed member property (`obj.i`) or object-literal key (`{ i: … }`).
+// Those must NOT be substituted with the iteration index.
+function isIndexBindingPosition(node: any, parent: any): boolean {
+  if (parent?.type === "MemberExpression") return parent.property === node && !parent.computed;
+  if (parent?.type === "Property" || parent?.type === "ObjectProperty") {
+    return parent.key === node && !parent.computed;
+  }
+  return false;
+}
+
+function substituteLoopIndex(stmt: any, indexVar: string, idx: number, script: string): string {
+  const base = stmt.start as number;
+  const src = script.slice(base, stmt.end as number);
+  const ranges: Array<[number, number]> = [];
+  acornWalk.ancestor(stmt, {
+    Identifier(node: any, _state: unknown, ancestors: any[]) {
+      if (node.name !== indexVar) return;
+      if (isIndexBindingPosition(node, ancestors[ancestors.length - 2])) return;
+      ranges.push([(node.start as number) - base, (node.end as number) - base]);
+    },
+  });
+  if (ranges.length === 0) return src;
+  ranges.sort((a, b) => b[0] - a[0]);
+  let out = src;
+  for (const [s, e] of ranges) out = out.slice(0, s) + String(idx) + out.slice(e);
+  return out;
 }
 
 function buildUnrollReplacement(
@@ -1966,6 +1991,13 @@ function buildLoopUnrollPreserving(
   const stmts = loopBodyStatements(loopNode);
   if (!stmts || !stmts.includes(targetStmt)) return null;
   const indexVar = loopIndexVarName(loopNode);
+  // Only preserve siblings when we have a bound numeric index to substitute
+  // (`for (let i …)`). For forEach/for-of/for-in/while the iteration variable
+  // isn't a numeric index we can splice, so substituting would leave preserved
+  // siblings referencing a now-undefined loop variable (ReferenceError at
+  // render). Return null → caller falls back to the blanket loop overwrite,
+  // which drops the siblings but emits valid code.
+  if (!indexVar) return null;
   const lines: string[] = [];
   for (let idx = 0; idx < elements.length; idx++) {
     const el = elements[idx];
@@ -1974,8 +2006,7 @@ function buildLoopUnrollPreserving(
       if (stmt === targetStmt) {
         lines.push(buildUnrollCallForElement(timelineVar, animation, el));
       } else {
-        const src = script.slice(stmt.start as number, stmt.end as number);
-        lines.push(substituteLoopIndex(src, indexVar, idx));
+        lines.push(substituteLoopIndex(stmt, indexVar, idx, script));
       }
     }
   }

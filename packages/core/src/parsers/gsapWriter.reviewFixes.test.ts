@@ -131,6 +131,57 @@ for (let i = 0; i < 2; i++) {
   });
 });
 
+// ── R2 #1 — non-`for` loops must not leave preserved siblings with an unbound index var ──
+
+describe("R2 — unroll on a forEach does not emit an unbound loop variable", () => {
+  const FOREACH = `var tl = gsap.timeline({ paused: true });
+items.forEach((item, i) => {
+  tl.set(item, { autoAlpha: 0 }, 0);
+  tl.to(item, { opacity: 1, duration: 1 }, 0);
+});`;
+
+  it("falls back to the blanket overwrite (valid code, no dangling `item`)", () => {
+    const parsed = parseGsapScriptAcornForWrite(FOREACH);
+    const targetId = parsed?.located.find((l) => l.animation.method === "to")?.id ?? "";
+    const out = unrollDynamicAnimations(FOREACH, targetId, [
+      { selector: "#a", keyframes: [{ percentage: 100, properties: { opacity: 1 } }] },
+      { selector: "#b", keyframes: [{ percentage: 100, properties: { opacity: 1 } }] },
+    ]);
+    // The forEach (and its `item` param) is gone — no preserved sibling can
+    // reference a now-undefined `item` (the bug emitted `tl.set(item, …)` with
+    // `item` unbound → ReferenceError at render).
+    expect(out).not.toContain("item");
+    expect(out).not.toContain("forEach");
+    expect(out).toContain('tl.to("#a"');
+    expect(out).toContain('tl.to("#b"');
+  });
+});
+
+// ── R2 #5 — index substitution is AST-based: string literals are never corrupted ──
+
+describe("R2 — unroll substitutes real index uses but not the index char in strings", () => {
+  const LOOP_STR = `var tl = gsap.timeline({ paused: true });
+for (let i = 0; i < 2; i++) {
+  tl.set(items[i], { id: "row-i" }, 0);
+  tl.to(items[i], { opacity: 1, duration: 1 }, 0);
+}`;
+
+  it('rewrites items[i] per iteration but leaves the "row-i" string intact', () => {
+    const parsed = parseGsapScriptAcornForWrite(LOOP_STR);
+    const targetId = parsed?.located.find((l) => l.animation.method === "to")?.id ?? "";
+    const out = unrollDynamicAnimations(LOOP_STR, targetId, [
+      { selector: "#a", keyframes: [{ percentage: 100, properties: { opacity: 1 } }] },
+      { selector: "#b", keyframes: [{ percentage: 100, properties: { opacity: 1 } }] },
+    ]);
+    // Real uses of the index are substituted…
+    expect(out).toContain("items[0]");
+    expect(out).toContain("items[1]");
+    // …but the literal "row-i" is untouched (the regex bug rewrote it to "row-0").
+    expect(out).toContain('"row-i"');
+    expect(out).not.toContain('"row-0"');
+  });
+});
+
 // ── #10 — per-segment curviness survives serialization ──
 
 describe("#10 — updateArcSegment on a non-first segment reflects its curviness", () => {
