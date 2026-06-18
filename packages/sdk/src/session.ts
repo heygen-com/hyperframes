@@ -139,6 +139,11 @@ class CompositionImpl implements Composition {
     this.dispatch({ type: "removeElement", target: id });
   }
 
+  addElement(parent: HfId | null, index: number, html: string): HfId {
+    const result = this._dispatch({ type: "addElement", parent, index, html }, ORIGIN_LOCAL);
+    return result.meta?.newId ?? "";
+  }
+
   setVariableValue(id: string, value: string | number | boolean | FontValue | ImageValue): void {
     this.dispatch({ type: "setVariableValue", id, value });
   }

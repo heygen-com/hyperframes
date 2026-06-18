@@ -89,6 +89,15 @@ export type EditOp =
   | { type: "moveElement"; target: HfId | HfId[]; x: number; y: number }
   | { type: "removeElement"; target: HfId | HfId[] }
   | {
+      type: "addElement";
+      /** Id of the parent element, or null to insert at the document body root. */
+      parent: HfId | null;
+      /** Zero-based sibling index at which to insert (append if >= childCount). */
+      index: number;
+      /** Single-root HTML fragment. Must not contain <script>. */
+      html: string;
+    }
+  | {
       type: "reorderElements";
       /** Each entry sets inline zIndex on one element. Positioning is unchanged — z-index only takes effect on non-static elements, so the caller must ensure the target is positioned. */
       entries: Array<{ target: HfId; zIndex: number }>;
@@ -340,6 +349,13 @@ export interface Composition {
   setAttribute(id: HfId, name: string, value: string | null): void;
   setTiming(id: HfId, timing: { start?: number; duration?: number; trackIndex?: number }): void;
   removeElement(id: HfId): void;
+  /**
+   * Insert an HTML fragment as a child of `parent` at `index` (WS-D).
+   * Mints a stable hf-id against the live document's existing id set.
+   * Returns the minted id of the inserted root element.
+   * Inverse = removeElement of the returned id.
+   */
+  addElement(parent: HfId | null, index: number, html: string): HfId;
   setVariableValue(id: string, value: string | number | boolean): void;
   /**
    * Read enter/exit times and GSAP labels for every timed element (WS-C).

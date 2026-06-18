@@ -50,6 +50,7 @@ import {
   patchRemove,
 } from "./patches.js";
 import { upsertCssRule } from "./cssWriter.js";
+import { mintHfId } from "@hyperframes/core/hf-ids";
 import { parseGsapScriptAcornForWrite } from "@hyperframes/core/gsap-parser-acorn";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import {
@@ -77,7 +78,7 @@ import { deriveKeyframeBackfillDefaults } from "./keyframeBackfill.js";
 export interface MutationResult {
   forward: JsonPatchOp[];
   inverse: JsonPatchOp[];
-  meta?: { animationId?: string };
+  meta?: { animationId?: string; newId?: string };
 }
 
 const EMPTY: MutationResult = { forward: [], inverse: [] };
@@ -270,6 +271,8 @@ export function applyOp(parsed: ParsedDocument, op: EditOp): MutationResult {
       return handleMoveElement(parsed, targets(op.target), op.x, op.y);
     case "removeElement":
       return handleRemoveElement(parsed, targets(op.target));
+    case "addElement":
+      return handleAddElement(parsed, op.parent, op.index, op.html);
     case "reorderElements":
       return handleReorderElements(parsed, op.entries);
     case "setCompositionMetadata":
@@ -617,6 +620,99 @@ function handleRemoveElement(parsed: ParsedDocument, ids: HfId[]): MutationResul
   }
 
   return result;
+}
+
+// ─── addElement handler ───────────────────────────────────────────────────────
+
+// Tags that must never receive a stable hf-id — mirrors hfIds.ts EXCLUDED_TAGS.
+const HF_EXCLUDED_TAGS = new Set([
+  "script",
+  "style",
+  "template",
+  "meta",
+  "link",
+  "noscript",
+  "base",
+]);
+
+/**
+ * Resolve all existing hf-ids in the document into `assigned` so that
+ * mintHfId cannot issue an id that already exists in the composition.
+ */
+function collectDocumentHfIds(document: Document): Set<string> {
+  const assigned = new Set<string>();
+  for (const el of Array.from(document.querySelectorAll("[data-hf-id]"))) {
+    const id = el.getAttribute("data-hf-id");
+    if (id) assigned.add(id);
+  }
+  return assigned;
+}
+
+/**
+ * Stamp data-hf-id onto every un-stamped element in `root` and its
+ * descendants, minting ids against `assigned` (the live document's id set).
+ * Returns the minted id of `root` (or its existing id if already stamped).
+ */
+function mintFragmentIds(root: Element, assigned: Set<string>): string {
+  if (!root.getAttribute("data-hf-id") && !HF_EXCLUDED_TAGS.has(root.tagName.toLowerCase())) {
+    root.setAttribute("data-hf-id", mintHfId(root, assigned));
+  }
+  for (const el of Array.from(root.querySelectorAll("*"))) {
+    if (HF_EXCLUDED_TAGS.has(el.tagName.toLowerCase())) continue;
+    if (el.getAttribute("data-hf-id")) continue; // pinned
+    el.setAttribute("data-hf-id", mintHfId(el, assigned));
+  }
+  return root.getAttribute("data-hf-id") ?? "";
+}
+
+/**
+ * Insert an HTML fragment (single-root) as a child of `parent` at `index`.
+ * Mints ids against the LIVE document's existing id set so new ids can never
+ * collide with elements already in the composition. Returns the minted root id
+ * via result.meta.newId — mirrors the `animationId` pattern in addGsapTween.
+ *
+ * Inverse = patchRemove of the new element's path; mirrors handleRemoveElement's
+ * inverse = patchAdd. Forward/inverse are thus symmetric with that handler.
+ */
+function handleAddElement(
+  parsed: ParsedDocument,
+  parent: HfId | null,
+  index: number,
+  html: string,
+): MutationResult {
+  // Resolve parent element (null → document body).
+  const parentEl =
+    parent === null
+      ? ((parsed.document as unknown as { body: Element }).body as unknown as Element)
+      : (resolveScoped(parsed.document, parent) as Element);
+
+  // Parse the fragment within the target document to avoid cross-document issues
+  // (same approach as apply-patches.ts:222). validateOp guarantees a non-null firstElementChild.
+  const tmp = parsed.document.createElement("div");
+  tmp.innerHTML = html;
+  const node = tmp.firstElementChild;
+  if (!node) return EMPTY;
+
+  // Mint ids against the LIVE doc's existing id set (the #1 landmine — a fresh
+  // ensureHfIds(fragment) is blind to existing doc ids and can collide).
+  // Order: mint → capture outerHTML → insert → build patch (id needed for path).
+  const assigned = collectDocumentHfIds(parsed.document);
+  const newId = mintFragmentIds(node, assigned);
+  const stampedHtml = node.outerHTML;
+
+  // Insert at `index` — append if index >= childCount (RFC-6902 insert semantics).
+  const ref = Array.from(parentEl.children)[index] ?? null;
+  parentEl.insertBefore(node, ref);
+
+  // parentId for the inverse patch: bare id of the parent, or null for body root.
+  const parentId = parent !== null ? (parentEl.getAttribute("data-hf-id") ?? null) : null;
+
+  const path = elementPath(newId);
+  return {
+    forward: [patchAdd(path, { html: stampedHtml, parentId, siblingIndex: index })],
+    inverse: [patchRemove(path)],
+    meta: { newId },
+  };
 }
 
 function handleReorderElements(
@@ -1307,6 +1403,30 @@ export function validateOp(parsed: ParsedDocument, op: EditOp): CanResult {
           "E_TARGET_NOT_FOUND",
           `Element(s) not found: ${missing.join(", ")}.`,
           "Verify the id against comp.getElements() or comp.find().",
+        );
+      return CAN_OK;
+    }
+    case "addElement": {
+      if (op.parent !== null && resolveScoped(parsed.document, op.parent) === null)
+        return canErr(
+          "E_TARGET_NOT_FOUND",
+          `Parent element not found: "${op.parent}".`,
+          "Verify the parent id against comp.getElements() or comp.find().",
+        );
+      if (op.index < 0) return canErr("E_INVALID_ARGS", `index must be >= 0 (got ${op.index}).`);
+      if (!op.html || op.html.trim().length === 0)
+        return canErr("E_INVALID_HTML", "html must not be empty.");
+      // Parse to check for <script> and zero-element fragments.
+      // Use the same temp-div pattern as apply-patches.ts for consistency.
+      const tmp = parsed.document.createElement("div");
+      tmp.innerHTML = op.html;
+      if (tmp.firstElementChild === null)
+        return canErr("E_INVALID_HTML", "html parses to zero element nodes.");
+      if (tmp.querySelector("script") !== null)
+        return canErr(
+          "E_INVALID_HTML",
+          "<script> elements are not permitted in addElement html.",
+          "GSAP is managed by the composition's single script block; add tweens via addGsapTween.",
         );
       return CAN_OK;
     }

@@ -356,6 +356,255 @@ describe("removeElement", () => {
   });
 });
 
+// ─── addElement ───────────────────────────────────────────────────────────────
+
+describe("addElement", () => {
+  it("inserts element at specified parent+index and resolves via getElement-style lookup", () => {
+    const parsed = fresh();
+    const result = applyOp(parsed, {
+      type: "addElement",
+      parent: "hf-stage",
+      index: 0,
+      html: '<p class="new">inserted</p>',
+    });
+    expect(result.meta?.newId).toBeTruthy();
+    const newId = result.meta!.newId!;
+    const el = parsed.document.querySelector(`[data-hf-id="${newId}"]`);
+    expect(el).not.toBeNull();
+    expect(el?.tagName.toLowerCase()).toBe("p");
+    // Inserted at index 0 → first child of hf-stage
+    const stage = parsed.document.querySelector('[data-hf-id="hf-stage"]');
+    expect(stage?.firstElementChild?.getAttribute("data-hf-id")).toBe(newId);
+  });
+
+  it("insert at index >= childCount appends to parent", () => {
+    const parsed = fresh();
+    const stage = parsed.document.querySelector('[data-hf-id="hf-stage"]');
+    const countBefore = stage ? Array.from(stage.children).length : 0;
+    const result = applyOp(parsed, {
+      type: "addElement",
+      parent: "hf-stage",
+      index: 9999,
+      html: '<span class="tail">tail</span>',
+    });
+    const newId = result.meta!.newId!;
+    const stageAfter = parsed.document.querySelector('[data-hf-id="hf-stage"]');
+    expect(stageAfter?.lastElementChild?.getAttribute("data-hf-id")).toBe(newId);
+    expect(Array.from(stageAfter?.children ?? []).length).toBe(countBefore + 1);
+  });
+
+  it("minted id is unique vs all existing doc ids", () => {
+    const parsed = fresh();
+    const result = applyOp(parsed, {
+      type: "addElement",
+      parent: "hf-stage",
+      index: 0,
+      html: '<div class="unique-new">content</div>',
+    });
+    const newId = result.meta!.newId!;
+    // Must not collide with any pre-existing id
+    const existingIds = ["hf-stage", "hf-title", "hf-logo", "hf-sub", "hf-span"];
+    expect(existingIds).not.toContain(newId);
+    // Must appear exactly once in the document
+    const all = Array.from(parsed.document.querySelectorAll(`[data-hf-id="${newId}"]`));
+    expect(all).toHaveLength(1);
+  });
+
+  it("content-collision with existing element yields a distinct rehashed id", () => {
+    // Insert a fragment with identical content to an existing element → dup-rehash must yield a distinct id
+    const parsed = fresh();
+    // hf-logo is <img data-hf-id="hf-logo" src="/logo.png" alt="Logo" />
+    // Insert the same HTML without the data-hf-id so mintHfId runs fresh
+    const result = applyOp(parsed, {
+      type: "addElement",
+      parent: "hf-stage",
+      index: 0,
+      html: '<img src="/logo.png" alt="Logo" />',
+    });
+    const newId = result.meta!.newId!;
+    expect(newId).not.toBe("hf-logo");
+    expect(newId.startsWith("hf-")).toBe(true);
+    const el = parsed.document.querySelector(`[data-hf-id="${newId}"]`);
+    expect(el).not.toBeNull();
+  });
+
+  it("nested fragment: all new nodes get unique ids; root id returned", () => {
+    const parsed = fresh();
+    const result = applyOp(parsed, {
+      type: "addElement",
+      parent: "hf-stage",
+      index: 0,
+      html: '<div class="outer"><span class="inner-a">a</span><span class="inner-b">b</span></div>',
+    });
+    const rootId = result.meta!.newId!;
+    const root = parsed.document.querySelector(`[data-hf-id="${rootId}"]`);
+    expect(root).not.toBeNull();
+    // All children must have data-hf-id
+    const children = root ? Array.from(root.querySelectorAll("*")) : [];
+    for (const child of children) {
+      expect(child.getAttribute("data-hf-id")).toBeTruthy();
+    }
+    // All ids must be distinct
+    const allIds = [rootId, ...children.map((c) => c.getAttribute("data-hf-id") as string)];
+    expect(new Set(allIds).size).toBe(allIds.length);
+  });
+
+  it("forward patch is patchAdd; inverse patch is patchRemove — symmetry with removeElement", () => {
+    const parsed = fresh();
+    const result = applyOp(parsed, {
+      type: "addElement",
+      parent: "hf-sub",
+      index: 0,
+      html: '<em class="em">em text</em>',
+    });
+    expect(result.forward).toHaveLength(1);
+    expect(result.inverse).toHaveLength(1);
+    expect(result.forward[0]?.op).toBe("add");
+    expect(result.inverse[0]?.op).toBe("remove");
+    const newId = result.meta!.newId!;
+    expect(result.forward[0]?.path).toBe(`/elements/${newId}`);
+    expect(result.inverse[0]?.path).toBe(`/elements/${newId}`);
+  });
+
+  it("applying inverse patch removes the added element (undo)", () => {
+    const parsed = fresh();
+    const { inverse, meta } = applyOp(parsed, {
+      type: "addElement",
+      parent: "hf-stage",
+      index: 0,
+      html: '<div class="to-undo">undo me</div>',
+    });
+    const newId = meta!.newId!;
+    expect(parsed.document.querySelector(`[data-hf-id="${newId}"]`)).not.toBeNull();
+    applyPatchesToDocument(parsed, inverse);
+    expect(parsed.document.querySelector(`[data-hf-id="${newId}"]`)).toBeNull();
+  });
+
+  it("add → undo → redo: element returns with the same id (id stability)", () => {
+    const parsed = fresh();
+    // add
+    const { forward, inverse, meta } = applyOp(parsed, {
+      type: "addElement",
+      parent: "hf-stage",
+      index: 1,
+      html: '<section class="redo-test">redo</section>',
+    });
+    const newId = meta!.newId!;
+    // undo
+    applyPatchesToDocument(parsed, inverse);
+    expect(parsed.document.querySelector(`[data-hf-id="${newId}"]`)).toBeNull();
+    // redo (replay forward patches)
+    applyPatchesToDocument(parsed, forward);
+    const restored = parsed.document.querySelector(`[data-hf-id="${newId}"]`);
+    expect(restored).not.toBeNull();
+    expect(restored?.getAttribute("data-hf-id")).toBe(newId);
+  });
+
+  it("parent: null inserts at document body root level", () => {
+    // Use a simple fragment doc
+    const parsed = parseMutable(
+      '<div data-hf-id="hf-root" data-hf-root style="width:100px;height:100px"></div>',
+    );
+    const result = applyOp(parsed, {
+      type: "addElement",
+      parent: null,
+      index: 1,
+      html: '<aside class="body-child">aside</aside>',
+    });
+    const newId = result.meta!.newId!;
+    const el = parsed.document.querySelector(`[data-hf-id="${newId}"]`);
+    expect(el).not.toBeNull();
+    expect(el?.parentElement?.tagName.toLowerCase()).toBe("body");
+  });
+
+  it("serialize round-trip: addElement survives serialize()", () => {
+    const parsed = fresh();
+    const result = applyOp(parsed, {
+      type: "addElement",
+      parent: "hf-sub",
+      index: 0,
+      html: '<b class="bold">bold</b>',
+    });
+    const newId = result.meta!.newId!;
+    const serialized = serializeDocument(parsed);
+    expect(serialized).toContain(`data-hf-id="${newId}"`);
+    expect(serialized).toContain("bold");
+  });
+
+  // ─── validateOp ─────────────────────────────────────────────────────────────
+
+  it("validateOp: missing parent → E_TARGET_NOT_FOUND", () => {
+    const parsed = fresh();
+    const r = validateOp(parsed, {
+      type: "addElement",
+      parent: "hf-nonexistent",
+      index: 0,
+      html: "<div>x</div>",
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe("E_TARGET_NOT_FOUND");
+  });
+
+  it("validateOp: negative index → E_INVALID_ARGS", () => {
+    const parsed = fresh();
+    const r = validateOp(parsed, {
+      type: "addElement",
+      parent: "hf-stage",
+      index: -1,
+      html: "<div>x</div>",
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe("E_INVALID_ARGS");
+  });
+
+  it("validateOp: empty html → E_INVALID_HTML", () => {
+    const parsed = fresh();
+    const r = validateOp(parsed, {
+      type: "addElement",
+      parent: "hf-stage",
+      index: 0,
+      html: "",
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe("E_INVALID_HTML");
+  });
+
+  it("validateOp: html with only text / zero element nodes → E_INVALID_HTML", () => {
+    const parsed = fresh();
+    const r = validateOp(parsed, {
+      type: "addElement",
+      parent: "hf-stage",
+      index: 0,
+      html: "just text no element",
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe("E_INVALID_HTML");
+  });
+
+  it("validateOp: html containing <script> → E_INVALID_HTML", () => {
+    const parsed = fresh();
+    const r = validateOp(parsed, {
+      type: "addElement",
+      parent: "hf-stage",
+      index: 0,
+      html: "<div><script>alert(1)</scr" + "ipt></div>",
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe("E_INVALID_HTML");
+  });
+
+  it("validateOp: parent: null is valid", () => {
+    const parsed = fresh();
+    const r = validateOp(parsed, {
+      type: "addElement",
+      parent: null,
+      index: 0,
+      html: "<div>body-level</div>",
+    });
+    expect(r.ok).toBe(true);
+  });
+});
+
 // ─── setElementStyles (model helper) ──────────────────────────────────────────
 
 describe("setElementStyles key normalization", () => {
