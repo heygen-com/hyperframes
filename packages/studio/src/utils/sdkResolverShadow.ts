@@ -151,34 +151,37 @@ export function sdkResolverShadowCheck(
   if (shadowable.some((op) => !MAPPED_OP_TYPES.has(op.type))) return [];
 
   // Capture the inverse of the shadow dispatch so we can restore the session.
+  // `batch` fires a single PatchEvent whose `inversePatches` are already in
+  // reverse-apply order (session.ts reverses inside buildPatchEvent), so
+  // applyPatches(inverse) undoes the dispatch with no further reordering. If a
+  // future SDK refactor ever coalesces batch into a composite with no per-op
+  // inverse, this restore breaks — keep batch emitting inverse patches.
   const inverse: JsonPatchOp[] = [];
   const stopCapture = session.on("patch", (e) => inverse.push(...e.inversePatches));
-  const restore = () => {
+  // restore() runs in `finally` so the patch listener is always removed and the
+  // session is always undone — even if checkOpValue throws between dispatch and
+  // return. A residual mutation or leaked listener on the shared session is the
+  // exact cutover-coupling failure mode this module exists to avoid.
+  try {
+    try {
+      const editOps = patchOpsToSdkEditOps(hfId, shadowable);
+      session.batch(() => {
+        for (const op of editOps) session.dispatch(op);
+      });
+    } catch (err) {
+      return [{ kind: "dispatch_error", hfId, error: String(err) }];
+    }
+
+    const el = session.getElement(hfId);
+    if (!el) return [{ kind: "element_not_found", hfId }];
+
+    return shadowable
+      .map((op) => checkOpValue(op, el, hfId))
+      .filter((m): m is SdkResolverMismatch => m !== null);
+  } finally {
     stopCapture();
     if (inverse.length > 0) session.applyPatches(inverse);
-  };
-
-  try {
-    const editOps = patchOpsToSdkEditOps(hfId, shadowable);
-    session.batch(() => {
-      for (const op of editOps) session.dispatch(op);
-    });
-  } catch (err) {
-    restore();
-    return [{ kind: "dispatch_error", hfId, error: String(err) }];
   }
-
-  const el = session.getElement(hfId);
-  if (!el) {
-    restore();
-    return [{ kind: "element_not_found", hfId }];
-  }
-
-  const mismatches = shadowable
-    .map((op) => checkOpValue(op, el, hfId))
-    .filter((m): m is SdkResolverMismatch => m !== null);
-  restore();
-  return mismatches;
 }
 
 // ─── Telemetry ────────────────────────────────────────────────────────────────
@@ -218,6 +221,10 @@ export function runResolverShadow(
   if (!hfId) return;
   try {
     const mismatches = sdkResolverShadowCheck(session, hfId, ops);
+    // Emit only on divergence — parity is silent, matching recordResolverParity
+    // and recordAnimationResolverParity. Otherwise this fires a PostHog event on
+    // every style/text/attr edit (the editor's chattiest path) at default-ON.
+    if (mismatches.length === 0) return;
     trackStudioEvent("sdk_resolver_shadow", {
       hfId,
       mismatchCount: mismatches.length,

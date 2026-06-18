@@ -71,29 +71,46 @@ describe("A. Flag gating", () => {
     expect(spy).not.toHaveBeenCalled();
   });
 
-  it("A2: flag on → runs shadow and emits exactly one telemetry event", async () => {
+  it("A2: flag on + divergence → emits exactly one telemetry event", async () => {
+    // runResolverShadow emits only on divergence, so force one (poisoned dispatch
+    // → value_mismatch). A parity edit is silent (see B-parity-silent).
     mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = true;
-    const session = await openComposition(BASE_HTML);
+    const session = await makePoisonedStyleSession();
     runResolverShadow(session, "hf-box", [
       { type: "inline-style", property: "color", value: "blue" },
     ]);
     expect(trackedEvents.filter((e) => e.event === "sdk_resolver_shadow")).toHaveLength(1);
   });
 
-  it("A3: shadow depends ONLY on shadow flag, not on STUDIO_SDK_CUTOVER_ENABLED", async () => {
-    // The mock always returns STUDIO_SDK_CUTOVER_ENABLED=false.
-    // Shadow flag on → runs; shadow flag off → doesn't run.
-    // Both cases are covered by A1/A2 above (cutover always false in this suite).
-    // Verify the shadow function ignores cutover state by calling sdkResolverShadowCheck
-    // directly (which never checks cutover) in both flag states.
-    mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = false;
+  it("A2b: flag on + parity → emits nothing (divergence-only)", async () => {
+    mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = true;
     const session = await openComposition(BASE_HTML);
+    runResolverShadow(session, "hf-box", [
+      { type: "inline-style", property: "color", value: "blue" },
+    ]);
+    expect(trackedEvents.filter((e) => e.event === "sdk_resolver_shadow")).toHaveLength(0);
+  });
+
+  it("A3: shadow depends ONLY on shadow flag, not on STUDIO_SDK_CUTOVER_ENABLED", async () => {
+    // The mock always returns STUDIO_SDK_CUTOVER_ENABLED=false. Use a divergence
+    // (poisoned session) so the flag-on case emits; flag-off must stay silent.
+    mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = false;
+    const session = await makePoisonedStyleSession();
     runResolverShadow(session, "hf-box", [{ type: "inline-style", property: "color", value: "x" }]);
     expect(trackedEvents).toHaveLength(0); // cutover off, shadow off → no event
 
     mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = true;
     runResolverShadow(session, "hf-box", [{ type: "inline-style", property: "color", value: "x" }]);
     expect(trackedEvents.filter((e) => e.event === "sdk_resolver_shadow")).toHaveLength(1); // shadow on regardless
+  });
+
+  it("A4: null/undefined hfId is a safe no-op (no event, no throw)", async () => {
+    mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = true;
+    const session = await openComposition(BASE_HTML);
+    const ops: PatchOperation[] = [{ type: "inline-style", property: "color", value: "blue" }];
+    expect(() => runResolverShadow(session, null, ops)).not.toThrow();
+    expect(() => runResolverShadow(session, undefined, ops)).not.toThrow();
+    expect(trackedEvents).toHaveLength(0);
   });
 });
 
