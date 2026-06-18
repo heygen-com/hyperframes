@@ -138,16 +138,42 @@ function toKebab(prop: string): string {
 }
 
 /** Parse style attribute string → camelCase map (custom props kept as-is). */
+// fallow-ignore-next-line complexity
 function parseStyleAttr(styleAttr: string): Record<string, string> {
   const result: Record<string, string> = {};
-  for (const decl of styleAttr.split(";")) {
+  const flush = (decl: string): void => {
     const idx = decl.indexOf(":");
-    if (idx === -1) continue;
+    if (idx === -1) return;
     const rawProp = decl.slice(0, idx).trim();
     const value = decl.slice(idx + 1).trim();
-    if (!rawProp || !value) continue;
+    if (!rawProp || !value) return;
     result[toCamel(rawProp)] = value;
+  };
+  // Split on ';' only when outside quotes and balanced parens, so a value that
+  // carries a semicolon survives intact: data URIs, url(), and quoted strings
+  // (`url("data:image/svg+xml;base64,…")`, `content: "a;b"`). A naive
+  // split(";") truncates those. Mirrors the same-package class-style tokenizer
+  // (cssWriter.ts parseDeclarations) and the server patchStyleAttrString path.
+  let depth = 0;
+  let quote: string | null = null;
+  let start = 0;
+  for (let i = 0; i < styleAttr.length; i++) {
+    const ch = styleAttr[i]!;
+    if (quote) {
+      if (ch === "\\") i++; // skip escaped char
+      else if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") quote = ch;
+    else if (ch === "(") depth++;
+    else if (ch === ")") depth = Math.max(0, depth - 1);
+    else if (ch === ";" && depth === 0) {
+      flush(styleAttr.slice(start, i));
+      start = i + 1;
+    }
   }
+  // Trailing declaration; also recovers the tail if a quote was left unterminated.
+  flush(styleAttr.slice(start));
   return result;
 }
 

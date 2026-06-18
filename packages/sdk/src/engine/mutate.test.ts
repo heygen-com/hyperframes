@@ -324,14 +324,14 @@ describe("removeElement", () => {
 
 // ─── setElementStyles (model helper) ──────────────────────────────────────────
 
-describe("setElementStyles key normalization", () => {
-  function elWith(style: string): Element {
-    const parsed = parseMutable(`<div data-hf-id="hf-x" data-hf-root style="${style}"></div>`);
-    const el = parsed.document.querySelector('[data-hf-id="hf-x"]');
-    if (!el) throw new Error("fixture element missing");
-    return el;
-  }
+function elWith(style: string): Element {
+  const parsed = parseMutable(`<div data-hf-id="hf-x" data-hf-root style="${style}"></div>`);
+  const el = parsed.document.querySelector('[data-hf-id="hf-x"]');
+  if (!el) throw new Error("fixture element missing");
+  return el;
+}
 
+describe("setElementStyles key normalization", () => {
   it("removes a hyphenated property when value is null", () => {
     const el = elWith("transform-origin: center center; opacity: 0.5");
     setElementStyles(el, { "transform-origin": null });
@@ -363,6 +363,41 @@ describe("setElementStyles key normalization", () => {
     const el = elWith("");
     setElementStyles(el, { "transform-origin": "top left" });
     expect(getElementStyles(el).transformOrigin).toBe("top left");
+  });
+});
+
+describe("setElementStyles preserves semicolons inside values", () => {
+  it("keeps a data-URI value intact when editing a sibling property", () => {
+    // A naive split(";") truncates the url() at the ';' inside the data URI,
+    // dropping the background when an unrelated property is edited. Mirrors the
+    // class-style coverage in mutate.cssstyle.test.ts.
+    const el = elWith(
+      "background: url(data:image/svg+xml;base64,PHN2Zz09) no-repeat; opacity: 0.5",
+    );
+    setElementStyles(el, { opacity: "1" });
+    const styles = getElementStyles(el);
+    expect(styles.background).toBe("url(data:image/svg+xml;base64,PHN2Zz09) no-repeat");
+    expect(styles.opacity).toBe("1");
+    expect(el.getAttribute("style")).toContain("base64,PHN2Zz09");
+  });
+
+  it("keeps a quoted value containing a semicolon intact", () => {
+    const el = elWith("content: 'a;b'; opacity: 0.5");
+    setElementStyles(el, { opacity: "1" });
+    const styles = getElementStyles(el);
+    expect(styles.content).toBe("'a;b'");
+    expect(styles.opacity).toBe("1");
+  });
+
+  it("removes a semicolon-bearing property cleanly", () => {
+    const el = elWith(
+      "background: url(data:image/svg+xml;base64,PHN2Zz09); opacity: 0.5",
+    );
+    setElementStyles(el, { background: null });
+    const styles = getElementStyles(el);
+    expect(styles.background).toBeUndefined();
+    expect(styles.opacity).toBe("0.5");
+    expect(el.getAttribute("style")).toBe("opacity: 0.5");
   });
 });
 
