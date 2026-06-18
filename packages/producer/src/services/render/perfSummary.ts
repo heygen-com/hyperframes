@@ -3,6 +3,7 @@
  * the `perf-summary.json` debug artifact.
  */
 
+import { arch, cpus, platform, totalmem } from "node:os";
 import { fpsToNumber } from "@hyperframes/core";
 import type { CaptureCalibrationSample, CaptureCostEstimate } from "./captureCost.js";
 import type {
@@ -39,6 +40,8 @@ export function buildRenderPerfSummary(input: {
   observability?: RenderObservabilitySummary;
   peakRssBytes: number;
   peakHeapUsedBytes: number;
+  /** `cfg.disableGpu` — the hard `--disable-gpu` flag, for the `host` GPU picture. */
+  gpuDisabled: boolean;
 }): RenderPerfSummary {
   return {
     renderId: input.job.id,
@@ -82,5 +85,13 @@ export function buildRenderPerfSummary(input: {
         : undefined,
     peakRssMb: Math.round(input.peakRssBytes / (1024 * 1024)),
     peakHeapUsedMb: Math.round(input.peakHeapUsedBytes / (1024 * 1024)),
+    host: {
+      platform: platform(),
+      arch: arch(),
+      cpuCount: cpus().length,
+      totalMemMb: Math.round(totalmem() / (1024 * 1024)),
+      nodeVersion: process.version,
+      gpuDisabled: input.gpuDisabled,
+    },
   };
 }
