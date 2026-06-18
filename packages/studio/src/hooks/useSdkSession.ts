@@ -14,8 +14,13 @@ async function readProjectFileOptional(
   projectId: string,
   path: string,
 ): Promise<string | undefined> {
+  // Reject traversal / NUL before building the request URL — `path` is a
+  // user-influenced composition path (mirrors the guard in timelineEditingHelpers,
+  // and closes the CodeQL client-side-request-forgery flag). encodeURIComponent
+  // already confines both values to single segments of this same-origin URL.
+  if (path.includes("\0") || path.includes("..")) return undefined;
   const res = await fetch(
-    `/api/projects/${projectId}/files/${encodeURIComponent(path)}?optional=1`,
+    `/api/projects/${encodeURIComponent(projectId)}/files/${encodeURIComponent(path)}?optional=1`,
   );
   if (!res.ok) return undefined;
   const data = (await res.json()) as { content?: string };
