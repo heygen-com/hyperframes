@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from "vitest";
 // turns these red. (sdkCutover.test.ts mocks the flag TRUE; this is its sibling.)
 vi.mock("../components/editor/manualEditingAvailability", () => ({
   STUDIO_SDK_CUTOVER_ENABLED: false,
+  STUDIO_SDK_RESOLVER_SHADOW_ENABLED: false,
 }));
 vi.mock("./studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
 

@@ -60,7 +60,7 @@ function mapsToReservedAttr(op: PatchOperation): boolean {
  * Multiple inline-style ops are coalesced into a single setStyle (SDK batches
  * style changes naturally). One SDK op is emitted per non-style op.
  */
-function patchOpsToSdkEditOps(hfId: string, ops: PatchOperation[]): EditOp[] {
+export function patchOpsToSdkEditOps(hfId: string, ops: PatchOperation[]): EditOp[] {
   const result: EditOp[] = [];
   const styles: Record<string, string | null> = {};
   let hasStyles = false;

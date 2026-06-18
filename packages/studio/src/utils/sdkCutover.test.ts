@@ -14,6 +14,7 @@ import type { MutableRefObject } from "react";
 
 vi.mock("../components/editor/manualEditingAvailability", () => ({
   STUDIO_SDK_CUTOVER_ENABLED: true,
+  STUDIO_SDK_RESOLVER_SHADOW_ENABLED: false,
 }));
 vi.mock("./studioTelemetry", () => ({
   trackStudioEvent: vi.fn(),

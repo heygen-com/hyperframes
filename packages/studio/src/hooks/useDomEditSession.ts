@@ -6,6 +6,7 @@ import type { PatchTarget } from "../utils/sourcePatcher";
 import type { SidebarTab } from "../components/sidebar/LeftSidebar";
 import type { Composition } from "@hyperframes/sdk";
 import { sdkCutoverPersist, sdkDeletePersist } from "../utils/sdkCutover";
+import { runResolverShadow } from "../utils/sdkResolverShadow";
 import { useAskAgentModal } from "./useAskAgentModal";
 import { useDomSelection } from "./useDomSelection";
 import { usePreviewInteraction } from "./usePreviewInteraction";
@@ -239,8 +240,10 @@ export function useDomEditSession({
     buildDomSelectionFromTarget,
     forceReloadSdkSession,
     onTrySdkPersist: sdkSession
-      ? (selection, operations, originalContent, targetPath, options) =>
-          sdkCutoverPersist(
+      ? (selection, operations, originalContent, targetPath, options) => {
+          // Resolver shadow runs regardless of the cutover flag — decoupled tripwire.
+          runResolverShadow(sdkSession, selection.hfId, operations);
+          return sdkCutoverPersist(
             selection,
             operations,
             originalContent,
@@ -254,7 +257,8 @@ export function useDomEditSession({
               compositionPath: activeCompPath,
             },
             options,
-          )
+          );
+        }
       : undefined,
     onTrySdkDelete: sdkSession
       ? (hfId, originalContent, targetPath) =>
