@@ -14,7 +14,7 @@
  * never writes to disk, never affects the user-visible edit.
  */
 
-import type { Composition } from "@hyperframes/sdk";
+import type { Composition, JsonPatchOp } from "@hyperframes/sdk";
 import type { PatchOperation } from "./sourcePatcher";
 import { STUDIO_SDK_RESOLVER_SHADOW_ENABLED } from "../components/editor/manualEditingAvailability";
 import { patchOpsToSdkEditOps } from "./sdkCutover";
@@ -123,9 +123,13 @@ function checkOpValue(op: PatchOperation, el: FlatEl, hfId: string): SdkResolver
 /**
  * Run the resolver shadow check against an already-open SDK session.
  *
- * Returns an array of mismatches (empty = parity). Mutates the session for
- * value-parity ops (dispatch + read-back), matching old shadow behaviour —
- * the server path remains authoritative for on-disk state.
+ * Returns an array of mismatches (empty = parity). The value-parity check
+ * dispatches the ops into the session to read the result back, then UNDOES
+ * those mutations via the captured inverse patches before returning — the
+ * session ends exactly as it started. This is essential: the session is shared
+ * with the cutover path, and a residual shadow mutation would make the
+ * subsequent sdkCutoverPersist see before === after and silently fall back to
+ * the server path. Telemetry-only; the server path stays authoritative on disk.
  *
  * Exported for unit tests; call `runResolverShadow` at call sites.
  */
@@ -144,21 +148,35 @@ export function sdkResolverShadowCheck(
   // Silently skip op batches containing unmapped types — not a resolver bug.
   if (shadowable.some((op) => !MAPPED_OP_TYPES.has(op.type))) return [];
 
+  // Capture the inverse of the shadow dispatch so we can restore the session.
+  const inverse: JsonPatchOp[] = [];
+  const stopCapture = session.on("patch", (e) => inverse.push(...e.inversePatches));
+  const restore = () => {
+    stopCapture();
+    if (inverse.length > 0) session.applyPatches(inverse);
+  };
+
   try {
     const editOps = patchOpsToSdkEditOps(hfId, shadowable);
     session.batch(() => {
       for (const op of editOps) session.dispatch(op);
     });
   } catch (err) {
+    restore();
     return [{ kind: "dispatch_error", hfId, error: String(err) }];
   }
 
   const el = session.getElement(hfId);
-  if (!el) return [{ kind: "element_not_found", hfId }];
+  if (!el) {
+    restore();
+    return [{ kind: "element_not_found", hfId }];
+  }
 
-  return shadowable
+  const mismatches = shadowable
     .map((op) => checkOpValue(op, el, hfId))
     .filter((m): m is SdkResolverMismatch => m !== null);
+  restore();
+  return mismatches;
 }
 
 // ─── Telemetry ────────────────────────────────────────────────────────────────
@@ -183,6 +201,11 @@ function redactMismatches(mismatches: SdkResolverMismatch[]): SdkResolverMismatc
  * Run the resolver shadow and emit `sdk_resolver_shadow` telemetry.
  * No-op when `STUDIO_SDK_RESOLVER_SHADOW_ENABLED` is false.
  * Never throws — any exception inside the shadow is swallowed.
+ *
+ * Side-effect-free on the live session: sdkResolverShadowCheck dispatches into
+ * the session to read values back, then undoes those mutations before returning
+ * (see below). The session is shared with the cutover path, so it MUST end the
+ * call exactly as it started.
  */
 export function runResolverShadow(
   session: Composition,

@@ -111,17 +111,34 @@ describe("B. Telemetry-only / no side effects", () => {
     expect(writeProjectFile).not.toHaveBeenCalled();
   });
 
-  it("B5: real write unaffected — sdkResolverShadowCheck output is identical with/without prior shadow dispatch", async () => {
-    // Open two sessions from the same HTML; run shadow on one, skip on other.
-    // Both sessions' element state after should agree (shadow only mutates its own session).
-    const s1 = await openComposition(BASE_HTML);
-    const s2 = await openComposition(BASE_HTML);
-    const ops: PatchOperation[] = [{ type: "inline-style", property: "color", value: "blue" }];
-    sdkResolverShadowCheck(s1, "hf-box", ops);
-    // s2 untouched: its color is still "red"
-    expect(s2.getElement("hf-box")?.inlineStyles.color).toBe("red");
-    // s1 was mutated by shadow dispatch, but s2 was not
-    expect(s1.getElement("hf-box")?.inlineStyles.color).toBe("blue");
+  it("B5: the LIVE session is restored after the check (cutover before===after stays correct)", async () => {
+    // The session is shared with the cutover path. The shadow dispatches into it
+    // to read values back, then MUST undo those mutations — otherwise the edit is
+    // pre-applied and the following sdkCutoverPersist sees before === after and
+    // silently falls back to the server path.
+    const session = await openComposition(BASE_HTML);
+    expect(session.getElement("hf-box")?.inlineStyles.color).toBe("red");
+
+    const mismatches = sdkResolverShadowCheck(session, "hf-box", [
+      { type: "inline-style", property: "color", value: "blue" },
+    ]);
+    expect(mismatches).toHaveLength(0); // SDK applied blue == expected → parity
+
+    // …but the session is back to its pre-check state, NOT left on "blue".
+    expect(session.getElement("hf-box")?.inlineStyles.color).toBe("red");
+  });
+
+  it("B5b: a real cutover-style serialize diff survives a preceding shadow run", async () => {
+    // End-to-end of the bug: shadow runs, THEN a cutover-style before/dispatch/
+    // after still produces a diff (proving shadow left no residue).
+    const session = await openComposition(BASE_HTML);
+    sdkResolverShadowCheck(session, "hf-box", [
+      { type: "inline-style", property: "color", value: "blue" },
+    ]);
+    const before = session.serialize();
+    session.dispatch({ type: "setStyle", target: "hf-box", styles: { color: "blue" } });
+    const after = session.serialize();
+    expect(after).not.toBe(before); // cutover would write, not fall back
   });
 
   it("B6: exception inside shadow never propagates to caller", async () => {
