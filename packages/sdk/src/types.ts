@@ -49,8 +49,14 @@ export interface SdkDocument {
  * Sparse map of `hfId.prop.path → value` overrides layered on top of the base template.
  * null value = removal marker (element or property deleted by user).
  * Examples: { "hf-x7k2.style.fontSize": "96px", "hf-y3a1.text": "Hello", "hf-z5k2": null }
+ *
+ * Font and image variable overrides store their object values under the var.{id} key:
+ * { "var.brand-font": { name: "Roboto", source: "https://fonts.googleapis.com/…" } }
  */
-export type OverrideSet = Record<string, string | number | boolean | null>;
+export type OverrideSet = Record<
+  string,
+  string | number | boolean | Record<string, unknown> | null
+>;
 
 // ─── can() result ─────────────────────────────────────────────────────────────
 
@@ -89,7 +95,11 @@ export type EditOp =
     }
   | { type: "setClassStyle"; selector: string; styles: Record<string, string | null> }
   | { type: "setCompositionMetadata"; width?: number; height?: number; duration?: number }
-  | { type: "setVariableValue"; id: string; value: string | number | boolean }
+  | {
+      type: "setVariableValue";
+      id: string;
+      value: string | number | boolean | FontValue | ImageValue;
+    }
   | { type: "addGsapTween"; target: HfId; tween: GsapTweenSpec }
   | { type: "setGsapTween"; animationId: string; properties: Partial<GsapTweenSpec> }
   | {
@@ -176,6 +186,24 @@ export interface ElasticHold {
   start: number;
   end: number;
   fill: "freeze" | "loop";
+}
+
+/**
+ * Object value for a `font` variable (LOCKED §7 — object-valued, never a CSS string).
+ * `name` is the CSS font-family value; `source` is the stylesheet URL to load.
+ */
+export interface FontValue {
+  name: string;
+  source: string;
+}
+
+/**
+ * Object value for an `image` variable (LOCKED §7 — object-valued, never a CSS string).
+ * `url` is the image src; additional fields (alt, fit, etc.) are forward-compatible.
+ */
+export interface ImageValue {
+  url: string;
+  [key: string]: unknown;
 }
 
 export interface GsapTweenSpec {

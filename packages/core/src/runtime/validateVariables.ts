@@ -32,6 +32,11 @@ export function validateVariables(
   return issues;
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+// fallow-ignore-next-line complexity
 function checkType(value: unknown, decl: CompositionVariable): VariableValidationIssue | null {
   switch (decl.type) {
     case "string":
@@ -77,6 +82,30 @@ function checkType(value: unknown, decl: CompositionVariable): VariableValidatio
       const allowed = decl.options.map((o) => o.value);
       if (!allowed.includes(value)) {
         return { kind: "enum-out-of-range", variableId: decl.id, allowed, actual: value };
+      }
+      return null;
+    }
+    case "font": {
+      // Font value is an object {name: string, source: string} OR a fallback string.
+      if (!isPlainObject(value) && typeof value !== "string") {
+        return {
+          kind: "type-mismatch",
+          variableId: decl.id,
+          expected: "font (object {name, source} or string)",
+          actual: jsTypeOf(value),
+        };
+      }
+      return null;
+    }
+    case "image": {
+      // Image value is an object {url: string} OR a fallback string.
+      if (!isPlainObject(value) && typeof value !== "string") {
+        return {
+          kind: "type-mismatch",
+          variableId: decl.id,
+          expected: "image (object {url} or string)",
+          actual: jsTypeOf(value),
+        };
       }
       return null;
     }

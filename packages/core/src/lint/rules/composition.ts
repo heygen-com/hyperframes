@@ -507,7 +507,7 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
         findings.push({
           code: "invalid_composition_variables_declaration",
           severity: "error",
-          message: `data-composition-variables entry [${i}] is missing or has invalid: ${missing.join(", ")}. Type must be one of string, number, color, boolean, enum.`,
+          message: `data-composition-variables entry [${i}] is missing or has invalid: ${missing.join(", ")}. Type must be one of string, number, color, boolean, enum, font, image.`,
           snippet: truncateSnippet(htmlTag.raw),
         });
       }

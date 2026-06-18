@@ -212,6 +212,21 @@ export function scalarChange(
   return { forward, inverse };
 }
 
+/**
+ * Emit forward (replace or add) + inverse (replace or remove) for any JSON-serializable value.
+ * Use instead of scalarChange when the value may be an object (e.g. font/image variable).
+ * The old value is captured whole — no sub-key diffing.
+ */
+export function valueChange(
+  path: string,
+  oldValue: unknown,
+  newValue: unknown,
+): { forward: JsonPatchOp; inverse: JsonPatchOp } {
+  const forward = oldValue == null ? patchAdd(path, newValue) : patchReplace(path, newValue);
+  const inverse = oldValue == null ? patchRemove(path) : patchReplace(path, oldValue);
+  return { forward, inverse };
+}
+
 /** Emit forward remove + inverse add for a deletion. */
 export function scalarDelete(
   path: string,

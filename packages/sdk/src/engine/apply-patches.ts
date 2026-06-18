@@ -76,6 +76,38 @@ function parsePath(path: string): ParsedPath | null {
   return null;
 }
 
+// ─── Variable JSON model helper ───────────────────────────────────────────────
+
+type VariableDecl = { id: string; default: unknown; [key: string]: unknown };
+
+/**
+ * Apply a variable value to `data-composition-variables` on
+ * `document.documentElement`. When `newDefault` is null (remove op),
+ * the variable's `default` is left unchanged (we never erase the schema;
+ * only the override is removed). When `newDefault` is a value, the matching
+ * declaration's `default` is updated in-place. No-ops gracefully when the
+ * attribute or declaration is absent.
+ */
+function applyVariableDefault(document: Document, id: string, newDefault: unknown): void {
+  const htmlEl = (document as Document & { documentElement?: Element }).documentElement;
+  if (!htmlEl) return;
+  const raw = htmlEl.getAttribute("data-composition-variables");
+  if (!raw) return;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return;
+  }
+  if (!Array.isArray(parsed)) return;
+  const arr = parsed as VariableDecl[];
+  const idx = arr.findIndex((v) => typeof v === "object" && v !== null && v.id === id);
+  if (idx < 0) return;
+  if (newDefault === null) return; // remove op: leave schema default unchanged
+  arr[idx] = { ...arr[idx]!, default: newDefault };
+  htmlEl.setAttribute("data-composition-variables", JSON.stringify(arr));
+}
+
 // ─── Patch application ───────────────────────────────────────────────────────
 
 /**
@@ -195,14 +227,12 @@ function applyOne(parsed: ParsedDocument, patch: JsonPatchOp, p: ParsedPath): vo
     }
 
     case "variable": {
-      const root = findRoot(parsed.document);
-      if (!root || !p.id) return;
-      const cssVar = `--${p.id}`;
-      if (patch.op === "remove") {
-        setElementStyles(root, { [cssVar]: null });
-      } else {
-        setElementStyles(root, { [cssVar]: String(patch.value) });
-      }
+      if (!p.id) return;
+      // B1: update the JSON model (data-composition-variables) so
+      // getVariables() returns the correct value in both preview and render.
+      // CSS compat is handled by explicit style-path patches emitted by mutate.ts,
+      // so we do NOT write CSS here — the style case above handles those patches.
+      applyVariableDefault(parsed.document, p.id, patch.op === "remove" ? null : patch.value);
       break;
     }
 

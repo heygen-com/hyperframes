@@ -7,7 +7,15 @@
  * Phase 3b (parser-backed) will add setClassStyle + 7 GSAP ops as additional handlers.
  */
 
-import type { CanResult, EditOp, GsapTweenSpec, HfId, JsonPatchOp } from "../types.js";
+import type {
+  CanResult,
+  EditOp,
+  FontValue,
+  GsapTweenSpec,
+  HfId,
+  ImageValue,
+  JsonPatchOp,
+} from "../types.js";
 import type { ParsedDocument } from "./model.js";
 import {
   resolveScoped,
@@ -37,6 +45,7 @@ import {
   styleSheetPath,
   scalarChange,
   scalarDelete,
+  valueChange,
   patchAdd,
   patchRemove,
 } from "./patches.js";
@@ -680,23 +689,116 @@ function handleSetCompositionMetadata(
   return result;
 }
 
+// ─── Variable JSON model helpers ─────────────────────────────────────────────
+
+type VariableDecl = { id: string; default: unknown; [key: string]: unknown };
+
+/**
+ * Read the current `default` value for a variable id from
+ * `document.documentElement`'s `data-composition-variables` attribute.
+ * Returns undefined when the attribute is absent, the JSON is invalid,
+ * or no entry matches the given id.
+ */
+function readVariableDefault(document: Document, id: string): unknown {
+  const htmlEl = (document as Document & { documentElement?: Element }).documentElement;
+  if (!htmlEl) return undefined;
+  const raw = htmlEl.getAttribute("data-composition-variables");
+  if (!raw) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+  if (!Array.isArray(parsed)) return undefined;
+  const entry = (parsed as unknown[]).find(
+    (v): v is VariableDecl => typeof v === "object" && v !== null && (v as VariableDecl).id === id,
+  );
+  return entry?.default;
+}
+
+/**
+ * Upsert a variable's `default` in `data-composition-variables` on
+ * `document.documentElement`. No-ops when the attribute is absent or
+ * contains no declaration for the given id (we never auto-add declarations
+ * for undeclared variables — keep the schema authoritative).
+ * Returns true when the attribute was updated.
+ */
+function writeVariableDefault(document: Document, id: string, newDefault: unknown): boolean {
+  const htmlEl = (document as Document & { documentElement?: Element }).documentElement;
+  if (!htmlEl) return false;
+  const raw = htmlEl.getAttribute("data-composition-variables");
+  if (!raw) return false;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return false;
+  }
+  if (!Array.isArray(parsed)) return false;
+  const arr = parsed as VariableDecl[];
+  const idx = arr.findIndex((v) => typeof v === "object" && v !== null && v.id === id);
+  if (idx < 0) return false; // variable not declared — don't auto-add
+  arr[idx] = { ...arr[idx]!, default: newDefault };
+  htmlEl.setAttribute("data-composition-variables", JSON.stringify(arr));
+  return true;
+}
+
+/**
+ * True when the value is a FontValue or ImageValue object
+ * (object-valued; must NOT be written as a CSS custom property).
+ */
+function isObjectVariableValue(
+  value: string | number | boolean | FontValue | ImageValue,
+): value is FontValue | ImageValue {
+  return typeof value === "object" && value !== null;
+}
+
 function handleSetVariableValue(
   parsed: ParsedDocument,
   id: string,
-  value: string | number | boolean,
+  value: string | number | boolean | FontValue | ImageValue,
 ): MutationResult {
   const root = findRoot(parsed.document);
   if (!root) return EMPTY;
 
+  const modelPath = variablePath(id);
+  const oldVarDefault = readVariableDefault(parsed.document, id);
+
+  if (isObjectVariableValue(value)) {
+    // Object values (font / image): write to JSON model only — objects are not
+    // valid CSS custom property values (LOCKED §7).
+    writeVariableDefault(parsed.document, id, value);
+    const p = valueChange(modelPath, oldVarDefault ?? null, value);
+    return { forward: [p.forward], inverse: [p.inverse] };
+  }
+
+  // Scalar values: update the JSON model (B1 — drives the runtime) and also
+  // keep the CSS custom prop as secondary / compat for compositions that
+  // CSS-bind directly to --{id}.
   const cssVar = `--${id}`;
+  const rootId = root.getAttribute("data-hf-id");
   const oldStyles = getElementStyles(root);
-  const oldValue = oldStyles[cssVar] ?? null;
+  const oldCssValue = oldStyles[cssVar] ?? null;
   const newVal = String(value);
   setElementStyles(root, { [cssVar]: newVal });
+  writeVariableDefault(parsed.document, id, value);
 
-  const path = variablePath(id);
-  const p = scalarChange(path, oldValue, newVal);
-  return { forward: [p.forward], inverse: [p.inverse] };
+  // Emit explicit patches for both the JSON model (canonical) and the CSS compat
+  // prop. Keeping them separate means apply-patches.ts can handle each path type
+  // purely (variable path → model only; style path → CSS only), so inverse patches
+  // correctly restore the exact pre-call state without CSS-side-effect ambiguity.
+  const modelP = valueChange(modelPath, oldVarDefault ?? null, value);
+  const forward: JsonPatchOp[] = [modelP.forward];
+  const inverse: JsonPatchOp[] = [modelP.inverse];
+
+  if (rootId) {
+    const cssPatch = scalarChange(stylePath(rootId, cssVar), oldCssValue, newVal);
+    forward.push(cssPatch.forward);
+    inverse.push(cssPatch.inverse);
+  }
+
+  return { forward, inverse };
 }
 
 // ─── GSAP selector helpers ───────────────────────────────────────────────────

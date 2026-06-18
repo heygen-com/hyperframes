@@ -262,7 +262,14 @@ export interface TimelineCompositionElement extends TimelineElementBase {
 }
 
 // Composition Variable Types
-export type CompositionVariableType = "string" | "number" | "color" | "boolean" | "enum";
+export type CompositionVariableType =
+  | "string"
+  | "number"
+  | "color"
+  | "boolean"
+  | "enum"
+  | "font"
+  | "image";
 
 /**
  * Runtime list of every valid `CompositionVariableType`. Use this anywhere
@@ -276,6 +283,8 @@ export const COMPOSITION_VARIABLE_TYPES = [
   "color",
   "boolean",
   "enum",
+  "font",
+  "image",
 ] as const satisfies readonly CompositionVariableType[];
 
 export interface CompositionVariableBase {
@@ -304,6 +313,8 @@ export interface NumberVariable extends CompositionVariableBase {
 export interface ColorVariable extends CompositionVariableBase {
   type: "color";
   default: string;
+  /** Brand role identifier, e.g. "color:primary". */
+  brandRole?: string;
 }
 
 export interface BooleanVariable extends CompositionVariableBase {
@@ -317,12 +328,46 @@ export interface EnumVariable extends CompositionVariableBase {
   options: { value: string; label: string }[];
 }
 
+/**
+ * Font variable — value is a `{name, source}` object (object-valued; LOCKED §7).
+ * `default` is the fallback font-family name string.
+ * `source` is the font stylesheet URL (e.g. Google Fonts CSS).
+ * `default_name` / `default_source` are the CSS-level fallbacks when the
+ * brand font is absent.
+ */
+export interface FontVariable extends CompositionVariableBase {
+  type: "font";
+  /** Fallback font-family name, e.g. "Inter". */
+  default: string;
+  /** Font stylesheet URL (e.g. Google Fonts CSS link). */
+  source?: string;
+  /** CSS font-family name to use when source is unavailable, e.g. "sans-serif". */
+  default_name?: string;
+  /** Fallback font stylesheet URL (empty string = system font). */
+  default_source?: string;
+}
+
+/**
+ * Image variable — value is a `{url, …}` object (object-valued; LOCKED §7).
+ * `default` is the fallback image URL string.
+ * `brandRole` is an optional semantic label, e.g. "logo:primary".
+ */
+export interface ImageVariable extends CompositionVariableBase {
+  type: "image";
+  /** Fallback image URL. */
+  default: string;
+  /** Brand role identifier, e.g. "logo:primary". */
+  brandRole?: string;
+}
+
 export type CompositionVariable =
   | StringVariable
   | NumberVariable
   | ColorVariable
   | BooleanVariable
-  | EnumVariable;
+  | EnumVariable
+  | FontVariable
+  | ImageVariable;
 
 export interface CompositionSpec {
   id: string;

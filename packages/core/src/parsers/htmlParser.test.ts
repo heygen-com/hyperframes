@@ -666,13 +666,9 @@ describe("extractCompositionMetadata", () => {
     expect(meta.variables[1].type).toBe("number");
   });
 
-  // T9 — CompositionVariable font/image parse (spec for R1).
-  // These tests are intentionally red until R1 adds "font" and "image" to
-  // CompositionVariableType and updates parseCompositionVariables accordingly.
-  // Currently failing (spec): tests 1, 2, 3 — filter rejects unknown types.
-  // Currently passing (baseline): test 4 — unknown type graceful rejection already works.
+  // T9 — CompositionVariable font/image parse (WS-B R1 implemented).
 
-  it.fails("[spec] parses a font variable (type: font) with name and source", () => {
+  it("parses a font variable (type: font) with name and source", () => {
     const variables = JSON.stringify([
       {
         id: "brand-font-primary",
@@ -699,7 +695,7 @@ describe("extractCompositionMetadata", () => {
     expect((v as Record<string, unknown>)?.default_source).toBe("");
   });
 
-  it.fails("[spec] parses an image variable with brandRole logo:primary", () => {
+  it("parses an image variable with brandRole logo:primary", () => {
     const variables = JSON.stringify([
       { id: "brand-logo", type: "image", label: "Logo", default: "", brandRole: "logo:primary" },
     ]);
@@ -710,7 +706,6 @@ describe("extractCompositionMetadata", () => {
     const v = meta.variables.find((x) => x.id === "brand-logo");
     expect(v).toBeDefined();
     expect(v?.type).toBe("image");
-    // TODO(R1): remove cast once ImageVariable.brandRole is typed
     expect((v as Record<string, unknown>)?.brandRole).toBe("logo:primary");
   });
 

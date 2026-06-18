@@ -4,6 +4,8 @@ export type {
   OverrideSet,
   EditOp,
   ElasticHold,
+  FontValue,
+  ImageValue,
   GsapTweenSpec,
   HfId,
   JsonPatchOp,

@@ -14,8 +14,10 @@ import type {
   EditOp,
   ElementSnapshot,
   FindQuery,
+  FontValue,
   GsapTweenSpec,
   HfId,
+  ImageValue,
   JsonPatchOp,
   OverrideSet,
   PatchEvent,
@@ -133,7 +135,7 @@ class CompositionImpl implements Composition {
     this.dispatch({ type: "removeElement", target: id });
   }
 
-  setVariableValue(id: string, value: string | number | boolean): void {
+  setVariableValue(id: string, value: string | number | boolean | FontValue | ImageValue): void {
     this.dispatch({ type: "setVariableValue", id, value });
   }
 
@@ -269,7 +271,9 @@ class CompositionImpl implements Composition {
       const key = pathToKey(p.path);
       if (key !== null) {
         this.overrides[key] =
-          p.op === "remove" ? null : (p.value as string | number | boolean | null);
+          p.op === "remove"
+            ? null
+            : (p.value as string | number | boolean | Record<string, unknown> | null);
       }
     }
 
@@ -453,7 +457,9 @@ class CompositionImpl implements Composition {
       const key = pathToKey(p.path);
       if (key !== null) {
         this.overrides[key] =
-          p.op === "remove" ? null : (p.value as string | number | boolean | null);
+          p.op === "remove"
+            ? null
+            : (p.value as string | number | boolean | Record<string, unknown> | null);
       }
     }
 

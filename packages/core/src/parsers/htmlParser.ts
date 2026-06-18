@@ -760,7 +760,8 @@ function parseCompositionVariables(htmlEl: Element): CompositionVariable[] {
     return parsed.filter((v): v is CompositionVariable => {
       if (typeof v !== "object" || v === null) return false;
       if (typeof v.id !== "string" || typeof v.label !== "string") return false;
-      if (!["string", "number", "color", "boolean", "enum"].includes(v.type)) return false;
+      if (!["string", "number", "color", "boolean", "enum", "font", "image"].includes(v.type))
+        return false;
 
       switch (v.type) {
         case "string":
@@ -773,6 +774,12 @@ function parseCompositionVariables(htmlEl: Element): CompositionVariable[] {
           return typeof v.default === "boolean";
         case "enum":
           return typeof v.default === "string" && Array.isArray(v.options);
+        case "font":
+          // default is the font-family name string; extra metadata fields are optional
+          return typeof v.default === "string";
+        case "image":
+          // default is the fallback image URL string; extra metadata fields are optional
+          return typeof v.default === "string";
         default:
           return false;
       }

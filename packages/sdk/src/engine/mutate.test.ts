@@ -31,6 +31,40 @@ function fresh() {
   return parseMutable(BASE_HTML);
 }
 
+/** Full HTML fixture with data-composition-variables for B1/B2 tests. */
+const VARIABLES_HTML = `<!DOCTYPE html>
+<html data-composition-id="c1" data-composition-duration="5" data-composition-variables='${JSON.stringify(
+  [
+    { id: "brand-color-primary", type: "color", label: "Primary color", default: "#0066cc" },
+    {
+      id: "brand-font",
+      type: "font",
+      label: "Brand font",
+      default: "Inter",
+      source: "https://fonts.googleapis.com/css2?family=Inter",
+      default_name: "sans-serif",
+      default_source: "",
+    },
+    { id: "brand-logo", type: "image", label: "Brand logo", default: "/logo.png" },
+  ],
+)}'>
+<body>
+<div data-hf-id="hf-stage" data-hf-root style="width: 1280px; height: 720px" data-duration="5">
+</div>
+</body></html>`;
+
+function freshWithVars() {
+  return parseMutable(VARIABLES_HTML);
+}
+
+/** Read the default value for a variable id from the parsed document. */
+function readVarDefault(parsed: ReturnType<typeof parseMutable>, id: string): unknown {
+  const raw = parsed.document.documentElement?.getAttribute("data-composition-variables");
+  if (!raw) return undefined;
+  const arr = JSON.parse(raw) as Array<{ id: string; default: unknown }>;
+  return arr.find((v) => v.id === id)?.default;
+}
+
 // ─── setStyle ────────────────────────────────────────────────────────────────
 
 describe("setStyle", () => {
@@ -369,7 +403,7 @@ describe("setElementStyles key normalization", () => {
 // ─── setVariableValue ─────────────────────────────────────────────────────────
 
 describe("setVariableValue", () => {
-  it("sets CSS custom property on root element", () => {
+  it("sets CSS custom property on root element (fragment doc — compat)", () => {
     const parsed = fresh();
     const result = applyOp(parsed, {
       type: "setVariableValue",
@@ -384,6 +418,122 @@ describe("setVariableValue", () => {
 
   it("override-set key maps correctly", () => {
     expect(pathToKey("/variables/brand-color-primary")).toBe("var.brand-color-primary");
+  });
+
+  // B1 — drives the JSON model (data-composition-variables)
+
+  it("B1: scalar color round-trips through override-set and runtime JSON model", () => {
+    const parsed = freshWithVars();
+    const before = serializeDocument(parsed);
+    const result = applyOp(parsed, {
+      type: "setVariableValue",
+      id: "brand-color-primary",
+      value: "#ff0000",
+    });
+    expect(result.forward[0]?.path).toBe("/variables/brand-color-primary");
+    expect(result.forward[0]?.value).toBe("#ff0000");
+    // JSON model updated
+    expect(readVarDefault(parsed, "brand-color-primary")).toBe("#ff0000");
+    // CSS compat prop also written
+    const root = parsed.document.querySelector("[data-hf-root]");
+    expect(root?.getAttribute("style")).toContain("--brand-color-primary: #ff0000");
+    // inverse restores
+    applyPatchesToDocument(parsed, result.inverse);
+    expect(serializeDocument(parsed)).toBe(before);
+  });
+
+  it("B1: scalar inverse patch restores prior value (replace → old value)", () => {
+    const parsed = freshWithVars();
+    // Set once
+    applyOp(parsed, { type: "setVariableValue", id: "brand-color-primary", value: "#ff0000" });
+    const snap = serializeDocument(parsed);
+    // Set again
+    const result2 = applyOp(parsed, {
+      type: "setVariableValue",
+      id: "brand-color-primary",
+      value: "#00ff00",
+    });
+    expect(readVarDefault(parsed, "brand-color-primary")).toBe("#00ff00");
+    applyPatchesToDocument(parsed, result2.inverse);
+    expect(serializeDocument(parsed)).toBe(snap);
+  });
+
+  // B2 — object-valued font variable
+
+  it("B2: font {name,source} object round-trips through JSON model (no CSS prop)", () => {
+    const parsed = freshWithVars();
+    const fontValue = { name: "Roboto", source: "https://fonts.googleapis.com/css2?family=Roboto" };
+    const result = applyOp(parsed, {
+      type: "setVariableValue",
+      id: "brand-font",
+      value: fontValue,
+    });
+    expect(result.forward[0]?.path).toBe("/variables/brand-font");
+    expect(result.forward[0]?.value).toEqual(fontValue);
+    // JSON model updated
+    expect(readVarDefault(parsed, "brand-font")).toEqual(fontValue);
+    // NO CSS custom prop for object values
+    const root = parsed.document.querySelector("[data-hf-root]");
+    const style = root?.getAttribute("style") ?? "";
+    expect(style).not.toContain("--brand-font");
+    // override-set key holds the object (one var.{id} key, no sub-key explosion)
+    expect(pathToKey("/variables/brand-font")).toBe("var.brand-font");
+  });
+
+  it("B2: font inverse restores prior default (object → object)", () => {
+    const parsed = freshWithVars();
+    const before = serializeDocument(parsed);
+    const fontValue = { name: "Roboto", source: "https://fonts.googleapis.com/css2?family=Roboto" };
+    const result = applyOp(parsed, {
+      type: "setVariableValue",
+      id: "brand-font",
+      value: fontValue,
+    });
+    expect(readVarDefault(parsed, "brand-font")).toEqual(fontValue);
+    applyPatchesToDocument(parsed, result.inverse);
+    expect(serializeDocument(parsed)).toBe(before);
+  });
+
+  it("B2: image {url} object round-trips through JSON model (no CSS prop)", () => {
+    const parsed = freshWithVars();
+    const imgValue = { url: "https://example.com/brand-logo.png" };
+    const result = applyOp(parsed, {
+      type: "setVariableValue",
+      id: "brand-logo",
+      value: imgValue,
+    });
+    expect(result.forward[0]?.path).toBe("/variables/brand-logo");
+    expect(result.forward[0]?.value).toEqual(imgValue);
+    expect(readVarDefault(parsed, "brand-logo")).toEqual(imgValue);
+    const root = parsed.document.querySelector("[data-hf-root]");
+    expect(root?.getAttribute("style") ?? "").not.toContain("--brand-logo");
+  });
+
+  it("B2: image inverse restores prior default", () => {
+    const parsed = freshWithVars();
+    const before = serializeDocument(parsed);
+    const result = applyOp(parsed, {
+      type: "setVariableValue",
+      id: "brand-logo",
+      value: { url: "https://example.com/new-logo.png" },
+    });
+    applyPatchesToDocument(parsed, result.inverse);
+    expect(serializeDocument(parsed)).toBe(before);
+  });
+
+  it("B1/batch: multiple setVariableValue calls fold to independent overrides", () => {
+    const parsed = freshWithVars();
+    applyOp(parsed, { type: "setVariableValue", id: "brand-color-primary", value: "#ff0000" });
+    applyOp(parsed, {
+      type: "setVariableValue",
+      id: "brand-font",
+      value: { name: "Roboto", source: "https://fonts.googleapis.com/css2?family=Roboto" },
+    });
+    expect(readVarDefault(parsed, "brand-color-primary")).toBe("#ff0000");
+    expect(readVarDefault(parsed, "brand-font")).toEqual({
+      name: "Roboto",
+      source: "https://fonts.googleapis.com/css2?family=Roboto",
+    });
   });
 });
 
