@@ -82,6 +82,8 @@ export interface UseDomEditCommitsParams {
   ) => Promise<boolean>;
   /** Stage 7 §3.1: called before the server-side delete path; returns true if SDK handled it. */
   onTrySdkDelete?: (hfId: string, originalContent: string, targetPath: string) => Promise<boolean>;
+  /** Resolver-shadow tripwire for z-index reorder targets (telemetry-only, decoupled from cutover). */
+  onReorderShadow?: (targets: string[]) => void;
 }
 
 export function useDomEditCommits({
@@ -105,6 +107,7 @@ export function useDomEditCommits({
   forceReloadSdkSession,
   onTrySdkPersist,
   onTrySdkDelete,
+  onReorderShadow,
 }: UseDomEditCommitsParams) {
   const resolveImportedFontAsset = useCallback(
     (fontFamilyValue: string): ImportedFontAsset | null => {
@@ -324,6 +327,7 @@ export function useDomEditCommits({
     reloadPreview,
     clearDomSelection,
     onTrySdkDelete,
+    onReorderShadow,
     forceReloadSdkSession,
     commitPositionPatchToHtml,
   });

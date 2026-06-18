@@ -28,6 +28,8 @@ interface UseElementLifecycleOpsParams {
   clearDomSelection: () => void;
   /** Route delete through SDK when session resolves the hf-id; returns true if handled. */
   onTrySdkDelete?: (hfId: string, originalContent: string, targetPath: string) => Promise<boolean>;
+  /** Resolver-shadow tripwire for the reordered targets (telemetry-only, decoupled from cutover). */
+  onReorderShadow?: (targets: string[]) => void;
   /** Resync the SDK session after a server-fallback delete. */
   forceReloadSdkSession?: () => void;
   commitPositionPatchToHtml: (
@@ -49,6 +51,7 @@ export function useElementLifecycleOps({
   reloadPreview,
   clearDomSelection,
   onTrySdkDelete,
+  onReorderShadow,
   forceReloadSdkSession,
   commitPositionPatchToHtml,
   onElementDeleted,
@@ -168,6 +171,11 @@ export function useElementLifecycleOps({
       }>,
     ) => {
       if (entries.length === 0) return;
+      // Resolver shadow (telemetry-only, decoupled from cutover): record whether
+      // the SDK resolves each reordered element — the reorderElements op's targets.
+      onReorderShadow?.(
+        entries.map((e) => readHfId(e.element)).filter((id): id is string => id != null),
+      );
       const coalesceKey = `z-reorder:${entries.map((e) => e.id ?? e.selector ?? e.element.getAttribute("data-hf-id") ?? "el").join(":")}`;
       for (let i = 0; i < entries.length; i++) {
         const entry = entries[i];
@@ -202,7 +210,7 @@ export function useElementLifecycleOps({
         ).catch(() => undefined);
       }
     },
-    [commitPositionPatchToHtml],
+    [commitPositionPatchToHtml, onReorderShadow],
   );
 
   return {

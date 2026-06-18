@@ -6,7 +6,7 @@ import type { PatchTarget } from "../utils/sourcePatcher";
 import type { SidebarTab } from "../components/sidebar/LeftSidebar";
 import type { Composition } from "@hyperframes/sdk";
 import { sdkCutoverPersist, sdkDeletePersist } from "../utils/sdkCutover";
-import { runResolverShadow } from "../utils/sdkResolverShadow";
+import { runResolverShadow, recordResolverParity } from "../utils/sdkResolverShadow";
 import { useAskAgentModal } from "./useAskAgentModal";
 import { useDomSelection } from "./useDomSelection";
 import { usePreviewInteraction } from "./usePreviewInteraction";
@@ -269,6 +269,14 @@ export function useDomEditSession({
             domEditSaveTimestampRef,
             compositionPath: activeCompPath,
           })
+      : undefined,
+    // Resolver shadow for the z-index reorder edit: it takes the server path (no
+    // SDK persist), but the tripwire is decoupled from cutover — record whether
+    // the SDK resolves each reordered element (the reorderElements op's targets).
+    onReorderShadow: sdkSession
+      ? (targets: string[]) => {
+          for (const target of targets) recordResolverParity(sdkSession, target, "reorderElements");
+        }
       : undefined,
   });
 
