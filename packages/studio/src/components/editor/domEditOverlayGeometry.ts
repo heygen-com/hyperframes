@@ -25,6 +25,66 @@ export function isElementVisibleForOverlay(el: HTMLElement): boolean {
   return isElementVisibleThroughAncestors(el);
 }
 
+// Sample points (as fractions of the element box) for the occlusion hit-test.
+const OCCLUSION_SAMPLE_POINTS: ReadonlyArray<readonly [number, number]> = [
+  [0.5, 0.5],
+  [0.2, 0.2],
+  [0.8, 0.2],
+  [0.2, 0.8],
+  [0.8, 0.8],
+];
+
+/** Cumulative opacity of an element through its ancestors (0 if any link is ~0). */
+function effectiveOpacity(el: Element | null, win: Window): number {
+  let opacity = 1;
+  let current: Element | null = el;
+  while (current) {
+    const op = Number.parseFloat(win.getComputedStyle(current).opacity);
+    if (Number.isFinite(op)) opacity *= op;
+    if (opacity <= 0.01) return 0;
+    current = current.parentElement;
+  }
+  return opacity;
+}
+
+/**
+ * True when the element is actually painted on screen — what the viewer sees in
+ * the preview. Extends `isElementVisibleForOverlay` (display/visibility/opacity)
+ * with an OCCLUSION test: this composition stacks scenes by z-index and fades them
+ * IN (never out), so an earlier scene's element stays opacity-1 yet is covered by a
+ * later opaque scene.
+ *
+ * Walks the painted stack (`elementsFromPoint`, top→bottom) at several sample points.
+ * A point "sees" the element if the element (or its subtree/ancestor) is reached
+ * before any unrelated element that's effectively opaque. Transparent covers (a
+ * faded-in scene still at opacity ~0) are skipped — they hit-test but don't paint.
+ * If every sampled point is blocked by an opaque cover, the element is hidden.
+ */
+export function isElementVisibleInPreview(el: HTMLElement): boolean {
+  if (!isElementVisibleForOverlay(el)) return false;
+  const doc = el.ownerDocument;
+  const win = doc.defaultView;
+  if (!win || typeof doc.elementsFromPoint !== "function") return true;
+  const rect = el.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return false;
+
+  let sampledInViewport = false;
+  for (const [fx, fy] of OCCLUSION_SAMPLE_POINTS) {
+    const x = rect.left + rect.width * fx;
+    const y = rect.top + rect.height * fy;
+    if (x < 0 || y < 0 || x > win.innerWidth || y > win.innerHeight) continue;
+    sampledInViewport = true;
+    for (const hit of doc.elementsFromPoint(x, y)) {
+      if (hit === el || el.contains(hit) || hit.contains(el)) return true; // reached, uncovered
+      if (effectiveOpacity(hit, win) > 0.01) break; // opaque cover above → this point blocked
+      // transparent cover (e.g. a scene at opacity ~0) → ignore, keep descending
+    }
+  }
+  // Every in-viewport sample was blocked by an opaque cover → occluded. If nothing
+  // was testable (off-viewport), don't hide on this basis.
+  return !sampledInViewport;
+}
+
 function readPositiveDimension(value: string | null): number | null {
   if (!value) return null;
   const parsed = Number.parseFloat(value);

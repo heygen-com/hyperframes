@@ -1563,6 +1563,67 @@ function insertInheritedStateSet(
   return recast.print(parsed.ast).code;
 }
 
+/** Marker on Studio-emitted pre-keyframe hold `set`s. `data` is a GSAP-reserved
+ * config key (attached to the tween, never applied to the target), so it carries
+ * the tag without triggering GSAP's "Invalid property" warning. */
+export const STUDIO_HOLD_MARKER = "hf-hold";
+
+/** True for a `tl.set(...)` this module emitted to hold a keyframe before its tween.
+ * The Studio filters these out so they never appear as user keyframes/diamonds. */
+export function isStudioHoldSet(anim: GsapAnimation): boolean {
+  return anim.method === "set" && anim.properties?.data === STUDIO_HOLD_MARKER;
+}
+
+/**
+ * Keep a `tl.set(selector, {x,y}, 0)` "hold" in front of every position-keyframed
+ * tween that starts after t=0, so the element holds its first keyframe's position
+ * BEFORE the tween plays instead of snapping to its CSS base (the universal NLE
+ * "hold before first keyframe" behavior). The set is tagged with `data: "hf-hold"`
+ * so this pass owns it: every call wipes the prior holds and recomputes from the
+ * current keyframes, keeping them in sync as keyframes are added/moved/deleted.
+ *
+ * Idempotent. Only position props (x/y/xPercent/yPercent) are held — opacity/scale
+ * keep their authored pre-tween behavior. A tween already starting at 0 needs no
+ * hold (no gap before it).
+ */
+export function syncPositionHoldsBeforeKeyframes(script: string): string {
+  let parsed: ParsedGsap;
+  try {
+    parsed = parseGsapScript(script);
+  } catch {
+    return script;
+  }
+  // 1. Drop every hold this pass previously emitted, so we recompute fresh.
+  let result = script;
+  const staleHoldIds = parsed.animations.filter(isStudioHoldSet).map((a) => a.id);
+  for (const id of staleHoldIds) result = removeAnimationFromScript(result, id);
+
+  // 2. Re-add a hold for each position-keyframed tween that starts after t=0.
+  let reparsed: ParsedGsap;
+  try {
+    reparsed = parseGsapScript(result);
+  } catch {
+    return result;
+  }
+  for (const anim of reparsed.animations) {
+    if (!anim.keyframes) continue;
+    const start = anim.resolvedStart ?? (typeof anim.position === "number" ? anim.position : 0);
+    if (!(start > 0.001)) continue;
+    const firstKf = [...anim.keyframes.keyframes].sort((a, b) => a.percentage - b.percentage)[0];
+    if (!firstKf) continue;
+    const posProps: Record<string, number | string> = {};
+    for (const [k, v] of Object.entries(firstKf.properties)) {
+      if (classifyPropertyGroup(k) === "position" && typeof v === "number") posProps[k] = v;
+    }
+    if (Object.keys(posProps).length === 0) continue;
+    result = insertInheritedStateSet(result, anim.targetSelector, 0, {
+      ...posProps,
+      data: STUDIO_HOLD_MARKER,
+    });
+  }
+  return result;
+}
+
 // ── Split Animation Functions ─────────────────────────────────────────────
 
 export interface SplitAnimationsOptions {
@@ -1640,8 +1701,16 @@ export function splitAnimationsInScript(
     }
 
     if (animEnd <= opts.splitTime) {
-      for (const [k, v] of Object.entries(anim.properties)) {
-        inheritedProps[k] = v;
+      // A completed .from() reverts the element to its natural state, so its
+      // recorded properties are the HIDDEN start (e.g. opacity:0), not the
+      // resting state — clearing them keeps the clone at its natural value
+      // instead of pinning it to the from-values (which made it invisible).
+      if (anim.method === "from") {
+        for (const k of Object.keys(anim.properties)) delete inheritedProps[k];
+      } else {
+        for (const [k, v] of Object.entries(anim.properties)) {
+          inheritedProps[k] = v;
+        }
       }
       continue;
     }
@@ -1967,6 +2036,43 @@ export function removeKeyframeFromScript(
   animationId: string,
   percentage: number,
 ): string {
+  // Array-form keyframes (`keyframes: [{x,y}, …]`) have no explicit percentages —
+  // GSAP distributes them evenly. The object-form path below can't see them
+  // (findKeyframesObjectNode only matches ObjectExpression), so removing from an
+  // array-form tween silently no-op'd. Resolve the element by its implicit
+  // percentage and splice it; collapse to a flat tween when fewer than two remain.
+  const arrLoc = locateAnimationWithFallback(script, animationId);
+  // findPropertyNode here returns the property's VALUE node directly.
+  const arrVal = arrLoc && findPropertyNode(arrLoc.target.call.varsArg, "keyframes");
+  if (arrLoc && arrVal?.type === "ArrayExpression") {
+    const elements: AstNode[] = (arrVal.elements ?? []).filter(
+      (e: AstNode | null): e is AstNode => !!e && e.type === "ObjectExpression",
+    );
+    const n = elements.length;
+    if (n === 0) return script;
+    let matchIdx = -1;
+    let bestDist = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < n; i++) {
+      const pct = n > 1 ? (i / (n - 1)) * 100 : 0;
+      const dist = Math.abs(pct - percentage);
+      if (dist <= PCT_TOLERANCE && dist < bestDist) {
+        matchIdx = i;
+        bestDist = dist;
+      }
+    }
+    if (matchIdx === -1) return script;
+    const remaining = elements.filter((_, i) => i !== matchIdx);
+    if (remaining.length < 2) {
+      const sole = remaining[0];
+      const record = sole ? objectExpressionToRecord(sole, arrLoc.parsed.scope) : {};
+      collapseKeyframesToFlat(arrLoc.target.call.varsArg, record);
+    } else {
+      const realIdx = arrVal.elements.indexOf(elements[matchIdx]);
+      arrVal.elements.splice(realIdx, 1);
+    }
+    return recast.print(arrLoc.parsed.ast).code;
+  }
+
   const ctx = locateKeyframeCtx(script, animationId, percentage);
   if (!ctx) return script;
   const { loc, kfNode } = ctx;
@@ -2344,6 +2450,173 @@ export function updateArcSegmentInScript(
   }
 
   return recast.print(loc.parsed.ast).code;
+}
+
+/**
+ * Move a single motionPath waypoint (anchor) to a new position. The waypoint
+ * list is normalized to anchors for both straight and cubic paths, so
+ * `pointIndex` matches the node order the studio overlay renders; cubic control
+ * points are preserved. No-op when the animation/arc is missing or the index is
+ * out of range.
+ */
+export function updateMotionPathPointInScript(
+  script: string,
+  animationId: string,
+  pointIndex: number,
+  point: { x: number; y: number },
+): string {
+  const loc = locateAnimation(script, animationId);
+  if (!loc) return script;
+
+  const anim = loc.target.animation;
+  if (!anim.arcPath?.enabled) return script;
+
+  const waypoints = extractArcWaypoints(anim);
+  if (pointIndex < 0 || pointIndex >= waypoints.length || waypoints.length < 2) return script;
+
+  const nextWaypoints = waypoints.map((wp, i) =>
+    i === pointIndex ? { x: point.x, y: point.y } : wp,
+  );
+
+  const motionPathCode = buildMotionPathObjectCode({
+    waypoints: nextWaypoints,
+    segments: anim.arcPath.segments,
+    autoRotate: anim.arcPath.autoRotate,
+  });
+
+  const varsArg = loc.target.call.varsArg;
+  const existingProp = varsArg.properties.find(
+    (p: AstNode) => isObjectProperty(p) && propKeyName(p) === "motionPath",
+  );
+  if (existingProp) {
+    existingProp.value = parseExpr(motionPathCode);
+  }
+
+  return recast.print(loc.parsed.ast).code;
+}
+
+/** True when any segment carries explicit cubic control points. Add/remove are
+ *  restricted to curviness (non-cubic) paths — synthesizing control points for
+ *  an inserted cubic anchor is out of scope. */
+function hasCubicSegments(segments: ArcPathSegment[]): boolean {
+  return segments.some((s) => s.cp1 != null || s.cp2 != null);
+}
+
+function writeMotionPathValue(
+  loc: NonNullable<ReturnType<typeof locateAnimation>>,
+  waypoints: Array<{ x: number; y: number }>,
+  segments: ArcPathSegment[],
+  autoRotate: boolean | number,
+): string {
+  const motionPathCode = buildMotionPathObjectCode({ waypoints, segments, autoRotate });
+  const varsArg = loc.target.call.varsArg;
+  const existingProp = varsArg.properties.find(
+    (p: AstNode) => isObjectProperty(p) && propKeyName(p) === "motionPath",
+  );
+  if (existingProp) existingProp.value = parseExpr(motionPathCode);
+  return recast.print(loc.parsed.ast).code;
+}
+
+/**
+ * Insert a waypoint at `index` (between existing anchors), splitting the segment
+ * it lands on so the new neighbor inherits its curviness. Non-cubic paths only.
+ * No-op for missing animation/arc, out-of-range index, or cubic paths.
+ */
+export function addMotionPathPointInScript(
+  script: string,
+  animationId: string,
+  index: number,
+  point: { x: number; y: number },
+): string {
+  const loc = locateAnimation(script, animationId);
+  if (!loc) return script;
+  const anim = loc.target.animation;
+  if (!anim.arcPath?.enabled || hasCubicSegments(anim.arcPath.segments)) return script;
+
+  const waypoints = extractArcWaypoints(anim);
+  // Insert strictly between two anchors: index 1..length-1.
+  if (index < 1 || index > waypoints.length - 1) return script;
+
+  const segments = [...anim.arcPath.segments];
+  waypoints.splice(index, 0, { x: point.x, y: point.y });
+  const splitCurviness = segments[index - 1]?.curviness ?? 1;
+  segments.splice(index - 1, 0, { curviness: splitCurviness });
+
+  return writeMotionPathValue(loc, waypoints, segments, anim.arcPath.autoRotate);
+}
+
+/**
+ * Remove the waypoint at `index`. Refuses to drop below two anchors (a path
+ * can't have fewer). Non-cubic paths only. No-op for missing animation/arc,
+ * out-of-range index, cubic paths, or a 2-point path.
+ */
+export function removeMotionPathPointInScript(
+  script: string,
+  animationId: string,
+  index: number,
+): string {
+  const loc = locateAnimation(script, animationId);
+  if (!loc) return script;
+  const anim = loc.target.animation;
+  if (!anim.arcPath?.enabled || hasCubicSegments(anim.arcPath.segments)) return script;
+
+  const waypoints = extractArcWaypoints(anim);
+  if (waypoints.length <= 2 || index < 0 || index >= waypoints.length) return script;
+
+  const segments = [...anim.arcPath.segments];
+  waypoints.splice(index, 1);
+  // Drop the segment on the side that still exists (last anchor → preceding segment).
+  segments.splice(Math.min(index, segments.length - 1), 1);
+
+  return writeMotionPathValue(loc, waypoints, segments, anim.arcPath.autoRotate);
+}
+
+/**
+ * Author a fresh 2-anchor motionPath tween on a target element: a straight line
+ * from the element's home (0,0) to `point`, gentle ease, ready for waypoint
+ * editing. Mirrors `addAnimationWithKeyframesToScript`.
+ */
+export function addMotionPathToScript(
+  script: string,
+  targetSelector: string,
+  position: number,
+  duration: number,
+  point: { x: number; y: number },
+  ease = "power1.inOut",
+): { script: string; id: string } {
+  let parsed: ParsedGsapAst;
+  try {
+    parsed = parseGsapAst(script);
+  } catch (e) {
+    console.warn("[gsap-parser] addMotionPathToScript parse failed:", e);
+    return { script, id: "" };
+  }
+  if (parsed.located.length === 0 && parsed.detection.timelineVar === null) {
+    return { script, id: "" };
+  }
+
+  const motionPathCode = buildMotionPathObjectCode({
+    waypoints: [
+      { x: 0, y: 0 },
+      { x: point.x, y: point.y },
+    ],
+    segments: [{ curviness: 1 }],
+    autoRotate: false,
+  });
+  const selector = JSON.stringify(targetSelector);
+  const varEntries = [
+    `motionPath: ${motionPathCode}`,
+    `duration: ${valueToCode(duration)}`,
+    `ease: ${JSON.stringify(ease)}`,
+  ];
+  const stmtCode = `${parsed.timelineVar}.to(${selector}, { ${varEntries.join(", ")} }, ${valueToCode(position)});`;
+  const newStatement = parseScript(stmtCode).program.body[0];
+  insertAfterAnchor(parsed, newStatement);
+
+  const result = recast.print(parsed.ast).code;
+  const reParsed = parseGsapAst(result);
+  const newId = reParsed.located[reParsed.located.length - 1]?.id ?? "";
+  return { script: result, id: newId };
 }
 
 export function removeArcPathFromScript(script: string, animationId: string): string {

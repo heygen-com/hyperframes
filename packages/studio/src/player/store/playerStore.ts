@@ -327,7 +327,16 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   setTimelineReady: (ready) => set({ timelineReady: ready }),
   setBeatDragging: (dragging) => set({ beatDragging: dragging }),
   setElements: (elements) => set({ elements }),
-  setSelectedElementId: (id) => set({ selectedElementId: id }),
+  setSelectedElementId: (id) =>
+    set((s) =>
+      // Selecting a different element drops any active keyframe selection — otherwise
+      // a stale activeKeyframePct from a prior diamond click would force the next drag
+      // to "modify" a keyframe on the new element. A diamond click sets the pct AFTER
+      // calling setSelectedElementId, so this never clobbers a genuine keyframe select.
+      id !== s.selectedElementId
+        ? { selectedElementId: id, activeKeyframePct: null }
+        : { selectedElementId: id },
+    ),
   updateElement: (elementId, updates) =>
     set((state) => ({
       elements: state.elements.map((el) =>
@@ -361,3 +370,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       clipParentMap: new Map(),
     }),
 }));
+
+// Bug-bash aid: expose the store so a reproduction can dump live state from the
+// console, e.g. `__playerStore.getState().selectedElementId`. Harmless read
+// handle; no behavioural effect.
+if (typeof window !== "undefined") {
+  (window as unknown as { __playerStore?: typeof usePlayerStore }).__playerStore = usePlayerStore;
+}

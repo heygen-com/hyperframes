@@ -32,6 +32,17 @@ export function computeCurrentPercentage(
   return computeElementPercentage(usePlayerStore.getState().currentTime, selection, animation);
 }
 
+// When a drag edits a SELECTED keyframe, park the playhead on that keyframe's exact
+// time. Otherwise the playhead can sit a frame outside the tween (e.g. 1.1666 vs a
+// 1.2 start), so the post-commit reseek renders the element's base pose and the edit
+// looks like it snapped away. Keeping the playhead on the edited keyframe avoids that.
+export function parkPlayheadOnKeyframe(anim: GsapAnimation, pct: number): void {
+  const ts = resolveTweenStart(anim);
+  const td = resolveTweenDuration(anim);
+  if (ts == null || !td || td <= 0) return;
+  usePlayerStore.getState().requestSeek(roundTo3(ts + (pct / 100) * td));
+}
+
 // ── Dynamic keyframe materialization ──────────────────────────────────────
 
 export async function materializeIfDynamic(
@@ -93,6 +104,7 @@ async function extendTweenAndAddKeyframe(
   tweenDuration: number,
   callbacks: GsapDragCommitCallbacks,
   beforeReload?: () => void,
+  backfillDefaults?: Record<string, number>,
 ): Promise<void> {
   const tweenEnd = tweenStart + tweenDuration;
   const newStart = Math.min(targetTime, tweenStart);
@@ -104,7 +116,13 @@ async function extendTweenAndAddKeyframe(
   for (const kf of existingKfs) {
     const absTime = tweenStart + (kf.percentage / 100) * tweenDuration;
     const newPct = Math.round(((absTime - newStart) / newDuration) * 1000) / 10;
-    remappedKfs.push({ percentage: newPct, properties: { ...kf.properties } });
+    const props: Record<string, number | string> = { ...kf.properties };
+    // Backfill props the new keyframe introduces but this one lacks, so GSAP
+    // doesn't hold the new prop's value across keyframes that omit it.
+    for (const k of Object.keys(properties)) {
+      if (!(k in props) && backfillDefaults?.[k] != null) props[k] = backfillDefaults[k];
+    }
+    remappedKfs.push({ percentage: newPct, properties: props });
   }
 
   const targetPct = Math.round(((targetTime - newStart) / newDuration) * 1000) / 10;
@@ -133,9 +151,11 @@ async function commitKeyframedPosition(
   properties: Record<string, number>,
   callbacks: GsapDragCommitCallbacks,
   beforeReload?: () => void,
+  backfillDefaults?: Record<string, number>,
 ): Promise<void> {
   const { activeKeyframePct, setActiveKeyframePct } = usePlayerStore.getState();
-  const pct = activeKeyframePct ?? computeCurrentPercentage(selection, anim);
+  const computedPct = computeCurrentPercentage(selection, anim);
+  const pct = activeKeyframePct ?? computedPct;
   await callbacks.commitMutation(
     selection,
     {
@@ -143,10 +163,18 @@ async function commitKeyframedPosition(
       animationId: anim.id,
       percentage: pct,
       properties,
+      // Backfill any newly-introduced prop (e.g. `y` on an x-only tween) into the
+      // OTHER keyframes at the element's base value. Without it, GSAP holds the new
+      // prop's value across keyframes that omit it — so editing one keyframe drags
+      // the others to the same position.
+      ...(backfillDefaults ? { backfillDefaults } : {}),
     },
     { label: `Move layer (keyframe ${pct}%)`, softReload: true, beforeReload },
   );
-  if (activeKeyframePct != null) setActiveKeyframePct(null);
+  if (activeKeyframePct != null) {
+    setActiveKeyframePct(null);
+    parkPlayheadOnKeyframe(anim, pct);
+  }
 }
 
 /**
@@ -162,11 +190,16 @@ async function commitFlatViaKeyframes(
   beforeReload?: () => void,
   iframe?: HTMLIFrameElement | null,
   selector?: string,
+  backfillDefaults?: Record<string, number>,
 ): Promise<void> {
   const ct = usePlayerStore.getState().currentTime;
   const ts = resolveTweenStart(anim);
   const td = resolveTweenDuration(anim);
-  const outsideRange = ts !== null && td > 0 && (ct < ts - 0.01 || ct > ts + td + 0.01);
+  // A flat tween shows two diamonds (0% / 100%). If the user selected one and then
+  // dragged, modify THAT endpoint — don't extend or place at the drifted playhead.
+  const { activeKeyframePct, setActiveKeyframePct } = usePlayerStore.getState();
+  const outsideRange =
+    activeKeyframePct == null && ts !== null && td > 0 && (ct < ts - 0.01 || ct > ts + td + 0.01);
 
   // Read the runtime position at the tween's start time so the 0% keyframe
   // captures the actual interpolated value (e.g. x=300 after a preceding slide),
@@ -180,6 +213,13 @@ async function commitFlatViaKeyframes(
       const timelines = iframeWin?.__timelines;
       const mainTl = timelines ? (Object.values(timelines)[0] as any) : null;
       if (gsapLib && el && mainTl?.seek) {
+        // Clear the live drag's gsap overrides first. Otherwise a property the
+        // tween doesn't animate (e.g. `y` on a flat `to({x})`) keeps the dragged
+        // value through the seek and pollutes the 0% keyframe (it would start at
+        // the dropped position instead of animating there). After clearing, the
+        // seek reapplies the timeline's real interpolated values for animated
+        // props, and untweened props fall back to their base (0).
+        gsapLib.set(el, { clearProps: Object.keys(properties).join(",") });
         mainTl.seek(ts);
         for (const key of Object.keys(properties)) {
           const v = Number(gsapLib.getProperty(el, key));
@@ -193,50 +233,42 @@ async function commitFlatViaKeyframes(
   }
 
   if (outsideRange && ts !== null) {
-    // Outside the tween's range: add a brand new keyframed tween at the drag
-    // time instead of extending/replacing the existing one. This keeps all
-    // existing tweens untouched and creates a clean hold at the dragged position.
-    const tweenEnd = ts + td;
-    const holdStart = ct > tweenEnd ? tweenEnd : ct;
-    const holdEnd = ct > tweenEnd ? ct : ts;
-    const holdDur = Math.max(0.01, holdEnd - holdStart);
-    const kfs =
-      ct > tweenEnd
-        ? [
-            { percentage: 0, properties: resolvedFromValues },
-            { percentage: 100, properties },
-          ]
-        : [
-            { percentage: 0, properties },
-            { percentage: 100, properties: resolvedFromValues },
-          ];
-    console.log(
-      "[drag:5] outside range — adding new tween",
-      JSON.stringify({
-        ct,
-        ts,
-        td,
-        holdStart: roundTo3(holdStart),
-        holdDur: roundTo3(holdDur),
-        from: resolvedFromValues,
-        to: properties,
-      }),
-    );
+    // Outside the tween's range: EXTEND the existing tween to reach the playhead
+    // instead of spawning a parallel tween (which left the element with two
+    // competing tweens, so edits hit one while the selected keyframe lived on the
+    // other). Convert the flat tween to keyframes, then extend + add at the
+    // playhead — existing keyframes keep their absolute times.
+    const coalesceKey = `gsap:convert-drag:${anim.id}`;
     await callbacks.commitMutation(
       selection,
       {
-        type: "add-with-keyframes",
-        targetSelector: anim.targetSelector,
-        position: roundTo3(holdStart),
-        duration: roundTo3(holdDur),
-        keyframes: kfs,
+        type: "convert-to-keyframes",
+        animationId: anim.id,
+        ...(Object.keys(resolvedFromValues).length > 0 ? { resolvedFromValues } : {}),
       },
-      { label: "Move layer (new keyframe)", softReload: true, beforeReload },
+      { label: "Convert to keyframes for drag", skipReload: true, coalesceKey },
+    );
+    const fresh = callbacks.fetchAnimations ? await callbacks.fetchAnimations() : [];
+    const converted =
+      fresh.find((a) => a.targetSelector === anim.targetSelector && a.keyframes) ?? anim;
+    const convertedStart = resolveTweenStart(converted) ?? ts;
+    const convertedDur = resolveTweenDuration(converted) || td;
+    await extendTweenAndAddKeyframe(
+      selection,
+      converted,
+      properties,
+      ct,
+      convertedStart,
+      convertedDur,
+      callbacks,
+      beforeReload,
     );
     return;
   }
 
-  // Inside range: convert the flat tween to keyframes, then add at current %.
+  // Inside range (or a selected endpoint): convert the flat tween to keyframes,
+  // then add/modify at the target %. A selected diamond pins the % to that endpoint
+  // (0 / 100) so the drag edits it exactly; otherwise use the playhead %.
   const coalesceKey = `gsap:convert-drag:${anim.id}`;
   await callbacks.commitMutation(
     selection,
@@ -247,7 +279,9 @@ async function commitFlatViaKeyframes(
     },
     { label: "Convert to keyframes for drag", skipReload: true, coalesceKey },
   );
-  const pct = computeCurrentPercentage(selection, anim);
+  const pct = activeKeyframePct ?? computeCurrentPercentage(selection, anim);
+  const editedSelected = activeKeyframePct != null;
+  if (editedSelected) setActiveKeyframePct(null);
 
   await callbacks.commitMutation(
     selection,
@@ -256,9 +290,11 @@ async function commitFlatViaKeyframes(
       animationId: anim.id,
       percentage: pct,
       properties,
+      ...(backfillDefaults ? { backfillDefaults } : {}),
     },
     { label: `Move layer (keyframe ${pct}%)`, softReload: true, beforeReload, coalesceKey },
   );
+  if (editedSelected) parkPlayheadOnKeyframe(anim, pct);
 }
 
 // ── Main drag commit ──────────────────────────────────────────────────────
@@ -302,6 +338,9 @@ export async function commitGsapPositionFromDrag(
     el.removeAttribute("data-hf-drag-initial-offset-y");
   };
 
+  // The element's base (un-animated) pose — used to backfill any prop the drag
+  // newly introduces (e.g. `y` on an x-only tween) into the other keyframes.
+  const backfillDefaults: Record<string, number> = { x: baseGsapX, y: baseGsapY };
   const ct = usePlayerStore.getState().currentTime;
   if (anim.keyframes) {
     const newId = await materializeIfDynamic(anim, iframe, callbacks.commitMutation, selection);
@@ -311,7 +350,10 @@ export async function commitGsapPositionFromDrag(
     const ts = resolveTweenStart(effectiveAnim);
     const td = resolveTweenDuration(effectiveAnim);
     const outsideRange = ts !== null && td > 0 && (ct < ts - 0.01 || ct > ts + td + 0.01);
-    if (outsideRange) {
+    // A selected keyframe (clicked diamond) means "modify THIS keyframe" — never
+    // extend, even if the playhead drifted a frame past the tween's end.
+    const hasSelectedKeyframe = usePlayerStore.getState().activeKeyframePct != null;
+    if (outsideRange && !hasSelectedKeyframe) {
       await extendTweenAndAddKeyframe(
         selection,
         effectiveAnim,
@@ -321,15 +363,26 @@ export async function commitGsapPositionFromDrag(
         td,
         callbacks,
         restoreOffset,
+        backfillDefaults,
       );
     } else {
-      await commitKeyframedPosition(selection, effectiveAnim, dragProps, callbacks, restoreOffset);
+      await commitKeyframedPosition(
+        selection,
+        effectiveAnim,
+        dragProps,
+        callbacks,
+        restoreOffset,
+        backfillDefaults,
+      );
     }
   } else if (anim.method === "from" || anim.method === "fromTo") {
     const ct = usePlayerStore.getState().currentTime;
     const ts = resolveTweenStart(anim);
     const td = resolveTweenDuration(anim);
-    const outsideRange = ts !== null && td > 0 && (ct < ts - 0.01 || ct > ts + td + 0.01);
+    // A selected keyframe means "modify it" — skip the extend/split branch.
+    const hasSelectedKeyframe = usePlayerStore.getState().activeKeyframePct != null;
+    const outsideRange =
+      !hasSelectedKeyframe && ts !== null && td > 0 && (ct < ts - 0.01 || ct > ts + td + 0.01);
     const dragProps: Record<string, number> = { x: newX, y: newY };
 
     if (outsideRange && ts !== null) {
@@ -359,6 +412,7 @@ export async function commitGsapPositionFromDrag(
             posTd,
             callbacks,
             restoreOffset,
+            backfillDefaults,
           );
           return;
         }
@@ -389,19 +443,26 @@ export async function commitGsapPositionFromDrag(
       }
       keyframes.sort((a, b) => a.percentage - b.percentage);
 
+      // REPLACE the split position `from()` tween with the keyframed one (same id)
+      // instead of adding a parallel tween. Two position tweens on the same element
+      // fight on the shared axis — the leftover `from()` snaps to its natural state
+      // on the soft-reload re-seek, which is the visible "jump" after dropping.
+      const baseKf = {
+        targetSelector: anim.targetSelector,
+        position: roundTo3(newStart),
+        duration: roundTo3(newDuration),
+        keyframes,
+      };
       await callbacks.commitMutation(
         selection,
-        {
-          type: "add-with-keyframes",
-          targetSelector: anim.targetSelector,
-          position: roundTo3(newStart),
-          duration: roundTo3(newDuration),
-          keyframes,
-        },
+        existingPosAnim
+          ? { type: "replace-with-keyframes", animationId: existingPosAnim.id, ...baseKf }
+          : { type: "add-with-keyframes", ...baseKf },
         { label: "Move layer (from extended)", softReload: true, beforeReload: restoreOffset },
       );
     } else {
-      // Inside tween range: convert then add keyframe at current time
+      // Inside tween range (or a selected keyframe): convert then add/modify at
+      // the selected endpoint % if one is active, else the playhead %.
       const coalesceKey = `gsap:convert-drag:${anim.id}`;
       await callbacks.commitMutation(
         selection,
@@ -411,7 +472,9 @@ export async function commitGsapPositionFromDrag(
         },
         { label: "Convert from() for drag", skipReload: true, coalesceKey },
       );
-      const pct = computeCurrentPercentage(selection, anim);
+      const { activeKeyframePct, setActiveKeyframePct } = usePlayerStore.getState();
+      const pct = activeKeyframePct ?? computeCurrentPercentage(selection, anim);
+      if (activeKeyframePct != null) setActiveKeyframePct(null);
       await callbacks.commitMutation(
         selection,
         {
@@ -419,6 +482,7 @@ export async function commitGsapPositionFromDrag(
           animationId: anim.id,
           percentage: pct,
           properties: dragProps,
+          ...(backfillDefaults ? { backfillDefaults } : {}),
         },
         {
           label: `Move layer (keyframe ${pct}%)`,
@@ -437,6 +501,7 @@ export async function commitGsapPositionFromDrag(
       restoreOffset,
       iframe,
       selector,
+      backfillDefaults,
     );
   }
 }

@@ -4,7 +4,11 @@ import {
   getAllPreviewTargetsFromPointer,
   getPreviewTargetFromPointer,
 } from "../utils/studioPreviewHelpers";
-import { findMatchingTimelineElementId, type RightPanelTab } from "../utils/studioHelpers";
+import {
+  findMatchingTimelineElementId,
+  findTimelineIdByAncestor,
+  type RightPanelTab,
+} from "../utils/studioHelpers";
 import {
   domEditSelectionsTargetSame,
   domEditSelectionInGroup,
@@ -178,10 +182,13 @@ export function useDomSelection({
           setRightCollapsed(false);
           setRightPanelTab("design");
         }
-        const nextSelectedTimelineId = findMatchingTimelineElementId(
-          nextSelection,
-          timelineElements,
-        );
+        const nextSelectedTimelineId =
+          findMatchingTimelineElementId(nextSelection, timelineElements) ??
+          findTimelineIdByAncestor(
+            nextSelection.element,
+            timelineElements,
+            nextSelection.sourceFile || "index.html",
+          );
         setSelectedTimelineElementId(nextSelectedTimelineId);
         return;
       }

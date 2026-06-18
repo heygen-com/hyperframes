@@ -1,0 +1,222 @@
+// HyperFrames — Zed workspace settings.
+// Reference: https://zed.dev/docs/reference/all-settings
+//
+// House rules baked in (see CLAUDE.md):
+//   • Formatting/linting is oxfmt + oxlint — NOT prettier, eslint, or biome.
+//   • Package manager is bun. Indent is 2 spaces. Conventional commits.
+// oxfmt runs via the project-local binary in stdin→stdout mode, so format-on-save
+// uses the exact same formatter as CI (`bunx oxfmt`), no global install needed.
+{
+  "$schema": "https://zed.dev/schema/settings/v0.json",
+
+  // ── Appearance ──────────────────────────────────────────────────────────
+  "theme": {
+    "mode": "system",
+    "light": "One Light",
+    "dark": "One Dark"
+  },
+  "icon_theme": "Zed (Default)",
+  "buffer_font_family": "Zed Plex Mono",
+  "buffer_font_size": 14,
+  "buffer_font_features": { "calt": true, "liga": true },
+  "buffer_line_height": "comfortable",
+  "ui_font_family": "Zed Plex Sans",
+  "ui_font_size": 15,
+  "cursor_blink": false,
+  "current_line_highlight": "all",
+  "selection_highlight": true,
+  "unnecessary_code_fade": 0.5,
+
+  // ── Editor behaviour ────────────────────────────────────────────────────
+  "tab_size": 2,
+  "hard_tabs": false,
+  "soft_wrap": "none",
+  "preferred_line_length": 100,
+  "wrap_guides": [100],
+  "show_wrap_guides": true,
+  "show_whitespaces": "selection",
+  "use_autoclose": true,
+  "auto_save": "off",
+  "format_on_save": "on",
+  "remove_trailing_whitespace_on_save": true,
+  "ensure_final_newline_on_save": true,
+  "indent_guides": { "enabled": true, "coloring": "indent_aware" },
+  "scrollbar": {
+    "show": "auto",
+    "git_diff": true,
+    "selected_text": true,
+    "selected_symbol": true,
+    "diagnostics": "all"
+  },
+  "minimap": {
+    "show": "auto",
+    "thumb": "hover",
+    "max_width_columns": 80
+  },
+  "inlay_hints": {
+    "enabled": true,
+    "show_type_hints": true,
+    "show_parameter_hints": true,
+    "show_other_hints": true,
+    "edit_debounce_ms": 700,
+    "scroll_debounce_ms": 50
+  },
+
+  // ── Formatter: oxfmt (project-local, stdin mode) ────────────────────────
+  // Applied per-language to the JS/TS/JSON family only — never prettier.
+  // The command path is relative to the worktree root.
+  "formatter": {
+    "external": {
+      "command": "node_modules/.bin/oxfmt",
+      "arguments": ["--stdin-filepath", "{buffer_path}"]
+    }
+  },
+
+  // ── Per-language ────────────────────────────────────────────────────────
+  "languages": {
+    "TypeScript": {
+      "tab_size": 2,
+      "formatter": {
+        "external": {
+          "command": "node_modules/.bin/oxfmt",
+          "arguments": ["--stdin-filepath", "{buffer_path}"]
+        }
+      }
+    },
+    "TSX": {
+      "tab_size": 2,
+      "formatter": {
+        "external": {
+          "command": "node_modules/.bin/oxfmt",
+          "arguments": ["--stdin-filepath", "{buffer_path}"]
+        }
+      }
+    },
+    "JavaScript": {
+      "tab_size": 2,
+      "formatter": {
+        "external": {
+          "command": "node_modules/.bin/oxfmt",
+          "arguments": ["--stdin-filepath", "{buffer_path}"]
+        }
+      }
+    },
+    "JSON": {
+      "tab_size": 2,
+      "formatter": {
+        "external": {
+          "command": "node_modules/.bin/oxfmt",
+          "arguments": ["--stdin-filepath", "{buffer_path}"]
+        }
+      }
+    },
+    "JSONC": {
+      "tab_size": 2,
+      "formatter": {
+        "external": {
+          "command": "node_modules/.bin/oxfmt",
+          "arguments": ["--stdin-filepath", "{buffer_path}"]
+        }
+      }
+    },
+    // HyperFrames compositions are hand-authored / exported HTML with inlined
+    // runtime — never auto-format them (it would mangle the export). Tailwind
+    // class completion still works via the LSP below.
+    "HTML": { "tab_size": 2, "format_on_save": "off", "formatter": "language_server" },
+    "CSS": { "tab_size": 2, "format_on_save": "off" },
+    "Markdown": {
+      "format_on_save": "off",
+      "soft_wrap": "editor_width",
+      "remove_trailing_whitespace_on_save": false
+    },
+    "YAML": { "tab_size": 2, "format_on_save": "off" }
+  },
+
+  // ── Language servers ────────────────────────────────────────────────────
+  "lsp": {
+    // TypeScript (vtsls) — richer inlay hints; bump server memory for the monorepo.
+    "vtsls": {
+      "settings": {
+        "typescript": {
+          "tsserver": { "maxTsServerMemory": 8192 },
+          "preferences": { "importModuleSpecifier": "shortest" },
+          "inlayHints": {
+            "parameterNames": { "enabled": "literals" },
+            "variableTypes": { "enabled": false },
+            "propertyDeclarationTypes": { "enabled": true },
+            "functionLikeReturnTypes": { "enabled": true },
+            "enumMemberValues": { "enabled": true }
+          }
+        }
+      }
+    },
+    // Tailwind v4 (browser runtime) — recognise class names inside cva/clsx/cn
+    // helpers and template strings used across the studio UI.
+    "tailwindcss-language-server": {
+      "settings": {
+        "tailwindCSS": {
+          "experimental": {
+            "classRegex": [
+              ["cva\\(([^)]*)\\)", "[\"'`]([^\"'`]*).*?[\"'`]"],
+              ["cx\\(([^)]*)\\)", "(?:'|\"|`)([^']*)(?:'|\"|`)"],
+              ["(?:cn|clsx|twMerge)\\(([^)]*)\\)", "[\"'`]([^\"'`]*)[\"'`]"]
+            ]
+          }
+        }
+      }
+    }
+  },
+
+  // ── Panels & tabs ───────────────────────────────────────────────────────
+  "tabs": { "git_status": true, "file_icons": true, "close_position": "right" },
+  "tab_bar": { "show_nav_history_buttons": false },
+  "project_panel": {
+    "dock": "left",
+    "default_width": 260,
+    "auto_reveal_entries": true,
+    "indent_size": 16,
+    "scrollbar": { "show": "auto" }
+  },
+  "outline_panel": { "dock": "right" },
+  "git_panel": { "dock": "left" },
+  "collaboration_panel": { "dock": "left" },
+
+  // ── Git ─────────────────────────────────────────────────────────────────
+  "git": {
+    "git_gutter": "tracked_files",
+    "inline_blame": { "enabled": true, "delay_ms": 600 }
+  },
+
+  // ── Terminal (bun-first) ────────────────────────────────────────────────
+  "terminal": {
+    "font_family": "Zed Plex Mono",
+    "font_size": 13,
+    "blinking": "off",
+    "copy_on_select": true,
+    "env": { "FORCE_COLOR": "1" }
+  },
+
+  // ── Search / indexing: skip generated & heavy dirs ──────────────────────
+  "file_scan_exclusions": [
+    "**/.git",
+    "**/node_modules",
+    "**/dist",
+    "**/build",
+    "**/.turbo",
+    "**/.next",
+    "**/coverage",
+    "**/renders",
+    "**/*.mp4",
+    "**/*.webm",
+    "**/.DS_Store",
+    "**/Thumbs.db"
+  ],
+  "file_types": {
+    "JSONC": ["tsconfig*.json", ".zed/*.json", ".vscode/*.json", "*.jsonc"]
+  },
+
+  // ── Misc ────────────────────────────────────────────────────────────────
+  "telemetry": { "metrics": false },
+  "auto_update": true,
+  "restore_on_startup": "last_session"
+}

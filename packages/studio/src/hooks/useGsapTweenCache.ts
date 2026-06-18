@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import type { GsapAnimation, GsapKeyframesData, ParsedGsap } from "@hyperframes/core/gsap-parser";
 import type { GsapPercentageKeyframe } from "@hyperframes/core/gsap-parser";
+import { isStudioHoldSet } from "@hyperframes/core/gsap-parser";
 import { usePlayerStore } from "../player/store/playerStore";
 import { readRuntimeKeyframes, scanAllRuntimeKeyframes } from "./gsapRuntimeBridge";
 import {
@@ -107,7 +108,12 @@ export async function fetchParsedAnimations(
     const res = await fetch(
       `/api/projects/${encodeURIComponent(projectId)}/gsap-animations/${encodeURIComponent(sourceFile)}`,
     );
-    return res.ok ? ((await res.json()) as ParsedGsap) : null;
+    if (!res.ok) return null;
+    const parsed = (await res.json()) as ParsedGsap;
+    // Studio-emitted pre-keyframe hold `set`s are an internal runtime detail (they
+    // hold an element's first keyframe before its tween). They must not surface as
+    // user animations — otherwise they pollute the keyframe cache / timeline diamonds.
+    return { ...parsed, animations: parsed.animations.filter((a) => !isStudioHoldSet(a)) };
   } catch {
     return null;
   }

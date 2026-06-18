@@ -18,6 +18,10 @@ import {
   tryGsapRotationIntercept,
 } from "./gsapRuntimeBridge";
 import { useAnimatedPropertyCommit } from "./useAnimatedPropertyCommit";
+import {
+  useGsapSaveFailureTelemetry,
+  useSafeGsapCommitMutation,
+} from "./useSafeGsapCommitMutation";
 import type { CommitMutation } from "./gsapScriptCommitTypes";
 
 export interface UseGsapAwareEditingParams {
@@ -98,17 +102,6 @@ export function useGsapAwareEditing({
   const handleGsapAwarePathOffsetCommit = useCallback(
     async (selection: DomEditSelection, next: { x: number; y: number }) => {
       const hasGsapAnims = selectedGsapAnimations.length > 0;
-      console.log(
-        "[drag:3] handleGsapAwarePathOffsetCommit",
-        JSON.stringify({
-          sel: selection.id,
-          offset: next,
-          hasGsapAnims,
-          interceptEnabled: STUDIO_GSAP_DRAG_INTERCEPT_ENABLED,
-          animCount: selectedGsapAnimations.length,
-          animIds: selectedGsapAnimations.map((a) => a.id).slice(0, 5),
-        }),
-      );
       if (hasGsapAnims && !STUDIO_GSAP_DRAG_INTERCEPT_ENABLED) {
         showToast(GSAP_CSS_FALLBACK_BLOCKED_MESSAGE, "error");
         throw new Error(GSAP_CSS_FALLBACK_BLOCKED_MESSAGE);
@@ -232,13 +225,24 @@ export function useGsapAwareEditing({
   );
 
   // ── Thin commitMutation facade ──
+  // Routes through the canonical safe wrapper so a server-save failure surfaces a
+  // toast + save telemetry instead of silently reverting — parity with the
+  // arc/keyframe/animation ops that all go through useSafeGsapCommitMutation.
+
+  const noopCommit = useCallback<CommitMutation>(async () => {}, []);
+  const trackGsapSaveFailure = useGsapSaveFailureTelemetry(null);
+  const safeGsapCommit = useSafeGsapCommitMutation(
+    gsapCommitMutation ?? noopCommit,
+    trackGsapSaveFailure,
+    showToast,
+  );
 
   const commitMutation = useCallback(
     async (mutation: Record<string, unknown>, options: { label: string; softReload?: boolean }) => {
       if (!domEditSelection) return;
-      await gsapCommitMutation?.(domEditSelection, mutation, options);
+      safeGsapCommit(domEditSelection, mutation, options);
     },
-    [domEditSelection, gsapCommitMutation],
+    [domEditSelection, safeGsapCommit],
   );
 
   // Unroll all computed (helper/loop) tweens in the active timeline into literal

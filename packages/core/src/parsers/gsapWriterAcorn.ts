@@ -963,6 +963,53 @@ function collapseKeyframesToFlat(
   ms.overwrite(varsNode.start, varsNode.end, `{ ${entries.join(", ")} }`);
 }
 
+/** Implicit tween-relative percentage of array-form keyframe index `i` of `n`
+ *  (GSAP distributes array keyframes evenly: 0%, 1/(n-1), …, 100%). */
+function arrayKeyframePct(i: number, n: number): number {
+  return n > 1 ? (i / (n - 1)) * 100 : 0;
+}
+
+// Array-form keyframes (`keyframes: [{x,y}, …]`) carry no explicit percentages —
+// GSAP distributes them evenly. removeKeyframeFromScript only handled the
+// object-form (`keyframes: { "50%": {…} }`), so removing from an array-form tween
+// was a silent no-op (and the downstream hold-sync then stranded an `hf-hold`).
+// Resolve the element by its implicit percentage and splice it out; collapse to a
+// flat tween when fewer than two remain (parity with the object-form path).
+function removeArrayKeyframe(
+  ms: MagicString,
+  varsArg: Node,
+  arrNode: Node,
+  script: string,
+  percentage: number,
+): boolean {
+  const elements: Node[] = (arrNode.elements ?? []).filter(
+    (e: Node | null): e is Node => !!e && e.type === "ObjectExpression",
+  );
+  const n = elements.length;
+  if (n === 0) return false;
+
+  let matchIdx = -1;
+  let bestDist = Number.POSITIVE_INFINITY;
+  for (let i = 0; i < n; i++) {
+    const dist = Math.abs(arrayKeyframePct(i, n) - percentage);
+    if (dist <= PCT_TOLERANCE && dist < bestDist) {
+      matchIdx = i;
+      bestDist = dist;
+    }
+  }
+  if (matchIdx === -1) return false;
+
+  const remaining = elements.filter((_, i) => i !== matchIdx);
+  if (remaining.length < 2) {
+    const sole = remaining[0];
+    const record = sole ? valueNodeToRecord(sole, script) : {};
+    collapseKeyframesToFlat(ms, varsArg, script, record);
+    return true;
+  }
+  removeProp(ms, elements[matchIdx], elements);
+  return true;
+}
+
 export function removeKeyframeFromScript(
   script: string,
   animationId: string,
@@ -974,7 +1021,16 @@ export function removeKeyframeFromScript(
   if (!target) return script;
 
   const kfPropNode = findPropertyNode(target.call.varsArg, "keyframes");
-  if (!kfPropNode || kfPropNode.value?.type !== "ObjectExpression") return script;
+  if (!kfPropNode) return script;
+
+  if (kfPropNode.value?.type === "ArrayExpression") {
+    const ms = new MagicString(script);
+    return removeArrayKeyframe(ms, target.call.varsArg, kfPropNode.value, script, percentage)
+      ? ms.toString()
+      : script;
+  }
+
+  if (kfPropNode.value?.type !== "ObjectExpression") return script;
   const kfNode = kfPropNode.value;
 
   const match = findKfPropByPct(kfNode, percentage);

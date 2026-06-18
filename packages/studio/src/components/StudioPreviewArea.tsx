@@ -3,6 +3,8 @@ import { NLELayout } from "./nle/NLELayout";
 import { CaptionOverlay } from "../captions/components/CaptionOverlay";
 import { CaptionTimeline } from "../captions/components/CaptionTimeline";
 import { DomEditOverlay } from "./editor/DomEditOverlay";
+import { MotionPathOverlay } from "./editor/MotionPathOverlay";
+import { useCompositionDimensions } from "../hooks/useCompositionDimensions";
 import { SnapToolbar } from "./editor/SnapToolbar";
 import { StudioFeedbackBar } from "./StudioFeedbackBar";
 import type { TimelineElement } from "../player";
@@ -10,6 +12,7 @@ import { usePlayerStore } from "../player/store/playerStore";
 import type { BlockedTimelineEditIntent } from "../player/components/timelineEditing";
 import {
   STUDIO_INSPECTOR_PANELS_ENABLED,
+  STUDIO_KEYFRAMES_ENABLED,
   STUDIO_PREVIEW_MANUAL_EDITING_ENABLED,
   STUDIO_PREVIEW_SELECTION_ENABLED,
 } from "./editor/manualEditingAvailability";
@@ -108,6 +111,7 @@ export function StudioPreviewArea({
     isPlaying,
     refreshPreviewDocumentVersion,
   } = useStudioPlaybackContext();
+  const compositionDimensions = useCompositionDimensions();
 
   const {
     domEditHoverSelection,
@@ -337,6 +341,14 @@ export function StudioPreviewArea({
                     onToggleRecording={onToggleRecording}
                   />
                   <SnapToolbar onSnapChange={setSnapPrefs} />
+                  {STUDIO_KEYFRAMES_ENABLED && (
+                    <MotionPathOverlay
+                      iframeRef={previewIframeRef}
+                      selection={shouldShowSelectedDomBounds ? domEditSelection : null}
+                      compositionSize={compositionDimensions}
+                      isPlaying={isPlaying}
+                    />
+                  )}
                   {gestureOverlay}
                 </>
               ) : null
