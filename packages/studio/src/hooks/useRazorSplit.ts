@@ -38,13 +38,21 @@ async function splitHtmlElement(
   patchTarget: NonNullable<ReturnType<typeof buildPatchTarget>>,
   splitTime: number,
   newId: string,
+  elementStart: number,
+  elementDuration: number,
 ): Promise<{ ok: boolean; changed?: boolean; content?: string }> {
   const response = await fetch(
     `/api/projects/${projectId}/file-mutations/split-element/${encodeURIComponent(targetPath)}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ target: patchTarget, splitTime, newId }),
+      body: JSON.stringify({
+        target: patchTarget,
+        splitTime,
+        newId,
+        elementStart,
+        elementDuration,
+      }),
     },
   );
   if (!response.ok) throw new Error("Split request failed");
@@ -114,7 +122,15 @@ async function executeSplit(
   const originalContent = await readFileContent(pid, targetPath);
   const newId = generateSplitId(collectHtmlIds(originalContent), element.domId || "clip");
 
-  const splitResult = await splitHtmlElement(pid, targetPath, patchTarget, splitTime, newId);
+  const splitResult = await splitHtmlElement(
+    pid,
+    targetPath,
+    patchTarget,
+    splitTime,
+    newId,
+    element.start,
+    element.duration,
+  );
   if (!splitResult.ok) throw new Error("Failed to split clip.");
   if (!splitResult.changed) {
     return { targetPath, originalContent, patchedContent: originalContent, changed: false };

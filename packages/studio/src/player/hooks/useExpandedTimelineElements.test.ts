@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildExpandedElements } from "./useExpandedTimelineElements";
+import { buildTimelineElementKey } from "../lib/timelineElementHelpers";
 import type { TimelineElement } from "../store/playerStore";
 import type { ClipManifestClip } from "../lib/playbackTypes";
 
@@ -87,5 +88,38 @@ describe("buildExpandedElements", () => {
     const child = out.find((e) => e.domId === "D")!;
     expect(child.expandedParentStart).toBe(13); // C's start, not B's 12 or A's 10
     expect(child.sourceFile).toBe("c.html"); // C's file, not b.html or a.html
+  });
+
+  // Regression: an expanded child must share one identity (`key`) with the flat
+  // store element for the same DOM id. Before the fix the child key fell back to
+  // the colon form (`index.html:eyebrow:N`) while the store/selection used the
+  // hash form (`index.html#eyebrow`), so clicking an expanded child never
+  // highlighted it (isSelected compares the two keys).
+  it("keys expanded children in hash form, matching the flat store element", () => {
+    // Single composition (no sub-comps): scene `s1` with same-file children.
+    const elements = [el({ id: "s1", domId: "s1", start: 0, duration: 14 })];
+    const manifest = [
+      clip({ id: "s1", start: 0, duration: 14 }),
+      clip({ id: "eyebrow", start: 0, duration: 14 }),
+      clip({ id: "title", start: 0, duration: 14 }),
+    ];
+    const parentMap = new Map([
+      ["eyebrow", "s1"],
+      ["title", "s1"],
+    ]);
+
+    const out = buildExpandedElements(elements, manifest, parentMap, "s1", "s1");
+    const child = out.find((e) => e.domId === "eyebrow")!;
+
+    const expectedStoreKey = buildTimelineElementKey({
+      id: "eyebrow",
+      fallbackIndex: 0,
+      domId: "eyebrow",
+      selector: "#eyebrow",
+      sourceFile: undefined,
+    });
+    expect(expectedStoreKey).toBe("index.html#eyebrow");
+    expect(child.key).toBe("index.html#eyebrow");
+    expect(child.key).toBe(expectedStoreKey);
   });
 });

@@ -55,7 +55,9 @@ function readElementPosition(
   const element = sel.element;
   if (!element?.isConnected || !gsap?.getProperty) return result;
 
-  const props = anim ? Object.keys(anim.properties) : ["x", "y", "opacity"];
+  // ponytail: a brand-new tween captures position only — bundling opacity made it
+  // a mixed group that the position-only drag intercept couldn't resolve.
+  const props = anim ? Object.keys(anim.properties) : ["x", "y"];
   for (const prop of props) {
     const val = Number(gsap.getProperty(element, prop));
     if (!Number.isFinite(val)) continue;
@@ -63,6 +65,32 @@ function readElementPosition(
   }
 
   return result;
+}
+
+/**
+ * Range for a brand-new keyframe tween created via "Enable keyframes" on an element
+ * with no existing animation. "Add a keyframe" must land at the PLAYHEAD.
+ *
+ * The runtime auto-stamps `data-start="0"` + `data-duration=<rootDuration>` on every
+ * timeline element, so we can't treat `data-start` as authored timing (doing so put
+ * the keyframe at 0). Instead, clamp the playhead into the element's [start, end]
+ * range: the auto-stamp's full-composition range passes the playhead through
+ * unchanged, while a genuinely narrow authored clip still clamps sensibly.
+ */
+export function resolveNewTweenRange(
+  authoredStart: string | undefined,
+  authoredDuration: string | undefined,
+  currentTime: number,
+): { start: number; duration: number } {
+  const t = Math.max(0, roundTo3(currentTime));
+  const start = authoredStart != null ? Number.parseFloat(authoredStart) : Number.NaN;
+  const duration = authoredDuration != null ? Number.parseFloat(authoredDuration) : Number.NaN;
+  if (!Number.isFinite(start) || !Number.isFinite(duration) || duration <= 0) {
+    return { start: t, duration: 1 };
+  }
+  const end = start + duration;
+  const clampedStart = Math.min(Math.max(t, start), end);
+  return { start: clampedStart, duration: Math.max(0.5, roundTo3(end - clampedStart)) };
 }
 
 async function fetchAnimationsForElement(sel: DomEditSelection): Promise<GsapAnimation[]> {
@@ -122,9 +150,11 @@ export function useEnableKeyframes(
       }
     } else {
       const position = readElementPosition(iframe, sel, null);
-      const pct = computeElementPercentage(t, sel);
-      const elStart = Number.parseFloat(sel.dataAttributes?.start ?? "0") || 0;
-      const elDuration = Number.parseFloat(sel.dataAttributes?.duration ?? "1") || 1;
+      const { start: elStart, duration: elDuration } = resolveNewTweenRange(
+        sel.dataAttributes?.start,
+        sel.dataAttributes?.duration,
+        t,
+      );
       const selector = selectorFromSelection(sel);
 
       if (!selector) {
@@ -135,19 +165,13 @@ export function useEnableKeyframes(
       if (Object.keys(position).length === 0) {
         position.x = 0;
         position.y = 0;
-        position.opacity = 1;
       }
 
+      // One keyframe at the playhead — a single diamond capturing the current
+      // value. Motion comes from the user adding/dragging more keyframes later;
+      // creating 0%+100% up front showed two diamonds for a single "add keyframe".
       const keyframes: Array<{ percentage: number; properties: Record<string, number | string> }> =
         [{ percentage: 0, properties: { ...position } }];
-      if (pct > 1 && pct < 99) {
-        keyframes.push({ percentage: pct, properties: { ...position } });
-      }
-      keyframes.push({
-        percentage: 100,
-        properties: { ...position },
-        auto: true,
-      } as (typeof keyframes)[number]);
 
       if (session.commitMutation) {
         await session.commitMutation(

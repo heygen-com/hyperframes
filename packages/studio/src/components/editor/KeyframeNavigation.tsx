@@ -3,9 +3,12 @@ import { KeyframeDiamond, type DiamondState } from "./KeyframeDiamond";
 
 interface KeyframeNavigationProps {
   property: string;
-  /** All keyframes for this element's tween, or null if no keyframes exist */
+  /** All keyframes for this element's tween, or null if no keyframes exist.
+   *  `percentage` is clip-relative (element lifetime) for display/seek;
+   *  `tweenPercentage` is the tween-relative value the writer/runtime key on. */
   keyframes: Array<{
     percentage: number;
+    tweenPercentage?: number;
     properties: Record<string, number | string>;
     ease?: string;
   }> | null;
@@ -18,6 +21,26 @@ interface KeyframeNavigationProps {
 }
 
 const TOLERANCE = 0.5;
+
+/**
+ * Convert a clip-relative percentage (element lifetime, used for display/seek) to
+ * the TWEEN-relative percentage the GSAP writer/runtime key on. The clip→tween
+ * map is linear, recovered from the keyframes' own (percentage, tweenPercentage)
+ * pairs. Falls back to the input when there's no usable mapping (e.g. parser
+ * keyframes that are already tween-relative, or fewer than two anchors).
+ */
+export function clipToTweenPercentage(
+  keyframes: ReadonlyArray<{ percentage: number; tweenPercentage?: number }>,
+  clipPct: number,
+): number {
+  const mapped = keyframes.filter((kf) => typeof kf.tweenPercentage === "number");
+  if (mapped.length < 2) return clipPct;
+  const a = mapped[0]!;
+  const b = mapped[mapped.length - 1]!;
+  if (b.percentage === a.percentage) return a.tweenPercentage!;
+  const slope = (b.tweenPercentage! - a.tweenPercentage!) / (b.percentage - a.percentage);
+  return a.tweenPercentage! + (clipPct - a.percentage) * slope;
+}
 
 function ArrowLeft({ disabled }: { disabled: boolean }) {
   return (
@@ -94,13 +117,20 @@ export const KeyframeNavigation = memo(function KeyframeNavigation({
     diamondState = "ghost";
   }
 
+  // Keyframe add/remove are keyed by TWEEN-relative percentage (what the GSAP
+  // writer + runtime use), not the clip-relative `currentPercentage` used for
+  // display/seek. Removing on an existing keyframe uses its own tweenPercentage;
+  // adding converts the clip-relative playhead through the keyframes' own
+  // clip→tween linear mapping. Passing clip-relative % made the mutation miss
+  // every keyframe (off by the tween's offset/scale) → a silent no-op on disk
+  // while the optimistic cache hid it, so the motion path never refreshed.
   const handleDiamondClick = () => {
     if (diamondState === "ghost") {
       onConvertToKeyframes();
-    } else if (diamondState === "active") {
-      onRemoveKeyframe(currentPercentage);
+    } else if (diamondState === "active" && atCurrent) {
+      onRemoveKeyframe(atCurrent.tweenPercentage ?? atCurrent.percentage);
     } else {
-      onAddKeyframe(currentPercentage);
+      onAddKeyframe(clipToTweenPercentage(propertyKeyframes, currentPercentage));
     }
   };
 
