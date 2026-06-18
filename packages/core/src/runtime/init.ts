@@ -1643,43 +1643,64 @@ export function initSandboxRuntimeModular(): void {
   let maybePublishRenderReady = () => {
     window.__renderReady = false;
   };
-  let authoredRenderReadyPromise: PromiseLike<unknown> | null = null;
-  let authoredRenderReadySettled = true;
+  // Internal adapter-readiness tracking. Adapters with outstanding async work
+  // (Three.js `DefaultLoadingManager`, future fetch/font/image detectors) expose
+  // a `getReadyPromise()` method; the runtime waits for whatever they return
+  // before publishing render-ready. This is purely internal — there is no
+  // authored-code-facing flag (LLMs should not need to know about render
+  // readiness, the framework handles async asset gating automatically).
+  let trackedAdapterReadyPromise: PromiseLike<unknown> | null = null;
+  let trackedAdapterReadySettled = true;
 
-  const getAuthoredRenderReadyPromise = (): PromiseLike<unknown> | null => {
-    const ready = window.__hyperframesReady;
-    if (ready == null) return null;
-    if (typeof ready !== "object" && typeof ready !== "function") return null;
-    return typeof (ready as { then?: unknown }).then === "function"
-      ? (ready as PromiseLike<unknown>)
-      : null;
+  const collectAdapterReadyPromises = (): PromiseLike<unknown>[] => {
+    const promises: PromiseLike<unknown>[] = [];
+    for (const adapter of state.deterministicAdapters) {
+      const getter = adapter.getReadyPromise;
+      if (typeof getter !== "function") continue;
+      try {
+        const p = getter();
+        if (p) promises.push(p);
+      } catch (err) {
+        // A throwing readiness gate must not permanently block render; swallow
+        // and continue, matching the rest of the runtime's adapter-resilience
+        // pattern.
+        swallow("runtime.init.adapterReady", err);
+      }
+    }
+    return promises;
   };
 
-  const isAuthoredRenderReadySettled = (): boolean => {
-    const ready = getAuthoredRenderReadyPromise();
-    if (!ready) {
-      authoredRenderReadyPromise = null;
-      authoredRenderReadySettled = true;
+  const isAdapterReadinessSettled = (): boolean => {
+    const promises = collectAdapterReadyPromises();
+    if (promises.length === 0) {
+      trackedAdapterReadyPromise = null;
+      trackedAdapterReadySettled = true;
       return true;
     }
-    if (ready !== authoredRenderReadyPromise) {
-      authoredRenderReadyPromise = ready;
-      authoredRenderReadySettled = false;
-      void Promise.resolve(ready).then(
+    // Combine multiple adapter promises so we only attach a single resume
+    // handler. Identity is stable as long as the inputs are stable (each
+    // adapter is expected to return the same promise on repeat calls while
+    // its work is in flight).
+    const combined: PromiseLike<unknown> =
+      promises.length === 1 ? promises[0] : Promise.all(promises);
+    if (combined !== trackedAdapterReadyPromise) {
+      trackedAdapterReadyPromise = combined;
+      trackedAdapterReadySettled = false;
+      void Promise.resolve(combined).then(
         () => {
-          if (authoredRenderReadyPromise !== ready) return;
-          authoredRenderReadySettled = true;
+          if (trackedAdapterReadyPromise !== combined) return;
+          trackedAdapterReadySettled = true;
           maybePublishRenderReady();
         },
         (err) => {
-          if (authoredRenderReadyPromise !== ready) return;
-          authoredRenderReadySettled = true;
-          swallow("runtime.init.authoredRenderReady", err);
+          if (trackedAdapterReadyPromise !== combined) return;
+          trackedAdapterReadySettled = true;
+          swallow("runtime.init.adapterReady", err);
           maybePublishRenderReady();
         },
       );
     }
-    return authoredRenderReadySettled;
+    return trackedAdapterReadySettled;
   };
 
   if (!externalCompositionsReady) {
@@ -1944,11 +1965,17 @@ export function initSandboxRuntimeModular(): void {
   };
 
   maybePublishRenderReady = () => {
-    if (
-      !externalCompositionsReady ||
-      window.__hfTimelinesBuilding ||
-      !isAuthoredRenderReadySettled()
-    ) {
+    if (!externalCompositionsReady || window.__hfTimelinesBuilding) {
+      window.__renderReady = false;
+      return;
+    }
+    // Re-run discover so adapters can refresh their state from the current
+    // DOM — e.g. the Three.js adapter only hooks `DefaultLoadingManager` once
+    // it sees `window.THREE`, which may have loaded AFTER the initial
+    // bootstrap discover. Discover is idempotent in every adapter, so a
+    // second call here is cheap.
+    runAdapters("discover", state.currentTime);
+    if (!isAdapterReadinessSettled()) {
       window.__renderReady = false;
       return;
     }

@@ -236,6 +236,25 @@ export type RuntimeDeterministicAdapter = {
   pause: () => void;
   play?: () => void;
   revert?: () => void;
+  /**
+   * Optional async readiness gate. If the adapter has outstanding async work
+   * (e.g. Three.js's `DefaultLoadingManager` still loading models/textures),
+   * return a promise that settles when the work is done. The runtime waits
+   * for the returned promise to settle before publishing
+   * `window.__renderReady = true`, so the engine doesn't capture empty
+   * frames while assets are still loading.
+   *
+   * Return `null` (or omit the method) when nothing is pending. The runtime
+   * calls this on every readiness-publish evaluation and tracks promise
+   * identity, so returning the same promise on repeated calls is the
+   * expected contract — return a fresh promise only when a new wait is
+   * actually needed (e.g. a new batch of items has been queued).
+   *
+   * Throwing or rejecting is safe: the runtime swallows the error and
+   * proceeds to publish (matching the existing failure-doesn't-block-render
+   * convention).
+   */
+  getReadyPromise?: () => PromiseLike<unknown> | null;
 };
 
 export type RuntimeGsapSetTarget = string | Element | Element[] | null;

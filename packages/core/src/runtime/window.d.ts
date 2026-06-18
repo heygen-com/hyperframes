@@ -38,12 +38,6 @@ declare global {
     };
     __playerReady?: boolean;
     __renderReady?: boolean;
-    /**
-     * Optional authored readiness gate. If set to a promise-like value before
-     * render readiness is published, HyperFrames waits for it to settle before
-     * exposing `window.__renderReady = true` to the renderer.
-     */
-    __hyperframesReady?: PromiseLike<unknown> | null;
     __hfRuntimeTeardown?: (() => void) | null;
     __HF_PARITY_MODE?: boolean;
     __HF_FPS?: number;
