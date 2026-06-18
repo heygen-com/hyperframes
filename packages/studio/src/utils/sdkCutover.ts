@@ -34,10 +34,24 @@ const RESERVED_CUTOVER_ATTRS = new Set<string>([
   "data-hold-fill",
 ]);
 
+// The attribute name the SDK setAttribute op carries for this patch op (or null
+// if the op isn't an attribute). Shared by patchOpsToSdkEditOps and the reserved
+// gate so the name they reason about can't drift: a bare `attribute` op is
+// force-prefixed `data-`; an `html-attribute` op keeps its raw name.
+function sdkAttrName(op: PatchOperation): string | null {
+  if (op.type === "attribute") {
+    return op.property.startsWith("data-") ? op.property : `data-${op.property}`;
+  }
+  if (op.type === "html-attribute") return op.property;
+  return null;
+}
+
 function mapsToReservedAttr(op: PatchOperation): boolean {
-  if (op.type !== "attribute") return false;
-  const name = op.property.startsWith("data-") ? op.property : `data-${op.property}`;
-  return RESERVED_CUTOVER_ATTRS.has(name);
+  const name = sdkAttrName(op);
+  // Lowercase to match the SDK's validateSetAttribute (it lowercases before the
+  // reserved check), so "DATA-START" is declined up front too; covers both
+  // `attribute` (prefixed) and `html-attribute` (raw) ops.
+  return name !== null && RESERVED_CUTOVER_ATTRS.has(name.toLowerCase());
 }
 
 /**
@@ -57,15 +71,11 @@ function patchOpsToSdkEditOps(hfId: string, ops: PatchOperation[]): EditOp[] {
       hasStyles = true;
     } else if (op.type === "text-content") {
       result.push({ type: "setText", target: hfId, value: op.value ?? "" });
-    } else if (op.type === "attribute") {
-      result.push({
-        type: "setAttribute",
-        target: hfId,
-        name: op.property.startsWith("data-") ? op.property : `data-${op.property}`,
-        value: op.value,
-      });
-    } else if (op.type === "html-attribute") {
-      result.push({ type: "setAttribute", target: hfId, name: op.property, value: op.value });
+    } else if (op.type === "attribute" || op.type === "html-attribute") {
+      const name = sdkAttrName(op);
+      if (name !== null) {
+        result.push({ type: "setAttribute", target: hfId, name, value: op.value });
+      }
     }
   }
 

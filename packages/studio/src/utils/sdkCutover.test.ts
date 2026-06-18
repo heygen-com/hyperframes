@@ -85,6 +85,18 @@ describe("shouldUseSdkCutover", () => {
     expect(shouldUseSdkCutover(true, true, "hf-abc", [attrOp("data-start", "1")])).toBe(false);
   });
 
+  it("declines a case-variant reserved attribute (SDK lowercases before checking)", () => {
+    // attribute op "END" → "data-END" → lower → "data-end" (reserved).
+    expect(shouldUseSdkCutover(true, true, "hf-abc", [attrOp("END", "2")])).toBe(false);
+  });
+
+  it("declines an html-attribute op whose raw name is reserved", () => {
+    // html-attribute ops aren't data-prefixed, so a raw reserved name must still
+    // be caught (the SDK throws on it just the same).
+    expect(shouldUseSdkCutover(true, true, "hf-abc", [htmlAttrOp("data-end", "3")])).toBe(false);
+    expect(shouldUseSdkCutover(true, true, "hf-abc", [htmlAttrOp("DATA-START", "1")])).toBe(false);
+  });
+
   it("returns true when ops mix all supported types", () => {
     expect(
       shouldUseSdkCutover(true, true, "hf-abc", [
