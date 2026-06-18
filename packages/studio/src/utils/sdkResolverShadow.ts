@@ -10,14 +10,15 @@
  * this class; this tripwire exists specifically to catch it.
  *
  * Decoupled from `STUDIO_SDK_CUTOVER_ENABLED`. Gated by its own flag
- * `STUDIO_SDK_RESOLVER_SHADOW_ENABLED` (default false). Telemetry-only —
- * never writes to disk, never affects the user-visible edit.
+ * `STUDIO_SDK_RESOLVER_SHADOW_ENABLED` (default ON during the soak — collect
+ * wild telemetry; flip off / remove once resolver parity is proven).
+ * Telemetry-only — never writes to disk, never affects the user-visible edit.
  */
 
 import type { Composition, JsonPatchOp } from "@hyperframes/sdk";
 import type { PatchOperation } from "./sourcePatcher";
 import { STUDIO_SDK_RESOLVER_SHADOW_ENABLED } from "../components/editor/manualEditingAvailability";
-import { patchOpsToSdkEditOps } from "./sdkCutover";
+import { patchOpsToSdkEditOps } from "./sdkOpMapping";
 import { trackStudioEvent } from "./studioTelemetry";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -220,6 +221,38 @@ export function runResolverShadow(
       hfId,
       mismatchCount: mismatches.length,
       mismatches: JSON.stringify(redactMismatches(mismatches)),
+    });
+  } catch {
+    // never propagate from the shadow path
+  }
+}
+
+/**
+ * Record element-resolution parity for an element-targeted op WITHOUT
+ * dispatching. Read-only: emits a single `element_not_found` event when the SDK
+ * can't resolve a target the server path is addressing. This extends the
+ * tripwire beyond the DOM-edit path (runResolverShadow) to the other
+ * element-targeted cutover chokepoints — timing, delete, GSAP-tween add — for
+ * the headline resolver signal, without the cost/mutation of a value check.
+ *
+ * No-op when the shadow flag is off; never throws; never mutates the session.
+ */
+export function recordResolverParity(
+  session: Composition | null | undefined,
+  hfId: string | null | undefined,
+  opLabel: string,
+): void {
+  if (!STUDIO_SDK_RESOLVER_SHADOW_ENABLED) return;
+  if (!session || !hfId) return;
+  try {
+    if (session.getElement(hfId)) return; // resolves — parity, nothing to record
+    trackStudioEvent("sdk_resolver_shadow", {
+      hfId,
+      opLabel,
+      mismatchCount: 1,
+      mismatches: JSON.stringify([
+        { kind: "element_not_found", hfId } satisfies SdkResolverMismatch,
+      ]),
     });
   } catch {
     // never propagate from the shadow path

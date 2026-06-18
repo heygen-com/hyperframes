@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import {
   sdkResolverShadowCheck,
   runResolverShadow,
+  recordResolverParity,
   evaluateSoakGate,
   type SdkResolverMismatch,
 } from "./sdkResolverShadow";
@@ -270,5 +271,42 @@ describe("E. Soak gate", () => {
 
   it("E12: many divergences → divergence-detected", () => {
     expect(evaluateSoakGate(100)).toBe("divergence-detected");
+  });
+});
+
+// ─── F. recordResolverParity (extended coverage: timing / delete / gsap-add) ──
+
+describe("F. recordResolverParity", () => {
+  it("emits element_not_found when the SDK cannot resolve the target", async () => {
+    mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = true;
+    const session = await openComposition(BASE_HTML);
+    recordResolverParity(session, "hf-missing", "setTiming");
+    const ev = lastShadow();
+    expect(ev?.mismatchCount).toBe(1);
+    expect(ev?.opLabel).toBe("setTiming");
+    expect(JSON.stringify(ev?.mismatches)).toContain("element_not_found");
+  });
+
+  it("emits nothing when the target resolves (parity)", async () => {
+    mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = true;
+    const session = await openComposition(BASE_HTML);
+    recordResolverParity(session, "hf-box", "removeElement");
+    expect(trackedEvents.filter((e) => e.event === "sdk_resolver_shadow")).toHaveLength(0);
+  });
+
+  it("is a no-op (no SDK touch) when the flag is off", async () => {
+    mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = false;
+    const session = await openComposition(BASE_HTML);
+    const spy = vi.spyOn(session, "getElement");
+    recordResolverParity(session, "hf-missing", "setTiming");
+    expect(trackedEvents).toHaveLength(0);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("never mutates the session (read-only resolver check)", async () => {
+    mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = true;
+    const session = await openComposition(BASE_HTML);
+    recordResolverParity(session, "hf-box", "setTiming");
+    expect(session.getElement("hf-box")?.inlineStyles.color).toBe("red"); // unchanged
   });
 });
