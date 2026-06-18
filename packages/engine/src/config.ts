@@ -55,6 +55,12 @@ export interface EngineConfig {
   /** Force screenshot capture mode (skip BeginFrame even on Linux). */
   forceScreenshot: boolean;
   /**
+   * Static-frame dedup: reuse byte-identical frames instead of re-seeking +
+   * re-screenshotting (anchor-verified at init). Default ON; disable via
+   * `HF_STATIC_DEDUP` in {false,0,off}. Only arms in screenshot capture mode.
+   */
+  staticFrameDedup: boolean;
+  /**
    * Low-memory render profile. When `true`, the orchestrator collapses the
    * pipeline to its cheapest shape on memory-constrained hosts: it skips the
    * throwaway auto-worker calibration browser, pins capture to a single
@@ -208,6 +214,7 @@ export const DEFAULT_CONFIG: EngineConfig = {
   browserTimeout: 120_000,
   protocolTimeout: 300_000,
   forceScreenshot: false,
+  staticFrameDedup: true,
   // Auto-detected per host in `resolveConfig`; defaults off for the raw
   // DEFAULT_CONFIG (used directly by tests and worker-sizing fallbacks).
   lowMemoryMode: false,
@@ -282,6 +289,11 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
     if (raw === "false" || raw === "off" || raw === "0") return false;
     return isLowMemorySystem();
   };
+  // Opt-OUT: default ON, disabled only by an explicit falsey value.
+  const resolveStaticFrameDedup = (): boolean => {
+    const raw = env("HF_STATIC_DEDUP")?.trim().toLowerCase();
+    return !(raw === "false" || raw === "off" || raw === "0");
+  };
 
   // Env-var layer (backward compat)
   const fromEnv: Partial<EngineConfig> = {
@@ -307,6 +319,7 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
       : undefined,
 
     forceScreenshot: envBool("PRODUCER_FORCE_SCREENSHOT", DEFAULT_CONFIG.forceScreenshot),
+    staticFrameDedup: resolveStaticFrameDedup(),
     lowMemoryMode: resolveLowMemoryMode(),
     enablePageSideCompositing: envBool(
       "HF_PAGE_SIDE_COMPOSITING",

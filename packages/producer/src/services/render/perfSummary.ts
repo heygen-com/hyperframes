@@ -33,19 +33,26 @@ export function pushWorkerDedupPerfs(
  * Collapse per-session/per-worker static-dedup perf into one render-level
  * outcome. enabled/armed = OR across workers (they run the same gates on the
  * same composition); predicted/reused = SUM (each worker dedups its own frame
- * range); skipReason = the first reported reason when not armed.
+ * range); skipReason = the distinct reasons (sorted, `|`-joined) when not armed.
  */
 function aggregateDedup(perfs: CapturePerfSummary[]): RenderPerfSummary["staticDedup"] {
   if (perfs.length === 0) return undefined;
   const armed = perfs.some((p) => p.staticDedupArmed);
+  // When unarmed, report every DISTINCT skip reason across workers (sorted, joined)
+  // rather than just the first — workers can diverge (e.g. one `ineligible`, one
+  // `capture_mode`), and dropping the rest hides why dedup didn't engage. Cardinality
+  // stays bounded (a handful of codes, small combinations).
+  const skipReasons = armed
+    ? []
+    : [
+        ...new Set(perfs.map((p) => p.staticDedupSkipReason).filter((r): r is string => !!r)),
+      ].sort();
   return {
     enabled: perfs.some((p) => p.staticDedupEnabled),
     armed,
     predictedFrames: perfs.reduce((sum, p) => sum + (p.staticDedupPredicted ?? 0), 0),
     reusedFrames: perfs.reduce((sum, p) => sum + (p.staticDedupReused ?? 0), 0),
-    skipReason: armed
-      ? undefined
-      : perfs.find((p) => p.staticDedupSkipReason)?.staticDedupSkipReason,
+    skipReason: skipReasons.length > 0 ? skipReasons.join("|") : undefined,
   };
 }
 

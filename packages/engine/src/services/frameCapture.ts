@@ -64,18 +64,17 @@ export interface CaptureSession {
   staticDedupCount?: number;
   // ── Static-dedup observability (set by armStaticDedup; surfaced via
   // getCapturePerfSummary → RenderPerfSummary → the render_complete event) ──
+  // NOTE: `armed` and `predicted` are NOT stored — they derive from
+  // `staticFrames` (armed ⟺ non-empty set; predicted === size) in
+  // getCapturePerfSummary, so they can't desync from the actual reuse set.
   /** Dedup was enabled for this render (default-on; opt out with `HF_STATIC_DEDUP=false`). */
   staticDedupEnabled?: boolean;
-  /** Dedup passed every gate + verification and is active (staticFrames populated). */
-  staticDedupArmed?: boolean;
   /**
    * Short machine code for WHY dedup did not arm, for a low-cardinality breakdown.
    * One of: `capture_mode` | `video_injection` | `page_composite` |
-   * `ineligible` | `verification_failed`. Undefined when armed or disabled.
+   * `ineligible` | `verification_failed` | `verification_budget`. Undefined when armed or disabled.
    */
   staticDedupSkipReason?: string;
-  /** Predicted reusable frame count (staticFrames.size) when armed. */
-  staticDedupPredicted?: number;
   // Tracks whether the page/browser handles have already been released by
   // closeCaptureSession. Used to make closeCaptureSession idempotent under
   // browser-pool semantics (see the function body for the full invariant).
@@ -1561,11 +1560,11 @@ async function armStaticDedup(
   page: Page,
   logInitPhase: (phase: string) => void,
 ): Promise<void> {
-  // Default ON for everyone; opt OUT with HF_STATIC_DEDUP in {false,0,off} (case/space
-  // insensitive). Verification (verifyStaticFramesSafe) is the safety net at scale.
-  const dedupFlag = process.env.HF_STATIC_DEDUP?.trim().toLowerCase();
-  session.staticDedupEnabled = !(dedupFlag === "false" || dedupFlag === "0" || dedupFlag === "off");
-  session.staticDedupArmed = false;
+  // Default ON for everyone; opt out via HF_STATIC_DEDUP in {false,0,off} (resolved into
+  // EngineConfig.staticFrameDedup by resolveConfig). Verification is the safety net at scale.
+  // Default-on: only an explicit `staticFrameDedup === false` (resolved from
+  // HF_STATIC_DEDUP) disables; a missing config leaves dedup enabled.
+  session.staticDedupEnabled = session.config?.staticFrameDedup !== false;
   if (!session.staticDedupEnabled) return;
   // Conservative gates: dedup is verified against the plain screenshot path, so only arm
   // where the production capture matches what verification measures, and where reuse is
@@ -1628,9 +1627,8 @@ async function armStaticDedup(
     );
     return;
   }
+  // armed + predicted are derived from staticFrames in getCapturePerfSummary.
   session.staticFrames = stats.staticFrameSet;
-  session.staticDedupArmed = true;
-  session.staticDedupPredicted = stats.staticFrameSet.size;
   logInitPhase(
     `static-frame dedup: ${stats.staticFrameSet.size}/${stats.totalFrames} frame(s) reusable ` +
       `(${Math.round((stats.staticFrameSet.size / stats.totalFrames) * 100)}%, verified)`,
@@ -1812,14 +1810,19 @@ export async function discardWarmupCapture(
   const perfBefore = { ...session.capturePerf };
   const hasDamageBefore = session.beginFrameHasDamageCount;
   const noDamageBefore = session.beginFrameNoDamageCount;
+  const dedupCountBefore = session.staticDedupCount;
+  const lastFrameBufferBefore = session.lastFrameBuffer;
   try {
     await innerCapture(session, frameIndex, time);
   } finally {
     // Always restore — even on error. A failed warmup capture should not
-    // leak inflated perf counters into the real capture summary.
+    // leak inflated perf counters, a phantom dedup reuse, or a warmup-era
+    // lastFrameBuffer anchor into the real capture summary/state.
     session.capturePerf = perfBefore;
     session.beginFrameHasDamageCount = hasDamageBefore;
     session.beginFrameNoDamageCount = noDamageBefore;
+    session.staticDedupCount = dedupCountBefore;
+    session.lastFrameBuffer = lastFrameBufferBefore;
   }
 }
 
@@ -1923,8 +1926,9 @@ export function getCapturePerfSummary(session: CaptureSession): CapturePerfSumma
     avgScreenshotMs: Math.round(session.capturePerf.screenshotMs / frames),
     staticDedupReused: session.staticDedupCount ?? 0,
     staticDedupEnabled: session.staticDedupEnabled ?? false,
-    staticDedupArmed: session.staticDedupArmed ?? false,
-    staticDedupPredicted: session.staticDedupPredicted ?? 0,
+    // armed ⟺ a non-empty static set survived verification; predicted === its size.
+    staticDedupArmed: (session.staticFrames?.size ?? 0) > 0,
+    staticDedupPredicted: session.staticFrames?.size ?? 0,
     staticDedupSkipReason: session.staticDedupSkipReason,
   };
 }

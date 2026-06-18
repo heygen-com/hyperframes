@@ -175,8 +175,9 @@ export interface CapturePerfSummary {
   staticDedupPredicted: number;
   /**
    * Low-cardinality reason dedup did not arm: `capture_mode` | `video_injection`
-   * | `page_composite` | `ineligible` | `verification_failed`. Undefined when
-   * armed or when dedup was disabled.
+   * | `page_composite` | `ineligible` | `verification_failed` | `verification_budget`.
+   * Undefined when armed or when dedup was disabled. (Render-level aggregation may
+   * `|`-join distinct reasons when parallel workers diverge.)
    */
   staticDedupSkipReason?: string;
 }
