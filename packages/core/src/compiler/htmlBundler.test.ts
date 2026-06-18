@@ -125,6 +125,35 @@ describe("bundleToSingleHtml", () => {
     expect(bundled).not.toContain("SECRET_MARKER_LEAKED");
   });
 
+  it("bundles a sub-composition external script whose src contains a double quote", async () => {
+    // The external-script dedup interpolated src into a `script[src="..."]`
+    // selector unescaped, so a `"` in the URL (a quoted query param) built a
+    // malformed selector that threw in css-select and aborted the whole bundle.
+    // The sibling link[href] path already escapes; align the script path.
+    const quotedSrc = `https://cdn.example.com/lib.js?cb="x`;
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><body>
+  <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+    <div id="scene-host"
+      data-composition-id="scene"
+      data-composition-src="compositions/scene.html"
+      data-start="0" data-duration="5"></div>
+  </div>
+  <script>window.__timelines={};</script>
+</body></html>`,
+      "compositions/scene.html": `<template id="scene-template">
+  <div data-composition-id="scene" data-width="1920" data-height="1080">
+    <script src='${quotedSrc}'></script>
+  </div>
+</template>`,
+    });
+
+    const bundled = await bundleToSingleHtml(dir);
+    // Does not throw, and the external script survives into the bundle.
+    expect(bundled).toContain(`cb=`);
+  });
+
   it("produces a self-contained runtime script when no HYPERFRAME_RUNTIME_URL is set", async () => {
     // Regression guard: hf#XXX. The bundler used to emit
     // <script ... src=""></script> when no runtime URL was configured. An

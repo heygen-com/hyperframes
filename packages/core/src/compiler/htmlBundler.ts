@@ -624,7 +624,7 @@ export interface BundleOptions {
  */
 
 function ensureExternalScriptTag(doc: Document, src: string): void {
-  if (doc.querySelector(`script[src="${src}"]`)) return;
+  if (doc.querySelector(`script${cssAttributeSelector("src", src)}`)) return;
   const el = doc.createElement("script");
   el.setAttribute("src", src);
   doc.body.appendChild(el);
@@ -825,7 +825,7 @@ export async function bundleToSingleHtml(
         continue;
       }
     }
-    if (!document.querySelector(`script[src="${extSrc}"]`)) {
+    if (!document.querySelector(`script${cssAttributeSelector("src", extSrc)}`)) {
       const extScript = document.createElement("script");
       extScript.setAttribute("src", extSrc);
       document.body.appendChild(extScript);
@@ -857,7 +857,7 @@ export async function bundleToSingleHtml(
       const hostIdentity = hostIdentityByElement.get(host);
       const runtimeCompId = hostIdentity?.runtimeCompositionId || compId;
       const innerDoc = parseHTMLContent(templateHtml);
-      const innerRoot = innerDoc.querySelector(`[data-composition-id="${compId}"]`);
+      const innerRoot = innerDoc.querySelector(cssAttributeSelector("data-composition-id", compId));
       const authoredRootId = innerRoot?.getAttribute("id")?.trim() || null;
       const runtimeScope = runtimeCompId
         ? cssAttributeSelector("data-composition-id", runtimeCompId)
