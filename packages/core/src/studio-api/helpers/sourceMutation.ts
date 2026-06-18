@@ -1,6 +1,10 @@
 import { parseHTML } from "linkedom";
 import postcss from "postcss";
 import selectorParser from "postcss-selector-parser";
+import {
+  collectSubtreeHfIds,
+  cascadeRemoveAnimationsFromDocument,
+} from "../../parsers/gsapCascade.js";
 
 export interface SourceMutationTarget {
   id?: string | null;
@@ -118,7 +122,10 @@ export function removeElementFromHtml(source: string, target: SourceMutationTarg
   const element = findTargetElement(document, target);
   if (!element) return source;
 
+  const subtreeIds = collectSubtreeHfIds(element);
   element.remove();
+  cascadeRemoveAnimationsFromDocument(document, subtreeIds);
+
   return wrappedFragment ? document.body.innerHTML || "" : document.toString();
 }
 

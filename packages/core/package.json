@@ -95,6 +95,10 @@
       "import": "./src/parsers/hfIds.ts",
       "types": "./src/parsers/hfIds.ts"
     },
+    "./gsap-cascade": {
+      "import": "./src/parsers/gsapCascade.ts",
+      "types": "./src/parsers/gsapCascade.ts"
+    },
     "./gsap-parser": {
       "import": "./src/parsers/gsapParser.ts",
       "types": "./src/parsers/gsapParser.ts"
@@ -193,6 +197,10 @@
       "./hf-ids": {
         "import": "./dist/parsers/hfIds.js",
         "types": "./dist/parsers/hfIds.d.ts"
+      },
+      "./gsap-cascade": {
+        "import": "./dist/parsers/gsapCascade.js",
+        "types": "./dist/parsers/gsapCascade.d.ts"
       },
       "./gsap-parser": {
         "import": "./dist/parsers/gsapParser.js",

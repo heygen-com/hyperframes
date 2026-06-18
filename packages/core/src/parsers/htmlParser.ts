@@ -12,8 +12,7 @@ import type {
 } from "../core.types";
 import { validateCompositionGsap } from "./gsapSerialize";
 import { ensureHfIds } from "./hfIds.js";
-import { parseGsapScriptAcornForWrite } from "./gsapParserAcorn.js";
-import { removeAnimationFromScript } from "./gsapWriterAcorn.js";
+import { collectSubtreeHfIds, cascadeRemoveAnimationsFromDocument } from "./gsapCascade.js";
 import type { ValidationResult } from "../core.types";
 
 const MEDIA_TYPES = new Set<string>(["video", "image", "audio"]);
@@ -674,49 +673,13 @@ export function addElementToHtml(
   };
 }
 
-function selectorTargetsId(selector: string, id: string): boolean {
-  return (
-    selector === `#${id}` ||
-    selector === `[data-hf-id="${id}"]` ||
-    selector === `[data-hf-id='${id}']`
-  );
-}
-
-function stripGsapForId(script: string, elementId: string): string {
-  // Re-parse after every removal. Animation ids are count-based (positional), so
-  // removing one tween renumbers the survivors — ids captured from a single
-  // up-front parse go stale and silently no-op, orphaning later tweens on the
-  // now-deleted element. Always remove the FIRST still-matching animation in a
-  // freshly-parsed script until none remain.
-  let current = script;
-  for (;;) {
-    const parsed = parseGsapScriptAcornForWrite(current);
-    if (!parsed) return current;
-    const match = parsed.located.find((l) =>
-      selectorTargetsId(l.animation.targetSelector, elementId),
-    );
-    if (!match) return current;
-    const updated = removeAnimationFromScript(current, match.id);
-    // Guard against a non-removing match (would otherwise loop forever).
-    if (updated === current) return current;
-    current = updated;
-  }
-}
-
-function cascadeRemoveGsapById(doc: Document, elementId: string): void {
-  for (const script of Array.from(doc.querySelectorAll("script"))) {
-    const text = script.textContent ?? "";
-    if (!text.includes("gsap") && !text.includes("ScrollTrigger")) continue;
-    const updated = stripGsapForId(text, elementId);
-    if (updated !== text) script.textContent = updated;
-  }
-}
-
 export function removeElementFromHtml(html: string, elementId: string): string {
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, "text/html");
-  doc.getElementById(elementId)?.remove();
-  cascadeRemoveGsapById(doc, elementId);
+  const el = doc.getElementById(elementId);
+  const subtreeIds = el ? collectSubtreeHfIds(el) : [];
+  el?.remove();
+  cascadeRemoveAnimationsFromDocument(doc, subtreeIds.length > 0 ? subtreeIds : [elementId]);
   return "<!DOCTYPE html>\n" + doc.documentElement.outerHTML;
 }
 

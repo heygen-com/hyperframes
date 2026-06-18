@@ -32,6 +32,103 @@ describe("removeElementFromHtml", () => {
 
     expect(removeElementFromHtml(html, { id: "photo" })).toBe(`<div id="rest"></div>`);
   });
+
+  it("strips the GSAP tween for a leaf element on delete", () => {
+    const html = `<!doctype html><html><body>
+<div data-hf-id="leaf" id="leaf"></div>
+<div data-hf-id="sibling" id="sibling"></div>
+<script>
+var tl = gsap.timeline({ paused: true });
+tl.to("[data-hf-id=\\"leaf\\"]", { opacity: 0, duration: 1 }, 0);
+tl.to("[data-hf-id=\\"sibling\\"]", { x: 100, duration: 1 }, 0);
+</script>
+</body></html>`;
+
+    const updated = removeElementFromHtml(html, { hfId: "leaf" });
+
+    expect(updated).not.toContain('data-hf-id="leaf"');
+    expect(updated).not.toContain("opacity: 0");
+    // sibling tween must survive
+    expect(updated).toContain('data-hf-id="sibling"');
+    expect(updated).toContain("x: 100");
+  });
+
+  it("strips all subtree GSAP tweens when deleting a parent with animated children", () => {
+    const html = `<!doctype html><html><body>
+<div data-hf-id="parent" id="parent">
+  <div data-hf-id="child-a" id="child-a"></div>
+  <div data-hf-id="child-b" id="child-b"></div>
+</div>
+<div data-hf-id="outside" id="outside"></div>
+<script>
+var tl = gsap.timeline({ paused: true });
+tl.to("[data-hf-id=\\"parent\\"]", { opacity: 0, duration: 1 }, 0);
+tl.to("[data-hf-id=\\"child-a\\"]", { x: 100, duration: 1 }, 0);
+tl.to("[data-hf-id=\\"child-b\\"]", { y: 200, duration: 1 }, 0);
+tl.to("[data-hf-id=\\"outside\\"]", { scale: 2, duration: 1 }, 0);
+</script>
+</body></html>`;
+
+    const updated = removeElementFromHtml(html, { hfId: "parent" });
+
+    expect(updated).not.toContain('data-hf-id="parent"');
+    expect(updated).not.toContain('data-hf-id="child-a"');
+    expect(updated).not.toContain('data-hf-id="child-b"');
+    expect(updated).not.toContain("opacity: 0");
+    expect(updated).not.toContain("x: 100");
+    expect(updated).not.toContain("y: 200");
+    // outside element and its tween must survive
+    expect(updated).toContain('data-hf-id="outside"');
+    expect(updated).toContain("scale: 2");
+  });
+
+  it("handles positional renumbering — strips both tweens when element has two", () => {
+    const html = `<!doctype html><html><body>
+<div data-hf-id="box" id="box"></div>
+<div data-hf-id="other" id="other"></div>
+<script>
+var tl = gsap.timeline({ paused: true });
+tl.to("[data-hf-id=\\"box\\"]", { x: 100, duration: 1 }, 0);
+tl.to("[data-hf-id=\\"other\\"]", { y: 50, duration: 1 }, 0);
+tl.to("[data-hf-id=\\"box\\"]", { x: 200, duration: 1 }, 2);
+</script>
+</body></html>`;
+
+    const updated = removeElementFromHtml(html, { hfId: "box" });
+
+    expect(updated).not.toContain("x: 100");
+    expect(updated).not.toContain("x: 200");
+    // other's tween must survive
+    expect(updated).toContain("y: 50");
+  });
+
+  it("leaves non-gsap scripts untouched", () => {
+    const script = `console.log("hello world");`;
+    const html = `<!doctype html><html><body>
+<div data-hf-id="el" id="el"></div>
+<script>${script}</script>
+</body></html>`;
+
+    const updated = removeElementFromHtml(html, { hfId: "el" });
+
+    expect(updated).toContain(script);
+  });
+
+  it("leaves script unchanged when deleted element has no GSAP tweens", () => {
+    const html = `<!doctype html><html><body>
+<div data-hf-id="el" id="el"></div>
+<div data-hf-id="other" id="other"></div>
+<script>
+var tl = gsap.timeline({ paused: true });
+tl.to("[data-hf-id=\\"other\\"]", { opacity: 1, duration: 1 }, 0);
+</script>
+</body></html>`;
+
+    const updated = removeElementFromHtml(html, { hfId: "el" });
+
+    expect(updated).not.toContain('data-hf-id="el"');
+    expect(updated).toContain("opacity: 1");
+  });
 });
 
 describe("patchElementInHtml", () => {

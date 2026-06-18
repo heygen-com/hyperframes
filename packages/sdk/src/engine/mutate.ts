@@ -42,6 +42,11 @@ import {
 } from "./patches.js";
 import { upsertCssRule } from "./cssWriter.js";
 import { parseGsapScriptAcornForWrite } from "@hyperframes/core/gsap-parser-acorn";
+import {
+  selectorMatchesId,
+  collectSubtreeHfIds,
+  cascadeRemoveAnimations,
+} from "@hyperframes/core/gsap-cascade";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import {
   addAnimationToScript,
@@ -127,7 +132,6 @@ function validateSetAttribute(name: string, value: string | null): void {
 export class UnsupportedOpError extends Error {
   // Stable error code — part of the public API contract (F7); hosts switch on
   // err.code rather than the message.
-  // fallow-ignore-next-line unused-class-member
   readonly code = "E_UNSUPPORTED_OP";
   constructor(opType: string) {
     super(
@@ -697,51 +701,6 @@ function handleSetVariableValue(
   const path = variablePath(id);
   const p = scalarChange(path, oldValue, newVal);
   return { forward: [p.forward], inverse: [p.inverse] };
-}
-
-// ─── GSAP selector helpers ───────────────────────────────────────────────────
-
-function selectorMatchesId(selector: string, id: HfId): boolean {
-  return (
-    selector === `[data-hf-id="${id}"]` ||
-    selector === `[data-hf-id='${id}']` ||
-    selector === `#${id}`
-  );
-}
-
-// v1 limitation: selectorMatchesId uses bare-id matching across the whole script, so a
-// selector targeting "hf-leaf" will cascade-remove animations for both "hf-parent/hf-leaf"
-// and any other element whose scoped or bare id matches "hf-leaf". Acceptable for typical
-// single-comp use; sub-composition authors with leaf-id collisions should use
-// fully-qualified selectors.
-
-/** Collect all bare data-hf-id values from el and all its descendants. */
-function collectSubtreeHfIds(el: Element): string[] {
-  const ids: string[] = [];
-  const own = el.getAttribute("data-hf-id");
-  if (own) ids.push(own);
-  for (const child of Array.from(el.querySelectorAll("[data-hf-id]"))) {
-    const id = child.getAttribute("data-hf-id");
-    if (id) ids.push(id);
-  }
-  return ids;
-}
-
-function cascadeRemoveAnimations(script: string, id: HfId): string {
-  // Re-parse after each removal: animation ids are positional, so removing one
-  // tween renumbers the survivors — ids from a single up-front parse go stale and
-  // no-op, orphaning later tweens on the removed element. Same fix as
-  // stripGsapForId in htmlParser.ts (R3 #3); this is its SDK-side twin.
-  let current = script;
-  for (;;) {
-    const parsedGsap = parseGsapScriptAcornForWrite(current);
-    if (!parsedGsap) return current;
-    const match = parsedGsap.located.find((l) => selectorMatchesId(l.animation.targetSelector, id));
-    if (!match) return current;
-    const next = removeAnimationFromScript(current, match.id);
-    if (next === current) return current; // guard against a non-removing match
-    current = next;
-  }
 }
 
 // ─── setClassStyle handler ────────────────────────────────────────────────────
