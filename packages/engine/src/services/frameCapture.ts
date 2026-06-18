@@ -51,6 +51,17 @@ export interface CaptureSession {
   outputDir: string;
   onBeforeCapture: BeforeCaptureHook | null;
   isInitialized: boolean;
+  /**
+   * Static-frame dedup (opt-in `HF_STATIC_DEDUP=true`): indices of frames byte-identical
+   * to their predecessor (no GSAP tween / clip cut active in either), predicted from
+   * window.__timelines and empirically anchor-verified. These reuse `lastFrameBuffer`
+   * instead of re-seeking + re-screenshotting. Undefined when disabled or ineligible.
+   */
+  staticFrames?: Set<number>;
+  /** Last non-deduped frame buffer, reused for every `staticFrames` index in its run. */
+  lastFrameBuffer?: Buffer;
+  /** Count of frames served from a reused buffer (dedup telemetry). */
+  staticDedupCount?: number;
   // Tracks whether the page/browser handles have already been released by
   // closeCaptureSession. Used to make closeCaptureSession idempotent under
   // browser-pool semantics (see the function body for the full invariant).
@@ -1021,6 +1032,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
       await initTransparentBackground(session.page);
     }
 
+    await armStaticDedup(session, session.page, logInitPhase);
     session.isInitialized = true;
     return;
   }
@@ -1170,6 +1182,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     await initTransparentBackground(session.page);
   }
 
+  await armStaticDedup(session, session.page, logInitPhase);
   session.isInitialized = true;
 }
 
@@ -1280,6 +1293,316 @@ async function prepareFrameForCapture(
   return { quantizedTime, seekMs, beforeCaptureMs };
 }
 
+// ── Static-frame dedup (opt-in HF_STATIC_DEDUP=true) ───────────────────────────
+// Skip re-seeking + re-screenshotting frames that are byte-identical to their
+// predecessor. A frame is dedupable iff no GSAP tween or clip cut is active in it or
+// its predecessor (predicted from window.__timelines), AND an empirical anchor-compare
+// confirms it. Capture-mode-independent (works on screenshot + beginframe), lossless
+// (verification disables the whole comp on any drift), default off. Pays on
+// static-hold content (title cards, slideshows, data-viz pauses); a no-op on
+// continuously-animated comps and disqualified by video/canvas/non-GSAP animation.
+
+/**
+ * Clip-cut boundary frames (±1) from the [data-start] schedule. A hard scene swap at a
+ * cut changes content with no tween; treat those frames as animated so the post-cut
+ * frame is captured fresh and later static frames reuse the correct scene.
+ */
+async function computeClipBoundaryFrames(page: Page, fps: number): Promise<Set<number>> {
+  const schedule = await page.evaluate(() =>
+    Array.from(document.querySelectorAll("[data-start]")).map((el) => ({
+      start: parseFloat((el as HTMLElement).dataset.start || ""),
+      dur: parseFloat((el as HTMLElement).dataset.duration || ""),
+    })),
+  );
+  const frames = new Set<number>();
+  for (const { start, dur } of schedule) {
+    if (Number.isNaN(start)) continue;
+    const edges = [Math.round(start * fps)];
+    if (!Number.isNaN(dur)) edges.push(Math.round((start + dur) * fps));
+    for (const e of edges) {
+      for (const f of [e - 1, e, e + 1]) {
+        if (f >= 0) frames.add(f);
+      }
+    }
+  }
+  return frames;
+}
+
+/**
+ * Predict the dedupable (static) frame set from window.__timelines. A frame f (f>0) is
+ * static iff NEITHER f NOR f-1 falls inside any GSAP tween interval — content didn't
+ * change f-1→f, so f can reuse f-1's buffer. Requiring BOTH neighbours static under-
+ * claims by one frame at each tween edge (the SAFE direction). Disqualifies the whole
+ * comp on any signal the tween-walker can't see: video / canvas / webgl (redraw without
+ * a tween), zero tweens (non-GSAP animation), or a running CSS/WAAPI animation.
+ */
+async function computeStaticFrameSet(
+  page: Page,
+  fps: number,
+): Promise<{
+  totalFrames: number;
+  staticFrameSet: Set<number>;
+  hasVideo: boolean;
+  hasCanvas: boolean;
+  hasNonGsapAnim: boolean;
+  tweenCount: number;
+  eligible: boolean;
+  reason: string;
+}> {
+  const result = await page.evaluate(() => {
+    type AnyTween = {
+      startTime(): number;
+      duration(): number;
+      totalDuration?(): number;
+      getChildren?(nested: boolean, tweens: boolean, timelines: boolean): AnyTween[];
+    };
+    const intervals: Array<{ start: number; end: number }> = [];
+    let tweenCount = 0;
+    // totalDuration() (NOT duration()): a repeat/yoyo tween animates past one iteration;
+    // a repeating timeline is marked opaque over its whole span (conservative).
+    function walk(tl: AnyTween, offset: number): void {
+      if (typeof tl.getChildren !== "function") return;
+      for (const child of tl.getChildren(false, true, true)) {
+        const start = offset + (typeof child.startTime === "function" ? child.startTime() : 0);
+        const single = typeof child.duration === "function" ? child.duration() : 0;
+        const total = typeof child.totalDuration === "function" ? child.totalDuration() : single;
+        if (typeof child.getChildren === "function") {
+          if (total > single + 1e-6) intervals.push({ start, end: start + total });
+          else walk(child, start);
+        } else {
+          tweenCount++;
+          intervals.push({ start, end: start + total });
+        }
+      }
+    }
+    const w = window as unknown as {
+      __timelines?: Record<string, AnyTween>;
+      __hf?: { duration?: number };
+    };
+    for (const tl of Object.values(w.__timelines || {})) {
+      if (tl && typeof tl.getChildren === "function") walk(tl, 0);
+    }
+    const hasVideo = !!document.querySelector("video");
+    const hasCanvas = !!document.querySelector("canvas");
+    // A non-numeric data-start (reference expression like "intro+0.5") can't be turned
+    // into a clip-cut boundary by computeClipBoundaryFrames' parseFloat, so the cut goes
+    // unprotected and could be deduped into the previous scene. Disqualify the comp.
+    const hasUnresolvableClipStart = Array.from(document.querySelectorAll("[data-start]")).some(
+      (el) => {
+        const v = (el as HTMLElement).dataset.start;
+        return v != null && v.trim() !== "" && !Number.isFinite(parseFloat(v));
+      },
+    );
+    // Non-GSAP animation (CSS @keyframes / transitions / WAAPI) surfaces via
+    // getAnimations(); any running/paused one can change content without a tween.
+    let hasNonGsapAnim = false;
+    try {
+      const docAnims = (document as unknown as { getAnimations?: () => Animation[] }).getAnimations;
+      if (typeof docAnims === "function") {
+        hasNonGsapAnim = docAnims.call(document).some((a) => {
+          const t = a as Animation & { playState?: string };
+          return t.playState === "running" || t.playState === "paused";
+        });
+      }
+    } catch {
+      hasNonGsapAnim = true;
+    }
+    return {
+      intervals,
+      tweenCount,
+      duration: w.__hf?.duration ?? 0,
+      hasVideo,
+      hasCanvas,
+      hasNonGsapAnim,
+      hasUnresolvableClipStart,
+    };
+  });
+
+  const {
+    intervals,
+    tweenCount,
+    duration,
+    hasVideo,
+    hasCanvas,
+    hasNonGsapAnim,
+    hasUnresolvableClipStart,
+  } = result as {
+    intervals: Array<{ start: number; end: number }>;
+    tweenCount: number;
+    duration: number;
+    hasVideo: boolean;
+    hasCanvas: boolean;
+    hasNonGsapAnim: boolean;
+    hasUnresolvableClipStart: boolean;
+  };
+  const totalFrames = Math.max(1, Math.ceil(duration * fps));
+  const animated = new Set<number>();
+  for (const { start, end } of intervals) {
+    const lo = Math.max(0, Math.floor(start * fps));
+    const hi = Math.min(totalFrames - 1, Math.ceil(end * fps));
+    for (let f = lo; f <= hi; f++) animated.add(f);
+  }
+  for (const f of await computeClipBoundaryFrames(page, fps)) animated.add(f);
+  const reasons: string[] = [];
+  if (!(duration > 0)) reasons.push("unknown/zero duration");
+  if (hasVideo) reasons.push("video");
+  if (hasCanvas) reasons.push("canvas/webgl");
+  if (tweenCount === 0) reasons.push("no GSAP tweens (non-GSAP animation)");
+  if (hasNonGsapAnim) reasons.push("running CSS/WAAPI animation");
+  if (hasUnresolvableClipStart) reasons.push("unresolvable clip start (reference expression)");
+  const eligible = reasons.length === 0;
+  const staticFrameSet = new Set<number>();
+  if (eligible) {
+    for (let f = 1; f < totalFrames; f++) {
+      if (!animated.has(f) && !animated.has(f - 1)) staticFrameSet.add(f);
+    }
+  }
+  return {
+    totalFrames,
+    staticFrameSet,
+    hasVideo,
+    hasCanvas,
+    hasNonGsapAnim,
+    tweenCount,
+    eligible,
+    reason: eligible ? "eligible" : reasons.join("+"),
+  };
+}
+
+/**
+ * Empirically verify the predicted-static set before trusting it. Group static frames
+ * into runs; each run [a..b] reuses anchor a-1. CRITICAL: compare against the ANCHOR,
+ * not the predecessor — a slow drift with sub-quantization per-frame deltas is byte-
+ * identical frame-to-frame yet drifts far from the anchor by the run's end (the real
+ * frozen error). Capture each run's anchor once, compare END + a midpoint to it; any
+ * mismatch ⇒ the run isn't truly static ⇒ disable dedup whole-comp. Capture-mode-
+ * independent (seeks + screenshots in normal DOM). Returns the first bad frame, or null.
+ */
+async function verifyStaticFramesSafe(
+  session: CaptureSession,
+  page: Page,
+  staticFrames: Set<number>,
+  fps: number,
+  sampleCount: number,
+): Promise<number | null> {
+  const frames = [...staticFrames].sort((a, b) => a - b);
+  if (frames.length === 0) return null;
+  // Runs are maximal-contiguous (adjacent frames merge), so a run's anchor a-1 is
+  // guaranteed NOT static — always a freshly-captured frame.
+  const runs: Array<{ a: number; b: number }> = [];
+  for (const f of frames) {
+    const last = runs[runs.length - 1];
+    if (last && f === last.b + 1) last.b = f;
+    else runs.push({ a: f, b: f });
+  }
+  const seekCapture = async (frameIdx: number): Promise<Buffer> => {
+    const t = quantizeTimeToFrame(frameIdx / fps, fps);
+    await page.evaluate((tt: number) => {
+      const hf = (window as unknown as { __hf?: { seek?: (t: number) => void } }).__hf;
+      if (hf && typeof hf.seek === "function") hf.seek(tt);
+    }, t);
+    return pageScreenshotCapture(page, session.options);
+  };
+  // Verify EVERY run in order (no longest-first truncation that would leave runs armed
+  // but unverified). Per run, compare the FIRST reused frame `a`, the END `b` (max
+  // accumulated drift), and interior points at a stride — against the anchor the run
+  // actually reuses. `sampleCount` sets the interior density (points per run ~ that many
+  // for a long run); a hard cap bounds pathological run counts, and hitting it DISABLES
+  // dedup (conservative: never trust an unverified set).
+  const perRun = Math.max(3, Math.min(sampleCount, 8));
+  const hardCap = Math.max(sampleCount * 8, 400);
+  let spent = 0;
+  for (const { a, b } of runs) {
+    const anchor = a - 1;
+    if (anchor < 0) continue;
+    const anchorBuf = await seekCapture(anchor);
+    spent++;
+    const span = b - a;
+    const stride = span > 0 ? Math.max(1, Math.floor(span / (perRun - 1))) : 1;
+    const pts = new Set<number>();
+    for (let f = a; f <= b; f += stride) pts.add(f);
+    pts.add(b); // always include the end (max drift)
+    for (const f of [...pts].sort((x, y) => x - y)) {
+      const cur = await seekCapture(f);
+      spent++;
+      if (!anchorBuf.equals(cur)) return f;
+    }
+    if (spent > hardCap) return a; // budget exhausted → can't fully verify → disarm
+  }
+  return null;
+}
+
+/**
+ * Arm static-frame dedup for this render (opt-in HF_STATIC_DEDUP=true, default off).
+ * Runs at init in normal DOM state so the verification screenshots are valid. Predicts
+ * the static set, anchor-verifies it (skip with HF_STATIC_DEDUP_VERIFY=false — unsafe),
+ * and on success stores it on the session for captureFrameCore to reuse. Sample budget
+ * via HF_STATIC_DEDUP_SAMPLES (default 24).
+ */
+async function armStaticDedup(
+  session: CaptureSession,
+  page: Page,
+  logInitPhase: (phase: string) => void,
+): Promise<void> {
+  if (process.env.HF_STATIC_DEDUP !== "true") return;
+  // Conservative gates: dedup is verified against the plain screenshot path, so only arm
+  // where the production capture matches what verification measures, and where reuse is
+  // sound. Skip when:
+  //  - capture mode is not screenshot (BeginFrame advances the compositor clock per
+  //    frame; skipping beginFrame for static frames gaps the tick sequence, and the
+  //    verifier uses pageScreenshotCapture not beginFrameCapture — its proof wouldn't
+  //    transfer);
+  //  - a before-capture hook is set (per-frame video-frame injection — those frames are
+  //    NOT static even if the GSAP timeline is idle, and the injector is skipped on reuse);
+  //  - page-side compositing is active (shader transitions / drawElement composite paint
+  //    a frame the plain verification screenshot doesn't reproduce).
+  if (session.captureMode !== "screenshot") {
+    logInitPhase(
+      `static-frame dedup: disabled (capture mode ${session.captureMode}, not screenshot)`,
+    );
+    return;
+  }
+  if (session.onBeforeCapture) {
+    logInitPhase("static-frame dedup: disabled (before-capture hook / video injection active)");
+    return;
+  }
+  const pageComposite = await page
+    .evaluate(
+      () =>
+        typeof (window as unknown as { __hf_page_composite_prepare?: unknown })
+          .__hf_page_composite_prepare === "function",
+    )
+    .catch(() => true); // fail CLOSED: if we can't determine, assume compositing → skip dedup
+  if (pageComposite) {
+    logInitPhase("static-frame dedup: disabled (page-side compositing active)");
+    return;
+  }
+  const fps = fpsToNumber(session.options.fps);
+  const stats = await computeStaticFrameSet(page, fps);
+  if (!stats.eligible || stats.staticFrameSet.size === 0) {
+    logInitPhase(`static-frame dedup: disabled (${stats.reason})`);
+    return;
+  }
+  const rawSamples = Number(process.env.HF_STATIC_DEDUP_SAMPLES ?? "24");
+  const samples = Number.isFinite(rawSamples) && rawSamples >= 1 ? rawSamples : 24;
+  const badFrame =
+    process.env.HF_STATIC_DEDUP_VERIFY === "false"
+      ? null
+      : await verifyStaticFramesSafe(session, page, stats.staticFrameSet, fps, samples);
+  if (badFrame !== null) {
+    logInitPhase(
+      `static-frame dedup: disabled (verification failed — content drifts from anchor at ` +
+        `predicted-static frame ${badFrame})`,
+    );
+    return;
+  }
+  session.staticFrames = stats.staticFrameSet;
+  logInitPhase(
+    `static-frame dedup: ${stats.staticFrameSet.size}/${stats.totalFrames} frame(s) reusable ` +
+      `(${Math.round((stats.staticFrameSet.size / stats.totalFrames) * 100)}%, verified)`,
+  );
+}
+
 /**
  * Internal core: prepare, screenshot, and track perf.
  * Shared by captureFrame (disk) and captureFrameToBuffer (buffer).
@@ -1292,6 +1615,28 @@ async function captureFrameCore(
 ): Promise<{ buffer: Buffer; quantizedTime: number; captureTimeMs: number }> {
   const { page, options } = session;
   const startTime = Date.now();
+
+  // Static-frame dedup: this frame is byte-identical to its predecessor (predicted +
+  // anchor-verified at init) → reuse the prior buffer, skip the seek + screenshot.
+  // KEY: index by the ABSOLUTE composition frame (derived from `time`), NOT the
+  // `frameIndex` arg — chunked/parallel/distributed callers pass a chunk-RELATIVE
+  // frameIndex (captureStage passes the loop `i`, parallelCoordinator passes
+  // `i-outputFrameOffset`) while staticFrames is keyed in absolute frames. Using `time`
+  // is correct on every path (sequential, per-worker range, distributed chunk) because
+  // `time` is always the absolute composition time for the frame. Each session captures
+  // its range in ascending order, so lastFrameBuffer is the correct in-range anchor (and
+  // since a static run is verified identical, reusing the run's first in-range capture
+  // equals reusing the global anchor). Telemetry: count reuses separately; do NOT bump
+  // capturePerf.frames (that would dilute the per-frame timing averages).
+  const absFrameIndex = Math.round(time * fpsToNumber(options.fps));
+  if (session.staticFrames?.has(absFrameIndex) && session.lastFrameBuffer) {
+    session.staticDedupCount = (session.staticDedupCount ?? 0) + 1;
+    return {
+      buffer: session.lastFrameBuffer,
+      quantizedTime: quantizeTimeToFrame(time, fpsToNumber(options.fps)),
+      captureTimeMs: Date.now() - startTime,
+    };
+  }
 
   try {
     const { quantizedTime, seekMs, beforeCaptureMs } = await prepareFrameForCapture(
@@ -1327,6 +1672,9 @@ async function captureFrameCore(
     session.capturePerf.beforeCaptureMs += beforeCaptureMs;
     session.capturePerf.screenshotMs += screenshotMs;
     session.capturePerf.totalMs += captureTimeMs;
+
+    // Retain this freshly-captured buffer so the following static frames can reuse it.
+    if (session.staticFrames) session.lastFrameBuffer = screenshotBuffer;
 
     return { buffer: screenshotBuffer, quantizedTime, captureTimeMs };
   } catch (captureError) {
@@ -1496,6 +1844,12 @@ export function prepareCaptureSessionForReuse(
   };
   session.beginFrameHasDamageCount = 0;
   session.beginFrameNoDamageCount = 0;
+  // Reset per-render dedup state so a buffer captured by the prior render/probe can't
+  // bleed into this render's first static frame. staticFrames (the armed set) is left
+  // intact: it's keyed in absolute frames and stays valid for a same-composition reuse;
+  // lastFrameBuffer must be re-seeded by this render's first fresh capture.
+  session.lastFrameBuffer = undefined;
+  session.staticDedupCount = 0;
 }
 
 export async function getCompositionDuration(session: CaptureSession): Promise<number> {

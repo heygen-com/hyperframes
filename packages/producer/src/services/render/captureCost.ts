@@ -227,16 +227,28 @@ export async function measureCaptureCostFromSession(
   const samples: CaptureCalibrationSample[] = [];
   const totalSamples = sampledFrames.length;
 
-  for (let i = 0; i < sampledFrames.length; i++) {
-    const frameIndex = sampledFrames[i]!;
-    log?.info(`Calibration: capturing test frame ${i + 1}/${totalSamples}...`);
-    const time = frameIndex / fps;
-    const startedAt = Date.now();
-    const result = await captureFrameToBuffer(session, frameIndex, time);
-    samples.push({
-      frameIndex,
-      captureTimeMs: result.captureTimeMs || Date.now() - startedAt,
-    });
+  // Calibration samples are SPARSE and non-contiguous, so static-frame dedup must not
+  // fire here: a sampled frame in the static set would reuse a far-away sample's buffer
+  // in ~0ms, both corrupting the per-frame cost estimate and returning the wrong pixels.
+  // Bypass dedup for the calibration sweep; restore the armed set (and clear the
+  // calibration-era buffer) so the real render that reuses this session still dedups.
+  const savedStaticFrames = session.staticFrames;
+  session.staticFrames = undefined;
+  try {
+    for (let i = 0; i < sampledFrames.length; i++) {
+      const frameIndex = sampledFrames[i]!;
+      log?.info(`Calibration: capturing test frame ${i + 1}/${totalSamples}...`);
+      const time = frameIndex / fps;
+      const startedAt = Date.now();
+      const result = await captureFrameToBuffer(session, frameIndex, time);
+      samples.push({
+        frameIndex,
+        captureTimeMs: result.captureTimeMs || Date.now() - startedAt,
+      });
+    }
+  } finally {
+    session.staticFrames = savedStaticFrames;
+    session.lastFrameBuffer = undefined;
   }
 
   const estimate = estimateMeasuredCaptureCostMultiplier(samples);
