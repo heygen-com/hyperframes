@@ -127,6 +127,7 @@ function createInput(cfg: MinimalEngineConfig) {
     createRenderVideoFrameInjector: () => null,
     abortSignal: undefined,
     assertNotAborted: () => {},
+    dedupPerfs: [],
   };
 }
 

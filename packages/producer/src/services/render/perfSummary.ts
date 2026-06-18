@@ -16,6 +16,20 @@ import { type HdrPerfCollector, finalizeHdrPerf } from "./hdrPerf.js";
 import type { RenderObservabilitySummary } from "./observability.js";
 
 /**
+ * Append each parallel worker's static-dedup perf into the render-level sink
+ * (skipping workers that reported none). Shared by the disk + streaming parallel
+ * paths so the collection contract lives in one place.
+ */
+export function pushWorkerDedupPerfs(
+  results: ReadonlyArray<{ perf?: CapturePerfSummary }>,
+  sink: CapturePerfSummary[],
+): void {
+  for (const r of results) {
+    if (r.perf) sink.push(r.perf);
+  }
+}
+
+/**
  * Collapse per-session/per-worker static-dedup perf into one render-level
  * outcome. enabled/armed = OR across workers (they run the same gates on the
  * same composition); predicted/reused = SUM (each worker dedups its own frame

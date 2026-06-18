@@ -52,7 +52,7 @@ export interface CaptureSession {
   onBeforeCapture: BeforeCaptureHook | null;
   isInitialized: boolean;
   /**
-   * Static-frame dedup (opt-in `HF_STATIC_DEDUP=true`): indices of frames byte-identical
+   * Static-frame dedup (default-on; opt out with `HF_STATIC_DEDUP=false`): indices of frames byte-identical
    * to their predecessor (no GSAP tween / clip cut active in either), predicted from
    * window.__timelines and empirically anchor-verified. These reuse `lastFrameBuffer`
    * instead of re-seeking + re-screenshotting. Undefined when disabled or ineligible.
@@ -64,7 +64,7 @@ export interface CaptureSession {
   staticDedupCount?: number;
   // ── Static-dedup observability (set by armStaticDedup; surfaced via
   // getCapturePerfSummary → RenderPerfSummary → the render_complete event) ──
-  /** `HF_STATIC_DEDUP=true` was set for this render (opt-in flag observed at arm time). */
+  /** Dedup was enabled for this render (default-on; opt out with `HF_STATIC_DEDUP=false`). */
   staticDedupEnabled?: boolean;
   /** Dedup passed every gate + verification and is active (staticFrames populated). */
   staticDedupArmed?: boolean;
@@ -1307,7 +1307,7 @@ async function prepareFrameForCapture(
   return { quantizedTime, seekMs, beforeCaptureMs };
 }
 
-// ── Static-frame dedup (opt-in HF_STATIC_DEDUP=true) ───────────────────────────
+// ── Static-frame dedup (default-on, opt-out HF_STATIC_DEDUP=false) ─────────────
 // Skip re-seeking + re-screenshotting frames that are byte-identical to their
 // predecessor. A frame is dedupable iff no GSAP tween or clip cut is active in it or
 // its predecessor (predicted from window.__timelines), AND an empirical anchor-compare
@@ -1498,7 +1498,7 @@ async function verifyStaticFramesSafe(
   staticFrames: Set<number>,
   fps: number,
   sampleCount: number,
-): Promise<number | null> {
+): Promise<{ badFrame: number; budgetExhausted: boolean } | null> {
   const frames = [...staticFrames].sort((a, b) => a - b);
   if (frames.length === 0) return null;
   // Runs are maximal-contiguous (adjacent frames merge), so a run's anchor a-1 is
@@ -1539,15 +1539,18 @@ async function verifyStaticFramesSafe(
     for (const f of [...pts].sort((x, y) => x - y)) {
       const cur = await seekCapture(f);
       spent++;
-      if (!anchorBuf.equals(cur)) return f;
+      if (!anchorBuf.equals(cur)) return { badFrame: f, budgetExhausted: false };
     }
-    if (spent > hardCap) return a; // budget exhausted → can't fully verify → disarm
+    // Budget exhausted → can't fully verify → disarm. Reported distinctly from real
+    // drift so a `verification_budget` spike in telemetry signals "tune HF_STATIC_DEDUP_SAMPLES",
+    // not "compositions are non-static".
+    if (spent > hardCap) return { badFrame: a, budgetExhausted: true };
   }
   return null;
 }
 
 /**
- * Arm static-frame dedup for this render (opt-in HF_STATIC_DEDUP=true, default off).
+ * Arm static-frame dedup for this render (default-on; opt out with HF_STATIC_DEDUP=false).
  * Runs at init in normal DOM state so the verification screenshots are valid. Predicts
  * the static set, anchor-verifies it (skip with HF_STATIC_DEDUP_VERIFY=false — unsafe),
  * and on success stores it on the session for captureFrameCore to reuse. Sample budget
@@ -1558,9 +1561,10 @@ async function armStaticDedup(
   page: Page,
   logInitPhase: (phase: string) => void,
 ): Promise<void> {
-  // Default ON for everyone; opt OUT with HF_STATIC_DEDUP=false. Verification
-  // (verifyStaticFramesSafe) is the safety net that keeps this sound at scale.
-  session.staticDedupEnabled = process.env.HF_STATIC_DEDUP !== "false";
+  // Default ON for everyone; opt OUT with HF_STATIC_DEDUP in {false,0,off} (case/space
+  // insensitive). Verification (verifyStaticFramesSafe) is the safety net at scale.
+  const dedupFlag = process.env.HF_STATIC_DEDUP?.trim().toLowerCase();
+  session.staticDedupEnabled = !(dedupFlag === "false" || dedupFlag === "0" || dedupFlag === "off");
   session.staticDedupArmed = false;
   if (!session.staticDedupEnabled) return;
   // Conservative gates: dedup is verified against the plain screenshot path, so only arm
@@ -1607,15 +1611,20 @@ async function armStaticDedup(
   }
   const rawSamples = Number(process.env.HF_STATIC_DEDUP_SAMPLES ?? "24");
   const samples = Number.isFinite(rawSamples) && rawSamples >= 1 ? rawSamples : 24;
-  const badFrame =
+  const verdict =
     process.env.HF_STATIC_DEDUP_VERIFY === "false"
       ? null
       : await verifyStaticFramesSafe(session, page, stats.staticFrameSet, fps, samples);
-  if (badFrame !== null) {
-    session.staticDedupSkipReason = "verification_failed";
+  if (verdict !== null) {
+    session.staticDedupSkipReason = verdict.budgetExhausted
+      ? "verification_budget"
+      : "verification_failed";
     logInitPhase(
-      `static-frame dedup: disabled (verification failed — content drifts from anchor at ` +
-        `predicted-static frame ${badFrame})`,
+      verdict.budgetExhausted
+        ? `static-frame dedup: disabled (verification budget exhausted before frame ${verdict.badFrame}; ` +
+            `raise HF_STATIC_DEDUP_SAMPLES to verify more)`
+        : `static-frame dedup: disabled (verification failed — content drifts from anchor at ` +
+            `predicted-static frame ${verdict.badFrame})`,
     );
     return;
   }
@@ -1653,7 +1662,9 @@ async function captureFrameCore(
   // since a static run is verified identical, reusing the run's first in-range capture
   // equals reusing the global anchor). Telemetry: count reuses separately; do NOT bump
   // capturePerf.frames (that would dilute the per-frame timing averages).
-  const absFrameIndex = Math.round(time * fpsToNumber(options.fps));
+  // Use the SAME floor+epsilon idiom as quantizeTimeToFrame so the dedup lookup agrees
+  // with the frame the seek actually lands on, even if `time` ever isn't exactly i/fps.
+  const absFrameIndex = Math.floor(time * fpsToNumber(options.fps) + 1e-9);
   if (session.staticFrames?.has(absFrameIndex) && session.lastFrameBuffer) {
     session.staticDedupCount = (session.staticDedupCount ?? 0) + 1;
     return {

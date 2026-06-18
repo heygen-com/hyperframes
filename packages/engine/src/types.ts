@@ -162,7 +162,7 @@ export interface CapturePerfSummary {
   avgScreenshotMs: number;
   /**
    * Frames served from the static-dedup cache instead of a real seek+screenshot
-   * (opt-in HF_STATIC_DEDUP). 0 when dedup was off or never armed. NOT counted
+   * (opt-out HF_STATIC_DEDUP=false). 0 when dedup was off or never armed. NOT counted
    * in `frames` (reuses are excluded so they don't dilute the per-frame
    * averages) — the captured total this session is `frames + staticDedupReused`.
    */

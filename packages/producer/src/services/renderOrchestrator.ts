@@ -89,7 +89,7 @@ import { buildRenderErrorDetails, cleanupRenderResources, safeCleanup } from "./
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { formatCaptureFrameName } from "../utils/paths.js";
 import { resolveEffectiveHdrMode } from "./render/hdrMode.js";
-import { buildRenderPerfSummary } from "./render/perfSummary.js";
+import { buildRenderPerfSummary, pushWorkerDedupPerfs } from "./render/perfSummary.js";
 import { getCaptureStageBrowserConsole } from "./render/captureStageError.js";
 import {
   type CaptureCalibrationSample,
@@ -592,8 +592,8 @@ export async function executeDiskCaptureWithAdaptiveRetry(options: {
    * contract: `[0, totalFrames)`). See `WorkerTask.outputFrameOffset`.
    */
   frameRangeStart?: number;
-  /** Mutated in place — each worker's static-dedup perf is appended for aggregation. */
-  dedupPerfs?: CapturePerfSummary[];
+  /** Mutated in place — replaced each attempt so only the final attempt's worker perf survives (see retry reset below). */
+  dedupPerfs: CapturePerfSummary[];
 }): Promise<CaptureAttemptSummary[]> {
   const attempts: CaptureAttemptSummary[] = [];
   let currentWorkers = options.initialWorkerCount;
@@ -621,6 +621,11 @@ export async function executeDiskCaptureWithAdaptiveRetry(options: {
         )
       : [distributeFrames(options.totalFrames, currentWorkers, attemptWorkDir, rangeStart)];
 
+    // Reset before each attempt so a retry REPLACES (not accumulates) worker perf —
+    // otherwise a frame captured in attempt 0 AND re-captured on retry would be counted
+    // twice, inflating reused/predicted past totalFrames. The common no-retry path keeps
+    // exactly one attempt's perf; a retry reports only the final attempt's set.
+    options.dedupPerfs.length = 0;
     try {
       for (const tasks of batches) {
         const capturedBeforeBatch = countCapturedFrames(
@@ -651,11 +656,7 @@ export async function executeDiskCaptureWithAdaptiveRetry(options: {
             undefined,
             options.cfg,
           );
-          if (options.dedupPerfs) {
-            for (const r of workerResults) {
-              if (r.perf) options.dedupPerfs.push(r.perf);
-            }
-          }
+          pushWorkerDedupPerfs(workerResults, options.dedupPerfs);
         } finally {
           await mergeWorkerFrames(attemptWorkDir, tasks, options.framesDir);
         }

@@ -62,6 +62,7 @@ import type { FileServerHandle } from "../../fileServer.js";
 import type { ProducerLogger } from "../../../logger.js";
 import type { ProgressCallback, RenderJob } from "../../renderOrchestrator.js";
 import { wrapCaptureStageError } from "../captureStageError.js";
+import { pushWorkerDedupPerfs } from "../perfSummary.js";
 import { ensureFrameWritten } from "./captureHdrFrameShared.js";
 import { updateJobStatus } from "../shared.js";
 
@@ -237,9 +238,7 @@ export async function runCaptureStreamingStage(
         onFrameBuffer,
         captureCfg,
       );
-      for (const r of workerResults) {
-        if (r.perf) dedupPerfs.push(r.perf);
-      }
+      pushWorkerDedupPerfs(workerResults, dedupPerfs);
 
       if (probeSession) {
         lastBrowserConsole = probeSession.browserConsoleBuffer;
