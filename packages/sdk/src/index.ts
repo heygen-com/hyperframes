@@ -12,6 +12,7 @@ export type {
   PatchEvent,
   PersistErrorEvent,
   ElementSnapshot,
+  ElementTimingSnapshot,
   FindQuery,
   SelectionProxy,
   ElementHandle,

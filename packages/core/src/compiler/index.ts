@@ -1,3 +1,15 @@
+// Timing resolver — shared pure resolver for word-anchored elastic timing (WS-C).
+// Consumed by both preview (sdk) and render (timingCompiler) paths.
+export {
+  resolveTimings,
+  type WordTiming,
+  type ElementAnchor,
+  type AuthoredTiming,
+  type ResolvedTiming,
+  type ResolveTimingsInput,
+  type ResolveTimingsResult,
+} from "./timingResolver";
+
 // Timing compiler (browser-safe)
 export {
   compileTimingAttrs,

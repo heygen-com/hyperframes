@@ -312,6 +312,20 @@ export interface ElementHandle {
   removeElement(): void;
 }
 
+// ─── Timing accessor types (WS-C) ─────────────────────────────────────────────
+
+/**
+ * Resolved timing snapshot for one element.
+ * Labels are GSAP timeline label names whose numeric position falls within
+ * [enterAt, exitAt] for this element. Parsed fresh on every call — never cached.
+ */
+export interface ElementTimingSnapshot {
+  enterAt: number;
+  exitAt: number;
+  /** GSAP addLabel names active during this element's window. */
+  labels: string[];
+}
+
 // ─── Composition (the main public surface, F10) ───────────────────────────────
 
 /**
@@ -327,6 +341,27 @@ export interface Composition {
   setTiming(id: HfId, timing: { start?: number; duration?: number; trackIndex?: number }): void;
   removeElement(id: HfId): void;
   setVariableValue(id: string, value: string | number | boolean): void;
+  /**
+   * Read enter/exit times and GSAP labels for every timed element (WS-C).
+   * Derives enterAt/exitAt using the same data-duration vs data-end preference
+   * as handleSetTiming (data-duration wins; data-end − data-start as fallback).
+   * Labels are parsed fresh from the GSAP script each call.
+   * Read-only — does not dispatch.
+   */
+  getElementTimings(): Record<HfId, ElementTimingSnapshot>;
+  /**
+   * Apply a sparse timing map in a single batch (WS-C).
+   * Dispatches one setTiming op per entry inside a batch so the history sees
+   * one undo step. Skips entries for unknown ids silently.
+   */
+  setElementTiming(
+    map: Record<HfId, { start?: number; duration?: number; trackIndex?: number }>,
+  ): void;
+  /**
+   * Set an elastic hold window on an element (WS-C).
+   * Thin typed wrapper over the existing setHold op — mirrors setVariableValue pattern.
+   */
+  setHold(id: HfId, hold: ElasticHold): void;
   /** Returns the newly-assigned tween ID */
   addGsapTween(target: HfId, tween: GsapTweenSpec): string;
   setGsapTween(animationId: string, properties: Partial<GsapTweenSpec>): void;
