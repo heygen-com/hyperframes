@@ -90,8 +90,9 @@ export function useInspectorState(
       inspectorPanelActive,
       inspectorButtonActive:
         STUDIO_INSPECTOR_PANELS_ENABLED && !rightCollapsed && inspectorPanelActive,
-      shouldShowSelectedDomBounds:
-        inspectorPanelActive && !rightCollapsed && !isPlaying && !isGestureRecording,
+      // Keep the selection box + motion path drawn even when the Inspector is
+      // collapsed — closing the panel shouldn't visually deselect the element.
+      shouldShowSelectedDomBounds: inspectorPanelActive && !isPlaying && !isGestureRecording,
     };
   }, [rightPanelTab, rightInspectorPanes, rightCollapsed, isPlaying, isGestureRecording]);
 }

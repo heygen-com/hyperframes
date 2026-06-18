@@ -119,7 +119,7 @@ const FORMAT_INFO: Record<"mp4" | "webm" | "mov", { label: string; desc: string 
   mp4: { label: "MP4", desc: "Best for general use. Smallest file, universal playback." },
   mov: {
     label: "MOV (ProRes 4444)",
-    desc: "Transparent video. Works in CapCut, Final Cut Pro, Premiere, DaVinci Resolve, After Effects. Large files.",
+    desc: "Transparent video. Works in Final Cut Pro, DaVinci Resolve, and most video editors. Large files.",
   },
   webm: {
     label: "WebM (VP9)",

@@ -10,7 +10,7 @@ import {
   type OverlayRect,
   type ResolvedElementRef,
   groupOverlayItemsEqual,
-  isElementVisibleForOverlay,
+  isElementVisibleInPreview,
   rectsEqual,
   resolveElementForOverlay,
   selectionCacheKey,
@@ -148,7 +148,7 @@ export function useDomEditOverlayRects({
           activeCompositionPathRef.current,
           resolvedElementRef as ResolvedElementRef,
         );
-        if (el && isElementVisibleForOverlay(el)) {
+        if (el && isElementVisibleInPreview(el)) {
           const nextRect = toOverlayRect(overlayEl, iframe, el);
           setOverlayRect(nextRect);
           const descendants = el.querySelectorAll("*");

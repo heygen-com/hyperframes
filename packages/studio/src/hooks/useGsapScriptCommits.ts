@@ -82,8 +82,10 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
     if (options.skipReload) return;
     if (result.parsed?.animations) updateKeyframeCacheFromParsed(result.parsed.animations, targetPath, selection.id ?? undefined, mutation);
     options.beforeReload?.();
+    let applied: "soft" | "full" = "full";
     if (options.softReload && result.scriptText) {
-      if (!applySoftReload(previewIframeRef.current, result.scriptText)) reloadPreview();
+      applied = applySoftReload(previewIframeRef.current, result.scriptText) ? "soft" : "full";
+      if (applied === "full") reloadPreview();
     } else {
       reloadPreview();
     }

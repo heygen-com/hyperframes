@@ -21,6 +21,7 @@ import {
 import { resolveTweenStart, resolveTweenDuration } from "../utils/globalTimeCompiler";
 import type { GsapDragCommitCallbacks } from "./gsapDragCommit";
 import { getIframeGsap, queryIframeElement, selectorFromSelection } from "./gsapShared";
+import { readRuntimeKeyframes } from "./gsapRuntimeKeyframes";
 import { roundTo3 } from "../utils/rounding";
 
 // ── Runtime reads ──────────────────────────────────────────────────────────
@@ -198,15 +199,6 @@ export async function tryGsapDragIntercept(
   fetchFallbackAnimations?: () => Promise<GsapAnimation[]>,
 ): Promise<boolean> {
   const selector = selectorFromSelection(selection);
-  console.log(
-    "[drag:4] tryGsapDragIntercept",
-    JSON.stringify({
-      sel: selection.id,
-      selector,
-      animCount: animations.length,
-      groups: animations.map((a) => a.propertyGroup).filter(Boolean),
-    }),
-  );
   if (!selector) {
     return false;
   }
@@ -218,12 +210,6 @@ export async function tryGsapDragIntercept(
     commitMutation,
     fetchFallbackAnimations,
   );
-  console.log(
-    "[drag:4] resolveGroupTween('position') →",
-    resolved
-      ? JSON.stringify({ id: resolved.anim.id, group: resolved.anim.propertyGroup })
-      : "null",
-  );
 
   let posAnim = resolved?.anim ?? null;
   if (!posAnim) {
@@ -231,15 +217,18 @@ export async function tryGsapDragIntercept(
     if (!posAnim && fetchFallbackAnimations) {
       const fresh = await fetchFallbackAnimations();
       posAnim = findGsapPositionAnimation(fresh, selector);
-      console.log(
-        "[drag:4] findGsapPositionAnimation (fetched) →",
-        posAnim ? posAnim.id : "null",
-        "freshCount:",
-        fresh.length,
-      );
     }
   }
   if (!posAnim) {
+    return false;
+  }
+
+  // The live runtime is authoritative; `selectedGsapAnimations` (and the fetch
+  // fallback) is an async server-parse that LAGS a delete-all, so `posAnim` can
+  // be a phantom of a just-deleted tween. If the live timeline has no non-hold
+  // tween for this element, the parse is stale — bail so the drag falls back to
+  // the CSS path instead of resurrecting the deleted animation from stale cache.
+  if (!readRuntimeKeyframes(iframe, selector)) {
     return false;
   }
 
@@ -248,10 +237,6 @@ export async function tryGsapDragIntercept(
     return false;
   }
 
-  console.log(
-    "[drag:4] committing GSAP position drag",
-    JSON.stringify({ posAnimId: posAnim.id, gsapPos }),
-  );
   await commitGsapPositionFromDrag(selection, posAnim, offset, gsapPos, iframe, selector, {
     commitMutation,
     fetchAnimations: fetchFallbackAnimations,

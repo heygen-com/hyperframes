@@ -97,16 +97,6 @@ export function queryIframeElement(
   }
 }
 
-/** Safely access an iframe's contentDocument, returning null on cross-origin errors. */
-export function getIframeDocument(iframe: HTMLIFrameElement | null): Document | null {
-  if (!iframe) return null;
-  try {
-    return iframe.contentDocument;
-  } catch {
-    return null;
-  }
-}
-
 // ── Keyframe parsing ──────────────────────────────────────────────────────────
 
 export interface ParsedPercentageKeyframes {
@@ -124,6 +114,26 @@ export function parsePercentageKeyframes(
 ): ParsedPercentageKeyframes | null {
   const keyframes: ParsedPercentageKeyframes["keyframes"] = [];
   let easeEach: string | undefined;
+
+  // GSAP array-form keyframes — `keyframes: [{x,y}, {x,y}, ...]` — are evenly
+  // distributed across the tween, so step i of n maps to i/(n-1)*100%. (The object
+  // form below uses explicit "0%" keys.) Without this, array-keyframed tweens (e.g.
+  // a multi-point shuttle path) read as null → no motion path.
+  if (Array.isArray(kfObj)) {
+    const steps = kfObj as unknown[];
+    steps.forEach((entry, i) => {
+      if (!entry || typeof entry !== "object") return;
+      const percentage = steps.length > 1 ? Math.round((i / (steps.length - 1)) * 1000) / 10 : 0;
+      const properties: Record<string, number | string> = {};
+      for (const [pk, pv] of Object.entries(entry as Record<string, unknown>)) {
+        if (pk === "ease") continue;
+        if (typeof pv === "number") properties[pk] = Math.round(pv * 1000) / 1000;
+        else if (typeof pv === "string") properties[pk] = pv;
+      }
+      if (Object.keys(properties).length > 0) keyframes.push({ percentage, properties });
+    });
+    return keyframes.length > 0 ? { keyframes } : null;
+  }
 
   for (const [key, val] of Object.entries(kfObj)) {
     if (key === "easeEach") {

@@ -8,7 +8,6 @@ import {
 import { getHistoryShortcutLabel } from "../utils/studioHelpers";
 import { useStudioShellContext } from "../contexts/StudioContext";
 import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
-import { useDomEditActionsContext } from "../contexts/DomEditContext";
 import { useViewMode, type StudioViewMode } from "../contexts/ViewModeContext";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 
@@ -194,7 +193,6 @@ export function StudioHeader({
 }: StudioHeaderProps) {
   const { projectId, editHistory, handleUndo, handleRedo } = useStudioShellContext();
   const { rightCollapsed, setRightCollapsed, setRightPanelTab } = usePanelLayoutContext();
-  const { clearDomSelection } = useDomEditActionsContext();
 
   return (
     <div className="flex items-center justify-between h-10 px-3 bg-neutral-900 border-b border-neutral-800 flex-shrink-0">
@@ -279,7 +277,8 @@ export function StudioHeader({
               return;
             }
             trackStudioEvent("panel_toggle", { panel: "inspector", collapsed: true });
-            clearDomSelection();
+            // Keep the current selection when collapsing the Inspector — closing
+            // the panel shouldn't deselect the element.
             setRightCollapsed(true);
           }}
           disabled={!STUDIO_INSPECTOR_PANELS_ENABLED}

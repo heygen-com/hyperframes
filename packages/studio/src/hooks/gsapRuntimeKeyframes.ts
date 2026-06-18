@@ -22,10 +22,11 @@ interface RuntimeTween {
 interface RuntimeTimeline {
   getChildren?: (deep: boolean) => RuntimeTween[];
   duration?: () => number;
+  time?: () => number;
 }
 
 type Pct = { percentage: number; properties: Record<string, number | string> };
-type ReadTween = { keyframes: Pct[]; easeEach?: string; arcPath?: ArcPathConfig };
+export type ReadTween = { keyframes: Pct[]; easeEach?: string; arcPath?: ArcPathConfig };
 
 export interface RuntimeKeyframeEntry {
   keyframes: Pct[];
@@ -160,7 +161,11 @@ export function readRuntimeKeyframes(
 ): ReadTween | null {
   const timelines = timelinesOf(iframe);
   if (!timelines) return null;
-  const tlId = compositionId || Object.keys(timelines)[0];
+  // Skip non-timeline markers (e.g. the studio's `__proxied` flag) when no
+  // explicit composition id is given — picking those yields no getChildren.
+  const tlId =
+    compositionId ||
+    Object.keys(timelines).find((k) => typeof timelines[k]?.getChildren === "function");
   if (!tlId) return null;
   const timeline = timelines[tlId];
   if (!timeline?.getChildren) return null;
@@ -173,12 +178,32 @@ export function readRuntimeKeyframes(
   }
   if (!targetEl) return null;
 
+  // The element can have MORE THAN ONE keyframed tween at disjoint time ranges
+  // (e.g. two non-overlapping gesture recordings → two separate `to()`s). The
+  // overlay must draw the segment under the PLAYHEAD, not blindly the first one
+  // — otherwise recording a second gesture leaves the path stuck on the first.
+  const now = typeof timeline.time === "function" ? timeline.time() : null;
+  let firstRead: ReadTween | null = null;
   for (const tween of timeline.getChildren(true)) {
     if (!tween.vars || !matchesElement(tween, targetEl)) continue;
+    // Skip zero-duration tweens (`tl.set(...)`, incl. the studio position-hold
+    // `data:"hf-hold"`). They sit before the real keyframed tween and otherwise
+    // shadow it — `readTween` falls back to a degenerate 2-point flat path from
+    // the set's values, hiding the actual multi-keyframe motion.
+    const dur = typeof tween.duration === "function" ? tween.duration() : 0;
+    if (!(dur > 0)) continue;
     const read = readTween(tween.vars);
-    if (read) return read;
+    if (!read) continue;
+    if (firstRead === null) firstRead = read;
+    // Prefer the tween whose [start, start+dur] contains the playhead.
+    if (now != null) {
+      const start = typeof tween.startTime === "function" ? tween.startTime() : 0;
+      if (now >= start - 1e-3 && now <= start + dur + 1e-3) return read;
+    }
   }
-  return null;
+  // Playhead outside every tween's range (or timeline has no clock): the element
+  // still has motion, so fall back to the first keyframed tween.
+  return firstRead;
 }
 
 /** Convert tween-relative keyframes to clip-relative % using the element's clip dims. */
@@ -217,9 +242,12 @@ function addScanEntry(
   clipById?: ClipDims,
 ): void {
   if (!tween.targets || !tween.vars) return;
+  const { start, duration } = tweenTiming(tween);
+  // Skip zero-duration sets/holds — they shadow the real keyframed tween (see
+  // readRuntimeKeyframes).
+  if (!(duration > 0)) return;
   const read = readTween(tween.vars);
   if (!read) return;
-  const { start, duration } = tweenTiming(tween);
   for (const target of tween.targets()) {
     const id = (target as HTMLElement).id;
     if (id && !result.has(id)) result.set(id, buildEntry(read, start, duration, clipById?.get(id)));
