@@ -1,0 +1,13 @@
+{
+  "name": "google-maps-adapter",
+  "description": "Regression guard for the Google Maps runtime adapter. Uses a mock Google Maps object with procedural canvas visualization to verify the __hfGoogleMaps adapter bridge without requiring an API key.",
+  "tags": ["regression", "adapter"],
+  "minPsnr": 30,
+  "maxFrameFailures": 0,
+  "minAudioCorrelation": 0,
+  "maxAudioLagWindows": 1,
+  "renderConfig": {
+    "fps": 30,
+    "workers": 1
+  }
+}

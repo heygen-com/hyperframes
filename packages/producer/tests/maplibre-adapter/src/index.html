@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
+<style>
+  body { margin: 0; background: #0d1117; }
+  [data-composition-id="maplibre-test"] { position: relative; overflow: hidden; font-family: 'Segoe UI', system-ui, sans-serif; }
+  #map { position: absolute; top: 0; left: 0; width: 1920px; height: 1080px; }
+  #label {
+    position: absolute; top: 36px; right: 48px; z-index: 10;
+    color: #fff; font-size: 32px; font-weight: 700;
+    background: rgba(13, 17, 23, 0.9); padding: 12px 24px; border-radius: 10px;
+    border: 2px solid #58a6ff; opacity: 0;
+  }
+  #coords {
+    position: absolute; bottom: 36px; right: 48px; z-index: 10;
+    color: #8b949e; font-size: 20px; font-family: monospace;
+    background: rgba(13, 17, 23, 0.85); padding: 8px 16px; border-radius: 6px;
+    opacity: 0;
+  }
+</style>
+</head>
+<body>
+<div id="root" data-composition-id="maplibre-test" data-width="1920" data-height="1080" data-start="0" data-duration="4">
+
+  <div id="map"></div>
+  <div id="label">MapLibre adapter test</div>
+  <div id="coords">51.5074, -0.1278 — London</div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    window.__hfMaplibre = window.__hfMaplibre || [];
+
+    // Initialize MapLibre map
+    var map = new maplibregl.Map({
+      container: 'map',
+      style: 'https://demotiles.maplibre.org/style.json',
+      center: [-0.1278, 51.5074],
+      zoom: 10,
+      attributionControl: false
+    });
+
+    // Register for adapter
+    window.__hfMaplibre = [map];
+
+    // GSAP timeline
+    var compId = 'maplibre-test';
+    var tl = gsap.timeline({ paused: true });
+
+    tl.to('#label', { opacity: 1, duration: 0.6, ease: 'power3.out' }, 0.4)
+      .from('#label', { x: 30, duration: 0.6, ease: 'power3.out' }, 0.4)
+      .to('#coords', { opacity: 1, duration: 0.5, ease: 'power2.out' }, 1.0)
+      .from('#coords', { y: 10, duration: 0.5, ease: 'power2.out' }, 1.0);
+
+    window.__timelines[compId] = tl;
+  </script>
+</div>
+</body>
+</html>

@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body { margin: 0; background: #f0f4f8; }
+  [data-composition-id="google-maps-test"] { position: relative; overflow: hidden; font-family: 'Segoe UI', system-ui, sans-serif; }
+  #map-canvas { position: absolute; top: 0; left: 0; }
+  #label {
+    position: absolute; top: 36px; left: 48px; z-index: 10;
+    color: #1a73e8; font-size: 32px; font-weight: 700;
+    background: rgba(255, 255, 255, 0.95); padding: 12px 24px; border-radius: 10px;
+    border: 2px solid #1a73e8; opacity: 0;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  }
+  #badge {
+    position: absolute; bottom: 36px; left: 48px; z-index: 10;
+    color: #fff; font-size: 16px; font-weight: 600; font-family: monospace;
+    background: #34a853; padding: 8px 16px; border-radius: 20px;
+    opacity: 0;
+  }
+</style>
+</head>
+<body>
+<div id="root" data-composition-id="google-maps-test" data-width="1920" data-height="1080" data-start="0" data-duration="4">
+
+  <canvas id="map-canvas" width="1920" height="1080"></canvas>
+  <div id="label">Google Maps adapter test</div>
+  <div id="badge">tilesloaded</div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    window.__hfGoogleMaps = window.__hfGoogleMaps || [];
+
+    // Draw procedural road-network visualization
+    var canvas = document.getElementById('map-canvas');
+    var ctx = canvas.getContext('2d');
+
+    // Background — light map style
+    ctx.fillStyle = '#e8f0e8';
+    ctx.fillRect(0, 0, 1920, 1080);
+
+    // Water body
+    ctx.fillStyle = '#aad3df';
+    ctx.beginPath();
+    ctx.moveTo(1400, 0);
+    ctx.bezierCurveTo(1300, 200, 1500, 400, 1350, 600);
+    ctx.bezierCurveTo(1200, 800, 1450, 900, 1500, 1080);
+    ctx.lineTo(1920, 1080);
+    ctx.lineTo(1920, 0);
+    ctx.closePath();
+    ctx.fill();
+
+    // Parks / green areas
+    var parks = [
+      { x: 200, y: 150, w: 240, h: 180 },
+      { x: 700, y: 500, w: 300, h: 200 },
+      { x: 100, y: 700, w: 180, h: 150 },
+    ];
+    ctx.fillStyle = '#c8e6c9';
+    for (var p = 0; p < parks.length; p++) {
+      ctx.beginPath();
+      ctx.roundRect(parks[p].x, parks[p].y, parks[p].w, parks[p].h, 8);
+      ctx.fill();
+    }
+
+    // Major roads (thick)
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 12;
+    ctx.lineCap = 'round';
+    // Horizontal highways
+    var highways = [
+      [[0, 300], [500, 300], [800, 280], [1100, 320], [1350, 300]],
+      [[0, 700], [400, 680], [700, 720], [1000, 700], [1350, 710]],
+    ];
+    for (var h = 0; h < highways.length; h++) {
+      ctx.beginPath();
+      ctx.moveTo(highways[h][0][0], highways[h][0][1]);
+      for (var s = 1; s < highways[h].length; s++) {
+        ctx.lineTo(highways[h][s][0], highways[h][s][1]);
+      }
+      ctx.stroke();
+    }
+    // Vertical roads
+    ctx.lineWidth = 8;
+    ctx.strokeStyle = '#f5f5f5';
+    var vertRoads = [300, 600, 900, 1200];
+    for (var v = 0; v < vertRoads.length; v++) {
+      ctx.beginPath();
+      ctx.moveTo(vertRoads[v], 0);
+      ctx.lineTo(vertRoads[v] + (v % 2 === 0 ? 30 : -20), 540);
+      ctx.lineTo(vertRoads[v], 1080);
+      ctx.stroke();
+    }
+
+    // Secondary roads (thin grid)
+    ctx.strokeStyle = '#e0e0e0';
+    ctx.lineWidth = 3;
+    for (var gy = 100; gy < 1080; gy += 120) {
+      ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(1350, gy); ctx.stroke();
+    }
+
+    // Road outlines on highways
+    ctx.strokeStyle = '#fbbc04';
+    ctx.lineWidth = 2;
+    for (var h2 = 0; h2 < highways.length; h2++) {
+      ctx.beginPath();
+      ctx.moveTo(highways[h2][0][0], highways[h2][0][1]);
+      for (var s2 = 1; s2 < highways[h2].length; s2++) {
+        ctx.lineTo(highways[h2][s2][0], highways[h2][s2][1]);
+      }
+      ctx.stroke();
+    }
+
+    // POI markers (Google Maps red pins)
+    var pins = [
+      [450, 450], [750, 350], [350, 600], [950, 500], [1100, 200], [550, 800]
+    ];
+    for (var i = 0; i < pins.length; i++) {
+      // Pin shadow
+      ctx.beginPath();
+      ctx.ellipse(pins[i][0], pins[i][1] + 18, 8, 4, 0, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(0,0,0,0.2)';
+      ctx.fill();
+      // Pin body
+      ctx.beginPath();
+      ctx.arc(pins[i][0], pins[i][1] - 8, 12, 0, Math.PI * 2);
+      ctx.fillStyle = '#ea4335';
+      ctx.fill();
+      ctx.strokeStyle = '#b31412';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      // Pin point
+      ctx.beginPath();
+      ctx.moveTo(pins[i][0] - 7, pins[i][1] + 2);
+      ctx.lineTo(pins[i][0], pins[i][1] + 18);
+      ctx.lineTo(pins[i][0] + 7, pins[i][1] + 2);
+      ctx.fillStyle = '#ea4335';
+      ctx.fill();
+      // Pin dot
+      ctx.beginPath();
+      ctx.arc(pins[i][0], pins[i][1] - 8, 5, 0, Math.PI * 2);
+      ctx.fillStyle = '#fff';
+      ctx.fill();
+    }
+
+    // Canvas label
+    ctx.font = 'bold 20px sans-serif';
+    ctx.fillStyle = 'rgba(26, 115, 232, 0.5)';
+    ctx.fillText('MOCK GOOGLE MAPS', 1500, 1050);
+
+    // Mock Google Maps object
+    var tilesCallbacks = [];
+    var tilesLoaded = false;
+    var mockGoogleMap = {
+      addListener: function(event, cb) {
+        if (event === 'tilesloaded') {
+          if (tilesLoaded) { cb(); }
+          else { tilesCallbacks.push(cb); }
+        }
+        return { remove: function() {} };
+      },
+      getCenter: function() { return { lat: function() { return 37.7749; }, lng: function() { return -122.4194; } }; },
+      getZoom: function() { return 12; }
+    };
+
+    // Simulate async tilesloaded
+    setTimeout(function() {
+      tilesLoaded = true;
+      for (var k = 0; k < tilesCallbacks.length; k++) {
+        tilesCallbacks[k]();
+      }
+    }, 150);
+
+    // Register for adapter
+    window.__hfGoogleMaps = [mockGoogleMap];
+
+    // GSAP timeline
+    var compId = 'google-maps-test';
+    var tl = gsap.timeline({ paused: true });
+
+    tl.to('#label', { opacity: 1, duration: 0.5, ease: 'power3.out' }, 0.3)
+      .from('#label', { scale: 0.9, duration: 0.5, ease: 'power3.out' }, 0.3)
+      .to('#badge', { opacity: 1, duration: 0.4, ease: 'back.out(1.5)' }, 1.0)
+      .from('#badge', { scale: 0, duration: 0.4, ease: 'back.out(1.5)' }, 1.0);
+
+    window.__timelines[compId] = tl;
+  </script>
+</div>
+</body>
+</html>

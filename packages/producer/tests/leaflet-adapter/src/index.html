@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  body { margin: 0; background: #0a1628; }
+  [data-composition-id="leaflet-test"] { position: relative; overflow: hidden; font-family: 'Segoe UI', system-ui, sans-serif; }
+  #map { position: absolute; top: 0; left: 0; width: 1920px; height: 1080px; }
+  #label {
+    position: absolute; top: 36px; left: 48px; z-index: 1000;
+    color: #fff; font-size: 32px; font-weight: 700;
+    background: rgba(10, 22, 40, 0.85); padding: 12px 24px; border-radius: 10px;
+    border: 2px solid #4ecdc4; opacity: 0;
+  }
+  #coords {
+    position: absolute; bottom: 36px; left: 48px; z-index: 1000;
+    color: #a0d2db; font-size: 20px; font-family: monospace;
+    background: rgba(10, 22, 40, 0.8); padding: 8px 16px; border-radius: 6px;
+    opacity: 0;
+  }
+</style>
+</head>
+<body>
+<div id="root" data-composition-id="leaflet-test" data-width="1920" data-height="1080" data-start="0" data-duration="4">
+
+  <div id="map"></div>
+  <div id="label">Leaflet adapter test</div>
+  <div id="coords">37.7749, -122.4194 — San Francisco</div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    window.__hfLeaflet = window.__hfLeaflet || [];
+
+    // Initialize Leaflet map
+    var map = L.map('map', {
+      center: [37.7749, -122.4194],
+      zoom: 12,
+      zoomControl: false,
+      attributionControl: false
+    });
+
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19
+    }).addTo(map);
+
+    // Marker at San Francisco center
+    L.marker([37.7749, -122.4194]).addTo(map);
+
+    // Register for the adapter
+    window.__hfLeaflet = [map];
+
+    // GSAP timeline for label animations
+    var compId = 'leaflet-test';
+    var tl = gsap.timeline({ paused: true });
+
+    tl.to('#label', { opacity: 1, y: 0, duration: 0.6, ease: 'power3.out' }, 0.3)
+      .from('#label', { y: -20, duration: 0.6, ease: 'power3.out' }, 0.3)
+      .to('#coords', { opacity: 1, duration: 0.5, ease: 'power2.out' }, 0.8)
+      .from('#coords', { y: 10, duration: 0.5, ease: 'power2.out' }, 0.8);
+
+    window.__timelines[compId] = tl;
+  </script>
+</div>
+</body>
+</html>

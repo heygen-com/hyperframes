@@ -1,0 +1,13 @@
+{
+  "name": "maplibre-adapter",
+  "description": "Regression guard for the MapLibre GL JS runtime adapter. Verifies that a real MapLibre map with demo tiles initializes and registers on window.__hfMaplibre for deterministic frame capture.",
+  "tags": ["regression", "adapter"],
+  "minPsnr": 25,
+  "maxFrameFailures": 10,
+  "minAudioCorrelation": 0,
+  "maxAudioLagWindows": 1,
+  "renderConfig": {
+    "fps": 30,
+    "workers": 1
+  }
+}

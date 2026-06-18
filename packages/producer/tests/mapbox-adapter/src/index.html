@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body { margin: 0; background: #1a1a2e; }
+  [data-composition-id="mapbox-test"] { position: relative; overflow: hidden; font-family: 'Segoe UI', system-ui, sans-serif; }
+  #map-canvas { position: absolute; top: 0; left: 0; }
+  #label {
+    position: absolute; top: 36px; left: 48px; z-index: 10;
+    color: #fff; font-size: 32px; font-weight: 700;
+    background: rgba(26, 26, 46, 0.9); padding: 12px 24px; border-radius: 10px;
+    border: 2px solid #e94560; opacity: 0;
+  }
+  #status {
+    position: absolute; bottom: 36px; right: 48px; z-index: 10;
+    color: #16213e; font-size: 18px; font-weight: 600; font-family: monospace;
+    background: #0f3460; padding: 8px 16px; border-radius: 6px;
+    opacity: 0; color: #e94560;
+  }
+</style>
+</head>
+<body>
+<div id="root" data-composition-id="mapbox-test" data-width="1920" data-height="1080" data-start="0" data-duration="4">
+
+  <canvas id="map-canvas" width="1920" height="1080"></canvas>
+  <div id="label">Mapbox adapter test</div>
+  <div id="status">mock: loaded</div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    window.__hfMapbox = window.__hfMapbox || [];
+
+    // Draw procedural map visualization on canvas
+    var canvas = document.getElementById('map-canvas');
+    var ctx = canvas.getContext('2d');
+
+    // Background gradient
+    var grad = ctx.createLinearGradient(0, 0, 1920, 1080);
+    grad.addColorStop(0, '#16213e');
+    grad.addColorStop(0.5, '#0f3460');
+    grad.addColorStop(1, '#1a1a2e');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 1920, 1080);
+
+    // Grid lines (like a map grid)
+    ctx.strokeStyle = 'rgba(233, 69, 96, 0.15)';
+    ctx.lineWidth = 1;
+    for (var x = 0; x < 1920; x += 60) {
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 1080); ctx.stroke();
+    }
+    for (var y = 0; y < 1080; y += 60) {
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(1920, y); ctx.stroke();
+    }
+
+    // Colored regions (simulating map zones)
+    var regions = [
+      { x: 120, y: 180, w: 360, h: 300, color: 'rgba(233, 69, 96, 0.25)' },
+      { x: 540, y: 120, w: 420, h: 240, color: 'rgba(15, 52, 96, 0.5)' },
+      { x: 1020, y: 300, w: 480, h: 360, color: 'rgba(233, 69, 96, 0.15)' },
+      { x: 300, y: 540, w: 540, h: 300, color: 'rgba(22, 33, 62, 0.6)' },
+      { x: 900, y: 660, w: 600, h: 240, color: 'rgba(233, 69, 96, 0.2)' },
+      { x: 1500, y: 120, w: 300, h: 480, color: 'rgba(15, 52, 96, 0.4)' },
+    ];
+    for (var i = 0; i < regions.length; i++) {
+      var r = regions[i];
+      ctx.fillStyle = r.color;
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+      ctx.strokeStyle = 'rgba(233, 69, 96, 0.4)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(r.x, r.y, r.w, r.h);
+    }
+
+    // Dots simulating POIs
+    var pois = [
+      [240, 330], [480, 240], [720, 200], [1200, 480], [1080, 420],
+      [600, 660], [840, 780], [1380, 300], [1560, 360], [360, 720]
+    ];
+    for (var j = 0; j < pois.length; j++) {
+      ctx.beginPath();
+      ctx.arc(pois[j][0], pois[j][1], 8, 0, Math.PI * 2);
+      ctx.fillStyle = '#e94560';
+      ctx.fill();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    // Label on canvas
+    ctx.font = 'bold 24px monospace';
+    ctx.fillStyle = 'rgba(233, 69, 96, 0.6)';
+    ctx.fillText('MOCK MAPBOX GL', 1400, 1040);
+
+    // Mock Mapbox map object
+    var loadCallbacks = [];
+    var isLoaded = false;
+    var mockMap = {
+      loaded: function() { return isLoaded; },
+      on: function(event, cb) {
+        if (event === 'load') {
+          if (isLoaded) { cb(); }
+          else { loadCallbacks.push(cb); }
+        }
+      },
+      getCenter: function() { return { lng: -122.4194, lat: 37.7749 }; },
+      getZoom: function() { return 12; }
+    };
+
+    // Simulate async load
+    setTimeout(function() {
+      isLoaded = true;
+      for (var k = 0; k < loadCallbacks.length; k++) {
+        loadCallbacks[k]();
+      }
+    }, 100);
+
+    // Register for adapter
+    window.__hfMapbox = [mockMap];
+
+    // GSAP timeline
+    var compId = 'mapbox-test';
+    var tl = gsap.timeline({ paused: true });
+
+    tl.to('#label', { opacity: 1, duration: 0.5, ease: 'power2.out' }, 0.2)
+      .from('#label', { y: -25, duration: 0.5, ease: 'power2.out' }, 0.2)
+      .to('#status', { opacity: 1, duration: 0.4, ease: 'power2.out' }, 0.9)
+      .from('#status', { x: 20, duration: 0.4, ease: 'power2.out' }, 0.9);
+
+    window.__timelines[compId] = tl;
+  </script>
+</div>
+</body>
+</html>

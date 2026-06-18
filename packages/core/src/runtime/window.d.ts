@@ -103,6 +103,36 @@ declare global {
      */
     __hfLottie?: unknown[];
     /**
+     * Mapbox GL JS map instances. Push your map here after creating it:
+     *   window.__hfMapbox = window.__hfMapbox || [];
+     *   window.__hfMapbox.push(map);
+     */
+    __hfMapbox?: unknown[];
+    /**
+     * Leaflet map instances. Push your map here after creating it:
+     *   window.__hfLeaflet = window.__hfLeaflet || [];
+     *   window.__hfLeaflet.push(map);
+     */
+    __hfLeaflet?: unknown[];
+    /**
+     * Google Maps instances. Push your map here after creating it:
+     *   window.__hfGoogleMaps = window.__hfGoogleMaps || [];
+     *   window.__hfGoogleMaps.push(map);
+     */
+    __hfGoogleMaps?: unknown[];
+    /**
+     * MapLibre GL JS map instances. Push your map here after creating it:
+     *   window.__hfMaplibre = window.__hfMaplibre || [];
+     *   window.__hfMaplibre.push(map);
+     */
+    __hfMaplibre?: unknown[];
+    /**
+     * D3 transition instances. Push your transition here after creating it:
+     *   window.__hfD3 = window.__hfD3 || [];
+     *   window.__hfD3.push(transition);
+     */
+    __hfD3?: unknown[];
+    /**
      * Render-time variable overrides injected by the engine when the user
      * passes `hyperframes render --variables '<json>'`. Read indirectly via
      * `window.__hyperframes.getVariables()` (or the named `getVariables`

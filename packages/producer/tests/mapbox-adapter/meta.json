@@ -1,0 +1,13 @@
+{
+  "name": "mapbox-adapter",
+  "description": "Regression guard for the Mapbox GL JS runtime adapter. Uses a mock Mapbox map with procedural canvas visualization to verify the __hfMapbox adapter bridge without requiring an API key.",
+  "tags": ["regression", "adapter"],
+  "minPsnr": 30,
+  "maxFrameFailures": 0,
+  "minAudioCorrelation": 0,
+  "maxAudioLagWindows": 1,
+  "renderConfig": {
+    "fps": 30,
+    "workers": 1
+  }
+}

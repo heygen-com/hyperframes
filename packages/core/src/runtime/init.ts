@@ -6,6 +6,11 @@ import { createGsapAdapter } from "./adapters/gsap";
 import { createAnimeJsAdapter } from "./adapters/animejs";
 import { createLottieAdapter } from "./adapters/lottie";
 import { createThreeAdapter } from "./adapters/three";
+import { createMapboxAdapter } from "./adapters/mapbox";
+import { createLeafletAdapter } from "./adapters/leaflet";
+import { createGoogleMapsAdapter } from "./adapters/google-maps";
+import { createMaplibreAdapter } from "./adapters/maplibre";
+import { createD3Adapter } from "./adapters/d3";
 import { createTypegpuAdapter } from "./adapters/typegpu";
 import {
   patchVideoTextureCompat,
@@ -1913,6 +1918,11 @@ export function initSandboxRuntimeModular(): void {
     createAnimeJsAdapter(),
     createLottieAdapter(),
     createThreeAdapter(),
+    createMapboxAdapter(),
+    createLeafletAdapter(),
+    createGoogleMapsAdapter(),
+    createMaplibreAdapter(),
+    createD3Adapter(),
     createTypegpuAdapter(),
     createGsapAdapter({ getTimeline: () => state.capturedTimeline }),
   ] as RuntimeDeterministicAdapter[];

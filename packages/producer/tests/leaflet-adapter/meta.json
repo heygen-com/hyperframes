@@ -1,0 +1,13 @@
+{
+  "name": "leaflet-adapter",
+  "description": "Regression guard for the Leaflet runtime adapter. Verifies that a real Leaflet map with OSM tiles initializes and registers on window.__hfLeaflet for deterministic frame capture.",
+  "tags": ["regression", "adapter"],
+  "minPsnr": 25,
+  "maxFrameFailures": 10,
+  "minAudioCorrelation": 0,
+  "maxAudioLagWindows": 1,
+  "renderConfig": {
+    "fps": 30,
+    "workers": 1
+  }
+}

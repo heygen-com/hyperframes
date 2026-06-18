@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body { margin: 0; background: #111827; }
+  [data-composition-id="d3-test"] { position: relative; overflow: hidden; font-family: 'Segoe UI', system-ui, sans-serif; }
+  #chart-container {
+    position: absolute; top: 0; left: 0; width: 1920px; height: 1080px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #label {
+    position: absolute; top: 36px; left: 48px; z-index: 10;
+    color: #f9fafb; font-size: 32px; font-weight: 700;
+    background: rgba(17, 24, 39, 0.9); padding: 12px 24px; border-radius: 10px;
+    border: 2px solid #8b5cf6; opacity: 0;
+  }
+  #subtitle {
+    position: absolute; top: 100px; left: 48px; z-index: 10;
+    color: #9ca3af; font-size: 20px;
+    opacity: 0;
+  }
+  .axis text { fill: #9ca3af; font-size: 14px; }
+  .axis line, .axis path { stroke: #374151; }
+  .grid line { stroke: #1f2937; stroke-dasharray: 2,4; }
+</style>
+</head>
+<body>
+<div id="root" data-composition-id="d3-test" data-width="1920" data-height="1080" data-start="0" data-duration="4">
+
+  <div id="chart-container"></div>
+  <div id="label">D3 adapter test</div>
+  <div id="subtitle">Animated bar chart with transitions</div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    window.__hfD3 = window.__hfD3 || [];
+
+    // Chart dimensions
+    var margin = { top: 160, right: 120, bottom: 100, left: 120 };
+    var width = 1920 - margin.left - margin.right;
+    var height = 1080 - margin.top - margin.bottom;
+
+    // Data
+    var data = [
+      { label: 'React', value: 92, color: '#61dafb' },
+      { label: 'Vue', value: 78, color: '#42b883' },
+      { label: 'Svelte', value: 65, color: '#ff3e00' },
+      { label: 'Angular', value: 58, color: '#dd0031' },
+      { label: 'Solid', value: 45, color: '#4f88c6' },
+      { label: 'Qwik', value: 38, color: '#18b6f6' },
+      { label: 'Astro', value: 72, color: '#bc52ee' },
+      { label: 'Next', value: 85, color: '#fff' },
+    ];
+
+    // Create SVG
+    var svg = d3.select('#chart-container')
+      .append('svg')
+      .attr('width', 1920)
+      .attr('height', 1080)
+      .append('g')
+      .attr('transform', 'translate(' + margin.left + ',' + margin.top + ')');
+
+    // Gradient definitions
+    var defs = svg.append('defs');
+    data.forEach(function(d, i) {
+      var grad = defs.append('linearGradient')
+        .attr('id', 'grad-' + i)
+        .attr('x1', '0%').attr('y1', '100%')
+        .attr('x2', '0%').attr('y2', '0%');
+      grad.append('stop').attr('offset', '0%').attr('stop-color', d.color).attr('stop-opacity', 0.6);
+      grad.append('stop').attr('offset', '100%').attr('stop-color', d.color).attr('stop-opacity', 1);
+    });
+
+    // Scales
+    var x = d3.scaleBand()
+      .domain(data.map(function(d) { return d.label; }))
+      .range([0, width])
+      .padding(0.25);
+
+    var y = d3.scaleLinear()
+      .domain([0, 100])
+      .range([height, 0]);
+
+    // Grid lines
+    svg.append('g')
+      .attr('class', 'grid')
+      .selectAll('line')
+      .data(y.ticks(5))
+      .enter().append('line')
+      .attr('x1', 0).attr('x2', width)
+      .attr('y1', function(d) { return y(d); })
+      .attr('y2', function(d) { return y(d); });
+
+    // X axis
+    svg.append('g')
+      .attr('class', 'axis')
+      .attr('transform', 'translate(0,' + height + ')')
+      .call(d3.axisBottom(x).tickSize(0))
+      .selectAll('text')
+      .style('font-size', '18px')
+      .style('fill', '#d1d5db');
+
+    // Y axis
+    svg.append('g')
+      .attr('class', 'axis')
+      .call(d3.axisLeft(y).ticks(5).tickSize(-8))
+      .selectAll('text')
+      .style('font-size', '16px');
+
+    // Bars — start at zero height, transition to final values
+    var bars = svg.selectAll('.bar')
+      .data(data)
+      .enter().append('rect')
+      .attr('class', 'bar')
+      .attr('x', function(d) { return x(d.label); })
+      .attr('y', height)
+      .attr('width', x.bandwidth())
+      .attr('height', 0)
+      .attr('rx', 6)
+      .attr('fill', function(d, i) { return 'url(#grad-' + i + ')'; });
+
+    // Value labels — start hidden
+    var labels = svg.selectAll('.value-label')
+      .data(data)
+      .enter().append('text')
+      .attr('class', 'value-label')
+      .attr('x', function(d) { return x(d.label) + x.bandwidth() / 2; })
+      .attr('y', height)
+      .attr('text-anchor', 'middle')
+      .attr('fill', '#f9fafb')
+      .attr('font-size', '20px')
+      .attr('font-weight', '600')
+      .attr('opacity', 0)
+      .text(function(d) { return d.value; });
+
+    // D3 transition: bars grow from bottom to their value
+    var barTransition = bars.transition()
+      .duration(1200)
+      .delay(function(d, i) { return i * 80; })
+      .attr('y', function(d) { return y(d.value); })
+      .attr('height', function(d) { return height - y(d.value); })
+      .ease(d3.easeCubicOut);
+
+    // D3 transition: value labels appear
+    var labelTransition = labels.transition()
+      .duration(600)
+      .delay(function(d, i) { return 600 + i * 80; })
+      .attr('y', function(d) { return y(d.value) - 12; })
+      .attr('opacity', 1)
+      .ease(d3.easeCubicOut);
+
+    // Register transitions for the adapter
+    // D3 transitions have .end() returning a Promise
+    window.__hfD3 = [barTransition, labelTransition];
+
+    // GSAP timeline for overlay labels
+    var compId = 'd3-test';
+    var tl = gsap.timeline({ paused: true });
+
+    tl.to('#label', { opacity: 1, duration: 0.5, ease: 'power3.out' }, 0.2)
+      .from('#label', { y: -20, duration: 0.5, ease: 'power3.out' }, 0.2)
+      .to('#subtitle', { opacity: 1, duration: 0.4, ease: 'power2.out' }, 0.6)
+      .from('#subtitle', { x: -15, duration: 0.4, ease: 'power2.out' }, 0.6);
+
+    window.__timelines[compId] = tl;
+  </script>
+</div>
+</body>
+</html>

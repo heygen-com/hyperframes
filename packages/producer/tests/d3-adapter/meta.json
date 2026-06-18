@@ -1,0 +1,13 @@
+{
+  "name": "d3-adapter",
+  "description": "Regression guard for the D3.js runtime adapter. Verifies that D3 transitions with an SVG bar chart register on window.__hfD3 and render deterministically via the adapter bridge.",
+  "tags": ["regression", "adapter"],
+  "minPsnr": 30,
+  "maxFrameFailures": 0,
+  "minAudioCorrelation": 0,
+  "maxAudioLagWindows": 1,
+  "renderConfig": {
+    "fps": 30,
+    "workers": 1
+  }
+}
