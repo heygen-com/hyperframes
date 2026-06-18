@@ -3,6 +3,7 @@
  * the `perf-summary.json` debug artifact.
  */
 
+import { arch, cpus, platform, totalmem } from "node:os";
 import { fpsToNumber } from "@hyperframes/core";
 import type { CapturePerfSummary, SubTimelineWaitOutcome, WorkerSizing } from "@hyperframes/engine";
 import type { CaptureCalibrationSample, CaptureCostEstimate } from "./captureCost.js";
@@ -221,6 +222,8 @@ export function buildRenderPerfSummary(input: {
   /** Per-session/per-worker static-dedup perf; aggregated into `staticDedup`. */
   dedupPerfs: CapturePerfSummary[];
   drawElement?: DrawElementPerfInput;
+  /** `cfg.disableGpu` — the hard `--disable-gpu` flag, for the `host` GPU picture. */
+  gpuDisabled: boolean;
 }): RenderPerfSummary {
   return {
     renderId: input.job.id,
@@ -282,5 +285,13 @@ export function buildRenderPerfSummary(input: {
       input.dedupPerfs,
       input.drawElement ?? { selfVerifyFallback: false },
     ),
+    host: {
+      platform: platform(),
+      arch: arch(),
+      cpuCount: cpus().length,
+      totalMemMb: Math.round(totalmem() / (1024 * 1024)),
+      nodeVersion: process.version,
+      gpuDisabled: input.gpuDisabled,
+    },
   };
 }
