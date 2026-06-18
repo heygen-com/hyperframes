@@ -3,6 +3,7 @@ import {
   sdkResolverShadowCheck,
   runResolverShadow,
   recordResolverParity,
+  recordAnimationResolverParity,
   evaluateSoakGate,
   type SdkResolverMismatch,
 } from "./sdkResolverShadow";
@@ -308,5 +309,41 @@ describe("F. recordResolverParity", () => {
     const session = await openComposition(BASE_HTML);
     recordResolverParity(session, "hf-box", "setTiming");
     expect(session.getElement("hf-box")?.inlineStyles.color).toBe("red"); // unchanged
+  });
+});
+
+// ─── G. recordAnimationResolverParity (GSAP animationId ops) ──────────────────
+
+const GSAP_HTML = /* html */ `<!DOCTYPE html>
+<html><body>
+  <div data-hf-id="hf-box" style="color: red">Hello</div>
+  <script>var tl = gsap.timeline({ paused: true }); tl.to("[data-hf-id=\\"hf-box\\"]", { x: 100, duration: 1 }, 0);</script>
+</body></html>`;
+
+describe("G. recordAnimationResolverParity", () => {
+  it("emits animation_not_found when the SDK cannot resolve the animationId", async () => {
+    mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = true;
+    const session = await openComposition(GSAP_HTML);
+    recordAnimationResolverParity(session, "no-such-anim", "setGsapTween");
+    const ev = lastShadow();
+    expect(ev?.mismatchCount).toBe(1);
+    expect(ev?.opLabel).toBe("setGsapTween");
+    expect(JSON.stringify(ev?.mismatches)).toContain("animation_not_found");
+  });
+
+  it("emits nothing when the animationId resolves to a located animation", async () => {
+    mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = true;
+    const session = await openComposition(GSAP_HTML);
+    const realId = session.getElements().flatMap((e) => [...e.animationIds])[0] ?? "";
+    expect(realId).not.toBe(""); // fixture has a tween on hf-box
+    recordAnimationResolverParity(session, realId, "removeGsapTween");
+    expect(trackedEvents.filter((e) => e.event === "sdk_resolver_shadow")).toHaveLength(0);
+  });
+
+  it("is a no-op when the flag is off", async () => {
+    mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = false;
+    const session = await openComposition(GSAP_HTML);
+    recordAnimationResolverParity(session, "no-such-anim", "setGsapTween");
+    expect(trackedEvents).toHaveLength(0);
   });
 });

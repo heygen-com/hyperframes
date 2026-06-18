@@ -7,7 +7,7 @@ import { STUDIO_SDK_CUTOVER_ENABLED } from "../components/editor/manualEditingAv
 import { trackStudioEvent } from "./studioTelemetry";
 import { markSelfWrite } from "../hooks/sdkSelfWriteRegistry";
 import { patchOpsToSdkEditOps } from "./sdkOpMapping";
-import { recordResolverParity } from "./sdkResolverShadow";
+import { recordResolverParity, recordAnimationResolverParity } from "./sdkResolverShadow";
 
 const CUTOVER_OP_TYPES = new Set<PatchOperation["type"]>([
   "inline-style",
@@ -255,10 +255,18 @@ export function sdkGsapTweenPersist(
   deps: CutoverDeps,
   options?: CutoverOptions,
 ): Promise<boolean> {
-  // Resolver tripwire for the element-targeted add op — runs BEFORE the cutover
-  // gate (decoupled). set/remove resolve an animationId, not an element, so
-  // element-resolution parity doesn't apply to them.
+  // Resolver tripwire — runs BEFORE this function's own cutover gate (decoupled).
+  // add targets an element (element-resolution parity); set/remove target an
+  // animationId (animation-resolution parity). Done here, not via
+  // dispatchGsapOpAndPersist's resolverTarget, because the gate below returns
+  // before that call when cutover is off.
   if (op.kind === "add") recordResolverParity(sdkSession, op.target, "addGsapTween");
+  else
+    recordAnimationResolverParity(
+      sdkSession,
+      op.animationId,
+      op.kind === "set" ? "setGsapTween" : "removeGsapTween",
+    );
   // Leading dark-launch gate so flag-off does no SDK touch (getElement) at all —
   // matches the other three chokepoints' discipline.
   if (!STUDIO_SDK_CUTOVER_ENABLED) return Promise.resolve(false);
@@ -286,7 +294,13 @@ async function dispatchGsapOpAndPersist(
   deps: CutoverDeps,
   options: CutoverOptions | undefined,
   dispatch: (s: Composition) => void,
+  resolverTarget?: { animationId: string; opLabel: string },
 ): Promise<boolean> {
+  // Resolver tripwire — runs BEFORE the cutover gate (decoupled): records when
+  // the SDK can't resolve the animationId the server GSAP path is addressing.
+  if (resolverTarget) {
+    recordAnimationResolverParity(sdkSession, resolverTarget.animationId, resolverTarget.opLabel);
+  }
   // Dark-launch gate (shared chokepoint for every GSAP-op cutover persist):
   // flag OFF → return false → caller falls back to the legacy server path.
   if (!STUDIO_SDK_CUTOVER_ENABLED) return false;
@@ -327,8 +341,13 @@ export function sdkGsapKeyframePersist(
   deps: CutoverDeps,
   options?: CutoverOptions,
 ): Promise<boolean> {
-  return dispatchGsapOpAndPersist(targetPath, sdkSession, deps, options, (s) =>
-    s.batch(() => s.dispatch({ type: "addGsapKeyframe", animationId, position, value })),
+  return dispatchGsapOpAndPersist(
+    targetPath,
+    sdkSession,
+    deps,
+    options,
+    (s) => s.batch(() => s.dispatch({ type: "addGsapKeyframe", animationId, position, value })),
+    { animationId, opLabel: "addGsapKeyframe" },
   );
 }
 
@@ -340,8 +359,13 @@ export function sdkGsapRemoveKeyframePersist(
   deps: CutoverDeps,
   options?: CutoverOptions,
 ): Promise<boolean> {
-  return dispatchGsapOpAndPersist(targetPath, sdkSession, deps, options, (s) =>
-    s.dispatch({ type: "removeGsapKeyframe", animationId, percentage }),
+  return dispatchGsapOpAndPersist(
+    targetPath,
+    sdkSession,
+    deps,
+    options,
+    (s) => s.dispatch({ type: "removeGsapKeyframe", animationId, percentage }),
+    { animationId, opLabel: "removeGsapKeyframe" },
   );
 }
 
@@ -354,8 +378,13 @@ export function sdkGsapRemovePropertyPersist(
   deps: CutoverDeps,
   options?: CutoverOptions,
 ): Promise<boolean> {
-  return dispatchGsapOpAndPersist(targetPath, sdkSession, deps, options, (s) =>
-    s.dispatch({ type: "removeGsapProperty", animationId, property, from }),
+  return dispatchGsapOpAndPersist(
+    targetPath,
+    sdkSession,
+    deps,
+    options,
+    (s) => s.dispatch({ type: "removeGsapProperty", animationId, property, from }),
+    { animationId, opLabel: "removeGsapProperty" },
   );
 }
 
@@ -378,8 +407,13 @@ export function sdkGsapRemoveAllKeyframesPersist(
   deps: CutoverDeps,
   options?: CutoverOptions,
 ): Promise<boolean> {
-  return dispatchGsapOpAndPersist(targetPath, sdkSession, deps, options, (s) =>
-    s.dispatch({ type: "removeAllKeyframes", animationId }),
+  return dispatchGsapOpAndPersist(
+    targetPath,
+    sdkSession,
+    deps,
+    options,
+    (s) => s.dispatch({ type: "removeAllKeyframes", animationId }),
+    { animationId, opLabel: "removeAllKeyframes" },
   );
 }
 
@@ -391,8 +425,13 @@ export function sdkGsapConvertToKeyframesPersist(
   deps: CutoverDeps,
   options?: CutoverOptions,
 ): Promise<boolean> {
-  return dispatchGsapOpAndPersist(targetPath, sdkSession, deps, options, (s) =>
-    s.dispatch({ type: "convertToKeyframes", animationId, resolvedFromValues }),
+  return dispatchGsapOpAndPersist(
+    targetPath,
+    sdkSession,
+    deps,
+    options,
+    (s) => s.dispatch({ type: "convertToKeyframes", animationId, resolvedFromValues }),
+    { animationId, opLabel: "convertToKeyframes" },
   );
 }
 

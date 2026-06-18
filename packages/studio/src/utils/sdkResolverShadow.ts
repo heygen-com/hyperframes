@@ -24,8 +24,9 @@ import { trackStudioEvent } from "./studioTelemetry";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface SdkResolverMismatch {
-  kind: "element_not_found" | "value_mismatch" | "dispatch_error";
-  hfId: string;
+  kind: "element_not_found" | "value_mismatch" | "dispatch_error" | "animation_not_found";
+  hfId?: string;
+  animationId?: string;
   property?: string;
   expected?: string | null;
   actual?: string | null | undefined;
@@ -252,6 +253,39 @@ export function recordResolverParity(
       mismatchCount: 1,
       mismatches: JSON.stringify([
         { kind: "element_not_found", hfId } satisfies SdkResolverMismatch,
+      ]),
+    });
+  } catch {
+    // never propagate from the shadow path
+  }
+}
+
+/**
+ * Record animation-resolution parity for an animationId-targeted GSAP op WITHOUT
+ * dispatching. Read-only: emits `animation_not_found` when the SDK can't resolve
+ * the animationId the server GSAP path is addressing — the GSAP-edit-surface
+ * analogue of element_not_found. The SDK's resolvable animation ids are the
+ * located ids attached to elements (buildAnimationIdMap), so a target absent
+ * from every element's animationIds is a resolver divergence.
+ *
+ * No-op when the shadow flag is off; never throws; never mutates the session.
+ */
+export function recordAnimationResolverParity(
+  session: Composition | null | undefined,
+  animationId: string,
+  opLabel: string,
+): void {
+  if (!STUDIO_SDK_RESOLVER_SHADOW_ENABLED) return;
+  if (!session || !animationId) return;
+  try {
+    const resolves = session.getElements().some((el) => el.animationIds.includes(animationId));
+    if (resolves) return; // SDK locates the animation — parity
+    trackStudioEvent("sdk_resolver_shadow", {
+      animationId,
+      opLabel,
+      mismatchCount: 1,
+      mismatches: JSON.stringify([
+        { kind: "animation_not_found", animationId } satisfies SdkResolverMismatch,
       ]),
     });
   } catch {
