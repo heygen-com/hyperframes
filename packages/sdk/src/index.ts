@@ -37,6 +37,4 @@ export type { PersistAdapter, PreviewAdapter, PersistVersionEntry } from "./adap
 // Concrete adapter factories (browser-safe — Node-only fs adapter: @hyperframes/sdk/adapters/fs).
 export { createMemoryAdapter } from "./adapters/memory.js";
 export { createHeadlessAdapter } from "./adapters/headless.js";
-export { createHttpAdapter } from "./adapters/http.js";
-export type { HttpAdapterOptions } from "./adapters/http.js";
 export { createIframePreviewAdapter, resolveNearestHfElement } from "./adapters/iframe.js";

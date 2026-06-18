@@ -1,10 +1,26 @@
 import { useState, useEffect, useCallback } from "react";
 import type { MutableRefObject } from "react";
 import { openComposition } from "@hyperframes/sdk";
-import { createHttpAdapter } from "@hyperframes/sdk/adapters/http";
 import type { Composition } from "@hyperframes/sdk";
 import { readStudioFileChangePath } from "../components/editor/manualEdits";
 import { isSelfWriteEcho } from "./sdkSelfWriteRegistry";
+
+/**
+ * Read a project file's content, or undefined on a non-2xx (optional read).
+ * Replaces the removed SDK http adapter's `read()` — the only thing Studio used
+ * it for (Studio is the sole writer, so the adapter's write path was dead).
+ */
+async function readProjectFileOptional(
+  projectId: string,
+  path: string,
+): Promise<string | undefined> {
+  const res = await fetch(
+    `/api/projects/${projectId}/files/${encodeURIComponent(path)}?optional=1`,
+  );
+  if (!res.ok) return undefined;
+  const data = (await res.json()) as { content?: string };
+  return typeof data.content === "string" ? data.content : undefined;
+}
 
 /**
  * True when an external file-change payload targets the active composition and
@@ -18,8 +34,8 @@ export function shouldReloadSdkSession(payload: unknown, activeCompPath: string 
 /**
  * Stage 7 Step 3a — SDK session wired to the active composition.
  *
- * Creates an SDK Composition backed by createHttpAdapter on every
- * (projectId, activeCompPath) change, disposes the old one on cleanup, and
+ * Creates an SDK Composition (reading the file via the project files API) on
+ * every (projectId, activeCompPath) change, disposes the old one on cleanup, and
  * re-opens it when the active composition file changes on disk (code editor,
  * agent, or server-side patch) so the in-memory linkedom document never goes
  * stale. The session has NO persist queue — Studio is the sole file writer; see
@@ -81,10 +97,7 @@ export function useSdkSession(
   useEffect(() => {
     if (!activeCompPath) return;
     const compPath = activeCompPath;
-    const readAdapter =
-      projectId != null
-        ? createHttpAdapter({ projectFilesUrl: `/api/projects/${projectId}` })
-        : null;
+    const readProjectId = projectId ?? null;
     const handler = (payload?: unknown) => {
       if (!shouldReloadSdkSession(payload, compPath)) return;
       const withinWindow =
@@ -96,13 +109,12 @@ export function useSdkSession(
       const payloadContent = readFileChangeContent(payload);
       // Prefer payload content; otherwise re-read so the decision is by IDENTITY
       // (an undo's reverted bytes won't match a registered self-write → reload).
-      if (payloadContent != null || !readAdapter) {
+      if (payloadContent != null || readProjectId == null) {
         decide(payloadContent);
         return;
       }
-      readAdapter
-        .read(compPath)
-        .then((c) => decide(typeof c === "string" ? c : null))
+      readProjectFileOptional(readProjectId, compPath)
+        .then((c) => decide(c ?? null))
         .catch(() => decide(null));
     };
     if (import.meta.hot) {
@@ -126,11 +138,7 @@ export function useSdkSession(
     let cancelled = false;
     const compRef = { current: null as Composition | null };
 
-    const adapter = createHttpAdapter({
-      projectFilesUrl: `/api/projects/${projectId}`,
-    });
-    adapter
-      .read(activeCompPath)
+    readProjectFileOptional(projectId, activeCompPath)
       .then(async (content) => {
         if (cancelled || typeof content !== "string") return;
         // No persist queue: Studio's writeProjectFile (via sdkCutover's
