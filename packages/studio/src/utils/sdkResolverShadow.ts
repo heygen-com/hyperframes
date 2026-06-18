@@ -65,6 +65,31 @@ function normalizeText(v: string | null | undefined): string | null {
 type FlatEl = NonNullable<ReturnType<Composition["getElement"]>>;
 type AttrMap = Record<string, string | null>;
 
+/**
+ * Resolve an hf-id to its snapshot the SAME way the SDK dispatch path does
+ * (engine/model.ts resolveScoped), NOT via Composition.getElement.
+ *
+ * getElement is canonical-only for a bare id by design — it deliberately will
+ * not resolve a bare id to a non-canonical (sub-composition) element, so that
+ * removeElement(bareId) and getElement(bareId) agree on the same instance
+ * (session.subcomp.test "ambiguous bare id" suite). But the cutover persist
+ * path dispatches the studio's bare data-hf-id, and dispatch resolves it via
+ * resolveScoped, which locates the leaf anywhere (canonical preferred, else
+ * first match). So getElement under-resolves a bare leaf that lives inside an
+ * inlined sub-composition (scopedId "host/leaf") — exactly the false
+ * `element_not_found` this tripwire was emitting for inlined compositions.
+ *
+ * Mirror resolveScoped here: exact scoped-path match, then canonical bare
+ * match, then first bare match — the resolvability dispatch actually has.
+ */
+function resolveSnapshot(session: Composition, id: string): FlatEl | null {
+  const els = session.getElements();
+  const exact = els.find((el) => el.scopedId === id);
+  if (exact) return exact;
+  const matches = els.filter((el) => el.id === id);
+  return matches.find((el) => el.scopedId === el.id) ?? matches[0] ?? null;
+}
+
 function checkStyleOp(
   op: PatchOperation,
   el: FlatEl,
@@ -140,7 +165,7 @@ export function sdkResolverShadowCheck(
   hfId: string,
   ops: PatchOperation[],
 ): SdkResolverMismatch[] {
-  if (!session.getElement(hfId)) {
+  if (!resolveSnapshot(session, hfId)) {
     return [{ kind: "element_not_found", hfId }];
   }
 
@@ -172,7 +197,7 @@ export function sdkResolverShadowCheck(
       return [{ kind: "dispatch_error", hfId, error: String(err) }];
     }
 
-    const el = session.getElement(hfId);
+    const el = resolveSnapshot(session, hfId);
     if (!el) return [{ kind: "element_not_found", hfId }];
 
     return shadowable
@@ -253,7 +278,7 @@ export function recordResolverParity(
   if (!STUDIO_SDK_RESOLVER_SHADOW_ENABLED) return;
   if (!session || !hfId) return;
   try {
-    if (session.getElement(hfId)) return; // resolves — parity, nothing to record
+    if (resolveSnapshot(session, hfId)) return; // resolves — parity, nothing to record
     trackStudioEvent("sdk_resolver_shadow", {
       hfId,
       opLabel,

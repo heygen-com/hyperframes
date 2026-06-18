@@ -189,7 +189,7 @@ describe("C. Resolver-parity detection", () => {
   it("C8: element_not_found fires when SDK resolver returns null (v0.6.110 class)", () => {
     // Simulate the regression: SDK session cannot resolve the hfId the server
     // would address (e.g. scoped-id mismatch, resolver bug).
-    const session = { getElement: () => null } as unknown as Parameters<
+    const session = { getElement: () => null, getElements: () => [] } as unknown as Parameters<
       typeof sdkResolverShadowCheck
     >[0];
     const mismatches = sdkResolverShadowCheck(
@@ -362,5 +362,48 @@ describe("G. recordAnimationResolverParity", () => {
     const session = await openComposition(GSAP_HTML);
     recordAnimationResolverParity(session, "no-such-anim", "setGsapTween");
     expect(trackedEvents).toHaveLength(0);
+  });
+});
+
+// ─── H. Inlined sub-composition: bare leaf id resolves (regression) ───────────
+
+// PostHog showed ~445 false `element_not_found` events, all on a bare leaf id
+// (hf-0ytc / #subscribe-btn) inside an inlined sub-composition. The studio reads
+// the bare data-hf-id off the DOM and the cutover dispatch resolves it via
+// resolveScoped (which locates the leaf inside the host subtree). But the shadow
+// resolved via Composition.getElement, which is canonical-only for a bare id and
+// returns null for a scoped element — so it flagged a divergence the real
+// dispatch path would not hit. The shadow now mirrors dispatch via resolveSnapshot.
+describe("H. inlined sub-composition leaf", () => {
+  // host carries data-composition-file → new scope; leaf's scopedId is
+  // "hf-host/hf-leaf" but its raw data-hf-id (what the studio reads) is bare.
+  const INLINED_HTML = /* html */ `<!DOCTYPE html>
+<html><body>
+  <div data-hf-id="hf-root" data-hf-root>
+    <div data-hf-id="hf-host" data-composition-file="sub.html">
+      <div data-hf-id="hf-leaf" style="color: red">Subscribe</div>
+    </div>
+  </div>
+</body></html>`;
+
+  it("getElement(bareLeaf) is null (canonical-only) — the trap the shadow used to hit", async () => {
+    const session = await openComposition(INLINED_HTML);
+    expect(session.getElement("hf-leaf")).toBeNull();
+    expect(session.getElement("hf-host/hf-leaf")).not.toBeNull();
+  });
+
+  it("recordResolverParity emits NOTHING for a bare leaf inside a sub-comp", async () => {
+    mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = true;
+    const session = await openComposition(INLINED_HTML);
+    recordResolverParity(session, "hf-leaf", "setTiming");
+    expect(trackedEvents.filter((e) => e.event === "sdk_resolver_shadow")).toHaveLength(0);
+  });
+
+  it("sdkResolverShadowCheck does not flag element_not_found for a bare leaf in a sub-comp", async () => {
+    const session = await openComposition(INLINED_HTML);
+    const mismatches = sdkResolverShadowCheck(session, "hf-leaf", [
+      { type: "inline-style", property: "color", value: "blue" },
+    ]);
+    expect(mismatches.some((m) => m.kind === "element_not_found")).toBe(false);
   });
 });
