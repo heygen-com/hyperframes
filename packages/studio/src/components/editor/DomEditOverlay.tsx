@@ -243,6 +243,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     if (!selection) return "none";
     return `${selection.sourceFile}:${selection.id ?? selection.selector ?? selection.label}:${selection.selectorIndex ?? 0}`;
   }, [selection]);
+
   const groupBounds = useMemo(
     () => resolveDomEditGroupOverlayRect(groupOverlayItems.map((item) => item.rect)),
     [groupOverlayItems],
