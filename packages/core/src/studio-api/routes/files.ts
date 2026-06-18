@@ -24,6 +24,7 @@ import {
   type UnsafeMutationValue,
 } from "../helpers/finiteMutation.js";
 import type { GsapAnimation } from "../../parsers/gsapSerialize.js";
+import { classifyPropertyGroup } from "../../parsers/gsapConstants.js";
 import { parseGsapScriptAcorn } from "../../parsers/gsapParserAcorn.js";
 import { unrollComputedTimeline } from "../../parsers/gsapUnroll.js";
 import {
@@ -289,6 +290,18 @@ function stripStudioEditsFromTarget(document: Document, selector: string): numbe
   return stripped;
 }
 
+// A studio path-offset (--hf-studio-offset / data-hf-studio-path-offset) and a GSAP
+// position tween both drive translate — keeping both stacks the offsets (a gesture or
+// drag recorded over a stale offset plays shoved off-position). When a committed tween
+// writes a position property, the tween owns position, so the stale offset must go.
+function keyframesWritePosition(
+  keyframes: Array<{ properties: Record<string, number | string> }>,
+): boolean {
+  return keyframes.some((kf) =>
+    Object.keys(kf.properties).some((k) => classifyPropertyGroup(k) === "position"),
+  );
+}
+
 function lastKeyframeOpacity(kfs: GsapAnimation["keyframes"]): number | string | undefined {
   if (!kfs) return undefined;
   for (let i = kfs.keyframes.length - 1; i >= 0; i--) {
@@ -431,6 +444,24 @@ type GsapMutationRequest =
       cp1?: { x: number; y: number };
       cp2?: { x: number; y: number };
     }
+  | {
+      type: "update-motion-path-point";
+      animationId: string;
+      pointIndex: number;
+      x: number;
+      y: number;
+    }
+  | { type: "add-motion-path-point"; animationId: string; index: number; x: number; y: number }
+  | { type: "remove-motion-path-point"; animationId: string; index: number }
+  | {
+      type: "add-motion-path";
+      targetSelector: string;
+      position: number;
+      duration: number;
+      x: number;
+      y: number;
+      ease?: string;
+    }
   | { type: "remove-arc-path"; animationId: string }
   | {
       type: "add-with-keyframes";
@@ -498,6 +529,24 @@ type GsapMutationRequest =
 
 type GsapMutationResult = string | { script: string; skippedSelectors: string[] };
 
+// Mutations that can change a position tween's first keyframe (value/existence/timing)
+// and therefore require the pre-keyframe hold-`set`s to be re-synced afterwards.
+const HOLD_SYNC_MUTATION_TYPES = new Set<string>([
+  "add-keyframe",
+  "update-keyframe",
+  "remove-keyframe",
+  "remove-all-keyframes",
+  "add-with-keyframes",
+  "replace-with-keyframes",
+  "convert-to-keyframes",
+  "materialize-keyframes",
+  "update-motion-path-point",
+  "add-motion-path-point",
+  "remove-motion-path-point",
+  "delete",
+  "delete-all-for-selector",
+]);
+
 async function executeGsapMutation(
   body: GsapMutationRequest,
   block: NonNullable<ReturnType<typeof extractGsapScriptBlock>>,
@@ -517,6 +566,10 @@ async function executeGsapMutation(
     unrollDynamicAnimations,
     setArcPathInScript,
     updateArcSegmentInScript,
+    updateMotionPathPointInScript,
+    addMotionPathPointInScript,
+    removeMotionPathPointInScript,
+    addMotionPathToScript,
     removeArcPathFromScript,
     addAnimationWithKeyframesToScript,
     splitAnimationsInScript,
@@ -680,10 +733,39 @@ async function executeGsapMutation(
         ...(body.cp2 ? { cp2: body.cp2 } : {}),
       });
     }
+    case "update-motion-path-point": {
+      return updateMotionPathPointInScript(block.scriptText, body.animationId, body.pointIndex, {
+        x: body.x,
+        y: body.y,
+      });
+    }
+    case "add-motion-path-point": {
+      return addMotionPathPointInScript(block.scriptText, body.animationId, body.index, {
+        x: body.x,
+        y: body.y,
+      });
+    }
+    case "remove-motion-path-point": {
+      return removeMotionPathPointInScript(block.scriptText, body.animationId, body.index);
+    }
+    case "add-motion-path": {
+      const result = addMotionPathToScript(
+        block.scriptText,
+        body.targetSelector,
+        body.position,
+        body.duration,
+        { x: body.x, y: body.y },
+        body.ease,
+      );
+      return result.script;
+    }
     case "remove-arc-path": {
       return removeArcPathFromScript(block.scriptText, body.animationId);
     }
     case "add-with-keyframes": {
+      if (keyframesWritePosition(body.keyframes)) {
+        stripStudioEditsFromTarget(block.document, body.targetSelector);
+      }
       const result = addAnimationWithKeyframesToScript(
         block.scriptText,
         body.targetSelector,
@@ -695,6 +777,9 @@ async function executeGsapMutation(
       return result.script;
     }
     case "replace-with-keyframes": {
+      if (keyframesWritePosition(body.keyframes)) {
+        stripStudioEditsFromTarget(block.document, body.targetSelector);
+      }
       const script = removeAnimationFromScript(block.scriptText, body.animationId);
       const added = addAnimationWithKeyframesToScript(
         script,
@@ -970,11 +1055,18 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       target?: { id?: string; selector?: string; selectorIndex?: number };
       splitTime?: number;
       newId?: string;
+      elementStart?: number;
+      elementDuration?: number;
     }>(c);
     if ("error" in parsed) return parsed.error;
     if (typeof parsed.body.splitTime !== "number" || !parsed.body.newId) {
       return c.json({ error: "target, splitTime, and newId required" }, 400);
     }
+    const fallbackTiming =
+      typeof parsed.body.elementStart === "number" &&
+      typeof parsed.body.elementDuration === "number"
+        ? { start: parsed.body.elementStart, duration: parsed.body.elementDuration }
+        : undefined;
 
     let originalContent: string;
     try {
@@ -987,6 +1079,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       parsed.target,
       parsed.body.splitTime,
       parsed.body.newId,
+      fallbackTiming,
     );
     if (!result.matched) {
       return c.json({ ok: false, changed: false, content: originalContent, path: ctx.filePath });
@@ -1230,7 +1323,15 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     const result = await executeGsapMutation(body, block, respond);
     if (result instanceof Response) return result;
 
-    const newScript = typeof result === "string" ? result : result.script;
+    let newScript = typeof result === "string" ? result : result.script;
+    // Keep the "hold before first keyframe" sets in sync after any mutation that can
+    // change a position tween's first keyframe or its existence. Without it, an
+    // element snaps to its CSS base before the tween starts instead of holding its
+    // first keyframe (the universal NLE behavior).
+    if (HOLD_SYNC_MUTATION_TYPES.has(body.type)) {
+      const parser = await loadGsapParser();
+      newScript = parser.syncPositionHoldsBeforeKeyframes(newScript);
+    }
     const changed = newScript !== block.scriptText;
     const newHtml = changed ? block.replaceScript(newScript) : html;
     let backupPath: string | null = null;
