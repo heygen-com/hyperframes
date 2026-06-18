@@ -13,8 +13,8 @@
  */
 import { describe, it, expect } from "vitest";
 import { parseGsapScriptAcorn } from "./gsapParserAcorn.js";
-import { serializeGsapAnimations } from "./gsapParser.js";
-import type { GsapAnimation, GsapPercentageKeyframe } from "./gsapParser.js";
+import { serializeGsapAnimations } from "./gsapSerialize.js";
+import type { GsapAnimation, GsapPercentageKeyframe } from "./gsapSerialize.js";
 import { classifyPropertyGroup, classifyTweenPropertyGroup } from "./gsapConstants.js";
 
 const parseGsapScript = parseGsapScriptAcorn;

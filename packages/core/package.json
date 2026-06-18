@@ -96,8 +96,8 @@
       "types": "./src/parsers/hfIds.ts"
     },
     "./gsap-parser": {
-      "import": "./src/parsers/gsapParser.ts",
-      "types": "./src/parsers/gsapParser.ts"
+      "import": "./src/parsers/gsapParserExports.ts",
+      "types": "./src/parsers/gsapParserExports.ts"
     },
     "./gsap-parser-acorn": {
       "import": "./src/parsers/gsapParserAcorn.ts",
@@ -195,8 +195,8 @@
         "types": "./dist/parsers/hfIds.d.ts"
       },
       "./gsap-parser": {
-        "import": "./dist/parsers/gsapParser.js",
-        "types": "./dist/parsers/gsapParser.d.ts"
+        "import": "./dist/parsers/gsapParserExports.js",
+        "types": "./dist/parsers/gsapParserExports.d.ts"
       },
       "./gsap-parser-acorn": {
         "import": "./dist/parsers/gsapParserAcorn.js",
@@ -251,15 +251,13 @@
     "prepublishOnly": "echo skip"
   },
   "dependencies": {
-    "@babel/parser": "^7.27.0",
     "@chenglou/pretext": "^0.0.5",
     "acorn": "^8.17.0",
     "acorn-walk": "^8.3.5",
     "bpm-detective": "^2.0.5",
     "magic-string": "^0.30.21",
     "postcss": "^8.5.8",
-    "postcss-selector-parser": "^7.1.2",
-    "recast": "^0.23.11"
+    "postcss-selector-parser": "^7.1.2"
   },
   "devDependencies": {
     "@types/jsdom": "^28.0.0",

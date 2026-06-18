@@ -66,10 +66,8 @@ export {
   ZOOM_CONTAINER_STYLES,
 } from "./templates/constants";
 
-// Parsers — recast-free GSAP helpers only. The AST parser (parseGsapScript and
-// the script-mutation helpers) depends on recast/@babel/parser, which break in
-// browser/SSR bundles; it is reachable only via the Node-only
-// `@hyperframes/core/gsap-parser` subpath.
+// Parsers — GSAP helpers. The AST parser (parseGsapScriptAcorn and write ops)
+// is browser-safe; mutation helpers are in gsapWriterAcorn.
 export type { GsapAnimation, GsapMethod, ParsedGsap } from "./parsers/gsapSerialize";
 
 export {

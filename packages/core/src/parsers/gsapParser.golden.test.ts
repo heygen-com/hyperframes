@@ -14,7 +14,8 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseGsapScript, serializeGsapAnimations } from "./gsapParser.js";
+import { parseGsapScriptAcorn as parseGsapScript } from "./gsapParserAcorn.js";
+import { serializeGsapAnimations } from "./gsapSerialize.js";
 
 const __goldens__ = join(fileURLToPath(import.meta.url), "..", "__goldens__");
 const g = (name: string) => join(__goldens__, name);

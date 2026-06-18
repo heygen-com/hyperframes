@@ -25,7 +25,7 @@ import {
 } from "./gsapParserAcorn.js";
 import { classifyPropertyGroup } from "./gsapConstants.js";
 import type { PropertyGroupName } from "./gsapConstants.js";
-import type { SplitAnimationsOptions, SplitAnimationsResult } from "./gsapParser.js";
+import type { SplitAnimationsOptions, SplitAnimationsResult } from "./gsapSerialize.js";
 import * as acornWalk from "acorn-walk";
 
 // acorn ESTree nodes are structurally untyped here; mirror gsapParserAcorn.ts /

@@ -5,8 +5,8 @@ import {
   isMediaElement,
   isCompositionElement,
 } from "../core.types";
-import type { GsapAnimation } from "../parsers/gsapParser";
-import { serializeGsapAnimations, keyframesToGsapAnimations } from "../parsers/gsapParser";
+import type { GsapAnimation } from "../parsers/gsapSerialize";
+import { serializeGsapAnimations, keyframesToGsapAnimations } from "../parsers/gsapSerialize";
 import { GSAP_CDN, BASE_STYLES, ZOOM_CONTAINER_STYLES } from "../templates/constants";
 
 const GOOGLE_FONTS_BASE = "https://fonts.googleapis.com/css2";

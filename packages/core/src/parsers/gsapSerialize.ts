@@ -153,6 +153,22 @@ export interface ParsedGsap {
 
 export { SUPPORTED_PROPS, SUPPORTED_EASES } from "./gsapConstants";
 
+// ── Split-animation types (used by gsapWriterAcorn) ─────────────────────────
+
+export interface SplitAnimationsOptions {
+  originalId: string;
+  newId: string;
+  splitTime: number;
+  elementStart: number;
+  elementDuration: number;
+}
+
+export interface SplitAnimationsResult {
+  script: string;
+  /** Non-ID-selector animations that the engine cannot safely retarget. */
+  skippedSelectors: string[];
+}
+
 // ── Serialization ───────────────────────────────────────────────────────────
 
 export function serializeGsapAnimations(

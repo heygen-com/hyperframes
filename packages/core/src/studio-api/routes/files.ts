@@ -27,6 +27,26 @@ import type { GsapAnimation } from "../../parsers/gsapSerialize.js";
 import { parseGsapScriptAcorn } from "../../parsers/gsapParserAcorn.js";
 import { unrollComputedTimeline } from "../../parsers/gsapUnroll.js";
 import {
+  updateAnimationInScript,
+  addAnimationToScript,
+  removeAnimationFromScript,
+  addKeyframeToScript,
+  removeKeyframeFromScript,
+  updateKeyframeInScript,
+  convertToKeyframesFromScript,
+  removeAllKeyframesFromScript,
+  materializeKeyframesFromScript,
+  unrollDynamicAnimations,
+  setArcPathInScript,
+  updateArcSegmentInScript,
+  removeArcPathFromScript,
+  addAnimationWithKeyframesToScript,
+  splitAnimationsInScript,
+  splitIntoPropertyGroupsFromScript,
+  shiftPositionsInScript,
+  scalePositionsInScript,
+} from "../../parsers/gsapWriterAcorn.js";
+import {
   removeElementFromHtml,
   patchElementInHtml,
   probeElementInSource,
@@ -318,17 +338,6 @@ function bakeVisibilityOnDelete(document: Document, anim: GsapAnimation): void {
   }
 }
 
-/**
- * Lazy-load gsapParser for write ops (recast-backed) that are not yet ported to
- * the acorn writer. The read path (`parseGsapScript`) has been replaced by the
- * browser-safe `parseGsapScriptAcorn` — this loader is only needed for the write
- * ops that remain: convertToKeyframesInScript, removeAllKeyframesFromScript,
- * materializeKeyframesInScript, unrollDynamicAnimations, setArcPathInScript, etc.
- */
-async function loadGsapParser() {
-  return import("../../parsers/gsapParser.js");
-}
-
 // ── GSAP mutation types ─────────────────────────────────────────────────────
 
 type GsapMutationRequest =
@@ -498,31 +507,11 @@ type GsapMutationRequest =
 
 type GsapMutationResult = string | { script: string; skippedSelectors: string[] };
 
-async function executeGsapMutation(
+function executeGsapMutation(
   body: GsapMutationRequest,
   block: NonNullable<ReturnType<typeof extractGsapScriptBlock>>,
   respond: (data: unknown, status?: number) => Response,
-): Promise<GsapMutationResult | Response> {
-  const parser = await loadGsapParser();
-  const {
-    updateAnimationInScript,
-    addAnimationToScript,
-    removeAnimationFromScript,
-    addKeyframeToScript,
-    removeKeyframeFromScript,
-    updateKeyframeInScript,
-    convertToKeyframesInScript,
-    removeAllKeyframesFromScript,
-    materializeKeyframesInScript,
-    unrollDynamicAnimations,
-    setArcPathInScript,
-    updateArcSegmentInScript,
-    removeArcPathFromScript,
-    addAnimationWithKeyframesToScript,
-    splitAnimationsInScript,
-    splitIntoPropertyGroups,
-  } = parser;
-
+): GsapMutationResult | Response {
   function requireAnimation(
     scriptText: string,
     animationId: string,
@@ -641,7 +630,7 @@ async function executeGsapMutation(
       );
     }
     case "convert-to-keyframes": {
-      return convertToKeyframesInScript(
+      return convertToKeyframesFromScript(
         block.scriptText,
         body.animationId,
         body.resolvedFromValues,
@@ -658,7 +647,7 @@ async function executeGsapMutation(
       if (body.allElements && body.allElements.length > 0) {
         return unrollDynamicAnimations(block.scriptText, body.animationId, body.allElements);
       }
-      return materializeKeyframesInScript(
+      return materializeKeyframesFromScript(
         block.scriptText,
         body.animationId,
         body.keyframes,
@@ -737,7 +726,7 @@ async function executeGsapMutation(
       });
     }
     case "split-into-property-groups": {
-      const result = splitIntoPropertyGroups(block.scriptText, body.animationId);
+      const result = splitIntoPropertyGroupsFromScript(block.scriptText, body.animationId);
       return result.script;
     }
     case "unroll-timeline": {
@@ -746,7 +735,6 @@ async function executeGsapMutation(
     case "shift-positions": {
       const { targetSelector, delta } = body;
       if (!targetSelector || !Number.isFinite(delta) || delta === 0) return block.scriptText;
-      const { shiftPositionsInScript } = parser;
       return shiftPositionsInScript(block.scriptText, targetSelector, delta);
     }
     case "scale-positions": {
@@ -762,7 +750,6 @@ async function executeGsapMutation(
       )
         return block.scriptText;
       if (oldStart === newStart && oldDuration === newDuration) return block.scriptText;
-      const { scalePositionsInScript } = parser;
       return scalePositionsInScript(
         block.scriptText,
         targetSelector,
@@ -1227,7 +1214,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- bridge between generic status and Hono's literal union
       status ? c.json(data, status as any) : c.json(data);
 
-    const result = await executeGsapMutation(body, block, respond);
+    const result = executeGsapMutation(body, block, respond);
     if (result instanceof Response) return result;
 
     const newScript = typeof result === "string" ? result : result.script;

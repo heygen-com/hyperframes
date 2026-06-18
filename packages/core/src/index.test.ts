@@ -90,8 +90,8 @@ describe("@hyperframes/core public API exports", () => {
 
   describe("parser exports", () => {
     it("does NOT re-export GSAP parser functions from barrel (available via gsap-parser subpath)", () => {
-      // GSAP parser uses recast (Node.js fs), so it's excluded from the barrel
-      // to keep browser bundles clean. Use @hyperframes/core/gsap-parser instead.
+      // GSAP AST parser functions are not re-exported from the barrel —
+      // use the acorn parser (gsapParserAcorn) or writer (gsapWriterAcorn) directly.
       expect(typeof (core as Record<string, unknown>).parseGsapScript).toBe("undefined");
     });
 
