@@ -25,6 +25,7 @@ const lastShadow = () =>
 
 // manualEditingAvailability reads env at module load time, so we mock the
 // module to control flag values per test group.
+// Default false in tests so shadow is opt-in per test (real default is true).
 const mockFlags = { STUDIO_SDK_RESOLVER_SHADOW_ENABLED: false };
 vi.mock("../components/editor/manualEditingAvailability", () => ({
   get STUDIO_SDK_RESOLVER_SHADOW_ENABLED() {
