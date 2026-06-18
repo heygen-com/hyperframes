@@ -1014,11 +1014,16 @@ export class FrameLookupTable {
   }
 
   private refreshActiveSet(globalTime: number): void {
+    // The active window is [start, end] INCLUSIVE of the end, mirroring the
+    // runtime's element-visibility contract (core/runtime init.ts keeps an
+    // element visible through `currentTime <= end`). An exclusive end-bound
+    // here deactivated the video one frame early, so the frame landing exactly
+    // on a clip's end rendered blank while the runtime still showed it.
     if (this.lastTime == null || globalTime < this.lastTime) {
       this.activeVideoIds.clear();
       this.startCursor = 0;
       for (const entry of this.orderedVideos) {
-        if (entry.start <= globalTime && globalTime < entry.end) {
+        if (entry.start <= globalTime && globalTime <= entry.end) {
           this.activeVideoIds.add(entry.videoId);
         }
         if (entry.start <= globalTime) {
@@ -1037,7 +1042,7 @@ export class FrameLookupTable {
       if (candidate.start > globalTime) {
         break;
       }
-      if (globalTime < candidate.end) {
+      if (globalTime <= candidate.end) {
         this.activeVideoIds.add(candidate.videoId);
       }
       this.startCursor += 1;
@@ -1045,7 +1050,7 @@ export class FrameLookupTable {
 
     for (const videoId of Array.from(this.activeVideoIds)) {
       const video = this.videos.get(videoId);
-      if (!video || globalTime < video.start || globalTime >= video.end) {
+      if (!video || globalTime < video.start || globalTime > video.end) {
         this.activeVideoIds.delete(videoId);
       }
     }
@@ -1073,7 +1078,18 @@ export class FrameLookupTable {
         }
         continue;
       }
-      if (frameIndex < 0 || frameIndex >= video.extracted.totalFrames) continue;
+      if (frameIndex < 0 || frameIndex >= video.extracted.totalFrames) {
+        // At the inclusive clip end (globalTime === end), hold the last
+        // extracted frame so the render matches the runtime, which keeps the
+        // element visible on its final frame at `t === end`. Mid-clip source
+        // exhaustion (globalTime < end) stays blank — unchanged.
+        if (globalTime >= video.end && video.extracted.totalFrames > 0) {
+          const lastIndex = video.extracted.totalFrames - 1;
+          const lastPath = video.extracted.framePaths.get(lastIndex);
+          if (lastPath) frames.set(videoId, { framePath: lastPath, frameIndex: lastIndex });
+        }
+        continue;
+      }
       const framePath = video.extracted.framePaths.get(frameIndex);
       if (!framePath) continue;
       frames.set(videoId, { framePath, frameIndex });

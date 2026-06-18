@@ -328,6 +328,71 @@ describe("FrameLookupTable", () => {
     expect(table.getActiveFramePayloads(0.5).has("hero")).toBe(true);
     expect(table.getActiveFramePayloads(1.5).has("hero")).toBe(false);
   });
+
+  it("holds the last frame at the inclusive clip end (t === end)", () => {
+    // clip [1,3] with exactly 2s of source frames (60 @ 30fps). The frame
+    // landing on t === end used to deactivate one frame early and render blank,
+    // while the runtime keeps the element visible on its last frame.
+    const table = createFrameLookupTable(
+      [
+        {
+          id: "hero",
+          src: "clip.webm",
+          start: 1,
+          end: 3,
+          mediaStart: 0,
+          loop: false,
+          hasAudio: false,
+        },
+      ],
+      [fakeExtracted(60, 30)],
+    );
+    const atEnd = table.getActiveFramePayloads(3.0).get("hero");
+    expect(atEnd?.frameIndex).toBe(59);
+    // mid-clip is unaffected
+    expect(table.getActiveFramePayloads(2.5).get("hero")?.frameIndex).toBe(45);
+  });
+
+  it("holds the last frame at the clip end even when the source is shorter than the window", () => {
+    // clip [0,5] with only 1s of source (30 @ 30fps). The mid-clip tail stays
+    // blank (source exhausted), but t === end still holds the last frame to
+    // match the runtime's inclusive visibility.
+    const table = createFrameLookupTable(
+      [
+        {
+          id: "hero",
+          src: "clip.webm",
+          start: 0,
+          end: 5,
+          mediaStart: 0,
+          loop: false,
+          hasAudio: false,
+        },
+      ],
+      [fakeExtracted(30, 30)],
+    );
+    expect(table.getActiveFramePayloads(1.5).has("hero")).toBe(false);
+    expect(table.getActiveFramePayloads(5.0).get("hero")?.frameIndex).toBe(29);
+  });
+
+  it("keeps both clips active at a shared adjacent boundary, matching the runtime", () => {
+    // clip A ends at 3.0, clip B starts at 3.0. The runtime shows both at the
+    // shared instant; the active set must too.
+    const table = createFrameLookupTable(
+      [
+        { id: "a", src: "a.webm", start: 0, end: 3, mediaStart: 0, loop: false, hasAudio: false },
+        { id: "b", src: "b.webm", start: 3, end: 6, mediaStart: 0, loop: false, hasAudio: false },
+      ],
+      // createFrameLookupTable maps each clip to extracted frames by id.
+      [
+        { ...fakeExtracted(90, 30), videoId: "a" },
+        { ...fakeExtracted(90, 30), videoId: "b" },
+      ],
+    );
+    const payloads = table.getActiveFramePayloads(3.0);
+    expect(payloads.has("a")).toBe(true);
+    expect(payloads.has("b")).toBe(true);
+  });
 });
 
 describe("parseImageElements", () => {
