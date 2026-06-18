@@ -168,8 +168,13 @@ export function useGsapKeyframeOps({
         elementId: selection.id,
         apply: (prev) => ({
           ...prev,
+          // Match the writer's removal tolerance (PCT_TOLERANCE = 2 in
+          // gsapWriterAcorn): removing at e.g. 49% drops a keyframe at 50% on
+          // disk, so the optimistic cache must drop it too — else the stranded
+          // entry is a phantom that vanishes on the next reload (mirror of the
+          // add-path tolerance fix).
           keyframes: prev.keyframes.filter(
-            (kf) => Math.abs((kf.tweenPercentage ?? kf.percentage) - percentage) > 0.001,
+            (kf) => Math.abs((kf.tweenPercentage ?? kf.percentage) - percentage) > 2,
           ),
         }),
         persist: async () => {
