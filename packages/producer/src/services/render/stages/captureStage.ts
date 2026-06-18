@@ -39,11 +39,13 @@
 import {
   type BeforeCaptureHook,
   type CaptureOptions,
+  type CapturePerfSummary,
   type CaptureSession,
   type EngineConfig,
   captureFrame,
   closeCaptureSession,
   createCaptureSession,
+  getCapturePerfSummary,
   initializeSession,
   prepareCaptureSessionForReuse,
 } from "@hyperframes/engine";
@@ -90,6 +92,13 @@ export interface CaptureStageInput {
   needsAlpha: boolean;
   /** Mutated in place — each parallel retry attempt is appended. */
   captureAttempts: CaptureAttemptSummary[];
+  /**
+   * Mutated in place — per-session static-dedup perf is appended (one entry
+   * for the sequential session, one per worker on the parallel path). The
+   * sequencer aggregates these into the `RenderPerfSummary` dedup block. Same
+   * append-in-place contract as `captureAttempts`.
+   */
+  dedupPerfs: CapturePerfSummary[];
   buildCaptureOptions: () => CaptureOptions;
   createRenderVideoFrameInjector: () => BeforeCaptureHook | null;
   abortSignal: AbortSignal | undefined;
@@ -137,6 +146,7 @@ export async function runCaptureStage(input: CaptureStageInput): Promise<Capture
     onProgress,
     needsAlpha,
     frameRange,
+    dedupPerfs,
   } = input;
   let { workerCount, probeSession } = input;
   let lastBrowserConsole: string[] = [];
@@ -190,6 +200,7 @@ export async function runCaptureStage(input: CaptureStageInput): Promise<Capture
       createBeforeCaptureHook: createRenderVideoFrameInjector,
       abortSignal,
       frameRangeStart: frameRange?.startFrame,
+      dedupPerfs,
       onProgress: (progress) => {
         job.framesRendered = progress.capturedFrames;
         const frameProgress = progress.capturedFrames / progress.totalFrames;
@@ -277,6 +288,9 @@ export async function runCaptureStage(input: CaptureStageInput): Promise<Capture
           onProgress,
         );
       }
+      // Capture the sequential session's static-dedup perf before close (the
+      // counters are valid only while the session is live).
+      dedupPerfs.push(getCapturePerfSummary(session));
       // This must mirror streaming capture: catch wraps the original failure with
       // browser diagnostics, finally only handles cleanup.
       // fallow-ignore-next-line code-duplication

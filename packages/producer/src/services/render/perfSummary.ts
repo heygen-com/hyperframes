@@ -4,6 +4,7 @@
  */
 
 import { fpsToNumber } from "@hyperframes/core";
+import type { CapturePerfSummary } from "@hyperframes/engine";
 import type { CaptureCalibrationSample, CaptureCostEstimate } from "./captureCost.js";
 import type {
   CaptureAttemptSummary,
@@ -13,6 +14,26 @@ import type {
 } from "../renderOrchestrator.js";
 import { type HdrPerfCollector, finalizeHdrPerf } from "./hdrPerf.js";
 import type { RenderObservabilitySummary } from "./observability.js";
+
+/**
+ * Collapse per-session/per-worker static-dedup perf into one render-level
+ * outcome. enabled/armed = OR across workers (they run the same gates on the
+ * same composition); predicted/reused = SUM (each worker dedups its own frame
+ * range); skipReason = the first reported reason when not armed.
+ */
+function aggregateDedup(perfs: CapturePerfSummary[]): RenderPerfSummary["staticDedup"] {
+  if (perfs.length === 0) return undefined;
+  const armed = perfs.some((p) => p.staticDedupArmed);
+  return {
+    enabled: perfs.some((p) => p.staticDedupEnabled),
+    armed,
+    predictedFrames: perfs.reduce((sum, p) => sum + (p.staticDedupPredicted ?? 0), 0),
+    reusedFrames: perfs.reduce((sum, p) => sum + (p.staticDedupReused ?? 0), 0),
+    skipReason: armed
+      ? undefined
+      : perfs.find((p) => p.staticDedupSkipReason)?.staticDedupSkipReason,
+  };
+}
 
 export function buildRenderPerfSummary(input: {
   job: RenderJob;
@@ -39,6 +60,8 @@ export function buildRenderPerfSummary(input: {
   observability?: RenderObservabilitySummary;
   peakRssBytes: number;
   peakHeapUsedBytes: number;
+  /** Per-session/per-worker static-dedup perf; aggregated into `staticDedup`. */
+  dedupPerfs: CapturePerfSummary[];
 }): RenderPerfSummary {
   return {
     renderId: input.job.id,
@@ -82,5 +105,6 @@ export function buildRenderPerfSummary(input: {
         : undefined,
     peakRssMb: Math.round(input.peakRssBytes / (1024 * 1024)),
     peakHeapUsedMb: Math.round(input.peakHeapUsedBytes / (1024 * 1024)),
+    staticDedup: aggregateDedup(input.dedupPerfs),
   };
 }

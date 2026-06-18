@@ -573,6 +573,9 @@ export async function renderChunk(
         probeSession: session,
         needsAlpha: plan.dimensions.format !== "mp4",
         captureAttempts: [],
+        // Distributed chunks run on Linux (beginframe) where dedup never arms;
+        // a throwaway sink satisfies the type without per-chunk dedup reporting.
+        dedupPerfs: [],
         buildCaptureOptions: () => captureOptions,
         createRenderVideoFrameInjector: () => videoInjector,
         abortSignal: undefined,

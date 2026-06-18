@@ -62,6 +62,20 @@ export interface CaptureSession {
   lastFrameBuffer?: Buffer;
   /** Count of frames served from a reused buffer (dedup telemetry). */
   staticDedupCount?: number;
+  // ── Static-dedup observability (set by armStaticDedup; surfaced via
+  // getCapturePerfSummary → RenderPerfSummary → the render_complete event) ──
+  /** `HF_STATIC_DEDUP=true` was set for this render (opt-in flag observed at arm time). */
+  staticDedupEnabled?: boolean;
+  /** Dedup passed every gate + verification and is active (staticFrames populated). */
+  staticDedupArmed?: boolean;
+  /**
+   * Short machine code for WHY dedup did not arm, for a low-cardinality breakdown.
+   * One of: `capture_mode` | `video_injection` | `page_composite` |
+   * `ineligible` | `verification_failed`. Undefined when armed or disabled.
+   */
+  staticDedupSkipReason?: string;
+  /** Predicted reusable frame count (staticFrames.size) when armed. */
+  staticDedupPredicted?: number;
   // Tracks whether the page/browser handles have already been released by
   // closeCaptureSession. Used to make closeCaptureSession idempotent under
   // browser-pool semantics (see the function body for the full invariant).
@@ -1544,7 +1558,11 @@ async function armStaticDedup(
   page: Page,
   logInitPhase: (phase: string) => void,
 ): Promise<void> {
-  if (process.env.HF_STATIC_DEDUP !== "true") return;
+  // Default ON for everyone; opt OUT with HF_STATIC_DEDUP=false. Verification
+  // (verifyStaticFramesSafe) is the safety net that keeps this sound at scale.
+  session.staticDedupEnabled = process.env.HF_STATIC_DEDUP !== "false";
+  session.staticDedupArmed = false;
+  if (!session.staticDedupEnabled) return;
   // Conservative gates: dedup is verified against the plain screenshot path, so only arm
   // where the production capture matches what verification measures, and where reuse is
   // sound. Skip when:
@@ -1557,12 +1575,14 @@ async function armStaticDedup(
   //  - page-side compositing is active (shader transitions / drawElement composite paint
   //    a frame the plain verification screenshot doesn't reproduce).
   if (session.captureMode !== "screenshot") {
+    session.staticDedupSkipReason = "capture_mode";
     logInitPhase(
       `static-frame dedup: disabled (capture mode ${session.captureMode}, not screenshot)`,
     );
     return;
   }
   if (session.onBeforeCapture) {
+    session.staticDedupSkipReason = "video_injection";
     logInitPhase("static-frame dedup: disabled (before-capture hook / video injection active)");
     return;
   }
@@ -1574,12 +1594,14 @@ async function armStaticDedup(
     )
     .catch(() => true); // fail CLOSED: if we can't determine, assume compositing → skip dedup
   if (pageComposite) {
+    session.staticDedupSkipReason = "page_composite";
     logInitPhase("static-frame dedup: disabled (page-side compositing active)");
     return;
   }
   const fps = fpsToNumber(session.options.fps);
   const stats = await computeStaticFrameSet(page, fps);
   if (!stats.eligible || stats.staticFrameSet.size === 0) {
+    session.staticDedupSkipReason = "ineligible";
     logInitPhase(`static-frame dedup: disabled (${stats.reason})`);
     return;
   }
@@ -1590,6 +1612,7 @@ async function armStaticDedup(
       ? null
       : await verifyStaticFramesSafe(session, page, stats.staticFrameSet, fps, samples);
   if (badFrame !== null) {
+    session.staticDedupSkipReason = "verification_failed";
     logInitPhase(
       `static-frame dedup: disabled (verification failed — content drifts from anchor at ` +
         `predicted-static frame ${badFrame})`,
@@ -1597,6 +1620,8 @@ async function armStaticDedup(
     return;
   }
   session.staticFrames = stats.staticFrameSet;
+  session.staticDedupArmed = true;
+  session.staticDedupPredicted = stats.staticFrameSet.size;
   logInitPhase(
     `static-frame dedup: ${stats.staticFrameSet.size}/${stats.totalFrames} frame(s) reusable ` +
       `(${Math.round((stats.staticFrameSet.size / stats.totalFrames) * 100)}%, verified)`,
@@ -1788,6 +1813,23 @@ export async function discardWarmupCapture(
 }
 
 export async function closeCaptureSession(session: CaptureSession): Promise<void> {
+  // Realized static-dedup telemetry: how much the cache actually helped this
+  // render (vs the prediction logged at arm time). Both capture paths
+  // (sequential orchestrator + parallel workers) close their session here, so
+  // this is the one uniform emit point. Zero the count afterward so the
+  // idempotent re-close (HDR cleanup) doesn't double-log.
+  const reused = session.staticDedupCount ?? 0;
+  if (session.staticFrames && reused > 0) {
+    const captured = session.capturePerf.frames; // excludes reuses by design
+    const total = captured + reused;
+    const pct = total > 0 ? Math.round((reused / total) * 100) : 0;
+    const avgTotalMs = captured > 0 ? Math.round(session.capturePerf.totalMs / captured) : 0;
+    console.log(
+      `[static-dedup] reused ${reused}/${total} frame(s) (${pct}%), ` +
+        `est. ~${reused * avgTotalMs}ms saved (avg ${avgTotalMs}ms/frame)`,
+    );
+    session.staticDedupCount = 0;
+  }
   // INVARIANT: closeCaptureSession is idempotent. The renderOrchestrator HDR
   // cleanup path tracks a `domSessionClosed` flag and may still re-call this
   // in the outer finally if the inner cleanup raised before the flag flipped.
@@ -1868,5 +1910,10 @@ export function getCapturePerfSummary(session: CaptureSession): CapturePerfSumma
     avgSeekMs: Math.round(session.capturePerf.seekMs / frames),
     avgBeforeCaptureMs: Math.round(session.capturePerf.beforeCaptureMs / frames),
     avgScreenshotMs: Math.round(session.capturePerf.screenshotMs / frames),
+    staticDedupReused: session.staticDedupCount ?? 0,
+    staticDedupEnabled: session.staticDedupEnabled ?? false,
+    staticDedupArmed: session.staticDedupArmed ?? false,
+    staticDedupPredicted: session.staticDedupPredicted ?? 0,
+    staticDedupSkipReason: session.staticDedupSkipReason,
   };
 }

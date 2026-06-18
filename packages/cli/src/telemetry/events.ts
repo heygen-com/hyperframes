@@ -101,6 +101,13 @@ export function trackRenderComplete(
     workers?: number;
     docker: boolean;
     gpu: boolean;
+    // Static-frame dedup outcome (opt-out HF_STATIC_DEDUP=false). Undefined on
+    // render paths with no capture session.
+    staticDedupEnabled?: boolean;
+    staticDedupArmed?: boolean;
+    staticDedupSkipReason?: string;
+    staticDedupPredictedFrames?: number;
+    staticDedupReusedFrames?: number;
     // "cli" when triggered by `hyperframes render` (default), "studio" when
     // triggered by a studio preview-server render (POST /api/projects/:id/render).
     source?: "cli" | "studio";
@@ -149,6 +156,11 @@ export function trackRenderComplete(
       workers: props.workers,
       docker: props.docker,
       gpu: props.gpu,
+      static_dedup_enabled: props.staticDedupEnabled,
+      static_dedup_armed: props.staticDedupArmed,
+      static_dedup_skip_reason: props.staticDedupSkipReason,
+      static_dedup_predicted_frames: props.staticDedupPredictedFrames,
+      static_dedup_reused_frames: props.staticDedupReusedFrames,
       source: props.source ?? "cli",
       composition_duration_ms: props.compositionDurationMs,
       composition_width: props.compositionWidth,
