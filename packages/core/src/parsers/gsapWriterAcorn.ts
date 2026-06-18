@@ -744,7 +744,18 @@ export function updateKeyframeInScript(
   if (!target) return script;
 
   const kfPropNode = findPropertyNode(target.call.varsArg, "keyframes");
-  if (!kfPropNode || kfPropNode.value?.type !== "ObjectExpression") return script;
+  if (!kfPropNode) return script;
+
+  // Array-form keyframes (`keyframes: [{x,y}, ...]`) carry no explicit percentages
+  // — GSAP distributes them evenly, and the runtime read assigns even percentages
+  // (0, 100/(n-1), …). Map the percentage back to an array index and overwrite that
+  // element in place (preserving the array form). Without this the function bailed
+  // on the ObjectExpression check, so dragging a motion-path node on an array-form
+  // tween committed nothing (server no-op).
+  if (kfPropNode.value?.type === "ArrayExpression") {
+    return updateArrayKeyframeByPct(script, kfPropNode.value, percentage, properties, ease);
+  }
+  if (kfPropNode.value?.type !== "ObjectExpression") return script;
 
   const match = findKfPropByPct(kfPropNode.value, percentage);
   if (!match) return script;
@@ -753,6 +764,33 @@ export function updateKeyframeInScript(
   if (ease) record.ease = ease;
   const ms = new MagicString(script);
   ms.overwrite(match.prop.value.start, match.prop.value.end, recordToCode(record));
+  return ms.toString();
+}
+
+// ponytail: even-spacing index map; if array keyframes ever carry per-element
+// `duration`, switch to matching the closest cumulative position.
+function updateArrayKeyframeByPct(
+  script: string,
+  arrayNode: Node,
+  percentage: number,
+  properties: Record<string, number | string>,
+  ease?: string,
+): string {
+  const elements = ((arrayNode.elements ?? []) as Array<Node | null>).filter(
+    (el): el is Node => !!el && el.type === "ObjectExpression",
+  );
+  const n = elements.length;
+  if (n === 0) return script;
+  const idx = n > 1 ? Math.round((percentage / 100) * (n - 1)) : 0;
+  const el = elements[Math.max(0, Math.min(n - 1, idx))];
+  if (!el) return script;
+  const merged: Record<string, number | string> = {
+    ...valueNodeToRecord(el, script),
+    ...properties,
+  };
+  if (ease) merged.ease = ease;
+  const ms = new MagicString(script);
+  ms.overwrite(el.start, el.end, recordToCode(merged));
   return ms.toString();
 }
 
@@ -826,6 +864,26 @@ function locateWithKeyframes(
 }
 
 /** Locate a tween's keyframes object, converting a flat tween first if absent. */
+// Array-form keyframes (`keyframes: [{x,y}, …]`) → even-percentage object form
+// (`{ "0%": {…}, "33.3%": {…}, … }`). Inserting a keyframe needs percentage keys,
+// which an even array can't host. Runtime-identical; mirrors the recast path.
+function convertArrayKeyframesToObject(script: string, target: Node): string {
+  const kfPropNode = findPropertyNode(target.call.varsArg, "keyframes");
+  if (!kfPropNode || kfPropNode.value?.type !== "ArrayExpression") return script;
+  const els = ((kfPropNode.value.elements ?? []) as Array<Node | null>).filter(
+    (el): el is Node => !!el && el.type === "ObjectExpression",
+  );
+  const n = els.length;
+  if (n === 0) return script;
+  const entries = els.map((el, i) => {
+    const pct = n > 1 ? Math.round((i / (n - 1)) * 1000) / 10 : 0;
+    return `${JSON.stringify(`${pct}%`)}: ${script.slice(el.start, el.end)}`;
+  });
+  const ms = new MagicString(script);
+  ms.overwrite(kfPropNode.value.start, kfPropNode.value.end, `{ ${entries.join(", ")} }`);
+  return ms.toString();
+}
+
 function ensureKeyframesNode(
   script: string,
   animationId: string,
@@ -833,10 +891,19 @@ function ensureKeyframesNode(
   const direct = locateWithKeyframes(script, animationId);
   if (direct) return direct;
 
-  // No static keyframes object — convert the flat tween, then re-locate.
   const parsed = parseGsapScriptAcornForWrite(script);
   const target = parsed?.located.find((l) => l.id === animationId);
   if (!target) return null;
+
+  // Array-form keyframes → normalize to object form, then re-locate.
+  const kfProp = findPropertyNode(target.call.varsArg, "keyframes");
+  if (kfProp?.value?.type === "ArrayExpression") {
+    const normalized = convertArrayKeyframesToObject(script, target);
+    if (normalized !== script) return locateWithKeyframes(normalized, animationId);
+    return null;
+  }
+
+  // No static keyframes object — convert the flat tween, then re-locate.
   const converted = convertFlatTweenToKeyframes(script, target);
   if (converted === script) return null;
   return locateWithKeyframes(converted, animationId);
@@ -963,6 +1030,53 @@ function collapseKeyframesToFlat(
   ms.overwrite(varsNode.start, varsNode.end, `{ ${entries.join(", ")} }`);
 }
 
+/** Implicit tween-relative percentage of array-form keyframe index `i` of `n`
+ *  (GSAP distributes array keyframes evenly: 0%, 1/(n-1), …, 100%). */
+function arrayKeyframePct(i: number, n: number): number {
+  return n > 1 ? (i / (n - 1)) * 100 : 0;
+}
+
+// Array-form keyframes (`keyframes: [{x,y}, …]`) carry no explicit percentages —
+// GSAP distributes them evenly. removeKeyframeFromScript only handled the
+// object-form (`keyframes: { "50%": {…} }`), so removing from an array-form tween
+// was a silent no-op (and the downstream hold-sync then stranded an `hf-hold`).
+// Resolve the element by its implicit percentage and splice it out; collapse to a
+// flat tween when fewer than two remain (parity with the object-form path).
+function removeArrayKeyframe(
+  ms: MagicString,
+  varsArg: Node,
+  arrNode: Node,
+  script: string,
+  percentage: number,
+): boolean {
+  const elements: Node[] = (arrNode.elements ?? []).filter(
+    (e: Node | null): e is Node => !!e && e.type === "ObjectExpression",
+  );
+  const n = elements.length;
+  if (n === 0) return false;
+
+  let matchIdx = -1;
+  let bestDist = Number.POSITIVE_INFINITY;
+  for (let i = 0; i < n; i++) {
+    const dist = Math.abs(arrayKeyframePct(i, n) - percentage);
+    if (dist <= PCT_TOLERANCE && dist < bestDist) {
+      matchIdx = i;
+      bestDist = dist;
+    }
+  }
+  if (matchIdx === -1) return false;
+
+  const remaining = elements.filter((_, i) => i !== matchIdx);
+  if (remaining.length < 2) {
+    const sole = remaining[0];
+    const record = sole ? valueNodeToRecord(sole, script) : {};
+    collapseKeyframesToFlat(ms, varsArg, script, record);
+    return true;
+  }
+  removeProp(ms, elements[matchIdx], elements);
+  return true;
+}
+
 export function removeKeyframeFromScript(
   script: string,
   animationId: string,
@@ -974,7 +1088,16 @@ export function removeKeyframeFromScript(
   if (!target) return script;
 
   const kfPropNode = findPropertyNode(target.call.varsArg, "keyframes");
-  if (!kfPropNode || kfPropNode.value?.type !== "ObjectExpression") return script;
+  if (!kfPropNode) return script;
+
+  if (kfPropNode.value?.type === "ArrayExpression") {
+    const ms = new MagicString(script);
+    return removeArrayKeyframe(ms, target.call.varsArg, kfPropNode.value, script, percentage)
+      ? ms.toString()
+      : script;
+  }
+
+  if (kfPropNode.value?.type !== "ObjectExpression") return script;
   const kfNode = kfPropNode.value;
 
   const match = findKfPropByPct(kfNode, percentage);

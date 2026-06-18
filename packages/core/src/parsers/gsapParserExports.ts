@@ -31,6 +31,10 @@ export {
   SUPPORTED_PROPS,
   SUPPORTED_EASES,
 } from "./gsapSerialize.js";
+// Studio position-hold predicate (`tl.set(...,{data:"hf-hold"})`). A pure
+// GsapAnimation helper — re-exported here so studio can filter holds via the
+// public entry even though gsapParser.ts is otherwise an internal module.
+export { isStudioHoldSet } from "./gsapParser.js";
 export type { PropertyGroupName } from "./gsapConstants.js";
 export {
   PROPERTY_GROUPS,

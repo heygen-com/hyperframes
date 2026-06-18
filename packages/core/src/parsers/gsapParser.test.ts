@@ -14,11 +14,16 @@ import {
   addKeyframeToScript,
   removeKeyframeFromScript,
   updateKeyframeInScript,
+  updateMotionPathPointInScript,
+  addMotionPathPointInScript,
+  removeMotionPathPointInScript,
+  addMotionPathToScript,
   convertToKeyframesInScript,
   removeAllKeyframesFromScript,
   addAnimationWithKeyframesToScript,
   splitAnimationsInScript,
   splitIntoPropertyGroups,
+  syncPositionHoldsBeforeKeyframes,
   shiftPositionsInScript,
   scalePositionsInScript,
 } from "./gsapParser.js";
@@ -481,6 +486,12 @@ describe("property group classification", () => {
     expect(classifyTweenPropertyGroup({ scale: 0.5, transformOrigin: "center center" })).toBe(
       "scale",
     );
+  });
+
+  it("ignores the internal `_auto` endpoint marker when classifying", () => {
+    // Regression: the `_auto: 1` sentinel on auto-generated endpoint keyframes must
+    // not pull a position tween into a mixed group, or drag-intercept can't resolve it.
+    expect(classifyTweenPropertyGroup({ x: 100, y: 50, _auto: 1 })).toBe("position");
   });
 
   it("returns undefined for mixed-group tweens", () => {
@@ -1560,6 +1571,98 @@ describe("keyframe mutations", () => {
     expect(kfs[1].properties.x).toBe(999);
   });
 
+  // ── backfillDefaults: editing one keyframe must not move the others ──────
+  // UX invariant (CapCut/AE): keyframes are independent. Introducing a property
+  // to one keyframe (e.g. `y` on an x-only tween) must backfill the other
+  // keyframes at the element's base value — otherwise GSAP holds the new prop's
+  // value across keyframes that omit it, dragging them to the same position.
+  const X_ONLY_SCRIPT = `
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#puck", { keyframes: { "0%": { x: 0 }, "100%": { x: -260 } }, duration: 2.2 }, 1.2);
+  `;
+
+  it("addKeyframeToScript — WITHOUT backfill, the other keyframe omits the new prop (GSAP would hold it)", () => {
+    const id = getAnimId(X_ONLY_SCRIPT);
+    const updated = addKeyframeToScript(X_ONLY_SCRIPT, id, 0, { x: 240, y: 780 });
+    const kfs = parseGsapScript(updated).animations[0].keyframes!.keyframes;
+    const kf100 = kfs.find((k) => k.percentage === 100)!;
+    expect(kf100.properties.x).toBe(-260);
+    expect("y" in kf100.properties).toBe(false); // <- the bug surface
+  });
+
+  it("addKeyframeToScript — WITH backfill, the new prop is added to the other keyframe at base (it stays put)", () => {
+    const id = getAnimId(X_ONLY_SCRIPT);
+    const updated = addKeyframeToScript(X_ONLY_SCRIPT, id, 0, { x: 240, y: 780 }, undefined, {
+      x: 0,
+      y: 0,
+    });
+    const kfs = parseGsapScript(updated).animations[0].keyframes!.keyframes;
+    const kf0 = kfs.find((k) => k.percentage === 0)!;
+    const kf100 = kfs.find((k) => k.percentage === 100)!;
+    // edited keyframe holds the drag
+    expect(kf0.properties).toMatchObject({ x: 240, y: 780 });
+    // other keyframe keeps its own x and gets y at base (0) — not 780
+    expect(kf100.properties.x).toBe(-260);
+    expect(kf100.properties.y).toBe(0);
+  });
+
+  // ── syncPositionHoldsBeforeKeyframes (hold before first keyframe) ────────
+  // UX invariant (every NLE): before the first keyframe, the element holds that
+  // keyframe's value — it must NOT snap to its CSS base then jump when the tween
+  // starts. Implemented as a tagged `tl.set(...,0)` kept in sync with the tween.
+  describe("syncPositionHoldsBeforeKeyframes", () => {
+    const posTweenAt = (start: number) =>
+      `const tl = gsap.timeline({ paused: true });\n` +
+      `tl.to("#p", { keyframes: { "0%": { x: -1500, y: 700 }, "100%": { x: -260, y: 0 } }, duration: 2.2 }, ${start});`;
+
+    it("inserts a hold set holding the first keyframe's position at t=0", () => {
+      const out = syncPositionHoldsBeforeKeyframes(posTweenAt(1.2));
+      const anims = parseGsapScript(out).animations;
+      const hold = anims.find((a) => a.method === "set");
+      expect(hold).toBeDefined();
+      expect(hold!.position).toBe(0);
+      expect(hold!.properties).toMatchObject({ x: -1500, y: 700 });
+    });
+
+    it("is idempotent (re-running does not stack holds)", () => {
+      const once = syncPositionHoldsBeforeKeyframes(posTweenAt(1.2));
+      expect(syncPositionHoldsBeforeKeyframes(once)).toBe(once);
+      expect((once.match(/hf-hold/g) ?? []).length).toBe(1);
+    });
+
+    it("re-syncs the hold value when the first keyframe changes", () => {
+      const out1 = syncPositionHoldsBeforeKeyframes(posTweenAt(1.2));
+      const moved = updateKeyframeInScript(
+        out1,
+        parseGsapScript(out1).animations.find((a) => a.keyframes)!.id,
+        0,
+        { x: 99, y: 88 },
+      );
+      const out2 = syncPositionHoldsBeforeKeyframes(moved);
+      const hold = parseGsapScript(out2).animations.find((a) => a.method === "set");
+      expect(hold!.properties).toMatchObject({ x: 99, y: 88 });
+      expect((out2.match(/hf-hold/g) ?? []).length).toBe(1); // still just one
+    });
+
+    it("adds no hold for a tween that already starts at t=0", () => {
+      expect(syncPositionHoldsBeforeKeyframes(posTweenAt(0))).not.toContain("hf-hold");
+    });
+
+    it("adds no hold for an opacity-only keyframed tween (position-scoped)", () => {
+      const opacity =
+        `const tl = gsap.timeline({ paused: true });\n` +
+        `tl.to("#b", { keyframes: { "0%": { opacity: 0 }, "100%": { opacity: 1 } }, duration: 1 }, 2);`;
+      expect(syncPositionHoldsBeforeKeyframes(opacity)).not.toContain("hf-hold");
+    });
+
+    it("removes an orphaned hold when its tween is gone", () => {
+      const withHold = syncPositionHoldsBeforeKeyframes(posTweenAt(1.2));
+      const tweenId = parseGsapScript(withHold).animations.find((a) => a.keyframes)!.id;
+      const deleted = removeAnimationFromScript(withHold, tweenId);
+      expect(syncPositionHoldsBeforeKeyframes(deleted)).not.toContain("hf-hold");
+    });
+  });
+
   // ── _auto endpoint updates ────────────────────────────────────────────
 
   const AUTO_SCRIPT = `
@@ -1679,6 +1782,204 @@ describe("keyframe mutations", () => {
     const kf100 = reparsed.animations[0].keyframes!.keyframes.find((k) => k.percentage === 100)!;
     expect(kf100.properties.x).toBe(300);
     expect(kf100.properties.y).toBe(50);
+  });
+
+  // Array-form keyframes (`keyframes: [{x,y}, …]`) carry no percentages — GSAP
+  // distributes them evenly. The motion-path overlay drags/adds by percentage,
+  // which used to no-op on array-authored tweens (#puck-b / #shuttle).
+  const ARRAY_KF_SCRIPT =
+    "const tl = gsap.timeline();\n" +
+    'tl.to("#shuttle", { keyframes: [{ x: 0, y: 0 }, { x: 520, y: 120 }, { x: 1040, y: 0 }, { x: 1480, y: 160 }], duration: 4.4, ease: "none" }, 5.2);';
+
+  it("updateKeyframeInScript — array-form: drags node 2 (pct 33.3) by index", () => {
+    const id = getAnimId(ARRAY_KF_SCRIPT);
+    const updated = updateKeyframeInScript(ARRAY_KF_SCRIPT, id, 33.3, { x: 503, y: 642 });
+    expect(updated).not.toBe(ARRAY_KF_SCRIPT);
+    const kf = parseGsapScript(updated).animations[0].keyframes!.keyframes;
+    expect([kf[1]!.properties.x, kf[1]!.properties.y]).toEqual([503, 642]);
+    expect([kf[0]!.properties.x, kf[0]!.properties.y]).toEqual([0, 0]);
+    expect([kf[2]!.properties.x, kf[2]!.properties.y]).toEqual([1040, 0]);
+  });
+
+  it("addKeyframeToScript — array-form: normalizes to object form + inserts 50%", () => {
+    const id = getAnimId(ARRAY_KF_SCRIPT);
+    const updated = addKeyframeToScript(ARRAY_KF_SCRIPT, id, 50, { x: 780, y: 60 });
+    expect(updated).not.toBe(ARRAY_KF_SCRIPT);
+    const kf = parseGsapScript(updated).animations[0].keyframes!.keyframes;
+    expect(kf.length).toBe(5);
+    const at50 = kf.find((k) => Math.abs(k.percentage - 50) < 1)!;
+    expect([at50.properties.x, at50.properties.y]).toEqual([780, 60]);
+  });
+
+  it("removeKeyframeFromScript — array-form: drops node 3 (pct 66.7)", () => {
+    const id = getAnimId(ARRAY_KF_SCRIPT);
+    const updated = removeKeyframeFromScript(ARRAY_KF_SCRIPT, id, 66.7);
+    expect(updated).not.toBe(ARRAY_KF_SCRIPT);
+    const kf = parseGsapScript(updated).animations[0].keyframes!.keyframes;
+    expect(kf.length).toBe(3);
+  });
+
+  it("updateKeyframeInScript — stale position-id resolves to the nearest same-selector tween", () => {
+    // Tween authored at 1.0s → id "#el-to-1000-position". A client that cached the
+    // pre-reposition id "#el-to-1200-position" (a gesture/convert moved it) must
+    // still resolve, instead of no-op'ing.
+    const script =
+      "const tl = gsap.timeline();\n" +
+      'tl.to("#el", { keyframes: { "0%": { x: 0, y: 0 }, "100%": { x: 50, y: 50 } }, duration: 2 }, 1);';
+    const updated = updateKeyframeInScript(script, "#el-to-1200-position", 100, { x: 77, y: 88 });
+    expect(updated).not.toBe(script);
+    const at100 = parseGsapScript(updated).animations[0].keyframes!.keyframes.find(
+      (k) => k.percentage === 100,
+    )!;
+    expect([at100.properties.x, at100.properties.y]).toEqual([77, 88]);
+  });
+
+  // ── updateMotionPathPointInScript ───────────────────────────────────────
+
+  const MOTION_PATH_SCRIPT = `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#el", {
+        motionPath: {
+          path: [{x: 0, y: 0}, {x: 200, y: -100}, {x: 400, y: 50}],
+          curviness: 1.5
+        },
+        duration: 2
+      }, 0);
+    `;
+
+  it("updateMotionPathPointInScript — moves one waypoint, preserves the rest and curviness", () => {
+    const id = getAnimId(MOTION_PATH_SCRIPT);
+    const updated = updateMotionPathPointInScript(MOTION_PATH_SCRIPT, id, 1, { x: 250, y: -140 });
+    const reparsed = parseGsapScript(updated);
+    const anim = reparsed.animations[0];
+    const wp = anim.keyframes!.keyframes;
+    expect(wp.map((k) => [k.properties.x, k.properties.y])).toEqual([
+      [0, 0],
+      [250, -140],
+      [400, 50],
+    ]);
+    expect(anim.arcPath!.segments[0].curviness).toBe(1.5);
+    expect(anim.arcPath!.segments[1].curviness).toBe(1.5);
+  });
+
+  it("updateMotionPathPointInScript — out-of-range index leaves the script unchanged", () => {
+    const id = getAnimId(MOTION_PATH_SCRIPT);
+    expect(updateMotionPathPointInScript(MOTION_PATH_SCRIPT, id, 9, { x: 1, y: 1 })).toBe(
+      MOTION_PATH_SCRIPT,
+    );
+  });
+
+  it("updateMotionPathPointInScript — unknown animation id leaves the script unchanged", () => {
+    expect(updateMotionPathPointInScript(MOTION_PATH_SCRIPT, "nope", 0, { x: 1, y: 1 })).toBe(
+      MOTION_PATH_SCRIPT,
+    );
+  });
+
+  it("updateMotionPathPointInScript — moves a cubic anchor, keeps control points", () => {
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#el", {
+        motionPath: {
+          path: [
+            {x: 0, y: 0},
+            {x: 50, y: -80}, {x: 150, y: -120},
+            {x: 200, y: -100}
+          ],
+          type: "cubic"
+        },
+        duration: 2
+      }, 0);
+    `;
+    const id = getAnimId(script);
+    const updated = updateMotionPathPointInScript(script, id, 1, { x: 220, y: -130 });
+    const reparsed = parseGsapScript(updated);
+    const anim = reparsed.animations[0];
+    // anchor 1 moved; the segment's control points are untouched.
+    expect(anim.keyframes!.keyframes[1].properties).toMatchObject({ x: 220, y: -130 });
+    expect(anim.arcPath!.segments[0].cp1).toEqual({ x: 50, y: -80 });
+    expect(anim.arcPath!.segments[0].cp2).toEqual({ x: 150, y: -120 });
+  });
+
+  // ── add/removeMotionPathPointInScript ───────────────────────────────────
+
+  it("addMotionPathPointInScript — inserts a waypoint between anchors, keeps curviness", () => {
+    const id = getAnimId(MOTION_PATH_SCRIPT);
+    const updated = addMotionPathPointInScript(MOTION_PATH_SCRIPT, id, 1, { x: 100, y: -50 });
+    const reparsed = parseGsapScript(updated);
+    const anim = reparsed.animations[0];
+    expect(anim.keyframes!.keyframes.map((k) => [k.properties.x, k.properties.y])).toEqual([
+      [0, 0],
+      [100, -50],
+      [200, -100],
+      [400, 50],
+    ]);
+    // 4 anchors → 3 segments, all curviness 1.5
+    expect(anim.arcPath!.segments).toHaveLength(3);
+    expect(anim.arcPath!.segments.every((s) => s.curviness === 1.5)).toBe(true);
+  });
+
+  it("addMotionPathPointInScript — refuses an index at the ends or out of range", () => {
+    const id = getAnimId(MOTION_PATH_SCRIPT);
+    expect(addMotionPathPointInScript(MOTION_PATH_SCRIPT, id, 0, { x: 1, y: 1 })).toBe(
+      MOTION_PATH_SCRIPT,
+    );
+    expect(addMotionPathPointInScript(MOTION_PATH_SCRIPT, id, 3, { x: 1, y: 1 })).toBe(
+      MOTION_PATH_SCRIPT,
+    );
+  });
+
+  it("removeMotionPathPointInScript — drops a waypoint, preserves the rest", () => {
+    const id = getAnimId(MOTION_PATH_SCRIPT);
+    const updated = removeMotionPathPointInScript(MOTION_PATH_SCRIPT, id, 1);
+    const reparsed = parseGsapScript(updated);
+    const anim = reparsed.animations[0];
+    expect(anim.keyframes!.keyframes.map((k) => [k.properties.x, k.properties.y])).toEqual([
+      [0, 0],
+      [400, 50],
+    ]);
+    expect(anim.arcPath!.segments).toHaveLength(1);
+  });
+
+  it("removeMotionPathPointInScript — refuses to drop below two anchors", () => {
+    const two = `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#el", { motionPath: { path: [{x: 0, y: 0}, {x: 400, y: 50}], curviness: 1 }, duration: 2 }, 0);
+    `;
+    const id = getAnimId(two);
+    expect(removeMotionPathPointInScript(two, id, 0)).toBe(two);
+  });
+
+  it("add/removeMotionPathPointInScript — leave cubic paths untouched", () => {
+    const cubic = `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#el", { motionPath: { path: [{x:0,y:0},{x:50,y:-80},{x:150,y:-120},{x:200,y:-100}], type: "cubic" }, duration: 2 }, 0);
+    `;
+    const id = getAnimId(cubic);
+    expect(addMotionPathPointInScript(cubic, id, 1, { x: 1, y: 1 })).toBe(cubic);
+    expect(removeMotionPathPointInScript(cubic, id, 1)).toBe(cubic);
+  });
+
+  // ── addMotionPathToScript ───────────────────────────────────────────────
+
+  it("addMotionPathToScript — authors a new 2-anchor motionPath tween", () => {
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      tl.from("#title", { opacity: 0, duration: 0.5 }, 0);
+    `;
+    const { script: updated, id } = addMotionPathToScript(script, "#el", 2.0, 1.5, {
+      x: 300,
+      y: -100,
+    });
+    expect(id).not.toBe("");
+    const reparsed = parseGsapScript(updated);
+    const anim = reparsed.animations.find((a) => a.targetSelector === "#el")!;
+    expect(anim).toBeDefined();
+    expect(anim.arcPath!.enabled).toBe(true);
+    expect(anim.keyframes!.keyframes.map((k) => [k.properties.x, k.properties.y])).toEqual([
+      [0, 0],
+      [300, -100],
+    ]);
+    expect(anim.duration).toBe(1.5);
   });
 
   // ── convertToKeyframesInScript ──────────────────────────────────────────
@@ -1982,6 +2283,19 @@ describe("splitAnimationsInScript", () => {
     expect(forNew[0]!.method).toBe("set");
     expect(forNew[0]!.properties.x).toBe(100);
     expect(forNew[0]!.position).toBe(opts.splitTime);
+  });
+
+  it("does not pin the clone to from-values for a completed .from() before the split", () => {
+    // A .from() that finished before the split leaves the element at its natural
+    // state. Carrying its from-values (opacity:0) into the clone's `set` made the
+    // clone invisible. The clone should get NO inherited set for those props.
+    const script = `${baseScript}\ntl.from("#el1", { y: 70, opacity: 0, duration: 0.9 }, 0.4);`;
+    const result = split(script);
+    const parsed = parseGsapScript(result);
+    const forNew = parsed.animations.filter((a) => a.targetSelector === "#el1-split");
+    const inheritedSet = forNew.find((a) => a.method === "set");
+    expect(inheritedSet).toBeUndefined();
+    expect(result).not.toContain("#el1-split");
   });
 
   it("retargets animation entirely in second half to new element", () => {

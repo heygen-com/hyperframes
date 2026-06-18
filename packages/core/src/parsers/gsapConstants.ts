@@ -77,7 +77,10 @@ export function classifyTweenPropertyGroup(
 ): PropertyGroupName | undefined {
   const groups = new Set<PropertyGroupName>();
   for (const key of Object.keys(properties)) {
-    if (key === "transformOrigin") continue;
+    // transformOrigin is a modifier; `_auto` is Studio's internal endpoint marker;
+    // `data` is GSAP-reserved (carries the Studio hold-set tag). None is an animated
+    // property, so none should affect the group.
+    if (key === "transformOrigin" || key === "_auto" || key === "data") continue;
     const g = classifyPropertyGroup(key);
     groups.add(g);
   }

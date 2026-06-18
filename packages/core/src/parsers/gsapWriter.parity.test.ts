@@ -162,6 +162,57 @@ describe("parity: removeAllKeyframesFromScript (recast vs acorn)", () => {
   });
 });
 
+// Array-form keyframes (`keyframes: [{x,y}, …]`, no explicit %) used to no-op on
+// removal in BOTH writers — the object-form path couldn't see the array, so the
+// keyframe survived while downstream hold-sync stranded an `hf-hold`.
+describe("removeKeyframeFromScript: array-form keyframes (recast + acorn parity)", () => {
+  const arrayScript = `
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#p", {
+      keyframes: [ { x: 0, y: 0 }, { x: -180, y: -60 }, { x: -320, y: 40 }, { x: -460, y: -20 } ],
+      duration: 3.4,
+      ease: "power1.inOut"
+    }, 1.0);
+  `;
+
+  it("removes the matched element (implicit %) — both writers, parity", () => {
+    const id = acornId(arrayScript);
+    expect(parseGsapScript(arrayScript).animations[0]!.id).toBe(id);
+
+    const recastOut = removeKeyframeRecast(arrayScript, id, 67);
+    const acornOut = removeKeyframeAcorn(arrayScript, id, 67);
+
+    expect(recastOut).not.toBe(arrayScript);
+    expect(acornOut).not.toBe(arrayScript);
+
+    const recShape = shapeOf(recastOut);
+    expect(recShape.keyframes?.keyframes.length).toBe(3);
+    // the 67% element { x: -320, y: 40 } is the one removed
+    expect(JSON.stringify(recShape.keyframes)).not.toContain("-320");
+    expect(modelOf(acornOut)).toEqual(modelOf(recastOut));
+  });
+
+  it("collapses to a flat tween when fewer than two remain — both writers, parity", () => {
+    const twoScript = `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#p", { keyframes: [ { x: 0, y: 0 }, { x: 100, y: 50 } ], duration: 1 }, 0);
+    `;
+    const id = acornId(twoScript);
+    const recastOut = removeKeyframeRecast(twoScript, id, 100);
+    const acornOut = removeKeyframeAcorn(twoScript, id, 100);
+
+    expect(shapeOf(recastOut).keyframes).toBeUndefined();
+    expect(shapeOf(acornOut).keyframes).toBeUndefined();
+    expect(modelOf(acornOut)).toEqual(modelOf(recastOut));
+  });
+
+  it("no-op when the percentage matches no element", () => {
+    const id = acornId(arrayScript);
+    expect(removeKeyframeAcorn(arrayScript, id, 12)).toBe(arrayScript);
+    expect(removeKeyframeRecast(arrayScript, id, 12)).toBe(arrayScript);
+  });
+});
+
 const CONVERT_FIXTURES: Array<{
   name: string;
   script: string;
