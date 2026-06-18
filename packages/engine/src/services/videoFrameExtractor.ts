@@ -1003,7 +1003,7 @@ export class FrameLookupTable {
   getFrame(videoId: string, globalTime: number): string | null {
     const video = this.videos.get(videoId);
     if (!video) return null;
-    if (globalTime < video.start || globalTime >= video.end) return null;
+    if (globalTime < video.start || globalTime > video.end) return null;
     return getFrameAtTime(video.extracted, globalTime, video.start, video.loop, video.mediaStart);
   }
 
