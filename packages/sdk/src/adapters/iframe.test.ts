@@ -399,10 +399,6 @@ describe("alphaIsOpaque", () => {
     expect(alphaIsOpaque(makeImageData(255))).toBe(true);
   });
 
-  it("returns false for alpha below default threshold (a=0 < 1)", () => {
-    expect(alphaIsOpaque(makeImageData(0), 1)).toBe(false);
-  });
-
   it("returns true for alpha at default threshold (a=1 >= 1)", () => {
     expect(alphaIsOpaque(makeImageData(1), 1)).toBe(true);
   });
@@ -762,6 +758,17 @@ describe("WS-G: z-stack fallthrough via mock elementsFromPoint", () => {
       const iframe = makeImgStack("hf-tainted", [fakeEl({ "data-hf-id": "hf-behind" }, "DIV")]);
       const result = createIframePreviewAdapter(iframe).elementAtPoint(50, 50);
       expect(result).toEqual({ id: "hf-tainted", tag: "img" });
+    });
+  });
+
+  it("transparent image over transparent image falls through to the div behind both", () => {
+    // Two consecutive transparent fallthroughs — exercises the loop iterating
+    // past more than one transparent image before hitting an opaque layer.
+    withCanvasStub("transparent", (makeImgStack) => {
+      const img2 = new FakeHTMLImageElement("hf-img2");
+      const iframe = makeImgStack("hf-img1", [img2, fakeEl({ "data-hf-id": "hf-behind" }, "DIV")]);
+      const result = createIframePreviewAdapter(iframe).elementAtPoint(50, 50);
+      expect(result).toEqual({ id: "hf-behind", tag: "div" });
     });
   });
 

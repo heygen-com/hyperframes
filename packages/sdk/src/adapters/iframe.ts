@@ -13,12 +13,17 @@
  *   image hits fall through to the element behind.
  * - For <img> hits, maps the client point to the natural-pixel coordinate
  *   (object-fit/object-position aware), draws to an offscreen canvas (cached
- *   by src), samples alpha. Transparent pixel → miss, continue the stack.
+ *   by src + natural dimensions, so a srcset re-render gets a fresh canvas),
+ *   samples alpha. Transparent pixel → miss, continue the stack.
  * - Cross-origin images taint the canvas → getImageData throws SecurityError
  *   → falls back to treating the pixel as OPAQUE (never drop an unverifiable
- *   hit). Callers must ensure CORS headers or accept the fallback behavior.
- * - Limitation: animated <img> (gif) or src swaps invalidate the cache only
- *   when currentSrc changes. Phase 1 is optimized for static images.
+ *   hit) and warns once per src. Callers must ensure CORS or accept the fallback.
+ * - A CSS rotation/skew on the image or an ancestor also falls back to opaque
+ *   (the axis-aligned rect mapping can't sample a rotated image correctly);
+ *   transform-inverse mapping is phase 2.
+ * - Images above a pixel budget skip alpha-testing (opaque) to bound canvas
+ *   memory. Limitation: animated <img> (gif) or src swaps invalidate the cache
+ *   only when currentSrc/dimensions change. Phase 1 is optimized for static images.
  * - Phase 2 (full per-pixel alpha via drawElement rasterization) is NOT built
  *   here — gated on a perf spike.
  */
@@ -290,12 +295,61 @@ export const _imgCanvasCache = new Map<string, OffscreenCanvas | null>();
  */
 const _IMG_CANVAS_CACHE_MAX = 64;
 
-function cacheCanvas(src: string, value: OffscreenCanvas | null): void {
-  if (!_imgCanvasCache.has(src) && _imgCanvasCache.size >= _IMG_CANVAS_CACHE_MAX) {
+function cacheCanvas(key: string, value: OffscreenCanvas | null): void {
+  if (!_imgCanvasCache.has(key) && _imgCanvasCache.size >= _IMG_CANVAS_CACHE_MAX) {
     const oldest = _imgCanvasCache.keys().next().value;
     if (oldest !== undefined) _imgCanvasCache.delete(oldest);
   }
-  _imgCanvasCache.set(src, value);
+  _imgCanvasCache.set(key, value);
+}
+
+/**
+ * Skip alpha-testing images above this pixel budget — allocating a full-res
+ * OffscreenCanvas for one hit-test is memory-prohibitive (a 4000×3000 image is
+ * ~46 MB). Above the cap we fail safe to opaque.
+ * ponytail: per-image pixel cap; a byte-budget cache is phase 2.
+ */
+const _MAX_ALPHA_TEST_PIXELS = 16_000_000;
+
+/**
+ * Srcs we've already warned about taint for — keeps the cross-origin warning to
+ * once per image instead of once per hit-test. Cleared with `_imgCanvasCache`
+ * is not necessary; suppressing duplicate warnings across resets is harmless.
+ */
+const _warnedTaintSrcs = new Set<string>();
+
+function warnTaintOnce(src: string): void {
+  if (_warnedTaintSrcs.has(src)) return;
+  _warnedTaintSrcs.add(src);
+  // Visibility for the silent-failure path: a cross-origin / uncorsed image
+  // taints the canvas, so alpha hit-test is unavailable and we fall back to
+  // opaque. Without this, the fall-back is invisible ("hit-test feels wrong").
+  console.warn(
+    `[hyperframes] image-alpha hit-test unavailable for cross-origin/tainted image; treating as opaque: ${src}`,
+  );
+}
+
+/**
+ * True when the element or any ancestor carries a CSS rotation or skew. Such a
+ * transform makes getBoundingClientRect() return the axis-aligned bounding box,
+ * so the rect→natural-pixel mapping would sample the wrong pixel. Pure translate
+ * / scale keep the matrix b and c components at 0 and map correctly. No-op
+ * (returns false) when DOMMatrix is unavailable (e.g. the test env), preserving
+ * existing behavior there.
+ */
+function hasRotationOrSkew(el: Element | null, win: Window & typeof globalThis): boolean {
+  if (typeof win.DOMMatrix !== "function") return false;
+  for (let node: Element | null = el; node; node = node.parentElement) {
+    const t = win.getComputedStyle(node).transform;
+    if (!t || t === "none") continue;
+    try {
+      const m = new win.DOMMatrix(t);
+      if (Math.abs(m.b) > 1e-6 || Math.abs(m.c) > 1e-6) return true;
+    } catch {
+      return true; // unparseable transform — fail safe (treat as non-axis-aligned)
+    }
+  }
+  return false;
 }
 
 /**
@@ -308,7 +362,9 @@ function cacheCanvas(src: string, value: OffscreenCanvas | null): void {
  * - Alpha >= 1
  *
  * Returns false (transparent/miss) only when the canvas is readable AND the
- * alpha at the mapped pixel is 0.
+ * alpha at the mapped pixel is 0. A click on the element's border/padding maps
+ * outside the content box → also false (the click falls through to the layer
+ * behind), since border/padding pixels aren't part of the image — intentional.
  *
  * `win` is the iframe's contentWindow, used to call getComputedStyle on the
  * element which lives in the iframe's document.
@@ -325,6 +381,15 @@ function imageAlphaOpaqueAt(
 
   const src = img.currentSrc || img.src;
   if (!src) return true;
+
+  // CSS rotation/skew on the image or an ancestor breaks the axis-aligned
+  // rect→natural-pixel mapping below (getBoundingClientRect returns the AABB),
+  // so we'd sample the wrong pixel. Fail safe to opaque rather than guess.
+  // Full transform-inverse mapping is phase 2.
+  if (hasRotationOrSkew(img, win)) return true;
+
+  // Pathological-size guard: don't allocate a huge canvas for one hit-test.
+  if (img.naturalWidth * img.naturalHeight > _MAX_ALPHA_TEST_PIXELS) return true;
 
   // object-fit/object-position lay the image out within the CONTENT box, not
   // the border box that getBoundingClientRect() returns. Inset by border +
@@ -359,8 +424,11 @@ function imageAlphaOpaqueAt(
   // Continue the z-stack (return false = miss on this element).
   if (mapped === null) return false;
 
-  // Retrieve or build the offscreen canvas for this src.
-  let canvas: OffscreenCanvas | null | undefined = _imgCanvasCache.get(src);
+  // Retrieve or build the offscreen canvas. Key on src + natural dimensions: a
+  // srcset/responsive layout can serve the same URL at a different natural size,
+  // and keying on src alone would reuse a canvas drawn at the prior dimensions.
+  const cacheKey = `${src}@${img.naturalWidth}x${img.naturalHeight}`;
+  let canvas: OffscreenCanvas | null | undefined = _imgCanvasCache.get(cacheKey);
   if (canvas === undefined) {
     // First time: draw to an offscreen canvas and cache.
     try {
@@ -368,15 +436,16 @@ function imageAlphaOpaqueAt(
       const ctx = oc.getContext("2d");
       if (!ctx) {
         // OffscreenCanvas 2D unavailable — treat as opaque.
-        cacheCanvas(src, null);
+        cacheCanvas(cacheKey, null);
         return true;
       }
       ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight);
-      cacheCanvas(src, oc);
+      cacheCanvas(cacheKey, oc);
       canvas = oc;
     } catch {
       // SecurityError from tainted canvas — record null and fall back opaque.
-      cacheCanvas(src, null);
+      warnTaintOnce(src);
+      cacheCanvas(cacheKey, null);
       return true;
     }
   }
@@ -393,7 +462,8 @@ function imageAlphaOpaqueAt(
     return alphaIsOpaque(data);
   } catch {
     // Taint discovered on getImageData — update cache and fall back opaque.
-    cacheCanvas(src, null);
+    warnTaintOnce(src);
+    cacheCanvas(cacheKey, null);
     return true;
   }
 }
