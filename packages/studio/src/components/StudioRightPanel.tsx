@@ -1,13 +1,26 @@
-import { useCallback, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import {
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  type MutableRefObject,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { Tooltip } from "./ui";
 import { PropertyPanel } from "./editor/PropertyPanel";
 import { LayersPanel } from "./editor/LayersPanel";
 import { CaptionPropertyPanel } from "../captions/components/CaptionPropertyPanel";
 import { BlockParamsPanel } from "./editor/BlockParamsPanel";
 import { RenderQueue } from "./renders/RenderQueue";
+import { SlideshowPanel } from "./panels/SlideshowPanel";
+import type { SceneInfo } from "./panels/SlideshowPanel";
 import type { RenderJob } from "./renders/useRenderQueue";
 import type { BlockParam } from "@hyperframes/core/registry";
+import type { IframeWindow } from "../player/lib/playbackTypes";
 import { STUDIO_INSPECTOR_PANELS_ENABLED } from "./editor/manualEditingAvailability";
+import type { Composition } from "@hyperframes/sdk";
+import type { EditHistoryKind } from "../utils/editHistory";
+import { useSlideshowPersist } from "../hooks/useSlideshowPersist";
 
 import { useStudioPlaybackContext, useStudioShellContext } from "../contexts/StudioContext";
 import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
@@ -30,6 +43,15 @@ export interface StudioRightPanelProps {
   recordingState?: "idle" | "recording" | "preview";
   recordingDuration?: number;
   onToggleRecording?: () => void;
+  /** Dependencies for the Slideshow persist callback, threaded from App.tsx. */
+  sdkSession: Composition | null;
+  reloadPreview: () => void;
+  domEditSaveTimestampRef: MutableRefObject<number>;
+  recordEdit: (entry: {
+    label: string;
+    kind: EditHistoryKind;
+    files: Record<string, { before: string; after: string }>;
+  }) => Promise<void>;
 }
 
 // fallow-ignore-next-line complexity
@@ -40,6 +62,10 @@ export function StudioRightPanel({
   recordingState,
   recordingDuration,
   onToggleRecording,
+  sdkSession,
+  reloadPreview,
+  domEditSaveTimestampRef,
+  recordEdit,
 }: StudioRightPanelProps) {
   const {
     rightWidth,
@@ -60,7 +86,7 @@ export function StudioRightPanel({
     waitForPendingDomEditSaves,
     renderQueue,
   } = useStudioShellContext();
-  const { captionEditMode } = useStudioPlaybackContext();
+  const { captionEditMode, refreshKey } = useStudioPlaybackContext();
 
   const {
     domEditSelection,
@@ -100,8 +126,40 @@ export function StudioRightPanel({
     handleGsapConvertToKeyframes,
   } = useDomEditContext();
 
-  const { assets, fontAssets, projectDir, handleImportFiles, handleImportFonts } =
-    useFileManagerContext();
+  const {
+    assets,
+    fontAssets,
+    projectDir,
+    handleImportFiles,
+    handleImportFonts,
+    readProjectFile,
+    writeProjectFile,
+  } = useFileManagerContext();
+
+  // Discrete ops (toggle, reorder, add/delete, hotspot): persist immediately,
+  // no coalescing — each is a distinct user action that deserves its own undo entry.
+  const onPersistSlideshow = useSlideshowPersist({
+    sdkSession,
+    activeCompPath,
+    readProjectFile,
+    writeProjectFile,
+    recordEdit,
+    reloadPreview,
+    domEditSaveTimestampRef,
+  });
+
+  // Notes path: persists are debounced in SlideshowPanel; coalesceKey ensures
+  // rapid writes collapse into a single undo entry via the save-queue infra.
+  const onPersistSlideshowNotes = useSlideshowPersist({
+    sdkSession,
+    activeCompPath,
+    readProjectFile,
+    writeProjectFile,
+    recordEdit,
+    reloadPreview,
+    domEditSaveTimestampRef,
+    coalesceKey: activeCompPath ? `slideshow-notes:${activeCompPath}` : "slideshow-notes",
+  });
 
   const [layersPanePercent, setLayersPanePercent] = useState(40);
   const splitContainerRef = useRef<HTMLDivElement>(null);
@@ -113,6 +171,23 @@ export function StudioRightPanel({
 
   const renderJobs = renderQueue.jobs as RenderJob[];
   const inspectorTabActive = rightPanelTab === "design" || rightPanelTab === "layers";
+
+  // Derive scene list from the live clip manifest in the preview iframe.
+  // fallow-ignore-next-line complexity
+  const slideshowScenes = useMemo<SceneInfo[]>(() => {
+    try {
+      const win = previewIframeRef.current?.contentWindow as IframeWindow | null;
+      return (win?.__clipManifest?.scenes ?? []).map((s) => ({
+        id: s.id,
+        label: s.label,
+        start: s.start,
+        duration: s.duration,
+      }));
+    } catch {
+      return [];
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewIframeRef, rightPanelTab, refreshKey]);
   const designPaneOpen = inspectorTabActive && rightInspectorPanes.design && designPanelActive;
   const layersPaneOpen =
     inspectorTabActive && rightInspectorPanes.layers && STUDIO_INSPECTOR_PANELS_ENABLED;
@@ -291,6 +366,19 @@ export function StudioRightPanel({
                   {renderJobs.length > 0 ? `Renders (${renderJobs.length})` : "Renders"}
                 </button>
               </Tooltip>
+              <Tooltip label="Slideshow branching editor" side="bottom">
+                <button
+                  type="button"
+                  onClick={() => setRightPanelTab("slideshow")}
+                  className={`h-8 rounded-xl px-3 text-[11px] font-medium transition-colors ${
+                    rightPanelTab === "slideshow"
+                      ? "bg-neutral-800 text-white"
+                      : "text-neutral-500 hover:bg-neutral-800/70 hover:text-neutral-200"
+                  }`}
+                >
+                  Slideshow
+                </button>
+              </Tooltip>
             </div>
             <div className="min-h-0 flex-1">
               {rightPanelTab === "block-params" && activeBlockParams ? (
@@ -300,6 +388,12 @@ export function StudioRightPanel({
                   params={activeBlockParams.params}
                   compositionPath={activeBlockParams.compositionPath}
                   onClose={onCloseBlockParams ?? (() => {})}
+                />
+              ) : rightPanelTab === "slideshow" ? (
+                <SlideshowPanel
+                  scenes={slideshowScenes}
+                  onPersist={onPersistSlideshow}
+                  onPersistNotes={onPersistSlideshowNotes}
                 />
               ) : layersPaneOpen && designPaneOpen ? (
                 <div ref={splitContainerRef} className="flex h-full min-h-0 flex-col">
