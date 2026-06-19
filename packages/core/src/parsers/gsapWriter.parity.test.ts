@@ -1,12 +1,34 @@
 /**
- * Acorn writer regression suite (WS-3.F: recast retired).
+ * Parity harness — recast writer (gsapParser.ts) vs acorn writer
+ * (gsapWriterAcorn.ts). Both must produce scripts that REPARSE to the same
+ * animation model. Byte-equality is not expected (recast pretty-prints, acorn
+ * splices), so parity is asserted on the parsed GsapAnimation, not raw text.
  *
- * Originally a parity harness comparing recast vs acorn writers. With recast
- * retired, all ops are run acorn-only. The parity assertions are preserved but
- * now compare acorn output against itself (trivially equal), ensuring the
- * correctness assertions (e.g. keyframes undefined, shape checks) still run.
+ * This is the safety net for porting WS-3 ops one at a time: each ported op
+ * gets a fixture row here proving it matches the battle-tested original.
+ *
+ * The server switches between writers via STUDIO_SDK_CUTOVER_ENABLED (WS-3.F).
+ * Recast remains the default; acorn runs only when the flag is enabled.
  */
 import { describe, expect, it } from "vitest";
+import {
+  parseGsapScript,
+  removeAllKeyframesFromScript as removeAllRecast,
+  convertToKeyframesInScript as convertRecast,
+  materializeKeyframesInScript as materializeRecast,
+  splitIntoPropertyGroups as splitGroupsRecast,
+  splitAnimationsInScript as splitAnimsRecast,
+  setArcPathInScript as setArcRecast,
+  updateArcSegmentInScript as updateArcSegmentRecast,
+  removeArcPathFromScript as removeArcRecast,
+  unrollDynamicAnimations as unrollRecast,
+  addKeyframeToScript as addKeyframeRecast,
+  removeKeyframeFromScript as removeKeyframeRecast,
+  addAnimationWithKeyframesToScript as addWithKfRecast,
+  shiftPositionsInScript as shiftRecast,
+  scalePositionsInScript as scaleRecast,
+  type SplitAnimationsOptions,
+} from "./gsapParser.js";
 import {
   parseGsapScriptAcorn,
   parseGsapScriptAcornForWrite,
@@ -29,24 +51,7 @@ import {
   shiftPositionsInScript as shiftAcorn,
   scalePositionsInScript as scaleAcorn,
 } from "./gsapWriterAcorn.js";
-import type { SplitAnimationsOptions } from "./gsapSerialize.js";
 
-// Aliases so test bodies can keep their *Recast names (now both sides use acorn).
-const parseGsapScript = parseGsapScriptAcorn;
-const removeAllRecast = removeAllAcorn;
-const convertRecast = convertAcorn;
-const materializeRecast = materializeAcorn;
-const splitGroupsRecast = splitGroupsAcorn;
-const splitAnimsRecast = splitAnimsAcorn;
-const setArcRecast = setArcAcorn;
-const updateArcSegmentRecast = updateArcSegmentAcorn;
-const removeArcRecast = removeArcAcorn;
-const unrollRecast = unrollAcorn;
-const addKeyframeRecast = addKeyframeAcorn;
-const removeKeyframeRecast = removeKeyframeAcorn;
-const addWithKfRecast = addWithKfAcorn;
-const shiftRecast = shiftAcorn;
-const scaleRecast = scaleAcorn;
 function acornId(script: string): string {
   const parsed = parseGsapScriptAcornForWrite(script) as ParsedGsapAcornForWrite;
   return parsed.located[0]!.id;
@@ -74,13 +79,13 @@ function modelOf(script: string) {
 }
 
 function arcShapeOf(script: string) {
-  const anim = parseGsapScriptAcorn(script).animations[0]!;
+  const anim = parseGsapScript(script).animations[0]!;
   return { arcPath: anim.arcPath, properties: anim.properties };
 }
 
 /** Reparse a written script and return the first animation's editable shape. */
 function shapeOf(script: string) {
-  const anim = parseGsapScriptAcorn(script).animations[0]!;
+  const anim = parseGsapScript(script).animations[0]!;
   return {
     method: anim.method,
     properties: anim.properties,
@@ -696,6 +701,8 @@ describe("parity: unrollDynamicAnimations (recast vs acorn)", () => {
   for (const { name, script, elements } of UNROLL_PARITY_CASES) {
     it(name, () => {
       const id = unrollId(script);
+      // Sanity: recast and acorn agree on the id for the dynamic tween.
+      expect(parseGsapScript(script).animations[0]!.id).toBe(id);
 
       const recastOut = unrollRecast(script, id, elements);
       const acornOut = unrollAcorn(script, id, elements);

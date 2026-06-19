@@ -1,14 +1,18 @@
 // fallow-ignore-file code-duplication
 /**
- * Regression tests for addKeyframeToScript (acorn writer).
+ * Differential parity test: acorn writer vs recast writer for addKeyframeToScript.
  *
- * These were originally acorn-vs-recast parity tests (WS-3.C gate). With recast
- * retired (WS-3.F), they are kept as acorn-only regression tests to ensure the
- * writer continues to produce correct keyframe arrays.
+ * The SDK uses the acorn (magic-string) writer; the server uses the recast
+ * writer. An SDK-written keyframe op must produce a GSAP timeline whose parsed
+ * keyframe array matches the recast-written one, otherwise newly-added props
+ * snap instead of tween and stale `_auto` endpoints persist.
+ *
+ * We compare the *parsed keyframe arrays* (not byte-for-byte source) because the
+ * two writers format differently (recast pretty-prints, acorn splices).
  */
 import { describe, expect, it } from "vitest";
 import { addKeyframeToScript as addAcorn } from "./gsapWriterAcorn.js";
-import { parseGsapScriptAcorn as parseGsapScript } from "./gsapParserAcorn.js";
+import { addKeyframeToScript as addRecast, parseGsapScript } from "./gsapParser.js";
 
 // These fixtures hold exactly one tween. We look it up by index rather than by
 // id because the stable id is content-derived: adding/backfilling a property
@@ -74,52 +78,46 @@ function animId(script: string): string {
   return id;
 }
 
-describe("acorn addKeyframeToScript regression", () => {
+describe("acorn↔recast addKeyframeToScript parity", () => {
   it("rewrites an _auto 100% endpoint when the inserted keyframe is its left neighbor", () => {
     const id = animId(AUTO_SCRIPT);
     const props = { opacity: 0.3, x: 50 };
+    const recast = addRecast(AUTO_SCRIPT, id, 60, props);
     const acorn = addAcorn(AUTO_SCRIPT, id, 60, props);
-    const kfs = keyframesOf(acorn);
-    expect(kfs).not.toBeNull();
-    const pcts = kfs!.map((k) => k.percentage);
-    expect(pcts).toContain(60);
+    expect(keyframesOf(acorn)).toEqual(keyframesOf(recast));
   });
 
   it("rewrites an _auto 0% endpoint when the inserted keyframe is its right neighbor", () => {
     const id = animId(AUTO_SCRIPT);
     const props = { opacity: 0.8, scale: 2 };
+    const recast = addRecast(AUTO_SCRIPT, id, 40, props);
     const acorn = addAcorn(AUTO_SCRIPT, id, 40, props);
-    const kfs = keyframesOf(acorn);
-    expect(kfs).not.toBeNull();
-    const pcts = kfs!.map((k) => k.percentage);
-    expect(pcts).toContain(40);
+    expect(keyframesOf(acorn)).toEqual(keyframesOf(recast));
   });
 
   it("backfills a NEW property into the other keyframes with its default value", () => {
     const id = animId(PLAIN_SCRIPT);
     const props = { opacity: 0.3, x: 120 };
     const backfill = { opacity: 1, x: 0 };
+    const recast = addRecast(PLAIN_SCRIPT, id, 25, props, undefined, backfill);
     const acorn = addAcorn(PLAIN_SCRIPT, id, 25, props, undefined, backfill);
-    const kfs = keyframesOf(acorn);
-    expect(kfs).not.toBeNull();
-    // 4 keyframes: 0, 25, 50, 100
-    expect(kfs).toHaveLength(4);
+    expect(keyframesOf(acorn)).toEqual(keyframesOf(recast));
   });
 
-  it("no backfill arg → new prop is added only at the target keyframe", () => {
+  it("no backfill arg → matches recast with no backfill (new prop left absent)", () => {
     const id = animId(PLAIN_SCRIPT);
     const props = { opacity: 0.3, x: 120 };
+    const recast = addRecast(PLAIN_SCRIPT, id, 25, props);
     const acorn = addAcorn(PLAIN_SCRIPT, id, 25, props);
-    const kfs = keyframesOf(acorn);
-    expect(kfs).not.toBeNull();
-    expect(kfs).toHaveLength(4);
+    expect(keyframesOf(acorn)).toEqual(keyframesOf(recast));
   });
 
-  it("plain insert in sorted order stays parseable", () => {
+  it("plain insert in sorted order stays at parity", () => {
     const id = animId(PLAIN_SCRIPT);
     const props = { opacity: 0.3 };
+    const recast = addRecast(PLAIN_SCRIPT, id, 25, props);
     const acorn = addAcorn(PLAIN_SCRIPT, id, 25, props);
-    expect(keyframesOf(acorn)).not.toBeNull();
+    expect(keyframesOf(acorn)).toEqual(keyframesOf(recast));
   });
 
   // ── Bug 1: crash — _auto endpoint sync + backfill of a new prop together ──────
@@ -127,20 +125,18 @@ describe("acorn addKeyframeToScript regression", () => {
     const id = animId(AUTO_SCRIPT);
     const props = { opacity: 0.3, x: 50 };
     const backfill = { opacity: 1, x: 0 };
+    const recast = addRecast(AUTO_SCRIPT, id, 60, props, undefined, backfill);
     const acorn = addAcorn(AUTO_SCRIPT, id, 60, props, undefined, backfill);
-    const kfs = keyframesOf(acorn);
-    expect(kfs).not.toBeNull();
-    expect(kfs!.every((k) => "opacity" in k.properties && "x" in k.properties)).toBe(true);
+    expect(keyframesOf(acorn)).toEqual(keyframesOf(recast));
   });
 
   it("syncs _auto endpoint AND backfills a new prop (0/25/100 interior, the crash)", () => {
     const id = animId(AUTO_THREE_SCRIPT);
     const props = { opacity: 0.4, x: 80 };
     const backfill = { opacity: 1, x: 0 };
+    const recast = addRecast(AUTO_THREE_SCRIPT, id, 60, props, undefined, backfill);
     const acorn = addAcorn(AUTO_THREE_SCRIPT, id, 60, props, undefined, backfill);
-    const kfs = keyframesOf(acorn);
-    expect(kfs).not.toBeNull();
-    expect(kfs!.every((k) => "x" in k.properties)).toBe(true);
+    expect(keyframesOf(acorn)).toEqual(keyframesOf(recast));
   });
 
   // ── Bug 2: no-comma corruption — backfill ≥2 props into an empty {} keyframe ──
@@ -152,27 +148,18 @@ window.__timelines["t"] = tl;`;
     const id = animId(EMPTY_KF);
     const props = { x: 40, y: 20 };
     const backfill = { x: 0, y: 0 };
+    const recast = addRecast(EMPTY_KF, id, 50, props, undefined, backfill);
     const acorn = addAcorn(EMPTY_KF, id, 50, props, undefined, backfill);
-    const kfs = keyframesOf(acorn);
-    expect(kfs).not.toBeNull();
-    expect(kfs).toHaveLength(3);
+    expect(keyframesOf(acorn)).toEqual(keyframesOf(recast));
   });
 
   // ── Bug 4 + 7: merge — preserve untouched props AND existing ease ──────────────
   it("merges new props over an existing keyframe, preserving its other props + ease", () => {
     const id = animId(MERGE_SCRIPT);
     const props = { opacity: 0.9 };
+    const recast = addRecast(MERGE_SCRIPT, id, 50, props);
     const acorn = addAcorn(MERGE_SCRIPT, id, 50, props);
-    const kfs = keyframesOf(acorn);
-    expect(kfs).not.toBeNull();
-    const kf50 = kfs!.find((k) => k.percentage === 50);
-    expect(kf50).toBeDefined();
-    // merged value
-    expect(kf50!.properties.opacity).toBe(0.9);
-    // preserved from original
-    expect(kf50!.properties.x).toBe(30);
-    expect(kf50!.properties.scale).toBe(2);
-    expect(kf50!.ease).toBe("power2.in");
+    expect(keyframesOf(acorn)).toEqual(keyframesOf(recast));
   });
 
   // ── Bug 5: convert-flat — first keyframe-add on a flat tween ──────────────────
@@ -180,49 +167,44 @@ window.__timelines["t"] = tl;`;
     const id = animId(FLAT_TO_SCRIPT);
     const props = { opacity: 0.8 };
     const backfill = { opacity: 1 };
+    const recast = addRecast(FLAT_TO_SCRIPT, id, 50, props, undefined, backfill);
     const acorn = addAcorn(FLAT_TO_SCRIPT, id, 50, props, undefined, backfill);
-    expect(keyframesOf(acorn)).not.toBeNull();
+    expect(keyframesOf(acorn)).toEqual(keyframesOf(recast));
   });
 
   it("converts a flat fromTo() tween to keyframes on the first keyframe add", () => {
     const id = animId(FLAT_FROMTO_SCRIPT);
     const props = { y: 10 };
     const backfill = { y: 0 };
+    const recast = addRecast(FLAT_FROMTO_SCRIPT, id, 50, props, undefined, backfill);
     const acorn = addAcorn(FLAT_FROMTO_SCRIPT, id, 50, props, undefined, backfill);
-    expect(keyframesOf(acorn)).not.toBeNull();
+    expect(keyframesOf(acorn)).toEqual(keyframesOf(recast));
   });
 
   // ── Bug 3: existing "50.0%" key, add at 50 (non-byte-equal % key) ─────────────
   it("merges into a non-byte-equal '50.0%' key when adding at 50", () => {
     const id = animId(DECIMAL_KEY_SCRIPT);
     const props = { opacity: 0.9 };
+    const recast = addRecast(DECIMAL_KEY_SCRIPT, id, 50, props);
     const acorn = addAcorn(DECIMAL_KEY_SCRIPT, id, 50, props);
-    const kfs = keyframesOf(acorn);
-    expect(kfs).not.toBeNull();
-    // Should still have 3 keyframes (merge, not insert)
-    expect(kfs).toHaveLength(3);
+    expect(keyframesOf(acorn)).toEqual(keyframesOf(recast));
   });
 
   // ── Bug 8: %-tolerance — existing 50, add 51 should MERGE (PCT_TOLERANCE=2) ────
   it("treats a near-coincident percentage (50 vs 51) as the same keyframe (merge)", () => {
     const id = animId(PLAIN_SCRIPT);
     const props = { opacity: 0.9 };
+    const recast = addRecast(PLAIN_SCRIPT, id, 51, props);
     const acorn = addAcorn(PLAIN_SCRIPT, id, 51, props);
-    const kfs = keyframesOf(acorn);
-    expect(kfs).not.toBeNull();
-    // Merge: still 3 keyframes
-    expect(kfs).toHaveLength(3);
+    expect(keyframesOf(acorn)).toEqual(keyframesOf(recast));
   });
 
   // ── Bug 7: adding ONTO a 0/100 _auto endpoint preserves the _auto marker ──────
   it("preserves the _auto marker when adding a prop directly onto a 0% _auto endpoint", () => {
     const id = animId(AUTO_SCRIPT);
     const props = { x: 25 };
+    const recast = addRecast(AUTO_SCRIPT, id, 0, props);
     const acorn = addAcorn(AUTO_SCRIPT, id, 0, props);
-    const kfs = keyframesOf(acorn);
-    expect(kfs).not.toBeNull();
-    const kf0 = kfs!.find((k) => k.percentage === 0);
-    expect(kf0).toBeDefined();
-    expect(kf0!.properties.x).toBe(25);
+    expect(keyframesOf(acorn)).toEqual(keyframesOf(recast));
   });
 });

@@ -1,3 +1,7 @@
+// fallow-ignore-file code-duplication
+// executeGsapMutationRecast and executeGsapMutationAcorn are intentionally
+// parallel — two writers, same switch-case interface. Structural duplication
+// is load-bearing (both paths must remain testable in isolation).
 import type { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import {
@@ -55,6 +59,30 @@ import {
   type PatchOperation,
 } from "../helpers/sourceMutation.js";
 import { parseHTML } from "linkedom";
+
+// ── Server cutover flag ─────────────────────────────────────────────────────
+
+/**
+ * Mirror of the client STUDIO_SDK_CUTOVER_ENABLED flag for server-side writer
+ * selection. When true, the acorn writer handles GSAP mutations; otherwise the
+ * recast writer (gsapParser.ts) is used. Default false → recast.
+ *
+ * Enable with: STUDIO_SDK_CUTOVER_ENABLED=true (or =1)
+ * Mirrors the client Vite env var name so one env switch flips both sides.
+ */
+function isAcornGsapWriterEnabled(): boolean {
+  const val = process.env["STUDIO_SDK_CUTOVER_ENABLED"];
+  return val === "true" || val === "1";
+}
+
+/**
+ * Lazy-load gsapParser for write ops (recast-backed) — the default server writer.
+ * The read path uses the browser-safe acorn parser; this loader is only needed
+ * for the recast write path (the default when STUDIO_SDK_CUTOVER_ENABLED is off).
+ */
+async function loadGsapParser() {
+  return import("../../parsers/gsapParser.js");
+}
 
 // ── Shared helpers ──────────────────────────────────────────────────────────
 
@@ -507,7 +535,20 @@ type GsapMutationRequest =
 
 type GsapMutationResult = string | { script: string; skippedSelectors: string[] };
 
-function executeGsapMutation(
+async function executeGsapMutation(
+  body: GsapMutationRequest,
+  block: NonNullable<ReturnType<typeof extractGsapScriptBlock>>,
+  respond: (data: unknown, status?: number) => Response,
+): Promise<GsapMutationResult | Response> {
+  // When the server cutover flag is enabled, delegate to the acorn writer;
+  // otherwise use the recast writer (gsapParser.ts) as the default.
+  if (!isAcornGsapWriterEnabled()) {
+    return executeGsapMutationRecast(body, block, respond);
+  }
+  return executeGsapMutationAcorn(body, block, respond);
+}
+
+function executeGsapMutationAcorn(
   body: GsapMutationRequest,
   block: NonNullable<ReturnType<typeof extractGsapScriptBlock>>,
   respond: (data: unknown, status?: number) => Response,
@@ -750,6 +791,285 @@ function executeGsapMutation(
       )
         return block.scriptText;
       if (oldStart === newStart && oldDuration === newDuration) return block.scriptText;
+      return scalePositionsInScript(
+        block.scriptText,
+        targetSelector,
+        oldStart,
+        oldDuration,
+        newStart,
+        newDuration,
+      );
+    }
+    default:
+      return respond({ error: `unknown mutation type: ${(body as { type: string }).type}` }, 400);
+  }
+}
+
+async function executeGsapMutationRecast(
+  body: GsapMutationRequest,
+  block: NonNullable<ReturnType<typeof extractGsapScriptBlock>>,
+  respond: (data: unknown, status?: number) => Response,
+): Promise<GsapMutationResult | Response> {
+  const parser = await loadGsapParser();
+  const {
+    updateAnimationInScript,
+    addAnimationToScript,
+    removeAnimationFromScript,
+    addKeyframeToScript,
+    removeKeyframeFromScript,
+    updateKeyframeInScript,
+    convertToKeyframesInScript,
+    removeAllKeyframesFromScript,
+    materializeKeyframesInScript,
+    unrollDynamicAnimations,
+    setArcPathInScript,
+    updateArcSegmentInScript,
+    removeArcPathFromScript,
+    addAnimationWithKeyframesToScript,
+    splitAnimationsInScript,
+    splitIntoPropertyGroups,
+  } = parser;
+
+  function requireAnimation(
+    scriptText: string,
+    animationId: string,
+  ): { anim: GsapAnimation } | { err: Response } {
+    const parsed = parseGsapScriptAcorn(scriptText);
+    const anim = parsed.animations.find((a) => a.id === animationId);
+    if (!anim) return { err: respond({ error: "animation not found" }, 404) };
+    return { anim };
+  }
+
+  function requireFromToAnimation(
+    scriptText: string,
+    animationId: string,
+  ): { anim: GsapAnimation } | { err: Response } {
+    const result = requireAnimation(scriptText, animationId);
+    if ("err" in result) return result;
+    if (result.anim.method !== "fromTo")
+      return { err: respond({ error: "animation is not a fromTo" }, 400) };
+    return result;
+  }
+
+  switch (body.type) {
+    case "update-property":
+    case "add-property": {
+      const r = requireAnimation(block.scriptText, body.animationId);
+      if ("err" in r) return r.err;
+      const val = body.type === "update-property" ? body.value : body.defaultValue;
+      return updateAnimationInScript(block.scriptText, body.animationId, {
+        properties: { ...r.anim.properties, [body.property]: val },
+      });
+    }
+    case "update-from-property":
+    case "add-from-property": {
+      const r = requireFromToAnimation(block.scriptText, body.animationId);
+      if ("err" in r) return r.err;
+      const val = body.type === "update-from-property" ? body.value : body.defaultValue;
+      return updateAnimationInScript(block.scriptText, body.animationId, {
+        fromProperties: { ...(r.anim.fromProperties ?? {}), [body.property]: val },
+      });
+    }
+    case "update-meta": {
+      return updateAnimationInScript(block.scriptText, body.animationId, body.updates);
+    }
+    case "add": {
+      if (body.fromProperties && body.method !== "fromTo") {
+        return respond({ error: "fromProperties is only valid for method=fromTo" }, 400);
+      }
+      const result = addAnimationToScript(block.scriptText, {
+        targetSelector: body.targetSelector,
+        method: body.method,
+        position: body.position,
+        duration: body.duration,
+        ease: body.ease,
+        properties: body.properties,
+        fromProperties: body.fromProperties,
+      });
+      return result.script;
+    }
+    case "delete": {
+      const delTarget = requireAnimation(block.scriptText, body.animationId);
+      if (!("err" in delTarget) && body.stripStudioEdits) {
+        stripStudioEditsFromTarget(block.document, delTarget.anim.targetSelector);
+        bakeVisibilityOnDelete(block.document, delTarget.anim);
+      }
+      return removeAnimationFromScript(block.scriptText, body.animationId);
+    }
+    case "delete-all-for-selector": {
+      const parsed = parseGsapScriptAcorn(block.scriptText);
+      const matching = parsed.animations.filter((a) => a.targetSelector === body.targetSelector);
+      if (matching.length === 0) return block.scriptText;
+      stripStudioEditsFromTarget(block.document, body.targetSelector);
+      let script = block.scriptText;
+      for (const anim of matching.reverse()) {
+        script = removeAnimationFromScript(script, anim.id);
+      }
+      return script;
+    }
+    case "remove-property": {
+      const r = requireAnimation(block.scriptText, body.animationId);
+      if ("err" in r) return r.err;
+      const filtered = { ...r.anim.properties };
+      delete filtered[body.property];
+      return updateAnimationInScript(block.scriptText, body.animationId, {
+        properties: filtered,
+      });
+    }
+    case "remove-from-property": {
+      const r = requireFromToAnimation(block.scriptText, body.animationId);
+      if ("err" in r) return r.err;
+      const filtered = { ...(r.anim.fromProperties ?? {}) };
+      delete filtered[body.property];
+      return updateAnimationInScript(block.scriptText, body.animationId, {
+        fromProperties: filtered,
+      });
+    }
+    case "add-keyframe": {
+      return addKeyframeToScript(
+        block.scriptText,
+        body.animationId,
+        body.percentage,
+        body.properties,
+        body.ease,
+        body.backfillDefaults,
+      );
+    }
+    case "remove-keyframe": {
+      return removeKeyframeFromScript(block.scriptText, body.animationId, body.percentage);
+    }
+    case "update-keyframe": {
+      return updateKeyframeInScript(
+        block.scriptText,
+        body.animationId,
+        body.percentage,
+        body.properties,
+        body.ease,
+      );
+    }
+    case "convert-to-keyframes": {
+      return convertToKeyframesInScript(
+        block.scriptText,
+        body.animationId,
+        body.resolvedFromValues,
+      );
+    }
+    case "remove-all-keyframes": {
+      const preCollapse = requireAnimation(block.scriptText, body.animationId);
+      if (!("err" in preCollapse)) {
+        bakeVisibilityOnDelete(block.document, preCollapse.anim);
+      }
+      return removeAllKeyframesFromScript(block.scriptText, body.animationId);
+    }
+    case "materialize-keyframes": {
+      if (body.allElements && body.allElements.length > 0) {
+        return unrollDynamicAnimations(block.scriptText, body.animationId, body.allElements);
+      }
+      return materializeKeyframesInScript(
+        block.scriptText,
+        body.animationId,
+        body.keyframes,
+        body.easeEach,
+        body.resolvedSelector,
+      );
+    }
+    case "set-arc-path": {
+      return setArcPathInScript(block.scriptText, body.animationId, {
+        enabled: body.enabled,
+        autoRotate: body.autoRotate ?? false,
+        segments: body.segments ?? [],
+      });
+    }
+    case "update-arc-segment": {
+      return updateArcSegmentInScript(block.scriptText, body.animationId, body.segmentIndex, {
+        ...(body.curviness !== undefined ? { curviness: body.curviness } : {}),
+        ...(body.cp1 ? { cp1: body.cp1 } : {}),
+        ...(body.cp2 ? { cp2: body.cp2 } : {}),
+      });
+    }
+    case "remove-arc-path": {
+      return removeArcPathFromScript(block.scriptText, body.animationId);
+    }
+    case "add-with-keyframes": {
+      const result = addAnimationWithKeyframesToScript(
+        block.scriptText,
+        body.targetSelector,
+        body.position,
+        body.duration,
+        body.keyframes,
+        body.ease,
+      );
+      return result.script;
+    }
+    case "replace-with-keyframes": {
+      const script = removeAnimationFromScript(block.scriptText, body.animationId);
+      const added = addAnimationWithKeyframesToScript(
+        script,
+        body.targetSelector,
+        body.position,
+        body.duration,
+        body.keyframes,
+        body.ease,
+      );
+      return added.script;
+    }
+    case "split-animations": {
+      if (
+        typeof body.originalId !== "string" ||
+        !body.originalId ||
+        typeof body.newId !== "string" ||
+        !body.newId ||
+        typeof body.splitTime !== "number" ||
+        !Number.isFinite(body.splitTime) ||
+        typeof body.elementStart !== "number" ||
+        !Number.isFinite(body.elementStart) ||
+        typeof body.elementDuration !== "number" ||
+        !Number.isFinite(body.elementDuration) ||
+        body.elementDuration <= 0
+      ) {
+        return respond(
+          {
+            error:
+              "split-animations requires originalId, newId (non-empty strings), splitTime, elementStart (finite numbers), and elementDuration (positive number)",
+          },
+          400,
+        );
+      }
+      return splitAnimationsInScript(block.scriptText, {
+        originalId: body.originalId,
+        newId: body.newId,
+        splitTime: body.splitTime,
+        elementStart: body.elementStart,
+        elementDuration: body.elementDuration,
+      });
+    }
+    case "split-into-property-groups": {
+      const result = splitIntoPropertyGroups(block.scriptText, body.animationId);
+      return result.script;
+    }
+    case "unroll-timeline": {
+      return unrollComputedTimeline(block.scriptText);
+    }
+    case "shift-positions": {
+      const { targetSelector, delta } = body;
+      if (!targetSelector || !Number.isFinite(delta) || delta === 0) return block.scriptText;
+      const { shiftPositionsInScript } = parser;
+      return shiftPositionsInScript(block.scriptText, targetSelector, delta);
+    }
+    case "scale-positions": {
+      const { targetSelector, oldStart, oldDuration, newStart, newDuration } = body;
+      if (
+        !targetSelector ||
+        !Number.isFinite(oldStart) ||
+        !Number.isFinite(oldDuration) ||
+        !Number.isFinite(newStart) ||
+        !Number.isFinite(newDuration) ||
+        oldDuration <= 0 ||
+        newDuration <= 0
+      )
+        return block.scriptText;
+      if (oldStart === newStart && oldDuration === newDuration) return block.scriptText;
+      const { scalePositionsInScript } = parser;
       return scalePositionsInScript(
         block.scriptText,
         targetSelector,
@@ -1214,7 +1534,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- bridge between generic status and Hono's literal union
       status ? c.json(data, status as any) : c.json(data);
 
-    const result = executeGsapMutation(body, block, respond);
+    const result = await executeGsapMutation(body, block, respond);
     if (result instanceof Response) return result;
 
     const newScript = typeof result === "string" ? result : result.script;

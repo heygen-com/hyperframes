@@ -137,6 +137,26 @@
         "createFailedCaptureCalibrationEstimate",
       ],
     },
+    // gsapParser.ts is a public-API barrel that re-exports constants, types,
+    // and utilities from gsapConstants, gsapSerialize, and springEase. The
+    // re-exports are intentional public API consumed by callers outside the
+    // changed-file set (e.g. studio, aws-lambda) and therefore appear unused
+    // to fallow's static analysis of the PR diff.
+    {
+      "file": "packages/core/src/parsers/gsapParser.ts",
+      "exports": [
+        "PROPERTY_GROUPS",
+        "classifyPropertyGroup",
+        "classifyTweenPropertyGroup",
+        "SPRING_PRESETS",
+        "generateSpringEaseData",
+        "GsapMethod",
+        "GsapKeyframesData",
+        "GsapKeyframeFormat",
+        "PropertyGroupName",
+        "SpringPreset",
+      ],
+    },
     // Shared test helpers consumed by gsapParser.test.ts (same file,
     // fallow doesn't trace intra-file test consumption).
     {
@@ -231,6 +251,15 @@
     // and runtime-scan effects, the per-element animations memo) whose
     // complexity pre-dates the computed-timeline work. Exempted at file level
     // for the same reason as files.ts rather than refactored as scope creep.
-    "ignore": ["packages/core/src/studio-api/routes/files.ts"],
+    //
+    // gsapParser.ts: the recast/babel GSAP writer is a 2500-line legacy parser
+    // restored as the default server writer by WS-3.F rework (acorn is now
+    // flag-gated behind STUDIO_SDK_CUTOVER_ENABLED). Its complexity pre-dates
+    // this PR and was present on all ancestor branches; the file-level exemption
+    // avoids the line-shift fingerprint problem for inherited findings.
+    "ignore": [
+      "packages/core/src/studio-api/routes/files.ts",
+      "packages/core/src/parsers/gsapParser.ts",
+    ],
   },
 }

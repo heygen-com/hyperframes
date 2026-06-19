@@ -1,11 +1,25 @@
 // fallow-ignore-file code-duplication
 /**
- * Acorn GSAP-writer regression suite (WS-3.F: recast retired).
+ * Recast-vs-acorn GSAP-writer differential suite (WS-3.F cutover gate).
  *
- * Originally a recast-vs-acorn differential suite (WS-3.F cutover gate).
- * With recast retired, all ops are run acorn-only and asserted for correct
- * parsed output. The `runParity` harness is kept (acorn-only) so the test
- * descriptions still document the expected semantics.
+ * The SDK's browser-safe acorn writer (gsapWriterAcorn.ts) must produce output
+ * equivalent to the server's recast writer (gsapParser.ts) for every write op,
+ * so that making the acorn writer authoritative (retiring recast) is behavior-
+ * preserving. The two formatters differ (recast pretty-prints, acorn splices),
+ * so we never compare bytes — we apply each op via BOTH writers, parse both
+ * outputs with the shared `parseGsapScriptAcorn`, and assert the resulting
+ * animation models match structurally.
+ *
+ * Until this suite, only `addKeyframeToScript` had a true differential test
+ * (gsapWriterParity.acorn.test.ts). This file extends parity coverage to the
+ * five previously standalone-only ops:
+ *   updateAnimationInScript, addAnimationToScript, removeAnimationFromScript,
+ *   updateKeyframeInScript, removeKeyframeFromScript.
+ * Plus correctness tests for the acorn-only label ops (addLabelToScript /
+ * removeLabelFromScript), which have no recast oracle to diff against.
+ *
+ * The harness (`runParity`, `modelOf`) is exported so the follow-up WS-3 op-PR
+ * workflow can reuse it to gate each cut-over op.
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -17,14 +31,24 @@ import {
   addLabelToScript,
   removeLabelFromScript,
 } from "./gsapWriterAcorn.js";
+import {
+  updateAnimationInScript as updateAnimRecast,
+  addAnimationToScript as addAnimRecast,
+  removeAnimationFromScript as removeAnimRecast,
+  updateKeyframeInScript as updateKfRecast,
+  removeKeyframeFromScript as removeKfRecast,
+  parseGsapScript,
+} from "./gsapParser.js";
 import { parseGsapScriptAcorn } from "./gsapParserAcorn.js";
 import type { GsapAnimation } from "./gsapSerialize.js";
 
-// ── Regression harness (acorn-only after recast retirement) ─────────────────
+// ── Reusable differential harness (exported for the WS-3 op-PR workflow) ───────
 
 /**
  * Fields that are incidental metadata — derived per-parse rather than authored —
- * and so must be excluded from a structural comparison.
+ * and so must be excluded from a structural comparison: stable ids are content-
+ * derived (and recast's addAnimation id is a `Date.now()` placeholder), and the
+ * rest are computed analysis (resolved start, group classification, provenance).
  */
 const IGNORED_FIELDS = new Set<keyof GsapAnimation | string>([
   "id",
@@ -41,7 +65,9 @@ type NormalizedAnimation = Record<string, unknown>;
 /**
  * Parse a GSAP script and reduce each animation to its authored shape: target,
  * method, position, properties, fromProperties, duration, ease, extras,
- * keyframes — dropping per-parse metadata.
+ * keyframes — dropping per-parse metadata. Both writers' outputs go through this
+ * SAME parser, so any model difference is a genuine writer divergence, not a
+ * parser artifact.
  */
 export function modelOf(script: string): NormalizedAnimation[] {
   return parseGsapScriptAcorn(script).animations.map((anim) => {
@@ -55,25 +81,24 @@ export function modelOf(script: string): NormalizedAnimation[] {
 }
 
 /**
- * Apply an op via the acorn writer and assert the result parses to a non-empty
- * model. Returns the rewritten script for chaining.
+ * Apply an op via BOTH writers and assert the parsed animation models match.
+ * `recast`/`acorn` each receive the original script and must return the rewritten
+ * script. Returns the recast-written script so callers can chain ops.
  */
 export function runParity(
   script: string,
-  _unused: (s: string) => string,
+  recast: (s: string) => string,
   acorn: (s: string) => string,
 ): string {
+  const recastOut = recast(script);
   const acornOut = acorn(script);
-  // Verify the output is parseable and non-empty when the input was non-empty.
-  if (parseGsapScriptAcorn(script).animations.length > 0) {
-    expect(modelOf(acornOut).length).toBeGreaterThanOrEqual(0);
-  }
-  return acornOut;
+  expect(modelOf(acornOut), "acorn model must equal recast model").toEqual(modelOf(recastOut));
+  return recastOut;
 }
 
-/** The id of the i-th animation in a script. */
+/** The id of the i-th animation in a script (recast parser — the op oracle). */
 function idAt(script: string, index = 0): string {
-  const id = parseGsapScriptAcorn(script).animations[index]?.id;
+  const id = parseGsapScript(script).animations[index]?.id;
   if (!id) throw new Error(`no animation at index ${index} in fixture`);
   return id;
 }
@@ -181,7 +206,7 @@ describe("parity — updateAnimationInScript", () => {
     const u = { duration: 0.9, ease: "power1.in" };
     runParity(
       REAL_MACOS,
-      (s) => updateAnimAcorn(s, id, u),
+      (s) => updateAnimRecast(s, id, u),
       (s) => updateAnimAcorn(s, id, u),
     );
   });
@@ -191,7 +216,7 @@ describe("parity — updateAnimationInScript", () => {
     const u = { duration: 0.7 };
     runParity(
       REAL_FLOWCHART,
-      (s) => updateAnimAcorn(s, id, u),
+      (s) => updateAnimRecast(s, id, u),
       (s) => updateAnimAcorn(s, id, u),
     );
   });
@@ -201,7 +226,7 @@ describe("parity — updateAnimationInScript", () => {
     const u = { properties: { x: 50, rotation: 10 } };
     runParity(
       SYN_MIXED_METHODS,
-      (s) => updateAnimAcorn(s, id, u),
+      (s) => updateAnimRecast(s, id, u),
       (s) => updateAnimAcorn(s, id, u),
     );
   });
@@ -211,7 +236,7 @@ describe("parity — updateAnimationInScript", () => {
     const u = { fromProperties: { scale: 0.5 } };
     runParity(
       SYN_MIXED_METHODS,
-      (s) => updateAnimAcorn(s, id, u),
+      (s) => updateAnimRecast(s, id, u),
       (s) => updateAnimAcorn(s, id, u),
     );
   });
@@ -221,7 +246,7 @@ describe("parity — updateAnimationInScript", () => {
     const u = { properties: { y: -40 } };
     runParity(
       SYN_EXTRAS,
-      (s) => updateAnimAcorn(s, id, u),
+      (s) => updateAnimRecast(s, id, u),
       (s) => updateAnimAcorn(s, id, u),
     );
   });
@@ -231,7 +256,7 @@ describe("parity — updateAnimationInScript", () => {
     const u = { properties: { x: 9 }, duration: 1.1, ease: "sine.in" };
     runParity(
       SYN_SINGLE,
-      (s) => updateAnimAcorn(s, id, u),
+      (s) => updateAnimRecast(s, id, u),
       (s) => updateAnimAcorn(s, id, u),
     );
   });
@@ -241,7 +266,7 @@ describe("parity — updateAnimationInScript", () => {
     const u = { position: "intro+=0.5" };
     runParity(
       SYN_MIXED_METHODS,
-      (s) => updateAnimAcorn(s, id, u),
+      (s) => updateAnimRecast(s, id, u),
       (s) => updateAnimAcorn(s, id, u),
     );
   });
@@ -251,7 +276,7 @@ describe("parity — updateAnimationInScript", () => {
     const u = { position: 3 };
     runParity(
       SYN_MIXED_METHODS,
-      (s) => updateAnimAcorn(s, id, u),
+      (s) => updateAnimRecast(s, id, u),
       (s) => updateAnimAcorn(s, id, u),
     );
   });
@@ -261,7 +286,7 @@ describe("parity — updateAnimationInScript", () => {
     const u = { duration: 0.9 };
     runParity(
       SYN_LABELED,
-      (s) => updateAnimAcorn(s, id, u),
+      (s) => updateAnimRecast(s, id, u),
       (s) => updateAnimAcorn(s, id, u),
     );
   });
@@ -271,7 +296,7 @@ describe("parity — updateAnimationInScript", () => {
     const u = { ease: "power3.out" };
     runParity(
       SYN_NESTED,
-      (s) => updateAnimAcorn(s, id, u),
+      (s) => updateAnimRecast(s, id, u),
       (s) => updateAnimAcorn(s, id, u),
     );
   });
@@ -296,7 +321,7 @@ describe("parity — addAnimationToScript", () => {
       ease: "sine.in",
     };
     const build = add(anim);
-    runParity(REAL_MACOS, build(addAnimAcorn), build(addAnimAcorn));
+    runParity(REAL_MACOS, build(addAnimRecast), build(addAnimAcorn));
   });
 
   it("appends a fromTo() with extras (repeat/yoyo)", () => {
@@ -310,7 +335,7 @@ describe("parity — addAnimationToScript", () => {
       extras: { repeat: 2, yoyo: true },
     };
     const build = add(anim);
-    runParity(SYN_MIXED_METHODS, build(addAnimAcorn), build(addAnimAcorn));
+    runParity(SYN_MIXED_METHODS, build(addAnimRecast), build(addAnimAcorn));
   });
 
   it("appends a from() with a symbolic '<' position", () => {
@@ -322,7 +347,7 @@ describe("parity — addAnimationToScript", () => {
       properties: { y: 20, opacity: 0 },
     };
     const build = add(anim);
-    runParity(SYN_EXTRAS, build(addAnimAcorn), build(addAnimAcorn));
+    runParity(SYN_EXTRAS, build(addAnimRecast), build(addAnimAcorn));
   });
 
   it("appends a tween with a label-relative position", () => {
@@ -334,7 +359,7 @@ describe("parity — addAnimationToScript", () => {
       properties: { opacity: 1 },
     };
     const build = add(anim);
-    runParity(SYN_LABELED, build(addAnimAcorn), build(addAnimAcorn));
+    runParity(SYN_LABELED, build(addAnimRecast), build(addAnimAcorn));
   });
 
   it("appends a tween onto a chained-tween timeline", () => {
@@ -346,7 +371,7 @@ describe("parity — addAnimationToScript", () => {
       properties: { scale: 1.2 },
     };
     const build = add(anim);
-    runParity(SYN_CHAIN, build(addAnimAcorn), build(addAnimAcorn));
+    runParity(SYN_CHAIN, build(addAnimRecast), build(addAnimAcorn));
   });
 
   it("appends with a nested sub-composition selector", () => {
@@ -358,7 +383,7 @@ describe("parity — addAnimationToScript", () => {
       properties: { opacity: 1 },
     };
     const build = add(anim);
-    runParity(SYN_NESTED, build(addAnimAcorn), build(addAnimAcorn));
+    runParity(SYN_NESTED, build(addAnimRecast), build(addAnimAcorn));
   });
 
   it("inserts after the timeline decl when the script has no tweens", () => {
@@ -371,7 +396,7 @@ describe("parity — addAnimationToScript", () => {
       properties: { opacity: 1 },
     };
     const build = add(anim);
-    runParity(empty, build(addAnimAcorn), build(addAnimAcorn));
+    runParity(empty, build(addAnimRecast), build(addAnimAcorn));
   });
 });
 
@@ -382,7 +407,7 @@ describe("parity — removeAnimationFromScript", () => {
     const id = idAt(REAL_MACOS, 0);
     runParity(
       REAL_MACOS,
-      (s) => removeAnimAcorn(s, id),
+      (s) => removeAnimRecast(s, id),
       (s) => removeAnimAcorn(s, id),
     );
   });
@@ -391,7 +416,7 @@ describe("parity — removeAnimationFromScript", () => {
     const id = idAt(REAL_FLOWCHART, 1);
     runParity(
       REAL_FLOWCHART,
-      (s) => removeAnimAcorn(s, id),
+      (s) => removeAnimRecast(s, id),
       (s) => removeAnimAcorn(s, id),
     );
   });
@@ -400,7 +425,7 @@ describe("parity — removeAnimationFromScript", () => {
     const id = idAt(SYN_SINGLE, 0);
     runParity(
       SYN_SINGLE,
-      (s) => removeAnimAcorn(s, id),
+      (s) => removeAnimRecast(s, id),
       (s) => removeAnimAcorn(s, id),
     );
   });
@@ -409,7 +434,7 @@ describe("parity — removeAnimationFromScript", () => {
     const id = idAt(REAL_CAPTION, 1);
     runParity(
       REAL_CAPTION,
-      (s) => removeAnimAcorn(s, id),
+      (s) => removeAnimRecast(s, id),
       (s) => removeAnimAcorn(s, id),
     );
   });
@@ -418,7 +443,7 @@ describe("parity — removeAnimationFromScript", () => {
     const id = idAt(SYN_CHAIN, 0);
     runParity(
       SYN_CHAIN,
-      (s) => removeAnimAcorn(s, id),
+      (s) => removeAnimRecast(s, id),
       (s) => removeAnimAcorn(s, id),
     );
   });
@@ -427,7 +452,7 @@ describe("parity — removeAnimationFromScript", () => {
     const id = idAt(SYN_CHAIN, 2);
     runParity(
       SYN_CHAIN,
-      (s) => removeAnimAcorn(s, id),
+      (s) => removeAnimRecast(s, id),
       (s) => removeAnimAcorn(s, id),
     );
   });
@@ -436,7 +461,7 @@ describe("parity — removeAnimationFromScript", () => {
     const id = idAt(SYN_LABELED, 0);
     runParity(
       SYN_LABELED,
-      (s) => removeAnimAcorn(s, id),
+      (s) => removeAnimRecast(s, id),
       (s) => removeAnimAcorn(s, id),
     );
   });
@@ -445,7 +470,7 @@ describe("parity — removeAnimationFromScript", () => {
     const id = idAt(SYN_EXTRAS, 0);
     runParity(
       SYN_EXTRAS,
-      (s) => removeAnimAcorn(s, id),
+      (s) => removeAnimRecast(s, id),
       (s) => removeAnimAcorn(s, id),
     );
   });
@@ -458,7 +483,7 @@ describe("parity — updateKeyframeInScript", () => {
     const id = idAt(SYN_KF3, 0);
     runParity(
       SYN_KF3,
-      (s) => updateKfAcorn(s, id, 50, { opacity: 0.5 }),
+      (s) => updateKfRecast(s, id, 50, { opacity: 0.5 }),
       (s) => updateKfAcorn(s, id, 50, { opacity: 0.5 }),
     );
   });
@@ -467,7 +492,7 @@ describe("parity — updateKeyframeInScript", () => {
     const id = idAt(SYN_KF3, 0);
     runParity(
       SYN_KF3,
-      (s) => updateKfAcorn(s, id, 50, { opacity: 0.4 }, "power2.in"),
+      (s) => updateKfRecast(s, id, 50, { opacity: 0.4 }, "power2.in"),
       (s) => updateKfAcorn(s, id, 50, { opacity: 0.4 }, "power2.in"),
     );
   });
@@ -476,7 +501,7 @@ describe("parity — updateKeyframeInScript", () => {
     const id = idAt(SYN_KF3, 0);
     runParity(
       SYN_KF3,
-      (s) => updateKfAcorn(s, id, 100, { opacity: 0.9 }),
+      (s) => updateKfRecast(s, id, 100, { opacity: 0.9 }),
       (s) => updateKfAcorn(s, id, 100, { opacity: 0.9 }),
     );
   });
@@ -485,7 +510,7 @@ describe("parity — updateKeyframeInScript", () => {
     const id = idAt(SYN_KF_EASE, 0);
     runParity(
       SYN_KF_EASE,
-      (s) => updateKfAcorn(s, id, 50, { y: 25 }),
+      (s) => updateKfRecast(s, id, 50, { y: 25 }),
       (s) => updateKfAcorn(s, id, 50, { y: 25 }),
     );
   });
@@ -494,7 +519,7 @@ describe("parity — updateKeyframeInScript", () => {
     const id = idAt(SYN_KF_EASE, 0);
     runParity(
       SYN_KF_EASE,
-      (s) => updateKfAcorn(s, id, 100, { y: 5, opacity: 1 }),
+      (s) => updateKfRecast(s, id, 100, { y: 5, opacity: 1 }),
       (s) => updateKfAcorn(s, id, 100, { y: 5, opacity: 1 }),
     );
   });
@@ -507,7 +532,7 @@ describe("parity — removeKeyframeFromScript", () => {
     const id = idAt(SYN_KF3, 0);
     runParity(
       SYN_KF3,
-      (s) => removeKfAcorn(s, id, 50),
+      (s) => removeKfRecast(s, id, 50),
       (s) => removeKfAcorn(s, id, 50),
     );
   });
@@ -516,7 +541,7 @@ describe("parity — removeKeyframeFromScript", () => {
     const id = idAt(SYN_KF2, 0);
     runParity(
       SYN_KF2,
-      (s) => removeKfAcorn(s, id, 0),
+      (s) => removeKfRecast(s, id, 0),
       (s) => removeKfAcorn(s, id, 0),
     );
   });
@@ -525,7 +550,7 @@ describe("parity — removeKeyframeFromScript", () => {
     const id = idAt(SYN_KF2, 0);
     runParity(
       SYN_KF2,
-      (s) => removeKfAcorn(s, id, 100),
+      (s) => removeKfRecast(s, id, 100),
       (s) => removeKfAcorn(s, id, 100),
     );
   });
@@ -535,13 +560,13 @@ describe("parity — removeKeyframeFromScript", () => {
     const id1 = idAt(SYN_KF_EASE, 0);
     const afterFirst = runParity(
       SYN_KF_EASE,
-      (s) => removeKfAcorn(s, id1, 50),
+      (s) => removeKfRecast(s, id1, 50),
       (s) => removeKfAcorn(s, id1, 50),
     );
     const id2 = idAt(afterFirst, 0);
     runParity(
       afterFirst,
-      (s) => removeKfAcorn(s, id2, 0),
+      (s) => removeKfRecast(s, id2, 0),
       (s) => removeKfAcorn(s, id2, 0),
     );
   });
