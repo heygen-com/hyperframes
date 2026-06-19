@@ -21,7 +21,9 @@ export interface RuntimeDurationAdapter {
 export interface DirectTimelineAdapter {
   duration: () => number;
   time: () => number;
-  seek: (timeInSeconds: number) => unknown;
+  // suppressEvents mirrors GSAP's timeline.seek(position, suppressEvents); pass
+  // false to fire onUpdate (so imperative-visibility compositions repaint on seek).
+  seek: (timeInSeconds: number, suppressEvents?: boolean) => unknown;
   play: () => unknown;
   pause: () => unknown;
   /** Optional: set playback rate (e.g. GSAP's timeScale). Called when the player's playbackRate changes. */

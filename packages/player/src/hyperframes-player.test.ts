@@ -925,7 +925,8 @@ describe("HyperframesPlayer seek() sync path", () => {
     player.seek(2);
 
     expect(timeline.seek).toHaveBeenCalledTimes(1);
-    expect(timeline.seek).toHaveBeenCalledWith(2);
+    // suppressEvents=false so onUpdate fires (imperative-visibility compositions repaint).
+    expect(timeline.seek).toHaveBeenCalledWith(2, false);
     expect(post).not.toHaveBeenCalled();
   });
 
@@ -964,7 +965,7 @@ describe("HyperframesPlayer seek() sync path", () => {
     pause.mockClear();
     player.seek(2);
 
-    expect(timeline.seek).toHaveBeenCalledWith(2);
+    expect(timeline.seek).toHaveBeenCalledWith(2, false);
     expect(pause).toHaveBeenCalledTimes(1);
     expect(post).not.toHaveBeenCalled();
   });

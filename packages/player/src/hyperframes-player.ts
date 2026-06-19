@@ -531,7 +531,10 @@ class HyperframesPlayer extends HTMLElement {
   // GSAP seek() preserves play state; player seek() contract lands paused.
   private _tryDirectTimelineSeek(t: number): boolean {
     return this._withDirectTimeline((tl) => {
-      tl.seek(t);
+      // suppressEvents=false: fire the timeline's onUpdate so compositions that
+      // drive scene visibility imperatively (via the root timeline's onUpdate,
+      // e.g. slideshow decks) repaint on a paused seek — not only while playing.
+      tl.seek(t, false);
       tl.pause();
     });
   }
