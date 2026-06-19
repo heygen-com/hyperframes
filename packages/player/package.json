@@ -19,6 +19,12 @@
       "script": "./dist/hyperframes-player.global.js",
       "import": "./dist/hyperframes-player.js",
       "require": "./dist/hyperframes-player.cjs"
+    },
+    "./slideshow": {
+      "types": "./dist/slideshow/hyperframes-slideshow.d.ts",
+      "script": "./dist/slideshow/hyperframes-slideshow.global.js",
+      "import": "./dist/slideshow/hyperframes-slideshow.js",
+      "require": "./dist/slideshow/hyperframes-slideshow.cjs"
     }
   },
   "scripts": {
@@ -26,6 +32,9 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p tests/perf/tsconfig.json",
     "test": "vitest run",
     "perf": "bun run tests/perf/index.ts"
+  },
+  "dependencies": {
+    "@hyperframes/core": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "^1.1.0",
