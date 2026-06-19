@@ -603,6 +603,26 @@ describe("addElement", () => {
     });
     expect(r.ok).toBe(true);
   });
+
+  // The dispatch path runs applyOp WITHOUT validateOp, so the handler must
+  // re-enforce these guards itself (return EMPTY) rather than crash or insert.
+  it.each([
+    { name: "unknown parent id (no crash)", parent: "hf-does-not-exist", html: "<div>x</div>" },
+    {
+      name: "fragment with <script> (never inserts raw markup)",
+      parent: "hf-stage",
+      html: "<div><scr" + "ipt>alert(1)</scr" + "ipt></div>",
+    },
+    {
+      name: "multi-root fragment (no silent drop of extra roots)",
+      parent: "hf-stage",
+      html: "<p>a</p><p>b</p>",
+    },
+  ])("handler guard: $name → no-op", ({ parent, html }) => {
+    const result = applyOp(fresh(), { type: "addElement", parent, index: 0, html });
+    expect(result.forward).toHaveLength(0);
+    expect(result.meta?.newId).toBeUndefined();
+  });
 });
 
 // ─── setElementStyles (model helper) ──────────────────────────────────────────

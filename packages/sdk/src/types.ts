@@ -404,7 +404,7 @@ export interface Composition {
    * Inverse = removeElement of the returned id.
    */
   addElement(parent: HfId | null, index: number, html: string): HfId;
-  setVariableValue(id: string, value: string | number | boolean): void;
+  setVariableValue(id: string, value: string | number | boolean | FontValue | ImageValue): void;
   /**
    * Read enter/exit times and GSAP labels for every timed element (WS-C).
    * Derives enterAt/exitAt using the same data-duration vs data-end preference

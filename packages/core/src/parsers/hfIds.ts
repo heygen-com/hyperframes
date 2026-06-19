@@ -11,7 +11,15 @@
 import { parseHTML } from "linkedom";
 
 // Non-editable / non-visual elements that should never receive a stable id.
-const EXCLUDED_TAGS = new Set(["script", "style", "template", "meta", "link", "noscript", "base"]);
+export const EXCLUDED_TAGS = new Set([
+  "script",
+  "style",
+  "template",
+  "meta",
+  "link",
+  "noscript",
+  "base",
+]);
 
 // 32-bit FNV-1a. Pure, deterministic, no crypto, no Math.random.
 function fnv1a(str: string): number {

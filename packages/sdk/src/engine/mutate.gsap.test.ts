@@ -321,7 +321,8 @@ describe("addGsapKeyframe", () => {
 
     // Parse the SDK-written script and compare against the recast writer fed the
     // same backfillDefaults the studio always sends (`PROPERTY_DEFAULTS[k] ?? 0`).
-    const { parseGsapScript, addKeyframeToScript } = await import("@hyperframes/core/gsap-parser");
+    const { parseGsapScript } = await import("@hyperframes/core/gsap-parser");
+    const { addKeyframeToScript } = await import("@hyperframes/core/gsap-writer-acorn");
     const recast = addKeyframeToScript(KF_SCRIPT, animId, 25, { opacity: 0.3, x: 120 }, undefined, {
       opacity: 1,
       x: 0,
@@ -1091,5 +1092,48 @@ describe("handleSetTiming GSAP sync (CF2 #15/#16)", () => {
     expect(el?.getAttribute("data-duration")).toBe("2");
     // data-end recomputed (5 + 2); the bug left it stale at 3 → inverted clip.
     expect(el?.getAttribute("data-end")).toBe("7");
+  });
+});
+
+// ─── WS-3.C dispatch-path guards (validateOp is advisory; handlers self-guard) ──
+
+describe("addWithKeyframes / replaceWithKeyframes — handler self-guards", () => {
+  const KFS = [
+    { percentage: 0, properties: { opacity: 0 } },
+    { percentage: 100, properties: { opacity: 1 } },
+  ];
+  const SEL = '[data-hf-id="hf-box"]';
+
+  // Dispatch skips validateOp, so each handler must self-guard: no degenerate
+  // `keyframes: {}` tween (empty list), and no silent degrade-to-add when the
+  // replace target id resolves to nothing.
+  it.each([
+    {
+      name: "addWithKeyframes with empty keyframes",
+      op: {
+        type: "addWithKeyframes",
+        targetSelector: SEL,
+        position: 0,
+        duration: 1,
+        keyframes: [],
+      },
+    },
+    {
+      name: "replaceWithKeyframes with an unknown animationId",
+      op: {
+        type: "replaceWithKeyframes",
+        animationId: "does-not-exist",
+        targetSelector: SEL,
+        position: 0,
+        duration: 1,
+        keyframes: KFS,
+      },
+    },
+  ] as const)("$name is a no-op (script unchanged)", ({ op }) => {
+    const parsed = fresh();
+    const before = getScript(parsed);
+    const result = applyOp(parsed, op);
+    expect(result.forward).toHaveLength(0);
+    expect(getScript(parsed)).toBe(before);
   });
 });
