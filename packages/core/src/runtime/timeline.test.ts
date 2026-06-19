@@ -41,6 +41,26 @@ describe("collectRuntimeTimelinePayload", () => {
     expect(result.clips[0].kind).toBe("element");
   });
 
+  it("derives a clip's duration from data-end when data-duration is absent", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-duration", "20");
+    document.body.appendChild(root);
+
+    const clip = document.createElement("div");
+    clip.id = "text-1";
+    clip.setAttribute("data-start", "2");
+    clip.setAttribute("data-end", "8");
+    clip.setAttribute("data-track-index", "0");
+    root.appendChild(clip);
+
+    const result = collectRuntimeTimelinePayload(defaultParams);
+    expect(result.clips).toHaveLength(1);
+    expect(result.clips[0].start).toBe(2);
+    // 8 - 2 = 6, not the inherited root duration (20 - 2 = 18)
+    expect(result.clips[0].duration).toBe(6);
+  });
+
   it("identifies video clips by tag", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");

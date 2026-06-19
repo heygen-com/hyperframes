@@ -389,6 +389,14 @@ export function collectRuntimeTimelinePayload(params: {
     );
     const nodeCompositionId = node.getAttribute("data-composition-id");
     let duration = parseElementDurationAttr(node);
+    if (duration == null || duration <= 0) {
+      // Mirror the scene loop: an explicit data-end sets the clip's duration
+      // when no data-duration is present. Without this the clip fell through to
+      // the inherited (composition) duration and was sized start..rootEnd, so a
+      // 2s..8s clip rendered as start..20s on the timeline.
+      const endAttr = parseElementEndAttr(node);
+      if (endAttr != null) duration = Math.max(0, endAttr - start);
+    }
     if (
       (duration == null || duration <= 0) &&
       nodeCompositionId &&
