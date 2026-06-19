@@ -100,6 +100,35 @@ describe("applySoftReload", () => {
     expect(suppressionCalled).toBe(true);
   });
 
+  it("returns true when the re-run re-registers the script's expected key", () => {
+    // SCRIPT_TEXT registers __timelines["root"]; buildMockIframe's appendChild
+    // shim repopulates `root` on execution. The hardened verify checks the
+    // expected target key is present (not merely "some key"), so a correct re-run
+    // reliably returns true — it doesn't spuriously fail the transient window.
+    const { iframe, contentWindow } = buildMockIframe();
+    expect(applySoftReload(iframe, SCRIPT_TEXT)).toBe(true);
+    expect(contentWindow.__timelines.root).toBeDefined();
+  });
+
+  it("editing composition A leaves composition B's timeline intact (scoped kill)", () => {
+    // Two comps live side by side; the soft reload only re-runs comp "root".
+    // Comp "subscene" must survive untouched — the regression the full remount
+    // (re-inline) used to cause.
+    const subsceneTimeline = { kill: vi.fn(), pause: vi.fn() };
+    const { iframe, contentWindow, mockTimeline } = buildMockIframe({
+      __timelines: {
+        root: { kill: vi.fn(), pause: vi.fn() },
+        subscene: subsceneTimeline,
+      } as Record<string, { kill: ReturnType<typeof vi.fn>; pause: ReturnType<typeof vi.fn> }>,
+    });
+    void mockTimeline;
+
+    expect(applySoftReload(iframe, SCRIPT_TEXT)).toBe(true);
+    // Comp B was never killed and is still registered.
+    expect(subsceneTimeline.kill).not.toHaveBeenCalled();
+    expect(contentWindow.__timelines.subscene).toBe(subsceneTimeline);
+  });
+
   it("returns false when multiple GSAP scripts exist (ambiguous)", () => {
     const script1 = document.createElement("script");
     script1.textContent = "const tl = gsap.timeline({ paused: true });";

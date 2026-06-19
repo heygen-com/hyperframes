@@ -68,11 +68,13 @@ export function applyPreviewSync(
     // Fall through to the soft/full reload path below.
   }
   if (options.softReload && result.scriptText) {
-    // Per U4, do NOT escalate on the synchronous `false` return (it means
-    // "soft-reload couldn't run; the value is unchanged on screen, not broken"
-    // — a full reload would re-flash the WebGL context for nothing). Only the
-    // async MotionPath-plugin load failure escalates, via `onAsyncFailure`,
-    // which fires after a soft reload that already returned true optimistically.
+    // A soft-reloadable edit must NEVER escalate to a full iframe remount on the
+    // synchronous `false` return — that means "soft-reload couldn't run; the value
+    // is unchanged on screen, not broken", and a remount re-flashes the WebGL
+    // context AND re-inlines subcomps (reverting their keyframes). Only the async
+    // MotionPath-plugin load failure escalates, via `onAsyncFailure` (fires after a
+    // soft reload that already returned true optimistically). Full reloadPreview()
+    // stays reserved for the structural (no-scriptText) path below.
     applySoftReload(iframe, result.scriptText, reloadPreview);
   } else {
     reloadPreview();
@@ -141,8 +143,19 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
   // the playhead) and invalidates the panel cache, matching the server path.
   const sdkRefresh = useCallback(
     (after: string) => {
+      // extractGsapScriptText returns null when zero/multiple GSAP scripts are
+      // present — that's an ambiguous/structural change that genuinely needs a full
+      // reload. But a SINGLE-script soft-reloadable edit must not escalate to a full
+      // remount even if applySoftReload reports failure (same U4 invariant as
+      // applyPreviewSync): the live state is already correct, and a remount re-inlines
+      // subcomps + reverts their keyframes.
       const script = extractGsapScriptText(after);
-      if (!(script && applySoftReload(previewIframeRef.current, script, reloadPreview))) {
+      if (script) {
+        // Soft-reload in place. reloadPreview is the ASYNC-failure escalation — a
+        // plugin-CDN load error genuinely breaks the iframe → full reload. Per U4, a
+        // synchronous soft-reload-false (transient empty __timelines) does NOT escalate.
+        applySoftReload(previewIframeRef.current, script, reloadPreview);
+      } else {
         reloadPreview();
       }
       onCacheInvalidate();

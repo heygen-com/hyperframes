@@ -48,12 +48,21 @@ export function extractGsapScriptText(html: string): string | null {
   return scripts[0].textContent || null;
 }
 
-/** Check that the new script repopulated __timelines with at least one entry. */
-function verifyTimelinesPopulated(win: IframeWindow): boolean {
-  const tlKeys = win.__timelines
-    ? Object.keys(win.__timelines).filter((k) => k !== "__proxied")
-    : [];
-  return tlKeys.length > 0;
+/**
+ * Confirm the re-run repopulated the timeline(s) this script owns. We check the
+ * EXPECTED keys (the ones the script re-registers), not merely "any key": a
+ * scoped soft reload only re-runs ONE composition, so the right success signal is
+ * "my target keys are back", not "the global map is non-empty". Checking the
+ * exact keys avoids the transient false where the global map momentarily looks
+ * empty right after the re-run — the spurious trigger of the full-remount fallback.
+ */
+function verifyTimelinesPopulated(win: IframeWindow, targetKeys: string[]): boolean {
+  const timelines = win.__timelines;
+  if (!timelines) return false;
+  if (targetKeys.length > 0) {
+    return targetKeys.every((key) => timelines[key] != null);
+  }
+  return Object.keys(timelines).filter((k) => k !== "__proxied").length > 0;
 }
 
 /**
@@ -226,7 +235,7 @@ export function applySoftReload(
     // When MotionPath needs async loading, the script hasn't executed yet —
     // skip the __timelines check and return true optimistically.
     if (deferredToAsync) return true;
-    return verifyTimelinesPopulated(win);
+    return verifyTimelinesPopulated(win, targetKeys);
   } catch {
     return false;
   }
