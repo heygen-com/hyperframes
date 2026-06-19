@@ -76,6 +76,11 @@ import {
 } from "@hyperframes/core/gsap-writer-acorn";
 import { deriveKeyframeBackfillDefaults } from "./keyframeBackfill.js";
 import { readVariableDefault, writeVariableDefault } from "./variableModel.js";
+import {
+  URI_BEARING_ATTRS,
+  DANGEROUS_URI_SCHEMES,
+  DANGEROUS_DATA_URI,
+} from "@hyperframes/core/html-attr-safety";
 
 export interface MutationResult {
   forward: JsonPatchOp[];
@@ -100,18 +105,6 @@ const RESERVED_ATTRS = new Set([
   "data-hold-start",
   "data-hold-end",
   "data-hold-fill",
-]);
-
-const DANGEROUS_URI_SCHEMES = /^(?:javascript|vbscript):/i;
-const DANGEROUS_DATA_URI = /^data\s*:\s*text\/html/i;
-const URI_BEARING_ATTRS = new Set([
-  "src",
-  "href",
-  "action",
-  "formaction",
-  "poster",
-  "srcset",
-  "xlink:href",
 ]);
 
 function validateSetAttribute(name: string, value: string | null): void {

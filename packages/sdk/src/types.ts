@@ -18,7 +18,7 @@ export interface HyperFramesElement {
   readonly classNames: readonly string[];
   /** All attributes except style, class, and data-hf-* (those are model-level) */
   readonly attributes: Readonly<Record<string, string>>;
-  /** Direct text node content (not descendant text) */
+  /** Display text for the SDK setText target, not a full descendant-text snapshot. */
   readonly text: string | null;
   // Timing — null when element has no data-start
   readonly start: number | null;

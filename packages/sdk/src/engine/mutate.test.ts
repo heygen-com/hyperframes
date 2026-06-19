@@ -221,6 +221,37 @@ describe("setText", () => {
     expect(result.forward[0]?.value).toBe("Added");
   });
 
+  it("matches legacy single-child text targeting", () => {
+    const parsed = parseMutable(
+      '<button data-hf-id="hf-target"><span data-hf-id="hf-child">Old</span></button>',
+    );
+    const result = applyOp(parsed, { type: "setText", target: "hf-target", value: "New" });
+    expect(serializeDocument(parsed)).toContain(
+      '<button data-hf-id="hf-target"><span data-hf-id="hf-child">New</span></button>',
+    );
+    expect(result.inverse[0]?.value).toBe("Old");
+  });
+
+  it("preserves parent text when the legacy target is a single child", () => {
+    const parsed = parseMutable(
+      '<div data-hf-id="hf-target">Lead <span data-hf-id="hf-child">Old</span></div>',
+    );
+    applyOp(parsed, { type: "setText", target: "hf-target", value: "New" });
+    expect(serializeDocument(parsed)).toContain(
+      '<div data-hf-id="hf-target">Lead <span data-hf-id="hf-child">New</span></div>',
+    );
+  });
+
+  it("keeps non-HTML single children out of the child text shortcut", () => {
+    const parsed = parseMutable(
+      '<div data-hf-id="hf-target"><svg data-hf-id="hf-child"><text>Old</text></svg></div>',
+    );
+    applyOp(parsed, { type: "setText", target: "hf-target", value: "New" });
+    const html = serializeDocument(parsed);
+    expect(html).toContain('<svg data-hf-id="hf-child"><text');
+    expect(html).toContain("Old</text></svg>New</div>");
+  });
+
   it("override-set key maps correctly", () => {
     expect(pathToKey("/elements/hf-title/text")).toBe("hf-title.text");
   });
@@ -694,6 +725,21 @@ describe("setElementStyles key normalization", () => {
     const el = elWith("");
     setElementStyles(el, { "transform-origin": "top left" });
     expect(getElementStyles(el).transformOrigin).toBe("top left");
+  });
+
+  it("preserves semicolon-bearing CSS values when updating another property", () => {
+    const el = elWith("background: url(data:image/svg+xml;utf8,<svg></svg>); color: red");
+    setElementStyles(el, { color: "blue" });
+    expect(el.getAttribute("style")).toContain("background: url(data:image/svg+xml;utf8");
+    expect(el.getAttribute("style")).toContain("color: blue");
+  });
+
+  it("handles escaped quotes inside CSS string values", () => {
+    const el = elWith("color: red");
+    el.setAttribute("style", 'content: "a\\";b"; color: red');
+    setElementStyles(el, { color: "blue" });
+    expect(getElementStyles(el).content).toBe('"a\\";b"');
+    expect(getElementStyles(el).color).toBe("blue");
   });
 });
 

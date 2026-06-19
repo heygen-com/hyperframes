@@ -138,14 +138,58 @@ function toKebab(prop: string): string {
 }
 
 /** Parse style attribute string → camelCase map (custom props kept as-is). */
+interface StyleDeclarationScan {
+  depth: number;
+  quote: "'" | '"' | null;
+  skip: boolean;
+}
+
+function advanceStyleDeclarationScan(scan: StyleDeclarationScan, ch: string, next: string): void {
+  if (scan.quote) {
+    if (ch === "\\" && next) {
+      scan.skip = true;
+      return;
+    }
+    if (ch === scan.quote) scan.quote = null;
+    return;
+  }
+  if (ch === "'" || ch === '"') {
+    scan.quote = ch;
+    return;
+  }
+  if (ch === "(") scan.depth++;
+  else if (ch === ")") scan.depth = Math.max(0, scan.depth - 1);
+}
+
+function splitStyleDeclarations(style: string): string[] {
+  const declarations: string[] = [];
+  const scan: StyleDeclarationScan = { depth: 0, quote: null, skip: false };
+  let start = 0;
+  for (let i = 0; i < style.length; i++) {
+    if (scan.skip) {
+      scan.skip = false;
+      continue;
+    }
+    const ch = style[i] ?? "";
+    if (ch === ";" && scan.depth === 0 && scan.quote === null) {
+      declarations.push(style.slice(start, i));
+      start = i + 1;
+    } else {
+      advanceStyleDeclarationScan(scan, ch, style[i + 1] ?? "");
+    }
+  }
+  declarations.push(style.slice(start));
+  return declarations;
+}
+
 function parseStyleAttr(styleAttr: string): Record<string, string> {
   const result: Record<string, string> = {};
-  for (const decl of styleAttr.split(";")) {
+  for (const decl of splitStyleDeclarations(styleAttr)) {
     const idx = decl.indexOf(":");
     if (idx === -1) continue;
     const rawProp = decl.slice(0, idx).trim();
     const value = decl.slice(idx + 1).trim();
-    if (!rawProp || !value) continue;
+    if (!rawProp) continue;
     result[toCamel(rawProp)] = value;
   }
   return result;
@@ -185,8 +229,21 @@ export function setElementStyles(el: Element, updates: Record<string, string | n
 
 // ─── Text helpers ─────────────────────────────────────────────────────────────
 
-/** Read only direct (non-descendant) text node content. */
+function isHTMLElementTarget(el: Element): boolean {
+  const HTMLElementCtor = el.ownerDocument.defaultView?.HTMLElement;
+  if (HTMLElementCtor) return el instanceof HTMLElementCtor;
+  return "style" in el;
+}
+
+function resolveSingleChildTextTarget(el: Element): Element | null {
+  const inner = el.children.length === 1 ? el.firstElementChild : null;
+  return inner && isHTMLElementTarget(inner) ? inner : null;
+}
+
+/** Read the text target used by SDK setText. */
 export function getOwnText(el: Element): string {
+  const singleChild = resolveSingleChildTextTarget(el);
+  if (singleChild) return singleChild.textContent ?? "";
   let text = "";
   el.childNodes.forEach((n) => {
     if (n.nodeType === 3) text += (n as Text).nodeValue ?? "";
@@ -194,8 +251,14 @@ export function getOwnText(el: Element): string {
   return text;
 }
 
-/** Replace only direct text nodes — preserves child elements. */
+/** Replace the SDK text target without destroying multi-child element structure. */
 export function setOwnText(el: Element, text: string): void {
+  const singleChild = resolveSingleChildTextTarget(el);
+  if (singleChild) {
+    singleChild.textContent = text;
+    return;
+  }
+
   const doc = el.ownerDocument;
   const children = Array.from(el.childNodes);
   // Track original position of the first text node so we restore there, not at firstChild.

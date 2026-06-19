@@ -98,6 +98,36 @@ describe("shouldUseSdkCutover", () => {
     expect(shouldUseSdkCutover(true, true, "hf-abc", [htmlAttrOp("DATA-START", "1")])).toBe(false);
   });
 
+  it("declines html-attribute ops with event handler names", () => {
+    expect(shouldUseSdkCutover(true, true, "hf-abc", [htmlAttrOp("onclick", "alert(1)")])).toBe(
+      false,
+    );
+    expect(shouldUseSdkCutover(true, true, "hf-abc", [htmlAttrOp("onload", "fetch()")])).toBe(
+      false,
+    );
+  });
+
+  it("declines html-attribute ops with disallowed attribute names", () => {
+    expect(shouldUseSdkCutover(true, true, "hf-abc", [htmlAttrOp("formaction", "/x")])).toBe(false);
+  });
+
+  it("declines html-attribute ops with dangerous URI schemes", () => {
+    expect(
+      shouldUseSdkCutover(true, true, "hf-abc", [htmlAttrOp("href", "javascript:alert(1)")]),
+    ).toBe(false);
+    expect(shouldUseSdkCutover(true, true, "hf-abc", [htmlAttrOp("src", "vbscript:run")])).toBe(
+      false,
+    );
+  });
+
+  it("declines html-attribute ops with dangerous data URIs", () => {
+    expect(
+      shouldUseSdkCutover(true, true, "hf-abc", [
+        htmlAttrOp("href", "data:text/html,<script>alert(1)</script>"),
+      ]),
+    ).toBe(false);
+  });
+
   it("returns true when ops mix all supported types", () => {
     expect(
       shouldUseSdkCutover(true, true, "hf-abc", [
@@ -203,6 +233,27 @@ describe("sdkCutoverPersist", () => {
       target: "hf-abc",
       value: "Hello world",
     });
+  });
+
+  it.each([
+    { name: "multi-child targets", children: [{ id: "a" }, { id: "b" }] },
+    { name: "single non-html children", children: [{ id: "a", tag: "svg" }] },
+  ])("declines text-content cutover for $name", async ({ children }) => {
+    const deps = makeDeps();
+    const session = makeSession(true);
+    (session!.getElement as ReturnType<typeof vi.fn>).mockReturnValue({ children });
+    const sel = { hfId: "hf-abc" } as never;
+    const result = await sdkCutoverPersist(
+      sel,
+      [textOp("Hello world")],
+      "before",
+      "/comp.html",
+      session,
+      deps,
+    );
+    expect(result).toBe(false);
+    expect(session!.dispatch).not.toHaveBeenCalled();
+    expect(deps.writeProjectFile).not.toHaveBeenCalled();
   });
 
   it("dispatches setAttribute for attribute op with data- prefix", async () => {

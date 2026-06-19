@@ -11,7 +11,7 @@
 import { parseHTML } from "linkedom";
 import { ensureHfIds } from "@hyperframes/core/hf-ids";
 import { parseGsapScriptAcornForWrite } from "@hyperframes/core/gsap-parser-acorn";
-import { findRoot, getElementStyles, isNewHostBoundary } from "./engine/model.js";
+import { findRoot, getElementStyles, getOwnText, isNewHostBoundary } from "./engine/model.js";
 import type { HyperFramesElement, SdkDocument } from "./types.js";
 
 // Tags that carry no editable content and must not enter the element tree.
@@ -27,14 +27,10 @@ const EXCLUDED_TAGS = new Set([
 ]);
 
 // Snapshot text is TRIMMED for display (markup indentation produces noisy
-// whitespace text nodes). setText writes verbatim — engine getOwnText/setOwnText
-// operate on raw text. el.text is a display value, not a round-trip identity.
-function ownText(el: Element): string | null {
-  let text = "";
-  el.childNodes.forEach((n) => {
-    if (n.nodeType === 3) text += (n as Text).nodeValue ?? "";
-  });
-  const trimmed = text.trim();
+// whitespace text nodes). The raw text target is shared with setText so shadow
+// value checks and dispatch serialization use the same DOM target.
+function snapshotText(el: Element): string | null {
+  const trimmed = getOwnText(el).trim();
   return trimmed.length > 0 ? trimmed : null;
 }
 
@@ -147,7 +143,7 @@ function buildElement(
     inlineStyles,
     classNames,
     attributes,
-    text: ownText(el),
+    text: snapshotText(el),
     start,
     duration,
     trackIndex,

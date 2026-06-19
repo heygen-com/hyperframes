@@ -26,6 +26,10 @@
       "import": "./src/beats/index.ts",
       "types": "./src/beats/index.ts"
     },
+    "./html-attr-safety": {
+      "import": "./src/utils/htmlAttrSafety.ts",
+      "types": "./src/utils/htmlAttrSafety.ts"
+    },
     "./slideshow": {
       "import": "./src/slideshow/index.ts",
       "types": "./src/slideshow/index.ts"
