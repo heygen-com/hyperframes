@@ -126,7 +126,7 @@ export const LayersPanel = memo(function LayersPanel() {
         if (doc) {
           const found =
             (layer.id ? doc.getElementById(layer.id) : null) ??
-            (layer.hfId ? doc.querySelector(`[data-hf-id="${layer.hfId}"]`) : null) ??
+            (layer.hfId ? doc.querySelector(`[data-hf-id="${CSS.escape(layer.hfId)}"]`) : null) ??
             doc.getElementById(layer.key);
           if (found instanceof HTMLElement) el = found;
         }

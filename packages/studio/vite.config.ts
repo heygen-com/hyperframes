@@ -197,5 +197,6 @@ export default defineConfig({
   },
   test: {
     exclude: ["data/**", "node_modules/**"],
+    setupFiles: ["src/test-setup.ts"],
   },
 });

@@ -123,7 +123,8 @@ export function createTimelineElementFromManifestClip(params: {
   if (clip.kind === "composition" && clip.compositionId) {
     let resolvedSrc = clip.compositionSrc;
     if (!resolvedSrc) {
-      hostEl = doc?.querySelector(`[data-composition-id="${clip.compositionId}"]`) ?? hostEl;
+      hostEl =
+        doc?.querySelector(`[data-composition-id="${CSS.escape(clip.compositionId)}"]`) ?? hostEl;
       resolvedSrc =
         hostEl?.getAttribute("data-composition-src") ??
         hostEl?.getAttribute("data-composition-file") ??

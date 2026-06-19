@@ -97,11 +97,11 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
     const htmlEl = el as HTMLElement;
     if (htmlEl.id) return `#${htmlEl.id}`;
     const compositionId = el.getAttribute("data-composition-id");
-    if (compositionId) return `[data-composition-id="${compositionId}"]`;
+    if (compositionId) return `[data-composition-id="${CSS.escape(compositionId)}"]`;
     const compositionSrc = el.getAttribute("data-composition-src");
-    if (compositionSrc) return `[data-composition-src="${compositionSrc}"]`;
+    if (compositionSrc) return `[data-composition-src="${CSS.escape(compositionSrc)}"]`;
     const track = el.getAttribute("data-track-index");
-    if (track) return `[data-track-index="${track}"]`;
+    if (track) return `[data-track-index="${CSS.escape(track)}"]`;
     const tag = el.tagName.toLowerCase();
     const parent = el.parentElement;
     if (!parent) return tag;

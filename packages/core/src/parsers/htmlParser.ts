@@ -13,6 +13,7 @@ import type {
 import { validateCompositionGsap } from "./gsapSerialize";
 import { ensureHfIds } from "./hfIds.js";
 import { parseGsapScriptAcornForWrite } from "./gsapParserAcorn.js";
+import { queryByAttr } from "../utils/cssSelector";
 import { removeAnimationFromScript } from "./gsapWriterAcorn.js";
 import type { ValidationResult } from "../core.types";
 
@@ -519,7 +520,7 @@ export function updateElementInHtml(
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, "text/html");
 
-  const el = doc.getElementById(elementId) || doc.querySelector(`[data-name="${elementId}"]`);
+  const el = doc.getElementById(elementId) || queryByAttr(doc, "data-name", elementId);
   if (!el) return html;
 
   if (updates.startTime !== undefined) {

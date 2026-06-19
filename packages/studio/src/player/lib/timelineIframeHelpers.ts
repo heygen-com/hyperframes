@@ -295,7 +295,8 @@ export function buildMissingCompositionElements(
     let start = parseFloat(startAttr);
     if (isNaN(start)) {
       const ref =
-        doc.getElementById(startAttr) || doc.querySelector(`[data-composition-id="${startAttr}"]`);
+        doc.getElementById(startAttr) ||
+        doc.querySelector(`[data-composition-id="${CSS.escape(startAttr)}"]`);
       if (ref) {
         const refStartAttr = ref.getAttribute("data-start") ?? "0";
         let refStart = parseFloat(refStartAttr);
@@ -303,7 +304,7 @@ export function buildMissingCompositionElements(
         if (isNaN(refStart)) {
           const refRef =
             doc.getElementById(refStartAttr) ||
-            doc.querySelector(`[data-composition-id="${refStartAttr}"]`);
+            doc.querySelector(`[data-composition-id="${CSS.escape(refStartAttr)}"]`);
           const rrStart = parseFloat(refRef?.getAttribute("data-start") ?? "0") || 0;
           const rrCompId = refRef?.getAttribute("data-composition-id");
           const rrDur =
@@ -400,7 +401,7 @@ export function buildMissingCompositionElements(
     // Find the matching DOM host by element id or composition id
     const host =
       doc.getElementById(existing.id) ??
-      doc.querySelector(`[data-composition-id="${existing.id}"]`);
+      doc.querySelector(`[data-composition-id="${CSS.escape(existing.id)}"]`);
     if (!host) return existing;
     const compSrc =
       host.getAttribute("data-composition-src") || host.getAttribute("data-composition-file");

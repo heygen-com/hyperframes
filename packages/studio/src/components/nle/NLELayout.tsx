@@ -189,7 +189,7 @@ export const NLELayout = memo(function NLELayout({
           const doc = iframeRef_.current?.contentDocument;
           if (doc) {
             const host = doc.querySelector(
-              `[data-composition-id="${compId}"][data-composition-src]`,
+              `[data-composition-id="${CSS.escape(compId)}"][data-composition-src]`,
             );
             if (host) {
               resolvedPath = host.getAttribute("data-composition-src") || undefined;

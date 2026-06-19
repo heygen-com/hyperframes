@@ -242,7 +242,7 @@ export function findElementForSelection(
   activeCompositionPath: string | null = null,
 ): HTMLElement | null {
   if (selection.hfId) {
-    const byHfId = doc.querySelector(`[data-hf-id="${selection.hfId}"]`);
+    const byHfId = doc.querySelector(`[data-hf-id="${CSS.escape(selection.hfId)}"]`);
     if (isHtmlElement(byHfId)) return byHfId;
   }
 

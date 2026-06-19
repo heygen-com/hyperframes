@@ -13,6 +13,7 @@ import {
   rewriteCssAssetUrls,
   rewriteInlineStyleAssetUrls,
 } from "./rewriteSubCompPaths";
+import { queryByAttr } from "../utils/cssSelector";
 import {
   scopeCssToComposition,
   wrapInlineScriptWithErrorBoundary,
@@ -225,7 +226,7 @@ export function inlineSubCompositions(
 
     // Find the inner composition root
     const innerRoot = compId
-      ? contentDoc.querySelector(`[data-composition-id="${compId}"]`)
+      ? queryByAttr(contentDoc, "data-composition-id", compId)
       : contentDoc.querySelector("[data-composition-id]");
     const inferredCompId = innerRoot?.getAttribute("data-composition-id")?.trim() || "";
     const authoredRootId = innerRoot?.getAttribute("id")?.trim() || null;

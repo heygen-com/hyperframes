@@ -151,6 +151,7 @@ export {
   rewriteCssAssetUrls,
 } from "./compiler/rewriteSubCompPaths";
 export { CSS_URL_RE, isNonRelativeUrl, isPathInside } from "./compiler/assetPaths";
+export { queryByAttr } from "./utils/cssSelector";
 export { decodeUrlPathVariants } from "./utils/urlPath";
 export { parseAnimatedGifMetadata, type AnimatedGifMetadata } from "./media/gif";
 export {

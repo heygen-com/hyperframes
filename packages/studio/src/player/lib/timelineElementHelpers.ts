@@ -163,13 +163,13 @@ export function getImplicitTimelineLayerLabel(el: HTMLElement): string {
 // ---------------------------------------------------------------------------
 
 export function getTimelineElementSelector(el: Element): string | undefined {
-  if (isHtmlElement(el) && el.id) return `#${el.id}`;
+  if (isHtmlElement(el) && el.id) return `#${CSS.escape(el.id)}`;
   const compId = el.getAttribute("data-composition-id");
-  if (compId) return `[data-composition-id="${compId}"]`;
+  if (compId) return `[data-composition-id="${CSS.escape(compId)}"]`;
   if (isHtmlElement(el)) {
     const classes = el.className.split(/\s+/).filter(Boolean);
     const firstClass = classes.find((className) => className !== "clip") ?? classes[0];
-    if (firstClass) return `.${firstClass}`;
+    if (firstClass) return `.${CSS.escape(firstClass)}`;
   }
   return undefined;
 }
@@ -283,8 +283,8 @@ function nodeMatchesManifestClip(node: Element, clip: ClipManifestClip): boolean
 function findTimelineDomNode(doc: Document, id: string): Element | null {
   return (
     doc.getElementById(id) ??
-    doc.querySelector(`[data-composition-id="${id}"]`) ??
-    doc.querySelector(`.${id}`) ??
+    doc.querySelector(`[data-composition-id="${CSS.escape(id)}"]`) ??
+    doc.querySelector(`.${CSS.escape(id)}`) ??
     null
   );
 }
