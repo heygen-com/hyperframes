@@ -144,10 +144,11 @@ interface CutoverOptions {
   skipRefresh?: boolean;
 }
 
-// ponytail: internal; export only if a third caller appears.
+// ponytail: exported for setSlideshowManifest (third caller — island write bypasses
+// the SDK dispatch path since <script> nodes are not in the element tree).
 // `after` is serialized once by the caller (which also did the no-op check
 // against its pre-dispatch snapshot), so this never re-serializes.
-async function persistSdkSerialize(
+export async function persistSdkSerialize(
   after: string,
   targetPath: string,
   originalContent: string,
