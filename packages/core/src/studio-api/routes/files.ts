@@ -623,6 +623,12 @@ async function executeGsapMutation(
       if (body.fromProperties && body.method !== "fromTo") {
         return respond({ error: "fromProperties is only valid for method=fromTo" }, 400);
       }
+      // A new position animation owns the element's position — strip any legacy
+      // studio path-offset (--hf-studio-offset) so it can't double with the tween,
+      // matching add-with-keyframes/replace-with-keyframes.
+      if (Object.keys(body.properties).some((k) => classifyPropertyGroup(k) === "position")) {
+        stripStudioEditsFromTarget(block.document, body.targetSelector);
+      }
       const result = addAnimationToScript(block.scriptText, {
         targetSelector: body.targetSelector,
         method: body.method,
