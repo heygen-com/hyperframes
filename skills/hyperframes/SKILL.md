@@ -28,6 +28,7 @@ metadata:
 | You want to…                                                                                                                                     | Go to                                        |
 | ------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------- |
 | **Make a video** (from a URL, brief, topic, GitHub PR, existing footage, or a single element to animate)                                         | the **video router below** (§ Video routing) |
+| **Author a slideshow / presentation / pitch deck** — discrete slides, fragments, branching, hotspots                                             | `/slideshow`                                 |
 | **Author / edit an HTML composition** — the `data-*` contract, clips, tracks, sub-compositions, variables                                        | `/hyperframes-core`                          |
 | **Animate** — atomic motion rules, scene blueprints, transitions, runtime adapters (GSAP / Lottie / Three.js / Anime.js / CSS / WAAPI / TypeGPU) | `/hyperframes-animation`                     |
 | **Creative direction** — `design.md`, palettes, typography, narration, beat planning, audio-reactive                                             | `/hyperframes-creative`                      |
