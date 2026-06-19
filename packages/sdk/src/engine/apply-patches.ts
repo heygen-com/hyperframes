@@ -18,7 +18,7 @@ import {
   setGsapScript,
   setStyleSheet,
 } from "./model.js";
-import { keyToPath } from "./patches.js";
+import { keyToPath, stylePath } from "./patches.js";
 import { writeVariableDefault, clearVariableDefault } from "./variableModel.js";
 
 // ─── Path parser ────────────────────────────────────────────────────────────
@@ -105,14 +105,26 @@ function applyVariableDefault(document: Document, id: string, newDefault: unknow
  */
 export function applyOverrideSet(parsed: ParsedDocument, overrides: OverrideSet): void {
   const patches: JsonPatchOp[] = [];
+  const rootId = findRoot(parsed.document)?.getAttribute("data-hf-id") ?? null;
   for (const [key, value] of Object.entries(overrides)) {
     const path = keyToPath(key);
     if (!path) continue;
     if (value === null) {
       patches.push({ op: "remove", path });
-      continue;
+    } else {
+      patches.push({ op: "replace", path, value });
     }
-    patches.push({ op: "replace", path, value });
+    // A scalar `var.{id}` override must also restore the `--{id}` CSS custom
+    // prop on the root. Current sessions persist a paired style override, but
+    // sets written before the model/CSS split only carry `var.{id}`; derive the
+    // CSS here so `var(--{id})` bindings rehydrate. Object (font/image) values
+    // are never CSS, so they are skipped.
+    if (rootId && key.startsWith("var.") && value !== null && typeof value !== "object") {
+      const cssPath = stylePath(rootId, `--${key.slice("var.".length)}`);
+      patches.push({ op: "replace", path: cssPath, value: String(value) });
+    } else if (rootId && key.startsWith("var.") && value === null) {
+      patches.push({ op: "remove", path: stylePath(rootId, `--${key.slice("var.".length)}`) });
+    }
   }
   applyPatchesToDocument(parsed, patches);
 }

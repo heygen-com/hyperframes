@@ -944,13 +944,19 @@ function handleReplaceWithKeyframes(
   const script = getGsapScript(parsed.document);
   if (!script) throw new Error("No GSAP script block found in the composition.");
   if (op.keyframes.length === 0) return EMPTY;
+  // #11: tween IDs are position-derived and re-point after any structural edit,
+  // so a stale `animationId` can resolve to a DIFFERENT tween. Require the
+  // located animation to still target the selector the caller expects; if it is
+  // absent or now points at another element, bail rather than silently replace
+  // the wrong tween. (validateOp's gsapAnimationMissing only catches absent ids.)
+  const located = locateGsapAnimation(parsed, op.animationId);
+  if (!located || located.animation.targetSelector !== op.targetSelector) return EMPTY;
   // Step 1: remove the existing tween. Position-derived IDs renumber, so the
   // inverse patch restores the full GSAP script rather than trying to re-insert
   // by ID (handled by the coarse gsapScriptChange patch pair).
   const afterRemove = removeAnimationFromScript(script, op.animationId);
-  // Dispatch skips validateOp's gsapAnimationMissing check — if the id resolved
-  // to nothing, the script is unchanged: bail rather than silently degrade the
-  // replace into a plain add (which would leave the original tween + a duplicate).
+  // Defense in depth: if the id resolved to nothing the script is unchanged —
+  // bail rather than degrade the replace into a plain add (duplicate tween).
   if (afterRemove === script) return EMPTY;
   // Step 2: insert the replacement keyframed tween.
   const { script: newScript, id: animationId } = addAnimationWithKeyframesToScript(

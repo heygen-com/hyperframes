@@ -1136,4 +1136,42 @@ describe("addWithKeyframes / replaceWithKeyframes — handler self-guards", () =
     expect(result.forward).toHaveLength(0);
     expect(getScript(parsed)).toBe(before);
   });
+
+  // #11: a stale positional id that re-points to a tween on a DIFFERENT selector
+  // must NOT be silently replaced; only an id still targeting the caller's
+  // selector applies.
+  it("replaceWithKeyframes: stale id whose tween targets another selector is a no-op", () => {
+    const parsed = fresh();
+    const sel = '[data-hf-id="hf-box"]';
+    const add = applyOp(parsed, {
+      type: "addWithKeyframes",
+      targetSelector: sel,
+      position: 0,
+      duration: 1,
+      keyframes: KFS,
+    });
+    const id = add.meta!.animationId!;
+    const before = getScript(parsed);
+    // Same id, but the caller now claims a different selector → bail.
+    const wrong = applyOp(parsed, {
+      type: "replaceWithKeyframes",
+      animationId: id,
+      targetSelector: '[data-hf-id="hf-other"]',
+      position: 0,
+      duration: 1,
+      keyframes: KFS,
+    });
+    expect(wrong.forward).toHaveLength(0);
+    expect(getScript(parsed)).toBe(before);
+    // Correct selector → the replace applies.
+    const right = applyOp(parsed, {
+      type: "replaceWithKeyframes",
+      animationId: id,
+      targetSelector: sel,
+      position: 0,
+      duration: 1,
+      keyframes: KFS,
+    });
+    expect(right.forward.length).toBeGreaterThan(0);
+  });
 });

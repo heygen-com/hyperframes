@@ -9,7 +9,7 @@
 import { describe, it, expect } from "vitest";
 import { parseMutable, getElementStyles, setElementStyles } from "./model.js";
 import { applyOp, validateOp } from "./mutate.js";
-import { applyPatchesToDocument } from "./apply-patches.js";
+import { applyPatchesToDocument, applyOverrideSet } from "./apply-patches.js";
 import { pathToKey } from "./patches.js";
 import { serializeDocument } from "./serialize.js";
 
@@ -847,6 +847,25 @@ describe("setVariableValue", () => {
     applyPatchesToDocument(parsed, result.inverse);
     expect(readVarDefault(parsed, "brand-x")).toBeUndefined();
     expect(serializeDocument(parsed)).toBe(before);
+  });
+
+  // #9: a legacy override set (only the `var.{id}` key, no paired style key, as
+  // written before the model/CSS split) must still restore the --{id} CSS prop
+  // on replay so `var(--{id})` bindings rehydrate. Object values write no CSS.
+  it("B1: applyOverrideSet derives the --{id} CSS prop from a var.{id}-only override", () => {
+    const parsed = freshWithVars();
+    applyOverrideSet(parsed, { "var.brand-color-primary": "#ff0000" });
+    expect(readVarDefault(parsed, "brand-color-primary")).toBe("#ff0000");
+    const root = parsed.document.querySelector("[data-hf-root]");
+    expect(root?.getAttribute("style")).toContain("--brand-color-primary: #ff0000");
+  });
+
+  it("B2: applyOverrideSet writes NO CSS prop for an object (font) override", () => {
+    const parsed = freshWithVars();
+    applyOverrideSet(parsed, { "var.brand-font": { name: "Roboto", source: "x" } });
+    expect(readVarDefault(parsed, "brand-font")).toEqual({ name: "Roboto", source: "x" });
+    const root = parsed.document.querySelector("[data-hf-root]");
+    expect(root?.getAttribute("style") ?? "").not.toContain("--brand-font");
   });
 });
 
