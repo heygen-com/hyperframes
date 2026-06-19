@@ -35,6 +35,6 @@
     "params": { "passAt": 1.29, "coneW": 800 }
   },
   "fx": { "holoflash": 0.5 },
-  "plate": { "scrim": 0.58, "charge": 0.28, "dim": 0.18, "grain": 5 },
+  "plate": { "scrim": 0.58, "charge": 0.28, "dim": 0.18 },
   "linkages": []
 }

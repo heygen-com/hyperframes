@@ -41,6 +41,6 @@
       "hold": 1.69
     }
   },
-  "plate": { "dim": 0.18, "pushIn": 0.012, "grain": 4 },
+  "plate": { "dim": 0.18, "pushIn": 0.012 },
   "linkages": []
 }

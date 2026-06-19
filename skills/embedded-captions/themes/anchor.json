@@ -21,6 +21,6 @@
     "fontPx": 150,
     "params": {}
   },
-  "plate": { "dim": 0.16, "pushIn": 0.012, "grain": 5 },
+  "plate": { "dim": 0.16, "pushIn": 0.012 },
   "linkages": []
 }

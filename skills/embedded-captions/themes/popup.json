@@ -40,6 +40,6 @@
     "params": { "segs": 3, "segStagger": 0.07, "scrim": 0.42 }
   },
   "fx": { "confetti": 8, "seed": 360372 },
-  "plate": { "grain": 5 },
+  "plate": {},
   "linkages": []
 }

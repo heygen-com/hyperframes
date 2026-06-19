@@ -29,6 +29,6 @@
     "params": { "crush": 0.11, "drift": -30, "mood": 0.92 }
   },
   "fx": { "sporeburst": 7, "seed": 2930 },
-  "plate": { "scrim": 0.55, "pushIn": 0.012, "grain": 5 },
+  "plate": { "scrim": 0.55, "pushIn": 0.012 },
   "linkages": []
 }

@@ -49,6 +49,6 @@
       "chipDelay": 0.48
     }
   },
-  "plate": { "grain": 5 },
+  "plate": {},
   "linkages": []
 }

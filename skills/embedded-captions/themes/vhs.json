@@ -41,6 +41,6 @@
       "hold": 1.69
     }
   },
-  "plate": { "charge": 0.55, "dim": 0.12, "grain": 5 },
+  "plate": { "charge": 0.55, "dim": 0.12 },
   "linkages": []
 }

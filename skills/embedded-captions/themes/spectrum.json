@@ -40,6 +40,6 @@
     }
   },
   "fx": {},
-  "plate": { "scrim": 0.62, "grain": 5 },
+  "plate": { "scrim": 0.62 },
   "linkages": []
 }

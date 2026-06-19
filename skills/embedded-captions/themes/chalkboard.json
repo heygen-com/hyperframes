@@ -46,6 +46,6 @@
     }
   },
   "fx": { "chalkclap": 12, "seed": 13 },
-  "plate": { "grain": 5 },
+  "plate": {},
   "linkages": []
 }

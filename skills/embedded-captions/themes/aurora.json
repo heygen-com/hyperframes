@@ -35,6 +35,6 @@
     }
   },
   "fx": { "silkmotes": 6, "seed": 20260612 },
-  "plate": { "scrim": 0.72, "pushIn": 0.012, "grain": 5 },
+  "plate": { "scrim": 0.72, "pushIn": 0.012 },
   "linkages": []
 }

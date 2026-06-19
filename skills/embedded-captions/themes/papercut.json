@@ -31,6 +31,6 @@
     "params": { "step": 0.09, "seed": 151515, "vig": 0.3 }
   },
   "fx": { "paperscraps": 3, "seed": 150372 },
-  "plate": { "grain": 6 },
+  "plate": {},
   "linkages": []
 }

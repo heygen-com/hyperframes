@@ -24,6 +24,6 @@
     "params": { "particles": 22, "spread": 150 }
   },
   "fx": {},
-  "plate": { "pushIn": 0.01, "grain": 5 },
+  "plate": { "pushIn": 0.01 },
   "linkages": ["disperse-on-last-word"]
 }

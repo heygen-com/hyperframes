@@ -46,6 +46,6 @@
     }
   },
   "fx": { "sparkles": 2, "seed": 20260612 },
-  "plate": { "dim": 0.16, "pushIn": 0.012, "grain": 5 },
+  "plate": { "dim": 0.16, "pushIn": 0.012 },
   "linkages": []
 }

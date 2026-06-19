@@ -38,6 +38,6 @@
     }
   },
   "fx": { "paflash": 0.5 },
-  "plate": { "charge": 0.5, "dim": 0.2, "grain": 5 },
+  "plate": { "charge": 0.5, "dim": 0.2 },
   "linkages": []
 }

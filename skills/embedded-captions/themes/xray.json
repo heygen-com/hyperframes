@@ -40,6 +40,6 @@
       "clearGap": 0.215
     }
   },
-  "plate": { "scrim": 0.3, "dim": 0.12, "grain": 5 },
+  "plate": { "scrim": 0.3, "dim": 0.12 },
   "linkages": []
 }

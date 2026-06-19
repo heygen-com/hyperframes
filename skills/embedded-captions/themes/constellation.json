@@ -40,6 +40,6 @@
       "seed": 4242
     }
   },
-  "plate": { "pushIn": 0.012, "grain": 5 },
+  "plate": { "pushIn": 0.012 },
   "linkages": []
 }
