@@ -22,6 +22,7 @@ import {
   TIMELINE_TOGGLE_SHORTCUT_LABEL,
   getTimelineToggleTitle,
 } from "../../utils/timelineDiscovery";
+import { ensureMotionPathPluginLoaded } from "../../utils/gsapSoftReload";
 
 interface NLELayoutProps {
   projectId: string;
@@ -159,6 +160,10 @@ export const NLELayout = memo(function NLELayout({
 
   const onIframeLoad = useCallback(() => {
     baseOnIframeLoad();
+    // Pre-load + register MotionPathPlugin once so adding a motion path in the
+    // studio doesn't take the async plugin-load flash path on the first soft
+    // reload (the comp may not ship the plugin until it actually uses one).
+    ensureMotionPathPluginLoaded(iframeRef.current);
     onIframeRef?.(iframeRef.current);
   }, [baseOnIframeLoad, iframeRef, onIframeRef]);
 

@@ -1,12 +1,19 @@
 // @vitest-environment happy-dom
 
 import { describe, it, expect, vi } from "vitest";
-import { applySoftReload } from "./gsapSoftReload";
+import { applySoftReload, ensureMotionPathPluginLoaded } from "./gsapSoftReload";
 
 const SCRIPT_TEXT = `
 window.__timelines = window.__timelines || {};
 const tl = gsap.timeline({ paused: true });
 tl.to("#box", { opacity: 0.8 });
+window.__timelines["root"] = tl;
+`;
+
+const MOTION_PATH_SCRIPT_TEXT = `
+window.__timelines = window.__timelines || {};
+const tl = gsap.timeline({ paused: true });
+tl.to("#box", { motionPath: { path: [{ x: 0, y: 0 }, { x: 100, y: 50 }] } });
 window.__timelines["root"] = tl;
 `;
 
@@ -129,6 +136,62 @@ describe("applySoftReload", () => {
     expect(contentWindow.__timelines.subscene).toBe(subsceneTimeline);
   });
 
+  it("runs synchronously (no async plugin load) when MotionPathPlugin is already present", () => {
+    // The preview bootstrap pre-loads MotionPathPlugin, so win.MotionPathPlugin
+    // is set before any motion-path edit. The soft reload must then execute the
+    // script inline — no CDN <script> appended to <head>, the timeline is
+    // repopulated synchronously, and verifyTimelinesPopulated reports the real
+    // result (not the optimistic-true async path).
+    const headAppends: Node[] = [];
+    const head = document.createElement("div");
+    const realHeadAppend = head.appendChild.bind(head);
+    head.appendChild = <T extends Node>(node: T): T => {
+      headAppends.push(node);
+      return realHeadAppend(node);
+    };
+    const { iframe, contentWindow } = buildMockIframe({ MotionPathPlugin: {} });
+    (iframe.contentDocument as unknown as { head: unknown }).head = head;
+
+    const result = applySoftReload(iframe, MOTION_PATH_SCRIPT_TEXT);
+
+    expect(result).toBe(true);
+    // No CDN plugin <script> was appended to <head> — ran inline.
+    expect(headAppends.filter((n) => n instanceof HTMLScriptElement)).toHaveLength(0);
+    expect(contentWindow.__hfForceTimelineRebind).toHaveBeenCalled();
+    expect(contentWindow.__player.seek).toHaveBeenCalledWith(2.0);
+    expect(contentWindow.__timelines.root).toBeDefined();
+  });
+
+  it("falls back to the async plugin load when MotionPathPlugin is genuinely absent", () => {
+    const head = document.createElement("div");
+    const appendedScripts: HTMLScriptElement[] = [];
+    const realHeadAppend = head.appendChild.bind(head);
+    head.appendChild = <T extends Node>(node: T): T => {
+      if (node instanceof HTMLScriptElement) appendedScripts.push(node);
+      return realHeadAppend(node);
+    };
+    // gsap present but MotionPathPlugin unset → async load path.
+    const { iframe, contentWindow } = buildMockIframe({
+      MotionPathPlugin: undefined,
+      gsap: { timeline: vi.fn(), registerPlugin: vi.fn() },
+    });
+    (iframe.contentDocument as unknown as { head: unknown }).head = head;
+
+    const result = applySoftReload(iframe, MOTION_PATH_SCRIPT_TEXT);
+
+    // Optimistically true (script will run once the plugin loads) — and the
+    // script has NOT executed yet, so the timeline isn't rebound synchronously.
+    expect(result).toBe(true);
+    expect(appendedScripts).toHaveLength(1);
+    expect(appendedScripts[0]!.src).toContain("MotionPathPlugin");
+    expect(contentWindow.__hfForceTimelineRebind).not.toHaveBeenCalled();
+
+    // onerror must still run the script (graceful fallback when the CDN fails).
+    appendedScripts[0]!.onerror?.(new Event("error"));
+    expect(contentWindow.__hfForceTimelineRebind).toHaveBeenCalled();
+    expect(contentWindow.__player.seek).toHaveBeenCalledWith(2.0);
+  });
+
   it("returns false when multiple GSAP scripts exist (ambiguous)", () => {
     const script1 = document.createElement("script");
     script1.textContent = "const tl = gsap.timeline({ paused: true });";
@@ -145,5 +208,86 @@ describe("applySoftReload", () => {
       body: container,
     };
     expect(applySoftReload(iframe, SCRIPT_TEXT)).toBe(false);
+  });
+});
+
+function buildBootstrapIframe(overrides: Record<string, unknown> = {}) {
+  const head = document.createElement("div");
+  const appendedScripts: HTMLScriptElement[] = [];
+  const realHeadAppend = head.appendChild.bind(head);
+  head.appendChild = <T extends Node>(node: T): T => {
+    if (node instanceof HTMLScriptElement) appendedScripts.push(node);
+    return realHeadAppend(node);
+  };
+
+  const registerPlugin = vi.fn();
+  const contentWindow = {
+    gsap: { registerPlugin } as Record<string, unknown> | undefined,
+    MotionPathPlugin: undefined as unknown,
+    __hfMotionPathPluginLoading: undefined as boolean | undefined,
+    ...overrides,
+  };
+  const contentDocument = {
+    createElement: (tag: string) => document.createElement(tag),
+    head,
+  };
+  return {
+    iframe: { contentWindow, contentDocument } as unknown as HTMLIFrameElement,
+    contentWindow,
+    appendedScripts,
+    registerPlugin,
+  };
+}
+
+describe("ensureMotionPathPluginLoaded", () => {
+  it("no-ops when the iframe is null", () => {
+    expect(() => ensureMotionPathPluginLoaded(null)).not.toThrow();
+  });
+
+  it("no-ops when gsap is unavailable", () => {
+    const { iframe, appendedScripts } = buildBootstrapIframe({ gsap: undefined });
+    ensureMotionPathPluginLoaded(iframe);
+    expect(appendedScripts).toHaveLength(0);
+  });
+
+  it("appends the plugin script once and registers it on load", () => {
+    const { iframe, contentWindow, appendedScripts, registerPlugin } = buildBootstrapIframe();
+    ensureMotionPathPluginLoaded(iframe);
+    expect(appendedScripts).toHaveLength(1);
+    expect(appendedScripts[0]!.src).toContain("MotionPathPlugin");
+    expect(contentWindow.__hfMotionPathPluginLoading).toBe(true);
+
+    // Simulate the CDN load completing; the plugin is now present.
+    contentWindow.MotionPathPlugin = {};
+    appendedScripts[0]!.onload?.(new Event("load"));
+    expect(registerPlugin).toHaveBeenCalledWith(contentWindow.MotionPathPlugin);
+    expect(contentWindow.__hfMotionPathPluginLoading).toBe(false);
+  });
+
+  it("is idempotent: a second call while loading does not append a second script", () => {
+    const { iframe, appendedScripts } = buildBootstrapIframe();
+    ensureMotionPathPluginLoaded(iframe);
+    ensureMotionPathPluginLoaded(iframe);
+    expect(appendedScripts).toHaveLength(1);
+  });
+
+  it("registers an already-present plugin without appending a script", () => {
+    const plugin = {};
+    const { iframe, appendedScripts, registerPlugin } = buildBootstrapIframe({
+      MotionPathPlugin: plugin,
+    });
+    ensureMotionPathPluginLoaded(iframe);
+    expect(appendedScripts).toHaveLength(0);
+    expect(registerPlugin).toHaveBeenCalledWith(plugin);
+  });
+
+  it("clears the loading flag and still resolves when the CDN load errors", () => {
+    const { iframe, contentWindow, appendedScripts } = buildBootstrapIframe();
+    ensureMotionPathPluginLoaded(iframe);
+    appendedScripts[0]!.onerror?.(new Event("error"));
+    expect(contentWindow.__hfMotionPathPluginLoading).toBe(false);
+    // A subsequent call can retry (plugin still absent, flag cleared).
+    ensureMotionPathPluginLoaded(iframe);
+    expect(appendedScripts).toHaveLength(2);
   });
 });
