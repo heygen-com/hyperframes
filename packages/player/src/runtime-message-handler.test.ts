@@ -67,3 +67,37 @@ describe("handleRuntimeMessage stage-size", () => {
     expect(callbacks.setCompositionSize).not.toHaveBeenCalled();
   });
 });
+
+describe("handleRuntimeMessage media autoplay fallback", () => {
+  const autoplayBlockedEvent = (source: object): MessageEvent =>
+    ({
+      source,
+      data: { source: "hf-preview", type: "media-autoplay-blocked" },
+    }) as unknown as MessageEvent;
+
+  it("promotes and mutes iframe output by default", () => {
+    const frameWindow = {} as Window;
+    const callbacks = makeCallbacks();
+
+    handleRuntimeMessage(autoplayBlockedEvent(frameWindow), frameWindow, callbacks);
+
+    expect(callbacks.media.promoteToParentProxy).toHaveBeenCalled();
+    expect(callbacks.sendControl).toHaveBeenCalledWith("set-media-output-muted", {
+      muted: true,
+    });
+  });
+
+  it("does not promote or mute iframe output when the host vetoes the fallback", () => {
+    const frameWindow = {} as Window;
+    const callbacks = {
+      ...makeCallbacks(),
+      shouldPromoteMediaAutoplayFallback: vi.fn(() => false),
+    };
+
+    handleRuntimeMessage(autoplayBlockedEvent(frameWindow), frameWindow, callbacks);
+
+    expect(callbacks.shouldPromoteMediaAutoplayFallback).toHaveBeenCalled();
+    expect(callbacks.media.promoteToParentProxy).not.toHaveBeenCalled();
+    expect(callbacks.sendControl).not.toHaveBeenCalled();
+  });
+});

@@ -11,6 +11,8 @@ function createMockDeps() {
     onSetMuted: vi.fn(),
     onSetVolume: vi.fn(),
     onSetMediaOutputMuted: vi.fn(),
+    onSetNativeMediaSyncDisabled: vi.fn(),
+    onSetWebAudioMediaDisabled: vi.fn(),
     onSetPlaybackRate: vi.fn(),
     onSetColorGrading: vi.fn(),
     onSetColorGradingCompare: vi.fn(),
@@ -105,6 +107,38 @@ describe("installRuntimeControlBridge", () => {
     const handler = installRuntimeControlBridge(deps);
     handler(makeControlMessage("set-media-output-muted"));
     expect(deps.onSetMediaOutputMuted).toHaveBeenCalledWith(false);
+  });
+
+  it("dispatches set-native-media-sync-disabled command", () => {
+    const deps = createMockDeps();
+    const handler = installRuntimeControlBridge(deps);
+    handler(makeControlMessage("set-native-media-sync-disabled", { disabled: true }));
+    expect(deps.onSetNativeMediaSyncDisabled).toHaveBeenCalledWith(true);
+    handler(makeControlMessage("set-native-media-sync-disabled", { disabled: false }));
+    expect(deps.onSetNativeMediaSyncDisabled).toHaveBeenCalledWith(false);
+  });
+
+  it("set-native-media-sync-disabled coerces absent flag to false", () => {
+    const deps = createMockDeps();
+    const handler = installRuntimeControlBridge(deps);
+    handler(makeControlMessage("set-native-media-sync-disabled"));
+    expect(deps.onSetNativeMediaSyncDisabled).toHaveBeenCalledWith(false);
+  });
+
+  it("dispatches set-web-audio-media-disabled command", () => {
+    const deps = createMockDeps();
+    const handler = installRuntimeControlBridge(deps);
+    handler(makeControlMessage("set-web-audio-media-disabled", { disabled: true }));
+    expect(deps.onSetWebAudioMediaDisabled).toHaveBeenCalledWith(true);
+    handler(makeControlMessage("set-web-audio-media-disabled", { disabled: false }));
+    expect(deps.onSetWebAudioMediaDisabled).toHaveBeenCalledWith(false);
+  });
+
+  it("set-web-audio-media-disabled coerces absent flag to false", () => {
+    const deps = createMockDeps();
+    const handler = installRuntimeControlBridge(deps);
+    handler(makeControlMessage("set-web-audio-media-disabled"));
+    expect(deps.onSetWebAudioMediaDisabled).toHaveBeenCalledWith(false);
   });
 
   it("dispatches set-playback-rate command", () => {

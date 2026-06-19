@@ -1501,23 +1501,27 @@ export function initSandboxRuntimeModular(): void {
 
     const forceSync = state.mediaForceSyncNextTick;
     if (forceSync) state.mediaForceSyncNextTick = false;
-    syncRuntimeMedia({
-      clips: cache.mediaClips,
-      timeSeconds: state.currentTime,
-      playing: state.isPlaying,
-      playbackRate: state.playbackRate,
-      outputMuted: state.mediaOutputMuted,
-      userMuted: state.bridgeMuted,
-      userVolume: state.bridgeVolume,
-      forceSync,
-      onElementVolume: (el, volume) => webAudio.setElementVolume(el, volume),
-      isWebAudioOwned: (el) => webAudio.ownsElement(el),
-      onAutoplayBlocked: () => {
-        if (state.mediaAutoplayBlockedPosted) return;
-        state.mediaAutoplayBlockedPosted = true;
-        postRuntimeMessage({ source: "hf-preview", type: "media-autoplay-blocked" });
-      },
-    });
+    if (!state.nativeMediaSyncDisabled) {
+      syncRuntimeMedia({
+        clips: cache.mediaClips,
+        timeSeconds: state.currentTime,
+        playing: state.isPlaying,
+        playbackRate: state.playbackRate,
+        outputMuted:
+          state.mediaOutputMuted ||
+          (!state.webAudioMediaDisabled && !state.nativeMediaSyncDisabled && webAudio.isActive()),
+        userMuted: state.bridgeMuted,
+        userVolume: state.bridgeVolume,
+        forceSync,
+        onElementVolume: (el, volume) => webAudio.setElementVolume(el, volume),
+        isWebAudioOwned: (el) => webAudio.ownsElement(el),
+        onAutoplayBlocked: () => {
+          if (state.mediaAutoplayBlockedPosted) return;
+          state.mediaAutoplayBlockedPosted = true;
+          postRuntimeMessage({ source: "hf-preview", type: "media-autoplay-blocked" });
+        },
+      });
+    }
     const visibilityNodes = Array.from(document.querySelectorAll("[data-start]"));
     const rootComp = resolveRootCompositionElement();
     for (const rawNode of visibilityNodes) {
@@ -1882,6 +1886,29 @@ export function initSandboxRuntimeModular(): void {
         el.muted = effective || el.defaultMuted;
       }
     },
+    onSetNativeMediaSyncDisabled: (disabled) => {
+      if (state.nativeMediaSyncDisabled === disabled) return;
+      state.nativeMediaSyncDisabled = disabled;
+      state.mediaForceSyncNextTick = true;
+      if (disabled) {
+        webAudio.stopAll();
+        clock.detachAudioSource();
+      } else {
+        syncMediaForCurrentState();
+      }
+    },
+    onSetWebAudioMediaDisabled: (disabled) => {
+      if (state.webAudioMediaDisabled === disabled) return;
+      state.webAudioMediaDisabled = disabled;
+      state.mediaForceSyncNextTick = true;
+      if (disabled) {
+        webAudio.stopAll();
+        clock.detachAudioSource();
+        syncMediaForCurrentState();
+      } else {
+        syncMediaForCurrentState();
+      }
+    },
     onSetPlaybackRate: (rate) => {
       applyPlaybackRate(rate);
       if (state.transportClock) state.transportClock.setRate(state.playbackRate);
@@ -2201,7 +2228,12 @@ export function initSandboxRuntimeModular(): void {
       // 2. HTMLMediaElement (audio.currentTime): ~33ms, frame-accurate
       // 3. Monotonic (performance.now()): ~1ms, no audio coupling
       if (clock.isPlaying() && !state.mediaOutputMuted) {
-        if (webAudio.isActive() && webAudio.context) {
+        if (
+          !state.nativeMediaSyncDisabled &&
+          !state.webAudioMediaDisabled &&
+          webAudio.isActive() &&
+          webAudio.context
+        ) {
           const webAudioTime = webAudio.getTime();
           if (webAudioTime >= 0) {
             clock.attachAudioSource({ currentTimeSeconds: webAudioTime });
@@ -2313,6 +2345,7 @@ export function initSandboxRuntimeModular(): void {
   // same edge as the HTMLMedia path. Reused by play() and by the rate-change
   // handler (a rate change can't rescale a bounded source in place).
   const scheduleWebAudioForActiveClips = () => {
+    if (state.nativeMediaSyncDisabled || state.webAudioMediaDisabled) return;
     const gen = webAudio.startGeneration();
     const audioEls = document.querySelectorAll("audio[data-start]");
     for (const rawEl of audioEls) {
@@ -2362,7 +2395,14 @@ export function initSandboxRuntimeModular(): void {
   // stopAll()+reschedule at the new rate to keep trimmed clips ending on time.
   const applyWebAudioRate = () => {
     const changed = webAudio.setRate(state.playbackRate);
-    if (changed && webAudioReady && clock.isPlaying() && webAudio.hasBoundedActiveSources()) {
+    if (
+      changed &&
+      !state.nativeMediaSyncDisabled &&
+      !state.webAudioMediaDisabled &&
+      webAudioReady &&
+      clock.isPlaying() &&
+      webAudio.hasBoundedActiveSources()
+    ) {
       webAudio.stopAll();
       scheduleWebAudioForActiveClips();
     }
@@ -2392,7 +2432,9 @@ export function initSandboxRuntimeModular(): void {
     // Schedule audio through WebAudio for sample-accurate timing.
     // Falls back to HTMLMediaElement playback if WebAudio isn't ready
     // or decoding fails (the syncRuntimeMedia path handles that).
-    if (webAudioReady) scheduleWebAudioForActiveClips();
+    if (webAudioReady && !state.nativeMediaSyncDisabled && !state.webAudioMediaDisabled) {
+      scheduleWebAudioForActiveClips();
+    }
     runAdapters("play");
     syncMediaForCurrentState();
     colorGrading.redraw();

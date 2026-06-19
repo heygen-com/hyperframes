@@ -430,6 +430,10 @@ class HyperframesPlayer extends HTMLElement {
     return this.hasAttribute("audio-locked") || this._isLockedHostEnvironment();
   }
 
+  private _isSlideshowPlayer(): boolean {
+    return this.closest("hyperframes-slideshow") !== null;
+  }
+
   /** Apply a change to the `muted` attribute: re-assert under an audio lock,
    *  else mute/unmute the media, sync the controls, and fire `volumechange`. */
   private _handleMutedChange(val: string | null): void {
@@ -526,6 +530,12 @@ class HyperframesPlayer extends HTMLElement {
     this._sendControl("set-muted", { muted: this.muted });
     this._sendControl("set-volume", { volume: this._volume });
     this._sendControl("set-playback-rate", { playbackRate: this.playbackRate });
+    this._sendControl("set-native-media-sync-disabled", {
+      disabled: this._isSlideshowPlayer(),
+    });
+    this._sendControl("set-web-audio-media-disabled", {
+      disabled: this._isSlideshowPlayer(),
+    });
   }
 
   private _reloadShaderOptions(): void {
@@ -633,6 +643,7 @@ class HyperframesPlayer extends HTMLElement {
       sendControl: (action, extra) => this._sendControl(action, extra),
       getIframeDoc: () => this.iframe.contentDocument,
       onRuntimeReady: () => this._replayBridgeState(),
+      shouldPromoteMediaAutoplayFallback: () => !this._isSlideshowPlayer(),
       setScenes: (scenes) => {
         this._scenes = scenes;
         this.dispatchEvent(new CustomEvent("scenes", { detail: { scenes } }));

@@ -9,6 +9,8 @@ describe("createRuntimeState", () => {
     expect(state.canonicalFps).toBe(30);
     expect(state.playbackRate).toBe(1);
     expect(state.bridgeMuted).toBe(false);
+    expect(state.nativeMediaSyncDisabled).toBe(false);
+    expect(state.webAudioMediaDisabled).toBe(false);
     expect(state.capturedTimeline).toBeNull();
     expect(state.tornDown).toBe(false);
   });

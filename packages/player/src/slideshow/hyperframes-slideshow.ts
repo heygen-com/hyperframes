@@ -4,7 +4,13 @@ import {
   type ResolvedSlideshow,
 } from "@hyperframes/core/slideshow";
 import { SlideshowController, type PlayerPort } from "./SlideshowController";
-import { SlideshowChannel, buildPresenterLayout, formatElapsed } from "./slideshowPresenter";
+import {
+  SlideshowChannel,
+  buildPresenterLayout,
+  formatElapsed,
+  type PresenterMediaAction,
+  type PresenterMediaMessage,
+} from "./slideshowPresenter";
 
 interface Hotspot {
   id: string;
@@ -36,14 +42,21 @@ interface SlideNotesTarget {
   sceneId?: string;
 }
 
+type SlideshowManifest = NonNullable<ReturnType<typeof parseSlideshowManifest>>;
+
 type PlayerElement = HTMLElement & {
   seek(t: number): void;
   play(): void;
   pause(): void;
   stopMedia?(): void;
   muted?: boolean;
+  readonly iframeElement?: HTMLIFrameElement;
   readonly currentTime: number;
   readonly ready: boolean;
+};
+
+type SlideshowMediaElement = HTMLMediaElement & {
+  dataset: DOMStringMap;
 };
 
 function isPlayerElement(el: HTMLElement): el is PlayerElement {
@@ -67,14 +80,59 @@ function injectKeyframesOnce(): void {
       0%, 100% { box-shadow: 0 0 0 0 rgba(255,255,255,0.35), 0 4px 16px rgba(0,0,0,0.35); }
       50%       { box-shadow: 0 0 0 8px rgba(255,255,255,0), 0 4px 20px rgba(0,0,0,0.45); }
     }
+    @keyframes hf-nav-spin {
+      to { transform: rotate(360deg); }
+    }
     @media (prefers-reduced-motion: reduce) {
-      .hf-hotspot-pill { animation: none !important; }
+      .hf-hotspot-pill,
+      .hf-nav-spinner { animation: none !important; }
     }
     /* Nav-button hover (replaces inline onmouseover/onmouseout — CSP-safe).
        !important beats the inline base color set on each button. */
     [data-hf-nav-cluster] button:hover {
       background: rgba(255,255,255,0.12) !important;
       color: #fff !important;
+    }
+    [data-hf-nav-cluster] button[data-hf-tooltip] {
+      position: relative;
+    }
+    [data-hf-nav-cluster] button[data-hf-tooltip]::before,
+    [data-hf-nav-cluster] button[data-hf-tooltip]::after {
+      position: absolute;
+      left: 50%;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateX(-50%) translateY(3px);
+      transition: opacity 0.12s ease, transform 0.12s ease;
+      z-index: 20;
+    }
+    [data-hf-nav-cluster] button[data-hf-tooltip]::before {
+      content: "";
+      bottom: calc(100% + 4px);
+      border: 5px solid transparent;
+      border-top-color: rgba(12,12,14,0.95);
+    }
+    [data-hf-nav-cluster] button[data-hf-tooltip]::after {
+      content: attr(data-hf-tooltip);
+      bottom: calc(100% + 14px);
+      padding: 6px 8px;
+      border-radius: 6px;
+      background: rgba(12,12,14,0.95);
+      color: #fff;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.35);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0;
+      line-height: 1;
+      white-space: nowrap;
+    }
+    [data-hf-nav-cluster] button[data-hf-tooltip]:hover::before,
+    [data-hf-nav-cluster] button[data-hf-tooltip]:hover::after,
+    [data-hf-nav-cluster] button[data-hf-tooltip]:focus-visible::before,
+    [data-hf-nav-cluster] button[data-hf-tooltip]:focus-visible::after {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
     }
     /* When muted, the speaker button stays dimmed on hover so the mute-state
        affordance isn't erased (higher specificity than the rule above). */
@@ -89,6 +147,9 @@ function injectKeyframesOnce(): void {
 // so onFsChange can swap just this glyph without re-rendering the whole chrome.
 const ENTER_FS_SVG = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>`;
 const EXIT_FS_SVG = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3v3a2 2 0 0 1-2 2H3M21 8h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3M16 21v-3a2 2 0 0 1 2-2h3"/></svg>`;
+const PRESENT_SVG = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/><path d="M10 8.5v4l4-2-4-2z"/></svg>`;
+const COUNTER_FONT_FAMILY =
+  "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
 
 export class HyperframesSlideshow extends HTMLElement {
   private controller: ControllerLike | null = null;
@@ -99,11 +160,18 @@ export class HyperframesSlideshow extends HTMLElement {
   private channel: SlideshowChannel | null = null;
   private presenterStartMs: number | null = null;
   private presenterInterval: ReturnType<typeof setInterval> | null = null;
+  private presenterPositionTimers: ReturnType<typeof setTimeout>[] = [];
   private disconnected = false;
   private initTimer: ReturnType<typeof setTimeout> | null = null;
   private initInFlight = false;
   private initGeneration = 0;
   private _muted = false;
+  private mediaWireInterval: ReturnType<typeof setInterval> | null = null;
+  private applyingRemoteMedia = false;
+  private lastMediaTimeBroadcastMs = 0;
+  private audienceMutedPlaybackKeys = new Set<string>();
+  private blockedAudienceMedia = new Map<string, PresenterMediaMessage>();
+  private audienceMediaUnlockButton: HTMLButtonElement | null = null;
 
   /** Whether audio is currently muted. Reflects `data-hf-muted` attribute. */
   get muted(): boolean {
@@ -180,10 +248,19 @@ export class HyperframesSlideshow extends HTMLElement {
     this.chrome = null;
     this.channel?.destroy();
     this.channel = null;
+    if (this.mediaWireInterval !== null) {
+      clearInterval(this.mediaWireInterval);
+      this.mediaWireInterval = null;
+    }
+    this.audienceMediaUnlockButton?.remove();
+    this.audienceMediaUnlockButton = null;
+    this.audienceMutedPlaybackKeys.clear();
+    this.blockedAudienceMedia.clear();
     if (this.presenterInterval !== null) {
       clearInterval(this.presenterInterval);
       this.presenterInterval = null;
     }
+    this.clearPresenterPositionTimers();
   }
 
   /** Test seam: inject a controller without a live player. */
@@ -196,11 +273,15 @@ export class HyperframesSlideshow extends HTMLElement {
    * Audience window URL: current page URL with `mode=audience` query param.
    */
   present(): void {
+    if (this.resolveMode() === "audience" || this.getAttribute("data-hf-presenting") === "true") {
+      return;
+    }
     const sep = location.search ? "&" : "?";
     // noopener,noreferrer: the audience window must not get a reference back to
     // this window (it syncs over BroadcastChannel, not window.opener).
     window.open(location.href + sep + "mode=audience", "_blank", "noopener,noreferrer");
     this.setAttribute("data-hf-presenting", "true");
+    this.postCurrentPresenterPositionBurst();
     this.presenterStartMs = Date.now();
     if (this.presenterInterval === null) {
       this.presenterInterval = setInterval(() => this.updateElapsed(), 1000);
@@ -224,14 +305,22 @@ export class HyperframesSlideshow extends HTMLElement {
   private initChannel(): void {
     const mode = this.resolveMode();
     if (mode === "audience") {
-      this.channel = new SlideshowChannel("audience", (msg) => {
-        if (!this.controller) return;
-        this.controller.syncTo?.(msg.sequenceId, msg.slideIndex, msg.fragmentIndex);
-      });
+      this.channel = new SlideshowChannel(
+        "audience",
+        (msg) => {
+          if (!this.controller) return;
+          this.controller.syncTo?.(msg.sequenceId, msg.slideIndex, msg.fragmentIndex);
+        },
+        this.onRemoteMedia,
+      );
     } else {
-      this.channel = new SlideshowChannel("presenter", () => {
-        // presenter channel does not receive; posting happens in bindController
-      });
+      this.channel = new SlideshowChannel(
+        "presenter",
+        () => {
+          // presenter channel does not receive goto messages; posting happens in bindController.
+        },
+        this.onRemoteMedia,
+      );
     }
   }
 
@@ -244,12 +333,6 @@ export class HyperframesSlideshow extends HTMLElement {
     try {
       const playerEl = this.querySelector("hyperframes-player");
       if (!playerEl || !(playerEl instanceof HTMLElement)) return;
-      if (!isPlayerElement(playerEl)) return;
-
-      await waitForReady(playerEl);
-
-      // Guard: if a disconnect or reconnect happened while waiting, bail out.
-      if (gen !== this.initGeneration) return;
 
       const html = this.innerHTML;
       let manifest: ReturnType<typeof parseSlideshowManifest>;
@@ -260,6 +343,15 @@ export class HyperframesSlideshow extends HTMLElement {
         return;
       }
       if (!manifest) return;
+
+      this.renderInitialChrome(manifest);
+
+      if (!isPlayerElement(playerEl)) return;
+
+      await waitForReady(playerEl);
+
+      // Guard: if a disconnect or reconnect happened while waiting, bail out.
+      if (gen !== this.initGeneration) return;
 
       // Wait for scenes to be populated (the runtime "timeline" postMessage
       // arrives ~1000ms after waitForReady resolves). Graceful fallback to []
@@ -321,10 +413,27 @@ export class HyperframesSlideshow extends HTMLElement {
     }
   }
 
+  private renderInitialChrome(manifest: SlideshowManifest): void {
+    if (this.controller || manifest.slides.length === 0) return;
+    const counter = { index: 1, total: manifest.slides.length };
+    if (this.resolveMode() === "audience") {
+      this.paintChrome(this.buildNavCluster(counter, "28px", "fs-only"));
+      return;
+    }
+    this.paintChrome(
+      this.buildNavCluster(counter, "28px", "full", {
+        canPrev: false,
+        canNext: manifest.slides.length > 1,
+        loading: manifest.slides.length > 1,
+      }),
+    );
+  }
+
   private bindController(c: ControllerLike): void {
     this.offChange?.();
     this.controller?.dispose?.();
     this.controller = c;
+    this.startMediaSync();
     this.offChange = c.onChange(() => {
       // Presenter posts position to channel on every change
       if (this.resolveMode() !== "audience" && this.channel) {
@@ -337,6 +446,231 @@ export class HyperframesSlideshow extends HTMLElement {
       this.channel.postPosition(c.position);
     }
     this.render();
+  }
+
+  private postCurrentPresenterPosition(): void {
+    if (this.resolveMode() === "audience" || !this.channel || !this.controller) return;
+    this.channel.postPosition(this.controller.position);
+  }
+
+  private postCurrentPresenterPositionBurst(): void {
+    this.clearPresenterPositionTimers();
+    this.postCurrentPresenterPosition();
+    for (const delay of [250, 750, 1500, 3000, 5000]) {
+      const timer = setTimeout(() => {
+        this.presenterPositionTimers = this.presenterPositionTimers.filter(
+          (item) => item !== timer,
+        );
+        this.postCurrentPresenterPosition();
+      }, delay);
+      this.presenterPositionTimers.push(timer);
+    }
+  }
+
+  private clearPresenterPositionTimers(): void {
+    for (const timer of this.presenterPositionTimers) {
+      clearTimeout(timer);
+    }
+    this.presenterPositionTimers = [];
+  }
+
+  private startMediaSync(): void {
+    this.wireSlideshowMedia();
+    if (this.mediaWireInterval === null) {
+      // Same-origin player iframes can hydrate media after the slideshow binds.
+      // The dataset guard prevents duplicate listeners, and removed iframe nodes
+      // are collectable because this component keeps no media element references.
+      this.mediaWireInterval = setInterval(() => this.wireSlideshowMedia(), 1000);
+    }
+  }
+
+  private mediaPlayerElements(): (Partial<PlayerElement> & HTMLElement)[] {
+    return Array.from(this.querySelectorAll("hyperframes-player")).filter(
+      (player): player is Partial<PlayerElement> & HTMLElement => player instanceof HTMLElement,
+    );
+  }
+
+  private playerFrameDocument(player: Partial<PlayerElement> & HTMLElement): Document | null {
+    const frame = player.iframeElement;
+    if (!(frame instanceof HTMLIFrameElement)) return null;
+    try {
+      return frame.contentDocument;
+    } catch {
+      return null;
+    }
+  }
+
+  private mediaKey(
+    player: HTMLElement,
+    playerIndex: number,
+    media: SlideshowMediaElement,
+    mediaIndex: number,
+  ): string {
+    const playerKey = player.id ? `player-id:${player.id}` : `player:${playerIndex}`;
+    const mediaKey = media.id ? `id:${media.id}` : `${media.tagName.toLowerCase()}:${mediaIndex}`;
+    return `${playerKey}|${mediaKey}`;
+  }
+
+  private mediaEntries(): { key: string; el: SlideshowMediaElement }[] {
+    const entries: { key: string; el: SlideshowMediaElement }[] = [];
+    this.mediaPlayerElements().forEach((player, playerIndex) => {
+      const doc = this.playerFrameDocument(player);
+      if (!doc) return;
+      Array.from(doc.querySelectorAll("video,audio"))
+        .filter(isSlideshowMediaElement)
+        .forEach((el, mediaIndex) => {
+          entries.push({ key: this.mediaKey(player, playerIndex, el, mediaIndex), el });
+        });
+    });
+    return entries;
+  }
+
+  private wireSlideshowMedia(): void {
+    const actions: PresenterMediaAction[] = [
+      "play",
+      "pause",
+      "seeking",
+      "seeked",
+      "ratechange",
+      "volumechange",
+      "ended",
+      "timeupdate",
+    ];
+    for (const { key, el } of this.mediaEntries()) {
+      if (el.dataset.hfSlideshowMediaSync === "1") continue;
+      el.dataset.hfSlideshowMediaSync = "1";
+      for (const action of actions) {
+        el.addEventListener(action, () => this.publishMediaState(el, key, action));
+      }
+    }
+  }
+
+  private publishMediaState(
+    el: SlideshowMediaElement,
+    key: string,
+    action: PresenterMediaAction,
+  ): void {
+    if (this.applyingRemoteMedia || this.resolveMode() === "audience" || !this.channel) return;
+    if (action === "timeupdate") {
+      const now = performance.now();
+      if (now - this.lastMediaTimeBroadcastMs < 450 && !el.paused) return;
+      this.lastMediaTimeBroadcastMs = now;
+    }
+    this.channel.postMedia({
+      key,
+      action,
+      currentTime: finiteMediaNumber(el.currentTime, 0),
+      paused: el.paused,
+      ended: el.ended,
+      muted: el.muted,
+      volume: finiteMediaNumber(el.volume, 1),
+      playbackRate: finiteMediaNumber(el.playbackRate, 1),
+    });
+  }
+
+  private onRemoteMedia = (msg: PresenterMediaMessage): void => {
+    if (this.resolveMode() !== "audience") return;
+    if (this.blockedAudienceMedia.has(msg.key) && msg.action === "timeupdate") {
+      this.blockedAudienceMedia.set(msg.key, msg);
+      this.showAudienceMediaUnlock();
+      return;
+    }
+    this.wireSlideshowMedia();
+    const entry = this.mediaEntries().find((candidate) => candidate.key === msg.key);
+    if (!entry) return;
+    this.applyingRemoteMedia = true;
+    try {
+      this.applyRemoteMedia(entry.el, msg);
+    } finally {
+      setTimeout(() => {
+        this.applyingRemoteMedia = false;
+      }, 300);
+    }
+  };
+
+  private applyRemoteMedia(el: SlideshowMediaElement, msg: PresenterMediaMessage): void {
+    if (msg.action === "pause" || msg.action === "ended") {
+      this.audienceMutedPlaybackKeys.delete(msg.key);
+      this.blockedAudienceMedia.delete(msg.key);
+      this.syncRemoteMediaState(el, msg, true);
+      el.pause();
+      this.hideAudienceMediaUnlockIfClear();
+      return;
+    }
+
+    const remoteWantsPlayback =
+      msg.action === "play" || (msg.action === "timeupdate" && msg.paused === false && el.paused);
+    if (remoteWantsPlayback) {
+      this.playAudienceMediaMuted(el, msg);
+      return;
+    }
+
+    this.syncRemoteMediaState(el, msg, true);
+  }
+
+  private syncRemoteMediaState(
+    el: SlideshowMediaElement,
+    msg: PresenterMediaMessage,
+    allowTimeSync: boolean,
+  ): void {
+    el.playbackRate = finiteMediaNumber(msg.playbackRate, 1);
+    el.volume = Math.max(0, Math.min(1, finiteMediaNumber(msg.volume, 1)));
+    el.muted = this.audienceMutedPlaybackKeys.has(msg.key) ? true : msg.muted;
+    if (
+      allowTimeSync &&
+      Number.isFinite(msg.currentTime) &&
+      Math.abs((el.currentTime || 0) - msg.currentTime) > 0.35
+    ) {
+      el.currentTime = Math.max(0, msg.currentTime);
+    }
+  }
+
+  private playAudienceMediaMuted(el: SlideshowMediaElement, msg: PresenterMediaMessage): void {
+    this.audienceMutedPlaybackKeys.add(msg.key);
+    this.syncRemoteMediaState(el, msg, true);
+    el.muted = true;
+    try {
+      void el
+        .play()
+        .then(() => {
+          this.blockedAudienceMedia.delete(msg.key);
+          this.hideAudienceMediaUnlockIfClear();
+        })
+        .catch(() => {
+          this.blockedAudienceMedia.set(msg.key, msg);
+          this.showAudienceMediaUnlock();
+        });
+    } catch {
+      this.blockedAudienceMedia.set(msg.key, msg);
+      this.showAudienceMediaUnlock();
+    }
+  }
+
+  private retryBlockedAudienceMedia = (): void => {
+    this.wireSlideshowMedia();
+    const entries = new Map(this.mediaEntries().map((entry) => [entry.key, entry.el]));
+    for (const [key, msg] of this.blockedAudienceMedia) {
+      const el = entries.get(key);
+      if (el) this.playAudienceMediaMuted(el, msg);
+    }
+  };
+
+  private showAudienceMediaUnlock(): void {
+    if (this.resolveMode() !== "audience" || this.audienceMediaUnlockButton) return;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = "Play audience media muted";
+    button.style.cssText =
+      "position:fixed;left:50%;bottom:96px;transform:translateX(-50%);z-index:100000;border:0;border-radius:999px;padding:12px 18px;background:#fff;color:#111827;box-shadow:0 10px 32px rgba(0,0,0,.28);font:700 14px/1 system-ui,sans-serif;cursor:pointer;pointer-events:auto;";
+    button.addEventListener("click", this.retryBlockedAudienceMedia);
+    this.appendChild(button);
+    this.audienceMediaUnlockButton = button;
+  }
+
+  private hideAudienceMediaUnlockIfClear(): void {
+    if (this.blockedAudienceMedia.size > 0 || !this.audienceMediaUnlockButton) return;
+    this.audienceMediaUnlockButton.remove();
+    this.audienceMediaUnlockButton = null;
   }
 
   // fallow-ignore-next-line complexity
@@ -379,6 +713,10 @@ export class HyperframesSlideshow extends HTMLElement {
     } else if ((e.key === "f" || e.key === "F") && !e.metaKey && !e.ctrlKey && !e.altKey) {
       if (!focused) return;
       this.toggleFullscreen();
+      e.preventDefault();
+    } else if ((e.key === "p" || e.key === "P") && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      if (!ambient || !this.shouldShowPresentControl()) return;
+      this.present();
       e.preventDefault();
     }
   };
@@ -480,7 +818,7 @@ export class HyperframesSlideshow extends HTMLElement {
     this.wireChromeButtons();
   }
 
-  // Builds the nav cluster ([mute?] [prev] counter [next] | [fullscreen]) as a
+  // Builds the nav cluster ([mute?] [prev] counter [next] | [present?] [fullscreen]) as a
   // floating capsule. `bottomCss` positions it (normal view: "28px"; presenter
   // view: above the notes panel). Reused by render() and renderPresenter().
   // fallow-ignore-next-line complexity
@@ -488,11 +826,12 @@ export class HyperframesSlideshow extends HTMLElement {
     counter: { index: number; total: number },
     bottomCss: string,
     variant: "full" | "fs-only" = "full",
+    options: { canPrev?: boolean; canNext?: boolean; loading?: boolean } = {},
   ): string {
     const c = this.controller;
-    if (!c) return "";
-    const showPrev = c.canPrev !== false;
-    const showNext = c.canNext !== false;
+    const showPrev = options.canPrev ?? c?.canPrev ?? true;
+    const showNext = options.canNext ?? c?.canNext ?? true;
+    const showLoading = options.loading === true && showNext;
     const showSound = this.hasAttribute("sound");
     const btnStyle =
       "display:flex;align-items:center;justify-content:center;width:34px;height:34px;background:transparent;border:none;border-radius:999px;color:rgba(255,255,255,0.85);font-size:16px;cursor:pointer;transition:background 0.15s,color 0.15s;padding:0;";
@@ -503,6 +842,8 @@ export class HyperframesSlideshow extends HTMLElement {
           data-hf-mute
           type="button"
           aria-label="${this._muted ? "Unmute" : "Mute"}"
+          title="${this._muted ? "Unmute" : "Mute"}"
+          data-hf-tooltip="${this._muted ? "Unmute" : "Mute"}"
           aria-pressed="${this._muted ? "true" : "false"}"
           style="${btnStyle}${this._muted ? "color:rgba(255,255,255,0.45);" : ""}"
         >${this._muted ? speakerMutedSvg : speakerSvg}</button>`
@@ -512,20 +853,47 @@ export class HyperframesSlideshow extends HTMLElement {
           data-hf-prev
           type="button"
           aria-label="Previous slide"
+          title="Previous slide"
+          data-hf-tooltip="Previous slide"
           style="${btnStyle}"        >&#8249;</button>`
       : "";
-    const nextBtnHtml = showNext
-      ? `<button
+    const loadingHtml = showLoading
+      ? `<span
+          data-hf-nav-loading
+          role="status"
+          aria-label="Loading slides"
+          title="Loading slides"
+          style="${btnStyle}cursor:progress;color:rgba(255,255,255,0.72);"
+        ><span class="hf-nav-spinner" aria-hidden="true" style="width:14px;height:14px;border:2px solid rgba(255,255,255,0.32);border-top-color:rgba(255,255,255,0.92);border-radius:999px;animation:hf-nav-spin 0.8s linear infinite;"></span></span>`
+      : "";
+    const nextBtnHtml = showLoading
+      ? loadingHtml
+      : showNext
+        ? `<button
           data-hf-next
           type="button"
           aria-label="Next slide"
+          title="Next slide"
+          data-hf-tooltip="Next slide"
           style="${btnStyle}"        >&#8250;</button>`
+        : "";
+    const presentBtnHtml = this.shouldShowPresentControl()
+      ? `<button
+          data-hf-present
+          type="button"
+          aria-label="Present"
+          title="Present"
+          data-hf-tooltip="Present"
+          style="${btnStyle}"        >${PRESENT_SVG}</button>`
       : "";
     const isFs = document.fullscreenElement === this;
+    const fsLabel = isFs ? "Exit full screen" : "Full screen";
     const fsBtnHtml = `<button
           data-hf-fullscreen
           type="button"
-          aria-label="${isFs ? "Exit full screen" : "Full screen"}"
+          aria-label="${fsLabel}"
+          title="${fsLabel}"
+          data-hf-tooltip="${fsLabel}"
           aria-pressed="${isFs ? "true" : "false"}"
           style="${btnStyle}"        >${isFs ? EXIT_FS_SVG : ENTER_FS_SVG}</button>`;
     // Audience/viewer: only the fullscreen control (no navigation).
@@ -549,10 +917,11 @@ export class HyperframesSlideshow extends HTMLElement {
         <span
           data-hf-counter
           aria-label="Slide ${counter.index} of ${counter.total}"
-          style="min-width:46px;text-align:center;color:rgba(255,255,255,0.9);font-size:13px;font-weight:500;font-variant-numeric:tabular-nums;letter-spacing:0.02em;padding:0 ${counterPadRight} 0 ${counterPadLeft};user-select:none;"
+          style="min-width:46px;text-align:center;color:rgba(255,255,255,0.9);font-family:${COUNTER_FONT_FAMILY};font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:0;padding:0 ${counterPadRight} 0 ${counterPadLeft};user-select:none;"
         >${counter.index}&thinsp;/&thinsp;${counter.total}</span>
         ${nextBtnHtml}
         <span aria-hidden="true" style="width:1px;height:20px;background:rgba(255,255,255,0.12);margin:0 2px;flex-shrink:0;"></span>
+        ${presentBtnHtml}
         ${fsBtnHtml}
       </div>`;
   }
@@ -560,19 +929,29 @@ export class HyperframesSlideshow extends HTMLElement {
   private wireChromeButtons(): void {
     const chrome = this.chrome;
     if (!chrome) return;
-    const muteBtn = chrome.querySelector("[data-hf-mute]");
-    const prevBtn = chrome.querySelector("[data-hf-prev]");
-    const nextBtn = chrome.querySelector("[data-hf-next]");
+    this.wireChromeClick(chrome, "[data-hf-mute]", () => this.toggleMute());
+    this.wireChromeClick(chrome, "[data-hf-prev]", () => this.controller?.prev());
+    this.wireChromeClick(chrome, "[data-hf-next]", () => this.controller?.next());
+    this.wireChromeClick(chrome, "[data-hf-present]", () => this.present());
+    this.wireChromeClick(chrome, "[data-hf-fullscreen]", () => this.toggleFullscreen());
+    this.wirePresenterNotes(chrome);
+    this.wireHotspots(chrome);
+  }
+
+  private wireChromeClick(chrome: HTMLDivElement, selector: string, handler: () => void): void {
+    const btn = chrome.querySelector(selector);
+    if (btn) btn.addEventListener("click", handler);
+  }
+
+  private wirePresenterNotes(chrome: HTMLDivElement): void {
     const notesInput = chrome.querySelector("[data-hf-presenter-notes]");
-    if (muteBtn) muteBtn.addEventListener("click", () => this.toggleMute());
-    if (prevBtn) prevBtn.addEventListener("click", () => this.controller?.prev());
-    if (nextBtn) nextBtn.addEventListener("click", () => this.controller?.next());
     if (notesInput instanceof HTMLTextAreaElement) {
       const key = notesInput.getAttribute("data-hf-presenter-notes-key");
       notesInput.addEventListener("input", () => this.writePresenterNotes(key, notesInput.value));
     }
-    const fsBtn = chrome.querySelector("[data-hf-fullscreen]");
-    if (fsBtn) fsBtn.addEventListener("click", () => this.toggleFullscreen());
+  }
+
+  private wireHotspots(chrome: HTMLDivElement): void {
     for (const btn of chrome.querySelectorAll("[data-hotspot-id]")) {
       const target = btn.getAttribute("data-hotspot-target") ?? "";
       btn.addEventListener("click", () => this.controller?.enterBranch?.(target));
@@ -586,7 +965,10 @@ export class HyperframesSlideshow extends HTMLElement {
     if (!btn) return;
     const isFs = document.fullscreenElement === this;
     btn.innerHTML = isFs ? EXIT_FS_SVG : ENTER_FS_SVG;
-    btn.setAttribute("aria-label", isFs ? "Exit full screen" : "Full screen");
+    const label = isFs ? "Exit full screen" : "Full screen";
+    btn.setAttribute("aria-label", label);
+    btn.setAttribute("title", label);
+    btn.setAttribute("data-hf-tooltip", label);
     btn.setAttribute("aria-pressed", isFs ? "true" : "false");
   };
 
@@ -596,6 +978,10 @@ export class HyperframesSlideshow extends HTMLElement {
     } else {
       void this.requestFullscreen().catch(() => {});
     }
+  }
+
+  private shouldShowPresentControl(): boolean {
+    return this.resolveMode() !== "audience" && this.getAttribute("data-hf-presenting") !== "true";
   }
 
   private toggleMute(): void {
@@ -736,6 +1122,16 @@ function nextPanelText(slide: { sceneId: string; notes?: string } | null): strin
   return firstLine.length > 0
     ? `${escHtml(slide.sceneId)}: ${escHtml(firstLine)}`
     : escHtml(slide.sceneId);
+}
+
+function isSlideshowMediaElement(el: Element): el is SlideshowMediaElement {
+  const win = el.ownerDocument.defaultView;
+  if (!win || typeof win.HTMLMediaElement !== "function") return false;
+  return el instanceof win.HTMLMediaElement;
+}
+
+function finiteMediaNumber(value: number, fallback: number): number {
+  return Number.isFinite(value) ? value : fallback;
 }
 
 function readScenes(player: HTMLElement): { id: string; start: number; duration: number }[] {

@@ -19,8 +19,10 @@ describe("<hyperframes-slideshow>", () => {
     onPrev?: () => void;
     index?: number;
     total?: number;
+    sound?: boolean;
   }) {
     const el = document.createElement("hyperframes-slideshow") as any;
+    if (opts.sound) el.setAttribute("sound", "");
     document.body.appendChild(el);
     el.__setControllerForTest({
       next: opts.onNext ?? (() => {}),
@@ -30,6 +32,9 @@ describe("<hyperframes-slideshow>", () => {
       breadcrumb: [{ id: "main", label: "Main deck" }],
       currentSlide: { hotspots: [] },
       nextSlide: null,
+      get position() {
+        return { sequenceId: "main", slideIndex: (opts.index ?? 1) - 1, fragmentIndex: -1 };
+      },
     });
     return el;
   }
@@ -122,12 +127,71 @@ describe("<hyperframes-slideshow>", () => {
     el.remove();
   });
 
+  it("renders an icon-only present button inside the nav cluster in normal mode", () => {
+    const el = makeEl({ index: 1, total: 3 });
+    const cluster = el.querySelector("[data-hf-nav-cluster]");
+    const presentBtn = el.querySelector("[data-hf-present]");
+    expect(cluster).toBeTruthy();
+    expect(presentBtn).toBeTruthy();
+    expect(cluster?.contains(presentBtn)).toBe(true);
+    expect(presentBtn?.textContent?.trim()).toBe("");
+    expect(presentBtn?.querySelector("svg")).toBeTruthy();
+    expect(presentBtn?.querySelector('path[d="M10 8.5v4l4-2-4-2z"]')).toBeTruthy();
+    expect(presentBtn?.getAttribute("aria-label")).toBe("Present");
+    expect(presentBtn?.getAttribute("title")).toBe("Present");
+    expect(presentBtn?.getAttribute("data-hf-tooltip")).toBe("Present");
+    el.remove();
+  });
+
+  it("does not render the present button in audience mode", () => {
+    const el = document.createElement("hyperframes-slideshow") as any;
+    el.setAttribute("mode", "audience");
+    document.body.appendChild(el);
+    el.__setControllerForTest({
+      next: () => {},
+      prev: () => {},
+      onChange: () => () => {},
+      counter: { index: 1, total: 3 },
+      breadcrumb: [{ id: "main", label: "Main deck" }],
+      currentSlide: { hotspots: [] },
+      nextSlide: null,
+      get position() {
+        return { sequenceId: "main", slideIndex: 0, fragmentIndex: -1 };
+      },
+    });
+
+    expect(el.querySelector("[data-hf-present]")).toBeNull();
+    expect(el.querySelector("[data-hf-fullscreen]")).toBeTruthy();
+    el.remove();
+  });
+
   it("renders counter text", () => {
     const el = makeEl({ index: 2, total: 5 });
     const counter = el.querySelector("[data-hf-counter]");
     expect(counter).toBeTruthy();
     expect(counter.textContent).toContain("2");
     expect(counter.textContent).toContain("5");
+    expect(counter.getAttribute("style")).toContain("font-family:Inter");
+    expect(counter.getAttribute("style")).toContain("font-variant-numeric:tabular-nums");
+    el.remove();
+  });
+
+  it("adds hover tooltips to all nav control buttons", () => {
+    const el = makeEl({ index: 2, total: 5, sound: true });
+    const expected: [string, string][] = [
+      ["[data-hf-mute]", "Mute"],
+      ["[data-hf-prev]", "Previous slide"],
+      ["[data-hf-next]", "Next slide"],
+      ["[data-hf-present]", "Present"],
+      ["[data-hf-fullscreen]", "Full screen"],
+    ];
+    for (const [selector, label] of expected) {
+      const button = el.querySelector(selector);
+      expect(button).toBeTruthy();
+      expect(button?.getAttribute("aria-label")).toBe(label);
+      expect(button?.getAttribute("title")).toBe(label);
+      expect(button?.getAttribute("data-hf-tooltip")).toBe(label);
+    }
     el.remove();
   });
 
@@ -556,6 +620,78 @@ describe("<hyperframes-slideshow> presenter mode", () => {
     return { el, triggerChange: () => onChangeCb?.() };
   }
 
+  function makeMediaSyncedEl(mode: "presenter" | "audience", opts: { playRejects?: boolean } = {}) {
+    const el = document.createElement("hyperframes-slideshow") as any;
+    if (mode === "audience") el.setAttribute("mode", "audience");
+
+    const player = document.createElement("hyperframes-player");
+    const iframe = document.createElement("iframe");
+    Object.defineProperty(player, "iframeElement", {
+      configurable: true,
+      value: iframe,
+    });
+    player.appendChild(iframe);
+    el.appendChild(player);
+    document.body.appendChild(el);
+
+    const frameDoc = iframe.contentDocument;
+    if (!frameDoc) throw new Error("expected iframe document in test");
+    const video = frameDoc.createElement("video");
+    video.id = "demo";
+    video.volume = 0.75;
+    video.playbackRate = 1;
+    frameDoc.body.appendChild(video);
+
+    let paused = true;
+    Object.defineProperty(video, "paused", {
+      configurable: true,
+      get() {
+        return paused;
+      },
+    });
+    Object.defineProperty(video, "ended", {
+      configurable: true,
+      get() {
+        return false;
+      },
+    });
+    const play = vi.fn(() => {
+      paused = false;
+      return opts.playRejects ? Promise.reject(new Error("blocked")) : Promise.resolve();
+    });
+    const pause = vi.fn(() => {
+      paused = true;
+    });
+    Object.defineProperty(video, "play", { configurable: true, value: play });
+    Object.defineProperty(video, "pause", { configurable: true, value: pause });
+
+    el.__setControllerForTest({
+      next: () => {},
+      prev: () => {},
+      goToSlide: () => {},
+      syncTo: () => {},
+      onChange: () => () => {},
+      counter: { index: 1, total: 2 },
+      breadcrumb: [{ id: "main", label: "Main deck" }],
+      currentSlide: { hotspots: [] },
+      nextSlide: null,
+      get position() {
+        return MAIN_POS;
+      },
+    });
+
+    return {
+      el,
+      video,
+      play,
+      pause,
+      key: "player:0|id:demo",
+      setPaused(value: boolean) {
+        paused = value;
+      },
+    };
+  }
+
   const tick = () => new Promise<void>((r) => setTimeout(r, 0));
 
   it("audience mode: mirrors full position (sequence + slide + fragment) via syncTo", async () => {
@@ -620,6 +756,181 @@ describe("<hyperframes-slideshow> presenter mode", () => {
     el.remove();
   });
 
+  it("presenter mode: broadcasts iframe media play events", async () => {
+    const received: unknown[] = [];
+    const listenerChannel = new BroadcastChannel(slideshowChannelName());
+    listenerChannel.onmessage = (e: MessageEvent) => received.push(e.data);
+
+    const { el, video, setPaused } = makeMediaSyncedEl("presenter");
+    await tick();
+
+    setPaused(false);
+    video.currentTime = 7.25;
+    video.dispatchEvent(new Event("play"));
+    await tick();
+
+    const msg = received.find(
+      (candidate) =>
+        typeof candidate === "object" &&
+        candidate !== null &&
+        (candidate as Record<string, unknown>)["type"] === "media",
+    ) as Record<string, unknown> | undefined;
+    expect(msg).toMatchObject({
+      type: "media",
+      sender: "presenter",
+      key: "player:0|id:demo",
+      action: "play",
+      currentTime: 7.25,
+      paused: false,
+      muted: false,
+      volume: 0.75,
+      playbackRate: 1,
+    });
+
+    listenerChannel.close();
+    el.remove();
+  });
+
+  it("audience mode: does not echo local muted autoplay state back to presenter", async () => {
+    const received: unknown[] = [];
+    const listenerChannel = new BroadcastChannel(slideshowChannelName());
+    listenerChannel.onmessage = (e: MessageEvent) => received.push(e.data);
+
+    const { el, video } = makeMediaSyncedEl("audience");
+    await tick();
+
+    video.muted = true;
+    video.dispatchEvent(new Event("volumechange"));
+    await tick();
+
+    expect(
+      received.some(
+        (candidate) =>
+          typeof candidate === "object" &&
+          candidate !== null &&
+          (candidate as Record<string, unknown>)["type"] === "media",
+      ),
+    ).toBe(false);
+
+    listenerChannel.close();
+    el.remove();
+  });
+
+  it("audience mode: remote play starts iframe media muted", async () => {
+    const presenterChannel = new BroadcastChannel(slideshowChannelName());
+    const { el, video, play, key } = makeMediaSyncedEl("audience");
+    await tick();
+
+    presenterChannel.postMessage({
+      type: "media",
+      sender: "presenter",
+      key,
+      action: "play",
+      currentTime: 12.5,
+      paused: false,
+      ended: false,
+      muted: false,
+      volume: 0.8,
+      playbackRate: 1.25,
+    });
+    await tick();
+
+    expect(video.currentTime).toBe(12.5);
+    expect(video.muted).toBe(true);
+    expect(video.volume).toBe(0.8);
+    expect(video.playbackRate).toBe(1.25);
+    expect(play).toHaveBeenCalledTimes(1);
+
+    presenterChannel.close();
+    el.remove();
+  });
+
+  it("audience mode: keeps remote media muted during subsequent time sync", async () => {
+    const presenterChannel = new BroadcastChannel(slideshowChannelName());
+    const { el, video, key } = makeMediaSyncedEl("audience");
+    await tick();
+
+    presenterChannel.postMessage({
+      type: "media",
+      sender: "presenter",
+      key,
+      action: "play",
+      currentTime: 1,
+      paused: false,
+      ended: false,
+      muted: false,
+      volume: 1,
+      playbackRate: 1,
+    });
+    await tick();
+    presenterChannel.postMessage({
+      type: "media",
+      sender: "presenter",
+      key,
+      action: "timeupdate",
+      currentTime: 4,
+      paused: false,
+      ended: false,
+      muted: false,
+      volume: 1,
+      playbackRate: 1,
+    });
+    await tick();
+
+    expect(video.currentTime).toBe(4);
+    expect(video.muted).toBe(true);
+
+    presenterChannel.close();
+    el.remove();
+  });
+
+  it("audience mode: rejected muted play stops chasing remote timeupdates", async () => {
+    const presenterChannel = new BroadcastChannel(slideshowChannelName());
+    const { el, video, play, key } = makeMediaSyncedEl("audience", { playRejects: true });
+    await tick();
+
+    presenterChannel.postMessage({
+      type: "media",
+      sender: "presenter",
+      key,
+      action: "play",
+      currentTime: 2,
+      paused: false,
+      ended: false,
+      muted: false,
+      volume: 1,
+      playbackRate: 1,
+    });
+    await tick();
+    await tick();
+
+    presenterChannel.postMessage({
+      type: "media",
+      sender: "presenter",
+      key,
+      action: "timeupdate",
+      currentTime: 20,
+      paused: false,
+      ended: false,
+      muted: false,
+      volume: 1,
+      playbackRate: 1,
+    });
+    await tick();
+
+    expect(play).toHaveBeenCalledTimes(1);
+    expect(video.currentTime).toBe(2);
+    expect(video.muted).toBe(true);
+    const buttonTexts = Array.from(
+      el.querySelectorAll("button") as NodeListOf<HTMLButtonElement>,
+      (button) => button.textContent,
+    );
+    expect(buttonTexts).toContain("Play audience media muted");
+
+    presenterChannel.close();
+    el.remove();
+  });
+
   it("present() opens a new window with mode=audience and sets presenter attribute", () => {
     const openCalls: { url: string; target: string }[] = [];
     vi.spyOn(window, "open").mockImplementation((url, target) => {
@@ -635,6 +946,61 @@ describe("<hyperframes-slideshow> presenter mode", () => {
     expect(openCalls[0].target).toBe("_blank");
     expect(el.getAttribute("data-hf-presenting")).toBe("true");
 
+    el.remove();
+  });
+
+  it("built-in nav present button opens presenter mode and then hides itself", () => {
+    const openCalls: { url: string; target: string }[] = [];
+    vi.spyOn(window, "open").mockImplementation((url, target) => {
+      openCalls.push({ url: String(url), target: String(target) });
+      return null;
+    });
+
+    const { el } = makePresenterEl();
+    const presentBtn = el.querySelector("[data-hf-present]") as HTMLButtonElement;
+    expect(presentBtn).toBeTruthy();
+
+    presentBtn.click();
+
+    expect(openCalls).toHaveLength(1);
+    expect(openCalls[0].url).toContain("mode=audience");
+    expect(el.getAttribute("data-hf-presenting")).toBe("true");
+    expect(el.querySelector("[data-hf-present]")).toBeNull();
+
+    el.remove();
+  });
+
+  it("P shortcut opens presenter mode from the shared component", () => {
+    const openCalls: { url: string; target: string }[] = [];
+    vi.spyOn(window, "open").mockImplementation((url, target) => {
+      openCalls.push({ url: String(url), target: String(target) });
+      return null;
+    });
+
+    const { el } = makePresenterEl();
+    el.focus();
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "P" }));
+
+    expect(openCalls).toHaveLength(1);
+    expect(openCalls[0].url).toContain("mode=audience");
+    expect(el.getAttribute("data-hf-presenting")).toBe("true");
+
+    el.remove();
+  });
+
+  it("present() rebroadcasts the current position for a newly opened audience window", async () => {
+    const received: unknown[] = [];
+    const spy = new BroadcastChannel(slideshowChannelName());
+    spy.onmessage = (e: MessageEvent) => received.push(e.data);
+    vi.spyOn(window, "open").mockImplementation(() => null);
+
+    const { el } = makePresenterEl();
+    el.present();
+    await tick();
+
+    expect(received).toContainEqual({ type: "goto", ...MAIN_POS });
+
+    spy.close();
     el.remove();
   });
 
@@ -687,6 +1053,23 @@ describe("<hyperframes-slideshow> presenter mode", () => {
     const text = el.querySelector("[data-hf-chrome]").textContent as string;
     expect(text).toContain("Talk about the mission here");
     expect(text).toContain("features");
+    el.remove();
+  });
+
+  it("presenter counters use the shared sans-serif number style", () => {
+    const el = makePresenterWithSlides({
+      currentSlide: { sceneId: "intro", notes: "Intro notes" },
+      nextSlide: { sceneId: "features", notes: "Feature notes" },
+      index: 2,
+      total: 5,
+    });
+    const counter = el.querySelector("[data-hf-presenter-counter]");
+    const elapsed = el.querySelector("[data-hf-presenter-elapsed]");
+    expect(counter?.textContent).toContain("2 / 5");
+    expect(counter?.getAttribute("style")).toContain("font-family:Inter");
+    expect(counter?.getAttribute("style")).toContain("font-variant-numeric:tabular-nums");
+    expect(elapsed?.getAttribute("style")).toContain("font-family:Inter");
+    expect(elapsed?.getAttribute("style")).toContain("font-variant-numeric:tabular-nums");
     el.remove();
   });
 
@@ -977,6 +1360,56 @@ describe("<hyperframes-slideshow> deferred init (Bug 1)", () => {
 
     // init bailed (isConnected=false / timer cleared), so no chrome was mounted.
     expect(el.querySelector("[data-hf-chrome]")).toBeNull();
+  });
+
+  it("renders initial nav chrome from the manifest before scene metadata arrives", async () => {
+    vi.useFakeTimers();
+
+    const el = document.createElement("hyperframes-slideshow") as any;
+    el.innerHTML = `
+      <script type="application/hyperframes-slideshow+json">
+        {
+          "slides": [
+            { "sceneId": "intro", "startTime": 0, "endTime": 1 },
+            { "sceneId": "second", "startTime": 1, "endTime": 2 }
+          ]
+        }
+      </script>
+    `;
+
+    const fakePlayer = document.createElement("hyperframes-player");
+    Object.defineProperty(fakePlayer, "ready", { get: () => true });
+    Object.defineProperty(fakePlayer, "seek", { value: () => {} });
+    Object.defineProperty(fakePlayer, "play", { value: () => {} });
+    Object.defineProperty(fakePlayer, "pause", { value: () => {} });
+    Object.defineProperty(fakePlayer, "currentTime", { get: () => 0 });
+    Object.defineProperty(fakePlayer, "scenes", { get: () => [] });
+    el.appendChild(fakePlayer);
+    document.body.appendChild(el);
+
+    await vi.advanceTimersByTimeAsync(10);
+
+    const chrome = el.querySelector("[data-hf-chrome]");
+    const counter = el.querySelector("[data-hf-counter]");
+    expect(chrome).toBeTruthy();
+    expect(counter?.textContent).toContain("1");
+    expect(counter?.textContent).toContain("2");
+    expect(el.querySelector("[data-hf-prev]")).toBeNull();
+    expect(el.querySelector("[data-hf-next]")).toBeNull();
+    const loading = el.querySelector("[data-hf-nav-loading]");
+    expect(loading).toBeTruthy();
+    expect(loading?.getAttribute("aria-label")).toBe("Loading slides");
+    expect(el.querySelector("[data-hf-present]")).toBeTruthy();
+    expect(el.querySelector("[data-hf-fullscreen]")).toBeTruthy();
+
+    await vi.advanceTimersByTimeAsync(2600);
+
+    expect(el.querySelector("[data-hf-nav-loading]")).toBeNull();
+    expect(el.querySelector("[data-hf-next]")).toBeTruthy();
+
+    el.remove();
+    await vi.advanceTimersByTimeAsync(3000);
+    vi.useRealTimers();
   });
 });
 

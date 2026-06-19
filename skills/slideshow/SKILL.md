@@ -3,8 +3,10 @@ name: slideshow
 description: >
   Author a HyperFrames slideshow composition — a presentation, pitch deck, or
   interactive deck with discrete slides, fragment reveals, branching sequences,
-  and hotspot navigation. Read when the request is to build or edit a slideshow,
-  presentation, or pitch deck as a HyperFrames composition.
+  and hotspot navigation. Use as an intent check when the user asks for a
+  presentation, pitch deck, slide deck, interactive deck, or page-to-deck
+  conversion that might be a slideshow; if the user did not explicitly ask for a
+  slideshow / slide show, confirm before authoring.
 ---
 
 # Slideshow authoring contract
@@ -12,6 +14,20 @@ description: >
 A HyperFrames slideshow is a normal HyperFrames composition — scenes, clips, GSAP timelines — with one extra ingredient: a **JSON island** that declares which scenes are slides and how they connect. The player's `SlideshowController` reads the island and turns the continuous GSAP timeline into a discrete, navigable deck.
 
 **Read `/hyperframes-core` first** for the base composition contract (clips, tracks, `data-*` attributes, determinism rules). This skill covers only what is new: the island schema, slide writing rules, fragments, branching, validation, and the wrapping component.
+
+## Intent confirmation
+
+If the user explicitly asks for a slideshow, slide show, or HyperFrames slideshow, proceed with this skill.
+
+If the skill triggered from an adjacent request such as "presentation", "pitch deck", "deck", "interactive deck", or "convert this page", pause before authoring and frame the choice before asking for confirmation. Briefly explain that a HyperFrames slideshow means a runnable deck with discrete slides, built-in navigation and presenter mode, editable speaker notes, shared media handling, and validation before handoff. For source-page conversions, also mention that the goal is to preserve the original page's visual design, interactions, motion, and media behavior while translating page movement into slide-to-slide transitions.
+
+Then ask a short confirmation question:
+
+> Do you want this as a HyperFrames slideshow?
+
+Use a yes/no choice UI when the environment provides one; otherwise ask the question in plain text.
+
+Do not implement the slideshow until the user says yes. If they say no, stop using this skill and switch to the appropriate non-slideshow workflow.
 
 ---
 
@@ -50,6 +66,8 @@ Add exactly one `<script type="application/hyperframes-slideshow+json">` block t
 ```
 
 The island is the single source of truth for slide order, notes, fragment hold-points, hotspots, and branch sequences. Keep it near the top of the `<body>`, before the scene divs, so it is easy to find.
+
+Do not hide the slideshow manifest behind an alternate `<script type="application/json">` block plus runtime code that creates the island. The `present` command reads the composition HTML statically and expects the real `application/hyperframes-slideshow+json` island to already be present.
 
 ---
 
@@ -141,8 +159,12 @@ These are hard constraints, not suggestions. A slide that violates them will be 
 
 When converting an existing page into a slideshow, source fidelity is part of the contract. Do not replace source-specific widgets with simplified approximations unless the user explicitly asks for a redesign.
 
+- Preserve the original page's visual design, motion language, interactive behavior, media behavior, and presentation affordances as closely as practical. When the slideshow system supports presenter mode, include speaker notes using the shared editable-notes behavior rather than a deck-specific implementation.
 - Port mechanical visuals from the source DOM/CSS/JS as exactly as practical: custom players, canvas visualizers, timelines, playheads, stems, expanding circles, hover states, and other interactive details should survive the conversion.
-- Audit the source for atypical page movement, especially behavior driven by scroll, wheel, touch, hash state, resize, or a requestAnimationFrame loop. Treat fixed viewports with translated/scaled "world" layers, parallax, pinned panels, horizontal scrollers, scroll-scrubbed timelines, section snapping, and zoom-to-element cameras as source behavior. Scroll is often the source's transition trigger, so preserve the transition by extracting its progress stops, easing, and camera/focus states, then re-host that motion on slideshow navigation through timeline positions, fragments, or a reusable player/harness hook. Do not simulate a literal page-scroll-down transition inside the slide; the viewer should feel camera travel/zoom from one focal point to another, not see a webpage being scrolled. Keep each slide-to-slide camera move continuous: avoid intermediate route stops that reverse x/y direction or zoom unless the source visibly does that at the same boundary. A transition that darts around before landing is worse than a simpler direct focal move.
+- Treat native `<video>` / `<audio>` elements as the source of truth for any custom media chrome, canvas visualizer, waveform, beat grid, or playhead. Wire the source's media events (`play`, `pause`, `timeupdate`, `seeking`, `seeked`, `ended`, `ratechange`, `volumechange`) and derive visual state from `media.currentTime`; do not run a separate timer that can drift away from actual playback.
+- Every copied `<video>` or `<audio>` with `src` must have HyperFrames timing attributes before lint: `data-start` and `data-duration`, plus `data-has-audio="true"` when audible native audio should be preserved. Use the scene's time range for slide-specific media; for user-controlled evidence videos that may be played from multiple focused slides, use a deck-wide range. Do not leave `preload="none"` on media; use `metadata` or `auto`.
+- Resolve source font tokens before validation. If preserving custom source fonts, add `@font-face` rules for local/captured font files. If using system fallbacks, replace tokenized declarations such as `font-family: var(--f-body)` with concrete render-safe stacks such as `system-ui, sans-serif` or `ui-monospace, monospace`; do not leave `var(...)` as the font family value.
+- Audit the source for atypical page movement, especially behavior driven by scroll, wheel, touch, hash state, resize, or a requestAnimationFrame loop. Treat fixed viewports with translated/scaled "world" layers, parallax, pinned panels, horizontal scrollers, scroll-scrubbed timelines, section snapping, and zoom-to-element cameras as source behavior. Scroll is often the source's transition trigger, so preserve the transition by extracting its progress stops, easing, and camera/focus states, then re-host that motion on slideshow navigation through timeline positions, fragments, or a reusable player/harness hook. Standalone wrappers that jump to slide hold-points still need an explicit navigation-camera transition hook; computing per-slide camera transforms is not enough. Do not simulate a literal page-scroll-down transition inside the slide; the viewer should feel camera travel/zoom from one focal point to another, not see a webpage being scrolled. Keep each slide-to-slide camera move continuous: avoid intermediate route stops that reverse x/y direction or zoom unless the source visibly does that at the same boundary. A transition that darts around before landing is worse than a simpler direct focal move.
 - Preserve the source's media crop semantics. Treat screenshots, tweets/social posts, product UI captures, charts, docs, code, leaderboards, and any image with readable text as content evidence, not decorative media: use the source aspect ratio (`height: auto`) or `object-fit: contain` inside a stable frame. Use `object-fit: cover` only when the source did, or for intentionally decorative/background/cinematic thumbnails. After fitting these captures into a slide, inspect all four edges for truncated text, logos, controls, or captions; a visible crop on meaningful content is a bug unless the source itself cropped it.
 - If a behavior is generic to slideshows, put it in the player/controller or in a reusable skill snippet. Do not solve it with one-off deck scripts.
 - Stacked scene frames must never block interaction on the active slide. Hidden frames need both visual hiding and event gating:
@@ -379,13 +401,49 @@ Wrap the composition in `<hyperframes-slideshow>` around `<hyperframes-player>` 
 
 ```html
 <hyperframes-slideshow>
-  <hyperframes-player src="deck.html"></hyperframes-player>
+  <hyperframes-player interactive src="deck.html"></hyperframes-player>
 </hyperframes-slideshow>
 ```
 
-`<hyperframes-slideshow>` provides the navigation chrome (Prev / Next buttons, progress dots, breadcrumb, counter), keyboard handling (← / → and Space / Backspace), touch swipe, and hotspot overlays.
+`<hyperframes-slideshow>` provides the navigation chrome (Present, Prev / Next, counter, global mute when `sound` is present, fullscreen), keyboard handling (← / →, Space / Backspace, and P for Present), touch swipe, and hotspot overlays.
 
-**Presenter mode:** the Present button calls `window.open('?mode=audience')` for a fullscreen audience window; the originating tab becomes the presenter view (current slide reduced, next-slide preview, notes, elapsed timer). Both windows sync via `BroadcastChannel('hf-slideshow')`.
+Use the `interactive` attribute whenever the source page contains clickable controls, links, native media controls, or custom players. Without it, `<hyperframes-player>` intentionally blocks iframe pointer events; media controls inside the composition cannot be clicked, and clicks on the player host can toggle timeline playback instead of interacting with the slide content.
+
+**Presenter mode:** use the built-in Present icon button in the slideshow nav capsule, or press P. It calls `window.open('?mode=audience')` for a fullscreen audience window; the originating tab becomes the presenter view (current slide reduced, next-slide preview, notes, elapsed timer). Both windows sync via `BroadcastChannel('hf-slideshow:' + location.pathname)`. Do not add a custom wrapper-level Present button; the shared component owns its placement, icon, styling, and audience-mode hiding.
+
+Presenter-driven media playback has an autoplay-policy constraint: `BroadcastChannel` can sync intent, time, and state, but it cannot transfer the presenter's user activation to the audience window. The shared slideshow player mirrors native media events and starts remote audience playback muted first; only fall back to the standalone harness's audience unlock behavior if muted `media.play()` is rejected or if the deck specifically requires audible audience playback. Do not keep applying remote `timeupdate` messages after a rejected play, or the audience will silently seek through the video without playback.
+
+Presenter notes are editable in the presenter view. Edits are stored in `localStorage` per deck and slide, layered over the manifest notes without rewriting the composition file. Do not add one-off note-editing scripts to decks; rely on the shared slideshow player behavior. If a standalone/custom wrapper truly needs to implement this outside the shared player, use the deterministic storage snippet in `skills/slideshow/references/standalone-harness.md`.
+
+### Media cleanup on slide exit
+
+The slideshow controller owns slide-exit media cleanup. When navigation changes slide or sequence, it calls `hyperframes-player.stopMedia()` before entering the next slide. That command:
+
+- posts `stop-media` to the iframe runtime, which stops WebAudio and pauses native `<video>` / `<audio>` elements;
+- pauses same-origin iframe media directly as a fallback; and
+- pauses parent-frame proxies adopted from iframe media.
+
+Same-slide fragment navigation does **not** stop media. Global/deck-level parent audio, such as a background track wired through `audio-src`, is not treated as slide media.
+
+Do not add per-slide cleanup scripts for normal media players. Keep slide video/audio as normal media in the composition; use `data-has-audio="true"` only when the player should preserve audible native video audio instead of treating it as silent visual media.
+
+If the source page has custom controls or visualizations attached to media, those controls must listen to the same native element the slideshow player stops and mutes. A pause caused by slide exit, presenter sync, native controls, custom controls, or the global mute button should all update the visible custom UI through media events, not through parallel state.
+
+When implementing direct iframe fallback cleanup, treat iframe media as cross-realm DOM. Do not test iframe nodes with the parent page's `el instanceof HTMLMediaElement`; that returns false in real browsers. Use `el.ownerDocument.defaultView.HTMLMediaElement` (or an equivalent tag/duck-type guard) before setting `muted` or calling `pause()`.
+
+### Global nav mute
+
+When `<hyperframes-slideshow sound>` renders the nav mute button, that button is the global mute control for the page. It must mute:
+
+- child `<hyperframes-player>` instances, including same-origin iframe media;
+- top-level page `<audio>` / `<video>` elements; and
+- wrapper-owned SFX/global `Audio` objects via the `hf-sound` event.
+
+Do not add a second mute button inside the composition. If a wrapper script creates `new Audio(...)` objects that are not attached to the DOM, it must listen for `hf-sound` and set `clip.muted = detail.muted` on each object, not merely skip future plays.
+
+The same cross-realm rule applies here: global mute must reach iframe `<video>` / `<audio>` elements through the child frame's DOM realm. A passing unit test in a single DOM realm is not enough; verify in a browser that the actual iframe media elements report `muted: true` after clicking the nav mute button.
+
+`hyperframes present` serves built bundles from `packages/player/dist`. After changing player or slideshow chrome behavior, run `bun run build` in `packages/player` and restart the present server before testing in a browser.
 
 Presenter notes are editable in the presenter view. Edits are stored in `localStorage` per deck and slide, layered over the manifest notes without rewriting the composition file. Do not add one-off note-editing scripts to decks; rely on the shared slideshow player behavior. If a standalone/custom wrapper truly needs to implement this outside the shared player, use the deterministic storage snippet in `skills/slideshow/references/standalone-harness.md`.
 
@@ -431,6 +489,33 @@ skills/slideshow/references/standalone-harness.md
 
 Do not treat the patterns there as the blessed model — they exist only to bridge the gap until the engine-hosted path lands.
 
+## Handoff
+
+For a public or user-facing slideshow project, the root `index.html` should be a runnable slideshow entrypoint. Opening it in a browser should show slideshow navigation and respond to Next/Prev; it should not expose only the raw composition and require the user to know about Studio or an internal wrapper file. If the raw HyperFrames composition must remain separate for CLI compatibility, put it in a subdirectory such as `composition/index.html` and point scripts/commands at that directory.
+
+The direct-open wrapper must rely on the built-in Present icon button rendered by `<hyperframes-slideshow>`. Do not add a bespoke `#present-btn`, fixed-position button, or wrapper-specific Present styling. The shared component owns the control bar, hides Present in `?mode=audience`, and supports P as a keyboard shortcut.
+
+Validate the direct-open path before handoff. If `file://` browser restrictions break iframe media, local scripts, or same-origin player access, use a self-contained wrapper or make the handoff command start a local server and open the working URL; do not leave `index.html` in a broken or ambiguous state.
+
+For a completed slideshow deck, the primary user-facing next step is presenter mode, not Studio. Run or provide:
+
+```bash
+npx hyperframes present <project-dir>
+```
+
+Studio/`preview` is useful for editing a composition, but it is not a clear final destination for a slideshow user. If you create a `package.json` for a slideshow project where the raw composition lives in `composition/`, make the default runnable script start presenter mode:
+
+```json
+{
+  "scripts": {
+    "dev": "npx hyperframes present ./composition",
+    "studio": "npx hyperframes preview ./composition"
+  }
+}
+```
+
+At handoff, include the local presenter URL printed by the command and the minimal instruction: "Click Present, or press P, to open the audience window." Keep the server running if the user asked you to start it.
+
 ---
 
 ## Validation
@@ -440,6 +525,14 @@ After authoring or editing a slideshow composition, run:
 ```bash
 npx hyperframes lint
 ```
+
+Then run runtime validation:
+
+```bash
+npx hyperframes validate
+```
+
+Treat lint errors and validation `StaticGuard` contract messages as blockers even if a command exits successfully. Fix the file and rerun until lint reports `0 error(s)` and validation reports no runtime errors.
 
 The slideshow lint rule checks:
 

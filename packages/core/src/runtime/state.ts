@@ -20,6 +20,20 @@ export type RuntimeState = {
    */
   mediaOutputMuted: boolean;
   /**
+   * Disable runtime ownership of native media elements. Slideshow presenter
+   * mode keeps the slide timeline paused while users interact with embedded
+   * media, so the runtime must not auto-play, auto-pause, seek, or volume-sync
+   * those native elements on every transport tick.
+   */
+  nativeMediaSyncDisabled: boolean;
+  /**
+   * Disable the runtime's WebAudio replacement for native <audio> elements.
+   * Slideshow presenter/audience windows mirror native media element events
+   * across browsers, so muting those elements for WebAudio ownership breaks
+   * audible presenter playback and remote sync.
+   */
+  webAudioMediaDisabled: boolean;
+  /**
    * Latch so the `media-autoplay-blocked` outbound message is posted at most
    * once per runtime session. The parent only needs the first signal — it
    * takes over playback and further rejections are the same problem.
@@ -88,6 +102,8 @@ export function createRuntimeState(): RuntimeState {
     bridgeMuted: false,
     bridgeVolume: 1,
     mediaOutputMuted: false,
+    nativeMediaSyncDisabled: false,
+    webAudioMediaDisabled: false,
     mediaAutoplayBlockedPosted: false,
     mediaForceSyncNextTick: false,
     playbackRate: 1,

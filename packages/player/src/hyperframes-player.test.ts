@@ -247,6 +247,52 @@ describe("HyperframesPlayer parent-frame media", () => {
     expect(mockAudio.pause).toHaveBeenCalled();
   });
 
+  function dispatchAutoplayBlockedFromPlayerFrame(player: HTMLElement): HTMLMediaElement {
+    const iframe = player.shadowRoot?.querySelector("iframe");
+    if (!(iframe instanceof HTMLIFrameElement)) throw new Error("expected player iframe");
+    const iframeDoc = iframe.contentDocument;
+    if (!iframeDoc) throw new Error("expected player iframe document");
+    const video = iframeDoc.createElement("video");
+    video.setAttribute("data-start", "0");
+    video.setAttribute("data-duration", "10");
+    video.muted = false;
+    iframeDoc.body.appendChild(video);
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        source: iframe.contentWindow,
+        data: { source: "hf-preview", type: "media-autoplay-blocked" },
+      }),
+    );
+
+    return video;
+  }
+
+  it("does not mute iframe media on autoplay fallback inside presenter slideshow", () => {
+    const slideshow = document.createElement("hyperframes-slideshow");
+    slideshow.appendChild(player);
+    document.body.appendChild(slideshow);
+
+    const video = dispatchAutoplayBlockedFromPlayerFrame(player);
+
+    expect(video.muted).toBe(false);
+    expect(player._audioOwner).toBe("runtime");
+    slideshow.remove();
+  });
+
+  it("does not promote autoplay fallback inside audience slideshow", () => {
+    const slideshow = document.createElement("hyperframes-slideshow");
+    slideshow.setAttribute("mode", "audience");
+    slideshow.appendChild(player);
+    document.body.appendChild(slideshow);
+
+    const video = dispatchAutoplayBlockedFromPlayerFrame(player);
+
+    expect(video.muted).toBe(false);
+    expect(player._audioOwner).toBe("runtime");
+    slideshow.remove();
+  });
+
   it("seek() while playing pauses parent proxy (prevents mirrorTime stutter loop)", () => {
     // Regression: previously `seek()` only called `seekAll()`, leaving the
     // proxy playing. With the timeline frozen at the new seek target, the
@@ -1832,6 +1878,40 @@ describe("HyperframesPlayer runtime ready handshake", () => {
       action: "set-playback-rate",
       playbackRate: 1.25,
     });
+  });
+
+  it("keeps runtime WebAudio media enabled outside slideshow embeds", () => {
+    postSpy.mockClear();
+
+    player._onMessage(readyMessage());
+
+    expect(findControlCalls("set-native-media-sync-disabled")[0]?.[0]).toMatchObject({
+      action: "set-native-media-sync-disabled",
+      disabled: false,
+    });
+    expect(findControlCalls("set-web-audio-media-disabled")[0]?.[0]).toMatchObject({
+      action: "set-web-audio-media-disabled",
+      disabled: false,
+    });
+  });
+
+  it("disables runtime WebAudio media inside slideshow embeds", () => {
+    const slideshow = document.createElement("hyperframes-slideshow");
+    slideshow.appendChild(player);
+    document.body.appendChild(slideshow);
+    postSpy.mockClear();
+
+    player._onMessage(readyMessage());
+
+    expect(findControlCalls("set-native-media-sync-disabled")[0]?.[0]).toMatchObject({
+      action: "set-native-media-sync-disabled",
+      disabled: true,
+    });
+    expect(findControlCalls("set-web-audio-media-disabled")[0]?.[0]).toMatchObject({
+      action: "set-web-audio-media-disabled",
+      disabled: true,
+    });
+    slideshow.remove();
   });
 
   it("replays the muted state forced by audio-locked", () => {

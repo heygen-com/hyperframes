@@ -1147,6 +1147,57 @@ describe("initSandboxRuntimeModular", () => {
     expect(audio.muted).toBe(false);
   });
 
+  it("native media sync opt-out leaves user-started media playing while timeline is paused", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "root");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "10");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const audio = document.createElement("audio");
+    audio.setAttribute("data-start", "0");
+    audio.setAttribute("data-duration", "10");
+    audio.setAttribute("src", "voiceover.mp3");
+    Object.defineProperty(audio, "duration", { value: 10, configurable: true });
+    Object.defineProperty(audio, "readyState", {
+      value: HTMLMediaElement.HAVE_FUTURE_DATA,
+      configurable: true,
+    });
+    Object.defineProperty(audio, "currentTime", { value: 0, writable: true, configurable: true });
+    Object.defineProperty(audio, "paused", { value: true, writable: true, configurable: true });
+    audio.pause = vi.fn(() => {
+      Object.defineProperty(audio, "paused", {
+        value: true,
+        writable: true,
+        configurable: true,
+      });
+    });
+    root.appendChild(audio);
+
+    window.__timelines = { root: createMockTimeline(10) };
+    initSandboxRuntimeModular();
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          source: "hf-parent",
+          type: "control",
+          action: "set-native-media-sync-disabled",
+          disabled: true,
+        },
+      }),
+    );
+    Object.defineProperty(audio, "paused", { value: false, writable: true, configurable: true });
+    vi.mocked(audio.pause).mockClear();
+
+    window.__player?.renderSeek(5);
+
+    expect(audio.pause).not.toHaveBeenCalled();
+  });
+
   it("skips the per-frame transport re-seek while a Studio manual-edit gesture is active", () => {
     const raf = createManualRaf();
     vi.spyOn(performance, "now").mockImplementation(() => raf.now());
