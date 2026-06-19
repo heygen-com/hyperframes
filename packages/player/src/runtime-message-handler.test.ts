@@ -18,6 +18,7 @@ const makeCallbacks = (): MessageHandlerCallbacks => ({
   media: { mirrorTime: vi.fn(), promoteToParentProxy: vi.fn() } as unknown as ParentMediaManager,
   getPlaybackState: vi.fn(() => ({ currentTime: 0, duration: 0, paused: true, lastUpdateMs: 0 })),
   setPlaybackState: vi.fn(),
+  setScenes: vi.fn(),
   getShaderLoadingMode: vi.fn(() => "auto"),
   shaderLoader: { update: vi.fn() } as unknown as ShaderLoaderState,
   setCompositionSize: vi.fn(),

@@ -89,6 +89,7 @@ class HyperframesPlayer extends HTMLElement {
   private _directTimelineClock: DirectTimelineClock;
   private _parentTickRaf: number | null = null;
   private _media: ParentMediaManager;
+  private _scenes: { id: string; start: number; duration: number }[] = [];
 
   constructor() {
     super();
@@ -259,6 +260,12 @@ class HyperframesPlayer extends HTMLElement {
    */
   get iframeElement(): HTMLIFrameElement {
     return this.iframe;
+  }
+
+  /** Scene list from the last-received runtime timeline message. Empty until
+   *  the composition runtime fires its first "timeline" postMessage. */
+  get scenes(): { id: string; start: number; duration: number }[] {
+    return this._scenes;
   }
 
   play() {
@@ -586,6 +593,9 @@ class HyperframesPlayer extends HTMLElement {
       sendControl: (action, extra) => this._sendControl(action, extra),
       getIframeDoc: () => this.iframe.contentDocument,
       onRuntimeReady: () => this._replayBridgeState(),
+      setScenes: (scenes) => {
+        this._scenes = scenes;
+      },
       updateControlsTime: (t, d) => this.controlsApi?.updateTime(t, d),
       updateControlsPlaying: (p) => this.controlsApi?.updatePlaying(p),
       dispatchEvent: (ev) => this.dispatchEvent(ev),
