@@ -166,9 +166,22 @@ export class HyperframesSlideshow extends HTMLElement {
     this.setAttribute("data-hf-presenting", "true");
     this.presenterStartMs = Date.now();
     if (this.presenterInterval === null) {
-      this.presenterInterval = setInterval(() => this.render(), 1000);
+      this.presenterInterval = setInterval(() => this.updateElapsed(), 1000);
     }
     this.render();
+  }
+
+  /**
+   * Update only the elapsed readout. Re-rendering the whole chrome every second
+   * (the old behavior) rebuilt the nav buttons' DOM on each tick — they
+   * flickered and clicks landing mid-rebuild were dropped.
+   */
+  private updateElapsed(): void {
+    if (this.presenterStartMs === null) return;
+    const el = this.chrome?.querySelector("[data-hf-presenter-elapsed]");
+    if (el) {
+      el.textContent = formatElapsed(Math.floor((Date.now() - this.presenterStartMs) / 1000));
+    }
   }
 
   private initChannel(): void {
