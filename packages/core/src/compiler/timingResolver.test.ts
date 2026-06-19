@@ -179,8 +179,12 @@ describe("resolveTimings — determinism", () => {
 // (smart-seek) is exercised by timingCompiler.test.ts (Node.js) separately.
 // The purity of resolveTimings() means this test fully covers resolver logic.
 
-describe("preview == render parity golden test", () => {
-  it("resolver output is identical for preview and render call sites (shared single impl)", () => {
+// NOTE: this asserts a PROPERTY of the pure resolver (same input → same output),
+// not a guarantee about the two live paths — neither preview nor render calls
+// resolveTimings yet (see timingResolver.ts header). It is a forward fixture for
+// when they do, not proof they currently agree.
+describe("resolveTimings — determinism fixture for future preview/render wiring", () => {
+  it("resolver output is identical for identical input (one impl → no drift once wired)", () => {
     // Golden fixture: 3 elements, 2 words, 1 anchored, 2 free.
     const elements: AuthoredTiming[] = [
       authored("hf-title", 0, 2.0), // anchored
@@ -198,7 +202,8 @@ describe("preview == render parity golden test", () => {
     // Simulate render call (same input as would arrive from timingCompiler)
     const renderResult = resolveTimings({ elements, wordTimings, anchors });
 
-    // They must be identical — this is the "preview == render" guarantee.
+    // Identical because it is one pure function — this becomes the live
+    // "preview == render" guarantee only once both paths actually call it.
     expect(previewResult).toEqual(renderResult);
 
     // Spot-check the anchored element's resolved values:

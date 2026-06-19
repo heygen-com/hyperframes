@@ -45,7 +45,6 @@ const unrollRecast = unrollAcorn;
 const addKeyframeRecast = addKeyframeAcorn;
 const removeKeyframeRecast = removeKeyframeAcorn;
 const addWithKfRecast = addWithKfAcorn;
-const removeAnimRecast = removeAnimAcorn;
 const shiftRecast = shiftAcorn;
 const scaleRecast = scaleAcorn;
 function acornId(script: string): string {
@@ -895,15 +894,46 @@ function lastModelOf(script: string) {
   return arr[arr.length - 1];
 }
 
-describe("parity: addAnimationWithKeyframesToScript (recast vs acorn)", () => {
+// NOTE (WS-3.F): recast is retired, so `recast` here is an alias of the acorn
+// writer and the historical `toEqual(lastModelOf(recast))` comparisons are
+// tautologies. The WS-3.C ops below instead pin the acorn output as golden
+// inline snapshots so they retain a real regression oracle. Converting the
+// remaining (pre-WS-3.C) parity blocks to golden snapshots is follow-up work.
+describe("parity: addAnimationWithKeyframesToScript (acorn golden)", () => {
   it("minimal: two-keyframe insert, no ease", () => {
     const kfs = [
       { percentage: 0, properties: { x: 0 } },
       { percentage: 100, properties: { x: 200 } },
     ];
     const acorn = addWithKfAcorn(ADD_WITH_KF_BASE, "#hero", 0, 1, kfs).script;
-    const recast = addWithKfRecast(ADD_WITH_KF_BASE, "#hero", 0, 1, kfs).script;
-    expect(lastModelOf(acorn)).toEqual(lastModelOf(recast));
+    expect(lastModelOf(acorn)).toMatchInlineSnapshot(`
+      {
+        "duration": 1,
+        "ease": undefined,
+        "fromProperties": undefined,
+        "keyframes": {
+          "format": "percentage",
+          "keyframes": [
+            {
+              "percentage": 0,
+              "properties": {
+                "x": 0,
+              },
+            },
+            {
+              "percentage": 100,
+              "properties": {
+                "x": 200,
+              },
+            },
+          ],
+        },
+        "method": "to",
+        "position": 0,
+        "properties": {},
+        "targetSelector": "#hero",
+      }
+    `);
   });
 
   it("moderate: three keyframes, per-keyframe ease, easeEach, nonzero position", () => {
@@ -913,8 +943,44 @@ describe("parity: addAnimationWithKeyframesToScript (recast vs acorn)", () => {
       { percentage: 100, properties: { x: 300, opacity: 1 } },
     ];
     const acorn = addWithKfAcorn(ADD_WITH_KF_BASE, "#card", 1.5, 2.25, kfs, "none").script;
-    const recast = addWithKfRecast(ADD_WITH_KF_BASE, "#card", 1.5, 2.25, kfs, "none").script;
-    expect(lastModelOf(acorn)).toEqual(lastModelOf(recast));
+    expect(lastModelOf(acorn)).toMatchInlineSnapshot(`
+      {
+        "duration": 2.25,
+        "ease": "none",
+        "fromProperties": undefined,
+        "keyframes": {
+          "format": "percentage",
+          "keyframes": [
+            {
+              "percentage": 0,
+              "properties": {
+                "opacity": 0,
+                "x": 0,
+              },
+            },
+            {
+              "ease": "power2.out",
+              "percentage": 50,
+              "properties": {
+                "opacity": 0.5,
+                "x": 100,
+              },
+            },
+            {
+              "percentage": 100,
+              "properties": {
+                "opacity": 1,
+                "x": 300,
+              },
+            },
+          ],
+        },
+        "method": "to",
+        "position": 1.5,
+        "properties": {},
+        "targetSelector": "#card",
+      }
+    `);
   });
 
   // WS-3.C: auto-endpoint markers must round-trip through both writers.
@@ -925,8 +991,45 @@ describe("parity: addAnimationWithKeyframesToScript (recast vs acorn)", () => {
       { percentage: 100, properties: { x: 200, opacity: 0 }, auto: true },
     ];
     const acorn = addWithKfAcorn(ADD_WITH_KF_BASE, "#hero", 0, 1, kfs).script;
-    const recast = addWithKfRecast(ADD_WITH_KF_BASE, "#hero", 0, 1, kfs).script;
-    expect(lastModelOf(acorn)).toEqual(lastModelOf(recast));
+    expect(lastModelOf(acorn)).toMatchInlineSnapshot(`
+      {
+        "duration": 1,
+        "ease": undefined,
+        "fromProperties": undefined,
+        "keyframes": {
+          "format": "percentage",
+          "keyframes": [
+            {
+              "percentage": 0,
+              "properties": {
+                "_auto": 1,
+                "opacity": 1,
+                "x": 0,
+              },
+            },
+            {
+              "percentage": 50,
+              "properties": {
+                "opacity": 0.5,
+                "x": 100,
+              },
+            },
+            {
+              "percentage": 100,
+              "properties": {
+                "_auto": 1,
+                "opacity": 0,
+                "x": 200,
+              },
+            },
+          ],
+        },
+        "method": "to",
+        "position": 0,
+        "properties": {},
+        "targetSelector": "#hero",
+      }
+    `);
   });
 
   it("_auto endpoint: only 0% carries auto marker", () => {
@@ -935,8 +1038,35 @@ describe("parity: addAnimationWithKeyframesToScript (recast vs acorn)", () => {
       { percentage: 100, properties: { opacity: 0 } },
     ];
     const acorn = addWithKfAcorn(ADD_WITH_KF_BASE, "#el", 2, 0.5, kfs).script;
-    const recast = addWithKfRecast(ADD_WITH_KF_BASE, "#el", 2, 0.5, kfs).script;
-    expect(lastModelOf(acorn)).toEqual(lastModelOf(recast));
+    expect(lastModelOf(acorn)).toMatchInlineSnapshot(`
+      {
+        "duration": 0.5,
+        "ease": undefined,
+        "fromProperties": undefined,
+        "keyframes": {
+          "format": "percentage",
+          "keyframes": [
+            {
+              "percentage": 0,
+              "properties": {
+                "_auto": 1,
+                "opacity": 1,
+              },
+            },
+            {
+              "percentage": 100,
+              "properties": {
+                "opacity": 0,
+              },
+            },
+          ],
+        },
+        "method": "to",
+        "position": 2,
+        "properties": {},
+        "targetSelector": "#el",
+      }
+    `);
   });
 
   it("returns a stable new animation ID that is non-empty", () => {
@@ -965,24 +1095,6 @@ const tl = gsap.timeline({ paused: true });
 tl.to("#box", { x: 100, opacity: 1, duration: 0.5 }, 1);
 `;
 
-function replaceWithKfRecast(
-  script: string,
-  animId: string,
-  selector: string,
-  pos: number,
-  dur: number,
-  kfs: Array<{
-    percentage: number;
-    properties: Record<string, number | string>;
-    ease?: string;
-    auto?: boolean;
-  }>,
-  ease?: string,
-): string {
-  const removed = removeAnimRecast(script, animId);
-  return addWithKfRecast(removed, selector, pos, dur, kfs, ease).script;
-}
-
 function replaceWithKfAcorn(
   script: string,
   animId: string,
@@ -1001,7 +1113,7 @@ function replaceWithKfAcorn(
   return addWithKfAcorn(removed, selector, pos, dur, kfs, ease).script;
 }
 
-describe("parity: replaceWithKeyframes (remove + addWithKeyframes, recast vs acorn)", () => {
+describe("parity: replaceWithKeyframes (remove + addWithKeyframes, acorn golden)", () => {
   it("replaces the only tween: resulting animation model matches", () => {
     const id = acornId(REPLACE_WITH_KF_BASE);
     const kfs = [
@@ -1009,8 +1121,36 @@ describe("parity: replaceWithKeyframes (remove + addWithKeyframes, recast vs aco
       { percentage: 100, properties: { x: 200, opacity: 1 } },
     ];
     const acorn = replaceWithKfAcorn(REPLACE_WITH_KF_BASE, id, "#box", 0.5, 1.5, kfs);
-    const recast = replaceWithKfRecast(REPLACE_WITH_KF_BASE, id, "#box", 0.5, 1.5, kfs);
-    expect(lastModelOf(acorn)).toEqual(lastModelOf(recast));
+    expect(lastModelOf(acorn)).toMatchInlineSnapshot(`
+      {
+        "duration": 1.5,
+        "ease": undefined,
+        "fromProperties": undefined,
+        "keyframes": {
+          "format": "percentage",
+          "keyframes": [
+            {
+              "percentage": 0,
+              "properties": {
+                "opacity": 0,
+                "x": 0,
+              },
+            },
+            {
+              "percentage": 100,
+              "properties": {
+                "opacity": 1,
+                "x": 200,
+              },
+            },
+          ],
+        },
+        "method": "to",
+        "position": 0.5,
+        "properties": {},
+        "targetSelector": "#box",
+      }
+    `);
   });
 
   it("replaces the first tween in a two-tween script, preserving the other", () => {
@@ -1025,11 +1165,36 @@ tl.to("#circle", { y: 200, duration: 1 }, 1);
       { percentage: 100, properties: { x: 300 } },
     ];
     const acorn = replaceWithKfAcorn(TWO_TWEEN, id, "#box", 0, 0.75, kfs);
-    const recast = replaceWithKfRecast(TWO_TWEEN, id, "#box", 0, 0.75, kfs);
     // The second tween (#circle) must survive unchanged.
     expect(modelOf(acorn)).toHaveLength(2);
-    expect(modelOf(recast)).toHaveLength(2);
-    expect(lastModelOf(acorn)).toEqual(lastModelOf(recast));
+    expect(lastModelOf(acorn)).toMatchInlineSnapshot(`
+      {
+        "duration": 0.75,
+        "ease": undefined,
+        "fromProperties": undefined,
+        "keyframes": {
+          "format": "percentage",
+          "keyframes": [
+            {
+              "percentage": 0,
+              "properties": {
+                "x": 0,
+              },
+            },
+            {
+              "percentage": 100,
+              "properties": {
+                "x": 300,
+              },
+            },
+          ],
+        },
+        "method": "to",
+        "position": 0,
+        "properties": {},
+        "targetSelector": "#box",
+      }
+    `);
   });
 
   it("replaces with _auto endpoint markers", () => {
@@ -1039,8 +1204,36 @@ tl.to("#circle", { y: 200, duration: 1 }, 1);
       { percentage: 100, properties: { opacity: 0 }, auto: true },
     ];
     const acorn = replaceWithKfAcorn(REPLACE_WITH_KF_BASE, id, "#box", 1, 2, kfs);
-    const recast = replaceWithKfRecast(REPLACE_WITH_KF_BASE, id, "#box", 1, 2, kfs);
-    expect(lastModelOf(acorn)).toEqual(lastModelOf(recast));
+    expect(lastModelOf(acorn)).toMatchInlineSnapshot(`
+      {
+        "duration": 2,
+        "ease": undefined,
+        "fromProperties": undefined,
+        "keyframes": {
+          "format": "percentage",
+          "keyframes": [
+            {
+              "percentage": 0,
+              "properties": {
+                "_auto": 1,
+                "opacity": 1,
+              },
+            },
+            {
+              "percentage": 100,
+              "properties": {
+                "_auto": 1,
+                "opacity": 0,
+              },
+            },
+          ],
+        },
+        "method": "to",
+        "position": 1,
+        "properties": {},
+        "targetSelector": "#box",
+      }
+    `);
   });
 });
 

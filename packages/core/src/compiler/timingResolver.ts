@@ -1,13 +1,17 @@
 /**
  * Shared pure timing resolver — WS-C.
  *
- * resolveTimings() is the SINGLE implementation of word-anchored elastic timing.
- * It is consumed by both:
- *   1. The preview path (session layer in @hyperframes/sdk)
- *   2. The render path (timingCompiler.ts + htmlBundler in @hyperframes/core)
+ * resolveTimings() is the single intended implementation of word-anchored
+ * elastic timing, designed to be the one code path that BOTH the preview
+ * (session layer in @hyperframes/sdk) and render (timingCompiler.ts +
+ * htmlBundler) sides call so they cannot drift apart.
  *
- * "preview == render" guarantee: there is exactly one code path for anchor
- * resolution so both environments produce identical enter/exit times.
+ * NOT YET WIRED: neither path consumes it yet — the anchor-producing inputs
+ * (TTS word timings) arrive on the Pacific/backend side, which is deferred.
+ * Until a real caller lands, the "preview == render" parity below is a property
+ * of the resolver (one pure function) rather than a guarantee the two live
+ * paths currently share. Wire it into timingCompiler and session before
+ * relying on it for parity.
  *
  * Constraints:
  * - Deterministic + pure: no Date.now(), no Math.random(), no DOM, no I/O.

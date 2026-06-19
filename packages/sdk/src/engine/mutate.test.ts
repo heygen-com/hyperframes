@@ -623,6 +623,34 @@ describe("addElement", () => {
     expect(result.forward).toHaveLength(0);
     expect(result.meta?.newId).toBeUndefined();
   });
+
+  // Regression: a scoped sub-comp parent ("hf-host/hf-leaf") whose bare leaf id
+  // also exists at top level. The forward patch must keep the scoped path so
+  // redo/replay re-inserts under the SAME parent (resolveScoped), not the
+  // canonical top-level dup.
+  it("scoped parent: forward patch keeps the scoped path so redo targets the right parent", () => {
+    const parsed = parseMutable(
+      '<div data-hf-id="hf-stage" data-hf-root style="width:100px;height:100px">' +
+        '<div data-hf-id="hf-host"><p data-hf-id="hf-leaf">in host</p></div>' +
+        '<p data-hf-id="hf-leaf">top-level dup</p>' +
+        "</div>",
+    );
+    const result = applyOp(parsed, {
+      type: "addElement",
+      parent: "hf-host/hf-leaf",
+      index: 0,
+      html: '<span class="ins">x</span>',
+    });
+    expect((result.forward[0]!.value as { parentId: string }).parentId).toBe("hf-host/hf-leaf");
+    const newId = result.meta!.newId!;
+    // undo, then redo: the element must return under the HOST's leaf, not the dup.
+    applyPatchesToDocument(parsed, result.inverse);
+    applyPatchesToDocument(parsed, result.forward);
+    const host = parsed.document.querySelector('[data-hf-id="hf-host"]');
+    const inserted = parsed.document.querySelector(`[data-hf-id="${newId}"]`);
+    expect(inserted).not.toBeNull();
+    expect(host?.contains(inserted as Node)).toBe(true);
+  });
 });
 
 // ─── setElementStyles (model helper) ──────────────────────────────────────────
@@ -803,6 +831,22 @@ describe("setVariableValue", () => {
       name: "Roboto",
       source: "https://fonts.googleapis.com/css2?family=Roboto",
     });
+  });
+
+  // Regression: a variable declared WITHOUT a `default` key. The forward set adds
+  // the default; undo must DELETE it (restore the no-default state), not strand
+  // the set value (apply-patches previously no-op'd the remove).
+  it("B1: undo of a set on a default-less variable restores the no-default state", () => {
+    const html = `<!DOCTYPE html><html data-composition-id="c1" data-composition-duration="5" data-composition-variables='${JSON.stringify(
+      [{ id: "brand-x", type: "color", label: "X" }],
+    )}'><body><div data-hf-id="hf-stage" data-hf-root style="width: 1280px; height: 720px" data-duration="5"></div></body></html>`;
+    const parsed = parseMutable(html);
+    const before = serializeDocument(parsed);
+    const result = applyOp(parsed, { type: "setVariableValue", id: "brand-x", value: "#ff0000" });
+    expect(readVarDefault(parsed, "brand-x")).toBe("#ff0000");
+    applyPatchesToDocument(parsed, result.inverse);
+    expect(readVarDefault(parsed, "brand-x")).toBeUndefined();
+    expect(serializeDocument(parsed)).toBe(before);
   });
 });
 

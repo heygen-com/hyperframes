@@ -19,6 +19,7 @@ import {
   setStyleSheet,
 } from "./model.js";
 import { keyToPath } from "./patches.js";
+import { writeVariableDefault, clearVariableDefault } from "./variableModel.js";
 
 // ─── Path parser ────────────────────────────────────────────────────────────
 
@@ -78,34 +79,20 @@ function parsePath(path: string): ParsedPath | null {
 
 // ─── Variable JSON model helper ───────────────────────────────────────────────
 
-type VariableDecl = { id: string; default: unknown; [key: string]: unknown };
-
 /**
- * Apply a variable value to `data-composition-variables` on
- * `document.documentElement`. When `newDefault` is null (remove op),
- * the variable's `default` is left unchanged (we never erase the schema;
- * only the override is removed). When `newDefault` is a value, the matching
- * declaration's `default` is updated in-place. No-ops gracefully when the
- * attribute or declaration is absent.
+ * Apply a variable patch to `data-composition-variables`. A remove op (null)
+ * deletes the declaration's `default` key, restoring its "no authored default"
+ * state — the exact inverse of a first-set that added a default to a
+ * default-less variable, so undo of such a set round-trips. A value op upserts
+ * the matching declaration's `default`. No-ops when the attr/decl is absent.
+ * Shares the model logic with mutate.ts via ./variableModel.ts.
  */
 function applyVariableDefault(document: Document, id: string, newDefault: unknown): void {
-  const htmlEl = (document as Document & { documentElement?: Element }).documentElement;
-  if (!htmlEl) return;
-  const raw = htmlEl.getAttribute("data-composition-variables");
-  if (!raw) return;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return;
+  if (newDefault === null) {
+    clearVariableDefault(document, id);
+  } else {
+    writeVariableDefault(document, id, newDefault);
   }
-  if (!Array.isArray(parsed)) return;
-  const arr = parsed as VariableDecl[];
-  const idx = arr.findIndex((v) => typeof v === "object" && v !== null && v.id === id);
-  if (idx < 0) return;
-  if (newDefault === null) return; // remove op: leave schema default unchanged
-  arr[idx] = { ...arr[idx]!, default: newDefault };
-  htmlEl.setAttribute("data-composition-variables", JSON.stringify(arr));
 }
 
 // ─── Patch application ───────────────────────────────────────────────────────

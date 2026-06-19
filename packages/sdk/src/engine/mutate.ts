@@ -75,6 +75,7 @@ import {
   unrollDynamicAnimations,
 } from "@hyperframes/core/gsap-writer-acorn";
 import { deriveKeyframeBackfillDefaults } from "./keyframeBackfill.js";
+import { readVariableDefault, writeVariableDefault } from "./variableModel.js";
 
 export interface MutationResult {
   forward: JsonPatchOp[];
@@ -721,8 +722,11 @@ function handleAddElement(
   const ref = Array.from(parentEl.children)[index] ?? null;
   parentEl.insertBefore(node, ref);
 
-  // parentId for the inverse patch: bare id of the parent, or null for body root.
-  const parentId = parent !== null ? (parentEl.getAttribute("data-hf-id") ?? null) : null;
+  // parentId for the inverse/replay patch: preserve the caller's id verbatim
+  // (scoped "hf-host/hf-leaf" path or composition id), not the bare data-hf-id —
+  // apply-patches resolves it via findById→resolveScoped, so dropping the host
+  // prefix would re-insert under the wrong (canonical) parent on redo/replay.
+  const parentId = parent;
 
   const path = elementPath(newId);
   return {
@@ -803,59 +807,9 @@ function handleSetCompositionMetadata(
 }
 
 // ─── Variable JSON model helpers ─────────────────────────────────────────────
-
-type VariableDecl = { id: string; default: unknown; [key: string]: unknown };
-
-/**
- * Read the current `default` value for a variable id from
- * `document.documentElement`'s `data-composition-variables` attribute.
- * Returns undefined when the attribute is absent, the JSON is invalid,
- * or no entry matches the given id.
- */
-function readVariableDefault(document: Document, id: string): unknown {
-  const htmlEl = (document as Document & { documentElement?: Element }).documentElement;
-  if (!htmlEl) return undefined;
-  const raw = htmlEl.getAttribute("data-composition-variables");
-  if (!raw) return undefined;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return undefined;
-  }
-  if (!Array.isArray(parsed)) return undefined;
-  const entry = (parsed as unknown[]).find(
-    (v): v is VariableDecl => typeof v === "object" && v !== null && (v as VariableDecl).id === id,
-  );
-  return entry?.default;
-}
-
-/**
- * Upsert a variable's `default` in `data-composition-variables` on
- * `document.documentElement`. No-ops when the attribute is absent or
- * contains no declaration for the given id (we never auto-add declarations
- * for undeclared variables — keep the schema authoritative).
- * Returns true when the attribute was updated.
- */
-function writeVariableDefault(document: Document, id: string, newDefault: unknown): boolean {
-  const htmlEl = (document as Document & { documentElement?: Element }).documentElement;
-  if (!htmlEl) return false;
-  const raw = htmlEl.getAttribute("data-composition-variables");
-  if (!raw) return false;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return false;
-  }
-  if (!Array.isArray(parsed)) return false;
-  const arr = parsed as VariableDecl[];
-  const idx = arr.findIndex((v) => typeof v === "object" && v !== null && v.id === id);
-  if (idx < 0) return false; // variable not declared — don't auto-add
-  arr[idx] = { ...arr[idx]!, default: newDefault };
-  htmlEl.setAttribute("data-composition-variables", JSON.stringify(arr));
-  return true;
-}
+// readVariableDefault / writeVariableDefault now live in ./variableModel.ts,
+// shared with the patch-replay path (apply-patches.ts) so the model shape can't
+// diverge between forward mutation and replay.
 
 /**
  * True when the value is a FontValue or ImageValue object
