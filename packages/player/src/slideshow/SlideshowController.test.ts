@@ -66,10 +66,12 @@ function showAtSlide1InDeep() {
 }
 
 describe("SlideshowController linear nav", () => {
-  it("enters the first slide on construction: seek to start + play", () => {
+  it("enters the first slide on construction: jumps to the first hold (no auto-play)", () => {
     const p = fakePlayer();
     new SlideshowController(p, SHOW);
-    expect(p.seek).toHaveBeenCalledWith(0);
+    // No auto-play: jumps to the first hold (fragments[0]=2), seeking just before
+    // it (minus the render-nudge) so the composition repaints.
+    expect(p.seek).toHaveBeenCalledWith(1.8);
     expect(p.play).toHaveBeenCalled();
   });
 
@@ -99,7 +101,7 @@ describe("SlideshowController linear nav", () => {
     p.emit(4);
     c.next(); // no more fragments — advance to slide b immediately
     expect(c.position.slideIndex).toBe(1);
-    expect(p.seek).toHaveBeenLastCalledWith(5);
+    expect(p.seek).toHaveBeenLastCalledWith(9.8); // slide b end (10) minus render-nudge
   });
 
   it("next() on a slide with NO fragments advances to the next slide immediately", () => {
@@ -123,7 +125,7 @@ describe("SlideshowController linear nav", () => {
     // slide 0 has no fragments; one next() should advance immediately to slide 1
     c2.next();
     expect(c2.position.slideIndex).toBe(1);
-    expect(p2.seek).toHaveBeenLastCalledWith(5);
+    expect(p2.seek).toHaveBeenLastCalledWith(9.8); // slide b end (10) minus render-nudge
   });
 
   it("next() on the last slide is a no-op", () => {
@@ -186,7 +188,7 @@ describe("SlideshowController branching", () => {
     c.enterBranch("deep");
     expect(c.position.sequenceId).toBe("deep");
     expect(c.currentSlide?.sceneId).toBe("c");
-    expect(p.seek).toHaveBeenLastCalledWith(10);
+    expect(p.seek).toHaveBeenLastCalledWith(12.8); // slide c end (13) minus render-nudge
   });
 
   it("counter is scoped to the current sequence", () => {
@@ -256,7 +258,7 @@ describe("SlideshowController Fix 8b — back() restores parent fragmentIndex", 
     expect(c.position.sequenceId).toBe("main");
     expect(c.position.slideIndex).toBe(0);
     expect(c.position.fragmentIndex).toBe(1);
-    expect(p.seek).toHaveBeenLastCalledWith(4); // fragments[1] = 4
+    expect(p.seek).toHaveBeenLastCalledWith(3.8); // fragments[1] (4) minus render-nudge
   });
 
   it("back() when parent fragmentIndex=-1 seeks to slide start", () => {
@@ -354,8 +356,8 @@ describe("SlideshowController Fix #backToMain — restores fragment position lik
     expect(c.position.sequenceId).toBe("main");
     expect(c.position.slideIndex).toBe(0);
     expect(c.position.fragmentIndex).toBe(1);
-    // resumeSlide seeks to the fragment time (fragments[1]=4)
-    expect(p.seek).toHaveBeenLastCalledWith(4);
+    // resumeSlide seeks to the fragment time (fragments[1]=4) minus the render-nudge
+    expect(p.seek).toHaveBeenLastCalledWith(3.8);
   });
 
   it("backToMain when root fragmentIndex=-1 seeks to slide start", () => {
@@ -602,7 +604,7 @@ describe("SlideshowController syncTo", () => {
     // resumeSlide seeks to slide start, then plays one frame so the composition
     // repaints (a bare paused seek doesn't re-render some compositions); onTime
     // pauses again as soon as the player reports it has reached the hold.
-    expect(p.seek).toHaveBeenLastCalledWith(10);
+    expect(p.seek).toHaveBeenLastCalledWith(9.8); // slide start (10) minus render-nudge
     expect(p.play).toHaveBeenCalled();
     p.emit(50); // player passes the render-nudge hold
     expect(p.pause).toHaveBeenCalled();
@@ -615,7 +617,7 @@ describe("SlideshowController syncTo", () => {
     expect(c.position.sequenceId).toBe("main");
     expect(c.position.slideIndex).toBe(0);
     expect(c.position.fragmentIndex).toBe(1);
-    expect(p.seek).toHaveBeenLastCalledWith(4);
+    expect(p.seek).toHaveBeenLastCalledWith(3.8); // fragments[1] (4) minus render-nudge
   });
 
   it("ignores an unknown sequence target", () => {

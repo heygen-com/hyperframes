@@ -561,8 +561,17 @@ export class HyperframesSlideshow extends HTMLElement {
     const elapsedSec =
       this.presenterStartMs !== null ? Math.floor((Date.now() - this.presenterStartMs) / 1000) : 0;
 
-    // Confine the live slide (the player) to the top region so the speaker-notes
-    // panel sits BELOW it — slide above, notes below.
+    // Pin the live slide to the TOP and reserve the bottom 32% for the notes
+    // panel. The player contains the composition, so the FULL slide stays visible
+    // (letterboxed) at any width — its bottom is never hidden behind the panel —
+    // and it re-fits to the top region on window resize.
+    const playerEl = this.querySelector("hyperframes-player");
+    if (playerEl instanceof HTMLElement) {
+      playerEl.style.top = "0";
+      playerEl.style.bottom = "32%";
+      playerEl.style.height = "auto";
+    }
+
     if (!this.chrome) {
       this.chrome = document.createElement("div");
       this.chrome.setAttribute("data-hf-chrome", "");

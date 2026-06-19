@@ -105,14 +105,16 @@ export class SlideshowController {
     this.holdAt = null;
     const slide = this.currentSlide;
     if (!slide) return;
-    this.player.seek(slide.start);
+    // Jump to the slide's first hold (its first fragment, or the built end-state
+    // when it has none). playTo() seeks rather than sustaining playback, so the
+    // slide does NOT auto-progress — it shows a static frame and waits.
     this.playTo(this.nextStop(slide, -1));
     this.emitChange();
   }
 
   /**
    * Resumes a slide at a saved fragmentIndex without resetting to slide start.
-   * Used by back() to restore the caller's exact position in the parent slide.
+   * Used by back()/backToMain()/syncTo() to restore an exact position.
    */
   private resumeSlide(index: number, fragmentIndex: number): void {
     this.frame.slideIndex = index;
@@ -124,14 +126,8 @@ export class SlideshowController {
       fragmentIndex >= 0 && fragmentIndex < slide.fragments.length
         ? (slide.fragments[fragmentIndex] ?? slide.start)
         : slide.start;
-    // Seek to the target, then play a short way PAST it so the composition
-    // actually repaints — a bare seek while paused does not re-render some
-    // compositions (the audience mirror would otherwise stay frozen on the first
-    // frame), and pausing on the very first timeupdate fires before a paint.
-    // onTime() pauses once playback passes the hold (~a few frames later).
-    const renderHold = Math.min(seekTime + RENDER_NUDGE, slide.end);
-    this.player.seek(seekTime);
-    this.playTo(renderHold);
+    this.holdAt = null;
+    this.playTo(seekTime);
     this.emitChange();
   }
 
@@ -140,8 +136,16 @@ export class SlideshowController {
     return next ?? slide.end;
   }
 
+  /**
+   * Jump to hold time `t` and pause there — NO sustained playback, so slides
+   * never auto-progress. Seeks just before `t` and plays a short render-nudge
+   * ending at `t`: a bare paused seek doesn't repaint some compositions, and
+   * pausing on the first timeupdate fires before a paint. onTime() pauses at `t`
+   * and advances fragmentIndex when `t` is a fragment boundary.
+   */
   private playTo(t: number): void {
     this.holdAt = t;
+    this.player.seek(Math.max(0, t - RENDER_NUDGE));
     this.player.play();
   }
 
@@ -167,7 +171,7 @@ export class SlideshowController {
     if (!slide) return;
     const hasMoreFragments = this.frame.fragmentIndex + 1 < slide.fragments.length;
     if (hasMoreFragments) {
-      // Reveal the next fragment (play-to-hold). onTime() advances fragmentIndex at the hold.
+      // Reveal the next fragment. onTime() advances fragmentIndex at the hold.
       const nextTarget = this.nextStop(slide, this.frame.fragmentIndex);
       this.playTo(nextTarget);
       this.emitChange();
