@@ -125,6 +125,7 @@ jobs:
           }
 
           publish_pkg "@hyperframes/core" "@hyperframes/core"
+          publish_pkg "@hyperframes/sdk" "@hyperframes/sdk"
           publish_pkg "@hyperframes/engine" "@hyperframes/engine"
           publish_pkg "@hyperframes/player" "@hyperframes/player"
           publish_pkg "@hyperframes/producer" "@hyperframes/producer"
