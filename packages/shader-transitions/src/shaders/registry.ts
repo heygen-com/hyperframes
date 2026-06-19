@@ -98,7 +98,13 @@ const shaders: Record<string, ShaderDef> = {
       "float shift=pull*.02/(dist+.2);" +
       "float r=texture2D(u_from,clamp(v_uv-uv*(warpStr+shift),0.,1.)).r;" +
       "float b=texture2D(u_from,clamp(v_uv-uv*(warpStr-shift),0.,1.)).b;" +
-      "vec3 lensed=vec3(r,A.g,b)*horizon;" +
+      // The horizon term darkens the center to black, but it is not gated by
+      // progress, so at progress 0 the from-scene rendered as a black-hole
+      // vignette instead of the clean outgoing frame. Ramp the darkening in from
+      // progress 0 so lensed == from-scene at the transition start, matching
+      // every other shader in this file.
+      "float horizonRamp=smoothstep(0.,.3,u_progress);" +
+      "vec3 lensed=vec3(r,A.g,b)*mix(1.,horizon,horizonRamp);" +
       "gl_FragColor=vec4(mix(lensed,B.rgb,smoothstep(.3,.9,u_progress)),1.);}",
   },
 
