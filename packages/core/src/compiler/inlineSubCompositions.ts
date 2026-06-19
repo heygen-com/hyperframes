@@ -369,6 +369,11 @@ export function inlineSubCompositions(
       for (const child of [...innerRoot.querySelectorAll("style, script")]) child.remove();
       if (flattenInnerRoot) {
         const prepared = flattenInnerRoot(innerRoot);
+        if (!compId && inferredCompId) {
+          // Anonymous hosts have no outer composition id, so keep the inferred
+          // boundary on the preserved inner root after flattenInnerRoot strips it.
+          prepared.setAttribute("data-composition-id", inferredCompId);
+        }
         hostEl.innerHTML = prepared.outerHTML || "";
       } else {
         hostEl.innerHTML = compId ? innerRoot.innerHTML || "" : innerRoot.outerHTML || "";

@@ -596,13 +596,15 @@ describe("template-wrapped sub-composition media offsets", () => {
       join(compositionsDir, "scene.html"),
       `<template id="scene-template">
   <div
+    id="scene-root"
+    class="scene-wrapper"
     data-composition-id="scene"
     data-start="0"
     data-width="640"
     data-height="360"
     data-duration="4"
   >
-    <style>.title { opacity: 0; }</style>
+    <style>.scene-wrapper .title { opacity: 0; }</style>
     <h1 class="title">Scene</h1>
     <video
       id="scene-video"
@@ -718,7 +720,7 @@ describe("template-wrapped sub-composition media offsets", () => {
     );
   });
 
-  it("flattens the sub-composition root onto the host in compiled render HTML", async () => {
+  it("preserves the sub-composition root wrapper in compiled render HTML", async () => {
     const { projectDir, indexPath } = writeTemplateWrappedProject(
       'data-start="20" data-duration="6" data-width="640" data-height="360"',
       'data-start="1.5" data-duration="4"',
@@ -728,17 +730,19 @@ describe("template-wrapped sub-composition media offsets", () => {
 
     const { document } = parseHTML(compiled.html);
     const host = document.querySelector("#scene-host");
+    const innerRoot = host?.querySelector('[data-hf-inner-root="true"]');
 
     expect(host?.getAttribute("data-composition-id")).toBe("scene");
     expect(host?.getAttribute("data-start")).toBe("20");
     expect(host?.getAttribute("data-width")).toBe("640");
     expect(host?.querySelector(".title")?.textContent).toBe("Scene");
-    expect(
-      Array.from(host?.children ?? []).some(
-        (child) => child.getAttribute("data-composition-id") === "scene",
-      ),
-    ).toBe(false);
-    expect(compiled.html).toContain('[data-composition-id="scene"] .title');
+    expect(innerRoot?.classList.contains("scene-wrapper")).toBe(true);
+    expect(innerRoot?.getAttribute("data-hf-authored-id")).toBe("scene-root");
+    expect(innerRoot?.getAttribute("id")).toBeNull();
+    expect(innerRoot?.getAttribute("data-composition-id")).toBeNull();
+    expect(innerRoot?.getAttribute("data-start")).toBeNull();
+    expect(innerRoot?.getAttribute("data-duration")).toBeNull();
+    expect(compiled.html).toContain('[data-composition-id="scene"] .scene-wrapper .title');
     expect(compiled.html).toContain("new Proxy(window.document");
     expect(compiled.html).toContain("__hfNormalizeSelector");
   });
@@ -761,7 +765,7 @@ describe("template-wrapped sub-composition media offsets", () => {
     writeFileSync(
       join(compositionsDir, "scene.html"),
       `<template id="scene-template">
-  <div data-composition-id="scene" data-width="640" data-height="360" data-duration="4">
+  <div id="scene-root" data-composition-id="scene" data-width="640" data-height="360" data-duration="4">
     <style>.title { opacity: 0; }</style>
     <h1 class="title">Scene</h1>
     <script>
@@ -777,7 +781,11 @@ describe("template-wrapped sub-composition media offsets", () => {
     const host = document.querySelector("#scene-host");
 
     expect(host?.getAttribute("data-composition-id")).toBeNull();
-    expect(host?.querySelector('[data-composition-id="scene"] .title')?.textContent).toBe("Scene");
+    const innerRoot = host?.querySelector('[data-composition-id="scene"]');
+    expect(innerRoot?.getAttribute("data-hf-inner-root")).toBe("true");
+    expect(innerRoot?.getAttribute("id")).toBeNull();
+    expect(innerRoot?.getAttribute("data-duration")).toBeNull();
+    expect(innerRoot?.querySelector(".title")?.textContent).toBe("Scene");
     expect(compiled.html).toContain('var __hfCompId = "scene";');
   });
 });

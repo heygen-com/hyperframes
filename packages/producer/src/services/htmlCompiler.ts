@@ -23,7 +23,10 @@ import {
   type ResolvedDuration,
   type UnresolvedElement,
 } from "@hyperframes/core";
-import { inlineSubCompositions as inlineSubCompositionsShared } from "@hyperframes/core/compiler";
+import {
+  inlineSubCompositions as inlineSubCompositionsShared,
+  prepareFlattenedInnerRoot,
+} from "@hyperframes/core/compiler";
 import { extractMediaMetadata, extractAudioMetadata } from "../utils/ffprobe.js";
 import { isPathInside, toExternalAssetKey } from "../utils/paths.js";
 import {
@@ -603,21 +606,9 @@ function inlineSubCompositions(
       },
       parseHtml: (htmlStr: string) => parseHTML(htmlStr).document as unknown as Document,
       scriptErrorLabel: "[Compiler] Composition script failed",
-      compoundAuthoredRoot: true,
+      flattenInnerRoot: prepareFlattenedInnerRoot,
     },
   );
-
-  // Set data-hf-authored-id on host elements so the scoped script proxy
-  // can rewrite #id selectors (e.g. #us-map → [data-hf-authored-id="us-map"]).
-  // Unlike flattenInnerRoot (which changes DOM structure and breaks baselines),
-  // this preserves the existing innerHTML-based inlining while enabling the
-  // authored-id selector contract.
-  for (const hostEl of hosts) {
-    const compId = hostEl.getAttribute("data-composition-id");
-    if (compId && !hostEl.getAttribute("data-hf-authored-id")) {
-      hostEl.setAttribute("data-hf-authored-id", compId);
-    }
-  }
 
   // Producer-specific: set explicit pixel dimensions on host elements so
   // children using width/height: 100% resolve correctly. The runtime does

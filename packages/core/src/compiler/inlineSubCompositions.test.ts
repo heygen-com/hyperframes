@@ -37,6 +37,16 @@ function makeHostDocument(compId: string) {
   return document;
 }
 
+function makeAnonymousHostDocument() {
+  const { document } = parseHTML(`<!DOCTYPE html>
+<html><body>
+  <div data-composition-id="main">
+    <div data-composition-src="intro.html" data-start="0" data-duration="4"></div>
+  </div>
+</body></html>`);
+  return document;
+}
+
 describe("inlineSubCompositions – #ID selector scoping divergence", () => {
   it("throws an actionable error when a resolved sub-composition file is empty", () => {
     const document = makeHostDocument("intro");
@@ -143,6 +153,31 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
     // CSS is still rewritten to use the attribute selector.
     const scopedCss = result.styles.join("\n");
     expect(scopedCss).toContain('[data-hf-authored-id="intro"]');
+  });
+
+  it("preserves the inferred composition boundary for anonymous hosts", () => {
+    const document = makeAnonymousHostDocument();
+    const host = document.querySelector('[data-composition-src="intro.html"]')!;
+
+    function flattenInnerRoot(innerRoot: Element): Element {
+      const clone = innerRoot.cloneNode(true) as Element;
+      clone.removeAttribute("id");
+      clone.removeAttribute("data-composition-id");
+      clone.setAttribute("data-hf-inner-root", "true");
+      return clone;
+    }
+
+    inlineSubCompositions(document, [host], {
+      resolveHtml: () => SUB_COMP_HTML,
+      parseHtml: (html) => parseHTML(html).document,
+      flattenInnerRoot,
+    });
+
+    expect(host.getAttribute("data-composition-id")).toBeNull();
+    const inferredRoot = host.querySelector('[data-composition-id="intro"]');
+    expect(inferredRoot?.getAttribute("data-hf-inner-root")).toBe("true");
+    expect(inferredRoot?.getAttribute("id")).toBeNull();
+    expect(inferredRoot?.querySelector(".title")?.textContent).toBe("HELLO WORLD");
   });
 
   it("extracts <link> elements from sub-composition <head> with original rel and crossorigin", () => {
