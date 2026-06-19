@@ -1,8 +1,23 @@
 import { swallow } from "./diagnostics";
+import { getDebugSurface } from "./globals.js";
 
 function normalizeRate(rate: number): number {
   if (!Number.isFinite(rate) || rate <= 0) return 1;
   return rate;
+}
+
+/**
+ * Breadcrumb for the per-element-mute handoff: the transport just claimed a track
+ * that was audibly playing through the HTMLMedia fallback. Quiet unless
+ * `__hfDebug` — a hook for diagnosing the race if it ever regresses.
+ */
+function logFallbackHandoff(el: HTMLMediaElement, priorMuted: boolean): void {
+  if (priorMuted || el.paused || !getDebugSurface().__hfDebug) return;
+  // eslint-disable-next-line no-console -- intentional debug surface
+  console.debug(
+    "[hyperframes] webAudioTransport claimed fallback-playing element:",
+    el.currentSrc || el.getAttribute("src") || "",
+  );
 }
 
 /**
@@ -96,14 +111,32 @@ export class WebAudioTransport {
     if (this._bufferCache.has(src)) return this._bufferCache.get(src)!;
     if (this._failedSrcs.has(src)) return null;
     if (!this._ctx) return null;
+
+    // Fetch the bytes. A network error or non-OK status (e.g. a 404 for an
+    // asset that simply has not been uploaded yet) is TRANSIENT — return null
+    // WITHOUT blacklisting, so the next play/seek generation retries once the
+    // asset becomes available. (Previously these were added to `_failedSrcs`,
+    // which is never cleared, permanently silencing a merely-late track.)
+    let arrayBuffer: ArrayBuffer;
     try {
-      const response = await fetch(src);
+      // `no-store`: a retry must actually re-request the asset — not replay a
+      // cached 404/stale response from the failed attempt that we chose not to
+      // blacklist.
+      const response = await fetch(src, { cache: "no-store" });
       if (!response.ok) {
-        this._failedSrcs.add(src);
         swallow("webAudioTransport.fetch", new Error(`${response.status} ${src}`));
         return null;
       }
-      const arrayBuffer = await response.arrayBuffer();
+      arrayBuffer = await response.arrayBuffer();
+    } catch (err) {
+      swallow("webAudioTransport.fetch", err);
+      return null;
+    }
+
+    // A decode failure means the bytes themselves are unusable (corrupt or an
+    // unsupported codec) — that IS permanent, so blacklist to avoid re-decoding
+    // the same bad payload on every generation.
+    try {
       const audioBuffer = await this._ctx.decodeAudioData(arrayBuffer);
       this._bufferCache.set(src, audioBuffer);
       return audioBuffer;
@@ -177,6 +210,7 @@ export class WebAudioTransport {
 
       const priorMuted = el.muted;
       el.muted = true;
+      logFallbackHandoff(el, priorMuted);
 
       const scheduled: ScheduledSource = {
         el,
@@ -281,9 +315,16 @@ export class WebAudioTransport {
     return this._activeSources.length > 0 && !this._paused;
   }
 
+  /** Whether the transport currently plays THIS element (the runtime mutes it to
+   *  avoid double audio; an unclaimed track stays audible). */
+  ownsElement(el: HTMLMediaElement): boolean {
+    return !this._paused && this._activeSources.some((s) => s.el === el);
+  }
+
   destroy(): void {
     this.stopAll();
     this._bufferCache.clear();
+    this._failedSrcs.clear();
     if (this._ctx) {
       try {
         void this._ctx.close();

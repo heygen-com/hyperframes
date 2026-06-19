@@ -113,6 +113,14 @@ function markPlayRequested(el: HTMLMediaElement): void {
   el.addEventListener("error", clear, { once: true });
 }
 
+// HTMLMediaElement.NETWORK_NO_SOURCE — no usable source (404 / unsupported).
+const MEDIA_NETWORK_NO_SOURCE = 3;
+// An element that errored or has no source can't play; re-issuing play() every
+// tick just floods rejections. Skip it until its state changes (src reload).
+function isUnplayable(el: HTMLMediaElement): boolean {
+  return el.error != null || el.networkState === MEDIA_NETWORK_NO_SOURCE;
+}
+
 const lastRuntimeAppliedVolume = new WeakMap<HTMLMediaElement, number>();
 
 function clampVolume(volume: number): number {
@@ -126,11 +134,8 @@ export function syncRuntimeMedia(params: {
   timeSeconds: number;
   playing: boolean;
   playbackRate: number;
-  /**
-   * Parent-frame audio-owner has taken over audible playback. Assert
-   * `el.muted = true` on every active media element per tick so that any
-   * sub-composition media inserted mid-playback inherits the silence.
-   */
+  /** Force-mute every element (parent-frame proxy owns all audio). Asserted per
+   *  tick so sub-composition media added mid-playback inherits the silence. */
   outputMuted?: boolean;
   /**
    * User's explicit mute preference (set via `onSetMuted`). Symmetric to
@@ -151,11 +156,13 @@ export function syncRuntimeMedia(params: {
    */
   onAutoplayBlocked?: () => void;
   onElementVolume?: (el: HTMLMediaElement, volume: number) => void;
+  /** Is THIS element owned by the Web Audio transport? Owned → mute it (transport
+   *  plays it); not owned → leave audible (HTMLMedia fallback). Per-element, not a
+   *  global flag, so a not-yet-claimed track isn't muted by other tracks. */
+  isWebAudioOwned?: (el: HTMLMediaElement) => boolean;
   forceSync?: boolean;
 }): void {
-  // Either flag silences output. Combined up front so the per-clip loop is
-  // a single branch instead of two.
-  const shouldMute = !!(params.outputMuted || params.userMuted);
+  const forceMuteAll = !!(params.outputMuted || params.userMuted);
   for (const clip of params.clips) {
     const { el } = clip;
     if (!el.isConnected) continue;
@@ -205,7 +212,9 @@ export function syncRuntimeMedia(params: {
       el.volume = effectiveVolume;
       lastRuntimeAppliedVolume.set(el, effectiveVolume);
       params.onElementVolume?.(el, effectiveVolume);
-      if (shouldMute) el.muted = true;
+      // Mute only when force-muted or the transport owns this element; an unclaimed
+      // track stays audible via the HTMLMedia fallback.
+      if (forceMuteAll || params.isWebAudioOwned?.(el)) el.muted = true;
       // Ensure full preload for every active media element. Streaming
       // formats (MP3) may arrive with preload="metadata", which only
       // buffers the first few seconds and causes seeks to silently fail
@@ -297,7 +306,7 @@ export function syncRuntimeMedia(params: {
         }
         playRequested.delete(el);
       }
-      if (params.playing && el.paused && !playRequested.has(el)) {
+      if (params.playing && el.paused && !playRequested.has(el) && !isUnplayable(el)) {
         // `HTMLMediaElement.play()` is spec'd to queue playback and resolve
         // once enough data is buffered, so we can unconditionally call it —
         // no need to gate on `readyState` or defer to a `canplay` listener.

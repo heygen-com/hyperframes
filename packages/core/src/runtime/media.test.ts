@@ -262,6 +262,41 @@ describe("syncRuntimeMedia", () => {
     expect(clip.el.play).toHaveBeenCalled();
   });
 
+  describe("play() storm guard (unplayable elements)", () => {
+    it("does not play() an element with a media error", () => {
+      const clip = createMockClip({ start: 0, end: 10 });
+      Object.defineProperty(clip.el, "error", { value: { code: 4 }, configurable: true });
+      syncRuntimeMedia({ clips: [clip], timeSeconds: 5, playing: true, playbackRate: 1 });
+      expect(clip.el.play).not.toHaveBeenCalled();
+    });
+
+    it("does not play() an element whose networkState is NO_SOURCE", () => {
+      const clip = createMockClip({ start: 0, end: 10 });
+      Object.defineProperty(clip.el, "networkState", { value: 3, configurable: true });
+      syncRuntimeMedia({ clips: [clip], timeSeconds: 5, playing: true, playbackRate: 1 });
+      expect(clip.el.play).not.toHaveBeenCalled();
+    });
+
+    it("does not re-play() across ticks while the element stays errored", () => {
+      const clip = createMockClip({ start: 0, end: 10 });
+      Object.defineProperty(clip.el, "error", { value: { code: 4 }, configurable: true });
+      for (const t of [5, 5.1, 5.2, 5.3]) {
+        syncRuntimeMedia({ clips: [clip], timeSeconds: t, playing: true, playbackRate: 1 });
+      }
+      expect(clip.el.play).not.toHaveBeenCalled();
+    });
+
+    it("plays again once the element recovers (error clears)", () => {
+      const clip = createMockClip({ start: 0, end: 10 });
+      Object.defineProperty(clip.el, "error", { value: { code: 4 }, configurable: true });
+      syncRuntimeMedia({ clips: [clip], timeSeconds: 5, playing: true, playbackRate: 1 });
+      expect(clip.el.play).not.toHaveBeenCalled();
+      Object.defineProperty(clip.el, "error", { value: null, configurable: true });
+      syncRuntimeMedia({ clips: [clip], timeSeconds: 5.1, playing: true, playbackRate: 1 });
+      expect(clip.el.play).toHaveBeenCalled();
+    });
+  });
+
   it("forces preload=auto on every active element, not just during play", () => {
     // Streaming formats (MP3) may arrive with preload="metadata", which only
     // buffers the first few seconds. Setting preload="auto" on every active
@@ -467,6 +502,84 @@ describe("syncRuntimeMedia", () => {
 
     expect(clip.el.volume).toBeCloseTo(0.375);
     expect(onElementVolume).toHaveBeenLastCalledWith(clip.el, 0.375);
+  });
+
+  describe("per-element mute (Web Audio ownership)", () => {
+    it("mutes a clip whose element the transport owns", () => {
+      const clip = createMockClip({ start: 0, end: 10 });
+      syncRuntimeMedia({
+        clips: [clip],
+        timeSeconds: 5,
+        playing: true,
+        playbackRate: 1,
+        isWebAudioOwned: (el) => el === clip.el,
+      });
+      expect(clip.el.muted).toBe(true);
+    });
+
+    it("leaves an un-owned clip audible while another track is on Web Audio", () => {
+      // Regression: the un-owned track used to be muted by the global gate the
+      // moment any source was active → silent while the owned track played.
+      const owned = createMockClip({ start: 0, end: 10 });
+      const unowned = createMockClip({ start: 0, end: 10 });
+      syncRuntimeMedia({
+        clips: [owned, unowned],
+        timeSeconds: 5,
+        playing: true,
+        playbackRate: 1,
+        isWebAudioOwned: (el) => el === owned.el,
+      });
+      expect(owned.el.muted).toBe(true);
+      expect(unowned.el.muted).toBe(false);
+    });
+
+    it("force-mutes every element when outputMuted (parent proxy owns all audio)", () => {
+      const clip = createMockClip({ start: 0, end: 10 });
+      syncRuntimeMedia({
+        clips: [clip],
+        timeSeconds: 5,
+        playing: true,
+        playbackRate: 1,
+        outputMuted: true,
+        isWebAudioOwned: () => false,
+      });
+      expect(clip.el.muted).toBe(true);
+    });
+
+    it("force-mutes every element when userMuted", () => {
+      const clip = createMockClip({ start: 0, end: 10 });
+      syncRuntimeMedia({
+        clips: [clip],
+        timeSeconds: 5,
+        playing: true,
+        playbackRate: 1,
+        userMuted: true,
+        isWebAudioOwned: () => false,
+      });
+      expect(clip.el.muted).toBe(true);
+    });
+
+    it("mutes only once the transport takes the element over", () => {
+      const clip = createMockClip({ start: 0, end: 10 });
+      let owned = false;
+      syncRuntimeMedia({
+        clips: [clip],
+        timeSeconds: 5,
+        playing: true,
+        playbackRate: 1,
+        isWebAudioOwned: () => owned,
+      });
+      expect(clip.el.muted).toBe(false); // decoding — audible via HTMLMedia fallback
+      owned = true;
+      syncRuntimeMedia({
+        clips: [clip],
+        timeSeconds: 5.1,
+        playing: true,
+        playbackRate: 1,
+        isWebAudioOwned: () => owned,
+      });
+      expect(clip.el.muted).toBe(true);
+    });
   });
 
   it("hard-syncs on the first active tick (sub-composition activation, mediaStart offsets)", () => {

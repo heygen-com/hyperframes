@@ -1506,11 +1506,12 @@ export function initSandboxRuntimeModular(): void {
       timeSeconds: state.currentTime,
       playing: state.isPlaying,
       playbackRate: state.playbackRate,
-      outputMuted: state.mediaOutputMuted || webAudio.isActive(),
+      outputMuted: state.mediaOutputMuted,
       userMuted: state.bridgeMuted,
       userVolume: state.bridgeVolume,
       forceSync,
       onElementVolume: (el, volume) => webAudio.setElementVolume(el, volume),
+      isWebAudioOwned: (el) => webAudio.ownsElement(el),
       onAutoplayBlocked: () => {
         if (state.mediaAutoplayBlockedPosted) return;
         state.mediaAutoplayBlockedPosted = true;
