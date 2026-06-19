@@ -193,6 +193,12 @@ describe("createManualOffsetDragMember uses raw CSS var offset", () => {
 
     element.style.setProperty(STUDIO_OFFSET_X_PROP, "30px");
     element.style.setProperty(STUDIO_OFFSET_Y_PROP, "10px");
+    // Old projects bake the offset by referencing the vars in the inline
+    // `translate` longhand — that's what makes the offset "applied" and thus the
+    // valid drag base (readAppliedStudioPathOffset). A raw var with no applied
+    // translate is dormant and reads as zero. Assign the typed `.translate`
+    // accessor (happy-dom doesn't surface it via setProperty).
+    element.style.translate = `var(${STUDIO_OFFSET_X_PROP}, 0px) var(${STUDIO_OFFSET_Y_PROP}, 0px)`;
     element.style.setProperty("transform", "translate(50px, -15px)");
 
     element.getBoundingClientRect = () => {
@@ -228,6 +234,12 @@ describe("createManualOffsetDragMember uses raw CSS var offset", () => {
     // Simulate GSAP baking a translate into transform each cycle
     for (let cycle = 0; cycle < 3; cycle++) {
       element.style.setProperty("transform", `translate(${50 * (cycle + 1)}px, 0px)`);
+      // Mark the offset as APPLIED (the inline translate references the studio
+      // vars, the form an old project bakes) so readAppliedStudioPathOffset reads
+      // the var, not zero. Without this the var is dormant and reads as zero.
+      // Assign the typed `.translate` accessor (happy-dom doesn't surface it via
+      // setProperty).
+      element.style.translate = `var(${STUDIO_OFFSET_X_PROP}, 0px) var(${STUDIO_OFFSET_Y_PROP}, 0px)`;
 
       const result = createManualOffsetDragMember({
         key: "test",

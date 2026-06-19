@@ -15,7 +15,9 @@ import { usePlayerStore } from "../player/store/playerStore";
 import { readAllAnimatedProperties, readGsapProperty } from "./gsapRuntimeReaders";
 import {
   commitGsapPositionFromDrag,
+  commitStaticGsapPosition,
   computeCurrentPercentage,
+  findPositionSetAnimation,
   materializeIfDynamic,
 } from "./gsapDragCommit";
 import { resolveTweenStart, resolveTweenDuration } from "../utils/globalTimeCompiler";
@@ -212,28 +214,39 @@ export async function tryGsapDragIntercept(
   );
 
   let posAnim = resolved?.anim ?? null;
+  let resolvedAnimations = resolved?.animations ?? animations;
   if (!posAnim) {
     posAnim = findGsapPositionAnimation(animations, selector);
     if (!posAnim && fetchFallbackAnimations) {
       const fresh = await fetchFallbackAnimations();
+      resolvedAnimations = fresh;
       posAnim = findGsapPositionAnimation(fresh, selector);
     }
   }
-  if (!posAnim) {
-    return false;
-  }
 
-  // The live runtime is authoritative; `selectedGsapAnimations` (and the fetch
-  // fallback) is an async server-parse that LAGS a delete-all, so `posAnim` can
-  // be a phantom of a just-deleted tween. If the live timeline has no non-hold
-  // tween for this element, the parse is stale — bail so the drag falls back to
-  // the CSS path instead of resurrecting the deleted animation from stale cache.
+  const gsapPos = readGsapPositionFromIframe(iframe, selector) ?? { x: 0, y: 0 };
+
+  // STATIC case (single source of truth = GSAP timeline): the element has no
+  // LIVE keyframed/tweened position motion. `readRuntimeKeyframes` skips
+  // zero-duration `set`s, so it returns null both for a never-animated element
+  // and for one whose only position entry is a position-hold `set`. Either way
+  // the position belongs in a `tl.set("#el",{x,y})`, not a keyframe conversion:
+  // re-nudge an existing set in place (idempotent), else add a new one. This
+  // also covers the stale-cache phantom (parse lags a delete-all) — committing a
+  // set is correct there because the element genuinely has no live motion.
   if (!readRuntimeKeyframes(iframe, selector)) {
-    return false;
+    const existingSet =
+      posAnim && posAnim.method === "set" && posAnim.targetSelector === selector
+        ? posAnim
+        : findPositionSetAnimation(resolvedAnimations, selector);
+    await commitStaticGsapPosition(selection, offset, gsapPos, selector, existingSet, {
+      commitMutation,
+      fetchAnimations: fetchFallbackAnimations,
+    });
+    return true;
   }
 
-  const gsapPos = readGsapPositionFromIframe(iframe, selector);
-  if (!gsapPos) {
+  if (!posAnim) {
     return false;
   }
 

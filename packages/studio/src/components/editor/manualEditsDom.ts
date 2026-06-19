@@ -70,6 +70,19 @@ export function readStudioPathOffset(element: HTMLElement): { x: number; y: numb
   };
 }
 
+/**
+ * The path offset ACTUALLY applied right now. The `--hf-studio-offset` vars can
+ * linger after GSAP re-bakes the element's transform (`translate:"none"`), so the
+ * raw var isn't a safe drag base — using it re-commits a phantom offset and flings
+ * the element off-screen. The offset only counts when the inline `translate` is the
+ * studio var-translate; otherwise it's dormant and the applied offset is zero.
+ */
+export function readAppliedStudioPathOffset(element: HTMLElement): { x: number; y: number } {
+  return (element.style.translate || "").includes(STUDIO_OFFSET_X_PROP)
+    ? readStudioPathOffset(element)
+    : { x: 0, y: 0 };
+}
+
 export function readStudioBoxSize(element: HTMLElement): { width: number; height: number } {
   return {
     width: readPxCustomProperty(element, STUDIO_WIDTH_PROP),

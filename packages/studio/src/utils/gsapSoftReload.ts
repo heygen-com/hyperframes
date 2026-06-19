@@ -73,9 +73,27 @@ export function applySoftReload(iframe: HTMLIFrameElement | null, scriptText: st
   if (!win || !doc) return false;
   if (!win.gsap || !win.__hfForceTimelineRebind) return false;
 
+  // Which composition(s) does this script rebuild? A soft reload re-runs ONE
+  // composition's GSAP script, which re-registers its own window.__timelines[key].
+  // In a multi-composition preview (top-level + inlined subcompositions) each
+  // composition owns a separate timeline keyed by its id, and they're all children
+  // of the global timeline — so tearing down ALL of them (or the global timeline's
+  // children) and re-running a single script wipes every OTHER composition,
+  // reverting its edits. Scope the teardown to the keys THIS script re-registers.
+  const targetKeys = [...scriptText.matchAll(/__timelines\s*\[\s*["'`]([^"'`]+)["'`]\s*\]/g)]
+    .map((m) => m[1]!)
+    .filter((key) => key !== "__proxied");
+  if (targetKeys.length === 0) return false; // can't scope safely → caller does a full reload
   const gsapScripts = findGsapScriptElements(doc);
-  if (gsapScripts.length !== 1) return false;
-  const oldScriptEl = gsapScripts[0]!;
+  if (gsapScripts.length === 0) return false;
+  // Remove only the stale script element(s) that registered a target key; one we
+  // can't match in the doc is left alone (re-running appends a fresh element).
+  const staleScripts = gsapScripts.filter((script) =>
+    targetKeys.some((key) => {
+      const text = script.textContent || "";
+      return text.includes(`__timelines["${key}"]`) || text.includes(`__timelines['${key}']`);
+    }),
+  );
 
   const currentTime = win.__player?.getTime?.() ?? 0;
 
@@ -91,47 +109,42 @@ export function applySoftReload(iframe: HTMLIFrameElement | null, scriptText: st
     const timelines = win.__timelines;
     const allTargets: Element[] = [];
 
+    // Kill ONLY the target composition's timeline(s) — leaving every other
+    // composition's timeline (and its children on the global timeline) intact.
     if (timelines) {
-      for (const key of Object.keys(timelines)) {
-        if (key === "__proxied") continue;
-        try {
-          const tl = timelines[key] as {
-            kill?: () => void;
-            getChildren?: (deep: boolean) => Array<{ targets?: () => Element[] }>;
-          };
-          if (tl?.getChildren) {
-            try {
-              for (const child of tl.getChildren(true)) {
-                if (typeof child.targets === "function") {
-                  for (const t of child.targets()) allTargets.push(t);
-                }
+      for (const key of targetKeys) {
+        const tl = timelines[key] as
+          | {
+              kill?: () => void;
+              getChildren?: (deep: boolean) => Array<{ targets?: () => Element[] }>;
+            }
+          | undefined;
+        if (!tl) continue;
+        if (tl.getChildren) {
+          try {
+            for (const child of tl.getChildren(true)) {
+              if (typeof child.targets === "function") {
+                for (const t of child.targets()) allTargets.push(t);
               }
-            } catch {}
-          }
-          tl?.kill?.();
+            }
+          } catch {}
+        }
+        try {
+          tl.kill?.();
         } catch {}
         delete timelines[key];
       }
     }
 
-    // Kill bare gsap.to/from tweens not registered on __timelines
-    if (win.gsap?.globalTimeline?.getChildren) {
-      try {
-        for (const child of win.gsap.globalTimeline.getChildren(false)) {
-          child.kill?.();
-        }
-      } catch {}
-    }
-
-    // Clear residual inline transforms left by killed tweens so from() tweens
-    // don't read stale end values from the DOM on re-execution
+    // Clear residual inline transforms on the re-run composition's targets only, so
+    // from() tweens don't read stale end values from the DOM on re-execution.
     if (allTargets.length > 0 && win.gsap?.set) {
       try {
         win.gsap.set(allTargets, { clearProps: "all" });
       } catch {}
     }
 
-    oldScriptEl.remove();
+    for (const script of staleScripts) script.remove();
 
     const executeScript = () => {
       if (win.MotionPathPlugin && win.gsap?.registerPlugin) {

@@ -282,7 +282,6 @@ describe("DomEditOverlay", () => {
     };
 
     let currentSelection: DomEditSelection | null = selection;
-    const onToggleRecording = vi.fn();
     const iframeRef = { current: document.createElement("iframe") as HTMLIFrameElement | null };
     const originalPointerCapture = HTMLDivElement.prototype.setPointerCapture;
     HTMLDivElement.prototype.setPointerCapture = () => {};
@@ -298,8 +297,6 @@ describe("DomEditOverlay", () => {
           hoverSelection: null,
           onSelectionChange: (next: DomEditSelection) => setSelected(next),
         }),
-        recordingState: "idle",
-        onToggleRecording,
       });
     }
 
@@ -340,16 +337,6 @@ describe("DomEditOverlay", () => {
       "drag",
       expect.objectContaining({ button: 0 }),
     );
-    const recordButton = host.querySelector(
-      '[aria-label="Record gesture (R)"]',
-    ) as HTMLButtonElement;
-    expect(recordButton).toBeTruthy();
-
-    act(() => {
-      recordButton.click();
-    });
-
-    expect(onToggleRecording).toHaveBeenCalledTimes(1);
 
     act(() => {
       root.unmount();

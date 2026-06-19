@@ -9,6 +9,7 @@ import { readRuntimeKeyframes, scanAllRuntimeKeyframes } from "./gsapRuntimeKeyf
 import { resolveTweenStart, resolveTweenDuration } from "../utils/globalTimeCompiler";
 import { roundTo3 } from "../utils/rounding";
 import { computeElementPercentage } from "./gsapShared";
+import { computeDraggedGsapPosition } from "./draggedGsapPosition";
 export interface GsapDragCommitCallbacks {
   commitMutation: (
     selection: DomEditSelection,
@@ -297,6 +298,78 @@ async function commitFlatViaKeyframes(
   if (editedSelected) parkPlayheadOnKeyframe(anim, pct);
 }
 
+// ── Drag → GSAP position math ──────────────────────────────────────────────
+
+// Math lives in its own leaf module so the live-preview file can reuse it
+// without importing the GSAP commit graph (store/runtime/core).
+export { computeDraggedGsapPosition };
+
+/**
+ * Find the studio position-hold `set` for a selector — a `tl.set("#el",{x,y})`
+ * with no duration. This is what a static-element nudge writes/updates.
+ */
+function findPositionSetAnimation(
+  animations: GsapAnimation[],
+  selector: string,
+): GsapAnimation | null {
+  return (
+    animations.find(
+      (a) =>
+        a.method === "set" &&
+        a.targetSelector === selector &&
+        ("x" in a.properties || "y" in a.properties),
+    ) ?? null
+  );
+}
+
+/**
+ * Commit a STATIC element drag as a `tl.set("#el",{x,y})` — the single-source
+ * position channel for elements with no position animation. Idempotent: a
+ * re-nudge of an element that already has a `set` UPDATES that set's x/y
+ * (two `update-property` mutations) rather than stacking a second set or
+ * converting it to keyframes (plan R2 / KTD3). New elements get one `add`
+ * mutation with `method:"set"` at position 0.
+ */
+export async function commitStaticGsapPosition(
+  selection: DomEditSelection,
+  studioOffset: { x: number; y: number },
+  gsapPos: { x: number; y: number },
+  selector: string,
+  existingSet: GsapAnimation | null,
+  callbacks: GsapDragCommitCallbacks,
+): Promise<void> {
+  const { newX, newY } = computeDraggedGsapPosition(selection.element, studioOffset, gsapPos);
+  if (existingSet) {
+    // Update in place — two single-property mutations (the API updates one prop
+    // per call). Coalesce them and reload only after the second lands.
+    const coalesceKey = `gsap:set-nudge:${existingSet.id}`;
+    await callbacks.commitMutation(
+      selection,
+      { type: "update-property", animationId: existingSet.id, property: "x", value: newX },
+      { label: "Move layer", skipReload: true, coalesceKey },
+    );
+    await callbacks.commitMutation(
+      selection,
+      { type: "update-property", animationId: existingSet.id, property: "y", value: newY },
+      { label: "Move layer", softReload: true, coalesceKey },
+    );
+    return;
+  }
+  await callbacks.commitMutation(
+    selection,
+    {
+      type: "add",
+      targetSelector: selector,
+      method: "set",
+      position: 0,
+      properties: { x: newX, y: newY },
+    },
+    { label: "Move layer", softReload: true },
+  );
+}
+
+export { findPositionSetAnimation };
+
 // ── Main drag commit ──────────────────────────────────────────────────────
 
 /**
@@ -313,24 +386,14 @@ export async function commitGsapPositionFromDrag(
   selector: string,
   callbacks: GsapDragCommitCallbacks,
 ): Promise<void> {
-  const rotStyle = selection.element.style.getPropertyValue("--hf-studio-rotation");
-  const rotDeg = Number.parseFloat(rotStyle) || 0;
-  const rad = (-rotDeg * Math.PI) / 180;
-  const cos = Math.cos(rad);
-  const sin = Math.sin(rad);
   const el = selection.element;
+  const { newX, newY, baseGsapX, baseGsapY } = computeDraggedGsapPosition(
+    el,
+    studioOffset,
+    gsapPos,
+  );
   const origX = Number.parseFloat(el.getAttribute("data-hf-drag-initial-offset-x") ?? "") || 0;
   const origY = Number.parseFloat(el.getAttribute("data-hf-drag-initial-offset-y") ?? "") || 0;
-  const deltaX = studioOffset.x - origX;
-  const deltaY = studioOffset.y - origY;
-  const adjX = deltaX * cos - deltaY * sin;
-  const adjY = deltaX * sin + deltaY * cos;
-  const parsedBaseX = Number.parseFloat(el.getAttribute("data-hf-drag-gsap-base-x") ?? "");
-  const parsedBaseY = Number.parseFloat(el.getAttribute("data-hf-drag-gsap-base-y") ?? "");
-  const baseGsapX = Number.isFinite(parsedBaseX) ? parsedBaseX : gsapPos.x;
-  const baseGsapY = Number.isFinite(parsedBaseY) ? parsedBaseY : gsapPos.y;
-  const newX = Math.round(baseGsapX + adjX);
-  const newY = Math.round(baseGsapY + adjY);
   const restoreOffset = () => {
     el.style.setProperty("--hf-studio-offset-x", `${origX}px`);
     el.style.setProperty("--hf-studio-offset-y", `${origY}px`);

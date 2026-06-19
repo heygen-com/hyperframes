@@ -211,7 +211,6 @@ interface RecordingRefs {
   basePosition: { x: number; y: number };
   cssVarOffset: { x: number; y: number };
   scale: number;
-  pointerElementOffset: { x: number; y: number };
   runtime: GsapRuntime | null;
   rafId: number;
   samples: GestureSample[];
@@ -230,7 +229,6 @@ function createRecordingRefs(): RecordingRefs {
     basePosition: { x: 0, y: 0 },
     cssVarOffset: { x: 0, y: 0 },
     scale: 1,
-    pointerElementOffset: { x: 0, y: 0 },
     runtime: null,
     rafId: 0,
     samples: [],
@@ -287,23 +285,10 @@ export function useGestureRecording() {
       r.accumulated = { opacity: base.baseOpacity, scale: base.baseScale, z: 0 };
       r.basePosition = { x: base.baseX, y: base.baseY };
 
-      // --- Phase 2: scale + element center, measured BEFORE clearing the path offset ---
-      // baseX/baseY fold in the CSS path offset (`--hf-studio-offset`, see
-      // readBasePosition), so the element's on-screen center must be read while that
-      // offset is still applied — otherwise the pointer-centering offset is wrong by
-      // exactly the path offset and the element doesn't sit under the pointer (it
-      // looked correct only for elements that had no path offset).
-      // element.getBoundingClientRect() is in the iframe's viewport; convert to the
-      // studio (parent) viewport using the iframe's position and scale.
+      // --- Phase 2: iframe → studio scale, measured BEFORE clearing the path offset ---
+      // The pointer deltas in the RAF loop are in studio-viewport pixels; divide by
+      // this scale to convert them to the iframe's composition pixels.
       r.scale = computeIframeScale(iframeEl);
-      const iframeScale = r.scale || 1;
-      const iframeRect = iframeEl.getBoundingClientRect();
-      const elRect = element.getBoundingClientRect();
-      const elCenterViewport = {
-        x: iframeRect.left + (elRect.left + elRect.width / 2) * iframeScale,
-        y: iframeRect.top + (elRect.top + elRect.height / 2) * iframeScale,
-      };
-      r.pointerElementOffset = { x: 0, y: 0 };
 
       // Now clear the optimistic path offset (already folded into baseX/baseY).
       if (base.cssOffX || base.cssOffY) {
@@ -326,12 +311,6 @@ export function useGestureRecording() {
         // preventing an enormous bogus first keyframe from stale startPointer.
         if (!r.hasMoved) {
           r.startPointer = { x: r.pointer.x, y: r.pointer.y };
-          r.pointerElementOffset = {
-            x: r.pointer.x - elCenterViewport.x,
-            y: r.pointer.y - elCenterViewport.y,
-          };
-          r.basePosition.x += r.pointerElementOffset.x / iframeScale;
-          r.basePosition.y += r.pointerElementOffset.y / iframeScale;
           r.hasMoved = true;
         }
         r.scrollDelta += e.deltaY;
@@ -352,12 +331,12 @@ export function useGestureRecording() {
       r.startPointer = { ...r.pointer };
       const captureStart = (e: PointerEvent) => {
         if (!r.hasMoved) {
+          // Anchor the delta at the grab point — the element then moves by the
+          // pointer's *movement* from its actual position (preserving both the
+          // manual-drag start position and the grab offset). Do NOT snap the
+          // element's center to the pointer: that discarded the manual position
+          // and made the recorded 0% keyframe wrong.
           r.startPointer = { x: e.clientX, y: e.clientY };
-          const offX = e.clientX - elCenterViewport.x;
-          const offY = e.clientY - elCenterViewport.y;
-          r.pointerElementOffset = { x: offX, y: offY };
-          r.basePosition.x += offX / iframeScale;
-          r.basePosition.y += offY / iframeScale;
           r.hasMoved = true;
         }
       };

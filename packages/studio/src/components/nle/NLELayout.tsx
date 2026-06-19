@@ -16,6 +16,7 @@ import { CompositionBreadcrumb } from "./CompositionBreadcrumb";
 import { usePreviewBlockDrop } from "./usePreviewBlockDrop";
 import { useCompositionStack } from "./useCompositionStack";
 import { useTimelineEditContext } from "../../contexts/TimelineEditContext";
+import { setCompositionSourceMap } from "../editor/domEditingDom";
 import { trackStudioExpandedClipEdit } from "../../telemetry/events";
 import {
   TIMELINE_TOGGLE_SHORTCUT_LABEL,
@@ -294,6 +295,9 @@ export const NLELayout = memo(function NLELayout({
           if (id && src) map.set(id, src);
         }
         setCompIdToSrc(map);
+        // Let DOM source-resolution recover a subcomposition element's source file
+        // (the runtime drops the linkage when inlining — see getSourceFileForElement).
+        setCompositionSourceMap(map);
         onCompIdToSrcChange?.(map);
       })
       .catch(() => {});

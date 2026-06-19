@@ -7,9 +7,10 @@ import { tryGsapDragIntercept } from "./gsapRuntimeBridge";
  * Regression: `selectedGsapAnimations` (and the fetch fallback) is an async
  * server-parse that LAGS a delete-all. A drag in that window would resolve a
  * phantom position tween from the stale cache and re-commit it — resurrecting the
- * just-deleted animation. tryGsapDragIntercept must trust the live runtime: if no
- * non-hold tween exists for the element, it bails (returns false → CSS fallback)
- * instead of committing.
+ * just-deleted animation. tryGsapDragIntercept must trust the LIVE runtime: when
+ * the runtime has no keyframed/tweened position motion, the element is STATIC
+ * (single-source model), so the drag commits a position-hold `tl.set("#el",{x,y})`
+ * rather than re-committing the phantom tween. The stale `to` parse is ignored.
  */
 
 // A preview iframe whose runtime timeline holds `children`, resolves the element,
@@ -57,9 +58,10 @@ const stalePositionAnim = {
 afterEach(() => vi.restoreAllMocks());
 
 describe("tryGsapDragIntercept — stale-parse guard (no resurrection after delete-all)", () => {
-  it("bails without committing when the runtime has no tween (only the parse is stale)", async () => {
+  it("commits a static set (not the stale tween) when the runtime has no live position motion", async () => {
     const commitMutation = vi.fn();
-    // Runtime empty (tween deleted) — readRuntimeKeyframes returns null.
+    // Runtime empty (tween deleted) — readRuntimeKeyframes returns null, so the
+    // element is treated as STATIC. The stale `to` parse must NOT be re-committed.
     const iframe = fakeIframe("puck-b", []);
 
     const handled = await tryGsapDragIntercept(
@@ -70,8 +72,21 @@ describe("tryGsapDragIntercept — stale-parse guard (no resurrection after dele
       commitMutation,
     );
 
-    expect(handled).toBe(false);
-    expect(commitMutation).not.toHaveBeenCalled();
+    expect(handled).toBe(true);
+    // No existing `set` for the selector → one `add` mutation with `method:"set"`.
+    expect(commitMutation).toHaveBeenCalledTimes(1);
+    const [, mutation] = commitMutation.mock.calls[0];
+    expect(mutation).toMatchObject({
+      type: "add",
+      method: "set",
+      targetSelector: "#puck-b",
+      position: 0,
+    });
+    // Drag delta (-50, 30) off a zero base → the committed set holds that position.
+    expect(mutation.properties).toEqual({ x: -50, y: 30 });
+    // It must NOT resurrect the stale tween via a tween/keyframe mutation.
+    expect(mutation.type).not.toBe("update-property");
+    expect(mutation.type).not.toBe("add-keyframe");
   });
 
   it("does not trip the stale-parse guard when the runtime still has the tween", async () => {

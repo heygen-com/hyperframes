@@ -4,7 +4,7 @@ import { useDomEditContext } from "../../contexts/DomEditContext";
 import { usePlayerStore } from "../../player/store/playerStore";
 import { readRuntimeKeyframes } from "../../hooks/gsapRuntimeKeyframes";
 import { parkPlayheadOnKeyframe } from "../../hooks/gsapDragCommit";
-import { isElementVisibleInPreview } from "./domEditOverlayGeometry";
+import { isElementVisibleForOverlay } from "./domEditOverlayGeometry";
 import {
   buildMotionPathGeometry,
   nearestPointOnPath,
@@ -174,7 +174,11 @@ function useMotionPathData(
           /* cross-origin guard */
         }
         const live = isPreviewHtmlElement(target, el) ? target : null;
-        const vis = live ? isElementVisibleInPreview(live) : true;
+        // Basic visibility (display/visibility/opacity), NOT the occlusion heuristic:
+        // the motion path belongs to the explicitly-selected element, so an opacity-1
+        // backgroundless scene "covering" it must not suppress the path — same reason
+        // the selection overlay uses isElementVisibleForOverlay (see useDomEditOverlayRects).
+        const vis = live ? isElementVisibleForOverlay(live) : true;
         setVisibleInPreview((prev) => (prev === vis ? prev : vis));
         if (live) {
           const h = elementHome(live);
@@ -250,6 +254,9 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
   // modifies it rather than adding a keyframe.
   const activeKeyframePct = usePlayerStore((s) => s.activeKeyframePct);
   const dragRef = useRef<DragState | null>(null);
+  // Park-on-click is debounced so a double-click cancels the seek (see onUp).
+  const parkTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(parkTimerRef.current), []);
 
   // Create mode: a selected element with no positional motion. A double-click on
   // the canvas authors a new motionPath from the element to that point.
@@ -373,6 +380,7 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
     ref: MotionNodeRef,
   ) => {
     if (!interactive) return;
+    if (e.button !== 0) return; // primary button only — right-click is the context menu
     e.stopPropagation();
     (e.target as Element).setPointerCapture(e.pointerId);
     dragRef.current = {
@@ -412,8 +420,16 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
       // activeKeyframePct) instead of creating a new one.
       if (d.ref.type === "keyframe") {
         usePlayerStore.getState().setActiveKeyframePct(d.ref.pct);
-        const anim = selectedGsapAnimations?.find((a) => a.id === animId);
-        if (anim) parkPlayheadOnKeyframe(anim, d.ref.pct);
+        const ref = d.ref;
+        // Debounce the playhead seek: a double-click cancels it (e.detail >= 2),
+        // so only a lone single-click parks the playhead on the keyframe.
+        clearTimeout(parkTimerRef.current);
+        if (e.detail < 2) {
+          parkTimerRef.current = setTimeout(() => {
+            const anim = selectedGsapAnimations?.find((a) => a.id === animId);
+            if (anim) parkPlayheadOnKeyframe(anim, ref.pct);
+          }, 250);
+        }
       }
       return; // no commit
     }

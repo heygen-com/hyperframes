@@ -161,14 +161,6 @@ export function readRuntimeKeyframes(
 ): ReadTween | null {
   const timelines = timelinesOf(iframe);
   if (!timelines) return null;
-  // Skip non-timeline markers (e.g. the studio's `__proxied` flag) when no
-  // explicit composition id is given — picking those yields no getChildren.
-  const tlId =
-    compositionId ||
-    Object.keys(timelines).find((k) => typeof timelines[k]?.getChildren === "function");
-  if (!tlId) return null;
-  const timeline = timelines[tlId];
-  if (!timeline?.getChildren) return null;
 
   let targetEl: Element | null = null;
   try {
@@ -178,27 +170,43 @@ export function readRuntimeKeyframes(
   }
   if (!targetEl) return null;
 
+  // Search the element's OWN composition timeline. With inlined subcompositions the
+  // preview has multiple timelines (one per composition), and the element belongs to
+  // exactly one — so we can't assume the first key (order isn't stable across soft
+  // reloads, which delete+re-add the rebuilt key). Scan every timeline for tweens
+  // targeting this element; only its composition's timeline matches. An explicit
+  // compositionId still pins the search. (`__proxied` and other non-timeline markers
+  // are skipped by the getChildren guard.)
+  const tlIds = compositionId
+    ? [compositionId]
+    : Object.keys(timelines).filter((k) => typeof timelines[k]?.getChildren === "function");
+  if (tlIds.length === 0) return null;
+
   // The element can have MORE THAN ONE keyframed tween at disjoint time ranges
   // (e.g. two non-overlapping gesture recordings → two separate `to()`s). The
   // overlay must draw the segment under the PLAYHEAD, not blindly the first one
   // — otherwise recording a second gesture leaves the path stuck on the first.
-  const now = typeof timeline.time === "function" ? timeline.time() : null;
   let firstRead: ReadTween | null = null;
-  for (const tween of timeline.getChildren(true)) {
-    if (!tween.vars || !matchesElement(tween, targetEl)) continue;
-    // Skip zero-duration tweens (`tl.set(...)`, incl. the studio position-hold
-    // `data:"hf-hold"`). They sit before the real keyframed tween and otherwise
-    // shadow it — `readTween` falls back to a degenerate 2-point flat path from
-    // the set's values, hiding the actual multi-keyframe motion.
-    const dur = typeof tween.duration === "function" ? tween.duration() : 0;
-    if (!(dur > 0)) continue;
-    const read = readTween(tween.vars);
-    if (!read) continue;
-    if (firstRead === null) firstRead = read;
-    // Prefer the tween whose [start, start+dur] contains the playhead.
-    if (now != null) {
-      const start = typeof tween.startTime === "function" ? tween.startTime() : 0;
-      if (now >= start - 1e-3 && now <= start + dur + 1e-3) return read;
+  for (const tlId of tlIds) {
+    const timeline = timelines[tlId];
+    if (!timeline?.getChildren) continue;
+    const now = typeof timeline.time === "function" ? timeline.time() : null;
+    for (const tween of timeline.getChildren(true)) {
+      if (!tween.vars || !matchesElement(tween, targetEl)) continue;
+      // Skip zero-duration tweens (`tl.set(...)`, incl. the studio position-hold
+      // `data:"hf-hold"`). They sit before the real keyframed tween and otherwise
+      // shadow it — `readTween` falls back to a degenerate 2-point flat path from
+      // the set's values, hiding the actual multi-keyframe motion.
+      const dur = typeof tween.duration === "function" ? tween.duration() : 0;
+      if (!(dur > 0)) continue;
+      const read = readTween(tween.vars);
+      if (!read) continue;
+      if (firstRead === null) firstRead = read;
+      // Prefer the tween whose [start, start+dur] contains the playhead.
+      if (now != null) {
+        const start = typeof tween.startTime === "function" ? tween.startTime() : 0;
+        if (now >= start - 1e-3 && now <= start + dur + 1e-3) return read;
+      }
     }
   }
   // Playhead outside every tween's range (or timeline has no clock): the element

@@ -411,7 +411,9 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     } else if (g.kind === "drag") {
       const dx = g.lastSnappedDx ?? e.clientX - g.startX;
       const dy = g.lastSnappedDy ?? e.clientY - g.startY;
-      if (!g.pathOffsetMember) return;
+      if (!g.pathOffsetMember) {
+        return;
+      }
       const finalOffset = applyManualOffsetDragCommit(g.pathOffsetMember, dx, dy);
       const nextBoxLeft = g.originLeft + dx;
       const nextBoxTop = g.originTop + dy;
