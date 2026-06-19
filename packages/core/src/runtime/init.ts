@@ -1838,6 +1838,13 @@ export function initSandboxRuntimeModular(): void {
       player.pause();
       emitAnalyticsEvent("composition_paused", { time: player.getTime() });
     },
+    onStopMedia: () => {
+      webAudio.stopAll();
+      const mediaEls = document.querySelectorAll("video, audio");
+      for (const el of mediaEls) {
+        if (el instanceof HTMLMediaElement && !el.paused) el.pause();
+      }
+    },
     onSeek: (frame, _seekMode) => {
       const time = Math.max(0, frame) / state.canonicalFps;
       player.seek(time);

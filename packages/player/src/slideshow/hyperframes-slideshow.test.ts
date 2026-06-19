@@ -330,6 +330,38 @@ describe("<hyperframes-slideshow>", () => {
     el.remove();
   });
 
+  it("mute button applies globally to child players and page media", () => {
+    const el = document.createElement("hyperframes-slideshow") as any;
+    el.setAttribute("sound", "");
+    const player = document.createElement("hyperframes-player") as any;
+    player.muted = false;
+    el.appendChild(player);
+    const pageVideo = document.createElement("video");
+    document.body.append(pageVideo, el);
+    el.__setControllerForTest({
+      next: () => {},
+      prev: () => {},
+      onChange: () => () => {},
+      counter: { index: 1, total: 1 },
+      breadcrumb: [{ id: "main", label: "Main deck" }],
+      currentSlide: { hotspots: [] },
+      nextSlide: null,
+    });
+
+    const muteBtn = el.querySelector("[data-hf-mute]") as HTMLElement;
+    muteBtn.click();
+    expect(player.muted).toBe(true);
+    expect(pageVideo.muted).toBe(true);
+
+    const muteBtnAfter = el.querySelector("[data-hf-mute]") as HTMLElement;
+    muteBtnAfter.click();
+    expect(player.muted).toBe(false);
+    expect(pageVideo.muted).toBe(false);
+
+    el.remove();
+    pageVideo.remove();
+  });
+
   it("mute button glyph reflects muted state (aria-pressed)", () => {
     const el = makeEl({ index: 1, total: 2 });
     el.setAttribute("sound", "");
@@ -459,10 +491,12 @@ describe("handleRuntimeMessage scenes seam", () => {
 // ---------------------------------------------------------------------------
 describe("<hyperframes-slideshow> presenter mode", () => {
   beforeEach(async () => {
+    localStorage.clear();
     await import("./hyperframes-slideshow.js");
   });
 
   afterEach(() => {
+    localStorage.clear();
     vi.restoreAllMocks();
   });
 
@@ -654,6 +688,56 @@ describe("<hyperframes-slideshow> presenter mode", () => {
     expect(text).toContain("Talk about the mission here");
     expect(text).toContain("features");
     el.remove();
+  });
+
+  it("presenter notes are editable and reload from localStorage", () => {
+    const el = makePresenterWithSlides({
+      currentSlide: { sceneId: "intro", notes: "Original manifest notes" },
+      nextSlide: { sceneId: "features", notes: "Highlight top 3 features" },
+    });
+    const notes = el.querySelector("[data-hf-presenter-notes]");
+    expect(notes).toBeInstanceOf(HTMLTextAreaElement);
+    const textarea = notes as HTMLTextAreaElement;
+    expect(textarea.value).toBe("Original manifest notes");
+
+    textarea.value = "Edited speaker notes";
+    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    const storageKey = textarea.getAttribute("data-hf-presenter-notes-key");
+    expect(storageKey).toBeTruthy();
+    expect(localStorage.getItem(storageKey ?? "")).toBe("Edited speaker notes");
+    el.remove();
+
+    const reloaded = makePresenterWithSlides({
+      currentSlide: { sceneId: "intro", notes: "Original manifest notes" },
+      nextSlide: { sceneId: "features", notes: "Highlight top 3 features" },
+    });
+    const reloadedNotes = reloaded.querySelector("[data-hf-presenter-notes]");
+    expect(reloadedNotes).toBeInstanceOf(HTMLTextAreaElement);
+    expect((reloadedNotes as HTMLTextAreaElement).value).toBe("Edited speaker notes");
+    reloaded.remove();
+  });
+
+  it("presenter notes preserve an intentionally cleared local edit", () => {
+    const el = makePresenterWithSlides({
+      currentSlide: { sceneId: "intro", notes: "Original manifest notes" },
+      nextSlide: null,
+    });
+    const notes = el.querySelector("[data-hf-presenter-notes]");
+    expect(notes).toBeInstanceOf(HTMLTextAreaElement);
+    const textarea = notes as HTMLTextAreaElement;
+
+    textarea.value = "";
+    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    el.remove();
+
+    const reloaded = makePresenterWithSlides({
+      currentSlide: { sceneId: "intro", notes: "Original manifest notes" },
+      nextSlide: null,
+    });
+    const reloadedNotes = reloaded.querySelector("[data-hf-presenter-notes]");
+    expect(reloadedNotes).toBeInstanceOf(HTMLTextAreaElement);
+    expect((reloadedNotes as HTMLTextAreaElement).value).toBe("");
+    reloaded.remove();
   });
 
   it("presenter chrome contains next slide sceneId when nextSlide is set", () => {

@@ -10,6 +10,7 @@
  */
 
 import { selectMediaObserverTargets } from "./mediaObserverScope.js";
+import { isRealmElement, isRealmHtmlMediaElement } from "./media-element-guards.js";
 
 /** Minimum absolute drift before a currentTime correction is attempted. */
 const MIRROR_DRIFT_THRESHOLD_SECONDS = 0.05;
@@ -172,6 +173,12 @@ export class ParentMediaManager {
     for (const m of this._entries) m.el.pause();
   }
 
+  stopAdoptedMedia(): void {
+    for (const m of this._entries) {
+      if (m.source) m.el.pause();
+    }
+  }
+
   seekAll(timeInSeconds: number): void {
     for (const m of this._entries) {
       // Re-read live bounds so a trim/move just before a paused scrub gates and
@@ -228,8 +235,8 @@ export class ParentMediaManager {
 
     // Synchronously mute iframe media to close the race window.
     if (iframeDoc) {
-      for (const el of iframeDoc.querySelectorAll<HTMLMediaElement>("video, audio")) {
-        el.muted = true;
+      for (const el of iframeDoc.querySelectorAll("video, audio")) {
+        if (isRealmHtmlMediaElement(el)) el.muted = true;
       }
     }
 
@@ -251,10 +258,10 @@ export class ParentMediaManager {
    * install a MutationObserver for media added later (sub-composition activation).
    */
   setupFromIframe(iframeDoc: Document): void {
-    const mediaEls = iframeDoc.querySelectorAll<HTMLMediaElement>(
-      "audio[data-start], video[data-start]",
-    );
-    for (const iframeEl of mediaEls) this._adoptIframeMedia(iframeEl);
+    const mediaEls = iframeDoc.querySelectorAll("audio[data-start], video[data-start]");
+    for (const iframeEl of mediaEls) {
+      if (isRealmHtmlMediaElement(iframeEl)) this._adoptIframeMedia(iframeEl);
+    }
     this._observeDynamicMedia(iframeDoc);
   }
 
@@ -388,7 +395,7 @@ export class ParentMediaManager {
         if (m.type === "attributes" && m.attributeName === "preload") {
           const target = m.target;
           if (
-            target instanceof HTMLMediaElement &&
+            isRealmHtmlMediaElement(target) &&
             target.matches("audio[data-start], video[data-start]") &&
             target.preload === "auto"
           ) {
@@ -398,28 +405,34 @@ export class ParentMediaManager {
         }
 
         for (const added of m.addedNodes) {
-          if (!(added instanceof Element)) continue;
+          if (!isRealmElement(added)) continue;
           const candidates: HTMLMediaElement[] = [];
-          if (added.matches?.("audio[data-start], video[data-start]")) {
-            candidates.push(added as HTMLMediaElement);
+          if (
+            isRealmHtmlMediaElement(added) &&
+            added.matches("audio[data-start], video[data-start]")
+          ) {
+            candidates.push(added);
           }
-          const inside = added.querySelectorAll?.<HTMLMediaElement>(
-            "audio[data-start], video[data-start]",
-          );
-          if (inside) for (const el of inside) candidates.push(el);
+          const inside = added.querySelectorAll("audio[data-start], video[data-start]");
+          for (const el of inside) {
+            if (isRealmHtmlMediaElement(el)) candidates.push(el);
+          }
           for (const el of candidates) this._adoptIframeMedia(el);
         }
 
         for (const removed of m.removedNodes) {
-          if (!(removed instanceof Element)) continue;
+          if (!isRealmElement(removed)) continue;
           const dropped: HTMLMediaElement[] = [];
-          if (removed.matches?.("audio[data-start], video[data-start]")) {
-            dropped.push(removed as HTMLMediaElement);
+          if (
+            isRealmHtmlMediaElement(removed) &&
+            removed.matches("audio[data-start], video[data-start]")
+          ) {
+            dropped.push(removed);
           }
-          const inside = removed.querySelectorAll?.<HTMLMediaElement>(
-            "audio[data-start], video[data-start]",
-          );
-          if (inside) for (const el of inside) dropped.push(el);
+          const inside = removed.querySelectorAll("audio[data-start], video[data-start]");
+          for (const el of inside) {
+            if (isRealmHtmlMediaElement(el)) dropped.push(el);
+          }
           for (const el of dropped) this._detachIframeMedia(el);
         }
       }

@@ -5,6 +5,7 @@ function createMockDeps() {
   return {
     onPlay: vi.fn(),
     onPause: vi.fn(),
+    onStopMedia: vi.fn(),
     onSeek: vi.fn(),
     onTick: vi.fn(),
     onSetMuted: vi.fn(),
@@ -37,6 +38,13 @@ describe("installRuntimeControlBridge", () => {
     const handler = installRuntimeControlBridge(deps);
     handler(makeControlMessage("pause"));
     expect(deps.onPause).toHaveBeenCalledOnce();
+  });
+
+  it("dispatches stop-media command", () => {
+    const deps = createMockDeps();
+    const handler = installRuntimeControlBridge(deps);
+    handler(makeControlMessage("stop-media"));
+    expect(deps.onStopMedia).toHaveBeenCalledOnce();
   });
 
   it("dispatches seek command with frame and mode", () => {

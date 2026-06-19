@@ -32,8 +32,13 @@ const CONTRAST_SAMPLES = 5;
 const SEEK_SETTLE_MS = 150;
 const MEDIA_EXTENSIONS = /\.(aac|flac|m4a|mov|mp3|mp4|oga|ogg|wav|webm)$/i;
 
-export function shouldIgnoreRequestFailure(url: string, errorText: string | undefined): boolean {
+export function shouldIgnoreRequestFailure(
+  url: string,
+  errorText: string | undefined,
+  resourceType?: string,
+): boolean {
   if (errorText !== "net::ERR_ABORTED") return false;
+  if (resourceType === "media") return true;
   try {
     return MEDIA_EXTENSIONS.test(new URL(url).pathname);
   } catch {
@@ -166,7 +171,7 @@ async function validateInBrowser(
       const url = req.url();
       if (url.includes("favicon") || url.startsWith("data:")) return;
       const failureText = req.failure()?.errorText;
-      if (shouldIgnoreRequestFailure(url, failureText)) return;
+      if (shouldIgnoreRequestFailure(url, failureText, req.resourceType())) return;
       const path = decodeURIComponent(new URL(url).pathname).replace(/^\//, "");
       errors.push({
         level: "error",

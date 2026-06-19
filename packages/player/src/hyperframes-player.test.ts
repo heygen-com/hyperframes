@@ -1,6 +1,44 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { formatTime, formatSpeed, SPEED_PRESETS } from "./controls.js";
 
+function createForeignFrameMediaDocument(): {
+  doc: Document;
+  video: HTMLMediaElement & { pause: ReturnType<typeof vi.fn> };
+  audio: HTMLMediaElement & { pause: ReturnType<typeof vi.fn> };
+} {
+  class FrameElement {
+    readonly tagName: string;
+    ownerDocument: {
+      defaultView: { Element: typeof FrameElement; HTMLMediaElement: typeof FrameElement };
+    } | null = null;
+
+    constructor(tagName: string) {
+      this.tagName = tagName;
+    }
+  }
+
+  class FrameMedia extends FrameElement {
+    muted = false;
+    defaultMuted = false;
+    pause = vi.fn();
+  }
+
+  const video = new FrameMedia("VIDEO");
+  const audio = new FrameMedia("AUDIO");
+  const fakeDoc = {
+    defaultView: { Element: FrameElement, HTMLMediaElement: FrameMedia },
+    querySelectorAll: () => [video, audio],
+  };
+  video.ownerDocument = fakeDoc;
+  audio.ownerDocument = fakeDoc;
+
+  return {
+    doc: fakeDoc as unknown as Document,
+    video: video as unknown as HTMLMediaElement & { pause: ReturnType<typeof vi.fn> },
+    audio: audio as unknown as HTMLMediaElement & { pause: ReturnType<typeof vi.fn> },
+  };
+}
+
 // ── Controls unit tests ──
 
 describe("SPEED_PRESETS", () => {
@@ -833,8 +871,16 @@ describe("HyperframesPlayer seek() sync path", () => {
     seek: (t: number) => void;
     play: () => void;
     pause: () => void;
+    stopMedia: () => void;
     iframe: HTMLIFrameElement;
     _currentTime: number;
+    _parentMedia: Array<{
+      el: { pause: ReturnType<typeof vi.fn>; src: string };
+      start: number;
+      duration: number;
+      driftSamples: number;
+      source?: HTMLMediaElement | null;
+    }>;
   };
 
   let player: PlayerInternal;
@@ -925,7 +971,8 @@ describe("HyperframesPlayer seek() sync path", () => {
     player.seek(2);
 
     expect(timeline.seek).toHaveBeenCalledTimes(1);
-    expect(timeline.seek).toHaveBeenCalledWith(2);
+    // suppressEvents=false so onUpdate fires (imperative-visibility compositions repaint).
+    expect(timeline.seek).toHaveBeenCalledWith(2, false);
     expect(post).not.toHaveBeenCalled();
   });
 
@@ -964,9 +1011,69 @@ describe("HyperframesPlayer seek() sync path", () => {
     pause.mockClear();
     player.seek(2);
 
-    expect(timeline.seek).toHaveBeenCalledWith(2);
+    expect(timeline.seek).toHaveBeenCalledWith(2, false);
     expect(pause).toHaveBeenCalledTimes(1);
     expect(post).not.toHaveBeenCalled();
+  });
+
+  it("stopMedia pauses slide media without stopping global audio-src proxies", () => {
+    const post = vi.fn();
+    const doc = document.implementation.createHTMLDocument("composition");
+    const iframeVideo = doc.createElement("video");
+    const iframeAudio = doc.createElement("audio");
+    const iframeVideoPause = vi.fn();
+    const iframeAudioPause = vi.fn();
+    Object.defineProperty(iframeVideo, "pause", { configurable: true, value: iframeVideoPause });
+    Object.defineProperty(iframeAudio, "pause", { configurable: true, value: iframeAudioPause });
+    doc.body.append(iframeVideo, iframeAudio);
+    Object.defineProperty(player.iframe, "contentDocument", {
+      configurable: true,
+      get: () => doc,
+    });
+    stubContentWindow({ postMessage: post });
+
+    const slideProxyPause = vi.fn();
+    const globalProxyPause = vi.fn();
+    player._parentMedia.push(
+      {
+        el: { pause: slideProxyPause, src: "https://cdn.example.com/slide.mp4" },
+        start: 0,
+        duration: 5,
+        driftSamples: 0,
+        source: iframeVideo,
+      },
+      {
+        el: { pause: globalProxyPause, src: "https://cdn.example.com/background.mp3" },
+        start: 0,
+        duration: Infinity,
+        driftSamples: 0,
+        source: null,
+      },
+    );
+
+    player.stopMedia();
+
+    expect(post).toHaveBeenCalledWith(expect.objectContaining({ action: "stop-media" }), "*");
+    expect(iframeVideoPause).toHaveBeenCalledOnce();
+    expect(iframeAudioPause).toHaveBeenCalledOnce();
+    expect(slideProxyPause).toHaveBeenCalledOnce();
+    expect(globalProxyPause).not.toHaveBeenCalled();
+  });
+
+  it("stopMedia pauses iframe-realm media elements", () => {
+    const post = vi.fn();
+    const { doc, video, audio } = createForeignFrameMediaDocument();
+    Object.defineProperty(player.iframe, "contentDocument", {
+      configurable: true,
+      get: () => doc,
+    });
+    stubContentWindow({ postMessage: post });
+
+    player.stopMedia();
+
+    expect(post).toHaveBeenCalledWith(expect.objectContaining({ action: "stop-media" }), "*");
+    expect(video.pause).toHaveBeenCalledOnce();
+    expect(audio.pause).toHaveBeenCalledOnce();
   });
 
   it("does not bypass an installed runtime bridge for direct __timelines playback", () => {
@@ -1411,6 +1518,45 @@ describe("HyperframesPlayer volume and mute", () => {
 
     player.muted = false;
     expect(player.hasAttribute("muted")).toBe(false);
+  });
+
+  it("muted property directly mutes same-origin iframe media", () => {
+    document.body.appendChild(player);
+    const doc = document.implementation.createHTMLDocument("composition");
+    const video = doc.createElement("video");
+    const authoredMuted = doc.createElement("audio");
+    authoredMuted.defaultMuted = true;
+    doc.body.append(video, authoredMuted);
+    Object.defineProperty(player.iframeElement, "contentDocument", {
+      configurable: true,
+      get: () => doc,
+    });
+
+    player.muted = true;
+    expect(video.muted).toBe(true);
+    expect(authoredMuted.muted).toBe(true);
+
+    player.muted = false;
+    expect(video.muted).toBe(false);
+    expect(authoredMuted.muted).toBe(true);
+  });
+
+  it("muted property mutes iframe-realm media elements", () => {
+    document.body.appendChild(player);
+    const { doc, video, audio } = createForeignFrameMediaDocument();
+    audio.defaultMuted = true;
+    Object.defineProperty(player.iframeElement, "contentDocument", {
+      configurable: true,
+      get: () => doc,
+    });
+
+    player.muted = true;
+    expect(video.muted).toBe(true);
+    expect(audio.muted).toBe(true);
+
+    player.muted = false;
+    expect(video.muted).toBe(false);
+    expect(audio.muted).toBe(true);
   });
 
   it("sends set-volume control to iframe", () => {

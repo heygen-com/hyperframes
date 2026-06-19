@@ -16,6 +16,7 @@ export type RuntimeBridgeControlAction =
   | "tick"
   | "set-volume"
   | "set-media-output-muted"
+  | "stop-media"
   | "flash-elements";
 
 export type RuntimeBridgeControlMessage = {

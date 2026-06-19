@@ -137,25 +137,50 @@ These are hard constraints, not suggestions. A slide that violates them will be 
 - **Bottom-up market sizing only.** Never write "$50B TAM" without showing the math. Build from unit economics up: accounts × ACV, or transactions × take-rate.
 - **Font minimum 30pt equivalent.** At 1920×1080, a headline is 72–96px; body copy is 48px. Never go below 40px for any text the audience must read.
 
+## Porting source pages
+
+When converting an existing page into a slideshow, source fidelity is part of the contract. Do not replace source-specific widgets with simplified approximations unless the user explicitly asks for a redesign.
+
+- Port mechanical visuals from the source DOM/CSS/JS as exactly as practical: custom players, canvas visualizers, timelines, playheads, stems, expanding circles, hover states, and other interactive details should survive the conversion.
+- Audit the source for atypical page movement, especially behavior driven by scroll, wheel, touch, hash state, resize, or a requestAnimationFrame loop. Treat fixed viewports with translated/scaled "world" layers, parallax, pinned panels, horizontal scrollers, scroll-scrubbed timelines, section snapping, and zoom-to-element cameras as source behavior. Scroll is often the source's transition trigger, so preserve the transition by extracting its progress stops, easing, and camera/focus states, then re-host that motion on slideshow navigation through timeline positions, fragments, or a reusable player/harness hook. Do not simulate a literal page-scroll-down transition inside the slide; the viewer should feel camera travel/zoom from one focal point to another, not see a webpage being scrolled. Keep each slide-to-slide camera move continuous: avoid intermediate route stops that reverse x/y direction or zoom unless the source visibly does that at the same boundary. A transition that darts around before landing is worse than a simpler direct focal move.
+- Preserve the source's media crop semantics. Treat screenshots, tweets/social posts, product UI captures, charts, docs, code, leaderboards, and any image with readable text as content evidence, not decorative media: use the source aspect ratio (`height: auto`) or `object-fit: contain` inside a stable frame. Use `object-fit: cover` only when the source did, or for intentionally decorative/background/cinematic thumbnails. After fitting these captures into a slide, inspect all four edges for truncated text, logos, controls, or captions; a visible crop on meaningful content is a bug unless the source itself cropped it.
+- If a behavior is generic to slideshows, put it in the player/controller or in a reusable skill snippet. Do not solve it with one-off deck scripts.
+- Stacked scene frames must never block interaction on the active slide. Hidden frames need both visual hiding and event gating:
+
+```css
+.scene-frame {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.scene-frame.is-active {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+```
+
+If visibility is driven imperatively, set all three properties (`opacity`, `visibility`, and `pointerEvents`) in the visibility controller. `opacity: 0` alone still leaves an invisible layer that can swallow clicks.
+
 ---
 
 ## Fragments: reveal hold-points within a slide
 
-A fragment is a time (in seconds) within a slide's `[start, end]` range where the controller pauses before the next reveal.
+A fragment is an absolute composition-timeline time (seconds) within a slide's `[start, end]` range where the controller should hold a reveal state.
 
 **How it works:**
 
-1. Player enters the slide — seeks to `start`, then plays.
-2. Controller pauses at `fragments[0]`. The first element's GSAP entrance has just landed.
-3. User presses Next (or →) — plays to `fragments[1]`, pauses again.
-4. After the last fragment, Next plays to `slide.end` and holds.
-5. Next again advances to the next slide.
+1. Player enters a fragmented slide — seeks directly to `fragments[0]` and holds there.
+2. User presses Next (or →) — controller seeks to `fragments[1]` and holds.
+3. After the last fragment, Next advances to the next slide.
+4. A slide without fragments enters at a rest frame inside the slide, usually its midpoint, not exactly at `slide.end`.
 
 Fragment times must fall within `[start, end]` (inclusive of both bounds). The lint rule rejects only fragments outside that range (`time < start` or `time > end`).
 
 Fragment times are **absolute composition-timeline positions** — the same coordinate space as `data-start` — not offsets relative to the scene's start.
 
-Each fragment is a play-to-and-hold, not a seek jump — so every element that enters between the previous hold-point and this one plays its GSAP entrance animation. Design the clip entrance animations to work as sequential reveals.
+Navigation is seek-driven, not play-driven. The controller never starts playback just to move between fragments; each navigation command is a deterministic seek to the target hold time. Design fragment states so they are correct at the target timeline time.
 
 ---
 
@@ -362,13 +387,43 @@ Wrap the composition in `<hyperframes-slideshow>` around `<hyperframes-player>` 
 
 **Presenter mode:** the Present button calls `window.open('?mode=audience')` for a fullscreen audience window; the originating tab becomes the presenter view (current slide reduced, next-slide preview, notes, elapsed timer). Both windows sync via `BroadcastChannel('hf-slideshow')`.
 
+Presenter notes are editable in the presenter view. Edits are stored in `localStorage` per deck and slide, layered over the manifest notes without rewriting the composition file. Do not add one-off note-editing scripts to decks; rely on the shared slideshow player behavior. If a standalone/custom wrapper truly needs to implement this outside the shared player, use the deterministic storage snippet in `skills/slideshow/references/standalone-harness.md`.
+
+### Media cleanup on slide exit
+
+The slideshow controller owns slide-exit media cleanup. When navigation changes slide or sequence, it calls `hyperframes-player.stopMedia()` before entering the next slide. That command:
+
+- posts `stop-media` to the iframe runtime, which stops WebAudio and pauses native `<video>` / `<audio>` elements;
+- pauses same-origin iframe media directly as a fallback; and
+- pauses parent-frame proxies adopted from iframe media.
+
+Same-slide fragment navigation does **not** stop media. Global/deck-level parent audio, such as a background track wired through `audio-src`, is not treated as slide media.
+
+Do not add per-slide cleanup scripts for normal media players. Keep slide video/audio as normal media in the composition; use `data-has-audio="true"` only when the player should preserve audible native video audio instead of treating it as silent visual media.
+
+When implementing direct iframe fallback cleanup, treat iframe media as cross-realm DOM. Do not test iframe nodes with the parent page's `el instanceof HTMLMediaElement`; that returns false in real browsers. Use `el.ownerDocument.defaultView.HTMLMediaElement` (or an equivalent tag/duck-type guard) before setting `muted` or calling `pause()`.
+
+### Global nav mute
+
+When `<hyperframes-slideshow sound>` renders the nav mute button, that button is the global mute control for the page. It must mute:
+
+- child `<hyperframes-player>` instances, including same-origin iframe media;
+- top-level page `<audio>` / `<video>` elements; and
+- wrapper-owned SFX/global `Audio` objects via the `hf-sound` event.
+
+Do not add a second mute button inside the composition. If a wrapper script creates `new Audio(...)` objects that are not attached to the DOM, it must listen for `hf-sound` and set `clip.muted = detail.muted` on each object, not merely skip future plays.
+
+The same cross-realm rule applies here: global mute must reach iframe `<video>` / `<audio>` elements through the child frame's DOM realm. A passing unit test in a single DOM realm is not enough; verify in a browser that the actual iframe media elements report `muted: true` after clicking the nav mute button.
+
+`hyperframes present` serves built bundles from `packages/player/dist`. After changing player or slideshow chrome behavior, run `bun run build` in `packages/player` and restart the present server before testing in a browser.
+
 ---
 
 ## Running a slideshow standalone (interim)
 
 The **durable answer** is engine-hosted: `hyperframes preview --slideshow` / studio present mode will host the composition over the real HyperFrames engine, which drives seek-timelines, owns the gesture frame, and reads the island from the composition. That path is coming; prefer it once it ships.
 
-Until then, standalone demos (a composition opened via the bare player bundle in a browser, without the engine) require workarounds for four gaps: the player does not drive GSAP seek-timelines, the island must be duplicated into the wrapper, audio must live in the parent frame, and animations must be self-driving. These patterns are documented in:
+Until then, standalone demos (a composition opened via the bare player bundle in a browser, without the engine) require workarounds for three gaps: the composition must expose a seekable root timeline, the island must be duplicated into the wrapper, and wrapper-owned SFX/global audio should live in the parent frame. These patterns are documented in:
 
 ```
 skills/slideshow/references/standalone-harness.md

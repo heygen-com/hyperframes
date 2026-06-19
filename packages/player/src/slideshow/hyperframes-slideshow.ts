@@ -32,10 +32,16 @@ interface ControllerLike {
   dispose?(): void;
 }
 
+interface SlideNotesTarget {
+  sceneId?: string;
+}
+
 type PlayerElement = HTMLElement & {
   seek(t: number): void;
   play(): void;
   pause(): void;
+  stopMedia?(): void;
+  muted?: boolean;
   readonly currentTime: number;
   readonly ready: boolean;
 };
@@ -47,6 +53,8 @@ function isPlayerElement(el: HTMLElement): el is PlayerElement {
     typeof (el as PlayerElement).pause === "function"
   );
 }
+
+const PRESENTER_NOTES_STORAGE_PREFIX = "hf-slideshow:presenter-notes:v1:";
 
 // Injected once per document to avoid duplicating @keyframes across multiple elements.
 let _keyframesInjected = false;
@@ -277,6 +285,10 @@ export class HyperframesSlideshow extends HTMLElement {
         seek: (t) => playerEl.seek(t),
         play: () => playerEl.play(),
         pause: () => playerEl.pause(),
+        stopMedia: () => {
+          playerEl.stopMedia?.();
+          this.stopDocumentMedia();
+        },
         get currentTime() {
           return playerEl.currentTime;
         },
@@ -551,9 +563,14 @@ export class HyperframesSlideshow extends HTMLElement {
     const muteBtn = chrome.querySelector("[data-hf-mute]");
     const prevBtn = chrome.querySelector("[data-hf-prev]");
     const nextBtn = chrome.querySelector("[data-hf-next]");
+    const notesInput = chrome.querySelector("[data-hf-presenter-notes]");
     if (muteBtn) muteBtn.addEventListener("click", () => this.toggleMute());
     if (prevBtn) prevBtn.addEventListener("click", () => this.controller?.prev());
     if (nextBtn) nextBtn.addEventListener("click", () => this.controller?.next());
+    if (notesInput instanceof HTMLTextAreaElement) {
+      const key = notesInput.getAttribute("data-hf-presenter-notes-key");
+      notesInput.addEventListener("input", () => this.writePresenterNotes(key, notesInput.value));
+    }
     const fsBtn = chrome.querySelector("[data-hf-fullscreen]");
     if (fsBtn) fsBtn.addEventListener("click", () => this.toggleFullscreen());
     for (const btn of chrome.querySelectorAll("[data-hotspot-id]")) {
@@ -588,6 +605,7 @@ export class HyperframesSlideshow extends HTMLElement {
     } else {
       this.removeAttribute("data-hf-muted");
     }
+    this.applyGlobalMute(this._muted);
     this.dispatchEvent(
       new CustomEvent("hf-sound", {
         detail: { muted: this._muted },
@@ -597,6 +615,83 @@ export class HyperframesSlideshow extends HTMLElement {
     );
     // Re-render to flip the glyph.
     this.render();
+  }
+
+  private applyGlobalMute(muted: boolean): void {
+    for (const player of this.querySelectorAll("hyperframes-player")) {
+      if (!(player instanceof HTMLElement)) continue;
+      const playerEl = player as Partial<PlayerElement> & HTMLElement;
+      if ("muted" in playerEl) {
+        playerEl.muted = muted;
+      } else if (muted) {
+        playerEl.setAttribute("muted", "");
+      } else {
+        playerEl.removeAttribute("muted");
+      }
+    }
+
+    const doc = this.ownerDocument;
+    for (const el of doc.querySelectorAll("video, audio")) {
+      if (el instanceof HTMLMediaElement) el.muted = muted || el.defaultMuted;
+    }
+  }
+
+  private stopDocumentMedia(): void {
+    const doc = this.ownerDocument;
+    for (const el of doc.querySelectorAll("video, audio")) {
+      if (el instanceof HTMLMediaElement) el.pause();
+    }
+  }
+
+  private presenterNotesDeckKey(): string {
+    const explicit = this.getAttribute("notes-storage-key")?.trim();
+    if (explicit) return explicit;
+
+    const playerSrc = this.querySelector("hyperframes-player")?.getAttribute("src") ?? "";
+    let resolvedPlayerSrc = playerSrc;
+    try {
+      const baseHref = typeof location !== "undefined" ? location.href : "http://localhost/";
+      resolvedPlayerSrc = new URL(playerSrc, baseHref).href;
+    } catch {
+      // Keep the raw src when URL construction is unavailable.
+    }
+
+    const locationKey =
+      typeof location !== "undefined" ? `${location.origin}${location.pathname}` : "";
+    const title = this.ownerDocument.title;
+    return `${locationKey}|${title}|${resolvedPlayerSrc}`;
+  }
+
+  private presenterNotesStorageKey(slide: SlideNotesTarget): string | null {
+    const pos = this.controller?.position;
+    if (!pos) return null;
+    return `${PRESENTER_NOTES_STORAGE_PREFIX}${JSON.stringify([
+      this.presenterNotesDeckKey(),
+      pos.sequenceId,
+      pos.slideIndex,
+      slide.sceneId ?? "",
+    ])}`;
+  }
+
+  private readPresenterNotes(key: string | null): string | null {
+    if (!key) return null;
+    if (typeof window === "undefined") return null;
+    try {
+      return window.localStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  }
+
+  private writePresenterNotes(key: string | null, notes: string): void {
+    if (!key) return;
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(key, notes);
+    } catch {
+      // localStorage may be disabled or quota-limited; editing still works for
+      // the current render even when persistence is unavailable.
+    }
   }
 
   private renderPresenter(): void {
@@ -620,9 +715,12 @@ export class HyperframesSlideshow extends HTMLElement {
 
     // Full-overlay chrome (pointer-events:none); the notes panel and nav cluster
     // are the only interactive children.
+    const notesStorageKey = this.presenterNotesStorageKey(currentSlide);
+    const notes = this.readPresenterNotes(notesStorageKey) ?? currentSlide.notes ?? "";
     this.paintChrome(
       buildPresenterLayout({
-        notes: currentSlide.notes ?? "",
+        notes,
+        notesStorageKey,
         nextText: nextPanelText(nextSlide),
         counterText: `${counter.index} / ${counter.total}`,
         elapsedText: formatElapsed(elapsedSec),

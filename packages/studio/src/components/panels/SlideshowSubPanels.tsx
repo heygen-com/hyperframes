@@ -216,7 +216,6 @@ export interface BranchTreeProps {
   selectedSceneId: string | null;
   selectedSequenceId: string | null;
   onSelectBranchSlide: (sequenceId: string, sceneId: string) => void;
-  onReorderBranchSlide: (sequenceId: string, sceneId: string, dir: "up" | "down") => void;
 }
 
 export function BranchTree({
@@ -229,7 +228,6 @@ export function BranchTree({
   selectedSceneId,
   selectedSequenceId,
   onSelectBranchSlide,
-  onReorderBranchSlide,
 }: BranchTreeProps) {
   const [newLabel, setNewLabel] = useState("");
   const inputId = useId();
@@ -280,7 +278,6 @@ export function BranchTree({
               selectedSceneId={selectedSceneId}
               selectedSequenceId={selectedSequenceId}
               onSelectBranchSlide={onSelectBranchSlide}
-              onReorderBranchSlide={onReorderBranchSlide}
             />
           ))}
         </div>
@@ -298,7 +295,6 @@ interface BranchItemProps {
   selectedSceneId: string | null;
   selectedSequenceId: string | null;
   onSelectBranchSlide: (sequenceId: string, sceneId: string) => void;
-  onReorderBranchSlide: (sequenceId: string, sceneId: string, dir: "up" | "down") => void;
 }
 
 function BranchItem({
@@ -310,7 +306,6 @@ function BranchItem({
   selectedSceneId,
   selectedSequenceId,
   onSelectBranchSlide,
-  onReorderBranchSlide,
 }: BranchItemProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(seq.label);
@@ -362,8 +357,7 @@ function BranchItem({
       </div>
       <div className="flex flex-col gap-px pl-2">
         {scenes.map((scene) => {
-          const branchPos = seq.slides.findIndex((s) => s.sceneId === scene.id);
-          const assigned = branchPos !== -1;
+          const assigned = seq.slides.some((s) => s.sceneId === scene.id);
           const isSelected = selectedSequenceId === seq.id && selectedSceneId === scene.id;
           return (
             <div
@@ -378,39 +372,16 @@ function BranchItem({
                 className="accent-studio-accent flex-shrink-0"
               />
               {assigned ? (
-                <>
-                  <button
-                    type="button"
-                    aria-pressed={isSelected}
-                    className={`flex-1 text-left truncate transition-colors hover:text-neutral-200 ${
-                      isSelected ? "text-white" : "text-neutral-400"
-                    }`}
-                    onClick={() => onSelectBranchSlide(seq.id, scene.id)}
-                  >
-                    {scene.label || scene.id}
-                  </button>
-                  <span className="text-[9px] text-neutral-600 tabular-nums flex-shrink-0">
-                    {branchPos + 1}/{seq.slides.length}
-                  </span>
-                  <button
-                    type="button"
-                    aria-label={`Move ${scene.label || scene.id} earlier in branch ${seq.label}`}
-                    disabled={branchPos <= 0}
-                    className="text-[10px] text-neutral-500 hover:text-neutral-200 disabled:opacity-30 disabled:cursor-default px-0.5"
-                    onClick={() => onReorderBranchSlide(seq.id, scene.id, "up")}
-                  >
-                    ▲
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={`Move ${scene.label || scene.id} later in branch ${seq.label}`}
-                    disabled={branchPos >= seq.slides.length - 1}
-                    className="text-[10px] text-neutral-500 hover:text-neutral-200 disabled:opacity-30 disabled:cursor-default px-0.5"
-                    onClick={() => onReorderBranchSlide(seq.id, scene.id, "down")}
-                  >
-                    ▼
-                  </button>
-                </>
+                <button
+                  type="button"
+                  aria-pressed={isSelected}
+                  className={`flex-1 text-left truncate transition-colors hover:text-neutral-200 ${
+                    isSelected ? "text-white" : "text-neutral-400"
+                  }`}
+                  onClick={() => onSelectBranchSlide(seq.id, scene.id)}
+                >
+                  {scene.label || scene.id}
+                </button>
               ) : (
                 <span className="flex-1 truncate">{scene.label || scene.id}</span>
               )}

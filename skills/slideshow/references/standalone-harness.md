@@ -4,12 +4,11 @@
 
 These patterns are a **temporary workaround** for standalone demos. The durable solution is engine-hosted: a future `hyperframes preview --slideshow` / studio present mode will host the composition over the real HyperFrames engine, which drives seek-timelines frame-by-frame, owns the gesture frame, and reads the slideshow island directly from the composition. When that path ships, most of what follows collapses.
 
-Until then, a standalone slideshow opened via the bare player bundle must work around four facts:
+Until then, a standalone slideshow opened via the bare player bundle must work around three facts:
 
-1. The bare `<hyperframes-player>` does **not** drive GSAP/Three seek-timelines frame-by-frame — only the engine does. Animations that wait to be seeked stay at frame 0.
+1. The composition must expose a seekable `window.__timelines.root` timeline. Anything outside that seek path, such as Three.js loops or imperative entrance effects, must be self-driving.
 2. `<hyperframes-slideshow>` reads the slideshow island from its **own innerHTML** (the wrapper element), not from the composition the player loads. The island must be duplicated into the wrapper.
-3. The composition runs in the player's **iframe**; user keypresses and pointer events land on the **parent page**. Any gesture-gated API (Audio, AudioContext) must live in the parent — an iframe without its own user activation is permanently autoplay-blocked.
-4. Autoplay, Three.js, and entrance animations must be **self-driving** because the engine is not present.
+3. The composition runs in the player's **iframe**; user keypresses and pointer events land on the **parent page**. Wrapper-owned SFX/global audio should live in the parent, where the activation token is reliable. Normal slide media stays in the composition and is stopped by the slideshow player on slide exit.
 
 Do not treat these as the blessed authoring model. When the engine-hosted path ships, compositions authored the normal way will just work.
 
@@ -104,6 +103,60 @@ The parent page hosts the two dist bundles, wraps the components, duplicates the
 </html>
 ```
 
+### Editable presenter notes
+
+The shared `<hyperframes-slideshow>` presenter already renders speaker notes as an editable textarea and stores edits in `localStorage`. Do not add deck-specific note editors when the shared player is available.
+
+For interim custom wrappers that cannot use the shared presenter chrome, use this deterministic storage contract exactly so notes migrate cleanly:
+
+```js
+const NOTES_STORAGE_PREFIX = "hf-slideshow:presenter-notes:v1:";
+
+function notesDeckKey(slideshowEl) {
+  const explicit = slideshowEl.getAttribute("notes-storage-key");
+  if (explicit && explicit.trim()) return explicit.trim();
+
+  const playerSrc = slideshowEl.querySelector("hyperframes-player")?.getAttribute("src") || "";
+  let resolvedPlayerSrc = playerSrc;
+  try {
+    resolvedPlayerSrc = new URL(playerSrc, location.href).href;
+  } catch {}
+
+  return `${location.origin}${location.pathname}|${document.title}|${resolvedPlayerSrc}`;
+}
+
+function notesStorageKey(slideshowEl, position, slide) {
+  return `${NOTES_STORAGE_PREFIX}${JSON.stringify([
+    notesDeckKey(slideshowEl),
+    position.sequenceId,
+    position.slideIndex,
+    slide.sceneId || "",
+  ])}`;
+}
+
+function readPresenterNotes(slideshowEl, position, slide) {
+  const key = notesStorageKey(slideshowEl, position, slide);
+  try {
+    const stored = localStorage.getItem(key);
+    return stored == null ? slide.notes || "" : stored;
+  } catch {
+    return slide.notes || "";
+  }
+}
+
+function wirePresenterNotes(textarea, slideshowEl, position, slide) {
+  const key = notesStorageKey(slideshowEl, position, slide);
+  textarea.value = readPresenterNotes(slideshowEl, position, slide);
+  textarea.addEventListener("input", function () {
+    try {
+      localStorage.setItem(key, textarea.value);
+    } catch {}
+  });
+}
+```
+
+Clearing the textarea must save an empty string, not remove the local value, because a presenter may intentionally blank a manifest note for their run. Use `notes-storage-key="stable-deck-id"` on `<hyperframes-slideshow>` when a standalone demo has a stable project id; otherwise the fallback key isolates by page, title, and player `src`.
+
 ---
 
 ## 3. Playhead-driven scene visibility
@@ -111,6 +164,8 @@ The parent page hosts the two dist bundles, wraps the components, duplicates the
 Without the engine, scenes are driven by a `root` GSAP timeline that the composition manages on its own clock. The visibility controller reads `window.__timelines.root.time()` via that timeline's `onUpdate` callback and sets `opacity` accordingly. Only the active scene is visible.
 
 The key insight: scene backgrounds must be `transparent` (not opaque) if you want a Three.js canvas behind them; the body/html background and scene inline `background` set the visual fill.
+
+For converted source pages, port source-specific widgets exactly where practical. Custom canvas players, waveform/timeline decorations, expanding rings, playheads, hover states, and event wiring are source material, not optional polish. Also audit for atypical page movement: scroll-scrubbed cameras, parallax, pinned sections, horizontal scrollers, section snapping, translated/scaled world layers, or zoom-to-element navigation. Scroll is often the source's transition trigger, so extract the scroll-progress stops, easing, and camera/focus states, then re-host that motion on slideshow navigation through timeline positions, fragments, or reusable harness hooks. Do not recreate the browser's literal page-scroll-down motion inside a slide; translate it into camera travel/zoom from one focus area to the next. If the same mechanical behavior appears across decks, move it into the player or this harness instead of copying a fragile one-off script.
 
 ```html
 <!-- In index.html (composition) -->
@@ -125,6 +180,7 @@ The key insight: scene backgrounds must be `transparent` (not opaque) if you wan
     height: 1080px;
     overflow: hidden;
     opacity: 0; /* hidden at rest — visibility controller shows the active one */
+    visibility: hidden; /* opacity:0 alone still lets invisible frames block clicks */
     pointer-events: none; /* inactive scenes must not swallow events */
   }
 </style>
@@ -188,6 +244,7 @@ The key insight: scene backgrounds must be `transparent` (not opaque) if you wan
         if (!el) continue;
         var active = t >= s.start && t < s.end;
         el.style.opacity = active ? "1" : "0";
+        el.style.visibility = active ? "visible" : "hidden";
         el.style.pointerEvents = active ? "auto" : "none";
 
         if (active && lastActiveId !== s.id) {
@@ -334,7 +391,11 @@ Omitting any scene (including branch scenes) from this manifest means the slides
 
 ## 6. Audio/SFX — built-in mute control via `<hyperframes-slideshow sound>`
 
-Audio **must** live in the parent page, not the composition iframe. Browsers enforce user-activation for AudioContext and HTMLAudioElement.play() — an iframe without its own activation (i.e., the user never clicked inside it) is permanently autoplay-blocked. The user's keypress lands on the parent, so the parent is the only frame that can get the activation token.
+Wrapper-owned SFX should live in the parent page. Browsers enforce user-activation for AudioContext and HTMLAudioElement.play() — an iframe without its own activation (i.e., the user never clicked inside it) is often autoplay-blocked. The user's keypress lands on the parent, so the parent is the reliable frame for click/transition sound effects.
+
+Normal slide media should stay in the composition. The slideshow player now stops slide media automatically on slide/sequence changes by calling `hyperframes-player.stopMedia()`, which pauses iframe `<video>` / `<audio>`, runtime WebAudio, and parent proxies adopted from iframe media. Same-slide fragment reveals do not stop media, and global/deck-level parent audio such as `audio-src` is left alone. Do not hand-roll per-slide cleanup scripts for regular video/audio players.
+
+Implementation detail: iframe media elements belong to the iframe's DOM realm. Fallback code in the parent page/player must not use the parent page's `el instanceof HTMLMediaElement` check for iframe nodes; in real browsers that fails and leaves videos audible. Use `el.ownerDocument.defaultView.HTMLMediaElement` or a tag/duck-type guard before setting `muted` or calling `pause()`.
 
 ### Mute toggle — built-in chrome control
 
@@ -348,9 +409,11 @@ The component:
 
 - Tracks `muted` state (default `false`); exposes a `muted` getter
 - Reflects to a `data-hf-muted` attribute on the host when muted
+- Applies mute globally to child `<hyperframes-player>` media and top-level page `<audio>` / `<video>` elements
 - Dispatches `CustomEvent("hf-sound", { detail: { muted }, bubbles: true, composed: true })` on every toggle
+- Browser-checks the actual iframe media state after changes; every composition `<video>` / `<audio>` should report `muted: true` after clicking the nav mute button
 
-The parent audio player gates on the `hf-sound` event:
+Wrapper-owned `new Audio(...)` objects are not attached to the DOM, so the parent audio player must mirror the `hf-sound` event onto each clip:
 
 ```js
 var muted = false;
@@ -358,6 +421,9 @@ var slideshow = document.querySelector("hyperframes-slideshow");
 if (slideshow) {
   slideshow.addEventListener("hf-sound", function (e) {
     muted = e.detail && e.detail.muted === true;
+    Object.keys(clips).forEach(function (name) {
+      clips[name].muted = muted;
+    });
   });
 }
 // In message handler:
@@ -424,7 +490,7 @@ Do NOT add a mute button inside the composition. The `#sfx-mute` coral button pa
     function unlock() {
       if (unlocked) return;
       unlocked = true;
-      // Prime each clip: play muted then immediately pause/reset.
+      // Prime wrapper-owned SFX clips: play muted then immediately pause/reset.
       // This moves the clip into the "allowed" state so later plays are instant.
       Object.keys(clips).forEach(function (name) {
         var el = clips[name];
@@ -587,7 +653,7 @@ if (!renderer) {
 | Failure                                               | Symptom                                                        | One-line fix                                                                                                                                  |
 | ----------------------------------------------------- | -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | Island not duplicated in wrapper                      | Slideshow chrome never renders; no slide counter, no prev/next | Copy the `<script type="application/hyperframes-slideshow+json">` block verbatim into the `<hyperframes-slideshow>` element in demo.html      |
-| Audio in the iframe                                   | All SFX silent                                                 | Move Audio elements and unlock logic to demo.html; post `{type:'hf-sfx',name}` from index.html                                                |
+| Wrapper SFX in the iframe                             | Click/transition sounds silent                                 | Move SFX Audio elements and unlock logic to demo.html; post `{type:'hf-sfx',name}` from index.html                                            |
 | No self-clock in composition                          | All scene frames stacked / wrong slide visible at load         | Add the root GSAP timeline (`window.__timelines["root"]`) and the `onUpdate` visibility controller as shown in Section 3                      |
 | Content opacity:0 with no engine                      | Blank slides — `[data-anim]` elements invisible at rest        | Call `updateVisibility(0)` synchronously after defining the controller so the first slide is shown immediately                                |
 | Keydown bound to the element without focus            | ArrowLeft/Right dead                                           | Add `tabindex="0"` to `<hyperframes-slideshow>` so it can receive keyboard focus                                                              |

@@ -83,6 +83,7 @@ export class SlideshowChannel {
  */
 export function buildPresenterLayout(opts: {
   notes: string;
+  notesStorageKey: string | null;
   nextText: string;
   counterText: string;
   elapsedText: string;
@@ -90,9 +91,7 @@ export function buildPresenterLayout(opts: {
 }): string {
   const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const escAttr = (s: string) => esc(s).replace(/"/g, "&quot;");
-  const notes = opts.notes
-    ? esc(opts.notes)
-    : `<span style="opacity:.4">No notes for this slide</span>`;
+  const notes = esc(opts.notes);
   // Branch entries for the current slide — the presenter clicks these to enter a
   // branch (the audience follows). The component wires [data-hotspot-id] to
   // enterBranch(); positioned pills don't align with the letterboxed slide, so
@@ -110,7 +109,7 @@ export function buildPresenterLayout(opts: {
     : "";
   return `
 <div data-hf-presenter style="position:absolute;left:0;right:0;bottom:0;height:32%;display:flex;background:#11151f;color:#fff;border-top:2px solid rgba(255,255,255,0.12);box-sizing:border-box;font-family:sans-serif;pointer-events:auto;">
-  <div data-hf-presenter-notes style="flex:1;min-width:0;padding:24px 36px;overflow-y:auto;font-size:21px;line-height:1.55;">${notes}</div>
+  <textarea data-hf-presenter-notes data-hf-presenter-notes-key="${escAttr(opts.notesStorageKey ?? "")}" aria-label="Speaker notes" placeholder="No notes for this slide" spellcheck="true" style="flex:1;min-width:0;padding:24px 36px;overflow:auto;font:inherit;font-size:21px;line-height:1.55;color:#fff;background:transparent;border:0;outline:none;resize:none;white-space:pre-wrap;pointer-events:auto;">${notes}</textarea>
   <div style="width:380px;flex-shrink:0;border-left:1px solid rgba(255,255,255,0.12);padding:24px 28px;display:flex;flex-direction:column;gap:10px;">
     <div style="font-size:12px;text-transform:uppercase;letter-spacing:.12em;opacity:.55;">Up next</div>
     <div data-hf-presenter-next style="font-size:17px;opacity:.9;line-height:1.4;">${esc(opts.nextText)}</div>

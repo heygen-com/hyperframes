@@ -5,6 +5,7 @@ import type { RuntimeBridgeControlMessage, RuntimeOutboundMessage } from "./type
 type BridgeDeps = {
   onPlay: () => void;
   onPause: () => void;
+  onStopMedia: () => void;
   onSeek: (frame: number, seekMode: "drag" | "commit") => void;
   onTick: () => void;
   onSetMuted: (muted: boolean) => void;
@@ -40,6 +41,10 @@ export function installRuntimeControlBridge(deps: BridgeDeps): (event: MessageEv
     }
     if (action === "pause") {
       deps.onPause();
+      return;
+    }
+    if (action === "stop-media") {
+      deps.onStopMedia();
       return;
     }
     if (action === "seek") {

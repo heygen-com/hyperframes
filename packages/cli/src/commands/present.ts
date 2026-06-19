@@ -174,7 +174,7 @@ function buildPresentPage(projectName: string, islandJson: string): string {
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>${projectName} — Presenter</title>
+    <title>${escHtml(projectName)} — Presenter</title>
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
       html, body { height: 100%; background: #0a0a0a; overflow: hidden; }
@@ -193,7 +193,7 @@ function buildPresentPage(projectName: string, islandJson: string): string {
   </head>
   <body>
     <hyperframes-slideshow tabindex="0" sound>
-      <hyperframes-player src="/composition/index.html"></hyperframes-player>
+      <hyperframes-player interactive src="/composition/index.html"></hyperframes-player>
       <script type="application/hyperframes-slideshow+json">
 ${islandJson}
       </script>
@@ -241,10 +241,16 @@ ${islandJson}
 
         // Mute state is owned by <hyperframes-slideshow sound>; mirror it.
         var muted = false;
+        function setClipsMuted(nextMuted) {
+          Object.keys(clips).forEach(function (name) {
+            clips[name].muted = nextMuted;
+          });
+        }
         var ss = document.querySelector("hyperframes-slideshow");
         if (ss) {
           ss.addEventListener("hf-sound", function (e) {
             muted = e.detail && e.detail.muted === true;
+            setClipsMuted(muted);
           });
         }
 
@@ -294,4 +300,12 @@ ${islandJson}
     </script>
   </body>
 </html>`;
+}
+
+function escHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
