@@ -17,6 +17,8 @@ const DECLS: readonly CompositionVariable[] = [
       { value: "dark", label: "Dark" },
     ],
   },
+  { id: "brandFont", type: "font", label: "Font", default: "Inter" },
+  { id: "hero", type: "image", label: "Hero", default: "https://x/y.png" },
 ];
 
 describe("validateVariables", () => {
@@ -77,6 +79,51 @@ describe("validateVariables", () => {
   it("flags non-string enum values as type mismatches", () => {
     expect(validateVariables({ theme: 1 }, DECLS)).toEqual([
       { kind: "type-mismatch", variableId: "theme", expected: "enum (string)", actual: "number" },
+    ]);
+  });
+
+  it("accepts a valid font object and a fallback string", () => {
+    expect(
+      validateVariables({ brandFont: { name: "Inter", source: "https://f/inter.css" } }, DECLS),
+    ).toEqual([]);
+    expect(validateVariables({ brandFont: "Inter" }, DECLS)).toEqual([]);
+  });
+
+  it("flags a font object missing string name/source", () => {
+    const expected = {
+      kind: "type-mismatch",
+      variableId: "brandFont",
+      expected: "font object {name: string, source: string}",
+      actual: "object missing string name/source",
+    };
+    expect(validateVariables({ brandFont: { name: 42 } }, DECLS)).toEqual([expected]);
+    expect(validateVariables({ brandFont: {} }, DECLS)).toEqual([expected]);
+  });
+
+  it("flags a non-object non-string font value", () => {
+    expect(validateVariables({ brandFont: 42 }, DECLS)).toEqual([
+      {
+        kind: "type-mismatch",
+        variableId: "brandFont",
+        expected: "font (object {name, source} or string)",
+        actual: "number",
+      },
+    ]);
+  });
+
+  it("accepts a valid image object and a fallback string", () => {
+    expect(validateVariables({ hero: { url: "https://x/y.png" } }, DECLS)).toEqual([]);
+    expect(validateVariables({ hero: "https://x/y.png" }, DECLS)).toEqual([]);
+  });
+
+  it("flags an image object missing a string url", () => {
+    expect(validateVariables({ hero: { foo: 42 } }, DECLS)).toEqual([
+      {
+        kind: "type-mismatch",
+        variableId: "hero",
+        expected: "image object {url: string}",
+        actual: "object missing string url",
+      },
     ]);
   });
 

@@ -18,6 +18,7 @@ import type {
   FontValue,
   GsapTweenSpec,
   ElasticHold,
+  KeyframeSpec,
   HfId,
   ImageValue,
   JsonPatchOp,
@@ -150,13 +151,28 @@ class CompositionImpl implements Composition {
 
   // ── WS-C: timing accessors + typed setHold ───────────────────────────────────
 
+  /**
+   * Cache of parsed GSAP labels keyed by EXACT script text. extractGsapLabels does
+   * a full acorn parse; caching avoids re-parsing on repeated getElementTimings reads
+   * when the script is unchanged. The content (not reference) key means any script
+   * edit changes the text and invalidates the cache, so renumbered tweens never yield
+   * stale label positions.
+   */
+  private _gsapLabelCache: { script: string; labels: ReturnType<typeof extractGsapLabels> } | null =
+    null;
+
   // fallow-ignore-next-line complexity
   getElementTimings(): Record<HfId, ElementTimingSnapshot> {
     const script = getGsapScript(this.parsed.document);
 
-    // Extract all addLabel("name", position) calls from the GSAP script. Parsed
-    // fresh each call so renumbered tweens never yield stale label positions.
-    const allLabels = script ? extractGsapLabels(script) : [];
+    // Extract all addLabel("name", position) calls from the GSAP script (see cache note above).
+    let allLabels: ReturnType<typeof extractGsapLabels>;
+    if (script && this._gsapLabelCache?.script === script) {
+      allLabels = this._gsapLabelCache.labels;
+    } else {
+      allLabels = script ? extractGsapLabels(script) : [];
+      this._gsapLabelCache = script ? { script, labels: allLabels } : null;
+    }
 
     const result: Record<HfId, ElementTimingSnapshot> = {};
     const elements = this.getElements();
@@ -186,7 +202,8 @@ class CompositionImpl implements Composition {
       const enterAt = Number.isFinite(start) ? start : 0;
       const exitAt = enterAt + (Number.isFinite(duration) ? duration : 0);
 
-      // Labels whose position falls within [enterAt, exitAt].
+      // Labels whose position falls within [enterAt, exitAt] (end-inclusive: a
+      // label exactly at exitAt is treated as within the element's window).
       const labels = allLabels
         .filter(({ position }) => position >= enterAt && position <= exitAt)
         .map(({ name }) => name);
@@ -225,6 +242,45 @@ class CompositionImpl implements Composition {
 
   removeGsapTween(animationId: string): void {
     this.dispatch({ type: "removeGsapTween", animationId });
+  }
+
+  addWithKeyframes(
+    targetSelector: string,
+    position: number,
+    duration: number,
+    keyframes: KeyframeSpec[],
+    ease?: string,
+  ): string {
+    const result = this._dispatch(
+      { type: "addWithKeyframes", targetSelector, position, duration, keyframes, ease },
+      ORIGIN_LOCAL,
+    );
+    return result.meta?.animationId ?? "";
+  }
+
+  replaceWithKeyframes(
+    animationId: string,
+    targetSelector: string,
+    position: number,
+    duration: number,
+    keyframes: KeyframeSpec[],
+    ease?: string,
+  ): string {
+    const result = this._dispatch(
+      {
+        type: "replaceWithKeyframes",
+        animationId,
+        targetSelector,
+        position,
+        duration,
+        keyframes,
+        ease,
+      },
+      ORIGIN_LOCAL,
+    );
+    // Position-derived IDs renumber after the remove — this is the NEW id, which
+    // may differ from the input animationId.
+    return result.meta?.animationId ?? "";
   }
 
   undo(): void {

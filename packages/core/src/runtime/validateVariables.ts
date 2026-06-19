@@ -87,7 +87,8 @@ function checkType(value: unknown, decl: CompositionVariable): VariableValidatio
     }
     case "font": {
       // Font value is an object {name: string, source: string} OR a fallback string.
-      if (!isPlainObject(value) && typeof value !== "string") {
+      if (typeof value === "string") return null;
+      if (!isPlainObject(value)) {
         return {
           kind: "type-mismatch",
           variableId: decl.id,
@@ -95,16 +96,37 @@ function checkType(value: unknown, decl: CompositionVariable): VariableValidatio
           actual: jsTypeOf(value),
         };
       }
+      // Object form: require the discriminant fields so a malformed brand-kit
+      // value ({name: 42} / {}) is caught here rather than surfacing as a bogus
+      // font-family at render time.
+      if (typeof value.name !== "string" || typeof value.source !== "string") {
+        return {
+          kind: "type-mismatch",
+          variableId: decl.id,
+          expected: "font object {name: string, source: string}",
+          actual: "object missing string name/source",
+        };
+      }
       return null;
     }
     case "image": {
       // Image value is an object {url: string} OR a fallback string.
-      if (!isPlainObject(value) && typeof value !== "string") {
+      if (typeof value === "string") return null;
+      if (!isPlainObject(value)) {
         return {
           kind: "type-mismatch",
           variableId: decl.id,
           expected: "image (object {url} or string)",
           actual: jsTypeOf(value),
+        };
+      }
+      // Object form: require the discriminant field.
+      if (typeof value.url !== "string") {
+        return {
+          kind: "type-mismatch",
+          variableId: decl.id,
+          expected: "image object {url: string}",
+          actual: "object missing string url",
         };
       }
       return null;

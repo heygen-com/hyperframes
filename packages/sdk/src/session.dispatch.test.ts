@@ -34,6 +34,13 @@ async function withPatch(html: string): Promise<{ comp: Composition; events: Pat
   return { comp, events };
 }
 
+function expectGsapScriptPatch(id: string, events: PatchEvent[]): void {
+  expect(typeof id).toBe("string");
+  expect(id.length).toBeGreaterThan(0);
+  expect(events).toHaveLength(1);
+  expect(events[0]!.patches.find((p) => p.path.includes("/script/gsap"))).toBeDefined();
+}
+
 // ─── patch event emission ─────────────────────────────────────────────────────
 
 describe("dispatch emits patch event", () => {
@@ -182,10 +189,7 @@ describe("addGsapTween via session", () => {
     const { comp, events } = await withPatch(GSAP_HTML);
     const id = comp.addGsapTween("hf-box", { method: "to", duration: 0.3, properties: { x: 200 } });
 
-    expect(typeof id).toBe("string");
-    expect(id.length).toBeGreaterThan(0);
-    expect(events).toHaveLength(1);
-    expect(events[0]!.patches.find((p) => p.path.includes("/script/gsap"))).toBeDefined();
+    expectGsapScriptPatch(id, events);
   });
 
   it("undo removes the added tween", async () => {
@@ -194,6 +198,40 @@ describe("addGsapTween via session", () => {
     comp.addGsapTween("hf-box", { method: "to", duration: 0.3, properties: { x: 200 } });
     comp.undo();
     expect(comp.serialize()).toBe(scriptBefore);
+  });
+});
+
+// ─── addWithKeyframes / replaceWithKeyframes via session API ──────────────────
+
+describe("keyframe ops via session", () => {
+  it("addWithKeyframes returns an animationId and emits a GSAP script patch", async () => {
+    const { comp, events } = await withPatch(GSAP_HTML);
+    const id = comp.addWithKeyframes('[data-hf-id="hf-box"]', 0, 0.5, [
+      { percentage: 0, properties: { opacity: 0 } },
+      { percentage: 100, properties: { opacity: 1 } },
+    ]);
+
+    expectGsapScriptPatch(id, events);
+  });
+
+  it("replaceWithKeyframes returns the replacement id; undo restores the prior script", async () => {
+    const comp = await openComposition(GSAP_HTML);
+    const before = comp.serialize();
+    const addId = comp.addWithKeyframes('[data-hf-id="hf-box"]', 0, 0.5, [
+      { percentage: 0, properties: { opacity: 0 } },
+      { percentage: 100, properties: { opacity: 1 } },
+    ]);
+    const newId = comp.replaceWithKeyframes(addId, '[data-hf-id="hf-box"]', 0, 0.8, [
+      { percentage: 0, properties: { x: 0 } },
+      { percentage: 100, properties: { x: 100 } },
+    ]);
+
+    expect(typeof newId).toBe("string");
+    expect(newId.length).toBeGreaterThan(0);
+
+    comp.undo(); // undo replace
+    comp.undo(); // undo add
+    expect(comp.serialize()).toBe(before);
   });
 });
 

@@ -53,6 +53,12 @@ export interface SdkDocument {
  * Font and image variable overrides store their object values under the var.{id} key:
  * { "var.brand-font": { name: "Roboto", source: "https://fonts.googleapis.com/…" } }
  */
+/**
+ * A set of variable overrides. The `Record<string, unknown>` member admits
+ * object-valued variables (font/image). NOTE for SDK consumers: this widening
+ * means code reading an OverrideSet value must narrow before assuming a scalar —
+ * an object value will type-check anywhere `unknown` is accepted.
+ */
 export type OverrideSet = Record<
   string,
   string | number | boolean | Record<string, unknown> | null
@@ -194,14 +200,10 @@ export type EditOp =
       /** Insert a new keyframed tween for targetSelector at the given position/duration. */
       type: "addWithKeyframes";
       targetSelector: string;
+      /** Timeline position in seconds. Number-only (unlike GsapTweenSpec.position, which also accepts label-relative strings). */
       position: number;
       duration: number;
-      keyframes: Array<{
-        percentage: number;
-        properties: Record<string, number | string>;
-        ease?: string;
-        auto?: boolean;
-      }>;
+      keyframes: KeyframeSpec[];
       ease?: string;
     }
   | {
@@ -214,16 +216,25 @@ export type EditOp =
       type: "replaceWithKeyframes";
       animationId: string;
       targetSelector: string;
+      /** Timeline position in seconds. Number-only (unlike GsapTweenSpec.position, which also accepts label-relative strings). */
       position: number;
       duration: number;
-      keyframes: Array<{
-        percentage: number;
-        properties: Record<string, number | string>;
-        ease?: string;
-        auto?: boolean;
-      }>;
+      keyframes: KeyframeSpec[];
       ease?: string;
     };
+
+/**
+ * A single keyframe entry for `addWithKeyframes` / `replaceWithKeyframes`.
+ * Single source of truth — Studio-side mirrors (KeyframeEntry/KeyframeSpec) should
+ * import this rather than redeclare the shape.
+ */
+export interface KeyframeSpec {
+  percentage: number;
+  properties: Record<string, number | string>;
+  ease?: string;
+  /** GSAP endpoint flag — emitted as numeric `_auto: 1`, not boolean. */
+  auto?: boolean;
+}
 
 export interface ElasticHold {
   start: number;
@@ -242,11 +253,14 @@ export interface FontValue {
 
 /**
  * Object value for an `image` variable (LOCKED §7 — object-valued, never a CSS string).
- * `url` is the image src; additional fields (alt, fit, etc.) are forward-compatible.
+ * `url` is the image src. Add explicit optional fields here as consumers need them —
+ * an open `[key: string]: unknown` index signature was dropped because it let any
+ * `{url}`-shaped object through and swallowed key typos.
  */
 export interface ImageValue {
   url: string;
-  [key: string]: unknown;
+  alt?: string;
+  fit?: "cover" | "contain" | "fill" | "none" | "scale-down";
 }
 
 export interface GsapTweenSpec {
@@ -416,6 +430,30 @@ export interface Composition {
   addGsapTween(target: HfId, tween: GsapTweenSpec): string;
   setGsapTween(animationId: string, properties: Partial<GsapTweenSpec>): void;
   removeGsapTween(animationId: string): void;
+  /**
+   * Add a keyframed tween. Typed wrapper over the addWithKeyframes op (mirrors
+   * addGsapTween). Returns the newly-minted animationId, or "" if rejected.
+   */
+  addWithKeyframes(
+    targetSelector: string,
+    position: number,
+    duration: number,
+    keyframes: KeyframeSpec[],
+    ease?: string,
+  ): string;
+  /**
+   * Replace an existing keyframed tween. Typed wrapper over replaceWithKeyframes.
+   * Returns the replacement's animationId (treat as NEW — position-derived IDs
+   * renumber after the remove), or "" if rejected.
+   */
+  replaceWithKeyframes(
+    animationId: string,
+    targetSelector: string,
+    position: number,
+    duration: number,
+    keyframes: KeyframeSpec[],
+    ease?: string,
+  ): string;
   undo(): void;
   redo(): void;
   canUndo(): boolean;

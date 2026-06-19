@@ -1199,6 +1199,8 @@ export function extractGsapLabels(script: string): GsapLabelEntry[] {
 
     return labels;
   } catch {
+    // Labels are best-effort/supplementary, not load-bearing — a malformed or
+    // unparseable script yields no labels rather than failing the caller.
     return [];
   }
 }
