@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Airbnb 2009 Seed Deck — Slideshow Demo</title>
+    <script src="../../../packages/player/dist/hyperframes-player.global.js"></script>
+    <script src="../../../packages/player/dist/slideshow/hyperframes-slideshow.global.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #111;
+      }
+    </style>
+  </head>
+  <body>
+    <!--
+      NOTE: The <script type="application/hyperframes-slideshow+json"> island below is a
+      COPY of the island inside index.html. This duplication is intentional: <hyperframes-slideshow>
+      reads the island from its OWN innerHTML (not from the composition loaded by
+      <hyperframes-player>). Keep this copy in sync with the island in index.html whenever
+      slides, fragments, hotspots, or sequences change.
+    -->
+    <hyperframes-slideshow tabindex="0" sound style="display: block; position: relative; width: 100vw; height: 100vh">
+      <hyperframes-player
+        style="position: absolute; inset: 0"
+        src="index.html"
+      ></hyperframes-player>
+
+      <script type="application/hyperframes-slideshow+json">
+        {
+          "slides": [
+            {
+              "sceneId": "cover",
+              "notes": "Open with the tagline. Let the Bélo breathe. This is the belonging company."
+            },
+            {
+              "sceneId": "problem",
+              "notes": "Two problems, one at a time. Price first — hotels are expensive. Then connection.",
+              "fragments": [9.3, 9.6]
+            },
+            {
+              "sceneId": "solution",
+              "notes": "Platform connects hosts and travelers. Belong anywhere. Three value props."
+            },
+            {
+              "sceneId": "validation",
+              "notes": "Couchsurfing proves demand: 660k members want this. Craigslist shows supply side."
+            },
+            {
+              "sceneId": "market",
+              "notes": "Bottom-up: trips × take-rate = $2.1B. Use the hotspot for the drill-down math.",
+              "hotspots": [
+                {
+                  "id": "mkt-hotspot",
+                  "label": "Show me the math",
+                  "target": "market-math-detail",
+                  "region": { "x": 70, "y": 80, "w": 25, "h": 12 }
+                }
+              ]
+            },
+            {
+              "sceneId": "product",
+              "notes": "Three clicks: Search, Book, Travel. Show the booking flow simplicity."
+            },
+            {
+              "sceneId": "business",
+              "notes": "10% commission. At 80k transactions × $26 avg nightly take = $2.1M revenue."
+            },
+            {
+              "sceneId": "adoption",
+              "notes": "Events, conferences, Craigslist cross-posting, partnerships. Grass-roots growth."
+            },
+            {
+              "sceneId": "competition",
+              "notes": "Matrix: cheapest + online + transaction. Airbnb is the only one that hits all three."
+            },
+            {
+              "sceneId": "team",
+              "notes": "Brian (CEO/design), Joe (design), Nate (engineering). Domain depth: housing + tech."
+            },
+            {
+              "sceneId": "ask",
+              "notes": "Raising $500K. 12 months runway. Target: 80K transactions ≈ $2M revenue."
+            }
+          ],
+          "slideSequences": [
+            {
+              "id": "market-math-detail",
+              "label": "Market sizing methodology",
+              "slides": [
+                {
+                  "sceneId": "market-sizing",
+                  "notes": "Bottom-up drill: global trips × budget share × online booking rate × take-rate = $2.1B."
+                }
+              ]
+            }
+          ]
+        }
+      </script>
+    </hyperframes-slideshow>
+
+    <!--
+      Sound effects play HERE, in the parent document. The composition (loaded in the
+      player's iframe) detects slide/fragment/branch transitions and posts
+      { type: 'hf-sfx', name } to the parent. Audio must live in the frame that
+      receives the user's gesture (the parent) — an iframe without its own user
+      activation is autoplay-blocked. The mp3s are in sfx/ next to this file.
+
+      Mute state is owned by <hyperframes-slideshow sound>. Listen for 'hf-sound'
+      events (or read slideshow.muted / data-hf-muted) to skip playback when muted.
+    -->
+    <script>
+      (function () {
+        var clips = {
+          advance: new Audio("sfx/advance.mp3"),
+          fragment: new Audio("sfx/fragment.mp3"),
+          "branch-enter": new Audio("sfx/branch-enter.mp3"),
+          back: new Audio("sfx/back.mp3"),
+        };
+        clips.advance.volume = 0.45;
+        clips.fragment.volume = 0.4;
+        clips["branch-enter"].volume = 0.4;
+        clips.back.volume = 0.4;
+        for (var k in clips) clips[k].preload = "auto";
+
+        // Track mute state: updated via 'hf-sound' events from the slideshow chrome.
+        var muted = false;
+        var slideshow = document.querySelector("hyperframes-slideshow");
+        if (slideshow) {
+          slideshow.addEventListener("hf-sound", function (e) {
+            muted = e.detail && e.detail.muted === true;
+          });
+        }
+
+        var unlocked = false;
+        function unlock() {
+          if (unlocked) return;
+          unlocked = true;
+          // Prime each clip (play muted then reset) so later plays are instant + allowed.
+          Object.keys(clips).forEach(function (name) {
+            var el = clips[name];
+            var v = el.volume;
+            el.volume = 0;
+            el.play()
+              .then(function () {
+                el.pause();
+                el.currentTime = 0;
+                el.volume = v;
+              })
+              .catch(function () {
+                el.volume = v;
+              });
+          });
+        }
+        window.addEventListener("keydown", unlock, true);
+        window.addEventListener("pointerdown", unlock, true);
+        window.addEventListener("click", unlock, true);
+
+        window.addEventListener("message", function (e) {
+          var d = e.data;
+          if (!d || d.type !== "hf-sfx") return;
+          // Skip playback when muted — the component owns mute state.
+          if (muted) return;
+          var el = clips[d.name];
+          if (!el || !unlocked) return;
+          try {
+            el.currentTime = 0;
+            el.play().catch(function () {});
+          } catch (err) {
+            /* ignore */
+          }
+        });
+      })();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FlowDesk Pitch — Slideshow Demo</title>
+    <script src="../../../packages/player/dist/hyperframes-player.global.js"></script>
+    <script src="../../../packages/player/dist/slideshow/hyperframes-slideshow.global.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #000;
+      }
+    </style>
+  </head>
+  <body>
+    <!--
+      NOTE: The <script type="application/hyperframes-slideshow+json"> island
+      below is a COPY of the island inside index.html. This duplication is a
+      current workaround: <hyperframes-slideshow> reads the island from its OWN
+      innerHTML (not from the composition loaded by <hyperframes-player>). In a
+      future version the component should read the island from the composition
+      directly. Keep this copy in sync with the one in index.html.
+    -->
+    <hyperframes-slideshow tabindex="0" style="display: block; position: relative; width: 100vw; height: 100vh">
+      <hyperframes-player
+        style="position: absolute; inset: 0"
+        src="index.html"
+      ></hyperframes-player>
+
+      <script type="application/hyperframes-slideshow+json">
+        {
+          "slides": [
+            {
+              "sceneId": "cover",
+              "notes": "Open cold with the tagline. Let it breathe — no build, just the claim."
+            },
+            {
+              "sceneId": "problem",
+              "notes": "Walk through each pain point one fragment at a time. The 14h/week stat is the anchor.",
+              "fragments": [8.3, 8.6, 8.9],
+              "hotspots": []
+            },
+            {
+              "sceneId": "solution",
+              "notes": "One sentence. The product kills the three pains from the previous slide."
+            },
+            {
+              "sceneId": "why-now",
+              "notes": "Three macro tailwinds — remote-first freelancing, API economy, AI underwriting."
+            },
+            {
+              "sceneId": "market",
+              "notes": "Bottom-up math only. 480k agencies × $4,200 ACV = $2.0B SAM. Use hotspot for methodology Q.",
+              "hotspots": [
+                {
+                  "id": "mkt-hotspot",
+                  "label": "How did you size this market?",
+                  "target": "market-sizing-drill",
+                  "region": { "x": 55, "y": 60, "w": 40, "h": 28 }
+                }
+              ]
+            },
+            {
+              "sceneId": "product",
+              "notes": "Three product pillars — intake, approvals, invoicing. Show the single workflow view."
+            },
+            {
+              "sceneId": "traction",
+              "notes": "Lead with MRR and NRR — investors pattern-match on those two numbers first."
+            },
+            {
+              "sceneId": "team",
+              "notes": "Why us: ex-Stripe, ex-Figma, serial founders. Domain depth on both sides."
+            },
+            {
+              "sceneId": "ask",
+              "notes": "$4M seed to hit 1,000 customers. Show specific use of proceeds."
+            }
+          ],
+          "slideSequences": [
+            {
+              "id": "market-sizing-drill",
+              "label": "Market sizing methodology",
+              "slides": [
+                {
+                  "sceneId": "market-drill",
+                  "notes": "Step through the bottom-up math: Dun & Bradstreet count → filter → ACV from comparable comps."
+                }
+              ]
+            }
+          ]
+        }
+      </script>
+    </hyperframes-slideshow>
+  </body>
+</html>

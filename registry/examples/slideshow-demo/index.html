@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Slideshow Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      @font-face {
+        font-family: "Inter";
+        font-weight: 400 800;
+        font-style: normal;
+        src: local("Inter"), local("Inter-Regular");
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #0f1117;
+        font-family: "Inter", sans-serif;
+      }
+
+      /* ── Scene base ─────────────────────────────────────── */
+      .scene {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 32px;
+      }
+
+      /* ── Typography ─────────────────────────────────────── */
+      .slide-heading {
+        font-size: 96px;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        color: #ffffff;
+        opacity: 0;
+      }
+      .slide-body {
+        font-size: 40px;
+        font-weight: 400;
+        color: rgba(255, 255, 255, 0.7);
+        max-width: 1200px;
+        text-align: center;
+        line-height: 1.4;
+        opacity: 0;
+      }
+      .slide-tag {
+        font-size: 28px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        padding: 12px 32px;
+        border-radius: 48px;
+        opacity: 0;
+      }
+
+      /* ── Scene-specific colors ──────────────────────────── */
+      #scene-intro .slide-tag {
+        background: #4f46e5;
+        color: #ffffff;
+      }
+      #scene-features .slide-tag {
+        background: #0ea5e9;
+        color: #ffffff;
+      }
+      #scene-cta .slide-tag {
+        background: #10b981;
+        color: #ffffff;
+      }
+      #scene-branch-a .slide-tag {
+        background: #f59e0b;
+        color: #ffffff;
+      }
+      #scene-branch-b .slide-tag {
+        background: #ef4444;
+        color: #ffffff;
+      }
+
+      /* ── Fragment reveal bullets ────────────────────────── */
+      .bullet-list {
+        list-style: none;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        width: 900px;
+      }
+      .bullet-list li {
+        font-size: 36px;
+        font-weight: 600;
+        color: rgba(255, 255, 255, 0.9);
+        opacity: 0;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+      .bullet-list li::before {
+        content: "▶";
+        color: #4f46e5;
+        font-size: 24px;
+        flex-shrink: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <!--
+      Root composition — 30 seconds total, four scenes:
+        0–8   scene-intro    (slide 1, main line, 2 fragments at 3s and 6s)
+        8–16  scene-features (slide 2, main line, hotspot → dive-deeper branch)
+       16–24  scene-cta      (slide 3, main line)
+       24–28  scene-branch-a (branch "dive-deeper", slide 1)
+       28–32  scene-branch-b (branch "dive-deeper", slide 2)
+
+      NOTE: total composition span is 32s to accommodate the branch at the end.
+      Branch scenes are laid at 24–32s so they don't overlap the main line.
+    -->
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="32"
+      data-width="1920"
+      data-height="1080"
+    >
+      <!-- ── Scene 1: Intro ───────────────────────────────── -->
+      <div
+        id="scene-intro"
+        class="scene clip"
+        data-composition-id="scene-intro"
+        data-start="0"
+        data-duration="8"
+        data-label="Intro"
+      >
+        <div class="slide-tag" id="intro-tag">Hyperframes</div>
+        <h1 class="slide-heading" id="intro-heading">Write HTML. Ship Video.</h1>
+        <p class="slide-body" id="intro-body-1">
+          A composition framework that turns deterministic HTML + GSAP into frame-perfect MP4.
+        </p>
+        <ul class="bullet-list" id="intro-bullets">
+          <li id="intro-bullet-1">Render at any resolution or framerate</li>
+          <li id="intro-bullet-2">Zero runtime surprises — fully deterministic</li>
+        </ul>
+        <script>
+          (function () {
+            window.__timelines = window.__timelines || {};
+            var tl = gsap.timeline({ paused: true });
+            // Entrance: tag fades up, then heading, then body
+            tl.fromTo(
+              "#intro-tag",
+              { opacity: 0, y: 24 },
+              { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" },
+              0,
+            );
+            tl.fromTo(
+              "#intro-heading",
+              { opacity: 0, y: 40 },
+              { opacity: 1, y: 0, duration: 0.7, ease: "power3.out" },
+              0.2,
+            );
+            tl.fromTo(
+              "#intro-body-1",
+              { opacity: 0, y: 20 },
+              { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" },
+              0.5,
+            );
+            // Fragment 1 hold point at 3s — bullet 1 reveals here
+            tl.fromTo(
+              "#intro-bullet-1",
+              { opacity: 0, x: -20 },
+              { opacity: 1, x: 0, duration: 0.5, ease: "back.out(1.4)" },
+              1.5,
+            );
+            // Fragment 2 hold point at 6s — bullet 2 reveals here
+            tl.fromTo(
+              "#intro-bullet-2",
+              { opacity: 0, x: -20 },
+              { opacity: 1, x: 0, duration: 0.5, ease: "back.out(1.4)" },
+              4.5,
+            );
+            window.__timelines["scene-intro"] = tl;
+          })();
+        </script>
+      </div>
+
+      <!-- ── Scene 2: Features ───────────────────────────── -->
+      <div
+        id="scene-features"
+        class="scene clip"
+        data-composition-id="scene-features"
+        data-start="8"
+        data-duration="8"
+        data-label="Features"
+      >
+        <div class="slide-tag" id="features-tag">Feature Deep Dive</div>
+        <h1 class="slide-heading" id="features-heading">Everything You Need</h1>
+        <p class="slide-body" id="features-body">
+          From shader transitions to slideshow mode — the full stack is here.
+        </p>
+        <script>
+          (function () {
+            window.__timelines = window.__timelines || {};
+            var tl = gsap.timeline({ paused: true });
+            tl.fromTo(
+              "#features-tag",
+              { opacity: 0, scale: 0.8 },
+              { opacity: 1, scale: 1, duration: 0.5, ease: "back.out(1.7)" },
+              0,
+            );
+            tl.fromTo(
+              "#features-heading",
+              { opacity: 0, y: 40 },
+              { opacity: 1, y: 0, duration: 0.7, ease: "power3.out" },
+              0.15,
+            );
+            tl.fromTo(
+              "#features-body",
+              { opacity: 0, y: 20 },
+              { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" },
+              0.45,
+            );
+            window.__timelines["scene-features"] = tl;
+          })();
+        </script>
+      </div>
+
+      <!-- ── Scene 3: CTA ────────────────────────────────── -->
+      <div
+        id="scene-cta"
+        class="scene clip"
+        data-composition-id="scene-cta"
+        data-start="16"
+        data-duration="8"
+        data-label="Call to Action"
+      >
+        <div class="slide-tag" id="cta-tag">Get Started</div>
+        <h1 class="slide-heading" id="cta-heading">Ship Your First Video Today</h1>
+        <p class="slide-body" id="cta-body">
+          npx hyperframes create my-video — and you're rendering in under a minute.
+        </p>
+        <script>
+          (function () {
+            window.__timelines = window.__timelines || {};
+            var tl = gsap.timeline({ paused: true });
+            tl.fromTo(
+              "#cta-tag",
+              { opacity: 0, y: -20 },
+              { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" },
+              0,
+            );
+            tl.fromTo(
+              "#cta-heading",
+              { opacity: 0, scale: 0.9 },
+              { opacity: 1, scale: 1, duration: 0.8, ease: "elastic.out(1, 0.6)" },
+              0.2,
+            );
+            tl.fromTo(
+              "#cta-body",
+              { opacity: 0, y: 20 },
+              { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" },
+              0.5,
+            );
+            window.__timelines["scene-cta"] = tl;
+          })();
+        </script>
+      </div>
+
+      <!-- ── Branch scenes: Dive Deeper ─────────────────── -->
+      <!-- These are placed at 24–32s, outside the main-line range of 0–24s -->
+
+      <div
+        id="scene-branch-a"
+        class="scene clip"
+        data-composition-id="scene-branch-a"
+        data-start="24"
+        data-duration="4"
+        data-label="Under the Hood"
+      >
+        <div class="slide-tag" id="branch-a-tag">Architecture</div>
+        <h1 class="slide-heading" id="branch-a-heading">How It Works</h1>
+        <p class="slide-body" id="branch-a-body">
+          Puppeteer drives Chromium frame-by-frame. FFmpeg encodes. Your HTML is the source of truth.
+        </p>
+        <script>
+          (function () {
+            window.__timelines = window.__timelines || {};
+            var tl = gsap.timeline({ paused: true });
+            tl.fromTo(
+              "#branch-a-tag",
+              { opacity: 0, x: -30 },
+              { opacity: 1, x: 0, duration: 0.5, ease: "power2.out" },
+              0,
+            );
+            tl.fromTo(
+              "#branch-a-heading",
+              { opacity: 0, y: 30 },
+              { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" },
+              0.2,
+            );
+            tl.fromTo(
+              "#branch-a-body",
+              { opacity: 0, y: 20 },
+              { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" },
+              0.45,
+            );
+            window.__timelines["scene-branch-a"] = tl;
+          })();
+        </script>
+      </div>
+
+      <div
+        id="scene-branch-b"
+        class="scene clip"
+        data-composition-id="scene-branch-b"
+        data-start="28"
+        data-duration="4"
+        data-label="Performance"
+      >
+        <div class="slide-tag" id="branch-b-tag">Performance</div>
+        <h1 class="slide-heading" id="branch-b-heading">Fast Capture Mode</h1>
+        <p class="slide-body" id="branch-b-body">
+          drawElement bypasses screenshot-per-frame for 2-4× faster renders with lossless quality.
+        </p>
+        <script>
+          (function () {
+            window.__timelines = window.__timelines || {};
+            var tl = gsap.timeline({ paused: true });
+            tl.fromTo(
+              "#branch-b-tag",
+              { opacity: 0, x: -30 },
+              { opacity: 1, x: 0, duration: 0.5, ease: "power2.out" },
+              0,
+            );
+            tl.fromTo(
+              "#branch-b-heading",
+              { opacity: 0, y: 30 },
+              { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" },
+              0.2,
+            );
+            tl.fromTo(
+              "#branch-b-body",
+              { opacity: 0, y: 20 },
+              { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" },
+              0.45,
+            );
+            window.__timelines["scene-branch-b"] = tl;
+          })();
+        </script>
+      </div>
+
+      <!-- ── Root timeline ─────────────────────────────── -->
+      <script>
+        (function () {
+          window.__timelines = window.__timelines || {};
+          var tl = gsap.timeline({ paused: true });
+          // Root timeline spans the full 32s; individual scene timelines
+          // are registered separately under their own composition-id keys.
+          tl.to({}, { duration: 32 });
+          window.__timelines["main"] = tl;
+        })();
+      </script>
+    </div>
+
+    <!-- ── Slideshow JSON island ──────────────────────────── -->
+    <!--
+      sceneId values intentionally match data-composition-id WITHOUT explicit
+      startTime/endTime — this exercises Task 7's sceneId resolution path.
+
+      Lint resolves them via collectCompositionIdScenes (data-composition-id + data-start/data-duration).
+      Browser runtime resolves them via player.scenes (populated from the "timeline" postMessage
+      after runtime injection at ~1s — see Task 7 timing-risk note in progress.md).
+    -->
+    <script type="application/hyperframes-slideshow+json">
+      {
+        "slides": [
+          {
+            "sceneId": "scene-intro",
+            "fragments": [3, 6],
+            "notes": "Step through: tag → heading → body, then bullet 1 at 3s, bullet 2 at 6s."
+          },
+          {
+            "sceneId": "scene-features",
+            "hotspots": [
+              {
+                "id": "dive-deeper-hotspot",
+                "label": "Dive Deeper",
+                "target": "dive-deeper",
+                "region": { "x": 70, "y": 80, "w": 20, "h": 10 }
+              }
+            ],
+            "notes": "Feature overview. Hotspot in bottom-right enters the architecture branch."
+          },
+          {
+            "sceneId": "scene-cta",
+            "notes": "Call to action. End of main deck."
+          }
+        ],
+        "slideSequences": [
+          {
+            "id": "dive-deeper",
+            "label": "Dive Deeper",
+            "slides": [
+              {
+                "sceneId": "scene-branch-a",
+                "notes": "Architecture overview: Puppeteer + FFmpeg pipeline."
+              },
+              {
+                "sceneId": "scene-branch-b",
+                "notes": "Fast Capture Mode: drawElement for 2-4x speed."
+              }
+            ]
+          }
+        ]
+      }
+    </script>
+  </body>
+</html>

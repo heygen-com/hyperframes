@@ -1,0 +1,1571 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Airbnb — 2009 Seed Pitch Deck</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        font-family: "Nunito Sans", "Montserrat", system-ui, sans-serif;
+        background: #ffffff;
+      }
+
+      /* Three.js background canvas — always behind everything */
+      #three-canvas {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 1920px;
+        height: 1080px;
+        z-index: 0;
+        pointer-events: none;
+        -webkit-mask-image: radial-gradient(circle 220px at calc(100% - 30px) calc(100% - 30px), transparent 0, transparent 90px, black 220px);
+        mask-image: radial-gradient(circle 220px at calc(100% - 30px) calc(100% - 30px), transparent 0, transparent 90px, black 220px);
+      }
+
+      /* Scene frames — positioned above canvas */
+      .scene-frame {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        opacity: 0;
+        z-index: 1;
+        pointer-events: none;
+      }
+
+      /* Content containers — include a subtle glass scrim so text stays legible over 3D */
+      .slide-inner {
+        position: absolute;
+        inset: 0;
+        padding: 100px 160px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 32px;
+      }
+      .slide-center {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 32px;
+        padding: 80px 200px;
+        text-align: center;
+      }
+
+      /* Glass scrim behind text — light slides.
+         Center is solid enough to read; edges fade to transparent so 3D shows in margins. */
+      .slide-inner.scrim-light,
+      .slide-center.scrim-light {
+        background: radial-gradient(ellipse 75% 80% at 50% 50%, rgba(255,255,255,0.88) 30%, rgba(255,255,255,0.60) 65%, rgba(255,255,255,0.0) 100%);
+      }
+
+      /* Glass scrim behind text — dark slides */
+      .slide-inner.scrim-dark,
+      .slide-center.scrim-dark {
+        background: radial-gradient(ellipse 80% 85% at 50% 50%, rgba(25,25,25,0.92) 30%, rgba(20,20,20,0.70) 65%, rgba(15,15,15,0.0) 100%);
+      }
+
+      /* Corner Bélo mark — shown on every slide except cover */
+      .belo-corner {
+        position: absolute;
+        top: 40px;
+        left: 60px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        z-index: 10;
+      }
+      .belo-corner-wordmark {
+        font-size: 28px;
+        font-weight: 800;
+        color: #FF385C;
+        letter-spacing: -0.02em;
+      }
+
+      /* Typography */
+      .eyebrow {
+        font-size: 28px;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: #FF385C;
+      }
+      .headline {
+        font-size: 80px;
+        font-weight: 800;
+        line-height: 1.05;
+        letter-spacing: -0.025em;
+        color: #222222;
+      }
+      .headline-lg {
+        font-size: 88px;
+        font-weight: 900;
+        line-height: 1;
+        letter-spacing: -0.03em;
+        color: #222222;
+      }
+      .headline-xl {
+        font-size: 120px;
+        font-weight: 900;
+        line-height: 1;
+        letter-spacing: -0.04em;
+      }
+      .subhead {
+        font-size: 44px;
+        font-weight: 400;
+        line-height: 1.4;
+        color: #717171;
+        max-width: 1300px;
+      }
+      .subhead-center {
+        font-size: 44px;
+        font-weight: 400;
+        line-height: 1.4;
+        color: #717171;
+        max-width: 1100px;
+        text-align: center;
+      }
+      .stat-number {
+        font-size: 96px;
+        font-weight: 900;
+        line-height: 1;
+        letter-spacing: -0.04em;
+        color: #FF385C;
+      }
+      .stat-label {
+        font-size: 36px;
+        font-weight: 600;
+        color: #717171;
+        margin-top: 8px;
+      }
+      .accent-bar {
+        width: 80px;
+        height: 6px;
+        border-radius: 3px;
+        background: #FF385C;
+      }
+
+      /* Cards */
+      .card-grid-3 {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 40px;
+        width: 100%;
+        max-width: 1560px;
+      }
+      .card {
+        padding: 48px;
+        background: #FFF1F1;
+        border-radius: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+      .card-title {
+        font-size: 44px;
+        font-weight: 800;
+        color: #FF385C;
+      }
+      .card-body {
+        font-size: 36px;
+        font-weight: 400;
+        color: #222222;
+        line-height: 1.45;
+      }
+
+      /* Problem items — start hidden, revealed imperatively */
+      .problem-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 32px;
+        opacity: 0;
+      }
+      .problem-num {
+        font-size: 56px;
+        font-weight: 900;
+        color: #FF385C;
+        line-height: 1;
+        min-width: 64px;
+        flex-shrink: 0;
+      }
+      .problem-text {
+        font-size: 52px;
+        font-weight: 600;
+        color: #222222;
+        line-height: 1.2;
+      }
+      .problem-sub {
+        font-size: 36px;
+        font-weight: 400;
+        color: #717171;
+        line-height: 1.35;
+        margin-top: 6px;
+      }
+
+      /* Market math */
+      .math-equation {
+        display: flex;
+        align-items: center;
+        gap: 24px;
+        flex-wrap: wrap;
+        margin-top: 8px;
+      }
+      .math-val {
+        font-size: 64px;
+        font-weight: 800;
+        color: #FF385C;
+      }
+      .math-op {
+        font-size: 52px;
+        font-weight: 400;
+        color: #717171;
+      }
+      .math-result {
+        font-size: 80px;
+        font-weight: 900;
+        color: #E61E4D;
+      }
+
+      /* Steps / flow */
+      .step-row {
+        display: flex;
+        align-items: center;
+        gap: 40px;
+      }
+      .step-num {
+        font-size: 48px;
+        font-weight: 900;
+        color: #FF385C;
+        min-width: 64px;
+      }
+      .step-text {
+        font-size: 44px;
+        font-weight: 600;
+        color: #222222;
+      }
+
+      /* Positioning matrix */
+      .matrix-table {
+        border-collapse: collapse;
+        width: 100%;
+        max-width: 1400px;
+      }
+      .matrix-table th {
+        font-size: 36px;
+        font-weight: 700;
+        color: #717171;
+        padding: 16px 24px;
+        text-align: left;
+        border-bottom: 2px solid #E0E0E0;
+      }
+      .matrix-table td {
+        font-size: 40px;
+        padding: 20px 24px;
+        border-bottom: 1px solid #F0F0F0;
+        color: #222222;
+      }
+      .matrix-table tr.airbnb-row td {
+        color: #FF385C;
+        font-weight: 800;
+        background: #FFF1F1;
+      }
+      .check { color: #FF385C; font-size: 40px; }
+      .cross { color: #717171; font-size: 40px; }
+
+      /* Team cards */
+      .team-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 48px;
+        width: 100%;
+        max-width: 1560px;
+      }
+      .team-card {
+        padding: 52px 48px;
+        background: rgba(255,255,255,0.08);
+        border-radius: 20px;
+        border: 1px solid rgba(255,56,92,0.25);
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .team-name {
+        font-size: 44px;
+        font-weight: 800;
+        color: #FF385C;
+      }
+      .team-role {
+        font-size: 32px;
+        font-weight: 600;
+        color: rgba(255,255,255,0.75);
+      }
+      .team-bio {
+        font-size: 30px;
+        font-weight: 400;
+        color: rgba(255,255,255,0.65);
+        line-height: 1.45;
+        margin-top: 4px;
+      }
+
+      /* Use of proceeds */
+      .use-list {
+        display: flex;
+        flex-direction: column;
+        gap: 28px;
+        margin-top: 8px;
+      }
+      .use-item {
+        display: flex;
+        align-items: baseline;
+        gap: 32px;
+      }
+      .use-pct {
+        font-size: 56px;
+        font-weight: 900;
+        color: #FF385C;
+        min-width: 140px;
+      }
+      .use-text {
+        font-size: 44px;
+        font-weight: 600;
+        color: rgba(255,255,255,0.9);
+        line-height: 1.3;
+      }
+    </style>
+  </head>
+  <body style="margin: 0; background: #ffffff">
+
+    <!--
+      Airbnb 2009 Seed Deck Remake
+      Timeline layout (contiguous, non-overlapping):
+        00–09s  cover           (main slide 1)
+        09–18s  problem         (main slide 2, fragments at 9.3, 9.6 — bunched near start)
+        18–27s  solution        (main slide 3)
+        27–36s  validation      (main slide 4)
+        36–45s  market          (main slide 5, hotspot → market-sizing branch)
+        45–54s  product         (main slide 6)
+        54–63s  business        (main slide 7)
+        63–72s  adoption        (main slide 8)
+        72–81s  competition     (main slide 9)
+        81–90s  team            (main slide 10)
+        90–99s  ask             (main slide 11)
+        99–108s market-sizing   (branch slide — market-math-detail sequence)
+    -->
+
+    <!-- JSON island -->
+    <script type="application/hyperframes-slideshow+json">
+      {
+        "slides": [
+          {
+            "sceneId": "cover",
+            "notes": "Open with the tagline. Let the Bélo breathe. This is the belonging company."
+          },
+          {
+            "sceneId": "problem",
+            "notes": "Two problems, one at a time. Price first — hotels are expensive. Then connection.",
+            "fragments": [9.3, 9.6]
+          },
+          {
+            "sceneId": "solution",
+            "notes": "Platform connects hosts and travelers. Belong anywhere. Three value props."
+          },
+          {
+            "sceneId": "validation",
+            "notes": "Couchsurfing proves demand: 660k members want this. Craigslist shows supply side."
+          },
+          {
+            "sceneId": "market",
+            "notes": "Bottom-up: trips × take-rate = $2.1B. Use the hotspot for the drill-down math.",
+            "hotspots": [
+              {
+                "id": "mkt-hotspot",
+                "label": "Show me the math",
+                "target": "market-math-detail",
+                "region": { "x": 70, "y": 80, "w": 25, "h": 12 }
+              }
+            ]
+          },
+          {
+            "sceneId": "product",
+            "notes": "Three clicks: Search, Book, Travel. Show the booking flow simplicity."
+          },
+          {
+            "sceneId": "business",
+            "notes": "10% commission. At 80k transactions × $26 avg nightly take = $2.1M revenue."
+          },
+          {
+            "sceneId": "adoption",
+            "notes": "Events, conferences, Craigslist cross-posting, partnerships. Grass-roots growth."
+          },
+          {
+            "sceneId": "competition",
+            "notes": "Matrix: cheapest + online + transaction. Airbnb is the only one that hits all three."
+          },
+          {
+            "sceneId": "team",
+            "notes": "Brian (CEO/design), Joe (design), Nate (engineering). Domain depth: housing + tech."
+          },
+          {
+            "sceneId": "ask",
+            "notes": "Raising $500K. 12 months runway. Target: 80K transactions ≈ $2M revenue."
+          }
+        ],
+        "slideSequences": [
+          {
+            "id": "market-math-detail",
+            "label": "Market sizing methodology",
+            "slides": [
+              {
+                "sceneId": "market-sizing",
+                "notes": "Bottom-up drill: global trips × budget share × online booking rate × take-rate = $2.1B."
+              }
+            ]
+          }
+        ]
+      }
+    </script>
+
+    <!-- Three.js background canvas -->
+    <canvas id="three-canvas" data-composition-id="three-canvas" data-start="0" data-width="1920" data-height="1080"></canvas>
+
+    <!-- Root composition container -->
+    <div
+      id="root"
+      data-composition-id="root"
+      data-start="0"
+      data-duration="108"
+      data-width="1920"
+      data-height="1080"
+      style="position: relative; width: 1920px; height: 1080px; overflow: hidden"
+    >
+
+      <!-- ════════════════════════════════════════════════
+           SLIDE 1 — COVER
+           "Book rooms with locals, rather than hotels."
+           Start: 0  Duration: 9  End: 9
+           Background: white with soft coral particles (Three.js)
+      ═════════════════════════════════════════════════════ -->
+      <div
+        id="scene-cover"
+        class="scene-frame clip"
+        data-composition-id="cover"
+        data-start="0"
+        data-duration="9"
+        data-label="Cover"
+        data-track-index="1"
+        style="background: transparent"
+      >
+        <div class="slide-center scrim-light">
+          <!-- Large Bélo SVG -->
+          <svg id="cover-belo" width="120" height="120" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" data-anim>
+            <!-- Bélo: rounded A/heart/pin outline -->
+            <path d="M50 10 C30 10, 16 26, 16 42 C16 60, 32 73, 50 90 C68 73, 84 60, 84 42 C84 26, 70 10, 50 10 Z" stroke="#FF385C" stroke-width="5" fill="none"/>
+            <circle cx="50" cy="40" r="12" fill="#FF385C"/>
+          </svg>
+          <div id="cover-wordmark" style="font-size: 52px; font-weight: 800; color: #222222; letter-spacing: -0.02em" data-anim>airbnb</div>
+          <div id="cover-bar" class="accent-bar" style="width: 120px; margin: 8px auto" data-anim></div>
+          <h1 id="cover-headline" class="headline-lg" style="color: #222222; max-width: 1300px" data-anim>
+            Book rooms with locals, rather than hotels.
+          </h1>
+          <p id="cover-sub" class="subhead-center" data-anim>
+            Belong anywhere — a web platform connecting travelers with local hosts worldwide.
+          </p>
+          <div id="cover-year" style="font-size: 28px; font-weight: 700; color: #FF385C; letter-spacing: 0.12em; text-transform: uppercase; margin-top: 16px" data-anim>Seed Round · 2009</div>
+        </div>
+      </div>
+
+      <!-- ════════════════════════════════════════════════
+           SLIDE 2 — PROBLEM
+           "Travelers overpay for sterile hotels while millions of empty rooms sit unused."
+           Start: 9  Duration: 9  End: 18
+           Fragments at 9.3, 9.6 (bunched near start — snappy reveals)
+           Background: light warm gray
+      ═════════════════════════════════════════════════════ -->
+      <div
+        id="scene-problem"
+        class="scene-frame clip"
+        data-composition-id="problem"
+        data-start="9"
+        data-duration="9"
+        data-label="The problem"
+        data-track-index="1"
+        style="background: transparent"
+      >
+        <!-- Corner Bélo -->
+        <div class="belo-corner">
+          <svg width="36" height="36" viewBox="0 0 100 100" fill="none"><path d="M50 10 C30 10, 16 26, 16 42 C16 60, 32 73, 50 90 C68 73, 84 60, 84 42 C84 26, 70 10, 50 10 Z" stroke="#FF385C" stroke-width="7" fill="none"/><circle cx="50" cy="40" r="12" fill="#FF385C"/></svg>
+          <span class="belo-corner-wordmark">airbnb</span>
+        </div>
+        <div class="slide-inner scrim-light">
+          <div id="prob-eyebrow" class="eyebrow" data-anim>The problem</div>
+          <h2 id="prob-headline" class="headline" style="max-width: 1400px" data-anim>
+            Travelers overpay for sterile hotels while millions of empty rooms sit unused.
+          </h2>
+          <div id="prob-item1" class="problem-item">
+            <span class="problem-num">01</span>
+            <div>
+              <div class="problem-text">Price: Hotels are expensive</div>
+              <div class="problem-sub">Budget travelers overpay — no affordable, human alternative exists online.</div>
+            </div>
+          </div>
+          <div id="prob-item2" class="problem-item">
+            <span class="problem-num">02</span>
+            <div>
+              <div class="problem-text">Disconnect: Hotels feel transactional</div>
+              <div class="problem-sub">Travelers are isolated from the city, the culture, and the locals who live there.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ════════════════════════════════════════════════
+           SLIDE 3 — SOLUTION
+           "Airbnb is the web platform where anyone can rent space and belong anywhere."
+           Start: 18  Duration: 9  End: 27
+           Background: white
+      ═════════════════════════════════════════════════════ -->
+      <div
+        id="scene-solution"
+        class="scene-frame clip"
+        data-composition-id="solution"
+        data-start="18"
+        data-duration="9"
+        data-label="Solution"
+        data-track-index="1"
+        style="background: transparent"
+      >
+        <div class="belo-corner">
+          <svg width="36" height="36" viewBox="0 0 100 100" fill="none"><path d="M50 10 C30 10, 16 26, 16 42 C16 60, 32 73, 50 90 C68 73, 84 60, 84 42 C84 26, 70 10, 50 10 Z" stroke="#FF385C" stroke-width="7" fill="none"/><circle cx="50" cy="40" r="12" fill="#FF385C"/></svg>
+          <span class="belo-corner-wordmark">airbnb</span>
+        </div>
+        <div class="slide-inner scrim-light">
+          <div id="sol-eyebrow" class="eyebrow" data-anim>Solution</div>
+          <h2 id="sol-headline" class="headline" style="max-width: 1400px" data-anim>
+            A web platform where users can rent space to host travelers — belong anywhere.
+          </h2>
+          <div id="sol-cards" class="card-grid-3" data-anim>
+            <div class="card">
+              <div class="card-title">Save Money</div>
+              <div class="card-body">Travelers book rooms at 50–80% below hotel rates.</div>
+            </div>
+            <div class="card">
+              <div class="card-title">Make Money</div>
+              <div class="card-body">Hosts monetize spare space — avg $600–$900 / month.</div>
+            </div>
+            <div class="card">
+              <div class="card-title">Share Culture</div>
+              <div class="card-body">Real local experience — no hotel lobby, no checkout desk.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ════════════════════════════════════════════════
+           SLIDE 4 — MARKET VALIDATION
+           "660,000 people on Couchsurfing prove demand for local, affordable stays."
+           Start: 27  Duration: 9  End: 36
+           Background: white
+      ═════════════════════════════════════════════════════ -->
+      <div
+        id="scene-validation"
+        class="scene-frame clip"
+        data-composition-id="validation"
+        data-start="27"
+        data-duration="9"
+        data-label="Market validation"
+        data-track-index="1"
+        style="background: transparent"
+      >
+        <div class="belo-corner">
+          <svg width="36" height="36" viewBox="0 0 100 100" fill="none"><path d="M50 10 C30 10, 16 26, 16 42 C16 60, 32 73, 50 90 C68 73, 84 60, 84 42 C84 26, 70 10, 50 10 Z" stroke="#FF385C" stroke-width="7" fill="none"/><circle cx="50" cy="40" r="12" fill="#FF385C"/></svg>
+          <span class="belo-corner-wordmark">airbnb</span>
+        </div>
+        <div class="slide-inner scrim-light">
+          <div id="val-eyebrow" class="eyebrow" data-anim>Market validation</div>
+          <h2 id="val-headline" class="headline" style="max-width: 1400px" data-anim>
+            660,000 people on Couchsurfing prove demand — travelers want local, not hotels.
+          </h2>
+          <div id="val-stats" style="display: flex; gap: 80px; margin-top: 8px" data-anim>
+            <div>
+              <div class="stat-number">660K</div>
+              <div class="stat-label">Couchsurfing members — free, unmonetized demand</div>
+            </div>
+            <div style="width: 2px; background: #E0E0E0; border-radius: 2px; align-self: stretch"></div>
+            <div>
+              <div class="stat-number" style="font-size: 72px">Craigslist</div>
+              <div class="stat-label">Millions of temporary housing listings show host supply</div>
+            </div>
+          </div>
+          <p id="val-note" class="subhead" style="margin-top: 8px" data-anim>
+            Neither platform charges for the transaction. Airbnb adds trust, payments, and discovery.
+          </p>
+        </div>
+      </div>
+
+      <!-- ════════════════════════════════════════════════
+           SLIDE 5 — MARKET SIZE
+           "15% of budget travel online = 84M trips → $2.1B revenue opportunity."
+           Start: 36  Duration: 9  End: 45
+           Hotspot → market-math-detail branch
+           Background: white
+      ═════════════════════════════════════════════════════ -->
+      <div
+        id="scene-market"
+        class="scene-frame clip"
+        data-composition-id="market"
+        data-start="36"
+        data-duration="9"
+        data-label="Market size"
+        data-track-index="1"
+        style="background: transparent"
+      >
+        <div class="belo-corner">
+          <svg width="36" height="36" viewBox="0 0 100 100" fill="none"><path d="M50 10 C30 10, 16 26, 16 42 C16 60, 32 73, 50 90 C68 73, 84 60, 84 42 C84 26, 70 10, 50 10 Z" stroke="#FF385C" stroke-width="7" fill="none"/><circle cx="50" cy="40" r="12" fill="#FF385C"/></svg>
+          <span class="belo-corner-wordmark">airbnb</span>
+        </div>
+        <div class="slide-inner scrim-light">
+          <div id="mkt-eyebrow" class="eyebrow" data-anim>Market size</div>
+          <h2 id="mkt-headline" class="headline" style="max-width: 1400px" data-anim>
+            15% of budget travel online = 84M trips — a $2.1B annual revenue opportunity.
+          </h2>
+          <div id="mkt-math" class="math-equation" data-anim>
+            <span class="math-val">560M</span>
+            <span class="math-op">budget trips/yr</span>
+            <span class="math-op">×</span>
+            <span class="math-val">15%</span>
+            <span class="math-op">online share</span>
+            <span class="math-op">=</span>
+            <span class="math-val">84M trips</span>
+            <span class="math-op">×</span>
+            <span class="math-val">$25</span>
+            <span class="math-op">take</span>
+            <span class="math-op">=</span>
+            <span class="math-result">$2.1B</span>
+          </div>
+          <p id="mkt-note" class="subhead" style="margin-top: 4px" data-anim>
+            SAM: US + EU budget+online bookings. At 10% commission on avg $250 nightly rate.
+          </p>
+        </div>
+      </div>
+
+      <!-- ════════════════════════════════════════════════
+           SLIDE 6 — PRODUCT
+           "Three clicks to book: Search, Book, Travel."
+           Start: 45  Duration: 9  End: 54
+           Background: white
+      ═════════════════════════════════════════════════════ -->
+      <div
+        id="scene-product"
+        class="scene-frame clip"
+        data-composition-id="product"
+        data-start="45"
+        data-duration="9"
+        data-label="Product"
+        data-track-index="1"
+        style="background: transparent"
+      >
+        <div class="belo-corner">
+          <svg width="36" height="36" viewBox="0 0 100 100" fill="none"><path d="M50 10 C30 10, 16 26, 16 42 C16 60, 32 73, 50 90 C68 73, 84 60, 84 42 C84 26, 70 10, 50 10 Z" stroke="#FF385C" stroke-width="7" fill="none"/><circle cx="50" cy="40" r="12" fill="#FF385C"/></svg>
+          <span class="belo-corner-wordmark">airbnb</span>
+        </div>
+        <div class="slide-inner scrim-light">
+          <div id="prod-eyebrow" class="eyebrow" data-anim>Product</div>
+          <h2 id="prod-headline" class="headline" style="max-width: 1400px" data-anim>
+            Three clicks to book — Search, Book, Travel.
+          </h2>
+          <div id="prod-steps" style="display: flex; flex-direction: column; gap: 36px; margin-top: 16px" data-anim>
+            <div class="step-row">
+              <span style="font-size: 56px; font-weight: 900; color: #FF385C; min-width: 80px">1</span>
+              <div>
+                <div class="step-text">Search — enter city, dates, guests</div>
+                <div style="font-size: 36px; color: #717171; margin-top: 6px">Listings with photos, reviews, and verified hosts appear instantly.</div>
+              </div>
+            </div>
+            <div class="step-row">
+              <span style="font-size: 56px; font-weight: 900; color: #FF385C; min-width: 80px">2</span>
+              <div>
+                <div class="step-text">Book — secure payment, instant confirmation</div>
+                <div style="font-size: 36px; color: #717171; margin-top: 6px">Funds held in escrow; released to host 24h after check-in.</div>
+              </div>
+            </div>
+            <div class="step-row">
+              <span style="font-size: 56px; font-weight: 900; color: #FF385C; min-width: 80px">3</span>
+              <div>
+                <div class="step-text">Travel — arrive, belong, review</div>
+                <div style="font-size: 36px; color: #717171; margin-top: 6px">Two-way reviews build a trust graph that improves every stay.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ════════════════════════════════════════════════
+           SLIDE 7 — BUSINESS MODEL
+           "10% commission per transaction — 80K bookings = $2.1M revenue."
+           Start: 54  Duration: 9  End: 63
+           Background: white
+      ═════════════════════════════════════════════════════ -->
+      <div
+        id="scene-business"
+        class="scene-frame clip"
+        data-composition-id="business"
+        data-start="54"
+        data-duration="9"
+        data-label="Business model"
+        data-track-index="1"
+        style="background: transparent"
+      >
+        <div class="belo-corner">
+          <svg width="36" height="36" viewBox="0 0 100 100" fill="none"><path d="M50 10 C30 10, 16 26, 16 42 C16 60, 32 73, 50 90 C68 73, 84 60, 84 42 C84 26, 70 10, 50 10 Z" stroke="#FF385C" stroke-width="7" fill="none"/><circle cx="50" cy="40" r="12" fill="#FF385C"/></svg>
+          <span class="belo-corner-wordmark">airbnb</span>
+        </div>
+        <div class="slide-center scrim-light">
+          <div id="biz-eyebrow" class="eyebrow" data-anim>Business model</div>
+          <h2 id="biz-headline" class="headline-lg" style="max-width: 1300px" data-anim>
+            10% commission on every transaction.
+          </h2>
+          <div id="biz-math" class="math-equation" style="justify-content: center" data-anim>
+            <span class="math-val">80K</span>
+            <span class="math-op">transactions/yr</span>
+            <span class="math-op">×</span>
+            <span class="math-val">$26</span>
+            <span class="math-op">avg take</span>
+            <span class="math-op">=</span>
+            <span class="math-result">$2.1M</span>
+          </div>
+          <p id="biz-note" class="subhead-center" data-anim>
+            No inventory risk. No fixed costs. Every booking is pure margin above the payment processing fee.
+          </p>
+        </div>
+      </div>
+
+      <!-- ════════════════════════════════════════════════
+           SLIDE 8 — ADOPTION STRATEGY
+           "Events, partnerships, and Craigslist cross-posting drive grass-roots supply."
+           Start: 63  Duration: 9  End: 72
+           Background: white
+      ═════════════════════════════════════════════════════ -->
+      <div
+        id="scene-adoption"
+        class="scene-frame clip"
+        data-composition-id="adoption"
+        data-start="63"
+        data-duration="9"
+        data-label="Adoption strategy"
+        data-track-index="1"
+        style="background: transparent"
+      >
+        <div class="belo-corner">
+          <svg width="36" height="36" viewBox="0 0 100 100" fill="none"><path d="M50 10 C30 10, 16 26, 16 42 C16 60, 32 73, 50 90 C68 73, 84 60, 84 42 C84 26, 70 10, 50 10 Z" stroke="#FF385C" stroke-width="7" fill="none"/><circle cx="50" cy="40" r="12" fill="#FF385C"/></svg>
+          <span class="belo-corner-wordmark">airbnb</span>
+        </div>
+        <div class="slide-inner scrim-light">
+          <div id="adop-eyebrow" class="eyebrow" data-anim>Adoption strategy</div>
+          <h2 id="adop-headline" class="headline" style="max-width: 1400px" data-anim>
+            Events, partnerships, and Craigslist cross-posting drive grass-roots supply.
+          </h2>
+          <div id="adop-items" style="display: flex; flex-direction: column; gap: 28px; margin-top: 8px" data-anim>
+            <div class="step-row">
+              <span style="width: 14px; height: 14px; background: #FF385C; border-radius: 50%; flex-shrink: 0; margin-top: 14px"></span>
+              <div class="step-text">Events &amp; conferences — partner with SXSW, DNC, major conferences to capture accommodation overflow</div>
+            </div>
+            <div class="step-row">
+              <span style="width: 14px; height: 14px; background: #FF385C; border-radius: 50%; flex-shrink: 0; margin-top: 14px"></span>
+              <div class="step-text">Craigslist cross-posting — auto-post new listings to reach existing supply-side intent</div>
+            </div>
+            <div class="step-row">
+              <span style="width: 14px; height: 14px; background: #FF385C; border-radius: 50%; flex-shrink: 0; margin-top: 14px"></span>
+              <div class="step-text">Travel blogger partnerships + media — earned press generates traveler demand at $0 CAC</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ════════════════════════════════════════════════
+           SLIDE 9 — COMPETITION
+           "Airbnb is the only solution that is affordable, online, and transaction-enabled."
+           Start: 72  Duration: 9  End: 81
+           Background: white
+      ═════════════════════════════════════════════════════ -->
+      <div
+        id="scene-competition"
+        class="scene-frame clip"
+        data-composition-id="competition"
+        data-start="72"
+        data-duration="9"
+        data-label="Competition"
+        data-track-index="1"
+        style="background: transparent"
+      >
+        <div class="belo-corner">
+          <svg width="36" height="36" viewBox="0 0 100 100" fill="none"><path d="M50 10 C30 10, 16 26, 16 42 C16 60, 32 73, 50 90 C68 73, 84 60, 84 42 C84 26, 70 10, 50 10 Z" stroke="#FF385C" stroke-width="7" fill="none"/><circle cx="50" cy="40" r="12" fill="#FF385C"/></svg>
+          <span class="belo-corner-wordmark">airbnb</span>
+        </div>
+        <div class="slide-inner scrim-light">
+          <div id="comp-eyebrow" class="eyebrow" data-anim>Competition</div>
+          <h2 id="comp-headline" class="headline" style="max-width: 1400px" data-anim>
+            Airbnb is the only solution that is affordable, online, and transaction-enabled.
+          </h2>
+          <table id="comp-table" class="matrix-table" style="margin-top: 16px" data-anim>
+            <thead>
+              <tr>
+                <th style="width: 360px">Solution</th>
+                <th>Affordable</th>
+                <th>Online</th>
+                <th>Transaction</th>
+                <th>Local connection</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="airbnb-row">
+                <td>airbnb</td>
+                <td><span class="check">✓</span></td>
+                <td><span class="check">✓</span></td>
+                <td><span class="check">✓</span></td>
+                <td><span class="check">✓</span></td>
+              </tr>
+              <tr>
+                <td>Hotels</td>
+                <td><span class="cross">✗</span></td>
+                <td><span class="check">✓</span></td>
+                <td><span class="check">✓</span></td>
+                <td><span class="cross">✗</span></td>
+              </tr>
+              <tr>
+                <td>Couchsurfing</td>
+                <td><span class="check">✓</span></td>
+                <td><span class="check">✓</span></td>
+                <td><span class="cross">✗</span></td>
+                <td><span class="check">✓</span></td>
+              </tr>
+              <tr>
+                <td>Craigslist</td>
+                <td><span class="check">✓</span></td>
+                <td><span class="check">✓</span></td>
+                <td><span class="cross">✗</span></td>
+                <td><span class="cross">✗</span></td>
+              </tr>
+              <tr>
+                <td>B&amp;Bs / Hostels</td>
+                <td><span class="check">✓</span></td>
+                <td><span class="cross">✗</span></td>
+                <td><span class="check">✓</span></td>
+                <td><span class="cross">✗</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ════════════════════════════════════════════════
+           SLIDE 10 — TEAM
+           "Three founders: design, design, and engineering — who built this from their apartment."
+           Start: 81  Duration: 9  End: 90
+           Background: dark #222222
+      ═════════════════════════════════════════════════════ -->
+      <div
+        id="scene-team"
+        class="scene-frame clip"
+        data-composition-id="team"
+        data-start="81"
+        data-duration="9"
+        data-label="Team"
+        data-track-index="1"
+        style="background: transparent"
+      >
+        <div class="belo-corner">
+          <svg width="36" height="36" viewBox="0 0 100 100" fill="none"><path d="M50 10 C30 10, 16 26, 16 42 C16 60, 32 73, 50 90 C68 73, 84 60, 84 42 C84 26, 70 10, 50 10 Z" stroke="#FF385C" stroke-width="7" fill="none"/><circle cx="50" cy="40" r="12" fill="#FF385C"/></svg>
+          <span class="belo-corner-wordmark" style="color: #FF385C">airbnb</span>
+        </div>
+        <div class="slide-inner scrim-dark">
+          <div id="team-eyebrow" class="eyebrow" data-anim>The founders</div>
+          <h2 id="team-headline" class="headline" style="color: #ffffff; max-width: 1400px" data-anim>
+            Three founders who bootstrapped Airbnb from their San Francisco apartment.
+          </h2>
+          <div id="team-cards" class="team-grid" style="margin-top: 8px" data-anim>
+            <div class="team-card">
+              <span class="team-name">Brian Chesky</span>
+              <span class="team-role">CEO &amp; Co-founder</span>
+              <span class="team-bio">Industrial design, RISD. Drove the brand, trust model, and host experience from day one.</span>
+            </div>
+            <div class="team-card">
+              <span class="team-name">Joe Gebbia</span>
+              <span class="team-role">CPO &amp; Co-founder</span>
+              <span class="team-bio">RISD design, product. Built the first site and the airbeds-and-breakfast concept that became Airbnb.</span>
+            </div>
+            <div class="team-card">
+              <span class="team-name">Nathan Blecharczyk</span>
+              <span class="team-role">CTO &amp; Co-founder</span>
+              <span class="team-bio">Harvard CS. Architected the payments, trust, and scalable search infrastructure from scratch.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ════════════════════════════════════════════════
+           SLIDE 11 — ASK
+           "Raising $500K for 12 months — targeting 80K transactions and $2M revenue."
+           Start: 90  Duration: 9  End: 99
+           Background: dark #222222
+      ═════════════════════════════════════════════════════ -->
+      <div
+        id="scene-ask"
+        class="scene-frame clip"
+        data-composition-id="ask"
+        data-start="90"
+        data-duration="9"
+        data-label="The ask"
+        data-track-index="1"
+        style="background: transparent"
+      >
+        <div class="belo-corner">
+          <svg width="36" height="36" viewBox="0 0 100 100" fill="none"><path d="M50 10 C30 10, 16 26, 16 42 C16 60, 32 73, 50 90 C68 73, 84 60, 84 42 C84 26, 70 10, 50 10 Z" stroke="#FF385C" stroke-width="7" fill="none"/><circle cx="50" cy="40" r="12" fill="#FF385C"/></svg>
+          <span class="belo-corner-wordmark" style="color: #FF385C">airbnb</span>
+        </div>
+        <div class="slide-inner scrim-dark">
+          <div id="ask-eyebrow" class="eyebrow" data-anim>The ask</div>
+          <h2 id="ask-headline" class="headline" style="color: #ffffff; max-width: 1400px" data-anim>
+            Raising $500K for 12 months — targeting 80K transactions and $2M revenue.
+          </h2>
+          <div id="ask-amount" style="display: flex; align-items: baseline; gap: 24px; margin-top: 8px" data-anim>
+            <span style="font-size: 120px; font-weight: 900; color: #FF385C; letter-spacing: -0.05em">$500K</span>
+            <span style="font-size: 44px; color: rgba(255,255,255,0.6); font-weight: 600">seed round</span>
+          </div>
+          <div id="ask-uses" class="use-list" data-anim>
+            <div class="use-item">
+              <span class="use-pct">45%</span>
+              <span class="use-text">Product &amp; engineering — mobile-first booking, trust &amp; safety, payments</span>
+            </div>
+            <div class="use-item">
+              <span class="use-pct">30%</span>
+              <span class="use-text">Growth &amp; partnerships — events, Craigslist, travel media outreach</span>
+            </div>
+            <div class="use-item">
+              <span class="use-pct">25%</span>
+              <span class="use-text">Operations — customer support, host quality, legal &amp; insurance</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ════════════════════════════════════════════════
+           BRANCH SLIDE — MARKET-SIZING
+           Branch: market-math-detail / "Market sizing methodology"
+           Start: 99  Duration: 9  End: 108
+           NOT in main slides array — only in slideSequences
+           Background: dark Hof #222222 with coral accents
+      ═════════════════════════════════════════════════════ -->
+      <div
+        id="scene-market-sizing"
+        class="scene-frame clip"
+        data-composition-id="market-sizing"
+        data-start="99"
+        data-duration="9"
+        data-label="Market sizing methodology"
+        data-track-index="1"
+        style="background: transparent"
+      >
+        <div class="belo-corner">
+          <svg width="36" height="36" viewBox="0 0 100 100" fill="none"><path d="M50 10 C30 10, 16 26, 16 42 C16 60, 32 73, 50 90 C68 73, 84 60, 84 42 C84 26, 70 10, 50 10 Z" stroke="#FF385C" stroke-width="7" fill="none"/><circle cx="50" cy="40" r="12" fill="#FF385C"/></svg>
+          <span class="belo-corner-wordmark" style="color: #FF385C">airbnb</span>
+        </div>
+        <div class="slide-inner scrim-dark">
+          <div id="sizing-eyebrow" class="eyebrow" data-anim>Market sizing methodology</div>
+          <h2 id="sizing-headline" class="headline" style="color: #ffffff; max-width: 1500px" data-anim>
+            Bottom-up: 560M budget trips/yr × 15% online × $25 avg take = $2.1B.
+          </h2>
+          <div id="sizing-steps" style="display: flex; flex-direction: column; gap: 28px; margin-top: 16px" data-anim>
+            <div style="display: flex; gap: 28px; align-items: flex-start">
+              <span style="font-size: 48px; font-weight: 900; color: #FF385C; min-width: 72px">1.</span>
+              <span style="font-size: 40px; color: rgba(255,255,255,0.85); font-weight: 600; line-height: 1.35">Global leisure trips/yr: ~1.4B total. Budget segment (hostels, B&amp;Bs, couch): ~40% = 560M trips.</span>
+            </div>
+            <div style="display: flex; gap: 28px; align-items: flex-start">
+              <span style="font-size: 48px; font-weight: 900; color: #FF385C; min-width: 72px">2.</span>
+              <span style="font-size: 40px; color: rgba(255,255,255,0.85); font-weight: 600; line-height: 1.35">Online booking penetration in budget segment: ~15% today, growing 30%/yr → SAM = 84M trips.</span>
+            </div>
+            <div style="display: flex; gap: 28px; align-items: flex-start">
+              <span style="font-size: 48px; font-weight: 900; color: #FF385C; min-width: 72px">3.</span>
+              <span style="font-size: 40px; color: rgba(255,255,255,0.85); font-weight: 600; line-height: 1.35">Avg nightly rate $250 × 10% commission = $25 take. 84M trips × $25 = <span style="color: #FF385C; font-weight: 900">$2.1B</span> revenue.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Root timeline — spans full 108s composition -->
+      <script>
+        (function () {
+          window.__timelines = window.__timelines || {};
+          var tl = gsap.timeline({ paused: true });
+          tl.to({}, { duration: 108 });
+          window.__timelines["root"] = tl;
+        })();
+      </script>
+
+    </div><!-- end #root -->
+
+    <!-- Three.js scene setup -->
+    <script type="module">
+      import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
+
+      // --- Seeded LCG for deterministic "random" ---
+      function makeLCG(seed) {
+        var s = seed >>> 0;
+        return function () {
+          s = (Math.imul(1664525, s) + 1013904223) >>> 0;
+          return s / 4294967296;
+        };
+      }
+
+      var canvas = document.getElementById("three-canvas");
+
+      // Guard: attempt WebGL renderer creation ONCE. On failure log ONE warning and stop.
+      // The deck degrades gracefully — white-bg branded layout is the fallback.
+      // Temporarily suppress console.error so THREE's internal multi-line error spam
+      // doesn't fire on every page load in environments without a GPU.
+      var renderer = null;
+      var _consoleError = console.error;
+      console.error = function () {}; // silence during creation attempt
+      try {
+        renderer = new THREE.WebGLRenderer({ canvas: canvas, alpha: true, antialias: true });
+      } catch (e) {
+        // renderer stays null — handled below
+      } finally {
+        console.error = _consoleError; // always restore
+      }
+      if (!renderer) {
+        // Hide canvas; expose no-op so visibility controller calls are safe.
+        canvas.style.display = "none";
+        window.__threeApplyMood = function () {};
+        // Do NOT proceed — rAF loop must not start.
+      } else {
+        // Renderer created OK — configure size and run the scene.
+        renderer.setSize(1920, 1080);
+        renderer.setPixelRatio(1);
+        // Ensure canvas fills the stage (full-bleed, behind content)
+        canvas.style.position = "fixed";
+        canvas.style.top = "0";
+        canvas.style.left = "0";
+        canvas.style.width = "1920px";
+        canvas.style.height = "1080px";
+        canvas.style.zIndex = "0";
+        canvas.style.pointerEvents = "none";
+
+      var scene = new THREE.Scene();
+      var camera = new THREE.PerspectiveCamera(60, 1920 / 1080, 0.1, 1000);
+      camera.position.set(0, 0, 5);
+
+      // === PARTICLE SYSTEM ===
+      var PARTICLE_COUNT = 280;
+      var rng = makeLCG(42);
+
+      var positions = new Float32Array(PARTICLE_COUNT * 3);
+      var colors = new Float32Array(PARTICLE_COUNT * 3);
+      var sizes = new Float32Array(PARTICLE_COUNT);
+      var velocities = [];
+
+      for (var i = 0; i < PARTICLE_COUNT; i++) {
+        positions[i * 3]     = (rng() - 0.5) * 16;
+        positions[i * 3 + 1] = (rng() - 0.5) * 9;
+        positions[i * 3 + 2] = (rng() - 0.5) * 4;
+        velocities.push({
+          x: (rng() - 0.5) * 0.004,
+          y: (rng() - 0.5) * 0.006 + 0.002,
+          z: 0
+        });
+        sizes[i] = rng() * 10 + 3;
+        // default coral color
+        colors[i * 3]     = 1.0;
+        colors[i * 3 + 1] = 0.22;
+        colors[i * 3 + 2] = 0.36;
+      }
+
+      var geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+      geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+      geo.setAttribute("size", new THREE.BufferAttribute(sizes, 1));
+
+      var mat = new THREE.PointsMaterial({
+        size: 0.18,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.55,
+        sizeAttenuation: true
+      });
+      var particles = new THREE.Points(geo, mat);
+      scene.add(particles);
+
+      // === GLOBE (for market slide) ===
+      // Positioned on the right side so it doesn't occlude left-side text
+      var globeGroup = new THREE.Group();
+      globeGroup.visible = false;
+      globeGroup.position.set(3.5, 0, -0.5);
+      scene.add(globeGroup);
+
+      // Low-poly wireframe sphere
+      var sphereGeo = new THREE.IcosahedronGeometry(2.2, 2);
+      var sphereMat = new THREE.MeshBasicMaterial({
+        color: 0xFF385C,
+        wireframe: true,
+        transparent: true,
+        opacity: 0.45
+      });
+      var globe = new THREE.Mesh(sphereGeo, sphereMat);
+      globeGroup.add(globe);
+
+      // Arc routes (simple lines on sphere surface)
+      var arcRng = makeLCG(99);
+      for (var a = 0; a < 12; a++) {
+        var lat1 = (arcRng() - 0.5) * Math.PI;
+        var lon1 = arcRng() * Math.PI * 2;
+        var lat2 = (arcRng() - 0.5) * Math.PI;
+        var lon2 = arcRng() * Math.PI * 2;
+        var pts = [];
+        for (var t = 0; t <= 20; t++) {
+          var tt = t / 20;
+          var lat = lat1 + (lat2 - lat1) * tt;
+          var lon = lon1 + (lon2 - lon1) * tt;
+          var r = 2.25 + Math.sin(tt * Math.PI) * 0.15;
+          pts.push(new THREE.Vector3(
+            r * Math.cos(lat) * Math.cos(lon),
+            r * Math.sin(lat),
+            r * Math.cos(lat) * Math.sin(lon)
+          ));
+        }
+        var arcGeo = new THREE.BufferGeometry().setFromPoints(pts);
+        var arcMat = new THREE.LineBasicMaterial({ color: 0xFF385C, transparent: true, opacity: 0.75 });
+        globeGroup.add(new THREE.Line(arcGeo, arcMat));
+      }
+
+      // === BOKEH ORBS (for team slide) ===
+      var bokehGroup = new THREE.Group();
+      bokehGroup.visible = false;
+      scene.add(bokehGroup);
+      var bokehRng = makeLCG(17);
+      for (var b = 0; b < 8; b++) {
+        var bGeo = new THREE.SphereGeometry(0.4 + bokehRng() * 0.8, 8, 8);
+        var bMat = new THREE.MeshBasicMaterial({
+          color: b % 2 === 0 ? 0xFF385C : 0xFF5A5F,
+          transparent: true,
+          opacity: 0.08 + bokehRng() * 0.06
+        });
+        var bokeh = new THREE.Mesh(bGeo, bMat);
+        bokeh.position.set(
+          (bokehRng() - 0.5) * 14,
+          (bokehRng() - 0.5) * 8,
+          (bokehRng() - 0.5) * 2 - 2
+        );
+        bokehGroup.add(bokeh);
+      }
+
+      // === SCENE MOOD CONFIG ===
+      // Map scene IDs to mood: particle color, opacity, globe, bokeh
+      var MOODS = {
+        "cover":        { r: 1.0, g: 0.22, b: 0.36, opacity: 0.55, globe: false, bokeh: false, bg: 0xFFFFFF },
+        "problem":      { r: 0.6, g: 0.55, b: 0.58, opacity: 0.30, globe: false, bokeh: false, bg: 0xF7F7F7 },
+        "solution":     { r: 1.0, g: 0.35, b: 0.37, opacity: 0.60, globe: false, bokeh: false, bg: 0xFFFFFF },
+        "validation":   { r: 1.0, g: 0.22, b: 0.36, opacity: 0.35, globe: false, bokeh: false, bg: 0xFFFFFF },
+        "market":       { r: 1.0, g: 0.22, b: 0.36, opacity: 0.40, globe: true,  bokeh: false, bg: 0xFFFFFF },
+        "product":      { r: 1.0, g: 0.35, b: 0.45, opacity: 0.35, globe: false, bokeh: false, bg: 0xFFFFFF },
+        "business":     { r: 1.0, g: 0.35, b: 0.45, opacity: 0.35, globe: false, bokeh: false, bg: 0xFFFFFF },
+        "adoption":     { r: 1.0, g: 0.22, b: 0.36, opacity: 0.35, globe: false, bokeh: false, bg: 0xFFFFFF },
+        "competition":  { r: 1.0, g: 0.22, b: 0.36, opacity: 0.25, globe: false, bokeh: false, bg: 0xFFFFFF },
+        "team":         { r: 1.0, g: 0.22, b: 0.36, opacity: 0.40, globe: false, bokeh: true,  bg: 0x222222 },
+        "ask":          { r: 1.0, g: 0.22, b: 0.36, opacity: 0.60, globe: false, bokeh: false, bg: 0x222222 },
+        "market-sizing":{ r: 1.0, g: 0.22, b: 0.36, opacity: 0.25, globe: true,  bokeh: false, bg: 0x1a1a1a }
+      };
+
+      var currentMood = "cover";
+
+      function applyMood(id) {
+        var m = MOODS[id] || MOODS["cover"];
+        currentMood = id;
+        // Update particle colors
+        for (var i = 0; i < PARTICLE_COUNT; i++) {
+          colors[i * 3]     = m.r;
+          colors[i * 3 + 1] = m.g;
+          colors[i * 3 + 2] = m.b;
+        }
+        geo.attributes.color.needsUpdate = true;
+        mat.opacity = m.opacity;
+        globeGroup.visible = !!m.globe;
+        bokehGroup.visible = !!m.bokeh;
+        renderer.setClearColor(m.bg, 0); // transparent bg — slide bg handles it
+      }
+
+      applyMood("cover");
+
+      // Expose for the visibility controller
+      window.__threeApplyMood = applyMood;
+
+      var clock = { t: 0 };
+      var lastTime = null;
+
+      function animate(ts) {
+        requestAnimationFrame(animate);
+        if (lastTime === null) lastTime = ts;
+        var dt = Math.min((ts - lastTime) / 1000, 0.05);
+        lastTime = ts;
+        clock.t += dt;
+
+        // Animate particles
+        var pos = geo.attributes.position.array;
+        for (var i = 0; i < PARTICLE_COUNT; i++) {
+          pos[i * 3]     += velocities[i].x;
+          pos[i * 3 + 1] += velocities[i].y;
+          pos[i * 3 + 2] += velocities[i].z;
+          // Wrap vertically
+          if (pos[i * 3 + 1] > 5) pos[i * 3 + 1] = -5;
+          if (pos[i * 3]     >  9) pos[i * 3]     = -9;
+          if (pos[i * 3]     < -9) pos[i * 3]     =  9;
+        }
+        geo.attributes.position.needsUpdate = true;
+
+        // Rotate globe slowly
+        if (globeGroup.visible) {
+          globeGroup.rotation.y = clock.t * 0.2;
+          globeGroup.rotation.x = Math.sin(clock.t * 0.1) * 0.15;
+        }
+
+        // Parallax bokeh
+        if (bokehGroup.visible) {
+          bokehGroup.rotation.y = Math.sin(clock.t * 0.08) * 0.1;
+          bokehGroup.rotation.x = Math.cos(clock.t * 0.06) * 0.06;
+        }
+
+        renderer.render(scene, camera);
+      }
+      requestAnimationFrame(animate);
+      } // end else (renderer OK)
+    </script>
+
+    <!-- Scene visibility controller + imperative GSAP entrance driver -->
+    <script>
+      (function () {
+        var scenes = [
+          { id: "scene-cover",       sceneKey: "cover",       start: 0,   end: 9   },
+          { id: "scene-problem",     sceneKey: "problem",     start: 9,   end: 18  },
+          { id: "scene-solution",    sceneKey: "solution",    start: 18,  end: 27  },
+          { id: "scene-validation",  sceneKey: "validation",  start: 27,  end: 36  },
+          { id: "scene-market",      sceneKey: "market",      start: 36,  end: 45  },
+          { id: "scene-product",     sceneKey: "product",     start: 45,  end: 54  },
+          { id: "scene-business",    sceneKey: "business",    start: 54,  end: 63  },
+          { id: "scene-adoption",    sceneKey: "adoption",    start: 63,  end: 72  },
+          { id: "scene-competition", sceneKey: "competition", start: 72,  end: 81  },
+          { id: "scene-team",        sceneKey: "team",        start: 81,  end: 90  },
+          { id: "scene-ask",         sceneKey: "ask",         start: 90,  end: 99  },
+          { id: "scene-market-sizing", sceneKey: "market-sizing", start: 99, end: 108 }
+        ];
+
+        // Problem fragment config
+        var probFragments = [
+          { time: 9.3, id: "prob-item1" },
+          { time: 9.6, id: "prob-item2" }
+        ];
+        var probRevealed = [false, false];
+
+        var lastActiveId = null;
+
+        function fireEntrance(sceneEl) {
+          var animEls = sceneEl.querySelectorAll("[data-anim]");
+          if (!animEls.length) return;
+          gsap.from(animEls, {
+            opacity: 0,
+            y: 28,
+            duration: 0.4,
+            stagger: 0.07,
+            ease: "power2.out",
+            overwrite: true
+          });
+        }
+
+        function revealProblem(id) {
+          var el = document.getElementById(id);
+          if (!el) return;
+          gsap.fromTo(el,
+            { opacity: 0, x: -24 },
+            { opacity: 1, x: 0, duration: 0.35, ease: "power2.out", overwrite: true }
+          );
+        }
+
+        function updateVisibility(t) {
+          for (var i = 0; i < scenes.length; i++) {
+            var s = scenes[i];
+            var el = document.getElementById(s.id);
+            if (!el) continue;
+            var active = t >= s.start && t < s.end;
+            el.style.opacity = active ? "1" : "0";
+            el.style.pointerEvents = active ? "auto" : "none";
+
+            if (active && lastActiveId !== s.id) {
+              // Update Three.js mood
+              if (window.__threeApplyMood) window.__threeApplyMood(s.sceneKey);
+
+              if (s.id === "scene-problem") {
+                // Reset problem items on re-entry
+                probRevealed = [false, false];
+                probFragments.forEach(function (f) {
+                  var pEl = document.getElementById(f.id);
+                  if (pEl) gsap.set(pEl, { opacity: 0, x: 0, clearProps: "transform" });
+                });
+              }
+              lastActiveId = s.id;
+              fireEntrance(el);
+            }
+          }
+
+          // Reveal problem fragments
+          for (var f = 0; f < probFragments.length; f++) {
+            if (!probRevealed[f] && t >= probFragments[f].time) {
+              probRevealed[f] = true;
+              revealProblem(probFragments[f].id);
+            }
+          }
+        }
+
+        window.__hfSetTime = updateVisibility;
+
+        // Show first slide immediately
+        updateVisibility(0);
+
+        function hookRoot() {
+          var root = window.__timelines && window.__timelines["root"];
+          if (root) {
+            root.eventCallback("onUpdate", function () {
+              updateVisibility(root.time());
+            });
+          }
+        }
+        hookRoot();
+      })();
+    </script>
+
+    <!-- SFX cue poster — posts transition cues to the parent unconditionally.
+         Mute state is owned by <hyperframes-slideshow sound> in the parent;
+         the parent gates playback on its mute state. The coral mute button has
+         been removed — use the mute control in the nav capsule (demo.html). -->
+    <script>
+      (function () {
+        window.__sfxPlayed = window.__sfxPlayed || [];
+
+        // Unlock logic kept for best-effort local play (only fires if the
+        // composition ever gets its own activation, e.g. when opened directly).
+        var unlocked = false;
+        var clips = {
+          advance:     new Audio('sfx/advance.mp3'),
+          fragment:    new Audio('sfx/fragment.mp3'),
+          branchEnter: new Audio('sfx/branch-enter.mp3'),
+          back:        new Audio('sfx/back.mp3')
+        };
+        clips.advance.preload     = 'auto';
+        clips.fragment.preload    = 'auto';
+        clips.branchEnter.preload = 'auto';
+        clips.back.preload        = 'auto';
+        clips.advance.volume      = 0.45;
+        clips.fragment.volume     = 0.40;
+        clips.branchEnter.volume  = 0.38;
+        clips.back.volume         = 0.38;
+
+        function playClip(el) {
+          el.currentTime = 0;
+          el.play().catch(function () {});
+        }
+
+        function primeAll() {
+          var keys = ['advance', 'fragment', 'branchEnter', 'back'];
+          for (var ki = 0; ki < keys.length; ki++) {
+            var el = clips[keys[ki]];
+            var savedVol = el.volume;
+            el.volume = 0;
+            el.play().then(function (e2) {
+              return function () { e2.pause(); e2.currentTime = 0; e2.volume = savedVol; };
+            }(el)).catch(function (e2, sv) {
+              return function () { e2.volume = sv; };
+            }(el, savedVol));
+          }
+        }
+
+        function onFirstGesture() {
+          if (unlocked) return;
+          unlocked = true;
+          primeAll();
+        }
+        document.addEventListener('keydown', onFirstGesture, true);
+        document.addEventListener('pointerdown', onFirstGesture, true);
+        document.addEventListener('click', onFirstGesture, true);
+        window.addEventListener('keydown', onFirstGesture, true);
+        window.addEventListener('pointerdown', onFirstGesture, true);
+
+        function playSfx(name) {
+          window.__sfxPlayed.push(name);
+          // Post the cue to the parent unconditionally — the parent's audio player
+          // gates on the slideshow component's mute state (hf-sound event).
+          try { parent.postMessage({ type: 'hf-sfx', name: name }, '*'); } catch (e) {}
+          // Best-effort local play (only fires if this doc ever gets activation).
+          if (!unlocked) return;
+          switch (name) {
+            case 'advance':      playClip(clips.advance);      break;
+            case 'fragment':     playClip(clips.fragment);     break;
+            case 'branch-enter': playClip(clips.branchEnter);  break;
+            case 'back':         playClip(clips.back);         break;
+          }
+        }
+
+        window.__playSfx = playSfx;
+      })();
+    </script>
+
+    <!-- Patch visibility controller to fire sfx on scene/fragment transitions -->
+    <script>
+      (function () {
+        // Wait for __hfSetTime and __playSfx to be defined, then wrap __hfSetTime
+        var origUpdateVisibility = window.__hfSetTime;
+        var lastScene = null;
+        var wasInBranch = false;
+        var fragmentRevealedSfx = [false, false];
+        var probFragmentTimes = [9.3, 9.6];
+        var BRANCH_SCENE_ID = 'scene-market-sizing';
+        var BRANCH_START = 99;
+        var BRANCH_END = 108;
+        var initialized = false;
+
+        function patchedUpdateVisibility(t) {
+          origUpdateVisibility(t);
+
+          var playSfx = window.__playSfx;
+          if (!playSfx) return;
+
+          // Determine current active scene
+          var scenes = [
+            { id: 'scene-cover',       start: 0,   end: 9   },
+            { id: 'scene-problem',     start: 9,   end: 18  },
+            { id: 'scene-solution',    start: 18,  end: 27  },
+            { id: 'scene-validation',  start: 27,  end: 36  },
+            { id: 'scene-market',      start: 36,  end: 45  },
+            { id: 'scene-product',     start: 45,  end: 54  },
+            { id: 'scene-business',    start: 54,  end: 63  },
+            { id: 'scene-adoption',    start: 63,  end: 72  },
+            { id: 'scene-competition', start: 72,  end: 81  },
+            { id: 'scene-team',        start: 81,  end: 90  },
+            { id: 'scene-ask',         start: 90,  end: 99  },
+            { id: 'scene-market-sizing', start: 99, end: 108 }
+          ];
+
+          var activeScene = null;
+          for (var i = 0; i < scenes.length; i++) {
+            if (t >= scenes[i].start && t < scenes[i].end) {
+              activeScene = scenes[i].id;
+              break;
+            }
+          }
+
+          var inBranch = (activeScene === BRANCH_SCENE_ID);
+
+          if (!initialized) {
+            // Suppress first activation on page load
+            initialized = true;
+            lastScene = activeScene;
+            wasInBranch = inBranch;
+            return;
+          }
+
+          if (activeScene && activeScene !== lastScene) {
+            // Determine if this is a branch transition or a regular advance
+            if (inBranch && !wasInBranch) {
+              playSfx('branch-enter');
+            } else if (!inBranch && wasInBranch) {
+              playSfx('back');
+            } else {
+              playSfx('advance');
+            }
+            // Reset fragment sfx tracking on problem re-entry
+            if (activeScene === 'scene-problem') {
+              fragmentRevealedSfx = [false, false];
+            }
+            lastScene = activeScene;
+            wasInBranch = inBranch;
+          }
+
+          // Fragment sfx — fire on same crossing that revealProblem fires
+          for (var f = 0; f < probFragmentTimes.length; f++) {
+            if (!fragmentRevealedSfx[f] && t >= probFragmentTimes[f]) {
+              fragmentRevealedSfx[f] = true;
+              playSfx('fragment');
+            }
+          }
+        }
+
+        window.__hfSetTime = patchedUpdateVisibility;
+
+        // Also re-hook the root timeline callback after load
+        // (the timeline callback was set before our patch)
+        window.addEventListener('load', function () {
+          var root = window.__timelines && window.__timelines['root'];
+          if (root) {
+            root.eventCallback('onUpdate', function () {
+              patchedUpdateVisibility(root.time());
+            });
+          }
+        });
+      })();
+    </script>
+
+    <!-- Bootstrap postMessage for slideshow component -->
+    <script>
+      (function () {
+        var totalFrames = 108 * 30; // 108s × 30fps = 3240 frames
+        var scenes = [
+          { id: "cover",          start: 0,   duration: 9 },
+          { id: "problem",        start: 9,   duration: 9 },
+          { id: "solution",       start: 18,  duration: 9 },
+          { id: "validation",     start: 27,  duration: 9 },
+          { id: "market",         start: 36,  duration: 9 },
+          { id: "product",        start: 45,  duration: 9 },
+          { id: "business",       start: 54,  duration: 9 },
+          { id: "adoption",       start: 63,  duration: 9 },
+          { id: "competition",    start: 72,  duration: 9 },
+          { id: "team",           start: 81,  duration: 9 },
+          { id: "ask",            start: 90,  duration: 9 },
+          { id: "market-sizing",  start: 99,  duration: 9 }
+        ];
+
+        function postTimeline() {
+          parent.postMessage({
+            source: "hf-preview",
+            type: "timeline",
+            durationInFrames: totalFrames,
+            scenes: scenes
+          }, "*");
+        }
+
+        if (document.readyState === "complete") {
+          setTimeout(postTimeline, 300);
+        } else {
+          window.addEventListener("load", function () { setTimeout(postTimeline, 300); });
+        }
+      })();
+    </script>
+
+  </body>
+</html>

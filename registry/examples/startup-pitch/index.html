@@ -1,0 +1,859 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>FlowDesk — Investor Pitch</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+      }
+
+      /* ── Shared scene positioning ───────────────────────── */
+      .scene-frame {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        opacity: 0;
+      }
+
+      /* ── Content containers ──────────────────────────────── */
+      .slide-inner {
+        position: absolute;
+        inset: 0;
+        padding: 100px 160px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 32px;
+      }
+      .slide-center {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 32px;
+        padding: 100px 200px;
+      }
+
+      /* ── Typography ─────────────────────────────────────── */
+      .eyebrow {
+        font-size: 32px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+      .headline {
+        font-size: 80px;
+        font-weight: 800;
+        line-height: 1.05;
+        letter-spacing: -0.025em;
+      }
+      .headline-lg {
+        font-size: 96px;
+        font-weight: 900;
+        line-height: 1;
+        letter-spacing: -0.03em;
+        text-align: center;
+      }
+      .subhead {
+        font-size: 48px;
+        font-weight: 400;
+        line-height: 1.35;
+        max-width: 1200px;
+      }
+      .subhead-center {
+        font-size: 48px;
+        font-weight: 400;
+        line-height: 1.35;
+        max-width: 1100px;
+        text-align: center;
+      }
+      .stat-row {
+        display: flex;
+        gap: 80px;
+        align-items: flex-end;
+      }
+      .stat-block {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .stat-number {
+        font-size: 96px;
+        font-weight: 900;
+        line-height: 1;
+        letter-spacing: -0.04em;
+      }
+      .stat-label {
+        font-size: 36px;
+        font-weight: 500;
+        opacity: 0.7;
+      }
+
+      /* ── Problem bullets ─────────────────────────────────── */
+      .pain-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 28px;
+        /* pain items start hidden; driver reveals them imperatively on fragment */
+        opacity: 0;
+      }
+      .pain-num {
+        font-size: 56px;
+        font-weight: 900;
+        line-height: 1;
+        flex-shrink: 0;
+        min-width: 64px;
+      }
+      .pain-text {
+        font-size: 52px;
+        font-weight: 600;
+        line-height: 1.2;
+      }
+
+      /* ── Market math ─────────────────────────────────────── */
+      .math-row {
+        display: flex;
+        align-items: center;
+        gap: 32px;
+        font-size: 56px;
+        font-weight: 700;
+      }
+      .math-op {
+        font-size: 56px;
+        font-weight: 400;
+        opacity: 0.5;
+      }
+      .math-result {
+        font-size: 80px;
+        font-weight: 900;
+      }
+
+      /* ── Traction stats ──────────────────────────────────── */
+      .traction-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 60px;
+        width: 100%;
+        max-width: 1500px;
+      }
+      .traction-card {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        padding: 48px;
+        border-radius: 24px;
+      }
+      .traction-number {
+        font-size: 80px;
+        font-weight: 900;
+        line-height: 1;
+        letter-spacing: -0.03em;
+      }
+      .traction-label {
+        font-size: 36px;
+        font-weight: 500;
+      }
+
+      /* ── Team cards ──────────────────────────────────────── */
+      .team-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 60px;
+        width: 100%;
+        max-width: 1500px;
+      }
+      .team-card {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        padding: 48px;
+        border-radius: 24px;
+      }
+      .team-name {
+        font-size: 44px;
+        font-weight: 800;
+      }
+      .team-role {
+        font-size: 32px;
+        font-weight: 600;
+        opacity: 0.7;
+      }
+      .team-bio {
+        font-size: 28px;
+        font-weight: 400;
+        line-height: 1.4;
+        opacity: 0.8;
+      }
+
+      /* ── Ask pill list ──────────────────────────────────── */
+      .use-list {
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+      }
+      .use-item {
+        display: flex;
+        align-items: center;
+        gap: 24px;
+        font-size: 44px;
+        font-weight: 600;
+      }
+      .use-pct {
+        font-size: 44px;
+        font-weight: 900;
+        min-width: 120px;
+      }
+
+      /* ── Decorative accent bar ───────────────────────────── */
+      .accent-bar {
+        width: 80px;
+        height: 8px;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body style="margin: 0">
+    <!--
+      FlowDesk — Investor Pitch Deck
+      Startup: FlowDesk — workflow SaaS for freelance creative agencies
+        automates client intake, approval loops, and invoicing.
+
+      Timeline layout (all scenes non-overlapping, contiguous main line):
+        00–08s  cover           (main slide 1)
+        08–20s  problem         (main slide 2, 3 fragments at 8.3, 8.6, 8.9s — bunched near start)
+        20–28s  solution        (main slide 3)
+        28–36s  why-now         (main slide 4)
+        36–44s  market          (main slide 5, hotspot → market-drill branch)
+        44–52s  product         (main slide 6)
+        52–60s  traction        (main slide 7)
+        60–68s  team            (main slide 8)
+        68–76s  ask             (main slide 9)
+        76–84s  market-drill    (branch slide — market-sizing-drill sequence)
+    -->
+
+    <!-- ── JSON island (source of truth for slide order, fragments, hotspots) ── -->
+    <script type="application/hyperframes-slideshow+json">
+      {
+        "slides": [
+          {
+            "sceneId": "cover",
+            "notes": "Open cold with the tagline. Let it breathe — no build, just the claim."
+          },
+          {
+            "sceneId": "problem",
+            "notes": "Walk through each pain point one fragment at a time. The 14h/week stat is the anchor.",
+            "fragments": [8.3, 8.6, 8.9],
+            "hotspots": []
+          },
+          {
+            "sceneId": "solution",
+            "notes": "One sentence. The product kills the three pains from the previous slide."
+          },
+          {
+            "sceneId": "why-now",
+            "notes": "Three macro tailwinds — remote-first freelancing, API economy, AI underwriting."
+          },
+          {
+            "sceneId": "market",
+            "notes": "Bottom-up math only. 480k agencies × $4,200 ACV = $2.0B SAM. Use hotspot for methodology Q.",
+            "hotspots": [
+              {
+                "id": "mkt-hotspot",
+                "label": "How did you size this market?",
+                "target": "market-sizing-drill",
+                "region": { "x": 55, "y": 60, "w": 40, "h": 28 }
+              }
+            ]
+          },
+          {
+            "sceneId": "product",
+            "notes": "Three product pillars — intake, approvals, invoicing. Show the single workflow view."
+          },
+          {
+            "sceneId": "traction",
+            "notes": "Lead with MRR and NRR — investors pattern-match on those two numbers first."
+          },
+          {
+            "sceneId": "team",
+            "notes": "Why us: ex-Stripe, ex-Figma, serial founders. Domain depth on both sides."
+          },
+          {
+            "sceneId": "ask",
+            "notes": "$4M seed to hit 1,000 customers. Show specific use of proceeds."
+          }
+        ],
+        "slideSequences": [
+          {
+            "id": "market-sizing-drill",
+            "label": "Market sizing methodology",
+            "slides": [
+              {
+                "sceneId": "market-drill",
+                "notes": "Step through the bottom-up math: Dun & Bradstreet count → filter → ACV from comparable comps."
+              }
+            ]
+          }
+        ]
+      }
+    </script>
+
+    <!-- Root composition container -->
+    <div
+      id="root"
+      data-composition-id="root"
+      data-start="0"
+      data-duration="84"
+      data-width="1920"
+      data-height="1080"
+      style="position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #0b0b0f"
+    >
+
+      <!-- ══════════════════════════════════════════════════════
+           SLIDE 1 — COVER
+           "FlowDesk turns creative agency chaos into billable momentum"
+           Start: 0  Duration: 8  End: 8
+           Background: deep indigo gradient
+      ═══════════════════════════════════════════════════════════ -->
+      <div
+        id="scene-cover"
+        class="scene-frame clip"
+        data-composition-id="cover"
+        data-start="0"
+        data-duration="8"
+        data-label="Cover"
+        data-track-index="1"
+        style="background: linear-gradient(135deg, #0d0d2b 0%, #1a0a3d 50%, #0d1f4a 100%)"
+      >
+        <div class="slide-center">
+          <div id="cover-eyebrow" class="eyebrow" style="color: #7c6ff7" data-anim>Seed Round 2026</div>
+          <h1 id="cover-headline" class="headline-lg" style="color: #ffffff" data-anim>
+            FlowDesk turns creative agency chaos into billable momentum
+          </h1>
+          <p id="cover-sub" class="subhead-center" style="color: rgba(255,255,255,0.65)" data-anim>
+            Workflow automation for freelance creative agencies — intake, approvals, and invoicing in one place
+          </p>
+          <div id="cover-bar" class="accent-bar" style="background: #7c6ff7; width: 120px" data-anim></div>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════════════════════
+           SLIDE 2 — PROBLEM
+           "Creative agencies haemorrhage 14 hours a week chasing approvals and invoices"
+           Start: 8  Duration: 12  End: 20
+           Fragments at 8.3, 8.6, 8.9 (absolute timeline times — bunched near start for snappiness)
+           Background: dark warm red
+      ═══════════════════════════════════════════════════════════ -->
+      <div
+        id="scene-problem"
+        class="scene-frame clip"
+        data-composition-id="problem"
+        data-start="8"
+        data-duration="12"
+        data-label="The problem"
+        data-track-index="1"
+        style="background: linear-gradient(135deg, #1a0808 0%, #2d0f0f 100%)"
+      >
+        <div class="slide-inner">
+          <div id="prob-eyebrow" class="eyebrow" style="color: #f87171" data-anim>The problem</div>
+          <h2 id="prob-headline" class="headline" style="color: #ffffff; max-width: 1400px" data-anim>
+            Creative agencies haemorrhage 14 hours a week chasing approvals and invoices
+          </h2>
+          <div id="prob-pain1" class="pain-item">
+            <span class="pain-num" style="color: #f87171">01</span>
+            <span class="pain-text" style="color: rgba(255,255,255,0.9)">Client feedback loops take 4–6 days per project revision</span>
+          </div>
+          <div id="prob-pain2" class="pain-item">
+            <span class="pain-num" style="color: #f87171">02</span>
+            <span class="pain-text" style="color: rgba(255,255,255,0.9)">Late invoices leave 28% of revenue outstanding 30+ days</span>
+          </div>
+          <div id="prob-pain3" class="pain-item">
+            <span class="pain-num" style="color: #f87171">03</span>
+            <span class="pain-text" style="color: rgba(255,255,255,0.9)">Intake chaos — email threads, Notion, DMs — kills 3h/week on triage</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════════════════════
+           SLIDE 3 — SOLUTION
+           "FlowDesk collapses intake, approvals, and invoicing into one automated workflow — agencies bill faster and work less"
+           Start: 20  Duration: 8  End: 28
+           Background: rich teal/green
+      ═══════════════════════════════════════════════════════════ -->
+      <div
+        id="scene-solution"
+        class="scene-frame clip"
+        data-composition-id="solution"
+        data-start="20"
+        data-duration="8"
+        data-label="Solution"
+        data-track-index="1"
+        style="background: linear-gradient(135deg, #071a17 0%, #0a2e26 50%, #06201b 100%)"
+      >
+        <div class="slide-center">
+          <div id="sol-eyebrow" class="eyebrow" style="color: #34d399" data-anim>Our solution</div>
+          <h2 id="sol-headline" class="headline-lg" style="color: #ffffff; max-width: 1400px" data-anim>
+            FlowDesk collapses intake, approvals, and invoicing into one automated workflow — agencies bill faster and work less
+          </h2>
+          <p id="sol-sub" class="subhead-center" style="color: rgba(255,255,255,0.65)" data-anim>
+            One link for clients. One dashboard for teams. Zero email follow-ups.
+          </p>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════════════════════
+           SLIDE 4 — WHY NOW
+           "Three forces converging in 2026 make FlowDesk a category-defining moment"
+           Start: 28  Duration: 8  End: 36
+           Background: midnight blue
+      ═══════════════════════════════════════════════════════════ -->
+      <div
+        id="scene-why-now"
+        class="scene-frame clip"
+        data-composition-id="why-now"
+        data-start="28"
+        data-duration="8"
+        data-label="Why now"
+        data-track-index="1"
+        style="background: linear-gradient(135deg, #050d1f 0%, #0a1a3d 100%)"
+      >
+        <div class="slide-inner">
+          <div id="wn-eyebrow" class="eyebrow" style="color: #60a5fa" data-anim>Why now</div>
+          <h2 id="wn-headline" class="headline" style="color: #ffffff" data-anim>
+            Three forces converging in 2026 make FlowDesk a category-defining moment
+          </h2>
+          <div id="wn-row" class="stat-row" style="gap: 60px; margin-top: 16px" data-anim>
+            <div class="stat-block">
+              <span class="stat-number" style="color: #60a5fa">74%</span>
+              <span class="stat-label" style="color: rgba(255,255,255,0.65)">of US agencies now fully remote — async tooling is table stakes</span>
+            </div>
+            <div class="stat-block">
+              <span class="stat-number" style="color: #60a5fa">3×</span>
+              <span class="stat-label" style="color: rgba(255,255,255,0.65)">growth in SMB API adoption, enabling no-code automations</span>
+            </div>
+            <div class="stat-block">
+              <span class="stat-number" style="color: #60a5fa">AI</span>
+              <span class="stat-label" style="color: rgba(255,255,255,0.65)">AI-powered approval routing cuts review cycles by 60%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════════════════════
+           SLIDE 5 — MARKET
+           "480,000 US creative agencies × $4,200 ACV = $2.0B serviceable market"
+           Start: 36  Duration: 8  End: 44
+           Hotspot → market-sizing-drill branch
+           Background: deep purple
+      ═══════════════════════════════════════════════════════════ -->
+      <div
+        id="scene-market"
+        class="scene-frame clip"
+        data-composition-id="market"
+        data-start="36"
+        data-duration="8"
+        data-label="Market"
+        data-track-index="1"
+        style="background: linear-gradient(135deg, #110824 0%, #1e0a40 100%)"
+      >
+        <div class="slide-inner">
+          <div id="mkt-eyebrow" class="eyebrow" style="color: #a78bfa" data-anim>Market sizing</div>
+          <h2 id="mkt-headline" class="headline" style="color: #ffffff; max-width: 1300px" data-anim>
+            480,000 US creative agencies × $4,200 ACV = $2.0B serviceable market
+          </h2>
+          <div id="mkt-math" class="math-row" style="color: #ffffff; margin-top: 8px" data-anim>
+            <span style="color: #a78bfa; font-size: 56px; font-weight: 800">480k</span>
+            <span class="math-op">agencies</span>
+            <span class="math-op">×</span>
+            <span style="color: #a78bfa; font-size: 56px; font-weight: 800">$4,200</span>
+            <span class="math-op">ACV</span>
+            <span class="math-op">=</span>
+            <span id="mkt-result" class="math-result" style="color: #c4b5fd">$2.0B SAM</span>
+          </div>
+          <p id="mkt-note" class="subhead" style="color: rgba(255,255,255,0.55); font-size: 36px; margin-top: 8px" data-anim>
+            Initial wedge: 3–15 person US agencies billing $250k–$2M/yr via Stripe. Expand to EU in year 2.
+          </p>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════════════════════
+           SLIDE 6 — PRODUCT
+           "FlowDesk's three-module platform cuts the agency ops stack from six tools to one"
+           Start: 44  Duration: 8  End: 52
+           Background: slate dark
+      ═══════════════════════════════════════════════════════════ -->
+      <div
+        id="scene-product"
+        class="scene-frame clip"
+        data-composition-id="product"
+        data-start="44"
+        data-duration="8"
+        data-label="Product"
+        data-track-index="1"
+        style="background: linear-gradient(135deg, #0c0f18 0%, #161b2e 100%)"
+      >
+        <div class="slide-inner">
+          <div id="prod-eyebrow" class="eyebrow" style="color: #38bdf8" data-anim>Product</div>
+          <h2 id="prod-headline" class="headline" style="color: #ffffff; max-width: 1300px" data-anim>
+            FlowDesk's three-module platform cuts the agency ops stack from six tools to one
+          </h2>
+          <div id="prod-modules" style="display: flex; gap: 48px; margin-top: 16px" data-anim>
+            <div style="flex: 1; padding: 40px; background: rgba(56,189,248,0.08); border-radius: 20px; border: 1px solid rgba(56,189,248,0.2)">
+              <div style="font-size: 48px; font-weight: 800; color: #38bdf8; margin-bottom: 12px">Intake</div>
+              <div style="font-size: 36px; color: rgba(255,255,255,0.8); line-height: 1.4">Smart intake forms with file upload, budget qualifier, and auto-brief generation</div>
+            </div>
+            <div style="flex: 1; padding: 40px; background: rgba(56,189,248,0.08); border-radius: 20px; border: 1px solid rgba(56,189,248,0.2)">
+              <div style="font-size: 48px; font-weight: 800; color: #38bdf8; margin-bottom: 12px">Approvals</div>
+              <div style="font-size: 36px; color: rgba(255,255,255,0.8); line-height: 1.4">AI-routed review links — one URL, unlimited rounds, full audit trail</div>
+            </div>
+            <div style="flex: 1; padding: 40px; background: rgba(56,189,248,0.08); border-radius: 20px; border: 1px solid rgba(56,189,248,0.2)">
+              <div style="font-size: 48px; font-weight: 800; color: #38bdf8; margin-bottom: 12px">Invoicing</div>
+              <div style="font-size: 36px; color: rgba(255,255,255,0.8); line-height: 1.4">Auto-invoice on approval — Stripe-native, net-terms, retainer billing</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════════════════════
+           SLIDE 7 — TRACTION
+           "We crossed $42k MRR in 14 months with 186 paying agencies and 118% NRR"
+           Start: 52  Duration: 8  End: 60
+           Background: emerald dark
+      ═══════════════════════════════════════════════════════════ -->
+      <div
+        id="scene-traction"
+        class="scene-frame clip"
+        data-composition-id="traction"
+        data-start="52"
+        data-duration="8"
+        data-label="Traction"
+        data-track-index="1"
+        style="background: linear-gradient(135deg, #051a10 0%, #0a2e1c 100%)"
+      >
+        <div class="slide-inner">
+          <div id="tr-eyebrow" class="eyebrow" style="color: #4ade80" data-anim>Traction</div>
+          <h2 id="tr-headline" class="headline" style="color: #ffffff; max-width: 1400px" data-anim>
+            We crossed $42k MRR in 14 months with 186 paying agencies and 118% NRR
+          </h2>
+          <div id="tr-cards" class="traction-grid" style="margin-top: 16px" data-anim>
+            <div class="traction-card" style="background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.2)">
+              <span class="traction-number" style="color: #4ade80">$42k</span>
+              <span class="traction-label" style="color: rgba(255,255,255,0.75)">MRR (Apr 2026)</span>
+            </div>
+            <div class="traction-card" style="background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.2)">
+              <span class="traction-number" style="color: #4ade80">118%</span>
+              <span class="traction-label" style="color: rgba(255,255,255,0.75)">Net Revenue Retention</span>
+            </div>
+            <div class="traction-card" style="background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.2)">
+              <span class="traction-number" style="color: #4ade80">186</span>
+              <span class="traction-label" style="color: rgba(255,255,255,0.75)">Paying agencies, 0 churned in 90 days</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════════════════════
+           SLIDE 8 — TEAM
+           "Our three-person founding team has shipped and sold workflow software at Stripe, Figma, and HoneyBook"
+           Start: 60  Duration: 8  End: 68
+           Background: warm charcoal
+      ═══════════════════════════════════════════════════════════ -->
+      <div
+        id="scene-team"
+        class="scene-frame clip"
+        data-composition-id="team"
+        data-start="60"
+        data-duration="8"
+        data-label="Team"
+        data-track-index="1"
+        style="background: linear-gradient(135deg, #16100a 0%, #261a0f 100%)"
+      >
+        <div class="slide-inner">
+          <div id="team-eyebrow" class="eyebrow" style="color: #fb923c" data-anim>Team</div>
+          <h2 id="team-headline" class="headline" style="color: #ffffff; max-width: 1400px" data-anim>
+            Our three-person founding team has shipped and sold workflow software at Stripe, Figma, and HoneyBook
+          </h2>
+          <div id="team-cards" class="team-grid" style="margin-top: 16px" data-anim>
+            <div class="team-card" style="background: rgba(251,146,60,0.08); border: 1px solid rgba(251,146,60,0.2)">
+              <span class="team-name" style="color: #fb923c">Sara Okeke</span>
+              <span class="team-role" style="color: rgba(255,255,255,0.7)">CEO &amp; Co-founder</span>
+              <span class="team-bio" style="color: rgba(255,255,255,0.7)">Former PM at Stripe Billing. 2× founder (YC S18).</span>
+            </div>
+            <div class="team-card" style="background: rgba(251,146,60,0.08); border: 1px solid rgba(251,146,60,0.2)">
+              <span class="team-name" style="color: #fb923c">Dev Patel</span>
+              <span class="team-role" style="color: rgba(255,255,255,0.7)">CTO &amp; Co-founder</span>
+              <span class="team-bio" style="color: rgba(255,255,255,0.7)">Eng lead on Figma Comments. Built async review infra used by 4M teams.</span>
+            </div>
+            <div class="team-card" style="background: rgba(251,146,60,0.08); border: 1px solid rgba(251,146,60,0.2)">
+              <span class="team-name" style="color: #fb923c">Leila Hart</span>
+              <span class="team-role" style="color: rgba(255,255,255,0.7)">Head of Revenue</span>
+              <span class="team-bio" style="color: rgba(255,255,255,0.7)">Closed first 200 customers at HoneyBook. Agency market expert.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════════════════════
+           SLIDE 9 — ASK
+           "We are raising $4M seed to reach 1,000 customers and $200k MRR in 18 months"
+           Start: 68  Duration: 8  End: 76
+           Background: strong indigo
+      ═══════════════════════════════════════════════════════════ -->
+      <div
+        id="scene-ask"
+        class="scene-frame clip"
+        data-composition-id="ask"
+        data-start="68"
+        data-duration="8"
+        data-label="The ask"
+        data-track-index="1"
+        style="background: linear-gradient(135deg, #0d0d2b 0%, #1a1060 100%)"
+      >
+        <div class="slide-inner">
+          <div id="ask-eyebrow" class="eyebrow" style="color: #818cf8" data-anim>The ask</div>
+          <h2 id="ask-headline" class="headline" style="color: #ffffff; max-width: 1400px" data-anim>
+            We are raising $4M seed to reach 1,000 customers and $200k MRR in 18 months
+          </h2>
+          <div id="ask-uses" class="use-list" style="margin-top: 16px" data-anim>
+            <div class="use-item">
+              <span class="use-pct" style="color: #818cf8">50%</span>
+              <span style="color: rgba(255,255,255,0.85); font-size: 44px; font-weight: 600">Eng &amp; product — hire 4 engineers, ship EU data residency + mobile app</span>
+            </div>
+            <div class="use-item">
+              <span class="use-pct" style="color: #818cf8">30%</span>
+              <span style="color: rgba(255,255,255,0.85); font-size: 44px; font-weight: 600">Sales &amp; CS — 3 AEs + partner channel (agencies tool stack)</span>
+            </div>
+            <div class="use-item">
+              <span class="use-pct" style="color: #818cf8">20%</span>
+              <span style="color: rgba(255,255,255,0.85); font-size: 44px; font-weight: 600">Marketing — content-led PLG, SEO moat, case study library</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════════════════════
+           BRANCH SLIDE — MARKET-DRILL
+           Branch: market-sizing-drill / "Market sizing methodology"
+           Start: 76  Duration: 8  End: 84
+           NOT in main slides array — only in slideSequences
+           Background: charcoal purple (visually distinct from market slide)
+      ═══════════════════════════════════════════════════════════ -->
+      <div
+        id="scene-market-drill"
+        class="scene-frame clip"
+        data-composition-id="market-drill"
+        data-start="76"
+        data-duration="8"
+        data-label="Market math drill-down"
+        data-track-index="1"
+        style="background: linear-gradient(135deg, #0f0a20 0%, #1c1035 100%)"
+      >
+        <div class="slide-inner">
+          <div id="drill-eyebrow" class="eyebrow" style="color: #c084fc" data-anim>Market sizing methodology</div>
+          <h2 id="drill-headline" class="headline" style="color: #ffffff; max-width: 1500px" data-anim>
+            Bottom-up: Dun &amp; Bradstreet lists 1.1M US "design services" firms — we filter to 480k agencies billing &gt;$250k/yr
+          </h2>
+          <div id="drill-steps" style="display: flex; flex-direction: column; gap: 24px; margin-top: 16px" data-anim>
+            <div style="display: flex; gap: 24px; align-items: center">
+              <span style="font-size: 48px; font-weight: 900; color: #c084fc; min-width: 72px">1.</span>
+              <span style="font-size: 44px; color: rgba(255,255,255,0.85); font-weight: 600">1.1M Dun &amp; Bradstreet "design services" — filter to 5+ employee, $250k+ revenue</span>
+            </div>
+            <div style="display: flex; gap: 24px; align-items: center">
+              <span style="font-size: 48px; font-weight: 900; color: #c084fc; min-width: 72px">2.</span>
+              <span style="font-size: 44px; color: rgba(255,255,255,0.85); font-weight: 600">= 480k addressable agencies × $4,200 ACV (3 seats × $1,400/seat/yr = comparable to HoneyBook)</span>
+            </div>
+            <div style="display: flex; gap: 24px; align-items: center">
+              <span style="font-size: 48px; font-weight: 900; color: #c084fc; min-width: 72px">3.</span>
+              <span style="font-size: 44px; color: rgba(255,255,255,0.85); font-weight: 600">$2.0B SAM. Expand to EU (est. 600k agencies) in Y2 for $4.5B total SAM.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Root timeline (spans full 84s composition) ──────── -->
+      <script>
+        (function () {
+          window.__timelines = window.__timelines || {};
+          var tl = gsap.timeline({ paused: true });
+          tl.to({}, { duration: 84 });
+          window.__timelines["root"] = tl;
+        })();
+      </script>
+
+    </div><!-- end #root -->
+
+    <!-- ── Scene visibility controller + imperative animation driver ──────────
+         Drives each scene's opacity based on playhead (seek-driven visibility).
+         ALSO fires imperative GSAP entrance animations via GSAP's own ticker
+         when a scene transitions from inactive→active. Pain items are revealed
+         imperatively when the playhead crosses their bunched fragment times.
+
+         Fragment times for problem: [8.3, 8.6, 8.9] — bunched near scene start
+         so each ArrowRight advances the playhead to the next reveal within ~300ms.
+    ──────────────────────────────────────────────────────────────────────────── -->
+    <script>
+      (function () {
+        var scenes = [
+          { id: "scene-cover",        start: 0,  end: 8  },
+          { id: "scene-problem",      start: 8,  end: 20 },
+          { id: "scene-solution",     start: 20, end: 28 },
+          { id: "scene-why-now",      start: 28, end: 36 },
+          { id: "scene-market",       start: 36, end: 44 },
+          { id: "scene-product",      start: 44, end: 52 },
+          { id: "scene-traction",     start: 52, end: 60 },
+          { id: "scene-team",         start: 60, end: 68 },
+          { id: "scene-ask",          start: 68, end: 76 },
+          { id: "scene-market-drill", start: 76, end: 84 }
+        ];
+
+        // Fragment config for problem slide: pain items revealed at bunched times
+        var painFragments = [
+          { time: 8.3, id: "prob-pain1" },
+          { time: 8.6, id: "prob-pain2" },
+          { time: 8.9, id: "prob-pain3" }
+        ];
+        var painRevealed = [false, false, false];
+
+        // Track which scene was last active to detect transitions
+        var lastActiveId = null;
+
+        function fireEntranceAnim(scene) {
+          var animEls = scene.querySelectorAll("[data-anim]");
+          if (!animEls.length) return;
+          // Quick crossfade: scene container from 0→1 already handled by visibility controller.
+          // Stagger-in the data-anim elements from below+transparent via GSAP's own ticker.
+          gsap.from(animEls, {
+            opacity: 0,
+            y: 30,
+            duration: 0.45,
+            stagger: 0.08,
+            ease: "power2.out",
+            overwrite: true
+          });
+        }
+
+        function revealPainItem(id) {
+          var el = document.getElementById(id);
+          if (!el) return;
+          gsap.fromTo(el, { opacity: 0, x: -20 }, { opacity: 1, x: 0, duration: 0.4, ease: "power2.out", overwrite: true });
+        }
+
+        function updateVisibility(t) {
+          for (var i = 0; i < scenes.length; i++) {
+            var s = scenes[i];
+            var el = document.getElementById(s.id);
+            if (!el) continue;
+            var isActive = t >= s.start && t < s.end;
+            el.style.opacity = isActive ? "1" : "0";
+            el.style.pointerEvents = isActive ? "auto" : "none";
+
+            // Fire entrance animation when scene BECOMES active
+            if (isActive && lastActiveId !== s.id) {
+              // Reset pain items when re-entering problem scene
+              if (s.id === "scene-problem") {
+                painRevealed = [false, false, false];
+                var pains = ["prob-pain1", "prob-pain2", "prob-pain3"];
+                for (var p = 0; p < pains.length; p++) {
+                  var pEl = document.getElementById(pains[p]);
+                  if (pEl) gsap.set(pEl, { opacity: 0, x: 0, clearProps: "transform" });
+                }
+              }
+              lastActiveId = s.id;
+              fireEntranceAnim(el);
+            }
+          }
+
+          // Fragment reveals for problem slide pain items
+          for (var f = 0; f < painFragments.length; f++) {
+            if (!painRevealed[f] && t >= painFragments[f].time) {
+              painRevealed[f] = true;
+              revealPainItem(painFragments[f].id);
+            }
+          }
+        }
+
+        // Expose so the player / slideshow component can drive it directly
+        window.__hfSetTime = updateVisibility;
+
+        // Show the first slide immediately on load so the deck isn't blank
+        updateVisibility(0);
+
+        // Hook into the root timeline's onUpdate so every seek drives scene visibility
+        function hookRoot() {
+          var root = window.__timelines && window.__timelines["root"];
+          if (root) {
+            root.eventCallback("onUpdate", function () {
+              updateVisibility(root.time());
+            });
+          }
+        }
+        hookRoot();
+      })();
+    </script>
+
+    <!-- ── Bootstrap postMessage for slideshow component ─────
+         Sends the timeline manifest so <hyperframes-slideshow>
+         can discover all scenes (main + branch) without relying
+         on the engine's full runtime injection.
+    ──────────────────────────────────────────────────────── -->
+    <script>
+      (function () {
+        var totalFrames = 84 * 30; // 84s × 30fps = 2520 frames
+        var scenes = [
+          { id: "cover",        start: 0,   duration: 8  },
+          { id: "problem",      start: 8,   duration: 12 },
+          { id: "solution",     start: 20,  duration: 8  },
+          { id: "why-now",      start: 28,  duration: 8  },
+          { id: "market",       start: 36,  duration: 8  },
+          { id: "product",      start: 44,  duration: 8  },
+          { id: "traction",     start: 52,  duration: 8  },
+          { id: "team",         start: 60,  duration: 8  },
+          { id: "ask",          start: 68,  duration: 8  },
+          { id: "market-drill", start: 76,  duration: 8  }
+        ];
+
+        function postTimeline() {
+          parent.postMessage({
+            source: "hf-preview",
+            type: "timeline",
+            durationInFrames: totalFrames,
+            scenes: scenes
+          }, "*");
+        }
+
+        // Post after a brief delay to let the parent frame settle
+        if (window.requestAnimationFrame) {
+          var delayed = function (deadline) {
+            // ~300ms after load
+            setTimeout(postTimeline, 300);
+          };
+          if (document.readyState === "complete") {
+            delayed();
+          } else {
+            window.addEventListener("load", delayed);
+          }
+        } else {
+          setTimeout(postTimeline, 300);
+        }
+      })();
+    </script>
+
+  </body>
+</html>
