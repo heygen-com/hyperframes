@@ -13,9 +13,11 @@ import type {
   Composition,
   EditOp,
   ElementSnapshot,
+  ElementTimingSnapshot,
   FindQuery,
   FontValue,
   GsapTweenSpec,
+  ElasticHold,
   HfId,
   ImageValue,
   JsonPatchOp,
@@ -31,6 +33,8 @@ import type { PersistAdapter, PreviewAdapter } from "./adapters/types.js";
 import { parseMutable } from "./engine/model.js";
 import type { ParsedDocument } from "./engine/model.js";
 import { applyOp, validateOp, type MutationResult } from "./engine/mutate.js";
+import { getGsapScript, resolveScoped } from "./engine/model.js";
+import { extractGsapLabels } from "@hyperframes/core/gsap-parser-acorn";
 import { serializeDocument } from "./engine/serialize.js";
 import { applyPatchesToDocument, applyOverrideSet } from "./engine/apply-patches.js";
 import { buildPatchEvent, pathToKey } from "./engine/patches.js";
@@ -137,6 +141,72 @@ class CompositionImpl implements Composition {
 
   setVariableValue(id: string, value: string | number | boolean | FontValue | ImageValue): void {
     this.dispatch({ type: "setVariableValue", id, value });
+  }
+
+  // ── WS-C: timing accessors + typed setHold ───────────────────────────────────
+
+  // fallow-ignore-next-line complexity
+  getElementTimings(): Record<HfId, ElementTimingSnapshot> {
+    const script = getGsapScript(this.parsed.document);
+
+    // Extract all addLabel("name", position) calls from the GSAP script. Parsed
+    // fresh each call so renumbered tweens never yield stale label positions.
+    const allLabels = script ? extractGsapLabels(script) : [];
+
+    const result: Record<HfId, ElementTimingSnapshot> = {};
+    const elements = this.getElements();
+    for (const el of elements) {
+      const domEl = resolveScoped(this.parsed.document, el.scopedId);
+      if (!domEl) continue;
+
+      const startStr = domEl.getAttribute("data-start");
+      const endStr = domEl.getAttribute("data-end");
+      const durationStr = domEl.getAttribute("data-duration");
+
+      // Same preference as handleSetTiming: prefer data-duration, fall back to end - start.
+      const start = startStr !== null ? parseFloat(startStr) : 0;
+      const durationAttr = durationStr !== null ? parseFloat(durationStr) : null;
+      const endAttr = endStr !== null ? parseFloat(endStr) : null;
+
+      let duration: number;
+      if (durationAttr !== null && Number.isFinite(durationAttr)) {
+        duration = durationAttr;
+      } else if (endAttr !== null && Number.isFinite(endAttr)) {
+        duration = endAttr - start;
+      } else {
+        // No timing info — skip non-timed elements.
+        continue;
+      }
+
+      const enterAt = Number.isFinite(start) ? start : 0;
+      const exitAt = enterAt + (Number.isFinite(duration) ? duration : 0);
+
+      // Labels whose position falls within [enterAt, exitAt].
+      const labels = allLabels
+        .filter(({ position }) => position >= enterAt && position <= exitAt)
+        .map(({ name }) => name);
+
+      result[el.scopedId] = { enterAt, exitAt, labels };
+    }
+
+    return result;
+  }
+
+  setElementTiming(
+    map: Record<HfId, { start?: number; duration?: number; trackIndex?: number }>,
+  ): void {
+    const entries = Object.entries(map);
+    if (entries.length === 0) return;
+
+    this.batch(() => {
+      for (const [id, timing] of entries) {
+        this.dispatch({ type: "setTiming", target: id, ...timing });
+      }
+    });
+  }
+
+  setHold(id: HfId, hold: ElasticHold): void {
+    this.dispatch({ type: "setHold", target: id, hold });
   }
 
   addGsapTween(target: HfId, tween: GsapTweenSpec): string {

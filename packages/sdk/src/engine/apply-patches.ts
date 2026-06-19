@@ -183,6 +183,10 @@ function applyOne(parsed: ParsedDocument, patch: JsonPatchOp, p: ParsedPath): vo
       if (p.field === "start") {
         if (patch.op === "remove") el.removeAttribute("data-start");
         else el.setAttribute("data-start", String(patch.value));
+      } else if (p.field === "duration") {
+        // Patch value is the data-duration value — set directly.
+        if (patch.op === "remove") el.removeAttribute("data-duration");
+        else el.setAttribute("data-duration", String(patch.value));
       } else if (p.field === "end") {
         // Patch value is the absolute data-end time — set directly, no re-derivation.
         if (patch.op === "remove") el.removeAttribute("data-end");

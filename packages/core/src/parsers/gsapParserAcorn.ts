@@ -1144,3 +1144,61 @@ export function parseGsapScriptAcorn(script: string): ParsedGsap {
     return { animations: [], timelineVar: "tl", preamble: "", postamble: "" };
   }
 }
+
+// ── Label extraction (WS-C) ──────────────────────────────────────────────────
+
+export interface GsapLabelEntry {
+  name: string;
+  position: number;
+}
+
+/**
+ * Extract all `tl.addLabel("name", position)` calls from a GSAP script.
+ *
+ * Returns labels in source order. Position must be a numeric literal; labels
+ * with non-numeric positions (e.g. label-relative offsets) are skipped.
+ *
+ * Pure — no side effects, no DOM, no Date.now.
+ */
+export function extractGsapLabels(script: string): GsapLabelEntry[] {
+  try {
+    const ast = acorn.parse(script, {
+      ecmaVersion: "latest",
+      sourceType: "script",
+      locations: true,
+    });
+    const scope = collectScopeBindings(ast);
+    const detection = findTimelineVar(ast, scope);
+    const timelineVar = detection.timelineVar ?? "tl";
+
+    const labels: GsapLabelEntry[] = [];
+
+    acornWalk.simple(ast, {
+      // fallow-ignore-next-line complexity
+      ExpressionStatement(node: any) {
+        const expr = node.expression;
+        if (!expr || expr.type !== "CallExpression") return;
+        const callee = expr.callee;
+        // Match tl.addLabel(...)
+        if (
+          callee?.type !== "MemberExpression" ||
+          callee.object?.name !== timelineVar ||
+          callee.property?.name !== "addLabel"
+        )
+          return;
+        const args = expr.arguments ?? [];
+        const nameNode = args[0];
+        const posNode = args[1];
+        if (nameNode?.type !== "Literal" || typeof nameNode.value !== "string") return;
+        if (!posNode) return;
+        const pos = resolveNode(posNode, scope);
+        if (typeof pos !== "number" || !Number.isFinite(pos)) return;
+        labels.push({ name: nameNode.value, position: pos });
+      },
+    });
+
+    return labels;
+  } catch {
+    return [];
+  }
+}

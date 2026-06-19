@@ -108,6 +108,17 @@ export type {
   CompilationResult,
 } from "./compiler/timingCompiler";
 
+// Timing resolver — shared pure resolver for word-anchored elastic timing (WS-C).
+export type {
+  WordTiming,
+  ElementAnchor,
+  AuthoredTiming,
+  ResolvedTiming,
+  ResolveTimingsInput,
+  ResolveTimingsResult,
+} from "./compiler/timingResolver";
+export { resolveTimings } from "./compiler/timingResolver";
+
 export {
   compileTimingAttrs,
   injectDurations,
