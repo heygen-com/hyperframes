@@ -40,10 +40,30 @@ interface SurfacedTween {
   path: Array<{ x: number; y: number }> | null;
 }
 
+/** One drawn stroke of a multi-stroke trace — a single position tween. */
+interface TraceStroke {
+  id: string;
+  start: number;
+  end: number;
+  keyframes: KeyframePoint[];
+  points: Array<{ x: number; y: number }>;
+}
+
+/** An element's position motion composited into ordered strokes. The gaps
+ *  between strokes are pen-up jumps (a 0-duration `set`, or a discontinuity)
+ *  and are NOT drawn — this is how one element traces shapes with holes or
+ *  detached parts (a `?` dot, an icon counter, multi-letter words). */
+interface SurfacedTrace {
+  target: string;
+  strokes: TraceStroke[];
+}
+
 interface SurfacedComposition {
   composition: string;
   source: string;
   tweens: SurfacedTween[];
+  /** Multi-stroke traces: targets with ≥2 drawn position strokes, composited. */
+  traces: SurfacedTrace[];
 }
 
 // ── GSAP extraction ──────────────────────────────────────────────────────────
@@ -182,13 +202,24 @@ function surfaceTween(anim: GsapAnimation): SurfacedTween {
 
 // ── ASCII motion path ────────────────────────────────────────────────────────
 
-/** Plot position points into a compact grid so an agent can SEE the motion
- *  shape. Each keyframe is marked with its index (0–9, then a–z); the path is
- *  traced with light dots. Coordinates are GSAP x/y offsets (px). */
-function asciiPath(points: Array<{ x: number; y: number }>, width = 48, height = 11): string[] {
-  if (points.length === 0) return [];
-  const xs = points.map((p) => p.x);
-  const ys = points.map((p) => p.y);
+type Pt = { x: number; y: number };
+
+/** Core plotter: render one or more strokes into a shared-scale ASCII grid.
+ *  Dots connect only WITHIN a stroke (never across a pen-up gap); keyframes are
+ *  marked with a continuous index across strokes (0–9, a–z, A–Z), or — once a
+ *  trace exceeds `denseAbove` points — only Start/End per stroke. `legend`
+ *  builds the trailing caption from (dense, strokeCount). Coords are GSAP px. */
+function plotStrokes(
+  strokes: Pt[][],
+  denseAbove: number,
+  legend: (dense: boolean, strokeCount: number) => string,
+  width = 48,
+  height = 11,
+): string[] {
+  const all = strokes.flat();
+  if (all.length === 0) return [];
+  const xs = all.map((p) => p.x);
+  const ys = all.map((p) => p.y);
   let minX = Math.min(...xs);
   let maxX = Math.max(...xs);
   let minY = Math.min(...ys);
@@ -206,47 +237,80 @@ function asciiPath(points: Array<{ x: number; y: number }>, width = 48, height =
   const toCol = (x: number) => Math.round(((x - minX) / (maxX - minX)) * (cols - 1));
   // Screen y grows downward — invert so up on screen = smaller gsap y.
   const toRow = (y: number) => Math.round(((y - minY) / (maxY - minY)) * (rows - 1));
-
   const grid: string[][] = Array.from({ length: rows }, () =>
     Array.from({ length: cols }, () => " "),
   );
-  // Sparse paths (≤36 pts) index each keyframe (0–9, a–z) so an agent can map a
-  // mark to a keyframe to edit. Dense paths (gestures) only mark Start/End — the
-  // shape is the signal; per-point exact values live in the keyframe list / JSON.
-  const dense = points.length > 36;
-  const mark = (i: number) => {
-    if (dense) return i === 0 ? "S" : i === points.length - 1 ? "E" : "·";
-    return i < 10 ? String(i) : String.fromCharCode(97 + (i - 10));
-  };
+  const dense = all.length > denseAbove;
+  // 0–9, a–z, then A–Z = 62 labels.
+  const markChar = (i: number) =>
+    i < 10
+      ? String(i)
+      : i < 36
+        ? String.fromCharCode(97 + (i - 10))
+        : String.fromCharCode(65 + (i - 36));
 
-  // Trace segments with dots first, then overwrite endpoints with index marks.
-  for (let i = 0; i < points.length - 1; i++) {
-    const c0 = toCol(points[i]!.x);
-    const r0 = toRow(points[i]!.y);
-    const c1 = toCol(points[i + 1]!.x);
-    const r1 = toRow(points[i + 1]!.y);
-    const steps = Math.max(Math.abs(c1 - c0), Math.abs(r1 - r0), 1);
-    for (let s = 1; s < steps; s++) {
-      const cc = Math.round(c0 + ((c1 - c0) * s) / steps);
-      const rr = Math.round(r0 + ((r1 - r0) * s) / steps);
-      if (grid[rr]![cc] === " ") grid[rr]![cc] = "·";
+  // Trace each stroke's own segments with dots — gaps between strokes stay blank.
+  for (const stroke of strokes) {
+    for (let i = 0; i < stroke.length - 1; i++) {
+      const c0 = toCol(stroke[i]!.x);
+      const r0 = toRow(stroke[i]!.y);
+      const c1 = toCol(stroke[i + 1]!.x);
+      const r1 = toRow(stroke[i + 1]!.y);
+      const steps = Math.max(Math.abs(c1 - c0), Math.abs(r1 - r0), 1);
+      for (let s = 1; s < steps; s++) {
+        const cc = Math.round(c0 + ((c1 - c0) * s) / steps);
+        const rr = Math.round(r0 + ((r1 - r0) * s) / steps);
+        if (grid[rr]![cc] === " ") grid[rr]![cc] = "·";
+      }
     }
   }
-  points.forEach((p, i) => {
-    grid[toRow(p.y)]![toCol(p.x)] = mark(i);
-  });
+  // Then overwrite endpoints with index marks (or S/E per stroke when dense).
+  let idx = 0;
+  for (const stroke of strokes) {
+    stroke.forEach((p, j) => {
+      grid[toRow(p.y)]![toCol(p.x)] = dense
+        ? j === 0
+          ? "S"
+          : j === stroke.length - 1
+            ? "E"
+            : "·"
+        : markChar(idx);
+      idx++;
+    });
+  }
 
   const top = `    ┌${"─".repeat(cols)}┐`;
   const body = grid.map((row) => `    │${row.join("")}│`);
   const bottom = `    └${"─".repeat(cols)}┘`;
-  const legend = dense ? "S→E, · path" : "marks 0..n = keyframe order";
-  const axis = `    x ${Math.round(minX)}..${Math.round(maxX)}   y ${Math.round(minY)}..${Math.round(maxY)} (gsap px; ${legend})`;
+  const axis = `    x ${Math.round(minX)}..${Math.round(maxX)}   y ${Math.round(minY)}..${Math.round(maxY)} (gsap px; ${legend(dense, strokes.length)})`;
   return [top, ...body, bottom, c.dim(axis)];
+}
+
+/** Plot a single continuous position path (one tween). */
+function asciiPath(points: Pt[]): string[] {
+  return plotStrokes(points.length ? [points] : [], 36, (dense) =>
+    dense ? "S→E, · path" : "marks 0..n = keyframe order",
+  );
+}
+
+/** Plot a multi-stroke trace: all strokes share ONE scale, dots connect only
+ *  within a stroke (never across a pen-up gap), marks run across strokes. */
+function asciiTrace(strokes: Pt[][]): string[] {
+  return plotStrokes(
+    strokes,
+    62,
+    (dense, n) =>
+      `${n} strokes · pen-up gaps not drawn · ${dense ? "S→E per stroke, · path" : "marks run across strokes in order"}`,
+  );
 }
 
 // ── Composition surfacing ────────────────────────────────────────────────────
 
-function surfaceComposition(html: string, label: string, source: string): SurfacedComposition {
+export function surfaceComposition(
+  html: string,
+  label: string,
+  source: string,
+): SurfacedComposition {
   const script = inlineScriptText(html);
   let animations: GsapAnimation[] = [];
   try {
@@ -254,11 +318,38 @@ function surfaceComposition(html: string, label: string, source: string): Surfac
   } catch {
     animations = [];
   }
-  return {
-    composition: label,
-    source,
-    tweens: animations.filter((a) => !isHoldMarker(a)).map(surfaceTween),
-  };
+  const tweens = animations.filter((a) => !isHoldMarker(a)).map(surfaceTween);
+  return { composition: label, source, tweens, traces: groupTraces(tweens) };
+}
+
+// Group an element's DRAWN position strokes (to/from/fromTo/keyframes that carry
+// a path) into one ordered trace. A `set` with x/y is a pen-up jump — excluded
+// (not drawn). Only targets with ≥2 strokes become a composited trace; a single
+// stroke stays on the normal per-tween path so existing output is unchanged.
+function groupTraces(tweens: SurfacedTween[]): SurfacedTrace[] {
+  const byTarget = new Map<string, SurfacedTween[]>();
+  for (const t of tweens) {
+    if (t.method === "set") continue;
+    if (!t.path || t.path.length < 2) continue;
+    const list = byTarget.get(t.target);
+    if (list) list.push(t);
+    else byTarget.set(t.target, [t]);
+  }
+  const traces: SurfacedTrace[] = [];
+  for (const [target, list] of byTarget) {
+    if (list.length < 2) continue;
+    const strokes = [...list]
+      .sort((a, b) => a.start - b.start)
+      .map((t) => ({
+        id: t.id,
+        start: t.start,
+        end: t.end,
+        keyframes: t.keyframes,
+        points: t.path!,
+      }));
+    traces.push({ target, strokes });
+  }
+  return traces;
 }
 
 function collectCompositions(indexPath: string): SurfacedComposition[] {
@@ -317,6 +408,21 @@ function printTween(t: SurfacedTween): void {
   console.log();
 }
 
+function printTrace(tr: SurfacedTrace): void {
+  const start = Math.min(...tr.strokes.map((s) => s.start));
+  const end = Math.max(...tr.strokes.map((s) => s.end));
+  const n = tr.strokes.length;
+  console.log(
+    `  ${c.accent(tr.target)}${c.dim(" position")}  ${c.dim("trace")}  ${c.dim(`${n} strokes`)} ${c.dim(`@${start}s→${end}s`)}`,
+  );
+  tr.strokes.forEach((s, i) => {
+    const kfLine = s.keyframes.map((k) => `${k.pct}% {${fmtProps(k.properties)}}`).join("  ");
+    console.log(`    ${c.dim(`stroke ${i + 1}:`)} ${c.dim(kfLine)}`);
+  });
+  for (const line of asciiTrace(tr.strokes.map((s) => s.points))) console.log(line);
+  console.log();
+}
+
 // ── Command ──────────────────────────────────────────────────────────────────
 
 export default defineCommand({
@@ -332,6 +438,11 @@ export default defineCommand({
     },
     selector: { type: "string", description: "Only tweens matching this CSS selector" },
     json: { type: "boolean", description: "Machine-readable JSON (for agents)", default: false },
+    shot: {
+      type: "string",
+      description:
+        "Screenshot the element with its motion-path overlaid (PNG path) — visual self-verify alongside the ASCII. Pair with --selector to pick the element.",
+    },
   },
   async run({ args }) {
     ensureDOMParser();
@@ -340,23 +451,67 @@ export default defineCommand({
     const raw = args.target?.trim();
     let comps: SurfacedComposition[];
     let projectName: string;
+    let projectDir: string | undefined;
     if (raw && raw.endsWith(".html") && existsSync(raw) && statSync(raw).isFile()) {
       comps = [surfaceComposition(readFileSync(raw, "utf-8"), basename(raw), raw)];
       projectName = basename(raw);
+      projectDir = dirname(raw);
     } else {
       const project = resolveProject(raw);
       comps = collectCompositions(project.indexPath);
       projectName = project.name;
+      projectDir = project.dir;
     }
 
     if (args.selector) {
       const sel = args.selector;
+      const matches = (target: string) => target.split(",").some((s) => s.trim() === sel);
       comps = comps
         .map((cmp) => ({
           ...cmp,
-          tweens: cmp.tweens.filter((t) => t.target.split(",").some((s) => s.trim() === sel)),
+          tweens: cmp.tweens.filter((t) => matches(t.target)),
+          traces: cmp.traces.filter((tr) => matches(tr.target)),
         }))
-        .filter((cmp) => cmp.tweens.length > 0);
+        .filter((cmp) => cmp.tweens.length > 0 || cmp.traces.length > 0);
+    }
+
+    // --shot: render the composition headless, overlay the surfaced motion path
+    // on the real element, screenshot one frame for visual self-verification.
+    if (args.shot) {
+      const { captureMotionPathShot } = await import("./keyframesShot.js");
+      // Build one draw request per element: prefer multi-stroke traces, else
+      // each position tween's own path (each as a single stroke).
+      const requests: import("./keyframesShot.js").ShotRequest[] = [];
+      for (const cmp of comps) {
+        for (const tr of cmp.traces) {
+          requests.push({
+            selector: tr.target,
+            strokes: tr.strokes.map((s) => ({ points: s.points })),
+          });
+        }
+        const tracedIds = new Set(cmp.traces.flatMap((tr) => tr.strokes.map((s) => s.id)));
+        for (const t of cmp.tweens) {
+          if (t.method === "set" || tracedIds.has(t.id) || !t.path || !shouldPlotPath(t.path))
+            continue;
+          requests.push({ selector: t.target, strokes: [{ points: t.path }] });
+        }
+      }
+      if (!projectDir) {
+        console.log(c.dim("--shot needs a project directory (not a single .html file)."));
+        return;
+      }
+      if (requests.length === 0) {
+        console.log(c.dim("--shot: no position motion path to draw for the selected element(s)."));
+        return;
+      }
+      const saved = await captureMotionPathShot(projectDir, requests, resolve(args.shot));
+      console.log(`${c.success("◇")}  motion-path screenshot saved ${c.accent(saved)}`);
+      console.log(
+        c.dim(
+          `   ${requests.length} element${requests.length === 1 ? "" : "s"} · open it to verify the path matches your target, then read the ASCII below.`,
+        ),
+      );
+      console.log();
     }
 
     if (args.json) {
@@ -374,9 +529,16 @@ export default defineCommand({
     );
     console.log();
     for (const cmp of comps) {
-      if (cmp.tweens.length === 0) continue;
+      if (cmp.tweens.length === 0 && cmp.traces.length === 0) continue;
       console.log(c.bold(`${cmp.composition}`) + c.dim(`  (${cmp.source})`));
-      for (const t of cmp.tweens) printTween(t);
+      const tracedIds = new Set(cmp.traces.flatMap((tr) => tr.strokes.map((s) => s.id)));
+      const tracedTargets = new Set(cmp.traces.map((tr) => tr.target));
+      for (const tr of cmp.traces) printTrace(tr);
+      for (const t of cmp.tweens) {
+        if (tracedIds.has(t.id)) continue; // already shown as part of its trace
+        if (t.method === "set" && tracedTargets.has(t.target)) continue; // internal pen-up jump
+        printTween(t);
+      }
     }
     console.log(
       c.dim("Tip: edit the keyframes: [...] / x/y values in source, then re-run to verify."),
