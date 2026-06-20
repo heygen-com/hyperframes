@@ -236,13 +236,28 @@ function emitJsonReport(
   );
 }
 
+function formatConsoleEntry(prefix: string, e: ConsoleEntry): string {
+  return `  ${prefix} ${e.text}${e.line ? c.dim(` (line ${e.line})`) : ""}`;
+}
+
+function formatTotals(
+  errors: ConsoleEntry[],
+  warnings: ConsoleEntry[],
+  contrastFailures: ContrastEntry[],
+): string {
+  const parts = [`${errors.length} error(s)`, `${warnings.length} warning(s)`];
+  if (contrastFailures.length > 0) parts.push(`${contrastFailures.length} contrast warning(s)`);
+  return parts.join(", ");
+}
+
 function emitTextReport(
   errors: ConsoleEntry[],
   warnings: ConsoleEntry[],
   contrastFailures: ContrastEntry[],
   contrastPassed: ContrastEntry[],
 ): void {
-  if (errors.length === 0 && warnings.length === 0 && contrastFailures.length === 0) {
+  const hasIssues = errors.length > 0 || warnings.length > 0 || contrastFailures.length > 0;
+  if (!hasIssues) {
     const suffix =
       contrastPassed.length > 0 ? ` · ${contrastPassed.length} text elements pass WCAG AA` : "";
     console.log(`${c.success("◇")}  No console errors${suffix}`);
@@ -250,18 +265,22 @@ function emitTextReport(
   }
 
   console.log();
-  for (const e of errors) {
-    console.log(`  ${c.error("✗")} ${e.text}${e.line ? c.dim(` (line ${e.line})`) : ""}`);
-  }
-  for (const w of warnings) {
-    console.log(`  ${c.warn("⚠")} ${w.text}${w.line ? c.dim(` (line ${w.line})`) : ""}`);
-  }
+  for (const e of errors) console.log(formatConsoleEntry(c.error("✗"), e));
+  for (const w of warnings) console.log(formatConsoleEntry(c.warn("⚠"), w));
   if (contrastFailures.length > 0) printContrastFailures(contrastFailures);
 
   console.log();
-  const parts = [`${errors.length} error(s)`, `${warnings.length} warning(s)`];
-  if (contrastFailures.length > 0) parts.push(`${contrastFailures.length} contrast warning(s)`);
-  console.log(`${c.accent("◇")}  ${parts.join(", ")}`);
+  console.log(`${c.accent("◇")}  ${formatTotals(errors, warnings, contrastFailures)}`);
+}
+
+function emitFailureReport(message: string, asJson: boolean): void {
+  if (asJson) {
+    console.log(
+      JSON.stringify(withMeta({ ok: false, error: message, errors: [], warnings: [] }), null, 2),
+    );
+    return;
+  }
+  console.error(`${c.error("✗")} ${message}`);
 }
 
 export default defineCommand({
@@ -293,41 +312,36 @@ Examples:
     const project = resolveProject(args.dir);
     const timeout = parseInt(args.timeout as string, 10) || 3000;
     const useContrast = args.contrast ?? true;
+    const asJson = Boolean(args.json);
 
-    if (!args.json) {
+    if (!asJson) {
       console.log(`${c.accent("◆")}  Validating ${c.accent(project.name)} in headless Chrome`);
     }
 
     try {
-      const { errors, warnings, contrast } = await validateInBrowser(project.dir, {
-        timeout,
-        contrast: useContrast,
-      });
-
-      const contrastFailures = (contrast ?? []).filter((e) => !e.wcagAA);
-      const contrastPassed = (contrast ?? []).filter((e) => e.wcagAA);
-
-      if (args.json) {
-        emitJsonReport(errors, warnings, contrast, contrastFailures);
-        process.exit(errors.length > 0 ? 1 : 0);
-      }
-
-      emitTextReport(errors, warnings, contrastFailures, contrastPassed);
-      process.exit(errors.length > 0 ? 1 : 0);
+      const result = await validateInBrowser(project.dir, { timeout, contrast: useContrast });
+      const exitCode = printValidationResult(result, asJson);
+      process.exit(exitCode);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
-      if (args.json) {
-        console.log(
-          JSON.stringify(
-            withMeta({ ok: false, error: message, errors: [], warnings: [] }),
-            null,
-            2,
-          ),
-        );
-        process.exit(1);
-      }
-      console.error(`${c.error("✗")} ${message}`);
+      emitFailureReport(message, asJson);
       process.exit(1);
     }
   },
 });
+
+function printValidationResult(
+  result: { errors: ConsoleEntry[]; warnings: ConsoleEntry[]; contrast?: ContrastEntry[] },
+  asJson: boolean,
+): number {
+  const { errors, warnings, contrast } = result;
+  const contrastFailures = (contrast ?? []).filter((e) => !e.wcagAA);
+  const contrastPassed = (contrast ?? []).filter((e) => e.wcagAA);
+
+  if (asJson) {
+    emitJsonReport(errors, warnings, contrast, contrastFailures);
+  } else {
+    emitTextReport(errors, warnings, contrastFailures, contrastPassed);
+  }
+  return errors.length > 0 ? 1 : 0;
+}

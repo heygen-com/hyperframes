@@ -247,6 +247,12 @@
       // SlideshowPanel.test.ts: parallel arrange/act/assert test cases — collapsing
       // them would hurt readability of what each case verifies.
       "packages/studio/src/components/panels/SlideshowPanel.test.ts",
+      // hyperframes-player.test.ts: parallel arrange/act/assert test cases verifying
+      // distinct behaviors (same-origin vs realm media, audio-locked permutations,
+      // seek bridge variants). Each case is self-contained for readability;
+      // extracting the iframe / mock-audio setup helpers would over-couple
+      // unrelated scenarios under a shared fixture.
+      "packages/player/src/hyperframes-player.test.ts",
       // present.ts mirrors play.ts's server startup + console-output block. The
       // shared low-level pieces (resolve*/injectRuntime/listenOnFreePort) are in
       // utils/compositionServer.ts; the remaining clone is per-command logging text
