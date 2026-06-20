@@ -93,19 +93,24 @@ export function makeSlideshowNotesController(): NotesController {
   let pending: Pending | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
 
+  // Atomically swap the pending entry out and fire its persist (if any).
+  // Used by both the debounce timer's tail and the explicit flush() path.
+  const drainPending = (): void => {
+    const p = pending;
+    if (p === null) return;
+    pending = null;
+    p.persist(p.manifest).catch((err: unknown) => {
+      console.error("[slideshow] notes persist failed:", err);
+    });
+  };
+
   return {
     schedule(manifest, persist, delayMs) {
       if (timer !== null) clearTimeout(timer);
       pending = { manifest, persist };
       timer = setTimeout(() => {
         timer = null;
-        const p = pending;
-        if (p !== null) {
-          pending = null;
-          p.persist(p.manifest).catch((err: unknown) => {
-            console.error("[slideshow] notes persist failed:", err);
-          });
-        }
+        drainPending();
       }, delayMs);
       return timer;
     },
@@ -115,13 +120,7 @@ export function makeSlideshowNotesController(): NotesController {
         clearTimeout(timer);
         timer = null;
       }
-      const p = pending;
-      if (p !== null) {
-        pending = null;
-        p.persist(p.manifest).catch((err: unknown) => {
-          console.error("[slideshow] notes persist failed:", err);
-        });
-      }
+      drainPending();
     },
 
     cancel() {

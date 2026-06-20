@@ -1,6 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { formatTime, formatSpeed, SPEED_PRESETS } from "./controls.js";
 
+// Install a stubbed contentDocument getter on the given iframe element. The
+// new stopMedia / muted tests repeat this `Object.defineProperty(... { get })`
+// shape; routing through a named helper keeps the per-test bodies focused on
+// the actual assertion.
+function stubIframeContentDocument(iframe: HTMLIFrameElement, doc: Document): void {
+  Object.defineProperty(iframe, "contentDocument", {
+    configurable: true,
+    get: () => doc,
+  });
+}
+
 function createForeignFrameMediaDocument(): {
   doc: Document;
   video: HTMLMediaElement & { pause: ReturnType<typeof vi.fn> };
@@ -1026,10 +1037,7 @@ describe("HyperframesPlayer seek() sync path", () => {
     Object.defineProperty(iframeVideo, "pause", { configurable: true, value: iframeVideoPause });
     Object.defineProperty(iframeAudio, "pause", { configurable: true, value: iframeAudioPause });
     doc.body.append(iframeVideo, iframeAudio);
-    Object.defineProperty(player.iframe, "contentDocument", {
-      configurable: true,
-      get: () => doc,
-    });
+    stubIframeContentDocument(player.iframe, doc);
     stubContentWindow({ postMessage: post });
 
     const slideProxyPause = vi.fn();
@@ -1063,10 +1071,7 @@ describe("HyperframesPlayer seek() sync path", () => {
   it("stopMedia pauses iframe-realm media elements", () => {
     const post = vi.fn();
     const { doc, video, audio } = createForeignFrameMediaDocument();
-    Object.defineProperty(player.iframe, "contentDocument", {
-      configurable: true,
-      get: () => doc,
-    });
+    stubIframeContentDocument(player.iframe, doc);
     stubContentWindow({ postMessage: post });
 
     player.stopMedia();
@@ -1527,10 +1532,7 @@ describe("HyperframesPlayer volume and mute", () => {
     const authoredMuted = doc.createElement("audio");
     authoredMuted.defaultMuted = true;
     doc.body.append(video, authoredMuted);
-    Object.defineProperty(player.iframeElement, "contentDocument", {
-      configurable: true,
-      get: () => doc,
-    });
+    stubIframeContentDocument(player.iframeElement, doc);
 
     player.muted = true;
     expect(video.muted).toBe(true);
@@ -1545,10 +1547,7 @@ describe("HyperframesPlayer volume and mute", () => {
     document.body.appendChild(player);
     const { doc, video, audio } = createForeignFrameMediaDocument();
     audio.defaultMuted = true;
-    Object.defineProperty(player.iframeElement, "contentDocument", {
-      configurable: true,
-      get: () => doc,
-    });
+    stubIframeContentDocument(player.iframeElement, doc);
 
     player.muted = true;
     expect(video.muted).toBe(true);

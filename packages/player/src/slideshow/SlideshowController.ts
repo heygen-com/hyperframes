@@ -235,22 +235,40 @@ export class SlideshowController {
    * statically via resumeSlide.
    */
   syncTo(sequenceId: string, slideIndex: number, fragmentIndex: number): void {
-    const base = this.stack[0];
-    if (!base) return;
+    if (!this.isValidSyncTarget(sequenceId, slideIndex)) return;
+    if (this.isCrossSlide(sequenceId, slideIndex)) this.stopSlideMedia();
+    if (!this.rerootStackTo(sequenceId)) return;
+    this.resumeSlide(slideIndex, fragmentIndex);
+  }
+
+  /** True if the target sequence + slide index resolves to a real slide. */
+  private isValidSyncTarget(sequenceId: string, slideIndex: number): boolean {
+    if (!this.stack[0]) return false;
     const targetSlides =
       sequenceId === MAIN ? this.show.slides : (this.show.sequences[sequenceId]?.slides ?? null);
-    if (!targetSlides || slideIndex < 0 || slideIndex >= targetSlides.length) return;
-    const changingSlide =
-      this.frame.sequenceId !== sequenceId || this.frame.slideIndex !== slideIndex;
-    if (changingSlide) this.stopSlideMedia();
-    if (this.frame.sequenceId !== sequenceId) {
-      this.stack = [base];
-      if (sequenceId !== MAIN) {
-        const seq = this.show.sequences[sequenceId];
-        if (!seq || seq.slides.length === 0) return;
-        this.stack.push({ sequenceId, slideIndex: 0, fragmentIndex: -1 });
-      }
-    }
-    this.resumeSlide(slideIndex, fragmentIndex);
+    if (!targetSlides) return false;
+    return slideIndex >= 0 && slideIndex < targetSlides.length;
+  }
+
+  /** True if the sync target lands on a different slide than current. */
+  private isCrossSlide(sequenceId: string, slideIndex: number): boolean {
+    return this.frame.sequenceId !== sequenceId || this.frame.slideIndex !== slideIndex;
+  }
+
+  /**
+   * Re-root the navigation stack to `sequenceId` if we're not already there.
+   * Returns false only when the target branch sequence is empty (no slides),
+   * mirroring the early-return guard in the previous inline form.
+   */
+  private rerootStackTo(sequenceId: string): boolean {
+    if (this.frame.sequenceId === sequenceId) return true;
+    const base = this.stack[0];
+    if (!base) return false;
+    this.stack = [base];
+    if (sequenceId === MAIN) return true;
+    const seq = this.show.sequences[sequenceId];
+    if (!seq || seq.slides.length === 0) return false;
+    this.stack.push({ sequenceId, slideIndex: 0, fragmentIndex: -1 });
+    return true;
   }
 }

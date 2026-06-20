@@ -215,6 +215,55 @@ function printContrastFailures(failures: ContrastEntry[]) {
   }
 }
 
+function emitJsonReport(
+  errors: ConsoleEntry[],
+  warnings: ConsoleEntry[],
+  contrast: ContrastEntry[] | undefined,
+  contrastFailures: ContrastEntry[],
+): void {
+  console.log(
+    JSON.stringify(
+      withMeta({
+        ok: errors.length === 0,
+        errors,
+        warnings,
+        contrast,
+        contrastFailures: contrastFailures.length,
+      }),
+      null,
+      2,
+    ),
+  );
+}
+
+function emitTextReport(
+  errors: ConsoleEntry[],
+  warnings: ConsoleEntry[],
+  contrastFailures: ContrastEntry[],
+  contrastPassed: ContrastEntry[],
+): void {
+  if (errors.length === 0 && warnings.length === 0 && contrastFailures.length === 0) {
+    const suffix =
+      contrastPassed.length > 0 ? ` · ${contrastPassed.length} text elements pass WCAG AA` : "";
+    console.log(`${c.success("◇")}  No console errors${suffix}`);
+    return;
+  }
+
+  console.log();
+  for (const e of errors) {
+    console.log(`  ${c.error("✗")} ${e.text}${e.line ? c.dim(` (line ${e.line})`) : ""}`);
+  }
+  for (const w of warnings) {
+    console.log(`  ${c.warn("⚠")} ${w.text}${w.line ? c.dim(` (line ${w.line})`) : ""}`);
+  }
+  if (contrastFailures.length > 0) printContrastFailures(contrastFailures);
+
+  console.log();
+  const parts = [`${errors.length} error(s)`, `${warnings.length} warning(s)`];
+  if (contrastFailures.length > 0) parts.push(`${contrastFailures.length} contrast warning(s)`);
+  console.log(`${c.accent("◇")}  ${parts.join(", ")}`);
+}
+
 export default defineCommand({
   meta: {
     name: "validate",
@@ -259,43 +308,11 @@ Examples:
       const contrastPassed = (contrast ?? []).filter((e) => e.wcagAA);
 
       if (args.json) {
-        console.log(
-          JSON.stringify(
-            withMeta({
-              ok: errors.length === 0,
-              errors,
-              warnings,
-              contrast,
-              contrastFailures: contrastFailures.length,
-            }),
-            null,
-            2,
-          ),
-        );
+        emitJsonReport(errors, warnings, contrast, contrastFailures);
         process.exit(errors.length > 0 ? 1 : 0);
       }
 
-      if (errors.length === 0 && warnings.length === 0 && contrastFailures.length === 0) {
-        const suffix =
-          contrastPassed.length > 0 ? ` · ${contrastPassed.length} text elements pass WCAG AA` : "";
-        console.log(`${c.success("◇")}  No console errors${suffix}`);
-        return;
-      }
-
-      console.log();
-      for (const e of errors) {
-        console.log(`  ${c.error("✗")} ${e.text}${e.line ? c.dim(` (line ${e.line})`) : ""}`);
-      }
-      for (const w of warnings) {
-        console.log(`  ${c.warn("⚠")} ${w.text}${w.line ? c.dim(` (line ${w.line})`) : ""}`);
-      }
-      if (contrastFailures.length > 0) printContrastFailures(contrastFailures);
-
-      console.log();
-      const parts = [`${errors.length} error(s)`, `${warnings.length} warning(s)`];
-      if (contrastFailures.length > 0) parts.push(`${contrastFailures.length} contrast warning(s)`);
-      console.log(`${c.accent("◇")}  ${parts.join(", ")}`);
-
+      emitTextReport(errors, warnings, contrastFailures, contrastPassed);
       process.exit(errors.length > 0 ? 1 : 0);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);

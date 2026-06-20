@@ -484,13 +484,21 @@ class HyperframesPlayer extends HTMLElement {
     }
   }
 
-  private _setIframeMediaMuted(muted: boolean): void {
-    let iframeDoc: Document | null = null;
+  /**
+   * Returns the iframe's contentDocument if same-origin and reachable,
+   * otherwise null. Accessing contentDocument can throw on cross-origin
+   * iframes — this swallows that as a clean null sentinel.
+   */
+  private _getSameOriginIframeDocument(): Document | null {
     try {
-      iframeDoc = this.iframe.contentDocument;
+      return this.iframe.contentDocument;
     } catch {
-      return;
+      return null;
     }
+  }
+
+  private _setIframeMediaMuted(muted: boolean): void {
+    const iframeDoc = this._getSameOriginIframeDocument();
     if (!iframeDoc) return;
     for (const el of iframeDoc.querySelectorAll("video, audio")) {
       if (isRealmHtmlMediaElement(el)) el.muted = muted || el.defaultMuted;
@@ -498,12 +506,7 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   private _stopIframeMedia(): void {
-    let iframeDoc: Document | null = null;
-    try {
-      iframeDoc = this.iframe.contentDocument;
-    } catch {
-      return;
-    }
+    const iframeDoc = this._getSameOriginIframeDocument();
     if (!iframeDoc) return;
     for (const el of iframeDoc.querySelectorAll("video, audio")) {
       if (isRealmHtmlMediaElement(el)) el.pause();
