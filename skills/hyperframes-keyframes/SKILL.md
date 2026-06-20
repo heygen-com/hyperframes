@@ -107,6 +107,7 @@ These are the layered-motion mistakes that look fine in the numbers and fail on 
 - **Verify every named channel.** Before stopping, check each channel in the brief against the render one by one — a layered motion fails by dropping _one_ channel (the bob, the bank), not by getting the headline path wrong.
 - **Deliver the channel that's named, at a magnitude that reads — don't substitute.** "Rotate-in" means real `rotation` (±90° or more), not a vertical offset that approximates it; "overshoot" means actually passing the target and easing back (`back.out`), not just arriving. A subtle stand-in reads as the wrong channel. After authoring, confirm the named thing is _visibly_ that thing (rotation looks like rotation).
 - **Make fast or chaotic motion legible — add a trail.** A whip, a chaotic pendulum, a fast orbit reads as a blur or a jumble in any single moment (and in the played clip). Lay down a faint **motion trail / echo** — a fading path, or a few ghost copies along the element's recent positions — so the path itself reads. Confirm it in `--shot`.
+- **Match the target's complexity — don't over-interpret.** More channels is not more faithful. A simple steady spin is a constant-gap rotation — do **not** add arc-length oscillation, a wobble, a pulse, or a secondary phase the target doesn't show. When reproducing a reference, the highest score comes from the **same channels at the same simplicity**, not from embellishment; invented detail reads as _wrong_, not richer. (This is the #1 way a careful build loses to a plain one.)
 
 ## Reproducing a motion from a reference (one-shot)
 
@@ -119,6 +120,8 @@ With a reference in hand (a clip, a filmstrip, an animated icon) you can usually
 5. **Author once, then confirm** with a single `--shot`/render laid next to the reference. A clean decomposition lands first try; if one channel is off it's almost always one you mis-read in step 2 — fix that one, don't restart.
 
 The reference is ground truth for the **target**, the way `--shot` is ground truth for your **output**. Read both; never reason from memory of "what a bell does".
+
+**Author only what you saw.** Reproduce the channels actually present in the reference and stop — resist "improving" it. If the reference is a plain steady spin, ship a plain steady spin. Over-reading a simple motion (adding a pulse, an oscillation, an extra easing phase) is the most common one-shot failure: it loses to the naive build that just matched the reference.
 
 ## Editing keyframes
 

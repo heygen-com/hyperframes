@@ -29,6 +29,14 @@ The failure modes that actually bite, each with the fix.
 - **Dynamic tweens don't fully resolve.** Computed selectors or data-driven keyframes can't be statically read and surface with fewer details. If you want a tween to be editable here, author literal `keyframes: { … }` with literal numbers.
 - **GSAP only.** Lottie / Three.js / CSS / WAAPI motion doesn't surface — use the matching `hyperframes-animation` adapter.
 
+## Headless-render gotchas (the element renders blank)
+
+If `--shot` / `render` comes back **blank** but the source looks right, suspect the render environment, not your motion:
+
+- **Rotated SVG inside a `perspective` / `transform-style: preserve-3d` container can render blank** in headless Chrome. Don't wrap 2D icon/vector work in a 3D context — only add `perspective` when the motion actually needs depth (rotationX/Y, z). For a flat icon, keep the stage plain 2D.
+- **Animating SVG presentation attributes via GSAP `attr:{}` in keyframes can blank the element.** Prefer animating CSS (`transform`, `opacity`) or `strokeDashoffset` as a plain number; set static attributes once rather than tweening them through `attr` keyframes.
+- **Bisect a blank render** with a couple of minimal probe files (static shape → add one tween → add the wrapper) to find which layer blanks it — the trace is worth more than guessing.
+
 ## Workflow
 
 - **This command never writes.** It reads and screenshots; every edit is yours to make in source. `--shot` to verify.
