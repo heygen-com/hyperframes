@@ -46,3 +46,33 @@ describe("keyframes multi-stroke traces", () => {
     expect(tweens.length).toBeGreaterThan(0);
   });
 });
+
+describe("keyframes composed-ancestor surfacing (nested elements)", () => {
+  const nested = (script: string) =>
+    `<!doctype html><html><body><div id="root" data-composition-id="main" data-duration="4"><div id="stage"><div id="hero"><div id="core" class="clip"></div></div></div></div><script>${script}</script></body></html>`;
+
+  it("annotates a child tween with its animated ANCESTOR's motion", () => {
+    const html = nested(`
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#hero", { keyframes: { "0%": { x: -300, y: 0 }, "100%": { x: 300, y: 0 } }, duration: 4 }, 0);
+      tl.to("#core", { keyframes: { "0%": { scale: 1 }, "100%": { scale: 1.5 } }, duration: 4 }, 0);
+      window.__timelines = [tl];
+    `);
+    const { tweens } = surfaceComposition(html, "index.html", "index.html");
+    const core = tweens.find((t) => t.target === "#core");
+    expect(core?.composedWith?.map((a) => a.selector)).toContain("#hero");
+    // and the ancestor's path EXTENT is summarised (range, not endpoints — so a
+    // closed loop still reveals its travel)
+    expect(core?.composedWith?.[0]!.summary).toMatch(/x -300\.\.300/);
+  });
+
+  it("does not annotate when the parent isn't animated", () => {
+    const html = nested(`
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#core", { keyframes: { "0%": { scale: 1 }, "100%": { scale: 1.5 } }, duration: 4 }, 0);
+      window.__timelines = [tl];
+    `);
+    const { tweens } = surfaceComposition(html, "index.html", "index.html");
+    expect(tweens.find((t) => t.target === "#core")?.composedWith).toBeUndefined();
+  });
+});

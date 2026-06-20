@@ -38,6 +38,10 @@ interface SurfacedTween {
   keyframes: KeyframePoint[];
   /** x/y position points (gsap offsets) when this tween animates position. */
   path: Array<{ x: number; y: number }> | null;
+  /** Animated ANCESTOR elements (nested composition): this element's rendered
+   *  motion is composed with theirs. Surfaced so a reader of the text/JSON
+   *  doesn't miss a parent's path/trajectory that lives on another element. */
+  composedWith?: Array<{ selector: string; summary: string }>;
 }
 
 /** One drawn stroke of a multi-stroke trace — a single position tween. */
@@ -215,7 +219,81 @@ export function surfaceComposition(
     animations = [];
   }
   const tweens = animations.filter((a) => !isHoldMarker(a)).map(surfaceTween);
+  attachComposedAncestors(tweens, html);
   return { composition: label, source, tweens, traces: groupTraces(tweens) };
+}
+
+// A nested element's rendered motion is the COMPOSITION of its own tween and any
+// animated ancestor's. The per-element surface would otherwise hide the parent's
+// trajectory (e.g. a child carries a flap while the parent carries the path), so
+// annotate each tween with the animated ancestor elements above it in the DOM.
+function attachComposedAncestors(tweens: SurfacedTween[], html: string): void {
+  const animated = [...new Set(tweens.filter((t) => t.method !== "set").map((t) => t.target))];
+  if (animated.length < 2) return; // need ≥2 distinct animated elements to compose
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  for (const t of tweens) {
+    const ancestors = animatedAncestors(doc, t.target, animated);
+    if (ancestors.length) {
+      t.composedWith = ancestors.map((sel) => ({
+        selector: sel,
+        summary: summarizeMotion(tweens, sel),
+      }));
+    }
+  }
+}
+
+const safeMatches = (el: Element, sel: string): boolean => {
+  try {
+    return el.matches(sel);
+  } catch {
+    return false;
+  }
+};
+
+// Animated-target selectors of `target`'s DOM ancestors (in order, parent-first).
+function animatedAncestors(doc: Document, target: string, animated: string[]): string[] {
+  let el: Element | null = null;
+  try {
+    el = doc.querySelector(target);
+  } catch {
+    return [];
+  }
+  const out: string[] = [];
+  for (let n = el?.parentElement ?? null; n; n = n.parentElement) {
+    for (const sel of animated) {
+      if (sel !== target && !out.includes(sel) && safeMatches(n, sel)) out.push(sel);
+    }
+  }
+  return out;
+}
+
+// Compact extent summary of an element's motion: each animated property's min..max
+// across all its keyframes. Ranges (not endpoints) so a CLOSED loop — a figure-8
+// or orbit returning to its start — still reveals its travel instead of reading
+// static (0→0).
+function summarizeMotion(tweens: SurfacedTween[], sel: string): string {
+  const ranges = new Map<string, { min: number; max: number }>();
+  const kfs = tweens
+    .filter((t) => t.target === sel && t.method !== "set")
+    .flatMap((t) => t.keyframes);
+  for (const kf of kfs) {
+    for (const [k, v] of Object.entries(kf.properties)) {
+      const n = num(v);
+      if (n !== null) bumpRange(ranges, k, n);
+    }
+  }
+  const varying = [...ranges.entries()]
+    .filter(([, r]) => r.max - r.min > 0.5)
+    .map(([k, r]) => `${k} ${Math.round(r.min)}..${Math.round(r.max)}`);
+  return varying.length ? varying.join(", ") : "(static)";
+}
+
+function bumpRange(ranges: Map<string, { min: number; max: number }>, k: string, n: number): void {
+  const r = ranges.get(k);
+  if (r) {
+    r.min = Math.min(r.min, n);
+    r.max = Math.max(r.max, n);
+  } else ranges.set(k, { min: n, max: n });
 }
 
 // Group an element's DRAWN position strokes (to/from/fromTo/keyframes that carry
@@ -285,6 +363,11 @@ function printTween(t: SurfacedTween): void {
   } else {
     const kfLine = t.keyframes.map((k) => `${k.pct}% {${fmtProps(k.properties)}}`).join("  ");
     console.log(`    ${c.dim(kfLine)}`);
+  }
+  if (t.composedWith?.length) {
+    for (const a of t.composedWith) {
+      console.log(c.dim(`    ↑ composed with ${c.accent(a.selector)}${c.dim(": " + a.summary)}`));
+    }
   }
   console.log();
 }
