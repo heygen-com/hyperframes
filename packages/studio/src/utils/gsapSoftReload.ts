@@ -127,6 +127,27 @@ function verifyTimelinesPopulated(win: IframeWindow, targetKeys: string[]): bool
 }
 
 /**
+ * Outcome of a soft-reload attempt. Callers must distinguish PERMANENT failures
+ * (the preview genuinely can't be soft-updated — escalate to a full reload) from
+ * the TRANSIENT post-run empty-timeline window (the live `gsap.set` already shows
+ * the correct value — do NOT escalate; a remount would re-flash the WebGL context
+ * and revert subcomposition keyframes):
+ *
+ * - `"applied"`            — the script ran (or is deferred to the async plugin
+ *                            load and WILL run). The preview is/will be correct.
+ * - `"verify-failed"`      — TRANSIENT: the re-run happened but `__timelines`
+ *                            momentarily read empty. Live state is correct → do
+ *                            NOT escalate. (Was a bare `false` before.)
+ * - `"cannot-soft-reload"` — PERMANENT/STRUCTURAL: no gsap runtime, no rebind
+ *                            hook, no scopable target key, or no script element
+ *                            to replace. The preview is stale/broken → escalate.
+ *
+ * The async MotionPath-plugin load failure is still surfaced via
+ * `onAsyncFailure` (it fires after this returned `"applied"` optimistically).
+ */
+export type SoftReloadResult = "applied" | "verify-failed" | "cannot-soft-reload";
+
+/**
  * Replace the GSAP script in the live iframe without reloading. This preserves
  * the WebGL context and shader transition cache.
  *
@@ -134,13 +155,18 @@ function verifyTimelinesPopulated(win: IframeWindow, targetKeys: string[]): bool
  * elements (sub-compositions) are not visible to `querySelectorAll` and will
  * fall back to a full iframe reload.
  *
- * Returns false (triggering a full reload fallback) when:
+ * Returns `"cannot-soft-reload"` (caller should full-reload) when:
  * - The iframe or GSAP runtime isn't available
- * - Multiple GSAP scripts are found (ambiguous which to replace)
- * - No matching GSAP script element exists in the live DOM
+ * - The rebind hook isn't installed
+ * - The script registers no scopable `__timelines` key
+ * - No GSAP script element exists in the live DOM
+ * - The synchronous re-run threw
+ *
+ * Returns `"verify-failed"` when the re-run executed but the target timeline
+ * keys read empty in the transient post-run window (live state is still correct).
  *
  * `onAsyncFailure` is invoked when the soft reload was deferred to load the
- * MotionPath plugin (so this returned true optimistically) but the plugin
+ * MotionPath plugin (so this returned `"applied"` optimistically) but the plugin
  * `<script>` then failed to load — the iframe is left without the plugin and the
  * caller should perform a full reload to recover. It never fires on the
  * synchronous paths.
@@ -149,13 +175,13 @@ export function applySoftReload(
   iframe: HTMLIFrameElement | null,
   scriptText: string,
   onAsyncFailure?: () => void,
-): boolean {
-  if (!iframe || !scriptText) return false;
+): SoftReloadResult {
+  if (!iframe || !scriptText) return "cannot-soft-reload";
 
   const win = iframe.contentWindow as IframeWindow | null;
   const doc = iframe.contentDocument;
-  if (!win || !doc) return false;
-  if (!win.gsap || !win.__hfForceTimelineRebind) return false;
+  if (!win || !doc) return "cannot-soft-reload";
+  if (!win.gsap || !win.__hfForceTimelineRebind) return "cannot-soft-reload";
 
   // Which composition(s) does this script rebuild? A soft reload re-runs ONE
   // composition's GSAP script, which re-registers its own window.__timelines[key].
@@ -167,9 +193,9 @@ export function applySoftReload(
   const targetKeys = [...scriptText.matchAll(/__timelines\s*\[\s*["'`]([^"'`]+)["'`]\s*\]/g)]
     .map((m) => m[1]!)
     .filter((key) => key !== "__proxied");
-  if (targetKeys.length === 0) return false; // can't scope safely → caller does a full reload
+  if (targetKeys.length === 0) return "cannot-soft-reload"; // can't scope safely → full reload
   const gsapScripts = findGsapScriptElements(doc);
-  if (gsapScripts.length === 0) return false;
+  if (gsapScripts.length === 0) return "cannot-soft-reload";
   // Remove only the stale script element(s) that registered a target key; one we
   // can't match in the doc is left alone (re-running appends a fresh element).
   const staleScripts = gsapScripts.filter((script) =>
@@ -178,6 +204,11 @@ export function applySoftReload(
       return text.includes(`__timelines["${key}"]`) || text.includes(`__timelines['${key}']`);
     }),
   );
+  // Multiple GSAP scripts exist but none registers a key this script owns — we
+  // can't identify which element to replace (ambiguous, matching
+  // extractGsapScriptText's single-script requirement). Escalate to a full reload
+  // rather than killing the target timeline and appending an orphan script.
+  if (gsapScripts.length > 1 && staleScripts.length === 0) return "cannot-soft-reload";
 
   const currentTime = win.__player?.getTime?.() ?? 0;
 
@@ -294,10 +325,16 @@ export function applySoftReload(
       doReload();
     }
     // When MotionPath needs async loading, the script hasn't executed yet —
-    // skip the __timelines check and return true optimistically.
-    if (deferredToAsync) return true;
-    return verifyTimelinesPopulated(win, targetKeys);
+    // skip the __timelines check and report success optimistically (the script
+    // WILL run on plugin load; onAsyncFailure covers the CDN-error case).
+    if (deferredToAsync) return "applied";
+    // The re-run executed. If the target keys read back, we're done; otherwise
+    // it's the TRANSIENT empty-timeline window (live state is correct) — surfaced
+    // as "verify-failed" so callers know NOT to escalate.
+    return verifyTimelinesPopulated(win, targetKeys) ? "applied" : "verify-failed";
   } catch {
-    return false;
+    // The synchronous re-run threw — the preview is now genuinely broken (target
+    // timeline killed, script not re-registered). Escalate to a full reload.
+    return "cannot-soft-reload";
   }
 }

@@ -136,12 +136,17 @@ export const SourceEditor = memo(function SourceEditor({
     const view = editorRef.current;
     if (!view) return;
     const current = view.state.doc.toString();
-    if (current !== content) {
-      view.dispatch({
-        changes: { from: 0, to: current.length, insert: content },
-        annotations: [ExternalSync.of(true)],
-      });
-    }
+    if (current === content) return;
+    // If the user is actively typing (editor focused), a programmatic replace
+    // would clobber their in-flight keystrokes — the ExternalSync annotation
+    // suppresses onChange, so those edits would be silently lost. Skip the
+    // external sync while focused; it re-runs on the next `content` change after
+    // they blur (or when a later commit lands with the editor unfocused).
+    if (view.hasFocus) return;
+    view.dispatch({
+      changes: { from: 0, to: current.length, insert: content },
+      annotations: [ExternalSync.of(true)],
+    });
   }, [content]);
 
   useEffect(() => {

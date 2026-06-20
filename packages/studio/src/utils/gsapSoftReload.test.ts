@@ -65,29 +65,35 @@ function buildMockIframe(overrides: Record<string, unknown> = {}) {
 }
 
 describe("applySoftReload", () => {
-  it("returns false when iframe is null", () => {
-    expect(applySoftReload(null, SCRIPT_TEXT)).toBe(false);
+  it('returns "cannot-soft-reload" when iframe is null', () => {
+    expect(applySoftReload(null, SCRIPT_TEXT)).toBe("cannot-soft-reload");
   });
 
-  it("returns false when scriptText is empty", () => {
+  it('returns "cannot-soft-reload" when scriptText is empty', () => {
     const { iframe } = buildMockIframe();
-    expect(applySoftReload(iframe, "")).toBe(false);
+    expect(applySoftReload(iframe, "")).toBe("cannot-soft-reload");
   });
 
-  it("returns false when gsap is not on iframe window", () => {
+  it('returns "cannot-soft-reload" when gsap is not on iframe window', () => {
     const { iframe } = buildMockIframe({ gsap: undefined });
-    expect(applySoftReload(iframe, SCRIPT_TEXT)).toBe(false);
+    expect(applySoftReload(iframe, SCRIPT_TEXT)).toBe("cannot-soft-reload");
   });
 
-  it("returns false when __hfForceTimelineRebind is missing", () => {
+  it('returns "cannot-soft-reload" when __hfForceTimelineRebind is missing', () => {
     const { iframe } = buildMockIframe({ __hfForceTimelineRebind: undefined });
-    expect(applySoftReload(iframe, SCRIPT_TEXT)).toBe(false);
+    expect(applySoftReload(iframe, SCRIPT_TEXT)).toBe("cannot-soft-reload");
+  });
+
+  it('returns "cannot-soft-reload" when the script registers no scopable key', () => {
+    // No __timelines["key"] pattern → targetKeys is empty → can't scope safely.
+    const { iframe } = buildMockIframe();
+    expect(applySoftReload(iframe, 'gsap.to("#box", { x: 1 });')).toBe("cannot-soft-reload");
   });
 
   it("kills existing timelines, rebinds, and re-seeks on success", () => {
     const { iframe, contentWindow, mockTimeline } = buildMockIframe();
     const result = applySoftReload(iframe, SCRIPT_TEXT);
-    expect(result).toBe(true);
+    expect(result).toBe("applied");
     expect(mockTimeline.kill).toHaveBeenCalled();
     expect(contentWindow.__hfForceTimelineRebind).toHaveBeenCalled();
     expect(contentWindow.__player.seek).toHaveBeenCalledWith(2.0);
@@ -103,18 +109,37 @@ describe("applySoftReload", () => {
       },
     });
     const result = applySoftReload(iframe, SCRIPT_TEXT);
-    expect(result).toBe(true);
+    expect(result).toBe("applied");
     expect(suppressionCalled).toBe(true);
   });
 
-  it("returns true when the re-run re-registers the script's expected key", () => {
+  it('returns "applied" when the re-run re-registers the script\'s expected key', () => {
     // SCRIPT_TEXT registers __timelines["root"]; buildMockIframe's appendChild
     // shim repopulates `root` on execution. The hardened verify checks the
     // expected target key is present (not merely "some key"), so a correct re-run
-    // reliably returns true — it doesn't spuriously fail the transient window.
+    // reliably reports "applied" — it doesn't spuriously hit the transient window.
     const { iframe, contentWindow } = buildMockIframe();
-    expect(applySoftReload(iframe, SCRIPT_TEXT)).toBe(true);
+    expect(applySoftReload(iframe, SCRIPT_TEXT)).toBe("applied");
     expect(contentWindow.__timelines.root).toBeDefined();
+  });
+
+  it('returns "verify-failed" (transient) when the re-run leaves the key empty', () => {
+    // No appendChild shim repopulation: the body container has no shim, so the
+    // re-run kills __timelines["root"] and the new script doesn't re-register it.
+    // That is the TRANSIENT post-run window — surfaced as "verify-failed" so
+    // callers know NOT to escalate (the live gsap.set already shows the value).
+    const scriptEl = document.createElement("script");
+    scriptEl.textContent = 'window.__timelines["root"] = gsap.timeline();';
+    const container = document.createElement("div"); // no appendChild shim
+    container.appendChild(scriptEl);
+    const { iframe } = buildMockIframe();
+    (iframe as unknown as { contentDocument: unknown }).contentDocument = {
+      querySelectorAll: (sel: string) => (sel === "script:not([src])" ? [scriptEl] : []),
+      createElement: (tag: string) => document.createElement(tag),
+      body: container,
+      head: document.createElement("div"),
+    };
+    expect(applySoftReload(iframe, SCRIPT_TEXT)).toBe("verify-failed");
   });
 
   it("editing composition A leaves composition B's timeline intact (scoped kill)", () => {
@@ -130,7 +155,7 @@ describe("applySoftReload", () => {
     });
     void mockTimeline;
 
-    expect(applySoftReload(iframe, SCRIPT_TEXT)).toBe(true);
+    expect(applySoftReload(iframe, SCRIPT_TEXT)).toBe("applied");
     // Comp B was never killed and is still registered.
     expect(subsceneTimeline.kill).not.toHaveBeenCalled();
     expect(contentWindow.__timelines.subscene).toBe(subsceneTimeline);
@@ -154,7 +179,7 @@ describe("applySoftReload", () => {
 
     const result = applySoftReload(iframe, MOTION_PATH_SCRIPT_TEXT);
 
-    expect(result).toBe(true);
+    expect(result).toBe("applied");
     // No CDN plugin <script> was appended to <head> — ran inline.
     expect(headAppends.filter((n) => n instanceof HTMLScriptElement)).toHaveLength(0);
     expect(contentWindow.__hfForceTimelineRebind).toHaveBeenCalled();
@@ -177,22 +202,26 @@ describe("applySoftReload", () => {
     });
     (iframe.contentDocument as unknown as { head: unknown }).head = head;
 
-    const result = applySoftReload(iframe, MOTION_PATH_SCRIPT_TEXT);
+    const onAsyncFailure = vi.fn();
+    const result = applySoftReload(iframe, MOTION_PATH_SCRIPT_TEXT, onAsyncFailure);
 
-    // Optimistically true (script will run once the plugin loads) — and the
+    // Optimistically "applied" (script will run once the plugin loads) — and the
     // script has NOT executed yet, so the timeline isn't rebound synchronously.
-    expect(result).toBe(true);
+    expect(result).toBe("applied");
     expect(appendedScripts).toHaveLength(1);
     expect(appendedScripts[0]!.src).toContain("MotionPathPlugin");
     expect(contentWindow.__hfForceTimelineRebind).not.toHaveBeenCalled();
 
-    // onerror must still run the script (graceful fallback when the CDN fails).
+    // onerror must NOT run the script (that would reference a missing plugin) —
+    // it escalates via onAsyncFailure so the caller can full-reload to recover,
+    // and clears the in-flight loading flag.
     appendedScripts[0]!.onerror?.(new Event("error"));
-    expect(contentWindow.__hfForceTimelineRebind).toHaveBeenCalled();
-    expect(contentWindow.__player.seek).toHaveBeenCalledWith(2.0);
+    expect(onAsyncFailure).toHaveBeenCalledTimes(1);
+    expect(contentWindow.__hfForceTimelineRebind).not.toHaveBeenCalled();
+    expect(contentWindow.__hfMotionPathPluginLoading).toBe(false);
   });
 
-  it("returns false when multiple GSAP scripts exist (ambiguous)", () => {
+  it('returns "cannot-soft-reload" when multiple GSAP scripts exist (ambiguous)', () => {
     const script1 = document.createElement("script");
     script1.textContent = "const tl = gsap.timeline({ paused: true });";
     const script2 = document.createElement("script");
@@ -207,7 +236,9 @@ describe("applySoftReload", () => {
       createElement: (tag: string) => document.createElement(tag),
       body: container,
     };
-    expect(applySoftReload(iframe, SCRIPT_TEXT)).toBe(false);
+    // Multiple scripts, none registering "root" → can't identify what to replace
+    // → structural failure that genuinely needs a full reload.
+    expect(applySoftReload(iframe, SCRIPT_TEXT)).toBe("cannot-soft-reload");
   });
 });
 

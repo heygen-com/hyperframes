@@ -8,7 +8,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // the existing fallback. `extractGsapScriptText` is re-exported from the same
 // module and used elsewhere in the hook — keep it a harmless stub.
 const patchRuntimeTweenInPlace = vi.fn<(...args: unknown[]) => boolean>();
-const applySoftReload = vi.fn<(...args: unknown[]) => boolean>();
+const applySoftReload = vi.fn<(...args: unknown[]) => string>();
+const trackStudioEvent = vi.fn();
 
 vi.mock("./gsapRuntimePatch", () => ({
   patchRuntimeTweenInPlace: (...args: unknown[]) => patchRuntimeTweenInPlace(...args),
@@ -16,6 +17,9 @@ vi.mock("./gsapRuntimePatch", () => ({
 vi.mock("../utils/gsapSoftReload", () => ({
   applySoftReload: (...args: unknown[]) => applySoftReload(...args),
   extractGsapScriptText: () => "",
+}));
+vi.mock("../utils/studioTelemetry", () => ({
+  trackStudioEvent: (...args: unknown[]) => trackStudioEvent(...args),
 }));
 
 // Tell React this is an act-capable environment so act(...) flushes effects
@@ -38,6 +42,7 @@ describe("applyPreviewSync", () => {
   beforeEach(() => {
     patchRuntimeTweenInPlace.mockReset();
     applySoftReload.mockReset();
+    trackStudioEvent.mockReset();
   });
 
   it("instantPatch + patch succeeds: skips both soft reload and full reload", () => {
@@ -65,7 +70,7 @@ describe("applyPreviewSync", () => {
 
   it("instantPatch + patch fails: falls back to the soft reload, passing onAsyncFailure", () => {
     patchRuntimeTweenInPlace.mockReturnValue(false);
-    applySoftReload.mockReturnValue(true);
+    applySoftReload.mockReturnValue("applied");
     const reloadPreview = vi.fn();
 
     applyPreviewSync(
@@ -83,11 +88,16 @@ describe("applyPreviewSync", () => {
     // CDN load failure escalates to a full reload — but it is NOT called eagerly.
     expect(applySoftReload).toHaveBeenCalledWith(FAKE_IFRAME, "SCRIPT", reloadPreview);
     expect(reloadPreview).not.toHaveBeenCalled();
+    // A successful instant patch is the fast path; here it missed → fallback event.
+    expect(trackStudioEvent).toHaveBeenCalledWith(
+      "gsap_instant_patch_fallback",
+      expect.objectContaining({ selector: "#a" }),
+    );
   });
 
-  it("instantPatch + patch fails + soft reload returns false: does NOT sync-escalate (U4)", () => {
+  it('instantPatch + patch fails + soft reload "verify-failed": transient, does NOT escalate (U4)', () => {
     patchRuntimeTweenInPlace.mockReturnValue(false);
-    applySoftReload.mockReturnValue(false);
+    applySoftReload.mockReturnValue("verify-failed");
     const reloadPreview = vi.fn();
 
     applyPreviewSync(
@@ -101,14 +111,52 @@ describe("applyPreviewSync", () => {
       reloadPreview,
     );
 
-    // U4: the synchronous false return means the soft reload couldn't run, NOT
-    // that the preview is broken — escalation happens only via onAsyncFailure.
+    // U4: "verify-failed" is the TRANSIENT empty-timeline window — the live state
+    // is correct, so we must NOT escalate to a full reload.
     expect(applySoftReload).toHaveBeenCalledWith(FAKE_IFRAME, "SCRIPT", reloadPreview);
     expect(reloadPreview).not.toHaveBeenCalled();
+    // Telemetry records the suppressed transient (escalated: false).
+    expect(trackStudioEvent).toHaveBeenCalledWith(
+      "gsap_soft_reload_outcome",
+      expect.objectContaining({
+        origin: "preview_sync",
+        result: "verify-failed",
+        escalated: false,
+      }),
+    );
+  });
+
+  it('instantPatch + patch fails + soft reload "cannot-soft-reload": escalates to full reload', () => {
+    patchRuntimeTweenInPlace.mockReturnValue(false);
+    applySoftReload.mockReturnValue("cannot-soft-reload");
+    const reloadPreview = vi.fn();
+
+    applyPreviewSync(
+      FAKE_IFRAME,
+      result({ scriptText: "SCRIPT" }),
+      {
+        label: "drag",
+        softReload: true,
+        instantPatch: { selector: "#a", change: { kind: "set", props: { x: 10 } } },
+      },
+      reloadPreview,
+    );
+
+    // Structural failure: the preview is genuinely stale/broken → full reload.
+    expect(applySoftReload).toHaveBeenCalledWith(FAKE_IFRAME, "SCRIPT", reloadPreview);
+    expect(reloadPreview).toHaveBeenCalledTimes(1);
+    expect(trackStudioEvent).toHaveBeenCalledWith(
+      "gsap_soft_reload_outcome",
+      expect.objectContaining({
+        origin: "preview_sync",
+        result: "cannot-soft-reload",
+        escalated: true,
+      }),
+    );
   });
 
   it("no instantPatch + softReload + scriptText: soft reloads, passing onAsyncFailure", () => {
-    applySoftReload.mockReturnValue(true);
+    applySoftReload.mockReturnValue("applied");
     const reloadPreview = vi.fn();
 
     applyPreviewSync(
@@ -121,10 +169,12 @@ describe("applyPreviewSync", () => {
     expect(patchRuntimeTweenInPlace).not.toHaveBeenCalled();
     expect(applySoftReload).toHaveBeenCalledWith(FAKE_IFRAME, "SCRIPT", reloadPreview);
     expect(reloadPreview).not.toHaveBeenCalled();
+    // "applied" emits no telemetry (only the failure paths do).
+    expect(trackStudioEvent).not.toHaveBeenCalled();
   });
 
-  it("no instantPatch + softReload that returns false: does NOT sync-escalate (U4)", () => {
-    applySoftReload.mockReturnValue(false);
+  it('no instantPatch + softReload "verify-failed": transient, does NOT escalate (U4)', () => {
+    applySoftReload.mockReturnValue("verify-failed");
     const reloadPreview = vi.fn();
 
     applyPreviewSync(
@@ -134,9 +184,32 @@ describe("applyPreviewSync", () => {
       reloadPreview,
     );
 
-    // onAsyncFailure is wired, but the sync false return does not trigger it.
+    // onAsyncFailure is wired, but the transient result does not trigger it.
     expect(applySoftReload).toHaveBeenCalledWith(FAKE_IFRAME, "SCRIPT", reloadPreview);
     expect(reloadPreview).not.toHaveBeenCalled();
+    expect(trackStudioEvent).toHaveBeenCalledWith(
+      "gsap_soft_reload_outcome",
+      expect.objectContaining({ result: "verify-failed", escalated: false }),
+    );
+  });
+
+  it('no instantPatch + softReload "cannot-soft-reload": escalates to full reload', () => {
+    applySoftReload.mockReturnValue("cannot-soft-reload");
+    const reloadPreview = vi.fn();
+
+    applyPreviewSync(
+      FAKE_IFRAME,
+      result({ scriptText: "SCRIPT" }),
+      { label: "x", softReload: true },
+      reloadPreview,
+    );
+
+    expect(applySoftReload).toHaveBeenCalledWith(FAKE_IFRAME, "SCRIPT", reloadPreview);
+    expect(reloadPreview).toHaveBeenCalledTimes(1);
+    expect(trackStudioEvent).toHaveBeenCalledWith(
+      "gsap_soft_reload_outcome",
+      expect.objectContaining({ result: "cannot-soft-reload", escalated: true }),
+    );
   });
 
   it("no instantPatch + no softReload: full reload (today's behavior)", () => {
@@ -221,6 +294,7 @@ describe("runCommit — instantPatch wiring", () => {
   beforeEach(() => {
     patchRuntimeTweenInPlace.mockReset();
     applySoftReload.mockReset();
+    trackStudioEvent.mockReset();
   });
   afterEach(() => {
     cleanup?.();
@@ -254,7 +328,7 @@ describe("runCommit — instantPatch wiring", () => {
 
   it("instantPatch fails: persists AND falls back to soft reload", async () => {
     patchRuntimeTweenInPlace.mockReturnValue(false);
-    applySoftReload.mockReturnValue(true);
+    applySoftReload.mockReturnValue("applied");
     mockFetchResult();
     const deps = renderCommitHook();
 
@@ -277,7 +351,7 @@ describe("runCommit — instantPatch wiring", () => {
   });
 
   it("no instantPatch: identical to today — soft reload when softReload+scriptText", async () => {
-    applySoftReload.mockReturnValue(true);
+    applySoftReload.mockReturnValue("applied");
     mockFetchResult();
     const deps = renderCommitHook();
 
