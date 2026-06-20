@@ -46,6 +46,7 @@ export interface DockerRenderOptions {
   browserGpu: boolean;
   hdrMode: "auto" | "force-hdr" | "force-sdr";
   crf?: number;
+  vp9CpuUsed?: number;
   videoBitrate?: string;
   videoFrameFormat?: "auto" | "jpg" | "png";
   quiet: boolean;
@@ -121,6 +122,7 @@ export function buildDockerRunArgs(input: DockerRunArgsInput): string[] {
     ...(options.gifLoop != null ? ["--gif-loop", String(options.gifLoop)] : []),
     ...(options.workers != null ? ["--workers", String(options.workers)] : []),
     ...(options.crf != null ? ["--crf", String(options.crf)] : []),
+    ...(options.vp9CpuUsed != null ? ["--vp9-cpu-used", String(options.vp9CpuUsed)] : []),
     ...(options.videoBitrate ? ["--video-bitrate", options.videoBitrate] : []),
     ...(options.videoFrameFormat && options.videoFrameFormat !== "auto"
       ? ["--video-frame-format", options.videoFrameFormat]

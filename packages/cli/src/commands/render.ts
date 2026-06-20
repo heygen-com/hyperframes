@@ -71,7 +71,12 @@ import { buildDockerRunArgs, resolveDockerPlatform } from "../utils/dockerRunArg
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { runEnvironmentChecks } from "../browser/preflight.js";
 import type { ProducerLogger, RenderJob } from "@hyperframes/producer";
-import { isVideoFrameFormat, type VideoFrameFormat } from "@hyperframes/engine";
+import {
+  MAX_VP9_CPU_USED,
+  MIN_VP9_CPU_USED,
+  isVideoFrameFormat,
+  type VideoFrameFormat,
+} from "@hyperframes/engine";
 import {
   normalizeResolutionFlag,
   parseFps,
@@ -219,6 +224,11 @@ export default defineCommand({
     "video-bitrate": {
       type: "string",
       description: "Target video bitrate such as 10M. Mutually exclusive with --crf.",
+    },
+    "vp9-cpu-used": {
+      type: "string",
+      description:
+        "libvpx-vp9 -cpu-used value for WebM encodes (-8 to 8). Higher is faster with a larger quality/size tradeoff. Env: PRODUCER_VP9_CPU_USED.",
     },
     gpu: { type: "boolean", description: "Use GPU encoding", default: false },
     "browser-gpu": {
@@ -569,6 +579,20 @@ export default defineCommand({
       crf = parsed;
     }
 
+    let vp9CpuUsed: number | undefined;
+    if (args["vp9-cpu-used"] != null) {
+      const raw = args["vp9-cpu-used"];
+      const parsed = Number(raw);
+      if (!Number.isInteger(parsed) || parsed < MIN_VP9_CPU_USED || parsed > MAX_VP9_CPU_USED) {
+        errorBox(
+          "Invalid vp9-cpu-used",
+          `Got "${raw}". Must be an integer between ${MIN_VP9_CPU_USED} and ${MAX_VP9_CPU_USED}.`,
+        );
+        process.exit(1);
+      }
+      vp9CpuUsed = parsed;
+    }
+
     if (args["video-bitrate"] != null && !videoBitrate) {
       errorBox(
         "Invalid video-bitrate",
@@ -730,6 +754,7 @@ export default defineCommand({
         browserGpuMode,
         hdrMode,
         crf,
+        vp9CpuUsed,
         videoBitrate,
         quiet: batchQuiet,
         browserPath,
@@ -786,6 +811,7 @@ export default defineCommand({
         browserGpuMode,
         hdrMode: args.sdr ? "force-sdr" : args.hdr ? "force-hdr" : "auto",
         crf,
+        vp9CpuUsed,
         videoBitrate,
         videoFrameFormat,
         quiet,
@@ -809,6 +835,7 @@ export default defineCommand({
         browserGpuMode,
         hdrMode: args.sdr ? "force-sdr" : args.hdr ? "force-hdr" : "auto",
         crf,
+        vp9CpuUsed,
         videoBitrate,
         videoFrameFormat,
         quiet,
@@ -845,6 +872,7 @@ interface RenderOptions {
   browserGpuMode?: "auto" | "hardware" | "software";
   hdrMode: "auto" | "force-hdr" | "force-sdr";
   crf?: number;
+  vp9CpuUsed?: number;
   videoBitrate?: string;
   videoFrameFormat?: VideoFrameFormat;
   quiet: boolean;
@@ -1088,6 +1116,7 @@ async function renderDocker(
       browserGpu: options.browserGpuMode === "hardware",
       hdrMode: options.hdrMode,
       crf: options.crf,
+      vp9CpuUsed: options.vp9CpuUsed,
       videoBitrate: options.videoBitrate,
       videoFrameFormat: options.videoFrameFormat,
       quiet: options.quiet,
@@ -1195,6 +1224,7 @@ export async function renderLocal(
         : {}),
       ...(options.protocolTimeout != null && { protocolTimeout: options.protocolTimeout }),
       ...(options.playerReadyTimeout != null && { playerReadyTimeout: options.playerReadyTimeout }),
+      ...(options.vp9CpuUsed != null ? { vp9CpuUsed: options.vp9CpuUsed } : {}),
     }),
     hdrMode: options.hdrMode,
     crf: options.crf,

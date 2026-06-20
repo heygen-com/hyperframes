@@ -86,8 +86,7 @@ export interface EncodeStageInput {
   enableChunkedEncode: boolean;
   chunkedEncodeSize: number;
   /** Already-resolved engine config from the orchestrator; direct callers fall back below. */
-  engineConfig?: Pick<EngineConfig, "ffmpegEncodeTimeout"> &
-    Partial<Pick<EngineConfig, "vp9CpuUsed">>;
+  engineConfig?: Pick<EngineConfig, "ffmpegEncodeTimeout" | "vp9CpuUsed">;
   abortSignal: AbortSignal | undefined;
   assertNotAborted: () => void;
   onProgress?: ProgressCallback;

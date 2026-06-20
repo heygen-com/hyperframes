@@ -1,6 +1,6 @@
 export const DEFAULT_VP9_CPU_USED = 4;
-const MIN_VP9_CPU_USED = -8;
-const MAX_VP9_CPU_USED = 8;
+export const MIN_VP9_CPU_USED = -8;
+export const MAX_VP9_CPU_USED = 8;
 
 export function normalizeVp9CpuUsed(value: number | undefined): number {
   if (value === undefined || !Number.isFinite(value)) return DEFAULT_VP9_CPU_USED;

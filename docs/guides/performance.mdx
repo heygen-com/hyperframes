@@ -113,6 +113,12 @@ Tune per deployment with:
 PRODUCER_VP9_CPU_USED=2 npx hyperframes render --format webm --output overlay.webm
 ```
 
+For one-off local renders, pass the same value directly:
+
+```bash Terminal
+npx hyperframes render --format webm --vp9-cpu-used 2 --output overlay.webm
+```
+
 Valid values are integers from `-8` to `8`; HyperFrames clamps out-of-range values before passing them to FFmpeg.
 
 ## Next Steps

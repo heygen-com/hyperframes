@@ -509,6 +509,7 @@ describe("plan() — codec knob", () => {
       ) as Record<string, unknown>;
       expect(encoder.encoder).toBe("libx264-software");
       expect(encoder.pixelFormat).toBe("yuv420p");
+      expect(encoder).not.toHaveProperty("vp9CpuUsed");
     },
     TIMEOUT_MS,
   );

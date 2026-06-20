@@ -19,6 +19,7 @@ Requires: Docker installed and running.
 - `-w, --workers` — Parallel workers 1-8 (default: auto)
 - `--crf` — Override encoder CRF (mutually exclusive with `--video-bitrate`)
 - `--video-bitrate` — Target video bitrate such as `10M` (mutually exclusive with `--crf`)
+- `--vp9-cpu-used` — WebM VP9 speed/quality tradeoff (`-8` to `8`, default: `4`). Higher values encode faster with larger output / quality tradeoff.
 - `--video-frame-format` — Source video frame extraction format: `auto`, `jpg`, or `png` (default: `auto`). Use `png` for UI recordings, screen captures, and color-sensitive source videos.
 - `--gpu` — Use GPU encoding (NVENC, VideoToolbox, AMF, VAAPI, QSV)
 - `--browser-gpu` / `--no-browser-gpu` — Force host GPU or software (SwiftShader) for Chrome/WebGL capture. Default for local renders is `auto` — probe WebGL availability on first launch and fall back to software if no GPU is reachable. Docker mode always uses software.

@@ -54,9 +54,11 @@ export interface LockedRenderConfig {
   crf?: number;
   bitrate?: string;
   /**
-   * New plans always persist the resolved libvpx-vp9 `-cpu-used` value so
-   * distributed workers reproduce the controller's VP9 speed/quality choice.
-   * Optional for compatibility with older planDirs.
+   * VP9-only: new WebM plans persist the resolved libvpx-vp9 `-cpu-used`
+   * value so distributed workers reproduce the controller's speed/quality
+   * choice. Omitted for non-VP9 plans to avoid shifting unrelated planHash
+   * baselines. Optional for compatibility with older WebM planDirs; workers
+   * replay those with the historical distributed VP9 value.
    */
   vp9CpuUsed?: number;
   /** Equal to chunkSize for closed-GOP concat-copy. */

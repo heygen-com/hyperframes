@@ -581,6 +581,10 @@ function buildLockedRenderConfig(input: {
 }): LockedRenderConfig {
   const { config, forceScreenshot, deviceScaleFactor, ffmpegVersion } = input;
   const { encoder, pixelFormat, preset } = resolveEncoderTriple(config);
+  const locksVp9CpuUsed =
+    encoder === "libvpx-vp9-software"
+      ? { vp9CpuUsed: normalizeVp9CpuUsed(input.engineConfig.vp9CpuUsed) }
+      : {};
   return {
     captureMode: forceScreenshot ? "screenshot" : "beginframe",
     forceScreenshot,
@@ -597,7 +601,7 @@ function buildLockedRenderConfig(input: {
     preset,
     crf: config.crf,
     bitrate: config.bitrate,
-    vp9CpuUsed: normalizeVp9CpuUsed(input.engineConfig.vp9CpuUsed),
+    ...locksVp9CpuUsed,
     // GOP === chunkSize so every chunk's first frame is an IDR keyframe and
     // ffmpeg concat-copy round-trips losslessly.
     gopSize: input.effectiveChunkSize,

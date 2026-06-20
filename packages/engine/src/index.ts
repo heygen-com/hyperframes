@@ -44,7 +44,12 @@ export type {
 
 // ── Configuration ──────────────────────────────────────────────────────────────
 export { resolveConfig, DEFAULT_CONFIG, type EngineConfig } from "./config.js";
-export { normalizeVp9CpuUsed } from "./services/vp9Options.js";
+export {
+  DEFAULT_VP9_CPU_USED,
+  MAX_VP9_CPU_USED,
+  MIN_VP9_CPU_USED,
+  normalizeVp9CpuUsed,
+} from "./services/vp9Options.js";
 export {
   getSystemTotalMb,
   isLowMemorySystem,

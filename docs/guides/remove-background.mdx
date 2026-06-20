@@ -333,7 +333,7 @@ After running any of these externally, encode the output as a HyperFrames-compat
 ffmpeg -i frames-%04d.png -c:v libvpx-vp9 \
   -pix_fmt yuva420p \
   -metadata:s:v:0 alpha_mode=1 \
-  -auto-alt-ref 0 -b:v 0 -crf 30 \
+  -auto-alt-ref 0 -cpu-used 4 -b:v 0 -crf 30 \
   transparent.webm
 ```
 
@@ -389,7 +389,7 @@ Chrome only reads the alpha plane when the WebM is encoded as `yuva420p` with th
 ffmpeg -i in.webm -c:v libvpx-vp9 \
   -pix_fmt yuva420p \
   -metadata:s:v:0 alpha_mode=1 \
-  -auto-alt-ref 0 \
+  -auto-alt-ref 0 -cpu-used 4 \
   out.webm
 ```
 

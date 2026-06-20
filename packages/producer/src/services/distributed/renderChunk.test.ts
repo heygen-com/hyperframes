@@ -30,6 +30,7 @@ import {
   PLAN_HASH_MISMATCH,
   renderChunk,
   RenderChunkValidationError,
+  resolveLockedVp9CpuUsed,
   resolvePresetForLockedEncoder,
 } from "./renderChunk.js";
 
@@ -448,5 +449,19 @@ describe("resolvePresetForLockedEncoder", () => {
     const base = { preset: "medium", quality: 18, codec: "h264" as const, pixelFormat: "yuv420p" };
     const out = resolvePresetForLockedEncoder(base, "png-sequence");
     expect(out).toBe(base);
+  });
+});
+
+describe("resolveLockedVp9CpuUsed", () => {
+  it("uses the locked value for new VP9 planDirs", () => {
+    expect(resolveLockedVp9CpuUsed({ encoder: "libvpx-vp9-software", vp9CpuUsed: 4 })).toBe(4);
+  });
+
+  it("preserves legacy distributed VP9 replay behavior when the field is absent", () => {
+    expect(resolveLockedVp9CpuUsed({ encoder: "libvpx-vp9-software" })).toBe(2);
+  });
+
+  it("returns undefined for non-VP9 planDirs", () => {
+    expect(resolveLockedVp9CpuUsed({ encoder: "libx264-software" })).toBeUndefined();
   });
 });

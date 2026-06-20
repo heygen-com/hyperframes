@@ -167,6 +167,7 @@ describe("buildDockerRunArgs", () => {
         browserGpu: false,
         hdrMode: "force-hdr",
         crf: 16,
+        vp9CpuUsed: 2,
         videoBitrate: undefined,
         videoFrameFormat: "png",
         quiet: true,
@@ -182,6 +183,8 @@ describe("buildDockerRunArgs", () => {
     expect(args).toContain("8");
     expect(args).toContain("--crf");
     expect(args).toContain("16");
+    expect(args).toContain("--vp9-cpu-used");
+    expect(args).toContain("2");
     expect(args).toContain("--video-frame-format");
     expect(args).toContain("png");
     expect(args).toContain("--quiet");
