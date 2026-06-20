@@ -94,6 +94,18 @@ tl.to(
 
 The child's rendered position is the **composition** of both, so `--shot --selector '#core'` (the leaf) shows the combined motion — the corner markers inherit the full ancestor transform, and the orbit camera handles the chain. Use nesting whenever cramming everything into one tween would force you to trade one channel for another. For motion that genuinely derives from a **single parameter** (a parametric path), one keyframes block is correct — reach for nesting only when channels would otherwise collide.
 
+The text surface shows it too: a nested element's block prints `↑ composed with #group: x −360..360, y −100..100, …` (the ancestor's motion **extent**, so a closed loop isn't hidden as `0→0`). Don't conclude "no path" from a child's own tween — read the `↑ composed with` line (or the `--shot`).
+
+### Patterns that separate a 9 from a 5
+
+These are the layered-motion mistakes that look fine in the numbers and fail on screen:
+
+- **A fast channel needs its own dense tween.** A wing-flap, shimmer, or rotor wobble at "many cycles" can't share the path's coarse keyframe grid (you'll get ~12 lazy cycles, not rapid). Put the high-frequency channel on its **own** tween/child with enough stops (or a short `repeat`), decoupled from the path.
+- **Squash stays flat to the ground — even while spinning.** If an element both rolls/spins **and** squashes on impact, they fight on one element: the squash rotates with the spin and skews off-axis. Split them — **spin on an inner child, squash (scaleX/scaleY) on an outer wrapper** that doesn't rotate — so the squash stays aligned to the floor.
+- **"Points along travel" = the path tangent.** For heading/banking that follows the path, derive the rotation from the **velocity direction** (`atan2(Δy, Δx)` between keyframes), not an eyeballed linear ramp — and remember `#hero`'s notch points **up** at `0°`, so add the offset that maps `0°` to your travel convention.
+- **Lock coupled phases.** If a spin should track the orbit (or a flip the bounce), derive both from the **same parameter** so they don't drift; if they're meant to be independent, give them clearly different rates.
+- **Verify every named channel.** Before stopping, check each channel in the brief against the render one by one — a layered motion fails by dropping _one_ channel (the bob, the bank), not by getting the headline path wrong.
+
 ## Editing keyframes
 
 Percentages are **tween-relative**; edits go in the composition `<script>`. Move = change `x`/`y` at that `%`; add = insert a new `"P%": { x, y }` keeping ascending order; remove = delete the `"P%"` entry; retime = change `duration` / position. Object-form, offset math, and converting a flat `to(x)` into keyframes: **`references/editing-keyframes.md`**.
