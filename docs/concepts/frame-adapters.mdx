@@ -116,6 +116,34 @@ All runtime adapters live in the `/hyperframes-animation` skill — invoke it fo
 | Lottie / dotLottie | `goToAndStop(timeMs, false)`, raw-frame setters, or player seek APIs | `/hyperframes-animation` |
 | Three.js / WebGL | `hf-seek` events plus `window.__hfThreeTime` for deterministic scene rendering | `/hyperframes-animation` |
 | Web Animations API | `document.getAnimations()` and `animation.currentTime` | `/hyperframes-animation` |
+| Render function | `window.__hfRender` callbacks invoked with the seek time (seconds) | `/hyperframes-animation` |
+
+### Render function (no animation library)
+
+When a composition's visual state is a pure function of time -- a hand-rolled
+clock, a React state timeline, or a `<canvas>` / demoscene loop -- there may be
+no animation library to seek. The render-function adapter is the
+lowest-common-denominator path: register a `render(timeSeconds)` callback and
+the runtime calls it with the exact composition time for every captured frame,
+in place of the `requestAnimationFrame` loop you would use for live playback.
+
+```html
+<canvas id="scene" width="1920" height="1080"></canvas>
+<script>
+  const ctx = document.getElementById("scene").getContext("2d");
+  function renderAt(timeSeconds) {
+    ctx.clearRect(0, 0, 1920, 1080);
+    // ...draw the frame as a pure function of timeSeconds...
+  }
+  window.__hfRender = window.__hfRender || [];
+  window.__hfRender.push(renderAt);
+</script>
+```
+
+The current seek position is also mirrored onto `window.__hfTime` (seconds) so
+draw helpers can read it directly instead of `performance.now()`. As with every
+adapter, callbacks must render purely from the time argument -- no `Date.now()`,
+no `performance.now()`, no unseeded randomness.
 
 Community adapters are welcome -- if it can seek by frame, it belongs in Hyperframes.
 

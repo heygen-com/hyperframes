@@ -12,6 +12,7 @@ import { createGoogleMapsAdapter } from "./adapters/google-maps";
 import { createMaplibreAdapter } from "./adapters/maplibre";
 import { createD3Adapter } from "./adapters/d3";
 import { createTypegpuAdapter } from "./adapters/typegpu";
+import { createRenderFnAdapter } from "./adapters/render-fn";
 import {
   patchVideoTextureCompat,
   patchWebGLVideoTextureCompat,
@@ -1932,6 +1933,7 @@ export function initSandboxRuntimeModular(): void {
     createMaplibreAdapter(),
     createD3Adapter(),
     createTypegpuAdapter(),
+    createRenderFnAdapter(),
     createGsapAdapter({ getTimeline: () => state.capturedTimeline }),
   ] as RuntimeDeterministicAdapter[];
   patchVideoTextureCompat();
