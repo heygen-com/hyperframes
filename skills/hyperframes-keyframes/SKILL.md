@@ -105,6 +105,20 @@ These are the layered-motion mistakes that look fine in the numbers and fail on 
 - **"Points along travel" = the path tangent.** For heading/banking that follows the path, derive the rotation from the **velocity direction** (`atan2(Δy, Δx)` between keyframes), not an eyeballed linear ramp — and remember `#hero`'s notch points **up** at `0°`, so add the offset that maps `0°` to your travel convention.
 - **Lock coupled phases.** If a spin should track the orbit (or a flip the bounce), derive both from the **same parameter** so they don't drift; if they're meant to be independent, give them clearly different rates.
 - **Verify every named channel.** Before stopping, check each channel in the brief against the render one by one — a layered motion fails by dropping _one_ channel (the bob, the bank), not by getting the headline path wrong.
+- **Deliver the channel that's named, at a magnitude that reads — don't substitute.** "Rotate-in" means real `rotation` (±90° or more), not a vertical offset that approximates it; "overshoot" means actually passing the target and easing back (`back.out`), not just arriving. A subtle stand-in reads as the wrong channel. After authoring, confirm the named thing is _visibly_ that thing (rotation looks like rotation).
+- **Make fast or chaotic motion legible — add a trail.** A whip, a chaotic pendulum, a fast orbit reads as a blur or a jumble in any single moment (and in the played clip). Lay down a faint **motion trail / echo** — a fading path, or a few ghost copies along the element's recent positions — so the path itself reads. Confirm it in `--shot`.
+
+## Reproducing a motion from a reference (one-shot)
+
+With a reference in hand (a clip, a filmstrip, an animated icon) you can usually nail it in **one pass** — the skill is to **decompose before you author**, not guess-then-thrash:
+
+1. **List the moving parts** — what moves independently (the two bell strokes; track + knob; each digit reel). Each is an element/tween.
+2. **Name each part's channels** from the frames — position path, rotation, scale, opacity, colour, SVG shape — reading the start pose, end pose, and key in-betweens.
+3. **Read timing off the frames.** They're time-ordered: frame `i` of `N` sits at `t = i/(N−1) × duration`. Even spacing = linear; bunched frames = slow there (ease). Note sequence and stagger — what leads, what lags.
+4. **Map to literal keyframes** at the `%` those poses fall on, with enough stops to trace the curve and the easing the spacing implies.
+5. **Author once, then confirm** with a single `--shot`/render laid next to the reference. A clean decomposition lands first try; if one channel is off it's almost always one you mis-read in step 2 — fix that one, don't restart.
+
+The reference is ground truth for the **target**, the way `--shot` is ground truth for your **output**. Read both; never reason from memory of "what a bell does".
 
 ## Editing keyframes
 
