@@ -10,7 +10,7 @@ The failure modes that actually bite, each with the fix.
 ## Reading the surface
 
 - **The text is data, not a picture.** The surface lists keyframes; to judge shape, timing, or 3D, render `--shot` and look at the PNG. (Equal-time sampling means ghost spacing already shows the ease — no need to flatten it to `ease: "none"` to preview.)
-- **A head-on `--shot` lies twice.** In-place motion stacks on one spot; 3D flattens to a stack. Frame the edit with `--layout strip`, `--from/--to`, or `--angle` (SKILL.md → Frame what you're editing).
+- **A head-on `--shot` lies twice.** In-place motion stacks on one spot (use `--layout strip`); 3D flattens to a stack. **For 3D motion, render at least 3 camera angles** (`front`+`top`+`side`/`iso`) and confirm the motion agrees in all of them — never trust a single viewpoint (SKILL.md → Frame what you're editing).
 
 ## Shape / strokes
 
