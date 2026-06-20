@@ -18,6 +18,7 @@ const PROJECT_SIGNATURE_META = "hyperframes-project-signature";
 const GSAP_CDN_VERSION = "3.15.0";
 const GSAP_CDN_SCRIPT = `<script src="https://cdn.jsdelivr.net/npm/gsap@${GSAP_CDN_VERSION}/dist/gsap.min.js"></script>`;
 const GSAP_CUSTOM_EASE_CDN_SCRIPT = `<script src="https://cdn.jsdelivr.net/npm/gsap@${GSAP_CDN_VERSION}/dist/CustomEase.min.js"></script>`;
+const GSAP_MOTION_PATH_CDN_SCRIPT = `<script src="https://cdn.jsdelivr.net/npm/gsap@${GSAP_CDN_VERSION}/dist/MotionPathPlugin.min.js"></script>`;
 
 function resolveProjectSignature(adapter: StudioApiAdapter, projectDir: string): string {
   return adapter.getProjectSignature?.(projectDir) ?? createProjectSignature(projectDir);
@@ -86,6 +87,42 @@ function htmlHasCustomEase(html: string): boolean {
   );
 }
 
+// A composition that drives motion via GSAP's `motionPath` (e.g. a studio-created
+// motion path written into the single-source timeline) needs MotionPathPlugin
+// registered before the timeline first renders — otherwise the initial seek
+// throws "Invalid property motionPath ... Missing plugin?". Detect it anywhere in
+// the bundle (the plugin registers globally, so sub-composition usage counts too).
+function htmlUsesMotionPath(html: string): boolean {
+  return /motionPath\s*[:{]/.test(html);
+}
+
+function htmlHasMotionPathPlugin(html: string): boolean {
+  return (
+    /<script\b[^>]*src=["'][^"']*MotionPathPlugin/i.test(html) ||
+    /\bwindow\.MotionPathPlugin\b/.test(html) ||
+    /\bMotionPathPlugin\s*=\s*/.test(html)
+  );
+}
+
+function injectMotionPathPluginIfNeeded(html: string): string {
+  if (!htmlUsesMotionPath(html) || htmlHasMotionPathPlugin(html)) return html;
+  // The plugin registers onto an already-loaded gsap, so it must come AFTER the
+  // core gsap script — which often lives at body-end, not <head>. Insert it
+  // directly after the gsap script tag; only fall back to <head> if none is found
+  // (e.g. gsap is inlined).
+  const gsapScript = /<script\b[^>]*\bsrc=["'][^"']*\/gsap(\.min)?\.js["'][^>]*>\s*<\/script>/i;
+  const match = html.match(gsapScript);
+  if (match) {
+    // Match the plugin version to the composition's own gsap so the plugin
+    // registers cleanly (a minor-version skew triggers a GSAP compatibility warning).
+    const version = match[0].match(/gsap@([\d.]+)/)?.[1] ?? GSAP_CDN_VERSION;
+    const pluginTag = `<script src="https://cdn.jsdelivr.net/npm/gsap@${version}/dist/MotionPathPlugin.min.js"></script>`;
+    const end = html.indexOf(match[0]) + match[0].length;
+    return html.slice(0, end) + "\n" + pluginTag + html.slice(end);
+  }
+  return injectScriptTagIntoHead(html, GSAP_MOTION_PATH_CDN_SCRIPT);
+}
+
 function injectStudioMotionDependencies(html: string, manifestContent: string): string {
   const manifest = parseStudioMotionManifestContent(manifestContent);
   if (!manifest.hasMotion) return html;
@@ -149,8 +186,10 @@ function injectStudioPreviewAugmentations(
   activeCompositionPath: string,
 ): string {
   return injectStudioMotionScript(
-    injectGsapCdnFallback(
-      injectProjectSignature(html, resolveProjectSignature(adapter, projectDir)),
+    injectMotionPathPluginIfNeeded(
+      injectGsapCdnFallback(
+        injectProjectSignature(html, resolveProjectSignature(adapter, projectDir)),
+      ),
     ),
     projectDir,
     activeCompositionPath,

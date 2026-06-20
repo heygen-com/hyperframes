@@ -114,6 +114,57 @@ describe("registerPreviewRoutes", () => {
     expect(html.indexOf("CustomEase.min.js")).toBeLessThan(html.indexOf("__hfStudioMotionApply"));
   });
 
+  it("injects the GSAP MotionPathPlugin when the composition uses a motionPath", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html><html><head>
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+      </head><body><div id="card" class="clip"></div>
+        <script>
+          const tl = gsap.timeline({ paused: true });
+          tl.to("#card", { motionPath: { path: [{ x: 0, y: 0 }, { x: 100, y: 50 }] }, duration: 1 }, 0);
+          window.__timelines = { index: tl };
+        </script>
+      </body></html>`,
+    );
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+
+    const response = await app.request("http://localhost/projects/demo/preview");
+    const html = await response.text();
+
+    expect(response.status).toBe(200);
+    // Plugin version is derived from the composition's own gsap (gsap@3 here).
+    expect(html).toContain("gsap@3/dist/MotionPathPlugin.min.js");
+    // Plugin must load AFTER the core gsap script so it can register onto it.
+    expect(html.indexOf("gsap.min.js")).toBeLessThan(html.indexOf("MotionPathPlugin.min.js"));
+  });
+
+  it("does NOT inject MotionPathPlugin when the composition has no motionPath", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html><html><head>
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+      </head><body><div id="card" class="clip"></div>
+        <script>
+          const tl = gsap.timeline({ paused: true });
+          tl.to("#card", { x: 100, duration: 1 }, 0);
+          window.__timelines = { index: tl };
+        </script>
+      </body></html>`,
+    );
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+
+    const response = await app.request("http://localhost/projects/demo/preview");
+    const html = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(html).not.toContain("MotionPathPlugin.min.js");
+  });
+
   it("injects Studio GSAP motion runtime into sub-composition previews with the active source path", async () => {
     const projectDir = createProjectDir();
     mkdirSync(join(projectDir, "compositions"), { recursive: true });
