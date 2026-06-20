@@ -141,6 +141,15 @@
         "import": "./dist/index.js",
         "types": "./dist/index.d.ts"
       },
+      "./package.json": "./package.json",
+      "./beats": {
+        "import": "./dist/beats/index.js",
+        "types": "./dist/beats/index.d.ts"
+      },
+      "./html-attr-safety": {
+        "import": "./dist/utils/htmlAttrSafety.js",
+        "types": "./dist/utils/htmlAttrSafety.d.ts"
+      },
       "./lint": {
         "import": "./dist/lint/index.js",
         "types": "./dist/lint/index.d.ts"
@@ -161,7 +170,15 @@
         "import": "./dist/colorLuts.js",
         "types": "./dist/colorLuts.d.ts"
       },
+      "./storyboard": {
+        "import": "./dist/storyboard/index.js",
+        "types": "./dist/storyboard/index.d.ts"
+      },
       "./runtime": "./dist/hyperframe.runtime.iife.js",
+      "./runtime/clipTree": {
+        "import": "./dist/runtime/clipTree.js",
+        "types": "./dist/runtime/clipTree.d.ts"
+      },
       "./runtime/lottie-readiness": {
         "import": "./dist/lottieReadiness.js",
         "types": "./dist/lottieReadiness.d.ts"

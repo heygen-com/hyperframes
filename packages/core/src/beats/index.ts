@@ -1,2 +1,2 @@
-export * from "./beatDetection";
-export * from "./beatFile";
+export * from "./beatDetection.js";
+export * from "./beatFile.js";

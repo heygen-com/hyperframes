@@ -29,6 +29,12 @@ function listWorkspaceRefs(pkg) {
   return refs;
 }
 
+function listMissingPublishedExports(pkg) {
+  if (!pkg.exports || !pkg.publishConfig?.exports) return [];
+
+  return Object.keys(pkg.exports).filter((exportKey) => !(exportKey in pkg.publishConfig.exports));
+}
+
 function parsePackJson(output, workspace) {
   try {
     const parsed = JSON.parse(output);
@@ -44,6 +50,14 @@ function main() {
       readFileSync(join(ROOT, workspace, "package.json"), "utf8"),
     );
     if (sourcePackageJson.private) continue;
+
+    const missingPublishedExports = listMissingPublishedExports(sourcePackageJson);
+    if (missingPublishedExports.length > 0) {
+      throw new Error(
+        `${workspace} publishConfig.exports is missing source exports: ${missingPublishedExports.join(", ")}`,
+      );
+    }
+
     if (listWorkspaceRefs(sourcePackageJson).length === 0) continue;
 
     const packDir = mkdtempSync(join(tmpdir(), "hyperframes-pack-"));
