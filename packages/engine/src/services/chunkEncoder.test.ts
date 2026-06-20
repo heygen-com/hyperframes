@@ -18,6 +18,7 @@ afterEach(() => {
   }
   vi.resetModules();
   vi.doUnmock("child_process");
+  vi.doUnmock("../utils/ffprobe.js");
   vi.useRealTimers();
 });
 
@@ -86,6 +87,11 @@ function createSpawnSpy(): {
 function emitClose(proc: FakeProc, code: number): void {
   proc.emit("exit", code);
   proc.emit("close", code);
+}
+
+async function flushMuxCodecResolution(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
 }
 
 describe("ENCODER_PRESETS", () => {
@@ -371,6 +377,7 @@ describe("muxVideoWithAudio audio codec handling", () => {
       { num: 30, den: 1 },
     );
 
+    await flushMuxCodecResolution();
     expect(calls).toHaveLength(1);
     expect(calls[0]!.args).toEqual([
       "-i",
@@ -415,6 +422,7 @@ describe("muxVideoWithAudio audio codec handling", () => {
       { num: 30, den: 1 },
     );
 
+    await flushMuxCodecResolution();
     expect(calls).toHaveLength(1);
     expect(calls[0]!.args).toContain("-c:a");
     expect(calls[0]!.args[calls[0]!.args.indexOf("-c:a") + 1]).toBe("copy");
@@ -426,6 +434,69 @@ describe("muxVideoWithAudio audio codec handling", () => {
       success: true,
       outputPath: "/tmp/output.mp4",
     });
+  });
+
+  it("probes unknown-extension AAC sidecars before choosing the MP4 copy path", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    const extractAudioMetadata = vi.fn(async () => ({
+      durationSeconds: 1,
+      sampleRate: 48000,
+      channels: 2,
+      audioCodec: "aac",
+    }));
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    vi.doMock("../utils/ffprobe.js", () => ({ extractAudioMetadata }));
+
+    const { muxVideoWithAudio } = await import("./chunkEncoder.js");
+    const muxPromise = muxVideoWithAudio(
+      "/tmp/video-only.mp4",
+      "/tmp/audio-sidecar",
+      "/tmp/output.mp4",
+    );
+
+    await flushMuxCodecResolution();
+    expect(extractAudioMetadata).toHaveBeenCalledWith("/tmp/audio-sidecar");
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.args).toContain("-c:a");
+    expect(calls[0]!.args[calls[0]!.args.indexOf("-c:a") + 1]).toBe("copy");
+    expect(calls[0]!.args).not.toContain("-b:a");
+
+    emitClose(calls[0]!.proc, 0);
+    await expect(muxPromise).resolves.toMatchObject({
+      success: true,
+      outputPath: "/tmp/output.mp4",
+    });
+  });
+
+  it("keeps probed non-AAC unknown-extension sidecars on the MP4 transcode path", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    const extractAudioMetadata = vi.fn(async () => ({
+      durationSeconds: 1,
+      sampleRate: 48000,
+      channels: 2,
+      audioCodec: "mp3",
+    }));
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    vi.doMock("../utils/ffprobe.js", () => ({ extractAudioMetadata }));
+
+    const { muxVideoWithAudio } = await import("./chunkEncoder.js");
+    const muxPromise = muxVideoWithAudio(
+      "/tmp/video-only.mp4",
+      "/tmp/audio-sidecar",
+      "/tmp/output.mp4",
+    );
+
+    await flushMuxCodecResolution();
+    expect(extractAudioMetadata).toHaveBeenCalledWith("/tmp/audio-sidecar");
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.args).toContain("-c:a");
+    expect(calls[0]!.args[calls[0]!.args.indexOf("-c:a") + 1]).toBe("aac");
+    expect(calls[0]!.args).toContain("-b:a");
+
+    emitClose(calls[0]!.proc, 0);
+    await expect(muxPromise).resolves.toMatchObject({ success: true });
   });
 
   it("still transcodes non-AAC audio when muxing MP4", async () => {
@@ -440,6 +511,7 @@ describe("muxVideoWithAudio audio codec handling", () => {
       "/tmp/output.mp4",
     );
 
+    await flushMuxCodecResolution();
     expect(calls).toHaveLength(1);
     expect(calls[0]!.args).toContain("-c:a");
     expect(calls[0]!.args[calls[0]!.args.indexOf("-c:a") + 1]).toBe("aac");
@@ -462,6 +534,7 @@ describe("muxVideoWithAudio audio codec handling", () => {
       "/tmp/output.mov",
     );
 
+    await flushMuxCodecResolution();
     expect(calls).toHaveLength(1);
     expect(calls[0]!.args).toContain("-c:a");
     expect(calls[0]!.args[calls[0]!.args.indexOf("-c:a") + 1]).toBe("copy");

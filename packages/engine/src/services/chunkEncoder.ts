@@ -20,6 +20,7 @@ import {
 import { type HdrTransfer, getHdrEncoderColorParams } from "../utils/hdr.js";
 import { formatFfmpegError, runFfmpeg } from "../utils/runFfmpeg.js";
 import { getFfmpegBinary } from "../utils/ffmpegBinaries.js";
+import { extractAudioMetadata } from "../utils/ffprobe.js";
 import { type Fps, fpsToFfmpegArg } from "@hyperframes/core";
 import type { EncoderOptions, EncodeResult, MuxResult } from "./chunkEncoder.types.js";
 
@@ -48,6 +49,16 @@ function isAacSidecar(audioPath: string): boolean {
   return extname(audioPath).toLowerCase() === ".aac";
 }
 
+const KNOWN_NON_AAC_AUDIO_EXTENSIONS = new Set([
+  ".flac",
+  ".mp3",
+  ".oga",
+  ".ogg",
+  ".opus",
+  ".wav",
+  ".webm",
+]);
+
 export interface MuxVideoWithAudioOptions extends Partial<
   Pick<EngineConfig, "ffmpegProcessTimeout">
 > {
@@ -59,8 +70,23 @@ export interface MuxVideoWithAudioOptions extends Partial<
   audioCodec?: "aac";
 }
 
-function shouldCopyAacSidecar(audioPath: string, options: MuxVideoWithAudioOptions | undefined) {
-  return options?.audioCodec === "aac" || isAacSidecar(audioPath);
+async function shouldCopyAacSidecar(
+  audioPath: string,
+  options: MuxVideoWithAudioOptions | undefined,
+) {
+  if (options?.audioCodec === "aac" || isAacSidecar(audioPath)) return true;
+
+  const audioExtension = extname(audioPath).toLowerCase();
+  if (KNOWN_NON_AAC_AUDIO_EXTENSIONS.has(audioExtension)) return false;
+
+  try {
+    const metadata = await extractAudioMetadata(audioPath);
+    return metadata.audioCodec === "aac";
+  } catch {
+    // Preserve the pre-existing fallback for invalid or unprobeable sidecars:
+    // let the final ffmpeg transcode path surface the actionable mux error.
+    return false;
+  }
 }
 
 /**
@@ -717,7 +743,7 @@ export async function muxVideoWithAudio(
 
   const isWebm = outputPath.endsWith(".webm");
   const isMov = outputPath.endsWith(".mov");
-  const shouldCopyAudio = shouldCopyAacSidecar(audioPath, config);
+  const shouldCopyAudio = isWebm ? false : await shouldCopyAacSidecar(audioPath, config);
   const args = ["-i", videoPath, "-i", audioPath, "-c:v", "copy"];
 
   if (isWebm) {
