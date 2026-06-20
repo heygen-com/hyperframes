@@ -40,7 +40,7 @@ npx hyperframes keyframes --shot path.png      # onion-skin screenshot (3D, all 
 | reveal **3D** that's ambiguous head-on (flips, tumbles)                | `--angle top` · `side` · `iso` · `yaw,pitch`        |
 | change sample count · focus one element                                | `--samples 13` · `--selector '#hero'`               |
 
-A vertical-axis flip reads from `top`; a horizontal-axis flip from `side`; a general tumble from `iso`. Render two angles if unsure.
+**For any 3D motion (rotationX/Y/Z or z), render at least THREE camera angles before you trust it** — e.g. `front` + `top` + `side` (or `iso`). One viewpoint hides depth: a flip reads as a static stack head-on, a tumble looks flat, an edge-on pose vanishes. Confirm the motion matches your intent in **all three** (a vertical-axis flip reads from `top`, a horizontal-axis flip from `side`, a general tumble from `iso`). For **in-place / overlapping** motion (a pulse, an in-place flip) the head-on render stacks every ghost on one spot — switch to `--layout strip` so each keyframe gets its own cell. Zoom-to-fit is on by default.
 
 ## Reading the output
 
@@ -67,6 +67,32 @@ tl.to("#pen", { keyframes: { "0%": { x: 80, y: 120 }, "100%": { x: 85, y: 140 } 
 ```
 
 Full pattern (words, icons, holed glyphs, how it surfaces, and the single-stroke fallback): **`references/multi-stroke.md`**.
+
+## Layered motion: nest elements (don't fight last-write-wins)
+
+GSAP is **last-write-wins per element + property**: two tweens animating the same element's `y` (or `rotation`, or `scale`) clobber each other, so you can't cleanly layer independent motions onto one element. When the brief has channels that are **independent in phase or rate** — an orbit AND an axial spin at a different rate, a flight path AND a wing-flap, a bounce AND a roll, a trajectory AND a wobble/bob — put them on **nested elements**:
+
+- **parent** carries the primary trajectory (the path: `x`/`y`/`z`, the orbit),
+- **child** carries the secondary, independent motion (a bob on its own `y`, a flap on `scaleX`, an axial spin on `rotation`, a wobble on `rotationZ`).
+
+```js
+tl.to("#group", {
+  keyframes: { "0%": { x: -380, y: 0 }, "100%": { x: 380, y: 0 } },
+  duration: 4,
+  ease: "none",
+}); // parent: path
+tl.to(
+  "#core",
+  {
+    keyframes: { "0%": { y: 0 }, "50%": { y: -40 }, "100%": { y: 0 } },
+    duration: 4,
+    ease: "sine.inOut",
+  },
+  0,
+); // child: independent bob
+```
+
+The child's rendered position is the **composition** of both, so `--shot --selector '#core'` (the leaf) shows the combined motion — the corner markers inherit the full ancestor transform, and the orbit camera handles the chain. Use nesting whenever cramming everything into one tween would force you to trade one channel for another. For motion that genuinely derives from a **single parameter** (a parametric path), one keyframes block is correct — reach for nesting only when channels would otherwise collide.
 
 ## Editing keyframes
 
