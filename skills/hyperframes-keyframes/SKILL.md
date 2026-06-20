@@ -123,6 +123,8 @@ The reference is ground truth for the **target**, the way `--shot` is ground tru
 
 **Author only what you saw.** Reproduce the channels actually present in the reference and stop — resist "improving" it. If the reference is a plain steady spin, ship a plain steady spin. Over-reading a simple motion (adding a pulse, an oscillation, an extra easing phase) is the most common one-shot failure: it loses to the naive build that just matched the reference.
 
+**Subtractive self-verify (do this before you finish).** Matching the reference is two checks, not one: nothing _missing_ **and** nothing _extra_. After your verify render, look at YOUR output and list every visible feature — every shape, motion, and styling effect. Cross off each one that also appears in the reference. **Anything left over is invented — delete it.** This is what catches the silent failures: a gloss/sheen the flat icon doesn't have, positional scatter or scale-jitter on a motion that stays put, a second cycle the reference plays once, a bevel/shadow on a clean line icon. A faithful build subtracts these; don't ship them.
+
 ## Editing keyframes
 
 Percentages are **tween-relative**; edits go in the composition `<script>`. Move = change `x`/`y` at that `%`; add = insert a new `"P%": { x, y }` keeping ascending order; remove = delete the `"P%"` entry; retime = change `duration` / position. Object-form, offset math, and converting a flat `to(x)` into keyframes: **`references/editing-keyframes.md`**.
