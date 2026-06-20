@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Broadside</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700;800;900&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style id="ds-tokens">
+:root{
+  --ink:#111111; --ink-alt:#1A1A18; --orange:#E85D26; --cream:#F0ECE5;
+  --cream-muted:#888880; --cream-hint:#505048; --border-dark:#282826;
+  --on-orange-muted:rgba(17,17,17,.75); --on-orange-hint:rgba(17,17,17,.55);
+  --on-orange-faint:rgba(17,17,17,.40); --on-orange-border:rgba(17,17,17,.20);
+  --sans:"Barlow",sans-serif; --mono:"IBM Plex Mono",monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{background:#000}
+body{background:var(--ink);color:var(--cream);font-family:var(--sans);-webkit-font-smoothing:antialiased}
+.mono{font-family:var(--mono);text-transform:uppercase;letter-spacing:.14em}
+.disp{font-family:var(--sans);font-weight:900;letter-spacing:-.04em;line-height:.9}
+
+section{padding:110px 88px;position:relative}
+.sec-head{display:flex;align-items:center;gap:18px;border-bottom:1px solid var(--border-dark);padding-bottom:18px;margin-bottom:56px}
+.sec-head .k{font-family:var(--mono);text-transform:uppercase;letter-spacing:.14em;font-size:13px;color:var(--orange)}
+.sec-head h2{font-family:var(--sans);font-weight:900;font-size:52px;line-height:1;letter-spacing:-.03em;text-transform:lowercase}
+.sec-head .sp{flex:1}
+.sec-head .num{font-family:var(--mono);font-size:13px;color:var(--cream-hint);letter-spacing:.1em}
+
+/* COVER (orange register) */
+.cover{min-height:100vh;background:var(--orange);color:var(--ink);padding:80px 88px;display:flex;flex-direction:column;justify-content:center;position:relative}
+.cover .topnum{position:absolute;top:64px;left:88px;font-family:var(--mono);font-size:14px;letter-spacing:.1em;color:rgba(17,17,17,.45)}
+.cover .topmeta{position:absolute;top:64px;right:88px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.14em;font-size:13px;color:var(--on-orange-hint)}
+.cover .rule{width:48px;height:3px;background:var(--ink);margin-bottom:28px}
+.cover .kick{font-family:var(--mono);text-transform:uppercase;letter-spacing:.14em;font-size:14px;color:var(--on-orange-hint);margin-bottom:20px}
+.cover h1{font-family:var(--sans);font-weight:900;font-size:clamp(80px,13vw,210px);line-height:.86;letter-spacing:-.04em;text-transform:lowercase}
+.cover .lead{font-family:var(--sans);font-weight:400;font-size:clamp(18px,1.6vw,26px);line-height:1.45;color:var(--on-orange-muted);margin-top:32px;max-width:60%}
+.cover .foot{position:absolute;bottom:64px;left:88px;right:88px;display:flex;justify-content:space-between;font-family:var(--mono);text-transform:uppercase;letter-spacing:.14em;font-size:13px;color:var(--on-orange-hint)}
+
+/* PALETTE */
+.swatches{display:grid;grid-template-columns:repeat(4,1fr);gap:0;border:1px solid var(--border-dark)}
+.sw{border-right:1px solid var(--border-dark);border-bottom:1px solid var(--border-dark);padding:0}
+.sw:nth-child(4n){border-right:0}
+.sw:nth-child(n+5){border-bottom:0}
+.sw .chip{height:120px;border-bottom:1px solid var(--border-dark)}
+.sw .meta{padding:16px 20px}
+.sw .name{font-family:var(--sans);font-weight:700;font-size:19px;text-transform:lowercase}
+.sw .hex{font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--cream-hint);margin-top:6px}
+.sw .role{font-size:12px;line-height:1.5;color:var(--cream-muted);margin-top:10px;font-family:var(--sans)}
+
+/* TYPE */
+.type-row{display:grid;grid-template-columns:200px 1fr;align-items:baseline;padding:24px 0;border-bottom:1px solid var(--border-dark)}
+.type-row .tok{font-family:var(--mono);font-size:12px;letter-spacing:.08em;color:var(--orange);text-transform:uppercase}
+.type-row .m{font-family:var(--mono);font-size:11px;color:var(--cream-hint);margin-top:8px;line-height:1.6;letter-spacing:.04em}
+.type-row .spec{overflow:hidden}
+
+/* COMPONENTS */
+.cnote{font-family:var(--mono);text-transform:uppercase;letter-spacing:.14em;font-size:12px;color:var(--orange);margin-bottom:20px}
+.cgrid{display:grid;grid-template-columns:repeat(12,1fr);gap:40px;margin-bottom:52px}
+.s3{grid-column:span 3}.s4{grid-column:span 4}.s5{grid-column:span 5}.s6{grid-column:span 6}.s7{grid-column:span 7}
+.statcard{border-top:1px solid var(--border-dark);padding:20px 20px 20px 0}
+.statcard .v{font-family:var(--sans);font-weight:900;font-size:64px;line-height:1;letter-spacing:-.04em;color:var(--orange)}
+.statcard .l{font-family:var(--sans);font-size:16px;color:var(--cream);margin-top:8px}
+.statcard .n{font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--cream-hint);margin-top:6px;text-transform:uppercase}
+.blist{list-style:none}
+.blist li{font-family:var(--sans);font-weight:400;font-size:22px;color:var(--cream);padding:10px 0 10px 36px;position:relative}
+.blist li::before{content:"/";position:absolute;left:0;font-family:var(--mono);font-weight:700;color:var(--orange)}
+.tag{display:inline-block;font-family:var(--mono);text-transform:uppercase;letter-spacing:.14em;font-size:12px;color:var(--orange);border:1px solid var(--orange);padding:.3em .8em}
+.barchart{display:flex;align-items:flex-end;gap:18px;height:200px;border-left:1px solid var(--border-dark);padding-left:18px}
+.barchart .bar{flex:1;background:var(--cream-hint)}
+.barchart .bar.accent{background:var(--orange)}
+.barlabels{display:flex;gap:18px;padding-left:18px;margin-top:10px}
+.barlabels span{flex:1;text-align:center;font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--cream-hint)}
+.compare{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--border-dark)}
+.compare .l{padding:32px;border-right:1px solid var(--border-dark)}
+.compare .r{padding:32px;background:var(--orange);color:var(--ink)}
+.compare .ch{font-family:var(--sans);font-weight:700;font-size:24px;text-transform:lowercase}
+.compare .cl{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;margin-bottom:14px}
+.compare .l .cl{color:var(--orange)}
+.compare .r .cl{color:var(--on-orange-hint)}
+.compare .cx{font-size:14px;line-height:1.5;margin-top:10px}
+.compare .l .cx{color:var(--cream-muted)}
+.compare .r .cx{color:var(--on-orange-muted)}
+
+/* COMPOSITIONS */
+.gallery{display:grid;grid-template-columns:1fr 1fr;gap:48px}
+.fw .flabel{display:flex;gap:14px;align-items:baseline;margin-bottom:16px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.12em;font-size:12px;color:var(--cream-hint)}
+.fw .flabel b{color:var(--cream)}
+.frame{aspect-ratio:16/9;container-type:size;position:relative;overflow:hidden;background:var(--ink);border:1px solid var(--border-dark)}
+.frame.orange{background:var(--orange)}
+.frame>.body{position:absolute;inset:0;z-index:2}
+
+/* f1 cover orange */
+.bf1 .body{display:flex;flex-direction:column;justify-content:center;padding:0 5.5cqw;color:var(--ink)}
+.bf1 .topnum{position:absolute;top:4cqw;left:5.5cqw;font-family:var(--mono);font-size:1cqw;letter-spacing:.1em;color:rgba(17,17,17,.45);z-index:3}
+.bf1 .rule{width:3.4cqw;height:.22cqw;background:var(--ink);margin-bottom:1.6cqw}
+.bf1 .kick{font-family:var(--mono);text-transform:uppercase;letter-spacing:.14em;font-size:1cqw;color:var(--on-orange-hint);margin-bottom:1.4cqw}
+.bf1 h3{font-family:var(--sans);font-weight:900;font-size:13cqw;line-height:.84;letter-spacing:-.04em;text-transform:lowercase}
+
+/* f2 statement dark */
+.bf2 .body{display:flex;flex-direction:column;justify-content:center;padding:0 5.5cqw}
+.bf2 .kick{font-family:var(--mono);text-transform:uppercase;letter-spacing:.14em;font-size:1cqw;color:var(--orange);margin-bottom:1.6cqw}
+.bf2 h3{font-family:var(--sans);font-weight:900;font-size:10cqw;line-height:.86;letter-spacing:-.04em;text-transform:lowercase;color:var(--cream)}
+.bf2 h3 em{font-style:normal;color:var(--orange)}
+
+/* f3 stats dark */
+.bf3 .body{padding:6cqw 5.5cqw;display:flex;flex-direction:column}
+.bf3 .top{display:flex;justify-content:space-between;border-bottom:1px solid var(--border-dark);padding-bottom:1.2cqw;margin-bottom:3cqw;font-family:var(--mono);text-transform:uppercase;letter-spacing:.14em;font-size:1cqw;color:var(--cream-hint)}
+.bf3 .top .k{color:var(--orange)}
+.bf3 .row{display:grid;grid-template-columns:repeat(3,1fr);gap:3cqw}
+.bf3 .sc{border-top:1px solid var(--border-dark);padding-top:1.4cqw}
+.bf3 .sc .v{font-family:var(--sans);font-weight:900;font-size:6cqw;line-height:1;letter-spacing:-.04em;color:var(--orange)}
+.bf3 .sc .l{font-family:var(--sans);font-size:1.3cqw;color:var(--cream);margin-top:.6cqw}
+.bf3 .sc .n{font-family:var(--mono);font-size:.85cqw;letter-spacing:.1em;color:var(--cream-hint);margin-top:.5cqw;text-transform:uppercase}
+.bf3 .foot{margin-top:auto;display:flex;justify-content:space-between;border-top:1px solid var(--border-dark);padding-top:1.2cqw;font-family:var(--mono);text-transform:uppercase;letter-spacing:.14em;font-size:.9cqw;color:var(--cream-hint)}
+
+/* f4 fadelist */
+.bf4{background:var(--ink)}
+.bf4 .body{display:grid;grid-template-columns:1fr 1fr;align-items:center;padding:0 5.5cqw;gap:3cqw}
+.bf4 .stack div{font-family:var(--sans);font-weight:900;font-size:7cqw;line-height:1;letter-spacing:-.03em;text-transform:lowercase;color:var(--cream)}
+.bf4 .stack div:nth-child(2){opacity:.5}
+.bf4 .stack div:nth-child(3){opacity:.22}
+.bf4 .title{font-family:var(--sans);font-weight:900;font-size:9cqw;line-height:.9;letter-spacing:-.04em;text-transform:lowercase;color:var(--orange);text-align:right}
+
+/* PRINCIPLES */
+.dos{display:grid;grid-template-columns:1fr 1fr;gap:0;border:1px solid var(--border-dark)}
+.do-card{padding:40px}
+.do-card.do{border-right:1px solid var(--border-dark)}
+.do-card h4{font-family:var(--sans);font-weight:900;font-size:34px;text-transform:lowercase;margin-bottom:24px}
+.do-card.do h4{color:var(--orange)}
+.do-card ul{list-style:none}
+.do-card li{font-family:var(--sans);font-size:15px;line-height:1.55;padding-left:28px;position:relative;margin-bottom:14px;color:var(--cream-muted)}
+.do-card li::before{content:"/";position:absolute;left:0;font-family:var(--mono);font-weight:700;color:var(--orange)}
+.do-card.dont li::before{content:"\00d7";color:var(--cream-hint)}
+
+.foot{padding:56px 88px;border-top:1px solid var(--border-dark);display:flex;justify-content:space-between;align-items:center}
+.foot .l{font-family:var(--sans);font-weight:900;font-size:30px;text-transform:lowercase}
+.foot .r{font-family:var(--mono);text-transform:uppercase;letter-spacing:.14em;font-size:11px;color:var(--cream-hint)}
+@media(max-width:1100px){.gallery{grid-template-columns:1fr}.swatches{grid-template-columns:1fr 1fr}}
+</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700&display=swap"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap"><style id="ft-override">:root{--primary:#F0ECE5!important;--secondary:#111111!important;--tertiary:#282826!important;--accent:#E85D26!important;--f-disp:'Barlow',sans-serif!important;--f-body:'IBM Plex Mono',sans-serif!important;--ink:#111111!important;--orange:#E85D26!important;--cream:#F0ECE5!important;--border-dark:#282826!important;--sans:'Barlow',sans-serif!important;--mono:'IBM Plex Mono',sans-serif!important;--ink-alt:#1A1A18!important;--cream-muted:#888880!important;--cream-hint:#505048!important;--on-orange-muted:rgba(17,17,17,0.75)!important;--on-orange-hint:rgba(17,17,17,0.55)!important;--on-orange-faint:rgba(17,17,17,0.4)!important;--on-orange-border:rgba(17,17,17,0.2)!important;}</style></head>
+<body>
+
+<!-- COVER -->
+<section class="cover">
+  <div class="topnum">No. 01 / 06</div>
+  <div class="topmeta">Broadside — Frame System</div>
+  <div class="rule"></div>
+  <div class="kick">Protest-Poster Editorial</div>
+  <h1>ink on fire.</h1>
+  <div class="lead">Massive Barlow type as graphic primitive, one fire-orange environment, and a flat plane built from negative space — dark to document, orange to declare.</div>
+  <div class="foot"><span>Barlow 900 · IBM Plex Mono</span><span>1920 × 1080</span></div>
+</section>
+
+<!-- PALETTE -->
+<section>
+  <div class="sec-head"><span class="k">01</span><h2>palette</h2><span class="sp"></span><span class="num">TWO REGISTERS</span></div>
+  <div class="swatches">
+    <div class="sw"><div class="chip" style="background:var(--ink)"></div><div class="meta"><div class="name">ink black</div><div class="hex">#111111</div><div class="role">Dark canvas + ink on orange.</div></div></div>
+    <div class="sw"><div class="chip" style="background:var(--orange)"></div><div class="meta"><div class="name">fire orange</div><div class="hex">#E85D26</div><div class="role">The accent and the environment.</div></div></div>
+    <div class="sw"><div class="chip" style="background:var(--cream)"></div><div class="meta"><div class="name">cream</div><div class="hex">#F0ECE5</div><div class="role">Text on dark — never pure white.</div></div></div>
+    <div class="sw"><div class="chip" style="background:var(--cream-muted)"></div><div class="meta"><div class="name">cream muted</div><div class="hex">#888880</div><div class="role">Secondary text on dark.</div></div></div>
+    <div class="sw"><div class="chip" style="background:var(--cream-hint)"></div><div class="meta"><div class="name">cream hint</div><div class="hex">#505048</div><div class="role">Tertiary / axis labels.</div></div></div>
+    <div class="sw"><div class="chip" style="background:var(--ink-alt)"></div><div class="meta"><div class="name">ink alt</div><div class="hex">#1A1A18</div><div class="role">Slightly raised dark surface.</div></div></div>
+    <div class="sw"><div class="chip" style="background:var(--border-dark)"></div><div class="meta"><div class="name">border dark</div><div class="hex">#282826</div><div class="role">The 1px hairline on dark.</div></div></div>
+    <div class="sw"><div class="chip" style="background:var(--orange);opacity:.2"></div><div class="meta"><div class="name">ink-on-orange</div><div class="hex">17,17,17 · .75–.20</div><div class="role">Muted ink tones on orange.</div></div></div>
+  </div>
+</section>
+
+<!-- TYPOGRAPHY -->
+<section>
+  <div class="sec-head"><span class="k">02</span><h2>typography</h2><span class="sp"></span><span class="num">BARLOW · PLEX MONO</span></div>
+  <div class="type-row"><div><div class="tok">display</div><div class="m">Barlow 900 · 13vw · lowercase · −.04em</div></div><div class="spec"><span class="disp" style="font-size:104px">shout.</span></div></div>
+  <div class="type-row"><div><div class="tok">h2</div><div class="m">Barlow 700 · primary headline</div></div><div class="spec"><span class="disp" style="font-weight:700;font-size:58px;letter-spacing:-.02em">type as graphic primitive</span></div></div>
+  <div class="type-row"><div><div class="tok">stat-value</div><div class="m">Barlow 900 · orange on dark</div></div><div class="spec"><span class="disp" style="font-size:80px;color:var(--orange)">94%</span></div></div>
+  <div class="type-row"><div><div class="tok">body</div><div class="m">Barlow 400 · cream · line 1.6</div></div><div class="spec"><p style="font-size:18px;line-height:1.6;max-width:660px;color:var(--cream)">Barlow carries every text role — the expressive range comes from weight and size, not a second face.</p></div></div>
+  <div class="type-row" style="border-bottom:0"><div><div class="tok">label</div><div class="m">IBM Plex Mono 500 · uppercase · 0.14em</div></div><div class="spec"><span class="mono" style="font-size:14px;color:var(--orange)">Kicker / Catalogue Mark</span></div></div>
+</section>
+
+<!-- COMPONENTS -->
+<section>
+  <div class="sec-head"><span class="k">03</span><h2>components</h2><span class="sp"></span><span class="num">FLAT · ONE ACCENT</span></div>
+
+  <div class="cgrid">
+    <div class="s5">
+      <div class="cnote">Stat cards — top border only</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:32px">
+        <div class="statcard"><div class="v">187px</div><div class="l">Display at 13vw</div><div class="n">Graphic primitive</div></div>
+        <div class="statcard"><div class="v">2</div><div class="l">Color registers</div><div class="n">Dark / orange</div></div>
+      </div>
+      <div class="cnote" style="margin-top:36px">Bullet list — capped at three</div>
+      <ul class="blist"><li>one statement per slide</li><li>one accent color</li><li>breathing room</li></ul>
+    </div>
+    <div class="s3">
+      <div class="cnote">Vertical bars — one accent</div>
+      <div class="barchart"><div class="bar" style="height:52%"></div><div class="bar" style="height:70%"></div><div class="bar accent" style="height:100%"></div><div class="bar" style="height:44%"></div></div>
+      <div class="barlabels"><span>q1</span><span>q2</span><span>q3</span><span>q4</span></div>
+      <div class="cnote" style="margin-top:32px">Mono tag</div>
+      <span class="tag">Section / 03</span>
+    </div>
+    <div class="s4">
+      <div class="cnote">Compare panels — orange payoff</div>
+      <div class="compare">
+        <div class="l"><div class="cl">Before</div><div class="ch">document</div><div class="cx">Dark register carries the evidence.</div></div>
+        <div class="r"><div class="cl">After</div><div class="ch">declare</div><div class="cx">Orange register makes the call.</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- COMPOSITIONS -->
+<section>
+  <div class="sec-head"><span class="k">04</span><h2>frame compositions</h2><span class="sp"></span><span class="num">TRUE 16:9 · CQW</span></div>
+  <div class="gallery">
+
+    <div class="fw">
+      <div class="flabel"><b>Cover</b><span>· identity · orange register · left</span></div>
+      <div class="frame orange bf1">
+        <div class="topnum">No. 01 / 06</div>
+        <div class="body">
+          <div class="rule"></div>
+          <div class="kick">Protest-Poster Editorial</div>
+          <h3>ink on fire.</h3>
+        </div>
+      </div>
+    </div>
+
+    <div class="fw">
+      <div class="flabel"><b>Statement</b><span>· declarative · dark register · left</span></div>
+      <div class="frame bf2">
+        <div class="body">
+          <div class="kick">The Thesis</div>
+          <h3>type is the <em>composition.</em></h3>
+        </div>
+      </div>
+    </div>
+
+    <div class="fw">
+      <div class="flabel"><b>Stat Grid</b><span>· data · dark · the dense frame</span></div>
+      <div class="frame bf3">
+        <div class="body">
+          <div class="top"><span class="k">By The Numbers</span><span>FIG.03</span></div>
+          <div class="row">
+            <div class="sc"><div class="v">13vw</div><div class="l">Display scale</div><div class="n">≈187px @1440</div></div>
+            <div class="sc"><div class="v">3</div><div class="l">Bullets max</div><div class="n">Impact over info</div></div>
+            <div class="sc"><div class="v">1</div><div class="l">Accent color</div><div class="n">Fire orange only</div></div>
+          </div>
+          <div class="foot"><span>Broadside</span><span>03 / 06</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="fw">
+      <div class="flabel"><b>Fadelist</b><span>· narrative · before/during/after</span></div>
+      <div class="frame bf4">
+        <div class="body">
+          <div class="stack"><div>past.</div><div>present.</div><div>future.</div></div>
+          <div class="title">the<br>arc.</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- PRINCIPLES -->
+<section>
+  <div class="sec-head"><span class="k">05</span><h2>frame rules</h2><span class="sp"></span><span class="num">INK ON FIRE</span></div>
+  <div class="dos">
+    <div class="do-card do">
+      <h4>do</h4>
+      <ul>
+        <li>Set every Barlow display in lowercase weight 900, negative-tracked.</li>
+        <li>Make orange the full environment on declarative frames, the lone accent on dark.</li>
+        <li>Keep chrome in IBM Plex Mono uppercase, 0.14em tracked.</li>
+        <li>Cap bullet lists at three; one statement per frame.</li>
+        <li>Build hierarchy from weight, size, and 1px hairlines only.</li>
+      </ul>
+    </div>
+    <div class="do-card dont">
+      <h4>don't</h4>
+      <ul>
+        <li>Never uppercase Barlow display — lowercase is the identity.</li>
+        <li>No second accent color; no cream text on orange (ink on fire).</li>
+        <li>No drop shadows, rounded surfaces, or gradient grounds.</li>
+        <li>No serif companion; chrome is never set in Barlow.</li>
+        <li>Don't pack two display moments into one frame.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<div class="foot">
+  <span class="l">broadside</span>
+  <span class="r">Frame Showcase · Atoms Sacred · Composition Free</span>
+</div>
+
+<template id="__bundler_thumbnail">
+<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><rect width="100" height="100" fill="#E85D26"/><rect x="14" y="40" width="26" height="4" fill="#111111"/><text x="14" y="68" font-family="Arial" font-weight="900" font-size="22" fill="#111111">ink.</text></svg>
+</template>
+</body>
+</html>

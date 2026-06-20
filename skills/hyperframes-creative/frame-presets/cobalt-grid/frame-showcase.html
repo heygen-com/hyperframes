@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cobalt Grid</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;1,6..72,400&family=Hanken+Grotesk:wght@400;600&family=DM+Mono:wght@400&display=swap" rel="stylesheet">
+<style id="ds-tokens">
+:root{
+  --paper:#F0EBDE; --paper-2:#E6E0CE; --ink:#1F2BE0; --ink-soft:#5560E5;
+  --grid:rgba(31,43,224,.10); --ink-faint:rgba(31,43,224,.18);
+  --serif:"Newsreader",Georgia,serif; --sans:"Hanken Grotesk",sans-serif; --mono:"DM Mono",ui-monospace,monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{background:#0c0c14}
+body{
+  background:var(--paper);
+  background-image:linear-gradient(to right,var(--grid) 1px,transparent 1px),linear-gradient(to bottom,var(--grid) 1px,transparent 1px);
+  background-size:40px 40px;
+  color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased;
+}
+.serif{font-family:var(--serif);font-weight:400}
+.micro{font-family:var(--sans);font-weight:600;text-transform:uppercase;letter-spacing:.16em}
+.mono{font-family:var(--mono);letter-spacing:.05em}
+
+section{padding:110px 80px;position:relative}
+.sec-head{display:flex;align-items:baseline;gap:20px;border-bottom:1.5px solid var(--ink);padding-bottom:16px;margin-bottom:56px}
+.sec-head .tag{font-family:var(--mono);font-size:13px;letter-spacing:.05em}
+.sec-head h2{font-family:var(--serif);font-weight:400;font-size:54px;line-height:.95;letter-spacing:-.01em}
+.sec-head .sp{flex:1}
+.sec-head .lab{font-family:var(--sans);font-weight:600;text-transform:uppercase;letter-spacing:.16em;font-size:12px}
+
+/* pixel-glitch column (CSS, stair-stepped scanline blocks) */
+.glitch{position:absolute;top:0;bottom:0;display:flex;flex-direction:column;justify-content:center;gap:0;pointer-events:none}
+.glitch .step{background-image:repeating-linear-gradient(90deg,var(--ink) 0 2px,transparent 2px 8px);background-color:var(--paper)}
+/* QR block */
+.qr{display:grid;grid-template-columns:repeat(8,1fr);grid-template-rows:repeat(8,1fr);gap:1.5px;background:var(--paper);padding:4px;box-shadow:0 0 0 1.5px var(--paper)}
+.qr i{background:var(--grid)}
+.qr i.on{background:var(--ink)}
+
+/* COVER */
+.cover{min-height:100vh;padding:0;position:relative;overflow:hidden;display:flex;flex-direction:column}
+.cover .hair-t{position:absolute;left:80px;right:80px;top:28px;height:1.5px;background:var(--ink)}
+.cover .hair-b{position:absolute;left:80px;right:80px;bottom:30px;height:1.5px;background:var(--ink)}
+.cover .top{display:flex;justify-content:space-between;align-items:flex-start;padding:64px 80px 0}
+.cover .top .lab{font-family:var(--mono);font-size:14px;letter-spacing:.05em}
+.cover .stage{flex:1;display:flex;flex-direction:column;justify-content:center;padding:0 80px;position:relative;z-index:4}
+.cover .kick{font-family:var(--sans);font-weight:600;text-transform:uppercase;letter-spacing:.18em;font-size:15px;margin-bottom:28px}
+.cover h1{font-family:var(--serif);font-weight:400;font-size:clamp(58px,8.2vw,142px);line-height:.92;letter-spacing:-.01em;max-width:66%}
+.cover .ed{font-family:var(--serif);font-weight:400;font-style:italic;font-size:clamp(22px,2.5vw,38px);line-height:1.15;color:var(--ink-soft);margin-top:22px;max-width:52%}
+.cover .foot{display:flex;justify-content:space-between;padding:0 80px 64px;font-family:var(--mono);font-size:13px;letter-spacing:.05em;position:relative;z-index:4}
+.cover .glitch{right:0;width:30vw;opacity:.7;z-index:2}
+.cover .qrwrap{position:absolute;top:124px;right:80px;width:88px;height:88px;z-index:5}
+
+/* PALETTE */
+.swatches{display:grid;grid-template-columns:repeat(3,1fr);gap:0;border:1.5px solid var(--ink)}
+.sw{border-right:1.5px solid var(--ink);border-bottom:1.5px solid var(--ink)}
+.sw:nth-child(3n){border-right:0}
+.sw:nth-child(n+4){border-bottom:0}
+.sw .chip{height:140px;border-bottom:1.5px solid var(--ink)}
+.sw .meta{padding:18px 22px;background:var(--paper)}
+.sw .name{font-family:var(--serif);font-size:28px;line-height:1}
+.sw .hex{font-family:var(--mono);font-size:12px;margin-top:6px}
+.sw .role{font-size:13px;line-height:1.5;color:var(--ink);margin-top:10px;font-family:var(--sans)}
+
+/* TYPE */
+.type-row{display:grid;grid-template-columns:240px 1fr;border-bottom:1px solid var(--ink-faint);align-items:center;padding:8px 0}
+.type-row .lbl .tok{font-family:var(--mono);font-size:13px}
+.type-row .lbl .m{font-family:var(--sans);font-size:11px;color:var(--ink-soft);margin-top:6px;line-height:1.5}
+.type-row .spec{padding:20px 0 20px 36px;border-left:1px solid var(--ink-faint);overflow:hidden}
+
+/* COMPONENTS */
+.cnote{font-family:var(--sans);font-weight:600;text-transform:uppercase;letter-spacing:.16em;font-size:12px;margin-bottom:18px}
+.cgrid{display:grid;grid-template-columns:repeat(12,1fr);gap:36px;margin-bottom:48px}
+.s4{grid-column:span 4}.s5{grid-column:span 5}.s6{grid-column:span 6}.s7{grid-column:span 7}.s8{grid-column:span 8}
+/* topbar */
+.topbar{display:flex;justify-content:space-between;align-items:baseline;border-bottom:1.5px solid var(--ink);padding-bottom:14px}
+.topbar .h{font-family:var(--serif);font-size:40px;line-height:1}
+.topbar .t{font-family:var(--mono);font-size:13px}
+/* ledger */
+.ledger{margin-top:8px}
+.lrow{display:grid;grid-template-columns:64px .7fr 1.5fr .6fr;gap:24px;padding:16px 0;border-bottom:1px solid var(--ink-faint);align-items:baseline}
+.lrow.head{border-bottom:1.5px solid var(--ink)}
+.lrow .num{font-family:var(--mono);font-size:14px}
+.lrow .nm{font-family:var(--serif);font-size:24px;line-height:1.1}
+.lrow .ds{font-family:var(--sans);font-size:14px;color:var(--ink);line-height:1.45}
+.lrow .dl{font-family:var(--mono);font-size:14px;text-align:right}
+.lrow.head span{font-family:var(--sans);font-weight:600;text-transform:uppercase;letter-spacing:.16em;font-size:11px}
+/* pixel stack chart */
+.pchart{display:flex;align-items:flex-end;gap:14px;height:200px;border-bottom:1.5px solid var(--ink);padding-bottom:0}
+.pstack{display:flex;flex-direction:column-reverse;gap:3px;flex:1}
+.pstack .cell{height:12px;background:var(--grid)}
+.pstack .cell.on{background:var(--ink)}
+.pticks{display:flex;gap:14px;margin-top:10px}
+.pticks span{flex:1;text-align:center;font-family:var(--mono);font-size:12px}
+/* vertical stack labels */
+.vstack{display:flex;gap:28px;font-family:var(--mono);font-size:14px}
+.vstack span{writing-mode:vertical-rl;text-orientation:mixed;letter-spacing:.04em}
+
+/* COMPOSITIONS */
+.gallery{display:grid;grid-template-columns:1fr 1fr;gap:48px}
+.fw .flabel{display:flex;gap:14px;align-items:baseline;margin-bottom:16px;font-family:var(--sans);font-weight:600;text-transform:uppercase;letter-spacing:.14em;font-size:12px;color:var(--ink-soft)}
+.fw .flabel b{color:var(--ink)}
+.frame{aspect-ratio:16/9;container-type:size;position:relative;overflow:hidden;background:var(--paper);
+  background-image:linear-gradient(to right,var(--grid) 1px,transparent 1px),linear-gradient(to bottom,var(--grid) 1px,transparent 1px);
+  background-size:2cqw 2cqw;box-shadow:0 0 0 1px var(--ink-faint)}
+.frame .ht{position:absolute;left:4cqw;right:4cqw;top:3cqw;height:.12cqw;background:var(--ink);z-index:5}
+.frame .hb{position:absolute;left:4cqw;right:4cqw;bottom:3cqw;height:.12cqw;background:var(--ink);z-index:5}
+.frame .pg{position:absolute;right:4cqw;bottom:4cqw;font-family:var(--mono);font-size:1cqw;z-index:6}
+.frame>.body{position:absolute;inset:0;z-index:4}
+
+/* f1 cover */
+.cf1 .body{display:flex;flex-direction:column;justify-content:center;padding:0 5cqw}
+.cf1 .kick{font-family:var(--sans);font-weight:600;text-transform:uppercase;letter-spacing:.2cqw;font-size:1.1cqw;margin-bottom:2cqw}
+.cf1 h3{font-family:var(--serif);font-size:11cqw;line-height:.9;letter-spacing:-.1cqw;max-width:62cqw}
+.cf1 .ed{font-family:var(--serif);font-style:italic;font-size:2.6cqw;color:var(--ink-soft);margin-top:1.6cqw;max-width:50cqw}
+.cf1 .glitch{right:0;width:26cqw;z-index:2;opacity:.7}
+.cf1 .qr{position:absolute;top:6cqw;right:5cqw;width:9cqw;height:9cqw;z-index:6;gap:.2cqw;padding:.4cqw}
+
+/* f2 index ledger (dense) */
+.cf2 .body{padding:7cqw 5cqw 6cqw;display:flex;flex-direction:column}
+.cf2 .tb{display:flex;justify-content:space-between;align-items:baseline;border-bottom:.12cqw solid var(--ink);padding-bottom:1cqw;margin-bottom:2.2cqw}
+.cf2 .tb .h{font-family:var(--serif);font-size:3.8cqw;line-height:1;white-space:nowrap}
+.cf2 .tb .t{font-family:var(--mono);font-size:1.1cqw}
+.cf2 .r{display:grid;grid-template-columns:5cqw 1fr;gap:2cqw;padding:1.1cqw 0;border-bottom:.06cqw solid var(--ink-faint);align-items:baseline}
+.cf2 .r .n{font-family:var(--mono);font-size:1.2cqw}
+.cf2 .r .nm{font-family:var(--serif);font-size:2.4cqw;line-height:1}
+.cf2 .r .dx{font-family:var(--sans);font-size:1.1cqw;color:var(--ink);margin-top:.4cqw;line-height:1.4}
+
+/* f3 chapter (sparse) */
+.cf3 .body{display:flex;flex-direction:column;justify-content:center;padding:0 6cqw}
+.cf3 .ix{font-family:var(--mono);font-size:1.4cqw;margin-bottom:2cqw}
+.cf3 h3{font-family:var(--serif);font-size:9cqw;line-height:.98;letter-spacing:-.05cqw}
+.cf3 .lede{font-family:var(--sans);font-size:1.5cqw;line-height:1.5;color:var(--ink);max-width:42cqw;margin-top:2.4cqw}
+.cf3 .glitch{left:0;width:14cqw;z-index:2;opacity:.5}
+
+/* f4 data chart */
+.cf4 .body{padding:7cqw 5cqw 6cqw;display:flex;flex-direction:column}
+.cf4 .tb{display:flex;justify-content:space-between;align-items:baseline;border-bottom:.12cqw solid var(--ink);padding-bottom:1cqw;margin-bottom:2.4cqw}
+.cf4 .tb .h{font-family:var(--serif);font-size:4.2cqw;line-height:1}
+.cf4 .tb .t{font-family:var(--mono);font-size:1.1cqw}
+.cf4 .chart{display:flex;align-items:flex-end;gap:1.4cqw;flex:1;border-bottom:.12cqw solid var(--ink)}
+.cf4 .st{display:flex;flex-direction:column-reverse;gap:.4cqw;flex:1}
+.cf4 .st .c{height:1.4cqw;background:var(--grid)}
+.cf4 .st .c.on{background:var(--ink)}
+.cf4 .tk{display:flex;gap:1.4cqw;margin-top:1cqw}
+.cf4 .tk span{flex:1;text-align:center;font-family:var(--mono);font-size:1cqw}
+
+/* PRINCIPLES */
+.dos{display:grid;grid-template-columns:1fr 1fr;gap:0;border:1.5px solid var(--ink)}
+.do-card{padding:40px}
+.do-card.do{border-right:1.5px solid var(--ink)}
+.do-card h4{font-family:var(--serif);font-size:36px;margin-bottom:24px}
+.do-card ul{list-style:none}
+.do-card li{font-size:15px;line-height:1.55;padding-left:24px;position:relative;margin-bottom:14px;color:var(--ink);font-family:var(--sans)}
+.do-card li::before{position:absolute;left:0;font-family:var(--mono)}
+.do-card.do li::before{content:"+"}
+.do-card.dont li::before{content:"\2715";opacity:.55}
+
+.foot{padding:56px 80px;border-top:1.5px solid var(--ink);display:flex;justify-content:space-between;align-items:center}
+.foot .l{font-family:var(--serif);font-size:30px}
+.foot .r{font-family:var(--mono);font-size:13px}
+@media(max-width:1100px){.gallery{grid-template-columns:1fr}.swatches{grid-template-columns:1fr 1fr}}
+</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,500;0,700;1,400&display=swap"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&display=swap"><style id="ft-override">:root{--primary:#F0EBDE!important;--secondary:#1F2BE0!important;--tertiary:#E6E0CE!important;--accent:#5560E5!important;--f-disp:'Newsreader',sans-serif!important;--f-body:'Hanken Grotesk',sans-serif!important;--paper:#F0EBDE!important;--paper-2:#E6E0CE!important;--ink:#1F2BE0!important;--ink-soft:#5560E5!important;--serif:'Newsreader',sans-serif!important;--sans:'Hanken Grotesk',sans-serif!important;--grid:rgba(31,43,224,0.1)!important;--ink-faint:rgba(31,43,224,0.18)!important;}</style></head>
+<body>
+
+<!-- COVER -->
+<section class="cover">
+  <div class="hair-t"></div><div class="hair-b"></div>
+  <div class="glitch">
+    <div class="step" style="width:60%;height:18%;align-self:flex-end"></div>
+    <div class="step" style="width:100%;height:16%;align-self:flex-end"></div>
+    <div class="step" style="width:44%;height:14%;align-self:flex-end"></div>
+    <div class="step" style="width:78%;height:20%;align-self:flex-end"></div>
+    <div class="step" style="width:34%;height:12%;align-self:flex-end"></div>
+  </div>
+  <div class="qrwrap"><div class="qr">
+    <i class="on"></i><i></i><i class="on"></i><i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i>
+    <i></i><i class="on"></i><i></i><i class="on"></i><i class="on"></i><i></i><i class="on"></i><i></i>
+    <i class="on"></i><i></i><i class="on"></i><i></i><i></i><i class="on"></i><i></i><i class="on"></i>
+    <i></i><i class="on"></i><i></i><i class="on"></i><i class="on"></i><i></i><i class="on"></i><i></i>
+    <i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i><i></i>
+    <i></i><i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i>
+    <i class="on"></i><i></i><i class="on"></i><i class="on"></i><i></i><i class="on"></i><i></i><i></i>
+    <i></i><i class="on"></i><i></i><i></i><i class="on"></i><i></i><i class="on"></i><i class="on"></i>
+  </div></div>
+  <div class="top">
+    <span class="lab">COBALT GRID / TREND REPORT</span>
+    <span class="lab">VOL.01 — 2026</span>
+  </div>
+  <div class="stage">
+    <div class="kick">Two-Color Risograph Monograph</div>
+    <h1>The Grid Is the Canvas.</h1>
+    <div class="ed">Cream paper, electric cobalt, and graph-paper drafting tone behind every frame.</div>
+  </div>
+  <div class="foot">
+    <span>FRAME SYSTEM — NEWSREADER · HANKEN · DM MONO</span>
+    <span>01 / 06</span>
+  </div>
+</section>
+
+<!-- PALETTE -->
+<section>
+  <div class="sec-head"><span class="tag">01</span><h2>Palette</h2><span class="sp"></span><span class="lab">Strictly Two-Color</span></div>
+  <div class="swatches">
+    <div class="sw"><div class="chip" style="background:var(--paper)"></div><div class="meta"><div class="name">Paper</div><div class="hex">#F0EBDE</div><div class="role">The canvas — warm newsprint cream.</div></div></div>
+    <div class="sw"><div class="chip" style="background:var(--ink)"></div><div class="meta"><div class="name">Ink (Cobalt)</div><div class="hex">#1F2BE0</div><div class="role">The only ink — type, rules, grid, decoration.</div></div></div>
+    <div class="sw"><div class="chip" style="background:var(--ink-soft)"></div><div class="meta"><div class="name">Ink Soft</div><div class="hex">#5560E5</div><div class="role">Secondary cobalt for editorial subtitles.</div></div></div>
+    <div class="sw"><div class="chip" style="background:var(--paper-2)"></div><div class="meta"><div class="name">Paper 2</div><div class="hex">#E6E0CE</div><div class="role">Deeper cream for subtle region shifts.</div></div></div>
+    <div class="sw"><div class="chip" style="background:var(--paper);background-image:linear-gradient(to right,var(--grid) 1px,transparent 1px),linear-gradient(to bottom,var(--grid) 1px,transparent 1px);background-size:22px 22px"></div><div class="meta"><div class="name">Grid 10%</div><div class="hex">cobalt · .10</div><div class="role">Permanent graph paper + chart "off" cells.</div></div></div>
+    <div class="sw"><div class="chip" style="background:var(--paper);box-shadow:inset 0 -1px 0 var(--ink-faint),inset 0 60px 0 var(--ink-faint)"></div><div class="meta"><div class="name">Ink Faint 18%</div><div class="hex">cobalt · .18</div><div class="role">Faint row dividers in dense lists.</div></div></div>
+  </div>
+</section>
+
+<!-- TYPOGRAPHY -->
+<section>
+  <div class="sec-head"><span class="tag">02</span><h2>Typography</h2><span class="sp"></span><span class="lab">Serif · Sans · Mono</span></div>
+  <div class="type-row"><div class="lbl"><div class="tok">display-hero</div><div class="m">Newsreader 400 · up to 18vh · -0.008em</div></div><div class="spec"><span class="serif" style="font-size:104px;line-height:.9;letter-spacing:-.01em">Trend Index</span></div></div>
+  <div class="type-row"><div class="lbl"><div class="tok">vbig-numeral</div><div class="m">Newsreader 400 · to 240px · -0.015em</div></div><div class="spec"><span class="serif" style="font-size:120px;line-height:.9;letter-spacing:-.02em">240</span></div></div>
+  <div class="type-row"><div class="lbl"><div class="tok">headline</div><div class="m">Newsreader 400 · section header</div></div><div class="spec"><span class="serif" style="font-size:60px">The Cobalt Ledger</span></div></div>
+  <div class="type-row"><div class="lbl"><div class="tok">body</div><div class="m">Hanken Grotesk 400 · line 1.5</div></div><div class="spec"><p style="font-size:16px;line-height:1.5;max-width:680px;font-family:var(--sans)">Hanken Grotesk carries every body paragraph and supporting line — the quiet sans against the serif statement.</p></div></div>
+  <div class="type-row"><div class="lbl"><div class="tok">micro</div><div class="m">Hanken 600 · 0.16em · uppercase</div></div><div class="spec"><span class="micro" style="font-size:14px">Section Label / Lab-Tag</span></div></div>
+  <div class="type-row" style="border-bottom:0"><div class="lbl"><div class="tok">mono-tag</div><div class="m">DM Mono 400 · 0.05em</div></div><div class="spec"><span class="mono" style="font-size:15px">CAT—001 · 2026.Q2 · ↑ 4.2</span></div></div>
+</section>
+
+<!-- COMPONENTS -->
+<section>
+  <div class="sec-head"><span class="tag">03</span><h2>Components</h2><span class="sp"></span><span class="lab">Flat · Structural Rules</span></div>
+
+  <div class="cgrid">
+    <div class="s7">
+      <div class="cnote">Topbar rule + ledger rows</div>
+      <div class="topbar"><span class="h">Trend Ledger</span><span class="t">LAB—02 / N=08</span></div>
+      <div class="ledger">
+        <div class="lrow head"><span>No.</span><span>Signal</span><span>Reading</span><span style="text-align:right">Δ</span></div>
+        <div class="lrow"><span class="num">001</span><span class="nm">Risograph</span><span class="ds">Two-color print revival in editorial design.</span><span class="dl">↑ 4.2</span></div>
+        <div class="lrow"><span class="num">002</span><span class="nm">Graph Tone</span><span class="ds">Drafting-paper grids as permanent canvas.</span><span class="dl">↑ 3.1</span></div>
+        <div class="lrow"><span class="num">003</span><span class="nm">Pixel Glitch</span><span class="ds">Stair-stepped scanline decoration.</span><span class="dl" style="opacity:.6">— 0.0</span></div>
+      </div>
+    </div>
+    <div class="s5">
+      <div class="cnote">Pixel-stack bar chart</div>
+      <div class="pchart">
+        <div class="pstack"><div class="cell on"></div><div class="cell on"></div><div class="cell on"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div></div>
+        <div class="pstack"><div class="cell on"></div><div class="cell on"></div><div class="cell on"></div><div class="cell on"></div><div class="cell on"></div><div class="cell"></div></div>
+        <div class="pstack"><div class="cell on"></div><div class="cell on"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div></div>
+        <div class="pstack"><div class="cell on"></div><div class="cell on"></div><div class="cell on"></div><div class="cell on"></div><div class="cell"></div><div class="cell"></div></div>
+        <div class="pstack"><div class="cell on"></div><div class="cell on"></div><div class="cell on"></div><div class="cell on"></div><div class="cell on"></div><div class="cell on"></div></div>
+        <div class="pstack"><div class="cell on"></div><div class="cell on"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div></div>
+      </div>
+      <div class="pticks"><span>Q1</span><span>Q2</span><span>Q3</span><span>Q4</span><span>Q5</span><span>Q6</span></div>
+    </div>
+  </div>
+
+  <div class="cgrid" style="margin-bottom:0">
+    <div class="s4">
+      <div class="cnote">QR-block patch</div>
+      <div class="qr" style="width:120px;height:120px">
+        <i class="on"></i><i></i><i class="on"></i><i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i>
+        <i></i><i class="on"></i><i></i><i class="on"></i><i class="on"></i><i></i><i class="on"></i><i></i>
+        <i class="on"></i><i></i><i class="on"></i><i></i><i></i><i class="on"></i><i></i><i class="on"></i>
+        <i></i><i class="on"></i><i></i><i class="on"></i><i class="on"></i><i></i><i class="on"></i><i></i>
+        <i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i><i></i>
+        <i></i><i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i>
+        <i class="on"></i><i></i><i class="on"></i><i class="on"></i><i></i><i class="on"></i><i></i><i></i>
+        <i></i><i class="on"></i><i></i><i></i><i class="on"></i><i></i><i class="on"></i><i class="on"></i>
+      </div>
+    </div>
+    <div class="s4">
+      <div class="cnote">Pixel-glitch column</div>
+      <div style="position:relative;height:140px;background:var(--paper-2)">
+        <div class="glitch" style="right:0;width:80%;opacity:.8">
+          <div class="step" style="width:50%;height:22%;align-self:flex-end"></div>
+          <div class="step" style="width:90%;height:20%;align-self:flex-end"></div>
+          <div class="step" style="width:38%;height:18%;align-self:flex-end"></div>
+          <div class="step" style="width:70%;height:24%;align-self:flex-end"></div>
+        </div>
+      </div>
+    </div>
+    <div class="s4">
+      <div class="cnote">Vertical-stack labels</div>
+      <div class="vstack" style="height:140px"><span>CATALOGUE · 2026</span><span>COBALT — GRID</span><span>EDITION No.01</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- COMPOSITIONS -->
+<section>
+  <div class="sec-head"><span class="tag">04</span><h2>Frame Compositions</h2><span class="sp"></span><span class="lab">True 16:9 · cqw Scaled</span></div>
+  <div class="gallery">
+
+    <div class="fw">
+      <div class="flabel"><b>Hero Cover</b><span>· identity · glitch + QR · left</span></div>
+      <div class="frame cf1">
+        <div class="ht"></div><div class="hb"></div>
+        <div class="glitch">
+          <div class="step" style="width:55%;height:18%;align-self:flex-end"></div>
+          <div class="step" style="width:100%;height:16%;align-self:flex-end"></div>
+          <div class="step" style="width:40%;height:14%;align-self:flex-end"></div>
+          <div class="step" style="width:74%;height:20%;align-self:flex-end"></div>
+        </div>
+        <div class="qr">
+          <i class="on"></i><i></i><i class="on"></i><i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i>
+          <i></i><i class="on"></i><i></i><i class="on"></i><i class="on"></i><i></i><i class="on"></i><i></i>
+          <i class="on"></i><i></i><i class="on"></i><i></i><i></i><i class="on"></i><i></i><i class="on"></i>
+          <i></i><i class="on"></i><i></i><i class="on"></i><i class="on"></i><i></i><i class="on"></i><i></i>
+          <i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i><i></i>
+          <i></i><i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i>
+          <i class="on"></i><i></i><i class="on"></i><i class="on"></i><i></i><i class="on"></i><i></i><i></i>
+          <i></i><i class="on"></i><i></i><i></i><i class="on"></i><i></i><i class="on"></i><i class="on"></i>
+        </div>
+        <div class="body">
+          <div class="kick">Trend Report</div>
+          <h3>The grid is the canvas.</h3>
+          <div class="ed">Cream + cobalt, drafting tone behind every frame.</div>
+        </div>
+        <div class="pg">01 / 06</div>
+      </div>
+    </div>
+
+    <div class="fw">
+      <div class="flabel"><b>Index Ledger</b><span>· catalog · dense frame</span></div>
+      <div class="frame cf2">
+        <div class="ht"></div><div class="hb"></div>
+        <div class="body">
+          <div class="tb"><span class="h">Six Signals</span><span class="t">LAB—02 / 2026</span></div>
+          <div class="r"><span class="n">01</span><div><div class="nm">Risograph Revival</div><div class="dx">Two-color print as editorial register.</div></div></div>
+          <div class="r"><span class="n">02</span><div><div class="nm">Graph-Paper Tone</div><div class="dx">Drafting grids as permanent canvas.</div></div></div>
+          <div class="r"><span class="n">03</span><div><div class="nm">Pixel Glitch</div><div class="dx">Stair-stepped scanline decoration.</div></div></div>
+          <div class="r"><span class="n">04</span><div><div class="nm">QR Mosaic</div><div class="dx">8×8 patches as graphic punctuation.</div></div></div>
+        </div>
+        <div class="pg">02 / 06</div>
+      </div>
+    </div>
+
+    <div class="fw">
+      <div class="flabel"><b>Chapter Opener</b><span>· section · sparse · left</span></div>
+      <div class="frame cf3">
+        <div class="ht"></div><div class="hb"></div>
+        <div class="glitch">
+          <div class="step" style="width:60%;height:24%;align-self:flex-start"></div>
+          <div class="step" style="width:100%;height:20%;align-self:flex-start"></div>
+          <div class="step" style="width:42%;height:22%;align-self:flex-start"></div>
+        </div>
+        <div class="body">
+          <div class="ix">CHAPTER 02</div>
+          <h3>On Measure<br>&amp; Margin.</h3>
+          <div class="lede">The grid wants to be filled — but the chapter opener lets it breathe.</div>
+        </div>
+        <div class="pg">03 / 06</div>
+      </div>
+    </div>
+
+    <div class="fw">
+      <div class="flabel"><b>Data Frame</b><span>· chart · pixel-stack</span></div>
+      <div class="frame cf4">
+        <div class="ht"></div><div class="hb"></div>
+        <div class="body">
+          <div class="tb"><span class="h">Signal Strength</span><span class="t">FIG.04 / INDEX</span></div>
+          <div class="chart">
+            <div class="st"><div class="c on"></div><div class="c on"></div><div class="c on"></div><div class="c"></div><div class="c"></div><div class="c"></div></div>
+            <div class="st"><div class="c on"></div><div class="c on"></div><div class="c on"></div><div class="c on"></div><div class="c on"></div><div class="c"></div></div>
+            <div class="st"><div class="c on"></div><div class="c on"></div><div class="c"></div><div class="c"></div><div class="c"></div><div class="c"></div></div>
+            <div class="st"><div class="c on"></div><div class="c on"></div><div class="c on"></div><div class="c on"></div><div class="c"></div><div class="c"></div></div>
+            <div class="st"><div class="c on"></div><div class="c on"></div><div class="c on"></div><div class="c on"></div><div class="c on"></div><div class="c on"></div></div>
+            <div class="st"><div class="c on"></div><div class="c on"></div><div class="c on"></div><div class="c"></div><div class="c"></div><div class="c"></div></div>
+          </div>
+          <div class="tk"><span>01</span><span>02</span><span>03</span><span>04</span><span>05</span><span>06</span></div>
+        </div>
+        <div class="pg">04 / 06</div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- PRINCIPLES -->
+<section>
+  <div class="sec-head"><span class="tag">05</span><h2>Frame Rules</h2><span class="sp"></span><span class="lab">Two-Color · Flat</span></div>
+  <div class="dos">
+    <div class="do-card do">
+      <h4>Do</h4>
+      <ul>
+        <li>Keep the graph-paper grid behind every frame — it is the canvas tone.</li>
+        <li>Frame every slide with top + bottom 1.5px cobalt hairlines.</li>
+        <li>Set Newsreader at weight 400 in cobalt; size, not weight, makes hierarchy.</li>
+        <li>Track Hanken labels uppercase at 0.16em; mono chrome at 0.05em.</li>
+        <li>Render data as pixel-stack cells — cobalt on / 10% off.</li>
+      </ul>
+    </div>
+    <div class="do-card dont">
+      <h4>Don't</h4>
+      <ul>
+        <li>Never introduce a second ink color — cream + cobalt only.</li>
+        <li>No bold Newsreader, no rounded corners, no drop shadows.</li>
+        <li>Don't disable the grid or suppress the hairlines.</li>
+        <li>Don't crowd chapter / quote / colophon — let the grid breathe.</li>
+        <li>Don't blow a serif headline edge-to-edge — fit to measure.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<div class="foot">
+  <span class="l">Cobalt Grid</span>
+  <span class="r">FRAME SHOWCASE · ATOMS SACRED · COMPOSITION FREE</span>
+</div>
+
+<template id="__bundler_thumbnail">
+<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><rect width="100" height="100" fill="#F0EBDE"/><g stroke="#1F2BE0" stroke-opacity="0.25" stroke-width="1"><line x1="0" y1="25" x2="100" y2="25"/><line x1="0" y1="50" x2="100" y2="50"/><line x1="0" y1="75" x2="100" y2="75"/><line x1="25" y1="0" x2="25" y2="100"/><line x1="50" y1="0" x2="50" y2="100"/><line x1="75" y1="0" x2="75" y2="100"/></g><rect x="20" y="40" width="44" height="11" fill="#1F2BE0"/><rect x="70" y="20" width="14" height="14" fill="#1F2BE0"/></svg>
+</template>
+</body>
+</html>
