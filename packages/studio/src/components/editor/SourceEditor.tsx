@@ -6,7 +6,7 @@ import {
   highlightActiveLine,
   highlightActiveLineGutter,
 } from "@codemirror/view";
-import { EditorState } from "@codemirror/state";
+import { EditorState, Annotation } from "@codemirror/state";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { bracketMatching, foldGutter, indentOnInput } from "@codemirror/language";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
@@ -17,6 +17,11 @@ import { html } from "@codemirror/lang-html";
 import { css } from "@codemirror/lang-css";
 import { javascript } from "@codemirror/lang-javascript";
 import { markdown } from "@codemirror/lang-markdown";
+
+// Marks a programmatic doc sync (external content push — e.g. a manual-edit
+// commit writing the source) so the update listener doesn't mistake it for a
+// user keystroke and trigger a re-save + preview reload.
+const ExternalSync = Annotation.define<boolean>();
 
 const LANGUAGE_EXTENSIONS: Record<string, () => Extension> = {
   html: () => html(),
@@ -89,9 +94,10 @@ export const SourceEditor = memo(function SourceEditor({
       const lang = language ?? (filePath ? detectLanguage(filePath) : "html");
 
       const updateListener = EditorView.updateListener.of((update) => {
-        if (update.docChanged && onChangeRef.current) {
-          onChangeRef.current(update.state.doc.toString());
-        }
+        if (!update.docChanged || !onChangeRef.current) return;
+        // Ignore programmatic external syncs — only real user edits should save.
+        if (update.transactions.some((tr) => tr.annotation(ExternalSync))) return;
+        onChangeRef.current(update.state.doc.toString());
       });
 
       const state = EditorState.create({
@@ -133,6 +139,7 @@ export const SourceEditor = memo(function SourceEditor({
     if (current !== content) {
       view.dispatch({
         changes: { from: 0, to: current.length, insert: content },
+        annotations: [ExternalSync.of(true)],
       });
     }
   }, [content]);
