@@ -44,14 +44,12 @@ describe("buildPadTrimAudioArgs", () => {
     const concatArgs = plan.steps[1]!.args;
     expect(plan.steps[1]!.kind).toBe("pad-concat");
     expect(concatArgs).toContain("concat");
+    expect(concatArgs[concatArgs.indexOf("-i") + 1]).toBe("pipe:0");
     expect(concatArgs[concatArgs.indexOf("-c:a") + 1]).toBe("copy");
     expect(concatArgs[concatArgs.length - 1]).toBe("/tmp/out.aac");
-    expect(plan.concatList?.contents).toContain("file '/tmp/in.aac'");
-    expect(plan.concatList?.contents).toContain("file '/tmp/out.aac.pad-silence.aac'");
-    expect(plan.cleanupPaths).toEqual([
-      "/tmp/out.aac.pad-silence.aac",
-      "/tmp/out.aac.pad-concat.txt",
-    ]);
+    expect(plan.steps[1]!.stdin).toContain("file 'file:///tmp/in.aac'");
+    expect(plan.steps[1]!.stdin).toContain("file 'file:///tmp/out.aac.pad-silence.aac'");
+    expect(plan.cleanupPaths).toEqual(["/tmp/out.aac.pad-silence.aac"]);
 
     const reencodedSourceStep = plan.steps.find(
       (step) =>
