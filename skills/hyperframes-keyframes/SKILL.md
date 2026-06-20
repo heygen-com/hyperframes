@@ -40,7 +40,7 @@ npx hyperframes keyframes --shot path.png      # onion-skin screenshot (3D, all 
 | reveal **3D** that's ambiguous head-on (flips, tumbles)                | `--angle top` · `side` · `iso` · `yaw,pitch`        |
 | change sample count · focus one element                                | `--samples 13` · `--selector '#hero'`               |
 
-**For any 3D motion (rotationX/Y/Z or z), render at least THREE camera angles before you trust it** — e.g. `front` + `top` + `side` (or `iso`). One viewpoint hides depth: a flip reads as a static stack head-on, a tumble looks flat, an edge-on pose vanishes. Confirm the motion matches your intent in **all three** (a vertical-axis flip reads from `top`, a horizontal-axis flip from `side`, a general tumble from `iso`). For **in-place / overlapping** motion (a pulse, an in-place flip) the head-on render stacks every ghost on one spot — switch to `--layout strip` so each keyframe gets its own cell. Zoom-to-fit is on by default.
+A vertical-axis flip reads from `top`; a horizontal-axis flip from `side`; a general tumble from `iso`. Render two angles if unsure.
 
 ## Reading the output
 
