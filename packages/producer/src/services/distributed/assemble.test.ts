@@ -146,7 +146,7 @@ function probeStream(
       "-select_streams",
       streamSelector,
       "-show_entries",
-      "stream=duration,nb_frames,nb_read_packets,codec_name,r_frame_rate",
+      "stream=start_time,duration,nb_frames,nb_read_packets,codec_name,r_frame_rate",
       "-count_packets",
       "-of",
       "json",
@@ -316,6 +316,10 @@ describe("assemble()", () => {
       const audioStream = probeStream(outputPath, "a:0");
       expect(audioStream).toBeDefined();
       expect(audioStream?.codec_name).toBe("aac");
+      const videoStream = probeStream(outputPath, "v:0");
+      expect(videoStream).toBeDefined();
+      expect(Number(videoStream?.start_time ?? NaN)).toBeLessThan(0.001);
+      expect(Number(audioStream?.start_time ?? NaN)).toBeLessThan(0.001);
       // Audio duration should be within ~25ms of `totalFrames / fps` after
       // pad/trim. The 25ms tolerance absorbs AAC frame quantization (1024
       // samples @ 48kHz = ~21ms).

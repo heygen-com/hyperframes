@@ -8,7 +8,7 @@
 
 import { spawn } from "child_process";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "fs";
-import { join, dirname } from "path";
+import { join, dirname, extname } from "path";
 import { trackChildProcess } from "../utils/processTracker.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import {
@@ -42,6 +42,10 @@ export interface EncoderPreset {
 function appendEncodeTimeoutMessage(error: string, timedOut: boolean, timeoutMs: number): string {
   if (!timedOut) return error;
   return `${error}\nFFmpeg killed after exceeding ffmpegEncodeTimeout (${timeoutMs} ms)`;
+}
+
+function isAacSidecar(audioPath: string): boolean {
+  return extname(audioPath).toLowerCase() === ".aac";
 }
 
 /**
@@ -703,9 +707,21 @@ export async function muxVideoWithAudio(
   if (isWebm) {
     args.push("-c:a", "libopus", "-b:a", "128k");
   } else if (isMov) {
-    args.push("-c:a", "aac", "-b:a", "192k");
+    if (isAacSidecar(audioPath)) {
+      args.push("-c:a", "copy");
+    } else {
+      args.push("-c:a", "aac", "-b:a", "192k");
+    }
   } else {
-    args.push("-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart");
+    // HyperFrames' audio mixer already writes an AAC sidecar. Re-encoding
+    // that AAC during MP4 mux adds a second encoder-priming interval; ffmpeg
+    // preserves the gap as an empty video edit list, which QuickTime/Safari
+    // render as a black first frame. Copy the mixed sidecar instead.
+    if (isAacSidecar(audioPath)) {
+      args.push("-c:a", "copy", "-movflags", "+faststart");
+    } else {
+      args.push("-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart");
+    }
   }
   // PTS bases can diverge during mux and reintroduce negative DTS. See
   // buildEncoderArgs for the full reasoning on why that breaks playback.

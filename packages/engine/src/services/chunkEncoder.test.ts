@@ -355,6 +355,117 @@ describe("encodeFramesChunkedConcat ffmpegEncodeTimeout", () => {
   });
 });
 
+describe("muxVideoWithAudio audio codec handling", () => {
+  it("copies HyperFrames AAC sidecars into MP4 instead of re-encoding", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { muxVideoWithAudio } = await import("./chunkEncoder.js");
+    const muxPromise = muxVideoWithAudio(
+      "/tmp/video-only.mp4",
+      "/tmp/audio.aac",
+      "/tmp/output.mp4",
+      undefined,
+      undefined,
+      { num: 30, den: 1 },
+    );
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.args).toEqual([
+      "-i",
+      "/tmp/video-only.mp4",
+      "-i",
+      "/tmp/audio.aac",
+      "-c:v",
+      "copy",
+      "-c:a",
+      "copy",
+      "-movflags",
+      "+faststart",
+      "-avoid_negative_ts",
+      "make_zero",
+      "-r",
+      "30",
+      "-shortest",
+      "-y",
+      "/tmp/output.mp4",
+    ]);
+    expect(calls[0]!.args).not.toContain("-use_editlist");
+
+    emitClose(calls[0]!.proc, 0);
+    await expect(muxPromise).resolves.toMatchObject({
+      success: true,
+      outputPath: "/tmp/output.mp4",
+    });
+  });
+
+  it("still transcodes non-AAC audio when muxing MP4", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { muxVideoWithAudio } = await import("./chunkEncoder.js");
+    const muxPromise = muxVideoWithAudio(
+      "/tmp/video-only.mp4",
+      "/tmp/audio.wav",
+      "/tmp/output.mp4",
+    );
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.args).toContain("-c:a");
+    expect(calls[0]!.args[calls[0]!.args.indexOf("-c:a") + 1]).toBe("aac");
+    expect(calls[0]!.args).toContain("-b:a");
+    expect(calls[0]!.args).toContain("+faststart");
+
+    emitClose(calls[0]!.proc, 0);
+    await expect(muxPromise).resolves.toMatchObject({ success: true });
+  });
+
+  it("copies HyperFrames AAC sidecars into MOV containers", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { muxVideoWithAudio } = await import("./chunkEncoder.js");
+    const muxPromise = muxVideoWithAudio(
+      "/tmp/video-only.mov",
+      "/tmp/audio.aac",
+      "/tmp/output.mov",
+    );
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.args).toContain("-c:a");
+    expect(calls[0]!.args[calls[0]!.args.indexOf("-c:a") + 1]).toBe("copy");
+    expect(calls[0]!.args).not.toContain("-b:a");
+    expect(calls[0]!.args).not.toContain("+faststart");
+
+    emitClose(calls[0]!.proc, 0);
+    await expect(muxPromise).resolves.toMatchObject({ success: true });
+  });
+
+  it("keeps WebM audio on the Opus transcode path", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { muxVideoWithAudio } = await import("./chunkEncoder.js");
+    const muxPromise = muxVideoWithAudio(
+      "/tmp/video-only.webm",
+      "/tmp/audio.aac",
+      "/tmp/output.webm",
+    );
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.args).toContain("-c:a");
+    expect(calls[0]!.args[calls[0]!.args.indexOf("-c:a") + 1]).toBe("libopus");
+    expect(calls[0]!.args).not.toContain("+faststart");
+
+    emitClose(calls[0]!.proc, 0);
+    await expect(muxPromise).resolves.toMatchObject({ success: true });
+  });
+});
+
 describe("getEncoderPreset", () => {
   it("returns h264 with yuv420p for mp4 format", () => {
     const preset = getEncoderPreset("standard", "mp4");
