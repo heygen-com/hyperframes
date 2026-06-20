@@ -400,6 +400,34 @@ describe("muxVideoWithAudio audio codec handling", () => {
     });
   });
 
+  it("uses the caller-provided AAC codec contract instead of the sidecar extension", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { muxVideoWithAudio } = await import("./chunkEncoder.js");
+    const muxPromise = muxVideoWithAudio(
+      "/tmp/video-only.mp4",
+      "/tmp/audio-sidecar",
+      "/tmp/output.mp4",
+      undefined,
+      { audioCodec: "aac" },
+      { num: 30, den: 1 },
+    );
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.args).toContain("-c:a");
+    expect(calls[0]!.args[calls[0]!.args.indexOf("-c:a") + 1]).toBe("copy");
+    expect(calls[0]!.args).not.toContain("-b:a");
+    expect(calls[0]!.args).toContain("+faststart");
+
+    emitClose(calls[0]!.proc, 0);
+    await expect(muxPromise).resolves.toMatchObject({
+      success: true,
+      outputPath: "/tmp/output.mp4",
+    });
+  });
+
   it("still transcodes non-AAC audio when muxing MP4", async () => {
     const { spawn, calls } = createSpawnSpy();
     vi.resetModules();
@@ -422,7 +450,7 @@ describe("muxVideoWithAudio audio codec handling", () => {
     await expect(muxPromise).resolves.toMatchObject({ success: true });
   });
 
-  it("copies HyperFrames AAC sidecars into MOV containers", async () => {
+  it("copies HyperFrames AAC sidecars into MOV containers without MP4 faststart flags", async () => {
     const { spawn, calls } = createSpawnSpy();
     vi.resetModules();
     vi.doMock("child_process", () => ({ spawn }));

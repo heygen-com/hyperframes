@@ -331,6 +331,48 @@ describe("assemble()", () => {
   );
 
   it(
+    "muxes padded short audio without shifting the first video frame",
+    async () => {
+      if (!hasFfmpeg) return;
+
+      const chunks: ChunkSliceJson[] = [
+        { index: 0, startFrame: 0, endFrame: 6 },
+        { index: 1, startFrame: 6, endFrame: 12 },
+      ];
+      const totalFrames = 12;
+      const fps = 30;
+      const planDir = buildPlanDir("mp4", chunks, totalFrames, true);
+
+      const chunkAPath = join(planDir, "chunk-0.mp4");
+      const chunkBPath = join(planDir, "chunk-1.mp4");
+      const audioPath = join(planDir, "audio.aac");
+      makeMp4Chunk(chunkAPath, 6);
+      makeMp4Chunk(chunkBPath, 6);
+      // Audio is shorter than the video, forcing the distributed pad branch.
+      makeAacAudio(audioPath, totalFrames / fps - 0.2);
+
+      const outputPath = join(planDir, "output-audio-padded.mp4");
+      const result = await assemble(planDir, [chunkAPath, chunkBPath], audioPath, outputPath);
+
+      expect(existsSync(outputPath)).toBe(true);
+      expect(result.framesEncoded).toBe(totalFrames);
+
+      const audioStream = probeStream(outputPath, "a:0");
+      expect(audioStream).toBeDefined();
+      expect(audioStream?.codec_name).toBe("aac");
+      const videoStream = probeStream(outputPath, "v:0");
+      expect(videoStream).toBeDefined();
+      expect(Number(videoStream?.start_time ?? NaN)).toBeLessThan(0.001);
+      expect(Number(audioStream?.start_time ?? NaN)).toBeLessThan(0.001);
+
+      const audioDuration = Number(audioStream?.duration ?? 0);
+      const expected = totalFrames / fps;
+      expect(Math.abs(audioDuration - expected)).toBeLessThan(0.05);
+    },
+    TIMEOUT_MS,
+  );
+
+  it(
     "cfr:true re-encodes for exact avg_frame_rate matching r_frame_rate",
     async () => {
       if (!hasFfmpeg) {

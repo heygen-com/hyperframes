@@ -320,7 +320,7 @@ export async function assemble(
         audioForMux,
         muxOutputPath,
         abortSignal,
-        undefined,
+        { audioCodec: "aac" },
         { num: plan.dimensions.fpsNum, den: plan.dimensions.fpsDen },
       );
       if (!muxResult.success) {

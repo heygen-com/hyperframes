@@ -60,7 +60,7 @@ export async function runAssembleStage(input: AssembleStageInput): Promise<Assem
       audioOutputPath,
       outputPath,
       abortSignal,
-      undefined,
+      { audioCodec: "aac" },
       job.config.fps,
     );
     assertNotAborted();

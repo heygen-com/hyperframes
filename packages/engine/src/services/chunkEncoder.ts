@@ -48,6 +48,21 @@ function isAacSidecar(audioPath: string): boolean {
   return extname(audioPath).toLowerCase() === ".aac";
 }
 
+export interface MuxVideoWithAudioOptions extends Partial<
+  Pick<EngineConfig, "ffmpegProcessTimeout">
+> {
+  /**
+   * Codec of the sidecar audio when the caller already knows it. HyperFrames
+   * render paths pass the mixed AAC sidecar by contract, so muxing should not
+   * depend on the file extension alone.
+   */
+  audioCodec?: "aac";
+}
+
+function shouldCopyAacSidecar(audioPath: string, options: MuxVideoWithAudioOptions | undefined) {
+  return options?.audioCodec === "aac" || isAacSidecar(audioPath);
+}
+
 /**
  * Get encoder preset for a given quality and output format.
  * WebM uses VP9 with alpha-capable pixel format; MP4 uses h264 (or h265 for HDR);
@@ -694,7 +709,7 @@ export async function muxVideoWithAudio(
   audioPath: string,
   outputPath: string,
   signal?: AbortSignal,
-  config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout">>,
+  config?: MuxVideoWithAudioOptions,
   fps?: Fps,
 ): Promise<MuxResult> {
   const outputDir = dirname(outputPath);
@@ -702,22 +717,24 @@ export async function muxVideoWithAudio(
 
   const isWebm = outputPath.endsWith(".webm");
   const isMov = outputPath.endsWith(".mov");
+  const shouldCopyAudio = shouldCopyAacSidecar(audioPath, config);
   const args = ["-i", videoPath, "-i", audioPath, "-c:v", "copy"];
 
   if (isWebm) {
     args.push("-c:a", "libopus", "-b:a", "128k");
   } else if (isMov) {
-    if (isAacSidecar(audioPath)) {
+    if (shouldCopyAudio) {
       args.push("-c:a", "copy");
     } else {
       args.push("-c:a", "aac", "-b:a", "192k");
     }
   } else {
-    // HyperFrames' audio mixer already writes an AAC sidecar. Re-encoding
-    // that AAC during MP4 mux adds a second encoder-priming interval; ffmpeg
-    // preserves the gap as an empty video edit list, which QuickTime/Safari
-    // render as a black first frame. Copy the mixed sidecar instead.
-    if (isAacSidecar(audioPath)) {
+    // processCompositionAudio (audioMixer.ts) performs the AAC encode and
+    // owns the single encoder-priming interval. Copying that sidecar into
+    // MP4 preserves the correct priming metadata; re-encoding it during mux
+    // creates another priming interval that ffmpeg writes as an empty leading
+    // video edit list, which QuickTime/Safari render as a black first frame.
+    if (shouldCopyAudio) {
       args.push("-c:a", "copy", "-movflags", "+faststart");
     } else {
       args.push("-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart");
