@@ -15,7 +15,6 @@ type IframeWindow = Window & {
     globalTimeline?: { getChildren?: (deep: boolean) => Array<{ kill?: () => void }> };
   };
   MotionPathPlugin?: unknown;
-  __hfMotionPathPluginLoading?: boolean;
 };
 
 /**
