@@ -636,6 +636,10 @@ export async function renderChunk(
         preset,
         effectiveQuality,
         effectiveBitrate,
+        engineConfig: {
+          ffmpegEncodeTimeout: cfg.ffmpegEncodeTimeout,
+          vp9CpuUsed: encoder.vp9CpuUsed,
+        },
         // Distributed chunks emit a single ffmpeg call per chunk; the
         // in-process per-chunk-within-chunk path would re-split our
         // already-chunked work.

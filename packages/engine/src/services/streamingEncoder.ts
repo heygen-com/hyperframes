@@ -30,6 +30,7 @@ import { getFfmpegBinary } from "../utils/ffmpegBinaries.js";
 import { getHdrEncoderColorParams } from "../utils/hdr.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { fpsToFfmpegArg, type Fps } from "@hyperframes/core";
+import { appendVp9CpuUsedArg } from "./vp9Options.js";
 
 // Re-export EncoderOptions so callers can reference the type via this module.
 export type { EncoderOptions } from "./chunkEncoder.types.js";
@@ -112,6 +113,8 @@ export interface StreamingEncoderOptions {
   quality?: number;
   bitrate?: string;
   pixelFormat?: string;
+  /** libvpx-vp9 -cpu-used value. Defaults to the engine VP9 setting. */
+  vp9CpuUsed?: number;
   useGpu?: boolean;
   imageFormat?: "jpeg" | "png";
   hdr?: { transfer: import("../utils/hdr.js").HdrTransfer };
@@ -159,6 +162,7 @@ export function buildStreamingArgs(
     quality = 23,
     bitrate,
     pixelFormat = "yuv420p",
+    vp9CpuUsed,
     useGpu = false,
     imageFormat = "jpeg",
   } = options;
@@ -300,6 +304,7 @@ export function buildStreamingArgs(
     args.push("-c:v", "libvpx-vp9", "-b:v", bitrate || "0", "-crf", String(quality));
     args.push("-deadline", preset === "ultrafast" ? "realtime" : "good");
     args.push("-row-mt", "1");
+    appendVp9CpuUsedArg(args, vp9CpuUsed);
     if (pixelFormat === "yuva420p") {
       args.push("-auto-alt-ref", "0");
       args.push("-metadata:s:v:0", "alpha_mode=1");

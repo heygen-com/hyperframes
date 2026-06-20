@@ -918,7 +918,7 @@ describe("buildEncoderArgs lockGopForChunkConcat", () => {
     expect(args[args.indexOf("-g") + 1]).toBe("240");
     expect(args[args.indexOf("-keyint_min") + 1]).toBe("240");
     expect(args[args.indexOf("-auto-alt-ref") + 1]).toBe("0");
-    expect(args[args.indexOf("-cpu-used") + 1]).toBe("2");
+    expect(args[args.indexOf("-cpu-used") + 1]).toBe("4");
     expect(args[args.indexOf("-deadline") + 1]).toBe("good");
     expect(args.indexOf("-x264-params")).toBe(-1);
     expect(args.indexOf("-x265-params")).toBe(-1);
@@ -934,12 +934,22 @@ describe("buildEncoderArgs lockGopForChunkConcat", () => {
     );
     expect(args).not.toContain("-g");
     expect(args).not.toContain("-keyint_min");
-    expect(args).not.toContain("-cpu-used");
+    expect(args[args.indexOf("-cpu-used") + 1]).toBe("4");
     // The non-locked, non-alpha VP9 path leaves `-auto-alt-ref` at the
     // libvpx default. Alpha branches still emit `-auto-alt-ref 0` for an
     // unrelated reason (alpha + alt-ref is unsupported), but that's a
     // separate test below.
     expect(args).not.toContain("-auto-alt-ref");
+  });
+
+  it("honors the resolved engine VP9 cpu-used override", () => {
+    const args = buildEncoderArgs(
+      { ...baseOptions, codec: "vp9", preset: "good", quality: 23, vp9CpuUsed: 6 },
+      inputArgs,
+      "out.webm",
+    );
+
+    expect(args[args.indexOf("-cpu-used") + 1]).toBe("6");
   });
 
   it("true with alpha pixel format keeps alpha metadata and emits -auto-alt-ref once", () => {

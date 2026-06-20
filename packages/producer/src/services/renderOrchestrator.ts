@@ -1501,6 +1501,7 @@ export async function executeRenderJob(
                 quality: effectiveQuality,
                 bitrate: effectiveBitrate,
                 pixelFormat: preset.pixelFormat,
+                vp9CpuUsed: cfg.vp9CpuUsed,
                 useGpu: job.config.useGpu,
                 imageFormat: captureOptions.format || "jpeg",
                 hdr: preset.hdr,

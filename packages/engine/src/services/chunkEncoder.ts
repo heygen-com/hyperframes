@@ -22,6 +22,7 @@ import { formatFfmpegError, runFfmpeg } from "../utils/runFfmpeg.js";
 import { getFfmpegBinary } from "../utils/ffmpegBinaries.js";
 import { type Fps, fpsToFfmpegArg } from "@hyperframes/core";
 import type { EncoderOptions, EncodeResult, MuxResult } from "./chunkEncoder.types.js";
+import { appendVp9CpuUsedArg } from "./vp9Options.js";
 
 export type { EncoderOptions, EncodeResult, MuxResult } from "./chunkEncoder.types.js";
 
@@ -99,6 +100,7 @@ export function buildEncoderArgs(
     quality = 23,
     bitrate,
     pixelFormat = "yuv420p",
+    vp9CpuUsed,
     useGpu = false,
   } = options;
 
@@ -269,14 +271,14 @@ export function buildEncoderArgs(
     args.push("-c:v", "libvpx-vp9", "-b:v", bitrate || "0", "-crf", String(quality));
     args.push("-deadline", preset === "ultrafast" ? "realtime" : "good");
     args.push("-row-mt", "1");
+    appendVp9CpuUsedArg(args, vp9CpuUsed);
 
     // `-auto-alt-ref 0` is mandatory for chunk concat-copy: libvpx-vp9's
     // alt-ref frames can reference frames in either direction inside a
     // GOP, so a chunk-boundary frame is not guaranteed to be the first
-    // displayable reference when alt-ref is on. `-cpu-used 2` pins the
-    // speed/quality tradeoff against libvpx-vp9 default drift across
-    // versions, so the planHash round-trips deterministically across
-    // worker images.
+    // displayable reference when alt-ref is on. The shared `vp9CpuUsed`
+    // option pins speed/quality against libvpx-vp9 default drift across
+    // versions for both chunked and streaming WebM encodes.
     const lockGopVp9 = options.lockGopForChunkConcat === true;
     if (lockGopVp9) {
       if (
@@ -289,16 +291,7 @@ export function buildEncoderArgs(
         );
       }
       const gop = Math.floor(options.gopSize);
-      args.push(
-        "-g",
-        String(gop),
-        "-keyint_min",
-        String(gop),
-        "-auto-alt-ref",
-        "0",
-        "-cpu-used",
-        "2",
-      );
+      args.push("-g", String(gop), "-keyint_min", String(gop), "-auto-alt-ref", "0");
     }
     if (pixelFormat === "yuva420p") {
       // Alpha + alt-ref is unsupported by libvpx-vp9. The closed-GOP

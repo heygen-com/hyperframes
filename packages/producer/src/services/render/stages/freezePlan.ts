@@ -53,6 +53,12 @@ export interface LockedRenderConfig {
   preset: string;
   crf?: number;
   bitrate?: string;
+  /**
+   * New plans always persist the resolved libvpx-vp9 `-cpu-used` value so
+   * distributed workers reproduce the controller's VP9 speed/quality choice.
+   * Optional for compatibility with older planDirs.
+   */
+  vp9CpuUsed?: number;
   /** Equal to chunkSize for closed-GOP concat-copy. */
   gopSize: number;
   closedGop: true;

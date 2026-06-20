@@ -50,6 +50,15 @@ const baseSdr: StreamingEncoderOptions = {
   useGpu: false,
 };
 
+const baseVp9 = {
+  ...baseSdr,
+  codec: "vp9" as const,
+  preset: "good",
+  quality: 18,
+  pixelFormat: "yuva420p",
+  imageFormat: "png" as const,
+};
+
 function getX265ParamsValue(args: string[]): string | undefined {
   const idx = args.indexOf("-x265-params");
   return idx === -1 ? undefined : args[idx + 1];
@@ -163,6 +172,21 @@ describe("buildStreamingArgs", () => {
       const args = buildStreamingArgs(baseHdrPq, "/tmp/some-output.mp4");
       expect(args[args.length - 2]).toBe("-y");
       expect(args[args.length - 1]).toBe("/tmp/some-output.mp4");
+    });
+  });
+
+  describe("VP9 cpu-used", () => {
+    it("emits the default speed/quality tradeoff for streaming WebM", () => {
+      const args = buildStreamingArgs(baseVp9, "/tmp/out.webm");
+
+      expect(args[args.indexOf("-c:v") + 1]).toBe("libvpx-vp9");
+      expect(args[args.indexOf("-cpu-used") + 1]).toBe("4");
+    });
+
+    it("honors the resolved engine override for streaming WebM", () => {
+      const args = buildStreamingArgs({ ...baseVp9, vp9CpuUsed: 2 }, "/tmp/out.webm");
+
+      expect(args[args.indexOf("-cpu-used") + 1]).toBe("2");
     });
   });
 
