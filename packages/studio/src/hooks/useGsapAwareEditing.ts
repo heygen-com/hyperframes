@@ -8,6 +8,7 @@
  * from the rest of the editing orchestration.
  */
 import { useCallback } from "react";
+import { editLog } from "../utils/editDebugLog";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import {
@@ -91,14 +92,14 @@ export function useGsapAwareEditing({
   // ── GSAP-aware geometry commits ──
 
   const handleGsapAwarePathOffsetCommit = useCallback(
-    async (selection: DomEditSelection, next: { x: number; y: number }) => {
+    async (
+      selection: DomEditSelection,
+      next: { x: number; y: number },
+      modifiers?: { altKey?: boolean },
+    ) => {
+      editLog("manual-drag:move", { id: selection.id, next, altKey: modifiers?.altKey });
       if (gsapCommitMutation) {
         try {
-          // The GSAP timeline is the single source of truth for element position —
-          // for the top-level composition AND subcompositions. tryGsapDragIntercept
-          // resolves the element's OWN iframe/runtime + source file, so it handles
-          // tweened elements (keyframe mutations) and static ones (a `tl.set`) in
-          // either. It returns false only for a selectorless element — a no-op.
           await tryGsapDragIntercept(
             selection,
             next,
@@ -106,6 +107,7 @@ export function useGsapAwareEditing({
             previewIframeRef.current,
             gsapCommitMutation,
             makeFetchFallback(selection),
+            modifiers,
           );
         } catch (error) {
           trackGsapInteractionFailure(error, selection, "drag", "Move animated layer");
@@ -124,6 +126,7 @@ export function useGsapAwareEditing({
 
   const handleGsapAwareBoxSizeCommit = useCallback(
     async (selection: DomEditSelection, next: { width: number; height: number }) => {
+      editLog("manual-drag:resize", { id: selection.id, next });
       if (gsapCommitMutation) {
         try {
           const handled = await tryGsapResizeIntercept(
@@ -154,6 +157,7 @@ export function useGsapAwareEditing({
 
   const handleGsapAwareRotationCommit = useCallback(
     async (selection: DomEditSelection, next: { angle: number }) => {
+      editLog("manual-drag:rotate", { id: selection.id, next });
       if (gsapCommitMutation) {
         try {
           // Single source of truth for rotation too: tryGsapRotationIntercept handles

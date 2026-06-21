@@ -173,7 +173,11 @@ export type UseDomEditOverlayGesturesOptions = {
   onBlockedMoveRef: RefObject<(selection: DomEditSelection) => void>;
   onManualDragStartRef: RefObject<(() => void) | undefined>;
   onPathOffsetCommitRef: RefObject<
-    (s: DomEditSelection, n: { x: number; y: number }) => Promise<void> | void
+    (
+      s: DomEditSelection,
+      n: { x: number; y: number },
+      m?: { altKey?: boolean },
+    ) => Promise<void> | void
   >;
   onGroupPathOffsetCommitRef: RefObject<
     (updates: DomEditGroupPathOffsetCommit[]) => Promise<void> | void

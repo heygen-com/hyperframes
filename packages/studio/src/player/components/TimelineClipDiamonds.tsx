@@ -44,8 +44,8 @@ const DIAMOND_RATIO = 0.8;
 // slightly outside [0, 100] (from rounding or stale cache during the async
 // persist → reload cycle) are still rendered (the clip is overflow-visible) at
 // their true position rather than hidden.
-export const KF_MIN_PCT = -5;
-export const KF_MAX_PCT = 105;
+const KF_MIN_PCT = -5;
+const KF_MAX_PCT = 105;
 
 export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
   keyframesData,

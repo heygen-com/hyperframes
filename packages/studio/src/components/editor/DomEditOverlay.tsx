@@ -55,6 +55,7 @@ interface DomEditOverlayProps {
   onPathOffsetCommit: (
     selection: DomEditSelection,
     next: { x: number; y: number },
+    modifiers?: { altKey?: boolean },
   ) => Promise<void> | void;
   onGroupPathOffsetCommit: (updates: DomEditGroupPathOffsetCommit[]) => Promise<void> | void;
   onBoxSizeCommit: (

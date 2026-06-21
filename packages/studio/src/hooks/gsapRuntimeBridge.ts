@@ -13,11 +13,12 @@ import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { usePlayerStore } from "../player/store/playerStore";
 
 import { readAllAnimatedProperties, readGsapProperty } from "./gsapRuntimeReaders";
+import { commitGsapPositionFromDrag } from "./gsapDragPositionCommit";
 import {
-  commitGsapPositionFromDrag,
   commitStaticGsapPosition,
   commitStaticGsapRotation,
   commitStaticGsapSize,
+  commitWholePathOffset,
   computeCurrentPercentage,
   findPositionSetAnimation,
   findRotationSetAnimation,
@@ -203,6 +204,7 @@ export async function tryGsapDragIntercept(
   iframe: HTMLIFrameElement | null,
   commitMutation: GsapDragCommitCallbacks["commitMutation"],
   fetchFallbackAnimations?: () => Promise<GsapAnimation[]>,
+  options?: { altKey?: boolean },
 ): Promise<boolean> {
   const selector = selectorFromSelection(selection);
   if (!selector) {
@@ -249,14 +251,29 @@ export async function tryGsapDragIntercept(
     return true;
   }
 
-  if (!posAnim) {
-    return false;
+  if (!posAnim) return false;
+
+  // Verify the anim ID is still valid in the current file. The React-state
+  // `animations` list can lag behind the file after a prior mutation changed
+  // the tween's position/method (which changes the ID). Re-fetch to get the
+  // current ID and avoid a stale-ID remove that creates duplicate tweens.
+  if (fetchFallbackAnimations) {
+    const fresh = await fetchFallbackAnimations();
+    const freshMatch = fresh.find(
+      (a) =>
+        a.targetSelector === posAnim!.targetSelector && a.propertyGroup === posAnim!.propertyGroup,
+    );
+    if (freshMatch && freshMatch.id !== posAnim.id) {
+      posAnim = freshMatch;
+    }
   }
 
-  await commitGsapPositionFromDrag(selection, posAnim, offset, gsapPos, iframe, selector, {
-    commitMutation,
-    fetchAnimations: fetchFallbackAnimations,
-  });
+  const cbs = { commitMutation, fetchAnimations: fetchFallbackAnimations };
+  if (options?.altKey) {
+    await commitWholePathOffset(selection, posAnim, offset, gsapPos, iframe, selector, cbs);
+  } else {
+    await commitGsapPositionFromDrag(selection, posAnim, offset, gsapPos, iframe, selector, cbs);
+  }
   return true;
 }
 
@@ -304,17 +321,11 @@ export async function tryGsapResizeIntercept(
   );
 
   let anim = resolved?.anim ?? null;
-  if (!anim) {
-    // No size-group tween exists → this is a STATIC resize. Write a
-    // `tl.set("#el",{width,height})` (holds at every frame, seek-safe), mirroring
-    // commitStaticGsapPosition. The old path wrote a single-stop `keyframes` tween
-    // at the playhead %, which GSAP can't interpolate from one mid-point — it
-    // rendered NaN/0 dimensions at all other frames and the element vanished
-    // (worst when resized off the 0% mark). Re-resizing updates the set in place;
-    // animating size happens via the keyframe path once a real size tween exists.
+  if (!anim || anim.method === "set") {
     const sel = selectorFromSelection(selection);
     if (!sel) return false;
-    await commitStaticGsapSize(selection, size, sel, findSizeSetAnimation(animations, sel), {
+    const sizeSet = anim?.method === "set" ? anim : findSizeSetAnimation(animations, sel);
+    await commitStaticGsapSize(selection, size, sel, sizeSet, {
       commitMutation,
       fetchAnimations: fetchFallbackAnimations,
     });
@@ -362,6 +373,13 @@ export async function tryGsapResizeIntercept(
         { type: "convert-to-keyframes", animationId: anim.id, resolvedFromValues },
         { label: "Convert to keyframes for resize", skipReload: true, coalesceKey },
       );
+      if (fetchFallbackAnimations) {
+        const fresh = await fetchFallbackAnimations();
+        const refreshed = fresh.find(
+          (a) => a.targetSelector === anim!.targetSelector && a.keyframes,
+        );
+        if (refreshed) anim = refreshed;
+      }
     }
   }
 

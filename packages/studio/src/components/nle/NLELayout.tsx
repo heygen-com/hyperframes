@@ -124,12 +124,14 @@ export const NLELayout = memo(function NLELayout({
     refreshPlayer,
   } = useTimelinePlayer();
 
-  // Reset timeline state when the project changes
-  const prevProjectIdRef = useRef(projectId);
-  if (prevProjectIdRef.current !== projectId) {
-    prevProjectIdRef.current = projectId;
+  // Reset timeline state when the project changes. Done in an effect, not during
+  // render: reset() updates the player store, and updating another store/component
+  // mid-render triggers React's "Cannot update a component while rendering a
+  // different component" warning. The effect runs right after commit, so the new
+  // project's first frame may briefly show prior timeline state before it clears.
+  useEffect(() => {
     usePlayerStore.getState().reset();
-  }
+  }, [projectId]);
 
   const stageRefForDrop = useRef<HTMLDivElement | null>(null);
   const handleStageRef = useCallback((ref: React.RefObject<HTMLDivElement | null>) => {

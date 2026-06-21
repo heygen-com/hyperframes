@@ -443,7 +443,9 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         box.style.left = `${nextBoxLeft}px`;
         box.style.top = `${nextBoxTop}px`;
       }
-      void Promise.resolve(opts.onPathOffsetCommitRef.current(sel, finalOffset))
+      void Promise.resolve(
+        opts.onPathOffsetCommitRef.current(sel, finalOffset, { altKey: e.altKey }),
+      )
         .catch(() => {
           if (
             g.pathOffsetMember?.gestureToken &&

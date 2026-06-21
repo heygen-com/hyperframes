@@ -128,17 +128,6 @@ export function findClosestByAttribute(
   }
   return null;
 }
-
-export function getElementDepth(el: HTMLElement): number {
-  let depth = 0;
-  let current = el.parentElement;
-  while (current) {
-    depth += 1;
-    current = current.parentElement;
-  }
-  return depth;
-}
-
 // ─── Composition source resolution ───────────────────────────────────────────
 
 // The runtime INLINES subcompositions and strips the source-file linkage from the

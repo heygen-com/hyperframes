@@ -251,12 +251,25 @@ export function applySoftReload(
       }
     }
 
-    // Clear residual inline transforms on the re-run composition's targets only, so
-    // from() tweens don't read stale end values from the DOM on re-execution.
+    // Reset GSAP's internal transform cache so from() tweens don't read stale
+    // end values. `clearProps: "all"` is needed to flush the cache, but it also
+    // nukes the element's CSS base (position, width, height, etc.) from the
+    // HTML `style=""` attribute. Save → clear → restore → strip `transform`.
     if (allTargets.length > 0 && win.gsap?.set) {
+      const saved: Array<[Element, string]> = [];
+      for (const el of allTargets) {
+        const s = (el as HTMLElement).style;
+        if (s?.cssText != null) saved.push([el, s.cssText]);
+      }
       try {
         win.gsap.set(allTargets, { clearProps: "all" });
       } catch {}
+      for (const [el, css] of saved) {
+        const s = (el as HTMLElement).style;
+        if (!s) continue;
+        s.cssText = css;
+        s.removeProperty("transform");
+      }
     }
 
     for (const script of staleScripts) script.remove();

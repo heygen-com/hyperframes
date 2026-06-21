@@ -2,15 +2,8 @@ import { memo, useEffect, useRef, useState, type RefObject } from "react";
 import type { DomEditSelection } from "./domEditing";
 import { useDomEditContext } from "../../contexts/DomEditContext";
 import { usePlayerStore } from "../../player/store/playerStore";
-import { readRuntimeKeyframes } from "../../hooks/gsapRuntimeKeyframes";
 import { parkPlayheadOnKeyframe } from "../../hooks/gsapDragCommit";
-import { isElementVisibleForOverlay } from "./domEditOverlayGeometry";
-import {
-  buildMotionPathGeometry,
-  nearestPointOnPath,
-  type MotionNodeRef,
-  type MotionPathGeometry,
-} from "./motionPathGeometry";
+import { nearestPointOnPath, type MotionNodeRef } from "./motionPathGeometry";
 import { editableAnimationId, selectorFor } from "./motionPathSelection";
 import { ACCENT, MotionPathNode } from "./MotionPathNode";
 import {
@@ -24,6 +17,12 @@ import {
   commitNode,
   commitRemoveWaypoint,
 } from "./motionPathCommit";
+import {
+  elementHome,
+  hasMotionPathPlugin,
+  isPreviewHtmlElement,
+  useMotionPathData,
+} from "./useMotionPathData";
 
 interface MotionPathOverlayProps {
   iframeRef: RefObject<HTMLIFrameElement | null>;
@@ -32,7 +31,6 @@ interface MotionPathOverlayProps {
   isPlaying: boolean;
 }
 
-type Rect = { left: number; top: number; width: number; height: number };
 type Draft = { index: number; x: number; y: number };
 type DragState = {
   index: number;
@@ -49,194 +47,6 @@ const NODE_PX = 6; // node radius in screen pixels (kept constant across zoom)
 // (select the keyframe); at or above it the gesture commits a move. Screen-space
 // (not composition px) so it behaves identically at any zoom.
 const DRAG_THRESHOLD_PX = 3;
-
-/** The element's layout-home center in composition coordinates. GSAP x/y (and
- *  motionPath coords) are offsets from this point, so the overlay adds it to
- *  each node to place the path on the element rather than the canvas origin.
- *  offsetLeft/Top are transform-excluded, so home is stable across the
- *  animation; walk up to (not including) the composition root. */
-function elementHome(el: HTMLElement): { x: number; y: number } {
-  let left = 0;
-  let top = 0;
-  let node: HTMLElement | null = el;
-  while (node) {
-    left += node.offsetLeft;
-    top += node.offsetTop;
-    const parent = node.offsetParent as HTMLElement | null;
-    if (!parent || parent.hasAttribute("data-composition-id")) break;
-    node = parent;
-  }
-  let x = left + el.offsetWidth / 2;
-  let y = top + el.offsetHeight / 2;
-  // Include the manual CSS path offset (`--hf-studio-offset`, applied via
-  // `translate`). offsetLeft excludes transforms, but this offset is a stable
-  // nudge (not animated) that shifts where the element — and thus its entire
-  // keyframe path — actually renders. Keyframe values stay in gsap space (the
-  // path offset is composed separately at runtime), so without this the whole
-  // path draws shifted by the offset (e.g. a gesture recorded on a dragged-down
-  // element drew its path above the element).
-  if ((el.style.translate ?? "").includes("var(")) {
-    x += Number.parseFloat(el.style.getPropertyValue("--hf-studio-offset-x")) || 0;
-    y += Number.parseFloat(el.style.getPropertyValue("--hf-studio-offset-y")) || 0;
-  }
-  return { x, y };
-}
-
-/** Cross-realm-safe HTMLElement check. An element queried from the preview
- *  iframe's document is an instance of the IFRAME window's `HTMLElement`, NOT the
- *  studio window's — so a plain `node instanceof HTMLElement` is always false for
- *  preview nodes. Check against the iframe realm's constructor instead. */
-function isPreviewHtmlElement(
-  node: Element | null | undefined,
-  iframe: HTMLIFrameElement | null,
-): node is HTMLElement {
-  const Ctor = (iframe?.contentWindow as unknown as { HTMLElement?: typeof HTMLElement } | null)
-    ?.HTMLElement;
-  return Boolean(node && Ctor && node instanceof Ctor);
-}
-
-function rectsClose(a: Rect, b: Rect): boolean {
-  return (
-    Math.abs(a.left - b.left) < 0.5 &&
-    Math.abs(a.top - b.top) < 0.5 &&
-    Math.abs(a.width - b.width) < 0.5 &&
-    Math.abs(a.height - b.height) < 0.5
-  );
-}
-
-function hasMotionPathPlugin(iframe: HTMLIFrameElement | null): boolean {
-  try {
-    return Boolean(
-      (iframe?.contentWindow as unknown as { MotionPathPlugin?: unknown })?.MotionPathPlugin,
-    );
-  } catch {
-    return false;
-  }
-}
-
-/** Track the iframe rect (every frame) and the selected element's path geometry
- *  (polled lightly, so it stays fresh through seeks/edits/soft reloads). */
-function useMotionPathData(
-  iframeRef: RefObject<HTMLIFrameElement | null>,
-  selector: string | null,
-): {
-  rect: Rect | null;
-  geometry: MotionPathGeometry | null;
-  geometryResolved: boolean;
-  visibleInPreview: boolean;
-  home: { x: number; y: number } | null;
-} {
-  const [rect, setRect] = useState<Rect | null>(null);
-  const [geometry, setGeometry] = useState<MotionPathGeometry | null>(null);
-  // Which selector the current `geometry` was read for. Compared against the live
-  // `selector` DURING render so the "resolved" flag is correct on the very first
-  // render after a selection change — before the polling effect runs. Until the
-  // first read for the new selector lands, `geometry === null` means "unknown",
-  // not "no path", so the create-mode hint must stay hidden (otherwise it flashes
-  // over an element that already has a path during the new-selection → first-poll
-  // gap). A ref (not state) avoids an extra render and a stale-flag window.
-  const resolvedForRef = useRef<string | null>(null);
-  const geometryResolved = resolvedForRef.current === selector;
-  // Whether the target element is actually painted on screen — the path hides when
-  // it isn't (e.g. covered by a later scene), matching the selection overlay.
-  const [visibleInPreview, setVisibleInPreview] = useState(true);
-  // The element's layout-home center, computed from the LIVE current-document
-  // element (see below). Path nodes are drawn at home + keyframe offset, so a
-  // stale home translates the whole path off the element.
-  const [home, setHome] = useState<{ x: number; y: number } | null>(null);
-
-  useEffect(() => {
-    if (!selector) {
-      setRect(null);
-      setHome(null);
-      return;
-    }
-    // New selector → drop the previous element's anchor immediately; the first
-    // tick recomputes it for the new element. Avoids a 1-frame path at the old home.
-    setHome(null);
-    let raf = 0;
-    const tick = () => {
-      const el = iframeRef.current;
-      if (el) {
-        const r = el.getBoundingClientRect();
-        // Position relative to the preview surface (the `relative overflow-hidden`
-        // wrapper) so the SVG is `absolute` inside it and gets clipped to the canvas
-        // — instead of `fixed`, which would paint over the side panels at zoom.
-        // NOTE: the composition iframe lives in the player's SHADOW DOM, so
-        // `el.closest()` can't reach the pan-surface (it stops at the shadow root)
-        // and would silently return null → the SVG falls back to raw viewport
-        // coords and is offset by the pan-surface's position (worsening with
-        // zoom/pan). Query the light DOM via the document instead.
-        const surface = el.ownerDocument?.querySelector("[data-preview-pan-surface]");
-        const sRect = surface?.getBoundingClientRect();
-        const next = {
-          left: sRect ? r.left - sRect.left : r.left,
-          top: sRect ? r.top - sRect.top : r.top,
-          width: r.width,
-          height: r.height,
-        };
-        setRect((prev) => (prev && rectsClose(prev, next) ? prev : next));
-        // Resolve the element in the CURRENT iframe document (same one the path
-        // geometry reads) — never trust a possibly-stale `selection.element` from a
-        // prior document. Soft-reloads (every commit) rebuild the iframe DOM, so a
-        // captured node detaches: its offsetLeft/offsetParent collapse and the
-        // computed home — hence the whole path — lands in the wrong place.
-        let target: Element | null = null;
-        try {
-          target = el.contentDocument?.querySelector(selector) ?? null;
-        } catch {
-          /* cross-origin guard */
-        }
-        const live = isPreviewHtmlElement(target, el) ? target : null;
-        // Basic visibility (display/visibility/opacity), NOT the occlusion heuristic:
-        // the motion path belongs to the explicitly-selected element, so an opacity-1
-        // backgroundless scene "covering" it must not suppress the path — same reason
-        // the selection overlay uses isElementVisibleForOverlay (see useDomEditOverlayRects).
-        const vis = live ? isElementVisibleForOverlay(live) : true;
-        setVisibleInPreview((prev) => (prev === vis ? prev : vis));
-        if (live) {
-          const h = elementHome(live);
-          setHome((prev) =>
-            prev && Math.abs(prev.x - h.x) < 0.5 && Math.abs(prev.y - h.y) < 0.5 ? prev : h,
-          );
-        }
-      }
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [selector, iframeRef]);
-
-  useEffect(() => {
-    if (!selector) {
-      setGeometry(null);
-      return;
-    }
-    // Poll the runtime: edits commit with an in-place soft reload (the timeline
-    // re-executes without an iframe load or a refresh-version bump), so there's
-    // no event to subscribe to. The read is cheap and the points-equality guard
-    // suppresses redundant re-renders. ponytail: a shared gsap-soft-reload
-    // version signal would let this (and future overlays) go event-driven —
-    // that's a cross-cutting change tracked with the soft-reload work, not here.
-    const recompute = () => {
-      const read = readRuntimeKeyframes(iframeRef.current, selector);
-      const next = buildMotionPathGeometry(read);
-      // Compare the discriminator too, not just coords: a degenerate transition
-      // (linear ⇄ arc with identical points) must re-render so the geometry kind
-      // — which drives node refs, add/remove affordances and commit routing —
-      // stays in sync. Points alone would keep the stale `kind`.
-      setGeometry((prev) =>
-        prev?.points === next?.points && prev?.kind === next?.kind ? prev : next,
-      );
-      resolvedForRef.current = selector;
-    };
-    recompute();
-    const id = window.setInterval(recompute, 250);
-    return () => window.clearInterval(id);
-  }, [selector, iframeRef]);
-
-  return { rect, geometry, geometryResolved, visibleInPreview, home };
-}
 
 /**
  * Draws the selected element's GSAP motion path over the canvas — a dashed
@@ -410,13 +220,12 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
   // The × "quick remove" badge applies to non-cubic motionPath arcs only (cubic
   // anchors carry control points we don't synthesize; keyframe paths remove via
   // the right-click menu instead).
-  const arcAnim = animId ? selectedGsapAnimations?.find((a) => a.id === animId) : undefined;
-  const isCubic = arcAnim?.arcPath?.segments?.some((s) => s.cp1 != null) ?? false;
-  const structural = geometry.kind === "arc" && interactive && !isCubic;
+  const structural = geometry.kind === "arc" && interactive;
   const removable = structural && geometry.nodes.length > 2;
   // Click-on-path to insert a node works for both kinds: a motionPath waypoint
-  // (non-cubic arcs), or an x/y keyframe (linear paths) at the projected tween-%.
-  const addable = interactive && (geometry.kind === "arc" ? !isCubic : true);
+  // (arc paths, including cubic — GSAP recomputes curves around the new point),
+  // or an x/y keyframe (linear paths) at the projected tween-%.
+  const addable = interactive;
 
   const nodes = draft
     ? geometry.nodes.map((n, i) => (i === draft.index ? { ...n, x: draft.x, y: draft.y } : n))

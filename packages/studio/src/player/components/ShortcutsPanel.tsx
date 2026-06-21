@@ -51,6 +51,14 @@ const SHORTCUT_SECTIONS = [
     ],
   },
   {
+    title: "Canvas",
+    hints: [
+      { key: "Drag", label: "Move element / add keyframe" },
+      { key: "⌥ Drag", label: "Move entire animation path" },
+      { key: "⇧ Drag", label: "Uniform resize" },
+    ],
+  },
+  {
     title: "Panels",
     hints: [
       { key: "⌘1", label: "Compositions tab" },

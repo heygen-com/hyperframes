@@ -58,9 +58,7 @@ const FLAT_SKIP_KEYS = new Set([
   "keyframes",
 ]);
 
-export function timelinesOf(
-  iframe: HTMLIFrameElement | null,
-): Record<string, RuntimeTimeline> | null {
+function timelinesOf(iframe: HTMLIFrameElement | null): Record<string, RuntimeTimeline> | null {
   if (!iframe?.contentWindow) return null;
   try {
     return (

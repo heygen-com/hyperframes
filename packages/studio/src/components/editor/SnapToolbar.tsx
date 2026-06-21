@@ -1,4 +1,3 @@
-// fallow-ignore-file unused-file
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { MagnetStraight, GridFour, Path } from "@phosphor-icons/react";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
@@ -95,7 +94,10 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
   }, [gridPopoverOpen]);
 
   return (
-    <div className="absolute top-2 right-2 z-50 flex items-center gap-1">
+    <div
+      className="absolute top-2 right-2 z-50 flex items-center gap-1"
+      onPointerDown={(e) => e.stopPropagation()}
+    >
       {motionPathCreateAvailable && (
         <button
           type="button"

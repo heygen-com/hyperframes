@@ -1566,7 +1566,7 @@ function insertInheritedStateSet(
 /** Marker on Studio-emitted pre-keyframe hold `set`s. `data` is a GSAP-reserved
  * config key (attached to the tween, never applied to the target), so it carries
  * the tag without triggering GSAP's "Invalid property" warning. */
-export const STUDIO_HOLD_MARKER = "hf-hold";
+const STUDIO_HOLD_MARKER = "hf-hold";
 
 /** True for a `tl.set(...)` this module emitted to hold a keyframe before its tween.
  * The Studio filters these out so they never appear as user keyframes/diamonds. */
