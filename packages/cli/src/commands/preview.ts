@@ -23,6 +23,7 @@ import { createRequire } from "node:module";
 import * as clack from "@clack/prompts";
 import { c } from "../ui/colors.js";
 import { isDevMode } from "../utils/env.js";
+import { buildNpxCommand } from "../utils/npxCommand.js";
 import {
   openBrowser,
   parseRemoteDebuggingPort,
@@ -377,7 +378,8 @@ async function runLocalStudioMode(
   const s = clack.spinner();
   s.start("Starting studio...");
 
-  const child = spawn("npx", ["vite"], {
+  const viteCommand = buildNpxCommand(["vite"]);
+  const child = spawn(viteCommand.command, viteCommand.args, {
     cwd: studioPkgPath,
     stdio: ["ignore", "pipe", "pipe"],
   });

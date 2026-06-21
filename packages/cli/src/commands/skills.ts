@@ -2,10 +2,12 @@ import { defineCommand } from "citty";
 import { execFileSync, spawn } from "node:child_process";
 import * as clack from "@clack/prompts";
 import { c } from "../ui/colors.js";
+import { buildNpxCommand } from "../utils/npxCommand.js";
 
 function hasNpx(): boolean {
+  const npx = buildNpxCommand(["--version"]);
   try {
-    execFileSync("npx", ["--version"], { stdio: "ignore", timeout: 5000 });
+    execFileSync(npx.command, npx.args, { stdio: "ignore", timeout: 5000 });
     return true;
   } catch {
     return false;
@@ -13,8 +15,9 @@ function hasNpx(): boolean {
 }
 
 function runSkillsAdd(repo: string): Promise<void> {
+  const npx = buildNpxCommand(["skills", "add", repo, "--all"]);
   return new Promise((resolve, reject) => {
-    const child = spawn("npx", ["skills", "add", repo, "--all"], {
+    const child = spawn(npx.command, npx.args, {
       stdio: "inherit",
       timeout: 120_000,
       // GH #316 — the upstream `skills` CLI shells out to `git clone`.
