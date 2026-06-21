@@ -17,9 +17,11 @@ import {
   commitGsapPositionFromDrag,
   commitStaticGsapPosition,
   commitStaticGsapRotation,
+  commitStaticGsapSize,
   computeCurrentPercentage,
   findPositionSetAnimation,
   findRotationSetAnimation,
+  findSizeSetAnimation,
   materializeIfDynamic,
 } from "./gsapDragCommit";
 import { resolveTweenStart, resolveTweenDuration } from "../utils/globalTimeCompiler";
@@ -303,32 +305,19 @@ export async function tryGsapResizeIntercept(
 
   let anim = resolved?.anim ?? null;
   if (!anim) {
-    // No size-group tween exists — create one. Use the element's timing
-    // from any existing animation, or fall back to element data attributes.
-    const refAnim = animations[0];
-    const elStart =
-      refAnim?.resolvedStart ?? (Number.parseFloat(selection.dataAttributes?.start ?? "0") || 0);
-    const elDuration = Number.parseFloat(selection.dataAttributes?.duration ?? "5") || 5;
-    const ct = usePlayerStore.getState().currentTime;
-    const pct = elDuration > 0 ? Math.round(((ct - elStart) / elDuration) * 1000) / 10 : 0;
+    // No size-group tween exists → this is a STATIC resize. Write a
+    // `tl.set("#el",{width,height})` (holds at every frame, seek-safe), mirroring
+    // commitStaticGsapPosition. The old path wrote a single-stop `keyframes` tween
+    // at the playhead %, which GSAP can't interpolate from one mid-point — it
+    // rendered NaN/0 dimensions at all other frames and the element vanished
+    // (worst when resized off the 0% mark). Re-resizing updates the set in place;
+    // animating size happens via the keyframe path once a real size tween exists.
     const sel = selectorFromSelection(selection);
     if (!sel) return false;
-    await commitMutation(
-      selection,
-      {
-        type: "add-with-keyframes",
-        targetSelector: sel,
-        position: roundTo3(elStart),
-        duration: roundTo3(elDuration),
-        keyframes: [
-          {
-            percentage: Math.max(0, Math.min(100, pct)),
-            properties: { width: Math.round(size.width), height: Math.round(size.height) },
-          },
-        ],
-      },
-      { label: "Resize (new size keyframe)", softReload: true },
-    );
+    await commitStaticGsapSize(selection, size, sel, findSizeSetAnimation(animations, sel), {
+      commitMutation,
+      fetchAnimations: fetchFallbackAnimations,
+    });
     return true;
   }
 

@@ -562,6 +562,79 @@ export async function commitStaticGsapRotation(
 
 export { findRotationSetAnimation };
 
+function findSizeSetAnimation(animations: GsapAnimation[], selector: string): GsapAnimation | null {
+  return (
+    animations.find(
+      (a) =>
+        a.method === "set" &&
+        a.targetSelector === selector &&
+        ("width" in a.properties || "height" in a.properties),
+    ) ?? null
+  );
+}
+
+/**
+ * Commit a STATIC element resize as a `tl.set("#el",{width,height})` — the
+ * single-source size channel for elements with no size animation (mirrors
+ * `commitStaticGsapPosition`). Use this instead of a single-stop `keyframes`
+ * tween: one keyframe at the playhead % renders NaN/0 at every other frame, so
+ * the element collapses/disappears (worst when resized off the 0% mark). A `set`
+ * holds the size at all times. Re-resizing an element that already has a size
+ * `set` UPDATES it in place (two `update-property`, like x/y); a new element
+ * gets one `add` with `method:"set"`.
+ */
+export async function commitStaticGsapSize(
+  selection: DomEditSelection,
+  size: { width: number; height: number },
+  selector: string,
+  existingSet: GsapAnimation | null,
+  callbacks: GsapDragCommitCallbacks,
+): Promise<void> {
+  const width = Math.round(size.width);
+  const height = Math.round(size.height);
+  if (existingSet) {
+    const coalesceKey = `gsap:set-resize:${existingSet.id}`;
+    const wMutation = {
+      type: "update-property",
+      animationId: existingSet.id,
+      property: "width",
+      value: width,
+    } as const;
+    const hMutation = {
+      type: "update-property",
+      animationId: existingSet.id,
+      property: "height",
+      value: height,
+    } as const;
+    await callbacks.commitMutation(selection, wMutation, {
+      label: "Resize layer",
+      skipReload: true,
+      coalesceKey,
+      instantPatch: setPatchFromUpdateProperty(selector, wMutation),
+    });
+    await callbacks.commitMutation(selection, hMutation, {
+      label: "Resize layer",
+      softReload: true,
+      coalesceKey,
+      instantPatch: setPatchFromUpdateProperties(selector, [wMutation, hMutation]),
+    });
+    return;
+  }
+  await callbacks.commitMutation(
+    selection,
+    {
+      type: "add",
+      targetSelector: selector,
+      method: "set",
+      position: 0,
+      properties: { width, height },
+    },
+    { label: "Resize layer", softReload: true },
+  );
+}
+
+export { findSizeSetAnimation };
+
 // ── Main drag commit ──────────────────────────────────────────────────────
 
 /**
