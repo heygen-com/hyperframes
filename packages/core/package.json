@@ -258,7 +258,7 @@
     "types": "./dist/index.d.ts"
   },
   "scripts": {
-    "build": "bun run build:hyperframes-runtime && tsc",
+    "build": "bun run build:hyperframes-runtime && tsc && tsx scripts/rewrite-esm-extensions.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",

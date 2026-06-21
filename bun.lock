@@ -22,7 +22,7 @@
     },
     "packages/aws-lambda": {
       "name": "@hyperframes/aws-lambda",
-      "version": "0.6.113",
+      "version": "0.6.119",
       "dependencies": {
         "@aws-sdk/client-s3": "^3.700.0",
         "@aws-sdk/client-sfn": "^3.700.0",
@@ -54,7 +54,7 @@
     },
     "packages/cli": {
       "name": "@hyperframes/cli",
-      "version": "0.6.113",
+      "version": "0.6.119",
       "bin": {
         "hyperframes": "./dist/cli.js",
       },
@@ -101,7 +101,7 @@
     },
     "packages/core": {
       "name": "@hyperframes/core",
-      "version": "0.6.113",
+      "version": "0.6.119",
       "dependencies": {
         "@babel/parser": "^7.27.0",
         "@chenglou/pretext": "^0.0.5",
@@ -135,7 +135,7 @@
     },
     "packages/engine": {
       "name": "@hyperframes/engine",
-      "version": "0.6.113",
+      "version": "0.6.119",
       "dependencies": {
         "@hono/node-server": "^1.13.0",
         "@hyperframes/core": "workspace:^",
@@ -153,7 +153,7 @@
     },
     "packages/gcp-cloud-run": {
       "name": "@hyperframes/gcp-cloud-run",
-      "version": "0.6.113",
+      "version": "0.6.119",
       "dependencies": {
         "@google-cloud/storage": "^7.14.0",
         "@google-cloud/workflows": "^4.2.0",
@@ -173,7 +173,7 @@
     },
     "packages/player": {
       "name": "@hyperframes/player",
-      "version": "0.6.113",
+      "version": "0.6.119",
       "dependencies": {
         "@hyperframes/core": "workspace:*",
       },
@@ -188,7 +188,7 @@
     },
     "packages/producer": {
       "name": "@hyperframes/producer",
-      "version": "0.6.113",
+      "version": "0.6.119",
       "dependencies": {
         "@fontsource/archivo-black": "^5.2.8",
         "@fontsource/eb-garamond": "^5.2.7",
@@ -229,7 +229,7 @@
     },
     "packages/sdk": {
       "name": "@hyperframes/sdk",
-      "version": "0.6.113",
+      "version": "0.6.119",
       "dependencies": {
         "@hyperframes/core": "workspace:*",
         "linkedom": "^0.18.12",
@@ -254,7 +254,7 @@
     },
     "packages/shader-transitions": {
       "name": "@hyperframes/shader-transitions",
-      "version": "0.6.113",
+      "version": "0.6.119",
       "dependencies": {
         "html2canvas": "^1.4.1",
       },
@@ -266,7 +266,7 @@
     },
     "packages/studio": {
       "name": "@hyperframes/studio",
-      "version": "0.6.113",
+      "version": "0.6.119",
       "dependencies": {
         "@codemirror/autocomplete": "^6.20.1",
         "@codemirror/commands": "^6.10.3",
@@ -297,6 +297,7 @@
         "postcss": "^8.4.0",
         "puppeteer-core": "^24.40.0",
         "tailwindcss": "^3.4.0",
+        "tsup": "^8.0.0",
         "typescript": "^5.0.0",
         "vite": "^6.4.2",
         "vitest": "^3.2.4",
