@@ -2,7 +2,7 @@
   "$schema": "https://cursor.com/schemas/cursor-plugin/plugin.json",
   "name": "hyperframes",
   "displayName": "HyperFrames by HeyGen",
-  "version": "0.6.119",
+  "version": "0.6.120",
   "description": "Write HTML, render video. Compositions, Tailwind v4 styles, GSAP and runtime adapter animations, captions, voiceovers, audio-reactive visuals, and website-to-video capture for HyperFrames.",
   "author": {
     "name": "HeyGen",

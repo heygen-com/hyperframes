@@ -9,6 +9,24 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.6.120"
+  description="Released - 2026-06-21"
+  tags={["Release", "Shader Transitions"]}
+>
+This hotfix restores Node-compatible package entrypoints for published HyperFrames
+packages, so npm consumers load built JavaScript and declaration files instead of
+source TypeScript. It also improves page-side rendering so shader transitions paint
+correctly and final-scene content remains visible through the end of the render.
+
+## Fixes
+
+- Publish Node-compatible package entrypoints ([2612b9bd](https://github.com/heygen-com/hyperframes/commit/2612b9bdfe6d2a224e93406efc831658cb2f6caf), [#1622](https://github.com/heygen-com/hyperframes/pull/1622))
+- **Shader Transitions:** Page-side render dropped shader transitions and final-scene content ([a85a507c](https://github.com/heygen-com/hyperframes/commit/a85a507cdcce4deb2a55472208176753abec152b))
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.6.119...v0.6.120).
+</Update>
+
+<Update
   label="HyperFrames v0.6.119"
   description="Released - 2026-06-21"
   tags={["Release", "Slideshow"]}
