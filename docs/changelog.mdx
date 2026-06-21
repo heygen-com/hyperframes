@@ -9,6 +9,23 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.6.121"
+  description="Released - 2026-06-21"
+  tags={["Release", "CLI"]}
+>
+This hotfix restores `hyperframes skills` on Windows by invoking npm's `npx.cmd`
+shim through `cmd.exe`, while preserving direct `npx` execution on Linux and macOS.
+The same resolver also covers the local Studio preview's `npx vite` path and is
+verified by CI on all three operating systems.
+
+## Fixes
+
+- **CLI:** Resolve npx shims on Windows ([25b717dd](https://github.com/heygen-com/hyperframes/commit/25b717dd9c0e1777adafa23dcfb4ad87c4989d91), [#1626](https://github.com/heygen-com/hyperframes/pull/1626))
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.6.120...v0.6.121).
+</Update>
+
+<Update
   label="HyperFrames v0.6.120"
   description="Released - 2026-06-21"
   tags={["Release", "Shader Transitions"]}
