@@ -8,6 +8,9 @@ interface MediaProbeResult {
 
 const cache = new Map<string, MediaProbeResult>();
 const inflight = new Map<string, Promise<MediaProbeResult | null>>();
+// URLs whose probe failed (CORS, 404, non-media). Remembered so the rAF-driven
+// timeline re-derive doesn't re-fetch them every frame and flood the console.
+const failed = new Set<string>();
 
 let mediabunnyModule: typeof import("mediabunny") | null | false = null;
 
@@ -97,7 +100,8 @@ export async function probeMissingSourceDurations<
       el.src &&
       el.sourceDuration == null &&
       ["video", "audio"].includes(el.tag.toLowerCase()) &&
-      !getCachedProbe(el.src),
+      !getCachedProbe(el.src) &&
+      !failed.has(normalizeUrl(el.src)),
   );
   if (needs.length === 0) return;
   await Promise.allSettled(
@@ -112,6 +116,7 @@ async function probeMediaUrl(url: string): Promise<MediaProbeResult | null> {
   const key = normalizeUrl(url);
   const cached = cache.get(key);
   if (cached) return cached;
+  if (failed.has(key)) return null;
 
   let pending = inflight.get(key);
   if (pending) return pending;
@@ -119,6 +124,7 @@ async function probeMediaUrl(url: string): Promise<MediaProbeResult | null> {
   pending = probeOne(key).then((result) => {
     inflight.delete(key);
     if (result) cache.set(key, result);
+    else failed.add(key);
     return result;
   });
   inflight.set(key, pending);
