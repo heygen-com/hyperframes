@@ -26,7 +26,10 @@ export function useServerConnection(): ServerConnectionState {
   useMountEffect(() => {
     const hashProjectId = parseProjectIdFromHash(window.location.hash);
     let cancelled = false;
-    let retryTimer: ReturnType<typeof window.setTimeout> | null = null;
+    // Explicitly `number` (the DOM return of window.setTimeout) rather than
+    // ReturnType<typeof window.setTimeout> — with @types/node present, that infers
+    // NodeJS.Timeout and clashes with the DOM number the call actually returns.
+    let retryTimer: number | null = null;
 
     function scheduleRetry() {
       setWaitingForServer(true);
