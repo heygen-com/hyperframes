@@ -9,6 +9,22 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.6.119"
+  description="Released - 2026-06-21"
+  tags={["Release", "Slideshow"]}
+>
+This hotfix makes slideshow presenter decks more reliable when they contain interactive
+media. Presenter and audience views now keep media controls, muted autoplay fallback,
+global mute, editable speaker notes, and first-load navigation chrome in sync.
+
+## Fixes
+
+- **Slideshow:** Harden media controls in present decks ([341e65aea](https://github.com/heygen-com/hyperframes/commit/341e65aea2773235d2cd3482846bcd6ed7d24638), [#1619](https://github.com/heygen-com/hyperframes/pull/1619))
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.6.118...v0.6.119).
+</Update>
+
+<Update
   label="HyperFrames v0.6.117"
   description="Released - 2026-06-20"
   tags={["Release", "Core"]}
