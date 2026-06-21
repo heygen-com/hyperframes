@@ -96,6 +96,14 @@ interface PlayerState {
    *  (drag, resize, rotate) target this instead of recomputing from playhead. */
   activeKeyframePct: number | null;
   setActiveKeyframePct: (pct: number | null) => void;
+  /** Motion-path "set destination" mode. Armed from the preview toolbar (replaces
+   *  the old double-click-on-canvas UX); while armed, one canvas click places the
+   *  new path's destination. `available` is published by MotionPathOverlay so the
+   *  toolbar shows the button only when the selected element can take a path. */
+  motionPathArmed: boolean;
+  setMotionPathArmed: (armed: boolean) => void;
+  motionPathCreateAvailable: boolean;
+  setMotionPathCreateAvailable: (available: boolean) => void;
 
   /** Multi-select: additional selected elements beyond selectedElementId. */
   selectedElementIds: Set<string>;
@@ -209,6 +217,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   activeKeyframePct: null,
   setActiveKeyframePct: (pct) => set({ activeKeyframePct: pct }),
+  motionPathArmed: false,
+  setMotionPathArmed: (armed) => set({ motionPathArmed: armed }),
+  motionPathCreateAvailable: false,
+  setMotionPathCreateAvailable: (available) => set({ motionPathCreateAvailable: available }),
 
   selectedElementIds: new Set<string>(),
   toggleSelectedElementId: (id: string) =>
@@ -334,7 +346,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       // to "modify" a keyframe on the new element. A diamond click sets the pct AFTER
       // calling setSelectedElementId, so this never clobbers a genuine keyframe select.
       id !== s.selectedElementId
-        ? { selectedElementId: id, activeKeyframePct: null }
+        ? { selectedElementId: id, activeKeyframePct: null, motionPathArmed: false }
         : { selectedElementId: id },
     ),
   updateElement: (elementId, updates) =>

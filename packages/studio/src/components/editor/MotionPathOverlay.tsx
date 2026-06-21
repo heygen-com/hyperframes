@@ -274,6 +274,11 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
   // The keyframe % selected by clicking its node — highlighted, and the next drag
   // modifies it rather than adding a keyframe.
   const activeKeyframePct = usePlayerStore((s) => s.activeKeyframePct);
+  // Set-destination mode is armed from the preview toolbar (replaces the old
+  // double-click-on-canvas UX). See createMode effects below.
+  const armed = usePlayerStore((s) => s.motionPathArmed);
+  const setMotionPathArmed = usePlayerStore((s) => s.setMotionPathArmed);
+  const setMotionPathCreateAvailable = usePlayerStore((s) => s.setMotionPathCreateAvailable);
   const dragRef = useRef<DragState | null>(null);
   // Park-on-click is debounced so a double-click cancels the seek (see onUp).
   const parkTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -287,30 +292,46 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
   // fires against the new one.
   useEffect(() => () => clearTimeout(parkTimerRef.current), [animId]);
 
-  // Create mode: a selected element with no positional motion. A double-click on
-  // the canvas authors a new motionPath from the element to that point. Gated on
-  // `geometryResolved` so a fresh selection's hint never flashes before the first
-  // runtime read confirms the element truly has no path (see useMotionPathData).
+  // Create mode: a selected element with no positional motion can be given a new
+  // motionPath. Gated on `geometryResolved` so a fresh selection never counts as
+  // "no path" before the first runtime read confirms it (see useMotionPathData).
   const createMode = geometryResolved && !geometry && Boolean(selection?.element) && !isPlaying;
   const createSelector = createMode ? selectorFor(selection) : null;
   const compW = compositionSize?.width ?? null;
+  const canCreate = createMode && hasMotionPathPlugin(iframeRef.current);
+
+  // Publish whether the selected element can take a path so the preview toolbar
+  // shows its "set destination" toggle. Drops to false when this overlay unmounts
+  // or the context changes, so the button never lingers for a stale selection.
+  useEffect(() => {
+    setMotionPathCreateAvailable(Boolean(canCreate));
+    return () => setMotionPathCreateAvailable(false);
+  }, [canCreate, setMotionPathCreateAvailable]);
+
+  // Disarm when set-destination is no longer possible (element gains a path, gets
+  // deselected, or playback starts) so a toggle left on can't fire later.
+  useEffect(() => {
+    if (armed && !canCreate) setMotionPathArmed(false);
+  }, [armed, canCreate, setMotionPathArmed]);
+
+  // While armed, the next canvas press sets the destination (replaces the old
+  // double-click). Scoped to the preview pan-surface in the CAPTURE phase, on
+  // pointerdown, so it fires before the selection/drag handler underneath — a
+  // press on empty canvas would otherwise deselect (and disarm) before a later
+  // click could land. stopPropagation keeps that handler from also running.
   // fallow-ignore-next-line complexity
   useEffect(() => {
-    if (!createSelector || !compW) return;
-    // Scope the create-mode listener to the preview pan-surface, not `window`: the
-    // surface is the only region a destination double-click is meaningful in, so
-    // this keeps the handler off the side panels and avoids leaking a global
-    // listener. Deps are primitives (selector string + composition dims) and the
-    // memoized `commitMutation` (stable via DomEditProvider's ref-backed
-    // useCallback), so the effect re-runs only on a genuine create-context change
-    // — never on an unrelated parent re-render, so no duplicate handlers.
-    const iframe = iframeRef.current;
+    if (!armed || !createSelector || !compW) return;
     const surface =
-      (iframe?.ownerDocument?.querySelector("[data-preview-pan-surface]") as HTMLElement | null) ??
-      null;
-    const target: HTMLElement | Window = surface ?? window;
+      (iframeRef.current?.ownerDocument?.querySelector(
+        "[data-preview-pan-surface]",
+      ) as HTMLElement | null) ?? null;
+    if (!surface) return;
+    const prevCursor = surface.style.cursor;
+    surface.style.cursor = "crosshair";
     // fallow-ignore-next-line complexity
-    const onDbl = (e: MouseEvent) => {
+    const onDown = (e: PointerEvent) => {
+      if (e.button !== 0) return; // primary press only
       const frame = iframeRef.current;
       if (!frame || !hasMotionPathPlugin(frame)) return;
       const r = frame.getBoundingClientRect();
@@ -321,16 +342,22 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
       // node may be detached after a soft-reload, which would skew home.
       const live = frame.contentDocument?.querySelector(createSelector);
       if (!isPreviewHtmlElement(live, frame)) return;
+      e.stopPropagation();
+      e.preventDefault();
       const sc = r.width / compW;
       const elHome = elementHome(live);
       const px = Math.round((e.clientX - r.left) / sc - elHome.x);
       const py = Math.round((e.clientY - r.top) / sc - elHome.y);
       const t = Math.round(usePlayerStore.getState().currentTime * 100) / 100;
       void commitCreatePath(createSelector, t, px, py, commitMutation);
+      setMotionPathArmed(false);
     };
-    target.addEventListener("dblclick", onDbl as EventListener);
-    return () => target.removeEventListener("dblclick", onDbl as EventListener);
-  }, [createSelector, compW, iframeRef, commitMutation]);
+    surface.addEventListener("pointerdown", onDown, true);
+    return () => {
+      surface.removeEventListener("pointerdown", onDown, true);
+      surface.style.cursor = prevCursor;
+    };
+  }, [armed, createSelector, compW, iframeRef, commitMutation, setMotionPathArmed]);
 
   if (!rect || rect.width <= 0 || !compositionSize || compositionSize.width <= 0) return null;
   // Hide the whole overlay (path + create hint) when the element isn't painted —
@@ -340,7 +367,11 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
   if (!home) return null;
 
   if (!geometry) {
-    if (!createMode || !selection?.element || !hasMotionPathPlugin(iframeRef.current)) return null;
+    // Create mode draws nothing by default — the destination is set via the
+    // preview toolbar's "set destination" toggle (no text sprawled over the
+    // canvas). Only while armed do we show a faint ring at the element as a
+    // "click to place" cue (the surface cursor is also crosshair, set above).
+    if (!armed || !canCreate) return null;
     const sc = rect.width / compositionSize.width;
     const hr = (NODE_PX / sc) * 1.6;
     return (
@@ -351,8 +382,8 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
           top: rect.top,
           width: rect.width,
           height: rect.height,
-          // Don't clip nodes/path that extend past the canvas into the gray
-          // margin — only the preview viewport (`[data-preview-pan-surface]`,
+          // Don't clip the ring that extends past the canvas into the gray margin
+          // — only the preview viewport (`[data-preview-pan-surface]`,
           // overflow-hidden) clips, so overlays reach the edge but never the panels.
           overflow: "visible",
         }}
@@ -369,14 +400,6 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
           style={{ stroke: ACCENT }}
           opacity={0.85}
         />
-        <text
-          x={home.x + hr + 6 / sc}
-          y={home.y + 4 / sc}
-          opacity={0.85}
-          style={{ fill: ACCENT, fontSize: 12 / sc }}
-        >
-          double-click to set a destination
-        </text>
       </svg>
     );
   }
