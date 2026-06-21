@@ -40,6 +40,53 @@ function rewriteRelativePaths(root: ParentNode, compPath: string): void {
 }
 
 /**
+ * Escape a CSS identifier whose first character is a digit so it is a valid
+ * selector. A CSS ident cannot start with a digit, so it must be written as an
+ * escaped code point: `01-foo` → `\30 1-foo` (leading `0` → `\30 `, rest kept).
+ */
+function escapeLeadingDigitIdent(id: string): string {
+  return `\\${id.charCodeAt(0).toString(16)} ${id.slice(1)}`;
+}
+
+const REGEXP_SPECIALS = /[.*+?^${}()|[\]\\]/g;
+
+/**
+ * Fix `#<digit-leading-id>` selectors in the tree's `<style>` blocks.
+ *
+ * CSS identifiers cannot start with a digit, so an authored rule like
+ * `#01-wall-pushes-back { width: 1920px; height: 1080px; background: #F0EBDE }`
+ * is an invalid selector and the browser silently drops the WHOLE rule — taking
+ * the root's size and background with it. In a full composition the frame is
+ * stretched/painted by its `data-composition-src` host so the collapse is
+ * masked, but a standalone preview has no host: the root falls back to
+ * `height: 0` + transparent and the frame renders blank (black).
+ *
+ * Rewrite each such selector to its escaped, valid form (`#\30 1-wall-pushes-back`,
+ * which still matches `id="01-wall-pushes-back"`) so the rule applies and the
+ * whole declaration block — size, background, position, container-type — comes
+ * back. Scoped to ids that are actually present on elements in the content and
+ * matched only as `#id` not followed by another ident char, so hex colors
+ * (`#1F2BE0`) and other values are never touched (they are not element ids).
+ */
+function fixDigitLeadingIdSelectors(root: ParentNode): void {
+  const digitIds = new Set<string>();
+  for (const el of root.querySelectorAll("[id]")) {
+    const id = el.getAttribute("id");
+    if (id && /^\d/.test(id)) digitIds.add(id);
+  }
+  if (digitIds.size === 0) return;
+
+  for (const styleEl of root.querySelectorAll("style")) {
+    let css = styleEl.textContent || "";
+    for (const id of digitIds) {
+      const pattern = new RegExp(`#${id.replace(REGEXP_SPECIALS, "\\$&")}(?![\\w-])`, "g");
+      css = css.replace(pattern, `#${escapeLeadingDigitIdent(id)}`);
+    }
+    styleEl.textContent = css;
+  }
+}
+
+/**
  * Parse a full HTML document and extract its head elements and body
  * content separately, so they can be reassembled into a clean standalone
  * page without nesting `<html>` inside `<body>`.
@@ -68,6 +115,9 @@ function extractFullDocumentParts(
   for (const target of rewriteTargets) {
     rewriteRelativePaths(target, compPath);
   }
+  // Run on the whole document: ids live in <body> but their rules may live in
+  // a <head> <style>, so the scope must span both.
+  fixDigitLeadingIdSelectors(doc);
 
   const headContent = doc.head?.innerHTML ?? "";
   const bodyContent = doc.body?.innerHTML ?? "";
@@ -77,6 +127,26 @@ function extractFullDocumentParts(
   const bodyAttrs = doc.body ? extractElementAttrs(doc.body) : "";
 
   return { headContent, bodyContent, htmlAttrs, bodyAttrs };
+}
+
+/**
+ * Extract the inner HTML of the composition's wrapping `<template>` element, or
+ * `null` if the source has no `<template>`.
+ *
+ * Located via the DOM rather than a regex. A greedy
+ * `/<template[^>]*>([\s\S]*)<\/template>/` can latch onto a literal
+ * `"<template>"` that appears inside an HTML comment — e.g. a head note such as
+ * "the HF runtime clones ONLY <template> contents" — and mis-slice the capture,
+ * leaving the real composition content re-wrapped in an inert `<template>` in
+ * the output. That template is never rendered by the browser, so the standalone
+ * preview has no `[data-composition-id]` element and no registered timeline, and
+ * renders blank. `querySelector("template")` only ever matches a real element
+ * node, so comment text can't fool it.
+ */
+function extractTemplateInnerHtml(rawComp: string): string | null {
+  const { document: doc } = parseHTML(rawComp);
+  const template = doc.querySelector("template");
+  return template ? template.innerHTML : null;
 }
 
 function extractElementAttrs(el: Element): string {
@@ -90,6 +160,38 @@ function extractElementAttrs(el: Element): string {
     }
   }
   return parts.join(" ");
+}
+
+const NON_RENDERED_TAGS = new Set(["SCRIPT", "STYLE", "LINK", "META", "TEMPLATE", "NOSCRIPT"]);
+
+/**
+ * Carry the `<template>`'s `data-composition-id` onto the content's root
+ * rendered element when the author declared it only on the `<template>` tag.
+ *
+ * In a full composition, each sub-composition is mounted under a wrapper
+ * element (the `data-composition-src` host) that carries the composition id,
+ * which is how the runtime binds `window.__timelines[id]` into the player's
+ * master timeline. A standalone preview has no such wrapper, so it relies on
+ * the frame's own root element carrying `data-composition-id`. If the id lives
+ * only on the inert `<template>` tag (a common authoring pattern), the rendered
+ * body has no `[data-composition-id]` element — the runtime then never selects
+ * a root composition, the registered GSAP timeline stays unbound, and seeking
+ * does nothing. The frame renders at its pre-animation state (GSAP `fromTo`
+ * pins `opacity:0`), producing a blank preview/thumbnail.
+ *
+ * This is a no-op when the content already exposes a `[data-composition-id]`
+ * element (e.g. the id is authored on the root div), so compositions that
+ * already render correctly are untouched.
+ */
+function promoteTemplateCompositionId(rawComp: string, body: Element): void {
+  const templateCompositionId = rawComp.match(
+    /<template[^>]*\sdata-composition-id\s*=\s*["']([^"']+)["']/i,
+  )?.[1];
+  if (!templateCompositionId) return;
+  if (body.querySelector("[data-composition-id]")) return;
+
+  const root = Array.from(body.children).find((el) => !NON_RENDERED_TAGS.has(el.tagName));
+  root?.setAttribute("data-composition-id", templateCompositionId);
 }
 
 /**
@@ -126,15 +228,16 @@ export function buildSubCompositionHtml(
   let htmlAttrs = "";
   let bodyAttrs = "";
 
-  const templateMatch = rawComp.match(/<template[^>]*>([\s\S]*)<\/template>/i);
+  const templateInner = extractTemplateInnerHtml(rawComp);
 
-  if (templateMatch) {
-    const content = templateMatch[1];
+  if (templateInner != null) {
     const { document: contentDoc } = parseHTML(
-      `<!DOCTYPE html><html><head></head><body>${content}</body></html>`,
+      `<!DOCTYPE html><html><head></head><body>${templateInner}</body></html>`,
     );
     rewriteRelativePaths(contentDoc, compPath);
-    rewrittenContent = contentDoc.body.innerHTML || content!;
+    fixDigitLeadingIdSelectors(contentDoc);
+    promoteTemplateCompositionId(rawComp, contentDoc.body);
+    rewrittenContent = contentDoc.body.innerHTML || templateInner;
   } else if (isFullHtmlDocument(rawComp)) {
     const parts = extractFullDocumentParts(rawComp, compPath);
     compHeadContent = parts.headContent;
@@ -146,6 +249,7 @@ export function buildSubCompositionHtml(
       `<!DOCTYPE html><html><head></head><body>${rawComp}</body></html>`,
     );
     rewriteRelativePaths(contentDoc, compPath);
+    fixDigitLeadingIdSelectors(contentDoc);
     rewrittenContent = contentDoc.body.innerHTML || rawComp;
   }
 

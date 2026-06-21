@@ -1,15 +1,40 @@
 ---
 name: hyperframes-media
-description: Asset preprocessing for HyperFrames compositions — multi-provider TTS (HeyGen / ElevenLabs / Kokoro local), multi-provider BGM (Google Lyria / local MusicGen), Whisper transcription, background removal, and caption authoring. Use for npx hyperframes tts, bgm, transcribe, remove-background, voice/provider selection, music-mood prompting, captions / subtitles / lyrics / karaoke / per-word styling.
+description: Audio and media assets for HyperFrames compositions, produced by one shared audio engine (`scripts/audio.mjs`) — multi-provider TTS (HeyGen / ElevenLabs / Kokoro local), background music + sound effects (HeyGen audio-library retrieval by default, with local Lyria / MusicGen BGM generation and a bundled SFX library as the no-credential fallback), Whisper transcription, background removal, and caption authoring. Use for voiceover / TTS, BGM, SFX / sound effects, transcription, captions / subtitles / lyrics / karaoke / per-word styling, voice + provider selection, and music-mood prompting.
 ---
 
 # HyperFrames Media
 
-CLI commands that create assets (`tts`, `bgm`, `transcribe`, `remove-background`), plus everything needed to consume and animate transcript data in HTML. For placing assets into compositions, see `hyperframes-core`.
+Create the audio and media assets a composition needs — voiceover (TTS), background music + sound effects, transcription, captions, background removal — then consume and animate that data in HTML. For placing assets into compositions, see `hyperframes-core`.
 
-## Provider chains (auto-detected from env)
+## The audio engine — one source for TTS · BGM · SFX
 
-**TTS** — `npx hyperframes tts "..."` picks the first available provider:
+Workflows do NOT hand-roll audio or vendor a copy. There is one engine — **`scripts/audio.mjs`** — that takes a neutral `audio_request.json` and writes `audio_meta.json` (plus assets under `assets/voice|bgm|sfx`):
+
+```bash
+# <MEDIA_DIR> = this skill's directory
+node <MEDIA_DIR>/scripts/audio.mjs --request ./audio_request.json --hyperframes . --out ./audio_meta.json
+```
+
+All three capabilities degrade on **ONE switch** — whether a HeyGen credential is present (resolved from `$HEYGEN_API_KEY` / `$HYPERFRAMES_API_KEY` / `~/.heygen`, **not** the CLI):
+
+| Capability | HeyGen credential present                          | absent                                               |
+| ---------- | -------------------------------------------------- | ---------------------------------------------------- |
+| TTS        | HeyGen Starfish REST (native word timestamps)      | → ElevenLabs → Kokoro (chain `transcribe` for words) |
+| BGM        | HeyGen music **retrieval**                         | Lyria → MusicGen local **generation** (detached)     |
+| SFX        | HeyGen sound-effects **retrieval** (min_score 0.4) | bundled 21-file library (`assets/sfx/`)              |
+
+- **Request** (`audio_request.json`): `{ provider?, lang?, speed?, lines: [{ id, text, sfx?: [names] }], bgm: { mode?, query?, prompt? } }`. `id` joins each line back to the caller's model (a frame number, a scene id, …). `bgm.mode` = `retrieve | generate | none`; omit for auto (retrieve when credentialed, else generate). An **explicit** `retrieve` is strict — it skips rather than starting a detached generate (for callers with no `wait-bgm` step).
+- **Output** (`audio_meta.json`, id-keyed): `{ tts_provider, voice_id, bgm, bgm_pending, …, voices: [{ id, path, duration_s, words }], sfx: [{ id, name, file, source, offset_s, duration_s, volume }], total_duration_s }`.
+- `--only tts,bgm,sfx` runs a subset and **merges** into an existing `--out` (e.g. TTS+BGM early, SFX once cues exist).
+- BGM generate is spawned **detached** (`bgm_pending: true`) — run `scripts/wait-bgm.mjs` before assembling.
+- `scripts/heygen-tts.mjs` is a single-shot CLI over the same code (one text → wav + words) for when you just need HeyGen TTS without a request file.
+
+Full flag list + the `audio_meta.json` schema live in the header of `scripts/audio.mjs`. The references below cover the provider details and edge cases behind each capability.
+
+## Provider chains (the detail behind the engine)
+
+**TTS** — first available provider wins (the engine, or `npx hyperframes tts "..."`):
 
 | Order | Provider                      | Detected when                                | Word timestamps                                                  |
 | ----- | ----------------------------- | -------------------------------------------- | ---------------------------------------------------------------- |
@@ -17,36 +42,40 @@ CLI commands that create assets (`tts`, `bgm`, `transcribe`, `remove-background`
 | 2     | ElevenLabs                    | `$ELEVENLABS_API_KEY` set                    | No — chain `transcribe` after                                    |
 | 3     | Kokoro-82M (local, 54 voices) | always (no key required)                     | No — chain `transcribe` after                                    |
 
-> If the installed `hyperframes tts` is the local-only build (its `--help` says "Kokoro-82M" and has no `--provider`/`--words` flags), it silently falls back to Kokoro even with `$HEYGEN_API_KEY` set. To force HeyGen regardless of CLI version, use the self-contained `scripts/heygen-tts.mjs` (see `references/tts.md`).
+> The published `hyperframes tts` CLI is often the local-only build (its `--help` says "Kokoro-82M", no `--provider`/`--words`) and silently falls back to Kokoro even with `$HEYGEN_API_KEY` set. That is why the engine's HeyGen path is the self-contained `scripts/heygen-tts.mjs` (REST), NOT the CLI; the CLI is used only for the Kokoro path. See `references/tts.md`.
 
-**BGM** — `npx hyperframes bgm --duration N`:
+**BGM & SFX** — by default **retrieved** from the HeyGen audio library (`/v3/audio/sounds`), same credential as HeyGen TTS, with the no-credential fallback from the switch above:
 
-| Order | Provider                                    | Detected when                                       |
-| ----- | ------------------------------------------- | --------------------------------------------------- |
-| 1     | Google Lyria (RealTime)                     | `$GEMINI_API_KEY` or `$GOOGLE_API_KEY` set          |
-| 2     | MusicGen (`facebook/musicgen-small`, local) | Python `transformers + torch + soundfile` installed |
+| Asset | HeyGen `type`                   | Lands in                                                   | Fallback (no credential)                                   |
+| ----- | ------------------------------- | ---------------------------------------------------------- | ---------------------------------------------------------- |
+| BGM   | `music`                         | `assets/bgm/track.mp3` (retrieve) · `track.wav` (generate) | Lyria / MusicGen generation                                |
+| SFX   | `sound_effects` (min_score 0.4) | `assets/sfx/<slug>.mp3`                                    | bundled 21-file library (`assets/sfx/*` + `manifest.json`) |
 
-Override either with `--provider <name>`.
+See `references/bgm.md` and `references/sfx.md`.
 
 ## Routing
 
-| Task                                                              | Read                                               |
-| ----------------------------------------------------------------- | -------------------------------------------------- |
-| `npx hyperframes tts` — provider chain, voice IDs, words.json     | `references/tts.md`                                |
-| HeyGen without the CLI — self-contained REST script (wav + words) | `scripts/heygen-tts.mjs` (see `references/tts.md`) |
-| `npx hyperframes bgm` — Lyria vs MusicGen, mood prompts, tuning   | `references/bgm.md`                                |
-| `npx hyperframes transcribe` — Whisper, model rules, output shape | `references/transcribe.md`                         |
-| `npx hyperframes remove-background` — transparent cutouts         | `references/remove-background.md`                  |
-| TTS → transcription → captions (no recorded voiceover)            | `references/tts-to-captions.md`                    |
-| Caption authoring — style detection, layout, word grouping, exit  | `references/captions/authoring.md`                 |
-| Transcript handling — input formats, quality gates, cleanup, APIs | `references/captions/transcript-handling.md`       |
-| Caption motion — karaoke, marker effects, audio-reactive          | `references/captions/motion.md`                    |
-| Model caches, system dependencies, troubleshooting                | `references/requirements.md`                       |
+| Task                                                                | Read                                         |
+| ------------------------------------------------------------------- | -------------------------------------------- |
+| The audio engine — request/meta schema, `--only`, the switch        | `scripts/audio.mjs` (header comment)         |
+| `npx hyperframes tts` / `heygen-tts.mjs` — providers, voices, words | `references/tts.md`                          |
+| BGM — HeyGen retrieval + local Lyria / MusicGen generation          | `references/bgm.md`                          |
+| SFX — HeyGen retrieval (min_score 0.4) + bundled local library      | `references/sfx.md`                          |
+| `npx hyperframes transcribe` — Whisper, model rules, output shape   | `references/transcribe.md`                   |
+| `npx hyperframes remove-background` — transparent cutouts           | `references/remove-background.md`            |
+| TTS → transcription → captions (no recorded voiceover)              | `references/tts-to-captions.md`              |
+| Caption authoring — style detection, layout, word grouping, exit    | `references/captions/authoring.md`           |
+| Transcript handling — input formats, quality gates, cleanup, APIs   | `references/captions/transcript-handling.md` |
+| Caption motion — karaoke, marker effects, audio-reactive            | `references/captions/motion.md`              |
+| Model caches, system dependencies, troubleshooting                  | `references/requirements.md`                 |
 
 ## Non-negotiable rules
 
+- **One engine, no vendored copies.** Produce audio via `scripts/audio.mjs` (or `heygen-tts.mjs` for one-shot HeyGen TTS). Don't re-implement TTS/BGM/SFX inside a workflow — write an `audio_request.json` adapter and call the engine.
+- **"HeyGen available" = a resolvable credential, not the CLI.** The whole switch keys off `heygenCredential()`; the published `hyperframes tts` may be Kokoro-only, and there is no `hyperframes bgm` / `hyperframes sfx` command at all.
 - **Voice IDs are provider-specific.** `am_michael` is Kokoro-only; HeyGen UUIDs don't work on Kokoro. If you pass `--voice`, also pin `--provider` to avoid silent provider drift when the user's env changes.
 - **Always pass `--model` to `transcribe`.** The CLI default `small.en` silently translates non-English audio. See `references/transcribe.md` → "Language Rule".
-- **HeyGen returns word timestamps; ElevenLabs / Kokoro do not.** When you want captions, either pass `--words` to HeyGen and use that JSON directly, or run `transcribe` against the audio file. Don't assume word data is always there.
+- **HeyGen returns word timestamps; ElevenLabs / Kokoro do not.** The engine chains `transcribe` automatically for the latter two; standalone, pass `--words` to HeyGen or run `transcribe` against the audio file.
 - **Captions consume the flat word-array format** with `{ id, text, start, end }`. See `references/transcribe.md` → "Output Shape".
 - **`remove-background --background-output` is hole-cut, not inpainted.** For "scene without the person", a different tool is needed. See `references/remove-background.md` → "When NOT the right tool".
+- **BGM/SFX default to HeyGen retrieval; the no-credential fallback is generation (BGM) or the bundled library (SFX).** `/audio/sounds` ranks by a text query — name effects concretely (`glass shatter`, not `dramatic sound`); a no-match **skips**, never blocks the render. SFX sit at volume ~0.35 under voice + BGM. See `references/sfx.md` / `references/bgm.md`.
