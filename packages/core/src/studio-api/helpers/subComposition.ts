@@ -6,6 +6,7 @@ import {
   rewriteCssAssetUrls,
   rewriteInlineStyleAssetUrls,
 } from "../../compiler/rewriteSubCompPaths.js";
+import { stripEmbeddedRuntimeScripts } from "../../compiler/htmlDocument.js";
 
 /**
  * Detect whether `html` is a full document (has `<html>`, `<head>`, or
@@ -93,6 +94,23 @@ function extractElementAttrs(el: Element): string {
 }
 
 /**
+ * Add `data-composition-file="<compPath>"` to the comp's root composition
+ * element (the first `[data-composition-id]` that lacks the attribute), so the
+ * studio resolves its top-level elements to the right source file. Idempotent;
+ * a no-op when no composition element is present.
+ */
+function tagRootCompositionFile(bodyHtml: string, compPath: string): string {
+  const match = bodyHtml.match(/<[a-zA-Z][^>]*\bdata-composition-id=/);
+  if (match?.index == null) return bodyHtml;
+  const tagEnd = bodyHtml.indexOf(">", match.index);
+  if (tagEnd === -1) return bodyHtml;
+  if (bodyHtml.slice(match.index, tagEnd).includes("data-composition-file")) return bodyHtml;
+  return (
+    bodyHtml.slice(0, tagEnd) + ` data-composition-file="${compPath}"` + bodyHtml.slice(tagEnd)
+  );
+}
+
+/**
  * Build a standalone HTML page for a sub-composition.
  *
  * Uses the project's own index.html `<head>` so all dependencies (GSAP, fonts,
@@ -149,6 +167,21 @@ export function buildSubCompositionHtml(
     rewrittenContent = contentDoc.body.innerHTML || rawComp;
   }
 
+  // A composition file may ship a baked inline runtime (from a prior export:
+  // data-hyperframes-runtime / __hyperframeRuntime…). The studio injects its own
+  // preview runtime below, so strip the baked one from the body — otherwise it's
+  // double-loaded AND the baked inline copy can fail to parse inline (the
+  // "Unexpected token '<'" SyntaxError seen on comps with a baked runtime).
+  rewrittenContent = stripEmbeddedRuntimeScripts(rewrittenContent);
+
+  // The comp's root carries data-composition-id but (unlike inlined sub-comps,
+  // which inlineSubCompositions tags) no data-composition-file. Without it the
+  // studio can't resolve which file this comp's top-level elements live in and
+  // falls back to "index.html" — so the GSAP panel parses the project root (which
+  // may be a multi-timeline master) and wrongly reports "multiple timelines",
+  // disabling editing for a single-timeline comp. Tag the root with its own path.
+  rewrittenContent = tagRootCompositionFile(rewrittenContent, compPath);
+
   // Use the project's index.html <head> to preserve all dependencies
   const indexPath = join(projectDir, "index.html");
   let headContent = "";
@@ -168,6 +201,11 @@ export function buildSubCompositionHtml(
   // links, and meta tags are preserved. Placed after the project head so
   // the composition's deps take precedence (last-write-wins for scripts).
   if (compHeadContent) headContent += `\n${compHeadContent}`;
+
+  // Strip any baked runtime the borrowed index/comp <head> carried, for the same
+  // reason as the body above — done before injecting the preview runtime so the
+  // injected tag (added next) is never removed.
+  headContent = stripEmbeddedRuntimeScripts(headContent);
 
   // Ensure runtime is present (might differ from the one in index.html)
   if (

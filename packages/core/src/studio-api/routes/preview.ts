@@ -1,7 +1,7 @@
 import type { Hono } from "hono";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { injectScriptsIntoHtml } from "../../compiler/htmlDocument.js";
+import { injectScriptsIntoHtml, stripEmbeddedRuntimeScripts } from "../../compiler/htmlDocument.js";
 import type { StudioApiAdapter } from "../types.js";
 import { resolveWithinProject } from "../helpers/safePath.js";
 import { getMimeType } from "../helpers/mime.js";
@@ -260,7 +260,10 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
       let mainCompositionPath = "index.html";
       if (!bundled) {
         if (!diskMain) return c.text("not found", 404);
-        bundled = normalizedDisk ?? diskMain.html;
+        // Disk HTML may carry a baked inline runtime from a prior export; strip
+        // it so the preview runtime injected below isn't double-loaded (the
+        // bundled path already strips via htmlBundler). Idempotent if absent.
+        bundled = stripEmbeddedRuntimeScripts(normalizedDisk ?? diskMain.html);
         mainCompositionPath = diskMain.compositionPath;
       }
 
