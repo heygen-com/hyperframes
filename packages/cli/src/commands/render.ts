@@ -1459,6 +1459,8 @@ function trackRenderMetrics(
     stageVideoExtractMs: stages.videoExtractMs,
     stageAudioProcessMs: stages.audioProcessMs,
     stageCaptureMs: stages.captureMs,
+    stageCaptureSetupMs: stages.captureSetupMs,
+    stageCaptureFrameMs: stages.captureFrameMs,
     stageEncodeMs: stages.encodeMs,
     stageAssembleMs: stages.assembleMs,
     extractResolveMs: extract?.resolveMs,

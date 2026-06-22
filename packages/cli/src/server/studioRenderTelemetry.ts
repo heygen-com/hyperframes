@@ -41,6 +41,8 @@ function stagesPayload(stages: Record<string, number>): Partial<RenderCompletePr
     stageVideoExtractMs: stages.videoExtractMs,
     stageAudioProcessMs: stages.audioProcessMs,
     stageCaptureMs: stages.captureMs,
+    stageCaptureSetupMs: stages.captureSetupMs,
+    stageCaptureFrameMs: stages.captureFrameMs,
     stageEncodeMs: stages.encodeMs,
     stageAssembleMs: stages.assembleMs,
   };

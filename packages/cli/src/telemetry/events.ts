@@ -129,6 +129,8 @@ export function trackRenderComplete(
     stageVideoExtractMs?: number;
     stageAudioProcessMs?: number;
     stageCaptureMs?: number;
+    stageCaptureSetupMs?: number;
+    stageCaptureFrameMs?: number;
     stageEncodeMs?: number;
     stageAssembleMs?: number;
     // Video-extraction breakdown (from RenderPerfSummary.videoExtractBreakdown)
@@ -176,6 +178,8 @@ export function trackRenderComplete(
       stage_video_extract_ms: props.stageVideoExtractMs,
       stage_audio_process_ms: props.stageAudioProcessMs,
       stage_capture_ms: props.stageCaptureMs,
+      stage_capture_setup_ms: props.stageCaptureSetupMs,
+      stage_capture_frame_ms: props.stageCaptureFrameMs,
       stage_encode_ms: props.stageEncodeMs,
       stage_assemble_ms: props.stageAssembleMs,
       extract_resolve_ms: props.extractResolveMs,

@@ -3,7 +3,10 @@ import type { CapturePerfSummary } from "@hyperframes/engine";
 import { buildRenderPerfSummary } from "./perfSummary.js";
 import { createRenderJob } from "../renderOrchestrator.js";
 
-function baseInput(dedupPerfs: CapturePerfSummary[]) {
+function baseInput(
+  dedupPerfs: CapturePerfSummary[],
+  overrides: Partial<Parameters<typeof buildRenderPerfSummary>[0]> = {},
+) {
   return {
     job: createRenderJob({ fps: { num: 30, den: 1 }, quality: "high" }),
     workerCount: dedupPerfs.length || 1,
@@ -24,6 +27,7 @@ function baseInput(dedupPerfs: CapturePerfSummary[]) {
     peakRssBytes: 0,
     peakHeapUsedBytes: 0,
     dedupPerfs,
+    ...overrides,
   };
 }
 
@@ -126,5 +130,35 @@ describe("buildRenderPerfSummary static-dedup aggregation", () => {
       reusedFrames: 0,
       skipReason: undefined,
     });
+  });
+});
+
+describe("buildRenderPerfSummary capture average attribution", () => {
+  it("uses frame-capture time for captureAvgMs instead of setup-inclusive captureMs", () => {
+    const summary = buildRenderPerfSummary(
+      baseInput([], {
+        totalFrames: 120,
+        perfStages: {
+          captureMs: 5_100,
+          captureSetupMs: 1_860,
+          captureFrameMs: 3_240,
+        },
+      }),
+    );
+
+    expect(summary.captureAvgMs).toBe(27);
+  });
+
+  it("falls back to legacy captureMs when captureFrameMs is absent", () => {
+    const summary = buildRenderPerfSummary(
+      baseInput([], {
+        totalFrames: 120,
+        perfStages: {
+          captureMs: 5_100,
+        },
+      }),
+    );
+
+    expect(summary.captureAvgMs).toBe(43);
   });
 });

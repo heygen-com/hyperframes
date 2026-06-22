@@ -122,7 +122,10 @@ export function buildRenderPerfSummary(input: {
     observability: input.observability,
     captureAvgMs:
       input.totalFrames > 0
-        ? Math.round((input.perfStages.captureMs ?? 0) / input.totalFrames)
+        ? Math.round(
+            (input.perfStages.captureFrameMs ?? input.perfStages.captureMs ?? 0) /
+              input.totalFrames,
+          )
         : undefined,
     peakRssMb: Math.round(input.peakRssBytes / (1024 * 1024)),
     peakHeapUsedMb: Math.round(input.peakHeapUsedBytes / (1024 * 1024)),

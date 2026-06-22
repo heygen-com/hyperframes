@@ -293,6 +293,14 @@ export interface RenderPerfSummary {
   videoExtractBreakdown?: ExtractionPhaseBreakdown;
   /** Bytes on disk in the render's workDir at assembly time (sampled before cleanup). Lets callers correlate peak temp usage with render duration. */
   tmpPeakBytes?: number;
+  /**
+   * Average wall-clock capture time per output frame.
+   *
+   * Uses `stages.captureFrameMs` when present so fixed Stage 4 setup costs
+   * (file server creation, calibration, readiness/session init, strategy
+   * resolution) do not get amortized into a per-frame metric. Older summaries
+   * without the split fall back to `stages.captureMs`.
+   */
   captureAvgMs?: number;
   capturePeakMs?: number;
   captureCalibration?: {
@@ -1488,6 +1496,8 @@ export async function executeRenderJob(
       lastBrowserConsole = hdrRes.lastBrowserConsole;
       hdrPerf = hdrRes.hdrPerf;
       perfStages.captureMs = hdrRes.captureDurationMs;
+      perfStages.captureFrameMs = hdrRes.captureDurationMs;
+      perfStages.captureSetupMs = Math.max(0, Date.now() - stage4Start - hdrRes.captureDurationMs);
       perfStages.encodeMs = hdrRes.encodeMs;
     } else {
       // ── Standard capture paths (SDR or DOM-only HDR) ──────────────────
@@ -1497,6 +1507,7 @@ export async function executeRenderJob(
       // and we fall back to the disk path below.
       let streamingHandled = false;
       if (useStreamingEncode) {
+        const captureFrameStart = Date.now();
         const streamingRes = await observeRenderStage(
           observability,
           "capture_streaming",
@@ -1537,6 +1548,7 @@ export async function executeRenderJob(
               dedupPerfs,
             }),
         );
+        const captureFrameMs = Date.now() - captureFrameStart;
         if (streamingRes.success) {
           streamingHandled = true;
           workerCount = streamingRes.workerCount;
@@ -1544,6 +1556,8 @@ export async function executeRenderJob(
           probeSession = streamingRes.probeSession;
           lastBrowserConsole = streamingRes.lastBrowserConsole;
           perfStages.captureMs = Date.now() - stage4Start;
+          perfStages.captureFrameMs = captureFrameMs;
+          perfStages.captureSetupMs = Math.max(0, perfStages.captureMs - captureFrameMs);
           perfStages.encodeMs = streamingRes.encodeMs; // Overlapped with capture
         } else {
           useStreamingEncode = false;
@@ -1554,6 +1568,7 @@ export async function executeRenderJob(
 
       if (!streamingHandled) {
         // ── Disk-based capture (original flow) ────────────────────────────
+        const captureFrameStart = Date.now();
         const captureRes = await observeRenderStage(
           observability,
           "capture_disk",
@@ -1580,12 +1595,15 @@ export async function executeRenderJob(
               onProgress,
             }),
         );
+        const captureFrameMs = Date.now() - captureFrameStart;
         workerCount = captureRes.workerCount;
         updateCaptureObservability({ workerCount });
         probeSession = captureRes.probeSession;
         lastBrowserConsole = captureRes.lastBrowserConsole;
 
         perfStages.captureMs = Date.now() - stage4Start;
+        perfStages.captureFrameMs = captureFrameMs;
+        perfStages.captureSetupMs = Math.max(0, perfStages.captureMs - captureFrameMs);
 
         const encodeRes = await observeRenderStage(
           observability,
