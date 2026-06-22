@@ -42,6 +42,7 @@ import { basename, join, resolve } from "node:path";
 import { parseStoryboard } from "./lib/storyboard.mjs";
 import { parseFormat } from "./lib/dimensions.mjs";
 import { stageAssets } from "./lib/assets.mjs";
+import { parseColors, semanticColors } from "./lib/tokens.mjs";
 
 // ---------- argv ----------
 const argv = process.argv.slice(2);
@@ -267,6 +268,25 @@ const {
 for (const a of assetAnomalies) anomalies.push(a);
 
 // ---------- <head> ----------
+// ---------- ground color ----------
+// Per-frame roots carry data-start/data-duration and get clip-gated against the
+// global timeline in render (only the first frame's [0,dur] window overlaps global
+// 0), so a frame's own full-bleed background can't be relied on as the video ground —
+// every frame after the first would render on the bare body color (black). Paint the
+// ground on the always-present root composition instead, using the project's frame.md
+// canvas color (the same ground role the caption skin maps to --cap-canvas). Falls
+// back to the body letterbox color when frame.md is absent or has no resolvable ground.
+const framePath = join(hyperframesDir, "frame.md");
+let groundColor = null;
+if (existsSync(framePath)) {
+  try {
+    const roles = semanticColors(parseColors(readFileSync(framePath, "utf8")));
+    if (roles && roles.canvas) groundColor = roles.canvas;
+  } catch {
+    /* leave groundColor null — #root stays transparent over the body letterbox */
+  }
+}
+
 const headStyle = [
   "      * {",
   "        margin: 0;",
@@ -285,6 +305,7 @@ const headStyle = [
   `        width: ${WIDTH}px;`,
   `        height: ${HEIGHT}px;`,
   "        overflow: hidden;",
+  ...(groundColor ? [`        background: ${groundColor};`] : []),
   "      }",
   "      .scene {",
   "        position: absolute;",
