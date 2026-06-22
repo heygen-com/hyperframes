@@ -2259,15 +2259,14 @@ export function initSandboxRuntimeModular(): void {
         bindMediaMetadataListeners();
       }
 
-      // Keep clock duration in sync with the resolved timeline duration.
-      // Catches async timeline rebinds that happen outside the 60-tick
-      // branch (metadata hydration, deferred setTimeout). Note: this reads
-      // the DOM each tick (duration floors query authored windows + the
-      // root's declared data-duration), which also keeps live edits to
-      // data-duration in the studio reflected without a rebind.
+      // Sync clock duration with the resolved timeline each tick (catches async
+      // rebinds, live data-duration edits). Never shrink while playing — transient
+      // short reads cause reachedEnd() → playhead jumps to end (#1636).
       if (state.capturedTimeline) {
         const dur = getSafeTimelineDurationSeconds(state.capturedTimeline, 0);
-        if (dur > 0) clock.setDuration(dur);
+        if (dur > 0 && (!clock.isPlaying() || dur >= clock.getDuration())) {
+          clock.setDuration(dur);
+        }
       }
 
       // Audio-master clock: three tiers of timing precision.

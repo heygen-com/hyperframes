@@ -1,3 +1,5 @@
+import { generateId } from "./generateId";
+
 // PostHog public ingest key — write-only, safe to ship in the client bundle
 const POSTHOG_API_KEY = "phc_zjjbX0PnWxERXrMHhkEJWj9A9BhGVLRReICgsfTMmpx";
 const POSTHOG_HOST = "https://us.i.posthog.com";
@@ -29,7 +31,7 @@ function getDistinctId(): string {
   } catch {
     // localStorage may be unavailable
   }
-  distinctId = crypto.randomUUID();
+  distinctId = generateId();
   try {
     localStorage.setItem("hf-studio-anon-id", distinctId);
   } catch {

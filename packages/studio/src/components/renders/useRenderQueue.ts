@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { trackStudioRenderStart } from "../../telemetry/events";
 import { getAnonymousId } from "../../telemetry/config";
+import { generateId } from "../../utils/generateId";
 
 export interface RenderJob {
   id: string;
@@ -131,7 +132,7 @@ export function useRenderQueue(projectId: string | null) {
         });
       } catch {
         const failedJob: RenderJob = {
-          id: crypto.randomUUID(),
+          id: generateId(),
           status: "failed",
           progress: 0,
           error: "Could not reach render server. Use `hyperframes render` from the CLI instead.",
@@ -143,7 +144,7 @@ export function useRenderQueue(projectId: string | null) {
       }
       if (!res.ok) {
         const failedJob: RenderJob = {
-          id: crypto.randomUUID(),
+          id: generateId(),
           status: "failed",
           progress: 0,
           error: `Server error (${res.status}). Check the terminal for details.`,

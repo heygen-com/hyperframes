@@ -65,7 +65,7 @@ export async function cleanupRenderResources(input: {
     // `force: true` swallows ENOENT, so no need to existsSync first.
     await safeCleanup(
       `remove workDir (${label})`,
-      () => rmSync(workDir, { recursive: true, force: true }),
+      () => rmSync(workDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }),
       log,
     );
   }

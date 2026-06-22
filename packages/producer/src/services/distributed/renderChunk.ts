@@ -707,7 +707,7 @@ export async function renderChunk(
     // Clean up only after the hash + perf sidecar landed. Any failure above
     // leaves the framesDir in place for inspection.
     try {
-      rmSync(workDir, { recursive: true, force: true });
+      rmSync(workDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
     } catch (err) {
       log.warn("[renderChunk] failed to remove work dir", {
         workDir,

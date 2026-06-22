@@ -1699,7 +1699,7 @@ export async function executeRenderJob(
       await safeCleanup(
         "remove workDir",
         () => {
-          rmSync(workDir, { recursive: true, force: true });
+          rmSync(workDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
         },
         log,
       );

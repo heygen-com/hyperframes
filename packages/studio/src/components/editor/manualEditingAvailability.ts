@@ -73,7 +73,7 @@ export const STUDIO_COLOR_GRADING_ENABLED = resolveStudioBooleanEnvFlag(
 export const STUDIO_KEYFRAMES_ENABLED = resolveStudioBooleanEnvFlag(
   env,
   ["VITE_STUDIO_ENABLE_KEYFRAMES", "VITE_STUDIO_KEYFRAMES_ENABLED"],
-  false,
+  true,
 );
 
 export const STUDIO_RAZOR_TOOL_ENABLED = resolveStudioBooleanEnvFlag(
