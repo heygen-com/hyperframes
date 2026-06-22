@@ -330,6 +330,14 @@ export function trackCommandFailure(command: string, err: unknown): void {
   });
 }
 
+// Whisper being absent/uninstallable is an environment prerequisite gap, not a
+// command crash — track it on its own low-severity metric instead of cli_error
+// so the command-failure budget reflects real bugs. `optional` records whether
+// the caller (init / skill pipeline) treated captions as skippable.
+export function trackTranscribeUnavailable(props: { optional: boolean }): void {
+  trackEvent("transcribe_unavailable", { optional: props.optional });
+}
+
 export function trackRenderFeedback(props: {
   rating: number;
   renderDurationMs: number;

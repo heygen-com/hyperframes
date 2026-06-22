@@ -144,7 +144,7 @@ Generate the full script as `narration.wav` (or `.mp3`) in the project directory
 
 1. **Try again** — kill the process, run the same command again (transient failures are common)
 2. **Try different flags** — smaller model (`--model tiny.en`), different voice, shorter test sentence first
-3. **Try a different tool for the same task** — if `hyperframes transcribe` hangs, try `whisper-cli` directly, or Groq API (`npx hyperframes transcribe --provider groq`), or OpenAI API
+3. **Try a different tool for the same task** — if `hyperframes transcribe` hangs, run `whisper-cli` directly on the audio
 4. **Switch provider entirely** — if ElevenLabs is down, try HeyGen or Kokoro. If Kokoro hangs, try ElevenLabs.
 
 Never sit idle for 10 minutes hoping a stuck process will finish.

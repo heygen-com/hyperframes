@@ -13,8 +13,8 @@ export const examples: Example[] = [
 import { resolve, join, extname, dirname } from "node:path";
 import * as clack from "@clack/prompts";
 import { c } from "../ui/colors.js";
-import { DEFAULT_MODEL } from "../whisper/manager.js";
-import { trackCommandFailure } from "../telemetry/events.js";
+import { DEFAULT_MODEL, isWhisperUnavailable } from "../whisper/manager.js";
+import { trackCommandFailure, trackTranscribeUnavailable } from "../telemetry/events.js";
 
 export default defineCommand({
   meta: {
@@ -49,6 +49,12 @@ export default defineCommand({
       description: "Output result as JSON",
       default: false,
     },
+    optional: {
+      type: "boolean",
+      description:
+        "Treat captions as optional: if whisper-cpp is unavailable, skip and exit 0 instead of failing. For pipelines that continue without captions.",
+      default: false,
+    },
   },
   async run({ args }) {
     const inputPath = resolve(args.input);
@@ -77,6 +83,7 @@ export default defineCommand({
       model: args.model,
       language: args.language,
       json: args.json,
+      optional: args.optional,
     });
   },
 });
@@ -118,7 +125,7 @@ async function importTranscript(inputPath: string, dir: string, json: boolean): 
 async function transcribeAudio(
   inputPath: string,
   dir: string,
-  opts: { model?: string; language?: string; json?: boolean },
+  opts: { model?: string; language?: string; json?: boolean; optional?: boolean },
 ): Promise<void> {
   const { transcribe } = await import("../whisper/transcribe.js");
   const { loadTranscript, patchCaptionHtml, stripBeforeOnset } =
@@ -175,6 +182,25 @@ async function transcribeAudio(
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+
+    // whisper-cpp is an optional prerequisite, not part of the CLI. When it is
+    // simply unavailable (no binary, no toolchain to build one), that is a setup
+    // condition, not a command crash — report it on its own metric so it does
+    // not inflate the cli_error budget, and let `--optional` callers continue.
+    if (isWhisperUnavailable(err)) {
+      trackTranscribeUnavailable({ optional: opts.optional === true });
+      if (opts.json) {
+        console.log(JSON.stringify({ ok: false, skipped: true, reason: "whisper_unavailable" }));
+      } else {
+        spin?.stop(c.warn(`Captions skipped — ${message}`));
+      }
+      // Optional callers (pipelines) treat a missing prerequisite as a clean
+      // skip; explicit runs still surface non-zero. Set the status and return
+      // rather than guarding a process.exit() on the flag.
+      process.exitCode = opts.optional ? 0 : 1;
+      return;
+    }
+
     trackCommandFailure("transcribe", err);
     if (opts.json) {
       console.log(JSON.stringify({ ok: false, error: message }));
