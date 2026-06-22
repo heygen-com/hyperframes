@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=1920, height=1080" />
+  <title>Audio mux parity</title>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.7/dist/gsap.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { overflow: hidden; background: #111; }
+    .scene {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: system-ui, sans-serif;
+      color: #fff;
+    }
+    .scene h1 { font-size: 80px; opacity: 0; }
+    #scene-1 { background: #1a1a2e; }
+    #scene-2 { background: #16213e; }
+    #scene-3 { background: #0f3460; }
+  </style>
+</head>
+<body>
+  <div
+    id="root"
+    data-composition-id="audio-mux-parity"
+    data-start="0"
+    data-duration="10"
+    data-width="1920"
+    data-height="1080"
+    data-fps="30"
+  >
+    <!-- Three audio tracks covering different time windows -->
+    <audio id="vo-1" src="assets/tone.wav" data-start="0"   data-duration="3" data-volume="1"></audio>
+    <audio id="vo-2" src="assets/tone.wav" data-start="3.5" data-duration="3" data-volume="1"></audio>
+    <audio id="vo-3" src="assets/tone.wav" data-start="7"   data-duration="3" data-volume="1"></audio>
+
+    <section id="scene-1" class="scene clip" data-start="0" data-duration="3.5" data-track-index="1">
+      <h1 id="t1">One</h1>
+    </section>
+    <section id="scene-2" class="scene clip" data-start="3.5" data-duration="3.5" data-track-index="1">
+      <h1 id="t2">Two</h1>
+    </section>
+    <section id="scene-3" class="scene clip" data-start="7" data-duration="3" data-track-index="1">
+      <h1 id="t3">Three</h1>
+    </section>
+  </div>
+
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#t1", { opacity: 1, duration: 0.5 }, 0.2);
+    tl.to("#t1", { opacity: 0, duration: 0.3 }, 3);
+    tl.to("#t2", { opacity: 1, duration: 0.5 }, 3.7);
+    tl.to("#t2", { opacity: 0, duration: 0.3 }, 6.5);
+    tl.to("#t3", { opacity: 1, duration: 0.5 }, 7.2);
+    tl.to("#t3", { opacity: 0, duration: 0.3 }, 9.5);
+    window.__timelines = window.__timelines || {};
+    window.__timelines["audio-mux-parity"] = tl;
+  </script>
+</body>
+</html>

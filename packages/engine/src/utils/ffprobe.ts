@@ -81,6 +81,10 @@ export interface VideoMetadata {
 
 export interface AudioMetadata {
   durationSeconds: number;
+  /** Audio stream's own duration (from `stream.duration`), falling back to
+   *  container duration when the stream field is absent. Prefer this over
+   *  `durationSeconds` for stream-level parity checks. */
+  streamDurationSeconds?: number;
   sampleRate: number;
   channels: number;
   audioCodec: string;
@@ -363,9 +367,11 @@ export async function extractAudioMetadata(filePath: string): Promise<AudioMetad
     if (!audioStream) throw new Error("[FFmpeg] No audio stream found");
 
     const durationSeconds = output.format.duration ? parseFloat(output.format.duration) : 0;
+    const streamDuration = audioStream.duration ? parseFloat(audioStream.duration) : undefined;
 
     return {
       durationSeconds,
+      streamDurationSeconds: streamDuration && streamDuration > 0 ? streamDuration : undefined,
       sampleRate: audioStream.sample_rate ? parseInt(audioStream.sample_rate) : 44100,
       channels: audioStream.channels || 2,
       audioCodec: audioStream.codec_name || "unknown",

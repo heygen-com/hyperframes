@@ -17,7 +17,7 @@ import process from "node:process";
 import { createRenderJob, executeRenderJob } from "./services/renderOrchestrator.js";
 import { compileForRender } from "./services/htmlCompiler.js";
 import { validateCompilation } from "./services/compilationTester.js";
-import { extractMediaMetadata } from "./utils/ffprobe.js";
+import { extractMediaMetadata, extractAudioMetadata } from "./utils/ffprobe.js";
 import {
   buildRmsEnvelope,
   compareAudioEnvelopes,
@@ -192,6 +192,12 @@ type TestResult = {
      */
     residualRmsDb?: number;
     residualError?: string;
+  };
+  streamDurationParity?: {
+    passed: boolean;
+    videoDurationSeconds: number;
+    audioDurationSeconds: number;
+    driftSeconds: number;
   };
   renderedOutputPath?: string;
 };
@@ -785,6 +791,49 @@ function saveFailureDetails(
 
     logPretty(`Saved audio failure details to ${failuresDir}/`, "💾");
   }
+
+  // Save stream duration parity failures
+  if (result.streamDurationParity && !result.streamDurationParity.passed) {
+    writeFileSync(
+      join(failuresDir, "stream-parity-failure.json"),
+      JSON.stringify(result.streamDurationParity, null, 2),
+      "utf-8",
+    );
+    logPretty(`Saved stream duration parity failure to ${failuresDir}/`, "💾");
+  }
+}
+
+// ── Stream Duration Parity ──────────────────────────────────────────────────
+
+export const MAX_STREAM_DRIFT_SECONDS = 0.5;
+
+export type StreamDurationParity = {
+  passed: boolean;
+  videoDurationSeconds: number;
+  audioDurationSeconds: number;
+  driftSeconds: number;
+};
+
+export async function checkStreamDurationParity(
+  videoPath: string,
+): Promise<StreamDurationParity | null> {
+  const meta = await extractMediaMetadata(videoPath);
+  if (!meta.hasAudio) return null;
+  // Read the audio stream's own duration rather than the container's
+  // format.duration. extractAudioMetadata returns format.duration which
+  // collapses to the same value as videoStreamDurationSeconds when the
+  // fallback fires — making the check a tautology on broken muxes where
+  // both streams are truncated in sync.
+  const audioMeta = await extractAudioMetadata(videoPath);
+  const videoDur = meta.videoStreamDurationSeconds;
+  const audioDur = audioMeta.streamDurationSeconds ?? audioMeta.durationSeconds;
+  const drift = Math.abs(videoDur - audioDur);
+  return {
+    passed: drift <= MAX_STREAM_DRIFT_SECONDS,
+    videoDurationSeconds: videoDur,
+    audioDurationSeconds: audioDur,
+    driftSeconds: drift,
+  };
 }
 
 // ── Test Execution ───────────────────────────────────────────────────────────
@@ -1017,6 +1066,24 @@ async function runTestSuite(
       throw new Error(`Snapshot not found: ${snapshotVideoPath}. Run with --update to create it.`);
     }
 
+    if (!isPngSequence) {
+      const parity = await checkStreamDurationParity(renderedOutputPath);
+      if (parity) {
+        result.streamDurationParity = parity;
+        if (parity.passed) {
+          logPretty(
+            `Stream duration parity: PASSED (video: ${parity.videoDurationSeconds.toFixed(2)}s, audio: ${parity.audioDurationSeconds.toFixed(2)}s, drift: ${parity.driftSeconds.toFixed(3)}s)`,
+            "✓",
+          );
+        } else {
+          logPretty(
+            `Stream duration parity: FAILED (video: ${parity.videoDurationSeconds.toFixed(2)}s, audio: ${parity.audioDurationSeconds.toFixed(2)}s, drift: ${parity.driftSeconds.toFixed(3)}s > ${MAX_STREAM_DRIFT_SECONDS}s)`,
+            "✗",
+          );
+        }
+      }
+    }
+
     let visualPassed: boolean;
     let failedFrames: number;
     const visualCheckpoints: Array<{ time: number; psnr: number; passed: boolean }> = [];
@@ -1221,7 +1288,8 @@ async function runTestSuite(
     }
 
     // Overall test passes if all checks passed
-    result.passed = result.compilation!.passed && visualPassed && audioPassed;
+    const parityPassed = result.streamDurationParity?.passed ?? true;
+    result.passed = result.compilation!.passed && visualPassed && audioPassed && parityPassed;
     result.renderedOutputPath = options.keepTemp ? renderedOutputPath : undefined;
 
     if (result.passed) {

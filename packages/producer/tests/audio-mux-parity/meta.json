@@ -1,0 +1,15 @@
+{
+  "name": "Audio Mux Stream Parity",
+  "description": "Verifies video and audio stream durations match after mux. Catches truncation regressions like the ffmpeg -shortest bug (#1648) where one stream gets silently cut short.",
+  "tags": ["audio", "mux", "parity", "regression"],
+
+  "minPsnr": 30,
+  "maxFrameFailures": 0,
+
+  "minAudioCorrelation": 0.9,
+  "maxAudioLagWindows": 120,
+
+  "renderConfig": {
+    "fps": 30
+  }
+}
