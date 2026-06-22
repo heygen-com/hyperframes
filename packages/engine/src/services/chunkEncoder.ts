@@ -768,7 +768,7 @@ export async function muxVideoWithAudio(
     // output container metadata. `-c:v copy` is retained; no re-encode.
     args.push("-r", fpsToFfmpegArg(fps));
   }
-  args.push("-shortest", "-y", outputPath);
+  args.push("-y", outputPath);
 
   const processTimeout = config?.ffmpegProcessTimeout ?? DEFAULT_CONFIG.ffmpegProcessTimeout;
   const result = await runFfmpeg(args, { signal, timeout: processTimeout });

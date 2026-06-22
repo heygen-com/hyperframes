@@ -394,10 +394,10 @@ describe("muxVideoWithAudio audio codec handling", () => {
       "make_zero",
       "-r",
       "30",
-      "-shortest",
       "-y",
       "/tmp/output.mp4",
     ]);
+    expect(calls[0]!.args).not.toContain("-shortest");
     expect(calls[0]!.args).not.toContain("-use_editlist");
 
     emitClose(calls[0]!.proc, 0);
@@ -543,6 +543,30 @@ describe("muxVideoWithAudio audio codec handling", () => {
 
     emitClose(calls[0]!.proc, 0);
     await expect(muxPromise).resolves.toMatchObject({ success: true });
+  });
+
+  it("does not pass -shortest to ffmpeg (regression #1648)", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { muxVideoWithAudio } = await import("./chunkEncoder.js");
+
+    for (const ext of [".mp4", ".mov", ".webm"] as const) {
+      const muxPromise = muxVideoWithAudio(
+        `/tmp/video-only${ext}`,
+        "/tmp/audio.aac",
+        `/tmp/output${ext}`,
+        undefined,
+        undefined,
+        { num: 30, den: 1 },
+      );
+      if (ext !== ".webm") await flushMuxCodecResolution();
+      const call = calls[calls.length - 1]!;
+      expect(call.args).not.toContain("-shortest");
+      emitClose(call.proc, 0);
+      await muxPromise;
+    }
   });
 
   it("keeps WebM audio on the Opus transcode path", async () => {
