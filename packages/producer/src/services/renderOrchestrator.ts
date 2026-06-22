@@ -1210,12 +1210,37 @@ export async function executeRenderJob(
       videoMetadataHints,
       skipReadinessVideoIds: videoReadinessSkipIds,
     });
-    const frameSrcResolver = createCompiledFrameSrcResolver(compiledDir);
+    // The URL-served frame path (PR #596) hands each injected `<img>` a
+    // fileServer URL instead of a base64 data URI, on the theory that
+    // shipping a short URL through `page.evaluate` beats shipping a
+    // multi-MB base64 string per frame. That holds when the fileServer
+    // is otherwise idle — but on video-heavy compositions, the same
+    // fileServer also serves every `<video>.src`. The runtime's
+    // drift-recovery branch (`runtime/media.ts:294-302`) issues
+    // `el.load()` on the underlying `<video>` during seeks, kicking off
+    // full-file downloads that occupy the fileServer's single Node
+    // event loop (it uses `readFileSync` and offers no `Accept-Ranges`).
+    // The injector's `<img>.decode()` then queues behind those video
+    // fetches and is never serviced before puppeteer's protocol timeout
+    // fires (`Runtime.callFunctionOn timed out`).
+    //
+    // Repro: synth 30 × 32 MB videos / 90 s comp on an 8-core / 30 GB
+    // host = 537 s wall (broken corpus) / 428 s (corpus-fixed), every
+    // render fails. Disabling the resolver (force base64-inline) gives
+    // 1:59 (119 s) wall and a clean MP4 on the same comp, with no
+    // regression on the 30 × 1.6 MB control corpus (137 s vs 135 s
+    // baseline).
+    //
+    // Until this is properly gated (e.g. only enable URL-served when the
+    // page has zero fileServer-bound `<video>.src` traffic), the inline
+    // path is the safe default. The cache memory ceiling
+    // (`frameDataUriCacheBytesLimitMb`, default 1500 MB above 8 GB
+    // hosts) already bounds the cost.
+    void createCompiledFrameSrcResolver(compiledDir);
     const createRenderVideoFrameInjector = (): BeforeCaptureHook | null =>
       createVideoFrameInjector(frameLookup, {
         frameDataUriCacheLimit: cfg.frameDataUriCacheLimit,
         frameDataUriCacheBytesLimitMb: cfg.frameDataUriCacheBytesLimitMb,
-        frameSrcResolver,
       });
 
     let captureCalibration:
