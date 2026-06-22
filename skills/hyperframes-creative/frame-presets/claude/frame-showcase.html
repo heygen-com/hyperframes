@@ -1,0 +1,1439 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Claude</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style id="ds-tokens">
+      :root {
+        --ink: #141413;
+        --cream: #faf9f5;
+        --tile: #efe9de;
+        --tile-strong: #ece3d4;
+        --coral: #cc785c;
+        --navy: #181715;
+        --navy-soft: #1f1e1b;
+        --navy-elev: #252320;
+        --teal: #5db8a6;
+        --amber: #e8a55a;
+        --ok: #5db872;
+        --warn: #c64545;
+        --serif: "EB Garamond", Georgia, serif;
+        --sans: "Inter", system-ui, sans-serif;
+        --mono: "JetBrains Mono", ui-monospace, monospace;
+        --hair: rgba(20, 20, 19, 0.12);
+        --hair-soft: rgba(20, 20, 19, 0.06);
+        --on-dark: rgba(250, 249, 245, 0.92);
+        --on-dark-soft: rgba(250, 249, 245, 0.58);
+        --shadow: 0 1px 3px rgba(20, 20, 19, 0.08), 0 4px 16px rgba(20, 20, 19, 0.04);
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html {
+        background: #0e0d0c;
+      }
+      body {
+        background: var(--cream);
+        color: var(--ink);
+        font-family: var(--sans);
+        -webkit-font-smoothing: antialiased;
+      }
+      .serif {
+        font-family: var(--serif);
+        font-weight: 400;
+        letter-spacing: -0.02em;
+        line-height: 1;
+      }
+      .mono {
+        font-family: var(--mono);
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.16em;
+      }
+      .spike {
+        color: var(--coral);
+      }
+
+      section {
+        padding: 110px 120px;
+        position: relative;
+      }
+      .topbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        border-bottom: 1px solid var(--hair);
+        padding-bottom: 18px;
+        margin-bottom: 56px;
+      }
+      .topbar .lbl {
+        font-family: var(--mono);
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.16em;
+        font-size: 15px;
+        color: var(--coral);
+      }
+      .topbar h2 {
+        font-family: var(--serif);
+        font-weight: 400;
+        font-size: 48px;
+        letter-spacing: -0.02em;
+        line-height: 1;
+      }
+
+      /* COVER */
+      .cover {
+        min-height: 100vh;
+        background: var(--cream);
+        color: var(--ink);
+        padding: 120px 140px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        position: relative;
+      }
+      .cover .top {
+        position: absolute;
+        top: 64px;
+        left: 140px;
+        right: 140px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .cover .top .lbl {
+        font-family: var(--mono);
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.16em;
+        font-size: 15px;
+        color: var(--coral);
+      }
+      .cover .top .idx {
+        font-family: var(--mono);
+        font-weight: 500;
+        letter-spacing: 0.06em;
+        font-size: 14px;
+        color: color-mix(in srgb, var(--ink) 56%, var(--cream));
+      }
+      .cover h1 {
+        font-family: var(--serif);
+        font-weight: 400;
+        font-size: clamp(88px, 13vw, 184px);
+        line-height: 0.98;
+        letter-spacing: -0.035em;
+        color: var(--ink);
+        max-width: 14ch;
+      }
+      .cover h1 .it {
+        font-style: italic;
+        color: var(--coral);
+      }
+      .cover .lede {
+        font-family: var(--sans);
+        font-weight: 400;
+        font-size: 28px;
+        line-height: 1.5;
+        color: color-mix(in srgb, var(--ink) 80%, var(--cream));
+        max-width: 720px;
+        margin-top: 38px;
+      }
+      .cover .footline {
+        position: absolute;
+        bottom: 64px;
+        left: 140px;
+        right: 140px;
+        display: flex;
+        justify-content: space-between;
+        font-family: var(--mono);
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        font-size: 14px;
+        color: color-mix(in srgb, var(--ink) 50%, var(--cream));
+      }
+
+      /* PALETTE */
+      .swatches {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 24px;
+      }
+      .sw {
+        border: 1px solid var(--hair);
+        border-radius: 12px;
+        overflow: hidden;
+        background: var(--cream);
+      }
+      .sw .chip {
+        height: 128px;
+      }
+      .sw .meta {
+        padding: 18px 20px;
+        border-top: 1px solid var(--hair);
+      }
+      .sw .name {
+        font-family: var(--serif);
+        font-weight: 400;
+        font-size: 24px;
+      }
+      .sw .hex {
+        font-family: var(--mono);
+        font-size: 12px;
+        letter-spacing: 0.04em;
+        color: var(--ink);
+        opacity: 0.6;
+        margin-top: 6px;
+      }
+      .sw .role {
+        font-family: var(--sans);
+        font-weight: 400;
+        font-size: 14px;
+        line-height: 1.45;
+        color: color-mix(in srgb, var(--ink) 70%, var(--cream));
+        margin-top: 10px;
+      }
+      .syntax-note {
+        margin-top: 28px;
+        display: flex;
+        gap: 28px;
+        align-items: center;
+        flex-wrap: wrap;
+        font-family: var(--mono);
+        font-size: 13px;
+        letter-spacing: 0.02em;
+        color: color-mix(in srgb, var(--ink) 60%, var(--cream));
+      }
+      .syntax-note .dot {
+        display: inline-block;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        vertical-align: -2px;
+        margin-right: 8px;
+      }
+
+      /* TYPE */
+      .type-row {
+        display: grid;
+        grid-template-columns: 240px 1fr;
+        align-items: center;
+        padding: 26px 0;
+        border-bottom: 1px solid var(--hair-soft);
+      }
+      .type-row .tok {
+        font-family: var(--mono);
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        font-size: 13px;
+        color: var(--coral);
+      }
+      .type-row .m {
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--ink);
+        opacity: 0.55;
+        margin-top: 8px;
+        line-height: 1.5;
+        letter-spacing: 0.02em;
+      }
+
+      /* COMPONENTS */
+      .cnote {
+        font-family: var(--mono);
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.16em;
+        font-size: 12px;
+        color: var(--coral);
+        margin-bottom: 22px;
+      }
+      .cgrid {
+        display: grid;
+        grid-template-columns: repeat(12, 1fr);
+        gap: 28px;
+        margin-bottom: 52px;
+      }
+      .s3 {
+        grid-column: span 3;
+      }
+      .s4 {
+        grid-column: span 4;
+      }
+      .s5 {
+        grid-column: span 5;
+      }
+      .s6 {
+        grid-column: span 6;
+      }
+      .s7 {
+        grid-column: span 7;
+      }
+      .s8 {
+        grid-column: span 8;
+      }
+      .card {
+        background: var(--cream);
+        border: 1px solid var(--hair);
+        border-radius: 12px;
+        box-shadow: var(--shadow);
+        padding: 30px 32px;
+      }
+      .card.tile {
+        background: var(--tile);
+      }
+      .card .kt {
+        font-family: var(--serif);
+        font-weight: 400;
+        font-size: 30px;
+        letter-spacing: -0.01em;
+        line-height: 1.1;
+      }
+      .card .kb {
+        font-family: var(--sans);
+        font-weight: 400;
+        font-size: 16px;
+        line-height: 1.5;
+        color: color-mix(in srgb, var(--ink) 74%, var(--cream));
+        margin-top: 10px;
+      }
+      .kicker {
+        font-family: var(--mono);
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.16em;
+        font-size: 14px;
+        color: color-mix(in srgb, var(--ink) 64%, var(--cream));
+      }
+      .callout {
+        background: var(--coral);
+        color: var(--cream);
+        border-radius: 8px;
+        padding: 22px 30px;
+        display: inline-flex;
+        align-items: center;
+        gap: 14px;
+      }
+      .callout .b {
+        font-family: var(--sans);
+        font-weight: 500;
+        font-size: 22px;
+      }
+      .callout .a {
+        font-family: var(--mono);
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        font-size: 12px;
+        opacity: 0.85;
+      }
+      .kpi .tag {
+        font-family: var(--mono);
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        font-size: 13px;
+        color: var(--coral);
+        border-top: 1px solid var(--hair);
+        padding-top: 16px;
+        display: inline-block;
+      }
+      .kpi .fig {
+        font-family: var(--serif);
+        font-weight: 400;
+        font-size: 120px;
+        line-height: 0.95;
+        letter-spacing: -0.03em;
+        color: var(--ink);
+      }
+      .kpi .fig .u {
+        font-family: var(--mono);
+        font-weight: 500;
+        font-size: 36px;
+        letter-spacing: 0;
+        margin-left: 8px;
+      }
+      .kpi .d {
+        font-family: var(--sans);
+        font-weight: 400;
+        font-size: 17px;
+        line-height: 1.4;
+        color: color-mix(in srgb, var(--ink) 74%, var(--cream));
+        margin-top: 12px;
+        max-width: 300px;
+      }
+      .quote .q {
+        font-family: var(--serif);
+        font-style: italic;
+        font-weight: 400;
+        font-size: 38px;
+        line-height: 1.18;
+        letter-spacing: -0.018em;
+        color: var(--ink);
+      }
+      .quote .cite {
+        font-family: var(--mono);
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.16em;
+        font-size: 13px;
+        color: color-mix(in srgb, var(--ink) 58%, var(--cream));
+        margin-top: 18px;
+      }
+      /* code surface demo */
+      .codewin {
+        background: var(--navy);
+        border: 1px solid var(--on-dark-soft);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      .codewin .bar {
+        background: var(--navy-elev);
+        padding: 12px 18px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .codewin .bar .dot {
+        width: 11px;
+        height: 11px;
+        border-radius: 50%;
+      }
+      .codewin .bar .fn {
+        font-family: var(--mono);
+        font-weight: 500;
+        font-size: 13px;
+        color: var(--on-dark-soft);
+        margin-left: 12px;
+        letter-spacing: 0.02em;
+      }
+      .codewin pre {
+        margin: 0;
+        padding: 22px 24px;
+        font-family: var(--mono);
+        font-weight: 400;
+        font-size: 18px;
+        line-height: 1.6;
+        color: var(--on-dark);
+      }
+      .codewin .add {
+        background: color-mix(in srgb, var(--ok) 16%, transparent);
+        display: block;
+        margin: 0 -24px;
+        padding: 0 24px;
+      }
+      .codewin .del {
+        background: color-mix(in srgb, var(--warn) 16%, transparent);
+        display: block;
+        margin: 0 -24px;
+        padding: 0 24px;
+        color: var(--on-dark-soft);
+      }
+      .codewin .k {
+        color: var(--coral);
+      }
+      .codewin .s {
+        color: var(--teal);
+      }
+      .codewin .n {
+        color: var(--amber);
+      }
+      .codewin .g {
+        color: var(--ok);
+      }
+      .codewin .r {
+        color: var(--warn);
+      }
+
+      /* FRAMES */
+      .gallery {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 48px;
+      }
+      .fw .flabel {
+        display: flex;
+        gap: 14px;
+        align-items: baseline;
+        margin-bottom: 16px;
+        font-family: var(--mono);
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        font-size: 12px;
+        color: color-mix(in srgb, var(--ink) 50%, var(--cream));
+      }
+      .fw .flabel b {
+        color: var(--coral);
+      }
+      .frame {
+        aspect-ratio: 16/9;
+        container-type: size;
+        position: relative;
+        overflow: hidden;
+        background: var(--cream);
+        border-radius: 8px;
+        box-shadow:
+          0 0 0 1px var(--hair),
+          0 10px 30px rgba(20, 20, 19, 0.06);
+      }
+      .frame > .body {
+        position: absolute;
+        inset: 0;
+        z-index: 3;
+      }
+      .frame .tb {
+        position: absolute;
+        left: 5cqw;
+        right: 5cqw;
+        top: 3.4cqw;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        z-index: 4;
+      }
+      .frame .tb .l {
+        font-family: var(--mono);
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.16em;
+        font-size: 0.95cqw;
+        color: color-mix(in srgb, var(--ink) 56%, var(--cream));
+      }
+      .frame .tb .l.coral {
+        color: var(--coral);
+      }
+      .frame .fl {
+        position: absolute;
+        left: 5cqw;
+        right: 5cqw;
+        bottom: 3cqw;
+        display: flex;
+        justify-content: space-between;
+        font-family: var(--mono);
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        font-size: 0.82cqw;
+        color: color-mix(in srgb, var(--ink) 48%, var(--cream));
+        z-index: 4;
+      }
+
+      /* f1 cover */
+      .cf1 .body {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        padding: 0 5cqw;
+      }
+      .cf1 .kick {
+        font-family: var(--mono);
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.16em;
+        font-size: 1.1cqw;
+        color: var(--coral);
+        margin-bottom: 1.6cqw;
+      }
+      .cf1 h3 {
+        font-family: var(--serif);
+        font-weight: 400;
+        font-size: 9.6cqw;
+        line-height: 0.98;
+        letter-spacing: -0.035em;
+        color: var(--ink);
+      }
+
+      /* f2 statement */
+      .cf2 .body {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        padding: 0 7cqw;
+      }
+      .cf2 h3 {
+        font-family: var(--serif);
+        font-weight: 400;
+        font-size: 7cqw;
+        line-height: 1.04;
+        letter-spacing: -0.028em;
+        color: var(--ink);
+        max-width: 74cqw;
+      }
+      .cf2 h3 .it {
+        font-style: italic;
+        color: var(--coral);
+      }
+
+      /* f3 code surface — the PR-critical frame */
+      .cf3 .body {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        padding: 0 5cqw;
+      }
+      .cf3 .kick {
+        font-family: var(--mono);
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.16em;
+        font-size: 0.95cqw;
+        color: var(--coral);
+        margin-bottom: 1.3cqw;
+      }
+      .cf3 .win {
+        background: var(--navy);
+        border: 0.08cqw solid var(--on-dark-soft);
+        border-radius: 0.7cqw;
+        overflow: hidden;
+        box-shadow: 0 1cqw 3cqw rgba(20, 20, 19, 0.18);
+      }
+      .cf3 .win .bar {
+        background: var(--navy-elev);
+        padding: 0.9cqw 1.3cqw;
+        display: flex;
+        align-items: center;
+        gap: 0.5cqw;
+      }
+      .cf3 .win .bar .dot {
+        width: 0.8cqw;
+        height: 0.8cqw;
+        border-radius: 50%;
+      }
+      .cf3 .win .bar .fn {
+        font-family: var(--mono);
+        font-weight: 500;
+        font-size: 1cqw;
+        color: var(--on-dark-soft);
+        margin-left: 0.8cqw;
+        letter-spacing: 0.02em;
+      }
+      .cf3 .win pre {
+        margin: 0;
+        padding: 1.5cqw 1.8cqw;
+        font-family: var(--mono);
+        font-weight: 400;
+        font-size: 1.55cqw;
+        line-height: 1.62;
+        color: var(--on-dark);
+      }
+      .cf3 .add {
+        background: color-mix(in srgb, var(--ok) 16%, transparent);
+        display: block;
+        margin: 0 -1.8cqw;
+        padding: 0 1.8cqw;
+      }
+      .cf3 .del {
+        background: color-mix(in srgb, var(--warn) 16%, transparent);
+        display: block;
+        margin: 0 -1.8cqw;
+        padding: 0 1.8cqw;
+        color: var(--on-dark-soft);
+      }
+      .cf3 .k {
+        color: var(--coral);
+      }
+      .cf3 .s {
+        color: var(--teal);
+      }
+      .cf3 .n {
+        color: var(--amber);
+      }
+      .cf3 .g {
+        color: var(--ok);
+      }
+      .cf3 .r {
+        color: var(--warn);
+      }
+
+      /* f4 number / impact */
+      .cf4 .body {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        padding: 0 5cqw;
+      }
+      .cf4 .tag {
+        font-family: var(--mono);
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.16em;
+        font-size: 1cqw;
+        color: var(--coral);
+        border-top: 0.08cqw solid var(--hair);
+        padding-top: 1.2cqw;
+        display: inline-block;
+      }
+      .cf4 .fig {
+        font-family: var(--serif);
+        font-weight: 400;
+        font-size: 16cqw;
+        line-height: 0.92;
+        letter-spacing: -0.03em;
+        color: var(--ink);
+      }
+      .cf4 .fig .u {
+        font-family: var(--mono);
+        font-weight: 500;
+        font-size: 4.2cqw;
+        letter-spacing: 0;
+        margin-left: 0.6cqw;
+        color: color-mix(in srgb, var(--ink) 64%, var(--cream));
+      }
+      .cf4 .d {
+        font-family: var(--sans);
+        font-weight: 400;
+        font-size: 1.7cqw;
+        line-height: 1.4;
+        color: color-mix(in srgb, var(--ink) 74%, var(--cream));
+        max-width: 44cqw;
+        margin-top: 1cqw;
+      }
+
+      /* f5 pull-quote */
+      .cf5 .body {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        padding: 0 8cqw;
+      }
+      .cf5 .q {
+        font-family: var(--serif);
+        font-style: italic;
+        font-weight: 400;
+        font-size: 5cqw;
+        line-height: 1.16;
+        letter-spacing: -0.018em;
+        color: var(--ink);
+      }
+      .cf5 .cite {
+        font-family: var(--mono);
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.16em;
+        font-size: 0.95cqw;
+        color: color-mix(in srgb, var(--ink) 56%, var(--cream));
+        margin-top: 2.2cqw;
+      }
+
+      /* f6 closing / cta */
+      .cf6 .body {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        padding: 0 5cqw;
+      }
+      .cf6 h3 {
+        font-family: var(--serif);
+        font-weight: 400;
+        font-size: 6.2cqw;
+        line-height: 1.02;
+        letter-spacing: -0.028em;
+        color: var(--ink);
+        margin-bottom: 2.4cqw;
+      }
+      .cf6 .ship {
+        display: flex;
+        align-items: center;
+        gap: 1.4cqw;
+        margin-bottom: 2.4cqw;
+      }
+      .cf6 .av {
+        width: 4cqw;
+        height: 4cqw;
+        border-radius: 50%;
+        border: 0.1cqw solid var(--hair);
+        background: var(--tile);
+        display: grid;
+        place-items: center;
+        font-family: var(--mono);
+        font-weight: 500;
+        font-size: 1.2cqw;
+        color: var(--ink);
+        margin-left: -1cqw;
+      }
+      .cf6 .av:first-child {
+        margin-left: 0;
+      }
+      .cf6 .shiplbl {
+        font-family: var(--mono);
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        font-size: 0.95cqw;
+        color: color-mix(in srgb, var(--ink) 56%, var(--cream));
+        margin-left: 0.8cqw;
+      }
+      .cf6 .cta {
+        background: var(--coral);
+        color: var(--cream);
+        border-radius: 0.6cqw;
+        padding: 1.2cqw 2cqw;
+        display: inline-flex;
+        align-self: flex-start;
+        font-family: var(--sans);
+        font-weight: 500;
+        font-size: 1.8cqw;
+      }
+
+      /* PRINCIPLES */
+      .dos {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 48px;
+      }
+      .do-card h4 {
+        font-family: var(--serif);
+        font-weight: 400;
+        font-size: 34px;
+        color: var(--ink);
+        margin-bottom: 6px;
+        letter-spacing: -0.02em;
+      }
+      .do-card .rule {
+        height: 1px;
+        background: var(--hair);
+        margin-bottom: 22px;
+      }
+      .do-card ul {
+        list-style: none;
+      }
+      .do-card li {
+        font-family: var(--sans);
+        font-weight: 400;
+        font-size: 17px;
+        line-height: 1.5;
+        padding-left: 24px;
+        position: relative;
+        margin-bottom: 13px;
+        color: color-mix(in srgb, var(--ink) 84%, var(--cream));
+      }
+      .do-card li::before {
+        position: absolute;
+        left: 0;
+        font-family: var(--mono);
+      }
+      .do-card.do li::before {
+        content: "+";
+        color: var(--coral);
+      }
+      .do-card.dont li::before {
+        content: "\00d7";
+        color: color-mix(in srgb, var(--ink) 40%, var(--cream));
+      }
+
+      .foot {
+        padding: 60px 120px;
+        border-top: 1px solid var(--hair);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .foot .l {
+        font-family: var(--serif);
+        font-weight: 400;
+        font-size: 30px;
+        color: var(--ink);
+      }
+      .foot .l .spike {
+        color: var(--coral);
+      }
+      .foot .r {
+        font-family: var(--mono);
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.16em;
+        font-size: 11px;
+        color: color-mix(in srgb, var(--ink) 50%, var(--cream));
+      }
+      @media (max-width: 1100px) {
+        .gallery {
+          grid-template-columns: 1fr;
+        }
+        .swatches {
+          grid-template-columns: 1fr 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- COVER -->
+    <section class="cover">
+      <div class="top">
+        <span class="lbl"><span class="spike">✱</span> Frame System · Vol. 01</span
+        ><span class="idx">EB Garamond · Inter · JetBrains Mono</span>
+      </div>
+      <h1>Cream, ink &amp; one <span class="it">coral.</span></h1>
+      <div class="lede">
+        A warm-editorial frame system — EB Garamond at optical sizes for display, Inter for body,
+        JetBrains Mono for the index and code, and a single terracotta coral held as scarce voltage.
+      </div>
+      <div class="footline">
+        <span>Warm cream paper · hairline elevation</span><span>1920 × 1080</span>
+      </div>
+    </section>
+
+    <!-- PALETTE -->
+    <section>
+      <div class="topbar">
+        <span class="lbl">01 — Palette</span>
+        <h2>The trinity, plus a code surface</h2>
+      </div>
+      <div class="swatches">
+        <div class="sw">
+          <div class="chip" style="background: var(--ink)"></div>
+          <div class="meta">
+            <div class="name">Ink</div>
+            <div class="hex">#141413</div>
+            <div class="role">
+              Warm near-black — the voice. Every word, every hairline; never pure #000.
+            </div>
+          </div>
+        </div>
+        <div class="sw">
+          <div class="chip" style="background: var(--cream)"></div>
+          <div class="meta">
+            <div class="name">Cream</div>
+            <div class="hex">#FAF9F5</div>
+            <div class="role">Warm paper — the ~60% floor. Never pure white, never cool.</div>
+          </div>
+        </div>
+        <div class="sw">
+          <div class="chip" style="background: var(--coral)"></div>
+          <div class="meta">
+            <div class="name">Coral</div>
+            <div class="hex">#CC785C</div>
+            <div class="role">
+              Terracotta voltage — the one accent. CTA / inline link / band, once per frame.
+            </div>
+          </div>
+        </div>
+        <div class="sw">
+          <div class="chip" style="background: var(--tile)"></div>
+          <div class="meta">
+            <div class="name">Tile</div>
+            <div class="hex">#EFE9DE</div>
+            <div class="role">Half-step content surface — where cards gather.</div>
+          </div>
+        </div>
+        <div class="sw">
+          <div class="chip" style="background: var(--tile-strong)"></div>
+          <div class="meta">
+            <div class="name">Tile Strong</div>
+            <div class="hex">#ECE3D4</div>
+            <div class="role">Pressed / deepest warm-paper step.</div>
+          </div>
+        </div>
+        <div class="sw">
+          <div class="chip" style="background: var(--navy)"></div>
+          <div class="meta">
+            <div class="name">Navy</div>
+            <div class="hex">#181715</div>
+            <div class="role">
+              Warm code / terminal surface — structural anchor, not a brand hue.
+            </div>
+          </div>
+        </div>
+        <div class="sw">
+          <div class="chip" style="background: var(--navy-elev)"></div>
+          <div class="meta">
+            <div class="name">Navy Elev</div>
+            <div class="hex">#252320</div>
+            <div class="role">Title bars + status strips on the code surface.</div>
+          </div>
+        </div>
+        <div class="sw">
+          <div
+            class="chip"
+            style="background: linear-gradient(90deg, var(--teal) 0 50%, var(--amber) 50% 100%)"
+          ></div>
+          <div class="meta">
+            <div class="name">Syntax</div>
+            <div class="hex">#5DB8A6 · #E8A55A</div>
+            <div class="role">
+              Teal strings · amber numbers — fixed code decoration, not remixable.
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="syntax-note">
+        <span><span class="dot" style="background: var(--coral)"></span>keywords</span>
+        <span><span class="dot" style="background: var(--teal)"></span>strings</span>
+        <span><span class="dot" style="background: var(--amber)"></span>numbers</span>
+        <span><span class="dot" style="background: var(--ok)"></span>added</span>
+        <span><span class="dot" style="background: var(--warn)"></span>removed</span>
+      </div>
+    </section>
+
+    <!-- TYPOGRAPHY -->
+    <section>
+      <div class="topbar">
+        <span class="lbl">02 — Typography</span>
+        <h2>EB Garamond display · Inter body · Mono index</h2>
+      </div>
+      <div class="type-row">
+        <div>
+          <div class="tok">display-cover</div>
+          <div class="m">EB Garamond · 500 · 190px · −0.028em · sentence</div>
+        </div>
+        <div>
+          <span class="serif" style="font-size: 108px; line-height: 0.98"
+            >Streaming, end to end.</span
+          >
+        </div>
+      </div>
+      <div class="type-row">
+        <div>
+          <div class="tok">display</div>
+          <div class="m">EB Garamond · 500 · 140px · −0.022em</div>
+        </div>
+        <div><span class="serif" style="font-size: 80px">A serif that thinks.</span></div>
+      </div>
+      <div class="type-row">
+        <div>
+          <div class="tok">number-hero</div>
+          <div class="m">EB Garamond · 500 · 180px · figure + mono unit</div>
+        </div>
+        <div>
+          <span class="serif" style="font-size: 96px; color: var(--ink)"
+            >+1,204<span
+              style="
+                font-family: var(--mono);
+                font-weight: 500;
+                font-size: 36px;
+                color: color-mix(in srgb, var(--ink) 64%, var(--cream));
+              "
+            >
+              lines</span
+            ></span
+          >
+        </div>
+      </div>
+      <div class="type-row">
+        <div>
+          <div class="tok">body / lead</div>
+          <div class="m">Inter · 400 · line 1.5</div>
+        </div>
+        <div>
+          <p
+            style="
+              font-family: var(--sans);
+              font-weight: 400;
+              font-size: 24px;
+              line-height: 1.5;
+              max-width: 680px;
+              color: color-mix(in srgb, var(--ink) 82%, var(--cream));
+            "
+          >
+            The body reads first and answers second — Inter at weight 400, sentence case, with its
+            qualifiers kept. No hype, no exclamation.
+          </p>
+        </div>
+      </div>
+      <div class="type-row">
+        <div>
+          <div class="tok">kicker / code</div>
+          <div class="m">JetBrains Mono · 500 uppercase 0.16em · code 400</div>
+        </div>
+        <div>
+          <span class="mono" style="font-size: 16px; color: var(--coral)"
+            >✱ Pull Request · #1842</span
+          >
+          &nbsp;
+          <span style="font-family: var(--mono); font-size: 18px; color: var(--ink)"
+            >async for tok in stream()</span
+          >
+        </div>
+      </div>
+      <div class="type-row" style="border-bottom: 0">
+        <div>
+          <div class="tok">quote-pull</div>
+          <div class="m">EB Garamond · 400 · italic · the expressive register</div>
+        </div>
+        <div>
+          <span class="serif" style="font-style: italic; font-size: 46px; color: var(--ink)"
+            >Ship it when it reads like a person wrote it.</span
+          >
+        </div>
+      </div>
+    </section>
+
+    <!-- COMPONENTS -->
+    <section>
+      <div class="topbar">
+        <span class="lbl">03 — Components</span>
+        <h2>Hairline elevation · scarce coral</h2>
+      </div>
+
+      <div class="cgrid">
+        <div class="s5">
+          <div class="cnote">card-hairline — 1px ink hairline + one soft warm shadow</div>
+          <div class="card">
+            <div class="kt">Reads first, answers second</div>
+            <div class="kb">
+              The editorial content card. Elevation is the hairline plus one soft warm shadow —
+              never a heavy drop, glow, or gradient.
+            </div>
+          </div>
+          <div class="card tile" style="margin-top: 24px">
+            <div class="kt">Gathers on a half-step tile</div>
+            <div class="kb">
+              Content collects on a warm tile surface, half a step down from the cream floor.
+            </div>
+          </div>
+        </div>
+        <div class="s3">
+          <div class="cnote">kicker-spike + coral-callout</div>
+          <div class="kicker"><span class="spike">✱</span> For the considered worker</div>
+          <div class="callout" style="margin-top: 22px">
+            <span class="b">Start a project</span><span class="a">CTA</span>
+          </div>
+          <div
+            class="kb"
+            style="
+              margin-top: 18px;
+              font-family: var(--sans);
+              font-size: 15px;
+              line-height: 1.5;
+              color: color-mix(in srgb, var(--ink) 70%, var(--cream));
+            "
+          >
+            Coral is rationed — one moment per frame.
+          </div>
+        </div>
+        <div class="s4">
+          <div class="cnote">number-lockup — EB Garamond figure + mono unit</div>
+          <div class="kpi">
+            <div class="tag">Impact</div>
+            <div class="fig">2.1<span class="u">× faster</span></div>
+            <div class="d">Figure is serif; the unit is always mono, never the serif.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="cgrid" style="margin-bottom: 0">
+        <div class="s7">
+          <div class="cnote">
+            code-surface — the warm-navy code / terminal surface (code-* blocks render here)
+          </div>
+          <div class="codewin">
+            <div class="bar">
+              <span class="dot" style="background: #e8695a"></span
+              ><span class="dot" style="background: #e8b35a"></span
+              ><span class="dot" style="background: #5db872"></span
+              ><span class="fn">transport.py</span>
+            </div>
+            <pre><span class="del">- <span class="k">def</span> respond(q):</span>
+<span class="del">-     <span class="k">return</span> model.answer(q)</span>
+<span class="add">+ <span class="k">async def</span> respond(q):</span>
+<span class="add">+     <span class="k">async for</span> tok <span class="k">in</span> model.stream(q, n=<span class="n">3</span>):</span>
+<span class="add">+         <span class="k">yield</span> tok</span></pre>
+          </div>
+        </div>
+        <div class="s5">
+          <div class="cnote">pull-quote — EB Garamond italic + mono cite</div>
+          <div class="quote">
+            <div class="q">
+              Refactor the transport so streaming isn't a special case — it's the default.
+            </div>
+            <div class="cite">Commit a1b2c3d · a. chen</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FRAMES -->
+    <section style="background: var(--tile)">
+      <div class="topbar">
+        <span class="lbl">04 — Frames</span>
+        <h2>Six treatments ↔ PR beats</h2>
+      </div>
+      <div class="gallery">
+        <div class="fw">
+          <div class="flabel"><b>Cover</b><span>· the PR title · cream · left</span></div>
+          <div class="frame cf1">
+            <div class="tb">
+              <span class="l coral">✱ Pull Request · #1842</span
+              ><span class="l">anthropics/sdk</span>
+            </div>
+            <div class="body">
+              <div class="kick">✱ Feature</div>
+              <h3>Streaming,<br />end to end.</h3>
+            </div>
+            <div class="fl">
+              <span class="l">main ← stream-api</span><span class="l">01 / 06</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="fw">
+          <div class="flabel"><b>Statement</b><span>· the change in a sentence · cream</span></div>
+          <div class="frame cf2">
+            <div class="tb">
+              <span class="l coral">The change</span><span class="l">02 / 06</span>
+            </div>
+            <div class="body">
+              <h3>The API now streams tokens <span class="it">as they're written.</span></h3>
+            </div>
+          </div>
+        </div>
+
+        <div class="fw">
+          <div class="flabel">
+            <b>Code Surface</b><span>· the diff · navy · the PR-critical frame</span>
+          </div>
+          <div class="frame cf3">
+            <div class="tb">
+              <span class="l coral">The diff</span><span class="l">03 / 06</span>
+            </div>
+            <div class="body">
+              <div class="kick">transport.py · +3 −2</div>
+              <div class="win">
+                <div class="bar">
+                  <span class="dot" style="background: #e8695a"></span
+                  ><span class="dot" style="background: #e8b35a"></span
+                  ><span class="dot" style="background: #5db872"></span
+                  ><span class="fn">transport.py</span>
+                </div>
+                <pre><span class="del">- <span class="k">def</span> respond(q):</span>
+<span class="del">-     <span class="k">return</span> model.answer(q)</span>
+<span class="add">+ <span class="k">async def</span> respond(q):</span>
+<span class="add">+     <span class="k">async for</span> tok <span class="k">in</span> model.stream(q):</span>
+<span class="add">+         <span class="k">yield</span> tok</span></pre>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="fw">
+          <div class="flabel">
+            <b>Number / Impact</b><span>· +N/−M · cream · oversized figure</span>
+          </div>
+          <div class="frame cf4">
+            <div class="tb">
+              <span class="l coral">By the numbers</span><span class="l">04 / 06</span>
+            </div>
+            <div class="body">
+              <span class="tag">Net change</span>
+              <div class="fig">+1,204<span class="u">/ −318</span></div>
+              <div class="d">
+                Across 17 files — the transport layer rewritten, the special-case path deleted.
+              </div>
+            </div>
+            <div class="fl"><span class="l">17 files</span><span class="l">04 / 06</span></div>
+          </div>
+        </div>
+
+        <div class="fw">
+          <div class="flabel">
+            <b>Pull-quote</b><span>· commit / review · EB Garamond italic</span>
+          </div>
+          <div class="frame cf5">
+            <div class="tb">
+              <span class="l coral">In the commit</span><span class="l">05 / 06</span>
+            </div>
+            <div class="body">
+              <div class="q">"Streaming isn't a special case anymore — it's the default path."</div>
+              <div class="cite">a. chen · author</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="fw">
+          <div class="flabel"><b>Closing / CTA</b><span>· shipped-by · coral voltage</span></div>
+          <div class="frame cf6">
+            <div class="tb"><span class="l coral">Shipped</span><span class="l">06 / 06</span></div>
+            <div class="body">
+              <h3>Merged &amp; shipped.</h3>
+              <div class="ship">
+                <div class="av">AC</div>
+                <div class="av">RK</div>
+                <div class="av">JM</div>
+                <span class="shiplbl">a. chen · r. kapoor · +1</span>
+              </div>
+              <span class="cta">Read the PR →</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PRINCIPLES -->
+    <section>
+      <div class="topbar">
+        <span class="lbl">05 — Rules</span>
+        <h2>Frame Rules</h2>
+      </div>
+      <div class="dos">
+        <div class="do-card do">
+          <h4>Do</h4>
+          <div class="rule"></div>
+          <ul>
+            <li>Stand every frame on the warm cream floor; gather content on a half-step tile.</li>
+            <li>Set display in EB Garamond 400, sentence case, optical size, negative-tracked.</li>
+            <li>Ration coral to one moment per frame — CTA, inline link, or full-bleed band.</li>
+            <li>Elevate with a 1px hairline + at most one soft warm shadow.</li>
+            <li>Reserve warm navy for the code surface; pair every figure with a mono unit.</li>
+          </ul>
+        </div>
+        <div class="do-card dont">
+          <h4>Don't</h4>
+          <div class="rule"></div>
+          <ul>
+            <li>No pure white, no cool gray, no pure black; no fourth brand hue.</li>
+            <li>No heavy drop shadow, glow, gradient on content, or tilt.</li>
+            <li>No uppercase or title-case EB Garamond; no sans headline; no serif label.</li>
+            <li>No two corals in one frame; coral never sets a headline or body run.</li>
+            <li>Don't cram edge-to-edge — the considered voice needs cream.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- CAPTIONS — preview of caption-skin.html (the preset's lower-third karaoke look) -->
+    <style>
+      /* mirrors caption-skin.html; the skin's --cap-* vocab mapped to this preset's tokens */
+      .capdemo {
+        --cap-ink: var(--ink);
+        --cap-canvas: var(--cream);
+        --cap-accent: var(--coral);
+      }
+      .capdemo .stage {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 16.67cqh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 4;
+      }
+      .capdemo .pill {
+        max-width: 80cqw;
+        padding: 1.4cqw 3cqw 1.7cqw;
+        background: var(--cap-canvas);
+        border: 0.07cqw solid color-mix(in srgb, var(--cap-ink) 12%, transparent);
+        border-radius: 0.7cqw;
+        box-shadow:
+          0 0.06cqw 0.18cqw rgba(20, 20, 19, 0.08),
+          0 0.25cqw 1cqw rgba(20, 20, 19, 0.04);
+      }
+      .capdemo .line {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 0.12em 0.3em;
+        font-family: var(--serif);
+        font-weight: 500;
+        font-size: 3.4cqw;
+        line-height: 1.24;
+        letter-spacing: -0.02em;
+      }
+      .capdemo .w {
+        display: inline-block;
+        padding: 0 0.02em 0.06em;
+        color: color-mix(in srgb, var(--cap-ink) 40%, var(--cap-canvas));
+        border-bottom: 0.16cqw solid transparent;
+      }
+      .capdemo .w.spoken {
+        color: var(--cap-ink);
+      }
+      .capdemo .w.active {
+        color: var(--cap-ink);
+        border-bottom: 0.16cqw solid var(--cap-accent);
+      }
+      .capdemo .bandline {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 16.67cqh;
+        border-top: 0.12cqw dashed color-mix(in srgb, var(--ink) 28%, transparent);
+        z-index: 3;
+      }
+      .capdemo .bandtag {
+        position: absolute;
+        right: 5cqw;
+        bottom: calc(16.67cqh + 0.7cqw);
+        font-family: var(--mono);
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        font-size: 0.82cqw;
+        color: color-mix(in srgb, var(--ink) 50%, var(--cream));
+        z-index: 4;
+      }
+    </style>
+    <section style="background: var(--tile)">
+      <div class="topbar">
+        <span class="lbl">06 — Captions</span>
+        <h2>Lower-Third Karaoke</h2>
+      </div>
+      <div class="gallery">
+        <div class="fw">
+          <div class="flabel"><b>Active line</b><span>· spoken · current · upcoming</span></div>
+          <div class="frame capdemo">
+            <div class="tb"><span class="l coral">Captions</span><span class="l">active</span></div>
+            <div class="bandline"></div>
+            <div class="bandtag">caption band · 16.7%</div>
+            <div class="stage">
+              <div class="pill">
+                <div class="line">
+                  <span class="w spoken">Streaming</span>
+                  <span class="w spoken">is</span>
+                  <span class="w active">the</span>
+                  <span class="w">default</span>
+                  <span class="w">now.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="fw">
+          <div class="flabel"><b>Settled line</b><span>· all spoken · underline cleared</span></div>
+          <div class="frame capdemo">
+            <div class="tb">
+              <span class="l coral">Captions</span><span class="l">settled</span>
+            </div>
+            <div class="stage">
+              <div class="pill">
+                <div class="line">
+                  <span class="w spoken">Read</span>
+                  <span class="w spoken">it</span>
+                  <span class="w spoken">first.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="foot">
+      <span class="l"><span class="spike">✱</span> Claude</span>
+      <span class="r">Frame Showcase · Atoms Sacred · Composition Free</span>
+    </div>
+
+    <template id="__bundler_thumbnail">
+      <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+        <rect width="100" height="100" fill="#faf9f5" />
+        <text x="11" y="48" font-family="Georgia" font-size="34" fill="#141413">Aa</text>
+        <text x="68" y="30" font-family="monospace" font-size="22" fill="#cc785c">✱</text>
+        <rect x="11" y="62" width="58" height="1.5" fill="#141413" opacity="0.16" />
+        <rect x="11" y="72" width="40" height="10" rx="2" fill="#181715" />
+      </svg>
+    </template>
+  </body>
+</html>
