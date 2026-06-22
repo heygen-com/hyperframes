@@ -536,7 +536,6 @@ export function applyStudioRotationDraft(element: HTMLElement, rotation: { angle
 }
 
 /* ── Seek reapply (position + motion) ────────────────────────────── */
-
 function queryStudioElements(doc: Document, attr: string): HTMLElement[] {
   const ctor = doc.defaultView?.HTMLElement;
   if (!ctor) return [];
@@ -584,7 +583,6 @@ function reapplyBoxSizes(doc: Document): void {
     }
   }
 }
-
 function reapplyRotations(doc: Document): void {
   for (const el of queryStudioElements(doc, STUDIO_ROTATION_ATTR)) {
     const angle = Number.parseFloat(el.style.getPropertyValue(STUDIO_ROTATION_PROP));

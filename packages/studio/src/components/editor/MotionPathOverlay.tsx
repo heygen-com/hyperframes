@@ -254,7 +254,7 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
     ref: MotionNodeRef,
   ) => {
     if (!interactive) return;
-    if (e.button !== 0) return; // primary button only — right-click is the context menu
+    if (e.button !== 0) return;
     e.stopPropagation();
     (e.target as Element).setPointerCapture(e.pointerId);
     dragRef.current = {

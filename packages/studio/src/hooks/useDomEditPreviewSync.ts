@@ -28,6 +28,7 @@ interface UseDomEditPreviewSyncParams {
   >;
   openSourceForSelection?: (sourceFile: string, target: PatchTarget) => void;
   getSidebarTab?: () => SidebarTab;
+  gsapCacheVersion?: number;
 }
 
 export function useDomEditPreviewSync({
@@ -43,6 +44,7 @@ export function useDomEditPreviewSync({
   applyStudioManualEditsToPreviewRef,
   openSourceForSelection,
   getSidebarTab,
+  gsapCacheVersion,
 }: UseDomEditPreviewSyncParams): void {
   // Sync selection from preview document on load / refresh
   // eslint-disable-next-line no-restricted-syntax
@@ -102,6 +104,7 @@ export function useDomEditPreviewSync({
     refreshPreviewDocumentVersion,
     syncPreviewHistoryHotkey,
     applyStudioManualEditsToPreviewRef,
+    gsapCacheVersion,
   ]);
 
   // Auto-reveal source when an element is selected while the Code tab is active.

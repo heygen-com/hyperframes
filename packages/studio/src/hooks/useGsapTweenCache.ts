@@ -137,7 +137,8 @@ export function useGsapAnimationsForElement(
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    const fetchKey = `${projectId}:${sourceFile}:${version}`;
+    const targetKey = target?.id ?? target?.selector ?? "";
+    const fetchKey = `${projectId}:${sourceFile}:${version}:${targetKey}`;
     if (fetchKey === lastFetchKeyRef.current) return;
     lastFetchKeyRef.current = fetchKey;
 
@@ -366,9 +367,7 @@ export function usePopulateKeyframeCacheForFile(
 
     const sf = sourceFile;
     fetchParsedAnimations(projectId, sf).then((parsed) => {
-      if (!parsed) {
-        return;
-      }
+      if (!parsed) return;
       const { setKeyframeCache } = usePlayerStore.getState();
       clearKeyframeCacheForFile(sf);
       const { elements } = usePlayerStore.getState();
@@ -376,13 +375,9 @@ export function usePopulateKeyframeCacheForFile(
       for (const anim of parsed.animations) {
         const id = extractIdFromSelector(anim.targetSelector);
         if (!id) continue;
-        if (anim.hasUnresolvedKeyframes) {
-          continue;
-        }
+        if (anim.hasUnresolvedKeyframes) continue;
         const kfData = anim.keyframes ?? synthesizeFlatTweenKeyframes(anim);
-        if (!kfData) {
-          continue;
-        }
+        if (!kfData) continue;
         const tweenPos =
           anim.resolvedStart ?? (typeof anim.position === "number" ? anim.position : 0);
         const tweenDur = anim.duration ?? 1;
