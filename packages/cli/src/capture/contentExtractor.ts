@@ -10,7 +10,7 @@
 
 import type { Page } from "puppeteer-core";
 import { existsSync, readdirSync, statSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import type sharpType from "sharp";
 import type { CatalogedAsset } from "./assetCataloger.js";
 import type { DesignTokens } from "./types.js";
@@ -514,7 +514,7 @@ export function generateAssetDescriptions(
     }>;
     for (const v of manifest) {
       if (!v.localPath) continue; // only describe clips that actually downloaded
-      const base = v.localPath.split("/").pop() || v.filename || "";
+      const base = basename(v.localPath) || v.filename || "";
       if (!base) continue;
       const desc =
         (v.caption || v.heading || "").trim().replace(/\s+/g, " ").slice(0, 140) || "motion clip";

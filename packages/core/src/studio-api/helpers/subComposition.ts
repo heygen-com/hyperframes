@@ -44,6 +44,12 @@ function rewriteRelativePaths(root: ParentNode, compPath: string): void {
  * Escape a CSS identifier whose first character is a digit so it is a valid
  * selector. A CSS ident cannot start with a digit, so it must be written as an
  * escaped code point: `01-foo` → `\30 1-foo` (leading `0` → `\30 `, rest kept).
+ *
+ * Only the leading digit needs escaping (per CSS Syntax Level 3 §4.3.11): once
+ * the parser consumes the `\<hex> ` escape, the rest of the ident continues
+ * normally, so `123-scene` → `\31 23-scene` is valid (the `23-scene` tail is
+ * consumed as identifier continuation). The trailing space terminates the hex
+ * escape so a following hex digit isn't folded into the code point.
  */
 function escapeLeadingDigitIdent(id: string): string {
   return `\\${id.charCodeAt(0).toString(16)} ${id.slice(1)}`;

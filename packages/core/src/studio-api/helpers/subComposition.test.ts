@@ -266,4 +266,97 @@ describe("buildSubCompositionHtml", () => {
     const occurrences = html?.match(/data-composition-id="04-allinone"/g) ?? [];
     expect(occurrences).toHaveLength(1);
   });
+
+  it("escapes every digit-leading #id selector when several appear in one composition", () => {
+    // The fix iterates over all digit-leading ids present on elements; pin that
+    // a second id in the same document is escaped too, not just the first.
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><head></head><body></body></html>`,
+      "compositions/frames/01-wall.html": `<template>
+  <div id="01-wall" data-composition-id="01-wall" data-start="0" data-duration="4" data-track-index="0">
+    <style>
+      #01-wall { width: 1920px; height: 1080px; }
+      #02-music { color: #1F2BE0; }
+    </style>
+    <div id="02-music">two</div>
+  </div>
+</template>`,
+    });
+
+    const html = buildSubCompositionHtml(
+      dir,
+      "compositions/frames/01-wall.html",
+      "/api/runtime.js",
+    );
+
+    expect(html).not.toBeNull();
+    expect(html).toContain("#\\30 1-wall {");
+    expect(html).toContain("#\\30 2-music {");
+    expect(html).not.toMatch(/#01-wall\s*\{/);
+    expect(html).not.toMatch(/#02-music\s*\{/);
+    // The hex color value is still left untouched.
+    expect(html).toContain("color: #1F2BE0;");
+  });
+
+  it("escapes a digit-leading #id inside compound and combinator selectors", () => {
+    // Only the leading-digit id token is escaped; the descendant/combinator and
+    // pseudo-class tail must be preserved verbatim.
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><head></head><body></body></html>`,
+      "compositions/frames/01-wall.html": `<template>
+  <div id="01-wall" data-composition-id="01-wall" data-start="0" data-duration="4" data-track-index="0">
+    <style>
+      #01-wall .child > span { color: red; }
+      #01-wall:hover { opacity: 1; }
+    </style>
+    <div class="child"><span>x</span></div>
+  </div>
+</template>`,
+    });
+
+    const html = buildSubCompositionHtml(
+      dir,
+      "compositions/frames/01-wall.html",
+      "/api/runtime.js",
+    );
+
+    expect(html).not.toBeNull();
+    expect(html).toContain("#\\30 1-wall .child > span {");
+    expect(html).toContain("#\\30 1-wall:hover {");
+    // No unescaped form survives.
+    expect(html).not.toContain("#01-wall .child");
+    expect(html).not.toContain("#01-wall:hover");
+  });
+
+  it("leaves the DOM untouched when the <template> has no data-composition-id to promote", () => {
+    // No data-composition-id on the <template> tag → promoteTemplateCompositionId
+    // returns early. The content's own id must be the only one, with nothing
+    // injected onto the root or its siblings.
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><head></head><body></body></html>`,
+      "compositions/frames/05-plain.html": `<template>
+  <style>#c05 { width: 1920px; height: 1080px; }</style>
+  <div id="c05" data-composition-id="05-plain" data-start="0" data-duration="3" data-track-index="0">
+    <div class="headline">plain</div>
+  </div>
+</template>`,
+    });
+
+    const html = buildSubCompositionHtml(
+      dir,
+      "compositions/frames/05-plain.html",
+      "/api/runtime.js",
+    );
+
+    expect(html).not.toBeNull();
+    // The authored id is preserved and is the ONLY data-composition-id — promote
+    // didn't fabricate one (no <template> id to copy) or duplicate it.
+    const occ = html?.match(/data-composition-id="05-plain"/g) ?? [];
+    expect(occ).toHaveLength(1);
+    expect(html).toMatch(
+      /<div\b(?=[^>]*\sid="c05")(?=[^>]*\sdata-composition-id="05-plain")[^>]*>/,
+    );
+    // The <style> sibling was not tagged.
+    expect(html).not.toMatch(/<style[^>]*data-composition-id/i);
+  });
 });
