@@ -1,42 +1,29 @@
-// Shared loader for the transition registry — the single source of truth for
-// PLV scene-to-scene transitions. Parses the ```json fenced block in
-// skills/hyperframes-animation/transitions/TRANSITION-REGISTRY.md so the
-// validator, prep, injector, and verifier all read the SAME vocabulary +
-// GSAP templates. No duplicated allow-lists.
+// transition-registry.mjs — loader for this skill's vendored transition registry
+// (./transitions.json). The registry is the curated Tier-B subset (transform /
+// opacity / filter on the two frame clip wrappers `#el-<id>`, no overlay DOM) +
+// each type's GSAP template. Vendored into the skill so it ships standalone; the
+// recipes originate from the shared catalog skills/hyperframes-animation/
+// transitions/ (css-*.md) — keep them in step if those shared recipes change.
 
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
-
-// scripts/lib/ -> ../../.. -> skills/  then into hyperframes-animation/transitions
-export const DEFAULT_REGISTRY_PATH = resolve(
-  here,
-  "../../../hyperframes-animation/transitions/TRANSITION-REGISTRY.md",
-);
+export const DEFAULT_REGISTRY_PATH = resolve(here, "./transitions.json");
 
 let _cache = null;
 
-// Parse the first ```json … ``` fenced block out of the registry markdown.
 export function loadTransitionRegistry(registryPath = DEFAULT_REGISTRY_PATH) {
   if (_cache && _cache.path === registryPath) return _cache.data;
-  let md;
-  try {
-    md = readFileSync(registryPath, "utf8");
-  } catch (e) {
-    throw new Error(`transition registry not found at ${registryPath}: ${e.message}`);
-  }
-  const m = md.match(/```json\s*\n([\s\S]*?)\n```/);
-  if (!m) throw new Error(`transition registry ${registryPath} has no \`\`\`json block`);
   let data;
   try {
-    data = JSON.parse(m[1]);
+    data = JSON.parse(readFileSync(registryPath, "utf8"));
   } catch (e) {
-    throw new Error(`transition registry json parse failed: ${e.message}`);
+    throw new Error(`transition registry not loadable at ${registryPath}: ${e.message}`);
   }
   if (!Array.isArray(data.transitions) || data.transitions.length === 0) {
-    throw new Error(`transition registry json has no transitions[]`);
+    throw new Error(`transition registry ${registryPath} has no transitions[]`);
   }
   _cache = { path: registryPath, data };
   return data;
