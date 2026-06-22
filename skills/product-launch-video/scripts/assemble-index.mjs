@@ -125,7 +125,17 @@ for (const { sid, scene } of playOrder) {
       `${sid}: group_spec estimatedDuration_s missing or non-positive (${scene.estimatedDuration_s})`,
     );
   }
-  const rootDur = rootDataDuration(readFileSync(compAbs, "utf8"));
+  // Guard against blank/partial scene files: a worker that errors or is
+  // interrupted mid-write leaves an empty (or markup-less) file that exists but
+  // fails at render with "Composition HTML is empty or could not be parsed".
+  // Catch it here — before emitting data-composition-src — and re-dispatch.
+  const compHtml = readFileSync(compAbs, "utf8");
+  if (!compHtml.trim() || !/<\w/.test(compHtml)) {
+    die(
+      `scene file ${compRel} is empty or has no HTML — the worker for ${sid} wrote a blank/partial file. Re-dispatch that scene worker before assembling.`,
+    );
+  }
+  const rootDur = rootDataDuration(compHtml);
   if (rootDur == null) {
     anomalies.push(
       `${sid}: could not read root data-duration from ${compRel} — skipped duration cross-check`,

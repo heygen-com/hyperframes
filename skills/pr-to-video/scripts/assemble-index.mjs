@@ -171,7 +171,17 @@ for (const visual of visualClips) {
   const start = Number(visual.start_s);
   if (!isFinite(start) || start < 0)
     die(`${visual.id}: visual start_s invalid (${visual.start_s})`);
-  const rootDur = rootDataDuration(readFileSync(compAbs, "utf8"));
+  // Guard against blank/partial scene files: a worker that errors or is
+  // interrupted mid-write leaves an empty (or markup-less) file that exists but
+  // fails at render with "Composition HTML is empty or could not be parsed".
+  // Catch it here — before emitting data-composition-src — and re-dispatch.
+  const compHtml = readFileSync(compAbs, "utf8");
+  if (!compHtml.trim() || !/<\w/.test(compHtml)) {
+    die(
+      `visual file ${compRel} is empty or has no HTML — the worker for ${visual.id} wrote a blank/partial file. Re-dispatch that scene worker before assembling.`,
+    );
+  }
+  const rootDur = rootDataDuration(compHtml);
   if (rootDur == null) {
     anomalies.push(
       `${visual.id}: could not read root data-duration from ${compRel} — skipped duration cross-check`,
