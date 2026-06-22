@@ -2,12 +2,12 @@ import { describe, expect, it, beforeEach } from "vitest";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import {
-  commitGsapPositionFromDrag,
   commitStaticGsapPosition,
   commitStaticGsapRotation,
   parkPlayheadOnKeyframe,
   type GsapDragCommitCallbacks,
 } from "./gsapDragCommit";
+import { commitGsapPositionFromDrag } from "./gsapDragPositionCommit";
 import { usePlayerStore } from "../player/store/playerStore";
 
 // Minimal selection whose element has no drag-baseline attributes (origX/Y = 0).
