@@ -79,12 +79,7 @@ import {
   VIRTUAL_TIME_SHIM,
 } from "./fileServer.js";
 import { defaultLogger, type ProducerLogger } from "../logger.js";
-import {
-  createCompiledFrameSrcResolver,
-  createMemorySampler,
-  type MemorySampler,
-  updateJobStatus,
-} from "./render/shared.js";
+import { createMemorySampler, type MemorySampler, updateJobStatus } from "./render/shared.js";
 import { buildRenderErrorDetails, cleanupRenderResources, safeCleanup } from "./render/cleanup.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { formatCaptureFrameName } from "../utils/paths.js";
@@ -1235,8 +1230,11 @@ export async function executeRenderJob(
     // page has zero fileServer-bound `<video>.src` traffic), the inline
     // path is the safe default. The cache memory ceiling
     // (`frameDataUriCacheBytesLimitMb`, default 1500 MB above 8 GB
-    // hosts) already bounds the cost.
-    void createCompiledFrameSrcResolver(compiledDir);
+    // hosts) already bounds the cost. `createCompiledFrameSrcResolver`
+    // and the `frameSrcResolver` option remain in their respective
+    // modules (`packages/producer/src/services/render/shared.ts`,
+    // `packages/engine/src/services/videoFrameInjector.ts`); the gating
+    // PR will re-import the builder here.
     const createRenderVideoFrameInjector = (): BeforeCaptureHook | null =>
       createVideoFrameInjector(frameLookup, {
         frameDataUriCacheLimit: cfg.frameDataUriCacheLimit,
