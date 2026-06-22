@@ -151,15 +151,20 @@ function runInject(argv) {
   };
 
   if (!existsSync(storyboardPath)) die(`STORYBOARD.md not found at ${storyboardPath}`);
-  if (!existsSync(indexPath))
-    die(`index.html not found at ${indexPath} — run assemble-index.mjs first`);
 
   const manifest = parseStoryboard(readFileSync(storyboardPath, "utf8"));
   const { width: CW, height: CH } = parseFormat(manifest.globals.format);
   const reg = loadTransitionRegistry();
   const byName = transitionsByName();
 
-  let html = readFileSync(indexPath, "utf8");
+  // Read directly and handle ENOENT here, rather than an existsSync precheck —
+  // the check→write pair (write-back below) is a TOCTOU race CodeQL flags.
+  let html = "";
+  try {
+    html = readFileSync(indexPath, "utf8");
+  } catch {
+    die(`index.html not found at ${indexPath} — run assemble-index.mjs first`);
+  }
   const order = mountedFramesInOrder(manifest, html);
   if (order.length === 0) die("no frame clips found in index.html");
   const frameIds = new Set(order.map((x) => x.id));

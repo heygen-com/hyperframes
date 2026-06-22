@@ -204,7 +204,6 @@ function runSyncDurations(argv) {
   const audioMetaPath = resolve(flag(argv, "audio-meta", join(hyperframesDir, "audio_meta.json")));
   const storyboardPath = resolve(flag(argv, "storyboard", join(hyperframesDir, "STORYBOARD.md")));
   if (!existsSync(audioMetaPath)) die(`audio_meta.json not found at ${audioMetaPath}`);
-  if (!existsSync(storyboardPath)) die(`STORYBOARD.md not found at ${storyboardPath}`);
 
   const meta = JSON.parse(readFileSync(audioMetaPath, "utf8"));
   const durByFrame = new Map();
@@ -212,7 +211,15 @@ function runSyncDurations(argv) {
     if (v.frame != null && v.duration_s) durByFrame.set(v.frame, v.duration_s);
   }
 
-  const lines = readFileSync(storyboardPath, "utf8").split(/\r?\n/);
+  // Read directly and handle ENOENT here, rather than an existsSync precheck —
+  // the check→write pair (write-back below) is a TOCTOU race CodeQL flags.
+  let storyboardRaw = "";
+  try {
+    storyboardRaw = readFileSync(storyboardPath, "utf8");
+  } catch {
+    die(`STORYBOARD.md not found at ${storyboardPath}`);
+  }
+  const lines = storyboardRaw.split(/\r?\n/);
   const FRAME_RE = /^#{2,3}\s+(?:frame|beat|scene)\b.*?(\d+)/i;
   let curFrame = null;
   let updated = 0;

@@ -190,7 +190,13 @@ function runBuild(argv) {
   }
 
   // ── write caption-overrides.json shim ──
-  if (!existsSync(overridesPath)) writeFileSync(overridesPath, "[]\n");
+  // Atomic create-if-absent: `wx` throws if the file already exists (which we
+  // ignore) — no existsSync→writeFileSync TOCTOU gap.
+  try {
+    writeFileSync(overridesPath, "[]\n", { flag: "wx" });
+  } catch {
+    /* overrides shim already present */
+  }
 
   console.log(
     `✓ captions build: ${finalized.length} group(s) from ${words.length} words → compositions/captions.html (total ${total}s) · skin: ${source}`,
