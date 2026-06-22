@@ -184,6 +184,9 @@ function runFetchSfx(argv) {
 
   const neutral = neutralPath(outPath);
   const request = { lines, bgm: { mode: "none" } };
+  // --only sfx is a MERGE, not an overwrite: the engine reads the existing neutral
+  // sidecar (audio_engine_meta.json) and recomputes only the sfx section, so the
+  // voices/bgm written by the earlier generate (--only tts,bgm) pass are preserved.
   runEngine({ request, hyperframesDir, neutral, only: "sfx" }, die);
 
   const meta = toProductLaunchMeta(JSON.parse(readFileSync(neutral, "utf8")));

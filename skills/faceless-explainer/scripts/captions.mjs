@@ -224,7 +224,13 @@ function buildFromSkin(skin, groups, total, W, H, tokens, die, faces = "", fonts
   // (broadside's literally says "<template>"), which the linter's tag scanner then picks
   // up as the root element → false root_missing_composition_id / root_missing_dimensions.
   // The comments are preview/authoring docs, not needed in the generated composition.
-  out = out.replace(/<!--[\s\S]*?-->/g, "");
+  // Strip in a fixpoint loop, not a single global pass: removing one comment can
+  // re-form a marker from a nested/partial pair (e.g. <!--<!---->-->), which one
+  // pass misses — CodeQL flags the single replace as incomplete sanitization.
+  for (let prev = ""; prev !== out; ) {
+    prev = out;
+    out = out.replace(/<!--[\s\S]*?-->/g, "");
+  }
   // brand :root tokens + @font-face for the brand fonts, both into the reserved hole
   out = fillOnce(
     out,
