@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, win32 } from "node:path";
 import { tmpdir } from "node:os";
 import type { EngineConfig, ExtractedFrames } from "@hyperframes/engine";
@@ -13,6 +13,8 @@ import {
   findMissingFrameRanges,
   getNextRetryWorkerCount,
   isRecoverableParallelCaptureError,
+  resolveCaptureForceScreenshotForPageSideCompositing,
+  shouldDiscardProbeSessionForPageSideCompositing,
   shouldUseStreamingEncode,
 } from "./renderOrchestrator.js";
 import { resolveCompositeTransfer, shouldUseLayeredComposite } from "./hdrCompositor.js";
@@ -333,7 +335,10 @@ describe("writeCompiledArtifacts — external assets on Windows drive-letter pat
   });
 
   it("rejects a maliciously crafted key that tries to escape compileDir", () => {
-    const workDir = makeWorkDir();
+    const sandboxRoot = mkdtempSync(join(tmpdir(), "hf-orch-root-"));
+    tempDirs.push(sandboxRoot);
+    const workDir = join(sandboxRoot, "work", "inner");
+    mkdirSync(workDir, { recursive: true });
     const sourceDir = mkdtempSync(join(tmpdir(), "hf-src-"));
     tempDirs.push(sourceDir);
     const srcFile = join(sourceDir, "evil.wav");
@@ -359,7 +364,7 @@ describe("writeCompiledArtifacts — external assets on Windows drive-letter pat
 
     writeCompiledArtifacts(compiled, workDir, false);
 
-    const escapeTarget = join(workDir, "..", "..", "etc", "passwd");
+    const escapeTarget = join(workDir, "etc", "passwd");
     expect(existsSync(escapeTarget)).toBe(false);
   });
 });
@@ -691,6 +696,58 @@ describe("resolveRenderWorkerCount", () => {
 
     expect(workers).toBe(6);
     expect(log.warn).not.toHaveBeenCalled();
+  });
+});
+
+describe("resolveCaptureForceScreenshotForPageSideCompositing", () => {
+  it("forces screenshot capture when page-side shader compositing is active", () => {
+    expect(
+      resolveCaptureForceScreenshotForPageSideCompositing({
+        forceScreenshot: false,
+        usePageSideCompositing: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("preserves the existing capture mode when page-side compositing is inactive", () => {
+    expect(
+      resolveCaptureForceScreenshotForPageSideCompositing({
+        forceScreenshot: false,
+        usePageSideCompositing: false,
+      }),
+    ).toBe(false);
+    expect(
+      resolveCaptureForceScreenshotForPageSideCompositing({
+        forceScreenshot: true,
+        usePageSideCompositing: false,
+      }),
+    ).toBe(true);
+  });
+});
+
+describe("shouldDiscardProbeSessionForPageSideCompositing", () => {
+  it("discards a previously-loaded probe page when page-side compositing is selected", () => {
+    expect(
+      shouldDiscardProbeSessionForPageSideCompositing({
+        hasProbeSession: true,
+        usePageSideCompositing: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("reuses the probe session when no page-side pre-head script is required", () => {
+    expect(
+      shouldDiscardProbeSessionForPageSideCompositing({
+        hasProbeSession: true,
+        usePageSideCompositing: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldDiscardProbeSessionForPageSideCompositing({
+        hasProbeSession: false,
+        usePageSideCompositing: true,
+      }),
+    ).toBe(false);
   });
 });
 

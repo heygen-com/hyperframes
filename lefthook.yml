@@ -3,7 +3,7 @@ pre-commit:
   commands:
     lint:
       glob: "*.{js,jsx,ts,tsx}"
-      run: bunx oxlint {staged_files}
+      run: bunx oxlint --no-error-on-unmatched-pattern {staged_files}
     format:
       glob: "*.{js,jsx,ts,tsx,json,md,yaml,yml}"
       # --no-error-on-unmatched-pattern: don't fail when staged files all

@@ -759,6 +759,20 @@ export function shouldUseStreamingEncode(
   return workerCount === 1;
 }
 
+export function resolveCaptureForceScreenshotForPageSideCompositing(args: {
+  forceScreenshot: boolean;
+  usePageSideCompositing: boolean;
+}): boolean {
+  return args.usePageSideCompositing ? true : args.forceScreenshot;
+}
+
+export function shouldDiscardProbeSessionForPageSideCompositing(args: {
+  hasProbeSession: boolean;
+  usePageSideCompositing: boolean;
+}): boolean {
+  return args.hasProbeSession && args.usePageSideCompositing;
+}
+
 /**
  * Main render pipeline
  */
@@ -1373,9 +1387,28 @@ export async function executeRenderJob(
       !needsAlpha;
     if (usePageSideCompositingForTransitions) {
       activeFileServer.addPreHeadScript(HF_PAGE_SIDE_COMPOSITING_STUB);
+      if (
+        shouldDiscardProbeSessionForPageSideCompositing({
+          hasProbeSession: probeSession !== null,
+          usePageSideCompositing: true,
+        }) &&
+        probeSession
+      ) {
+        lastBrowserConsole = probeSession.browserConsoleBuffer;
+        await closeCaptureSession(probeSession);
+        probeSession = null;
+        log.info(
+          "[Render] Recreating capture session so page-side compositing pre-head script is loaded.",
+        );
+      }
+      captureForceScreenshot = resolveCaptureForceScreenshotForPageSideCompositing({
+        forceScreenshot: captureForceScreenshot,
+        usePageSideCompositing: true,
+      });
+      updateCaptureObservability({ forceScreenshot: captureForceScreenshot });
       log.info(
         "[Render] Page-side compositing enabled — bypassing Node-side layered " +
-          "shader-blend path. Engine will capture one opaque RGB frame per output frame.",
+          "shader-blend path. Engine will capture one opaque RGB screenshot per output frame.",
       );
     }
     const useLayeredComposite =

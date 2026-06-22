@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Page-Side Shader Compositor Regression</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="vendor/hyper-shader.global.js"></script>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 640px;
+        height: 360px;
+        overflow: hidden;
+        background: #05070c;
+      }
+
+      #main {
+        position: relative;
+        width: 640px;
+        height: 360px;
+        overflow: hidden;
+        background: #05070c;
+        font-family: Arial, sans-serif;
+      }
+
+      .scene {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        opacity: 0;
+        overflow: hidden;
+      }
+
+      #scene-a {
+        opacity: 1;
+        background:
+          radial-gradient(circle at 22% 24%, rgba(255, 255, 255, 0.78) 0 42px, transparent 43px),
+          linear-gradient(135deg, #ff3f6e 0%, #6812d6 52%, #0b1030 100%);
+      }
+
+      #scene-b {
+        background:
+          radial-gradient(circle at 78% 70%, rgba(255, 255, 255, 0.72) 0 54px, transparent 55px),
+          linear-gradient(135deg, #03131f 0%, #06966d 45%, #e0fb55 100%);
+      }
+
+      .word {
+        position: relative;
+        z-index: 2;
+        color: #ffffff;
+        font-size: 92px;
+        font-weight: 900;
+        line-height: 0.9;
+        letter-spacing: 0;
+        text-shadow: 0 8px 28px rgba(0, 0, 0, 0.42);
+      }
+
+      .stripes {
+        position: absolute;
+        inset: -80px;
+        background: repeating-linear-gradient(
+          90deg,
+          rgba(255, 255, 255, 0.42) 0 18px,
+          transparent 18px 46px
+        );
+        transform: rotate(-18deg);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="main"
+      data-composition-id="page-side-shader-compositor-render-compat"
+      data-width="640"
+      data-height="360"
+      data-start="0"
+      data-duration="2"
+    >
+      <audio id="probe-audio" src="silent.wav" data-start="0" data-duration="2"></audio>
+
+      <section id="scene-a" class="scene clip" data-start="0" data-duration="2">
+        <div class="stripes"></div>
+        <div class="word">ALPHA</div>
+      </section>
+
+      <section id="scene-b" class="scene clip" data-start="0" data-duration="2">
+        <div class="stripes"></div>
+        <div class="word">BETA</div>
+      </section>
+    </div>
+
+    <script>
+      const probeAudio = document.getElementById("probe-audio");
+      probeAudio.volume = 0.25;
+
+      const tl = gsap.timeline({ paused: true });
+      HyperShader.init({
+        bgColor: "#05070c",
+        accentColor: "#7dd3fc",
+        scenes: ["scene-a", "scene-b"],
+        transitions: [{ time: 0.75, shader: "glitch", duration: 0.85, ease: "none" }],
+        timeline: tl,
+        compositionId: "page-side-shader-compositor-render-compat",
+      });
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["page-side-shader-compositor-render-compat"] = tl;
+    </script>
+  </body>
+</html>
