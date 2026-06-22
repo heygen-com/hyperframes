@@ -1,67 +1,70 @@
-# Background Music
+# Background music (BGM)
 
-`npx hyperframes bgm --duration <s>` generates a stereo WAV from a mood prompt. Auto-detects between Google Lyria (cloud) and MusicGen (local).
+One music bed per composition, produced by the shared audio engine (`scripts/audio.mjs` → `scripts/lib/bgm.mjs`). Two routes, chosen by the engine's one switch — whether a HeyGen credential is present:
 
-## Provider chain
+- **HeyGen retrieval — the default when credentialed.** Search HeyGen's music catalog by mood, download the top track. No generation; same `~/.heygen` / `$HEYGEN_API_KEY` credential as TTS.
+- **Local generation (Lyria → MusicGen) — the automatic fallback when there is no credential** (or when asked for explicitly). Generate a WAV from a mood prompt. There is **no `npx hyperframes bgm` command**; the engine spawns `scripts/lyria-recipe.py` or an inline MusicGen script directly.
 
-| Order | Provider                             | Env / deps                                                          | Speed                                                   | Quality                                                    |
-| ----- | ------------------------------------ | ------------------------------------------------------------------- | ------------------------------------------------------- | ---------------------------------------------------------- |
-| 1     | Google Lyria RealTime                | `$GEMINI_API_KEY` or `$GOOGLE_API_KEY` + `pip install google-genai` | Real-time stream (≈ requested duration)                 | Production-grade, BPM / brightness / density / scale knobs |
-| 2     | MusicGen (`facebook/musicgen-small`) | Python `transformers + torch + soundfile` (~300 MB on first run)    | Slow on CPU (minutes); fast on Apple Silicon MPS / CUDA | Decent; coarser controls (prompt only)                     |
+## Driving it from the request
 
-Override with `--provider lyria|musicgen`. If neither path is available the command exits 1 with a clear message — callers decide whether to proceed without BGM.
+`audio_request.json` → `bgm: { mode?, query?, prompt? }`:
 
-```bash
-# Auto (Lyria if a Google key is set)
-npx hyperframes bgm --duration 30 -o bgm.wav
+- **`mode`** — `retrieve | generate | none`. Omit for **auto** (retrieve when credentialed, else generate). An **explicit** `retrieve` is strict: no credential ⇒ skip, never a detached generate (so a caller with no `wait-bgm` step, e.g. product-launch, can't get a pending job it won't await).
+- **`query`** — the mood, used for retrieval and as a fallback prompt seed (e.g. a storyboard's `music:` field, falling back to `message` → `arc` → `"calm cinematic underscore"`).
+- **`prompt`** — an explicit full prompt for generation; omit and the engine infers one (see Mood inference). Optional `blob` / `archetype` / `arc` feed that inference.
 
-# Pin a provider
-npx hyperframes bgm --duration 60 --provider musicgen -o bgm.wav
+## HeyGen retrieval (default)
 
-# Explicit mood
-npx hyperframes bgm --duration 45 --prompt "Calm cinematic, soft strings, BPM 95" -o bgm.wav
+`searchSounds(query, "music", { limit: 5 })` → `GET /audio/sounds?query=<mood>&type=music&limit=5`. Take the top result (ranked by `score`), download its presigned `audio_url` → `assets/bgm/track.mp3`. Synchronous. No match → skip (BGM is optional; never fail the render over it). Cue written to `audio_meta.json`:
 
-# Infer mood from a script (industry-keyword match)
-npx hyperframes bgm --duration 45 --from-file narrator_scripts.json -o bgm.wav
-
-# Lyria tuning
-npx hyperframes bgm --duration 30 --prompt "..." --bpm 95 --scale MINOR --brightness 0.6 --density 0.4
+```jsonc
+{
+  "path": "assets/bgm/track.mp3",
+  "volume": 0.8,
+  "mode": "retrieve",
+  "query": "calm cinematic underscore",
+  "duration_s": 42.0,
+}
 ```
 
-## Mood inference (`--from-file`)
+`volume` is 0.8 under narration, 0.9 for a silent film (no voice). `bgm_pending` is `false` — the file is on disk when the engine returns.
 
-Pass any text file (narrator script, script blob, JSON dump). The CLI scans the lowercased content against industry keywords and picks a prompt:
+## Local generation (fallback) — Lyria → MusicGen
 
-| Match                                                     | Default prompt                                                                              |
-| --------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `saas / api / cloud / developer / platform / sdk / infra` | `Uplifting corporate tech, bright and modern, gentle piano with synth pads, BPM 110, MAJOR` |
-| `crypto / nft / web3 / defi / token / blockchain`         | `Atmospheric electronic, deep bass, futuristic synths, restrained percussion, BPM 100`      |
-| `creative / agency / design / studio / art / brand`       | `Playful electronic, warm pads, light percussion, BPM 115, MAJOR`                           |
-| `finance / fintech / bank / payment / invest / wealth`    | `Calm cinematic, soft strings, restrained percussion, BPM 95`                               |
-| _(default)_                                               | Same as `saas`                                                                              |
+Spawned **detached** so voice work isn't blocked; `audio_meta.bgm_pending: true` and `bgm_pid` / `bgm_log` are set until it finishes. **Run `scripts/wait-bgm.mjs` before assembling** — it polls the output file / process / log, detects crashes, and writes `bgm_status.json` (`status: ready | failed | timeout | disabled`). A failed/absent track is simply omitted; it never blocks voice/SFX.
 
-`--prompt` always wins over `--from-file`.
+| Order | Provider                             | Env / deps                                                                            | Speed                                   | Quality                     |
+| ----- | ------------------------------------ | ------------------------------------------------------------------------------------- | --------------------------------------- | --------------------------- |
+| 1     | Google Lyria RealTime                | `$GEMINI_API_KEY` or `$GOOGLE_API_KEY` + `google-genai` (auto-installed on demand)    | Real-time stream (≈ requested duration) | Production-grade            |
+| 2     | MusicGen (`facebook/musicgen-small`) | Python `transformers + torch + soundfile + numpy` (~300 MB first run; auto-installed) | Slow on CPU; fast on Apple MPS / CUDA   | Decent; prompt-only control |
 
-## Lyria knobs
+Output → `assets/bgm/track.wav`, target = total voice duration. MusicGen generates **one** seed clip (≤28–30s, under the decoder's positional limit) then crossfade-loops it up to the target (or trims down if shorter), avoiding per-segment seams. Backend selection is by what can actually **run**: Lyria only when `import google.genai` succeeds, else MusicGen; if neither can be made to run, BGM is skipped (voice + SFX still render).
 
-- `--bpm` 90–110 calm, 110–130 energetic (default 110)
-- `--brightness` 0–1, ≥ 0.7 for promotional (default 0.8)
-- `--density` 0–1, higher = fuller mix (default 0.5)
-- `--scale` `MAJOR` upbeat / `MINOR` somber / `PENTATONIC` / etc. (default `MAJOR`)
-- `--negative-prompt` styles to exclude (e.g. `"vocals, drums"`)
+## Mood inference (the generate prompt)
 
-MusicGen ignores all of the above — pass the mood you want directly in `--prompt`.
+`inferBgmPrompt()` in `scripts/lib/bgm.mjs`: an explicit `prompt` wins; otherwise industry-keyword **base** → narrative-**archetype** shape → emotional-**arc** tiebreaker.
 
-## Output
+| Match in `blob` / `query`                              | Base prompt                                                                 | BPM |
+| ------------------------------------------------------ | --------------------------------------------------------------------------- | --- |
+| `crypto / nft / web3 / defi / token / blockchain`      | atmospheric electronic, deep bass, futuristic synths, restrained percussion | 100 |
+| `finance / fintech / bank / payment / invest / wealth` | calm cinematic, soft strings, subtle piano, restrained percussion           | 92  |
+| `creative / agency / design / studio / art / brand`    | playful electronic, warm pads, light percussion                             | 115 |
+| _(default: SaaS / tech / platform)_                    | uplifting corporate tech, bright modern piano with synth pads               | 108 |
 
-48 kHz / 16-bit stereo WAV at the requested duration (Lyria; MusicGen returns 32 kHz mono). Lyria writes silence-padded if the stream timeouts; check the printed `durationSeconds` against your target.
+Archetype then reshapes the arc — PAS → "MINOR to MAJOR" build; BAB / future-pacing → aspirational rising; feature-cascade → +10 BPM driving; demo-loop → −8 BPM minimal. The emotional arc breaks remaining ties (tension→relief, excitement, trust/reassurance).
+
+## Lyria knobs (direct recipe use)
+
+The engine bakes BPM / scale into the **prompt text** (via the inference above) and passes only `--output` / `--duration` / `--prompt` to the recipe. If you invoke `scripts/lyria-recipe.py` directly you can also set: `--bpm` (90–110 calm, 110–130 energetic), `--brightness` (0–1, ≥0.7 promotional), `--density` (0–1, higher = fuller), `--scale` (`MAJOR` / `MINOR` / `PENTATONIC` / …), `--negative-prompt` (styles to exclude). MusicGen ignores all of these — put the mood in the prompt.
 
 ## Failure modes
 
-| Failure                                                                 | Behavior                                                                                        |
-| ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `$GEMINI_API_KEY` / `$GOOGLE_API_KEY` unset **and** Python deps missing | Exit 1 with install hint (`pip install transformers torch soundfile` or set `$GEMINI_API_KEY`). |
-| Lyria API error                                                         | Exit 1 with stderr tail. Re-run with `--provider musicgen` to fall back.                        |
-| MusicGen OOM on CPU                                                     | Reduce `--duration` (each second ≈ 50 tokens; ~10 GB peak for 30 s on CPU).                     |
+| Failure                                       | Behavior                                                                                 |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| No music match (retrieve)                     | `bgm: null`, anomaly logged. Render proceeds without BGM.                                |
+| Explicit `retrieve`, no credential            | Skipped (no silent generate fallback). Use `mode: generate` or omit `mode` for auto.     |
+| Neither Lyria nor MusicGen can run (generate) | `bgm` disabled with a `pip install …` hint. Voice + SFX still render.                    |
+| Generate still rendering at assemble time     | `bgm_pending: true`; `wait-bgm.mjs` waits/checks and writes `bgm_status.json` first.     |
+| Generate crashed                              | `wait-bgm.mjs` → `bgm_status.json { status: "failed" }`; the `<audio>` track is omitted. |
 
-BGM generation is **synchronous** in the CLI — for multi-minute renders, run it in the background (`&` in shell, or your agent harness's background-execution option).
+BGM failure never blocks a render.
