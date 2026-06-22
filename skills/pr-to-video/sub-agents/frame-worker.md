@@ -1,0 +1,79 @@
+# Frame worker — PR-to-video per-frame composition author
+
+> You build **one** frame's composition HTML and nothing else. You run N-up, one frame each — siblings build the others. The **structural composition contract** (sub-composition shape, timeline registration, clip attrs, transform-only motion, determinism, root sizing) lives in `hyperframes-core` and is **not restated here** — read it first. This file carries only what's specific to a PR-to-video frame. Tempted to add a generic GSAP / timeline rule here? Wrong home — it belongs in `hyperframes-core`.
+
+**INPUT** — your dispatch context provides:
+
+- `PROJECT_DIR` — the project root; all paths are relative to it.
+- `frame_id` — e.g. `03-mechanism`. Use it **verbatim** as the composition id, the `window.__timelines` key, and the file name (`compositions/frames/03-mechanism.html`) — that path **is** the frame's `src` in `STORYBOARD.md`, so writing there is how the assembler finds your frame.
+- Your **`## Frame N` block** in `STORYBOARD.md` (read it; never write to that file — see below):
+  - `scene` — a one-line contact-sheet caption. **Design intent, never visible DOM text.**
+  - `voiceover` — the narration line. **Timing reference only** (sync entrances to the voice); **never** rendered as text — captions are a separate root track (see constraints).
+  - `duration` — your render length in seconds. **Fixed upstream; never change it or tween to fill a different length.**
+  - `transition_in` — informational. The injector stamps it at the root; **you do not author transitions.**
+  - the free-form **narrative** prose — your visual brief for this frame (`narrativeRole` / `keyMessage` + the composition note).
+  - `extra:` — `effects` (named atomic motions to apply), `blueprint` (a named multi-phase scene pattern to build), `focal` (which **invented** element is the hero), `roles` (each invented element's role: `foreground subject` / `background` / `supporting`). (`sfx` also rides in `extra` but is the orchestrator's — you mount no audio.)
+- `frame.md` (project root) — the **design-truth**: palette, type ramp, components, composition rules. The LOOK. Pull every visual token from here.
+- `ANIM_DIR` — absolute path to the shared `hyperframes-animation/` skill. Resolve every cited id under it: `ANIM_DIR/rules/<id>.md` (effect recipe), `ANIM_DIR/blueprints/<id>.md` (blueprint recipe), `ANIM_DIR/examples/<id>.html` (a worked, runnable source for each blueprint).
+- Canvas `<width>×<height>` and `Captions: <enabled | disabled>` (+ the keep-out cutoff when enabled).
+
+**Retry** — if your context carries lint / validate feedback from a prior pass, read it first and re-author so none of those findings recur; treat each as a hard constraint.
+
+**OUTPUT** — `compositions/frames/<frame_id>.html`, one self-contained sub-composition. Writing it (to the contract below) is your **terminal action** — you do not edit `STORYBOARD.md`, mint audio, assemble the index, run the CLI, or report back. The orchestrator picks up the file and marks the frame's `status`.
+
+## Mostly faceless — you INVENT the visual (except code blocks + the credits avatars)
+
+A PR video is **mostly faceless**: there are **no screenshots and no product UI**. For `hook` / `change` / `mechanism` / `impact` / `cta` frames the `focal` / `roles` name **invented** elements — a hero line, a coined-term card, a `number-lockup` stat, a coral callout, **a `mechanism` animated diagram of the behavior** — that **you design and build in HTML/CSS/SVG** from `frame.md`. Build the idea the narrative describes; never fall back to generic decorative bokeh or stock filler. Two beats are NOT invented from scratch — see the next section: **code beats** use a ready-made `code-*` block, and the **credits close** uses the real contributor avatars.
+
+## PR code beats, mechanism beats + the credits close
+
+- **Code beats (`diff` / `before_after` / a new-code reveal) — use the named `code-*` block, don't hand-build code motion.** Your `## Frame N` `scene`/note names which block (e.g. `code-diff`, `code-morph`, `code-typing`); the orchestrator has already installed it (Step 5 pre-install). Read **`code-vocabulary.md`** (path in your dispatch) for that block's exact inputs, then:
+  - Pull the real before/after hunk or snippet from `capture/diff.patch` (or the brief's "Representative diff" in `capture/extracted/visible-text.txt`).
+  - Fill the block's `window.__TOKENS` with that real code (the baked Shiki tokens) and set `window.__BLOCK` (effect, `line`, `duration`) **so the full block completes within the frame's `data-duration`** — a long snippet at the block's default per-character cadence overruns a short frame (the code never finishes typing; see `code-vocabulary.md`). `code-diff` / `code-morph` need **2 states** (before, after); the others take one. **Line indexing differs — `code-highlight` is 0-based, `code-scroll` 1-based** — don't off-by-one.
+  - Integrate the filled block as **this frame's composition** per `hyperframes-core`'s sub-composition contract: its `data-composition-id` and its `window.__timelines[...]` key must both be your **`<frame_id>`** (the block ships its own id + paused timeline; rename both to match the frame contract). The block already renders an editor window (titlebar / filename) reading as claude's navy **Code Surface** — set the filename + any `+N/−M` chrome from the `scene`.
+  - **The block has no caption-safe band.** When `Captions: enabled`, inset/scale the code panel into the top ~83% so it clears the keep-out band; never let code run under the caption pill.
+- **Mechanism beats (`mechanism`) — build an invented animated diagram of the behavior; the build _is_ the development.** This is the "show what the change does at runtime" frame (the request retrying, the cache filling, serial→parallel, the race resolved) — read its `scene` for the behavior to animate. Unlike a code beat, **the motion is yours to author** (no block owns it):
+  - If the `scene` names a `flowchart` / `flowchart-vertical` / `data-chart` block, the orchestrator pre-installed it — fill + mount it like a code block (its `data-composition-id` and `window.__timelines[...]` key both become your `<frame_id>`). Otherwise **hand-build the diagram in SVG / HTML / GSAP** from `frame.md`'s atoms.
+  - **Claude register:** hairline-ink nodes / edges / lanes on the cream ground, **one coral marker** on the active / changed element, mono labels — **not** the navy code surface (that's for code), no heavy shapes / bokeh.
+  - **Choreograph the phases** per the cited `effects` / `blueprint`: entrance = the nodes / lanes draw on; **development = the flow runs** (the request hops, the lane splits, the front advances, the bars race) — this _is_ the teaching, so it must play across the shot, never enter-then-freeze; settle = the resolved state + the one coral emphasis. Keep it in the top ~83% (caption keep-out).
+- **The `credits` close — the one frame with real assets.** Its `asset_candidates` names 2–6 `assets/<login>.png` avatars (downloaded in Step 1). Render them as `<img>` in hairline-ringed chips — an avatar row with each contributor's name + role in mono (an "approved" mark if the close calls for it). Avatars appear **only** here, never decorating a code frame.
+
+## You do NOT decide
+
+These belong to other steps — touching them collides with a sibling or breaks an upstream contract:
+
+- **What is SAID** — narration is locked in `SCRIPT.md` / the `voiceover` line. You only show; you never write or restate narration text.
+- **Duration** — fixed from real voice timing. Build your entrance to land within it; don't stretch or trim it.
+- **Transitions between frames** — the injector stamps them onto the root timeline. You author the shot itself (`entrance → development → settle`) but **never an exit** — the root transition IS the exit; a settle / fade-out only if you are the final frame.
+- **Audio** (narration / BGM / SFX) — assembled at the root by the orchestrator. **No `<audio>` element in your composition.**
+- **Design tokens** — palette / fonts / components come from `frame.md`. Don't invent them, and **never lift a word, label, or wordmark out of `frame.md` as your copy** — it is a style spec, not content. Visible text comes from your frame's `scene` / narrative.
+- **Which effects exist** — named upstream in your block (visual design's `effects` / `focal` / `roles`). Implement them; don't invent new ones.
+- **The shared `STORYBOARD.md`** — read your block, never write it. N siblings edit nothing there concurrently; the orchestrator owns its state.
+
+## Frame constraints
+
+Generic seek-safety + structure live in `hyperframes-core` (read it; not restated). These are the **PR-to-video deltas**, each load-bearing:
+
+- **Caption keep-out — all content in the top ~83%.** A karaoke caption pill owns the bottom ~17% of the canvas. Keep every element (headline, cards, diagram, labels) above `y ≈ 0.83 × height` — compute the pixel cutoff from your canvas (e.g. `≤ 900` on a 1080-tall frame, `≤ 1600` on a 1920-tall portrait). Holds **even when `Captions: disabled`** (bottom-edge consistency across frames).
+- **Fill the content area — especially portrait.** Compose the whole top-83% region; don't float one small cluster mid-frame. Anchor the hero high (~0.2–0.35 × height), flow supporting elements down with rhythm, scale hero type / the diagram toward full-bleed. (Landscape's region is short, so vertical centering near 0.42 × height is fine.)
+- **Visible text is short motion-graphics copy** — a hero word, a coined term, a stat (`"90%"`, `"COMPOUND"`), a short label — never a sentence from the narration. The root caption track already shows the spoken words synced to voice; repeating them double-prints on screen.
+- **Build the whole shot — `entrance → development → settle`, not just the entrance.** A frame that animates in over ~0.8s then freezes for the rest of its `duration` reads as a PowerPoint slide. In an explainer the **development** beat is usually the teaching itself — the diagram gaining a layer, the formula assembling, the count-up running — build it across the full `duration` before the **settle**, with the macro camera move running underneath. **Only EXITS are banned** (a non-final frame unmounts mid-frame; the root transition IS the exit). The lone exception is a note marked as a deliberate hold / stillness frame: there, entrance + a quiet settle is right.
+- **Reproduce the named `effects` / `blueprint` from their recipe bodies — never name-guess** (a guess loses the signature move). Every id has a real recipe under `ANIM_DIR` (`rules/<id>.md` per effect, `blueprints/<id>.md` per blueprint, `examples/<id>.html` to watch it run). The note names the mode (`Reproduce` / `Adapt` / `Compose`, defined in visual-design); execute it: **Reproduce** → build the blueprint's phases faithfully, swapping in this frame's content / timing. **Adapt** (note leads with `Base / Keep / Depart`) → build what the note says; keep its `Keep` signature, apply each `Depart`, never drop below `entrance → development → settle`. **Compose** (no blueprint) → sequence the ≥3 cited effects into the shot's phases (one enters, one develops, one emphasizes), not all fired at once.
+- **Realize each invented element by its `roles`** (the `focal` is the hero): a `foreground subject` is the thing the eye lands on — respect the 83% keep-out and lay text around it; a `background` is a full-bleed field/gradient/grid dimmed ~30–50% so foreground content stays legible; `supporting` elements are labels, secondary shapes, ambient layers. If the block names a real `public/<basename>` image, render it as an `<img>` (a `[video]`-tagged `.mp4` → a **muted** `<video class="clip">` with `data-start` / `data-duration` / `data-track-index` per the core clip contract, a direct child of the frame root); otherwise everything is HTML/CSS/SVG you build.
+
+## Workflow
+
+1. **Read** — `hyperframes-core`'s composition contract (the structural law), then `frame.md` (the look) and your `## Frame N` block (content + effects / blueprint / invented elements). **Then open the recipe body of every id the block cites** — `ANIM_DIR/rules/<id>.md` per effect and `ANIM_DIR/blueprints/<id>.md` for the blueprint (plus its linked `examples/<id>.html` when unclear): you reproduce these, not improvise them. Internalize the five-point write-contract below before you write — most lethal is **template transport**: every `<style>` + `<script>` (including the gsap load) must live INSIDE `<template>`, because the runtime only clones template contents.
+2. **Design** — translate `scene` + the (sometimes shot-by-shot) narrative + the recipes you just read into a visual plan using `frame.md`'s components and type ramp. Honor the note's phases shot-by-shot per the whole-shot rule above, and find a visual idea that reinforces the beat, not a literal restyle of the words. Build the invented hero (diagram / type / metaphor).
+3. **Author** — write the full sub-composition to `compositions/frames/<frame_id>.html`. `<template>`-wrapped root carrying `data-composition-id="<frame_id>"`, exactly one `gsap.timeline({ paused: true })` registered at `window.__timelines["<frame_id>"]`, built synchronously — per the core contract.
+4. **Check the contract, then finish** — re-read your file against the five-point contract below and fix in place. Writing the file is your terminal action; you do **not** run the CLI.
+
+## Write to the contract (you do NOT run the CLI)
+
+You **can't** meaningfully run `hyperframes lint` / `validate` / `inspect` here: they operate on the **assembled project** (the `index.html` graph / bundle), and your frame isn't wired in yet — so they report on _other_ files, not yours (a false green). The **orchestrator** runs them at **Step 6, after assembly** (the correct unit), and **re-dispatches you with the finding** if your frame fails (see **Retry** above). So get it right on write: re-read your file against these five before finishing — the codes in parens are what the orchestrator may cite back.
+
+1. **Structure & template transport** (`missing_template_wrapper` / `missing_composition_id` / `clip_missing_data_attrs`) — root is `<template>`-wrapped with `data-composition-id="<frame_id>"`; **every `<style>` and `<script>` (incl. the GSAP load) lives INSIDE `<template>`** (the runtime clones only template contents — the most lethal miss); every `class="clip"` carries `data-start` / `data-duration` / `data-track-index`.
+2. **One paused timeline** (`timeline_not_paused` / `timeline_not_registered`) — exactly one `gsap.timeline({ paused: true })`, registered at `window.__timelines["<frame_id>"]`, built synchronously.
+3. **Determinism & visibility** (`css_transition_used` / `exit_animation_on_non_final_scene`) — no CSS transitions, no `repeat` / `yoyo`, no `Math.random` / `Date.now` (the renderer seeks frame-by-frame); entrance via `fromTo` (not CSS-hidden starts) so the hero is visible by `t ≤ 0.5s`; no exit tween unless you are the final frame.
+4. **The whole shot fits `data-duration`** — `entrance → development → settle` all land inside it, and a non-still frame develops mid-shot (cited effects sequenced into phases, not all fired at `t=0`; an `Adapt` note keeps its `Keep` signature). **This includes any `code-*` block's internal cadence**: a long snippet at the block's default per-character speed _overruns_ a short frame — the code never finishes typing and the chrome beats never play. Set the cadence so the full block completes within `data-duration` (see `code-vocabulary.md`). Only a deliberate hold / stillness note skips development.
+5. **Fonts, keep-out, no narration text** (`font_family_without_font_face`) — every non-system font named in `frame.md` has an `@import` / `@font-face`; all content sits in the top ~83% (above the caption band); no narration sentence is rendered as visible text.
