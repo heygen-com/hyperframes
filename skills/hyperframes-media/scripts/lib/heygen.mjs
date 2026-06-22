@@ -51,7 +51,14 @@ export function heygenCredential() {
   if (!raw) return null;
   if (!raw.startsWith("{")) return { headers: { "X-Api-Key": raw } };
 
-  const cred = JSON.parse(raw);
+  // A malformed credentials file (partial write / wrong shape) must degrade to
+  // "no credential", not crash the engine at startup — this function never throws.
+  let cred;
+  try {
+    cred = JSON.parse(raw);
+  } catch {
+    return null;
+  }
   const oauth = cred.oauth;
   if (oauth?.access_token) {
     const expired = oauth.expires_at && new Date(oauth.expires_at).getTime() - 60_000 < Date.now();

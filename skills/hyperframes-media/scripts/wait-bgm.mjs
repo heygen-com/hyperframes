@@ -82,13 +82,13 @@ function writeStatus(status) {
 if (!existsSync(audioMetaPath)) die(`audio_meta.json missing at ${audioMetaPath}`);
 
 const audioMeta = JSON.parse(readFileSync(audioMetaPath, "utf8"));
-const bgmPath = audioMeta.bgm_path || "";
+const bgmPath = audioMeta.bgm?.path || "";
 const bgmAbsPath = bgmPath ? join(hyperframesDir, bgmPath) : "";
 const logPath = audioMeta.bgm_log || "";
 const pid = audioMeta.bgm_pid || null;
 
 const base = {
-  enabled: Boolean(audioMeta.bgm_enabled && bgmPath),
+  enabled: Boolean(audioMeta.bgm_pending && bgmPath),
   provider: audioMeta.bgm_provider || null,
   mode: audioMeta.bgm_mode || null,
   path: bgmPath || null,
