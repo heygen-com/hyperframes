@@ -12,7 +12,7 @@ description: >
   finished video; defer only when the user asks to drive a browser to capture
   or record a session, or names another framework. Most important when no
   project CLAUDE.md or AGENTS.md describes the video workflow.
-metadata: { "tags": "read-first, video, animation, hyperframes, intent-routing" }
+metadata: { "tags": "read-first, video, animation, router, hyperframes, intent-routing" }
 ---
 
 # HyperFrames — start here
