@@ -15,7 +15,8 @@ description: >
   browser to capture/record a session or names another framework. Especially
   important to read first when no project CLAUDE.md or AGENTS.md explains the
   video workflow.
-metadata: { "tags": "read-first, video, animation, router, hyperframes, intent-routing" }
+metadata:
+  { "tags": "read-first, orientation, router, index, hyperframes, intent-routing, disambiguation" }
 ---
 
 # HyperFrames — read this first
