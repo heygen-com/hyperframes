@@ -70,6 +70,15 @@ Routing needs to know **what the video is about** — its input and subject. If 
 - **Existing footage** — plain spoken-word subtitles → `/embedded-captions`; designed overlay cards → `/graphic-overlays`. Neither edits the footage itself (re-timing / recolor / reframe / reorder / audio is NLE editing — out of scope).
 - **Length is a guide, not a gate** — intent picks the workflow; go to `/general-video` only when the piece is clearly longer than ~3 min, or is a static / loop / custom format.
 
+## If the matched workflow isn't installed
+
+Once you've picked a workflow, check it's actually available to you. If the matched workflow skill isn't installed, don't fall back to guessing — tell the user to install it first:
+
+- **Just this workflow:** `npx skills add heygen-com/hyperframes --skill <workflow-name>` (e.g. `--skill pr-to-video` — bare name, no leading `/`).
+- **All workflows at once:** `npx skills add heygen-com/hyperframes --all` (core + every workflow, skips the picker).
+
+After they run it, re-read the workflow's skill and continue.
+
 ## Workflow details
 
 ### `/product-launch-video`
