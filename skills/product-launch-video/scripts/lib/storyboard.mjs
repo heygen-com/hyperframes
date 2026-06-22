@@ -145,7 +145,13 @@ function buildFrame(section, index, warnings) {
   for (const line of section.lines) {
     const meta = META_RE.exec(line);
     if (meta) {
-      applyMeta(frame, (meta[1] ?? "").toLowerCase(), (meta[2] ?? "").trim(), section.headingLine, warnings);
+      applyMeta(
+        frame,
+        (meta[1] ?? "").toLowerCase(),
+        (meta[2] ?? "").trim(),
+        section.headingLine,
+        warnings,
+      );
     } else {
       narrativeLines.push(line);
     }
