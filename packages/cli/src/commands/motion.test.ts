@@ -1,13 +1,13 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { ensureDOMParser } from "../utils/dom.js";
-import { surfaceComposition } from "./keyframes.js";
+import { surfaceComposition } from "./motion.js";
 
 beforeAll(() => ensureDOMParser());
 
 const wrap = (script: string) =>
   `<!doctype html><html><body><div id="root" data-composition-id="main" data-duration="4"><div id="dot" class="clip"></div></div><script>${script}</script></body></html>`;
 
-describe("keyframes multi-stroke traces", () => {
+describe("motion multi-stroke traces", () => {
   it("composites ≥2 position strokes on one element into a single trace", () => {
     const html = wrap(`
       const tl = gsap.timeline({ paused: true });
@@ -47,7 +47,7 @@ describe("keyframes multi-stroke traces", () => {
   });
 });
 
-describe("keyframes composed-ancestor surfacing (nested elements)", () => {
+describe("motion composed-ancestor surfacing (nested elements)", () => {
   const nested = (script: string) =>
     `<!doctype html><html><body><div id="root" data-composition-id="main" data-duration="4"><div id="stage"><div id="hero"><div id="core" class="clip"></div></div></div></div><script>${script}</script></body></html>`;
 

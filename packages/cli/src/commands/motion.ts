@@ -9,10 +9,10 @@ import { resolveProject } from "../utils/project.js";
 import { withMeta } from "../utils/updateCheck.js";
 
 export const examples: Example[] = [
-  ["Surface every keyframe + motion path in the project", "hyperframes keyframes"],
-  ["Inspect one composition file", "hyperframes keyframes compositions/scene.html"],
-  ["Machine-readable output for an agent", "hyperframes keyframes --json"],
-  ["Only one element's tweens", "hyperframes keyframes --selector '#puck-a'"],
+  ["Surface every keyframe + motion path in the project", "hyperframes motion"],
+  ["Inspect one composition file", "hyperframes motion compositions/scene.html"],
+  ["Machine-readable output for an agent", "hyperframes motion --json"],
+  ["Only one element's tweens", "hyperframes motion --selector '#puck-a'"],
 ];
 
 // ── Surfaced shapes ──────────────────────────────────────────────────────────
@@ -419,7 +419,7 @@ async function runOnionShot(
   projectDir: string | undefined,
   args: ShotArgs,
 ): Promise<boolean> {
-  const { captureMotionPathShot } = await import("./keyframesShot.js");
+  const { captureMotionPathShot } = await import("./motionShot.js");
   const requests = collectAnimatedSelectors(comps);
   if (!projectDir) {
     console.log(c.dim("--shot needs a project directory (not a single .html file)."));
@@ -500,8 +500,9 @@ function printComposition(cmp: SurfacedComposition): void {
 
 export default defineCommand({
   meta: {
-    name: "keyframes",
-    description: "Surface every GSAP tween, keyframe, and motion path for agent-driven editing",
+    name: "motion",
+    description:
+      "See, debug, and refine motion — surface every GSAP tween, keyframe, and motion path, then --shot the onion-skin",
   },
   args: {
     target: {
@@ -563,7 +564,7 @@ export default defineCommand({
     for (const cmp of comps) printComposition(cmp);
     console.log(
       c.dim(
-        "Tip: edit the keyframes in source, then `keyframes --shot out.png` to see the rendered motion.",
+        "Tip: edit the keyframes in source, then `motion --shot out.png` to see the rendered motion.",
       ),
     );
   },

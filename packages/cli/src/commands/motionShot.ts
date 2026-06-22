@@ -7,16 +7,11 @@
 // 3D is captured for free: zero-size marker children at the element's corners are
 // projected by the browser, so a tilted/edge-on element renders as a real quad.
 // Framing controls (samples / time window / fit / filmstrip) let the agent frame
-// exactly what it's editing. All geometry + SVG live in ./keyframesShotLayout.ts
+// exactly what it's editing. All geometry + SVG live in ./motionShotLayout.ts
 // (pure, tested); this file only drives the browser and SAMPLES.
 
 import { writeFileSync } from "node:fs";
-import {
-  buildOnionSvg,
-  parseAngle,
-  sampleTimes,
-  type OnionElement,
-} from "./keyframesShotLayout.js";
+import { buildOnionSvg, parseAngle, sampleTimes, type OnionElement } from "./motionShotLayout.js";
 
 export interface ShotRequest {
   /** CSS selector of the moving element to sample (e.g. "#dot"). */
@@ -166,7 +161,7 @@ export async function captureMotionPathShot(
   const server = await serveStaticProjectHtml(
     projectDir,
     html,
-    "Failed to bind keyframes shot server",
+    "Failed to bind motion shot server",
   );
   let browserInstance: import("puppeteer-core").Browser | undefined;
   try {

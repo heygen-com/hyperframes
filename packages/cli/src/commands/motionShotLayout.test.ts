@@ -6,7 +6,7 @@ import {
   sampleTimes,
   stripCells,
   type OnionElement,
-} from "./keyframesShotLayout.js";
+} from "./motionShotLayout.js";
 
 describe("sampleTimes", () => {
   it("spreads N equal-time steps across the full duration", () => {

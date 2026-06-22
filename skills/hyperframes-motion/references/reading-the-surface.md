@@ -1,6 +1,6 @@
 # Reading the keyframes surface
 
-`npx hyperframes keyframes` prints one block per tween (and one per **trace** when an element draws in multiple strokes — see `multi-stroke.md`). It's data, not a picture — to _see_ the motion, use `--shot` (the onion-skin render). Use `--json` for exact numbers or when you're an agent computing edits.
+`npx hyperframes motion` prints one block per tween (and one per **trace** when an element draws in multiple strokes — see `multi-stroke.md`). It's data, not a picture — to _see_ the motion, use `--shot` (the onion-skin render). Use `--json` for exact numbers or when you're an agent computing edits.
 
 ## A single tween block
 

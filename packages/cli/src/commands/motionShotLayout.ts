@@ -1,6 +1,6 @@
 // Pure, Node-side geometry + SVG generation for the onion-skin motion shot.
 //
-// The headless step (keyframesShot.ts) only SAMPLES — it seeks the live timeline
+// The headless step (motionShot.ts) only SAMPLES — it seeks the live timeline
 // and reads each element's projected corners. Everything else (which times to
 // sample, how to fit/lay them out, and the SVG markup) lives here as pure
 // functions so it can be unit-tested without a browser.

@@ -58,4 +58,4 @@ If a keyframe sets only one axis, GSAP holds the other at its last value — and
 
 ## Verify
 
-After each edit, `keyframes --shot out.png` and check the PNG before `inspect` / `render`. See the stop condition in `SKILL.md`: usually ≤5 rounds, then ship or ask.
+After each edit, `motion --shot out.png` and check the PNG before `inspect` / `render`. See the stop condition in `SKILL.md`: usually ≤5 rounds, then ship or ask.
