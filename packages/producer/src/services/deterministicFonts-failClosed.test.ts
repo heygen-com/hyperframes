@@ -178,6 +178,19 @@ describe("injectDeterministicFontFaces — failClosedFontFetch: true", () => {
     expect(result).toContain("data-hyperframes-deterministic-fonts");
   });
 
+  it("does NOT throw when font-family uses CSS var() references", async () => {
+    const html = `<!doctype html><html><head><style>
+      :root { --ui-font: "Inter"; --vowel-font: "Montserrat"; }
+      body { font-family: var(--ui-font), sans-serif; }
+      h1 { font-family: var(--vowel-font), serif; }
+    </style></head><body><h1>hello</h1></body></html>`;
+    const result = await injectDeterministicFontFaces(html, {
+      failClosedFontFetch: true,
+      fetchImpl: makeFailingFetch(),
+    });
+    expect(result).toBe(html);
+  });
+
   it("does NOT throw when the HTML requests no fonts at all", async () => {
     const html = `<!doctype html><html><body><p>no fonts</p></body></html>`;
     const result = await injectDeterministicFontFaces(html, {
