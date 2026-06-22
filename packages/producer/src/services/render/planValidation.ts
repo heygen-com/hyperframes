@@ -109,6 +109,9 @@ export function validateNoSystemFonts(compiledHtml: string): void {
   for (const { surface, declaration, families } of iterateFontFamilyDeclarations(compiledHtml)) {
     if (families.length === 0) continue;
     const primaryRaw = families[0]!;
+    // TODO(#1654): var() as primary bypasses this check — the resolved value
+    // could be system-ui or undefined. Consider resolving :root definitions
+    // or emitting a warning when primary is var().
     if (!GENERIC_FAMILIES.has(primaryRaw.toLowerCase())) continue;
     throw new PlanValidationError(
       SYSTEM_FONT_USED,

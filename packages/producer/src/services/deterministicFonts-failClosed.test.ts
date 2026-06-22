@@ -191,6 +191,19 @@ describe("injectDeterministicFontFaces — failClosedFontFetch: true", () => {
     expect(result).toBe(html);
   });
 
+  it("still resolves concrete fonts alongside var() in mixed declarations", async () => {
+    const html = `<!doctype html><html><head><style>
+      body { font-family: var(--ui-font), "Inter", sans-serif; }
+    </style></head><body><p>mixed</p></body></html>`;
+    const fetchImpl = (async () =>
+      new Response("/* no extra faces */", { status: 200 })) as unknown as typeof fetch;
+    const result = await injectDeterministicFontFaces(html, {
+      failClosedFontFetch: true,
+      fetchImpl,
+    });
+    expect(result).toContain("data-hyperframes-deterministic-fonts");
+  });
+
   it("does NOT throw when the HTML requests no fonts at all", async () => {
     const html = `<!doctype html><html><body><p>no fonts</p></body></html>`;
     const result = await injectDeterministicFontFaces(html, {
