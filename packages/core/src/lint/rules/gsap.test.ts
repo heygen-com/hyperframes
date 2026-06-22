@@ -3,6 +3,47 @@ import { describe, it, expect } from "vitest";
 import { lintHyperframeHtml } from "../hyperframeLinter.js";
 
 describe("GSAP rules", () => {
+  it("errors when window.__timelines is registered BEFORE the fonts.ready build", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    var tl = gsap.timeline({ paused: true });
+    window.__timelines["c1"] = tl;
+    document.fonts.ready.then(function () {
+      tl.from("#editor", { opacity: 0, duration: 0.5 }, 0);
+    });
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find(
+      (f) => f.code === "gsap_timeline_registered_before_async_build",
+    );
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("error");
+  });
+
+  it("does NOT error when window.__timelines is registered AFTER the fonts.ready build", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    var tl = gsap.timeline({ paused: true });
+    document.fonts.ready.then(function () {
+      tl.from("#editor", { opacity: 0, duration: 0.5 }, 0);
+      window.__timelines["c1"] = tl;
+    });
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find(
+      (f) => f.code === "gsap_timeline_registered_before_async_build",
+    );
+    expect(finding).toBeUndefined();
+  });
+
   it("does NOT error when GSAP animates opacity on a clip element (by id)", async () => {
     const html = `
 <html><body>
