@@ -93,6 +93,13 @@ export interface CaptureOptions {
   quality?: number;
   deviceScaleFactor?: number;
   /**
+   * Opt into Chrome's capture-beyond-viewport screenshot path. Keep this off
+   * for ordinary viewport-sized captures because it is substantially slower in
+   * Chrome's screenshot compositor path. Enable for known compositor edge cases
+   * such as native video surfaces in tall portrait renders.
+   */
+  captureBeyondViewport?: boolean;
+  /**
    * FFmpeg-probed intrinsic dimensions for videos whose frames are injected
    * out-of-band. Applied before the readiness wait so layout that depends on
    * video aspect ratio (e.g. `height:auto`) stays stable even if Chromium never

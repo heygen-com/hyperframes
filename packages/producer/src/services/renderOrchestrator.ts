@@ -1212,7 +1212,11 @@ export async function executeRenderJob(
       quality: needsAlpha ? undefined : job.config.quality === "draft" ? 80 : 95,
       variables: job.config.variables,
       deviceScaleFactor,
+      captureBeyondViewport: composition.videos.length > 0,
     };
+    updateCaptureObservability({
+      captureBeyondViewport: captureOptions.captureBeyondViewport ?? false,
+    });
 
     // Capture sessions do not need native browser metadata for videos whose
     // pixels come from out-of-band FFmpeg frame extraction. Waiting on those
@@ -1437,6 +1441,7 @@ export async function executeRenderJob(
     observability.checkpoint("capture_strategy", "resolved", {
       workerCount,
       forceScreenshot: captureForceScreenshot,
+      captureBeyondViewport: captureOptions.captureBeyondViewport ?? false,
       useStreamingEncode,
       useLayeredComposite,
       usePageSideCompositing: usePageSideCompositingForTransitions,

@@ -33,6 +33,7 @@ export interface BrowserDiagnosticSummary {
 export interface RenderCaptureObservability {
   forceScreenshot: boolean;
   captureMode: "screenshot" | "beginframe";
+  captureBeyondViewport?: boolean;
   workerCount?: number;
   useStreamingEncode?: boolean;
   useLayeredComposite?: boolean;

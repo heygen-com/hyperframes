@@ -41,7 +41,29 @@ describe("pageScreenshotCapture supersample plumbing", () => {
     expect(send).toHaveBeenCalledWith(
       "Page.captureScreenshot",
       expect.objectContaining({
+        captureBeyondViewport: false,
         clip: { x: 0, y: 0, width: 1920, height: 1080, scale: 1 },
+      }),
+    );
+  });
+
+  it("uses captureBeyondViewport only when callers opt in", async () => {
+    const send = vi.fn().mockResolvedValue({ data: ONE_PIXEL_PNG_B64 });
+    const page = makeFakePageWithCdp(send);
+
+    await pageScreenshotCapture(page, {
+      width: 1080,
+      height: 1920,
+      fps: { num: 30, den: 1 },
+      format: "jpeg",
+      captureBeyondViewport: true,
+    });
+
+    expect(send).toHaveBeenCalledWith(
+      "Page.captureScreenshot",
+      expect.objectContaining({
+        captureBeyondViewport: true,
+        clip: { x: 0, y: 0, width: 1080, height: 1920, scale: 1 },
       }),
     );
   });

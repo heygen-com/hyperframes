@@ -507,6 +507,7 @@ export async function renderChunk(
       // declare `data-composition-variables` leave this undefined and the
       // engine skips the `evaluateOnNewDocument` injection.
       variables: encoder.variables,
+      captureBeyondViewport: (planVideos?.videos.length ?? 0) > 0,
       // lock the BeginFrame warmup loop to a fixed iteration count so
       // `beginFrameTimeTicks` is host-independent. Only chunks ever set this.
       lockWarmupTicks: true,
