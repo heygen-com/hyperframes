@@ -145,6 +145,19 @@ function checkEnvironment(): CheckResult {
   return { ok: true, detail: parts.join(" \u00B7 ") };
 }
 
+async function checkWhisper(): Promise<CheckResult> {
+  const { findWhisper, getInstallInstructions } = await import("../whisper/manager.js");
+  const result = findWhisper();
+  if (result) {
+    return { ok: true, detail: result.executablePath };
+  }
+  return {
+    ok: false,
+    detail: "Not found (optional \u2014 needed for transcription)",
+    hint: getInstallInstructions(),
+  };
+}
+
 export interface CheckOutcome {
   name: string;
   ok: boolean;
@@ -213,6 +226,7 @@ export default defineCommand({
     }
 
     checks.push({ name: "Environment", run: checkEnvironment });
+    checks.push({ name: "whisper-cpp", run: checkWhisper });
 
     const outcomes: CheckOutcome[] = [];
     for (const check of checks) {

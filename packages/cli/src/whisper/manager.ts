@@ -151,9 +151,15 @@ export function findWhisper(): WhisperResult | undefined {
   return findFromEnv() ?? findFromSystem() ?? findBuiltBinary();
 }
 
-function getInstallInstructions(): string {
+export function getInstallInstructions(): string {
   if (platform() === "darwin") {
     return "brew install whisper-cpp";
+  }
+  if (platform() === "linux") {
+    return "Build from source: https://github.com/ggml-org/whisper.cpp#building (requires cmake and a C compiler)";
+  }
+  if (platform() === "win32") {
+    return "Build with cmake: https://github.com/ggml-org/whisper.cpp#building";
   }
   return "See https://github.com/ggml-org/whisper.cpp#building";
 }
