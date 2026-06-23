@@ -432,18 +432,13 @@ export function initSandboxRuntimeModular(): void {
         }
       }
 
-      const usesExternalCompositionSlot =
-        rawNode.hasAttribute("data-composition-src") ||
-        rawNode.hasAttribute("data-composition-file");
+      const hasAuthoredTiming =
+        rawNode.hasAttribute("data-duration") ||
+        rawNode.hasAttribute("data-end") ||
+        rawNode.hasAttribute(AUTHORED_DURATION_ATTR) ||
+        rawNode.hasAttribute(AUTHORED_END_ATTR);
 
-      if (
-        duration != null &&
-        duration > 0 &&
-        liveDuration != null &&
-        !usesExternalCompositionSlot
-      ) {
-        duration = Math.min(duration, liveDuration);
-      } else if ((duration == null || duration <= 0) && liveDuration != null) {
+      if (!hasAuthoredTiming && (duration == null || duration <= 0) && liveDuration != null) {
         duration = liveDuration;
       }
     }
@@ -1481,10 +1476,9 @@ export function initSandboxRuntimeModular(): void {
     const resolveMediaCompositionContext = (element: HTMLVideoElement | HTMLAudioElement) => {
       const compositionRoot = element.closest("[data-composition-id]");
       const inheritedStart = compositionRoot ? resolveStartForElement(compositionRoot, 0) : null;
-      // Media sync intentionally uses the authored host window here instead of
-      // the live child timeline duration. Visibility prefers live truth so a
-      // shrinking child composition hides early, but nested media needs a
-      // stable authored window so seeks clamp against the host clip timing.
+      // Media sync follows the authored host window, matching visibility for
+      // authored composition hosts. Live child timeline duration only fills in
+      // when no authored timing exists, so seeks clamp against host clip timing.
       const inheritedDuration = compositionRoot
         ? resolveDurationForElement(compositionRoot, { includeAuthoredTimingAttrs: true })
         : null;
@@ -1566,11 +1560,10 @@ export function initSandboxRuntimeModular(): void {
       if (!(rawNode instanceof HTMLElement)) continue;
 
       let isVisibleNow = isTimedElementVisibleAt(rawNode, state.currentTime);
-      // Studio-only defense-in-depth: pseudo-clips stamped on tween targets can
-      // get visibility:visible for the full composition. Render mode never stamps
-      // those targets, so keep the prior per-element visibility semantics there.
-      if (isVisibleNow && window.parent !== window) {
-        // Descendants must not override a hidden ancestor clip.
+      // Descendants must not override a hidden ancestor clip. CSS visibility can
+      // otherwise leak child pixels through inactive scenes because a descendant
+      // with visibility:visible escapes an ancestor's visibility:hidden.
+      if (isVisibleNow) {
         let ancestor = rawNode.parentElement;
         while (ancestor) {
           if (ancestor === rootComp) break;

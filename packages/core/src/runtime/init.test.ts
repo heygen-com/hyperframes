@@ -116,7 +116,7 @@ describe("initSandboxRuntimeModular", () => {
     window.cancelAnimationFrame = originalCancelAnimationFrame;
   });
 
-  it("uses the shorter live child timeline when the authored window is longer", () => {
+  it("keeps authored composition hosts visible when the live child timeline is shorter", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
     root.setAttribute("data-root", "true");
@@ -143,6 +143,37 @@ describe("initSandboxRuntimeModular", () => {
 
     player?.renderSeek(9);
 
+    expect(child.style.visibility).toBe("visible");
+  });
+
+  it("uses live child timeline duration when a composition host has no authored duration", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const child = document.createElement("div");
+    child.setAttribute("data-composition-id", "slide-1");
+    child.setAttribute("data-start", "0");
+    root.appendChild(child);
+
+    window.__timelines = {
+      main: createMockTimeline(20),
+      "slide-1": createMockTimeline(8),
+    };
+
+    initSandboxRuntimeModular();
+
+    const player = window.__player;
+    expect(player).toBeDefined();
+
+    player?.renderSeek(7);
+    expect(child.style.visibility).toBe("visible");
+
+    player?.renderSeek(9);
     expect(child.style.visibility).toBe("hidden");
   });
 
@@ -491,7 +522,7 @@ describe("initSandboxRuntimeModular", () => {
     });
   });
 
-  it("does not suppress descendant visibility in render mode (top-level page)", () => {
+  it("hides timed descendants inside a hidden timed clip in render mode", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
     root.setAttribute("data-root", "true");
@@ -507,12 +538,13 @@ describe("initSandboxRuntimeModular", () => {
     panel.setAttribute("data-duration", "2");
     root.appendChild(panel);
 
-    const headline = document.createElement("h1");
-    headline.className = "headline";
-    // Authored child window outlives the parent clip — render keeps legacy behavior.
-    headline.setAttribute("data-start", "0");
-    headline.setAttribute("data-duration", "8");
-    panel.appendChild(headline);
+    const bottomBand = document.createElement("div");
+    bottomBand.className = "bottom-band";
+    // Regression shape: a child strip outlives its parent scene. Without
+    // ancestor suppression it can paint through after the parent has ended.
+    bottomBand.setAttribute("data-start", "0");
+    bottomBand.setAttribute("data-duration", "8");
+    panel.appendChild(bottomBand);
 
     window.__timelines = {
       main: createMockTimeline(8),
@@ -526,7 +558,7 @@ describe("initSandboxRuntimeModular", () => {
     player?.seek(3);
 
     expect(panel.style.visibility).toBe("hidden");
-    expect(headline.style.visibility).toBe("visible");
+    expect(bottomBand.style.visibility).toBe("hidden");
   });
 
   it("does not stamp Studio timing on GSAP targets inside authored timed clips", () => {

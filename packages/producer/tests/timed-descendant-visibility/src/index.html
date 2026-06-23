@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=640, height=360" />
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 640px;
+        height: 360px;
+        margin: 0;
+        overflow: hidden;
+        background: #f5fafd;
+      }
+
+      #root {
+        position: relative;
+        width: 640px;
+        height: 360px;
+        overflow: hidden;
+        background: #f5fafd;
+      }
+
+      .scene {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+      }
+
+      #scene-a {
+        background: #f8fbff;
+      }
+
+      #scene-b {
+        background: #f5fafd;
+      }
+
+      .panel {
+        position: absolute;
+        inset: 22px 42px 48px;
+        border: 3px solid #333b44;
+        border-radius: 8px;
+        background: #fffdfa;
+      }
+
+      .panel::before {
+        position: absolute;
+        top: 40px;
+        left: 34px;
+        width: 170px;
+        height: 18px;
+        border-radius: 999px;
+        background: #333b44;
+        content: "";
+      }
+
+      .panel::after {
+        position: absolute;
+        top: 84px;
+        left: 34px;
+        width: 310px;
+        height: 10px;
+        border-radius: 999px;
+        background: #9aa7b5;
+        box-shadow:
+          0 24px 0 #c3ccd7,
+          0 48px 0 #d6dde7;
+        content: "";
+      }
+
+      #leaky-band {
+        position: fixed;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        z-index: 10;
+        height: 31px;
+        background: #daebff;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-root="true"
+      data-width="640"
+      data-height="360"
+      data-start="0"
+      data-duration="9"
+    >
+      <section id="scene-a" class="scene clip" data-start="0" data-duration="6">
+        <div class="panel"></div>
+        <div id="leaky-band" class="clip" data-start="0" data-duration="9"></div>
+      </section>
+      <section id="scene-b" class="scene clip" data-start="6" data-duration="3">
+        <div class="panel"></div>
+      </section>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines.main = {
+        duration: function () {
+          return 9;
+        },
+        totalDuration: function () {
+          return 9;
+        },
+        pause: function () {},
+        seek: function () {},
+      };
+    </script>
+  </body>
+</html>
