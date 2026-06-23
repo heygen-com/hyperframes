@@ -39,8 +39,10 @@ const ICONS: Record<string, ReactNode> = {
 };
 
 export function getTrackStyle(tag: string): TrackVisualStyle {
-  const trackStyle = getTimelineTrackStyle(tag);
-  const normalized = tag.toLowerCase();
+  if (!tag) console.warn("[Timeline] getTrackStyle received empty tag, defaulting to div");
+  const safeTag = tag || "div";
+  const trackStyle = getTimelineTrackStyle(safeTag);
+  const normalized = safeTag.toLowerCase();
   const icon =
     normalized.startsWith("h") && normalized.length === 2 && "123456".includes(normalized[1] ?? "")
       ? ICONS.h1
