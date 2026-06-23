@@ -567,4 +567,42 @@ describe("HF_EARLY_STUB + HF_BRIDGE_SCRIPT integration", () => {
     sandbox.window.__hfTimelinesBuilding = true;
     expect(sandbox.window.__hf?.duration).toBe(0);
   });
+
+  it("derives duration from sub-composition data-start + data-duration when root has none", () => {
+    const sandbox: any = {
+      window: {
+        setInterval: globalThis.setInterval,
+        clearInterval: globalThis.clearInterval,
+      },
+      document: {
+        querySelector: () => ({
+          getAttribute: () => null,
+        }),
+        querySelectorAll: () => [
+          {
+            getAttribute: (n: string) =>
+              n === "data-start" ? "0" : n === "data-duration" ? "5" : null,
+          },
+          {
+            getAttribute: (n: string) =>
+              n === "data-start" ? "5" : n === "data-duration" ? "8" : null,
+          },
+        ],
+      },
+    };
+    sandbox.window.window = sandbox.window;
+    sandbox.window.document = sandbox.document;
+    sandbox.window.__player = {
+      renderSeek: () => {},
+      getDuration: () => 0,
+    };
+    sandbox.window.__renderReady = true;
+
+    new Function("window", "document", `with (window) {\n${HF_BRIDGE_SCRIPT}\n}`)(
+      sandbox.window,
+      sandbox.document,
+    );
+
+    expect(sandbox.window.__hf?.duration).toBe(13);
+  });
 });
