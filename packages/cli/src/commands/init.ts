@@ -800,11 +800,29 @@ export default defineCommand({
       for (const f of readdirSync(destDir).filter((f) => !f.startsWith("."))) {
         console.log(`  ${c.accent(f)}`);
       }
+
+      // Install AI coding skills now. Agents drive `init` non-interactively, so
+      // installing here (rather than only printing the command) is what makes
+      // the skills actually land — otherwise the agent later hits
+      // "Unknown skill: <workflow>". Target the detected agent so skills land in
+      // its native dir (e.g. `.claude/skills`), not the universal `.agents/skills`
+      // that Claude Code does not read. Opt out with --skip-skills.
+      if (!skipSkills) {
+        const { installAllSkills, resolveSkillsAgent } = await import("./skills.js");
+        await installAllSkills({ agent: resolveSkillsAgent() });
+      }
+
       console.log();
       console.log("Get started:");
       console.log();
-      console.log(`  ${c.accent("1.")} Install AI coding skills (one-time):`);
-      console.log(`     ${c.accent("npx skills add heygen-com/hyperframes")}`);
+      if (skipSkills) {
+        console.log(`  ${c.accent("1.")} Install AI coding skills (one-time):`);
+        console.log(`     ${c.accent("npx skills add heygen-com/hyperframes --yes")}`);
+      } else {
+        console.log(
+          `  ${c.accent("1.")} Restart your AI agent (new session) so it loads the skills.`,
+        );
+      }
       console.log();
       console.log(`  ${c.accent("2.")} Open this project with your AI coding agent:`);
       console.log(
