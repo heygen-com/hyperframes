@@ -21,8 +21,8 @@ The domain skills (`/hyperframes-core`, `/hyperframes-animation`, `/hyperframes-
 
 > **Tailwind v4 projects** (`hyperframes init --tailwind`): see `/hyperframes-core` → `references/tailwind.md`.
 
-> **Skills not available?** Ask the user to run `npx hyperframes skills` and restart their
-> agent session, or install manually: `npx skills add heygen-com/hyperframes`.
+> **Skills not available or need updating?** Run `npx skills add heygen-com/hyperframes`
+> and restart the agent session so the new skills load.
 
 ## Commands
 

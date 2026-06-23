@@ -800,11 +800,27 @@ export default defineCommand({
       for (const f of readdirSync(destDir).filter((f) => !f.startsWith("."))) {
         console.log(`  ${c.accent(f)}`);
       }
+
+      if (!skipSkills) {
+        const { installAllSkills } = await import("./skills.js");
+        // --yes keeps it non-interactive. When Claude Code is driving
+        // (CLAUDECODE env var), target its native dir so skills land in
+        // .claude/skills/ instead of only .agents/skills/.
+        const args = process.env["CLAUDECODE"] ? ["--agent", "claude-code", "--yes"] : ["--yes"];
+        await installAllSkills({ cwd: destDir, extraArgs: args });
+      }
+
       console.log();
       console.log("Get started:");
       console.log();
-      console.log(`  ${c.accent("1.")} Install AI coding skills (one-time):`);
-      console.log(`     ${c.accent("npx skills add heygen-com/hyperframes")}`);
+      if (skipSkills) {
+        console.log(`  ${c.accent("1.")} Install AI coding skills (one-time):`);
+        console.log(`     ${c.accent("npx skills add heygen-com/hyperframes --yes")}`);
+      } else {
+        console.log(
+          `  ${c.accent("1.")} Restart your AI agent (new session) so it loads the skills.`,
+        );
+      }
       console.log();
       console.log(`  ${c.accent("2.")} Open this project with your AI coding agent:`);
       console.log(
@@ -1018,8 +1034,8 @@ export default defineCommand({
         process.exit(0);
       }
       if (installSkills) {
-        const skillsCmd = await import("./skills.js").then((m) => m.default);
-        await runCommand(skillsCmd, { rawArgs: [] });
+        const { installAllSkills } = await import("./skills.js");
+        await installAllSkills({ cwd: destDir });
       }
     }
 
