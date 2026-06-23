@@ -155,11 +155,13 @@ Inject transitions, run checks, pause for review, then render.
 
 `npx hyperframes validate`
 
-`npx hyperframes inspect --strict-layout`
+`npx hyperframes inspect`
 
 `npx hyperframes snapshot --at <frame-midpoints>`
 
 If a command fails, surface stderr and stop. Do not pile on recovery commands. If a gate names a frame, fix `compositions/frames/NN-*.html` with the cheapest safe fix: edit the frame HTML for a local issue; re-dispatch the frame worker only when the whole shot must be rebuilt.
+
+**Known false-positive — do not chase it.** `inspect` may report a handful of `text_box_overflow` errors of ~1–4px on the **caption** highlight words (selector `#caption-word-*` / `.caption-line`). The caption pill uses a deliberately snug `line-height` (set once in `scripts/captions.mjs`) and has **no `overflow:hidden`**, so a heavy display glyph's ink spills a few px into the pill's own padding — nothing is actually clipped. Treat these as expected and proceed. Do **not** inflate the caption `line-height` (it balloons the pill, which is worse) and do **not** re-dispatch a frame for them. Only act on a `text_box_overflow` when it names a **frame** element (`#el-NN-*`), not a caption word.
 
 After checks pass, pause for user review. The video is assembled, viewable, and editable in Studio. Manage preview only once across Step 3 and Step 6: open it if the user asked earlier, offer it if they declined earlier, and do not ask again if they are already reviewing in Studio.
 

@@ -19,7 +19,7 @@
 
 **Retry** — if your context carries lint / validate feedback from a prior pass, read it first and re-author so none of those findings recur; treat each as a hard constraint.
 
-**OUTPUT** — `compositions/frames/<frame_id>.html`, one self-contained sub-composition. Writing it (past the self-check) is your **terminal action** — you do not edit `STORYBOARD.md`, mint audio, assemble the index, or report back. The orchestrator picks up the file and marks the frame's `status`.
+**OUTPUT** — `compositions/frames/<frame_id>.html`, one self-contained sub-composition. Writing it (past the self-check below) is your **terminal action** — you do not edit `STORYBOARD.md`, mint audio, assemble the index, run the CLI, or report back. The orchestrator picks up the file and marks the frame's `status`.
 
 ## You do NOT decide
 
@@ -48,15 +48,16 @@ Generic seek-safety + structure live in `hyperframes-core` (read it; not restate
 
 1. **Read** — `hyperframes-core`'s composition contract (the structural law), then `frame.md` (the look) and your `## Frame N` block (content + effects / blueprint / assets). **Then open the recipe body of every id the block cites** — `ANIM_DIR/rules/<id>.md` per effect and `ANIM_DIR/blueprints/<id>.md` for the blueprint (plus its linked `examples/<id>.html` when the recipe is unclear): you reproduce these, not improvise them. Internalize the self-check codes below before you write — most lethal is **template transport**: every `<style>` + `<script>` (including the gsap load) must live INSIDE `<template>`, because the runtime only clones template contents and `lint` / `validate` / `inspect` can miss the resulting blank sub-composition.
 2. **Design** — translate `scene` + the (sometimes shot-by-shot) narrative + the recipes you just read into a visual plan using `frame.md`'s components and type ramp. Honor the note's phases shot-by-shot per the whole-shot rule above, and find a visual idea that reinforces the beat, not a literal restyle of the words. Place the named assets.
-3. **Author** — write the full sub-composition to `compositions/frames/<frame_id>.html` (rewrite to iterate; last write wins). `<template>`-wrapped root carrying `data-composition-id="<frame_id>"`, exactly one `gsap.timeline({ paused: true })` registered at `window.__timelines["<frame_id>"]`, built synchronously — per the core contract.
-4. **Self-check, then finish** — run the checklist below and fix in place. Writing the passing file is your terminal action.
+3. **Author** — write the full sub-composition to `compositions/frames/<frame_id>.html` (rewrite to iterate; last write wins). `<template>`-wrapped root carrying `data-composition-id="<frame_id>"` and styled via `#root` (not a class on that element — see the self-check below), exactly one `gsap.timeline({ paused: true })` registered at `window.__timelines["<frame_id>"]`, built synchronously — per the core contract.
+4. **Self-check, then finish** — re-read your file against the checklist below and fix in place. Writing the file is your terminal action; you do **not** run the CLI.
 
-## Self-check (fix before finishing)
+## Self-check before finishing (you do NOT run the CLI)
 
-The orchestrator runs `lint` / `validate` / `inspect`; catch these yourself first (codes are `hyperframes lint`'s; the rules behind them are in `hyperframes-core`):
+You **can't** meaningfully run `hyperframes lint` / `validate` / `inspect` here: they operate on the **assembled project** (the `index.html` graph / bundle), and your frame isn't wired in yet — so they report on _other_ files, not yours (a false green). The **orchestrator** runs them at **Step 6, after assembly** (the correct unit), and **re-dispatches you with the finding** if your frame fails (see **Retry** above). So get it right on write: re-read your file against this checklist before finishing — the codes in parens are `hyperframes lint`'s and what the orchestrator may cite back (the rules behind them live in `hyperframes-core`):
 
 - `missing_template_wrapper` / `missing_composition_id` — root is `<template>`-wrapped and carries `data-composition-id="<frame_id>"`.
 - **Template transport** — every `<style>` and `<script>` block, including the GSAP load, lives inside `<template>`.
+- `subcomposition_root_styled_by_class` — **style the frame root via `#root`, never a class on the `data-composition-id` element**: at render a class on the root gets scoped to a descendant selector that can't match it, so the **whole scene renders unstyled** (Studio preview still looks right — trust this rule, not the preview). Descendants use plain selectors.
 - `clip_missing_data_attrs` — every `class="clip"` element has `data-start` / `data-duration` / `data-track-index`.
 - `timeline_not_paused` / `timeline_not_registered` — one paused timeline, registered at `window.__timelines["<frame_id>"]`.
 - `css_transition_used` + repeat / yoyo / non-deterministic logic — none present (the renderer seeks frame-by-frame).
