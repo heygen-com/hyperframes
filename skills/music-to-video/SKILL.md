@@ -63,7 +63,7 @@ python3 <SKILL_DIR>/scripts/analyze-beatgrid.py "$PROJECT_DIR/assets/bgm.mp3" \
 
 ---
 
-## Step 2: Frame skeleton
+## Step 2: Frame skeleton (structure only)
 
 Goal: Read the music and lay out the frames — the skeleton of `STORYBOARD.md`.
 
@@ -73,7 +73,7 @@ Read [`references/frame-skeleton.md`](references/frame-skeleton.md). Turn `audio
 
 ---
 
-## Step 3: Plan (user-gated)
+## Step 3: Fill the plan (user-gated)
 
 Goal: Turn the skeleton into an approved, complete `STORYBOARD.md`.
 
@@ -93,7 +93,7 @@ Fix every `✗` (hard errors: duration mismatch, frames not tiling the track, a 
 
 ---
 
-## Step 4: Build frames
+## Step 4: Build frames from the plan
 
 Goal: Build every frame as a self-contained composition file.
 

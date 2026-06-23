@@ -4,7 +4,10 @@
 // not exist yet), so it checks fields, not on-disk html.
 //
 // HARD (exit 1): frontmatter duration_s == audiomap duration; >=1 frame; each frame
-//   has src + positive duration; frames tile the track gap-free (sum == duration_s).
+//   has src + positive duration; frames tile the track gap-free (sum == duration_s);
+//   every frame has >=1 filled group (a frame whose `### Groups` is still
+//   `TBD (Step 3)`/empty is a Step-2 skeleton, not an approved plan — fail it so a
+//   skipped Step 3 can never reach the build step).
 // WARN (exit 0): best-effort group checks — each group exactly one of
 //   template/free_design/asset; a template id exists under the --templates dir;
 //   phrase_flow frame has no beat_cut asset treatment.
@@ -114,12 +117,18 @@ for (const ln of raw.split(/\r?\n/)) {
   if (cur) cur.lines.push(ln);
 }
 
+// HARD: every frame needs >=1 filled group. A frame with no parseable group head
+// is still a Step-2 skeleton (`### Groups` = `TBD (Step 3)`/empty) — erroring here
+// is what stops a skipped Step 3 from reaching the build step.
 const framesWithGroups = new Set(blocks.map((b) => b.frameLabel));
 for (const f of frames) {
+  const title = String(f.title ?? "").trim();
   const lbl = `Frame ${f.number ?? ""} — ${f.title ?? f.index}`.replace(/\s+—\s+$/, "");
-  if (![...framesWithGroups].some((s) => s.includes(String(f.title ?? "")))) {
-    warns.push(
-      `${lbl}: no parseable groups (expected \`- **gN** — template|free_design|asset …\`)`,
+  const hasGroup = title !== "" && [...framesWithGroups].some((s) => s.includes(title));
+  if (!hasGroup) {
+    errors.push(
+      `${lbl}: no filled groups — still a Step-2 skeleton (\`### Groups\` is TBD/empty). ` +
+        `Run Step 3: fill its groups (\`- **gN** — template|free_design|asset …\`) before building.`,
     );
   }
 }

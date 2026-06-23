@@ -34,6 +34,7 @@ If your dispatch carries lint / validate feedback from a prior pass, address eac
 
 ## What comes fixed — realize it as given
 
+- **No plan = stop.** If your `### Groups` is `TBD`/empty (Step 3 was skipped), report back and write nothing — never invent groups, templates, or copy.
 - **The plan** is set in your `## Frame` block: the groups, templates / primitives, copy, brand,
   and anchors. Build it as written. If a plan is genuinely wrong (wrong template or copy), stop
   and report — the orchestrator re-plans at Step 3.
