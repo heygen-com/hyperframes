@@ -1,0 +1,131 @@
+---
+title: "@hyperframes/aws-lambda"
+description: "AWS Lambda and Step Functions adapter for distributed HyperFrames rendering."
+---
+
+The AWS Lambda package runs HyperFrames' distributed render primitives on AWS. It ships the Lambda handler, a Node client SDK, and an optional CDK construct for provisioning the render stack inside an adopter's AWS account.
+
+```bash
+npm install @hyperframes/aws-lambda
+```
+
+## When to Use
+
+**Use `@hyperframes/aws-lambda` when you need to:**
+- Render large compositions on AWS Lambda instead of one local machine
+- Fan out `plan`, `renderChunk`, and `assemble` through Step Functions
+- Store render inputs, intermediate chunks, and outputs in S3
+- Drive renders from CI, a backend service, or a custom CLI
+- Provision the render topology from a CDK app
+
+**Use a different package if you want to:**
+- Render locally or inside your own Node process - use the [CLI](/packages/cli) or [producer](/packages/producer)
+- Run the same distributed model on Google Cloud - use [gcp-cloud-run](/packages/gcp-cloud-run)
+- Build or edit composition HTML - use [studio](/packages/studio), [sdk](/packages/sdk), or [core](/packages/core)
+
+<Warning>
+  This package is deployment glue for AWS infrastructure. It assumes you control an AWS account, S3 bucket, Step Functions state machine, and Lambda runtime configuration.
+</Warning>
+
+## Package Exports
+
+| Import | Description |
+|--------|-------------|
+| `@hyperframes/aws-lambda` | Handler types, runtime helpers, S3 transport, and client SDK exports |
+| `@hyperframes/aws-lambda/handler` | Lambda handler entry point for Step Functions dispatch |
+| `@hyperframes/aws-lambda/sdk` | Lightweight Node SDK for deploying sites, starting renders, polling progress, and estimating cost |
+| `@hyperframes/aws-lambda/cdk` | Optional CDK construct for provisioning the render bucket, Lambda, and Step Functions stack |
+
+`aws-cdk-lib` and `constructs` are optional peer dependencies. SDK-only consumers do not need them unless they import from `@hyperframes/aws-lambda/cdk`.
+
+## Architecture
+
+The Lambda adapter wraps the distributed producer primitives behind one dispatch boundary:
+
+<Steps>
+  <Step title="Plan">
+    Downloads the project archive from S3, runs the producer planner, and uploads the plan directory.
+  </Step>
+  <Step title="Render chunks">
+    Step Functions fans out chunk jobs. Each Lambda invocation downloads the plan assets, renders one chunk, and uploads the result.
+  </Step>
+  <Step title="Assemble">
+    Downloads all rendered chunks plus audio assets, assembles the final output, and writes the finished file to S3.
+  </Step>
+</Steps>
+
+The handler uses `@sparticuz/chromium` by default, with a build-time fallback for bundling `chrome-headless-shell` directly when needed.
+
+## Using the SDK
+
+After deploying the AWS resources, use the SDK from Node:
+
+```typescript
+import { deploySite, getRenderProgress, renderToLambda } from "@hyperframes/aws-lambda/sdk";
+
+const site = await deploySite({
+  projectDir: "./my-composition",
+  bucketName: "hyperframes-render-bucket",
+});
+
+const handle = await renderToLambda({
+  siteHandle: site,
+  bucketName: site.bucketName,
+  stateMachineArn: "arn:aws:states:us-east-1:123456789012:stateMachine:hyperframes-render",
+  config: {
+    fps: 30,
+    width: 1920,
+    height: 1080,
+    format: "mp4",
+    chunkSize: 240,
+    maxParallelChunks: 16,
+    runtimeCap: "lambda",
+  },
+});
+
+const progress = await getRenderProgress({ executionArn: handle.executionArn });
+console.log(progress.status, progress.overallProgress, progress.costs.displayCost);
+```
+
+`renderToLambda()` validates the distributed render config before starting the Step Functions execution, so invalid dimensions, formats, chunk sizes, or payload sizes fail synchronously.
+
+## Using the CDK Construct
+
+```typescript
+import { App, Stack } from "aws-cdk-lib";
+import { HyperframesRenderStack } from "@hyperframes/aws-lambda/cdk";
+
+const app = new App();
+const stack = new Stack(app, "VideoRender");
+
+const render = new HyperframesRenderStack(stack, "HyperframesRender", {
+  // reservedConcurrency: 8,
+  // lambdaMemoryMb: 10240,
+  // chromeSource: "sparticuz",
+});
+
+console.log(render.bucket.bucketName, render.stateMachine.stateMachineArn);
+```
+
+## Building the Handler ZIP
+
+From the monorepo:
+
+```bash
+bun install
+bun run --cwd packages/aws-lambda build:zip
+bun run --cwd packages/aws-lambda verify:zip-size
+```
+
+The build stages Chromium, Puppeteer, FFmpeg, and the handler bundle into `packages/aws-lambda/dist/handler.zip`. The size verifier keeps the unzipped artifact below Lambda's deployment limit.
+
+## Related Guides
+
+<CardGroup cols={2}>
+  <Card title="AWS Lambda Deployment" icon="cloud" href="/deploy/aws-lambda">
+    End-to-end deployment details and operational notes.
+  </Card>
+  <Card title="@hyperframes/producer" icon="video" href="/packages/producer">
+    The distributed primitives that the Lambda handler executes.
+  </Card>
+</CardGroup>

@@ -306,6 +306,9 @@
               "packages/engine",
               "packages/player",
               "packages/producer",
+              "packages/shader-transitions",
+              "packages/aws-lambda",
+              "packages/gcp-cloud-run",
               "packages/studio",
               "packages/cli"
             ]
