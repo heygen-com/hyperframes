@@ -492,7 +492,7 @@ describe("detectRenderModeHints", () => {
     }
   });
 
-  it("compileForRender reports empty sub-composition HTML with an actionable error", async () => {
+  it("compileForRender skips empty sub-composition files instead of aborting", async () => {
     const projectDir = mkdtempSync(join(tmpdir(), "hf-empty-subcomp-"));
     const compositionsDir = join(projectDir, "compositions");
     mkdirSync(compositionsDir, { recursive: true });
@@ -514,11 +514,8 @@ describe("detectRenderModeHints", () => {
     );
     writeFileSync(join(compositionsDir, "intro.html"), "");
 
-    await expect(
-      compileForRender(projectDir, join(projectDir, "index.html"), projectDir),
-    ).rejects.toThrow(
-      "Composition HTML is empty or could not be parsed: compositions/intro.html. Check that the file referenced by data-composition-src contains valid HTML.",
-    );
+    const result = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    expect(result.html).toContain("data-composition-id");
   });
 });
 

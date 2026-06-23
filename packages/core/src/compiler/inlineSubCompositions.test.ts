@@ -38,18 +38,27 @@ function makeHostDocument(compId: string) {
 }
 
 describe("inlineSubCompositions – #ID selector scoping divergence", () => {
-  it("throws an actionable error when a resolved sub-composition file is empty", () => {
+  it.each([
+    { label: "empty", html: "" },
+    { label: "whitespace-only", html: "   \n  \t  " },
+    {
+      label: "valid-parse-empty-body",
+      html: "<!doctype html><html><head></head><body></body></html>",
+    },
+  ])("skips $label sub-composition files gracefully", ({ html }) => {
     const document = makeHostDocument("intro");
     const host = document.querySelector('[data-composition-src="intro.html"]')!;
+    const missing: string[] = [];
 
-    expect(() =>
-      inlineSubCompositions(document, [host], {
-        resolveHtml: () => "",
-        parseHtml: (html) => parseHTML(html).document,
-      }),
-    ).toThrow(
-      "Composition HTML is empty or could not be parsed: intro.html. Check that the file referenced by data-composition-src contains valid HTML.",
-    );
+    const result = inlineSubCompositions(document, [host], {
+      resolveHtml: () => html,
+      parseHtml: (h) => parseHTML(h).document,
+      onMissingComposition: (src) => missing.push(src),
+    });
+
+    expect(missing).toEqual(["intro.html"]);
+    expect(result.styles).toHaveLength(0);
+    expect(result.scripts).toHaveLength(0);
   });
 
   it("producer path (no flattenInnerRoot): strips inner root, losing #id attribute", () => {
