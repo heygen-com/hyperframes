@@ -914,6 +914,14 @@ export async function executeRenderJob(
     assertNotAborted();
     assertConfiguredFfmpegBinariesExist();
 
+    if (!existsSync(workDir)) mkdirSync(workDir, { recursive: true });
+
+    if (job.config.debug) {
+      const logPath = join(workDir, "render.log");
+      restoreLogger = installDebugLogger(logPath, log);
+      log.info("[Render] Debug artifacts enabled", { workDir, logPath });
+    }
+
     log.info("[Render] Pipeline started", {
       platform: process.platform,
       arch: process.arch,
@@ -938,13 +946,6 @@ export async function executeRenderJob(
       playerReadyTimeoutMs: cfg.playerReadyTimeout,
       requestedWorkers: job.config.workers ?? "auto",
     });
-
-    if (!existsSync(workDir)) mkdirSync(workDir, { recursive: true });
-
-    if (job.config.debug) {
-      const logPath = join(workDir, "render.log");
-      restoreLogger = installDebugLogger(logPath, log);
-    }
 
     const entryFile = job.config.entryFile || "index.html";
     let htmlPath = join(projectDir, entryFile);

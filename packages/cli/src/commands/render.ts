@@ -241,6 +241,12 @@ export default defineCommand({
       description: "Suppress verbose output",
       default: false,
     },
+    debug: {
+      type: "boolean",
+      description:
+        "Write full render diagnostics and keep intermediate artifacts under the producer .debug directory.",
+      default: false,
+    },
     strict: {
       type: "boolean",
       description: "Fail render on lint errors",
@@ -548,6 +554,7 @@ export default defineCommand({
     const browserGpuArg = args["browser-gpu"];
     const browserGpuMode = resolveBrowserGpuForCli(useDocker, browserGpuArg);
     const quiet = args.quiet ?? false;
+    const debug = args.debug ?? false;
     const batchJson = args.json ?? false;
     const effectiveQuiet = quiet || (batchPath != null && batchJson);
     const strictAll = args["strict-all"] ?? false;
@@ -763,6 +770,7 @@ export default defineCommand({
         pageNavigationTimeoutMs,
         protocolTimeout,
         playerReadyTimeout,
+        debug,
         exitAfterComplete: false,
         throwOnError: true,
         skipFeedback: true,
@@ -815,6 +823,7 @@ export default defineCommand({
         videoBitrate,
         videoFrameFormat,
         quiet,
+        debug,
         variables,
         entryFile,
         outputResolution,
@@ -840,6 +849,7 @@ export default defineCommand({
         videoFrameFormat,
         quiet,
         browserPath,
+        debug,
         variables,
         entryFile,
         outputResolution,
@@ -876,6 +886,7 @@ interface RenderOptions {
   videoBitrate?: string;
   videoFrameFormat?: VideoFrameFormat;
   quiet: boolean;
+  debug?: boolean;
   browserPath?: string;
   variables?: Record<string, unknown>;
   entryFile?: string;
@@ -1124,6 +1135,7 @@ async function renderDocker(
       entryFile: options.entryFile,
       outputResolution: options.outputResolution,
       pageSideCompositing: options.pageSideCompositing,
+      debug: options.debug,
       pageNavigationTimeoutMs: options.pageNavigationTimeoutMs,
     },
   });
@@ -1206,7 +1218,7 @@ export async function renderLocal(
 
   const startTime = Date.now();
   const logger = createRenderTelemetryLogger(
-    producer.createConsoleLogger?.("info") ?? createNoopProducerLogger(),
+    producer.createConsoleLogger?.(options.debug ? "debug" : "info") ?? createNoopProducerLogger(),
   );
 
   const job = producer.createRenderJob({
@@ -1233,6 +1245,7 @@ export async function renderLocal(
     variables: options.variables,
     entryFile: options.entryFile,
     outputResolution: options.outputResolution,
+    debug: options.debug,
   });
 
   const onProgress = options.quiet
