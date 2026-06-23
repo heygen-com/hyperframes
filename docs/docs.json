@@ -302,6 +302,7 @@
             "group": "Packages",
             "pages": [
               "packages/core",
+              "packages/sdk",
               "packages/engine",
               "packages/player",
               "packages/producer",
