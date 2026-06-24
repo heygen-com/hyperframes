@@ -311,6 +311,18 @@ export async function driveWarmupTicks(
   }
 }
 
+export function resolveCaptureSessionOptions(
+  options: CaptureOptions,
+  browserVersion: string,
+  platform: NodeJS.Platform = process.platform,
+): CaptureOptions {
+  return {
+    ...options,
+    captureBeyondViewport:
+      options.captureBeyondViewport ?? shouldDefaultCaptureBeyondViewport(browserVersion, platform),
+  };
+}
+
 async function waitForCloseWithTimeout(promise: Promise<unknown>): Promise<boolean> {
   let timedOut = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -418,11 +430,7 @@ export async function createCaptureSession(
     }, variablesJson);
   }
   const browserVersion = await browser.version();
-  const sessionOptions: CaptureOptions = {
-    ...options,
-    captureBeyondViewport:
-      options.captureBeyondViewport ?? shouldDefaultCaptureBeyondViewport(browserVersion),
-  };
+  const sessionOptions = resolveCaptureSessionOptions(options, browserVersion);
   const expectedMajor = config?.expectedChromiumMajor;
   if (Number.isFinite(expectedMajor)) {
     const actualChromiumMajor = Number.parseInt(

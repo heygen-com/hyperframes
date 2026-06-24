@@ -1074,6 +1074,10 @@ export async function executeRenderJob(
     fileServer = probeResult.fileServer;
     probeSession = probeResult.probeSession;
     lastBrowserConsole = probeResult.lastBrowserConsole;
+    let resolvedCaptureBeyondViewport = probeSession?.options.captureBeyondViewport;
+    if (resolvedCaptureBeyondViewport !== undefined) {
+      updateCaptureObservability({ captureBeyondViewport: resolvedCaptureBeyondViewport });
+    }
     // The probe stage produces `duration` / `totalFrames` values; the
     // sequencer owns the `RenderJob` and writes them onto it.
     job.duration = probeResult.duration;
@@ -1215,9 +1219,11 @@ export async function executeRenderJob(
       deviceScaleFactor,
       ...(composition.videos.length > 0 ? { captureBeyondViewport: true } : {}),
     };
-    updateCaptureObservability({
-      captureBeyondViewport: captureOptions.captureBeyondViewport ?? false,
-    });
+    resolvedCaptureBeyondViewport =
+      captureOptions.captureBeyondViewport ?? resolvedCaptureBeyondViewport;
+    if (resolvedCaptureBeyondViewport !== undefined) {
+      updateCaptureObservability({ captureBeyondViewport: resolvedCaptureBeyondViewport });
+    }
 
     // Capture sessions do not need native browser metadata for videos whose
     // pixels come from out-of-band FFmpeg frame extraction. Waiting on those
@@ -1442,7 +1448,7 @@ export async function executeRenderJob(
     observability.checkpoint("capture_strategy", "resolved", {
       workerCount,
       forceScreenshot: captureForceScreenshot,
-      captureBeyondViewport: captureOptions.captureBeyondViewport ?? false,
+      captureBeyondViewport: resolvedCaptureBeyondViewport ?? null,
       useStreamingEncode,
       useLayeredComposite,
       usePageSideCompositing: usePageSideCompositingForTransitions,
@@ -1592,6 +1598,11 @@ export async function executeRenderJob(
           streamingHandled = true;
           workerCount = streamingRes.workerCount;
           updateCaptureObservability({ workerCount });
+          if (streamingRes.captureBeyondViewport !== undefined) {
+            updateCaptureObservability({
+              captureBeyondViewport: streamingRes.captureBeyondViewport,
+            });
+          }
           probeSession = streamingRes.probeSession;
           lastBrowserConsole = streamingRes.lastBrowserConsole;
           perfStages.captureMs = Date.now() - stage4Start;
@@ -1637,6 +1648,11 @@ export async function executeRenderJob(
         const captureFrameMs = Date.now() - captureFrameStart;
         workerCount = captureRes.workerCount;
         updateCaptureObservability({ workerCount });
+        if (captureRes.captureBeyondViewport !== undefined) {
+          updateCaptureObservability({
+            captureBeyondViewport: captureRes.captureBeyondViewport,
+          });
+        }
         probeSession = captureRes.probeSession;
         lastBrowserConsole = captureRes.lastBrowserConsole;
 
