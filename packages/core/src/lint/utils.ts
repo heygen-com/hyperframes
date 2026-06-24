@@ -249,6 +249,36 @@ export function stripJsComments(source: string): string {
   return out;
 }
 
+// One linear pass that drops every `<!-- … -->` region. Uses indexOf, not a
+// `/<!--[\s\S]*?-->/` regex: that pattern backtracks O(n²) on inputs with many
+// unterminated "<!--" (CodeQL js/polynomial-redos). An unterminated "<!--" with
+// no closing "-->" is kept verbatim, matching the prior regex's no-match behavior.
+function stripHtmlCommentsOnce(source: string): string {
+  let out = "";
+  let i = 0;
+  for (;;) {
+    const start = source.indexOf("<!--", i);
+    if (start < 0) return out + source.slice(i);
+    const end = source.indexOf("-->", start + 4);
+    if (end < 0) return out + source.slice(i);
+    out += source.slice(i, start);
+    i = end + 3;
+  }
+}
+
+// Strip HTML comments to a fixpoint. A single pass is not enough: deleting one
+// comment can splice adjacent markers into a fresh, complete <!-- … --> (e.g.
+// "<<!-- -->!-- … -->" → "<!-- … -->"), which would otherwise survive and let a
+// commented-out <template>/tag hijack the linter's tag scan.
+export function stripHtmlComments(source: string): string {
+  let out = source;
+  for (let prev = ""; prev !== out; ) {
+    prev = out;
+    out = stripHtmlCommentsOnce(out);
+  }
+  return out;
+}
+
 export function extractScriptTextsAndSrcs(scripts: ExtractedBlock[]): {
   texts: string[];
   srcs: string[];

@@ -5,6 +5,7 @@ import {
   findRootTag,
   collectCompositionIds,
   readAttr,
+  stripHtmlComments,
   STYLE_BLOCK_PATTERN,
   SCRIPT_BLOCK_PATTERN,
 } from "./utils";
@@ -29,17 +30,10 @@ export type { HyperframeLintFinding };
 
 export function buildLintContext(html: string, options: HyperframeLinterOptions = {}): LintContext {
   const rawSource = html || "";
-  // Strip HTML comments before scanning. Use a fixpoint loop, not a single global
-  // pass: removing one comment can re-form a marker from a nested/partial pair
-  // (e.g. <!--<!---->-->), which one pass misses — CodeQL flags the lone replace
-  // as incomplete multi-character sanitization. The loop terminates: each pass that
-  // changes `source` removed a comment, and a pass that matches nothing leaves it
-  // equal to `prev`. Mirrors the skill captions.mjs fixpoint strip.
-  let source = rawSource;
-  for (let prev = ""; prev !== source; ) {
-    prev = source;
-    source = source.replace(/<!--[\s\S]*?-->/g, "");
-  }
+  // Strip HTML comments before scanning so a commented-out <template> or tag can't
+  // hijack the boundary match below. Linear + fixpoint (see stripHtmlComments) to
+  // stay ReDoS-free and catch markers that re-form when a comment is removed.
+  let source = stripHtmlComments(rawSource);
   const templateMatch = source.match(/<template[^>]*>([\s\S]*)<\/template>/i);
   if (templateMatch?.[1]) source = templateMatch[1];
 
