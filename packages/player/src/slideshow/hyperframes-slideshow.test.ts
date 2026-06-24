@@ -466,6 +466,7 @@ describe("handleRuntimeMessage scenes seam", () => {
       sendControl: () => {},
       getIframeDoc: () => null,
       onRuntimeReady: () => {},
+      onRuntimeTimelineReady: () => {},
       setScenes,
       updateControlsTime: () => {},
       updateControlsPlaying: () => {},

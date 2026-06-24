@@ -1807,6 +1807,9 @@ describe("HyperframesPlayer runtime ready handshake", () => {
     volume: number;
     audioLocked: boolean;
     playbackRate: number;
+    ready: boolean;
+    duration: number;
+    paused: boolean;
     iframe: HTMLIFrameElement;
     _onMessage: (event: MessageEvent) => void;
   }
@@ -1819,6 +1822,18 @@ describe("HyperframesPlayer runtime ready handshake", () => {
     return new MessageEvent("message", {
       source: frameWindow,
       data: { source: "hf-preview", type: "ready" },
+    });
+  }
+
+  function timelineMessage(durationInFrames = 120) {
+    return new MessageEvent("message", {
+      source: frameWindow,
+      data: {
+        source: "hf-preview",
+        type: "timeline",
+        durationInFrames,
+        scenes: [],
+      },
     });
   }
 
@@ -1950,6 +1965,29 @@ describe("HyperframesPlayer runtime ready handshake", () => {
     );
 
     expect(findControlCalls("set-muted")).toHaveLength(0);
+  });
+
+  it("treats a cross-origin runtime timeline message as player ready", () => {
+    const readyEvents: Array<{ duration: number }> = [];
+    player.addEventListener("ready", (event) => {
+      readyEvents.push((event as CustomEvent<{ duration: number }>).detail);
+    });
+
+    player._onMessage(timelineMessage(120));
+
+    expect(player.ready).toBe(true);
+    expect(player.duration).toBe(4);
+    expect(readyEvents).toEqual([{ duration: 4 }]);
+  });
+
+  it("honors autoplay after cross-origin runtime timeline readiness", () => {
+    player.setAttribute("autoplay", "");
+    postSpy.mockClear();
+
+    player._onMessage(timelineMessage(120));
+
+    expect(player.paused).toBe(false);
+    expect(findControlCalls("play")).toHaveLength(1);
   });
 });
 

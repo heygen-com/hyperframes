@@ -643,6 +643,7 @@ class HyperframesPlayer extends HTMLElement {
       sendControl: (action, extra) => this._sendControl(action, extra),
       getIframeDoc: () => this.iframe.contentDocument,
       onRuntimeReady: () => this._replayBridgeState(),
+      onRuntimeTimelineReady: (duration) => this._onRuntimeTimelineReady(duration),
       shouldPromoteMediaAutoplayFallback: () => !this._isSlideshowPlayer(),
       setScenes: (scenes) => {
         this._scenes = scenes;
@@ -656,6 +657,23 @@ class HyperframesPlayer extends HTMLElement {
       getLoop: () => this.loop,
       media: this._media,
     });
+  }
+
+  private _onRuntimeTimelineReady(duration: number) {
+    if (this._ready) return;
+    this.probe.stop();
+    this._duration = duration;
+    this._directTimelineAdapter = null;
+    this._ready = true;
+    this.controlsApi?.updateTime(this._currentTime, duration);
+    this.dispatchEvent(new CustomEvent("ready", { detail: { duration } }));
+
+    const doc = this._getSameOriginIframeDocument();
+    if (doc) this._media.setupFromIframe(doc);
+
+    this._replayBridgeState();
+    this._setIframeMediaMuted(this.muted);
+    if (this.hasAttribute("autoplay")) this.play();
   }
 
   private _onProbeReady({ duration, adapter, compositionSize }: ProbeResult) {

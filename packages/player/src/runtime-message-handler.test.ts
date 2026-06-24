@@ -12,6 +12,7 @@ const makeCallbacks = (): MessageHandlerCallbacks => ({
   updateControlsPlaying: vi.fn(),
   dispatchEvent: vi.fn(),
   onRuntimeReady: vi.fn(),
+  onRuntimeTimelineReady: vi.fn(),
   seek: vi.fn(),
   play: vi.fn(),
   getLoop: vi.fn(() => false),
@@ -99,5 +100,31 @@ describe("handleRuntimeMessage media autoplay fallback", () => {
     expect(callbacks.shouldPromoteMediaAutoplayFallback).toHaveBeenCalled();
     expect(callbacks.media.promoteToParentProxy).not.toHaveBeenCalled();
     expect(callbacks.sendControl).not.toHaveBeenCalled();
+  });
+});
+
+describe("handleRuntimeMessage timeline ready", () => {
+  const timelineEvent = (durationInFrames: unknown, source: object): MessageEvent =>
+    ({
+      source,
+      data: { source: "hf-preview", type: "timeline", durationInFrames, scenes: [] },
+    }) as unknown as MessageEvent;
+
+  it("reports a finite positive timeline duration in seconds", () => {
+    const frameWindow = {} as Window;
+    const callbacks = makeCallbacks();
+
+    handleRuntimeMessage(timelineEvent(120, frameWindow), frameWindow, callbacks);
+
+    expect(callbacks.onRuntimeTimelineReady).toHaveBeenCalledWith(4);
+  });
+
+  it("does not report invalid timeline durations as ready", () => {
+    const frameWindow = {} as Window;
+    const callbacks = makeCallbacks();
+
+    handleRuntimeMessage(timelineEvent(Infinity, frameWindow), frameWindow, callbacks);
+
+    expect(callbacks.onRuntimeTimelineReady).not.toHaveBeenCalled();
   });
 });
