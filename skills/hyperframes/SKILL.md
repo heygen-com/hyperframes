@@ -28,7 +28,6 @@ Atomic capabilities you load **on demand** — not full video workflows. For "ma
 | You want to…                                                                                                                               | Skill                    |
 | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------ |
 | **Author / edit an HTML composition** — the `data-*` contract, clips, tracks, sub-compositions, variables                                  | `/hyperframes-core`      |
-| **Author a slideshow / presentation / pitch deck** — discrete slides, fragments, branching, hotspots                                       | `/slideshow`             |
 | **Animate** — atomic motion, scene blueprints, transitions, runtime adapters (GSAP / Lottie / Three.js / Anime.js / CSS / WAAPI / TypeGPU) | `/hyperframes-animation` |
 | **Creative direction** — `frame.md` / `design.md`, palettes, typography, narration, beat planning, audio-reactive                          | `/hyperframes-creative`  |
 | **Media** — TTS voiceover, background music, transcription, background removal, captions                                                   | `/hyperframes-media`     |
@@ -61,6 +60,7 @@ Routing needs to know **what the video is about** — its input and subject. If 
 | `/graphic-overlays`        | Packaging an existing talking-head video with **designed graphic overlays** — lower-thirds, data callouts, kinetic titles, pull-quotes                                 |
 | `/motion-graphics`         | A short, **unnarrated, design-led motion graphic** — kinetic type, a stat / chart hit, a logo sting, a lower-third overlay                                             |
 | `/music-to-video`          | A **music track** → a **beat-synced** video — lyric video, slideshow, or kinetic promo; the music drives pacing (optional user images / videos cut onto the beat grid) |
+| `/slideshow`               | A **presentation / pitch deck / interactive deck** — discrete slides, fragments, branching, hotspots; output is a navigable **deck**, not a rendered video             |
 | `/general-video`           | **Anything else** — longer or multi-scene pieces, a static loop / poster, a custom composition                                                                         |
 | `/remotion-to-hyperframes` | **Porting an existing Remotion (React) composition** to HyperFrames (migration, not creation)                                                                          |
 
@@ -70,6 +70,7 @@ Routing needs to know **what the video is about** — its input and subject. If 
 - **A URL or script** — markets a specific product (even just naming the site) → `/product-launch-video`; a general non-product site → `/website-to-video`; a GitHub PR link → `/pr-to-video`; explains a concept with no product / site → `/faceless-explainer`. Genuinely unclear product-vs-topic, or launch-vs-general-site → ask one question.
 - **Existing footage** — plain spoken-word subtitles → `/embedded-captions`; designed overlay cards → `/graphic-overlays`. Neither edits the footage itself (re-timing / recolor / reframe / reorder / audio is NLE editing — out of scope).
 - **A music track is the input** (an audio file, or a video to pull audio from) with **no narration** → `/music-to-video` — the music's beats/energy drive the pacing. (Narrated pieces stay with the input-matched workflow above; `/motion-graphics` is for short unnarrated motion that isn't music-driven.)
+- **A presentation / pitch deck / interactive deck** (discrete slides, navigation, presenter mode) → `/slideshow` — output is a navigable deck, not a rendered video. If the user says "deck / slides / presentation" but may actually want a video, `/slideshow` confirms before authoring.
 - **Length is a guide, not a gate** — intent picks the workflow; go to `/general-video` only when the piece is clearly longer than ~3 min, or is a static / loop / custom format.
 
 ## If the matched workflow isn't installed
@@ -130,6 +131,12 @@ After they run it, re-read the workflow's skill and continue.
 - **Input:** A **music track** — an audio file, or a video to pull the audio from — with **no narration and no website capture**. Optionally, user-supplied images / videos to weave in. The track is analyzed once into a deterministic beat / energy map (`audiomap.json`) the whole video is built on.
 - **Output:** a **beat-synced** HyperFrames composition → MP4 where the music drives pacing. Typography and templates are the floor (a complete video needs zero assets); any supplied media is cut onto the same beat grid (beat-cut / ken-burns). The genre — lyric video, slideshow, kinetic promo — emerges from the per-frame choices; the pipeline never branches on it.
 - **Triggers:** "make a video for this song", "beat-synced video from this track", "lyric video", "turn this music into a video", "music visualizer / kinetic promo to this beat".
+
+### `/slideshow`
+
+- **Input:** A **presentation / pitch deck / interactive deck** to author — a brief, an outline, or an existing page to convert to slides. Not a request for a rendered video; if the intent is ambiguous, the skill confirms "do you want this as a HyperFrames slideshow?" before authoring.
+- **Output:** a runnable HyperFrames composition + a **JSON island** the player's `SlideshowController` reads to turn the GSAP timeline into a navigable **deck** — discrete slides, fragment reveals, branching sequences, hotspot navigation, presenter mode, and speaker notes. The deliverable is a deck, not an MP4.
+- **Triggers:** "make a pitch deck / presentation / slide deck", "an interactive deck", "convert this page into slides", "a slideshow with presenter mode".
 
 ### `/general-video`
 
