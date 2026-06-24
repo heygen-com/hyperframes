@@ -32,7 +32,7 @@ function displayValue(prop: string, val: number | string): string {
   return String(val);
 }
 
-export function adjustedValue(prop: string, raw: string): string {
+function adjustedValue(prop: string, raw: string): string {
   if (isPercentProp(prop)) return String(clampPropertyValue(prop, Number(raw) / 100));
   const num = Number(raw);
   if (!Number.isNaN(num) && PROP_CONSTRAINTS[prop]) {
@@ -41,7 +41,7 @@ export function adjustedValue(prop: string, raw: string): string {
   return raw;
 }
 
-export function RemoveButton({ onClick, title }: { onClick: () => void; title: string }) {
+function RemoveButton({ onClick, title }: { onClick: () => void; title: string }) {
   return (
     <button
       type="button"
