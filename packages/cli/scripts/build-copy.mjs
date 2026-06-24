@@ -109,6 +109,27 @@ async function main() {
     cpSync(motionSampleScript, join(DIST, "commands", "motion-sample.browser.js"));
   }
 
+  // Player bundles for the standalone browser player used by `present` and
+  // `play`. resolvePlayerPath/resolveSlideshowPath look for these alongside the
+  // built CLI (dist/<name>.global.js), so they must ship in the package — the
+  // monorepo-dev fallback paths don't exist once installed from npm. Without
+  // this, `npx hyperframes present` fails with "@hyperframes/player not found".
+  const playerDist = join(REPO_ROOT, "packages", "player", "dist");
+  const playerGlobals = [
+    [join(playerDist, "hyperframes-player.global.js"), join(DIST, "hyperframes-player.global.js")],
+    [
+      join(playerDist, "slideshow", "hyperframes-slideshow.global.js"),
+      join(DIST, "hyperframes-slideshow.global.js"),
+    ],
+  ];
+  for (const [src, dest] of playerGlobals) {
+    if (existsSync(src)) {
+      cpSync(src, dest);
+    } else {
+      console.warn(`[build-copy] player bundle not found, skipping: ${src}`);
+    }
+  }
+
   copyMdFiles(join(CLI_ROOT, "src", "docs"), join(DIST, "docs"));
 
   console.log("[build-copy] done");
