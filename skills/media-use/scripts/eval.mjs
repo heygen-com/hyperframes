@@ -5,7 +5,15 @@
  * on real registry blocks. Produces an HTML report.
  */
 
-import { mkdtempSync, cpSync, rmSync, readFileSync, readdirSync, existsSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  cpSync,
+  rmSync,
+  readFileSync,
+  readdirSync,
+  existsSync,
+  writeFileSync,
+} from "node:fs";
 import { join, basename, resolve, dirname } from "node:path";
 import { execSync } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -27,7 +35,10 @@ const TEST_BLOCKS = [
 
 function run(cmd, opts = {}) {
   try {
-    return { ok: true, output: execSync(cmd, { encoding: "utf8", timeout: 15000, stdio: "pipe", ...opts }).trim() };
+    return {
+      ok: true,
+      output: execSync(cmd, { encoding: "utf8", timeout: 15000, stdio: "pipe", ...opts }).trim(),
+    };
   } catch (err) {
     return { ok: false, output: (err.stdout || "") + (err.stderr || ""), code: err.status };
   }
@@ -84,17 +95,33 @@ function evalBlock(blockPath) {
     const adoptResult = run(`node "${RESOLVE_SCRIPT}" --adopt --project "${tmp}" --json`);
     let adopted = { ok: false, adopted: 0, assets: [] };
     if (adoptResult.ok) {
-      try { adopted = JSON.parse(adoptResult.output); } catch { /* */ }
+      try {
+        adopted = JSON.parse(adoptResult.output);
+      } catch {
+        /* */
+      }
     }
 
     // read the generated index
     const indexPath = join(tmp, ".media", "index.md");
-    const indexContent = existsSync(indexPath) ? readFileSync(indexPath, "utf8") : "(no index generated)";
+    const indexContent = existsSync(indexPath)
+      ? readFileSync(indexPath, "utf8")
+      : "(no index generated)";
 
     // read manifest for detail
     const manifestPath = join(tmp, ".media", "manifest.jsonl");
     const manifest = existsSync(manifestPath)
-      ? readFileSync(manifestPath, "utf8").trim().split("\n").map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean)
+      ? readFileSync(manifestPath, "utf8")
+          .trim()
+          .split("\n")
+          .map((l) => {
+            try {
+              return JSON.parse(l);
+            } catch {
+              return null;
+            }
+          })
+          .filter(Boolean)
       : [];
 
     // test resolve cache hit: try resolving something that was adopted
@@ -102,17 +129,29 @@ function evalBlock(blockPath) {
     if (manifest.length > 0) {
       const first = manifest[0];
       const prompt = first.provenance?.prompt || first.description;
-      const r = run(`node "${RESOLVE_SCRIPT}" --type ${first.type} --intent "${prompt}" --project "${tmp}" --json`);
+      const r = run(
+        `node "${RESOLVE_SCRIPT}" --type ${first.type} --intent "${prompt}" --project "${tmp}" --json`,
+      );
       if (r.ok) {
-        try { resolveTest = JSON.parse(r.output); } catch { /* */ }
+        try {
+          resolveTest = JSON.parse(r.output);
+        } catch {
+          /* */
+        }
       }
     }
 
     // test resolve miss: try resolving something that doesn't exist
-    const missResult = run(`node "${RESOLVE_SCRIPT}" --type bgm --intent "nonexistent query xyz" --project "${tmp}" --json`);
+    const missResult = run(
+      `node "${RESOLVE_SCRIPT}" --type bgm --intent "nonexistent query xyz" --project "${tmp}" --json`,
+    );
     let resolveMiss = null;
     if (!missResult.ok) {
-      try { resolveMiss = JSON.parse(missResult.output); } catch { /* */ }
+      try {
+        resolveMiss = JSON.parse(missResult.output);
+      } catch {
+        /* */
+      }
     }
 
     // coverage: which composition refs are covered by the manifest
@@ -177,7 +216,10 @@ function generateReport(results) {
       const coveragePct = totalRefs > 0 ? Math.round((coveredCount / totalRefs) * 100) : 100;
 
       const refRows = r.assetRefs
-        .map((c) => `<tr><td class="path">${c.composition}</td><td class="path">${c.ref}</td><td>${c.covered ? "<span class='pass'>covered</span>" : "<span class='warn'>not in manifest</span>"}</td></tr>`)
+        .map(
+          (c) =>
+            `<tr><td class="path">${c.composition}</td><td class="path">${c.ref}</td><td>${c.covered ? "<span class='pass'>covered</span>" : "<span class='warn'>not in manifest</span>"}</td></tr>`,
+        )
         .join("\n");
 
       return `<div class="block-detail">
@@ -197,11 +239,15 @@ function generateReport(results) {
           </div>
         </div>
 
-        ${totalRefs > 0 ? `<h4>Composition → asset coverage <span class="${coveragePct === 100 ? "pass" : "warn"}">${coveragePct}%</span> (${coveredCount}/${totalRefs} refs)</h4>
+        ${
+          totalRefs > 0
+            ? `<h4>Composition → asset coverage <span class="${coveragePct === 100 ? "pass" : "warn"}">${coveragePct}%</span> (${coveredCount}/${totalRefs} refs)</h4>
         <table class="manifest">
           <thead><tr><th>composition</th><th>asset reference</th><th>in manifest?</th></tr></thead>
           <tbody>${refRows}</tbody>
-        </table>` : ""}
+        </table>`
+            : ""
+        }
 
         <h4>Manifest records</h4>
         <table class="manifest">
@@ -253,7 +299,11 @@ pre.index { white-space: pre; }
   <div class="stat"><div class="num">${passed.length}</div><div class="label">with assets</div></div>
   <div class="stat"><div class="num">${all.reduce((s, r) => s + r.adopted.count, 0)}</div><div class="label">assets adopted</div></div>
   <div class="stat"><div class="num">${all.filter((r) => r.manifest.some((m) => m.duration || m.width)).length}</div><div class="label">with ffprobe metadata</div></div>
-  <div class="stat"><div class="num">${(() => { const refs = all.flatMap((r) => r.assetRefs); const covered = refs.filter((c) => c.covered).length; return refs.length > 0 ? Math.round((covered / refs.length) * 100) + "%" : "—"; })()}</div><div class="label">composition coverage</div></div>
+  <div class="stat"><div class="num">${(() => {
+    const refs = all.flatMap((r) => r.assetRefs);
+    const covered = refs.filter((c) => c.covered).length;
+    return refs.length > 0 ? Math.round((covered / refs.length) * 100) + "%" : "—";
+  })()}</div><div class="label">composition coverage</div></div>
 </div>
 
 <h2>Results matrix</h2>
@@ -266,9 +316,11 @@ pre.index { white-space: pre; }
 ${details}
 
 <div class="verdict ${passed.length >= 3 ? "ship" : "wait"}">
-  ${passed.length >= 3
-    ? `<strong>Ship it.</strong> ${passed.length}/${all.length} blocks adopted successfully with metadata. Resolve cache hits work. Miss handling is clean.`
-    : `<strong>Needs work.</strong> Only ${passed.length} blocks adopted. Check the failures above.`}
+  ${
+    passed.length >= 3
+      ? `<strong>Ship it.</strong> ${passed.length}/${all.length} blocks adopted successfully with metadata. Resolve cache hits work. Miss handling is clean.`
+      : `<strong>Needs work.</strong> Only ${passed.length} blocks adopted. Check the failures above.`
+  }
 </div>
 </div>`;
 }
@@ -290,7 +342,9 @@ for (const block of TEST_BLOCKS) {
   process.stdout.write(`  ${basename(block)}...`);
   const result = evalBlock(block);
   if (result) {
-    console.log(` ${result.adopted.count} adopted, ${result.manifest.filter((m) => m.duration || m.width).length} with metadata`);
+    console.log(
+      ` ${result.adopted.count} adopted, ${result.manifest.filter((m) => m.duration || m.width).length} with metadata`,
+    );
   } else {
     console.log(" failed");
   }

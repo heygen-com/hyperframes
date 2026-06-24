@@ -52,10 +52,10 @@ test("project manifest hit skips providers", () => {
   mkdirSync(join(filePath, ".."), { recursive: true });
   writeFileSync(filePath, "cached audio");
 
-  const out = execSync(
-    resolveCmd(`--type bgm --intent "cached query" --project "${tmp}" --json`),
-    { cwd: REPO_ROOT, encoding: "utf8" },
-  );
+  const out = execSync(resolveCmd(`--type bgm --intent "cached query" --project "${tmp}" --json`), {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+  });
   const parsed = JSON.parse(out.trim());
   assert.equal(parsed.ok, true);
   assert.equal(parsed.id, "bgm_001");
@@ -124,10 +124,10 @@ test("--adopt registers existing assets/ files", () => {
   writeFileSync(join(tmp, "assets/bgm/track.mp3"), "fake mp3");
   writeFileSync(join(tmp, "assets/icons/logo.svg"), "fake svg");
 
-  const out = execSync(
-    resolveCmd(`--adopt --project "${tmp}" --json`),
-    { cwd: REPO_ROOT, encoding: "utf8" },
-  );
+  const out = execSync(resolveCmd(`--adopt --project "${tmp}" --json`), {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+  });
   const parsed = JSON.parse(out.trim());
   assert.equal(parsed.ok, true);
   assert.equal(parsed.adopted, 2);
@@ -145,10 +145,10 @@ test("--adopt skips already-registered assets", () => {
   writeFileSync(join(tmp, "assets/bgm/track.mp3"), "fake mp3");
 
   execSync(resolveCmd(`--adopt --project "${tmp}" --json`), { cwd: REPO_ROOT, encoding: "utf8" });
-  const out = execSync(
-    resolveCmd(`--adopt --project "${tmp}" --json`),
-    { cwd: REPO_ROOT, encoding: "utf8" },
-  );
+  const out = execSync(resolveCmd(`--adopt --project "${tmp}" --json`), {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+  });
   const parsed = JSON.parse(out.trim());
   assert.equal(parsed.adopted, 0);
 
@@ -193,10 +193,11 @@ test("missing required args exits 2", () => {
 test("--json returns error JSON on stub provider failure", () => {
   setup();
   try {
-    execSync(
-      resolveCmd(`--type bgm --intent "stub fail" --project "${tmp}" --json`),
-      { cwd: REPO_ROOT, encoding: "utf8", stdio: "pipe" },
-    );
+    execSync(resolveCmd(`--type bgm --intent "stub fail" --project "${tmp}" --json`), {
+      cwd: REPO_ROOT,
+      encoding: "utf8",
+      stdio: "pipe",
+    });
     assert.fail("should have exited");
   } catch (err) {
     const output = err.stdout || "";
@@ -215,10 +216,10 @@ test("one-line output format matches contract", () => {
   mkdirSync(join(filePath, ".."), { recursive: true });
   writeFileSync(filePath, "format check");
 
-  const out = execSync(
-    resolveCmd(`--type bgm --intent "format test" --project "${tmp}"`),
-    { cwd: REPO_ROOT, encoding: "utf8" },
-  );
+  const out = execSync(resolveCmd(`--type bgm --intent "format test" --project "${tmp}"`), {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+  });
   assert.match(out.trim(), /^resolved bgm_001 → .media\/audio\/bgm\/bgm_001\.wav \(bgm/);
   cleanup();
 });
