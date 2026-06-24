@@ -7,6 +7,7 @@ import {
   cdpSessionCache,
   injectVideoFramesBatch,
   syncVideoFrameVisibility,
+  shouldDefaultCaptureBeyondViewport,
 } from "./screenshotService.js";
 
 // Stub a Page + CDPSession just enough that pageScreenshotCapture can call
@@ -118,6 +119,22 @@ describe("pageScreenshotCapture supersample plumbing", () => {
 
     const params = send.mock.calls[0]?.[1] as { clip?: { scale: number } };
     expect(params.clip?.scale).toBe(3);
+  });
+});
+
+describe("shouldDefaultCaptureBeyondViewport", () => {
+  it("guards regular Chrome on macOS", () => {
+    expect(shouldDefaultCaptureBeyondViewport("Chrome/149.0.7827.155", "darwin")).toBe(true);
+  });
+
+  it("keeps chrome-headless-shell on the faster viewport-bound path", () => {
+    expect(shouldDefaultCaptureBeyondViewport("HeadlessChrome/148.0.7778.97", "darwin")).toBe(
+      false,
+    );
+  });
+
+  it("does not change regular Chrome defaults on non-macOS platforms", () => {
+    expect(shouldDefaultCaptureBeyondViewport("Chrome/149.0.7827.155", "linux")).toBe(false);
   });
 });
 

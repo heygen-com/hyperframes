@@ -1213,7 +1213,7 @@ export async function executeRenderJob(
       quality: needsAlpha ? undefined : job.config.quality === "draft" ? 80 : 95,
       variables: job.config.variables,
       deviceScaleFactor,
-      captureBeyondViewport: composition.videos.length > 0,
+      ...(composition.videos.length > 0 ? { captureBeyondViewport: true } : {}),
     };
     updateCaptureObservability({
       captureBeyondViewport: captureOptions.captureBeyondViewport ?? false,

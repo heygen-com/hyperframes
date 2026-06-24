@@ -1,0 +1,13 @@
+{
+  "name": "chrome-screenshot-bottom-edge",
+  "description": "Regression guard for screenshot capture leaking page background into the bottom of a viewport-sized MP4. The composition paints a red page background below full-frame content so any bottom-edge capture gap collapses PSNR.",
+  "tags": ["regression", "screenshot", "edge"],
+  "minPsnr": 30,
+  "maxFrameFailures": 0,
+  "minAudioCorrelation": 0,
+  "maxAudioLagWindows": 1,
+  "renderConfig": {
+    "fps": 12,
+    "workers": 1
+  }
+}

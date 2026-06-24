@@ -28,6 +28,7 @@ import {
   getCdpSession,
   pageScreenshotCapture,
   initTransparentBackground,
+  shouldDefaultCaptureBeyondViewport,
 } from "./screenshotService.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import type {
@@ -417,6 +418,11 @@ export async function createCaptureSession(
     }, variablesJson);
   }
   const browserVersion = await browser.version();
+  const sessionOptions: CaptureOptions = {
+    ...options,
+    captureBeyondViewport:
+      options.captureBeyondViewport ?? shouldDefaultCaptureBeyondViewport(browserVersion),
+  };
   const expectedMajor = config?.expectedChromiumMajor;
   if (Number.isFinite(expectedMajor)) {
     const actualChromiumMajor = Number.parseInt(
@@ -430,9 +436,9 @@ export async function createCaptureSession(
     }
   }
   const viewport: Viewport = {
-    width: options.width,
-    height: options.height,
-    deviceScaleFactor: options.deviceScaleFactor || 1,
+    width: sessionOptions.width,
+    height: sessionOptions.height,
+    deviceScaleFactor: sessionOptions.deviceScaleFactor || 1,
   };
   await page.setViewport(viewport);
 
@@ -446,7 +452,7 @@ export async function createCaptureSession(
   return {
     browser,
     page,
-    options,
+    options: sessionOptions,
     serverUrl,
     outputDir,
     onBeforeCapture,

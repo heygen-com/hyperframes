@@ -93,10 +93,11 @@ export interface CaptureOptions {
   quality?: number;
   deviceScaleFactor?: number;
   /**
-   * Opt into Chrome's capture-beyond-viewport screenshot path. Keep this off
-   * for ordinary viewport-sized captures because it is substantially slower in
-   * Chrome's screenshot compositor path. Enable for known compositor edge cases
-   * such as native video surfaces in tall portrait renders.
+   * Opt into Chrome's capture-beyond-viewport screenshot path. Leave undefined
+   * to let the engine pick the safe browser-specific default. Pass false only
+   * when the caller explicitly wants Chrome's faster viewport-bound path.
+   * Enable for known compositor edge cases such as native video surfaces in
+   * tall portrait renders.
    */
   captureBeyondViewport?: boolean;
   /**

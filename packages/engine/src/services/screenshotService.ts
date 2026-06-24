@@ -19,6 +19,17 @@ export async function getCdpSession(page: Page): Promise<import("puppeteer-core"
   return client;
 }
 
+export function shouldDefaultCaptureBeyondViewport(
+  browserVersion: string,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  // Regular Chrome's viewport-bound screenshot path can expose a compositor
+  // surface shorter than the page viewport on affected macOS builds. In that
+  // case Chrome fills the clipped area with the page background. Headless shell
+  // reports as HeadlessChrome and keeps the faster viewport-bound path.
+  return platform === "darwin" && browserVersion.startsWith("Chrome/");
+}
+
 /**
  * BeginFrame result with screenshot data and damage detection.
  */
