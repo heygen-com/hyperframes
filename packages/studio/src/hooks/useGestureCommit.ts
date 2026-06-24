@@ -249,7 +249,11 @@ export function useGestureCommit({
                     position: roundTo3(recStart),
                     duration: roundTo3(duration),
                     keyframes: groupKfs,
-                    easeEach: "power1.inOut",
+                    // Linear fallback: the velocity fitter assigns a per-keyframe
+                    // ease to non-constant segments and intentionally leaves
+                    // constant-speed segments undefined → they must stay linear,
+                    // not inherit a sigmoid.
+                    easeEach: "none",
                   },
                   { label: "Gesture recording (new range)", softReload: true },
                 );
@@ -266,7 +270,8 @@ export function useGestureCommit({
                 position: roundTo3(recStart),
                 duration: roundTo3(duration),
                 keyframes: groupKfs,
-                easeEach: "power1.inOut",
+                // Linear fallback (see above) — constant-speed segments stay linear.
+                easeEach: "none",
               },
               { label: "Gesture recording", softReload: true },
             );

@@ -32,6 +32,9 @@ export function smoothGestureKeyframes(keyframes: Keyframe[], radius: number): K
       for (let j = Math.max(0, i - radius); j <= Math.min(keyframes.length - 1, i + radius); j++) {
         const v = keyframes[j].properties[key];
         if (typeof v !== "number") continue;
+        // Weight by index distance, not time. Samples here are roughly evenly
+        // spaced, so for the small radius (3) this is fine; switch to a
+        // percentage-domain distance if the window ever grows much larger.
         const w = gaussianWeight(j - i, sigma);
         weightSum += w;
         valueSum += v * w;

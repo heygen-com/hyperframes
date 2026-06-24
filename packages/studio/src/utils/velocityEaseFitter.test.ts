@@ -28,26 +28,26 @@ describe("fitEasesFromVelocity", () => {
     expect(result[1].ease).toBeUndefined();
   });
 
-  it("decelerate at end → ease-in shape", () => {
+  it("decelerate at end → AE Easy Ease In (slow-end curve)", () => {
     const kfs: FittedKeyframe[] = [
       { percentage: 0, properties: { x: 0 } },
       { percentage: 100, properties: { x: 100 } },
     ];
-    // Start fast, end slow
+    // Start fast, end slow → playback must also be slow at the end (CP2 y=1).
     const samples = makeSamples(60, 1, (t) => Math.max(0, 200 * (1 - t)));
     const result = fitEasesFromVelocity(kfs, samples, 1);
-    expect(result[1].ease).toBe("custom(M0,0 C0.333,0 0.667,0.667 1,1)");
+    expect(result[1].ease).toBe("custom(M0,0 C0.333,0.333 0.667,1 1,1)");
   });
 
-  it("accelerate from start → ease-out shape", () => {
+  it("accelerate from start → AE Easy Ease Out (slow-start curve)", () => {
     const kfs: FittedKeyframe[] = [
       { percentage: 0, properties: { x: 0 } },
       { percentage: 100, properties: { x: 100 } },
     ];
-    // Start slow, end fast
+    // Start slow, end fast → playback must also be slow at the start (CP1 y=0).
     const samples = makeSamples(60, 1, (t) => 200 * t);
     const result = fitEasesFromVelocity(kfs, samples, 1);
-    expect(result[1].ease).toBe("custom(M0,0 C0.333,0.333 0.667,1 1,1)");
+    expect(result[1].ease).toBe("custom(M0,0 C0.333,0 0.667,0.667 1,1)");
   });
 
   it("single keyframe → returns unchanged", () => {

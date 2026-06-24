@@ -106,7 +106,10 @@ export async function fetchParsedAnimations(
 ): Promise<ParsedGsap | null> {
   try {
     const res = await fetch(
-      `/api/projects/${encodeURIComponent(projectId)}/gsap-animations/${encodeURIComponent(sourceFile)}?_t=${Date.now()}`,
+      `/api/projects/${encodeURIComponent(projectId)}/gsap-animations/${encodeURIComponent(sourceFile)}`,
+      // Always re-read the freshly-parsed source; no per-call timestamp (which
+      // would defeat caching forever and is a deterministic-render no-no).
+      { cache: "no-store" },
     );
     if (!res.ok) return null;
     const parsed = (await res.json()) as ParsedGsap;

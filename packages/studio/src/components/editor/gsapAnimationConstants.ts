@@ -144,9 +144,11 @@ export const EASE_CURVES: Record<string, [number, number, number, number]> = {
   "expo.out": [0.16, 1, 0.3, 1],
   "expo.in": [0.7, 0, 0.84, 0],
   "expo.inOut": [0.87, 0, 0.13, 1],
+  // After Effects polarity: "in" eases into the keyframe (slow END, CP2 y=1),
+  // "out" eases out of it (slow START, CP1 y=0). Matches the "(AE)" labels.
   "ae-ease": [0.333, 0, 0.667, 1],
-  "ae-ease-in": [0.333, 0, 0.667, 0.667],
-  "ae-ease-out": [0.333, 0.333, 0.667, 1],
+  "ae-ease-in": [0.333, 0.333, 0.667, 1],
+  "ae-ease-out": [0.333, 0, 0.667, 0.667],
 };
 
 export function parseCustomEaseFromString(ease: string): {

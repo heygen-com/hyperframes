@@ -3,10 +3,15 @@ interface TimedSample {
   value: number;
 }
 
-// ponytail: AE Easy Ease = cubic-bezier(0.333, 0, 0.667, 1)
+// After Effects convention (ease named by the keyframe side it acts on):
+//   Easy Ease     — slow at both ends (cubic-bezier 0.333,0 0.667,1)
+//   Easy Ease In   — eases *into* the keyframe → decelerates → slow at the END
+//   Easy Ease Out  — eases *out of* the keyframe → accelerates → slow at the START
+// The control-point y values must match that polarity (a flat tangent at the
+// slow side): slow-end pins CP2 at y=1, slow-start pins CP1 at y=0.
 const AE_EASE = "custom(M0,0 C0.333,0 0.667,1 1,1)";
-const AE_EASE_IN = "custom(M0,0 C0.333,0 0.667,0.667 1,1)";
-const AE_EASE_OUT = "custom(M0,0 C0.333,0.333 0.667,1 1,1)";
+const AE_EASE_IN = "custom(M0,0 C0.333,0.333 0.667,1 1,1)";
+const AE_EASE_OUT = "custom(M0,0 C0.333,0 0.667,0.667 1,1)";
 const VELOCITY_THRESHOLD = 0.3;
 
 function averageSpeed(samples: TimedSample[], from: number, to: number): number {

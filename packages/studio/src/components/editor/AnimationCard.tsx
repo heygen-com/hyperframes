@@ -112,13 +112,10 @@ export const AnimationCard = memo(function AnimationCard({
   );
 
   const [copied, setCopied] = useState(false);
-  const [optimisticEase, setOptimisticEase] = useState<string | null>(null);
 
   const methodLabel = METHOD_LABELS[animation.method] ?? animation.method;
-  const propEase =
+  const easeName =
     (animation.keyframes ? animation.keyframes.easeEach : undefined) ?? animation.ease ?? "none";
-  const easeName = optimisticEase ?? propEase;
-  if (optimisticEase && propEase === optimisticEase) setOptimisticEase(null);
   const easeLabel = easeName.startsWith("custom(")
     ? "Custom curve"
     : (EASE_LABELS[easeName] ?? easeName);
@@ -128,11 +125,13 @@ export const AnimationCard = memo(function AnimationCard({
       : animation.position;
 
   const summary = useMemo(() => buildTweenSummary(animation), [animation]);
+  const setKeys = Object.keys(animation.properties);
   if (
     animation.method === "set" &&
-    Object.keys(animation.properties).every(
-      (k) => k === "x" || k === "y" || k === "immediateRender",
-    )
+    // `every` is vacuously true on an empty bag — require at least one key so a
+    // property-less set doesn't masquerade as a position row.
+    (setKeys.includes("x") || setKeys.includes("y")) &&
+    setKeys.every((k) => k === "x" || k === "y" || k === "immediateRender")
   )
     return (
       <div className="border-b border-neutral-800 pb-2">

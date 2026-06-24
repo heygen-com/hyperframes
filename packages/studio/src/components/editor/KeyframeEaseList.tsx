@@ -29,7 +29,7 @@ export function KeyframeEaseList({
           ? "Custom"
           : (EASE_LABELS[segEase] ?? segEase);
         return (
-          <div key={kf.percentage} className="rounded-md bg-neutral-900/50">
+          <div key={`${i}-${kf.percentage}`} className="rounded-md bg-neutral-900/50">
             <button
               type="button"
               onClick={() => onToggle(isExpanded ? null : kf.percentage)}
