@@ -170,6 +170,34 @@ function isHiddenGsapState(values: Record<string, string | number>): boolean {
   );
 }
 
+function oneValue(
+  values: Record<string, string | number>,
+  keys: string[],
+): string | number | undefined {
+  for (const key of keys) {
+    const value = values[key];
+    if (value !== undefined) return value;
+  }
+  return undefined;
+}
+
+function isVisibleGsapState(values: Record<string, string | number>): boolean {
+  const opacity = oneValue(values, ["opacity", "autoAlpha"]);
+  if (typeof opacity === "number") return opacity > 0;
+  if (typeof opacity === "string" && opacity.trim()) {
+    const numeric = Number(opacity);
+    if (Number.isFinite(numeric)) return numeric > 0;
+  }
+
+  const visibility = stringValue(values.visibility)?.toLowerCase();
+  if (visibility === "visible" || visibility === "inherit") return true;
+
+  const display = stringValue(values.display)?.toLowerCase();
+  if (display && display !== "none") return true;
+
+  return false;
+}
+
 function isSceneBoundaryExit(win: GsapWindow): boolean {
   if (win.end <= win.position) return false;
   if (win.method !== "to" && win.method !== "fromTo") return false;
@@ -280,6 +308,53 @@ function isSuspiciousGlobalSelector(selector: string): boolean {
 function getSingleClassSelector(selector: string): string | null {
   const match = selector.trim().match(/^\.(?<name>[A-Za-z0-9_-]+)$/);
   return match?.groups?.name || null;
+}
+
+function getSingleIdSelector(selector: string): string | null {
+  const match = selector.trim().match(/^#(?<name>[A-Za-z0-9_-]+)$/);
+  return match?.groups?.name || null;
+}
+
+function readStyleProperty(style: string, property: string): string | null {
+  const escapedProperty = property.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = style.match(new RegExp(`(?:^|;)\\s*${escapedProperty}\\s*:\\s*([^;]+)`, "i"));
+  return match?.[1]?.trim() || null;
+}
+
+function cssZero(value: string | null): boolean {
+  if (!value) return false;
+  return /^0(?:\.0+)?(?:px|%|vw|vh|rem|em)?$/i.test(value.trim());
+}
+
+function styleHasHiddenInitialState(style: string): boolean {
+  const opacity = readStyleProperty(style, "opacity");
+  if (opacity && Number(opacity) === 0) return true;
+  if (readStyleProperty(style, "visibility")?.toLowerCase() === "hidden") return true;
+  if (readStyleProperty(style, "display")?.toLowerCase() === "none") return true;
+  return false;
+}
+
+function styleHasOpaqueBackground(style: string): boolean {
+  const background =
+    readStyleProperty(style, "background") || readStyleProperty(style, "background-color");
+  if (!background) return false;
+  const normalized = background.toLowerCase().replace(/\s+/g, "");
+  if (normalized === "transparent" || normalized === "none") return false;
+  if (/rgba?\([^)]*,0(?:\.0+)?\)$/.test(normalized)) return false;
+  if (/hsla?\([^)]*,0(?:\.0+)?\)$/.test(normalized)) return false;
+  return true;
+}
+
+function styleLooksFullFrameOverlay(style: string): boolean {
+  const position = readStyleProperty(style, "position")?.toLowerCase();
+  if (position !== "fixed" && position !== "absolute") return false;
+  const coversFrame =
+    cssZero(readStyleProperty(style, "inset")) ||
+    (cssZero(readStyleProperty(style, "top")) &&
+      cssZero(readStyleProperty(style, "right")) &&
+      cssZero(readStyleProperty(style, "bottom")) &&
+      cssZero(readStyleProperty(style, "left")));
+  return coversFrame && styleHasOpaqueBackground(style);
 }
 
 // fallow-ignore-next-line complexity
@@ -484,6 +559,52 @@ export const gsapRules: LintRule<LintContext>[] = [
             snippet: truncateSnippet(win.raw),
           });
         }
+      }
+
+      // gsap_fullscreen_overlay_starts_visible
+      for (const tag of tags) {
+        const id = readAttr(tag.raw, "id");
+        if (!id) continue;
+        const inlineStyle = readAttr(tag.raw, "style");
+        if (!inlineStyle || !styleLooksFullFrameOverlay(inlineStyle)) continue;
+        if (styleHasHiddenInitialState(inlineStyle)) continue;
+
+        const selector = `#${id}`;
+        const visibilityWindows = gsapWindows
+          .filter((win) => {
+            if (getSingleIdSelector(win.targetSelector) !== id) return false;
+            return win.properties.some((prop) =>
+              ["opacity", "autoAlpha", "visibility", "display"].includes(prop),
+            );
+          })
+          .sort((a, b) => a.position - b.position);
+        const startsHiddenAtZero = visibilityWindows.some(
+          (win) =>
+            win.position <= SCENE_BOUNDARY_EPSILON_SECONDS && isHiddenGsapState(win.propertyValues),
+        );
+        if (startsHiddenAtZero) continue;
+        const firstVisible = visibilityWindows.find((win) =>
+          isVisibleGsapState(win.propertyValues),
+        );
+        if (!firstVisible) continue;
+        const laterHidden = visibilityWindows.some(
+          (win) => win.position >= firstVisible.position && isHiddenGsapState(win.propertyValues),
+        );
+        if (!laterHidden) continue;
+
+        findings.push({
+          code: "gsap_fullscreen_overlay_starts_visible",
+          severity: "error",
+          message:
+            `Full-frame overlay "${selector}" starts visible before its first GSAP opacity tween at ` +
+            `${firstVisible.position.toFixed(2)}s. It will cover earlier render frames, often as a blank/white video.`,
+          selector,
+          elementId: id,
+          fixHint:
+            `Add \`opacity: 0\` to "${selector}" in CSS/inline styles, or add ` +
+            `\`tl.set("${selector}", { opacity: 0 }, 0)\` before the reveal tween.`,
+          snippet: truncateSnippet(firstVisible.raw),
+        });
       }
 
       // gsap_animates_clip_element — only error when GSAP animates visibility/display

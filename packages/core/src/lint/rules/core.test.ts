@@ -26,6 +26,17 @@ describe("core rules", () => {
     expect(finding?.severity).toBe("error");
   });
 
+  it("accepts body as the composition root", async () => {
+    const html = `
+<html><body data-composition-id="c1" data-width="1920" data-height="1080">
+  <div id="overlay-flash"></div>
+  <script>window.__timelines = window.__timelines || {};</script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.find((f) => f.code === "root_missing_composition_id")).toBeUndefined();
+    expect(result.findings.find((f) => f.code === "root_missing_dimensions")).toBeUndefined();
+  });
+
   it("reports error when timeline registry is missing", async () => {
     const html = `
 <html><body>

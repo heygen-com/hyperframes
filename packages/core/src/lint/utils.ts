@@ -80,8 +80,21 @@ export function findHtmlTag(source: string): OpenTag | null {
 }
 
 export function findRootTag(source: string): OpenTag | null {
-  const bodyOpenMatch = /<body\b[^>]*>/i.exec(source);
+  const bodyOpenMatch = /<body\b([^>]*)>/i.exec(source);
   const bodyCloseMatch = /<\/body>/i.exec(source);
+  if (
+    bodyOpenMatch &&
+    (readAttr(bodyOpenMatch[0], "data-composition-id") ||
+      readAttr(bodyOpenMatch[0], "data-width") ||
+      readAttr(bodyOpenMatch[0], "data-height"))
+  ) {
+    return {
+      raw: bodyOpenMatch[0],
+      name: "body",
+      attrs: bodyOpenMatch[1] ?? "",
+      index: bodyOpenMatch.index,
+    };
+  }
   const bodyStart = bodyOpenMatch ? bodyOpenMatch.index + bodyOpenMatch[0].length : 0;
   const bodyEnd =
     bodyOpenMatch && bodyCloseMatch && bodyCloseMatch.index > bodyStart
