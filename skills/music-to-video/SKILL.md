@@ -145,7 +145,7 @@ Run the CLI on the **assembled project** — that's the correct unit (the per-fr
 ( cd "$PROJECT_DIR" && npx hyperframes lint . && npx hyperframes validate . && npx hyperframes inspect . )
 ```
 
-Inspect at `t=0`, each frame start, the strongest DROP / SURGE, every `hard_stops[].t`, and the final frame. On failure, make the **cheapest safe fix**: edit the offending `compositions/frames/NN-*.html` for a local issue; **re-dispatch that one frame-worker** only when a whole frame must be rebuilt; go back to Step 3 only if the plan is creatively wrong. Never change duration or audio timing to hide a sync issue. Once the gates pass, pause for user review, then render only on approval:
+Inspect at `t=0`, each frame start, the strongest DROP / SURGE, every `hard_stops[].t`, and the final frame. On failure, make the **cheapest safe fix** yourself: edit the offending `compositions/frames/NN-*.html`. Never change duration or audio timing to hide a sync issue. Once the gates pass, pause for user review, then render only on approval:
 
 ```bash
 ( cd "$PROJECT_DIR" && npx hyperframes render . -q draft -o renders/video.mp4 --fps 30 )
