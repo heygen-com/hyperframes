@@ -98,6 +98,8 @@ export function trackRenderComplete(
     durationMs: number;
     fps: number;
     quality: string;
+    /** Authoring workflow skill that drove this render (e.g. "product-launch-video"). */
+    authoringSkill?: string;
     workers?: number;
     docker: boolean;
     gpu: boolean;
@@ -155,6 +157,7 @@ export function trackRenderComplete(
       duration_ms: props.durationMs,
       fps: props.fps,
       quality: props.quality,
+      authoring_skill: props.authoringSkill,
       workers: props.workers,
       docker: props.docker,
       gpu: props.gpu,
@@ -202,6 +205,8 @@ export function trackRenderError(
   props: {
     fps: number;
     quality: string;
+    /** Authoring workflow skill that drove this render (e.g. "product-launch-video"). */
+    authoringSkill?: string;
     docker: boolean;
     workers?: number;
     gpu?: boolean;
@@ -221,6 +226,7 @@ export function trackRenderError(
     {
       fps: props.fps,
       quality: props.quality,
+      authoring_skill: props.authoringSkill,
       docker: props.docker,
       workers: props.workers,
       gpu: props.gpu,

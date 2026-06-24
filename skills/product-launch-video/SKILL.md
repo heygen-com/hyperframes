@@ -169,7 +169,7 @@ Preview: `npx hyperframes preview`
 
 Render only after user approval:
 
-`npx hyperframes render --quality high --output renders/video.mp4`
+`npx hyperframes render --skill=product-launch-video --quality high --output renders/video.mp4`
 
 Do not rerun `lint`, `validate`, `inspect`, or `snapshot` after rendering unless the user asks.
 

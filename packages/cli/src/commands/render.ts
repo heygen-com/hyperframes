@@ -175,6 +175,12 @@ export default defineCommand({
       description: "Quality: draft, standard, high",
       default: "standard",
     },
+    skill: {
+      type: "string",
+      description:
+        "Authoring workflow skill that initiated this render (e.g. product-launch-video). " +
+        "Recorded on anonymous render telemetry for per-skill usage breakdowns; ignored unless it is a slug.",
+    },
     format: {
       type: "string",
       description:
@@ -378,6 +384,16 @@ export default defineCommand({
       process.exit(1);
     }
     const quality = qualityRaw as "draft" | "standard" | "high";
+
+    // ── Authoring skill (telemetry attribution) ────────────────────────────
+    // Optional slug naming the workflow skill that drove this render (e.g.
+    // "product-launch-video"), tagged onto render telemetry for per-skill usage
+    // breakdowns. Slug-gated so a caller can't push high-cardinality or PII
+    // strings into the anonymous event stream; a missing/invalid value is omitted.
+    const authoringSkill =
+      typeof args.skill === "string" && /^[a-z0-9][a-z0-9-]{0,63}$/.test(args.skill)
+        ? args.skill
+        : undefined;
 
     // ── Validate format ─────────────────────────────────────────────────
     const formatRaw = args.format ?? "mp4";
@@ -755,6 +771,7 @@ export default defineCommand({
       const renderOptionsBase: RenderOptions = {
         fps,
         quality,
+        authoringSkill,
         format,
         workers,
         gpu: useGpu,
@@ -812,6 +829,7 @@ export default defineCommand({
       await renderDocker(project.dir, outputPath, {
         fps,
         quality,
+        authoringSkill,
         format,
         gifLoop,
         workers,
@@ -837,6 +855,7 @@ export default defineCommand({
       await renderLocal(project.dir, outputPath, {
         fps,
         quality,
+        authoringSkill,
         format,
         gifLoop,
         workers,
@@ -870,6 +889,8 @@ export interface SingleRenderResult {
 interface RenderOptions {
   fps: Fps;
   quality: "draft" | "standard" | "high";
+  /** Authoring workflow skill that drove this render (telemetry attribution). */
+  authoringSkill?: string;
   format: RenderFormat;
   gifLoop?: number;
   workers?: number;
@@ -1171,6 +1192,7 @@ async function renderDocker(
     workers: options.workers,
     docker: true,
     gpu: options.gpu,
+    authoringSkill: options.authoringSkill,
     ...getMemorySnapshot(),
   });
 
@@ -1410,6 +1432,7 @@ function handleRenderError(
     docker,
     workers: options.workers,
     gpu: options.gpu,
+    authoringSkill: options.authoringSkill,
     elapsedMs: Date.now() - startTime,
     errorMessage: message,
     failedStage,
@@ -1455,6 +1478,7 @@ function trackRenderMetrics(
     workers: options.workers ?? perf?.workers,
     docker,
     gpu: options.gpu,
+    authoringSkill: options.authoringSkill,
     staticDedupEnabled: perf?.staticDedup?.enabled,
     staticDedupArmed: perf?.staticDedup?.armed,
     staticDedupSkipReason: perf?.staticDedup?.skipReason,

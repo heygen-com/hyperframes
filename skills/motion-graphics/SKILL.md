@@ -121,7 +121,7 @@ Dispatch a subagent. prompt = full `agents/builder.md` + dispatch context (`shot
 ### Step 5 — Render (Bash)
 
 ```bash
-(cd "$PROJECT_DIR" && npx hyperframes render . -q draft -o ./renders/video.mp4)
+(cd "$PROJECT_DIR" && npx hyperframes render . --skill=motion-graphics -q draft -o ./renders/video.mp4)
 # transparent overlay variant: --format webm  (or mov)
 ```
 
