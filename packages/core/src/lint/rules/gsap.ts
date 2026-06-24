@@ -198,6 +198,11 @@ function isVisibleGsapState(values: Record<string, string | number>): boolean {
   return false;
 }
 
+function makesOverlayVisible(win: GsapWindow): boolean {
+  if (win.method === "from" && isHiddenGsapState(win.propertyValues)) return true;
+  return isVisibleGsapState(win.propertyValues);
+}
+
 function isSceneBoundaryExit(win: GsapWindow): boolean {
   if (win.end <= win.position) return false;
   if (win.method !== "to" && win.method !== "fromTo") return false;
@@ -310,11 +315,6 @@ function getSingleClassSelector(selector: string): string | null {
   return match?.groups?.name || null;
 }
 
-function getSingleIdSelector(selector: string): string | null {
-  const match = selector.trim().match(/^#(?<name>[A-Za-z0-9_-]+)$/);
-  return match?.groups?.name || null;
-}
-
 function readStyleProperty(style: string, property: string): string | null {
   const escapedProperty = property.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = style.match(new RegExp(`(?:^|;)\\s*${escapedProperty}\\s*:\\s*([^;]+)`, "i"));
@@ -355,6 +355,39 @@ function styleLooksFullFrameOverlay(style: string): boolean {
       cssZero(readStyleProperty(style, "bottom")) &&
       cssZero(readStyleProperty(style, "left")));
   return coversFrame && styleHasOpaqueBackground(style);
+}
+
+function collectSimpleStyleRules(styles: LintContext["styles"]): Map<string, string> {
+  const rules = new Map<string, string>();
+  for (const style of styles) {
+    for (const [, selectorList, body] of style.content.matchAll(/([^{}]+)\{([^}]+)\}/g)) {
+      if (!selectorList || !body) continue;
+      for (const selector of selectorList.split(",")) {
+        const token = selector.trim();
+        if (!/^[#.][A-Za-z0-9_-]+$/.test(token)) continue;
+        rules.set(token, `${rules.get(token) || ""};${body}`);
+      }
+    }
+  }
+  return rules;
+}
+
+function tagSimpleSelectors(tag: OpenTag): string[] {
+  const selectors: string[] = [];
+  const id = readAttr(tag.raw, "id");
+  if (id) selectors.push(`#${id}`);
+  const classes = readAttr(tag.raw, "class")?.split(/\s+/).filter(Boolean) ?? [];
+  for (const className of classes) selectors.push(`.${className}`);
+  return selectors;
+}
+
+function combinedTagStyle(tag: OpenTag, styleRules: Map<string, string>): string {
+  const styles = [readAttr(tag.raw, "style") || ""];
+  for (const selector of tagSimpleSelectors(tag)) {
+    const ruleStyle = styleRules.get(selector);
+    if (ruleStyle) styles.push(ruleStyle);
+  }
+  return styles.filter(Boolean).join(";");
 }
 
 // fallow-ignore-next-line complexity
@@ -474,7 +507,7 @@ function extractStandaloneGsapTransformCalls(script: string): GsapTransformCall[
 export const gsapRules: LintRule<LintContext>[] = [
   // overlapping_gsap_tweens + gsap_animates_clip_element + unscoped_gsap_selector
   // fallow-ignore-next-line complexity
-  async ({ source, tags, scripts, rootCompositionId }) => {
+  async ({ source, tags, scripts, styles, rootCompositionId }) => {
     const findings: HyperframeLintFinding[] = [];
 
     // Build clip element selector map
@@ -499,6 +532,8 @@ export const gsapRules: LintRule<LintContext>[] = [
 
     const classUsage = countClassUsage(tags);
     const clipStartBoundariesByComposition = collectClipStartBoundariesByComposition(source, tags);
+    const styleRules = collectSimpleStyleRules(styles);
+    const reportedVisibleOverlayKeys = new Set<string>();
 
     for (const script of scripts) {
       const localTimelineCompId = readRegisteredTimelineCompositionId(script.content);
@@ -563,16 +598,18 @@ export const gsapRules: LintRule<LintContext>[] = [
 
       // gsap_fullscreen_overlay_starts_visible
       for (const tag of tags) {
-        const id = readAttr(tag.raw, "id");
-        if (!id) continue;
-        const inlineStyle = readAttr(tag.raw, "style");
-        if (!inlineStyle || !styleLooksFullFrameOverlay(inlineStyle)) continue;
-        if (styleHasHiddenInitialState(inlineStyle)) continue;
+        const selectors = tagSimpleSelectors(tag);
+        if (selectors.length === 0) continue;
+        const overlayKey = readAttr(tag.raw, "id") || String(tag.index);
+        if (reportedVisibleOverlayKeys.has(overlayKey)) continue;
+        const authoredStyle = combinedTagStyle(tag, styleRules);
+        if (!authoredStyle || !styleLooksFullFrameOverlay(authoredStyle)) continue;
+        if (styleHasHiddenInitialState(authoredStyle)) continue;
 
-        const selector = `#${id}`;
         const visibilityWindows = gsapWindows
           .filter((win) => {
-            if (getSingleIdSelector(win.targetSelector) !== id) return false;
+            const tokens = targetedSelectorTokens(win.targetSelector);
+            if (!selectors.some((selector) => tokens.has(selector))) return false;
             return win.properties.some((prop) =>
               ["opacity", "autoAlpha", "visibility", "display"].includes(prop),
             );
@@ -583,15 +620,20 @@ export const gsapRules: LintRule<LintContext>[] = [
             win.position <= SCENE_BOUNDARY_EPSILON_SECONDS && isHiddenGsapState(win.propertyValues),
         );
         if (startsHiddenAtZero) continue;
-        const firstVisible = visibilityWindows.find((win) =>
-          isVisibleGsapState(win.propertyValues),
-        );
+        const firstVisible = visibilityWindows.find((win) => makesOverlayVisible(win));
         if (!firstVisible) continue;
+        const selector =
+          selectors.find((candidate) =>
+            targetedSelectorTokens(firstVisible.targetSelector).has(candidate),
+          ) ||
+          selectors[0] ||
+          tag.name;
         const laterHidden = visibilityWindows.some(
           (win) => win.position >= firstVisible.position && isHiddenGsapState(win.propertyValues),
         );
-        if (!laterHidden) continue;
+        if (firstVisible.method !== "from" && !laterHidden) continue;
 
+        reportedVisibleOverlayKeys.add(overlayKey);
         findings.push({
           code: "gsap_fullscreen_overlay_starts_visible",
           severity: "error",
@@ -599,7 +641,7 @@ export const gsapRules: LintRule<LintContext>[] = [
             `Full-frame overlay "${selector}" starts visible before its first GSAP opacity tween at ` +
             `${firstVisible.position.toFixed(2)}s. It will cover earlier render frames, often as a blank/white video.`,
           selector,
-          elementId: id,
+          elementId: readAttr(tag.raw, "id") || undefined,
           fixHint:
             `Add \`opacity: 0\` to "${selector}" in CSS/inline styles, or add ` +
             `\`tl.set("${selector}", { opacity: 0 }, 0)\` before the reveal tween.`,
