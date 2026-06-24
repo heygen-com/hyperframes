@@ -234,7 +234,7 @@ export const PropertyPanel = memo(function PropertyPanel({
   const displayH = gsapRuntimeValues?.height ?? resolvedHeight;
   const displayR = gsapRuntimeValues?.rotation ?? manualRotation.angle;
 
-  // fallow-ignore-next-line complexity -- pre-existing copy-element-info handler, extracted from JSX
+  // fallow-ignore-next-line complexity
   const handleCopyElementInfo = () => {
     const file = element.sourceFile ?? "index.html";
     let lineNum: number | null = null;

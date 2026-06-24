@@ -24,7 +24,7 @@ function deduplicateKeyframes(keyframes: GsapPercentageKeyframe[]): GsapPercenta
   return Array.from(byPct.values()).sort((a, b) => a.percentage - b.percentage);
 }
 
-// fallow-ignore-next-line complexity -- pre-existing complexity in a file this PR touched
+// fallow-ignore-next-line complexity
 function synthesizeFlatTweenKeyframes(anim: GsapAnimation): GsapKeyframesData | null {
   if (anim.method === "set") {
     return {
@@ -207,7 +207,7 @@ export function useGsapAnimationsForElement(
     [allAnimations, targetId, targetSelector],
   );
 
-  // fallow-ignore-next-line complexity -- pre-existing complexity in a file this PR touched
+  // fallow-ignore-next-line complexity
   const animations = useMemo(() => {
     const iframe = iframeRef?.current;
     let result = rawAnimations;
@@ -275,7 +275,7 @@ export function useGsapAnimationsForElement(
   // Merges keyframes from ALL animations targeting this element and synthesizes
   // flat tweens so the cache is never downgraded vs the bulk populate.
   const elementId = target?.id ?? null;
-  // fallow-ignore-next-line complexity -- pre-existing complexity in a file this PR touched
+  // fallow-ignore-next-line complexity
   useEffect(() => {
     if (!elementId) return;
 
@@ -379,7 +379,7 @@ export function usePopulateKeyframeCacheForFile(
     if (!projectId) return;
 
     const sf = sourceFile;
-    // fallow-ignore-next-line complexity -- pre-existing complexity in a file this PR touched
+    // fallow-ignore-next-line complexity
     fetchParsedAnimations(projectId, sf).then((parsed) => {
       if (!parsed) return;
       const { setKeyframeCache } = usePlayerStore.getState();
@@ -452,7 +452,7 @@ export function usePopulateKeyframeCacheForFile(
     let attempts = 0;
     const maxAttempts = 10;
 
-    // fallow-ignore-next-line complexity -- pre-existing complexity in a file this PR touched
+    // fallow-ignore-next-line complexity
     const tryRuntimeScan = () => {
       if (runtimeScanDoneRef.current === `kf-cache:${projectId}:${sf}:${version}`) return true;
       const iframe =
