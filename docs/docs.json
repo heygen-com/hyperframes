@@ -75,6 +75,7 @@
             "group": "Guides",
             "pages": [
               "guides/pipeline",
+              "guides/authentication",
               "guides/video-components",
               "guides/html-in-canvas",
               "guides/website-to-video",
