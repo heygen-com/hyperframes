@@ -34,15 +34,16 @@ Full flag list + the `audio_meta.json` schema live in the header of `scripts/aud
 
 ## Preflight — show sign-in status before any audio
 
-Before generating voice or BGM, run the shared preflight once and **relay its output to the user verbatim**. Do **not** improvise your own "missing key" prompt, and do **not** offer to write keys into a per-repo `.env` — the command already gives the right guidance:
+**Always run this before generating voice or BGM — inside a full workflow _or_ a one-off "generate me a BGM/voiceover" request.** No HeyGen credential is **not** a reason to silently fall back to local engines: first recommend signing in and let the user decide. Run the shared preflight and **relay its output verbatim** — don't improvise your own "missing key" prompt, and don't offer to write keys into a per-repo `.env`:
 
 ```bash
-hyperframes auth status
+npx hyperframes auth status
 ```
 
 - **Signed in** → it prints the account; proceed.
-- **Not signed in** (`exit 1` is expected here — "not signed in" is a normal state, not a failure) → it prints registration-first guidance. Recommend signing in **via either CLI — they share the same login** (`~/.heygen`, no per-repo `.env`): `hyperframes auth login` (always available through this repo's CLI) or `heygen auth login` (if the HeyGen CLI is installed). Both are the same OAuth step — they **sign in and create an account** — or `hyperframes auth login --api-key` to paste an existing key. The output also lists the local engines voice/BGM will fall back to and a `pip` hint when deps are missing. **Relay this output as-is — don't paraphrase it into your own wording.** Then **STOP and wait** for the user to choose — sign in, or say "go" / "local" to continue offline — **before asking anything else.** This is a real decision point, not a passing note: don't fold it into another question, and don't proceed past it on your own. (Exception: in autonomous / non-interactive mode, note the status and continue offline.)
-- `hyperframes auth status --json` returns `{ configured, recommended_action, offline_engines }` for deterministic branching.
+- **Not signed in** (`exit 1` is expected here — "not signed in" is a normal state, not a failure) → it prints registration-first guidance. Recommend signing in **via either CLI — they share the same login** (`~/.heygen`, no per-repo `.env`): `npx hyperframes auth login` (always available through this repo's CLI) or `heygen auth login` (if the HeyGen CLI is installed). Both are the same OAuth step — they **sign in and create an account** — or `npx hyperframes auth login --api-key` to paste an existing key. The output also lists the local engines voice/BGM will fall back to and a `pip` hint when deps are missing. **Relay this output as-is — don't paraphrase it into your own wording.** Then **STOP and wait** for the user to choose — sign in, or say "go" / "local" to continue offline — **before generating anything.** This is a real decision point, not a passing note: don't fold it into another question, and don't proceed past it on your own. (Exception: in autonomous / non-interactive mode, note the status and continue offline.)
+- `npx hyperframes auth status --json` returns `{ configured, recommended_action, offline_engines }` for deterministic branching.
+- **If the CLI can't run** (not on PATH and `npx` can't fetch it) → still **recommend signing in** (`npx hyperframes auth login`, or `heygen auth login` if the HeyGen CLI is installed) and **STOP for the user's choice** — don't treat "no credential" as a silent green light for local generation.
 
 Credential resolution, full key priority, and the local-dependency list are in `references/requirements.md`.
 
