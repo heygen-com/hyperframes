@@ -165,6 +165,10 @@ export function parseFonts(md) {
     roles["card-headline"] ??
     roles["section-headline"] ??
     roles["quote-display"] ??
+    roles.h1 ??
+    roles.h2 ??
+    roles.title ??
+    roles.hero ??
     body;
   return { display: q(display), body: q(body) };
 }

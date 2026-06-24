@@ -318,8 +318,8 @@ function brandFontFaces(framePath, hyperframesDir) {
   const weightOf = (n) => {
     const s = n.toLowerCase();
     if (/black|heavy|ultra|extrabold/.test(s)) return 800;
+    if (/semibold|demibold/.test(s)) return 600; // before /bold/ — "demibold" contains "bold"
     if (/bold/.test(s)) return 700;
-    if (/semibold|demibold/.test(s)) return 600;
     if (/medium/.test(s)) return 500;
     if (/light|thin/.test(s)) return 300;
     return 400; // book / regular / roman
@@ -332,10 +332,22 @@ function brandFontFaces(framePath, hyperframesDir) {
         : /\.ttf$/i.test(f)
           ? "truetype"
           : "opentype";
+  // Normalize away ALL non-alphanumerics (spaces, underscores, hyphens) on BOTH the
+  // family name and the filename. Real font files use "_" / "-" as word separators
+  // ("TT_Norms_Pro_Bold.woff2"), so stripping only whitespace never matched them — the
+  // family key "ttnormspro" failed `startsWith` against "tt_norms_pro_bold", and the
+  // function silently returned "" → captions shipped with NO @font-face for any
+  // underscore/hyphen-named brand font (e.g. TT Norms Pro), which is exactly the
+  // font_family_without_font_face bug.
+  const norm = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
   const faces = [];
   const seen = new Set();
-  for (const fam of families) {
-    const key = fam.replace(/\s+/g, "").toLowerCase();
+  const claimed = new Set(); // each file is claimed by the MOST SPECIFIC family only
+  // Match the longest family key first so "TT Norms Pro" can't swallow the files that
+  // belong to "TT Norms Pro Mono" (its key is a prefix of the longer one's).
+  const ranked = [...families].sort((a, b) => norm(b).length - norm(a).length);
+  for (const fam of ranked) {
+    const key = norm(fam);
     for (const d of dirs) {
       let files = [];
       try {
@@ -345,16 +357,33 @@ function brandFontFaces(framePath, hyperframesDir) {
       }
       for (const f of files.sort()) {
         if (!/\.(woff2|woff|ttf|otf)$/i.test(f)) continue;
-        if (!f.replace(/\s+/g, "").toLowerCase().startsWith(key)) continue;
+        if (claimed.has(f)) continue; // a more specific family already took this file
+        if (!norm(f.replace(/\.(woff2|woff|ttf|otf)$/i, "")).startsWith(key)) continue;
         const w = weightOf(f);
         const dedup = `${fam}-${w}`;
         if (seen.has(dedup)) continue; // one src per weight; assets/fonts wins over capture
         seen.add(dedup);
+        claimed.add(f);
         faces.push(
           `      @font-face { font-family: '${fam}'; src: url('${d.rel}/${f}') format('${fmtOf(f)}'); font-weight: ${w}; font-display: block; }`,
         );
       }
     }
+  }
+  // Loud signal instead of a silent "". If frame.md named a brand font but no local file
+  // matched, the caller falls back to a Google Fonts @import (or, failing that, a generic
+  // font) — surface the cause here at build time rather than letting it surface 2 steps
+  // later as a font_family_without_font_face lint error disconnected from its root cause.
+  if (!faces.length) {
+    const where = dirs.length
+      ? dirs.map((d) => d.rel).join(" / ")
+      : "assets/fonts or capture/assets/fonts (neither exists)";
+    console.warn(
+      `  ⚠ captions: frame.md names font ${families.map((f) => `"${f}"`).join(", ")} ` +
+        `but no matching .woff2/.woff/.ttf/.otf was found in ${where} — falling back to @import/generic ` +
+        `(text may render in the wrong font). Stage a font file whose name starts with the family ` +
+        `(e.g. "TT Norms Pro" → TT_Norms_Pro_Bold.woff2) to ship it locally.`,
+    );
   }
   return faces.join("\n");
 }
