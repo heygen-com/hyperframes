@@ -19,7 +19,14 @@
 //   fonts  — the preset's display family → the brand display font, its body family →
 //            the brand body font, wherever they appear. Empty brand fonts → kept.
 
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
