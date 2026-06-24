@@ -1279,4 +1279,95 @@ describe("initSandboxRuntimeModular", () => {
     raf.step(16);
     expect(seekTimes.length).toBeGreaterThan(beforeResume);
   });
+
+  // applyClipLayout force-absolutizes authored root-level timed clips so they
+  // stack as overlays. But in Studio/preview the runtime also stamps `data-start`
+  // onto ID'd / GSAP-targeted *flow* children (a <header>/<footer> in a column)
+  // so the design panel can discover them — those must NOT be force-absolutized,
+  // or the layout collapses (footer shrink-wraps, `space-between` clusters). The
+  // marker `data-hf-autostamped` distinguishes them; these tests pin both halves.
+  describe("applyClipLayout: runtime-stamped clips stay in document flow", () => {
+    const makeRoot = () => {
+      const root = document.createElement("div");
+      root.setAttribute("data-composition-id", "main");
+      root.setAttribute("data-root", "true");
+      root.setAttribute("data-start", "0");
+      root.setAttribute("data-width", "1920");
+      root.setAttribute("data-height", "1080");
+      document.body.appendChild(root);
+      return root;
+    };
+
+    // jsdom does no layout, so a static clip can report computed top "auto" or
+    // "" inconsistently. Pin the values the anchor gate keys on so the assertion
+    // reflects the real-browser path deterministically.
+    const overrideComputed = (
+      target: HTMLElement,
+      overrides: Partial<Record<"position" | "top" | "left" | "bottom" | "right", string>>,
+    ) => {
+      const real = window.getComputedStyle.bind(window);
+      vi.spyOn(window, "getComputedStyle").mockImplementation(((
+        el: Element,
+        pseudo?: string | null,
+      ) => {
+        const style = real(el as Element, pseudo ?? undefined);
+        if (el !== target) return style;
+        return new Proxy(style, {
+          get(t, prop) {
+            if (typeof prop === "string" && prop in overrides) {
+              return overrides[prop as keyof typeof overrides];
+            }
+            const value = Reflect.get(t, prop);
+            return typeof value === "function" ? value.bind(t) : value;
+          },
+        }) as CSSStyleDeclaration;
+      }) as typeof window.getComputedStyle);
+    };
+
+    it("force-absolutizes an authored data-start clip (baseline behavior preserved)", () => {
+      const root = makeRoot();
+      const clip = document.createElement("div");
+      clip.setAttribute("data-start", "0"); // authored clip, no autostamp marker
+      root.appendChild(clip);
+      overrideComputed(clip, {
+        position: "static",
+        top: "auto",
+        left: "auto",
+        bottom: "auto",
+        right: "auto",
+      });
+
+      window.__timelines = { main: createMockTimeline(10) };
+      initSandboxRuntimeModular();
+
+      expect(clip.style.position).toBe("absolute");
+      expect(clip.style.top).toBe("0px");
+      expect(clip.style.left).toBe("0px");
+    });
+
+    it("leaves a runtime-stamped flow child untouched so the layout is preserved", () => {
+      const root = makeRoot();
+      const footer = document.createElement("footer");
+      footer.setAttribute("data-start", "0");
+      footer.setAttribute("data-hf-autostamped", "1"); // stamped flow child, not an overlay clip
+      root.appendChild(footer);
+      overrideComputed(footer, {
+        position: "static",
+        top: "auto",
+        left: "auto",
+        bottom: "auto",
+        right: "auto",
+      });
+
+      window.__timelines = { main: createMockTimeline(10) };
+      initSandboxRuntimeModular();
+
+      // Skipped entirely: stays in document flow (no forced absolute, no anchor),
+      // so a flex-column footer keeps full width and `space-between` spreads — the
+      // preview then matches the rendered video, which never stamps.
+      expect(footer.style.position).toBe("");
+      expect(footer.style.top).toBe("");
+      expect(footer.style.left).toBe("");
+    });
+  });
 });

@@ -315,6 +315,15 @@ export function initSandboxRuntimeModular(): void {
       const tag = el.tagName.toLowerCase();
       if (tag === "script" || tag === "style" || tag === "link" || tag === "meta") continue;
       if (!el.hasAttribute("data-start")) continue;
+      // Runtime-stamped clips are NOT authored overlay clips. In Studio/preview
+      // the runtime stamps `data-start` onto ID'd or GSAP-targeted flow children
+      // (a <header>/<footer> in a flex column) so the design panel can discover
+      // them — see the stamping pass in bindCapturedTimeline. Forcing those out
+      // of document flow collapses the layout: the footer shrink-wraps and its
+      // `justify-content: space-between` clusters in the top-left. Leave them in
+      // flow so the preview matches the rendered video, which never stamps
+      // (production renders run as the top-level page, not in an iframe).
+      if (el.hasAttribute("data-hf-autostamped")) continue;
       const hasLegacyAnchoredDefaults =
         (el.style.top === "0px" || el.style.top === "0") &&
         (el.style.left === "0px" || el.style.left === "0") &&
@@ -1126,6 +1135,9 @@ export function initSandboxRuntimeModular(): void {
               seen.add(target);
               target.setAttribute("data-start", "0");
               target.setAttribute("data-duration", dur);
+              // Mark as runtime-stamped so applyClipLayout leaves it in document
+              // flow instead of treating it as an authored overlay clip.
+              target.setAttribute("data-hf-autostamped", "1");
             }
           }
         } catch {
@@ -1147,6 +1159,9 @@ export function initSandboxRuntimeModular(): void {
           seen.add(el);
           el.setAttribute("data-start", "0");
           el.setAttribute("data-duration", dur);
+          // Mark as runtime-stamped so applyClipLayout leaves it in document
+          // flow instead of treating it as an authored overlay clip.
+          el.setAttribute("data-hf-autostamped", "1");
         }
       }
     }
