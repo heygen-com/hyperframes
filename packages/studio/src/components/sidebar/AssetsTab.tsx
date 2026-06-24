@@ -179,7 +179,8 @@ function AudioRow({
             </span>
             {!playing && (
               <span className="text-[11px] text-panel-text-5 flex-shrink-0">
-                {meta?.duration ? `${meta.duration}s · ` : ""}{subtype}
+                {meta?.duration ? `${meta.duration}s · ` : ""}
+                {subtype}
               </span>
             )}
             {used && (
@@ -391,19 +392,26 @@ export const AssetsTab = memo(function AssetsTab({
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<MediaCategory | "all">("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const [manifest, setManifest] = useState<Map<string, { description?: string; duration?: number; width?: number; height?: number }>>(new Map());
+  const [manifest, setManifest] = useState<
+    Map<string, { description?: string; duration?: number; width?: number; height?: number }>
+  >(new Map());
 
   useEffect(() => {
     fetch(`/api/projects/${projectId}/preview/.media/manifest.jsonl`)
       .then((r) => (r.ok ? r.text() : ""))
       .then((text) => {
-        const m = new Map<string, { description?: string; duration?: number; width?: number; height?: number }>();
+        const m = new Map<
+          string,
+          { description?: string; duration?: number; width?: number; height?: number }
+        >();
         for (const line of text.split("\n")) {
           if (!line.trim()) continue;
           try {
             const rec = JSON.parse(line);
             if (rec.path) m.set(rec.path, rec);
-          } catch { /* skip */ }
+          } catch {
+            /* skip */
+          }
         }
         setManifest(m);
       })
@@ -530,8 +538,24 @@ export const AssetsTab = memo(function AssetsTab({
         {mediaAssets.length > 0 && (
           <div className="flex items-center gap-1.5 rounded-md bg-panel-input px-2.5 py-[5px] mb-2">
             <svg width="12" height="12" viewBox="0 0 256 256" fill="none" className="flex-shrink-0">
-              <circle cx="116" cy="116" r="76" stroke="currentColor" strokeWidth="22" className="text-panel-text-5" />
-              <line x1="170" y1="170" x2="232" y2="232" stroke="currentColor" strokeWidth="22" strokeLinecap="round" className="text-panel-text-5" />
+              <circle
+                cx="116"
+                cy="116"
+                r="76"
+                stroke="currentColor"
+                strokeWidth="22"
+                className="text-panel-text-5"
+              />
+              <line
+                x1="170"
+                y1="170"
+                x2="232"
+                y2="232"
+                stroke="currentColor"
+                strokeWidth="22"
+                strokeLinecap="round"
+                className="text-panel-text-5"
+              />
             </svg>
             <input
               type="text"
