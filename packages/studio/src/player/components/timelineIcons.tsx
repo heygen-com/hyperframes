@@ -39,7 +39,7 @@ const ICONS: Record<string, ReactNode> = {
 };
 
 export function getTrackStyle(tag: string): TrackVisualStyle {
-  if (!tag) console.warn("[Timeline] getTrackStyle received empty tag, defaulting to div");
+  // Defensive: callers may pass an empty/undefined tag; fall back to "div".
   const safeTag = tag || "div";
   const trackStyle = getTimelineTrackStyle(safeTag);
   const normalized = safeTag.toLowerCase();

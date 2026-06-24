@@ -100,8 +100,6 @@ export function collectSnapContext(input: {
 
   const MAX_SNAP_TARGETS = 80;
   const elements = collectVisibleElements(root, input.excludeElements, MAX_SNAP_TARGETS);
-  if (elements.length >= MAX_SNAP_TARGETS) {
-  }
 
   const entries: Array<{
     rect: { left: number; top: number; width: number; height: number };

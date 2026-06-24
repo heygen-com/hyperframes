@@ -291,8 +291,6 @@ export function useTimelineSyncCallbacks({
     probeIntervalRef.current = setTimeout(() => {
       if (!settled) {
         trySettle();
-        if (!settled) {
-        }
       }
       window.removeEventListener("message", onMessage);
     }, 5000) as unknown as ReturnType<typeof setInterval>;

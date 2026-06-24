@@ -252,8 +252,6 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
                 if (assetPollRef.current) clearInterval(assetPollRef.current);
                 assetPollRef.current = null;
                 setAssetsLoading(false);
-                if (lastUnloaded) {
-                }
               }
             }, 100);
           } else {

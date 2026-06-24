@@ -129,7 +129,15 @@ function send(url: string, payload: string): void {
 function showNoticeOnce(): void {
   if (hasShownNotice()) return;
   markNoticeShown();
+  // Intentional one-time consent disclosure (not debug noise): tells users
+  // anonymous analytics are on and how to opt out. Kept behind a pragma.
   // eslint-disable-next-line no-console
+  console.info(
+    "%c[HyperFrames]%c Anonymous studio usage analytics enabled. " +
+      "Disable: localStorage.setItem('hyperframes-studio:telemetryDisabled','1') (then reload).",
+    "color:#7c3aed;font-weight:bold",
+    "color:inherit",
+  );
 }
 
 // Flush queued events when the tab is being hidden or closed so tail events
