@@ -5,6 +5,8 @@ import { platform } from "node:os";
 import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
 import { parseToolVersion, runEnvironmentChecks } from "../browser/preflight.js";
+import { KOKORO_MODULES, KOKORO_PIP, MUSICGEN_MODULES, MUSICGEN_PIP } from "../audio/providers.js";
+import { hasPythonModules } from "../tts/python.js";
 import { VERSION } from "../version.js";
 import { getUpdateMeta, withMeta } from "../utils/updateCheck.js";
 import {
@@ -158,6 +160,24 @@ async function checkWhisper(): Promise<CheckResult> {
   };
 }
 
+function checkLocalVoice(): CheckResult {
+  if (hasPythonModules(KOKORO_MODULES)) return { ok: true, detail: "Kokoro deps installed" };
+  return {
+    ok: false,
+    detail: "Not installed (optional \u2014 local voice fallback)",
+    hint: KOKORO_PIP,
+  };
+}
+
+function checkLocalMusic(): CheckResult {
+  if (hasPythonModules(MUSICGEN_MODULES)) return { ok: true, detail: "MusicGen deps installed" };
+  return {
+    ok: false,
+    detail: "Not installed (optional \u2014 local music fallback)",
+    hint: MUSICGEN_PIP,
+  };
+}
+
 export interface CheckOutcome {
   name: string;
   ok: boolean;
@@ -227,6 +247,8 @@ export default defineCommand({
 
     checks.push({ name: "Environment", run: checkEnvironment });
     checks.push({ name: "whisper-cpp", run: checkWhisper });
+    checks.push({ name: "TTS (Kokoro)", run: checkLocalVoice });
+    checks.push({ name: "BGM (MusicGen)", run: checkLocalMusic });
 
     const outcomes: CheckOutcome[] = [];
     for (const check of checks) {

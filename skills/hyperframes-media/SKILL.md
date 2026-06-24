@@ -32,6 +32,20 @@ All three capabilities degrade on **ONE switch** — whether a HeyGen credential
 
 Full flag list + the `audio_meta.json` schema live in the header of `scripts/audio.mjs`. The references below cover the provider details and edge cases behind each capability.
 
+## Preflight — show sign-in status before any audio
+
+Before generating voice or BGM, run the shared preflight once and **relay its output to the user verbatim**. Do **not** improvise your own "missing key" prompt, and do **not** offer to write keys into a per-repo `.env` — the command already gives the right guidance:
+
+```bash
+hyperframes auth status
+```
+
+- **Signed in** → it prints the account; proceed.
+- **Not signed in** (`exit 1` is expected here — "not signed in" is a normal state, not a failure) → it prints registration-first guidance. Recommend signing in **via either CLI — they share the same login** (`~/.heygen`, no per-repo `.env`): `hyperframes auth login` (always available through this repo's CLI) or `heygen auth login` (if the HeyGen CLI is installed). Both are the same OAuth step — they **sign in and create an account** — or `hyperframes auth login --api-key` to paste an existing key. The output also lists the local engines voice/BGM will fall back to and a `pip` hint when deps are missing. **Relay this output as-is — don't paraphrase it into your own wording.** Then **STOP and wait** for the user to choose — sign in, or say "go" / "local" to continue offline — **before asking anything else.** This is a real decision point, not a passing note: don't fold it into another question, and don't proceed past it on your own. (Exception: in autonomous / non-interactive mode, note the status and continue offline.)
+- `hyperframes auth status --json` returns `{ configured, recommended_action, offline_engines }` for deterministic branching.
+
+Credential resolution, full key priority, and the local-dependency list are in `references/requirements.md`.
+
 ## Provider chains (the detail behind the engine)
 
 **TTS** — first available provider wins (the engine, or `npx hyperframes tts "..."`):
@@ -79,3 +93,4 @@ See `references/bgm.md` and `references/sfx.md`.
 - **Captions consume the flat word-array format** with `{ id, text, start, end }`. See `references/transcribe.md` → "Output Shape".
 - **`remove-background --background-output` is hole-cut, not inpainted.** For "scene without the person", a different tool is needed. See `references/remove-background.md` → "When NOT the right tool".
 - **BGM/SFX default to HeyGen retrieval; the no-credential fallback is generation (BGM) or the bundled library (SFX).** `/audio/sounds` ranks by a text query — name effects concretely (`glass shatter`, not `dramatic sound`); a no-match **skips**, never blocks the render. SFX sit at volume ~0.35 under voice + BGM. See `references/sfx.md` / `references/bgm.md`.
+- **Treat workflow caption HTML as generated output.** For preset-backed videos, the reusable skin source lives at `.hyperframes/caption-skin.html` and the workflow script writes `compositions/captions.html`; do not edit generated `compositions/captions.html` to fix the skin. Rebuild via the workflow's `captions.mjs`, or use that workflow's explicit overrides mechanism when present.

@@ -4,6 +4,14 @@
  *
  * Exits non-zero when nothing is configured or the API rejects the
  * credential, so scripts can check "am I logged in?" with `$?`.
+ *
+ * When nothing is configured the output is onboarding-first: an
+ * interactive session (a TTY, or a coding agent driving the CLI) gets
+ * registration guidance led by `hyperframes auth login` — sign-in and
+ * sign-up are the same OAuth step — while CI / non-interactive runs get
+ * a terse note and continue on local fallbacks. This is the shared
+ * preflight every TTS/BGM workflow relays, so the wording lives in one
+ * place instead of each workflow improvising its own.
  */
 
 import { defineCommand } from "citty";
@@ -15,7 +23,15 @@ import {
   type ResolvedCredential,
   type UserInfo,
 } from "../../auth/index.js";
+import { getSystemMeta } from "../../telemetry/system.js";
 import { c } from "../../ui/colors.js";
+import { resolveMusic, resolveVoice } from "../../audio/providers.js";
+import {
+  buildUnconfiguredJson,
+  buildUnconfiguredLines,
+  type OfflineEngineLine,
+  type UnconfiguredContext,
+} from "./status-guidance.js";
 
 interface VerifiedStatus {
   credential: ResolvedCredential;
@@ -54,13 +70,44 @@ export default defineCommand({
   },
 });
 
+/**
+ * Decide whether to show full onboarding guidance or a terse note.
+ * CI is never "interactive" even on a TTY; an agent runtime counts as
+ * interactive because a human is watching its relayed output.
+ */
+function detectUnconfiguredContext(): UnconfiguredContext {
+  const sys = getSystemMeta();
+  return { interactive: !sys.is_ci && (sys.is_tty || sys.agent_runtime !== null) };
+}
+
+/**
+ * Probe the local voice/music engines a workflow would fall back to.
+ * `hasHeygen` is false here by construction — we only reach this when no
+ * credential resolved — so this reports the offline engines and whether
+ * their Python deps are installed.
+ */
+function collectOfflineEngines(): OfflineEngineLine[] {
+  const voice = resolveVoice(false);
+  const music = resolveMusic(false);
+  return [
+    { capability: "voice", label: voice.label, ready: voice.ready, ...hint(voice.setupHint) },
+    { capability: "music", label: music.label, ready: music.ready, ...hint(music.setupHint) },
+  ];
+}
+
+function hint(setupHint: string | undefined): { setupHint?: string } {
+  return setupHint ? { setupHint } : {};
+}
+
 function handleUnconfigured(asJson: boolean): never {
-  if (asJson) {
-    console.log(JSON.stringify({ configured: false }));
-  } else {
-    console.log(c.warn("Not signed in to HeyGen."));
-    console.log(`Run ${c.accent("hyperframes auth login --api-key")} to sign in.`);
-  }
+  const ctx = detectUnconfiguredContext();
+  // Probe engines for JSON (skills parse it) and interactive guidance; skip
+  // the Python probes for terse non-interactive/CI output to stay fast.
+  const engines = asJson || ctx.interactive ? collectOfflineEngines() : undefined;
+  const output = asJson
+    ? JSON.stringify(buildUnconfiguredJson(ctx, engines))
+    : buildUnconfiguredLines(ctx, engines).join("\n");
+  console.log(output);
   process.exit(1);
 }
 

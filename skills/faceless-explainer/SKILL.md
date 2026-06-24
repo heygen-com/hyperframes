@@ -23,7 +23,9 @@ Initialize only if `hyperframes.json` is missing. Name `<project>` from the topi
 
 `npx hyperframes init "videos/<project>" --non-interactive --skip-skills --example=blank`
 
-**Gate:** `hyperframes.json` exists, and angle, length, aspect ratio, and language are locked.
+**Show sign-in status before the brief** — run `hyperframes auth status` and **relay its output verbatim (don't paraphrase or rewrite it).** It reports whether voice/BGM will use HeyGen or local engines and, when not signed in, how to sign in. **If not signed in, STOP and wait for the user to choose — sign in, or say "go"/"offline" to continue with local engines — before asking the brief or anything else.** Treat it as a real decision point, not a passing note; don't fold the choice into the brief question, and don't write keys into a per-repo `.env`. (In autonomous mode, note the status and continue offline.) See `../hyperframes-media` → Preflight for the canonical guidance.
+
+**Gate:** `hyperframes.json` exists, and angle, length, aspect ratio, and language are locked; sign-in status was shown (signed in, or continuing offline).
 
 ---
 
@@ -78,7 +80,7 @@ After drafting, show a frame-by-frame summary. In that same message ask the user
 
 Goal: Generate narration, word timings, music, and audio metadata from the approved script.
 
-Start audio after Step 3 approval. Run it in the background, then continue to Step 4.
+Start audio after Step 3 approval. Run it in the background, then continue to Step 4. (Sign-in status was already shown in Step 0; the engine falls back automatically.)
 
 `node <SKILL_DIR>/scripts/audio.mjs --script ./SCRIPT.md --storyboard ./STORYBOARD.md --hyperframes . --out ./audio_meta.json &`
 

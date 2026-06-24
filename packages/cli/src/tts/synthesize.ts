@@ -1,3 +1,4 @@
+// fallow-ignore-file complexity
 import { execFileSync } from "node:child_process";
 import { existsSync, writeFileSync, mkdirSync, readdirSync, unlinkSync } from "node:fs";
 import { join, dirname, basename } from "node:path";
@@ -9,52 +10,7 @@ import {
   inferLangFromVoiceId,
   type SupportedLang,
 } from "./manager.js";
-
-// ---------------------------------------------------------------------------
-// Python runtime detection
-// ---------------------------------------------------------------------------
-
-function findPython(): string | undefined {
-  for (const name of ["python3", "python"]) {
-    try {
-      const cmd = process.platform === "win32" ? "where" : "which";
-      const output = execFileSync(cmd, [name], {
-        encoding: "utf-8",
-        stdio: ["pipe", "pipe", "pipe"],
-        timeout: 5000,
-      });
-      const first = output
-        .split(/\r?\n/)
-        .map((s) => s.trim())
-        .find(Boolean);
-      if (!first) continue;
-
-      // Verify it's Python 3
-      const version = execFileSync(first, ["--version"], {
-        encoding: "utf-8",
-        stdio: ["pipe", "pipe", "pipe"],
-        timeout: 5000,
-      }).trim();
-
-      if (version.includes("Python 3")) return first;
-    } catch {
-      // not found or not Python 3
-    }
-  }
-  return undefined;
-}
-
-function hasPythonPackage(python: string, pkg: string): boolean {
-  try {
-    execFileSync(python, ["-c", `import ${pkg}`], {
-      stdio: ["pipe", "pipe", "pipe"],
-      timeout: 10_000,
-    });
-    return true;
-  } catch {
-    return false;
-  }
-}
+import { findPython, hasPythonPackage } from "./python.js";
 
 // ---------------------------------------------------------------------------
 // Inline Python script for Kokoro synthesis
