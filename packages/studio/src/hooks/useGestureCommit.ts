@@ -6,13 +6,19 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { editLog } from "../utils/editDebugLog";
 import { useGestureRecording } from "./useGestureRecording";
 import { simplifyGestureSamples } from "../utils/rdpSimplify";
+import { fitEasesFromVelocity } from "../utils/velocityEaseFitter";
+import { smoothGestureKeyframes } from "../utils/gestureSmoother";
 import { usePlayerStore } from "../player";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { roundTo3 } from "../utils/rounding";
 import { classifyPropertyGroup } from "@hyperframes/core/gsap-parser";
 
-type RecordedKeyframe = { percentage: number; properties: Record<string, number | string> };
+type RecordedKeyframe = {
+  percentage: number;
+  properties: Record<string, number | string>;
+  ease?: string;
+};
 
 /**
  * Split recorded keyframes into one keyframe-set per property group (position /
@@ -46,7 +52,11 @@ function partitionKeyframesByGroup(keyframes: RecordedKeyframe[]): RecordedKeyfr
         byGroup.set(group, set);
         groupOrder.push(group);
       }
-      set.push({ percentage: kf.percentage, properties: props });
+      set.push({
+        percentage: kf.percentage,
+        properties: props,
+        ...(kf.ease ? { ease: kf.ease } : {}),
+      });
     }
   }
   return groupOrder.map((group) => byGroup.get(group)!);
@@ -150,10 +160,12 @@ export function useGestureCommit({
       }
       if (liveSession.commitMutation) {
         const recStart = recordingStartTimeRef.current;
-        const keyframes = sortedPcts.map((pct) => ({
+        const rawKeyframes = sortedPcts.map((pct) => ({
           percentage: pct,
           properties: simplified.get(pct) as Record<string, number | string>,
         }));
+        const smoothed = smoothGestureKeyframes(rawKeyframes, 3);
+        const keyframes = fitEasesFromVelocity(smoothed, frozenSamples, duration);
         const hasPositionProps = keyframes.some((kf) =>
           Object.keys(kf.properties).some((k) => classifyPropertyGroup(k) === "position"),
         );
@@ -206,6 +218,7 @@ export function useGestureCommit({
               const mapped = keyframes.map((kf) => ({
                 percentage: rangeStartPct + (kf.percentage / 100) * (rangeEndPct - rangeStartPct),
                 properties: kf.properties,
+                ...(kf.ease ? { ease: kf.ease } : {}),
               }));
 
               const merged = [...preserved, ...mapped].sort((a, b) => a.percentage - b.percentage);
@@ -236,6 +249,7 @@ export function useGestureCommit({
                     position: roundTo3(recStart),
                     duration: roundTo3(duration),
                     keyframes: groupKfs,
+                    easeEach: "power1.inOut",
                   },
                   { label: "Gesture recording (new range)", softReload: true },
                 );
@@ -252,6 +266,7 @@ export function useGestureCommit({
                 position: roundTo3(recStart),
                 duration: roundTo3(duration),
                 keyframes: groupKfs,
+                easeEach: "power1.inOut",
               },
               { label: "Gesture recording", softReload: true },
             );

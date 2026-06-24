@@ -41,7 +41,7 @@ export function useGsapAnimationOps({
     async (
       selection: DomEditSelection,
       animationId: string,
-      updates: { duration?: number; ease?: string; position?: number },
+      updates: { duration?: number; ease?: string; easeEach?: string; position?: number },
     ) => {
       if (sdkSession && sdkDeps) {
         const targetPath = selection.sourceFile || activeCompPath || "index.html";
@@ -57,7 +57,7 @@ export function useGsapAnimationOps({
       commitMutationSafely(
         selection,
         { type: "update-meta", animationId, updates },
-        { label: "Edit GSAP animation", coalesceKey: `gsap:${animationId}:meta` },
+        { label: "Edit GSAP animation", coalesceKey: `gsap:${animationId}:meta`, softReload: true },
       );
     },
     [commitMutationSafely, activeCompPath, sdkSession, sdkDeps],

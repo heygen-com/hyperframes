@@ -106,7 +106,7 @@ export async function fetchParsedAnimations(
 ): Promise<ParsedGsap | null> {
   try {
     const res = await fetch(
-      `/api/projects/${encodeURIComponent(projectId)}/gsap-animations/${encodeURIComponent(sourceFile)}`,
+      `/api/projects/${encodeURIComponent(projectId)}/gsap-animations/${encodeURIComponent(sourceFile)}?_t=${Date.now()}`,
     );
     if (!res.ok) return null;
     const parsed = (await res.json()) as ParsedGsap;
@@ -156,7 +156,9 @@ export function useGsapAnimationsForElement(
 
     let cancelled = false;
     fetchParsedAnimations(projectId, sourceFile).then((parsed) => {
-      if (cancelled) return;
+      if (cancelled) {
+        return;
+      }
       if (!parsed) {
         setAllAnimations([]);
         setMultipleTimelines(false);
@@ -169,7 +171,7 @@ export function useGsapAnimationsForElement(
 
       // Retry once if initial fetch returned 0 animations — handles
       // cold-load race where the sourceFile isn't resolved yet.
-      if (parsed.animations.length === 0 && target) {
+      if (parsed.animations.length === 0 && targetKey) {
         retryTimerRef.current = setTimeout(() => {
           if (cancelled) return;
           fetchParsedAnimations(projectId, sourceFile).then((retryParsed) => {
@@ -189,7 +191,7 @@ export function useGsapAnimationsForElement(
         retryTimerRef.current = null;
       }
     };
-  }, [projectId, sourceFile, version, target]);
+  }, [projectId, sourceFile, version, target?.id, target?.selector]);
 
   const targetId = target?.id ?? null;
   const targetSelector = target?.selector ?? null;
@@ -287,6 +289,11 @@ export function useGsapAnimationsForElement(
     let ease: string | undefined;
     let easeEach: string | undefined;
     for (const anim of animations) {
+      if (
+        anim.method === "set" &&
+        Object.keys(anim.properties).every((k) => k === "x" || k === "y")
+      )
+        continue;
       const kf = anim.keyframes ?? synthesizeFlatTweenKeyframes(anim);
       if (!kf) continue;
       // Convert tween-relative percentages to clip-relative so diamonds
@@ -376,6 +383,14 @@ export function usePopulateKeyframeCacheForFile(
         const id = extractIdFromSelector(anim.targetSelector);
         if (!id) continue;
         if (anim.hasUnresolvedKeyframes) continue;
+        // Position-only set tweens are static holds (created by drag), not
+        // keyframed animations — skip them so they don't show timeline diamonds.
+        if (anim.method === "set") {
+          const propKeys = Object.keys(anim.properties).filter((k) => k !== "immediateRender");
+          if (propKeys.every((k) => k === "x" || k === "y")) {
+            continue;
+          }
+        }
         const kfData = anim.keyframes ?? synthesizeFlatTweenKeyframes(anim);
         if (!kfData) continue;
         const tweenPos =
@@ -449,7 +464,12 @@ export function usePopulateKeyframeCacheForFile(
         const fallbackKey = `index.html#${id}`;
         const alreadyCached =
           keyframeCache.has(cacheKey) || keyframeCache.has(fallbackKey) || keyframeCache.has(id);
-        if (alreadyCached) {
+        if (alreadyCached) continue;
+        // Skip position-only set tweens from runtime too — same filter as AST path
+        const isPosOnly =
+          data.keyframes.length === 1 &&
+          Object.keys(data.keyframes[0].properties).every((k) => k === "x" || k === "y");
+        if (isPosOnly) {
           continue;
         }
         const entry = {

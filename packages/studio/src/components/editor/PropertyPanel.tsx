@@ -84,6 +84,7 @@ export const PropertyPanel = memo(function PropertyPanel({
   onSetArcPath,
   onUpdateArcSegment,
   onUnroll,
+  onUpdateKeyframeEase,
   onAddKeyframe,
   onRemoveKeyframe,
   onConvertToKeyframes,
@@ -558,6 +559,7 @@ export const PropertyPanel = memo(function PropertyPanel({
               onSetArcPath={onSetArcPath}
               onUpdateArcSegment={onUpdateArcSegment}
               onUnroll={onUnroll}
+              onUpdateKeyframeEase={onUpdateKeyframeEase}
             />
           )}
 

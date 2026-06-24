@@ -437,7 +437,7 @@ type GsapMutationRequest =
   | {
       type: "update-meta";
       animationId: string;
-      updates: { duration?: number; ease?: string; position?: number };
+      updates: { duration?: number; ease?: string; easeEach?: string; position?: number };
     }
   | {
       type: "add";
@@ -552,6 +552,7 @@ type GsapMutationRequest =
         auto?: boolean;
       }>;
       ease?: string;
+      easeEach?: string;
     }
   | {
       type: "replace-with-keyframes";
@@ -827,6 +828,7 @@ function executeGsapMutationAcorn(
         body.duration,
         body.keyframes,
         body.ease,
+        body.easeEach,
       );
       return result.script;
     }

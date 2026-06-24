@@ -119,6 +119,9 @@ export const EASE_LABELS: Record<string, string> = {
   "spring-stiff": "Stiff spring",
   "spring-wobbly": "Wobbly spring",
   "spring-heavy": "Heavy spring",
+  "ae-ease": "Easy Ease (AE)",
+  "ae-ease-in": "Easy Ease In (AE)",
+  "ae-ease-out": "Easy Ease Out (AE)",
 };
 
 export const EASE_CURVES: Record<string, [number, number, number, number]> = {
@@ -141,6 +144,9 @@ export const EASE_CURVES: Record<string, [number, number, number, number]> = {
   "expo.out": [0.16, 1, 0.3, 1],
   "expo.in": [0.7, 0, 0.84, 0],
   "expo.inOut": [0.87, 0, 0.13, 1],
+  "ae-ease": [0.333, 0, 0.667, 1],
+  "ae-ease-in": [0.333, 0, 0.667, 0.667],
+  "ae-ease-out": [0.333, 0.333, 0.667, 1],
 };
 
 export function parseCustomEaseFromString(ease: string): {

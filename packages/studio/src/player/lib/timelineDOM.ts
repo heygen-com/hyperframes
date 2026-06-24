@@ -61,10 +61,6 @@ export {
 // TimelineElement factories
 // ---------------------------------------------------------------------------
 
-function resolveClipTag(clip: ClipManifestClip): string {
-  return clip.tagName || clip.kind || "div";
-}
-
 export function createTimelineElementFromManifestClip(params: {
   clip: ClipManifestClip;
   fallbackIndex: number;
@@ -76,7 +72,7 @@ export function createTimelineElementFromManifestClip(params: {
   const label = getTimelineElementDisplayLabel({
     id: clip.id,
     label: clip.label,
-    tag: resolveClipTag(clip),
+    tag: clip.tagName || clip.kind,
   });
 
   let domId: string | undefined;
@@ -107,7 +103,7 @@ export function createTimelineElementFromManifestClip(params: {
     id: identity.id,
     label,
     key: identity.key,
-    tag: resolveClipTag(clip),
+    tag: clip.tagName || clip.kind,
     start: clip.start,
     duration: clip.duration,
     track: clip.track,

@@ -39,7 +39,8 @@ const ICONS: Record<string, ReactNode> = {
 };
 
 export function getTrackStyle(tag: string): TrackVisualStyle {
-  // Defensive: callers may pass an empty/undefined tag; fall back to "div".
+  // Defensive: callers may pass an empty/undefined tag; fall back to "div"
+  // (restores the #1679 null-guard that a restack had dropped).
   const safeTag = tag || "div";
   const trackStyle = getTimelineTrackStyle(safeTag);
   const normalized = safeTag.toLowerCase();

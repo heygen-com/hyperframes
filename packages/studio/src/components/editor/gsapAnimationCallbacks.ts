@@ -28,6 +28,7 @@ export interface GsapAnimationEditCallbacks {
     segmentIndex: number,
     update: Partial<ArcPathSegment>,
   ) => void;
+  onUpdateKeyframeEase?: (animationId: string, percentage: number, ease: string) => void;
   /** Unroll a computed (helper/loop) tween into literal tweens so it edits directly. */
   onUnroll?: (animationId: string) => void;
 }
