@@ -19,7 +19,24 @@ Workflow: Step 0 setup → `hyperframes.json`; Step 1 ingest → `capture/extrac
 
 Goal: Lock the PR reference and the core video brief, and create the HyperFrames project if needed.
 
-Get the **PR reference** (a full URL, an `<owner>/<repo>#<N>` ref, or "this PR" in a checked-out repo) and, in one message, confirm the brief — lead with a recommended default for each and pre-fill anything `/hyperframes` already set: **angle** (changelog / feature-reveal / fix-explainer / refactor-walkthrough — default: infer from the PR), **audience** (default: developers), **length** (default ~60-90s), **aspect** (default 16:9), **language**. The style is always **claude**. Proceed only after the user replies; a "go" accepts the defaults.
+Get the **PR reference** (a full URL, an `<owner>/<repo>#<N>` ref, or "this PR" in a checked-out repo) and, in one message, confirm the brief — lead with a recommended default for each and pre-fill anything `/hyperframes` already set: **angle** (changelog / feature-reveal / fix-explainer / refactor-walkthrough — default: infer from the PR), **audience** (default: developers), **length** (default: **scale to the PR's change size** — see below), **aspect** (default 16:9), **language**. The style is always **claude**. Proceed only after the user replies; a "go" accepts the defaults.
+
+**Recommend the length from the PR's change size**, not a fixed guess. Before confirming the brief, peek at the PR once — a read-only call that also grounds the angle (Step 1 still does the full deterministic fetch):
+
+```bash
+gh pr view <PR_REF> --json title,additions,deletions,changedFiles
+```
+
+Pick the tier from `additions + deletions` (nudged up by `changedFiles`) and lead with it as the default (the user can override; hard cap ~3 min):
+
+| PR change size                    | Recommended length |
+| --------------------------------- | ------------------ |
+| trivial (≲ 50 lines changed)      | ~20–40s            |
+| focused (~50–200 lines)           | ~40–70s            |
+| substantial (~200–600 lines)      | ~70–110s           |
+| large (≳ 600 lines, or 25+ files) | ~110–180s          |
+
+State the basis in one phrase when you propose it (e.g. "~40s — small change, +44/−13 across 12 files"). A huge PR doesn't mean a long video — if the story is one headline change, keep it tight and say so.
 
 Initialize only if `hyperframes.json` is missing. Name `<project>` from the PR in kebab-case, such as `acme-sdk-pr-1842`; never use the workspace name or a timestamp.
 
