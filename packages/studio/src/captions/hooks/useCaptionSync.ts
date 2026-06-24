@@ -78,7 +78,7 @@ export function useCaptionSync(projectId: string | null) {
       method: "PUT",
       headers: { "Content-Type": "text/plain" },
       body: JSON.stringify(overrides, null, 2),
-    }).catch((err) => console.warn("[captions] auto-save failed:", err));
+    }).catch(() => {});
   }, []);
 
   // Auto-save on model changes with 800ms debounce

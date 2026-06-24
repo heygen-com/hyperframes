@@ -245,9 +245,6 @@ function execDataAttrPattern(html: string, attr: string, value: string): TagMatc
   const all = html.match(new RegExp(`<[^>]*\\b${attr}=(["'])${escapeRegex(value)}\\1[^>]*>`, "gi"));
   if (all && all.length > 1) {
     // eslint-disable-next-line no-console
-    console.warn(
-      `sourcePatcher: ${attr}="${value}" matched ${all.length} elements; patching the first. ids/attrs must be unique per document.`,
-    );
   }
   return { tag: match[1], start: match.index, end: match.index + match[1].length };
 }

@@ -385,12 +385,11 @@ export function useGestureRecording() {
         if (r.runtime) {
           try {
             applyRuntimePreview(r.runtime, time, properties);
-          } catch (err) {
+          } catch {
             // Preview failed — disable it for the rest of the gesture (recording
             // continues). Surface in dev so a dead preview isn't silent; `r.runtime`
             // is nulled below so this warns at most once per gesture.
             if (isDevBuild()) {
-              console.warn("[GR] live preview disabled — runtime threw:", err);
             }
             r.runtime = null;
           }

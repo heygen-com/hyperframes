@@ -253,9 +253,6 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
                 assetPollRef.current = null;
                 setAssetsLoading(false);
                 if (lastUnloaded) {
-                  console.debug(
-                    "[Player] Asset-loading overlay timed out after 10s; hiding anyway. Check network or asset integrity.",
-                  );
                 }
               }
             }, 100);

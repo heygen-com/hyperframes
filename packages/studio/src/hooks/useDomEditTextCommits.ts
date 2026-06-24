@@ -126,9 +126,7 @@ export function useDomEditTextCommits({
             ? (html, sourceFile) => ensureImportedFontFace(html, importedFont, sourceFile)
             : undefined,
         });
-      } catch (err) {
-        console.warn("[Studio] Style persist failed:", err instanceof Error ? err.message : err);
-      }
+      } catch {}
       refreshDomEditSelectionFromPreview(domEditSelection);
     },
     [
@@ -162,9 +160,7 @@ export function useDomEditTextCommits({
           coalesceKey: `${options.coalescePrefix}:${attr}:${getDomEditTargetKey(domEditSelection)}`,
           skipRefresh: options.skipRefresh,
         });
-      } catch (err) {
-        console.warn(options.warningMessage, err instanceof Error ? err.message : err);
-      }
+      } catch {}
       if (options.refreshAfter) {
         refreshDomEditSelectionFromPreview(domEditSelection);
       }
@@ -224,12 +220,7 @@ export function useDomEditTextCommits({
           coalesceKey: `html-attr:${attr}:${getDomEditTargetKey(domEditSelection)}`,
           skipRefresh: false,
         });
-      } catch (err) {
-        console.warn(
-          "[Studio] HTML attribute persist failed:",
-          err instanceof Error ? err.message : err,
-        );
-      }
+      } catch {}
       refreshDomEditSelectionFromPreview(domEditSelection);
     },
     [

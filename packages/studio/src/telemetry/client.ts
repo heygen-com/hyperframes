@@ -130,12 +130,6 @@ function showNoticeOnce(): void {
   if (hasShownNotice()) return;
   markNoticeShown();
   // eslint-disable-next-line no-console
-  console.info(
-    "%c[HyperFrames]%c Anonymous studio usage analytics enabled. " +
-      "Disable: localStorage.setItem('hyperframes-studio:telemetryDisabled','1') (then reload).",
-    "color:#7c3aed;font-weight:bold",
-    "color:inherit",
-  );
 }
 
 // Flush queued events when the tab is being hidden or closed so tail events

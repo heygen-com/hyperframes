@@ -101,9 +101,6 @@ export function collectSnapContext(input: {
   const MAX_SNAP_TARGETS = 80;
   const elements = collectVisibleElements(root, input.excludeElements, MAX_SNAP_TARGETS);
   if (elements.length >= MAX_SNAP_TARGETS) {
-    console.warn(
-      `[snap] Target cap reached (${MAX_SNAP_TARGETS}). Elements beyond this limit are excluded from snap alignment.`,
-    );
   }
 
   const entries: Array<{

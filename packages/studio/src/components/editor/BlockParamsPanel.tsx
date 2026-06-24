@@ -12,7 +12,7 @@ interface BlockParamsPanelProps {
 export const BlockParamsPanel = memo(function BlockParamsPanel({
   blockTitle,
   params,
-  compositionPath,
+  compositionPath: _compositionPath,
   onClose,
 }: BlockParamsPanelProps) {
   const [values, setValues] = useState<Record<string, string>>(() => {
@@ -23,13 +23,9 @@ export const BlockParamsPanel = memo(function BlockParamsPanel({
     return initial;
   });
 
-  const handleChange = useCallback(
-    (key: string, value: string) => {
-      setValues((prev) => ({ ...prev, [key]: value }));
-      console.log(`[BlockParams] ${compositionPath} ${key}: ${value}`);
-    },
-    [compositionPath],
-  );
+  const handleChange = useCallback((key: string, value: string) => {
+    setValues((prev) => ({ ...prev, [key]: value }));
+  }, []);
 
   return (
     <div className="flex flex-col h-full">

@@ -50,7 +50,6 @@ export function safeParseManifest(html: string): SlideshowManifest {
   try {
     return parseSlideshowManifest(html) ?? { slides: [] };
   } catch {
-    console.warn("[SlideshowPanel] Failed to parse slideshow manifest; using empty manifest");
     return { slides: [] };
   }
 }

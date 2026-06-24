@@ -164,9 +164,7 @@ export function useTimelineSyncCallbacks({
         const dedupedMissing = missing.filter((m) => !finalIds.has(m.id));
         syncTimelineElements([...updatedEls, ...dedupedMissing]);
       }
-    } catch (err) {
-      console.warn("[useTimelinePlayer] enrichMissingCompositions failed", err);
-    }
+    } catch {}
   }, [iframeRef, syncTimelineElements]);
 
   const initializeAdapter = useCallback(() => {
@@ -241,9 +239,7 @@ export function useTimelineSyncCallbacks({
           if (fallbackElement) syncTimelineElements([fallbackElement]);
         }
       }
-    } catch (err) {
-      console.warn("[useTimelinePlayer] Could not read timeline elements from iframe", err);
-    }
+    } catch {}
     return true;
   }, [
     getAdapter,
@@ -296,7 +292,6 @@ export function useTimelineSyncCallbacks({
       if (!settled) {
         trySettle();
         if (!settled) {
-          console.warn("[useTimelinePlayer] Runtime did not signal readiness within 5s");
         }
       }
       window.removeEventListener("message", onMessage);

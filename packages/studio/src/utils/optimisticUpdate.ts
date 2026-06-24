@@ -11,8 +11,7 @@ export async function executeOptimistic<T>(options: OptimisticUpdateOptions<T>):
   const snapshot = options.apply();
   try {
     await options.persist();
-  } catch (error) {
+  } catch {
     options.rollback(snapshot);
-    console.warn("[optimistic] Mutation failed, rolled back:", error);
   }
 }

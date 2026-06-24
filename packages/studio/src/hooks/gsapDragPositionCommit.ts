@@ -165,8 +165,7 @@ async function commitFlatViaKeyframes(
         if (Number.isFinite(v)) resolvedFromValues[key] = roundTo3(v);
       }
       mainTl.seek(ct);
-    } catch (err) {
-      console.warn("[gsap-drag] start-value read failed; using identity from values", err);
+    } catch {
       for (const key of Object.keys(resolvedFromValues)) delete resolvedFromValues[key];
     } finally {
       if (Object.keys(draggedValues).length > 0) gsapLib.set(el, draggedValues);
