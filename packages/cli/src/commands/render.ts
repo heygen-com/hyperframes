@@ -64,6 +64,7 @@ import {
 } from "../telemetry/events.js";
 import { maybePromptRenderFeedback } from "../telemetry/feedback.js";
 import { renderJobObservabilityTelemetryPayload } from "../telemetry/renderObservability.js";
+import { normalizeSkillSlug } from "../telemetry/skill.js";
 import { bytesToMb } from "../telemetry/system.js";
 import { VERSION } from "../version.js";
 import { isDevMode } from "../utils/env.js";
@@ -388,12 +389,18 @@ export default defineCommand({
     // ── Authoring skill (telemetry attribution) ────────────────────────────
     // Optional slug naming the workflow skill that drove this render (e.g.
     // "product-launch-video"), tagged onto render telemetry for per-skill usage
-    // breakdowns. Slug-gated so a caller can't push high-cardinality or PII
-    // strings into the anonymous event stream; a missing/invalid value is omitted.
-    const authoringSkill =
-      typeof args.skill === "string" && /^[a-z0-9][a-z0-9-]{0,63}$/.test(args.skill)
-        ? args.skill
-        : undefined;
+    // breakdowns. Slug-gated (shared with the `events` command) so a caller
+    // can't push high-cardinality or PII strings into the anonymous event
+    // stream; a missing/invalid value is omitted.
+    const authoringSkill = normalizeSkillSlug(args.skill);
+    if (typeof args.skill === "string" && args.skill.trim() !== "" && !authoringSkill) {
+      // Surface a typo (e.g. camelCase) instead of silently losing attribution.
+      // Warning only — never fails the render.
+      process.stderr.write(
+        `hyperframes: ignoring --skill="${args.skill}" — not a valid slug ` +
+          "(lowercase letters/digits/hyphens, max 64); this render will be unattributed.\n",
+      );
+    }
 
     // ── Validate format ─────────────────────────────────────────────────
     const formatRaw = args.format ?? "mp4";

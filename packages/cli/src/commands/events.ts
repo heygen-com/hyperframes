@@ -1,5 +1,6 @@
 import { defineCommand } from "citty";
 import { trackEvent, flush } from "../telemetry/client.js";
+import { SKILL_SLUG } from "../telemetry/skill.js";
 
 // Skill-usage telemetry endpoint. A skill reports its own invocation/outcome —
 // ideally from its own bundled script, so it fires deterministically rather
@@ -17,10 +18,6 @@ import { trackEvent, flush } from "../telemetry/client.js";
 
 const ALLOWED_EVENTS = ["skill_invoked", "skill_completed"];
 const ALLOWED_OUTCOMES = ["success", "error", "abort"];
-// Skill names are lowercase slugs (e.g. "product-launch-video"). Anything that
-// doesn't match is dropped, so a caller can't push high-cardinality or PII
-// strings (paths, shell output, free text) into the anonymous event stream.
-const SKILL_SLUG = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 export default defineCommand({
   meta: {
