@@ -68,6 +68,12 @@ export function useDomEditPreviewSync({
 
       const nextElement = findElementForSelection(doc, currentSelection, activeCompPath);
       if (!nextElement) {
+        // The selected element no longer resolves in the (re-synced) document
+        // — comp/hot reload, activeCompPath swap, or post-save replacement.
+        // Clear so overlay geometry isn't computed on a stale, detached node.
+        // (Drag-release-in-gray-zone is handled separately by
+        // suppressNextBoxClickRef; the dragged element still resolves here.)
+        applyDomSelection(null, { revealPanel: false });
         return;
       }
 

@@ -14,6 +14,7 @@ import {
   focusDomEditOverlayElement,
 } from "./domEditOverlayGestures";
 import { useDomEditOverlayRects } from "./useDomEditOverlayRects";
+import { OffCanvasIndicators, type OffCanvasRect } from "./OffCanvasIndicators";
 import { createDomEditOverlayGestureHandlers } from "./useDomEditOverlayGestures";
 import { SnapGuideOverlay, type SnapGuidesState } from "./SnapGuideOverlay";
 import { GridOverlay } from "./GridOverlay";
@@ -224,9 +225,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   // Off-canvas element indicators — dashed outlines for elements positioned
   // outside the composition bounds so users can find them.
   const offCanvasElementsRef = useRef<Map<string, HTMLElement>>(new Map());
-  const [offCanvasRects, setOffCanvasRects] = useState<
-    { key: string; left: number; top: number; width: number; height: number }[]
-  >([]);
+  const [offCanvasRects, setOffCanvasRects] = useState<OffCanvasRect[]>([]);
   useEffect(() => {
     const iframe = iframeRef.current;
     const overlay = overlayRef.current;
@@ -248,19 +247,24 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       if (!isElementComputedVisible(item.element)) continue;
       const r = toOverlayRect(overlay, iframe, item.element);
       if (!r) continue;
-      const partiallyOutside =
+      // Any edge crossing the composition border → gray-zone indicator (the
+      // in-canvas portion is clipped away below, so only the sliver shows).
+      const extendsOutsideComp =
         r.left < compRect.left ||
         r.left + r.width > compRect.left + compRect.width ||
         r.top < compRect.top ||
         r.top + r.height > compRect.top + compRect.height;
-      if (partiallyOutside) {
+      if (extendsOutsideComp) {
         rects.push({ key: item.key, left: r.left, top: r.top, width: r.width, height: r.height });
         elMap.set(item.key, item.element);
       }
     }
     offCanvasElementsRef.current = elMap;
     setOffCanvasRects(rects);
-  }, [iframeRef, compRect, activeCompositionPath, selection]);
+    // Positions depend on layout, not selection — the selected-element
+    // suppression is a render-time filter, so selection/groupSelections stay
+    // out of the deps to avoid re-walking geometry on each selection change.
+  }, [iframeRef, compRect, activeCompositionPath]);
 
   const gestures = createDomEditOverlayGestureHandlers({
     overlayRef,
@@ -407,7 +411,8 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       className="absolute inset-0 z-10 pointer-events-auto outline-none"
       tabIndex={-1}
       aria-label="Composition canvas"
-      style={marquee.marqueeRef.current?.pastThreshold ? { cursor: "crosshair" } : undefined}
+      // Cursor follows marquee rect *state* (re-renders), not the mutable ref.
+      style={marquee.marqueeRect ? { cursor: "crosshair" } : undefined}
       onPointerDownCapture={(event) =>
         focusDomEditOverlayElement(event.currentTarget as FocusableDomEditOverlay)
       }
@@ -554,52 +559,15 @@ export const DomEditOverlay = memo(function DomEditOverlay({
             }}
           />
         ))}
-      {offCanvasRects
-        .filter((r) => {
-          const selEl = selection?.element;
-          return !selEl || offCanvasElementsRef.current.get(r.key) !== selEl;
-        })
-        .map((r) => {
-          const pos = { left: r.left, top: r.top, width: r.width, height: r.height };
-          const cL = Math.max(0, compRect.left - r.left);
-          const cT = Math.max(0, compRect.top - r.top);
-          const cR = Math.min(r.width, compRect.left + compRect.width - r.left);
-          const cB = Math.min(r.height, compRect.top + compRect.height - r.top);
-          const hasInside = cL < cR && cT < cB;
-          const clipOutside = hasInside
-            ? `polygon(evenodd, 0 0, ${r.width}px 0, ${r.width}px ${r.height}px, 0 ${r.height}px, 0 0, ${cL}px ${cT}px, ${cR}px ${cT}px, ${cR}px ${cB}px, ${cL}px ${cB}px, ${cL}px ${cT}px)`
-            : undefined;
-          const clipInside = `inset(${cT}px ${Math.max(0, r.width - cR)}px ${Math.max(0, r.height - cB)}px ${cL}px round 6px)`;
-          const handleClick = async (e: React.MouseEvent) => {
-            e.stopPropagation();
-            const el = offCanvasElementsRef.current.get(r.key);
-            if (!el) return;
-            const { resolveDomEditSelection } = await import("./domEditingLayers");
-            const acp = activeCompositionPathRef.current ?? "index.html";
-            const sel = await resolveDomEditSelection(el, {
-              activeCompositionPath: acp,
-              isMasterView: !acp || acp === "index.html",
-              skipSourceProbe: true,
-            });
-            if (sel) onSelectionChangeRef.current(sel, { revealPanel: true });
-          };
-          return (
-            <div key={`offcanvas-${r.key}`} className="pointer-events-none absolute" style={pos}>
-              {/* Dashed layer — clipped to exclude canvas area */}
-              <div
-                className="pointer-events-auto absolute inset-0 border-2 border-dashed border-studio-accent/60 rounded-md cursor-pointer hover:border-studio-accent hover:bg-studio-accent/10 transition-colors"
-                style={clipOutside ? { clipPath: clipOutside } : undefined}
-                title={`Off-canvas: ${r.key} — click to select`}
-                onClick={handleClick}
-              />
-              {/* Solid layer — clipped to canvas bounds, covers inside portion */}
-              <div
-                className="pointer-events-none absolute inset-0 border border-studio-accent/80 rounded-md bg-studio-accent/5 shadow-[0_0_0_1px_rgba(60,230,172,0.25)]"
-                style={{ clipPath: clipInside }}
-              />
-            </div>
-          );
-        })}
+      <OffCanvasIndicators
+        rects={offCanvasRects}
+        elements={offCanvasElementsRef}
+        compRect={compRect}
+        selection={selection}
+        groupSelections={groupSelections}
+        activeCompositionPathRef={activeCompositionPathRef}
+        onSelectionChangeRef={onSelectionChangeRef}
+      />
       {marquee.marqueeRect && (
         <div
           aria-hidden="true"

@@ -423,6 +423,15 @@ export function useDomSelection({
   const applyMarqueeSelection = useCallback(
     // fallow-ignore-next-line complexity
     (selections: DomEditSelection[], additive: boolean) => {
+      // Honor the inspector-panels kill switch like applyDomSelection does, so
+      // marquee can't land selections while the inspector UI is suppressed.
+      if (!STUDIO_INSPECTOR_PANELS_ENABLED) {
+        domEditSelectionRef.current = null;
+        domEditGroupSelectionsRef.current = [];
+        setDomEditSelection(null);
+        setDomEditGroupSelections([]);
+        return;
+      }
       if (selections.length === 0) {
         if (!additive) applyDomSelection(null, { revealPanel: false });
         return;
