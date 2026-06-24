@@ -16,10 +16,10 @@ function joined(ctx: UnconfiguredContext, engines?: OfflineEngineLine[]): string
 describe("buildUnconfiguredLines — interactive (TTY / agent-driven)", () => {
   const text = joined(INTERACTIVE);
 
-  it("recommends both CLIs (sign-in == sign-up via either)", () => {
+  it("makes browser OAuth the hyperframes path", () => {
     expect(text).toContain("hyperframes auth login");
-    expect(text).toContain("heygen auth login");
-    expect(text).toMatch(/sign in or create an account/i);
+    expect(text).toMatch(/browser oauth/i);
+    expect(text).toMatch(/sign in or sign up/i);
   });
 
   it("never steers users toward a per-repo .env", () => {
@@ -35,9 +35,10 @@ describe("buildUnconfiguredLines — interactive (TTY / agent-driven)", () => {
     expect(text).toMatch(/free, offline/i);
   });
 
-  it("presents the HeyGen CLI login as a shared-credential alternative", () => {
-    expect(text).toMatch(/heygen auth login/);
-    expect(text).toMatch(/shared login/i);
+  it("shows only zero-install `npx hyperframes` paths, not the separately-installed heygen CLI", () => {
+    expect(text).not.toMatch(/heygen auth login/);
+    expect(text).toContain("npx hyperframes auth login");
+    expect(text).toContain("npx hyperframes auth login --api-key");
   });
 
   it("offers the --api-key path as a secondary option", () => {
@@ -103,7 +104,7 @@ describe("buildUnconfiguredJson", () => {
       expect(payload).toMatchObject({
         configured: false,
         interactive: ctx.interactive,
-        recommended_action: "hyperframes auth login",
+        recommended_action: "npx hyperframes auth login",
         fallback: "local",
       });
     }

@@ -26,7 +26,7 @@ export interface OfflineEngineLine {
 }
 
 /** The recommended first step; sign-in and sign-up are the same OAuth flow. */
-const RECOMMENDED_ACTION = "hyperframes auth login";
+const RECOMMENDED_ACTION = "npx hyperframes auth login";
 
 /**
  * Render the "what offline will use" block from probed engine readiness.
@@ -57,12 +57,13 @@ function offlineEngineLines(engines?: OfflineEngineLine[]): string[] {
 
 /**
  * Human guidance for an unconfigured machine — registration-first.
- * Recommends signing in via either CLI — `hyperframes auth login` (always
- * available here) or `heygen auth login` (if the HeyGen CLI is installed);
- * both are the same OAuth login, create an account, and share `~/.heygen`.
- * Names the local fallback so "no key" never reads as a failure, and never
- * steers users toward a per-repo `.env`. Mirrors the canonical wording in
- * the hyperframes-media skill's Preflight section.
+ * Both paths use `npx hyperframes` (zero-install via npm): browser OAuth
+ * (sign-in / sign-up) and `--api-key` both write `~/.heygen`. The separate
+ * `heygen` CLI shares that file but needs its own install (no `npx heygen`),
+ * so it's left to the docs — not dangled here as a command a fresh machine
+ * can't run. Names the local fallback so "no key" never reads as a failure,
+ * and never steers users toward a per-repo `.env`. Mirrors the
+ * hyperframes-media skill's Preflight section.
  */
 export function buildUnconfiguredLines(
   ctx: UnconfiguredContext,
@@ -79,10 +80,11 @@ export function buildUnconfiguredLines(
   return [
     c.warn("Not signed in to HeyGen — voice & music will use local engines (free, offline)."),
     "",
-    "Sign in or create an account — either CLI works (same shared login, no per-repo .env):",
-    `  ${c.accent("hyperframes auth login")}            ${c.dim("# always available via this repo's CLI")}`,
-    `  ${c.accent("heygen auth login")}                 ${c.dim("# if you use the HeyGen CLI")}`,
-    `  ${c.accent("hyperframes auth login --api-key")}  ${c.dim("# paste an existing key instead")}`,
+    "Sign in or sign up (browser OAuth, writes ~/.heygen — no per-repo .env):",
+    `  ${c.accent("npx hyperframes auth login")}            ${c.dim("# browser sign-in / sign-up")}`,
+    "",
+    "Or paste an existing HeyGen API key (get one at app.heygen.com/settings/api):",
+    `  ${c.accent("npx hyperframes auth login --api-key")}  ${c.dim("# paste at the prompt")}`,
     "",
     ...offlineEngineLines(engines),
   ];

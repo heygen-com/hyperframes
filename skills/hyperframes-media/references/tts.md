@@ -37,10 +37,10 @@ wins: `$HEYGEN_API_KEY` → `$HYPERFRAMES_API_KEY` → a project `.env` (auto-lo
 walks up ≤5 dirs) → `~/.heygen/credentials` (shared with heygen-cli;
 `$HEYGEN_CONFIG_DIR` overrides the dir). An OAuth login is sent as
 `Authorization: Bearer`; an API key as `X-Api-Key`. If the only credential is an
-expired OAuth token it stops with a hint to run `hyperframes auth refresh`.
+expired OAuth token it stops with a hint to run `npx hyperframes auth refresh`.
 
 ```bash
-# Only needed if you haven't run `hyperframes auth login`:
+# Only needed if you haven't run `npx hyperframes auth login`:
 export HEYGEN_API_KEY=...   # or put it in a project .env
 
 # Synthesize + capture word timestamps in one call (skips a Whisper pass)

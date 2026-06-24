@@ -36,7 +36,7 @@ export function pickProvider(userProvider) {
       throw new Error(`invalid provider "${userProvider}" (heygen | elevenlabs | kokoro)`);
     if (userProvider === "heygen" && !heygenAvailable())
       throw new Error(
-        "provider=heygen but no HeyGen credentials (set $HEYGEN_API_KEY or run `hyperframes auth login`)",
+        "provider=heygen but no HeyGen credentials (set $HEYGEN_API_KEY or run `npx hyperframes auth login`)",
       );
     if (userProvider === "elevenlabs" && !process.env.ELEVENLABS_API_KEY)
       throw new Error("provider=elevenlabs but $ELEVENLABS_API_KEY is not set");

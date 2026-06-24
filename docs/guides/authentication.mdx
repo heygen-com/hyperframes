@@ -34,7 +34,7 @@ Signing in is the same OAuth step as creating an account — new users land on t
   </Step>
 </Steps>
 
-The credential is **shared with the [`heygen` CLI](https://github.com/heygen-com/heygen-cli)** — sign in with either (`hyperframes auth login` or `heygen auth login`) and the other picks up the session. It lives in `~/.heygen/credentials` (mode `0600`), so there's no per-repo `.env` to manage.
+The credential lives in `~/.heygen/credentials` (mode `0600`) — no per-repo `.env` to manage. Browser OAuth is a `hyperframes auth login` feature. The separate [`heygen` CLI](https://github.com/heygen-com/heygen-cli) (its own install — there's no `npx heygen`) is API-key-only, so `heygen auth login` just stores a key you paste. Both read the same `~/.heygen/credentials`, so signing in with one carries to the other.
 
 <Tip>
   No account needed to try HyperFrames. With no credential, voice uses **Kokoro** and music uses **MusicGen**, both fully local and offline — see [Working offline](#working-offline).
