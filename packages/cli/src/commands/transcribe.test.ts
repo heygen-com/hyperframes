@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { writeFileSync, mkdtempSync, rmSync } from "node:fs";
+import { writeFileSync, readFileSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { WhisperUnavailableError } from "../whisper/manager.js";
@@ -24,7 +24,7 @@ function dummyAudio(): { dir: string; input: string } {
   return { dir, input };
 }
 
-describe("transcribe — whisper unavailable", () => {
+describe("transcribe command", () => {
   let dirs: string[] = [];
   let priorExitCode: typeof process.exitCode;
 
@@ -65,5 +65,61 @@ describe("transcribe — whisper unavailable", () => {
     expect(process.exitCode).toBe(0);
     expect(trackTranscribeUnavailable).toHaveBeenCalledWith({ optional: true });
     expect(trackCommandFailure).not.toHaveBeenCalled();
+  });
+
+  it("imports an SRT and exports an SRT sidecar from transcript.json", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-transcribe-test-"));
+    dirs.push(dir);
+    const input = join(dir, "sample.srt");
+    const sample = `1
+00:00:01,000 --> 00:00:03,500
+Write HTML.
+
+2
+00:00:03,500 --> 00:00:06,000
+Render video. Built for agents.
+`;
+    writeFileSync(input, sample);
+
+    await transcribeCmd.run!({ args: { input, dir, json: true } } as never);
+    const transcriptPath = join(dir, "transcript.json");
+
+    await transcribeCmd.run!({ args: { input: transcriptPath, to: "srt", json: true } } as never);
+    const outputPath = join(dir, "transcript.srt");
+
+    expect(readFileSync(outputPath, "utf-8")).toBe(sample);
+    const log = vi.mocked(console.log).mock.calls.at(-1)?.[0];
+    expect(typeof log).toBe("string");
+    if (typeof log !== "string") throw new Error("Expected JSON log output");
+    expect(JSON.parse(log)).toEqual({
+      ok: true,
+      format: "srt",
+      wordCount: 2,
+      outputPath,
+    });
+  });
+
+  it("--preserve-cues keeps single-word cues separate when exporting from JSON", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-transcribe-test-"));
+    dirs.push(dir);
+    // Single-word cues have no internal whitespace, so the whitespace heuristic
+    // can't tell them from word-level whisper output. --preserve-cues forces 1:1.
+    const transcriptPath = join(dir, "transcript.json");
+    writeFileSync(
+      transcriptPath,
+      JSON.stringify([
+        { text: "Yes", start: 0, end: 1 },
+        { text: "No", start: 1, end: 2 },
+      ]),
+    );
+
+    await transcribeCmd.run!({
+      args: { input: transcriptPath, to: "srt", "preserve-cues": true, json: true },
+    } as never);
+
+    const output = readFileSync(join(dir, "transcript.srt"), "utf-8");
+    expect(output).toBe(
+      "1\n00:00:00,000 --> 00:00:01,000\nYes\n\n2\n00:00:01,000 --> 00:00:02,000\nNo\n",
+    );
   });
 });

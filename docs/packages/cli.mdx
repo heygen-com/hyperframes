@@ -276,6 +276,9 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
     npx hyperframes transcribe subtitles.srt
     npx hyperframes transcribe captions.vtt
     npx hyperframes transcribe openai-response.json
+
+    # Export caption sidecars from transcript.json
+    npx hyperframes transcribe transcript.json --to srt
     ```
 
     | Flag | Description |
@@ -283,9 +286,12 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
     | `--dir, -d` | Project directory (default: current directory) |
     | `--model, -m` | Whisper model (default: `small.en`). Options: `tiny.en`, `base.en`, `small.en`, `medium.en`, `large-v3` |
     | `--language, -l` | Language code (e.g. `en`, `es`, `ja`). Filters out non-target language speech. |
+    | `--to` | Export transcript sidecar format: `srt` or `vtt` |
+    | `--output, -o` | Output path for exported SRT/VTT sidecar |
+    | `--preserve-cues` | Keep each transcript entry as its own caption cue (skip word-level grouping) |
     | `--json` | Output result as JSON |
 
-    The command auto-detects the input type. Audio/video files are transcribed with whisper.cpp. Transcript files (`.json`, `.srt`, `.vtt`) are normalized and imported.
+    The command auto-detects the input type. Audio/video files are transcribed with whisper.cpp. Transcript files (`.json`, `.srt`, `.vtt`) are normalized and imported. Pass `--to srt` or `--to vtt` with a transcript input to write a caption sidecar instead.
 
     **Supported transcript formats:**
 
@@ -296,7 +302,9 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
     | SRT subtitles | Video editors, YouTube, subtitle tools |
     | VTT subtitles | Web players, YouTube, transcription services |
 
-    All formats are normalized to a standard `[{text, start, end}]` word array and saved as `transcript.json`. If the project has caption HTML files, they are automatically patched with the transcript data.
+    All formats are normalized to a standard `[{text, start, end}]` word array and saved as `transcript.json`. If the project has caption HTML files, they are automatically patched with the transcript data. Sidecar export reads the same normalized transcript and writes `transcript.srt` or `transcript.vtt` by default.
+
+Word-level transcripts (whisper output) are grouped into readable caption cues on sentence boundaries. Exporting directly from an `.srt`/`.vtt` source keeps its cue boundaries unchanged. When exporting from a `transcript.json` whose entries are already finished cues with no internal spaces (single-word or CJK captions), pass `--preserve-cues` to keep them one cue per entry.
 
     <Tip>
       For music or noisy audio, use `--model medium.en` for better accuracy. For the best results with production content, transcribe via the OpenAI or Groq Whisper API and import the JSON.
