@@ -232,6 +232,13 @@ export async function tryGsapDragIntercept(
 
   const gsapPos = readGsapPositionFromIframe(iframe, selector) ?? { x: 0, y: 0 };
 
+  // STATIC case (single source of truth = GSAP timeline): the element has no LIVE
+  // keyframed/tweened position motion. Use the strict non-hold check — a leftover
+  // position-hold `set` (after a delete-all, or a stale parse that lags it) must
+  // NOT count as live motion. Either way the position belongs in a
+  // `tl.set("#el",{x,y})`, not a keyframe conversion: re-nudge an existing set in
+  // place (idempotent), else add a new one. This also covers the stale-cache
+  // phantom — committing a set is correct because the element genuinely has no live motion.
   const hasNonHold = hasNonHoldTweenForElement(iframe, selector);
 
   if (!hasNonHold) {

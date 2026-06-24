@@ -1792,6 +1792,19 @@ describe("keyframe mutations", () => {
     expect(kf100.properties.y).toBe(50);
   });
 
+  it("updateKeyframeInScript — ease-only update preserves existing properties", () => {
+    // Per-keyframe ease editing passes empty properties + an ease. The existing
+    // property bag must survive (don't wipe x/opacity when only the ease changes).
+    const id = getAnimId(KF_SCRIPT);
+    const updated = updateKeyframeInScript(KF_SCRIPT, id, 100, {}, "power2.inOut");
+    const kf100 = parseGsapScript(updated).animations[0].keyframes!.keyframes.find(
+      (k) => k.percentage === 100,
+    )!;
+    expect(kf100.ease).toBe("power2.inOut");
+    expect(kf100.properties.x).toBe(200);
+    expect(kf100.properties.opacity).toBe(1);
+  });
+
   // Array-form keyframes (`keyframes: [{x,y}, …]`) carry no percentages — GSAP
   // distributes them evenly. The motion-path overlay drags/adds by percentage,
   // which used to no-op on array-authored tweens (#puck-b / #shuttle).

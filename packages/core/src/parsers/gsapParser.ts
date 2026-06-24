@@ -2240,6 +2240,10 @@ export function updateKeyframeInScript(
       }
       return recast.print(loc.parsed.ast).code;
     }
+    // Non-object keyframe value (primitive shorthand, e.g. "50%": "0.5"): there
+    // is no property bag to merge the ease into. Rebuilding from empty
+    // `properties` would wipe the primitive — leave the keyframe untouched.
+    return script;
   }
   match.prop.value = buildKeyframeValueNode(properties, ease);
   return recast.print(loc.parsed.ast).code;

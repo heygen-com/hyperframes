@@ -73,14 +73,28 @@ export function initSandboxRuntimeModular(): void {
 
   window.__timelines = window.__timelines || {};
 
+  // Resolve the root composition element with the same priority the rest of
+  // the runtime uses (explicit `data-root` marker first, then the topmost
+  // non-nested composition, then first in DOM order). Defined here so the
+  // array-normalization + data-start defaults below pick the same root the
+  // closure-based `resolveRootCompositionElement` does on multi-comp pages.
+  const findRootCompositionEl = (): HTMLElement | null => {
+    const explicitRoot = document.querySelector('[data-composition-id][data-root="true"]');
+    if (explicitRoot instanceof HTMLElement) return explicitRoot;
+    const nodes = Array.from(document.querySelectorAll("[data-composition-id]")) as HTMLElement[];
+    return (
+      nodes.find((node) => !node.parentElement?.closest("[data-composition-id]")) ??
+      nodes[0] ??
+      null
+    );
+  };
+
   // Agents often write `window.__timelines = [tl]` (array) instead of the
   // keyed-by-composition-id object the runtime expects. Normalize at init so
   // the rest of the pipeline can assume a Record<string, timeline>.
   if (Array.isArray(window.__timelines)) {
     const arr = window.__timelines as unknown[];
-    const rootId =
-      document.querySelector("[data-composition-id]")?.getAttribute("data-composition-id") ??
-      "root";
+    const rootId = findRootCompositionEl()?.getAttribute("data-composition-id") ?? "root";
     const normalized: Record<string, unknown> = {};
     if (arr.length === 1) {
       normalized[rootId] = arr[0];
@@ -93,7 +107,7 @@ export function initSandboxRuntimeModular(): void {
   // Agents sometimes omit data-start on the root composition element. The
   // runtime skips timed-visibility for elements without it, making clips
   // invisible and timelines non-seekable. Default to 0 for the root.
-  const rootComp = document.querySelector("[data-composition-id]");
+  const rootComp = findRootCompositionEl();
   if (rootComp && !rootComp.hasAttribute("data-start")) {
     rootComp.setAttribute("data-start", "0");
   }
@@ -244,23 +258,7 @@ export function initSandboxRuntimeModular(): void {
     return `${parsed}px`;
   };
 
-  const resolveRootCompositionElement = (): HTMLElement | null => {
-    // 1. Explicit root marker takes priority
-    const explicitRoot = document.querySelector('[data-composition-id][data-root="true"]');
-    if (explicitRoot instanceof HTMLElement) {
-      return explicitRoot;
-    }
-    // 3. Topmost composition element (not nested inside another)
-    const compositionNodes = Array.from(
-      document.querySelectorAll("[data-composition-id]"),
-    ) as HTMLElement[];
-    if (compositionNodes.length === 0) return null;
-    return (
-      compositionNodes.find((node) => !node.parentElement?.closest("[data-composition-id]")) ??
-      compositionNodes[0] ??
-      null
-    );
-  };
+  const resolveRootCompositionElement = (): HTMLElement | null => findRootCompositionEl();
 
   const applyCompositionSizing = () => {
     const rootEl = resolveRootCompositionElement();
@@ -1030,6 +1028,11 @@ export function initSandboxRuntimeModular(): void {
     }
     const boundDuration = getSafeTimelineDurationSeconds(state.capturedTimeline, 0);
     if (boundDuration <= 0) {
+      // No resolvable duration (e.g. a set()-only timeline, or one whose
+      // duration isn't known yet). Kick GSAP off the creation position so the
+      // set() renders. For a finite-but-zero timeline progress(1) === progress(0);
+      // for an infinite-repeat timeline this lands on the first iteration's end
+      // frame, which is the best we can do without a known cycle length.
       if (typeof state.capturedTimeline.progress === "function") {
         state.capturedTimeline.progress(1, true);
         state.capturedTimeline.progress(0, false);
@@ -1046,9 +1049,15 @@ export function initSandboxRuntimeModular(): void {
       if (typeof state.capturedTimeline.totalTime === "function") {
         // GSAP won't render tl.set() at position 0 when the paused timeline
         // starts there — play/pause/seek/totalTime are all no-ops at the
-        // creation position. Force by cycling progress past 0 then back.
-        state.capturedTimeline.progress(0.0001, true);
-        state.capturedTimeline.progress(0, false);
+        // creation position. Force the set to render by cycling progress past
+        // 0 (when the timeline implements it), then seek to the prior playhead
+        // (state.currentTime) so a rebind after a user scrub or soft-reload
+        // restore doesn't snap back to 0.
+        if (typeof state.capturedTimeline.progress === "function") {
+          state.capturedTimeline.progress(0.0001, true);
+        }
+        const seekTime = Math.max(0, state.currentTime || 0);
+        state.capturedTimeline.totalTime(seekTime, false);
         state.capturedTimeline.pause();
       }
 
