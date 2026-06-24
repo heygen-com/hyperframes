@@ -68,7 +68,6 @@ export function useDomEditPreviewSync({
 
       const nextElement = findElementForSelection(doc, currentSelection, activeCompPath);
       if (!nextElement) {
-        applyDomSelection(null, { revealPanel: false });
         return;
       }
 

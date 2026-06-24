@@ -17,7 +17,7 @@ import {
   STUDIO_PREVIEW_SELECTION_ENABLED,
 } from "./editor/manualEditingAvailability";
 import { useStudioPlaybackContext, useStudioShellContext } from "../contexts/StudioContext";
-import { useDomEditContext } from "../contexts/DomEditContext";
+import { useDomEditActionsContext, useDomEditSelectionContext } from "../contexts/DomEditContext";
 import { TimelineEditProvider } from "../contexts/TimelineEditContext";
 import type { BlockPreviewInfo } from "./sidebar/BlocksTab";
 import { readStudioUiPreferences } from "../utils/studioUiPreferences";
@@ -117,6 +117,9 @@ export function StudioPreviewArea({
     domEditHoverSelection,
     domEditSelection,
     domEditGroupSelections,
+    selectedGsapAnimations,
+  } = useDomEditSelectionContext();
+  const {
     handleTimelineElementSelect,
     handlePreviewCanvasMouseDown,
     handlePreviewCanvasPointerMove,
@@ -128,15 +131,16 @@ export function StudioPreviewArea({
     handleDomGroupPathOffsetCommit,
     handleDomBoxSizeCommit,
     handleDomRotationCommit,
-    selectedGsapAnimations,
     handleGsapRemoveKeyframe,
     handleGsapUpdateMeta,
     handleGsapAddKeyframe,
     handleGsapConvertToKeyframes,
     handleGsapDeleteAllForElement,
     buildDomSelectionForTimelineElement,
-  } = useDomEditContext();
+    applyMarqueeSelection,
+  } = useDomEditActionsContext();
 
+  // fallow-ignore-next-line complexity
   const [snapPrefs, setSnapPrefs] = useState(() => {
     const p = readStudioUiPreferences();
     return {
@@ -160,6 +164,7 @@ export function StudioPreviewArea({
         const rawId = elId.includes("#") ? (elId.split("#").pop() ?? elId) : elId;
         handleGsapDeleteAllForElement(`#${rawId}`);
       },
+      // fallow-ignore-next-line complexity
       onDeleteKeyframe: (_elId: string, pct: number) => {
         const cacheKey = domEditSelection?.id ?? "";
         const cached = usePlayerStore.getState().keyframeCache.get(cacheKey);
@@ -215,6 +220,7 @@ export function StudioPreviewArea({
           }
         }
       },
+      // fallow-ignore-next-line complexity
       onToggleKeyframeAtPlayhead: (el: TimelineElement) => {
         const currentTime = usePlayerStore.getState().currentTime;
         const pct =
@@ -339,6 +345,7 @@ export function StudioPreviewArea({
                     gridSpacing={snapPrefs.gridSpacing}
                     recordingState={recordingState}
                     onToggleRecording={onToggleRecording}
+                    onMarqueeSelect={applyMarqueeSelection}
                   />
                   <SnapToolbar onSnapChange={setSnapPrefs} />
                   {STUDIO_KEYFRAMES_ENABLED && (
