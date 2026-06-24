@@ -17,7 +17,9 @@ export function probe(filePath) {
     const format = info.format;
 
     const isImage = IMAGE_EXT.has(ext);
-    const duration = isImage ? null : parseFloat(format?.duration) || parseFloat(stream?.duration) || null;
+    const duration = isImage
+      ? null
+      : parseFloat(format?.duration) || parseFloat(stream?.duration) || null;
     const width = parseInt(stream?.width, 10) || null;
     const height = parseInt(stream?.height, 10) || null;
     const codec = stream?.codec_name || null;

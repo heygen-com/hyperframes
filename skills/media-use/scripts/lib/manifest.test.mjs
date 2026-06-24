@@ -169,7 +169,10 @@ function runTests() {
   test("regenerateIndex matches manifest content after multiple writes", () => {
     setup();
     appendRecord(tmp, makeRecord({ id: "bgm_001" }));
-    appendRecord(tmp, makeRecord({ id: "sfx_001", type: "sfx", description: "whoosh", duration: 3 }));
+    appendRecord(
+      tmp,
+      makeRecord({ id: "sfx_001", type: "sfx", description: "whoosh", duration: 3 }),
+    );
     regenerateIndex(tmp);
     const content = readFileSync(join(tmp, ".media", "index.md"), "utf8");
     assert.ok(content.includes("# .media · 2 assets"));
@@ -256,12 +259,7 @@ function runTests() {
 
     const cached = cacheGet("import test", "bgm");
     const projectDir = mkdtempSync(join(tmpdir(), "mu-import-"));
-    const imported = importFromCache(
-      cached,
-      projectDir,
-      "bgm_001",
-      ".media/audio/bgm/bgm_001.wav",
-    );
+    const imported = importFromCache(cached, projectDir, "bgm_001", ".media/audio/bgm/bgm_001.wav");
 
     assert.ok(imported);
     assert.equal(imported.id, "bgm_001");

@@ -1,10 +1,4 @@
-import {
-  readFileSync,
-  writeFileSync,
-  mkdirSync,
-  existsSync,
-  copyFileSync,
-} from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync, copyFileSync } from "node:fs";
 import { join, basename } from "node:path";
 import { createHash } from "node:crypto";
 import { homedir } from "node:os";
@@ -47,10 +41,7 @@ function validateCacheHit(match) {
 export function cacheGet(prompt, type) {
   return validateCacheHit(
     readGlobalManifest().find(
-      (r) =>
-        r.reusable &&
-        r.provenance?.prompt === prompt &&
-        (type == null || r.type === type),
+      (r) => r.reusable && r.provenance?.prompt === prompt && (type == null || r.type === type),
     ),
   );
 }
@@ -58,9 +49,7 @@ export function cacheGet(prompt, type) {
 export function cacheGetByEntity(entity) {
   const lower = entity.toLowerCase();
   return validateCacheHit(
-    readGlobalManifest().find(
-      (r) => r.reusable && r.entity && r.entity.toLowerCase() === lower,
-    ),
+    readGlobalManifest().find((r) => r.reusable && r.entity && r.entity.toLowerCase() === lower),
   );
 }
 
@@ -119,8 +108,7 @@ export function promote(projectDir, id) {
   if (!record) throw new Error(`asset not found in project manifest: ${id}`);
 
   const filePath = join(projectDir, record.path);
-  if (!existsSync(filePath))
-    throw new Error(`asset file not found: ${filePath}`);
+  if (!existsSync(filePath)) throw new Error(`asset file not found: ${filePath}`);
 
   return cachePut(filePath, record);
 }

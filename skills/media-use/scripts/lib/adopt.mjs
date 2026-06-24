@@ -12,9 +12,12 @@ function inferType(filePath) {
   const ext = extname(filePath).toLowerCase();
   if (AUDIO_EXT.has(ext)) {
     const lower = filePath.toLowerCase();
-    if (lower.includes("/bgm/") || lower.includes("/music/") || lower.startsWith("bgm/")) return "bgm";
-    if (lower.includes("/sfx/") || lower.includes("/sound") || lower.startsWith("sfx/")) return "sfx";
-    if (lower.includes("/voice/") || lower.includes("/narrat") || lower.startsWith("voice/")) return "voice";
+    if (lower.includes("/bgm/") || lower.includes("/music/") || lower.startsWith("bgm/"))
+      return "bgm";
+    if (lower.includes("/sfx/") || lower.includes("/sound") || lower.startsWith("sfx/"))
+      return "sfx";
+    if (lower.includes("/voice/") || lower.includes("/narrat") || lower.startsWith("voice/"))
+      return "voice";
     return "bgm";
   }
   if (IMAGE_EXT.has(ext)) {
