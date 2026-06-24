@@ -3,19 +3,9 @@
 import { existsSync } from "node:fs";
 import { resolve, join, extname } from "node:path";
 import { parseArgs } from "node:util";
-import {
-  appendRecord,
-  findByPrompt,
-  findByEntity,
-  nextId,
-  typeSubdir,
-} from "./lib/manifest.mjs";
+import { appendRecord, findByPrompt, findByEntity, nextId, typeSubdir } from "./lib/manifest.mjs";
 import { regenerateIndex } from "./lib/index-gen.mjs";
-import {
-  cacheGet,
-  cacheGetByEntity,
-  importFromCache,
-} from "./lib/cache.mjs";
+import { cacheGet, cacheGetByEntity, importFromCache } from "./lib/cache.mjs";
 import { getProvider, listTypes } from "./lib/providers.mjs";
 import { freezeUrl, freezeLocalFile } from "./lib/freeze.mjs";
 import { findExistingAsset } from "./lib/adopt.mjs";
@@ -158,7 +148,9 @@ async function run() {
 
   if (!searchResult) {
     if (args.json) {
-      console.log(JSON.stringify({ ok: false, error: `no provider could resolve ${type}: "${intent}"` }));
+      console.log(
+        JSON.stringify({ ok: false, error: `no provider could resolve ${type}: "${intent}"` }),
+      );
     } else {
       console.error(`error: no provider could resolve ${type}: "${intent}"`);
     }
@@ -189,7 +181,9 @@ async function run() {
     ...(searchResult.metadata?.duration != null && { duration: searchResult.metadata.duration }),
     ...(searchResult.metadata?.width != null && { width: searchResult.metadata.width }),
     ...(searchResult.metadata?.height != null && { height: searchResult.metadata.height }),
-    ...(searchResult.metadata?.transparent != null && { transparent: searchResult.metadata.transparent }),
+    ...(searchResult.metadata?.transparent != null && {
+      transparent: searchResult.metadata.transparent,
+    }),
     ...(entity && { entity }),
     provenance: {
       provider: searchResult.metadata?.provider || "unknown",
@@ -230,7 +224,14 @@ function extFromUrl(url) {
   }
 }
 
-const DEFAULT_EXT = { bgm: ".wav", sfx: ".mp3", voice: ".wav", image: ".jpg", icon: ".svg", brand: ".png" };
+const DEFAULT_EXT = {
+  bgm: ".wav",
+  sfx: ".mp3",
+  voice: ".wav",
+  image: ".jpg",
+  icon: ".svg",
+  brand: ".png",
+};
 
 function defaultExt(type) {
   return DEFAULT_EXT[type] || ".bin";

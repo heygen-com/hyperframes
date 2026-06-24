@@ -47,7 +47,12 @@ export const brandProvider = {
       metadata: {
         description: "Brand tokens from " + spec.name,
         provider: "design_spec",
-        provenance: { file: spec.name, colors, font: tokens.font || tokens.typography || null, logo: tokens.logo || null },
+        provenance: {
+          file: spec.name,
+          colors,
+          font: tokens.font || tokens.typography || null,
+          logo: tokens.logo || null,
+        },
       },
     };
   },

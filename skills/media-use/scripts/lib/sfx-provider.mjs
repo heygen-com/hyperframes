@@ -2,7 +2,10 @@ import { heygenSearch } from "./heygen-search.mjs";
 
 export const sfxProvider = {
   async search(intent) {
-    const results = heygenSearch("audio sounds list", intent, { type: "sound_effects", minScore: 0.4 });
+    const results = heygenSearch("audio sounds list", intent, {
+      type: "sound_effects",
+      minScore: 0.4,
+    });
     if (!results) return null;
     const best = results[0];
     return {

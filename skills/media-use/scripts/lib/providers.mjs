@@ -3,7 +3,11 @@ import { imageProvider, iconProvider } from "./image-provider.mjs";
 import { bgmProvider } from "./bgm-provider.mjs";
 import { brandProvider } from "./brand-provider.mjs";
 
-const STUB = { async search() { return null; } };
+const STUB = {
+  async search() {
+    return null;
+  },
+};
 
 const registry = {
   bgm: { ...bgmProvider, type: "bgm" },
