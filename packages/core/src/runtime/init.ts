@@ -72,6 +72,32 @@ export function initSandboxRuntimeModular(): void {
   }
 
   window.__timelines = window.__timelines || {};
+
+  // Agents often write `window.__timelines = [tl]` (array) instead of the
+  // keyed-by-composition-id object the runtime expects. Normalize at init so
+  // the rest of the pipeline can assume a Record<string, timeline>.
+  if (Array.isArray(window.__timelines)) {
+    const arr = window.__timelines as unknown[];
+    const rootId =
+      document.querySelector("[data-composition-id]")?.getAttribute("data-composition-id") ??
+      "root";
+    const normalized: Record<string, unknown> = {};
+    if (arr.length === 1) {
+      normalized[rootId] = arr[0];
+    } else {
+      for (let i = 0; i < arr.length; i++) normalized[`tl-${i}`] = arr[i];
+    }
+    (window as Record<string, unknown>).__timelines = normalized;
+  }
+
+  // Agents sometimes omit data-start on the root composition element. The
+  // runtime skips timed-visibility for elements without it, making clips
+  // invisible and timelines non-seekable. Default to 0 for the root.
+  const rootComp = document.querySelector("[data-composition-id]");
+  if (rootComp && !rootComp.hasAttribute("data-start")) {
+    rootComp.setAttribute("data-start", "0");
+  }
+
   const registerRuntimeCleanup = (callback: () => void) => {
     runtimeCleanupCallbacks.push(callback);
   };
@@ -1003,16 +1029,27 @@ export function initSandboxRuntimeModular(): void {
       state.capturedTimeline.timeScale(state.playbackRate);
     }
     const boundDuration = getSafeTimelineDurationSeconds(state.capturedTimeline, 0);
+    if (boundDuration <= 0) {
+      if (typeof state.capturedTimeline.progress === "function") {
+        state.capturedTimeline.progress(1, true);
+        state.capturedTimeline.progress(0, false);
+        state.capturedTimeline.pause();
+      }
+    }
     if (boundDuration > 0) {
       try {
         clock.setDuration(boundDuration);
       } catch {
         // clock not yet initialized — duration will be set during TransportClock setup
       }
-      state.capturedTimeline.pause();
-      const seekTime = Math.max(0, state.currentTime || 0);
+
       if (typeof state.capturedTimeline.totalTime === "function") {
-        state.capturedTimeline.totalTime(seekTime, false);
+        // GSAP won't render tl.set() at position 0 when the paused timeline
+        // starts there — play/pause/seek/totalTime are all no-ops at the
+        // creation position. Force by cycling progress past 0 then back.
+        state.capturedTimeline.progress(0.0001, true);
+        state.capturedTimeline.progress(0, false);
+        state.capturedTimeline.pause();
       }
 
       // GSAP bakes the CSS `translate` into style.transform on seek.

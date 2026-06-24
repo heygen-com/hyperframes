@@ -443,6 +443,14 @@ export function endManualOffsetDragMembers(members: ManualOffsetDragMember[]): v
     member.element.removeAttribute("data-hf-drag-initial-offset-y");
     member.element.removeAttribute("data-hf-drag-gsap-base-x");
     member.element.removeAttribute("data-hf-drag-gsap-base-y");
+    // Clear the draft's `translate: none` so the soft reload starts clean —
+    // otherwise button-less pointermoves after the reload compute deltas
+    // from a stale base and fling the element off-screen (#1673).
+    // Do NOT clearProps:"transform" — that nukes the committed GSAP position
+    // and causes a visual snap-back before the soft reload re-applies it.
+    if (member.element.style.getPropertyValue("translate") === "none") {
+      member.element.style.removeProperty("translate");
+    }
     resumeGsapTimelines(member.element);
   }
 }

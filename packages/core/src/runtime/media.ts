@@ -290,33 +290,18 @@ export function syncRuntimeMedia(params: {
       }
       const forceSync = !isPlayingVideo && params.forceSync && drift > 0.02;
       if (hardSync || strictSync || forceSync) {
-        // Skip the per-tick seek (and the `el.load()` drift-recovery retry
-        // below) for `<video>` elements that have a sibling
-        // `<img id="__render_frame_<id>__">`. The sibling is created only
-        // by the producer's frame-injection pipeline during render — its
-        // presence means the visual is painted from the `<img>` and the
-        // `<video>` is `visibility: hidden`. Audio is mixed by ffmpeg from
-        // source files in `runAudioStage`, never via Chrome's in-browser
-        // audio path. So the `<video>`'s `currentTime` has no observable
-        // effect during render, and the per-tick set just kicks Chrome's
-        // media pipeline for nothing. Preview is unaffected (the sibling
-        // only exists during render).
-        const skipForInjectedVideo =
-          el.tagName === "VIDEO" && el.id && !!document.getElementById(`__render_frame_${el.id}__`);
-        if (!skipForInjectedVideo) {
+        try {
+          el.currentTime = relTime;
+        } catch (err) {
+          swallow("runtime.media.site2", err);
+        }
+        if (Math.abs(el.currentTime - relTime) > 0.5 && !seekLoadRetried.has(el)) {
+          seekLoadRetried.add(el);
+          el.load();
           try {
             el.currentTime = relTime;
           } catch (err) {
-            swallow("runtime.media.site2", err);
-          }
-          if (Math.abs(el.currentTime - relTime) > 0.5 && !seekLoadRetried.has(el)) {
-            seekLoadRetried.add(el);
-            el.load();
-            try {
-              el.currentTime = relTime;
-            } catch (err) {
-              swallow("runtime.media.site3", err);
-            }
+            swallow("runtime.media.site3", err);
           }
         }
         playRequested.delete(el);

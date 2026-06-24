@@ -1243,13 +1243,17 @@ function applyEaseUpdate(varsArg: AstNode, ease: string): void {
   }
 }
 
-function applyUpdatesToCall(call: TweenCallInfo, updates: Partial<GsapAnimation>): void {
+function applyUpdatesToCall(
+  call: TweenCallInfo,
+  updates: Partial<GsapAnimation> & { easeEach?: string },
+): void {
   if (updates.properties) reconcileEditableProperties(call.varsArg, updates.properties);
   if (updates.fromProperties && call.method === "fromTo" && call.fromArg) {
     reconcileEditableProperties(call.fromArg, updates.fromProperties);
   }
   if (updates.duration !== undefined) setVarsKey(call.varsArg, "duration", updates.duration);
-  if (updates.ease !== undefined) applyEaseUpdate(call.varsArg, updates.ease);
+  if (updates.easeEach !== undefined) applyEaseUpdate(call.varsArg, updates.easeEach);
+  else if (updates.ease !== undefined) applyEaseUpdate(call.varsArg, updates.ease);
   if (updates.position !== undefined) {
     const posIdx = call.method === "fromTo" ? 3 : 2;
     call.node.arguments[posIdx] = parseExpr(valueToCode(updates.position));
@@ -1282,10 +1286,13 @@ function insertAfterAnchor(parsed: ParsedGsapAst, newStatement: AstNode): void {
 function buildTweenStatementCode(timelineVar: string, anim: Omit<GsapAnimation, "id">): string {
   const selector = JSON.stringify(anim.targetSelector);
   const props: Record<string, number | string> = { ...anim.properties };
-  // `set` is instantaneous — GSAP ignores duration on it, so don't emit one.
   if (anim.method !== "set" && anim.duration !== undefined) props.duration = anim.duration;
   if (anim.ease) props.ease = anim.ease;
   const entries = Object.entries(props).map(([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`);
+  // immediateRender forces GSAP to apply the set when added to the timeline,
+  // not on the first seek — without it, tl.set at position 0 on a paused
+  // timeline is invisible until the playhead moves past 0.
+  if (anim.method === "set") entries.push("immediateRender: true");
   if (anim.extras) {
     for (const [k, v] of Object.entries(anim.extras)) {
       entries.push(`${safeKey(k)}: ${valueToCode(v as number | string)}`);
@@ -1308,7 +1315,7 @@ function buildTweenStatementCode(timelineVar: string, anim: Omit<GsapAnimation, 
 export function updateAnimationInScript(
   script: string,
   animationId: string,
-  updates: Partial<GsapAnimation>,
+  updates: Partial<GsapAnimation> & { easeEach?: string },
 ): string {
   let parsed: ParsedGsapAst;
   try {
@@ -1437,6 +1444,7 @@ export function addAnimationWithKeyframesToScript(
     auto?: boolean;
   }>,
   ease?: string,
+  easeEach?: string,
 ): { script: string; id: string } {
   let parsed: ParsedGsapAst;
   try {
@@ -1450,7 +1458,7 @@ export function addAnimationWithKeyframesToScript(
   }
 
   const selector = JSON.stringify(targetSelector);
-  const kfCode = buildKeyframeObjectCode(keyframes);
+  const kfCode = buildKeyframeObjectCode(keyframes, easeEach ? { easeEach } : undefined);
   const varEntries = [`keyframes: ${kfCode}`, `duration: ${valueToCode(duration)}`];
   if (ease) varEntries.push(`ease: ${JSON.stringify(ease)}`);
   const posCode = valueToCode(position);
@@ -2216,6 +2224,23 @@ export function updateKeyframeInScript(
   const match = findKeyframePropByPct(kfNode, percentage);
   if (!match) return script;
 
+  if (Object.keys(properties).length === 0 && ease) {
+    // Ease-only update: preserve existing properties, just add/replace ease
+    const existing = match.prop.value;
+    if (existing?.type === "ObjectExpression") {
+      const props = (existing.properties ?? []) as AstNode[];
+      const easeIdx = props.findIndex(
+        (p: AstNode) => isObjectProperty(p) && propKeyName(p) === "ease",
+      );
+      const easeNode = parseExpr(`({ ease: ${JSON.stringify(ease)} })`).properties[0];
+      if (easeIdx >= 0) {
+        props[easeIdx] = easeNode;
+      } else {
+        props.push(easeNode);
+      }
+      return recast.print(loc.parsed.ast).code;
+    }
+  }
   match.prop.value = buildKeyframeValueNode(properties, ease);
   return recast.print(loc.parsed.ast).code;
 }

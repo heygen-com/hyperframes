@@ -299,7 +299,7 @@ function findInsertionPoint(parsed: ParsedGsapAcornForWrite): number | null {
 export function updateAnimationInScript(
   script: string,
   animationId: string,
-  updates: Partial<GsapAnimation>,
+  updates: Partial<GsapAnimation> & { easeEach?: string },
 ): string {
   if (!Object.keys(updates).length) return script;
   const parsed = parseGsapScriptAcornForWrite(script);
@@ -324,13 +324,11 @@ export function updateAnimationInScript(
     if (updates.duration !== undefined) {
       upsertProp(ms, call.varsArg, "duration", updates.duration);
     }
-    if (updates.ease !== undefined) {
-      // For a keyframe tween, easing lives at keyframes.easeEach (per-keyframe),
-      // not a top-level ease. Writing top-level ease would leave the per-keyframe
-      // easing unchanged — the user's edit would silently do nothing.
+    const easeValue = updates.easeEach ?? updates.ease;
+    if (easeValue !== undefined) {
       const kfNode = keyframesObjectNode(call.varsArg);
-      if (kfNode) upsertProp(ms, kfNode, "easeEach", updates.ease);
-      else upsertProp(ms, call.varsArg, "ease", updates.ease);
+      if (kfNode) upsertProp(ms, kfNode, "easeEach", easeValue);
+      else upsertProp(ms, call.varsArg, "ease", easeValue);
     }
     if (updates.extras) {
       for (const [key, value] of Object.entries(updates.extras)) {
@@ -1338,6 +1336,7 @@ export function addAnimationWithKeyframesToScript(
     auto?: boolean;
   }>,
   ease?: string,
+  easeEach?: string,
 ): { script: string; id: string } {
   const parsed = parseGsapScriptAcornForWrite(script);
   if (!parsed) return { script, id: "" };
@@ -1345,7 +1344,7 @@ export function addAnimationWithKeyframesToScript(
   if (insertionPoint === null) return { script, id: "" };
 
   const sorted = [...keyframes].sort((a, b) => a.percentage - b.percentage);
-  const kfObjCode = buildKeyframeObjectCode(sorted);
+  const kfObjCode = buildKeyframeObjectCode(sorted, easeEach);
   const varParts = [`keyframes: ${kfObjCode}`, `duration: ${valueToCode(duration)}`];
   if (ease) varParts.push(`ease: ${JSON.stringify(ease)}`);
   const stmtCode = `${parsed.timelineVar}.to(${JSON.stringify(targetSelector)}, { ${varParts.join(", ")} }, ${valueToCode(position)});`;
