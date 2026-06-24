@@ -45,7 +45,7 @@ node <SKILL_DIR>/scripts/resolve.mjs --type image --intent "gradient tech backgr
 
 # Icon
 node <SKILL_DIR>/scripts/resolve.mjs --type icon --intent "rocket" --project .
-# → resolved icon_001 → .media/images/icon_001.svg (icon, transparent)
+# → resolved icon_001 → .media/images/icon_001.png (icon, transparent)
 ```
 
 ### Flags
@@ -93,7 +93,7 @@ id         type   dur   dims       path                          description
 bgm_001    bgm    25s   —          .media/audio/bgm/bgm_001.mp3  upbeat tech launch
 sfx_001    sfx    0.6s  —          .media/audio/sfx/sfx_001.mp3  whoosh
 image_001  image  —     1920×1080  .media/images/image_001.jpg   gradient tech background
-icon_001   icon   —     svg        .media/images/icon_001.svg    rocket
+icon_001   icon   —     200×200    .media/images/icon_001.png    rocket
 ```
 
 ## Cross-project reuse
@@ -112,3 +112,13 @@ Assets are cached automatically on resolve. Subsequent resolves for the same pro
 | --------- | ------------------------------------------ | ------------- |
 | `ffprobe` | Probe duration, dimensions, codec on adopt | Yes           |
 | `heygen`  | Audio catalog, asset search                | For providers |
+
+Install the `heygen` CLI (single static binary, no runtime) and authenticate:
+
+```bash
+curl -fsSL https://static.heygen.ai/cli/install.sh | bash   # installs latest to ~/.local/bin
+heygen update                                               # if already installed: needs >= v0.1.6
+export HEYGEN_API_KEY=<your-key>                            # or: heygen auth login --key <key>
+```
+
+Requires **heygen >= v0.1.6** — the providers tag requests with the allowlisted `--headers 'X-HeyGen-Client-Source: media-use'` flag, added in v0.1.6. `asset search` is a pre-launch command hidden from `heygen --help`, but it runs. Without a `heygen` on PATH (or a valid key) the providers print a one-line diagnostic to stderr and resolve falls through to "no provider could resolve".

@@ -8,7 +8,7 @@ export const bgmProvider = {
     return {
       url: best.audio_url,
       source: "search",
-      ext: ".mp3",
+      // ext derived from audio_url by resolve.mjs — catalog tracks are .mp3 or .wav
       metadata: {
         description: best.description || intent,
         duration: best.duration || null,
