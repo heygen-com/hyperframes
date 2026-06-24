@@ -37,6 +37,22 @@ function isCompositionRootOrMount(rawTag: string): boolean {
   );
 }
 
+// Asset references inside CSS `url(...)`/`url("...")`/`url('...')` functions.
+// Returns the inner path without quotes; comments are stripped first so
+// `/* url(foo) */` is ignored. Bare `url()` and `data:` are excluded by the
+// rules that consume this — the helper just yields raw URL values.
+function extractCssUrlReferences(css: string): string[] {
+  const out: string[] = [];
+  const noComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const urlPattern = /\burl\(\s*(["']?)([^)"']+)\1\s*\)/g;
+  let m: RegExpExecArray | null;
+  while ((m = urlPattern.exec(noComments)) !== null) {
+    const raw = (m[2] ?? "").trim();
+    if (raw) out.push(raw);
+  }
+  return out;
+}
+
 // Top-level CSS selectors (comma-split) in a stylesheet, skipping at-rule headers
 // (@media/@keyframes/...) and keyframe stops. Heuristic — the lint layer has no
 // full CSS parser, and rules elsewhere in this file scan CSS the same way.
@@ -77,22 +93,71 @@ function rootClassStyledSelectors(styles: ExtractedBlock[], rootClasses: string[
 }
 
 export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
-  // invalid_capture_path — catches ../capture/ in src/href attributes and scripts.
-  // Sub-compositions live in compositions/ but are served relative to the project
-  // root, so all asset paths must be root-relative ("capture/...").
-  // Using "../capture/..." works on disk but breaks in Studio and renders.
-  ({ rawSource, options }) => {
+  // invalid_parent_traversal_in_asset_path — catches `../` traversal in src,
+  // href, inline-style url(), and <style> url() asset references on
+  // compositions. Sub-compositions live under compositions/ but are served
+  // with the project root as their base URL, so any `../`-traversing path
+  // climbs above the project root and 404s in Studio preview. Renders
+  // tolerate it because the server-side bundler rewrites `../foo` against
+  // each sub-composition's source path; the runtime now mirrors that fallback
+  // (see rewriteSubCompositionAssetPaths in runtime/compositionLoader.ts), but
+  // the authoring-time signal is still wrong — flag it at lint time so the
+  // baked path is plain root-relative and matches what the bundler emits.
+  //
+  // Mirrors the runtime fallback's surface: `[src]` / `[href]` attribute
+  // values, `[style]` inline url(), and `<style>` block url() references.
+  // Skips absolute URLs (http(s)://, //, data:, /-prefixed root-relative),
+  // hash anchors, and plain relative paths (`assets/x.mp4`) — only `../`
+  // traversal is flagged. Subsumes the older `../capture/`-specific rule.
+  // fallow-ignore-next-line complexity
+  ({ tags, styles, rawSource, options }) => {
     if (isRegistrySourceFile(options.filePath) || isRegistryInstalledFile(rawSource)) return [];
-    // Only flag in sub-compositions and root compositions — not in registry blocks
-    const matches = rawSource.match(/\.\.\/capture\//g);
-    if (!matches || matches.length === 0) return [];
+
+    const offenders: string[] = [];
+    const collect = (value: string | null) => {
+      if (!value) return;
+      const trimmed = value.trim();
+      if (!trimmed.startsWith("../") && trimmed !== "..") return;
+      offenders.push(trimmed);
+    };
+
+    for (const tag of tags) {
+      collect(readAttr(tag.raw, "src"));
+      collect(readAttr(tag.raw, "href"));
+      // Use readJsonAttr for `style` — inline url('...') values contain the
+      // opposite quote, which readAttr's [^"']+ class would truncate.
+      const styleAttr = readJsonAttr(tag.raw, "style");
+      if (styleAttr) {
+        for (const url of extractCssUrlReferences(styleAttr)) collect(url);
+      }
+    }
+    for (const style of styles) {
+      for (const url of extractCssUrlReferences(style.content)) collect(url);
+    }
+
+    if (offenders.length === 0) return [];
+
+    // Group counts by leading path token (e.g. ../capture/, ../assets/, ../../assets/)
+    // so the message names the offending prefixes instead of a bare count.
+    const prefixCounts = new Map<string, number>();
+    for (const path of offenders) {
+      const prefix = path.match(/^(?:\.\.\/)+[^/]+\//)?.[0] ?? path;
+      prefixCounts.set(prefix, (prefixCounts.get(prefix) ?? 0) + 1);
+    }
+    const prefixSummary = Array.from(prefixCounts.entries())
+      .sort(([, a], [, b]) => b - a)
+      .map(([prefix, count]) => (count > 1 ? `${prefix} (${count})` : prefix))
+      .join(", ");
+
     return [
       {
-        code: "invalid_capture_path",
+        code: "invalid_parent_traversal_in_asset_path",
         severity: "error",
-        message: `Found ${matches.length} asset path(s) using ../capture/ — will 404 in Studio and renders.`,
+        message:
+          `Found ${offenders.length} asset path(s) traversing above the project root with "../" ` +
+          `(${prefixSummary}). Renders rewrite this against each sub-composition's source path, but Studio preview and other live consumers resolve against the project root and 404.`,
         fixHint:
-          'Replace all "../capture/" with "capture/" throughout this file. Compositions are served with the project root as their base URL, so paths must be root-relative, not relative to the compositions/ directory.',
+          'Use plain root-relative paths (e.g. "assets/...", "capture/...", "fonts/...") — compositions are served with the project root as their base URL, so paths must be root-relative, not relative to the compositions/ directory.',
       },
     ];
   },
