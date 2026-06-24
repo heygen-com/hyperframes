@@ -63,4 +63,32 @@ describe("lintHyperframeHtml — orchestrator", () => {
     );
     expect(missing).toHaveLength(0);
   });
+
+  it("ignores comments that mention template tags before the real template", async () => {
+    const html = `<!doctype html>
+<html>
+  <head>
+    <!-- Authoring note: styles and scripts live inside <template>. -->
+  </head>
+  <body>
+    <template id="my-comp-template">
+      <style>#root { width: 1920px; height: 1080px; }</style>
+      <div data-composition-id="my-comp" data-width="1920" data-height="1080">
+        <div id="stage"></div>
+      </div>
+      <script>
+        window.__timelines = window.__timelines || {};
+        const tl = gsap.timeline({ paused: true });
+        tl.to("#stage", { opacity: 1, duration: 1 }, 0);
+        window.__timelines["my-comp"] = tl;
+      </script>
+    </template>
+  </body>
+</html>`;
+    const result = await lintHyperframeHtml(html, { filePath: "compositions/my-comp.html" });
+    const rootFindings = result.findings.filter(
+      (f) => f.code === "root_missing_composition_id" || f.code === "root_missing_dimensions",
+    );
+    expect(rootFindings).toHaveLength(0);
+  });
 });

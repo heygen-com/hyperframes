@@ -15,8 +15,9 @@
 //   node captions.mjs build --storyboard ./STORYBOARD.md --audio-meta ./audio_meta.json --hyperframes . --out ./caption_groups.json
 //
 // CAPTION LOOK — two sources, picked automatically:
-//   1. PRESET SKIN (preferred). If a project-local `caption-skin.html` exists (Step 2
-//      copies the chosen frame-preset's skin into the project), it is the caption look.
+//   1. PRESET SKIN (preferred). If a project-local `.hyperframes/caption-skin.html`
+//      exists (Step 2 copies the chosen frame-preset's skin into the project), it is
+//      the caption look.
 //      It is a brand-token-strict skin with three reserved holes; this script fills them
 //      and wraps the result in a <template> for the engine:
 //        - `var GROUPS = [];`            → the computed caption groups
@@ -68,7 +69,12 @@ function runBuild(argv) {
   const outPath = resolve(flag(argv, "out", join(hyperframesDir, "caption_groups.json")));
   const htmlPath = join(hyperframesDir, "compositions/captions.html");
   const overridesPath = join(hyperframesDir, "caption-overrides.json");
-  const skinPath = resolve(flag(argv, "skin", join(hyperframesDir, "caption-skin.html")));
+  const skinArg = flag(argv, "skin", null);
+  const hiddenSkinPath = join(hyperframesDir, ".hyperframes", "caption-skin.html");
+  const legacySkinPath = join(hyperframesDir, "caption-skin.html");
+  const skinPath = resolve(
+    skinArg ?? (existsSync(hiddenSkinPath) ? hiddenSkinPath : legacySkinPath),
+  );
   const framePath = resolve(flag(argv, "frame", join(hyperframesDir, "frame.md")));
 
   if (!existsSync(storyboardPath)) die(`STORYBOARD.md not found at ${storyboardPath}`);

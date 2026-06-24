@@ -68,9 +68,9 @@ The style is fixed — **claude** (warm editorial; a navy code surface built for
 node <SKILL_DIR>/scripts/build-frame.mjs --preset claude --hyperframes .
 ```
 
-The script copies the claude preset's `FRAME.md` → `frame.md`, remixes it onto any brand tokens in `capture/extracted/tokens.json` (a PR has none → `colors:[]`/`fonts:[]` keeps claude's own palette, a complete design), copies the preset's `caption-skin.html`, and self-validates (exits 1 on a broken mapping). Proceed as soon as it exits 0 — no hand-editing.
+The script copies the claude preset's `FRAME.md` → `frame.md`, remixes it onto any brand tokens in `capture/extracted/tokens.json` (a PR has none → `colors:[]`/`fonts:[]` keeps claude's own palette, a complete design), copies the preset's caption skin to `.hyperframes/caption-skin.html`, and self-validates (exits 1 on a broken mapping). Proceed as soon as it exits 0 — no hand-editing.
 
-**Gate:** `build-frame.mjs` exited 0 — `frame.md` exists from the claude preset, and `caption-skin.html` is at the project root.
+**Gate:** `build-frame.mjs` exited 0 — `frame.md` exists from the claude preset, and `.hyperframes/caption-skin.html` exists as the caption skin source.
 
 ---
 
@@ -146,7 +146,7 @@ After audio timings exist, build captions in the background and assemble the ind
 
 `node <SKILL_DIR>/scripts/assemble-index.mjs --storyboard ./STORYBOARD.md --hyperframes .`
 
-`captions.mjs` uses the project's `caption-skin.html` (claude's, copied in Step 2), injecting brand tokens from `frame.md`; `captions: skipped (<reason>)` is valid. `assemble-index.mjs` stages the credits avatars from `assets/` as an idempotent backstop.
+`captions.mjs` uses the project's `.hyperframes/caption-skin.html` (claude's, copied in Step 2), injecting brand tokens from `frame.md`; `captions: skipped (<reason>)` is valid. `assemble-index.mjs` stages the credits avatars from `assets/` as an idempotent backstop.
 
 **Gate:** every frame is marked `animated`, `index.html` exists, and captions are built or explicitly skipped.
 

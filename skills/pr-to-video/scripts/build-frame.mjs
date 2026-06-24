@@ -19,7 +19,7 @@
 //   fonts  — the preset's display family → the brand display font, its body family →
 //            the brand body font, wherever they appear. Empty brand fonts → kept.
 
-import { copyFileSync, existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -214,8 +214,10 @@ if (brandColors.length && presetColors.length) {
       }
       if (inBlock && /^\S/.test(line)) inBlock = false;
       if (!inBlock) return line;
-      const m = line.match(/^(\s+)([\w-]+):\s*["']?[^"'\n]*["']?\s*$/);
-      if (m && newByKey.has(m[2])) return `${m[1]}${m[2]}: "${newByKey.get(m[2])}"`;
+      const m = line.match(
+        /^(\s+)([\w-]+):\s*(?:"[^"]*"|'[^']*'|#[0-9a-fA-F]{3,8}|rgba?\([^)]*\)|[^#\n]*?)(\s+#.*)?$/,
+      );
+      if (m && newByKey.has(m[2])) return `${m[1]}${m[2]}: "${newByKey.get(m[2])}"${m[3] ?? ""}`;
       return line;
     })
     .join("\n");
@@ -254,7 +256,9 @@ writeFileSync(framePath, md);
 const presetSkin = join(presetDir, presetName, "caption-skin.html");
 let skinCopied = false;
 if (existsSync(presetSkin)) {
-  copyFileSync(presetSkin, join(hyperframesDir, "caption-skin.html"));
+  const skinDir = join(hyperframesDir, ".hyperframes");
+  mkdirSync(skinDir, { recursive: true });
+  copyFileSync(presetSkin, join(skinDir, "caption-skin.html"));
   skinCopied = true;
 }
 
@@ -275,6 +279,6 @@ if (li != null && lc != null && li >= lc) {
 console.log(`✓ build-frame: ${presetName} → ${framePath}`);
 for (const s of summary) console.log(`  ${s}`);
 console.log(
-  `  caption-skin.html: ${skinCopied ? "copied" : "preset ships none — captions will use the default pill"}`,
+  `  .hyperframes/caption-skin.html: ${skinCopied ? "copied" : "preset ships none — captions will use the default pill"}`,
 );
 console.log(`  self-check: keys preserved, ink darker than canvas ✓`);

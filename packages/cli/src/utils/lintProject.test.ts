@@ -906,6 +906,19 @@ describe("multiple_root_compositions", () => {
     expect(finding).toBeUndefined();
   });
 
+  it("ignores root-level caption-skin.html source files", async () => {
+    const project = makeProject(validHtml());
+    writeFileSync(
+      join(project.dir, "caption-skin.html"),
+      '<div data-composition-id="captions" data-width="0" data-height="0"></div>',
+    );
+    const { results } = await lintProject(project);
+    const finding = results[0]?.result.findings.find(
+      (f) => f.code === "multiple_root_compositions",
+    );
+    expect(finding).toBeUndefined();
+  });
+
   it("ignores HTML files without data-composition-id", async () => {
     const project = makeProject(validHtml());
     writeFileSync(join(project.dir, "readme.html"), "<html><body>Not a composition</body></html>");

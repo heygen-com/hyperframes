@@ -29,7 +29,7 @@ export type { HyperframeLintFinding };
 
 export function buildLintContext(html: string, options: HyperframeLinterOptions = {}): LintContext {
   const rawSource = html || "";
-  let source = rawSource;
+  let source = rawSource.replace(/<!--[\s\S]*?-->/g, "");
   const templateMatch = source.match(/<template[^>]*>([\s\S]*)<\/template>/i);
   if (templateMatch?.[1]) source = templateMatch[1];
 

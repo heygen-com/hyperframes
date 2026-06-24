@@ -477,6 +477,7 @@ function lintMultipleRootCompositions(projectDir: string): HyperframeLintFinding
     const rootHtmlFiles = readdirSync(projectDir).filter((f) => f.endsWith(".html"));
     const rootCompositions: string[] = [];
     for (const file of rootHtmlFiles) {
+      if (file === "caption-skin.html") continue;
       const content = readFileSync(join(projectDir, file), "utf-8");
       if (/data-composition-id/i.test(content)) {
         rootCompositions.push(file);
