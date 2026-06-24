@@ -234,6 +234,55 @@ export const PropertyPanel = memo(function PropertyPanel({
   const displayH = gsapRuntimeValues?.height ?? resolvedHeight;
   const displayR = gsapRuntimeValues?.rotation ?? manualRotation.angle;
 
+  // fallow-ignore-next-line complexity -- pre-existing copy-element-info handler, extracted from JSX
+  const handleCopyElementInfo = () => {
+    const file = element.sourceFile ?? "index.html";
+    let lineNum: number | null = null;
+    try {
+      const src = previewIframeRef?.current?.contentDocument?.documentElement?.outerHTML ?? "";
+      if (src && element.id) {
+        const idx = src.indexOf(`id="${element.id}"`);
+        if (idx > -1) lineNum = src.slice(0, idx).split("\n").length;
+      }
+      if (!lineNum && element.selector) {
+        const tag = element.tagName.toLowerCase();
+        const cls = element.selector.startsWith(".")
+          ? element.selector.slice(1).split(".")[0]
+          : null;
+        const search = cls ? `class="${cls}` : `<${tag}`;
+        const idx = src.indexOf(search);
+        if (idx > -1) lineNum = src.slice(0, idx).split("\n").length;
+      }
+    } catch {}
+    const fileLoc = lineNum ? `${file}:${lineNum}` : file;
+    const lines = [
+      `Element: ${element.label} (${sourceLabel})`,
+      `File: ${fileLoc}`,
+      `Position: x=${Math.round(element.boundingBox.x)}, y=${Math.round(element.boundingBox.y)}`,
+      `Size: ${Math.round(element.boundingBox.width)}×${Math.round(element.boundingBox.height)}`,
+      `Tag: <${element.tagName}>`,
+    ];
+    if (element.computedStyles["z-index"] && element.computedStyles["z-index"] !== "auto") {
+      lines.push(`Z-index: ${element.computedStyles["z-index"]}`);
+    }
+    if (gsapAnimations.length > 0) {
+      const anim = gsapAnimations[0];
+      lines.push(
+        `Animation: ${anim.method}() ${anim.duration}s at ${anim.position}s, ease: ${anim.ease ?? "default"}`,
+      );
+      const props = Object.entries(anim.properties)
+        .map(([k, v]) => `${k}: ${v}`)
+        .join(", ");
+      if (props) lines.push(`Properties: ${props}`);
+    }
+    const text = lines.join("\n");
+    void navigator.clipboard.writeText(text);
+    showToast(`Copied element info for ${element.label} — paste into any AI agent`, "info");
+    setClipboardCopied(true);
+    clearTimeout(clipboardTimerRef.current);
+    clipboardTimerRef.current = setTimeout(() => setClipboardCopied(false), 1500);
+  };
+
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-panel-bg text-panel-text-1">
       <div className="px-4 py-3">
@@ -247,60 +296,7 @@ export const PropertyPanel = memo(function PropertyPanel({
           <div className="flex items-center gap-1">
             <button
               type="button"
-              onClick={() => {
-                const file = element.sourceFile ?? "index.html";
-                let lineNum: number | null = null;
-                try {
-                  const src =
-                    previewIframeRef?.current?.contentDocument?.documentElement?.outerHTML ?? "";
-                  if (src && element.id) {
-                    const idx = src.indexOf(`id="${element.id}"`);
-                    if (idx > -1) lineNum = src.slice(0, idx).split("\n").length;
-                  }
-                  if (!lineNum && element.selector) {
-                    const tag = element.tagName.toLowerCase();
-                    const cls = element.selector.startsWith(".")
-                      ? element.selector.slice(1).split(".")[0]
-                      : null;
-                    const search = cls ? `class="${cls}` : `<${tag}`;
-                    const idx = src.indexOf(search);
-                    if (idx > -1) lineNum = src.slice(0, idx).split("\n").length;
-                  }
-                } catch {}
-                const fileLoc = lineNum ? `${file}:${lineNum}` : file;
-                const lines = [
-                  `Element: ${element.label} (${sourceLabel})`,
-                  `File: ${fileLoc}`,
-                  `Position: x=${Math.round(element.boundingBox.x)}, y=${Math.round(element.boundingBox.y)}`,
-                  `Size: ${Math.round(element.boundingBox.width)}×${Math.round(element.boundingBox.height)}`,
-                  `Tag: <${element.tagName}>`,
-                ];
-                if (
-                  element.computedStyles["z-index"] &&
-                  element.computedStyles["z-index"] !== "auto"
-                ) {
-                  lines.push(`Z-index: ${element.computedStyles["z-index"]}`);
-                }
-                if (gsapAnimations.length > 0) {
-                  const anim = gsapAnimations[0];
-                  lines.push(
-                    `Animation: ${anim.method}() ${anim.duration}s at ${anim.position}s, ease: ${anim.ease ?? "default"}`,
-                  );
-                  const props = Object.entries(anim.properties)
-                    .map(([k, v]) => `${k}: ${v}`)
-                    .join(", ");
-                  if (props) lines.push(`Properties: ${props}`);
-                }
-                const text = lines.join("\n");
-                void navigator.clipboard.writeText(text);
-                showToast(
-                  `Copied element info for ${element.label} — paste into any AI agent`,
-                  "info",
-                );
-                setClipboardCopied(true);
-                clearTimeout(clipboardTimerRef.current);
-                clipboardTimerRef.current = setTimeout(() => setClipboardCopied(false), 1500);
-              }}
+              onClick={handleCopyElementInfo}
               className={`flex h-6 w-6 items-center justify-center rounded transition-colors ${
                 clipboardCopied
                   ? "text-studio-accent"
