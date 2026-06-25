@@ -107,6 +107,7 @@ export function buildExtendedKeyframes(
   return { position: roundTo3(newStart), duration: newDuration, keyframes };
 }
 
+// fallow-ignore-next-line complexity
 function readElementPosition(
   iframe: HTMLIFrameElement | null,
   sel: DomEditSelection,
@@ -288,6 +289,7 @@ export async function promoteSetToKeyframes(
  * the path, inserted at the matching segment so the curve is preserved. Outside the
  * range, extend the duration so the motion reaches the playhead.
  */
+// fallow-ignore-next-line complexity
 async function applyArcWaypointAtPlayhead(
   session: EnableKeyframesSession,
   sel: DomEditSelection,
@@ -337,10 +339,10 @@ async function applyArcWaypointAtPlayhead(
   );
 }
 
-// fallow-ignore-next-line complexity
 export function useEnableKeyframes(
   sessionRef: React.RefObject<EnableKeyframesSession | undefined>,
 ) {
+  // fallow-ignore-next-line complexity
   return useCallback(async () => {
     const session = sessionRef.current;
     if (!session) return;

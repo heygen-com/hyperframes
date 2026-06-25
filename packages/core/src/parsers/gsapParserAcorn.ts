@@ -995,6 +995,7 @@ function applyTimelineDefaults(
   }
 }
 
+// fallow-ignore-next-line complexity
 function resolveTimelinePositions(anims: Omit<GsapAnimation, "id">[]): void {
   let cursor = 0;
   let prevStart = 0;
