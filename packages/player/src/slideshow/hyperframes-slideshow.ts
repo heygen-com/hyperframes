@@ -167,6 +167,7 @@ export class HyperframesSlideshow extends HTMLElement {
   private initGeneration = 0;
   private _muted = false;
   private mediaWireInterval: ReturnType<typeof setInterval> | null = null;
+  private playerObserver: MutationObserver | null = null;
   private applyingRemoteMedia = false;
   private lastMediaTimeBroadcastMs = 0;
   private audienceMutedPlaybackKeys = new Set<string>();
@@ -215,6 +216,7 @@ export class HyperframesSlideshow extends HTMLElement {
     window.addEventListener("message", this.onMessage);
     document.addEventListener("fullscreenchange", this.onFsChange);
     this.initChannel();
+    this.observeInteractivePlayers();
     // Defer player-dependent init to a macrotask so that child elements are
     // parsed before we query for <hyperframes-player>. This matters when the
     // bundle is loaded synchronously (e.g. <script src> in <head>), where
@@ -225,7 +227,10 @@ export class HyperframesSlideshow extends HTMLElement {
     // setTimeout(0) macrotask yields to the parser so the children land first.
     this.initTimer = setTimeout(() => {
       this.initTimer = null;
-      if (this.isConnected && !this.disconnected) void this.init();
+      if (this.isConnected && !this.disconnected) {
+        this.ensureInteractivePlayers();
+        void this.init();
+      }
     }, 0);
   }
 
@@ -251,6 +256,10 @@ export class HyperframesSlideshow extends HTMLElement {
     if (this.mediaWireInterval !== null) {
       clearInterval(this.mediaWireInterval);
       this.mediaWireInterval = null;
+    }
+    if (this.playerObserver !== null) {
+      this.playerObserver.disconnect();
+      this.playerObserver = null;
     }
     this.audienceMediaUnlockButton?.remove();
     this.audienceMediaUnlockButton = null;
@@ -488,6 +497,36 @@ export class HyperframesSlideshow extends HTMLElement {
     return Array.from(this.querySelectorAll("hyperframes-player")).filter(
       (player): player is Partial<PlayerElement> & HTMLElement => player instanceof HTMLElement,
     );
+  }
+
+  /**
+   * Inner `<hyperframes-player>` instances inside a slideshow need the
+   * `interactive` attribute so clickable controls, links, native media
+   * controls, and custom players inside the composition iframe receive
+   * pointer events (the player's default is `pointer-events: none`).
+   *
+   * Set it mechanically so authors / agents don't have to remember.
+   * Idempotent: if the host already declared `interactive` (any value,
+   * including `interactive="false"`), it is preserved.
+   */
+  private ensureInteractivePlayers(): void {
+    for (const player of this.querySelectorAll("hyperframes-player")) {
+      if (!player.hasAttribute("interactive")) {
+        player.setAttribute("interactive", "");
+      }
+    }
+  }
+
+  /**
+   * Watch for `<hyperframes-player>` children added after the initial mount
+   * (dynamic templating, hydration, drag-drop authoring) and apply the
+   * `interactive` attribute to those too.
+   */
+  private observeInteractivePlayers(): void {
+    if (typeof MutationObserver === "undefined") return;
+    if (this.playerObserver !== null) return;
+    this.playerObserver = new MutationObserver(() => this.ensureInteractivePlayers());
+    this.playerObserver.observe(this, { childList: true, subtree: true });
   }
 
   private playerFrameDocument(player: Partial<PlayerElement> & HTMLElement): Document | null {

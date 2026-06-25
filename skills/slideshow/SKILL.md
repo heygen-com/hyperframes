@@ -401,13 +401,13 @@ Wrap the composition in `<hyperframes-slideshow>` around `<hyperframes-player>` 
 
 ```html
 <hyperframes-slideshow>
-  <hyperframes-player interactive src="deck.html"></hyperframes-player>
+  <hyperframes-player src="deck.html"></hyperframes-player>
 </hyperframes-slideshow>
 ```
 
 `<hyperframes-slideshow>` provides the navigation chrome (Present, Prev / Next, counter, global mute when `sound` is present, fullscreen), keyboard handling (← / →, Space / Backspace, and P for Present), touch swipe, and hotspot overlays.
 
-Use the `interactive` attribute whenever the source page contains clickable controls, links, native media controls, or custom players. Without it, `<hyperframes-player>` intentionally blocks iframe pointer events; media controls inside the composition cannot be clicked, and clicks on the player host can toggle timeline playback instead of interacting with the slide content.
+The slideshow automatically sets the `interactive` attribute on every inner `<hyperframes-player>` at mount time, so clickable controls, links, native media controls, and custom players inside the composition iframe receive pointer events as expected. (Outside a slideshow wrapper, you must add `interactive` manually on `<hyperframes-player>` — the player defaults to `pointer-events: none` on the iframe so clicks on the player host don't get hijacked into toggling timeline playback.)
 
 **Presenter mode:** use the built-in Present icon button in the slideshow nav capsule, or press P. It calls `window.open('?mode=audience')` for a fullscreen audience window; the originating tab becomes the presenter view (current slide reduced, next-slide preview, notes, elapsed timer). Both windows sync via `BroadcastChannel('hf-slideshow:' + location.pathname)`. Do not add a custom wrapper-level Present button; the shared component owns its placement, icon, styling, and audience-mode hiding.
 
