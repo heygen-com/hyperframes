@@ -7,6 +7,7 @@ import type { CompiledComposition } from "./htmlCompiler.js";
 
 import {
   buildMissingFrameRetryBatches,
+  captureAttemptMadeProgress,
   collectVideoMetadataHints,
   collectVideoReadinessSkipIds,
   extractStandaloneEntryFromIndex,
@@ -92,6 +93,21 @@ describe("extractStandaloneEntryFromIndex", () => {
     const extracted = extractStandaloneEntryFromIndex(indexHtml, "compositions/outro.html");
 
     expect(extracted).toBeNull();
+  });
+});
+
+describe("captureAttemptMadeProgress", () => {
+  it("retries when the attempt captured at least one frame toward its target", () => {
+    // targeted 100 frames, 40 still missing -> 60 captured -> worth retrying the rest
+    expect(captureAttemptMadeProgress(100, 40)).toBe(true);
+    expect(captureAttemptMadeProgress(100, 99)).toBe(true);
+  });
+
+  it("bails when the attempt captured nothing (structurally broken composition)", () => {
+    // targeted 100 frames, 100 still missing -> zero progress -> don't burn another timeout cycle
+    expect(captureAttemptMadeProgress(100, 100)).toBe(false);
+    // defensive: never-greater-than guard, treat >= target as no progress
+    expect(captureAttemptMadeProgress(100, 120)).toBe(false);
   });
 });
 
