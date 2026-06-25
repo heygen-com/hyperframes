@@ -21,6 +21,7 @@ import {
   useSafeGsapCommitMutation,
 } from "./useSafeGsapCommitMutation";
 import type { CommitMutation } from "./gsapScriptCommitTypes";
+import type { DomEditGroupPathOffsetCommit } from "../components/editor/DomEditOverlay";
 import { logPos } from "../utils/debugPos";
 
 export interface UseGsapAwareEditingParams {
@@ -100,7 +101,9 @@ export function useGsapAwareEditing({
       logPos("single-gsap", {
         target: selection.id ?? selection.selector ?? "?",
         hasGsapCommit: !!gsapCommitMutation,
-        path: gsapCommitMutation ? "GSAP code path (tryGsapDragIntercept)" : "NO-OP (no gsap commit)",
+        path: gsapCommitMutation
+          ? "GSAP code path (tryGsapDragIntercept)"
+          : "NO-OP (no gsap commit)",
       });
       if (gsapCommitMutation) {
         try {
@@ -126,6 +129,33 @@ export function useGsapAwareEditing({
       makeFetchFallback,
       trackGsapInteractionFailure,
     ],
+  );
+
+  // Multi-select (group) drag: route EACH element through the SAME GSAP intercept as
+  // a single drag, so every position is written as GSAP code (tl.set / keyframes /
+  // gsap.set) — NEVER the deprecated `--hf-studio-offset` CSS var, and GSAP-animated
+  // elements are no longer blocked in a group. No CSS fallback: with no GSAP
+  // composition there's nothing to write (a no-op, exactly like the single-drag path).
+  const handleGsapAwareGroupPathOffsetCommit = useCallback(
+    async (updates: DomEditGroupPathOffsetCommit[]) => {
+      if (!gsapCommitMutation) return;
+      for (const { selection, next } of updates) {
+        try {
+          await tryGsapDragIntercept(
+            selection,
+            next,
+            [],
+            previewIframeRef.current,
+            gsapCommitMutation,
+            makeFetchFallback(selection),
+          );
+        } catch (error) {
+          trackGsapInteractionFailure(error, selection, "drag", "Move animated layer (group)");
+          throw error;
+        }
+      }
+    },
+    [gsapCommitMutation, previewIframeRef, makeFetchFallback, trackGsapInteractionFailure],
   );
 
   const handleGsapAwareBoxSizeCommit = useCallback(
@@ -252,6 +282,7 @@ export function useGsapAwareEditing({
 
   return {
     handleGsapAwarePathOffsetCommit,
+    handleGsapAwareGroupPathOffsetCommit,
     handleGsapAwareBoxSizeCommit,
     handleGsapAwareRotationCommit,
     commitAnimatedProperty,

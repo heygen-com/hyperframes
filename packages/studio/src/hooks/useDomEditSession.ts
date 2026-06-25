@@ -215,7 +215,6 @@ export function useDomEditSession({
     handleDomTextFieldStyleCommit,
     handleDomAddTextField,
     handleDomRemoveTextField,
-    handleDomGroupPathOffsetCommit,
     handleDomBoxSizeCommit,
     handleDomManualEditsReset,
     handleDomEditElementDelete,
@@ -368,6 +367,7 @@ export function useDomEditSession({
 
   const {
     handleGsapAwarePathOffsetCommit,
+    handleGsapAwareGroupPathOffsetCommit,
     handleGsapAwareBoxSizeCommit,
     handleGsapAwareRotationCommit,
     commitAnimatedProperty,
@@ -453,7 +453,7 @@ export function useDomEditSession({
     handleDomAttributeLiveCommit,
     handleDomHtmlAttributeCommit,
     handleDomPathOffsetCommit: handleGsapAwarePathOffsetCommit,
-    handleDomGroupPathOffsetCommit,
+    handleDomGroupPathOffsetCommit: handleGsapAwareGroupPathOffsetCommit,
     handleDomZIndexReorderCommit,
     handleDomBoxSizeCommit: handleGsapAwareBoxSizeCommit,
     handleDomRotationCommit: handleGsapAwareRotationCommit,

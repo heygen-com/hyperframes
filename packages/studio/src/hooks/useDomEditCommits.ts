@@ -301,7 +301,6 @@ export function useDomEditCommits({
 
   const {
     handleDomPathOffsetCommit,
-    handleDomGroupPathOffsetCommit,
     handleDomBoxSizeCommit,
     handleDomRotationCommit,
     handleDomManualEditsReset,
@@ -340,7 +339,6 @@ export function useDomEditCommits({
     handleDomAddTextField,
     handleDomRemoveTextField,
     handleDomPathOffsetCommit,
-    handleDomGroupPathOffsetCommit,
     handleDomBoxSizeCommit,
     handleDomRotationCommit,
     handleDomManualEditsReset,
