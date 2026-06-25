@@ -57,6 +57,30 @@ export function parseAngle(a?: string): Camera {
   return { yaw: Number.isFinite(y) ? y! : 0, pitch: Number.isFinite(p) ? p! : 0 };
 }
 
+/** Resolve which animated selectors a `--shot --selector SCOPE` should sample.
+ *
+ * The scope element is often a STATIC wrapper (the standard `.clip` root) whose
+ * animated CHILDREN carry the tweens — so a literal match against animated
+ * targets finds nothing. We fall back to the animated descendants of the scope:
+ *
+ *   1. scope itself is animated            → sample just scope (exact selection)
+ *   2. scope is static but has animated     → sample those descendants
+ *      descendants (e.g. `.clip` wrapper)
+ *   3. scope contains nothing animated      → sample [] (caller errors, naming
+ *                                             the nearest animated elements)
+ *
+ * `isDescendant(scope, target)` is supplied by the caller (DOM-aware in the
+ * browser); kept as a param so this decision is pure and unit-testable.
+ */
+export function resolveShotSelectors(
+  scope: string,
+  animated: string[],
+  isDescendant: (scope: string, target: string) => boolean,
+): string[] {
+  if (animated.includes(scope)) return [scope];
+  return animated.filter((target) => isDescendant(scope, target));
+}
+
 /** N equal-time sample points across [from?, to?] within [0, dur]. */
 export function sampleTimes(
   dur: number,

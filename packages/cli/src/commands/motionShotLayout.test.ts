@@ -3,10 +3,42 @@ import {
   buildOnionSvg,
   fitTransform,
   parseAngle,
+  resolveShotSelectors,
   sampleTimes,
   stripCells,
   type OnionElement,
 } from "./motionShotLayout.js";
+
+describe("resolveShotSelectors", () => {
+  const animated = [".title", ".cube", ".floor"];
+
+  it("samples the scope itself when the scope animates", () => {
+    // .cube has its own tween → exact selection, no descendant fallback.
+    const got = resolveShotSelectors(".cube", animated, () => {
+      throw new Error("descendant check should not run when scope animates");
+    });
+    expect(got).toEqual([".cube"]);
+  });
+
+  it("falls back to animated descendants when the scope is a static wrapper", () => {
+    // .clip is the standard composition root: static, but every animated element
+    // lives under it → resolve to all of them (this is VERIFIED BUG #9).
+    const got = resolveShotSelectors(".clip", animated, () => true);
+    expect(got).toEqual([".title", ".cube", ".floor"]);
+  });
+
+  it("keeps only the descendants that are actually under the scope", () => {
+    const underPanel = new Set([".title", ".floor"]);
+    const got = resolveShotSelectors(".panel", animated, (_scope, target) =>
+      underPanel.has(target),
+    );
+    expect(got).toEqual([".title", ".floor"]);
+  });
+
+  it("returns [] when nothing animates under the scope (caller errors)", () => {
+    expect(resolveShotSelectors(".empty", animated, () => false)).toEqual([]);
+  });
+});
 
 describe("sampleTimes", () => {
   it("spreads N equal-time steps across the full duration", () => {

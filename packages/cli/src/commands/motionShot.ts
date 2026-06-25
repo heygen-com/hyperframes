@@ -11,11 +11,27 @@
 // (pure, tested); this file only drives the browser and SAMPLES.
 
 import { writeFileSync } from "node:fs";
-import { buildOnionSvg, parseAngle, sampleTimes, type OnionElement } from "./motionShotLayout.js";
+import {
+  buildOnionSvg,
+  parseAngle,
+  resolveShotSelectors,
+  sampleTimes,
+  type OnionElement,
+} from "./motionShotLayout.js";
 
 export interface ShotRequest {
   /** CSS selector of the moving element to sample (e.g. "#dot"). */
   selector: string;
+}
+
+/** Returned by the in-browser selector resolver: which animated selectors a
+ *  `--selector SCOPE` actually resolves to (scope itself, or its descendants),
+ *  plus diagnostic context when nothing under the scope animates. */
+interface ScopeResolution {
+  /** Animated selectors to sample (subset of `requests`). */
+  selectors: string[];
+  /** True when the scope selector matched a real element in the DOM. */
+  scopeExists: boolean;
 }
 
 export interface ShotOptions {
@@ -30,6 +46,10 @@ export interface ShotOptions {
   to?: number | null;
   /** Orbit camera: a preset (front|iso|top|side) or "yaw,pitch" degrees. */
   angle?: string;
+  /** `--selector` scope: when the user focused one element, narrow `requests`
+   *  to that element if it animates, else to its animated descendants (so a
+   *  static `.clip` wrapper resolves to the animated children under it). */
+  scopeSelector?: string | null;
 }
 
 interface PageSample {
@@ -140,14 +160,55 @@ function timelineDuration(page: import("puppeteer-core").Page): Promise<number> 
   });
 }
 
+// In the live DOM, decide which animated selectors fall under `scope`: read
+// whether the scope exists and, for each candidate, whether it is the scope or a
+// descendant of it. The pure decision (motionShotLayout.resolveShotSelectors)
+// runs Node-side on the booleans this returns, so it stays unit-testable.
+async function resolveScopeInBrowser(
+  page: import("puppeteer-core").Page,
+  scope: string,
+  candidates: string[],
+): Promise<ScopeResolution> {
+  const probe = await page.evaluate(
+    (scopeSel: string, cands: string[]) => {
+      let root: Element | null = null;
+      try {
+        root = document.querySelector(scopeSel);
+      } catch {
+        root = null;
+      }
+      const descendant = cands.map((sel) => {
+        if (!root) return false;
+        let el: Element | null = null;
+        try {
+          el = document.querySelector(sel);
+        } catch {
+          return false;
+        }
+        return !!el && (el === root || root.contains(el));
+      });
+      return { scopeExists: !!root, descendant };
+    },
+    scope,
+    candidates,
+  );
+  const selectors = resolveShotSelectors(
+    scope,
+    candidates,
+    (_s, target) => probe.descendant[candidates.indexOf(target)] === true,
+  );
+  return { selectors, scopeExists: probe.scopeExists };
+}
+
 /** Render `projectDir`'s index headless, sample each element's motion as a 3D
  *  onion-skin, screenshot to `outPath` (PNG). Returns the saved path. */
 export async function captureMotionPathShot(
   projectDir: string,
-  requests: ShotRequest[],
+  requestsIn: ShotRequest[],
   outPath: string,
   opts: ShotOptions = {},
 ): Promise<string> {
+  let requests = requestsIn;
   const samples = Math.max(1, Math.min(60, opts.samples ?? 9));
   const layout = opts.layout ?? "path";
   const fit = opts.fit ?? true;
@@ -169,6 +230,31 @@ export async function captureMotionPathShot(
     const opened = await openCompositionPage(server.url, browser.executablePath);
     browserInstance = opened.browser;
     const { page, size } = opened;
+
+    // --selector scope: the focused element is often a STATIC wrapper (`.clip`)
+    // whose animated children carry the tweens. Resolve, in the live DOM, to the
+    // scope itself if it animates, else its animated descendants — so the shot
+    // works on the standard composition shape instead of erroring.
+    if (opts.scopeSelector) {
+      const resolved = await resolveScopeInBrowser(
+        page,
+        opts.scopeSelector,
+        requests.map((r) => r.selector),
+      );
+      if (!resolved.scopeExists) {
+        throw new Error(`--shot: --selector '${opts.scopeSelector}' matched no element.`);
+      }
+      if (resolved.selectors.length === 0) {
+        const nearest = requests
+          .slice(0, 5)
+          .map((r) => r.selector)
+          .join(", ");
+        throw new Error(
+          `--shot: nothing animates under '${opts.scopeSelector}'. Nearest animated elements: ${nearest || "(none)"}.`,
+        );
+      }
+      requests = resolved.selectors.map((selector) => ({ selector }));
+    }
 
     const times = sampleTimes(
       await timelineDuration(page),

@@ -416,11 +416,15 @@ function collectAnimatedSelectors(comps: SurfacedComposition[]): Array<{ selecto
  *  when the command should early-return (a guard failed). */
 async function runOnionShot(
   comps: SurfacedComposition[],
+  allComps: SurfacedComposition[],
   projectDir: string | undefined,
-  args: ShotArgs,
+  args: ShotArgs & { selector?: string },
 ): Promise<boolean> {
   const { captureMotionPathShot } = await import("./motionShot.js");
-  const requests = collectAnimatedSelectors(comps);
+  // With --selector, sample from the FULL animated set and let the browser scope
+  // to the selector (or its animated descendants when the selector is a static
+  // wrapper like `.clip`). Without it, only the (already-filtered) comps qualify.
+  const requests = collectAnimatedSelectors(args.selector ? allComps : comps);
   if (!projectDir) {
     console.log(c.dim("--shot needs a project directory (not a single .html file)."));
     return true;
@@ -436,6 +440,7 @@ async function runOnionShot(
     from: num(args.from),
     to: num(args.to),
     angle: args.angle,
+    scopeSelector: args.selector ?? null,
   });
   console.log(`${c.success("◇")}  onion-skin screenshot saved ${c.accent(saved)}`);
   console.log(
@@ -451,6 +456,7 @@ async function runOnionShot(
 // compositions, applying the optional --selector filter.
 function resolveScope(args: { target?: string; selector?: string }): {
   comps: SurfacedComposition[];
+  allComps: SurfacedComposition[];
   projectName: string;
   projectDir: string | undefined;
 } {
@@ -468,6 +474,10 @@ function resolveScope(args: { target?: string; selector?: string }): {
     projectName = project.name;
     projectDir = project.dir;
   }
+  // allComps keeps the unfiltered set so --shot --selector can resolve a STATIC
+  // wrapper (e.g. `.clip`) to its animated descendants in the live DOM, even
+  // though the literal selector filter (for print/json) drops it to empty.
+  const allComps = comps;
   if (args.selector) {
     const sel = args.selector;
     const matches = (target: string) => target.split(",").some((s) => s.trim() === sel);
@@ -479,7 +489,7 @@ function resolveScope(args: { target?: string; selector?: string }): {
       }))
       .filter((cmp) => cmp.tweens.length > 0 || cmp.traces.length > 0);
   }
-  return { comps, projectName, projectDir };
+  return { comps, allComps, projectName, projectDir };
 }
 
 // Print one composition's traces + tweens (skipping strokes already shown in a trace).
@@ -541,11 +551,11 @@ export default defineCommand({
   },
   async run({ args }) {
     ensureDOMParser();
-    const { comps, projectName, projectDir } = resolveScope(args);
+    const { comps, allComps, projectName, projectDir } = resolveScope(args);
 
     // --shot: 3D onion-skin self-verify screenshot. Returns true when the command
     // should stop (guard failure) so run() stays small.
-    if (args.shot && (await runOnionShot(comps, projectDir, args))) return;
+    if (args.shot && (await runOnionShot(comps, allComps, projectDir, args))) return;
 
     if (args.json) {
       console.log(JSON.stringify(withMeta({ project: projectName, compositions: comps }), null, 2));
