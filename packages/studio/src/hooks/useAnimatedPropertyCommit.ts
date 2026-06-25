@@ -81,6 +81,32 @@ function setInstantPatch(
   return { selector, change: { kind: "set", props: { [property]: value } as SetPatchProps } };
 }
 
+/**
+ * Auto-keyframe a just-updated static `set`: if the element is already animated
+ * (its clip carries keyframes on another tween), convert the set to keyframes so
+ * subsequent edits at other playheads interpolate — matching the drag / resize /
+ * rotate UX. Purely static elements (no other keyframes) are left as a set.
+ */
+async function maybeAutoKeyframeSet(
+  selection: DomEditSelection,
+  setAnim: GsapAnimation,
+  animations: GsapAnimation[],
+  commit: NonNullable<CommitAnimatedPropertyDeps["gsapCommitMutation"]>,
+): Promise<void> {
+  const animatedTween = animations.find((a) => a.keyframes && a.id !== setAnim.id);
+  if (!animatedTween) return;
+  log3d("auto-keyframe", { animationId: setAnim.id, duration: animatedTween.duration ?? 1 });
+  await commit(
+    selection,
+    {
+      type: "convert-to-keyframes",
+      animationId: setAnim.id,
+      duration: animatedTween.duration ?? 1,
+    },
+    { label: "Keyframe 3D transform", softReload: true },
+  );
+}
+
 export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
   const {
     selectedGsapAnimations,
@@ -144,6 +170,7 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
           { type: "update-property", animationId: anim.id, property, value },
           { label: `Set ${property}`, softReload: true, ...(instantPatch ? { instantPatch } : {}) },
         );
+        await maybeAutoKeyframeSet(selection, anim, selectedGsapAnimations, gsapCommitMutation);
         return;
       }
 

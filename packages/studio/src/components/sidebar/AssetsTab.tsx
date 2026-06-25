@@ -396,10 +396,25 @@ export const AssetsTab = memo(function AssetsTab({
     Map<string, { description?: string; duration?: number; width?: number; height?: number }>
   >(new Map());
 
+  // Projects whose media manifest 404'd — most don't have one. Cache the miss so
+  // we don't re-fetch (and spam the console) on every re-render; the effect was
+  // also keyed on the `assets` array reference, which changes each render, so it
+  // re-fired constantly. Key on a stable join + skip known-missing manifests.
+  const manifest404Ref = useRef<Set<string>>(new Set());
+  const assetsKey = assets.join("|");
   useEffect(() => {
+    if (manifest404Ref.current.has(projectId)) return;
+    let cancelled = false;
     fetch(`/api/projects/${projectId}/preview/.media/manifest.jsonl`)
-      .then((r) => (r.ok ? r.text() : ""))
+      .then((r) => {
+        if (!r.ok) {
+          manifest404Ref.current.add(projectId);
+          return "";
+        }
+        return r.text();
+      })
       .then((text) => {
+        if (cancelled || !text) return;
         const m = new Map<
           string,
           { description?: string; duration?: number; width?: number; height?: number }
@@ -416,7 +431,10 @@ export const AssetsTab = memo(function AssetsTab({
         setManifest(m);
       })
       .catch(() => {});
-  }, [projectId, assets]);
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, assetsKey]);
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
