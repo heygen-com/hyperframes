@@ -72,6 +72,73 @@ async function seekTo(page: import("puppeteer-core").Page, time: number): Promis
   await new Promise((r) => setTimeout(r, SEEK_SETTLE_MS));
 }
 
+/**
+ * Flag `<video>`/`<audio>` clips whose source is meaningfully shorter than their
+ * `data-duration` slot (the slot gets silently shortened in renders). Runs in
+ * the live page to read each element's intrinsic `.duration`, which static lint
+ * can't see.
+ */
+async function auditClipDurations(
+  page: import("puppeteer-core").Page,
+  analyzeClipMediaFit: typeof import("@hyperframes/engine").analyzeClipMediaFit,
+): Promise<ConsoleEntry[]> {
+  const clips = await page.evaluate(() => {
+    const rows: Array<{
+      id: string;
+      kind: string;
+      slot: number;
+      mediaStart: number;
+      duration: number;
+      loop: boolean;
+    }> = [];
+    document.querySelectorAll("video[data-duration], audio[data-duration]").forEach((node) => {
+      const el = node as HTMLMediaElement;
+      const slot = parseFloat(el.getAttribute("data-duration") ?? "");
+      if (!(slot > 0)) return;
+      rows.push({
+        id: el.id || el.getAttribute("src") || `(${el.tagName.toLowerCase()})`,
+        kind: el.tagName === "AUDIO" ? "Audio" : "Video",
+        slot,
+        mediaStart: parseFloat(el.getAttribute("data-media-start") ?? "0") || 0,
+        duration: el.duration,
+        loop: el.loop || el.getAttribute("data-loop") === "true",
+      });
+    });
+    return rows;
+  });
+
+  const warnings: ConsoleEntry[] = [];
+  const unreadable: string[] = [];
+  for (const clip of clips) {
+    if (!Number.isFinite(clip.duration) || clip.duration <= 0) {
+      // Metadata never loaded (e.g. slow remote source) — record so the gap in
+      // coverage isn't silent, rather than dropping it.
+      unreadable.push(clip.id);
+      continue;
+    }
+    const mediaSeconds = Math.max(0, clip.duration - clip.mediaStart);
+    const fit = analyzeClipMediaFit({ slotSeconds: clip.slot, mediaSeconds, loop: clip.loop });
+    if (!fit) continue;
+    warnings.push({
+      level: "warning",
+      text:
+        `${clip.kind} "${clip.id}" is ${mediaSeconds.toFixed(2)}s but its slot (data-duration) ` +
+        `is ${clip.slot.toFixed(2)}s — the slot is shortened to the media length when rendered. ` +
+        `Set data-duration to ~${mediaSeconds.toFixed(2)}s if that isn't intended.`,
+    });
+  }
+  if (unreadable.length > 0) {
+    warnings.push({
+      level: "warning",
+      text:
+        `Could not read the duration of ${unreadable.length} media element(s) within the ` +
+        `validate timeout (${unreadable.join(", ")}); their slot vs. source fit was not checked. ` +
+        `Re-run with a longer --timeout if the source is slow to load.`,
+    });
+  }
+  return warnings;
+}
+
 async function runContrastAudit(page: import("puppeteer-core").Page): Promise<ContrastEntry[]> {
   const duration = await getCompositionDuration(page);
   if (duration <= 0) return [];
@@ -134,7 +201,7 @@ async function validateInBrowser(
   try {
     const browser = await ensureBrowser();
     const puppeteer = await import("puppeteer-core");
-    const { buildChromeArgs } = await import("@hyperframes/engine");
+    const { buildChromeArgs, analyzeClipMediaFit } = await import("@hyperframes/engine");
     const browserGpuMode =
       process.env.PRODUCER_BROWSER_GPU_MODE === "software" ? "software" : "hardware";
     const chromeBrowser = await puppeteer.default.launch({
@@ -191,6 +258,10 @@ async function validateInBrowser(
 
     await page.goto(server.url, { waitUntil: "domcontentloaded", timeout: 10000 });
     await new Promise((r) => setTimeout(r, opts.timeout ?? 3000));
+
+    for (const w of await auditClipDurations(page, analyzeClipMediaFit)) {
+      warnings.push(w);
+    }
 
     if (opts.contrast) {
       contrast = await runContrastAudit(page);

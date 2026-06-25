@@ -135,6 +135,7 @@ export {
   extractResolvedMedia,
   clampDurations,
   shouldClampMediaDuration,
+  MEDIA_DURATION_CLAMP_EPSILON_SECONDS,
 } from "./compiler/timingCompiler";
 
 // Lint

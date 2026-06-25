@@ -136,6 +136,7 @@ export {
   getFrameAtTime,
   createFrameLookupTable,
   FrameLookupTable,
+  analyzeClipMediaFit,
   type VideoElement,
   type ImageElement,
   type ExtractedFrames,

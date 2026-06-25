@@ -41,7 +41,7 @@ import type { Page } from "puppeteer-core";
 import { injectDeterministicFontFaces } from "./deterministicFonts.js";
 import { prepareAnimatedGifInputs } from "./animatedGifPrep.js";
 import { createStudioPositionSeekReapplyScript } from "@hyperframes/core/studio-api/manual-edits-render-script";
-import { defaultLogger } from "../logger.js";
+import { defaultLogger, type ProducerLogger } from "../logger.js";
 
 export interface CompiledComposition {
   html: string;
@@ -209,6 +209,7 @@ async function compileHtmlFile(
   html: string,
   baseDir: string,
   downloadDir: string,
+  log?: ProducerLogger,
 ): Promise<{ html: string; unresolvedCompositions: UnresolvedElement[] }> {
   const { html: staticCompiled, unresolved } = compileTimingAttrs(html);
 
@@ -244,13 +245,25 @@ async function compileHtmlFile(
           downloadDir,
           el.tagName,
         );
-        return { id: el.id, duration: el.duration, maxDuration, src: el.src! };
+        return { id: el.id, tagName: el.tagName, duration: el.duration, maxDuration, src: el.src! };
       }),
   );
   const clampList: ResolvedDuration[] = [];
   for (const r of clampResults) {
     if (r.maxDuration > 0 && shouldClampMediaDuration(r.duration, r.maxDuration)) {
       clampList.push({ id: r.id, duration: r.maxDuration });
+      // This clip's `data-duration` is being silently shortened to its source.
+      // Surface it so the author can confirm the longer slot wasn't intended.
+      // ponytail: top-level only — sub-composition clips still get clamped (and
+      // videos still hold the last frame); thread `log` through
+      // parseSubCompositions to warn for them too.
+      const kind = r.tagName === "audio" ? "Audio" : "Video";
+      log?.warn(
+        `[compile] ${kind} "${r.id}" (${r.src}) is ${r.maxDuration.toFixed(2)}s but its ` +
+          `data-duration is ${r.duration.toFixed(2)}s — the slot is shortened to the media ` +
+          `length. Set data-duration to ~${r.maxDuration.toFixed(2)}s, trim data-media-start, ` +
+          `or use a longer/looping source if that isn't intended.`,
+      );
     }
   }
 
@@ -1296,6 +1309,11 @@ async function embedLocalFontFaces(html: string, projectDir: string): Promise<st
  */
 export interface CompileForRenderOptions {
   /**
+   * Logger for compile-time diagnostics (e.g. the data-duration vs. media
+   * mismatch warning). Optional so non-render callers can omit it.
+   */
+  log?: ProducerLogger;
+  /**
    * Threaded through to {@link injectDeterministicFontFaces}. When `true`,
    * any external font fetch failure throws `FontFetchError` instead of
    * silently falling back to system fonts. Distributed `plan()` sets this
@@ -1353,6 +1371,7 @@ export async function compileForRender(
     rawHtml,
     projectDir,
     downloadDir,
+    options.log,
   );
 
   // Parse sub-compositions first (extracts media + compiled HTML for each)

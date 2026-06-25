@@ -48,8 +48,10 @@ export interface CompilationResult {
   unresolved: UnresolvedElement[];
 }
 
-// ffprobe precision can differ slightly across local and CI media stacks.
-const MEDIA_DURATION_CLAMP_EPSILON_SECONDS = 0.05;
+// ffprobe precision can differ slightly across local and CI media stacks. Also
+// the floor for the engine's hold-last-frame tolerance (a slot left unclamped is
+// short by at most this), so they must move together.
+export const MEDIA_DURATION_CLAMP_EPSILON_SECONDS = 0.05;
 
 export function shouldClampMediaDuration(declaredDuration: number, maxDuration: number): boolean {
   return declaredDuration > maxDuration + MEDIA_DURATION_CLAMP_EPSILON_SECONDS;
