@@ -30,38 +30,44 @@
         min-width: 760px;
         min-height: 480px;
         padding: 56px;
+        /* ponytail: scale wrapper only — GSAP targets .hf-ui-collapsible, not this element */
+        transform: scale(2.8);
       }
       .hf-ui-collapsible {
         --hf-collapse-open: 1;
-        width: 380px;
+        width: 400px;
         border: 1px solid #e4e4e7;
-        border-radius: 12px;
+        border-radius: 14px;
         background: #fff;
         color: #18181b;
         font-family: Inter, system-ui, sans-serif;
         overflow: hidden;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.10);
       }
       .hf-ui-collapsible header {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 14px 16px;
-        font-weight: 850;
+        padding: 18px 20px;
+        font-weight: 600;
+        font-size: 16px;
       }
       .hf-ui-collapsible header span {
+        color: #71717a;
+        font-size: 13px;
         transform: rotate(calc(var(--hf-collapse-open) * 180deg));
       }
       .hf-ui-collapsible div {
-        max-height: calc(var(--hf-collapse-open) * 120px);
+        max-height: calc(var(--hf-collapse-open) * 140px);
         overflow: hidden;
-        border-top: 1px solid #f1f1f4;
+        border-top: 1px solid #e4e4e7;
       }
       .hf-ui-collapsible p {
         margin: 0;
-        padding: 14px 16px;
+        padding: 16px 20px;
         color: #71717a;
-        font-size: 14px;
-        line-height: 1.45;
+        font-size: 15px;
+        line-height: 1.5;
       }
     </style>
   </head>

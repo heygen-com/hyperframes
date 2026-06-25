@@ -30,6 +30,9 @@
         min-width: 760px;
         min-height: 480px;
         padding: 56px;
+        /* ponytail: scale non-animated wrapper to fill ~65% of 1080px frame height */
+        transform: scale(1.85);
+        transform-origin: center center;
       }
       .hf-ui-sheet-scene {
         position: relative;
@@ -37,13 +40,22 @@
         height: 380px;
         overflow: hidden;
         border-radius: 28px;
-        background: #e5e7eb;
+        background: #e4e4e7;
         font-family: Inter, system-ui, sans-serif;
+      }
+      /* faux app content behind the sheet overlay */
+      .hf-ui-sheet-scene::before {
+        content: "";
+        position: absolute;
+        inset: 24px 340px 24px 24px;
+        background: #d4d4d8;
+        border-radius: 12px;
+        opacity: 0.6;
       }
       .hf-ui-sheet-overlay {
         position: absolute;
         inset: 0;
-        background: rgba(24, 24, 27, 0.42);
+        background: rgba(24, 24, 27, 0.38);
       }
       .hf-ui-sheet {
         position: absolute;
@@ -73,7 +85,8 @@
         justify-content: space-between;
         padding: 14px 0;
         border-top: 1px solid #e4e4e7;
-        font-weight: 800;
+        font-size: 14px;
+        font-weight: 600;
       }
     </style>
   </head>

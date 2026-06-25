@@ -30,6 +30,8 @@
         min-width: 760px;
         min-height: 480px;
         padding: 56px;
+        /* ponytail: scale-only fix — GSAP animates the spans inside, not this wrapper */
+        transform: scale(3.5);
       }
       .hf-transition-avatar-group-hover {
         display: inline-flex;
@@ -47,7 +49,9 @@
         border-radius: 999px;
         background: linear-gradient(135deg, #111827, #0ea5e9);
         color: #fff;
-        font-weight: 900;
+        font-size: 18px;
+        font-weight: 700;
+        letter-spacing: 0.01em;
         box-shadow: 0 12px 30px rgba(24, 24, 27, 0.18);
         transform: translateY(var(--hf-avatar-y, 0px));
       }

@@ -26,16 +26,20 @@
       }
       .panel {
         display: grid;
-        gap: 30px;
+        gap: 56px;
         justify-items: center;
+        /* ponytail: scale non-GSAP wrapper; GSAP targets .hf-ui-button directly */
+        transform: scale(3);
       }
       .caption {
-        color: #6b7280;
-        font-size: 32px;
-        font-weight: 750;
+        color: #71717a;
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
       }
       .hf-ui-button {
-        --hf-button-bg: #171717;
+        --hf-button-bg: #18181b;
         --hf-button-fg: #fff;
         --hf-button-scale: 1;
         --hf-button-y: 0px;
@@ -44,19 +48,20 @@
         align-items: center;
         justify-content: center;
         gap: 8px;
-        min-width: 210px;
-        height: 62px;
-        padding: 0 34px;
+        min-width: 160px;
+        height: 44px;
+        padding: 0 24px;
         border: 0;
-        border-radius: 14px;
+        border-radius: 10px;
         background: var(--hf-button-bg);
         color: var(--hf-button-fg);
         font:
-          800 22px/1 Inter,
+          600 15px/1 Inter,
           system-ui,
           sans-serif;
         transform: translateY(var(--hf-button-y)) scale(var(--hf-button-scale));
-        box-shadow: 0 24px 50px rgba(0, 0, 0, 0.2);
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15), 0 8px 24px rgba(0, 0, 0, 0.12);
+        cursor: pointer;
       }
       .hf-ui-button-spinner,
       .hf-ui-button-check {
@@ -64,18 +69,18 @@
         opacity: 0;
       }
       .hf-ui-button-spinner {
-        width: 23px;
-        height: 23px;
-        border: 3px solid rgba(255, 255, 255, 0.3);
+        width: 18px;
+        height: 18px;
+        border: 2px solid rgba(255, 255, 255, 0.3);
         border-top-color: white;
         border-radius: 999px;
       }
       .hf-ui-button-check {
-        width: 28px;
-        height: 28px;
+        width: 20px;
+        height: 20px;
         fill: none;
         stroke: white;
-        stroke-width: 2.8;
+        stroke-width: 2.5;
         stroke-linecap: round;
         stroke-linejoin: round;
       }
@@ -99,7 +104,7 @@
       data-duration="5"
     >
       <div class="panel">
-        <div class="caption">UI Primitive</div>
+        <div class="caption">Button</div>
         <button class="hf-ui-button" data-state="idle" type="button">
           <span class="hf-ui-button-label">Generate</span>
           <span class="hf-ui-button-spinner" aria-hidden="true"></span>

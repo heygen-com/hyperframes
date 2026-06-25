@@ -27,9 +27,9 @@
       .demo-frame {
         display: grid;
         place-items: center;
-        min-width: 760px;
-        min-height: 480px;
         padding: 56px;
+        transform: scale(3); /* ponytail: scale wrapper (hugs content — no min-width inflation), not GSAP targets */
+        transform-origin: center;
       }
       .hf-transition-badge-pop {
         position: relative;

@@ -28,6 +28,7 @@
         display: grid;
         place-items: center;
         padding: 52px;
+        zoom: 1.72; /* ponytail: scale-up only; revert if layout clips */
       }
       .hf-remocn-infinite-marquee {
         --hf-accent: #2563eb;
@@ -84,6 +85,40 @@
         transform: translate(var(--hf-card-x, 0px), var(--hf-card-y, 0px))
           scale(var(--hf-card-scale, 1));
         opacity: var(--hf-card-opacity, 1);
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        padding: 0 16px;
+      }
+      /* marquee track inside each preview card */
+      .hf-remocn-infinite-marquee .marquee-track {
+        display: flex;
+        gap: 10px;
+        flex-shrink: 0;
+      }
+      .hf-remocn-infinite-marquee .mpill {
+        display: inline-flex;
+        align-items: center;
+        height: 32px;
+        padding: 0 14px;
+        border-radius: 999px;
+        font-size: 13px;
+        font-weight: 600;
+        white-space: nowrap;
+        flex-shrink: 0;
+      }
+      .hf-remocn-infinite-marquee .mpill-dark {
+        background: #18181b;
+        color: #fafafa;
+      }
+      .hf-remocn-infinite-marquee .mpill-outline {
+        background: #fff;
+        color: #18181b;
+        border: 1px solid #e4e4e7;
+      }
+      .hf-remocn-infinite-marquee .mpill-muted {
+        background: #f4f4f5;
+        color: #71717a;
       }
       .hf-remocn-infinite-marquee h3 {
         margin: 0 0 14px;
@@ -115,9 +150,39 @@
             <div class="pill">Export</div>
           </div>
           <div class="panel preview">
-            <div class="card"></div>
-            <div class="card"></div>
-            <div class="card"></div>
+            <div class="card">
+              <div class="marquee-track">
+                <span class="mpill mpill-dark">Motion</span>
+                <span class="mpill mpill-outline">Scroll</span>
+                <span class="mpill mpill-muted">Loop</span>
+                <span class="mpill mpill-dark">Marquee</span>
+                <span class="mpill mpill-outline">Infinite</span>
+                <span class="mpill mpill-muted">Ticker</span>
+                <span class="mpill mpill-dark">Scroll</span>
+              </div>
+            </div>
+            <div class="card">
+              <div class="marquee-track">
+                <span class="mpill mpill-outline">React</span>
+                <span class="mpill mpill-dark">Vue</span>
+                <span class="mpill mpill-muted">Svelte</span>
+                <span class="mpill mpill-outline">Angular</span>
+                <span class="mpill mpill-dark">Solid</span>
+                <span class="mpill mpill-muted">Astro</span>
+                <span class="mpill mpill-outline">Next.js</span>
+              </div>
+            </div>
+            <div class="card">
+              <div class="marquee-track">
+                <span class="mpill mpill-muted">Design</span>
+                <span class="mpill mpill-dark">Build</span>
+                <span class="mpill mpill-outline">Ship</span>
+                <span class="mpill mpill-muted">Iterate</span>
+                <span class="mpill mpill-dark">Launch</span>
+                <span class="mpill mpill-outline">Scale</span>
+                <span class="mpill mpill-muted">Repeat</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>

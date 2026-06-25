@@ -21,15 +21,17 @@
         height: 1080px;
         display: grid;
         place-items: center;
-        background: #f5f3ff;
+        background: #fafafa;
         font-family: Inter, system-ui, sans-serif;
       }
+      /* ponytail: scale on .demo-frame (not a GSAP target) — safe CSS transform */
       .demo-frame {
         display: grid;
         place-items: center;
         min-width: 760px;
         min-height: 520px;
         padding: 56px;
+        transform: scale(2.3);
       }
       .hf-ui-onboarding-flow {
         display: grid;
@@ -52,7 +54,8 @@
         border-radius: 999px;
         background: #ffffff;
         color: #71717a;
-        font-weight: 900;
+        font-size: 15px;
+        font-weight: 600;
       }
       .hf-ui-onboarding-steps .done,
       .hf-ui-onboarding-steps .active {
@@ -67,33 +70,37 @@
         border: 1px solid #e4e4e7;
         border-radius: 28px;
         background: #ffffff;
-        box-shadow: 0 26px 80px rgba(0, 0, 0, 0.1);
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.10);
       }
       .hf-ui-onboarding-card small {
         color: #71717a;
-        font-weight: 900;
+        font-size: 11px;
+        font-weight: 600;
         letter-spacing: 0.08em;
         text-transform: uppercase;
       }
       .hf-ui-onboarding-card strong {
         font-size: 30px;
-        line-height: 1;
+        font-weight: 700;
+        line-height: 1.1;
       }
       .hf-ui-onboarding-card p {
         margin: 0;
         color: #71717a;
         font-size: 16px;
-        line-height: 1.45;
+        line-height: 1.5;
       }
       .hf-ui-onboarding-card button {
         justify-self: start;
         height: 46px;
-        padding: 0 19px;
+        padding: 0 22px;
         border: 0;
-        border-radius: 14px;
+        border-radius: 12px;
         background: #18181b;
         color: #ffffff;
-        font-weight: 900;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: default;
       }
     </style>
   </head>

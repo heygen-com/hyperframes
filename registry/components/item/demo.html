@@ -30,6 +30,8 @@
         min-width: 760px;
         min-height: 480px;
         padding: 56px;
+        /* ponytail: scale up the static wrapper; GSAP targets .hf-ui-item, not this element */
+        transform: scale(2.8);
       }
       .hf-ui-item {
         display: grid;
@@ -37,12 +39,13 @@
         align-items: center;
         gap: 12px;
         width: 420px;
-        padding: 12px;
+        padding: 14px;
         border: 1px solid #e4e4e7;
-        border-radius: 12px;
+        border-radius: 14px;
         background: #fff;
         color: #18181b;
         font-family: Inter, system-ui, sans-serif;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08), 0 1px 4px rgba(0, 0, 0, 0.04);
       }
       .hf-ui-item-icon {
         display: grid;
@@ -55,15 +58,15 @@
         font-weight: 900;
       }
       .hf-ui-item p {
-        margin: 4px 0 0;
+        margin: 3px 0 0;
         color: #71717a;
-        font-size: 13px;
+        font-size: 14px;
       }
       .hf-ui-item em {
         color: #71717a;
         font-style: normal;
-        font-size: 12px;
-        font-weight: 800;
+        font-size: 13px;
+        font-weight: 600;
       }
     </style>
   </head>

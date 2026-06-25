@@ -28,6 +28,8 @@
         display: grid;
         place-items: center;
         padding: 52px;
+        /* ponytail: scale wrapper (not a GSAP target) to fill ~62% of frame */
+        transform: scale(1.62);
       }
       .hf-remocn-live-code-compilation {
         --hf-accent: #2563eb;
@@ -47,13 +49,15 @@
         font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
       }
       .hf-remocn-live-code-compilation .chrome {
-        height: 48px;
+        height: 52px;
         display: flex;
         align-items: center;
         gap: 8px;
-        padding: 0 18px;
+        padding: 0 20px;
         background: #111827;
         color: #94a3b8;
+        font-size: 15px;
+        letter-spacing: 0.01em;
       }
       .hf-remocn-live-code-compilation .dot {
         width: 11px;
@@ -70,18 +74,20 @@
         min-height: 340px;
       }
       .hf-remocn-live-code-compilation .files {
-        padding: 22px;
+        padding: 26px 24px;
         border-right: 1px solid rgba(148, 163, 184, 0.18);
         color: #94a3b8;
+        font-size: 14px;
+        line-height: 2;
       }
       .hf-remocn-live-code-compilation .editor {
-        padding: 22px;
+        padding: 26px 24px;
         display: grid;
-        gap: 12px;
+        gap: 16px;
       }
       .hf-remocn-live-code-compilation .line {
         display: block;
-        height: 16px;
+        height: 18px;
         border-radius: 999px;
         background: linear-gradient(90deg, #38bdf8, #a78bfa);
         transform: scaleX(var(--hf-line, 1));
@@ -89,10 +95,11 @@
         opacity: var(--hf-line-opacity, 1);
       }
       .hf-remocn-live-code-compilation .terminal {
-        padding: 18px 22px 24px;
+        padding: 20px 24px 28px;
         border-top: 1px solid rgba(148, 163, 184, 0.18);
         color: #86efac;
-        min-height: 78px;
+        min-height: 80px;
+        font-size: 14px;
       }
     </style>
   </head>

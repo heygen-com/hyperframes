@@ -21,23 +21,73 @@
         height: 1080px;
         display: grid;
         place-items: center;
-        background: #f7f7f8;
+        background: #f5f5f4;
         font-family: Inter, system-ui, sans-serif;
       }
+      /* ponytail: scale on non-GSAP wrapper, safe to use transform here */
       .demo-frame {
         display: grid;
         place-items: center;
-        min-width: 760px;
-        min-height: 480px;
-        padding: 56px;
+        transform: scale(2.6);
+        transform-origin: center center;
+      }
+      .demo-card {
+        background: #ffffff;
+        border: 1px solid #e4e4e7;
+        border-radius: 14px;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.08);
+        padding: 32px 40px;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        width: 340px;
+      }
+      .demo-card-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .demo-card-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: #71717a;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+      }
+      .demo-card-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #22c55e;
+      }
+      .demo-card-body {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .demo-card-line {
+        height: 10px;
+        border-radius: 5px;
+        background: #f4f4f5;
+      }
+      .demo-card-line.w-full { width: 100%; }
+      .demo-card-line.w-3q  { width: 75%; }
+      .demo-card-line.w-half { width: 50%; }
+      .demo-card-footer {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        padding-top: 4px;
+        border-top: 1px solid #f4f4f5;
       }
       .hf-transition-text-state-swap {
         position: relative;
-        width: 250px;
-        height: 36px;
+        width: 140px;
+        height: 22px;
+        overflow: hidden;
         color: #18181b;
         font:
-          900 28px/1 Inter,
+          700 14px/1 Inter,
           system-ui,
           sans-serif;
       }
@@ -64,8 +114,22 @@
       data-duration="5"
     >
       <div class="demo-frame">
-        <div class="hf-transition-text-state-swap">
-          <span class="from">Saving draft</span><span class="to">Saved</span>
+        <div class="demo-card">
+          <div class="demo-card-header">
+            <span class="demo-card-title">Draft</span>
+            <span class="demo-card-dot"></span>
+          </div>
+          <div class="demo-card-body">
+            <div class="demo-card-line w-full"></div>
+            <div class="demo-card-line w-3q"></div>
+            <div class="demo-card-line w-full"></div>
+            <div class="demo-card-line w-half"></div>
+          </div>
+          <div class="demo-card-footer">
+            <div class="hf-transition-text-state-swap">
+              <span class="from">Saving draft…</span><span class="to">Saved</span>
+            </div>
+          </div>
         </div>
       </div>
       <script>

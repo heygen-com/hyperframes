@@ -28,6 +28,9 @@
         display: grid;
         place-items: center;
         padding: 52px;
+        /* ponytail: scale up; demo-frame is not a GSAP target */
+        transform: scale(1.82);
+        transform-origin: center center;
       }
       .hf-remocn-v0 {
         --hf-accent: #2563eb;
@@ -84,6 +87,31 @@
         transform: translate(var(--hf-card-x, 0px), var(--hf-card-y, 0px))
           scale(var(--hf-card-scale, 1));
         opacity: var(--hf-card-opacity, 1);
+        padding: 16px 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        justify-content: center;
+      }
+      .hf-remocn-v0 .card-bar {
+        height: 10px;
+        border-radius: 5px;
+        background: #e4e4e7;
+      }
+      .hf-remocn-v0 .card-bar.wide  { width: 72%; }
+      .hf-remocn-v0 .card-bar.mid   { width: 52%; background: #d1d5db; }
+      .hf-remocn-v0 .card-bar.short { width: 36%; background: #eff6ff; }
+      .hf-remocn-v0 .card-dot {
+        width: 28px;
+        height: 28px;
+        border-radius: 8px;
+        background: #2563eb22;
+        flex-shrink: 0;
+      }
+      .hf-remocn-v0 .card-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
       }
       .hf-remocn-v0 h3 {
         margin: 0 0 14px;
@@ -115,9 +143,24 @@
             <div class="pill">Export</div>
           </div>
           <div class="panel preview">
-            <div class="card"></div>
-            <div class="card"></div>
-            <div class="card"></div>
+            <div class="card">
+              <div class="card-row">
+                <div class="card-dot"></div>
+                <div class="card-bar wide"></div>
+              </div>
+              <div class="card-bar mid"></div>
+            </div>
+            <div class="card">
+              <div class="card-bar wide"></div>
+              <div class="card-bar short"></div>
+            </div>
+            <div class="card">
+              <div class="card-row">
+                <div class="card-dot"></div>
+                <div class="card-bar mid"></div>
+              </div>
+              <div class="card-bar wide"></div>
+            </div>
           </div>
         </div>
       </div>

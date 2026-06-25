@@ -21,7 +21,7 @@
         height: 1080px;
         display: grid;
         place-items: center;
-        background: #f7f7f8;
+        background: #f4f4f5;
         font-family: Inter, system-ui, sans-serif;
       }
       .hf-advanced-three-particle-ribbon {
@@ -32,10 +32,12 @@
         position: relative;
         width: 760px;
         height: 430px;
-        border-radius: 30px;
+        border-radius: 20px;
         overflow: hidden;
         background: #050816;
-        box-shadow: 0 28px 80px rgba(15, 23, 42, 0.2);
+        box-shadow: 0 32px 96px rgba(15, 23, 42, 0.28);
+        /* ponytail: scale on wrapper only — GSAP animates Three.js state obj, not this DOM node */
+        transform: scale(1.72);
       }
       .hf-advanced-three-particle-ribbon canvas {
         display: block;
@@ -55,7 +57,8 @@
       }
       .hf-advanced-three-particle-ribbon p {
         margin: 6px 0 0;
-        color: rgba(255, 255, 255, 0.62);
+        font-size: 15px;
+        color: rgba(255, 255, 255, 0.75);
       }
     </style>
   </head>

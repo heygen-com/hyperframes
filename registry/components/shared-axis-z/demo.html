@@ -21,27 +21,114 @@
         height: 1080px;
         display: grid;
         place-items: center;
-        background: #f7f7f8;
+        background: #f4f4f5;
         font-family: Inter, system-ui, sans-serif;
       }
+      /* ponytail: demo-frame is not a GSAP target — CSS transform is safe */
       .demo-frame {
-        display: grid;
-        place-items: center;
-        min-width: 900px;
-        min-height: 500px;
-        padding: 64px;
+        position: relative;
+        width: 720px;
+        height: 480px;
+        transform: scale(1.6);
       }
-      .hf-remocn-shared-axis-z {
+      /* Shared container that clips both panels */
+      .axis-z-stage {
+        position: relative;
+        width: 720px;
+        height: 480px;
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 32px 80px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06);
+        border: 1px solid #e4e4e7;
+        background: #ffffff;
+      }
+      /* Outgoing panel (zooms out + fades) */
+      .axis-z-outgoing {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        background: #ffffff;
+        will-change: transform, opacity;
+      }
+      .axis-z-outgoing-icon {
+        width: 52px;
+        height: 52px;
+        border-radius: 12px;
+        background: #18181b;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .axis-z-outgoing-icon svg {
+        width: 26px;
+        height: 26px;
+        fill: none;
+        stroke: #ffffff;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .axis-z-outgoing-title {
+        font-size: 18px;
+        font-weight: 600;
         color: #18181b;
-        font-family: Inter, system-ui, sans-serif;
-        font-weight: 900;
-        letter-spacing: -0.04em;
+        letter-spacing: -0.02em;
       }
+      .axis-z-outgoing-subtitle {
+        font-size: 13px;
+        font-weight: 400;
+        color: #71717a;
+      }
+      .axis-z-outgoing-row {
+        display: flex;
+        gap: 8px;
+        margin-top: 4px;
+      }
+      .axis-z-chip {
+        padding: 5px 12px;
+        border-radius: 999px;
+        background: #f4f4f5;
+        border: 1px solid #e4e4e7;
+        font-size: 12px;
+        font-weight: 500;
+        color: #52525b;
+      }
+      /* Incoming panel (the component output — zooms in from small) */
+      .axis-z-incoming {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        padding: 40px;
+        gap: 24px;
+        background: #ffffff;
+        will-change: transform, opacity;
+      }
+      .axis-z-incoming-header {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .axis-z-incoming-eyebrow {
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #71717a;
+      }
+      /* GSAP animates .hf-remocn-shared-axis-z span — must keep class + span structure */
       .hf-remocn-shared-axis-z {
         display: inline-flex;
-        gap: 12px;
-        font-size: 56px;
+        gap: 10px;
+        font-size: 36px;
+        font-weight: 800;
+        letter-spacing: -0.04em;
         line-height: 1;
+        color: #18181b;
       }
       .hf-remocn-shared-axis-z span {
         display: inline-block;
@@ -49,6 +136,46 @@
           scale(var(--hf-word-scale, 1));
         filter: blur(var(--hf-word-blur, 0px));
         will-change: transform, filter, opacity;
+      }
+      .axis-z-incoming-meta {
+        font-size: 13px;
+        color: #71717a;
+        font-weight: 400;
+        line-height: 1.5;
+        max-width: 400px;
+      }
+      .axis-z-incoming-stats {
+        display: flex;
+        gap: 16px;
+        margin-top: auto;
+      }
+      .axis-z-stat {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        padding: 16px 20px;
+        background: #fafafa;
+        border: 1px solid #e4e4e7;
+        border-radius: 10px;
+        flex: 1;
+      }
+      .axis-z-stat-value {
+        font-size: 22px;
+        font-weight: 700;
+        color: #18181b;
+        letter-spacing: -0.03em;
+      }
+      .axis-z-stat-label {
+        font-size: 11px;
+        font-weight: 500;
+        color: #71717a;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+      .axis-z-divider {
+        width: 100%;
+        height: 1px;
+        background: #e4e4e7;
       }
     </style>
   </head>
@@ -62,11 +189,67 @@
       data-duration="5"
     >
       <div class="demo-frame">
-        <div class="hf-remocn-shared-axis-z"><span>Zoom</span><span>context</span></div>
+        <div class="axis-z-stage">
+          <!-- Outgoing view: zooms out + fades as incoming arrives -->
+          <div class="axis-z-outgoing">
+            <div class="axis-z-outgoing-icon">
+              <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+            </div>
+            <div class="axis-z-outgoing-title">Overview</div>
+            <div class="axis-z-outgoing-subtitle">Select a context to zoom in</div>
+            <div class="axis-z-outgoing-row">
+              <div class="axis-z-chip">Analytics</div>
+              <div class="axis-z-chip">Reports</div>
+              <div class="axis-z-chip">Settings</div>
+            </div>
+          </div>
+
+          <!-- Incoming view: zooms in from center (shared-axis-Z) -->
+          <div class="axis-z-incoming">
+            <div class="axis-z-incoming-header">
+              <div class="axis-z-incoming-eyebrow">Analytics</div>
+              <div class="hf-remocn-shared-axis-z"><span>Zoom</span><span>context</span></div>
+              <div class="axis-z-incoming-meta">Drill into any metric with a shared-axis Z transition — the new view scales in from the tap point.</div>
+            </div>
+            <div class="axis-z-divider"></div>
+            <div class="axis-z-incoming-stats">
+              <div class="axis-z-stat">
+                <div class="axis-z-stat-value">24.8k</div>
+                <div class="axis-z-stat-label">Sessions</div>
+              </div>
+              <div class="axis-z-stat">
+                <div class="axis-z-stat-value">3.4s</div>
+                <div class="axis-z-stat-label">Avg. time</div>
+              </div>
+              <div class="axis-z-stat">
+                <div class="axis-z-stat-value">91%</div>
+                <div class="axis-z-stat-label">Retention</div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
       <script>
         const tl = gsap.timeline({ paused: true });
         const startTime = 0.5;
+
+        // Outgoing panel: zoom out + fade (shared-axis Z departure)
+        tl.fromTo(
+          ".axis-z-outgoing",
+          { opacity: 1, scale: 1 },
+          { opacity: 0, scale: 1.18, duration: 0.4, ease: "power2.in" },
+          startTime,
+        );
+
+        // Incoming panel: zoom in from small + fade (shared-axis Z arrival)
+        tl.fromTo(
+          ".axis-z-incoming",
+          { opacity: 0, scale: 0.82 },
+          { opacity: 1, scale: 1, duration: 0.45, ease: "expo.out" },
+          startTime + 0.05,
+        );
+
+        // Word-by-word reveal on the title
         tl.fromTo(
           ".hf-remocn-shared-axis-z span",
           { opacity: 0, "--hf-word-scale": 0.72 },
@@ -77,8 +260,9 @@
             stagger: 0.06,
             ease: "back.out(1.8)",
           },
-          startTime,
+          startTime + 0.28,
         );
+
         tl.set({}, {}, 5);
         window.__timelines = window.__timelines || {};
         window.__timelines["shared-axis-z-demo"] = tl;

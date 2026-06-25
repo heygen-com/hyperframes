@@ -28,6 +28,8 @@
         display: grid;
         place-items: center;
         padding: 52px;
+        /* ponytail: scale non-GSAP wrapper to fill ~70% of the 1920×1080 stage */
+        transform: scale(1.82);
       }
       .hf-remocn-image-expand-to-fullscreen {
         --hf-accent: #2563eb;
@@ -42,18 +44,18 @@
         width: 760px;
         height: 428px;
         overflow: hidden;
-        border-radius: 30px;
+        border-radius: 20px;
         background: #111827;
-        box-shadow: 0 28px 80px rgba(15, 23, 42, 0.2);
+        box-shadow: 0 32px 96px rgba(15, 23, 42, 0.28);
       }
       .hf-remocn-image-expand-to-fullscreen .scene {
         position: absolute;
         inset: 0;
         display: grid;
         place-items: center;
-        font-weight: 900;
-        font-size: 58px;
-        letter-spacing: -0.05em;
+        font-weight: 800;
+        font-size: 48px;
+        letter-spacing: -0.04em;
         color: #fff;
       }
       .hf-remocn-image-expand-to-fullscreen .from {
@@ -103,7 +105,7 @@
     >
       <div class="demo-frame">
         <div class="hf-remocn-image-expand-to-fullscreen">
-          <div class="scene from">Before</div>
+          <div class="scene from">Gallery</div>
           <div class="scene to">Image Expand to Fullscreen</div>
           <div class="fx"></div>
           <div class="rgb"></div>

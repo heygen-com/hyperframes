@@ -27,9 +27,8 @@
       .demo-frame {
         display: grid;
         place-items: center;
-        min-width: 900px;
-        min-height: 500px;
-        padding: 64px;
+        /* ponytail: scale on wrapper — GSAP only targets the inner div, so CSS transform is safe here */
+        transform: scale(3);
       }
       .hf-remocn-perspective-marquee {
         color: #18181b;
@@ -38,7 +37,7 @@
         letter-spacing: -0.04em;
       }
       .hf-remocn-perspective-marquee {
-        width: 720px;
+        width: 580px;
         perspective: 900px;
         overflow: hidden;
         transform: rotateX(18deg);

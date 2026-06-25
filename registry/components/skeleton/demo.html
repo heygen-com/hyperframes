@@ -21,46 +21,55 @@
         height: 1080px;
         display: grid;
         place-items: center;
-        background: #f6f7fb;
+        background: #f4f4f5;
         font-family: Inter, system-ui, sans-serif;
+      }
+      /* ponytail: scale wrapper — GSAP never touches transform on .hf-ui-skeleton-card so CSS scale is safe,
+         but wrapping keeps the animated element clean */
+      .demo-frame {
+        transform: scale(2.2);
+        transform-origin: center center;
       }
       .hf-ui-skeleton-card {
         --hf-skeleton-shimmer: -1;
         display: grid;
-        grid-template-columns: 82px 1fr;
-        gap: 22px;
-        width: 660px;
-        padding: 34px;
+        grid-template-columns: 96px 1fr;
+        gap: 24px;
+        width: 680px;
+        padding: 40px;
         border: 1px solid #e4e4e7;
         border-radius: 28px;
-        background: #fff;
+        background: #ffffff;
         box-shadow: 0 24px 70px rgba(0, 0, 0, 0.1);
       }
       .hf-ui-skeleton {
         position: relative;
         overflow: hidden;
         border-radius: 999px;
-        background: #ececef;
+        background: #e4e4e7;
       }
       .hf-ui-skeleton::after {
         content: "";
         position: absolute;
         inset: 0;
-        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.8), transparent);
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.85), transparent);
         transform: translateX(calc(var(--hf-skeleton-shimmer) * 120%));
       }
       .avatar {
-        grid-row: span 2;
-        width: 82px;
-        height: 82px;
+        grid-row: span 3;
+        width: 96px;
+        height: 96px;
       }
       .line {
-        height: 24px;
+        height: 20px;
         align-self: center;
         border-radius: 14px;
       }
       .wide {
-        width: 82%;
+        width: 85%;
+      }
+      .narrow {
+        width: 60%;
       }
     </style>
   </head>
@@ -73,9 +82,13 @@
       data-height="1080"
       data-duration="5"
     >
-      <div class="hf-ui-skeleton-card">
-        <span class="hf-ui-skeleton avatar"></span><span class="hf-ui-skeleton line wide"></span
-        ><span class="hf-ui-skeleton line"></span>
+      <div class="demo-frame">
+        <div class="hf-ui-skeleton-card">
+          <span class="hf-ui-skeleton avatar"></span>
+          <span class="hf-ui-skeleton line wide"></span>
+          <span class="hf-ui-skeleton line"></span>
+          <span class="hf-ui-skeleton line narrow"></span>
+        </div>
       </div>
       <script>
         const tl = gsap.timeline({ paused: true });

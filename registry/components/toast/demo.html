@@ -28,40 +28,44 @@
         --hf-toast-progress: 0;
         position: relative;
         display: grid;
-        grid-template-columns: 18px 1fr;
-        gap: 20px;
+        grid-template-columns: 36px 1fr;
+        gap: 32px;
         width: 520px;
-        padding: 28px;
+        padding: 40px 44px 48px;
         border: 1px solid #e4e4e7;
-        border-radius: 24px;
+        border-radius: 28px;
         background: #fff;
         color: #18181b;
         font-family: Inter, system-ui, sans-serif;
         opacity: var(--hf-toast-progress);
         transform: translateY(calc((1 - var(--hf-toast-progress)) * 30px));
-        box-shadow: 0 30px 90px rgba(0, 0, 0, 0.2);
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.10);
+        /* ponytail: zoom avoids clobbering GSAP's translateY transform */
+        zoom: 2.4;
       }
       .hf-ui-toast-dot {
-        width: 18px;
-        height: 18px;
-        margin-top: 8px;
+        width: 36px;
+        height: 36px;
+        margin-top: 4px;
         border-radius: 999px;
         background: #16a34a;
         box-shadow: 0 0 0 calc(var(--hf-toast-progress) * 14px) rgba(22, 163, 74, 0.12);
       }
       .hf-ui-toast strong {
         display: block;
-        font-size: 28px;
+        font-size: 30px;
+        font-weight: 600;
+        margin-bottom: 6px;
       }
       .hf-ui-toast span {
         color: #71717a;
-        font-size: 21px;
+        font-size: 22px;
       }
       .hf-ui-toast-rail {
         position: absolute;
-        left: 28px;
-        right: 28px;
-        bottom: 15px;
+        left: 44px;
+        right: 44px;
+        bottom: 18px;
         height: 5px;
         border-radius: 999px;
         background: #18181b;

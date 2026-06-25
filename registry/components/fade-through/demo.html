@@ -22,30 +22,123 @@
         height: 1080px;
         overflow: hidden;
         font-family: Inter, system-ui, sans-serif;
-        color: white;
+        background: #f5f5f4;
       }
       .scene {
         position: absolute;
         inset: 0;
         display: grid;
         place-items: center;
-        font-size: 112px;
-        font-weight: 900;
       }
+      /* Scene A — light neutral */
       .a {
-        background: linear-gradient(135deg, #243b55, #141e30);
+        background: #fafafa;
       }
+      /* Scene B — dark zinc */
       .b {
-        background: linear-gradient(135deg, #1d976c, #93f9b9);
-        color: #073f2e;
+        background: #18181b;
         opacity: 0;
+      }
+      /* Shared card */
+      .card {
+        width: 820px;
+        border-radius: 16px;
+        padding: 72px 80px 80px;
+        display: flex;
+        flex-direction: column;
+        gap: 32px;
+      }
+      .a .card {
+        background: #ffffff;
+        border: 1px solid #e4e4e7;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.08);
+      }
+      .b .card {
+        background: #27272a;
+        border: 1px solid #3f3f46;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.40);
+      }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 26px;
+        font-weight: 500;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        width: fit-content;
+        padding: 10px 22px;
+        border-radius: 999px;
+      }
+      .a .badge {
+        background: #f4f4f5;
+        color: #71717a;
+      }
+      .b .badge {
+        background: #3f3f46;
+        color: #a1a1aa;
+      }
+      .badge-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+      }
+      .a .badge-dot { background: #71717a; }
+      .b .badge-dot { background: #a1a1aa; }
+      .card-title {
+        font-size: 72px;
+        font-weight: 700;
+        line-height: 1.08;
+        letter-spacing: -0.02em;
+        margin: 0;
+      }
+      .a .card-title { color: #18181b; }
+      .b .card-title { color: #fafafa; }
+      .card-body {
+        font-size: 32px;
+        font-weight: 400;
+        line-height: 1.5;
+        color: #71717a;
+      }
+      .b .card-body { color: #71717a; }
+      .divider {
+        height: 1px;
+        background: #e4e4e7;
+        border: none;
+        margin: 0;
+      }
+      .b .divider { background: #3f3f46; }
+      .meta-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .meta-label {
+        font-size: 26px;
+        font-weight: 500;
+      }
+      .a .meta-label { color: #71717a; }
+      .b .meta-label { color: #71717a; }
+      .mode-pill {
+        font-size: 26px;
+        font-weight: 600;
+        padding: 10px 28px;
+        border-radius: 999px;
+      }
+      .a .mode-pill {
+        background: #18181b;
+        color: #fafafa;
+      }
+      .b .mode-pill {
+        background: #fafafa;
+        color: #18181b;
       }
       .hf-fade-through-wash {
         position: absolute;
         inset: 0;
         opacity: 0;
         pointer-events: none;
-        background: #f8f5ec;
+        background: #fafafa;
         z-index: 900;
       }
     </style>
@@ -58,8 +151,34 @@
       data-height="1080"
       data-duration="5"
     >
-      <div class="scene a hf-fade-through-out">Before</div>
-      <div class="scene b hf-fade-through-in">After</div>
+      <!-- Scene A: Light mode -->
+      <div class="scene a hf-fade-through-out">
+        <div class="card">
+          <div class="badge"><span class="badge-dot"></span>Light Mode</div>
+          <h2 class="card-title">Your workspace,<br>beautifully lit.</h2>
+          <p class="card-body">Clean surfaces, crisp type, and just enough contrast to keep you focused all day long.</p>
+          <hr class="divider" />
+          <div class="meta-row">
+            <span class="meta-label">Appearance</span>
+            <span class="mode-pill">Light</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Scene B: Dark mode -->
+      <div class="scene b hf-fade-through-in">
+        <div class="card">
+          <div class="badge"><span class="badge-dot"></span>Dark Mode</div>
+          <h2 class="card-title">Easy on the eyes,<br>night or day.</h2>
+          <p class="card-body">Deep backgrounds, refined contrast, and thoughtful color for late-night sessions.</p>
+          <hr class="divider" />
+          <div class="meta-row">
+            <span class="meta-label">Appearance</span>
+            <span class="mode-pill">Dark</span>
+          </div>
+        </div>
+      </div>
+
       <div class="hf-fade-through-wash" aria-hidden="true"></div>
       <script>
         const tl = gsap.timeline({ paused: true });

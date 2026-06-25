@@ -24,15 +24,45 @@
         background: #f7f7f8;
         font-family: Inter, system-ui, sans-serif;
       }
+      /* ponytail: zoom scales the whole frame without touching GSAP-animated elements */
       .demo-frame {
-        display: grid;
-        place-items: center;
-        min-width: 760px;
-        min-height: 480px;
-        padding: 56px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 28px;
+        zoom: 3.2;
+      }
+      .avatar-card {
+        background: #ffffff;
+        border: 1px solid #e4e4e7;
+        border-radius: 16px;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.10);
+        padding: 40px 48px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+        min-width: 220px;
+      }
+      .avatar-name {
+        font: 600 15px/1.2 Inter, system-ui, sans-serif;
+        color: #18181b;
+        text-align: center;
+      }
+      .avatar-role {
+        font: 400 12px/1.4 Inter, system-ui, sans-serif;
+        color: #71717a;
+        text-align: center;
+      }
+      .avatar-status {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font: 400 11px/1 Inter, system-ui, sans-serif;
+        color: #22c55e;
       }
       .hf-ui-avatar {
-        --hf-avatar-size: 54px;
+        --hf-avatar-size: 72px;
         position: relative;
         display: grid;
         place-items: center;
@@ -43,18 +73,18 @@
         background: linear-gradient(135deg, #111827, #0ea5e9);
         color: white;
         font:
-          850 15px/1 Inter,
+          700 20px/1 Inter,
           system-ui,
           sans-serif;
         box-shadow: 0 12px 32px rgba(2, 132, 199, 0.26);
       }
       .hf-ui-avatar i {
         position: absolute;
-        right: 1px;
-        bottom: 1px;
-        width: 13px;
-        height: 13px;
-        border: 2px solid #fff;
+        right: 2px;
+        bottom: 2px;
+        width: 16px;
+        height: 16px;
+        border: 2.5px solid #fff;
         border-radius: 999px;
         background: #22c55e;
       }
@@ -70,9 +100,17 @@
       data-duration="5"
     >
       <div class="demo-frame">
-        <div class="hf-ui-avatar" aria-label="Maya Chen">
-          <span>MC</span>
-          <i aria-hidden="true"></i>
+        <div class="avatar-card">
+          <div class="hf-ui-avatar" aria-label="Maya Chen">
+            <span>MC</span>
+            <i aria-hidden="true"></i>
+          </div>
+          <div class="avatar-name">Maya Chen</div>
+          <div class="avatar-role">Product Designer</div>
+          <div class="avatar-status">
+            <i aria-hidden="true" style="display:inline-block;width:7px;height:7px;border-radius:999px;background:#22c55e;flex-shrink:0;"></i>
+            Online
+          </div>
         </div>
       </div>
       <script>

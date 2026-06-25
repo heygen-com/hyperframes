@@ -21,13 +21,15 @@
         height: 1080px;
         display: grid;
         place-items: center;
-        background: #f7f7f8;
+        background: #f4f4f5;
         font-family: Inter, system-ui, sans-serif;
       }
       .demo-frame {
         display: grid;
         place-items: center;
         padding: 52px;
+        /* ponytail: scale wrapper — GSAP targets .pill and .card, not this element */
+        transform: scale(0.93);
       }
       .hf-remocn-browser-flow {
         --hf-accent: #2563eb;
@@ -93,6 +95,35 @@
       .hf-remocn-browser-flow p {
         margin: 0;
         color: #475569;
+        font-size: 13px;
+        line-height: 1.5;
+      }
+      /* skeleton lines inside preview cards */
+      .hf-remocn-browser-flow .card-inner {
+        padding: 18px 20px;
+        display: grid;
+        gap: 10px;
+      }
+      .hf-remocn-browser-flow .sk {
+        border-radius: 6px;
+        background: #e4e4e7;
+      }
+      .hf-remocn-browser-flow .sk-title {
+        height: 14px;
+        width: 62%;
+        background: #d4d4d8;
+      }
+      .hf-remocn-browser-flow .sk-line {
+        height: 10px;
+      }
+      .hf-remocn-browser-flow .sk-line:nth-child(2) { width: 90%; }
+      .hf-remocn-browser-flow .sk-line:nth-child(3) { width: 75%; }
+      .hf-remocn-browser-flow .sk-tag {
+        height: 22px;
+        width: 72px;
+        border-radius: 999px;
+        background: #dbeafe;
+        margin-top: 2px;
       }
     </style>
   </head>
@@ -115,9 +146,28 @@
             <div class="pill">Export</div>
           </div>
           <div class="panel preview">
-            <div class="card"></div>
-            <div class="card"></div>
-            <div class="card"></div>
+            <div class="card">
+              <div class="card-inner">
+                <div class="sk sk-title"></div>
+                <div class="sk sk-line"></div>
+                <div class="sk sk-line"></div>
+                <div class="sk sk-tag"></div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-inner">
+                <div class="sk sk-title"></div>
+                <div class="sk sk-line"></div>
+                <div class="sk sk-line"></div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-inner">
+                <div class="sk sk-title"></div>
+                <div class="sk sk-line"></div>
+                <div class="sk sk-tag"></div>
+              </div>
+            </div>
           </div>
         </div>
       </div>

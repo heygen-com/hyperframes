@@ -30,32 +30,36 @@
         min-width: 760px;
         min-height: 480px;
         padding: 56px;
+        /* ponytail: scale the non-animated wrapper; GSAP only touches textarea */
+        transform: scale(2.6);
       }
       .hf-ui-textarea-field {
         display: grid;
-        gap: 8px;
-        width: 420px;
+        gap: 10px;
+        width: 480px;
         color: #18181b;
         font-family: Inter, system-ui, sans-serif;
       }
       .hf-ui-textarea-field span {
         font-size: 14px;
-        font-weight: 800;
+        font-weight: 600;
+        color: #3f3f46;
       }
       .hf-ui-textarea-field textarea {
         width: 100%;
-        min-height: 118px;
-        padding: 14px;
-        border: 1px solid #d4d4d8;
+        min-height: 130px;
+        padding: 14px 16px;
+        border: 1px solid #e4e4e7;
         border-radius: 12px;
         background: #fff;
         color: #18181b;
         font:
-          600 15px/1.45 Inter,
+          500 15px/1.55 Inter,
           system-ui,
           sans-serif;
         resize: none;
-        box-shadow: 0 0 0 var(--hf-textarea-ring, 0px) rgba(24, 24, 27, 0.1);
+        box-shadow: 0 0 0 var(--hf-textarea-ring, 0px) rgba(24, 24, 27, 0.12),
+          0 2px 8px rgba(0, 0, 0, 0.06);
       }
     </style>
   </head>

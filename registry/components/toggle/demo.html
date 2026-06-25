@@ -33,16 +33,17 @@
       }
       .hf-ui-toggle {
         --hf-toggle-scale: 1;
-        height: 40px;
-        padding: 0 14px;
+        height: 44px;
+        padding: 0 16px;
         border: 1px solid #d4d4d8;
         border-radius: 10px;
         background: #fff;
         color: #18181b;
         font:
-          850 14px/1 Inter,
+          850 15px/1 Inter,
           system-ui,
           sans-serif;
+        cursor: default;
         transform: scale(var(--hf-toggle-scale));
       }
       .hf-ui-toggle[aria-pressed="true"] {
@@ -50,6 +51,7 @@
         color: #fff;
         border-color: #18181b;
       }
+      .demo-frame { transform: scale(1.5); } /* qa-scale */
     </style>
   </head>
   <body>

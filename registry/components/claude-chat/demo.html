@@ -28,6 +28,8 @@
         display: grid;
         place-items: center;
         padding: 52px;
+        transform: scale(0.92);
+        transform-origin: center center;
       }
       .hf-remocn-claude-chat {
         --hf-accent: #2563eb;
@@ -84,6 +86,29 @@
         transform: translate(var(--hf-card-x, 0px), var(--hf-card-y, 0px))
           scale(var(--hf-card-scale, 1));
         opacity: var(--hf-card-opacity, 1);
+        padding: 16px 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .hf-remocn-claude-chat .card-label {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #94a3b8;
+      }
+      .hf-remocn-claude-chat .card-bar {
+        height: 10px;
+        border-radius: 999px;
+        background: #e2e8f0;
+      }
+      .hf-remocn-claude-chat .card-bar.w-full { width: 100%; }
+      .hf-remocn-claude-chat .card-bar.w-3q  { width: 74%; }
+      .hf-remocn-claude-chat .card-bar.w-half { width: 52%; }
+      .hf-remocn-claude-chat .card-bar.accent {
+        background: linear-gradient(90deg, #2563eb 0%, #60a5fa 100%);
+        width: 40%;
       }
       .hf-remocn-claude-chat h3 {
         margin: 0 0 14px;
@@ -115,9 +140,23 @@
             <div class="pill">Export</div>
           </div>
           <div class="panel preview">
-            <div class="card"></div>
-            <div class="card"></div>
-            <div class="card"></div>
+            <div class="card">
+              <div class="card-label">Response</div>
+              <div class="card-bar w-full"></div>
+              <div class="card-bar w-3q"></div>
+              <div class="card-bar accent"></div>
+            </div>
+            <div class="card">
+              <div class="card-label">Refinement</div>
+              <div class="card-bar w-full"></div>
+              <div class="card-bar w-half"></div>
+            </div>
+            <div class="card">
+              <div class="card-label">Export ready</div>
+              <div class="card-bar w-3q"></div>
+              <div class="card-bar w-full"></div>
+              <div class="card-bar w-half"></div>
+            </div>
           </div>
         </div>
       </div>

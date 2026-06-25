@@ -30,28 +30,38 @@
         min-width: 760px;
         min-height: 480px;
         padding: 56px;
+        /* ponytail: scale wrapper (not a GSAP target) to fill ~60% of frame */
+        transform: scale(1.88);
       }
       .hf-ui-pagination {
         display: inline-flex;
         align-items: center;
-        gap: 6px;
+        gap: 8px;
         font-family: Inter, system-ui, sans-serif;
+        font-size: 15px;
       }
       .hf-ui-pagination :is(a, button) {
         display: grid;
         place-items: center;
-        min-width: 38px;
-        height: 38px;
-        padding: 0 11px;
+        min-width: 42px;
+        height: 42px;
+        padding: 0 14px;
         border: 1px solid #e4e4e7;
-        border-radius: 9px;
+        border-radius: 10px;
         background: #fff;
         color: #18181b;
-        font-weight: 800;
+        font-weight: 500;
+        font-size: 15px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+        cursor: default;
+        user-select: none;
       }
       .hf-ui-pagination [aria-current="page"] {
         background: #18181b;
         color: #fff;
+        font-weight: 600;
+        border-color: #18181b;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
       }
     </style>
   </head>

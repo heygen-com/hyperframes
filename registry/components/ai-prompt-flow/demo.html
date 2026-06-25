@@ -21,7 +21,7 @@
         height: 1080px;
         display: grid;
         place-items: center;
-        background: #eef2ff;
+        background: #f4f4f5;
         font-family: Inter, system-ui, sans-serif;
       }
       .demo-frame {
@@ -30,6 +30,9 @@
         min-width: 760px;
         min-height: 520px;
         padding: 56px;
+        /* ponytail: scale-up only; demo-frame is not a GSAP target */
+        transform: scale(2.2);
+        transform-origin: center center;
       }
       .hf-ui-ai-prompt-flow {
         display: grid;
@@ -87,7 +90,9 @@
         border-radius: 13px;
         background: #18181b;
         color: #ffffff;
-        font-weight: 900;
+        font-size: 15px;
+        font-weight: 700;
+        cursor: default;
       }
       .hf-ui-ai-prompt-result {
         display: flex;

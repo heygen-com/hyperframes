@@ -21,21 +21,29 @@
         height: 1080px;
         display: grid;
         place-items: center;
-        background: #f8fafc;
+        background: #fafafa;
         font-family: Inter, system-ui, sans-serif;
       }
       .demo-frame {
         display: grid;
         place-items: center;
-        min-width: 760px;
-        min-height: 480px;
-        padding: 56px;
+        gap: 28px;
+        /* ponytail: scale on non-GSAP wrapper; text was ~7% frame height, now fills ~55% */
+        transform: scale(2.6);
+        transform-origin: center center;
+      }
+      .demo-label {
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: #a1a1aa;
       }
       .hf-transition-text-stagger {
         display: flex;
         flex-wrap: wrap;
         gap: 0.24em;
-        color: #111827;
+        color: #18181b;
         font:
           900 74px/0.95 Inter,
           system-ui,
@@ -44,7 +52,7 @@
       }
       .hf-transition-text-stagger span {
         display: inline-block;
-        background: linear-gradient(90deg, #111827, #111827, #38bdf8, #111827);
+        background: linear-gradient(90deg, #18181b, #18181b, #71717a, #18181b);
         background-size: 240% 100%;
         -webkit-background-clip: text;
         background-clip: text;
@@ -63,6 +71,7 @@
       data-duration="5"
     >
       <div class="demo-frame">
+        <div class="demo-label">text-stagger</div>
         <div class="hf-transition-text-stagger">
           <span>Build</span>
           <span>motion</span>

@@ -21,18 +21,21 @@
         height: 1080px;
         display: grid;
         place-items: center;
-        background: #f7f7f8;
+        background: #f4f4f5;
         font-family: Inter, system-ui, sans-serif;
       }
+      /* ponytail: scale wrapper (not a GSAP target) — zoom avoided since no inline transform conflict */
       .demo-frame {
         display: grid;
         place-items: center;
         padding: 52px;
+        transform: scale(1.72);
+        transform-origin: center center;
       }
       .hf-remocn-drag-and-drop-flow {
         --hf-accent: #2563eb;
-        --hf-ink: #111827;
-        --hf-muted: #6b7280;
+        --hf-ink: #18181b;
+        --hf-muted: #71717a;
         --hf-surface: #ffffff;
         color: var(--hf-ink);
         font-family: Inter, system-ui, sans-serif;
@@ -40,59 +43,99 @@
       .hf-remocn-drag-and-drop-flow {
         width: 820px;
         min-height: 460px;
-        border-radius: 34px;
+        border-radius: 28px;
         padding: 28px;
-        background: linear-gradient(135deg, #f8fafc, #e0f2fe);
-        box-shadow: 0 28px 80px rgba(15, 23, 42, 0.18);
+        background: #ffffff;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.10);
+        border: 1px solid #e4e4e7;
         display: grid;
         grid-template-columns: 280px 1fr;
         gap: 22px;
         overflow: hidden;
       }
       .hf-remocn-drag-and-drop-flow .panel {
-        border: 1px solid rgba(15, 23, 42, 0.08);
-        border-radius: 24px;
-        background: rgba(255, 255, 255, 0.76);
-        padding: 22px;
-        backdrop-filter: blur(12px);
+        border: 1px solid #e4e4e7;
+        border-radius: 16px;
+        background: #fafafa;
+        padding: 20px;
       }
       .hf-remocn-drag-and-drop-flow .prompt {
         display: grid;
-        gap: 12px;
+        gap: 10px;
         align-content: start;
       }
       .hf-remocn-drag-and-drop-flow .pill {
-        height: 42px;
+        height: 40px;
         border-radius: 999px;
-        background: #111827;
+        background: #18181b;
         color: #fff;
         display: flex;
         align-items: center;
-        padding: 0 18px;
-        font-weight: 800;
+        padding: 0 16px;
+        font-size: 13px;
+        font-weight: 600;
         transform: translateX(var(--hf-pill-x, 0px));
       }
       .hf-remocn-drag-and-drop-flow .preview {
         display: grid;
-        gap: 14px;
+        gap: 12px;
+        align-content: start;
+      }
+      .hf-remocn-drag-and-drop-flow .preview-header {
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #71717a;
+        margin-bottom: 4px;
       }
       .hf-remocn-drag-and-drop-flow .card {
-        min-height: 78px;
-        border-radius: 18px;
-        background: #fff;
-        box-shadow: 0 14px 40px rgba(15, 23, 42, 0.08);
+        min-height: 72px;
+        border-radius: 12px;
+        background: #ffffff;
+        border: 1px solid #e4e4e7;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+        padding: 14px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
         transform: translate(var(--hf-card-x, 0px), var(--hf-card-y, 0px))
           scale(var(--hf-card-scale, 1));
         opacity: var(--hf-card-opacity, 1);
       }
+      .hf-remocn-drag-and-drop-flow .card-label {
+        font-size: 13px;
+        font-weight: 600;
+        color: #18181b;
+      }
+      .hf-remocn-drag-and-drop-flow .card-meta {
+        font-size: 11px;
+        color: #71717a;
+      }
+      .hf-remocn-drag-and-drop-flow .card-tag {
+        display: inline-flex;
+        align-items: center;
+        height: 20px;
+        border-radius: 4px;
+        padding: 0 7px;
+        font-size: 10px;
+        font-weight: 600;
+        background: #f0fdf4;
+        color: #16a34a;
+        width: fit-content;
+      }
       .hf-remocn-drag-and-drop-flow h3 {
-        margin: 0 0 14px;
-        font-size: 32px;
-        letter-spacing: -0.04em;
+        margin: 0 0 6px;
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: -0.03em;
+        color: #18181b;
       }
       .hf-remocn-drag-and-drop-flow p {
-        margin: 0;
-        color: #475569;
+        margin: 0 0 12px;
+        font-size: 12px;
+        line-height: 1.5;
+        color: #71717a;
       }
     </style>
   </head>
@@ -115,9 +158,22 @@
             <div class="pill">Export</div>
           </div>
           <div class="panel preview">
-            <div class="card"></div>
-            <div class="card"></div>
-            <div class="card"></div>
+            <div class="preview-header">Timeline</div>
+            <div class="card">
+              <div class="card-label">Intro sequence</div>
+              <div class="card-meta">0s – 2.4s</div>
+              <div class="card-tag">Done</div>
+            </div>
+            <div class="card">
+              <div class="card-label">Motion blur pass</div>
+              <div class="card-meta">2.4s – 4.1s</div>
+              <div class="card-tag">Done</div>
+            </div>
+            <div class="card">
+              <div class="card-label">Export render</div>
+              <div class="card-meta">4.1s – 5.0s</div>
+              <div class="card-tag">Done</div>
+            </div>
           </div>
         </div>
       </div>

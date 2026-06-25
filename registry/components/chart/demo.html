@@ -30,15 +30,18 @@
         min-width: 760px;
         min-height: 480px;
         padding: 56px;
+        /* ponytail: zoom scales the wrapper; GSAP animates .hf-ui-chart so no transform conflict */
+        zoom: 1.51;
       }
       .hf-ui-chart {
         display: grid;
-        gap: 12px;
-        width: 360px;
-        padding: 20px;
+        gap: 20px;
+        width: 400px;
+        padding: 28px;
         border: 1px solid #e4e4e7;
-        border-radius: 14px;
+        border-radius: 16px;
         background: #fff;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.08);
         color: #18181b;
         font-family: Inter, system-ui, sans-serif;
       }
@@ -46,19 +49,21 @@
         display: grid;
         grid-template-columns: repeat(4, 1fr);
         align-items: end;
-        gap: 12px;
-        height: 160px;
+        gap: 14px;
+        height: 180px;
       }
       .hf-ui-chart span {
         display: block;
         height: calc(var(--h) * var(--hf-chart-progress, 1) * 100%);
         border-radius: 10px 10px 4px 4px;
-        background: linear-gradient(180deg, #0ea5e9, #2563eb);
+        background: linear-gradient(180deg, #38bdf8, #2563eb);
       }
       .hf-ui-chart figcaption {
         margin: 0;
         color: #71717a;
-        font-weight: 850;
+        font-size: 14px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
       }
     </style>
   </head>

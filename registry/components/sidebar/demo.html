@@ -27,16 +27,14 @@
       .demo-frame {
         display: grid;
         place-items: center;
-        min-width: 760px;
-        min-height: 480px;
-        padding: 56px;
+        /* ponytail: scale on .demo-frame (not a GSAP target); .hf-ui-sidebar is the GSAP target */
+        transform: scale(2.8);
       }
       .hf-ui-sidebar {
         display: grid;
         align-content: start;
         gap: 8px;
         width: 230px;
-        min-height: 300px;
         padding: 16px;
         border: 1px solid #e4e4e7;
         border-radius: 16px;
@@ -50,10 +48,11 @@
         font-size: 18px;
       }
       .hf-ui-sidebar a {
+        display: block;
         padding: 11px 12px;
         border-radius: 10px;
         color: #52525b;
-        font-weight: 850;
+        font-weight: 600;
       }
       .hf-ui-sidebar [aria-current="page"] {
         background: #18181b;

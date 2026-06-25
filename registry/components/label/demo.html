@@ -25,11 +25,16 @@
         font-family: Inter, system-ui, sans-serif;
       }
       .demo-frame {
-        display: grid;
-        place-items: center;
-        min-width: 760px;
-        min-height: 480px;
-        padding: 56px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        background: #ffffff;
+        border: 1px solid #e4e4e7;
+        border-radius: 14px;
+        padding: 40px 48px;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.08);
+        min-width: 320px;
+        transform: scale(3.2); /* qa-scale */
       }
       .hf-ui-label {
         display: inline-flex;
@@ -37,7 +42,7 @@
         gap: 8px;
         color: #18181b;
         font:
-          800 14px/1 Inter,
+          600 14px/1 Inter,
           system-ui,
           sans-serif;
       }
@@ -47,7 +52,20 @@
         background: #f4f4f5;
         color: #71717a;
         font-size: 11px;
+        font-weight: 500;
         text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .demo-input {
+        width: 100%;
+        padding: 8px 12px;
+        border: 1px solid #e4e4e7;
+        border-radius: 8px;
+        font: 400 14px/1.4 Inter, system-ui, sans-serif;
+        color: #a1a1aa;
+        background: #fafafa;
+        outline: none;
+        pointer-events: none;
       }
     </style>
   </head>
@@ -62,6 +80,7 @@
     >
       <div class="demo-frame">
         <label class="hf-ui-label">Workspace name <span>Required</span></label>
+        <input class="demo-input" type="text" placeholder="e.g. Acme Corp" disabled />
       </div>
       <script>
         const tl = gsap.timeline({ paused: true });

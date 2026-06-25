@@ -25,6 +25,13 @@
         background: #f4f4f5;
         font-family: Inter, system-ui, sans-serif;
       }
+      /* ponytail: zoom on the static wrapper — GSAP animates .hf-ui-dialog, not .demo-frame */
+      .demo-frame {
+        zoom: 0.86;
+        position: relative;
+        width: 760px;
+        height: 420px;
+      }
       .page-card {
         width: 760px;
         height: 420px;
@@ -47,44 +54,49 @@
       .hf-ui-dialog-overlay {
         position: absolute;
         inset: 0;
-        background: rgba(0, 0, 0, calc(var(--hf-dialog-overlay) * 0.5));
+        border-radius: 24px;
+        background: rgba(0, 0, 0, calc(var(--hf-dialog-overlay) * 0.45));
       }
       .hf-ui-dialog-panel {
         position: relative;
         width: 520px;
-        padding: 30px;
+        padding: 32px 36px;
         border: 1px solid #e4e4e7;
-        border-radius: 18px;
+        border-radius: 16px;
         background: white;
         color: #18181b;
         opacity: var(--hf-dialog-opacity);
         transform: translateY(var(--hf-dialog-y)) scale(var(--hf-dialog-scale));
-        box-shadow: 0 30px 80px rgba(0, 0, 0, 0.22);
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.14);
       }
       .hf-ui-dialog h2 {
         margin: 0;
-        font-size: 24px;
+        font-size: 22px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        color: #18181b;
       }
       .hf-ui-dialog p {
-        margin: 12px 0 0;
+        margin: 10px 0 0;
         color: #71717a;
-        font-size: 17px;
-        line-height: 1.5;
+        font-size: 15px;
+        line-height: 1.6;
       }
       .hf-ui-dialog-actions {
         display: flex;
         justify-content: flex-end;
-        gap: 10px;
+        gap: 8px;
         margin-top: 28px;
       }
       .hf-ui-dialog-actions button {
-        height: 42px;
-        padding: 0 20px;
+        height: 40px;
+        padding: 0 18px;
         border-radius: 10px;
         font:
-          800 15px/1 Inter,
+          500 14px/1 Inter,
           system-ui,
           sans-serif;
+        cursor: pointer;
       }
       .cancel {
         border: 1px solid #e4e4e7;
@@ -95,6 +107,7 @@
         border: 0;
         background: #18181b;
         color: white;
+        font-weight: 600;
       }
     </style>
   </head>
@@ -107,14 +120,16 @@
       data-height="1080"
       data-duration="5"
     >
-      <div class="page-card"></div>
-      <div class="hf-ui-dialog" role="dialog" aria-modal="true">
-        <div class="hf-ui-dialog-overlay"></div>
-        <div class="hf-ui-dialog-panel">
-          <h2>Edit profile</h2>
-          <p>Make changes to your profile here. Click save when you are done.</p>
-          <div class="hf-ui-dialog-actions">
-            <button class="cancel">Cancel</button><button class="action">Save changes</button>
+      <div class="demo-frame">
+        <div class="page-card"></div>
+        <div class="hf-ui-dialog" role="dialog" aria-modal="true">
+          <div class="hf-ui-dialog-overlay"></div>
+          <div class="hf-ui-dialog-panel">
+            <h2>Edit profile</h2>
+            <p>Make changes to your profile here. Click save when you are done.</p>
+            <div class="hf-ui-dialog-actions">
+              <button class="cancel">Cancel</button><button class="action">Save changes</button>
+            </div>
           </div>
         </div>
       </div>

@@ -30,9 +30,12 @@
         min-width: 760px;
         min-height: 480px;
         padding: 56px;
+        /* ponytail: scale wrapper (not a GSAP target) to fill ~65% of frame */
+        transform: scale(2.2);
+        transform-origin: center center;
       }
       .hf-ui-table {
-        width: 520px;
+        width: 560px;
         border-collapse: separate;
         border-spacing: 0;
         overflow: hidden;
@@ -45,16 +48,17 @@
       }
       .hf-ui-table th,
       .hf-ui-table td {
-        padding: 13px 16px;
+        padding: 15px 20px;
         text-align: left;
         border-bottom: 1px solid #f1f1f4;
-        font-size: 14px;
+        font-size: 15px;
       }
       .hf-ui-table th {
         background: #fafafa;
         color: #71717a;
-        font-size: 12px;
-        font-weight: 850;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
         text-transform: uppercase;
       }
       .hf-ui-table tr:last-child td {

@@ -28,6 +28,8 @@
         display: grid;
         place-items: center;
         padding: 52px;
+        /* ponytail: scale-up only — demo-frame is never a GSAP target */
+        transform: scale(0.97);
       }
       .hf-remocn-remocn-ui {
         --hf-accent: #2563eb;
@@ -58,11 +60,27 @@
         opacity: var(--hf-row-opacity, 1);
       }
       .hf-remocn-remocn-ui .label {
-        font-weight: 800;
+        font-weight: 600;
+        font-size: 15px;
       }
       .hf-remocn-remocn-ui .hint {
         color: #71717a;
         font-size: 13px;
+        background: #e4e4e7;
+        border-radius: 6px;
+        padding: 2px 8px;
+      }
+      /* Selected row gets accent highlight to read as "active" */
+      .hf-remocn-remocn-ui .row:nth-child(2) {
+        background: #eff6ff;
+        border: 1px solid #bfdbfe;
+      }
+      .hf-remocn-remocn-ui .row:nth-child(2) .label {
+        color: #1d4ed8;
+      }
+      .hf-remocn-remocn-ui .row:nth-child(2) .hint {
+        background: #dbeafe;
+        color: #1d4ed8;
       }
     </style>
   </head>

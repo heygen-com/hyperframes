@@ -30,6 +30,9 @@
         min-width: 900px;
         min-height: 500px;
         padding: 64px;
+        /* ponytail: scale wrapper — not a GSAP target, so CSS transform is safe */
+        transform: scale(2.8);
+        transform-origin: center center;
       }
       .hf-remocn-line-by-line-slide {
         color: #18181b;
@@ -40,8 +43,8 @@
       .hf-remocn-line-by-line-slide {
         display: grid;
         gap: 10px;
-        font-size: 52px;
-        line-height: 1;
+        font-size: 64px;
+        line-height: 1.05;
         overflow: hidden;
       }
       .hf-remocn-line-by-line-slide span {

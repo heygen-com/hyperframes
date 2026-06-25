@@ -28,6 +28,9 @@
         display: grid;
         place-items: center;
         padding: 52px;
+        /* ponytail: scale wrapper — demo-frame is not a GSAP target, safe to CSS-transform */
+        transform: scale(0.76);
+        transform-origin: center center;
       }
       .hf-remocn-landing-code-showcase {
         --hf-accent: #2563eb;
@@ -69,7 +72,8 @@
         display: flex;
         align-items: center;
         padding: 0 18px;
-        font-weight: 800;
+        font-size: 14px;
+        font-weight: 600;
         transform: translateX(var(--hf-pill-x, 0px));
       }
       .hf-remocn-landing-code-showcase .preview {
@@ -92,7 +96,31 @@
       }
       .hf-remocn-landing-code-showcase p {
         margin: 0;
+        font-size: 14px;
+        line-height: 1.55;
         color: #475569;
+      }
+      .hf-remocn-landing-code-showcase .code-lines {
+        display: grid;
+        gap: 8px;
+        padding: 16px;
+      }
+      .hf-remocn-landing-code-showcase .code-line {
+        height: 10px;
+        border-radius: 6px;
+        background: #e4e4e7;
+      }
+      .hf-remocn-landing-code-showcase .code-line.indent {
+        margin-left: 16px;
+        background: #eff6ff;
+      }
+      .hf-remocn-landing-code-showcase .card-label {
+        padding: 12px 16px 0;
+        font-size: 11px;
+        font-weight: 600;
+        color: #71717a;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
       }
     </style>
   </head>
@@ -115,9 +143,30 @@
             <div class="pill">Export</div>
           </div>
           <div class="panel preview">
-            <div class="card"></div>
-            <div class="card"></div>
-            <div class="card"></div>
+            <div class="card">
+              <div class="card-label">Scene 01</div>
+              <div class="code-lines">
+                <div class="code-line" style="width:72%"></div>
+                <div class="code-line indent" style="width:55%"></div>
+                <div class="code-line indent" style="width:68%"></div>
+                <div class="code-line" style="width:40%"></div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-label">Motion</div>
+              <div class="code-lines">
+                <div class="code-line" style="width:80%"></div>
+                <div class="code-line indent" style="width:60%"></div>
+                <div class="code-line indent" style="width:45%"></div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-label">Export</div>
+              <div class="code-lines">
+                <div class="code-line" style="width:65%"></div>
+                <div class="code-line indent" style="width:50%"></div>
+              </div>
+            </div>
           </div>
         </div>
       </div>

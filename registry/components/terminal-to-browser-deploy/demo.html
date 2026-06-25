@@ -28,6 +28,9 @@
         display: grid;
         place-items: center;
         padding: 52px;
+        /* ponytail: scale wrapper — GSAP targets .pill/.card via CSS vars, not this element */
+        transform: scale(1.55);
+        transform-origin: center center;
       }
       .hf-remocn-terminal-to-browser-deploy {
         --hf-accent: #2563eb;
@@ -84,6 +87,51 @@
         transform: translate(var(--hf-card-x, 0px), var(--hf-card-y, 0px))
           scale(var(--hf-card-scale, 1));
         opacity: var(--hf-card-opacity, 1);
+        padding: 14px 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        justify-content: center;
+      }
+      .hf-remocn-terminal-to-browser-deploy .card-line {
+        height: 8px;
+        border-radius: 4px;
+        background: #e4e4e7;
+      }
+      .hf-remocn-terminal-to-browser-deploy .card-line.short {
+        width: 55%;
+      }
+      .hf-remocn-terminal-to-browser-deploy .card-line.accent {
+        width: 35%;
+        background: #2563eb;
+        opacity: 0.55;
+      }
+      .hf-remocn-terminal-to-browser-deploy .card-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: #16a34a;
+        background: #f0fdf4;
+        border: 1px solid #bbf7d0;
+        border-radius: 6px;
+        padding: 3px 8px;
+        width: fit-content;
+      }
+      .hf-remocn-terminal-to-browser-deploy .card-badge.pending {
+        color: #d97706;
+        background: #fffbeb;
+        border-color: #fde68a;
+      }
+      .hf-remocn-terminal-to-browser-deploy .card-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: currentColor;
+        flex-shrink: 0;
       }
       .hf-remocn-terminal-to-browser-deploy h3 {
         margin: 0 0 14px;
@@ -115,9 +163,21 @@
             <div class="pill">Export</div>
           </div>
           <div class="panel preview">
-            <div class="card"></div>
-            <div class="card"></div>
-            <div class="card"></div>
+            <div class="card">
+              <div class="card-badge"><span class="card-dot"></span>Deployed</div>
+              <div class="card-line"></div>
+              <div class="card-line short"></div>
+            </div>
+            <div class="card">
+              <div class="card-badge pending"><span class="card-dot"></span>Building</div>
+              <div class="card-line"></div>
+              <div class="card-line accent"></div>
+            </div>
+            <div class="card">
+              <div class="card-line"></div>
+              <div class="card-line short"></div>
+              <div class="card-line accent"></div>
+            </div>
           </div>
         </div>
       </div>

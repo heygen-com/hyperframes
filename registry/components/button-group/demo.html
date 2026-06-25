@@ -30,28 +30,34 @@
         min-width: 760px;
         min-height: 480px;
         padding: 56px;
+        /* ponytail: scale on the non-GSAP wrapper; GSAP only touches the button inside */
+        transform: scale(3.2);
       }
       .hf-ui-button-group {
         display: inline-flex;
-        padding: 4px;
+        padding: 6px;
         border: 1px solid #e4e4e7;
-        border-radius: 12px;
+        border-radius: 14px;
         background: #f4f4f5;
         font-family: Inter, system-ui, sans-serif;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.08);
       }
       .hf-ui-button-group button {
-        height: 36px;
-        padding: 0 15px;
+        height: 44px;
+        padding: 0 22px;
         border: 0;
-        border-radius: 9px;
+        border-radius: 10px;
         background: transparent;
         color: #52525b;
-        font-weight: 800;
+        font-size: 15px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        cursor: pointer;
       }
       .hf-ui-button-group button[aria-pressed="true"] {
         background: #18181b;
         color: #fff;
-        box-shadow: 0 10px 24px rgba(24, 24, 27, 0.18);
+        box-shadow: 0 10px 24px rgba(24, 24, 27, 0.22);
       }
     </style>
   </head>

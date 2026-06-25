@@ -30,43 +30,48 @@
         min-width: 760px;
         min-height: 480px;
         padding: 56px;
+        /* ponytail: scale wrapper — GSAP does not touch .demo-frame */
+        transform: scale(1.95);
+        transform-origin: center center;
       }
       .hf-ui-alert {
         --hf-alert-y: 0px;
         display: grid;
-        grid-template-columns: 34px 1fr;
-        gap: 14px;
-        width: 410px;
-        padding: 16px;
+        grid-template-columns: 40px 1fr;
+        gap: 16px;
+        width: 420px;
+        padding: 20px 22px;
         border: 1px solid #bfdbfe;
-        border-radius: 12px;
+        border-radius: 14px;
         background: #eff6ff;
         color: #172554;
         font-family: Inter, system-ui, sans-serif;
         transform: translateY(var(--hf-alert-y));
-        box-shadow: 0 16px 46px rgba(37, 99, 235, 0.16);
+        box-shadow: 0 24px 70px rgba(37, 99, 235, 0.14);
       }
       .hf-ui-alert-icon {
         display: grid;
         place-items: center;
-        width: 34px;
-        height: 34px;
+        width: 40px;
+        height: 40px;
         border-radius: 999px;
         background: #2563eb;
         color: #fff;
         font-weight: 900;
         font-style: italic;
+        font-size: 17px;
       }
       .hf-ui-alert strong {
         display: block;
-        margin-bottom: 4px;
-        font-size: 15px;
+        margin-bottom: 5px;
+        font-size: 17px;
+        font-weight: 600;
       }
       .hf-ui-alert p {
         margin: 0;
         color: #1e3a8a;
-        font-size: 14px;
-        line-height: 1.35;
+        font-size: 15px;
+        line-height: 1.45;
       }
     </style>
   </head>

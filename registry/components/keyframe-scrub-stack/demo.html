@@ -25,59 +25,81 @@
         font-family: Inter, system-ui, sans-serif;
       }
       .hf-advanced-keyframe-scrub-stack {
-        color: #111827;
+        color: #18181b;
         font-family: Inter, system-ui, sans-serif;
-      }
-      .hf-advanced-keyframe-scrub-stack {
-        width: 720px;
-        min-height: 420px;
-        border-radius: 30px;
-        padding: 36px;
-        background: #fff;
-        box-shadow: 0 28px 80px rgba(15, 23, 42, 0.16);
+        /* ponytail: scale wrapper — GSAP only targets .card, not this element */
+        transform: scale(2);
+        transform-origin: center center;
+        width: 560px;
+        min-height: 360px;
+        border-radius: 20px;
+        padding: 32px;
+        background: #ffffff;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.10);
+        border: 1px solid #e4e4e7;
         display: grid;
         place-items: center;
       }
-      .hf-advanced-keyframe-scrub-stack .grid {
-        display: grid;
-        grid-template-columns: repeat(8, 46px);
-        gap: 10px;
-      }
-      .hf-advanced-keyframe-scrub-stack .cell {
-        width: 46px;
-        height: 46px;
-        border-radius: 14px;
-        background: linear-gradient(135deg, #60a5fa, #7c3aed);
-        transform: translateY(var(--hf-cell-y, 0px)) scale(var(--hf-cell-scale, 1));
-        opacity: var(--hf-cell-opacity, 1);
-      }
-      .hf-advanced-keyframe-scrub-stack svg {
-        width: 520px;
-        height: 220px;
-        overflow: visible;
-      }
-      .hf-advanced-keyframe-scrub-stack path {
-        fill: none;
-        stroke: #2563eb;
-        stroke-width: 14;
-        stroke-linecap: round;
-        stroke-dasharray: 900;
-        stroke-dashoffset: var(--hf-dash, 0);
-      }
       .hf-advanced-keyframe-scrub-stack .stack {
         position: relative;
-        width: 520px;
-        height: 260px;
+        width: 460px;
+        height: 240px;
       }
       .hf-advanced-keyframe-scrub-stack .card {
         position: absolute;
         inset: 0;
-        border-radius: 26px;
-        background: linear-gradient(135deg, #f8fafc, #dbeafe);
-        border: 1px solid rgba(15, 23, 42, 0.08);
-        box-shadow: 0 20px 54px rgba(15, 23, 42, 0.14);
+        border-radius: 14px;
+        background: linear-gradient(145deg, #f8fafc 0%, #dbeafe 100%);
+        border: 1px solid #e4e4e7;
+        box-shadow: 0 8px 32px rgba(15, 23, 42, 0.10);
         transform: translateY(var(--hf-card-y, 0px)) scale(var(--hf-card-scale, 1));
         opacity: var(--hf-card-opacity, 1);
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        padding: 20px 22px 16px;
+      }
+      .hf-advanced-keyframe-scrub-stack .card-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .hf-advanced-keyframe-scrub-stack .card-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #3b82f6;
+        flex-shrink: 0;
+      }
+      .hf-advanced-keyframe-scrub-stack .card-label {
+        font-size: 13px;
+        font-weight: 600;
+        color: #18181b;
+        letter-spacing: -0.01em;
+      }
+      .hf-advanced-keyframe-scrub-stack .card-sub {
+        font-size: 11px;
+        font-weight: 400;
+        color: #71717a;
+        margin-top: 2px;
+      }
+      .hf-advanced-keyframe-scrub-stack .card-bars {
+        display: flex;
+        gap: 5px;
+        align-items: flex-end;
+        height: 36px;
+      }
+      .hf-advanced-keyframe-scrub-stack .bar {
+        width: 8px;
+        border-radius: 3px;
+        background: linear-gradient(180deg, #93c5fd, #3b82f6);
+      }
+      /* back cards are slightly desaturated */
+      .hf-advanced-keyframe-scrub-stack .card:nth-child(2) {
+        background: linear-gradient(145deg, #f1f5f9 0%, #e0e7ff 100%);
+      }
+      .hf-advanced-keyframe-scrub-stack .card:nth-child(3) {
+        background: linear-gradient(145deg, #f8fafc 0%, #ede9fe 100%);
       }
     </style>
   </head>
@@ -92,9 +114,54 @@
     >
       <div class="hf-advanced-keyframe-scrub-stack">
         <div class="stack">
-          <div class="card" style="--i: 0"></div>
-          <div class="card" style="--i: 1"></div>
-          <div class="card" style="--i: 2"></div>
+          <div class="card" style="--i: 0">
+            <div class="card-header">
+              <span class="card-dot"></span>
+              <div>
+                <div class="card-label">Keyframe 3</div>
+                <div class="card-sub">t = 1.00s · ease-out</div>
+              </div>
+            </div>
+            <div class="card-bars">
+              <div class="bar" style="height:28px"></div>
+              <div class="bar" style="height:36px"></div>
+              <div class="bar" style="height:20px"></div>
+              <div class="bar" style="height:32px"></div>
+              <div class="bar" style="height:14px"></div>
+              <div class="bar" style="height:24px"></div>
+            </div>
+          </div>
+          <div class="card" style="--i: 1">
+            <div class="card-header">
+              <span class="card-dot" style="background:#7c3aed"></span>
+              <div>
+                <div class="card-label">Keyframe 2</div>
+                <div class="card-sub">t = 0.50s · back.out</div>
+              </div>
+            </div>
+            <div class="card-bars">
+              <div class="bar" style="height:18px;background:linear-gradient(180deg,#c4b5fd,#7c3aed)"></div>
+              <div class="bar" style="height:30px;background:linear-gradient(180deg,#c4b5fd,#7c3aed)"></div>
+              <div class="bar" style="height:36px;background:linear-gradient(180deg,#c4b5fd,#7c3aed)"></div>
+              <div class="bar" style="height:22px;background:linear-gradient(180deg,#c4b5fd,#7c3aed)"></div>
+            </div>
+          </div>
+          <div class="card" style="--i: 2">
+            <div class="card-header">
+              <span class="card-dot" style="background:#71717a"></span>
+              <div>
+                <div class="card-label">Keyframe 1</div>
+                <div class="card-sub">t = 0.00s · linear</div>
+              </div>
+            </div>
+            <div class="card-bars">
+              <div class="bar" style="height:12px;background:linear-gradient(180deg,#d4d4d8,#71717a)"></div>
+              <div class="bar" style="height:12px;background:linear-gradient(180deg,#d4d4d8,#71717a)"></div>
+              <div class="bar" style="height:12px;background:linear-gradient(180deg,#d4d4d8,#71717a)"></div>
+              <div class="bar" style="height:12px;background:linear-gradient(180deg,#d4d4d8,#71717a)"></div>
+              <div class="bar" style="height:12px;background:linear-gradient(180deg,#d4d4d8,#71717a)"></div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

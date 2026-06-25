@@ -21,26 +21,34 @@
         height: 1080px;
         display: grid;
         place-items: center;
-        background: #f8fafc;
+        background: #fafafa;
         font-family: Inter, system-ui, sans-serif;
       }
       .demo-frame {
-        display: grid;
-        place-items: center;
-        min-width: 760px;
-        min-height: 480px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 28px;
         padding: 56px;
       }
       .hf-ui-blur-in {
         display: flex;
         flex-wrap: wrap;
+        justify-content: center;
         gap: 0.28em;
-        color: #111827;
+        color: #18181b;
         font:
-          850 56px/1 Inter,
+          800 96px/1.05 Inter,
           system-ui,
           sans-serif;
-        letter-spacing: -0.02em;
+        letter-spacing: -0.03em;
+      }
+      /* ponytail: subtitle reuses the same class so GSAP's span selector picks it up for free */
+      .hf-ui-blur-in.subtitle {
+        font-size: 36px;
+        font-weight: 500;
+        color: #71717a;
+        letter-spacing: -0.01em;
       }
       .hf-ui-blur-in span {
         display: inline-block;
@@ -65,6 +73,12 @@
           <span>systems</span>
           <span>for</span>
           <span>video</span>
+        </div>
+        <div class="hf-ui-blur-in subtitle" aria-label="Every word, blurred in.">
+          <span>Every</span>
+          <span>word,</span>
+          <span>blurred</span>
+          <span>in.</span>
         </div>
       </div>
       <script>

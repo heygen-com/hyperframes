@@ -48,11 +48,53 @@
         border-radius: 7px;
         background: transparent;
         color: #18181b;
-        font-weight: 800;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: default;
       }
-      .hf-ui-menubar button:first-child {
+      .hf-ui-menubar-anchor button {
         background: #f4f4f5;
       }
+      .hf-ui-dropdown {
+        position: absolute;
+        top: calc(100% + 4px);
+        left: 0;
+        width: 200px;
+        background: #fff;
+        border: 1px solid #e4e4e7;
+        border-radius: 10px;
+        box-shadow: 0 8px 30px rgba(24, 24, 27, 0.12), 0 2px 8px rgba(24, 24, 27, 0.06);
+        padding: 4px;
+        font-size: 13px;
+        color: #18181b;
+      }
+      .hf-ui-dropdown-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 32px;
+        padding: 0 10px;
+        border-radius: 6px;
+        font-weight: 400;
+      }
+      .hf-ui-dropdown-item:first-child {
+        background: #f4f4f5;
+        font-weight: 500;
+      }
+      .hf-ui-dropdown-item .shortcut {
+        color: #71717a;
+        font-size: 12px;
+      }
+      .hf-ui-dropdown-separator {
+        height: 1px;
+        background: #e4e4e7;
+        margin: 4px 2px;
+      }
+      .hf-ui-menubar-anchor {
+        position: relative;
+        display: inline-flex;
+      }
+      .demo-frame { transform: scale(3.0); } /* ponytail: qa-scale bumped 1.9→3.0; revert if widget grows */
     </style>
   </head>
   <body>
@@ -66,7 +108,17 @@
     >
       <div class="demo-frame">
         <nav class="hf-ui-menubar" aria-label="Editor menu">
-          <button>File</button><button>Edit</button><button>View</button><button>Export</button>
+          <div class="hf-ui-menubar-anchor">
+            <button>File</button>
+            <div class="hf-ui-dropdown">
+              <div class="hf-ui-dropdown-item">New File<span class="shortcut">⌘N</span></div>
+              <div class="hf-ui-dropdown-item">Open…<span class="shortcut">⌘O</span></div>
+              <div class="hf-ui-dropdown-item">Save<span class="shortcut">⌘S</span></div>
+              <div class="hf-ui-dropdown-separator"></div>
+              <div class="hf-ui-dropdown-item">Export as…<span class="shortcut">⌘E</span></div>
+              <div class="hf-ui-dropdown-item">Close Window<span class="shortcut">⌘W</span></div>
+            </div>
+          </div><button>Edit</button><button>View</button><button>Export</button>
         </nav>
       </div>
       <script>
@@ -77,6 +129,18 @@
           { opacity: 0, y: -8 },
           { opacity: 1, y: 0, duration: 0.18, stagger: 0.035, ease: "power2.out" },
           startTime,
+        );
+        tl.fromTo(
+          ".hf-ui-dropdown",
+          { opacity: 0, y: -6, scale: 0.96 },
+          { opacity: 1, y: 0, scale: 1, duration: 0.22, ease: "power2.out", transformOrigin: "top left" },
+          startTime + 0.18,
+        );
+        tl.fromTo(
+          ".hf-ui-dropdown-item",
+          { opacity: 0, x: -4 },
+          { opacity: 1, x: 0, duration: 0.14, stagger: 0.03, ease: "power2.out" },
+          startTime + 0.28,
         );
         tl.set({}, {}, 5);
         window.__timelines = window.__timelines || {};

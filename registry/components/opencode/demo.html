@@ -28,6 +28,8 @@
         display: grid;
         place-items: center;
         padding: 52px;
+        /* ponytail: scale wrapper — GSAP only targets .line and .terminal inside, not this element */
+        transform: scale(0.76);
       }
       .hf-remocn-opencode {
         --hf-accent: #2563eb;
@@ -54,6 +56,8 @@
         padding: 0 18px;
         background: #111827;
         color: #94a3b8;
+        font-size: 14px;
+        font-weight: 500;
       }
       .hf-remocn-opencode .dot {
         width: 11px;
@@ -73,6 +77,8 @@
         padding: 22px;
         border-right: 1px solid rgba(148, 163, 184, 0.18);
         color: #94a3b8;
+        font-size: 15px;
+        line-height: 2;
       }
       .hf-remocn-opencode .editor {
         padding: 22px;
@@ -93,6 +99,7 @@
         border-top: 1px solid rgba(148, 163, 184, 0.18);
         color: #86efac;
         min-height: 78px;
+        font-size: 15px;
       }
     </style>
   </head>

@@ -28,6 +28,9 @@
         display: grid;
         place-items: center;
         padding: 52px;
+        /* ponytail: scale wrapper (not a GSAP target) to fill ~65% of frame */
+        transform: scale(2.5);
+        transform-origin: center center;
       }
       .hf-remocn-select-item {
         --hf-accent: #2563eb;
@@ -58,11 +61,12 @@
         opacity: var(--hf-row-opacity, 1);
       }
       .hf-remocn-select-item .label {
-        font-weight: 800;
+        font-size: 15px;
+        font-weight: 600;
       }
       .hf-remocn-select-item .hint {
         color: #71717a;
-        font-size: 13px;
+        font-size: 14px;
       }
     </style>
   </head>

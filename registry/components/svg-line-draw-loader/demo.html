@@ -21,22 +21,25 @@
         height: 1080px;
         display: grid;
         place-items: center;
-        background: #f7f7f8;
+        background: #f4f4f5;
         font-family: Inter, system-ui, sans-serif;
       }
       .hf-advanced-svg-line-draw-loader {
-        color: #111827;
+        color: #18181b;
         font-family: Inter, system-ui, sans-serif;
       }
       .hf-advanced-svg-line-draw-loader {
         width: 720px;
         min-height: 420px;
-        border-radius: 30px;
-        padding: 36px;
-        background: #fff;
-        box-shadow: 0 28px 80px rgba(15, 23, 42, 0.16);
+        border-radius: 16px;
+        padding: 48px;
+        background: #ffffff;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.10), 0 1px 0 #e4e4e7 inset;
+        border: 1px solid #e4e4e7;
         display: grid;
         place-items: center;
+        /* ponytail: scale wrapper — GSAP only targets path, not this element */
+        transform: scale(1.7);
       }
       .hf-advanced-svg-line-draw-loader .grid {
         display: grid;
@@ -59,7 +62,7 @@
       .hf-advanced-svg-line-draw-loader path {
         fill: none;
         stroke: #2563eb;
-        stroke-width: 14;
+        stroke-width: 12;
         stroke-linecap: round;
         stroke-dasharray: 900;
         stroke-dashoffset: var(--hf-dash, 0);

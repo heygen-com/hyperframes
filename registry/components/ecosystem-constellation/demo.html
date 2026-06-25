@@ -28,6 +28,9 @@
         display: grid;
         place-items: center;
         padding: 52px;
+        /* ponytail: scale wrapper (not a GSAP target) to fill ~65% of 1920x1080 */
+        transform: scale(2.1);
+        transform-origin: center center;
       }
       .hf-remocn-ecosystem-constellation {
         --hf-accent: #2563eb;
@@ -94,6 +97,30 @@
         margin: 0;
         color: #475569;
       }
+      /* skeleton content inside preview cards */
+      .hf-remocn-ecosystem-constellation .card {
+        padding: 16px 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        justify-content: center;
+      }
+      .hf-remocn-ecosystem-constellation .card-row {
+        height: 10px;
+        border-radius: 6px;
+        background: #e4e4e7;
+      }
+      .hf-remocn-ecosystem-constellation .card-row.short {
+        width: 55%;
+      }
+      .hf-remocn-ecosystem-constellation .card-dot {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: #2563eb22;
+        border: 2px solid #2563eb55;
+        margin-bottom: 4px;
+      }
     </style>
   </head>
   <body>
@@ -115,9 +142,21 @@
             <div class="pill">Export</div>
           </div>
           <div class="panel preview">
-            <div class="card"></div>
-            <div class="card"></div>
-            <div class="card"></div>
+            <div class="card">
+              <div class="card-dot"></div>
+              <div class="card-row"></div>
+              <div class="card-row short"></div>
+            </div>
+            <div class="card">
+              <div class="card-dot"></div>
+              <div class="card-row"></div>
+              <div class="card-row short"></div>
+            </div>
+            <div class="card">
+              <div class="card-dot"></div>
+              <div class="card-row"></div>
+              <div class="card-row short"></div>
+            </div>
           </div>
         </div>
       </div>

@@ -30,16 +30,19 @@
         min-width: 760px;
         min-height: 480px;
         padding: 56px;
+        /* ponytail: scale wrapper — GSAP never touches .demo-frame, so transform is safe */
+        transform: scale(1.22);
+        transform-origin: center center;
       }
       .hf-ui-command-menu {
         width: 520px;
         padding: 12px;
-        border: 1px solid #27272a;
+        border: 1px solid #3f3f46;
         border-radius: 22px;
         background: #111113;
         color: #fafafa;
         font-family: Inter, system-ui, sans-serif;
-        box-shadow: 0 30px 90px rgba(0, 0, 0, 0.28);
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.40), 0 0 0 0.5px rgba(255,255,255,0.04) inset;
       }
       .hf-ui-command-search {
         height: 50px;

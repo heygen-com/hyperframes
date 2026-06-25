@@ -21,13 +21,16 @@
         height: 1080px;
         display: grid;
         place-items: center;
-        background: #f7f7f8;
+        background: #f5f5f4;
         font-family: Inter, system-ui, sans-serif;
       }
       .demo-frame {
         display: grid;
         place-items: center;
         padding: 52px;
+        /* ponytail: scale wrapper only — GSAP targets are children of .hf-remocn-micro-scale-fade */
+        transform: scale(1.7);
+        transform-origin: center center;
       }
       .hf-remocn-micro-scale-fade {
         --hf-accent: #2563eb;

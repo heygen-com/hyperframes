@@ -24,13 +24,15 @@
         background: #f6f7fb;
         font-family: Inter, system-ui, sans-serif;
       }
+      /* ponytail: zoom on .card — GSAP targets .hf-ui-accordion-item, not .card */
       .card {
         width: 680px;
         padding: 48px;
         border: 1px solid #e4e4e7;
         border-radius: 28px;
         background: #fff;
-        box-shadow: 0 26px 80px rgba(0, 0, 0, 0.12);
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.10);
+        zoom: 1.9;
       }
       .hf-ui-accordion {
         width: 100%;
@@ -90,7 +92,7 @@
     >
       <div class="card">
         <div class="hf-ui-accordion">
-          <div class="hf-ui-accordion-item">
+          <div class="hf-ui-accordion-item hf-ui-accordion-item--active">
             <button class="hf-ui-accordion-trigger">
               <span>What changed?</span><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6" /></svg>
             </button>
@@ -100,12 +102,28 @@
               </div>
             </div>
           </div>
+          <div class="hf-ui-accordion-item hf-ui-accordion-item--static" style="--hf-accordion-open:0">
+            <button class="hf-ui-accordion-trigger">
+              <span>How do I install it?</span><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6" /></svg>
+            </button>
+            <div class="hf-ui-accordion-content">
+              <div class="hf-ui-accordion-inner"></div>
+            </div>
+          </div>
+          <div class="hf-ui-accordion-item hf-ui-accordion-item--static" style="--hf-accordion-open:0;border-bottom:none">
+            <button class="hf-ui-accordion-trigger">
+              <span>Is it customizable?</span><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6" /></svg>
+            </button>
+            <div class="hf-ui-accordion-content">
+              <div class="hf-ui-accordion-inner"></div>
+            </div>
+          </div>
         </div>
       </div>
       <script>
         const tl = gsap.timeline({ paused: true });
         tl.to(
-          ".hf-ui-accordion-item",
+          ".hf-ui-accordion-item--active",
           { "--hf-accordion-open": 1, duration: 0.42, ease: "power3.out" },
           0.7,
         );

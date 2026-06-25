@@ -79,6 +79,24 @@
         background: #f4f4f5;
         color: #18181b;
       }
+      /* ponytail: wrapper scales the whole select without clobbering GSAP's inline transform on .hf-ui-select */
+      .demo-scale {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 28px;
+        zoom: 3.2;
+      }
+      .demo-label {
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #71717a;
+      }
+      .hf-ui-select-trigger {
+        min-width: 320px;
+      }
     </style>
   </head>
   <body>
@@ -90,12 +108,15 @@
       data-height="1080"
       data-duration="5"
     >
-      <div class="hf-ui-select">
-        <button class="hf-ui-select-trigger">1080p <span>⌄</span></button>
-        <div class="hf-ui-select-menu">
-          <div class="hf-ui-select-option is-active">1080p</div>
-          <div class="hf-ui-select-option">4K</div>
-          <div class="hf-ui-select-option">Square</div>
+      <div class="demo-scale">
+        <span class="demo-label">Video Quality</span>
+        <div class="hf-ui-select">
+          <button class="hf-ui-select-trigger">1080p <span>⌄</span></button>
+          <div class="hf-ui-select-menu">
+            <div class="hf-ui-select-option is-active">1080p</div>
+            <div class="hf-ui-select-option">4K</div>
+            <div class="hf-ui-select-option">Square</div>
+          </div>
         </div>
       </div>
       <script>

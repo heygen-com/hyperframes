@@ -27,43 +27,64 @@
       .demo-frame {
         display: grid;
         place-items: center;
-        min-width: 760px;
-        min-height: 480px;
-        padding: 56px;
+        /* ponytail: scale wrapper (not a GSAP target) to fill ~65% of 1920px frame */
+        transform: scale(2.2);
+        transform-origin: center center;
       }
       .hf-ui-drawer {
-        width: 520px;
-        padding: 16px 24px 24px;
+        width: 560px;
+        padding: 20px 28px 28px;
         border: 1px solid #e4e4e7;
         border-radius: 28px 28px 18px 18px;
         background: #ffffff;
         color: #18181b;
         font-family: Inter, system-ui, sans-serif;
-        box-shadow: 0 -10px 70px rgba(0, 0, 0, 0.14);
+        box-shadow: 0 -8px 48px rgba(0, 0, 0, 0.12), 0 2px 16px rgba(0, 0, 0, 0.06);
       }
       .hf-ui-drawer-handle {
         width: 56px;
         height: 5px;
-        margin: 0 auto 22px;
+        margin: 0 auto 24px;
         border-radius: 999px;
         background: #d4d4d8;
       }
       .hf-ui-drawer h3 {
-        margin: 0 0 18px;
-        font-size: 24px;
+        margin: 0 0 4px;
+        font-size: 22px;
+        font-weight: 600;
+        letter-spacing: -0.3px;
+      }
+      .hf-ui-drawer-subtitle {
+        margin: 0 0 20px;
+        font-size: 14px;
+        color: #71717a;
+        font-weight: 400;
       }
       .hf-ui-drawer-row {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        height: 54px;
+        height: 56px;
         border-top: 1px solid #f4f4f5;
-        font-weight: 760;
+        font-size: 15px;
+        font-weight: 500;
+        color: #18181b;
       }
       .hf-ui-drawer-row strong {
+        display: inline-flex;
+        align-items: center;
+        padding: 3px 9px;
+        border-radius: 6px;
+        background: #f4f4f5;
         color: #71717a;
-        font-size: 13px;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.05em;
         text-transform: uppercase;
+      }
+      .hf-ui-drawer-row strong.badge-green {
+        background: #f0fdf4;
+        color: #16a34a;
       }
     </style>
   </head>
@@ -80,8 +101,10 @@
         <div class="hf-ui-drawer">
           <div class="hf-ui-drawer-handle"></div>
           <h3>Export options</h3>
-          <div class="hf-ui-drawer-row"><span>MP4 1080p</span><strong>Ready</strong></div>
+          <p class="hf-ui-drawer-subtitle">Choose a format to download your video</p>
+          <div class="hf-ui-drawer-row"><span>MP4 1080p</span><strong class="badge-green">Ready</strong></div>
           <div class="hf-ui-drawer-row"><span>Transparent WebM</span><strong>Beta</strong></div>
+          <div class="hf-ui-drawer-row"><span>GIF (600px)</span><strong>Coming soon</strong></div>
         </div>
       </div>
       <script>

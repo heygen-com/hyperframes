@@ -25,11 +25,32 @@
         font-family: Inter, system-ui, sans-serif;
       }
       .demo-frame {
-        display: grid;
-        place-items: center;
-        min-width: 900px;
-        min-height: 500px;
-        padding: 64px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 32px;
+        /* ponytail: scale on non-GSAP wrapper — safe, GSAP only animates --hf-slot-y on inner <i> */
+        transform: scale(1.85);
+        transform-origin: center center;
+      }
+      .slot-card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 24px;
+        background: #ffffff;
+        border: 1px solid #e4e4e7;
+        border-radius: 14px;
+        padding: 40px 56px;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.10);
+      }
+      .slot-label {
+        font-family: Inter, system-ui, sans-serif;
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #71717a;
       }
       .hf-remocn-slot-machine-roll {
         color: #18181b;
@@ -70,14 +91,17 @@
       data-duration="5"
     >
       <div class="demo-frame">
-        <div class="hf-remocn-slot-machine-roll">
-          <span
-            ><i>0<br />A</i></span
-          ><span
-            ><i>0<br />7</i></span
-          ><span
-            ><i>0<br />K</i></span
-          >
+        <div class="slot-card">
+          <div class="slot-label">Slot Machine Roll</div>
+          <div class="hf-remocn-slot-machine-roll">
+            <span
+              ><i>0<br />A</i></span
+            ><span
+              ><i>0<br />7</i></span
+            ><span
+              ><i>0<br />K</i></span
+            >
+          </div>
         </div>
       </div>
       <script>

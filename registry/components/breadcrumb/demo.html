@@ -27,26 +27,33 @@
       .demo-frame {
         display: grid;
         place-items: center;
-        min-width: 760px;
-        min-height: 480px;
-        padding: 56px;
+        padding: 64px 80px;
+        background: #ffffff;
+        border: 1px solid #e4e4e7;
+        border-radius: 16px;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.10);
+        /* ponytail: scale on non-GSAP wrapper; GSAP targets only children of .hf-ui-breadcrumb */
+        transform: scale(3.0);
       }
       .hf-ui-breadcrumb {
         display: inline-flex;
         align-items: center;
-        gap: 9px;
+        gap: 10px;
         color: #71717a;
         font:
-          750 14px/1 Inter,
+          500 15px/1 Inter,
           system-ui,
           sans-serif;
+        white-space: nowrap;
       }
       .hf-ui-breadcrumb i {
         color: #d4d4d8;
         font-style: normal;
+        font-weight: 400;
       }
       .hf-ui-breadcrumb strong {
         color: #18181b;
+        font-weight: 600;
       }
     </style>
   </head>

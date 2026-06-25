@@ -28,6 +28,8 @@
         display: grid;
         place-items: center;
         padding: 52px;
+        /* ponytail: scale-up only — demo-frame is not a GSAP target */
+        transform: scale(0.87);
       }
       .hf-remocn-device-mockup-zoom {
         --hf-accent: #2563eb;
@@ -40,13 +42,14 @@
       .hf-remocn-device-mockup-zoom {
         width: 820px;
         min-height: 460px;
-        border-radius: 34px;
-        padding: 28px;
-        background: linear-gradient(135deg, #f8fafc, #e0f2fe);
-        box-shadow: 0 28px 80px rgba(15, 23, 42, 0.18);
+        border-radius: 28px;
+        padding: 24px;
+        background: linear-gradient(145deg, #f0f9ff 0%, #e8f4fd 50%, #dbeafe 100%);
+        border: 1px solid rgba(37, 99, 235, 0.10);
+        box-shadow: 0 32px 90px rgba(15, 23, 42, 0.14), 0 4px 16px rgba(15, 23, 42, 0.06);
         display: grid;
-        grid-template-columns: 280px 1fr;
-        gap: 22px;
+        grid-template-columns: 270px 1fr;
+        gap: 20px;
         overflow: hidden;
       }
       .hf-remocn-device-mockup-zoom .panel {
@@ -80,19 +83,36 @@
         min-height: 78px;
         border-radius: 18px;
         background: #fff;
+        border: 1px solid #e4e4e7;
         box-shadow: 0 14px 40px rgba(15, 23, 42, 0.08);
         transform: translate(var(--hf-card-x, 0px), var(--hf-card-y, 0px))
           scale(var(--hf-card-scale, 1));
         opacity: var(--hf-card-opacity, 1);
+        padding: 16px 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
       }
+      .hf-remocn-device-mockup-zoom .card-bar {
+        height: 10px;
+        border-radius: 6px;
+        background: #e4e4e7;
+      }
+      .hf-remocn-device-mockup-zoom .card-bar.wide { width: 70%; }
+      .hf-remocn-device-mockup-zoom .card-bar.short { width: 45%; }
+      .hf-remocn-device-mockup-zoom .card-bar.accent { width: 30%; background: #2563eb; opacity: 0.25; }
       .hf-remocn-device-mockup-zoom h3 {
         margin: 0 0 14px;
-        font-size: 32px;
-        letter-spacing: -0.04em;
+        font-size: 28px;
+        font-weight: 700;
+        letter-spacing: -0.03em;
+        color: #18181b;
       }
       .hf-remocn-device-mockup-zoom p {
-        margin: 0;
-        color: #475569;
+        margin: 0 0 8px;
+        font-size: 13px;
+        line-height: 1.55;
+        color: #71717a;
       }
     </style>
   </head>
@@ -115,9 +135,19 @@
             <div class="pill">Export</div>
           </div>
           <div class="panel preview">
-            <div class="card"></div>
-            <div class="card"></div>
-            <div class="card"></div>
+            <div class="card">
+              <div class="card-bar wide"></div>
+              <div class="card-bar short"></div>
+              <div class="card-bar accent"></div>
+            </div>
+            <div class="card">
+              <div class="card-bar wide"></div>
+              <div class="card-bar short"></div>
+            </div>
+            <div class="card">
+              <div class="card-bar wide"></div>
+              <div class="card-bar accent"></div>
+            </div>
           </div>
         </div>
       </div>

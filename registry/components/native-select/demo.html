@@ -21,40 +21,65 @@
         height: 1080px;
         display: grid;
         place-items: center;
-        background: #f7f7f8;
+        background: #f5f5f4;
         font-family: Inter, system-ui, sans-serif;
       }
       .demo-frame {
         display: grid;
         place-items: center;
-        min-width: 760px;
-        min-height: 480px;
-        padding: 56px;
+        padding: 48px 56px;
+        background: #ffffff;
+        border: 1px solid #e4e4e7;
+        border-radius: 16px;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.08);
+        min-width: 320px;
+        transform: scale(3.4); /* ponytail: qa-scale, tune if widget grows */
       }
       .hf-ui-native-select {
         display: grid;
-        gap: 8px;
-        width: 240px;
+        gap: 10px;
+        width: 260px;
         color: #18181b;
         font-family: Inter, system-ui, sans-serif;
       }
       .hf-ui-native-select span {
         font-size: 13px;
-        font-weight: 800;
+        font-weight: 500;
+        color: #71717a;
+        letter-spacing: 0.01em;
+      }
+      /* chevron wrapper so we can overlay an SVG arrow (appearance:none hides native arrow) */
+      .select-wrapper {
+        position: relative;
+      }
+      .select-wrapper::after {
+        content: "";
+        position: absolute;
+        right: 13px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 14px;
+        height: 14px;
+        background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M4 6l4 4 4-4' stroke='%2371717a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/contain no-repeat;
+        pointer-events: none;
       }
       .hf-ui-native-select select {
+        width: 100%;
         height: 42px;
         padding: 0 38px 0 13px;
-        border: 1px solid #d4d4d8;
+        border: 1px solid #e4e4e7;
         border-radius: 10px;
-        background: #fff;
+        background: #fafafa;
         color: #18181b;
         font:
-          750 15px/1 Inter,
+          500 14px/1 Inter,
           system-ui,
           sans-serif;
         appearance: none;
-        box-shadow: 0 0 0 var(--hf-select-ring, 0px) rgba(24, 24, 27, 0.1);
+        outline: none;
+        cursor: pointer;
+        box-shadow: 0 0 0 var(--hf-select-ring, 0px) rgba(24, 24, 27, 0.12);
+        transition: border-color 0.15s;
       }
     </style>
   </head>
@@ -70,10 +95,14 @@
       <div class="demo-frame">
         <label class="hf-ui-native-select"
           ><span>Quality</span
-          ><select>
-            <option>1080p</option>
-            <option>4K</option>
-          </select></label
+          ><div class="select-wrapper"
+            ><select>
+              <option>1080p</option>
+              <option>720p</option>
+              <option>4K Ultra HD</option>
+              <option>480p</option>
+            </select></div
+          ></label
         >
       </div>
       <script>

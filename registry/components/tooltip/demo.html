@@ -33,46 +33,48 @@
       .hf-ui-tooltip-trigger {
         display: grid;
         place-items: center;
-        width: 74px;
-        height: 74px;
+        width: 96px;
+        height: 96px;
         border: 2px solid #d4d4d8;
         border-radius: 999px;
         background: white;
         color: #18181b;
         font:
-          900 34px/1 Inter,
+          900 44px/1 Inter,
           system-ui,
           sans-serif;
         box-shadow: 0 18px 46px rgba(0, 0, 0, 0.1);
       }
       .hf-ui-tooltip-content {
         position: absolute;
-        bottom: calc(100% + 22px);
+        bottom: calc(100% + 18px);
         left: 50%;
-        width: 420px;
-        padding: 20px 24px;
-        border-radius: 18px;
+        width: 340px;
+        padding: 18px 22px;
+        border-radius: 16px;
         background: #18181b;
         color: white;
-        font-size: 25px;
-        font-weight: 750;
-        line-height: 1.25;
+        font-size: 20px;
+        font-weight: 600;
+        line-height: 1.4;
         text-align: center;
         opacity: var(--hf-tooltip-open);
         transform: translateX(-50%) translateY(calc((1 - var(--hf-tooltip-open)) * 12px))
           scale(calc(0.94 + var(--hf-tooltip-open) * 0.06));
         transform-origin: 50% 100%;
-        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.24);
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
       }
       .hf-ui-tooltip-arrow {
         position: absolute;
         left: 50%;
-        bottom: -8px;
-        width: 18px;
-        height: 18px;
+        bottom: -7px;
+        width: 14px;
+        height: 14px;
         background: #18181b;
         transform: translateX(-50%) rotate(45deg);
       }
+      /* ponytail: zoom on .hf-ui-tooltip is safe — GSAP only animates --hf-tooltip-open (CSS var), not spatial props */
+      .hf-ui-tooltip { zoom: 2.2; }
     </style>
   </head>
   <body>

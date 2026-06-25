@@ -21,7 +21,8 @@
         height: 1080px;
         display: grid;
         place-items: center;
-        background: #fff7f7;
+        /* neutral stone — reads as a real app canvas behind the backdrop */
+        background: #fafafa;
         font-family: Inter, system-ui, sans-serif;
       }
       .demo-frame {
@@ -30,6 +31,9 @@
         min-width: 760px;
         min-height: 480px;
         padding: 56px;
+        /* ponytail: scale wrapper (not a GSAP target) to hit 55–75% frame fill */
+        transform: scale(1.28);
+        transform-origin: center center;
       }
       .hf-ui-alert-dialog {
         --hf-alert-open: 1;
@@ -41,13 +45,16 @@
         width: min(560px, 100%);
         min-height: 360px;
         font-family: Inter, system-ui, sans-serif;
+        z-index: 1;
       }
       .hf-ui-alert-dialog-overlay {
-        position: absolute;
+        /* ponytail: extend beyond container so it reads as a full-viewport backdrop */
+        position: fixed;
         inset: 0;
-        border-radius: 28px;
-        background: rgba(24, 24, 27, 0.42);
+        border-radius: 0;
+        background: rgba(24, 24, 27, 0.48);
         opacity: var(--hf-alert-open);
+        z-index: 0;
       }
       .hf-ui-alert-dialog-panel {
         position: relative;
@@ -56,13 +63,14 @@
         width: 420px;
         padding: 28px;
         border: 1px solid #fee2e2;
-        border-radius: 22px;
+        border-radius: 16px;
         background: #ffffff;
         color: #18181b;
         opacity: var(--hf-alert-open);
         transform: translateY(var(--hf-alert-y)) scale(var(--hf-alert-scale));
-        box-shadow: 0 28px 80px rgba(127, 29, 29, 0.2);
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.10), 0 4px 16px rgba(127, 29, 29, 0.08);
         will-change: opacity, transform;
+        z-index: 1;
       }
       .hf-ui-alert-dialog-icon {
         display: grid;

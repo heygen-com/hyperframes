@@ -24,12 +24,41 @@
         background: #f7f7f8;
         font-family: Inter, system-ui, sans-serif;
       }
+      /* ponytail: scale via transform on .demo-frame (not a GSAP target) */
       .demo-frame {
-        display: grid;
-        place-items: center;
-        min-width: 900px;
-        min-height: 500px;
-        padding: 64px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+        transform: scale(2.6);
+        transform-origin: center center;
+      }
+      .demo-card {
+        background: #ffffff;
+        border: 1px solid #e4e4e7;
+        border-radius: 14px;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.08);
+        padding: 32px 48px 28px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        min-width: 240px;
+      }
+      .demo-label {
+        font-family: Inter, system-ui, sans-serif;
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #71717a;
+      }
+      .demo-sublabel {
+        font-family: Inter, system-ui, sans-serif;
+        font-size: 10px;
+        font-weight: 400;
+        color: #a1a1aa;
+        margin-top: 2px;
       }
       .hf-remocn-rolling-number {
         color: #18181b;
@@ -63,8 +92,12 @@
       data-duration="5"
     >
       <div class="demo-frame">
-        <div class="hf-remocn-rolling-number">
-          <span>3</span><span>0</span><span>,</span><span>6</span><span>5</span><span>8</span>
+        <div class="demo-card">
+          <span class="demo-label">Total Users</span>
+          <div class="hf-remocn-rolling-number">
+            <span>3</span><span>0</span><span>,</span><span>6</span><span>5</span><span>8</span>
+          </div>
+          <span class="demo-sublabel">↑ 12% this month</span>
         </div>
       </div>
       <script>

@@ -30,6 +30,8 @@
         min-width: 760px;
         min-height: 480px;
         padding: 56px;
+        /* ponytail: scale wrapper — GSAP targets .hf-ui-resizable, not this element */
+        transform: scale(2.1);
       }
       .hf-ui-resizable {
         --hf-resizable-left: 58%;
@@ -43,13 +45,14 @@
         background: #ffffff;
         color: #18181b;
         font-family: Inter, system-ui, sans-serif;
-        box-shadow: 0 22px 70px rgba(0, 0, 0, 0.1);
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.10);
       }
       .hf-ui-resizable-pane {
         display: grid;
         place-items: center;
         border-radius: 16px;
-        font-weight: 850;
+        font-size: 15px;
+        font-weight: 600;
       }
       .hf-ui-resizable-pane.primary {
         background: #18181b;

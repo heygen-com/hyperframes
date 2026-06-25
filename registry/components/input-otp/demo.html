@@ -27,30 +27,50 @@
       .demo-frame {
         display: grid;
         place-items: center;
-        min-width: 760px;
-        min-height: 480px;
-        padding: 56px;
+        /* ponytail: scale the non-GSAP wrapper; GSAP targets spans inside .hf-ui-input-otp */
+        transform: scale(3.2);
+        transform-origin: center center;
+      }
+      .demo-card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 28px;
+        background: #ffffff;
+        border: 1px solid #e4e4e7;
+        border-radius: 16px;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.10);
+        padding: 48px 56px 44px;
+      }
+      .demo-label {
+        font-family: Inter, system-ui, sans-serif;
+        font-size: 13px;
+        font-weight: 500;
+        color: #71717a;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
       }
       .hf-ui-input-otp {
         display: inline-flex;
-        gap: 8px;
+        gap: 10px;
         font-family: Inter, system-ui, sans-serif;
       }
       .hf-ui-input-otp span {
         display: grid;
         place-items: center;
-        width: 46px;
-        height: 52px;
+        width: 56px;
+        height: 64px;
         border: 1px solid #d4d4d8;
-        border-radius: 10px;
+        border-radius: 12px;
         background: #fff;
         color: #18181b;
-        font-size: 20px;
-        font-weight: 850;
+        font-size: 26px;
+        font-weight: 700;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
       }
       .hf-ui-input-otp .active {
         border-color: #18181b;
-        box-shadow: 0 0 0 5px rgba(24, 24, 27, 0.1);
+        box-shadow: 0 0 0 4px rgba(24, 24, 27, 0.10);
       }
     </style>
   </head>
@@ -64,8 +84,11 @@
       data-duration="5"
     >
       <div class="demo-frame">
-        <div class="hf-ui-input-otp" aria-label="One time code">
-          <span>4</span><span>2</span><span>8</span><span class="active"></span>
+        <div class="demo-card">
+          <span class="demo-label">One-time password</span>
+          <div class="hf-ui-input-otp" aria-label="One time code">
+            <span>4</span><span>2</span><span>8</span><span class="active"></span>
+          </div>
         </div>
       </div>
       <script>

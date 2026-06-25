@@ -33,13 +33,14 @@
       }
       .hf-ui-scroll-area {
         position: relative;
-        width: 320px;
-        height: 190px;
-        padding: 16px 28px 16px 16px;
+        width: 340px;
+        height: 220px;
+        padding: 16px 30px 16px 16px;
         overflow: hidden;
         border: 1px solid #e4e4e7;
-        border-radius: 13px;
+        border-radius: 14px;
         background: #fff;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.10);
         font-family: Inter, system-ui, sans-serif;
       }
       .hf-ui-scroll-content {
@@ -49,22 +50,25 @@
       }
       .hf-ui-scroll-content p {
         margin: 0;
-        padding: 12px;
+        padding: 12px 14px;
         border-radius: 10px;
         background: #f4f4f5;
         color: #18181b;
-        font-weight: 750;
+        font-weight: 600;
+        font-size: 15px;
+        line-height: 1.4;
       }
       .hf-ui-scroll-thumb {
         position: absolute;
         right: 9px;
         top: 16px;
         width: 5px;
-        height: 52px;
+        height: 56px;
         border-radius: 999px;
         background: #a1a1aa;
         transform: translateY(var(--hf-scroll-thumb-y, 0px));
       }
+      .demo-frame { transform: scale(3.4); } /* qa-scale */
     </style>
   </head>
   <body>

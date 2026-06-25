@@ -27,25 +27,23 @@
       .demo-frame {
         display: grid;
         place-items: center;
-        min-width: 760px;
-        min-height: 480px;
-        padding: 56px;
+        padding: 0;
       }
       .hf-ui-stepper {
         position: relative;
         display: grid;
         grid-template-columns: repeat(3, 1fr);
-        gap: 44px;
-        width: 640px;
+        gap: 56px;
+        width: 760px;
         color: #18181b;
         font-family: Inter, system-ui, sans-serif;
       }
       .hf-ui-stepper-line {
         position: absolute;
-        left: 54px;
-        right: 54px;
-        top: 25px;
-        height: 4px;
+        left: 62px;
+        right: 62px;
+        top: 31px;
+        height: 5px;
         border-radius: 999px;
         background: #e4e4e7;
         overflow: hidden;
@@ -61,18 +59,20 @@
         position: relative;
         display: grid;
         justify-items: center;
-        gap: 12px;
-        font-weight: 850;
+        gap: 16px;
+        font-weight: 700;
       }
       .hf-ui-step span {
         display: grid;
         place-items: center;
-        width: 54px;
-        height: 54px;
+        width: 64px;
+        height: 64px;
         border: 2px solid #e4e4e7;
         border-radius: 999px;
         background: #ffffff;
         color: #71717a;
+        font-size: 20px;
+        font-weight: 600;
       }
       .hf-ui-step.is-done span,
       .hf-ui-step.is-active span {
@@ -81,8 +81,12 @@
         color: #ffffff;
       }
       .hf-ui-step strong {
-        font-size: 15px;
+        font-size: 18px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
       }
+      /* ponytail: scale(2.0) keeps 760px stepper fully inside 1920px frame with clear margins */
+      .demo-frame { transform: scale(2.0); }
     </style>
   </head>
   <body>

@@ -26,12 +26,17 @@
         place-items: center;
         color: #152026;
       }
+      .demo-frame {
+        /* ponytail: zoom on wrapper so GSAP can freely animate .card transform */
+        zoom: 1.5;
+      }
       .card {
         width: 880px;
         padding: 72px;
         background: white;
         border: 1px solid #dce4e8;
-        box-shadow: 0 38px 90px rgba(37, 55, 66, 0.15);
+        border-radius: 16px;
+        box-shadow: 0 24px 70px rgba(37, 55, 66, 0.10);
       }
       .title {
         font-size: 64px;
@@ -46,6 +51,7 @@
         color: white;
         font-size: 28px;
         font-weight: 760;
+        border-radius: 10px;
       }
       .hf-simulated-cursor {
         --hf-cursor-x: 420px;
@@ -81,18 +87,21 @@
       data-height="1080"
       data-duration="5"
     >
-      <div class="card">
-        <div class="title">Point at the action without screen recording.</div>
-        <div class="button">Generate video</div>
+      <div class="demo-frame">
+        <div class="card">
+          <div class="title">Point at the action without screen recording.</div>
+          <div class="button">Generate video</div>
+        </div>
       </div>
       <div class="hf-simulated-cursor" aria-hidden="true">
         <div class="hf-simulated-cursor-pulse"></div>
-        <svg viewBox="0 0 24 24" width="44" height="44">
+        <svg viewBox="0 0 24 24" width="34" height="34" style="filter: drop-shadow(0 4px 7px rgba(0, 0, 0, 0.3))">
           <path
-            d="M3 2.8 20.6 14 12.8 15.5 9 22 3 2.8Z"
-            fill="white"
-            stroke="rgba(0,0,0,0.45)"
-            stroke-width="1.4"
+            d="M5.5 3.2 L5.5 19.6 L9.7 15.7 L12.5 21.9 L15.0 20.7 L12.3 14.6 L17.9 14.2 Z"
+            fill="#18181b"
+            stroke="#ffffff"
+            stroke-width="1.5"
+            stroke-linejoin="round"
           />
         </svg>
       </div>

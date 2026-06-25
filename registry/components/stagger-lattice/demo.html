@@ -21,7 +21,7 @@
         height: 1080px;
         display: grid;
         place-items: center;
-        background: #f7f7f8;
+        background: #f4f4f5;
         font-family: Inter, system-ui, sans-serif;
       }
       .hf-advanced-stagger-lattice {
@@ -37,6 +37,8 @@
         box-shadow: 0 28px 80px rgba(15, 23, 42, 0.16);
         display: grid;
         place-items: center;
+        /* ponytail: zoom scales the wrapper without touching GSAP transform targets (.cell) */
+        zoom: 1.7;
       }
       .hf-advanced-stagger-lattice .grid {
         display: grid;

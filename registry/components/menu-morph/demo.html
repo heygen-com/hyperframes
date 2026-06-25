@@ -30,13 +30,15 @@
         min-width: 760px;
         min-height: 480px;
         padding: 56px;
+        /* ponytail: zoom on the wrapper — GSAP animates children, not this element */
+        zoom: 3.4;
       }
       .hf-transition-menu-morph {
         position: relative;
         display: grid;
         place-items: center;
         width: 360px;
-        height: 220px;
+        height: 280px;
         font-family: Inter, system-ui, sans-serif;
       }
       .hf-transition-menu-button {
@@ -65,13 +67,14 @@
         bottom: 20px;
       }
       .hf-transition-menu-actions div {
-        padding: 9px 13px;
+        padding: 10px 16px;
         border-radius: 999px;
         background: #ffffff;
         color: #18181b;
-        font-size: 13px;
-        font-weight: 850;
+        font-size: 14px;
+        font-weight: 700;
         box-shadow: 0 14px 34px rgba(0, 0, 0, 0.12);
+        border: 1px solid #e4e4e7;
       }
     </style>
   </head>

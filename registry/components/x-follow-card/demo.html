@@ -21,13 +21,16 @@
         height: 1080px;
         display: grid;
         place-items: center;
-        background: #f7f7f8;
+        background: #fafafa;
         font-family: Inter, system-ui, sans-serif;
       }
       .demo-frame {
         display: grid;
         place-items: center;
         padding: 52px;
+        /* ponytail: scale wrapper (not a GSAP target) to fill ~65% of 1920px frame */
+        transform: scale(1.9);
+        transform-origin: center center;
       }
       .hf-remocn-x-follow-card {
         --hf-accent: #2563eb;
@@ -64,6 +67,7 @@
       .hf-remocn-x-follow-card p {
         color: #94a3b8;
         margin: 4px 0 0;
+        font-size: 18px;
       }
       .hf-remocn-x-follow-card .stat {
         margin-top: 30px;

@@ -19,8 +19,10 @@
       #demo {
         width: 1920px;
         height: 1080px;
-        display: grid;
-        place-items: center;
+        display: flex;
+        align-items: flex-end;
+        justify-content: center;
+        padding-bottom: 280px;
         background: #f6f7fb;
         font-family: Inter, system-ui, sans-serif;
       }
@@ -47,7 +49,7 @@
       .hf-ui-popover-panel {
         position: absolute;
         left: 50%;
-        top: calc(100% + 20px);
+        bottom: calc(100% + 20px);
         width: 360px;
         display: grid;
         gap: 12px;
@@ -56,9 +58,9 @@
         border-radius: 24px;
         background: #fff;
         opacity: var(--hf-popover-open);
-        transform: translateX(-50%) translateY(calc((1 - var(--hf-popover-open)) * -14px))
+        transform: translateX(-50%) translateY(calc((1 - var(--hf-popover-open)) * 14px))
           scale(calc(0.96 + var(--hf-popover-open) * 0.04));
-        transform-origin: top center;
+        transform-origin: bottom center;
         box-shadow: 0 34px 90px rgba(0, 0, 0, 0.2);
       }
       .hf-ui-popover-panel strong {
@@ -69,6 +71,7 @@
         font-size: 20px;
         line-height: 1.45;
       }
+      .hf-ui-popover { zoom: 1.56; } /* qa-zoom */
     </style>
   </head>
   <body>

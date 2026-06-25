@@ -30,6 +30,8 @@
         min-width: 760px;
         min-height: 480px;
         padding: 56px;
+        /* ponytail: scale wrapper only — GSAP targets .indicator inside, not this element */
+        transform: scale(3.5);
       }
       .hf-transition-tabs-slide-indicator {
         --hf-tab-x: 0px;
@@ -60,7 +62,7 @@
         border: 0;
         background: transparent;
         color: #71717a;
-        font-weight: 850;
+        font-weight: 600;
       }
       .hf-transition-tabs-slide-indicator button:nth-of-type(2) {
         color: #fff;

@@ -21,16 +21,36 @@
         height: 1080px;
         display: grid;
         place-items: center;
-        background: #f7f7f8;
+        background: #fafafa;
         font-family: Inter, system-ui, sans-serif;
       }
       .demo-frame {
-        display: grid;
-        place-items: center;
-        min-width: 900px;
-        min-height: 500px;
-        padding: 64px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 40px;
+        width: 1920px;
+        height: 1080px;
+        padding: 120px 160px;
       }
+      /* outgoing phrase — static, fades out */
+      .phrase-out {
+        display: inline-flex;
+        gap: 28px;
+        font-size: 128px;
+        font-weight: 900;
+        letter-spacing: -0.04em;
+        line-height: 1;
+        color: #71717a;
+        font-family: Inter, system-ui, sans-serif;
+        position: relative;
+      }
+      .phrase-out span {
+        display: inline-block;
+        will-change: opacity;
+      }
+      /* incoming phrase — the GSAP-animated element */
       .hf-remocn-per-word-crossfade {
         color: #18181b;
         font-family: Inter, system-ui, sans-serif;
@@ -39,8 +59,8 @@
       }
       .hf-remocn-per-word-crossfade {
         display: inline-flex;
-        gap: 12px;
-        font-size: 56px;
+        gap: 28px;
+        font-size: 128px;
         line-height: 1;
       }
       .hf-remocn-per-word-crossfade span {
@@ -49,6 +69,15 @@
           scale(var(--hf-word-scale, 1));
         filter: blur(var(--hf-word-blur, 0px));
         will-change: transform, filter, opacity;
+      }
+      /* label */
+      .demo-label {
+        font-size: 26px;
+        font-weight: 500;
+        color: #a1a1aa;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        margin-top: 24px;
       }
     </style>
   </head>
@@ -62,13 +91,33 @@
       data-duration="5"
     >
       <div class="demo-frame">
+        <!-- outgoing phrase: fades out word-by-word -->
+        <div class="phrase-out">
+          <span>Write</span><span>once</span><span>publish</span><span>anywhere</span>
+        </div>
+        <!-- incoming phrase: per-word crossfade in -->
         <div class="hf-remocn-per-word-crossfade">
           <span>Create</span><span>once</span><span>reuse</span><span>everywhere</span>
         </div>
+        <div class="demo-label">per-word crossfade</div>
       </div>
       <script>
         const tl = gsap.timeline({ paused: true });
         const startTime = 0.5;
+
+        // outgoing phrase fades out word-by-word
+        tl.to(
+          ".phrase-out span",
+          {
+            opacity: 0,
+            duration: 0.25,
+            stagger: 0.055,
+            ease: "power2.in",
+          },
+          startTime,
+        );
+
+        // incoming phrase fades in word-by-word (the named component)
         tl.fromTo(
           ".hf-remocn-per-word-crossfade span",
           { opacity: 0, "--hf-word-y": "22px", "--hf-word-scale": 0.92, "--hf-word-blur": "5px" },
@@ -81,8 +130,9 @@
             stagger: 0.055,
             ease: "power3.out",
           },
-          startTime,
+          startTime + 0.1,
         );
+
         tl.set({}, {}, 5);
         window.__timelines = window.__timelines || {};
         window.__timelines["per-word-crossfade-demo"] = tl;

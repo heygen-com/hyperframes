@@ -28,6 +28,7 @@
         display: grid;
         place-items: center;
         padding: 52px;
+        transform: scale(2.3); /* ponytail: scale wrapper, not GSAP targets */
       }
       .hf-remocn-skeleton-block {
         --hf-accent: #2563eb;
@@ -58,11 +59,14 @@
         opacity: var(--hf-row-opacity, 1);
       }
       .hf-remocn-skeleton-block .label {
-        font-weight: 800;
+        font-size: 15px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
       }
       .hf-remocn-skeleton-block .hint {
         color: #71717a;
         font-size: 13px;
+        font-weight: 500;
       }
     </style>
   </head>

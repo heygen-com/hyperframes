@@ -28,6 +28,8 @@
         display: grid;
         place-items: center;
         padding: 52px;
+        /* ponytail: scale wrapper (not a GSAP target) to fill ~65% of 1920px frame */
+        transform: scale(2.2);
       }
       .hf-remocn-dropdown-menu-item {
         --hf-accent: #2563eb;
@@ -58,11 +60,12 @@
         opacity: var(--hf-row-opacity, 1);
       }
       .hf-remocn-dropdown-menu-item .label {
-        font-weight: 800;
+        font-weight: 600;
+        font-size: 15px;
       }
       .hf-remocn-dropdown-menu-item .hint {
         color: #71717a;
-        font-size: 13px;
+        font-size: 14px;
       }
     </style>
   </head>

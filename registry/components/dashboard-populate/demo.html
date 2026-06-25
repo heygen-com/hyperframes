@@ -28,6 +28,8 @@
         display: grid;
         place-items: center;
         padding: 52px;
+        /* ponytail: scale wrapper — GSAP only animates custom props on the child, no transform conflict */
+        transform: scale(1.72);
       }
       .hf-remocn-dashboard-populate {
         --hf-accent: #2563eb;
@@ -56,6 +58,12 @@
         margin: 0;
         font-size: 34px;
         letter-spacing: -0.04em;
+      }
+      .hf-remocn-dashboard-populate p {
+        margin: 4px 0 0;
+        font-size: 15px;
+        color: var(--hf-muted);
+        line-height: 1.4;
       }
       .hf-remocn-dashboard-populate strong {
         font-size: 54px;

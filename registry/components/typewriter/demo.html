@@ -30,6 +30,8 @@
         min-width: 900px;
         min-height: 500px;
         padding: 64px;
+        /* ponytail: scale-up only; GSAP targets .hf-remocn-typewriter with CSS vars, not transforms */
+        transform: scale(2.8);
       }
       .hf-remocn-typewriter {
         color: #18181b;
@@ -40,9 +42,9 @@
       .hf-remocn-typewriter {
         display: inline-flex;
         align-items: center;
-        gap: 4px;
+        gap: 6px;
         font:
-          800 42px/1 ui-monospace,
+          800 52px/1 ui-monospace,
           SFMono-Regular,
           Menlo,
           monospace;
@@ -55,7 +57,7 @@
       }
       .hf-remocn-typewriter i {
         width: 3px;
-        height: 42px;
+        height: 52px;
         border-radius: 999px;
         background: #18181b;
         opacity: var(--hf-caret-opacity, 1);

@@ -30,6 +30,9 @@
         gap: 28px;
         width: 680px;
         color: #18181b;
+        /* ponytail: scale up to ~65% of frame; GSAP only tweens --hf-tabs-index, so transform is safe */
+        transform: scale(2.1);
+        transform-origin: center center;
       }
       .hf-ui-tabs-list {
         position: relative;
@@ -81,6 +84,29 @@
         font-size: 38px;
         line-height: 1.1;
       }
+      .hf-ui-tabs-chips {
+        display: flex;
+        gap: 10px;
+        margin-top: 6px;
+      }
+      .hf-ui-tabs-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 14px;
+        border-radius: 999px;
+        background: #f4f4f5;
+        border: 1px solid #e4e4e7;
+        font-size: 17px;
+        font-weight: 600;
+        color: #52525b;
+      }
+      .hf-ui-tabs-chip-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #22c55e;
+      }
     </style>
   </head>
   <body>
@@ -99,7 +125,13 @@
           <button class="hf-ui-tabs-trigger" type="button">Exports</button>
         </div>
         <div class="hf-ui-tabs-panel">
-          <span class="hf-ui-tabs-kicker">Preview ready</span><strong>12 scenes assembled</strong>
+          <span class="hf-ui-tabs-kicker">Preview ready</span>
+          <strong>12 scenes assembled</strong>
+          <div class="hf-ui-tabs-chips">
+            <span class="hf-ui-tabs-chip"><span class="hf-ui-tabs-chip-dot"></span>Live</span>
+            <span class="hf-ui-tabs-chip">1080p · 30fps</span>
+            <span class="hf-ui-tabs-chip">2 min 14 s</span>
+          </div>
         </div>
       </div>
       <script>

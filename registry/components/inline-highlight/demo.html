@@ -21,32 +21,34 @@
         height: 1080px;
         display: grid;
         place-items: center;
-        background: #fffaf0;
-        color: #171717;
+        background: #f5f5f4;
+        color: #18181b;
         font-family: Inter, system-ui, sans-serif;
       }
       .copy {
-        width: 1300px;
-        font-size: 86px;
-        line-height: 1.12;
-        font-weight: 820;
-        letter-spacing: -0.02em;
+        width: 1200px;
+        font-size: 88px;
+        line-height: 1.14;
+        font-weight: 800;
+        letter-spacing: -0.025em;
+        text-align: left;
       }
       .hf-inline-highlight {
         --hf-highlight-scale: 0;
-        --hf-highlight-color: #ffe66d;
+        --hf-highlight-color: #facc15;
         position: relative;
         display: inline;
-        z-index: 0;
+        isolation: isolate;
       }
       .hf-inline-highlight::after {
         content: "";
         position: absolute;
-        left: -0.08em;
-        right: -0.08em;
-        bottom: 0.05em;
-        height: 0.38em;
+        left: -0.05em;
+        right: -0.05em;
+        bottom: 0.06em;
+        height: 0.35em;
         background: var(--hf-highlight-color);
+        border-radius: 3px;
         transform: scaleX(var(--hf-highlight-scale));
         transform-origin: left center;
         z-index: -1;

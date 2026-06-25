@@ -27,20 +27,38 @@
       .demo-frame {
         display: grid;
         place-items: center;
-        min-width: 900px;
-        min-height: 500px;
-        padding: 64px;
+        /* ponytail: scale wrapper — not a GSAP target, safe to use CSS transform */
+        transform: scale(2.0);
+        transform-origin: center center;
+      }
+      .demo-card {
+        background: #ffffff;
+        border: 1px solid #e4e4e7;
+        border-radius: 14px;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.10), 0 4px 16px rgba(0, 0, 0, 0.06);
+        padding: 48px 56px 44px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+        min-width: 380px;
+      }
+      .demo-label {
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #71717a;
+        margin-bottom: 4px;
       }
       .hf-remocn-spring-scale-in {
         color: #18181b;
         font-family: Inter, system-ui, sans-serif;
-        font-weight: 900;
-        letter-spacing: -0.04em;
-      }
-      .hf-remocn-spring-scale-in {
+        font-weight: 800;
+        letter-spacing: -0.03em;
         display: inline-flex;
-        gap: 12px;
-        font-size: 56px;
+        gap: 10px;
+        font-size: 42px;
         line-height: 1;
       }
       .hf-remocn-spring-scale-in span {
@@ -62,8 +80,11 @@
       data-duration="5"
     >
       <div class="demo-frame">
-        <div class="hf-remocn-spring-scale-in">
-          <span>Spring</span><span>scale</span><span>in</span>
+        <div class="demo-card">
+          <div class="demo-label">Animation primitive</div>
+          <div class="hf-remocn-spring-scale-in">
+            <span>Spring</span><span>scale</span><span>in</span>
+          </div>
         </div>
       </div>
       <script>

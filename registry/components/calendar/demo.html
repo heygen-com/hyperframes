@@ -24,27 +24,44 @@
         background: #f7f7f8;
         font-family: Inter, system-ui, sans-serif;
       }
+      /* ponytail: scale on .demo-frame — GSAP only touches .hf-ui-calendar-grid > * */
       .demo-frame {
         display: grid;
         place-items: center;
-        min-width: 760px;
-        min-height: 480px;
-        padding: 56px;
+        transform: scale(1.4);
+        transform-origin: center center;
       }
       .hf-ui-calendar {
         display: grid;
-        gap: 14px;
-        width: 300px;
-        padding: 18px;
+        gap: 16px;
+        width: 320px;
+        padding: 20px;
         border: 1px solid #e4e4e7;
-        border-radius: 14px;
+        border-radius: 16px;
         background: #fff;
         color: #18181b;
         font-family: Inter, system-ui, sans-serif;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.10);
       }
       .hf-ui-calendar header {
-        font-size: 18px;
-        font-weight: 900;
+        font-size: 16px;
+        font-weight: 700;
+        color: #18181b;
+        letter-spacing: -0.01em;
+      }
+      .hf-ui-calendar-daynames {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 6px;
+        margin-bottom: -4px;
+      }
+      .hf-ui-calendar-daynames span {
+        display: grid;
+        place-items: center;
+        height: 28px;
+        font-size: 11px;
+        font-weight: 500;
+        color: #71717a;
       }
       .hf-ui-calendar-grid {
         display: grid;
@@ -54,13 +71,26 @@
       .hf-ui-calendar-grid :is(span, strong) {
         display: grid;
         place-items: center;
-        height: 34px;
-        border-radius: 9px;
+        height: 36px;
+        border-radius: 10px;
         font-size: 13px;
+        font-weight: 400;
+        color: #18181b;
+      }
+      .hf-ui-calendar-grid span:hover {
+        background: #f4f4f5;
+      }
+      .hf-ui-calendar-grid .day-muted {
+        color: #d4d4d8;
+      }
+      .hf-ui-calendar-grid .day-range {
+        background: #f4f4f5;
       }
       .hf-ui-calendar-grid strong {
         background: #18181b;
         color: #fff;
+        font-weight: 600;
+        border-radius: 10px;
       }
     </style>
   </head>
@@ -76,9 +106,15 @@
       <div class="demo-frame">
         <div class="hf-ui-calendar">
           <header>June 2026</header>
+          <div class="hf-ui-calendar-daynames">
+            <span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span>
+          </div>
           <div class="hf-ui-calendar-grid">
-            <span>22</span><span>23</span><strong>24</strong><span>25</span><span>26</span
-            ><span>27</span><span>28</span>
+            <span class="day-muted">1</span><span class="day-muted">2</span><span class="day-muted">3</span><span class="day-muted">4</span><span class="day-muted">5</span><span class="day-muted">6</span><span class="day-muted">7</span>
+            <span>8</span><span>9</span><span>10</span><span>11</span><span>12</span><span>13</span><span>14</span>
+            <span>15</span><span>16</span><span>17</span><span>18</span><span>19</span><span>20</span><span>21</span>
+            <span>22</span><span>23</span><strong>24</strong><span class="day-range">25</span><span class="day-range">26</span><span class="day-range">27</span><span>28</span>
+            <span>29</span><span>30</span><span class="day-muted">1</span><span class="day-muted">2</span><span class="day-muted">3</span><span class="day-muted">4</span><span class="day-muted">5</span>
           </div>
         </div>
       </div>

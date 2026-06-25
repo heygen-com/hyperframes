@@ -21,32 +21,38 @@
         height: 1080px;
         display: grid;
         place-items: center;
-        background: #f7f7f8;
+        background: #f4f4f5;
         font-family: Inter, system-ui, sans-serif;
       }
+      /* ponytail: scale on wrapper (not a GSAP target), zooms content ~3× for thumbnail legibility */
       .demo-frame {
         display: grid;
         place-items: center;
-        min-width: 900px;
-        min-height: 500px;
-        padding: 64px;
+        gap: 32px;
+        padding: 72px 96px;
+        background: #18181b;
+        border-radius: 20px;
+        box-shadow: 0 32px 80px rgba(0, 0, 0, 0.22);
+        transform: scale(3.2);
+        transform-origin: center center;
       }
-      .hf-remocn-matrix-decode {
-        color: #18181b;
-        font-family: Inter, system-ui, sans-serif;
-        font-weight: 900;
-        letter-spacing: -0.04em;
+      .demo-label {
+        font-size: 13px;
+        font-weight: 500;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: #71717a;
       }
       .hf-remocn-matrix-decode {
         display: inline-flex;
-        gap: 3px;
+        gap: 4px;
         font:
-          900 64px/1 ui-monospace,
+          700 52px/1 ui-monospace,
           SFMono-Regular,
           Menlo,
           monospace;
-        color: #16a34a;
-        text-shadow: 0 0 18px rgba(22, 163, 74, 0.28);
+        color: #4ade80;
+        text-shadow: 0 0 24px rgba(74, 222, 128, 0.45);
       }
       .hf-remocn-matrix-decode span {
         display: inline-block;
@@ -65,9 +71,9 @@
       data-duration="5"
     >
       <div class="demo-frame">
+        <div class="demo-label">Matrix Decode</div>
         <div class="hf-remocn-matrix-decode" data-final="HYPERFRAMES">
-          <span>0</span><span>0</span><span>0</span><span>0</span><span>0</span><span>0</span
-          ><span>0</span><span>0</span><span>0</span><span>0</span><span>0</span>
+          <span>0</span><span>0</span><span>0</span><span>0</span><span>0</span><span>0</span><span>0</span><span>0</span><span>0</span><span>0</span>
         </div>
       </div>
       <script>

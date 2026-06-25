@@ -28,6 +28,9 @@
         display: grid;
         place-items: center;
         padding: 52px;
+        /* ponytail: scale-up wrapper (not a GSAP target) to fill ~65% of 1920px stage */
+        transform: scale(1.19);
+        transform-origin: center center;
       }
       .hf-remocn-animated-line-chart {
         --hf-accent: #2563eb;
@@ -44,6 +47,7 @@
         background: #fff;
         padding: 34px;
         box-shadow: 0 28px 80px rgba(15, 23, 42, 0.16);
+        border: 1px solid #e4e4e7;
         display: grid;
         gap: 22px;
       }
@@ -56,6 +60,11 @@
         margin: 0;
         font-size: 34px;
         letter-spacing: -0.04em;
+      }
+      .hf-remocn-animated-line-chart p {
+        margin: 4px 0 0;
+        font-size: 15px;
+        color: var(--hf-muted);
       }
       .hf-remocn-animated-line-chart strong {
         font-size: 54px;

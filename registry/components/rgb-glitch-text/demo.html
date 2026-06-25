@@ -21,27 +21,28 @@
         height: 1080px;
         display: grid;
         place-items: center;
-        background: #f7f7f8;
+        background: #09090b;
         font-family: Inter, system-ui, sans-serif;
       }
       .demo-frame {
         display: grid;
         place-items: center;
-        min-width: 900px;
-        min-height: 500px;
+        gap: 32px;
         padding: 64px;
+        zoom: 0.28;
       }
+      /* ponytail: scale-up via font-size — GSAP only touches CSS vars, not transform */
       .hf-remocn-rgb-glitch-text {
-        color: #18181b;
+        color: #fafafa;
         font-family: Inter, system-ui, sans-serif;
         font-weight: 900;
         letter-spacing: -0.04em;
       }
       .hf-remocn-rgb-glitch-text {
         position: relative;
-        width: 420px;
-        height: 82px;
-        font-size: 72px;
+        width: 1120px;
+        height: 200px;
+        font-size: 192px;
         line-height: 1;
       }
       .hf-remocn-rgb-glitch-text span,
@@ -51,14 +52,23 @@
       }
       .hf-remocn-rgb-glitch-text span:first-child {
         color: #ef4444;
+        mix-blend-mode: screen;
         transform: translateX(var(--hf-glitch-red, 0px));
       }
       .hf-remocn-rgb-glitch-text span:nth-child(2) {
         color: #22d3ee;
+        mix-blend-mode: screen;
         transform: translateX(var(--hf-glitch-blue, 0px));
       }
       .hf-remocn-rgb-glitch-text strong {
-        color: #18181b;
+        color: #fafafa;
+      }
+      .demo-label {
+        font-size: 24px;
+        font-weight: 500;
+        color: #52525b;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
       }
     </style>
   </head>
@@ -75,6 +85,7 @@
         <div class="hf-remocn-rgb-glitch-text">
           <span>GLITCH</span><span>GLITCH</span><strong>GLITCH</strong>
         </div>
+        <div class="demo-label">RGB Glitch Text</div>
       </div>
       <script>
         const tl = gsap.timeline({ paused: true });
@@ -83,8 +94,8 @@
         tl.to(
           ".hf-remocn-rgb-glitch-text",
           {
-            "--hf-glitch-red": "-8px",
-            "--hf-glitch-blue": "8px",
+            "--hf-glitch-red": "-20px",
+            "--hf-glitch-blue": "20px",
             duration: 0.06,
             repeat: 5,
             yoyo: true,

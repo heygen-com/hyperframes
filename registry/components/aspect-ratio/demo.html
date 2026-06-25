@@ -27,9 +27,8 @@
       .demo-frame {
         display: grid;
         place-items: center;
-        min-width: 760px;
-        min-height: 480px;
-        padding: 56px;
+        /* ponytail: zoom scales the wrapper without touching GSAP's inline transform on .hf-ui-aspect-ratio */
+        zoom: 2.8;
       }
       .hf-ui-aspect-ratio {
         display: grid;
@@ -41,16 +40,18 @@
         background: linear-gradient(135deg, #f4f4f5, #e0f2fe);
         color: #18181b;
         font:
-          850 18px/1 Inter,
+          700 18px/1 Inter,
           system-ui,
           sans-serif;
         overflow: hidden;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.10);
       }
       .hf-ui-aspect-ratio span {
-        padding: 9px 12px;
+        padding: 9px 16px;
         border-radius: 999px;
-        background: rgba(255, 255, 255, 0.76);
+        background: rgba(255, 255, 255, 0.82);
         backdrop-filter: blur(8px);
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
       }
     </style>
   </head>

@@ -28,6 +28,8 @@
         display: grid;
         place-items: center;
         padding: 52px;
+        /* ponytail: scale on wrapper (not GSAP target) to fill ~65% of 1920×1080 */
+        transform: scale(1.52);
       }
       .hf-remocn-ai-generation-canvas {
         --hf-accent: #2563eb;
@@ -84,6 +86,33 @@
         transform: translate(var(--hf-card-x, 0px), var(--hf-card-y, 0px))
           scale(var(--hf-card-scale, 1));
         opacity: var(--hf-card-opacity, 1);
+        padding: 16px 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      /* skeleton bars that make the dashboard cards readable as a thumbnail */
+      .hf-remocn-ai-generation-canvas .card-label {
+        height: 10px;
+        border-radius: 6px;
+        background: #e4e4e7;
+        width: 55%;
+      }
+      .hf-remocn-ai-generation-canvas .card-bar {
+        height: 8px;
+        border-radius: 6px;
+        background: #f4f4f5;
+        width: 85%;
+      }
+      .hf-remocn-ai-generation-canvas .card-bar.short {
+        width: 60%;
+      }
+      .hf-remocn-ai-generation-canvas .card-accent {
+        height: 28px;
+        border-radius: 8px;
+        background: linear-gradient(90deg, #dbeafe, #bfdbfe);
+        width: 100%;
+        margin-top: 2px;
       }
       .hf-remocn-ai-generation-canvas h3 {
         margin: 0 0 14px;
@@ -92,7 +121,7 @@
       }
       .hf-remocn-ai-generation-canvas p {
         margin: 0;
-        color: #475569;
+        color: #71717a;
       }
     </style>
   </head>
@@ -115,9 +144,20 @@
             <div class="pill">Export</div>
           </div>
           <div class="panel preview">
-            <div class="card"></div>
-            <div class="card"></div>
-            <div class="card"></div>
+            <div class="card">
+              <div class="card-label"></div>
+              <div class="card-accent"></div>
+            </div>
+            <div class="card">
+              <div class="card-label"></div>
+              <div class="card-bar"></div>
+              <div class="card-bar short"></div>
+            </div>
+            <div class="card">
+              <div class="card-label"></div>
+              <div class="card-bar"></div>
+              <div class="card-bar short"></div>
+            </div>
           </div>
         </div>
       </div>

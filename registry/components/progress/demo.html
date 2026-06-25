@@ -31,6 +31,9 @@
         border-radius: 28px;
         background: white;
         box-shadow: 0 24px 70px rgba(0, 0, 0, 0.1);
+        /* ponytail: scale card up so it fills ~65% of frame; .card is not a GSAP target so CSS transform is safe */
+        transform: scale(1.20);
+        transform-origin: center center;
       }
       .hf-ui-progress {
         --hf-progress-value: 0;

@@ -21,7 +21,7 @@
         height: 1080px;
         display: grid;
         place-items: center;
-        background: #e2e8f0;
+        background: #f5f5f4;
         font-family: Inter, system-ui, sans-serif;
       }
       .demo-frame {
@@ -30,6 +30,9 @@
         min-width: 760px;
         min-height: 480px;
         padding: 56px;
+        /* ponytail: scale wrapper (not the GSAP target) to fill ~63% of frame */
+        transform: scale(2.2);
+        transform-origin: center center;
       }
       .hf-transition-page-slide {
         position: relative;

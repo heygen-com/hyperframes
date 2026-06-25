@@ -21,7 +21,7 @@
         height: 1080px;
         display: grid;
         place-items: center;
-        background: #f8fafc;
+        background: #fafafa;
         font-family: Inter, system-ui, sans-serif;
       }
       .demo-frame {
@@ -30,6 +30,8 @@
         min-width: 760px;
         min-height: 480px;
         padding: 56px;
+        /* ponytail: scale wrapper (not a GSAP target) to fill ~60% of 1920px frame */
+        transform: scale(2.6);
       }
       .hf-ui-combobox {
         width: 360px;
@@ -53,11 +55,12 @@
       }
       .hf-ui-combobox-trigger span {
         color: #71717a;
-        font-size: 14px;
-        font-weight: 750;
+        font-size: 15px;
+        font-weight: 600;
       }
       .hf-ui-combobox-trigger strong {
-        font-size: 18px;
+        font-size: 20px;
+        font-weight: 700;
       }
       .hf-ui-combobox-menu {
         display: grid;
@@ -70,9 +73,9 @@
       .hf-ui-combobox-search,
       .hf-ui-combobox-option {
         border-radius: 11px;
-        padding: 10px 12px;
-        font-size: 15px;
-        font-weight: 700;
+        padding: 11px 14px;
+        font-size: 16px;
+        font-weight: 600;
       }
       .hf-ui-combobox-search {
         color: #a1a1aa;

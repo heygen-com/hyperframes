@@ -25,23 +25,34 @@
         font-family: Inter, system-ui, sans-serif;
       }
       .demo-frame {
-        display: grid;
-        place-items: center;
-        min-width: 760px;
-        min-height: 480px;
-        padding: 56px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 20px;
+        padding: 48px 64px;
+        background: #ffffff;
+        border-radius: 16px;
+        border: 1px solid #e4e4e7;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.10);
+        min-width: 340px;
+      }
+      .badge-row {
+        display: flex;
+        align-items: center;
+        gap: 14px;
       }
       .hf-ui-badge {
         --hf-badge-scale: 1;
         display: inline-flex;
         align-items: center;
         min-height: 26px;
-        padding: 0 10px;
+        padding: 0 12px;
         border-radius: 999px;
         background: #dcfce7;
         color: #166534;
         font:
-          800 12px/1 Inter,
+          700 13px/1 Inter,
           system-ui,
           sans-serif;
         letter-spacing: 0.01em;
@@ -56,6 +67,8 @@
         background: #fef3c7;
         color: #92400e;
       }
+      /* ponytail: scale on non-GSAP wrapper; GSAP targets .hf-ui-badge only */
+      .demo-frame { transform: scale(2.1); }
     </style>
   </head>
   <body>
@@ -68,7 +81,11 @@
       data-duration="5"
     >
       <div class="demo-frame">
-        <span class="hf-ui-badge" data-tone="success">Published</span>
+        <div class="badge-row">
+          <span class="hf-ui-badge" data-tone="success">Published</span>
+          <span class="hf-ui-badge" data-tone="neutral">Draft</span>
+          <span class="hf-ui-badge" data-tone="warning">Pending</span>
+        </div>
       </div>
       <script>
         const tl = gsap.timeline({ paused: true });

@@ -30,22 +30,45 @@
         min-width: 760px;
         min-height: 480px;
         padding: 56px;
+        /* ponytail: scale wrapper (not a GSAP target) — avoids clobbering inline transforms on animated children */
+        transform: scale(1.41);
+        transform-origin: center center;
       }
       .hf-ui-context-scene {
         position: relative;
         width: 360px;
-        height: 260px;
+        height: 280px;
         font-family: Inter, system-ui, sans-serif;
+      }
+      /* Right-click target surface — gives the menu a contextual anchor */
+      .hf-ui-context-surface {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 220px;
+        height: 140px;
+        border-radius: 12px;
+        background: #ffffff;
+        border: 1px solid #e4e4e7;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .hf-ui-context-surface-label {
+        font-size: 11px;
+        font-weight: 500;
+        color: #a1a1aa;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
       }
       .hf-ui-context-cursor {
         position: absolute;
         left: 54px;
         top: 38px;
-        width: 24px;
-        height: 34px;
-        clip-path: polygon(0 0, 0 100%, 9px 78%, 16px 96%, 22px 93%, 15px 74%, 34px 74%);
-        background: #18181b;
-        filter: drop-shadow(0 8px 12px rgba(0, 0, 0, 0.22));
+        width: 28px;
+        height: 28px;
+        filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.28));
       }
       .hf-ui-context-menu {
         position: absolute;
@@ -68,7 +91,7 @@
         border-radius: 10px;
         color: #18181b;
         font-size: 14px;
-        font-weight: 760;
+        font-weight: 600;
       }
       .hf-ui-context-item.is-active {
         background: #18181b;
@@ -99,7 +122,20 @@
     >
       <div class="demo-frame">
         <div class="hf-ui-context-scene">
-          <div class="hf-ui-context-cursor"></div>
+          <div class="hf-ui-context-surface">
+            <span class="hf-ui-context-surface-label">Canvas</span>
+          </div>
+          <div class="hf-ui-context-cursor">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+              <path
+                d="M5.5 3.2 L5.5 19.6 L9.7 15.7 L12.5 21.9 L15.0 20.7 L12.3 14.6 L17.9 14.2 Z"
+                fill="#18181b"
+                stroke="#ffffff"
+                stroke-width="1.5"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </div>
           <div class="hf-ui-context-menu">
             <div class="hf-ui-context-item is-active"><span>Duplicate</span><kbd>D</kbd></div>
             <div class="hf-ui-context-item"><span>Rename</span><kbd>R</kbd></div>

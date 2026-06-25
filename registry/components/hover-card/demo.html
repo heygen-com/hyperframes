@@ -30,6 +30,9 @@
         min-width: 760px;
         min-height: 480px;
         padding: 56px;
+        /* ponytail: scale wrapper (not a GSAP target) to fill ~65% of 1080p frame */
+        transform: scale(3.2);
+        transform-origin: center center;
       }
       .hf-ui-hover-card {
         position: relative;
@@ -43,7 +46,9 @@
         border: 1px solid #e4e4e7;
         border-radius: 999px;
         background: #fff;
-        font-weight: 850;
+        font-size: 14px;
+        font-weight: 700;
+        cursor: default;
       }
       .hf-ui-hover-card aside {
         position: absolute;
@@ -60,13 +65,22 @@
         transform: translateY(var(--hf-hover-y, 0px));
         box-shadow: 0 20px 56px rgba(24, 24, 27, 0.14);
       }
+      .hf-ui-hover-card strong {
+        font-size: 15px;
+        font-weight: 600;
+        color: #18181b;
+      }
       .hf-ui-hover-card span,
       .hf-ui-hover-card p {
         color: #71717a;
       }
+      .hf-ui-hover-card span {
+        font-size: 13px;
+      }
       .hf-ui-hover-card p {
         margin: 0;
-        font-size: 14px;
+        font-size: 13px;
+        line-height: 1.5;
       }
     </style>
   </head>

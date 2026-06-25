@@ -35,13 +35,14 @@
         color: #18181b;
         font-family: Inter, system-ui, sans-serif;
         font-weight: 900;
-        letter-spacing: -0.04em;
+        letter-spacing: -0.05em;
       }
       .hf-remocn-per-character-rise {
         display: inline-flex;
-        gap: 1px;
-        font-size: 74px;
-        line-height: 0.9;
+        gap: 2px;
+        /* ponytail: scale via font-size; GSAP only animates span children, not this element */
+        font-size: 140px;
+        line-height: 0.88;
         overflow: hidden;
       }
       .hf-remocn-per-character-rise span {
@@ -71,8 +72,8 @@
         const startTime = 0.5;
         tl.fromTo(
           ".hf-remocn-per-character-rise span",
-          { opacity: 0, "--hf-char-y": "-42px" },
-          { opacity: 1, "--hf-char-y": "0px", duration: 0.22, stagger: 0.035, ease: "power3.out" },
+          { opacity: 0, "--hf-char-y": "-120px" },
+          { opacity: 1, "--hf-char-y": "0px", duration: 0.28, stagger: 0.05, ease: "power3.out" },
           startTime,
         );
         tl.set({}, {}, 5);

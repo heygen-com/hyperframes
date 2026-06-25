@@ -34,17 +34,17 @@
       .hf-ui-caret-line {
         display: inline-flex;
         align-items: center;
-        min-height: 58px;
-        padding: 0 18px;
+        min-height: 80px;
+        padding: 0 32px;
         border: 1px solid #d4d4d8;
-        border-radius: 14px;
+        border-radius: 20px;
         background: #ffffff;
         color: #18181b;
         font:
-          750 28px/1 Inter,
+          750 48px/1 Inter,
           system-ui,
           sans-serif;
-        box-shadow: 0 18px 50px rgba(0, 0, 0, 0.08);
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.10);
       }
       .hf-ui-caret-value {
         display: inline-block;
@@ -53,13 +53,14 @@
       }
       .hf-ui-caret {
         display: inline-block;
-        width: 3px;
-        height: 32px;
-        margin-left: 4px;
+        width: 4px;
+        height: 54px;
+        margin-left: 6px;
         border-radius: 999px;
         background: #18181b;
         opacity: 1;
       }
+      .demo-frame { transform: scale(2.5); } /* qa-scale */
     </style>
   </head>
   <body>
@@ -81,7 +82,7 @@
         tl.fromTo(
           ".hf-ui-caret-value",
           { width: 0 },
-          { width: 244, duration: 1.1, ease: "steps(17)" },
+          { width: 418, duration: 1.1, ease: "steps(17)" },
           0.35,
         );
         tl.to(

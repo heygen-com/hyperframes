@@ -21,18 +21,21 @@
         height: 1080px;
         display: grid;
         place-items: center;
-        background: #f7f7f8;
+        background: #f5f5f4;
         font-family: Inter, system-ui, sans-serif;
       }
       .demo-frame {
         display: grid;
         place-items: center;
         padding: 52px;
+        /* ponytail: scale on wrapper — GSAP targets are children, no conflict */
+        transform: scale(1.9);
+        transform-origin: center center;
       }
       .hf-remocn-pricing-tier-focus {
         --hf-accent: #2563eb;
-        --hf-ink: #111827;
-        --hf-muted: #6b7280;
+        --hf-ink: #18181b;
+        --hf-muted: #71717a;
         --hf-surface: #ffffff;
         color: var(--hf-ink);
         font-family: Inter, system-ui, sans-serif;
@@ -40,59 +43,93 @@
       .hf-remocn-pricing-tier-focus {
         width: 820px;
         min-height: 460px;
-        border-radius: 34px;
+        border-radius: 24px;
         padding: 28px;
-        background: linear-gradient(135deg, #f8fafc, #e0f2fe);
-        box-shadow: 0 28px 80px rgba(15, 23, 42, 0.18);
+        background: #fafafa;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.10);
+        border: 1px solid #e4e4e7;
         display: grid;
-        grid-template-columns: 280px 1fr;
-        gap: 22px;
+        grid-template-columns: 260px 1fr;
+        gap: 20px;
         overflow: hidden;
       }
       .hf-remocn-pricing-tier-focus .panel {
-        border: 1px solid rgba(15, 23, 42, 0.08);
-        border-radius: 24px;
-        background: rgba(255, 255, 255, 0.76);
-        padding: 22px;
-        backdrop-filter: blur(12px);
+        border: 1px solid #e4e4e7;
+        border-radius: 16px;
+        background: #ffffff;
+        padding: 20px;
       }
       .hf-remocn-pricing-tier-focus .prompt {
         display: grid;
-        gap: 12px;
+        gap: 10px;
         align-content: start;
       }
       .hf-remocn-pricing-tier-focus .pill {
-        height: 42px;
+        height: 40px;
         border-radius: 999px;
-        background: #111827;
+        background: #18181b;
         color: #fff;
         display: flex;
         align-items: center;
-        padding: 0 18px;
-        font-weight: 800;
+        padding: 0 16px;
+        font-size: 13px;
+        font-weight: 600;
         transform: translateX(var(--hf-pill-x, 0px));
       }
       .hf-remocn-pricing-tier-focus .preview {
         display: grid;
-        gap: 14px;
+        gap: 12px;
+        align-content: start;
       }
       .hf-remocn-pricing-tier-focus .card {
-        min-height: 78px;
-        border-radius: 18px;
+        border-radius: 12px;
         background: #fff;
-        box-shadow: 0 14px 40px rgba(15, 23, 42, 0.08);
+        border: 1px solid #e4e4e7;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+        padding: 16px 18px;
         transform: translate(var(--hf-card-x, 0px), var(--hf-card-y, 0px))
           scale(var(--hf-card-scale, 1));
         opacity: var(--hf-card-opacity, 1);
       }
+      .hf-remocn-pricing-tier-focus .card.card--featured {
+        border-color: #2563eb;
+        box-shadow: 0 8px 28px rgba(37, 99, 235, 0.18);
+      }
+      .hf-remocn-pricing-tier-focus .card-tier {
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #71717a;
+        margin: 0 0 6px;
+      }
+      .hf-remocn-pricing-tier-focus .card--featured .card-tier {
+        color: #2563eb;
+      }
+      .hf-remocn-pricing-tier-focus .card-price {
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: -0.03em;
+        color: #18181b;
+        margin: 0 0 4px;
+      }
+      .hf-remocn-pricing-tier-focus .card-desc {
+        font-size: 11px;
+        color: #71717a;
+        margin: 0;
+      }
       .hf-remocn-pricing-tier-focus h3 {
-        margin: 0 0 14px;
-        font-size: 32px;
+        margin: 0 0 10px;
+        font-size: 26px;
+        font-weight: 700;
         letter-spacing: -0.04em;
+        color: #18181b;
       }
       .hf-remocn-pricing-tier-focus p {
-        margin: 0;
-        color: #475569;
+        margin: 0 0 14px;
+        font-size: 12px;
+        line-height: 1.5;
+        color: #71717a;
       }
     </style>
   </head>
@@ -115,9 +152,21 @@
             <div class="pill">Export</div>
           </div>
           <div class="panel preview">
-            <div class="card"></div>
-            <div class="card"></div>
-            <div class="card"></div>
+            <div class="card">
+              <p class="card-tier">Free</p>
+              <p class="card-price">$0<span style="font-size:13px;font-weight:500;color:#71717a">/mo</span></p>
+              <p class="card-desc">Up to 3 projects · 5 exports/month</p>
+            </div>
+            <div class="card card--featured">
+              <p class="card-tier">Pro</p>
+              <p class="card-price">$29<span style="font-size:13px;font-weight:500;color:#71717a">/mo</span></p>
+              <p class="card-desc">Unlimited projects · HD exports · Priority</p>
+            </div>
+            <div class="card">
+              <p class="card-tier">Enterprise</p>
+              <p class="card-price">$99<span style="font-size:13px;font-weight:500;color:#71717a">/mo</span></p>
+              <p class="card-desc">Custom seats · SSO · SLA support</p>
+            </div>
           </div>
         </div>
       </div>

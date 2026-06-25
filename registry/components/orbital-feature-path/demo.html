@@ -37,6 +37,9 @@
         overflow: hidden;
         background: radial-gradient(circle at 50% 20%, #dbeafe, #f8fafc 54%, #e0e7ff);
         box-shadow: 0 28px 80px rgba(15, 23, 42, 0.18);
+        /* ponytail: scale wrapper (not a GSAP target) to fill ~70% of 1920×1080 */
+        transform: scale(1.8);
+        transform-origin: 50% 50%;
       }
       .hf-advanced-orbital-feature-path svg {
         position: absolute;
@@ -64,6 +67,7 @@
         display: grid;
         place-items: center;
         text-align: center;
+        font-size: 14px;
         font-weight: 900;
         letter-spacing: -0.04em;
         box-shadow: 0 22px 54px rgba(15, 23, 42, 0.25);
@@ -80,7 +84,8 @@
         border-radius: 999px;
         background: #fff;
         box-shadow: 0 16px 42px rgba(15, 23, 42, 0.14);
-        font-weight: 800;
+        font-size: 13px;
+        font-weight: 700;
         transform-origin: 50% 50%;
       }
       .hf-advanced-orbital-feature-path .dot {

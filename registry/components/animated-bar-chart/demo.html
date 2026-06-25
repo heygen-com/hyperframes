@@ -28,6 +28,8 @@
         display: grid;
         place-items: center;
         padding: 52px;
+        transform: scale(2.1);
+        transform-origin: center center;
       }
       .hf-remocn-animated-bar-chart {
         --hf-accent: #2563eb;
@@ -56,10 +58,20 @@
         margin: 0;
         font-size: 34px;
         letter-spacing: -0.04em;
+        font-weight: 700;
+        color: #111827;
+      }
+      .hf-remocn-animated-bar-chart header p {
+        margin: 6px 0 0;
+        font-size: 16px;
+        color: #6b7280;
+        font-weight: 400;
       }
       .hf-remocn-animated-bar-chart strong {
         font-size: 54px;
         letter-spacing: -0.06em;
+        color: #2563eb;
+        font-weight: 700;
       }
       .hf-remocn-animated-bar-chart .bars {
         height: 210px;
@@ -73,14 +85,27 @@
         border-radius: 14px 14px 5px 5px;
         background: linear-gradient(180deg, #60a5fa, #2563eb);
       }
+      .hf-remocn-animated-bar-chart .chart-footer {
+        display: grid;
+        gap: 6px;
+      }
       .hf-remocn-animated-bar-chart svg {
         width: 100%;
-        height: 210px;
+        height: 180px;
         overflow: visible;
       }
       .hf-remocn-animated-bar-chart path {
         stroke-dasharray: 900;
         stroke-dashoffset: var(--hf-dash, 0);
+      }
+      .hf-remocn-animated-bar-chart .bar-labels {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        text-align: center;
+        font-size: 13px;
+        font-weight: 500;
+        color: #9ca3af;
+        padding: 0 2px;
       }
     </style>
   </head>
@@ -108,15 +133,22 @@
             ><span class="bar" style="--h: 64%"></span><span class="bar" style="--h: 95%"></span
             ><span class="bar" style="--h: 78%"></span>
           </div>
-          <svg viewBox="0 0 700 210">
-            <path
-              d="M20 172 C120 90, 190 118, 260 74 S430 112, 508 42 S620 82, 680 30"
-              fill="none"
-              stroke="#2563eb"
-              stroke-width="10"
-              stroke-linecap="round"
-            />
-          </svg>
+          <div class="chart-footer">
+            <svg viewBox="0 0 700 210">
+              <!-- baseline -->
+              <line x1="20" y1="185" x2="680" y2="185" stroke="#e4e4e7" stroke-width="1.5"/>
+              <path
+                d="M20 172 C120 90, 190 118, 260 74 S430 112, 508 42 S620 82, 680 30"
+                fill="none"
+                stroke="#2563eb"
+                stroke-width="10"
+                stroke-linecap="round"
+              />
+            </svg>
+            <div class="bar-labels">
+              <span>Jan</span><span>Feb</span><span>Mar</span><span>Apr</span><span>May</span><span>Jun</span><span>Jul</span>
+            </div>
+          </div>
         </div>
       </div>
       <script>

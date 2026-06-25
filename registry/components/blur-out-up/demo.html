@@ -30,6 +30,8 @@
         min-width: 900px;
         min-height: 500px;
         padding: 64px;
+        /* ponytail: scale wrapper — GSAP targets spans inside, not this element */
+        transform: scale(2.6);
       }
       .hf-remocn-blur-out-up {
         color: #18181b;
@@ -62,7 +64,7 @@
       data-duration="5"
     >
       <div class="demo-frame">
-        <div class="hf-remocn-blur-out-up"><span>HELLO</span></div>
+        <div class="hf-remocn-blur-out-up"><span>BLUR</span><span>OUT</span><span>UP</span></div>
       </div>
       <script>
         const tl = gsap.timeline({ paused: true });

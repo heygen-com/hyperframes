@@ -28,6 +28,8 @@
         display: grid;
         place-items: center;
         padding: 52px;
+        /* ponytail: scale wrapper (not a GSAP target) to fill ~65% of frame */
+        transform: scale(1.65);
       }
       .hf-remocn-terminal-simulator {
         --hf-accent: #2563eb;
@@ -54,6 +56,7 @@
         padding: 0 18px;
         background: #111827;
         color: #94a3b8;
+        font-size: 14px;
       }
       .hf-remocn-terminal-simulator .dot {
         width: 11px;
@@ -73,15 +76,17 @@
         padding: 22px;
         border-right: 1px solid rgba(148, 163, 184, 0.18);
         color: #94a3b8;
+        font-size: 15px;
+        line-height: 1.8;
       }
       .hf-remocn-terminal-simulator .editor {
         padding: 22px;
         display: grid;
-        gap: 12px;
+        gap: 14px;
       }
       .hf-remocn-terminal-simulator .line {
         display: block;
-        height: 16px;
+        height: 18px;
         border-radius: 999px;
         background: linear-gradient(90deg, #38bdf8, #a78bfa);
         transform: scaleX(var(--hf-line, 1));
@@ -93,6 +98,7 @@
         border-top: 1px solid rgba(148, 163, 184, 0.18);
         color: #86efac;
         min-height: 78px;
+        font-size: 15px;
       }
     </style>
   </head>
