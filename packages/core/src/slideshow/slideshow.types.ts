@@ -19,6 +19,13 @@ export interface SlideRef {
   notes?: string;
   fragments?: number[];
   hotspots?: SlideHotspot[];
+  /**
+   * When true, the slide's `<video>` plays automatically on enter (the
+   * presenter lands on the slide and the clip plays). The slideshow still holds
+   * — it never auto-advances — so the presenter clicks Next when ready.
+   * Defaults to false.
+   */
+  autoplay?: boolean;
   // Reserved — TTS deferred. Parsed and carried, never consumed.
   ttsScript?: string;
   ttsAudioUrl?: string;

@@ -196,4 +196,23 @@ describe("resolveSlideshow", () => {
     expect(resolved.slides[0].start).toBe(1);
     expect(resolved.slides[0].end).toBe(4);
   });
+
+  it("parses and carries through the per-slide autoplay flag", () => {
+    const island = `<script type="application/hyperframes-slideshow+json">
+      { "slides": [ { "sceneId": "a", "autoplay": true }, { "sceneId": "b" } ] }
+    </script>`;
+    const m = parseSlideshowManifest(island);
+    expect(m?.slides[0].autoplay).toBe(true);
+    expect(m?.slides[1].autoplay).toBeUndefined();
+    const { resolved } = resolveSlideshow(m!, SCENES);
+    expect(resolved.slides[0].autoplay).toBe(true);
+    expect(resolved.slides[1].autoplay).toBeUndefined();
+  });
+
+  it("rejects a manifest whose slide autoplay is not a boolean", () => {
+    const island = `<script type="application/hyperframes-slideshow+json">
+      { "slides": [ { "sceneId": "a", "autoplay": "yes" } ] }
+    </script>`;
+    expect(() => parseSlideshowManifest(island)).toThrow();
+  });
 });

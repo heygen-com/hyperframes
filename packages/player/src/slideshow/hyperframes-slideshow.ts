@@ -172,6 +172,9 @@ export class HyperframesSlideshow extends HTMLElement {
   private audienceMutedPlaybackKeys = new Set<string>();
   private blockedAudienceMedia = new Map<string, PresenterMediaMessage>();
   private audienceMediaUnlockButton: HTMLButtonElement | null = null;
+  // Bumped whenever autoplay starts or media is stopped (slide change), so a
+  // pending re-assert from a previous autoplay can't replay a clip we've left.
+  private autoplayToken = 0;
 
   /** Whether audio is currently muted. Reflects `data-hf-muted` attribute. */
   get muted(): boolean {
@@ -381,6 +384,7 @@ export class HyperframesSlideshow extends HTMLElement {
           playerEl.stopMedia?.();
           this.stopDocumentMedia();
         },
+        playSceneMedia: (sceneId) => this.playSceneDocumentMedia(sceneId),
         get currentTime() {
           return playerEl.currentTime;
         },
@@ -1023,10 +1027,82 @@ export class HyperframesSlideshow extends HTMLElement {
   }
 
   private stopDocumentMedia(): void {
+    // Invalidate any in-flight autoplay re-assert so leaving a slide can't be
+    // undone by a pending timeout replaying the clip we just paused.
+    this.autoplayToken++;
     const doc = this.ownerDocument;
     for (const el of doc.querySelectorAll("video, audio")) {
       if (el instanceof HTMLMediaElement) el.pause();
     }
+  }
+
+  /**
+   * Play the `<video>` inside a given scene from its start — the runtime side of
+   * a slide's `autoplay`. Reaches into the same-origin composition iframe (which
+   * is pointer-events:none, so its own controls can't be clicked). The play()
+   * fires a "play" event that wireSlideshowMedia() already mirrors to any
+   * audience window, so we only call this on the presenter (via enterSlide).
+   *
+   * Robust against two timing hazards: (1) the clip may not be in the iframe DOM
+   * yet at construction (first slide), and (2) the player drives clips during
+   * bootstrap and seeks the timeline on enter — both pause the clip (and reject
+   * an in-flight play() with AbortError), so a single play() loses the race. We
+   * poll on a short timer: locate the clip, then assert play() until it is
+   * actually advancing, for a bounded window — then stop, so a later real user
+   * pause (presenter media controls) sticks. Token-guarded so leaving the slide
+   * cancels it. If play() is blocked for want of a gesture (real browser, first
+   * slide, no interaction yet), the first pointer/key event kicks it.
+   */
+  private playSceneDocumentMedia(sceneId: string): void {
+    const safeId = sceneId.replace(/["\\]/g, "\\$&");
+    const token = ++this.autoplayToken;
+    const findVideo = (): HTMLVideoElement | null => {
+      for (const player of this.mediaPlayerElements()) {
+        const doc = this.playerFrameDocument(player);
+        const video = doc?.querySelector(`[data-composition-id="${safeId}"] video`) ?? null;
+        if (video instanceof HTMLVideoElement) return video;
+      }
+      return null;
+    };
+    const STEP_MS = 150;
+    const WINDOW_MS = 6000;
+    let waited = 0;
+    let started = false;
+    let lastTime = -1;
+    let gestureWired = false;
+    const wireGestureRetry = (video: HTMLVideoElement): void => {
+      if (gestureWired) return;
+      gestureWired = true;
+      const retry = (): void => {
+        window.removeEventListener("pointerdown", retry, true);
+        window.removeEventListener("keydown", retry, true);
+        if (token === this.autoplayToken) void video.play().catch(() => {});
+      };
+      window.addEventListener("pointerdown", retry, true);
+      window.addEventListener("keydown", retry, true);
+    };
+    const tick = (): void => {
+      if (token !== this.autoplayToken) return; // left the slide
+      const video = findVideo();
+      if (video) {
+        if (!started) {
+          started = true;
+          video.muted = this._muted || video.defaultMuted;
+          try {
+            video.currentTime = 0;
+          } catch {
+            // not seekable yet — play from wherever it is
+          }
+          wireGestureRetry(video);
+        }
+        const advancing = !video.paused && video.currentTime > lastTime;
+        lastTime = video.currentTime;
+        if (!advancing) void video.play().catch(() => {});
+      }
+      waited += STEP_MS;
+      if (waited <= WINDOW_MS) window.setTimeout(tick, STEP_MS);
+    };
+    tick();
   }
 
   private presenterNotesDeckKey(): string {
