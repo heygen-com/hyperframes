@@ -2,6 +2,8 @@ import { defineCommand } from "citty";
 import type { Example } from "./_examples.js";
 import { existsSync, writeFileSync } from "node:fs";
 
+type CaptionExportFormat = "srt" | "vtt";
+
 export const examples: Example[] = [
   ["Transcribe an audio file", "hyperframes transcribe audio.mp3"],
   ["Transcribe a video file", "hyperframes transcribe video.mp4"],
@@ -9,12 +11,17 @@ export const examples: Example[] = [
   ["Set language to filter non-target speech", "hyperframes transcribe audio.mp3 --language en"],
   ["Import an existing SRT file", "hyperframes transcribe subtitles.srt"],
   ["Import an OpenAI Whisper JSON response", "hyperframes transcribe response.json"],
+  ["Export captions to SRT", "hyperframes transcribe transcript.json --to srt"],
+  [
+    "Export single-word/CJK captions without re-grouping",
+    "hyperframes transcribe transcript.json --to vtt --preserve-cues",
+  ],
 ];
 import { resolve, join, extname, dirname } from "node:path";
 import * as clack from "@clack/prompts";
 import { c } from "../ui/colors.js";
-import { DEFAULT_MODEL } from "../whisper/manager.js";
-import { trackCommandFailure } from "../telemetry/events.js";
+import { DEFAULT_MODEL, isWhisperUnavailable } from "../whisper/manager.js";
+import { trackCommandFailure, trackTranscribeUnavailable } from "../telemetry/events.js";
 
 export default defineCommand({
   meta: {
@@ -49,6 +56,27 @@ export default defineCommand({
       description: "Output result as JSON",
       default: false,
     },
+    to: {
+      type: "string",
+      description: "Export transcript sidecar format: srt or vtt",
+    },
+    output: {
+      type: "string",
+      alias: "o",
+      description: "Output path for exported SRT/VTT sidecar",
+    },
+    "preserve-cues": {
+      type: "boolean",
+      description:
+        "Keep each transcript entry as its own caption cue (skip word-level grouping). Use when exporting an already-cued transcript whose entries have no internal spaces, e.g. single-word or CJK captions.",
+      default: false,
+    },
+    optional: {
+      type: "boolean",
+      description:
+        "Treat captions as optional: if whisper-cpp is unavailable, skip and exit 0 instead of failing. For pipelines that continue without captions.",
+      default: false,
+    },
   },
   async run({ args }) {
     const inputPath = resolve(args.input);
@@ -67,6 +95,17 @@ export default defineCommand({
 
     // ── Import mode: convert existing transcript ──────────────────────────
     const isImport = ext === ".json" || ext === ".srt" || ext === ".vtt";
+    const to = parseExportFormat(args.to, args.json);
+
+    if (to) {
+      if (!isImport) {
+        failWith(
+          "--to can only export from transcript files (.json, .srt, .vtt). Run transcribe first.",
+          args.json,
+        );
+      }
+      return exportTranscript(inputPath, dir, to, args.output, args.json, args["preserve-cues"]);
+    }
 
     if (isImport) {
       return importTranscript(inputPath, dir, args.json);
@@ -77,24 +116,45 @@ export default defineCommand({
       model: args.model,
       language: args.language,
       json: args.json,
+      optional: args.optional,
     });
   },
 });
+
+function failWith(message: string, json: boolean): never {
+  trackCommandFailure("transcribe", message);
+  if (json) {
+    console.log(JSON.stringify({ ok: false, error: message }));
+  } else {
+    console.error(c.error(message));
+  }
+  process.exit(1);
+}
+
+function parseExportFormat(
+  value: string | undefined,
+  json: boolean,
+): CaptionExportFormat | undefined {
+  if (!value) return undefined;
+  const normalized = value.toLowerCase();
+  if (normalized === "srt" || normalized === "vtt") return normalized;
+
+  failWith(`Unsupported caption export format: ${value}. Use srt or vtt.`, json);
+}
 
 // ---------------------------------------------------------------------------
 // Import existing transcript
 // ---------------------------------------------------------------------------
 
+function exitNoWords(json: boolean): never {
+  failWith("No words found in transcript.", json);
+}
+
 async function importTranscript(inputPath: string, dir: string, json: boolean): Promise<void> {
   const { loadTranscript, patchCaptionHtml } = await import("../whisper/normalize.js");
   const { words, format } = loadTranscript(inputPath);
 
-  if (words.length === 0) {
-    const message = "No words found in transcript.";
-    trackCommandFailure("transcribe", message);
-    console.error(c.error(message));
-    process.exit(1);
-  }
+  if (words.length === 0) exitNoWords(json);
 
   const outPath = join(dir, "transcript.json");
   writeFileSync(outPath, JSON.stringify(words, null, 2));
@@ -112,13 +172,51 @@ async function importTranscript(inputPath: string, dir: string, json: boolean): 
 }
 
 // ---------------------------------------------------------------------------
+// Export transcript sidecars
+// ---------------------------------------------------------------------------
+
+async function exportTranscript(
+  inputPath: string,
+  dir: string,
+  to: CaptionExportFormat,
+  output: string | undefined,
+  json: boolean,
+  preserveCues: boolean,
+): Promise<void> {
+  const { loadTranscript, formatSrt, formatVtt } = await import("../whisper/normalize.js");
+  const { words, format } = loadTranscript(inputPath);
+
+  if (words.length === 0) exitNoWords(json);
+
+  // A .srt/.vtt source is already phrase-level; keep its cue boundaries 1:1.
+  // --preserve-cues forces the same for an already-cued transcript.json whose
+  // entries have no internal whitespace (single-word or CJK captions), which
+  // the automatic whitespace heuristic in wordsToCues can't detect.
+  const preGrouped = preserveCues || format === "srt" || format === "vtt" || undefined;
+  const outPath = resolve(output ?? join(dir, `transcript.${to}`));
+  const content =
+    to === "srt" ? formatSrt(words, { preGrouped }) : formatVtt(words, { preGrouped });
+  writeFileSync(outPath, content);
+
+  if (json) {
+    console.log(
+      JSON.stringify({ ok: true, format: to, wordCount: words.length, outputPath: outPath }),
+    );
+  } else {
+    console.log(
+      `${c.success("◇")}  Exported ${c.accent(String(words.length))} words to ${c.accent(to.toUpperCase())} → ${c.accent(outPath)}`,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Transcribe audio/video with whisper
 // ---------------------------------------------------------------------------
 
 async function transcribeAudio(
   inputPath: string,
   dir: string,
-  opts: { model?: string; language?: string; json?: boolean },
+  opts: { model?: string; language?: string; json?: boolean; optional?: boolean },
 ): Promise<void> {
   const { transcribe } = await import("../whisper/transcribe.js");
   const { loadTranscript, patchCaptionHtml, stripBeforeOnset } =
@@ -175,6 +273,25 @@ async function transcribeAudio(
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+
+    // whisper-cpp is an optional prerequisite, not part of the CLI. When it is
+    // simply unavailable (no binary, no toolchain to build one), that is a setup
+    // condition, not a command crash — report it on its own metric so it does
+    // not inflate the cli_error budget, and let `--optional` callers continue.
+    if (isWhisperUnavailable(err)) {
+      trackTranscribeUnavailable({ optional: opts.optional === true });
+      if (opts.json) {
+        console.log(JSON.stringify({ ok: false, skipped: true, reason: "whisper_unavailable" }));
+      } else {
+        spin?.stop(c.warn(`Captions skipped — ${message}`));
+      }
+      // Optional callers (pipelines) treat a missing prerequisite as a clean
+      // skip; explicit runs still surface non-zero. Set the status and return
+      // rather than guarding a process.exit() on the flag.
+      process.exitCode = opts.optional ? 0 : 1;
+      return;
+    }
+
     trackCommandFailure("transcribe", err);
     if (opts.json) {
       console.log(JSON.stringify({ ok: false, error: message }));

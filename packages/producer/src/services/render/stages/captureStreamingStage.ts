@@ -126,6 +126,8 @@ export type CaptureStreamingStageResult =
       probeSession: CaptureSession | null;
       lastBrowserConsole: string[];
       workerCount: number;
+      /** Engine-resolved screenshot flag from the consumed sequential/probe session, when observed. */
+      captureBeyondViewport?: boolean;
     }
   | {
       /** Spawn failed (non-abort) — sequencer should fall back to the disk path. */
@@ -156,6 +158,7 @@ export async function runCaptureStreamingStage(
   } = input;
   let { workerCount, probeSession } = input;
   let lastBrowserConsole: string[] = [];
+  let captureBeyondViewport: boolean | undefined = probeSession?.options.captureBeyondViewport;
 
   // Derive a local cfg view rather than reading `forceScreenshot` from the
   // caller-owned `cfg`. The sequencer threads the resolved value via the
@@ -241,6 +244,7 @@ export async function runCaptureStreamingStage(
       pushWorkerDedupPerfs(workerResults, dedupPerfs);
 
       if (probeSession) {
+        captureBeyondViewport = probeSession.options.captureBeyondViewport;
         lastBrowserConsole = probeSession.browserConsoleBuffer;
         await closeCaptureSession(probeSession);
         probeSession = null;
@@ -258,6 +262,7 @@ export async function runCaptureStreamingStage(
           videoInjector,
           captureCfg,
         ));
+      captureBeyondViewport = session.options.captureBeyondViewport;
       if (probeSession) {
         prepareCaptureSessionForReuse(session, framesDir, videoInjector);
         probeSession = null;
@@ -325,6 +330,7 @@ export async function runCaptureStreamingStage(
       probeSession,
       lastBrowserConsole,
       workerCount,
+      captureBeyondViewport,
     };
   } finally {
     // Defensive cleanup: if the streaming branch threw before

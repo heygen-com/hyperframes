@@ -14,7 +14,7 @@ Everything runs through `npx hyperframes` unless project instructions specify a 
 3. **Lint** — `npx hyperframes lint`
 4. **Validate** — `npx hyperframes validate` (runtime errors + contrast)
 5. **Visual inspect** — `npx hyperframes inspect`
-6. **Preview** — `npx hyperframes preview`
+6. **Preview** — `npx hyperframes preview` opens **Studio**, the timeline editor where the user can manually edit anything (not just watch). Review there, then ask before rendering.
 7. **Render** — pick the variant:
    - Iterate: `npx hyperframes render --quality draft`
    - Deliver: `npx hyperframes render --quality high --output out.mp4`
@@ -34,6 +34,7 @@ Cross-cutting rules that hold for every command:
 - **Non-TTY mode is auto-detected.** When `stdout` is not a TTY (CI, agents, piped output) the CLI auto-switches to non-interactive; `init` then **requires `--example`**. Pass `--non-interactive` to force this mode even on a TTY.
 - **CI gating on render**: `--strict` fails on lint errors, `--strict-all` fails on warnings too, `--strict-variables` fails on undeclared `--variables` keys.
 - **Paths in `--json` are redacted** — `$HOME` becomes the literal `$HOME` so output is safe to paste into bug reports and agent contexts.
+- **Render is user-gated.** Never auto-render once the checks pass. Pause at `preview`, tell the user the video is editable in Studio, and render only after they approve.
 - **Post-render verification.** After `render` returns exit 0, confirm the output file exists and has plausible size before reporting success: `[ -s "$OUTPUT" ] || echo "render produced no output"`. The CLI prints `◇  <path>` on success; for long renders also sanity-check duration with `ffprobe -i "$OUTPUT" -show_format -v error`.
 
 ## Routing

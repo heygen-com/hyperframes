@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>typewriter_reveal</title>
+    <script src="../assets/gsap.min.js"></script>
+    <style>
+      :root {
+        --hg-violet: #7c3aed;
+        --hg-violet-2: #a855f7;
+        --hg-bg: #0a0a0f;
+        --hg-fg: #f5f5fa;
+        --hg-dim: #6b6b78;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--hg-bg);
+        font-family: "Inter", system-ui, sans-serif;
+        color: var(--hg-fg);
+        -webkit-font-smoothing: antialiased;
+      }
+      #scene {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+      }
+      .stage {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .line {
+        display: flex;
+        align-items: baseline;
+        font-family: "JetBrains Mono", ui-monospace, monospace;
+        font-weight: 800;
+        font-size: 200px;
+        letter-spacing: 0.02em;
+        line-height: 0.95;
+        white-space: nowrap;
+      }
+      .char {
+        display: inline-block;
+        opacity: 0;
+        will-change: opacity;
+      }
+      .char.space {
+        width: 0.4em;
+      }
+      .caret {
+        display: inline-block;
+        width: 0.09em;
+        height: 0.86em;
+        margin-left: 0.06em;
+        background: var(--hg-violet-2);
+        will-change: opacity;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="2.4"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="scene" class="clip" data-start="0" data-duration="2.4" data-track-index="1">
+        <div class="stage">
+          <div class="line" id="line">
+            <span class="char">S</span><span class="char">Y</span><span class="char">S</span
+            ><span class="char">T</span><span class="char">E</span><span class="char">M</span
+            ><span class="char space">&nbsp;</span><span class="char">O</span
+            ><span class="char">N</span><span class="char">L</span><span class="char">I</span
+            ><span class="char">N</span><span class="char">E</span
+            ><span class="caret" id="caret"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      const chars = gsap.utils.toArray(".char");
+      const step = 0.07;
+
+      // Explicit per-character reveal: one set() per char at time i * step.
+      chars.forEach((char, i) => {
+        tl.set(char, { opacity: 1 }, i * step);
+      });
+
+      const lastT = (chars.length - 1) * step;
+
+      // Caret rides just past the last revealed char and blinks a finite number
+      // of times (no repeat:-1), then the phrase locks crisp.
+      tl.set("#caret", { opacity: 1 }, 0);
+      tl.to(
+        "#caret",
+        { opacity: 0, duration: 0.09, ease: "steps(1)", repeat: 8, yoyo: true },
+        lastT + step,
+      );
+      tl.set("#caret", { opacity: 0 }, 2.32);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

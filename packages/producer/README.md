@@ -90,7 +90,7 @@ await executeRenderJob(job);
 
 The producer captures Chrome screenshots with the page background forced transparent (`html, body, [data-composition-id] { background: transparent !important }`) and the CDP default background override set to RGBA 0,0,0,0. The captured PNGs carry a real alpha channel and that channel is preserved end-to-end:
 
-- VP9 (`webm`) is encoded with `-pix_fmt yuva420p`, `-auto-alt-ref 0`, and `alpha_mode=1` metadata.
+- VP9 (`webm`) is encoded with `-pix_fmt yuva420p`, `-auto-alt-ref 0`, `-cpu-used 4` by default, and `alpha_mode=1` metadata. Tune the speed/quality tradeoff with `PRODUCER_VP9_CPU_USED` (`-8` to `8`) or local CLI `--vp9-cpu-used`.
 - ProRes 4444 (`mov`) is encoded with `-pix_fmt yuva444p10le`.
 - PNG sequences are written without re-encoding (zero-padded `frame_NNNNNN.png`).
 

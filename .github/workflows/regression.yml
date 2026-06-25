@@ -79,7 +79,7 @@ jobs:
           - shard: shard-7
             args: "sub-composition-video style-18-prod raf-ball-render-compat font-variant-numeric sub-comp-t0 sub-comp-id-selector"
           - shard: shard-8
-            args: "style-13-prod style-6-prod vignelli-stacking gsap-letters-render-compat"
+            args: "style-13-prod style-6-prod vignelli-stacking gsap-letters-render-compat audio-mux-parity"
     steps:
       - name: Checkout (with LFS)
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4

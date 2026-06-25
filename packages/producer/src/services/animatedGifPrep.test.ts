@@ -78,6 +78,7 @@ describe("buildAnimatedGifTranscodeArgs", () => {
     expect(args).toContain("2");
     expect(args).toContain("libvpx-vp9");
     expect(args).toContain("yuva420p");
+    expect(args[args.indexOf("-cpu-used") + 1]).toBe("4");
     expect(args).toContain("-ignore_loop");
     // Output goes to an extension-less tmp path; the muxer must be explicit.
     expect(args.join(" ")).toContain("-f webm");

@@ -224,10 +224,6 @@ export function useDomEditCommits({
               target_source_file: selection.sourceFile ?? undefined,
               composition: activeCompPath ?? undefined,
             });
-            console.warn(
-              `[studio] Element not found in source: ${targetKey}. ` +
-                "This element may be generated at runtime and cannot be persisted.",
-            );
           }
         }
         return;

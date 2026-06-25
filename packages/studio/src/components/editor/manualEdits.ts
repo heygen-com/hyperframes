@@ -16,6 +16,7 @@ export {
   endStudioManualEditGesture,
   isStudioManualEditGestureCurrent,
   readStudioPathOffset,
+  readAppliedStudioPathOffset,
   readStudioBoxSize,
   readStudioRotation,
   applyStudioPathOffset,

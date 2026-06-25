@@ -1,0 +1,485 @@
+<!doctype html>
+<html
+  lang="en"
+  data-composition-variables='[
+    {"id":"bgColor",    "type":"color",  "label":"Page background",        "default":"#050507"},
+    {"id":"colorLow",   "type":"color",  "label":"Flow — shadow tone",     "default":"#0a1430"},
+    {"id":"colorMid",   "type":"color",  "label":"Flow — mid tone",        "default":"#6a6f9e"},
+    {"id":"colorHigh",  "type":"color",  "label":"Flow — highlight tone",  "default":"#e8f0ff"},
+    {"id":"accentColor","type":"color",  "label":"Core / glow accent",     "default":"#aee4ff"},
+    {"id":"markText",   "type":"string", "label":"Monogram",               "default":"HF"},
+    {"id":"titleText",  "type":"string", "label":"Title",                  "default":"HYPERFRAMES"},
+    {"id":"tagText",    "type":"string", "label":"Tagline",                "default":"HTML · SHADERS · MP4"},
+    {"id":"flowSpeed",  "type":"number", "label":"Flow speed", "default":1, "min":0.1, "max":3, "step":0.1}
+  ]'
+>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>WebGL Textures Playground — Template</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+    <script src="../../motion-primitives/assets/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      /* --bg / --mark-top / --mark-bottom / --line are set from variables in JS */
+      html,
+      body {
+        background: var(--bg, #050507);
+        overflow: hidden;
+        font-family: "Inter", system-ui, sans-serif;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--bg, #050507);
+      }
+      .sf-stage {
+        position: absolute;
+        inset: 0;
+      }
+      .sf-canvas {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+        display: block;
+      }
+      .sf-overlay {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 28px;
+        color: #fff;
+        text-align: center;
+        mix-blend-mode: screen;
+        pointer-events: none;
+      }
+      .sf-mark {
+        font-size: 280px;
+        font-weight: 800;
+        letter-spacing: -18px;
+        line-height: 1;
+        display: flex;
+        gap: 0;
+        opacity: 0;
+        filter: drop-shadow(0 0 60px rgba(180, 220, 255, 0.4));
+      }
+      .sf-mark-letter {
+        display: inline-block;
+        background: linear-gradient(
+          180deg,
+          var(--mark-top, #ffffff) 0%,
+          var(--mark-bottom, #8aa9ff) 100%
+        );
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+        transform: translateY(0);
+      }
+      .sf-rule {
+        width: 0;
+        height: 2px;
+        background: linear-gradient(
+          90deg,
+          transparent 0%,
+          var(--line, rgba(255, 255, 255, 0.9)) 50%,
+          transparent 100%
+        );
+        opacity: 0;
+      }
+      .sf-title {
+        font-size: 64px;
+        font-weight: 700;
+        letter-spacing: 18px;
+        opacity: 0;
+        clip-path: inset(0 100% 0 0);
+        text-transform: uppercase;
+      }
+      .sf-tag {
+        font-size: 18px;
+        font-weight: 500;
+        letter-spacing: 8px;
+        color: rgba(255, 255, 255, 0.65);
+        opacity: 0;
+        text-transform: uppercase;
+      }
+      .sf-grain {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        opacity: 0.06;
+        mix-blend-mode: overlay;
+        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      data-hf-id="hf-a0d4"
+      id="root"
+      data-composition-id="webgl-textures-playground"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="12"
+      data-root="true"
+    >
+      <div data-hf-id="hf-clsq" class="sf-stage">
+        <canvas data-hf-id="hf-yk51" class="sf-canvas" width="1920" height="1080"></canvas>
+        <div data-hf-id="hf-7z0g" class="sf-overlay">
+          <div data-hf-id="hf-yo0z" class="sf-mark"><!-- letters injected from markText --></div>
+          <div data-hf-id="hf-nig2" class="sf-rule"></div>
+          <div data-hf-id="hf-gjx6" class="sf-title"></div>
+          <div data-hf-id="hf-e7y8" class="sf-tag"></div>
+        </div>
+        <div data-hf-id="hf-ku55" class="sf-grain"></div>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        // ── 1. Resolve variables (read ONCE during init) ──────────────────
+        var defaults = {
+          bgColor: "#050507",
+          colorLow: "#0a1430",
+          colorMid: "#6a6f9e",
+          colorHigh: "#e8f0ff",
+          accentColor: "#aee4ff",
+          markText: "HF",
+          titleText: "HYPERFRAMES",
+          tagText: "HTML · SHADERS · MP4",
+          flowSpeed: 1,
+        };
+        var vars = Object.assign(
+          {},
+          defaults,
+          window.__hyperframes && window.__hyperframes.getVariables
+            ? window.__hyperframes.getVariables()
+            : {},
+        );
+
+        // sRGB hex -> linear-light vec3 (the shader works in linear space and
+        // gamma-encodes at the end, so converting here makes the picked color
+        // land close to what a color picker shows).
+        function hexToLinear(hex) {
+          var h = String(hex).replace("#", "").trim();
+          if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+          var r = parseInt(h.substr(0, 2), 16) / 255;
+          var g = parseInt(h.substr(2, 2), 16) / 255;
+          var b = parseInt(h.substr(4, 2), 16) / 255;
+          var lin = function (c) {
+            return Math.pow(c, 2.2);
+          };
+          return new THREE.Vector3(lin(r), lin(g), lin(b));
+        }
+
+        var root = document.getElementById("root");
+        var canvas = root.querySelector(".sf-canvas");
+        var W = 1920;
+        var H = 1080;
+
+        // ── 2. Apply text + CSS-driven colors ─────────────────────────────
+        var docEl = document.documentElement;
+        docEl.style.setProperty("--bg", vars.bgColor);
+        docEl.style.setProperty("--mark-top", vars.colorHigh);
+        docEl.style.setProperty("--mark-bottom", vars.colorMid);
+        docEl.style.setProperty("--line", vars.colorHigh);
+
+        var markEl = root.querySelector(".sf-mark");
+        markEl.innerHTML = "";
+        String(vars.markText)
+          .split("")
+          .forEach(function (ch) {
+            var span = document.createElement("span");
+            span.className = "sf-mark-letter";
+            span.textContent = ch;
+            markEl.appendChild(span);
+          });
+        root.querySelector(".sf-title").textContent = vars.titleText;
+        root.querySelector(".sf-tag").textContent = vars.tagText;
+
+        // ── 3. WebGL flow field ───────────────────────────────────────────
+        var renderer = new THREE.WebGLRenderer({
+          canvas: canvas,
+          antialias: false,
+          alpha: false,
+          preserveDrawingBuffer: true,
+        });
+        renderer.setPixelRatio(1);
+        renderer.setSize(W, H, false);
+
+        var scene = new THREE.Scene();
+        var camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+        var uniforms = {
+          uTime: { value: 0.0 },
+          uPhase: { value: 0.0 },
+          uReveal: { value: 0.0 },
+          uChromAb: { value: 0.0 },
+          uVignette: { value: 0.0 },
+          uIntensity: { value: 0.0 },
+          uResolution: { value: new THREE.Vector2(W, H) },
+          uSpeed: { value: Number(vars.flowSpeed) || 1.0 },
+          // ── COLOR CONTROLS (driven by the composition variables) ──
+          uColLow: { value: hexToLinear(vars.colorLow) },
+          uColMid: { value: hexToLinear(vars.colorMid) },
+          uColHigh: { value: hexToLinear(vars.colorHigh) },
+          uAccent: { value: hexToLinear(vars.accentColor) },
+        };
+
+        var vert = [
+          "varying vec2 vUv;",
+          "void main(){",
+          "  vUv = uv;",
+          "  gl_Position = vec4(position.xy, 0.0, 1.0);",
+          "}",
+        ].join("\n");
+
+        var frag = [
+          "precision highp float;",
+          "varying vec2 vUv;",
+          "uniform float uTime;",
+          "uniform float uPhase;",
+          "uniform float uReveal;",
+          "uniform float uChromAb;",
+          "uniform float uVignette;",
+          "uniform float uIntensity;",
+          "uniform float uSpeed;",
+          "uniform vec2  uResolution;",
+          "uniform vec3  uColLow;",
+          "uniform vec3  uColMid;",
+          "uniform vec3  uColHigh;",
+          "uniform vec3  uAccent;",
+
+          "float hash21(vec2 p){",
+          "  p = fract(p * vec2(123.34, 456.21));",
+          "  p += dot(p, p + 45.32);",
+          "  return fract(p.x * p.y);",
+          "}",
+
+          "float noise2(vec2 p){",
+          "  vec2 i = floor(p);",
+          "  vec2 f = fract(p);",
+          "  vec2 u = f * f * (3.0 - 2.0 * f);",
+          "  float a = hash21(i);",
+          "  float b = hash21(i + vec2(1.0, 0.0));",
+          "  float c = hash21(i + vec2(0.0, 1.0));",
+          "  float d = hash21(i + vec2(1.0, 1.0));",
+          "  return mix(mix(a,b,u.x), mix(c,d,u.x), u.y);",
+          "}",
+
+          "float fbm(vec2 p){",
+          "  float v = 0.0;",
+          "  float a = 0.5;",
+          "  for(int i=0;i<5;i++){",
+          "    v += a * noise2(p);",
+          "    p *= 2.02;",
+          "    a *= 0.5;",
+          "  }",
+          "  return v;",
+          "}",
+
+          "vec2 curl(vec2 p, float t){",
+          "  float e = 0.6;",
+          "  float n1 = fbm(p + vec2(0.0,  e) + t*0.18);",
+          "  float n2 = fbm(p + vec2(0.0, -e) + t*0.18);",
+          "  float n3 = fbm(p + vec2( e, 0.0) + t*0.18);",
+          "  float n4 = fbm(p + vec2(-e, 0.0) + t*0.18);",
+          "  return vec2(n1 - n2, -(n3 - n4));",
+          "}",
+
+          // 3-stop gradient palette built from the color variables.
+          // t≈0 -> shadow, t≈0.5 -> mid, t≈1 -> highlight.
+          "vec3 palette(float t){",
+          "  t = clamp(t, 0.0, 1.0);",
+          "  vec3 lowMid = mix(uColLow, uColMid, smoothstep(0.0, 0.5, t));",
+          "  return mix(lowMid, uColHigh, smoothstep(0.5, 1.0, t));",
+          "}",
+
+          "vec3 sampleField(vec2 uv, float t, float energy){",
+          "  vec2 p = (uv - 0.5) * vec2(uResolution.x/uResolution.y, 1.0) * 2.4;",
+          "  vec2 c = curl(p * 0.9, t);",
+          "  vec2 q = p + c * (0.45 + 0.55 * energy);",
+
+          "  float flow = fbm(q * 1.6 + vec2(t * 0.11, -t * 0.07));",
+          "  float bands = sin(flow * 14.0 + t * 1.1);",
+          "  bands = smoothstep(0.0, 1.0, 0.5 + 0.5 * bands);",
+
+          "  float r = length(p);",
+          "  float core = smoothstep(1.5, 0.05, r) * (0.6 + 0.4 * energy);",
+          "  float glow = exp(-r * 1.6) * (0.55 + 0.45 * energy);",
+
+          "  float k = clamp(flow * 0.85 + 0.15 * bands + 0.25 * core + 0.6 * glow, 0.0, 1.4);",
+          "  vec3 col = palette(k * 0.9 + 0.1 * sin(t * 0.4));",
+          "  col *= 0.7 + 0.6 * energy;",
+          "  col += uAccent * core * 0.55;",
+          "  return col;",
+          "}",
+
+          "void main(){",
+          "  vec2 uv = vUv;",
+          "  float t = uTime * uSpeed;",
+          "  float e = uIntensity;",
+
+          "  vec2 dir = normalize(uv - 0.5 + 1e-6);",
+          "  float ca = uChromAb * (0.004 + 0.012 * length(uv - 0.5));",
+          "  vec3 cR = sampleField(uv + dir * ca,        t, e);",
+          "  vec3 cG = sampleField(uv,                   t, e);",
+          "  vec3 cB = sampleField(uv - dir * ca,        t, e);",
+          "  vec3 col = vec3(cR.r, cG.g, cB.b);",
+
+          "  float lum = dot(col, vec3(0.299, 0.587, 0.114));",
+          "  col = mix(vec3(lum), col, 1.05);",
+
+          "  float rev = uReveal;",
+          "  float sweep = smoothstep(0.0, 0.6, rev) * (1.0 - smoothstep(0.6, 1.0, rev));",
+          "  col += uColHigh * sweep * 0.35;",
+
+          "  vec3 phaseTint = mix(vec3(0.85, 0.92, 1.05), vec3(1.05, 0.95, 0.85), uPhase);",
+          "  col *= phaseTint;",
+
+          "  float v = length(uv - 0.5);",
+          "  col *= 1.0 - smoothstep(0.45, 0.95, v) * uVignette;",
+
+          "  col = col / (col + 1.0);",
+          "  col = pow(col, vec3(1.0/2.2));",
+
+          "  gl_FragColor = vec4(col, 1.0);",
+          "}",
+        ].join("\n");
+
+        var mat = new THREE.ShaderMaterial({
+          uniforms: uniforms,
+          vertexShader: vert,
+          fragmentShader: frag,
+        });
+        var geo = new THREE.PlaneGeometry(2, 2);
+        var mesh = new THREE.Mesh(geo, mat);
+        scene.add(mesh);
+
+        function renderFrame() {
+          renderer.render(scene, camera);
+        }
+        renderFrame();
+
+        // Continuous loop: ensures the WebGL backbuffer always has fresh
+        // pixels when puppeteer takes a screenshot. All visible state comes
+        // from uniforms driven by the GSAP timeline, so output is fully
+        // determined by the timeline position (deterministic across renders).
+        function loop() {
+          renderFrame();
+          window.requestAnimationFrame(loop);
+        }
+        window.requestAnimationFrame(loop);
+
+        // ── 4. Deterministic timeline (unchanged motion design) ───────────
+        window.__timelines = window.__timelines || {};
+        var tl = gsap.timeline({
+          paused: true,
+          onUpdate: renderFrame,
+        });
+
+        tl.to(uniforms.uTime, { value: 12.0, duration: 12, ease: "none" }, 0);
+
+        tl.to(uniforms.uIntensity, { value: 0.55, duration: 3.0, ease: "sine.inOut" }, 0);
+        tl.to(uniforms.uIntensity, { value: 1.0, duration: 1.2, ease: "power2.in" }, 3.0);
+        tl.to(uniforms.uIntensity, { value: 0.55, duration: 3.0, ease: "power2.out" }, 4.2);
+        tl.to(uniforms.uIntensity, { value: 0.3, duration: 4.8, ease: "sine.inOut" }, 7.2);
+
+        tl.fromTo(
+          uniforms.uChromAb,
+          { value: 0.0 },
+          { value: 0.4, duration: 3.0, ease: "sine.in" },
+          0,
+        );
+        tl.to(uniforms.uChromAb, { value: 1.6, duration: 1.0, ease: "power3.in" }, 3.0);
+        tl.to(uniforms.uChromAb, { value: 0.25, duration: 1.5, ease: "power2.out" }, 4.0);
+        tl.to(uniforms.uChromAb, { value: 0.18, duration: 6.5, ease: "sine.inOut" }, 5.5);
+
+        tl.fromTo(
+          uniforms.uReveal,
+          { value: 0.0 },
+          { value: 1.0, duration: 1.2, ease: "none" },
+          3.4,
+        );
+        tl.set(uniforms.uReveal, { value: 0.0 }, 4.6);
+
+        tl.to(uniforms.uPhase, { value: 0.6, duration: 5.0, ease: "sine.inOut" }, 1.5);
+        tl.to(uniforms.uPhase, { value: 0.15, duration: 5.5, ease: "sine.inOut" }, 6.5);
+
+        tl.to(uniforms.uVignette, { value: 0.85, duration: 3.0, ease: "power2.out" }, 4.2);
+
+        var mark = root.querySelector(".sf-mark");
+        var letters = root.querySelectorAll(".sf-mark-letter");
+        var rule = root.querySelector(".sf-rule");
+        var title = root.querySelector(".sf-title");
+        var tag = root.querySelector(".sf-tag");
+
+        tl.fromTo(
+          mark,
+          {
+            opacity: 0,
+            scale: 1.18,
+            filter: "blur(24px) drop-shadow(0 0 60px rgba(180,220,255,0.4))",
+          },
+          {
+            opacity: 1,
+            scale: 1.0,
+            filter: "blur(0px) drop-shadow(0 0 80px rgba(180,220,255,0.55))",
+            duration: 0.9,
+            ease: "power3.out",
+          },
+          3.6,
+        );
+        tl.fromTo(
+          letters,
+          { y: 80 },
+          { y: 0, duration: 1.0, ease: "expo.out", stagger: 0.08 },
+          3.6,
+        );
+
+        tl.fromTo(
+          rule,
+          { width: 0, opacity: 0 },
+          { width: 360, opacity: 0.85, duration: 0.8, ease: "power2.out" },
+          5.1,
+        );
+
+        tl.fromTo(
+          title,
+          { opacity: 0, clipPath: "inset(0 100% 0 0)" },
+          { opacity: 1, clipPath: "inset(0 0% 0 0)", duration: 0.95, ease: "power3.out" },
+          5.3,
+        );
+
+        tl.fromTo(
+          tag,
+          { opacity: 0, y: 12 },
+          { opacity: 0.7, y: 0, duration: 0.8, ease: "sine.out" },
+          6.0,
+        );
+
+        tl.to(mark, { scale: 1.04, duration: 5.0, ease: "sine.inOut" }, 7.0);
+
+        tl.to([mark, rule, title, tag], { opacity: 0, duration: 0.6, ease: "power1.in" }, 11.4);
+
+        window.__timelines["webgl-textures-playground"] = tl;
+      })();
+    </script>
+  </body>
+</html>

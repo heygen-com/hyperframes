@@ -116,7 +116,7 @@ describe("initSandboxRuntimeModular", () => {
     window.cancelAnimationFrame = originalCancelAnimationFrame;
   });
 
-  it("uses the shorter live child timeline when the authored window is longer", () => {
+  it("keeps authored composition hosts visible when the live child timeline is shorter", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
     root.setAttribute("data-root", "true");
@@ -143,6 +143,37 @@ describe("initSandboxRuntimeModular", () => {
 
     player?.renderSeek(9);
 
+    expect(child.style.visibility).toBe("visible");
+  });
+
+  it("uses live child timeline duration when a composition host has no authored duration", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const child = document.createElement("div");
+    child.setAttribute("data-composition-id", "slide-1");
+    child.setAttribute("data-start", "0");
+    root.appendChild(child);
+
+    window.__timelines = {
+      main: createMockTimeline(20),
+      "slide-1": createMockTimeline(8),
+    };
+
+    initSandboxRuntimeModular();
+
+    const player = window.__player;
+    expect(player).toBeDefined();
+
+    player?.renderSeek(7);
+    expect(child.style.visibility).toBe("visible");
+
+    player?.renderSeek(9);
     expect(child.style.visibility).toBe("hidden");
   });
 
@@ -491,7 +522,7 @@ describe("initSandboxRuntimeModular", () => {
     });
   });
 
-  it("does not suppress descendant visibility in render mode (top-level page)", () => {
+  it("hides timed descendants inside a hidden timed clip in render mode", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
     root.setAttribute("data-root", "true");
@@ -507,12 +538,13 @@ describe("initSandboxRuntimeModular", () => {
     panel.setAttribute("data-duration", "2");
     root.appendChild(panel);
 
-    const headline = document.createElement("h1");
-    headline.className = "headline";
-    // Authored child window outlives the parent clip — render keeps legacy behavior.
-    headline.setAttribute("data-start", "0");
-    headline.setAttribute("data-duration", "8");
-    panel.appendChild(headline);
+    const bottomBand = document.createElement("div");
+    bottomBand.className = "bottom-band";
+    // Regression shape: a child strip outlives its parent scene. Without
+    // ancestor suppression it can paint through after the parent has ended.
+    bottomBand.setAttribute("data-start", "0");
+    bottomBand.setAttribute("data-duration", "8");
+    panel.appendChild(bottomBand);
 
     window.__timelines = {
       main: createMockTimeline(8),
@@ -526,7 +558,7 @@ describe("initSandboxRuntimeModular", () => {
     player?.seek(3);
 
     expect(panel.style.visibility).toBe("hidden");
-    expect(headline.style.visibility).toBe("visible");
+    expect(bottomBand.style.visibility).toBe("hidden");
   });
 
   it("does not stamp Studio timing on GSAP targets inside authored timed clips", () => {
@@ -1147,6 +1179,57 @@ describe("initSandboxRuntimeModular", () => {
     expect(audio.muted).toBe(false);
   });
 
+  it("native media sync opt-out leaves user-started media playing while timeline is paused", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "root");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "10");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const audio = document.createElement("audio");
+    audio.setAttribute("data-start", "0");
+    audio.setAttribute("data-duration", "10");
+    audio.setAttribute("src", "voiceover.mp3");
+    Object.defineProperty(audio, "duration", { value: 10, configurable: true });
+    Object.defineProperty(audio, "readyState", {
+      value: HTMLMediaElement.HAVE_FUTURE_DATA,
+      configurable: true,
+    });
+    Object.defineProperty(audio, "currentTime", { value: 0, writable: true, configurable: true });
+    Object.defineProperty(audio, "paused", { value: true, writable: true, configurable: true });
+    audio.pause = vi.fn(() => {
+      Object.defineProperty(audio, "paused", {
+        value: true,
+        writable: true,
+        configurable: true,
+      });
+    });
+    root.appendChild(audio);
+
+    window.__timelines = { root: createMockTimeline(10) };
+    initSandboxRuntimeModular();
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          source: "hf-parent",
+          type: "control",
+          action: "set-native-media-sync-disabled",
+          disabled: true,
+        },
+      }),
+    );
+    Object.defineProperty(audio, "paused", { value: false, writable: true, configurable: true });
+    vi.mocked(audio.pause).mockClear();
+
+    window.__player?.renderSeek(5);
+
+    expect(audio.pause).not.toHaveBeenCalled();
+  });
+
   it("skips the per-frame transport re-seek while a Studio manual-edit gesture is active", () => {
     const raf = createManualRaf();
     vi.spyOn(performance, "now").mockImplementation(() => raf.now());
@@ -1195,5 +1278,96 @@ describe("initSandboxRuntimeModular", () => {
     const beforeResume = seekTimes.length;
     raf.step(16);
     expect(seekTimes.length).toBeGreaterThan(beforeResume);
+  });
+
+  // applyClipLayout force-absolutizes authored root-level timed clips so they
+  // stack as overlays. But in Studio/preview the runtime also stamps `data-start`
+  // onto ID'd / GSAP-targeted *flow* children (a <header>/<footer> in a column)
+  // so the design panel can discover them — those must NOT be force-absolutized,
+  // or the layout collapses (footer shrink-wraps, `space-between` clusters). The
+  // marker `data-hf-autostamped` distinguishes them; these tests pin both halves.
+  describe("applyClipLayout: runtime-stamped clips stay in document flow", () => {
+    const makeRoot = () => {
+      const root = document.createElement("div");
+      root.setAttribute("data-composition-id", "main");
+      root.setAttribute("data-root", "true");
+      root.setAttribute("data-start", "0");
+      root.setAttribute("data-width", "1920");
+      root.setAttribute("data-height", "1080");
+      document.body.appendChild(root);
+      return root;
+    };
+
+    // jsdom does no layout, so a static clip can report computed top "auto" or
+    // "" inconsistently. Pin the values the anchor gate keys on so the assertion
+    // reflects the real-browser path deterministically.
+    const overrideComputed = (
+      target: HTMLElement,
+      overrides: Partial<Record<"position" | "top" | "left" | "bottom" | "right", string>>,
+    ) => {
+      const real = window.getComputedStyle.bind(window);
+      vi.spyOn(window, "getComputedStyle").mockImplementation(((
+        el: Element,
+        pseudo?: string | null,
+      ) => {
+        const style = real(el as Element, pseudo ?? undefined);
+        if (el !== target) return style;
+        return new Proxy(style, {
+          get(t, prop) {
+            if (typeof prop === "string" && prop in overrides) {
+              return overrides[prop as keyof typeof overrides];
+            }
+            const value = Reflect.get(t, prop);
+            return typeof value === "function" ? value.bind(t) : value;
+          },
+        }) as CSSStyleDeclaration;
+      }) as typeof window.getComputedStyle);
+    };
+
+    it("force-absolutizes an authored data-start clip (baseline behavior preserved)", () => {
+      const root = makeRoot();
+      const clip = document.createElement("div");
+      clip.setAttribute("data-start", "0"); // authored clip, no autostamp marker
+      root.appendChild(clip);
+      overrideComputed(clip, {
+        position: "static",
+        top: "auto",
+        left: "auto",
+        bottom: "auto",
+        right: "auto",
+      });
+
+      window.__timelines = { main: createMockTimeline(10) };
+      initSandboxRuntimeModular();
+
+      expect(clip.style.position).toBe("absolute");
+      expect(clip.style.top).toBe("0px");
+      expect(clip.style.left).toBe("0px");
+    });
+
+    it("leaves a runtime-stamped flow child untouched so the layout is preserved", () => {
+      const root = makeRoot();
+      const footer = document.createElement("footer");
+      footer.setAttribute("data-start", "0");
+      footer.setAttribute("data-hf-autostamped", "1"); // stamped flow child, not an overlay clip
+      root.appendChild(footer);
+      overrideComputed(footer, {
+        position: "static",
+        top: "auto",
+        left: "auto",
+        bottom: "auto",
+        right: "auto",
+      });
+
+      window.__timelines = { main: createMockTimeline(10) };
+      initSandboxRuntimeModular();
+
+      // Skipped entirely: stays in document flow (no forced absolute, no anchor),
+      // so a flex-column footer keeps full width and `space-between` spreads — the
+      // preview then matches the rendered video, which never stamps.
+      expect(footer.style.position).toBe("");
+      expect(footer.style.top).toBe("");
+      expect(footer.style.left).toBe("");
+    });
   });
 });

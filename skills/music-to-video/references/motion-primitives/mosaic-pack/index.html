@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>mosaic_pack</title>
+    <script src="../assets/gsap.min.js"></script>
+    <style>
+      :root {
+        --hg-violet: #7c3aed;
+        --hg-violet-2: #a855f7;
+        --hg-bg: #0a0a0f;
+        --hg-fg: #f5f5fa;
+        --hg-dim: #6b6b78;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--hg-bg);
+        font-family: "Inter", system-ui, sans-serif;
+        color: var(--hg-fg);
+        -webkit-font-smoothing: antialiased;
+      }
+      #scene {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+      }
+      .stage {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(6, 200px);
+        grid-template-rows: repeat(4, 200px);
+        gap: 18px;
+      }
+      .tile {
+        border-radius: 14px;
+        will-change: transform, opacity;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="2.4"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="scene" class="clip" data-start="0" data-duration="2.4" data-track-index="1">
+        <div class="stage">
+          <div class="grid" id="grid"></div>
+        </div>
+      </div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      // Deterministic palette + grid build (6x4 = 24 cells).
+      const PALETTE = ["#7c3aed", "#a855f7", "#f5f5fa", "#2a2a3a", "#b56dff", "#6b6b78"];
+      const COLS = 6;
+      const ROWS = 4;
+      const COUNT = COLS * ROWS;
+      const grid = document.getElementById("grid");
+      const tiles = [];
+      for (let i = 0; i < COUNT; i++) {
+        const tile = document.createElement("div");
+        tile.className = "tile";
+        tile.style.background = PALETTE[i % PALETTE.length];
+        grid.appendChild(tile);
+        tiles.push(tile);
+      }
+
+      // Scatter each tile from a deterministic offset/rotation, then pack into place.
+      // Land order ripples diagonally (col + row) for a deterministic "assembling" feel.
+      const STEP = 0.07;
+      for (let i = 0; i < COUNT; i++) {
+        const col = i % COLS;
+        const row = Math.floor(i / COLS);
+        const dx = (((i * 53) % 200) - 100) * 9; // far-flung scatter X
+        const dy = (((i * 89) % 200) - 100) * 7; // far-flung scatter Y
+        const rot = ((i * 37) % 80) - 40; // deterministic tilt
+        const order = col + row; // diagonal land sequence
+        tl.fromTo(
+          tiles[i],
+          { x: dx, y: dy, rotation: rot, scale: 0.6, autoAlpha: 0.15 },
+          {
+            x: 0,
+            y: 0,
+            rotation: 0,
+            scale: 1,
+            autoAlpha: 1,
+            duration: 0.6,
+            ease: "back.out(1.6)",
+          },
+          0.1 + order * STEP,
+        );
+      }
+
+      // Settle the packed poster with a tiny breath so the loop seats cleanly.
+      tl.to("#grid", { scale: 1.02, duration: 0.18, ease: "power2.out" }, 1.9);
+      tl.to("#grid", { scale: 1, duration: 0.32, ease: "power2.inOut" }, 2.08);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

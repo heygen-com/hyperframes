@@ -1,5 +1,4 @@
 import type { DomEditViewport } from "../components/editor/domEditing";
-import { resolveVisualDomEditSelectionTarget } from "../components/editor/domEditing";
 import {
   getDomLayerPatchTarget,
   isElementComputedVisible,
@@ -11,6 +10,29 @@ interface PreviewLocalPointer {
   x: number;
   y: number;
   viewport: DomEditViewport;
+}
+
+// An element is "full-bleed" when its box spans nearly the whole composition on
+// BOTH axes. Such elements (scene wrappers, backdrops) are excluded from canvas
+// click-picking so a click lands on inner content — or deselects on empty area —
+// instead of grabbing the giant container. The Layers panel still selects them.
+// ponytail: pure size heuristic; tighten the ratio if decorative full-bleed art
+// should remain canvas-selectable.
+const FULL_BLEED_RATIO = 0.95;
+
+export function coversComposition(
+  elRect: { width: number; height: number },
+  viewport: DomEditViewport,
+): boolean {
+  if (viewport.width <= 1 || viewport.height <= 1) return false;
+  return (
+    elRect.width / viewport.width >= FULL_BLEED_RATIO &&
+    elRect.height / viewport.height >= FULL_BLEED_RATIO
+  );
+}
+
+function isFullBleedTarget(el: HTMLElement, viewport: DomEditViewport): boolean {
+  return coversComposition(el.getBoundingClientRect(), viewport);
 }
 
 function resolvePreviewLocalPointer(
@@ -82,18 +104,19 @@ export function getPreviewTargetFromPointer(
   const overrideStyle = forcePointerEventsAuto(doc);
   try {
     if (typeof doc.elementsFromPoint === "function") {
-      const visualTarget = resolveVisualDomEditSelectionTarget(
+      const candidates = resolveAllVisualDomEditTargets(
         doc.elementsFromPoint(localPointer.x, localPointer.y),
-        {
-          activeCompositionPath,
-        },
+        { activeCompositionPath },
       );
+      const visualTarget =
+        candidates.find((el) => !isFullBleedTarget(el, localPointer.viewport)) ?? null;
       if (visualTarget) return visualTarget;
     }
 
     const fallback = getEventTargetElement(doc.elementFromPoint(localPointer.x, localPointer.y));
     if (!fallback || !getDomLayerPatchTarget(fallback, activeCompositionPath)) return null;
     if (!isElementComputedVisible(fallback)) return null;
+    if (isFullBleedTarget(fallback, localPointer.viewport)) return null;
     return fallback;
   } finally {
     removePointerEventsOverride(overrideStyle);
@@ -125,11 +148,12 @@ export function getAllPreviewTargetsFromPointer(
     if (typeof doc.elementsFromPoint === "function") {
       return resolveAllVisualDomEditTargets(doc.elementsFromPoint(localPointer.x, localPointer.y), {
         activeCompositionPath,
-      });
+      }).filter((el) => !isFullBleedTarget(el, localPointer.viewport));
     }
     const fallback = getEventTargetElement(doc.elementFromPoint(localPointer.x, localPointer.y));
     if (!fallback || !getDomLayerPatchTarget(fallback, activeCompositionPath)) return [];
     if (!isElementComputedVisible(fallback)) return [];
+    if (isFullBleedTarget(fallback, localPointer.viewport)) return [];
     return [fallback];
   } finally {
     removePointerEventsOverride(overrideStyle);

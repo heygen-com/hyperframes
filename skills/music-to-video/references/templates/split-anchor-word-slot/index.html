@@ -1,0 +1,594 @@
+<!doctype html>
+<html
+  lang="en"
+  data-composition-variables='[
+    {"id":"bgColor", "type":"color",   "label":"Stage background (theme 0)",           "default":"#0a84ff"},
+    {"id":"anchors", "type":"string",  "label":"Left anchor column (comma list = rows)","default":"studio,contre,courant"},
+    {"id":"theme",   "type":"number",  "label":"Base theme index",                      "default":0},
+    {"id":"showText","type":"boolean", "label":"Show text (false = blocks only)",        "default":true},
+    {"id":"program", "type":"string",  "label":"Program JSON (empty = built-in group_6 score)", "default":""}
+  ]'
+>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Split-Anchor Word-Slot · beat-synced kinetic typography — group_6 reference impl</title>
+    <script src="../../motion-primitives/assets/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        background: #0a84ff;
+        overflow: hidden;
+        font-family: "Helvetica Neue", "Arial Black", Arial, sans-serif;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #0a84ff;
+      }
+      /* #frame = the CENTERING wrapper. CSS positions it slightly ABOVE center (the source
+         sits high-center); GSAP never touches #frame, so the CSS transform here is safe. */
+      #frame {
+        position: absolute;
+        left: 50%;
+        top: 43%;
+        transform: translate(-50%, -50%);
+      }
+      /* #lockup = the thing GSAP jitters/tilts (shake) — NO CSS transform, so GSAP owns
+         x/y/rotation cleanly. Holds the base tilt the whole brutalist lockup leans at. */
+      #lockup {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 0;
+        will-change: transform;
+      }
+      /* anchors LEFT-aligned (ragged right) so the slot box clears the shorter words and
+         never hides the held text. */
+      #anchors {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      .anchor {
+        font-weight: 900;
+        line-height: 0.96;
+        letter-spacing: -0.045em;
+        text-transform: lowercase;
+        white-space: nowrap;
+        will-change: transform, opacity;
+      }
+      /* the inner .t span carries the faux-EXTENDED width (scaleX) for the ANCHORS — they
+         have no background, so nothing overflows. GSAP animates the outer element; the
+         span's scaleX is never touched by GSAP, so the two never fight (asset-free
+         Druk-Wide / Extended-Black look from a system font). */
+      .t {
+        display: inline-block;
+        transform: scaleX(1.12);
+        transform-origin: left center;
+      }
+      /* slot TAPES carry their extend via the LINE's GSAP scaleX instead, so the tape
+         BACKGROUND stretches WITH the text and the word never overflows the strip. */
+      .sline .t {
+        transform: scaleX(1);
+      }
+      /* #slotbox = a TRANSPARENT container sitting just RIGHT of the anchors (small positive
+         margin → it never covers the held words). Holds the 3 stacked cards + the word tapes. */
+      /* small NEGATIVE margin = the source's tight collage TUCK: the tape kisses / lightly
+         presses over the tail of the longest anchor without hiding the glyph (the tape's own
+         text starts after its left padding, so words never collide). Tune this for press amount. */
+      #slotbox {
+        position: relative;
+        margin-left: -0.12em;
+        will-change: transform, opacity;
+        backface-visibility: hidden;
+        transform-origin: 50% 42%;
+      }
+      /* THREE stacked, offset, torn CARDS = the brutalist collage. Transparent during word
+         phases; `bg` turns them black for the empty box + the expand zoom (they scale as one
+         with #slotbox, staying staggered). Siblings — NOT parent-clipped — so the offsets show. */
+      .card {
+        position: absolute;
+        inset: 0;
+        background: transparent;
+        will-change: transform;
+      }
+      #card1 {
+        z-index: -1;
+        clip-path: polygon(0% 4%, 97% 0%, 100% 92%, 3% 100%);
+      }
+      #card2 {
+        z-index: -2;
+        transform: translate(22px, 17px) rotate(-2.8deg);
+        clip-path: polygon(0% 2%, 100% 0%, 98% 100%, 2% 96%);
+      }
+      #card3 {
+        z-index: -3;
+        transform: translate(-15px, 10px) rotate(2.1deg);
+        clip-path: polygon(0% 6%, 96% 3%, 100% 95%, 4% 100%);
+      }
+      .lines {
+        position: relative;
+        z-index: 1;
+        display: grid;
+      }
+      .sgroup {
+        grid-area: 1 / 1;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 3px;
+      }
+      /* each .sline is its OWN torn TAPE — sized to its word, its GSAP scaleX stretches
+         bg+text TOGETHER (no overflow), its own micro-rotation + stair offset + shadow. */
+      .sline {
+        font-weight: 900;
+        line-height: 0.96;
+        letter-spacing: -0.045em;
+        white-space: nowrap;
+        text-align: left;
+        background: #f4f4f4;
+        padding: 0.03em 0.22em 0.08em 0.16em;
+        clip-path: polygon(0% 6%, 98% 0%, 100% 90%, 3% 100%);
+        box-shadow: 5px 6px 0 rgba(0, 0, 0, 0.16);
+        transform-origin: 0% 50%; /* GSAP scaleX stretches RIGHTward only — never back over the anchors */
+        will-change: transform, opacity;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- duration 5.41s = the full group_6 span (lockup → 2 slot cycles → bg flip + shake → expand wipe) -->
+    <div
+      data-hf-id="hf-g6rt"
+      id="root"
+      data-composition-id="group-six-recreate"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="5.41"
+      data-root="true"
+    >
+      <div data-hf-id="hf-g6frame" id="frame">
+        <div data-hf-id="hf-g6lock" id="lockup">
+          <div data-hf-id="hf-g6anch" id="anchors"></div>
+          <div data-hf-id="hf-g6box" id="slotbox">
+            <div data-hf-id="hf-g6c1" id="card1" class="card"></div>
+            <div data-hf-id="hf-g6c2" id="card2" class="card"></div>
+            <div data-hf-id="hf-g6c3" id="card3" class="card"></div>
+            <div class="lines" id="lines"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        // ════════════════════════════════════════════════════════════════════
+        //  SPLIT-ANCHOR WORD-SLOT  ·  ONE base lockup, FIVE beat-synced operators
+        //  ────────────────────────────────────────────────────────────────────
+        //  BASE  : a kinetic-typography LOCKUP — a HELD left "anchor" column of R rows
+        //          (fixed words) beside a torn-paper word-SLOT box on the right. The
+        //          whole lockup LEANS at a base tilt (brutalist/acid attitude). R is
+        //          data (the `anchors` comma-list). Asset-free: text + colored boxes.
+        //          Reversed from group_6 + tuned against a Gemini side-by-side pass.
+        //
+        //  OP lockup : pop the R anchor words in (punchy scale, faux motion-blur squash)
+        //              + reveal the empty slot box. The held stage. (source f3–f12)
+        //  OP slot   : one word-GROUP cycle — lines WHIP in from the right (expo.out +
+        //              scaleX stretch = fake motion blur), hold, then arc out down-left.
+        //              own color per line. repeatable. (source f24–f44, f49–f66)
+        //  OP bg     : HARD-CUT flip the whole scene to another theme on a beat (bg +
+        //              anchor ink + box fill + slot ink invert, 0ms). 0/1/2× = changes
+        //              none / once / twice. (source f83 blue→green)
+        //  OP shake  : global per-beat JOLT of the lockup (x/y + rotation around the base
+        //              tilt) with a back-ease recoil — one punch per beat. (source f52–f100)
+        //  OP expand : EXIT wipe — fade text, then the slot box ZOOMS (expo.in, blur) from
+        //              its own centre until it swallows the frame. (source f106–f117)
+        //
+        //  ARCHITECTURE: every operator writes GSAP tweens at ABSOLUTE audio seconds onto
+        //  ONE paused timeline → order-independent, may overlap (shake runs under slot/bg).
+        //  A data PROGRAM lists which ops run on which beats; §7 dispatches it. Compose by
+        //  editing DATA (the PROGRAM / `program` var / program.json), never operator code.
+        // ════════════════════════════════════════════════════════════════════
+
+        // ── 1. Content variables ──
+        var defaults = {
+          bgColor: "#0a84ff",
+          anchors: "studio,contre,courant",
+          theme: 0,
+          showText: true,
+          program: "",
+        };
+        var vars = Object.assign(
+          {},
+          defaults,
+          window.__hyperframes && window.__hyperframes.getVariables
+            ? window.__hyperframes.getVariables()
+            : {},
+        );
+        var ANCHORS = String(vars.anchors)
+          .split(",")
+          .map(function (s) {
+            return s.trim();
+          })
+          .filter(function (s) {
+            return s.length;
+          });
+        if (!ANCHORS.length) ANCHORS = ["studio", "contre", "courant"];
+        var BASE_THEME = Math.max(0, parseInt(vars.theme, 10) || 0);
+        var SHOW_TEXT = vars.showText !== false && vars.showText !== "false";
+
+        // base attitude: the whole lockup leans; the box leans extra the other way.
+        var BASE_TILT = -3.5; // deg, the lockup's resting lean
+        var BOX_TILT = 2.6; // deg, the slot box's extra lean vs the anchors
+
+        // ── 2. THEME LIBRARY — brighter electric/fluoro to match the source ──
+        var THEMES = [
+          { bg: "#0a84ff", ink: "#ffffff", box: "#f4f4f4", boxInk: "#0a84ff" }, // 0 electric blue
+          { bg: "#5cf03a", ink: "#0a0a0a", box: "#0a0a0a", boxInk: "#5cf03a" }, // 1 lime/acid green (invert)
+          { bg: "#0a0a0a", ink: "#ffffff", box: "#ffffff", boxInk: "#0a0a0a" }, // 2 ink
+          { bg: "#ffe400", ink: "#0a0a0a", box: "#0a0a0a", boxInk: "#ffe400" }, // 3 amber
+        ];
+        var ACCENTS = ["#0a84ff", "#39e024", "#ff3bd0", "#ffe400", "#ffffff", "#0a0a0a"];
+        function theme(i) {
+          return THEMES[((i % THEMES.length) + THEMES.length) % THEMES.length];
+        }
+        function accent(i) {
+          return ACCENTS[((i % ACCENTS.length) + ACCENTS.length) % ACCENTS.length];
+        }
+
+        // ── 3. THE PROGRAM (data) — see program.json ──
+        //  group_6: ~92 BPM · downbeats 2.322(f56)/4.923(f118) · hihat fill 2.16–4.18s.
+        var DEFAULT_PROGRAM = [
+          { op: "lockup", enter: [0.125, 0.333, 0.5], box: 0.292, theme: 0 },
+          {
+            op: "slot",
+            words: ["I bring", "ideas", "to life"],
+            enter: [1.0, 1.167, 1.292],
+            exit: [1.667, 1.75, 1.833],
+          },
+          {
+            op: "slot",
+            words: ["you", "wanna", "see?"],
+            enter: [2.042, 2.208, 2.375],
+            exit: [2.75, 2.75, 2.75],
+            colors: [0, 1, 1],
+          },
+          {
+            op: "shake",
+            amp: 26,
+            rot: 2.4,
+            settle: 0.16,
+            beats: [
+              2.16, 2.3, 2.44, 2.62, 2.76, 2.88, 3.06, 3.27, 3.41, 3.53, 3.71, 3.85, 4.09, 4.18,
+            ],
+          },
+          { op: "bg", at: 3.458, theme: 1 },
+          { op: "expand", fade: 4.18, at: 4.4, to: 4.82 },
+        ];
+        var DUR = 5.41;
+
+        var PROGRAM = DEFAULT_PROGRAM;
+        if (vars.program && String(vars.program).trim()) {
+          try {
+            var parsed = typeof vars.program === "string" ? JSON.parse(vars.program) : vars.program;
+            if (parsed && parsed.length) PROGRAM = parsed;
+          } catch (e) {
+            PROGRAM = DEFAULT_PROGRAM;
+          }
+        }
+
+        // ── 4. Build the LOCKUP ──────────────────────────────────────────────────
+        var R = ANCHORS.length;
+        var slotSteps = PROGRAM.filter(function (s) {
+          return s.op === "slot";
+        });
+        var maxSlot = slotSteps.reduce(function (m, s) {
+          return Math.max(m, (s.words || []).length);
+        }, 0);
+        var maxRows = Math.max(R, maxSlot, 1);
+        var fontPx = maxRows <= 3 ? 116 : maxRows === 4 ? 92 : 74;
+        var rowH = Math.round(fontPx * 0.99);
+
+        var root = document.getElementById("root");
+        var lockupEl = document.getElementById("lockup");
+        var anchorsBox = document.getElementById("anchors");
+        var slotbox = document.getElementById("slotbox");
+        var card1 = document.getElementById("card1");
+        var card2 = document.getElementById("card2");
+        var card3 = document.getElementById("card3");
+        var cards = [card1, card2, card3];
+        var linesBox = document.getElementById("lines");
+
+        var TH0 = theme(BASE_THEME);
+        document.documentElement.style.background = vars.bgColor || TH0.bg;
+        document.body.style.background = vars.bgColor || TH0.bg;
+        root.style.background = vars.bgColor || TH0.bg;
+
+        function mkWord(text, px, h) {
+          // word node with an inner faux-extended span
+          var d = document.createElement("div");
+          d.style.fontSize = px + "px";
+          d.style.height = h + "px";
+          var sp = document.createElement("span");
+          sp.className = "t";
+          sp.textContent = SHOW_TEXT ? text : "";
+          d.appendChild(sp);
+          return { row: d, span: sp };
+        }
+
+        // left anchor column (held words). The faux-extend scaleX renders the glyphs WIDER
+        // than their layout box (origin-left → overflow to the right); pin each row's width
+        // to the SCALED width so the column — and the slot box to its right — accounts for
+        // it and never overlaps the held words.
+        var anchorEls = [];
+        for (var a = 0; a < R; a++) {
+          var w = mkWord(ANCHORS[a], fontPx, rowH);
+          w.row.className = "anchor";
+          w.span.style.color = TH0.ink;
+          anchorsBox.appendChild(w.row);
+          w.row.style.width = Math.ceil(w.span.getBoundingClientRect().width + 2) + "px";
+          anchorEls.push(w.row);
+        }
+
+        // the slot box is a TRANSPARENT backing during word phases (so only the per-line
+        // tapes show on the bg — no dead space). `bg` turns it into a solid torn card for
+        // the empty state + the expand zoom. ONE .sgroup per slot step, stacked in one grid
+        // cell. Each .sline is its own TAPE (own width/rotation/offset). No runtime text edit.
+        slotbox.style.background = "transparent";
+        cards.forEach(function (c) {
+          c.style.background = "transparent";
+        });
+        var groups = []; // [{ lines:[rowEls], spans:[spanEls] }]
+        slotSteps.forEach(function (step) {
+          var g = document.createElement("div");
+          g.className = "sgroup";
+          var lines = [],
+            spans = [];
+          (step.words || []).forEach(function (word, li) {
+            var lw = mkWord(word, fontPx, rowH);
+            lw.row.className = "sline";
+            lw.row.style.background = TH0.box; // each line = its own tape
+            lw.row.style.marginLeft = [0, 16, 8, 24][li % 4] + "px"; // rightward stair offset (collage)
+            lw.span.style.color = TH0.boxInk;
+            g.appendChild(lw.row);
+            lines.push(lw.row);
+            spans.push(lw.span);
+          });
+          linesBox.appendChild(g);
+          groups.push({ lines: lines, spans: spans });
+          step.__g = groups.length - 1; // remember which group this step drives
+        });
+        var allSlotLines = groups.reduce(function (acc, g) {
+          return acc.concat(g.lines);
+        }, []);
+        var allSlotSpans = groups.reduce(function (acc, g) {
+          return acc.concat(g.spans);
+        }, []);
+
+        // ── 5. Timeline + helpers ────────────────────────────────────────────────
+        window.__timelines = window.__timelines || {};
+        var tl = gsap.timeline({ paused: true });
+
+        function beatAt(i, n, beats) {
+          if (!beats || !beats.length) return 0;
+          return beats[Math.min(beats.length - 1, Math.floor((i * beats.length) / n))];
+        }
+        function jolt(k) {
+          // deterministic per-beat shake offset (no Math.random)
+          return { x: ((k * 37) % 11) - 5, y: ((k * 53) % 9) - 4, r: ((k * 29) % 7) - 3 };
+        }
+        function lineRot(i) {
+          return [-2.0, 1.6, -1.0, 2.2][i % 4];
+        } // per-line lean
+
+        // rest pose: lockup leans at BASE_TILT, box leans extra, all content hidden.
+        gsap.set(lockupEl, { rotation: BASE_TILT });
+        gsap.set(slotbox, { rotation: BOX_TILT });
+        gsap.set(anchorEls, { autoAlpha: 0, y: 18, scale: 0.9, scaleX: 0.9 });
+        gsap.set(slotbox, { autoAlpha: 0, scale: 0.86 });
+        allSlotLines.forEach(function (el, i) {
+          gsap.set(el, { autoAlpha: 0, rotation: lineRot(i) });
+        });
+
+        // ── 6. THE FIVE OPERATORS ────────────────────────────────────────────────
+
+        //  lockup — punchy anchor pop-in (scale + faux-blur squash) + box reveal.
+        function lockup(P) {
+          var th = theme(P.theme != null ? P.theme : BASE_THEME);
+          tl.set(lockupEl, { rotation: BASE_TILT }, 0);
+          anchorEls.forEach(function (el, i) {
+            tl.set(el.firstChild, { color: th.ink }, 0);
+            tl.fromTo(
+              el,
+              { autoAlpha: 0, y: 26, scale: 0.84, scaleX: 0.7 },
+              {
+                autoAlpha: 1,
+                y: 0,
+                scale: 1,
+                scaleX: 1,
+                duration: 0.2,
+                ease: "expo.out",
+                overwrite: "auto",
+                immediateRender: false,
+              },
+              beatAt(i, R, P.enter),
+            );
+          });
+          var boxAt = P.box != null ? P.box : beatAt(R - 1, R, P.enter);
+          tl.fromTo(
+            slotbox,
+            { autoAlpha: 0, scale: 0.6, rotation: BOX_TILT - 6 },
+            {
+              autoAlpha: 1,
+              scale: 1,
+              rotation: BOX_TILT,
+              duration: 0.22,
+              ease: "back.out(2.2)",
+              overwrite: "auto",
+              immediateRender: false,
+            },
+            boxAt,
+          );
+        }
+
+        //  slot — word-GROUP cycle: WHIP in from the right (expo.out + scaleX stretch),
+        //  hold, arc out down-left. each line its own colour + lean.
+        function slot(P) {
+          var g = groups[P.__g != null ? P.__g : 0];
+          if (!g) return;
+          var th = theme(P.theme != null ? P.theme : BASE_THEME);
+          var n = g.lines.length;
+          g.lines.forEach(function (el, i) {
+            var col = P.colors && P.colors[i] != null ? accent(P.colors[i]) : th.boxInk;
+            var tIn = beatAt(i, n, P.enter);
+            tl.set(g.spans[i], { color: col }, tIn);
+            tl.fromTo(
+              el,
+              { autoAlpha: 0, x: 150, scaleX: 1.7, rotation: lineRot(i) },
+              {
+                autoAlpha: 1,
+                x: 0,
+                scaleX: 1.12,
+                rotation: lineRot(i),
+                duration: 0.24,
+                ease: "expo.out",
+                overwrite: "auto",
+                immediateRender: false,
+              }, // rest scaleX 1.12 = faux-extend (bg stretches with text)
+              tIn,
+            );
+          });
+          if (!P.exit || !P.exit.length) return;
+          g.lines.forEach(function (el, i) {
+            tl.to(
+              el,
+              {
+                autoAlpha: 0,
+                x: -120,
+                y: 46,
+                scaleX: 1.4,
+                duration: 0.16,
+                ease: "power3.in",
+                overwrite: "auto",
+              },
+              beatAt(i, n, P.exit),
+            );
+          });
+        }
+
+        //  bg — hard-cut scene flip (0ms invert). 0/1/2 of these = bg changes 0/1/2×.
+        function bg(P) {
+          var th = theme(P.theme != null ? P.theme : 0);
+          tl.set(root, { backgroundColor: th.bg }, P.at);
+          tl.set(
+            anchorEls.map(function (e) {
+              return e.firstChild;
+            }),
+            { color: th.ink },
+            P.at,
+          );
+          tl.set(cards, { backgroundColor: th.box }, P.at); // 3 stacked torn cards = the EMPTY box + zoom target
+          tl.set(allSlotLines, { backgroundColor: th.box }, P.at); // recolor any visible tapes
+          tl.set(allSlotSpans, { color: th.boxInk }, P.at);
+        }
+
+        //  shake — per-beat JOLT around the base tilt, with a back-ease recoil.
+        function shake(P) {
+          var amp = P.amp != null ? P.amp : 22;
+          var rot = P.rot != null ? P.rot : 2.2;
+          var settle = P.settle != null ? P.settle : 0.15;
+          (P.beats || []).forEach(function (t, k) {
+            var j = jolt(k);
+            tl.fromTo(
+              lockupEl,
+              { x: (j.x * amp) / 5, y: (j.y * amp) / 4, rotation: BASE_TILT + (j.r * rot) / 3 },
+              {
+                x: 0,
+                y: 0,
+                rotation: BASE_TILT,
+                duration: settle,
+                ease: "back.out(3)",
+                overwrite: "auto",
+                immediateRender: false,
+              },
+              t,
+            );
+          });
+        }
+
+        //  expand — EXIT wipe: fade text, then the box ZOOMS (expo.in + blur) to swallow
+        //  the frame. keeps the lockup lean; clip-path off so the scaled box fully covers.
+        function expand(P) {
+          var fadeAt = P.fade != null ? P.fade : P.at;
+          tl.to(
+            anchorEls,
+            { autoAlpha: 0, duration: 0.16, ease: "power2.in", overwrite: "auto" },
+            fadeAt,
+          );
+          tl.to(
+            allSlotLines,
+            { autoAlpha: 0, duration: 0.14, ease: "power2.in", overwrite: "auto" },
+            fadeAt,
+          );
+          var startAt = P.at,
+            endAt = P.to != null ? P.to : P.at + 0.46;
+          tl.set(lockupEl, { x: 0, y: 0 }, startAt); // clear shake residual (keep the lean)
+          if (P.theme != null) tl.set(cards, { backgroundColor: theme(P.theme).box }, startAt);
+          var mid = Math.max(startAt + 0.04, endAt - 0.12);
+          // stage A — the TORN mass grows but stays SUB-frame (≈half-screen, decelerating),
+          // so the eye reads "the box is swelling" across most of the window (matches the
+          // source, whose mass is only ~half-frame as late as f113). A big rest box covers
+          // the frame at a low scale, so cap stage A low and let stage B do the swallow.
+          tl.fromTo(
+            slotbox,
+            { scale: 1, filter: "blur(0px)" },
+            {
+              scale: 2.2,
+              filter: "blur(4px)",
+              duration: mid - startAt,
+              ease: "power2.out",
+              overwrite: "auto",
+              immediateRender: false,
+            },
+            startAt,
+          );
+          // stage B — SWALLOW the frame in the last beats (accelerating), then flatten to solid.
+          tl.to(
+            slotbox,
+            {
+              scale: 34,
+              filter: "blur(12px)",
+              duration: endAt - mid,
+              ease: "power2.in",
+              overwrite: "auto",
+            },
+            mid,
+          );
+          tl.set(card1, { clipPath: "none" }, endAt - 0.03); // card1 (inset 0) flattens to a solid full-frame black-out
+        }
+
+        var OPS = { lockup: lockup, slot: slot, bg: bg, shake: shake, expand: expand };
+
+        // ── 7. RUN THE PROGRAM ───────────────────────────────────────────────────
+        PROGRAM.forEach(function (step) {
+          var fn = step && OPS[step.op];
+          if (fn) fn(step);
+        });
+
+        tl.to({}, { duration: 0.001 }, DUR);
+        tl.seek(0);
+        window.__timelines["group-six-recreate"] = tl;
+      })();
+    </script>
+  </body>
+</html>

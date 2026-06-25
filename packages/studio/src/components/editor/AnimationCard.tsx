@@ -4,237 +4,19 @@ import { SUPPORTED_EASES, SUPPORTED_PROPS } from "@hyperframes/core/gsap-constan
 import { RESPONSIVE_GRID } from "./propertyPanelHelpers";
 import { MetricField, SelectField } from "./propertyPanelPrimitives";
 import { controlPointsForGsapEase } from "./studioMotion";
-import {
-  EASE_LABELS,
-  METHOD_LABELS,
-  METHOD_TOOLTIPS,
-  PERCENT_PROPS,
-  PROP_CONSTRAINTS,
-  PROP_LABELS,
-  PROP_TOOLTIPS,
-  PROP_UNITS,
-  clampPropertyValue,
-} from "./gsapAnimationConstants";
+import { EASE_LABELS, METHOD_LABELS, METHOD_TOOLTIPS, PROP_LABELS } from "./gsapAnimationConstants";
 import { buildTweenSummary } from "./gsapAnimationHelpers";
 import { EaseCurveSection } from "./EaseCurveSection";
 import { ArcPathControls } from "./ArcPathControls";
 import type { GsapAnimationEditCallbacks } from "./gsapAnimationCallbacks";
 import { ComputedTweenNotice } from "./ComputedTweenNotice";
-import { P } from "./panelTokens";
-const BOOLEAN_PROPS = new Set(["visibility"]);
-const STRING_PROPS = new Set(["filter", "clipPath"]);
-
-const FILTER_PRESETS = [
-  { label: "Blur", value: "blur(4px)" },
-  { label: "Bright", value: "brightness(1.5)" },
-  { label: "Gray", value: "grayscale(1)" },
-  { label: "None", value: "none" },
-];
-
-const CLIP_PATH_PRESETS = [
-  { label: "Circle", value: "circle(50% at 50% 50%)" },
-  { label: "Inset", value: "inset(10%)" },
-  { label: "None", value: "none" },
-];
-
-function isPercentProp(prop: string): boolean {
-  return PERCENT_PROPS.has(prop);
-}
-
-function displayValue(prop: string, val: number | string): string {
-  if (isPercentProp(prop)) return String(Math.round(Math.max(0, Math.min(1, Number(val))) * 100));
-  return String(val);
-}
-
-function adjustedValue(prop: string, raw: string): string {
-  if (isPercentProp(prop)) return String(clampPropertyValue(prop, Number(raw) / 100));
-  const num = Number(raw);
-  if (!Number.isNaN(num) && PROP_CONSTRAINTS[prop]) {
-    return String(clampPropertyValue(prop, num));
-  }
-  return raw;
-}
-
-function RemoveButton({ onClick, title }: { onClick: () => void; title: string }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex-shrink-0 rounded p-0.5 text-neutral-600 transition-colors hover:bg-neutral-800 hover:text-red-400"
-      title={title}
-    >
-      <svg
-        width="12"
-        height="12"
-        viewBox="0 0 12 12"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-      >
-        <path d="M3 3l6 6M9 3l-6 6" />
-      </svg>
-    </button>
-  );
-}
-
-function PropertyRow({
-  prop,
-  val,
-  onCommit,
-  onRemove,
-  removeTitle,
-}: {
-  prop: string;
-  val: number | string;
-  onCommit: (adjusted: string) => void;
-  onRemove: () => void;
-  removeTitle: string;
-}) {
-  if (BOOLEAN_PROPS.has(prop)) {
-    const isVisible = val === "visible" || val === 1;
-    return (
-      <div className="flex items-center gap-1">
-        <div className="min-w-0 flex-1 flex items-center gap-2 px-2 py-1 rounded-lg bg-neutral-900 border border-neutral-800">
-          <span className="flex-1 text-[11px] font-medium text-neutral-500">
-            {PROP_LABELS[prop] ?? prop}
-          </span>
-          <button
-            type="button"
-            onClick={() => onCommit(isVisible ? "hidden" : "visible")}
-            className={`flex-shrink-0 rounded-full transition-all duration-150 relative`}
-            style={{ width: 28, height: 16, background: isVisible ? P.accent : P.borderInput }}
-            title={isVisible ? "Visible — click to hide" : "Hidden — click to show"}
-          >
-            <span
-              className="absolute top-[2px] left-0 rounded-full transition-transform duration-150"
-              style={{
-                width: 12,
-                height: 12,
-                background: isVisible ? P.white : P.textMuted,
-                transform: isVisible ? "translateX(14px)" : "translateX(2px)",
-              }}
-            />
-          </button>
-        </div>
-        <RemoveButton onClick={onRemove} title={removeTitle} />
-      </div>
-    );
-  }
-
-  if (STRING_PROPS.has(prop)) {
-    const presets =
-      prop === "filter" ? FILTER_PRESETS : prop === "clipPath" ? CLIP_PATH_PRESETS : [];
-    return (
-      <div className="flex flex-col gap-1">
-        <div className="flex items-center gap-1">
-          <div className="min-w-0 flex-1 flex items-center gap-2 px-2 py-1 rounded-lg bg-neutral-900 border border-neutral-800">
-            <span className="flex-shrink-0 text-[11px] font-medium text-neutral-500">
-              {PROP_LABELS[prop] ?? prop}
-            </span>
-            <input
-              type="text"
-              defaultValue={String(val)}
-              className="flex-1 bg-transparent text-[11px] text-neutral-200 outline-none"
-              onBlur={(e) => onCommit(e.currentTarget.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.currentTarget.blur();
-                }
-              }}
-            />
-          </div>
-          <RemoveButton onClick={onRemove} title={removeTitle} />
-        </div>
-        {presets.length > 0 && (
-          <div className="flex gap-1 pl-1">
-            {presets.map((p) => (
-              <button
-                key={p.value}
-                type="button"
-                onClick={() => onCommit(p.value)}
-                className="px-1.5 py-0.5 rounded text-[9px] font-medium text-neutral-500 bg-neutral-800/50 hover:bg-neutral-800 hover:text-neutral-300 transition-colors"
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex items-center gap-1">
-      <div className="min-w-0 flex-1">
-        <MetricField
-          label={PROP_LABELS[prop] ?? prop}
-          value={displayValue(prop, val)}
-          suffix={PROP_UNITS[prop]}
-          tooltip={PROP_TOOLTIPS[prop]}
-          scrub
-          liveCommit
-          onCommit={(raw) => onCommit(adjustedValue(prop, raw))}
-        />
-      </div>
-      <RemoveButton onClick={onRemove} title={removeTitle} />
-    </div>
-  );
-}
-
-function AddPropertyTrigger({
-  adding,
-  available,
-  addLabel,
-  addTitle,
-  onAdd,
-  onOpen,
-  onClose,
-  buttonClassName,
-}: {
-  adding: boolean;
-  available: string[];
-  addLabel: string;
-  addTitle: string;
-  onAdd: (prop: string) => void;
-  onOpen: () => void;
-  onClose: () => void;
-  buttonClassName: string;
-}) {
-  if (adding && available.length > 0) {
-    return (
-      <select
-        autoFocus
-        className="min-w-0 rounded-lg border border-neutral-700 bg-neutral-900 px-2 py-1 text-[11px] text-neutral-100 outline-none"
-        defaultValue=""
-        onChange={(e) => {
-          if (e.target.value) onAdd(e.target.value);
-          onClose();
-        }}
-        onBlur={onClose}
-      >
-        <option value="" disabled>
-          Choose property…
-        </option>
-        {available.map((p) => (
-          <option key={p} value={p}>
-            {PROP_LABELS[p] ?? p}
-          </option>
-        ))}
-      </select>
-    );
-  }
-  if (available.length === 0) return null;
-  return (
-    <button type="button" onClick={onOpen} className={buttonClassName} title={addTitle}>
-      {addLabel}
-    </button>
-  );
-}
-
-function parseNumericOrString(raw: string): number | string {
-  const num = Number(raw);
-  return Number.isFinite(num) ? num : raw;
-}
+import { KeyframeEaseList } from "./KeyframeEaseList";
+import {
+  PropertyRow,
+  AddPropertyTrigger,
+  parseNumericOrString,
+  BOOLEAN_PROPS,
+} from "./AnimationCardParts";
 
 interface AnimationCardProps extends GsapAnimationEditCallbacks {
   animation: GsapAnimation;
@@ -257,11 +39,13 @@ export const AnimationCard = memo(function AnimationCard({
   onLivePreviewEnd,
   onSetArcPath,
   onUpdateArcSegment,
+  onUpdateKeyframeEase,
   onUnroll,
 }: AnimationCardProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [addingProp, setAddingProp] = useState(false);
   const [addingFromProp, setAddingFromProp] = useState(false);
+  const [expandedKfPct, setExpandedKfPct] = useState<number | null>(null);
 
   const usedProps = useMemo(
     () => new Set(Object.keys(animation.properties)),
@@ -330,7 +114,8 @@ export const AnimationCard = memo(function AnimationCard({
   const [copied, setCopied] = useState(false);
 
   const methodLabel = METHOD_LABELS[animation.method] ?? animation.method;
-  const easeName = animation.ease ?? animation.keyframes?.easeEach ?? "none";
+  const easeName =
+    (animation.keyframes ? animation.keyframes.easeEach : undefined) ?? animation.ease ?? "none";
   const easeLabel = easeName.startsWith("custom(")
     ? "Custom curve"
     : (EASE_LABELS[easeName] ?? easeName);
@@ -340,6 +125,28 @@ export const AnimationCard = memo(function AnimationCard({
       : animation.position;
 
   const summary = useMemo(() => buildTweenSummary(animation), [animation]);
+  const setKeys = Object.keys(animation.properties);
+  if (
+    animation.method === "set" &&
+    // `every` is vacuously true on an empty bag — require at least one key so a
+    // property-less set doesn't masquerade as a position row.
+    (setKeys.includes("x") || setKeys.includes("y")) &&
+    setKeys.every((k) => k === "x" || k === "y" || k === "immediateRender")
+  )
+    return (
+      <div className="border-b border-neutral-800 pb-2">
+        <div className="flex items-center gap-2 py-1.5">
+          <span className="rounded bg-neutral-800 px-1.5 py-0.5 text-[10px] font-medium text-neutral-400">
+            Position
+          </span>
+          <span className="text-[11px] text-neutral-500">
+            x: {Math.round(Number(animation.properties.x ?? 0))}, y:{" "}
+            {Math.round(Number(animation.properties.y ?? 0))}
+          </span>
+          <span className="ml-auto text-[9px] text-neutral-600">drag to move</span>
+        </div>
+      </div>
+    );
 
   return (
     <div className="border-b border-neutral-800 pb-3">
@@ -393,7 +200,7 @@ export const AnimationCard = memo(function AnimationCard({
                         clipPath: "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)",
                       }}
                     />
-                    Keyframed — edit values in the Layout panel above
+                    Keyframed — click a segment below to edit its curve
                   </p>
                 )}
               </div>
@@ -435,29 +242,43 @@ export const AnimationCard = memo(function AnimationCard({
 
             {animation.method !== "set" && (
               <>
-                <SelectField
-                  label="Speed"
-                  value={easeName.startsWith("custom(") ? "custom" : easeName}
-                  options={[...SUPPORTED_EASES, "custom"]}
-                  onChange={(next) => {
-                    if (next === "custom") {
-                      const points = controlPointsForGsapEase(
-                        easeName !== "none" ? easeName : "power2.out",
-                      );
-                      const path = `M0,0 C${points.x1},${points.y1} ${points.x2},${points.y2} 1,1`;
-                      onUpdateMeta(animation.id, { ease: `custom(${path})` });
-                    } else {
-                      onUpdateMeta(animation.id, { ease: next });
-                    }
-                  }}
-                />
-                <EaseCurveSection
-                  ease={easeName}
-                  duration={animation.duration}
-                  onCustomEaseCommit={(customEase) =>
-                    onUpdateMeta(animation.id, { ease: customEase })
-                  }
-                />
+                {animation.keyframes && onUpdateKeyframeEase ? (
+                  <KeyframeEaseList
+                    keyframes={animation.keyframes.keyframes}
+                    globalEase={animation.keyframes.easeEach ?? animation.ease ?? "none"}
+                    expandedPct={expandedKfPct}
+                    onToggle={setExpandedKfPct}
+                    onEaseCommit={(pct, ease) => onUpdateKeyframeEase(animation.id, pct, ease)}
+                  />
+                ) : (
+                  <>
+                    <SelectField
+                      label="Speed"
+                      value={easeName.startsWith("custom(") ? "custom" : easeName}
+                      options={[...SUPPORTED_EASES, "custom"]}
+                      onChange={(next) => {
+                        const easeKey = animation.keyframes ? "easeEach" : "ease";
+                        if (next === "custom") {
+                          const points = controlPointsForGsapEase(
+                            easeName !== "none" ? easeName : "power2.out",
+                          );
+                          const path = `M0,0 C${points.x1},${points.y1} ${points.x2},${points.y2} 1,1`;
+                          onUpdateMeta(animation.id, { [easeKey]: `custom(${path})` });
+                        } else {
+                          onUpdateMeta(animation.id, { [easeKey]: next });
+                        }
+                      }}
+                    />
+                    <EaseCurveSection
+                      ease={easeName}
+                      duration={animation.duration}
+                      onCustomEaseCommit={(customEase) => {
+                        const easeKey = animation.keyframes ? "easeEach" : "ease";
+                        onUpdateMeta(animation.id, { [easeKey]: customEase });
+                      }}
+                    />
+                  </>
+                )}
               </>
             )}
 

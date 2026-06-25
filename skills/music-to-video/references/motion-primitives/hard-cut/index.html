@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>hard_cut</title>
+    <script src="../assets/gsap.min.js"></script>
+    <style>
+      :root {
+        --hg-violet: #7c3aed;
+        --hg-violet-2: #a855f7;
+        --hg-bg: #0a0a0f;
+        --hg-fg: #f5f5fa;
+        --hg-dim: #6b6b78;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--hg-bg);
+        font-family: "Inter", system-ui, sans-serif;
+        color: var(--hg-fg);
+        -webkit-font-smoothing: antialiased;
+      }
+      #scene {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+      }
+      .stage {
+        position: absolute;
+        inset: 0;
+      }
+      .panel {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+        will-change: opacity;
+      }
+      .word {
+        font-weight: 900;
+        font-size: 340px;
+        letter-spacing: -0.05em;
+        line-height: 0.9;
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="2"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="scene" class="clip" data-start="0" data-duration="2" data-track-index="1">
+        <div class="stage" id="stage"></div>
+      </div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      // Deterministic palette + word list. Variation is derived from index only.
+      const BG = ["#7c3aed", "#0a0a0f", "#ff2a4a", "#2afff0", "#a855f7", "#f5f5fa", "#0a0a0f"];
+      const FG = ["#f5f5fa", "#a855f7", "#0a0a0f", "#0a0a0f", "#0a0a0f", "#7c3aed", "#f5f5fa"];
+      const WORDS = ["CUT", "NOW", "HARD", "SNAP", "STOP", "GO", "CUT"];
+      const STEP = 0.28; // beat interval
+      const N = WORDS.length;
+
+      // Build one full-frame panel per cut, all hidden but the first.
+      const stage = document.getElementById("stage");
+      for (let i = 0; i < N; i++) {
+        const panel = document.createElement("div");
+        panel.className = "panel";
+        panel.id = "p" + i;
+        panel.style.background = BG[i];
+        panel.style.opacity = i === 0 ? "1" : "0";
+        const word = document.createElement("div");
+        word.className = "word";
+        word.style.color = FG[i];
+        word.textContent = WORDS[i];
+        panel.appendChild(word);
+        stage.appendChild(panel);
+      }
+
+      // Sample-accurate 0ms cuts: at each beat, hide current panel, show next.
+      // tl.set has no duration and no ease — brutal instant switching.
+      for (let i = 1; i < N; i++) {
+        const t = i * STEP;
+        tl.set("#p" + (i - 1), { opacity: 0 }, t);
+        tl.set("#p" + i, { opacity: 1 }, t);
+      }
+
+      // Loop gracefully: snap back to the first panel before the clip ends so a
+      // re-entry starts clean on the same color/word it began with.
+      tl.set("#p" + (N - 1), { opacity: 0 }, N * STEP);
+      tl.set("#p0", { opacity: 1 }, N * STEP);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

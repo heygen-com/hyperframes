@@ -1,0 +1,88 @@
+---
+title: Authentication & API keys
+description: "Sign in to HeyGen, and how the keys for voice, music, and capture resolve across the CLI and skills — including the priority order and the fully local fallback."
+---
+
+HyperFrames uses a HeyGen credential for premium voiceover (TTS) and the music / sound-effects library. Other providers are optional, and **everything runs without any key** — voice and music fall back to fully local engines. This page covers signing in, the keys each capability uses, and the order they resolve.
+
+## Sign in
+
+Signing in is the same OAuth step as creating an account — new users land on the sign-up screen.
+
+<Steps>
+  <Step title="Sign in">
+    The default flow opens your browser for OAuth and captures the token on a loopback port:
+
+    ```bash
+    npx hyperframes auth login
+    # ✓ Signed in.
+    ```
+
+    For CI or headless machines, save a long-lived API key instead:
+
+    ```bash
+    npx hyperframes auth login --api-key            # hidden-input prompt
+    echo "$HEYGEN_API_KEY" | npx hyperframes auth login --api-key   # from stdin
+    ```
+  </Step>
+  <Step title="Confirm what's configured">
+    ```bash
+    npx hyperframes auth status
+    ```
+
+    Shows the active credential's source and verified identity, and — when you're signed out — which local engines voice and music will use. Add `--json` for `{ configured, recommended_action, offline_engines }` in scripts.
+  </Step>
+</Steps>
+
+The credential lives in `~/.heygen/credentials` (mode `0600`) — no per-repo `.env` to manage. Browser OAuth is a `hyperframes auth login` feature. The separate [`heygen` CLI](https://github.com/heygen-com/heygen-cli) (its own install — there's no `npx heygen`) is API-key-only, so `heygen auth login` just stores a key you paste. Both read the same `~/.heygen/credentials`, so signing in with one carries to the other.
+
+<Tip>
+  No account needed to try HyperFrames. With no credential, voice uses **Kokoro** and music uses **MusicGen**, both fully local and offline — see [Working offline](#working-offline).
+</Tip>
+
+## How credentials resolve
+
+The HeyGen credential drives TTS and music / SFX **retrieval**. It resolves first-match-wins:
+
+1. `HEYGEN_API_KEY` — environment variable
+2. `HYPERFRAMES_API_KEY` — alias, for parity with other tools
+3. `~/.heygen/credentials` — written by `hyperframes auth login` (or `heygen auth login`)
+
+Point at a different config directory with `HEYGEN_CONFIG_DIR`, or a different backend with `HEYGEN_API_URL`.
+
+## Keys by capability
+
+Each capability picks the **first available provider** in order; the last is always a local engine that needs no key. Cloud providers below the HeyGen line need their own key *and* a local Python dependency.
+
+| Capability | Provider order | Key(s) — first match wins | Local dependency |
+|------------|----------------|---------------------------|------------------|
+| **Voice (TTS)** | HeyGen → ElevenLabs → Kokoro | `HEYGEN_API_KEY` → `HYPERFRAMES_API_KEY` → `~/.heygen` · then `ELEVENLABS_API_KEY` | Kokoro: `pip install kokoro-onnx soundfile` |
+| **Music (BGM)** | HeyGen library → Lyria → MusicGen | HeyGen credential (above) · then `GEMINI_API_KEY` → `GOOGLE_API_KEY` | MusicGen: `pip install transformers torch soundfile numpy` |
+| **Sound effects** | HeyGen library → bundled library | HeyGen credential (above) | bundled — no deps |
+| **Capture descriptions** | OpenRouter → Gemini | `OPENROUTER_API_KEY` → `GEMINI_API_KEY` | — (optional; for [website-to-video](/guides/website-to-video)) |
+
+Run `npx hyperframes doctor` to check which local dependencies are installed. The media skills also run `hyperframes auth status` as a preflight before generating, so you always know whether a run will use HeyGen or a local engine before it starts.
+
+## Working offline
+
+No key configured is a normal state, not an error. The workflow runs entirely on local models:
+
+- **Voice** — Kokoro-82M (54 voices), with Whisper for word-level caption alignment.
+- **Music** — MusicGen (`facebook/musicgen-small`).
+- **Sound effects** — a bundled library.
+
+Local engines are free and offline; HeyGen gives higher-quality voices and a professionally produced music library. Sign in any time to switch a project from local to HeyGen.
+
+## Environment variables
+
+| Variable | Used for |
+|----------|----------|
+| `HEYGEN_API_KEY` | HeyGen credential — voice + music/SFX retrieval. Highest priority. |
+| `HYPERFRAMES_API_KEY` | Alias for `HEYGEN_API_KEY`. |
+| `HEYGEN_API_URL` | API base URL (default `https://api.heygen.com`). |
+| `HEYGEN_CONFIG_DIR` | Credentials directory (default `~/.heygen`). |
+| `ELEVENLABS_API_KEY` | ElevenLabs TTS, used when no HeyGen credential is present. |
+| `GEMINI_API_KEY` / `GOOGLE_API_KEY` | Lyria music generation (and capture descriptions). |
+| `OPENROUTER_API_KEY` | Capture descriptions; takes priority over Gemini for that step. |
+
+See the [`hyperframes auth`](/packages/cli#hyperframes-auth) command reference for subcommand details, and [Cloud rendering](/deploy/cloud) for using the same credential to render in HeyGen's cloud.

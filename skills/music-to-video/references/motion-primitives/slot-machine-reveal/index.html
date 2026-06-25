@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>15 · slot_machine_reveal</title>
+    <script src="../assets/gsap.min.js"></script>
+    <style>
+      :root {
+        --hg-violet: #7c3aed;
+        --hg-violet-2: #a855f7;
+        --hg-bg: #0a0a0f;
+        --hg-fg: #f5f5fa;
+        --hg-dim: #6b6b78;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--hg-bg);
+        font-family: "Inter", system-ui, sans-serif;
+        color: var(--hg-fg);
+        -webkit-font-smoothing: antialiased;
+      }
+      #scene {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+      }
+      .stage {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .slot {
+        font-family: "JetBrains Mono", monospace;
+        font-weight: 700;
+        font-size: 280px;
+        letter-spacing: 0.04em;
+        color: var(--hg-fg);
+        display: flex;
+        gap: 30px;
+      }
+      .slot .digit {
+        display: inline-block;
+        min-width: 1ch;
+        text-shadow: 0 0 40px rgba(168, 85, 247, 0.6);
+      }
+      .slot-label {
+        position: absolute;
+        bottom: 30%;
+        left: 50%;
+        transform: translateX(-50%);
+        font-family: "JetBrains Mono", monospace;
+        font-size: 22px;
+        color: var(--hg-dim);
+        letter-spacing: 0.4em;
+        text-transform: uppercase;
+        opacity: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="2"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="scene" class="clip" data-start="0" data-duration="2" data-track-index="1">
+        <div class="stage">
+          <div class="slot">
+            <span class="digit" data-target="5">0</span>
+            <span class="digit" data-target=".">0</span>
+            <span class="digit" data-target="5">0</span>
+            <span class="digit" data-target="x">0</span>
+          </div>
+        </div>
+        <div class="slot-label">FINAL VERSION</div>
+      </div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      const DIGITS = "0123456789";
+      const slotStates = [{ p: 0 }, { p: 0 }, { p: 0 }, { p: 0 }];
+      slotStates.forEach((state, idx) => {
+        tl.to(
+          state,
+          {
+            p: 1,
+            duration: 1.0,
+            delay: idx * 0.08,
+            ease: "power3.out",
+            onUpdate: function () {
+              const spans = document.querySelectorAll(".slot .digit");
+              const span = spans[idx];
+              if (!span) return;
+              const target = span.getAttribute("data-target");
+              if (state.p >= 0.85) {
+                span.textContent = target;
+                span.style.color = "var(--hg-violet-2)";
+              } else {
+                const tick = Math.floor(state.p * 80 + idx * 3);
+                span.textContent = DIGITS.charAt(tick % 10);
+              }
+            },
+          },
+          0.15,
+        );
+      });
+      tl.to(".slot-label", { opacity: 1, duration: 0.5, ease: "power2.out" }, 1.2);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

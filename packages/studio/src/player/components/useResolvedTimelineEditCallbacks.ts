@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useTimelineEditContext } from "../../contexts/TimelineEditContext";
+import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
 
 // Props a parent (e.g. NLELayout) may pass to <Timeline> to intercept edits —
@@ -15,7 +15,7 @@ export type TimelineEditOverrides = Pick<
 export function useResolvedTimelineEditCallbacks(
   overrides: TimelineEditOverrides,
 ): TimelineEditCallbacks {
-  const ctx = useTimelineEditContext();
+  const ctx = useTimelineEditContextOptional();
   const { onMoveElement, onResizeElement, onBlockedEditAttempt, onSplitElement } = overrides;
   return useMemo(
     () => ({

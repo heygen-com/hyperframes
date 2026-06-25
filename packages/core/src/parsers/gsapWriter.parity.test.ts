@@ -23,6 +23,7 @@ import {
   removeArcPathFromScript as removeArcRecast,
   unrollDynamicAnimations as unrollRecast,
   addKeyframeToScript as addKeyframeRecast,
+  updateKeyframeInScript as updateKeyframeRecast,
   removeKeyframeFromScript as removeKeyframeRecast,
   addAnimationWithKeyframesToScript as addWithKfRecast,
   shiftPositionsInScript as shiftRecast,
@@ -45,6 +46,7 @@ import {
   removeArcPathFromScript as removeArcAcorn,
   unrollDynamicAnimations as unrollAcorn,
   addKeyframeToScript as addKeyframeAcorn,
+  updateKeyframeInScript as updateKeyframeAcorn,
   removeKeyframeFromScript as removeKeyframeAcorn,
   addAnimationWithKeyframesToScript as addWithKfAcorn,
   removeAnimationFromScript as removeAnimAcorn,
@@ -159,6 +161,57 @@ describe("parity: removeAllKeyframesFromScript (recast vs acorn)", () => {
     `;
     const id = acornId(script);
     expect(removeAllAcorn(script, id)).toBe(script);
+  });
+});
+
+// Array-form keyframes (`keyframes: [{x,y}, …]`, no explicit %) used to no-op on
+// removal in BOTH writers — the object-form path couldn't see the array, so the
+// keyframe survived while downstream hold-sync stranded an `hf-hold`.
+describe("removeKeyframeFromScript: array-form keyframes (recast + acorn parity)", () => {
+  const arrayScript = `
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#p", {
+      keyframes: [ { x: 0, y: 0 }, { x: -180, y: -60 }, { x: -320, y: 40 }, { x: -460, y: -20 } ],
+      duration: 3.4,
+      ease: "power1.inOut"
+    }, 1.0);
+  `;
+
+  it("removes the matched element (implicit %) — both writers, parity", () => {
+    const id = acornId(arrayScript);
+    expect(parseGsapScript(arrayScript).animations[0]!.id).toBe(id);
+
+    const recastOut = removeKeyframeRecast(arrayScript, id, 67);
+    const acornOut = removeKeyframeAcorn(arrayScript, id, 67);
+
+    expect(recastOut).not.toBe(arrayScript);
+    expect(acornOut).not.toBe(arrayScript);
+
+    const recShape = shapeOf(recastOut);
+    expect(recShape.keyframes?.keyframes.length).toBe(3);
+    // the 67% element { x: -320, y: 40 } is the one removed
+    expect(JSON.stringify(recShape.keyframes)).not.toContain("-320");
+    expect(modelOf(acornOut)).toEqual(modelOf(recastOut));
+  });
+
+  it("collapses to a flat tween when fewer than two remain — both writers, parity", () => {
+    const twoScript = `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#p", { keyframes: [ { x: 0, y: 0 }, { x: 100, y: 50 } ], duration: 1 }, 0);
+    `;
+    const id = acornId(twoScript);
+    const recastOut = removeKeyframeRecast(twoScript, id, 100);
+    const acornOut = removeKeyframeAcorn(twoScript, id, 100);
+
+    expect(shapeOf(recastOut).keyframes).toBeUndefined();
+    expect(shapeOf(acornOut).keyframes).toBeUndefined();
+    expect(modelOf(acornOut)).toEqual(modelOf(recastOut));
+  });
+
+  it("no-op when the percentage matches no element", () => {
+    const id = acornId(arrayScript);
+    expect(removeKeyframeAcorn(arrayScript, id, 12)).toBe(arrayScript);
+    expect(removeKeyframeRecast(arrayScript, id, 12)).toBe(arrayScript);
   });
 });
 
@@ -884,6 +937,143 @@ describe("parity: removeKeyframeFromScript (recast vs acorn)", () => {
   it("no-op on unknown id agrees between writers", () => {
     expect(removeKeyframeAcorn(RM_TWO_KF_SCRIPT, "bad-id", 0)).toBe(RM_TWO_KF_SCRIPT);
     expect(removeKeyframeRecast(RM_TWO_KF_SCRIPT, "bad-id", 0)).toBe(RM_TWO_KF_SCRIPT);
+  });
+});
+
+// ── addKeyframeToScript: array-form parity (recast vs acorn) ─────────────────
+// The object-form add parity lives above (KF_ADD_* fixtures). Array-form
+// keyframes (`keyframes: [{x,y}, …]`) carry no explicit percentages — GSAP
+// distributes them evenly. Adding an arbitrary percentage can't live in an
+// array, so BOTH writers normalize the array to percentage-keyed object form
+// first (recast: convertArrayKeyframesToObjectNode; acorn: ensureKeyframesNode
+// → convertArrayKeyframesToObject) and then insert/merge. The normalized result
+// must reparse identically across writers.
+const KF_ADD_ARRAY_SCRIPT = `
+  const tl = gsap.timeline({ paused: true });
+  tl.to("#dot", { keyframes: [{ x: 0, y: 0 }, { x: 50, y: 80 }, { x: 100, y: 0 }], duration: 1 }, 0.2);
+`;
+
+describe("parity: addKeyframeToScript array-form (recast vs acorn)", () => {
+  function expectParity(
+    script: string,
+    percentage: number,
+    properties: Record<string, number | string>,
+    ease?: string,
+    backfillDefaults?: Record<string, number | string>,
+  ) {
+    const id = acornId(script);
+    expect(parseGsapScript(script).animations[0]!.id).toBe(id);
+    const acorn = addKeyframeAcorn(script, id, percentage, properties, ease, backfillDefaults);
+    const recast = addKeyframeRecast(script, id, percentage, properties, ease, backfillDefaults);
+    expect(modelOf(acorn)).toEqual(modelOf(recast));
+  }
+
+  it("normalizes the array then inserts a new percentage in sorted order", () => {
+    expectParity(KF_ADD_ARRAY_SCRIPT, 25, { x: 20, y: 40 });
+  });
+
+  it("merges a new property into the evenly-distributed mid element", () => {
+    expectParity(KF_ADD_ARRAY_SCRIPT, 50, { x: 55 });
+  });
+
+  it("carries an ease and backfills a new property across normalized siblings", () => {
+    expectParity(KF_ADD_ARRAY_SCRIPT, 75, { opacity: 0.5 }, "power1.in", { opacity: 0 });
+  });
+
+  it("no-op on unknown id agrees between writers", () => {
+    expect(addKeyframeAcorn(KF_ADD_ARRAY_SCRIPT, "bad-id", 25, { x: 1 })).toBe(KF_ADD_ARRAY_SCRIPT);
+    expect(addKeyframeRecast(KF_ADD_ARRAY_SCRIPT, "bad-id", 25, { x: 1 })).toBe(
+      KF_ADD_ARRAY_SCRIPT,
+    );
+  });
+});
+
+// ── updateKeyframeInScript parity (recast vs acorn) ──────────────────────────
+// updateKeyframeInScript REPLACES the value at the targeted keyframe with the
+// given properties (it is not a merge — see the object-form below: untouched
+// sibling props at that percentage are dropped). Studio's motion-path drag and
+// the SDK move/edit path both call it with the COMPLETE property set for the
+// keyframe (mutate.ts spreads existingKf.properties), so replace == the caller's
+// intent. Object form keys by percentage; array form (no explicit percentages)
+// maps the percentage to an evenly-distributed index and replaces in place,
+// preserving the array literal.
+const UPD_OBJ_SCRIPT = `
+  const tl = gsap.timeline({ paused: true });
+  tl.to("#box", { keyframes: { "0%": { opacity: 0 }, "50%": { x: 10, opacity: 0.5 }, "100%": { opacity: 1 } }, duration: 0.5 }, 0.2);
+`;
+const UPD_ARRAY_SCRIPT = `
+  const tl = gsap.timeline({ paused: true });
+  tl.to("#dot", { keyframes: [{ x: 0, y: 0 }, { x: 50, y: 80 }, { x: 100, y: 0 }], duration: 1 }, 0.2);
+`;
+
+describe("parity: updateKeyframeInScript (recast vs acorn)", () => {
+  function expectParity(
+    script: string,
+    percentage: number,
+    properties: Record<string, number | string>,
+    ease?: string,
+  ) {
+    const id = acornId(script);
+    expect(parseGsapScript(script).animations[0]!.id).toBe(id);
+    const acorn = updateKeyframeAcorn(script, id, percentage, properties, ease);
+    const recast = updateKeyframeRecast(script, id, percentage, properties, ease);
+    expect(modelOf(acorn)).toEqual(modelOf(recast));
+  }
+
+  it("replaces an object-form keyframe value, dropping untouched siblings", () => {
+    // `50%` was { x: 10, opacity: 0.5 }; both writers replace it with { opacity: 0.7 }.
+    expectParity(UPD_OBJ_SCRIPT, 50, { opacity: 0.7 });
+  });
+
+  it("replaces an object-form keyframe and carries an ease", () => {
+    expectParity(UPD_OBJ_SCRIPT, 100, { opacity: 0.9 }, "none");
+  });
+
+  it("replaces an array-form element at its distributed percentage", () => {
+    expectParity(UPD_ARRAY_SCRIPT, 50, { x: 60, y: 90 });
+  });
+
+  it("replaces an array-form endpoint and carries an ease", () => {
+    expectParity(UPD_ARRAY_SCRIPT, 0, { x: 5, y: 5 }, "power2.out");
+  });
+
+  it("targets a near-coincident percentage (49 → the 50% array element)", () => {
+    expectParity(UPD_ARRAY_SCRIPT, 49, { x: 55, y: 85 });
+  });
+
+  it("no-op when the object-form percentage is absent (both writers)", () => {
+    const id = acornId(UPD_OBJ_SCRIPT);
+    expect(updateKeyframeAcorn(UPD_OBJ_SCRIPT, id, 33, { opacity: 0.4 })).toBe(UPD_OBJ_SCRIPT);
+    expect(updateKeyframeRecast(UPD_OBJ_SCRIPT, id, 33, { opacity: 0.4 })).toBe(UPD_OBJ_SCRIPT);
+  });
+
+  it("no-op on unknown id agrees between writers", () => {
+    expect(updateKeyframeAcorn(UPD_OBJ_SCRIPT, "bad-id", 50, { opacity: 0.4 })).toBe(
+      UPD_OBJ_SCRIPT,
+    );
+    expect(updateKeyframeRecast(UPD_OBJ_SCRIPT, "bad-id", 50, { opacity: 0.4 })).toBe(
+      UPD_OBJ_SCRIPT,
+    );
+  });
+
+  // KNOWN DIVERGENCE (acorn-array bug, follow-up — NOT a test artifact):
+  // For PARTIAL props on ARRAY-form keyframes the two writers disagree. recast's
+  // array branch (gsapParser.updateKeyframeInScript) does a whole-value REPLACE
+  // — `arrVal.elements[i] = buildKeyframeValueNode(properties, ease)` — matching
+  // its own object-form branch and the documented replace contract. acorn's
+  // array branch (updateArrayKeyframeByPct in gsapWriterAcorn) MERGES instead —
+  // `{ ...valueNodeToRecord(el), ...properties }` — so updating `50%` with only
+  // `{ x: 60 }` leaves recast at { x: 60 } but acorn at { x: 60, y: 80 }. acorn's
+  // array path is inconsistent with both recast AND acorn's own object path.
+  // Real callers (Studio drag, SDK mutate.ts) always pass the COMPLETE keyframe
+  // value, so the bug is latent in production — but it's a genuine writer gap to
+  // fix in gsapWriterAcorn, out of scope for this test-only change. Skipped (not
+  // deleted) so the contract is documented and the fix has a ready assertion.
+  it.skip("array-form PARTIAL props: recast replaces, acorn merges (acorn bug)", () => {
+    const id = acornId(UPD_ARRAY_SCRIPT);
+    const acorn = updateKeyframeAcorn(UPD_ARRAY_SCRIPT, id, 50, { x: 60 });
+    const recast = updateKeyframeRecast(UPD_ARRAY_SCRIPT, id, 50, { x: 60 });
+    expect(modelOf(acorn)).toEqual(modelOf(recast));
   });
 });
 

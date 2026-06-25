@@ -9,7 +9,7 @@ npx hyperframes preview                   # serve current directory
 npx hyperframes preview --port 4567       # custom port (default 3002)
 ```
 
-Hot-reloads on file changes. Opens the studio in your browser automatically.
+Hot-reloads on file changes. Opens Studio in the browser automatically — the full timeline editor, where the user can play the video and edit anything by hand before rendering. This is the review surface, not just a viewer.
 
 When handing a project back to the user, use the Studio project URL, not the source `index.html` path:
 
@@ -52,6 +52,8 @@ npx hyperframes play --browser-path /usr/bin/chromium --user-data-dir /tmp/hf-pr
 Validation runs before any server boots, so an invalid value exits cleanly without leaving a listening socket behind.
 
 ## render
+
+> Render only after the user has reviewed in `preview` and approved. Don't auto-render when the checks pass.
 
 ```bash
 npx hyperframes render                                # standard MP4 from cwd

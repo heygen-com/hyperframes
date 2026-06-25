@@ -45,6 +45,7 @@ describe("background-removal/pipeline — buildEncoderArgs", () => {
     const args = buildEncoderArgs("webm", 1920, 1080, 30, "/tmp/out.webm");
     expect(args).toContain("libvpx-vp9");
     expect(args).toContain("yuva420p");
+    expect(args[args.indexOf("-cpu-used") + 1]).toBe("4");
     // The alpha_mode metadata must be present; without it Chrome ignores the alpha plane.
     const idx = args.indexOf("-metadata:s:v:0");
     expect(idx).toBeGreaterThan(-1);

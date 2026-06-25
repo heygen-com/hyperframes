@@ -523,6 +523,212 @@ describe("loadExternalCompositions", () => {
     expect(host2.querySelector("p")?.textContent).toBe("B");
   });
 
+  describe("asset path rewriting (Studio preview parity with render)", () => {
+    /**
+     * Authored compositions live at `compositions/frames/*.html` and may
+     * reference assets either as project-root-relative (`assets/x.mp4`,
+     * which already resolves against the main document's base) or as
+     * sub-comp-relative with `../../` (which the server-side bundler
+     * rewrites for the baked render, but which historically broke in
+     * Studio preview because the runtime did no such rewriting and the
+     * `../../` traversed above the project root).
+     *
+     * These tests pin the rewrite contract so the runtime stays in
+     * lockstep with the producer's `inlineSubCompositions` path.
+     */
+    const FRAME_URL =
+      "http://localhost:5190/api/projects/demo/preview/compositions/frames/scene.html";
+
+    it("rewrites `../`-traversing src on elements inside <template>", async () => {
+      const host = document.createElement("div");
+      host.setAttribute("data-composition-src", FRAME_URL);
+      host.setAttribute("data-composition-id", "scene");
+      document.body.appendChild(host);
+
+      const compositionHtml = `
+        <html><body>
+          <template>
+            <div data-composition-id="scene" data-width="1920" data-height="1080">
+              <video id="hero" src="../../assets/hero.mp4"></video>
+              <img id="badge" src="../../assets/badge.png" />
+            </div>
+          </template>
+        </body></html>
+      `;
+
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(compositionHtml, { status: 200 }),
+      );
+
+      await loadExternalCompositions({ ...defaultParams });
+
+      const hero = host.querySelector("#hero");
+      const badge = host.querySelector("#badge");
+      expect(hero?.getAttribute("src")).toBe(
+        "http://localhost:5190/api/projects/demo/preview/assets/hero.mp4",
+      );
+      expect(badge?.getAttribute("src")).toBe(
+        "http://localhost:5190/api/projects/demo/preview/assets/badge.png",
+      );
+    });
+
+    it("leaves plain project-root-relative paths untouched (no double-prefix)", async () => {
+      const host = document.createElement("div");
+      host.setAttribute("data-composition-src", FRAME_URL);
+      host.setAttribute("data-composition-id", "scene");
+      document.body.appendChild(host);
+
+      const compositionHtml = `
+        <html><body>
+          <template>
+            <div data-composition-id="scene" data-width="1920" data-height="1080">
+              <video id="hero" src="assets/hero.mp4"></video>
+              <img id="badge" src="assets/badge.png" />
+            </div>
+          </template>
+        </body></html>
+      `;
+
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(compositionHtml, { status: 200 }),
+      );
+
+      await loadExternalCompositions({ ...defaultParams });
+
+      // Plain relative paths resolve against the main document's base, which
+      // points at the project preview root — so the runtime must NOT rewrite
+      // them. Doing so would risk double-prefixing the URL.
+      const hero = host.querySelector("#hero");
+      const badge = host.querySelector("#badge");
+      expect(hero?.getAttribute("src")).toBe("assets/hero.mp4");
+      expect(badge?.getAttribute("src")).toBe("assets/badge.png");
+    });
+
+    it("leaves absolute URLs, data URIs, and hash refs untouched", async () => {
+      const host = document.createElement("div");
+      host.setAttribute("data-composition-src", FRAME_URL);
+      host.setAttribute("data-composition-id", "scene");
+      document.body.appendChild(host);
+
+      const compositionHtml = `
+        <html><body>
+          <template>
+            <div data-composition-id="scene" data-width="1920" data-height="1080">
+              <video id="abs" src="https://cdn.example.com/clip.mp4"></video>
+              <img id="dat" src="data:image/png;base64,AA" />
+              <a id="hash" href="#main">jump</a>
+              <img id="root" src="/global/logo.png" />
+            </div>
+          </template>
+        </body></html>
+      `;
+
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(compositionHtml, { status: 200 }),
+      );
+
+      await loadExternalCompositions({ ...defaultParams });
+
+      expect(host.querySelector("#abs")?.getAttribute("src")).toBe(
+        "https://cdn.example.com/clip.mp4",
+      );
+      expect(host.querySelector("#dat")?.getAttribute("src")).toBe("data:image/png;base64,AA");
+      expect(host.querySelector("#hash")?.getAttribute("href")).toBe("#main");
+      expect(host.querySelector("#root")?.getAttribute("src")).toBe("/global/logo.png");
+    });
+
+    it("rewrites CSS url(...) `../` references inside <style> blocks", async () => {
+      const host = document.createElement("div");
+      host.setAttribute("data-composition-src", FRAME_URL);
+      host.setAttribute("data-composition-id", "scene");
+      document.body.appendChild(host);
+
+      const compositionHtml = `
+        <html><body>
+          <template>
+            <div data-composition-id="scene" data-width="1920" data-height="1080">
+              <style>
+                @font-face { font-family: 'Brand'; src: url("../../assets/fonts/brand.woff2") format("woff2"); }
+                .cover { background-image: url('../../assets/cover.png'); }
+                .icon { background-image: url(assets/icon.svg); }
+              </style>
+              <p>scoped</p>
+            </div>
+          </template>
+        </body></html>
+      `;
+
+      const injectedStyles: HTMLStyleElement[] = [];
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(compositionHtml, { status: 200 }),
+      );
+      await loadExternalCompositions({ ...defaultParams, injectedStyles });
+
+      const cssText = injectedStyles.map((s) => s.textContent || "").join("\n");
+      expect(cssText).toContain(
+        'url("http://localhost:5190/api/projects/demo/preview/assets/fonts/brand.woff2")',
+      );
+      expect(cssText).toContain(
+        "url('http://localhost:5190/api/projects/demo/preview/assets/cover.png')",
+      );
+      // Plain relative path stays untouched — the main document's base
+      // already covers it, and double-prefixing would 404.
+      expect(cssText).toContain("url(assets/icon.svg)");
+    });
+
+    it("rewrites url(...) inside inline style attributes", async () => {
+      const host = document.createElement("div");
+      host.setAttribute("data-composition-src", FRAME_URL);
+      host.setAttribute("data-composition-id", "scene");
+      document.body.appendChild(host);
+
+      const compositionHtml = `
+        <html><body>
+          <template>
+            <div data-composition-id="scene" data-width="1920" data-height="1080">
+              <div id="card" style="background-image: url('../../assets/card-bg.png');"></div>
+            </div>
+          </template>
+        </body></html>
+      `;
+
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(compositionHtml, { status: 200 }),
+      );
+      await loadExternalCompositions({ ...defaultParams });
+
+      const card = host.querySelector("#card");
+      expect(card?.getAttribute("style")).toContain(
+        "url('http://localhost:5190/api/projects/demo/preview/assets/card-bg.png')",
+      );
+    });
+
+    it("rewrites `../`-traversing src on non-template (full HTML doc) sub-comps", async () => {
+      const host = document.createElement("div");
+      host.setAttribute("data-composition-src", FRAME_URL);
+      host.setAttribute("data-composition-id", "scene");
+      document.body.appendChild(host);
+
+      const compositionHtml = `
+        <html><body>
+          <div data-composition-id="scene" data-width="1920" data-height="1080">
+            <video id="hero" src="../../assets/hero.mp4"></video>
+          </div>
+        </body></html>
+      `;
+
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(compositionHtml, { status: 200 }),
+      );
+      await loadExternalCompositions({ ...defaultParams });
+
+      const hero = host.querySelector("#hero");
+      expect(hero?.getAttribute("src")).toBe(
+        "http://localhost:5190/api/projects/demo/preview/assets/hero.mp4",
+      );
+    });
+  });
+
   describe("variable scoping (window.__hfVariablesByComp)", () => {
     type WindowWithScopedVars = Window & {
       __hfVariablesByComp?: Record<string, Record<string, unknown>>;

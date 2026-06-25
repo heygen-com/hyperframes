@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>staggered_exit</title>
+    <script src="../assets/gsap.min.js"></script>
+    <style>
+      :root {
+        --hg-violet: #7c3aed;
+        --hg-violet-2: #a855f7;
+        --hg-bg: #0a0a0f;
+        --hg-fg: #f5f5fa;
+        --hg-dim: #6b6b78;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--hg-bg);
+        font-family: "Inter", system-ui, sans-serif;
+        color: var(--hg-fg);
+        -webkit-font-smoothing: antialiased;
+      }
+      #scene {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+      }
+      .stage {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(4, 320px);
+        grid-template-rows: repeat(2, 320px);
+        gap: 36px;
+      }
+      .card {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 28px;
+        background: linear-gradient(135deg, var(--hg-violet), var(--hg-violet-2));
+        color: var(--hg-fg);
+        font-weight: 900;
+        font-size: 72px;
+        letter-spacing: -0.02em;
+        box-shadow: 0 24px 60px rgba(124, 58, 237, 0.35);
+        will-change: transform, opacity;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="2"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="scene" class="clip" data-start="0" data-duration="2" data-track-index="1">
+        <div class="stage">
+          <div class="grid">
+            <div class="card">NORTH</div>
+            <div class="card">EAST</div>
+            <div class="card">SOUTH</div>
+            <div class="card">WEST</div>
+            <div class="card">PEAK</div>
+            <div class="card">EDGE</div>
+            <div class="card">CORE</div>
+            <div class="card">FLUX</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      const cards = gsap.utils.toArray(".card");
+      const hold = 0.4; // fully visible hold before the cascade begins
+      const step = 0.11; // per-element offset
+      const exitDur = 0.45;
+
+      // start fully visible
+      tl.set(cards, { autoAlpha: 1, y: 0 }, 0);
+
+      // ordered exit: each card slides down + fades, one after another
+      for (let i = 0; i < cards.length; i++) {
+        tl.to(
+          cards[i],
+          { y: 80, autoAlpha: 0, duration: exitDur, ease: "power3.in" },
+          hold + i * step,
+        );
+      }
+
+      // snap all back to the visible start state so the next loop begins full
+      tl.set(cards, { autoAlpha: 1, y: 0 }, 1.95);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

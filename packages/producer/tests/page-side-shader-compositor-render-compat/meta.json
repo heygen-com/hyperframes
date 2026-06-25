@@ -1,0 +1,13 @@
+{
+  "name": "page-side-shader-compositor-render-compat",
+  "description": "Regression guard for page-side shader transition capture when the producer reuses a browser probe session. The scripted audio volume forces the probe path; the shader transition requires the final capture page to be recreated after the page-side compositor pre-head script is installed and to use screenshot capture instead of BeginFrame. Without that fix, the rendered MP4 captures the fallback DOM state instead of the shader warp.",
+  "tags": ["regression", "render-compat", "shader"],
+  "minPsnr": 45,
+  "maxFrameFailures": 0,
+  "minAudioCorrelation": 0,
+  "maxAudioLagWindows": 1,
+  "renderConfig": {
+    "fps": 30,
+    "workers": 1
+  }
+}

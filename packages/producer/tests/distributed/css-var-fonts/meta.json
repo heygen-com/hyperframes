@@ -1,0 +1,13 @@
+{
+  "name": "Distributed: CSS var() font-family",
+  "description": "Composition that declares font-family via CSS custom properties (var(--ui-font), var(--display-font)). Exercises the fix for FONT_FETCH_FAILED when the font resolver encounters var() expressions in fail-closed distributed renders.",
+  "tags": ["distributed", "mp4", "h264", "sdr", "fonts", "css-variables"],
+
+  "minPsnr": 30,
+  "maxFrameFailures": 0,
+
+  "renderConfig": {
+    "fps": 30,
+    "chunkSize": 15
+  }
+}

@@ -1,0 +1,313 @@
+<!doctype html>
+<html
+  lang="en"
+  data-composition-variables='[
+    {"id":"text",       "type":"string", "label":"Wordmark",           "default":"SPECTRAL"},
+    {"id":"textColor",  "type":"color",  "label":"Wordmark fill",       "default":"#f6ff7a"},
+    {"id":"bgColor",    "type":"color",  "label":"Stage background",    "default":"#000000"},
+    {"id":"sweepSpeed", "type":"number", "label":"Light sweep speed", "default":1, "min":0.2, "max":3, "step":0.1}
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>text_spectral_rays</title>
+    <script src="../assets/gsap.min.js"></script>
+    <style>
+      :root {
+        --hg-violet: #7c3aed;
+        --hg-violet-2: #a855f7;
+        --hg-bg: #000000;
+        --hg-fg: #f5f5fa;
+        --hg-dim: #6b6b78;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #000;
+        font-family: "Inter", system-ui, sans-serif;
+        color: var(--hg-fg);
+        -webkit-font-smoothing: antialiased;
+      }
+      #scene {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+        background: #000;
+      }
+      .vfx-canvas {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+        display: block;
+      }
+      .label {
+        position: absolute;
+        left: 48px;
+        bottom: 40px;
+        font-size: 22px;
+        font-weight: 600;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: rgba(255, 255, 255, 0.6);
+        mix-blend-mode: screen;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="4"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="scene" class="clip" data-start="0" data-duration="4" data-track-index="1">
+        <canvas class="vfx-canvas" width="1920" height="1080" aria-hidden="true"></canvas>
+        <div class="label">text_spectral_rays</div>
+      </div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      (function () {
+        const W = 1920;
+        const H = 1080;
+
+        const defaults = {
+          text: "SPECTRAL",
+          textColor: "#f6ff7a",
+          bgColor: "#000000",
+          sweepSpeed: 1,
+        };
+        const vars = Object.assign(
+          {},
+          defaults,
+          window.__hyperframes && window.__hyperframes.getVariables
+            ? window.__hyperframes.getVariables()
+            : {},
+        );
+
+        const canvas = document.querySelector(".vfx-canvas");
+        const gl = canvas.getContext("webgl", {
+          premultipliedAlpha: false,
+          preserveDrawingBuffer: true,
+        });
+
+        // animated state — GSAP tweens these; mouse (the light cursor) is derived
+        const state = { progress: 0, effectMix: 0 };
+        const mouse = { x: 0, y: H * 0.5 };
+        const speed = Number(vars.sweepSpeed) || 1;
+
+        // ── Rasterize the wordmark into a white MASK + a coloured SRC canvas ──
+        function drawWord(ctx, fill) {
+          ctx.clearRect(0, 0, W, H);
+          let fs = 340;
+          const stack = "900 " + fs + 'px "Arial Black", Impact, "Inter", system-ui, sans-serif';
+          ctx.font = stack;
+          const maxW = 1600;
+          const measured = ctx.measureText(vars.text).width || 1;
+          if (measured > maxW) {
+            fs = Math.floor((fs * maxW) / measured);
+            ctx.font = "900 " + fs + 'px "Arial Black", Impact, "Inter", system-ui, sans-serif';
+          }
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillStyle = fill;
+          ctx.fillText(vars.text, W * 0.5, H * 0.5);
+        }
+        const maskCanvas = document.createElement("canvas");
+        maskCanvas.width = W;
+        maskCanvas.height = H;
+        drawWord(maskCanvas.getContext("2d"), "#ffffff");
+        const colorCanvas = document.createElement("canvas");
+        colorCanvas.width = W;
+        colorCanvas.height = H;
+        drawWord(colorCanvas.getContext("2d"), vars.textColor);
+
+        // ── WebGL fallback: flat fill (keeps the timeline registered) ──
+        if (!gl) {
+          const ctx = canvas.getContext("2d");
+          ctx.fillStyle = vars.bgColor;
+          ctx.fillRect(0, 0, W, H);
+          tl.to(state, { progress: 1, duration: 3.6, ease: "none" }, 0.2);
+          window.__timelines["main"] = tl;
+          return;
+        }
+
+        const VERT = [
+          "attribute vec2 position;",
+          "varying vec2 vUv;",
+          "void main(){",
+          "  vUv = position * 0.5 + 0.5;",
+          "  gl_Position = vec4(position, 0.0, 1.0);",
+          "}",
+        ].join("\n");
+
+        // Volumetric spectral light-rays cast by the text mask toward a moving
+        // light cursor — ported from the vfx-text-cursor golden sample, made
+        // generic (reads any text mask/colour). All state from uniforms.
+        const FRAG = [
+          "precision highp float;",
+          "varying vec2 vUv;",
+          "uniform vec2 resolution;",
+          "uniform vec2 mouse;",
+          "uniform float maskY;",
+          "uniform float maskScale;",
+          "uniform float effectMix;",
+          "uniform sampler2D src;",
+          "uniform sampler2D colorSrc;",
+          "#define PI 3.141593",
+          "#define SAMPLES 112.0",
+          "float hash(vec2 p){ return fract(sin(dot(p, vec2(489.0,589.0))) * 492.0) * 2.0 - 1.0; }",
+          "float hash(vec3 p){ return fract(sin(dot(p, vec3(489.0,589.0,58.0))) * 492.0) * 2.0 - 1.0; }",
+          "vec2 hash2(vec3 p){ return vec2(hash(p), hash(p + 1.0)); }",
+          "vec4 readMask(vec2 uv){ if(uv.x<0.0||uv.x>1.0||uv.y<0.0||uv.y>1.0){return vec4(0.0);} return texture2D(src, uv); }",
+          "vec4 readColor(vec2 uv){ if(uv.x<0.0||uv.x>1.0||uv.y<0.0||uv.y>1.0){return vec4(0.0);} return texture2D(colorSrc, uv); }",
+          "vec3 spectrum(float x){ return cos((x - vec3(0.0,0.5,1.0)) * vec3(0.6,1.0,0.5) * PI); }",
+          "void main(){",
+          "  vec2 uv = vUv;",
+          "  vec2 center = vec2(0.5, 0.5);",
+          "  vec2 maskUv = (uv - center) / maskScale + center + vec2(0.0, maskY / resolution.y);",
+          "  float mask = readMask(maskUv).r;",
+          "  vec4 col0 = readColor(maskUv);",
+          "  vec2 p = uv * 2.0 - 1.0;",
+          "  p.x *= resolution.x / resolution.y;",
+          "  vec2 mp = mouse / resolution;",
+          "  mp.y = 1.0 - mp.y;",
+          "  mp = mp * 2.0 - 1.0;",
+          "  mp.x *= resolution.x / resolution.y;",
+          "  vec2 rp = p;",
+          "  vec2 d = (mp - p) / SAMPLES;",
+          "  float acc = 0.0;",
+          "  for(float i = 0.0; i < SAMPLES; i++){",
+          "    rp += d;",
+          "    rp += hash2(vec3(rp, i)) * 0.5 / SAMPLES;",
+          "    vec2 uv2 = rp;",
+          "    uv2.x /= resolution.x / resolution.y;",
+          "    uv2 = uv2 * 0.5 + 0.5;",
+          "    vec2 rayUv = (uv2 - center) / maskScale + center + vec2(0.0, maskY / resolution.y);",
+          "    acc += readMask(rayUv).r / SAMPLES;",
+          "  }",
+          "  vec4 c = vec4(0.0, 0.0, 0.0, 1.0);",
+          "  c -= acc * 0.24;",
+          "  c += vec4(spectrum(cos(acc * 4.9)), 1.0) * acc * 3.65;",
+          "  c.rgb = max(c.rgb - 0.035, 0.0);",
+          "  c.rgb *= 1.16;",
+          "  float cursorX = mouse.x / resolution.x;",
+          "  float sweep = exp(-pow((uv.x - cursorX) * 6.2, 2.0));",
+          "  float textProximity = smoothstep(0.006, 0.34, acc);",
+          "  float longRay = smoothstep(0.004, 0.18, acc);",
+          "  vec3 sweepColor = vec3(0.14, 0.65, 0.85) + spectrum(cursorX * 1.8) * 0.28;",
+          "  c.rgb += sweepColor * sweep * (0.34 + textProximity * 2.35);",
+          "  c.rgb += spectrum(cursorX + acc * 2.0) * longRay * 0.58;",
+          "  c.rgb += col0.rgb * acc * 1.18;",
+          "  c.rgb += col0.rgb * sweep * mask * 0.92;",
+          "  c.rgb *= effectMix;",
+          "  c.rgb = mix(c.rgb, col0.rgb, smoothstep(0.02, 0.75, col0.a));",
+          "  c.rgb += vec3(1.0) * smoothstep(0.04, 0.38, mask) * 0.12 * effectMix;",
+          "  float grain = hash(vec3(uv.xyy + mouse.x * 0.0007));",
+          "  float dust = smoothstep(0.02, 0.38, acc) + smoothstep(0.03, 0.22, mask);",
+          "  c.rgb += grain * 0.07 * (0.42 + dust) * effectMix;",
+          "  c.rgb += spectrum(grain + cursorX) * abs(grain) * 0.045 * smoothstep(0.02, 0.5, acc) * effectMix;",
+          "  c.a = 1.0;",
+          "  gl_FragColor = c;",
+          "}",
+        ].join("\n");
+
+        function compile(type, source) {
+          const s = gl.createShader(type);
+          gl.shaderSource(s, source);
+          gl.compileShader(s);
+          return s;
+        }
+        const program = gl.createProgram();
+        gl.attachShader(program, compile(gl.VERTEX_SHADER, VERT));
+        gl.attachShader(program, compile(gl.FRAGMENT_SHADER, FRAG));
+        gl.linkProgram(program);
+        gl.useProgram(program);
+
+        function createTexture(source) {
+          const t = gl.createTexture();
+          gl.bindTexture(gl.TEXTURE_2D, t);
+          gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+          return t;
+        }
+        const maskTex = createTexture(maskCanvas);
+        const colorTex = createTexture(colorCanvas);
+
+        const buffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+        gl.bufferData(
+          gl.ARRAY_BUFFER,
+          new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]),
+          gl.STATIC_DRAW,
+        );
+        const posLoc = gl.getAttribLocation(program, "position");
+        const L = (n) => gl.getUniformLocation(program, n);
+        const uRes = L("resolution");
+        const uMouse = L("mouse");
+        const uMaskY = L("maskY");
+        const uMaskScale = L("maskScale");
+        const uMix = L("effectMix");
+        const uSrc = L("src");
+        const uColorSrc = L("colorSrc");
+
+        function render() {
+          mouse.x = state.progress * W;
+          mouse.y = H * 0.5;
+          gl.viewport(0, 0, W, H);
+          gl.clearColor(0, 0, 0, 1);
+          gl.clear(gl.COLOR_BUFFER_BIT);
+          gl.useProgram(program);
+          gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+          gl.enableVertexAttribArray(posLoc);
+          gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+          gl.activeTexture(gl.TEXTURE0);
+          gl.bindTexture(gl.TEXTURE_2D, maskTex);
+          gl.uniform1i(uSrc, 0);
+          gl.activeTexture(gl.TEXTURE1);
+          gl.bindTexture(gl.TEXTURE_2D, colorTex);
+          gl.uniform1i(uColorSrc, 1);
+          gl.uniform2f(uRes, W, H);
+          gl.uniform2f(uMouse, mouse.x, mouse.y);
+          gl.uniform1f(uMaskY, 0);
+          gl.uniform1f(uMaskScale, 1);
+          gl.uniform1f(uMix, state.effectMix);
+          gl.drawArrays(gl.TRIANGLES, 0, 6);
+        }
+        render(); // initial frame (seek-to-0 correctness)
+
+        // All repaint via the timeline's onUpdate — fully seek-safe, no rAF.
+        tl.eventCallback("onUpdate", render);
+
+        // effect punches in, the light cursor sweeps L→R across the wordmark,
+        // then fades for a clean loop.
+        tl.set(state, { progress: 0, effectMix: 0 }, 0);
+        tl.to(state, { effectMix: 1, duration: 0.45, ease: "power3.out" }, 0.15);
+        tl.to(state, { progress: 1, duration: 3.4 / speed, ease: "none" }, 0.2);
+        tl.to(state, { effectMix: 0, duration: 0.4, ease: "power2.in" }, 3.6);
+
+        window.__timelines["main"] = tl;
+      })();
+    </script>
+  </body>
+</html>

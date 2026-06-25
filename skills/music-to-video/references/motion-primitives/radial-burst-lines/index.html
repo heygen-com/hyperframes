@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>25 · radial_burst_lines</title>
+    <script src="../assets/gsap.min.js"></script>
+    <style>
+      :root {
+        --hg-violet: #7c3aed;
+        --hg-violet-2: #a855f7;
+        --hg-bg: #0a0a0f;
+        --hg-fg: #f5f5fa;
+        --hg-dim: #6b6b78;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--hg-bg);
+        font-family: "Inter", system-ui, sans-serif;
+        color: var(--hg-fg);
+        -webkit-font-smoothing: antialiased;
+      }
+      #scene {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+      }
+      .stage {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .hero {
+        font-weight: 900;
+        font-size: 320px;
+        letter-spacing: -0.05em;
+        color: var(--hg-fg);
+        white-space: nowrap;
+        position: relative;
+        z-index: 10;
+        will-change: transform;
+      }
+      .burst-stage {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        pointer-events: none;
+      }
+      .line {
+        position: absolute;
+        width: 5px;
+        height: 180px;
+        background: linear-gradient(to top, transparent 0%, var(--hg-fg) 50%, transparent 100%);
+        transform-origin: bottom center;
+        opacity: 0;
+        will-change: transform, opacity;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="2"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="scene" class="clip" data-start="0" data-duration="2" data-track-index="1">
+        <div class="burst-stage" id="bursts"></div>
+        <div class="stage"><div class="hero">BAM</div></div>
+      </div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      // Build 20 lines
+      const N = 20;
+      const container = document.getElementById("bursts");
+      const lines = [];
+      for (let i = 0; i < N; i++) {
+        const l = document.createElement("div");
+        l.className = "line";
+        const angle = (i / N) * 360;
+        const innerRadius = 220;
+        // Rotate around center, push outward via transform-origin trick.
+        // Easier: use translate then rotate
+        l.style.transform = `rotate(${angle}deg) translateY(-${innerRadius}px) scaleY(0)`;
+        container.appendChild(l);
+        lines.push({ el: l, angle });
+      }
+
+      // Hero punch
+      tl.fromTo(
+        ".hero",
+        { scale: 0.7, opacity: 0 },
+        { scale: 1.1, opacity: 1, duration: 0.15, ease: "power4.out" },
+        0.3,
+      );
+      tl.to(".hero", { scale: 1.0, duration: 0.4, ease: "elastic.out(1, 0.5)" }, 0.45);
+
+      // Burst lines expand
+      lines.forEach((l, i) => {
+        const innerRadius = 220 + (i % 3) * 30; // vary radius
+        const len = 200 + (i % 4) * 40; // vary length
+        const ang = l.angle;
+        tl.set(
+          l.el,
+          {
+            rotation: ang,
+            x: 0,
+            y: 0,
+            scaleY: 0,
+            opacity: 0,
+            transformOrigin: "center bottom",
+          },
+          0,
+        );
+        // GSAP transforms compose, so we set the rotation + translate via separate properties
+        // Use a custom transform string approach
+        tl.to(
+          l.el,
+          {
+            scaleY: 1,
+            opacity: 1,
+            duration: 0.18,
+            ease: "power4.out",
+            onUpdate: function () {
+              const p = this.progress();
+              const t = -innerRadius - len * p * 0.2;
+              l.el.style.transform = `rotate(${ang}deg) translateY(${t}px) scaleY(${p})`;
+              l.el.style.opacity = (p > 0.7 ? 1 - (p - 0.7) / 0.3 : 1).toString();
+            },
+          },
+          0.32 + (i % 5) * 0.018,
+        );
+      });
+
+      // Hold then fade
+      tl.to(".line", { opacity: 0, duration: 0.4, ease: "power2.out" }, 0.9);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

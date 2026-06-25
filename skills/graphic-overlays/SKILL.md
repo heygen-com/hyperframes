@@ -1152,6 +1152,7 @@ decides where the actual visible card sits.
 ```bash
 cd "$WORK_DIR"
 PRODUCER_BROWSER_GPU_MODE=hardware npx hyperframes render public \
+  --skill=graphic-overlays \
   -o output.mp4 \
   --fps 30
 ```

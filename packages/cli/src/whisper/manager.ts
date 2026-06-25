@@ -16,6 +16,24 @@ export interface WhisperResult {
   source: WhisperSource;
 }
 
+// A missing/uninstallable whisper-cpp is an environment prerequisite gap (no
+// binary, no Homebrew, no compiler toolchain), not a transcription bug. Callers
+// that treat captions as optional (init, skill pipelines) skip on this and keep
+// going; explicit `transcribe` still fails, but it is reported as a setup
+// condition rather than a command crash.
+export class WhisperUnavailableError extends Error {
+  readonly code = "WHISPER_UNAVAILABLE" as const;
+  constructor(message: string) {
+    super(message);
+    this.name = "WhisperUnavailableError";
+  }
+}
+
+export function isWhisperUnavailable(err: unknown): err is WhisperUnavailableError {
+  if (err instanceof WhisperUnavailableError) return true;
+  return err instanceof Error && "code" in err && err.code === "WHISPER_UNAVAILABLE";
+}
+
 function getModelUrl(model: string): string {
   return `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-${model}.bin`;
 }
@@ -133,9 +151,15 @@ export function findWhisper(): WhisperResult | undefined {
   return findFromEnv() ?? findFromSystem() ?? findBuiltBinary();
 }
 
-function getInstallInstructions(): string {
+export function getInstallInstructions(): string {
   if (platform() === "darwin") {
     return "brew install whisper-cpp";
+  }
+  if (platform() === "linux") {
+    return "Build from source: https://github.com/ggml-org/whisper.cpp#building (requires cmake and a C compiler)";
+  }
+  if (platform() === "win32") {
+    return "Build with cmake: https://github.com/ggml-org/whisper.cpp#building";
   }
   return "See https://github.com/ggml-org/whisper.cpp#building";
 }
@@ -184,7 +208,7 @@ export async function ensureWhisper(options?: {
   }
 
   // 4. Give up — tell the user how
-  throw new Error(`whisper-cpp not found. Install: ${getInstallInstructions()}`);
+  throw new WhisperUnavailableError(`whisper-cpp not found. Install: ${getInstallInstructions()}`);
 }
 
 export async function ensureModel(

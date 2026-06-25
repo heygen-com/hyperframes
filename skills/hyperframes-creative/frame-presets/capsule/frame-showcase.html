@@ -1,0 +1,1465 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Capsule</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..900;1,6..96,400..900&family=Space+Grotesk:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style id="ds-tokens">
+      :root {
+        --cream: #f5f5f0;
+        --ink: #1a1a1a;
+        --outline: #1e1e1e;
+        --white: #ffffff;
+        --coral: #e85d4e;
+        --lime: #c4d94e;
+        --lavender: #c5b5e0;
+        --sky: #8bb4f7;
+        --violet: #a06ce8;
+        --yellow: #f2d160;
+        --peach: #f5b895;
+        --mint: #a8e6cf;
+        --shadow: rgba(26, 26, 26, 0.08);
+        --serif: "Bodoni Moda", serif;
+        --sans: "Space Grotesk", sans-serif;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html {
+        background: #0e0e0c;
+      }
+      body {
+        background: var(--cream);
+        background-image:
+          radial-gradient(ellipse at 12% 8%, rgba(229, 93, 78, 0.1), transparent 45%),
+          radial-gradient(ellipse at 88% 22%, rgba(139, 180, 247, 0.12), transparent 42%),
+          radial-gradient(ellipse at 70% 95%, rgba(196, 217, 78, 0.1), transparent 45%);
+        color: var(--ink);
+        font-family: var(--sans);
+        -webkit-font-smoothing: antialiased;
+      }
+      .serif {
+        font-family: var(--serif);
+        color: var(--ink);
+      }
+      .eyebrow {
+        font-family: var(--sans);
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        font-size: 12px;
+      }
+      .pill {
+        border-radius: 9999px;
+        border: 2px solid var(--outline);
+        font-family: var(--sans);
+        font-weight: 600;
+        white-space: nowrap;
+        display: inline-flex;
+        align-items: center;
+      }
+
+      section {
+        padding: 120px 100px;
+        position: relative;
+      }
+      .sec-head {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        margin-bottom: 64px;
+      }
+      .sec-head .tagpill {
+        background: var(--lavender);
+        padding: 0.5rem 1.4rem;
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        font-weight: 600;
+      }
+      .sec-head h2 {
+        font-family: var(--serif);
+        font-weight: 700;
+        font-size: 52px;
+        line-height: 1;
+        letter-spacing: -0.02em;
+      }
+      .sec-head .sp {
+        flex: 1;
+        height: 2px;
+        background: var(--outline);
+        border-radius: 9999px;
+        opacity: 0.15;
+      }
+
+      /* COVER */
+      .cover {
+        min-height: 100vh;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+        position: relative;
+        overflow: hidden;
+      }
+      .cover .titlepill {
+        background: var(--yellow);
+        border: 2px solid var(--outline);
+        border-radius: 9999px;
+        padding: 1rem 2.6rem;
+        font-family: var(--sans);
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        font-size: 15px;
+        box-shadow: 6px 6px 0 var(--shadow);
+        margin-bottom: 40px;
+        position: relative;
+        z-index: 3;
+        white-space: nowrap;
+      }
+      .cover h1 {
+        font-family: var(--serif);
+        font-weight: 800;
+        font-size: clamp(72px, 13vw, 200px);
+        line-height: 0.88;
+        letter-spacing: -0.03em;
+        position: relative;
+        z-index: 3;
+      }
+      .cover h1 em {
+        font-style: italic;
+        color: var(--coral);
+      }
+      .cover .sub {
+        font-family: var(--sans);
+        font-weight: 400;
+        text-transform: uppercase;
+        letter-spacing: 0.18em;
+        font-size: 15px;
+        color: rgba(26, 26, 26, 0.6);
+        margin-top: 32px;
+        position: relative;
+        z-index: 3;
+      }
+      .cover .accent-line {
+        width: 80px;
+        height: 4px;
+        background: var(--coral);
+        border-radius: 9999px;
+        margin: 36px auto 0;
+        position: relative;
+        z-index: 3;
+      }
+      /* floating pills */
+      .fp {
+        position: absolute;
+        border: 2px solid var(--outline);
+        border-radius: 9999px;
+        font-family: var(--sans);
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-size: 13px;
+        padding: 0.5rem 1.2rem;
+        z-index: 1;
+      }
+      .fp.circ {
+        border-radius: 50%;
+        width: 84px;
+        height: 84px;
+        display: grid;
+        place-items: center;
+        padding: 0;
+      }
+
+      /* PALETTE */
+      .swatches {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 24px;
+      }
+      .sw {
+        background: var(--white);
+        border: 2px solid var(--outline);
+        border-radius: 1.5rem;
+        overflow: hidden;
+        box-shadow: 6px 6px 0 var(--shadow);
+      }
+      .sw .chip {
+        height: 96px;
+        margin: 0;
+      }
+      .sw .meta {
+        padding: 16px 20px;
+      }
+      .sw .name {
+        font-family: var(--serif);
+        font-weight: 700;
+        font-size: 20px;
+      }
+      .sw .hex {
+        font-family: var(--sans);
+        font-size: 12px;
+        letter-spacing: 0.04em;
+        color: rgba(26, 26, 26, 0.55);
+        margin-top: 4px;
+      }
+
+      /* TYPE */
+      .type-row {
+        display: grid;
+        grid-template-columns: 240px 1fr;
+        align-items: center;
+        padding: 24px 0;
+        border-bottom: 2px solid rgba(30, 30, 30, 0.1);
+      }
+      .type-row .tok {
+        font-family: var(--sans);
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        font-size: 12px;
+      }
+      .type-row .m {
+        font-size: 12px;
+        color: rgba(26, 26, 26, 0.55);
+        margin-top: 8px;
+        line-height: 1.5;
+      }
+      .type-row .spec {
+        overflow: hidden;
+      }
+
+      /* COMPONENTS */
+      .cnote {
+        font-family: var(--sans);
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        font-size: 12px;
+        color: rgba(26, 26, 26, 0.55);
+        margin-bottom: 22px;
+      }
+      .cgrid {
+        display: grid;
+        grid-template-columns: repeat(12, 1fr);
+        gap: 32px;
+        margin-bottom: 56px;
+      }
+      .s3 {
+        grid-column: span 3;
+      }
+      .s4 {
+        grid-column: span 4;
+      }
+      .s6 {
+        grid-column: span 6;
+      }
+      .p-card {
+        background: var(--white);
+        border: 2px solid var(--outline);
+        border-radius: 2rem;
+        padding: 2.2rem 1.8rem;
+        box-shadow: 8px 8px 0 var(--shadow);
+        height: 100%;
+      }
+      .p-card .ic {
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        border: 2px solid var(--outline);
+        display: grid;
+        place-items: center;
+        font-family: var(--serif);
+        font-weight: 700;
+        font-size: 24px;
+        margin-bottom: 22px;
+      }
+      .p-card .t {
+        font-family: var(--serif);
+        font-weight: 700;
+        font-size: 24px;
+        line-height: 1.1;
+      }
+      .p-card .x {
+        font-size: 14px;
+        line-height: 1.6;
+        color: rgba(26, 26, 26, 0.65);
+        margin-top: 12px;
+      }
+      .stat-pill {
+        background: var(--white);
+        border: 2px solid var(--outline);
+        border-radius: 2rem;
+        padding: 2rem 1.5rem;
+        box-shadow: 6px 6px 0 var(--shadow);
+        text-align: left;
+      }
+      .stat-pill .n {
+        font-family: var(--serif);
+        font-weight: 800;
+        font-size: 48px;
+        line-height: 1;
+        letter-spacing: -0.03em;
+      }
+      .stat-pill .l {
+        font-family: var(--sans);
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        font-size: 11px;
+        color: rgba(26, 26, 26, 0.6);
+        margin-top: 12px;
+      }
+      .stat-pill .bar {
+        width: 40px;
+        height: 4px;
+        border-radius: 9999px;
+        margin-top: 16px;
+      }
+      .bartrack {
+        height: 36px;
+        background: var(--cream);
+        border: 2px solid var(--outline);
+        border-radius: 9999px;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        margin-bottom: 16px;
+      }
+      .barfill {
+        height: 100%;
+        border-radius: 9999px;
+        border-right: 2px solid var(--outline);
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        padding-right: 14px;
+        font-family: var(--sans);
+        font-weight: 600;
+        font-size: 12px;
+      }
+      .chips {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .chip-pill {
+        border: 2px solid var(--outline);
+        border-radius: 9999px;
+        padding: 0.4rem 1.1rem;
+        font-family: var(--sans);
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-size: 12px;
+      }
+      .orbit {
+        position: relative;
+        height: 280px;
+        display: grid;
+        place-items: center;
+      }
+      .orbit .center {
+        width: 140px;
+        height: 140px;
+        border-radius: 50%;
+        background: var(--lime);
+        border: 2px solid var(--outline);
+        display: grid;
+        place-items: center;
+        font-family: var(--serif);
+        font-weight: 700;
+        font-size: 40px;
+      }
+      .orbit .sat {
+        position: absolute;
+        border: 2px solid var(--outline);
+        border-radius: 9999px;
+        font-family: var(--sans);
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-size: 12px;
+        padding: 0.4rem 1rem;
+        box-shadow: 6px 6px 0 var(--shadow);
+      }
+
+      /* COMPOSITIONS */
+      .gallery {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 48px;
+      }
+      .fw .flabel {
+        display: flex;
+        gap: 14px;
+        align-items: baseline;
+        margin-bottom: 16px;
+        font-family: var(--sans);
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        font-size: 12px;
+        color: rgba(26, 26, 26, 0.55);
+      }
+      .fw .flabel b {
+        color: var(--ink);
+      }
+      .frame {
+        aspect-ratio: 16/9;
+        container-type: size;
+        position: relative;
+        overflow: hidden;
+        background: var(--cream);
+        background-image:
+          radial-gradient(ellipse at 15% 12%, rgba(229, 93, 78, 0.1), transparent 46%),
+          radial-gradient(ellipse at 85% 85%, rgba(139, 180, 247, 0.12), transparent 46%);
+        border: 2px solid var(--outline);
+        border-radius: 1.4rem;
+      }
+      .frame > .body {
+        position: absolute;
+        inset: 0;
+        z-index: 3;
+      }
+      .frame .ffp {
+        position: absolute;
+        border: 0.25cqw solid var(--outline);
+        border-radius: 9999px;
+        font-family: var(--sans);
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05cqw;
+        font-size: 1cqw;
+        padding: 0.4cqw 1.1cqw;
+        z-index: 1;
+      }
+      .frame .ffp.circ {
+        border-radius: 50%;
+        width: 6cqw;
+        height: 6cqw;
+        display: grid;
+        place-items: center;
+        padding: 0;
+      }
+
+      /* f1 cover */
+      .qf1 .body {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+      }
+      .qf1 .tp {
+        background: var(--yellow);
+        border: 0.25cqw solid var(--outline);
+        border-radius: 9999px;
+        padding: 0.8cqw 2.2cqw;
+        font-family: var(--sans);
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.2cqw;
+        font-size: 1.1cqw;
+        box-shadow: 0.4cqw 0.4cqw 0 var(--shadow);
+        margin-bottom: 3cqw;
+        z-index: 3;
+      }
+      .qf1 h3 {
+        font-family: var(--serif);
+        font-weight: 800;
+        font-size: 12cqw;
+        line-height: 0.88;
+        letter-spacing: -0.3cqw;
+        z-index: 3;
+      }
+      .qf1 h3 em {
+        font-style: italic;
+        color: var(--coral);
+      }
+      .qf1 .al {
+        width: 6cqw;
+        height: 0.3cqw;
+        background: var(--coral);
+        border-radius: 9999px;
+        margin-top: 2.4cqw;
+        z-index: 3;
+      }
+
+      /* f2 pillar cards (catalog) */
+      .qf2 .body {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        padding: 0 5cqw;
+      }
+      .qf2 .tp {
+        align-self: flex-start;
+        background: var(--lavender);
+        border: 0.2cqw solid var(--outline);
+        border-radius: 9999px;
+        padding: 0.5cqw 1.4cqw;
+        font-family: var(--sans);
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.15cqw;
+        font-size: 0.9cqw;
+        margin-bottom: 1.6cqw;
+      }
+      .qf2 h3 {
+        font-family: var(--serif);
+        font-weight: 700;
+        font-size: 4cqw;
+        line-height: 1;
+        letter-spacing: -0.05cqw;
+        margin-bottom: 2.4cqw;
+      }
+      .qf2 .row {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 2cqw;
+      }
+      .qf2 .c {
+        background: var(--white);
+        border: 0.2cqw solid var(--outline);
+        border-radius: 1.6cqw;
+        padding: 2cqw 1.6cqw;
+        box-shadow: 0.6cqw 0.6cqw 0 var(--shadow);
+      }
+      .qf2 .c .ic {
+        width: 4cqw;
+        height: 4cqw;
+        border-radius: 50%;
+        border: 0.2cqw solid var(--outline);
+        display: grid;
+        place-items: center;
+        font-family: var(--serif);
+        font-weight: 700;
+        font-size: 1.6cqw;
+        margin-bottom: 1.4cqw;
+      }
+      .qf2 .c .t {
+        font-family: var(--serif);
+        font-weight: 700;
+        font-size: 1.9cqw;
+        line-height: 1.1;
+      }
+      .qf2 .c .x {
+        font-size: 1cqw;
+        line-height: 1.5;
+        color: rgba(26, 26, 26, 0.65);
+        margin-top: 0.8cqw;
+      }
+
+      /* f3 quote */
+      .qf3 .body {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        padding: 0 8cqw;
+      }
+      .qf3 .q {
+        font-family: var(--serif);
+        font-weight: 600;
+        font-size: 4.2cqw;
+        line-height: 1.3;
+        letter-spacing: -0.03cqw;
+      }
+      .qf3 .q .hl {
+        display: inline-flex;
+        align-items: center;
+        background: var(--lime);
+        border: 0.2cqw solid var(--outline);
+        border-radius: 9999px;
+        padding: 0 1.2cqw;
+        font-family: var(--sans);
+        font-weight: 600;
+        font-size: 3cqw;
+        text-transform: none;
+      }
+      .qf3 .at {
+        font-family: var(--sans);
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.2cqw;
+        font-size: 1cqw;
+        color: rgba(26, 26, 26, 0.6);
+        margin-top: 2.4cqw;
+      }
+
+      /* f4 closing */
+      .qf4 .body {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+      }
+      .qf4 .tp {
+        background: var(--yellow);
+        border: 0.25cqw solid var(--outline);
+        border-radius: 9999px;
+        padding: 0.7cqw 2cqw;
+        font-family: var(--sans);
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.2cqw;
+        font-size: 1cqw;
+        box-shadow: 0.4cqw 0.4cqw 0 var(--shadow);
+        margin-bottom: 2.6cqw;
+        z-index: 3;
+      }
+      .qf4 h3 {
+        font-family: var(--serif);
+        font-weight: 800;
+        font-size: 8.5cqw;
+        line-height: 0.92;
+        letter-spacing: -0.2cqw;
+        z-index: 3;
+      }
+      .qf4 h3 em {
+        font-style: italic;
+        color: var(--violet);
+      }
+      .qf4 .al {
+        width: 5cqw;
+        height: 0.3cqw;
+        background: var(--coral);
+        border-radius: 9999px;
+        margin-top: 2.4cqw;
+        z-index: 3;
+      }
+
+      /* PRINCIPLES */
+      .dos {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 32px;
+      }
+      .do-card {
+        background: var(--white);
+        border: 2px solid var(--outline);
+        border-radius: 2rem;
+        padding: 36px;
+        box-shadow: 8px 8px 0 var(--shadow);
+      }
+      .do-card h4 {
+        font-family: var(--serif);
+        font-weight: 700;
+        font-size: 30px;
+        margin-bottom: 22px;
+      }
+      .do-card .hpill {
+        display: inline-block;
+        border-radius: 9999px;
+        border: 2px solid var(--outline);
+        padding: 0.3rem 1rem;
+        font-family: var(--sans);
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        font-size: 11px;
+        margin-bottom: 20px;
+      }
+      .do-card ul {
+        list-style: none;
+      }
+      .do-card li {
+        font-size: 14px;
+        line-height: 1.6;
+        padding-left: 24px;
+        position: relative;
+        margin-bottom: 13px;
+        color: rgba(26, 26, 26, 0.75);
+      }
+      .do-card li::before {
+        position: absolute;
+        left: 0;
+        font-family: var(--serif);
+        font-weight: 700;
+      }
+      .do-card.do li::before {
+        content: "+";
+        color: var(--coral);
+      }
+      .do-card.dont li::before {
+        content: "\00d7";
+        color: var(--violet);
+      }
+
+      .foot {
+        padding: 56px 100px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-top: 2px solid rgba(30, 30, 30, 0.12);
+      }
+      .foot .l {
+        font-family: var(--serif);
+        font-weight: 800;
+        font-size: 28px;
+      }
+      .foot .r {
+        font-family: var(--sans);
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        font-size: 11px;
+        color: rgba(26, 26, 26, 0.5);
+      }
+      @media (max-width: 1100px) {
+        .gallery {
+          grid-template-columns: 1fr;
+        }
+        .swatches {
+          grid-template-columns: 1fr 1fr;
+        }
+      }
+    </style>
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,wght@0,400;0,700;0,800;1,400&display=swap"
+    />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap"
+    />
+    <style id="ft-override">
+      :root {
+        --primary: #f5f5f0 !important;
+        --secondary: #1a1a1a !important;
+        --tertiary: #c4d94e !important;
+        --accent: #e85d4e !important;
+        --f-disp: "Bodoni Moda", sans-serif !important;
+        --f-body: "Space Grotesk", sans-serif !important;
+        --cream: #f5f5f0 !important;
+        --ink: #1a1a1a !important;
+        --coral: #e85d4e !important;
+        --lime: #c4d94e !important;
+        --serif: "Bodoni Moda", sans-serif !important;
+        --sans: "Space Grotesk", sans-serif !important;
+        --outline: #1e1e1e !important;
+        --white: #ffffff !important;
+        --lavender: #c5b5e0 !important;
+        --sky: #8bb4f7 !important;
+        --violet: #a06ce8 !important;
+        --yellow: #f2d160 !important;
+        --peach: #f5b895 !important;
+        --mint: #a8e6cf !important;
+        --shadow: rgba(26, 26, 26, 0.08) !important;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- COVER -->
+    <section class="cover">
+      <span
+        class="fp"
+        style="background: var(--coral); top: 14%; left: 8%; transform: rotate(-12deg)"
+        >Editorial</span
+      >
+      <span class="fp" style="background: var(--sky); top: 24%; right: 10%; transform: rotate(9deg)"
+        >Playful</span
+      >
+      <span
+        class="fp circ"
+        style="background: var(--peach); top: 60%; left: 6%; transform: rotate(-6deg)"
+        >★</span
+      >
+      <span
+        class="fp"
+        style="background: var(--mint); bottom: 16%; right: 8%; transform: rotate(-14deg)"
+        >Memphis</span
+      >
+      <span
+        class="fp"
+        style="background: var(--lavender); bottom: 24%; left: 13%; transform: rotate(7deg)"
+        >Candy</span
+      >
+      <span
+        class="fp circ"
+        style="background: var(--lime); top: 18%; right: 24%; transform: rotate(10deg)"
+        >+</span
+      >
+      <div class="titlepill">Frame System · Vol. 01</div>
+      <h1>Everything's<br />a <em>capsule.</em></h1>
+      <div class="sub">Bodoni Moda · Space Grotesk · Nine Candy Accents</div>
+      <div class="accent-line"></div>
+    </section>
+
+    <!-- PALETTE -->
+    <section>
+      <div class="sec-head">
+        <span class="tagpill">Palette</span>
+        <h2>Nine Candy Accents</h2>
+        <span class="sp"></span>
+      </div>
+      <div class="swatches">
+        <div class="sw">
+          <div class="chip" style="background: var(--coral)"></div>
+          <div class="meta">
+            <div class="name">Coral</div>
+            <div class="hex">#E85D4E</div>
+          </div>
+        </div>
+        <div class="sw">
+          <div class="chip" style="background: var(--lime)"></div>
+          <div class="meta">
+            <div class="name">Lime</div>
+            <div class="hex">#C4D94E</div>
+          </div>
+        </div>
+        <div class="sw">
+          <div class="chip" style="background: var(--lavender)"></div>
+          <div class="meta">
+            <div class="name">Lavender</div>
+            <div class="hex">#C5B5E0</div>
+          </div>
+        </div>
+        <div class="sw">
+          <div class="chip" style="background: var(--sky)"></div>
+          <div class="meta">
+            <div class="name">Sky</div>
+            <div class="hex">#8BB4F7</div>
+          </div>
+        </div>
+        <div class="sw">
+          <div class="chip" style="background: var(--violet)"></div>
+          <div class="meta">
+            <div class="name">Violet</div>
+            <div class="hex">#A06CE8</div>
+          </div>
+        </div>
+        <div class="sw">
+          <div class="chip" style="background: var(--yellow)"></div>
+          <div class="meta">
+            <div class="name">Yellow</div>
+            <div class="hex">#F2D160</div>
+          </div>
+        </div>
+        <div class="sw">
+          <div class="chip" style="background: var(--peach)"></div>
+          <div class="meta">
+            <div class="name">Peach</div>
+            <div class="hex">#F5B895</div>
+          </div>
+        </div>
+        <div class="sw">
+          <div class="chip" style="background: var(--mint)"></div>
+          <div class="meta">
+            <div class="name">Mint</div>
+            <div class="hex">#A8E6CF</div>
+          </div>
+        </div>
+        <div class="sw">
+          <div
+            class="chip"
+            style="background: var(--cream); border-bottom: 2px solid var(--outline)"
+          ></div>
+          <div class="meta">
+            <div class="name">Cream</div>
+            <div class="hex">#F5F5F0 · canvas</div>
+          </div>
+        </div>
+        <div class="sw">
+          <div class="chip" style="background: var(--ink)"></div>
+          <div class="meta">
+            <div class="name">Ink / Outline</div>
+            <div class="hex">#1A1A1A · #1E1E1E</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TYPOGRAPHY -->
+    <section>
+      <div class="sec-head">
+        <span class="tagpill" style="background: var(--mint)">Type</span>
+        <h2>Bodoni × Grotesk</h2>
+        <span class="sp"></span>
+      </div>
+      <div class="type-row">
+        <div>
+          <div class="tok">display</div>
+          <div class="m">Bodoni Moda 800 · sentence case · −0.02em</div>
+        </div>
+        <div class="spec">
+          <span
+            class="serif"
+            style="font-weight: 800; font-size: 88px; line-height: 0.9; letter-spacing: -0.02em"
+            >Inflated.</span
+          >
+        </div>
+      </div>
+      <div class="type-row">
+        <div>
+          <div class="tok">headline</div>
+          <div class="m">Bodoni Moda 700 · ink, never colored</div>
+        </div>
+        <div class="spec">
+          <span class="serif" style="font-weight: 700; font-size: 54px">A friendly pill</span>
+        </div>
+      </div>
+      <div class="type-row">
+        <div>
+          <div class="tok">stat-number</div>
+          <div class="m">Bodoni Moda 800 · color allowed here</div>
+        </div>
+        <div class="spec">
+          <span
+            class="serif"
+            style="font-weight: 800; font-size: 64px; color: var(--coral); letter-spacing: -0.03em"
+            >240%</span
+          >
+        </div>
+      </div>
+      <div class="type-row">
+        <div>
+          <div class="tok">body</div>
+          <div class="m">Space Grotesk 400 · ink 65%</div>
+        </div>
+        <div class="spec">
+          <p
+            style="
+              font-size: 17px;
+              line-height: 1.6;
+              max-width: 680px;
+              color: rgba(26, 26, 26, 0.7);
+            "
+          >
+            Space Grotesk carries every paragraph and label — the clean grotesque against Bodoni's
+            glamour.
+          </p>
+        </div>
+      </div>
+      <div class="type-row" style="border-bottom: 0">
+        <div>
+          <div class="tok">pill-text</div>
+          <div class="m">Space Grotesk 600 · uppercase · 0.12em</div>
+        </div>
+        <div class="spec">
+          <span
+            class="pill"
+            style="
+              background: var(--yellow);
+              padding: 0.5rem 1.4rem;
+              text-transform: uppercase;
+              letter-spacing: 0.12em;
+              font-size: 14px;
+            "
+            >Featured</span
+          >
+        </div>
+      </div>
+    </section>
+
+    <!-- COMPONENTS -->
+    <section>
+      <div class="sec-head">
+        <span class="tagpill" style="background: var(--sky)">Components</span>
+        <h2>Pills, All the Way Down</h2>
+        <span class="sp"></span>
+      </div>
+
+      <div class="cgrid">
+        <div class="s4">
+          <div class="cnote">Pillar card</div>
+          <div class="p-card">
+            <div class="ic" style="background: var(--coral)">I</div>
+            <div class="t">Pill Geometry</div>
+            <div class="x">Every container is a pill — 9999px small, 2rem for cards.</div>
+          </div>
+        </div>
+        <div class="s4">
+          <div class="cnote">Stat pills</div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px">
+            <div class="stat-pill">
+              <div class="n" style="color: var(--coral)">9</div>
+              <div class="l">Accents</div>
+              <div class="bar" style="background: var(--coral)"></div>
+            </div>
+            <div class="stat-pill">
+              <div class="n" style="color: var(--sky)">2px</div>
+              <div class="l">Outline</div>
+              <div class="bar" style="background: var(--sky)"></div>
+            </div>
+          </div>
+        </div>
+        <div class="s4">
+          <div class="cnote">Bar tracks + chips</div>
+          <div class="bartrack">
+            <div class="barfill" style="width: 78%; background: var(--lime)">78</div>
+          </div>
+          <div class="bartrack">
+            <div class="barfill" style="width: 54%; background: var(--violet); color: var(--white)">
+              54
+            </div>
+          </div>
+          <div class="chips">
+            <span class="chip-pill" style="background: var(--peach)">Soft</span
+            ><span class="chip-pill" style="background: var(--lavender)">Lifted</span
+            ><span class="chip-pill" style="background: var(--mint)">Friendly</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="cgrid" style="margin-bottom: 0">
+        <div class="s6">
+          <div class="cnote">Orbit composition</div>
+          <div class="orbit">
+            <div class="center">01</div>
+            <span
+              class="sat"
+              style="background: var(--coral); top: 14%; left: 18%; transform: rotate(-10deg)"
+              >Vision</span
+            >
+            <span
+              class="sat"
+              style="background: var(--sky); top: 20%; right: 16%; transform: rotate(8deg)"
+              >Future</span
+            >
+            <span
+              class="sat"
+              style="background: var(--yellow); bottom: 16%; left: 24%; transform: rotate(6deg)"
+              >Next</span
+            >
+            <span
+              class="sat"
+              style="background: var(--mint); bottom: 20%; right: 20%; transform: rotate(-7deg)"
+              >Now</span
+            >
+          </div>
+        </div>
+        <div class="s6">
+          <div class="cnote">Diagram nodes + connectors</div>
+          <div
+            style="display: flex; align-items: center; gap: 0; margin-top: 40px; flex-wrap: wrap"
+          >
+            <span
+              class="pill"
+              style="
+                background: var(--white);
+                padding: 1rem 2rem;
+                box-shadow: 6px 6px 0 var(--shadow);
+                font-family: var(--serif);
+                font-weight: 700;
+              "
+              >Draft</span
+            >
+            <span
+              style="
+                width: 50px;
+                height: 4px;
+                background: var(--outline);
+                position: relative;
+                display: inline-block;
+              "
+            ></span>
+            <span
+              class="pill"
+              style="
+                background: var(--lavender);
+                padding: 1rem 2rem;
+                box-shadow: 6px 6px 0 var(--shadow);
+                font-family: var(--serif);
+                font-weight: 700;
+              "
+              >Shape</span
+            >
+            <span
+              style="
+                width: 50px;
+                height: 4px;
+                background: var(--outline);
+                position: relative;
+                display: inline-block;
+              "
+            ></span>
+            <span
+              class="pill"
+              style="
+                background: var(--lime);
+                padding: 1rem 2rem;
+                box-shadow: 6px 6px 0 var(--shadow);
+                font-family: var(--serif);
+                font-weight: 700;
+              "
+              >Ship</span
+            >
+          </div>
+          <div style="margin-top: 40px" class="cnote">Card icons</div>
+          <div style="display: flex; gap: 18px">
+            <span
+              style="
+                width: 60px;
+                height: 60px;
+                border-radius: 50%;
+                border: 2px solid var(--outline);
+                background: var(--yellow);
+                display: grid;
+                place-items: center;
+                font-family: var(--serif);
+                font-weight: 700;
+                font-size: 22px;
+              "
+              >II</span
+            >
+            <span
+              style="
+                width: 60px;
+                height: 60px;
+                border-radius: 50%;
+                border: 2px solid var(--outline);
+                background: var(--peach);
+                display: grid;
+                place-items: center;
+                font-family: var(--serif);
+                font-weight: 700;
+                font-size: 22px;
+              "
+              >III</span
+            >
+            <span
+              style="
+                width: 60px;
+                height: 60px;
+                border-radius: 50%;
+                border: 2px solid var(--outline);
+                background: var(--violet);
+                color: var(--white);
+                display: grid;
+                place-items: center;
+                font-family: var(--serif);
+                font-weight: 700;
+                font-size: 22px;
+              "
+              >IV</span
+            >
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- COMPOSITIONS -->
+    <section>
+      <div class="sec-head">
+        <span class="tagpill" style="background: var(--coral)">Frames</span>
+        <h2>Frame Compositions</h2>
+        <span class="sp"></span>
+      </div>
+      <div class="gallery">
+        <div class="fw">
+          <div class="flabel"><b>Cover</b><span>· identity · pill wallpaper · centered</span></div>
+          <div class="frame qf1">
+            <span
+              class="ffp"
+              style="background: var(--coral); top: 12%; left: 8%; transform: rotate(-12deg)"
+              >Editorial</span
+            >
+            <span
+              class="ffp"
+              style="background: var(--sky); top: 18%; right: 10%; transform: rotate(9deg)"
+              >Playful</span
+            >
+            <span
+              class="ffp circ"
+              style="background: var(--lime); bottom: 16%; left: 9%; transform: rotate(-8deg)"
+              >+</span
+            >
+            <span
+              class="ffp"
+              style="background: var(--mint); bottom: 14%; right: 11%; transform: rotate(-12deg)"
+              >Memphis</span
+            >
+            <div class="body">
+              <div class="tp">Frame System</div>
+              <h3>Everything's a <em>capsule.</em></h3>
+              <div class="al"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="fw">
+          <div class="flabel"><b>Pillar Cards</b><span>· catalog · 3-up · left</span></div>
+          <div class="frame qf2">
+            <div class="body">
+              <div class="tp">Three Pillars</div>
+              <h3>The capsule rules.</h3>
+              <div class="row">
+                <div class="c">
+                  <div class="ic" style="background: var(--coral)">I</div>
+                  <div class="t">Pill</div>
+                  <div class="x">Every container is a pill.</div>
+                </div>
+                <div class="c">
+                  <div class="ic" style="background: var(--sky)">II</div>
+                  <div class="t">Outline</div>
+                  <div class="x">2px ink stroke on all.</div>
+                </div>
+                <div class="c">
+                  <div class="ic" style="background: var(--lime)">III</div>
+                  <div class="t">Lift</div>
+                  <div class="x">Soft offset shadow.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="fw">
+          <div class="flabel"><b>Pull Quote</b><span>· quote · highlight pill · left</span></div>
+          <div class="frame qf3">
+            <span
+              class="ffp"
+              style="background: var(--peach); top: 14%; right: 9%; transform: rotate(8deg)"
+              >Voice</span
+            >
+            <div class="body">
+              <div class="q">
+                Wrap emphasis in a <span class="hl">candy pill</span>, never in bold.
+              </div>
+              <div class="at">— The System Voice</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="fw">
+          <div class="flabel">
+            <b>Closing Plate</b><span>· closer · pill wallpaper · centered</span>
+          </div>
+          <div class="frame qf4">
+            <span
+              class="ffp"
+              style="background: var(--lavender); top: 16%; left: 10%; transform: rotate(-10deg)"
+              >Thanks</span
+            >
+            <span
+              class="ffp circ"
+              style="background: var(--yellow); bottom: 18%; right: 12%; transform: rotate(9deg)"
+              >★</span
+            >
+            <div class="body">
+              <div class="tp">The End</div>
+              <h3>Stay <em>inflated.</em></h3>
+              <div class="al"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PRINCIPLES -->
+    <section>
+      <div class="sec-head">
+        <span class="tagpill" style="background: var(--yellow)">Rules</span>
+        <h2>Frame Rules</h2>
+        <span class="sp"></span>
+      </div>
+      <div class="dos">
+        <div class="do-card do">
+          <span class="hpill" style="background: var(--lime)">Do</span>
+          <ul>
+            <li>Make every text container a pill — 9999px small, 2rem for cards.</li>
+            <li>Wrap every pill, card, and icon in the 2px ink outline.</li>
+            <li>Set Bodoni headlines in ink, sentence case; color lives on stats + pill fills.</li>
+            <li>Use soft offset shadows (4/6/8/12px) in 8% ink — never blur.</li>
+            <li>Float 5–8 candy pills as wallpaper on declarative frames.</li>
+          </ul>
+        </div>
+        <div class="do-card dont">
+          <span class="hpill" style="background: var(--coral)">Don't</span>
+          <ul>
+            <li>No sharp-cornered text containers; no unstroked pills.</li>
+            <li>No colored Bodoni headlines; no uppercase Bodoni.</li>
+            <li>No blurred shadows; no tenth accent color.</li>
+            <li>No shadows on decorative floating pills (atmosphere is flat).</li>
+            <li>Don't blow a headline edge-to-edge — fit to measure.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- CAPTIONS — preview of caption-skin.html (the preset's lower-third karaoke look) -->
+    <style>
+      /* mirrors caption-skin.html; the skin's --cap-* vocab mapped to this preset's tokens */
+      .capdemo {
+        --cap-ink: var(--ink);
+        --cap-canvas: var(--cream);
+        --cap-accent: var(--coral);
+        --cap-accent-2: var(--yellow);
+      }
+      .capdemo .stage {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 16.67cqh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 4;
+      }
+      .capdemo .pill {
+        max-width: 82cqw;
+        padding: 1.3cqw 3.4cqw 1.5cqw;
+        background: var(--cap-canvas);
+        border: 0.2cqw solid var(--cap-ink);
+        border-radius: 9999px;
+        box-shadow: 0.6cqw 0.6cqw 0 var(--shadow);
+      }
+      .capdemo .line {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 0.12em 0.36em;
+        font-family: var(--serif);
+        font-weight: 700;
+        font-size: 3.2cqw;
+        line-height: 1.16;
+        letter-spacing: -0.02em;
+      }
+      .capdemo .w {
+        display: inline-block;
+        padding: 0 0.1em;
+        border-radius: 9999px;
+        color: color-mix(in srgb, var(--cap-ink) 42%, var(--cap-canvas));
+      }
+      .capdemo .w.spoken {
+        color: var(--cap-ink);
+      }
+      .capdemo .w.active {
+        color: var(--cap-ink);
+        background: var(--cap-accent);
+        box-shadow: 0 0 0 0.14em var(--cap-accent);
+      }
+      .capdemo .bandline {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 16.67cqh;
+        border-top: 0.12cqw dashed rgba(30, 30, 30, 0.3);
+        z-index: 3;
+      }
+      .capdemo .bandtag {
+        position: absolute;
+        right: 3cqw;
+        bottom: calc(16.67cqh + 0.7cqw);
+        font-family: var(--sans);
+        font-weight: 600;
+        text-transform: uppercase;
+        font-size: 0.85cqw;
+        letter-spacing: 0.08em;
+        color: rgba(26, 26, 26, 0.5);
+        z-index: 4;
+      }
+    </style>
+    <section>
+      <div class="sec-head">
+        <span class="tagpill" style="background: var(--peach)">Captions</span>
+        <h2>Captions</h2>
+        <span class="sp"></span>
+      </div>
+      <div class="gallery">
+        <div class="fw">
+          <div class="flabel"><b>Active line</b><span>· spoken · current · upcoming</span></div>
+          <div class="frame capdemo">
+            <span
+              class="ffp"
+              style="background: var(--lavender); top: 12%; left: 8%; transform: rotate(-11deg)"
+              >Live</span
+            >
+            <span
+              class="ffp circ"
+              style="background: var(--lime); top: 16%; right: 10%; transform: rotate(8deg)"
+              >+</span
+            >
+            <div class="bandline"></div>
+            <div class="bandtag">caption band · 16.7%</div>
+            <div class="stage">
+              <div class="pill">
+                <div class="line">
+                  <span class="w spoken">Built</span>
+                  <span class="w spoken">for</span>
+                  <span class="w active">teams</span>
+                  <span class="w">who</span>
+                  <span class="w">ship.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="fw">
+          <div class="flabel"><b>Settled line</b><span>· all spoken · highlight cleared</span></div>
+          <div class="frame capdemo">
+            <span
+              class="ffp"
+              style="
+                background: var(--sky);
+                bottom: auto;
+                top: 14%;
+                right: 11%;
+                transform: rotate(9deg);
+              "
+              >Promo</span
+            >
+            <div class="stage">
+              <div class="pill">
+                <div class="line">
+                  <span class="w spoken">Ship</span>
+                  <span class="w spoken">faster</span>
+                  <span class="w spoken">today.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="foot">
+      <span class="l">Capsule</span>
+      <span class="r">Frame Showcase · Atoms Sacred · Composition Free</span>
+    </div>
+
+    <template id="__bundler_thumbnail">
+      <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+        <rect width="100" height="100" fill="#F5F5F0" />
+        <rect
+          x="22"
+          y="38"
+          width="56"
+          height="24"
+          rx="12"
+          fill="#F2D160"
+          stroke="#1E1E1E"
+          stroke-width="2"
+        />
+        <rect
+          x="14"
+          y="20"
+          width="26"
+          height="13"
+          rx="6.5"
+          fill="#E85D4E"
+          stroke="#1E1E1E"
+          stroke-width="2"
+          transform="rotate(-10 27 26)"
+        />
+        <circle cx="76" cy="72" r="8" fill="#C4D94E" stroke="#1E1E1E" stroke-width="2" />
+      </svg>
+    </template>
+  </body>
+</html>

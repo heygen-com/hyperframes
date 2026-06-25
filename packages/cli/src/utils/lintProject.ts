@@ -200,7 +200,19 @@ export async function lintProject(project: ProjectDir): Promise<ProjectLintResul
   const allHtmlSources: HtmlSource[] = [{ html: rootHtml }];
   const compositionsDir = resolve(project.dir, "compositions");
   if (existsSync(compositionsDir)) {
-    const files = readdirSync(compositionsDir).filter((f) => f.endsWith(".html"));
+    // Recurse: per-frame compositions live in nested dirs (e.g. compositions/frames/*.html).
+    // A non-recursive readdir silently skipped them, so sub-composition rules never ran on
+    // the frames that make up the video. Walk the whole tree; keep posix-style src paths.
+    const collectHtmlFiles = (dir: string, rel: string): string[] => {
+      const out: string[] = [];
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const relPath = rel ? `${rel}/${entry.name}` : entry.name;
+        if (entry.isDirectory()) out.push(...collectHtmlFiles(join(dir, entry.name), relPath));
+        else if (entry.isFile() && entry.name.endsWith(".html")) out.push(relPath);
+      }
+      return out;
+    };
+    const files = collectHtmlFiles(compositionsDir, "").sort();
     for (const file of files) {
       const filePath = join(compositionsDir, file);
       const html = readFileSync(filePath, "utf-8");
@@ -465,6 +477,7 @@ function lintMultipleRootCompositions(projectDir: string): HyperframeLintFinding
     const rootHtmlFiles = readdirSync(projectDir).filter((f) => f.endsWith(".html"));
     const rootCompositions: string[] = [];
     for (const file of rootHtmlFiles) {
+      if (file === "caption-skin.html") continue;
       const content = readFileSync(join(projectDir, file), "utf-8");
       if (/data-composition-id/i.test(content)) {
         rootCompositions.push(file);

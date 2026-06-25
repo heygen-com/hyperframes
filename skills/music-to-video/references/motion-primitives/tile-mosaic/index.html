@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>tile_mosaic</title>
+    <script src="../assets/gsap.min.js"></script>
+    <style>
+      :root {
+        --hg-violet: #7c3aed;
+        --hg-violet-2: #a855f7;
+        --hg-bg: #0a0a0f;
+        --hg-fg: #f5f5fa;
+        --hg-dim: #6b6b78;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--hg-bg);
+        font-family: "Inter", system-ui, sans-serif;
+        color: var(--hg-fg);
+        -webkit-font-smoothing: antialiased;
+      }
+      #scene {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+      }
+      .stage {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .mosaic {
+        position: relative;
+        display: grid;
+        grid-template-columns: repeat(6, 1fr);
+        grid-template-rows: repeat(4, 1fr);
+        gap: 6px;
+        width: 1440px;
+        height: 960px;
+      }
+      .tile {
+        border-radius: 4px;
+        will-change: transform, opacity;
+      }
+      .title {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 900;
+        font-size: 220px;
+        letter-spacing: -0.03em;
+        color: var(--hg-fg);
+        text-shadow: 0 8px 40px rgba(0, 0, 0, 0.55);
+        will-change: transform, opacity;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="2.4"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="scene" class="clip" data-start="0" data-duration="2.4" data-track-index="1">
+        <div class="stage">
+          <div class="mosaic" id="mosaic"></div>
+          <div class="title" id="title">MOSAIC</div>
+        </div>
+      </div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      const COLS = 6;
+      const ROWS = 4;
+      const STEP = 0.06;
+      // Deterministic palette; tile colour chosen by index, no randomness.
+      const PALETTE = [
+        "#7c3aed",
+        "#a855f7",
+        "#6d28d9",
+        "#c084fc",
+        "#5b21b6",
+        "#8b5cf6",
+        "#9333ea",
+        "#4c1d95",
+      ];
+
+      const mosaic = document.getElementById("mosaic");
+      const tiles = [];
+      for (let i = 0; i < COLS * ROWS; i++) {
+        const row = Math.floor(i / COLS);
+        const col = i % COLS;
+        const cell = document.createElement("div");
+        cell.className = "tile";
+        const a = PALETTE[(row + col) % PALETTE.length];
+        const b = PALETTE[(row + col + 3) % PALETTE.length];
+        cell.style.background = "linear-gradient(135deg, " + a + " 0%, " + b + " 100%)";
+        mosaic.appendChild(cell);
+        tiles.push({ el: cell, diag: row + col });
+      }
+
+      // Diagonal sweep: reveal order governed by (row + col), explicit per-tile timing.
+      for (const t of tiles) {
+        tl.fromTo(
+          t.el,
+          { autoAlpha: 0, scale: 0.6 },
+          { autoAlpha: 1, scale: 1, duration: 0.4, ease: "back.out(1.7)" },
+          t.diag * STEP,
+        );
+      }
+
+      // Title settles over the finished, dense mosaic.
+      tl.fromTo(
+        "#title",
+        { autoAlpha: 0, scale: 1.12 },
+        { autoAlpha: 1, scale: 1, duration: 0.45, ease: "power2.out" },
+        1.7,
+      );
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

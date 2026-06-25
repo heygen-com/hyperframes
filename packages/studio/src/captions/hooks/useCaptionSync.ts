@@ -1,6 +1,7 @@
 import { useCallback, useRef } from "react";
 import { useCaptionStore } from "../store";
 import { useMountEffect } from "../../hooks/useMountEffect";
+import { trackEvent } from "../../telemetry/client";
 import type { CaptionStyle } from "../types";
 
 interface CaptionOverrideEntry {
@@ -78,7 +79,11 @@ export function useCaptionSync(projectId: string | null) {
       method: "PUT",
       headers: { "Content-Type": "text/plain" },
       body: JSON.stringify(overrides, null, 2),
-    }).catch((err) => console.warn("[captions] auto-save failed:", err));
+    }).catch((error: unknown) => {
+      // Caption auto-save is a data-loss path; surface failures via telemetry
+      // so a silently-dropped edit isn't invisible (no console in studio).
+      trackEvent("studio_caption_autosave_failed", { error: String(error) });
+    });
   }, []);
 
   // Auto-save on model changes with 800ms debounce

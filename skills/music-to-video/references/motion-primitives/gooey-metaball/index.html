@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>17 · gooey_metaball</title>
+    <script src="../assets/gsap.min.js"></script>
+    <style>
+      :root {
+        --hg-violet: #7c3aed;
+        --hg-violet-2: #a855f7;
+        --hg-cyan: #2afff0;
+        --hg-bg: #0a0a0f;
+        --hg-fg: #f5f5fa;
+        --hg-dim: #6b6b78;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--hg-bg);
+        font-family: "Inter", system-ui, sans-serif;
+        color: var(--hg-fg);
+        -webkit-font-smoothing: antialiased;
+      }
+      #scene {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+      }
+      .hero {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 900;
+        font-size: 280px;
+        letter-spacing: -0.04em;
+        color: var(--hg-fg);
+        z-index: 5;
+        pointer-events: none;
+      }
+      .gooey-stage {
+        position: absolute;
+        inset: 0;
+        filter: url(#gooey-filter);
+      }
+      .ball {
+        position: absolute;
+        border-radius: 50%;
+        background: var(--hg-violet-2);
+        top: 50%;
+        left: 50%;
+        will-change: transform;
+        opacity: 0;
+      }
+      .ball.a {
+        width: 280px;
+        height: 280px;
+        background: #7c3aed;
+      }
+      .ball.b {
+        width: 240px;
+        height: 240px;
+        background: #a855f7;
+      }
+      .ball.c {
+        width: 200px;
+        height: 200px;
+        background: #d946ef;
+      }
+      .ball.d {
+        width: 320px;
+        height: 320px;
+        background: #8b5cf6;
+      }
+      .ball.e {
+        width: 180px;
+        height: 180px;
+        background: #c084fc;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="2"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="scene" class="clip" data-start="0" data-duration="2" data-track-index="1">
+        <svg style="position: absolute; width: 0; height: 0">
+          <defs>
+            <filter id="gooey-filter">
+              <feGaussianBlur in="SourceGraphic" stdDeviation="20" result="blur" />
+              <feColorMatrix
+                in="blur"
+                mode="matrix"
+                values="
+                1 0 0 0 0
+                0 1 0 0 0
+                0 0 1 0 0
+                0 0 0 22 -10"
+                result="gooey"
+              />
+              <feComposite in="SourceGraphic" in2="gooey" operator="atop" />
+            </filter>
+          </defs>
+        </svg>
+
+        <div class="gooey-stage">
+          <div class="ball a" id="ballA"></div>
+          <div class="ball b" id="ballB"></div>
+          <div class="ball c" id="ballC"></div>
+          <div class="ball d" id="ballD"></div>
+          <div class="ball e" id="ballE"></div>
+        </div>
+
+        <div class="hero">GOOEY</div>
+      </div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      // Initial: all balls collapsed at center
+      ["#ballA", "#ballB", "#ballC", "#ballD", "#ballE"].forEach((id) => {
+        tl.set(id, { xPercent: -50, yPercent: -50, scale: 0, opacity: 0 }, 0);
+      });
+      // Spawn outward
+      tl.to(
+        "#ballA",
+        {
+          xPercent: -50 - 120,
+          yPercent: -50 + 20,
+          scale: 1,
+          opacity: 1,
+          duration: 0.5,
+          ease: "back.out(1.6)",
+        },
+        0.15,
+      );
+      tl.to(
+        "#ballB",
+        {
+          xPercent: -50 + 100,
+          yPercent: -50 + 50,
+          scale: 1,
+          opacity: 1,
+          duration: 0.55,
+          ease: "back.out(1.6)",
+        },
+        0.2,
+      );
+      tl.to(
+        "#ballC",
+        {
+          xPercent: -50 + 30,
+          yPercent: -50 - 80,
+          scale: 1,
+          opacity: 1,
+          duration: 0.55,
+          ease: "back.out(1.6)",
+        },
+        0.25,
+      );
+      tl.to(
+        "#ballD",
+        {
+          xPercent: -50 - 50,
+          yPercent: -50 - 30,
+          scale: 1,
+          opacity: 1,
+          duration: 0.55,
+          ease: "back.out(1.6)",
+        },
+        0.3,
+      );
+      tl.to(
+        "#ballE",
+        {
+          xPercent: -50 + 80,
+          yPercent: -50 - 40,
+          scale: 1,
+          opacity: 1,
+          duration: 0.55,
+          ease: "back.out(1.6)",
+        },
+        0.18,
+      );
+
+      // Idle drift
+      tl.to(
+        "#ballA",
+        { xPercent: "+=20", yPercent: "+=12", duration: 1.0, ease: "sine.inOut" },
+        0.7,
+      );
+      tl.to(
+        "#ballB",
+        { xPercent: "-=18", yPercent: "-=10", duration: 1.0, ease: "sine.inOut" },
+        0.7,
+      );
+      tl.to(
+        "#ballC",
+        { xPercent: "-=15", yPercent: "+=20", duration: 1.0, ease: "sine.inOut" },
+        0.7,
+      );
+      tl.to(
+        "#ballD",
+        { xPercent: "+=25", yPercent: "+=8", duration: 1.0, ease: "sine.inOut" },
+        0.7,
+      );
+      tl.to(
+        "#ballE",
+        { xPercent: "-=22", yPercent: "+=18", duration: 1.0, ease: "sine.inOut" },
+        0.7,
+      );
+
+      // Reveal text behind
+      tl.fromTo(
+        ".hero",
+        { opacity: 0, scale: 0.95 },
+        { opacity: 1, scale: 1, duration: 0.5, ease: "power3.out" },
+        0.6,
+      );
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

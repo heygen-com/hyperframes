@@ -10,7 +10,7 @@
 
 import type { Page } from "puppeteer-core";
 import { existsSync, readdirSync, statSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import type sharpType from "sharp";
 import type { CatalogedAsset } from "./assetCataloger.js";
 import type { DesignTokens } from "./types.js";
@@ -494,5 +494,36 @@ export function generateAssetDescriptions(
     /* no fonts dir */
   }
 
-  return [...captionedLines, ...uncaptionedLines, ...svgLines, ...fontLines];
+  // Describe videos — high-value motion clips. The video-manifest.json (written
+  // earlier by captureVideoManifest) carries each clip's DOM heading/caption +
+  // dims. Surfaced FIRST and tagged `[video]`: for a product/demo these moving
+  // clips are usually the strongest hero material, and downstream planners key off
+  // the `[video]` marker. (The `videos/` dir is skipped in the image walk above —
+  // its entries come from the manifest, which has the captions the bare files lack.)
+  const videoLines: string[] = [];
+  try {
+    const manifest = JSON.parse(
+      readFileSync(join(outputDir, "extracted", "video-manifest.json"), "utf-8"),
+    ) as Array<{
+      filename?: string;
+      localPath?: string;
+      caption?: string;
+      heading?: string;
+      width?: number;
+      height?: number;
+    }>;
+    for (const v of manifest) {
+      if (!v.localPath) continue; // only describe clips that actually downloaded
+      const base = basename(v.localPath) || v.filename || "";
+      if (!base) continue;
+      const desc =
+        (v.caption || v.heading || "").trim().replace(/\s+/g, " ").slice(0, 140) || "motion clip";
+      const dims = v.width && v.height ? `, ~${v.width}×${v.height}` : "";
+      videoLines.push(`${base} — [video] ${desc}${dims}`);
+    }
+  } catch {
+    /* no video manifest */
+  }
+
+  return [...videoLines, ...captionedLines, ...uncaptionedLines, ...svgLines, ...fontLines];
 }

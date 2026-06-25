@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>12 · neon_flicker</title>
+    <script src="../assets/gsap.min.js"></script>
+    <style>
+      :root {
+        --hg-violet: #7c3aed;
+        --hg-violet-2: #a855f7;
+        --hg-bg: #0a0a0f;
+        --hg-fg: #f5f5fa;
+        --hg-dim: #6b6b78;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--hg-bg);
+        font-family: "Inter", system-ui, sans-serif;
+        color: var(--hg-fg);
+        -webkit-font-smoothing: antialiased;
+      }
+      #scene {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+      }
+      .stage {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .neon {
+        font-family: "Playfair Display", serif;
+        font-style: italic;
+        font-weight: 900;
+        font-size: 280px;
+        letter-spacing: -0.02em;
+        color: #ff64a0;
+        text-shadow:
+          0 0 8px #ff64a0,
+          0 0 24px #ff64a0,
+          0 0 60px #ff1a7a,
+          0 0 120px #ff1a7a;
+        will-change: opacity, text-shadow;
+      }
+      .neon-bg {
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(
+          circle at 50% 50%,
+          rgba(255, 26, 122, 0.12) 0%,
+          transparent 60%
+        );
+        opacity: 0;
+        will-change: opacity;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="2"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="scene" class="clip" data-start="0" data-duration="2" data-track-index="1">
+        <div class="neon-bg"></div>
+        <div class="stage"><div class="neon">neon</div></div>
+      </div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      tl.set(".neon", { opacity: 0 }, 0);
+      const neonPattern = [
+        { t: 0.2, o: 1 },
+        { t: 0.26, o: 0 },
+        { t: 0.3, o: 1 },
+        { t: 0.38, o: 0.3 },
+        { t: 0.42, o: 1 },
+        { t: 0.5, o: 0.5 },
+        { t: 0.55, o: 1 },
+      ];
+      neonPattern.forEach((p) => {
+        tl.to(".neon", { opacity: p.o, duration: 0.02, ease: "steps(1)" }, p.t);
+      });
+      tl.to(".neon-bg", { opacity: 1, duration: 0.4, ease: "power2.out" }, 0.5);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

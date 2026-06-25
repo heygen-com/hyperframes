@@ -73,9 +73,9 @@ HyperFrames refuses `data-gpu-mode="hardware"` in distributed mode — hardware 
 
 ### webm uses closed-GOP VP9
 
-webm distributed renders go through libvpx-vp9 with `-g <chunkSize>`, `-keyint_min <chunkSize>`, `-auto-alt-ref 0`, and `-cpu-used 2`. The alt-ref disable is the load-bearing bit: libvpx-vp9's default non-displayable alt-ref frames can land anywhere in a GOP, which breaks concat-copy at chunk seams. Closed-GOP forces a keyframe at every chunk boundary so `ffmpeg -f concat -c copy` round-trips losslessly. Output is `yuva420p` to preserve alpha. Audio is muxed as Opus.
+webm distributed renders go through libvpx-vp9 with `-g <chunkSize>`, `-keyint_min <chunkSize>`, `-auto-alt-ref 0`, and `-cpu-used 4` by default. The alt-ref disable is the load-bearing bit: libvpx-vp9's default non-displayable alt-ref frames can land anywhere in a GOP, which breaks concat-copy at chunk seams. Closed-GOP forces a keyframe at every chunk boundary so `ffmpeg -f concat -c copy` round-trips losslessly. Output is `yuva420p` to preserve alpha. Audio is muxed as Opus.
 
-Distributed webm files are typically ~10-25% larger than the same composition rendered in-process at the same CRF, because closed-GOP forces more keyframes than the in-process single-pass would emit. Per-chunk encode is also slower than libvpx-vp9's default speed/quality tradeoff (`-cpu-used 2` is more conservative than the default for `-deadline good`). The single-machine in-process renderer remains the right choice for short webm renders; distributed pays for itself once a render's wall-clock exceeds what one machine delivers.
+Distributed webm files are typically ~10-25% larger than the same composition rendered in-process at the same CRF, because closed-GOP forces more keyframes than the in-process single-pass would emit. VP9 encode speed is controlled by `PRODUCER_VP9_CPU_USED` (`-8` to `8`); use lower values for quality-sensitive or long-form WebM, and higher values when wall-clock encode time matters more than compression efficiency. The single-machine in-process renderer remains the right choice for short webm renders; distributed pays for itself once a render's wall-clock exceeds what one machine delivers.
 
 ### State files are local by default
 

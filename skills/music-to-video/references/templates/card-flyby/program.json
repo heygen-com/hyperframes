@@ -1,0 +1,13 @@
+{
+  "_": "Default card-flyby program. `theme` picks a cohesive palette; `cards` is the deck (each card = a big centered title; `color` is OPTIONAL — omit it and the card takes the next color from the theme ramp); `landings` is one onset per card (accelerating cadence; omit to auto-derive). Pass these as the matching composition-variables; empty vars fall back to these values.",
+  "theme": "aurora",
+  "cards": [
+    { "title": "FADEGLOW" },
+    { "title": "SAUL BASS" },
+    { "title": "EULER" },
+    { "title": "HERMÈS" },
+    { "title": "DOSSIER" },
+    { "title": "BLACK HOLES" }
+  ],
+  "landings": [0.4, 1.7, 2.7, 3.45, 4.0, 4.4]
+}

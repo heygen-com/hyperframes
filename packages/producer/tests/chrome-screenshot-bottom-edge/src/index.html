@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Chrome Screenshot Bottom Edge</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: rgb(255, 24, 0);
+        font-family: Inter, system-ui, sans-serif;
+      }
+
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: linear-gradient(180deg, #084c61 0%, #0b6e4f 100%);
+      }
+
+      .clip {
+        position: absolute;
+        inset: 0;
+      }
+
+      #label {
+        position: absolute;
+        left: 64px;
+        bottom: 188px;
+        color: white;
+        font-size: 64px;
+        font-weight: 800;
+      }
+
+      #bottom-proof {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 160px;
+        background: repeating-linear-gradient(
+          90deg,
+          white 0,
+          white 64px,
+          #111 64px,
+          #111 128px
+        );
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="1"
+    >
+      <section id="proof" class="clip" data-start="0" data-duration="1" data-track-index="1">
+        <div id="label">bottom edge must stay inside the composition</div>
+        <div id="bottom-proof"></div>
+      </section>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines.main = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "name": "Timed descendant visibility",
+  "description": "Regression for hidden timed clips leaking visible descendants during production render. A bottom band inside the first scene intentionally outlives its parent; render-time visibility sync must hide it once the parent scene becomes inactive.",
+  "tags": ["visibility", "regression", "runtime"],
+  "minPsnr": 45,
+  "maxFrameFailures": 0,
+  "minAudioCorrelation": 0,
+  "maxAudioLagWindows": 1,
+  "renderConfig": {
+    "fps": 30,
+    "workers": 1
+  }
+}

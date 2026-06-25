@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>13 · chrome_sweep</title>
+    <script src="../assets/gsap.min.js"></script>
+    <style>
+      :root {
+        --hg-violet: #7c3aed;
+        --hg-violet-2: #a855f7;
+        --hg-bg: #0a0a0f;
+        --hg-fg: #f5f5fa;
+        --hg-dim: #6b6b78;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--hg-bg);
+        font-family: "Inter", system-ui, sans-serif;
+        color: var(--hg-fg);
+        -webkit-font-smoothing: antialiased;
+      }
+      #scene {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+      }
+      .stage {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .chrome {
+        font-weight: 900;
+        font-size: 280px;
+        letter-spacing: -0.04em;
+        background: linear-gradient(
+          110deg,
+          #404048 0%,
+          #b4b4be 20%,
+          #ffffff 45%,
+          #ffffff 50%,
+          #d8d8e0 60%,
+          #5a5a64 85%,
+          #ffffff 100%
+        );
+        background-size: 250% 100%;
+        background-position: 200% 0;
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+        color: transparent;
+        will-change: background-position;
+        filter: drop-shadow(0 6px 0 rgba(0, 0, 0, 0.4));
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="2"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="scene" class="clip" data-start="0" data-duration="2" data-track-index="1">
+        <div class="stage"><div class="chrome">CHROME</div></div>
+      </div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      tl.fromTo(
+        ".chrome",
+        { opacity: 0, scale: 0.96 },
+        { opacity: 1, scale: 1, duration: 0.3, ease: "power3.out" },
+        0.2,
+      );
+      tl.fromTo(
+        ".chrome",
+        { backgroundPosition: "200% 0" },
+        { backgroundPosition: "-100% 0", duration: 1.4, ease: "power2.inOut" },
+        0.3,
+      );
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

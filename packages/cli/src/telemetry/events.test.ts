@@ -5,8 +5,13 @@ vi.mock("./client.js", () => ({
   trackEvent: (...args: unknown[]) => trackEvent(...args),
 }));
 
-const { trackRenderError, trackRenderObservation, trackCommandFailure, trackCliError } =
-  await import("./events.js");
+const {
+  trackRenderComplete,
+  trackRenderError,
+  trackRenderObservation,
+  trackCommandFailure,
+  trackCliError,
+} = await import("./events.js");
 
 describe("render telemetry events", () => {
   beforeEach(() => {
@@ -46,6 +51,31 @@ describe("render telemetry events", () => {
       "render_error",
       expect.objectContaining({ source: "studio" }),
       "browser-user-123",
+    );
+  });
+
+  it("sends split capture-stage timing fields on render_complete", () => {
+    trackRenderComplete({
+      durationMs: 6000,
+      fps: 30,
+      quality: "standard",
+      docker: false,
+      gpu: false,
+      stageCaptureMs: 5100,
+      stageCaptureSetupMs: 1860,
+      stageCaptureFrameMs: 3240,
+      captureAvgMs: 27,
+    });
+
+    expect(trackEvent).toHaveBeenCalledWith(
+      "render_complete",
+      expect.objectContaining({
+        stage_capture_ms: 5100,
+        stage_capture_setup_ms: 1860,
+        stage_capture_frame_ms: 3240,
+        capture_avg_ms: 27,
+      }),
+      undefined,
     );
   });
 

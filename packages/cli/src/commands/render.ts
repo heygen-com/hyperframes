@@ -64,6 +64,7 @@ import {
 } from "../telemetry/events.js";
 import { maybePromptRenderFeedback } from "../telemetry/feedback.js";
 import { renderJobObservabilityTelemetryPayload } from "../telemetry/renderObservability.js";
+import { normalizeSkillSlug } from "../telemetry/skill.js";
 import { bytesToMb } from "../telemetry/system.js";
 import { VERSION } from "../version.js";
 import { isDevMode } from "../utils/env.js";
@@ -71,7 +72,12 @@ import { buildDockerRunArgs, resolveDockerPlatform } from "../utils/dockerRunArg
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { runEnvironmentChecks } from "../browser/preflight.js";
 import type { ProducerLogger, RenderJob } from "@hyperframes/producer";
-import { isVideoFrameFormat, type VideoFrameFormat } from "@hyperframes/engine";
+import {
+  MAX_VP9_CPU_USED,
+  MIN_VP9_CPU_USED,
+  isVideoFrameFormat,
+  type VideoFrameFormat,
+} from "@hyperframes/engine";
 import {
   normalizeResolutionFlag,
   parseFps,
@@ -170,6 +176,12 @@ export default defineCommand({
       description: "Quality: draft, standard, high",
       default: "standard",
     },
+    skill: {
+      type: "string",
+      description:
+        "Authoring workflow skill that initiated this render (e.g. product-launch-video). " +
+        "Recorded on anonymous render telemetry for per-skill usage breakdowns; ignored unless it is a slug.",
+    },
     format: {
       type: "string",
       description:
@@ -220,6 +232,11 @@ export default defineCommand({
       type: "string",
       description: "Target video bitrate such as 10M. Mutually exclusive with --crf.",
     },
+    "vp9-cpu-used": {
+      type: "string",
+      description:
+        "libvpx-vp9 -cpu-used value for WebM encodes (-8 to 8). Higher is faster with a larger quality/size tradeoff. Env: PRODUCER_VP9_CPU_USED.",
+    },
     gpu: { type: "boolean", description: "Use GPU encoding", default: false },
     "browser-gpu": {
       type: "boolean",
@@ -229,6 +246,12 @@ export default defineCommand({
     quiet: {
       type: "boolean",
       description: "Suppress verbose output",
+      default: false,
+    },
+    debug: {
+      type: "boolean",
+      description:
+        "Write full render diagnostics and keep intermediate artifacts under the producer .debug directory.",
       default: false,
     },
     strict: {
@@ -362,6 +385,22 @@ export default defineCommand({
       process.exit(1);
     }
     const quality = qualityRaw as "draft" | "standard" | "high";
+
+    // ── Authoring skill (telemetry attribution) ────────────────────────────
+    // Optional slug naming the workflow skill that drove this render (e.g.
+    // "product-launch-video"), tagged onto render telemetry for per-skill usage
+    // breakdowns. Slug-gated (shared with the `events` command) so a caller
+    // can't push high-cardinality or PII strings into the anonymous event
+    // stream; a missing/invalid value is omitted.
+    const authoringSkill = normalizeSkillSlug(args.skill);
+    if (typeof args.skill === "string" && args.skill.trim() !== "" && !authoringSkill) {
+      // Surface a typo (e.g. camelCase) instead of silently losing attribution.
+      // Warning only — never fails the render.
+      process.stderr.write(
+        `hyperframes: ignoring --skill="${args.skill}" — not a valid slug ` +
+          "(lowercase letters/digits/hyphens, max 64); this render will be unattributed.\n",
+      );
+    }
 
     // ── Validate format ─────────────────────────────────────────────────
     const formatRaw = args.format ?? "mp4";
@@ -538,6 +577,7 @@ export default defineCommand({
     const browserGpuArg = args["browser-gpu"];
     const browserGpuMode = resolveBrowserGpuForCli(useDocker, browserGpuArg);
     const quiet = args.quiet ?? false;
+    const debug = args.debug ?? false;
     const batchJson = args.json ?? false;
     const effectiveQuiet = quiet || (batchPath != null && batchJson);
     const strictAll = args["strict-all"] ?? false;
@@ -567,6 +607,20 @@ export default defineCommand({
         process.exit(1);
       }
       crf = parsed;
+    }
+
+    let vp9CpuUsed: number | undefined;
+    if (args["vp9-cpu-used"] != null) {
+      const raw = args["vp9-cpu-used"];
+      const parsed = Number(raw);
+      if (!Number.isInteger(parsed) || parsed < MIN_VP9_CPU_USED || parsed > MAX_VP9_CPU_USED) {
+        errorBox(
+          "Invalid vp9-cpu-used",
+          `Got "${raw}". Must be an integer between ${MIN_VP9_CPU_USED} and ${MAX_VP9_CPU_USED}.`,
+        );
+        process.exit(1);
+      }
+      vp9CpuUsed = parsed;
     }
 
     if (args["video-bitrate"] != null && !videoBitrate) {
@@ -724,12 +778,14 @@ export default defineCommand({
       const renderOptionsBase: RenderOptions = {
         fps,
         quality,
+        authoringSkill,
         format,
         workers,
         gpu: useGpu,
         browserGpuMode,
         hdrMode,
         crf,
+        vp9CpuUsed,
         videoBitrate,
         quiet: batchQuiet,
         browserPath,
@@ -738,6 +794,7 @@ export default defineCommand({
         pageNavigationTimeoutMs,
         protocolTimeout,
         playerReadyTimeout,
+        debug,
         exitAfterComplete: false,
         throwOnError: true,
         skipFeedback: true,
@@ -779,6 +836,7 @@ export default defineCommand({
       await renderDocker(project.dir, outputPath, {
         fps,
         quality,
+        authoringSkill,
         format,
         gifLoop,
         workers,
@@ -786,9 +844,11 @@ export default defineCommand({
         browserGpuMode,
         hdrMode: args.sdr ? "force-sdr" : args.hdr ? "force-hdr" : "auto",
         crf,
+        vp9CpuUsed,
         videoBitrate,
         videoFrameFormat,
         quiet,
+        debug,
         variables,
         entryFile,
         outputResolution,
@@ -802,6 +862,7 @@ export default defineCommand({
       await renderLocal(project.dir, outputPath, {
         fps,
         quality,
+        authoringSkill,
         format,
         gifLoop,
         workers,
@@ -809,10 +870,12 @@ export default defineCommand({
         browserGpuMode,
         hdrMode: args.sdr ? "force-sdr" : args.hdr ? "force-hdr" : "auto",
         crf,
+        vp9CpuUsed,
         videoBitrate,
         videoFrameFormat,
         quiet,
         browserPath,
+        debug,
         variables,
         entryFile,
         outputResolution,
@@ -833,6 +896,8 @@ export interface SingleRenderResult {
 interface RenderOptions {
   fps: Fps;
   quality: "draft" | "standard" | "high";
+  /** Authoring workflow skill that drove this render (telemetry attribution). */
+  authoringSkill?: string;
   format: RenderFormat;
   gifLoop?: number;
   workers?: number;
@@ -845,9 +910,11 @@ interface RenderOptions {
   browserGpuMode?: "auto" | "hardware" | "software";
   hdrMode: "auto" | "force-hdr" | "force-sdr";
   crf?: number;
+  vp9CpuUsed?: number;
   videoBitrate?: string;
   videoFrameFormat?: VideoFrameFormat;
   quiet: boolean;
+  debug?: boolean;
   browserPath?: string;
   variables?: Record<string, unknown>;
   entryFile?: string;
@@ -1088,6 +1155,7 @@ async function renderDocker(
       browserGpu: options.browserGpuMode === "hardware",
       hdrMode: options.hdrMode,
       crf: options.crf,
+      vp9CpuUsed: options.vp9CpuUsed,
       videoBitrate: options.videoBitrate,
       videoFrameFormat: options.videoFrameFormat,
       quiet: options.quiet,
@@ -1095,6 +1163,7 @@ async function renderDocker(
       entryFile: options.entryFile,
       outputResolution: options.outputResolution,
       pageSideCompositing: options.pageSideCompositing,
+      debug: options.debug,
       pageNavigationTimeoutMs: options.pageNavigationTimeoutMs,
     },
   });
@@ -1130,6 +1199,7 @@ async function renderDocker(
     workers: options.workers,
     docker: true,
     gpu: options.gpu,
+    authoringSkill: options.authoringSkill,
     ...getMemorySnapshot(),
   });
 
@@ -1177,7 +1247,7 @@ export async function renderLocal(
 
   const startTime = Date.now();
   const logger = createRenderTelemetryLogger(
-    producer.createConsoleLogger?.("info") ?? createNoopProducerLogger(),
+    producer.createConsoleLogger?.(options.debug ? "debug" : "info") ?? createNoopProducerLogger(),
   );
 
   const job = producer.createRenderJob({
@@ -1195,6 +1265,7 @@ export async function renderLocal(
         : {}),
       ...(options.protocolTimeout != null && { protocolTimeout: options.protocolTimeout }),
       ...(options.playerReadyTimeout != null && { playerReadyTimeout: options.playerReadyTimeout }),
+      ...(options.vp9CpuUsed != null ? { vp9CpuUsed: options.vp9CpuUsed } : {}),
     }),
     hdrMode: options.hdrMode,
     crf: options.crf,
@@ -1203,6 +1274,7 @@ export async function renderLocal(
     variables: options.variables,
     entryFile: options.entryFile,
     outputResolution: options.outputResolution,
+    debug: options.debug,
   });
 
   const onProgress = options.quiet
@@ -1367,6 +1439,7 @@ function handleRenderError(
     docker,
     workers: options.workers,
     gpu: options.gpu,
+    authoringSkill: options.authoringSkill,
     elapsedMs: Date.now() - startTime,
     errorMessage: message,
     failedStage,
@@ -1412,6 +1485,7 @@ function trackRenderMetrics(
     workers: options.workers ?? perf?.workers,
     docker,
     gpu: options.gpu,
+    authoringSkill: options.authoringSkill,
     staticDedupEnabled: perf?.staticDedup?.enabled,
     staticDedupArmed: perf?.staticDedup?.armed,
     staticDedupSkipReason: perf?.staticDedup?.skipReason,
@@ -1429,6 +1503,8 @@ function trackRenderMetrics(
     stageVideoExtractMs: stages.videoExtractMs,
     stageAudioProcessMs: stages.audioProcessMs,
     stageCaptureMs: stages.captureMs,
+    stageCaptureSetupMs: stages.captureSetupMs,
+    stageCaptureFrameMs: stages.captureFrameMs,
     stageEncodeMs: stages.encodeMs,
     stageAssembleMs: stages.assembleMs,
     extractResolveMs: extract?.resolveMs,

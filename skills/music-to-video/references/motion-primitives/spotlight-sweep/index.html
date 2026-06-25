@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>20 · spotlight_sweep</title>
+    <script src="../assets/gsap.min.js"></script>
+    <style>
+      :root {
+        --hg-violet: #7c3aed;
+        --hg-violet-2: #a855f7;
+        --hg-bg: #0a0a0f;
+        --hg-fg: #f5f5fa;
+        --hg-dim: #6b6b78;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--hg-bg);
+        font-family: "Inter", system-ui, sans-serif;
+        color: var(--hg-fg);
+        -webkit-font-smoothing: antialiased;
+      }
+      #scene {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+      }
+      .dim-layer {
+        position: absolute;
+        inset: 0;
+        background: #03030a;
+      }
+      .hero-bright,
+      .hero-dim {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: "Playfair Display", serif;
+        font-weight: 900;
+        font-size: 320px;
+        letter-spacing: -0.04em;
+        white-space: nowrap;
+      }
+      .hero-dim {
+        color: rgba(245, 245, 250, 0.06);
+      }
+      .hero-bright {
+        color: var(--hg-fg);
+        text-shadow:
+          0 0 30px rgba(168, 85, 247, 0.4),
+          0 0 80px rgba(168, 85, 247, 0.2);
+        -webkit-mask-image: radial-gradient(
+          circle 360px at -400px 50%,
+          #000 0%,
+          rgba(0, 0, 0, 0.6) 60%,
+          transparent 80%
+        );
+        mask-image: radial-gradient(
+          circle 360px at -400px 50%,
+          #000 0%,
+          rgba(0, 0, 0, 0.6) 60%,
+          transparent 80%
+        );
+        will-change: mask-image;
+      }
+      .spotlight-glow {
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(
+          circle 380px at -400px 50%,
+          rgba(168, 85, 247, 0.18) 0%,
+          transparent 60%
+        );
+        will-change: background;
+        mix-blend-mode: screen;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="2"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="scene" class="clip" data-start="0" data-duration="2" data-track-index="1">
+        <div class="dim-layer"></div>
+        <div class="hero-dim">DISCOVER</div>
+        <div class="hero-bright" id="bright">DISCOVER</div>
+        <div class="spotlight-glow" id="glow"></div>
+      </div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      // Animate the spotlight x position via mask-image (use a proxy + onUpdate for smoothness)
+      const state = { x: -400 };
+      tl.to(
+        state,
+        {
+          x: 2300,
+          duration: 1.4,
+          ease: "power2.inOut",
+          onUpdate: function () {
+            const m = `radial-gradient(circle 360px at ${state.x}px 50%, #000 0%, rgba(0,0,0,0.6) 60%, transparent 80%)`;
+            const g = `radial-gradient(circle 380px at ${state.x}px 50%, rgba(168, 85, 247, 0.18) 0%, transparent 60%)`;
+            const bright = document.getElementById("bright");
+            const glow = document.getElementById("glow");
+            if (bright) {
+              bright.style.maskImage = m;
+              bright.style.webkitMaskImage = m;
+            }
+            if (glow) glow.style.background = g;
+          },
+        },
+        0.3,
+      );
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

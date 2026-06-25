@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>16 · liquid_morph</title>
+    <script src="../assets/gsap.min.js"></script>
+    <style>
+      :root {
+        --hg-violet: #7c3aed;
+        --hg-violet-2: #a855f7;
+        --hg-bg: #0a0a0f;
+        --hg-fg: #f5f5fa;
+        --hg-dim: #6b6b78;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--hg-bg);
+        font-family: "Inter", system-ui, sans-serif;
+        color: var(--hg-fg);
+        -webkit-font-smoothing: antialiased;
+      }
+      #scene {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+      }
+      .stage {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .blob-wrap {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .blob {
+        position: absolute;
+        width: 1100px;
+        height: 800px;
+        background: linear-gradient(135deg, #7c3aed 0%, #a855f7 60%, #d946ef 100%);
+        clip-path: polygon(
+          50% 5%,
+          65% 8%,
+          78% 16%,
+          88% 30%,
+          92% 50%,
+          88% 70%,
+          78% 84%,
+          65% 92%,
+          50% 95%,
+          35% 92%,
+          22% 84%,
+          12% 70%,
+          8% 50%,
+          12% 30%,
+          22% 16%,
+          35% 8%
+        );
+        will-change: clip-path, transform;
+        filter: blur(0.5px);
+      }
+      .hero {
+        font-family: "Playfair Display", serif;
+        font-style: italic;
+        font-weight: 900;
+        font-size: 280px;
+        letter-spacing: -0.04em;
+        color: var(--hg-fg);
+        white-space: nowrap;
+        position: relative;
+        z-index: 2;
+        mix-blend-mode: difference;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="2"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="scene" class="clip" data-start="0" data-duration="2" data-track-index="1">
+        <div class="blob-wrap"><div class="blob"></div></div>
+        <div class="stage"><div class="hero">liquid</div></div>
+      </div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      const BLOB_A =
+        "polygon(50% 5%, 65% 8%, 78% 16%, 88% 30%, 92% 50%, 88% 70%, 78% 84%, 65% 92%, 50% 95%, 35% 92%, 22% 84%, 12% 70%, 8% 50%, 12% 30%, 22% 16%, 35% 8%)";
+      const BLOB_B =
+        "polygon(38% 10%, 58% 4%, 75% 14%, 90% 28%, 95% 46%, 86% 60%, 80% 78%, 62% 88%, 46% 94%, 30% 86%, 16% 74%, 6% 58%, 10% 40%, 20% 22%, 30% 14%, 38% 10%)";
+      const BLOB_C =
+        "polygon(46% 8%, 62% 10%, 80% 20%, 92% 36%, 90% 52%, 92% 70%, 76% 86%, 58% 90%, 44% 94%, 28% 88%, 14% 76%, 10% 60%, 12% 44%, 18% 26%, 30% 12%, 38% 8%)";
+
+      tl.set(".blob", { clipPath: BLOB_A, scale: 0.95 }, 0);
+      tl.to(".blob", { clipPath: BLOB_B, scale: 1.05, duration: 0.7, ease: "power2.inOut" }, 0.2);
+      tl.to(".blob", { clipPath: BLOB_C, scale: 1.0, duration: 0.7, ease: "power2.inOut" }, 0.9);
+      tl.fromTo(
+        ".hero",
+        { opacity: 0, y: 30 },
+        { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" },
+        0.4,
+      );
+      tl.to(".blob", { rotation: 6, duration: 1.5, ease: "sine.inOut" }, 0.2);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

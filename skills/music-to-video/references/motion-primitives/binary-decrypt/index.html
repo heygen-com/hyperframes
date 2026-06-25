@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>08 · binary_decrypt</title>
+    <script src="../assets/gsap.min.js"></script>
+    <style>
+      :root {
+        --hg-violet: #7c3aed;
+        --hg-violet-2: #a855f7;
+        --hg-cyan: #2afff0;
+        --hg-bg: #0a0a0f;
+        --hg-fg: #f5f5fa;
+        --hg-dim: #6b6b78;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--hg-bg);
+        font-family: "Inter", system-ui, sans-serif;
+        color: var(--hg-fg);
+        -webkit-font-smoothing: antialiased;
+      }
+      #scene {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+      }
+      .stage {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .crypt {
+        font-family: "JetBrains Mono", monospace;
+        font-weight: 700;
+        font-size: 200px;
+        letter-spacing: 0.02em;
+        color: var(--hg-cyan);
+        text-shadow: 0 0 30px rgba(42, 255, 240, 0.5);
+      }
+      .crypt .char {
+        display: inline-block;
+        min-width: 1ch;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="2"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="scene" class="clip" data-start="0" data-duration="2" data-track-index="1">
+        <div class="stage">
+          <div class="crypt">
+            <span class="char" data-target="D">_</span><span class="char" data-target="E">_</span
+            ><span class="char" data-target="C">_</span><span class="char" data-target="R">_</span
+            ><span class="char" data-target="Y">_</span><span class="char" data-target="P">_</span
+            ><span class="char" data-target="T">_</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      const SCRAMBLE = "01█▓▒░▀▄■◆◇▪▫";
+      function scrambleChar(charIdx, phase) {
+        const tick = Math.floor(phase * 60);
+        const i = (charIdx * 7 + tick * 13 + 3) % SCRAMBLE.length;
+        return SCRAMBLE.charAt(i);
+      }
+      const cryptState = [{ p: 0 }, { p: 0 }, { p: 0 }, { p: 0 }, { p: 0 }, { p: 0 }, { p: 0 }];
+      cryptState.forEach((state, idx) => {
+        tl.to(
+          state,
+          {
+            p: 1,
+            duration: 0.85,
+            delay: idx * 0.05,
+            ease: "power2.out",
+            onUpdate: function () {
+              const spans = document.querySelectorAll(".crypt .char");
+              const span = spans[idx];
+              if (!span) return;
+              const target = span.getAttribute("data-target");
+              if (state.p >= 0.72) {
+                span.textContent = target;
+                span.style.color = "var(--hg-fg)";
+                span.style.textShadow = "0 0 30px rgba(168, 85, 247, 0.8)";
+              } else {
+                span.textContent = scrambleChar(idx, state.p);
+              }
+            },
+          },
+          0.15,
+        );
+      });
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

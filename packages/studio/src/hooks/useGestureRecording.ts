@@ -29,7 +29,7 @@ interface BasePosition {
 
 interface GsapRuntime {
   seek: (t: number) => void;
-  set: (target: string, vars: Record<string, number>) => void;
+  set: (target: string, vars: Record<string, number | string>) => void;
   selector: string;
   element: HTMLElement;
   startTime: number;
@@ -85,11 +85,18 @@ function connectGsapRuntime(
 ): GsapRuntime | null {
   try {
     const win = iframeEl.contentWindow as Window & {
-      gsap?: { set: (t: string, v: Record<string, number>) => void };
+      gsap?: { set: (t: string, v: Record<string, number | string>) => void };
       __timelines?: Record<string, { seek: (t: number) => void; duration: () => number }>;
       __player?: { getTime: () => number };
     };
-    const tl = win?.__timelines ? Object.values(win.__timelines)[0] : null;
+    // Pick the first REAL timeline. `__timelines` also carries the studio's
+    // `__proxied` marker (a boolean, no `.seek`); `Object.values(...)[0]` would grab
+    // it and fail the connect — the cause of the no-live-preview gesture bug.
+    const tl = win?.__timelines
+      ? (Object.entries(win.__timelines).find(
+          ([key, value]) => key !== "__proxied" && typeof value?.seek === "function",
+        )?.[1] ?? null)
+      : null;
     if (win?.gsap?.set && tl?.seek && selector) {
       const tlDuration = tl.duration();
       return {
@@ -105,7 +112,7 @@ function connectGsapRuntime(
       };
     }
   } catch {
-    /* cross-origin or missing runtime */
+    /* connect failed */
   }
   return null;
 }
@@ -125,14 +132,14 @@ function applyRuntimePreview(
 }
 
 function recordSample(r: RecordingRefs, time: number, properties: Record<string, number>): void {
-  const sampleProps = { ...properties };
-  // Subtract both the CSS var offset AND the pointer-element snap offset
-  // so the first sample doesn't include the snap-to-cursor jump.
-  if ("x" in sampleProps)
-    sampleProps.x -= r.cssVarOffset.x + r.pointerElementOffset.x / (r.scale || 1);
-  if ("y" in sampleProps)
-    sampleProps.y -= r.cssVarOffset.y + r.pointerElementOffset.y / (r.scale || 1);
-  r.samples.push({ time, properties: sampleProps });
+  // Record the FULL position the live preview shows (element centered on the
+  // pointer, with any manual path offset folded into basePosition). Do NOT
+  // subtract the path offset: when this gesture commits as a position tween the
+  // server strips the element's --hf-studio-offset (the tween owns position — see
+  // stripStudioEditsFromTarget in studio-api), so the keyframes must already
+  // include it. Subtracting it made the committed gesture play shoved off by the
+  // offset (the offset was removed twice).
+  r.samples.push({ time, properties: { ...properties } });
   r.trail.push({ x: r.pointer.x, y: r.pointer.y });
 }
 
@@ -204,7 +211,6 @@ interface RecordingRefs {
   basePosition: { x: number; y: number };
   cssVarOffset: { x: number; y: number };
   scale: number;
-  pointerElementOffset: { x: number; y: number };
   runtime: GsapRuntime | null;
   rafId: number;
   samples: GestureSample[];
@@ -223,7 +229,6 @@ function createRecordingRefs(): RecordingRefs {
     basePosition: { x: 0, y: 0 },
     cssVarOffset: { x: 0, y: 0 },
     scale: 1,
-    pointerElementOffset: { x: 0, y: 0 },
     runtime: null,
     rafId: 0,
     samples: [],
@@ -280,29 +285,20 @@ export function useGestureRecording() {
       r.accumulated = { opacity: base.baseOpacity, scale: base.baseScale, z: 0 };
       r.basePosition = { x: base.baseX, y: base.baseY };
 
+      // --- Phase 2: iframe → studio scale, measured BEFORE clearing the path offset ---
+      // The pointer deltas in the RAF loop are in studio-viewport pixels; divide by
+      // this scale to convert them to the iframe's composition pixels.
+      r.scale = computeIframeScale(iframeEl);
+
+      // Now clear the optimistic path offset (already folded into baseX/baseY).
       if (base.cssOffX || base.cssOffY) {
         element.style.setProperty("--hf-studio-offset-x", "0px");
         element.style.setProperty("--hf-studio-offset-y", "0px");
       }
 
-      // --- Phase 2: Connect to the iframe GSAP runtime ---
+      // --- Phase 3: Connect to the iframe GSAP runtime ---
       const selector = element.id ? `#${element.id}` : null;
       r.runtime = connectGsapRuntime(element, iframeEl, selector, elementEndTime);
-
-      // --- Phase 3: Compute iframe viewport → composition scale ---
-      r.scale = computeIframeScale(iframeEl);
-
-      // --- Phase 4: Element center for pointer-element offset ---
-      // element.getBoundingClientRect() is in the iframe's viewport.
-      // Convert to the studio (parent) viewport using the iframe's position and scale.
-      const iframeRect = iframeEl.getBoundingClientRect();
-      const elRect = element.getBoundingClientRect();
-      const iframeScale = r.scale || 1;
-      const elCenterViewport = {
-        x: iframeRect.left + (elRect.left + elRect.width / 2) * iframeScale,
-        y: iframeRect.top + (elRect.top + elRect.height / 2) * iframeScale,
-      };
-      r.pointerElementOffset = { x: 0, y: 0 };
 
       // --- Phase 5: Attach event listeners ---
       const handlePointerMove = (e: PointerEvent) => {
@@ -315,12 +311,6 @@ export function useGestureRecording() {
         // preventing an enormous bogus first keyframe from stale startPointer.
         if (!r.hasMoved) {
           r.startPointer = { x: r.pointer.x, y: r.pointer.y };
-          r.pointerElementOffset = {
-            x: r.pointer.x - elCenterViewport.x,
-            y: r.pointer.y - elCenterViewport.y,
-          };
-          r.basePosition.x += r.pointerElementOffset.x / iframeScale;
-          r.basePosition.y += r.pointerElementOffset.y / iframeScale;
           r.hasMoved = true;
         }
         r.scrollDelta += e.deltaY;
@@ -341,12 +331,12 @@ export function useGestureRecording() {
       r.startPointer = { ...r.pointer };
       const captureStart = (e: PointerEvent) => {
         if (!r.hasMoved) {
+          // Anchor the delta at the grab point — the element then moves by the
+          // pointer's *movement* from its actual position (preserving both the
+          // manual-drag start position and the grab offset). Do NOT snap the
+          // element's center to the pointer: that discarded the manual position
+          // and made the recorded 0% keyframe wrong.
           r.startPointer = { x: e.clientX, y: e.clientY };
-          const offX = e.clientX - elCenterViewport.x;
-          const offY = e.clientY - elCenterViewport.y;
-          r.pointerElementOffset = { x: offX, y: offY };
-          r.basePosition.x += offX / iframeScale;
-          r.basePosition.y += offY / iframeScale;
           r.hasMoved = true;
         }
       };
@@ -386,11 +376,14 @@ export function useGestureRecording() {
           try {
             applyRuntimePreview(r.runtime, time, properties);
           } catch {
+            // Preview failed — disable it for the rest of the gesture (recording
+            // continues). `r.runtime` is nulled so we don't retry on every frame.
             r.runtime = null;
           }
         }
 
         recordSample(r, time, properties);
+
         setRecordingDuration(time);
         r.rafId = requestAnimationFrame(tick);
       };
@@ -418,6 +411,18 @@ export function useGestureRecording() {
       const { element: el, savedVisibility, savedTranslate } = r.runtime;
       el.style.visibility = savedVisibility;
       el.style.setProperty("translate", savedTranslate || "");
+      // Drop the gesture's inline gsap transform before re-applying the path
+      // offset below, so the two don't briefly stack (the recorded keyframes
+      // already encode the full position, offset included). On commit the
+      // re-seek lands on the gesture's first keyframe; on cancel this leaves the
+      // element at its pre-recording position.
+      try {
+        r.runtime.set(r.runtime.selector, {
+          clearProps: "x,y,scale,scaleX,scaleY,rotation,rotationX,rotationY,opacity,z",
+        });
+      } catch {
+        /* runtime gone */
+      }
     }
     if (r.cssVarOffset.x || r.cssVarOffset.y) {
       const el = r.runtime?.element;

@@ -11,6 +11,20 @@ export interface Word {
   end: number;
 }
 
+export interface Cue {
+  text: string;
+  start: number;
+  end: number;
+}
+
+export interface WordsToCuesOptions {
+  maxChars?: number;
+  maxGap?: number;
+  /** Treat each entry as a finished cue (skip word-level grouping). Defaults to
+   *  auto-detection: true when any entry contains internal whitespace. */
+  preGrouped?: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // Format detection + parsing
 // ---------------------------------------------------------------------------
@@ -262,8 +276,159 @@ function parseVttTimestamp(ts: string): number {
   return 0;
 }
 
+/** Format SRT timestamp: seconds → 00:01:23,456 */
+function formatSrtTimestamp(seconds: number): string {
+  const { hours, minutes, wholeSeconds, milliseconds } = timestampParts(seconds);
+  return `${pad2(hours)}:${pad2(minutes)}:${pad2(wholeSeconds)},${pad3(milliseconds)}`;
+}
+
+/** Format VTT timestamp: seconds → 00:01:23.456 */
+function formatVttTimestamp(seconds: number): string {
+  const { hours, minutes, wholeSeconds, milliseconds } = timestampParts(seconds);
+  return `${pad2(hours)}:${pad2(minutes)}:${pad2(wholeSeconds)}.${pad3(milliseconds)}`;
+}
+
 function round3(n: number): number {
   return Math.round(n * 1000) / 1000;
+}
+
+function timestampParts(seconds: number): {
+  hours: number;
+  minutes: number;
+  wholeSeconds: number;
+  milliseconds: number;
+} {
+  const safeSeconds = Number.isFinite(seconds) ? seconds : 0;
+  const totalMs = Math.max(0, Math.round(safeSeconds * 1000));
+  const milliseconds = totalMs % 1000;
+  const totalSeconds = (totalMs - milliseconds) / 1000;
+  const wholeSeconds = totalSeconds % 60;
+  const totalMinutes = (totalSeconds - wholeSeconds) / 60;
+  const minutes = totalMinutes % 60;
+  const hours = (totalMinutes - minutes) / 60;
+  return { hours, minutes, wholeSeconds, milliseconds };
+}
+
+function pad2(n: number): string {
+  return n.toString().padStart(2, "0");
+}
+
+function pad3(n: number): string {
+  return n.toString().padStart(3, "0");
+}
+
+function endsSentence(text: string): boolean {
+  return /[.!?][)"'\]}]*$/.test(text);
+}
+
+function pushCue(cues: Cue[], cue: Cue | undefined): void {
+  if (!cue) return;
+  const text = cue.text.trim();
+  if (!text) return;
+  cues.push({ text, start: round3(cue.start), end: round3(cue.end) });
+}
+
+/** Whether `word` should start a new cue rather than extend `current`. */
+function breaksCue(
+  current: Cue,
+  word: Word,
+  text: string,
+  maxChars: number,
+  maxGap: number,
+): boolean {
+  const nextLength = current.text.length + 1 + text.length;
+  const gap = word.start - current.end;
+  return nextLength > maxChars || gap > maxGap;
+}
+
+/** Map each entry to its own cue (used when entries are already phrase-level). */
+function entriesToCues(words: Word[]): Cue[] {
+  const cues: Cue[] = [];
+  for (const word of words) {
+    pushCue(cues, { text: word.text, start: word.start, end: word.end });
+  }
+  return cues;
+}
+
+// Han + Hiragana + Katakana + CJK symbols/fullwidth. These scripts are written
+// without spaces between tokens, so whisper's per-token output must be joined
+// without a separator. Hangul (Korean) is intentionally excluded — it does use
+// inter-word spaces.
+const CJK_CHAR = /[　-〿぀-ヿ㐀-䶿一-鿿豈-﫿＀-￯]/;
+
+/** Join two adjacent tokens, omitting the space across a CJK boundary. */
+function joinTokens(left: string, right: string): string {
+  const a = left.at(-1) ?? "";
+  const b = right[0] ?? "";
+  const sep = CJK_CHAR.test(a) || CJK_CHAR.test(b) ? "" : " ";
+  return `${left}${sep}${right}`;
+}
+
+export function wordsToCues(words: Word[], opts: WordsToCuesOptions = {}): Cue[] {
+  // Phrase-level transcripts (imported .srt/.vtt cues) must keep their existing
+  // cue boundaries — re-grouping would merge distinct captions and lose timing.
+  // The caller can force this via `preGrouped`; otherwise infer it from the data
+  // (any entry containing internal whitespace is a multi-word phrase, so the
+  // whole transcript is phrase-level rather than word-level whisper output).
+  const preGrouped = opts.preGrouped ?? words.some((w) => /\s/.test(w.text.trim()));
+  if (preGrouped) return entriesToCues(words);
+
+  const maxChars = opts.maxChars ?? 42;
+  const maxGap = opts.maxGap ?? 0.8;
+  const cues: Cue[] = [];
+  let current: Cue | undefined;
+
+  const flush = (): void => {
+    pushCue(cues, current);
+    current = undefined;
+  };
+
+  for (const word of words) {
+    const text = word.text.trim();
+    if (!text) continue;
+
+    if (current && !breaksCue(current, word, text, maxChars, maxGap)) {
+      current.text = joinTokens(current.text, text);
+      current.end = word.end;
+    } else {
+      flush();
+      current = { text, start: word.start, end: word.end };
+    }
+
+    if (endsSentence(text)) flush();
+  }
+
+  flush();
+  return cues;
+}
+
+export function formatSrt(words: Word[], opts?: WordsToCuesOptions): string {
+  const cues = wordsToCues(words, opts);
+  if (cues.length === 0) return "";
+
+  return (
+    cues
+      .map(
+        (cue, i) =>
+          `${i + 1}\n${formatSrtTimestamp(cue.start)} --> ${formatSrtTimestamp(cue.end)}\n${cue.text}`,
+      )
+      .join("\n\n") + "\n"
+  );
+}
+
+export function formatVtt(words: Word[], opts?: WordsToCuesOptions): string {
+  const cues = wordsToCues(words, opts);
+  if (cues.length === 0) return "WEBVTT\n\n";
+
+  return (
+    "WEBVTT\n\n" +
+    cues
+      .map(
+        (cue) => `${formatVttTimestamp(cue.start)} --> ${formatVttTimestamp(cue.end)}\n${cue.text}`,
+      )
+      .join("\n\n") +
+    "\n"
+  );
 }
 
 // ---------------------------------------------------------------------------

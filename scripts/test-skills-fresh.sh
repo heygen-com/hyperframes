@@ -41,7 +41,7 @@
 #   5. Installs the full skills tree from the LOCAL repo via `npx skills add
 #      --agent <agent>`, then prunes the internal _meta/ authoring skills so the
 #      installed set matches what an end user gets.
-#   6. Verifies the router + 6 workflows + 6 domain skills landed.
+#   6. Verifies the router + 10 workflows + 6 domain skills landed.
 #   7. Prints the command to start the agent + example prompts to try.
 #
 # Iterate after editing:
@@ -234,7 +234,9 @@ fi
 say "Verifying skill installation..."
 
 ROUTER="hyperframes"
-WORKFLOWS=(product-launch-video faceless-explainer footage-recut pr-to-video general-video remotion-to-hyperframes motion-graphics)
+WORKFLOWS=(product-launch-video website-to-video faceless-explainer embedded-captions \
+           graphic-overlays pr-to-video motion-graphics general-video \
+           remotion-to-hyperframes slideshow)
 DOMAIN=(hyperframes-core hyperframes-creative hyperframes-animation hyperframes-cli hyperframes-media hyperframes-registry)
 
 MISSING=()
@@ -272,6 +274,8 @@ echo "Then type any request you want to test — the agent routes it to a workfl
 echo "  • \"make a product launch video for https://your-site.com/\"      → product-launch-video (exercises capture)"
 echo "  • \"explain how transformers work as a faceless explainer video\" → faceless-explainer"
 echo "  • \"make a video from this PR: owner/repo#123\"                    → pr-to-video"
-echo "  • \"recut this footage ./clip.mp4 with info-card overlays\"        → footage-recut"
+echo "  • \"add lower-thirds / overlay cards to ./clip.mp4\"               → graphic-overlays"
+echo "  • \"add captions/subtitles to ./clip.mp4\"                         → embedded-captions"
+echo "  • \"turn https://your-site.com/ into a site tour video\"           → website-to-video"
 echo "  • \"a logo reveal / title card / data montage\"                    → general-video"
 echo ""

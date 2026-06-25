@@ -10,7 +10,7 @@ Snapshot visual QA + one in-place fix pass + render. Dispatched only when Step 6
 
 1. **Snapshots** — `npx hyperframes inspect . --at <beat times>`; eyeball for: overflow / off-canvas, text collisions, empty frames, wrong content, motion that doesn't read.
 2. **One in-place repair pass** — `Edit` `compositions/index.html` for the visible issues. **Never change a fixed `data-duration`** (timing is set upstream; changing it breaks assembly). Re-run `lint`/`inspect`.
-3. **Render** — `(cd "$PROJECT_DIR" && npx hyperframes render . -q <quality> -o ./renders/video.mp4)` (add `--format webm` for an alpha overlay export). Verify the mp4 exists + duration matches.
+3. **Render** — `(cd "$PROJECT_DIR" && npx hyperframes render . --skill=motion-graphics -q <quality> -o ./renders/video.mp4)` (add `--format webm` for an alpha overlay export). Verify the mp4 exists + duration matches.
 
 ## STOP / escalate
 

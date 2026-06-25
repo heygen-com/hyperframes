@@ -256,9 +256,9 @@ hf_render_dir() {
   # bash 3.2 (macOS) throws on empty-array expansion under `set -u`, so branch
   # explicitly instead of splatting an optional --format array.
   if [[ -n "$fmt" ]]; then
-    node "$HF_CLI" render --dir "$proj" --fps "$FPS" --format "$fmt" --crf 11 -o "$out" &
+    node "$HF_CLI" render --skill=embedded-captions --dir "$proj" --fps "$FPS" --format "$fmt" --crf 11 -o "$out" &
   else
-    node "$HF_CLI" render --dir "$proj" --fps "$FPS" --crf 11 -o "$out" &
+    node "$HF_CLI" render --skill=embedded-captions --dir "$proj" --fps "$FPS" --crf 11 -o "$out" &
   fi
   local pid=$! start=$SECONDS elapsed
   while kill -0 "$pid" 2>/dev/null; do

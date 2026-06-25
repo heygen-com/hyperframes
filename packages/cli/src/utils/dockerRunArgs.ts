@@ -46,9 +46,11 @@ export interface DockerRenderOptions {
   browserGpu: boolean;
   hdrMode: "auto" | "force-hdr" | "force-sdr";
   crf?: number;
+  vp9CpuUsed?: number;
   videoBitrate?: string;
   videoFrameFormat?: "auto" | "jpg" | "png";
   quiet: boolean;
+  debug?: boolean;
   variables?: Record<string, unknown>;
   entryFile?: string;
   /** Output resolution preset (e.g. "landscape-4k"). Forwarded as `--resolution`. */
@@ -108,6 +110,10 @@ export function buildDockerRunArgs(input: DockerRunArgsInput): string[] {
     `${projectDir}:/project:ro`,
     "-v",
     `${outputDir}:/output`,
+    // Keep debug artifacts on the mounted host output path. The producer roots
+    // `.debug` at dirname(PRODUCER_RENDERS_DIR), so `/output/renders` maps to
+    // `/output/.debug/<job id>` instead of a disposable container path.
+    ...(options.debug ? ["-e", "PRODUCER_RENDERS_DIR=/output/renders"] : []),
     imageTag,
     "/project",
     "--output",
@@ -121,11 +127,13 @@ export function buildDockerRunArgs(input: DockerRunArgsInput): string[] {
     ...(options.gifLoop != null ? ["--gif-loop", String(options.gifLoop)] : []),
     ...(options.workers != null ? ["--workers", String(options.workers)] : []),
     ...(options.crf != null ? ["--crf", String(options.crf)] : []),
+    ...(options.vp9CpuUsed != null ? ["--vp9-cpu-used", String(options.vp9CpuUsed)] : []),
     ...(options.videoBitrate ? ["--video-bitrate", options.videoBitrate] : []),
     ...(options.videoFrameFormat && options.videoFrameFormat !== "auto"
       ? ["--video-frame-format", options.videoFrameFormat]
       : []),
     ...(options.quiet ? ["--quiet"] : []),
+    ...(options.debug ? ["--debug"] : []),
     ...(options.gpu ? ["--gpu"] : []),
     ...(options.browserGpu ? [] : ["--no-browser-gpu"]),
     ...(options.hdrMode === "force-hdr" ? ["--hdr"] : []),

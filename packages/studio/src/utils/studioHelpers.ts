@@ -185,6 +185,30 @@ export function findMatchingTimelineElementId(
   return null;
 }
 
+/**
+ * A selected DOM node may be a static descendant of a clip (e.g. the `.num` text
+ * inside a `#stat1` card) — not a timeline element itself. Walk up to the nearest
+ * ancestor that IS a clip so the timeline still selects + inline-expands around it.
+ */
+export function findTimelineIdByAncestor(
+  element: Element | null | undefined,
+  elements: TimelineElement[],
+  sourceFile: string,
+): string | null {
+  let ancestor = element?.parentElement ?? null;
+  while (ancestor) {
+    const id = ancestor.id;
+    if (id) {
+      const match = elements.find(
+        (el) => el.domId === id && (el.sourceFile ?? "index.html") === sourceFile,
+      );
+      if (match) return match.key ?? match.id;
+    }
+    ancestor = ancestor.parentElement;
+  }
+  return null;
+}
+
 export function resolveTimelineSelectionSeekTime(
   currentTime: number,
   element: Pick<TimelineElement, "start" | "duration"> | null | undefined,

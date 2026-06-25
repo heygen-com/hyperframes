@@ -27,7 +27,6 @@ import {
   truncateSnippet,
   stripJsComments,
   WINDOW_TIMELINE_ASSIGN_PATTERN,
-  TIMELINE_REGISTRY_ASSIGN_PATTERN,
 } from "../utils";
 
 // ── GSAP-specific types ────────────────────────────────────────────────────
@@ -171,6 +170,39 @@ function isHiddenGsapState(values: Record<string, string | number>): boolean {
   );
 }
 
+function oneValue(
+  values: Record<string, string | number>,
+  keys: string[],
+): string | number | undefined {
+  for (const key of keys) {
+    const value = values[key];
+    if (value !== undefined) return value;
+  }
+  return undefined;
+}
+
+function isVisibleGsapState(values: Record<string, string | number>): boolean {
+  const opacity = oneValue(values, ["opacity", "autoAlpha"]);
+  if (typeof opacity === "number") return opacity > 0;
+  if (typeof opacity === "string" && opacity.trim()) {
+    const numeric = Number(opacity);
+    if (Number.isFinite(numeric)) return numeric > 0;
+  }
+
+  const visibility = stringValue(values.visibility)?.toLowerCase();
+  if (visibility === "visible" || visibility === "inherit") return true;
+
+  const display = stringValue(values.display)?.toLowerCase();
+  if (display && display !== "none") return true;
+
+  return false;
+}
+
+function makesOverlayVisible(win: GsapWindow): boolean {
+  if (win.method === "from" && isHiddenGsapState(win.propertyValues)) return true;
+  return isVisibleGsapState(win.propertyValues);
+}
+
 function isSceneBoundaryExit(win: GsapWindow): boolean {
   if (win.end <= win.position) return false;
   if (win.method !== "to" && win.method !== "fromTo") return false;
@@ -283,6 +315,81 @@ function getSingleClassSelector(selector: string): string | null {
   return match?.groups?.name || null;
 }
 
+function readStyleProperty(style: string, property: string): string | null {
+  const escapedProperty = property.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = style.match(new RegExp(`(?:^|;)\\s*${escapedProperty}\\s*:\\s*([^;]+)`, "i"));
+  return match?.[1]?.trim() || null;
+}
+
+function cssZero(value: string | null): boolean {
+  if (!value) return false;
+  return /^0(?:\.0+)?(?:px|%|vw|vh|rem|em)?$/i.test(value.trim());
+}
+
+function styleHasHiddenInitialState(style: string): boolean {
+  const opacity = readStyleProperty(style, "opacity");
+  if (opacity && Number(opacity) === 0) return true;
+  if (readStyleProperty(style, "visibility")?.toLowerCase() === "hidden") return true;
+  if (readStyleProperty(style, "display")?.toLowerCase() === "none") return true;
+  return false;
+}
+
+function styleHasOpaqueBackground(style: string): boolean {
+  const background =
+    readStyleProperty(style, "background") || readStyleProperty(style, "background-color");
+  if (!background) return false;
+  const normalized = background.toLowerCase().replace(/\s+/g, "");
+  if (normalized === "transparent" || normalized === "none") return false;
+  if (/rgba?\([^)]*,0(?:\.0+)?\)$/.test(normalized)) return false;
+  if (/hsla?\([^)]*,0(?:\.0+)?\)$/.test(normalized)) return false;
+  return true;
+}
+
+function styleLooksFullFrameOverlay(style: string): boolean {
+  const position = readStyleProperty(style, "position")?.toLowerCase();
+  if (position !== "fixed" && position !== "absolute") return false;
+  const coversFrame =
+    cssZero(readStyleProperty(style, "inset")) ||
+    (cssZero(readStyleProperty(style, "top")) &&
+      cssZero(readStyleProperty(style, "right")) &&
+      cssZero(readStyleProperty(style, "bottom")) &&
+      cssZero(readStyleProperty(style, "left")));
+  return coversFrame && styleHasOpaqueBackground(style);
+}
+
+function collectSimpleStyleRules(styles: LintContext["styles"]): Map<string, string> {
+  const rules = new Map<string, string>();
+  for (const style of styles) {
+    for (const [, selectorList, body] of style.content.matchAll(/([^{}]+)\{([^}]+)\}/g)) {
+      if (!selectorList || !body) continue;
+      for (const selector of selectorList.split(",")) {
+        const token = selector.trim();
+        if (!/^[#.][A-Za-z0-9_-]+$/.test(token)) continue;
+        rules.set(token, `${rules.get(token) || ""};${body}`);
+      }
+    }
+  }
+  return rules;
+}
+
+function tagSimpleSelectors(tag: OpenTag): string[] {
+  const selectors: string[] = [];
+  const id = readAttr(tag.raw, "id");
+  if (id) selectors.push(`#${id}`);
+  const classes = readAttr(tag.raw, "class")?.split(/\s+/).filter(Boolean) ?? [];
+  for (const className of classes) selectors.push(`.${className}`);
+  return selectors;
+}
+
+function combinedTagStyle(tag: OpenTag, styleRules: Map<string, string>): string {
+  const styles = [readAttr(tag.raw, "style") || ""];
+  for (const selector of tagSimpleSelectors(tag)) {
+    const ruleStyle = styleRules.get(selector);
+    if (ruleStyle) styles.push(ruleStyle);
+  }
+  return styles.filter(Boolean).join(";");
+}
+
 // fallow-ignore-next-line complexity
 function cssTransformToGsapProps(cssTransform: string): string | null {
   const parts: string[] = [];
@@ -322,13 +429,85 @@ function cssTransformToGsapProps(cssTransform: string): string | null {
   return parts.length > 0 ? parts.join(", ") : null;
 }
 
+// ── CSS-transform ↔ GSAP-transform conflict matching ─────────────────────────
+
+// Transform components that COMBINE with a CSS translate/scale on the same
+// element. GSAP bakes the element's existing CSS transform in when it seeks, so
+// these stack rather than override in the capture path (e.g. CSS translateX(-50%)
+// + xPercent:-50 renders as -100% — off-centre). `rotation` is excluded: it maps
+// to CSS rotate(), which this rule treats separately (no false positive on spin).
+const CONFLICTING_TRANSLATE_PROPS = ["x", "y", "xPercent", "yPercent"];
+const CONFLICTING_SCALE_PROPS = ["scale", "scaleX", "scaleY"];
+
+type GsapTransformCall = {
+  method: string;
+  selector: string;
+  properties: string[];
+  raw: string;
+};
+
+// Decompose a (possibly grouped / descendant / compound) GSAP target selector
+// into the simple `#id` / `.class` tokens of the elements it actually targets —
+// the RIGHTMOST compound of each comma group is the targeted element. This lets a
+// CSS rule keyed by a simple selector (`.m04-label`) match a scoped GSAP selector
+// (`"#root .m04-label, #root .m04-sub"`), which the prior exact-string lookup
+// missed — so every scoped/grouped selector slipped past the rule entirely.
+function targetedSelectorTokens(selector: string): Set<string> {
+  const tokens = new Set<string>();
+  for (const group of selector.split(",")) {
+    const compounds = group
+      .trim()
+      .split(/[\s>+~]+/)
+      .filter(Boolean);
+    const last = compounds[compounds.length - 1];
+    if (!last) continue;
+    const simple = last.match(/[#.][A-Za-z0-9_-]+/g);
+    if (simple) for (const token of simple) tokens.add(token);
+  }
+  return tokens;
+}
+
+// Find a CSS transform conflicting with a GSAP target selector: exact-string
+// match first (fast path + back-compat with the original behaviour), then a
+// token match so scoped/grouped/descendant selectors resolve to their class/id.
+function matchCssTransform(gsapSelector: string, cssMap: Map<string, string>): string | undefined {
+  if (cssMap.size === 0) return undefined;
+  const direct = cssMap.get(gsapSelector);
+  if (direct) return direct;
+  const tokens = targetedSelectorTokens(gsapSelector);
+  for (const [cssSelector, value] of cssMap) {
+    if (tokens.has(cssSelector)) return value;
+  }
+  return undefined;
+}
+
+// Scan for STANDALONE `gsap.set/to/from/fromTo("selector", { ...props })` calls.
+// The acorn timeline parser only captures calls rooted on the timeline var
+// (`tl.to`, `tl.set`, …); a top-level `gsap.set("#root .label", { xPercent: -50 })`
+// — a common way to seat shared base transforms before the timeline runs — is
+// invisible to it, so the conflict rule never saw it. Variable selectors
+// (`gsap.set(kicker, …)`) can't be resolved statically and are skipped.
+function extractStandaloneGsapTransformCalls(script: string): GsapTransformCall[] {
+  const calls: GsapTransformCall[] = [];
+  const pattern = /gsap\.(set|to|from|fromTo)\s*\(\s*(["'])([^"']+)\2\s*,\s*\{([^{}]*)\}/g;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(script)) !== null) {
+    const method = match[1] ?? "set";
+    const selector = match[3] ?? "";
+    const propsBody = match[4] ?? "";
+    const properties = [...propsBody.matchAll(/([A-Za-z_$][\w$]*)\s*:/g)].map((m) => m[1] ?? "");
+    calls.push({ method, selector, properties, raw: truncateSnippet(match[0]) ?? match[0] });
+  }
+  return calls;
+}
+
 // ── GSAP rules ─────────────────────────────────────────────────────────────
 
 // fallow-ignore-next-line complexity
 export const gsapRules: LintRule<LintContext>[] = [
   // overlapping_gsap_tweens + gsap_animates_clip_element + unscoped_gsap_selector
   // fallow-ignore-next-line complexity
-  async ({ source, tags, scripts, rootCompositionId }) => {
+  async ({ source, tags, scripts, styles, rootCompositionId }) => {
     const findings: HyperframeLintFinding[] = [];
 
     // Build clip element selector map
@@ -353,6 +532,8 @@ export const gsapRules: LintRule<LintContext>[] = [
 
     const classUsage = countClassUsage(tags);
     const clipStartBoundariesByComposition = collectClipStartBoundariesByComposition(source, tags);
+    const styleRules = collectSimpleStyleRules(styles);
+    const reportedVisibleOverlayKeys = new Set<string>();
 
     for (const script of scripts) {
       const localTimelineCompId = readRegisteredTimelineCompositionId(script.content);
@@ -413,6 +594,59 @@ export const gsapRules: LintRule<LintContext>[] = [
             snippet: truncateSnippet(win.raw),
           });
         }
+      }
+
+      // gsap_fullscreen_overlay_starts_visible
+      for (const tag of tags) {
+        const selectors = tagSimpleSelectors(tag);
+        if (selectors.length === 0) continue;
+        const overlayKey = readAttr(tag.raw, "id") || String(tag.index);
+        if (reportedVisibleOverlayKeys.has(overlayKey)) continue;
+        const authoredStyle = combinedTagStyle(tag, styleRules);
+        if (!authoredStyle || !styleLooksFullFrameOverlay(authoredStyle)) continue;
+        if (styleHasHiddenInitialState(authoredStyle)) continue;
+
+        const visibilityWindows = gsapWindows
+          .filter((win) => {
+            const tokens = targetedSelectorTokens(win.targetSelector);
+            if (!selectors.some((selector) => tokens.has(selector))) return false;
+            return win.properties.some((prop) =>
+              ["opacity", "autoAlpha", "visibility", "display"].includes(prop),
+            );
+          })
+          .sort((a, b) => a.position - b.position);
+        const startsHiddenAtZero = visibilityWindows.some(
+          (win) =>
+            win.position <= SCENE_BOUNDARY_EPSILON_SECONDS && isHiddenGsapState(win.propertyValues),
+        );
+        if (startsHiddenAtZero) continue;
+        const firstVisible = visibilityWindows.find((win) => makesOverlayVisible(win));
+        if (!firstVisible) continue;
+        const selector =
+          selectors.find((candidate) =>
+            targetedSelectorTokens(firstVisible.targetSelector).has(candidate),
+          ) ||
+          selectors[0] ||
+          tag.name;
+        const laterHidden = visibilityWindows.some(
+          (win) => win.position >= firstVisible.position && isHiddenGsapState(win.propertyValues),
+        );
+        if (firstVisible.method !== "from" && !laterHidden) continue;
+
+        reportedVisibleOverlayKeys.add(overlayKey);
+        findings.push({
+          code: "gsap_fullscreen_overlay_starts_visible",
+          severity: "error",
+          message:
+            `Full-frame overlay "${selector}" starts visible before its first GSAP opacity tween at ` +
+            `${firstVisible.position.toFixed(2)}s. It will cover earlier render frames, often as a blank/white video.`,
+          selector,
+          elementId: readAttr(tag.raw, "id") || undefined,
+          fixHint:
+            `Add \`opacity: 0\` to "${selector}" in CSS/inline styles, or add ` +
+            `\`tl.set("${selector}", { opacity: 0 }, 0)\` before the reveal tween.`,
+          snippet: truncateSnippet(firstVisible.raw),
+        });
       }
 
       // gsap_animates_clip_element — only error when GSAP animates visibility/display
@@ -506,27 +740,40 @@ export const gsapRules: LintRule<LintContext>[] = [
       if (!/gsap\.timeline/.test(script.content)) continue;
       const windows = await cachedExtractGsapWindows(script.content);
 
+      // Two sources of transform-setting calls: timeline-rooted tweens (from the
+      // acorn parser) and standalone gsap.* calls (regex — the parser ignores
+      // these). Normalize both into one shape and run the same conflict check.
+      const calls: GsapTransformCall[] = [
+        ...windows.map((win) => ({
+          method: win.method,
+          selector: win.targetSelector,
+          properties: win.properties,
+          raw: win.raw,
+        })),
+        ...extractStandaloneGsapTransformCalls(stripJsComments(script.content)),
+      ];
+
       type Conflict = { cssTransform: string; props: Set<string>; raw: string };
       const conflicts = new Map<string, Conflict>();
 
-      for (const win of windows) {
+      for (const call of calls) {
         // from() and fromTo() both supply explicit start values so GSAP owns
         // the full transform from t=0, making the CSS conflict moot
-        if (win.method === "fromTo" || win.method === "from") continue;
-        const sel = win.targetSelector;
-        const cssKey = sel.startsWith("#") || sel.startsWith(".") ? sel : `#${sel}`;
-        const translateProps = win.properties.filter((p) =>
-          ["x", "y", "xPercent", "yPercent"].includes(p),
+        if (call.method === "fromTo" || call.method === "from") continue;
+        const sel = call.selector;
+        const translateProps = call.properties.filter((p) =>
+          CONFLICTING_TRANSLATE_PROPS.includes(p),
         );
-        const scaleProps = win.properties.filter((p) => p === "scale");
+        const scaleProps = call.properties.filter((p) => CONFLICTING_SCALE_PROPS.includes(p));
         const cssFromTranslate =
-          translateProps.length > 0 ? cssTranslateSelectors.get(cssKey) : undefined;
-        const cssFromScale = scaleProps.length > 0 ? cssScaleSelectors.get(cssKey) : undefined;
+          translateProps.length > 0 ? matchCssTransform(sel, cssTranslateSelectors) : undefined;
+        const cssFromScale =
+          scaleProps.length > 0 ? matchCssTransform(sel, cssScaleSelectors) : undefined;
         if (!cssFromTranslate && !cssFromScale) continue;
         const existing = conflicts.get(sel) ?? {
           cssTransform: [cssFromTranslate, cssFromScale].filter(Boolean).join(" "),
           props: new Set<string>(),
-          raw: win.raw,
+          raw: call.raw,
         };
         for (const p of [...translateProps, ...scaleProps]) existing.props.add(p);
         conflicts.set(sel, existing);
@@ -768,6 +1015,43 @@ export const gsapRules: LintRule<LintContext>[] = [
     return findings;
   },
 
+  // gsap_timeline_registered_before_async_build — registering window.__timelines[id]
+  // BEFORE the timeline is built inside document.fonts.ready (or any async callback)
+  // leaves an EMPTY timeline registered. The runtime's sub-composition readiness gate
+  // treats "key present" as "ready" and nests the child ONCE, while still empty — so the
+  // animation never renders when this composition is mounted as a sub-composition.
+  // Register only AFTER the build completes (the documented async-setup contract).
+  ({ scripts }) => {
+    const findings: HyperframeLintFinding[] = [];
+    for (const script of scripts) {
+      const content = stripJsComments(script.content);
+      const regIdx = content.search(/window\s*\.\s*__timelines\s*\[/);
+      if (regIdx < 0) continue;
+      const fontsReadyIdx = content.search(/document\s*\.\s*fonts\s*\.\s*ready/);
+      if (fontsReadyIdx < 0) continue;
+      // Registering after the async boundary is the correct pattern — skip it.
+      if (regIdx >= fontsReadyIdx) continue;
+      // Confirm the build is actually deferred past the boundary (a tween/build call
+      // appears after document.fonts.ready), i.e. the registered timeline starts empty.
+      const tail = content.slice(fontsReadyIdx);
+      if (!/\.(?:to|from|fromTo)\s*\(|buildEffect\s*\(/.test(tail)) continue;
+      findings.push({
+        code: "gsap_timeline_registered_before_async_build",
+        severity: "error",
+        message:
+          "window.__timelines is assigned BEFORE the timeline is built inside " +
+          "document.fonts.ready. An empty timeline registered early gets nested empty " +
+          "when this composition is used as a sub-composition (the readiness gate treats " +
+          '"key present" as "ready" and never re-nests), so the animation renders blank.',
+        fixHint:
+          "Move the `window.__timelines[id] = tl;` assignment to the END of the " +
+          "document.fonts.ready callback, after the tweens are added. Optionally call " +
+          "window.__hfForceTimelineRebind() right after, to re-nest the populated timeline.",
+      });
+    }
+    return findings;
+  },
+
   // gsap_from_opacity_noop — CSS opacity:0 + gsap.from({opacity:0}) = invisible forever
   // fallow-ignore-next-line complexity
   async ({ styles, scripts, tags }) => {
@@ -852,41 +1136,6 @@ export const gsapRules: LintRule<LintContext>[] = [
           snippet: truncateSnippet(content.slice(contextStart, contextEnd)),
         });
       }
-    }
-    return findings;
-  },
-
-  // gsap_studio_edit_blocked
-  // When a script both registers a timeline on window.__timelines AND contains
-  // GSAP mutation calls targeting element selectors, Studio's isElementGsapTargeted
-  // check returns true for those elements and silently skips saving drag/resize
-  // position changes back to source HTML.
-  ({ scripts }) => {
-    const findings: HyperframeLintFinding[] = [];
-    const GSAP_MUTATION_SELECTOR_RE = /\.\s*(?:set|to|from|fromTo)\s*\(\s*["']([#.][^"']+)["']/g;
-
-    for (const script of scripts) {
-      const content = stripJsComments(script.content);
-      if (!TIMELINE_REGISTRY_ASSIGN_PATTERN.test(content)) continue;
-
-      const targets = new Set<string>();
-      let match: RegExpExecArray | null;
-      const re = new RegExp(GSAP_MUTATION_SELECTOR_RE.source, "g");
-      while ((match = re.exec(content)) !== null) {
-        if (match[1]) targets.add(match[1]);
-      }
-      if (targets.size === 0) continue;
-
-      const selList = [...targets].map((s) => `"${s}"`).join(", ");
-      findings.push({
-        code: "gsap_studio_edit_blocked",
-        severity: "warning",
-        message: `GSAP tweens target ${selList} in a registered timeline. Studio cannot save drag/resize edits to these elements — the runtime skips write-back for any element that appears in a registered window.__timelines timeline.`,
-        fixHint:
-          "The hyperframes runtime registers timelines automatically. Do not add a manual window.__timelines script unless GSAP intentionally controls element positions. " +
-          "For initial visibility states, use CSS (e.g. opacity:0) instead of gsap.set(). " +
-          "If GSAP must own these elements' positions, avoid drag-editing them in Studio.",
-      });
     }
     return findings;
   },

@@ -164,9 +164,7 @@ export function useTimelineSyncCallbacks({
         const dedupedMissing = missing.filter((m) => !finalIds.has(m.id));
         syncTimelineElements([...updatedEls, ...dedupedMissing]);
       }
-    } catch (err) {
-      console.warn("[useTimelinePlayer] enrichMissingCompositions failed", err);
-    }
+    } catch {}
   }, [iframeRef, syncTimelineElements]);
 
   const initializeAdapter = useCallback(() => {
@@ -174,8 +172,16 @@ export function useTimelineSyncCallbacks({
     if (!adapter || adapter.getDuration() <= 0) return false;
 
     adapter.pause();
-    const seekTo = pendingSeekRef.current;
+    // Honor a seek requested before the adapter was ready. It may sit in either
+    // place: `pendingSeekRef` if the store subscription was mounted when requestSeek
+    // fired, or only in the store's `requestedSeekTime` if it fired earlier still
+    // (deep-link hydration runs before the player subscription mounts, so the request
+    // never reaches pendingSeekRef). Reconciling with the store here is what makes a
+    // deep-linked `?t=` land instead of starting at 0.
+    const storeSeek = usePlayerStore.getState().requestedSeekTime;
+    const seekTo = pendingSeekRef.current ?? storeSeek;
     pendingSeekRef.current = null;
+    if (storeSeek != null) usePlayerStore.getState().clearSeekRequest();
     const startTime = seekTo != null ? Math.min(seekTo, adapter.getDuration()) : 0;
 
     adapter.seek(startTime);
@@ -233,9 +239,7 @@ export function useTimelineSyncCallbacks({
           if (fallbackElement) syncTimelineElements([fallbackElement]);
         }
       }
-    } catch (err) {
-      console.warn("[useTimelinePlayer] Could not read timeline elements from iframe", err);
-    }
+    } catch {}
     return true;
   }, [
     getAdapter,
@@ -287,9 +291,6 @@ export function useTimelineSyncCallbacks({
     probeIntervalRef.current = setTimeout(() => {
       if (!settled) {
         trySettle();
-        if (!settled) {
-          console.warn("[useTimelinePlayer] Runtime did not signal readiness within 5s");
-        }
       }
       window.removeEventListener("message", onMessage);
     }, 5000) as unknown as ReturnType<typeof setInterval>;

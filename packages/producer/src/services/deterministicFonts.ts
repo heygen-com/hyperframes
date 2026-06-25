@@ -208,6 +208,7 @@ function extractRequestedFontFamilies(html: string): Map<string, string> {
     for (const originalCase of families) {
       const normalized = originalCase.toLowerCase();
       if (!normalized || GENERIC_FAMILIES.has(normalized)) continue;
+      if (normalized.startsWith("var(")) continue;
       if (!requested.has(normalized)) requested.set(normalized, originalCase);
     }
   }

@@ -503,6 +503,46 @@ const tl = gsap.timeline();
     expect(body.error).toContain("fromProperties");
   });
 
+  // A rotation-only keyframe set must strip the legacy studio rotation channel just
+  // as a position keyframe set strips the offset channel — otherwise --hf-studio-rotation
+  // double-applies on top of the new GSAP rotation tween.
+  it("replace-with-keyframes strips studio rotation edits for a rotation-only keyframe set", async () => {
+    const projectDir = createProjectDir();
+    const ROT_COMP = `<!DOCTYPE html><html><body data-duration="3">
+<div id="box" data-start="0" data-duration="3" data-hf-studio-rotation="30" style="--hf-studio-rotation:30deg;rotate:30deg"></div>
+<script data-hyperframes-gsap>
+const tl = gsap.timeline();
+tl.to("#box", { opacity: 1, duration: 1 }, 0);
+</script>
+</body></html>`;
+    writeHtml(projectDir, "rot.html", ROT_COMP);
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const anim = await getFirstAnimation(app, "rot.html");
+    const res = await app.request("http://localhost/projects/demo/gsap-mutations/rot.html", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "replace-with-keyframes",
+        animationId: anim.id,
+        targetSelector: "#box",
+        position: 0,
+        duration: 1,
+        keyframes: [
+          { percentage: 0, properties: { rotation: 0 } },
+          { percentage: 100, properties: { rotation: 90 } },
+        ],
+      }),
+    });
+    const result = (await res.json()) as { ok: boolean; after: string };
+
+    expect(res.status).toBe(200);
+    expect(result.ok).toBe(true);
+    expect(result.after).not.toContain("--hf-studio-rotation");
+    expect(result.after).not.toContain("data-hf-studio-rotation");
+  });
+
   it("edits a template-wrapped tween in place, preserving gsap.set and the IIFE", async () => {
     const projectDir = createProjectDir();
     writeComp(projectDir, "scene.html", TEMPLATE_COMP);

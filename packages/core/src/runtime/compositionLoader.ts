@@ -26,6 +26,117 @@ type PendingScript =
 
 const EXTERNAL_SCRIPT_LOAD_TIMEOUT_MS = 8000;
 const BARE_RELATIVE_PATH_RE = /^(?![a-zA-Z][a-zA-Z\d+\-.]*:)(?!\/\/)(?!\/)(?!\.\.?\/).+/;
+const CSS_URL_RE = /\burl\(\s*(["']?)([^)"']+)\1\s*\)/g;
+const PATH_ATTRS = ["src", "href"] as const;
+
+/**
+ * Return true for URLs/prefixes that should never be rewritten — absolute
+ * URLs, protocol-relative, data:, hash fragments, root-relative. Mirrors
+ * the compiler's `isNonRelativeUrl` so server-side bundling and client-side
+ * runtime rewrite use the same rules.
+ */
+function isNonRelativeRuntimeUrl(value: string): boolean {
+  return (
+    !value ||
+    value.startsWith("http://") ||
+    value.startsWith("https://") ||
+    value.startsWith("//") ||
+    value.startsWith("data:") ||
+    value.startsWith("#") ||
+    value.startsWith("/")
+  );
+}
+
+/**
+ * Resolve a relative asset path from a sub-composition's URL to one that
+ * works in the live document.
+ *
+ * Server-side `inlineSubCompositions` rewrites `../foo.svg` from
+ * `compositions/scene.html` to `foo.svg` (project root). When the runtime
+ * mounts a sub-composition by fetching its HTML and importing its nodes
+ * into the main document, no such rewriting happens — so a `<video
+ * src="../../assets/x.mp4">` authored from `compositions/frames/*.html`
+ * resolves against the main document's base, climbing **above** the
+ * project root (e.g. `/api/projects/assets/x.mp4`) and 404s. This is the
+ * Studio-preview-vs-render divergence noted in the bug report.
+ *
+ * For each path that traverses up with `../`, resolve against the
+ * sub-composition's URL and return an absolute URL the browser can use
+ * directly. Plain relative paths (`assets/x.mp4`) and absolute / special
+ * URLs are returned unchanged — they already resolve correctly via the
+ * main document's base.
+ */
+function rewriteRuntimeAssetPath(value: string, compositionUrl: URL | null): string {
+  if (!compositionUrl) return value;
+  const trimmed = value.trim();
+  if (isNonRelativeRuntimeUrl(trimmed)) return value;
+  if (!trimmed.startsWith("../") && trimmed !== "..") return value;
+  try {
+    return new URL(trimmed, compositionUrl).href;
+  } catch {
+    return value;
+  }
+}
+
+function rewriteRuntimeCssAssetUrls(cssText: string, compositionUrl: URL | null): string {
+  if (!compositionUrl || !cssText) return cssText;
+  return cssText.replace(CSS_URL_RE, (full, quote: string, rawUrl: string) => {
+    const rewritten = rewriteRuntimeAssetPath(rawUrl || "", compositionUrl);
+    if (rewritten === rawUrl) return full;
+    return `url(${quote || ""}${rewritten}${quote || ""})`;
+  });
+}
+
+function rewritePathAttrsInTree(root: ParentNode, compositionUrl: URL): void {
+  for (const el of Array.from(root.querySelectorAll<Element>("[src], [href]"))) {
+    for (const attr of PATH_ATTRS) {
+      const value = el.getAttribute(attr);
+      if (value == null) continue;
+      const rewritten = rewriteRuntimeAssetPath(value, compositionUrl);
+      if (rewritten !== value) el.setAttribute(attr, rewritten);
+    }
+  }
+}
+
+function rewriteInlineStyleUrlsInTree(root: ParentNode, compositionUrl: URL): void {
+  for (const el of Array.from(root.querySelectorAll<Element>("[style]"))) {
+    const value = el.getAttribute("style");
+    if (value == null) continue;
+    const rewritten = rewriteRuntimeCssAssetUrls(value, compositionUrl);
+    if (rewritten !== value) el.setAttribute("style", rewritten);
+  }
+}
+
+function rewriteStyleElementUrlsInTree(root: ParentNode, compositionUrl: URL): void {
+  for (const styleEl of Array.from(root.querySelectorAll<HTMLStyleElement>("style"))) {
+    const text = styleEl.textContent || "";
+    const rewritten = rewriteRuntimeCssAssetUrls(text, compositionUrl);
+    if (rewritten !== text) styleEl.textContent = rewritten;
+  }
+}
+
+/**
+ * Rewrite relative asset paths in a parsed sub-composition document so
+ * that `../`-traversing paths resolve against the sub-composition's URL
+ * rather than the main document's base. Touches `[src]`, `[href]`,
+ * `[style]` url(...) references, and `<style>` element CSS — the same
+ * surface the server-side `inlineSubCompositions` rewrites.
+ *
+ * Recurses into `<template>` content because authored compositions wrap
+ * their rendered body in a `<template>` and querySelectorAll does not
+ * enter template content (it lives in a detached DocumentFragment).
+ * Without recursion, the rewrite would miss every `<video>` and
+ * `<img>` that an author placed inside the canonical template wrapper.
+ */
+function rewriteSubCompositionAssetPaths(root: ParentNode, compositionUrl: URL | null): void {
+  if (!compositionUrl) return;
+  rewritePathAttrsInTree(root, compositionUrl);
+  rewriteInlineStyleUrlsInTree(root, compositionUrl);
+  rewriteStyleElementUrlsInTree(root, compositionUrl);
+  for (const templateEl of Array.from(root.querySelectorAll<HTMLTemplateElement>("template"))) {
+    rewriteSubCompositionAssetPaths(templateEl.content, compositionUrl);
+  }
+}
 
 function uniqueCompositionId(baseId: string, index: number): string {
   return `${baseId}__hf${index}`;
@@ -580,6 +691,16 @@ export async function loadExternalCompositions(
         const html = await response.text();
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, "text/html");
+        // Rewrite project-root-traversing (`../`) asset paths against the
+        // sub-composition's URL before extracting any nodes. Without this,
+        // `<video src="../../assets/x.mp4">` authored from
+        // `compositions/frames/scene.html` resolves against the main
+        // document's base (the project preview root) and climbs above it
+        // to 404 — the Studio-preview-vs-render divergence reported by
+        // OSS users. The server-side bundler already does this for the
+        // baked render via `inlineSubCompositions`; this is the runtime
+        // mirror so live preview matches.
+        rewriteSubCompositionAssetPaths(doc, compositionUrl);
         const template =
           (authoredCompositionId
             ? doc.querySelector<HTMLTemplateElement>(

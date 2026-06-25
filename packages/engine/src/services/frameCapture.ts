@@ -28,6 +28,7 @@ import {
   getCdpSession,
   pageScreenshotCapture,
   initTransparentBackground,
+  shouldDefaultCaptureBeyondViewport,
 } from "./screenshotService.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import type {
@@ -310,6 +311,18 @@ export async function driveWarmupTicks(
   }
 }
 
+export function resolveCaptureSessionOptions(
+  options: CaptureOptions,
+  browserVersion: string,
+  platform: NodeJS.Platform = process.platform,
+): CaptureOptions {
+  return {
+    ...options,
+    captureBeyondViewport:
+      options.captureBeyondViewport ?? shouldDefaultCaptureBeyondViewport(browserVersion, platform),
+  };
+}
+
 async function waitForCloseWithTimeout(promise: Promise<unknown>): Promise<boolean> {
   let timedOut = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -417,6 +430,7 @@ export async function createCaptureSession(
     }, variablesJson);
   }
   const browserVersion = await browser.version();
+  const sessionOptions = resolveCaptureSessionOptions(options, browserVersion);
   const expectedMajor = config?.expectedChromiumMajor;
   if (Number.isFinite(expectedMajor)) {
     const actualChromiumMajor = Number.parseInt(
@@ -430,9 +444,9 @@ export async function createCaptureSession(
     }
   }
   const viewport: Viewport = {
-    width: options.width,
-    height: options.height,
-    deviceScaleFactor: options.deviceScaleFactor || 1,
+    width: sessionOptions.width,
+    height: sessionOptions.height,
+    deviceScaleFactor: sessionOptions.deviceScaleFactor || 1,
   };
   await page.setViewport(viewport);
 
@@ -446,7 +460,7 @@ export async function createCaptureSession(
   return {
     browser,
     page,
-    options,
+    options: sessionOptions,
     serverUrl,
     outputDir,
     onBeforeCapture,
@@ -1931,4 +1945,26 @@ export function getCapturePerfSummary(session: CaptureSession): CapturePerfSumma
     staticDedupPredicted: session.staticFrames?.size ?? 0,
     staticDedupSkipReason: session.staticDedupSkipReason,
   };
+}
+
+// ── Transient browser error classification ─────────────────────────────────
+// Puppeteer/Chrome can fail with transient errors that succeed on retry with a
+// fresh browser session. These are infrastructure-level failures (frame
+// detachment, connection drop, OOM kill, launch failure) — NOT composition bugs.
+
+const TRANSIENT_BROWSER_ERROR_PATTERNS = [
+  /Navigating frame was detached/i,
+  /Target closed/i,
+  /Session closed/i,
+  /browser has disconnected/i,
+  /Page crashed/i,
+  /Execution context was destroyed/i,
+  /Cannot find context with specified id/i,
+  /Failed to launch the browser process/i,
+  /ECONNREFUSED/i,
+];
+
+export function isTransientBrowserError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return TRANSIENT_BROWSER_ERROR_PATTERNS.some((pattern) => pattern.test(message));
 }

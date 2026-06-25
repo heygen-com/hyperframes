@@ -93,6 +93,7 @@ export const PLAN_HASH_MISMATCH = "PLAN_HASH_MISMATCH";
 export const MISSING_PLAN_ARTIFACT = "MISSING_PLAN_ARTIFACT";
 export const CHUNK_INDEX_OUT_OF_RANGE = "CHUNK_INDEX_OUT_OF_RANGE";
 export const MISSING_RUNTIME_ENV_SNAPSHOT = "MISSING_RUNTIME_ENV_SNAPSHOT";
+const LEGACY_DISTRIBUTED_VP9_CPU_USED = 2;
 
 export type RenderChunkValidationCode =
   | typeof FFMPEG_VERSION_MISMATCH
@@ -293,6 +294,15 @@ export function resolvePresetForLockedEncoder<
     return { ...basePreset, codec: "h265" as const };
   }
   return basePreset;
+}
+
+export function resolveLockedVp9CpuUsed(
+  lockedEncoder: Pick<LockedRenderConfig, "encoder" | "vp9CpuUsed">,
+): number | undefined {
+  if (lockedEncoder.encoder !== "libvpx-vp9-software") return undefined;
+  // Pre-vp9CpuUsed WebM planDirs used the old closed-GOP literal. Keep replay
+  // bytes stable for those plans while new planDirs carry their resolved value.
+  return lockedEncoder.vp9CpuUsed ?? LEGACY_DISTRIBUTED_VP9_CPU_USED;
 }
 
 /**
@@ -497,6 +507,7 @@ export async function renderChunk(
       // declare `data-composition-variables` leave this undefined and the
       // engine skips the `evaluateOnNewDocument` injection.
       variables: encoder.variables,
+      ...((planVideos?.videos.length ?? 0) > 0 ? { captureBeyondViewport: true } : {}),
       // lock the BeginFrame warmup loop to a fixed iteration count so
       // `beginFrameTimeTicks` is host-independent. Only chunks ever set this.
       lockWarmupTicks: true,
@@ -636,6 +647,10 @@ export async function renderChunk(
         preset,
         effectiveQuality,
         effectiveBitrate,
+        engineConfig: {
+          ffmpegEncodeTimeout: cfg.ffmpegEncodeTimeout,
+          vp9CpuUsed: resolveLockedVp9CpuUsed(encoder) ?? cfg.vp9CpuUsed,
+        },
         // Distributed chunks emit a single ffmpeg call per chunk; the
         // in-process per-chunk-within-chunk path would re-split our
         // already-chunked work.
@@ -693,7 +708,7 @@ export async function renderChunk(
     // Clean up only after the hash + perf sidecar landed. Any failure above
     // leaves the framesDir in place for inspection.
     try {
-      rmSync(workDir, { recursive: true, force: true });
+      rmSync(workDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
     } catch (err) {
       log.warn("[renderChunk] failed to remove work dir", {
         workDir,

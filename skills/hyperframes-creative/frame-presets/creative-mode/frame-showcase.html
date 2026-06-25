@@ -1,0 +1,1330 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Creative Mode</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style id="ds-tokens">
+      :root {
+        --cream: #efe9d9;
+        --cream-2: #e4dcc4;
+        --ink: #0f0f0f;
+        --ink-2: #2a2a2a;
+        --green: #1f8a4c;
+        --green-dark: #136636;
+        --pink: #f06ca8;
+        --pink-dark: #d14e8b;
+        --orange: #e85a1f;
+        --yellow: #f5c518;
+        --display: "Archivo Black", sans-serif;
+        --body: "Space Grotesk", sans-serif;
+        --mono: "JetBrains Mono", monospace;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html {
+        background: var(--ink-2);
+      }
+      body {
+        background: var(--cream);
+        color: var(--ink);
+        font-family: var(--body);
+        -webkit-font-smoothing: antialiased;
+      }
+      .disp {
+        font-family: var(--display);
+        text-transform: uppercase;
+        line-height: 0.92;
+        letter-spacing: -0.01em;
+      }
+      .mono {
+        font-family: var(--mono);
+        text-transform: uppercase;
+      }
+
+      /* ---------- doc rhythm ---------- */
+      section {
+        padding: 120px 96px;
+        border-bottom: 4px solid var(--ink);
+      }
+      .sec-head {
+        display: flex;
+        align-items: baseline;
+        gap: 24px;
+        margin-bottom: 64px;
+      }
+      .sec-head .idx {
+        font-family: var(--mono);
+        font-size: 18px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        background: var(--ink);
+        color: var(--cream);
+        padding: 8px 14px;
+      }
+      .sec-head h2 {
+        font-family: var(--display);
+        text-transform: uppercase;
+        font-size: 52px;
+        line-height: 0.92;
+        letter-spacing: -0.01em;
+      }
+      .sec-head .rule {
+        flex: 1;
+        height: 4px;
+        background: var(--ink);
+        align-self: center;
+      }
+
+      /* ---------- COVER ---------- */
+      .cover {
+        min-height: 100vh;
+        padding: 64px;
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        gap: 40px;
+        position: relative;
+        overflow: hidden;
+      }
+      .cover .topbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 24px;
+        font-family: var(--mono);
+        font-size: 20px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .cover .topbar span:first-child {
+        white-space: nowrap;
+      }
+      .cover .stage {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        position: relative;
+        z-index: 2;
+      }
+      .cover .pill {
+        border: 2px solid var(--ink);
+        border-radius: 999px;
+        padding: 6px 18px;
+        white-space: nowrap;
+      }
+      .cover h1 {
+        font-family: var(--display);
+        text-transform: uppercase;
+        line-height: 0.86;
+        letter-spacing: -0.02em;
+        font-size: clamp(72px, 13vw, 210px);
+      }
+      .cover h1 .pink {
+        color: var(--pink);
+      }
+      .cover .sub {
+        display: flex;
+        gap: 18px;
+        align-items: center;
+        margin-top: 48px;
+        flex-wrap: wrap;
+      }
+      .cover .chip {
+        font-family: var(--mono);
+        font-size: 16px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        border: 4px solid var(--ink);
+        padding: 12px 18px;
+        background: var(--cream);
+        white-space: nowrap;
+      }
+      .cover .chip.g {
+        background: var(--green);
+        color: var(--cream);
+      }
+      .cover .chip.y {
+        background: var(--yellow);
+      }
+      .cover .footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        font-family: var(--mono);
+        font-size: 20px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        position: relative;
+        z-index: 2;
+        padding-left: 200px;
+      }
+      .cover .dot {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--ink);
+        margin: 0 12px;
+        vertical-align: middle;
+      }
+      /* cover decor */
+      .cover .badge {
+        position: absolute;
+        top: 44%;
+        right: 6%;
+        width: 260px;
+        height: 260px;
+        background: var(--pink);
+        border: 4px solid var(--ink);
+        transform: rotate(-6deg);
+        display: grid;
+        place-items: center;
+        z-index: 1;
+        box-shadow:
+          24px 24px 0 var(--orange),
+          24px 24px 0 4px var(--ink);
+      }
+      .cover .badge .ring {
+        width: 84%;
+        height: 84%;
+        border: 4px solid var(--ink);
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        text-align: center;
+      }
+      .cover .badge .ring span {
+        font-family: var(--display);
+        text-transform: uppercase;
+        line-height: 0.9;
+        font-size: 34px;
+      }
+      .cover .circle {
+        position: absolute;
+        left: -120px;
+        bottom: -120px;
+        width: 300px;
+        height: 300px;
+        border-radius: 50%;
+        background: var(--yellow);
+        border: 4px solid var(--ink);
+        z-index: 0;
+      }
+
+      /* ---------- PALETTE ---------- */
+      .swatches {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 24px;
+      }
+      .sw {
+        border: 4px solid var(--ink);
+      }
+      .sw .chip {
+        height: 150px;
+      }
+      .sw .meta {
+        padding: 16px 18px;
+        border-top: 4px solid var(--ink);
+        background: var(--cream);
+      }
+      .sw .name {
+        font-family: var(--display);
+        text-transform: uppercase;
+        font-size: 22px;
+        line-height: 1;
+      }
+      .sw .hex {
+        font-family: var(--mono);
+        font-size: 16px;
+        letter-spacing: 0.04em;
+        margin-top: 8px;
+        color: var(--ink-2);
+      }
+      .sw .role {
+        font-size: 15px;
+        line-height: 1.4;
+        margin-top: 10px;
+        color: var(--ink-2);
+      }
+
+      /* ---------- TYPE ---------- */
+      .type-row {
+        border: 4px solid var(--ink);
+        margin-bottom: 24px;
+        display: grid;
+        grid-template-columns: 280px 1fr;
+        background: var(--cream);
+      }
+      .type-row .lbl {
+        border-right: 4px solid var(--ink);
+        padding: 24px;
+        background: var(--cream-2);
+      }
+      .type-row .lbl .tok {
+        font-family: var(--mono);
+        font-size: 16px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+      .type-row .lbl .meta {
+        font-family: var(--mono);
+        font-size: 13px;
+        color: var(--ink-2);
+        margin-top: 10px;
+        line-height: 1.6;
+        text-transform: none;
+        letter-spacing: 0;
+      }
+      .type-row .spec {
+        padding: 28px 32px;
+        display: flex;
+        align-items: center;
+        overflow: hidden;
+      }
+
+      /* ---------- COMPONENTS ---------- */
+      .comp-grid {
+        display: grid;
+        grid-template-columns: repeat(12, 1fr);
+        gap: 28px;
+      }
+      .stat-cell {
+        border: 4px solid var(--ink);
+        padding: 28px 32px;
+      }
+      .stat-cell .n {
+        font-family: var(--display);
+        font-size: 84px;
+        line-height: 0.9;
+      }
+      .stat-cell .l {
+        font-family: var(--mono);
+        font-size: 18px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        margin-top: 12px;
+      }
+      .stat-cell.green {
+        background: var(--green);
+        color: var(--cream);
+      }
+      .stat-cell.pink {
+        background: var(--pink);
+        color: var(--ink);
+      }
+      .stat-cell.orange {
+        background: var(--orange);
+        color: var(--cream);
+      }
+      .stat-cell.cream {
+        background: var(--cream);
+      }
+      .step-card {
+        border: 4px solid var(--ink);
+        padding: 28px;
+        height: 300px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+      }
+      .step-card .num {
+        font-family: var(--display);
+        font-size: 120px;
+        line-height: 0.85;
+      }
+      .step-card .t {
+        font-family: var(--display);
+        text-transform: uppercase;
+        font-size: 28px;
+        line-height: 1;
+      }
+      .step-card .d {
+        font-size: 18px;
+        line-height: 1.4;
+        margin-top: 10px;
+      }
+      .step-card.cream {
+        background: var(--cream);
+      }
+      .step-card.yellow {
+        background: var(--yellow);
+      }
+      .step-card.pink {
+        background: var(--pink);
+      }
+      .step-card.green {
+        background: var(--green);
+        color: var(--cream);
+      }
+      .marker {
+        background: var(--pink);
+        border: 4px solid var(--ink);
+        padding: 36px 44px;
+        font-family: var(--display);
+        text-transform: uppercase;
+        font-size: 46px;
+        line-height: 1;
+        box-shadow:
+          24px 24px 0 var(--orange),
+          24px 24px 0 4px var(--ink);
+        align-self: flex-start;
+      }
+      .kicker-block {
+        background: var(--ink);
+        color: var(--cream);
+        font-family: var(--mono);
+        font-size: 20px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        padding: 10px 18px;
+        align-self: flex-start;
+      }
+      .badge-rot {
+        background: var(--yellow);
+        border: 4px solid var(--ink);
+        font-family: var(--display);
+        text-transform: uppercase;
+        font-size: 26px;
+        padding: 14px 22px;
+        transform: rotate(-4deg);
+        align-self: flex-start;
+      }
+      .pill-badge {
+        border: 2px solid var(--ink);
+        border-radius: 999px;
+        font-family: var(--mono);
+        font-size: 18px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        padding: 8px 18px;
+        align-self: flex-start;
+      }
+      .span-3 {
+        grid-column: span 3;
+      }
+      .span-4 {
+        grid-column: span 4;
+      }
+      .span-6 {
+        grid-column: span 6;
+      }
+      .span-12 {
+        grid-column: span 12;
+      }
+      .comp-note {
+        font-family: var(--mono);
+        font-size: 14px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--ink-2);
+        margin-bottom: 14px;
+      }
+
+      /* table */
+      .cm-table {
+        border: 4px solid var(--ink);
+        background: var(--cream-2);
+        width: 100%;
+        border-collapse: collapse;
+      }
+      .cm-table th,
+      .cm-table td {
+        border: 3px solid var(--ink);
+        padding: 18px 26px;
+        text-align: left;
+        font-size: 20px;
+      }
+      .cm-table thead th {
+        background: var(--ink);
+        color: var(--cream);
+        font-family: var(--display);
+        text-transform: uppercase;
+        font-size: 22px;
+        border-color: var(--cream);
+      }
+      .cm-table td.k {
+        font-family: var(--mono);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        font-size: 17px;
+      }
+      .cm-table .col-pink {
+        background: var(--pink);
+      }
+      .cm-table .col-green {
+        background: var(--green);
+        color: var(--cream);
+      }
+
+      /* ---------- COMPOSITIONS (frame scale) ---------- */
+      .gallery {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 48px;
+      }
+      .frame-wrap .flabel {
+        display: flex;
+        gap: 16px;
+        align-items: baseline;
+        margin-bottom: 16px;
+        font-family: var(--mono);
+        font-size: 15px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--ink-2);
+      }
+      .frame-wrap .flabel b {
+        color: var(--ink);
+      }
+      .frame {
+        aspect-ratio: 16/9;
+        container-type: size;
+        position: relative;
+        overflow: hidden;
+        border: 4px solid var(--ink);
+        background: var(--cream);
+      }
+      .frame .chrome-top,
+      .frame .chrome-bot {
+        position: absolute;
+        left: 3.3cqw;
+        right: 3.3cqw;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-family: var(--mono);
+        text-transform: uppercase;
+        font-size: 1.15cqw;
+        letter-spacing: 0.08em;
+        color: var(--ink);
+        z-index: 5;
+      }
+      .frame .chrome-top {
+        top: 2.5cqw;
+      }
+      .frame .chrome-bot {
+        bottom: 2.5cqw;
+      }
+      .frame .chrome-top .pill {
+        border: 0.2cqw solid var(--ink);
+        border-radius: 999px;
+        padding: 0.3cqw 0.9cqw;
+        white-space: nowrap;
+      }
+      .frame > .f-cover,
+      .frame > .f-claim,
+      .frame > .f-stats,
+      .frame > .f-close {
+        position: absolute;
+        inset: 0;
+      }
+      .frame .cdot {
+        display: inline-block;
+        width: 0.5cqw;
+        height: 0.5cqw;
+        border-radius: 50%;
+        background: var(--ink);
+        margin: 0 0.6cqw;
+        vertical-align: middle;
+      }
+
+      /* frame 1 — cover */
+      .f-cover {
+        display: grid;
+        place-items: center;
+      }
+      .f-cover h3 {
+        font-family: var(--display);
+        text-transform: uppercase;
+        line-height: 0.84;
+        letter-spacing: -0.02em;
+        font-size: 15.5cqw;
+        text-align: center;
+      }
+      .f-cover h3 .o {
+        color: var(--orange);
+      }
+
+      /* frame 2 — big claim on pink */
+      .f-claim {
+        background: var(--pink);
+        display: flex;
+        align-items: center;
+        padding: 0 8cqw;
+      }
+      .f-claim .stack h3 {
+        font-family: var(--display);
+        text-transform: uppercase;
+        line-height: 0.9;
+        letter-spacing: -0.01em;
+        font-size: 11cqw;
+        color: var(--ink);
+      }
+      .f-claim .ek {
+        font-family: var(--mono);
+        font-size: 1.3cqw;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        background: var(--ink);
+        color: var(--cream);
+        padding: 0.5cqw 1cqw;
+        display: inline-block;
+        margin-bottom: 2.4cqw;
+      }
+
+      /* frame 3 — stat grid */
+      .f-stats {
+        display: grid;
+        place-content: center;
+        gap: 3cqw;
+        padding: 0 7cqw;
+      }
+      .f-stats .head {
+        font-family: var(--display);
+        text-transform: uppercase;
+        font-size: 4.2cqw;
+        line-height: 0.92;
+        text-align: center;
+      }
+      .f-stats .row {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 2cqw;
+      }
+      .f-stats .cell {
+        border: 0.4cqw solid var(--ink);
+        padding: 2.2cqw 2.4cqw;
+      }
+      .f-stats .cell .n {
+        font-family: var(--display);
+        font-size: 6.4cqw;
+        line-height: 0.88;
+      }
+      .f-stats .cell .l {
+        font-family: var(--mono);
+        font-size: 1.2cqw;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        margin-top: 0.8cqw;
+      }
+      .f-stats .green {
+        background: var(--green);
+        color: var(--cream);
+      }
+      .f-stats .pink {
+        background: var(--pink);
+      }
+      .f-stats .orange {
+        background: var(--orange);
+        color: var(--cream);
+      }
+
+      /* frame 4 — closing green */
+      .f-close {
+        color: var(--cream);
+        display: grid;
+        place-items: center;
+        position: relative;
+      }
+      .f-close h3 {
+        font-family: var(--display);
+        text-transform: uppercase;
+        line-height: 0.86;
+        letter-spacing: -0.01em;
+        font-size: 10cqw;
+        text-align: center;
+      }
+      .f-close .stamp {
+        position: absolute;
+        right: 7cqw;
+        top: 18cqw;
+        width: 18cqw;
+        height: 18cqw;
+        background: var(--pink);
+        border: 0.5cqw solid var(--cream);
+        transform: rotate(-6deg);
+        display: grid;
+        place-items: center;
+      }
+      .f-close .stamp .ring {
+        width: 84%;
+        height: 84%;
+        border: 0.4cqw solid var(--cream);
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+      }
+      .f-close .stamp span {
+        font-family: var(--display);
+        text-transform: uppercase;
+        font-size: 2.2cqw;
+        line-height: 0.9;
+        text-align: center;
+        color: var(--cream);
+      }
+      .frame.f-close {
+        background: var(--green);
+      }
+      .frame.f-close .chrome-top,
+      .frame.f-close .chrome-bot {
+        color: var(--cream);
+      }
+      .f-close .chrome-top .pill {
+        border-color: var(--cream);
+      }
+      .f-close .cdot {
+        background: var(--cream);
+      }
+
+      /* ---------- principles ---------- */
+      .dos {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 28px;
+      }
+      .do-card {
+        border: 4px solid var(--ink);
+        padding: 32px;
+      }
+      .do-card.do {
+        background: var(--green);
+        color: var(--cream);
+      }
+      .do-card.dont {
+        background: var(--cream);
+      }
+      .do-card h4 {
+        font-family: var(--display);
+        text-transform: uppercase;
+        font-size: 26px;
+        margin-bottom: 18px;
+      }
+      .do-card ul {
+        list-style: none;
+      }
+      .do-card li {
+        font-size: 18px;
+        line-height: 1.5;
+        padding-left: 28px;
+        position: relative;
+        margin-bottom: 12px;
+      }
+      .do-card li::before {
+        position: absolute;
+        left: 0;
+        font-family: var(--display);
+      }
+      .do-card.do li::before {
+        content: "+";
+      }
+      .do-card.dont li::before {
+        content: "\00d7";
+        color: var(--orange);
+      }
+
+      .foot {
+        padding: 64px 96px;
+        background: var(--ink);
+        color: var(--cream);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-family: var(--mono);
+        font-size: 16px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      @media (max-width: 1100px) {
+        .gallery,
+        .swatches {
+          grid-template-columns: 1fr;
+        }
+        .swatches {
+          grid-template-columns: 1fr 1fr;
+        }
+      }
+    </style>
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Archivo+Black&display=swap"
+    />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap"
+    />
+    <style id="ft-override">
+      :root {
+        --primary: #efe9d9 !important;
+        --secondary: #0f0f0f !important;
+        --tertiary: #e4dcc4 !important;
+        --accent: #f06ca8 !important;
+        --f-disp: "Archivo Black", sans-serif !important;
+        --f-body: "Space Grotesk", sans-serif !important;
+        --cream: #efe9d9 !important;
+        --cream-2: #e4dcc4 !important;
+        --ink: #0f0f0f !important;
+        --pink: #f06ca8 !important;
+        --display: "Archivo Black", sans-serif !important;
+        --body: "Space Grotesk", sans-serif !important;
+        --ink-2: #2a2a2a !important;
+        --green: #1f8a4c !important;
+        --green-dark: #136636 !important;
+        --pink-dark: #d14e8b !important;
+        --orange: #e85a1f !important;
+        --yellow: #f5c518 !important;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- ============ COVER ============ -->
+    <section class="cover">
+      <div class="topbar">
+        <span>Creative Mode — Frame System</span>
+        <span class="pill">Video / Frame Layer</span>
+      </div>
+      <div class="stage">
+        <h1>Creative<br /><span class="pink">Mode.</span></h1>
+        <div class="sub">
+          <span class="chip g">Neo-Brutalist</span>
+          <span class="chip">Archivo Black · JetBrains Mono</span>
+          <span class="chip y">4 Accents · Hard Shadow</span>
+        </div>
+      </div>
+      <div class="footer">
+        <span>Editorial · Punk-Zine · Swiss Grid</span>
+        <span>Frame Showcase<span class="dot"></span>1920 × 1080</span>
+      </div>
+      <div class="badge">
+        <div class="ring">
+          <span>Frame<br />Spec</span>
+        </div>
+      </div>
+      <div class="circle"></div>
+    </section>
+
+    <!-- ============ PALETTE ============ -->
+    <section>
+      <div class="sec-head">
+        <span class="idx">01</span>
+        <h2>Palette</h2>
+        <span class="rule"></span>
+      </div>
+      <div class="swatches">
+        <div class="sw">
+          <div class="chip" style="background: var(--cream)"></div>
+          <div class="meta">
+            <div class="name">Cream</div>
+            <div class="hex">#EFE9D9</div>
+            <div class="role">Universal canvas. Warm, never white.</div>
+          </div>
+        </div>
+        <div class="sw">
+          <div class="chip" style="background: var(--ink)"></div>
+          <div class="meta">
+            <div class="name">Ink</div>
+            <div class="hex">#0F0F0F</div>
+            <div class="role">Borders, type, rules, chrome.</div>
+          </div>
+        </div>
+        <div class="sw">
+          <div class="chip" style="background: var(--green)"></div>
+          <div class="meta">
+            <div class="name">Green</div>
+            <div class="hex">#1F8A4C</div>
+            <div class="role">Dominant accent + closing ground.</div>
+          </div>
+        </div>
+        <div class="sw">
+          <div class="chip" style="background: var(--pink)"></div>
+          <div class="meta">
+            <div class="name">Pink</div>
+            <div class="hex">#F06CA8</div>
+            <div class="role">High-energy fills, markers, stamp.</div>
+          </div>
+        </div>
+        <div class="sw">
+          <div class="chip" style="background: var(--orange)"></div>
+          <div class="meta">
+            <div class="name">Orange</div>
+            <div class="hex">#E85A1F</div>
+            <div class="role">The hard-shadow color. Stat fills.</div>
+          </div>
+        </div>
+        <div class="sw">
+          <div class="chip" style="background: var(--yellow)"></div>
+          <div class="meta">
+            <div class="name">Yellow</div>
+            <div class="hex">#F5C518</div>
+            <div class="role">Warm punctuation. Badges, circles.</div>
+          </div>
+        </div>
+        <div class="sw">
+          <div class="chip" style="background: var(--cream-2)"></div>
+          <div class="meta">
+            <div class="name">Cream 2</div>
+            <div class="hex">#E4DCC4</div>
+            <div class="role">Recessed table fill.</div>
+          </div>
+        </div>
+        <div class="sw">
+          <div class="chip" style="background: var(--ink-2)"></div>
+          <div class="meta">
+            <div class="name">Ink 2</div>
+            <div class="hex">#2A2A2A</div>
+            <div class="role">Secondary body text.</div>
+          </div>
+        </div>
+        <div class="sw">
+          <div class="chip" style="background: var(--green-dark)"></div>
+          <div class="meta">
+            <div class="name">Green Dk</div>
+            <div class="hex">#136636</div>
+            <div class="role">Depth on decorative levers.</div>
+          </div>
+        </div>
+        <div class="sw">
+          <div class="chip" style="background: var(--pink-dark)"></div>
+          <div class="meta">
+            <div class="name">Pink Dk</div>
+            <div class="hex">#D14E8B</div>
+            <div class="role">Shadow-side accent.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ TYPOGRAPHY ============ -->
+    <section>
+      <div class="sec-head">
+        <span class="idx">02</span>
+        <h2>Typography</h2>
+        <span class="rule"></span>
+      </div>
+      <div class="type-row">
+        <div class="lbl">
+          <div class="tok">display-hero</div>
+          <div class="meta">Archivo Black · 160px<br />line 0.92 · upper · −.01em</div>
+        </div>
+        <div class="spec"><span class="disp" style="font-size: 128px">LOUD</span></div>
+      </div>
+      <div class="type-row">
+        <div class="lbl">
+          <div class="tok">display-md</div>
+          <div class="meta">Archivo Black · 96px<br />section headline</div>
+        </div>
+        <div class="spec"><span class="disp" style="font-size: 80px">MAKE IT MOVE</span></div>
+      </div>
+      <div class="type-row">
+        <div class="lbl">
+          <div class="tok">stat-num</div>
+          <div class="meta">Archivo Black · 96px<br />line 0.9</div>
+        </div>
+        <div class="spec">
+          <span class="disp" style="font-size: 88px"
+            >240<span style="color: var(--orange)">%</span></span
+          >
+        </div>
+      </div>
+      <div class="type-row">
+        <div class="lbl">
+          <div class="tok">body-lg</div>
+          <div class="meta">Space Grotesk · 28px<br />line 1.4 · left-aligned</div>
+        </div>
+        <div class="spec">
+          <p style="font-size: 24px; line-height: 1.4; max-width: 760px">
+            Body copy sits in Space Grotesk — left-aligned, never centered. It explains while the
+            display type declares.
+          </p>
+        </div>
+      </div>
+      <div class="type-row">
+        <div class="lbl">
+          <div class="tok">mono-kicker</div>
+          <div class="meta">JetBrains Mono · 24px<br />.14em · upper</div>
+        </div>
+        <div class="spec">
+          <span class="mono" style="font-size: 22px; letter-spacing: 0.14em"
+            >FIG. 02 — TYPE SPECIMEN</span
+          >
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ COMPONENTS ============ -->
+    <section>
+      <div class="sec-head">
+        <span class="idx">03</span>
+        <h2>Components</h2>
+        <span class="rule"></span>
+      </div>
+
+      <div class="comp-note">Stat cells — 4px ink border, flat accent fills</div>
+      <div class="comp-grid" style="margin-bottom: 48px">
+        <div class="stat-cell green span-3">
+          <div class="n">240%</div>
+          <div class="l">Output Lift</div>
+        </div>
+        <div class="stat-cell pink span-3">
+          <div class="n">12K</div>
+          <div class="l">Frames Shipped</div>
+        </div>
+        <div class="stat-cell orange span-3">
+          <div class="n">3.4×</div>
+          <div class="l">Faster Cuts</div>
+        </div>
+        <div class="stat-cell cream span-3">
+          <div class="n">98</div>
+          <div class="l">Templates</div>
+        </div>
+      </div>
+
+      <div class="comp-note">Step cards — sequence ending on green</div>
+      <div class="comp-grid" style="margin-bottom: 48px">
+        <div class="step-card cream span-3">
+          <div class="num">01</div>
+          <div>
+            <div class="t">Block</div>
+            <div class="d">Lay the color planes.</div>
+          </div>
+        </div>
+        <div class="step-card yellow span-3">
+          <div class="num">02</div>
+          <div>
+            <div class="t">Set</div>
+            <div class="d">Lock the display caps.</div>
+          </div>
+        </div>
+        <div class="step-card pink span-3">
+          <div class="num">03</div>
+          <div>
+            <div class="t">Stamp</div>
+            <div class="d">Drop the hard shadow.</div>
+          </div>
+        </div>
+        <div class="step-card green span-3">
+          <div class="num">04</div>
+          <div>
+            <div class="t">Cut</div>
+            <div class="d">Swap the ground.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="comp-grid">
+        <div class="span-6" style="display: flex; flex-direction: column; gap: 28px">
+          <div class="comp-note">Featured marker — 24px hard offset shadow</div>
+          <div class="marker">Make It Loud</div>
+          <div class="comp-note" style="margin-top: 14px">Chrome atoms</div>
+          <div style="display: flex; gap: 18px; flex-wrap: wrap">
+            <span class="kicker-block">Section / 01</span>
+            <span class="badge-rot">New</span>
+            <span class="pill-badge">Topbar Pill</span>
+          </div>
+        </div>
+        <div class="span-6">
+          <div class="comp-note">Comparison table — cream-2 fill, ink head row</div>
+          <table class="cm-table">
+            <thead>
+              <tr>
+                <th>Spec</th>
+                <th class="col-pink">Frame</th>
+                <th class="col-green">Slide</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="k">Border</td>
+                <td>4px ink</td>
+                <td>4px ink</td>
+              </tr>
+              <tr>
+                <td class="k">Shadow</td>
+                <td>24px hard</td>
+                <td>none</td>
+              </tr>
+              <tr>
+                <td class="k">Accents</td>
+                <td>2–3 / frame</td>
+                <td>2–3 / slide</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ COMPOSITIONS ============ -->
+    <section>
+      <div class="sec-head">
+        <span class="idx">04</span>
+        <h2>Frame Compositions</h2>
+        <span class="rule"></span>
+      </div>
+      <div class="gallery">
+        <div class="frame-wrap">
+          <div class="flabel"><b>Wordmark Cover</b><span>· identity · centered</span></div>
+          <div class="frame">
+            <div class="chrome-top">
+              <span>Creative Mode</span><span class="pill">01 — Cover</span>
+            </div>
+            <div class="f-cover">
+              <h3>Creative<br /><span class="o">Mode.</span></h3>
+            </div>
+            <div class="chrome-bot">
+              <span>Editorial System</span><span>01<span class="cdot"></span>04</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="frame-wrap">
+          <div class="flabel"><b>Big Claim</b><span>· oversized statement · left</span></div>
+          <div class="frame">
+            <div class="chrome-top"><span>Statement</span><span class="pill">02 — Claim</span></div>
+            <div class="f-claim">
+              <div class="stack">
+                <span class="ek">The Thesis</span>
+                <h3>Make<br />it move.</h3>
+              </div>
+            </div>
+            <div class="chrome-bot">
+              <span>One Idea / Frame</span><span>02<span class="cdot"></span>04</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="frame-wrap">
+          <div class="flabel"><b>Stat Grid</b><span>· catalog · the density frame</span></div>
+          <div class="frame">
+            <div class="chrome-top">
+              <span>By The Numbers</span><span class="pill">03 — Data</span>
+            </div>
+            <div class="f-stats">
+              <div class="head">The Numbers Don't Whisper</div>
+              <div class="row">
+                <div class="cell green">
+                  <div class="n">240%</div>
+                  <div class="l">Output Lift</div>
+                </div>
+                <div class="cell pink">
+                  <div class="n">3.4×</div>
+                  <div class="l">Faster Cuts</div>
+                </div>
+                <div class="cell orange">
+                  <div class="n">12K</div>
+                  <div class="l">Frames Shipped</div>
+                </div>
+              </div>
+            </div>
+            <div class="chrome-bot">
+              <span>Stat Cells</span><span>03<span class="cdot"></span>04</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="frame-wrap">
+          <div class="flabel">
+            <b>Closing Plate</b><span>· closer · green ground · centered</span>
+          </div>
+          <div class="frame f-close">
+            <div class="chrome-top">
+              <span>Creative Mode</span><span class="pill">04 — End</span>
+            </div>
+            <h3>That's<br />the mode.</h3>
+            <div class="stamp">
+              <div class="ring">
+                <span>Cut<br />Print</span>
+              </div>
+            </div>
+            <div class="chrome-bot">
+              <span>Thank You</span><span>04<span class="cdot"></span>04</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ PRINCIPLES ============ -->
+    <section style="border-bottom: none">
+      <div class="sec-head">
+        <span class="idx">05</span>
+        <h2>Frame Rules</h2>
+        <span class="rule"></span>
+      </div>
+      <div class="dos">
+        <div class="do-card do">
+          <h4>Do</h4>
+          <ul>
+            <li>One idea per frame — two things means two frames.</li>
+            <li>Lean centered; reserve the green ground for the closing plate.</li>
+            <li>Two or three accents per frame, never all four.</li>
+            <li>4px ink borders, 24px hard offset on featured blocks only.</li>
+            <li>Archivo Black uppercase, 0.92 line-height, always.</li>
+          </ul>
+        </div>
+        <div class="do-card dont">
+          <h4>Don't</h4>
+          <ul>
+            <li>No rounded corners except the topbar pill.</li>
+            <li>No gradients, no blurred shadows, no glow.</li>
+            <li>No Archivo Black in sentence case, ever.</li>
+            <li>No fifth accent; no pure-white background.</li>
+            <li>No headline blown edge-to-edge — size to the line.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ CAPTIONS — preview of caption-skin.html (the preset's lower-third karaoke look) ============ -->
+    <style>
+      /* mirrors caption-skin.html; the skin's --cap-* vocab mapped to this preset's tokens */
+      .capdemo {
+        --cap-ink: var(--ink);
+        --cap-canvas: var(--cream);
+        --cap-accent: var(--yellow);
+        --cap-accent-2: var(--orange);
+      }
+      .capdemo .stage {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 16.67cqh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 4;
+      }
+      .capdemo .pill {
+        max-width: 82cqw;
+        padding: 1.4cqw 3cqw 1.7cqw;
+        background: var(--cap-canvas);
+        border: 0.4cqw solid var(--cap-ink);
+        border-radius: 0;
+        box-shadow:
+          1cqw 1cqw 0 var(--cap-accent-2),
+          1cqw 1cqw 0 0.3cqw var(--cap-ink);
+      }
+      .capdemo .line {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 0.16em 0.3em;
+        font-family: var(--display);
+        font-weight: 400;
+        text-transform: uppercase;
+        font-size: 3.2cqw;
+        line-height: 0.92;
+        letter-spacing: -0.01em;
+      }
+      .capdemo .w {
+        display: inline-block;
+        padding: 0.02em 0.1em;
+        color: color-mix(in srgb, var(--cap-ink) 38%, var(--cap-canvas));
+      }
+      .capdemo .w.spoken {
+        color: var(--cap-ink);
+      }
+      .capdemo .w.active {
+        color: var(--cap-ink);
+        background: var(--cap-accent);
+        box-shadow: 0 0 0 0.08em var(--cap-accent);
+      }
+      .capdemo .bandline {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 16.67cqh;
+        border-top: 0.15cqw dashed color-mix(in srgb, var(--ink) 38%, var(--cream));
+        z-index: 3;
+      }
+      .capdemo .bandtag {
+        position: absolute;
+        right: 3.3cqw;
+        bottom: calc(16.67cqh + 0.7cqw);
+        font-family: var(--mono);
+        font-size: 1cqw;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--ink-2);
+        z-index: 4;
+      }
+    </style>
+    <section>
+      <div class="sec-head">
+        <span class="idx">06</span>
+        <h2>Captions</h2>
+        <span class="rule"></span>
+      </div>
+      <div class="gallery">
+        <div class="frame-wrap">
+          <div class="flabel"><b>Active line</b><span>· spoken · current · upcoming</span></div>
+          <div class="frame capdemo">
+            <div class="chrome-top"><span>Captions</span><span class="pill">Karaoke</span></div>
+            <div class="bandline"></div>
+            <div class="bandtag">Caption Band · 16.7%</div>
+            <div class="stage">
+              <div class="pill">
+                <div class="line">
+                  <span class="w spoken">Built</span>
+                  <span class="w spoken">for</span>
+                  <span class="w active">teams</span>
+                  <span class="w">who</span>
+                  <span class="w">ship.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="frame-wrap">
+          <div class="flabel">
+            <b>Settled line</b><span>· all spoken · accent block cleared</span>
+          </div>
+          <div class="frame capdemo">
+            <div class="chrome-top"><span>Captions</span><span class="pill">Lower-Third</span></div>
+            <div class="stage">
+              <div class="pill">
+                <div class="line">
+                  <span class="w spoken">Ship</span>
+                  <span class="w spoken">faster</span>
+                  <span class="w spoken">today.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="foot">
+      <span>Creative Mode · Frame Showcase</span>
+      <span>Atoms Sacred · Composition Free</span>
+    </div>
+
+    <template id="__bundler_thumbnail">
+      <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+        <rect width="100" height="100" fill="#EFE9D9" />
+        <rect
+          x="30"
+          y="30"
+          width="40"
+          height="40"
+          fill="#F06CA8"
+          stroke="#0F0F0F"
+          stroke-width="4"
+        />
+        <rect x="36" y="36" width="40" height="40" fill="none" stroke="#0F0F0F" stroke-width="4" />
+      </svg>
+    </template>
+  </body>
+</html>

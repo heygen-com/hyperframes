@@ -27,7 +27,7 @@ Rendered frames must be reproducible from the requested time. Do **not** use any
 - Unseeded `Math.random()`. Use a seeded PRNG if random-looking placement is needed.
 - Render-time network fetches for required assets. Inline or pre-bundle them.
 - Hover, scroll, pointer, or focus state. The renderer has no input events.
-- Infinite loops such as `repeat: -1`. Compute a finite repeat count from the visible duration: `repeat: Math.ceil(duration / cycleDuration) - 1`.
+- Infinite loops such as `repeat: -1`. Compute a finite count: `repeat: Math.max(0, Math.floor(duration / cycleDuration) - 1)` — **`floor`, not `ceil`** (`ceil` overshoots `data-duration` and trips the `gsap_repeat_ceil_overshoot` lint; `max(0, …)` avoids a negative repeat = infinite).
 
 Also avoid:
 
@@ -46,6 +46,8 @@ Build the visible end-state in static HTML and CSS first, then animate from/to t
 - Keep text inside its intended container. For dynamic text, use `max-width`, wrapping, or `window.__hyperframes.fitTextFontSize(text, { maxWidth, fontFamily, fontWeight })`.
 - For text measurement without DOM reflow, use `window.__hyperframes.pretext`: `pretext.prepare(text, font)` then `pretext.layout(prepared, maxWidth, lineHeight)`. Pure arithmetic, ~0.0002 ms per call — safe for per-frame text reflow, shrinkwrap containers, and computing layout before render. `fitTextFontSize` is built on it.
 - **Do not** use `<br>` in body text. Forced breaks ignore the actual rendered font width and produce an extra break when the line already wraps naturally, causing overlap. Let text wrap via `max-width`. Exception: short display titles where each word is deliberately on its own line.
+- **Transformed elements must be block-level + sized.** `transform`/`scaleX`/`scaleY` is a no-op on an inline `<span>`, and scaling an auto-width (0px) element shows nothing → invisible bars/fills. Give them `display: block`/`inline-block`/flex-item **and** a real `width`/`height` (e.g. `width: 100%` inside a sized parent). _(silent — lint/inspect miss it.)_
+- **Absolutely-positioned decoratives that pulse or overshoot** (`yoyo` scale, `back.out`) need clearance at their **peak** size and must not straddle an `overflow: hidden` edge — else they overlap a neighbor or get clipped. Position for the largest frame, not the resting one. _(silent.)_
 
 ## Why This Matters
 

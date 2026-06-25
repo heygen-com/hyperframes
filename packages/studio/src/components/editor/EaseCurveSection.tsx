@@ -1,16 +1,16 @@
-import { memo, useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { EASE_CURVES, EASE_LABELS, parseCustomEaseFromString } from "./gsapAnimationConstants";
 import { roundToCenti } from "../../utils/rounding";
 
 const PRESET_GRID_EASES = [
+  "ae-ease",
+  "ae-ease-in",
+  "ae-ease-out",
   "none",
   "power2.out",
   "power2.in",
-  "power2.inOut",
-  "power3.out",
   "back.out",
   "expo.out",
-  "elastic.out",
 ] as const;
 
 function MiniCurveSvg({
@@ -40,7 +40,7 @@ function MiniCurveSvg({
   );
 }
 
-const EasePresetGrid = memo(function EasePresetGrid({
+const EasePresetGrid = function EasePresetGrid({
   currentEase,
   onSelect,
 }: {
@@ -74,7 +74,7 @@ const EasePresetGrid = memo(function EasePresetGrid({
       })}
     </div>
   );
-});
+};
 
 const round2 = roundToCenti;
 

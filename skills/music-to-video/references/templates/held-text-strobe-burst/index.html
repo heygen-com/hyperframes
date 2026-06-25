@@ -1,0 +1,302 @@
+<!doctype html>
+<html
+  lang="en"
+  data-composition-variables='[
+    {"id":"markText",   "type":"string", "label":"Held word",                       "default":"NAMSHI"},
+    {"id":"fontStyle",  "type":"select", "label":"Font style", "options":["display","serif"], "default":"display"},
+    {"id":"markScale",  "type":"number", "label":"Word size scale", "default":1, "min":0.3, "max":2, "step":0.05},
+    {"id":"idleColor",  "type":"color",  "label":"Idle background (between bursts)", "default":"#000000"},
+    {"id":"idleInk",    "type":"color",  "label":"Idle word color",                 "default":"#ffffff"},
+    {"id":"frames",     "type":"string", "label":"Texture frames JSON (empty=built-in)", "default":""},
+    {"id":"strobePlan", "type":"string", "label":"Strobe plan JSON bursts (empty=built-in)", "default":""},
+    {"id":"decor",      "type":"select", "label":"Blueprint grid + crop border", "options":["no","yes"], "default":"no"}
+  ]'
+>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Held Text / Strobe Burst (Texture Flip) — Template</title>
+    <script src="../../motion-primitives/assets/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        background: #000;
+        overflow: hidden;
+      }
+
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #000;
+        font-family: Arial, sans-serif;
+      }
+
+      /* Persistent base: the held word on the idle plate. Always visible; the
+         texture looks flip ON TOP of it during bursts, so the word reads as
+         continuously held (anchor) and falls back to a solid color on black
+         between bursts. */
+      .base {
+        position: absolute;
+        inset: 0;
+        background: var(--idle-bg, #000);
+      }
+
+      /* One full-frame layer per texture frame. Only opacity is toggled — a
+         seek-safe flip-book (deterministic under frame-by-frame render). */
+      .look {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        opacity: 0;
+        background: var(--bg);
+      }
+      /* optional blueprint grid */
+      .look.decor::before,
+      .base.decor::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background-image:
+          linear-gradient(rgba(255, 255, 255, 0.12) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.1) 1px, transparent 1px);
+        background-size: 72px 72px;
+        opacity: 0.18;
+        mix-blend-mode: soft-light;
+      }
+      /* optional inner crop border */
+      .look.decor::after,
+      .base.decor::after {
+        content: "";
+        position: absolute;
+        inset: 44px;
+        border: 5px solid rgba(255, 255, 255, 0.22);
+        border-radius: 4px;
+      }
+
+      .word-wrap {
+        position: absolute;
+        inset: 0;
+        z-index: 8;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        filter: drop-shadow(0 18px 26px rgba(0, 0, 0, 0.28));
+      }
+
+      /* THE technique: the word's letterforms are a window — a solid tint
+         (multiply-blended) over a texture image, clipped to the text. */
+      .word {
+        color: transparent;
+        background-color: transparent;
+        background-image: var(--solid-fill), var(--texture-url);
+        background-blend-mode: multiply;
+        background-size:
+          100% 100%,
+          var(--texture-size, 150% 150%);
+        background-position: center, var(--texture-position, center);
+        background-repeat: repeat;
+        -webkit-background-clip: text;
+        background-clip: text;
+        text-align: center;
+        white-space: nowrap;
+      }
+      /* solid-fill variant for the idle base word (no texture) */
+      .word.solid {
+        background-image: none;
+        color: var(--ink, #fff);
+        -webkit-text-fill-color: var(--ink, #fff);
+      }
+
+      .word.display {
+        font-family: Impact, "Arial Black", Arial, sans-serif;
+        font-size: 470px;
+        font-weight: 900;
+        /* line-height ≥ 1 so the background-paint box encloses the full glyph;
+           with line-height < 1 the cap tops/bottoms overflow the box and the
+           texture (clipped to text) leaves untextured slivers there. */
+        line-height: 1.05;
+        text-transform: uppercase;
+        transform: scaleX(0.78);
+        -webkit-text-stroke: 1px rgba(255, 255, 255, 0.22);
+      }
+      .word.serif {
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: 360px;
+        font-weight: 500;
+        font-style: italic;
+        line-height: 1.05;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="held-text-strobe-burst"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="3"
+      data-root="true"
+    >
+      <!-- .base (held word on idle plate) and .look layers are injected by JS -->
+    </div>
+
+    <script>
+      (function () {
+        // Built-in texture frames (texture-flip palette). texture = file name
+        // (no .png) under assets/texture-mask-text/masks/.
+        var BUILTIN_FRAMES =
+          '[{"texture":"tiles-138","bg":"#ff70b0","fill":"#f0a020","ink":"#2a0f1d"},' +
+          '{"texture":"paving-stones-150","bg":"#f0d020","fill":"#d07838","ink":"#2a2410"},' +
+          '{"texture":"metal-041-a","bg":"#1050e0","fill":"#9fd0ff","ink":"#eaf2ff"},' +
+          '{"texture":"lava","bg":"#101127","fill":"#ff5a2c","ink":"#ffd9c2"},' +
+          '{"texture":"ground-080","bg":"#0f7a5a","fill":"#ffd27a","ink":"#04241a"},' +
+          '{"texture":"onyx","bg":"#e8e2d6","fill":"#3a3a44","ink":"#1a1a22"},' +
+          '{"texture":"bricks-075-a","bg":"#ff9000","fill":"#7fb0c0","ink":"#241400"}]';
+
+        // Built-in plan: as a BASE template the default is one continuous burst
+        // across the whole composition — flips every 0.125s (≈3f@24fps), never
+        // stops, never cuts to idle. (For the gruop_4-faithful two-burst look,
+        // pass strobePlan = [{start:1.125,end:1.542,step:.125},{start:2.042,end:2.708,step:.125}].)
+        var BUILTIN_PLAN = '[{"start":0,"end":3,"step":0.125}]';
+
+        var defaults = {
+          markText: "NAMSHI",
+          fontStyle: "display",
+          markScale: 1,
+          idleColor: "#000000",
+          idleInk: "#ffffff",
+          frames: "",
+          strobePlan: "",
+          decor: "no",
+        };
+        var vars = Object.assign(
+          {},
+          defaults,
+          window.__hyperframes && window.__hyperframes.getVariables
+            ? window.__hyperframes.getVariables()
+            : {},
+        );
+
+        var root = document.getElementById("root");
+        var masksDir = "assets/texture-mask-text/masks";
+        var style = vars.fontStyle === "serif" ? "serif" : "display";
+        var decor = vars.decor === "yes";
+        var scale = Number(vars.markScale) || 1;
+
+        function parse(str, fallback) {
+          var v = str && String(str).trim() ? str : fallback;
+          try {
+            var p = JSON.parse(v);
+            return Array.isArray(p) ? p : [];
+          } catch (e) {
+            return [];
+          }
+        }
+        var frames = parse(vars.frames, BUILTIN_FRAMES);
+        var plan = parse(vars.strobePlan, BUILTIN_PLAN);
+
+        // Apply word size scale (relative to the per-style base size).
+        var baseSize = style === "serif" ? 360 : 470;
+
+        function makeWord(extraClass) {
+          var word = document.createElement("div");
+          word.className = "word " + style + (extraClass ? " " + extraClass : "");
+          word.textContent = String(vars.markText);
+          word.style.fontSize = baseSize * scale + "px";
+          return word;
+        }
+        function wrap(word) {
+          var w = document.createElement("div");
+          w.className = "word-wrap";
+          w.appendChild(word);
+          return w;
+        }
+
+        // ── Persistent base: held word on the idle plate ──────────────────
+        var base = document.createElement("div");
+        base.className = "base" + (decor ? " decor" : "");
+        base.style.setProperty("--idle-bg", vars.idleColor);
+        var baseWord = makeWord("solid");
+        baseWord.style.setProperty("--ink", vars.idleInk);
+        base.appendChild(wrap(baseWord));
+        root.appendChild(base);
+
+        // ── One stacked .look per texture frame ───────────────────────────
+        var looks = frames.map(function (f) {
+          var look = document.createElement("div");
+          look.className = "look" + (decor ? " decor" : "");
+          look.style.setProperty("--bg", f.bg || "#000");
+          var word = makeWord("");
+          word.style.setProperty("--texture-url", 'url("' + masksDir + "/" + f.texture + '.png")');
+          word.style.setProperty(
+            "--solid-fill",
+            "linear-gradient(" + (f.fill || "#fff") + "," + (f.fill || "#fff") + ")",
+          );
+          if (f.pos) word.style.setProperty("--texture-position", f.pos);
+          look.appendChild(wrap(word));
+          root.appendChild(look);
+          return look;
+        });
+
+        // ── Deterministic, beat-quantized timeline ────────────────────────
+        window.__timelines = window.__timelines || {};
+        var tl = gsap.timeline({ paused: true });
+        gsap.set(looks, { opacity: 0 });
+        var compDur = Number(root.getAttribute("data-duration")) || 3;
+
+        function gridJumps(start, end, stp) {
+          var s = Number(start) || 0,
+            e = Number(end) || s,
+            d = Number(stp) || 0.125;
+          var out = [],
+            n = Math.max(0, Math.floor((e - s) / d + 1e-6) + 1);
+          for (var i = 0; i < n; i++) out.push(+(s + i * d).toFixed(4));
+          return out;
+        }
+
+        // For each burst: flip a fresh texture look on every jump (0ms), cycling
+        // frames by a global step index; clear back to the idle base at end.
+        var step = 0;
+        var prev = null;
+        plan.forEach(function (burst) {
+          var jumps =
+            Array.isArray(burst.jumps) && burst.jumps.length
+              ? burst.jumps.slice()
+              : gridJumps(burst.start, burst.end, burst.step);
+          jumps.forEach(function (t) {
+            if (!looks.length) return;
+            var cur = looks[step % looks.length];
+            if (prev && prev !== cur) tl.set(prev, { opacity: 0 }, t);
+            tl.set(cur, { opacity: 1 }, t);
+            prev = cur;
+            step += 1;
+          });
+          // clean cut back to idle base (held word on black) at burst end —
+          // but NOT when the burst runs to the composition end, so the strobe
+          // never blacks out / stops on the last frame.
+          if (prev && burst.end < compDur - 1e-6) {
+            tl.set(prev, { opacity: 0 }, burst.end);
+            prev = null;
+          }
+        });
+
+        // pin total duration
+        tl.set({}, {}, compDur);
+
+        window.__timelines["held-text-strobe-burst"] = tl;
+      })();
+    </script>
+  </body>
+</html>

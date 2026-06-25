@@ -16,6 +16,8 @@ export type RuntimeBridgeControlAction =
   | "tick"
   | "set-volume"
   | "set-media-output-muted"
+  | "set-native-media-sync-disabled"
+  | "set-web-audio-media-disabled"
   | "stop-media"
   | "flash-elements";
 
@@ -26,6 +28,7 @@ export type RuntimeBridgeControlMessage = {
   frame?: number;
   muted?: boolean;
   volume?: number;
+  disabled?: boolean;
   playbackRate?: number;
   target?: HfColorGradingTarget | string | null;
   grading?: RuntimeJson;

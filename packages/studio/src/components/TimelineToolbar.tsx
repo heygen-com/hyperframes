@@ -1,5 +1,10 @@
 import { useRef } from "react";
-import { useEnableKeyframes, type EnableKeyframesSession } from "../hooks/useEnableKeyframes";
+import {
+  useEnableKeyframes,
+  isPlayheadWithinTween,
+  type EnableKeyframesSession,
+} from "../hooks/useEnableKeyframes";
+import { computeElementPercentage } from "../hooks/gsapShared";
 import {
   getNextTimelineZoomPercent,
   getTimelineZoomPercent,
@@ -44,23 +49,25 @@ function useKeyframeToggle(session?: DomEditSessionSlice) {
   const anims = session.selectedGsapAnimations;
   const kfAnim = anims.find((a) => a.keyframes);
 
-  const computePct = (time: number) => {
-    const elStart = Number.parseFloat(sel?.dataAttributes?.start ?? "0") || 0;
-    const elDuration = Number.parseFloat(sel?.dataAttributes?.duration ?? "1") || 1;
-    return elDuration > 0
-      ? Math.max(0, Math.min(100, Math.round(((time - elStart) / elDuration) * 1000) / 10))
-      : 0;
-  };
-
   let state: "active" | "inactive" | "none" = "none";
+  // Outside the tween, clicking extends the animation to the playhead rather than
+  // toggling a (clamped) edge keyframe — so the button stays an "add" affordance.
+  let willExtend = false;
   if (kfAnim?.keyframes && sel) {
-    const pct = computePct(currentTime);
-    state = kfAnim.keyframes.keyframes.some((k) => Math.abs(k.percentage - pct) <= 1)
-      ? "active"
-      : "inactive";
+    if (!isPlayheadWithinTween(kfAnim, currentTime)) {
+      state = "inactive";
+      willExtend = true;
+    } else {
+      // Tween-relative percentage (not the clip range) so the button state matches
+      // where the keyframe would actually land.
+      const pct = computeElementPercentage(currentTime, sel, kfAnim);
+      state = kfAnim.keyframes.keyframes.some((k) => Math.abs(k.percentage - pct) <= 1)
+        ? "active"
+        : "inactive";
+    }
   }
 
-  return { state, onToggle: sel ? onToggle : undefined };
+  return { state, willExtend, onToggle: sel ? onToggle : undefined };
 }
 
 // fallow-ignore-next-line complexity
@@ -76,7 +83,11 @@ export function TimelineToolbar({
   const beatAnalysisReady = usePlayerStore((s) => s.beatAnalysis !== null);
   const { zoomMode, manualZoomPercent, setZoomMode, setManualZoomPercent } = useTimelineZoom();
   const displayedTimelineZoomPercent = getTimelineZoomPercent(zoomMode, manualZoomPercent);
-  const { state: keyframeState, onToggle: onToggleKeyframe } = useKeyframeToggle(domEditSession);
+  const {
+    state: keyframeState,
+    willExtend: keyframeWillExtend,
+    onToggle: onToggleKeyframe,
+  } = useKeyframeToggle(domEditSession);
 
   return (
     <div className="border-b border-neutral-800/40 bg-neutral-950/96">
@@ -124,7 +135,9 @@ export function TimelineToolbar({
                   keyframeState === "active"
                     ? "Remove keyframe at playhead"
                     : keyframeState === "inactive"
-                      ? "Add keyframe at playhead"
+                      ? keyframeWillExtend
+                        ? "Add keyframe at playhead (extends animation)"
+                        : "Add keyframe at playhead"
                       : "Enable keyframes"
                 }
               >

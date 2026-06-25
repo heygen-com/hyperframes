@@ -1,0 +1,267 @@
+<!doctype html>
+<html
+  lang="en"
+  data-composition-variables='[
+    {"id":"bgColor",    "type":"color",  "label":"Background",      "default":"#000000"},
+    {"id":"textColor",  "type":"color",  "label":"Text color",      "default":"#ffffff"},
+    {"id":"accentColor","type":"color",  "label":"Period accent",   "default":"#ff6a32"},
+    {"id":"flipWords",  "type":"string", "label":"Flipbook words (comma-separated)", "default":"Design,Strategy,Branding,Marketing,Production,Campaigns,Experiential,Communication,Event Management"},
+    {"id":"resolveText","type":"string", "label":"Lock phrase (empty = pure flicker, no lock)", "default":"everything you need"},
+    {"id":"periodChar", "type":"string", "label":"Trailing accent (empty = none)", "default":"."}
+  ]'
+>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Roll-Driven Flipbook (Word Cycle → Optional Lock) — gruop_3 reference impl</title>
+    <script src="../../motion-primitives/assets/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        background: var(--bg, #000000);
+        overflow: hidden;
+        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--bg, #000000);
+      }
+      .g3-overlay {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        pointer-events: none;
+      }
+      /* grid stack — every layer occupies the same centred cell, so scaling a
+         layer transforms around its own centre (no translate(-50%) to clobber). */
+      .g3-stack {
+        display: grid;
+        place-items: center;
+      }
+      .g3-stack > * {
+        grid-area: 1 / 1;
+      }
+      .g3-layer {
+        white-space: nowrap;
+        color: var(--text, #ffffff);
+        text-shadow:
+          0 0 18px rgba(255, 255, 255, 0.45),
+          0 0 46px rgba(255, 255, 255, 0.22);
+      }
+      .g3-flip {
+        font-size: 120px;
+        font-weight: 800;
+        letter-spacing: -0.01em;
+      }
+      .g3-resolve {
+        font-size: 116px;
+        font-weight: 800;
+        font-style: italic;
+        letter-spacing: -0.01em;
+      }
+      .g3-period {
+        color: var(--accent, #ff6a32);
+        font-weight: 800;
+        font-style: italic;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- data-duration = the scene span. Set this to YOUR scene length; the script
+         reads it back so duration is single-sourced (no hard-coded value in JS).
+         Rebased to scene-relative time — content starts at ~0, no dead pre-roll. -->
+    <div
+      data-hf-id="hf-g3rt"
+      id="root"
+      data-composition-id="group-three-recreate"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="3.8"
+      data-root="true"
+    >
+      <div data-hf-id="hf-g3ov" class="g3-overlay">
+        <div data-hf-id="hf-g3sk" class="g3-stack" id="stack"></div>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        // ════════════════════════════════════════════════════════════════
+        //  ROLL-DRIVEN FLIPBOOK (Word Cycle → Optional Lock) · dense_multiply
+        //  A hi-hat ROLL drives a centred word that flips every 16th-note (flipbook),
+        //  cycling a word list to FILL the roll. Optionally, when a SURGE/phrase
+        //  follows, the flicker resolves (scramble-decode) into a locked phrase.
+        //  Background is pure black. Every move is a 0ms autoAlpha set on a pre-built
+        //  node (no GSAP textContent-sets, no onUpdate — both fail under seek render).
+        // ════════════════════════════════════════════════════════════════
+
+        var root = document.getElementById("root");
+
+        // ── 1. BEAT MAP — the ONLY block you edit per track ─────────────────
+        // SCENE-RELATIVE time (starts at ~0 — no dead pre-roll). When reusing, map
+        // your audiomap roll [rollStart,rollEnd] onto [flipStart, flipStart+rollLen],
+        // i.e. subtract the roll's start offset. bpm stays your track's tempo.
+        var BEAT = {
+          bpm: 129.2, // tempo.bpm  →  16th-note flip step = 60/bpm/4
+          flipStart: 0.1, // tiny entrance lead-in — NO dead air before the flicker
+          flipEnd: 2.19, // flicker length ≈ the source roll (~2.1s); auto-fills with words
+          resolveStart: 2.33, // lock phrase enters after a short clear (only if a phrase is set)
+          resolveLock: 3.33, // locks ~1s later (place just before a downbeat in your track)
+        };
+        // Scene length is single-sourced from data-duration (edit it in the HTML above).
+        var DUR = parseFloat(root.getAttribute("data-duration")) || 7.34;
+
+        // ── 2. Content variables ────────────────────────────────────────────
+        var defaults = {
+          bgColor: "#000000",
+          textColor: "#ffffff",
+          accentColor: "#ff6a32",
+          flipWords:
+            "Design,Strategy,Branding,Marketing,Production,Campaigns,Experiential,Communication,Event Management",
+          resolveText: "everything you need",
+          periodChar: ".",
+        };
+        var vars = Object.assign(
+          {},
+          defaults,
+          window.__hyperframes && window.__hyperframes.getVariables
+            ? window.__hyperframes.getVariables()
+            : {},
+        );
+
+        document.documentElement.style.setProperty("--bg", vars.bgColor);
+        document.documentElement.style.setProperty("--text", vars.textColor);
+        document.documentElement.style.setProperty("--accent", vars.accentColor);
+        var stack = root.querySelector("#stack");
+
+        var WORDS = String(vars.flipWords)
+          .split(",")
+          .map(function (w) {
+            return w.trim();
+          })
+          .filter(function (w) {
+            return w !== "";
+          });
+        var RESOLVE = String(vars.resolveText || "").trim(); // empty → pure flicker, no lock
+        var HAS_RESOLVE = RESOLVE !== "";
+        var PERIOD =
+          vars.periodChar && String(vars.periodChar).trim() !== "" ? vars.periodChar : "";
+
+        // ── 3. Derived timing (auto-fills the roll — adapts to any length / bpm) ─
+        var FLIP_STEP = 60 / BEAT.bpm / 4; // one word per 16th-note
+        var N_SWAPS = Math.max(1, Math.round((BEAT.flipEnd - BEAT.flipStart) / FLIP_STEP));
+
+        // ── 4. Build nodes ──────────────────────────────────────────────────
+        var flipNodes = {};
+        WORDS.forEach(function (w) {
+          if (!flipNodes[w]) {
+            var s = document.createElement("span");
+            s.className = "g3-layer g3-flip";
+            s.textContent = w;
+            stack.appendChild(s);
+            flipNodes[w] = s;
+            gsap.set(s, { autoAlpha: 0 });
+          }
+        });
+
+        var resolveNodes = [];
+        if (HAS_RESOLVE) {
+          var GLYPHS = "!<>-_/[]{}=+*^?#$%&01ABXYZ";
+          var decodeAt = function (str, p) {
+            var n = str.length,
+              out = "",
+              step = Math.floor(p * 48);
+            for (var k = 0; k < n; k++) {
+              var c = str.charAt(k);
+              if (c === " ") {
+                out += " ";
+                continue;
+              }
+              var lock = 0.4 + 0.6 * ((k + 1) / n); // lock left→right, in the back 60%
+              out += p >= lock ? c : GLYPHS.charAt((k * 7 + step * 3) % GLYPHS.length);
+            }
+            return out;
+          };
+          var DECODE_STEP = FLIP_STEP / 2; // scramble twice as fast as the flip
+          var N_STEPS = Math.max(
+            1,
+            Math.round((BEAT.resolveLock - BEAT.resolveStart) / DECODE_STEP),
+          );
+          for (var s2 = 0; s2 <= N_STEPS; s2++) {
+            var node = document.createElement("span");
+            node.className = "g3-layer g3-resolve";
+            if (s2 === N_STEPS) {
+              node.appendChild(document.createTextNode(RESOLVE));
+              if (PERIOD) {
+                var pd = document.createElement("span");
+                pd.className = "g3-period";
+                pd.textContent = PERIOD;
+                node.appendChild(pd);
+              }
+            } else {
+              node.textContent = decodeAt(RESOLVE, s2 / N_STEPS);
+            }
+            stack.appendChild(node);
+            gsap.set(node, { autoAlpha: 0 });
+            resolveNodes.push({ node: node, t: BEAT.resolveStart + s2 * DECODE_STEP });
+          }
+        }
+
+        // ── 5. Timeline — one paused GSAP timeline, absolute audio seconds ──
+        window.__timelines = window.__timelines || {};
+        var tl = gsap.timeline({ paused: true });
+
+        // PHASE A — flipbook word-cycle on the 16th grid, FILLING the roll window
+        var prev = null;
+        for (var i = 0; i < N_SWAPS; i++) {
+          var t = BEAT.flipStart + i * FLIP_STEP;
+          var node = flipNodes[WORDS[i % WORDS.length]];
+          if (prev && prev !== node) tl.set(prev, { autoAlpha: 0 }, t);
+          tl.set(node, { autoAlpha: 1 }, t);
+          prev = node;
+        }
+        // glitchy reveal of the first word as the roll kicks in (scale is safe here)
+        tl.fromTo(
+          flipNodes[WORDS[0]],
+          { scale: 0.8, filter: "blur(10px)" },
+          { scale: 1, filter: "blur(0px)", duration: 0.12, ease: "power2.out" },
+          BEAT.flipStart,
+        );
+
+        // PHASE B — resolve (OPTIONAL). With a lock phrase: clear, then scramble-decode
+        // and lock, holding to the end. Without one: the last word just holds (locks).
+        if (HAS_RESOLVE) {
+          if (prev) tl.set(prev, { autoAlpha: 0 }, BEAT.flipEnd); // clear the flicker
+          var prevR = null;
+          for (var r = 0; r < resolveNodes.length; r++) {
+            if (prevR) tl.set(prevR, { autoAlpha: 0 }, resolveNodes[r].t);
+            tl.set(resolveNodes[r].node, { autoAlpha: 1 }, resolveNodes[r].t);
+            prevR = resolveNodes[r].node;
+          }
+        }
+        // (if no resolve, `prev` — the last flip word — stays visible to the end)
+
+        // Extend the timeline to the full duration with a no-op so the held final
+        // state renders on every frame to DUR (a set AT the timeline's last instant
+        // gets dropped by the seek renderer).
+        tl.set(stack, { opacity: 1 }, DUR);
+
+        tl.seek(0);
+        window.__timelines["group-three-recreate"] = tl;
+      })();
+    </script>
+  </body>
+</html>

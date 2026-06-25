@@ -474,7 +474,16 @@ const HF_BRIDGE_SCRIPT = `(function() {
     var root = document.querySelector('[data-composition-id]');
     if (!root) return 0;
     var d = Number(root.getAttribute('data-duration'));
-    return Number.isFinite(d) && d > 0 ? d : 0;
+    if (Number.isFinite(d) && d > 0) return d;
+    var comps = document.querySelectorAll('[data-composition-src]');
+    var maxEnd = 0;
+    for (var i = 0; i < comps.length; i++) {
+      var start = Number(comps[i].getAttribute('data-start')) || 0;
+      var dur = Number(comps[i].getAttribute('data-duration')) || 0;
+      if (dur > 0) maxEnd = Math.max(maxEnd, start + dur);
+    }
+    if (maxEnd > 0) console.warn('[HF Bridge] No root data-duration; derived ' + maxEnd + 's from sub-compositions');
+    return maxEnd;
   }
   function seekSameOriginChildFrames(frameWindow, nextTimeMs) {
     var frames;

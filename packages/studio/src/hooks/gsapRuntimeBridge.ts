@@ -13,14 +13,22 @@ import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { usePlayerStore } from "../player/store/playerStore";
 
 import { readAllAnimatedProperties, readGsapProperty } from "./gsapRuntimeReaders";
+import { commitGsapPositionFromDrag } from "./gsapDragPositionCommit";
 import {
-  commitGsapPositionFromDrag,
+  commitStaticGsapPosition,
+  commitStaticGsapRotation,
+  commitStaticGsapSize,
+  commitWholePathOffset,
   computeCurrentPercentage,
+  findPositionSetAnimation,
+  findRotationSetAnimation,
+  findSizeSetAnimation,
   materializeIfDynamic,
 } from "./gsapDragCommit";
 import { resolveTweenStart, resolveTweenDuration } from "../utils/globalTimeCompiler";
 import type { GsapDragCommitCallbacks } from "./gsapDragCommit";
 import { getIframeGsap, queryIframeElement, selectorFromSelection } from "./gsapShared";
+import { hasNonHoldTweenForElement } from "./gsapRuntimeKeyframes";
 import { roundTo3 } from "../utils/rounding";
 
 // ── Runtime reads ──────────────────────────────────────────────────────────
@@ -196,17 +204,9 @@ export async function tryGsapDragIntercept(
   iframe: HTMLIFrameElement | null,
   commitMutation: GsapDragCommitCallbacks["commitMutation"],
   fetchFallbackAnimations?: () => Promise<GsapAnimation[]>,
+  options?: { altKey?: boolean },
 ): Promise<boolean> {
   const selector = selectorFromSelection(selection);
-  console.log(
-    "[drag:4] tryGsapDragIntercept",
-    JSON.stringify({
-      sel: selection.id,
-      selector,
-      animCount: animations.length,
-      groups: animations.map((a) => a.propertyGroup).filter(Boolean),
-    }),
-  );
   if (!selector) {
     return false;
   }
@@ -218,44 +218,66 @@ export async function tryGsapDragIntercept(
     commitMutation,
     fetchFallbackAnimations,
   );
-  console.log(
-    "[drag:4] resolveGroupTween('position') →",
-    resolved
-      ? JSON.stringify({ id: resolved.anim.id, group: resolved.anim.propertyGroup })
-      : "null",
-  );
 
   let posAnim = resolved?.anim ?? null;
+  let resolvedAnimations = resolved?.animations ?? animations;
   if (!posAnim) {
     posAnim = findGsapPositionAnimation(animations, selector);
     if (!posAnim && fetchFallbackAnimations) {
       const fresh = await fetchFallbackAnimations();
+      resolvedAnimations = fresh;
       posAnim = findGsapPositionAnimation(fresh, selector);
-      console.log(
-        "[drag:4] findGsapPositionAnimation (fetched) →",
-        posAnim ? posAnim.id : "null",
-        "freshCount:",
-        fresh.length,
-      );
     }
   }
+
+  const gsapPos = readGsapPositionFromIframe(iframe, selector) ?? { x: 0, y: 0 };
+
+  // STATIC case (single source of truth = GSAP timeline): the element has no LIVE
+  // keyframed/tweened position motion. Use the strict non-hold check — a leftover
+  // position-hold `set` (after a delete-all, or a stale parse that lags it) must
+  // NOT count as live motion. Either way the position belongs in a
+  // `tl.set("#el",{x,y})`, not a keyframe conversion: re-nudge an existing set in
+  // place (idempotent), else add a new one. This also covers the stale-cache
+  // phantom — committing a set is correct because the element genuinely has no live motion.
+  const hasNonHold = hasNonHoldTweenForElement(iframe, selector);
+
+  if (!hasNonHold) {
+    const existingSet =
+      posAnim && posAnim.method === "set" && posAnim.targetSelector === selector
+        ? posAnim
+        : findPositionSetAnimation(resolvedAnimations, selector);
+    await commitStaticGsapPosition(selection, offset, gsapPos, selector, existingSet, {
+      commitMutation,
+      fetchAnimations: fetchFallbackAnimations,
+    });
+    return true;
+  }
+
   if (!posAnim) {
     return false;
   }
 
-  const gsapPos = readGsapPositionFromIframe(iframe, selector);
-  if (!gsapPos) {
-    return false;
+  // Verify the anim ID is still valid in the current file. The React-state
+  // `animations` list can lag behind the file after a prior mutation changed
+  // the tween's position/method (which changes the ID). Re-fetch to get the
+  // current ID and avoid a stale-ID remove that creates duplicate tweens.
+  if (fetchFallbackAnimations) {
+    const fresh = await fetchFallbackAnimations();
+    const freshMatch = fresh.find(
+      (a) =>
+        a.targetSelector === posAnim!.targetSelector && a.propertyGroup === posAnim!.propertyGroup,
+    );
+    if (freshMatch && freshMatch.id !== posAnim.id) {
+      posAnim = freshMatch;
+    }
   }
 
-  console.log(
-    "[drag:4] committing GSAP position drag",
-    JSON.stringify({ posAnimId: posAnim.id, gsapPos }),
-  );
-  await commitGsapPositionFromDrag(selection, posAnim, offset, gsapPos, iframe, selector, {
-    commitMutation,
-    fetchAnimations: fetchFallbackAnimations,
-  });
+  const cbs = { commitMutation, fetchAnimations: fetchFallbackAnimations };
+  if (options?.altKey) {
+    await commitWholePathOffset(selection, posAnim, offset, gsapPos, iframe, selector, cbs);
+  } else {
+    await commitGsapPositionFromDrag(selection, posAnim, offset, gsapPos, iframe, selector, cbs);
+  }
   return true;
 }
 
@@ -303,33 +325,14 @@ export async function tryGsapResizeIntercept(
   );
 
   let anim = resolved?.anim ?? null;
-  if (!anim) {
-    // No size-group tween exists — create one. Use the element's timing
-    // from any existing animation, or fall back to element data attributes.
-    const refAnim = animations[0];
-    const elStart =
-      refAnim?.resolvedStart ?? (Number.parseFloat(selection.dataAttributes?.start ?? "0") || 0);
-    const elDuration = Number.parseFloat(selection.dataAttributes?.duration ?? "5") || 5;
-    const ct = usePlayerStore.getState().currentTime;
-    const pct = elDuration > 0 ? Math.round(((ct - elStart) / elDuration) * 1000) / 10 : 0;
+  if (!anim || anim.method === "set") {
     const sel = selectorFromSelection(selection);
     if (!sel) return false;
-    await commitMutation(
-      selection,
-      {
-        type: "add-with-keyframes",
-        targetSelector: sel,
-        position: roundTo3(elStart),
-        duration: roundTo3(elDuration),
-        keyframes: [
-          {
-            percentage: Math.max(0, Math.min(100, pct)),
-            properties: { width: Math.round(size.width), height: Math.round(size.height) },
-          },
-        ],
-      },
-      { label: "Resize (new size keyframe)", softReload: true },
-    );
+    const sizeSet = anim?.method === "set" ? anim : findSizeSetAnimation(animations, sel);
+    await commitStaticGsapSize(selection, size, sel, sizeSet, {
+      commitMutation,
+      fetchAnimations: fetchFallbackAnimations,
+    });
     return true;
   }
 
@@ -374,6 +377,13 @@ export async function tryGsapResizeIntercept(
         { type: "convert-to-keyframes", animationId: anim.id, resolvedFromValues },
         { label: "Convert to keyframes for resize", skipReload: true, coalesceKey },
       );
+      if (fetchFallbackAnimations) {
+        const fresh = await fetchFallbackAnimations();
+        const refreshed = fresh.find(
+          (a) => a.targetSelector === anim!.targetSelector && a.keyframes,
+        );
+        if (refreshed) anim = refreshed;
+      }
     }
   }
 
@@ -463,6 +473,9 @@ export async function tryGsapRotationIntercept(
   commitMutation: GsapDragCommitCallbacks["commitMutation"],
   fetchFallbackAnimations?: () => Promise<GsapAnimation[]>,
 ): Promise<boolean> {
+  const selector = selectorFromSelection(selection);
+  if (!selector) return false;
+
   // Resolve the rotation-group tween, splitting legacy mixed tweens if needed.
   const resolved = await resolveGroupTween(
     "rotation",
@@ -471,6 +484,7 @@ export async function tryGsapRotationIntercept(
     commitMutation,
     fetchFallbackAnimations,
   );
+  const resolvedAnimations = resolved?.animations ?? animations;
 
   // Fallback: legacy heuristic for hand-written scripts
   let anim = resolved?.anim ?? null;
@@ -481,20 +495,27 @@ export async function tryGsapRotationIntercept(
       anim = fresh.find((a) => "rotation" in a.properties || a.keyframes) ?? null;
     }
   }
-  if (!anim) return false;
 
-  const selector = selectorFromSelection(selection);
-  if (!selector) return false;
+  // `angle` is the ABSOLUTE target rotation resolved by the gesture (gsap base +
+  // pointer sweep) or the inspector — so it IS the new rotation. No base re-add: the
+  // gesture's live preview already gsap.set this value (single source of truth).
+  const newRotation = Math.round(angle);
 
-  let gsapRotation = 0;
-  const gsap = getIframeGsap(iframe);
-  const rotEl = gsap ? queryIframeElement(iframe, selector) : null;
-  if (gsap && rotEl) {
-    gsapRotation = Number(gsap.getProperty(rotEl, "rotation")) || 0;
+  // STATIC case (single source of truth = GSAP timeline): no rotation tween, so the
+  // angle belongs in a `tl.set("#el",{rotation})`, not a keyframe conversion —
+  // mirroring the static position set. Idempotent: re-rotate updates an existing
+  // rotation set in place, else add a new one. This replaces the old
+  // `--hf-studio-rotation` CSS-var fallback (the same dual-channel bug class).
+  if (!anim) {
+    const existingSet = findRotationSetAnimation(resolvedAnimations, selector);
+    await commitStaticGsapRotation(selection, newRotation, selector, existingSet, {
+      commitMutation,
+      fetchAnimations: fetchFallbackAnimations,
+    });
+    return true;
   }
 
   const pct = computeCurrentPercentage(selection, anim);
-  const newRotation = Math.round(gsapRotation + angle);
 
   if (anim.hasUnresolvedKeyframes || anim.hasUnresolvedSelector) {
     const newId = await materializeIfDynamic(anim, iframe, commitMutation, selection);

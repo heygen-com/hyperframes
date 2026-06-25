@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>07 · screen_shake</title>
+    <script src="../assets/gsap.min.js"></script>
+    <style>
+      :root {
+        --hg-violet: #7c3aed;
+        --hg-violet-2: #a855f7;
+        --hg-bg: #0a0a0f;
+        --hg-fg: #f5f5fa;
+        --hg-dim: #6b6b78;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--hg-bg);
+        font-family: "Inter", system-ui, sans-serif;
+        color: var(--hg-fg);
+        -webkit-font-smoothing: antialiased;
+      }
+      #scene {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+      }
+      .hero {
+        font-weight: 900;
+        font-size: 280px;
+        letter-spacing: -0.04em;
+        line-height: 0.95;
+        color: var(--hg-fg);
+        white-space: nowrap;
+      }
+      .shake-stage {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        will-change: transform;
+      }
+      .impact-bg {
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(circle at 50% 50%, rgba(255, 42, 74, 0.18) 0%, transparent 60%);
+        opacity: 0;
+        will-change: opacity;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="2"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="scene" class="clip" data-start="0" data-duration="2" data-track-index="1">
+        <div class="impact-bg"></div>
+        <div class="shake-stage"><div class="hero">IMPACT</div></div>
+      </div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      tl.fromTo(
+        ".hero",
+        { scale: 0.6, opacity: 0 },
+        { scale: 1, opacity: 1, duration: 0.15, ease: "power4.out" },
+        0.3,
+      );
+      tl.fromTo(
+        ".impact-bg",
+        { opacity: 0 },
+        { opacity: 1, duration: 0.06, ease: "steps(1)" },
+        0.3,
+      );
+      tl.to(".impact-bg", { opacity: 0, duration: 0.6, ease: "power2.in" }, 0.4);
+
+      const shakeStart = 0.32;
+      const shakeAmps = [28, -24, 20, -22, 16, -18, 14, -14, 10, -8, 6, -5, 3, -2];
+      shakeAmps.forEach((amp, i) => {
+        tl.to(
+          ".shake-stage",
+          { x: amp, y: amp * 0.7 * (i % 2 ? -1 : 1), duration: 0.03, ease: "steps(1)" },
+          shakeStart + i * 0.03,
+        );
+      });
+      tl.to(
+        ".shake-stage",
+        { x: 0, y: 0, duration: 0.1, ease: "power2.out" },
+        shakeStart + shakeAmps.length * 0.03,
+      );
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

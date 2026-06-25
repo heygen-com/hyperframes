@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>blur_resolve</title>
+    <script src="../assets/gsap.min.js"></script>
+    <style>
+      :root {
+        --hg-violet: #7c3aed;
+        --hg-violet-2: #a855f7;
+        --hg-bg: #0a0a0f;
+        --hg-fg: #f5f5fa;
+        --hg-dim: #6b6b78;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--hg-bg);
+        font-family: "Inter", system-ui, sans-serif;
+        color: var(--hg-fg);
+        -webkit-font-smoothing: antialiased;
+      }
+      #scene {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+      }
+      .stage {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .hero {
+        font-weight: 900;
+        font-size: 320px;
+        letter-spacing: -0.04em;
+        line-height: 0.95;
+        color: var(--hg-fg);
+        white-space: nowrap;
+        will-change: filter, transform, opacity;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="2"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="scene" class="clip" data-start="0" data-duration="2" data-track-index="1">
+        <div class="stage">
+          <div class="hero" id="hero">FOCUS</div>
+        </div>
+      </div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      // Resolve: heavy blur + scaled-up + dim settles into perfect crisp focus.
+      tl.fromTo(
+        "#hero",
+        { filter: "blur(36px)", scale: 1.08, opacity: 0.25 },
+        { filter: "blur(0px)", scale: 1, opacity: 1, duration: 0.7, ease: "power2.out" },
+        0.05,
+      );
+
+      // Hold crisp through the middle (no keys needed — state persists to ~1.5).
+
+      // Blur-out near the end: brief defocus + dim, a cut-away that loops seamlessly.
+      tl.to(
+        "#hero",
+        { filter: "blur(24px)", opacity: 0.25, duration: 0.25, ease: "power2.in" },
+        1.7,
+      );
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

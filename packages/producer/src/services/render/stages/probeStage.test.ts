@@ -17,6 +17,24 @@ const mockPage = {
   }),
 };
 
+let initializeSessionCallCount = 0;
+let initializeSessionFailUntilAttempt = 0;
+let initializeSessionError: Error | null = null;
+let createSessionCallCount = 0;
+let createSessionFailUntilAttempt = 0;
+let createSessionError: Error | null = null;
+let closeCaptureSessionCallCount = 0;
+
+function resetRetryMocks() {
+  initializeSessionCallCount = 0;
+  initializeSessionFailUntilAttempt = 0;
+  initializeSessionError = null;
+  createSessionCallCount = 0;
+  createSessionFailUntilAttempt = 0;
+  createSessionError = null;
+  closeCaptureSessionCallCount = 0;
+}
+
 mock.module("@hyperframes/engine", () => ({
   createCaptureSession: async (
     _url: string,
@@ -25,7 +43,11 @@ mock.module("@hyperframes/engine", () => ({
     _nullArg: unknown,
     cfg: unknown,
   ) => {
+    createSessionCallCount++;
     capturedCfgs.push(cfg);
+    if (createSessionError && createSessionCallCount <= createSessionFailUntilAttempt) {
+      throw createSessionError;
+    }
     return {
       isInitialized: false,
       browserConsoleBuffer: [],
@@ -33,10 +55,24 @@ mock.module("@hyperframes/engine", () => ({
     };
   },
   initializeSession: async (session: { isInitialized: boolean }) => {
+    initializeSessionCallCount++;
+    if (initializeSessionError && initializeSessionCallCount <= initializeSessionFailUntilAttempt) {
+      throw initializeSessionError;
+    }
     session.isInitialized = true;
   },
   getCompositionDuration: async () => 5,
-  closeCaptureSession: async () => {},
+  closeCaptureSession: async () => {
+    closeCaptureSessionCallCount++;
+  },
+  // Mirror of the real engine classifier. Canonical tests + pattern list
+  // live in frameCapture-transientErrors.test.ts — update both if patterns change.
+  isTransientBrowserError: (error: unknown) => {
+    const msg = error instanceof Error ? error.message : String(error);
+    return /Navigating frame was detached|Target closed|Session closed|browser has disconnected|Page crashed|Execution context was destroyed|Cannot find context with specified id|Failed to launch the browser process|ECONNREFUSED/i.test(
+      msg,
+    );
+  },
 }));
 
 mock.module("../../fileServer.js", () => ({
@@ -219,5 +255,85 @@ describe("runProbeStage — forceScreenshot threading", () => {
     expect(capturedCfgs.length).toBeGreaterThan(0);
     const capturedCfg = capturedCfgs[0] as { forceScreenshot: boolean };
     expect(capturedCfg.forceScreenshot).toBe(false);
+  });
+});
+
+describe("runProbeStage — transient browser error retry (#1687)", () => {
+  it("retries once on a transient 'Navigating frame was detached' error and succeeds", async () => {
+    resetRetryMocks();
+    capturedCfgs.length = 0;
+    initializeSessionError = new Error("Navigating frame was detached");
+    initializeSessionFailUntilAttempt = 1;
+
+    const { runProbeStage } = await import("./probeStage.js");
+    const input = makeProbeInput({ cfgForceScreenshot: false, stageForceScreenshot: false });
+
+    const result = await runProbeStage(input);
+
+    expect(initializeSessionCallCount).toBe(2);
+    expect(closeCaptureSessionCallCount).toBe(1);
+    expect(result.duration).toBe(5);
+    expect(result.probeSession).not.toBeNull();
+  });
+
+  it("throws immediately on a non-transient error without retrying", async () => {
+    resetRetryMocks();
+    capturedCfgs.length = 0;
+    initializeSessionError = new Error("FONT_FETCH_FAILED: Inter");
+    initializeSessionFailUntilAttempt = 999;
+
+    const { runProbeStage } = await import("./probeStage.js");
+    const input = makeProbeInput({ cfgForceScreenshot: false, stageForceScreenshot: false });
+
+    let caught: unknown;
+    try {
+      await runProbeStage(input);
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toBeInstanceOf(Error);
+    expect((caught as Error).message).toContain("FONT_FETCH_FAILED");
+    expect(initializeSessionCallCount).toBe(1);
+    expect(closeCaptureSessionCallCount).toBe(1);
+  });
+
+  it("throws after exhausting retry attempts on persistent transient errors", async () => {
+    resetRetryMocks();
+    capturedCfgs.length = 0;
+    initializeSessionError = new Error("Target closed");
+    initializeSessionFailUntilAttempt = 999;
+
+    const { runProbeStage } = await import("./probeStage.js");
+    const input = makeProbeInput({ cfgForceScreenshot: false, stageForceScreenshot: false });
+
+    let caught: unknown;
+    try {
+      await runProbeStage(input);
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toBeInstanceOf(Error);
+    expect((caught as Error).message).toContain("Target closed");
+    expect(initializeSessionCallCount).toBe(2);
+    expect(closeCaptureSessionCallCount).toBe(2);
+  });
+
+  it("retries on a transient browser LAUNCH failure (createCaptureSession throws)", async () => {
+    resetRetryMocks();
+    capturedCfgs.length = 0;
+    createSessionError = new Error("Failed to launch the browser process!");
+    createSessionFailUntilAttempt = 1;
+
+    const { runProbeStage } = await import("./probeStage.js");
+    const input = makeProbeInput({ cfgForceScreenshot: false, stageForceScreenshot: false });
+
+    const result = await runProbeStage(input);
+
+    expect(createSessionCallCount).toBe(2);
+    expect(closeCaptureSessionCallCount).toBe(0);
+    expect(result.duration).toBe(5);
+    expect(result.probeSession).not.toBeNull();
   });
 });

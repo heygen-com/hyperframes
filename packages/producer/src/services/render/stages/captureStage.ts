@@ -126,6 +126,8 @@ export interface CaptureStageResult {
   probeSession: CaptureSession | null;
   /** Browser console buffer from whichever session was active last. */
   lastBrowserConsole: string[];
+  /** Engine-resolved screenshot flag from the consumed sequential/probe session, when observed. */
+  captureBeyondViewport?: boolean;
 }
 
 export async function runCaptureStage(input: CaptureStageInput): Promise<CaptureStageResult> {
@@ -150,6 +152,7 @@ export async function runCaptureStage(input: CaptureStageInput): Promise<Capture
   } = input;
   let { workerCount, probeSession } = input;
   let lastBrowserConsole: string[] = [];
+  let captureBeyondViewport: boolean | undefined = probeSession?.options.captureBeyondViewport;
 
   // Derive a local cfg view rather than reading `forceScreenshot` from the
   // caller-owned `cfg`. The sequencer threads the resolved value via the
@@ -228,6 +231,7 @@ export async function runCaptureStage(input: CaptureStageInput): Promise<Capture
       workerCount = lastAttempt.workers;
     }
     if (probeSession) {
+      captureBeyondViewport = probeSession.options.captureBeyondViewport;
       lastBrowserConsole = probeSession.browserConsoleBuffer;
       await closeCaptureSession(probeSession);
       probeSession = null;
@@ -245,6 +249,7 @@ export async function runCaptureStage(input: CaptureStageInput): Promise<Capture
         videoInjector,
         captureCfg,
       ));
+    captureBeyondViewport = session.options.captureBeyondViewport;
     if (probeSession) {
       prepareCaptureSessionForReuse(session, framesDir, videoInjector);
       probeSession = null;
@@ -304,5 +309,5 @@ export async function runCaptureStage(input: CaptureStageInput): Promise<Capture
     }
   }
 
-  return { workerCount, probeSession, lastBrowserConsole };
+  return { workerCount, probeSession, lastBrowserConsole, captureBeyondViewport };
 }

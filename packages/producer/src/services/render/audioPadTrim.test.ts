@@ -16,6 +16,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   buildPadTrimAudioArgs,
+  buildPadTrimAudioPlan,
   padOrTrimAudioToVideoFrameCount,
   type AudioProbeInfo,
   type PadTrimAudioInput,
@@ -23,18 +24,45 @@ import {
 } from "./audioPadTrim.js";
 
 describe("buildPadTrimAudioArgs", () => {
-  it("emits an apad filter when audio is shorter than target", () => {
+  it("emits a concat-copy pad plan when audio is shorter than target", () => {
+    const plan = buildPadTrimAudioPlan("/tmp/in.aac", "/tmp/out.aac", 4.0, 5.0, {
+      sampleRate: 48000,
+      channels: 2,
+    });
+    expect(plan.operation).toBe("pad");
+    expect(plan.steps).toHaveLength(2);
+
+    const silenceArgs = plan.steps[0]!.args;
+    expect(plan.steps[0]!.kind).toBe("pad-silence");
+    expect(silenceArgs).not.toContain("/tmp/in.aac");
+    expect(silenceArgs[silenceArgs.indexOf("-i") + 1]).toBe(
+      "anullsrc=channel_layout=stereo:sample_rate=48000",
+    );
+    expect(silenceArgs[silenceArgs.indexOf("-t") + 1]).toBe("1.000000");
+    expect(silenceArgs[silenceArgs.indexOf("-c:a") + 1]).toBe("aac");
+
+    const concatArgs = plan.steps[1]!.args;
+    expect(plan.steps[1]!.kind).toBe("pad-concat");
+    expect(concatArgs).toContain("concat");
+    expect(concatArgs[concatArgs.indexOf("-i") + 1]).toBe("pipe:0");
+    expect(concatArgs[concatArgs.indexOf("-c:a") + 1]).toBe("copy");
+    expect(concatArgs[concatArgs.length - 1]).toBe("/tmp/out.aac");
+    expect(plan.steps[1]!.stdin).toContain("file 'file:///tmp/in.aac'");
+    expect(plan.steps[1]!.stdin).toContain("file 'file:///tmp/out.aac.pad-silence.aac'");
+    expect(plan.cleanupPaths).toEqual(["/tmp/out.aac.pad-silence.aac"]);
+
+    const reencodedSourceStep = plan.steps.find(
+      (step) =>
+        step.args.includes("/tmp/in.aac") && step.args[step.args.indexOf("-c:a") + 1] === "aac",
+    );
+    expect(reencodedSourceStep).toBeUndefined();
+  });
+
+  it("keeps the legacy args helper on the first pad materialization step", () => {
     const { args, operation } = buildPadTrimAudioArgs("/tmp/in.aac", "/tmp/out.aac", 4.0, 5.0);
     expect(operation).toBe("pad");
-    const afIdx = args.indexOf("-af");
-    expect(afIdx).toBeGreaterThan(-1);
-    expect(args[afIdx + 1]).toContain("apad=pad_dur=");
-    expect(args[afIdx + 1]).toMatch(/pad_dur=1\.0+/);
-    // Pad must re-encode — apad is a filter and filters can't combine with copy.
-    const codecIdx = args.indexOf("-c:a");
-    expect(args[codecIdx + 1]).toBe("aac");
-    expect(args[args.length - 1]).toBe("/tmp/out.aac");
-    expect(args.includes("-y")).toBe(true);
+    expect(args).not.toContain("/tmp/in.aac");
+    expect(args[args.indexOf("-t") + 1]).toBe("1.000000");
   });
 
   it("emits -t when audio is longer than target", () => {
@@ -57,14 +85,14 @@ describe("buildPadTrimAudioArgs", () => {
     expect(args[codecIdx + 1]).toBe("copy");
   });
 
-  it("emits 6-decimal-place pad_dur (no scientific notation)", () => {
+  it("emits 6-decimal-place pad duration (no scientific notation)", () => {
     // 1.23ms — just over the AUDIO_DURATION_TOLERANCE_SECONDS=1ms threshold,
     // so we exercise the pad path with a tiny duration that would round to
     // exponent notation if we used `toString()` instead of `toFixed(6)`.
     const { args, operation } = buildPadTrimAudioArgs("/tmp/in.aac", "/tmp/out.aac", 0.0, 0.00123);
     expect(operation).toBe("pad");
-    const afIdx = args.indexOf("-af");
-    expect(args[afIdx + 1]).toBe("apad=pad_dur=0.001230");
+    const tIdx = args.indexOf("-t");
+    expect(args[tIdx + 1]).toBe("0.001230");
   });
 
   it("flags ~1ms drift as a copy (below the tolerance threshold)", () => {
@@ -120,9 +148,11 @@ describe("padOrTrimAudioToVideoFrameCount", () => {
     expect(result.operation).toBe("pad");
     expect(result.targetDurationSeconds).toBe(6);
     expect(result.sourceDurationSeconds).toBe(5.5);
-    expect(captured.args).toHaveLength(1);
-    const afIdx = captured.args[0]!.indexOf("-af");
-    expect(captured.args[0]![afIdx + 1]).toBe("apad=pad_dur=0.500000");
+    expect(captured.args).toHaveLength(2);
+    const tIdx = captured.args[0]!.indexOf("-t");
+    expect(captured.args[0]![tIdx + 1]).toBe("0.500000");
+    expect(captured.args[0]).not.toContain("/tmp/a.aac");
+    expect(captured.args[1]![captured.args[1]!.indexOf("-c:a") + 1]).toBe("copy");
   });
 
   it("trims a video of N=120 frames at 30/1 fps with longer audio", async () => {
@@ -162,8 +192,8 @@ describe("padOrTrimAudioToVideoFrameCount", () => {
     expect(result.success).toBe(true);
     expect(result.operation).toBe("pad");
     expect(result.targetDurationSeconds).toBeCloseTo((120 * 1001) / 30000, 9);
-    const afIdx = captured.args[0]!.indexOf("-af");
-    expect(captured.args[0]![afIdx + 1]).toMatch(/^apad=pad_dur=0\.004\d+$/);
+    const tIdx = captured.args[0]!.indexOf("-t");
+    expect(captured.args[0]![tIdx + 1]).toMatch(/^0\.004\d+$/);
   });
 
   it("propagates video probe failure as success=false", async () => {

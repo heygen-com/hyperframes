@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import type { ClipManifestClip } from "../lib/playbackTypes";
 import { createTimelineElementFromManifestClip } from "../lib/timelineDOM";
+import { buildTimelineElementKey } from "../lib/timelineElementHelpers";
 
 function findTopLevelAncestor(id: string, parentMap: Map<string, string>): string | null {
   let current = parentMap.get(id);
@@ -78,14 +79,31 @@ function buildChildElements(
       clip: child,
       fallbackIndex: result.length,
     });
+    const domId = child.id ?? undefined;
+    const selector = child.id ? `#${child.id}` : undefined;
+    // `base.key` was built without a hostEl, so it fell back to the colon form
+    // (`index.html:<id>:<idx>`) even though we set domId below. Recompute it from
+    // the same inputs the store uses (`<sourceFile>#<domId>`) so an expanded
+    // child shares one identity with its flat store element — otherwise selecting
+    // it sets `selectedElementId` to the store's hash key while the rendered row
+    // is keyed by the colon form, and `isSelected` never matches (no highlight).
+    const key = buildTimelineElementKey({
+      id: base.id,
+      fallbackIndex: result.length,
+      domId,
+      selector,
+      selectorIndex: base.selectorIndex,
+      sourceFile: editBasis.sourceFile,
+    });
     result.push({
       ...base,
+      key,
       start: clamped.start,
       duration: clamped.duration,
       track: display.track + result.length,
       expandedParentStart: editBasis.start,
-      domId: child.id ?? undefined,
-      selector: child.id ? `#${child.id}` : undefined,
+      domId,
+      selector,
       sourceFile: editBasis.sourceFile,
       timingSource: "authored" as const,
     });

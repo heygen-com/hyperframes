@@ -7,6 +7,7 @@ import { useState, useCallback, useId } from "react";
 import type { SlideRef, SlideHotspot, SlideSequence } from "@hyperframes/core/slideshow";
 import type { DomEditSelection } from "../editor/domEditing";
 import type { SceneInfo } from "./slideshowPanelHelpers";
+import { generateId } from "../../utils/generateId";
 
 // ── Section header (accordion toggle) ────────────────────────────────────
 
@@ -425,7 +426,7 @@ export function HotspotTool({
   // fallow-ignore-next-line complexity
   const handleMakeHotspot = useCallback(() => {
     if (!selectedSceneId || !targetSequenceId || !elementKey) return;
-    const id = `hotspot-${elementKey}-${crypto.randomUUID()}`;
+    const id = `hotspot-${elementKey}-${generateId()}`;
     const label = hotspotLabel.trim() || elementKey;
     onAddHotspot(selectedSceneId, { id, label, target: targetSequenceId });
     setHotspotLabel("");

@@ -607,6 +607,10 @@ function inlineSubCompositions(
       parseHtml: (htmlStr: string) => parseHTML(htmlStr).document as unknown as Document,
       scriptErrorLabel: "[Compiler] Composition script failed",
       flattenInnerRoot: prepareFlattenedInnerRoot,
+      compoundAuthoredRoot: true,
+      onMissingComposition: (srcPath: string) => {
+        console.warn(`[Compiler] Composition file missing or empty: ${srcPath}`);
+      },
     },
   );
 

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { usePlayerStore } from "../player/store/playerStore";
 import { isMusicTrack } from "../utils/timelineInspector";
 import { analyzeMusicFromUrl } from "@hyperframes/core/beats";
-import { useFileManagerContext } from "../contexts/FileManagerContext";
+import { useFileManagerContextOptional } from "../contexts/FileManagerContext";
 import { mergeUserBeats } from "../utils/beatEditing";
 import {
   audioRelPathForSrc,
@@ -58,11 +58,18 @@ export function useMusicBeatAnalysis(): void {
   const setBeatEdits = usePlayerStore((s) => s.setBeatEdits);
   const setBeatPersist = usePlayerStore((s) => s.setBeatPersist);
   const resetBeatHistory = usePlayerStore((s) => s.resetBeatHistory);
-  const { readOptionalProjectFile, writeProjectFile } = useFileManagerContext();
+  const fileManager = useFileManagerContextOptional();
+  const readOptionalProjectFile = fileManager?.readOptionalProjectFile;
+  const writeProjectFile = fileManager?.writeProjectFile;
 
   // File IO via ref so the effects only re-run when the track changes.
-  const ioRef = useRef({ readOptionalProjectFile, writeProjectFile });
-  ioRef.current = { readOptionalProjectFile, writeProjectFile };
+  const ioRef = useRef<
+    (ProjectIo & { writeProjectFile: (p: string, c: string) => Promise<void> }) | null
+  >(null);
+  ioRef.current =
+    readOptionalProjectFile && writeProjectFile
+      ? { readOptionalProjectFile, writeProjectFile }
+      : null;
 
   const musicSrc = useMemo(() => {
     const el = elements.find((e) => isMusicTrack(e));
@@ -73,6 +80,12 @@ export function useMusicBeatAnalysis(): void {
   //    otherwise seed it from detection. Resets edits + history on track change. ──
   useEffect(() => {
     if (!musicSrc) {
+      setBeatAnalysis(null);
+      setBeatEdits(null);
+      resetBeatHistory();
+      return;
+    }
+    if (!ioRef.current) {
       setBeatAnalysis(null);
       setBeatEdits(null);
       resetBeatHistory();
@@ -90,7 +103,9 @@ export function useMusicBeatAnalysis(): void {
     promise
       .then(async (analysis) => {
         const detected = { times: analysis.beatTimes, strengths: analysis.beatStrengths };
-        const { times, strengths, hasFile } = await resolveBeats(beatPath, detected, ioRef.current);
+        const io = ioRef.current;
+        if (!io) return;
+        const { times, strengths, hasFile } = await resolveBeats(beatPath, detected, io);
         if (cancelled) return;
         setBeatEdits(null);
         resetBeatHistory();
@@ -114,10 +129,11 @@ export function useMusicBeatAnalysis(): void {
   //    Flushes any pending write on cleanup so the last edit is never lost. ──
   useEffect(() => {
     const beatPath = beatFilePathForSrc(musicSrc);
-    if (!musicSrc || !beatPath) {
+    if (!musicSrc || !beatPath || !ioRef.current) {
       setBeatPersist(null);
       return;
     }
+    const io = ioRef.current;
     const audio = audioRelPathForSrc(musicSrc) ?? "audio";
     let timer: ReturnType<typeof setTimeout> | null = null;
     let pending: string | null = null;
@@ -126,7 +142,7 @@ export function useMusicBeatAnalysis(): void {
       if (pending === null) return;
       const content = pending;
       pending = null;
-      void ioRef.current.writeProjectFile(beatPath, content).catch(() => {});
+      void io.writeProjectFile(beatPath, content).catch(() => {});
     };
 
     const persist = () => {

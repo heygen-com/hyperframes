@@ -775,7 +775,9 @@ describe("composition rules", () => {
     });
   });
 
-  describe("invalid_capture_path", () => {
+  describe("invalid_parent_traversal_in_asset_path", () => {
+    const RULE_CODE = "invalid_parent_traversal_in_asset_path";
+
     it("errors when an <img> src uses ../capture/", async () => {
       const html = `<html><body>
         <div data-composition-id="x">
@@ -785,25 +787,83 @@ describe("composition rules", () => {
       const result = await lintHyperframeHtml(html, {
         filePath: "/project/compositions/scene.html",
       });
-      const finding = result.findings.find((f) => f.code === "invalid_capture_path");
+      const finding = result.findings.find((f) => f.code === RULE_CODE);
       expect(finding).toBeDefined();
       expect(finding?.severity).toBe("error");
+      expect(finding?.message).toContain("../capture/");
     });
 
-    it("errors when a CSS url() uses ../capture/ (counts all occurrences)", async () => {
+    it("errors when a <video> src uses ../assets/ (HF#1698 shape)", async () => {
+      const html = `<html><body>
+        <div data-composition-id="x">
+          <video src="../assets/clip.mp4" muted></video>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html, {
+        filePath: "/project/compositions/scene.html",
+      });
+      const finding = result.findings.find((f) => f.code === RULE_CODE);
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("error");
+      expect(finding?.message).toContain("../assets/");
+    });
+
+    it("errors when a <video> src uses ../../assets/ from a nested compositions/frames/ file", async () => {
+      const html = `<html><body>
+        <div data-composition-id="x">
+          <video src="../../assets/clip.mp4" muted></video>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html, {
+        filePath: "/project/compositions/frames/scene.html",
+      });
+      const finding = result.findings.find((f) => f.code === RULE_CODE);
+      expect(finding).toBeDefined();
+      expect(finding?.message).toContain("../../assets/");
+    });
+
+    it("errors when a <link> href uses ../fonts/", async () => {
+      const html = `<html><head>
+        <link rel="stylesheet" href="../fonts/brand.css">
+      </head><body>
+        <div data-composition-id="x"></div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html, {
+        filePath: "/project/compositions/scene.html",
+      });
+      const finding = result.findings.find((f) => f.code === RULE_CODE);
+      expect(finding).toBeDefined();
+      expect(finding?.message).toContain("../fonts/");
+    });
+
+    it("errors when a CSS url() uses ../assets/ in a <style> block (counts all occurrences)", async () => {
       const html = `<html><body>
         <style>
-          @font-face { font-family: 'Brand'; src: url('../capture/assets/fonts/Brand.woff2'); }
-          .hero { background-image: url('../capture/assets/hero.png'); }
+          @font-face { font-family: 'Brand'; src: url('../fonts/Brand.woff2'); }
+          .hero { background-image: url('../assets/hero.png'); }
         </style>
         <div data-composition-id="x"></div>
       </body></html>`;
       const result = await lintHyperframeHtml(html, {
         filePath: "/project/compositions/scene.html",
       });
-      const finding = result.findings.find((f) => f.code === "invalid_capture_path");
+      const finding = result.findings.find((f) => f.code === RULE_CODE);
       expect(finding).toBeDefined();
       expect(finding?.message).toContain("2 asset path(s)");
+    });
+
+    it("errors when an inline style url() uses ../assets/", async () => {
+      const html = `<html><body>
+        <div data-composition-id="x">
+          <div style="background-image: url('../assets/hero.png');"></div>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html, {
+        filePath: "/project/compositions/scene.html",
+      });
+      const finding = result.findings.find((f) => f.code === RULE_CODE);
+      expect(finding).toBeDefined();
+      expect(finding?.message).toContain("../assets/");
     });
 
     it("does not flag root-relative capture/ paths", async () => {
@@ -816,8 +876,118 @@ describe("composition rules", () => {
       const result = await lintHyperframeHtml(html, {
         filePath: "/project/compositions/scene.html",
       });
-      const finding = result.findings.find((f) => f.code === "invalid_capture_path");
+      const finding = result.findings.find((f) => f.code === RULE_CODE);
       expect(finding).toBeUndefined();
+    });
+
+    it("does not flag plain relative asset paths (e.g. assets/x.mp4)", async () => {
+      const html = `<html><body>
+        <div data-composition-id="x">
+          <video src="assets/x.mp4" muted></video>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html, {
+        filePath: "/project/compositions/scene.html",
+      });
+      const finding = result.findings.find((f) => f.code === RULE_CODE);
+      expect(finding).toBeUndefined();
+    });
+
+    it("does not flag absolute URLs", async () => {
+      const html = `<html><body>
+        <div data-composition-id="x">
+          <img src="https://example.com/foo.png">
+          <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+          <style>.hero { background-image: url('https://example.com/hero.png'); }</style>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html, {
+        filePath: "/project/compositions/scene.html",
+      });
+      const finding = result.findings.find((f) => f.code === RULE_CODE);
+      expect(finding).toBeUndefined();
+    });
+
+    it("does not flag data: URIs", async () => {
+      const html = `<html><body>
+        <div data-composition-id="x">
+          <img src="data:image/png;base64,iVBORw0KGgo=">
+          <style>.hero { background-image: url('data:image/svg+xml,%3Csvg/%3E'); }</style>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html, {
+        filePath: "/project/compositions/scene.html",
+      });
+      const finding = result.findings.find((f) => f.code === RULE_CODE);
+      expect(finding).toBeUndefined();
+    });
+
+    it("does not flag root-relative absolute paths (e.g. /absolute/path.mp4)", async () => {
+      const html = `<html><body>
+        <div data-composition-id="x">
+          <video src="/absolute/path.mp4" muted></video>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html, {
+        filePath: "/project/compositions/scene.html",
+      });
+      const finding = result.findings.find((f) => f.code === RULE_CODE);
+      expect(finding).toBeUndefined();
+    });
+
+    it('does not flag hash refs (e.g. href="#anchor")', async () => {
+      const html = `<html><body>
+        <div data-composition-id="x">
+          <a href="#section">jump</a>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html, {
+        filePath: "/project/compositions/scene.html",
+      });
+      const finding = result.findings.find((f) => f.code === RULE_CODE);
+      expect(finding).toBeUndefined();
+    });
+
+    it("does not flag registry source block files", async () => {
+      const html = `<html><body>
+        <div data-composition-id="x">
+          <img src="../assets/should-be-ignored.png">
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html, {
+        filePath: "/project/registry/blocks/data-chart/data-chart.html",
+      });
+      const finding = result.findings.find((f) => f.code === RULE_CODE);
+      expect(finding).toBeUndefined();
+    });
+
+    it("does not flag installed registry blocks", async () => {
+      const html = `<!-- hyperframes-registry-item: data-chart -->\n<html><body>
+        <div data-composition-id="x">
+          <img src="../assets/should-be-ignored.png">
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html, {
+        filePath: "/project/compositions/data-chart.html",
+      });
+      const finding = result.findings.find((f) => f.code === RULE_CODE);
+      expect(finding).toBeUndefined();
+    });
+
+    it("does not regress under the old code (invalid_capture_path) — the rule was renamed", async () => {
+      const html = `<html><body>
+        <div data-composition-id="x">
+          <img src="../capture/assets/logo.svg" alt="logo">
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html, {
+        filePath: "/project/compositions/scene.html",
+      });
+      // The old code is gone; the new code subsumes it.
+      const oldFinding = result.findings.find((f) => f.code === "invalid_capture_path");
+      expect(oldFinding).toBeUndefined();
+      const newFinding = result.findings.find((f) => f.code === RULE_CODE);
+      expect(newFinding).toBeDefined();
     });
   });
 

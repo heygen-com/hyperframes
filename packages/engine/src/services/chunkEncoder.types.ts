@@ -11,6 +11,8 @@ export interface EncoderOptions {
   quality?: number;
   bitrate?: string;
   pixelFormat?: string;
+  /** libvpx-vp9 -cpu-used value. Defaults to the engine VP9 setting. */
+  vp9CpuUsed?: number;
   useGpu?: boolean;
   hdr?: { transfer: HdrTransfer };
   /**

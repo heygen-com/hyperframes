@@ -1,0 +1,512 @@
+<!doctype html>
+<html
+  lang="en"
+  data-composition-variables='[
+    {"id":"theme",   "type":"string", "label":"Palette — light | dark | bold",                         "default":"light"},
+    {"id":"icon",    "type":"string", "label":"Climax icon — bell|cursor|sparkle|bolt|play|heart|check|star, an emoji, <svg>, or none", "default":"bell"},
+    {"id":"phrases", "type":"string", "label":"Phrases JSON (empty = built-in intro)",                  "default":""},
+    {"id":"climax",  "type":"string", "label":"Climax JSON {text,in,iconAt,hold,size} (empty = default)","default":""}
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Intro Kinetic Cascade · beat-synced kinetic typography — reference impl</title>
+    <script src="../../motion-primitives/assets/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #f5f5f7;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #f5f5f7;
+        color: #1d1d1f;
+        font-family: "Inter", "Helvetica Neue", Arial, sans-serif;
+      }
+      #stage {
+        position: absolute;
+        inset: 0;
+      }
+
+      /* A PHRASE = a stacked, left-aligned editorial poster, vertically centered.
+         Word-by-word reveal, then a hard cut-out. */
+      .phrase {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        opacity: 0;
+        will-change: opacity;
+      }
+      .line {
+        font-weight: 900;
+        letter-spacing: -0.045em;
+        line-height: 0.88;
+        white-space: nowrap;
+      }
+      .line + .line {
+        margin-top: -0.04em;
+      }
+      /* the HERO line's elegant serif-italic contrast (offline system fallback) */
+      .line.serif {
+        font-family: "Playfair Display", Georgia, "Times New Roman", serif;
+        font-style: italic;
+        letter-spacing: -0.02em;
+      }
+      .w {
+        display: inline-block;
+        opacity: 0;
+        will-change: opacity;
+      }
+      .w.grad {
+        background: var(--grad);
+        background-size: 200% 100%;
+        background-position: 0% 50%;
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+        color: transparent;
+      }
+
+      /* The CLIMAX phrase SLIDES in, holds to the end, and may carry an inline
+         animated icon (the {icon} token). */
+      .climax {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        display: flex;
+        align-items: center;
+        gap: 0.32em;
+        white-space: nowrap;
+        opacity: 0;
+        font-weight: 900;
+        letter-spacing: -0.035em;
+        line-height: 1;
+        will-change: transform, opacity;
+      }
+      .cword {
+        flex-shrink: 0;
+      }
+      .icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        flex-shrink: 0;
+        opacity: 0;
+        overflow: visible;
+        line-height: 1;
+      }
+      .icon-glyph {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transform-origin: 50% 14%;
+      }
+      .icon-glyph svg {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+      .ring {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        border-radius: 50%;
+        border: 3px solid var(--ring1);
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.4);
+      }
+      .ring.ring2 {
+        border-color: var(--ring2);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      data-hf-id="hf-ikc-root"
+      id="root"
+      data-composition-id="intro-kinetic-cascade"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="7"
+      data-root="true"
+    >
+      <div data-hf-id="hf-ikc-stage" id="stage"></div>
+
+      <script>
+        (function () {
+          // ════════════════════════════════════════════════════════════════════
+          //  INTRO KINETIC CASCADE  ·  beat-synced editorial kinetic typography
+          //  ────────────────────────────────────────────────────────────────────
+          //  A spoken/anchored line laid out as a sequence of big editorial PHRASES,
+          //  each revealed word-by-word on its anchors (VO word-times OR audio onsets),
+          //  hard cut-out between them, climaxing on a phrase that SLIDES in with a
+          //  swappable, ringing ICON. Asset-free: system type, inline-SVG icon library,
+          //  bundled GSAP. Reversed from the VO intro `act0-intro-bell`.
+          //
+          //  COMPOSE BY DATA — `phrases` (the cascade) + `climax` (the finale) + `icon`
+          //  (which glyph rings) + `theme` (palette). The icon is its own knob so it can
+          //  match the scene: bell for timing, cursor for a click, sparkle for AI, …
+          // ════════════════════════════════════════════════════════════════════
+
+          window.__timelines = window.__timelines || {};
+
+          // ── 1. Variables ──
+          var defaults = { theme: "light", icon: "bell", phrases: "", climax: "" };
+          var vars = Object.assign(
+            {},
+            defaults,
+            window.__hyperframes && window.__hyperframes.getVariables
+              ? window.__hyperframes.getVariables()
+              : {},
+          );
+
+          // ── 2. Palette themes (accents are AA-tuned on each bg) ──
+          var THEMES = {
+            light: {
+              bg: "#f5f5f7",
+              ink: "#1d1d1f",
+              accents: ["#0b8a3e", "#0a78b4", "gradient"],
+              gradFrom: "#0a78b4",
+              gradTo: "#0b8a3e",
+            },
+            dark: {
+              bg: "#0d0e12",
+              ink: "#f2f3f5",
+              accents: ["#3be06b", "#37c6ff", "gradient"],
+              gradFrom: "#37c6ff",
+              gradTo: "#3be06b",
+            },
+            bold: {
+              bg: "#0a1228",
+              ink: "#ffffff",
+              accents: ["#ffd23f", "#ff5da2", "gradient"],
+              gradFrom: "#ff5da2",
+              gradTo: "#ffd23f",
+            },
+          };
+          var TH = THEMES[String(vars.theme || "").trim()] || THEMES.light;
+
+          function hexRgba(hex, a) {
+            var h = String(hex).replace(/^#/, "");
+            if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+            var n = parseInt(h, 16);
+            return (
+              "rgba(" + ((n >> 16) & 255) + "," + ((n >> 8) & 255) + "," + (n & 255) + "," + a + ")"
+            );
+          }
+
+          // ── 3. Inline-SVG icon library (asset-free; fill follows the text color) ──
+          var ICONS = {
+            bell: '<path d="M12 2.2a1.9 1.9 0 0 1 1.9 1.9v.7a6.2 6.2 0 0 1 4.3 5.9v3.5l1.9 2.1v1.1H3.9v-1.1l1.9-2.1V10.7a6.2 6.2 0 0 1 4.3-5.9v-.7A1.9 1.9 0 0 1 12 2.2zM9.6 19.6h4.8a2.4 2.4 0 0 1-4.8 0z"/>',
+            cursor: '<path d="M5.5 2.6l13.4 7.9-5.9 1.2-1.1 5.9-6.4-15z"/>',
+            sparkle: '<path d="M12 1.8l2.1 6.9 6.9 2.1-6.9 2.1L12 19.8l-2.1-6.9L3 10.8l6.9-2.1z"/>',
+            bolt: '<path d="M13.2 1.8L4.4 13.6h5.6l-1.2 8.6 9.2-12.4h-5.8z"/>',
+            play: '<path d="M12 2.4a9.6 9.6 0 1 0 0 19.2 9.6 9.6 0 0 0 0-19.2zm-2.1 5.1l6 4.5-6 4.5z"/>',
+            heart:
+              '<path d="M12 21.2S2.8 15.4 2.8 8.9C2.8 5.8 5.1 4 7.6 4c1.9 0 3.4 1.1 4.4 2.6C13 5.1 14.5 4 16.4 4c2.5 0 4.8 1.8 4.8 4.9 0 6.5-9.2 12.3-9.2 12.3z"/>',
+            check: '<path d="M9.6 16.7L4.8 11.9l1.7-1.7 3.1 3.1 7.9-7.9 1.7 1.7z"/>',
+            star: '<path d="M12 2.2l2.9 6.4 7 .6-5.3 4.6 1.6 6.8L12 17.4 5.8 20.6l1.6-6.8L2.1 9.2l7-.6z"/>',
+          };
+          function iconSVG(name) {
+            return (
+              '<svg viewBox="0 0 24 24" fill="currentColor" width="100%" height="100%">' +
+              ICONS[name] +
+              "</svg>"
+            );
+          }
+
+          // ── 4. Default program (reversed from act0-intro-bell) ──
+          var DEFAULT_PHRASES = [
+            {
+              out: 1.36,
+              lines: [
+                { text: "If you've", size: 220, x: 140 },
+                { text: "ever", size: 520, x: 240, hero: true, font: "serif" },
+                { text: "used AI", size: 280, x: 780 },
+              ],
+              times: [0.14, 0.3, 0.55, 0.87, 1.06],
+            },
+            {
+              out: 3.06,
+              lines: [
+                { text: "for", size: 220, x: 160 },
+                { text: "video", size: 500, x: 220, hero: true },
+                { text: "editing before,", size: 200, x: 220 },
+              ],
+              times: [1.36, 1.58, 1.92, 2.48],
+            },
+            {
+              out: 3.79,
+              lines: [
+                { text: "you", size: 240, x: 200 },
+                { text: "know", size: 500, x: 260, hero: true, accent: "gradient" },
+                { text: "that", size: 340, x: 820 },
+              ],
+              times: [3.06, 3.3, 3.54],
+            },
+          ];
+          var DEFAULT_CLIMAX = {
+            text: "timing is {icon} tricky.",
+            in: 3.79,
+            iconAt: 4.9,
+            hold: 1.3,
+            size: 150,
+          };
+
+          var WORD_FADE = 0.18,
+            CUT = 0.1,
+            SLIDE = 0.42,
+            OFFSCREEN_R = 1400;
+
+          function parseJSON(v, fallback) {
+            if (!v) return fallback;
+            if (typeof v !== "string") return v;
+            try {
+              var p = JSON.parse(v);
+              return p || fallback;
+            } catch (e) {
+              return fallback;
+            }
+          }
+          var PHRASES = parseJSON(vars.phrases, DEFAULT_PHRASES);
+          if (!PHRASES.length) PHRASES = DEFAULT_PHRASES;
+          var C = Object.assign({}, DEFAULT_CLIMAX, parseJSON(vars.climax, {}));
+
+          var words = function (s) {
+            return String(s).trim().split(/\s+/).filter(Boolean);
+          };
+
+          // ── 5. Theme the field ──
+          var root = document.getElementById("root");
+          var stage = document.getElementById("stage");
+          root.style.background = TH.bg;
+          root.style.color = TH.ink;
+          document.documentElement.style.background = TH.bg;
+          document.body.style.background = TH.bg;
+          var GRAD =
+            "linear-gradient(90deg," +
+            TH.gradFrom +
+            " 0%," +
+            TH.gradTo +
+            " 50%," +
+            TH.gradFrom +
+            " 100%)";
+
+          // ── 6. Build phrase DOM, collect word spans in reading order ──
+          PHRASES.forEach(function (p, pi) {
+            var pEl = document.createElement("div");
+            pEl.className = "phrase";
+            var accent = p.accent || TH.accents[pi % TH.accents.length];
+            p._spans = [];
+            p._grad = [];
+            p.lines.forEach(function (ln) {
+              var lEl = document.createElement("div");
+              lEl.className = "line" + (ln.font === "serif" ? " serif" : "");
+              lEl.style.fontSize = ln.size + "px";
+              lEl.style.marginLeft = (ln.x != null ? ln.x : 0) + "px";
+              var heroColor = ln.hero ? ln.accent || accent : null;
+              words(ln.text).forEach(function (wtext) {
+                var w = document.createElement("span");
+                w.className = "w";
+                w.textContent = wtext;
+                if (heroColor === "gradient") {
+                  w.classList.add("grad");
+                  w.style.setProperty("--grad", GRAD);
+                  p._grad.push(w);
+                } else if (heroColor) w.style.color = heroColor;
+                lEl.appendChild(w);
+                lEl.appendChild(document.createTextNode(" "));
+                p._spans.push(w);
+              });
+              pEl.appendChild(lEl);
+            });
+            stage.appendChild(pEl);
+            p._el = pEl;
+          });
+
+          // ── 7. Build the climax (slide-in + swappable icon) ──
+          var cEl = document.createElement("div");
+          cEl.className = "climax";
+          cEl.style.fontSize = C.size + "px";
+          cEl.style.setProperty("--ring1", hexRgba(TH.ink, 0.25));
+          cEl.style.setProperty("--ring2", hexRgba(TH.ink, 0.1));
+          var iconPx = Math.round(C.size * 1.7);
+          var iconEl = null,
+            rings = [];
+          var iconSpec = String(vars.icon == null ? "bell" : vars.icon).trim();
+
+          words(C.text).forEach(function (tok) {
+            if (tok === "{icon}") {
+              if (!iconSpec || iconSpec === "none") return; // drop the slot → pure-text climax
+              iconEl = document.createElement("span");
+              iconEl.className = "icon";
+              iconEl.style.width = iconPx + "px";
+              iconEl.style.height = iconPx + "px";
+              var r1 = document.createElement("span");
+              r1.className = "ring";
+              var r2 = document.createElement("span");
+              r2.className = "ring ring2";
+              [r1, r2].forEach(function (r) {
+                var rs = Math.round(iconPx * 1.3);
+                r.style.width = rs + "px";
+                r.style.height = rs + "px";
+                iconEl.appendChild(r);
+              });
+              rings = [r1, r2];
+              var glyph = document.createElement("span");
+              glyph.className = "icon-glyph";
+              glyph.style.width = iconPx + "px";
+              glyph.style.height = iconPx + "px";
+              glyph.style.color = TH.ink;
+              if (ICONS[iconSpec]) {
+                glyph.innerHTML = iconSVG(iconSpec); // library icon
+              } else if (iconSpec.slice(0, 4).toLowerCase() === "<svg") {
+                glyph.innerHTML = iconSpec; // custom inline SVG
+              } else {
+                glyph.style.fontSize = Math.round(iconPx * 0.86) + "px"; // emoji / text glyph
+                glyph.textContent = iconSpec;
+              }
+              iconEl.appendChild(glyph);
+              cEl.appendChild(iconEl);
+            } else {
+              var w = document.createElement("span");
+              w.className = "cword";
+              w.textContent = tok;
+              cEl.appendChild(w);
+            }
+          });
+          stage.appendChild(cEl);
+
+          // ── 8. Timeline ──
+          var tl = gsap.timeline({ paused: true });
+
+          PHRASES.forEach(function (p) {
+            gsap.set(p._el, { opacity: 0 });
+            gsap.set(p._spans, { opacity: 0 });
+          });
+          gsap.set(cEl, { xPercent: -50, yPercent: -50, x: OFFSCREEN_R, opacity: 0 });
+          if (iconEl) {
+            gsap.set(iconEl, { opacity: 0 });
+            gsap.set(iconEl.querySelector(".icon-glyph"), { scale: 0.4, rotation: -8, opacity: 0 });
+            gsap.set(rings, { opacity: 0, scale: 0.4 });
+          }
+
+          PHRASES.forEach(function (p, pi) {
+            var n = p._spans.length;
+            var prevOut = pi === 0 ? 0.15 : PHRASES[pi - 1].out;
+            var times = p.times && p.times.length === n ? p.times : null;
+            if (!times) {
+              var start = p.start != null ? p.start : prevOut;
+              var end = p.out - Math.max(0.25, (p.out - start) * 0.18);
+              times = p._spans.map(function (_, i) {
+                return n <= 1 ? start : start + ((end - start) * i) / (n - 1);
+              });
+            }
+            tl.to(p._el, { opacity: 1, duration: 0.01, overwrite: "auto" }, times[0]);
+            p._spans.forEach(function (w, i) {
+              tl.to(
+                w,
+                { opacity: 1, duration: WORD_FADE, ease: "power2.out", overwrite: "auto" },
+                times[i],
+              );
+            });
+            if (p._grad.length) {
+              tl.fromTo(
+                p._grad,
+                { backgroundPosition: "0% 50%" },
+                {
+                  backgroundPosition: "-200% 50%",
+                  duration: Math.max(0.6, p.out - times[0]),
+                  ease: "none",
+                },
+                times[0],
+              );
+            }
+            tl.to(
+              p._el,
+              { opacity: 0, duration: CUT, ease: "power2.in", overwrite: "auto" },
+              p.out - CUT,
+            );
+          });
+
+          // climax slide-in
+          tl.to(
+            cEl,
+            { x: 0, opacity: 1, duration: SLIDE, ease: "power3.out", overwrite: "auto" },
+            C.in,
+          );
+
+          // icon pop + ring
+          if (iconEl) {
+            var glyph = iconEl.querySelector(".icon-glyph");
+            tl.to(
+              iconEl,
+              { opacity: 1, duration: 0.3, ease: "power3.out", overwrite: "auto" },
+              C.iconAt,
+            );
+            tl.fromTo(
+              glyph,
+              { scale: 0.4, rotation: -8, opacity: 0 },
+              {
+                scale: 1,
+                rotation: 0,
+                opacity: 1,
+                duration: 0.35,
+                ease: "back.out(2.4)",
+                overwrite: "auto",
+              },
+              C.iconAt + 0.05,
+            );
+            tl.to(
+              glyph,
+              { rotation: 13, duration: 0.1, ease: "power2.out", overwrite: "auto" },
+              C.iconAt + 0.4,
+            );
+            tl.to(
+              glyph,
+              { rotation: 0, duration: 0.85, ease: "elastic.out(1, 0.25)", overwrite: "auto" },
+              C.iconAt + 0.5,
+            );
+            [0, 0.28].forEach(function (off) {
+              tl.fromTo(
+                rings,
+                { scale: 0.4, opacity: 0.55 },
+                { scale: 1.5, opacity: 0, duration: 0.8, ease: "power2.out", stagger: 0.08 },
+                C.iconAt + 0.42 + off,
+              );
+            });
+          }
+
+          var TOTAL = Math.round((C.iconAt + C.hold) * 100) / 100;
+          tl.to({}, { duration: TOTAL }, 0);
+          root.setAttribute("data-duration", String(TOTAL));
+          tl.seek(0);
+
+          window.__timelines["intro-kinetic-cascade"] = tl;
+        })();
+      </script>
+    </div>
+  </body>
+</html>

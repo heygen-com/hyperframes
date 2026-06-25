@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>26 · pixel_dissolve</title>
+    <script src="../assets/gsap.min.js"></script>
+    <style>
+      :root {
+        --hg-violet: #7c3aed;
+        --hg-violet-2: #a855f7;
+        --hg-bg: #0a0a0f;
+        --hg-fg: #f5f5fa;
+        --hg-dim: #6b6b78;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--hg-bg);
+        font-family: "Inter", system-ui, sans-serif;
+        color: var(--hg-fg);
+        -webkit-font-smoothing: antialiased;
+      }
+      #scene {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+      }
+      .stage {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .hero {
+        font-weight: 900;
+        font-size: 320px;
+        letter-spacing: -0.05em;
+        color: var(--hg-fg);
+        white-space: nowrap;
+        background: linear-gradient(135deg, #7c3aed 0%, #a855f7 60%, #d946ef 100%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+        color: transparent;
+      }
+      .grid {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        will-change: contents;
+        pointer-events: none;
+      }
+      .cell {
+        background: var(--hg-bg);
+        will-change: opacity, transform;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="2"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="scene" class="clip" data-start="0" data-duration="2" data-track-index="1">
+        <div class="stage"><div class="hero">DISSOLVE</div></div>
+        <div class="grid" id="grid"></div>
+      </div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      const COLS = 24;
+      const ROWS = 14;
+      const grid = document.getElementById("grid");
+      grid.style.gridTemplateColumns = `repeat(${COLS}, 1fr)`;
+      grid.style.gridTemplateRows = `repeat(${ROWS}, 1fr)`;
+
+      const cells = [];
+      for (let i = 0; i < COLS * ROWS; i++) {
+        const c = document.createElement("div");
+        c.className = "cell";
+        grid.appendChild(c);
+        cells.push(c);
+      }
+
+      // Deterministic shuffle: hash function based on i+j
+      function hash(i) {
+        return ((i * 9301 + 49297) % 233280) / 233280;
+      }
+      const order = cells.map((c, i) => ({ c, i, h: hash(i) })).sort((a, b) => a.h - b.h);
+
+      // All cells start visible (covering hero), fade out in shuffled order
+      const TOTAL = 0.85;
+      order.forEach((o, k) => {
+        const t = 0.35 + (k / order.length) * TOTAL;
+        tl.to(o.c, { opacity: 0, duration: 0.06, ease: "steps(1)" }, t);
+      });
+
+      // After dissolve, gentle hero scale settle (it was always visible, now exposed)
+      tl.fromTo(".hero", { scale: 1.03 }, { scale: 1.0, duration: 0.5, ease: "power2.out" }, 1.0);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

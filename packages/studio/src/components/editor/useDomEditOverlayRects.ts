@@ -148,6 +148,12 @@ export function useDomEditOverlayRects({
           activeCompositionPathRef.current,
           resolvedElementRef as ResolvedElementRef,
         );
+        // An explicitly-selected element's overlay must track it whenever it's laid
+        // out and not display:none/visibility:hidden/opacity:0 — use basic visibility,
+        // NOT the occlusion heuristic. Occlusion (isElementVisibleInPreview) treats any
+        // opacity:1 ancestor as an opaque cover even when it paints nothing (e.g. a
+        // backgroundless full-bleed scene above a subcomposition), which would wrongly
+        // hide the selection box. Occlusion stays for hover, where a false hide is cheap.
         if (el && isElementVisibleForOverlay(el)) {
           const nextRect = toOverlayRect(overlayEl, iframe, el);
           setOverlayRect(nextRect);

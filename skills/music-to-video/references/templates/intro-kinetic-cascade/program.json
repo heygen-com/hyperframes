@@ -1,0 +1,41 @@
+{
+  "_": "Default intro-kinetic-cascade program (reversed from act0-intro-bell). `theme` = palette; `icon` = the ringing climax glyph (MATCH TO SCENE — bell|cursor|sparkle|bolt|play|heart|check|star, an emoji, a raw <svg>, or 'none'); `phrases` = the word-by-word cascade (each `times` = VO word onsets / audio onsets, omit to auto-spread); `climax` = the slide-in finale ({icon} marks the glyph). Pass these as the matching composition-variables; empty vars fall back to these values.",
+  "theme": "light",
+  "icon": "bell",
+  "phrases": [
+    {
+      "out": 1.36,
+      "lines": [
+        { "text": "If you've", "size": 220, "x": 140 },
+        { "text": "ever", "size": 520, "x": 240, "hero": true, "font": "serif" },
+        { "text": "used AI", "size": 280, "x": 780 }
+      ],
+      "times": [0.14, 0.3, 0.55, 0.87, 1.06]
+    },
+    {
+      "out": 3.06,
+      "lines": [
+        { "text": "for", "size": 220, "x": 160 },
+        { "text": "video", "size": 500, "x": 220, "hero": true },
+        { "text": "editing before,", "size": 200, "x": 220 }
+      ],
+      "times": [1.36, 1.58, 1.92, 2.48]
+    },
+    {
+      "out": 3.79,
+      "lines": [
+        { "text": "you", "size": 240, "x": 200 },
+        { "text": "know", "size": 500, "x": 260, "hero": true, "accent": "gradient" },
+        { "text": "that", "size": 340, "x": 820 }
+      ],
+      "times": [3.06, 3.3, 3.54]
+    }
+  ],
+  "climax": {
+    "text": "timing is {icon} tricky.",
+    "in": 3.79,
+    "iconAt": 4.9,
+    "hold": 1.3,
+    "size": 150
+  }
+}

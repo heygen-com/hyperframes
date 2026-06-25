@@ -20,6 +20,25 @@ describe("collectRuntimeTimelinePayload", () => {
     expect(result.compositionHeight).toBe(1080);
   });
 
+  // Regression: id-less timed elements (root index.html children carry
+  // data-hf-id, not id) must get their data-hf-id as the clip id — not null —
+  // so the manifest aligns with __clipTree and inline expansion can join them.
+  it("ids an id-less clip by its data-hf-id", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-duration", "10");
+    document.body.appendChild(root);
+
+    const clip = document.createElement("h1");
+    clip.setAttribute("data-hf-id", "hf-headline");
+    clip.setAttribute("data-start", "1");
+    clip.setAttribute("data-duration", "3");
+    root.appendChild(clip);
+
+    const result = collectRuntimeTimelinePayload(defaultParams);
+    expect(result.clips[0].id).toBe("hf-headline");
+  });
+
   it("collects clips from elements with data-start and data-duration", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");

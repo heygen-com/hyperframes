@@ -1,0 +1,435 @@
+import { describe, expect, it, beforeEach } from "vitest";
+import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
+import type { DomEditSelection } from "../components/editor/domEditingTypes";
+import { commitGsapPositionFromDrag } from "./gsapDragPositionCommit";
+import {
+  commitStaticGsapPosition,
+  commitStaticGsapRotation,
+  parkPlayheadOnKeyframe,
+  type GsapDragCommitCallbacks,
+} from "./gsapDragCommit";
+import { usePlayerStore } from "../player/store/playerStore";
+
+// Minimal selection whose element has no drag-baseline attributes (origX/Y = 0).
+const selection = (): DomEditSelection =>
+  ({
+    id: "puck-a",
+    selector: "#puck-a",
+    element: {
+      style: { getPropertyValue: () => "", setProperty: () => {} },
+      getAttribute: () => null,
+      removeAttribute: () => {},
+      getBoundingClientRect: () => ({ top: 0, left: 0 }),
+    },
+  }) as unknown as DomEditSelection;
+
+const flatTween = (): GsapAnimation =>
+  ({
+    id: "#puck-a-to",
+    targetSelector: "#puck-a",
+    method: "to",
+    resolvedStart: 1.2,
+    duration: 2.2,
+    properties: { x: -260 },
+  }) as unknown as GsapAnimation;
+
+// What the flat tween becomes after convert-to-keyframes (returned by fetchAnimations).
+const convertedTween = (): GsapAnimation =>
+  ({
+    id: "#puck-a-converted",
+    targetSelector: "#puck-a",
+    method: "to",
+    resolvedStart: 1.2,
+    duration: 2.2,
+    keyframes: {
+      keyframes: [
+        { percentage: 0, properties: { x: 0, y: 0 } },
+        { percentage: 100, properties: { x: -260, y: 0 } },
+      ],
+    },
+  }) as unknown as GsapAnimation;
+
+function recordingCallbacks(): {
+  types: string[];
+  mutations: Array<Record<string, unknown>>;
+  callbacks: GsapDragCommitCallbacks;
+} {
+  const types: string[] = [];
+  const mutations: Array<Record<string, unknown>> = [];
+  return {
+    types,
+    mutations,
+    callbacks: {
+      commitMutation: async (_sel, mutation) => {
+        types.push(mutation.type as string);
+        mutations.push(mutation);
+      },
+      fetchAnimations: async () => [convertedTween()],
+    },
+  };
+}
+
+describe("commitGsapPositionFromDrag — flat tween", () => {
+  beforeEach(() => {
+    usePlayerStore.setState({ currentTime: 0, activeKeyframePct: null });
+  });
+
+  it("extends the existing tween (never spawns a parallel one) when dragged OUTSIDE its range", async () => {
+    usePlayerStore.setState({ currentTime: 6 }); // outside [1.2, 3.4]
+    const { types, callbacks } = recordingCallbacks();
+
+    await commitGsapPositionFromDrag(
+      selection(),
+      flatTween(),
+      { x: -100, y: 0 },
+      { x: 0, y: 0 },
+      null,
+      "#puck-a",
+      callbacks,
+    );
+
+    expect(types).toContain("convert-to-keyframes");
+    expect(types).toContain("replace-with-keyframes"); // the extend
+    expect(types).not.toContain("add-with-keyframes"); // regression: no parallel tween
+  });
+
+  it("adds a keyframe at the playhead when dragged INSIDE its range", async () => {
+    usePlayerStore.setState({ currentTime: 2 }); // inside [1.2, 3.4]
+    const { types, callbacks } = recordingCallbacks();
+
+    await commitGsapPositionFromDrag(
+      selection(),
+      flatTween(),
+      { x: -100, y: 0 },
+      { x: 0, y: 0 },
+      null,
+      "#puck-a",
+      callbacks,
+    );
+
+    expect(types).toContain("add-keyframe");
+    expect(types).not.toContain("add-with-keyframes");
+  });
+
+  it("MODIFIES the selected keyframe (no extend) when one is selected, even past the tween end", async () => {
+    // User clicked the 100% diamond (activeKeyframePct=100), playhead drifted past
+    // the end. Expect: convert + add-keyframe AT 100% — not replace-with-keyframes.
+    usePlayerStore.setState({ currentTime: 6, activeKeyframePct: 100 }); // outside [1.2, 3.4]
+    const { types, mutations, callbacks } = recordingCallbacks();
+
+    await commitGsapPositionFromDrag(
+      selection(),
+      flatTween(),
+      { x: -100, y: 0 },
+      { x: 0, y: 0 },
+      null,
+      "#puck-a",
+      callbacks,
+    );
+
+    expect(types).toContain("add-keyframe");
+    expect(types).not.toContain("replace-with-keyframes"); // not extended
+    const addKf = mutations.find((m) => m.type === "add-keyframe");
+    expect(addKf?.percentage).toBe(100); // modified the selected endpoint
+    // consumed: cleared so the next free drag doesn't keep modifying
+    expect(usePlayerStore.getState().activeKeyframePct).toBeNull();
+    // parked the playhead on the edited keyframe (1.2 start + 100% * 2.2 dur),
+    // so the edit is visible instead of rendering the base pose
+    expect(usePlayerStore.getState().requestedSeekTime).toBe(3.4);
+  });
+});
+
+describe("commitGsapPositionFromDrag — keyframed tween backfill", () => {
+  beforeEach(() => {
+    usePlayerStore.setState({ currentTime: 0, activeKeyframePct: null });
+  });
+
+  const keyframedTween = (): GsapAnimation =>
+    ({
+      id: "#puck-a-kf",
+      targetSelector: "#puck-a",
+      method: "to",
+      resolvedStart: 1.2,
+      duration: 2.2,
+      keyframes: {
+        keyframes: [
+          { percentage: 0, properties: { x: 0 } },
+          { percentage: 100, properties: { x: -260 } },
+        ],
+      },
+    }) as unknown as GsapAnimation;
+
+  it("passes backfillDefaults so a newly-introduced prop doesn't move the other keyframes", async () => {
+    // Drag the 0% keyframe DOWN (introduces y on an x-only tween). The add-keyframe
+    // must carry backfillDefaults at the element's base so 100% gets y:0, not y:780.
+    usePlayerStore.setState({ currentTime: 1.2, activeKeyframePct: 0 });
+    const { mutations, callbacks } = recordingCallbacks();
+
+    await commitGsapPositionFromDrag(
+      selection(),
+      keyframedTween(),
+      { x: 0, y: 780 }, // studioOffset: dragged straight down
+      { x: 0, y: 0 }, // gsapPos → base falls back to {0,0} (selection has no base attrs)
+      null,
+      "#puck-a",
+      callbacks,
+    );
+
+    const addKf = mutations.find((m) => m.type === "add-keyframe");
+    expect(addKf).toBeDefined();
+    expect(addKf?.percentage).toBe(0); // edited the selected 0% keyframe
+    expect(addKf?.properties).toMatchObject({ y: 780 });
+    expect(addKf?.backfillDefaults).toEqual({ x: 0, y: 0 }); // base → 100% gets y:0
+  });
+});
+
+describe("commitGsapPositionFromDrag — from() tween dragged outside its range", () => {
+  beforeEach(() => usePlayerStore.setState({ currentTime: 0, activeKeyframePct: null }));
+
+  const fromTween = (): GsapAnimation =>
+    ({
+      id: "#title-from-400",
+      targetSelector: "#title",
+      method: "from",
+      resolvedStart: 0.4,
+      duration: 0.9,
+      properties: { y: 70 },
+    }) as unknown as GsapAnimation;
+
+  it("REPLACES the split position from() tween (no parallel tween → no drop jump)", async () => {
+    usePlayerStore.setState({ currentTime: 2.13 }); // outside [0.4, 1.3]
+    const types: string[] = [];
+    const mutations: Array<Record<string, unknown>> = [];
+    const callbacks: GsapDragCommitCallbacks = {
+      commitMutation: async (_s, m) => {
+        types.push(m.type as string);
+        mutations.push(m);
+      },
+      // After split-into-property-groups, the position group is a from() tween (no keyframes).
+      fetchAnimations: async () => [
+        {
+          id: "#title-from-400-position",
+          targetSelector: "#title",
+          method: "from",
+          propertyGroup: "position",
+          resolvedStart: 0.4,
+          duration: 0.9,
+          properties: { y: 70 },
+        } as unknown as GsapAnimation,
+      ],
+    };
+
+    await commitGsapPositionFromDrag(
+      selection(),
+      fromTween(),
+      { x: 0, y: -333 },
+      { x: 0, y: 0 },
+      null,
+      "#title",
+      callbacks,
+    );
+
+    expect(types).toContain("split-into-property-groups");
+    expect(types).toContain("replace-with-keyframes");
+    expect(types).not.toContain("add-with-keyframes"); // regression: no parallel tween
+    const replace = mutations.find((m) => m.type === "replace-with-keyframes");
+    expect(replace?.animationId).toBe("#title-from-400-position"); // replaces the split from()
+  });
+});
+
+// Captures the OPTIONS each commit carries (not just the mutation) so we can
+// assert which value-only commits attach the `instantPatch` fast path.
+type RecordedCommit = { mutation: Record<string, unknown>; options: Record<string, unknown> };
+function optionRecordingCallbacks(): {
+  commits: RecordedCommit[];
+  callbacks: GsapDragCommitCallbacks;
+} {
+  const commits: RecordedCommit[] = [];
+  return {
+    commits,
+    callbacks: {
+      commitMutation: async (_sel, mutation, options) => {
+        commits.push({ mutation, options: options as Record<string, unknown> });
+      },
+      fetchAnimations: async () => [convertedTween()],
+    },
+  };
+}
+
+const existingPositionSet = (): GsapAnimation =>
+  ({
+    id: "#puck-a-set",
+    targetSelector: "#puck-a",
+    method: "set",
+    properties: { x: 10, y: 20 },
+  }) as unknown as GsapAnimation;
+
+const existingRotationSet = (): GsapAnimation =>
+  ({
+    id: "#puck-a-rot-set",
+    targetSelector: "#puck-a",
+    method: "set",
+    properties: { rotation: 15 },
+  }) as unknown as GsapAnimation;
+
+describe("commitStaticGsapPosition — instantPatch (value-only set)", () => {
+  beforeEach(() => usePlayerStore.setState({ currentTime: 0, activeKeyframePct: null }));
+
+  it("attaches an instantPatch to BOTH coalesced commits, each derived from its own mutation", async () => {
+    const { commits, callbacks } = optionRecordingCallbacks();
+
+    await commitStaticGsapPosition(
+      selection(),
+      { x: -50, y: 30 }, // studioOffset → newX/newY off a zero base
+      { x: 0, y: 0 },
+      "#puck-a",
+      existingPositionSet(),
+      callbacks,
+    );
+
+    expect(commits).toHaveLength(2);
+    // First (x) commit is the intermediate skipReload one — it now carries an
+    // instantPatch for just {x}, so if the SECOND POST fails the preview still
+    // reflects the x that DID persist (no reload, instant feedback).
+    expect(commits[0].options.skipReload).toBe(true);
+    expect(commits[0].options.instantPatch).toEqual({
+      selector: "#puck-a",
+      change: { kind: "set", props: { x: -50 } },
+    });
+    // Final (y) commit triggers the reload and carries the full {x,y} patch.
+    expect(commits[1].options.softReload).toBe(true);
+    expect(commits[1].options.instantPatch).toEqual({
+      selector: "#puck-a",
+      change: { kind: "set", props: { x: -50, y: 30 } },
+    });
+  });
+
+  it("derives each instantPatch's props from the value in the SAME mutation that's POSTed", async () => {
+    const { commits, callbacks } = optionRecordingCallbacks();
+
+    await commitStaticGsapPosition(
+      selection(),
+      { x: -50, y: 30 },
+      { x: 0, y: 0 },
+      "#puck-a",
+      existingPositionSet(),
+      callbacks,
+    );
+
+    // The patch values must equal the mutation values — they're read out of the
+    // same object, so a clean mutation can't ship alongside a stale patch.
+    const xMutation = commits[0].mutation as { property: string; value: number };
+    const yMutation = commits[1].mutation as { property: string; value: number };
+    const xPatch = commits[0].options.instantPatch as {
+      change: { props: Record<string, number> };
+    };
+    const yPatch = commits[1].options.instantPatch as {
+      change: { props: Record<string, number> };
+    };
+    expect(xPatch.change.props[xMutation.property]).toBe(xMutation.value);
+    expect(yPatch.change.props[yMutation.property]).toBe(yMutation.value);
+    // The y commit's combined patch also carries the x mutation's value.
+    expect(yPatch.change.props[xMutation.property]).toBe(xMutation.value);
+  });
+
+  it("does NOT attach instantPatch when ADDING a new set (structural — new tween)", async () => {
+    const { commits, callbacks } = optionRecordingCallbacks();
+
+    await commitStaticGsapPosition(
+      selection(),
+      { x: -50, y: 30 },
+      { x: 0, y: 0 },
+      "#puck-a",
+      null, // no existing set → `add` a new tween
+      callbacks,
+    );
+
+    expect(commits).toHaveLength(1);
+    expect(commits[0].mutation.type).toBe("add");
+    expect(commits[0].options.instantPatch).toBeUndefined();
+  });
+});
+
+describe("commitStaticGsapRotation — instantPatch (value-only set)", () => {
+  beforeEach(() => usePlayerStore.setState({ currentTime: 0, activeKeyframePct: null }));
+
+  it("attaches instantPatch {kind:set, props:{rotation}} when updating an existing rotation set", async () => {
+    const { commits, callbacks } = optionRecordingCallbacks();
+
+    await commitStaticGsapRotation(selection(), 42, "#puck-a", existingRotationSet(), callbacks);
+
+    expect(commits).toHaveLength(1);
+    expect(commits[0].mutation.type).toBe("update-property");
+    expect(commits[0].options.instantPatch).toEqual({
+      selector: "#puck-a",
+      change: { kind: "set", props: { rotation: 42 } },
+    });
+    // Patch value derived from the SAME mutation that's POSTed (one source).
+    const m = commits[0].mutation as { property: string; value: number };
+    const patch = commits[0].options.instantPatch as {
+      change: { props: Record<string, number> };
+    };
+    expect(patch.change.props[m.property]).toBe(m.value);
+  });
+
+  it("does NOT attach instantPatch when ADDING a new rotation set (structural)", async () => {
+    const { commits, callbacks } = optionRecordingCallbacks();
+
+    await commitStaticGsapRotation(selection(), 42, "#puck-a", null, callbacks);
+
+    expect(commits).toHaveLength(1);
+    expect(commits[0].mutation.type).toBe("add");
+    expect(commits[0].options.instantPatch).toBeUndefined();
+  });
+});
+
+describe("commitGsapPositionFromDrag — keyframe/structural commits omit instantPatch", () => {
+  beforeEach(() => usePlayerStore.setState({ currentTime: 0, activeKeyframePct: null }));
+
+  it("a structural keyframe drag (convert-to-keyframes → add-keyframe) sets no instantPatch", async () => {
+    usePlayerStore.setState({ currentTime: 2 }); // inside [1.2, 3.4] → convert + add-keyframe
+    const { commits, callbacks } = optionRecordingCallbacks();
+
+    await commitGsapPositionFromDrag(
+      selection(),
+      flatTween(),
+      { x: -100, y: 0 },
+      { x: 0, y: 0 },
+      null,
+      "#puck-a",
+      callbacks,
+    );
+
+    // The keyframe path is structural here (convert + add-keyframe) and must rely
+    // on the soft reload — none of its commits opt into the instant patch.
+    expect(commits.length).toBeGreaterThan(0);
+    for (const c of commits) {
+      expect(c.options.instantPatch).toBeUndefined();
+    }
+    const types = commits.map((c) => c.mutation.type);
+    expect(types).toContain("convert-to-keyframes");
+    expect(types).toContain("add-keyframe");
+  });
+});
+
+describe("parkPlayheadOnKeyframe", () => {
+  beforeEach(() => usePlayerStore.setState({ requestedSeekTime: null }));
+
+  const tween = (): GsapAnimation =>
+    ({
+      id: "#x",
+      targetSelector: "#x",
+      method: "to",
+      resolvedStart: 1.2,
+      duration: 2.2,
+    }) as unknown as GsapAnimation;
+
+  it("seeks to the keyframe's absolute time so the element previews AT it, not at base", () => {
+    parkPlayheadOnKeyframe(tween(), 0); // tween start
+    expect(usePlayerStore.getState().requestedSeekTime).toBe(1.2);
+    parkPlayheadOnKeyframe(tween(), 100); // tween end
+    expect(usePlayerStore.getState().requestedSeekTime).toBe(3.4);
+    parkPlayheadOnKeyframe(tween(), 50); // midpoint
+    expect(usePlayerStore.getState().requestedSeekTime).toBe(2.3);
+  });
+});

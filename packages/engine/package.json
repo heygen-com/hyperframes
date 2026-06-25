@@ -1,12 +1,16 @@
 {
   "name": "@hyperframes/engine",
-  "version": "0.6.115",
+  "version": "0.7.6",
   "description": "Seekable web page to video rendering engine (Puppeteer + FFmpeg)",
   "repository": {
     "type": "git",
     "url": "https://github.com/heygen-com/hyperframes",
     "directory": "packages/engine"
   },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
@@ -14,6 +18,26 @@
     ".": "./src/index.ts",
     "./alpha-blit": "./src/utils/alphaBlit.ts",
     "./shader-transitions": "./src/utils/shaderTransitions.ts"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "import": "./dist/index.js",
+        "types": "./dist/index.d.ts"
+      },
+      "./alpha-blit": {
+        "import": "./dist/utils/alphaBlit.js",
+        "types": "./dist/utils/alphaBlit.d.ts"
+      },
+      "./shader-transitions": {
+        "import": "./dist/utils/shaderTransitions.js",
+        "types": "./dist/utils/shaderTransitions.d.ts"
+      },
+      "./package.json": "./package.json"
+    },
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts"
   },
   "scripts": {
     "build": "tsc",

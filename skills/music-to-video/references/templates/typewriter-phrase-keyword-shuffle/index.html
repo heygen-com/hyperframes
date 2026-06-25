@@ -1,0 +1,238 @@
+<!doctype html>
+<html
+  lang="en"
+  data-composition-variables='[
+    {"id":"bgColor",    "type":"color",  "label":"Background",            "default":"#000000"},
+    {"id":"textColor",  "type":"color",  "label":"Text color",            "default":"#ffffff"},
+    {"id":"accentColor","type":"color",  "label":"Period / keyword accent","default":"#ff6a32"},
+    {"id":"lead1",      "type":"string", "label":"Lead word 1 (optional)", "default":"growth"},
+    {"id":"lead2",      "type":"string", "label":"Lead word 2 (optional)", "default":"through"},
+    {"id":"lead3",      "type":"string", "label":"Lead word 3 (optional)", "default":""},
+    {"id":"keyword",    "type":"string", "label":"Keyword (shuffles font)","default":"creativity"},
+    {"id":"periodChar", "type":"string", "label":"Trailing accent char (empty = none)","default":"."}
+  ]'
+>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Typewriter Phrase / Keyword Font-Shuffle — group_2 reference impl</title>
+    <script src="../../motion-primitives/assets/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        background: var(--bg, #000000);
+        overflow: hidden;
+        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--bg, #000000);
+      }
+      .g2-overlay {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        pointer-events: none;
+      }
+      /* one centered line; when the keyword changes typeface the line re-centers,
+         exactly as the source does (the lead words shift slightly, that's faithful). */
+      .g2-line {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 0.28em;
+        white-space: nowrap;
+        color: var(--text, #ffffff);
+        font-size: 112px;
+        font-weight: 800;
+        letter-spacing: -0.01em;
+        text-shadow:
+          0 0 18px rgba(255, 255, 255, 0.45),
+          0 0 44px rgba(255, 255, 255, 0.22);
+      }
+      .g2-word {
+        display: inline-block;
+      }
+      /* keyword + its trailing accent travel together so the dot hugs the word */
+      .g2-cword {
+        display: inline-flex;
+        align-items: baseline;
+      }
+      .g2-period {
+        display: inline-block;
+        color: var(--accent, #ff6a32);
+        font-weight: 800;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- duration = 3.85s = the spell-out + shuffle scene (0 → just before the 3.855s drop) -->
+    <div
+      data-hf-id="hf-g2rt"
+      id="root"
+      data-composition-id="group-two-recreate"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="3.85"
+      data-root="true"
+    >
+      <div data-hf-id="hf-g2ov" class="g2-overlay">
+        <div data-hf-id="hf-g2ln" class="g2-line" id="line"></div>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        // ════════════════════════════════════════════════════════════════
+        //  TYPEWRITER PHRASE / KEYWORD FONT-SHUFFLE  ·  structural_type: per_onset_sequential
+        //  Words type in one-per-onset to spell a phrase; then ONE keyword cycles
+        //  typefaces on the beat while everything else holds dead still.
+        // ════════════════════════════════════════════════════════════════
+
+        // ── 1. Content variables (what a user changes) ─────────────────────
+        var defaults = {
+          bgColor: "#000000",
+          textColor: "#ffffff",
+          accentColor: "#ff6a32",
+          lead1: "growth",
+          lead2: "through",
+          lead3: "",
+          keyword: "creativity",
+          periodChar: ".",
+        };
+        var vars = Object.assign(
+          {},
+          defaults,
+          window.__hyperframes && window.__hyperframes.getVariables
+            ? window.__hyperframes.getVariables()
+            : {},
+        );
+
+        // ── 2. FONT PRESET LIBRARY (preset many — the keyword cycles these) ─
+        // FONTS[0] is the BASE face, shared with the lead words. The keyword flips
+        // to FONTS[i] on each SHUFFLE step. Offline-safe generic stacks only (no
+        // remote fonts). Extend this list freely — more beats → more presets to
+        // cycle through. Each entry: { family, weight, style }.
+        var FONTS = [
+          {
+            family: '"Helvetica Neue", Helvetica, Arial, sans-serif',
+            weight: 800,
+            style: "normal",
+          }, // 0 base bold sans
+          { family: 'Georgia, "Times New Roman", Times, serif', weight: 500, style: "normal" }, // 1 upright serif
+          { family: "Georgia, serif", weight: 800, style: "normal" }, // 2 heavy serif
+          { family: 'Georgia, "Times New Roman", serif', weight: 500, style: "italic" }, // 3 italic serif
+          { family: '"Courier New", Courier, monospace', weight: 700, style: "normal" }, // 4 monospace
+          { family: '"Arial Narrow", "Helvetica Neue", sans-serif', weight: 700, style: "normal" }, // 5 condensed sans
+          { family: '"Helvetica Neue", Arial, sans-serif', weight: 300, style: "italic" }, // 6 light sans italic
+          { family: "Georgia, serif", weight: 700, style: "italic" }, // 7 bold serif italic
+        ];
+        function fontProps(i) {
+          var f = FONTS[((i % FONTS.length) + FONTS.length) % FONTS.length];
+          return { fontFamily: f.family, fontWeight: f.weight, fontStyle: f.style };
+        }
+
+        // ── 3. BEAT MAP (filled from <group>.audiomap.json — see README) ────
+        // group_2.audiomap.json: BPM 129.2, hi-hat onsets drive every move.
+        //   one ENTRY onset per lead word (in order), then KEYWORD, then PERIOD.
+        var LEAD_ONSETS = [0.557, 0.906]; // grid.events[].t — one per non-empty lead word
+        var KEY_ONSET = 1.231; // keyword types in here
+        var PERIOD_ONSET = 1.44; // accent char punches in here
+        // keyword font-shuffle: each {t,font} flips the keyword on a beat/onset.
+        // t  = a grid.beats_sec[] / events[].t after the phrase is set.
+        // font = index into FONTS[]. Add as many rows as the beat has flips — and
+        // re-use indices to repeat faces, or walk new ones for a longer shuffle.
+        var SHUFFLE = [
+          { t: 1.904, font: 1 }, // → upright serif
+          { t: 2.392, font: 2 }, // → heavy serif
+          { t: 2.624, font: 3 }, // → italic serif
+          { t: 3.088, font: 0 }, // → back to base, then HOLD to the end
+        ];
+        var DUR = 3.85; // scene end (just before the 3.855 drop/kick)
+
+        // ── 4. Build the line (1–3 lead words + keyword + optional accent) ──
+        var root = document.getElementById("root");
+        document.documentElement.style.setProperty("--bg", vars.bgColor);
+        document.documentElement.style.setProperty("--text", vars.textColor);
+        document.documentElement.style.setProperty("--accent", vars.accentColor);
+
+        var line = root.querySelector("#line");
+        var leadWords = [vars.lead1, vars.lead2, vars.lead3].filter(function (w) {
+          return w && String(w).trim() !== "";
+        });
+
+        var leadEls = leadWords.map(function (w) {
+          var s = document.createElement("span");
+          s.className = "g2-word";
+          s.textContent = w;
+          line.appendChild(s);
+          return s;
+        });
+
+        var cword = document.createElement("span");
+        cword.className = "g2-cword";
+        var keyEl = document.createElement("span");
+        keyEl.className = "g2-word";
+        keyEl.textContent = vars.keyword;
+        cword.appendChild(keyEl);
+        var periodEl = null;
+        if (vars.periodChar && String(vars.periodChar).trim() !== "") {
+          periodEl = document.createElement("span");
+          periodEl.className = "g2-period";
+          periodEl.textContent = vars.periodChar;
+          cword.appendChild(periodEl);
+        }
+        line.appendChild(cword);
+
+        // ── 5. Timeline — one paused GSAP timeline, absolute audio seconds ──
+        window.__timelines = window.__timelines || {};
+        var tl = gsap.timeline({ paused: true });
+
+        var allSpans = leadEls.concat([keyEl]);
+        if (periodEl) allSpans.push(periodEl);
+        gsap.set(allSpans, { autoAlpha: 0 });
+        gsap.set(keyEl, fontProps(0)); // keyword starts in the base face
+
+        var POP_IN = { autoAlpha: 0, scale: 0.92, y: 5 };
+        var POP_OUT = { autoAlpha: 1, scale: 1, y: 0, duration: 0.1, ease: "back.out(2)" };
+
+        // typewriter accumulation — each lead word pops on its onset (words stay)
+        leadEls.forEach(function (el, i) {
+          var t = i < LEAD_ONSETS.length ? LEAD_ONSETS[i] : KEY_ONSET;
+          tl.fromTo(el, POP_IN, POP_OUT, t);
+        });
+        // keyword types in (in the base face)
+        tl.fromTo(keyEl, POP_IN, POP_OUT, KEY_ONSET);
+        // trailing accent char punches in on its own onset
+        if (periodEl) {
+          tl.fromTo(
+            periodEl,
+            { autoAlpha: 0, scale: 0.3 },
+            { autoAlpha: 1, scale: 1, duration: 0.09, ease: "back.out(3)" },
+            PERIOD_ONSET,
+          );
+        }
+
+        // keyword font-shuffle — 0ms hard sets on the beat (the percussion IS the swap)
+        SHUFFLE.forEach(function (s) {
+          tl.set(keyEl, fontProps(s.font), s.t);
+        });
+
+        tl.seek(0);
+        window.__timelines["group-two-recreate"] = tl;
+      })();
+    </script>
+  </body>
+</html>

@@ -1,4 +1,4 @@
-import type { LintContext, HyperframeLintFinding } from "../context";
+import type { LintContext, HyperframeLintFinding, ExtractedBlock } from "../context";
 import { findHtmlTag, readAttr, readJsonAttr, stripJsComments, truncateSnippet } from "../utils";
 import { COMPOSITION_VARIABLE_TYPES } from "../../core.types";
 
@@ -37,23 +37,127 @@ function isCompositionRootOrMount(rawTag: string): boolean {
   );
 }
 
+// Asset references inside CSS `url(...)`/`url("...")`/`url('...')` functions.
+// Returns the inner path without quotes; comments are stripped first so
+// `/* url(foo) */` is ignored. Bare `url()` and `data:` are excluded by the
+// rules that consume this — the helper just yields raw URL values.
+function extractCssUrlReferences(css: string): string[] {
+  const out: string[] = [];
+  const noComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const urlPattern = /\burl\(\s*(["']?)([^)"']+)\1\s*\)/g;
+  let m: RegExpExecArray | null;
+  while ((m = urlPattern.exec(noComments)) !== null) {
+    const raw = (m[2] ?? "").trim();
+    if (raw) out.push(raw);
+  }
+  return out;
+}
+
+// Top-level CSS selectors (comma-split) in a stylesheet, skipping at-rule headers
+// (@media/@keyframes/...) and keyframe stops. Heuristic — the lint layer has no
+// full CSS parser, and rules elsewhere in this file scan CSS the same way.
+function extractCssSelectors(css: string): string[] {
+  const out: string[] = [];
+  const noComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const ruleHeader = /([^{}]+)\{/g;
+  let m: RegExpExecArray | null;
+  while ((m = ruleHeader.exec(noComments)) !== null) {
+    const header = (m[1] ?? "").trim();
+    if (!header || header.startsWith("@")) continue;
+    for (const sel of header.split(",")) {
+      const s = sel.trim();
+      if (s) out.push(s);
+    }
+  }
+  return out;
+}
+
+// Class tokens in a selector's leftmost compound (before the first descendant /
+// child / sibling combinator). `.frame .title` → ["frame"]; `.a.b > .c` → ["a","b"].
+function leftmostCompoundClasses(selector: string): string[] {
+  const leftmost = selector.trim().split(/[\s>+~]+/)[0] ?? "";
+  return (leftmost.match(/\.([\w-]+)/g) ?? []).map((c) => c.slice(1));
+}
+
+// Distinct selectors across all <style> blocks whose leftmost compound keys off one
+// of the root element's own classes — the ones that break under id-scoping.
+function rootClassStyledSelectors(styles: ExtractedBlock[], rootClasses: string[]): string[] {
+  const offenders: string[] = [];
+  for (const style of styles) {
+    for (const selector of extractCssSelectors(style.content)) {
+      const hitsRoot = leftmostCompoundClasses(selector).some((c) => rootClasses.includes(c));
+      if (hitsRoot && !offenders.includes(selector)) offenders.push(selector);
+    }
+  }
+  return offenders;
+}
+
 export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
-  // invalid_capture_path — catches ../capture/ in src/href attributes and scripts.
-  // Sub-compositions live in compositions/ but are served relative to the project
-  // root, so all asset paths must be root-relative ("capture/...").
-  // Using "../capture/..." works on disk but breaks in Studio and renders.
-  ({ rawSource, options }) => {
+  // invalid_parent_traversal_in_asset_path — catches `../` traversal in src,
+  // href, inline-style url(), and <style> url() asset references on
+  // compositions. Sub-compositions live under compositions/ but are served
+  // with the project root as their base URL, so any `../`-traversing path
+  // climbs above the project root and 404s in Studio preview. Renders
+  // tolerate it because the server-side bundler rewrites `../foo` against
+  // each sub-composition's source path; the runtime now mirrors that fallback
+  // (see rewriteSubCompositionAssetPaths in runtime/compositionLoader.ts), but
+  // the authoring-time signal is still wrong — flag it at lint time so the
+  // baked path is plain root-relative and matches what the bundler emits.
+  //
+  // Mirrors the runtime fallback's surface: `[src]` / `[href]` attribute
+  // values, `[style]` inline url(), and `<style>` block url() references.
+  // Skips absolute URLs (http(s)://, //, data:, /-prefixed root-relative),
+  // hash anchors, and plain relative paths (`assets/x.mp4`) — only `../`
+  // traversal is flagged. Subsumes the older `../capture/`-specific rule.
+  // fallow-ignore-next-line complexity
+  ({ tags, styles, rawSource, options }) => {
     if (isRegistrySourceFile(options.filePath) || isRegistryInstalledFile(rawSource)) return [];
-    // Only flag in sub-compositions and root compositions — not in registry blocks
-    const matches = rawSource.match(/\.\.\/capture\//g);
-    if (!matches || matches.length === 0) return [];
+
+    const offenders: string[] = [];
+    const collect = (value: string | null) => {
+      if (!value) return;
+      const trimmed = value.trim();
+      if (!trimmed.startsWith("../") && trimmed !== "..") return;
+      offenders.push(trimmed);
+    };
+
+    for (const tag of tags) {
+      collect(readAttr(tag.raw, "src"));
+      collect(readAttr(tag.raw, "href"));
+      // Use readJsonAttr for `style` — inline url('...') values contain the
+      // opposite quote, which readAttr's [^"']+ class would truncate.
+      const styleAttr = readJsonAttr(tag.raw, "style");
+      if (styleAttr) {
+        for (const url of extractCssUrlReferences(styleAttr)) collect(url);
+      }
+    }
+    for (const style of styles) {
+      for (const url of extractCssUrlReferences(style.content)) collect(url);
+    }
+
+    if (offenders.length === 0) return [];
+
+    // Group counts by leading path token (e.g. ../capture/, ../assets/, ../../assets/)
+    // so the message names the offending prefixes instead of a bare count.
+    const prefixCounts = new Map<string, number>();
+    for (const path of offenders) {
+      const prefix = path.match(/^(?:\.\.\/)+[^/]+\//)?.[0] ?? path;
+      prefixCounts.set(prefix, (prefixCounts.get(prefix) ?? 0) + 1);
+    }
+    const prefixSummary = Array.from(prefixCounts.entries())
+      .sort(([, a], [, b]) => b - a)
+      .map(([prefix, count]) => (count > 1 ? `${prefix} (${count})` : prefix))
+      .join(", ");
+
     return [
       {
-        code: "invalid_capture_path",
+        code: "invalid_parent_traversal_in_asset_path",
         severity: "error",
-        message: `Found ${matches.length} asset path(s) using ../capture/ — will 404 in Studio and renders.`,
+        message:
+          `Found ${offenders.length} asset path(s) traversing above the project root with "../" ` +
+          `(${prefixSummary}). Renders rewrite this against each sub-composition's source path, but Studio preview and other live consumers resolve against the project root and 404.`,
         fixHint:
-          'Replace all "../capture/" with "capture/" throughout this file. Compositions are served with the project root as their base URL, so paths must be root-relative, not relative to the compositions/ directory.',
+          'Use plain root-relative paths (e.g. "assets/...", "capture/...", "fonts/...") — compositions are served with the project root as their base URL, so paths must be root-relative, not relative to the compositions/ directory.',
       },
     ];
   },
@@ -575,5 +679,45 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
       });
     }
     return findings;
+  },
+
+  // subcomposition_root_styled_by_class
+  // A sub-composition's <style> is scoped at render time to
+  // `[data-composition-id="<id>"] <selector>` so scenes inlined into one document
+  // can't leak styles into each other. A rule whose LEFTMOST selector is the ROOT
+  // element's own class (e.g. `.frame { ... }` on the same element that carries
+  // data-composition-id) therefore becomes a DESCENDANT selector that can never
+  // match the root — the whole scene renders unstyled (tiny text top-left, images
+  // at natural size). lint/validate/inspect evaluate the file in isolation (no
+  // scoping) and Studio previews each scene in its own iframe (no scoping), so the
+  // break is invisible until the composited MP4 render. Style the root via `#root`
+  // (the scoper special-cases the root id) and descendants via plain selectors,
+  // like the registry blocks — the runtime already scopes each scene by id, so a
+  // class namespace on the root is redundant.
+  ({ rootTag, rootCompositionId, styles, options }) => {
+    if (!options.isSubComposition) return [];
+    if (isRegistrySourceFile(options.filePath)) return [];
+    if (!rootTag || !rootCompositionId) return [];
+
+    const rootClasses = (readAttr(rootTag.raw, "class") || "").split(/\s+/).filter(Boolean);
+    if (rootClasses.length === 0) return [];
+
+    const offenders = rootClassStyledSelectors(styles, rootClasses);
+    if (offenders.length === 0) return [];
+
+    const example = offenders.slice(0, 3).join(", ");
+    return [
+      {
+        code: "subcomposition_root_styled_by_class",
+        severity: "error",
+        message:
+          `Root element has class="${rootClasses.join(" ")}" and is styled by ${offenders.length} rule(s) keyed off that class (e.g. ${example}). ` +
+          `At render, every sub-composition rule is scoped to [data-composition-id="${rootCompositionId}"] <selector>, so a selector whose leftmost part is the ROOT's own class becomes a descendant selector that cannot match the root — the scene renders unstyled (tiny text top-left, full-size images). ` +
+          `lint/validate/inspect and Studio's per-frame iframe preview do not scope, so this passes every static check and looks correct in preview.`,
+        selector: example,
+        fixHint: `Give the root id="root" and style it with \`#root { ... }\` plus plain descendant selectors (\`.kicker\`, \`#hero\`) — the runtime already scopes each sub-composition by data-composition-id, so a class namespace on the root is redundant and breaks under scoping.`,
+        snippet: truncateSnippet(rootTag.raw),
+      },
+    ];
   },
 ];

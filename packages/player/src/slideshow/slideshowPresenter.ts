@@ -4,6 +4,32 @@ export interface PresenterPosition {
   fragmentIndex: number;
 }
 
+const COUNTER_FONT_FAMILY =
+  "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+
+export type PresenterMediaAction =
+  | "play"
+  | "pause"
+  | "seeking"
+  | "seeked"
+  | "ratechange"
+  | "volumechange"
+  | "ended"
+  | "timeupdate";
+
+const MEDIA_ACTIONS = new Set<unknown>([
+  "play",
+  "pause",
+  "seeking",
+  "seeked",
+  "ratechange",
+  "volumechange",
+  "ended",
+  "timeupdate",
+]);
+const MEDIA_NUMBER_FIELDS = ["currentTime", "volume", "playbackRate"] as const;
+const MEDIA_BOOLEAN_FIELDS = ["paused", "ended", "muted"] as const;
+
 interface GotoMessage {
   type: "goto";
   sequenceId: string;
@@ -11,14 +37,61 @@ interface GotoMessage {
   fragmentIndex: number;
 }
 
-function isGotoMessage(data: unknown): data is GotoMessage {
+export interface PresenterMediaMessage {
+  type: "media";
+  sender: "presenter" | "audience";
+  key: string;
+  action: PresenterMediaAction;
+  currentTime: number;
+  paused: boolean;
+  ended: boolean;
+  muted: boolean;
+  volume: number;
+  playbackRate: number;
+}
+
+function isRecord(data: unknown): data is Record<string, unknown> {
   if (typeof data !== "object" || data === null) return false;
+  return true;
+}
+
+function isGotoMessage(data: unknown): data is GotoMessage {
+  if (!isRecord(data)) return false;
   const d = data as Record<string, unknown>;
   return (
     d["type"] === "goto" &&
     typeof d["sequenceId"] === "string" &&
     typeof d["slideIndex"] === "number" &&
     typeof d["fragmentIndex"] === "number"
+  );
+}
+
+function isMediaAction(value: unknown): value is PresenterMediaAction {
+  return MEDIA_ACTIONS.has(value);
+}
+
+function isMediaSender(value: unknown): value is PresenterMediaMessage["sender"] {
+  return value === "presenter" || value === "audience";
+}
+
+function hasMediaNumberFields(data: Record<string, unknown>): boolean {
+  return MEDIA_NUMBER_FIELDS.every((field) => typeof data[field] === "number");
+}
+
+function hasMediaBooleanFields(data: Record<string, unknown>): boolean {
+  return MEDIA_BOOLEAN_FIELDS.every((field) => typeof data[field] === "boolean");
+}
+
+function isMediaMessage(data: unknown): data is PresenterMediaMessage {
+  if (!isRecord(data)) return false;
+  const d = data;
+  return (
+    d["type"] === "media" &&
+    isMediaSender(d["sender"]) &&
+    typeof d["key"] === "string" &&
+    isMediaAction(d["action"]) &&
+    hasMediaNumberFields(d) &&
+    hasMediaBooleanFields(d)
   );
 }
 
@@ -43,6 +116,7 @@ export class SlideshowChannel {
   constructor(
     private readonly mode: "presenter" | "audience",
     private readonly onGoto: (msg: GotoMessage) => void,
+    private readonly onMedia: (msg: PresenterMediaMessage) => void = () => {},
   ) {
     try {
       this.channel = new BroadcastChannel(slideshowChannelName());
@@ -51,19 +125,28 @@ export class SlideshowChannel {
       return;
     }
 
-    if (mode === "audience") {
-      this.channel.onmessage = (e: MessageEvent) => {
-        if (isGotoMessage(e.data)) {
+    this.channel.onmessage = (e: MessageEvent) => {
+      if (isGotoMessage(e.data)) {
+        if (mode === "audience") {
           this.onGoto(e.data);
         }
-      };
-    }
+        return;
+      }
+      if (isMediaMessage(e.data) && e.data.sender !== mode) {
+        this.onMedia(e.data);
+      }
+    };
   }
 
   postPosition(pos: PresenterPosition): void {
     if (this.mode !== "presenter" || !this.channel) return;
     const msg: GotoMessage = { type: "goto", ...pos };
     this.channel.postMessage(msg);
+  }
+
+  postMedia(msg: Omit<PresenterMediaMessage, "type" | "sender">): void {
+    if (!this.channel) return;
+    this.channel.postMessage({ type: "media", sender: this.mode, ...msg });
   }
 
   destroy(): void {
@@ -102,7 +185,7 @@ export function buildPresenterLayout(opts: {
     ${opts.hotspots
       .map(
         (h) =>
-          `<button data-hotspot-id="${escAttr(h.id)}" data-hotspot-target="${escAttr(h.target)}" type="button" style="text-align:left;background:rgba(244,183,64,0.14);color:#f4b740;border:1px solid rgba(244,183,64,0.4);border-radius:8px;padding:8px 12px;font-size:15px;cursor:pointer;pointer-events:auto;font-family:inherit;">&#8627; ${esc(h.label)}</button>`,
+          `<button data-hotspot-id="${escAttr(h.id)}" data-hotspot-target="${escAttr(h.target)}" type="button" title="${escAttr(h.label)}" style="text-align:left;background:rgba(244,183,64,0.14);color:#f4b740;border:1px solid rgba(244,183,64,0.4);border-radius:8px;padding:8px 12px;font-size:15px;cursor:pointer;pointer-events:auto;font-family:inherit;">&#8627; ${esc(h.label)}</button>`,
       )
       .join("")}
   </div>`
@@ -115,8 +198,8 @@ export function buildPresenterLayout(opts: {
     <div data-hf-presenter-next style="font-size:17px;opacity:.9;line-height:1.4;">${esc(opts.nextText)}</div>
     ${branches}
     <div style="display:flex;gap:34px;margin-top:auto;">
-      <div><div style="font-size:11px;text-transform:uppercase;letter-spacing:.1em;opacity:.5;margin-bottom:3px;">Slide</div><div data-hf-presenter-counter style="font-size:23px;font-variant-numeric:tabular-nums;">${esc(opts.counterText)}</div></div>
-      <div><div style="font-size:11px;text-transform:uppercase;letter-spacing:.1em;opacity:.5;margin-bottom:3px;">Elapsed</div><div data-hf-presenter-elapsed style="font-size:23px;font-variant-numeric:tabular-nums;">${esc(opts.elapsedText)}</div></div>
+      <div><div style="font-size:11px;text-transform:uppercase;letter-spacing:.1em;opacity:.5;margin-bottom:3px;">Slide</div><div data-hf-presenter-counter style="font-family:${COUNTER_FONT_FAMILY};font-size:23px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:0;">${esc(opts.counterText)}</div></div>
+      <div><div style="font-size:11px;text-transform:uppercase;letter-spacing:.1em;opacity:.5;margin-bottom:3px;">Elapsed</div><div data-hf-presenter-elapsed style="font-family:${COUNTER_FONT_FAMILY};font-size:23px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:0;">${esc(opts.elapsedText)}</div></div>
     </div>
   </div>
 </div>`.trim();

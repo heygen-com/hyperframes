@@ -5,6 +5,7 @@ import {
   findRootTag,
   collectCompositionIds,
   readAttr,
+  stripHtmlComments,
   STYLE_BLOCK_PATTERN,
   SCRIPT_BLOCK_PATTERN,
 } from "./utils";
@@ -29,7 +30,10 @@ export type { HyperframeLintFinding };
 
 export function buildLintContext(html: string, options: HyperframeLinterOptions = {}): LintContext {
   const rawSource = html || "";
-  let source = rawSource;
+  // Strip HTML comments before scanning so a commented-out <template> or tag can't
+  // hijack the boundary match below. Linear + fixpoint (see stripHtmlComments) to
+  // stay ReDoS-free and catch markers that re-form when a comment is removed.
+  let source = stripHtmlComments(rawSource);
   const templateMatch = source.match(/<template[^>]*>([\s\S]*)<\/template>/i);
   if (templateMatch?.[1]) source = templateMatch[1];
 

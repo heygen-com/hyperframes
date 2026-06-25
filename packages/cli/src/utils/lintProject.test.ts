@@ -82,6 +82,47 @@ describe("lintProject", () => {
     expect(mediaFinding).toBeDefined();
   });
 
+  it("recurses into compositions/frames/ and flags a CSS↔GSAP transform conflict there", async () => {
+    // End-to-end guard: a per-frame composition under compositions/frames/ that
+    // seats centering via a standalone gsap.set on a grouped #root-scoped selector
+    // against a CSS class transform — the exact shape that shipped off-centre.
+    // Both the recursive discovery and the strengthened rule must fire.
+    const dir = tmpProject("lint-frames");
+    dirs.push(dir);
+    writeFileSync(join(dir, "index.html"), validHtml());
+    const framesDir = join(dir, "compositions", "frames");
+    mkdirSync(framesDir, { recursive: true });
+    const frameHtml = `<template data-composition-id="04-mechanism">
+  <div id="m04-root" data-width="1920" data-height="1080">
+    <div class="m04-label">edit op</div>
+  </div>
+  <style> .m04-label { position: absolute; left: 960px; transform: translateX(-50%); } </style>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    gsap.set("#m04-root .m04-label", { xPercent: -50 });
+    tl.to(".m04-label", { y: 0, opacity: 1, duration: 0.4 }, 0.5);
+    window.__timelines["04-mechanism"] = tl;
+  </script>
+</template>`;
+    writeFileSync(join(framesDir, "04-mechanism.html"), frameHtml);
+
+    const project: ProjectDir = {
+      dir,
+      name: "test-project",
+      indexPath: join(dir, "index.html"),
+    };
+    const { results } = await lintProject(project);
+
+    const frameResult = results.find((r) => r.file === "compositions/frames/04-mechanism.html");
+    expect(frameResult).toBeDefined();
+    const conflict = frameResult?.result.findings.find(
+      (f) => f.code === "gsap_css_transform_conflict",
+    );
+    expect(conflict).toBeDefined();
+  });
+
   it("lints sub-compositions in compositions/ directory", async () => {
     const project = makeProject(validHtml(), {
       "captions.html": htmlWithMissingMediaId(),
@@ -858,6 +899,19 @@ describe("multiple_root_compositions", () => {
 
   it("does NOT fire with a single root composition", async () => {
     const project = makeProject(validHtml());
+    const { results } = await lintProject(project);
+    const finding = results[0]?.result.findings.find(
+      (f) => f.code === "multiple_root_compositions",
+    );
+    expect(finding).toBeUndefined();
+  });
+
+  it("ignores root-level caption-skin.html source files", async () => {
+    const project = makeProject(validHtml());
+    writeFileSync(
+      join(project.dir, "caption-skin.html"),
+      '<div data-composition-id="captions" data-width="0" data-height="0"></div>',
+    );
     const { results } = await lintProject(project);
     const finding = results[0]?.result.findings.find(
       (f) => f.code === "multiple_root_compositions",

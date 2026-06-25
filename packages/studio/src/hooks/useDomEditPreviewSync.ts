@@ -28,6 +28,7 @@ interface UseDomEditPreviewSyncParams {
   >;
   openSourceForSelection?: (sourceFile: string, target: PatchTarget) => void;
   getSidebarTab?: () => SidebarTab;
+  gsapCacheVersion?: number;
 }
 
 export function useDomEditPreviewSync({
@@ -43,6 +44,7 @@ export function useDomEditPreviewSync({
   applyStudioManualEditsToPreviewRef,
   openSourceForSelection,
   getSidebarTab,
+  gsapCacheVersion,
 }: UseDomEditPreviewSyncParams): void {
   // Sync selection from preview document on load / refresh
   // eslint-disable-next-line no-restricted-syntax
@@ -66,6 +68,11 @@ export function useDomEditPreviewSync({
 
       const nextElement = findElementForSelection(doc, currentSelection, activeCompPath);
       if (!nextElement) {
+        // The selected element no longer resolves in the (re-synced) document
+        // — comp/hot reload, activeCompPath swap, or post-save replacement.
+        // Clear so overlay geometry isn't computed on a stale, detached node.
+        // (Drag-release-in-gray-zone is handled separately by
+        // suppressNextBoxClickRef; the dragged element still resolves here.)
         applyDomSelection(null, { revealPanel: false });
         return;
       }
@@ -102,6 +109,7 @@ export function useDomEditPreviewSync({
     refreshPreviewDocumentVersion,
     syncPreviewHistoryHotkey,
     applyStudioManualEditsToPreviewRef,
+    gsapCacheVersion,
   ]);
 
   // Auto-reveal source when an element is selected while the Code tab is active.

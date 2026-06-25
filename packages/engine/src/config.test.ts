@@ -33,6 +33,7 @@ describe("resolveConfig", () => {
     expect(config.browserGpuMode).toBe("software");
     expect(config.enableStreamingEncode).toBe(true);
     expect(config.streamingEncodeMaxDurationSeconds).toBe(240);
+    expect((config as Record<string, unknown>).vp9CpuUsed).toBe(4);
     expect(config.audioGain).toBe(1);
     expect(config.debug).toBe(false);
   });
@@ -82,6 +83,28 @@ describe("resolveConfig", () => {
 
     const config = resolveConfig();
     expect(config.streamingEncodeMaxDurationSeconds).toBe(0);
+  });
+
+  it("reads VP9 cpu-used from env", () => {
+    setEnv("PRODUCER_VP9_CPU_USED", "6");
+
+    const config = resolveConfig();
+    expect((config as Record<string, unknown>).vp9CpuUsed).toBe(6);
+  });
+
+  it("falls back to the VP9 cpu-used default for invalid env values", () => {
+    setEnv("PRODUCER_VP9_CPU_USED", "fast");
+
+    const config = resolveConfig();
+    expect((config as Record<string, unknown>).vp9CpuUsed).toBe(4);
+  });
+
+  it("clamps VP9 cpu-used env values to libvpx's supported range", () => {
+    setEnv("PRODUCER_VP9_CPU_USED", "99");
+    expect((resolveConfig() as Record<string, unknown>).vp9CpuUsed).toBe(8);
+
+    process.env.PRODUCER_VP9_CPU_USED = "-99";
+    expect((resolveConfig() as Record<string, unknown>).vp9CpuUsed).toBe(-8);
   });
 
   it("treats non-'true' boolean env vars as false", () => {

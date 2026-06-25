@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>11 · electric_arc</title>
+    <script src="../assets/gsap.min.js"></script>
+    <style>
+      :root {
+        --hg-violet: #7c3aed;
+        --hg-violet-2: #a855f7;
+        --hg-cyan: #2afff0;
+        --hg-bg: #0a0a0f;
+        --hg-fg: #f5f5fa;
+        --hg-dim: #6b6b78;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--hg-bg);
+        font-family: "Inter", system-ui, sans-serif;
+        color: var(--hg-fg);
+        -webkit-font-smoothing: antialiased;
+      }
+      #scene {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+      }
+      .stage {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .arc-svg {
+        position: absolute;
+        inset: 0;
+      }
+      .arc-path {
+        fill: none;
+        stroke: var(--hg-fg);
+        stroke-width: 3;
+        stroke-linecap: round;
+        filter: drop-shadow(0 0 8px var(--hg-cyan)) drop-shadow(0 0 16px var(--hg-cyan));
+        stroke-dasharray: 1200;
+        stroke-dashoffset: 1200;
+        will-change: stroke-dashoffset, opacity;
+      }
+      .arc-flash {
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(circle at 50% 50%, rgba(42, 255, 240, 0.3) 0%, transparent 40%);
+        opacity: 0;
+        will-change: opacity;
+      }
+      .arc-label {
+        font-weight: 900;
+        font-size: 240px;
+        letter-spacing: -0.04em;
+        color: var(--hg-fg);
+        position: relative;
+        z-index: 2;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="2"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="scene" class="clip" data-start="0" data-duration="2" data-track-index="1">
+        <div class="stage">
+          <svg class="arc-svg" viewBox="0 0 1920 1080" preserveAspectRatio="none">
+            <path
+              class="arc-path"
+              id="arc1"
+              d="M 200 540 L 380 480 L 440 580 L 620 500 L 720 600 L 880 510 L 960 540"
+            />
+            <path
+              class="arc-path"
+              id="arc2"
+              d="M 1720 540 L 1540 600 L 1480 500 L 1300 580 L 1200 480 L 1040 570 L 960 540"
+            />
+            <path
+              class="arc-path"
+              id="arc3"
+              d="M 960 200 L 920 360 L 1040 420 L 940 520 L 960 540"
+            />
+          </svg>
+          <div class="arc-flash"></div>
+          <div class="arc-label">CHARGE</div>
+        </div>
+      </div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      tl.fromTo(
+        ".arc-label",
+        { opacity: 0, scale: 0.9 },
+        { opacity: 1, scale: 1, duration: 0.3, ease: "power3.out" },
+        0.5,
+      );
+      const arcs = ["#arc1", "#arc2", "#arc3"];
+      arcs.forEach((p, i) => {
+        tl.fromTo(
+          p,
+          { strokeDashoffset: 1200, opacity: 0 },
+          { strokeDashoffset: 0, opacity: 1, duration: 0.18, ease: "power4.out" },
+          0.15 + i * 0.05,
+        );
+      });
+      tl.to(arcs.join(","), { opacity: 0.3, duration: 0.04, ease: "steps(1)" }, 0.55);
+      tl.to(arcs.join(","), { opacity: 1, duration: 0.04, ease: "steps(1)" }, 0.6);
+      tl.to(arcs.join(","), { opacity: 0.5, duration: 0.04, ease: "steps(1)" }, 0.7);
+      tl.to(arcs.join(","), { opacity: 1, duration: 0.04, ease: "steps(1)" }, 0.78);
+      tl.fromTo(
+        ".arc-flash",
+        { opacity: 0 },
+        { opacity: 1, duration: 0.06, ease: "steps(1)" },
+        0.5,
+      );
+      tl.to(".arc-flash", { opacity: 0, duration: 0.5, ease: "power2.out" }, 0.6);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

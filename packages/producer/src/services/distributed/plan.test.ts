@@ -509,6 +509,7 @@ describe("plan() — codec knob", () => {
       ) as Record<string, unknown>;
       expect(encoder.encoder).toBe("libx264-software");
       expect(encoder.pixelFormat).toBe("yuv420p");
+      expect(encoder).not.toHaveProperty("vp9CpuUsed");
     },
     TIMEOUT_MS,
   );
@@ -706,6 +707,32 @@ describe("plan() — webm format (distributed VP9)", () => {
       // keyframe with no alt-ref references reaching back across seams.
       expect(encoder.closedGop).toBe(true);
       expect(encoder.gopSize).toBe(encoder.chunkSize);
+      expect(encoder.vp9CpuUsed).toBe(4);
+    },
+    TIMEOUT_MS,
+  );
+
+  it(
+    "locks the resolved VP9 cpu-used value into encoder metadata",
+    async () => {
+      const planDir = join(runRoot, "plan-webm-vp9-cpu-used");
+      mkdirSync(planDir, { recursive: true });
+      await plan(
+        projectDir,
+        {
+          fps: 30,
+          width: 320,
+          height: 240,
+          format: "webm",
+          producerConfig: { vp9CpuUsed: 2 },
+        },
+        planDir,
+      );
+
+      const encoder = JSON.parse(
+        readFileSync(join(planDir, "meta", "encoder.json"), "utf-8"),
+      ) as Record<string, unknown>;
+      expect(encoder.vp9CpuUsed).toBe(2);
     },
     TIMEOUT_MS,
   );

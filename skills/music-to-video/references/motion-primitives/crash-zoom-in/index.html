@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>19 · crash_zoom_in</title>
+    <script src="../assets/gsap.min.js"></script>
+    <style>
+      :root {
+        --hg-violet: #7c3aed;
+        --hg-violet-2: #a855f7;
+        --hg-bg: #0a0a0f;
+        --hg-fg: #f5f5fa;
+        --hg-dim: #6b6b78;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--hg-bg);
+        font-family: "Inter", system-ui, sans-serif;
+        color: var(--hg-fg);
+        -webkit-font-smoothing: antialiased;
+      }
+      #scene {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+      }
+      .zoom-stage {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        will-change: transform;
+      }
+      .radial-bg {
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(
+          circle at center,
+          rgba(168, 85, 247, 0.18) 0%,
+          transparent 35%,
+          rgba(0, 0, 0, 0.6) 80%
+        );
+        opacity: 0;
+        will-change: opacity, transform;
+      }
+      .speed-lines {
+        position: absolute;
+        inset: 0;
+        background: repeating-radial-gradient(
+          circle at 50% 50%,
+          transparent 0px,
+          transparent 6px,
+          rgba(255, 255, 255, 0.08) 7px,
+          transparent 8px
+        );
+        opacity: 0;
+        will-change: opacity;
+        mix-blend-mode: screen;
+      }
+      .hero {
+        font-weight: 900;
+        font-size: 360px;
+        letter-spacing: -0.05em;
+        color: var(--hg-fg);
+        white-space: nowrap;
+        will-change: transform, filter;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="2"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="scene" class="clip" data-start="0" data-duration="2" data-track-index="1">
+        <div class="radial-bg"></div>
+        <div class="speed-lines"></div>
+        <div class="zoom-stage"><div class="hero">CRASH</div></div>
+      </div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      // Hold black for tension
+      tl.set(".hero", { scale: 0.03, filter: "blur(20px)", opacity: 0 }, 0);
+
+      const CRASH = 0.45;
+
+      // The crash itself
+      tl.to(
+        ".hero",
+        { scale: 1.0, filter: "blur(0px)", opacity: 1, duration: 0.32, ease: "expo.in" },
+        CRASH,
+      );
+
+      // Background swoosh in same window
+      tl.fromTo(
+        ".radial-bg",
+        { opacity: 0, scale: 0.4 },
+        { opacity: 1, scale: 1, duration: 0.32, ease: "expo.in" },
+        CRASH,
+      );
+      tl.fromTo(
+        ".speed-lines",
+        { opacity: 0, scale: 0.2 },
+        { opacity: 1, scale: 1.4, duration: 0.32, ease: "expo.in" },
+        CRASH,
+      );
+
+      // Landing settle
+      const LAND = CRASH + 0.32;
+      tl.to(".hero", { scale: 0.96, duration: 0.08, ease: "power3.out" }, LAND);
+      tl.to(".hero", { scale: 1.0, duration: 0.5, ease: "elastic.out(1, 0.55)" }, LAND + 0.08);
+
+      // Quick landing shake
+      const sh = [9, -7, 5, -4, 2, -1];
+      sh.forEach((amp, i) => {
+        tl.to(
+          ".zoom-stage",
+          { x: amp, y: amp * 0.5 * (i % 2 ? -1 : 1), duration: 0.03, ease: "steps(1)" },
+          LAND + i * 0.03,
+        );
+      });
+      tl.to(
+        ".zoom-stage",
+        { x: 0, y: 0, duration: 0.1, ease: "power2.out" },
+        LAND + sh.length * 0.03,
+      );
+
+      // Speed lines fade
+      tl.to(".speed-lines", { opacity: 0, duration: 0.4, ease: "power2.out" }, LAND + 0.05);
+      // Radial settles
+      tl.to(".radial-bg", { opacity: 0.5, duration: 0.5, ease: "power2.out" }, LAND);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

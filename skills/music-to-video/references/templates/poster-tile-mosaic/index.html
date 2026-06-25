@@ -1,0 +1,589 @@
+<!doctype html>
+<html
+  lang="en"
+  data-composition-variables='[
+    {"id":"bgColor", "type":"color",   "label":"Stage background",          "default":"#e9e9e9"},
+    {"id":"tiles",   "type":"number",  "label":"Tile count (mosaic)",      "default":12},
+    {"id":"bands",   "type":"number",  "label":"Snake-fill row bands",     "default":3},
+    {"id":"gap",     "type":"number",  "label":"Seam / gap (px)",          "default":10},
+    {"id":"showText","type":"boolean", "label":"Show tile labels",         "default":true},
+    {"id":"labels",  "type":"string",  "label":"Tile labels (comma list)", "default":"DARE TO BE BOLD,NEW DROP,WALK THE TALK,STAND OUT,PUCKER UP,SUPER SONIC,IN TECHNICOLOUR,BOLD PRINTS,NEW SCENTS,TIME TO MOVE,CRAZY FUNKY COOL,BEAUTY INSIDE"},
+    {"id":"program", "type":"string",  "label":"Program JSON (empty = built-in group_5 score)", "default":""}
+  ]'
+>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Poster-Tile Wall · 3 beat-synced operations — group_5 reference impl</title>
+    <script src="../../motion-primitives/assets/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        background: var(--bg, #e9e9e9);
+        overflow: hidden;
+        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--bg, #e9e9e9);
+      }
+      /* the wall = the BASE TEMPLATE. all three operations act on this one grid. */
+      #wall {
+        position: absolute;
+        inset: 0;
+      }
+      .gf-tile {
+        position: absolute;
+        display: flex;
+        align-items: flex-end;
+        overflow: hidden;
+        will-change: transform, opacity;
+        backface-visibility: hidden;
+      }
+      .gf-label {
+        font-weight: 800;
+        line-height: 0.95;
+        letter-spacing: -0.01em;
+        padding: 0.5em 0.55em;
+        text-transform: uppercase;
+        word-break: break-word;
+      }
+      /* overlay "cutouts" (phase C) — drawn, asset-free silhouette + label */
+      .gf-ov {
+        position: absolute;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-end;
+        border-radius: 6px;
+        will-change: transform, opacity;
+        box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+      }
+      .gf-ov .sil {
+        position: relative;
+        width: 60%;
+        flex: 1 1 auto;
+        margin-top: 14%;
+        display: flex;
+        align-items: flex-end;
+        justify-content: center;
+      }
+      .gf-ov .sil::before {
+        /* head */
+        content: "";
+        position: absolute;
+        top: 0;
+        width: 34%;
+        padding-top: 34%;
+        border-radius: 50%;
+        background: currentColor;
+      }
+      .gf-ov .sil::after {
+        /* shoulders / body */
+        content: "";
+        width: 100%;
+        height: 56%;
+        border-radius: 48% 48% 14% 14% / 60% 60% 14% 14%;
+        background: currentColor;
+      }
+      .gf-ov .cap {
+        align-self: stretch;
+        text-align: center;
+        font-weight: 800;
+        font-size: 26px;
+        letter-spacing: 0.02em;
+        padding: 10px 6px;
+        text-transform: uppercase;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- duration 5.75s = the full group_5 span (3 operations back to back, ends frozen) -->
+    <div
+      data-hf-id="hf-g5rt"
+      id="root"
+      data-composition-id="group-five-recreate"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="5.75"
+      data-root="true"
+    >
+      <div data-hf-id="hf-g5wall" id="wall"></div>
+    </div>
+
+    <script>
+      (function () {
+        // ════════════════════════════════════════════════════════════════════
+        //  POSTER-TILE MOSAIC  ·  ONE base template, THREE beat-synced operations
+        //  ────────────────────────────────────────────────────────────────────
+        //  BASE   : a packed MOSAIC of DIFFERENT-SIZED colored tiles (asset-free:
+        //           color + label). The tiles are NOT a uniform grid — they vary in
+        //           size (tall / wide / small) and tessellate to fill the frame with
+        //           no overlap (thin seams only), exactly like the source's 错落 wall.
+        //           "adding a box" = a new image; "changing a box color" = a new
+        //           asset/recolor. Everything below just schedules these tiles on
+        //           the beat. Reverse-engineered from group_5 of the golden sample.
+        //
+        //  OP A  staggerInOut : tiles enter staggered (top-right→bottom-left waterfall)
+        //                       → hold on a downbeat → exit staggered. each in/out
+        //                       lands on one onset. mixed sizes packing to full frame.
+        //  OP B  holdRecolor  : all tiles snap on at once, positions LOCKED, the
+        //                       whole palette recolors as a unit on each beat.
+        //  OP C  snakeFill+overlay : tiles reveal in a snake path (band by band,
+        //                       L→R then R→L) → a full-grid recolor on the hard-stop
+        //                       → extra "cutout" tiles pop on top, one per beat.
+        //
+        //  ARCHITECTURE: the operators (§6) are pure, parameterized, order-independent
+        //  functions. A data PROGRAM (§3) lists which operators run, in what order,
+        //  on which beats — and §7 just dispatches it. So you compose by editing DATA
+        //  (the PROGRAM array, or the `program` render variable / program.json), never
+        //  the operator code. Combine freely, repeat, or run one solo.
+        // ════════════════════════════════════════════════════════════════════
+
+        // ── 1. Content variables (what a user changes; everything else is timing)
+        var defaults = {
+          bgColor: "#e9e9e9",
+          tiles: 12,
+          bands: 3,
+          gap: 10,
+          showText: true,
+          labels:
+            "DARE TO BE BOLD,NEW DROP,WALK THE TALK,STAND OUT,PUCKER UP," +
+            "SUPER SONIC,IN TECHNICOLOUR,BOLD PRINTS,NEW SCENTS,TIME TO MOVE," +
+            "CRAZY FUNKY COOL,BEAUTY INSIDE",
+          program: "", // empty = built-in group_5 score (DEFAULT_PROGRAM, §3)
+        };
+        var vars = Object.assign(
+          {},
+          defaults,
+          window.__hyperframes && window.__hyperframes.getVariables
+            ? window.__hyperframes.getVariables()
+            : {},
+        );
+        var N = Math.max(2, parseInt(vars.tiles, 10) || 12);
+        var BANDS = Math.max(1, parseInt(vars.bands, 10) || 3);
+        var GAP = Math.max(0, parseFloat(vars.gap) || 0);
+        var SHOW_TEXT = vars.showText !== false && vars.showText !== "false";
+        var LABELS = String(vars.labels)
+          .split(",")
+          .map(function (s) {
+            return s.trim();
+          });
+
+        // ── 2. PALETTE LIBRARY — each THEME is a "look" the whole wall can wear.
+        //  A recolor (OP B) / a swap (OP C) just points the wall at another theme.
+        //  Tile i takes theme[i % theme.length], so one theme dresses the grid in a
+        //  coordinated multi-color scheme. Add themes freely — more beats, more looks.
+        var THEMES = [
+          ["#c8f53a", "#101010", "#ffffff", "#1d1d1d"], // 0 lime / ink (default + OP A)
+          ["#b6f23c", "#0c2a14", "#ffffff", "#0c2a14"], // 1 green
+          ["#2f5cff", "#dce8ff", "#0a1748", "#9fc0ff"], // 2 blue
+          ["#ff5ab3", "#23d6a3", "#1a0a14", "#ffd1ec"], // 3 pink / mint
+          ["#ff3b30", "#ffd60a", "#0a84ff", "#30d158"], // 4 saturated DROP look
+        ];
+        var FONTS = [
+          // typographic variety per tile (the "字体" inside each box)
+          '"Helvetica Neue", Arial, sans-serif',
+          'Georgia, "Times New Roman", serif',
+          '"Arial Narrow", "Helvetica Neue", sans-serif',
+          '"Courier New", Courier, monospace',
+        ];
+        function contrast(hex) {
+          // readable text color for a given fill
+          var h = hex.replace("#", "");
+          var r = parseInt(h.substr(0, 2), 16),
+            g = parseInt(h.substr(2, 2), 16),
+            b = parseInt(h.substr(4, 2), 16);
+          return 0.299 * r + 0.587 * g + 0.114 * b > 150 ? "#0b0b0b" : "#ffffff";
+        }
+        function themeColor(t, slot) {
+          var pal = THEMES[((t % THEMES.length) + THEMES.length) % THEMES.length];
+          return pal[slot % pal.length];
+        }
+
+        // ── 3. THE PROGRAM (data) — the composable surface ──────────────────────
+        //  An ordered list of operator steps {op, ...beats/opts}. THIS is what you
+        //  recompose: reorder, drop, repeat, or swap a step's beats — no operator code
+        //  changes. An agent can override the whole list at render time via the
+        //  `program` variable (a JSON string), so it composes by emitting DATA, not by
+        //  editing JS. Beats are absolute audio seconds from <group>.audiomap.json.
+        //  Mirrors program.json. group_5: 129.2 BPM · downbeats 1.324/3.181/5.039 ·
+        //  hard_stop 4.0s. (See program.json for each op's fields.)
+        var DEFAULT_PROGRAM = [
+          {
+            op: "staggerInOut", // build → hold (downbeat) → exit
+            theme: 0,
+            enter: [0.23, 0.37, 0.46, 0.6, 0.7, 0.84, 0.91, 1.07, 1.14, 1.28],
+            hold: 1.324,
+            exit: [1.37, 1.51, 1.62, 1.74, 1.83, 1.97, 2.07],
+          },
+          {
+            op: "holdRecolor", // snap on, lock, recolor per snare
+            on: 2.35,
+            onTheme: 1,
+            recolor: [2.42, 2.53, 2.81, 2.93],
+            themes: [2, 3, 1, 2],
+            off: 2.98,
+          },
+          {
+            op: "snakeFillOverlay", // snake fill → swap → overlay pops
+            baseTheme: 0,
+            fill: [3.04, 3.181, 3.44, 3.65, 3.79, 3.9], // 3.181 = downbeat f76 (accel)
+            swap: 4.0,
+            swapTheme: 4, // hard_stop "一键换装"
+            overlay: [4.11, 4.34, 4.48, 4.81, 4.97, 5.25, 5.48],
+          }, // 7 onsets, 1 cutout each
+        ];
+        var DUR = 5.75; // = root data-duration; re-timing a new track edits both + the beats
+
+        // Resolve the active program: a non-empty `program` variable (JSON) overrides.
+        var PROGRAM = DEFAULT_PROGRAM;
+        if (vars.program && String(vars.program).trim()) {
+          try {
+            var parsed = typeof vars.program === "string" ? JSON.parse(vars.program) : vars.program;
+            if (parsed && parsed.length) PROGRAM = parsed;
+          } catch (e) {
+            PROGRAM = DEFAULT_PROGRAM;
+          } // malformed → fall back, render stays valid
+        }
+        // Pre-build enough overlay "cutout" elements for the hungriest step.
+        var maxOverlays = 0;
+        PROGRAM.forEach(function (s) {
+          if (s.overlay && s.overlay.length > maxOverlays) maxOverlays = s.overlay.length;
+        });
+
+        // ── 4. Build the MOSAIC (the base template — DIFFERENT-sized packed tiles) ─
+        var root = document.getElementById("root");
+        document.documentElement.style.setProperty("--bg", vars.bgColor);
+        var wall = document.getElementById("wall");
+
+        var MARGIN = 56;
+        var innerW = 1920 - MARGIN * 2,
+          innerH = 1080 - MARGIN * 2;
+
+        // Pack the frame into N DIFFERENT-sized rects that tessellate with NO overlap:
+        // recursively split the largest region along its longer side. Deterministic —
+        // the split ratio is a fixed function of the step index, so it renders the same
+        // every time (no Math.random). This is the "错落 but gap-filling" look of OP A.
+        function packMosaic(n, W, H) {
+          var rects = [{ x: 0, y: 0, w: W, h: H }];
+          while (rects.length < n) {
+            var bi = 0;
+            for (var i = 1; i < rects.length; i++) {
+              if (rects[i].w * rects[i].h > rects[bi].w * rects[bi].h) bi = i;
+            }
+            var r = rects.splice(bi, 1)[0];
+            var ratio = 0.4 + ((rects.length * 37) % 21) / 100; // 0.40..0.60, deterministic
+            if (r.w >= r.h) {
+              var w1 = Math.round(r.w * ratio);
+              rects.push({ x: r.x, y: r.y, w: w1, h: r.h });
+              rects.push({ x: r.x + w1, y: r.y, w: r.w - w1, h: r.h });
+            } else {
+              var h1 = Math.round(r.h * ratio);
+              rects.push({ x: r.x, y: r.y, w: r.w, h: h1 });
+              rects.push({ x: r.x, y: r.y + h1, w: r.w, h: r.h - h1 });
+            }
+          }
+          return rects;
+        }
+        var rects = packMosaic(N, innerW, innerH);
+
+        var tiles = [];
+        for (var idx = 0; idx < N; idx++) {
+          var R = rects[idx];
+          var el = document.createElement("div");
+          el.className = "gf-tile";
+          el.style.left = MARGIN + R.x + GAP / 2 + "px";
+          el.style.top = MARGIN + R.y + GAP / 2 + "px";
+          el.style.width = Math.max(1, R.w - GAP) + "px";
+          el.style.height = Math.max(1, R.h - GAP) + "px";
+          el.style.backgroundColor = themeColor(0, idx);
+
+          var lab = document.createElement("span");
+          lab.className = "gf-label";
+          lab.textContent = SHOW_TEXT ? LABELS[idx % LABELS.length] || "" : "";
+          lab.style.color = contrast(themeColor(0, idx));
+          lab.style.fontFamily = FONTS[idx % FONTS.length];
+          lab.style.fontSize = Math.round(Math.min(R.w, R.h) * 0.16) + "px";
+          el.appendChild(lab);
+
+          wall.appendChild(el);
+          tiles.push({
+            el: el,
+            label: lab,
+            idx: idx,
+            cx: R.x + R.w / 2,
+            cy: R.y + R.h / 2,
+            rect: R,
+          });
+        }
+
+        // enter/exit order (OP A): top-right → bottom-left waterfall (matches source)
+        var enterOrder = tiles
+          .map(function (t) {
+            return t.idx;
+          })
+          .sort(function (a, b) {
+            return tiles[b].cx - tiles[b].cy - (tiles[a].cx - tiles[a].cy);
+          });
+        // snake order (OP C): band by band top→bottom, alternating L→R / R→L
+        var bandH = innerH / BANDS;
+        var snakeOrder = tiles
+          .map(function (t) {
+            return t.idx;
+          })
+          .sort(function (a, b) {
+            var ba = Math.min(BANDS - 1, Math.floor(tiles[a].cy / bandH));
+            var bb = Math.min(BANDS - 1, Math.floor(tiles[b].cy / bandH));
+            if (ba !== bb) return ba - bb;
+            return (ba % 2 === 0 ? 1 : -1) * (tiles[a].cx - tiles[b].cx);
+          });
+
+        // overlay "cutouts" (OP C) — drawn silhouettes at scattered spots
+        var OV_POS = [
+          // % of the inner stage
+          { l: 60, t: 50 },
+          { l: 14, t: 56 },
+          { l: 78, t: 12 },
+          { l: 38, t: 26 },
+          { l: 50, t: 58 },
+          { l: 70, t: 66 },
+          { l: 26, t: 40 },
+        ];
+        var overlays = [];
+        for (var k = 0; k < maxOverlays; k++) {
+          var pos = OV_POS[k % OV_POS.length];
+          var ov = document.createElement("div");
+          ov.className = "gf-ov";
+          var ow = innerW * 0.2,
+            oh = innerH * 0.62;
+          ov.style.width = ow + "px";
+          ov.style.height = oh + "px";
+          ov.style.left = MARGIN + innerW * (pos.l / 100) - ow / 2 + "px";
+          ov.style.top = MARGIN + innerH * (pos.t / 100) - oh / 2 + "px";
+          var fill = themeColor(4, k);
+          ov.style.backgroundColor = fill;
+          var sil = document.createElement("div");
+          sil.className = "sil";
+          sil.style.color = contrast(fill);
+          var cap = document.createElement("div");
+          cap.className = "cap";
+          cap.textContent = SHOW_TEXT ? "MODEL " + (k + 1) : "";
+          cap.style.color = contrast(fill);
+          ov.appendChild(sil);
+          ov.appendChild(cap);
+          wall.appendChild(ov);
+          overlays.push(ov);
+        }
+
+        // ── 5. Timeline + small helpers ─────────────────────────────────────────
+        window.__timelines = window.__timelines || {};
+        var tl = gsap.timeline({ paused: true });
+
+        // overwrite:"auto" lets a later move on a tile cleanly supersede an earlier
+        // one (and keeps the static linter from cross-flagging dynamically-targeted tweens).
+        // immediateRender:false — a from/fromTo MUST NOT bake its from-state at creation,
+        // or an operator scheduled LATER (e.g. staggerInOut's jitter) would park the tiles
+        // off-grid during an EARLIER operator (e.g. holdRecolor). Keeps operators order-independent.
+        var POP = {
+          duration: 0.12,
+          ease: "back.out(1.7)",
+          overwrite: "auto",
+          immediateRender: false,
+        };
+        function setTheme(t, idx, themeIdx) {
+          // 0ms recolor on the beat (a hit, not a fade)
+          var col = themeColor(themeIdx, idx);
+          tl.set(tiles[idx].el, { backgroundColor: col }, t);
+          tl.set(tiles[idx].label, { color: contrast(col) }, t);
+        }
+        function jitter(i) {
+          // deterministic scatter offset (no Math.random — must render identically)
+          return { x: (((i * 37) % 7) - 3) * 16, y: (((i * 53) % 7) - 3) * 16 };
+        }
+        function beatAt(i, n, beats) {
+          // distribute n items across a beat list, monotonic
+          if (!beats || !beats.length) return 0;
+          return beats[Math.min(beats.length - 1, Math.floor((i * beats.length) / n))];
+        }
+        function orderOf(name) {
+          // resolve a reveal order (string preset or explicit array)
+          if (Array.isArray(name)) return name;
+          if (name === "snake") return snakeOrder;
+          if (name === "index")
+            return tiles.map(function (t) {
+              return t.idx;
+            });
+          return enterOrder; // default = top-right→bottom-left waterfall
+        }
+
+        gsap.set(
+          tiles.map(function (t) {
+            return t.el;
+          }),
+          { autoAlpha: 0 },
+        );
+        if (overlays.length) gsap.set(overlays, { autoAlpha: 0 });
+
+        // ── 6. THE THREE OPERATORS — pure, parameterized, order-independent ──────
+        //  Each takes ONE program step P and schedules onto `tl`. Each "shows" tiles
+        //  via fromTo(from hidden) and sets its own theme, so operators compose in ANY
+        //  order, repeat safely, and can run solo. Add a new operator = add a function
+        //  here + a key in OPS; the PROGRAM (§3 / the `program` var) can then call it.
+
+        //  A — staggered enter (waterfall) → hold → staggered exit. one move per beat.
+        //  P: { enter:[s], exit?:[s], theme?:i, order?:"waterfall"|"snake"|"index"|[idx] }
+        function staggerInOut(P) {
+          var order = orderOf(P.order),
+            theme = P.theme || 0;
+          order.forEach(function (i, k) {
+            setTheme(beatAt(k, N, P.enter), i, theme);
+            var d = jitter(i);
+            tl.fromTo(
+              tiles[i].el,
+              { autoAlpha: 0, scale: 0.78, x: d.x, y: d.y },
+              Object.assign({ autoAlpha: 1, scale: 1, x: 0, y: 0 }, POP),
+              beatAt(k, N, P.enter),
+            );
+          });
+          // hold = the wall simply stays put until the exit begins (no extra tween)
+          if (!P.exit || !P.exit.length) return; // no exit → leave the wall standing
+          order.forEach(function (i, k) {
+            tl.to(
+              tiles[i].el,
+              {
+                autoAlpha: 0,
+                scale: 0.9,
+                y: 46,
+                duration: 0.12,
+                ease: "power2.in",
+                overwrite: "auto",
+              },
+              beatAt(k, N, P.exit),
+            );
+          });
+        }
+
+        //  B — snap whole wall on, LOCK positions, recolor as a unit on each beat.
+        //  P: { on:s, recolor?:[s], themes?:[i], onTheme?:i, off?:s }
+        function holdRecolor(P) {
+          tiles.forEach(function (_, i) {
+            setTheme(P.on, i, P.onTheme || 0);
+          });
+          // x:0,y:0 resets any transform a prior operator left behind → clean LOCKED grid
+          tl.fromTo(
+            tiles.map(function (t) {
+              return t.el;
+            }),
+            { autoAlpha: 0, scale: 0.96, x: 0, y: 0 },
+            {
+              autoAlpha: 1,
+              scale: 1,
+              x: 0,
+              y: 0,
+              duration: 0.1,
+              ease: "power2.out",
+              overwrite: "auto",
+              immediateRender: false,
+            },
+            P.on,
+          );
+          (P.recolor || []).forEach(function (t, ri) {
+            var th = (P.themes || [0])[ri % (P.themes || [0]).length];
+            tiles.forEach(function (_, i) {
+              setTheme(t, i, th);
+            });
+          });
+          if (P.off != null) {
+            tl.to(
+              tiles.map(function (t) {
+                return t.el;
+              }),
+              { autoAlpha: 0, scale: 0.97, duration: 0.1, ease: "power2.in", overwrite: "auto" },
+              P.off,
+            );
+          }
+        }
+
+        //  C — snake reveal → optional full-grid swap → overlay cutouts pop on top.
+        //  P: { fill:[s], baseTheme?:i, swap?:s, swapTheme?:i, overlay?:[s], order?:… }
+        function snakeFillOverlay(P) {
+          var order = orderOf(P.order || "snake"),
+            base = P.baseTheme || 0;
+          var f0 = P.fill && P.fill.length ? P.fill[0] : 0;
+          order.forEach(function (i) {
+            setTheme(Math.max(0, f0 - 0.01), i, base);
+          });
+          order.forEach(function (i, k) {
+            tl.fromTo(
+              tiles[i].el,
+              { autoAlpha: 0, scale: 0.85, x: 0, y: 0 }, // x/y reset → fills on the clean grid
+              {
+                autoAlpha: 1,
+                scale: 1,
+                x: 0,
+                y: 0,
+                duration: 0.1,
+                ease: "back.out(1.6)",
+                overwrite: "auto",
+                immediateRender: false,
+              },
+              beatAt(k, N, P.fill),
+            );
+          });
+          if (P.swap != null) {
+            // hard-stop "一键换装" — recolor the whole grid at once
+            tiles.forEach(function (_, i) {
+              setTheme(P.swap, i, P.swapTheme != null ? P.swapTheme : 4);
+            });
+          }
+          (P.overlay || []).forEach(function (t, i) {
+            // one cutout per beat; final holds
+            if (!overlays[i]) return;
+            tl.fromTo(
+              overlays[i],
+              { autoAlpha: 0, scale: 0.6, y: 30 },
+              {
+                autoAlpha: 1,
+                scale: 1,
+                y: 0,
+                duration: 0.16,
+                ease: "back.out(2)",
+                overwrite: "auto",
+                immediateRender: false,
+              },
+              t,
+            );
+          });
+        }
+
+        var OPS = {
+          staggerInOut: staggerInOut,
+          holdRecolor: holdRecolor,
+          snakeFillOverlay: snakeFillOverlay,
+        };
+
+        // ── 7. RUN THE PROGRAM — dispatch each step to its operator, in order ────
+        PROGRAM.forEach(function (step) {
+          var fn = step && OPS[step.op];
+          if (fn) fn(step);
+        });
+
+        tl.to({}, { duration: 0.001 }, DUR); // pin the timeline length to the full span
+        tl.seek(0);
+        window.__timelines["group-five-recreate"] = tl;
+      })();
+    </script>
+  </body>
+</html>

@@ -18,6 +18,7 @@ import { extname } from "node:path";
 import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
 import { createSession, type Session } from "./inference.js";
 import { type Device, type ModelId } from "./manager.js";
+import { DEFAULT_VP9_CPU_USED } from "@hyperframes/engine";
 
 export type OutputFormat = "webm" | "mov" | "png";
 
@@ -159,6 +160,8 @@ export function buildEncoderArgs(
       "good",
       "-row-mt",
       "1",
+      "-cpu-used",
+      String(DEFAULT_VP9_CPU_USED),
       "-auto-alt-ref",
       "0",
       "-pix_fmt",

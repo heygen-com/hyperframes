@@ -12,20 +12,23 @@ import { buildArcPath, type ArcPathConfig } from "@hyperframes/core/gsap-parser-
 import { parsePercentageKeyframes, toAbsoluteTime } from "./gsapShared";
 import { roundTo3 } from "../utils/rounding";
 
-interface RuntimeTween {
+export interface RuntimeTween {
   targets?: () => Element[];
   vars?: Record<string, unknown>;
   duration?: () => number;
   startTime?: () => number;
+  invalidate?: () => RuntimeTween;
 }
 
-interface RuntimeTimeline {
+export interface RuntimeTimeline {
   getChildren?: (deep: boolean) => RuntimeTween[];
   duration?: () => number;
+  time?: () => number;
+  invalidate?: () => RuntimeTimeline;
 }
 
 type Pct = { percentage: number; properties: Record<string, number | string> };
-type ReadTween = { keyframes: Pct[]; easeEach?: string; arcPath?: ArcPathConfig };
+export type ReadTween = { keyframes: Pct[]; easeEach?: string; arcPath?: ArcPathConfig };
 
 export interface RuntimeKeyframeEntry {
   keyframes: Pct[];
@@ -69,6 +72,17 @@ function timelinesOf(iframe: HTMLIFrameElement | null): Record<string, RuntimeTi
 
 function isXY(p: unknown): p is { x: number; y: number } {
   return !!p && typeof (p as any).x === "number" && typeof (p as any).y === "number";
+}
+
+/**
+ * A tween we must skip when reading keyframes: a zero-duration `set`/hold (incl.
+ * the studio pre-keyframe position hold, tagged `data: STUDIO_HOLD_MARKER`).
+ * These sit before the real keyframed tween and otherwise shadow it — `readTween`
+ * would fall back to a degenerate 2-point flat path from the set's values, hiding
+ * the actual multi-keyframe motion. `!(duration > 0)` also rejects NaN durations.
+ */
+function isZeroDurationSet(duration: number): boolean {
+  return !(duration > 0);
 }
 
 /** Coordinates + curviness from a live `vars.motionPath` value (object or array form), or null. */
@@ -149,6 +163,95 @@ function tweenTiming(tween: RuntimeTween): { start: number; duration: number } {
   };
 }
 
+export interface ResolvedRuntimeTween {
+  /** The live GSAP tween targeting the selector. */
+  tween: RuntimeTween;
+  /** The composition timeline that owns it. */
+  timeline: RuntimeTimeline;
+}
+
+/**
+ * Whether a tween's `vars` carry at least one of `channels` as an OWN property.
+ * Used to disambiguate co-located `set`s: an element can have separate
+ * `tl.set("#el",{x,y})` and `tl.set("#el",{rotation})` tweens, and a position
+ * patch must land on the {x,y} set — never the rotation-only one.
+ */
+function varsCarryChannel(vars: Record<string, unknown> | undefined, channels: string[]): boolean {
+  if (!vars) return false;
+  for (const ch of channels) {
+    if (Object.prototype.hasOwnProperty.call(vars, ch)) return true;
+  }
+  return false;
+}
+
+/**
+ * Resolve the live tween targeting `selector` using the SAME all-timelines scan
+ * `readRuntimeKeyframes` uses, so read and write agree on "which tween". With
+ * `kind: "keyframe"` it skips zero-duration `set`s and prefers the tween whose
+ * range contains the playhead (matching the reader). With `kind: "set"` it picks
+ * the zero-duration `set`/hold instead. Returns null when none matches.
+ *
+ * `channels` disambiguates co-located `set`s (CHANNEL-BLIND otherwise): when
+ * provided with `kind: "set"`, a set carrying ONE of those channels wins, and a
+ * set carrying ONLY disjoint channels is skipped (so patching {x,y} never lands
+ * on a rotation-only set). With no channel-matching set, it falls back to the
+ * first matching set (back-compat). `channels` is ignored for `kind: "keyframe"`.
+ */
+export function resolveRuntimeTween(
+  iframe: HTMLIFrameElement | null,
+  selector: string,
+  kind: "keyframe" | "set",
+  compositionId?: string,
+  channels?: string[],
+): ResolvedRuntimeTween | null {
+  const timelines = timelinesOf(iframe);
+  if (!timelines) return null;
+
+  let targetEl: Element | null = null;
+  try {
+    targetEl = iframe?.contentDocument?.querySelector(selector) ?? null;
+  } catch {
+    return null;
+  }
+  if (!targetEl) return null;
+
+  const tlIds = compositionId
+    ? [compositionId]
+    : Object.keys(timelines).filter((k) => typeof timelines[k]?.getChildren === "function");
+
+  const wantChannels = kind === "set" && channels && channels.length > 0 ? channels : null;
+
+  let first: ResolvedRuntimeTween | null = null;
+  let channelMatch: ResolvedRuntimeTween | null = null;
+  for (const tlId of tlIds) {
+    const timeline = timelines[tlId];
+    if (!timeline?.getChildren) continue;
+    const now = typeof timeline.time === "function" ? timeline.time() : null;
+    for (const tween of timeline.getChildren(true)) {
+      if (!tween.vars || !matchesElement(tween, targetEl)) continue;
+      const dur = typeof tween.duration === "function" ? tween.duration() : 0;
+      const isSet = !(dur > 0);
+      if (kind === "set" ? !isSet : isSet) continue;
+      if (wantChannels) {
+        if (varsCarryChannel(tween.vars, wantChannels)) {
+          if (channelMatch === null) channelMatch = { tween, timeline };
+        } else if (first === null) {
+          // A set carrying only disjoint channels: remember as last-resort
+          // fallback, but never prefer it over a channel-matching set.
+          first = { tween, timeline };
+        }
+        continue;
+      }
+      if (first === null) first = { tween, timeline };
+      if (kind === "keyframe" && now != null) {
+        const start = typeof tween.startTime === "function" ? tween.startTime() : 0;
+        if (now >= start - 1e-3 && now <= start + dur + 1e-3) return { tween, timeline };
+      }
+    }
+  }
+  return channelMatch ?? first;
+}
+
 /**
  * Read keyframes (incl. motionPath arcs) for one selector from the live timeline.
  * Returns tween-relative percentages; callers convert to clip-relative.
@@ -160,10 +263,6 @@ export function readRuntimeKeyframes(
 ): ReadTween | null {
   const timelines = timelinesOf(iframe);
   if (!timelines) return null;
-  const tlId = compositionId || Object.keys(timelines)[0];
-  if (!tlId) return null;
-  const timeline = timelines[tlId];
-  if (!timeline?.getChildren) return null;
 
   let targetEl: Element | null = null;
   try {
@@ -173,12 +272,84 @@ export function readRuntimeKeyframes(
   }
   if (!targetEl) return null;
 
+  // Search the element's OWN composition timeline. With inlined subcompositions the
+  // preview has multiple timelines (one per composition), and the element belongs to
+  // exactly one — so we can't assume the first key (order isn't stable across soft
+  // reloads, which delete+re-add the rebuilt key). Scan every timeline for tweens
+  // targeting this element; only its composition's timeline matches. An explicit
+  // compositionId still pins the search. (`__proxied` and other non-timeline markers
+  // are skipped by the getChildren guard.)
+  const tlIds = compositionId
+    ? [compositionId]
+    : Object.keys(timelines).filter((k) => typeof timelines[k]?.getChildren === "function");
+  if (tlIds.length === 0) return null;
+
+  // The element can have MORE THAN ONE keyframed tween at disjoint time ranges
+  // (e.g. two non-overlapping gesture recordings → two separate `to()`s). The
+  // overlay must draw the segment under the PLAYHEAD, not blindly the first one
+  // — otherwise recording a second gesture leaves the path stuck on the first.
+  let firstRead: ReadTween | null = null;
+  for (const tlId of tlIds) {
+    const timeline = timelines[tlId];
+    if (!timeline?.getChildren) continue;
+    const now = typeof timeline.time === "function" ? timeline.time() : null;
+    for (const tween of timeline.getChildren(true)) {
+      if (!tween.vars || !matchesElement(tween, targetEl)) continue;
+      const dur = typeof tween.duration === "function" ? tween.duration() : 0;
+      if (isZeroDurationSet(dur)) continue; // skip hold/set tweens (see isZeroDurationSet)
+      const read = readTween(tween.vars);
+      if (!read) continue;
+      if (firstRead === null) firstRead = read;
+      // Prefer the tween whose [start, start+dur] contains the playhead.
+      if (now != null) {
+        const start = typeof tween.startTime === "function" ? tween.startTime() : 0;
+        if (now >= start - 1e-3 && now <= start + dur + 1e-3) return read;
+      }
+    }
+  }
+  // Playhead outside every tween's range (or timeline has no clock): the element
+  // still has motion, so fall back to the first keyframed tween.
+  return firstRead;
+}
+
+/**
+ * Whether the live timeline has at least one NON-HOLD tween (non-zero duration,
+ * not the studio position-hold `set`) targeting `selector`. Stricter than a
+ * truthy `readRuntimeKeyframes`: that returns a flat read for any property-bearing
+ * tween, so it can't distinguish a real animation from a leftover hold/marker.
+ * The drag's stale-parse guard needs this exact distinction — after a delete-all
+ * only a hold may remain, and resurrecting the deleted tween from the stale parse
+ * must be avoided.
+ */
+export function hasNonHoldTweenForElement(
+  iframe: HTMLIFrameElement | null,
+  selector: string,
+  compositionId?: string,
+): boolean {
+  const timelines = timelinesOf(iframe);
+  if (!timelines) return false;
+  const tlId =
+    compositionId ||
+    Object.keys(timelines).find((k) => typeof timelines[k]?.getChildren === "function");
+  if (!tlId) return false;
+  const timeline = timelines[tlId];
+  if (!timeline?.getChildren) return false;
+
+  let targetEl: Element | null = null;
+  try {
+    targetEl = iframe?.contentDocument?.querySelector(selector) ?? null;
+  } catch {
+    return false;
+  }
+  if (!targetEl) return false;
+
   for (const tween of timeline.getChildren(true)) {
     if (!tween.vars || !matchesElement(tween, targetEl)) continue;
-    const read = readTween(tween.vars);
-    if (read) return read;
+    const dur = typeof tween.duration === "function" ? tween.duration() : 0;
+    if (isZeroDurationSet(dur)) continue; // skip hold/set tweens (see isZeroDurationSet)
+    if (readTween(tween.vars)) return true;
   }
-  return null;
+  return false;
 }
 
 /** Convert tween-relative keyframes to clip-relative % using the element's clip dims. */
@@ -217,9 +388,10 @@ function addScanEntry(
   clipById?: ClipDims,
 ): void {
   if (!tween.targets || !tween.vars) return;
+  const { start, duration } = tweenTiming(tween);
+  if (isZeroDurationSet(duration)) return; // skip hold/set tweens (see isZeroDurationSet)
   const read = readTween(tween.vars);
   if (!read) return;
-  const { start, duration } = tweenTiming(tween);
   for (const target of tween.targets()) {
     const id = (target as HTMLElement).id;
     if (id && !result.has(id)) result.set(id, buildEntry(read, start, duration, clipById?.get(id)));

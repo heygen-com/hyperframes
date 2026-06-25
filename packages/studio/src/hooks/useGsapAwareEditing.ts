@@ -8,16 +8,19 @@
  * from the rest of the editing orchestration.
  */
 import { useCallback } from "react";
+import { editLog } from "../utils/editDebugLog";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
-import { STUDIO_GSAP_DRAG_INTERCEPT_ENABLED } from "../components/editor/manualEditingAvailability";
-import { GSAP_CSS_FALLBACK_BLOCKED_MESSAGE } from "./useDomGeometryCommits";
 import {
   tryGsapDragIntercept,
   tryGsapResizeIntercept,
   tryGsapRotationIntercept,
 } from "./gsapRuntimeBridge";
 import { useAnimatedPropertyCommit } from "./useAnimatedPropertyCommit";
+import {
+  useGsapSaveFailureTelemetry,
+  useSafeGsapCommitMutation,
+} from "./useSafeGsapCommitMutation";
 import type { CommitMutation } from "./gsapScriptCommitTypes";
 
 export interface UseGsapAwareEditingParams {
@@ -35,15 +38,10 @@ export interface UseGsapAwareEditingParams {
     label: string,
   ) => void;
   // DOM fallbacks (from useDomEditCommits)
-  handleDomPathOffsetCommit: (
-    selection: DomEditSelection,
-    next: { x: number; y: number },
-  ) => Promise<void>;
   handleDomBoxSizeCommit: (
     selection: DomEditSelection,
     next: { width: number; height: number },
   ) => Promise<void>;
-  handleDomRotationCommit: (selection: DomEditSelection, next: { angle: number }) => Promise<void>;
   // GSAP script commit ops (from useGsapScriptCommits)
   addGsapAnimation: (
     sel: DomEditSelection,
@@ -85,9 +83,7 @@ export function useGsapAwareEditing({
   bumpGsapCache,
   makeFetchFallback,
   trackGsapInteractionFailure,
-  handleDomPathOffsetCommit,
   handleDomBoxSizeCommit,
-  handleDomRotationCommit,
   addGsapAnimation,
   convertToKeyframes,
   setArcPath,
@@ -96,55 +92,42 @@ export function useGsapAwareEditing({
   // ── GSAP-aware geometry commits ──
 
   const handleGsapAwarePathOffsetCommit = useCallback(
-    async (selection: DomEditSelection, next: { x: number; y: number }) => {
-      const hasGsapAnims = selectedGsapAnimations.length > 0;
-      console.log(
-        "[drag:3] handleGsapAwarePathOffsetCommit",
-        JSON.stringify({
-          sel: selection.id,
-          offset: next,
-          hasGsapAnims,
-          interceptEnabled: STUDIO_GSAP_DRAG_INTERCEPT_ENABLED,
-          animCount: selectedGsapAnimations.length,
-          animIds: selectedGsapAnimations.map((a) => a.id).slice(0, 5),
-        }),
-      );
-      if (hasGsapAnims && !STUDIO_GSAP_DRAG_INTERCEPT_ENABLED) {
-        showToast(GSAP_CSS_FALLBACK_BLOCKED_MESSAGE, "error");
-        throw new Error(GSAP_CSS_FALLBACK_BLOCKED_MESSAGE);
-      }
-      if (STUDIO_GSAP_DRAG_INTERCEPT_ENABLED && gsapCommitMutation) {
+    async (
+      selection: DomEditSelection,
+      next: { x: number; y: number },
+      modifiers?: { altKey?: boolean },
+    ) => {
+      editLog("manual-drag:move", { id: selection.id, next, altKey: modifiers?.altKey });
+      if (gsapCommitMutation) {
         try {
-          const handled = await tryGsapDragIntercept(
+          await tryGsapDragIntercept(
             selection,
             next,
             selectedGsapAnimations,
             previewIframeRef.current,
             gsapCommitMutation,
             makeFetchFallback(selection),
+            modifiers,
           );
-          if (handled) return;
         } catch (error) {
           trackGsapInteractionFailure(error, selection, "drag", "Move animated layer");
           throw error;
         }
       }
-      return handleDomPathOffsetCommit(selection, next);
     },
     [
-      handleDomPathOffsetCommit,
       selectedGsapAnimations,
       gsapCommitMutation,
       previewIframeRef,
       makeFetchFallback,
       trackGsapInteractionFailure,
-      showToast,
     ],
   );
 
   const handleGsapAwareBoxSizeCommit = useCallback(
     async (selection: DomEditSelection, next: { width: number; height: number }) => {
-      if (STUDIO_GSAP_DRAG_INTERCEPT_ENABLED && gsapCommitMutation) {
+      editLog("manual-drag:resize", { id: selection.id, next });
+      if (gsapCommitMutation) {
         try {
           const handled = await tryGsapResizeIntercept(
             selection,
@@ -174,9 +157,13 @@ export function useGsapAwareEditing({
 
   const handleGsapAwareRotationCommit = useCallback(
     async (selection: DomEditSelection, next: { angle: number }) => {
-      if (STUDIO_GSAP_DRAG_INTERCEPT_ENABLED && gsapCommitMutation) {
+      editLog("manual-drag:rotate", { id: selection.id, next });
+      if (gsapCommitMutation) {
         try {
-          const handled = await tryGsapRotationIntercept(
+          // Single source of truth for rotation too: tryGsapRotationIntercept handles
+          // tweened elements (keyframes) and static ones (a tl.set), so there's no
+          // CSS-var fallback. It returns false only for a selectorless element (no-op).
+          await tryGsapRotationIntercept(
             selection,
             next.angle,
             selectedGsapAnimations,
@@ -184,16 +171,13 @@ export function useGsapAwareEditing({
             gsapCommitMutation,
             makeFetchFallback(selection),
           );
-          if (handled) return;
         } catch (error) {
           trackGsapInteractionFailure(error, selection, "rotation", "Rotate animated layer");
           throw error;
         }
       }
-      return handleDomRotationCommit(selection, next);
     },
     [
-      handleDomRotationCommit,
       selectedGsapAnimations,
       gsapCommitMutation,
       previewIframeRef,
@@ -232,13 +216,27 @@ export function useGsapAwareEditing({
   );
 
   // ── Thin commitMutation facade ──
+  // Routes through the canonical safe wrapper so a server-save failure surfaces a
+  // toast + save telemetry instead of silently reverting — parity with the
+  // arc/keyframe/animation ops that all go through useSafeGsapCommitMutation.
+
+  const noopCommit = useCallback<CommitMutation>(async () => {}, []);
+  const trackGsapSaveFailure = useGsapSaveFailureTelemetry(null);
+  const safeGsapCommit = useSafeGsapCommitMutation(
+    gsapCommitMutation ?? noopCommit,
+    trackGsapSaveFailure,
+    showToast,
+  );
 
   const commitMutation = useCallback(
     async (mutation: Record<string, unknown>, options: { label: string; softReload?: boolean }) => {
       if (!domEditSelection) return;
-      await gsapCommitMutation?.(domEditSelection, mutation, options);
+      // Return (await) the safe-commit chain so consumers that `await
+      // session.commitMutation(...)` (gesture recording, enable-keyframes) run
+      // their post-actions only after the server save has settled.
+      await safeGsapCommit(domEditSelection, mutation, options);
     },
-    [domEditSelection, gsapCommitMutation],
+    [domEditSelection, safeGsapCommit],
   );
 
   // Unroll all computed (helper/loop) tweens in the active timeline into literal

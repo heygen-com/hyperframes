@@ -242,6 +242,7 @@ export function useDomEditWiring({
     applyStudioManualEditsToPreviewRef,
     openSourceForSelection,
     getSidebarTab,
+    gsapCacheVersion,
   });
 
   return {

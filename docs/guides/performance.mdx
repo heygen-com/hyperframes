@@ -101,6 +101,26 @@ npx hyperframes render --quality draft --output preview.mp4
 
 Draft quality renders fast and is visually close to the final render for everything except encoder-level detail.
 
+## WebM encode speed
+
+Transparent WebM output uses FFmpeg's `libvpx-vp9` encoder. VP9 is CPU-heavy, so short overlay renders can spend most of their wall time in the encode stage even when frame capture is fast.
+
+HyperFrames sets `-cpu-used 4` for VP9 by default. On a devbox check using an 8s 1280×720, 15fps VP9-alpha encode, explicit `-cpu-used 4` cut encode time from 6.3s to 2.6s versus libvpx's default, with SSIM 0.9986 and PSNR 50.5dB against the default encode. Your composition and host CPU will move those numbers, but the direction is consistent: higher values trade some compression efficiency for faster WebM encodes.
+
+Tune per deployment with:
+
+```bash Terminal
+PRODUCER_VP9_CPU_USED=2 npx hyperframes render --format webm --output overlay.webm
+```
+
+For one-off local renders, pass the same value directly:
+
+```bash Terminal
+npx hyperframes render --format webm --vp9-cpu-used 2 --output overlay.webm
+```
+
+Valid values are integers from `-8` to `8`; HyperFrames clamps out-of-range values before passing them to FFmpeg.
+
 ## Next Steps
 
 <CardGroup cols={2}>

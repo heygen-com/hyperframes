@@ -66,6 +66,7 @@ export interface PropertyPanelProps {
     value: number | string,
   ) => void;
   onRemoveKeyframe?: (animationId: string, percentage: number) => void;
+  onUpdateKeyframeEase?: (animationId: string, percentage: number, ease: string) => void;
   onConvertToKeyframes?: (animationId: string) => void;
   onCommitAnimatedProperty?: (
     selection: DomEditSelection,

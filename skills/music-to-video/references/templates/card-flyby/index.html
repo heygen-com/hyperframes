@@ -1,0 +1,527 @@
+<!doctype html>
+<html
+  lang="en"
+  data-composition-variables='[
+    {"id":"theme",    "type":"string", "label":"Palette theme — aurora | ember | mono | slate",     "default":"aurora"},
+    {"id":"bgColor",  "type":"color",  "label":"Stage background override (empty = theme bg)",       "default":""},
+    {"id":"cards",    "type":"string", "label":"Deck JSON — array of {tag,title,meta,color?}",        "default":""},
+    {"id":"landings", "type":"string", "label":"Landing beats JSON — abs seconds, one per card",     "default":""},
+    {"id":"yaw",      "type":"number", "label":"Scene yaw (deg, side tilt of the whole deck)",        "default":-12}
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Card Flyby · accelerating 3D deck cascade — reference impl</title>
+    <script src="../../motion-primitives/assets/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        background: #06070d;
+        overflow: hidden;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        background: radial-gradient(1300px 820px at 50% 52%, #0d1018 0%, #06070d 70%, #04050a 100%);
+        overflow: hidden;
+        font-family: "Inter", "Helvetica Neue", Arial, sans-serif;
+      }
+      /* .stage carries the perspective; .scene carries the static yaw. The cards' own
+         rotateX drives the tumble-forward — the scene only holds the side tilt. */
+      .stage {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 1920px;
+        height: 1080px;
+        perspective: 2400px;
+        perspective-origin: 50% 55%;
+      }
+      .scene {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 1920px;
+        height: 1080px;
+        transform-style: preserve-3d;
+        transform: rotateY(-12deg);
+      }
+      .card {
+        position: absolute;
+        left: calc(50% - 700px);
+        top: calc(50% - 395px);
+        width: 1400px;
+        height: 790px;
+        border-radius: 32px;
+        will-change: transform, opacity;
+        --wipe: 0;
+        --color: #444;
+        transform-origin: 50% 50%;
+      }
+      /* Wireframe (always present, opacity tracks the slot). */
+      .wire {
+        position: absolute;
+        inset: 0;
+        border-radius: 28px;
+        border: 1.5px solid rgba(255, 255, 255, 0.42);
+        box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.18);
+        background: rgba(255, 255, 255, 0.012);
+        overflow: hidden;
+      }
+      .wire .wire-label {
+        position: absolute;
+        left: 68px;
+        top: 60px;
+        font-size: 26px;
+        font-weight: 500;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: rgba(255, 255, 255, 0.5);
+      }
+      .wire .wire-corner {
+        position: absolute;
+        right: 68px;
+        top: 60px;
+        width: 34px;
+        height: 34px;
+        border: 1.5px solid rgba(255, 255, 255, 0.32);
+        border-radius: 50%;
+      }
+      .wire .wire-bar {
+        position: absolute;
+        left: 68px;
+        right: 68px;
+        bottom: 68px;
+        height: 1.5px;
+        background: rgba(255, 255, 255, 0.22);
+      }
+      /* Solid colored face — revealed via an angled clip-path wipe driven by --wipe.
+         Polygon sweeps upper-left → lower-right at ~72°. wipe=0 collapsed off-element,
+         wipe=1 covers the full card. */
+      .solid {
+        position: absolute;
+        inset: 0;
+        border-radius: 28px;
+        /* gentle top→bottom tonal gradient (theme-derived shades) for depth */
+        background: linear-gradient(
+          158deg,
+          var(--c1, var(--color)) 0%,
+          var(--c2, var(--color)) 100%
+        );
+        box-shadow:
+          0 34px 100px rgba(0, 0, 0, 0.55),
+          inset 0 1px 0 rgba(255, 255, 255, 0.14);
+        overflow: hidden;
+        /* the title is the hero — centered in the card */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 90px 104px;
+        clip-path: polygon(
+          0% 0%,
+          calc(var(--wipe) * 200% - 30%) 0%,
+          calc(var(--wipe) * 200% - 80%) 100%,
+          0% 100%
+        );
+      }
+      .solid::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: 28px;
+        background: linear-gradient(
+          135deg,
+          rgba(255, 255, 255, 0.13) 0%,
+          rgba(255, 255, 255, 0.03) 40%,
+          rgba(0, 0, 0, 0.14) 100%
+        );
+        pointer-events: none;
+      }
+      .solid .title {
+        font-size: 184px;
+        font-weight: 800;
+        letter-spacing: -0.035em;
+        line-height: 0.92;
+        color: var(--ink, #ffffff);
+        text-align: center;
+        max-width: 100%;
+        overflow-wrap: break-word;
+        text-wrap: balance;
+      }
+      .solid .play {
+        position: absolute;
+        right: 68px;
+        bottom: 70px;
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        background: rgba(0, 0, 0, 0.28);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .solid .play::after {
+        content: "";
+        width: 0;
+        height: 0;
+        border-left: 22px solid #ffffff;
+        border-top: 14px solid transparent;
+        border-bottom: 14px solid transparent;
+        margin-left: 5px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- duration 6.0s = a 6-card accelerating cascade (1 card lands per beat, dwells shrinking) -->
+    <div
+      data-hf-id="hf-cf-root"
+      id="root"
+      data-composition-id="card-flyby"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="6.0"
+      data-root="true"
+    >
+      <div data-hf-id="hf-cf-stage" class="stage">
+        <div data-hf-id="hf-cf-scene" class="scene" id="scene"></div>
+      </div>
+
+      <script>
+        (function () {
+          // ════════════════════════════════════════════════════════════════════
+          //  CARD FLYBY  ·  accelerating 3D deck cascade
+          //  ────────────────────────────────────────────────────────────────────
+          //  A depth column of N cards rolls FORWARD. On each landing beat the next
+          //  card tumbles up into the front slot (s0) and WIPES in its solid colored
+          //  face (angled clip-path), the previous front card tumbles forward + falls
+          //  down toward the camera on exit, and every card behind advances one slot.
+          //  Dwells shrink card-to-card → the deck reads as an accelerating rush into
+          //  a held final card. Asset-free: wireframe + solid CSS cards, system fonts.
+          //
+          //  COMPOSE BY DATA — `cards` (the deck) and `landings` (one beat per card)
+          //  are the two data surfaces. Card count is data: 3/6/9 cards all "just
+          //  work"; landings default to an accelerating schedule derived from count.
+          // ════════════════════════════════════════════════════════════════════
+
+          window.__timelines = window.__timelines || {};
+          // force3D is set per card tween/set below (NOT a global default — a global
+          // would leak onto the plain-object padding tween and warn). It keeps a 3D
+          // matrix on every transform so cards never collapse to 2D: a card whose
+          // rotX/Y/Z all hit 0 (the front s0 pose) would otherwise drop out of the 3D
+          // stacking context and paint in DOM order, letting back cards render on top.
+
+          // ── 1. Variables ──────────────────────────────────────────────────────
+          var defaults = { theme: "aurora", bgColor: "", cards: "", landings: "", yaw: -12 };
+          var vars = Object.assign(
+            {},
+            defaults,
+            window.__hyperframes && window.__hyperframes.getVariables
+              ? window.__hyperframes.getVariables()
+              : {},
+          );
+
+          // ── Palette themes — each is a COHESIVE ramp (one temperature/saturation
+          //    family) so any card count reads as a designed set. card.color still
+          //    overrides per card. White-on-card stays AA at the card type sizes. ──
+          var THEMES = {
+            // cool jewel arc: teal → ocean → indigo → violet → plum
+            aurora: {
+              bg: "#06060e",
+              ink: "#ffffff",
+              colors: ["#0e5f63", "#15517e", "#283f86", "#4a3a83", "#6a3380", "#8a2e63"],
+            },
+            // warm sunset arc: wine → brick → rust → amber → ochre → bronze
+            ember: {
+              bg: "#0e0805",
+              ink: "#fff6ee",
+              colors: ["#5c2030", "#7e2828", "#9c3b1c", "#a9551a", "#8a5a1c", "#5f4626"],
+            },
+            // sleek monochrome blue staircase (dark → mid)
+            mono: {
+              bg: "#060912",
+              ink: "#ffffff",
+              colors: ["#11243f", "#16314f", "#1b3d63", "#214a78", "#27568d", "#2d63a2"],
+            },
+            // muted cool slate — understated / editorial
+            slate: {
+              bg: "#0b0e12",
+              ink: "#eef2f6",
+              colors: ["#232a33", "#2b3540", "#33414e", "#3b4c5c", "#43576a", "#4b6278"],
+            },
+          };
+          var TH = THEMES[String(vars.theme || "").trim()] || THEMES.aurora;
+
+          // tiny hex helpers (deterministic, no deps) — derive shades + soft ink.
+          function parseHex(h) {
+            h = String(h || "")
+              .trim()
+              .replace(/^#/, "");
+            if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+            if (h.length !== 6) return null;
+            var n = parseInt(h, 16);
+            return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+          }
+          function clamp8(v) {
+            return Math.max(0, Math.min(255, Math.round(v)));
+          }
+          function toHex(c) {
+            return (
+              "#" +
+              [c.r, c.g, c.b]
+                .map(function (v) {
+                  return clamp8(v).toString(16).padStart(2, "0");
+                })
+                .join("")
+            );
+          }
+          function mix(hex, t, amt) {
+            var c = parseHex(hex);
+            if (!c) return hex;
+            return toHex({
+              r: c.r + (t.r - c.r) * amt,
+              g: c.g + (t.g - c.g) * amt,
+              b: c.b + (t.b - c.b) * amt,
+            });
+          }
+          var BLACK = { r: 0, g: 0, b: 0 },
+            WHITE = { r: 255, g: 255, b: 255 };
+          function darken(hex, amt) {
+            return mix(hex, BLACK, amt);
+          }
+          function lighten(hex, amt) {
+            return mix(hex, WHITE, amt);
+          }
+
+          var DEFAULT_CARDS = [
+            { title: "FADEGLOW" },
+            { title: "SAUL BASS" },
+            { title: "EULER" },
+            { title: "HERMÈS" },
+            { title: "DOSSIER" },
+            { title: "BLACK HOLES" },
+          ];
+          // landings tuned by hand on the sandbox: accelerating dwells, final card holds ~1.6s.
+          var DEFAULT_LANDINGS = [0.4, 1.7, 2.7, 3.45, 4.0, 4.4];
+
+          var DUR = 6.0; // matches data-duration
+          var YAW = Number(vars.yaw);
+          if (!isFinite(YAW)) YAW = -12;
+
+          function parseJSON(v) {
+            if (!v) return null;
+            if (typeof v !== "string") return v;
+            try {
+              return JSON.parse(v);
+            } catch (e) {
+              return null;
+            }
+          }
+
+          var CARDS = parseJSON(vars.cards);
+          if (!CARDS || !CARDS.length) CARDS = DEFAULT_CARDS;
+          var N = CARDS.length;
+
+          // ── 2. Landing schedule (accelerating cascade) ─────────────────────────
+          // gaps between landings shrink geometrically; the final card lands early
+          // enough to hold a beat before the cut.
+          function genLandings(n, total) {
+            var start = 0.4;
+            var hold = Math.min(1.6, total * 0.27);
+            var end = Math.max(start + 0.3, total - hold);
+            if (n <= 1) return [start];
+            var ratio = 0.78,
+              weights = [],
+              sum = 0,
+              i;
+            for (i = 0; i < n - 1; i++) {
+              var w = Math.pow(ratio, i);
+              weights.push(w);
+              sum += w;
+            }
+            var span = end - start,
+              acc = start,
+              times = [start];
+            for (i = 0; i < n - 1; i++) {
+              acc += (span * weights[i]) / sum;
+              times.push(acc);
+            }
+            return times;
+          }
+          var LANDED = parseJSON(vars.landings);
+          if (!LANDED || LANDED.length !== N) {
+            LANDED = N === DEFAULT_CARDS.length ? DEFAULT_LANDINGS.slice() : genLandings(N, DUR);
+          }
+          // per-card transition duration derived from the gap into it (faster as we accelerate).
+          function transDur(i) {
+            var gap = i === 0 ? (N > 1 ? LANDED[1] - LANDED[0] : 0.4) : LANDED[i] - LANDED[i - 1];
+            return Math.max(0.12, Math.min(0.42, gap * 0.32));
+          }
+
+          // ── 3. Build the deck DOM from data ────────────────────────────────────
+          var scene = document.getElementById("scene");
+          scene.style.transform = "rotateY(" + YAW + "deg)";
+          // bg: explicit bgColor override wins; else the theme's field color. The radial
+          // lifts the centre slightly and sinks the edges, both derived from the bg.
+          var BG = vars.bgColor && String(vars.bgColor).trim() ? vars.bgColor : TH.bg;
+          document.documentElement.style.background = BG;
+          document.body.style.background = BG;
+          var rootEl = document.getElementById("root");
+          rootEl.style.background =
+            "radial-gradient(1300px 820px at 50% 52%, " +
+            lighten(BG, 0.1) +
+            " 0%, " +
+            BG +
+            " 70%, " +
+            darken(BG, 0.4) +
+            " 100%)";
+
+          function el(cls, parent) {
+            var d = document.createElement("div");
+            d.className = cls;
+            if (parent) parent.appendChild(d);
+            return d;
+          }
+          var cardEls = [];
+          for (var i = 0; i < N; i++) {
+            var c = CARDS[i] || {};
+            var card = el("card", scene);
+            card.id = "card-" + i;
+            // color: per-card override, else cycle the cohesive theme ramp. A gentle
+            // top→bottom shade pair (--c1/--c2) gives each face tonal depth.
+            var col = c.color || TH.colors[i % TH.colors.length];
+            card.style.setProperty("--color", col);
+            card.style.setProperty("--c1", lighten(col, 0.05));
+            card.style.setProperty("--c2", darken(col, 0.22));
+            card.style.setProperty("--ink", TH.ink);
+
+            var wire = el("wire", card);
+            var label = el("wire-label", wire);
+            label.textContent = String(i + 1).padStart(3, "0");
+            el("wire-corner", wire);
+            el("wire-bar", wire);
+
+            var solid = el("solid", card);
+            var title = el("title", solid);
+            title.textContent = c.title || "";
+            el("play", solid);
+
+            cardEls.push(card);
+          }
+
+          // ── 4. SLOT poses ───────────────────────────────────────────────────────
+          // rotX is the key. Cards behind tilt BACK (top edge away, +rotX); the front
+          // is upright (rotX 0); on exit a card continues forward into a face-down
+          // tumble (-rotX) while dropping down + toward camera. Depth from perspective
+          // (Z) + the cards' rotateX, not a camera move.
+          var SLOT = {
+            far: { x: 360, y: 380, z: -1080, rotX: 84, scale: 0.74, opacity: 0, zi: 60 },
+            s3: { x: 280, y: 290, z: -820, rotX: 66, scale: 0.8, opacity: 0.32, zi: 70 },
+            s2: { x: 195, y: 200, z: -560, rotX: 46, scale: 0.86, opacity: 0.58, zi: 80 },
+            s1: { x: 105, y: 105, z: -290, rotX: 22, scale: 0.93, opacity: 0.85, zi: 90 },
+            s0: { x: 0, y: 0, z: 0, rotX: 0, scale: 1.0, opacity: 1.0, zi: 100 },
+            exit: { x: -90, y: 620, z: 420, rotX: -88, scale: 1.1, opacity: 0, zi: 110 },
+          };
+          // pose for a card whose index is `rel` slots behind the current front card
+          // (rel 0 = front, +ve = behind, -ve = already exiting / gone).
+          function poseForRel(rel) {
+            if (rel <= -1) return SLOT.exit;
+            if (rel === 0) return SLOT.s0;
+            if (rel === 1) return SLOT.s1;
+            if (rel === 2) return SLOT.s2;
+            if (rel === 3) return SLOT.s3;
+            return SLOT.far;
+          }
+
+          var tl = gsap.timeline({ paused: true });
+
+          function poseTween(idx, slot, t, dur, ease) {
+            // z-index is set instantly at the swap start so paint order matches the
+            // slot — CSS can't reliably depth-sort non-intersecting planes.
+            tl.set("#card-" + idx, { zIndex: slot.zi }, t);
+            tl.to(
+              "#card-" + idx,
+              {
+                x: slot.x,
+                y: slot.y,
+                z: slot.z,
+                rotationX: slot.rotX,
+                scale: slot.scale,
+                opacity: slot.opacity,
+                force3D: true,
+                duration: dur,
+                ease: ease || "power2.inOut",
+              },
+              t,
+            );
+          }
+
+          // ── 5. Initial pose (front index = -1: nothing landed yet) ─────────────
+          // card j sits at rel = j + 1, so card0 starts at s1, card1 at s2, etc. Apply
+          // via gsap.set (so the paused render at t=0 shows the staged stack) AND via
+          // tl.set at 0 (so scrubbing back to 0 restores it).
+          for (var j = 0; j < N; j++) {
+            var s = poseForRel(j + 1);
+            var props = {
+              x: s.x,
+              y: s.y,
+              z: s.z,
+              rotationX: s.rotX,
+              scale: s.scale,
+              opacity: s.opacity,
+              zIndex: s.zi,
+              force3D: true,
+              "--wipe": 0,
+            };
+            gsap.set("#card-" + j, props);
+            tl.set("#card-" + j, props, 0);
+          }
+
+          // ── 6. Per-landing orchestration ───────────────────────────────────────
+          // On landing i, card i becomes front. Tween the live window [i-1 .. i+4]:
+          // i-1 tumbles to exit, i rolls into s0 (+ wipe), the rest advance toward
+          // the front. Cards outside the window are already at rest (far / gone).
+          for (var L = 0; L < N; L++) {
+            var dur = transDur(L);
+            var t = Math.max(0, LANDED[L] - dur);
+
+            for (var k = L - 1; k <= L + 4; k++) {
+              if (k < 0 || k >= N) continue;
+              var rel = k - L;
+              var ease = rel === 0 ? "power3.out" : rel < 0 ? "power2.in" : "power2.inOut";
+              poseTween(k, poseForRel(rel), t, dur, ease);
+            }
+
+            // the landing card wipes in its solid face as it rolls up.
+            tl.to(
+              "#card-" + L,
+              {
+                "--wipe": 1,
+                duration: dur * 0.85,
+                ease: "power2.inOut",
+              },
+              t + dur * 0.15,
+            );
+          }
+
+          // pad the timeline so duration() >= data-duration.
+          tl.to({}, { duration: DUR }, 0);
+          tl.seek(0);
+
+          window.__timelines["card-flyby"] = tl;
+        })();
+      </script>
+    </div>
+  </body>
+</html>

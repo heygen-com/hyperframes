@@ -19,6 +19,17 @@ export async function getCdpSession(page: Page): Promise<import("puppeteer-core"
   return client;
 }
 
+export function shouldDefaultCaptureBeyondViewport(
+  browserVersion: string,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  // Regular Chrome's viewport-bound screenshot path can expose a compositor
+  // surface shorter than the page viewport on affected macOS builds. In that
+  // case Chrome fills the clipped area with the page background. Headless shell
+  // reports as HeadlessChrome and keeps the faster viewport-bound path.
+  return platform === "darwin" && browserVersion.startsWith("Chrome/");
+}
+
 /**
  * BeginFrame result with screenshot data and damage detection.
  */
@@ -135,11 +146,10 @@ export async function pageScreenshotCapture(page: Page, options: CaptureOptions)
     format: isPng ? "png" : "jpeg",
     quality: isPng ? undefined : (options.quality ?? 80),
     fromSurface: true,
-    // The explicit clip rect constrains output to exact composition
-    // dimensions. The viewport-boundary pre-clip from captureBeyondViewport:
-    // false is redundant, and Chrome's compositor rounds it inward under
-    // multi-tab load — clipping the bottom/right edge of tall viewports.
-    captureBeyondViewport: true,
+    // Use Chrome's faster viewport-bound screenshot path by default. Callers
+    // opt into the beyond-viewport path only for known compositor edge cases,
+    // such as native video surfaces in tall portrait renders.
+    captureBeyondViewport: options.captureBeyondViewport ?? false,
     optimizeForSpeed: !isPng,
     clip,
   });
@@ -172,7 +182,8 @@ export async function captureScreenshotWithAlpha(
     const result = await client.send("Page.captureScreenshot", {
       format: "png",
       fromSurface: true,
-      captureBeyondViewport: true, // see pageScreenshotCapture for rationale
+      // Preserve the #1094 tall-portrait edge-clipping guard on HDR alpha captures.
+      captureBeyondViewport: true,
       optimizeForSpeed: false, // `true` uses a zero-alpha-aware fast path that crushes real alpha values — observed empirically, CDP docs don't spell it out
       clip: { x: 0, y: 0, width, height, scale: 1 },
     });
@@ -237,7 +248,8 @@ export async function captureAlphaPng(page: Page, width: number, height: number)
   const result = await client.send("Page.captureScreenshot", {
     format: "png",
     fromSurface: true,
-    captureBeyondViewport: true, // see pageScreenshotCapture for rationale
+    // Preserve the #1094 tall-portrait edge-clipping guard on HDR alpha captures.
+    captureBeyondViewport: true,
     optimizeForSpeed: false, // must be false to preserve alpha
     clip: { x: 0, y: 0, width, height, scale: 1 },
   });

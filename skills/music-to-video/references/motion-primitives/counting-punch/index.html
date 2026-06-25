@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>22 · counting_punch</title>
+    <script src="../assets/gsap.min.js"></script>
+    <style>
+      :root {
+        --hg-violet: #7c3aed;
+        --hg-violet-2: #a855f7;
+        --hg-cyan: #2afff0;
+        --hg-bg: #0a0a0f;
+        --hg-fg: #f5f5fa;
+        --hg-dim: #6b6b78;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--hg-bg);
+        font-family: "Inter", system-ui, sans-serif;
+        color: var(--hg-fg);
+        -webkit-font-smoothing: antialiased;
+      }
+      #scene {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+      }
+      .stage {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 30px;
+      }
+      .counter {
+        font-weight: 900;
+        font-size: 360px;
+        letter-spacing: -0.04em;
+        font-variant-numeric: tabular-nums;
+        color: var(--hg-fg);
+        will-change: transform, text-shadow;
+        line-height: 1;
+      }
+      .caption {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 28px;
+        color: var(--hg-dim);
+        letter-spacing: 0.3em;
+        text-transform: uppercase;
+        opacity: 0;
+      }
+      .underline {
+        height: 4px;
+        background: var(--hg-violet-2);
+        width: 0;
+        box-shadow: 0 0 20px var(--hg-violet);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="2"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="scene" class="clip" data-start="0" data-duration="2" data-track-index="1">
+        <div class="stage">
+          <div class="counter" id="counter">0</div>
+          <div class="underline" id="underline"></div>
+          <div class="caption" id="caption">USERS THIS WEEK</div>
+        </div>
+      </div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      const TARGET = 12847;
+      const counter = { v: 0 };
+      let lastShown = 0;
+
+      function format(n) {
+        return Math.floor(n).toLocaleString("en-US");
+      }
+
+      tl.to(
+        counter,
+        {
+          v: TARGET,
+          duration: 1.15,
+          ease: "expo.out",
+          onUpdate: function () {
+            const el = document.getElementById("counter");
+            if (!el) return;
+            const cur = Math.floor(counter.v);
+            if (cur !== lastShown) {
+              el.textContent = format(cur);
+              // tiny scale tick on each digit change
+              el.style.transform = "scale(1.045)";
+              el.style.textShadow = "0 0 40px rgba(168, 85, 247, 0.6)";
+              // browser will paint, then this resets via the next onUpdate
+            }
+            lastShown = cur;
+          },
+        },
+        0.15,
+      );
+
+      // Big settle punch at landing
+      tl.to(
+        "#counter",
+        {
+          scale: 1.12,
+          textShadow: "0 0 80px rgba(168, 85, 247, 0.9)",
+          duration: 0.1,
+          ease: "power4.out",
+        },
+        1.3,
+      );
+      tl.to(
+        "#counter",
+        {
+          scale: 1.0,
+          textShadow: "0 0 20px rgba(168, 85, 247, 0.4)",
+          duration: 0.6,
+          ease: "elastic.out(1, 0.55)",
+        },
+        1.4,
+      );
+
+      // Underline draws
+      tl.to("#underline", { width: 420, duration: 0.6, ease: "expo.out" }, 1.35);
+      tl.to("#caption", { opacity: 1, duration: 0.5, ease: "power2.out" }, 1.55);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

@@ -508,6 +508,28 @@ describe("splitElementInHtml", () => {
     expect(splitElementInHtml(source, { id: "box" }, 7.5, "box-split").matched).toBe(false);
   });
 
+  it("splits a GSAP element with no authored timing using fallback timing", () => {
+    // #title has no data-start/data-duration (GSAP-driven); the store supplies the range.
+    const gsapSource = `<html><body><div data-composition-id="root"><h1 id="title" class="title">Hi</h1></div></body></html>`;
+    const result = splitElementInHtml(gsapSource, { id: "title" }, 2, "title-split", {
+      start: 0,
+      duration: 6,
+    });
+    expect(result.matched).toBe(true);
+    // original windowed to [0, 2], clone to [2, 4] (attribute order is serializer-defined)
+    const original = result.html.match(/<h1[^>]*\bid="title"[^>]*>/)![0];
+    expect(original).toContain('data-start="0"');
+    expect(original).toContain('data-duration="2"');
+    const clone = result.html.match(/<h1[^>]*\bid="title-split"[^>]*>/)![0];
+    expect(clone).toContain('data-start="2"');
+    expect(clone).toContain('data-duration="4"');
+  });
+
+  it("still rejects a no-timing element when no fallback timing is given", () => {
+    const gsapSource = `<html><body><div data-composition-id="root"><h1 id="title">Hi</h1></div></body></html>`;
+    expect(splitElementInHtml(gsapSource, { id: "title" }, 2, "title-split").matched).toBe(false);
+  });
+
   it("adjusts media playback-start for the second half", () => {
     const mediaSource = source.replace(
       'id="box" class="clip" data-start="1" data-duration="6"',

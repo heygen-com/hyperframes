@@ -25,6 +25,18 @@ export function isElementVisibleForOverlay(el: HTMLElement): boolean {
   return isElementVisibleThroughAncestors(el);
 }
 
+// Sample points (as fractions of the element box) for the occlusion hit-test:
+// the four inner corners plus the center. This is a coarse approximation of the
+// element's painted area — we assume a sampled point that lands inside the box also
+// lands on something the element actually paints.
+//
+// LIMITATION: a donut/ring-shaped element (a hole in the middle, content only around
+// the edges) breaks that assumption — the center sample, and even the corner samples,
+// can fall in the transparent hole and hit-test through to whatever is behind, so the
+// element could read as occluded (or as covering) incorrectly. Today's scene element
+// shapes (rectangular cards, text, full-bleed media) don't have interior holes, so this
+// doesn't bite. If ring/cutout shapes become editable targets, sample more densely or
+// hit-test against the element's actual painted geometry instead of its bounding box.
 function readPositiveDimension(value: string | null): number | null {
   if (!value) return null;
   const parsed = Number.parseFloat(value);

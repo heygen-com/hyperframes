@@ -1,0 +1,326 @@
+<!doctype html>
+<html
+  lang="en"
+  data-composition-variables='[
+    {"id":"bgColor",    "type":"color",  "label":"Page background",       "default":"#050507"},
+    {"id":"colorLow",   "type":"color",  "label":"Flow — shadow tone",    "default":"#0a1430"},
+    {"id":"colorMid",   "type":"color",  "label":"Flow — mid tone",       "default":"#6a6f9e"},
+    {"id":"colorHigh",  "type":"color",  "label":"Flow — highlight tone", "default":"#e8f0ff"},
+    {"id":"accentColor","type":"color",  "label":"Core / glow accent",    "default":"#aee4ff"},
+    {"id":"flowSpeed",  "type":"number", "label":"Flow speed", "default":1, "min":0.1, "max":3, "step":0.1}
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>bg_flow_field</title>
+    <script src="../assets/gsap.min.js"></script>
+    <style>
+      :root {
+        --hg-violet: #7c3aed;
+        --hg-violet-2: #a855f7;
+        --hg-bg: #050507;
+        --hg-fg: #f5f5fa;
+        --hg-dim: #6b6b78;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--hg-bg);
+        font-family: "Inter", system-ui, sans-serif;
+        color: var(--hg-fg);
+        -webkit-font-smoothing: antialiased;
+      }
+      #scene {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+      }
+      .field {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+        display: block;
+      }
+      .label {
+        position: absolute;
+        left: 48px;
+        bottom: 40px;
+        font-size: 22px;
+        font-weight: 600;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: rgba(255, 255, 255, 0.7);
+        mix-blend-mode: screen;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="4"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="scene" class="clip" data-start="0" data-duration="4" data-track-index="1">
+        <canvas class="field" width="1920" height="1080"></canvas>
+        <div class="label">bg_flow_field</div>
+      </div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      // ── Variables (palette + speed); falls back to defaults standalone ──
+      const defaults = {
+        bgColor: "#050507",
+        colorLow: "#0a1430",
+        colorMid: "#6a6f9e",
+        colorHigh: "#e8f0ff",
+        accentColor: "#aee4ff",
+        flowSpeed: 1,
+      };
+      const vars = Object.assign(
+        {},
+        defaults,
+        window.__hyperframes && window.__hyperframes.getVariables
+          ? window.__hyperframes.getVariables()
+          : {},
+      );
+
+      // sRGB hex -> linear-light [r,g,b] (shader works in linear, gamma-encodes at end)
+      function hexLin(hex) {
+        let h = String(hex).replace("#", "").trim();
+        if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+        const r = parseInt(h.substr(0, 2), 16) / 255;
+        const g = parseInt(h.substr(2, 2), 16) / 255;
+        const b = parseInt(h.substr(4, 2), 16) / 255;
+        const lin = (c) => Math.pow(c, 2.2);
+        return [lin(r), lin(g), lin(b)];
+      }
+
+      const canvas = document.querySelector(".field");
+      const gl = canvas.getContext("webgl", {
+        antialias: false,
+        alpha: false,
+        preserveDrawingBuffer: true,
+      });
+
+      const VERT = [
+        "attribute vec2 position;",
+        "varying vec2 vUv;",
+        "void main(){",
+        "  vUv = position * 0.5 + 0.5;",
+        "  gl_Position = vec4(position, 0.0, 1.0);",
+        "}",
+      ].join("\n");
+
+      // Curl-noise flow field — ported verbatim from the held-message-living-field
+      // template's "living field" background. All visible state comes from uniforms.
+      const FRAG = [
+        "precision highp float;",
+        "varying vec2 vUv;",
+        "uniform float uTime;",
+        "uniform float uPhase;",
+        "uniform float uReveal;",
+        "uniform float uChromAb;",
+        "uniform float uVignette;",
+        "uniform float uIntensity;",
+        "uniform float uSpeed;",
+        "uniform vec2  uResolution;",
+        "uniform vec3  uColLow;",
+        "uniform vec3  uColMid;",
+        "uniform vec3  uColHigh;",
+        "uniform vec3  uAccent;",
+        "float hash21(vec2 p){",
+        "  p = fract(p * vec2(123.34, 456.21));",
+        "  p += dot(p, p + 45.32);",
+        "  return fract(p.x * p.y);",
+        "}",
+        "float noise2(vec2 p){",
+        "  vec2 i = floor(p);",
+        "  vec2 f = fract(p);",
+        "  vec2 u = f * f * (3.0 - 2.0 * f);",
+        "  float a = hash21(i);",
+        "  float b = hash21(i + vec2(1.0, 0.0));",
+        "  float c = hash21(i + vec2(0.0, 1.0));",
+        "  float d = hash21(i + vec2(1.0, 1.0));",
+        "  return mix(mix(a,b,u.x), mix(c,d,u.x), u.y);",
+        "}",
+        "float fbm(vec2 p){",
+        "  float v = 0.0;",
+        "  float a = 0.5;",
+        "  for(int i=0;i<5;i++){",
+        "    v += a * noise2(p);",
+        "    p *= 2.02;",
+        "    a *= 0.5;",
+        "  }",
+        "  return v;",
+        "}",
+        "vec2 curl(vec2 p, float t){",
+        "  float e = 0.6;",
+        "  float n1 = fbm(p + vec2(0.0,  e) + t*0.18);",
+        "  float n2 = fbm(p + vec2(0.0, -e) + t*0.18);",
+        "  float n3 = fbm(p + vec2( e, 0.0) + t*0.18);",
+        "  float n4 = fbm(p + vec2(-e, 0.0) + t*0.18);",
+        "  return vec2(n1 - n2, -(n3 - n4));",
+        "}",
+        "vec3 palette(float t){",
+        "  t = clamp(t, 0.0, 1.0);",
+        "  vec3 lowMid = mix(uColLow, uColMid, smoothstep(0.0, 0.5, t));",
+        "  return mix(lowMid, uColHigh, smoothstep(0.5, 1.0, t));",
+        "}",
+        "vec3 sampleField(vec2 uv, float t, float energy){",
+        "  vec2 p = (uv - 0.5) * vec2(uResolution.x/uResolution.y, 1.0) * 2.4;",
+        "  vec2 c = curl(p * 0.9, t);",
+        "  vec2 q = p + c * (0.45 + 0.55 * energy);",
+        "  float flow = fbm(q * 1.6 + vec2(t * 0.11, -t * 0.07));",
+        "  float bands = sin(flow * 14.0 + t * 1.1);",
+        "  bands = smoothstep(0.0, 1.0, 0.5 + 0.5 * bands);",
+        "  float r = length(p);",
+        "  float core = smoothstep(1.5, 0.05, r) * (0.6 + 0.4 * energy);",
+        "  float glow = exp(-r * 1.6) * (0.55 + 0.45 * energy);",
+        "  float k = clamp(flow * 0.85 + 0.15 * bands + 0.25 * core + 0.6 * glow, 0.0, 1.4);",
+        "  vec3 col = palette(k * 0.9 + 0.1 * sin(t * 0.4));",
+        "  col *= 0.7 + 0.6 * energy;",
+        "  col += uAccent * core * 0.55;",
+        "  return col;",
+        "}",
+        "void main(){",
+        "  vec2 uv = vUv;",
+        "  float t = uTime * uSpeed;",
+        "  float e = uIntensity;",
+        "  vec2 dir = normalize(uv - 0.5 + 1e-6);",
+        "  float ca = uChromAb * (0.004 + 0.012 * length(uv - 0.5));",
+        "  vec3 cR = sampleField(uv + dir * ca, t, e);",
+        "  vec3 cG = sampleField(uv,            t, e);",
+        "  vec3 cB = sampleField(uv - dir * ca, t, e);",
+        "  vec3 col = vec3(cR.r, cG.g, cB.b);",
+        "  float lum = dot(col, vec3(0.299, 0.587, 0.114));",
+        "  col = mix(vec3(lum), col, 1.05);",
+        "  float rev = uReveal;",
+        "  float sweep = smoothstep(0.0, 0.6, rev) * (1.0 - smoothstep(0.6, 1.0, rev));",
+        "  col += uColHigh * sweep * 0.35;",
+        "  vec3 phaseTint = mix(vec3(0.85, 0.92, 1.05), vec3(1.05, 0.95, 0.85), uPhase);",
+        "  col *= phaseTint;",
+        "  float v = length(uv - 0.5);",
+        "  col *= 1.0 - smoothstep(0.45, 0.95, v) * uVignette;",
+        "  col = col / (col + 1.0);",
+        "  col = pow(col, vec3(1.0/2.2));",
+        "  gl_FragColor = vec4(col, 1.0);",
+        "}",
+      ].join("\n");
+
+      function compile(type, src) {
+        const s = gl.createShader(type);
+        gl.shaderSource(s, src);
+        gl.compileShader(s);
+        return s;
+      }
+      const prog = gl.createProgram();
+      gl.attachShader(prog, compile(gl.VERTEX_SHADER, VERT));
+      gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FRAG));
+      gl.linkProgram(prog);
+      gl.useProgram(prog);
+
+      // full-screen triangle
+      const buf = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+      const posLoc = gl.getAttribLocation(prog, "position");
+      gl.enableVertexAttribArray(posLoc);
+      gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+      gl.viewport(0, 0, 1920, 1080);
+
+      const L = (n) => gl.getUniformLocation(prog, n);
+      const uLoc = {
+        uTime: L("uTime"),
+        uPhase: L("uPhase"),
+        uReveal: L("uReveal"),
+        uChromAb: L("uChromAb"),
+        uVignette: L("uVignette"),
+        uIntensity: L("uIntensity"),
+        uSpeed: L("uSpeed"),
+        uResolution: L("uResolution"),
+        uColLow: L("uColLow"),
+        uColMid: L("uColMid"),
+        uColHigh: L("uColHigh"),
+        uAccent: L("uAccent"),
+      };
+
+      // animated uniform state (GSAP tweens these .value fields)
+      const u = {
+        uTime: { value: 0 },
+        uPhase: { value: 0.1 },
+        uReveal: { value: 0 },
+        uChromAb: { value: 0 },
+        uVignette: { value: 0 },
+        uIntensity: { value: 0.3 },
+      };
+      const speed = Number(vars.flowSpeed) || 1;
+      const cLow = hexLin(vars.colorLow);
+      const cMid = hexLin(vars.colorMid);
+      const cHigh = hexLin(vars.colorHigh);
+      const cAcc = hexLin(vars.accentColor);
+
+      function render() {
+        gl.uniform1f(uLoc.uTime, u.uTime.value);
+        gl.uniform1f(uLoc.uPhase, u.uPhase.value);
+        gl.uniform1f(uLoc.uReveal, u.uReveal.value);
+        gl.uniform1f(uLoc.uChromAb, u.uChromAb.value);
+        gl.uniform1f(uLoc.uVignette, u.uVignette.value);
+        gl.uniform1f(uLoc.uIntensity, u.uIntensity.value);
+        gl.uniform1f(uLoc.uSpeed, speed);
+        gl.uniform2f(uLoc.uResolution, 1920, 1080);
+        gl.uniform3fv(uLoc.uColLow, cLow);
+        gl.uniform3fv(uLoc.uColMid, cMid);
+        gl.uniform3fv(uLoc.uColHigh, cHigh);
+        gl.uniform3fv(uLoc.uAccent, cAcc);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+      }
+      render(); // initial frame so a seek to 0 / first paint is correct
+
+      // ── Energy-envelope drive (the "living field" breath): all repaint is via
+      // onUpdate, so the field is fully determined by the timeline position — no
+      // requestAnimationFrame, seek-safe. ──
+      tl.eventCallback("onUpdate", render);
+
+      tl.to(u.uTime, { value: 4, duration: 4, ease: "none" }, 0);
+
+      // energy: settle-in → breathe → SURGE → settle dark for the hold
+      tl.to(u.uIntensity, { value: 0.6, duration: 1.2, ease: "sine.inOut" }, 0);
+      tl.to(u.uIntensity, { value: 1.0, duration: 0.7, ease: "power2.in" }, 1.3);
+      tl.to(u.uIntensity, { value: 0.35, duration: 2.0, ease: "power2.out" }, 2.0);
+
+      // chromatic light-leak: light at entry, spikes on the surge, then settles
+      tl.fromTo(u.uChromAb, { value: 0 }, { value: 0.4, duration: 1.2, ease: "sine.in" }, 0);
+      tl.to(u.uChromAb, { value: 1.4, duration: 0.5, ease: "power3.in" }, 1.4);
+      tl.to(u.uChromAb, { value: 0.2, duration: 1.6, ease: "power2.out" }, 1.9);
+
+      // a brief highlight sweep across the surge
+      tl.fromTo(u.uReveal, { value: 0 }, { value: 1, duration: 0.7, ease: "none" }, 1.3);
+      tl.set(u.uReveal, { value: 0 }, 2.0);
+
+      // colour-temperature drift
+      tl.to(u.uPhase, { value: 0.6, duration: 2.2, ease: "sine.inOut" }, 0.6);
+
+      // black mask settles the field to near-black + central glow for the hold
+      tl.to(u.uVignette, { value: 0.85, duration: 1.6, ease: "power2.out" }, 1.9);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

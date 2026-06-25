@@ -1,5 +1,133 @@
 import { describe, expect, it } from "vitest";
-import { arcPathFromMotionPathValue } from "./gsapRuntimeKeyframes";
+import {
+  arcPathFromMotionPathValue,
+  hasNonHoldTweenForElement,
+  readRuntimeKeyframes,
+} from "./gsapRuntimeKeyframes";
+
+// Build a fake preview iframe whose runtime timeline holds the given child tweens
+// and resolves `selector` to `el`.
+function fakeIframe(el: { id: string }, children: unknown[], now?: number): HTMLIFrameElement {
+  const timeline = {
+    getChildren: () => children,
+    duration: () => 14.6,
+    ...(now != null ? { time: () => now } : {}),
+  };
+  return {
+    contentWindow: { __timelines: { "index.html": timeline } },
+    contentDocument: { querySelector: (sel: string) => (sel === `#${el.id}` ? el : null) },
+  } as unknown as HTMLIFrameElement;
+}
+
+describe("readRuntimeKeyframes — zero-duration set must not shadow the keyframed tween", () => {
+  const el = { id: "puck-b" };
+  const holdSet = {
+    targets: () => [el],
+    // `data` is the STUDIO_HOLD_MARKER sentinel ("hf-hold") from core's gsapParser.
+    // TODO(core follow-up): re-export STUDIO_HOLD_MARKER via the @hyperframes/core/
+    // gsap-parser subpath so this fixture can import the const instead of the literal.
+    vars: { x: 0, y: 0, data: "hf-hold" },
+    duration: () => 0,
+    startTime: () => 0,
+  };
+  const kfTween = {
+    targets: () => [el],
+    vars: {
+      keyframes: [
+        { x: 0, y: 0 },
+        { x: -180, y: -60 },
+        { x: -320, y: 40 },
+        { x: -460, y: -20 },
+      ],
+      duration: 3.4,
+      ease: "power1.inOut",
+    },
+    duration: () => 3.4,
+    startTime: () => 1.0,
+  };
+
+  it("reads all 4 keyframes from the to() even when a hold-set precedes it", () => {
+    const read = readRuntimeKeyframes(fakeIframe(el, [holdSet, kfTween]), "#puck-b");
+    expect(read?.keyframes).toHaveLength(4);
+  });
+
+  it("returns null when the element only has a zero-duration set (no real motion)", () => {
+    expect(readRuntimeKeyframes(fakeIframe(el, [holdSet]), "#puck-b")).toBeNull();
+  });
+});
+
+describe("readRuntimeKeyframes — multiple tweens pick the one under the playhead", () => {
+  const el = { id: "puck-a" };
+  // Two non-overlapping gesture recordings → two separate keyframed tweens.
+  const gestureA = {
+    targets: () => [el],
+    vars: {
+      keyframes: [
+        { x: 0, y: 0 },
+        { x: -100, y: 50 },
+      ],
+      duration: 2.03,
+    },
+    duration: () => 2.03,
+    startTime: () => 1.033, // range [1.033, 3.063]
+  };
+  const gestureB = {
+    targets: () => [el],
+    vars: {
+      keyframes: [
+        { x: 10, y: 10 },
+        { x: 20, y: 20 },
+        { x: 30, y: 30 },
+      ],
+      duration: 1.129,
+    },
+    duration: () => 1.129,
+    startTime: () => 3.342, // range [3.342, 4.471]
+  };
+
+  it("playhead inside the SECOND tween reads the second tween (not the first)", () => {
+    const read = readRuntimeKeyframes(fakeIframe(el, [gestureA, gestureB], 3.373), "#puck-a");
+    expect(read?.keyframes).toHaveLength(3); // gestureB
+  });
+
+  it("playhead inside the FIRST tween reads the first tween", () => {
+    const read = readRuntimeKeyframes(fakeIframe(el, [gestureA, gestureB], 2.0), "#puck-a");
+    expect(read?.keyframes).toHaveLength(2); // gestureA
+  });
+
+  it("playhead outside every range falls back to the first keyframed tween", () => {
+    const read = readRuntimeKeyframes(fakeIframe(el, [gestureA, gestureB], 9.0), "#puck-a");
+    expect(read?.keyframes).toHaveLength(2); // gestureA (first)
+  });
+});
+
+describe("hasNonHoldTweenForElement — strict live-tween existence (drag stale-parse guard)", () => {
+  const el = { id: "puck-b" };
+  const holdSet = {
+    targets: () => [el],
+    vars: { x: 0, y: 0, data: "hf-hold" },
+    duration: () => 0,
+    startTime: () => 0,
+  };
+  const liveTween = {
+    targets: () => [el],
+    vars: { x: -120, y: 40, duration: 1 },
+    duration: () => 1,
+    startTime: () => 1,
+  };
+
+  it("true when a non-hold tween targets the element", () => {
+    expect(hasNonHoldTweenForElement(fakeIframe(el, [liveTween]), "#puck-b")).toBe(true);
+  });
+
+  it("false when only a zero-duration hold/set remains (post delete-all)", () => {
+    expect(hasNonHoldTweenForElement(fakeIframe(el, [holdSet]), "#puck-b")).toBe(false);
+  });
+
+  it("false when the element has no tweens at all", () => {
+    expect(hasNonHoldTweenForElement(fakeIframe(el, []), "#puck-b")).toBe(false);
+  });
+});
 
 describe("arcPathFromMotionPathValue", () => {
   it("builds arc config from object form { path, curviness }", () => {

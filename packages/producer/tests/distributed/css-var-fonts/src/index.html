@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>CSS var() font-family regression fixture</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=Montserrat:wght@400;700;900&display=swap");
+
+      :root {
+        --ui-font: "Inter";
+        --display-font: "Montserrat";
+      }
+
+      body,
+      html {
+        margin: 0;
+        padding: 0;
+        width: 640px;
+        height: 360px;
+        background: #1a1a2e;
+        overflow: hidden;
+        font-family: var(--ui-font), sans-serif;
+      }
+
+      #main-comp {
+        position: relative;
+        width: 640px;
+        height: 360px;
+      }
+
+      .heading {
+        position: absolute;
+        top: 30%;
+        left: 50%;
+        transform: translateX(-50%);
+        font-family: var(--display-font), sans-serif;
+        font-size: 48px;
+        font-weight: 900;
+        color: #e94560;
+        white-space: nowrap;
+        opacity: 0;
+      }
+
+      .body-text {
+        position: absolute;
+        top: 60%;
+        left: 50%;
+        transform: translateX(-50%);
+        font-family: var(--ui-font), sans-serif;
+        font-size: 18px;
+        font-weight: 400;
+        color: #c4c4c4;
+        white-space: nowrap;
+        opacity: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="main-comp" data-composition-id="css-var-fonts" data-width="640" data-height="360" data-start="0">
+      <div class="heading">CSS Variable Fonts</div>
+      <div class="body-text">var(--ui-font) and var(--display-font)</div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline();
+      tl.to(".heading", { opacity: 1, duration: 0.5 });
+      tl.to(".body-text", { opacity: 1, duration: 0.5 }, "+=0.2");
+      tl.to({}, { duration: 1 });
+      window.__timelines["css-var-fonts"] = tl;
+    </script>
+  </body>
+</html>

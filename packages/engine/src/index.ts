@@ -45,6 +45,12 @@ export type {
 // ── Configuration ──────────────────────────────────────────────────────────────
 export { resolveConfig, DEFAULT_CONFIG, type EngineConfig } from "./config.js";
 export {
+  DEFAULT_VP9_CPU_USED,
+  MAX_VP9_CPU_USED,
+  MIN_VP9_CPU_USED,
+  normalizeVp9CpuUsed,
+} from "./services/vp9Options.js";
+export {
   getSystemTotalMb,
   isLowMemorySystem,
   LOW_MEMORY_TOTAL_MB_THRESHOLD,
@@ -76,6 +82,7 @@ export {
   getCapturePerfSummary,
   prepareCaptureSessionForReuse,
   type CaptureSession,
+  isTransientBrowserError,
   type BeforeCaptureHook,
   type DiscardWarmupInnerCapture,
 } from "./services/frameCapture.js";

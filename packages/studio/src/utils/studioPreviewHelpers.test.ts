@@ -1,5 +1,30 @@
 import { describe, expect, it, vi } from "vitest";
-import { pauseStudioPreviewPlayback } from "./studioPreviewHelpers";
+import { coversComposition, pauseStudioPreviewPlayback } from "./studioPreviewHelpers";
+
+describe("coversComposition (full-bleed canvas-pick exclusion)", () => {
+  const viewport = { width: 1920, height: 1080 };
+
+  it("treats a full-bleed scene wrapper as covering the composition", () => {
+    expect(coversComposition({ width: 1920, height: 1080 }, viewport)).toBe(true);
+    expect(coversComposition({ width: 1900, height: 1040 }, viewport)).toBe(true); // ~99%/96%
+  });
+
+  it("does NOT exclude inner content (a stat card, a heading)", () => {
+    expect(coversComposition({ width: 320, height: 180 }, viewport)).toBe(false);
+    expect(coversComposition({ width: 1900, height: 200 }, viewport)).toBe(false); // wide but short
+    expect(coversComposition({ width: 200, height: 1040 }, viewport)).toBe(false); // tall but narrow
+  });
+
+  it("needs BOTH axes near full-bleed (>=95%)", () => {
+    expect(coversComposition({ width: 1800, height: 1080 }, viewport)).toBe(false); // 93.75% wide
+    expect(coversComposition({ width: 1920, height: 1000 }, viewport)).toBe(false); // 92.6% tall
+  });
+
+  it("guards against a degenerate viewport", () => {
+    expect(coversComposition({ width: 100, height: 100 }, { width: 0, height: 0 })).toBe(false);
+    expect(coversComposition({ width: 100, height: 100 }, { width: 1, height: 1 })).toBe(false);
+  });
+});
 
 describe("pauseStudioPreviewPlayback", () => {
   it("pauses through __player without pausing sibling timelines directly", () => {

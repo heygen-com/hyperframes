@@ -14,13 +14,17 @@
  *     "audio cuts off early" or "video shows a frozen final frame" bugs.
  *
  * The fix: post-pad/trim audio to *exactly* `frameCount / fps` seconds at
- * assemble time. Pad with `apad=pad_dur=…` (silence fill), trim with `-t`.
+ * assemble time. Pad by concat-copying a generated silence tail, trim with
+ * `-t`, and avoid re-encoding the already mixed source AAC in either case.
  */
 
 import { spawn } from "node:child_process";
+import { rmSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 import {
   extractAudioMetadata,
   formatFfmpegError,
+  getFfmpegBinary,
   getFfprobeBinary,
   runFfmpeg,
   type AudioMetadata,
@@ -45,6 +49,12 @@ export interface ProbeVideoFrameInfo {
 export interface AudioProbeInfo {
   /** Decoded duration in seconds. */
   durationSeconds: number;
+  /** Audio sample rate in Hz. Used when generating pad silence. */
+  sampleRate?: number;
+  /** Audio channel count. Used when generating pad silence. */
+  channels?: number;
+  /** Codec name reported by ffprobe. */
+  audioCodec?: string;
 }
 
 export interface PadTrimAudioInput {
@@ -60,7 +70,10 @@ export interface PadTrimAudioInput {
    */
   probeVideoFrameInfo?: (videoPath: string) => Promise<ProbeVideoFrameInfo>;
   probeAudioInfo?: (audioPath: string) => Promise<AudioProbeInfo>;
-  runFfmpeg?: (args: string[]) => Promise<{ success: boolean; error?: string }>;
+  runFfmpeg?: (
+    args: string[],
+    options?: { stdin?: string },
+  ) => Promise<{ success: boolean; error?: string }>;
 }
 
 export type PadTrimOperation = "pad" | "trim" | "copy";
@@ -78,49 +91,93 @@ export interface PadTrimAudioResult {
   error?: string;
 }
 
+export type PadTrimAudioStepKind = "copy" | "trim" | "pad-silence" | "pad-concat";
+
+export interface PadTrimAudioStep {
+  kind: PadTrimAudioStepKind;
+  args: string[];
+  stdin?: string;
+}
+
+export interface PadTrimAudioPlan {
+  operation: PadTrimOperation;
+  steps: PadTrimAudioStep[];
+  cleanupPaths: string[];
+}
+
 /**
- * Pure helper: decide the pad/trim operation and build the ffmpeg argv list
- * that materializes it. Exported separately so unit tests can pin both
- * branches without spawning ffmpeg.
+ * Pure helper: decide the pad/trim operation and build the ffmpeg argv
+ * sequence that materializes it. Exported separately so unit tests can pin
+ * every branch without spawning ffmpeg.
  *
- *   - `sourceDuration < targetDuration` → pad with `apad=pad_dur=Δ`.
- *     Re-encode is required: `apad` is a filter and filters can't combine
- *     with `-c:a copy`.
+ *   - `sourceDuration < targetDuration` → generate only the missing silence
+ *     tail, then concat-copy the source AAC plus that tail. This avoids
+ *     re-encoding the already mixed `audio.aac`; the pad branch remains the
+ *     inverse of trim instead of becoming a second full-source AAC encode.
  *   - `sourceDuration > targetDuration` → trim with `-t target`. `-c:a copy`
  *     is preserved when the input is already AAC.
  *   - `|Δ| < AUDIO_DURATION_TOLERANCE_SECONDS` → no-op `copy`, but we still
  *     run ffmpeg with `-c:a copy` to materialize the output path.
  */
-export function buildPadTrimAudioArgs(
+export function buildPadTrimAudioPlan(
   audioPath: string,
   outputPath: string,
   sourceDurationSeconds: number,
   targetDurationSeconds: number,
-): { args: string[]; operation: PadTrimOperation } {
+  audioInfo: Pick<AudioProbeInfo, "sampleRate" | "channels"> = {},
+): PadTrimAudioPlan {
   const delta = targetDurationSeconds - sourceDurationSeconds;
   const targetSec = formatSeconds(targetDurationSeconds);
   if (Math.abs(delta) < AUDIO_DURATION_TOLERANCE_SECONDS) {
     return {
       operation: "copy",
-      args: ["-i", audioPath, "-c:a", "copy", "-y", outputPath],
+      steps: [{ kind: "copy", args: ["-i", audioPath, "-c:a", "copy", "-y", outputPath] }],
+      cleanupPaths: [],
     };
   }
   if (delta > 0) {
     const padDur = formatSeconds(delta);
+    const silencePath = `${outputPath}.pad-silence.aac`;
     return {
       operation: "pad",
-      args: [
-        "-i",
-        audioPath,
-        "-af",
-        `apad=pad_dur=${padDur}`,
-        "-c:a",
-        "aac",
-        "-b:a",
-        "192k",
-        "-y",
-        outputPath,
+      steps: [
+        {
+          kind: "pad-silence",
+          args: [
+            "-f",
+            "lavfi",
+            "-i",
+            `anullsrc=channel_layout=${channelLayoutForChannels(audioInfo.channels)}:sample_rate=${sampleRateForFilter(audioInfo.sampleRate)}`,
+            "-t",
+            padDur,
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
+            "-y",
+            silencePath,
+          ],
+        },
+        {
+          kind: "pad-concat",
+          args: [
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-protocol_whitelist",
+            "file,pipe,crypto,data",
+            "-i",
+            "pipe:0",
+            "-c:a",
+            "copy",
+            "-y",
+            outputPath,
+          ],
+          stdin: `${concatFileLine(audioPath)}\n${concatFileLine(silencePath)}\n`,
+        },
       ],
+      cleanupPaths: [silencePath],
     };
   }
   // Trim. `-t` truncates AAC without re-encoding because AAC frames are
@@ -128,8 +185,26 @@ export function buildPadTrimAudioArgs(
   // packet boundary, fine for the ±1ms tolerance we care about here.
   return {
     operation: "trim",
-    args: ["-i", audioPath, "-t", targetSec, "-c:a", "copy", "-y", outputPath],
+    steps: [
+      { kind: "trim", args: ["-i", audioPath, "-t", targetSec, "-c:a", "copy", "-y", outputPath] },
+    ],
+    cleanupPaths: [],
   };
+}
+
+export function buildPadTrimAudioArgs(
+  audioPath: string,
+  outputPath: string,
+  sourceDurationSeconds: number,
+  targetDurationSeconds: number,
+): { args: string[]; operation: PadTrimOperation } {
+  const plan = buildPadTrimAudioPlan(
+    audioPath,
+    outputPath,
+    sourceDurationSeconds,
+    targetDurationSeconds,
+  );
+  return { operation: plan.operation, args: plan.steps[0]?.args ?? [] };
 }
 
 /**
@@ -140,6 +215,24 @@ export function buildPadTrimAudioArgs(
 function formatSeconds(sec: number): string {
   // 6 decimal places = ~microseconds, well under one AAC frame at 48 kHz.
   return sec.toFixed(6);
+}
+
+function sampleRateForFilter(sampleRate: number | undefined): number {
+  return sampleRate !== undefined && Number.isFinite(sampleRate) && sampleRate > 0
+    ? Math.round(sampleRate)
+    : 48000;
+}
+
+function channelLayoutForChannels(channels: number | undefined): string {
+  if (channels === 1) return "mono";
+  if (channels === 6) return "5.1";
+  if (channels === 8) return "7.1";
+  return "stereo";
+}
+
+function concatFileLine(path: string): string {
+  const normalized = pathToFileURL(path).href;
+  return `file '${normalized.replace(/'/g, "'\\''")}'`;
 }
 
 /**
@@ -197,30 +290,48 @@ export async function padOrTrimAudioToVideoFrameCount(
   }
 
   const targetDurationSeconds = (videoInfo.frameCount * videoInfo.fpsDen) / videoInfo.fpsNum;
-  const { args, operation } = buildPadTrimAudioArgs(
+  const plan = buildPadTrimAudioPlan(
     input.audioPath,
     input.outputPath,
     audioInfo.durationSeconds,
     targetDurationSeconds,
+    audioInfo,
   );
 
-  const ffmpegResult = await runner(args);
-  if (!ffmpegResult.success) {
+  try {
+    for (const step of plan.steps) {
+      const ffmpegResult = await runner(step.args, { stdin: step.stdin });
+      if (!ffmpegResult.success) {
+        return {
+          success: false,
+          outputPath: input.outputPath,
+          targetDurationSeconds,
+          sourceDurationSeconds: audioInfo.durationSeconds,
+          operation: plan.operation,
+          error: ffmpegResult.error,
+        };
+      }
+    }
+  } catch (err) {
     return {
       success: false,
       outputPath: input.outputPath,
       targetDurationSeconds,
       sourceDurationSeconds: audioInfo.durationSeconds,
-      operation,
-      error: ffmpegResult.error,
+      operation: plan.operation,
+      error: `audioPadTrim: failed to materialize ${plan.operation}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
     };
+  } finally {
+    for (const path of plan.cleanupPaths) rmSync(path, { force: true });
   }
   return {
     success: true,
     outputPath: input.outputPath,
     targetDurationSeconds,
     sourceDurationSeconds: audioInfo.durationSeconds,
-    operation,
+    operation: plan.operation,
   };
 }
 
@@ -307,16 +418,60 @@ function parseFrameRate(rate: string): { fpsNum: number; fpsDen: number } {
 async function defaultProbeAudioInfo(audioPath: string): Promise<AudioProbeInfo> {
   // extractAudioMetadata is the shared ffprobe wrapper (caches results).
   const metadata: AudioMetadata = await extractAudioMetadata(audioPath);
-  return { durationSeconds: metadata.durationSeconds };
+  return {
+    durationSeconds: metadata.durationSeconds,
+    sampleRate: metadata.sampleRate,
+    channels: metadata.channels,
+    audioCodec: metadata.audioCodec,
+  };
 }
 
-async function defaultRunFfmpeg(args: string[]): Promise<{ success: boolean; error?: string }> {
+async function defaultRunFfmpeg(
+  args: string[],
+  options?: { stdin?: string },
+): Promise<{ success: boolean; error?: string }> {
+  if (options?.stdin !== undefined) return runFfmpegWithStdin(args, options.stdin);
+
   const result = await runFfmpeg(args);
   if (result.success) return { success: true };
   return {
     success: false,
     error: `[audioPadTrim] ${formatFfmpegError(result.exitCode, result.stderr)}`,
   };
+}
+
+async function runFfmpegWithStdin(
+  args: string[],
+  stdin: string,
+): Promise<{ success: boolean; error?: string }> {
+  return new Promise((resolve) => {
+    const proc = spawn(getFfmpegBinary(), args);
+    let stderr = "";
+
+    proc.stderr.on("data", (data: Buffer) => {
+      stderr += data.toString();
+    });
+
+    proc.on("error", (err) => {
+      resolve({
+        success: false,
+        error: `[audioPadTrim] ${err instanceof Error ? err.message : String(err)}`,
+      });
+    });
+
+    proc.on("close", (code) => {
+      if (code === 0) {
+        resolve({ success: true });
+        return;
+      }
+      resolve({
+        success: false,
+        error: `[audioPadTrim] ${formatFfmpegError(code, stderr)}`,
+      });
+    });
+
+    proc.stdin.end(stdin);
+  });
 }
 
 // ── ffprobe JSON runner (shared between fast/slow video probe paths) ─────

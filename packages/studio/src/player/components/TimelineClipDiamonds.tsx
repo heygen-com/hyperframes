@@ -42,13 +42,10 @@ interface TimelineClipDiamondsProps {
 const DIAMOND_RATIO = 0.8;
 // Percentage tolerance for rendering keyframes near clip boundaries. Keyframes
 // slightly outside [0, 100] (from rounding or stale cache during the async
-// persist → reload cycle) are clamped to the clip edge rather than hidden.
-export const KF_MIN_PCT = -5;
-export const KF_MAX_PCT = 105;
-
-function clampDiamondLeft(rawLeft: number, diamondSize: number, clipWidth: number): number {
-  return Math.max(0, Math.min(clipWidth - diamondSize, rawLeft));
-}
+// persist → reload cycle) are still rendered (the clip is overflow-visible) at
+// their true position rather than hidden.
+const KF_MIN_PCT = -5;
+const KF_MAX_PCT = 105;
 
 export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
   keyframesData,
@@ -225,11 +222,12 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
       })}
 
       {sorted.map((kf, i) => {
-        const leftPx = clampDiamondLeft(
-          (effPct(kf.percentage) / 100) * clipWidthPx - half,
-          diamondSize,
-          clipWidthPx,
-        );
+        // Center the diamond ON its keyframe %: left = (% · width) − half so the
+        // diamond's midpoint sits exactly at the percentage. At 0% the midpoint
+        // is the clip's left edge (the diamond's left half overflows, which the
+        // overflow-visible clip shows) — NOT shifted fully inside. No clamp, or
+        // boundary keyframes (0% / 100%) would render off-center.
+        const leftPx = (effPct(kf.percentage) / 100) * clipWidthPx - half;
         const kfKey = `${elementId}:${kf.percentage}`;
         const isKfSelected = selectedKeyframes.has(kfKey);
         const atPlayhead = isSelected && Math.abs(kf.percentage - currentPercentage) < 0.5;

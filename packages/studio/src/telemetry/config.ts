@@ -5,6 +5,8 @@
 //   localStorage.setItem('hyperframes-studio:telemetryDisabled','1')
 // ---------------------------------------------------------------------------
 
+import { generateId } from "../utils/generateId";
+
 const ANON_ID_KEY = "hyperframes-studio:anonymousId";
 const OPT_OUT_KEY = "hyperframes-studio:telemetryDisabled";
 const NOTICE_KEY = "hyperframes-studio:telemetryNoticeShown";
@@ -18,8 +20,7 @@ function safeLocalStorage(): Storage | null {
 }
 
 function newAnonymousId(): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
-  return `anon-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  return generateId();
 }
 
 export function getAnonymousId(): string {

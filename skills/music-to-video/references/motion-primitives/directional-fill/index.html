@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>directional_fill</title>
+    <script src="../assets/gsap.min.js"></script>
+    <style>
+      :root {
+        --hg-violet: #7c3aed;
+        --hg-violet-2: #a855f7;
+        --hg-bg: #0a0a0f;
+        --hg-fg: #f5f5fa;
+        --hg-dim: #6b6b78;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--hg-bg);
+        font-family: "Inter", system-ui, sans-serif;
+        color: var(--hg-fg);
+        -webkit-font-smoothing: antialiased;
+      }
+      #scene {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+      }
+      .stage {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 36px;
+      }
+      .bar {
+        position: relative;
+        width: 1040px;
+        height: 188px;
+        border: 3px solid var(--hg-dim);
+        border-radius: 12px;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        padding: 0 56px;
+      }
+      .fill {
+        position: absolute;
+        inset: 0;
+        transform: scaleX(0);
+        will-change: transform;
+      }
+      .fill.a {
+        background: var(--hg-violet);
+        transform-origin: left center;
+      }
+      .fill.b {
+        background: var(--hg-violet-2);
+        transform-origin: right center;
+      }
+      .fill.c {
+        background: #2afff0;
+        transform-origin: left center;
+      }
+      .label {
+        position: relative;
+        z-index: 1;
+        font-weight: 900;
+        font-size: 96px;
+        letter-spacing: -0.03em;
+        line-height: 1;
+        color: var(--hg-fg);
+        will-change: color;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="1.8"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="scene" class="clip" data-start="0" data-duration="1.8" data-track-index="1">
+        <div class="stage">
+          <div class="bar">
+            <div class="fill a"></div>
+            <span class="label" id="l1">READY</span>
+          </div>
+          <div class="bar">
+            <div class="fill b"></div>
+            <span class="label" id="l2">SET</span>
+          </div>
+          <div class="bar">
+            <div class="fill c"></div>
+            <span class="label" id="l3">FILL</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      // Bar 1 — sweeps left -> right, landing on the beat at ~0.55s.
+      tl.to(".fill.a", { scaleX: 1, duration: 0.35, ease: "power2.out" }, 0.2);
+      tl.set("#l1", { color: "var(--hg-bg)" }, 0.55);
+
+      // Bar 2 — sweeps right -> left, landing at ~0.85s.
+      tl.to(".fill.b", { scaleX: 1, duration: 0.35, ease: "power2.out" }, 0.5);
+      tl.set("#l2", { color: "var(--hg-bg)" }, 0.85);
+
+      // Bar 3 — sweeps left -> right, landing at ~1.15s.
+      tl.to(".fill.c", { scaleX: 1, duration: 0.35, ease: "power2.out" }, 0.8);
+      tl.set("#l3", { color: "var(--hg-bg)" }, 1.15);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

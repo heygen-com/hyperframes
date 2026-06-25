@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>03 · braam_punch</title>
+    <script src="../assets/gsap.min.js"></script>
+    <style>
+      :root {
+        --hg-violet: #7c3aed;
+        --hg-violet-2: #a855f7;
+        --hg-bg: #0a0a0f;
+        --hg-fg: #f5f5fa;
+        --hg-dim: #6b6b78;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--hg-bg);
+        font-family: "Inter", system-ui, sans-serif;
+        color: var(--hg-fg);
+        -webkit-font-smoothing: antialiased;
+      }
+      #scene {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+      }
+      .stage {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .hero {
+        font-weight: 900;
+        font-size: 280px;
+        letter-spacing: -0.04em;
+        line-height: 0.95;
+        color: var(--hg-fg);
+        white-space: nowrap;
+        will-change: transform, text-shadow;
+      }
+      .glow-ring {
+        position: absolute;
+        width: 900px;
+        height: 900px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(124, 58, 237, 0.55) 0%, rgba(124, 58, 237, 0) 65%);
+        filter: blur(20px);
+        will-change: transform, opacity;
+        opacity: 0;
+      }
+      .flash {
+        position: absolute;
+        inset: 0;
+        background: #fff;
+        opacity: 0;
+        pointer-events: none;
+        will-change: opacity;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="2"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="scene" class="clip" data-start="0" data-duration="2" data-track-index="1">
+        <div class="stage">
+          <div class="glow-ring"></div>
+          <div class="hero" id="hero">BRAAM</div>
+        </div>
+        <div class="flash"></div>
+      </div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      tl.set("#hero", { scale: 0.92, opacity: 0 }, 0);
+      tl.set(".glow-ring", { scale: 0.6, opacity: 0 }, 0);
+      tl.to("#hero", { opacity: 1, duration: 0.18, ease: "power2.out" }, 0.05);
+      tl.to(".glow-ring", { scale: 1.2, opacity: 1, duration: 0.45, ease: "power3.out" }, 0.05);
+      tl.to(
+        "#hero",
+        {
+          scale: 1.18,
+          textShadow: "0 0 60px rgba(168,85,247,0.9)",
+          duration: 0.12,
+          ease: "power4.out",
+        },
+        0.25,
+      );
+      tl.to(
+        "#hero",
+        {
+          scale: 1.0,
+          textShadow: "0 0 0px rgba(168,85,247,0)",
+          duration: 0.7,
+          ease: "elastic.out(1, 0.5)",
+        },
+        0.37,
+      );
+      tl.fromTo(
+        ".flash",
+        { opacity: 0 },
+        { opacity: 0.85, duration: 0.06, ease: "power4.out" },
+        0.25,
+      );
+      tl.to(".flash", { opacity: 0, duration: 0.35, ease: "power3.in" }, 0.31);
+      tl.to(
+        ".glow-ring",
+        { scale: 1.45, opacity: 0.4, duration: 1.0, ease: "power2.out", overwrite: "auto" },
+        0.55,
+      );
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

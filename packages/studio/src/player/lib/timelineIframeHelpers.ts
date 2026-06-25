@@ -121,9 +121,7 @@ export function setPreviewMediaMuted(iframe: HTMLIFrameElement | null, muted: bo
       return;
     }
     postPreviewControl(iframe, "set-muted", { muted });
-  } catch (err) {
-    console.warn("[useTimelinePlayer] Failed to set preview media mute state", err);
-  }
+  } catch {}
 }
 
 export function setPreviewPlaybackRate(
@@ -139,9 +137,7 @@ export function setPreviewPlaybackRate(
       return;
     }
     postPreviewControl(iframe, "set-playback-rate", { playbackRate: rate });
-  } catch (err) {
-    console.warn("[useTimelinePlayer] Failed to set preview playback rate", err);
-  }
+  } catch {}
 }
 
 /**

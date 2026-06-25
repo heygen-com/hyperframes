@@ -11,6 +11,7 @@ import {
   isLowMemorySystem,
   LOW_MEMORY_TOTAL_MB_THRESHOLD,
 } from "./services/systemMemory.js";
+import { DEFAULT_VP9_CPU_USED, normalizeVp9CpuUsed } from "./services/vp9Options.js";
 
 /**
  * Full engine configuration. All fields are wired through the config
@@ -101,6 +102,11 @@ export interface EngineConfig {
   enablePageSideCompositing: boolean;
 
   // ── Encoding ─────────────────────────────────────────────────────────
+  /**
+   * libvpx-vp9 speed/quality tradeoff. Higher values encode faster with a
+   * larger quality/size tradeoff. FFmpeg accepts integer values from -8 to 8.
+   */
+  vp9CpuUsed: number;
   enableChunkedEncode: boolean;
   chunkSizeFrames: number;
   enableStreamingEncode: boolean;
@@ -220,6 +226,7 @@ export const DEFAULT_CONFIG: EngineConfig = {
   lowMemoryMode: false,
   enablePageSideCompositing: true,
 
+  vp9CpuUsed: DEFAULT_VP9_CPU_USED,
   enableChunkedEncode: false,
   chunkSizeFrames: 360,
   enableStreamingEncode: true,
@@ -277,6 +284,11 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
     if (raw === undefined) return fallback;
     return raw === "true";
   };
+  const envVp9CpuUsed = (): number => {
+    const raw = env("PRODUCER_VP9_CPU_USED");
+    if (raw === undefined || raw === "") return DEFAULT_CONFIG.vp9CpuUsed;
+    return normalizeVp9CpuUsed(Number(raw));
+  };
   const envBrowserGpuMode = (): EngineConfig["browserGpuMode"] => {
     const raw = env("PRODUCER_BROWSER_GPU_MODE");
     if (raw === "hardware" || raw === "software" || raw === "auto") return raw;
@@ -326,6 +338,7 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
       DEFAULT_CONFIG.enablePageSideCompositing,
     ),
 
+    vp9CpuUsed: envVp9CpuUsed(),
     enableChunkedEncode: envBool(
       "PRODUCER_ENABLE_CHUNKED_ENCODE",
       DEFAULT_CONFIG.enableChunkedEncode,
@@ -392,9 +405,13 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
   // Remove undefined values so they don't override defaults
   const cleanEnv = Object.fromEntries(Object.entries(fromEnv).filter(([, v]) => v !== undefined));
 
-  return {
+  const merged = {
     ...DEFAULT_CONFIG,
     ...cleanEnv,
     ...overrides,
+  };
+  return {
+    ...merged,
+    vp9CpuUsed: normalizeVp9CpuUsed(merged.vp9CpuUsed),
   };
 }

@@ -156,4 +156,4 @@ Caption components ship with transparent backgrounds — they're pure overlays. 
 - Sync to transcript timestamps.
 - One group visible at a time.
 - Every group must have a hard `tl.set` kill at `group.end`.
-- The compiler embeds supported fonts automatically — just declare `font-family` in CSS.
+- Fonts: the compiler auto-embeds only its **built-in mapped set** (Inter, Roboto, Montserrat, …) — for those, just declare `font-family` in CSS. Any **other** font (a brand/custom font like `TT Norms Pro`, or a non-Latin CJK/Devanagari family) is **not** auto-supplied: it needs an `@font-face` pointing at a real `.woff2` shipped with the project, or the text silently falls back to a generic font in the render. Don't assume a `font-family` you can see locally will render — the render machine is a clean headless Chrome with no installed fonts.

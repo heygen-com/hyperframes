@@ -2,6 +2,8 @@
 
 `npx hyperframes tts` auto-detects a provider from env vars; explicit override via `--provider`.
 
+> **Run the Preflight first — no credential is not a green light to silently use the local voice.** Before generating a voiceover, complete the sign-in **Preflight** (see `../SKILL.md` → Preflight): run `npx hyperframes auth status`, recommend signing in, and **STOP for the user's choice** (sign in for HeyGen voices, or continue offline with local Kokoro). This applies to a one-off "generate a voiceover" request just as much as inside a full workflow.
+
 ## Provider chain
 
 | Order | Provider          | Env trigger                                 | Voice IDs                                   | Word timestamps                           | Audio format         |
@@ -35,10 +37,10 @@ wins: `$HEYGEN_API_KEY` → `$HYPERFRAMES_API_KEY` → a project `.env` (auto-lo
 walks up ≤5 dirs) → `~/.heygen/credentials` (shared with heygen-cli;
 `$HEYGEN_CONFIG_DIR` overrides the dir). An OAuth login is sent as
 `Authorization: Bearer`; an API key as `X-Api-Key`. If the only credential is an
-expired OAuth token it stops with a hint to run `hyperframes auth refresh`.
+expired OAuth token it stops with a hint to run `npx hyperframes auth refresh`.
 
 ```bash
-# Only needed if you haven't run `hyperframes auth login`:
+# Only needed if you haven't run `npx hyperframes auth login`:
 export HEYGEN_API_KEY=...   # or put it in a project .env
 
 # Synthesize + capture word timestamps in one call (skips a Whisper pass)

@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>flash_cut</title>
+    <script src="../assets/gsap.min.js"></script>
+    <style>
+      :root {
+        --hg-violet: #7c3aed;
+        --hg-violet-2: #a855f7;
+        --hg-bg: #0a0a0f;
+        --hg-fg: #f5f5fa;
+        --hg-dim: #6b6b78;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--hg-bg);
+        font-family: "Inter", system-ui, sans-serif;
+        color: var(--hg-fg);
+        -webkit-font-smoothing: antialiased;
+      }
+      #scene {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+      }
+      .stage {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .word {
+        position: absolute;
+        font-weight: 900;
+        font-size: 260px;
+        letter-spacing: -0.04em;
+        line-height: 0.95;
+        white-space: nowrap;
+        color: var(--hg-fg);
+        will-change: opacity;
+      }
+      .accent {
+        position: absolute;
+        bottom: 360px;
+        width: 220px;
+        height: 14px;
+        border-radius: 999px;
+        background: var(--hg-violet);
+        will-change: background, transform;
+      }
+      .flash {
+        position: absolute;
+        inset: 0;
+        background: #ffffff;
+        opacity: 0;
+        pointer-events: none;
+        will-change: opacity;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="1.8"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="scene" class="clip" data-start="0" data-duration="1.8" data-track-index="1">
+        <div class="stage">
+          <div class="accent" id="accent"></div>
+          <div class="word" id="w0">READY</div>
+          <div class="word" id="w1">IMPACT</div>
+          <div class="word" id="w2">DONE</div>
+        </div>
+        <div class="flash" id="flash"></div>
+      </div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      // Initial state: first word visible, others hidden, accent violet.
+      tl.set("#w0", { opacity: 1 }, 0);
+      tl.set("#w1", { opacity: 0 }, 0);
+      tl.set("#w2", { opacity: 0 }, 0);
+      tl.set("#accent", { backgroundColor: "#7c3aed", scaleX: 1 }, 0);
+      tl.set("#flash", { opacity: 0 }, 0);
+
+      // Two hits; during each white frame, swap underlying word + accent colour.
+      const hits = [
+        { t: 0.5, from: "#w0", to: "#w1", color: "#a855f7", scaleX: 1.45 },
+        { t: 1.2, from: "#w1", to: "#w2", color: "#f5f5fa", scaleX: 0.7 },
+      ];
+
+      hits.forEach((h) => {
+        // Instant full-frame white flash on the hit.
+        tl.set("#flash", { opacity: 1 }, h.t);
+        // While white (~2 frames at 30fps), swap the revealed state.
+        tl.set(h.from, { opacity: 0 }, h.t + 0.03);
+        tl.set(h.to, { opacity: 1 }, h.t + 0.03);
+        tl.set("#accent", { backgroundColor: h.color, scaleX: h.scaleX }, h.t + 0.03);
+        // Snap the flash back out within ~3 frames.
+        tl.set("#flash", { opacity: 0 }, h.t + 0.06);
+      });
+
+      // Graceful loop: dip back to white at the very end and restore the start
+      // state so the cycle re-enters cleanly on the next pass.
+      tl.set("#flash", { opacity: 1 }, 1.74);
+      tl.set("#w2", { opacity: 0 }, 1.77);
+      tl.set("#w0", { opacity: 1 }, 1.77);
+      tl.set("#accent", { backgroundColor: "#7c3aed", scaleX: 1 }, 1.77);
+      tl.set("#flash", { opacity: 0 }, 1.8);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

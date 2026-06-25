@@ -98,6 +98,8 @@ export function trackRenderComplete(
     durationMs: number;
     fps: number;
     quality: string;
+    /** Authoring workflow skill that drove this render (e.g. "product-launch-video"). */
+    authoringSkill?: string;
     workers?: number;
     docker: boolean;
     gpu: boolean;
@@ -129,6 +131,8 @@ export function trackRenderComplete(
     stageVideoExtractMs?: number;
     stageAudioProcessMs?: number;
     stageCaptureMs?: number;
+    stageCaptureSetupMs?: number;
+    stageCaptureFrameMs?: number;
     stageEncodeMs?: number;
     stageAssembleMs?: number;
     // Video-extraction breakdown (from RenderPerfSummary.videoExtractBreakdown)
@@ -153,6 +157,7 @@ export function trackRenderComplete(
       duration_ms: props.durationMs,
       fps: props.fps,
       quality: props.quality,
+      authoring_skill: props.authoringSkill,
       workers: props.workers,
       docker: props.docker,
       gpu: props.gpu,
@@ -176,6 +181,8 @@ export function trackRenderComplete(
       stage_video_extract_ms: props.stageVideoExtractMs,
       stage_audio_process_ms: props.stageAudioProcessMs,
       stage_capture_ms: props.stageCaptureMs,
+      stage_capture_setup_ms: props.stageCaptureSetupMs,
+      stage_capture_frame_ms: props.stageCaptureFrameMs,
       stage_encode_ms: props.stageEncodeMs,
       stage_assemble_ms: props.stageAssembleMs,
       extract_resolve_ms: props.extractResolveMs,
@@ -198,6 +205,8 @@ export function trackRenderError(
   props: {
     fps: number;
     quality: string;
+    /** Authoring workflow skill that drove this render (e.g. "product-launch-video"). */
+    authoringSkill?: string;
     docker: boolean;
     workers?: number;
     gpu?: boolean;
@@ -217,6 +226,7 @@ export function trackRenderError(
     {
       fps: props.fps,
       quality: props.quality,
+      authoring_skill: props.authoringSkill,
       docker: props.docker,
       workers: props.workers,
       gpu: props.gpu,
@@ -328,6 +338,14 @@ export function trackCommandFailure(command: string, err: unknown): void {
     command,
     kind: "command_error",
   });
+}
+
+// Whisper being absent/uninstallable is an environment prerequisite gap, not a
+// command crash — track it on its own low-severity metric instead of cli_error
+// so the command-failure budget reflects real bugs. `optional` records whether
+// the caller (init / skill pipeline) treated captions as skippable.
+export function trackTranscribeUnavailable(props: { optional: boolean }): void {
+  trackEvent("transcribe_unavailable", { optional: props.optional });
 }
 
 export function trackRenderFeedback(props: {

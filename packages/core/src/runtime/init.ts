@@ -72,6 +72,46 @@ export function initSandboxRuntimeModular(): void {
   }
 
   window.__timelines = window.__timelines || {};
+
+  // Resolve the root composition element with the same priority the rest of
+  // the runtime uses (explicit `data-root` marker first, then the topmost
+  // non-nested composition, then first in DOM order). Defined here so the
+  // array-normalization + data-start defaults below pick the same root the
+  // closure-based `resolveRootCompositionElement` does on multi-comp pages.
+  const findRootCompositionEl = (): HTMLElement | null => {
+    const explicitRoot = document.querySelector('[data-composition-id][data-root="true"]');
+    if (explicitRoot instanceof HTMLElement) return explicitRoot;
+    const nodes = Array.from(document.querySelectorAll("[data-composition-id]")) as HTMLElement[];
+    return (
+      nodes.find((node) => !node.parentElement?.closest("[data-composition-id]")) ??
+      nodes[0] ??
+      null
+    );
+  };
+
+  // Agents often write `window.__timelines = [tl]` (array) instead of the
+  // keyed-by-composition-id object the runtime expects. Normalize at init so
+  // the rest of the pipeline can assume a Record<string, timeline>.
+  if (Array.isArray(window.__timelines)) {
+    const arr = window.__timelines as unknown[];
+    const rootId = findRootCompositionEl()?.getAttribute("data-composition-id") ?? "root";
+    const normalized: Record<string, unknown> = {};
+    if (arr.length === 1) {
+      normalized[rootId] = arr[0];
+    } else {
+      for (let i = 0; i < arr.length; i++) normalized[`tl-${i}`] = arr[i];
+    }
+    (window as Record<string, unknown>).__timelines = normalized;
+  }
+
+  // Agents sometimes omit data-start on the root composition element. The
+  // runtime skips timed-visibility for elements without it, making clips
+  // invisible and timelines non-seekable. Default to 0 for the root.
+  const rootComp = findRootCompositionEl();
+  if (rootComp && !rootComp.hasAttribute("data-start")) {
+    rootComp.setAttribute("data-start", "0");
+  }
+
   const registerRuntimeCleanup = (callback: () => void) => {
     runtimeCleanupCallbacks.push(callback);
   };
@@ -218,23 +258,7 @@ export function initSandboxRuntimeModular(): void {
     return `${parsed}px`;
   };
 
-  const resolveRootCompositionElement = (): HTMLElement | null => {
-    // 1. Explicit root marker takes priority
-    const explicitRoot = document.querySelector('[data-composition-id][data-root="true"]');
-    if (explicitRoot instanceof HTMLElement) {
-      return explicitRoot;
-    }
-    // 3. Topmost composition element (not nested inside another)
-    const compositionNodes = Array.from(
-      document.querySelectorAll("[data-composition-id]"),
-    ) as HTMLElement[];
-    if (compositionNodes.length === 0) return null;
-    return (
-      compositionNodes.find((node) => !node.parentElement?.closest("[data-composition-id]")) ??
-      compositionNodes[0] ??
-      null
-    );
-  };
+  const resolveRootCompositionElement = (): HTMLElement | null => findRootCompositionEl();
 
   const applyCompositionSizing = () => {
     const rootEl = resolveRootCompositionElement();
@@ -291,6 +315,15 @@ export function initSandboxRuntimeModular(): void {
       const tag = el.tagName.toLowerCase();
       if (tag === "script" || tag === "style" || tag === "link" || tag === "meta") continue;
       if (!el.hasAttribute("data-start")) continue;
+      // Runtime-stamped clips are NOT authored overlay clips. In Studio/preview
+      // the runtime stamps `data-start` onto ID'd or GSAP-targeted flow children
+      // (a <header>/<footer> in a flex column) so the design panel can discover
+      // them — see the stamping pass in bindCapturedTimeline. Forcing those out
+      // of document flow collapses the layout: the footer shrink-wraps and its
+      // `justify-content: space-between` clusters in the top-left. Leave them in
+      // flow so the preview matches the rendered video, which never stamps
+      // (production renders run as the top-level page, not in an iframe).
+      if (el.hasAttribute("data-hf-autostamped")) continue;
       const hasLegacyAnchoredDefaults =
         (el.style.top === "0px" || el.style.top === "0") &&
         (el.style.left === "0px" || el.style.left === "0") &&
@@ -410,23 +443,6 @@ export function initSandboxRuntimeModular(): void {
     return resolveStartForElement(element, fallback);
   };
 
-  const findTimedClipAncestor = (
-    element: HTMLElement,
-    rootComp: HTMLElement | null,
-  ): HTMLElement | null => {
-    let node = element.parentElement;
-    while (node) {
-      // rootComp may be null when no composition is mounted; the walk still
-      // terminates via `while (node)` — node === null is never true here.
-      if (node === rootComp) break;
-      if (node.hasAttribute("data-start")) {
-        return node;
-      }
-      node = node.parentElement;
-    }
-    return null;
-  };
-
   const isTimedElementVisibleAt = (rawNode: HTMLElement, currentTime: number): boolean => {
     const tag = rawNode.tagName.toLowerCase();
     if (tag === "script" || tag === "style" || tag === "link" || tag === "meta") {
@@ -449,18 +465,13 @@ export function initSandboxRuntimeModular(): void {
         }
       }
 
-      const usesExternalCompositionSlot =
-        rawNode.hasAttribute("data-composition-src") ||
-        rawNode.hasAttribute("data-composition-file");
+      const hasAuthoredTiming =
+        rawNode.hasAttribute("data-duration") ||
+        rawNode.hasAttribute("data-end") ||
+        rawNode.hasAttribute(AUTHORED_DURATION_ATTR) ||
+        rawNode.hasAttribute(AUTHORED_END_ATTR);
 
-      if (
-        duration != null &&
-        duration > 0 &&
-        liveDuration != null &&
-        !usesExternalCompositionSlot
-      ) {
-        duration = Math.min(duration, liveDuration);
-      } else if ((duration == null || duration <= 0) && liveDuration != null) {
+      if (!hasAuthoredTiming && (duration == null || duration <= 0) && liveDuration != null) {
         duration = liveDuration;
       }
     }
@@ -1025,16 +1036,38 @@ export function initSandboxRuntimeModular(): void {
       state.capturedTimeline.timeScale(state.playbackRate);
     }
     const boundDuration = getSafeTimelineDurationSeconds(state.capturedTimeline, 0);
+    if (boundDuration <= 0) {
+      // No resolvable duration (e.g. a set()-only timeline, or one whose
+      // duration isn't known yet). Kick GSAP off the creation position so the
+      // set() renders. For a finite-but-zero timeline progress(1) === progress(0);
+      // for an infinite-repeat timeline this lands on the first iteration's end
+      // frame, which is the best we can do without a known cycle length.
+      if (typeof state.capturedTimeline.progress === "function") {
+        state.capturedTimeline.progress(1, true);
+        state.capturedTimeline.progress(0, false);
+        state.capturedTimeline.pause();
+      }
+    }
     if (boundDuration > 0) {
       try {
         clock.setDuration(boundDuration);
       } catch {
         // clock not yet initialized — duration will be set during TransportClock setup
       }
-      state.capturedTimeline.pause();
-      const seekTime = Math.max(0, state.currentTime || 0);
+
       if (typeof state.capturedTimeline.totalTime === "function") {
+        // GSAP won't render tl.set() at position 0 when the paused timeline
+        // starts there — play/pause/seek/totalTime are all no-ops at the
+        // creation position. Force the set to render by cycling progress past
+        // 0 (when the timeline implements it), then seek to the prior playhead
+        // (state.currentTime) so a rebind after a user scrub or soft-reload
+        // restore doesn't snap back to 0.
+        if (typeof state.capturedTimeline.progress === "function") {
+          state.capturedTimeline.progress(0.0001, true);
+        }
+        const seekTime = Math.max(0, state.currentTime || 0);
         state.capturedTimeline.totalTime(seekTime, false);
+        state.capturedTimeline.pause();
       }
 
       // GSAP bakes the CSS `translate` into style.transform on seek.
@@ -1073,6 +1106,21 @@ export function initSandboxRuntimeModular(): void {
       const dur = String(rootDuration > 0 ? rootDuration : 1);
       const seen = new Set<Element>();
 
+      // Only an AUTHORED clip (data-start already in the source, captured before
+      // we stamp anything) should suppress stamping its descendants. An animated
+      // scene container we auto-stamp below (e.g. an opacity-crossfaded scene)
+      // must NOT suppress its own animated children — otherwise those children
+      // never become timeline clips and that scene can't inline-expand.
+      const authoredTimed = new Set<Element>(document.querySelectorAll("[data-start]"));
+      const hasAuthoredTimedAncestor = (element: HTMLElement): boolean => {
+        let node = element.parentElement;
+        while (node && node !== rootComp) {
+          if (authoredTimed.has(node)) return true;
+          node = node.parentElement;
+        }
+        return false;
+      };
+
       // Stamp GSAP-targeted elements
       if (state.capturedTimeline.getChildren) {
         try {
@@ -1082,11 +1130,14 @@ export function initSandboxRuntimeModular(): void {
               if (!(target instanceof HTMLElement)) continue;
               if (target === rootComp) continue;
               if (target.hasAttribute("data-start")) continue;
-              if (findTimedClipAncestor(target, rootComp)) continue;
+              if (hasAuthoredTimedAncestor(target)) continue;
               if (seen.has(target)) continue;
               seen.add(target);
               target.setAttribute("data-start", "0");
               target.setAttribute("data-duration", dur);
+              // Mark as runtime-stamped so applyClipLayout leaves it in document
+              // flow instead of treating it as an authored overlay clip.
+              target.setAttribute("data-hf-autostamped", "1");
             }
           }
         } catch {
@@ -1102,12 +1153,15 @@ export function initSandboxRuntimeModular(): void {
           if (!(el instanceof HTMLElement)) continue;
           if (el === rootComp) continue;
           if (el.hasAttribute("data-start")) continue;
-          if (findTimedClipAncestor(el, rootComp)) continue;
+          if (hasAuthoredTimedAncestor(el)) continue;
           if (seen.has(el)) continue;
           if (el.tagName === "SCRIPT" || el.tagName === "STYLE" || el.tagName === "LINK") continue;
           seen.add(el);
           el.setAttribute("data-start", "0");
           el.setAttribute("data-duration", dur);
+          // Mark as runtime-stamped so applyClipLayout leaves it in document
+          // flow instead of treating it as an authored overlay clip.
+          el.setAttribute("data-hf-autostamped", "1");
         }
       }
     }
@@ -1439,14 +1493,53 @@ export function initSandboxRuntimeModular(): void {
   };
 
   // fallow-ignore-next-line complexity
+  // Whether a timed clip participates in normal flow (static/relative/sticky).
+  // In-flow clips must leave the flow when hidden — `visibility:hidden` reserves
+  // their layout box, so a split sibling would stack below the active half
+  // instead of overlapping it. Positioned clips keep `visibility:hidden` (cheaper,
+  // and avoids disturbing absolute media playback). Computed once per element.
+  let timedClipInFlow = new WeakMap<Element, boolean>();
+  const isTimedClipInFlow = (el: HTMLElement): boolean => {
+    const cached = timedClipInFlow.get(el);
+    if (cached !== undefined) return cached;
+    const pos = window.getComputedStyle(el).position;
+    const inFlow = pos === "static" || pos === "relative" || pos === "sticky";
+    timedClipInFlow.set(el, inFlow);
+    return inFlow;
+  };
+
+  // `display:none` is only safe on a LEAF timed clip (no nested timed clips). On a
+  // container it removes the whole subtree, hiding descendants that are still inside
+  // their OWN visibility window — e.g. an in-flow composition root whose window
+  // clamps to the timeline end would black out a child video that should still
+  // show. `visibility:hidden` doesn't have this problem (a child can override it
+  // with `visibility:visible`), so containers keep that and only leaves leave-flow.
+  let timedClipIsLeaf = new WeakMap<Element, boolean>();
+  const isTimedClipLeaf = (el: HTMLElement): boolean => {
+    const cached = timedClipIsLeaf.get(el);
+    if (cached !== undefined) return cached;
+    const leaf = el.querySelector("[data-start]") === null;
+    timedClipIsLeaf.set(el, leaf);
+    return leaf;
+  };
+
+  // Both caches key on live DOM facts that change when the timed-element set
+  // changes: leaf status flips when a clip gains/loses a nested `[data-start]`
+  // descendant (sub-composition load/unload, studio insert/delete), and a swapped
+  // element can reuse an identity whose in-flow status differs. WeakMap has no
+  // `clear()`, so drop both maps wholesale — re-derived lazily on next access.
+  const invalidateTimedClipCaches = () => {
+    timedClipInFlow = new WeakMap<Element, boolean>();
+    timedClipIsLeaf = new WeakMap<Element, boolean>();
+  };
+
   const syncMediaForCurrentState = () => {
     const resolveMediaCompositionContext = (element: HTMLVideoElement | HTMLAudioElement) => {
       const compositionRoot = element.closest("[data-composition-id]");
       const inheritedStart = compositionRoot ? resolveStartForElement(compositionRoot, 0) : null;
-      // Media sync intentionally uses the authored host window here instead of
-      // the live child timeline duration. Visibility prefers live truth so a
-      // shrinking child composition hides early, but nested media needs a
-      // stable authored window so seeks clamp against the host clip timing.
+      // Media sync follows the authored host window, matching visibility for
+      // authored composition hosts. Live child timeline duration only fills in
+      // when no authored timing exists, so seeks clamp against host clip timing.
       const inheritedDuration = compositionRoot
         ? resolveDurationForElement(compositionRoot, { includeAuthoredTimingAttrs: true })
         : null;
@@ -1501,34 +1594,37 @@ export function initSandboxRuntimeModular(): void {
 
     const forceSync = state.mediaForceSyncNextTick;
     if (forceSync) state.mediaForceSyncNextTick = false;
-    syncRuntimeMedia({
-      clips: cache.mediaClips,
-      timeSeconds: state.currentTime,
-      playing: state.isPlaying,
-      playbackRate: state.playbackRate,
-      outputMuted: state.mediaOutputMuted,
-      userMuted: state.bridgeMuted,
-      userVolume: state.bridgeVolume,
-      forceSync,
-      onElementVolume: (el, volume) => webAudio.setElementVolume(el, volume),
-      isWebAudioOwned: (el) => webAudio.ownsElement(el),
-      onAutoplayBlocked: () => {
-        if (state.mediaAutoplayBlockedPosted) return;
-        state.mediaAutoplayBlockedPosted = true;
-        postRuntimeMessage({ source: "hf-preview", type: "media-autoplay-blocked" });
-      },
-    });
+    if (!state.nativeMediaSyncDisabled) {
+      syncRuntimeMedia({
+        clips: cache.mediaClips,
+        timeSeconds: state.currentTime,
+        playing: state.isPlaying,
+        playbackRate: state.playbackRate,
+        outputMuted:
+          state.mediaOutputMuted ||
+          (!state.webAudioMediaDisabled && !state.nativeMediaSyncDisabled && webAudio.isActive()),
+        userMuted: state.bridgeMuted,
+        userVolume: state.bridgeVolume,
+        forceSync,
+        onElementVolume: (el, volume) => webAudio.setElementVolume(el, volume),
+        isWebAudioOwned: (el) => webAudio.ownsElement(el),
+        onAutoplayBlocked: () => {
+          if (state.mediaAutoplayBlockedPosted) return;
+          state.mediaAutoplayBlockedPosted = true;
+          postRuntimeMessage({ source: "hf-preview", type: "media-autoplay-blocked" });
+        },
+      });
+    }
     const visibilityNodes = Array.from(document.querySelectorAll("[data-start]"));
     const rootComp = resolveRootCompositionElement();
     for (const rawNode of visibilityNodes) {
       if (!(rawNode instanceof HTMLElement)) continue;
 
       let isVisibleNow = isTimedElementVisibleAt(rawNode, state.currentTime);
-      // Studio-only defense-in-depth: pseudo-clips stamped on tween targets can
-      // get visibility:visible for the full composition. Render mode never stamps
-      // those targets, so keep the prior per-element visibility semantics there.
-      if (isVisibleNow && window.parent !== window) {
-        // Descendants must not override a hidden ancestor clip.
+      // Descendants must not override a hidden ancestor clip. CSS visibility can
+      // otherwise leak child pixels through inactive scenes because a descendant
+      // with visibility:visible escapes an ancestor's visibility:hidden.
+      if (isVisibleNow) {
         let ancestor = rawNode.parentElement;
         while (ancestor) {
           if (ancestor === rootComp) break;
@@ -1544,6 +1640,11 @@ export function initSandboxRuntimeModular(): void {
       rawNode.style.visibility = isVisibleNow ? "visible" : "hidden";
       if (rawNode instanceof HTMLVideoElement || rawNode instanceof HTMLImageElement) {
         colorGradingRuntime?.setSourceVisibility(rawNode, isVisibleNow);
+      }
+      if (isVisibleNow) {
+        if (isTimedClipInFlow(rawNode)) rawNode.style.removeProperty("display");
+      } else if (isTimedClipInFlow(rawNode) && isTimedClipLeaf(rawNode)) {
+        rawNode.style.display = "none";
       }
     }
   };
@@ -1606,6 +1707,10 @@ export function initSandboxRuntimeModular(): void {
     window.__clipManifest = payload;
 
     const currentSignature = computeClipTreeSignature();
+    if (clipTreeSignature !== currentSignature) {
+      // The timed-element set changed — leaf/in-flow caches may be stale.
+      invalidateTimedClipCaches();
+    }
     if (!window.__clipTree || clipTreeSignature !== currentSignature) {
       const runtimeWindow = window as Window & {
         __timelines?: Record<string, RuntimeTimelineLike | undefined>;
@@ -1880,6 +1985,29 @@ export function initSandboxRuntimeModular(): void {
       for (const el of mediaEls) {
         if (!(el instanceof HTMLMediaElement)) continue;
         el.muted = effective || el.defaultMuted;
+      }
+    },
+    onSetNativeMediaSyncDisabled: (disabled) => {
+      if (state.nativeMediaSyncDisabled === disabled) return;
+      state.nativeMediaSyncDisabled = disabled;
+      state.mediaForceSyncNextTick = true;
+      if (disabled) {
+        webAudio.stopAll();
+        clock.detachAudioSource();
+      } else {
+        syncMediaForCurrentState();
+      }
+    },
+    onSetWebAudioMediaDisabled: (disabled) => {
+      if (state.webAudioMediaDisabled === disabled) return;
+      state.webAudioMediaDisabled = disabled;
+      state.mediaForceSyncNextTick = true;
+      if (disabled) {
+        webAudio.stopAll();
+        clock.detachAudioSource();
+        syncMediaForCurrentState();
+      } else {
+        syncMediaForCurrentState();
       }
     },
     onSetPlaybackRate: (rate) => {
@@ -2185,15 +2313,14 @@ export function initSandboxRuntimeModular(): void {
         bindMediaMetadataListeners();
       }
 
-      // Keep clock duration in sync with the resolved timeline duration.
-      // Catches async timeline rebinds that happen outside the 60-tick
-      // branch (metadata hydration, deferred setTimeout). Note: this reads
-      // the DOM each tick (duration floors query authored windows + the
-      // root's declared data-duration), which also keeps live edits to
-      // data-duration in the studio reflected without a rebind.
+      // Sync clock duration with the resolved timeline each tick (catches async
+      // rebinds, live data-duration edits). Never shrink while playing — transient
+      // short reads cause reachedEnd() → playhead jumps to end (#1636).
       if (state.capturedTimeline) {
         const dur = getSafeTimelineDurationSeconds(state.capturedTimeline, 0);
-        if (dur > 0) clock.setDuration(dur);
+        if (dur > 0 && (!clock.isPlaying() || dur >= clock.getDuration())) {
+          clock.setDuration(dur);
+        }
       }
 
       // Audio-master clock: three tiers of timing precision.
@@ -2201,7 +2328,12 @@ export function initSandboxRuntimeModular(): void {
       // 2. HTMLMediaElement (audio.currentTime): ~33ms, frame-accurate
       // 3. Monotonic (performance.now()): ~1ms, no audio coupling
       if (clock.isPlaying() && !state.mediaOutputMuted) {
-        if (webAudio.isActive() && webAudio.context) {
+        if (
+          !state.nativeMediaSyncDisabled &&
+          !state.webAudioMediaDisabled &&
+          webAudio.isActive() &&
+          webAudio.context
+        ) {
           const webAudioTime = webAudio.getTime();
           if (webAudioTime >= 0) {
             clock.attachAudioSource({ currentTimeSeconds: webAudioTime });
@@ -2313,6 +2445,7 @@ export function initSandboxRuntimeModular(): void {
   // same edge as the HTMLMedia path. Reused by play() and by the rate-change
   // handler (a rate change can't rescale a bounded source in place).
   const scheduleWebAudioForActiveClips = () => {
+    if (state.nativeMediaSyncDisabled || state.webAudioMediaDisabled) return;
     const gen = webAudio.startGeneration();
     const audioEls = document.querySelectorAll("audio[data-start]");
     for (const rawEl of audioEls) {
@@ -2362,7 +2495,14 @@ export function initSandboxRuntimeModular(): void {
   // stopAll()+reschedule at the new rate to keep trimmed clips ending on time.
   const applyWebAudioRate = () => {
     const changed = webAudio.setRate(state.playbackRate);
-    if (changed && webAudioReady && clock.isPlaying() && webAudio.hasBoundedActiveSources()) {
+    if (
+      changed &&
+      !state.nativeMediaSyncDisabled &&
+      !state.webAudioMediaDisabled &&
+      webAudioReady &&
+      clock.isPlaying() &&
+      webAudio.hasBoundedActiveSources()
+    ) {
       webAudio.stopAll();
       scheduleWebAudioForActiveClips();
     }
@@ -2392,7 +2532,9 @@ export function initSandboxRuntimeModular(): void {
     // Schedule audio through WebAudio for sample-accurate timing.
     // Falls back to HTMLMediaElement playback if WebAudio isn't ready
     // or decoding fails (the syncRuntimeMedia path handles that).
-    if (webAudioReady) scheduleWebAudioForActiveClips();
+    if (webAudioReady && !state.nativeMediaSyncDisabled && !state.webAudioMediaDisabled) {
+      scheduleWebAudioForActiveClips();
+    }
     runAdapters("play");
     syncMediaForCurrentState();
     colorGrading.redraw();

@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>27 · datamosh_smear</title>
+    <script src="../assets/gsap.min.js"></script>
+    <style>
+      :root {
+        --hg-violet: #7c3aed;
+        --hg-violet-2: #a855f7;
+        --hg-cyan: #2afff0;
+        --hg-magenta: #ff2a4a;
+        --hg-bg: #0a0a0f;
+        --hg-fg: #f5f5fa;
+        --hg-dim: #6b6b78;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--hg-bg);
+        font-family: "Inter", system-ui, sans-serif;
+        color: var(--hg-fg);
+        -webkit-font-smoothing: antialiased;
+      }
+      #scene {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+      }
+      .smear-stage {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .smear-hero {
+        position: relative;
+        font-weight: 900;
+        font-size: 320px;
+        letter-spacing: -0.05em;
+        line-height: 0.95;
+        white-space: nowrap;
+      }
+      .smear-layer {
+        position: absolute;
+        top: 0;
+        left: 0;
+        mix-blend-mode: screen;
+        will-change: transform, opacity, filter;
+      }
+      .smear-layer.l1 {
+        color: #ff2a4a;
+      }
+      .smear-layer.l2 {
+        color: #2afff0;
+      }
+      .smear-layer.l3 {
+        color: #b56dff;
+      }
+      .smear-layer.l4 {
+        color: #ffd166;
+      }
+      .smear-layer.l5 {
+        color: #f5f5fa;
+      }
+      .spacer {
+        color: transparent;
+      }
+      .scan-noise {
+        position: absolute;
+        inset: 0;
+        background:
+          repeating-linear-gradient(
+            0deg,
+            rgba(255, 255, 255, 0) 0px,
+            rgba(255, 255, 255, 0) 2px,
+            rgba(255, 255, 255, 0.07) 3px
+          ),
+          repeating-linear-gradient(
+            90deg,
+            rgba(0, 0, 0, 0) 0px,
+            rgba(0, 0, 0, 0) 4px,
+            rgba(0, 0, 0, 0.15) 5px
+          );
+        opacity: 0;
+        will-change: opacity;
+        pointer-events: none;
+        mix-blend-mode: overlay;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="2"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="scene" class="clip" data-start="0" data-duration="2" data-track-index="1">
+        <div class="smear-stage">
+          <div class="smear-hero">
+            <span class="spacer">SMEAR</span>
+            <span class="smear-layer l1">SMEAR</span>
+            <span class="smear-layer l2">SMEAR</span>
+            <span class="smear-layer l3">SMEAR</span>
+            <span class="smear-layer l4">SMEAR</span>
+            <span class="smear-layer l5">SMEAR</span>
+          </div>
+        </div>
+        <div class="scan-noise"></div>
+      </div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      // All layers start far right, stagger-lag in, then settle near center
+      const layers = [
+        ".smear-layer.l1",
+        ".smear-layer.l2",
+        ".smear-layer.l3",
+        ".smear-layer.l4",
+        ".smear-layer.l5",
+      ];
+
+      layers.forEach((sel, i) => {
+        tl.fromTo(
+          sel,
+          { x: 360, opacity: 0, filter: "blur(20px)" },
+          { x: 0, opacity: 0.85, filter: "blur(0px)", duration: 0.7, ease: "expo.out" },
+          0.2 + i * 0.08,
+        );
+      });
+
+      // Final settle: pull layers into proper offset
+      const finalX = [-6, -2, 0, 2, 4];
+      layers.forEach((sel, i) => {
+        tl.to(sel, { x: finalX[i], duration: 0.4, ease: "power2.out" }, 1.1);
+      });
+
+      // Scan noise pulses
+      tl.fromTo(
+        ".scan-noise",
+        { opacity: 0 },
+        { opacity: 1, duration: 0.06, ease: "steps(1)" },
+        0.2,
+      );
+      tl.to(".scan-noise", { opacity: 0.25, duration: 0.8, ease: "power2.out" }, 0.6);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

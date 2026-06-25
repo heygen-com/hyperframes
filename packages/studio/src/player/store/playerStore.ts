@@ -96,6 +96,14 @@ interface PlayerState {
    *  (drag, resize, rotate) target this instead of recomputing from playhead. */
   activeKeyframePct: number | null;
   setActiveKeyframePct: (pct: number | null) => void;
+  /** Motion-path "set destination" mode. Armed from the preview toolbar (replaces
+   *  the old double-click-on-canvas UX); while armed, one canvas click places the
+   *  new path's destination. `available` is published by MotionPathOverlay so the
+   *  toolbar shows the button only when the selected element can take a path. */
+  motionPathArmed: boolean;
+  setMotionPathArmed: (armed: boolean) => void;
+  motionPathCreateAvailable: boolean;
+  setMotionPathCreateAvailable: (available: boolean) => void;
 
   /** Multi-select: additional selected elements beyond selectedElementId. */
   selectedElementIds: Set<string>;
@@ -209,6 +217,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   activeKeyframePct: null,
   setActiveKeyframePct: (pct) => set({ activeKeyframePct: pct }),
+  motionPathArmed: false,
+  setMotionPathArmed: (armed) => set({ motionPathArmed: armed }),
+  motionPathCreateAvailable: false,
+  setMotionPathCreateAvailable: (available) => set({ motionPathCreateAvailable: available }),
 
   selectedElementIds: new Set<string>(),
   toggleSelectedElementId: (id: string) =>
@@ -327,7 +339,16 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   setTimelineReady: (ready) => set({ timelineReady: ready }),
   setBeatDragging: (dragging) => set({ beatDragging: dragging }),
   setElements: (elements) => set({ elements }),
-  setSelectedElementId: (id) => set({ selectedElementId: id }),
+  setSelectedElementId: (id) =>
+    set((s) =>
+      // Selecting a different element drops any active keyframe selection — otherwise
+      // a stale activeKeyframePct from a prior diamond click would force the next drag
+      // to "modify" a keyframe on the new element. A diamond click sets the pct AFTER
+      // calling setSelectedElementId, so this never clobbers a genuine keyframe select.
+      id !== s.selectedElementId
+        ? { selectedElementId: id, activeKeyframePct: null, motionPathArmed: false }
+        : { selectedElementId: id },
+    ),
   updateElement: (elementId, updates) =>
     set((state) => ({
       elements: state.elements.map((el) =>
@@ -361,3 +382,19 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       clipParentMap: new Map(),
     }),
 }));
+
+// Bug-bash aid: expose the store so a reproduction can dump live state from the
+// console, e.g. `__playerStore.getState().selectedElementId`. Harmless read
+// handle; no behavioural effect.
+// Only in dev. `import.meta.env` may be undefined in non-Vite bundlers (Next.js
+// Turbopack), so guard the access like the telemetry client does.
+function isDevBuild(): boolean {
+  try {
+    return import.meta.env.DEV === true;
+  } catch {
+    return false;
+  }
+}
+if (isDevBuild() && typeof window !== "undefined") {
+  (window as unknown as { __playerStore?: typeof usePlayerStore }).__playerStore = usePlayerStore;
+}

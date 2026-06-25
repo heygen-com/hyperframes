@@ -28,6 +28,7 @@ import {
   type UnsafeMutationValue,
 } from "../helpers/finiteMutation.js";
 import type { GsapAnimation } from "../../parsers/gsapSerialize.js";
+import { classifyPropertyGroup } from "../../parsers/gsapConstants.js";
 import { parseGsapScriptAcorn } from "../../parsers/gsapParserAcorn.js";
 import { unrollComputedTimeline } from "../../parsers/gsapUnroll.js";
 import {
@@ -315,26 +316,78 @@ function stripStudioEditsFromTarget(document: Document, selector: string): numbe
   let stripped = 0;
   try {
     for (const el of document.querySelectorAll(selector)) {
-      if (!el.getAttribute("data-hf-studio-path-offset")) continue;
       if (!isHTMLElement(el)) continue;
       const htmlEl = el;
-      const originalTranslate = el.getAttribute("data-hf-studio-original-inline-translate");
-      htmlEl.style.removeProperty("--hf-studio-offset-x");
-      htmlEl.style.removeProperty("--hf-studio-offset-y");
-      if (originalTranslate) {
-        htmlEl.style.setProperty("translate", originalTranslate);
-      } else {
-        htmlEl.style.removeProperty("translate");
+      let touched = false;
+      // Manual path offset (--hf-studio-offset / translate) — a GSAP position tween
+      // now owns position, so the stale offset channel must go.
+      if (el.getAttribute("data-hf-studio-path-offset")) {
+        const originalTranslate = el.getAttribute("data-hf-studio-original-inline-translate");
+        htmlEl.style.removeProperty("--hf-studio-offset-x");
+        htmlEl.style.removeProperty("--hf-studio-offset-y");
+        if (originalTranslate) {
+          htmlEl.style.setProperty("translate", originalTranslate);
+        } else {
+          htmlEl.style.removeProperty("translate");
+        }
+        el.removeAttribute("data-hf-studio-path-offset");
+        el.removeAttribute("data-hf-studio-original-translate");
+        el.removeAttribute("data-hf-studio-original-inline-translate");
+        touched = true;
       }
-      el.removeAttribute("data-hf-studio-path-offset");
-      el.removeAttribute("data-hf-studio-original-translate");
-      el.removeAttribute("data-hf-studio-original-inline-translate");
-      stripped++;
+      // Manual rotation (--hf-studio-rotation / rotate) — likewise, a GSAP rotation
+      // set/tween now owns rotation, so clear the legacy CSS-var channel.
+      if (el.getAttribute("data-hf-studio-rotation")) {
+        const originalRotate = el.getAttribute("data-hf-studio-original-inline-rotate");
+        const originalOrigin = el.getAttribute("data-hf-studio-original-rotation-transform-origin");
+        htmlEl.style.removeProperty("--hf-studio-rotation");
+        if (originalRotate) {
+          htmlEl.style.setProperty("rotate", originalRotate);
+        } else {
+          htmlEl.style.removeProperty("rotate");
+        }
+        if (originalOrigin) {
+          htmlEl.style.setProperty("transform-origin", originalOrigin);
+        } else {
+          htmlEl.style.removeProperty("transform-origin");
+        }
+        el.removeAttribute("data-hf-studio-rotation");
+        el.removeAttribute("data-hf-studio-rotation-draft");
+        el.removeAttribute("data-hf-studio-original-rotate");
+        el.removeAttribute("data-hf-studio-original-inline-rotate");
+        el.removeAttribute("data-hf-studio-original-rotation-transform-origin");
+        touched = true;
+      }
+      if (touched) stripped++;
     }
   } catch {
     // Invalid selector — skip silently.
   }
   return stripped;
+}
+
+// A studio path-offset (--hf-studio-offset / data-hf-studio-path-offset) and a GSAP
+// position tween both drive translate — keeping both stacks the offsets (a gesture or
+// drag recorded over a stale offset plays shoved off-position). When a committed tween
+// writes a position property, the tween owns position, so the stale offset must go.
+function keyframesWritePosition(
+  keyframes: Array<{ properties: Record<string, number | string> }>,
+): boolean {
+  return keyframes.some((kf) =>
+    Object.keys(kf.properties).some((k) => classifyPropertyGroup(k) === "position"),
+  );
+}
+
+// A studio rotation edit (--hf-studio-rotation / data-hf-studio-rotation) and a GSAP
+// rotation tween both drive rotate — keeping both stacks them. When a committed keyframe
+// set writes a rotation property, the tween owns rotation, so the stale CSS-var channel
+// must go (the position twin of this is `keyframesWritePosition`).
+function keyframesWriteRotation(
+  keyframes: Array<{ properties: Record<string, number | string> }>,
+): boolean {
+  return keyframes.some((kf) =>
+    Object.keys(kf.properties).some((k) => classifyPropertyGroup(k) === "rotation"),
+  );
 }
 
 function lastKeyframeOpacity(kfs: GsapAnimation["keyframes"]): number | string | undefined {
@@ -384,7 +437,7 @@ type GsapMutationRequest =
   | {
       type: "update-meta";
       animationId: string;
-      updates: { duration?: number; ease?: string; position?: number };
+      updates: { duration?: number; ease?: string; easeEach?: string; position?: number };
     }
   | {
       type: "add";
@@ -468,6 +521,24 @@ type GsapMutationRequest =
       cp1?: { x: number; y: number };
       cp2?: { x: number; y: number };
     }
+  | {
+      type: "update-motion-path-point";
+      animationId: string;
+      pointIndex: number;
+      x: number;
+      y: number;
+    }
+  | { type: "add-motion-path-point"; animationId: string; index: number; x: number; y: number }
+  | { type: "remove-motion-path-point"; animationId: string; index: number }
+  | {
+      type: "add-motion-path";
+      targetSelector: string;
+      position: number;
+      duration: number;
+      x: number;
+      y: number;
+      ease?: string;
+    }
   | { type: "remove-arc-path"; animationId: string }
   | {
       type: "add-with-keyframes";
@@ -481,6 +552,7 @@ type GsapMutationRequest =
         auto?: boolean;
       }>;
       ease?: string;
+      easeEach?: string;
     }
   | {
       type: "replace-with-keyframes";
@@ -534,6 +606,41 @@ type GsapMutationRequest =
 // ── GSAP mutation executor ──────────────────────────────────────────────────
 
 type GsapMutationResult = string | { script: string; skippedSelectors: string[] };
+
+// Mutations that can change a position tween's first keyframe (value/existence/timing)
+// and therefore require the pre-keyframe hold-`set`s to be re-synced afterwards.
+// `syncPositionHoldsBeforeKeyframes` rebuilds all `hf-hold` sets from scratch: it acts
+// on every tween that has keyframes whose first percentage carries a position prop and
+// whose start is > 0. So any mutation that creates such a tween, retargets it, or moves
+// its start across the t=0 boundary must trigger a re-sync.
+const HOLD_SYNC_MUTATION_TYPES = new Set<string>([
+  "add-keyframe",
+  "update-keyframe",
+  "remove-keyframe",
+  "remove-all-keyframes",
+  "add-with-keyframes",
+  "replace-with-keyframes",
+  "convert-to-keyframes",
+  "materialize-keyframes",
+  "update-motion-path-point",
+  "add-motion-path-point",
+  "remove-motion-path-point",
+  // Authors a fresh motionPath tween whose parsed first keyframe is (0,0); if it lands
+  // at position > 0 the element snaps home at t=0 without a pre-tween hold-`set`.
+  "add-motion-path",
+  // Can move a tween's `position` (start) across the t=0 boundary, which flips whether a
+  // keyframed position tween needs a hold (started at 0 → moved later, or vice versa).
+  "update-meta",
+  // Time-shift / time-scale tweens, which can move a keyframed position tween's start
+  // across t=0, flipping hold need; stale holds are not repositioned by these ops.
+  "shift-positions",
+  "scale-positions",
+  // Retargets keyframed position tweens to a cloned element's selector; the old hold is
+  // keyed to the prior selector, so holds must be rebuilt for the new target.
+  "split-animations",
+  "delete",
+  "delete-all-for-selector",
+]);
 
 async function executeGsapMutation(
   body: GsapMutationRequest,
@@ -721,6 +828,7 @@ function executeGsapMutationAcorn(
         body.duration,
         body.keyframes,
         body.ease,
+        body.easeEach,
       );
       return result.script;
     }
@@ -824,6 +932,10 @@ async function executeGsapMutationRecast(
     unrollDynamicAnimations,
     setArcPathInScript,
     updateArcSegmentInScript,
+    updateMotionPathPointInScript,
+    addMotionPathPointInScript,
+    removeMotionPathPointInScript,
+    addMotionPathToScript,
     removeArcPathFromScript,
     addAnimationWithKeyframesToScript,
     splitAnimationsInScript,
@@ -876,6 +988,17 @@ async function executeGsapMutationRecast(
     case "add": {
       if (body.fromProperties && body.method !== "fromTo") {
         return respond({ error: "fromProperties is only valid for method=fromTo" }, 400);
+      }
+      // A new position/rotation animation owns that channel — strip the matching
+      // legacy studio CSS var (--hf-studio-offset / --hf-studio-rotation) so it can't
+      // double with the tween, matching add-with-keyframes/replace-with-keyframes.
+      if (
+        Object.keys(body.properties).some((k) => {
+          const group = classifyPropertyGroup(k);
+          return group === "position" || group === "rotation";
+        })
+      ) {
+        stripStudioEditsFromTarget(block.document, body.targetSelector);
       }
       const result = addAnimationToScript(block.scriptText, {
         targetSelector: body.targetSelector,
@@ -987,10 +1110,39 @@ async function executeGsapMutationRecast(
         ...(body.cp2 ? { cp2: body.cp2 } : {}),
       });
     }
+    case "update-motion-path-point": {
+      return updateMotionPathPointInScript(block.scriptText, body.animationId, body.pointIndex, {
+        x: body.x,
+        y: body.y,
+      });
+    }
+    case "add-motion-path-point": {
+      return addMotionPathPointInScript(block.scriptText, body.animationId, body.index, {
+        x: body.x,
+        y: body.y,
+      });
+    }
+    case "remove-motion-path-point": {
+      return removeMotionPathPointInScript(block.scriptText, body.animationId, body.index);
+    }
+    case "add-motion-path": {
+      const result = addMotionPathToScript(
+        block.scriptText,
+        body.targetSelector,
+        body.position,
+        body.duration,
+        { x: body.x, y: body.y },
+        body.ease,
+      );
+      return result.script;
+    }
     case "remove-arc-path": {
       return removeArcPathFromScript(block.scriptText, body.animationId);
     }
     case "add-with-keyframes": {
+      if (keyframesWritePosition(body.keyframes) || keyframesWriteRotation(body.keyframes)) {
+        stripStudioEditsFromTarget(block.document, body.targetSelector);
+      }
       const result = addAnimationWithKeyframesToScript(
         block.scriptText,
         body.targetSelector,
@@ -1002,6 +1154,9 @@ async function executeGsapMutationRecast(
       return result.script;
     }
     case "replace-with-keyframes": {
+      if (keyframesWritePosition(body.keyframes) || keyframesWriteRotation(body.keyframes)) {
+        stripStudioEditsFromTarget(block.document, body.targetSelector);
+      }
       const script = removeAnimationFromScript(block.scriptText, body.animationId);
       const added = addAnimationWithKeyframesToScript(
         script,
@@ -1277,11 +1432,18 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       target?: { id?: string; selector?: string; selectorIndex?: number };
       splitTime?: number;
       newId?: string;
+      elementStart?: number;
+      elementDuration?: number;
     }>(c);
     if ("error" in parsed) return parsed.error;
     if (typeof parsed.body.splitTime !== "number" || !parsed.body.newId) {
       return c.json({ error: "target, splitTime, and newId required" }, 400);
     }
+    const fallbackTiming =
+      typeof parsed.body.elementStart === "number" &&
+      typeof parsed.body.elementDuration === "number"
+        ? { start: parsed.body.elementStart, duration: parsed.body.elementDuration }
+        : undefined;
 
     let originalContent: string;
     try {
@@ -1294,6 +1456,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       parsed.target,
       parsed.body.splitTime,
       parsed.body.newId,
+      fallbackTiming,
     );
     if (!result.matched) {
       return c.json({ ok: false, changed: false, content: originalContent, path: ctx.filePath });
@@ -1537,7 +1700,15 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     const result = await executeGsapMutation(body, block, respond);
     if (result instanceof Response) return result;
 
-    const newScript = typeof result === "string" ? result : result.script;
+    let newScript = typeof result === "string" ? result : result.script;
+    // Keep the "hold before first keyframe" sets in sync after any mutation that can
+    // change a position tween's first keyframe or its existence. Without it, an
+    // element snaps to its CSS base before the tween starts instead of holding its
+    // first keyframe (the universal NLE behavior).
+    if (HOLD_SYNC_MUTATION_TYPES.has(body.type)) {
+      const parser = await loadGsapParser();
+      newScript = parser.syncPositionHoldsBeforeKeyframes(newScript);
+    }
     const changed = newScript !== block.scriptText;
     const newHtml = changed ? block.replaceScript(newScript) : html;
     let backupPath: string | null = null;

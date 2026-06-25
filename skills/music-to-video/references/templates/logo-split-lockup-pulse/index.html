@@ -1,0 +1,497 @@
+<!doctype html>
+<html
+  lang="en"
+  data-composition-variables='[
+    {"id":"bgColor",   "type":"color",  "label":"Background",                       "default":"#249b5f"},
+    {"id":"markColor", "type":"color",  "label":"Logo mark color",                  "default":"#e7e3dd"},
+    {"id":"textColor", "type":"color",  "label":"Word color",                       "default":"#e7e3dd"},
+    {"id":"leftMark",  "type":"string", "label":"Left mark SVG (empty = spark)",     "default":""},
+    {"id":"rightMark", "type":"string", "label":"Right mark SVG (empty = cloud)",    "default":""},
+    {"id":"word1",     "type":"string", "label":"Word 1 (opens the gap)",           "default":"lille"},
+    {"id":"word2",     "type":"string", "label":"Word 2 (lands on the surge)",       "default":"2020"},
+    {"id":"word3",     "type":"string", "label":"Word 3 (optional)",                 "default":""},
+    {"id":"word4",     "type":"string", "label":"Word 4 (optional)",                 "default":""}
+  ]'
+>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Logo Split / Lockup Pulse — group_7 reference impl</title>
+    <script src="../../motion-primitives/assets/gsap.min.js"></script>
+    <!-- Velocity-driven directional motion blur (registry: motion-blur). Samples each
+         target's GSAP x/y per seek and applies a one-sided ghost trail + top blur
+         proportional to speed; clears at rest. This is what makes the fast mark moves
+         (split / snap) read SILKY instead of stiff. Self-contained (SVG filters). -->
+    <script>
+      (function () {
+        if (!window._hfMbUid) window._hfMbUid = 0;
+        window.attachMotionBlur = function (selector, tl, opts) {
+          opts = opts || {};
+          var blurScale = opts.blurScale !== undefined ? opts.blurScale : 0.008;
+          var blurMax = opts.blurMax !== undefined ? opts.blurMax : 20;
+          var stretchScale = opts.stretchScale !== undefined ? opts.stretchScale : 0.0002;
+          var stretchMax = opts.stretchMax !== undefined ? opts.stretchMax : 0;
+          var axis = opts.axis || "both";
+          var items = Array.isArray(selector) ? selector : [selector];
+          var targets = items.reduce(function (acc, s) {
+            if (typeof s === "string") {
+              document.querySelectorAll(s).forEach(function (el) {
+                acc.push(el);
+              });
+            } else if (s instanceof Element) {
+              acc.push(s);
+            }
+            return acc;
+          }, []);
+          var ns = "http://www.w3.org/2000/svg";
+          var GHOST_CFG = [
+            { frac: 0.25, slope: 0.55 },
+            { frac: 0.55, slope: 0.28 },
+            { frac: 1.0, slope: 0.1 },
+          ];
+          var state = targets.map(function (el) {
+            var uid = "hf-mb-" + window._hfMbUid++;
+            var svg = document.createElementNS(ns, "svg");
+            svg.setAttribute("style", "position:absolute;width:0;height:0;overflow:hidden;");
+            var filter = document.createElementNS(ns, "filter");
+            filter.id = uid;
+            filter.setAttribute("x", "-110%");
+            filter.setAttribute("y", "-25%");
+            filter.setAttribute("width", "260%");
+            filter.setAttribute("height", "150%");
+            var ghosts = GHOST_CFG.map(function (cfg, gi) {
+              var feOff = document.createElementNS(ns, "feOffset");
+              feOff.setAttribute("in", "SourceGraphic");
+              feOff.setAttribute("dx", "0");
+              feOff.setAttribute("dy", "0");
+              feOff.setAttribute("result", "go" + gi);
+              var feGB = document.createElementNS(ns, "feGaussianBlur");
+              feGB.setAttribute("in", "go" + gi);
+              feGB.setAttribute("stdDeviation", "0 0");
+              feGB.setAttribute("result", "gb" + gi);
+              var feCT = document.createElementNS(ns, "feComponentTransfer");
+              feCT.setAttribute("in", "gb" + gi);
+              feCT.setAttribute("result", "gf" + gi);
+              var feFuncA = document.createElementNS(ns, "feFuncA");
+              feFuncA.setAttribute("type", "linear");
+              feFuncA.setAttribute("slope", String(cfg.slope));
+              feCT.appendChild(feFuncA);
+              filter.appendChild(feOff);
+              filter.appendChild(feGB);
+              filter.appendChild(feCT);
+              return { feOff: feOff, feGB: feGB, frac: cfg.frac };
+            });
+            var feTopBlur = document.createElementNS(ns, "feGaussianBlur");
+            feTopBlur.setAttribute("in", "SourceGraphic");
+            feTopBlur.setAttribute("stdDeviation", "0 0");
+            feTopBlur.setAttribute("result", "top");
+            filter.appendChild(feTopBlur);
+            var feMerge = document.createElementNS(ns, "feMerge");
+            for (var mi = GHOST_CFG.length - 1; mi >= 0; mi--) {
+              var mn = document.createElementNS(ns, "feMergeNode");
+              mn.setAttribute("in", "gf" + mi);
+              feMerge.appendChild(mn);
+            }
+            var mnTop = document.createElementNS(ns, "feMergeNode");
+            mnTop.setAttribute("in", "top");
+            feMerge.appendChild(mnTop);
+            filter.appendChild(feMerge);
+            svg.appendChild(filter);
+            document.body.appendChild(svg);
+            return {
+              el: el,
+              ghosts: ghosts,
+              feTopBlur: feTopBlur,
+              filterId: uid,
+              prevX: parseFloat(gsap.getProperty(el, "x")) || 0,
+              prevY: parseFloat(gsap.getProperty(el, "y")) || 0,
+              prevTime: tl.time(),
+            };
+          });
+          var _proxy = { t: 0 };
+          tl.to(
+            _proxy,
+            {
+              t: 1,
+              duration: Math.max(tl.duration(), 0.1),
+              ease: "none",
+              onUpdate: function () {
+                var time = tl.time();
+                state.forEach(function (s) {
+                  var x = parseFloat(gsap.getProperty(s.el, "x")) || 0;
+                  var y = parseFloat(gsap.getProperty(s.el, "y")) || 0;
+                  var dt = time - s.prevTime;
+                  if (dt > 0.0005) {
+                    var vx = axis !== "y" ? (x - s.prevX) / dt : 0;
+                    var vy = axis !== "x" ? (y - s.prevY) / dt : 0;
+                    var bx = Math.min(Math.abs(vx) * blurScale, blurMax);
+                    var by = Math.min(Math.abs(vy) * blurScale, blurMax);
+                    var bxFinal = axis !== "y" ? bx : Math.max(by * 0.08, 0.4);
+                    var byFinal = axis !== "x" ? by : Math.max(bx * 0.08, 0.4);
+                    var active = bx > 0.3 || by > 0.3;
+                    if (active) {
+                      s.el.style.filter = "url(#" + s.filterId + ")";
+                      s.ghosts.forEach(function (g) {
+                        var dx =
+                          axis !== "y" ? (vx >= 0 ? -bxFinal * g.frac : bxFinal * g.frac) : 0;
+                        var dy =
+                          axis !== "x" ? (vy >= 0 ? -byFinal * g.frac : byFinal * g.frac) : 0;
+                        g.feOff.setAttribute("dx", dx.toFixed(2));
+                        g.feOff.setAttribute("dy", dy.toFixed(2));
+                        var gbx =
+                          axis !== "y"
+                            ? (bxFinal * g.frac * 0.5).toFixed(2)
+                            : Math.max(byFinal * g.frac * 0.04, 0.4).toFixed(2);
+                        var gby =
+                          axis !== "x"
+                            ? (byFinal * g.frac * 0.5).toFixed(2)
+                            : Math.max(bxFinal * g.frac * 0.04, 0.4).toFixed(2);
+                        g.feGB.setAttribute("stdDeviation", gbx + " " + gby);
+                      });
+                      s.feTopBlur.setAttribute(
+                        "stdDeviation",
+                        (bxFinal * 0.15).toFixed(2) + " " + (byFinal * 0.15).toFixed(2),
+                      );
+                    } else {
+                      s.el.style.filter = "";
+                      s.ghosts.forEach(function (g) {
+                        g.feOff.setAttribute("dx", "0");
+                        g.feOff.setAttribute("dy", "0");
+                        g.feGB.setAttribute("stdDeviation", "0 0");
+                      });
+                      s.feTopBlur.setAttribute("stdDeviation", "0 0");
+                    }
+                    s.prevX = x;
+                    s.prevY = y;
+                    s.prevTime = time;
+                  } else if (dt < -0.0005) {
+                    s.el.style.filter = "";
+                    s.ghosts.forEach(function (g) {
+                      g.feOff.setAttribute("dx", "0");
+                      g.feOff.setAttribute("dy", "0");
+                      g.feGB.setAttribute("stdDeviation", "0 0");
+                    });
+                    s.feTopBlur.setAttribute("stdDeviation", "0 0");
+                    s.prevX = x;
+                    s.prevY = y;
+                    s.prevTime = time;
+                  }
+                });
+              },
+            },
+            0,
+          );
+        };
+      })();
+    </script>
+    <style>
+      @font-face {
+        font-family: "Lockup";
+        src: url("./assets/fredoka-700.woff2") format("woff2");
+        font-weight: 700;
+        font-style: normal;
+        font-display: block;
+      }
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        background: var(--bg, #249b5f);
+        overflow: hidden;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--bg, #249b5f);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      /* a 0-size anchor at screen center; marks + words are positioned absolutely
+         around it, and the whole group scales/translates for the pulse. */
+      #lockup {
+        position: relative;
+        width: 0;
+        height: 0;
+      }
+      .words {
+        position: absolute;
+        left: 0;
+        top: 0;
+        transform: translate(-50%, -50%);
+        display: flex;
+        align-items: center;
+        gap: 34px;
+        white-space: nowrap;
+        color: var(--text, #e7e3dd);
+        font-family: "Lockup", system-ui, sans-serif;
+        font-size: 200px;
+        font-weight: 700;
+        letter-spacing: -0.045em;
+        line-height: 0.8;
+      }
+      .word {
+        display: none; /* revealed one per onset on the timeline */
+      }
+      .mark {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 300px;
+        height: 340px;
+        color: var(--mark, #e7e3dd);
+      }
+      .mark svg {
+        width: 100%;
+        height: 100%;
+        display: block;
+        overflow: visible;
+      }
+      /* edge/vertical centering is set in JS via GSAP xPercent/yPercent so it
+         composes with the animated x (a CSS % transform would be clobbered). */
+    </style>
+  </head>
+  <body>
+    <!-- duration = 2.875s = the green logo lifecycle (seed -> split -> lockup ->
+         snap -> pulse); the source then HARD-CUTS to the next group at f70 (2.917s). -->
+    <div
+      data-hf-id="hf-g7rt"
+      id="root"
+      data-composition-id="group-seven-logo"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="2.875"
+      data-root="true"
+    >
+      <div data-hf-id="hf-g7lk" id="lockup">
+        <div data-hf-id="hf-g7ml" class="mark left" id="markLeft"></div>
+        <div data-hf-id="hf-g7wd" class="words" id="words"></div>
+        <div data-hf-id="hf-g7mr" class="mark right" id="markRight"></div>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        // ════════════════════════════════════════════════════════════════
+        //  LOGO SPLIT / LOCKUP PULSE  ·  structural_type: per_onset_sequential
+        //  A two-part mark sits joined at center, SPLITS left<->right to open a
+        //  gap, GROWS a center word-lockup one word per onset (key word on the
+        //  surge), SNAP-CLOSES on a hit, then PULSES with the roll/hihat bed.
+        //  Reversed from group_7 (Lille — World Design Capital 2020 sting).
+        // ════════════════════════════════════════════════════════════════
+
+        // ── 1. Content variables (what a user changes) ─────────────────────
+        var defaults = {
+          bgColor: "#249b5f",
+          markColor: "#e7e3dd",
+          textColor: "#e7e3dd",
+          leftMark: "",
+          rightMark: "",
+          word1: "lille",
+          word2: "2020",
+          word3: "",
+          word4: "",
+        };
+        var vars = Object.assign(
+          {},
+          defaults,
+          window.__hyperframes && window.__hyperframes.getVariables
+            ? window.__hyperframes.getVariables()
+            : {},
+        );
+
+        // ── 2. DEFAULT LOGO HALVES (line-art; swap via leftMark / rightMark) ─
+        // Either two related SVGs (a left + a right graphic) OR the two halves of
+        // one logo. currentColor inherits --mark. Thick rounded line-art so they
+        // read as a bold pair bracketing the words (matched to the Lille mark:
+        // a left radial SPARK with a hollow hub, a right CLOUD/SWIRL).
+        var DEFAULT_LEFT = [
+          // radial SPARK: 5 rounded strokes, a tight fan up-and-left from a hollow
+          // hub near the text (NOT converging to a needle — reads as a spark/shine).
+          // hub at the INNER (right) edge so the spark hugs the text; 5 long strokes
+          // fanning ~140 up-and-left — a big radial spark that helps wrap the lockup.
+          '<svg viewBox="0 0 150 150" fill="none" stroke="currentColor"',
+          ' stroke-width="16" stroke-linecap="round">',
+          '<line x1="134" y1="66" x2="112" y2="6"/>',
+          '<line x1="130" y1="72" x2="66"  y2="16"/>',
+          '<line x1="126" y1="80" x2="24"  y2="42"/>',
+          '<line x1="124" y1="88" x2="10"  y2="84"/>',
+          '<line x1="126" y1="96" x2="36"  y2="136"/>',
+          "</svg>",
+        ].join("");
+        var DEFAULT_RIGHT = [
+          // CLOUD / backwards-3 SWIRL: two bold stacked lobes bulging right with a
+          // left-pointing middle notch, opening to the left (the Lille cloud).
+          // bold backwards-3 swirl: opening tips at the INNER (left) edge so it hugs the
+          // text, bulging right (mass OUTER). Fills the box height to help wrap the lockup.
+          '<svg viewBox="0 0 150 150" fill="none" stroke="currentColor"',
+          ' stroke-width="16" stroke-linecap="round" stroke-linejoin="round">',
+          '<path d="M14 40',
+          " C50 6 128 14 122 58",
+          " C120 86 80 92 54 78",
+          " C86 86 128 96 122 128",
+          ' C116 154 40 158 14 120"/>',
+          "</svg>",
+        ].join("");
+
+        // ── 3. BEAT MAP (filled from <group>.audiomap.json — see README) ────
+        // group_7.audiomap.json: BPM 92.3. ABSOLUTE audio seconds.
+        // The marks move on only these DISCRETE anchors — NOT on the sustained hi-hat
+        // fill (f17-f86), which is rhythmic texture, not a motion driver. Left + right
+        // always move together (mirrored). After the snap the weld HOLDS dead still.
+        var ENTRY = 0.083; // f2  — joined bracket pair appears at center (perc onset)
+        var SPLIT = 0.25; // f6  — brackets fly apart to full width (perc onset)
+        var WORD_ONSETS = [0.25, 1.0]; // one per word; 1.0 = SURGE@1s (f24) carries the key word
+        var CLOSE = 2.083; // f50 — snap shut: words vanish + brackets weld back together
+        var DUR = 2.875; // f69 — hold, then the source hard-cuts to the next group (f70)
+
+        var MARK_PAD = 14; // gap between a mark's inner edge and the nearest word
+        var WORD_GAP = 34; // must match .words { gap }
+
+        // ── 4. Build content ───────────────────────────────────────────────
+        document.documentElement.style.setProperty("--bg", vars.bgColor);
+        document.documentElement.style.setProperty("--mark", vars.markColor);
+        document.documentElement.style.setProperty("--text", vars.textColor);
+
+        var markLeft = document.getElementById("markLeft");
+        var markRight = document.getElementById("markRight");
+        markLeft.innerHTML = (vars.leftMark && vars.leftMark.trim()) || DEFAULT_LEFT;
+        markRight.innerHTML = (vars.rightMark && vars.rightMark.trim()) || DEFAULT_RIGHT;
+
+        var wordsEl = document.getElementById("words");
+        var wordList = [vars.word1, vars.word2, vars.word3, vars.word4].filter(function (w) {
+          return w && String(w).trim() !== "";
+        });
+        var wordEls = wordList.map(function (w) {
+          var s = document.createElement("span");
+          s.className = "word";
+          s.textContent = w;
+          wordsEl.appendChild(s);
+          return s;
+        });
+
+        // ── 5. Build the timeline once the lockup font is ready ─────────────
+        // The word widths drive how far the marks open, so they MUST be measured
+        // in the real (rounded) face, not a fallback. Gate the whole build on
+        // document.fonts so the measurement is correct; the render engine also
+        // waits for fonts before capturing.
+        function build() {
+          // measure each word in the loaded face, then hide them all so a hidden
+          // word occupies NO layout width (the lockup truly grows as words enter).
+          var widths = wordEls.map(function (el) {
+            el.style.display = "inline-block";
+            var w = el.offsetWidth;
+            el.style.display = "none";
+            return w;
+          });
+          function markOffsetFor(k) {
+            if (k <= 0) return 0;
+            var blockW = 0;
+            for (var i = 0; i < k; i++) blockW += widths[i];
+            blockW += WORD_GAP * (k - 1);
+            return blockW / 2 + MARK_PAD;
+          }
+
+          var OFF_FULL = markOffsetFor(wordEls.length); // open width (brackets the full lockup)
+          var OVL = 14; // joined position: welded brackets sit close (small center gap)
+
+          window.__timelines = window.__timelines || {};
+          var tl = gsap.timeline({ paused: true });
+
+          // start state: the two brackets JOINED at center (full-outside / empty-middle),
+          // invisible; words hidden. xPercent/yPercent center each mark on the anchor and
+          // COMPOSE with the animated x (a CSS % transform would be clobbered by GSAP x).
+          gsap.set(markLeft, { autoAlpha: 0, xPercent: -100, yPercent: -50, x: OVL, scale: 0.72 });
+          gsap.set(markRight, { autoAlpha: 0, xPercent: 0, yPercent: -50, x: -OVL, scale: 0.72 });
+          gsap.set("#lockup", { scale: 1, transformOrigin: "50% 50%" });
+
+          // ── MOTION = the few DISCRETE anchors only (the hi-hat bed is texture, not
+          //    a motion driver). Left + right always move TOGETHER (mirrored). ──
+
+          // f2  ENTRY — the joined bracket pair BLOOMS in at center (smooth scale-in,
+          //     not a 1-frame pop — the soft grow is what makes the start feel silky).
+          tl.to(
+            [markLeft, markRight],
+            { autoAlpha: 1, scale: 1, duration: 0.16, ease: "power2.out" },
+            ENTRY,
+          );
+
+          // f6  SPLIT — both brackets GLIDE apart together to the FULL lockup width in ONE
+          //     move: a fast launch + long settle (expo.out), and the velocity motion blur
+          //     (attached below) smooths the travel so it reads silky, not stiff. Then HOLD
+          //     — words fill the reserved center space; the marks don't track each word.
+          tl.to(markLeft, { x: -OFF_FULL, duration: 0.3, ease: "expo.out" }, SPLIT);
+          tl.to(markRight, { x: OFF_FULL, duration: 0.3, ease: "expo.out" }, SPLIT);
+
+          // word reveals — each word eases in with a soft stretch on its onset (the key
+          // word on the SURGE). Smooth deceleration (power3.out), NO poppy overshoot.
+          wordEls.forEach(function (el, i) {
+            var t =
+              i < WORD_ONSETS.length
+                ? WORD_ONSETS[i]
+                : WORD_ONSETS[WORD_ONSETS.length - 1] + 0.3 * (i - WORD_ONSETS.length + 1);
+            tl.set(el, { display: "inline-block" }, t);
+            tl.fromTo(
+              el,
+              { autoAlpha: 0, scaleX: 0.58, scaleY: 1.09, transformOrigin: "50% 50%" },
+              { autoAlpha: 1, scaleX: 1, scaleY: 1, duration: 0.24, ease: "power3.out" },
+              t,
+            );
+          });
+
+          // f50 SNAP-CLOSE — 1 frame: words vanish + both brackets teleport back together
+          //     (the teleport reads as an impact streak through the motion blur).
+          tl.set(wordEls, { autoAlpha: 0, display: "none" }, CLOSE);
+          tl.set(markLeft, { x: OVL }, CLOSE);
+          tl.set(markRight, { x: -OVL }, CLOSE);
+          tl.fromTo(
+            "#lockup",
+            { scale: 0.9 },
+            { scale: 1, duration: 0.22, ease: "power2.out" },
+            CLOSE,
+          );
+
+          // SEE-SAW BOUNCE — the welded unit does a damped vertical spring + a building
+          // rigid tilt (rotation: +deg = left-spark UP / right-cloud DOWN), beat-synced to
+          // the hi-hat hits after the snap: f51 slam-down (lowest), f55 up-rebound (highest),
+          // f58 smaller dip, f63 final flick — amplitude decays, ending tilted to the f70 cut.
+          var B1 = 2.125,
+            B2 = 2.292,
+            B3 = 2.417,
+            B4 = 2.625; // f51 f55 f58 f63
+          tl.set("#lockup", { y: 0, rotation: 0 }, CLOSE);
+          tl.to("#lockup", { y: 34, rotation: -3, duration: B1 - CLOSE, ease: "power2.in" }, CLOSE);
+          tl.to("#lockup", { y: -64, rotation: 10, duration: B2 - B1, ease: "power3.out" }, B1);
+          tl.to("#lockup", { y: -38, rotation: 6, duration: B3 - B2, ease: "power2.inOut" }, B2);
+          tl.to("#lockup", { y: -60, rotation: 10.5, duration: B4 - B3, ease: "power2.inOut" }, B3);
+          tl.to("#lockup", { y: -56, rotation: 10.5, duration: DUR - B4, ease: "sine.out" }, B4);
+
+          // pin duration, then attach velocity motion blur: the brackets (x: split + snap)
+          // and the welded group (y: the ending bounce). MUST be after all tweens.
+          tl.set(document.body, {}, DUR);
+          attachMotionBlur([markLeft, markRight], tl, { axis: "x", blurMax: 26, blurScale: 0.011 });
+          attachMotionBlur("#lockup", tl, { axis: "y", blurMax: 20, blurScale: 0.012 });
+
+          tl.seek(0);
+          window.__timelines["group-seven-logo"] = tl;
+        }
+
+        if (document.fonts && document.fonts.ready) {
+          document.fonts.load('700 200px "Lockup"').then(function () {
+            document.fonts.ready.then(build);
+          });
+        } else {
+          build();
+        }
+      })();
+    </script>
+  </body>
+</html>

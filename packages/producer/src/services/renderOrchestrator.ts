@@ -79,12 +79,7 @@ import {
   VIRTUAL_TIME_SHIM,
 } from "./fileServer.js";
 import { defaultLogger, type ProducerLogger } from "../logger.js";
-import {
-  createCompiledFrameSrcResolver,
-  createMemorySampler,
-  type MemorySampler,
-  updateJobStatus,
-} from "./render/shared.js";
+import { createMemorySampler, type MemorySampler, updateJobStatus } from "./render/shared.js";
 import { buildRenderErrorDetails, cleanupRenderResources, safeCleanup } from "./render/cleanup.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { formatCaptureFrameName } from "../utils/paths.js";
@@ -298,6 +293,14 @@ export interface RenderPerfSummary {
   videoExtractBreakdown?: ExtractionPhaseBreakdown;
   /** Bytes on disk in the render's workDir at assembly time (sampled before cleanup). Lets callers correlate peak temp usage with render duration. */
   tmpPeakBytes?: number;
+  /**
+   * Average wall-clock capture time per output frame.
+   *
+   * Uses `stages.captureFrameMs` when present so fixed Stage 4 setup costs
+   * (file server creation, calibration, readiness/session init, strategy
+   * resolution) do not get amortized into a per-frame metric. Older summaries
+   * without the split fall back to `stages.captureMs`.
+   */
   captureAvgMs?: number;
   capturePeakMs?: number;
   captureCalibration?: {
@@ -764,6 +767,20 @@ export function shouldUseStreamingEncode(
   return workerCount === 1;
 }
 
+export function resolveCaptureForceScreenshotForPageSideCompositing(args: {
+  forceScreenshot: boolean;
+  usePageSideCompositing: boolean;
+}): boolean {
+  return args.usePageSideCompositing ? true : args.forceScreenshot;
+}
+
+export function shouldDiscardProbeSessionForPageSideCompositing(args: {
+  hasProbeSession: boolean;
+  usePageSideCompositing: boolean;
+}): boolean {
+  return args.hasProbeSession && args.usePageSideCompositing;
+}
+
 /**
  * Main render pipeline
  */
@@ -897,6 +914,14 @@ export async function executeRenderJob(
     assertNotAborted();
     assertConfiguredFfmpegBinariesExist();
 
+    if (!existsSync(workDir)) mkdirSync(workDir, { recursive: true });
+
+    if (job.config.debug) {
+      const logPath = join(workDir, "render.log");
+      restoreLogger = installDebugLogger(logPath, log);
+      log.info("[Render] Debug artifacts enabled", { workDir, logPath });
+    }
+
     log.info("[Render] Pipeline started", {
       platform: process.platform,
       arch: process.arch,
@@ -921,13 +946,6 @@ export async function executeRenderJob(
       playerReadyTimeoutMs: cfg.playerReadyTimeout,
       requestedWorkers: job.config.workers ?? "auto",
     });
-
-    if (!existsSync(workDir)) mkdirSync(workDir, { recursive: true });
-
-    if (job.config.debug) {
-      const logPath = join(workDir, "render.log");
-      restoreLogger = installDebugLogger(logPath, log);
-    }
 
     const entryFile = job.config.entryFile || "index.html";
     let htmlPath = join(projectDir, entryFile);
@@ -1056,6 +1074,10 @@ export async function executeRenderJob(
     fileServer = probeResult.fileServer;
     probeSession = probeResult.probeSession;
     lastBrowserConsole = probeResult.lastBrowserConsole;
+    let resolvedCaptureBeyondViewport = probeSession?.options.captureBeyondViewport;
+    if (resolvedCaptureBeyondViewport !== undefined) {
+      updateCaptureObservability({ captureBeyondViewport: resolvedCaptureBeyondViewport });
+    }
     // The probe stage produces `duration` / `totalFrames` values; the
     // sequencer owns the `RenderJob` and writes them onto it.
     job.duration = probeResult.duration;
@@ -1195,7 +1217,13 @@ export async function executeRenderJob(
       quality: needsAlpha ? undefined : job.config.quality === "draft" ? 80 : 95,
       variables: job.config.variables,
       deviceScaleFactor,
+      ...(composition.videos.length > 0 ? { captureBeyondViewport: true } : {}),
     };
+    resolvedCaptureBeyondViewport =
+      captureOptions.captureBeyondViewport ?? resolvedCaptureBeyondViewport;
+    if (resolvedCaptureBeyondViewport !== undefined) {
+      updateCaptureObservability({ captureBeyondViewport: resolvedCaptureBeyondViewport });
+    }
 
     // Capture sessions do not need native browser metadata for videos whose
     // pixels come from out-of-band FFmpeg frame extraction. Waiting on those
@@ -1210,12 +1238,40 @@ export async function executeRenderJob(
       videoMetadataHints,
       skipReadinessVideoIds: videoReadinessSkipIds,
     });
-    const frameSrcResolver = createCompiledFrameSrcResolver(compiledDir);
+    // The URL-served frame path (PR #596) hands each injected `<img>` a
+    // fileServer URL instead of a base64 data URI, on the theory that
+    // shipping a short URL through `page.evaluate` beats shipping a
+    // multi-MB base64 string per frame. That holds when the fileServer
+    // is otherwise idle — but on video-heavy compositions, the same
+    // fileServer also serves every `<video>.src`. The runtime's
+    // drift-recovery branch (`runtime/media.ts:294-302`) issues
+    // `el.load()` on the underlying `<video>` during seeks, kicking off
+    // full-file downloads that occupy the fileServer's single Node
+    // event loop (it uses `readFileSync` and offers no `Accept-Ranges`).
+    // The injector's `<img>.decode()` then queues behind those video
+    // fetches and is never serviced before puppeteer's protocol timeout
+    // fires (`Runtime.callFunctionOn timed out`).
+    //
+    // Repro: synth 30 × 32 MB videos / 90 s comp on an 8-core / 30 GB
+    // host = 537 s wall (broken corpus) / 428 s (corpus-fixed), every
+    // render fails. Disabling the resolver (force base64-inline) gives
+    // 1:59 (119 s) wall and a clean MP4 on the same comp, with no
+    // regression on the 30 × 1.6 MB control corpus (137 s vs 135 s
+    // baseline).
+    //
+    // Until this is properly gated (e.g. only enable URL-served when the
+    // page has zero fileServer-bound `<video>.src` traffic), the inline
+    // path is the safe default. The cache memory ceiling
+    // (`frameDataUriCacheBytesLimitMb`, default 1500 MB above 8 GB
+    // hosts) already bounds the cost. `createCompiledFrameSrcResolver`
+    // and the `frameSrcResolver` option remain in their respective
+    // modules (`packages/producer/src/services/render/shared.ts`,
+    // `packages/engine/src/services/videoFrameInjector.ts`); the gating
+    // PR will re-import the builder here.
     const createRenderVideoFrameInjector = (): BeforeCaptureHook | null =>
       createVideoFrameInjector(frameLookup, {
         frameDataUriCacheLimit: cfg.frameDataUriCacheLimit,
         frameDataUriCacheBytesLimitMb: cfg.frameDataUriCacheBytesLimitMb,
-        frameSrcResolver,
       });
 
     let captureCalibration:
@@ -1350,9 +1406,28 @@ export async function executeRenderJob(
       !needsAlpha;
     if (usePageSideCompositingForTransitions) {
       activeFileServer.addPreHeadScript(HF_PAGE_SIDE_COMPOSITING_STUB);
+      if (
+        shouldDiscardProbeSessionForPageSideCompositing({
+          hasProbeSession: probeSession !== null,
+          usePageSideCompositing: true,
+        }) &&
+        probeSession
+      ) {
+        lastBrowserConsole = probeSession.browserConsoleBuffer;
+        await closeCaptureSession(probeSession);
+        probeSession = null;
+        log.info(
+          "[Render] Recreating capture session so page-side compositing pre-head script is loaded.",
+        );
+      }
+      captureForceScreenshot = resolveCaptureForceScreenshotForPageSideCompositing({
+        forceScreenshot: captureForceScreenshot,
+        usePageSideCompositing: true,
+      });
+      updateCaptureObservability({ forceScreenshot: captureForceScreenshot });
       log.info(
         "[Render] Page-side compositing enabled — bypassing Node-side layered " +
-          "shader-blend path. Engine will capture one opaque RGB frame per output frame.",
+          "shader-blend path. Engine will capture one opaque RGB screenshot per output frame.",
       );
     }
     const useLayeredComposite =
@@ -1373,6 +1448,7 @@ export async function executeRenderJob(
     observability.checkpoint("capture_strategy", "resolved", {
       workerCount,
       forceScreenshot: captureForceScreenshot,
+      captureBeyondViewport: resolvedCaptureBeyondViewport ?? null,
       useStreamingEncode,
       useLayeredComposite,
       usePageSideCompositing: usePageSideCompositingForTransitions,
@@ -1465,6 +1541,8 @@ export async function executeRenderJob(
       lastBrowserConsole = hdrRes.lastBrowserConsole;
       hdrPerf = hdrRes.hdrPerf;
       perfStages.captureMs = hdrRes.captureDurationMs;
+      perfStages.captureFrameMs = hdrRes.captureDurationMs;
+      perfStages.captureSetupMs = Math.max(0, Date.now() - stage4Start - hdrRes.captureDurationMs);
       perfStages.encodeMs = hdrRes.encodeMs;
     } else {
       // ── Standard capture paths (SDR or DOM-only HDR) ──────────────────
@@ -1474,6 +1552,7 @@ export async function executeRenderJob(
       // and we fall back to the disk path below.
       let streamingHandled = false;
       if (useStreamingEncode) {
+        const captureFrameStart = Date.now();
         const streamingRes = await observeRenderStage(
           observability,
           "capture_streaming",
@@ -1501,6 +1580,7 @@ export async function executeRenderJob(
                 quality: effectiveQuality,
                 bitrate: effectiveBitrate,
                 pixelFormat: preset.pixelFormat,
+                vp9CpuUsed: cfg.vp9CpuUsed,
                 useGpu: job.config.useGpu,
                 imageFormat: captureOptions.format || "jpeg",
                 hdr: preset.hdr,
@@ -1513,13 +1593,21 @@ export async function executeRenderJob(
               dedupPerfs,
             }),
         );
+        const captureFrameMs = Date.now() - captureFrameStart;
         if (streamingRes.success) {
           streamingHandled = true;
           workerCount = streamingRes.workerCount;
           updateCaptureObservability({ workerCount });
+          if (streamingRes.captureBeyondViewport !== undefined) {
+            updateCaptureObservability({
+              captureBeyondViewport: streamingRes.captureBeyondViewport,
+            });
+          }
           probeSession = streamingRes.probeSession;
           lastBrowserConsole = streamingRes.lastBrowserConsole;
           perfStages.captureMs = Date.now() - stage4Start;
+          perfStages.captureFrameMs = captureFrameMs;
+          perfStages.captureSetupMs = Math.max(0, perfStages.captureMs - captureFrameMs);
           perfStages.encodeMs = streamingRes.encodeMs; // Overlapped with capture
         } else {
           useStreamingEncode = false;
@@ -1530,6 +1618,7 @@ export async function executeRenderJob(
 
       if (!streamingHandled) {
         // ── Disk-based capture (original flow) ────────────────────────────
+        const captureFrameStart = Date.now();
         const captureRes = await observeRenderStage(
           observability,
           "capture_disk",
@@ -1556,12 +1645,20 @@ export async function executeRenderJob(
               onProgress,
             }),
         );
+        const captureFrameMs = Date.now() - captureFrameStart;
         workerCount = captureRes.workerCount;
         updateCaptureObservability({ workerCount });
+        if (captureRes.captureBeyondViewport !== undefined) {
+          updateCaptureObservability({
+            captureBeyondViewport: captureRes.captureBeyondViewport,
+          });
+        }
         probeSession = captureRes.probeSession;
         lastBrowserConsole = captureRes.lastBrowserConsole;
 
         perfStages.captureMs = Date.now() - stage4Start;
+        perfStages.captureFrameMs = captureFrameMs;
+        perfStages.captureSetupMs = Math.max(0, perfStages.captureMs - captureFrameMs);
 
         const encodeRes = await observeRenderStage(
           observability,
@@ -1698,7 +1795,7 @@ export async function executeRenderJob(
       await safeCleanup(
         "remove workDir",
         () => {
-          rmSync(workDir, { recursive: true, force: true });
+          rmSync(workDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
         },
         log,
       );

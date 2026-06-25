@@ -199,8 +199,7 @@ export function useTimelinePlayer() {
       }
 
       return bestAdapter;
-    } catch (err) {
-      console.warn("[useTimelinePlayer] Could not get playback adapter (cross-origin)", err);
+    } catch {
       return null;
     }
   }, []);
@@ -264,9 +263,7 @@ export function useTimelinePlayer() {
           }
         }
       }
-    } catch (err) {
-      console.warn("[useTimelinePlayer] Could not set playback rate (cross-origin)", err);
-    }
+    } catch {}
   }, []);
   const applyPreviewAudioState = useCallback((playbackRateOverride?: number) => {
     const { audioMuted, playbackRate } = usePlayerStore.getState();
@@ -506,9 +503,7 @@ export function useTimelinePlayer() {
           if (msSinceTimeline > 500) {
             enrichMissingCompositionsRef.current();
           }
-        } catch (err) {
-          console.warn("[useTimelinePlayer] Could not read clip manifest from iframe", err);
-        }
+        } catch {}
       }
       if (data?.source === "hf-preview" && data?.type === "timeline" && Array.isArray(data.clips)) {
         lastTimelineMessageRef.current = Date.now();
@@ -524,12 +519,7 @@ export function useTimelinePlayer() {
                 syncTimelineElements(els);
               }
             }
-          } catch (err) {
-            console.warn(
-              "[useTimelinePlayer] Could not read timeline elements on navigate (cross-origin)",
-              err,
-            );
-          }
+          } catch {}
         }
       }
     };

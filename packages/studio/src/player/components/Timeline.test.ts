@@ -1,5 +1,11 @@
+// @vitest-environment happy-dom
+
+import React, { act } from "react";
+import { createRoot } from "react-dom/client";
+import { afterEach } from "vitest";
 import { describe, it, expect } from "vitest";
 import {
+  Timeline,
   formatTimelineTickLabel,
   generateTicks,
   getDefaultDroppedTrack,
@@ -14,6 +20,41 @@ import {
 } from "./Timeline";
 import { RULER_H, TRACK_H } from "./timelineLayout";
 import { formatTime } from "../lib/time";
+import { usePlayerStore } from "../store/playerStore";
+
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+afterEach(() => {
+  document.body.innerHTML = "";
+  usePlayerStore.getState().reset();
+});
+
+describe("Timeline provider boundary", () => {
+  it("renders the public Timeline export without TimelineEditProvider", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    Object.defineProperty(host, "clientWidth", {
+      configurable: true,
+      value: 640,
+    });
+
+    usePlayerStore.setState({
+      duration: 4,
+      timelineReady: true,
+      elements: [{ id: "clip-1", tag: "div", start: 0, duration: 2, track: 0 }],
+    });
+
+    const root = createRoot(host);
+
+    expect(() => {
+      act(() => {
+        root.render(React.createElement(Timeline));
+      });
+    }).not.toThrow();
+
+    act(() => root.unmount());
+  });
+});
 
 describe("generateTicks", () => {
   it("returns empty arrays for duration <= 0", () => {

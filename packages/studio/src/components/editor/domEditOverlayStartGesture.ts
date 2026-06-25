@@ -5,6 +5,7 @@
 import { type DomEditSelection } from "./domEditing";
 import {
   createManualOffsetDragMember,
+  readGsapRotation,
   restoreManualOffsetDragMembers,
   type ManualOffsetDragMember,
 } from "./manualOffsetDrag";
@@ -115,7 +116,10 @@ export function startGesture(
     return false;
 
   const size = readStudioBoxSize(sel.element);
-  const rotation = readStudioRotation(sel.element);
+  // Single-source rotation base = the live GSAP transform rotation plus any legacy
+  // `--hf-studio-rotation` CSS var (old projects), so a rotate gesture starts from the
+  // element's actual visual angle and commits an absolute angle to the timeline.
+  const rotation = { angle: readGsapRotation(sel.element) + readStudioRotation(sel.element).angle };
   const actualWidth = size.width > 0 ? size.width : rect.width / rect.editScaleX;
   const actualHeight = size.height > 0 ? size.height : rect.height / rect.editScaleY;
   let initialPathOffset = captureStudioPathOffset(sel.element);

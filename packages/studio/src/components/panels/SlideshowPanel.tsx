@@ -20,6 +20,7 @@ import type { SlideshowManifest, SlideHotspot } from "@hyperframes/core/slidesho
 import { usePlayerStore } from "../../player";
 import { useDomEditSelectionContext } from "../../contexts/DomEditContext";
 import { useFileManagerContext } from "../../contexts/FileManagerContext";
+import { generateId } from "../../utils/generateId";
 import {
   SectionHeader,
   SlideList,
@@ -49,7 +50,6 @@ export function safeParseManifest(html: string): SlideshowManifest {
   try {
     return parseSlideshowManifest(html) ?? { slides: [] };
   } catch {
-    console.warn("[SlideshowPanel] Failed to parse slideshow manifest; using empty manifest");
     return { slides: [] };
   }
 }
@@ -325,7 +325,7 @@ export function SlideshowPanel({ scenes, onPersist, onPersistNotes }: SlideshowP
 
   const handleCreateSequence = useCallback(
     (label: string) => {
-      const id = `seq-${crypto.randomUUID()}`;
+      const id = `seq-${generateId()}`;
       applyManifest(createSequence(manifestRef.current, id, label)).catch(() => {});
     },
     [applyManifest],

@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>word_grid_burst</title>
+    <script src="../assets/gsap.min.js"></script>
+    <style>
+      :root {
+        --hg-violet: #7c3aed;
+        --hg-violet-2: #a855f7;
+        --hg-bg: #0a0a0f;
+        --hg-fg: #f5f5fa;
+        --hg-dim: #6b6b78;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--hg-bg);
+        font-family: "Inter", system-ui, sans-serif;
+        color: var(--hg-fg);
+        -webkit-font-smoothing: antialiased;
+      }
+      #scene {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+      }
+      .stage {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        grid-template-rows: repeat(3, 1fr);
+        align-items: center;
+        justify-items: center;
+        padding: 140px 120px;
+        gap: 24px;
+      }
+      .cell {
+        font-weight: 900;
+        font-size: 92px;
+        letter-spacing: -0.03em;
+        line-height: 0.95;
+        color: var(--hg-fg);
+        white-space: nowrap;
+        will-change: transform, opacity;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="2.8"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="scene" class="clip" data-start="0" data-duration="2.8" data-track-index="1">
+        <div class="stage">
+          <div class="cell">PULSE</div>
+          <div class="cell">FORGE</div>
+          <div class="cell">SURGE</div>
+          <div class="cell">VOLT</div>
+          <div class="cell">CORE</div>
+          <div class="cell">FLUX</div>
+          <div class="cell">SPARK</div>
+          <div class="cell">DRIVE</div>
+          <div class="cell">BLAZE</div>
+          <div class="cell">WAVE</div>
+          <div class="cell">SHIFT</div>
+          <div class="cell">BOLT</div>
+          <div class="cell">RUSH</div>
+          <div class="cell">PEAK</div>
+          <div class="cell">IGNITE</div>
+        </div>
+      </div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      // Deterministic reveal order: scatter sequence across the 15-cell grid.
+      const order = [7, 0, 12, 4, 9, 2, 14, 6, 11, 1, 8, 3, 13, 5, 10];
+      const cells = gsap.utils.toArray(".cell");
+      const step = 0.13;
+      const FOCUS = 7; // chosen focal cell ("DRIVE")
+
+      // Each cell pops in on its own "onset" — explicit per-cell timing.
+      order.forEach((idx, i) => {
+        tl.fromTo(
+          cells[idx],
+          { autoAlpha: 0, scale: 0.8 },
+          { autoAlpha: 1, scale: 1, duration: 0.22, ease: "back.out(1.8)" },
+          i * step,
+        );
+      });
+
+      // Downbeat refocus (~2.3s): dim the whole grid, pop the focal word.
+      tl.to(".cell", { autoAlpha: 0.25, duration: 0.18, ease: "power2.out" }, 2.3);
+      tl.to(
+        cells[FOCUS],
+        {
+          autoAlpha: 1,
+          scale: 1.25,
+          color: "var(--hg-violet-2)",
+          duration: 0.22,
+          ease: "back.out(2)",
+        },
+        2.32,
+      );
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

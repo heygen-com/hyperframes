@@ -16,11 +16,13 @@ import { CompositionBreadcrumb } from "./CompositionBreadcrumb";
 import { usePreviewBlockDrop } from "./usePreviewBlockDrop";
 import { useCompositionStack } from "./useCompositionStack";
 import { useTimelineEditContext } from "../../contexts/TimelineEditContext";
+import { setCompositionSourceMap } from "../editor/domEditingDom";
 import { trackStudioExpandedClipEdit } from "../../telemetry/events";
 import {
   TIMELINE_TOGGLE_SHORTCUT_LABEL,
   getTimelineToggleTitle,
 } from "../../utils/timelineDiscovery";
+import { ensureMotionPathPluginLoaded } from "../../utils/gsapSoftReload";
 
 interface NLELayoutProps {
   projectId: string;
@@ -122,12 +124,14 @@ export const NLELayout = memo(function NLELayout({
     refreshPlayer,
   } = useTimelinePlayer();
 
-  // Reset timeline state when the project changes
-  const prevProjectIdRef = useRef(projectId);
-  if (prevProjectIdRef.current !== projectId) {
-    prevProjectIdRef.current = projectId;
+  // Reset timeline state when the project changes. Done in an effect, not during
+  // render: reset() updates the player store, and updating another store/component
+  // mid-render triggers React's "Cannot update a component while rendering a
+  // different component" warning. The effect runs right after commit, so the new
+  // project's first frame may briefly show prior timeline state before it clears.
+  useEffect(() => {
     usePlayerStore.getState().reset();
-  }
+  }, [projectId]);
 
   const stageRefForDrop = useRef<HTMLDivElement | null>(null);
   const handleStageRef = useCallback((ref: React.RefObject<HTMLDivElement | null>) => {
@@ -158,6 +162,10 @@ export const NLELayout = memo(function NLELayout({
 
   const onIframeLoad = useCallback(() => {
     baseOnIframeLoad();
+    // Pre-load + register MotionPathPlugin once so adding a motion path in the
+    // studio doesn't take the async plugin-load flash path on the first soft
+    // reload (the comp may not ship the plugin until it actually uses one).
+    ensureMotionPathPluginLoaded(iframeRef.current);
     onIframeRef?.(iframeRef.current);
   }, [baseOnIframeLoad, iframeRef, onIframeRef]);
 
@@ -294,6 +302,9 @@ export const NLELayout = memo(function NLELayout({
           if (id && src) map.set(id, src);
         }
         setCompIdToSrc(map);
+        // Let DOM source-resolution recover a subcomposition element's source file
+        // (the runtime drops the linkage when inlining — see getSourceFileForElement).
+        setCompositionSourceMap(map);
         onCompIdToSrcChange?.(map);
       })
       .catch(() => {});
@@ -427,7 +438,7 @@ export const NLELayout = memo(function NLELayout({
       {/* Preview + player controls */}
       <div className="flex-1 min-h-0 flex flex-col">
         <div
-          className="flex-1 min-h-0 relative"
+          className="flex-1 min-h-0 relative overflow-hidden"
           data-preview-pan-surface="true"
           onPointerDown={(e) => {
             const el = iframeRef.current?.parentElement ?? iframeRef.current;

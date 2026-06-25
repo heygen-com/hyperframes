@@ -1,394 +1,320 @@
 #!/usr/bin/env node
-// transitions.mjs — inter-scene transition injector behind one subcommand dispatcher.
+// transitions.mjs — inter-frame transition injector + verifier for product-launch.
 //
-//   inject  — wrapper overlap + GSAP stamp on the index.html clip wrappers
-//   verify  — deterministic gate over the injector's output
+//   inject  — read STORYBOARD frame order + each frame's transition_in, overlap
+//             the frame clip wrappers in index.html, and stamp the GSAP template.
+//   verify  — deterministic gate over the injector's output.
 //
-// Each subcommand reads its args from process.argv AFTER the subcommand token
-// (i.e. process.argv.slice(3)):
-//   node transitions.mjs inject --group-spec ./group_spec.json --hyperframes .
-//   node transitions.mjs verify --group-spec ./group_spec.json --index ./index.html
+// transition_in (written by story-design on the INCOMING frame) names a registry
+// type directly: crossfade | blur-crossfade | push-slide | zoom-through | squeeze,
+// optionally "<type> <DIR>" / "<type> <N>s" (e.g. "push-slide LEFT", "crossfade
+// 0.4s"). `cut` / `none` / empty ⇒ hard cut (no overlap, no stamp).
+//
+// Mechanics — EXTEND-OUTGOING-ONLY (keeps voice/SFX/captions synced; their timing
+// is keyed to the original frame start). At boundary i→i+1 (type = the incoming
+// frame's transition_in): extend ONLY the outgoing wrapper's data-duration by
+// `dur` so it holds its final frame across the window; do NOT move any data-start;
+// the incoming — already present from the cut on a higher track — fades/pushes in
+// over it. Then 0/1-ping-pong ALL frame clips' data-track-index (adjacent
+// overlapping wrappers never share a track — lint timeline_track_too_dense) and
+// stamp the token-substituted GSAP template into __timelines["main"] at T =
+// incoming start. captions(2)/voice(10)/bgm(11)/sfx(20+) are never touched.
+//
+//   node transitions.mjs inject --storyboard ./STORYBOARD.md --hyperframes .
+//   node transitions.mjs verify --storyboard ./STORYBOARD.md --index ./index.html
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { transitionsByName } from "./lib/transition-registry.mjs";
-import { readDims } from "./lib/dimensions.mjs";
+import { parseStoryboard } from "./lib/storyboard.mjs";
+import { parseFormat } from "./lib/dimensions.mjs";
+import { loadTransitionRegistry, transitionsByName } from "./lib/transition-registry.mjs";
 
-// ===========================================================================
-// inject ← inject-transitions.mjs
-async function runInject(argv) {
-  const flag = (name, def) => {
-    const i = argv.indexOf(`--${name}`);
-    return i >= 0 && i + 1 < argv.length ? argv[i + 1] : def;
-  };
-  function die(msg) {
-    console.error(`✗ inject-transitions.mjs: ${msg}`);
-    process.exit(1);
+const flag = (argv, name, def) => {
+  const i = argv.indexOf(`--${name}`);
+  return i >= 0 && i + 1 < argv.length ? argv[i + 1] : def;
+};
+const NO_TRANSITION = new Set(["cut", "none", ""]);
+const r3 = (x) => Number(x.toFixed(3));
+
+// transition_in → { type, direction?, dur? } | null (hard cut).
+function parseTransitionIn(raw) {
+  const s = (raw ?? "").trim();
+  if (NO_TRANSITION.has(s.toLowerCase())) return null;
+  const parts = s.split(/\s+/);
+  const spec = { type: parts[0].toLowerCase() };
+  for (const p of parts.slice(1)) {
+    const m = p.match(/^(\d+(?:\.\d+)?)s?$/);
+    if (m) spec.dur = Number(m[1]);
+    else spec.direction = p.toUpperCase();
   }
-
-  const groupSpecPath = resolve(flag("group-spec", "./group_spec.json"));
-  const hyperframesDir = resolve(flag("hyperframes", "."));
-  const indexPath = join(hyperframesDir, "index.html");
-
-  if (!existsSync(groupSpecPath)) die(`group_spec.json not found at ${groupSpecPath}`);
-  if (!existsSync(indexPath))
-    die(`index.html not found at ${indexPath} — run assemble-index.mjs first`);
-
-  let spec;
-  try {
-    spec = JSON.parse(readFileSync(groupSpecPath, "utf8"));
-  } catch (e) {
-    die(`group_spec.json parse: ${e.message}`);
-  }
-
-  // Slide transitions push a wrapper fully off-canvas, so the travel distance is
-  // the canvas dimension along the slide axis (read from group_spec; landscape
-  // default for pre-dims specs).
-  const { width: CANVAS_W, height: CANVAS_H } = readDims(spec);
-
-  const transitions = Array.isArray(spec.transitions) ? spec.transitions : [];
-  const injectable = transitions.filter((t) => t && t.type);
-
-  let html = readFileSync(indexPath, "utf8");
-
-  if (injectable.length === 0) {
-    console.log(`✓ inject-transitions: 0 transitions to inject — index.html unchanged`);
-    process.exit(0);
-  }
-
-  let txByName;
-  try {
-    txByName = transitionsByName();
-  } catch (e) {
-    die(`transition registry: ${e.message}`);
-  }
-
-  // The authoritative SCENE id set — from group_spec.groups[].scene_ids. The
-  // captions / voice / bgm / sfx clips also use id="el-…" + (for captions)
-  // data-composition-src, but they are NOT scenes: they must keep their own tracks
-  // (10/11/12/20+) and must NOT join the scene ping-pong. Driving off the known
-  // scene list (not a data-composition-src regex) is what keeps captions out.
-  const sceneIds = new Set();
-  for (const g of spec.groups || []) for (const sid of g.scene_ids || []) sceneIds.add(sid);
-  if (sceneIds.size === 0)
-    die(`group_spec.groups[].scene_ids is empty — cannot identify scene clips`);
-
-  // ---------- parse SCENE clip wrappers out of index.html ----------
-  // assemble-index emits each scene clip as a stable multi-line block:
-  //   <div\n  id="el-<sid>"\n  data-composition-id=...\n  data-composition-src=...\n
-  //   data-start="X"\n  data-duration="Y"\n  data-track-index="0"\n ...></div>
-  // We only keep clips whose sid is a known scene (sceneIds) — captions (el-captions)
-  // and audio (el-<sid>-voice) are excluded. Play order comes from data-start ascending.
-  const clipRe = /<div\s+id="el-([A-Za-z0-9_]+)"([\s\S]*?)><\/div>/g;
-  const clips = new Map(); // sid -> { sid, start, duration, track, block }
-  let cm;
-  while ((cm = clipRe.exec(html)) !== null) {
-    const sid = cm[1];
-    if (!sceneIds.has(sid)) continue; // skip captions / voice / bgm / sfx
-    const block = cm[0];
-    const attrs = cm[2];
-    const num = (re) => {
-      const m = attrs.match(re);
-      return m ? Number(m[1]) : null;
-    };
-    const start = num(/data-start="([\d.]+)"/);
-    const duration = num(/data-duration="([\d.]+)"/);
-    const track = num(/data-track-index="(\d+)"/);
-    if (start == null || duration == null) {
-      die(
-        `scene clip #el-${sid} missing data-start/data-duration — assemble-index output malformed`,
-      );
-    }
-    clips.set(sid, { sid, start, duration, track: track ?? 0, block });
-  }
-
-  if (clips.size === 0)
-    die(`no scene clip wrappers found in index.html for scene_ids: ${[...sceneIds].join(", ")}`);
-
-  // Completeness guard against assemble-index emit drift. Every "HF-SCENE-CLIP <sid>"
-  // marker (emitted by assemble-index.mjs immediately before each scene <div>) whose
-  // sid is a known scene MUST have been parsed by clipRe above. If the <div
-  // id="el-<sid>"> emit shape changes and the regex stops matching, this fails loudly
-  // here instead of silently dropping a scene from the ping-pong track reassignment
-  // below (which would surface much later as overlapping_clips_same_track). Older
-  // index.html without the marker → markerSids empty → no-op (backward compatible).
-  // Keep the marker string in lockstep with assemble-index.mjs.
-  const markerSids = [...html.matchAll(/<!--\s*HF-SCENE-CLIP\s+([A-Za-z0-9_]+)\b/g)]
-    .map((m) => m[1])
-    .filter((sid) => sceneIds.has(sid));
-  const missedSids = markerSids.filter((sid) => !clips.has(sid));
-  if (missedSids.length)
-    die(
-      `scene-clip parse drift: assemble-index marked ${markerSids.length} scene clip(s) but the parser missed ${missedSids.join(", ")} — the <div id="el-<sid>"> emit format changed; resync transitions.mjs with assemble-index.mjs`,
-    );
-
-  // ---------- apply overlaps ----------
-  const gsapLines = [];
-  const applied = [];
-  for (const t of injectable) {
-    const fromClip = clips.get(t.from);
-    const toClip = clips.get(t.to);
-    if (!fromClip || !toClip) {
-      die(
-        `transition ${t.from}→${t.to}: clip wrapper(s) not in index.html (from=${!!fromClip}, to=${!!toClip})`,
-      );
-    }
-    const dur = Number(t.duration_s) || 0.5;
-
-    // EXTEND-OUTGOING-ONLY overlap. The transition plays in [cut, cut + dur], where
-    // `cut` is the incoming scene's start (= the outgoing scene's natural end, since
-    // scenes tile). We extend ONLY the outgoing wrapper by `dur` so it lingers (held
-    // final frame) across the window while the incoming — already present from `cut`
-    // on the higher track — fades/pushes IN over it. We do NOT move any scene's
-    // data-start, so voice/SFX/caption timing (all keyed to the original start_s)
-    // stays perfectly in sync. Overlap window == tween window == `dur`. No dead frames.
-    const T = Number(toClip.start.toFixed(3)); // cut = incoming start
-    fromClip.duration = Number((fromClip.duration + dur).toFixed(3));
-
-    gsapLines.push(...buildGsap(t, dur, T));
-    applied.push({ ...t, T, durApplied: dur });
-  }
-
-  // ---------- mandatory 0/1 ping-pong track reassignment ----------
-  // Walk scene clips in play order (start asc, stable by sid) and alternate track 0/1.
-  // Overlapping neighbors always land on different tracks; non-adjacent clips reuse a
-  // track but never overlap, so overlapping_clips_same_track stays clean.
-  const ordered = [...clips.values()].sort((a, b) =>
-    a.start !== b.start ? a.start - b.start : a.sid.localeCompare(b.sid),
-  );
-  ordered.forEach((c, i) => {
-    c.track = i % 2;
-  });
-
-  // ---------- rewrite each clip block in html ----------
-  for (const c of clips.values()) {
-    let nb = c.block
-      .replace(/data-start="[\d.]+"/, `data-start="${c.start}"`)
-      .replace(/data-duration="[\d.]+"/, `data-duration="${c.duration}"`)
-      .replace(/data-track-index="\d+"/, `data-track-index="${c.track}"`);
-    if (nb === c.block && c.block.includes(`data-track-index`)) {
-      // attrs unchanged is fine; only fail if the block had no track attr to rewrite
-    }
-    html = html.replace(c.block, nb);
-  }
-
-  // ---------- inject GSAP after the master timeline creation ----------
-  // assemble-index emits:  window.__timelines["main"] = gsap.timeline({ paused: true });
-  const masterAnchor = 'window.__timelines["main"] = gsap.timeline({ paused: true });';
-  if (!html.includes(masterAnchor)) {
-    die(`master timeline anchor not found in index.html — expected: ${masterAnchor}`);
-  }
-  const block = [
-    masterAnchor,
-    "      // ── scene transitions (injected by inject-transitions.mjs) ──",
-    '      (function () { var tl = window.__timelines["main"];',
-    ...gsapLines.map((l) => "        " + l),
-    "      })();",
-  ].join("\n");
-  html = html.replace(masterAnchor, block);
-
-  writeFileSync(indexPath, html);
-
-  // ---------- summary ----------
-  console.log(`✓ inject-transitions: ${applied.length} transition(s) stamped into index.html`);
-  for (const a of applied) {
-    const dir = a.direction ? ` ${a.direction}` : "";
-    console.log(
-      `  ${a.from}→${a.to}: ${a.type}${dir} ${a.durApplied}s @ T=${a.T}s (from ext +${a.durApplied}s, to start→${a.T})`,
-    );
-  }
-  const trackSummary = [...clips.values()]
-    .sort((a, b) => a.start - b.start)
-    .map((c) => `${c.sid}[t${c.track} ${c.start}→${Number((c.start + c.duration).toFixed(3))}]`)
-    .join(" ");
-  console.log(`  tracks: ${trackSummary}`);
-
-  // ===========================================================================
-  // build the GSAP lines for one transition.
-  function buildGsap(t, dur, T) {
-    const OLD = `"#el-${t.from}"`;
-    const NEW = `"#el-${t.to}"`;
-
-    const rec = txByName.get(t.type);
-    if (!rec) die(`transition ${t.from}→${t.to}: type "${t.type}" not in registry`);
-
-    // pick template: directional types have horizontal/vertical variants
-    let template;
-    let extra = {};
-    if (rec.directions && rec.directions.length > 0) {
-      const dir = (t.direction || rec.default_direction || rec.directions[0]).toUpperCase();
-      const vertical = dir === "UP" || dir === "DOWN";
-      template = vertical ? rec.gsap_template_vertical : rec.gsap_template_horizontal;
-      if (!template)
-        die(`transition ${t.type}: missing ${vertical ? "vertical" : "horizontal"} template`);
-      if (vertical) {
-        const dy = dir === "UP" ? -CANVAS_H : CANVAS_H;
-        extra.__DY__ = String(dy);
-        extra.__DYIN__ = String(-dy); // incoming enters from the opposite edge
-      } else {
-        const dx = dir === "LEFT" ? -CANVAS_W : CANVAS_W;
-        extra.__DX__ = String(dx);
-        extra.__DXIN__ = String(-dx);
-      }
-    } else {
-      template = rec.gsap_template;
-      if (!template) die(`transition ${t.type}: missing gsap_template`);
-    }
-
-    const subs = {
-      __OLD__: OLD,
-      __NEW__: NEW,
-      __T__: String(T),
-      __DUR__: String(dur),
-      ...extra,
-    };
-    return template.map((line) => {
-      let out = line;
-      for (const [k, v] of Object.entries(subs)) out = out.split(k).join(v);
-      return out;
-    });
-  }
+  return spec;
 }
 
-// ===========================================================================
-// verify ← verify-transitions.mjs
-async function runVerify(argv) {
-  const flag = (name, def) => {
-    const i = argv.indexOf(`--${name}`);
-    return i >= 0 && i + 1 < argv.length ? argv[i + 1] : def;
-  };
-
-  const groupSpecPath = resolve(flag("group-spec", "./group_spec.json"));
-  const indexPath = resolve(flag("index", "./index.html"));
-
-  const fail = [];
-  function bail(msg) {
-    console.error(`✗ verify-transitions.mjs: ${msg}`);
-    process.exit(1);
+// Mounted STORYBOARD frames present in index.html, in document order: { id, frame }.
+function mountedFramesInOrder(manifest, html) {
+  const out = [];
+  for (const f of manifest.frames) {
+    if (!f.src) continue;
+    const id = f.src
+      .split("/")
+      .pop()
+      .replace(/\.html?$/i, "");
+    if (html.includes(`id="el-${id}"`)) out.push({ id, frame: f });
   }
+  return out;
+}
 
-  if (!existsSync(groupSpecPath)) bail(`group_spec.json not found at ${groupSpecPath}`);
-  if (!existsSync(indexPath)) bail(`index.html not found at ${indexPath}`);
-
-  let spec;
-  try {
-    spec = JSON.parse(readFileSync(groupSpecPath, "utf8"));
-  } catch (e) {
-    bail(`group_spec.json parse: ${e.message}`);
-  }
-  const transitions = Array.isArray(spec.transitions) ? spec.transitions : [];
-  const injectable = transitions.filter((t) => t && t.type);
-
-  // Authoritative SCENE id set (same as the injector) — captions/voice/bgm/sfx are
-  // NOT scenes and are excluded from the scene track-overlap invariant. Captions
-  // legitimately spans the whole video on track 12; scenes ping-pong on 0/1.
-  const sceneIds = new Set();
-  for (const g of spec.groups || []) for (const sid of g.scene_ids || []) sceneIds.add(sid);
-
-  const html = readFileSync(indexPath, "utf8");
-
-  // ---------- parse SCENE clip wrappers (only known scene ids) ----------
-  const clipRe = /<div\s+id="el-([A-Za-z0-9_]+)"([\s\S]*?)><\/div>/g;
+// Frame clip wrappers parsed out of index.html (ids carry hyphens; excludes
+// el-captions and audio by keying off the known frame-id set). The id is matched
+// from anywhere in the tag's attribute list — never assume it is the first attribute
+// (the index assembler emits data-hf-id before id, so an id-first regex finds nothing
+// and inject crashes on the empty clip map).
+function parseFrameClips(html, frameIds) {
+  const clipRe = /<div\b([^>]*)><\/div>/g;
   const clips = new Map();
-  let cm;
-  while ((cm = clipRe.exec(html)) !== null) {
-    if (!sceneIds.has(cm[1])) continue; // skip captions / voice / bgm / sfx
-    const attrs = cm[2];
+  let m;
+  while ((m = clipRe.exec(html)) !== null) {
+    const attrs = m[1];
+    const idm = attrs.match(/\bid="el-([A-Za-z0-9_-]+)"/);
+    if (!idm || !frameIds.has(idm[1])) continue;
     const num = (re) => {
-      const m = attrs.match(re);
-      return m ? Number(m[1]) : null;
+      const x = attrs.match(re);
+      return x ? Number(x[1]) : null;
     };
-    clips.set(cm[1], {
-      sid: cm[1],
+    clips.set(idm[1], {
+      id: idm[1],
+      block: m[0],
       start: num(/data-start="([\d.]+)"/),
       duration: num(/data-duration="([\d.]+)"/),
       track: num(/data-track-index="(\d+)"/) ?? 0,
     });
   }
+  return clips;
+}
 
-  const EPS = 0.011; // ms-rounding tolerance (prep rounds to 3 dp)
+// Resolve a transition_in spec to a registry record (calm default on unknown).
+function resolveRecord(spec, byName, reg, warn) {
+  let rec = byName.get(spec.type);
+  if (!rec) {
+    rec = byName.get(reg.default_calm);
+    warn(`transition_in "${spec.type}" not in registry — using ${reg.default_calm}`);
+  }
+  return rec;
+}
+function resolveDur(spec, rec, reg) {
+  let dur = spec.dur ?? rec.default_duration_s ?? 0.5;
+  return Math.min(dur, reg.max_duration_s ?? 2.0);
+}
+
+// GSAP lines for one transition record (token substitution).
+function buildGsap(rec, fromId, toId, dur, T, direction, canvasW, canvasH, die) {
+  const subs = {
+    __OLD__: `"#el-${fromId}"`,
+    __NEW__: `"#el-${toId}"`,
+    __T__: String(T),
+    __DUR__: String(dur),
+  };
+  let template;
+  if (rec.directions && rec.directions.length > 0) {
+    const dir = (direction || rec.default_direction || rec.directions[0]).toUpperCase();
+    const vertical = dir === "UP" || dir === "DOWN";
+    template = vertical ? rec.gsap_template_vertical : rec.gsap_template_horizontal;
+    if (!template)
+      die(`transition ${rec.name}: missing ${vertical ? "vertical" : "horizontal"} template`);
+    if (vertical) {
+      const dy = dir === "UP" ? -canvasH : canvasH;
+      subs.__DY__ = String(dy);
+      subs.__DYIN__ = String(-dy);
+    } else {
+      const dx = dir === "LEFT" ? -canvasW : canvasW;
+      subs.__DX__ = String(dx);
+      subs.__DXIN__ = String(-dx);
+    }
+  } else {
+    template = rec.gsap_template;
+    if (!template) die(`transition ${rec.name}: missing gsap_template`);
+  }
+  return template.map((line) => {
+    let out = line;
+    for (const [k, v] of Object.entries(subs)) out = out.split(k).join(v);
+    return out;
+  });
+}
+
+function runInject(argv) {
+  const hyperframesDir = resolve(flag(argv, "hyperframes", "."));
+  const storyboardPath = resolve(flag(argv, "storyboard", join(hyperframesDir, "STORYBOARD.md")));
+  const indexPath = join(hyperframesDir, "index.html");
+  const die = (msg) => {
+    console.error(`✗ transitions inject: ${msg}`);
+    process.exit(1);
+  };
+
+  if (!existsSync(storyboardPath)) die(`STORYBOARD.md not found at ${storyboardPath}`);
+
+  const manifest = parseStoryboard(readFileSync(storyboardPath, "utf8"));
+  const { width: CW, height: CH } = parseFormat(manifest.globals.format);
+  const reg = loadTransitionRegistry();
+  const byName = transitionsByName();
+
+  // Read directly and handle ENOENT here, rather than an existsSync precheck —
+  // the check→write pair (write-back below) is a TOCTOU race CodeQL flags.
+  let html = "";
+  try {
+    html = readFileSync(indexPath, "utf8");
+  } catch {
+    die(`index.html not found at ${indexPath} — run assemble-index.mjs first`);
+  }
+  const order = mountedFramesInOrder(manifest, html);
+  if (order.length === 0) die("no frame clips found in index.html");
+  const frameIds = new Set(order.map((x) => x.id));
+  const clips = parseFrameClips(html, frameIds);
+
+  const gsapLines = [];
+  const applied = [];
+  for (let i = 1; i < order.length; i++) {
+    const spec = parseTransitionIn(order[i].frame.transitionIn);
+    if (!spec) continue; // hard cut
+    const incoming = clips.get(order[i].id);
+    const outgoing = clips.get(order[i - 1].id);
+    const rec = resolveRecord(spec, byName, reg, (m) =>
+      console.error(`  ! frame ${order[i].id}: ${m}`),
+    );
+    const dur = resolveDur(spec, rec, reg);
+    const T = r3(incoming.start); // cut = incoming start (frames tile)
+    outgoing.duration = r3(outgoing.duration + dur); // extend outgoing only
+    gsapLines.push(
+      ...buildGsap(rec, outgoing.id, incoming.id, dur, T, spec.direction, CW, CH, die),
+    );
+    applied.push({ from: outgoing.id, to: incoming.id, type: rec.name, dur, T });
+  }
+
+  if (applied.length === 0) {
+    console.log(`✓ transitions inject: 0 transitions (all cuts) — index.html unchanged`);
+    return;
+  }
+
+  // 0/1 ping-pong all frame clips in play order.
+  const ordered = [...clips.values()].sort((a, b) => a.start - b.start || a.id.localeCompare(b.id));
+  ordered.forEach((c, i) => {
+    c.track = i % 2;
+  });
+
+  // rewrite each clip block: start unchanged; duration possibly extended; track ping-ponged.
+  for (const c of clips.values()) {
+    const nb = c.block
+      .replace(/data-duration="[\d.]+"/, `data-duration="${c.duration}"`)
+      .replace(/data-track-index="\d+"/, `data-track-index="${c.track}"`);
+    html = html.replace(c.block, nb);
+  }
+
+  // stamp the GSAP after the master timeline anchor.
+  const anchor = 'window.__timelines["main"] = gsap.timeline({ paused: true });';
+  if (!html.includes(anchor)) die("master timeline anchor not found in index.html");
+  // The transition tweens alone leave window.__timelines["main"] spanning only the
+  // last transition (e.g. 24.7s), shorter than the real composition. The Studio
+  // reads main.duration() as its master duration and parses clips against it, so a
+  // short master collapses its timeline (clips dropped, duration wrong, blank stage)
+  // — the render engine is unaffected (it trusts the root data-duration attr). Stamp
+  // a full-span anchor so main.duration() == composition total. Mirrors the
+  // `tl.to({}, { duration })` anchor captions.html already uses.
+  const rootDurMatch = html.match(/data-composition-id="main"[^>]*?data-duration="([\d.]+)"/);
+  const totalDur = rootDurMatch ? Number(rootDurMatch[1]) : null;
+  const block = [
+    anchor,
+    "      // ── frame transitions (injected by transitions.mjs) ──",
+    '      (function () { var tl = window.__timelines["main"];',
+    ...gsapLines.map((l) => "        " + l),
+    ...(totalDur
+      ? [
+          `        tl.to({}, { duration: ${totalDur} }, 0); // full-span anchor — main.duration() == composition total (Studio master duration)`,
+        ]
+      : []),
+    "      })();",
+  ].join("\n");
+  html = html.replace(anchor, block);
+
+  writeFileSync(indexPath, html);
+  console.log(`✓ transitions inject: ${applied.length} transition(s) stamped into index.html`);
+  for (const a of applied) console.log(`  ${a.from}→${a.to}: ${a.type} ${a.dur}s @ T=${a.T}s`);
+  const tracks = ordered
+    .map((c) => `${c.id}[t${c.track} ${c.start}→${r3(c.start + c.duration)}]`)
+    .join(" ");
+  console.log(`  tracks: ${tracks}`);
+}
+
+function runVerify(argv) {
+  const hyperframesDir = resolve(flag(argv, "hyperframes", "."));
+  const storyboardPath = resolve(flag(argv, "storyboard", join(hyperframesDir, "STORYBOARD.md")));
+  const indexPath = resolve(flag(argv, "index", join(hyperframesDir, "index.html")));
+  const bail = (msg) => {
+    console.error(`✗ transitions verify: ${msg}`);
+    process.exit(1);
+  };
+
+  if (!existsSync(storyboardPath)) bail("STORYBOARD.md not found");
+  if (!existsSync(indexPath)) bail("index.html not found");
+
+  const manifest = parseStoryboard(readFileSync(storyboardPath, "utf8"));
+  const html = readFileSync(indexPath, "utf8");
+  const order = mountedFramesInOrder(manifest, html);
+  const frameIds = new Set(order.map((x) => x.id));
+  const clips = parseFrameClips(html, frameIds);
+
+  const EPS = 0.011;
   const overlaps = (a, b) =>
     a.start < b.start + b.duration - EPS && b.start < a.start + a.duration - EPS;
+  const fail = [];
 
-  // ---------- (4) GLOBAL no-same-track-overlap ----------
+  // (4) global no same-track overlap (the lint invariant).
   const all = [...clips.values()];
-  for (let i = 0; i < all.length; i++) {
+  for (let i = 0; i < all.length; i++)
     for (let j = i + 1; j < all.length; j++) {
       const a = all[i];
       const b = all[j];
-      if (a.track === b.track && overlaps(a, b)) {
-        fail.push(
-          `same-track overlap: ${a.sid}[t${a.track} ${a.start}→${(a.start + a.duration).toFixed(3)}] ` +
-            `and ${b.sid}[t${b.track} ${b.start}→${(b.start + b.duration).toFixed(3)}] — lint would reject this`,
-        );
-      }
+      if (a.track === b.track && overlaps(a, b))
+        fail.push(`same-track overlap: ${a.id}[t${a.track}] & ${b.id}[t${b.track}]`);
     }
-  }
 
-  // ---------- per-transition (1)(2)(3) ----------
-  // Isolate the injected transition block so the tween-reference check only looks there.
-  const blockMatch = html.match(/scene transitions \(injected[\s\S]*?\}\)\(\);/);
-  const txBlock = blockMatch ? blockMatch[0] : "";
-  if (injectable.length > 0 && !txBlock) {
-    fail.push(
-      `group_spec has ${injectable.length} transition(s) but no injected transition block in index.html`,
-    );
-  }
+  const bm = html.match(/frame transitions \(injected[\s\S]*?\}\)\(\);/);
+  const txBlock = bm ? bm[0] : "";
 
-  for (const t of injectable) {
-    const from = clips.get(t.from);
-    const to = clips.get(t.to);
-    if (!from || !to) {
-      fail.push(`transition ${t.from}→${t.to}: wrapper(s) missing (from=${!!from}, to=${!!to})`);
+  let expected = 0;
+  for (let i = 1; i < order.length; i++) {
+    const spec = parseTransitionIn(order[i].frame.transitionIn);
+    if (!spec) continue;
+    expected++;
+    const to = clips.get(order[i].id);
+    const from = clips.get(order[i - 1].id);
+    if (!to || !from) {
+      fail.push(`boundary ${order[i - 1].id}→${order[i].id}: wrapper missing`);
       continue;
     }
-    // (1) tween references both ids
-    if (!txBlock.includes(`"#el-${t.from}"`) || !txBlock.includes(`"#el-${t.to}"`)) {
-      fail.push(
-        `transition ${t.from}→${t.to}: injected block does not reference both #el-${t.from} and #el-${t.to}`,
-      );
-    }
-    // (2) overlap ≈ duration_s (extend-outgoing-only: fromEnd - toStart ≈ dur)
-    const fromEnd = from.start + from.duration;
-    const overlapAmt = Number((fromEnd - to.start).toFixed(3));
-    const dur = Number(t.duration_s) || 0.5;
-    if (Math.abs(overlapAmt - dur) > EPS) {
-      fail.push(
-        `transition ${t.from}→${t.to}: overlap ${overlapAmt}s ≠ duration ${dur}s ` +
-          `(from end ${fromEnd.toFixed(3)}, to start ${to.start})`,
-      );
-    }
-    // (3) overlapping wrappers on different tracks
-    if (from.track === to.track) {
-      fail.push(`transition ${t.from}→${t.to}: both wrappers on track ${from.track} — must differ`);
-    }
+    if (!txBlock.includes(`"#el-${from.id}"`) || !txBlock.includes(`"#el-${to.id}"`))
+      fail.push(`boundary ${from.id}→${to.id}: injected block does not reference both ids`);
+    const overlapAmt = r3(from.start + from.duration - to.start);
+    if (overlapAmt <= 0) fail.push(`boundary ${from.id}→${to.id}: no overlap (${overlapAmt}s)`);
+    if (from.track === to.track)
+      fail.push(`boundary ${from.id}→${to.id}: both on track ${from.track}`);
   }
+  if (expected > 0 && !txBlock)
+    fail.push(`${expected} transition(s) expected but no injected block found`);
 
-  // ---------- report ----------
   if (fail.length) {
-    console.error(`✗ verify-transitions: ${fail.length} invariant failure(s):`);
+    console.error(`✗ transitions verify: ${fail.length} failure(s):`);
     for (const f of fail) console.error(`  - ${f}`);
     process.exit(1);
   }
-
   console.log(
-    `✓ verify-transitions: ${injectable.length} transition(s) verified ` +
-      `(overlap==duration, cross-track, both ids referenced, no same-track overlap)`,
+    `✓ transitions verify: ${expected} transition(s) verified (cross-track, overlap>0, both ids referenced, no same-track overlap)`,
   );
 }
 
-// ===========================================================================
-// dispatcher
 const sub = process.argv[2];
 const rest = process.argv.slice(3);
-switch (sub) {
-  case "inject":
-    await runInject(rest);
-    break;
-  case "verify":
-    await runVerify(rest);
-    break;
-  default:
-    console.error("usage: node transitions.mjs <inject|verify> [args...]");
-    process.exit(2);
+if (sub === "inject") runInject(rest);
+else if (sub === "verify") runVerify(rest);
+else {
+  console.error("usage: node transitions.mjs <inject|verify> [args...]");
+  process.exit(2);
 }

@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>04 · chromatic_split</title>
+    <script src="../assets/gsap.min.js"></script>
+    <style>
+      :root {
+        --hg-violet: #7c3aed;
+        --hg-violet-2: #a855f7;
+        --hg-bg: #0a0a0f;
+        --hg-fg: #f5f5fa;
+        --hg-dim: #6b6b78;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--hg-bg);
+        font-family: "Inter", system-ui, sans-serif;
+        color: var(--hg-fg);
+        -webkit-font-smoothing: antialiased;
+      }
+      #scene {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+      }
+      .stage {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .stack {
+        position: relative;
+        font-weight: 900;
+        font-size: 280px;
+        letter-spacing: -0.04em;
+        line-height: 0.95;
+        white-space: nowrap;
+      }
+      .layer {
+        position: absolute;
+        top: 0;
+        left: 0;
+        mix-blend-mode: screen;
+        will-change: transform;
+      }
+      .layer.r {
+        color: #ff2a4a;
+      }
+      .layer.g {
+        color: #2afff0;
+      }
+      .layer.b {
+        color: #b56dff;
+      }
+      .spacer {
+        color: transparent;
+      }
+      .scanlines {
+        position: absolute;
+        inset: 0;
+        background: repeating-linear-gradient(
+          0deg,
+          rgba(255, 255, 255, 0) 0px,
+          rgba(255, 255, 255, 0) 3px,
+          rgba(255, 255, 255, 0.04) 3px,
+          rgba(255, 255, 255, 0.04) 4px
+        );
+        opacity: 0;
+        pointer-events: none;
+        will-change: opacity;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="2"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="scene" class="clip" data-start="0" data-duration="2" data-track-index="1">
+        <div class="stage">
+          <div class="stack">
+            <span class="spacer">GLITCH</span>
+            <span class="layer r">GLITCH</span>
+            <span class="layer g">GLITCH</span>
+            <span class="layer b">GLITCH</span>
+          </div>
+        </div>
+        <div class="scanlines"></div>
+      </div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      tl.fromTo(
+        ".stack",
+        { opacity: 0, scale: 0.95 },
+        { opacity: 1, scale: 1, duration: 0.25, ease: "power2.out" },
+        0.05,
+      );
+      tl.set(".layer.r", { x: -2 }, 0);
+      tl.set(".layer.g", { x: 2 }, 0);
+      tl.set(".layer.b", { x: 0 }, 0);
+      tl.to(".layer.r", { x: -14, duration: 0.06, ease: "steps(1)" }, 0.35);
+      tl.to(".layer.g", { x: 14, duration: 0.06, ease: "steps(1)" }, 0.35);
+      tl.to(".layer.r", { x: -4, duration: 0.06, ease: "steps(1)" }, 0.5);
+      tl.to(".layer.g", { x: 4, duration: 0.06, ease: "steps(1)" }, 0.5);
+      tl.to(".layer.r", { x: -22, duration: 0.04, ease: "steps(1)" }, 0.85);
+      tl.to(".layer.g", { x: 22, duration: 0.04, ease: "steps(1)" }, 0.85);
+      tl.to(".layer.b", { x: 6, duration: 0.04, ease: "steps(1)" }, 0.85);
+      tl.to(".layer.r", { x: -6, duration: 0.04, ease: "steps(1)" }, 0.97);
+      tl.to(".layer.g", { x: 6, duration: 0.04, ease: "steps(1)" }, 0.97);
+      tl.to(".layer.b", { x: -2, duration: 0.04, ease: "steps(1)" }, 0.97);
+      tl.to(".layer.r", { x: -3, duration: 0.4, ease: "power2.out" }, 1.2);
+      tl.to(".layer.g", { x: 3, duration: 0.4, ease: "power2.out" }, 1.2);
+      tl.to(".layer.b", { x: 0, duration: 0.4, ease: "power2.out" }, 1.2);
+      tl.fromTo(
+        ".scanlines",
+        { opacity: 0 },
+        { opacity: 0.85, duration: 0.06, ease: "steps(1)" },
+        0.35,
+      );
+      tl.to(".scanlines", { opacity: 0.25, duration: 0.5, ease: "power2.out" }, 1.0);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

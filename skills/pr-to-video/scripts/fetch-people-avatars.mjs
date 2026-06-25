@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-// Phase 1 — contributor avatar fetch (NETWORK; orchestrator-invoked).
+// Step 1 — contributor avatar fetch (NETWORK; orchestrator-invoked).
 //
 // The counterpart to ingest.mjs: ingest is a pure offline transform, THIS is the
 // one network step on the people front. It reads the people list ingest produced
-// and downloads each contributor's GitHub avatar into public/avatars/<login>.png,
+// and downloads each contributor's GitHub avatar into assets/<login>.png,
 // then rewrites people.json with `avatarFetched` flags so downstream (story-design)
 // knows which avatars actually exist.
 //
@@ -15,14 +15,14 @@
 // Reads:
 //   --people <path>      capture/extracted/people.json (from ingest.mjs)
 // Writes:
-//   public/avatars/<login>.png    one per contributor whose avatar resolved
+//   assets/<login>.png    one per contributor whose avatar resolved
 //   (rewrites people.json in place with avatarFetched: true/false)
 //
 // Flags: --project-dir .  --timeout 8000 (ms per request)
 //   Avatars are written to <project-dir>/<person.avatarFile>, where avatarFile is
-//   the project-root-relative "public/avatars/<login>.png" — the SAME anchor prep.mjs
-//   resolves assetCandidates against (join(projectRoot, cand.path)). Anchor on the
-//   project root, NOT on public/, or the path doubles to public/public/.
+//   the project-root-relative "assets/<login>.png" — the SAME assets/ dir the frame
+//   workers reference and assemble-index stages (lib/assets.mjs). Anchor on the
+//   project root so the path stays under the project's assets/.
 //
 // Usage (orchestrator already cd'd into PROJECT_DIR, so --project-dir defaults to "."):
 //   node fetch-people-avatars.mjs --people ./capture/extracted/people.json
@@ -61,9 +61,9 @@ if (!people.length) softExit("no contributors in people.json — skipping");
 async function fetchOne(person) {
   const { login, avatarUrl } = person;
   if (!login || !avatarUrl) return "skip";
-  // avatarFile is project-root-relative ("public/avatars/<login>.png"); anchor on
-  // the project root so it does not double to public/public/.
-  const dest = join(projectDir, person.avatarFile || `public/avatars/${login}.png`);
+  // avatarFile is project-root-relative ("assets/<login>.png"); anchor on the
+  // project root so it stays under the project's assets/ dir.
+  const dest = join(projectDir, person.avatarFile || `assets/${login}.png`);
   mkdirSync(dirname(dest), { recursive: true });
   // Idempotent: a non-empty file from a prior run is reused (re-runs are free).
   if (existsSync(dest) && statSync(dest).size > 0) {
@@ -113,7 +113,7 @@ try {
 }
 
 console.log(
-  `✓ fetch-avatars: ${ok + cached}/${people.length} avatar(s) in public/avatars/` +
+  `✓ fetch-avatars: ${ok + cached}/${people.length} avatar(s) in assets/` +
     ` (${ok} new, ${cached} cached, ${fail} failed)`,
 );
 process.exit(0);

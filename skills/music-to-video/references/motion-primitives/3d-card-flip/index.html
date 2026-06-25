@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>18 · 3d_card_flip</title>
+    <script src="../assets/gsap.min.js"></script>
+    <style>
+      :root {
+        --hg-violet: #7c3aed;
+        --hg-violet-2: #a855f7;
+        --hg-bg: #0a0a0f;
+        --hg-fg: #f5f5fa;
+        --hg-dim: #6b6b78;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--hg-bg);
+        font-family: "Inter", system-ui, sans-serif;
+        color: var(--hg-fg);
+        -webkit-font-smoothing: antialiased;
+      }
+      #scene {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+      }
+      .card-stage {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        perspective: 2400px;
+      }
+      .card {
+        position: relative;
+        width: 1000px;
+        height: 580px;
+        transform-style: preserve-3d;
+        will-change: transform;
+      }
+      .face {
+        position: absolute;
+        inset: 0;
+        backface-visibility: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 900;
+        font-size: 200px;
+        letter-spacing: -0.04em;
+        border-radius: 24px;
+        box-shadow:
+          0 40px 80px rgba(0, 0, 0, 0.5),
+          0 0 0 1px rgba(255, 255, 255, 0.08) inset;
+      }
+      .face.front {
+        background: linear-gradient(135deg, #1e1b3a 0%, #0a0a0f 100%);
+        color: var(--hg-fg);
+      }
+      .face.back {
+        background: linear-gradient(135deg, #7c3aed 0%, #a855f7 60%, #d946ef 100%);
+        color: var(--hg-fg);
+        transform: rotateY(180deg);
+      }
+      .face .meta {
+        position: absolute;
+        top: 36px;
+        left: 40px;
+        font-family: "JetBrains Mono", monospace;
+        font-weight: 600;
+        font-size: 18px;
+        letter-spacing: 0.16em;
+        opacity: 0.6;
+      }
+      .card-shadow {
+        position: absolute;
+        left: 50%;
+        bottom: 22%;
+        width: 1000px;
+        height: 80px;
+        background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.55) 0%, transparent 70%);
+        transform: translateX(-50%);
+        filter: blur(12px);
+        will-change: opacity, transform;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="2"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="scene" class="clip" data-start="0" data-duration="2" data-track-index="1">
+        <div class="card-shadow"></div>
+        <div class="card-stage">
+          <div class="card" id="card">
+            <div class="face front">
+              <div class="meta">v4 · CURRENT</div>
+              PRODUCT
+            </div>
+            <div class="face back">
+              <div class="meta">v5 · LAUNCH</div>
+              v5.0
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      tl.fromTo(
+        "#card",
+        { rotateY: 0, scale: 0.92, opacity: 0 },
+        { rotateY: 0, scale: 1, opacity: 1, duration: 0.45, ease: "power3.out" },
+        0.15,
+      );
+
+      // Hold then flip
+      tl.to("#card", { rotateY: 180, duration: 1.0, ease: "power3.inOut" }, 0.7);
+
+      // Shadow squishes mid-flip
+      tl.to(
+        ".card-shadow",
+        { scaleX: 0.6, opacity: 0.4, duration: 0.5, ease: "power2.inOut" },
+        0.7,
+      );
+      tl.to(".card-shadow", { scaleX: 1, opacity: 0.7, duration: 0.5, ease: "power2.inOut" }, 1.2);
+
+      // Tiny landing settle
+      tl.to("#card", { scale: 1.02, duration: 0.12, ease: "power2.out" }, 1.68);
+      tl.to("#card", { scale: 1, duration: 0.3, ease: "elastic.out(1, 0.5)" }, 1.8);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

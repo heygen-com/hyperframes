@@ -40,6 +40,7 @@ import {
   type EngineConfig,
   type VideoFrameFormat,
   getEncoderPreset,
+  normalizeVp9CpuUsed,
   resolveConfig,
 } from "@hyperframes/engine";
 import { defaultLogger, type ProducerLogger } from "../../logger.js";
@@ -573,12 +574,17 @@ function buildLockedRenderConfig(input: {
   forceScreenshot: boolean;
   deviceScaleFactor: number;
   ffmpegVersion: string;
+  engineConfig: Pick<EngineConfig, "vp9CpuUsed">;
   effectiveChunkSize: number;
   chunkCount: number;
   runtimeEnv: Record<string, string>;
 }): LockedRenderConfig {
   const { config, forceScreenshot, deviceScaleFactor, ffmpegVersion } = input;
   const { encoder, pixelFormat, preset } = resolveEncoderTriple(config);
+  const locksVp9CpuUsed =
+    encoder === "libvpx-vp9-software"
+      ? { vp9CpuUsed: normalizeVp9CpuUsed(input.engineConfig.vp9CpuUsed) }
+      : {};
   return {
     captureMode: forceScreenshot ? "screenshot" : "beginframe",
     forceScreenshot,
@@ -595,6 +601,7 @@ function buildLockedRenderConfig(input: {
     preset,
     crf: config.crf,
     bitrate: config.bitrate,
+    ...locksVp9CpuUsed,
     // GOP === chunkSize so every chunk's first frame is an IDR keyframe and
     // ffmpeg concat-copy round-trips losslessly.
     gopSize: input.effectiveChunkSize,
@@ -954,6 +961,7 @@ export async function plan(
     forceScreenshot,
     deviceScaleFactor,
     ffmpegVersion,
+    engineConfig: cfg,
     effectiveChunkSize,
     chunkCount,
     runtimeEnv,

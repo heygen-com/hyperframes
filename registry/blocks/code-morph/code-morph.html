@@ -1190,12 +1190,21 @@
           var root = document.getElementById("root");
           window.__timelines = window.__timelines || {};
           var tl = gsap.timeline({ paused: true });
-          window.__timelines["code-morph"] = tl; // register synchronously
+          // Build inside fonts.ready (glyph metrics must be final), then register.
+          // Register ONLY after the timeline is fully built: the runtime's
+          // sub-composition readiness gate treats "key present" as "ready" and
+          // nests the child once. An empty timeline registered before this build
+          // would be nested empty and never re-nested → blank render when used as
+          // a sub-composition. See the contract in engine frameCapture.ts.
           document.fonts.ready.then(function () {
             tl.from("#editor", { opacity: 0, scale: 0.985, duration: 0.5, ease: "power2.out" }, 0);
             buildEffect(tl, surface, spec);
             var dur = parseFloat(root.dataset.duration) || tl.duration();
             tl.to({}, { duration: dur }, 0); // pad to full composition length
+            window.__timelines["code-morph"] = tl; // register AFTER setup completes
+            if (typeof window.__hfForceTimelineRebind === "function") {
+              window.__hfForceTimelineRebind(); // re-nest now that we are populated
+            }
           });
         }
 

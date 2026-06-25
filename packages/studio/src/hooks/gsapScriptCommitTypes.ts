@@ -2,6 +2,7 @@ import type { ParsedGsap } from "@hyperframes/core/gsap-parser";
 import type { Composition } from "@hyperframes/sdk";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import type { EditHistoryKind } from "../utils/editHistory";
+import type { RuntimeTweenChange } from "./gsapRuntimePatch";
 
 export interface MutationResult {
   ok: boolean;
@@ -26,6 +27,15 @@ export interface CommitMutationOptions {
    * (and under distinct keys) run concurrently as before.
    */
   serializeKey?: string;
+  /**
+   * Value-only edit fast path. When present, `runCommit` first tries to patch the
+   * one changed tween in the preview's runtime timeline in place
+   * (`patchRuntimeTweenInPlace`) — instant, no composition re-run, no iframe
+   * remount. On a successful patch the reload is skipped entirely (panels still
+   * refresh); when the patch can't be confidently applied it falls back to the
+   * existing soft/full reload path. Structural edits omit this and reload as before.
+   */
+  instantPatch?: { selector: string; change: RuntimeTweenChange };
 }
 
 export type CommitMutation = (
@@ -38,7 +48,7 @@ export type SafeGsapCommitMutation = (
   selection: DomEditSelection,
   mutation: Record<string, unknown>,
   options: CommitMutationOptions,
-) => void;
+) => Promise<void>;
 
 export type TrackGsapSaveFailure = (
   error: unknown,

@@ -21,7 +21,7 @@ import type { DraggedClipState, ResizingClipState, BlockedClipState } from "./us
 import type { TrackVisualStyle } from "./timelineIcons";
 import { STUDIO_KEYFRAMES_ENABLED } from "../../components/editor/manualEditingAvailability";
 import { SPLIT_BOUNDARY_EPSILON_S } from "../../utils/timelineElementSplit";
-import { useTimelineEditContext } from "../../contexts/TimelineEditContext";
+import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
 import { isMusicTrack } from "../../utils/timelineInspector";
 
 function ClipLabel({ element, color }: { element: TimelineElement; color: string }) {
@@ -151,7 +151,7 @@ export const TimelineCanvas = memo(function TimelineCanvas({
   beatAnalysis,
 }: TimelineCanvasProps) {
   const { onResizeElement, onMoveElement, onRazorSplit, onRazorSplitAll } =
-    useTimelineEditContext();
+    useTimelineEditContextOptional();
   const beatDragging = usePlayerStore((s) => s.beatDragging);
   const draggedElement = draggedClip?.element ?? null;
   const activeDraggedElement =

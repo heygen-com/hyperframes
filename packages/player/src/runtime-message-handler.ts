@@ -41,8 +41,16 @@ export interface MessageHandlerCallbacks extends PlaybackStateCallbacks {
    *  uses it to replay current bridge state (mute, volume, playback rate) so
    *  control messages sent before the iframe's listener registered aren't lost. */
   onRuntimeReady: () => void;
+  /** Invoked when the runtime posts a finite positive timeline duration. The
+   *  player uses this as the cross-origin readiness signal because the
+   *  same-origin composition probe cannot inspect CDN iframes. */
+  onRuntimeTimelineReady: (duration: number) => void;
   /** Called with the scene list whenever a "timeline" message is received. */
   setScenes: (scenes: SceneRecord[]) => void;
+  /** Return false to ignore the iframe runtime's audible-media autoplay fallback.
+   *  Slideshow embeds keep iframe media under native element ownership because
+   *  presenter/audience sync mirrors those media events directly. */
+  shouldPromoteMediaAutoplayFallback?: () => boolean;
 }
 
 // fallow-ignore-next-line complexity
@@ -87,6 +95,7 @@ export function handleRuntimeMessage(
   }
 
   if (data["type"] === "media-autoplay-blocked") {
+    if (callbacks.shouldPromoteMediaAutoplayFallback?.() === false) return;
     let iframeDoc: Document | null = null;
     try {
       iframeDoc = callbacks.getIframeDoc();
@@ -106,6 +115,7 @@ export function handleRuntimeMessage(
       const duration = (data["durationInFrames"] as number) / FPS;
       callbacks.setPlaybackState({ ...pb, duration });
       callbacks.updateControlsTime(pb.currentTime, duration);
+      callbacks.onRuntimeTimelineReady(duration);
     }
     callbacks.setScenes(extractScenes(data["scenes"]));
     return;

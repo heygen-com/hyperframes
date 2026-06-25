@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>09 · dolly_zoom</title>
+    <script src="../assets/gsap.min.js"></script>
+    <style>
+      :root {
+        --hg-violet: #7c3aed;
+        --hg-violet-2: #a855f7;
+        --hg-bg: #0a0a0f;
+        --hg-fg: #f5f5fa;
+        --hg-dim: #6b6b78;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--hg-bg);
+        font-family: "Inter", system-ui, sans-serif;
+        color: var(--hg-fg);
+        -webkit-font-smoothing: antialiased;
+      }
+      #scene {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+      }
+      .stage {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .layers {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+      }
+      .bg-far,
+      .bg-mid,
+      .bg-near {
+        position: absolute;
+        inset: 0;
+        will-change: transform, filter;
+      }
+      .bg-far {
+        background:
+          radial-gradient(2px 2px at 20% 30%, var(--hg-dim) 50%, transparent 51%),
+          radial-gradient(2px 2px at 70% 80%, var(--hg-dim) 50%, transparent 51%),
+          radial-gradient(1px 1px at 45% 60%, var(--hg-dim) 50%, transparent 51%),
+          radial-gradient(1px 1px at 85% 25%, var(--hg-dim) 50%, transparent 51%),
+          radial-gradient(2px 2px at 10% 75%, var(--hg-dim) 50%, transparent 51%),
+          radial-gradient(1px 1px at 60% 15%, var(--hg-dim) 50%, transparent 51%);
+        background-size: 400px 400px;
+        filter: blur(2px);
+      }
+      .bg-mid {
+        background:
+          linear-gradient(90deg, transparent 49.7%, rgba(168, 85, 247, 0.25) 50%, transparent 50.3%)
+            0 0 / 200px 200px,
+          linear-gradient(
+              180deg,
+              transparent 49.7%,
+              rgba(168, 85, 247, 0.15) 50%,
+              transparent 50.3%
+            )
+            0 0 / 200px 200px;
+      }
+      .bg-near {
+        background:
+          radial-gradient(circle at 15% 50%, rgba(168, 85, 247, 0.4) 0%, transparent 25%),
+          radial-gradient(circle at 85% 50%, rgba(124, 58, 237, 0.4) 0%, transparent 25%);
+      }
+      .subject {
+        position: relative;
+        z-index: 5;
+        font-family: "Playfair Display", serif;
+        font-style: italic;
+        font-weight: 900;
+        font-size: 180px;
+        letter-spacing: -0.02em;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="2"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="scene" class="clip" data-start="0" data-duration="2" data-track-index="1">
+        <div class="layers">
+          <div class="bg-far"></div>
+          <div class="bg-mid"></div>
+          <div class="bg-near"></div>
+        </div>
+        <div class="stage"><div class="subject">subject.</div></div>
+      </div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      tl.fromTo(
+        ".bg-far",
+        { scale: 1, filter: "blur(2px)" },
+        { scale: 1.6, filter: "blur(4px)", duration: 1.8, ease: "power2.inOut" },
+        0.1,
+      );
+      tl.fromTo(".bg-mid", { scale: 1 }, { scale: 1.4, duration: 1.8, ease: "power2.inOut" }, 0.1);
+      tl.fromTo(".bg-near", { scale: 1 }, { scale: 1.2, duration: 1.8, ease: "power2.inOut" }, 0.1);
+      tl.fromTo(
+        ".subject",
+        { opacity: 0, scale: 1.1 },
+        { opacity: 1, scale: 1, duration: 0.6, ease: "power3.out" },
+        0.15,
+      );
+      tl.to(".layers", { skewY: -0.5, duration: 1.8, ease: "power2.inOut" }, 0.1);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

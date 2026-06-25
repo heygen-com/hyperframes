@@ -252,6 +252,21 @@ describe("renderLocal browser GPU config", () => {
     expect(producerState.createdJobs[0]?.videoFrameFormat).toBe("png");
   });
 
+  it("forwards debug mode to createRenderJob", async () => {
+    await renderLocal("/tmp/project", "/tmp/out.mp4", {
+      fps: { num: 30, den: 1 },
+      quality: "standard",
+      format: "mp4",
+      gpu: false,
+      browserGpuMode: "software",
+      hdrMode: "auto",
+      quiet: true,
+      debug: true,
+    });
+
+    expect(producerState.createdJobs[0]?.debug).toBe(true);
+  });
+
   it("omits variables from createRenderJob when not provided", async () => {
     await renderLocal("/tmp/project", "/tmp/out.mp4", {
       fps: { num: 30, den: 1 },
@@ -309,6 +324,23 @@ describe("renderLocal browser GPU config", () => {
 
     expect(producerState.resolveConfigCalls[0]).toMatchObject({
       pageNavigationTimeout: 180_000,
+    });
+  });
+
+  it("forwards vp9CpuUsed into resolveConfig when set", async () => {
+    await renderLocal("/tmp/project", "/tmp/out.webm", {
+      fps: { num: 30, den: 1 },
+      quality: "standard",
+      format: "webm",
+      gpu: false,
+      browserGpuMode: "software",
+      hdrMode: "auto",
+      quiet: true,
+      vp9CpuUsed: 2,
+    });
+
+    expect(producerState.resolveConfigCalls[0]).toMatchObject({
+      vp9CpuUsed: 2,
     });
   });
 

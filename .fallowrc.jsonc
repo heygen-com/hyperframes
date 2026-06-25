@@ -59,6 +59,9 @@
     // prose), not import-graph reachable.
     "skills/motion-graphics/grounding/**",
     "skills/motion-graphics/categories/**",
+    // Agent-invoked reference materials (template + motion-primitive HTML, catalogs),
+    // forked by path by the frame-worker per SKILL.md prose, not import-graph reachable.
+    "skills/music-to-video/references/**",
     // Bundled @font-face data (read at runtime via fs.readFileSync, invisible
     // to the import graph) + its manual rebuild tool.
     "skills/**/fonts/**",

@@ -33,9 +33,11 @@ import {
   type CaptureOptions,
   type CaptureSession,
   type EngineConfig,
+  closeCaptureSession,
   createCaptureSession,
   getCompositionDuration,
   initializeSession,
+  isTransientBrowserError,
 } from "@hyperframes/engine";
 import { fpsToNumber } from "@hyperframes/core";
 import type { CompiledComposition } from "../../htmlCompiler.js";
@@ -175,35 +177,78 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
       quality: needsAlpha ? undefined : 80,
       deviceScaleFactor,
     };
-    log.info("Browser launched, creating capture session...");
-    probeSession = await createCaptureSession(
-      fileServer.url,
-      join(workDir, "probe"),
-      captureOpts,
-      null,
-      probeCfg,
-    );
-    log.info("Waiting for composition to initialize...");
-    const initStart = Date.now();
-    const heartbeat = setInterval(() => {
-      const elapsed = ((Date.now() - initStart) / 1000).toFixed(1);
-      log.info(`Still waiting for browser initialization... (${elapsed}s elapsed)`);
-    }, 30_000);
-    try {
-      await initializeSession(probeSession);
-    } finally {
-      clearInterval(heartbeat);
+
+    const PROBE_MAX_ATTEMPTS = 2;
+    for (let attempt = 1; attempt <= PROBE_MAX_ATTEMPTS; attempt++) {
+      const attemptStart = Date.now();
+      try {
+        log.info("Creating capture session...", { attempt, maxAttempts: PROBE_MAX_ATTEMPTS });
+        probeSession = await createCaptureSession(
+          fileServer.url,
+          join(workDir, "probe"),
+          captureOpts,
+          null,
+          probeCfg,
+        );
+        log.info("Waiting for composition to initialize...", { attempt });
+        const heartbeat = setInterval(() => {
+          const elapsed = ((Date.now() - attemptStart) / 1000).toFixed(1);
+          log.info(`Still waiting for browser initialization... (${elapsed}s elapsed)`);
+        }, 30_000);
+        try {
+          await initializeSession(probeSession);
+        } finally {
+          clearInterval(heartbeat);
+        }
+      } catch (err) {
+        const isTransient = isTransientBrowserError(err);
+        const errMsg = err instanceof Error ? err.message : String(err);
+        log.warn("Browser probe attempt failed", {
+          attempt,
+          maxAttempts: PROBE_MAX_ATTEMPTS,
+          isTransient,
+          error: errMsg,
+          elapsedMs: Date.now() - attemptStart,
+        });
+
+        if (probeSession) {
+          try {
+            await closeCaptureSession(probeSession);
+          } catch (closeErr) {
+            log.warn("Failed to close crashed probe session", {
+              error: closeErr instanceof Error ? closeErr.message : String(closeErr),
+            });
+          }
+          probeSession = null;
+        }
+
+        if (isTransient && attempt < PROBE_MAX_ATTEMPTS) {
+          log.info("Retrying with a fresh browser session...", {
+            attempt: attempt + 1,
+            maxAttempts: PROBE_MAX_ATTEMPTS,
+          });
+          assertNotAborted();
+          continue;
+        }
+        throw err;
+      }
+      log.info("Composition ready", {
+        attempt,
+        initMs: Date.now() - attemptStart,
+      });
+      break;
     }
-    log.info("Composition ready", {
-      initMs: Date.now() - initStart,
-    });
     assertNotAborted();
-    lastBrowserConsole = probeSession.browserConsoleBuffer;
+    // After the retry loop, probeSession is guaranteed non-null (the loop
+    // either breaks with a valid session or throws on the last attempt).
+    const session = probeSession!;
+    probeSession = session;
+    lastBrowserConsole = session.browserConsoleBuffer;
 
     // Discover root composition duration
     if (composition.duration <= 0) {
       log.info("Discovering composition duration...");
-      const discoveredDuration = await getCompositionDuration(probeSession);
+      const discoveredDuration = await getCompositionDuration(session);
       assertNotAborted();
       log.info("Probed composition duration from browser", {
         discoveredDuration,
@@ -219,7 +264,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
     // Resolve unresolved composition durations via window.__timelines
     if (compiled.unresolvedCompositions.length > 0) {
       const resolutions = await resolveCompositionDurations(
-        probeSession.page,
+        session.page,
         compiled.unresolvedCompositions,
       );
       assertNotAborted();
@@ -241,7 +286,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
 
     // Discover media elements from browser DOM (catches dynamically-set src)
     log.info("Discovering media assets from browser DOM...");
-    const browserMedia = await discoverMediaFromBrowser(probeSession.page);
+    const browserMedia = await discoverMediaFromBrowser(session.page);
     assertNotAborted();
     if (browserMedia.length > 0) {
       const existingVideoIds = new Set(composition.videos.map((v) => v.id));
@@ -356,7 +401,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
         audioCount: composition.audios.length,
       });
       const automation = await discoverAudioVolumeAutomationFromTimeline(
-        probeSession.page,
+        session.page,
         composition.audios.map((audio) => audio.id),
         composition.duration,
         fpsToNumber(job.config.fps),
@@ -382,7 +427,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
         videoCount: composition.videos.length,
       });
       const visibilityWindows = await discoverVideoVisibilityFromTimeline(
-        probeSession.page,
+        session.page,
         composition.duration,
       );
       assertNotAborted();

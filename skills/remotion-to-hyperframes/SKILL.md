@@ -86,7 +86,7 @@ Run the eval harness — [`references/eval.md`](references/eval.md) for the full
 cd remotion-src && npx remotion render <CompositionId> out/baseline.mp4
 
 # Render HF translation
-cd ../hf-src && npx hyperframes render --output ../hf.mp4
+cd ../hf-src && npx hyperframes render --skill=remotion-to-hyperframes --output ../hf.mp4
 
 # SSIM diff
 ../../scripts/render_diff.sh ./remotion-src/out/baseline.mp4 ./hf.mp4 ./diff

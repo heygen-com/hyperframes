@@ -167,9 +167,11 @@ describe("buildDockerRunArgs", () => {
         browserGpu: false,
         hdrMode: "force-hdr",
         crf: 16,
+        vp9CpuUsed: 2,
         videoBitrate: undefined,
         videoFrameFormat: "png",
         quiet: true,
+        debug: true,
         entryFile: "compositions/intro.html",
       },
     });
@@ -182,9 +184,12 @@ describe("buildDockerRunArgs", () => {
     expect(args).toContain("8");
     expect(args).toContain("--crf");
     expect(args).toContain("16");
+    expect(args).toContain("--vp9-cpu-used");
+    expect(args).toContain("2");
     expect(args).toContain("--video-frame-format");
     expect(args).toContain("png");
     expect(args).toContain("--quiet");
+    expect(args).toContain("--debug");
     expect(args).toContain("--gpu");
     expect(args).toContain("--no-browser-gpu");
     expect(args).toContain("--hdr");
@@ -347,6 +352,18 @@ describe("buildDockerRunArgs", () => {
       options: { ...BASE, pageSideCompositing: false },
     });
     expect(args).toContain("--no-page-side-compositing");
+  });
+
+  it("keeps Docker debug artifacts under the mounted output directory", () => {
+    const args = buildDockerRunArgs({
+      ...FIXED_INPUT,
+      options: { ...BASE, debug: true },
+    });
+    const envIdx = args.indexOf("PRODUCER_RENDERS_DIR=/output/renders");
+    const imageIdx = args.indexOf(FIXED_INPUT.imageTag);
+    expect(envIdx).toBeGreaterThan(-1);
+    expect(envIdx).toBeLessThan(imageIdx);
+    expect(args).toContain("--debug");
   });
 
   it("omits --no-page-side-compositing when pageSideCompositing is not explicitly false", () => {

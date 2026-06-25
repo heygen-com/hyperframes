@@ -1,4 +1,5 @@
 import { useCallback, useRef } from "react";
+import { editLog } from "../utils/editDebugLog";
 import type { TimelineElement } from "../player";
 import { usePlayerStore } from "../player";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
@@ -38,13 +39,21 @@ async function splitHtmlElement(
   patchTarget: NonNullable<ReturnType<typeof buildPatchTarget>>,
   splitTime: number,
   newId: string,
+  elementStart: number,
+  elementDuration: number,
 ): Promise<{ ok: boolean; changed?: boolean; content?: string }> {
   const response = await fetch(
     `/api/projects/${projectId}/file-mutations/split-element/${encodeURIComponent(targetPath)}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ target: patchTarget, splitTime, newId }),
+      body: JSON.stringify({
+        target: patchTarget,
+        splitTime,
+        newId,
+        elementStart,
+        elementDuration,
+      }),
     },
   );
   if (!response.ok) throw new Error("Split request failed");
@@ -111,11 +120,21 @@ async function executeSplit(
   if (!patchTarget) throw new Error("Clip is missing a patchable target.");
 
   const targetPath = element.sourceFile || activeCompPath || "index.html";
+  editLog("razor-split", { id: element.domId ?? element.id, splitTime, file: targetPath });
   const originalContent = await readFileContent(pid, targetPath);
   const newId = generateSplitId(collectHtmlIds(originalContent), element.domId || "clip");
 
-  const splitResult = await splitHtmlElement(pid, targetPath, patchTarget, splitTime, newId);
+  const splitResult = await splitHtmlElement(
+    pid,
+    targetPath,
+    patchTarget,
+    splitTime,
+    newId,
+    element.start,
+    element.duration,
+  );
   if (!splitResult.ok) throw new Error("Failed to split clip.");
+  editLog("razor-split:done", { changed: splitResult.changed, newId });
   if (!splitResult.changed) {
     return { targetPath, originalContent, patchedContent: originalContent, changed: false };
   }

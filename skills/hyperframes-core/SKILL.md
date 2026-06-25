@@ -1,129 +1,78 @@
 ---
 name: hyperframes-core
-description: HyperFrames HTML composition contract. Use for composition structure, data attributes, clips, tracks, sub-compositions, variables, media playback, deterministic render rules, and validation of minimal renderable projects.
+description: The HyperFrames composition contract — build one renderable project. Use for composition structure, the `data-*` timing attributes, `class="clip"`, tracks, sub-compositions, variables, framework-owned media playback, deterministic-render rules, and validation. Read before writing composition HTML.
 ---
 
 # HyperFrames Core
 
 HyperFrames renders video from HTML. A composition is an HTML file whose DOM declares timing with `data-*` attributes, whose animation runtime is seekable, and whose media playback is owned by the framework.
 
-This skill is the **technical contract**. Other concerns live in sibling skills:
+This skill is the **technical contract** — how to build one hyperframes project. The body below is the build guide; per-topic detail lives in `references/` (index next), read on demand. Other concerns live in the sibling domain skills — `hyperframes-animation`, `hyperframes-creative`, `hyperframes-media`, `hyperframes-cli`, `hyperframes-registry`. The capability map in `/hyperframes` says what each one covers.
 
-- `hyperframes-animation` — atomic motion rules + scene blueprints + per-runtime adapters (GSAP, Lottie, Three, Anime.js, CSS, WAAPI, TypeGPU)
-- `hyperframes-creative` — palettes, typography, narration, beat planning, audio-reactive
-- `hyperframes-media` — TTS, Whisper transcribe, background removal, captions
-- `hyperframes-registry` — install blocks and components (`hyperframes add`)
-- `hyperframes-cli` — dev loop commands (lint / validate / preview / render)
+## References
 
-For **Tailwind v4 projects** (`hyperframes init --tailwind`), see `references/tailwind.md` — the browser-runtime contract is distinct from Studio's Tailwind v3 setup.
-
-## Routing
-
-| Want to…                                                                                   | Read                                 |
-| ------------------------------------------------------------------------------------------ | ------------------------------------ |
-| See a minimal renderable composition                                                       | `references/minimal-composition.md`  |
-| Decide between monolithic single-file and modular sub-comp architecture                    | `references/composition-patterns.md` |
-| Structure a modular `index.html` (orchestrator + slots + root audio)                       | `references/composition-patterns.md` |
-| Pick a sub-comp archetype (content / driver-only / multi-scene merge / audio-reactive)     | `references/composition-patterns.md` |
-| Look up a `data-*` attribute (root, clip, sub-comp host, legacy aliases)                   | `references/data-attributes.md`      |
-| Use `class="clip"` correctly                                                               | `references/data-attributes.md`      |
-| Pick a `data-track-index`; same-track overlap; track-index vs CSS `z-index`                | `references/tracks-and-clips.md`     |
-| Time a clip relative to another (`data-start="intro + 2"`, crossfade overlap, chains)      | `references/tracks-and-clips.md`     |
-| Wire a sub-composition (host attributes, `<template>` wrapper, per-instance variables)     | `references/sub-compositions.md`     |
-| Animate inside a sub-composition (`gsap.fromTo` over `gsap.from`, seek-back behavior)      | `references/sub-compositions.md`     |
-| Declare variables (types, extra options, defaults, `--strict-variables` in CI)             | `references/variables-and-media.md`  |
-| Place `<video>` / `<audio>`, set volume, trim with `data-media-start`                      | `references/variables-and-media.md`  |
-| Build a seekable timeline (paused, sync construction, `gsap.set` later-scene trap)         | `references/determinism-rules.md`    |
-| Avoid non-deterministic state (clocks, `Math.random`, `repeat: -1`, finite repeat formula) | `references/determinism-rules.md`    |
-| Know what can / cannot be animated (visual-property allowlist; not `display`/`visibility`) | `references/determinism-rules.md`    |
-| Fit text and prevent overflow (`fitTextFontSize` signature, `<br>` rule, layout contract)  | `references/determinism-rules.md`    |
-| Author full-frame motion with shared backgrounds                                           | `references/full-screen-motion.md`   |
-| Work in a Tailwind v4 project (`init --tailwind`)                                          | `references/tailwind.md`             |
+| File                                 | Read it to…                                                                                       |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| `references/minimal-composition.md`  | start from the smallest renderable composition skeleton                                           |
+| `references/composition-patterns.md` | choose monolithic vs modular; structure a modular `index.html`; pick a sub-comp archetype         |
+| `references/data-attributes.md`      | look up any `data-*` (root / clip / sub-comp host / legacy aliases); use `class="clip"`           |
+| `references/tracks-and-clips.md`     | pick `data-track-index`, handle same-track overlap / z-index, time a clip relative to another     |
+| `references/sub-compositions.md`     | wire a sub-composition (host attrs, `<template>`, per-instance vars) and animate inside it        |
+| `references/variables-and-media.md`  | declare variables; place `<video>`/`<audio>`, set volume, trim                                    |
+| `references/determinism-rules.md`    | build a seekable timeline; determinism bans; the animatable-property allowlist; layout / text fit |
+| `references/full-screen-motion.md`   | author full-frame motion with shared backgrounds                                                  |
+| `references/storyboard-format.md`    | author a `STORYBOARD.md` plan (+ the parsed manifest)                                             |
+| `references/script-format.md`        | author the optional `SCRIPT.md` locked narration                                                  |
+| `references/subagent-dispatch.md`    | map subagent dispatch verbs (parallel fan-out / background / wait) to your harness                |
+| `references/tailwind.md`             | work in a Tailwind v4 project (`init --tailwind`; runtime contract differs from Studio's v3)      |
 
 For animation runtime specifics (GSAP API, Lottie, Three.js, etc.) go to `hyperframes-animation` → `adapters/<runtime>.md`.
 
-## Composition Structure
+## Building a composition
 
-Two root forms; they are **not** interchangeable.
+### Two root forms (not interchangeable)
 
-- **Standalone** (the top-level `index.html`) — root `<div data-composition-id="…">` sits directly in `<body>`. **No `<template>` wrapper.** Wrapping a standalone root in `<template>` hides all content from the browser and breaks rendering.
-- **Sub-composition** (a file loaded via `data-composition-src`) — root `<div data-composition-id="…">` **must** be wrapped in `<template>`. Without the wrapper the runtime cannot extract and mount it.
+- **Standalone** (top-level `index.html`) — root `<div data-composition-id="…">` sits directly in `<body>`, **no `<template>` wrapper** (wrapping it hides all content and breaks rendering).
+- **Sub-composition** (loaded via `data-composition-src`) — root **must** be wrapped in `<template>`.
 
-> ⚠ Sub-composition transport rule: the runtime **only clones `<template>` contents** into the live DOM. Everything outside the template — including `<head>` and any `<style>`/`<script>`/`<link>` that lives in `<head>` — is discarded. Put `<style>` and `<script>` blocks **inside** `<template>`, not in `<head>`.
->
-> ⚠ Host-id rule: in the host file, `data-composition-id` on the slot must **exactly equal** the inner template's `data-composition-id` **and** the `window.__timelines["<id>"]` key. Do not add `-mount` / `-slot` / `-host` suffixes.
+> ⚠ Transport rule: the runtime **only clones `<template>` contents**; everything outside (incl. `<head>` styles/scripts) is discarded — put `<style>`/`<script>` **inside** the template.
+> ⚠ Host-id rule: the host slot's `data-composition-id` must **exactly equal** the inner template's `data-composition-id` **and** the `window.__timelines["<id>"]` key — no `-mount`/`-slot`/`-host` suffix.
 
-See `references/sub-compositions.md` for the file shape, host wiring, pitfall examples, and the pre-render verification checklist.
+File shape, host wiring, and the pre-render checklist → `references/sub-compositions.md`.
 
 ### Root must be sized (silent layout bug)
 
-The standalone root must establish an explicitly **sized box**, and every ancestor between it and a `height: 100%` element must have a resolved height. If the root or an intermediate wrapper has no height, a flex/`height:100%` content container collapses to ~0 and content piles into the **top-left corner** (often clipping the first glyph at x=0). `lint`, `validate`, and `inspect` do **not** catch this — `inspect` substitutes the authored `data-width`/`data-height` for a collapsed root and reports "0 layout issues."
+The standalone root needs an explicit **sized box** (`width`/`height` in px), and every ancestor down to a `height:100%` element must have a resolved height — otherwise a flex/`100%` child collapses to ~0 and content piles into the top-left corner. `lint`/`validate`/`inspect` do **not** catch this. Skeleton → `references/minimal-composition.md`.
 
-```html
-<body style="margin: 0">
-  <div
-    id="root"
-    data-composition-id="main"
-    data-width="1920"
-    data-height="1080"
-    data-duration="5"
-    style="position: relative; width: 1920px; height: 1080px; overflow: hidden"
-  >
-    <!-- Center robustly: position:absolute + inset:0 fills the sized root regardless of
-         intermediate wrappers; or use a flex container ONLY if its parent chain is sized. -->
-    <section
-      class="clip"
-      data-start="0"
-      data-duration="5"
-      data-track-index="1"
-      style="position: absolute; inset: 0; display: grid; place-items: center; padding: 120px 160px; box-sizing: border-box"
-    >
-      <h1>Title</h1>
-    </section>
-  </div>
-</body>
-```
+### One paused timeline
 
-Keep the `padding` (≥80px) on the centering container — it is the title-safe margin that stops large type touching the frame edge. See `references/minimal-composition.md`.
+Each composition registers **exactly one** `gsap.timeline({ paused: true })` at `window.__timelines["<id>"]` (key = root `data-composition-id`), built **synchronously** at page load. Render duration = root `data-duration`, not timeline length. Don't manually nest sub-timelines into the host. Full contract (incl. non-GSAP runtimes) → `references/determinism-rules.md` + `hyperframes-animation/adapters/`.
 
-## Timeline Contract (GSAP default)
+### Non-negotiable rules (silent bugs `lint`/`validate`/`inspect` won't catch)
 
-Every composition registers exactly one GSAP timeline.
+Surfaced here; full rationale in the linked reference. Do not violate:
 
-- Create with `gsap.timeline({ paused: true })` — the player owns playback.
-- Register at `window.__timelines["<composition-id>"]`; the key **must exactly match** the root's `data-composition-id`. Dot syntax (`window.__timelines.<id> = tl`) is equivalent when the id is a valid identifier; use brackets if the id contains `-`.
-- Build the timeline **synchronously** during page load — not inside `async`, `setTimeout`, `Promise`, or event handlers. The renderer samples after page load completes; any deferred timeline construction misses the sample.
-- Render duration comes from `data-duration` on the root, **not** from GSAP timeline length. Do not pad the timeline with empty tweens to set duration.
-- For sub-compositions, do **not** manually nest sub-timelines into the host (`master.add(sub)`); the framework drives them independently.
+- No render-time clocks / unseeded `Math.random` / network / input-state; no `repeat: -1` (use a finite count). → `determinism-rules.md`
+- Animate only the visual-property allowlist; never `display`/`visibility`; no `gsap.set` on later-scene clips. → `determinism-rules.md`
+- No `<br>` in body text; transformed elements must be block-level + sized; pulsing absolute decoratives need peak clearance. → `determinism-rules.md`
+- `<video>`/`<audio>` must be a **direct child of the host root** (never inside a sub-comp `<template>`/wrapper); the framework owns playback. → `variables-and-media.md`
+- Every `id` must be unique across the **assembled** page; inside a sub-comp, prefix ids with the composition id (`#<id>-hero`). Duplicate `<video>`/`<img>` ids render **blank** — the producer injects frames by `getElementById`, and cross-file dupes slip past `lint`. → `composition-patterns.md`
+- A full-screen scene fill goes on a full-bleed **child** (`position:absolute; inset:0`), never on the composition root itself — the producer's frame compositing can drop the root element's own `background` (the frame renders **black**) even though preview/`snapshot` show it correctly. → `composition-patterns.md`
 
-For non-GSAP runtimes (Lottie / Three / WAAPI / CSS / Anime.js / TypeGPU), the equivalent contract lives in `hyperframes-animation/adapters/<runtime>.md`. See `references/determinism-rules.md` for the cross-runtime Animation Runtime Contract.
+## Editing existing compositions
 
-## Non-Negotiable Rules
-
-These break the renderer — or produce **silent visual bugs that `lint`/`validate`/`inspect` do NOT catch** (rules 3, 7-8). (Synchronous timeline construction is covered above in **Timeline Contract**.)
-
-1. No `Math.random()` / `Date.now()` / `performance.now()` driving visuals — use a seeded PRNG.
-2. No `repeat: -1`. Use `repeat: Math.max(0, Math.floor(duration / cycleDuration) - 1)` — **`floor`, not `ceil`** (`ceil` overshoots `data-duration` and trips the `gsap_repeat_ceil_overshoot` lint; `max(0, …)` avoids a negative repeat = infinite).
-3. `<video>`/`<audio>` must be a **direct child of the host root** (`index.html`) — never inside a sub-comp `<template>`, never inside a wrapper `<div>`; otherwise it is never decoded and renders blank/black (silent). The framework owns playback: no `video.play()` / `audio.play()` / `currentTime = …`. A sub-comp **cannot** drive host elements (selector or `querySelector`), so animate host media from the **main timeline** at global time. See `references/variables-and-media.md`.
-4. No `gsap.set()` on clip elements from later scenes (they are not in the DOM yet). Use `tl.set(selector, vars, time)` at or after the clip's `data-start`.
-5. No animating `display` / `visibility`. Animate `opacity` / transforms; the clip lifecycle handles show/hide.
-6. No `<br>` in body text. Let text wrap via `max-width`.
-7. Transformed elements must be block-level + sized. `transform`/`scaleX`/`scaleY` is a **no-op on an inline `<span>`**, and scaling an auto-width (0px) element shows nothing → invisible bars/fills. Give them `display: block`/`inline-block`/flex-item **and** a real `width`/`height` (e.g. `width: 100%` inside a sized parent).
-8. Absolutely-positioned decoratives (badges, pills, tags) that **pulse or overshoot** (`yoyo` scale, `back.out`) need clearance at their **peak** size and must not straddle an `overflow: hidden` edge — else they overlap a neighbor or get clipped. Position for the largest frame, not the resting one.
-
-## Editing Existing Compositions
-
-- Read the actual files before editing.
-- Preserve unrelated timing, tracks, IDs, variables, and media paths.
-- Match existing composition IDs and timeline registry keys.
-- When adding a clip, choose a non-overlapping `data-track-index` or intentionally adjust surrounding timing.
-- When adding a sub-composition, verify its internal `data-composition-id` before wiring the host.
+- Read the files first. Preserve unrelated timing, tracks, IDs, variables, media paths.
+- Match existing composition IDs and timeline keys.
+- Adding a clip: pick a non-overlapping `data-track-index` or adjust surrounding timing intentionally.
+- Adding a sub-composition: verify its internal `data-composition-id` before wiring the host.
 
 ## Validation
 
-Use `hyperframes-cli` for command details.
+Use `hyperframes-cli` for command details
 
 - [ ] `npx hyperframes lint` passes (0 errors)
 - [ ] `npx hyperframes validate` passes (0 console errors)
-- [ ] `npx hyperframes inspect` passes, or overflow is intentionally marked
+- [ ] `npx hyperframes inspect` passes (0 errors)
 - [ ] Projects with sub-compositions: `npx hyperframes snapshot --at <midpoints>` and eyeball each frame
+- [ ] `npx hyperframes preview` for review (the user can edit anything in Studio's timeline)
+- [ ] `npx hyperframes render` only after the user approves

@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>10 · iris_open</title>
+    <script src="../assets/gsap.min.js"></script>
+    <style>
+      :root {
+        --hg-violet: #7c3aed;
+        --hg-violet-2: #a855f7;
+        --hg-bg: #0a0a0f;
+        --hg-fg: #f5f5fa;
+        --hg-dim: #6b6b78;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--hg-bg);
+        font-family: "Inter", system-ui, sans-serif;
+        color: var(--hg-fg);
+        -webkit-font-smoothing: antialiased;
+      }
+      #scene {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+      }
+      .iris-stage {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        clip-path: circle(0% at 50% 50%);
+        will-change: clip-path;
+        background: linear-gradient(135deg, #1a0033 0%, #0a0a0f 60%);
+      }
+      .iris-stage .hero {
+        font-family: "Playfair Display", serif;
+        font-weight: 900;
+        font-size: 280px;
+        letter-spacing: -0.04em;
+        line-height: 0.95;
+        color: var(--hg-fg);
+        white-space: nowrap;
+      }
+      .iris-ring {
+        position: absolute;
+        border-radius: 50%;
+        border: 2px solid var(--hg-violet);
+        box-shadow: 0 0 40px var(--hg-violet);
+        opacity: 0;
+        will-change: transform, opacity;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="2"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="scene" class="clip" data-start="0" data-duration="2" data-track-index="1">
+        <div class="iris-stage">
+          <div class="iris-ring" style="width: 200px; height: 200px"></div>
+          <div class="hero">IRIS</div>
+        </div>
+      </div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      tl.set(".iris-stage", { clipPath: "circle(0% at 50% 50%)" }, 0);
+      tl.fromTo(
+        ".iris-ring",
+        { scale: 0, opacity: 0.9 },
+        { scale: 9, opacity: 0, duration: 0.85, ease: "expo.out" },
+        0.2,
+      );
+      tl.to(
+        ".iris-stage",
+        { clipPath: "circle(75% at 50% 50%)", duration: 0.9, ease: "expo.out" },
+        0.3,
+      );
+      tl.from(".iris-stage .hero", { y: 40, opacity: 0, duration: 0.6, ease: "power3.out" }, 0.6);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

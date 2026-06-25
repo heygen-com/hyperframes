@@ -1,5 +1,3 @@
-import { STUDIO_GSAP_DRAG_INTERCEPT_ENABLED } from "../components/editor/manualEditingAvailability";
-
 type TimelineLike = { getChildren?: (nested: boolean) => Array<{ targets?: () => Element[] }> };
 
 let _gsapCachedTimelines: Record<string, TimelineLike> | undefined;
@@ -50,7 +48,6 @@ export function isElementGsapTargeted(
   iframe: HTMLIFrameElement | null,
   element: HTMLElement,
 ): boolean {
-  if (!STUDIO_GSAP_DRAG_INTERCEPT_ENABLED) return false;
   const timelines = readTimelines(iframe);
   if (!timelines) return false;
 

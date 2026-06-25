@@ -129,6 +129,8 @@ function send(url: string, payload: string): void {
 function showNoticeOnce(): void {
   if (hasShownNotice()) return;
   markNoticeShown();
+  // Intentional one-time consent disclosure (not debug noise): tells users
+  // anonymous analytics are on and how to opt out. Kept behind a pragma.
   // eslint-disable-next-line no-console
   console.info(
     "%c[HyperFrames]%c Anonymous studio usage analytics enabled. " +

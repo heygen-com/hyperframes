@@ -313,16 +313,16 @@ When rendering, **always specify quality and resolution explicitly.** Don't use 
 
 ```bash
 # Standard quality, 1080p landscape (default for most videos)
-npx hyperframes render --output renders/<name>.mp4 --quality standard --fps 30
+npx hyperframes render --skill=website-to-video --output renders/<name>.mp4 --quality standard --fps 30
 
 # High quality for final delivery
-npx hyperframes render --output renders/<name>.mp4 --quality high --fps 30
+npx hyperframes render --skill=website-to-video --output renders/<name>.mp4 --quality high --fps 30
 
 # Portrait for Instagram Stories / TikTok
-npx hyperframes render --output renders/<name>.mp4 --quality standard --fps 30 --resolution portrait
+npx hyperframes render --skill=website-to-video --output renders/<name>.mp4 --quality standard --fps 30 --resolution portrait
 
 # 4K for premium output
-npx hyperframes render --output renders/<name>.mp4 --quality high --fps 30 --resolution 4k
+npx hyperframes render --skill=website-to-video --output renders/<name>.mp4 --quality high --fps 30 --resolution 4k
 ```
 
 **Available options:**

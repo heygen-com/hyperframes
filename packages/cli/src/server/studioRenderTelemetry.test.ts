@@ -93,6 +93,8 @@ const fullPerf: RenderPerfSummary = {
     videoExtractMs: 200,
     audioProcessMs: 50,
     captureMs: 4000,
+    captureSetupMs: 750,
+    captureFrameMs: 3250,
     encodeMs: 500,
     assembleMs: 150,
   },
@@ -161,6 +163,8 @@ describe("studioRenderTelemetry", () => {
       expect(p.stageVideoExtractMs).toBe(200);
       expect(p.stageAudioProcessMs).toBe(50);
       expect(p.stageCaptureMs).toBe(4000);
+      expect(p.stageCaptureSetupMs).toBe(750);
+      expect(p.stageCaptureFrameMs).toBe(3250);
       expect(p.stageEncodeMs).toBe(500);
       expect(p.stageAssembleMs).toBe(150);
       // video-extract breakdown

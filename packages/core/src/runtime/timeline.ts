@@ -4,6 +4,7 @@ import type {
   RuntimeTimelineScene,
   RuntimeTimelineLike,
 } from "./types";
+import { stableClipId } from "./clipTree";
 import { swallow } from "./diagnostics";
 import { readElementPlaybackRate } from "./media";
 import { createRuntimeStartTimeResolver } from "./startResolver";
@@ -424,7 +425,7 @@ export function collectRuntimeTimelinePayload(params: {
               ? "image"
               : "element";
     clips.push({
-      id: (node as HTMLElement).id || nodeCompositionId || null,
+      id: stableClipId(node) ?? nodeCompositionId ?? null,
       label: buildTimelineClipLabel(node, kind, clips.length),
       start,
       duration,

@@ -48,15 +48,17 @@ So `<template>` is not just a wrapper — it is the **transport container**. If 
     <template>
       <!-- EVERYTHING the runtime needs goes here: styles, markup, scripts -->
       <style>
-        .chart-root {
+        /* Root: style by #root, never a class. (At render the CSS is scoped to
+           data-composition-id, so a class on the root stops matching — see Pitfall 3.) */
+        #root {
           position: absolute;
           inset: 0;
           color: #fff;
         }
-        /* ... */
+        /* .label, #bar, … — descendants, plain selectors */
       </style>
 
-      <div class="chart-root" data-composition-id="data-chart" data-width="1920" data-height="1080">
+      <div id="root" data-composition-id="data-chart" data-width="1920" data-height="1080">
         <!-- sub-composition markup -->
       </div>
 
@@ -83,23 +85,23 @@ Contrast with **standalone** compositions, which put the root directly in `<body
 <!-- ❌ WRONG — looks normal, ships catastrophically broken -->
 <head>
   <style>
-    .chart-root { font-size: 88px; ... }
+    #root { font-size: 88px; ... }
   </style>
 </head>
 <body>
   <template>
-    <div class="chart-root" ...>...</div>
+    <div id="root" data-composition-id="data-chart" ...>...</div>
   </template>
 </body>
 
-<!-- ✅ RIGHT — styles are inside the template -->
+<!-- ✅ RIGHT — styles are inside the template, root styled by #root (see Pitfall 3) -->
 <head></head>
 <body>
   <template>
     <style>
-      .chart-root { font-size: 88px; ... }
+      #root { font-size: 88px; ... }
     </style>
-    <div class="chart-root" ...>...</div>
+    <div id="root" data-composition-id="data-chart" ...>...</div>
   </template>
 </body>
 ```
@@ -133,6 +135,48 @@ Contrast with **standalone** compositions, which put the root directly in `<body
 
 **Symptom:** the render logs `Sub-composition timelines not registered after 45000ms: <host-id>` for every mismatched slot, waits 45s per scene, then captures static initial-state frames (so the video is full-length but no animation plays).
 
+### Pitfall 3 — Styling the root by a class instead of `#root`
+
+```html
+<!-- ❌ WRONG — class on the root, stylesheet keyed off it -->
+<template>
+  <style>
+    .frame {
+      position: absolute;
+      inset: 0;
+      background: #faf9f5;
+    }
+    .frame .title {
+      font-size: 120px;
+    }
+  </style>
+  <div id="root" class="frame" data-composition-id="03-scene" ...>
+    <div class="title">…</div>
+  </div>
+</template>
+
+<!-- ✅ RIGHT — root styled by #root, descendants by plain selectors -->
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      background: #faf9f5;
+    }
+    .title {
+      font-size: 120px;
+    }
+  </style>
+  <div id="root" data-composition-id="03-scene" ...>
+    <div class="title">…</div>
+  </div>
+</template>
+```
+
+**Why this happens:** when sub-compositions are inlined into one composited render, the compiler **scopes each file's CSS to its own `data-composition-id`** so scenes can't leak styles into each other — every rule `S` becomes `[data-composition-id="<id>"] S` (a _descendant_ selector). A rule whose leftmost selector is the **root's own class** (`.frame`) therefore becomes `[data-composition-id="<id>"] .frame`, which cannot match the root (the root _is_ the scoped element, not a descendant of it), so **every `.frame…` rule silently drops**. `#root` is special-cased by the scoper and keeps matching the root; plain descendant selectors (`.title`) match normally. The per-scene class namespace is also just redundant — the `data-composition-id` scope already isolates each scene's styles.
+
+**Symptom:** _identical_ to Pitfall 1 — tiny unstyled text in the top-left, images at natural size, inline styles (e.g. a card background) the only thing surviving. The trap: this passes `lint`/`validate`/`inspect` (they evaluate the file in isolation, unscoped) **and looks perfect in `preview`** (Studio mounts each scene in its own iframe, also unscoped) — it only breaks in the composited MP4 render. Lint rule `subcomposition_root_styled_by_class` flags it; the registry blocks (e.g. `apple-money-count`) model the `#root` pattern.
+
 ### Verification checklist before render
 
 ```bash
@@ -145,9 +189,14 @@ grep -n "<style\|<script\|<template" compositions/<scene>.html
 grep "data-composition-id" index.html
 grep "data-composition-id\|__timelines\[" compositions/<scene>.html
 #      → all three strings must match exactly per scene
+
+#   3) the root is styled by #root, not by a class on the data-composition-id element
+grep -n 'data-composition-id=' compositions/<scene>.html
+#      → that element should NOT also carry a class="…" that the <style> keys off
+#        (e.g. `.frame { … }`); scoping drops it. Style the root via #root. See Pitfall 3.
 ```
 
-For the runtime end-to-end check (a fast `snapshot` pass + per-scene frame eyeball), see the **Visual smoke test** step in `hyperframes-cli`'s Minimum Completion Gate — that is the only gate that catches these two pitfalls.
+For the runtime end-to-end check (a fast `snapshot` pass + per-scene frame eyeball), see the **Visual smoke test** step in `hyperframes-cli`'s Minimum Completion Gate — that is the only gate that catches these three pitfalls.
 
 ## What HyperFrames Does With the Sub-Composition
 

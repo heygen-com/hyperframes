@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>palette_flip</title>
+    <script src="../assets/gsap.min.js"></script>
+    <style>
+      :root {
+        --hg-violet: #7c3aed;
+        --hg-violet-2: #a855f7;
+        --hg-bg: #0a0a0f;
+        --hg-fg: #f5f5fa;
+        --hg-dim: #6b6b78;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--hg-bg);
+        font-family: "Inter", system-ui, sans-serif;
+        color: var(--hg-fg);
+        -webkit-font-smoothing: antialiased;
+      }
+      #scene {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+      }
+      .stage {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+      }
+      .kicker {
+        font-weight: 700;
+        font-size: 38px;
+        letter-spacing: 0.42em;
+        text-transform: uppercase;
+        margin-bottom: 40px;
+      }
+      .word {
+        font-weight: 900;
+        font-size: 300px;
+        letter-spacing: -0.05em;
+        line-height: 0.9;
+        white-space: nowrap;
+      }
+      .bars {
+        display: flex;
+        gap: 26px;
+        margin-top: 56px;
+      }
+      .bar {
+        width: 220px;
+        height: 26px;
+        border-radius: 4px;
+      }
+      .bar.b2 {
+        width: 140px;
+      }
+      .bar.b3 {
+        width: 90px;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="2.6"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="scene" class="clip" data-start="0" data-duration="2.6" data-track-index="1">
+        <div class="stage">
+          <div class="kicker" id="kicker">REGIME</div>
+          <div class="word" id="word">REGIME</div>
+          <div class="bars">
+            <div class="bar b1"></div>
+            <div class="bar b2"></div>
+            <div class="bar b3"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      // Four distinct palette regimes — same layout, re-skinned on each flip.
+      const regimes = [
+        { bg: "#0a0a0f", fg: "#f5f5fa", accent: "#7c3aed", kicker: "#a855f7" }, // dark / violet
+        { bg: "#f4ead8", fg: "#1a1410", accent: "#ff5a47", kicker: "#c4452f" }, // cream / coral
+        { bg: "#08222b", fg: "#eafaf6", accent: "#1fd1b0", kicker: "#7fe3d2" }, // navy / teal
+        { bg: "#000000", fg: "#ffce3a", accent: "#ffce3a", kicker: "#7a6010" }, // black / amber
+      ];
+
+      const beat = 0.6;
+      const scene = "#scene";
+      const word = "#word";
+      const kicker = "#kicker";
+      const bars = ".bar";
+
+      // Instant 0ms flips on every beat — cycle through the regimes deterministically.
+      // The motion IS the colour change; layout never moves.
+      const flips = 5;
+      for (let i = 0; i < flips; i++) {
+        const p = regimes[i % regimes.length];
+        const t = i * beat;
+        tl.set(scene, { backgroundColor: p.bg }, t);
+        tl.set(word, { color: p.fg }, t);
+        tl.set(kicker, { color: p.kicker }, t);
+        tl.set(bars, { backgroundColor: p.accent }, t);
+      }
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

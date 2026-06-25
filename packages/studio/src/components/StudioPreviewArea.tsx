@@ -3,6 +3,8 @@ import { NLELayout } from "./nle/NLELayout";
 import { CaptionOverlay } from "../captions/components/CaptionOverlay";
 import { CaptionTimeline } from "../captions/components/CaptionTimeline";
 import { DomEditOverlay } from "./editor/DomEditOverlay";
+import { MotionPathOverlay } from "./editor/MotionPathOverlay";
+import { useCompositionDimensions } from "../hooks/useCompositionDimensions";
 import { SnapToolbar } from "./editor/SnapToolbar";
 import { StudioFeedbackBar } from "./StudioFeedbackBar";
 import type { TimelineElement } from "../player";
@@ -10,11 +12,12 @@ import { usePlayerStore } from "../player/store/playerStore";
 import type { BlockedTimelineEditIntent } from "../player/components/timelineEditing";
 import {
   STUDIO_INSPECTOR_PANELS_ENABLED,
+  STUDIO_KEYFRAMES_ENABLED,
   STUDIO_PREVIEW_MANUAL_EDITING_ENABLED,
   STUDIO_PREVIEW_SELECTION_ENABLED,
 } from "./editor/manualEditingAvailability";
 import { useStudioPlaybackContext, useStudioShellContext } from "../contexts/StudioContext";
-import { useDomEditContext } from "../contexts/DomEditContext";
+import { useDomEditActionsContext, useDomEditSelectionContext } from "../contexts/DomEditContext";
 import { TimelineEditProvider } from "../contexts/TimelineEditContext";
 import type { BlockPreviewInfo } from "./sidebar/BlocksTab";
 import { readStudioUiPreferences } from "../utils/studioUiPreferences";
@@ -108,11 +111,15 @@ export function StudioPreviewArea({
     isPlaying,
     refreshPreviewDocumentVersion,
   } = useStudioPlaybackContext();
+  const compositionDimensions = useCompositionDimensions();
 
   const {
     domEditHoverSelection,
     domEditSelection,
     domEditGroupSelections,
+    selectedGsapAnimations,
+  } = useDomEditSelectionContext();
+  const {
     handleTimelineElementSelect,
     handlePreviewCanvasMouseDown,
     handlePreviewCanvasPointerMove,
@@ -124,15 +131,16 @@ export function StudioPreviewArea({
     handleDomGroupPathOffsetCommit,
     handleDomBoxSizeCommit,
     handleDomRotationCommit,
-    selectedGsapAnimations,
     handleGsapRemoveKeyframe,
     handleGsapUpdateMeta,
     handleGsapAddKeyframe,
     handleGsapConvertToKeyframes,
     handleGsapDeleteAllForElement,
     buildDomSelectionForTimelineElement,
-  } = useDomEditContext();
+    applyMarqueeSelection,
+  } = useDomEditActionsContext();
 
+  // fallow-ignore-next-line complexity
   const [snapPrefs, setSnapPrefs] = useState(() => {
     const p = readStudioUiPreferences();
     return {
@@ -156,6 +164,7 @@ export function StudioPreviewArea({
         const rawId = elId.includes("#") ? (elId.split("#").pop() ?? elId) : elId;
         handleGsapDeleteAllForElement(`#${rawId}`);
       },
+      // fallow-ignore-next-line complexity
       onDeleteKeyframe: (_elId: string, pct: number) => {
         const cacheKey = domEditSelection?.id ?? "";
         const cached = usePlayerStore.getState().keyframeCache.get(cacheKey);
@@ -211,6 +220,7 @@ export function StudioPreviewArea({
           }
         }
       },
+      // fallow-ignore-next-line complexity
       onToggleKeyframeAtPlayhead: (el: TimelineElement) => {
         const currentTime = usePlayerStore.getState().currentTime;
         const pct =
@@ -335,8 +345,17 @@ export function StudioPreviewArea({
                     gridSpacing={snapPrefs.gridSpacing}
                     recordingState={recordingState}
                     onToggleRecording={onToggleRecording}
+                    onMarqueeSelect={applyMarqueeSelection}
                   />
                   <SnapToolbar onSnapChange={setSnapPrefs} />
+                  {STUDIO_KEYFRAMES_ENABLED && (
+                    <MotionPathOverlay
+                      iframeRef={previewIframeRef}
+                      selection={shouldShowSelectedDomBounds ? domEditSelection : null}
+                      compositionSize={compositionDimensions}
+                      isPlaying={isPlaying}
+                    />
+                  )}
                   {gestureOverlay}
                 </>
               ) : null

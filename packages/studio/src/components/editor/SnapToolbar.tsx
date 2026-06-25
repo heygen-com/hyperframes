@@ -1,7 +1,7 @@
-// fallow-ignore-file unused-file
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { MagnetStraight, GridFour } from "@phosphor-icons/react";
+import { MagnetStraight, GridFour, Path } from "@phosphor-icons/react";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
+import { usePlayerStore } from "../../player/store/playerStore";
 
 const SNAP_DEFAULTS = {
   snapEnabled: true,
@@ -34,6 +34,11 @@ interface SnapToolbarProps {
 export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolbarProps) {
   const [prefs, setPrefs] = useState(readSnapPrefs);
   const [gridPopoverOpen, setGridPopoverOpen] = useState(false);
+  // Motion-path "set destination" toggle — shown only when the selected element
+  // can take a path; arms a single canvas click to place it (MotionPathOverlay).
+  const motionPathCreateAvailable = usePlayerStore((s) => s.motionPathCreateAvailable);
+  const motionPathArmed = usePlayerStore((s) => s.motionPathArmed);
+  const setMotionPathArmed = usePlayerStore((s) => s.setMotionPathArmed);
   const popoverRef = useRef<HTMLDivElement>(null);
   const gridButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -89,7 +94,27 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
   }, [gridPopoverOpen]);
 
   return (
-    <div className="absolute top-2 right-2 z-50 flex items-center gap-1">
+    <div
+      className="absolute top-2 right-2 z-50 flex items-center gap-1"
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      {motionPathCreateAvailable && (
+        <button
+          type="button"
+          className={`rounded-md p-1.5 transition-colors ${
+            motionPathArmed
+              ? "bg-studio-accent/20 text-studio-accent"
+              : "bg-black/40 text-white/60 hover:bg-black/60 hover:text-white/80"
+          }`}
+          onClick={() => setMotionPathArmed(!motionPathArmed)}
+          title={
+            motionPathArmed ? "Click the canvas to set the destination" : "Set motion destination"
+          }
+          aria-label="Set motion destination"
+        >
+          <Path size={16} weight={motionPathArmed ? "fill" : "regular"} />
+        </button>
+      )}
       <button
         type="button"
         className={`rounded-md p-1.5 transition-colors ${

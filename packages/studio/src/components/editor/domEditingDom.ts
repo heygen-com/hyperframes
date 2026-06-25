@@ -128,18 +128,32 @@ export function findClosestByAttribute(
   }
   return null;
 }
+// ─── Composition source resolution ───────────────────────────────────────────
 
-export function getElementDepth(el: HTMLElement): number {
-  let depth = 0;
-  let current = el.parentElement;
-  while (current) {
-    depth += 1;
-    current = current.parentElement;
-  }
-  return depth;
+// The runtime INLINES subcompositions and strips the source-file linkage from the
+// mounted root (it keeps `data-composition-id` but drops `data-composition-src`/
+// `-file`), so a subcomp element's DOM ancestors no longer say which file it came
+// from. This project-global map (composition-id → source file, built once from
+// index.html's clips — see NLELayout) recovers it. The studio loads one project at a
+// time, so module scope is the right lifetime; it's empty until set, in which case
+// resolution falls back to the historical attribute-only behavior.
+let compositionSourceMap: Map<string, string> = new Map();
+
+export function setCompositionSourceMap(map: Map<string, string>): void {
+  compositionSourceMap = map;
 }
 
-// ─── Composition source resolution ───────────────────────────────────────────
+function sourceFromCompositionId(ownerRoot: HTMLElement | null): string | undefined {
+  if (!ownerRoot || compositionSourceMap.size === 0) return undefined;
+  // The runtime may rename the mounted id to a runtime-unique one, preserving the
+  // authored id on `data-hf-original-composition-id` — prefer that, then the current id.
+  const authored = ownerRoot.getAttribute("data-hf-original-composition-id");
+  const current = ownerRoot.getAttribute("data-composition-id");
+  return (
+    (authored ? compositionSourceMap.get(authored) : undefined) ??
+    (current ? compositionSourceMap.get(current) : undefined)
+  );
+}
 
 export function getSourceFileForElement(
   el: HTMLElement,
@@ -152,6 +166,7 @@ export function getSourceFileForElement(
     sourceHost?.getAttribute("data-composition-src") ??
     ownerRoot?.getAttribute("data-composition-file") ??
     ownerRoot?.getAttribute("data-composition-src") ??
+    sourceFromCompositionId(ownerRoot) ??
     activeCompositionPath ??
     "index.html";
 

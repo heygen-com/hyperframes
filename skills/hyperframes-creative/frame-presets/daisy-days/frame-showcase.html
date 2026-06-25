@@ -1,0 +1,1444 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Daisy Days</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Quicksand:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style id="ds-tokens">
+      :root {
+        --cream: #f5f0e6;
+        --turquoise: #7ecdc0;
+        --soft-pink: #f7c8d4;
+        --butter: #fde68a;
+        --mint: #a8e6cf;
+        --lavender: #d4a5e8;
+        --peach: #ffcba4;
+        --sky: #a8d8f0;
+        --coral: #f8635f;
+        --text-dark: #2d2d2d;
+        --text-muted: #6b6b6b;
+        --white: #ffffff;
+        --disp: "Fredoka", "Fredoka One", "Baloo 2", sans-serif;
+        --body: "Quicksand", sans-serif;
+        --shadow: 6px 6px 0 var(--text-dark);
+        --shadow-sm: 4px 4px 0 var(--text-dark);
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html {
+        background: #1d1d1a;
+      }
+      body {
+        background: var(--cream);
+        color: var(--text-dark);
+        font-family: var(--body);
+        font-weight: 500;
+        -webkit-font-smoothing: antialiased;
+      }
+      .disp {
+        font-family: var(--disp);
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        line-height: 1.1;
+      }
+      .sec-head h2,
+      .sec-head .badge,
+      .cover h1,
+      .cover .badge,
+      .cover .counter,
+      .sw .name,
+      .card .ic,
+      .card .t,
+      .framed .cap,
+      .step .c,
+      .step .t,
+      .chip-b,
+      .do-card h4,
+      .do-card .badge,
+      .foot .l,
+      .df1 .badge,
+      .df1 h3,
+      .df2 h3,
+      .df2 .c .ic,
+      .df2 .c .t,
+      .df3 h3,
+      .df3 .st .c,
+      .df3 .st .t,
+      .df3 .ar,
+      .df4 .qm,
+      .df4 .q {
+        font-family: var(--disp);
+        font-weight: 600;
+      }
+      .tshadow {
+        text-shadow: 3px 3px 0 var(--text-dark);
+      }
+      .tshadow-soft {
+        text-shadow: 3px 3px 0 rgba(0, 0, 0, 0.2);
+      }
+
+      section {
+        padding: 90px 80px;
+        position: relative;
+        overflow: hidden;
+      }
+      .sec-head {
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        margin-bottom: 48px;
+        position: relative;
+        z-index: 2;
+      }
+      .sec-head .badge {
+        font-family: var(--disp);
+        font-size: 0.95rem;
+        background: var(--butter);
+        border: 3px solid var(--text-dark);
+        border-radius: 50px;
+        padding: 8px 22px;
+        box-shadow: var(--shadow-sm);
+      }
+      .sec-head h2 {
+        font-family: var(--disp);
+        font-size: 46px;
+      }
+
+      /* daisy/star CSS ornaments */
+      .daisy {
+        position: absolute;
+        z-index: 1;
+        pointer-events: none;
+      }
+      .daisy .p {
+        position: absolute;
+        width: 34%;
+        height: 50%;
+        background: var(--white);
+        border: 2.4px solid var(--text-dark);
+        border-radius: 50%;
+        left: 33%;
+        top: 0;
+        transform-origin: 50% 100%;
+      }
+      .daisy .c {
+        position: absolute;
+        width: 38%;
+        height: 38%;
+        border-radius: 50%;
+        background: var(--butter);
+        border: 2.4px solid var(--text-dark);
+        left: 31%;
+        top: 31%;
+        z-index: 2;
+      }
+      .star {
+        position: absolute;
+        z-index: 1;
+        pointer-events: none;
+        border: 2.2px solid var(--text-dark);
+        clip-path: polygon(
+          50% 0,
+          63% 38%,
+          100% 38%,
+          69% 61%,
+          82% 100%,
+          50% 76%,
+          18% 100%,
+          31% 61%,
+          0 38%,
+          37% 38%
+        );
+      }
+
+      /* COVER */
+      .cover {
+        min-height: 100vh;
+        background: var(--turquoise);
+        padding: 60px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+        position: relative;
+        overflow: hidden;
+      }
+      .cover .badge {
+        font-family: var(--disp);
+        font-size: 0.95rem;
+        background: var(--butter);
+        border: 3px solid var(--text-dark);
+        border-radius: 50px;
+        padding: 10px 26px;
+        box-shadow: var(--shadow-sm);
+        margin-bottom: 32px;
+        position: relative;
+        z-index: 3;
+        white-space: nowrap;
+      }
+      .cover h1 {
+        font-family: var(--disp);
+        font-size: clamp(64px, 10vw, 150px);
+        line-height: 1.05;
+        color: var(--white);
+        text-shadow: 4px 4px 0 var(--text-dark);
+        position: relative;
+        z-index: 3;
+      }
+      .cover .sub {
+        font-family: var(--body);
+        font-weight: 600;
+        font-size: 22px;
+        line-height: 1.5;
+        color: var(--text-dark);
+        max-width: 680px;
+        margin-top: 28px;
+        position: relative;
+        z-index: 3;
+      }
+      .cover .counter {
+        position: fixed;
+        bottom: 24px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: var(--white);
+        border: 3px solid var(--text-dark);
+        border-radius: 50px;
+        padding: 6px 22px;
+        font-family: var(--disp);
+        font-size: 0.9rem;
+        box-shadow: var(--shadow-sm);
+        z-index: 5;
+        white-space: nowrap;
+      }
+
+      /* PALETTE */
+      .swatches {
+        display: grid;
+        grid-template-columns: repeat(6, 1fr);
+        gap: 22px;
+        position: relative;
+        z-index: 2;
+      }
+      .sw {
+        background: var(--white);
+        border: 3px solid var(--text-dark);
+        border-radius: 20px;
+        overflow: hidden;
+        box-shadow: var(--shadow-sm);
+      }
+      .sw .chip {
+        height: 90px;
+        border-bottom: 3px solid var(--text-dark);
+      }
+      .sw .meta {
+        padding: 12px 14px;
+      }
+      .sw .name {
+        font-family: var(--disp);
+        font-size: 1rem;
+      }
+      .sw .hex {
+        font-family: var(--body);
+        font-weight: 600;
+        font-size: 11px;
+        color: var(--text-muted);
+        margin-top: 4px;
+      }
+
+      /* TYPE */
+      .type-row {
+        display: grid;
+        grid-template-columns: 220px 1fr;
+        align-items: center;
+        padding: 22px 0;
+        border-bottom: 3px solid rgba(45, 45, 45, 0.12);
+      }
+      .type-row .tok {
+        font-family: var(--body);
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        font-size: 12px;
+        color: var(--text-muted);
+      }
+      .type-row .m {
+        font-family: var(--body);
+        font-weight: 500;
+        font-size: 11px;
+        color: var(--text-muted);
+        margin-top: 8px;
+        line-height: 1.5;
+      }
+      .type-row .spec {
+        overflow: hidden;
+      }
+
+      /* COMPONENTS */
+      .cnote {
+        font-family: var(--body);
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        font-size: 12px;
+        color: var(--text-muted);
+        margin-bottom: 20px;
+      }
+      .cgrid {
+        display: grid;
+        grid-template-columns: repeat(12, 1fr);
+        gap: 28px;
+        margin-bottom: 48px;
+      }
+      .s3 {
+        grid-column: span 3;
+      }
+      .s4 {
+        grid-column: span 4;
+      }
+      .s5 {
+        grid-column: span 5;
+      }
+      .s6 {
+        grid-column: span 6;
+      }
+      .s7 {
+        grid-column: span 7;
+      }
+      .s8 {
+        grid-column: span 8;
+      }
+      .card {
+        background: var(--white);
+        border: 3px solid var(--text-dark);
+        border-radius: 20px;
+        box-shadow: var(--shadow);
+        padding: 30px;
+      }
+      .card .ic {
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        border: 3px solid var(--text-dark);
+        display: grid;
+        place-items: center;
+        font-family: var(--disp);
+        font-size: 1.6rem;
+        margin-bottom: 18px;
+      }
+      .card .t {
+        font-family: var(--disp);
+        font-size: 1.5rem;
+      }
+      .card .x {
+        font-family: var(--body);
+        font-weight: 500;
+        font-size: 14px;
+        line-height: 1.6;
+        color: var(--text-muted);
+        margin-top: 8px;
+      }
+      .framed {
+        border: 3px solid var(--text-dark);
+        border-radius: 28px;
+        overflow: hidden;
+        box-shadow: var(--shadow);
+      }
+      .framed .cap {
+        padding: 18px 28px;
+        font-family: var(--disp);
+        font-size: 1.4rem;
+        color: var(--white);
+        text-shadow: 3px 3px 0 rgba(0, 0, 0, 0.2);
+      }
+      .framed .bd {
+        background: var(--white);
+        padding: 28px;
+        font-family: var(--body);
+        font-weight: 500;
+        font-size: 15px;
+        line-height: 1.6;
+      }
+      .steps {
+        display: flex;
+        gap: 20px;
+        align-items: flex-start;
+      }
+      .step {
+        flex: 1;
+        text-align: center;
+      }
+      .step .c {
+        width: 90px;
+        height: 90px;
+        border-radius: 50%;
+        border: 3px solid var(--text-dark);
+        display: grid;
+        place-items: center;
+        font-family: var(--disp);
+        font-size: 2.2rem;
+        color: var(--white);
+        box-shadow: var(--shadow-sm);
+        margin: 0 auto;
+      }
+      .step .t {
+        font-family: var(--disp);
+        font-size: 1.2rem;
+        margin-top: 14px;
+      }
+      .step .x {
+        font-family: var(--body);
+        font-weight: 500;
+        font-size: 13px;
+        color: var(--text-muted);
+        margin-top: 6px;
+      }
+      .bullets {
+        list-style: none;
+      }
+      .bullets li {
+        font-family: var(--body);
+        font-weight: 500;
+        font-size: 15px;
+        line-height: 1.6;
+        padding-left: 32px;
+        position: relative;
+        margin-bottom: 12px;
+      }
+      .bullets li::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 5px;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        border: 2px solid var(--text-dark);
+        background: var(--butter);
+      }
+      .chips {
+        display: flex;
+        gap: 14px;
+        flex-wrap: wrap;
+      }
+      .chip-b {
+        font-family: var(--disp);
+        font-size: 0.85rem;
+        border: 3px solid var(--text-dark);
+        border-radius: 50px;
+        padding: 8px 20px;
+        box-shadow: var(--shadow-sm);
+      }
+
+      /* COMPOSITIONS */
+      .gallery {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 48px;
+        position: relative;
+        z-index: 2;
+      }
+      .fw .flabel {
+        display: flex;
+        gap: 14px;
+        align-items: baseline;
+        margin-bottom: 16px;
+        font-family: var(--body);
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        font-size: 12px;
+        color: var(--text-muted);
+      }
+      .fw .flabel b {
+        color: var(--text-dark);
+      }
+      .frame {
+        aspect-ratio: 16/9;
+        container-type: size;
+        position: relative;
+        overflow: hidden;
+        border: 3px solid var(--text-dark);
+        border-radius: 16px;
+      }
+      .frame > .body {
+        position: absolute;
+        inset: 0;
+        z-index: 3;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+        padding: 0 6cqw;
+      }
+
+      /* f1 cover */
+      .df1 {
+        background: var(--turquoise);
+      }
+      .df1 .badge {
+        font-family: var(--disp);
+        font-size: 1.1cqw;
+        background: var(--butter);
+        border: 0.22cqw solid var(--text-dark);
+        border-radius: 50px;
+        padding: 0.6cqw 1.6cqw;
+        box-shadow: 0.3cqw 0.3cqw 0 var(--text-dark);
+        margin-bottom: 2cqw;
+        white-space: nowrap;
+      }
+      .df1 h3 {
+        font-family: var(--disp);
+        font-size: 9cqw;
+        line-height: 1.05;
+        color: var(--white);
+        text-shadow: 0.4cqw 0.4cqw 0 var(--text-dark);
+      }
+      .df1 .sub {
+        font-family: var(--body);
+        font-weight: 600;
+        font-size: 1.5cqw;
+        color: var(--text-dark);
+        margin-top: 2cqw;
+        max-width: 60cqw;
+      }
+
+      /* f2 info cards */
+      .df2 {
+        background: var(--cream);
+      }
+      .df2 .body {
+        justify-content: flex-start;
+        align-items: stretch;
+        text-align: left;
+        padding: 6cqw 5cqw;
+      }
+      .df2 h3 {
+        font-family: var(--disp);
+        font-size: 4.4cqw;
+        text-align: center;
+        margin-bottom: 2.4cqw;
+      }
+      .df2 .row {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 2cqw;
+        flex: 1;
+      }
+      .df2 .c {
+        background: var(--white);
+        border: 0.25cqw solid var(--text-dark);
+        border-radius: 1.6cqw;
+        box-shadow: 0.5cqw 0.5cqw 0 var(--text-dark);
+        padding: 2cqw;
+        display: flex;
+        flex-direction: column;
+      }
+      .df2 .c .ic {
+        width: 4.5cqw;
+        height: 4.5cqw;
+        border-radius: 50%;
+        border: 0.22cqw solid var(--text-dark);
+        display: grid;
+        place-items: center;
+        font-family: var(--disp);
+        font-size: 1.8cqw;
+        color: var(--white);
+        margin-bottom: 1.2cqw;
+      }
+      .df2 .c .t {
+        font-family: var(--disp);
+        font-size: 1.8cqw;
+      }
+      .df2 .c .x {
+        font-family: var(--body);
+        font-weight: 500;
+        font-size: 1cqw;
+        line-height: 1.5;
+        color: var(--text-muted);
+        margin-top: 0.6cqw;
+      }
+
+      /* f3 process steps */
+      .df3 {
+        background: var(--peach);
+      }
+      .df3 .body {
+        padding: 6cqw 5cqw;
+      }
+      .df3 h3 {
+        font-family: var(--disp);
+        font-size: 4.4cqw;
+        color: var(--white);
+        text-shadow: 0.3cqw 0.3cqw 0 var(--text-dark);
+        margin-bottom: 3cqw;
+      }
+      .df3 .row {
+        display: flex;
+        gap: 2cqw;
+        align-items: flex-start;
+        justify-content: center;
+      }
+      .df3 .st {
+        flex: 1;
+        text-align: center;
+        max-width: 18cqw;
+      }
+      .df3 .st .c {
+        width: 7cqw;
+        height: 7cqw;
+        border-radius: 50%;
+        border: 0.3cqw solid var(--text-dark);
+        display: grid;
+        place-items: center;
+        font-family: var(--disp);
+        font-size: 2.6cqw;
+        color: var(--white);
+        box-shadow: 0.4cqw 0.4cqw 0 var(--text-dark);
+        margin: 0 auto;
+      }
+      .df3 .st .t {
+        font-family: var(--disp);
+        font-size: 1.5cqw;
+        margin-top: 1cqw;
+        color: var(--text-dark);
+      }
+      .df3 .ar {
+        font-family: var(--disp);
+        font-size: 2.4cqw;
+        color: var(--text-dark);
+        align-self: center;
+        margin-top: 2cqw;
+      }
+
+      /* f4 quote */
+      .df4 {
+        background: var(--soft-pink);
+      }
+      .df4 .qbox {
+        background: var(--white);
+        border: 0.25cqw solid var(--text-dark);
+        border-radius: 2cqw;
+        box-shadow: 0.6cqw 0.6cqw 0 var(--text-dark);
+        padding: 4cqw 5cqw;
+        max-width: 72cqw;
+      }
+      .df4 .qm {
+        font-family: var(--disp);
+        font-size: 6cqw;
+        line-height: 0.6;
+        color: var(--soft-pink);
+        -webkit-text-stroke: 0.15cqw var(--text-dark);
+      }
+      .df4 .q {
+        font-family: var(--disp);
+        font-size: 3.2cqw;
+        line-height: 1.35;
+        color: var(--text-dark);
+        margin-top: 0.5cqw;
+      }
+      .df4 .at {
+        font-family: var(--body);
+        font-weight: 700;
+        font-size: 1.2cqw;
+        color: var(--text-muted);
+        margin-top: 1.6cqw;
+      }
+
+      /* PRINCIPLES */
+      .dos {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 28px;
+        position: relative;
+        z-index: 2;
+      }
+      .do-card {
+        background: var(--white);
+        border: 3px solid var(--text-dark);
+        border-radius: 24px;
+        box-shadow: var(--shadow);
+        padding: 34px;
+      }
+      .do-card h4 {
+        font-family: var(--disp);
+        font-size: 1.7rem;
+        margin-bottom: 8px;
+      }
+      .do-card .badge {
+        display: inline-block;
+        font-family: var(--disp);
+        font-size: 0.8rem;
+        border: 3px solid var(--text-dark);
+        border-radius: 50px;
+        padding: 5px 16px;
+        margin-bottom: 18px;
+      }
+      .do-card ul {
+        list-style: none;
+      }
+      .do-card li {
+        font-family: var(--body);
+        font-weight: 500;
+        font-size: 14px;
+        line-height: 1.55;
+        padding-left: 26px;
+        position: relative;
+        margin-bottom: 12px;
+        color: var(--text-dark);
+      }
+      .do-card li::before {
+        position: absolute;
+        left: 0;
+        top: 4px;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        border: 2px solid var(--text-dark);
+        content: "";
+      }
+      .do-card.do li::before {
+        background: var(--mint);
+      }
+      .do-card.dont li::before {
+        background: var(--coral);
+      }
+
+      .foot {
+        padding: 48px 80px;
+        background: var(--lavender);
+        border-top: 3px solid var(--text-dark);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .foot .l {
+        font-family: var(--disp);
+        font-size: 1.7rem;
+        color: var(--white);
+        text-shadow: 3px 3px 0 rgba(0, 0, 0, 0.2);
+      }
+      .foot .r {
+        font-family: var(--body);
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        font-size: 11px;
+        color: var(--text-dark);
+      }
+      @media (max-width: 1100px) {
+        .gallery {
+          grid-template-columns: 1fr;
+        }
+        .swatches {
+          grid-template-columns: 1fr 1fr 1fr;
+        }
+      }
+    </style>
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Fredoka+One&display=swap"
+    />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap"
+    />
+    <style id="ft-override">
+      :root {
+        --primary: #f5f0e6 !important;
+        --secondary: #2d2d2d !important;
+        --tertiary: #7ecdc0 !important;
+        --accent: #f8635f !important;
+        --f-disp: "Fredoka", sans-serif !important;
+        --f-body: "Quicksand", sans-serif !important;
+        --cream: #f5f0e6 !important;
+        --turquoise: #7ecdc0 !important;
+        --coral: #f8635f !important;
+        --text-dark: #2d2d2d !important;
+        --disp: "Fredoka", sans-serif !important;
+        --body: "Quicksand", sans-serif !important;
+        --soft-pink: #f7c8d4 !important;
+        --butter: #fde68a !important;
+        --mint: #a8e6cf !important;
+        --lavender: #d4a5e8 !important;
+        --peach: #ffcba4 !important;
+        --sky: #a8d8f0 !important;
+        --text-muted: #6b6b6b !important;
+        --white: #ffffff !important;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- COVER -->
+    <section class="cover">
+      <div class="daisy" style="width: 140px; height: 140px; top: -30px; left: -20px">
+        <div class="p" style="transform: rotate(0deg)"></div>
+        <div class="p" style="transform: rotate(60deg)"></div>
+        <div class="p" style="transform: rotate(120deg)"></div>
+        <div class="p" style="transform: rotate(180deg)"></div>
+        <div class="p" style="transform: rotate(240deg)"></div>
+        <div class="p" style="transform: rotate(300deg)"></div>
+        <div class="c"></div>
+      </div>
+      <div
+        class="star"
+        style="
+          width: 70px;
+          height: 70px;
+          background: var(--soft-pink);
+          top: 18%;
+          right: 10%;
+          transform: rotate(12deg);
+        "
+      ></div>
+      <div
+        class="star"
+        style="
+          width: 50px;
+          height: 50px;
+          background: var(--butter);
+          bottom: 20%;
+          left: 12%;
+          transform: rotate(-8deg);
+        "
+      ></div>
+      <div class="daisy" style="width: 100px; height: 100px; bottom: -26px; right: -16px">
+        <div class="p" style="transform: rotate(0deg)"></div>
+        <div class="p" style="transform: rotate(60deg)"></div>
+        <div class="p" style="transform: rotate(120deg)"></div>
+        <div class="p" style="transform: rotate(180deg)"></div>
+        <div class="p" style="transform: rotate(240deg)"></div>
+        <div class="p" style="transform: rotate(300deg)"></div>
+        <div class="c"></div>
+      </div>
+      <div class="badge">Frame System · Vol. 01</div>
+      <h1>Hello,<br />sunshine!</h1>
+      <div class="sub">
+        A cheerful childlike frame system — chunky Fredoka One headlines, friendly Quicksand body, a
+        sunny garden palette, charcoal outlines, hard offset shadows, and hand-drawn ornaments.
+      </div>
+      <div class="counter">01 / 06</div>
+    </section>
+
+    <!-- PALETTE -->
+    <section>
+      <div class="sec-head">
+        <span class="badge">Palette</span>
+        <h2>A Sunny Garden</h2>
+      </div>
+      <div class="swatches">
+        <div class="sw">
+          <div class="chip" style="background: var(--turquoise)"></div>
+          <div class="meta">
+            <div class="name">Turquoise</div>
+            <div class="hex">#7ECDC0</div>
+          </div>
+        </div>
+        <div class="sw">
+          <div class="chip" style="background: var(--soft-pink)"></div>
+          <div class="meta">
+            <div class="name">Soft Pink</div>
+            <div class="hex">#F7C8D4</div>
+          </div>
+        </div>
+        <div class="sw">
+          <div class="chip" style="background: var(--butter)"></div>
+          <div class="meta">
+            <div class="name">Butter</div>
+            <div class="hex">#FDE68A</div>
+          </div>
+        </div>
+        <div class="sw">
+          <div class="chip" style="background: var(--mint)"></div>
+          <div class="meta">
+            <div class="name">Mint</div>
+            <div class="hex">#A8E6CF</div>
+          </div>
+        </div>
+        <div class="sw">
+          <div class="chip" style="background: var(--lavender)"></div>
+          <div class="meta">
+            <div class="name">Lavender</div>
+            <div class="hex">#D4A5E8</div>
+          </div>
+        </div>
+        <div class="sw">
+          <div class="chip" style="background: var(--peach)"></div>
+          <div class="meta">
+            <div class="name">Peach</div>
+            <div class="hex">#FFCBA4</div>
+          </div>
+        </div>
+        <div class="sw">
+          <div class="chip" style="background: var(--sky)"></div>
+          <div class="meta">
+            <div class="name">Sky</div>
+            <div class="hex">#A8D8F0</div>
+          </div>
+        </div>
+        <div class="sw">
+          <div class="chip" style="background: var(--coral)"></div>
+          <div class="meta">
+            <div class="name">Coral</div>
+            <div class="hex">#F8635F · accent</div>
+          </div>
+        </div>
+        <div class="sw">
+          <div
+            class="chip"
+            style="background: var(--cream); border-bottom: 3px solid var(--text-dark)"
+          ></div>
+          <div class="meta">
+            <div class="name">Cream</div>
+            <div class="hex">#F5F0E6 · canvas</div>
+          </div>
+        </div>
+        <div class="sw">
+          <div class="chip" style="background: var(--text-dark)"></div>
+          <div class="meta">
+            <div class="name">Charcoal</div>
+            <div class="hex">#2D2D2D · outline</div>
+          </div>
+        </div>
+        <div class="sw">
+          <div class="chip" style="background: var(--text-muted)"></div>
+          <div class="meta">
+            <div class="name">Muted</div>
+            <div class="hex">#6B6B6B</div>
+          </div>
+        </div>
+        <div class="sw">
+          <div
+            class="chip"
+            style="background: var(--white); border-bottom: 3px solid var(--text-dark)"
+          ></div>
+          <div class="meta">
+            <div class="name">White</div>
+            <div class="hex">#FFFFFF · cards</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TYPOGRAPHY -->
+    <section>
+      <div class="sec-head">
+        <span class="badge" style="background: var(--soft-pink)">Type</span>
+        <h2>Fredoka × Quicksand</h2>
+      </div>
+      <div class="type-row">
+        <div>
+          <div class="tok">display</div>
+          <div class="m">Fredoka One · chunky · on-color gets text-shadow</div>
+        </div>
+        <div class="spec">
+          <span
+            class="disp"
+            style="
+              font-size: 72px;
+              color: var(--turquoise);
+              -webkit-text-stroke: 2px var(--text-dark);
+            "
+            >Hooray!</span
+          >
+        </div>
+      </div>
+      <div class="type-row">
+        <div>
+          <div class="tok">headline</div>
+          <div class="m">Fredoka One · primary slide voice</div>
+        </div>
+        <div class="spec"><span class="disp" style="font-size: 54px">Let's Play</span></div>
+      </div>
+      <div class="type-row">
+        <div>
+          <div class="tok">body</div>
+          <div class="m">Quicksand 500 · line 1.6 · never uppercase</div>
+        </div>
+        <div class="spec">
+          <p
+            style="
+              font-family: var(--body);
+              font-weight: 500;
+              font-size: 17px;
+              line-height: 1.6;
+              max-width: 640px;
+            "
+          >
+            Quicksand carries every paragraph and label — friendly, rounded, and calm against the
+            chunky display.
+          </p>
+        </div>
+      </div>
+      <div class="type-row" style="border-bottom: 0">
+        <div>
+          <div class="tok">badge</div>
+          <div class="m">Fredoka One · pill chip · butter fill</div>
+        </div>
+        <div class="spec"><span class="chip-b" style="background: var(--butter)">New!</span></div>
+      </div>
+    </section>
+
+    <!-- COMPONENTS -->
+    <section>
+      <div class="sec-head">
+        <span class="badge" style="background: var(--mint)">Components</span>
+        <h2>Outlined & Shadowed</h2>
+      </div>
+
+      <div class="cgrid">
+        <div class="s4">
+          <div class="cnote">Info card + circle icon</div>
+          <div class="card">
+            <div class="ic" style="background: var(--turquoise)">A</div>
+            <div class="t">Bordered Card</div>
+            <div class="x">3px charcoal outline + 6px hard offset shadow, generous radius.</div>
+          </div>
+        </div>
+        <div class="s4">
+          <div class="cnote">Framed header — cap + body</div>
+          <div class="framed">
+            <div class="cap" style="background: var(--lavender)">A Tonal Cap</div>
+            <div class="bd">
+              A colored header strip sits flush above a white body — one unit, one shadow.
+            </div>
+          </div>
+        </div>
+        <div class="s4">
+          <div class="cnote">Dot bullets + chips</div>
+          <ul class="bullets">
+            <li>Outlined disc bullets, never glyphs</li>
+            <li>Butter fill by default</li>
+            <li>4px from the line top</li>
+          </ul>
+          <div class="chips" style="margin-top: 18px">
+            <span class="chip-b" style="background: var(--mint)">Mint</span
+            ><span class="chip-b" style="background: var(--peach)">Peach</span
+            ><span class="chip-b" style="background: var(--sky)">Sky</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="cgrid" style="margin-bottom: 0">
+        <div class="s8">
+          <div class="cnote">Process steps — circles rotate the pastel set</div>
+          <div class="steps">
+            <div class="step">
+              <div class="c" style="background: var(--coral)">1</div>
+              <div class="t">Sprout</div>
+              <div class="x">Plant the idea.</div>
+            </div>
+            <div class="step">
+              <div class="c" style="background: var(--mint)">2</div>
+              <div class="t">Grow</div>
+              <div class="x">Water it daily.</div>
+            </div>
+            <div class="step">
+              <div class="c" style="background: var(--sky)">3</div>
+              <div class="t">Bloom</div>
+              <div class="x">Watch it open.</div>
+            </div>
+            <div class="step">
+              <div class="c" style="background: var(--lavender)">4</div>
+              <div class="t">Share</div>
+              <div class="x">Pass it on.</div>
+            </div>
+          </div>
+        </div>
+        <div class="s4">
+          <div class="cnote">Quote mark + avatar</div>
+          <div style="display: flex; align-items: center; gap: 20px">
+            <span
+              class="disp"
+              style="
+                font-size: 60px;
+                color: var(--soft-pink);
+                -webkit-text-stroke: 2px var(--text-dark);
+                line-height: 0.6;
+              "
+              >&ldquo;</span
+            >
+            <span
+              style="
+                width: 80px;
+                height: 80px;
+                border-radius: 50%;
+                border: 3px solid var(--text-dark);
+                background: var(--butter);
+                box-shadow: var(--shadow-sm);
+                display: grid;
+                place-items: center;
+                font-family: var(--disp);
+                font-size: 1.8rem;
+              "
+              >:)</span
+            >
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- COMPOSITIONS -->
+    <section>
+      <div class="sec-head">
+        <span class="badge" style="background: var(--peach)">Frames</span>
+        <h2>Frame Compositions</h2>
+      </div>
+      <div class="gallery">
+        <div class="fw">
+          <div class="flabel">
+            <b>Cover</b><span>· identity · turquoise · ornament wreath</span>
+          </div>
+          <div class="frame df1">
+            <div class="daisy" style="width: 11cqw; height: 11cqw; top: -2.5cqw; left: -2cqw">
+              <div class="p" style="transform: rotate(0)"></div>
+              <div class="p" style="transform: rotate(60deg)"></div>
+              <div class="p" style="transform: rotate(120deg)"></div>
+              <div class="p" style="transform: rotate(180deg)"></div>
+              <div class="p" style="transform: rotate(240deg)"></div>
+              <div class="p" style="transform: rotate(300deg)"></div>
+              <div class="c"></div>
+            </div>
+            <div
+              class="star"
+              style="
+                width: 5cqw;
+                height: 5cqw;
+                background: var(--soft-pink);
+                top: 16%;
+                right: 9%;
+                transform: rotate(12deg);
+              "
+            ></div>
+            <div
+              class="star"
+              style="
+                width: 4cqw;
+                height: 4cqw;
+                background: var(--butter);
+                bottom: 16%;
+                left: 9%;
+                transform: rotate(-8deg);
+              "
+            ></div>
+            <div class="body">
+              <div class="badge">Frame System</div>
+              <h3>Hello,<br />sunshine!</h3>
+              <div class="sub">A cheerful frame system in a sunny garden palette.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="fw">
+          <div class="flabel">
+            <b>Info Cards</b><span>· catalog · cream · 3-up · the dense frame</span>
+          </div>
+          <div class="frame df2">
+            <div
+              class="star"
+              style="
+                width: 4cqw;
+                height: 4cqw;
+                background: var(--mint);
+                top: 5%;
+                right: 6%;
+                transform: rotate(10deg);
+              "
+            ></div>
+            <div class="body">
+              <h3>Three Little Things</h3>
+              <div class="row">
+                <div class="c">
+                  <div class="ic" style="background: var(--turquoise)">A</div>
+                  <div class="t">Outline</div>
+                  <div class="x">3px charcoal on all.</div>
+                </div>
+                <div class="c">
+                  <div class="ic" style="background: var(--coral)">B</div>
+                  <div class="t">Shadow</div>
+                  <div class="x">Hard offset, no blur.</div>
+                </div>
+                <div class="c">
+                  <div class="ic" style="background: var(--lavender)">C</div>
+                  <div class="t">Round</div>
+                  <div class="x">Generous radius.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="fw">
+          <div class="flabel">
+            <b>Process Steps</b><span>· sequence · peach · rotating dots</span>
+          </div>
+          <div class="frame df3">
+            <div class="body">
+              <h3>How It Grows</h3>
+              <div class="row">
+                <div class="st">
+                  <div class="c" style="background: var(--coral)">1</div>
+                  <div class="t">Sprout</div>
+                </div>
+                <div class="ar">&rarr;</div>
+                <div class="st">
+                  <div class="c" style="background: var(--mint)">2</div>
+                  <div class="t">Grow</div>
+                </div>
+                <div class="ar">&rarr;</div>
+                <div class="st">
+                  <div class="c" style="background: var(--sky)">3</div>
+                  <div class="t">Bloom</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="fw">
+          <div class="flabel"><b>Quote</b><span>· quote · soft-pink · quote-mark anchor</span></div>
+          <div class="frame df4">
+            <div
+              class="star"
+              style="
+                width: 4cqw;
+                height: 4cqw;
+                background: var(--butter);
+                top: 10%;
+                left: 8%;
+                transform: rotate(-10deg);
+              "
+            ></div>
+            <div class="body">
+              <div class="qbox">
+                <div class="qm">&ldquo;</div>
+                <div class="q">Every day is a daisy day.</div>
+                <div class="at">— The Garden Club</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PRINCIPLES -->
+    <section>
+      <div class="sec-head">
+        <span class="badge" style="background: var(--sky)">Rules</span>
+        <h2>Frame Rules</h2>
+      </div>
+      <div class="dos">
+        <div class="do-card do">
+          <span class="badge" style="background: var(--mint)">Do</span>
+          <ul>
+            <li>Fredoka headlines, Quicksand body — strict by role.</li>
+            <li>Outline every shape 3px charcoal + hard offset shadow (6/4px, no blur).</li>
+            <li>Headlines on saturated surfaces get a 3px charcoal text-shadow + white text.</li>
+            <li>Bullets are outlined butter discs; cluster 3–7 ornaments per frame.</li>
+            <li>One content container per frame; rotate marker colors through the pastels.</li>
+          </ul>
+        </div>
+        <div class="do-card dont">
+          <span class="badge" style="background: var(--coral)">Don't</span>
+          <ul>
+            <li>No square corners; no blurred or rgba shadows.</li>
+            <li>No colored borders (charcoal only); no coral surface.</li>
+            <li>No third font; no Quicksand headline or Fredoka body.</li>
+            <li>No glyph bullets; no empty corners (ornaments fill them).</li>
+            <li>Don't blow a headline edge-to-edge — fit to measure.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- CAPTIONS — preview of caption-skin.html (the preset's lower-third karaoke look) -->
+    <style>
+      /* mirrors caption-skin.html; the skin's --cap-* vocab mapped to this preset's tokens */
+      .capdemo {
+        --cap-ink: var(--text-dark);
+        --cap-canvas: var(--cream);
+        --cap-accent: var(--coral);
+        --cap-accent-2: var(--butter);
+      }
+      .capdemo .stage {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 16.67cqh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 4;
+      }
+      .capdemo .pill {
+        max-width: 80cqw;
+        padding: 1.6cqw 3.4cqw 1.9cqw;
+        background: var(--cap-canvas);
+        border: 0.3cqw solid var(--cap-ink);
+        border-radius: 2.2cqw;
+        box-shadow: 0.6cqw 0.6cqw 0 var(--cap-ink);
+      }
+      .capdemo .line {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 0.18em 0.32em;
+        font-family: var(--disp);
+        font-weight: 600;
+        font-size: 3.2cqw;
+        line-height: 1.22;
+        letter-spacing: 0.02em;
+      }
+      .capdemo .w {
+        display: inline-block;
+        padding: 0.02em 0.16em;
+        border-radius: 1.1cqw;
+        color: color-mix(in srgb, var(--cap-ink) 52%, var(--cap-canvas));
+      }
+      .capdemo .w.spoken {
+        color: var(--cap-ink);
+      }
+      .capdemo .w.active {
+        color: var(--cap-ink);
+        background: var(--cap-accent);
+        border-radius: 1.1cqw;
+        box-shadow:
+          0 0 0 0.3cqw var(--cap-ink),
+          0.3cqw 0.5cqw 0 0 var(--cap-ink);
+      }
+      .capdemo .bandline {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 16.67cqh;
+        border-top: 0.2cqw dashed rgba(45, 45, 45, 0.4);
+        z-index: 3;
+      }
+      .capdemo .bandtag {
+        position: absolute;
+        right: 3cqw;
+        bottom: calc(16.67cqh + 0.7cqw);
+        font-family: var(--body);
+        font-weight: 600;
+        font-size: 1cqw;
+        letter-spacing: 0.04em;
+        color: var(--text-muted);
+        z-index: 4;
+      }
+    </style>
+    <section>
+      <div class="sec-head">
+        <span class="badge" style="background: var(--coral)">Captions</span>
+        <h2>Lower-Third Karaoke</h2>
+      </div>
+      <div class="gallery">
+        <div class="fw">
+          <div class="flabel"><b>Active line</b><span>· spoken · current · upcoming</span></div>
+          <div class="frame capdemo df1">
+            <div class="daisy" style="width: 9cqw; height: 9cqw; top: -2cqw; left: -1.6cqw">
+              <div class="p" style="transform: rotate(0)"></div>
+              <div class="p" style="transform: rotate(60deg)"></div>
+              <div class="p" style="transform: rotate(120deg)"></div>
+              <div class="p" style="transform: rotate(180deg)"></div>
+              <div class="p" style="transform: rotate(240deg)"></div>
+              <div class="p" style="transform: rotate(300deg)"></div>
+              <div class="c"></div>
+            </div>
+            <div
+              class="star"
+              style="
+                width: 4cqw;
+                height: 4cqw;
+                background: var(--soft-pink);
+                top: 14%;
+                right: 8%;
+                transform: rotate(12deg);
+              "
+            ></div>
+            <div class="bandline"></div>
+            <div class="bandtag">caption band · 16.7%</div>
+            <div class="stage">
+              <div class="pill">
+                <div class="line">
+                  <span class="w spoken">Built</span>
+                  <span class="w spoken">for</span>
+                  <span class="w active">teams</span>
+                  <span class="w">who</span>
+                  <span class="w">ship.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="fw">
+          <div class="flabel">
+            <b>Settled line</b><span>· all spoken · candy block cleared</span>
+          </div>
+          <div class="frame capdemo df1">
+            <div
+              class="star"
+              style="
+                width: 4cqw;
+                height: 4cqw;
+                background: var(--butter);
+                bottom: 18%;
+                left: 8%;
+                transform: rotate(-8deg);
+              "
+            ></div>
+            <div class="stage">
+              <div class="pill">
+                <div class="line">
+                  <span class="w spoken">Ship</span>
+                  <span class="w spoken">faster</span>
+                  <span class="w spoken">today.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="foot">
+      <span class="l">Daisy Days</span>
+      <span class="r">Frame Showcase · Atoms Sacred · Composition Free</span>
+    </div>
+
+    <template id="__bundler_thumbnail">
+      <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+        <rect width="100" height="100" fill="#7ECDC0" />
+        <g stroke="#2D2D2D" stroke-width="2.4">
+          <circle cx="30" cy="34" r="7" fill="#fff" />
+          <circle cx="44" cy="34" r="7" fill="#fff" />
+          <circle cx="37" cy="27" r="7" fill="#fff" />
+          <circle cx="37" cy="41" r="7" fill="#fff" />
+          <circle cx="37" cy="34" r="6" fill="#FDE68A" />
+        </g>
+        <rect
+          x="20"
+          y="60"
+          width="56"
+          height="9"
+          rx="4"
+          fill="#fff"
+          stroke="#2D2D2D"
+          stroke-width="2"
+        />
+      </svg>
+    </template>
+  </body>
+</html>
