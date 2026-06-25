@@ -14,7 +14,6 @@ import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { usePlayerStore } from "../player/store/playerStore";
 import { readAllAnimatedProperties, readGsapProperty } from "./gsapRuntimeBridge";
 import type { SetPatchProps } from "./gsapRuntimePatch";
-import { log3d } from "../utils/debug3d";
 import { selectorFromSelection, computeElementPercentage } from "./gsapShared";
 
 interface CommitAnimatedPropertyDeps {
@@ -65,13 +64,6 @@ function pickBestAnimation(
   return scored[0]?.anim;
 }
 
-/** Which commit branch a property edit will take, for the debug log. */
-function commitPathLabel(anim: GsapAnimation | undefined): string {
-  if (!anim) return "create";
-  if (anim.method === "set") return "static-set";
-  return anim.keyframes ? "keyframe" : "convert+keyframe";
-}
-
 /**
  * Auto-keyframe a just-updated static `set`: if the element is already animated
  * (its clip carries keyframes on another tween), convert the set to keyframes so
@@ -86,7 +78,6 @@ async function maybeAutoKeyframeSet(
 ): Promise<void> {
   const animatedTween = animations.find((a) => a.keyframes && a.id !== setAnim.id);
   if (!animatedTween) return;
-  log3d("auto-keyframe", { animationId: setAnim.id, duration: animatedTween.duration ?? 1 });
   await commit(
     selection,
     {
@@ -271,15 +262,6 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
         selector,
         primaryProp,
       );
-      log3d("commit-prop", {
-        props,
-        selector,
-        pickedAnim: anim
-          ? { id: anim.id, method: anim.method, hasKeyframes: !!anim.keyframes }
-          : null,
-        path: commitPathLabel(anim),
-      });
-
       // Whether the element is animated at all. A 3D edit only creates/edits
       // keyframes when it IS — a static element (no keyframes on any of its tweens)
       // gets a `tl.set`, never new keyframes (matches manual drag / resize / rotate).
@@ -334,8 +316,7 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
           iframe,
           gsapCommitMutation,
         );
-      } catch (error) {
-        log3d("commit-prop", { error: String(error), stale: anim?.id, action: "bump-cache" });
+      } catch {
         bumpGsapCache();
       }
     },

@@ -5,7 +5,6 @@ import { MetricField } from "./propertyPanelPrimitives";
 import { KeyframeNavigation } from "./KeyframeNavigation";
 import { formatPxMetricValue, parsePxMetricValue, RESPONSIVE_GRID } from "./propertyPanelHelpers";
 import { Transform3DCube, type CubePose } from "./Transform3DCube";
-import { log3d } from "../../utils/debug3d";
 
 type KeyframeEntry = Array<{
   percentage: number;
@@ -81,12 +80,6 @@ function Cube3dControl({
       if (rounded !== Math.round(pose[axis])) changedProps[axis] = rounded;
     }
     const axes = Object.keys(changedProps);
-    log3d("cube-commit-pose", {
-      from: pose,
-      to: next,
-      changedAxes: axes,
-      batched: !!onCommitAnimatedProperties,
-    });
     if (axes.length === 0) return;
     // ONE keyframe for the whole pose change — avoids per-axis commits racing into
     // adjacent duplicate keyframes. Fall back to per-axis if no batched commit.

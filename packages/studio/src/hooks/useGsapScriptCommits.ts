@@ -22,7 +22,6 @@ import { useGsapAnimationOps } from "./useGsapAnimationOps";
 import { useGsapArcPathOps } from "./useGsapArcPathOps";
 import { useGsapKeyframeOps } from "./useGsapKeyframeOps";
 import { useGsapPropertyDebounce } from "./useGsapPropertyDebounce";
-import { log3d } from "../utils/debug3d";
 import {
   useGsapSaveFailureTelemetry,
   useSafeGsapCommitMutation,
@@ -98,23 +97,12 @@ export function applyPreviewSync(
       options.instantPatch.selector,
       options.instantPatch.change,
     );
-    log3d("preview-sync", {
-      label: options.label,
-      mode: patched ? "instant (no flash)" : "reload-fallback (FLASH)",
-      selector: options.instantPatch.selector,
-      change: options.instantPatch.change,
-    });
     // Patched in place — element is already correct on screen; no reload needed.
     if (patched) return;
     // The instant path couldn't patch in place — record the fallback so we can
     // track how often the fast path misses before the soft/full reload below.
     trackStudioEvent("gsap_instant_patch_fallback", { selector: options.instantPatch.selector });
     // Fall through to the soft/full reload path below.
-  } else {
-    log3d("preview-sync", {
-      label: options.label,
-      mode: options.softReload ? "soft-reload (FLASH)" : "full-reload (FLASH)",
-    });
   }
   if (options.softReload && result.scriptText) {
     // A soft-reloadable edit escalates to a full iframe remount ONLY on the
