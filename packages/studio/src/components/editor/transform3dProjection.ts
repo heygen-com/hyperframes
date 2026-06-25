@@ -70,16 +70,29 @@ export interface ProjectOpts {
   r: number;
   /** Weak-perspective strength in units of `r` (larger = flatter; ~3-6 reads as 3D). */
   persp?: number;
+  /** Fixed viewing-camera tilt applied AFTER the element pose, so the cube reads
+   * as 3D even at identity (an isometric resting pose). Default 0 (head-on). */
+  viewRx?: number;
+  viewRy?: number;
 }
 
 function round(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
+// Directional light (upper-front-right), normalized — drives per-face shading so
+// top/front/side read as distinct planes instead of one flat fill.
+const LIGHT = (() => {
+  const v = { x: 0.32, y: 0.56, z: 0.76 };
+  const m = Math.hypot(v.x, v.y, v.z);
+  return { x: v.x / m, y: v.y / m, z: v.z / m };
+})();
+
 /**
  * Project the cube at the given orientation. Returns only the front-facing
  * faces (≤3), painter-sorted far→near so the SVG draws nearer faces on top.
- * Screen Y is flipped (SVG y grows downward).
+ * Screen Y is flipped (SVG y grows downward). `shade` is a 0..1 lambert term
+ * from {@link LIGHT} for clean directional face tones.
  */
 export function projectCubeFaces(
   rx: number,
@@ -89,10 +102,14 @@ export function projectCubeFaces(
 ): ProjectedFace[] {
   const { cx, cy, r } = opts;
   const persp = opts.persp ?? 4;
-  const rotated = CORNERS.map((c) => rotate(c, rx, ry, rz));
+  const vRx = opts.viewRx ?? 0;
+  const vRy = opts.viewRy ?? 0;
+  // Element pose first, then the fixed viewing camera.
+  const view = (v: Vec3) => rotate(rotate(v, rx, ry, rz), vRx, vRy, 0);
+  const rotated = CORNERS.map(view);
   const faces: ProjectedFace[] = [];
   for (const f of FACES) {
-    const n = rotate(f.normal, rx, ry, rz);
+    const n = view(f.normal);
     if (n.z <= 1e-6) continue; // back-face cull: normal must point toward viewer
     const corners = f.idx.map((i) => rotated[i]!);
     const depth = corners.reduce((s, p) => s + p.z, 0) / 4;
@@ -103,7 +120,8 @@ export function projectCubeFaces(
         return `${round(cx + p.x * r * s)},${round(cy - p.y * r * s)}`;
       })
       .join(" ");
-    faces.push({ id: f.id, points, shade: 0.45 + n.z * 0.55, depth });
+    const lum = Math.max(0, n.x * LIGHT.x + n.y * LIGHT.y + n.z * LIGHT.z);
+    faces.push({ id: f.id, points, shade: 0.3 + lum * 0.7, depth });
   }
   faces.sort((a, b) => a.depth - b.depth);
   return faces;

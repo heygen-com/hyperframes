@@ -526,6 +526,16 @@ export const PropertyPanel = memo(function PropertyPanel({
               onSeekToTime={onSeekToTime}
               onRemoveKeyframe={onRemoveKeyframe}
               onConvertToKeyframes={onConvertToKeyframes}
+              onLivePreviewProps={(el, props) => {
+                const iframe = iframeRef.current;
+                const win = iframe?.contentWindow as
+                  | { gsap?: { set: (t: Element, v: Record<string, number>) => void } }
+                  | null
+                  | undefined;
+                const sel = el.id ? `#${el.id}` : el.selector;
+                const node = sel ? iframe?.contentDocument?.querySelector(sel) : null;
+                if (win?.gsap && node) win.gsap.set(node, props);
+              }}
             />
           )}
           <div className="mt-3">

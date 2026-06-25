@@ -7,15 +7,20 @@ export interface CubePose {
   rotationZ: number;
 }
 
-const VIEW = 120;
-const CENTER = VIEW / 2;
-const RADIUS = 30;
+const VIEW_W = 132;
+const VIEW_H = 112;
+const CX = VIEW_W / 2;
+const CY = 54;
+const RADIUS = 26;
+// Resting isometric camera so the cube reads as 3D at identity.
+const VIEW_RX = -20;
+const VIEW_RY = 26;
 const SENSITIVITY = 0.6; // degrees per pixel of drag
 
 /**
  * Draggable 3D-orientation cube. Drag to tilt (X/Y); Shift-drag to roll (Z).
- * Presentational only: it renders the pose and emits draft poses while dragging
- * plus a final pose on release — the parent owns committing to GSAP props.
+ * Presentational only: emits a live draft pose while dragging and a final pose
+ * on release — the parent owns live-previewing and committing to GSAP props.
  */
 export function Transform3DCube({
   pose,
@@ -24,7 +29,7 @@ export function Transform3DCube({
   onRecenter,
 }: {
   pose: CubePose;
-  /** Fires on every drag move with the in-progress pose (live preview). */
+  /** Fires on every drag move with the in-progress pose (parent live-previews). */
   onPoseDraft?: (pose: CubePose) => void;
   /** Fires once on pointer release with the final pose (commit). */
   onPoseCommit: (pose: CubePose) => void;
@@ -35,9 +40,11 @@ export function Transform3DCube({
   const dragRef = useRef<{ x: number; y: number; pose: CubePose } | null>(null);
   const shown = draft ?? pose;
   const faces = projectCubeFaces(shown.rotationX, shown.rotationY, shown.rotationZ, {
-    cx: CENTER,
-    cy: CENTER,
+    cx: CX,
+    cy: CY,
     r: RADIUS,
+    viewRx: VIEW_RX,
+    viewRy: VIEW_RY,
   });
 
   const onPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
@@ -70,11 +77,11 @@ export function Transform3DCube({
   };
 
   return (
-    <div className="relative rounded-lg bg-neutral-900/50 p-2">
+    <div className="relative overflow-hidden rounded-lg border border-neutral-800 bg-gradient-to-b from-neutral-900 to-neutral-950">
       <svg
-        viewBox={`0 0 ${VIEW} ${VIEW}`}
-        className="w-full cursor-grab touch-none select-none active:cursor-grabbing"
-        style={{ aspectRatio: "1 / 1" }}
+        viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
+        className="block w-full cursor-grab touch-none select-none active:cursor-grabbing"
+        style={{ aspectRatio: `${VIEW_W} / ${VIEW_H}` }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -85,19 +92,33 @@ export function Transform3DCube({
           shown.rotationY,
         )}°, Z ${Math.round(shown.rotationZ)}°`}
       >
+        <defs>
+          <radialGradient id="cube3d-bg" cx="50%" cy="42%" r="62%">
+            <stop offset="0%" stopColor="#1c2624" />
+            <stop offset="100%" stopColor="#0a0d0c" />
+          </radialGradient>
+        </defs>
+        <rect x="0" y="0" width={VIEW_W} height={VIEW_H} fill="url(#cube3d-bg)" />
+        {/* Grounding shadow under the cube. */}
+        <ellipse
+          cx={CX}
+          cy={CY + RADIUS + 22}
+          rx={RADIUS * 1.15}
+          ry={6}
+          fill="#000"
+          opacity={0.35}
+        />
         {faces.map((f) => (
           <polygon
             key={f.id}
             points={f.points}
-            fill={`hsl(162 58% ${Math.round(16 + f.shade * 46)}%)`}
-            stroke="#3CE6AC"
-            strokeWidth={1}
+            fill={`hsl(162 52% ${Math.round(20 + f.shade * 42)}%)`}
+            stroke="#5ff0bf"
+            strokeWidth={0.8}
+            strokeOpacity={0.55}
             strokeLinejoin="round"
-            opacity={0.92}
           />
         ))}
-        {/* Center handle dot — the grab indicator. */}
-        <circle cx={CENTER} cy={CENTER} r={3.2} fill="#3CE6AC" />
       </svg>
       {onRecenter && (
         <button
