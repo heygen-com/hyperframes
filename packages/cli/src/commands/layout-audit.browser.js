@@ -359,6 +359,17 @@
     };
   }
 
+  // An ancestor (up to and including `stopAt`) that clips its overflow makes any
+  // text spilling past it invisible — that clipping IS the layout mechanism
+  // (odometer/ticker reels, masked windows), not a defect to report.
+  function clippedByAncestor(element, stopAt) {
+    for (let current = element; current; current = current.parentElement) {
+      if (current !== element && clipsOverflow(getComputedStyle(current))) return true;
+      if (current === stopAt) break;
+    }
+    return false;
+  }
+
   function textOverflowIssues(element, root, rootRect, time, tolerance) {
     const textRect = textRectFor(element);
     if (!textRect) return [];
@@ -382,7 +393,11 @@
       ? tolerance
       : Math.max(tolerance, parsePx(elementStyle.fontSize) * 0.2);
     const containerOverflow = overflowFor(textRect, containerRect, tolerance, verticalTolerance);
-    if (containerOverflow && !hasAllowOverflowFlag(element)) {
+    if (
+      containerOverflow &&
+      !hasAllowOverflowFlag(element) &&
+      !clippedByAncestor(element, container)
+    ) {
       const style = elementStyle;
       issues.push({
         code: "text_box_overflow",
@@ -622,13 +637,31 @@
     return Math.min(opacityChain(textScene), opacityChain(occluderScene)) < 0.999;
   }
 
+  // The nearest ancestor establishing a 3D rendering context, or null. Elements
+  // sharing one are depth-sorted in 3D, so a "covering" hit is legitimate
+  // perspective (e.g. the back face of a preserve-3d cube), not a 2D overlap.
+  function preserve3dContext(element) {
+    for (let current = element; current; current = current.parentElement) {
+      const ts = getComputedStyle(current).transformStyle;
+      if (ts === "preserve-3d") return current;
+    }
+    return null;
+  }
+
+  function sharedPreserve3d(a, b) {
+    const ctx = preserve3dContext(a);
+    return !!ctx && ctx === preserve3dContext(b);
+  }
+
   // The opaque element painted over (x, y), or null when the topmost element
-  // there is related to the text, non-opaque, or a transient crossfade overlap.
+  // there is related to the text, non-opaque, sharing a 3D context with it, or
+  // part of a transient crossfade overlap.
   // fallow-ignore-next-line complexity
   function occluderAt(element, x, y) {
     if (typeof document.elementFromPoint !== "function") return null;
     const hit = document.elementFromPoint(x, y);
     if (!isForeignElement(element, hit)) return null;
+    if (sharedPreserve3d(element, hit)) return null;
     if (!isOpaqueOccluder(hit)) return null;
     if (isCrossSceneTransitionOverlap(element, hit)) return null;
     return hit;
