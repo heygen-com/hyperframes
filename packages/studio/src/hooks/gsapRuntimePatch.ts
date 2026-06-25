@@ -79,22 +79,26 @@ type IframeWindow = Window & {
  * no tween to patch, so we set the channels directly. Safe because the element is
  * static on these channels (the caller only uses this for non-animated values).
  */
+/** The props as finite numbers, or null if any value is non-finite / none present. */
+function finiteNumericProps(props: SetPatchProps): Record<string, number> | null {
+  const numeric: Record<string, number> = {};
+  for (const [k, v] of Object.entries(props)) {
+    if (typeof v !== "number" || !Number.isFinite(v)) return null;
+    numeric[k] = v;
+  }
+  return Object.keys(numeric).length > 0 ? numeric : null;
+}
+
 function applyGlobalSet(
   iframe: HTMLIFrameElement,
   selector: string,
   props: SetPatchProps,
 ): boolean {
   try {
-    const win = iframe.contentWindow as IframeWindow | null;
-    const gsapLib = win?.gsap;
+    const gsapLib = (iframe.contentWindow as IframeWindow | null)?.gsap;
     const el = iframe.contentDocument?.querySelector(selector) ?? null;
-    if (!gsapLib?.set || !el) return false;
-    const numeric: Record<string, number> = {};
-    for (const [k, v] of Object.entries(props)) {
-      if (typeof v !== "number" || !Number.isFinite(v)) return false;
-      numeric[k] = v;
-    }
-    if (Object.keys(numeric).length === 0) return false;
+    const numeric = finiteNumericProps(props);
+    if (!gsapLib?.set || !el || !numeric) return false;
     gsapLib.set(el, numeric);
     return true;
   } catch {
@@ -186,6 +190,7 @@ function mergeKeyframeStep(
  * mutations. Declines (→ caller soft-reloads) for array-form, motionPath arcs,
  * non-finite/dynamic values, or a tween whose parent/targets can't be resolved.
  */
+// fallow-ignore-next-line complexity
 function rebuildKeyframeTween(tween: RuntimeTween, pct: number, props: KeyframeStep): boolean {
   const vars = tween.vars;
   if (!vars || "motionPath" in vars) return false;
@@ -235,7 +240,8 @@ function seekToCurrent(iframe: HTMLIFrameElement, timeline: RuntimeTimeline): vo
 function applyChange(tween: RuntimeTween, change: RuntimeTweenChange): boolean {
   if (change.kind === "set") return patchSet(tween, change.props);
   if (change.kind === "keyframes") return patchKeyframes(tween, change.keyframes);
-  if (change.kind === "keyframe-rebuild") return rebuildKeyframeTween(tween, change.pct, change.props);
+  if (change.kind === "keyframe-rebuild")
+    return rebuildKeyframeTween(tween, change.pct, change.props);
   return false;
 }
 

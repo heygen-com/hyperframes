@@ -209,14 +209,12 @@ function keyframeVarsCarryChannel(
   const kf = vars?.keyframes;
   if (!kf || typeof kf !== "object") return false;
   const steps = Array.isArray(kf) ? kf : Object.values(kf);
-  for (const step of steps) {
-    if (step && typeof step === "object") {
-      for (const ch of channels) {
-        if (Object.prototype.hasOwnProperty.call(step, ch)) return true;
-      }
-    }
-  }
-  return false;
+  return steps.some(
+    (step) =>
+      step != null &&
+      typeof step === "object" &&
+      channels.some((ch) => Object.prototype.hasOwnProperty.call(step, ch)),
+  );
 }
 
 /**
