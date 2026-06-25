@@ -8,6 +8,10 @@
         "x": 0,
         "opacity": 1
       },
+      "fromProperties": {
+        "x": 420,
+        "opacity": 0
+      },
       "duration": 0.5,
       "ease": "power3.out",
       "resolvedStart": 0.2,
@@ -20,6 +24,10 @@
       "properties": {
         "x": 420,
         "opacity": 0
+      },
+      "fromProperties": {
+        "x": 0,
+        "opacity": 1
       },
       "duration": 0.3,
       "ease": "power3.in",
