@@ -29,7 +29,7 @@ interface PropertyPanel3dTransformProps {
   ) => Promise<void>;
   onSeekToTime?: (time: number) => void;
   onRemoveKeyframe?: (animId: string, pct: number) => void;
-  onConvertToKeyframes?: (animId: string) => void;
+  onConvertToKeyframes?: (animId: string, duration?: number) => void;
   /** Live-set props on the preview element during a cube drag (no source write). */
   onLivePreviewProps?: (element: DomEditSelection, props: Record<string, number>) => void;
 }
@@ -135,7 +135,7 @@ interface FieldCtx {
   ) => Promise<void>;
   onSeekToTime?: (time: number) => void;
   onRemoveKeyframe?: (animId: string, pct: number) => void;
-  onConvertToKeyframes?: (animId: string) => void;
+  onConvertToKeyframes?: (animId: string, duration?: number) => void;
 }
 
 const parseDeg = (s: string): number | null => {
@@ -206,7 +206,9 @@ function Transform3dField({
           }}
           onConvertToKeyframes={() => {
             const id = idFor(prop);
-            if (id) ctx.onConvertToKeyframes?.(id);
+            // Pass the element's clip duration so a converted static 3D `set`
+            // spans the whole clip (keyframes land in range at any playhead).
+            if (id) ctx.onConvertToKeyframes?.(id, ctx.elDuration);
           }}
         />
       )}

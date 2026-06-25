@@ -476,6 +476,12 @@ export function resolveConversionProps(
   anim: GsapAnimation,
   resolvedFromValues?: Record<string, number | string>,
 ): { fromProps: Record<string, number | string>; toProps: Record<string, number | string> } {
+  if (anim.method === "set") {
+    // A static hold becomes a keyframed `to` whose 0% and 100% both start at the
+    // set's value — the visual is unchanged until the user edits a keyframe to
+    // animate it. (The caller flips the call from `set` to `to` + adds a duration.)
+    return { fromProps: { ...anim.properties }, toProps: { ...anim.properties } };
+  }
   if (anim.method === "to") {
     const identity = buildIdentityMap(anim.properties);
     const fromProps = resolvedFromValues ? { ...identity, ...resolvedFromValues } : identity;

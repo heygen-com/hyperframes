@@ -206,6 +206,7 @@ export function useGsapKeyframeOps({
       selection: DomEditSelection,
       animationId: string,
       resolvedFromValues?: Record<string, number | string>,
+      duration?: number,
     ) => {
       if (sdkSession && sdkDeps) {
         const targetPath = selection.sourceFile || activeCompPath || "index.html";
@@ -221,7 +222,9 @@ export function useGsapKeyframeOps({
       }
       return commitMutation(
         selection,
-        { type: "convert-to-keyframes", animationId, resolvedFromValues },
+        // `duration` only applies when the target is a static `set` (which has
+        // none) — it spans the converted keyframes across the element's clip.
+        { type: "convert-to-keyframes", animationId, resolvedFromValues, duration },
         { label: "Convert to keyframes" },
       );
     },

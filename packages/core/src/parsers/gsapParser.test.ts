@@ -578,6 +578,26 @@ describe("stagger/yoyo/repeat round-trip", () => {
     expect(updatedScript).toContain("opacity: 0.5");
   });
 
+  it("converts a static set into a keyframed to() with a duration (keyframable 3D)", () => {
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      tl.set("#card", { rotationX: 50, rotationY: 20, immediateRender: true }, 0);
+    `;
+    const parsed = parseGsapScript(script);
+    const animId = parsed.animations[0].id;
+    const result = convertToKeyframesInScript(script, animId, undefined, 4);
+    // Flips set → to, drops the hold marker, gains a duration + keyframes.
+    expect(result).toContain('tl.to("#card"');
+    expect(result).not.toContain("immediateRender");
+    expect(result).toContain("duration: 4");
+    expect(result).toContain("keyframes:");
+    // Both endpoints start at the set's value (visual unchanged until edited).
+    const reparsed = parseGsapScript(result).animations[0];
+    expect(reparsed.keyframes).toBeTruthy();
+    expect(reparsed.keyframes!.keyframes[0]!.properties.rotationX).toBe(50);
+    expect(reparsed.keyframes!.keyframes.at(-1)!.properties.rotationX).toBe(50);
+  });
+
   it("apply-to-all (resetKeyframeEases) sets easeEach and strips every per-keyframe ease", () => {
     const script = `
       const tl = gsap.timeline({ paused: true });

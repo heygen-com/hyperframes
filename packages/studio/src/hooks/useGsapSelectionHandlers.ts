@@ -76,6 +76,7 @@ export function useGsapSelectionHandlers({
     sel: DomEditSelection,
     animId: string,
     resolvedFromValues?: Record<string, number | string>,
+    duration?: number,
   ) => Promise<void>;
   removeAllKeyframes: (sel: DomEditSelection, animId: string) => void;
 
@@ -229,16 +230,18 @@ export function useGsapSelectionHandlers({
   );
 
   const handleGsapConvertToKeyframes = useCallback(
-    (animId: string, resolvedFromValues?: Record<string, number | string>) => {
+    (animId: string, resolvedFromValues?: Record<string, number | string>, duration?: number) => {
       if (!domEditSelection) return Promise.resolve();
-      return convertToKeyframes(domEditSelection, animId, resolvedFromValues).catch((error) => {
-        trackGsapHandlerFailure(
-          error,
-          domEditSelection,
-          "convert-to-keyframes",
-          "Convert to keyframes",
-        );
-      });
+      return convertToKeyframes(domEditSelection, animId, resolvedFromValues, duration).catch(
+        (error) => {
+          trackGsapHandlerFailure(
+            error,
+            domEditSelection,
+            "convert-to-keyframes",
+            "Convert to keyframes",
+          );
+        },
+      );
     },
     [domEditSelection, convertToKeyframes, trackGsapHandlerFailure],
   );

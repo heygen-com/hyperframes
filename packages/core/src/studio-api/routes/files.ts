@@ -490,6 +490,8 @@ type GsapMutationRequest =
       type: "convert-to-keyframes";
       animationId: string;
       resolvedFromValues?: Record<string, number | string>;
+      /** Duration (s) to give a converted static `set`, which has none. */
+      duration?: number;
     }
   | { type: "remove-all-keyframes"; animationId: string }
   | {
@@ -788,6 +790,7 @@ function executeGsapMutationAcorn(
         block.scriptText,
         body.animationId,
         body.resolvedFromValues,
+        body.duration,
       );
     }
     case "remove-all-keyframes": {
@@ -1081,6 +1084,7 @@ async function executeGsapMutationRecast(
         block.scriptText,
         body.animationId,
         body.resolvedFromValues,
+        body.duration,
       );
     }
     case "remove-all-keyframes": {

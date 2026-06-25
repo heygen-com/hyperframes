@@ -1207,6 +1207,7 @@ function buildKeyframesVarsCode(
   toProps: Record<string, number | string>,
   varsNode: Node,
   source: string,
+  setDuration?: number,
 ): string {
   const fromEntries = Object.entries(fromProps).map(([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`);
   const toEntries = Object.entries(toProps).map(([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`);
@@ -1215,7 +1216,14 @@ function buildKeyframesVarsCode(
   // Preserve every non-editable key (duration/delay/callbacks/stagger/yoyo/…)
   // verbatim from source — rebuilding from the animation object alone dropped
   // `delay` (not a GsapAnimation field), shifting the tween's start time.
-  const parts: string[] = [`keyframes: ${kfCode}`, ...preservedVarsEntries(varsNode, source)];
+  let preserved = preservedVarsEntries(varsNode, source);
+  // Converting a static `set` → drop its hold markers and give it a real duration
+  // so the keyframes span time.
+  if (setDuration !== undefined) {
+    preserved = preserved.filter((e) => !/^\s*(immediateRender|data|duration)\s*:/.test(e));
+  }
+  const parts: string[] = [`keyframes: ${kfCode}`, ...preserved];
+  if (setDuration !== undefined) parts.push(`duration: ${Math.max(0.001, setDuration)}`);
   if (animation.ease) parts.push(`ease: "none"`);
   return `{ ${parts.join(", ")} }`;
 }
@@ -1229,18 +1237,21 @@ export function convertToKeyframesFromScript(
   script: string,
   animationId: string,
   resolvedFromValues?: Record<string, number | string>,
+  setDuration = 1,
 ): string {
   const parsed = parseGsapScriptAcornForWrite(script);
   if (!parsed) return script;
   const target = parsed.located.find((l) => l.id === animationId);
   if (!target) return script;
   const { animation, call } = target;
-  if (animation.keyframes || call.method === "set") return script;
+  if (animation.keyframes) return script;
+  const isSet = call.method === "set";
 
   const { fromProps, toProps } = resolveConversionProps(animation, resolvedFromValues);
   const ms = new MagicString(script);
 
-  if (call.method === "from" || call.method === "fromTo") {
+  // set/from/fromTo all become `to`; fromTo also drops its `from` argument.
+  if (call.method === "from" || call.method === "fromTo" || isSet) {
     ms.overwrite(call.node.callee.property.start, call.node.callee.property.end, "to");
   }
   if (call.method === "fromTo" && call.fromArg) {
@@ -1249,7 +1260,14 @@ export function convertToKeyframesFromScript(
   overwriteVarsArg(
     ms,
     call,
-    buildKeyframesVarsCode(animation, fromProps, toProps, call.varsArg, script),
+    buildKeyframesVarsCode(
+      animation,
+      fromProps,
+      toProps,
+      call.varsArg,
+      script,
+      isSet ? setDuration : undefined,
+    ),
   );
 
   return ms.toString();

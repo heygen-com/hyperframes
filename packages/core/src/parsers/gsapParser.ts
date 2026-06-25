@@ -2302,12 +2302,13 @@ export function convertToKeyframesInScript(
   script: string,
   animationId: string,
   resolvedFromValues?: Record<string, number | string>,
+  setDuration = 1,
 ): string {
   let loc = locateAnimationWithFallback(script, animationId);
   if (!loc) return script;
 
   const anim = loc.target.animation;
-  if (anim.keyframes || anim.method === "set") return script;
+  if (anim.keyframes) return script;
 
   const { fromProps, toProps } = resolveConversionProps(anim, resolvedFromValues);
   const varsArg = loc.target.call.varsArg;
@@ -2324,6 +2325,15 @@ export function convertToKeyframesInScript(
   if (anim.method === "from" || anim.method === "fromTo") {
     loc.target.call.node.callee.property.name = "to";
     if (anim.method === "fromTo") loc.target.call.node.arguments.splice(1, 1);
+  }
+
+  // A static `set` becomes an animatable `to`: flip the method, drop the
+  // immediateRender hold marker, and give it a real duration so the keyframes
+  // span time. This is what makes a static 3D transform keyframeable.
+  if (anim.method === "set") {
+    loc.target.call.node.callee.property.name = "to";
+    removeVarsKey(varsArg, "immediateRender");
+    setVarsKey(varsArg, "duration", Math.max(0.001, setDuration));
   }
 
   return recast.print(loc.parsed.ast).code;

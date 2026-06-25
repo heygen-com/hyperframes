@@ -271,7 +271,9 @@ export function StudioRightPanel({
       onCommitAnimatedProperty={commitAnimatedProperty}
       onAddKeyframe={handleGsapAddKeyframe}
       onRemoveKeyframe={handleGsapRemoveKeyframe}
-      onConvertToKeyframes={handleGsapConvertToKeyframes}
+      onConvertToKeyframes={(animId, duration) =>
+        handleGsapConvertToKeyframes(animId, undefined, duration)
+      }
       onSeekToTime={(t) => usePlayerStore.getState().requestSeek(t)}
       onSetArcPath={handleSetArcPath}
       onUpdateArcSegment={handleUpdateArcSegment}
