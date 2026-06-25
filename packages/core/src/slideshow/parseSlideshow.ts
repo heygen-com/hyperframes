@@ -48,8 +48,8 @@ function isOptionalNumberArray(v: unknown): boolean {
   return v === undefined || (Array.isArray(v) && v.every((n) => typeof n === "number"));
 }
 
-function isOptional(v: unknown, type: "boolean"): boolean {
-  return v === undefined || typeof v === type;
+function isOptionalBoolean(v: unknown): v is boolean | undefined {
+  return v === undefined || typeof v === "boolean";
 }
 
 function isSlideRef(v: unknown): v is SlideRef {
@@ -58,7 +58,7 @@ function isSlideRef(v: unknown): v is SlideRef {
   if (typeof r["sceneId"] !== "string") return false;
   if (!isOptionalNumberArray(r["fragments"])) return false;
   if (r["hotspots"] !== undefined && !Array.isArray(r["hotspots"])) return false;
-  if (!isOptional(r["autoplay"], "boolean")) return false;
+  if (!isOptionalBoolean(r["autoplay"])) return false;
   return true;
 }
 

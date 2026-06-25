@@ -724,8 +724,7 @@ describe("SlideshowController autoplay", () => {
 
   it("does not require autoplay support on the port (optional hook)", () => {
     // A port without playSceneMedia must not throw when entering an autoplay slide.
-    const p = fakePlayer() as Record<string, unknown>;
-    delete p.playSceneMedia;
-    expect(() => new SlideshowController(p as never, AUTOPLAY_SHOW)).not.toThrow();
+    const { playSceneMedia: _omitted, ...port } = fakePlayer();
+    expect(() => new SlideshowController(port, AUTOPLAY_SHOW)).not.toThrow();
   });
 });

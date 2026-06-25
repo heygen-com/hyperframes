@@ -117,11 +117,12 @@ export class SlideshowController {
       this.frame.fragmentIndex = -1;
       this.playTo(this.restFrame(slide));
     }
-    // Opt-in: play the slide's own clip on enter. We never auto-advance — the
-    // presenter still clicks Next — this just saves a click into the (non-
-    // interactive) composition. Only on forward entry (enterSlide), not on
-    // resume/back/sync, and not on the audience (which mirrors the presenter's
-    // media events), so a clip isn't restarted under the presenter.
+    // Opt-in: play the slide's own clip on enter (saves a click into the
+    // pointer-events:none composition). We never auto-advance — the presenter
+    // still clicks Next. Fires from enterSlide (next / prev / goToSlide), NOT
+    // from resumeSlide (back / backToMain / syncTo), which restores a saved
+    // position; the component also skips it on the audience, which mirrors the
+    // presenter's media events rather than driving its own.
     if (slide.autoplay) this.player.playSceneMedia?.(slide.sceneId);
     this.emitChange();
   }
