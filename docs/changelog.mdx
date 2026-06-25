@@ -9,6 +9,34 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.7.7"
+  description="Released - 2026-06-25"
+  tags={["Release", "Plugin", "Producer", "Slideshow"]}
+>
+This release ships the post-0.7.6 fixes that unblock stable adoption: producer probe navigation timeouts now retry, and the Claude plugin fixture no longer trips compression guards during install. It also improves slideshow player interactivity and includes the latest Studio motion-editing and media-use provider work.
+
+## Features
+
+- **Slideshow:** Auto-set interactive on inner player ([64eaad7d](https://github.com/heygen-com/hyperframes/commit/64eaad7d69b3c11b9e95b912f2c0b5070994078b), [#1712](https://github.com/heygen-com/hyperframes/pull/1712))
+- **Studio:** Motion editing — speed-curve editor, class-tween attribution, per-keyframe size & ease ([36499220](https://github.com/heygen-com/hyperframes/commit/364992203e39288b92d60c044c2849866ef02976), [#1705](https://github.com/heygen-com/hyperframes/pull/1705))
+- **Studio:** Redesign Asset tab + fix beat analysis auto-trigger ([92befea3](https://github.com/heygen-com/hyperframes/commit/92befea305e923f081d51592abfdc0278a7e840b), [#1684](https://github.com/heygen-com/hyperframes/pull/1684))
+- **Media Use:** Resolve engine + BGM/SFX/image/icon providers ([b2dc3537](https://github.com/heygen-com/hyperframes/commit/b2dc353725049a0ccecc45db4db8dc8629dc5f5c), [#1683](https://github.com/heygen-com/hyperframes/pull/1683))
+- **Media Use:** Core infrastructure — manifest, cache, adopt, probe ([73f6d3e5](https://github.com/heygen-com/hyperframes/commit/73f6d3e5bed284f80e7a865e4cf2142817f1160c), [#1682](https://github.com/heygen-com/hyperframes/pull/1682))
+
+## Fixes
+
+- **Plugin:** Avoid high compression silence fixture ([96ab4b18](https://github.com/heygen-com/hyperframes/commit/96ab4b18a4f20ff2b7961e64a3771092f92f78fb), [#1717](https://github.com/heygen-com/hyperframes/pull/1717))
+- **Producer:** Retry probe navigation timeouts ([0558b876](https://github.com/heygen-com/hyperframes/commit/0558b8761e48683887816cc1c290f46dc4c32745), [#1713](https://github.com/heygen-com/hyperframes/pull/1713))
+- **Skills:** Make media-use frontmatter valid YAML so `skills add` works ([814c96ce](https://github.com/heygen-com/hyperframes/commit/814c96cefaa149d397a18184ed244178a6f1e46d), [#1709](https://github.com/heygen-com/hyperframes/pull/1709))
+
+## Internal
+
+- **Media Use:** Resolve tests + eval harness ([34bb4965](https://github.com/heygen-com/hyperframes/commit/34bb496566bc1fcccd06a2c9c3f099a5b41d585c), [#1685](https://github.com/heygen-com/hyperframes/pull/1685))
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.7.6...v0.7.7).
+</Update>
+
+<Update
   label="HyperFrames v0.7.6"
   description="Released - 2026-06-25"
   tags={["Release", "Runtime", "CLI", "Engine"]}
