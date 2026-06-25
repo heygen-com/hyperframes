@@ -119,7 +119,8 @@ export function useMotionPathData(
       return;
     }
     const recompute = () => {
-      const read = readRuntimeKeyframes(iframeRef.current, selector);
+      // Position-only: never let a co-located size/scale tween shadow the path.
+      const read = readRuntimeKeyframes(iframeRef.current, selector, undefined, ["x", "y"]);
       const next = buildMotionPathGeometry(read);
       setGeometry((prev) =>
         prev?.points === next?.points && prev?.kind === next?.kind ? prev : next,

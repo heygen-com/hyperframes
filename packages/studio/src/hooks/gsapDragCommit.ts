@@ -4,6 +4,10 @@
  */
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
+import {
+  STUDIO_ORIGINAL_WIDTH_ATTR,
+  STUDIO_ORIGINAL_HEIGHT_ATTR,
+} from "../components/editor/manualEditsTypes";
 import { usePlayerStore } from "../player/store/playerStore";
 import { readRuntimeKeyframes, scanAllRuntimeKeyframes } from "./gsapRuntimeKeyframes";
 import { resolveTweenStart, resolveTweenDuration } from "../utils/globalTimeCompiler";
@@ -340,6 +344,103 @@ export async function commitStaticGsapSize(
     },
     { label: "Resize layer", softReload: true },
   );
+}
+
+/** Rounded `n` when it's a positive finite number, else `fallback`. */
+function positiveOr(n: number, fallback: number): number {
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : fallback;
+}
+
+/**
+ * Prior size for a keyframed resize: the existing global set's value, else the
+ * element's pre-resize size (the draft saved it on the element before mutating
+ * el.style.width/height). Falls back to the new size when neither is available.
+ */
+function resolvePriorSize(
+  sizeSet: GsapAnimation | null,
+  el: Element | null | undefined,
+  fallbackW: number,
+  fallbackH: number,
+): { width: number; height: number } {
+  if (sizeSet) {
+    return {
+      width: positiveOr(Number(sizeSet.properties.width), fallbackW),
+      height: positiveOr(Number(sizeSet.properties.height), fallbackH),
+    };
+  }
+  const ow = Number.parseFloat(el?.getAttribute(STUDIO_ORIGINAL_WIDTH_ATTR) ?? "");
+  const oh = Number.parseFloat(el?.getAttribute(STUDIO_ORIGINAL_HEIGHT_ATTR) ?? "");
+  return { width: positiveOr(ow, fallbackW), height: positiveOr(oh, fallbackH) };
+}
+
+/**
+ * Resize an *animated* element by keyframing its size at the current playhead,
+ * instead of a global `gsap.set` hold. Builds a width/height keyframe tween
+ * aligned to the element's existing animation: every base keyframe keeps the
+ * prior size, only the keyframe nearest the playhead gets the new size — so
+ * resizing one keyframe leaves the others unchanged. Replaces any prior global
+ * size set. Returns false when there's no usable range (caller falls back to the
+ * static set).
+ */
+export async function commitKeyframedSizeFromResize(
+  selection: DomEditSelection,
+  size: { width: number; height: number },
+  selector: string,
+  sizeSet: GsapAnimation | null,
+  animatedTween: GsapAnimation,
+  callbacks: GsapDragCommitCallbacks,
+): Promise<boolean> {
+  const ts = resolveTweenStart(animatedTween) ?? 0;
+  const td = resolveTweenDuration(animatedTween);
+  if (!(td > 0)) return false;
+
+  const newW = Math.round(size.width);
+  const newH = Math.round(size.height);
+  const prior = resolvePriorSize(sizeSet, selection.element, newW, newH);
+
+  const ct = usePlayerStore.getState().currentTime;
+  const pct = Math.max(0, Math.min(100, Math.round(((ct - ts) / td) * 1000) / 10));
+
+  // Base keyframe percentages from the animated tween (flat tween → 0 & 100),
+  // plus the endpoints and the playhead. Each keeps the prior size except the
+  // keyframe at the playhead, which gets the new size.
+  const pcts = new Set<number>(
+    animatedTween.keyframes?.keyframes.map((k) => k.percentage) ?? [0, 100],
+  );
+  pcts.add(0);
+  pcts.add(100);
+  pcts.add(pct);
+  const keyframes = Array.from(pcts)
+    .sort((a, b) => a - b)
+    .map((p) => ({
+      percentage: p,
+      properties: Math.abs(p - pct) < 0.05 ? { width: newW, height: newH } : { ...prior },
+    }));
+
+  // Add the size keyframe tween FIRST, then delete the old global hold. The two
+  // commits aren't transactional, so ordering matters: if the delete fails the
+  // size is preserved (animated, recoverable) rather than lost. Only the last
+  // commit triggers the reload.
+  const addLabel = `Resize (size keyframe ${pct.toFixed(0)}%)`;
+  await callbacks.commitMutation(
+    selection,
+    {
+      type: "add-with-keyframes",
+      targetSelector: selector,
+      position: roundTo3(ts),
+      duration: roundTo3(td),
+      keyframes,
+    },
+    sizeSet ? { label: addLabel, skipReload: true } : { label: addLabel, softReload: true },
+  );
+  if (sizeSet) {
+    await callbacks.commitMutation(
+      selection,
+      { type: "delete", animationId: sizeSet.id },
+      { label: "Resize layer", softReload: true },
+    );
+  }
+  return true;
 }
 
 export { findSizeSetAnimation };

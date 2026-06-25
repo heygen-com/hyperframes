@@ -73,7 +73,7 @@ describe("buildTweenSummary", () => {
     expect(s).toContain("[opacity 0%");
     expect(s).toContain("move x -50px");
     expect(s).toContain("opacity to 100%");
-    expect(s).toContain("very snappy stop");
+    expect(s).toContain("expo.out");
   });
 
   it("handles fromTo with empty fromProperties", () => {

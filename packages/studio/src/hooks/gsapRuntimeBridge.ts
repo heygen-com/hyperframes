@@ -18,6 +18,7 @@ import {
   commitStaticGsapPosition,
   commitStaticGsapRotation,
   commitStaticGsapSize,
+  commitKeyframedSizeFromResize,
   commitWholePathOffset,
   computeCurrentPercentage,
   findPositionSetAnimation,
@@ -329,6 +330,27 @@ export async function tryGsapResizeIntercept(
     const sel = selectorFromSelection(selection);
     if (!sel) return false;
     const sizeSet = anim?.method === "set" ? anim : findSizeSetAnimation(animations, sel);
+
+    // If the element is animated (has a real tween, not just a static size
+    // hold), keyframe the size at the playhead so other keyframes keep theirs —
+    // instead of a global set that resizes every frame.
+    if (resizeGroup === "size") {
+      const animatedTween = pickClosestToPlayhead(
+        animations.filter((a) => a.method !== "set" && resolveTweenDuration(a) > 0),
+      );
+      if (animatedTween) {
+        const handled = await commitKeyframedSizeFromResize(
+          selection,
+          size,
+          sel,
+          sizeSet,
+          animatedTween,
+          { commitMutation, fetchAnimations: fetchFallbackAnimations },
+        );
+        if (handled) return true;
+      }
+    }
+
     await commitStaticGsapSize(selection, size, sel, sizeSet, {
       commitMutation,
       fetchAnimations: fetchFallbackAnimations,

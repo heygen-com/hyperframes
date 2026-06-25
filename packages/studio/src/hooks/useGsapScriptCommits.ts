@@ -1,5 +1,4 @@
 import { useCallback, useMemo, useRef } from "react";
-import { editLog } from "../utils/editDebugLog";
 import { findUnsafeMutationValues } from "@hyperframes/core/studio-api/finite-mutation";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { applySoftReload, extractGsapScriptText } from "../utils/gsapSoftReload";
@@ -130,12 +129,6 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
   const runCommit = useCallback(async (selection: DomEditSelection, mutation: Record<string, unknown>, options: CommitMutationOptions) => {
     const pid = projectIdRef.current;
     if (!pid) return;
-    editLog("gsap-commit", {
-      type: mutation.type,
-      id: selection.id,
-      file: selection.sourceFile || activeCompPath,
-      label: options.label,
-    });
     const unsafeFields = findUnsafeMutationValues(mutation);
     if (unsafeFields.length > 0) {
       showToast?.("Couldn't read element layout — try again at a different playhead time", "error");
@@ -165,11 +158,6 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
     options.beforeReload?.();
     applyPreviewSync(previewIframeRef.current, result, options, reloadPreview);
     onCacheInvalidate();
-    editLog("gsap-commit:done", {
-      type: mutation.type,
-      changed: result.changed,
-      instant: Boolean(options.instantPatch),
-    });
   }, [projectIdRef, activeCompPath, previewIframeRef, editHistory, domEditSaveTimestampRef, reloadPreview, onCacheInvalidate, onFileContentChanged, showToast, forceReloadSdkSession]);
   // Every GSAP-script commit is a read-modify-write of one file. Overlapping
   // commits to the SAME file (any op type, any animation) interleave server-side,

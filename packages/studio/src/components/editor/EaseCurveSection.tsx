@@ -2,14 +2,16 @@ import { useCallback, useRef, useState } from "react";
 import { EASE_CURVES, EASE_LABELS, parseCustomEaseFromString } from "./gsapAnimationConstants";
 import { roundToCenti } from "../../utils/rounding";
 
+// Figma-canonical ordering: linear, the three core eases, then the expressive
+// (back / snappy) family. Each maps to a GSAP ease so it round-trips cleanly.
 const PRESET_GRID_EASES = [
-  "ae-ease",
-  "ae-ease-in",
-  "ae-ease-out",
   "none",
-  "power2.out",
   "power2.in",
+  "power2.out",
+  "power2.inOut",
+  "back.in",
   "back.out",
+  "back.inOut",
   "expo.out",
 ] as const;
 
@@ -78,6 +80,37 @@ const EasePresetGrid = function EasePresetGrid({
 
 const round2 = roundToCenti;
 
+// ── Graph geometry (Figma-style easing box) ─────────────────────────────────
+// A geometrically-square unit plot ([0,1]×[0,1], equal X/Y scale so the curve
+// isn't distorted), with fixed overshoot headroom above 1 and below 0 for
+// back/elastic eases. The view is fixed (no per-curve zoom); handles are clamped
+// to the visible range so they never drift off-screen.
+const S = 184; // side of the unit (0..1) square, in viewBox units
+const HR = 52; // overshoot headroom (top & bottom)
+const PADH = 16; // horizontal breathing room
+const SVGW = S + PADH * 2;
+const SVGH = S + HR * 2;
+const VMAX = 1 + HR / S; // top of visible view (progress overshoot headroom)
+const VMIN = -HR / S; // bottom of visible view (undershoot headroom)
+// Committed control points may extend PAST the visible view — heavy back/elastic
+// presets reach ~1.55 / -0.55. Dragging clamps to this wider bound (cursor can
+// leave the box via pointer capture) so those curves keep their fidelity instead
+// of snapping to the view edge; the handle DOT is still clampView'd into view.
+const DRAG_VMAX = 2;
+const DRAG_VMIN = -1;
+const ACCENT = "#3CE6AC";
+
+type Pts = [number, number, number, number];
+
+const xToSvg = (px: number) => PADH + S * px;
+const yToSvg = (py: number) => HR + S * (1 - py);
+const clampView = (py: number) => Math.max(VMIN, Math.min(VMAX, py));
+
+function cubicAt(t: number, c0: number, c1: number, c2: number, c3: number): number {
+  const mt = 1 - t;
+  return mt * mt * mt * c0 + 3 * mt * mt * t * c1 + 3 * mt * t * t * c2 + t * t * t * c3;
+}
+
 export function EaseCurveSection({
   ease,
   duration,
@@ -90,25 +123,26 @@ export function EaseCurveSection({
   const isCustom = ease.startsWith("custom(");
   const curveFromPreset = EASE_CURVES[ease];
   const customPoints = isCustom ? parseCustomEaseFromString(ease) : null;
-  const curve: [number, number, number, number] | null =
+  const curve: Pts | null =
     isCustom && customPoints
       ? [customPoints.x1, customPoints.y1, customPoints.x2, customPoints.y2]
       : (curveFromPreset ?? null);
 
-  const [draft, setDraft] = useState<[number, number, number, number] | null>(null);
+  const [draft, setDraft] = useState<Pts | null>(null);
   const [progress, setProgress] = useState<number | null>(null);
+  const [hover, setHover] = useState<"p1" | "p2" | null>(null);
   const draggingRef = useRef<"p1" | "p2" | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const rafRef = useRef<number>(0);
 
   const play = useCallback(() => {
     const start = performance.now();
-    const dur = 1000;
+    const dur = 1100;
     const tick = (now: number) => {
       const t = Math.min((now - start) / dur, 1);
       setProgress(t);
       if (t < 1) rafRef.current = requestAnimationFrame(tick);
-      else setTimeout(() => setProgress(null), 400);
+      else setTimeout(() => setProgress(null), 450);
     };
     cancelAnimationFrame(rafRef.current);
     rafRef.current = requestAnimationFrame(tick);
@@ -118,27 +152,23 @@ export function EaseCurveSection({
   if (!active) return null;
   const [x1, y1, x2, y2] = active;
 
-  const w = 200;
-  const h = 100;
-  const pad = 14;
-  const gw = w - pad * 2;
-  const gh = h - pad * 2;
+  // Anchors + control handles. Handle *display* is clamped to the view so an
+  // extreme loaded overshoot rides the edge instead of disappearing.
+  const a0 = { x: xToSvg(0), y: yToSvg(0) };
+  const a1 = { x: xToSvg(1), y: yToSvg(1) };
+  const p1 = { x: xToSvg(x1), y: yToSvg(clampView(y1)) };
+  const p2 = { x: xToSvg(x2), y: yToSvg(clampView(y2)) };
+  // Curve drawn from the true control points (so its shape is exact).
+  const cp1 = { x: xToSvg(x1), y: yToSvg(y1) };
+  const cp2 = { x: xToSvg(x2), y: yToSvg(y2) };
+  const curvePath = `M${a0.x},${a0.y} C${cp1.x},${cp1.y} ${cp2.x},${cp2.y} ${a1.x},${a1.y}`;
 
-  const toSvg = (px: number, py: number) => ({
-    x: pad + gw * px,
-    y: h - pad - gh * py,
-  });
-
-  const curvePath = `M${pad},${h - pad} C${toSvg(x1, y1).x},${toSvg(x1, y1).y} ${toSvg(x2, y2).x},${toSvg(x2, y2).y} ${w - pad},${pad}`;
-
-  let dotX = pad;
-  let dotY = h - pad;
+  let dot: { x: number; y: number } | null = null;
   if (progress !== null) {
-    const t = progress;
-    const mt = 1 - t;
-    dotX = pad + gw * (mt * mt * mt * 0 + 3 * mt * mt * t * x1 + 3 * mt * t * t * x2 + t * t * t);
-    dotY =
-      h - pad - gh * (mt * mt * mt * 0 + 3 * mt * mt * t * y1 + 3 * mt * t * t * y2 + t * t * t);
+    dot = {
+      x: xToSvg(cubicAt(progress, 0, x1, x2, 1)),
+      y: yToSvg(cubicAt(progress, 0, y1, y2, 1)),
+    };
   }
 
   const handlePointerDown = (handle: "p1" | "p2", e: React.PointerEvent) => {
@@ -153,12 +183,16 @@ export function EaseCurveSection({
     if (!draggingRef.current || !svgRef.current) return;
     e.preventDefault();
     const rect = svgRef.current.getBoundingClientRect();
-    const sx = ((e.clientX - rect.left) / rect.width) * w;
-    const sy = ((e.clientY - rect.top) / rect.height) * h;
-    const px = Math.max(0, Math.min(1, (sx - pad) / gw));
-    const py = Math.max(-1, Math.min(2, (h - pad - sy) / gh));
+    const sx = ((e.clientX - rect.left) / rect.width) * SVGW;
+    const sy = ((e.clientY - rect.top) / rect.height) * SVGH;
+    // px is clamped to [0,1] on purpose: a cubic-bezier ease must be monotonic in
+    // time (handle1.x ≤ handle2.x), so handles can't pass each other or invert.
+    const px = Math.max(0, Math.min(1, (sx - PADH) / S));
+    // py uses the WIDER drag bound (not clampView), so dragging keeps overshoot
+    // fidelity instead of pinning the committed value to the visible view edge.
+    const py = Math.max(DRAG_VMIN, Math.min(DRAG_VMAX, 1 - (sy - HR) / S));
     const prev = draft ?? [x1, y1, x2, y2];
-    const next: [number, number, number, number] =
+    const next: Pts =
       draggingRef.current === "p1"
         ? [round2(px), round2(py), prev[2], prev[3]]
         : [prev[0], prev[1], round2(px), round2(py)];
@@ -173,11 +207,12 @@ export function EaseCurveSection({
     setDraft(null);
   };
 
-  const p1 = toSvg(x1, y1);
-  const p2 = toSvg(x2, y2);
-  const start = toSvg(0, 0);
-  const end = toSvg(1, 1);
+  const top = yToSvg(1);
+  const bottom = yToSvg(0);
+  const left = xToSvg(0);
+  const right = xToSvg(1);
   const label = isCustom ? "Custom curve" : (EASE_LABELS[ease] ?? ease);
+  const bezierText = `${x1} · ${y1} · ${x2} · ${y2}`;
 
   return (
     <div className="rounded-lg bg-neutral-900/50 p-2">
@@ -193,98 +228,139 @@ export function EaseCurveSection({
         </button>
       </div>
       <div
-        className="overflow-hidden rounded pt-[72px] -mt-[72px]"
-        style={{ aspectRatio: `${w}/${h}` }}
+        className="mx-auto overflow-hidden rounded-md border border-white/5 bg-black/20"
+        style={{ aspectRatio: `${SVGW} / ${SVGH}`, width: "100%", maxWidth: 230 }}
       >
         <svg
           ref={svgRef}
           width="100%"
           height="100%"
-          viewBox={`0 0 ${w} ${h}`}
+          viewBox={`0 0 ${SVGW} ${SVGH}`}
           preserveAspectRatio="none"
-          style={{ overflow: "visible" }}
           className="touch-none select-none"
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
         >
-          <line
-            x1={pad}
-            y1={h - pad}
-            x2={w - pad}
-            y2={h - pad}
+          {/* Grid — quarter lines inside the unit square */}
+          {[0.25, 0.5, 0.75].map((q) => (
+            <line
+              key={`v${q}`}
+              x1={xToSvg(q)}
+              y1={top}
+              x2={xToSvg(q)}
+              y2={bottom}
+              stroke="white"
+              strokeOpacity="0.05"
+              strokeWidth="1"
+            />
+          ))}
+          {[0.25, 0.5, 0.75].map((q) => (
+            <line
+              key={`h${q}`}
+              x1={left}
+              y1={yToSvg(q)}
+              x2={right}
+              y2={yToSvg(q)}
+              stroke="white"
+              strokeOpacity="0.05"
+              strokeWidth="1"
+            />
+          ))}
+          {/* Unit-square frame (progress 0 → 1) */}
+          <rect
+            x={left}
+            y={top}
+            width={S}
+            height={bottom - top}
+            fill="none"
             stroke="white"
-            strokeOpacity="0.06"
-            strokeWidth="0.5"
+            strokeOpacity="0.1"
+            strokeWidth="1"
           />
+          {/* Linear reference diagonal */}
           <line
-            x1={pad}
-            y1={pad}
-            x2={pad}
-            y2={h - pad}
+            x1={a0.x}
+            y1={a0.y}
+            x2={a1.x}
+            y2={a1.y}
             stroke="white"
-            strokeOpacity="0.06"
-            strokeWidth="0.5"
+            strokeOpacity="0.08"
+            strokeWidth="1"
+            strokeDasharray="3 4"
           />
+          {/* Tangent handle lines */}
           <line
-            x1={start.x}
-            y1={start.y}
+            x1={a0.x}
+            y1={a0.y}
             x2={p1.x}
             y2={p1.y}
-            stroke="rgba(52,211,153,0.25)"
-            strokeWidth="1"
+            stroke={ACCENT}
+            strokeOpacity="0.5"
+            strokeWidth="1.5"
           />
           <line
-            x1={end.x}
-            y1={end.y}
+            x1={a1.x}
+            y1={a1.y}
             x2={p2.x}
             y2={p2.y}
-            stroke="rgba(45,212,191,0.25)"
-            strokeWidth="1"
+            stroke={ACCENT}
+            strokeOpacity="0.5"
+            strokeWidth="1.5"
           />
-          <path d={curvePath} fill="none" stroke="#3CE6AC" strokeWidth="2" strokeLinecap="round" />
-          {progress !== null && <circle cx={dotX} cy={dotY} r="4" fill="#3CE6AC" />}
-          <circle
-            cx={p1.x}
-            cy={p1.y}
-            r="5"
-            fill="#0a0a1a"
-            stroke="#3CE6AC"
-            strokeWidth="2"
-            className="cursor-grab active:cursor-grabbing"
-            onPointerDown={(e) => handlePointerDown("p1", e)}
-          />
-          <circle
-            cx={p2.x}
-            cy={p2.y}
-            r="5"
-            fill="#0a0a1a"
-            stroke="#3CE6AC"
-            strokeWidth="2"
-            className="cursor-grab active:cursor-grabbing"
-            onPointerDown={(e) => handlePointerDown("p2", e)}
-          />
-          {duration != null && duration > 0 && (
+          {/* The curve */}
+          <path d={curvePath} fill="none" stroke={ACCENT} strokeWidth="2.5" strokeLinecap="round" />
+          {/* Anchors at (0,0) and (1,1) */}
+          <circle cx={a0.x} cy={a0.y} r="3" fill={ACCENT} />
+          <circle cx={a1.x} cy={a1.y} r="3" fill={ACCENT} />
+          {/* Animated preview dot */}
+          {dot && (
             <>
-              <text x={pad} y={h - 1} textAnchor="start" className="fill-neutral-600 text-[8px]">
-                0s
-              </text>
-              <text
-                x={pad + gw / 2}
-                y={h - 1}
-                textAnchor="middle"
-                className="fill-neutral-600 text-[8px]"
-              >
-                {(duration / 2).toFixed(1)}s
-              </text>
-              <text x={w - pad} y={h - 1} textAnchor="end" className="fill-neutral-600 text-[8px]">
-                {duration}s
-              </text>
+              <circle cx={dot.x} cy={dot.y} r="9" fill={ACCENT} fillOpacity="0.18" />
+              <circle cx={dot.x} cy={dot.y} r="4.5" fill={ACCENT} />
             </>
           )}
+          {/* Draggable control handles (large transparent hit area + visible dot) */}
+          {[["p1", p1] as const, ["p2", p2] as const].map(([key, pt]) => (
+            <g key={key}>
+              <circle
+                cx={pt.x}
+                cy={pt.y}
+                r="14"
+                fill="transparent"
+                className="cursor-grab active:cursor-grabbing"
+                onPointerDown={(e) => handlePointerDown(key, e)}
+                onPointerEnter={() => setHover(key)}
+                onPointerLeave={() => setHover((h) => (h === key ? null : h))}
+              />
+              <circle
+                cx={pt.x}
+                cy={pt.y}
+                r={hover === key || draggingRef.current === key ? 7 : 5.5}
+                fill="#0a0a1a"
+                stroke={ACCENT}
+                strokeWidth="2.5"
+                className="pointer-events-none transition-[r]"
+              />
+            </g>
+          ))}
         </svg>
       </div>
-      <p className="mt-1 text-center text-[10px] text-neutral-500">{label}</p>
+      {/* Axis + value readout */}
+      <div className="mt-1.5 flex items-center justify-between px-0.5 text-[9px] text-neutral-600">
+        <span>{duration != null && duration > 0 ? "0s" : "start"}</span>
+        <span className="tracking-wide text-neutral-500">time →</span>
+        <span>{duration != null && duration > 0 ? `${duration}s` : "end"}</span>
+      </div>
+      <div className="mt-1 flex items-center justify-between px-0.5">
+        <span className="text-[10px] text-neutral-400">{label}</span>
+        <span
+          className="font-mono text-[9px] tracking-tight text-neutral-600"
+          title="cubic-bezier control points"
+        >
+          {bezierText}
+        </span>
+      </div>
     </div>
   );
 }

@@ -410,6 +410,25 @@ export function useDomEditSession({
     [gsapCommitMutation, domEditSelectionRef],
   );
 
+  // Apply one ease to every segment at once (AE select-all + F9): set easeEach
+  // and strip per-keyframe overrides in a single mutation.
+  const handleSetAllKeyframeEases = useCallback(
+    (animationId: string, ease: string) => {
+      const sel = domEditSelectionRef.current;
+      if (!sel) return;
+      gsapCommitMutation(
+        sel,
+        {
+          type: "update-meta",
+          animationId,
+          updates: { easeEach: ease, resetKeyframeEases: true },
+        },
+        { label: "Apply ease to all segments", softReload: true },
+      );
+    },
+    [gsapCommitMutation, domEditSelectionRef],
+  );
+
   return {
     // State
     domEditSelection,
@@ -477,6 +496,7 @@ export function useDomEditSession({
     handleGsapRemoveAllKeyframes,
     handleResetSelectedElementKeyframes,
     handleUpdateKeyframeEase,
+    handleSetAllKeyframeEases,
     commitAnimatedProperty,
     handleSetArcPath,
     handleUpdateArcSegment,

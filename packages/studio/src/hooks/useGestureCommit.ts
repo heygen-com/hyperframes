@@ -3,7 +3,6 @@
  * Extracted from App.tsx to keep file sizes under the 600-line limit.
  */
 import { useState, useCallback, useRef, useEffect } from "react";
-import { editLog } from "../utils/editDebugLog";
 import { useGestureRecording } from "./useGestureRecording";
 import { simplifyGestureSamples } from "../utils/rdpSimplify";
 import { fitEasesFromVelocity } from "../utils/velocityEaseFitter";
@@ -294,9 +293,6 @@ export function useGestureCommit({
 
   // fallow-ignore-next-line complexity
   const handleToggleRecording = useCallback(() => {
-    editLog("gesture", gestureStateRef.current === "recording" ? "stop" : "start", {
-      id: domEditSessionRef.current.domEditSelection?.id,
-    });
     if (gestureStateRef.current === "recording") {
       void stopAndCommitRecording();
       return;

@@ -252,14 +252,26 @@ export function resolveRuntimeTween(
   return channelMatch ?? first;
 }
 
+/** Whether a read carries at least one of `channels` as a keyframe property. */
+function readCarriesChannel(read: ReadTween, channels: string[]): boolean {
+  return read.keyframes.some((kf) => channels.some((c) => kf.properties[c] != null));
+}
+
 /**
  * Read keyframes (incl. motionPath arcs) for one selector from the live timeline.
  * Returns tween-relative percentages; callers convert to clip-relative.
+ *
+ * `requireChannels` restricts the scan to tweens whose read carries one of those
+ * properties — e.g. the motion-path overlay passes `["x","y"]` so it never picks
+ * up a co-located size/scale tween (which has no x/y and would blank the path
+ * whenever the playhead sits in that tween's range but outside the position
+ * tween's). Omitted → any keyframed tween qualifies (back-compat).
  */
 export function readRuntimeKeyframes(
   iframe: HTMLIFrameElement | null,
   selector: string,
   compositionId?: string,
+  requireChannels?: string[],
 ): ReadTween | null {
   const timelines = timelinesOf(iframe);
   if (!timelines) return null;
@@ -299,6 +311,7 @@ export function readRuntimeKeyframes(
       if (isZeroDurationSet(dur)) continue; // skip hold/set tweens (see isZeroDurationSet)
       const read = readTween(tween.vars);
       if (!read) continue;
+      if (requireChannels && !readCarriesChannel(read, requireChannels)) continue;
       if (firstRead === null) firstRead = read;
       // Prefer the tween whose [start, start+dur] contains the playhead.
       if (now != null) {

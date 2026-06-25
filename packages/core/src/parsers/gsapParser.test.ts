@@ -577,6 +577,23 @@ describe("stagger/yoyo/repeat round-trip", () => {
     expect(updatedScript).toContain("stagger: 0.1");
     expect(updatedScript).toContain("opacity: 0.5");
   });
+
+  it("apply-to-all (resetKeyframeEases) sets easeEach and strips every per-keyframe ease", () => {
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#card", { keyframes: { "0%": { x: 0 }, "30%": { x: 50, ease: "custom(M0,0 C0.333,0 0.667,1 1,1)" }, "70%": { x: 80, ease: "power2.in" }, "100%": { x: 100 }, easeEach: "power2.out" }, duration: 1 }, 0);
+    `;
+    const parsed = parseGsapScript(script);
+    const animId = parsed.animations[0].id;
+    const result = updateAnimationInScript(script, animId, {
+      easeEach: "back.out",
+      resetKeyframeEases: true,
+    });
+    expect(result).toContain('easeEach: "back.out"');
+    // Every per-keyframe override is gone — the single easeEach governs all segments.
+    expect(result).not.toContain('ease: "custom');
+    expect(result).not.toContain('ease: "power2.in"');
+  });
 });
 
 describe("unresolvable value round-trip", () => {

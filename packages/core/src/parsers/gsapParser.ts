@@ -1243,9 +1243,23 @@ function applyEaseUpdate(varsArg: AstNode, ease: string): void {
   }
 }
 
+/**
+ * "Apply to all segments": drop every per-keyframe `ease` override so the single
+ * `easeEach` governs all segments uniformly (AE select-all + F9). Mirrors the
+ * acorn writer's resetKeyframeEases branch.
+ */
+function stripKeyframeEases(varsArg: AstNode): void {
+  const kfNode = findKeyframesObjectNode(varsArg);
+  const props = kfNode?.properties;
+  if (!Array.isArray(props)) return;
+  for (const entry of props) {
+    if (isObjectProperty(entry)) removeVarsKey(entry.value, "ease");
+  }
+}
+
 function applyUpdatesToCall(
   call: TweenCallInfo,
-  updates: Partial<GsapAnimation> & { easeEach?: string },
+  updates: Partial<GsapAnimation> & { easeEach?: string; resetKeyframeEases?: boolean },
 ): void {
   if (updates.properties) reconcileEditableProperties(call.varsArg, updates.properties);
   if (updates.fromProperties && call.method === "fromTo" && call.fromArg) {
@@ -1254,6 +1268,7 @@ function applyUpdatesToCall(
   if (updates.duration !== undefined) setVarsKey(call.varsArg, "duration", updates.duration);
   if (updates.easeEach !== undefined) applyEaseUpdate(call.varsArg, updates.easeEach);
   else if (updates.ease !== undefined) applyEaseUpdate(call.varsArg, updates.ease);
+  if (updates.resetKeyframeEases) stripKeyframeEases(call.varsArg);
   if (updates.position !== undefined) {
     const posIdx = call.method === "fromTo" ? 3 : 2;
     call.node.arguments[posIdx] = parseExpr(valueToCode(updates.position));
@@ -1315,7 +1330,7 @@ function buildTweenStatementCode(timelineVar: string, anim: Omit<GsapAnimation, 
 export function updateAnimationInScript(
   script: string,
   animationId: string,
-  updates: Partial<GsapAnimation> & { easeEach?: string },
+  updates: Partial<GsapAnimation> & { easeEach?: string; resetKeyframeEases?: boolean },
 ): string {
   let parsed: ParsedGsapAst;
   try {

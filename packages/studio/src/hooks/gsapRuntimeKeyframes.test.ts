@@ -101,6 +101,53 @@ describe("readRuntimeKeyframes — multiple tweens pick the one under the playhe
   });
 });
 
+describe("readRuntimeKeyframes — requireChannels keeps the motion path on the positional tween", () => {
+  // An animated element with a position tween AND a (longer) size tween, both at
+  // start 0 — the shape the per-keyframe size resize produces.
+  const el = { id: "dot-a" };
+  const positionTween = {
+    targets: () => [el],
+    vars: {
+      keyframes: [
+        { x: -1252, y: -394 },
+        { x: 244, y: -316 },
+      ],
+      duration: 2.4,
+    },
+    duration: () => 2.4,
+    startTime: () => 0, // range [0, 2.4]
+  };
+  const sizeTween = {
+    targets: () => [el],
+    vars: {
+      keyframes: [
+        { width: 120, height: 96 },
+        { width: 325, height: 300 },
+      ],
+      duration: 3.243,
+    },
+    duration: () => 3.243,
+    startTime: () => 0, // range [0, 3.243] — outlives the position tween
+  };
+
+  it("playhead past the position range (2.4–3.243s) still returns the position tween, not size", () => {
+    // Without the filter the size tween (the only one containing the playhead)
+    // would win and blank the path.
+    const read = readRuntimeKeyframes(
+      fakeIframe(el, [positionTween, sizeTween], 3.0),
+      "#dot-a",
+      undefined,
+      ["x", "y"],
+    );
+    expect(read?.keyframes[0]?.properties).toHaveProperty("x");
+  });
+
+  it("without requireChannels the size tween shadows the path past the position range (documents the bug)", () => {
+    const read = readRuntimeKeyframes(fakeIframe(el, [positionTween, sizeTween], 3.0), "#dot-a");
+    expect(read?.keyframes[0]?.properties).toHaveProperty("width");
+  });
+});
+
 describe("hasNonHoldTweenForElement — strict live-tween existence (drag stale-parse guard)", () => {
   const el = { id: "puck-b" };
   const holdSet = {

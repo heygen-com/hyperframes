@@ -299,7 +299,7 @@ function findInsertionPoint(parsed: ParsedGsapAcornForWrite): number | null {
 export function updateAnimationInScript(
   script: string,
   animationId: string,
-  updates: Partial<GsapAnimation> & { easeEach?: string },
+  updates: Partial<GsapAnimation> & { easeEach?: string; resetKeyframeEases?: boolean },
 ): string {
   if (!Object.keys(updates).length) return script;
   const parsed = parseGsapScriptAcornForWrite(script);
@@ -327,8 +327,22 @@ export function updateAnimationInScript(
     const easeValue = updates.easeEach ?? updates.ease;
     if (easeValue !== undefined) {
       const kfNode = keyframesObjectNode(call.varsArg);
-      if (kfNode) upsertProp(ms, kfNode, "easeEach", easeValue);
-      else upsertProp(ms, call.varsArg, "ease", easeValue);
+      if (kfNode) {
+        upsertProp(ms, kfNode, "easeEach", easeValue);
+        // "Apply to all segments": drop every per-keyframe `ease` override so the
+        // single easeEach governs all segments uniformly (AE select-all + F9).
+        if (updates.resetKeyframeEases) {
+          for (const kfEntry of kfNode.properties ?? []) {
+            if (!isObjectProperty(kfEntry)) continue;
+            const val = kfEntry.value;
+            if (val?.type !== "ObjectExpression") continue;
+            const easeNode = findPropertyNode(val, "ease");
+            if (easeNode) removeProp(ms, easeNode, val.properties);
+          }
+        }
+      } else {
+        upsertProp(ms, call.varsArg, "ease", easeValue);
+      }
     }
     if (updates.extras) {
       for (const [key, value] of Object.entries(updates.extras)) {

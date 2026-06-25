@@ -197,6 +197,9 @@ export function useDomEditWiring({
       ? { id: domEditSelection.id ?? null, selector: domEditSelection.selector ?? null }
       : null,
     gsapCacheVersion,
+    // Pass the preview iframe so class/selector tweens (e.g. `.dot`) resolve to
+    // the live element and surface in the inspector — not just by #id match.
+    previewIframeRef,
   );
 
   // ── Telemetry & fallback ──

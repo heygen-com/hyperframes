@@ -8,7 +8,6 @@
  * from the rest of the editing orchestration.
  */
 import { useCallback } from "react";
-import { editLog } from "../utils/editDebugLog";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import {
@@ -97,7 +96,6 @@ export function useGsapAwareEditing({
       next: { x: number; y: number },
       modifiers?: { altKey?: boolean },
     ) => {
-      editLog("manual-drag:move", { id: selection.id, next, altKey: modifiers?.altKey });
       if (gsapCommitMutation) {
         try {
           await tryGsapDragIntercept(
@@ -126,7 +124,6 @@ export function useGsapAwareEditing({
 
   const handleGsapAwareBoxSizeCommit = useCallback(
     async (selection: DomEditSelection, next: { width: number; height: number }) => {
-      editLog("manual-drag:resize", { id: selection.id, next });
       if (gsapCommitMutation) {
         try {
           const handled = await tryGsapResizeIntercept(
@@ -157,7 +154,6 @@ export function useGsapAwareEditing({
 
   const handleGsapAwareRotationCommit = useCallback(
     async (selection: DomEditSelection, next: { angle: number }) => {
-      editLog("manual-drag:rotate", { id: selection.id, next });
       if (gsapCommitMutation) {
         try {
           // Single source of truth for rotation too: tryGsapRotationIntercept handles

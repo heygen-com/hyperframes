@@ -14,6 +14,7 @@ import {
   updateAnimationInScript,
   updateKeyframeInScript,
 } from "./gsapWriterAcorn.js";
+import { parseGsapScript } from "./gsapParser.js";
 
 // ---------------------------------------------------------------------------
 // Fixture scripts
@@ -270,6 +271,27 @@ describe("T6c — keyframe write ops", () => {
     expect(result).toContain("{ x: 0, y: 0 }");
     expect(result).toContain("{ x: 1040, y: 0 }");
     expect(result).toContain("{ x: 1480, y: 160 }");
+  });
+
+  it("updateAnimationInScript apply-to-all sets easeEach and strips per-keyframe eases", () => {
+    const script =
+      "const tl = gsap.timeline();\n" +
+      'tl.to("#box", { keyframes: { "0%": { x: 0 }, "50%": { x: 50, ease: "power2.in" }, "100%": { x: 100, ease: "back.out" }, easeEach: "none" }, duration: 1 }, 0);';
+    const id = parseGsapScript(script).animations[0]!.id;
+    const result = updateAnimationInScript(script, id, {
+      easeEach: "power2.out",
+      resetKeyframeEases: true,
+    });
+    // easeEach updated to the chosen ease …
+    expect(result).toContain('easeEach: "power2.out"');
+    // … and every per-keyframe override is gone, so all segments use easeEach.
+    expect(result).not.toContain('ease: "power2.in"');
+    expect(result).not.toContain('ease: "back.out"');
+    // keyframe property values are preserved.
+    const kf = parseGsapScript(result).animations[0]!.keyframes!;
+    expect(kf.easeEach).toBe("power2.out");
+    expect(kf.keyframes.every((k) => k.ease === undefined)).toBe(true);
+    expect(kf.keyframes.map((k) => k.properties.x)).toEqual([0, 50, 100]);
   });
 
   it("addKeyframeToScript — ARRAY-form normalizes to object form + inserts 50%", () => {

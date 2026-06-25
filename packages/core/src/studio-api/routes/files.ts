@@ -437,7 +437,13 @@ type GsapMutationRequest =
   | {
       type: "update-meta";
       animationId: string;
-      updates: { duration?: number; ease?: string; easeEach?: string; position?: number };
+      updates: {
+        duration?: number;
+        ease?: string;
+        easeEach?: string;
+        position?: number;
+        resetKeyframeEases?: boolean;
+      };
     }
   | {
       type: "add";

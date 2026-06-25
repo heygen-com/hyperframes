@@ -85,6 +85,7 @@ export const PropertyPanel = memo(function PropertyPanel({
   onUpdateArcSegment,
   onUnroll,
   onUpdateKeyframeEase,
+  onSetAllKeyframeEases,
   onAddKeyframe,
   onRemoveKeyframe,
   onConvertToKeyframes,
@@ -347,8 +348,15 @@ export const PropertyPanel = memo(function PropertyPanel({
           onRemoveTextField={onRemoveTextField}
         />
 
-        {element.dataAttributes.start != null && (
-          <TimingSection element={element} onSetAttribute={onSetAttribute} />
+        {(element.dataAttributes.start != null || gsapAnimations.length > 0) && (
+          // Render whenever there's an authored clip range OR animations to infer
+          // one from — a pure-GSAP element with no data-start still gets a Timing
+          // range (TimingSection derives it from its tweens).
+          <TimingSection
+            element={element}
+            animations={gsapAnimations}
+            onSetAttribute={onSetAttribute}
+          />
         )}
         {isMediaElement(element) && (
           <MediaSection
@@ -556,6 +564,7 @@ export const PropertyPanel = memo(function PropertyPanel({
               onUpdateArcSegment={onUpdateArcSegment}
               onUnroll={onUnroll}
               onUpdateKeyframeEase={onUpdateKeyframeEase}
+              onSetAllKeyframeEases={onSetAllKeyframeEases}
             />
           )}
 

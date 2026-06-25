@@ -122,6 +122,7 @@ export function StudioRightPanel({
     handleUpdateArcSegment,
     handleUnroll,
     handleUpdateKeyframeEase,
+    handleSetAllKeyframeEases,
     handleGsapAddKeyframe,
     handleGsapRemoveKeyframe,
     handleGsapConvertToKeyframes,
@@ -276,6 +277,7 @@ export function StudioRightPanel({
       onUpdateArcSegment={handleUpdateArcSegment}
       onUnroll={handleUnroll}
       onUpdateKeyframeEase={handleUpdateKeyframeEase}
+      onSetAllKeyframeEases={handleSetAllKeyframeEases}
       recordingState={recordingState}
       recordingDuration={recordingDuration}
       onToggleRecording={onToggleRecording}
