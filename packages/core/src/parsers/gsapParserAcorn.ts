@@ -443,6 +443,8 @@ export interface TweenCallInfo {
   varsArg: any;
   fromArg?: any;
   positionArg?: any;
+  /** True for a base `gsap.set(...)` (off-timeline) rather than `tl.set(...)`. */
+  global?: boolean;
 }
 
 /** True when callee chain is rooted at the timeline variable. */
@@ -477,10 +479,22 @@ function findAllTweenCalls(
     // Fire BEFORE children (pre-order) so chained outer calls come first.
     if (node.type === "CallExpression") {
       const callee = node.callee;
+      // A base `gsap.set("#sel", props)` is an off-timeline static hold — parse it as
+      // an editable global `set` so a static value round-trips and re-edits in place.
+      // STRING-LITERAL selectors only: variable-target holds stay surrounding source.
+      const gsapSetArg = node.arguments?.[0];
+      const isGlobalSet =
+        callee?.type === "MemberExpression" &&
+        callee.object?.type === "Identifier" &&
+        callee.object.name === "gsap" &&
+        callee.property?.type === "Identifier" &&
+        callee.property.name === "set" &&
+        (gsapSetArg?.type === "StringLiteral" ||
+          (gsapSetArg?.type === "Literal" && typeof gsapSetArg.value === "string"));
       if (
         callee?.type === "MemberExpression" &&
         callee.property?.type === "Identifier" &&
-        isTimelineRootedCall(node, timelineVar) &&
+        (isTimelineRootedCall(node, timelineVar) || isGlobalSet) &&
         GSAP_METHODS.has(callee.property.name)
       ) {
         const method = callee.property.name;
@@ -509,6 +523,7 @@ function findAllTweenCalls(
             selector: selectorValue,
             varsArg: args[1],
             positionArg: args[2],
+            ...(isGlobalSet ? { global: true } : {}),
           });
         }
       }
@@ -923,6 +938,7 @@ function tweenCallToAnimation(
     group = classifyTweenPropertyGroup(kfProps);
   }
   if (group) anim.propertyGroup = group;
+  if (call.global) anim.global = true;
   if (Object.keys(extras).length > 0) anim.extras = extras;
   if (keyframesData) anim.keyframes = keyframesData;
   if (motionPathResult) anim.arcPath = motionPathResult.arcPath;

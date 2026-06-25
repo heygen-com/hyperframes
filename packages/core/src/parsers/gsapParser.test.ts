@@ -2832,3 +2832,57 @@ tl.to("#el", { y: 50, duration: 1 }, "+=0.5");`;
     expect(parsed.animations[1].position).toBe("+=0.5");
   });
 });
+
+describe("base gsap.set (off-timeline global hold)", () => {
+  const SCRIPT = `
+    const tl = gsap.timeline({ paused: true });
+    gsap.set("#box", { rotationX: 17, rotationY: 93 });
+    tl.to("#box", { x: 260, duration: 1 }, 0.3);
+    window.__timelines = { main: tl };
+  `;
+
+  it("parses a string-literal gsap.set as a global set animation", () => {
+    const anims = parseGsapScript(SCRIPT).animations.filter((a) => a.targetSelector === "#box");
+    const set = anims.find((a) => a.method === "set");
+    expect(set?.global).toBe(true);
+    expect(set?.properties).toEqual({ rotationX: 17, rotationY: 93 });
+    expect(anims.find((a) => a.method === "to")?.global).toBeUndefined();
+  });
+
+  it("creates a base gsap.set (not tl.set) when global is set", () => {
+    const base = `const tl = gsap.timeline({ paused: true });\ntl.to("#box", { x: 1, duration: 1 }, 0);\nwindow.__timelines = { main: tl };`;
+    const { script } = addAnimationToScript(base, {
+      targetSelector: "#box",
+      method: "set",
+      position: 0,
+      properties: { rotationX: 30 },
+      global: true,
+    });
+    expect(script).toContain('gsap.set("#box"');
+    expect(script).not.toContain('tl.set("#box"');
+  });
+
+  it("updates a global set in place, keeping it gsap.set", () => {
+    const set = parseGsapScript(SCRIPT).animations.find(
+      (a) => a.targetSelector === "#box" && a.method === "set",
+    )!;
+    const updated = updateAnimationInScript(SCRIPT, set.id, {
+      properties: { rotationX: 99, rotationY: 93 },
+    });
+    expect(updated).toContain('gsap.set("#box"');
+    expect(updated).toContain("99");
+    expect(updated).not.toContain('tl.set("#box"');
+  });
+
+  it("leaves a VARIABLE-target gsap.set as surrounding source (not parsed)", () => {
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      const el = document.querySelector("#box");
+      gsap.set(el, { rotationX: 5 });
+      tl.to("#box", { x: 10, duration: 1 }, 0);
+      window.__timelines = { main: tl };
+    `;
+    const sets = parseGsapScript(script).animations.filter((a) => a.method === "set");
+    expect(sets).toHaveLength(0);
+  });
+});

@@ -454,6 +454,8 @@ type GsapMutationRequest =
       ease?: string;
       properties: Record<string, number | string>;
       fromProperties?: Record<string, number | string>;
+      /** Emit a base `gsap.set` (off-timeline, no keyframe marker) instead of `tl.set`. */
+      global?: boolean;
     }
   | { type: "delete"; animationId: string; stripStudioEdits?: boolean }
   | {
@@ -723,6 +725,7 @@ function executeGsapMutationAcorn(
         ease: body.ease,
         properties: body.properties,
         fromProperties: body.fromProperties,
+        ...(body.global ? { global: true } : {}),
       });
       return result.script;
     }
@@ -1017,6 +1020,7 @@ async function executeGsapMutationRecast(
         ease: body.ease,
         properties: body.properties,
         fromProperties: body.fromProperties,
+        ...(body.global ? { global: true } : {}),
       });
       return result.script;
     }

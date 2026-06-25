@@ -73,6 +73,11 @@ export interface GsapAnimation {
   /** Which property group this tween belongs to (position, scale, size, rotation, visual, other).
    *  Undefined for legacy mixed tweens that bundle multiple groups. */
   propertyGroup?: PropertyGroupName;
+  /** True for a base `gsap.set(...)` (a static hold that runs immediately, OFF the
+   *  timeline) rather than `tl.set(...)`. Carries no timeline position and shows no
+   *  keyframe marker — used to persist a static value (e.g. a 3D transform) without
+   *  introducing a 0% keyframe. */
+  global?: boolean;
   /** How this tween was constructed in source. Absent ⇒ literal. */
   provenance?: GsapProvenance;
 }
@@ -202,7 +207,10 @@ export function serializeGsapAnimations(
     const posStr = typeof anim.position === "string" ? `"${anim.position}"` : anim.position;
     switch (anim.method) {
       case "set":
-        return `    ${timelineVar}.set(${selector}, ${propsStr}, ${posStr});`;
+        // A global set is a base `gsap.set` — off the timeline, no position arg.
+        return anim.global
+          ? `    gsap.set(${selector}, ${propsStr});`
+          : `    ${timelineVar}.set(${selector}, ${propsStr}, ${posStr});`;
       case "to":
         return `    ${timelineVar}.to(${selector}, ${propsStr}, ${posStr});`;
       case "from":

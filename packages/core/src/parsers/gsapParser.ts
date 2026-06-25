@@ -440,6 +440,8 @@ interface TweenCallInfo {
   varsArg: AstNode;
   fromArg?: AstNode;
   positionArg?: AstNode;
+  /** True for a base `gsap.set(...)` (off-timeline) rather than `tl.set(...)`. */
+  global?: boolean;
 }
 
 /**
@@ -465,10 +467,24 @@ function findAllTweenCalls(
     visitCallExpression(path: AstPath) {
       const node = path.node;
       const callee = node.callee;
+      // A base `gsap.set("#sel", props)` is an off-timeline static hold (no position,
+      // no keyframe marker). Treat it as an editable `set` animation so a static
+      // value (e.g. a 3D transform) round-trips and re-edits in place. Restricted to
+      // a STRING-LITERAL selector: variable-target `gsap.set(el, ...)` holds stay
+      // opaque surrounding source (editing them by selector would be ambiguous).
+      const gsapSetArg = node.arguments?.[0];
+      const isGlobalSet =
+        callee?.type === "MemberExpression" &&
+        callee.object?.type === "Identifier" &&
+        callee.object.name === "gsap" &&
+        callee.property?.type === "Identifier" &&
+        callee.property.name === "set" &&
+        (gsapSetArg?.type === "StringLiteral" ||
+          (gsapSetArg?.type === "Literal" && typeof gsapSetArg.value === "string"));
       if (
         callee?.type === "MemberExpression" &&
         callee.property?.type === "Identifier" &&
-        isTimelineRootedCall(node, timelineVar)
+        (isTimelineRootedCall(node, timelineVar) || isGlobalSet)
       ) {
         const method = callee.property.name;
         if (!GSAP_METHODS.has(method)) {
@@ -501,6 +517,7 @@ function findAllTweenCalls(
             selector: selectorValue,
             varsArg: args[1],
             positionArg: args[2],
+            ...(isGlobalSet ? { global: true } : {}),
           });
         }
       }
@@ -968,6 +985,7 @@ function tweenCallToAnimation(
     group = classifyTweenPropertyGroup(kfProps);
   }
   if (group) anim.propertyGroup = group;
+  if (call.global) anim.global = true;
   if (Object.keys(extras).length > 0) anim.extras = extras;
   if (keyframesData) anim.keyframes = keyframesData;
   if (motionPathResult) anim.arcPath = motionPathResult.arcPath;
@@ -1306,8 +1324,9 @@ function buildTweenStatementCode(timelineVar: string, anim: Omit<GsapAnimation, 
   const entries = Object.entries(props).map(([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`);
   // immediateRender forces GSAP to apply the set when added to the timeline,
   // not on the first seek — without it, tl.set at position 0 on a paused
-  // timeline is invisible until the playhead moves past 0.
-  if (anim.method === "set") entries.push("immediateRender: true");
+  // timeline is invisible until the playhead moves past 0. A base `gsap.set`
+  // already runs immediately, so it doesn't need (or get) the flag.
+  if (anim.method === "set" && !anim.global) entries.push("immediateRender: true");
   if (anim.extras) {
     for (const [k, v] of Object.entries(anim.extras)) {
       entries.push(`${safeKey(k)}: ${valueToCode(v as number | string)}`);
@@ -1323,6 +1342,10 @@ function buildTweenStatementCode(timelineVar: string, anim: Omit<GsapAnimation, 
     );
     const fromCode = `{ ${fromEntries.join(", ")} }`;
     return `${timelineVar}.fromTo(${selector}, ${fromCode}, ${objCode}, ${posCode});`;
+  }
+  // A base `gsap.set` is off the timeline: no timeline var, no position arg.
+  if (anim.method === "set" && anim.global) {
+    return `gsap.set(${selector}, ${objCode});`;
   }
   return `${timelineVar}.${anim.method}(${selector}, ${objCode}, ${posCode});`;
 }

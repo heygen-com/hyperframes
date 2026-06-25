@@ -72,6 +72,10 @@ function buildTweenStatementCode(timelineVar: string, anim: Omit<GsapAnimation, 
     );
     return `${timelineVar}.fromTo(${selector}, { ${fromEntries.join(", ")} }, ${objCode}, ${posCode});`;
   }
+  // A base `gsap.set` is off the timeline: no timeline var, no position arg.
+  if (anim.method === "set" && anim.global) {
+    return `gsap.set(${selector}, ${objCode});`;
+  }
   return `${timelineVar}.${anim.method}(${selector}, ${objCode}, ${posCode});`;
 }
 

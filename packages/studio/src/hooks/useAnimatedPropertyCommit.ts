@@ -169,6 +169,10 @@ async function commitStaticSet(
       method: "set",
       position: 0,
       properties: Object.fromEntries(propEntries),
+      // Base `gsap.set` (off-timeline) — a static hold with no 0% keyframe marker,
+      // so adjusting a 3D transform on a non-keyframed element doesn't drop a
+      // keyframe on the timeline (matches the manual-drag UX).
+      global: true,
     },
     { label: "Set 3D transform", softReload: true },
   );
