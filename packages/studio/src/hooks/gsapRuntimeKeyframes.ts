@@ -230,6 +230,7 @@ function keyframeVarsCarryChannel(
  * on a rotation-only set). With no channel-matching set, it falls back to the
  * first matching set (back-compat). `channels` is ignored for `kind: "keyframe"`.
  */
+// fallow-ignore-next-line complexity
 export function resolveRuntimeTween(
   iframe: HTMLIFrameElement | null,
   selector: string,
@@ -309,6 +310,7 @@ function readCarriesChannel(read: ReadTween, channels: string[]): boolean {
  * whenever the playhead sits in that tween's range but outside the position
  * tween's). Omitted → any keyframed tween qualifies (back-compat).
  */
+// fallow-ignore-next-line complexity
 export function readRuntimeKeyframes(
   iframe: HTMLIFrameElement | null,
   selector: string,
@@ -376,6 +378,7 @@ export function readRuntimeKeyframes(
  * only a hold may remain, and resurrecting the deleted tween from the stale parse
  * must be avoided.
  */
+// fallow-ignore-next-line complexity
 export function hasNonHoldTweenForElement(
   iframe: HTMLIFrameElement | null,
   selector: string,

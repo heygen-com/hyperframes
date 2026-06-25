@@ -254,9 +254,9 @@ export function PropertyPanel3dTransform({
   onConvertToKeyframes,
   onLivePreviewProps,
 }: PropertyPanel3dTransformProps) {
-  // Collapsed by default — the cube + fields are tall, so don't eat panel space
-  // until the user opens 3D.
-  const [collapsed, setCollapsed] = useState(true);
+  // Expanded by default — the cube gizmo is the headline of this panel, so show
+  // it up front rather than hiding it behind a collapsed header.
+  const [collapsed, setCollapsed] = useState(false);
   const ctx: FieldCtx = {
     element,
     gsapRuntimeValues,

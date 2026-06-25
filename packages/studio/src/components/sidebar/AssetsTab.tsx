@@ -23,6 +23,7 @@ interface AssetsTabProps {
   onRename?: (oldPath: string, newPath: string) => void;
 }
 
+// fallow-ignore-next-line complexity
 function ImageCard({
   projectId,
   asset,

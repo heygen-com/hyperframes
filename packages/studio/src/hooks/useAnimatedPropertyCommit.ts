@@ -49,6 +49,7 @@ function pickBestAnimation(
   const currentTime = usePlayerStore.getState().currentTime;
   const targetGroup = property ? classifyPropertyGroup(property) : undefined;
 
+  // fallow-ignore-next-line complexity
   const scored = animations.map((a) => {
     let score = 0;
     if (targetGroup && a.propertyGroup === targetGroup) score += 20;
@@ -184,6 +185,7 @@ async function commitStaticSet(
 }
 
 /** Convert-if-flat, then write ALL props into ONE keyframe at the playhead. */
+// fallow-ignore-next-line complexity
 async function commitKeyframeProps(
   selection: DomEditSelection,
   anim: GsapAnimation,

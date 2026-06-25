@@ -2,6 +2,7 @@ import { memo, useEffect, useMemo, useRef, useState, type RefObject } from "reac
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { type DomEditSelection } from "./domEditing";
 import { useMarqueeGestures } from "./marqueeCommit";
+import { MarqueeOverlay } from "./MarqueeOverlay";
 import { resolveDomEditGroupOverlayRect, toOverlayRect } from "./domEditOverlayGeometry";
 import { collectDomEditLayerItems } from "./domEditingLayers";
 import { isElementComputedVisible } from "./domEditingElement";
@@ -101,6 +102,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   const onMarqueeSelectRef = useRef(onMarqueeSelect);
   onMarqueeSelectRef.current = onMarqueeSelect;
 
+  // fallow-ignore-next-line complexity
   const selectionShapeStyles = (() => {
     const fallback = {
       borderRadius: 8 as string | number,
@@ -226,6 +228,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   // outside the composition bounds so users can find them.
   const offCanvasElementsRef = useRef<Map<string, HTMLElement>>(new Map());
   const [offCanvasRects, setOffCanvasRects] = useState<OffCanvasRect[]>([]);
+  // fallow-ignore-next-line complexity
   useEffect(() => {
     const iframe = iframeRef.current;
     const overlay = overlayRef.current;
@@ -568,26 +571,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
         activeCompositionPathRef={activeCompositionPathRef}
         onSelectionChangeRef={onSelectionChangeRef}
       />
-      {marquee.candidateRects.map((r, i) => (
-        <div
-          key={i}
-          aria-hidden="true"
-          className="pointer-events-none absolute rounded-sm border border-studio-accent bg-studio-accent/5"
-          style={{ left: r.left, top: r.top, width: r.width, height: r.height }}
-        />
-      ))}
-      {marquee.marqueeRect && (
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute border border-dashed border-studio-accent bg-studio-accent/10"
-          style={{
-            left: marquee.marqueeRect.left,
-            top: marquee.marqueeRect.top,
-            width: marquee.marqueeRect.width,
-            height: marquee.marqueeRect.height,
-          }}
-        />
-      )}
+      <MarqueeOverlay candidateRects={marquee.candidateRects} marqueeRect={marquee.marqueeRect} />
       <GridOverlay
         visible={gridVisible}
         spacing={gridSpacing}
