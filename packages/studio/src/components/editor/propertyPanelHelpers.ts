@@ -520,6 +520,25 @@ export function readGsapRuntimeValuesForPanel(
       }
       for (const p of Object.keys(anim.properties)) propKeys.add(p);
     }
+    // Always read the core transform channels live from the runtime — even before
+    // a just-committed value (e.g. a rotationX set) has re-parsed into
+    // `gsapAnimations`. Otherwise the panel/cube briefly drop the prop and flicker
+    // to 0 on every commit while the parse catches up. gsap.getProperty already
+    // reflects the in-place instant patch, so this is the true current value.
+    for (const p of [
+      "x",
+      "y",
+      "rotation",
+      "rotationX",
+      "rotationY",
+      "rotationZ",
+      "z",
+      "scale",
+      "transformPerspective",
+      "opacity",
+    ]) {
+      propKeys.add(p);
+    }
     const result: Record<string, number> = {};
     for (const prop of propKeys) {
       const v = Number(gsap.getProperty(el, prop));
