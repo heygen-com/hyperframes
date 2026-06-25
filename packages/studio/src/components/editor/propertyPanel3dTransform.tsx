@@ -5,6 +5,7 @@ import { MetricField } from "./propertyPanelPrimitives";
 import { KeyframeNavigation } from "./KeyframeNavigation";
 import { formatPxMetricValue, parsePxMetricValue, RESPONSIVE_GRID } from "./propertyPanelHelpers";
 import { Transform3DCube, type CubePose } from "./Transform3DCube";
+import { log3d } from "../../utils/debug3d";
 
 type KeyframeEntry = Array<{
   percentage: number;
@@ -60,10 +61,20 @@ function Cube3dControl({
   // whole degree). Reuses the keyframe-aware animated-property commit, so a drag
   // at the playhead writes/updates a keyframe just like the numeric fields.
   const commitPose = (next: CubePose) => {
+    const changed: string[] = [];
     for (const axis of ["rotationX", "rotationY", "rotationZ"] as const) {
       const rounded = Math.round(next[axis]);
-      if (rounded !== Math.round(pose[axis])) onCommitAnimatedProperty(element, axis, rounded);
+      if (rounded !== Math.round(pose[axis])) {
+        changed.push(`${axis}=${rounded}`);
+        onCommitAnimatedProperty(element, axis, rounded);
+      }
     }
+    log3d("cube-commit-pose", {
+      from: pose,
+      to: next,
+      changedAxes: changed,
+      commits: changed.length,
+    });
   };
   const recenter = () => {
     for (const [prop, identity] of [

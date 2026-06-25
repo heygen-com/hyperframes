@@ -13,6 +13,7 @@ import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { usePlayerStore } from "../player/store/playerStore";
 import { readAllAnimatedProperties, readGsapProperty } from "./gsapRuntimeBridge";
 import type { SetPatchProps } from "./gsapRuntimePatch";
+import { log3d } from "../utils/debug3d";
 import { selectorFromSelection, computeElementPercentage } from "./gsapShared";
 
 interface CommitAnimatedPropertyDeps {
@@ -63,6 +64,23 @@ function pickBestAnimation(
   return scored[0]?.anim;
 }
 
+/** Which commit branch a property edit will take, for the debug log. */
+function commitPathLabel(anim: GsapAnimation | undefined): string {
+  if (!anim) return "create";
+  if (anim.method === "set") return "static-set";
+  return anim.keyframes ? "keyframe" : "convert+keyframe";
+}
+
+/** The in-place `set` patch for a value-only commit (no soft reload), or none. */
+function setInstantPatch(
+  selector: string | null,
+  property: string,
+  value: number | string,
+): { selector: string; change: { kind: "set"; props: SetPatchProps } } | undefined {
+  if (!selector || typeof value !== "number") return undefined;
+  return { selector, change: { kind: "set", props: { [property]: value } as SetPatchProps } };
+}
+
 export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
   const {
     selectedGsapAnimations,
@@ -88,6 +106,15 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
         selector,
         property,
       );
+      log3d("commit-prop", {
+        property,
+        value,
+        selector,
+        pickedAnim: anim
+          ? { id: anim.id, method: anim.method, hasKeyframes: !!anim.keyframes }
+          : null,
+        path: commitPathLabel(anim),
+      });
 
       // Case 3: No animation — create one first
       if (!anim) {
@@ -108,24 +135,14 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
       // keyframed animation. This is what makes a static 3D rotation / perspective
       // stick on an element that was only ever moved, not animated.
       if (anim.method === "set") {
+        // Value-only `set` update → patch the live runtime in place (no soft
+        // reload), so dragging the cube / scrubbing a 3D field is flash-free.
+        // Falls back to soft reload when the channel isn't patchable.
+        const instantPatch = setInstantPatch(selector, property, value);
         await gsapCommitMutation(
           selection,
           { type: "update-property", animationId: anim.id, property, value },
-          {
-            label: `Set ${property}`,
-            softReload: true,
-            // Value-only `set` update → patch the live runtime in place (no soft
-            // reload), so dragging the cube / scrubbing a 3D field is flash-free.
-            // Falls back to soft reload when the channel isn't patchable.
-            ...(selector && typeof value === "number"
-              ? {
-                  instantPatch: {
-                    selector,
-                    change: { kind: "set", props: { [property]: value } as SetPatchProps },
-                  },
-                }
-              : {}),
-          },
+          { label: `Set ${property}`, softReload: true, ...(instantPatch ? { instantPatch } : {}) },
         );
         return;
       }

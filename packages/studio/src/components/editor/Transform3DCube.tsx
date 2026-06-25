@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { projectCubeFaces, wrapDeg } from "./transform3dProjection";
+import { projectAxes, projectCubeFaces, wrapDeg } from "./transform3dProjection";
 
 export interface CubePose {
   rotationX: number;
@@ -114,14 +114,16 @@ export function Transform3DCube({
   const [draft, setDraft] = useState<CubePose | null>(null);
   const dragRef = useRef<{ x: number; y: number; pose: CubePose } | null>(null);
   const shown = draft ?? pose;
-  const faces = projectCubeFaces(shown.rotationX, shown.rotationY, shown.rotationZ, {
+  const projOpts = {
     cx: CX,
     cy: CY,
     r: RADIUS,
     viewRx: VIEW_RX,
     viewRy: VIEW_RY,
     persp: pxToProjPersp(perspective),
-  });
+  };
+  const faces = projectCubeFaces(shown.rotationX, shown.rotationY, shown.rotationZ, projOpts);
+  const axes = projectAxes(shown.rotationX, shown.rotationY, shown.rotationZ, projOpts);
 
   const onPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -192,6 +194,22 @@ export function Transform3DCube({
           fill="#000"
           opacity={0.4}
         />
+        {/* Away-facing axes are drawn behind the cube, dimmed. */}
+        {axes
+          .filter((a) => !a.front)
+          .map((a) => (
+            <line
+              key={a.id}
+              x1={CX}
+              y1={CY}
+              x2={a.x2}
+              y2={a.y2}
+              stroke={a.color}
+              strokeWidth={1.4}
+              strokeLinecap="round"
+              opacity={0.3}
+            />
+          ))}
         <g filter="url(#cube3d-glow)">
           {faces.map((f) => (
             <polygon
@@ -210,6 +228,34 @@ export function Transform3DCube({
             />
           ))}
         </g>
+        {/* Toward-facing axes on top, with a tip dot + X/Y/Z label. */}
+        {axes
+          .filter((a) => a.front)
+          .map((a) => (
+            <g key={a.id}>
+              <line
+                x1={CX}
+                y1={CY}
+                x2={a.x2}
+                y2={a.y2}
+                stroke={a.color}
+                strokeWidth={1.6}
+                strokeLinecap="round"
+                opacity={0.95}
+              />
+              <circle cx={a.x2} cy={a.y2} r={2.4} fill={a.color} />
+              <text
+                x={a.x2 + (a.x2 - CX) * 0.12}
+                y={a.y2 + (a.y2 - CY) * 0.12 + 2}
+                fill={a.color}
+                fontSize={7}
+                fontWeight={700}
+                textAnchor="middle"
+              >
+                {a.id.toUpperCase()}
+              </text>
+            </g>
+          ))}
       </svg>
       {onRecenter && (
         <button

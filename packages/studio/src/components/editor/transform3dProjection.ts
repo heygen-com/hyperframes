@@ -127,6 +127,51 @@ export function projectCubeFaces(
   return faces;
 }
 
+export interface ProjectedAxis {
+  id: "x" | "y" | "z";
+  /** Axis color (standard X=red, Y=green, Z=blue). */
+  color: string;
+  /** Tip position in SVG coords. */
+  x2: number;
+  y2: number;
+  /** Whether the tip points toward the viewer (drawn in front of the cube). */
+  front: boolean;
+}
+
+const AXES: { id: "x" | "y" | "z"; dir: Vec3; color: string }[] = [
+  { id: "x", dir: { x: 1, y: 0, z: 0 }, color: "#ff6b81" },
+  { id: "y", dir: { x: 0, y: 1, z: 0 }, color: "#5ff08a" },
+  { id: "z", dir: { x: 0, y: 0, z: 1 }, color: "#62b6ff" },
+];
+
+/**
+ * Project the 3 orientation axes (from the cube center) for an X/Y/Z gizmo.
+ * Orthographic — thin lines don't need perspective. `front` lets the caller draw
+ * away-facing axes behind the cube and toward-facing axes on top.
+ */
+export function projectAxes(
+  rx: number,
+  ry: number,
+  rz: number,
+  opts: ProjectOpts,
+): ProjectedAxis[] {
+  const { cx, cy, r } = opts;
+  const vRx = opts.viewRx ?? 0;
+  const vRy = opts.viewRy ?? 0;
+  const len = r * 1.5;
+  const view = (v: Vec3) => rotate(rotate(v, rx, ry, rz), vRx, vRy, 0);
+  return AXES.map((a) => {
+    const p = view(a.dir);
+    return {
+      id: a.id,
+      color: a.color,
+      x2: round(cx + p.x * len),
+      y2: round(cy - p.y * len),
+      front: p.z >= -1e-6,
+    };
+  });
+}
+
 /** Wrap an angle to (-180, 180] so drag accumulation never runs away. */
 export function wrapDeg(deg: number): number {
   let d = deg % 360;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { projectCubeFaces, rotate, wrapDeg } from "./transform3dProjection";
+import { projectAxes, projectCubeFaces, rotate, wrapDeg } from "./transform3dProjection";
 
 const OPTS = { cx: 50, cy: 50, r: 30, persp: 4 };
 
@@ -57,6 +57,25 @@ describe("projectCubeFaces", () => {
     for (let i = 1; i < faces.length; i++) {
       expect(faces[i]!.depth).toBeGreaterThanOrEqual(faces[i - 1]!.depth);
     }
+  });
+});
+
+describe("projectAxes", () => {
+  it("returns the three X/Y/Z axes with standard colors", () => {
+    const axes = projectAxes(0, 0, 0, OPTS);
+    expect(axes.map((a) => a.id).sort()).toEqual(["x", "y", "z"]);
+    const z = axes.find((a) => a.id === "z")!;
+    expect(z.color).toMatch(/#/);
+  });
+
+  it("flags the toward-viewer axis as front at identity (Z points at the camera)", () => {
+    const z = projectAxes(0, 0, 0, OPTS).find((a) => a.id === "z")!;
+    expect(z.front).toBe(true);
+  });
+
+  it("rotating 180° on Y flips the Z axis away from the viewer", () => {
+    const z = projectAxes(0, 180, 0, OPTS).find((a) => a.id === "z")!;
+    expect(z.front).toBe(false);
   });
 });
 
