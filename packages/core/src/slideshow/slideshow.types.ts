@@ -20,10 +20,11 @@ export interface SlideRef {
   fragments?: number[];
   hotspots?: SlideHotspot[];
   /**
-   * When true, the slide's `<video>` plays automatically on enter (the
+   * When true, the slide's first `<video>` plays automatically on enter (the
    * presenter lands on the slide and the clip plays). The slideshow still holds
    * — it never auto-advances — so the presenter clicks Next when ready.
-   * Defaults to false.
+   * Defaults to false. Use it when the video is the slide's primary content and
+   * its natural end is the cue to advance, not for background/ambient clips.
    */
   autoplay?: boolean;
   // Reserved — TTS deferred. Parsed and carried, never consumed.

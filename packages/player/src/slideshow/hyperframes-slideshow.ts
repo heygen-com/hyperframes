@@ -54,6 +54,7 @@ interface AutoplayPollState {
   lastTime: number;
   advancingTicks: number;
   waited: number;
+  warned: boolean;
 }
 
 type PlayerElement = HTMLElement & {
@@ -1071,7 +1072,13 @@ export class HyperframesSlideshow extends HTMLElement {
     if (this.resolveMode() === "audience") return;
     const safeId = sceneId.replace(/["\\]/g, "\\$&");
     const token = ++this.autoplayToken;
-    const state: AutoplayPollState = { started: false, lastTime: -1, advancingTicks: 0, waited: 0 };
+    const state: AutoplayPollState = {
+      started: false,
+      lastTime: -1,
+      advancingTicks: 0,
+      waited: 0,
+      warned: false,
+    };
     const tick = (): void => {
       if (token !== this.autoplayToken) return; // left the slide / disconnected
       const done = this.stepAutoplay(safeId, state);
@@ -1108,7 +1115,16 @@ export class HyperframesSlideshow extends HTMLElement {
     state.lastTime = video.currentTime;
     if (advancing) return ++state.advancingTicks >= 2; // confirmed playing — stop polling
     state.advancingTicks = 0;
-    void video.play().catch(() => {});
+    void video.play().catch((err: unknown) => {
+      // Expected during the poll: AbortError (a timeline-sync seek interrupts
+      // the play) and NotAllowedError (autoplay gated on a user gesture). Surface
+      // anything else once — a real failure (bad src, decode) shouldn't be silent.
+      const name = err instanceof DOMException ? err.name : "";
+      if (name !== "AbortError" && name !== "NotAllowedError" && !state.warned) {
+        state.warned = true;
+        console.warn("[hyperframes-slideshow] autoplay play() failed:", err);
+      }
+    });
     return false;
   }
 

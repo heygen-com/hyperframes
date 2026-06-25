@@ -109,6 +109,20 @@ For public or user-facing generated projects, make this wrapper the root `index.
 
 `interactive` is required for decks with clickable page content or media controls. Without it, iframe pointer events are disabled by the player shell and a click on the composition can be interpreted as a player play/pause toggle instead of a slide interaction.
 
+### Per-slide `autoplay`
+
+Add `"autoplay": true` to a slide in the island to play that slide's first `<video>` from the start when the presenter lands on it. The slideshow still holds — it never auto-advances — so the presenter clicks Next when ready; autoplay only saves a manual play click into the composition.
+
+```json
+{
+  "sceneId": "cold-open",
+  "autoplay": true,
+  "notes": "Promo plays on enter; click Next when it ends."
+}
+```
+
+Use `autoplay` when the video **is** the slide's primary content and its natural end is the cue to advance — a cold-open promo, a demo clip you let run and then move on from. Do **not** use it for background/ambient loops or for footage the presenter talks over; those should start on the presenter's own cue (a click on the clip's controls via `interactive`), not automatically. One autoplay clip per slide (the first `<video>` in the scene).
+
 ### Presenter media bridge for interactive media
 
 Presenter/audience mode syncs slide position through a deck-scoped `BroadcastChannel`. If the presenter is expected to play, pause, seek, mute, or change rate on media inside the composition, mirror those native media events over the same channel. Keep the media element as the source of truth; do not mirror a custom button's private state.
