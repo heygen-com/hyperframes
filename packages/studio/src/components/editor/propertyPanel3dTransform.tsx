@@ -98,15 +98,21 @@ function Cube3dControl({
     }
   };
   const recenter = () => {
-    for (const [prop, identity] of [
-      ["rotationX", 0],
-      ["rotationY", 0],
-      ["rotationZ", 0],
-      ["z", 0],
-      ["scale", 1],
-      ["transformPerspective", 0],
-    ] as const) {
-      void onCommitAnimatedProperty(element, prop, identity);
+    // ONE commit for the whole reset — six per-axis commits meant six soft-reloads
+    // (six flashes) for a single click. Batch like commitPose does.
+    const identity = {
+      rotationX: 0,
+      rotationY: 0,
+      rotationZ: 0,
+      z: 0,
+      scale: 1,
+      transformPerspective: 0,
+    };
+    if (onCommitAnimatedProperties) {
+      void onCommitAnimatedProperties(element, identity);
+    } else {
+      for (const [prop, v] of Object.entries(identity))
+        void onCommitAnimatedProperty(element, prop, v);
     }
   };
   // Immediate element feedback while dragging — set the live transform without a
