@@ -238,8 +238,12 @@ async function applyKeyframeAtPlayhead(
  * two-stop tween from the set's time to the playhead — the held value at 0%, the
  * live value at 100% — giving the user something to animate. No-op if the playhead
  * is at or before the set.
+ *
+ * The 0% endpoint is the held start, which the user didn't choose — mark it `auto`
+ * so it tracks the nearest keyframe until edited directly. The 100% is the real
+ * keyframe being placed at the playhead, so it stays fixed.
  */
-async function promoteSetToKeyframes(
+export async function promoteSetToKeyframes(
   session: EnableKeyframesSession,
   sel: DomEditSelection,
   setAnim: GsapAnimation,
@@ -267,6 +271,7 @@ async function promoteSetToKeyframes(
         {
           percentage: 0,
           properties: Object.keys(startPosition).length > 0 ? startPosition : endPosition,
+          auto: true,
         },
         { percentage: 100, properties: endPosition },
       ],

@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
+import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import {
   animatedProps,
   buildExtendedKeyframes,
   isPlayheadWithinTween,
+  promoteSetToKeyframes,
   resolveNewTweenRange,
+  type EnableKeyframesSession,
 } from "./useEnableKeyframes";
 
 function anim(overrides: Partial<GsapAnimation>): GsapAnimation {
@@ -126,5 +129,42 @@ describe("buildExtendedKeyframes", () => {
     expect(out.keyframes[0]).toEqual({ percentage: 0, properties: { x: 0, y: 0 } });
     // the old first stop (abs 1.0) is now partway in: 1.0 / 4.4 ≈ 22.7%
     expect(out.keyframes[1]!.percentage).toBeCloseTo(22.7, 1);
+  });
+});
+
+describe("promoteSetToKeyframes — auto endpoint", () => {
+  it("marks the 0% (held start) as `auto`, leaving the 100% (playhead) fixed", async () => {
+    let committed: Record<string, unknown> | undefined;
+    const session = {
+      commitMutation: async (mutation: Record<string, unknown>) => {
+        committed = mutation;
+      },
+    } as unknown as EnableKeyframesSession;
+    const sel = {
+      id: "card",
+      selector: "#card",
+      sourceFile: "index.html",
+      element: { isConnected: true } as unknown as HTMLElement,
+    } as unknown as DomEditSelection;
+    // readElementPosition reads gsap.getProperty off the iframe window.
+    const iframe = {
+      contentWindow: { gsap: { getProperty: () => -74 } },
+    } as unknown as HTMLIFrameElement;
+    const setAnim = anim({
+      id: "#card-set-0-position",
+      targetSelector: "#card",
+      method: "set",
+      global: true,
+      resolvedStart: 0,
+      properties: { x: -74, y: -469 },
+    });
+
+    await promoteSetToKeyframes(session, sel, setAnim, 1, iframe);
+
+    const kfs = committed?.keyframes as Array<{ percentage: number; auto?: boolean }>;
+    expect(committed?.type).toBe("replace-with-keyframes");
+    expect(kfs[0]).toMatchObject({ percentage: 0, auto: true });
+    expect(kfs[1].percentage).toBe(100);
+    expect(kfs[1].auto).toBeUndefined();
   });
 });
