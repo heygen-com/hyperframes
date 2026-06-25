@@ -1131,6 +1131,82 @@ function tweenCallToAnimation(
   return anim;
 }
 
+// ── Stagger annotation (read path) ────────────────────────────────────────────
+
+/**
+ * Pull the per-element stagger amount out of a captured `extras.stagger` value.
+ * GSAP staggers are either a number (`0.08`) or an object (`{ each: 0.012, ... }`).
+ * The value arrives here as the round-trip form `__raw:<source>`; we only need
+ * the leading numeric / `each:` figure for the annotation. Returns undefined for
+ * non-numeric (function) staggers — there's nothing honest to print.
+ */
+function staggerAmount(raw: unknown): number | undefined {
+  if (typeof raw === "number") return raw;
+  if (typeof raw !== "string") return undefined;
+  const src = raw.startsWith("__raw:") ? raw.slice(6) : raw;
+  const m = /(?:each\s*:\s*)?(-?\d+(?:\.\d+)?)/.exec(src);
+  if (!m) return undefined;
+  const n = Number.parseFloat(m[1]!);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+/** Rest-pose value GSAP animates to/from for an unspecified endpoint. */
+function restValue(prop: string): number {
+  return prop === "opacity" || prop.startsWith("scale") ? 1 : 0;
+}
+
+/**
+ * Honest from/to keyframes for a flat staggered tween, mirroring how a flat
+ * tween renders: `from()` plays vars -> rest, `to()` plays rest -> vars, `fromTo`
+ * plays its authored endpoints. A synthetic `stagger` channel rides on both
+ * keyframes so the per-element cascade is visible even when the tween lands on
+ * the rest pose (a 1->1 collection that would otherwise read as a no-op).
+ */
+function staggeredKeyframes(
+  anim: Omit<GsapAnimation, "id">,
+  each: number,
+): GsapPercentageKeyframe[] {
+  const vars = { ...anim.properties };
+  let from: Record<string, number | string>;
+  let to: Record<string, number | string>;
+  if (anim.method === "fromTo") {
+    from = { ...(anim.fromProperties ?? {}) };
+    to = vars;
+  } else if (anim.method === "from") {
+    from = vars;
+    to = {};
+    for (const k of Object.keys(vars)) to[k] = restValue(k);
+  } else {
+    from = { ...(anim.fromProperties ?? {}) };
+    for (const k of Object.keys(vars)) if (from[k] === undefined) from[k] = restValue(k);
+    to = vars;
+  }
+  return [
+    { percentage: 0, properties: { ...from, stagger: each } },
+    { percentage: 100, properties: { ...to, stagger: each } },
+  ];
+}
+
+/**
+ * Read-path honesty pass: a tween with a `stagger` targets a per-element
+ * collection that animates one element at a time. A flat staggered tween that
+ * lands on (or starts from) the rest pose otherwise renders as a misleading
+ * X->X no-op. Surface real from/to keyframes plus the per-element `stagger`
+ * amount so the reader can tell the collection DOES animate and roughly how.
+ *
+ * Read path only — the write/serialize path ignores `keyframes` and keeps the
+ * literal `extras.stagger` source, so round-trips are untouched. Keyframed /
+ * motionPath tweens already surface their motion, so they're left alone.
+ */
+function annotateStaggeredCollections(anims: Omit<GsapAnimation, "id">[]): void {
+  for (const anim of anims) {
+    if (anim.keyframes || anim.arcPath) continue;
+    const each = staggerAmount(anim.extras?.stagger);
+    if (each === undefined) continue;
+    anim.keyframes = { format: "percentage", keyframes: staggeredKeyframes(anim, each) };
+  }
+}
+
 // ── Timeline position resolution ─────────────────────────────────────────────
 
 const GSAP_DEFAULT_DURATION = 0.5;
@@ -1510,6 +1586,10 @@ export function parseGsapScriptAcorn(script: string): ParsedGsap {
     seedSetStates(rawAnims, collectGsapSetStates(ast, scope, targetBindings, script));
     const labelDefs = collectAddLabelDefs(ast, timelineVar, scope, calls);
     resolveTimelinePositions(rawAnims, labelDefs);
+    // Honesty pass (read path only): make staggered collection tweens read as
+    // real per-element motion instead of a flat no-op. Done after positions so
+    // duration is settled; before ids so the annotation is part of the id.
+    annotateStaggeredCollections(rawAnims);
     const animations = assignStableIds(rawAnims);
 
     const timelineMatch = script.match(

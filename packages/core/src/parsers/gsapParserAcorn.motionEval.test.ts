@@ -117,6 +117,54 @@ describe("motion eval — collection aliases (#4)", () => {
   });
 });
 
+// ── Bug: staggered collection tweens read as flat no-ops ──────────────────────
+
+describe("motion eval — staggered collection tweens are honest", () => {
+  it("surfaces real from/to + stagger for a staggered .from reveal (not a flat no-op)", () => {
+    const { animations } = parseGsapScriptAcorn(`
+      const tl = gsap.timeline({ paused: true });
+      tl.from(".glyph", { yPercent: 120, stagger: 0.08, duration: 0.5 }, 0);
+    `);
+    const a = animations[0]!;
+    // Surfaced as keyframes so the `motion` text shows real per-element motion.
+    const kfs = a.keyframes?.keyframes ?? [];
+    expect(kfs.length).toBeGreaterThan(0);
+    // from() plays vars → rest: 120 → 0, a real non-no-op move.
+    expect(kfs[0]!.properties.yPercent).toBe(120);
+    expect(kfs.at(-1)!.properties.yPercent).toBe(0);
+    // The per-element stagger is noted on the surfaced keyframes.
+    expect(kfs.every((k) => k.properties.stagger === 0.08)).toBe(true);
+    // Per-element duration preserved; selector + extras untouched (round-trip safe).
+    expect(a.duration).toBe(0.5);
+    expect(a.targetSelector).toBe(".glyph");
+    expect(a.extras?.stagger).toBeDefined();
+  });
+
+  it("notes the stagger even when a .to lands on the rest pose (1→1 case)", () => {
+    // to(rest-pose) reads as 1→1; without the stagger note it looks like a no-op.
+    const { animations } = parseGsapScriptAcorn(`
+      const tl = gsap.timeline({ paused: true });
+      tl.to(".glyph", { scaleY: 1, scaleX: 1, yPercent: 0, duration: 0.18,
+        stagger: { each: 0.012, from: "center" } }, 0);
+    `);
+    const a = animations[0]!;
+    const kfs = a.keyframes?.keyframes ?? [];
+    expect(kfs.length).toBeGreaterThan(0);
+    // The collection still reads as animating: the per-element stagger is shown.
+    expect(kfs.every((k) => k.properties.stagger === 0.012)).toBe(true);
+    expect(a.duration).toBe(0.18);
+  });
+
+  it("leaves a non-staggered single tween untouched (no synthetic keyframes)", () => {
+    const { animations } = parseGsapScriptAcorn(`
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#hero", { x: 100, duration: 0.4 }, 0);
+    `);
+    expect(animations[0]!.targetSelector).toBe("#hero");
+    expect(animations[0]!.keyframes).toBeUndefined();
+  });
+});
+
 // ── Bug #11 / #5: dwell tweens & onUpdate proxy clarity ───────────────────────
 
 describe("motion eval — dwell / proxy targets (#11, #5)", () => {
