@@ -27,6 +27,7 @@ import {
   truncateSnippet,
   stripJsComments,
   WINDOW_TIMELINE_ASSIGN_PATTERN,
+  TIMELINE_REGISTRY_OBJECT_LITERAL_PATTERN,
 } from "../utils";
 
 // ── GSAP-specific types ────────────────────────────────────────────────────
@@ -1009,7 +1010,9 @@ export const gsapRules: LintRule<LintContext>[] = [
     for (const script of scripts) {
       const content = script.content;
       if (!/gsap\.timeline/.test(content)) continue;
-      const hasRegistration = WINDOW_TIMELINE_ASSIGN_PATTERN.test(content);
+      const hasRegistration =
+        WINDOW_TIMELINE_ASSIGN_PATTERN.test(content) ||
+        TIMELINE_REGISTRY_OBJECT_LITERAL_PATTERN.test(content);
       if (hasRegistration || canInheritFromHost) continue;
       findings.push({
         code: "gsap_timeline_not_registered",
