@@ -15,7 +15,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join, basename, resolve, dirname } from "node:path";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
@@ -33,11 +33,19 @@ const TEST_BLOCKS = [
   "registry/blocks/instagram-follow",
 ];
 
-function run(cmd, opts = {}) {
+// Run resolve.mjs with args as a literal argv array (no shell), so values
+// interpolated from manifest metadata (--intent prompt, --type) can't inject
+// shell. Mirrors the execFileSync fix in probe.mjs / heygen-search.mjs.
+function run(args, opts = {}) {
   try {
     return {
       ok: true,
-      output: execSync(cmd, { encoding: "utf8", timeout: 15000, stdio: "pipe", ...opts }).trim(),
+      output: execFileSync(process.execPath, [RESOLVE_SCRIPT, ...args], {
+        encoding: "utf8",
+        timeout: 15000,
+        stdio: "pipe",
+        ...opts,
+      }).trim(),
     };
   } catch (err) {
     return { ok: false, output: (err.stdout || "") + (err.stderr || ""), code: err.status };
@@ -92,7 +100,7 @@ function evalBlock(blockPath) {
     }
 
     // with media-use: run --adopt
-    const adoptResult = run(`node "${RESOLVE_SCRIPT}" --adopt --project "${tmp}" --json`);
+    const adoptResult = run(["--adopt", "--project", tmp, "--json"]);
     let adopted = { ok: false, adopted: 0, assets: [] };
     if (adoptResult.ok) {
       try {
@@ -129,9 +137,7 @@ function evalBlock(blockPath) {
     if (manifest.length > 0) {
       const first = manifest[0];
       const prompt = first.provenance?.prompt || first.description;
-      const r = run(
-        `node "${RESOLVE_SCRIPT}" --type ${first.type} --intent "${prompt}" --project "${tmp}" --json`,
-      );
+      const r = run(["--type", first.type, "--intent", prompt, "--project", tmp, "--json"]);
       if (r.ok) {
         try {
           resolveTest = JSON.parse(r.output);
@@ -142,9 +148,15 @@ function evalBlock(blockPath) {
     }
 
     // test resolve miss: try resolving something that doesn't exist
-    const missResult = run(
-      `node "${RESOLVE_SCRIPT}" --type bgm --intent "nonexistent query xyz" --project "${tmp}" --json`,
-    );
+    const missResult = run([
+      "--type",
+      "bgm",
+      "--intent",
+      "nonexistent query xyz",
+      "--project",
+      tmp,
+      "--json",
+    ]);
     let resolveMiss = null;
     if (!missResult.ok) {
       try {

@@ -33,6 +33,7 @@ jobs:
     outputs:
       code: ${{ steps.filter.outputs.code }}
       cli: ${{ steps.filter.outputs.cli }}
+      skills: ${{ steps.filter.outputs.skills }}
     steps:
       # Force git-based change detection instead of the pull_request REST API.
       # The API path can fail the whole workflow on transient listFiles
@@ -57,6 +58,10 @@ jobs:
               - "packages/cli/**"
               - "package.json"
               - "bun.lock"
+              - ".github/workflows/ci.yml"
+            skills:
+              - "skills/**"
+              - "package.json"
               - ".github/workflows/ci.yml"
 
   build:
@@ -223,6 +228,22 @@ jobs:
       - run: bun run test:scripts
       - run: bun run --cwd packages/core build:hyperframes-runtime
       - run: bun run --filter '!@hyperframes/producer' test
+
+  # Runs the skills' own node:test suites (e.g. media-use), which live outside
+  # the workspace packages and are not covered by the `test` job above. Gated on
+  # the `skills` filter so a skills-only PR actually exercises them in CI.
+  test-skills:
+    name: Test (skills)
+    needs: changes
+    if: needs.changes.outputs.skills == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - run: node --test 'skills/**/*.test.mjs'
 
   cli-npx-shim:
     name: "CLI: npx shim (${{ matrix.os }})"

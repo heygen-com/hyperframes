@@ -33,6 +33,7 @@
     "format:check": "oxfmt --check .",
     "knip": "knip",
     "test:scripts": "node --import tsx --test scripts/validate-release-channel.test.mjs scripts/draft-changelog.test.ts scripts/set-version.test.ts scripts/release-prepare.test.ts scripts/cli-options.test.ts scripts/changelog-weekly.test.ts scripts/claude-plugin-compression.test.ts",
+    "test:skills": "node --test 'skills/**/*.test.mjs'",
     "generate:previews": "tsx scripts/generate-template-previews.ts",
     "generate:catalog-previews": "tsx scripts/generate-catalog-previews.ts",
     "upload:docs-images": "bash scripts/upload-docs-images.sh",
