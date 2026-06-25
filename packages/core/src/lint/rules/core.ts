@@ -58,33 +58,49 @@ function describeStudioElement(tag: { raw: string; name: string }): string {
 }
 
 const HEAD_BLOCKS_TO_IGNORE_PATTERN =
-  /<(?:style|script|template|title)\b[^>]*>[\s\S]*?<\/(?:style|script|template|title)>/gi;
+  /<(?:style|script|template|title|noscript)\b[^>]*>[\s\S]*?<\/(?:style|script|template|title|noscript)\s*>/gi;
 const HTML_TAG_PATTERN = /<[^>]+>/g;
+const HEAD_CONTENT_PATTERN = /<head\b[^>]*>([\s\S]*?)(?:<\/head>|<body\b|$)/gi;
 const STRAY_HEAD_CLOSE_PATTERN = /<\/(?:style|script)\s*>/i;
-const MARKDOWN_CODE_FENCE_PATTERN =
-  /```(?:html|css|js|javascript|typescript|ts)?(?:\s|$)[\s\S]*?```/i;
+const MARKDOWN_CODE_FENCE_PATTERN = /```[^\r\n`]*(?:\r?\n|$)[\s\S]*?```/i;
+const ORPHAN_CSS_AT_RULE_PATTERN =
+  /(?:^|\s)@(?:container|font-face|keyframes|layer|media|page|property|scope|supports)[^{<]*\{[\s\S]*?:[\s\S]*?\}/i;
 const ORPHAN_CSS_RULE_PATTERN =
   /(?:^|\s)(?:\/\*[\s\S]*?\*\/\s*)?(?:@[a-z-]+[^{}<]*|[.#][\w-]+[^{}<]*|[a-z][\w-]*(?:\s+[.#:[\w-][^{}<]*)?)\s*\{[^{}]*:[^{}]*\}/i;
 
+function findCodeFenceLeak(headWithoutValidBlocks: string): string | null {
+  return MARKDOWN_CODE_FENCE_PATTERN.exec(headWithoutValidBlocks)?.[0] ?? null;
+}
+
+function findOrphanCssLeak(headContent: string): string | null {
+  const residualText = headContent
+    .replace(HEAD_BLOCKS_TO_IGNORE_PATTERN, " ")
+    .replace(HTML_TAG_PATTERN, " ");
+  return (
+    ORPHAN_CSS_AT_RULE_PATTERN.exec(residualText)?.[0] ??
+    ORPHAN_CSS_RULE_PATTERN.exec(residualText)?.[0] ??
+    null
+  );
+}
+
+function findStrayCloseLeak(headWithoutValidBlocks: string): string | null {
+  return STRAY_HEAD_CLOSE_PATTERN.exec(headWithoutValidBlocks)?.[0] ?? null;
+}
+
+function findLeakedTextInHeadContent(headContent: string): string | null {
+  const withoutValidBlocks = headContent.replace(HEAD_BLOCKS_TO_IGNORE_PATTERN, " ");
+  return (
+    findCodeFenceLeak(withoutValidBlocks) ??
+    findOrphanCssLeak(headContent) ??
+    findStrayCloseLeak(withoutValidBlocks)
+  );
+}
+
 function findLeakedTextInHead(rawSource: string): string | null {
-  const headMatches = [...rawSource.matchAll(/<head\b[^>]*>([\s\S]*?)<\/head>/gi)];
+  const headMatches = [...rawSource.matchAll(HEAD_CONTENT_PATTERN)];
   for (const match of headMatches) {
-    const headContent = match[1] ?? "";
-    const withoutValidBlocks = headContent.replace(HEAD_BLOCKS_TO_IGNORE_PATTERN, " ");
-
-    const codeFenceMatch = MARKDOWN_CODE_FENCE_PATTERN.exec(withoutValidBlocks);
-    if (codeFenceMatch?.[0]) return codeFenceMatch[0];
-
-    const residualText = headContent
-      .replace(HEAD_BLOCKS_TO_IGNORE_PATTERN, " ")
-      .replace(HTML_TAG_PATTERN, " ");
-    const orphanCssMatch = ORPHAN_CSS_RULE_PATTERN.exec(residualText);
-    if (orphanCssMatch?.[0]) return orphanCssMatch[0];
-
-    const strayCloseMatch = STRAY_HEAD_CLOSE_PATTERN.exec(withoutValidBlocks);
-    if (strayCloseMatch) {
-      return withoutValidBlocks.slice(strayCloseMatch.index, strayCloseMatch.index + 160);
-    }
+    const leakedText = findLeakedTextInHeadContent(match[1] ?? "");
+    if (leakedText) return leakedText;
   }
   return null;
 }
@@ -117,8 +133,8 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   },
 
   // head_leaked_text
-  ({ rawSource }) => {
-    const snippet = findLeakedTextInHead(rawSource);
+  ({ source }) => {
+    const snippet = findLeakedTextInHead(source);
     if (!snippet) return [];
     return [
       {
