@@ -271,6 +271,27 @@ describe("initSandboxRuntimeModular", () => {
     expect(child.style.visibility).toBe("hidden");
   });
 
+  it("warns loudly when GSAP timelines are registered but none bind (frozen-render contract trap)", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    // Root is MISSING data-composition-id, so the render path cannot resolve a
+    // timeline even though one is registered → would silently render frozen at t=0.
+    const root = document.createElement("div");
+    root.className = "clip";
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    window.__timelines = { main: createMockTimeline(6) };
+
+    initSandboxRuntimeModular();
+
+    const warned = warnSpy.mock.calls.map((c) => String(c[0])).join("\n");
+    expect(warned).toContain("[HyperFrames]");
+    expect(warned).toContain("none bound");
+  });
+
   it("uses the shorter authored host window when the child timeline is longer", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
