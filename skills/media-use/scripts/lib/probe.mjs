@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { extname } from "node:path";
 
 const IMAGE_EXT = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".ico"]);
@@ -8,8 +8,11 @@ export function probe(filePath) {
   if (ext === ".svg") return { width: null, height: null, duration: null, codec: "svg" };
 
   try {
-    const raw = execSync(
-      `ffprobe -v quiet -print_format json -show_format -show_streams "${filePath}"`,
+    // execFileSync (no shell) so a hostile filename like `"; rm -rf ~; ".png`
+    // can't break out of the quoting — filePath is passed as a literal argv entry.
+    const raw = execFileSync(
+      "ffprobe",
+      ["-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", filePath],
       { encoding: "utf8", timeout: 5000 },
     );
     const info = JSON.parse(raw);
