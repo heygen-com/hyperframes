@@ -1,0 +1,20 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "news-ticker",
+  "type": "hyperframes:block",
+  "title": "News Ticker",
+  "description": "Premium broadcast-style lower-third ticker with live label, headline ribbon, and scrolling news crawl.",
+  "tags": ["lower-third", "overlay", "news", "ticker"],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 7,
+  "files": [
+    {
+      "path": "news-ticker.html",
+      "target": "compositions/news-ticker.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}

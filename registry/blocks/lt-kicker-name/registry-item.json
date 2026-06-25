@@ -1,0 +1,17 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "lt-kicker-name",
+  "type": "hyperframes:block",
+  "title": "Lower Third — Kicker Name",
+  "description": "Cardless lower third with an accent eyebrow/kicker tag, heavy name, and a drawn baseline; for footage",
+  "tags": ["lower-third", "overlay", "podcast", "interview", "bold"],
+  "dimensions": { "width": 1920, "height": 1080 },
+  "duration": 4.8,
+  "files": [
+    {
+      "path": "lt-kicker-name.html",
+      "target": "compositions/lt-kicker-name.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "lt-soft-pill",
+  "type": "hyperframes:block",
+  "title": "Lower Third — Soft Pill",
+  "description": "Rounded white pill lower third for podcasts/interviews: status dot, name + role, scale-pop entrance",
+  "tags": ["lower-third", "overlay", "podcast", "interview", "minimal"],
+  "dimensions": { "width": 1920, "height": 1080 },
+  "duration": 4.8,
+  "files": [
+    {
+      "path": "lt-soft-pill.html",
+      "target": "compositions/lt-soft-pill.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}

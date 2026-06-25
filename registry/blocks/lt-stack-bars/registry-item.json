@@ -1,0 +1,17 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "lt-stack-bars",
+  "type": "hyperframes:block",
+  "title": "Lower Third — Stack Bars",
+  "description": "Two stacked bars: a dark name bar wipes from the left, an accent role bar wipes from the right",
+  "tags": ["lower-third", "overlay", "podcast", "interview", "bold"],
+  "dimensions": { "width": 1920, "height": 1080 },
+  "duration": 4.8,
+  "files": [
+    {
+      "path": "lt-stack-bars.html",
+      "target": "compositions/lt-stack-bars.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}

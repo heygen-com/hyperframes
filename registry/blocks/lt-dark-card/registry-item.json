@@ -1,0 +1,17 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "lt-dark-card",
+  "type": "hyperframes:block",
+  "title": "Lower Third — Dark Card",
+  "description": "Charcoal card lower third for bright footage: name, drawn accent underline, role; slide-up entrance",
+  "tags": ["lower-third", "overlay", "podcast", "interview", "dark"],
+  "dimensions": { "width": 1920, "height": 1080 },
+  "duration": 4.8,
+  "files": [
+    {
+      "path": "lt-dark-card.html",
+      "target": "compositions/lt-dark-card.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "lt-clean-bar",
+  "type": "hyperframes:block",
+  "title": "Lower Third — Clean Bar",
+  "description": "Minimal white-card lower third for podcasts/interviews: accent tab, name + role, clip-wipe entrance",
+  "tags": ["lower-third", "overlay", "podcast", "interview"],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 4.8,
+  "files": [
+    {
+      "path": "lt-clean-bar.html",
+      "target": "compositions/lt-clean-bar.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}

@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        background: transparent;
+        overflow: hidden;
+      }
+      body {
+        width: 1920px;
+        height: 1080px;
+      }
+
+      #root .lt {
+        position: absolute;
+        left: 120px;
+        bottom: 116px;
+      }
+      #root .lt-block {
+        background: #2756ff;
+        padding: 20px 36px 24px 32px;
+        box-shadow: 0 16px 44px rgba(39, 86, 255, 0.34);
+        display: inline-flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      #root .lt-name {
+        font-family: "League Gothic", sans-serif;
+        font-size: 84px;
+        font-weight: 400;
+        color: #ffffff;
+        line-height: 0.86;
+        letter-spacing: 0.01em;
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+      #root .lt-role {
+        font-family: "Space Mono", monospace;
+        font-size: 24px;
+        font-weight: 400;
+        color: rgba(255, 255, 255, 0.86);
+        line-height: 1.2;
+        letter-spacing: 0.05em;
+        white-space: nowrap;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="lt-color-block"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="4.8"
+    >
+      <div id="lt-clip" class="clip" data-start="0" data-duration="4.8" data-track-index="0">
+        <div id="lt" class="lt">
+          <div id="lt-block" class="lt-block">
+            <div id="lt-name" class="lt-name">Dr. Maya Chen</div>
+            <div id="lt-role" class="lt-role">Host · Neuroscientist</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+
+      var wrap = document.getElementById("lt");
+      var block = document.getElementById("lt-block");
+      var nameEl = document.getElementById("lt-name");
+      var role = document.getElementById("lt-role");
+
+      // Color block slides in from the left and overshoots slightly; name and role rise inside it.
+      gsap.set(block, { x: -80, opacity: 0 });
+      gsap.set(nameEl, { y: 24, opacity: 0 });
+      gsap.set(role, { y: 18, opacity: 0 });
+
+      tl.to(block, { x: 0, opacity: 1, duration: 0.5, ease: "back.out(1.4)" }, 0.1);
+      tl.to(nameEl, { y: 0, opacity: 1, duration: 0.42, ease: "power3.out" }, 0.3);
+      tl.to(role, { y: 0, opacity: 1, duration: 0.42, ease: "power3.out" }, 0.4);
+
+      // Exit: slide out left, hard kill.
+      tl.to(block, { x: -60, opacity: 0, duration: 0.35, ease: "power2.in" }, 4.3);
+      tl.set(wrap, { visibility: "hidden" }, 4.75);
+
+      window.__timelines["lt-color-block"] = tl;
+    </script>
+  </body>
+</html>

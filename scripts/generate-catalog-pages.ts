@@ -523,12 +523,13 @@ function main(): void {
     Captions: 1,
     "HTML-in-Canvas": 2,
     "Social Overlays": 3,
-    "Shader Transitions": 4,
-    "CSS Transitions": 5,
-    Showcases: 6,
-    Data: 7,
-    Effects: 8,
-    Blocks: 9,
+    "Lower Thirds": 4,
+    "Shader Transitions": 5,
+    "CSS Transitions": 6,
+    Showcases: 7,
+    Data: 8,
+    Effects: 9,
+    Blocks: 10,
   };
 
   // fallow-ignore-next-line complexity
@@ -543,6 +544,7 @@ function main(): void {
     // they group separately from the static code-snippet themes.
     if (tags.includes("code-animation")) return "Code Animations";
     // Single-tag mapping
+    if (tags.includes("lower-third")) return "Lower Thirds";
     if (tags.includes("social")) return "Social Overlays";
     if (tags.includes("transition"))
       return entry.type === "component" ? "Effects" : "CSS Transitions";

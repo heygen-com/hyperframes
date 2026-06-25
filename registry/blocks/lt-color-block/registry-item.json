@@ -1,0 +1,17 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "lt-color-block",
+  "type": "hyperframes:block",
+  "title": "Lower Third — Color Block",
+  "description": "High-energy lower third: bold accent-color block slides in with overshoot, condensed name + mono role",
+  "tags": ["lower-third", "overlay", "podcast", "interview", "bold"],
+  "dimensions": { "width": 1920, "height": 1080 },
+  "duration": 4.8,
+  "files": [
+    {
+      "path": "lt-color-block.html",
+      "target": "compositions/lt-color-block.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}

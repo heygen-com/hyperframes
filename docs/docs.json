@@ -160,6 +160,7 @@
               "catalog/blocks/macos-tahoe-liquid-glass",
               "catalog/blocks/vfx-iphone-device",
               "catalog/blocks/vfx-liquid-background",
+              "catalog/blocks/vfx-liquid-glass",
               "catalog/blocks/vfx-magnetic",
               "catalog/blocks/vfx-portal",
               "catalog/blocks/vfx-shatter",
@@ -176,6 +177,23 @@
               "catalog/blocks/tiktok-follow",
               "catalog/blocks/x-post",
               "catalog/blocks/yt-lower-third"
+            ]
+          },
+          {
+            "group": "Lower Thirds",
+            "pages": [
+              "catalog/blocks/lower-third-bild",
+              "catalog/blocks/lt-accent-underline",
+              "catalog/blocks/lt-bold-block",
+              "catalog/blocks/lt-clean-bar",
+              "catalog/blocks/lt-color-block",
+              "catalog/blocks/lt-dark-card",
+              "catalog/blocks/lt-kicker-name",
+              "catalog/blocks/lt-mask-reveal",
+              "catalog/blocks/lt-side-rule",
+              "catalog/blocks/lt-soft-pill",
+              "catalog/blocks/lt-stack-bars",
+              "catalog/blocks/news-ticker"
             ]
           },
           {
@@ -262,6 +280,7 @@
             "group": "Blocks",
             "pages": [
               "catalog/blocks/flowchart",
+              "catalog/blocks/flowchart-vertical",
               "catalog/blocks/logo-outro"
             ]
           },
