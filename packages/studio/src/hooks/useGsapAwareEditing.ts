@@ -184,7 +184,7 @@ export function useGsapAwareEditing({
 
   // ── Animated property commit ──
 
-  const commitAnimatedProperty = useAnimatedPropertyCommit({
+  const { commitAnimatedProperty, commitAnimatedProperties } = useAnimatedPropertyCommit({
     selectedGsapAnimations,
     gsapCommitMutation,
     addGsapAnimation: (sel, method, time) => addGsapAnimation(sel, method, time),
@@ -249,6 +249,7 @@ export function useGsapAwareEditing({
     handleGsapAwareBoxSizeCommit,
     handleGsapAwareRotationCommit,
     commitAnimatedProperty,
+    commitAnimatedProperties,
     handleSetArcPath,
     handleUpdateArcSegment,
     handleUnroll,

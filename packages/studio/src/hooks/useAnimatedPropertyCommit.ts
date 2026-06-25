@@ -107,6 +107,75 @@ async function maybeAutoKeyframeSet(
   );
 }
 
+type Commit = NonNullable<CommitAnimatedPropertyDeps["gsapCommitMutation"]>;
+
+/** Merge each prop into the static `set` (value-only, instant), then auto-keyframe. */
+async function commitSetProps(
+  selection: DomEditSelection,
+  setAnim: GsapAnimation,
+  propEntries: [string, number | string][],
+  selector: string | null,
+  animations: GsapAnimation[],
+  commit: Commit,
+): Promise<void> {
+  for (const [property, value] of propEntries) {
+    const instantPatch = setInstantPatch(selector, property, value);
+    await commit(
+      selection,
+      { type: "update-property", animationId: setAnim.id, property, value },
+      { label: `Set ${property}`, softReload: true, ...(instantPatch ? { instantPatch } : {}) },
+    );
+  }
+  await maybeAutoKeyframeSet(selection, setAnim, animations, commit);
+}
+
+/** Convert-if-flat, then write ALL props into ONE keyframe at the playhead. */
+async function commitKeyframeProps(
+  selection: DomEditSelection,
+  anim: GsapAnimation,
+  props: Record<string, number | string>,
+  propEntries: [string, number | string][],
+  primaryProp: string,
+  selector: string | null,
+  iframe: HTMLIFrameElement | null,
+  commit: Commit,
+): Promise<void> {
+  if (!anim.keyframes) {
+    await commit(
+      selection,
+      { type: "convert-to-keyframes", animationId: anim.id },
+      { label: "Convert to keyframes", skipReload: true },
+    );
+  }
+  const pct = computeElementPercentage(usePlayerStore.getState().currentTime, selection, anim);
+  const runtimeProps = selector ? readAllAnimatedProperties(iframe, selector, anim) : {};
+  const properties: Record<string, number | string> = { ...runtimeProps, ...props };
+
+  const backfillDefaults: Record<string, number | string> = { ...runtimeProps };
+  for (const [property, value] of propEntries) {
+    if (!(property in runtimeProps) && selector) {
+      const cssVal = readGsapProperty(iframe, selector, property);
+      if (cssVal != null) backfillDefaults[property] = cssVal;
+    }
+    backfillDefaults[property] = value;
+  }
+
+  const existingKf = anim.keyframes?.keyframes.some((kf) => Math.abs(kf.percentage - pct) < 0.05);
+  await commit(
+    selection,
+    existingKf
+      ? { type: "update-keyframe", animationId: anim.id, percentage: pct, properties }
+      : {
+          type: "add-keyframe",
+          animationId: anim.id,
+          percentage: pct,
+          properties,
+          backfillDefaults,
+        },
+    { label: `Edit ${primaryProp} (keyframe ${pct}%)`, softReload: true },
+  );
+}
+
 export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
   const {
     selectedGsapAnimations,
@@ -116,25 +185,23 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
     bumpGsapCache,
   } = deps;
 
-  const commitAnimatedProperty = useCallback(
-    async (
-      selection: DomEditSelection,
-      property: string,
-      value: number | string,
-    ): Promise<void> => {
+  const commitAnimatedProperties = useCallback(
+    async (selection: DomEditSelection, props: Record<string, number | string>): Promise<void> => {
       if (!gsapCommitMutation) return;
+      const propEntries = Object.entries(props);
+      if (propEntries.length === 0) return;
+      const primaryProp = propEntries[0]![0];
 
       const iframe = previewIframeRef.current;
       const selector = selectorFromSelection(selection);
 
-      let anim: GsapAnimation | undefined = pickBestAnimation(
+      const anim: GsapAnimation | undefined = pickBestAnimation(
         selectedGsapAnimations,
         selector,
-        property,
+        primaryProp,
       );
       log3d("commit-prop", {
-        property,
-        value,
+        props,
         selector,
         pickedAnim: anim
           ? { id: anim.id, method: anim.method, hasKeyframes: !!anim.keyframes }
@@ -155,76 +222,41 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
         return;
       }
 
-      // Case 2b: Static hold — the best tween is a zero-duration `set` (e.g. a
-      // position hold on an un-animated element). Merge the property INTO that set
-      // so it persists as a static value, instead of converting the hold into a
-      // keyframed animation. This is what makes a static 3D rotation / perspective
-      // stick on an element that was only ever moved, not animated.
+      // Case 2b: Static hold — merge the props into the `set` (persist as static),
+      // then auto-keyframe if the element is already animated.
       if (anim.method === "set") {
-        // Value-only `set` update → patch the live runtime in place (no soft
-        // reload), so dragging the cube / scrubbing a 3D field is flash-free.
-        // Falls back to soft reload when the channel isn't patchable.
-        const instantPatch = setInstantPatch(selector, property, value);
-        await gsapCommitMutation(
+        await commitSetProps(
           selection,
-          { type: "update-property", animationId: anim.id, property, value },
-          { label: `Set ${property}`, softReload: true, ...(instantPatch ? { instantPatch } : {}) },
+          anim,
+          propEntries,
+          selector,
+          selectedGsapAnimations,
+          gsapCommitMutation,
         );
-        await maybeAutoKeyframeSet(selection, anim, selectedGsapAnimations, gsapCommitMutation);
         return;
       }
 
-      // Case 2: Flat animation — convert to keyframes first
-      if (!anim.keyframes) {
-        await gsapCommitMutation(
-          selection,
-          { type: "convert-to-keyframes", animationId: anim.id },
-          { label: "Convert to keyframes", skipReload: true },
-        );
-      }
-
-      const pct = computeElementPercentage(usePlayerStore.getState().currentTime, selection, anim);
-
-      // Read all currently animated properties from runtime for backfill
-      const runtimeProps = selector ? readAllAnimatedProperties(iframe, selector, anim) : {};
-
-      // Build the properties object: all runtime props + the new value
-      const properties: Record<string, number | string> = { ...runtimeProps };
-      properties[property] = value;
-
-      // Compute backfill defaults for properties not in existing keyframes
-      const backfillDefaults: Record<string, number | string> = { ...runtimeProps };
-      if (!(property in runtimeProps) && selector) {
-        const cssVal = readGsapProperty(iframe, selector, property);
-        if (cssVal != null) backfillDefaults[property] = cssVal;
-      }
-      backfillDefaults[property] = typeof value === "number" ? value : value;
-
-      const existingKf = anim.keyframes?.keyframes.some(
-        (kf) => Math.abs(kf.percentage - pct) < 0.05,
-      );
-
-      await gsapCommitMutation(
+      // Cases 1 & 2: keyframed (or flat → convert) — write ALL props into ONE
+      // keyframe so a multi-axis cube edit doesn't race into adjacent duplicates.
+      await commitKeyframeProps(
         selection,
-        existingKf
-          ? {
-              type: "update-keyframe",
-              animationId: anim.id,
-              percentage: pct,
-              properties,
-            }
-          : {
-              type: "add-keyframe",
-              animationId: anim.id,
-              percentage: pct,
-              properties,
-              backfillDefaults,
-            },
-        { label: `Edit ${property} (keyframe ${pct}%)`, softReload: true },
+        anim,
+        props,
+        propEntries,
+        primaryProp,
+        selector,
+        iframe,
+        gsapCommitMutation,
       );
     },
     [selectedGsapAnimations, gsapCommitMutation, addGsapAnimation, previewIframeRef, bumpGsapCache],
   );
 
-  return commitAnimatedProperty;
+  const commitAnimatedProperty = useCallback(
+    (selection: DomEditSelection, property: string, value: number | string) =>
+      commitAnimatedProperties(selection, { [property]: value }),
+    [commitAnimatedProperties],
+  );
+
+  return { commitAnimatedProperty, commitAnimatedProperties };
 }

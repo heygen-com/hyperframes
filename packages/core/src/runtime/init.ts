@@ -639,6 +639,29 @@ export function initSandboxRuntimeModular(): void {
 
   const resolveRootTimelineFromDocument = (): TimelineResolution => {
     const timelines = (window.__timelines ?? {}) as Record<string, RuntimeTimelineLike | undefined>;
+    // DX fallback (#6): when the root timeline cannot be resolved by id but
+    // EXACTLY ONE usable timeline is registered, bind it rather than silently
+    // rendering the frozen t=0 DOM. Safe because with a single registered
+    // timeline there is no ambiguity about which one is the composition's
+    // root. Multiple registered → ambiguous, so we still return null and let
+    // the loud warning fire.
+    const resolveSoleTimelineFallback = (reason: string): TimelineResolution => {
+      const usable = Object.entries(timelines).filter(
+        (entry): entry is [string, RuntimeTimelineLike] =>
+          !!entry[1] && typeof entry[1].play === "function" && typeof entry[1].pause === "function",
+      );
+      if (usable.length !== 1) return { timeline: null };
+      const [soleId, soleTimeline] = usable[0];
+      return {
+        timeline: soleTimeline,
+        selectedTimelineIds: [soleId],
+        selectedDurationSeconds: getTimelineDurationSeconds(soleTimeline),
+        diagnostics: {
+          code: "root_timeline_sole_registered_fallback",
+          details: { reason, soleTimelineId: soleId },
+        },
+      };
+    };
     const startResolver = createRuntimeStartTimeResolver({
       timelineRegistry: timelines,
       includeAuthoredTimingAttrs: true,
@@ -740,7 +763,7 @@ export function initSandboxRuntimeModular(): void {
     const rootCompositionNode = resolveRootCompositionElement();
     const rootCompositionId = rootCompositionNode?.getAttribute("data-composition-id") ?? null;
     if (!rootCompositionId) {
-      return { timeline: null };
+      return resolveSoleTimelineFallback("root_missing_composition_id");
     }
     const rootTimeline = timelines[rootCompositionId] ?? null;
     const collectRootChildCandidates = (): Array<{
@@ -1003,7 +1026,7 @@ export function initSandboxRuntimeModular(): void {
         };
       }
     }
-    return { timeline: null };
+    return resolveSoleTimelineFallback("root_composition_id_unmatched_in_registry");
   };
 
   // Track whether child composition timelines have been added to the root.
@@ -2102,6 +2125,39 @@ export function initSandboxRuntimeModular(): void {
       clock.setDuration(boundDuration);
     }
     runAdapters("discover", state.currentTime);
+    // Loud, specific diagnostic for the #1 "looks fine, ships broken" trap:
+    // a root timeline never bound even though timelines ARE registered. Without
+    // this the render silently proceeds on the static build-time DOM (frozen at
+    // t=0). Only warn when GSAP timelines exist (CSS/WAAPI/Lottie-only
+    // compositions legitimately bind no GSAP timeline and use adapters).
+    if (!state.capturedTimeline) {
+      const registry = (window.__timelines ?? {}) as Record<string, unknown>;
+      const registeredKeys = Object.keys(registry).filter((k) => registry[k]);
+      if (registeredKeys.length > 0) {
+        const rootEl = resolveRootCompositionElement();
+        const rootCompositionId = rootEl?.getAttribute("data-composition-id") ?? null;
+        postRuntimeDiagnosticOnce(
+          "root_timeline_unbound_registry_present",
+          {
+            reason: rootCompositionId
+              ? "root data-composition-id has no matching key in window.__timelines"
+              : "root composition element has no data-composition-id attribute",
+            rootCompositionId,
+            registeredTimelineKeys: registeredKeys,
+          },
+          "root_timeline_unbound_registry_present",
+        );
+        // eslint-disable-next-line no-console -- loud author-facing warning; this render would otherwise freeze at t=0
+        console.warn(
+          `[hyperframes] Root timeline not bound — render will freeze at t=0. ` +
+            (rootCompositionId
+              ? `Root data-composition-id is "${rootCompositionId}" but window.__timelines has no such key. `
+              : `Root composition element has no data-composition-id. `) +
+            `Registered timeline keys: [${registeredKeys.join(", ")}]. ` +
+            `Register the root timeline under its data-composition-id (window.__timelines["${rootCompositionId ?? "<root-id>"}"] = tl).`,
+        );
+      }
+    }
     // __renderReady = timeline binding attempted, safe for deterministic seeking.
     // Set after any GSAP batching has completed. renderSeek works with or
     // without a GSAP timeline (CSS/WAAPI/Lottie compositions use adapters only).
@@ -2232,11 +2288,30 @@ export function initSandboxRuntimeModular(): void {
       if (opts?.activateChildren) {
         activateSiblingTimelines(tl);
       }
+      // #10: when data-duration exceeds the timeline's intrinsic length the
+      // engine requests frames past the last tween. Seeking a paused GSAP
+      // timeline past its end can revert from()-tweens to their empty initial
+      // state, blanking the final poster. Clamp the MASTER seek to the
+      // timeline's full extent so it holds the final computed frame instead.
+      // Adapters still receive the raw `t` (their media may run longer).
+      // totalDuration() includes repeats; Infinity (infinite repeat) → no clamp.
+      const tlWithTotal = tl as RuntimeTimelineLike & { totalDuration?: () => number };
+      let tlSeekTime = t;
+      if (typeof tlWithTotal.totalDuration === "function") {
+        try {
+          const total = Number(tlWithTotal.totalDuration());
+          if (Number.isFinite(total) && total > 0 && t > total) {
+            tlSeekTime = total;
+          }
+        } catch (err) {
+          swallow("runtime.init.transport.clampDuration", err);
+        }
+      }
       try {
         if (typeof tl.totalTime === "function") {
-          tl.totalTime(t, false);
+          tl.totalTime(tlSeekTime, false);
         } else {
-          tl.seek(t, false);
+          tl.seek(tlSeekTime, false);
         }
       } catch (err) {
         swallow("runtime.init.transport.seek", err);

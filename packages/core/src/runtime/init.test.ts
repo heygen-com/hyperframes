@@ -371,6 +371,49 @@ describe("initSandboxRuntimeModular", () => {
     expect(window.__player?.getDuration()).toBe(12);
   });
 
+  // #6: a single timeline registered under a key that does NOT match the root's
+  // data-composition-id must still bind (sole-timeline fallback) instead of
+  // silently rendering the frozen t=0 DOM.
+  it("binds the sole registered timeline when its key does not match the root id", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    // Registered under "wrong-key", not "main".
+    window.__timelines = {
+      "wrong-key": createMockTimeline(7),
+    };
+
+    initSandboxRuntimeModular();
+
+    expect(window.__player?.getDuration()).toBe(7);
+  });
+
+  // #6: when the root id is missing AND two timelines are registered, the
+  // fallback is ambiguous, so nothing is bound (the loud warning fires instead).
+  it("does not bind any timeline when the root id is unmatched and multiple are registered", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    window.__timelines = {
+      "wrong-key-a": createMockTimeline(7),
+      "wrong-key-b": createMockTimeline(9),
+    };
+
+    initSandboxRuntimeModular();
+
+    expect(window.__player?.getDuration()).toBe(0);
+  });
+
   it("pauses nested media that is outside the timed-media cache after a seek", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");

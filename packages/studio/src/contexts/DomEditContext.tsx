@@ -55,6 +55,7 @@ export interface DomEditActionsValue extends Pick<
   | "handleGsapRemoveAllKeyframes"
   | "handleResetSelectedElementKeyframes"
   | "commitAnimatedProperty"
+  | "commitAnimatedProperties"
   | "handleSetArcPath"
   | "handleUpdateArcSegment"
   | "handleUnroll"
@@ -164,6 +165,7 @@ export function DomEditProvider({
     handleGsapRemoveAllKeyframes,
     handleResetSelectedElementKeyframes,
     commitAnimatedProperty,
+    commitAnimatedProperties,
     handleSetArcPath,
     handleUpdateArcSegment,
     handleUnroll,
@@ -238,6 +240,7 @@ export function DomEditProvider({
       handleGsapRemoveAllKeyframes,
       handleResetSelectedElementKeyframes,
       commitAnimatedProperty,
+      commitAnimatedProperties,
       handleSetArcPath,
       handleUpdateArcSegment,
       handleUnroll,
@@ -298,6 +301,7 @@ export function DomEditProvider({
       handleGsapRemoveAllKeyframes,
       handleResetSelectedElementKeyframes,
       commitAnimatedProperty,
+      commitAnimatedProperties,
       handleSetArcPath,
       handleUpdateArcSegment,
       handleUnroll,

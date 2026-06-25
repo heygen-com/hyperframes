@@ -118,6 +118,7 @@ export function StudioRightPanel({
     handleGsapAddFromProperty,
     handleGsapRemoveFromProperty,
     commitAnimatedProperty,
+    commitAnimatedProperties,
     handleSetArcPath,
     handleUpdateArcSegment,
     handleUnroll,
@@ -269,6 +270,7 @@ export function StudioRightPanel({
       onRemoveGsapFromProperty={handleGsapRemoveFromProperty}
       onAddGsapAnimation={handleGsapAddAnimation}
       onCommitAnimatedProperty={commitAnimatedProperty}
+      onCommitAnimatedProperties={commitAnimatedProperties}
       onAddKeyframe={handleGsapAddKeyframe}
       onRemoveKeyframe={handleGsapRemoveKeyframe}
       onConvertToKeyframes={(animId, duration) =>

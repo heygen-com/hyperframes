@@ -74,6 +74,12 @@ export interface PropertyPanelProps {
     property: string,
     value: number | string,
   ) => Promise<void>;
+  /** Batched variant: commit several props into ONE keyframe (e.g. the 3D cube's
+   * rotationX/Y/Z) so multi-axis edits don't race into adjacent duplicates. */
+  onCommitAnimatedProperties?: (
+    selection: DomEditSelection,
+    props: Record<string, number | string>,
+  ) => Promise<void>;
   onSeekToTime?: (time: number) => void;
   recordingState?: "idle" | "recording" | "preview";
   recordingDuration?: number;

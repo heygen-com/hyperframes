@@ -27,6 +27,11 @@ interface PropertyPanel3dTransformProps {
     property: string,
     value: number,
   ) => Promise<void>;
+  /** Batched commit — several props into one keyframe (the cube's rotationX/Y/Z). */
+  onCommitAnimatedProperties?: (
+    element: DomEditSelection,
+    props: Record<string, number | string>,
+  ) => Promise<void>;
   onSeekToTime?: (time: number) => void;
   onRemoveKeyframe?: (animId: string, pct: number) => void;
   onConvertToKeyframes?: (animId: string, duration?: number) => void;
@@ -45,6 +50,7 @@ function Cube3dControl({
   element,
   gsapRuntimeValues,
   onCommitAnimatedProperty,
+  onCommitAnimatedProperties,
   onLivePreviewProps,
   onKeyframe,
   keyframed,
@@ -52,6 +58,10 @@ function Cube3dControl({
   element: DomEditSelection;
   gsapRuntimeValues: Record<string, number>;
   onCommitAnimatedProperty: CommitAnimatedProperty;
+  onCommitAnimatedProperties?: (
+    element: DomEditSelection,
+    props: Record<string, number | string>,
+  ) => Promise<void>;
   onLivePreviewProps?: (element: DomEditSelection, props: Record<string, number>) => void;
   onKeyframe?: () => void;
   keyframed?: boolean;
@@ -65,20 +75,27 @@ function Cube3dControl({
   // whole degree). Reuses the keyframe-aware animated-property commit, so a drag
   // at the playhead writes/updates a keyframe just like the numeric fields.
   const commitPose = (next: CubePose) => {
-    const changed: string[] = [];
+    const changedProps: Record<string, number> = {};
     for (const axis of ["rotationX", "rotationY", "rotationZ"] as const) {
       const rounded = Math.round(next[axis]);
-      if (rounded !== Math.round(pose[axis])) {
-        changed.push(`${axis}=${rounded}`);
-        onCommitAnimatedProperty(element, axis, rounded);
-      }
+      if (rounded !== Math.round(pose[axis])) changedProps[axis] = rounded;
     }
+    const axes = Object.keys(changedProps);
     log3d("cube-commit-pose", {
       from: pose,
       to: next,
-      changedAxes: changed,
-      commits: changed.length,
+      changedAxes: axes,
+      batched: !!onCommitAnimatedProperties,
     });
+    if (axes.length === 0) return;
+    // ONE keyframe for the whole pose change — avoids per-axis commits racing into
+    // adjacent duplicate keyframes. Fall back to per-axis if no batched commit.
+    if (onCommitAnimatedProperties) {
+      void onCommitAnimatedProperties(element, changedProps);
+    } else {
+      for (const [axis, v] of Object.entries(changedProps))
+        onCommitAnimatedProperty(element, axis, v);
+    }
   };
   const recenter = () => {
     for (const [prop, identity] of [
@@ -232,6 +249,7 @@ export function PropertyPanel3dTransform({
   elDuration,
   element,
   onCommitAnimatedProperty,
+  onCommitAnimatedProperties,
   onSeekToTime,
   onRemoveKeyframe,
   onConvertToKeyframes,
@@ -274,6 +292,7 @@ export function PropertyPanel3dTransform({
               element={element}
               gsapRuntimeValues={gsapRuntimeValues}
               onCommitAnimatedProperty={onCommitAnimatedProperty}
+              onCommitAnimatedProperties={onCommitAnimatedProperties}
               onLivePreviewProps={onLivePreviewProps}
               keyframed={(gsapKeyframes ?? []).some(
                 (kf) =>
