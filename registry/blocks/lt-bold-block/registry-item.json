@@ -1,0 +1,20 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "lt-bold-block",
+  "type": "hyperframes:block",
+  "title": "Lower Third — Bold Block",
+  "description": "High-energy podcast lower third: solid dark block wipes in, uppercase name slams up, accent tag pops",
+  "tags": ["lower-third", "overlay", "podcast", "interview", "bold"],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 4.8,
+  "files": [
+    {
+      "path": "lt-bold-block.html",
+      "target": "compositions/lt-bold-block.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}
