@@ -2212,10 +2212,16 @@ describe("<hyperframes-slideshow> auto-sets `interactive` on inner <hyperframes-
     el.remove();
   });
 
-  it("preserves an author-set `interactive` attribute value (idempotent)", async () => {
+  it("preserves any author-supplied `interactive` attribute value verbatim", async () => {
     const el = document.createElement("hyperframes-slideshow");
     const player = document.createElement("hyperframes-player");
-    // Author explicitly opts out by setting their own value — must not clobber.
+    // Preserve any author-supplied `interactive` value verbatim. Note: the
+    // CSS rule `:host([interactive])` is presence-based per HTML
+    // boolean-attribute convention, so the runtime behavior is identical
+    // regardless of the value — the attribute always enables pointer
+    // events. The preservation guarantee here is about DOM hygiene
+    // (idempotent mechanical wire-up, no clobber on re-runs), not a
+    // runtime opt-out — `interactive="false"` is NOT an opt-out.
     player.setAttribute("interactive", "false");
     el.appendChild(player);
     document.body.appendChild(el);
