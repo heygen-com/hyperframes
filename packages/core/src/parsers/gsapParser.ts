@@ -1045,6 +1045,15 @@ function resolveTimelinePositions(anims: Omit<GsapAnimation, "id">[]): void {
   let cursor = 0;
   let prevStart = 0;
   for (const anim of anims) {
+    // A global `gsap.set(...)` is off-timeline — it's applied once at load, not
+    // sequenced on the master timeline. It carries no position arg, so the
+    // cursor-based fallback below would otherwise hand it the comp-end time
+    // (every prior tween's duration summed). Pin it to 0 (its load-time start)
+    // and don't let it advance the cursor/prevStart for following tweens.
+    if (anim.method === "set" && anim.global) {
+      anim.resolvedStart = 0;
+      continue;
+    }
     const duration = anim.method === "set" ? 0 : (anim.duration ?? GSAP_DEFAULT_DURATION);
     let start: number | null;
 

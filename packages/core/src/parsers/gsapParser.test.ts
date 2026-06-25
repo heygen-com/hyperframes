@@ -297,6 +297,24 @@ describe("parseGsapScript", () => {
 });
 
 describe("resolvedStart — timeline position resolution", () => {
+  it("a global gsap.set is off-timeline: resolvedStart is 0, not the comp-end cursor", () => {
+    // The trailing global `gsap.set` carries no position; the cursor has advanced
+    // to ~3 by the time it's reached. It must NOT inherit that as its start — it's
+    // a load-time hold at 0. (Regression: setStart=cursor blocked Enable-keyframes.)
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#a", { x: 100, duration: 3 }, 0);
+      gsap.set("#card", { x: -74, y: -469 });
+    `;
+    const result = parseGsapScript(script);
+    const set = result.animations.find((a) => a.targetSelector === "#card");
+    expect(set?.method).toBe("set");
+    expect(set?.global).toBe(true);
+    expect(set?.resolvedStart).toBe(0);
+    // The off-timeline set must not perturb the real tween's position either.
+    expect(result.animations.find((a) => a.targetSelector === "#a")?.resolvedStart).toBe(0);
+  });
+
   it("resolves chained from() tweens with relative positions (sdk-test pattern)", () => {
     const script = `
       const tl = gsap.timeline({ defaults: { ease: "power3.out" } });
