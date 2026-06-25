@@ -72,21 +72,6 @@ function commitPathLabel(anim: GsapAnimation | undefined): string {
   return anim.keyframes ? "keyframe" : "convert+keyframe";
 }
 
-/** The in-place patch for a value-only commit (no soft reload), or none. A global
- *  (`gsap.set`) hold has no runtime tween, so it applies straight to the element. */
-function setInstantPatch(
-  selector: string | null,
-  property: string,
-  value: number | string,
-  global = false,
-): { selector: string; change: { kind: "set" | "global-set"; props: SetPatchProps } } | undefined {
-  if (!selector || typeof value !== "number") return undefined;
-  return {
-    selector,
-    change: { kind: global ? "global-set" : "set", props: { [property]: value } as SetPatchProps },
-  };
-}
-
 /**
  * Auto-keyframe a just-updated static `set`: if the element is already animated
  * (its clip carries keyframes on another tween), convert the set to keyframes so
@@ -115,7 +100,10 @@ async function maybeAutoKeyframeSet(
 
 type Commit = NonNullable<CommitAnimatedPropertyDeps["gsapCommitMutation"]>;
 
-/** Merge each prop into the static `set` (value-only, instant), then auto-keyframe. */
+/** Merge ALL props into the static `set` in ONE commit (value-only, instant), then
+ *  auto-keyframe. One mutation — a per-property loop would shift the set's
+ *  group-derived id mid-way (e.g. reset adding `scale` to a rotation set), 404-ing
+ *  the next update. */
 async function commitSetProps(
   selection: DomEditSelection,
   setAnim: GsapAnimation,
@@ -124,14 +112,26 @@ async function commitSetProps(
   animations: GsapAnimation[],
   commit: Commit,
 ): Promise<void> {
-  for (const [property, value] of propEntries) {
-    const instantPatch = setInstantPatch(selector, property, value, !!setAnim.global);
-    await commit(
-      selection,
-      { type: "update-property", animationId: setAnim.id, property, value },
-      { label: `Set ${property}`, softReload: true, ...(instantPatch ? { instantPatch } : {}) },
-    );
+  const properties = Object.fromEntries(propEntries);
+  const numericProps: SetPatchProps = {};
+  for (const [k, v] of propEntries) {
+    if (typeof v === "number") numericProps[k as keyof SetPatchProps] = v;
   }
+  const instantPatch =
+    selector && Object.keys(numericProps).length > 0
+      ? {
+          selector,
+          change: {
+            kind: (setAnim.global ? "global-set" : "set") as "set" | "global-set",
+            props: numericProps,
+          },
+        }
+      : undefined;
+  await commit(
+    selection,
+    { type: "update-properties", animationId: setAnim.id, properties },
+    { label: "Set 3D transform", softReload: true, ...(instantPatch ? { instantPatch } : {}) },
+  );
   await maybeAutoKeyframeSet(selection, setAnim, animations, commit);
 }
 
@@ -149,21 +149,14 @@ async function commitStaticSet(
   commit: Commit,
 ): Promise<void> {
   if (!selector) return;
-  // Only ever update an existing `set` (its id is position-based, so it's stable as
-  // properties are added) — NEVER a flat `to`/`from`, whose id is group-derived and
-  // shifts the instant a new-group prop is added, 404-ing the next axis and
-  // polluting an unrelated tween (e.g. a scale pop). A static element with no set
-  // gets a dedicated `set` carrying ALL props in ONE `add` (no per-prop id race).
+  // Update an existing `set` in ONE batched commit — NEVER a flat `to`/`from`. A
+  // set's id is GROUP-derived, so a per-prop loop shifts it the instant a new-group
+  // prop lands (e.g. `scale` onto a rotation set), 404-ing the next prop; commitSetProps
+  // sends them together. A static element with no set gets a dedicated `set` carrying
+  // ALL props in ONE `add`.
   const existingSet = animations.find((a) => a.method === "set" && a.targetSelector === selector);
   if (existingSet) {
-    for (const [property, value] of propEntries) {
-      const instantPatch = setInstantPatch(selector, property, value);
-      await commit(
-        selection,
-        { type: "update-property", animationId: existingSet.id, property, value },
-        { label: `Set ${property}`, softReload: true, ...(instantPatch ? { instantPatch } : {}) },
-      );
-    }
+    await commitSetProps(selection, existingSet, propEntries, selector, animations, commit);
     return;
   }
   // Base `gsap.set` (off-timeline) — a static hold with no 0% keyframe marker, so
@@ -188,7 +181,12 @@ async function commitStaticSet(
       label: "Set 3D transform",
       softReload: true,
       ...(Object.keys(numericProps).length > 0
-        ? { instantPatch: { selector, change: { kind: "global-set" as const, props: numericProps } } }
+        ? {
+            instantPatch: {
+              selector,
+              change: { kind: "global-set" as const, props: numericProps },
+            },
+          }
         : {}),
     },
   );

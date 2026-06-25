@@ -429,6 +429,14 @@ type GsapMutationRequest =
       value: number | string;
     }
   | {
+      // Merge MULTIPLE properties into an animation in ONE call. A per-property
+      // loop on a `set` can shift its group-derived id mid-way (e.g. adding `scale`
+      // to a rotation set), 404-ing the next update; this lands them all at once.
+      type: "update-properties";
+      animationId: string;
+      properties: Record<string, number | string>;
+    }
+  | {
       type: "update-from-property";
       animationId: string;
       property: string;
@@ -699,6 +707,13 @@ function executeGsapMutationAcorn(
       const val = body.type === "update-property" ? body.value : body.defaultValue;
       return updateAnimationInScript(block.scriptText, body.animationId, {
         properties: { ...r.anim.properties, [body.property]: val },
+      });
+    }
+    case "update-properties": {
+      const r = requireAnimation(block.scriptText, body.animationId);
+      if ("err" in r) return r.err;
+      return updateAnimationInScript(block.scriptText, body.animationId, {
+        properties: { ...r.anim.properties, ...body.properties },
       });
     }
     case "update-from-property":
@@ -983,6 +998,13 @@ async function executeGsapMutationRecast(
       const val = body.type === "update-property" ? body.value : body.defaultValue;
       return updateAnimationInScript(block.scriptText, body.animationId, {
         properties: { ...r.anim.properties, [body.property]: val },
+      });
+    }
+    case "update-properties": {
+      const r = requireAnimation(block.scriptText, body.animationId);
+      if ("err" in r) return r.err;
+      return updateAnimationInScript(block.scriptText, body.animationId, {
+        properties: { ...r.anim.properties, ...body.properties },
       });
     }
     case "update-from-property":
