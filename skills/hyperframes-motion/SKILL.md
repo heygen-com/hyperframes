@@ -33,6 +33,22 @@ Motion communicates **physics and intent**. Every choice reads either as "a real
 
 **Formula shortcut.** If the shape has a known parametric form (heart, ∞/lemniscate, star, spiral, circle), author it directly from the formula and verify **once** — don't iterate. The loop's value is for non-formula shapes (objects, glyphs, words, icons) where you can't compute the points.
 
+## Internal eval improvement loop
+
+When dogfooding this skill against internal evals, keep the eval suite, artifacts, juror packets, score sheets, and hidden references **outside the repo/PR**. The PR should update only the skill guidance and its normal references.
+
+Use a versioned loop:
+
+1. Run baseline vs current skill on the same prompts, model, budget, tools, and references.
+2. Judge blind paired outputs with the rendered MP4, frame strip, `motion --json`, and `motion --shot` evidence.
+3. Extract failure patterns, not prompt-specific answers: what channel was missing, what motion read wrong, what evidence would have caught it, what GSAP/3D construction rule should change.
+4. Patch the skill with only the generalized diagnostic or construction rule.
+5. Run the next eval version and keep only changes that improve several prompts or fix a recurring class of miss.
+
+Promotion rule: a lesson belongs in the skill only if it is reusable across prompts or explains a high-severity failure mode. Do not paste hidden prompt details, judge labels, target logos, one-off coordinates, or benchmark tricks into the skill. Write the lesson as **tell → fix → verify** so future agents can apply it to new motion, not just replay an eval answer.
+
+**Renderable timeline contract.** A scored/rendered composition has one source of time: the paused seekable timeline HyperFrames drives. Do not include `requestAnimationFrame`, elapsed-time preview loops, timers, or pseudo timelines that keep animating during render. Register the real timeline under `window.__timelines[compositionId]` when possible and expose consistent `duration`, `time`, `seek`, and `progress` semantics; previews can wrap the same seek surface, but they must not fight it.
+
 ```bash
 npx hyperframes motion                      # whole project
 npx hyperframes motion --selector '#hero'   # one element
@@ -42,6 +58,8 @@ npx hyperframes motion --shot path.png      # onion-skin screenshot (3D, all cha
 ```
 
 **The shot is ground truth.** Numbers say what you wrote; `--shot <png>` shows what it does. It seeks the **live timeline** at N steps and renders the **real element** at each — true-3D ghosts (foreshortened/edge-on for rotationX/Y/Z + z, sized by scale, filled with its colour, faded by opacity; path coloured by time, ghost spacing = velocity). It reads what actually rendered, so it catches eased / dynamic / 3D motion the numbers hide. Works on **any** animated element. Author → `--shot` → open the PNG → check against your target, before render.
+
+If render diagnostics cannot run, be honest about it. Do not claim visual verification from source inspection alone; record the exact sample times a reviewer should inspect, the expected visual evidence at each beat, what was checked statically, and what remains unverified.
 
 **Frame what you're editing.** A head-on render lies twice — in-place motion collapses to a dot, 3D to a flat stack. Pick the framing:
 
@@ -80,6 +98,8 @@ tl.to("#pen", { keyframes: { "0%": { x: 80, y: 120 }, "100%": { x: 85, y: 140 } 
 ```
 
 Full pattern (words, icons, holed glyphs, how it surfaces, and the single-stroke fallback): **`references/multi-stroke.md`**.
+
+Staggered stroke reveals alone do not prove pen-up. For eval-grade trace work, make the lift, jump, and re-contact visible, or at least model it explicitly with `set()` gaps plus pen hide/show. A reviewer should be able to see from the shot or source that disconnected parts were not drawn through with an invisible connector.
 
 ## Layered motion: nest elements (don't fight last-write-wins)
 
@@ -129,6 +149,8 @@ These are the layered-motion mistakes that look fine in the numbers and fail on 
 - **Useful 2D must preserve semantic identity.** Broadcast packages, KPI cards, timelines, route maps, and before/after comparisons are product communication tools first. Keep anchors stable, final text large, and labels pinned to the thing they explain. Do not trade correctness for style: a prettier wipe loses if the before/after sides stop reading as a comparison; a prettier timeline loses if the final four steps are not instantly readable.
 - **Digit reels and state swaps need mechanical evidence.** For counters and KPI swaps, use tabular numbers, clipped per-digit reels, shared baselines, and synchronized chart/progress changes. The middle frames should show the old state leaving and the new state arriving through the same spatial logic; if the strip looks like a fade between two finished cards, the mechanism did not land.
 - **Ticker frames must stay readable in the filmstrip.** If per-digit reels or overlapping old/new values create fragmented sampled frames, switch to whole-value stepped states (`$842K` → `$6.8M` → `$10.1M`) or another single-slot ticker where only one complete value is visible at a time. A mathematically correct odometer still fails if the judge strip catches half-hidden digit fragments.
+- **A morph changes geometry, not just occupancy.** If the brief says morph, logo morph, icon morph, liquid merge, or shape-to-shape, alter shared path/point/shape data with MorphSVG or deterministic interpolation, or construct an equivalent continuous geometry transform. A fade, scale, slide, mask reveal, or crossfade into a separate final asset is a replacement, not a morph.
+- **Cursor causality is coordinate-anchored.** For cursor-led product/UI motion, author the hover/down/up/click beats at fixed target coordinates. Ripples, press rings, and click feedback originate from the click coordinate and stay pinned there for the pulse; do not sample the moving cursor during the pulse. State changes start after the decisive down/up beat, and every panel, popover, toast, card expansion, or run result has a named trigger.
 - **Crazy motion must prove the mechanism in the middle frames.** A polished final frame is not enough. The strip must show the named action at large scale: five blobs visibly merging for "liquid logo morph"; payload chips riding the curve for "data ribbon"; cards flying through camera and landing centered for "flythrough"; front/back node crossings for "helix/orbit." If a judge can only infer the mechanism from the title or the last frame, it is a 5-7, not a 9.
 - **Schedule the hero beat for the strip.** Do not let the signature action happen entirely between sampled frames. Broaden or hold the peak for 8-14 frames so one sampled cell clearly shows the whip, squash, fold, crossing, shatter, or assembly. A good video with no readable peak frame will still judge like an 8.
 - **The signature beat must occupy the frame.** For motion-graphics prompts that ask for "explosive," "cinematic," "liquid," "flythrough," "hologram," or "orbital," reserve 55-75% of the canvas for the hero action during at least one beat. Tiny satellites, labels, chips, dots, or dashboard panels will disappear in a 220px eval strip. Make the mechanism readable at thumbnail scale first, then add detail.
