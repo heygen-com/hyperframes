@@ -93,32 +93,47 @@ export function Transform3DCube({
         )}°, Z ${Math.round(shown.rotationZ)}°`}
       >
         <defs>
-          <radialGradient id="cube3d-bg" cx="50%" cy="42%" r="62%">
-            <stop offset="0%" stopColor="#1c2624" />
-            <stop offset="100%" stopColor="#0a0d0c" />
+          <radialGradient id="cube3d-bg" cx="50%" cy="40%" r="65%">
+            <stop offset="0%" stopColor="#172220" />
+            <stop offset="100%" stopColor="#070a09" />
           </radialGradient>
+          {/* Soft halo so the cube floats; SourceGraphic stays crisp on top. */}
+          <filter id="cube3d-glow" x="-40%" y="-40%" width="180%" height="180%">
+            <feGaussianBlur stdDeviation="1.4" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
         </defs>
         <rect x="0" y="0" width={VIEW_W} height={VIEW_H} fill="url(#cube3d-bg)" />
         {/* Grounding shadow under the cube. */}
         <ellipse
           cx={CX}
           cy={CY + RADIUS + 22}
-          rx={RADIUS * 1.15}
-          ry={6}
+          rx={RADIUS * 1.2}
+          ry={6.5}
           fill="#000"
-          opacity={0.35}
+          opacity={0.4}
         />
-        {faces.map((f) => (
-          <polygon
-            key={f.id}
-            points={f.points}
-            fill={`hsl(162 52% ${Math.round(20 + f.shade * 42)}%)`}
-            stroke="#5ff0bf"
-            strokeWidth={0.8}
-            strokeOpacity={0.55}
-            strokeLinejoin="round"
-          />
-        ))}
+        <g filter="url(#cube3d-glow)">
+          {faces.map((f) => (
+            <polygon
+              key={f.id}
+              points={f.points}
+              // Muted teal face, lit by direction; edges are a soft mint that
+              // brightens with how front-facing the face is, so corners read as
+              // crisp bevels instead of flat neon outlines.
+              fill={`hsl(166 44% ${Math.round(17 + f.shade * 37)}%)`}
+              stroke={`hsl(164 72% ${Math.round(56 + f.shade * 22)}%)`}
+              strokeWidth={1.1}
+              strokeOpacity={0.82}
+              strokeLinejoin="round"
+              strokeLinecap="round"
+              paintOrder="stroke"
+            />
+          ))}
+        </g>
       </svg>
       {onRecenter && (
         <button

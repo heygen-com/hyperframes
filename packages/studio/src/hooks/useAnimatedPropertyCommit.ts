@@ -101,6 +101,20 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
         return;
       }
 
+      // Case 2b: Static hold — the best tween is a zero-duration `set` (e.g. a
+      // position hold on an un-animated element). Merge the property INTO that set
+      // so it persists as a static value, instead of converting the hold into a
+      // keyframed animation. This is what makes a static 3D rotation / perspective
+      // stick on an element that was only ever moved, not animated.
+      if (anim.method === "set") {
+        await gsapCommitMutation(
+          selection,
+          { type: "update-property", animationId: anim.id, property, value },
+          { label: `Set ${property}`, softReload: true },
+        );
+        return;
+      }
+
       // Case 2: Flat animation — convert to keyframes first
       if (!anim.keyframes) {
         await gsapCommitMutation(
