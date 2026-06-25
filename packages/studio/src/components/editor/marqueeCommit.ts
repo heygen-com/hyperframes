@@ -3,12 +3,8 @@ import type { DomEditSelection } from "./domEditing";
 import { collectDomEditLayerItems, resolveDomEditSelection } from "./domEditingLayers";
 import { isElementComputedVisible } from "./domEditingElement";
 import { coversComposition } from "../../utils/studioPreviewHelpers";
-import {
-  elementObbCorners,
-  marqueeIntersectsObb,
-  type Corners,
-  type Rect,
-} from "../../utils/marqueeGeometry";
+import { rectsOverlap, type Rect } from "../../utils/marqueeGeometry";
+import { toOverlayRect } from "./domEditOverlayGeometry";
 
 interface MarqueeState {
   startX: number;
@@ -23,14 +19,44 @@ const MARQUEE_THRESHOLD_PX = 4;
 
 interface MarqueeHit {
   element: HTMLElement;
-  corners: Corners;
+  rect: Rect;
+}
+
+/** A short, stable-ish label for an element in debug logs. */
+function debugLabel(el: HTMLElement): string {
+  return (
+    el.id ||
+    el.getAttribute("data-hf-id") ||
+    el.getAttribute("data-layer-id") ||
+    `${el.tagName.toLowerCase()}.${(el.className || "").toString().trim().split(/\s+/)[0] ?? ""}`
+  );
+}
+
+function round(r: Rect): Rect {
+  return {
+    left: Math.round(r.left),
+    top: Math.round(r.top),
+    width: Math.round(r.width),
+    height: Math.round(r.height),
+  };
+}
+
+/** Dev-only marquee tracing. Stripped from production builds (import.meta.env.DEV). */
+function logMarquee(label: string, data: unknown): void {
+  if (!import.meta.env.DEV) return;
+  // eslint-disable-next-line no-console
+  console.log(`[hf-marquee:${label}]`, JSON.stringify(data));
 }
 
 /**
- * Synchronous core of the marquee: the elements whose OBB intersects the
- * marquee rect, with their overlay-space corners. Shared by the live
- * candidate highlight (per pointer-move) and the mouse-up commit. No async
- * source probe — that only happens once, on commit.
+ * Synchronous core of the marquee: the elements whose overlay-space rect
+ * intersects the marquee rect. Uses the SAME `toOverlayRect` basis as the
+ * single-selection / group-selection boxes, so what the marquee highlights
+ * and selects is exactly the box the user sees when they click an element.
+ * Shared by the live candidate highlight (per pointer-move) and the mouse-up
+ * commit. No async source probe — that only happens once, on commit.
+ *
+ * `debug` is set on commit only (not per pointer-move) to avoid log flooding.
  */
 // fallow-ignore-next-line complexity
 function collectMarqueeHits(
@@ -38,6 +64,7 @@ function collectMarqueeHits(
   iframe: HTMLIFrameElement,
   overlayEl: HTMLDivElement,
   activeCompositionPath: string,
+  debug = false,
 ): MarqueeHit[] {
   const doc = iframe.contentDocument;
   if (!doc) return [];
@@ -55,26 +82,47 @@ function collectMarqueeHits(
   };
 
   const hits: MarqueeHit[] = [];
+  const rows: unknown[] = [];
   for (const item of items) {
     const el = item.element;
-    if (!isElementComputedVisible(el)) continue;
-    if (coversComposition(el.getBoundingClientRect(), viewport)) continue;
-    const corners = elementObbCorners(el, overlayEl, iframe);
-    if (!corners) continue;
-    if (!marqueeIntersectsObb(rect, corners)) continue;
-    hits.push({ element: el, corners });
+    const id = debug ? debugLabel(el) : "";
+    if (!isElementComputedVisible(el)) {
+      if (debug) rows.push({ id, skip: "hidden" });
+      continue;
+    }
+    if (coversComposition(el.getBoundingClientRect(), viewport)) {
+      if (debug) rows.push({ id, skip: "covers-composition" });
+      continue;
+    }
+    const overlayRect = toOverlayRect(overlayEl, iframe, el);
+    if (!overlayRect) {
+      if (debug) rows.push({ id, skip: "no-overlay-rect" });
+      continue;
+    }
+    const r: Rect = {
+      left: overlayRect.left,
+      top: overlayRect.top,
+      width: overlayRect.width,
+      height: overlayRect.height,
+    };
+    const intersects = rectsOverlap(rect, r);
+    if (debug) rows.push({ id, rect: round(r), intersects });
+    if (!intersects) continue;
+    hits.push({ element: el, rect: r });
+  }
+
+  if (debug) {
+    logMarquee("scan", {
+      marquee: round(rect),
+      compositionPath: activeCompositionPath,
+      isMasterView,
+      items: items.length,
+      hits: hits.length,
+      rows,
+    });
   }
 
   return hits;
-}
-
-/** Axis-aligned bounding box of an OBB's corners, in overlay-pixel space. */
-function cornersToRect(corners: Corners): Rect {
-  const xs = corners.map((c) => c.x);
-  const ys = corners.map((c) => c.y);
-  const left = Math.min(...xs);
-  const top = Math.min(...ys);
-  return { left, top, width: Math.max(...xs) - left, height: Math.max(...ys) - top };
 }
 
 async function runMarqueeIntersection(
@@ -85,14 +133,22 @@ async function runMarqueeIntersection(
 ): Promise<DomEditSelection[]> {
   const isMasterView = !activeCompositionPath || activeCompositionPath === "index.html";
   const hits: DomEditSelection[] = [];
-  for (const { element } of collectMarqueeHits(rect, iframe, overlayEl, activeCompositionPath)) {
+  for (const { element } of collectMarqueeHits(
+    rect,
+    iframe,
+    overlayEl,
+    activeCompositionPath,
+    true,
+  )) {
     const sel = await resolveDomEditSelection(element, {
       activeCompositionPath,
       isMasterView,
       skipSourceProbe: true,
     });
     if (sel) hits.push(sel);
+    else logMarquee("unresolved", { id: debugLabel(element) });
   }
+  logMarquee("commit", { resolved: hits.length });
   return hits;
 }
 
@@ -161,9 +217,7 @@ export function useMarqueeGestures(deps: MarqueeGesturesDeps) {
         const overlay = deps.overlayRef.current;
         if (iframe && overlay) {
           const acp = deps.activeCompositionPathRef.current ?? "index.html";
-          setCandidateRects(
-            collectMarqueeHits(rect, iframe, overlay, acp).map((h) => cornersToRect(h.corners)),
-          );
+          setCandidateRects(collectMarqueeHits(rect, iframe, overlay, acp).map((h) => h.rect));
         }
         return;
       }
