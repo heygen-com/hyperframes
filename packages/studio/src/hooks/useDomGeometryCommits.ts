@@ -18,7 +18,6 @@ import {
 } from "../components/editor/manualEditsDomPatches";
 import type { PatchOperation } from "../utils/sourcePatcher";
 import { isElementGsapTargeted } from "./gsapTargetCache";
-import { logPos } from "../utils/debugPos";
 
 export const GSAP_CSS_FALLBACK_BLOCKED_MESSAGE =
   "This element is GSAP-animated — dragging via CSS would corrupt keyframes";
@@ -47,11 +46,6 @@ export function useDomGeometryCommits({
       // onTrySdkPersist and are already SDK-cut-over as setStyle/setAttribute (§3.3 done).
       // Upgrade path for GSAP: add a moveElementGsap SDK op in a separate SDK PR.
       const gsapTargeted = isElementGsapTargeted(previewIframeRef.current, selection.element);
-      logPos("single-css", {
-        target: getDomEditTargetKey(selection),
-        gsapTargeted,
-        blocked: gsapTargeted,
-      });
       if (gsapTargeted) {
         const error = new Error(GSAP_CSS_FALLBACK_BLOCKED_MESSAGE);
         showToast(error.message, "error");

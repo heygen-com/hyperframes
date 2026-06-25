@@ -22,7 +22,6 @@ import {
 } from "./useSafeGsapCommitMutation";
 import type { CommitMutation } from "./gsapScriptCommitTypes";
 import type { DomEditGroupPathOffsetCommit } from "../components/editor/DomEditOverlay";
-import { logPos } from "../utils/debugPos";
 
 export interface UseGsapAwareEditingParams {
   domEditSelection: DomEditSelection | null;
@@ -98,13 +97,6 @@ export function useGsapAwareEditing({
       next: { x: number; y: number },
       modifiers?: { altKey?: boolean },
     ) => {
-      logPos("single-gsap", {
-        target: selection.id ?? selection.selector ?? "?",
-        hasGsapCommit: !!gsapCommitMutation,
-        path: gsapCommitMutation
-          ? "GSAP code path (tryGsapDragIntercept)"
-          : "NO-OP (no gsap commit)",
-      });
       if (gsapCommitMutation) {
         try {
           await tryGsapDragIntercept(
