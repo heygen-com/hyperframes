@@ -99,6 +99,8 @@ export function Transform3DCube({
   onPerspectiveDraft,
   onPerspectiveCommit,
   onRecenter,
+  onKeyframe,
+  keyframed,
 }: {
   pose: CubePose;
   /** Element's transformPerspective (px); drives the cube's foreshortening. */
@@ -112,6 +114,10 @@ export function Transform3DCube({
   onPerspectiveCommit?: (px: number) => void;
   /** Reset to identity orientation. */
   onRecenter?: () => void;
+  /** Toggle keyframing the 3D transform (convert the static set → keyframes). */
+  onKeyframe?: () => void;
+  /** Whether the 3D transform is already keyframed (drives the toggle's state). */
+  keyframed?: boolean;
 }) {
   const [draft, setDraft] = useState<CubePose | null>(null);
   const dragRef = useRef<{ x: number; y: number; pose: CubePose } | null>(null);
@@ -270,6 +276,32 @@ export function Transform3DCube({
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor">
             <circle cx="12" cy="12" r="9" strokeWidth="2" />
             <path d="M12 3v18M3 12h18" strokeWidth="1.5" />
+          </svg>
+        </button>
+      )}
+      {onKeyframe && (
+        <button
+          type="button"
+          onClick={onKeyframe}
+          title={
+            keyframed
+              ? "3D transform is keyframed — click a field diamond to add keyframes"
+              : "Keyframe the 3D transform (animate it over time)"
+          }
+          aria-label="Keyframe 3D transform"
+          aria-pressed={keyframed}
+          className={`absolute left-1.5 top-1.5 rounded p-0.5 hover:bg-neutral-800 ${
+            keyframed ? "text-[#5ff0bf]" : "text-neutral-500 hover:text-neutral-200"
+          }`}
+        >
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 12 12"
+            fill={keyframed ? "currentColor" : "none"}
+            stroke="currentColor"
+          >
+            <path d="M6 1.5L10.5 6 6 10.5 1.5 6z" strokeWidth="1.4" strokeLinejoin="round" />
           </svg>
         </button>
       )}

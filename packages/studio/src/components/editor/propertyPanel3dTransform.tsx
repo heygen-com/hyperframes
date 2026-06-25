@@ -46,11 +46,15 @@ function Cube3dControl({
   gsapRuntimeValues,
   onCommitAnimatedProperty,
   onLivePreviewProps,
+  onKeyframe,
+  keyframed,
 }: {
   element: DomEditSelection;
   gsapRuntimeValues: Record<string, number>;
   onCommitAnimatedProperty: CommitAnimatedProperty;
   onLivePreviewProps?: (element: DomEditSelection, props: Record<string, number>) => void;
+  onKeyframe?: () => void;
+  keyframed?: boolean;
 }) {
   const pose: CubePose = {
     rotationX: gsapRuntimeValues.rotationX ?? 0,
@@ -110,6 +114,8 @@ function Cube3dControl({
             void onCommitAnimatedProperty(element, "transformPerspective", px)
           }
           onRecenter={recenter}
+          onKeyframe={onKeyframe}
+          keyframed={keyframed}
         />
         <p className="mt-1 text-center text-[9px] leading-snug text-neutral-600">
           Drag to tilt · Shift-drag to roll
@@ -269,6 +275,18 @@ export function PropertyPanel3dTransform({
               gsapRuntimeValues={gsapRuntimeValues}
               onCommitAnimatedProperty={onCommitAnimatedProperty}
               onLivePreviewProps={onLivePreviewProps}
+              keyframed={(gsapKeyframes ?? []).some(
+                (kf) =>
+                  "rotationX" in kf.properties ||
+                  "rotationY" in kf.properties ||
+                  "rotationZ" in kf.properties,
+              )}
+              onKeyframe={() => {
+                // Convert the 3D ("other"-group) static set to keyframes so the
+                // cube can animate; spans the element's clip via elDuration.
+                const id = resolveAnimIdForProp?.("rotationX") ?? gsapAnimId;
+                if (id) onConvertToKeyframes?.(id, elDuration);
+              }}
             />
           )}
           <div className={RESPONSIVE_GRID}>
