@@ -25,6 +25,7 @@ export const PROP_LABELS: Record<string, string> = {
   rotationY: "Rotate Y",
   rotationZ: "Rotate Z",
   perspective: "Perspective",
+  transformPerspective: "Perspective",
   transformOrigin: "Transform Origin",
   opacity: "Opacity",
   scale: "Scale",
@@ -57,6 +58,7 @@ export const PROP_UNITS: Record<string, string> = {
   rotationY: "°",
   rotationZ: "°",
   perspective: "px",
+  transformPerspective: "px",
   transformOrigin: "",
   opacity: "%",
   scale: "×",
@@ -80,6 +82,8 @@ export const PROP_TOOLTIPS: Record<string, string> = {
   rotationZ: "Rotate around the screen-facing Z axis",
   perspective:
     "3D depth context for child elements; set it on a parent when rotating children in 3D",
+  transformPerspective:
+    "3D depth for THIS element's own X/Y rotation — lower = stronger perspective (try 600–1000)",
   transformOrigin: "Pivot point for transforms, for example center center or 50% 50%",
   width: "Element width",
   height: "Element height",
@@ -150,6 +154,7 @@ export const PROP_CONSTRAINTS: Record<string, { min?: number; max?: number; step
   rotationY: { step: 1 },
   rotationZ: { step: 1 },
   perspective: { min: 0, step: 1 },
+  transformPerspective: { min: 0, step: 1 },
   skewX: { min: -90, max: 90, step: 1 },
   skewY: { min: -90, max: 90, step: 1 },
   width: { min: 0, step: 1 },

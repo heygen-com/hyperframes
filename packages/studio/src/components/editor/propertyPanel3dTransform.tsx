@@ -3,6 +3,7 @@ import { STUDIO_KEYFRAMES_ENABLED } from "./manualEditingAvailability";
 import { MetricField } from "./propertyPanelPrimitives";
 import { KeyframeNavigation } from "./KeyframeNavigation";
 import { formatPxMetricValue, parsePxMetricValue, RESPONSIVE_GRID } from "./propertyPanelHelpers";
+import { Transform3DCube, type CubePose } from "./Transform3DCube";
 
 type KeyframeEntry = Array<{
   percentage: number;
@@ -44,11 +45,52 @@ export function PropertyPanel3dTransform({
   onConvertToKeyframes,
 }: PropertyPanel3dTransformProps) {
   const idFor = (prop: string) => resolveAnimIdForProp?.(prop) ?? gsapAnimId;
+
+  const pose: CubePose = {
+    rotationX: gsapRuntimeValues.rotationX ?? 0,
+    rotationY: gsapRuntimeValues.rotationY ?? 0,
+    rotationZ: gsapRuntimeValues.rotationZ ?? 0,
+  };
+  // Commit only the rotation axes the drag actually changed (each rounded to a
+  // whole degree). Reuses the keyframe-aware animated-property commit, so a drag
+  // at the playhead writes/updates a keyframe just like the numeric fields.
+  const commitPose = (next: CubePose) => {
+    if (!onCommitAnimatedProperty) return;
+    const axes: Array<keyof CubePose> = ["rotationX", "rotationY", "rotationZ"];
+    for (const axis of axes) {
+      const rounded = Math.round(next[axis]);
+      if (rounded !== Math.round(pose[axis])) {
+        void onCommitAnimatedProperty(element, axis, rounded);
+      }
+    }
+  };
+  const recenter = () => {
+    if (!onCommitAnimatedProperty) return;
+    for (const [prop, identity] of [
+      ["rotationX", 0],
+      ["rotationY", 0],
+      ["rotationZ", 0],
+      ["z", 0],
+      ["scale", 1],
+      ["transformPerspective", 0],
+    ] as const) {
+      void onCommitAnimatedProperty(element, prop, identity);
+    }
+  };
+
   return (
     <div className="mt-3 border-t border-neutral-800/40 pt-3">
       <div className="mb-2 text-[10px] font-medium uppercase tracking-wider text-neutral-600">
         3D Transform
       </div>
+      {onCommitAnimatedProperty && (
+        <div className="mb-2">
+          <Transform3DCube pose={pose} onPoseCommit={commitPose} onRecenter={recenter} />
+          <p className="mt-1 text-[9px] leading-snug text-neutral-600">
+            Drag to tilt · Shift-drag to roll
+          </p>
+        </div>
+      )}
       <div className={RESPONSIVE_GRID}>
         <div className="flex items-center gap-1">
           <div className="flex-1">
@@ -139,6 +181,27 @@ export function PropertyPanel3dTransform({
             const v = Number.parseFloat(next.replace("°", ""));
             if (Number.isFinite(v) && onCommitAnimatedProperty) {
               void onCommitAnimatedProperty(element, "rotationY", v);
+            }
+          }}
+        />
+        <MetricField
+          label="RotZ"
+          value={`${gsapRuntimeValues.rotationZ ?? 0}°`}
+          onCommit={(next) => {
+            const v = Number.parseFloat(next.replace("°", ""));
+            if (Number.isFinite(v) && onCommitAnimatedProperty) {
+              void onCommitAnimatedProperty(element, "rotationZ", v);
+            }
+          }}
+        />
+        <MetricField
+          label="Perspective"
+          value={formatPxMetricValue(gsapRuntimeValues.transformPerspective ?? 0)}
+          scrub
+          onCommit={(next) => {
+            const v = parsePxMetricValue(next);
+            if (v != null && v >= 0 && onCommitAnimatedProperty) {
+              void onCommitAnimatedProperty(element, "transformPerspective", v);
             }
           }}
         />

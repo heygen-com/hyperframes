@@ -21,6 +21,7 @@ export const SUPPORTED_PROPS = [
   "rotationY",
   "rotationZ",
   "perspective",
+  "transformPerspective",
   "transformOrigin",
   // Visibility
   "opacity",
