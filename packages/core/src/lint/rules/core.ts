@@ -57,6 +57,38 @@ function describeStudioElement(tag: { raw: string; name: string }): string {
   return parts.join("");
 }
 
+const HEAD_BLOCKS_TO_IGNORE_PATTERN =
+  /<(?:style|script|template|title)\b[^>]*>[\s\S]*?<\/(?:style|script|template|title)>/gi;
+const HTML_TAG_PATTERN = /<[^>]+>/g;
+const STRAY_HEAD_CLOSE_PATTERN = /<\/(?:style|script)\s*>/i;
+const MARKDOWN_CODE_FENCE_PATTERN =
+  /```(?:html|css|js|javascript|typescript|ts)?(?:\s|$)[\s\S]*?```/i;
+const ORPHAN_CSS_RULE_PATTERN =
+  /(?:^|\s)(?:\/\*[\s\S]*?\*\/\s*)?(?:@[a-z-]+[^{}<]*|[.#][\w-]+[^{}<]*|[a-z][\w-]*(?:\s+[.#:[\w-][^{}<]*)?)\s*\{[^{}]*:[^{}]*\}/i;
+
+function findLeakedTextInHead(rawSource: string): string | null {
+  const headMatches = [...rawSource.matchAll(/<head\b[^>]*>([\s\S]*?)<\/head>/gi)];
+  for (const match of headMatches) {
+    const headContent = match[1] ?? "";
+    const withoutValidBlocks = headContent.replace(HEAD_BLOCKS_TO_IGNORE_PATTERN, " ");
+
+    const codeFenceMatch = MARKDOWN_CODE_FENCE_PATTERN.exec(withoutValidBlocks);
+    if (codeFenceMatch?.[0]) return codeFenceMatch[0];
+
+    const residualText = headContent
+      .replace(HEAD_BLOCKS_TO_IGNORE_PATTERN, " ")
+      .replace(HTML_TAG_PATTERN, " ");
+    const orphanCssMatch = ORPHAN_CSS_RULE_PATTERN.exec(residualText);
+    if (orphanCssMatch?.[0]) return orphanCssMatch[0];
+
+    const strayCloseMatch = STRAY_HEAD_CLOSE_PATTERN.exec(withoutValidBlocks);
+    if (strayCloseMatch) {
+      return withoutValidBlocks.slice(strayCloseMatch.index, strayCloseMatch.index + 160);
+    }
+  }
+  return null;
+}
+
 export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   // root_missing_composition_id + root_missing_dimensions
   ({ rootTag }) => {
@@ -82,6 +114,23 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
       });
     }
     return findings;
+  },
+
+  // head_leaked_text
+  ({ rawSource }) => {
+    const snippet = findLeakedTextInHead(rawSource);
+    if (!snippet) return [];
+    return [
+      {
+        code: "head_leaked_text",
+        severity: "error",
+        message:
+          "Detected leaked code or CSS text in the document `<head>`. Browsers render this as visible text in the video.",
+        fixHint:
+          "Move CSS into a single `<style>...</style>` block and remove stray close tags, markdown fences, or code text from `<head>`.",
+        snippet: truncateSnippet(snippet),
+      },
+    ];
   },
 
   // missing_timeline_registry + timeline_registry_missing_init
