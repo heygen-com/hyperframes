@@ -72,14 +72,19 @@ function commitPathLabel(anim: GsapAnimation | undefined): string {
   return anim.keyframes ? "keyframe" : "convert+keyframe";
 }
 
-/** The in-place `set` patch for a value-only commit (no soft reload), or none. */
+/** The in-place patch for a value-only commit (no soft reload), or none. A global
+ *  (`gsap.set`) hold has no runtime tween, so it applies straight to the element. */
 function setInstantPatch(
   selector: string | null,
   property: string,
   value: number | string,
-): { selector: string; change: { kind: "set"; props: SetPatchProps } } | undefined {
+  global = false,
+): { selector: string; change: { kind: "set" | "global-set"; props: SetPatchProps } } | undefined {
   if (!selector || typeof value !== "number") return undefined;
-  return { selector, change: { kind: "set", props: { [property]: value } as SetPatchProps } };
+  return {
+    selector,
+    change: { kind: global ? "global-set" : "set", props: { [property]: value } as SetPatchProps },
+  };
 }
 
 /**
@@ -120,7 +125,7 @@ async function commitSetProps(
   commit: Commit,
 ): Promise<void> {
   for (const [property, value] of propEntries) {
-    const instantPatch = setInstantPatch(selector, property, value);
+    const instantPatch = setInstantPatch(selector, property, value, !!setAnim.global);
     await commit(
       selection,
       { type: "update-property", animationId: setAnim.id, property, value },
@@ -161,6 +166,14 @@ async function commitStaticSet(
     }
     return;
   }
+  // Base `gsap.set` (off-timeline) — a static hold with no 0% keyframe marker, so
+  // adjusting a 3D transform on a non-keyframed element doesn't drop a keyframe on
+  // the timeline (matches the manual-drag UX). The global-set instant patch applies
+  // it straight to the element so the first edit shows with no soft-reload flash.
+  const numericProps: SetPatchProps = {};
+  for (const [k, v] of propEntries) {
+    if (typeof v === "number") numericProps[k as keyof SetPatchProps] = v;
+  }
   await commit(
     selection,
     {
@@ -169,12 +182,15 @@ async function commitStaticSet(
       method: "set",
       position: 0,
       properties: Object.fromEntries(propEntries),
-      // Base `gsap.set` (off-timeline) — a static hold with no 0% keyframe marker,
-      // so adjusting a 3D transform on a non-keyframed element doesn't drop a
-      // keyframe on the timeline (matches the manual-drag UX).
       global: true,
     },
-    { label: "Set 3D transform", softReload: true },
+    {
+      label: "Set 3D transform",
+      softReload: true,
+      ...(Object.keys(numericProps).length > 0
+        ? { instantPatch: { selector, change: { kind: "global-set" as const, props: numericProps } } }
+        : {}),
+    },
   );
 }
 

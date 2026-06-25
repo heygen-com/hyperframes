@@ -46,7 +46,12 @@ export type RuntimeTweenChange =
   // and won't re-read `vars.keyframes` on `invalidate()`, so this REBUILDS the tween
   // (kill + recreate at the same position) instead of mutating it. Lets a design-panel
   // keyframe edit show instantly rather than soft-reloading the iframe (a flash).
-  | { kind: "keyframe-rebuild"; pct: number; props: KeyframeStep };
+  | { kind: "keyframe-rebuild"; pct: number; props: KeyframeStep }
+  // Apply a base `gsap.set` value to the element directly (`gsap.set(el, props)`).
+  // A base set lives OFF the timeline, so there's no runtime tween to patch — but
+  // the element is static on these channels, so setting them immediately reflects
+  // the edit with no soft reload (no flash) and leaves no keyframe marker.
+  | { kind: "global-set"; props: SetPatchProps };
 
 const SET_CHANNELS: Array<keyof SetPatchProps> = [
   "x",
@@ -65,7 +70,37 @@ const SET_CHANNELS: Array<keyof SetPatchProps> = [
 
 type IframeWindow = Window & {
   __player?: { getTime?: () => number; seek?: (t: number) => void };
+  gsap?: { set?: (target: Element, vars: Record<string, number>) => void };
 };
+
+/**
+ * Apply a base `gsap.set` value to the element in the live runtime. Returns `true`
+ * if applied. Used for off-timeline static holds (position / 3D transform) — there's
+ * no tween to patch, so we set the channels directly. Safe because the element is
+ * static on these channels (the caller only uses this for non-animated values).
+ */
+function applyGlobalSet(
+  iframe: HTMLIFrameElement,
+  selector: string,
+  props: SetPatchProps,
+): boolean {
+  try {
+    const win = iframe.contentWindow as IframeWindow | null;
+    const gsapLib = win?.gsap;
+    const el = iframe.contentDocument?.querySelector(selector) ?? null;
+    if (!gsapLib?.set || !el) return false;
+    const numeric: Record<string, number> = {};
+    for (const [k, v] of Object.entries(props)) {
+      if (typeof v !== "number" || !Number.isFinite(v)) return false;
+      numeric[k] = v;
+    }
+    if (Object.keys(numeric).length === 0) return false;
+    gsapLib.set(el, numeric);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function playerOf(iframe: HTMLIFrameElement): IframeWindow["__player"] | null {
   try {
@@ -195,11 +230,13 @@ function seekToCurrent(iframe: HTMLIFrameElement, timeline: RuntimeTimeline): vo
   player?.seek?.(Number.isFinite(currentTime) ? currentTime : 0);
 }
 
-/** Apply `change` to the resolved tween. `true` if applied, `false` to soft-reload. */
+/** Apply `change` to the resolved tween. `true` if applied, `false` to soft-reload.
+ *  `global-set` is handled before this (no tween) and never reaches here. */
 function applyChange(tween: RuntimeTween, change: RuntimeTweenChange): boolean {
   if (change.kind === "set") return patchSet(tween, change.props);
   if (change.kind === "keyframes") return patchKeyframes(tween, change.keyframes);
-  return rebuildKeyframeTween(tween, change.pct, change.props);
+  if (change.kind === "keyframe-rebuild") return rebuildKeyframeTween(tween, change.pct, change.props);
+  return false;
 }
 
 /**
@@ -213,6 +250,9 @@ export function patchRuntimeTweenInPlace(
   compositionId?: string,
 ): boolean {
   if (!iframe) return false;
+  // A base `gsap.set` has no timeline tween to resolve — apply the value straight
+  // to the element so the edit shows instantly (no soft reload, no flash).
+  if (change.kind === "global-set") return applyGlobalSet(iframe, selector, change.props);
   try {
     const resolved = resolveRuntimeTween(
       iframe,

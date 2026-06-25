@@ -120,18 +120,22 @@ interface UpdatePropertyMutation {
 function setPatchFromUpdateProperties(
   selector: string,
   mutations: UpdatePropertyMutation[],
+  global = false,
 ): { selector: string; change: RuntimeTweenChange } {
   const props: SetPatchProps = {};
   for (const m of mutations) props[m.property as keyof SetPatchProps] = m.value;
-  return { selector, change: { kind: "set", props } };
+  // An off-timeline `gsap.set` has no runtime tween to patch — apply it to the
+  // element directly. An on-timeline `tl.set` mutates its tween (so a re-seek keeps it).
+  return { selector, change: { kind: global ? "global-set" : "set", props } };
 }
 
 /** Single-mutation convenience over {@link setPatchFromUpdateProperties}. */
 function setPatchFromUpdateProperty(
   selector: string,
   mutation: UpdatePropertyMutation,
+  global = false,
 ): { selector: string; change: RuntimeTweenChange } {
-  return setPatchFromUpdateProperties(selector, [mutation]);
+  return setPatchFromUpdateProperties(selector, [mutation], global);
 }
 
 /**
@@ -194,22 +198,25 @@ export async function commitStaticGsapPosition(
     // preview still reflects what DID persist. The x commit carries skipReload
     // (no reload), so its instantPatch gives instant feedback without a reload;
     // the y commit triggers the soft reload (skipped when the patch applies).
+    const global = !!existingSet.global;
     await callbacks.commitMutation(selection, xMutation, {
       label: "Move layer",
       skipReload: true,
       coalesceKey,
-      instantPatch: setPatchFromUpdateProperty(selector, xMutation),
+      instantPatch: setPatchFromUpdateProperty(selector, xMutation, global),
     });
     await callbacks.commitMutation(selection, yMutation, {
       label: "Move layer",
       softReload: true,
       coalesceKey,
       // Final commit of the coalesced x/y pair: carry both channels so the
-      // runtime `tl.set` lands the complete {x,y} pose in place.
-      instantPatch: setPatchFromUpdateProperties(selector, [xMutation, yMutation]),
+      // runtime set lands the complete {x,y} pose in place.
+      instantPatch: setPatchFromUpdateProperties(selector, [xMutation, yMutation], global),
     });
     return;
   }
+  // New static hold → a base `gsap.set` (off-timeline, no 0% keyframe marker), with
+  // an instant patch so the first nudge shows immediately (no soft-reload flash).
   await callbacks.commitMutation(
     selection,
     {
@@ -218,8 +225,13 @@ export async function commitStaticGsapPosition(
       method: "set",
       position: 0,
       properties: { x: newX, y: newY },
+      global: true,
     },
-    { label: "Move layer", softReload: true },
+    {
+      label: "Move layer",
+      softReload: true,
+      instantPatch: { selector, change: { kind: "global-set", props: { x: newX, y: newY } } },
+    },
   );
 }
 
@@ -264,11 +276,13 @@ export async function commitStaticGsapRotation(
     await callbacks.commitMutation(selection, rotationMutation, {
       label: "Rotate layer",
       softReload: true,
-      // Value-only rotation set: patch the runtime `tl.set` rotation in place.
-      instantPatch: setPatchFromUpdateProperty(selector, rotationMutation),
+      // Value-only rotation set — patch the runtime in place (off-timeline gsap.set
+      // applies to the element directly; on-timeline tl.set patches its tween).
+      instantPatch: setPatchFromUpdateProperty(selector, rotationMutation, !!existingSet.global),
     });
     return;
   }
+  // New static hold → off-timeline `gsap.set` (no 0% keyframe marker) + instant patch.
   await callbacks.commitMutation(
     selection,
     {
@@ -277,8 +291,13 @@ export async function commitStaticGsapRotation(
       method: "set",
       position: 0,
       properties: { rotation: newRotation },
+      global: true,
     },
-    { label: "Rotate layer", softReload: true },
+    {
+      label: "Rotate layer",
+      softReload: true,
+      instantPatch: { selector, change: { kind: "global-set", props: { rotation: newRotation } } },
+    },
   );
 }
 
