@@ -69,7 +69,7 @@ mock.module("@hyperframes/engine", () => ({
   // live in frameCapture-transientErrors.test.ts — update both if patterns change.
   isTransientBrowserError: (error: unknown) => {
     const msg = error instanceof Error ? error.message : String(error);
-    return /Navigating frame was detached|Target closed|Session closed|browser has disconnected|Page crashed|Execution context was destroyed|Cannot find context with specified id|Failed to launch the browser process|ECONNREFUSED/i.test(
+    return /Navigating frame was detached|Target closed|Session closed|browser has disconnected|Page crashed|Execution context was destroyed|Cannot find context with specified id|Failed to launch the browser process|Navigation timeout of \d+ ms exceeded|ECONNREFUSED/i.test(
       msg,
     );
   },
@@ -263,6 +263,23 @@ describe("runProbeStage — transient browser error retry (#1687)", () => {
     resetRetryMocks();
     capturedCfgs.length = 0;
     initializeSessionError = new Error("Navigating frame was detached");
+    initializeSessionFailUntilAttempt = 1;
+
+    const { runProbeStage } = await import("./probeStage.js");
+    const input = makeProbeInput({ cfgForceScreenshot: false, stageForceScreenshot: false });
+
+    const result = await runProbeStage(input);
+
+    expect(initializeSessionCallCount).toBe(2);
+    expect(closeCaptureSessionCallCount).toBe(1);
+    expect(result.duration).toBe(5);
+    expect(result.probeSession).not.toBeNull();
+  });
+
+  it("retries once on a browser-probe navigation timeout and succeeds", async () => {
+    resetRetryMocks();
+    capturedCfgs.length = 0;
+    initializeSessionError = new Error("Navigation timeout of 60000 ms exceeded");
     initializeSessionFailUntilAttempt = 1;
 
     const { runProbeStage } = await import("./probeStage.js");

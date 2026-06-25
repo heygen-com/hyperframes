@@ -14,13 +14,13 @@ describe("isTransientBrowserError", () => {
     "Cannot find context with specified id",
     "Failed to launch the browser process! TROUBLESHOOTING: https://pptr.dev/troubleshooting",
     "connect ECONNREFUSED 127.0.0.1:9222",
+    "Navigation timeout of 60000 ms exceeded",
   ])("returns true for transient error: %s", (message) => {
     expect(isTransientBrowserError(new Error(message))).toBe(true);
   });
 
   it.each([
     "net::ERR_NAME_NOT_RESOLVED",
-    "TimeoutError: Navigation timeout of 30000 ms exceeded",
     "FONT_FETCH_FAILED: Inter",
     "Composition duration is 0",
     "SYSTEM_FONT_USED: -apple-system",
