@@ -218,10 +218,8 @@ export const LABEL = "text-[11px] font-medium text-panel-text-3";
 export const RESPONSIVE_GRID = "grid grid-cols-[repeat(auto-fit,minmax(118px,1fr))] gap-3";
 export const EMPTY_STYLES: Record<string, string> = {};
 
-// fallow-ignore-next-line unused-exports -- pre-existing; surfaced in this file's diff by an unrelated line shift
-export const EMPTY_FILTER_VALUE = "none";
-// fallow-ignore-next-line unused-exports -- pre-existing; surfaced in this file's diff by an unrelated line shift
-export const BOX_SHADOW_PRESETS = {
+const EMPTY_FILTER_VALUE = "none";
+const BOX_SHADOW_PRESETS = {
   none: "none",
   soft: "0 12px 36px rgba(0, 0, 0, 0.28)",
   lift: "0 18px 54px rgba(0, 0, 0, 0.38)",
@@ -281,13 +279,7 @@ export function parsePxMetricValue(value: string): number | null {
   return token.value;
 }
 
-// fallow-ignore-next-line unused-exports -- pre-existing; surfaced in this file's diff by an unrelated line shift
-export function clampPanelNumber(
-  value: number,
-  min: number,
-  max: number,
-  fallback: number,
-): number {
+function clampPanelNumber(value: number, min: number, max: number, fallback: number): number {
   if (!Number.isFinite(value)) return fallback;
   return Math.max(min, Math.min(max, value));
 }

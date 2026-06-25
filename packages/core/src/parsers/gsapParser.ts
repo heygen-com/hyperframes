@@ -2354,6 +2354,18 @@ export function convertToKeyframesInScript(
   // immediateRender hold marker, and give it a real duration so the keyframes
   // span time. This is what makes a static 3D transform keyframeable.
   if (anim.method === "set") {
+    // A GLOBAL `gsap.set(...)` is off-timeline; flipping only the method would
+    // emit `gsap.to(...)`, which fires once at load and is NOT on the paused
+    // master timeline (the engine can't seek/render it). Re-root it onto the
+    // timeline var and add the position arg (a gsap.set has none) so the
+    // converted tween is seekable. A `tl.set` already has the right object.
+    const calleeObj = loc.target.call.node.callee.object;
+    if (anim.global && calleeObj?.type === "Identifier") {
+      calleeObj.name = loc.parsed.timelineVar;
+      if (loc.target.call.node.arguments.length < 3) {
+        loc.target.call.node.arguments.push(parseExpr("0"));
+      }
+    }
     loc.target.call.node.callee.property.name = "to";
     removeVarsKey(varsArg, "immediateRender");
     setVarsKey(varsArg, "duration", Math.max(0.001, setDuration));

@@ -30,6 +30,7 @@ interface MarqueeHit {
  * Shared by the live candidate highlight (per pointer-move) and the mouse-up
  * commit. No async source probe — that only happens once, on commit.
  */
+// fallow-ignore-next-line complexity
 function collectMarqueeHits(
   rect: Rect,
   iframe: HTMLIFrameElement,

@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import {
   addAnimationToScript,
   addKeyframeToScript,
+  convertToKeyframesFromScript,
   removeAnimationFromScript,
   removeKeyframeFromScript,
   updateAnimationInScript,
@@ -345,5 +346,24 @@ describe("T6c — keyframe write ops", () => {
   it("updateKeyframeInScript on unknown id returns script unchanged", () => {
     const result = updateKeyframeInScript(SCRIPT_D, "bad-id", 50, { opacity: 0.5 });
     expect(result).toBe(SCRIPT_D);
+  });
+});
+
+describe("T6c — convertToKeyframesFromScript: global gsap.set", () => {
+  const SCRIPT_GLOBAL_SET = `\
+var tl = gsap.timeline({ paused: true });
+gsap.set("#card", { rotationX: 50, rotationY: 20 });
+window.__timelines["t"] = tl;`;
+
+  it("re-roots a global gsap.set onto the timeline (tl.to + position), not gsap.to", () => {
+    const animId = parseGsapScript(SCRIPT_GLOBAL_SET).animations[0].id;
+    const result = convertToKeyframesFromScript(SCRIPT_GLOBAL_SET, animId, undefined, 4);
+    // Off-timeline gsap.to would fire once at load and be unseekable; must be tl.to.
+    expect(result).toMatch(/tl\.to\(\s*"#card"/);
+    expect(result).not.toMatch(/gsap\.to\(/);
+    expect(result).toContain("keyframes:");
+    const reparsed = parseGsapScript(result).animations[0];
+    expect(reparsed.keyframes).toBeTruthy();
+    expect(reparsed.global).toBeFalsy();
   });
 });

@@ -70,10 +70,6 @@ export interface ProjectOpts {
   r: number;
   /** Weak-perspective strength in units of `r` (larger = flatter; ~3-6 reads as 3D). */
   persp?: number;
-  /** Fixed viewing-camera tilt applied AFTER the element pose, so the cube reads
-   * as 3D even at identity (an isometric resting pose). Default 0 (head-on). */
-  viewRx?: number;
-  viewRy?: number;
 }
 
 function round(n: number): number {
@@ -102,10 +98,7 @@ export function projectCubeFaces(
 ): ProjectedFace[] {
   const { cx, cy, r } = opts;
   const persp = opts.persp ?? 4;
-  const vRx = opts.viewRx ?? 0;
-  const vRy = opts.viewRy ?? 0;
-  // Element pose first, then the fixed viewing camera.
-  const view = (v: Vec3) => rotate(rotate(v, rx, ry, rz), vRx, vRy, 0);
+  const view = (v: Vec3) => rotate(v, rx, ry, rz);
   const rotated = CORNERS.map(view);
   const faces: ProjectedFace[] = [];
   for (const f of FACES) {
@@ -156,10 +149,8 @@ export function projectAxes(
   opts: ProjectOpts,
 ): ProjectedAxis[] {
   const { cx, cy, r } = opts;
-  const vRx = opts.viewRx ?? 0;
-  const vRy = opts.viewRy ?? 0;
   const len = r * 1.5;
-  const view = (v: Vec3) => rotate(rotate(v, rx, ry, rz), vRx, vRy, 0);
+  const view = (v: Vec3) => rotate(v, rx, ry, rz);
   return AXES.map((a) => {
     const p = view(a.dir);
     return {

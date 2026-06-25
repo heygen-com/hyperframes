@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { ContextMenu, DeleteConfirm } from "./AssetContextMenu";
+import { ContextMenu } from "./AssetContextMenu";
 import { basename, getAudioSubtype } from "./assetHelpers";
 import { TIMELINE_ASSET_MIME } from "../../utils/timelineAssetDrop";
 
@@ -23,7 +23,6 @@ export function AudioRow({
   onRename?: (oldPath: string, newPath: string) => void;
 }) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [bars, setBars] = useState<number[]>([]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -196,16 +195,6 @@ export function AudioRow({
           onCopy={onCopy}
           onDelete={onDelete}
           onRename={onRename}
-        />
-      )}
-      {confirmDelete && (
-        <DeleteConfirm
-          name={name}
-          onConfirm={() => {
-            onDelete?.(asset);
-            setConfirmDelete(false);
-          }}
-          onCancel={() => setConfirmDelete(false)}
         />
       )}
     </>

@@ -1254,6 +1254,21 @@ export function convertToKeyframesFromScript(
   const { fromProps, toProps } = resolveConversionProps(animation, resolvedFromValues);
   const ms = new MagicString(script);
 
+  // A GLOBAL `gsap.set(...)` is off-timeline; rewriting only the method emits
+  // `gsap.to(...)`, which fires once at load and isn't on the paused master
+  // timeline (the engine can't seek/render it). Re-root onto the timeline var
+  // and add the position arg the set lacks so the converted tween is seekable.
+  if (isSet && animation.global) {
+    const calleeObj = call.node.callee.object;
+    if (calleeObj?.type === "Identifier") {
+      ms.overwrite(calleeObj.start, calleeObj.end, parsed.timelineVar);
+    }
+    const args = call.node.arguments;
+    if (args.length > 0 && args.length < 3) {
+      ms.appendLeft(args[args.length - 1].end, ", 0");
+    }
+  }
+
   // set/from/fromTo all become `to`; fromTo also drops its `from` argument.
   if (call.method === "from" || call.method === "fromTo" || isSet) {
     ms.overwrite(call.node.callee.property.start, call.node.callee.property.end, "to");

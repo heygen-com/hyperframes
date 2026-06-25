@@ -19,7 +19,7 @@ import {
 import type { PatchOperation } from "../utils/sourcePatcher";
 import { isElementGsapTargeted } from "./gsapTargetCache";
 
-export const GSAP_CSS_FALLBACK_BLOCKED_MESSAGE =
+const GSAP_CSS_FALLBACK_BLOCKED_MESSAGE =
   "This element is GSAP-animated — dragging via CSS would corrupt keyframes";
 
 // ── Hook ──

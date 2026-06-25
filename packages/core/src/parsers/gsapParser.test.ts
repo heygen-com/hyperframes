@@ -598,6 +598,27 @@ describe("stagger/yoyo/repeat round-trip", () => {
     expect(reparsed.keyframes!.keyframes.at(-1)!.properties.rotationX).toBe(50);
   });
 
+  it("converts a GLOBAL gsap.set into a timeline-rooted to() (seekable, not gsap.to)", () => {
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      gsap.set("#card", { rotationX: 50, rotationY: 20 });
+    `;
+    const parsed = parseGsapScript(script);
+    const animId = parsed.animations[0].id;
+    expect(parsed.animations[0].global).toBe(true);
+    const result = convertToKeyframesInScript(script, animId, undefined, 4);
+    // Must re-root onto the master timeline (tl.to), NOT emit an off-timeline
+    // gsap.to that fires once at load and can't be seeked/rendered.
+    expect(result).toMatch(/tl\.to\(\s*"#card"/);
+    expect(result).not.toMatch(/gsap\.to\(/);
+    expect(result).toContain("duration: 4");
+    expect(result).toContain("keyframes:");
+    // Re-parsed tween is a real timeline keyframe tween, no longer global.
+    const reparsed = parseGsapScript(result).animations[0];
+    expect(reparsed.keyframes).toBeTruthy();
+    expect(reparsed.global).toBeFalsy();
+  });
+
   it("apply-to-all (resetKeyframeEases) sets easeEach and strips every per-keyframe ease", () => {
     const script = `
       const tl = gsap.timeline({ paused: true });
