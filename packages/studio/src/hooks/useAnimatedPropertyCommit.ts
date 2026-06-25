@@ -222,32 +222,42 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
         return;
       }
 
-      // Case 2b: Static hold — merge the props into the `set` (persist as static),
-      // then auto-keyframe if the element is already animated.
-      if (anim.method === "set") {
-        await commitSetProps(
+      // The picked anim comes from the (possibly stale) panel cache: if keyframes
+      // were just removed or the script changed underneath us, its id is gone
+      // server-side and the commit 404s. The raw commit already toasts; we catch
+      // so the rejection doesn't escape as an uncaught promise, and bump the cache
+      // so selectedGsapAnimations re-syncs and the user's next edit self-heals.
+      try {
+        // Case 2b: Static hold — merge the props into the `set` (persist as static),
+        // then auto-keyframe if the element is already animated.
+        if (anim.method === "set") {
+          await commitSetProps(
+            selection,
+            anim,
+            propEntries,
+            selector,
+            selectedGsapAnimations,
+            gsapCommitMutation,
+          );
+          return;
+        }
+
+        // Cases 1 & 2: keyframed (or flat → convert) — write ALL props into ONE
+        // keyframe so a multi-axis cube edit doesn't race into adjacent duplicates.
+        await commitKeyframeProps(
           selection,
           anim,
+          props,
           propEntries,
+          primaryProp,
           selector,
-          selectedGsapAnimations,
+          iframe,
           gsapCommitMutation,
         );
-        return;
+      } catch (error) {
+        log3d("commit-prop", { error: String(error), stale: anim.id, action: "bump-cache" });
+        bumpGsapCache();
       }
-
-      // Cases 1 & 2: keyframed (or flat → convert) — write ALL props into ONE
-      // keyframe so a multi-axis cube edit doesn't race into adjacent duplicates.
-      await commitKeyframeProps(
-        selection,
-        anim,
-        props,
-        propEntries,
-        primaryProp,
-        selector,
-        iframe,
-        gsapCommitMutation,
-      );
     },
     [selectedGsapAnimations, gsapCommitMutation, addGsapAnimation, previewIframeRef, bumpGsapCache],
   );
