@@ -429,6 +429,15 @@ export async function createCaptureSession(
       }
     }, variablesJson);
   }
+  // Tell the runtime the export fps so its deterministic seek quantizes on the
+  // export grid, not its preview default (otherwise single-composition renders,
+  // which have no authored fps, snap to the 30fps grid). Set before page scripts.
+  const exportFps = fpsToNumber(options.fps);
+  if (Number.isFinite(exportFps) && exportFps > 0) {
+    await page.evaluateOnNewDocument((fps: number) => {
+      (window as unknown as { __hfCanonicalFps?: number }).__hfCanonicalFps = fps;
+    }, exportFps);
+  }
   const browserVersion = await browser.version();
   const sessionOptions = resolveCaptureSessionOptions(options, browserVersion);
   const expectedMajor = config?.expectedChromiumMajor;

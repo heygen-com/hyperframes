@@ -42,6 +42,14 @@ const AUTHORED_END_ATTR = "data-hf-authored-end";
 
 export function initSandboxRuntimeModular(): void {
   const state = createRuntimeState();
+  // Export harness injects the render fps (window.__hfCanonicalFps) so the
+  // deterministic seek quantizes on the export grid, not the preview default.
+  {
+    const injectedFps = (window as unknown as { __hfCanonicalFps?: number }).__hfCanonicalFps;
+    if (typeof injectedFps === "number" && Number.isFinite(injectedFps) && injectedFps > 0) {
+      state.canonicalFps = injectedFps;
+    }
+  }
   let colorGradingRuntime: RuntimeColorGradingApi | null = null;
   let runtimeErrorListener: ((event: ErrorEvent) => void) | null = null;
   let runtimeUnhandledRejectionListener: ((event: PromiseRejectionEvent) => void) | null = null;
@@ -1034,6 +1042,19 @@ export function initSandboxRuntimeModular(): void {
     state.capturedTimeline = resolution.timeline;
     if (typeof state.capturedTimeline.timeScale === "function") {
       state.capturedTimeline.timeScale(state.playbackRate);
+    }
+    // `render -c <scene>` mounts the composition under a synthetic wrapper root
+    // whose host has no own timeline; only the inner composition registers in
+    // window.__timelines. The export poll then waits forever for the root's own
+    // timeline and child seeks never engage. Publish the resolved (composite)
+    // timeline under the root id so the poll resolves. No-op for full reels,
+    // whose root already registers its own timeline.
+    const resolvedRootId = resolveRootCompositionElement()?.getAttribute("data-composition-id");
+    const timelineRegistry = window.__timelines as
+      | Record<string, RuntimeTimelineLike | undefined>
+      | undefined;
+    if (resolvedRootId && timelineRegistry && !timelineRegistry[resolvedRootId]) {
+      timelineRegistry[resolvedRootId] = state.capturedTimeline;
     }
     const boundDuration = getSafeTimelineDurationSeconds(state.capturedTimeline, 0);
     if (boundDuration <= 0) {
