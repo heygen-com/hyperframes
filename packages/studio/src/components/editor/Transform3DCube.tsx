@@ -22,17 +22,92 @@ const SENSITIVITY = 0.6; // degrees per pixel of drag
  * Presentational only: emits a live draft pose while dragging and a final pose
  * on release — the parent owns live-previewing and committing to GSAP props.
  */
+// transformPerspective (px) is inversely related to effect strength, with 0 = off.
+// Map a 0..1 slider strength to px and to the cube's weak-perspective projection.
+const STRONG_PX = 200;
+const WEAK_PX = 1600;
+const PX_RANGE = WEAK_PX - STRONG_PX;
+const strengthToPx = (s: number) => (s <= 0.01 ? 0 : Math.round(WEAK_PX - s * PX_RANGE));
+const pxToStrength = (px: number) =>
+  px <= 0
+    ? 0
+    : Math.max(0, Math.min(1, (WEAK_PX - Math.max(STRONG_PX, Math.min(WEAK_PX, px))) / PX_RANGE));
+const pxToProjPersp = (px: number) => (px > 0 ? Math.max(2.2, Math.min(14, px / 130)) : 14);
+
+/** Horizontal "perspective strength" slider — left = none, right = dramatic. */
+function PerspectiveSlider({
+  value,
+  onDraft,
+  onCommit,
+}: {
+  value: number;
+  onDraft?: (px: number) => void;
+  onCommit: (px: number) => void;
+}) {
+  const trackRef = useRef<HTMLDivElement | null>(null);
+  const draggingRef = useRef(false);
+  const strength = pxToStrength(value);
+  const fromEvent = (clientX: number) => {
+    const r = trackRef.current?.getBoundingClientRect();
+    if (!r || r.width === 0) return 0;
+    return strengthToPx(Math.max(0, Math.min(1, (clientX - r.left) / r.width)));
+  };
+  return (
+    <div className="flex items-center gap-1.5 px-2 pb-1.5 pt-1">
+      <span className="text-[8px] font-medium uppercase tracking-wide text-neutral-600">Persp</span>
+      <div
+        ref={trackRef}
+        onPointerDown={(e) => {
+          e.currentTarget.setPointerCapture(e.pointerId);
+          draggingRef.current = true;
+          onDraft?.(fromEvent(e.clientX));
+        }}
+        onPointerMove={(e) => {
+          if (draggingRef.current) onDraft?.(fromEvent(e.clientX));
+        }}
+        onPointerUp={(e) => {
+          if (!draggingRef.current) return;
+          draggingRef.current = false;
+          onCommit(fromEvent(e.clientX));
+        }}
+        onPointerCancel={() => {
+          draggingRef.current = false;
+        }}
+        className="relative h-3 flex-1 cursor-ew-resize touch-none"
+      >
+        <div className="absolute top-1/2 h-0.5 w-full -translate-y-1/2 rounded-full bg-neutral-700" />
+        <div
+          className="absolute top-1/2 h-0.5 -translate-y-1/2 rounded-full bg-[#5ff0bf]"
+          style={{ width: `${strength * 100}%` }}
+        />
+        <div
+          className="absolute top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-neutral-900 bg-[#5ff0bf]"
+          style={{ left: `${strength * 100}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 export function Transform3DCube({
   pose,
+  perspective = 0,
   onPoseDraft,
   onPoseCommit,
+  onPerspectiveDraft,
+  onPerspectiveCommit,
   onRecenter,
 }: {
   pose: CubePose;
+  /** Element's transformPerspective (px); drives the cube's foreshortening. */
+  perspective?: number;
   /** Fires on every drag move with the in-progress pose (parent live-previews). */
   onPoseDraft?: (pose: CubePose) => void;
   /** Fires once on pointer release with the final pose (commit). */
   onPoseCommit: (pose: CubePose) => void;
+  /** Live + committed perspective (px) from the in-cube slider. */
+  onPerspectiveDraft?: (px: number) => void;
+  onPerspectiveCommit?: (px: number) => void;
   /** Reset to identity orientation. */
   onRecenter?: () => void;
 }) {
@@ -45,6 +120,7 @@ export function Transform3DCube({
     r: RADIUS,
     viewRx: VIEW_RX,
     viewRy: VIEW_RY,
+    persp: pxToProjPersp(perspective),
   });
 
   const onPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
@@ -148,6 +224,13 @@ export function Transform3DCube({
             <path d="M12 3v18M3 12h18" strokeWidth="1.5" />
           </svg>
         </button>
+      )}
+      {onPerspectiveCommit && (
+        <PerspectiveSlider
+          value={perspective}
+          onDraft={onPerspectiveDraft}
+          onCommit={onPerspectiveCommit}
+        />
       )}
     </div>
   );

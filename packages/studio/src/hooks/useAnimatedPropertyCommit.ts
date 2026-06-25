@@ -12,6 +12,7 @@ import { classifyPropertyGroup } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { usePlayerStore } from "../player/store/playerStore";
 import { readAllAnimatedProperties, readGsapProperty } from "./gsapRuntimeBridge";
+import type { SetPatchProps } from "./gsapRuntimePatch";
 import { selectorFromSelection, computeElementPercentage } from "./gsapShared";
 
 interface CommitAnimatedPropertyDeps {
@@ -110,7 +111,21 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
         await gsapCommitMutation(
           selection,
           { type: "update-property", animationId: anim.id, property, value },
-          { label: `Set ${property}`, softReload: true },
+          {
+            label: `Set ${property}`,
+            softReload: true,
+            // Value-only `set` update → patch the live runtime in place (no soft
+            // reload), so dragging the cube / scrubbing a 3D field is flash-free.
+            // Falls back to soft reload when the channel isn't patchable.
+            ...(selector && typeof value === "number"
+              ? {
+                  instantPatch: {
+                    selector,
+                    change: { kind: "set", props: { [property]: value } as SetPatchProps },
+                  },
+                }
+              : {}),
+          },
         );
         return;
       }

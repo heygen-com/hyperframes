@@ -20,6 +20,11 @@ export interface SetPatchProps {
   x?: number;
   y?: number;
   rotation?: number;
+  rotationX?: number;
+  rotationY?: number;
+  rotationZ?: number;
+  z?: number;
+  transformPerspective?: number;
   scaleX?: number;
   scaleY?: number;
   scale?: number;
@@ -37,6 +42,11 @@ const SET_CHANNELS: Array<keyof SetPatchProps> = [
   "x",
   "y",
   "rotation",
+  "rotationX",
+  "rotationY",
+  "rotationZ",
+  "z",
+  "transformPerspective",
   "scaleX",
   "scaleY",
   "scale",

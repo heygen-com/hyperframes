@@ -91,14 +91,114 @@ function Cube3dControl({
       <div className="mx-auto max-w-[184px]">
         <Transform3DCube
           pose={pose}
+          perspective={gsapRuntimeValues.transformPerspective ?? 0}
           onPoseDraft={livePreview}
           onPoseCommit={commitPose}
+          onPerspectiveDraft={(px) => onLivePreviewProps?.(element, { transformPerspective: px })}
+          onPerspectiveCommit={(px) =>
+            void onCommitAnimatedProperty(element, "transformPerspective", px)
+          }
           onRecenter={recenter}
         />
         <p className="mt-1 text-center text-[9px] leading-snug text-neutral-600">
           Drag to tilt · Shift-drag to roll
         </p>
       </div>
+    </div>
+  );
+}
+
+interface FieldCtx {
+  element: DomEditSelection;
+  gsapRuntimeValues: Record<string, number>;
+  gsapKeyframes: KeyframeEntry;
+  gsapAnimId: string | null;
+  currentPct: number;
+  elStart: number;
+  elDuration: number;
+  resolveAnimIdForProp?: (prop: string) => string | null;
+  onCommitAnimatedProperty?: (
+    element: DomEditSelection,
+    property: string,
+    value: number,
+  ) => Promise<void>;
+  onSeekToTime?: (time: number) => void;
+  onRemoveKeyframe?: (animId: string, pct: number) => void;
+  onConvertToKeyframes?: (animId: string) => void;
+}
+
+const parseDeg = (s: string): number | null => {
+  const n = Number.parseFloat(s.replace("°", ""));
+  return Number.isFinite(n) ? n : null;
+};
+const parseScale = (s: string): number | null => {
+  const n = Number.parseFloat(s);
+  return Number.isFinite(n) ? n : null;
+};
+const parsePxNonNeg = (s: string): number | null => {
+  const v = parsePxMetricValue(s);
+  return v != null && v >= 0 ? v : null;
+};
+
+/**
+ * One 3D-transform field: a number/scrub input plus its keyframe diamond, so
+ * rotation / perspective / Z / scale can each be keyframed just like Layout's
+ * X / Y — the diamond was previously missing on the rotation + perspective rows.
+ */
+function Transform3dField({
+  label,
+  prop,
+  scrub,
+  format,
+  parse,
+  defaultValue,
+  ctx,
+}: {
+  label: string;
+  prop: string;
+  scrub?: boolean;
+  format: (v: number) => string;
+  parse: (s: string) => number | null;
+  defaultValue: number;
+  ctx: FieldCtx;
+}) {
+  const { gsapAnimId, onCommitAnimatedProperty } = ctx;
+  const idFor = (p: string) => ctx.resolveAnimIdForProp?.(p) ?? gsapAnimId;
+  const current = ctx.gsapRuntimeValues[prop] ?? defaultValue;
+  return (
+    <div className="flex items-center gap-1">
+      <div className="flex-1">
+        <MetricField
+          label={label}
+          value={format(current)}
+          scrub={scrub}
+          onCommit={(next) => {
+            const v = parse(next);
+            if (v != null && onCommitAnimatedProperty) {
+              void onCommitAnimatedProperty(ctx.element, prop, v);
+            }
+          }}
+        />
+      </div>
+      {STUDIO_KEYFRAMES_ENABLED && (gsapAnimId || onCommitAnimatedProperty) && (
+        <KeyframeNavigation
+          property={prop}
+          keyframes={ctx.gsapKeyframes}
+          currentPercentage={ctx.currentPct}
+          onSeek={(pct) => ctx.onSeekToTime?.(ctx.elStart + (pct / 100) * ctx.elDuration)}
+          onAddKeyframe={() => {
+            if (onCommitAnimatedProperty) void onCommitAnimatedProperty(ctx.element, prop, current);
+          }}
+          onRemoveKeyframe={(pct) => {
+            const id = idFor(prop);
+            if (id) ctx.onRemoveKeyframe?.(id, pct);
+          }}
+          onConvertToKeyframes={() => {
+            const id = idFor(prop);
+            if (id) ctx.onConvertToKeyframes?.(id);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -118,10 +218,23 @@ export function PropertyPanel3dTransform({
   onConvertToKeyframes,
   onLivePreviewProps,
 }: PropertyPanel3dTransformProps) {
-  const idFor = (prop: string) => resolveAnimIdForProp?.(prop) ?? gsapAnimId;
   // Collapsed by default — the cube + fields are tall, so don't eat panel space
   // until the user opens 3D.
   const [collapsed, setCollapsed] = useState(true);
+  const ctx: FieldCtx = {
+    element,
+    gsapRuntimeValues,
+    gsapKeyframes,
+    gsapAnimId,
+    currentPct,
+    elStart,
+    elDuration,
+    resolveAnimIdForProp,
+    onCommitAnimatedProperty,
+    onSeekToTime,
+    onRemoveKeyframe,
+    onConvertToKeyframes,
+  };
 
   return (
     <div className="mt-3 border-t border-neutral-800/40 pt-3">
@@ -146,122 +259,56 @@ export function PropertyPanel3dTransform({
             />
           )}
           <div className={RESPONSIVE_GRID}>
-            <div className="flex items-center gap-1">
-              <div className="flex-1">
-                <MetricField
-                  label="Z"
-                  value={formatPxMetricValue(gsapRuntimeValues.z ?? 0)}
-                  scrub
-                  onCommit={(next) => {
-                    const v = parsePxMetricValue(next);
-                    if (v != null && onCommitAnimatedProperty) {
-                      void onCommitAnimatedProperty(element, "z", v);
-                    }
-                  }}
-                />
-              </div>
-              {STUDIO_KEYFRAMES_ENABLED && (gsapAnimId || onCommitAnimatedProperty) && (
-                <KeyframeNavigation
-                  property="z"
-                  keyframes={gsapKeyframes}
-                  currentPercentage={currentPct}
-                  onSeek={(pct) => onSeekToTime?.(elStart + (pct / 100) * elDuration)}
-                  onAddKeyframe={() => {
-                    if (onCommitAnimatedProperty) {
-                      void onCommitAnimatedProperty(element, "z", gsapRuntimeValues?.z ?? 0);
-                    }
-                  }}
-                  onRemoveKeyframe={(pct) => {
-                    const id = idFor("z");
-                    if (id) onRemoveKeyframe?.(id, pct);
-                  }}
-                  onConvertToKeyframes={() => {
-                    const id = idFor("z");
-                    if (id) onConvertToKeyframes?.(id);
-                  }}
-                />
-              )}
-            </div>
-            <div className="flex items-center gap-1">
-              <div className="flex-1">
-                <MetricField
-                  label="Scale"
-                  value={String(gsapRuntimeValues.scale ?? 1)}
-                  scrub
-                  onCommit={(next) => {
-                    const v = Number.parseFloat(next);
-                    if (Number.isFinite(v) && onCommitAnimatedProperty) {
-                      void onCommitAnimatedProperty(element, "scale", v);
-                    }
-                  }}
-                />
-              </div>
-              {STUDIO_KEYFRAMES_ENABLED && (gsapAnimId || onCommitAnimatedProperty) && (
-                <KeyframeNavigation
-                  property="scale"
-                  keyframes={gsapKeyframes}
-                  currentPercentage={currentPct}
-                  onSeek={(pct) => onSeekToTime?.(elStart + (pct / 100) * elDuration)}
-                  onAddKeyframe={() => {
-                    if (onCommitAnimatedProperty) {
-                      void onCommitAnimatedProperty(
-                        element,
-                        "scale",
-                        gsapRuntimeValues?.scale ?? 1,
-                      );
-                    }
-                  }}
-                  onRemoveKeyframe={(pct) => {
-                    const id = idFor("scale");
-                    if (id) onRemoveKeyframe?.(id, pct);
-                  }}
-                  onConvertToKeyframes={() => {
-                    const id = idFor("scale");
-                    if (id) onConvertToKeyframes?.(id);
-                  }}
-                />
-              )}
-            </div>
-            <MetricField
-              label="RotX"
-              value={`${gsapRuntimeValues.rotationX ?? 0}°`}
-              onCommit={(next) => {
-                const v = Number.parseFloat(next.replace("°", ""));
-                if (Number.isFinite(v) && onCommitAnimatedProperty) {
-                  void onCommitAnimatedProperty(element, "rotationX", v);
-                }
-              }}
-            />
-            <MetricField
-              label="RotY"
-              value={`${gsapRuntimeValues.rotationY ?? 0}°`}
-              onCommit={(next) => {
-                const v = Number.parseFloat(next.replace("°", ""));
-                if (Number.isFinite(v) && onCommitAnimatedProperty) {
-                  void onCommitAnimatedProperty(element, "rotationY", v);
-                }
-              }}
-            />
-            <MetricField
-              label="RotZ"
-              value={`${gsapRuntimeValues.rotationZ ?? 0}°`}
-              onCommit={(next) => {
-                const v = Number.parseFloat(next.replace("°", ""));
-                if (Number.isFinite(v) && onCommitAnimatedProperty) {
-                  void onCommitAnimatedProperty(element, "rotationZ", v);
-                }
-              }}
-            />
-            <MetricField
-              label="Perspective"
-              value={formatPxMetricValue(gsapRuntimeValues.transformPerspective ?? 0)}
+            <Transform3dField
+              ctx={ctx}
+              label="Z"
+              prop="z"
               scrub
-              onCommit={(next) => {
-                const v = parsePxMetricValue(next);
-                if (v != null && v >= 0 && onCommitAnimatedProperty) {
-                  void onCommitAnimatedProperty(element, "transformPerspective", v);
-                }
-              }}
+              format={formatPxMetricValue}
+              parse={parsePxMetricValue}
+              defaultValue={0}
+            />
+            <Transform3dField
+              ctx={ctx}
+              label="Scale"
+              prop="scale"
+              scrub
+              format={(v) => String(v)}
+              parse={parseScale}
+              defaultValue={1}
+            />
+            <Transform3dField
+              ctx={ctx}
+              label="RotX"
+              prop="rotationX"
+              format={(v) => `${v}°`}
+              parse={parseDeg}
+              defaultValue={0}
+            />
+            <Transform3dField
+              ctx={ctx}
+              label="RotY"
+              prop="rotationY"
+              format={(v) => `${v}°`}
+              parse={parseDeg}
+              defaultValue={0}
+            />
+            <Transform3dField
+              ctx={ctx}
+              label="RotZ"
+              prop="rotationZ"
+              format={(v) => `${v}°`}
+              parse={parseDeg}
+              defaultValue={0}
+            />
+            <Transform3dField
+              ctx={ctx}
+              label="Perspective"
+              prop="transformPerspective"
+              scrub
+              format={formatPxMetricValue}
+              parse={parsePxNonNeg}
+              defaultValue={0}
             />
           </div>
         </>
