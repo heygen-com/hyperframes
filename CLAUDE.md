@@ -41,11 +41,12 @@ Atomic capabilities the creation workflows compose against — pull one when you
 
 ## Skill catalog maintenance
 
-When adding a new skill, or substantially renaming / repurposing an existing one:
+When adding a new skill, or substantially renaming / repurposing an existing one, update all three agent-facing discoverability surfaces in lockstep:
 
-1. Update the skill list above (CLAUDE.md) AND the `## Skills` section in `README.md` — they're the agent-facing discoverability surfaces. Out-of-date entries silently kill discovery.
+1. The skill list above (CLAUDE.md) AND the `## Skills` section in `README.md` AND `docs/guides/skills.mdx` (rendered at [hyperframes.heygen.com/guides/skills](https://hyperframes.heygen.com/guides/skills)). Out-of-date entries silently kill discovery.
 2. If the skill changes the routing surface for "make a video" requests, also update the capability map and intent router in `skills/hyperframes/SKILL.md` — that's the canonical router agents read first.
-3. Mirror the README and CLAUDE.md grouping (Router / Creation workflows / Domain skills) so a skill always lives in the same column across docs.
+3. Mirror the Router / Creation workflows / Domain skills grouping across all three surfaces so a skill always lives in the same column.
+4. Skill count appears in the README and CLAUDE.md intro lines ("19 AI agent skills…") — update on add/remove. The `docs/guides/skills.mdx` page deliberately omits a count to avoid drift; keep it count-free.
 
 The skill's own `SKILL.md` frontmatter `description:` is the source of truth for the one-line "use when" blurb; copy from there into the catalog rather than paraphrasing.
 
