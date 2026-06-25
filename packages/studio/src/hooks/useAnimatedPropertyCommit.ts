@@ -1,10 +1,11 @@
 /**
  * Unified helper for committing any GSAP property value from the design panel.
  *
- * Handles three cases:
- * 1. Animation with keyframes → add-keyframe at current percentage
- * 2. Flat animation (no keyframes) → convert to keyframes, then add-keyframe
- * 3. No animation → create tl.to(), convert to keyframes, then add-keyframe
+ * Routing depends on whether the element is animated (has keyframes on any tween):
+ * - Animated → write the value into a keyframe at the current playhead (convert a
+ *   flat tween first if needed). An existing static `set` auto-converts to keyframes.
+ * - Static (no keyframes anywhere) → persist as a `tl.set`, NEVER keyframes — same
+ *   as manual drag / resize / rotate. Updates an existing set or creates one.
  */
 import { useCallback } from "react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
@@ -129,6 +130,50 @@ async function commitSetProps(
   await maybeAutoKeyframeSet(selection, setAnim, animations, commit);
 }
 
+/**
+ * Static element (no keyframes on ANY of its tweens): persist the 3D props as a
+ * `tl.set` — NEVER keyframes. Mirrors manual drag / resize / rotate, which `tl.set`
+ * a static element instead of animating it. Updates an existing `set` in place, or
+ * creates a dedicated `set` at position 0 when the element has none.
+ */
+async function commitStaticSet(
+  selection: DomEditSelection,
+  propEntries: [string, number | string][],
+  selector: string | null,
+  animations: GsapAnimation[],
+  commit: Commit,
+): Promise<void> {
+  if (!selector) return;
+  // Only ever update an existing `set` (its id is position-based, so it's stable as
+  // properties are added) — NEVER a flat `to`/`from`, whose id is group-derived and
+  // shifts the instant a new-group prop is added, 404-ing the next axis and
+  // polluting an unrelated tween (e.g. a scale pop). A static element with no set
+  // gets a dedicated `set` carrying ALL props in ONE `add` (no per-prop id race).
+  const existingSet = animations.find((a) => a.method === "set" && a.targetSelector === selector);
+  if (existingSet) {
+    for (const [property, value] of propEntries) {
+      const instantPatch = setInstantPatch(selector, property, value);
+      await commit(
+        selection,
+        { type: "update-property", animationId: existingSet.id, property, value },
+        { label: `Set ${property}`, softReload: true, ...(instantPatch ? { instantPatch } : {}) },
+      );
+    }
+    return;
+  }
+  await commit(
+    selection,
+    {
+      type: "add",
+      targetSelector: selector,
+      method: "set",
+      position: 0,
+      properties: Object.fromEntries(propEntries),
+    },
+    { label: "Set 3D transform", softReload: true },
+  );
+}
+
 /** Convert-if-flat, then write ALL props into ONE keyframe at the playhead. */
 async function commitKeyframeProps(
   selection: DomEditSelection,
@@ -177,13 +222,7 @@ async function commitKeyframeProps(
 }
 
 export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
-  const {
-    selectedGsapAnimations,
-    gsapCommitMutation,
-    addGsapAnimation,
-    previewIframeRef,
-    bumpGsapCache,
-  } = deps;
+  const { selectedGsapAnimations, gsapCommitMutation, previewIframeRef, bumpGsapCache } = deps;
 
   const commitAnimatedProperties = useCallback(
     async (selection: DomEditSelection, props: Record<string, number | string>): Promise<void> => {
@@ -209,18 +248,10 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
         path: commitPathLabel(anim),
       });
 
-      // Case 3: No animation — create one first
-      if (!anim) {
-        addGsapAnimation(selection, "to");
-        // The addGsapAnimation triggers a reload. We need to wait for the cache
-        // to update. Use a small delay then bump cache to re-fetch.
-        await new Promise((r) => setTimeout(r, 500));
-        bumpGsapCache();
-        // After creation, we can't proceed in this call — the animation isn't
-        // in our local state yet. The user's next edit will find it.
-        // For immediate feedback, trigger a convert-to-keyframes on the new animation.
-        return;
-      }
+      // Whether the element is animated at all. A 3D edit only creates/edits
+      // keyframes when it IS — a static element (no keyframes on any of its tweens)
+      // gets a `tl.set`, never new keyframes (matches manual drag / resize / rotate).
+      const elementHasKeyframes = selectedGsapAnimations.some((a) => !!a.keyframes);
 
       // The picked anim comes from the (possibly stale) panel cache: if keyframes
       // were just removed or the script changed underneath us, its id is gone
@@ -228,9 +259,9 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
       // so the rejection doesn't escape as an uncaught promise, and bump the cache
       // so selectedGsapAnimations re-syncs and the user's next edit self-heals.
       try {
-        // Case 2b: Static hold — merge the props into the `set` (persist as static),
-        // then auto-keyframe if the element is already animated.
-        if (anim.method === "set") {
+        // Existing static hold — merge the props into the `set`, then auto-keyframe
+        // ONLY if the element is already animated (maybeAutoKeyframeSet no-ops if not).
+        if (anim?.method === "set") {
           await commitSetProps(
             selection,
             anim,
@@ -242,8 +273,25 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
           return;
         }
 
-        // Cases 1 & 2: keyframed (or flat → convert) — write ALL props into ONE
-        // keyframe so a multi-axis cube edit doesn't race into adjacent duplicates.
+        // Static element — persist as a `tl.set`, never keyframes (incl. the
+        // no-animation case, which now creates a set instead of a keyframed tween).
+        if (!elementHasKeyframes) {
+          await commitStaticSet(
+            selection,
+            propEntries,
+            selector,
+            selectedGsapAnimations,
+            gsapCommitMutation,
+          );
+          return;
+        }
+
+        // Animated element — write ALL props into ONE keyframe so a multi-axis cube
+        // edit doesn't race into adjacent duplicates.
+        if (!anim) {
+          bumpGsapCache();
+          return;
+        }
         await commitKeyframeProps(
           selection,
           anim,
@@ -255,11 +303,11 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
           gsapCommitMutation,
         );
       } catch (error) {
-        log3d("commit-prop", { error: String(error), stale: anim.id, action: "bump-cache" });
+        log3d("commit-prop", { error: String(error), stale: anim?.id, action: "bump-cache" });
         bumpGsapCache();
       }
     },
-    [selectedGsapAnimations, gsapCommitMutation, addGsapAnimation, previewIframeRef, bumpGsapCache],
+    [selectedGsapAnimations, gsapCommitMutation, previewIframeRef, bumpGsapCache],
   );
 
   const commitAnimatedProperty = useCallback(
