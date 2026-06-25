@@ -24,7 +24,8 @@ interface OffCanvasIndicatorsProps {
 /**
  * Dashed teal indicators for elements whose bounds extend past the composition
  * (the "gray zone"). The in-canvas portion is clipped away so only the
- * protruding sliver is dashed; the inside portion gets a solid outline.
+ * protruding sliver is dashed — the on-canvas part gets no outline, since a
+ * solid selection-style border on an unselected element reads as "selected".
  * Extracted from DomEditOverlay to keep that file under the 600-LOC cap.
  */
 export function OffCanvasIndicators({
@@ -57,7 +58,6 @@ export function OffCanvasIndicators({
           const clipOutside = hasInside
             ? `polygon(evenodd, 0 0, ${r.width}px 0, ${r.width}px ${r.height}px, 0 ${r.height}px, 0 0, ${cL}px ${cT}px, ${cR}px ${cT}px, ${cR}px ${cB}px, ${cL}px ${cB}px, ${cL}px ${cT}px)`
             : undefined;
-          const clipInside = `inset(${cT}px ${Math.max(0, r.width - cR)}px ${Math.max(0, r.height - cB)}px ${cL}px round 6px)`;
           const selectOffCanvas = async () => {
             const el = elements.current.get(r.key);
             if (!el) return;
@@ -97,11 +97,6 @@ export function OffCanvasIndicators({
                     void selectOffCanvas();
                   }
                 }}
-              />
-              {/* Solid layer — clipped to canvas bounds, covers inside portion */}
-              <div
-                className="pointer-events-none absolute inset-0 border border-studio-accent/80 rounded-md bg-studio-accent/5 shadow-[0_0_0_1px_rgba(60,230,172,0.25)]"
-                style={{ clipPath: clipInside }}
               />
             </div>
           );
