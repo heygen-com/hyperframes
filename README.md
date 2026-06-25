@@ -51,7 +51,7 @@ The skills teach agents the HyperFrames production loop: plan the video, write v
 
 HyperFrames ships 19 skills agents load on demand. Read `/hyperframes` first — it's the router and capability map; it picks a workflow for any "make me a video" request and points to the domain skills below.
 
-Install everything at once with `npx skills add heygen-com/hyperframes`, or just one with `npx skills add heygen-com/hyperframes --skill <name>` (bare name, no leading `/`).
+Run `npx skills add heygen-com/hyperframes` for the interactive picker, `npx skills add heygen-com/hyperframes --all` to install all 19 at once (skips the picker), or `npx skills add heygen-com/hyperframes --skill <name>` for just one (bare name, no leading `/`).
 
 ### Router
 

@@ -14,12 +14,19 @@ The skills split into three groups:
 ## Install
 
 <Steps>
-  <Step title="Install all skills at once (recommended)">
+  <Step title="Pick what to install (interactive picker)">
     ```bash
     npx skills add heygen-com/hyperframes
     ```
 
-    Writes every skill to your project. Works with [Claude Code](https://claude.ai/claude-code), [Cursor](https://cursor.sh), [Gemini CLI](https://github.com/google-gemini/gemini-cli), [Codex CLI](https://github.com/openai/codex), [GitHub Copilot CLI](/guides/copilot-cli), and [Google Antigravity](/guides/antigravity).
+    Opens a picker so you can choose which skills to add. Works with [Claude Code](https://claude.ai/claude-code), [Cursor](https://cursor.sh), [Gemini CLI](https://github.com/google-gemini/gemini-cli), [Codex CLI](https://github.com/openai/codex), [GitHub Copilot CLI](/guides/copilot-cli), and [Google Antigravity](/guides/antigravity).
+  </Step>
+  <Step title="Or install all 19 at once (skip the picker)">
+    ```bash
+    npx skills add heygen-com/hyperframes --all
+    ```
+
+    Writes every skill to your project in one shot. Recommended when you want the full set without selecting from the picker.
   </Step>
   <Step title="Or install one skill at a time">
     ```bash
