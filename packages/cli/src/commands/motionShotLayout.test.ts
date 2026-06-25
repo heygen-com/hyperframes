@@ -2,12 +2,25 @@ import { describe, expect, it } from "vitest";
 import {
   buildOnionSvg,
   fitTransform,
+  ghostAlphas,
   parseAngle,
   resolveShotSelectors,
   sampleTimes,
   stripCells,
   type OnionElement,
 } from "./motionShotLayout.js";
+
+describe("ghostAlphas", () => {
+  it("ramps older→fainter, newest solid, monotonic increasing", () => {
+    expect(ghostAlphas(0)).toEqual([]);
+    expect(ghostAlphas(1)).toEqual([1]);
+    const a = ghostAlphas(5);
+    expect(a).toHaveLength(5);
+    expect(a[0]).toBeCloseTo(0.14, 3); // oldest faintest
+    expect(a[4]).toBe(1); // newest solid
+    for (let i = 1; i < a.length; i++) expect(a[i]).toBeGreaterThan(a[i - 1]!);
+  });
+});
 
 describe("resolveShotSelectors", () => {
   const animated = [".title", ".cube", ".floor"];

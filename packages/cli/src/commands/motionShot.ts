@@ -13,6 +13,7 @@
 import { writeFileSync } from "node:fs";
 import {
   buildOnionSvg,
+  ghostAlphas,
   parseAngle,
   resolveShotSelectors,
   sampleTimes,
@@ -50,6 +51,10 @@ export interface ShotOptions {
    *  to that element if it animates, else to its animated descendants (so a
    *  static `.clip` wrapper resolves to the animated children under it). */
   scopeSelector?: string | null;
+  /** Rendered ("ghost") onion-skin: capture the canvas pixels at each sample and
+   *  composite them as translucent ghosts (older fainter → newest solid) — the
+   *  canvas/WebGL motion the bbox-marker onion can't see. Requires a <canvas>. */
+  ghost?: boolean;
 }
 
 interface PageSample {
@@ -86,6 +91,55 @@ function applyOrbitCamera(selectors: string[], cam: { yaw: number; pitch: number
   const lens = root.parentElement ?? document.body;
   lens.style.perspective = "1600px";
   lens.style.perspectiveOrigin = "50% 50%";
+}
+
+// Runs IN THE BROWSER. Composite N real painted frames (data URLs) onto a black
+// canvas with per-frame opacity (older fainter → newest solid) so canvas/WebGL
+// motion reads as a rendered onion-skin trail. Returns the composite as a PNG
+// data URL. Used by the `--ghost` mode.
+function compositeGhostFrames(
+  frames: string[],
+  alphas: number[],
+  W: number,
+  H: number,
+  label: string,
+): Promise<string> {
+  return new Promise((resolve) => {
+    const cv = document.createElement("canvas");
+    cv.width = W;
+    cv.height = H;
+    const ctx = cv.getContext("2d");
+    if (!ctx) {
+      resolve("");
+      return;
+    }
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, W, H);
+    let i = 0;
+    const step = () => {
+      if (i >= frames.length) {
+        ctx.globalAlpha = 1;
+        ctx.font = "600 22px ui-monospace, SFMono-Regular, Menlo, monospace";
+        ctx.fillStyle = "#86c2ff";
+        ctx.fillText(label, 24, 38);
+        resolve(cv.toDataURL("image/png"));
+        return;
+      }
+      const img = new Image();
+      img.onload = () => {
+        ctx.globalAlpha = alphas[i] ?? 1;
+        ctx.drawImage(img, 0, 0, W, H);
+        i += 1;
+        step();
+      };
+      img.onerror = () => {
+        i += 1;
+        step();
+      };
+      img.src = frames[i] ?? "";
+    };
+    step();
+  });
 }
 
 // Launch headless Chrome, load the composition sized to its canvas, wait for the
@@ -235,7 +289,7 @@ export async function captureMotionPathShot(
     // whose animated children carry the tweens. Resolve, in the live DOM, to the
     // scope itself if it animates, else its animated descendants — so the shot
     // works on the standard composition shape instead of erroring.
-    if (opts.scopeSelector) {
+    if (opts.scopeSelector && !opts.ghost) {
       const resolved = await resolveScopeInBrowser(
         page,
         opts.scopeSelector,
@@ -262,6 +316,103 @@ export async function captureMotionPathShot(
       opts.from ?? null,
       opts.to ?? null,
     );
+
+    // ── Rendered ("ghost") onion-skin ──────────────────────────────────────────
+    // Screenshot the REAL painted stage at each sample and composite them as
+    // translucent ghosts. This is the onion-skin for canvas/WebGL motion the
+    // marker sampler is blind to (the markers project a bbox; the pixels are the
+    // motion). Works for any visual composition.
+    if (opts.ghost) {
+      if (camera.yaw !== 0 || camera.pitch !== 0) {
+        await page.evaluate(
+          applyOrbitCamera,
+          requests.map((r) => r.selector),
+          camera,
+        );
+      }
+      // --ghost is the rendered onion for canvas/WebGL motion — the case the
+      // marker onion is blind to. For DOM/SVG the default --shot onion already
+      // shows transform motion, so require a canvas here rather than ship a
+      // page.screenshot path that fights the runtime's virtual-time rAF.
+      const hasCanvas = await page.evaluate(() => document.querySelectorAll("canvas").length > 0);
+      if (!hasCanvas) {
+        throw new Error(
+          "--ghost renders a canvas/WebGL motion trail, but this composition has no <canvas>. Use the default --shot onion for DOM/SVG transform motion.",
+        );
+      }
+      const frames: string[] = [];
+      for (const t of times) {
+        // In-tick capture: seek the timeline (fires the composition's onUpdate
+        // render synchronously) + nudge the three-adapter (hf-seek / __hfThreeTime
+        // / render hook), then drawImage the canvas in the SAME tick — before the
+        // browser clears the GL drawing buffer (works without preserveDrawingBuffer;
+        // page.screenshot can't see the GL buffer here).
+        const dataUrl = await page.evaluate((tt: number) => {
+          const w = window as unknown as {
+            __hfThreeTime?: number;
+            __hfThreeRender?: () => void;
+            __timelines?: Record<
+              string,
+              {
+                pause?: () => void;
+                seek?: (t: number) => void;
+                totalTime?: (t: number, s: boolean) => void;
+              }
+            >;
+          };
+          Object.values(w.__timelines ?? {}).forEach((tl) => {
+            try {
+              tl.pause?.();
+              if (typeof tl.totalTime === "function") tl.totalTime(tt, false);
+              else tl.seek?.(tt);
+            } catch {
+              /* best-effort */
+            }
+          });
+          try {
+            w.__hfThreeTime = tt;
+            window.dispatchEvent(new CustomEvent("hf-seek", { detail: { time: tt } }));
+            w.__hfThreeRender?.();
+          } catch {
+            /* best-effort */
+          }
+          const root = (document.querySelector("[data-composition-id]") ??
+            document.body) as HTMLElement;
+          const rb = root.getBoundingClientRect();
+          const off = document.createElement("canvas");
+          off.width = Math.max(1, Math.round(rb.width));
+          off.height = Math.max(1, Math.round(rb.height));
+          const octx = off.getContext("2d");
+          for (const cv of Array.from(document.querySelectorAll("canvas"))) {
+            const r = cv.getBoundingClientRect();
+            try {
+              octx?.drawImage(cv, r.left - rb.left, r.top - rb.top, r.width, r.height);
+            } catch {
+              /* tainted / not ready — skip */
+            }
+          }
+          return off.toDataURL("image/png");
+        }, t);
+        frames.push(dataUrl);
+      }
+      const camLabelG =
+        camera.yaw === 0 && camera.pitch === 0
+          ? "front"
+          : `yaw ${camera.yaw}° pitch ${camera.pitch}°`;
+      const labelG = `${camLabelG}  ·  rendered onion  ·  ${times.length} frames  ·  t ${times[0]}–${times[times.length - 1]}s`;
+      const dataUrl = (await page.evaluate(
+        compositeGhostFrames,
+        frames,
+        ghostAlphas(frames.length),
+        size.width,
+        size.height,
+        labelG,
+      )) as string;
+      const b64 = String(dataUrl).replace(/^data:image\/png;base64,/, "");
+      if (!b64) throw new Error("ghost composite returned no data");
+      writeFileSync(outPath, Buffer.from(b64, "base64"));
+      return outPath;
+    }
 
     // Orbit camera as its own step (keeps the sampler simple), only when angled.
     if (camera.yaw !== 0 || camera.pitch !== 0) {

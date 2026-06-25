@@ -396,6 +396,7 @@ interface ShotArgs {
   to?: string;
   fit?: boolean;
   angle?: string;
+  ghost?: boolean;
 }
 
 // Every animated element qualifies — the onion samples the live element and shows
@@ -429,7 +430,9 @@ async function runOnionShot(
     console.log(c.dim("--shot needs a project directory (not a single .html file)."));
     return true;
   }
-  if (requests.length === 0) {
+  // The rendered onion (--ghost) screenshots the whole painted stage, so it does
+  // not need an animated DOM element to sample — only the marker onion does.
+  if (requests.length === 0 && !args.ghost) {
     console.log(c.dim("--shot: no animated element to sample for the selection."));
     return true;
   }
@@ -441,6 +444,7 @@ async function runOnionShot(
     to: num(args.to),
     angle: args.angle,
     scopeSelector: args.selector ?? null,
+    ghost: args.ghost ?? false,
   });
   console.log(`${c.success("◇")}  onion-skin screenshot saved ${c.accent(saved)}`);
   console.log(
@@ -547,6 +551,12 @@ export default defineCommand({
       type: "boolean",
       description: "--shot: zoom the motion to fill the frame (default true; --no-fit to disable).",
       default: true,
+    },
+    ghost: {
+      type: "boolean",
+      description:
+        "--shot: rendered onion-skin — composite the real canvas/WebGL frames as translucent ghosts (older fainter), instead of bbox markers. For the canvas-internal 3D motion the marker onion can't see (requires a <canvas>).",
+      default: false,
     },
   },
   async run({ args }) {

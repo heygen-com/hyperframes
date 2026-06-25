@@ -98,6 +98,19 @@ export function sampleTimes(
   });
 }
 
+/** Opacity ramp for the rendered ("ghost") onion-skin: older frames fainter,
+ *  the newest frame solid, so the composite of real painted frames reads as a
+ *  motion trail leading to the final pose. One alpha in [0,1] per sample. */
+export function ghostAlphas(n: number): number[] {
+  if (n <= 0) return [];
+  if (n === 1) return [1];
+  const lo = 0.14;
+  return Array.from(
+    { length: n },
+    (_, i) => Math.round((lo + (1 - lo) * (i / (n - 1))) * 1000) / 1000,
+  );
+}
+
 /** Scale+centre transform that fits `pts` into a W×H frame (with padding). */
 export function fitTransform(
   pts: Pt[],
