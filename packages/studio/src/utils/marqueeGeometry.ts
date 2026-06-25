@@ -10,7 +10,7 @@ export interface Rect {
   height: number;
 }
 
-type Corners = [Point, Point, Point, Point];
+export type Corners = [Point, Point, Point, Point];
 
 function isIdentityMatrix(m: DOMMatrix): boolean {
   const e = 1e-6;

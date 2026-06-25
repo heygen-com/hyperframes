@@ -568,6 +568,14 @@ export const DomEditOverlay = memo(function DomEditOverlay({
         activeCompositionPathRef={activeCompositionPathRef}
         onSelectionChangeRef={onSelectionChangeRef}
       />
+      {marquee.candidateRects.map((r, i) => (
+        <div
+          key={i}
+          aria-hidden="true"
+          className="pointer-events-none absolute rounded-sm border border-studio-accent bg-studio-accent/5"
+          style={{ left: r.left, top: r.top, width: r.width, height: r.height }}
+        />
+      ))}
       {marquee.marqueeRect && (
         <div
           aria-hidden="true"

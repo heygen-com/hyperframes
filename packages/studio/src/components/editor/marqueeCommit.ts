@@ -3,7 +3,12 @@ import type { DomEditSelection } from "./domEditing";
 import { collectDomEditLayerItems, resolveDomEditSelection } from "./domEditingLayers";
 import { isElementComputedVisible } from "./domEditingElement";
 import { coversComposition } from "../../utils/studioPreviewHelpers";
-import { elementObbCorners, marqueeIntersectsObb } from "../../utils/marqueeGeometry";
+import {
+  elementObbCorners,
+  marqueeIntersectsObb,
+  type Corners,
+  type Rect,
+} from "../../utils/marqueeGeometry";
 
 interface MarqueeState {
   startX: number;
@@ -16,13 +21,24 @@ interface MarqueeState {
 
 const MARQUEE_THRESHOLD_PX = 4;
 
+interface MarqueeHit {
+  element: HTMLElement;
+  corners: Corners;
+}
+
+/**
+ * Synchronous core of the marquee: the elements whose OBB intersects the
+ * marquee rect, with their overlay-space corners. Shared by the live
+ * candidate highlight (per pointer-move) and the mouse-up commit. No async
+ * source probe — that only happens once, on commit.
+ */
 // fallow-ignore-next-line complexity
-async function runMarqueeIntersection(
-  rect: { left: number; top: number; width: number; height: number },
+function collectMarqueeHits(
+  rect: Rect,
   iframe: HTMLIFrameElement,
   overlayEl: HTMLDivElement,
   activeCompositionPath: string,
-): Promise<DomEditSelection[]> {
+): MarqueeHit[] {
   const doc = iframe.contentDocument;
   if (!doc) return [];
 
@@ -38,7 +54,7 @@ async function runMarqueeIntersection(
     height: declH > 0 ? declH : rootEl.getBoundingClientRect().height || 1,
   };
 
-  const hits: DomEditSelection[] = [];
+  const hits: MarqueeHit[] = [];
   for (const item of items) {
     const el = item.element;
     if (!isElementComputedVisible(el)) continue;
@@ -46,14 +62,37 @@ async function runMarqueeIntersection(
     const corners = elementObbCorners(el, overlayEl, iframe);
     if (!corners) continue;
     if (!marqueeIntersectsObb(rect, corners)) continue;
-    const sel = await resolveDomEditSelection(el, {
+    hits.push({ element: el, corners });
+  }
+
+  return hits;
+}
+
+/** Axis-aligned bounding box of an OBB's corners, in overlay-pixel space. */
+function cornersToRect(corners: Corners): Rect {
+  const xs = corners.map((c) => c.x);
+  const ys = corners.map((c) => c.y);
+  const left = Math.min(...xs);
+  const top = Math.min(...ys);
+  return { left, top, width: Math.max(...xs) - left, height: Math.max(...ys) - top };
+}
+
+async function runMarqueeIntersection(
+  rect: Rect,
+  iframe: HTMLIFrameElement,
+  overlayEl: HTMLDivElement,
+  activeCompositionPath: string,
+): Promise<DomEditSelection[]> {
+  const isMasterView = !activeCompositionPath || activeCompositionPath === "index.html";
+  const hits: DomEditSelection[] = [];
+  for (const { element } of collectMarqueeHits(rect, iframe, overlayEl, activeCompositionPath)) {
+    const sel = await resolveDomEditSelection(element, {
       activeCompositionPath,
       isMasterView,
       skipSourceProbe: true,
     });
     if (sel) hits.push(sel);
   }
-
   return hits;
 }
 
@@ -75,12 +114,12 @@ interface MarqueeGesturesDeps {
 // fallow-ignore-next-line complexity
 export function useMarqueeGestures(deps: MarqueeGesturesDeps) {
   const marqueeRef = useRef<MarqueeState | null>(null);
-  const [marqueeRect, setMarqueeRect] = useState<{
-    left: number;
-    top: number;
-    width: number;
-    height: number;
-  } | null>(null);
+  const [marqueeRect, setMarqueeRect] = useState<Rect | null>(null);
+  // Live "candidate" highlight: the elements the marquee currently touches,
+  // shown before mouse-up so you can see what you're about to select. The
+  // iframe DOM doesn't mutate during a drag, so a sync intersection per move
+  // is cheap (clean layout → no thrash).
+  const [candidateRects, setCandidateRects] = useState<Rect[]>([]);
 
   const commitMarquee = useCallback(
     async (
@@ -111,17 +150,26 @@ export function useMarqueeGestures(deps: MarqueeGesturesDeps) {
           if (Math.hypot(dx, dy) < MARQUEE_THRESHOLD_PX) return;
           m.pastThreshold = true;
         }
-        setMarqueeRect({
+        const rect: Rect = {
           left: Math.min(m.startX, m.currentX),
           top: Math.min(m.startY, m.currentY),
           width: Math.abs(m.currentX - m.startX),
           height: Math.abs(m.currentY - m.startY),
-        });
+        };
+        setMarqueeRect(rect);
+        const iframe = deps.iframeRef.current;
+        const overlay = deps.overlayRef.current;
+        if (iframe && overlay) {
+          const acp = deps.activeCompositionPathRef.current ?? "index.html";
+          setCandidateRects(
+            collectMarqueeHits(rect, iframe, overlay, acp).map((h) => cornersToRect(h.corners)),
+          );
+        }
         return;
       }
       deps.gestures.onPointerMove(event);
     },
-    [deps.gestures, deps.overlayRef],
+    [deps.gestures, deps.overlayRef, deps.iframeRef, deps.activeCompositionPathRef],
   );
 
   const onPointerUp = useCallback(
@@ -148,6 +196,7 @@ export function useMarqueeGestures(deps: MarqueeGesturesDeps) {
           deps.onMarqueeSelectRef.current?.([], false);
         }
         setMarqueeRect(null);
+        setCandidateRects([]);
         return;
       }
       deps.gestures.onPointerUp(event);
@@ -159,10 +208,11 @@ export function useMarqueeGestures(deps: MarqueeGesturesDeps) {
     if (marqueeRef.current) {
       marqueeRef.current = null;
       setMarqueeRect(null);
+      setCandidateRects([]);
       return;
     }
     deps.gestures.clearPointerState(deps.selectionRef);
   }, [deps.gestures, deps.selectionRef]);
 
-  return { marqueeRef, marqueeRect, onPointerMove, onPointerUp, onPointerCancel };
+  return { marqueeRef, marqueeRect, candidateRects, onPointerMove, onPointerUp, onPointerCancel };
 }
