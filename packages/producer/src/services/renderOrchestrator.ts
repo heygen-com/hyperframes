@@ -554,10 +554,9 @@ export function getNextRetryWorkerCount(currentWorkers: number): number {
  * frames it set out to capture), the composition is structurally broken — a
  * never-ready page, zero duration, or unparseable HTML — not a flaky worker.
  * Re-running it at lower parallelism just burns another full readiness/protocol
- * timeout per worker, which is what blew up render P95 in Jun 2026 (broken
- * renders walked 16->8->4->2->1 workers, ~46min each before finally failing).
- * ponytail: total zero-progress == broken; a partially-captured attempt still
- * retries, so genuine flaky-worker gaps are unaffected.
+ * timeout per worker, turning a render that can never succeed into a long hang.
+ * A partially-captured attempt still retries, so genuine flaky-worker gaps are
+ * unaffected.
  */
 export function captureAttemptMadeProgress(
   attemptTargetFrameCount: number,
@@ -692,11 +691,14 @@ export async function executeDiskCaptureWithAdaptiveRetry(options: {
         return attempts;
       }
       const remainingCount = countFrameRanges(remaining);
-      if (
-        !options.allowRetry ||
-        currentWorkers <= 1 ||
-        !captureAttemptMadeProgress(frameCount, remainingCount)
-      ) {
+      const madeProgress = captureAttemptMadeProgress(frameCount, remainingCount);
+      if (!madeProgress) {
+        options.log.warn(
+          "[Render] Capture attempt made no forward progress; composition is likely structurally broken — not retrying.",
+          { attempt, frameCount, remainingCount, workers: currentWorkers },
+        );
+      }
+      if (!options.allowRetry || currentWorkers <= 1 || !madeProgress) {
         throw new Error(`[Render] Capture completed but ${remainingCount} frame(s) are missing`);
       }
 
@@ -719,11 +721,18 @@ export async function executeDiskCaptureWithAdaptiveRetry(options: {
         return attempts;
       }
       const remainingCount = countFrameRanges(remaining);
+      const madeProgress = captureAttemptMadeProgress(frameCount, remainingCount);
+      if (!madeProgress) {
+        options.log.warn(
+          "[Render] Capture attempt made no forward progress; composition is likely structurally broken — not retrying.",
+          { attempt, frameCount, remainingCount, workers: currentWorkers },
+        );
+      }
       if (
         !options.allowRetry ||
         currentWorkers <= 1 ||
         !isRecoverableParallelCaptureError(error) ||
-        !captureAttemptMadeProgress(frameCount, remainingCount)
+        !madeProgress
       ) {
         throw error;
       }

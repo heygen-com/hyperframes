@@ -2,12 +2,22 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, win32 } from "node:path";
 import { tmpdir } from "node:os";
-import type { EngineConfig, ExtractedFrames } from "@hyperframes/engine";
+import type { CaptureOptions, EngineConfig, ExtractedFrames } from "@hyperframes/engine";
+import { executeParallelCapture, mergeWorkerFrames } from "@hyperframes/engine";
 import type { CompiledComposition } from "./htmlCompiler.js";
+
+// Replace only the two engine functions the adaptive-retry loop uses to touch
+// disk; everything else (distributeFrames, types, etc.) stays real so the loop
+// runs for real against a temp framesDir.
+vi.mock("@hyperframes/engine", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@hyperframes/engine")>();
+  return { ...actual, executeParallelCapture: vi.fn(), mergeWorkerFrames: vi.fn() };
+});
 
 import {
   buildMissingFrameRetryBatches,
   captureAttemptMadeProgress,
+  executeDiskCaptureWithAdaptiveRetry,
   collectVideoMetadataHints,
   collectVideoReadinessSkipIds,
   extractStandaloneEntryFromIndex,
@@ -108,6 +118,54 @@ describe("captureAttemptMadeProgress", () => {
     expect(captureAttemptMadeProgress(100, 100)).toBe(false);
     // defensive: never-greater-than guard, treat >= target as no progress
     expect(captureAttemptMadeProgress(100, 120)).toBe(false);
+  });
+});
+
+describe("executeDiskCaptureWithAdaptiveRetry — zero-progress bail (integration)", () => {
+  const makeLog = () => ({ error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() });
+
+  afterEach(() => {
+    vi.mocked(executeParallelCapture).mockReset();
+    vi.mocked(mergeWorkerFrames).mockReset();
+  });
+
+  it("runs exactly one attempt (no worker-halving retries) when an attempt captures zero frames", async () => {
+    // Capture writes nothing -> framesDir stays empty -> every frame still missing.
+    vi.mocked(executeParallelCapture).mockResolvedValue([]);
+    vi.mocked(mergeWorkerFrames).mockResolvedValue(undefined);
+
+    const workDir = mkdtempSync(join(tmpdir(), "hf-retry-work-"));
+    const framesDir = mkdtempSync(join(tmpdir(), "hf-retry-frames-"));
+    const log = makeLog();
+    try {
+      await expect(
+        executeDiskCaptureWithAdaptiveRetry({
+          serverUrl: "http://localhost:0",
+          workDir,
+          framesDir,
+          totalFrames: 4,
+          initialWorkerCount: 4,
+          allowRetry: true,
+          frameExt: "jpg",
+          captureOptions: {} as CaptureOptions,
+          createBeforeCaptureHook: () => null,
+          cfg: {} as EngineConfig,
+          log,
+          dedupPerfs: [],
+        }),
+      ).rejects.toThrow(/4 frame\(s\) are missing/);
+
+      // The gate under test: without it the loop would walk 4 -> 2 -> 1 workers
+      // (3 capture calls) before giving up. One call proves it bailed immediately.
+      expect(vi.mocked(executeParallelCapture)).toHaveBeenCalledTimes(1);
+      expect(log.warn).toHaveBeenCalledWith(
+        expect.stringContaining("no forward progress"),
+        expect.objectContaining({ attempt: 0, frameCount: 4, remainingCount: 4 }),
+      );
+    } finally {
+      rmSync(workDir, { recursive: true, force: true });
+      rmSync(framesDir, { recursive: true, force: true });
+    }
   });
 });
 
