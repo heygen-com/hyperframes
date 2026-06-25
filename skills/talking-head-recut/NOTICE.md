@@ -1,12 +1,12 @@
 # Attribution
 
-The `graphic-overlays` skill (its card-based design system — styles, layouts, frames,
+The `talking-head-recut` skill (its card-based design system — styles, layouts, frames,
 fonts, and the GSAP-driven composition workflow) is **adapted from** the open-source
 **vtake-skills** project (`vtake-cut`):
 
 > https://github.com/notedit/vtake-skills
 
-Adaptations for this repo: renamed to `graphic-overlays`; transcription repointed to
+Adaptations for this repo: renamed to `talking-head-recut`; transcription repointed to
 local Whisper via `hyperframes transcribe` (dropping the third-party `@notedit/vtake`
 CLI and the `vtake.app` proxy); audio/metadata extraction inlined with `ffmpeg`/`ffprobe`;
 the fixed third-party brand outro removed in favour of an optional, neutral outro;

@@ -1,11 +1,11 @@
 ---
-name: graphic-overlays
+name: talking-head-recut
 description: Package an existing talking-head / interview / podcast video by layering timed, designed GRAPHIC OVERLAY cards onto the playing video — titles, lower-thirds, data callouts, quotes, side panels, picture-in-picture — synced to the transcript. The source video plays in full; the agent designs and writes each card's HTML in conversation, then renders to MP4 via hyperframes. Use when the user asks for graphic overlays, on-screen graphics / lower-thirds / data callouts / kinetic titles on a video, "package / dress up my video", "add overlay cards / graphic cards", or AI-composed graphic packaging of an existing video. NOT for plain subtitles (→ embedded-captions) or building a video from scratch (→ the creation workflows); when unsure overlays-vs-captions, see /hyperframes.
 ---
 
-# Graphic Overlays
+# Talking Head Recut
 
-Graphic Overlays takes a local video that **plays in full** and layers a sequence of
+Talking Head Recut takes a local video that **plays in full** and layers a sequence of
 timed, designed **graphic cards** onto it — titles, lower-thirds, data callouts,
 quotes, side panels, picture-in-picture — synced to what's being said. The agent
 designs the cards (timing + content) and **writes each card's HTML directly in the
@@ -913,7 +913,7 @@ ffmpeg -y -i "$VIDEO_PATH" -c:v libx264 -crf 18 -g 30 -keyint_min 30 \
   <body>
     <div
       id="stage"
-      data-composition-id="graphic-overlays"
+      data-composition-id="talking-head-recut"
       data-start="0"
       data-duration="121.2"
       data-fps="30"
@@ -1042,7 +1042,7 @@ ffmpeg -y -i "$VIDEO_PATH" -c:v libx264 -crf 18 -g 30 -keyint_min 30 \
           //    insert another tl.to('#video-wrap', ...) tween before its enter ──
 
           window.__timelines = window.__timelines || {};
-          window.__timelines["graphic-overlays"] = tl;
+          window.__timelines["talking-head-recut"] = tl;
         })();
       </script>
     </div>
@@ -1136,7 +1136,7 @@ decides where the actual visible card sits.
 - Build each card's static hero frame first: the moment where the card is fully visible and readable.
 - Confirm video, cards, subtitles/captions, and diagrams do not unintentionally overlap.
 - Confirm hidden video areas are clipped by the frame and not visible outside intended bounds.
-- Register one paused master timeline as `window.__timelines["graphic-overlays"]`.
+- Register one paused master timeline as `window.__timelines["talking-head-recut"]`.
 - Build timelines synchronously at page load; no `async`, `setTimeout`, Promises, or media `play()` calls.
 - Do not use `Math.random()` or `Date.now()` in render paths.
 - Do not use `repeat: -1`; calculate finite repeats from the video duration.
@@ -1152,7 +1152,7 @@ decides where the actual visible card sits.
 ```bash
 cd "$WORK_DIR"
 PRODUCER_BROWSER_GPU_MODE=hardware npx hyperframes render public \
-  --skill=graphic-overlays \
+  --skill=talking-head-recut \
   -o output.mp4 \
   --fps 30
 ```

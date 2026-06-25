@@ -1,6 +1,6 @@
 # V—Take Visual Design Library
 
-This directory is a **reference library** for the graphic-overlays skill. Style, layout,
+This directory is a **reference library** for the talking-head-recut skill. Style, layout,
 and video frame are three **orthogonal** dimensions you can freely mix when
 designing a takeaway video.
 
@@ -10,7 +10,7 @@ Style  ×  Layout  ×  VideoFrame
 ```
 
 Read a reference file when you decide to use that dimension. Each file is a
-self-contained HTML fragment that follows the graphic-overlays card-HTML contract
+self-contained HTML fragment that follows the talking-head-recut card-HTML contract
 (scoped `<style>`, no `<script>`, no external URLs, animations only via
 `data-anim-*`).
 

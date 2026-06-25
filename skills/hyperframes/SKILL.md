@@ -58,7 +58,7 @@ Routing needs to know **what the video is about** — its input and subject. If 
 | `/faceless-explainer`      | **Explaining a topic / concept** from text — no product, no URL; every visual is LLM-invented                                                                          |
 | `/pr-to-video`             | A **GitHub PR / code change** → changelog / feature-reveal / fix / refactor explainer                                                                                  |
 | `/embedded-captions`       | Adding **captions / subtitles** to an existing talking-head video (footage untouched)                                                                                  |
-| `/graphic-overlays`        | Packaging an existing talking-head video with **designed graphic overlays** — lower-thirds, data callouts, kinetic titles, pull-quotes                                 |
+| `/talking-head-recut`      | Packaging an existing talking-head video with **designed graphic overlays** — lower-thirds, data callouts, kinetic titles, pull-quotes                                 |
 | `/motion-graphics`         | A short, **unnarrated, design-led motion graphic** — kinetic type, a stat / chart hit, a logo sting, a lower-third overlay                                             |
 | `/music-to-video`          | A **music track** → a **beat-synced** video — lyric video, slideshow, or kinetic promo; the music drives pacing (optional user images / videos cut onto the beat grid) |
 | `/slideshow`               | A **presentation / pitch deck / interactive deck** — discrete slides, fragments, branching, hotspots; output is a navigable **deck**, not a rendered video             |
@@ -69,7 +69,7 @@ Routing needs to know **what the video is about** — its input and subject. If 
 
 - **Motion-first & unnarrated** (under ~10s, the motion _is_ the message) → `/motion-graphics`, regardless of input.
 - **A URL or script** — markets a specific product (even just naming the site) → `/product-launch-video`; a general non-product site → `/website-to-video`; a GitHub PR link → `/pr-to-video`; explains a concept with no product / site → `/faceless-explainer`. Genuinely unclear product-vs-topic, or launch-vs-general-site → ask one question.
-- **Existing footage** — plain spoken-word subtitles → `/embedded-captions`; designed overlay cards → `/graphic-overlays`. Neither edits the footage itself (re-timing / recolor / reframe / reorder / audio is NLE editing — out of scope).
+- **Existing footage** — plain spoken-word subtitles → `/embedded-captions`; designed overlay cards → `/talking-head-recut`. Neither edits the footage itself (re-timing / recolor / reframe / reorder / audio is NLE editing — out of scope).
 - **A music track is the input** (an audio file, or a video to pull audio from) with **no narration** → `/music-to-video` — the music's beats/energy drive the pacing. (Narrated pieces stay with the input-matched workflow above; `/motion-graphics` is for short unnarrated motion that isn't music-driven.)
 - **A presentation / pitch deck / interactive deck** (discrete slides, navigation, presenter mode) → `/slideshow` — output is a navigable deck, not a rendered video. An explicit "slideshow" request proceeds directly; an adjacent trigger ("deck / slides / presentation / convert this page") makes `/slideshow` confirm it's a slideshow before authoring, and switch to the appropriate non-slideshow workflow if not.
 - **Length is a guide, not a gate** — intent picks the workflow; go to `/general-video` only when the piece is clearly longer than ~3 min, or is a static / loop / custom format.
@@ -115,7 +115,7 @@ After they run it, re-read the workflow's skill and continue.
 - **Output:** the same footage **untouched**, with a caption layer — **Standard** (verbatim lower-third rail + an embedded climax behind the subject) or **Cinematic** (every caption composited behind the subject). Any length.
 - **Triggers:** "add captions / subtitles to this video", "captions behind the subject", "cinematic captions for my clip".
 
-### `/graphic-overlays`
+### `/talking-head-recut`
 
 - **Input:** An existing **talking-head / interview / podcast video** (MP4) to package with on-screen graphics — actual footage. Transcribed locally (Whisper). The clip plays in full underneath, untouched.
 - **Output:** the same footage with timed **graphic-overlay cards** — kinetic titles, lower-thirds, data callouts, pull-quotes, side panels, picture-in-picture — synced to the transcript. Any length.

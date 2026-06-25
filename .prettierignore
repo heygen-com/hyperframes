@@ -13,7 +13,7 @@ packages/**/__goldens__/
 skills/**/assets/vendor/
 skills/**/*.min.js
 # reference snippets with intentional pseudo-markup (literal "..." attributes)
-skills/graphic-overlays/references/frames/polaroid.html
+skills/talking-head-recut/references/frames/polaroid.html
 
 # Generated demo compositions — large video-pipeline output (GSAP/Three/WebGL
 # embedded), not hand-authored source; reformatting them is churn + risk. Listed
