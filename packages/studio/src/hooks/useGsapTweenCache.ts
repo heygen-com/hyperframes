@@ -27,6 +27,10 @@ function deduplicateKeyframes(keyframes: GsapPercentageKeyframe[]): GsapPercenta
 // fallow-ignore-next-line complexity
 function synthesizeFlatTweenKeyframes(anim: GsapAnimation): GsapKeyframesData | null {
   if (anim.method === "set") {
+    // A base `gsap.set` is an off-timeline static hold (no position) — it must NOT
+    // synthesize a 0% keyframe, or the timeline + panel would show a phantom
+    // keyframe diamond for a value that isn't animated.
+    if (anim.global) return null;
     return {
       format: "percentage",
       keyframes: [{ percentage: 0, properties: { ...anim.properties } }],
