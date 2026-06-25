@@ -12,12 +12,23 @@ import { buildArcPath, type ArcPathConfig } from "@hyperframes/core/gsap-parser-
 import { parsePercentageKeyframes, toAbsoluteTime } from "./gsapShared";
 import { roundTo3 } from "../utils/rounding";
 
+/**
+ * A GSAP tween's `vars` object — intentionally open: it mixes channel values
+ * (numbers), easing (strings), flags (booleans), nested keyframes (objects) and
+ * callbacks. Named so call sites read as "GSAP config", not an untyped escape hatch.
+ */
+export type GsapVars = Record<string, unknown>;
+
 export interface RuntimeTween {
   targets?: () => Element[];
-  vars?: Record<string, unknown>;
+  vars?: GsapVars;
   duration?: () => number;
   startTime?: () => number;
   invalidate?: () => RuntimeTween;
+  /** Remove this tween from its parent timeline (GSAP `kill()`). */
+  kill?: () => void;
+  /** The timeline this tween lives in — used to re-insert a rebuilt tween. */
+  parent?: RuntimeTimeline;
 }
 
 export interface RuntimeTimeline {
@@ -25,6 +36,8 @@ export interface RuntimeTimeline {
   duration?: () => number;
   time?: () => number;
   invalidate?: () => RuntimeTimeline;
+  /** Add a tween at an absolute position — used to rebuild a keyframe tween in place. */
+  to?: (targets: Element[], vars: GsapVars, position?: number) => RuntimeTween;
 }
 
 type Pct = { percentage: number; properties: Record<string, number | string> };
@@ -185,6 +198,28 @@ function varsCarryChannel(vars: Record<string, unknown> | undefined, channels: s
 }
 
 /**
+ * Like `varsCarryChannel` but for a keyframe tween: the channels live inside the
+ * keyframe steps (`vars.keyframes`), not as own props of `vars`. Handles the object
+ * form (`{ "0%": {...} }`) and the array form (`[{...}, ...]`).
+ */
+function keyframeVarsCarryChannel(
+  vars: Record<string, unknown> | undefined,
+  channels: string[],
+): boolean {
+  const kf = vars?.keyframes;
+  if (!kf || typeof kf !== "object") return false;
+  const steps = Array.isArray(kf) ? kf : Object.values(kf);
+  for (const step of steps) {
+    if (step && typeof step === "object") {
+      for (const ch of channels) {
+        if (Object.prototype.hasOwnProperty.call(step, ch)) return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
  * Resolve the live tween targeting `selector` using the SAME all-timelines scan
  * `readRuntimeKeyframes` uses, so read and write agree on "which tween". With
  * `kind: "keyframe"` it skips zero-duration `set`s and prefers the tween whose
@@ -219,7 +254,12 @@ export function resolveRuntimeTween(
     ? [compositionId]
     : Object.keys(timelines).filter((k) => typeof timelines[k]?.getChildren === "function");
 
-  const wantChannels = kind === "set" && channels && channels.length > 0 ? channels : null;
+  // Channels disambiguate co-located tweens for BOTH kinds: a `set` carries them as
+  // own vars props, a keyframe tween carries them inside its keyframe steps. An
+  // element can have a rotation keyframe tween AND a position keyframe tween; a
+  // rotation edit must land on the former. The reader passes no channels, so its
+  // playhead-containment path below is unchanged.
+  const wantChannels = channels && channels.length > 0 ? channels : null;
 
   let first: ResolvedRuntimeTween | null = null;
   let channelMatch: ResolvedRuntimeTween | null = null;
@@ -233,11 +273,15 @@ export function resolveRuntimeTween(
       const isSet = !(dur > 0);
       if (kind === "set" ? !isSet : isSet) continue;
       if (wantChannels) {
-        if (varsCarryChannel(tween.vars, wantChannels)) {
+        const carries =
+          kind === "set"
+            ? varsCarryChannel(tween.vars, wantChannels)
+            : keyframeVarsCarryChannel(tween.vars, wantChannels);
+        if (carries) {
           if (channelMatch === null) channelMatch = { tween, timeline };
         } else if (first === null) {
-          // A set carrying only disjoint channels: remember as last-resort
-          // fallback, but never prefer it over a channel-matching set.
+          // A tween carrying only disjoint channels: remember as last-resort
+          // fallback, but never prefer it over a channel-matching one.
           first = { tween, timeline };
         }
         continue;

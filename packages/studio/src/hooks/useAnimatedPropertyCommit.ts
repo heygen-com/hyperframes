@@ -206,6 +206,16 @@ async function commitKeyframeProps(
   }
 
   const existingKf = anim.keyframes?.keyframes.some((kf) => Math.abs(kf.percentage - pct) < 0.05);
+  // Rebuild the live keyframe tween in place so the edit shows instantly (no flash);
+  // rebuildKeyframeTween declines → soft reload if the tween can't be safely rebuilt.
+  const numericProps: Record<string, number> = {};
+  for (const [k, v] of Object.entries(properties)) {
+    if (typeof v === "number") numericProps[k] = v;
+  }
+  const instantPatch =
+    selector && Object.keys(numericProps).length > 0
+      ? { selector, change: { kind: "keyframe-rebuild" as const, pct, props: numericProps } }
+      : undefined;
   await commit(
     selection,
     existingKf
@@ -217,7 +227,11 @@ async function commitKeyframeProps(
           properties,
           backfillDefaults,
         },
-    { label: `Edit ${primaryProp} (keyframe ${pct}%)`, softReload: true },
+    {
+      label: `Edit ${primaryProp} (keyframe ${pct}%)`,
+      softReload: true,
+      ...(instantPatch ? { instantPatch } : {}),
+    },
   );
 }
 
