@@ -12,9 +12,11 @@ const VIEW_H = 112;
 const CX = VIEW_W / 2;
 const CY = 54;
 const RADIUS = 26;
-// Resting isometric camera so the cube reads as 3D at identity.
-const VIEW_RX = -20;
-const VIEW_RY = 26;
+// The cube mirrors the element's orientation 1:1 — no decorative viewing camera,
+// so at rotation 0/0/0 it faces front (flat) exactly like the un-rotated element.
+// The X/Y/Z axis gizmo keeps the flat-at-rest state readable.
+const VIEW_RX = 0;
+const VIEW_RY = 0;
 const SENSITIVITY = 0.6; // degrees per pixel of drag
 
 /**
