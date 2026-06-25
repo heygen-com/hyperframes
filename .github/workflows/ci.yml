@@ -229,11 +229,16 @@ jobs:
       - run: bun run --cwd packages/core build:hyperframes-runtime
       - run: bun run --filter '!@hyperframes/producer' test
 
-  # Runs the skills' own node:test suites (e.g. media-use), which live outside
-  # the workspace packages and are not covered by the `test` job above. Gated on
-  # the `skills` filter so a skills-only PR actually exercises them in CI.
+  # Tests under skills/**/*.test.mjs are bare `node --test` files with only
+  # `node:` built-in imports. They aren't part of any workspace package, and
+  # the main `Test` job's `code` path filter excludes `skills/**`, so without
+  # this dedicated job they'd never run in CI. Examples:
+  #   * skills/media-use/scripts/resolve.test.mjs
+  #   * skills/media-use/scripts/lib/manifest.test.mjs
+  # Several of these are regression guards (e.g. shell-injection cases), so
+  # the whole point is that they fire on PRs that touch skills/.
   test-skills:
-    name: Test (skills)
+    name: "Test: skills"
     needs: changes
     if: needs.changes.outputs.skills == 'true'
     runs-on: ubuntu-latest
@@ -243,7 +248,20 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
-      - run: node --test 'skills/**/*.test.mjs'
+      - name: Discover and run skills tests
+        # We expand the test list via bash so the job fails loudly when the
+        # matcher comes back empty, rather than silently no-op'ing (which
+        # would defeat the whole point of this job).
+        run: |
+          set -euo pipefail
+          mapfile -t SKILLS_TESTS < <(find skills -type f -name "*.test.mjs" | sort)
+          if [ "${#SKILLS_TESTS[@]}" -eq 0 ]; then
+            echo "::error::No skills/**/*.test.mjs files found. Did the layout change?"
+            exit 1
+          fi
+          printf 'Running %d skills test file(s):\n' "${#SKILLS_TESTS[@]}"
+          printf '  * %s\n' "${SKILLS_TESTS[@]}"
+          node --test "${SKILLS_TESTS[@]}"
 
   cli-npx-shim:
     name: "CLI: npx shim (${{ matrix.os }})"
