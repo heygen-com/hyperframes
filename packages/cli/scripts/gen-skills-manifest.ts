@@ -8,7 +8,7 @@
 // is fully deterministic: same skill content ⇒ byte-identical manifest. `--check`
 // exits non-zero when the committed manifest doesn't match current skill content.
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildManifest, MANIFEST_FILE, type SkillsManifest } from "../src/utils/skillsManifest.js";
@@ -49,9 +49,15 @@ function reportDrift(fresh: SkillsManifest, committed: SkillsManifest | null): v
 
 const fresh = buildManifest(skillsRoot, { source: "heygen-com/hyperframes" });
 
-const committed: SkillsManifest | null = existsSync(outPath)
-  ? (JSON.parse(readFileSync(outPath, "utf8")) as SkillsManifest)
-  : null;
+// Read the committed manifest directly (no existsSync precheck) so there's no
+// check-then-write race on outPath — a missing or unreadable file just means
+// "no committed manifest yet", and we write a fresh one below.
+let committed: SkillsManifest | null = null;
+try {
+  committed = JSON.parse(readFileSync(outPath, "utf8")) as SkillsManifest;
+} catch {
+  committed = null;
+}
 
 const inSync = committed !== null && signature(committed.skills) === signature(fresh.skills);
 const count = Object.keys(fresh.skills).length;

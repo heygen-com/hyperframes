@@ -18,9 +18,11 @@ describe("buildNpxCommand", () => {
     const npx = buildNpxCommand(["--version"]);
     const version = execFileSync(npx.command, npx.args, {
       encoding: "utf8",
-      timeout: 10_000,
+      timeout: 30_000,
     }).trim();
 
     expect(version).toMatch(/^\d+\.\d+\.\d+/);
-  });
+  }, // making this smoke test flaky. Give it generous headroom (it still asserts // Real npx cold-start on Windows CI routinely exceeds vitest's 5s default,
+  // a real version string, so it isn't reduced to a tautology by mocking).
+  60_000);
 });
