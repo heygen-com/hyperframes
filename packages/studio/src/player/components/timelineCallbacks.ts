@@ -39,6 +39,5 @@ export interface TimelineEditCallbacks {
   onDeleteKeyframe?: (elementId: string, percentage: number) => void;
   onDeleteAllKeyframes?: (elementId: string) => void;
   onChangeKeyframeEase?: (elementId: string, percentage: number, ease: string) => void;
-  onMoveKeyframe?: (element: TimelineElement, oldPct: number, newPct: number) => void;
   onToggleKeyframeAtPlayhead?: (element: TimelineElement) => void;
 }

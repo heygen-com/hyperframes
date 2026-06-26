@@ -91,11 +91,6 @@ interface TimelineCanvasProps {
   currentTime: number;
   onClickKeyframe?: (element: TimelineElement, percentage: number) => void;
   onShiftClickKeyframe?: (elementId: string, percentage: number) => void;
-  onDragKeyframe?: (element: TimelineElement, oldPct: number, newPct: number) => void;
-  /** Snap a keyframe's clip-relative % to the nearest beat (returns unchanged when none in range). */
-  onSnapKeyframePct?: (element: TimelineElement, pct: number) => number;
-  /** Select the element when a keyframe drag starts (loads its GSAP session). */
-  onPickKeyframeElement?: (element: TimelineElement) => void;
   onContextMenuKeyframe?: (e: React.MouseEvent, elementId: string, percentage: number) => void;
   onContextMenuClip?: (e: React.MouseEvent, element: TimelineElement) => void;
   beatAnalysis?: MusicBeatAnalysis | null;
@@ -143,9 +138,6 @@ export const TimelineCanvas = memo(function TimelineCanvas({
   currentTime,
   onClickKeyframe,
   onShiftClickKeyframe,
-  onDragKeyframe,
-  onSnapKeyframePct,
-  onPickKeyframeElement,
   onContextMenuKeyframe,
   onContextMenuClip,
   beatAnalysis,
@@ -446,11 +438,6 @@ export const TimelineCanvas = memo(function TimelineCanvas({
                         selectedKeyframes={selectedKeyframes}
                         onClickKeyframe={(pct) => onClickKeyframe?.(previewElement, pct)}
                         onShiftClickKeyframe={onShiftClickKeyframe}
-                        onDragKeyframe={(oldPct, newPct) =>
-                          onDragKeyframe?.(previewElement, oldPct, newPct)
-                        }
-                        snapPct={(pct) => onSnapKeyframePct?.(previewElement, pct) ?? pct}
-                        onPickForDrag={() => onPickKeyframeElement?.(previewElement)}
                         onContextMenuKeyframe={onContextMenuKeyframe}
                       />
                     )}

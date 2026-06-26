@@ -21,8 +21,6 @@ import { useDomEditActionsContext, useDomEditSelectionContext } from "../context
 import { TimelineEditProvider } from "../contexts/TimelineEditContext";
 import type { BlockPreviewInfo } from "./sidebar/BlocksTab";
 import { readStudioUiPreferences } from "../utils/studioUiPreferences";
-import { fetchParsedAnimations } from "../hooks/useGsapTweenCache";
-import { pickKeyframeTween, computeKeyframeMovePlan } from "./editor/keyframeMove";
 import type { GestureRecordingState } from "./editor/GestureRecordControl";
 
 export interface StudioPreviewAreaProps {
@@ -179,45 +177,6 @@ export function StudioPreviewArea({
       onChangeKeyframeEase: (_elId: string, _pct: number, ease: string) => {
         for (const anim of selectedGsapAnimations) {
           if (anim.keyframes) handleGsapUpdateMeta(anim.id, { ease });
-        }
-      },
-      // fallow-ignore-next-line complexity
-      onMoveKeyframe: async (_el: TimelineElement, oldPct: number, newPct: number) => {
-        // Resolve the dragged element's selection + parsed animations on demand
-        // (both awaited and cached) rather than relying on the async DOM-edit
-        // session being loaded for this element — that coupling made the commit
-        // intermittently no-op (revert) when dragging before the session caught up.
-        if (!projectId) return;
-        const sourceFile = _el.sourceFile || activeCompPath || "index.html";
-        const [selection, parsed] = await Promise.all([
-          buildDomSelectionForTimelineElement(_el),
-          fetchParsedAnimations(projectId, sourceFile),
-        ]);
-        if (!selection || !parsed) return;
-
-        const cached = usePlayerStore.getState().keyframeCache.get(_el.key ?? _el.id);
-        const cachedKf = cached?.keyframes.find((k) => Math.abs(k.percentage - oldPct) < 0.2);
-        const origAbsTime = _el.start + (oldPct / 100) * _el.duration;
-        const anim = pickKeyframeTween(
-          parsed.animations,
-          _el,
-          origAbsTime,
-          cachedKf?.propertyGroup,
-        );
-        if (!anim) return;
-
-        const plan = computeKeyframeMovePlan(
-          anim,
-          cachedKf?.tweenPercentage ?? oldPct,
-          _el,
-          newPct,
-        );
-        if (plan.meta) handleGsapUpdateMeta(anim.id, plan.meta, selection);
-        for (const pct of plan.removes) handleGsapRemoveKeyframe(anim.id, pct, selection);
-        for (const add of plan.adds) {
-          for (const [prop, val] of Object.entries(add.properties)) {
-            handleGsapAddKeyframe(anim.id, add.pct, prop, val, selection);
-          }
         }
       },
       // fallow-ignore-next-line complexity
