@@ -64,6 +64,7 @@ const GLOBAL_ARGS = [
   "claude-code",
   "universal",
   "--copy",
+  "--full-depth",
   "--yes",
 ] as const;
 
@@ -87,7 +88,7 @@ describe("hyperframes skills", () => {
     vi.restoreAllMocks();
   });
 
-  it("sets GIT_CLONE_PROTECTION_ACTIVE=0 on the spawned skills CLI child (GH #316)", async () => {
+  it("sets clone-safe env on the spawned skills CLI child (GH #316 + LFS skip)", async () => {
     setPlatform("linux");
 
     const { default: skillsCmd } = await import("./skills.js");
@@ -99,6 +100,8 @@ describe("hyperframes skills", () => {
     expect(first!.args).toContain("skills");
     expect(first!.args).toContain("add");
     expect(first!.env?.GIT_CLONE_PROTECTION_ACTIVE).toBe("0");
+    // --full-depth clones the repo; skip LFS so we don't drag in unrelated blobs.
+    expect(first!.env?.GIT_LFS_SKIP_SMUDGE).toBe("1");
   });
 
   it.each([

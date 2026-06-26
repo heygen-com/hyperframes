@@ -30,15 +30,25 @@ function spawnNpx(args: string[], opts: { cwd?: string } = {}): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(npx.command, npx.args, {
       stdio: "inherit",
-      timeout: 120_000,
+      // We install with --full-depth (a full `git clone` of the repo, the only
+      // path that bypasses the laggy skills.sh blob — see GLOBAL_INSTALL_ARGS),
+      // which is heavier than the blob fetch, so allow more headroom.
+      timeout: 300_000,
       cwd: opts.cwd,
-      // GH #316 — the upstream `skills` CLI shells out to `git clone`.
-      // When Git's clone-hook protection is active (shipped on by default in
-      // 2.45.1, reverted in 2.45.2, still present on many corporate and CI
-      // setups), a globally-registered `git lfs install` post-checkout hook
-      // aborts the clone. The args reaching this function are hardcoded — no
-      // user input reaches the spawn — so opting out here is safe.
-      env: { ...process.env, GIT_CLONE_PROTECTION_ACTIVE: "0" },
+      env: {
+        ...process.env,
+        // GH #316 — the upstream `skills` CLI shells out to `git clone`. When
+        // Git's clone-hook protection is active (default in 2.45.1, reverted in
+        // 2.45.2, still present on many corporate/CI setups), a globally
+        // registered `git lfs install` post-checkout hook aborts the clone. The
+        // args reaching this function are hardcoded (no user input), so opting
+        // out is safe.
+        GIT_CLONE_PROTECTION_ACTIVE: "0",
+        // Skills are text; the repo's LFS objects are unrelated binary assets.
+        // Skip the smudge so --full-depth doesn't drag down (or fail on) large
+        // LFS blobs the install doesn't need.
+        GIT_LFS_SKIP_SMUDGE: "1",
+      },
     });
     child.on("close", (code, signal) => {
       if (code === 0) resolve();
@@ -55,6 +65,13 @@ function spawnNpx(args: string[], opts: { cwd?: string } = {}): Promise<void> {
 // store out to every OTHER installed agent's global dir. Skills are
 // framework-general knowledge, so installing once globally beats copying a full
 // set into every project — and avoids the ~70-agent `--all` spray entirely.
+//
+// --full-depth forces a full `git clone` of the repo at HEAD. Without it, even
+// a full-URL `skills add` fetches from the skills.sh registry blob ("Fetching
+// skills"), which lags GitHub main by hours — so a fresh install would read as
+// several skills "outdated". --full-depth switches it to "Cloning repository",
+// the only path that gives the genuine latest. (Verified: blob path → ~9
+// outdated; --full-depth → all current.)
 const GLOBAL_INSTALL_ARGS = [
   "--skill",
   "*",
@@ -63,6 +80,7 @@ const GLOBAL_INSTALL_ARGS = [
   "claude-code",
   "universal",
   "--copy",
+  "--full-depth",
   "--yes",
 ];
 
@@ -73,10 +91,10 @@ function runSkillsAdd(
   return spawnNpx(["skills", "add", source, ...(opts.extraArgs ?? GLOBAL_INSTALL_ARGS)], opts);
 }
 
-// Use the full GitHub URL (not the `owner/repo` slug) so `skills add` git-clones
-// the repo directly at latest `main`, bypassing the skills.sh registry — which
-// can lag behind the repo. Our freshness check already resolves "latest"
-// straight from GitHub, so this keeps install/update consistent with check.
+// Use the full GitHub URL (not the `owner/repo` slug) as the clone source. The
+// freshness comes from --full-depth (see GLOBAL_INSTALL_ARGS), which clones the
+// repo at latest `main`; the URL just names what to clone. Our freshness check
+// resolves "latest" straight from GitHub too, so install and check agree.
 const SOURCES = [{ name: "HyperFrames", url: "https://github.com/heygen-com/hyperframes" }];
 
 export async function installAllSkills(
