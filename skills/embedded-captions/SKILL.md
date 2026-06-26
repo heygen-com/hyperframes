@@ -105,7 +105,7 @@ Read the samples. Refuse if:
 ## Pipeline — 5 steps
 
 ```
-1. hyperframes init <project> --non-interactive --video <video.mp4> --skip-skills
+1. hyperframes init <project> --non-interactive --video <video.mp4>
 2. bash scripts/prepare.sh <project>       # matte ∥ transcribe (parallel) → safe-zones. One command.
                                            #   → frames_fg/ transcript.json safe-zones.json
 3. [AGENT STEP — the only creative step] author a small JSON; see below by mode
@@ -116,6 +116,8 @@ Read the samples. Refuse if:
    (Theme mode: SKIP steps 3b/5 — render-theme.sh already runs compile + render-and-composite
     + _postfx.sh; the deliverable is final_fx.mp4, final.mp4 is pre-plate-reaction)
 ```
+
+Step 1's `init` checks the installed skills against the latest on GitHub and updates the global set if any are out of date.
 
 Step 3 differs by mode:
 

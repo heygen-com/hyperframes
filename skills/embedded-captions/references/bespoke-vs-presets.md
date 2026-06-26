@@ -135,7 +135,7 @@ For a new video that's clearly similar to an existing canonical example:
 
 ```bash
 # 1. Scaffold the project
-hyperframes init <project> --non-interactive --video <video.mp4> --skip-skills
+hyperframes init <project> --non-interactive --video <video.mp4>
 
 # 2. Matte + transcribe
 node scripts/matte.cjs <project>
