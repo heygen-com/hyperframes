@@ -87,6 +87,63 @@ function collectAliasedFonts(used: string[], declared: Set<string>): string[] {
   return aliased;
 }
 
+function normalizeFontFamily(name: string): string | null {
+  const decoded = name.replace(/\+/g, " ").trim();
+  if (!decoded) return null;
+  try {
+    return decodeURIComponent(decoded).trim().toLowerCase() || null;
+  } catch {
+    return decoded.toLowerCase();
+  }
+}
+
+function extractGoogleFontFamiliesFromUrl(rawUrl: string): string[] {
+  const url = rawUrl.replace(/&amp;/gi, "&");
+  let parsed: URL;
+  try {
+    parsed = new URL(url, "https://fonts.googleapis.com");
+  } catch {
+    return [];
+  }
+
+  if (parsed.hostname.toLowerCase() !== "fonts.googleapis.com") return [];
+  const families: string[] = [];
+  for (const value of parsed.searchParams.getAll("family")) {
+    for (const familySpec of value.split("|")) {
+      const family = normalizeFontFamily(familySpec.split(":")[0] || "");
+      if (family) families.push(family);
+    }
+  }
+  return families;
+}
+
+function collectGoogleFontFamilies(
+  source: string,
+  styles: Array<{ content: string }>,
+): Set<string> {
+  const families = new Set<string>();
+  const addUrl = (url: string) => {
+    for (const family of extractGoogleFontFamiliesFromUrl(url)) families.add(family);
+  };
+
+  const linkHrefRe =
+    /<link\b[^>]*\bhref\s*=\s*(?:(["'])([^"']*fonts\.googleapis\.com[^"']*)\1|([^\s>]*fonts\.googleapis\.com[^\s>]*))[^>]*>/gi;
+  for (const match of source.matchAll(linkHrefRe)) {
+    const href = match[2] || match[3];
+    if (href) addUrl(href);
+  }
+
+  const importUrlRe =
+    /@import\s+(?:url\(\s*)?(["']?)([^"')\s]*fonts\.googleapis\.com[^"')\s]*)\1\s*\)?/gi;
+  for (const style of styles) {
+    for (const match of style.content.matchAll(importUrlRe)) {
+      if (match[2]) addUrl(match[2]);
+    }
+  }
+
+  return families;
+}
+
 export const fontRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   // google_fonts_import
   ({ styles, source, rawSource, options }) => {
@@ -100,14 +157,14 @@ export const fontRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
     if (googleFontsInLink || googleFontsInImport) {
       findings.push({
         code: "google_fonts_import",
-        severity: "error",
+        severity: "warning",
         message:
-          "Composition loads fonts from fonts.googleapis.com. External font requests " +
-          "fail in sandboxed/offline renders and add latency. Use local @font-face " +
-          "declarations with captured .woff2 files instead.",
+          "Composition loads fonts from fonts.googleapis.com. The producer resolves Google Fonts " +
+          "during compile/render, but raw external font requests add latency and can fail before " +
+          "canonicalization. Prefer mapped family names or local @font-face declarations when possible.",
         fixHint:
-          "Replace the Google Fonts <link> or @import with @font-face { font-family: '...'; " +
-          "src: url('capture/assets/fonts/Font.woff2'); } pointing to captured font files.",
+          "For bundled fonts, remove the Google Fonts <link> or @import and keep the font-family " +
+          "declaration. For custom fonts, use @font-face { font-family: '...'; src: url('...woff2'); }.",
       });
     }
     return findings;
@@ -137,13 +194,16 @@ export const fontRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   },
 
   // font_family_without_font_face
-  ({ styles, rawSource, options }) => {
+  ({ styles, source, rawSource, options }) => {
     if (isRegistrySourceFile(options.filePath) || isRegistryInstalledFile(rawSource)) return [];
     const findings: HyperframeLintFinding[] = [];
     const declared = extractFontFaceFamilies(styles);
     const used = extractUsedFontFamilies(styles);
+    const googleFonts = collectGoogleFontFamilies(source, styles);
 
-    const undeclared = used.filter((name) => !declared.has(name) && !FONT_ALIAS_KEYS.has(name));
+    const undeclared = used.filter(
+      (name) => !declared.has(name) && !FONT_ALIAS_KEYS.has(name) && !googleFonts.has(name),
+    );
     if (undeclared.length === 0) return findings;
 
     findings.push({

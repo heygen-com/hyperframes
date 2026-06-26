@@ -8,21 +8,24 @@ async function findByCode(html: string, code: string, isSubComposition = true) {
 
 describe("font rules", () => {
   describe("google_fonts_import", () => {
-    it("flags @import url with fonts.googleapis.com", async () => {
+    it("warns on @import url with fonts.googleapis.com without failing lint", async () => {
       const html = `<div data-composition-id="test" data-width="1920" data-height="1080">
         <style>@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap');</style>
       </div>`;
-      const findings = await findByCode(html, "google_fonts_import");
+      const result = await lintHyperframeHtml(html, { isSubComposition: true });
+      const findings = result.findings.filter((f) => f.code === "google_fonts_import");
       expect(findings).toHaveLength(1);
-      expect(findings[0]!.severity).toBe("error");
+      expect(findings[0]!.severity).toBe("warning");
+      expect(result.errorCount).toBe(0);
     });
 
-    it("flags <link> to fonts.googleapis.com", async () => {
+    it("warns on <link> to fonts.googleapis.com", async () => {
       const html = `<div data-composition-id="test" data-width="1920" data-height="1080">
         <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter">
       </div>`;
       const findings = await findByCode(html, "google_fonts_import");
       expect(findings).toHaveLength(1);
+      expect(findings[0]!.severity).toBe("warning");
     });
 
     it("does not flag local @font-face usage", async () => {
@@ -178,6 +181,58 @@ describe("font rules", () => {
 
     it("still flags Google-Fonts-only fonts not pre-bundled", async () => {
       const html = `<div data-composition-id="test" data-width="1920" data-height="1080">
+        <style>body { font-family: 'Geist', sans-serif; }</style>
+      </div>`;
+      const findings = await findByCode(html, "font_family_without_font_face");
+      expect(findings).toHaveLength(1);
+      expect(findings[0]!.message).toContain("geist");
+    });
+
+    it("does not flag a non-bundled family when a Google Fonts link loads it", async () => {
+      const html = `<div data-composition-id="test" data-width="1920" data-height="1080">
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;700&display=swap">
+        <style>body { font-family: 'Geist', sans-serif; }</style>
+      </div>`;
+      const result = await lintHyperframeHtml(html, { isSubComposition: true });
+      expect(result.findings.filter((f) => f.code === "google_fonts_import")).toHaveLength(1);
+      expect(
+        result.findings.filter((f) => f.code === "font_family_without_font_face"),
+      ).toHaveLength(0);
+      expect(result.errorCount).toBe(0);
+    });
+
+    it("parses unquoted Google Fonts link href values", async () => {
+      const html = `<div data-composition-id="test" data-width="1920" data-height="1080">
+        <link rel=stylesheet href=https://fonts.googleapis.com/css2?family=Geist:wght@400;700&display=swap>
+        <style>body { font-family: 'Geist', sans-serif; }</style>
+      </div>`;
+      const result = await lintHyperframeHtml(html, { isSubComposition: true });
+      expect(result.findings.filter((f) => f.code === "google_fonts_import")).toHaveLength(1);
+      expect(
+        result.findings.filter((f) => f.code === "font_family_without_font_face"),
+      ).toHaveLength(0);
+      expect(result.errorCount).toBe(0);
+    });
+
+    it("parses multiple Google Fonts family parameters and URL-encoded spaces", async () => {
+      const html = `<div data-composition-id="test" data-width="1920" data-height="1080">
+        <style>
+          @import url("https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=DM+Sans:ital,wght@0,400;1,700&display=swap");
+          h1 { font-family: 'Libre Baskerville', serif; }
+          body { font-family: 'DM Sans', sans-serif; }
+        </style>
+      </div>`;
+      const result = await lintHyperframeHtml(html, { isSubComposition: true });
+      expect(result.findings.filter((f) => f.code === "google_fonts_import")).toHaveLength(1);
+      expect(
+        result.findings.filter((f) => f.code === "font_family_without_font_face"),
+      ).toHaveLength(0);
+      expect(result.errorCount).toBe(0);
+    });
+
+    it("still flags non-bundled families not covered by the Google Fonts URL", async () => {
+      const html = `<div data-composition-id="test" data-width="1920" data-height="1080">
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter">
         <style>body { font-family: 'Geist', sans-serif; }</style>
       </div>`;
       const findings = await findByCode(html, "font_family_without_font_face");
