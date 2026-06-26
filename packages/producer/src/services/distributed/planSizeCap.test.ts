@@ -144,3 +144,58 @@ describe("plan() PLAN_TOO_LARGE throw path", () => {
     TIMEOUT_MS,
   );
 });
+
+describe("plan() duration guard", () => {
+  const TIMEOUT_MS = 30_000;
+
+  it(
+    "rejects probe durations that would create impossible distributed frame counts",
+    async () => {
+      const projectDir = mkdtempSync(join(runRoot, "project-impossible-duration-"));
+      writeFileSync(
+        join(projectDir, "index.html"),
+        `<!doctype html>
+<html><body>
+  <div data-composition-id="root" data-width="320" data-height="240" data-start="0">
+    <div class="caption">hello</div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    window.__timelines.root = {
+      duration() { return 10000000000; },
+      pause() {},
+      time() { return 0; },
+      seek() {},
+      totalTime() {},
+      add() {}
+    };
+  </script>
+</body></html>`,
+        "utf-8",
+      );
+      const planDir = mkdtempSync(join(runRoot, "plandir-impossible-duration-"));
+
+      let caught: unknown;
+      try {
+        await plan(
+          projectDir,
+          {
+            fps: 30,
+            width: 320,
+            height: 240,
+            format: "mp4",
+          },
+          planDir,
+        );
+      } catch (err) {
+        caught = err;
+      }
+
+      expect(caught).toBeInstanceOf(Error);
+      expect(String((caught as Error).message)).toMatch(/duration/i);
+      expect(String((caught as Error).message)).toMatch(/distributed/i);
+      expect(String((caught as Error).message)).toContain("300000000000");
+    },
+    TIMEOUT_MS,
+  );
+});

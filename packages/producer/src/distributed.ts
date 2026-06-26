@@ -95,3 +95,13 @@ export type {
   CompositionMetadataJson,
   LockedRenderConfig,
 } from "./services/render/stages/freezePlan.js";
+
+// ── Plan-time validation errors ────────────────────────────────────────────
+// Export typed deterministic validation codes so orchestration adapters can
+// mark authoring/configuration failures as terminal while still retrying real
+// infrastructure faults.
+export {
+  DISTRIBUTED_DURATION_OUT_OF_RANGE,
+  MAX_DISTRIBUTED_DURATION_SECONDS,
+  PlanValidationError,
+} from "./services/render/planValidation.js";
