@@ -85,7 +85,7 @@ After they run it, re-read the workflow's skill and continue.
 
 ## Keeping skills current
 
-HyperFrames skills are versioned. `npx hyperframes init` installs (and refreshes) **all** skills as part of project setup — including any not yet present — so a freshly init'd project always has the complete, latest set. Opt out with `init --skip-skills`.
+HyperFrames skills are versioned. `npx hyperframes init` checks the installed skills against the latest on GitHub and installs/refreshes the **full** set whenever anything is out of date or missing — so a freshly init'd project always has the complete, latest set (and re-running init on an up-to-date project is a no-op). Opt out with `init --skip-skills`.
 
 If a task is behaving unexpectedly, or before a long build, confirm the installed skills are current:
 

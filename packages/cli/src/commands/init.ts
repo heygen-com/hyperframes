@@ -573,6 +573,41 @@ async function scaffoldProject(
   }
 }
 
+/**
+ * Ensure the project's AI coding skills are present and current. Checks the
+ * installed skills against the latest published on GitHub and only (re)installs
+ * when something is outdated or missing — so re-running `init` on an already
+ * up-to-date project is a no-op. Best-effort: if the version check can't reach
+ * GitHub, it installs anyway. The install itself (`installAllSkills`) pulls the
+ * full set straight from the GitHub repo.
+ */
+async function ensureSkillsCurrent(destDir: string): Promise<void> {
+  const { installAllSkills } = await import("./skills.js");
+  const { checkSkills } = await import("../utils/skillsManifest.js");
+  // --all pulls every skill (incl. ones not yet installed); --yes keeps it
+  // non-interactive. When Claude Code is driving, target its native dir so
+  // skills land in .claude/skills/.
+  const extraArgs = process.env["CLAUDECODE"]
+    ? ["--all", "--agent", "claude-code", "--yes"]
+    : ["--all", "--yes"];
+
+  console.log();
+  console.log(c.bold("Checking AI coding skills against GitHub..."));
+  let needsInstall = true;
+  try {
+    const result = await checkSkills({ cwd: destDir });
+    needsInstall = result.updateAvailable;
+  } catch {
+    // Couldn't reach GitHub (offline, rate-limited) — install anyway.
+  }
+
+  if (needsInstall) {
+    await installAllSkills({ cwd: destDir, extraArgs });
+  } else {
+    console.log(c.success("AI coding skills are already up to date."));
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Exported command
 // ---------------------------------------------------------------------------
@@ -802,14 +837,7 @@ export default defineCommand({
       }
 
       if (!skipSkills) {
-        const { installAllSkills } = await import("./skills.js");
-        // --all pulls every skill (including ones not yet installed); --yes keeps
-        // it non-interactive. When Claude Code is driving (CLAUDECODE env var),
-        // target its native dir so skills land in .claude/skills/.
-        const args = process.env["CLAUDECODE"]
-          ? ["--all", "--agent", "claude-code", "--yes"]
-          : ["--all", "--yes"];
-        await installAllSkills({ cwd: destDir, extraArgs: args });
+        await ensureSkillsCurrent(destDir);
       }
 
       console.log();
@@ -1025,17 +1053,10 @@ export default defineCommand({
     const files = readdirSync(destDir);
     clack.note(files.map((f) => c.accent(f)).join("\n"), c.success(`Created ${name}/`));
 
-    // Always install (and refresh) all AI coding skills — init is the one place
-    // skills are pulled in full, so this grabs every skill including ones not yet
-    // installed and brings existing ones to the latest. Opt out with --skip-skills.
+    // Check skills against GitHub and (re)install only if outdated or missing —
+    // init is the one place the full set is pulled. Opt out with --skip-skills.
     if (!skipSkills) {
-      const { installAllSkills } = await import("./skills.js");
-      // --all pulls every skill; --yes keeps it non-interactive. When Claude Code
-      // is driving, target .claude/skills/ (mirrors the non-interactive path).
-      const args = process.env["CLAUDECODE"]
-        ? ["--all", "--agent", "claude-code", "--yes"]
-        : ["--all", "--yes"];
-      await installAllSkills({ cwd: destDir, extraArgs: args });
+      await ensureSkillsCurrent(destDir);
     }
 
     // Auto-launch studio preview
