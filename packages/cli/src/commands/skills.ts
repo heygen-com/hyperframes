@@ -196,8 +196,8 @@ const checkCommand = defineCommand({
   },
   async run({ args }) {
     const result = await checkSkills({
-      dir: args.dir as string | undefined,
-      source: args.source as string | undefined,
+      dir: args.dir,
+      source: args.source,
     });
 
     if (args.json) console.log(JSON.stringify(withMeta(result), null, 2));
@@ -222,15 +222,20 @@ const updateCommand = defineCommand({
   // checkSkills() fell back to defaults — pruning the auto-detected install
   // against the default manifest even when the user pointed `check` elsewhere.
   args: {
-    dir: { type: "string", description: "Skills directory to reconcile (default: auto-detect)" },
+    dir: {
+      type: "string",
+      description:
+        "Skills dir for removed-detection only — scopes the prune, not the install (default: auto-detect)",
+    },
     source: {
       type: "string",
-      description: "Where 'latest' comes from: local path, owner/repo, or URL",
+      description:
+        "Where 'latest' comes from for removed-detection (local path, owner/repo, or URL) — does not change the install source",
     },
   },
   async run({ args }) {
-    const dir = args.dir as string | undefined;
-    const source = args.source as string | undefined;
+    const dir = args.dir;
+    const source = args.source;
 
     // `skills add --all` re-fetches every skill to the latest AND installs ones
     // not yet present — so "update" pulls the full set, not just what is already

@@ -223,18 +223,29 @@ function discoverSkillRoots(base: string, scope: "project" | "global"): SkillRoo
  * Decide whether an explicit `--dir` is a project- or global-scoped install, so
  * removed-detection reads the *right* lock. The upstream `skills` CLI keeps two
  * locks: a project lock at `<cwd>/skills-lock.json` and a global lock under
- * `$HOME` (see lockPathForScope). A `--dir` that lives under `$HOME` (e.g.
- * `~/.claude/skills`) is a global install; one under the project tree (or
- * anywhere else) is treated as project. Without this, `--dir ~/.claude/skills`
- * was always scoped "project", so detectRemoved looked for a non-existent
- * `<cwd>/skills-lock.json` and silently found zero removed skills.
+ * `$HOME` (see lockPathForScope).
+ *
+ * Precedence is CWD-containment FIRST, then HOME — because the common
+ * project-local case is *also* under `$HOME` (e.g. `~/work/proj/.claude/skills`,
+ * or `--dir .claude/skills` run from `~/work/proj`). Checking HOME first would
+ * misclassify every such project install as global, reading the wrong lock and
+ * (worse) letting `skills update` prune with `-g`. So:
+ *   - `dir` under `cwd`  → project (even when that's also under $HOME)
+ *   - else `dir` under $HOME → global (a real `~/.claude/skills`-style install)
+ *   - else → project (safe default — never prune globally for an unknown path)
+ *
+ * Each base is normalised with a trailing separator before the prefix test so a
+ * sibling like `/home/user2` doesn't false-match `/home/user`.
  */
-function scopeForDir(dir: string, home: string): "project" | "global" {
+function scopeForDir(dir: string, home: string, cwd: string): "project" | "global" {
   const norm = (p: string): string => {
     const r = resolve(p);
     return r.endsWith(sep) ? r : r + sep;
   };
-  return norm(dir).startsWith(norm(home)) ? "global" : "project";
+  const d = norm(dir);
+  if (d.startsWith(norm(cwd))) return "project";
+  if (d.startsWith(norm(home))) return "global";
+  return "project";
 }
 
 /**
@@ -252,7 +263,7 @@ function locateInstall(
       ? {
           dir: opts.dir,
           agent: agentFromDir(opts.dir),
-          scope: scopeForDir(opts.dir, opts.home ?? homedir()),
+          scope: scopeForDir(opts.dir, opts.home ?? homedir(), opts.cwd ?? process.cwd()),
         }
       : null;
   }

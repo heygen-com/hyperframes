@@ -382,6 +382,41 @@ describe("checkSkills removed-upstream detection", () => {
     expect(res.lockMissing).toBe(false);
   });
 
+  // Regression (Magi REQUEST_CHANGES at 88daa820): the common project-local case
+  // is *also* under $HOME — a project checkout at `<home>/work/proj` with skills
+  // at `<cwd>/.claude/skills`. A HOME-first heuristic misclassified this as
+  // global, so checkSkills read the global lock and `skills update` would prune
+  // with `-g` against a project install. CWD-containment must win: `--dir` under
+  // `cwd` resolves to PROJECT even when `cwd` itself is nested under $HOME.
+  it("--dir under a cwd that is itself nested under $HOME stays project-scoped", async () => {
+    const home = join(root, "home");
+    const project = join(home, "work", "proj"); // cwd nested INSIDE home
+    const skillsDir = join(project, ".claude/skills");
+    installSkills(skillsDir, ["alpha", "gamma"]);
+    const manifestPath = join(root, "m3.json");
+    writeFileSync(
+      manifestPath,
+      JSON.stringify({ source: "test", skills: { alpha: { hash: "x", files: 1 } } }),
+    );
+    // Project lock at <cwd>/skills-lock.json — only read if scope is "project".
+    // No global lock exists under $HOME, so a wrong-scope ("global") read would
+    // find no lock → zero removed (gamma would NOT be flagged). The project lock
+    // being read (gamma → removed) is the proof CWD-containment won.
+    writeFileSync(
+      join(project, "skills-lock.json"),
+      JSON.stringify({
+        version: 1,
+        skills: { alpha: { source: "test" }, gamma: { source: "test" } },
+      }),
+    );
+
+    const res = await checkSkills({ source: manifestPath, dir: skillsDir, cwd: project, home });
+    expect(res.scope).toBe("project");
+    const byName = Object.fromEntries(res.skills.map((s) => [s.name, s.status]));
+    expect(byName.gamma).toBe("removed");
+    expect(res.summary.removed).toBe(1);
+  });
+
   // The complementary case: a `--dir` under the project tree (not $HOME) stays
   // project-scoped and reads <cwd>/skills-lock.json.
   it("--dir outside $HOME stays project-scoped and reads the project lock", async () => {
