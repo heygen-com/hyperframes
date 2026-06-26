@@ -2,6 +2,7 @@ import { Window } from "happy-dom";
 import { describe, expect, it } from "vitest";
 import {
   applyManualOffsetDragCommit,
+  applyManualOffsetDragDraft,
   applyManualOffsetDragMatrix,
   createManualOffsetDragMember,
   endManualOffsetDragMembers,
@@ -259,5 +260,103 @@ describe("createManualOffsetDragMember uses raw CSS var offset", () => {
       applyManualOffsetDragCommit(result.member, 10, 0);
       endManualOffsetDragMembers([result.member]);
     }
+  });
+});
+
+// ── GSAP-element drag: the dot-a "flies" regressions ────────────────────────
+// A static element positioned via the legacy `--hf-studio-offset` CSS var, dragged
+// in a GSAP composition. Three independent failure modes, each fixed:
+//   1. live drag integrated off-screen (base read from the live transform)
+//   2. commit re-added the delta (stamped base wiped by a mid-drag re-render)
+//   3. drop left the element offset (stale --hf-studio-offset var composing with
+//      the committed GSAP transform until a full reload)
+function makeGsapDot(offsetX = 94, offsetY = 2) {
+  const window = new Window();
+  const element = window.document.createElement("div");
+  element.id = "dot-a";
+  element.setAttribute("data-hf-studio-path-offset", "true");
+  element.style.setProperty(STUDIO_OFFSET_X_PROP, `${offsetX}px`);
+  element.style.setProperty(STUDIO_OFFSET_Y_PROP, `${offsetY}px`);
+  element.style.translate = `var(${STUDIO_OFFSET_X_PROP}, 0px) var(${STUDIO_OFFSET_Y_PROP}, 0px)`;
+  window.document.body.append(element);
+  // Constant rect → the screen-to-offset probe can't measure movement → member
+  // uses the deterministic preview-scale fallback matrix. Both branches set baseGsap.
+  element.getBoundingClientRect = () => new window.DOMRect(10, 20, 100, 50);
+  const sets: Array<Record<string, unknown>> = [];
+  const win = element.ownerDocument.defaultView as unknown as {
+    gsap?: unknown;
+    __timelines?: unknown;
+  };
+  win.gsap = {
+    set: (el: HTMLElement, vars: Record<string, unknown>) => {
+      sets.push({ ...vars });
+      if (typeof vars.x === "number") {
+        el.style.setProperty("transform", `translate(${vars.x}px, ${(vars.y as number) ?? 0}px)`);
+      }
+    },
+    // getProperty reads the LIVE transform — the exact value the old code fed back
+    // into `base + delta`, integrating the element off-screen.
+    getProperty: (el: HTMLElement, prop: string) => {
+      const m = /translate\(([-\d.]+)px,\s*([-\d.]+)px\)/.exec(
+        el.style.getPropertyValue("transform") || "",
+      );
+      if (!m) return 0;
+      return prop === "x" ? Number.parseFloat(m[1]!) : Number.parseFloat(m[2]!);
+    },
+  };
+  const member = () => {
+    const result = createManualOffsetDragMember({
+      key: "dot",
+      selection: { element } as never,
+      element,
+      rect: { left: 10, top: 20, width: 100, height: 50, editScaleX: 1, editScaleY: 1 },
+    });
+    if (!result.ok) throw new Error("member not created");
+    return result.member;
+  };
+  return { element, sets, member };
+}
+
+describe("GSAP-element drag — dot-a flies regressions", () => {
+  it("live draft uses the stable gesture-start base, so repeated moves don't integrate", () => {
+    const { element, member } = makeGsapDot();
+    const m = member();
+    // Simulate a mid-drag re-render wiping the stamped base attr → the draft must
+    // fall back to the in-memory member.baseGsap, NOT the live (mutating) transform.
+    element.removeAttribute("data-hf-drag-gsap-base-x");
+    element.removeAttribute("data-hf-drag-gsap-base-y");
+    applyManualOffsetDragDraft(m, -50, 0);
+    const first = element.style.getPropertyValue("transform");
+    applyManualOffsetDragDraft(m, -50, 0);
+    const second = element.style.getPropertyValue("transform");
+    // Same pointer delta → same committed transform. The old bug integrated (the
+    // second frame added the delta on top of the first frame's result).
+    expect(second).toBe(first);
+  });
+
+  it("commit re-stamps the stable base/initial attrs even after they're wiped", () => {
+    const { element, member } = makeGsapDot();
+    const m = member();
+    element.removeAttribute("data-hf-drag-gsap-base-x");
+    element.removeAttribute("data-hf-drag-initial-offset-x");
+    applyManualOffsetDragCommit(m, -50, 0);
+    expect(element.getAttribute("data-hf-drag-gsap-base-x")).toBe(String(m.baseGsap.x));
+    expect(element.getAttribute("data-hf-drag-initial-offset-x")).toBe(String(m.initialOffset.x));
+  });
+
+  it("a GSAP-committed drag migrates the element off --hf-studio-offset", () => {
+    const { element, member } = makeGsapDot();
+    expect(element.style.getPropertyValue(STUDIO_OFFSET_X_PROP)).toBe("94px");
+    const m = member();
+    applyManualOffsetDragCommit(m, -160, 0);
+    endManualOffsetDragMembers([m]);
+    // The legacy CSS-offset channel is fully cleared (single-sourced in GSAP): the
+    // var is removed, so any lingering `translate: var(--hf-studio-offset-x, 0px)`
+    // resolves to its 0px fallback and can no longer compose with the GSAP transform.
+    expect(element.style.getPropertyValue(STUDIO_OFFSET_X_PROP)).toBe("");
+    expect(element.style.getPropertyValue(STUDIO_OFFSET_Y_PROP)).toBe("");
+    expect(element.hasAttribute("data-hf-studio-path-offset")).toBe(false);
+    // ...and the position survives in the GSAP transform (no stale var to compose).
+    expect(element.style.getPropertyValue("transform")).toMatch(/translate\(/);
   });
 });
