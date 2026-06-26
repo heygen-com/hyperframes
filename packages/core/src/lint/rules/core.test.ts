@@ -14,6 +14,54 @@ ${headContent}
 </html>`;
 }
 
+function compositionWithHeadBoundary(boundaryContent: string): string {
+  return `
+<html>
+<head>
+  <style>
+    body { margin: 0; }
+  </style>
+</head>
+${boundaryContent}
+<body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"></div>
+  <script>window.__timelines = {};</script>
+</body>
+</html>`;
+}
+
+function compositionWithBodyPrefix(prefixContent: string, rootContent = ""): string {
+  return `
+<html>
+<head>
+  <style>
+    body { margin: 0; }
+  </style>
+</head>
+<body>
+${prefixContent}
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+${rootContent}
+  </div>
+  <script>window.__timelines = {};</script>
+</body>
+</html>`;
+}
+
+function compositionWithImplicitBodyPrefix(prefixContent: string): string {
+  return `
+<html>
+<head>
+  <style>
+    body { margin: 0; }
+  </style>
+</head>
+${prefixContent}
+<div data-composition-id="c1" data-width="1920" data-height="1080"></div>
+<script>window.__timelines = {};</script>
+</html>`;
+}
+
 function templateCompositionWithHead(headContent: string): string {
   return `
 <template>
@@ -182,6 +230,144 @@ describe("core rules", () => {
     expect(finding?.severity).toBe("error");
     expect(finding?.message).toContain("<head>");
     expect(finding?.snippet).toContain(".particle");
+  });
+
+  it("reports error when CSS variables leak between head and body", async () => {
+    const html = compositionWithHeadBoundary(`
+  --bg-color: #F5F1E8;
+  --text-color: #212121;
+}
+
+body {
+  background-color: var(--bg-color);
+  color: var(--text-color);
+}
+`);
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "head_leaked_text");
+
+    expect(finding).toBeDefined();
+    expect(finding?.message).toContain("<head>");
+    expect(finding?.snippet).toContain("body");
+  });
+
+  it("reports error when stray close tags leak between head and body", async () => {
+    const html = compositionWithHeadBoundary(`
+  </style>
+  </script>
+`);
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "head_leaked_text");
+
+    expect(finding).toBeDefined();
+    expect(finding?.snippet).toContain("</style>");
+  });
+
+  it("reports error when markdown code fences leak between head and body", async () => {
+    const html = compositionWithHeadBoundary(`
+  \`\`\`css
+  .particle {
+    color: white;
+  }
+  \`\`\`
+`);
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "head_leaked_text");
+
+    expect(finding).toBeDefined();
+    expect(finding?.snippet).toContain("```css");
+  });
+
+  it("reports error when CSS at-rules leak between head and body", async () => {
+    const html = compositionWithHeadBoundary(`
+  @media (min-width: 800px) {
+    .particle {
+      transform: scale(1.2);
+    }
+  }
+`);
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "head_leaked_text");
+
+    expect(finding).toBeDefined();
+    expect(finding?.snippet).toContain("@media");
+  });
+
+  it("does not report leaked text for valid script and style blocks around the head boundary", async () => {
+    const html = compositionWithHeadBoundary(`
+  <script>
+    window.__headReady = true;
+  </script>
+  <template>
+    <style>
+      .template-only { color: red; }
+    </style>
+  </template>
+`);
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "head_leaked_text");
+
+    expect(finding).toBeUndefined();
+  });
+
+  it("reports error when CSS text leaks before the composition root", async () => {
+    const html = compositionWithBodyPrefix(`
+  .orphan {
+    position: absolute;
+    inset: 0;
+  }
+`);
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "head_leaked_text");
+
+    expect(finding).toBeDefined();
+    expect(finding?.snippet).toContain(".orphan");
+  });
+
+  it("reports error when CSS text leaks before the composition root without an explicit body", async () => {
+    const html = compositionWithImplicitBodyPrefix(`
+  .implicit-body-orphan {
+    position: absolute;
+    inset: 0;
+  }
+`);
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "head_leaked_text");
+
+    expect(finding).toBeDefined();
+    expect(finding?.snippet).toContain(".implicit-body-orphan");
+  });
+
+  it("does not report leaked text for valid script and style blocks before the composition root", async () => {
+    const html = compositionWithBodyPrefix(`
+  <style>
+    .pre-root-helper { color: red; }
+  </style>
+  <script>
+    window.__preRootReady = true;
+  </script>
+`);
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "head_leaked_text");
+
+    expect(finding).toBeUndefined();
+  });
+
+  it("does not report CSS-looking educational text inside the composition root", async () => {
+    const html = compositionWithBodyPrefix(
+      "",
+      `
+    <pre>
+      body {
+        margin: 0;
+      }
+    </pre>
+`,
+    );
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "head_leaked_text");
+
+    expect(finding).toBeUndefined();
   });
 
   it("reports error when a stray style close tag is left in the document head", async () => {
