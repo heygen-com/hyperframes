@@ -11,7 +11,9 @@
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import type { IncomingMessage } from "node:http";
-import { readFileSync, existsSync, realpathSync, statSync } from "node:fs";
+import { existsSync, realpathSync, statSync, createReadStream } from "node:fs";
+import { readFile } from "node:fs/promises";
+import { Readable } from "node:stream";
 import { join, extname, resolve, sep } from "node:path";
 import { injectScriptsAtHeadStart, injectScriptsIntoHtml } from "@hyperframes/core/compiler";
 import { getVerifiedHyperframeRuntimeSource } from "./hyperframeRuntimeLoader.js";
@@ -609,7 +611,7 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
 
   const app = new Hono();
 
-  app.get("/*", (c) => {
+  app.get("/*", async (c) => {
     let requestPath = c.req.path;
     if (requestPath === "/") requestPath = "/index.html";
 
@@ -665,7 +667,12 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
     const contentType = MIME_TYPES[ext] || "application/octet-stream";
 
     if (ext === ".html") {
-      const rawHtml = readFileSync(filePath, "utf-8");
+      // Use the async read here so we don't block the Node event loop while
+      // reading an HTML file (typically small, but a 200KB+ AI-generated
+      // composition during a concurrent render still costs a ms of stall).
+      // The injection step is sync — it's pure string ops on the buffered
+      // HTML — but the read itself is the only step that touches the disk.
+      const rawHtml = await readFile(filePath, "utf-8");
       const isIndex = relativePath === "index.html";
       let html = rawHtml;
       if (preHeadScripts.length > 0) {
@@ -677,10 +684,25 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
       return c.text(html, 200, { "Content-Type": contentType });
     }
 
-    const content = readFileSync(filePath);
-    return new Response(content, {
+    // Stream binary file content rather than buffering it with readFileSync.
+    // On video-heavy compositions Chrome requests several 32MB video files
+    // back-to-back through this server; each readFileSync(32MB) blocked the
+    // Node event loop long enough to wedge concurrent /health responses (see
+    // renderOrchestrator.ts:1277-1306 documenting the same regression class).
+    // createReadStream() pipes bounded chunks asynchronously, so the event
+    // loop stays responsive even when several large assets are in flight
+    // simultaneously. Chrome reassembles the chunks transparently.
+    const stat = statSync(filePath);
+    const stream = createReadStream(filePath);
+    // Node Readable -> Web ReadableStream so Hono's Response can consume it.
+    // Node 18+ supports Readable.toWeb directly.
+    const webStream = Readable.toWeb(stream) as unknown as ReadableStream;
+    return new Response(webStream, {
       status: 200,
-      headers: { "Content-Type": contentType },
+      headers: {
+        "Content-Type": contentType,
+        "Content-Length": String(stat.size),
+      },
     });
   });
 

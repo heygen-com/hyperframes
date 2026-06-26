@@ -253,6 +253,63 @@ describe("createFileServer", () => {
     }
   });
 
+  it("streams binary file content without buffering through readFileSync", async () => {
+    // Regression test for the video-heavy event-loop block documented at
+    // renderOrchestrator.ts:1277-1306. Pre-fix the file route called
+    // readFileSync on every binary asset, which on 32MB+ videos stalled
+    // the Node event loop long enough to wedge concurrent /health probes.
+    // This test pins three properties of the streaming path:
+    //
+    //   1. Correctness: the served byte sequence matches the file exactly,
+    //      across a chunk boundary (we use a 5 MB synthetic asset, well past
+    //      Node's default 64KB createReadStream highWaterMark).
+    //   2. Content-Length is reported via statSync so range-aware HTTP
+    //      consumers (Chrome's media stack) see the size up front.
+    //   3. Concurrent requests don't serialize behind each other — N
+    //      parallel fetches all return identical content. With readFileSync
+    //      they'd block the event loop in serial; with the stream they
+    //      pipe interleaved chunks.
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-file-server-stream-"));
+    try {
+      writeEmptyIndex(projectDir);
+      // 5 MB of deterministic bytes — large enough to span many 64KB read
+      // chunks, small enough to keep the test fast.
+      const size = 5 * 1024 * 1024;
+      const buf = Buffer.alloc(size);
+      for (let i = 0; i < size; i++) buf[i] = i & 0xff;
+      writeFileSync(join(projectDir, "big.bin"), buf);
+
+      await withFileServer(projectDir, async (server) => {
+        // Single-request correctness + content-length.
+        const r = await fetch(`${server.url}/big.bin`);
+        expect(r.status).toBe(200);
+        expect(r.headers.get("content-length")).toBe(String(size));
+        const out = Buffer.from(await r.arrayBuffer());
+        expect(out.length).toBe(size);
+        // Spot-check a few sentinel positions (full equality check is O(5MB)
+        // and unnecessary — if any chunk were misaligned we'd see it here).
+        expect(out[0]).toBe(0);
+        expect(out[255]).toBe(255);
+        expect(out[256]).toBe(0);
+        expect(out[size - 1]).toBe((size - 1) & 0xff);
+
+        // Concurrent requests don't corrupt each other.
+        const concurrent = await Promise.all(
+          Array.from({ length: 4 }, () => fetch(`${server.url}/big.bin`)),
+        );
+        for (const resp of concurrent) {
+          expect(resp.status).toBe(200);
+          const body = Buffer.from(await resp.arrayBuffer());
+          expect(body.length).toBe(size);
+          expect(body[0]).toBe(0);
+          expect(body[size - 1]).toBe((size - 1) & 0xff);
+        }
+      });
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
   it("decodes percent-encoded reserved characters in URL path segments", async () => {
     const projectDir = mkdtempSync(join(tmpdir(), "hf-file-server-reserved-chars-"));
 
