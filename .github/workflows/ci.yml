@@ -61,6 +61,7 @@ jobs:
               - ".github/workflows/ci.yml"
             skills:
               - "skills/**"
+              - "skills-manifest.json"
               - "package.json"
               - ".github/workflows/ci.yml"
 
@@ -262,6 +263,23 @@ jobs:
           printf 'Running %d skills test file(s):\n' "${#SKILLS_TESTS[@]}"
           printf '  * %s\n' "${SKILLS_TESTS[@]}"
           node --test "${SKILLS_TESTS[@]}"
+
+  # Guards that skills-manifest.json (the published freshness fingerprint read
+  # by `hyperframes skills check`) was regenerated when a skill changed. Runs
+  # `gen:skills-manifest --check`, which compares per-skill content hashes; the
+  # manifest carries no version/timestamp, so it only fails on real content
+  # drift. bun runs the TS script directly, no install needed.
+  skills-manifest:
+    name: "Skills: manifest in sync"
+    needs: changes
+    if: needs.changes.outputs.skills == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - name: Verify skills-manifest.json matches skills/
+        run: bun packages/cli/scripts/gen-skills-manifest.ts --check
 
   cli-npx-shim:
     name: "CLI: npx shim (${{ matrix.os }})"

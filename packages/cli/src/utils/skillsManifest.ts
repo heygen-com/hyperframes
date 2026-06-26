@@ -1,0 +1,357 @@
+// Skills freshness: give the HyperFrames skill bundle a content fingerprint so
+// we can answer "are the installed skills the latest version?" across every
+// agent platform (Claude Code, Codex, …) — independent of how they were
+// installed.
+//
+// Why our own hash instead of the `skills-lock.json` `computedHash`: the
+// vercel-labs/skills lock hashes only `SKILL.md` with an algorithm we can't
+// recompute from source. A skill is a whole directory (SKILL.md + references/ +
+// scripts/ + palettes/ + templates/), so we fingerprint the *entire* bundle.
+// The same function hashes the source tree (to build the published manifest)
+// and the installed tree (to compare) — so equal content ⇒ equal hash.
+//
+// The manifest is intentionally minimal — `{ source, skills }`, no version
+// label or timestamp. Per-skill hashes are the source of truth for "current vs
+// outdated", so a top-level version number would only add a second, confusable
+// signal. The published manifest lives at the repo root (`skills-manifest.json`).
+
+import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { homedir } from "node:os";
+import { join, relative, sep } from "node:path";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
+
+// File extensions we treat as text — line endings are normalised (CRLF→LF)
+// before hashing so a Windows checkout doesn't read as "outdated". Everything
+// else is hashed as raw bytes.
+const TEXT_EXT = new Set([
+  ".md",
+  ".txt",
+  ".mjs",
+  ".js",
+  ".ts",
+  ".jsx",
+  ".tsx",
+  ".html",
+  ".css",
+  ".json",
+  ".svg",
+  ".csv",
+  ".yml",
+  ".yaml",
+]);
+
+export interface SkillEntry {
+  /** Short sha256 (16 hex chars) over the skill's whole directory. */
+  hash: string;
+  /** Number of files in the bundle (for a quick human sanity signal). */
+  files: number;
+}
+
+export interface SkillsManifest {
+  /** Source repo, e.g. "heygen-com/hyperframes". */
+  source: string;
+  /** Per-skill fingerprint, keyed by skill name. */
+  skills: Record<string, SkillEntry>;
+}
+
+export type SkillStatus = "current" | "outdated" | "missing" | "local-only";
+
+export interface SkillDiff {
+  name: string;
+  status: SkillStatus;
+  installedHash?: string;
+  latestHash?: string;
+}
+
+export interface SkillsCheckResult {
+  /** Install location that was checked (absolute path), or null if none found. */
+  location: string | null;
+  /** Agent convention inferred from the location (claude-code, codex, …). */
+  agent: string | null;
+  updateAvailable: boolean;
+  summary: { current: number; outdated: number; missing: number; localOnly: number };
+  skills: SkillDiff[];
+}
+
+const DEFAULT_REPO_SLUG = "heygen-com/hyperframes";
+/** Manifest filename, published at the repo root. */
+export const MANIFEST_FILE = "skills-manifest.json";
+const FETCH_TIMEOUT_MS = 4000;
+
+// ── Hashing ────────────────────────────────────────────────────────────────
+
+function listFilesSorted(dir: string): string[] {
+  const out: string[] = [];
+  const walk = (d: string): void => {
+    for (const name of readdirSync(d).sort()) {
+      if (name === ".DS_Store") continue;
+      const p = join(d, name);
+      if (statSync(p).isDirectory()) walk(p);
+      else out.push(p);
+    }
+  };
+  walk(dir);
+  return out.sort();
+}
+
+/**
+ * Fingerprint one skill directory. Deterministic: files are sorted by relative
+ * POSIX path, text files are line-ending normalised, and the relative path is
+ * folded into the hash so a moved file changes the fingerprint.
+ */
+export function hashSkillBundle(skillDir: string): SkillEntry {
+  const files = listFilesSorted(skillDir);
+  const h = createHash("sha256");
+  for (const f of files) {
+    const rel = relative(skillDir, f).split(sep).join("/");
+    h.update(rel);
+    h.update("\0");
+    const ext = rel.slice(rel.lastIndexOf("."));
+    const buf = readFileSync(f);
+    if (TEXT_EXT.has(ext)) h.update(buf.toString("utf8").replace(/\r\n/g, "\n"), "utf8");
+    else h.update(buf);
+    h.update("\0");
+  }
+  return { hash: h.digest("hex").slice(0, 16), files: files.length };
+}
+
+/**
+ * Build a manifest from a `skills/` root directory (a folder of
+ * `<name>/SKILL.md` skill bundles). Used by the manifest generator. Output is
+ * fully deterministic — same content in, byte-identical manifest out.
+ */
+export function buildManifest(skillsRoot: string, meta: { source: string }): SkillsManifest {
+  const names = readdirSync(skillsRoot)
+    .filter((n) => existsSync(join(skillsRoot, n, "SKILL.md")))
+    .sort();
+  const skills: Record<string, SkillEntry> = {};
+  for (const name of names) skills[name] = hashSkillBundle(join(skillsRoot, name));
+  return { source: meta.source, skills };
+}
+
+// ── Locating installed skills ────────────────────────────────────────────────
+
+interface SkillRoot {
+  /** Absolute path to a `.../skills` directory. */
+  dir: string;
+  /** Agent convention this directory belongs to. */
+  agent: string;
+  /** project = under cwd, global = under $HOME. */
+  scope: "project" | "global";
+}
+
+/**
+ * Candidate locations where `npx skills add` may have installed skills, in
+ * priority order (project before global, Claude Code before others).
+ */
+function defaultSkillRoots(cwd = process.cwd(), home = homedir()): SkillRoot[] {
+  const conventions: Array<[string, string]> = [
+    [".claude/skills", "claude-code"],
+    [".agents/skills", "codex"],
+    [".codex/skills", "codex"],
+    [".cursor/skills", "cursor"],
+  ];
+  const roots: SkillRoot[] = [];
+  for (const [rel, agent] of conventions)
+    roots.push({ dir: join(cwd, rel), agent, scope: "project" });
+  for (const [rel, agent] of conventions)
+    roots.push({ dir: join(home, rel), agent, scope: "global" });
+  return roots;
+}
+
+/**
+ * Find the first skill root that actually contains HyperFrames skills. A
+ * `--dir` override (if given) is treated as a `.../skills` directory directly.
+ */
+function locateInstall(
+  skillNames: string[],
+  opts: { dir?: string; cwd?: string; home?: string } = {},
+): SkillRoot | null {
+  if (opts.dir) {
+    return existsSync(opts.dir)
+      ? { dir: opts.dir, agent: agentFromDir(opts.dir), scope: "project" }
+      : null;
+  }
+  for (const root of defaultSkillRoots(opts.cwd, opts.home)) {
+    if (!existsSync(root.dir)) continue;
+    const hasAny = skillNames.some((n) => existsSync(join(root.dir, n, "SKILL.md")));
+    if (hasAny) return root;
+  }
+  return null;
+}
+
+function agentFromDir(dir: string): string {
+  if (dir.includes(`.claude${sep}`) || dir.endsWith(".claude")) return "claude-code";
+  if (dir.includes(`.codex${sep}`) || dir.includes(`.agents${sep}`)) return "codex";
+  if (dir.includes(`.cursor${sep}`)) return "cursor";
+  return "unknown";
+}
+
+/** Hash every manifest skill that is installed under `root`. */
+function hashInstalled(root: SkillRoot, skillNames: string[]): Record<string, SkillEntry> {
+  const out: Record<string, SkillEntry> = {};
+  for (const name of skillNames) {
+    const skillDir = join(root.dir, name);
+    if (existsSync(join(skillDir, "SKILL.md"))) out[name] = hashSkillBundle(skillDir);
+  }
+  return out;
+}
+
+// ── Diff ─────────────────────────────────────────────────────────────────────
+
+export function diffSkills(
+  installed: Record<string, SkillEntry>,
+  latest: SkillsManifest,
+): Omit<SkillsCheckResult, "location" | "agent"> {
+  const names = new Set([...Object.keys(latest.skills), ...Object.keys(installed)]);
+  const skills: SkillDiff[] = [];
+  const summary = { current: 0, outdated: 0, missing: 0, localOnly: 0 };
+
+  for (const name of [...names].sort()) {
+    const latestEntry = latest.skills[name];
+    const installedEntry = installed[name];
+    let status: SkillStatus;
+    if (latestEntry && !installedEntry) status = "missing";
+    else if (!latestEntry && installedEntry) status = "local-only";
+    else if (installedEntry!.hash === latestEntry!.hash) status = "current";
+    else status = "outdated";
+
+    if (status === "current") summary.current++;
+    else if (status === "outdated") summary.outdated++;
+    else if (status === "missing") summary.missing++;
+    else summary.localOnly++;
+
+    skills.push({
+      name,
+      status,
+      installedHash: installedEntry?.hash,
+      latestHash: latestEntry?.hash,
+    });
+  }
+
+  return {
+    // "Would `skills update` change something you already have?" Missing skills
+    // are reported separately — a partial install is a choice, not staleness.
+    updateAvailable: summary.outdated > 0,
+    summary,
+    skills,
+  };
+}
+
+// ── Resolving the "latest" manifest ──────────────────────────────────────────
+
+/** Walk up from `cwd` to find a repo checkout that ships the manifest. */
+function findRepoManifest(cwd = process.cwd()): string | null {
+  let dir = cwd;
+  for (let i = 0; i < 8; i++) {
+    const p = join(dir, MANIFEST_FILE);
+    if (existsSync(p)) return p;
+    const parent = join(dir, "..");
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return null;
+}
+
+async function fetchManifest(url: string): Promise<SkillsManifest> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { signal: controller.signal, headers: { Connection: "close" } });
+    if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${url}`);
+    return (await res.json()) as SkillsManifest;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/**
+ * Resolve main's live HEAD sha via `git ls-remote`. GitHub's branch-raw CDN
+ * (raw.githubusercontent.com/<owner>/<repo>/main/...) can serve stale content
+ * for minutes after a push; a SHA-pinned raw URL is immediately consistent.
+ * Returns null when git/network is unavailable so callers fall back to main.
+ */
+async function remoteHeadSha(repoSlug: string): Promise<string | null> {
+  try {
+    const { stdout } = await execFileAsync(
+      "git",
+      ["ls-remote", `https://github.com/${repoSlug}.git`, "refs/heads/main"],
+      { timeout: FETCH_TIMEOUT_MS, env: { ...process.env, GIT_TERMINAL_PROMPT: "0" } },
+    );
+    const sha = stdout.split(/\s+/)[0]?.trim() ?? "";
+    return /^[0-9a-f]{40}$/.test(sha) ? sha : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Read a manifest from a local path — a manifest file or a repo root. */
+function resolveLocalManifest(source: string): SkillsManifest {
+  const direct = source.endsWith(".json") ? source : join(source, MANIFEST_FILE);
+  if (existsSync(direct)) return JSON.parse(readFileSync(direct, "utf8")) as SkillsManifest;
+  // Fall back to computing from a skills/ tree on disk.
+  const skillsRoot = source.endsWith("skills") ? source : join(source, "skills");
+  if (existsSync(skillsRoot)) return buildManifest(skillsRoot, { source: skillsRoot });
+  throw new Error(`No skills manifest found at: ${source}`);
+}
+
+/**
+ * Fetch the manifest from GitHub. A full URL is fetched directly; an
+ * `owner/repo` slug (or the default repo) is SHA-pinned via `git ls-remote` to
+ * dodge raw-CDN lag, falling back to the branch URL when git is unavailable.
+ */
+async function fetchRemoteManifest(source?: string): Promise<SkillsManifest> {
+  if (source?.startsWith("http")) return fetchManifest(source);
+
+  const repoSlug = source ?? DEFAULT_REPO_SLUG;
+  const sha = await remoteHeadSha(repoSlug);
+  if (sha) {
+    try {
+      return await fetchManifest(
+        `https://raw.githubusercontent.com/${repoSlug}/${sha}/${MANIFEST_FILE}`,
+      );
+    } catch {
+      /* fall through to the branch URL */
+    }
+  }
+  return fetchManifest(`https://raw.githubusercontent.com/${repoSlug}/main/${MANIFEST_FILE}`);
+}
+
+/**
+ * Resolve the latest manifest. `source` may be:
+ *   - undefined → in-repo manifest if present (dev / CI), else fetch from GitHub
+ *   - a local path to a manifest file or a repo root containing `skills/`
+ *   - an `owner/repo` slug or full URL → fetched from GitHub
+ */
+async function resolveLatestManifest(
+  source?: string,
+  cwd = process.cwd(),
+): Promise<SkillsManifest> {
+  if (source && (source.startsWith(".") || source.startsWith("/"))) {
+    return resolveLocalManifest(source);
+  }
+  if (!source) {
+    const repoManifest = findRepoManifest(cwd);
+    if (repoManifest) return JSON.parse(readFileSync(repoManifest, "utf8")) as SkillsManifest;
+  }
+  return fetchRemoteManifest(source);
+}
+
+/**
+ * End-to-end check: locate the install, hash it, diff against the latest
+ * manifest. Pure-ish (network only via `resolveLatestManifest`).
+ */
+export async function checkSkills(
+  opts: { dir?: string; source?: string; cwd?: string } = {},
+): Promise<SkillsCheckResult> {
+  const latest = await resolveLatestManifest(opts.source, opts.cwd);
+  const skillNames = Object.keys(latest.skills);
+  const root = locateInstall(skillNames, { dir: opts.dir, cwd: opts.cwd });
+  const installed = root ? hashInstalled(root, skillNames) : {};
+  const diff = diffSkills(installed, latest);
+  return { location: root?.dir ?? null, agent: root?.agent ?? null, ...diff };
+}
