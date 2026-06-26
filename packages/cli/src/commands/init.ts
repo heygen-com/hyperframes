@@ -578,10 +578,10 @@ async function scaffoldProject(
  * skills against the latest published on GitHub and only (re)installs when
  * something is outdated or missing — so re-running `init` on an up-to-date
  * machine is a no-op. Best-effort: if the version check can't reach GitHub, it
- * installs anyway. The install itself (`installAllSkills`) installs the full
- * set once GLOBALLY (~/.claude/skills + ~/.agents/skills) and mirrors it into
- * every other installed agent, so it is project-independent — the check is
- * global-first to match.
+ * installs anyway. The install itself (`installAllSkills`) installs the full set
+ * once GLOBALLY (~/.claude/skills + ~/.agents/skills) and mirrors it into every
+ * other installed agent, so it is project-independent — the check is global-first
+ * to match.
  */
 async function ensureSkillsCurrent(destDir: string): Promise<void> {
   const { installAllSkills } = await import("./skills.js");
@@ -598,6 +598,9 @@ async function ensureSkillsCurrent(destDir: string): Promise<void> {
   }
 
   if (needsInstall) {
+    // installAllSkills installs the full set once globally and mirrors it into
+    // every installed agent's global dir — project-independent, so a freshly
+    // scaffolded project doesn't need any agent folders yet.
     await installAllSkills({ cwd: destDir });
   } else {
     console.log(c.success("AI coding skills are already up to date."));

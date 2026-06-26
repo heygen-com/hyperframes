@@ -166,69 +166,69 @@ Build a paused timeline. Register it on `window.__timelines` with the same key a
   - Range: 0.4–1.0 s
   - Effects: short feels darting; long feels deliberate / "considered click"
   - Constraints: must end before `CLICK_AT` — otherwise the click fires while the cursor is still moving and reads as a misclick
-  - Reference: examples/cta-orbit-collapse.html uses 0.5 s
+  - Reference: ../../examples/cta-orbit-collapse.html uses 0.5 s
 
 - **MOVE_EASE** — easing family for the move tween
   - Discrete choice. Options:
     - `power2.inOut` — symmetric, calm; good for "the user thoughtfully moves the cursor"
     - `back.out(<n>)` — overshoot landing; good when the click target is a button you want the cursor to "settle onto" with a tiny visible recoil. Pair with a low overshoot coefficient (~1.2–1.4) — higher reads as cartoonish
     - `power3.out` — fast start, soft landing; good for a "decisive" move
-  - Reference: examples/cta-orbit-collapse.html uses `back.out(1.3)`
+  - Reference: ../../examples/cta-orbit-collapse.html uses `back.out(1.3)`
 
 - **CLICK_AT** — time the click fires, in seconds
   - Range: must be ≥ `MOVE_DUR` (cursor has settled); typically `MOVE_DUR + 0.0–0.3 s` of "decision pause"
   - Effects: zero pause reads as autopilot; >0.3 s of pause reads as hesitation
-  - Reference: examples/cta-orbit-collapse.html clicks 0.2 s after the cursor settles
+  - Reference: ../../examples/cta-orbit-collapse.html clicks 0.2 s after the cursor settles
 
 - **PRESS_DUR** — half-duration of the depression (the yoyo runs twice this)
   - Range: 0.06–0.12 s
   - Effects: short feels crisp; long feels mushy
   - Constraints: total press = `2 * PRESS_DUR`; must finish before the next scene phase needs the cursor / target back at normal scale
-  - Reference: examples/cta-orbit-collapse.html uses 0.08 s
+  - Reference: ../../examples/cta-orbit-collapse.html uses 0.08 s
 
 - **CURSOR_PRESS_SCALE / TARGET_PRESS_SCALE** — how far each compresses during the click
   - Range: cursor 0.80–0.90; target 0.92–0.97
   - Effects: smaller numbers = stronger "this click counts" feel; values close to 1 read as a gentle tap
   - Constraints: cursor compresses MORE than the target — the cursor is the actor, the target is the recipient
-  - Reference: examples/cta-orbit-collapse.html uses cursor 0.85 / target 0.95
+  - Reference: ../../examples/cta-orbit-collapse.html uses cursor 0.85 / target 0.95
 
 - **RIPPLE_AT** — when the rings start expanding, in seconds
   - Range: `CLICK_AT + 0.0–0.08 s`
   - Effects: simultaneous with the press feels causal; slight delay feels acoustic ("the click happens, then the wave radiates")
-  - Reference: examples/cta-orbit-collapse.html starts the ripple at `CLICK_AT` exactly
+  - Reference: ../../examples/cta-orbit-collapse.html starts the ripple at `CLICK_AT` exactly
 
 - **RIPPLE_DUR** — how long each ring takes to fully expand and fade
   - Range: 0.5–1.0 s
   - Effects: short rings feel sharp; long rings feel like a soft sonar
   - Constraints: must complete before any phase that depends on the ring being gone (e.g. a screen wipe)
-  - Reference: examples/cta-orbit-collapse.html uses 0.7 s
+  - Reference: ../../examples/cta-orbit-collapse.html uses 0.7 s
 
 - **RIPPLE_SCALE** — final scale of each ring before it fades
   - Range: 3–6
   - Effects: 3 keeps the ring near the click site; 6 lets it sweep the surrounding area
   - Constraints: if the ring would exit the visible frame before opacity reaches 0, lower the scale or shorten the duration
-  - Reference: examples/cta-orbit-collapse.html uses 5
+  - Reference: ../../examples/cta-orbit-collapse.html uses 5
 
 - **RIPPLE_STAGGER** — delay between consecutive rings
   - Range: 0.06–0.12 s (or 0 for a single ring; see Variations)
   - Effects: below ~0.06 s reads as one thick ring; above ~0.12 s reads as separate events
-  - Reference: examples/cta-orbit-collapse.html uses a single ring (no stagger)
+  - Reference: ../../examples/cta-orbit-collapse.html uses a single ring (no stagger)
 
 - **RIPPLE_EASE** — easing family for the expansion
   - Discrete choice. Options:
     - `power2.out` — fast start, soft tail; the standard "ping" feel
     - `power3.out` — even sharper attack, longer tail
     - `expo.out` — almost-instant expansion with a long quiet fade; reads as a strong, distant pulse
-  - Reference: examples/cta-orbit-collapse.html uses `power2.out`
+  - Reference: ../../examples/cta-orbit-collapse.html uses `power2.out`
 
 - **TARGET_X / TARGET_Y** — pixel offset of the click target from the cursor's CSS-laid origin
   - These are layout-derived, not creative knobs — they must match the visual centroid of the actual click target. A 4 px miss reads as missing the button
-  - Reference: examples/cta-orbit-collapse.html targets the white button at `CENTER_X + 130, CENTER_Y + 15`
+  - Reference: ../../examples/cta-orbit-collapse.html targets the white button at `CENTER_X + 130, CENTER_Y + 15`
 
 ## Variations
 
 - **Single ring** — keep one `.ripple` element, drop the stagger; reads as more elegant when the rest of the scene is busy
-- **Keyframed attack-decay** — replace the simple expand-and-fade with a `keyframes` block that ramps opacity 0 → peak → 0 across the duration; gives a clearer "energy radiates and dissipates" envelope (used in examples/cta-orbit-collapse.html)
+- **Keyframed attack-decay** — replace the simple expand-and-fade with a `keyframes` block that ramps opacity 0 → peak → 0 across the duration; gives a clearer "energy radiates and dissipates" envelope (used in ../../examples/cta-orbit-collapse.html)
 - **Multi-ring expanding pulse** — 3 rings with 0.08 s stagger feels richer when the click is the climactic moment of the scene
 
 ## Key Principles

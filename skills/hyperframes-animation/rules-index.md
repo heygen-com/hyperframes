@@ -30,6 +30,7 @@ Atomic motion recipes. Each lives at `rules/<name>.md`. Compose 2-4 per scene wi
 <camera-cursor-tracking path="rules/camera-cursor-tracking.md">Two-phase virtual camera that locks the viewport to a moving focal point (typing cursor) — static initial framing then focal-point-locked tracking. Uses browser-native `getBoundingClientRect()` / `ctx.measureText()` after `document.fonts.ready`. Tags: camera, tracking, viewport, two-phase, typing</camera-cursor-tracking>
 <multi-phase-camera path="rules/multi-phase-camera.md">Sequential camera-zoom system (pull-back / focus / push) plus continuous micro-drift. Tags: camera, zoom, phase, drift, scale, cinematic</multi-phase-camera>
 <viewport-change path="rules/viewport-change.md">Virtual camera — simulate zoom / pan / focus-lock by transforming a single `.world` wrapper containing all scene content. Single-element composite transform `translate(x,y) scale(S)`; counter-translate math is `T = -offset × S` (DIFFERENT from coordinate-target-zoom's `T = -offset`). Tags: viewport, camera, zoom, pan, focus-lock</viewport-change>
+<depth-of-field-blur path="rules/depth-of-field-blur.md">Selective rack-focus — GSAP-tween `filter: blur()` (+ slight opacity dim) on off-focus layers via a `--dof` var while the focal element stays sharp; single pull, two-plane rack, or blur-the-cluster-while-pushing-in. Finite, deterministic, seek-safe. Tags: blur, depth-of-field, focus, rack-focus, dim, spotlight</depth-of-field-blur>
 </rules>
 
 ## Layout & Network
@@ -41,6 +42,7 @@ Atomic motion recipes. Each lives at `rules/<name>.md`. Compose 2-4 per scene wi
 <split-tilt-cards path="rules/split-tilt-cards.md">Two cards side-by-side with opposing rotationY tilts (+/- baseTilt) and entry slides from their respective sides. Continuous floating runs in phase opposition (`Math.PI` offset). Tags: 3d, cards, split, tilt, comparison, symmetric</split-tilt-cards>
 <orbit-3d-entry path="rules/orbit-3d-entry.md">Elements flip in from 3D space (`rotateX` + `rotateY` + `translateZ`) then settle into a continuous elliptical orbit. **Critical**: entry MUST flip in-place at the orbital starting position (`gsap.set` BEFORE phase 1), not at scene center. Tags: orbit, 3d, flip, ellipse, circular, icon, entry, continuous</orbit-3d-entry>
 <ai-tracking-box path="rules/ai-tracking-box.md">AI detection overlay — yellow `#facc15` L-bracket corners + confidence label (fluctuating 95-99%) following a target on a sine arc path. Box position recomputed per-frame from target position (never tweened separately). Tags: ai, tracking, bounding-box, detection, corner, ml</ai-tracking-box>
+<depth-scatter-assemble path="rules/depth-scatter-assemble.md">N elements scatter into / reassemble from a rotating 3D depth-cloud — each starts at a deterministic index-derived 3D offset (translateZ + rotateX/Y + scatter) and settles to a clean flat layout; tumble-swap and radial-explode variants. preserve-3d + perspective, transform-only, seek-safe. Tags: 3d, scatter, assemble, tumble, depth, perspective, glyphs</depth-scatter-assemble>
 </rules>
 
 ## SVG & Icons
@@ -54,6 +56,7 @@ Atomic motion recipes. Each lives at `rules/<name>.md`. Compose 2-4 per scene wi
 
 <rules>
 <sine-wave-loop path="rules/sine-wave-loop.md">Continuous breathing/idle ambient motion. Two forms: GSAP `sine.inOut` yoyo with finite repeats (preferred when standalone) or onUpdate reading `tl.time()` (preferred when multiplying onto another live value). Tags: idle, loop, breathing, sine, ambient</sine-wave-loop>
+<ambient-glow-bloom path="rules/ambient-glow-bloom.md">Un-triggered soft radial glow that blooms in behind a hero element and holds with a bounded idle breathe, or a single-pass traveling sheen across a surface. No click, no word-sync; peak opacity ≤ ~0.45, finite/deterministic. Tags: glow, bloom, ambient, radial, sheen, hero</ambient-glow-bloom>
 </rules>
 
 ## Transition & Motion
@@ -65,6 +68,8 @@ Atomic motion recipes. Each lives at `rules/<name>.md`. Compose 2-4 per scene wi
 <cursor-click-ripple path="rules/cursor-click-ripple.md">Animated cursor moves to a target, depresses cursor + target together on click, emits an expanding ripple with attack-decay opacity envelope. Element lives in DOM from t=0 with `opacity: 0` (no conditional rendering). Tags: cursor, click, ripple, interaction, mouse, button, keyframes</cursor-click-ripple>
 <scale-swap-transition path="rules/scale-swap-transition.md">Coordinated morph between two DOM elements at the same screen center. Exit cluster shrinks + fades; entrance pops in with `back.out(2)` overshoot. Tags: transition, morph, scale, swap</scale-swap-transition>
 <card-morph-anchor path="rules/card-morph-anchor.md">Container morphs apparent size + corner radius + surface treatment between two shots, then fades to reveal the real target underneath. HyperFrames substitutes uniform `scale` for the forbidden `width`/`height` tween, plus paint-only `borderRadius`/`background`/`boxShadow`. Tags: morph, anchor, transition, border-radius, container, shape, handoff</card-morph-anchor>
+<spring-pop-entrance path="rules/spring-pop-entrance.md">The canonical ENTRANCE pop — an element (or staggered group) arrives by springing `scale: 0 → 1` with `back.out` overshoot, `fromTo` so it's correct at t=0 under seek. Single hero, staggered group (≤500ms cap), overshoot tuned by personality. Distinct from `press-release-spring` (a click/press reaction). Tags: spring, entrance, pop, scale-in, overshoot, stagger, arrival</spring-pop-entrance>
+<motion-blur-streak path="rules/motion-blur-streak.md">Fake directional velocity blur on a fast entrance / camera push-through — blur peaks at max speed, resolves to 0 at the settle. Two paths: SVG `feGaussianBlur` stdDeviation on the motion axis (proxy-tweened), or a deterministic echo/ghost trail that collapses into the lead. Entrances / mid-shot only. Tags: motion-blur, streak, velocity, ghost, echo, fast</motion-blur-streak>
 </rules>
 
 ## Effect Recipes (moved from hyperframes-creative)
@@ -76,6 +81,6 @@ Atomic motion recipes. Each lives at `rules/<name>.md`. Compose 2-4 per scene wi
 
 ## See Also
 
-- `transitions/` — scene-transition catalog (CSS push / scale / dissolve / distortion / blur / cover / destruction / 3d / grid / light / mechanical / radial / other)
-- `techniques.md` — broader motion-design techniques (SVG path drawing, Canvas 2D, CSS 3D, kinetic type, variable fonts, compositing)
-- `blueprints-index.md` — multi-phase scene templates (load only when composing a full scene from a template)
+- `blueprints-index.md` — the scene-shape templates (this skill's "blueprints") that compose these rules into full shots
+- `techniques.md` — broader motion-design techniques (SVG path drawing, Canvas 2D, CSS 3D, kinetic type, variable fonts, compositing); a few rules cite it
+- `transitions/` — scene-transition catalog (shared skill; story owns `transition_in`, the harness injects it)

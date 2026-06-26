@@ -166,6 +166,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
       compiledDir: join(workDir, "compiled"),
       port: 0,
       preHeadScripts: [VIRTUAL_TIME_SHIM],
+      fps: job.config.fps,
     });
     assertNotAborted();
 

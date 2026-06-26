@@ -500,6 +500,9 @@ export async function renderChunk(
       compiledDir,
       port: 0,
       preHeadScripts: [buildVirtualTimeShim({ seedRandomFromFrame: true })],
+      // These dimensions are frozen by the controller from the render job, so
+      // chunk runtime seek quantization stays on the same fps grid as capture.
+      fps: { num: plan.dimensions.fpsNum, den: plan.dimensions.fpsDen },
     });
 
     const captureOptions: CaptureOptions = {

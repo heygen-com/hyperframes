@@ -1,267 +1,373 @@
 # Story design — product launch video
 
-Use this reference in Step 3 to write `STORYBOARD.md` and `SCRIPT.md` for a product launch, promo, feature reveal, or marketing video.
+Step 3 of the product-launch flow. Output: `STORYBOARD.md` (the narrative plan, one frame per beat) and `SCRIPT.md` (the locked spoken narration).
 
-This file defines the story: what the video says, in what order, and why each frame exists. It does not define layout, visual effects, animation, or final markdown schemas. For exact file syntax, follow `../hyperframes-core/references/storyboard-format.md` and `../hyperframes-core/references/script-format.md`.
+This step decides **what the video says, in what order, and how each beat is said** — and it says each beat in the SHAPE of a proven script. It does not design layout, composition, or motion (that is Step 4). For exact file syntax follow `../hyperframes-core/references/storyboard-format.md` and `../hyperframes-core/references/script-format.md`.
+
+## What story design produces
+
+For every beat, four things:
+
+1. **Position in the SEQUENCE** — the shot order. Story truth decides which beats exist and in what order (the arc).
+2. **Voiceover written in a blueprint's script shape** — the spoken line, drafted to sound like the proven script for the shape this beat is reaching toward (see the script bank below).
+3. **A candidate `blueprint:` id** — the proven shot SHAPE this beat leans toward (a tag, not a commitment; Step 4 confirms or overrides).
+4. **`transition_in`** — how this beat enters from the one before it.
+
+The big idea: **the blueprint is applied from the very first step.** The blueprints were reverse-engineered from 50 golden clips; each one implies a proven script. So we write the VO in that script's shape from the start — the voiceover is blueprint-shaped before Step 4 ever runs, which makes the blueprint's hit-rate downstream high.
+
+This is still a SOFT discipline. Story truth comes first: **never invent, bend, drop, or reorder a beat to fit a blueprint.** The script patterns only shape HOW a beat is said and which proven shape it leans toward — they never decide which beats exist.
 
 ## Read first
 
-Read these inputs before writing:
-
 1. `hyperframes.json` — locked brief: angle, length, aspect ratio, language.
-2. `frame.md` — tone, mood, design system, and brand register.
+2. `frame.md` — tone, mood, design system, brand register.
 3. `capture/extracted/visible-text.txt` — product facts, page copy, positioning, proof, CTA.
-4. `capture/extracted/asset-descriptions.md` — the only source for captured asset inventory.
+4. `capture/extracted/asset-descriptions.md` — the ONLY source for the captured asset inventory.
 5. `user_script.txt` and `VO_MODE`, when present.
 
-Do not inspect `capture/assets/`, contact sheets, screenshots, or raw captured files during Step 3. Treat `asset-descriptions.md` as the canonical asset list. Do not invent asset filenames.
+Do not inspect `capture/assets/`, contact sheets, screenshots, or raw files in Step 3. Treat `asset-descriptions.md` as the canonical asset list. Never invent asset filenames.
 
-## Output
-
-Create two files:
-
-- `STORYBOARD.md` — the narrative plan, one frame per beat.
-- `SCRIPT.md` — the locked narration, only for spoken frames.
-
-Every storyboard frame must include the required fields from the storyboard format reference, plus the narrative metadata below.
-
-## Core rule
-
-A website is an information layout. A video is an emotional sequence.
-
-Do not follow page order. Reorder, merge, omit, and reshape captured content into a clear launch story.
-
-## Step 3 method
+## Method
 
 ### 1. Extract the product truth
 
-From the brief and captured text, identify:
+From the brief and captured text, name:
 
-- Audience — who the video is speaking to.
-- Pain or desire — what the viewer already wants fixed or achieved.
-- Promise — the one-line thesis of the video.
-- Product role — what the product does in the story.
-- Proof — features, UI moments, metrics, logos, examples, or demos.
-- CTA — what the viewer should do next.
+- **Audience** — who the video speaks to.
+- **Pain / desire** — what they already want fixed or achieved.
+- **Promise** — the one-line thesis of the whole video.
+- **Product role** — what the product does in the story.
+- **Proof** — features, UI moments, metrics, logos, demos.
+- **CTA** — what the viewer should do next.
 
-Write the storyboard around the promise, not around a list of features.
+Build the sequence around the **promise**, not a feature list. A website is an information layout; a video is an emotional sequence. Reorder, merge, and omit captured content freely — do not follow page order.
 
-### 2. Match the register to `frame.md`
+### 2. Choose the arc (the sequence backbone)
 
-Use `frame.md` as a soft guide:
+Pick ONE arc — it fixes the beat order. Compound only when useful (e.g. `PAS with feature-benefit progression`).
 
-| `frame.md` signal             | Story effect                              |
-| ----------------------------- | ----------------------------------------- |
-| restrained, editorial, B2B    | plain, confident, low-hype script         |
-| bold, kinetic, launch-like    | short hooks, punchier beats               |
-| warm, human, playful          | friendly direct address, lighter phrasing |
-| premium, cinematic, spectacle | aspirational framing, fewer words         |
+| Arc                       | Use when                                         | Beat order                                                                  |
+| ------------------------- | ------------------------------------------------ | --------------------------------------------------------------------------- |
+| `PAS`                     | Pain is known and urgent (broken B2B workflows). | hook → pain → agitation → solution tease → product intro → proof/demo → CTA |
+| `Future Pacing`           | Sells a new future / category / paradigm.        | imagine → name product → remove pain → mechanism → outcome → CTA            |
+| `Demo Loop`               | UI is self-explanatory; best shown working.      | question → product intro → demo cycle 1 → demo cycle 2 → trust → CTA        |
+| `BAB`                     | Bridges an old workflow to a better one.         | before → after tease → bridge/product → step 1 → step 2 → wow → CTA         |
+| `Feature-Benefit Cascade` | Feature-rich or desire/status-driven.            | category hook → feature → benefit → feature → benefit → climax → CTA        |
 
-The product truth decides the arc. The visual system tunes the voice.
+Use feature→benefit rhythm inside any arc when there are many capabilities — always translate a feature into viewer value, never stack raw features.
 
-### 3. Choose one outer arc
+`frame.md` tunes the VOICE, not the arc: restrained/B2B → plain, low-hype; bold/launch → short, punchy; warm/human → friendly direct address; premium/cinematic → aspirational, fewer words.
 
-Pick one primary arc. Use a compound only when useful, e.g. `PAS with feature-benefit progression`.
+### 3. Lay out the beats, each with a role
 
-| Arc                       | Use when                                                          | Beat order                                                                   | Reveal timing |
-| ------------------------- | ----------------------------------------------------------------- | ---------------------------------------------------------------------------- | ------------- |
-| `PAS`                     | The pain is known and urgent. Best for broken B2B workflows.      | hook → pain → agitation → solution tease → product intro → proof/demo → CTA  | late          |
-| `Future Pacing`           | The product sells a new future, category, or paradigm.            | imagine → name product → remove pain → show mechanism → show outcome → CTA   | early         |
-| `Demo Loop`               | The UI is self-explanatory and the product is best shown working. | question → product intro → demo cycle 1 → demo cycle 2 → trust/benefit → CTA | early         |
-| `BAB`                     | The product bridges an old workflow to a better one.              | before → after tease → bridge/product → step 1 → step 2 → step 3/wow → CTA   | early-mid     |
-| `Feature-Benefit Cascade` | The product is feature-rich or desire/status-driven.              | product/category hook → feature → benefit → feature → benefit → climax → CTA | frame 1       |
-
-Use feature-benefit rhythm inside any arc when the video has many capabilities. Do not stack several features without translating them into viewer value.
-
-### 4. Build the frame sequence
-
-Each frame needs one clear job. Avoid frames that only say “more benefits” or “another feature.”
-
-Use these frame types:
+One clear job per beat — never "more benefits" or "another feature." Beat `type` (= blueprint **role**):
 
 `hook | pain_point | product_intro | feature_showcase | benefit_highlight | social_proof | branding | cta`
 
-For every frame, define:
+The opening 3–5s needs ONE hook that creates tension, curiosity, or desire — a shocking stat, pain validation, a rhetorical question, direct address, an imagine/future-pace, a category announcement, or visual spectacle. Never open with generic company description.
 
-- `type` — one of the allowed frame types.
-- `persuasion` — the specific persuasion move.
-- `beat` — the viewer emotion.
-- `scene` — a one-line visual idea, not detailed composition.
-- `voiceover` — spoken guide text, or empty for silent frames.
-- `asset_candidates` — real captured assets that could support the frame.
+A UI demo is usually a SEQUENCE of 3+ consecutive `feature_showcase` / `benefit_highlight` beats on the same surface (input → response → result → benefit), not one isolated frame.
 
-The prose under each frame should state:
+### 4. Write each beat's VO in its blueprint's script shape
 
-- `narrativeRole` — why this frame exists in the story.
-- `keyMessage` — the one idea the viewer should remember.
+For each beat, look up its **role** in the script bank below, find the blueprint whose SHAPE fits the beat you already chose, and **draft the voiceover to sound like that blueprint's pattern.** Tag the candidate `blueprint:` id on the frame.
 
-## Hook strategy
+- The bank is the heart of this step: proven product-launch clips reversed into the one VO line each implies, grouped by role → blueprint, each with a **pattern** to imitate.
+- If two blueprints fit the beat, prefer the one whose script shape matches the line you'd naturally write.
+- If NO shape fits the beat, omit `blueprint:` and write the VO plainly — Step 4 composes that frame freely. Do not force a wrong shape.
+- **Vary the shapes across the video.** Reaching for the same blueprint every beat re-creates the sameness this exists to avoid. `kinetic-type-beats` is the workhorse (6 roles) — lean on it, but not everywhere.
+- **Write each VO as discrete cues, not one run-on breath.** Step 5 reveals each on-screen piece _when the voiceover names it_ (the anti-PowerPoint mechanism — `motion-language.md` Part 2). A line with clear phrase boundaries — "Content, sentiment, engagement — in one place" — hands the shot its reveal cadence for free; a single long clause leaves the frame nothing to pace to. The bank patterns are already cue-segmented — keep that rhythm.
 
-Pick one opening strategy for the first 3-5 seconds:
+Step 3 only TAGS the candidate id and writes the shaped VO. Step 4 (visual design) picks and instantiates the blueprint into a time-coded shot; it may override or drop a Step 3 candidate. The full menu with picking guidance lives in `../hyperframes-animation/blueprints-index.md`.
 
-| Strategy                | Use when                                        |
-| ----------------------- | ----------------------------------------------- |
-| Shocking statistic      | A credible number proves the pain.              |
-| Pain validation         | The audience already knows the problem.         |
-| Rhetorical question     | You need curiosity and speed.                   |
-| Direct address          | The audience is clear and specific.             |
-| Imagine / future pacing | The product introduces a new future.            |
-| Category announcement   | The product is the category or launch headline. |
-| Visual spectacle        | The aesthetic is part of the pitch.             |
-| Trend positioning       | The product rides a timely market shift.        |
+---
 
-The hook must create tension, curiosity, or desire. Do not open with generic company description.
+## The script bank — what each beat's VO sounds like
 
-## Persuasion labels
+> Proven product-launch clips, each reversed into the one spoken line it implies. Grouped by **role → blueprint**. Real product names kept (swap in your own). Draft your beat's VO in the SHAPE of the matching pattern.
 
-Use concrete labels. Do not write generic labels like “show benefit.”
+### HOOK
 
-Good labels include:
+**kinetic-type-beats** — the words ARE the motion
 
-- Pain agitation
-- Cognitive overload
-- Negative contrast
-- Friction reduction
-- Simplification
-- Show-don’t-tell proof
-- Demonstration of capability
-- Feature-to-benefit translation
-- Statistical proof
-- Authority by association
-- Social proof
-- Risk reversal
-- Future pacing
-- Value stacking
-- Empowerment and control
-- Rule of three
-- Scarcity / urgency
-- Status seeking
+- Mailoji — "Still using a @gmail address? Or @outlook, or @hotmail, or @yahoo?"
+- Outrank — "Getting traffic is hard. Insanely hard."
+- AiAgent — "An AI agent that's easy to use — and optimised for you."
+- Uizard — "Transform your sketches into prototypes — automatically."
+- _Pattern:_ a punchy claim or rhetorical jab whose KEY WORD swaps in place (or escalates beat by beat) — the swap/escalation is the joke.
 
-When no label fits, create one and explain the mechanism in the frame prose.
+**typewriter-reveal** — someone is typing this
 
-## Emotional beats
+- "Need answers about your audience — right now?"
+- Contra — "You are more than your job title. You are more than your resume."
+- _Pattern:_ a relatable line typed live and edited mid-stream (a word backspaces and retypes) — the everyday thought, in your own words.
 
-Use specific emotions:
+**spatial-pan-stations** — a panned timeline
 
-- Negative: `anxiety`, `frustration`, `overwhelm`, `tension`, `urgency`, `skepticism`, `FOMO`
-- Pivot: `relief`, `curiosity`, `clarity`, `intrigue`, `aspiration`
-- Build: `trust`, `confidence`, `control`, `ease`, `power`, `awe`, `excitement`, `belonging`, `reassurance`
-- Close: `triumph`, `motivation`, `urgency-to-act`, `peace of mind`, `inevitability`
+- Rows — "From VisiCalc to Excel to Google Sheets — the spreadsheet has barely changed since 1979."
+- _Pattern:_ a march of named milestones across time, landing on "...until now / ...up to us."
 
-Compound beats are allowed, e.g. `relief + control`.
+**constellation-hub** — nodes ring a center, camera pushes in
+
+- "Content, sentiment, engagement, analysis — every platform you're on, in one place."
+- _Pattern:_ a spread of tools/channels collapsing onto one center — "it connects everything."
+
+**ticker-takeover** — options cycle, then a hero crashes in
+
+- Notion — "A doc? A database? A wiki? — no, it's all of them, in one place."
+- _Pattern:_ a "could be X, or Y, or Z?" cycle on one swapping word, then a hero claim crashes in and replaces it — "actually, this is what it is."
+
+### PROBLEM
+
+**kinetic-type-beats** — pain lands alone on a bare canvas
+
+- Butter — "What if your sessions didn't have to be boring and unstructured — or buried under a dozen tabs?"
+- SmartCue — "You asked for better leads. We were the cure — MQLs that actually convert, a sales team that becomes your ally."
+- _Pattern:_ 3–5 short pain statements (or a "what if?" framing), each landing solo before the next — no product yet.
+
+**spatial-pan-stations** — a panned web of pain
+
+- Vauban — "Coordinating legal documents, signatures, and cross-border transactions — it's a tangled mess."
+- _Pattern:_ pain "stations" traversed one by one, ending on a knot — "too many disconnected steps."
+
+**dataviz-countup** — the data IS the argument
+
+- "67% of professionals say leadership is disconnected — and it's costing them a 65% boost in profitability."
+- _Pattern:_ a count-up / chart / stat the camera pushes through to dramatize a worsening or large-scale problem.
+
+**overwhelm-surround** — buried by your own tools
+
+- "Slack, email, docs, tickets, three more tabs — and somehow it all lands on you."
+- _Pattern:_ recognizable tools pile in until they surround and bury the viewer — the pain is being swamped, not one bad number.
+
+### PRODUCT_INTRO
+
+**kinetic-type-beats** — "Introducing…" name-drop
+
+- "Elevating experiences, removing manual touchpoints, automating processes — so you can focus on the customer."
+- Uizard — "Introducing Uizard — the design tool for everyone."
+- _Pattern:_ hard-cut through "Introducing…" / tagline / value beats and resolve on the brand name or logo.
+
+**logo-assemble-lockup** — wordless premium sting
+
+- Manifold — "Manifold." _(wordless mark assembles; VO optional — just the name)_
+- _Pattern:_ an abstract system assembles around a fixed mark — no copy, or just the product name landing.
+
+**cursor-ui-demo** — first cursor-led look
+
+- ClickUp — "This is ClickUp — click through and watch your whole workspace change."
+- "Pull up any contact, find the right advisor, and you're matched in seconds."
+- PaLM 2 — "Meet PaLM 2 — what is it, what can it do, and how was it built?"
+- _Pattern:_ a cursor sweeps in to introduce the surface — a light first look landing on a hovered hero element or fresh result.
+
+**dataviz-countup** — open on the result
+
+- SuperX — "X growth — discover what really works: 19.6 million impressions."
+- _Pattern:_ a confident "look at the data / the result" open — scroll a tilted card grid to one glowing hero metric, tagline assembling word by word.
+
+**video-text-pivot** — show it work, then the number
+
+- "Watch it run — then look at what it saved: 14 hours, every week."
+- _Pattern:_ the product video plays, then slides aside to hand the frame to one impact stat — "see it work, now see what it's worth."
+
+### KEY_FEATURE
+
+**grid-card-assemble** — enumerate breadth at once
+
+- Postcards — "Want more? Unlimited exports, 1,400 fonts, an AI assistant, version history — and it's free to try."
+- ClearVPN — "ClearVPN is built to help you: streaming access, secure browsing, location changing — only the essentials."
+- Copilot — "Command bar, Zapier, white-labeling, API, SOC2 — and a whole lot more."
+- _Pattern:_ a tile/pill/card grid self-assembles to show many capabilities at once — "look how much it does."
+
+**cursor-ui-demo** — one workflow, end to end
+
+- "Scroll your feed, then jump straight to your notifications — it's all one click away."
+- Flowrite — "Pick your recipient, set your intention, choose a tone — and Flowrite writes it for you."
+- Descript — "Tune your edits, add a crossfade, automate the volume, normalize loudness — then export."
+- _Pattern:_ one specific multi-step workflow shown end-to-end across 2–4 real edits, landing on the action button or result.
+
+**device-surface-showcase** — experienced inside its real interface
+
+- HRS — "Your flight's cancelled — so book a hotel, a taxi, and get reimbursed, all in one digital journey."
+- HelpKit — "A dynamic table of contents that follows your readers as they scroll."
+- Graphite — "Use unique themes, recolor one element or several, and configure it all in a handy window."
+- Contra — "Pick a template, make it yours, and launch a portfolio that's unmistakably you."
+- _Pattern:_ a feature shown being USED inside its real surface — the device/window is the hero and its screens advance through a flow.
+
+**comparison-split** — two paired capabilities, side by side
+
+- "Design on the left, code on the right — always one source of truth."
+- _Pattern:_ two complementary capabilities of equal weight shown together — "X and Y, in lockstep."
+
+**video-text-pivot** — the feature, then its result
+
+- "Here's the editor in action — and the result: a publish-ready cut in minutes."
+- _Pattern:_ a feature clip runs, then yields the frame to a metric / impact line — the clip proves it, the number lands it.
+
+### BENEFITS
+
+**kinetic-type-beats** — rapid-fire value montage
+
+- AiAgent — "No API keys, GPT-4 access, simple UX, clean UI — moving fast."
+- Uizard — "Export to Sketch, create style guides, share, collaborate — and code less."
+- _Pattern:_ a staccato montage of 8–12 short value phrases, each flashing and clearing at high tempo.
+
+**grid-card-assemble** — an accumulating value list
+
+- Lineicons — "Consistent and clean, tons of free icons, a Figma plugin, a powerful editor, every format you need."
+- Plutio — "Manage projects, track time, send invoices, write proposals — all deeply customisable."
+- _Pattern:_ short value phrases populate a vertical list ~1/sec, co-resident and accumulating, each popping into its slot.
+
+**titlecard-reveal** — the calm value beat
+
+- CSS Scan Pro — "A smart color picker — with instant tints and shades."
+- _Pattern:_ one clean two-line value title, one slide-up crossfade, then held still. Low motion is the point.
+
+### SOCIAL_PROOF
+
+**constellation-hub** — the hub at the center of your stack
+
+- kyvos — "On any BI tool — Tableau, Looker, Power BI — Kyvos sits at the center of your stack."
+- _Pattern:_ the product mark is the hub and partner logos orbit it — "sits at the center of everything you use."
+
+**grid-card-assemble** — a logo wall pulling back to a vast ecosystem
+
+- Lineicons — "Used by more than 100,000 designers, developers, and companies — including these."
+- ClickUp — "Connect Google Drive, Slack, GitHub, Stripe — your whole ecosystem in one place."
+- Copilot — "With thousands of partner apps — Airtable, Calendly, Jira, Asana — you can embed anything."
+- _Pattern:_ a wall of partner/app logos builds, then a camera zoom-out reveals a vast ecosystem.
+
+**titlecard-reveal** — busy → clean proof card
+
+- Trumpet — "We supply the trumpet, you bring the band — loved by 1,000+ sales, success, and marketing teams."
+- _Pattern:_ wipe a busy open away to a clean lockup plus a "loved by N+ teams" line that settles and holds.
+
+### CTA
+
+**kinetic-type-beats** — punchy closing line beat-by-beat
+
+- Stylebit — "Go pro, connect up to five Figma accounts — more features coming. Join now."
+- revid.ai — "Boost your engagement and turbocharge your social media."
+- _Pattern:_ a closing line (or short value stack) that snaps in beat by beat and lands on the logo or URL.
+
+**logo-assemble-lockup** — logo build → push-through into the URL
+
+- Strapi Cloud — "Deploy on Strapi Cloud — no server hassle, same flexibility. Try it now at strapi.io/cloud."
+- Highlander — "Highlander is ready for the future you're building. Let's raise — at highlander.ai."
+- STUDIO AI — "Get early access to STUDIO."
+- Glorify — "Get started for free now — no credit card required."
+- _Pattern:_ the logo builds, a fast camera push-through streaks giant CTA letters past the lens, resolving on the URL or action verb.
+
+**cta-morph-press** — identity condenses into one click
+
+- Linear — "This is Linear. Start building — it's free."
+- _Pattern:_ the brand mark condenses straight into the single thing you click — "here's us → click here," no spatial set.
+
+### BRAND_OUTRO
+
+**kinetic-type-beats** — a verb barrage resolving on one word
+
+- Phantom — "Buy, store, stake, swap, send, connect, explore — multichain."
+- _Pattern:_ a rapid center-channel barrage of single-word verbs asserting breadth, resolving on the brand's one defining word. No logo lockup needed.
+
+**typewriter-reveal** — persistent mark + typed CTA rail
+
+- Collato — "Next time, just Collato it — sign up for free today."
+- _Pattern:_ the mark holds dead-center the whole time while a sub-line types or swaps into the final CTA.
+
+**logo-assemble-lockup** — elements clear, the lockup draws itself in
+
+- Copilot — "Copilot." _(pills disperse off-frame, the mark draws on; VO optional — just the name)_
+- Dora AI — "Dora AI — join the waitlist."
+- _Pattern:_ feature/UI elements clear the stage off all four edges, then the logo mark draws itself on and the wordmark completes the lockup.
+
+**ticker-takeover** — use-cases cycle, the brand takes the frame
+
+- "For notes, for tasks, for plans, for teams — [brand] holds it all."
+- _Pattern:_ closing use-cases/verbs cycle through one slot, then the brand mark crashes in and owns the final frame.
+
+---
+
+## VO_MODE handling
+
+**No pasted script** — write the VO yourself, in the matching blueprint's script shape:
+
+- 1–2 sentences per spoken beat, usually 6–20 words.
+- Concrete and human; active verbs; say what the product does for a person.
+- Avoid: "seamless experience," "unlock the power of," "streamline your workflow," long noun-phrase lists, a whole beat that is just "Or…".
+- Silent beats are allowed when the visual proves the point — leave them out of `SCRIPT.md`.
+
+**`VO_MODE = restructure`** — treat `user_script.txt` as source material. Rewrite, reorder, merge, or omit to fit the arc and target length. You may still shape each segment toward its beat's blueprint pattern.
+
+**`VO_MODE = verbatim`** — do NOT change the user's words. Segment the script into beat-sized chunks at sentence/paragraph boundaries (split a long sentence only at a natural clause boundary). Final duration follows the provided script. Blueprint shaping does not apply to wording — only to which shape each verbatim chunk is paired with.
 
 ## Asset candidates
 
-`asset_candidates` is the handoff from Step 3 to visual design and frame building.
+`asset_candidates` is the Step-3 → Step-4 handoff. Rules:
 
-Rules:
-
-1. Read only `capture/extracted/asset-descriptions.md` to know what assets exist.
-2. Use only filenames listed there.
-3. Write candidates as `assets/<basename>`, where `<basename>` is the captured file basename.
-4. Put all candidates on one line.
-5. Separate candidates with semicolons.
-6. Add a short description after `—`.
-7. Prefer `[video]` assets when motion proves the product better than a still.
-8. Use content assets: UI, screenshots, product photos, charts, diagrams, demos.
-9. Skip tiny icons, favicons, badges, decorative chrome, and repeated logo variants unless the frame needs them.
-10. Pure typography frames may use an empty asset list.
+1. Read only `capture/extracted/asset-descriptions.md` to know what exists.
+2. Use only filenames listed there; write as `assets/<basename>`.
+3. One line, candidates separated by semicolons, a short description after `—`.
+4. Prefer `[video]` assets when motion proves the product better than a still.
+5. Use content assets (UI, screenshots, product photos, charts, demos). Skip tiny icons, favicons, badges, decorative chrome, repeated logo variants — unless the beat needs them.
+6. Pure-typography beats may use an empty asset list. Do not use nested lists.
 
 Example:
 
 ```md
-- asset_candidates: assets/dashboard-hero.png — main analytics UI, dark dashboard, wide screenshot; assets/demo-loop.mp4 — product interaction clip, query to result flow
+- asset_candidates: assets/dashboard-hero.png — dark analytics dashboard, wide screenshot; assets/demo-loop.mp4 — query-to-result interaction clip
 ```
 
-Do not use nested lists for assets. The parser expects a single metadata line.
+## transition_in
 
-## UI demos
+Between-frame transition — how each frame ENTERS from the one before it. The harness's injector stamps it onto the two whole-frame clips (opacity / transform / filter on the frame wrappers). Name a **registry type** directly; optionally add a direction and/or a duration (`push-slide LEFT`, `crossfade 0.4s`). `cut` / `none` / empty = a hard cut.
 
-A UI demo should usually be a sequence, not one isolated frame.
+The five registry types:
 
-Use 3 or more consecutive `feature_showcase` / `benefit_highlight` frames on the same product surface when the product value depends on workflow or interaction.
+- **`crossfade`** — a plain opacity dissolve; the neutral choice when two frames sit in the same visual world.
+- **`blur-crossfade`** — dissolve through a soft blur + slight scale; use when the two frames' backgrounds differ a lot, so the blur masks the color clash a plain crossfade would expose.
+- **`push-slide`** `[LEFT|RIGHT|UP|DOWN]` — outgoing slides off, incoming pushes in from the opposite edge; a lateral "next beat" feel for a run of consecutive cards / feature beats.
+- **`zoom-through`** — outgoing scales up + blurs out, incoming scales up from small into focus; for a STATE CHANGE / turning to a new section (hook → context).
+- **`squeeze`** — outgoing compresses to a line on one edge as incoming expands from the other; a snappy, mechanical beat change.
 
-Good demo rhythm:
-
-1. Input or user action.
-2. Product response.
-3. Result, insight, automation, or saved effort.
-4. Benefit or trust proof.
-
-Use consistent transitions across the sequence so it feels like one flow.
-
-## Script rules
-
-### If there is no pasted script
-
-Write tight per-frame narration:
-
-- 1-2 sentences per spoken frame.
-- Usually 6-20 words per frame.
-- Concrete and human.
-- Say what the product does for a person.
-- Prefer active verbs.
-
-Avoid:
-
-- “Seamless experience.”
-- “Unlock the power of...”
-- “Streamline your workflow.”
-- Long noun-phrase lists.
-- A whole frame with only “Or...” or another filler bridge.
-
-Silent frames are allowed when the visual proves the point. Leave them out of `SCRIPT.md`.
-
-### If `VO_MODE = restructure`
-
-Treat `user_script.txt` as source material. Rewrite, reorder, merge, or omit to fit the chosen arc and target length.
-
-### If `VO_MODE = verbatim`
-
-Do not rewrite the user’s words. Segment the script into frame-sized chunks at sentence or paragraph boundaries. You may split a long sentence at a natural clause boundary, but do not change words. The final duration follows the provided script.
-
-## Transitions
-
-Use only registry transition names:
-
-`cut | crossfade | blur-crossfade | push-slide LEFT | push-slide RIGHT | push-slide UP | push-slide DOWN | zoom-through | squeeze`
-
-Pick 2-3 transition types for the whole video and repeat them. Frame 1 can use `cut` as a placeholder.
+Pick a small set and repeat them: default to `crossfade` (or `blur-crossfade` when the backgrounds clash), and reach for `zoom-through` at section boundaries. Frame 1's `transition_in` is a placeholder.
 
 ## Frame template
 
-Use the exact fields required by the core storyboard format. This is the narrative shape each frame should satisfy:
+Use the exact fields required by the core storyboard format. The narrative shape each frame satisfies:
 
 ```md
 ## Frame N — Short name
 
 - scene: one clear visual idea
-- voiceover: "spoken guide text, or empty"
+- voiceover: "spoken line, written in the candidate blueprint's script shape, or empty"
 - duration: rough estimate in seconds
-- transition_in: cut
+- transition_in: crossfade
 - status: outline
 - src: compositions/frames/NN-short-name.html
 - type: hook
 - persuasion: Pain validation
 - beat: urgency
+- blueprint: kinetic-type-beats — candidate shape from the role→blueprint menu; omit when none fits
 - asset_candidates: assets/example.png — short asset description
 
-narrativeRole: What this frame does in the viewer journey.
-keyMessage: The one idea the viewer should remember.
+narrativeRole: what this beat does in the viewer journey.
+keyMessage: the one idea the viewer should remember.
 ```
+
+- `persuasion` — a concrete move (Pain agitation, Negative contrast, Friction reduction, Show-don't-tell proof, Feature-to-benefit translation, Statistical proof, Authority by association, Social proof, Risk reversal, Future pacing, Value stacking, Rule of three, Scarcity/urgency, Status seeking…). Never "show benefit." Invent one if none fits and explain it in the prose.
+- `beat` — a specific emotion (anxiety, frustration, overwhelm, tension, urgency, skepticism, FOMO → relief, curiosity, clarity, intrigue, aspiration → trust, confidence, control, ease, power, awe, excitement, belonging → triumph, motivation, urgency-to-act, peace of mind, inevitability). Compound allowed (e.g. `relief + control`).
 
 ## Final checklist
 
-Before asking for user approval, verify:
-
-- The arc is named and consistent.
-- The sequence is narrative-driven, not page-order-driven.
-- The opening uses a clear hook strategy.
-- Each frame has one job.
-- Every frame has `type`, `persuasion`, and `beat`.
-- Every visual frame has suitable `asset_candidates`, unless intentionally typography-only.
-- Asset filenames come only from `capture/extracted/asset-descriptions.md`.
-- UI/product demos use a multi-frame sequence when needed.
-- Transitions use only registry names and repeat 2-3 types.
-- `SCRIPT.md` contains only locked spoken narration.
-- Silent frames are intentional and omitted from `SCRIPT.md`.
+- The arc is named; the sequence is narrative-driven, not page-order-driven.
+- The opening uses one clear hook strategy that creates tension/curiosity/desire.
+- Each beat has one job; every beat has `type`, `persuasion`, `beat`.
+- Each beat's `voiceover` is written in its candidate blueprint's script shape (from the bank), with the candidate `blueprint:` tagged wherever a shape fits — and omitted where none does.
+- Each `voiceover` is phrase-segmented into cues (each cue a piece Step 5 can reveal on) — not one long run-on clause.
+- Shapes vary across the video; no single blueprint on every beat.
+- Story truth was never bent to fit a blueprint — no beat invented/dropped/reordered for a shape.
+- Every visual beat has suitable `asset_candidates` (filenames only from `asset-descriptions.md`), unless intentionally typography-only.
+- UI/product demos use a multi-beat sequence when the value depends on workflow.
+- `transition_in` is a registry type (`crossfade` / `blur-crossfade` / `push-slide` / `zoom-through` / `squeeze`) — default `crossfade` (`blur-crossfade` on a background clash), `zoom-through` at section boundaries, repeated across the video.
+- `SCRIPT.md` contains only locked spoken narration; silent beats are intentional and omitted.

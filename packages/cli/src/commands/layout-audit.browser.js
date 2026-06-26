@@ -27,14 +27,18 @@
     return Math.round(value * 100) / 100;
   }
 
-  function overflowFor(subject, container, tolerance) {
+  function overflowFor(subject, container, tolerance, vTolerance) {
+    // Horizontal axis uses `tolerance`; vertical axis uses `vTolerance` (defaults to the same).
+    // A separate vertical tolerance lets text overflow checks absorb glyph ink that exceeds a
+    // snug line-height — see textOverflowIssues.
+    if (vTolerance == null) vTolerance = tolerance;
     const overflow = {};
     if (subject.left < container.left - tolerance)
       overflow.left = round(container.left - subject.left);
     if (subject.right > container.right + tolerance)
       overflow.right = round(subject.right - container.right);
-    if (subject.top < container.top - tolerance) overflow.top = round(container.top - subject.top);
-    if (subject.bottom > container.bottom + tolerance)
+    if (subject.top < container.top - vTolerance) overflow.top = round(container.top - subject.top);
+    if (subject.bottom > container.bottom + vTolerance)
       overflow.bottom = round(subject.bottom - container.bottom);
     return Object.keys(overflow).length > 0 ? overflow : null;
   }
@@ -319,9 +323,22 @@
 
     const container = nearestConstraint(element, root, rootRect);
     const containerRect = container === root ? rootRect : toRect(container.getBoundingClientRect());
-    const containerOverflow = overflowFor(textRect, containerRect, tolerance);
+    // Glyph ink (ascenders / descenders / accents / heavy display faces) routinely exceeds a
+    // snug line-height box by a few px, proportional to font size. When the constraining box
+    // does NOT clip, that vertical spill is normal typography — it shows in the padding, nothing
+    // is hidden — not a layout defect (it false-flagged caption words). Allow a font-metric
+    // vertical tolerance there; keep it tight when the box actually clips (a real cut-off) and
+    // always tight horizontally (too-wide text is a real wrap/legibility issue).
+    const elementStyle = getComputedStyle(element);
+    const containerClips = clipsOverflow(
+      container === root ? getComputedStyle(root) : getComputedStyle(container),
+    );
+    const verticalTolerance = containerClips
+      ? tolerance
+      : Math.max(tolerance, parsePx(elementStyle.fontSize) * 0.2);
+    const containerOverflow = overflowFor(textRect, containerRect, tolerance, verticalTolerance);
     if (containerOverflow && !hasAllowOverflowFlag(element)) {
-      const style = getComputedStyle(element);
+      const style = elementStyle;
       issues.push({
         code: "text_box_overflow",
         severity: "error",

@@ -19,7 +19,7 @@ import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { isAbsolute, join, relative, sep } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -58,7 +58,9 @@ export interface SkillsManifest {
   skills: Record<string, SkillEntry>;
 }
 
-export type SkillStatus = "current" | "outdated" | "missing";
+// "removed" = installed from our source but no longer in the manifest (renamed
+// or dropped upstream). Attributed via the skills lock — see detectRemoved.
+export type SkillStatus = "current" | "outdated" | "missing" | "removed";
 
 export interface SkillDiff {
   name: string;
@@ -67,14 +69,30 @@ export interface SkillDiff {
   latestHash?: string;
 }
 
+/** The pure manifest diff (current / outdated / missing — what `diffSkills` returns). */
+export interface SkillsDiff {
+  updateAvailable: boolean;
+  summary: { current: number; outdated: number; missing: number };
+  skills: SkillDiff[];
+}
+
 export interface SkillsCheckResult {
   /** Install location that was checked (absolute path), or null if none found. */
   location: string | null;
   /** Agent convention inferred from the location (claude-code, codex, …). */
   agent: string | null;
+  /** Scope of the located install — so a caller prunes in the same scope it attributed from. */
+  scope: "project" | "global" | null;
   updateAvailable: boolean;
-  summary: { current: number; outdated: number; missing: number };
+  summary: { current: number; outdated: number; missing: number; removed: number };
   skills: SkillDiff[];
+  /**
+   * True when an install was located but the upstream skills lock was absent at
+   * the expected path, so removed-detection couldn't run (it silently reports
+   * zero removed). Lets the CLI warn instead of misreporting "up to date" — a
+   * guard against the lock path silently no-op'ing if upstream moves it.
+   */
+  lockMissing: boolean;
 }
 
 const DEFAULT_REPO_SLUG = "heygen-com/hyperframes";
@@ -202,9 +220,39 @@ function discoverSkillRoots(base: string, scope: "project" | "global"): SkillRoo
 }
 
 /**
+ * Decide whether an explicit `--dir` is a project- or global-scoped install, so
+ * removed-detection reads the *right* lock. The upstream `skills` CLI keeps two
+ * locks: a project lock at `<cwd>/skills-lock.json` and a global lock under
+ * `$HOME` (see lockPathForScope).
+ *
+ * Precedence is CWD-containment FIRST, then HOME — because the common
+ * project-local case is *also* under `$HOME` (e.g. `~/work/proj/.claude/skills`,
+ * or `--dir .claude/skills` run from `~/work/proj`). Checking HOME first would
+ * misclassify every such project install as global, reading the wrong lock and
+ * (worse) letting `skills update` prune with `-g`. So:
+ *   - `dir` under `cwd`  → project (even when that's also under $HOME)
+ *   - else `dir` under $HOME → global (a real `~/.claude/skills`-style install)
+ *   - else → project (safe default — never prune globally for an unknown path)
+ *
+ * Each base is normalised with a trailing separator before the prefix test so a
+ * sibling like `/home/user2` doesn't false-match `/home/user`.
+ */
+function scopeForDir(dir: string, home: string, cwd: string): "project" | "global" {
+  const norm = (p: string): string => {
+    const r = resolve(p);
+    return r.endsWith(sep) ? r : r + sep;
+  };
+  const d = norm(dir);
+  if (d.startsWith(norm(cwd))) return "project";
+  if (d.startsWith(norm(home))) return "global";
+  return "project";
+}
+
+/**
  * Find the first skill root that actually contains HyperFrames skills. A
- * `--dir` override (if given) is treated as a `.../skills` directory directly.
- * Otherwise scan global ($HOME) then project (cwd), auto-discovering hosts.
+ * `--dir` override (if given) is treated as a `.../skills` directory directly;
+ * its scope is inferred (see scopeForDir) so removed-detection reads the right
+ * lock. Otherwise scan global ($HOME) then project (cwd), auto-discovering hosts.
  *
  * Global is checked FIRST to match how agents actually load skills: Claude Code
  * (and most others) give the personal/global scope priority over the project
@@ -218,7 +266,11 @@ function locateInstall(
 ): SkillRoot | null {
   if (opts.dir) {
     return existsSync(opts.dir)
-      ? { dir: opts.dir, agent: agentFromDir(opts.dir), scope: "project" }
+      ? {
+          dir: opts.dir,
+          agent: agentFromDir(opts.dir),
+          scope: scopeForDir(opts.dir, opts.home ?? homedir(), opts.cwd ?? process.cwd()),
+        }
       : null;
   }
   const roots = [
@@ -246,10 +298,11 @@ function hashInstalled(root: SkillRoot, skillNames: string[]): Record<string, Sk
 export function diffSkills(
   installed: Record<string, SkillEntry>,
   latest: SkillsManifest,
-): Omit<SkillsCheckResult, "location" | "agent"> {
+): SkillsDiff {
   // Report only on skills the manifest knows about. A skill on disk that isn't
-  // in the manifest isn't necessarily ours — `.../skills` is shared across
-  // sources — so it's not something we can meaningfully diff, and is ignored.
+  // in the manifest is handled separately (see detectRemoved): we can only call
+  // one "ours but removed" via the lock's source attribution, never the bare
+  // directory name — `.../skills` is shared across sources.
   const skills: SkillDiff[] = [];
   const summary = { current: 0, outdated: 0, missing: 0 };
 
@@ -280,6 +333,97 @@ export function diffSkills(
     summary,
     skills,
   };
+}
+
+// ── Removed-upstream (orphaned) skills ────────────────────────────────────────
+//
+// `skills add` / `init` / `hyperframes skills update` only ever add or refresh —
+// none of them delete a skill that was renamed or dropped upstream (e.g.
+// graphic-overlays → talking-head-recut), so a stale bundle lingers forever and
+// the manifest-only diff above can't see it. We surface these by cross-checking
+// the vercel-labs/skills lock: a skill the lock attributes to OUR manifest
+// `source` that the manifest no longer lists is "removed". Attribution is the
+// whole point — `.../skills` is shared across sources, so we never infer "ours"
+// from a directory name alone (that would flag every other source's skills too).
+
+interface LockEntry {
+  source?: string;
+  sourceUrl?: string;
+}
+
+/** The slice of the vercel-labs/skills lock file we read. */
+export interface SkillLock {
+  skills?: Record<string, LockEntry>;
+}
+
+/** Normalise a slug or git clone URL to a bare lowercase `owner/repo`. */
+function repoSlug(s: string | undefined): string {
+  return (s ?? "")
+    .replace(/^git\+/, "")
+    .replace(/^https?:\/\/github\.com\//, "")
+    .replace(/\.git$/, "")
+    .toLowerCase();
+}
+
+/** Skill names the lock attributes to `source` (matched by slug or clone URL). */
+export function skillsAttributedToSource(lock: SkillLock | null, source: string): string[] {
+  const want = repoSlug(source);
+  if (!want || !lock?.skills) return [];
+  return Object.entries(lock.skills)
+    .filter(([, e]) => repoSlug(e.source) === want || repoSlug(e.sourceUrl) === want)
+    .map(([name]) => name);
+}
+
+// Removed-detection reads the vercel-labs/skills lock, whose on-disk paths live
+// in *their* repo, not ours — so if upstream moves the lock, our cross-reference
+// silently finds nothing and `detectRemoved` no-ops without a peep. Pin the
+// upstream version these paths were verified against so a future bump is a
+// deliberate, reviewable edit (re-check src/skill-lock.ts `getSkillLockPath`
+// and src/local-lock.ts `getLocalLockPath` when bumping):
+//   - global:  $XDG_STATE_HOME/skills/.skill-lock.json  else  ~/.agents/.skill-lock.json
+//   - project: <cwd>/skills-lock.json
+// https://github.com/vercel-labs/skills/blob/v1.5.13/src/skill-lock.ts (global)
+// https://github.com/vercel-labs/skills/blob/v1.5.13/src/local-lock.ts (project)
+export const SKILLS_CLI_LOCK_PATHS_VERIFIED_AT = "vercel-labs/skills@v1.5.13";
+
+/** Locate the vercel-labs/skills lock for a scope (paths pinned to the version above). */
+function lockPathForScope(
+  scope: "project" | "global",
+  opts: { cwd?: string; home?: string },
+): string {
+  if (scope === "project") return join(opts.cwd ?? process.cwd(), "skills-lock.json");
+  const xdgStateHome = process.env.XDG_STATE_HOME;
+  if (xdgStateHome) return join(xdgStateHome, "skills", ".skill-lock.json");
+  return join(opts.home ?? homedir(), ".agents", ".skill-lock.json");
+}
+
+function readSkillLock(path: string): SkillLock | null {
+  try {
+    return JSON.parse(readFileSync(path, "utf8")) as SkillLock;
+  } catch {
+    // No lock (or unreadable / not JSON) → we can't attribute, so report none.
+    return null;
+  }
+}
+
+interface RemovedResult {
+  removed: SkillDiff[];
+  /** The lock was absent at the expected path — removed-detection silently no-ops. */
+  lockMissing: boolean;
+}
+
+/** Skills the lock attributes to our source that the manifest no longer ships. */
+function detectRemoved(
+  root: SkillRoot,
+  latest: SkillsManifest,
+  opts: { cwd?: string; home?: string },
+): RemovedResult {
+  const lock = readSkillLock(lockPathForScope(root.scope, opts));
+  const removed = skillsAttributedToSource(lock, latest.source)
+    .filter((name) => !(name in latest.skills))
+    .sort()
+    .map((name) => ({ name, status: "removed" as const }));
+  return { removed, lockMissing: lock === null };
 }
 
 // ── Resolving the "latest" manifest ──────────────────────────────────────────
@@ -409,5 +553,19 @@ export async function checkSkills(
   const root = locateInstall(skillNames, { dir: opts.dir, cwd: opts.cwd, home: opts.home });
   const installed = root ? hashInstalled(root, skillNames) : {};
   const diff = diffSkills(installed, latest);
-  return { location: root?.dir ?? null, agent: root?.agent ?? null, ...diff };
+  const removedResult = root
+    ? detectRemoved(root, latest, { cwd: opts.cwd, home: opts.home })
+    : { removed: [], lockMissing: false };
+  const { removed, lockMissing } = removedResult;
+  return {
+    location: root?.dir ?? null,
+    agent: root?.agent ?? null,
+    scope: root?.scope ?? null,
+    // Removed skills also mean the install isn't reconciled with the manifest —
+    // `skills update` now prunes them, so they count toward "update available".
+    updateAvailable: diff.updateAvailable || removed.length > 0,
+    summary: { ...diff.summary, removed: removed.length },
+    skills: [...diff.skills, ...removed],
+    lockMissing,
+  };
 }

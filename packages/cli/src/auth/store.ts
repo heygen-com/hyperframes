@@ -8,9 +8,15 @@
  *     "oauth": {
  *       "access_token": "...",
  *       "refresh_token": "...",
- *       "expires_at": "2026-06-25T12:00:00Z",
+ *       "expires_at": "<ISO-8601 UTC>",
  *       "scope": "openid profile",
  *       "token_type": "Bearer"
+ *     },
+ *     "user": {
+ *       "email": "...",
+ *       "first_name": "...",
+ *       "last_name": "...",
+ *       "username": "..."
  *     }
  *   }
  *
@@ -19,6 +25,23 @@
  * trimmed contents as an API key; the next write upgrades to JSON.
  *
  * Writes go to a temp file + rename, 0600 mode, parent dir 0700.
+ *
+ * Cross-CLI forward compatibility: this file is SHARED with the Go
+ * `heygen` CLI (and any future tool). Either CLI may write keys this
+ * version doesn't model yet. To avoid one CLI silently clobbering the
+ * other's data on round-trip, the reader stashes every unrecognized
+ * top-level key (and every unrecognized key inside the `oauth` / `user`
+ * sub-objects) into a hidden passthrough bag, and the writer re-emits
+ * them verbatim. Known fields are still strictly validated; the
+ * passthrough is purely additive and never feeds an HTTP header.
+ *
+ * The same contract binds the destructive paths (`clearOAuth`,
+ * `clearUserInfo`, and the failed `auth login --api-key` rollback): when
+ * removing a credential would leave the file with no known credential but
+ * a surviving unknown/foreign top-level (or user-block) key, they write
+ * the credential-less remnant rather than deleting the file — see
+ * `hasPreservedUnknownData`. Deleting there would clobber exactly the
+ * cross-CLI data this machinery exists to preserve.
  */
 
 import { promises as fs } from "node:fs";
@@ -29,6 +52,28 @@ import { ErrInvalidStore } from "./errors.js";
 const FILE_MODE = 0o600;
 const DIR_MODE = 0o700;
 
+/**
+ * Symbol-keyed slot holding the raw JSON of any keys this CLI version
+ * doesn't model, captured at read time and re-emitted verbatim at write
+ * time. A symbol (rather than a string key) keeps it off the typed
+ * surface so callers can't accidentally read/write it, and `Object.keys`
+ * / `JSON.stringify` skip it. See the module header for the rationale.
+ */
+const UNKNOWN = Symbol("hf.credentials.unknownFields");
+
+/** Keys this CLI version models at the top level of the credentials file. */
+const KNOWN_ROOT_KEYS = new Set(["api_key", "oauth", "user"]);
+/** Keys this CLI version models inside the `oauth` sub-object. */
+const KNOWN_OAUTH_KEYS = new Set([
+  "access_token",
+  "refresh_token",
+  "expires_at",
+  "scope",
+  "token_type",
+]);
+/** Keys this CLI version models inside the `user` sub-object. */
+const KNOWN_USER_KEYS = new Set(["email", "first_name", "last_name", "username"]);
+
 export interface OAuthTokens {
   access_token: string;
   refresh_token?: string;
@@ -36,11 +81,33 @@ export interface OAuthTokens {
   expires_at?: string;
   scope?: string;
   token_type?: string;
+  /** Unknown/future keys captured for cross-CLI round-trip. */
+  [UNKNOWN]?: Record<string, unknown>;
+}
+
+/**
+ * Friendly-display metadata captured at login time from `/v3/users/me`.
+ * NOT a credential — additive identity info persisted alongside the
+ * credential so `auth status` can show "Logged in as ..." without
+ * re-hitting the API. All fields optional; a file with no `user` block
+ * (a pre-this-change login) is fully backwards-compatible. Mirrors the
+ * `user` block heygen-cli writes — see `internal/auth/user_store.go`.
+ */
+export interface StoredUserInfo {
+  email?: string;
+  first_name?: string;
+  last_name?: string;
+  username?: string;
+  /** Unknown/future keys captured for cross-CLI round-trip. */
+  [UNKNOWN]?: Record<string, unknown>;
 }
 
 export interface Credentials {
   api_key?: string;
   oauth?: OAuthTokens;
+  user?: StoredUserInfo;
+  /** Unknown/future top-level keys captured for cross-CLI round-trip. */
+  [UNKNOWN]?: Record<string, unknown>;
 }
 
 export type StoreSource = "file_json" | "file_legacy" | "absent";
@@ -98,15 +165,52 @@ export async function deleteStore(path = credentialPath()): Promise<void> {
   }
 }
 
+/**
+ * True when `credentials` carries any unrecognized/foreign data captured
+ * on a hidden passthrough slot — either a top-level unknown key, or an
+ * unknown key inside the `oauth` / `user` sub-objects.
+ *
+ * The cleanup / rollback paths (`clearOAuth`, `clearUserInfo`, the failed
+ * `auth login --api-key` rollback) use this to decide between deleting the
+ * file and writing a credential-less remnant. When no known credential
+ * survives BUT foreign data does, that data may be a future credential or
+ * metadata key another CLI owns — deleting the file would clobber exactly
+ * what the cross-CLI forward-compatibility contract promises to preserve.
+ * So those paths write the remaining record (carrying the unknown bag)
+ * instead of deleting. Only when nothing worth preserving remains do they
+ * delete.
+ */
+export function hasPreservedUnknownData(credentials: Credentials): boolean {
+  if (hasUnknownBag(credentials[UNKNOWN])) return true;
+  if (hasUnknownBag(credentials.oauth?.[UNKNOWN])) return true;
+  if (hasUnknownBag(credentials.user?.[UNKNOWN])) return true;
+  return false;
+}
+
+function hasUnknownBag(bag: Record<string, unknown> | undefined): boolean {
+  return bag !== undefined && Object.keys(bag).length > 0;
+}
+
 /** Remove only the `oauth` block. Used by `auth logout --keep-api-key`. */
 export async function clearOAuth(path = credentialPath()): Promise<void> {
   const { credentials, source } = await readStore(path);
   if (source === "absent" || !credentials.oauth) return;
-  if (!credentials.api_key) {
+  // Drop oauth, keep everything else (api_key, the friendly-display
+  // user block, and any unknown/foreign keys) so a logout that only
+  // clears the OAuth session doesn't silently wipe co-located data.
+  const next: Credentials = { ...credentials };
+  delete next.oauth;
+  if (!next.api_key && !hasPreservedUnknownData(next)) {
+    // Nothing worth preserving survives. The leftover user block had no
+    // friendly fields and there's no foreign/unknown data to round-trip,
+    // so this is orphaned metadata with no credential to attach to — drop
+    // the file. (A surviving top-level / user-block unknown key, by
+    // contrast, may be a future credential another CLI owns, so we keep
+    // the file in that case.)
     await deleteStore(path);
     return;
   }
-  await writeStore({ api_key: credentials.api_key }, path);
+  await writeStore(next, path);
 }
 
 async function ensureDir(dir: string): Promise<void> {
@@ -139,28 +243,113 @@ function parseJsonStore(text: string): Credentials {
   if (obj["oauth"] !== undefined && obj["oauth"] !== null) {
     out.oauth = parseOAuth(obj["oauth"]);
   }
+  if (obj["user"] !== undefined && obj["user"] !== null) {
+    out.user = parseUser(obj["user"]);
+  }
+  // Capture any top-level keys this CLI version doesn't model so the
+  // next write round-trips them instead of dropping another CLI's data.
+  const unknownRoot = collectUnknown(obj, KNOWN_ROOT_KEYS);
+  if (unknownRoot) out[UNKNOWN] = unknownRoot;
   return out;
 }
 
-function parseOAuth(raw: unknown): OAuthTokens {
-  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
-    throw ErrInvalidStore("oauth must be a JSON object");
+/** Optional-field picker variants used by the data-driven parsers. */
+type FieldPicker = "header_safe" | "non_empty";
+
+const PICKERS: Record<
+  FieldPicker,
+  (obj: Record<string, unknown>, key: string) => string | undefined
+> = {
+  header_safe: pickHeaderSafeString,
+  non_empty: pickNonEmptyString,
+};
+
+/**
+ * Copy each `[field, picker]` from `obj` onto `out` when the picker
+ * yields a value. Data-driven so the optional-field handling stays a
+ * single loop instead of a long if-chain per parser. `out` is written
+ * through an index cast — the `spec` field names are the contract that
+ * keeps the assignments type-correct at the call site.
+ */
+function assignOptionalStrings(
+  out: object,
+  obj: Record<string, unknown>,
+  spec: readonly [string, FieldPicker][],
+): void {
+  const target = out as Record<string, unknown>;
+  for (const [field, picker] of spec) {
+    const v = PICKERS[picker](obj, field);
+    if (v) target[field] = v;
   }
-  const obj = raw as Record<string, unknown>;
+}
+
+const OAUTH_OPTIONAL: readonly [string, FieldPicker][] = [
+  ["refresh_token", "header_safe"],
+  ["expires_at", "non_empty"],
+  ["scope", "non_empty"],
+  ["token_type", "non_empty"],
+];
+
+function parseOAuth(raw: unknown): OAuthTokens {
+  const obj = asJsonObject(raw, "oauth");
   const accessToken = pickHeaderSafeString(obj, "access_token");
   if (!accessToken) {
     throw ErrInvalidStore("oauth.access_token must be a non-empty string with no control chars");
   }
   const out: OAuthTokens = { access_token: accessToken };
-  const refresh = pickHeaderSafeString(obj, "refresh_token");
-  if (refresh) out.refresh_token = refresh;
-  const exp = pickNonEmptyString(obj, "expires_at");
-  if (exp) out.expires_at = exp;
-  const scope = pickNonEmptyString(obj, "scope");
-  if (scope) out.scope = scope;
-  const tokenType = pickNonEmptyString(obj, "token_type");
-  if (tokenType) out.token_type = tokenType;
+  assignOptionalStrings(out, obj, OAUTH_OPTIONAL);
+  const unknownOAuth = collectUnknown(obj, KNOWN_OAUTH_KEYS);
+  if (unknownOAuth) out[UNKNOWN] = unknownOAuth;
   return out;
+}
+
+const USER_OPTIONAL: readonly [string, FieldPicker][] = [
+  ["email", "non_empty"],
+  ["first_name", "non_empty"],
+  ["last_name", "non_empty"],
+  ["username", "non_empty"],
+];
+
+/**
+ * Parse the friendly-display `user` block. Every field is optional and
+ * lenient — a wrong-typed or empty value is simply skipped rather than
+ * rejected, because this is additive METADATA, not a credential, and a
+ * malformed sub-field must never block resolving a perfectly good
+ * api_key / oauth token. (Contrast with `parseOAuth`, where a missing
+ * access_token is a hard error.) Unknown keys round-trip.
+ */
+function parseUser(raw: unknown): StoredUserInfo {
+  const obj = asJsonObject(raw, "user");
+  const out: StoredUserInfo = {};
+  assignOptionalStrings(out, obj, USER_OPTIONAL);
+  const unknownUser = collectUnknown(obj, KNOWN_USER_KEYS);
+  if (unknownUser) out[UNKNOWN] = unknownUser;
+  return out;
+}
+
+/** Narrow `raw` to a plain JSON object or throw a labelled error. */
+function asJsonObject(raw: unknown, label: string): Record<string, unknown> {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+    throw ErrInvalidStore(`${label} must be a JSON object`);
+  }
+  return raw as Record<string, unknown>;
+}
+
+/**
+ * Return a shallow copy of every entry in `obj` whose key is not in
+ * `known`, or `undefined` when there are none. Used to capture
+ * unrecognized JSON for verbatim re-emission on the next write.
+ */
+function collectUnknown(
+  obj: Record<string, unknown>,
+  known: Set<string>,
+): Record<string, unknown> | undefined {
+  let bag: Record<string, unknown> | undefined;
+  for (const key of Object.keys(obj)) {
+    if (known.has(key)) continue;
+    (bag ??= {})[key] = obj[key];
+  }
+  return bag;
 }
 
 function parseJsonObject(text: string, label: string): Record<string, unknown> {
@@ -223,17 +412,37 @@ function pickRequiredStringOrAbsent(
 }
 
 function serializeCredentials(c: Credentials): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
+  // Re-emit unrecognized top-level keys first so the known fields below
+  // are authoritative (collectUnknown already excludes known keys, so
+  // there's no real collision — this is belt-and-suspenders).
+  const out: Record<string, unknown> = { ...(c[UNKNOWN] ?? {}) };
   if (c.api_key) out["api_key"] = c.api_key;
-  if (c.oauth) {
-    const oauth: Record<string, unknown> = { access_token: c.oauth.access_token };
-    if (c.oauth.refresh_token) oauth["refresh_token"] = c.oauth.refresh_token;
-    if (c.oauth.expires_at) oauth["expires_at"] = c.oauth.expires_at;
-    if (c.oauth.scope) oauth["scope"] = c.oauth.scope;
-    if (c.oauth.token_type) oauth["token_type"] = c.oauth.token_type;
-    out["oauth"] = oauth;
+  if (c.oauth) out["oauth"] = serializeOAuth(c.oauth);
+  if (c.user) {
+    const user = serializeUser(c.user);
+    // Omit an all-empty user block entirely (no empty `"user": {}` litter).
+    if (Object.keys(user).length > 0) out["user"] = user;
   }
   return out;
+}
+
+function serializeOAuth(o: OAuthTokens): Record<string, unknown> {
+  const oauth: Record<string, unknown> = { ...(o[UNKNOWN] ?? {}) };
+  oauth["access_token"] = o.access_token;
+  if (o.refresh_token) oauth["refresh_token"] = o.refresh_token;
+  if (o.expires_at) oauth["expires_at"] = o.expires_at;
+  if (o.scope) oauth["scope"] = o.scope;
+  if (o.token_type) oauth["token_type"] = o.token_type;
+  return oauth;
+}
+
+function serializeUser(u: StoredUserInfo): Record<string, unknown> {
+  const user: Record<string, unknown> = { ...(u[UNKNOWN] ?? {}) };
+  if (u.email) user["email"] = u.email;
+  if (u.first_name) user["first_name"] = u.first_name;
+  if (u.last_name) user["last_name"] = u.last_name;
+  if (u.username) user["username"] = u.username;
+  return user;
 }
 
 /**

@@ -1227,6 +1227,7 @@ export async function executeRenderJob(
           compiledDir: join(workDir, "compiled"),
           port: 0,
           preHeadScripts: [VIRTUAL_TIME_SHIM],
+          fps: job.config.fps,
         });
         assertNotAborted();
         observability.stageEnd("file_server", fileServerStart);

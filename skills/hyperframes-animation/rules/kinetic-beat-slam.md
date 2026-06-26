@@ -152,7 +152,7 @@ Use **at least 3 distinct easings** across the piece (entrances are its "tone of
 - **Entrance duration** — 0.35–0.6s. The hit must resolve before the next beat.
 - **Distinct entrances** — assign a different transform axis per phrase (scale / x / y+rotate). Reuse the _ease family_, vary the _motion_.
 - **Accent hue** — exactly one (the verbs). The rest is mono white/near-black.
-- **Rhythm chrome** — optional but high-impact for "rhythmic": a 5-tick metronome, a center beat bar, or a `// label` monospace tag pulsing on-beat. Mark any decorative that must survive a shader transition per `transitions/overview.md` rules.
+- **Rhythm chrome** — optional but high-impact for "rhythmic": a 5-tick metronome, a center beat bar, or a `// label` monospace tag pulsing on-beat. Mark any decorative that must survive a shader transition per `../../transitions/overview.md` rules.
 
 ## Key Principles
 
@@ -166,7 +166,7 @@ Use **at least 3 distinct easings** across the piece (entrances are its "tone of
 
 - **Timeline paused**: `gsap.timeline({ paused: true })`. Never `tl.play()`.
 - **No infinite repeats** on the hold/chrome — use `repeat: Math.max(0, Math.floor(dur / cycle) - 1)` (no `repeat: -1`). Use **`Math.floor`, not `Math.ceil`** — `ceil` overshoots `data-duration` and trips the `gsap_repeat_ceil_overshoot` lint rule; the `Math.max(0, …)` guards against a negative repeat (which GSAP reads as `-1` = infinite = non-deterministic) when the hold is shorter than two cycles.
-- **No banned exit animations** between scenes — if this is one of several scenes, the _transition_ is the exit (see `transitions/overview.md`); only a final scene may fade out.
+- **No banned exit animations** between scenes — if this is one of several scenes, the _transition_ is the exit (see `../../transitions/overview.md`); only a final scene may fade out.
 - **Display font must be embedded** or it silently falls back at render (Anton/Bebas-as-literal are NOT embedded — `Bebas Neue` aliases to League Gothic; verify in `typography.md`).
 - **Registry key = `data-composition-id`** on the root.
 
@@ -178,6 +178,6 @@ Use **at least 3 distinct easings** across the piece (entrances are its "tone of
 
 ## Pairs with HF skills
 
-- `/hyperframes-animation` — timeline + easing vocabulary (`adapters/gsap-easing-and-stagger.md`)
+- `/hyperframes-animation` — timeline + easing vocabulary (`../../adapters/gsap-easing-and-stagger.md`)
 - `/hyperframes-creative` — `references/video-composition.md` (foreground rhythm chrome), `references/typography.md` (embedded display fonts)
 - `/hyperframes-core` — composition wiring, determinism (finite repeats)

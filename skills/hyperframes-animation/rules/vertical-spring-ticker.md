@@ -159,16 +159,16 @@ Each spring fires at a different time, settles, then the next fires. When summed
 - **ITEM_HEIGHT** — px height of each ticker slot AND the masked window.
   - Range: ~`ITEM_FONT_SIZE × 1.25`; the line must hold capital descenders without clipping
   - Constraints: **`.ticker` height MUST equal `.item` height** exactly — mismatched values cause partial items to peek above/below the mask
-  - Reference: examples/proof-logo-chain.html uses `204px`
+  - Reference: ../../examples/proof-logo-chain.html uses `204px`
 - **TICKER_WIDTH** — px width of the masked window.
   - Range: wide enough to hold the longest item without ellipsis; typically 30-60% of viewport width
 - **STEPS** — number of additive springs (number of state transitions, not number of items).
   - Range: typically 1-4; each step = one "click" in the slot-machine cadence
   - Constraints: `STEPS ≤ itemCount − 1` (you can only roll as far as there are items below the visible one)
-  - Reference: examples/proof-logo-chain.html uses `1` (single roll between two states)
+  - Reference: ../../examples/proof-logo-chain.html uses `1` (single roll between two states)
 - **STEP_DUR** — duration of each spring tween.
   - Range: 0.3-0.7s; under 0.3 the overshoot is invisible, over 0.7 the click reads as a slide
-  - Reference: examples/proof-logo-chain.html uses `0.45s`
+  - Reference: ../../examples/proof-logo-chain.html uses `0.45s`
 - **STEP_SPACING** — seconds between consecutive springs' start times.
   - Range: 0.3-0.5s; closer and the steps blur together (looks like linear scroll), further and the ticker feels lazy
   - Constraints: `STEP_SPACING ≤ STEP_DUR` so the previous step is still settling when the next fires (this is what makes them "additive")

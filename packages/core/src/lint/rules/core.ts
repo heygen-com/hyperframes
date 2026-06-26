@@ -61,6 +61,7 @@ const HEAD_BLOCKS_TO_IGNORE_PATTERN =
   /<(?:style|script|template|title|noscript)\b[^>]*>[\s\S]*?<\/(?:style|script|template|title|noscript)(?:\s[^>]*)?>/gi;
 const HTML_TAG_PATTERN = /<[^>]+>/g;
 const HEAD_CONTENT_PATTERN = /<head\b[^>]*>([\s\S]*?)(?:<\/head>|<body\b|$)/gi;
+const AFTER_HEAD_BEFORE_BODY_PATTERN = /<\/head(?:\s[^>]*)?>([\s\S]*?)(?=<body\b|$)/gi;
 const STRAY_HEAD_CLOSE_PATTERN = /<\/(?:style|script)(?:\s[^>]*)?>/i;
 const MARKDOWN_CODE_FENCE_PATTERN = /```[^\r\n`]*(?:\r?\n|$)[\s\S]*?```/i;
 const ORPHAN_CSS_AT_RULE_PATTERN =
@@ -105,6 +106,27 @@ function findLeakedTextInHead(rawSource: string): string | null {
   return null;
 }
 
+function findLeakedTextBetweenHeadAndBody(rawSource: string): string | null {
+  const boundaryMatches = [...rawSource.matchAll(AFTER_HEAD_BEFORE_BODY_PATTERN)];
+  for (const match of boundaryMatches) {
+    const leakedText = findLeakedTextInHeadContent(match[1] ?? "");
+    if (leakedText) return leakedText;
+  }
+  return null;
+}
+
+function findLeakedTextBeforeCompositionRoot(
+  source: string,
+  rootTag: LintContext["rootTag"],
+): string | null {
+  if (!rootTag || rootTag.name === "body") return null;
+  const bodyOpenMatch = /<body\b[^>]*>/i.exec(source);
+  const prefixStart = bodyOpenMatch ? bodyOpenMatch.index + bodyOpenMatch[0].length : 0;
+  const prefixEnd = rootTag.index;
+  if (prefixEnd <= prefixStart) return null;
+  return findLeakedTextInHeadContent(source.slice(prefixStart, prefixEnd));
+}
+
 export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   // root_missing_composition_id + root_missing_dimensions
   ({ rootTag }) => {
@@ -133,17 +155,20 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   },
 
   // head_leaked_text
-  ({ source }) => {
-    const snippet = findLeakedTextInHead(source);
+  ({ source, rootTag }) => {
+    const snippet =
+      findLeakedTextInHead(source) ??
+      findLeakedTextBetweenHeadAndBody(source) ??
+      findLeakedTextBeforeCompositionRoot(source, rootTag);
     if (!snippet) return [];
     return [
       {
         code: "head_leaked_text",
         severity: "error",
         message:
-          "Detected leaked code or CSS text in the document `<head>`. Browsers render this as visible text in the video.",
+          "Detected leaked code or CSS text around the document `<head>` or before the composition root. Browsers render this as visible text in the video.",
         fixHint:
-          "Move CSS into a single `<style>...</style>` block and remove stray close tags, markdown fences, or code text from `<head>`.",
+          "Move CSS into a single `<style>...</style>` block and remove stray close tags, markdown fences, or code text from `<head>`, the `</head>`/`<body>` boundary, or the pre-root body prefix.",
         snippet: truncateSnippet(snippet),
       },
     ];

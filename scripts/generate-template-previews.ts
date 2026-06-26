@@ -141,7 +141,11 @@ async function generateThumbnail(templateId: string, projectDir: string): Promis
   const framesDir = join(projectDir, "_thumb_frames");
   mkdirSync(framesDir, { recursive: true });
 
-  const fileServer = await createFileServer({ projectDir, port: 0 });
+  const fileServer = await createFileServer({
+    projectDir,
+    port: 0,
+    fps: { num: 30, den: 1 },
+  });
   try {
     const session = await createCaptureSession(fileServer.url, framesDir, {
       width: config.width,

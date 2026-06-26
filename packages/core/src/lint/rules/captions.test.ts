@@ -72,6 +72,26 @@ describe("caption rules", () => {
     expect(finding).toBeUndefined();
   });
 
+  it("does not warn on a content frame that only mentions karaoke in a comment", async () => {
+    const html = `<template id="06-one-platform-template">
+  <div id="root" data-composition-id="06-one-platform" data-width="1920" data-height="1080">
+    <script>
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+      // "Minutes, not weeks" lands with a karaoke-style keyword glow
+      SCREENS.forEach(function (s, i) {
+        var el = document.getElementById("screen-" + i);
+        tl.to(el, { y: -40, opacity: 0, duration: 0.3 }, i * 1.3);
+      });
+      window.__timelines["06-one-platform"] = tl;
+    </script>
+  </div>
+</template>`;
+    const result = await lintHyperframeHtml(html, { isSubComposition: true });
+    const finding = result.findings.find((f) => f.code === "caption_exit_missing_hard_kill");
+    expect(finding).toBeUndefined();
+  });
+
   it("warns when caption group has nowrap without max-width", async () => {
     const html = `
 <html><body>

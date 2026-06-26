@@ -30,8 +30,17 @@ function extractArrayLiteral(src: string, varMatch: RegExpExecArray): string | n
 
 export const captionRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   // caption_exit_missing_hard_kill
-  ({ scripts }) => {
+  ({ scripts, styles, options, rootCompositionId }) => {
     const findings: HyperframeLintFinding[] = [];
+    // Only the ACTUAL captions composition. A content frame that merely mentions
+    // "karaoke" / "caption-*" in a comment (or uses an unrelated forEach + opacity:0
+    // screen-swap) is NOT captions — gating here prevents the false positive that fired
+    // on a content frame whose only caption signal was a descriptive comment.
+    const isCaptionComposition =
+      Boolean(options.filePath && /caption/i.test(options.filePath)) ||
+      rootCompositionId === "captions" ||
+      styles.some((s) => /\.caption[-_]?(?:group|word|line|block)\b|\.cg-/.test(s.content));
+    if (!isCaptionComposition) return findings;
     for (const script of scripts) {
       const content = script.content;
       const hasExitTween = /\.to\s*\([^,]+,\s*\{[^}]*opacity\s*:\s*0/.test(content);

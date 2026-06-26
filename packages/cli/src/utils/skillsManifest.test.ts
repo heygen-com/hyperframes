@@ -7,6 +7,7 @@ import {
   buildManifest,
   checkSkills,
   diffSkills,
+  skillsAttributedToSource,
   type SkillsManifest,
   type SkillEntry,
 } from "./skillsManifest.js";
@@ -256,5 +257,195 @@ describe("checkSkills install detection", () => {
     const res = await checkSkills({ source, cwd: project, home });
     expect(res.location).toBe(join(home, ".claude/skills"));
     expect(res.agent).toBe("claude-code");
+  });
+});
+
+describe("skillsAttributedToSource", () => {
+  it("matches by slug or git clone URL and ignores other sources", () => {
+    const lock = {
+      skills: {
+        a: { source: "heygen-com/hyperframes" },
+        b: { sourceUrl: "https://github.com/heygen-com/hyperframes.git" },
+        c: { source: "https://github.com/heygen-com/hyperframes" },
+        d: { source: "greensock/gsap-skills" },
+      },
+    };
+    expect(skillsAttributedToSource(lock, "heygen-com/hyperframes").sort()).toEqual([
+      "a",
+      "b",
+      "c",
+    ]);
+  });
+
+  it("returns [] for a null/empty lock or empty source", () => {
+    expect(skillsAttributedToSource(null, "x")).toEqual([]);
+    expect(skillsAttributedToSource({}, "x")).toEqual([]);
+    expect(skillsAttributedToSource({ skills: { a: { source: "x" } } }, "")).toEqual([]);
+  });
+});
+
+describe("checkSkills removed-upstream detection", () => {
+  // The global lock path honours XDG_STATE_HOME; clear it so the fixture under
+  // <home>/.agents/.skill-lock.json is the one that's read.
+  let xdg: string | undefined;
+  beforeEach(() => {
+    xdg = process.env.XDG_STATE_HOME;
+    delete process.env.XDG_STATE_HOME;
+  });
+  afterEach(() => {
+    if (xdg === undefined) delete process.env.XDG_STATE_HOME;
+    else process.env.XDG_STATE_HOME = xdg;
+  });
+
+  // Install one or more `<skillsDir>/<name>/SKILL.md` bundles.
+  function installSkills(skillsDir: string, names: string[]): void {
+    for (const name of names) {
+      mkdirSync(join(skillsDir, name), { recursive: true });
+      writeFileSync(join(skillsDir, name, "SKILL.md"), `# ${name}`);
+    }
+  }
+
+  // Shared fixture: a project + home with two skills installed globally
+  // (alpha + gamma), plus a manifest path. Tests then write the lock they need.
+  function setup(manifest: SkillsManifest): {
+    home: string;
+    opts: { source: string; cwd: string; home: string };
+  } {
+    const project = join(root, "project");
+    const home = join(root, "home");
+    mkdirSync(project, { recursive: true });
+    installSkills(join(home, ".agents/skills"), ["alpha", "gamma"]);
+    const manifestPath = join(root, "manifest.json");
+    writeFileSync(manifestPath, JSON.stringify(manifest));
+    return { home, opts: { source: manifestPath, cwd: project, home } };
+  }
+  function writeGlobalLock(home: string, skills: Record<string, { source: string }>): void {
+    writeFileSync(join(home, ".agents/.skill-lock.json"), JSON.stringify({ version: 3, skills }));
+  }
+
+  it("flags a lock-attributed skill the manifest dropped, ignoring other sources", async () => {
+    const { home, opts } = setup({ source: "test", skills: { alpha: { hash: "x", files: 1 } } });
+    writeGlobalLock(home, {
+      alpha: { source: "test" }, // still ours and in the manifest
+      gamma: { source: "test" }, // ours, dropped from manifest → removed
+      delta: { source: "someone/else" }, // a different source → never ours
+    });
+
+    const res = await checkSkills(opts);
+    const byName = Object.fromEntries(res.skills.map((s) => [s.name, s.status]));
+    expect(byName.gamma).toBe("removed");
+    expect(byName.delta).toBeUndefined();
+    expect(res.summary.removed).toBe(1);
+  });
+
+  it("a removed skill alone makes an update available (no outdated/missing)", async () => {
+    // Manifest lists only alpha, with its REAL hash → "current" (not outdated).
+    const { home, opts } = setup({ source: "test", skills: {} });
+    const manifest: SkillsManifest = {
+      source: "test",
+      skills: { alpha: hashSkillBundle(join(home, ".agents/skills/alpha")) },
+    };
+    writeFileSync(opts.source, JSON.stringify(manifest));
+    writeGlobalLock(home, { alpha: { source: "test" }, gamma: { source: "test" } });
+
+    const res = await checkSkills(opts);
+    expect(res.summary).toEqual({ current: 1, outdated: 0, missing: 0, removed: 1 });
+    expect(res.updateAvailable).toBe(true);
+  });
+
+  it("reports no removed skills when there is no lock to attribute from", async () => {
+    const { opts } = setup({ source: "test", skills: { alpha: { hash: "x", files: 1 } } });
+    // gamma is an orphan on disk, but with no lock we can't attribute it to us.
+    const res = await checkSkills(opts);
+    expect(res.summary.removed).toBe(0);
+    expect(res.skills.some((s) => s.status === "removed")).toBe(false);
+    // No install was located via auto-detect (skills live under <home>/.agents/skills
+    // which IS discovered) — so lockMissing reflects the genuinely-absent lock.
+    expect(res.lockMissing).toBe(true);
+  });
+
+  // A `--dir` pointing at a global-scoped install (under $HOME) must resolve the
+  // GLOBAL lock (<home>/.agents/.skill-lock.json), not the project lock
+  // (<cwd>/skills-lock.json). Before this fix, locateInstall hardcoded scope
+  // "project" for every --dir, so the global lock was never read and
+  // removed-detection silently found nothing for --dir installs.
+  it("--dir under $HOME resolves the global lock so removed-detection works", async () => {
+    const { home, opts } = setup({ source: "test", skills: { alpha: { hash: "x", files: 1 } } });
+    writeGlobalLock(home, {
+      alpha: { source: "test" }, // ours and still in the manifest
+      gamma: { source: "test" }, // ours, dropped from manifest → removed
+    });
+
+    const dir = join(home, ".agents/skills");
+    const res = await checkSkills({ source: opts.source, dir, cwd: opts.cwd, home });
+    expect(res.scope).toBe("global");
+    const byName = Object.fromEntries(res.skills.map((s) => [s.name, s.status]));
+    expect(byName.gamma).toBe("removed");
+    expect(res.summary.removed).toBe(1);
+    expect(res.lockMissing).toBe(false);
+  });
+
+  // Regression (Magi REQUEST_CHANGES at 88daa820): the common project-local case
+  // is *also* under $HOME — a project checkout at `<home>/work/proj` with skills
+  // at `<cwd>/.claude/skills`. A HOME-first heuristic misclassified this as
+  // global, so checkSkills read the global lock and `skills update` would prune
+  // with `-g` against a project install. CWD-containment must win: `--dir` under
+  // `cwd` resolves to PROJECT even when `cwd` itself is nested under $HOME.
+  it("--dir under a cwd that is itself nested under $HOME stays project-scoped", async () => {
+    const home = join(root, "home");
+    const project = join(home, "work", "proj"); // cwd nested INSIDE home
+    const skillsDir = join(project, ".claude/skills");
+    installSkills(skillsDir, ["alpha", "gamma"]);
+    const manifestPath = join(root, "m3.json");
+    writeFileSync(
+      manifestPath,
+      JSON.stringify({ source: "test", skills: { alpha: { hash: "x", files: 1 } } }),
+    );
+    // Project lock at <cwd>/skills-lock.json — only read if scope is "project".
+    // No global lock exists under $HOME, so a wrong-scope ("global") read would
+    // find no lock → zero removed (gamma would NOT be flagged). The project lock
+    // being read (gamma → removed) is the proof CWD-containment won.
+    writeFileSync(
+      join(project, "skills-lock.json"),
+      JSON.stringify({
+        version: 1,
+        skills: { alpha: { source: "test" }, gamma: { source: "test" } },
+      }),
+    );
+
+    const res = await checkSkills({ source: manifestPath, dir: skillsDir, cwd: project, home });
+    expect(res.scope).toBe("project");
+    const byName = Object.fromEntries(res.skills.map((s) => [s.name, s.status]));
+    expect(byName.gamma).toBe("removed");
+    expect(res.summary.removed).toBe(1);
+  });
+
+  // The complementary case: a `--dir` under the project tree (not $HOME) stays
+  // project-scoped and reads <cwd>/skills-lock.json.
+  it("--dir outside $HOME stays project-scoped and reads the project lock", async () => {
+    const project = join(root, "proj2");
+    const skillsDir = join(project, ".claude/skills");
+    installSkills(skillsDir, ["alpha", "gamma"]);
+    const manifestPath = join(root, "m2.json");
+    writeFileSync(
+      manifestPath,
+      JSON.stringify({ source: "test", skills: { alpha: { hash: "x", files: 1 } } }),
+    );
+    // Project lock lives at <cwd>/skills-lock.json — point cwd at the project.
+    writeFileSync(
+      join(project, "skills-lock.json"),
+      JSON.stringify({
+        version: 1,
+        skills: { alpha: { source: "test" }, gamma: { source: "test" } },
+      }),
+    );
+    const home = join(root, "home2");
+    mkdirSync(home, { recursive: true });
+
+    const res = await checkSkills({ source: manifestPath, dir: skillsDir, cwd: project, home });
+    expect(res.scope).toBe("project");
+    const byName = Object.fromEntries(res.skills.map((s) => [s.name, s.status]));
+    expect(byName.gamma).toBe("removed");
+    expect(res.summary.removed).toBe(1);
   });
 });
