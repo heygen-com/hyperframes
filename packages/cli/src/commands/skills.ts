@@ -55,12 +55,25 @@ function runSkillsAdd(
   return spawnNpx(["skills", "add", source, ...(opts.extraArgs ?? ["--all"])], opts);
 }
 
+// Skill names are kebab-case directory names. Refuse anything that isn't one
+// before spreading it into a spawn: a corrupt or crafted lock entry (these
+// names originate as lock-file JSON keys) could otherwise smuggle a flag-like
+// (`--config=…`) or shell-special token into the command — which matters most
+// on the Windows `cmd.exe` spawn path, where arg escaping is fragile.
+const PLAIN_SKILL_NAME = /^[a-z0-9][a-z0-9._-]*$/i;
+
 function runSkillsRemove(names: string[], opts: { global: boolean }): Promise<void> {
+  const safe = names.filter((n) => PLAIN_SKILL_NAME.test(n));
+  const rejected = names.filter((n) => !PLAIN_SKILL_NAME.test(n));
+  if (rejected.length) {
+    clack.log.warn(c.warn(`Skipping unexpected skill name(s): ${rejected.join(", ")}`));
+  }
+  if (!safe.length) return Promise.resolve();
   // `skills remove --yes` deletes the bundle dir, every agent symlink, and the
   // lock entry non-interactively. `-g` targets the global install; without it,
   // the project (cwd) install — we pass whichever scope detection attributed
   // these names from, so we never reach into a scope we didn't inspect.
-  return spawnNpx(["skills", "remove", ...names, ...(opts.global ? ["-g"] : []), "--yes"]);
+  return spawnNpx(["skills", "remove", ...safe, ...(opts.global ? ["-g"] : []), "--yes"]);
 }
 
 // Use the full GitHub URL (not the `owner/repo` slug) so `skills add` git-clones

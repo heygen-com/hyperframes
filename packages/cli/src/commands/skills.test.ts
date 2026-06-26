@@ -212,4 +212,25 @@ describe("hyperframes skills", () => {
     await runSkillsUpdate();
     expect(state.spawnCalls.some((s) => s.args.includes("remove"))).toBe(false);
   });
+
+  // Skill names come from lock-file JSON keys; a flag-like / shell-special name
+  // must never reach the spawn (esp. the Windows cmd.exe path).
+  it("skills update never passes a non-slug skill name to remove", async () => {
+    setPlatform("linux");
+    const { checkSkills } = await import("../utils/skillsManifest.js");
+    vi.mocked(checkSkills).mockResolvedValueOnce({
+      scope: "global",
+      skills: [
+        { name: "graphic-overlays", status: "removed" },
+        { name: "--config=evil.js", status: "removed" },
+      ],
+    } as never);
+
+    await runSkillsUpdate();
+
+    const removeCall = state.spawnCalls.find((s) => s.args.includes("remove"));
+    expect(removeCall, "expected a `skills remove` spawn for the valid name").toBeDefined();
+    expect(removeCall!.args).toContain("graphic-overlays");
+    expect(removeCall!.args).not.toContain("--config=evil.js");
+  });
 });
