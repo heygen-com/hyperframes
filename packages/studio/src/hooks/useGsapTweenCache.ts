@@ -176,6 +176,37 @@ export async function fetchParsedAnimations(
   }
 }
 
+/**
+ * Clip-relative timing basis for an element. Sub-composition internals (e.g. pills
+ * inside a scene) aren't timeline clips themselves — they're derived at expand time
+ * — so they're absent from `elements`. Without a basis, elDuration defaulted to 1
+ * and clip-relative keyframe percentages blew past 100% (rendering off the clip).
+ * Fall back to the sub-comp HOST's bounds, resolved via domClipChildren (the host's
+ * data-composition-src is stripped in the rendered DOM, so we can't query it).
+ */
+function resolveClipTimingBasis(
+  elementId: string,
+  sourceFile: string,
+  elements: ReadonlyArray<{
+    domId?: string;
+    key?: string;
+    id: string;
+    start: number;
+    duration: number;
+  }>,
+  domClipChildren: ReadonlyArray<{ id: string; hostId: string }>,
+): { elStart: number; elDuration: number } {
+  const direct = elements.find(
+    (el) => el.domId === elementId || (el.key ?? el.id) === `${sourceFile}#${elementId}`,
+  );
+  if (direct) return { elStart: direct.start, elDuration: direct.duration };
+  const hostId = domClipChildren.find((c) => c.id === elementId)?.hostId;
+  const host = hostId
+    ? elements.find((el) => el.domId === hostId || (el.key ?? el.id) === `index.html#${hostId}`)
+    : undefined;
+  return { elStart: host?.start ?? 0, elDuration: host?.duration ?? 1 };
+}
+
 export function useGsapAnimationsForElement(
   projectId: string | null,
   sourceFile: string,
@@ -192,6 +223,11 @@ export function useGsapAnimationsForElement(
   const [unsupportedTimelinePattern, setUnsupportedTimelinePattern] = useState(false);
   const lastFetchKeyRef = useRef("");
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Re-run the per-element cache populate when sub-comp DOM children appear, so a
+  // sub-comp element gets its host-relative keyframe percentages (not elDuration=1).
+  const domClipChildrenKey = usePlayerStore((s) =>
+    s.domClipChildren.map((c) => `${c.id}<${c.hostId}`).join("|"),
+  );
 
   useEffect(() => {
     const targetKey = target?.id ?? target?.selector ?? "";
@@ -351,12 +387,13 @@ export function useGsapAnimationsForElement(
 
     // Resolve the element's time range from the player store so we can
     // convert tween-relative keyframe percentages to clip-relative ones.
-    const { elements } = usePlayerStore.getState();
-    const timelineEl = elements.find(
-      (el) => el.domId === elementId || (el.key ?? el.id) === `${sourceFile}#${elementId}`,
+    const { elements, domClipChildren } = usePlayerStore.getState();
+    const { elStart, elDuration } = resolveClipTimingBasis(
+      elementId,
+      sourceFile,
+      elements,
+      domClipChildren,
     );
-    const elStart = timelineEl?.start ?? 0;
-    const elDuration = timelineEl?.duration ?? 1;
 
     const allKeyframes: Array<
       GsapKeyframesData["keyframes"][0] & { tweenPercentage?: number; propertyGroup?: string }
@@ -419,7 +456,8 @@ export function useGsapAnimationsForElement(
     // PropertyPanel reads the cache by bare elementId (without sourceFile prefix),
     // so write a duplicate entry under the bare key for cross-component lookups.
     setKeyframeCache(elementId, merged);
-  }, [elementId, sourceFile, animations]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [elementId, sourceFile, animations, domClipChildrenKey]);
 
   return { animations, multipleTimelines, unsupportedTimelinePattern };
 }
@@ -442,13 +480,19 @@ export function usePopulateKeyframeCacheForFile(
   iframeRef?: React.RefObject<HTMLIFrameElement | null>,
 ): void {
   const elementCount = usePlayerStore((s) => s.elements.length);
+  // Re-run when sub-comp DOM children appear (they supply the host bounds the
+  // clip-relative keyframe percentages are computed against; without this the
+  // cache is computed once before they exist and the percentages stay wrong).
+  const domClipChildrenKey = usePlayerStore((s) =>
+    s.domClipChildren.map((c) => `${c.id}<${c.hostId}`).join("|"),
+  );
   const lastFetchKeyRef = useRef("");
 
   const runtimeScanDoneRef = useRef("");
   const astFetchDoneRef = useRef("");
 
   useEffect(() => {
-    const fetchKey = `kf-cache:${projectId}:${sourceFile}:${version}:${elementCount}`;
+    const fetchKey = `kf-cache:${projectId}:${sourceFile}:${version}:${elementCount}:${domClipChildrenKey}`;
     if (fetchKey === lastFetchKeyRef.current) return;
     lastFetchKeyRef.current = fetchKey;
     runtimeScanDoneRef.current = "";
@@ -461,7 +505,7 @@ export function usePopulateKeyframeCacheForFile(
       if (!parsed) return;
       const { setKeyframeCache } = usePlayerStore.getState();
       clearKeyframeCacheForFile(sf);
-      const { elements } = usePlayerStore.getState();
+      const { elements, domClipChildren } = usePlayerStore.getState();
       const doc = iframeRef?.current?.contentDocument;
       const mergedByElement = new Map<string, GsapKeyframesData>();
       for (const anim of parsed.animations) {
@@ -482,11 +526,7 @@ export function usePopulateKeyframeCacheForFile(
         // Attribute the tween to every element it animates (handles class /
         // group / descendant selectors, not just `#id`).
         for (const id of resolveSelectorElementIds(anim.targetSelector, doc)) {
-          const timelineEl = elements.find(
-            (el) => el.domId === id || (el.key ?? el.id) === `${sf}#${id}`,
-          );
-          const elStart = timelineEl?.start ?? 0;
-          const elDuration = timelineEl?.duration ?? 1;
+          const { elStart, elDuration } = resolveClipTimingBasis(id, sf, elements, domClipChildren);
           const clipKeyframes = kfData.keyframes.map((kf) => {
             const absTime = toAbsoluteTime(tweenPos, tweenDur, kf.percentage);
             // 0.001% precision (matching useGsapAnimationsForElement above) so a
@@ -524,7 +564,7 @@ export function usePopulateKeyframeCacheForFile(
     // iframeRef is read for DOM selector resolution but intentionally not a dep
     // (it's a stable ref; the separate runtime-scan effect owns iframe timing).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, sourceFile, version, elementCount]);
+  }, [projectId, sourceFile, version, elementCount, domClipChildrenKey]);
 
   // Separate effect for runtime keyframe discovery — polls until the iframe
   // has loaded GSAP timelines, independent of the AST fetch lifecycle.

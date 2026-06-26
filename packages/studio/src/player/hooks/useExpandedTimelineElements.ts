@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { usePlayerStore, type TimelineElement } from "../store/playerStore";
+import { usePlayerStore, type TimelineElement, type DomClipChild } from "../store/playerStore";
 import type { ClipManifestClip } from "../lib/playbackTypes";
 import { createTimelineElementFromManifestClip } from "../lib/timelineDOM";
 import { buildTimelineElementKey } from "../lib/timelineElementHelpers";
@@ -111,6 +111,32 @@ function buildChildElements(
   return result;
 }
 
+// Sub-comp DOM children (groups/pills) aren't manifest clips and have no timing
+// of their own — they're "always on" within their sub-comp host, so synthesize
+// clips spanning the host's full bounds. The host element supplies start/duration
+// and the composition file edits write to.
+function domSiblingClips(
+  domClipChildren: DomClipChild[],
+  siblingParentId: string,
+  host: TimelineElement,
+): ClipManifestClip[] {
+  return domClipChildren
+    .filter((c) => c.parentId === siblingParentId)
+    .map((c) => ({
+      id: c.id,
+      label: c.label,
+      start: host.start,
+      duration: host.duration,
+      track: host.track,
+      kind: "element" as const,
+      tagName: null,
+      compositionId: null,
+      parentCompositionId: host.id ?? null,
+      compositionSrc: host.compositionSrc ?? null,
+      assetUrl: null,
+    }));
+}
+
 // Exported for tests.
 export function buildExpandedElements(
   elements: TimelineElement[],
@@ -118,11 +144,20 @@ export function buildExpandedElements(
   parentMap: Map<string, string>,
   topLevelId: string,
   siblingParentId: string,
+  domClipChildren: DomClipChild[] = [],
 ): TimelineElement[] {
   const topLevelElement = elements.find((el) => el.id === topLevelId || el.domId === topLevelId);
   if (!topLevelElement) return filterToTopLevel(elements, parentMap);
 
-  const siblings = manifest.filter((c) => c.id != null && parentMap.get(c.id) === siblingParentId);
+  // Prefer real manifest children; fall back to DOM-only sub-comp children
+  // (groups/pills) that have no data-start and thus never enter the manifest.
+  const siblings = (() => {
+    const fromManifest = manifest.filter(
+      (c) => c.id != null && parentMap.get(c.id) === siblingParentId,
+    );
+    if (fromManifest.length > 0) return fromManifest;
+    return domSiblingClips(domClipChildren, siblingParentId, topLevelElement);
+  })();
   if (siblings.length === 0) return filterToTopLevel(elements, parentMap);
 
   // The sub-comp host the children actually live in: top-level host for 1-level
@@ -154,6 +189,7 @@ export function useExpandedTimelineElements(): TimelineElement[] {
   const elements = usePlayerStore((s) => s.elements);
   const clipManifest = usePlayerStore((s) => s.clipManifest);
   const clipParentMap = usePlayerStore((s) => s.clipParentMap);
+  const domClipChildren = usePlayerStore((s) => s.domClipChildren);
   const selectedElementId = usePlayerStore((s) => s.selectedElementId);
 
   return useMemo(() => {
@@ -166,6 +202,13 @@ export function useExpandedTimelineElements(): TimelineElement[] {
 
     const immediateParent = clipParentMap.get(rawId)!;
     const topLevel = findTopLevelAncestor(rawId, clipParentMap) ?? immediateParent;
-    return buildExpandedElements(elements, clipManifest, clipParentMap, topLevel, immediateParent);
-  }, [elements, clipManifest, clipParentMap, selectedElementId]);
+    return buildExpandedElements(
+      elements,
+      clipManifest,
+      clipParentMap,
+      topLevel,
+      immediateParent,
+      domClipChildren,
+    );
+  }, [elements, clipManifest, clipParentMap, domClipChildren, selectedElementId]);
 }
