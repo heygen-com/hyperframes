@@ -9,6 +9,24 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.7.10"
+  description="Released - 2026-06-26"
+  tags={["Release", "Producer"]}
+>
+This producer reliability release blocks impossible distributed plans before they
+fan out to chunk workers, preventing unbounded runtime timelines from turning
+into runaway render work. It also fixes distributed frame-path indexing so
+reconstructed extracted-frame assets resolve from the correct zero-based keys.
+
+## Fixes
+
+- **Producer:** Reject impossible distributed durations ([dca5fa90](https://github.com/heygen-com/hyperframes/commit/dca5fa90cb230adddbb2c9a02da80fa6a209c88b), [#1732](https://github.com/heygen-com/hyperframes/pull/1732))
+- **Producer:** RebuildExtractedFramesFromPlanDir off-by-one in framePaths key indexing ([7db84fc0](https://github.com/heygen-com/hyperframes/commit/7db84fc0ad9e642c4890dd0d99e32b1126c065d8), [#1730](https://github.com/heygen-com/hyperframes/pull/1730))
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.7.9...v0.7.10).
+</Update>
+
+<Update
   label="HyperFrames v0.7.9"
   description="Released - 2026-06-26"
   tags={["Release", "Studio", "Core", "Engine"]}
