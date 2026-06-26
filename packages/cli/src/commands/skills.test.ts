@@ -23,6 +23,10 @@ const state: { execCalls: ExecCall[]; spawnCalls: SpawnCall[] } = {
 };
 
 vi.mock("node:child_process", () => ({
+  // `skillsManifest.ts` does `promisify(execFile)` at module load. These tests
+  // never invoke it (no skills-check path runs here), so a bare stub is enough
+  // to satisfy the named import — we deliberately don't spread the real module.
+  execFile: vi.fn(),
   execFileSync: vi.fn((command: string, args: ReadonlyArray<string>) => {
     state.execCalls.push({ command, args });
     return Buffer.from("11.0.0");
