@@ -17,9 +17,10 @@ type ExecCall = {
 };
 
 const originalPlatform = process.platform;
-const state: { execCalls: ExecCall[]; spawnCalls: SpawnCall[] } = {
+const state: { execCalls: ExecCall[]; spawnCalls: SpawnCall[]; spawnExitCode: number } = {
   execCalls: [],
   spawnCalls: [],
+  spawnExitCode: 0,
 };
 
 vi.mock("node:child_process", () => ({
@@ -35,7 +36,7 @@ vi.mock("node:child_process", () => ({
     (command: string, args: ReadonlyArray<string>, opts?: { env?: NodeJS.ProcessEnv }) => {
       state.spawnCalls.push({ command, args, env: opts?.env });
       const fake = new EventEmitter();
-      setImmediate(() => fake.emit("close", 0, null));
+      setImmediate(() => fake.emit("close", state.spawnExitCode, null));
       return fake;
     },
   ),
@@ -58,6 +59,7 @@ describe("hyperframes skills", () => {
   beforeEach(() => {
     state.execCalls = [];
     state.spawnCalls = [];
+    state.spawnExitCode = 0;
     vi.resetModules();
   });
 
@@ -122,4 +124,46 @@ describe("hyperframes skills", () => {
       expect(state.spawnCalls[0]?.args).toEqual(expectedInstallArgs);
     },
   );
+
+  // The `skills check || skills update` recovery contract requires update to
+  // fail loudly — a swallowed install failure would let the `||` chain pass
+  // while nothing changed.
+  it("skills update exits non-zero when the install fails", async () => {
+    setPlatform("linux");
+    state.spawnExitCode = 1; // simulate `skills add` exiting non-zero
+
+    const prevExit = process.exitCode;
+    process.exitCode = 0;
+    try {
+      const { default: skillsCmd } = await import("./skills.js");
+      const subs = skillsCmd.subCommands as unknown as Record<string, typeof skillsCmd>;
+      const updateCmd = subs.update;
+      expect(updateCmd).toBeDefined();
+      await updateCmd!.run?.({ args: {}, rawArgs: [], cmd: updateCmd } as never);
+      expect(process.exitCode).toBe(1);
+    } finally {
+      process.exitCode = prevExit;
+    }
+  });
+
+  it("skills update exits zero on a successful install", async () => {
+    setPlatform("linux");
+    state.spawnExitCode = 0;
+
+    const prevExit = process.exitCode;
+    process.exitCode = 0;
+    try {
+      const { default: skillsCmd } = await import("./skills.js");
+      const subs = skillsCmd.subCommands as unknown as Record<string, typeof skillsCmd>;
+      const updateCmd = subs.update;
+      expect(updateCmd).toBeDefined();
+      await updateCmd!.run?.({ args: {}, rawArgs: [], cmd: updateCmd } as never);
+      expect(process.exitCode).toBe(0);
+      // pulls the full set straight from GitHub
+      expect(state.spawnCalls[0]?.args).toContain("https://github.com/heygen-com/hyperframes");
+      expect(state.spawnCalls[0]?.args).toContain("--all");
+    } finally {
+      process.exitCode = prevExit;
+    }
+  });
 });

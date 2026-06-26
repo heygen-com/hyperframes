@@ -5,6 +5,7 @@ import { join } from "node:path";
 import {
   hashSkillBundle,
   buildManifest,
+  checkSkills,
   diffSkills,
   type SkillsManifest,
   type SkillEntry,
@@ -125,5 +126,132 @@ describe("diffSkills", () => {
       latest,
     );
     expect(withExtra.updateAvailable).toBe(false);
+  });
+});
+
+describe("checkSkills install detection", () => {
+  // A spread of agent-host conventions across the upstream `skills` universe,
+  // including the XDG-nested OpenCode layout. Detection is structural
+  // (auto-discovered), so this list is illustrative, not exhaustive.
+  const CASES: ReadonlyArray<[string, string]> = [
+    [".claude/skills", "claude-code"],
+    [".agents/skills", "agents"],
+    [".codex/skills", "codex"],
+    [".cursor/skills", "cursor"],
+    [".config/opencode/skills", "opencode"],
+    [".factory/skills", "factory"],
+    [".slate/skills", "slate"],
+    [".kiro/skills", "kiro"],
+    [".hermes/skills", "hermes"],
+    [".gbrain/skills", "gbrain"],
+    [".openclaw/skills", "openclaw"],
+  ];
+
+  function writeManifest(dir: string): string {
+    const p = join(dir, "manifest.json");
+    writeFileSync(
+      p,
+      JSON.stringify({
+        source: "test",
+        skills: { alpha: { hash: "x", files: 1 }, beta: { hash: "y", files: 1 } },
+      }),
+    );
+    return p;
+  }
+
+  function installSkill(skillsDir: string, name: string): void {
+    mkdirSync(join(skillsDir, name), { recursive: true });
+    writeFileSync(join(skillsDir, name, "SKILL.md"), `# ${name}`);
+  }
+
+  it.each(CASES)("locates skills under %s in the project scope", async (rel, agent) => {
+    const project = join(root, "project");
+    const home = join(root, "home");
+    mkdirSync(project, { recursive: true });
+    mkdirSync(home, { recursive: true });
+    const source = writeManifest(root);
+    installSkill(join(project, rel), "alpha");
+
+    const res = await checkSkills({ source, cwd: project, home });
+    expect(res.location).toBe(join(project, rel));
+    expect(res.agent).toBe(agent);
+  });
+
+  it.each(CASES)("locates skills under %s in the global scope", async (rel, agent) => {
+    const project = join(root, "project");
+    const home = join(root, "home");
+    mkdirSync(project, { recursive: true });
+    mkdirSync(home, { recursive: true });
+    const source = writeManifest(root);
+    installSkill(join(home, rel), "alpha");
+
+    const res = await checkSkills({ source, cwd: project, home });
+    expect(res.location).toBe(join(home, rel));
+    expect(res.agent).toBe(agent);
+  });
+
+  it("prefers project scope over global, regardless of convention order", async () => {
+    const project = join(root, "project");
+    const home = join(root, "home");
+    mkdirSync(project, { recursive: true });
+    mkdirSync(home, { recursive: true });
+    const source = writeManifest(root);
+    installSkill(join(home, ".claude/skills"), "alpha"); // global, higher-priority host
+    installSkill(join(project, ".hermes/skills"), "alpha"); // project, lower-priority host
+
+    const res = await checkSkills({ source, cwd: project, home });
+    expect(res.location).toBe(join(project, ".hermes/skills"));
+    expect(res.agent).toBe("hermes");
+  });
+
+  it("reports no location and an available update when nothing is installed", async () => {
+    const project = join(root, "project");
+    const home = join(root, "home");
+    mkdirSync(project, { recursive: true });
+    mkdirSync(home, { recursive: true });
+    const source = writeManifest(root);
+
+    const res = await checkSkills({ source, cwd: project, home });
+    expect(res.location).toBeNull();
+    expect(res.summary.missing).toBe(2);
+    expect(res.updateAvailable).toBe(true);
+  });
+
+  it("honors the --dir override and infers the agent from the path", async () => {
+    const dir = join(root, "home", ".kiro/skills");
+    installSkill(dir, "alpha");
+    const source = writeManifest(root);
+
+    const res = await checkSkills({ source, dir });
+    expect(res.location).toBe(dir);
+    expect(res.agent).toBe("kiro");
+  });
+
+  it("auto-discovers an unknown/new agent host (no closed list)", async () => {
+    const project = join(root, "project");
+    const home = join(root, "home");
+    mkdirSync(project, { recursive: true });
+    mkdirSync(home, { recursive: true });
+    const source = writeManifest(root);
+    // A host this CLI has never heard of — structural discovery still finds it.
+    installSkill(join(home, ".some-future-agent/skills"), "alpha");
+
+    const res = await checkSkills({ source, cwd: project, home });
+    expect(res.location).toBe(join(home, ".some-future-agent/skills"));
+    expect(res.agent).toBe("some-future-agent");
+  });
+
+  it("prefers claude-code when multiple hosts in the same scope have skills", async () => {
+    const project = join(root, "project");
+    const home = join(root, "home");
+    mkdirSync(project, { recursive: true });
+    mkdirSync(home, { recursive: true });
+    const source = writeManifest(root);
+    installSkill(join(home, ".factory/skills"), "alpha");
+    installSkill(join(home, ".claude/skills"), "alpha");
+
+    const res = await checkSkills({ source, cwd: project, home });
+    expect(res.location).toBe(join(home, ".claude/skills"));
+    expect(res.agent).toBe("claude-code");
   });
 });

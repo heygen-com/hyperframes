@@ -147,27 +147,64 @@ interface SkillRoot {
 }
 
 /**
- * Candidate locations where `npx skills add` may have installed skills, in
- * priority order (project before global, Claude Code before others).
+ * Map a host directory name to an agent label: ".claude" → "claude-code",
+ * ".factory" → "factory", "opencode" (under .config) → "opencode".
  */
-function defaultSkillRoots(cwd = process.cwd(), home = homedir()): SkillRoot[] {
-  const conventions: Array<[string, string]> = [
-    [".claude/skills", "claude-code"],
-    [".agents/skills", "codex"],
-    [".codex/skills", "codex"],
-    [".cursor/skills", "cursor"],
-  ];
-  const roots: SkillRoot[] = [];
-  for (const [rel, agent] of conventions)
-    roots.push({ dir: join(cwd, rel), agent, scope: "project" });
-  for (const [rel, agent] of conventions)
-    roots.push({ dir: join(home, rel), agent, scope: "global" });
-  return roots;
+function agentLabel(hostDir: string): string {
+  const name = hostDir.replace(/^\.+/, "");
+  return name === "claude" ? "claude-code" : name || "unknown";
+}
+
+/** Infer the agent from a `.../skills` path by its host segment (the dir above "skills"). */
+function agentFromDir(dir: string): string {
+  const parts = dir.split(sep).filter(Boolean);
+  const i = parts.lastIndexOf("skills");
+  return agentLabel(i > 0 ? parts[i - 1]! : (parts[parts.length - 1] ?? ""));
+}
+
+/** Immediate subdirectory names of `dir` (including symlinked dirs); [] if unreadable. */
+function listSubdirs(dir: string): string[] {
+  try {
+    return readdirSync(dir, { withFileTypes: true })
+      .filter((e) => e.isDirectory() || e.isSymbolicLink())
+      .map((e) => e.name);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Auto-discover candidate `<host>/skills` dirs under a scope base instead of
+ * enumerating a fixed list of agents. The upstream `skills` CLI installs into
+ * 70+ agent conventions; each lands as `<base>/<host>/skills` (or the XDG
+ * `<base>/.config/<host>/skills`), so we find them by structure — future-proof
+ * as upstream adds agents. claude-code is ordered first; the rest
+ * deterministically by agent then path.
+ */
+function discoverSkillRoots(base: string, scope: "project" | "global"): SkillRoot[] {
+  const candidates: SkillRoot[] = [];
+  const add = (hostBase: string, host: string): void => {
+    const dir = join(hostBase, host, "skills");
+    if (existsSync(dir) && statSync(dir).isDirectory())
+      candidates.push({ dir, agent: agentLabel(host), scope });
+  };
+  for (const host of listSubdirs(base)) add(base, host);
+  const xdg = join(base, ".config");
+  for (const host of listSubdirs(xdg)) add(xdg, host);
+  return candidates.sort((a, b) => {
+    if (a.agent !== b.agent) {
+      if (a.agent === "claude-code") return -1;
+      if (b.agent === "claude-code") return 1;
+      return a.agent.localeCompare(b.agent);
+    }
+    return a.dir.localeCompare(b.dir);
+  });
 }
 
 /**
  * Find the first skill root that actually contains HyperFrames skills. A
  * `--dir` override (if given) is treated as a `.../skills` directory directly.
+ * Otherwise scan project (cwd) then global ($HOME), auto-discovering hosts.
  */
 function locateInstall(
   skillNames: string[],
@@ -178,19 +215,14 @@ function locateInstall(
       ? { dir: opts.dir, agent: agentFromDir(opts.dir), scope: "project" }
       : null;
   }
-  for (const root of defaultSkillRoots(opts.cwd, opts.home)) {
-    if (!existsSync(root.dir)) continue;
-    const hasAny = skillNames.some((n) => existsSync(join(root.dir, n, "SKILL.md")));
-    if (hasAny) return root;
+  const roots = [
+    ...discoverSkillRoots(opts.cwd ?? process.cwd(), "project"),
+    ...discoverSkillRoots(opts.home ?? homedir(), "global"),
+  ];
+  for (const root of roots) {
+    if (skillNames.some((n) => existsSync(join(root.dir, n, "SKILL.md")))) return root;
   }
   return null;
-}
-
-function agentFromDir(dir: string): string {
-  if (dir.includes(`.claude${sep}`) || dir.endsWith(".claude")) return "claude-code";
-  if (dir.includes(`.codex${sep}`) || dir.includes(`.agents${sep}`)) return "codex";
-  if (dir.includes(`.cursor${sep}`)) return "cursor";
-  return "unknown";
 }
 
 /** Hash every manifest skill that is installed under `root`. */
@@ -249,7 +281,8 @@ export function diffSkills(
 /** Walk up from `cwd` to find a repo checkout that ships the manifest. */
 function findRepoManifest(cwd = process.cwd()): string | null {
   let dir = cwd;
-  for (let i = 0; i < 8; i++) {
+  // Bounded climb (deep monorepos / nested worktrees) — stops early at the FS root.
+  for (let i = 0; i < 16; i++) {
     const p = join(dir, MANIFEST_FILE);
     if (existsSync(p)) return p;
     const parent = join(dir, "..");
@@ -363,11 +396,11 @@ async function resolveLatestManifest(
  * manifest. Pure-ish (network only via `resolveLatestManifest`).
  */
 export async function checkSkills(
-  opts: { dir?: string; source?: string; cwd?: string } = {},
+  opts: { dir?: string; source?: string; cwd?: string; home?: string } = {},
 ): Promise<SkillsCheckResult> {
   const latest = await resolveLatestManifest(opts.source, opts.cwd);
   const skillNames = Object.keys(latest.skills);
-  const root = locateInstall(skillNames, { dir: opts.dir, cwd: opts.cwd });
+  const root = locateInstall(skillNames, { dir: opts.dir, cwd: opts.cwd, home: opts.home });
   const installed = root ? hashInstalled(root, skillNames) : {};
   const diff = diffSkills(installed, latest);
   return { location: root?.dir ?? null, agent: root?.agent ?? null, ...diff };

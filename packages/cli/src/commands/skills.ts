@@ -62,10 +62,15 @@ function runSkillsAdd(
 const SOURCES = [{ name: "HyperFrames", url: "https://github.com/heygen-com/hyperframes" }];
 
 export async function installAllSkills(
-  opts: { cwd?: string; extraArgs?: string[] } = {},
+  opts: { cwd?: string; extraArgs?: string[]; strict?: boolean } = {},
 ): Promise<void> {
   if (!hasNpx()) {
-    clack.log.error(c.error("npx not found. Install Node.js and retry."));
+    const msg = "npx not found. Install Node.js and retry.";
+    // strict callers (e.g. `skills update`) need a real failure so a recovery
+    // command can't exit 0 having done nothing; best-effort callers (init) just
+    // warn and carry on.
+    if (opts.strict) throw new Error(msg);
+    clack.log.error(c.error(msg));
     return;
   }
 
@@ -75,7 +80,8 @@ export async function installAllSkills(
     console.log();
     try {
       await runSkillsAdd(source.url, opts);
-    } catch {
+    } catch (err) {
+      if (opts.strict) throw err instanceof Error ? err : new Error(String(err));
       console.log(c.dim(`${source.name} skills skipped`));
     }
   }
@@ -164,7 +170,17 @@ const updateCommand = defineCommand({
     // `skills add --all` re-fetches every skill to the latest AND installs ones
     // not yet present — so "update" pulls the full set, not just what is already
     // installed. This is where `init` and the stale-skills nudge both lead.
-    await installAllSkills({ extraArgs: ["--all", "--yes"] });
+    //
+    // strict: this is the documented recovery path for the agent/CI contract
+    // `hyperframes skills check || hyperframes skills update`. If the install
+    // fails (no npx, `skills add` exits non-zero) it must exit non-zero too —
+    // otherwise the `||` chain passes while nothing actually changed.
+    try {
+      await installAllSkills({ extraArgs: ["--all", "--yes"], strict: true });
+    } catch (err) {
+      clack.log.error(c.error(`Update failed: ${(err as Error).message}`));
+      process.exitCode = 1;
+    }
   },
 });
 
