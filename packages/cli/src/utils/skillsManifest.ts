@@ -234,9 +234,10 @@ export function diffSkills(
   }
 
   return {
-    // "Would `skills update` change something you already have?" Missing skills
-    // are reported separately — a partial install is a choice, not staleness.
-    updateAvailable: summary.outdated > 0,
+    // The full skill set is the goal — `init` and `skills update` both pull the
+    // complete set, so anything outdated OR missing means an update is available.
+    // (local-only skills — installed but not in the manifest — don't count.)
+    updateAvailable: summary.outdated > 0 || summary.missing > 0,
     summary,
     skills,
   };

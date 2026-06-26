@@ -89,7 +89,7 @@ HyperFrames skills are versioned. `npx hyperframes init` installs (and refreshes
 
 If a task is behaving unexpectedly, or before a long build, confirm the installed skills are current:
 
-- **Check:** `npx hyperframes skills check` (add `--json` for a machine-readable verdict; exits non-zero when something is outdated).
+- **Check:** `npx hyperframes skills check` (add `--json` for a machine-readable verdict; exits non-zero when anything is outdated **or missing**).
 - **Update:** `npx hyperframes skills update` — pulls the full set to the latest, **installing any not yet present** (same as init's install step).
 
 The CLI also surfaces a one-line reminder when a `render` / `lint` / `validate` run detects stale skills.

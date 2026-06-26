@@ -15,6 +15,7 @@ const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
 export interface SkillsUpdateMeta {
   updateAvailable: boolean;
   outdated: number;
+  missing: number;
 }
 
 /** Synchronous read from cache — never fetches. */
@@ -23,6 +24,7 @@ function getSkillsUpdateMeta(): SkillsUpdateMeta {
   return {
     updateAvailable: config.skillsUpdateAvailable ?? false,
     outdated: config.skillsOutdatedCount ?? 0,
+    missing: config.skillsMissingCount ?? 0,
   };
 }
 
@@ -40,9 +42,14 @@ async function refreshSkillsCache(): Promise<SkillsUpdateMeta> {
     config.lastSkillsCheck = new Date().toISOString();
     config.skillsUpdateAvailable = result.updateAvailable;
     config.skillsOutdatedCount = result.summary.outdated;
+    config.skillsMissingCount = result.summary.missing;
     writeConfig(config);
   }
-  return { updateAvailable: result.updateAvailable, outdated: result.summary.outdated };
+  return {
+    updateAvailable: result.updateAvailable,
+    outdated: result.summary.outdated,
+    missing: result.summary.missing,
+  };
 }
 
 /**
@@ -61,11 +68,12 @@ export async function checkSkillsForUpdate(force?: boolean): Promise<SkillsUpdat
   }
 }
 
-/** The stale-skills nudge text, or null when nothing is outdated. */
+/** The stale-skills nudge text, or null when nothing is outdated or missing. */
 function skillsNoticeText(meta: SkillsUpdateMeta): string | null {
-  if (meta.outdated < 1) return null;
-  const noun = meta.outdated === 1 ? "skill" : "skills";
-  return `\n  ${meta.outdated} HyperFrames ${noun} out of date.\n  Run: npx hyperframes skills update\n\n`;
+  const total = meta.outdated + meta.missing;
+  if (total < 1) return null;
+  const noun = total === 1 ? "skill" : "skills";
+  return `\n  ${total} HyperFrames ${noun} out of date or missing.\n  Run: npx hyperframes skills update\n\n`;
 }
 
 /**

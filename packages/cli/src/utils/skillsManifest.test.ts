@@ -96,12 +96,35 @@ describe("diffSkills", () => {
     expect(diff.summary).toEqual({ current: 1, outdated: 1, missing: 1, localOnly: 1 });
   });
 
-  it("flags updateAvailable only when an installed skill is outdated", () => {
-    // Missing-only must NOT trigger updateAvailable (a partial install is a choice).
+  it("flags updateAvailable when a skill is outdated OR missing", () => {
+    // The full set is the goal, so missing skills now count too.
     const missingOnly = diffSkills({ keep: { hash: "h1", files: 1 } }, latest);
-    expect(missingOnly.updateAvailable).toBe(false);
+    expect(missingOnly.updateAvailable).toBe(true);
 
     const hasOutdated = diffSkills({ changed: { hash: "X", files: 1 } }, latest);
     expect(hasOutdated.updateAvailable).toBe(true);
+
+    // Everything present and current → no update.
+    const allCurrent = diffSkills(
+      {
+        keep: { hash: "h1", files: 1 },
+        changed: { hash: "h2", files: 1 },
+        gone: { hash: "h3", files: 1 },
+      },
+      latest,
+    );
+    expect(allCurrent.updateAvailable).toBe(false);
+
+    // A local-only skill (installed, not in the manifest) doesn't trigger one.
+    const localOnly = diffSkills(
+      {
+        keep: { hash: "h1", files: 1 },
+        changed: { hash: "h2", files: 1 },
+        gone: { hash: "h3", files: 1 },
+        extra: { hash: "hx", files: 1 },
+      },
+      latest,
+    );
+    expect(localOnly.updateAvailable).toBe(false);
   });
 });
