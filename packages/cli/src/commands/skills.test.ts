@@ -64,11 +64,11 @@ function setPlatform(platform: NodeJS.Platform): void {
 }
 
 /** Invoke the `skills update` subcommand from a freshly-imported module. */
-async function runSkillsUpdate(): Promise<void> {
+async function runSkillsUpdate(args: Record<string, unknown> = {}): Promise<void> {
   const { default: skillsCmd } = await import("./skills.js");
   const subs = skillsCmd.subCommands as unknown as Record<string, typeof skillsCmd>;
   expect(subs.update).toBeDefined();
-  await subs.update!.run?.({ args: {}, rawArgs: [], cmd: subs.update } as never);
+  await subs.update!.run?.({ args, rawArgs: [], cmd: subs.update } as never);
 }
 
 describe("hyperframes skills", () => {
@@ -213,6 +213,19 @@ describe("hyperframes skills", () => {
     expect(state.spawnCalls.some((s) => s.args.includes("remove"))).toBe(false);
   });
 
+  // `update`'s prune runs the same removed-detection as `check`, so its
+  // --source/--dir must reach the internal checkSkills() — otherwise the prune
+  // reconciles against defaults even when the user pointed elsewhere.
+  it("skills update plumbs --source/--dir to its prune detection (parity with check)", async () => {
+    setPlatform("linux");
+    const { checkSkills } = await import("../utils/skillsManifest.js");
+    vi.mocked(checkSkills).mockResolvedValueOnce({ scope: "project", skills: [] } as never);
+
+    await runSkillsUpdate({ source: "owner/repo", dir: "/custom/skills" });
+
+    expect(checkSkills).toHaveBeenCalledWith({ source: "owner/repo", dir: "/custom/skills" });
+  });
+
   // Skill names come from lock-file JSON keys; a flag-like / shell-special name
   // must never reach the spawn (esp. the Windows cmd.exe path).
   it("skills update never passes a non-slug skill name to remove", async () => {
@@ -232,5 +245,30 @@ describe("hyperframes skills", () => {
     expect(removeCall, "expected a `skills remove` spawn for the valid name").toBeDefined();
     expect(removeCall!.args).toContain("graphic-overlays");
     expect(removeCall!.args).not.toContain("--config=evil.js");
+  });
+
+  // The early-return guard in runSkillsRemove: when EVERY candidate name is
+  // rejected as non-slug, no `skills remove` is spawned at all (the prior test
+  // only covers a mix of valid + invalid). A spawn here would run `skills remove
+  // --yes` with no names — which the upstream CLI treats as "remove nothing" at
+  // best, or prompts interactively at worst — so we must not reach it.
+  it("skills update spawns no remove when every removed name is rejected", async () => {
+    setPlatform("linux");
+    const { checkSkills } = await import("../utils/skillsManifest.js");
+    vi.mocked(checkSkills).mockResolvedValueOnce({
+      scope: "global",
+      skills: [
+        { name: "--config=evil.js", status: "removed" },
+        { name: "../escape", status: "removed" },
+      ],
+    } as never);
+
+    await runSkillsUpdate();
+
+    expect(state.spawnCalls.some((s) => s.args.includes("remove"))).toBe(false);
+    // The install still ran and the update still succeeded — a cleanup no-op
+    // doesn't fail the update.
+    expect(state.spawnCalls[0]?.args).toContain("add");
+    expect(process.exitCode).toBe(0);
   });
 });

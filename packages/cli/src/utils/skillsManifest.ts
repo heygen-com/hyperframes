@@ -19,7 +19,7 @@ import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { isAbsolute, join, relative, sep } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -86,6 +86,13 @@ export interface SkillsCheckResult {
   updateAvailable: boolean;
   summary: { current: number; outdated: number; missing: number; removed: number };
   skills: SkillDiff[];
+  /**
+   * True when an install was located but the upstream skills lock was absent at
+   * the expected path, so removed-detection couldn't run (it silently reports
+   * zero removed). Lets the CLI warn instead of misreporting "up to date" — a
+   * guard against the lock path silently no-op'ing if upstream moves it.
+   */
+  lockMissing: boolean;
 }
 
 const DEFAULT_REPO_SLUG = "heygen-com/hyperframes";
@@ -213,9 +220,28 @@ function discoverSkillRoots(base: string, scope: "project" | "global"): SkillRoo
 }
 
 /**
+ * Decide whether an explicit `--dir` is a project- or global-scoped install, so
+ * removed-detection reads the *right* lock. The upstream `skills` CLI keeps two
+ * locks: a project lock at `<cwd>/skills-lock.json` and a global lock under
+ * `$HOME` (see lockPathForScope). A `--dir` that lives under `$HOME` (e.g.
+ * `~/.claude/skills`) is a global install; one under the project tree (or
+ * anywhere else) is treated as project. Without this, `--dir ~/.claude/skills`
+ * was always scoped "project", so detectRemoved looked for a non-existent
+ * `<cwd>/skills-lock.json` and silently found zero removed skills.
+ */
+function scopeForDir(dir: string, home: string): "project" | "global" {
+  const norm = (p: string): string => {
+    const r = resolve(p);
+    return r.endsWith(sep) ? r : r + sep;
+  };
+  return norm(dir).startsWith(norm(home)) ? "global" : "project";
+}
+
+/**
  * Find the first skill root that actually contains HyperFrames skills. A
- * `--dir` override (if given) is treated as a `.../skills` directory directly.
- * Otherwise scan project (cwd) then global ($HOME), auto-discovering hosts.
+ * `--dir` override (if given) is treated as a `.../skills` directory directly;
+ * its scope is inferred (see scopeForDir) so removed-detection reads the right
+ * lock. Otherwise scan project (cwd) then global ($HOME), auto-discovering hosts.
  */
 function locateInstall(
   skillNames: string[],
@@ -223,7 +249,11 @@ function locateInstall(
 ): SkillRoot | null {
   if (opts.dir) {
     return existsSync(opts.dir)
-      ? { dir: opts.dir, agent: agentFromDir(opts.dir), scope: "project" }
+      ? {
+          dir: opts.dir,
+          agent: agentFromDir(opts.dir),
+          scope: scopeForDir(opts.dir, opts.home ?? homedir()),
+        }
       : null;
   }
   const roots = [
@@ -327,7 +357,19 @@ export function skillsAttributedToSource(lock: SkillLock | null, source: string)
     .map(([name]) => name);
 }
 
-/** Locate the vercel-labs/skills lock for a scope, mirroring that CLI's paths. */
+// Removed-detection reads the vercel-labs/skills lock, whose on-disk paths live
+// in *their* repo, not ours — so if upstream moves the lock, our cross-reference
+// silently finds nothing and `detectRemoved` no-ops without a peep. Pin the
+// upstream version these paths were verified against so a future bump is a
+// deliberate, reviewable edit (re-check src/skill-lock.ts `getSkillLockPath`
+// and src/local-lock.ts `getLocalLockPath` when bumping):
+//   - global:  $XDG_STATE_HOME/skills/.skill-lock.json  else  ~/.agents/.skill-lock.json
+//   - project: <cwd>/skills-lock.json
+// https://github.com/vercel-labs/skills/blob/v1.5.13/src/skill-lock.ts (global)
+// https://github.com/vercel-labs/skills/blob/v1.5.13/src/local-lock.ts (project)
+export const SKILLS_CLI_LOCK_PATHS_VERIFIED_AT = "vercel-labs/skills@v1.5.13";
+
+/** Locate the vercel-labs/skills lock for a scope (paths pinned to the version above). */
 function lockPathForScope(
   scope: "project" | "global",
   opts: { cwd?: string; home?: string },
@@ -347,17 +389,24 @@ function readSkillLock(path: string): SkillLock | null {
   }
 }
 
+interface RemovedResult {
+  removed: SkillDiff[];
+  /** The lock was absent at the expected path — removed-detection silently no-ops. */
+  lockMissing: boolean;
+}
+
 /** Skills the lock attributes to our source that the manifest no longer ships. */
 function detectRemoved(
   root: SkillRoot,
   latest: SkillsManifest,
   opts: { cwd?: string; home?: string },
-): SkillDiff[] {
+): RemovedResult {
   const lock = readSkillLock(lockPathForScope(root.scope, opts));
-  return skillsAttributedToSource(lock, latest.source)
+  const removed = skillsAttributedToSource(lock, latest.source)
     .filter((name) => !(name in latest.skills))
     .sort()
     .map((name) => ({ name, status: "removed" as const }));
+  return { removed, lockMissing: lock === null };
 }
 
 // ── Resolving the "latest" manifest ──────────────────────────────────────────
@@ -487,7 +536,10 @@ export async function checkSkills(
   const root = locateInstall(skillNames, { dir: opts.dir, cwd: opts.cwd, home: opts.home });
   const installed = root ? hashInstalled(root, skillNames) : {};
   const diff = diffSkills(installed, latest);
-  const removed = root ? detectRemoved(root, latest, { cwd: opts.cwd, home: opts.home }) : [];
+  const removedResult = root
+    ? detectRemoved(root, latest, { cwd: opts.cwd, home: opts.home })
+    : { removed: [], lockMissing: false };
+  const { removed, lockMissing } = removedResult;
   return {
     location: root?.dir ?? null,
     agent: root?.agent ?? null,
@@ -497,5 +549,6 @@ export async function checkSkills(
     updateAvailable: diff.updateAvailable || removed.length > 0,
     summary: { ...diff.summary, removed: removed.length },
     skills: [...diff.skills, ...removed],
+    lockMissing,
   };
 }

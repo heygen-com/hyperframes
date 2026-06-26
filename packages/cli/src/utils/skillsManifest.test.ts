@@ -294,6 +294,14 @@ describe("checkSkills removed-upstream detection", () => {
     else process.env.XDG_STATE_HOME = xdg;
   });
 
+  // Install one or more `<skillsDir>/<name>/SKILL.md` bundles.
+  function installSkills(skillsDir: string, names: string[]): void {
+    for (const name of names) {
+      mkdirSync(join(skillsDir, name), { recursive: true });
+      writeFileSync(join(skillsDir, name, "SKILL.md"), `# ${name}`);
+    }
+  }
+
   // Shared fixture: a project + home with two skills installed globally
   // (alpha + gamma), plus a manifest path. Tests then write the lock they need.
   function setup(manifest: SkillsManifest): {
@@ -303,11 +311,7 @@ describe("checkSkills removed-upstream detection", () => {
     const project = join(root, "project");
     const home = join(root, "home");
     mkdirSync(project, { recursive: true });
-    const skillsDir = join(home, ".agents/skills");
-    for (const name of ["alpha", "gamma"]) {
-      mkdirSync(join(skillsDir, name), { recursive: true });
-      writeFileSync(join(skillsDir, name, "SKILL.md"), `# ${name}`);
-    }
+    installSkills(join(home, ".agents/skills"), ["alpha", "gamma"]);
     const manifestPath = join(root, "manifest.json");
     writeFileSync(manifestPath, JSON.stringify(manifest));
     return { home, opts: { source: manifestPath, cwd: project, home } };
@@ -352,5 +356,58 @@ describe("checkSkills removed-upstream detection", () => {
     const res = await checkSkills(opts);
     expect(res.summary.removed).toBe(0);
     expect(res.skills.some((s) => s.status === "removed")).toBe(false);
+    // No install was located via auto-detect (skills live under <home>/.agents/skills
+    // which IS discovered) — so lockMissing reflects the genuinely-absent lock.
+    expect(res.lockMissing).toBe(true);
+  });
+
+  // A `--dir` pointing at a global-scoped install (under $HOME) must resolve the
+  // GLOBAL lock (<home>/.agents/.skill-lock.json), not the project lock
+  // (<cwd>/skills-lock.json). Before this fix, locateInstall hardcoded scope
+  // "project" for every --dir, so the global lock was never read and
+  // removed-detection silently found nothing for --dir installs.
+  it("--dir under $HOME resolves the global lock so removed-detection works", async () => {
+    const { home, opts } = setup({ source: "test", skills: { alpha: { hash: "x", files: 1 } } });
+    writeGlobalLock(home, {
+      alpha: { source: "test" }, // ours and still in the manifest
+      gamma: { source: "test" }, // ours, dropped from manifest → removed
+    });
+
+    const dir = join(home, ".agents/skills");
+    const res = await checkSkills({ source: opts.source, dir, cwd: opts.cwd, home });
+    expect(res.scope).toBe("global");
+    const byName = Object.fromEntries(res.skills.map((s) => [s.name, s.status]));
+    expect(byName.gamma).toBe("removed");
+    expect(res.summary.removed).toBe(1);
+    expect(res.lockMissing).toBe(false);
+  });
+
+  // The complementary case: a `--dir` under the project tree (not $HOME) stays
+  // project-scoped and reads <cwd>/skills-lock.json.
+  it("--dir outside $HOME stays project-scoped and reads the project lock", async () => {
+    const project = join(root, "proj2");
+    const skillsDir = join(project, ".claude/skills");
+    installSkills(skillsDir, ["alpha", "gamma"]);
+    const manifestPath = join(root, "m2.json");
+    writeFileSync(
+      manifestPath,
+      JSON.stringify({ source: "test", skills: { alpha: { hash: "x", files: 1 } } }),
+    );
+    // Project lock lives at <cwd>/skills-lock.json — point cwd at the project.
+    writeFileSync(
+      join(project, "skills-lock.json"),
+      JSON.stringify({
+        version: 1,
+        skills: { alpha: { source: "test" }, gamma: { source: "test" } },
+      }),
+    );
+    const home = join(root, "home2");
+    mkdirSync(home, { recursive: true });
+
+    const res = await checkSkills({ source: manifestPath, dir: skillsDir, cwd: project, home });
+    expect(res.scope).toBe("project");
+    const byName = Object.fromEntries(res.skills.map((s) => [s.name, s.status]));
+    expect(byName.gamma).toBe("removed");
+    expect(res.summary.removed).toBe(1);
   });
 });

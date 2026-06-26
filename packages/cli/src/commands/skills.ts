@@ -4,7 +4,12 @@ import * as clack from "@clack/prompts";
 import { c } from "../ui/colors.js";
 import { buildNpxCommand } from "../utils/npxCommand.js";
 import { withMeta } from "../utils/updateCheck.js";
-import { checkSkills, type SkillDiff, type SkillsCheckResult } from "../utils/skillsManifest.js";
+import {
+  checkSkills,
+  SKILLS_CLI_LOCK_PATHS_VERIFIED_AT,
+  type SkillDiff,
+  type SkillsCheckResult,
+} from "../utils/skillsManifest.js";
 import type { Example } from "./_examples.js";
 
 export const examples: Example[] = [
@@ -157,6 +162,19 @@ function renderCheck(result: SkillsCheckResult): void {
     c.warn,
   );
 
+  // Removed-detection cross-references the upstream skills lock. If that lock is
+  // absent where we expect it (e.g. upstream moved its path), removed-detection
+  // silently reports zero — so warn rather than imply a clean "up to date".
+  if (result.lockMissing) {
+    console.log();
+    console.log(
+      `  ${c.warn(`! Skills lock not found — can't check for skills removed upstream.`)}`,
+    );
+    console.log(
+      `  ${c.dim(`  (lock paths verified against ${SKILLS_CLI_LOCK_PATHS_VERIFIED_AT})`)}`,
+    );
+  }
+
   console.log();
   if (result.updateAvailable) {
     console.log(`  ${c.accent("Update: npx hyperframes skills update")}`);
@@ -199,11 +217,30 @@ const updateCommand = defineCommand({
     description:
       "Update all HyperFrames skills to the latest — installs any not yet present, removes any no longer published",
   },
-  args: {},
-  async run() {
+  // Mirror `check`'s flags: the prune step runs the same removed-detection, so it
+  // must respect the same overrides. Without these, `update`'s internal
+  // checkSkills() fell back to defaults — pruning the auto-detected install
+  // against the default manifest even when the user pointed `check` elsewhere.
+  args: {
+    dir: { type: "string", description: "Skills directory to reconcile (default: auto-detect)" },
+    source: {
+      type: "string",
+      description: "Where 'latest' comes from: local path, owner/repo, or URL",
+    },
+  },
+  async run({ args }) {
+    const dir = args.dir as string | undefined;
+    const source = args.source as string | undefined;
+
     // `skills add --all` re-fetches every skill to the latest AND installs ones
     // not yet present — so "update" pulls the full set, not just what is already
     // installed. This is where `init` and the stale-skills nudge both lead.
+    //
+    // Note: the upstream `skills add` CLI has no `--dir` flag (it installs into
+    // detected agent dirs), so `--dir` here scopes only the *prune* detection
+    // below, not the install. `--source` likewise drives where the prune's
+    // "latest" manifest comes from; the install always targets the canonical
+    // HyperFrames repo so `update` reliably pulls the published set.
     //
     // strict: this is the documented recovery path for the agent/CI contract
     // `hyperframes skills check || hyperframes skills update`. If the install
@@ -229,7 +266,7 @@ const updateCommand = defineCommand({
     // failure doesn't fail the update — the install the CI contract gates on
     // already succeeded.
     try {
-      const { skills, scope } = await checkSkills();
+      const { skills, scope } = await checkSkills({ dir, source });
       const removed = skills.filter((s) => s.status === "removed").map((s) => s.name);
       if (removed.length) {
         console.log();
