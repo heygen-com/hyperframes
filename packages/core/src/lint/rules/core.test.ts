@@ -216,11 +216,11 @@ describe("core rules", () => {
     const html = compositionWithHead(`
   <style>
     body { margin: 0; }
-  </style >
+  </style data-parser-error-close>
   <script>
     window.__headReady = true;
   </script
-  >
+    data-parser-error-close>
   <title>Particle Field</title	>
 `);
     const result = await lintHyperframeHtml(html);

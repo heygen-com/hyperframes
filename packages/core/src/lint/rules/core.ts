@@ -58,10 +58,10 @@ function describeStudioElement(tag: { raw: string; name: string }): string {
 }
 
 const HEAD_BLOCKS_TO_IGNORE_PATTERN =
-  /<(?:style|script|template|title|noscript)\b[^>]*>[\s\S]*?<\/(?:style|script|template|title|noscript)\s*>/gi;
+  /<(?:style|script|template|title|noscript)\b[^>]*>[\s\S]*?<\/(?:style|script|template|title|noscript)(?:\s[^>]*)?>/gi;
 const HTML_TAG_PATTERN = /<[^>]+>/g;
 const HEAD_CONTENT_PATTERN = /<head\b[^>]*>([\s\S]*?)(?:<\/head>|<body\b|$)/gi;
-const STRAY_HEAD_CLOSE_PATTERN = /<\/(?:style|script)\s*>/i;
+const STRAY_HEAD_CLOSE_PATTERN = /<\/(?:style|script)(?:\s[^>]*)?>/i;
 const MARKDOWN_CODE_FENCE_PATTERN = /```[^\r\n`]*(?:\r?\n|$)[\s\S]*?```/i;
 const ORPHAN_CSS_AT_RULE_PATTERN =
   /(?:^|\s)@(?:container|font-face|keyframes|layer|media|page|property|scope|supports)[^{<]*\{[\s\S]*?:[\s\S]*?\}/i;
