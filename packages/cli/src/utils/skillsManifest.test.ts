@@ -7,6 +7,7 @@ import {
   buildManifest,
   checkSkills,
   diffSkills,
+  skillsAttributedToSource,
   type SkillsManifest,
   type SkillEntry,
 } from "./skillsManifest.js";
@@ -253,5 +254,103 @@ describe("checkSkills install detection", () => {
     const res = await checkSkills({ source, cwd: project, home });
     expect(res.location).toBe(join(home, ".claude/skills"));
     expect(res.agent).toBe("claude-code");
+  });
+});
+
+describe("skillsAttributedToSource", () => {
+  it("matches by slug or git clone URL and ignores other sources", () => {
+    const lock = {
+      skills: {
+        a: { source: "heygen-com/hyperframes" },
+        b: { sourceUrl: "https://github.com/heygen-com/hyperframes.git" },
+        c: { source: "https://github.com/heygen-com/hyperframes" },
+        d: { source: "greensock/gsap-skills" },
+      },
+    };
+    expect(skillsAttributedToSource(lock, "heygen-com/hyperframes").sort()).toEqual([
+      "a",
+      "b",
+      "c",
+    ]);
+  });
+
+  it("returns [] for a null/empty lock or empty source", () => {
+    expect(skillsAttributedToSource(null, "x")).toEqual([]);
+    expect(skillsAttributedToSource({}, "x")).toEqual([]);
+    expect(skillsAttributedToSource({ skills: { a: { source: "x" } } }, "")).toEqual([]);
+  });
+});
+
+describe("checkSkills removed-upstream detection", () => {
+  // The global lock path honours XDG_STATE_HOME; clear it so the fixture under
+  // <home>/.agents/.skill-lock.json is the one that's read.
+  let xdg: string | undefined;
+  beforeEach(() => {
+    xdg = process.env.XDG_STATE_HOME;
+    delete process.env.XDG_STATE_HOME;
+  });
+  afterEach(() => {
+    if (xdg === undefined) delete process.env.XDG_STATE_HOME;
+    else process.env.XDG_STATE_HOME = xdg;
+  });
+
+  // Shared fixture: a project + home with two skills installed globally
+  // (alpha + gamma), plus a manifest path. Tests then write the lock they need.
+  function setup(manifest: SkillsManifest): {
+    home: string;
+    opts: { source: string; cwd: string; home: string };
+  } {
+    const project = join(root, "project");
+    const home = join(root, "home");
+    mkdirSync(project, { recursive: true });
+    const skillsDir = join(home, ".agents/skills");
+    for (const name of ["alpha", "gamma"]) {
+      mkdirSync(join(skillsDir, name), { recursive: true });
+      writeFileSync(join(skillsDir, name, "SKILL.md"), `# ${name}`);
+    }
+    const manifestPath = join(root, "manifest.json");
+    writeFileSync(manifestPath, JSON.stringify(manifest));
+    return { home, opts: { source: manifestPath, cwd: project, home } };
+  }
+  function writeGlobalLock(home: string, skills: Record<string, { source: string }>): void {
+    writeFileSync(join(home, ".agents/.skill-lock.json"), JSON.stringify({ version: 3, skills }));
+  }
+
+  it("flags a lock-attributed skill the manifest dropped, ignoring other sources", async () => {
+    const { home, opts } = setup({ source: "test", skills: { alpha: { hash: "x", files: 1 } } });
+    writeGlobalLock(home, {
+      alpha: { source: "test" }, // still ours and in the manifest
+      gamma: { source: "test" }, // ours, dropped from manifest → removed
+      delta: { source: "someone/else" }, // a different source → never ours
+    });
+
+    const res = await checkSkills(opts);
+    const byName = Object.fromEntries(res.skills.map((s) => [s.name, s.status]));
+    expect(byName.gamma).toBe("removed");
+    expect(byName.delta).toBeUndefined();
+    expect(res.summary.removed).toBe(1);
+  });
+
+  it("a removed skill alone makes an update available (no outdated/missing)", async () => {
+    // Manifest lists only alpha, with its REAL hash → "current" (not outdated).
+    const { home, opts } = setup({ source: "test", skills: {} });
+    const manifest: SkillsManifest = {
+      source: "test",
+      skills: { alpha: hashSkillBundle(join(home, ".agents/skills/alpha")) },
+    };
+    writeFileSync(opts.source, JSON.stringify(manifest));
+    writeGlobalLock(home, { alpha: { source: "test" }, gamma: { source: "test" } });
+
+    const res = await checkSkills(opts);
+    expect(res.summary).toEqual({ current: 1, outdated: 0, missing: 0, removed: 1 });
+    expect(res.updateAvailable).toBe(true);
+  });
+
+  it("reports no removed skills when there is no lock to attribute from", async () => {
+    const { opts } = setup({ source: "test", skills: { alpha: { hash: "x", files: 1 } } });
+    // gamma is an orphan on disk, but with no lock we can't attribute it to us.
+    const res = await checkSkills(opts);
+    expect(res.summary.removed).toBe(0);
+    expect(res.skills.some((s) => s.status === "removed")).toBe(false);
   });
 });

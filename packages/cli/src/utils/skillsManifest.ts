@@ -58,7 +58,9 @@ export interface SkillsManifest {
   skills: Record<string, SkillEntry>;
 }
 
-export type SkillStatus = "current" | "outdated" | "missing";
+// "removed" = installed from our source but no longer in the manifest (renamed
+// or dropped upstream). Attributed via the skills lock — see detectRemoved.
+export type SkillStatus = "current" | "outdated" | "missing" | "removed";
 
 export interface SkillDiff {
   name: string;
@@ -67,13 +69,20 @@ export interface SkillDiff {
   latestHash?: string;
 }
 
+/** The pure manifest diff (current / outdated / missing — what `diffSkills` returns). */
+export interface SkillsDiff {
+  updateAvailable: boolean;
+  summary: { current: number; outdated: number; missing: number };
+  skills: SkillDiff[];
+}
+
 export interface SkillsCheckResult {
   /** Install location that was checked (absolute path), or null if none found. */
   location: string | null;
   /** Agent convention inferred from the location (claude-code, codex, …). */
   agent: string | null;
   updateAvailable: boolean;
-  summary: { current: number; outdated: number; missing: number };
+  summary: { current: number; outdated: number; missing: number; removed: number };
   skills: SkillDiff[];
 }
 
@@ -240,10 +249,11 @@ function hashInstalled(root: SkillRoot, skillNames: string[]): Record<string, Sk
 export function diffSkills(
   installed: Record<string, SkillEntry>,
   latest: SkillsManifest,
-): Omit<SkillsCheckResult, "location" | "agent"> {
+): SkillsDiff {
   // Report only on skills the manifest knows about. A skill on disk that isn't
-  // in the manifest isn't necessarily ours — `.../skills` is shared across
-  // sources — so it's not something we can meaningfully diff, and is ignored.
+  // in the manifest is handled separately (see detectRemoved): we can only call
+  // one "ours but removed" via the lock's source attribution, never the bare
+  // directory name — `.../skills` is shared across sources.
   const skills: SkillDiff[] = [];
   const summary = { current: 0, outdated: 0, missing: 0 };
 
@@ -274,6 +284,78 @@ export function diffSkills(
     summary,
     skills,
   };
+}
+
+// ── Removed-upstream (orphaned) skills ────────────────────────────────────────
+//
+// `skills add` / `init` / `hyperframes skills update` only ever add or refresh —
+// none of them delete a skill that was renamed or dropped upstream (e.g.
+// graphic-overlays → talking-head-recut), so a stale bundle lingers forever and
+// the manifest-only diff above can't see it. We surface these by cross-checking
+// the vercel-labs/skills lock: a skill the lock attributes to OUR manifest
+// `source` that the manifest no longer lists is "removed". Attribution is the
+// whole point — `.../skills` is shared across sources, so we never infer "ours"
+// from a directory name alone (that would flag every other source's skills too).
+
+interface LockEntry {
+  source?: string;
+  sourceUrl?: string;
+}
+
+/** The slice of the vercel-labs/skills lock file we read. */
+export interface SkillLock {
+  skills?: Record<string, LockEntry>;
+}
+
+/** Normalise a slug or git clone URL to a bare lowercase `owner/repo`. */
+function repoSlug(s: string | undefined): string {
+  return (s ?? "")
+    .replace(/^git\+/, "")
+    .replace(/^https?:\/\/github\.com\//, "")
+    .replace(/\.git$/, "")
+    .toLowerCase();
+}
+
+/** Skill names the lock attributes to `source` (matched by slug or clone URL). */
+export function skillsAttributedToSource(lock: SkillLock | null, source: string): string[] {
+  const want = repoSlug(source);
+  if (!want || !lock?.skills) return [];
+  return Object.entries(lock.skills)
+    .filter(([, e]) => repoSlug(e.source) === want || repoSlug(e.sourceUrl) === want)
+    .map(([name]) => name);
+}
+
+/** Locate the vercel-labs/skills lock for a scope, mirroring that CLI's paths. */
+function lockPathForScope(
+  scope: "project" | "global",
+  opts: { cwd?: string; home?: string },
+): string {
+  if (scope === "project") return join(opts.cwd ?? process.cwd(), "skills-lock.json");
+  const xdgStateHome = process.env.XDG_STATE_HOME;
+  if (xdgStateHome) return join(xdgStateHome, "skills", ".skill-lock.json");
+  return join(opts.home ?? homedir(), ".agents", ".skill-lock.json");
+}
+
+function readSkillLock(path: string): SkillLock | null {
+  try {
+    return JSON.parse(readFileSync(path, "utf8")) as SkillLock;
+  } catch {
+    // No lock (or unreadable / not JSON) → we can't attribute, so report none.
+    return null;
+  }
+}
+
+/** Skills the lock attributes to our source that the manifest no longer ships. */
+function detectRemoved(
+  root: SkillRoot,
+  latest: SkillsManifest,
+  opts: { cwd?: string; home?: string },
+): SkillDiff[] {
+  const lock = readSkillLock(lockPathForScope(root.scope, opts));
+  return skillsAttributedToSource(lock, latest.source)
+    .filter((name) => !(name in latest.skills))
+    .sort()
+    .map((name) => ({ name, status: "removed" as const }));
 }
 
 // ── Resolving the "latest" manifest ──────────────────────────────────────────
@@ -403,5 +485,14 @@ export async function checkSkills(
   const root = locateInstall(skillNames, { dir: opts.dir, cwd: opts.cwd, home: opts.home });
   const installed = root ? hashInstalled(root, skillNames) : {};
   const diff = diffSkills(installed, latest);
-  return { location: root?.dir ?? null, agent: root?.agent ?? null, ...diff };
+  const removed = root ? detectRemoved(root, latest, { cwd: opts.cwd, home: opts.home }) : [];
+  return {
+    location: root?.dir ?? null,
+    agent: root?.agent ?? null,
+    // Removed skills also mean the install isn't reconciled with the manifest —
+    // `skills update` now prunes them, so they count toward "update available".
+    updateAvailable: diff.updateAvailable || removed.length > 0,
+    summary: { ...diff.summary, removed: removed.length },
+    skills: [...diff.skills, ...removed],
+  };
 }

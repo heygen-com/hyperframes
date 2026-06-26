@@ -45,7 +45,15 @@ vi.mock("node:child_process", () => ({
 vi.mock("@clack/prompts", () => ({
   log: {
     error: vi.fn(),
+    warn: vi.fn(),
   },
+}));
+
+// `skills update` calls checkSkills() to find skills removed upstream, then
+// prunes them. Mock it so these tests don't touch the real FS / network; the
+// default returns nothing removed, and the prune test overrides per-call.
+vi.mock("../utils/skillsManifest.js", () => ({
+  checkSkills: vi.fn(async () => ({ skills: [] })),
 }));
 
 function setPlatform(platform: NodeJS.Platform): void {
@@ -55,17 +63,31 @@ function setPlatform(platform: NodeJS.Platform): void {
   });
 }
 
+/** Invoke the `skills update` subcommand from a freshly-imported module. */
+async function runSkillsUpdate(): Promise<void> {
+  const { default: skillsCmd } = await import("./skills.js");
+  const subs = skillsCmd.subCommands as unknown as Record<string, typeof skillsCmd>;
+  expect(subs.update).toBeDefined();
+  await subs.update!.run?.({ args: {}, rawArgs: [], cmd: subs.update } as never);
+}
+
 describe("hyperframes skills", () => {
+  let prevExitCode: typeof process.exitCode;
+
   beforeEach(() => {
     state.execCalls = [];
     state.spawnCalls = [];
     state.spawnExitCode = 0;
     vi.resetModules();
+    // Each test asserts on process.exitCode; isolate it from the runner's own.
+    prevExitCode = process.exitCode;
+    process.exitCode = 0;
   });
 
   afterEach(() => {
     setPlatform(originalPlatform);
     vi.restoreAllMocks();
+    process.exitCode = prevExitCode;
   });
 
   it("sets GIT_CLONE_PROTECTION_ACTIVE=0 on the spawned skills CLI child (GH #316)", async () => {
@@ -131,39 +153,42 @@ describe("hyperframes skills", () => {
   it("skills update exits non-zero when the install fails", async () => {
     setPlatform("linux");
     state.spawnExitCode = 1; // simulate `skills add` exiting non-zero
-
-    const prevExit = process.exitCode;
-    process.exitCode = 0;
-    try {
-      const { default: skillsCmd } = await import("./skills.js");
-      const subs = skillsCmd.subCommands as unknown as Record<string, typeof skillsCmd>;
-      const updateCmd = subs.update;
-      expect(updateCmd).toBeDefined();
-      await updateCmd!.run?.({ args: {}, rawArgs: [], cmd: updateCmd } as never);
-      expect(process.exitCode).toBe(1);
-    } finally {
-      process.exitCode = prevExit;
-    }
+    await runSkillsUpdate();
+    expect(process.exitCode).toBe(1);
   });
 
   it("skills update exits zero on a successful install", async () => {
     setPlatform("linux");
-    state.spawnExitCode = 0;
+    await runSkillsUpdate();
+    expect(process.exitCode).toBe(0);
+    // pulls the full set straight from GitHub
+    expect(state.spawnCalls[0]?.args).toContain("https://github.com/heygen-com/hyperframes");
+    expect(state.spawnCalls[0]?.args).toContain("--all");
+  });
 
-    const prevExit = process.exitCode;
-    process.exitCode = 0;
-    try {
-      const { default: skillsCmd } = await import("./skills.js");
-      const subs = skillsCmd.subCommands as unknown as Record<string, typeof skillsCmd>;
-      const updateCmd = subs.update;
-      expect(updateCmd).toBeDefined();
-      await updateCmd!.run?.({ args: {}, rawArgs: [], cmd: updateCmd } as never);
-      expect(process.exitCode).toBe(0);
-      // pulls the full set straight from GitHub
-      expect(state.spawnCalls[0]?.args).toContain("https://github.com/heygen-com/hyperframes");
-      expect(state.spawnCalls[0]?.args).toContain("--all");
-    } finally {
-      process.exitCode = prevExit;
-    }
+  // `skills add --all` never deletes, so update must separately prune skills the
+  // manifest dropped (renames/removals) for `check || update` to fully reconcile.
+  it("skills update prunes skills removed upstream after installing", async () => {
+    setPlatform("linux");
+    const { checkSkills } = await import("../utils/skillsManifest.js");
+    vi.mocked(checkSkills).mockResolvedValueOnce({
+      skills: [{ name: "graphic-overlays", status: "removed" }],
+    } as never);
+
+    await runSkillsUpdate();
+
+    // install first, then a `skills remove` for the dropped skill
+    expect(state.spawnCalls[0]?.args).toContain("add");
+    const removeCall = state.spawnCalls.find((s) => s.args.includes("remove"));
+    expect(removeCall, "expected a `skills remove` spawn").toBeDefined();
+    expect(removeCall!.args).toContain("graphic-overlays");
+    expect(removeCall!.args).toContain("--yes");
+    expect(process.exitCode).toBe(0);
+  });
+
+  it("skills update does not prune when nothing was removed upstream", async () => {
+    setPlatform("linux");
+    await runSkillsUpdate();
+    expect(state.spawnCalls.some((s) => s.args.includes("remove"))).toBe(false);
   });
 });
