@@ -81,13 +81,32 @@ describe("hyperframes skills", () => {
   });
 
   it.each([
-    ["linux", "npx", ["--version"], ["skills", "add", "heygen-com/hyperframes", "--all"]],
-    ["darwin", "npx", ["--version"], ["skills", "add", "heygen-com/hyperframes", "--all"]],
+    [
+      "linux",
+      "npx",
+      ["--version"],
+      ["skills", "add", "https://github.com/heygen-com/hyperframes", "--all"],
+    ],
+    [
+      "darwin",
+      "npx",
+      ["--version"],
+      ["skills", "add", "https://github.com/heygen-com/hyperframes", "--all"],
+    ],
     [
       "win32",
       "cmd.exe",
       ["/d", "/s", "/c", "npx.cmd", "--version"],
-      ["/d", "/s", "/c", "npx.cmd", "skills", "add", "heygen-com/hyperframes", "--all"],
+      [
+        "/d",
+        "/s",
+        "/c",
+        "npx.cmd",
+        "skills",
+        "add",
+        "https://github.com/heygen-com/hyperframes",
+        "--all",
+      ],
     ],
   ] as const)(
     "uses %s-compatible npx command for preflight and skills install",

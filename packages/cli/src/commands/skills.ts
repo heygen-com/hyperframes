@@ -49,13 +49,17 @@ function spawnNpx(args: string[], opts: { cwd?: string } = {}): Promise<void> {
 }
 
 function runSkillsAdd(
-  repo: string,
+  source: string,
   opts: { cwd?: string; extraArgs?: string[] } = {},
 ): Promise<void> {
-  return spawnNpx(["skills", "add", repo, ...(opts.extraArgs ?? ["--all"])], opts);
+  return spawnNpx(["skills", "add", source, ...(opts.extraArgs ?? ["--all"])], opts);
 }
 
-const SOURCES = [{ name: "HyperFrames", repo: "heygen-com/hyperframes" }];
+// Use the full GitHub URL (not the `owner/repo` slug) so `skills add` git-clones
+// the repo directly at latest `main`, bypassing the skills.sh registry — which
+// can lag behind the repo. Our freshness check already resolves "latest"
+// straight from GitHub, so this keeps install/update consistent with check.
+const SOURCES = [{ name: "HyperFrames", url: "https://github.com/heygen-com/hyperframes" }];
 
 export async function installAllSkills(
   opts: { cwd?: string; extraArgs?: string[] } = {},
@@ -70,7 +74,7 @@ export async function installAllSkills(
     console.log(c.bold(`Installing ${source.name} skills...`));
     console.log();
     try {
-      await runSkillsAdd(source.repo, opts);
+      await runSkillsAdd(source.url, opts);
     } catch {
       console.log(c.dim(`${source.name} skills skipped`));
     }

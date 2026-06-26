@@ -817,7 +817,7 @@ export default defineCommand({
       console.log();
       if (skipSkills) {
         console.log(`  ${c.accent("1.")} Install AI coding skills (one-time):`);
-        console.log(`     ${c.accent("npx skills add heygen-com/hyperframes --yes")}`);
+        console.log(`     ${c.accent("npx hyperframes skills update")}`);
       } else {
         console.log(
           `  ${c.accent("1.")} Restart your AI agent (new session) so it loads the skills.`,
