@@ -50,18 +50,38 @@ export const UA_DEFAULT_COLORS = new Set(
 
 // Pick the brand ACCENT — never by raw chroma alone, never a UA-default link color.
 // Priority:
-//   1) with capture colorStats → the colorful color used MOST as an interactive
-//      background (buttons / pills). That is, by definition, the brand action color.
+//   1) with capture colorStats → the colorful color that RECURS across the UI. The brand
+//      accent shows up in MANY roles (link text + icon + button + badge), whereas a one-off
+//      CTA fill appears in just one. So rank chromatic (chroma>40) candidates by role
+//      diversity first, then total prevalence, then interactive use, then chroma. This keeps
+//      a pervasive brand color (e.g. an indigo used everywhere) ahead of a single bright
+//      button fill (e.g. a lime used once) — the old "top interactiveBg" rule picked the
+//      latter. Requiring interactiveBg>0 is dropped so a text/icon-only accent can still win.
 //   2) no stats → most chromatic color AFTER removing UA defaults + `exclude`.
 // A stray default link color (e.g. #0000EE) can win under neither path.
 export function pickAccent(stats, colors, exclude = []) {
   const ban = new Set([...exclude, ...UA_DEFAULT_COLORS].map((c) => String(c).toUpperCase()));
   const ok = (h) => /^#[0-9a-fA-F]{6}$/.test(String(h)) && !ban.has(String(h).toUpperCase());
+  // Prominence rank from the (frequency-ordered) `colors` palette: index 0 = most used.
+  // A saturated color sitting at the TAIL is almost always a one-off (a single CTA fill),
+  // not the brand accent — capture colorStats counts are too sparse to tell these apart
+  // (e.g. Linear's indigo and a lime CTA both register count≈1), but palette ORDER does.
+  const rank = new Map((colors ?? []).map((h, i) => [String(h).toUpperCase(), i]));
+  const prom = (h) => (rank.has(String(h).toUpperCase()) ? rank.get(String(h).toUpperCase()) : 1e9);
   if (Array.isArray(stats) && stats.length) {
+    const roles = (s) =>
+      ((s.interactiveBg || 0) > 0 ? 1 : 0) +
+      ((s.textCount || 0) > 0 ? 1 : 0) +
+      ((s.bgCount || 0) > 0 ? 1 : 0);
     const a = stats
-      .filter((s) => ok(s?.hex) && (s.interactiveBg || 0) > 0 && chroma(s.hex) > 40)
+      .filter((s) => ok(s?.hex) && chroma(s.hex) > 40)
       .sort(
-        (x, y) => (y.interactiveBg || 0) - (x.interactiveBg || 0) || chroma(y.hex) - chroma(x.hex),
+        (x, y) =>
+          roles(y) - roles(x) || // used in MORE roles (link+icon+button) = the brand accent
+          prom(x.hex) - prom(y.hex) || // earlier in the palette = more prominent
+          (y.count || 0) - (x.count || 0) ||
+          (y.interactiveBg || 0) - (x.interactiveBg || 0) ||
+          chroma(y.hex) - chroma(x.hex),
       );
     if (a.length) return a[0].hex;
   }
@@ -77,7 +97,7 @@ export function pickAccent(stats, colors, exclude = []) {
 // are unusable, so the caller can fall back. canvas = the color painting the most real
 // background area (the page ground, dark or light); ink = the dominant text color that
 // actually contrasts with the canvas; accent via pickAccent.
-export function brandRolesFromStats(stats) {
+export function brandRolesFromStats(stats, colorsInOrder) {
   if (!Array.isArray(stats) || !stats.length) return null;
   const v = stats.filter((s) => /^#[0-9a-fA-F]{6}$/.test(s?.hex || ""));
   if (!v.length) return null;
@@ -87,11 +107,9 @@ export function brandRolesFromStats(stats) {
       (b.maxArea || 0) - (a.maxArea || 0) ||
       (b.bgCount || 0) - (a.bgCount || 0),
   )[0]?.hex;
-  const accent = pickAccent(
-    v,
-    v.map((s) => s.hex),
-    [canvas],
-  );
+  // pass the frequency-ordered palette (tokens.colors) so pickAccent can use palette
+  // PROMINENCE — colorStats counts alone are too sparse to rank rare accents.
+  const accent = pickAccent(v, colorsInOrder ?? v.map((s) => s.hex), [canvas]);
   if (!canvas || !accent) return null;
   const cl = lum(canvas) ?? 0;
   const ink =
@@ -170,5 +188,17 @@ export function parseFonts(md) {
     roles.title ??
     roles.hero ??
     body;
-  return { display: q(display), body: q(body) };
+  // the monospace / chrome family (code, tags, ticks, page numbers) — so the remix can
+  // route a captured brand mono (Berkeley Mono, JetBrains Mono…) onto this role instead
+  // of the reading body. null when the preset has no distinct mono role.
+  const mono =
+    roles.mono ??
+    roles["mono-tag"] ??
+    roles["mono-chrome"] ??
+    roles["mono-tick"] ??
+    roles.code ??
+    roles.data ??
+    roles.pagenum ??
+    null;
+  return { display: q(display), body: q(body), mono: q(mono) };
 }

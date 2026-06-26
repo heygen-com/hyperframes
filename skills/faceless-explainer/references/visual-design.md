@@ -32,7 +32,7 @@ Entrance: the snowball seats upper-left on a dim hill gradient. Development: it 
 ```
 
 - **`effects`** — name atomic effect **ids** from `hyperframes-animation`'s rules index. **Cite ≥3 when you name no `blueprint`** (the worker composes them into the beat; fewer than 3 reads as generic motion); 1+ as accents when a blueprint already carries the choreography. With no blueprint, those **≥3 effects are the shot's phases** — your note must **sequence them** (one enters, one develops, one emphasizes), not list them as a flat set that all fires at entry. You cite; the worker **reads the recipe body and reproduces it** (not a name-guess).
-- **`blueprint`** — name **one** multi-phase blueprint id from `hyperframes-animation/blueprints-index.md` when a frame's beat wants a proven multi-phase shape. Two postures — both require the worker to read the recipe body (and run its `examples/<id>.html`) first:
+- **`blueprint`** — name **one** multi-phase blueprint id from `hyperframes-animation/blueprints-index.md` when a frame's beat wants a proven multi-phase shape. Two postures — both require the worker to read the recipe body first:
   - **Reproduce** — the blueprint fits the beat cleanly and the frame's content maps onto its slots; write the composition note shot-by-shot to match.
   - **Adapt** — the blueprint is the right _structure_ but the content / beat doesn't fit its exact form (or you want a fresher surface). Lead the note with a **`Base / Keep / Depart`** line — `Base:` the blueprint id · `Keep:` its **signature** move (never drop this) · `Depart:` what you change and why. Adapt may **extend or vary, never reduce below the shot model** — never flatten a multi-phase blueprint into a single entrance.
 

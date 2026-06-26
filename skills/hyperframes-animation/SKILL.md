@@ -15,10 +15,10 @@ Pick 2-4 rules from `rules-index.md`, glue them together with a single paused GS
 
 ## Load a blueprint when
 
-- The scene matches an existing pre-designed multi-phase template (brand-reveal, social-proof, demo-page-scroll-spotlight, etc.) and reusing its phase pipeline saves real authoring time
+- The scene matches an existing pre-designed multi-phase template (brand-reveal, social-proof, etc.) and reusing its phase pipeline saves real authoring time
 - You want runnable ground-truth code for a complex 4-5 phase choreography
 
-Blueprints live in `blueprints-index.md`. Each entry points to `blueprints/<id>.md` (recipe) and `examples/<id>.html` (runnable sample). Do not read it speculatively; load it when you've already decided you need scene-level orchestration.
+Blueprints live in `blueprints-index.md`. Each entry points to `blueprints/<id>.md` (recipe). Do not read it speculatively; load it when you've already decided you need scene-level orchestration.
 
 ## Routing
 
@@ -27,7 +27,7 @@ Blueprints live in `blueprints-index.md`. Each entry points to `blueprints/<id>.
 | Pick an atomic motion pattern by trigger / tag                                 | `rules-index.md`                                    |
 | Read one rule's full HTML / CSS / GSAP recipe                                  | `rules/<name>.md`                                   |
 | Pick a multi-phase scene template                                              | `blueprints-index.md`                               |
-| Read one blueprint's full recipe                                               | `blueprints/<id>.md` + `examples/<id>.html`         |
+| Read one blueprint's full recipe                                               | `blueprints/<id>.md`                                |
 | Author a scene transition (CSS-driven, between two clips)                      | `transitions/overview.md`, `transitions/catalog.md` |
 | Look up a broader motion-design technique                                      | `techniques.md`                                     |
 | Analyze an existing composition's animation map                                | `scripts/animation-map.mjs`                         |

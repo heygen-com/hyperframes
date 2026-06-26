@@ -1,6 +1,6 @@
 ---
 name: product-launch-video
-description: "turn a product or marketing URL, pasted script, or brief into a product launch video, including SaaS promos, feature reveals, app launches, company promos, and product marketing videos. Use this skill when the user wants to market, launch, promote, or reveal a product. Do not use it for general non-launch website tours, non-product topic explainers, GitHub pull requests, captioning existing footage, or short unnarrated motion graphics. If the intent is unclear, route through /hyperframes first."
+description: "turn a product or marketing URL, pasted script, or brief into a product launch video, including SaaS promos, feature reveals, app launches, company promos, and product marketing videos. Use this skill when the user wants to market, launch, promote, or reveal a product. Do not use it for general non-launch website tours, non-product topic explainers, GitHub pull requests, captioning existing footage, or short unnarrated motion graphics. If the intent is unclear, route through /hyperframes first. This is the new shot-sequence architecture: every visual frame is authored as a time-coded shot sequence picked from a menu of golden blueprints, so frames develop over their full duration instead of freezing after entrance."
 ---
 
 > **media-use**: Before sourcing audio/images, call `/media-use` to resolve BGM/SFX/images from the HeyGen catalog. Run `--adopt` first to register existing assets. See `/media-use` skill.
@@ -11,7 +11,7 @@ Use this skill to capture a product, understand its brand, plan a launch video, 
 
 > **Confirm the route before Step 0.** You are the orchestrator. Run each step, verify its gate, and only then continue to the next step. This skill is for a **product being marketed, launched, promoted, or revealed**, including requests such as "promo for our site" when the purpose is promotional. Route other intents elsewhere: a general non-launch website tour -> `/website-to-video`; a topic explainer with no product -> `/faceless-explainer`; a GitHub PR -> `/pr-to-video`; captions on existing footage -> `/embedded-captions`; a short unnarrated motion graphic -> `/motion-graphics`. If the user says only "make a video" or the route is uncertain, read `/hyperframes` first.
 
-You are the orchestrator. Work in `videos/<project>/`. Run steps in order and pass each gate before continuing. User-gated steps are Step 0, Step 3, and Step 6. Do every step yourself except Step 5, where you dispatch one sub-agent per frame. Do not put design or motion rules here; those live in the frame-worker sub-agent, `hyperframes-creative`, and `hyperframes-animation`.
+You are the orchestrator. Work in `videos/<project>/`. Run steps in order and pass each gate before continuing. User-gated steps are Step 0, Step 3, and Step 6. Do every step yourself except Step 5, where you dispatch one sub-agent per frame. Do not put design or motion rules here; those live in the frame-worker sub-agent, this skill's local `../hyperframes-animation/rules/` + `../hyperframes-animation/blueprints/`, and `hyperframes-creative`.
 
 Workflow: Step 0 setup -> `hyperframes.json`; Step 1 capture -> `capture/`; Step 2 design system -> `frame.md`; Step 3 storyboard/script -> `STORYBOARD.md` and `SCRIPT.md`; Step 3.1 audio -> `audio_meta.json`; Step 4 visual design -> enriched `STORYBOARD.md`; Step 5 frames -> `compositions/frames/NN-*.html` and `index.html`; Step 6 final render -> `renders/video.mp4`.
 
@@ -69,9 +69,9 @@ The script does the rest deterministically: copies the preset's `FRAME.md` → `
 
 Goal: Turn the brief and captured material into an approved frame-by-frame story plan.
 
-Read `references/story-design.md`, `../hyperframes-core/references/storyboard-format.md`, and `../hyperframes-core/references/script-format.md`. Use them to write `STORYBOARD.md` and, when narration is needed, `SCRIPT.md`.
+Read `references/story-design.md`, `../hyperframes-animation/blueprints-index.md`, `../hyperframes-core/references/storyboard-format.md`, and `../hyperframes-core/references/script-format.md`. Use them to write `STORYBOARD.md` and, when narration is needed, `SCRIPT.md`.
 
-Use `story-design.md` for story archetype, hook, persuasion logic, beats, `VO_MODE`, and asset choices. Choose each visual frame's `asset_candidates` from `capture/extracted/asset-descriptions.md` (the canonical inventory) — don't browse raw `capture/assets/`. Do not ask the user to pick assets unless that inventory is missing or unusable. Use the exact required fields from the storyboard and script references.
+Use `story-design.md` for story blueprint, hook, persuasion logic, beats, `VO_MODE`, and asset choices. As a **soft guide**, consult the role→blueprint menu in `../hyperframes-animation/blueprints-index.md`: for each beat, note a candidate blueprint id when one fits. Story truth still decides which beats exist — never force a beat to fit a blueprint, and never invent a beat just because a proven shape is available. Choose each visual frame's `asset_candidates` from `capture/extracted/asset-descriptions.md` (the canonical inventory) — don't browse raw `capture/assets/`. Do not ask the user to pick assets unless that inventory is missing or unusable. Use the exact required fields from the storyboard and script references.
 
 After drafting, show a frame-by-frame summary. In that same message ask the user two things: (a) to approve or request changes, and (b) whether they want a live preview of the storyboard scaffold (npx hyperframes preview) — open it only on a yes. Iterate until approved, and carry the preview choice to Step 6.
 
@@ -101,9 +101,9 @@ Goal: Add the visual direction, layout intent, and motion choices to each storyb
 
 Edit `STORYBOARD.md` in place. Do not create another storyboard. Use `frame.md` as source of truth for color, type, layout feel, and style.
 
-Read `references/visual-design.md`, `references/composition.md`, `references/motion-language.md`, and `../hyperframes-animation/`. Use `visual-design.md` for required frame fields and the required `## Video direction` block. Use `composition.md` for layout, hierarchy, focal points, and visual roles. Use `motion-language.md` and `../hyperframes-animation/` for valid effects and blueprint IDs. Do not invent effect names or blueprint IDs.
+Read `references/visual-design.md`, `../hyperframes-animation/blueprints-index.md`, `references/motion-language.md`, and `../hyperframes-animation/rules-index.md`. Use `visual-design.md` for the method (the time-coded shot sequence, the inline Layout vocabulary, and the required `## Video direction` block). Use `../hyperframes-animation/blueprints-index.md` to pick each frame's shot shape. Use `motion-language.md` (the motion vocabulary + the motion doctrine) and `../hyperframes-animation/rules-index.md` (valid rule names) for motion — do not invent motion names.
 
-For every visual frame, add required visual and motion fields, including `effects` and `focal` and/or `roles`. Add one video-wide `## Video direction` block for overall visual direction, motion style, pacing, and design rules.
+For every visual frame, write a **time-coded shot sequence** into `STORYBOARD.md` per `visual-design.md`'s method: pick the frame's blueprint (or compose), instantiate it with THIS product's content, and pace each Scene's reveal to the voiceover so the frame develops across its full duration instead of front-loading then freezing. State layout and motion **inline** per Scene (vocabularies in `visual-design.md` and `motion-language.md`). Add one video-wide `## Video direction` block.
 
 Do not change story, script, asset choices, `asset_candidates`, `transition_in`, or captured source material. Do not write HTML in this step.
 
@@ -111,7 +111,7 @@ Stage named assets after visual design is locked:
 
 `node <SKILL_DIR>/scripts/stage-assets.mjs --storyboard ./STORYBOARD.md --hyperframes .`
 
-**Gate:** every visual frame has `effects` plus `focal` and/or `roles`; `## Video direction` exists; `assets/` contains the named assets.
+**Gate:** every visual frame has a time-coded shot sequence whose reveals are paced to the voiceover (no front-loading); `## Video direction` exists; `assets/` contains the named assets.
 
 ---
 
@@ -129,7 +129,7 @@ Duration sync is mechanical: real voice duration wins; silent frames keep estima
 
 Before dispatch, read `sub-agents/frame-worker.md` and `../hyperframes-core/references/subagent-dispatch.md`. Dispatch one sub-agent per frame, in parallel if possible; otherwise run workers in waves. Each worker gets exactly one frame.
 
-Each worker context must include `PROJECT_DIR`, `frame_id`, canvas size, caption status and keep-out band if captions are enabled, and `ANIM_DIR` as the absolute path to `../hyperframes-animation/`. Each worker reads `frame.md`, its own `## Frame N` block from `STORYBOARD.md`, and the recipe body for each cited effect or blueprint ID. Each worker writes only `compositions/frames/NN-*.html`. Workers must never edit `STORYBOARD.md`.
+Each worker context must include `PROJECT_DIR`, `frame_id`, canvas size, caption status and keep-out band if captions are enabled, and `RULES_DIR` as the absolute path to this skill's `../hyperframes-animation/rules/`. Each worker reads `frame.md`, its own `## Frame N` block from `STORYBOARD.md`, the local rule recipe (`../hyperframes-animation/rules/<id>.md`) for each cited motion, and the frame's blueprint template (`../hyperframes-animation/blueprints/<id>.md`). Each worker writes only `compositions/frames/NN-*.html`. Workers must never edit `STORYBOARD.md`.
 
 As each worker returns, the orchestrator marks that frame as `animated` in `STORYBOARD.md`.
 
@@ -167,8 +167,6 @@ Inject transitions, run checks, pause for review, then render.
 
 If a command fails, surface stderr and stop — don't pile on recovery commands. Fix it yourself: the cheapest safe edit to `compositions/frames/NN-*.html`, then rerun the failed check.
 
-**Known false-positive — do not chase it.** `inspect` may report a handful of `text_box_overflow` errors of ~1–4px on the **caption** highlight words (selector `#caption-word-*` / `.caption-line`). The caption pill uses a deliberately snug `line-height` (set once in `scripts/captions.mjs`) and has **no `overflow:hidden`**, so a heavy display glyph's ink spills a few px into the pill's own padding — nothing is actually clipped. Treat these as expected and proceed. Do **not** inflate the caption `line-height` (it balloons the pill, which is worse). Only act on a `text_box_overflow` when it names a **frame** element (`#el-NN-*`), not a caption word.
-
 After checks pass, pause for user review. The video is assembled, viewable, and editable in Studio. Manage preview only once across Step 3 and Step 6: open it if the user asked earlier, offer it if they declined earlier, and do not ask again if they are already reviewing in Studio.
 
 Preview: `npx hyperframes preview`
@@ -189,17 +187,20 @@ Do not rerun `lint`, `validate`, `inspect`, or `snapshot` after rendering unless
 
 **Background scripts:** the workflow ships only these scripts under `scripts/`: `build-frame` for adopting + brand-remixing a frame preset into `frame.md` (+ caption skin); `audio` for TTS, transcription, BGM, SFX, and duration syncing; `captions`; `transitions` for inject and verify; `stage-assets` for copying frame-named assets into `assets/`; and `assemble-index`. Everything else is handled by the `hyperframes` CLI.
 
-| Read                                                                                                         | When                                                     |
-| ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------- |
-| `[../hyperframes-creative/frame-presets/](../hyperframes-creative/frame-presets/)`                           | Step 2: choose and adopt a frame preset.                 |
-| `[../hyperframes-creative/references/design-spec.md](../hyperframes-creative/references/design-spec.md)`     | Step 2: apply brand tokens correctly.                    |
-| `[references/story-design.md](references/story-design.md)`                                                   | Step 3: plan the product-launch story.                   |
-| `[../hyperframes-core/references/storyboard-format.md](../hyperframes-core/references/storyboard-format.md)` | Step 3: write `STORYBOARD.md`.                           |
-| `[../hyperframes-core/references/script-format.md](../hyperframes-core/references/script-format.md)`         | Step 3: write `SCRIPT.md`.                               |
-| `[../hyperframes-media/references/tts.md](../hyperframes-media/references/tts.md)`                           | Step 3.1: choose or understand TTS providers and voices. |
-| `[references/visual-design.md](references/visual-design.md)`                                                 | Step 4: enrich the storyboard visually.                  |
-| `[references/composition.md](references/composition.md)`                                                     | Step 4: judge composition.                               |
-| `[references/motion-language.md](references/motion-language.md)`                                             | Step 4: judge motion language.                           |
-| `[../hyperframes-animation/](../hyperframes-animation/)`                                                     | Step 4: cite effect and blueprint IDs.                   |
-| `[sub-agents/frame-worker.md](sub-agents/frame-worker.md)`                                                   | Step 5: dispatch per-frame workers.                      |
-| `[../hyperframes-core/references/subagent-dispatch.md](../hyperframes-core/references/subagent-dispatch.md)` | Step 5: dispatch sub-agents safely.                      |
+The reusable, product-agnostic shot shapes live in `../hyperframes-animation/blueprints/` (indexed by `../hyperframes-animation/blueprints-index.md`).
+
+| Read                                                                                                                                                        | When                                                           |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `[../hyperframes-creative/frame-presets/](../hyperframes-creative/frame-presets/)`                                                                          | Step 2: choose and adopt a frame preset.                       |
+| `[../hyperframes-creative/references/design-spec.md](../hyperframes-creative/references/design-spec.md)`                                                    | Step 2: apply brand tokens correctly.                          |
+| `[references/story-design.md](references/story-design.md)`                                                                                                  | Step 3: plan the product-launch story.                         |
+| `[../hyperframes-animation/blueprints-index.md](../hyperframes-animation/blueprints-index.md)`                                                              | Step 3: role→blueprint menu. Step 4: pick the shot shape.      |
+| `[../hyperframes-core/references/storyboard-format.md](../hyperframes-core/references/storyboard-format.md)`                                                | Step 3: write `STORYBOARD.md`.                                 |
+| `[../hyperframes-core/references/script-format.md](../hyperframes-core/references/script-format.md)`                                                        | Step 3: write `SCRIPT.md`.                                     |
+| `[../hyperframes-media/references/tts.md](../hyperframes-media/references/tts.md)`                                                                          | Step 3.1: choose or understand TTS providers and voices.       |
+| `[references/visual-design.md](references/visual-design.md)`                                                                                                | Step 4: write the frame's shot sequence (+ Layout vocabulary). |
+| `[references/motion-language.md](references/motion-language.md)`                                                                                            | Step 4: the motion vocabulary + the motion doctrine.           |
+| `[references/cut-catalog.md](references/cut-catalog.md)`                                                                                                    | Step 4-5: the cut catalog (worker builds within-frame seams).  |
+| `[../hyperframes-animation/rules-index.md](../hyperframes-animation/rules-index.md)` + `[../hyperframes-animation/rules/](../hyperframes-animation/rules/)` | Step 5: local rule recipe bodies for the cited motions.        |
+| `[sub-agents/frame-worker.md](sub-agents/frame-worker.md)`                                                                                                  | Step 5: dispatch per-frame workers.                            |
+| `[../hyperframes-core/references/subagent-dispatch.md](../hyperframes-core/references/subagent-dispatch.md)`                                                | Step 5: dispatch sub-agents safely.                            |

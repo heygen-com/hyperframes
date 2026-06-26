@@ -246,43 +246,43 @@ document
   - Range: 0.6-1.5 s
   - Effects: low end snaps through short entries too fast for the eye; high end stalls on short titles
   - Constraints: ensures even one-word entries have time to read
-  - Reference: see `examples/messaging-multi-phrase.html` (and any blueprint that uses this rule)
+  - Reference: see `../../examples/messaging-multi-phrase.html` (and any blueprint that uses this rule)
 
 - **SEC_PER_CHAR** — extra time added per body character
   - Range: 0.03-0.06 s/char (≈ 17-33 chars/sec read pace for video)
   - Effects: low end feels rushed for paragraph-style bodies; high end feels slow when bodies are short
   - Constraints: should be uniform across the sequence so the pace reads as one engine; for languages with wider characters, lean to the high end
-  - Reference: see `examples/messaging-multi-phrase.html` (and any blueprint that uses this rule)
+  - Reference: see `../../examples/messaging-multi-phrase.html` (and any blueprint that uses this rule)
 
 - **HOLD_MID** — dwell after the typing of a non-final entry completes
   - Range: 0.5-1.0 s
   - Effects: low end feels rushed; high end feels lazy
   - Constraints: `HOLD_MID < HOLD_FINAL`
-  - Reference: see `examples/messaging-multi-phrase.html` (and any blueprint that uses this rule)
+  - Reference: see `../../examples/messaging-multi-phrase.html` (and any blueprint that uses this rule)
 
 - **HOLD_FINAL** — dwell on the last entry (outro / climax)
   - Range: 1.0-2.0 s
   - Effects: low end truncates the closing beat; high end overstays
   - Constraints: must exceed HOLD_MID by a clear margin so the close reads as a beat, not another mid-sequence pause
-  - Reference: see `examples/messaging-multi-phrase.html` (and any blueprint that uses this rule)
+  - Reference: see `../../examples/messaging-multi-phrase.html` (and any blueprint that uses this rule)
 
 - **SPEED_FACTOR** — per-entry pacing multiplier
   - Range: 0.5-2.0 (default 1.0)
   - Effects: <1 stretches an entry's body-driven duration (good for high-density passages); >1 compresses it
   - Constraints: discrete choice — use 1.0 unless one entry needs special pacing; if every entry uses the same factor, fold it into SEC_PER_CHAR instead
-  - Reference: see `examples/messaging-multi-phrase.html` (and any blueprint that uses this rule)
+  - Reference: see `../../examples/messaging-multi-phrase.html` (and any blueprint that uses this rule)
 
 - **TAIL_PAD** — seconds added to `TOTAL_DURATION` after the last entry's `end`
   - Range: 0.0-1.0 s
   - Effects: 0 ends the driver exactly at the last `hold` completion; >0 leaves a quiet beat (useful before a transition to the next composition)
   - Constraints: if downstream is another composition, prefer 0 and handle the breath at the composition seam
-  - Reference: see `examples/messaging-multi-phrase.html` (and any blueprint that uses this rule)
+  - Reference: see `../../examples/messaging-multi-phrase.html` (and any blueprint that uses this rule)
 
 - **CONTENT length (N)** — number of entries in the sequence
   - Range: 3-6 entries
   - Effects: <3 isn't a sequence (use a static scene); >6 drags
   - Constraints: each entry's `title` must fit one line at the chosen `.title` fontSize; bodies should fit within `min-height` after wrapping
-  - Reference: see `examples/messaging-multi-phrase.html` (and any blueprint that uses this rule)
+  - Reference: see `../../examples/messaging-multi-phrase.html` (and any blueprint that uses this rule)
 
 ## Critical Constraints
 

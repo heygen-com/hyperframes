@@ -1,173 +1,146 @@
-# Scene Blueprints (load on demand)
+# Blueprints (the proven shapes)
 
-> Read this file **only when** authoring a full scene from a pre-designed multi-phase choreography template. For atomic motion techniques, the rules index in [SKILL.md](./SKILL.md) is the default starting point.
+> Entry point to the blueprint layer. Read this to find the shape for a frame; read `blueprints/<id>.md` to instantiate it. The Step-4 method (Reproduce / Adapt / Compose, what to write per frame) lives in `visual-design.md` — this file is the menu + the picker.
 
-A **blueprint** describes a complete multi-phase scene with phase pipeline, glue code, and a working sample composition. Each blueprint has a runnable HTML example under `examples/` you can use as ground truth.
+A **blueprint** is a product-agnostic, **time-coded shot template** — `Scene N (a–b s): …` with `[slots]` and one named **signature move** — reverse-engineered from 50 golden product-launch clips (plus 13 hyperframes-animation blueprints reverse-translated to the same brief format). It encodes a whole shot across its full duration — reveals paced to the spoken line, not dumped at t=0 — so instantiating one structurally keeps content arriving instead of freezing. The full template lives in `blueprints/<id>.md`. **Step 4 (visual design) instantiates one blueprint per frame** (or composes from the motion vocabulary when none fits).
 
-## Picking a blueprint
-
-Match your scene's narrative role to a blueprint role: `social-proof`, `concept-demo`, `brand-reveal`, `takeover`, `demo`, `opening-hook`, `workflow`, `problem`, `cta`, `comparison`, `metric`, `messaging`.
-
-If two blueprints fit, pick the one whose `uses` rules are closer to your visual plan — composing existing rules is cheaper than reinventing.
-
-If no blueprint fits, **compose rules directly** from [SKILL.md](./SKILL.md) — blueprints are starting points, not requirements.
-
-## Blueprints
+## The 15 blueprints
 
 <blueprints>
-<blueprint
-  id="proof-logo-chain"
-  path="blueprints/proof-logo-chain.md"
-  example="examples/proof-logo-chain.html"
-  role="social-proof"
-  duration="6-10s"
-  phases="5"
-  uses="hacker-flip-3d, vertical-spring-ticker, coordinate-target-zoom, avatar-cloud-network"
-  triggers="brand reveal, social proof, #1 tool, million users, trusted by">
-  Logo threads through 5 phases: hacker-flip text → text swap → logo centers → avatar cloud + counter → partner brand logos. Example (8s): hacker-flip 'HyperFrames' → 'HTML Video' lockup with rolling `render / ship` ticker → logo recenters → '60 FPS' static label with scale-pulse + avatar cloud + SVG connection lines → partner brand-logo strip. Single paused GSAP timeline drives all five phases.
+<blueprint id="kinetic-type-beats" roles="Hook, Problem, Product_Intro, Benefits, CTA, Brand_Outro" duration="3.4–12s">
+Flat, centered, bold-type shot where the **motion IS the words changing** — a fixed line swaps tokens in place by hard cut, or a statement builds across full-screen beats (each its own move) onto a spring-pop payoff. The workhorse (6 roles). Reach for it whenever the words carry the shot and there's no set, surface, or click.
 </blueprint>
 
-<blueprint
-  id="concept-demo-decode-pan"
-  path="blueprints/concept-demo-decode-pan.md"
-  example="examples/concept-demo-decode-pan.html"
-  role="concept-demo"
-  duration="6-10s"
-  phases="4"
-  uses="hacker-flip-3d, camera-cursor-tracking, discrete-text-sequence"
-  triggers="decode effect, scene transition, search bar typing, show then demonstrate">
-Shot 1 hacker-flip decode → horizontal camera pan with parallax → Shot 2 cursor-tracked typing. Example (7s): Shot 1 "HyperFrames renders" static rise + hacker-flip decode of accent word "video" → horizontal pan with parallax exit + scale-in → Shot 2 cursor-tracked typing "HTML, CSS and JS become MP4" inside a pre-allocated search-bar. Demonstrates browser-native text measurement (no charWidthRatio constant) and piecewise Math.min camera tracking.
+<blueprint id="typewriter-reveal" roles="Hook, Brand_Outro" duration="3.6–7s">
+A live text caret **types (and edits) a line as a human would**, then collapses it and pops a brand payoff, or holds it under a persistent mark while a sub-line types into the final CTA. Reach for it when "someone is typing this" should be the engine — a relatable typed pain → brand, or a standing logo + a typed CTA rail.
 </blueprint>
 
-<blueprint
-  id="brand-reveal-assemble-zoom"
-  path="blueprints/brand-reveal-assemble-zoom.md"
-  example="examples/brand-reveal-assemble-zoom.html"
-  role="brand-reveal"
-  duration="4-6s"
-  phases="5"
-  uses="discrete-text-sequence, coordinate-target-zoom, sine-wave-loop"
-  triggers="brand reveal, zoom into logo, hero focus, wide to close-up">
-Companion text assembles beside hero → companion exits + recenters → camera zooms into hero → hero breathes. Example (5s): 'Just use' discrete-assembly companion beside 'Hyperframes' + logo image → companion slides out and container recenters → camera zooms 5.5× into the logo → logo breathes (sine onUpdate, multiplicative). Demonstrates three nested transform layers (scale → translate → recenter) and brandTextWidth measurement after fonts.ready.
+<blueprint id="spatial-pan-stations" roles="Hook, Problem" duration="7–10s">
+Pre-placed labeled **stations on one oversized canvas, traversed by a single virtual camera** — repeated lateral/diagonal pans centering each station and revealing a callout, landing held on the last. Reach for it for a milestone timeline panned to "us," or a connected web of pain stations ending in a tangled knot.
 </blueprint>
 
-<blueprint
-  id="takeover-ticker-displace"
-  path="blueprints/takeover-ticker-displace.md"
-  example="examples/takeover-ticker-displace.html"
-  role="takeover"
-  duration="5-8s"
-  phases="4"
-  uses="vertical-spring-ticker, reactive-displacement, sine-wave-loop"
-  triggers="rolling text then logo, push text away, slot machine, logo enters forcefully">
-Typewriter + ticker build context → hero enters from off-screen and physically pushes the text out → hero breathes. Example (7.5s): 'Ask about any' typewriter + 'audience → topic → market' ticker → pink-magenta logo enters from offscreen-right with rotation+scale impact → text pushed left and fades (40-50% of hero duration) → logo breathes with dual-frequency sine (1.0s scale, 1.33s rotation). Demonstrates reactive-displacement causal link and multiplicative breathing on a non-1 final scale.
+<blueprint id="constellation-hub" roles="Hook, Social_Proof" duration="5–6s">
+Iconned **nodes spring into a ring around a center**, then resolve on the core — a camera push-IN (depth-of-field collapsing onto it) or a held hub mark with satellites orbiting it. Reach for it for "it connects everything / one hub" or "sits at the center of your stack."
 </blueprint>
 
-<blueprint
-  id="demo-page-scroll-spotlight"
-  path="blueprints/demo-page-scroll-spotlight.md"
-  example="examples/demo-page-scroll-spotlight.html"
-  role="demo"
-  duration="5-9s"
-  phases="4"
-  uses="3d-page-scroll, asr-keyword-glow"
-  triggers="show the feature, product demo, webpage in 3D, scroll to feature">
-3D-tilted webpage card → scrolls to feature section → keywords glow synced to ASR → key element pops forward in 3D with a radial spotlight. Example (9s): OpusClip landing page recreated as a 3D-tilted card with navbar, hero title, CTA row, and video carousel. Six title keywords ('1 long video, 10 viral clips') glow synced to ASR timestamps via CSS `--glow` variable + per-word two-tween envelopes. Page scrolls down 280 px to reveal the carousel; main video pops forward 80 px in 3D with a radial spotlight dimming surroundings.
+<blueprint id="grid-card-assemble" roles="Key_Feature, Benefits, Social_Proof" duration="3.0–10.5s">
+N items (tiles / cards / logos / list-lines) **self-assemble in a staggered cascade** into a grid or vertical list and hold; an optional camera zoom-OUT reveals the array inside a vaster whole. Reach for it to enumerate breadth at once — a feature grid, an accumulating benefit list, or a logo wall.
 </blueprint>
 
-<blueprint
-  id="hook-counter-burst"
-  path="blueprints/hook-counter-burst.md"
-  example="examples/hook-counter-burst.html"
-  role="opening-hook"
-  duration="3-5s"
-  phases="4"
-  uses="counting-dynamic-scale, center-outward-expansion, multi-phase-camera, svg-icon-enrichment"
-  triggers="opening hook, statistic, counter, dramatic number">
-Counter grows + enriched SVG icons expand outward from center, wrapped in multi-phase camera. Example (3.5s): Counter "0 → 90 %" with dynamic font scaling (0.20W → 0.42W), four enriched SVG icons (clock with linearly rotating minute hand, scissors oscillating ±15°, video frame with phase-offset pulsing red dot, play button with scale pulse) expanding outward from center, multi-phase camera (0.92 → 1.0 → 1.08). Demonstrates shared-ease lockstep sync between counter and icon expansion + a single scene-ticker onUpdate consolidating all internal SVG motion.
+<blueprint id="logo-assemble-lockup" roles="Product_Intro, CTA, Brand_Outro" duration="4.6–11s">
+A brand mark / wordmark **builds itself from parts** (elements assemble/orbit, letters cascade, an outline draws on, or a camera pushes through negative space) and resolves into a centered lockup, optionally extended to a URL/CTA. Reach for it for a wordless premium brand sting, or a logo build leading into the final ask.
 </blueprint>
 
-<blueprint
-  id="workflow-approve-press"
-  path="blueprints/workflow-approve-press.md"
-  example="examples/workflow-approve-press.html"
-  role="workflow"
-  duration="4-6s"
-  phases="4"
-  uses="press-release-spring"
-  triggers="review and approve, step-by-step workflow, user control, approve button, with-you metaphor">
-Headline top + center video demo + 3D-tilted step indicators left + action button right that presses to confirm. Example (5.5s): "AI edits WITH you" headline slides down → center editor mockup scales in → 3 review steps stagger-enter on the left flank (3D-tilted +15°) and snap through pending → active → complete via `tl.set({ attr: data-state })` → Approve button (3D-tilted -15°) bouncy entry with finite-yoyo glow pulse → linear depression then linear return → backgroundColor crossfades to success green + label swaps + checkmark pops with back.out(1.6). Demonstrates a discrete state machine driven by timeline-positioned `tl.set` calls.
+<blueprint id="cursor-ui-demo" roles="Product_Intro, Key_Feature" duration="4.0–9.3s">
+A visible custom **cursor drives a reconstructed app UI** through clicks/hovers/drags so the screen changes state shot-to-shot, while the camera chases each interaction. Reach for it for a first cursor-led look at the surface (Product_Intro) or one workflow demonstrated end-to-end onto the action button (Key_Feature).
 </blueprint>
 
-<blueprint
-  id="problem-mockup-overwhelm"
-  path="blueprints/problem-mockup-overwhelm.md"
-  example="examples/problem-mockup-overwhelm.html"
-  role="problem"
-  duration="4-6s"
-  phases="4"
-  uses="card-morph-anchor"
-  triggers="too many platforms, overwhelmed creator, complex workflow, surrounded by tasks">
-Mockups appear → platform icons scatter → center mockup scales down + crossfades into avatar → task bubbles surround. Example (6s): Three video-platform mockups (YouTube Studio, TikTok Creator, Instagram Reels) spring-in → nine scattered platform icons stagger-enter → at 3.20s center mockup morphs via uniform `scale: 1 → 0.6875` + paint-only `borderRadius`/`background`/`boxShadow` → at 85% of morph the mockup container fades revealing an avatar circle underneath → 8 task bubbles stagger-enter in radial pattern → continuous motion consolidated into one shared `onUpdate` scene-ticker reading `tl.time()`.
+<blueprint id="device-surface-showcase" roles="Key_Feature" duration="7.8–9.6s">
+A **device mockup or floating window held as hero** while its screens cycle through a real flow, presented by a camera ranging from a static hold to a continuous 3D push. Role-narrow (Key_Feature only) but mechanic-rich (static tour · floating-window push-scroll · 3D-hand demo). Reach for it to show a feature experienced *inside its real interface*.
 </blueprint>
 
-<blueprint
-  id="cta-orbit-collapse"
-  path="blueprints/cta-orbit-collapse.md"
-  example="examples/cta-orbit-collapse.html"
-  role="cta"
-  duration="5-8s"
-  phases="5"
-  uses="orbit-3d-entry, cursor-click-ripple, center-outward-expansion, sine-wave-loop"
-  triggers="works for any genre, multiple categories, click to generate, versatile tool">
-Category icons enter with 3D flip and orbit a center CTA → cursor clicks → icons collapse inward → product demo springs out and floats. Example (6.5s): Six genre icons (Music, Gaming, Education, Sports, Vlogs, Podcast) enter staggered with 3D flip and orbit a central CTA at 0.25 rad/s → cursor slides to white button via `back.out(1.3)`, depresses cursor + button + ripple → icons collapse via `gsap.parseEase("back.out(1.6)")` → demo card springs out from collapse point → CTA + cursor fade out → demo floats with finite-yoyo breathing. Three nested wrappers per icon separate orbit / collapse / entry concerns.
+<blueprint id="dataviz-countup" roles="Problem, Product_Intro" duration="6–12s">
+Numbers and charts are the hero — a **count-up ring/number, trend chart, tilted stat grid** — traversed by a camera that pushes THROUGH (or scrolls across) them to land on one hero metric. Reach for it when the data carries the argument: quantify a worsening problem, or open confidently on "look at the result."
 </blueprint>
 
-<blueprint
-  id="cta-morph-press"
-  path="blueprints/cta-morph-press.md"
-  example="examples/cta-morph-press.html"
-  role="cta"
-  duration="4-6s"
-  phases="4"
-  uses="sine-wave-loop, scale-swap-transition, physics-press-reaction"
-  triggers="logo morphs into button, CTA animation, cursor clicks button, brand to action">
-Hero enters and breathes → morphs into CTA via scale-swap → cursor enters via spring path → physics-based click compresses cursor + CTA together. Example (5.5s): "GWI Spark" lockup with breathing-rotated star logo → morphs into a pink "Find out more" CTA pill via scale-swap (hero shrinks + fades, CTA pops with back.out(2)) → cursor hard-cuts in at off-screen bottom-right and approaches via spring path → physics-based click compresses both cursor and CTA together using a single GSAP target array.
+<blueprint id="titlecard-reveal" roles="Benefits, Social_Proof" duration="3–5s">
+The calm **breather/landing beat** — one clean title or single brand/proof card revealed with exactly ONE restrained move (slide-up crossfade, or wipe-away-to-reveal), then a still hold. Low motion is the payload, not a deficiency. Reach for it for a two-line value title, or a busy open wiped to a clean lockup + a "loved by N+ teams" stat.
 </blueprint>
 
-<blueprint
-  id="comparison-split-cards"
-  path="blueprints/comparison-split-cards.md"
-  example="examples/comparison-split-cards.html"
-  role="comparison"
-  duration="4-6s"
-  phases="3"
-  uses="split-tilt-cards, sine-wave-loop"
-  triggers="two features, side by side, brand + team, dual capabilities, scale your">
-Title slides down → two feature cards enter from opposite sides with opposing 3D tilts (+12° / -12°) → floating pill badges attach to each card's inner edge. Example (5s): Title slides down → left card (+18° rotateY, shadow falls right) and right card (-18° rotateY, shadow falls left) enter from their sides with `power3.out` over 0.7s (right staggers ~0.33s after left) → pill badges pop in at the cards' inner edges with `back.out(1.7)`. Continuous floating consolidated in one scene-ticker onUpdate with `Math.PI` phase offset between left and right.
+<blueprint id="comparison-split" roles="Key_Feature" duration="4–6s">
+Two paired items of equal weight enter from opposite wings with **mirrored 3D "book-open" tilts** and hold side-by-side, then an inner-edge pill badge spring-pops on each to punctuate. Reach for it for an A/B or "X + Y together" — two complementary capabilities weighed at once (not >2 items, not sequential steps).
 </blueprint>
 
-<blueprint
-  id="metric-video-text-pivot"
-  path="blueprints/metric-video-text-pivot.md"
-  example="examples/metric-video-text-pivot.html"
-  role="metric"
-  duration="5-8s"
-  phases="4"
-  uses="3d-text-depth-layers, sine-wave-loop"
-  triggers="accuracy rate, engagement increase, show feature then stat, big number reveal, metric emphasis">
-Product video centered + floating → video slides left and giant stat (3D depth layers) appears right → both exit and kinetic text types center-screen with accent keywords → gradient pill scales behind a closing phrase. Example (6.5s): "Hyper**Frames**" badge top; mock captioned video card centered (3D-tilted +15° rotateY) → at 2.20s video slides to 29% W and "MP4" appears on right as a 5-layer green depth stack → at 3.86s both exit and 23-char "HTML pages become video" + 15-char "frame by frame." type center-screen → gradient pill (purple → green) scales in behind line 2.
+<blueprint id="overwhelm-surround" roles="Problem" duration="6–9s">
+Overwhelm by accumulation — recognizable surfaces assemble, density-marker icons scatter in, the center one **morphs into the viewer's own avatar**, then elements close in from all sides (surrounded, not zoomed-into). Reach for it when the pain is "you're buried in tools," ending on a claustrophobic crowd.
 </blueprint>
 
-<blueprint
-  id="messaging-multi-phrase"
-  path="blueprints/messaging-multi-phrase.md"
-  example="examples/messaging-multi-phrase.html"
-  role="messaging"
-  duration="7-8s"
-  phases="3"
-  uses="dynamic-content-sequencing, context-sensitive-cursor"
-  triggers="multiple phrases typing, sequential statements, typing with highlight, dual-color text">
-Multiple phrases type sequentially in hard cuts; each phrase has main + accent segments with a context-sensitive cursor whose color switches at the segment boundary. Timeline computed from `chars × charSpeed + hold`. Example (7.5s): "Build video with **HTML**" → "Seek **any frame**" → "Render to **MP4**" typed at 150px on black. Three phrases in `SCRIPT`, timeline computed from `chars × 0.083s + hold`. One master `onUpdate` writes `textContent`, switches cursor `background-color` between white and cyan at segment boundaries, and drives a 1.0s square-wave blink.
+<blueprint id="ticker-takeover" roles="Hook, Brand_Outro" duration="5–7s">
+A typed lead-in + an accent word cycling through options, then a hero **crashes in from off-screen and physically shoves the text aside** — a collision, not a fade — settling alone. Reach for it when a "could be many things" build should be violently replaced by "this is it."
+</blueprint>
+
+<blueprint id="video-text-pivot" roles="Product_Intro, Key_Feature" duration="6–8s">
+A product video holds center and breathes, then **slides aside to hand its weight to a hero stat**, then both clear and kinetic text types into the vacated center, sealed by a gradient pill. Reach for it for "see the feature → see the impact" where the video must stay visible (slides, never cuts).
+</blueprint>
+
+<blueprint id="cta-morph-press" roles="CTA" duration="4–6s">
+A resting brand mark **condenses at the same center into a brighter CTA**, then a cursor arrives and lands a human-aimed click with feedback. Reach for it for a focused "click here" sign-off that walks the eye from identity to action — no spatial set, no multi-step UI.
 </blueprint>
 </blueprints>
+
+## Role → blueprint menu
+
+A **SOFT** menu: story truth comes first. Story-design reaches in **when the product's own beat calls for that shape** — it suggests a proven shape, it never dictates which beats exist. Each role has 2–4 options; if none fits the beat, compose freely (the menu is not a checklist). Each line is the **trigger** that should make you reach for that blueprint.
+
+Roles here map 1:1 to the storyboard frame `type` enum: **Hook**=`hook` · **Problem**=`pain_point` · **Product_Intro**=`product_intro` · **Key_Feature**=`feature_showcase` · **Benefits**=`benefit_highlight` · **Social_Proof**=`social_proof` · **CTA**=`cta` · **Brand_Outro**=`branding`.
+
+**Hook**
+
+- `kinetic-type-beats` — a punchy rhetorical line / "you keep doing X" callout where the in-place word-swap is the joke, OR an escalating multi-beat statement landing a spring-pop payoff.
+- `typewriter-reveal` — type a relatable line, collapse it, pop the brand (logo or product-UI) — "here's the everyday pain, now here's us."
+- `spatial-pan-stations` — a timeline of milestones panned to the present ("evolution leading up to us").
+- `constellation-hub` — a constellation of tools/nodes + a camera push-in ("it connects everything").
+- `ticker-takeover` — a cycling accent word ("could be X, or Y…") violently replaced by a hero crashing in from off-screen.
+
+**Problem**
+
+- `kinetic-type-beats` — 3–5 short pain statements, each landing alone on a bare canvas, no product yet.
+- `spatial-pan-stations` — pan a connected web of pain "stations" ending in a tangled knot.
+- `dataviz-countup` — a count-up ring / chart / stat grid pushed-through to dramatize a worsening or large problem.
+- `overwhelm-surround` — recognizable tools that morph into the viewer, then task bubbles close in from all sides ("you're buried").
+
+**Product_Intro**
+
+- `kinetic-type-beats` — "Introducing…" hard-cut name-drop resolving on the brand name/logo.
+- `logo-assemble-lockup` — a wordless premium brand sting (elements pulse/orbit and assemble around the mark).
+- `cursor-ui-demo` — first look at the product surface; a cursor sweeps in to introduce the app.
+- `dataviz-countup` — hard-cut into a data-viz card grid, camera scrolls to a glowing hero metric + a kinetic tagline.
+- `video-text-pivot` — a product video that slides aside to hand its weight to a hero stat, then yields the center to kinetic impact text.
+
+**Key_Feature**
+
+- `grid-card-assemble` — a labeled feature tile/pill grid that self-assembles (or glass cards revealed by a camera zoom-out).
+- `cursor-ui-demo` — a specific multi-step workflow demonstrated end-to-end, landing on the action button/result.
+- `device-surface-showcase` — a device/window hero whose screens cycle (static tour · floating-window push-scroll · 3D-hand demo).
+- `comparison-split` — two paired capabilities side-by-side with mirrored book-open tilts (an A/B / "X + Y together").
+- `video-text-pivot` — a feature clip that slides aside to a frame-filling metric, then a typographic impact line.
+
+**Benefits**
+
+- `kinetic-type-beats` — a rapid-fire staccato montage of 8–12 short value phrases.
+- `grid-card-assemble` — a vertical benefit list that accumulates or steps.
+- `titlecard-reveal` — a calm two-line value title card (a breather/stillness beat).
+
+**Social_Proof**
+
+- `constellation-hub` — product mark as the hub, partner logos orbiting it ("works with your stack").
+- `grid-card-assemble` — a logo wall that builds then pulls back to reveal a vast ecosystem.
+- `titlecard-reveal` — wipe a busy open away to a clean brand lockup + a "loved by N+ teams" stat.
+
+**CTA**
+
+- `kinetic-type-beats` — a punchy closing line (or short value stack) snapping beat-by-beat onto the logo/URL.
+- `logo-assemble-lockup` — a logo build → camera push-through into the final URL/CTA verb.
+- `cta-morph-press` — a brand mark that condenses into the CTA at one center, then a cursor lands a human-aimed click.
+
+**Brand_Outro**
+
+- `kinetic-type-beats` — a rapid verb barrage resolving on the brand's one defining word.
+- `typewriter-reveal` — a persistent brand mark with a typed/swapping CTA rail beneath it.
+- `logo-assemble-lockup` — feature/UI elements clear the stage and the lockup draws itself in.
+- `ticker-takeover` — options cycle, then the brand mark crashes in and owns the frame.
+
+> Coverage: every role has ≥2 options; every blueprint serves ≥1 role. `kinetic-type-beats` is the workhorse (6 roles); `device-surface-showcase` is role-narrow (Key_Feature only) but mechanic-rich. Five shapes — `comparison-split`, `overwhelm-surround`, `ticker-takeover`, `video-text-pivot`, `cta-morph-press` — were added from the hyperframes-animation blueprints.
+
+## Picking guidance
+
+1. Find the frame's **role** in the menu above; pick the blueprint whose **shape fits this beat** (story may already have named a candidate id — confirm or override). If two fit, prefer the one whose motions are closer to your plan.
+2. Open `blueprints/<id>.md` — read its time-coded template, `[slots]`, and named **signature move**.
+3. Choose a posture — **Reproduce** (slots map cleanly), **Adapt** (structure fits, content/surface differs; keep the signature move), or **Compose** (nothing fits → build from the motion vocabulary). The _how_ of writing each — what to keep/change, the per-frame fields — is `visual-design.md`'s job; defer to it.
+4. If nothing in the menu fits the beat, **compose** from the motion vocabulary in `motion-language.md` — still pace the reveals to the VO across the shot. Don't force a wrong blueprint.
+
+## Motion coverage
+
+Every recurring move in the golden vocabulary is backed by this skill's local `rules/` — including five added to round out the corpus: `depth-of-field-blur`, `motion-blur-streak`, `depth-scatter-assemble`, `spring-pop-entrance` (the canonical entrance pop, distinct from the click/press `press-release-spring`), and `ambient-glow-bloom`. Each blueprint's `rule mapping` cites the real rule.
+
+One genuine out-of-scope special remains: `device-surface-showcase`'s **3D-hand gesture-input + WebGL bloom/portal** needs R3F/Three.js + WebGL — a heavier capability than the rule library. Use it sparingly, or pick a simpler `device-surface-showcase` variant.

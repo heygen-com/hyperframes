@@ -98,6 +98,42 @@ describe("layout-audit.browser", () => {
 
     expect(runAudit()).toEqual([]);
   });
+
+  it("does not flag glyph-ink vertical spill within the font-metric band on a non-clipping box", () => {
+    // A painted, non-clipping caption-word-like box whose glyph ink (text rect) exceeds its snug
+    // line-height box by a few px vertically — normal typography, nothing is clipped. (fontSize
+    // 36 → vertical tolerance ~7.2px; the ink spills ~5px each side, well within it.)
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <div id="bubble"><div id="headline">crews,</div></div>
+      </div>
+    `;
+    installGeometry({
+      root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+      bubble: rect({ left: 80, top: 120, width: 400, height: 80 }),
+      text: rect({ left: 100, top: 115, width: 300, height: 90 }),
+    });
+    installAuditScript();
+
+    expect(runAudit().some((issue) => issue.code === "text_box_overflow")).toBe(false);
+  });
+
+  it("still flags vertical text overflow beyond the font-metric band", () => {
+    // Ink is 40px / 80px beyond the box — far past the ~7px font-metric band: a real overflow.
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <div id="bubble"><div id="headline">two crammed lines</div></div>
+      </div>
+    `;
+    installGeometry({
+      root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+      bubble: rect({ left: 80, top: 120, width: 400, height: 80 }),
+      text: rect({ left: 100, top: 80, width: 300, height: 200 }),
+    });
+    installAuditScript();
+
+    expect(runAudit().some((issue) => issue.code === "text_box_overflow")).toBe(true);
+  });
 });
 
 describe("layout-audit.browser content overlap", () => {

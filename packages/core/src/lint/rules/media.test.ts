@@ -220,4 +220,32 @@ describe("media rules", () => {
     const finding = result.findings.find((f) => f.code === "imperative_media_control");
     expect(finding).toBeUndefined();
   });
+
+  it("flags <video> inside a sub-composition (media must be a host-root child)", async () => {
+    const html = `<template id="scene-template">
+  <div id="root" data-composition-id="scene" data-width="1920" data-height="1080">
+    <video id="v1" src="clip.mp4" data-start="0" data-duration="5" muted playsinline></video>
+    <script>window.__timelines = window.__timelines || {}; window.__timelines["scene"] = gsap.timeline({ paused: true });</script>
+  </div>
+</template>`;
+    const result = await lintHyperframeHtml(html, { isSubComposition: true });
+    const finding = result.findings.find((f) => f.code === "media_in_subcomposition");
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("error");
+    expect(finding?.elementId).toBe("v1");
+    expect(finding?.message).toContain("sub-composition");
+  });
+
+  it("does not flag media in a host-root (non-sub) composition", async () => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <video id="v1" src="clip.mp4" data-start="0" data-duration="5" muted playsinline></video>
+  </div>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["c1"] = gsap.timeline({ paused: true });</script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "media_in_subcomposition");
+    expect(finding).toBeUndefined();
+  });
 });

@@ -88,6 +88,25 @@ window.__contrastAudit = async function (imgBase64, time) {
     var cs = getComputedStyle(el);
     if (cs.visibility === "hidden" || cs.display === "none") continue;
     if (parseFloat(cs.opacity) <= 0.01) continue;
+    // Also skip when an ANCESTOR is effectively invisible (opacity≈0 / hidden / display:none).
+    // Karaoke captions keep every word at opacity 1 but toggle the GROUP's opacity per beat,
+    // so an inactive word's OWN opacity is 1 — only an ancestor reveals it's hidden. Without
+    // this, the hidden caption words flood the audit with false ~1:1 contrast warnings.
+    var anc = el.parentElement,
+      ancHidden = false;
+    while (anc && anc !== document.body) {
+      var acs = getComputedStyle(anc);
+      if (
+        acs.visibility === "hidden" ||
+        acs.display === "none" ||
+        parseFloat(acs.opacity) <= 0.01
+      ) {
+        ancHidden = true;
+        break;
+      }
+      anc = anc.parentElement;
+    }
+    if (ancHidden) continue;
     var rect = el.getBoundingClientRect();
     if (rect.width < 8 || rect.height < 8) continue;
     if (rect.right <= 0 || rect.bottom <= 0 || rect.left >= w || rect.top >= h) continue;
