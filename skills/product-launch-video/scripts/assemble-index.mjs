@@ -168,8 +168,8 @@ function guardFrame(html, label) {
   // trip ②/③. ① still splices into the ORIGINAL html, so its offsets stay correct.
   const scan = html
     .replace(/<!--[\s\S]*?-->/g, " ")
-    .replace(/<script\b[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style\b[\s\S]*?<\/style>/gi, " ");
+    .replace(/<script\b[\s\S]*?<\/script[^>]*>/gi, " ")
+    .replace(/<style\b[\s\S]*?<\/style[^>]*>/gi, " ");
 
   // ② media inside a sub-comp — never driven by the runtime (renders blank/black).
   const media = scan.match(/<(video|audio)(?=[\s/>])/i);
@@ -255,7 +255,12 @@ for (const f of manifest.frames) {
     continue;
   }
   const compAbs = join(hyperframesDir, f.src);
-  if (!existsSync(compAbs)) {
+  // Read directly and handle ENOENT here rather than an existsSync precheck — the
+  // check→read/write pair is a TOCTOU race CodeQL flags (js/file-system-race).
+  let html;
+  try {
+    html = readFileSync(compAbs, "utf8");
+  } catch {
     if (built)
       die(`${label} is ${f.status} but its src ${f.src} is not on disk — re-dispatch the worker`);
     anomalies.push(`${label}: src ${f.src} not on disk (status ${f.status}) — skipped`);
@@ -270,7 +275,6 @@ for (const f of manifest.frames) {
   // finds the timeline. frame_id = src basename (frame-worker contract); verify
   // the inner html actually declares it.
   const compId = basename(f.src).replace(/\.html?$/i, "");
-  let html = readFileSync(compAbs, "utf8");
   // Guard against blank/partial scene files: a worker that errors or is
   // interrupted mid-write leaves an empty (or markup-less) file that exists but
   // fails at render with "Composition HTML is empty or could not be parsed".
