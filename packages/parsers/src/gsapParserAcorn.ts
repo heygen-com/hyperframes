@@ -358,10 +358,55 @@ interface TimelineDefaults {
   duration?: number;
 }
 
+// How the timeline is referred to in source. `identifier` is the canonical
+// `const tl = …` form; `member` is the inline `window.__timelines["scene"] = …`
+// form, where the timeline IS the member expression (no variable name).
+type TimelineRef = { kind: "identifier"; name: string } | { kind: "member"; node: any };
+
 interface TimelineDetection {
+  /** Identifier name for the canonical form, else null (member or none). */
   timelineVar: string | null;
+  /** Structural reference: identifier OR member expression. Null when none found. */
+  ref: TimelineRef | null;
   timelineCount: number;
   defaults?: TimelineDefaults;
+}
+
+/** The static string key of a member access (`window.__timelines["scene"]` → "scene"), else null. */
+function staticMemberKey(node: any): string | null {
+  if (!node || node.type !== "MemberExpression") return null;
+  if (node.computed) {
+    const p = node.property;
+    if (p?.type === "Literal" && typeof p.value === "string") return p.value;
+    return null; // computed non-string-literal key → not statically resolvable
+  }
+  return node.property?.type === "Identifier" ? node.property.name : null;
+}
+
+/** True when a member expression refers to a statically-resolvable timeline slot. */
+function isStaticMemberRef(node: any): boolean {
+  return node?.type === "MemberExpression" && staticMemberKey(node) !== null;
+}
+
+/** Structural equality of two member-access nodes (object chain + static key), quote-insensitive. */
+function sameMemberAccess(a: any, b: any): boolean {
+  if (a?.type !== "MemberExpression" || b?.type !== "MemberExpression") return false;
+  if (staticMemberKey(a) !== staticMemberKey(b) || staticMemberKey(a) === null) return false;
+  const ao = a.object;
+  const bo = b.object;
+  if (ao?.type === "Identifier" && bo?.type === "Identifier") return ao.name === bo.name;
+  if (ao?.type === "MemberExpression" && bo?.type === "MemberExpression")
+    return sameMemberAccess(ao, bo);
+  return false;
+}
+
+/** The source string a tween call is rooted at: identifier name, or the member source as written. */
+function timelineRootSource(ref: TimelineRef, script: string): string {
+  return ref.kind === "identifier" ? ref.name : script.slice(ref.node.start, ref.node.end);
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 // fallow-ignore-next-line complexity
@@ -388,6 +433,7 @@ function extractTimelineDefaults(
 
 function findTimelineVar(ast: any, scope?: ScopeBindings): TimelineDetection {
   let timelineVar: string | null = null;
+  let ref: TimelineRef | null = null;
   let timelineCount = 0;
   let defaults: TimelineDefaults | undefined;
   const emptyScope: ScopeBindings = scope ?? new Map();
@@ -396,8 +442,9 @@ function findTimelineVar(ast: any, scope?: ScopeBindings): TimelineDetection {
     VariableDeclarator(node: any) {
       if (isGsapTimelineCall(node.init)) {
         timelineCount += 1;
-        if (!timelineVar) {
-          timelineVar = node.id?.name ?? null;
+        if (!ref && node.id?.type === "Identifier") {
+          timelineVar = node.id.name;
+          ref = { kind: "identifier", name: node.id.name };
           defaults = extractTimelineDefaults(node.init, emptyScope);
         }
       }
@@ -405,16 +452,23 @@ function findTimelineVar(ast: any, scope?: ScopeBindings): TimelineDetection {
     AssignmentExpression(node: any) {
       if (isGsapTimelineCall(node.right)) {
         timelineCount += 1;
-        if (!timelineVar) {
+        if (!ref) {
           const left = node.left;
-          if (left?.type === "Identifier") timelineVar = left.name;
-          defaults = extractTimelineDefaults(node.right, emptyScope);
+          if (left?.type === "Identifier") {
+            timelineVar = left.name;
+            ref = { kind: "identifier", name: left.name };
+            defaults = extractTimelineDefaults(node.right, emptyScope);
+          } else if (isStaticMemberRef(left)) {
+            // Inline form: `window.__timelines["scene"] = gsap.timeline(...)`.
+            ref = { kind: "member", node: left };
+            defaults = extractTimelineDefaults(node.right, emptyScope);
+          }
         }
       }
     },
   });
 
-  return { timelineVar, timelineCount, defaults };
+  return { timelineVar, ref, timelineCount, defaults };
 }
 
 // ── Tween call collection ─────────────────────────────────────────────────────
@@ -447,13 +501,14 @@ export interface TweenCallInfo {
   global?: boolean;
 }
 
-/** True when callee chain is rooted at the timeline variable. */
-function isTimelineRootedCall(callNode: any, timelineVar: string): boolean {
+/** True when the callee chain is rooted at the timeline reference (identifier or member). */
+function isTimelineRootedCall(callNode: any, ref: TimelineRef): boolean {
   let obj = callNode.callee?.object;
   while (obj?.type === "CallExpression") {
     obj = obj.callee?.object;
   }
-  return obj?.type === "Identifier" && obj.name === timelineVar;
+  if (ref.kind === "identifier") return obj?.type === "Identifier" && obj.name === ref.name;
+  return sameMemberAccess(obj, ref.node);
 }
 
 /**
@@ -465,7 +520,7 @@ function isTimelineRootedCall(callNode: any, timelineVar: string): boolean {
  */
 function findAllTweenCalls(
   ast: any,
-  timelineVar: string,
+  ref: TimelineRef,
   scope: ScopeBindings,
   targetBindings: TargetBindings,
 ): TweenCallInfo[] {
@@ -494,7 +549,7 @@ function findAllTweenCalls(
       if (
         callee?.type === "MemberExpression" &&
         callee.property?.type === "Identifier" &&
-        (isTimelineRootedCall(node, timelineVar) || isGlobalSet) &&
+        (isTimelineRootedCall(node, ref) || isGlobalSet) &&
         GSAP_METHODS.has(callee.property.name)
       ) {
         const method = callee.property.name;
@@ -1092,8 +1147,9 @@ export function parseGsapScriptAcornForWrite(script: string): ParsedGsapAcornFor
     const scope = collectScopeBindings(ast);
     const targetBindings = collectTargetBindings(ast, scope);
     const detection = findTimelineVar(ast, scope);
-    const timelineVar = detection.timelineVar ?? "tl";
-    const calls = findAllTweenCalls(ast, timelineVar, scope, targetBindings);
+    const ref: TimelineRef = detection.ref ?? { kind: "identifier", name: "tl" };
+    const timelineVar = timelineRootSource(ref, script);
+    const calls = findAllTweenCalls(ast, ref, scope, targetBindings);
     sortBySourcePosition(calls);
     const rawAnims = calls.map((call) => tweenCallToAnimation(call, scope, script));
     applyTimelineDefaults(rawAnims, detection.defaults);
@@ -1104,7 +1160,7 @@ export function parseGsapScriptAcornForWrite(script: string): ParsedGsapAcornFor
       call,
       animation: animations[i]!,
     }));
-    return { ast, timelineVar, hasTimeline: detection.timelineVar !== null, located };
+    return { ast, timelineVar, hasTimeline: detection.ref !== null, located };
   } catch {
     return null;
   }
@@ -1125,30 +1181,41 @@ export function parseGsapScriptAcorn(script: string): ParsedGsap {
     });
     const scope = collectScopeBindings(ast);
     const detection = findTimelineVar(ast, scope);
-    const timelineVar = detection.timelineVar ?? "tl";
+    const ref: TimelineRef = detection.ref ?? { kind: "identifier", name: "tl" };
+    const timelineVar = timelineRootSource(ref, script);
     // Expand helper-built / bounded-loop timelines before analysis so their
     // tweens resolve at true positions (read path only — the write path keeps
     // original source nodes). Degrades to the un-inlined AST on any failure.
-    try {
-      inlineComputedTimelines(ast, timelineVar, (node) => resolveNode(node, scope));
-    } catch {
-      /* fall back to current behavior */
+    // Only the identifier form uses the helper-built pattern; inline member
+    // timelines have nothing to inline, so skip (avoids mis-rooting on the member).
+    if (ref.kind === "identifier") {
+      try {
+        inlineComputedTimelines(ast, timelineVar, (node) => resolveNode(node, scope));
+      } catch {
+        /* fall back to current behavior */
+      }
     }
     const targetBindings = collectTargetBindings(ast, scope);
-    const calls = findAllTweenCalls(ast, timelineVar, scope, targetBindings);
+    const calls = findAllTweenCalls(ast, ref, scope, targetBindings);
     sortBySourcePosition(calls);
     const rawAnims = calls.map((call) => tweenCallToAnimation(call, scope, script));
     applyTimelineDefaults(rawAnims, detection.defaults);
     resolveTimelinePositions(rawAnims);
     const animations = assignStableIds(rawAnims);
 
-    const timelineMatch = script.match(
-      new RegExp(
-        `^[\\s\\S]*?(?:const|let|var)\\s+${timelineVar}\\s*=\\s*gsap\\.timeline\\s*\\([^)]*\\)\\s*;?`,
-      ),
-    );
-    const preamble =
-      timelineMatch?.[0] ?? `const ${timelineVar} = gsap.timeline({ paused: true });`;
+    // Preamble = source up to and including the timeline declaration/assignment.
+    // Identifier keeps the original `const|let|var <name> = …` regex (byte-stable);
+    // member matches `<member source> = …`.
+    const declPattern =
+      ref.kind === "identifier"
+        ? `(?:const|let|var)\\s+${timelineVar}\\s*=\\s*gsap\\.timeline\\s*\\([^)]*\\)\\s*;?`
+        : `${escapeRegExp(timelineVar)}\\s*=\\s*gsap\\.timeline\\s*\\([^)]*\\)\\s*;?`;
+    const timelineMatch = script.match(new RegExp(`^[\\s\\S]*?${declPattern}`));
+    const fallbackPreamble =
+      ref.kind === "identifier"
+        ? `const ${timelineVar} = gsap.timeline({ paused: true });`
+        : `${timelineVar} = gsap.timeline({ paused: true });`;
+    const preamble = timelineMatch?.[0] ?? fallbackPreamble;
 
     const lastCallIdx = script.lastIndexOf(`${timelineVar}.`);
     let postamble = "";
@@ -1162,7 +1229,7 @@ export function parseGsapScriptAcorn(script: string): ParsedGsap {
 
     const result: ParsedGsap = { animations, timelineVar, preamble, postamble };
     if (detection.timelineCount > 1) result.multipleTimelines = true;
-    if (detection.timelineCount > 0 && detection.timelineVar === null)
+    if (detection.timelineCount > 0 && detection.ref === null)
       result.unsupportedTimelinePattern = true;
     return result;
   } catch {
@@ -1194,7 +1261,7 @@ export function extractGsapLabels(script: string): GsapLabelEntry[] {
     });
     const scope = collectScopeBindings(ast);
     const detection = findTimelineVar(ast, scope);
-    const timelineVar = detection.timelineVar ?? "tl";
+    const ref: TimelineRef = detection.ref ?? { kind: "identifier", name: "tl" };
 
     const labels: GsapLabelEntry[] = [];
 
@@ -1204,10 +1271,14 @@ export function extractGsapLabels(script: string): GsapLabelEntry[] {
         const expr = node.expression;
         if (!expr || expr.type !== "CallExpression") return;
         const callee = expr.callee;
-        // Match tl.addLabel(...)
+        // Match <timeline>.addLabel(...) for identifier or member timeline refs.
+        const objMatches =
+          ref.kind === "identifier"
+            ? callee.object?.type === "Identifier" && callee.object.name === ref.name
+            : sameMemberAccess(callee.object, ref.node);
         if (
           callee?.type !== "MemberExpression" ||
-          callee.object?.name !== timelineVar ||
+          !objMatches ||
           callee.property?.name !== "addLabel"
         )
           return;

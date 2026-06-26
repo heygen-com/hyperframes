@@ -274,9 +274,13 @@ function reconcileEditableProps(
 // ── Insertion helpers ─────────────────────────────────────────────────────────
 
 /** Traverse callee.object chain to check if a call ultimately roots at timelineVar. */
-function isTimelineRooted(node: Node, timelineVar: string): boolean {
+function isTimelineRooted(node: Node, timelineVar: string, script: string): boolean {
   if (node?.type === "Identifier") return node.name === timelineVar;
-  if (node?.type === "CallExpression") return isTimelineRooted(node.callee?.object, timelineVar);
+  // Inline/member timelines: `timelineVar` is the source slice (e.g.
+  // `window.__timelines["scene"]`); match a MemberExpression callee by its source.
+  if (node?.type === "MemberExpression") return script.slice(node.start, node.end) === timelineVar;
+  if (node?.type === "CallExpression")
+    return isTimelineRooted(node.callee?.object, timelineVar, script);
   return false;
 }
 
@@ -1559,31 +1563,40 @@ export function splitIntoPropertyGroupsFromScript(
 // ── Label write ops ───────────────────────────────────────────────────────────
 
 /** True when `expr` is `tl.<method>(…)` rooted at the timeline var. */
-function isTimelineMethodCall(expr: Node, timelineVar: string, method: string): boolean {
+function isTimelineMethodCall(
+  expr: Node,
+  timelineVar: string,
+  method: string,
+  script: string,
+): boolean {
   return (
     expr?.type === "CallExpression" &&
     expr.callee?.type === "MemberExpression" &&
-    isTimelineRooted(expr.callee.object, timelineVar) &&
+    isTimelineRooted(expr.callee.object, timelineVar, script) &&
     expr.callee.property?.name === method
   );
 }
 
 /** True when `expr` is `tl.addLabel("<name>", …)` rooted at the timeline var. */
-function isAddLabelCall(expr: Node, timelineVar: string, name: string): boolean {
+function isAddLabelCall(expr: Node, timelineVar: string, name: string, script: string): boolean {
   const firstArg = expr?.arguments?.[0];
   return (
-    isTimelineMethodCall(expr, timelineVar, "addLabel") &&
+    isTimelineMethodCall(expr, timelineVar, "addLabel", script) &&
     firstArg?.type === "Literal" &&
     firstArg.value === name
   );
 }
 
 /** Every `tl.addLabel("<name>", …)` ExpressionStatement in the script. */
-function findLabelStatements(parsed: ParsedGsapAcornForWrite, name: string): Node[] {
+function findLabelStatements(
+  parsed: ParsedGsapAcornForWrite,
+  name: string,
+  script: string,
+): Node[] {
   const targets: Node[] = [];
   acornWalk.simple(parsed.ast, {
     ExpressionStatement(node: Node) {
-      if (isAddLabelCall(node.expression, parsed.timelineVar, name)) targets.push(node);
+      if (isAddLabelCall(node.expression, parsed.timelineVar, name, script)) targets.push(node);
     },
   });
   return targets;
@@ -1597,7 +1610,7 @@ export function addLabelToScript(script: string, name: string, position: number)
   // appending a duplicate. Two same-named addLabel statements make removeLabel
   // over-remove — it deletes every match, including a pre-existing label the
   // user never touched.
-  const existing = findLabelStatements(parsed, name)[0];
+  const existing = findLabelStatements(parsed, name, script)[0];
   if (existing) {
     const ms = new MagicString(script);
     const posArg = existing.expression.arguments?.[1];
@@ -1619,7 +1632,7 @@ export function removeLabelFromScript(script: string, name: string): string {
   const parsed = parseGsapScriptAcornForWrite(script);
   if (!parsed) return script;
 
-  const targets = findLabelStatements(parsed, name);
+  const targets = findLabelStatements(parsed, name, script);
   if (!targets.length) return script;
 
   const ms = new MagicString(script);

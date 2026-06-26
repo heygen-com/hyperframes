@@ -376,10 +376,52 @@ interface TimelineDefaults {
   duration?: number;
 }
 
+// `identifier` is the canonical `const tl = …` form; `member` is the inline
+// `window.__timelines["scene"] = …` form (the timeline IS the member expression).
+type TimelineRef = { kind: "identifier"; name: string } | { kind: "member"; node: AstNode };
+
 interface TimelineDetection {
   timelineVar: string | null;
+  ref: TimelineRef | null;
   timelineCount: number;
   defaults?: TimelineDefaults;
+}
+
+/** The static string key of a member access (`window.__timelines["scene"]` → "scene"), else null. */
+function staticMemberKey(node: AstNode): string | null {
+  if (!node || node.type !== "MemberExpression") return null;
+  if (node.computed) {
+    const p = node.property;
+    if (p?.type === "StringLiteral") return p.value;
+    if (p?.type === "Literal" && typeof p.value === "string") return p.value;
+    return null;
+  }
+  return node.property?.type === "Identifier" ? node.property.name : null;
+}
+
+function isStaticMemberRef(node: AstNode): boolean {
+  return node?.type === "MemberExpression" && staticMemberKey(node) !== null;
+}
+
+/** Structural equality of two member accesses (object chain + static key), quote-insensitive. */
+function sameMemberAccess(a: AstNode, b: AstNode): boolean {
+  if (a?.type !== "MemberExpression" || b?.type !== "MemberExpression") return false;
+  if (staticMemberKey(a) !== staticMemberKey(b) || staticMemberKey(a) === null) return false;
+  const ao = a.object;
+  const bo = b.object;
+  if (ao?.type === "Identifier" && bo?.type === "Identifier") return ao.name === bo.name;
+  if (ao?.type === "MemberExpression" && bo?.type === "MemberExpression")
+    return sameMemberAccess(ao, bo);
+  return false;
+}
+
+/** The source string a tween call roots at: identifier name, or the member source as written. */
+function timelineRootSource(ref: TimelineRef): string {
+  return ref.kind === "identifier" ? ref.name : recast.print(ref.node).code;
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function extractTimelineDefaults(
@@ -401,6 +443,7 @@ function extractTimelineDefaults(
 
 function findTimelineVar(ast: AstNode, scope?: ScopeBindings): TimelineDetection {
   let timelineVar: string | null = null;
+  let ref: TimelineRef | null = null;
   let timelineCount = 0;
   let defaults: TimelineDefaults | undefined;
   const emptyScope: ScopeBindings = scope ?? new Map();
@@ -408,8 +451,9 @@ function findTimelineVar(ast: AstNode, scope?: ScopeBindings): TimelineDetection
     visitVariableDeclarator(path: AstPath) {
       if (isGsapTimelineCall(path.node.init)) {
         timelineCount += 1;
-        if (!timelineVar) {
-          timelineVar = path.node.id?.name ?? null;
+        if (!ref && path.node.id?.type === "Identifier") {
+          timelineVar = path.node.id.name;
+          ref = { kind: "identifier", name: path.node.id.name };
           defaults = extractTimelineDefaults(path.node.init, emptyScope);
         }
       }
@@ -418,16 +462,22 @@ function findTimelineVar(ast: AstNode, scope?: ScopeBindings): TimelineDetection
     visitAssignmentExpression(path: AstPath) {
       if (isGsapTimelineCall(path.node.right)) {
         timelineCount += 1;
-        if (!timelineVar) {
+        if (!ref) {
           const left = path.node.left;
-          if (left?.type === "Identifier") timelineVar = left.name;
-          defaults = extractTimelineDefaults(path.node.right, emptyScope);
+          if (left?.type === "Identifier") {
+            timelineVar = left.name;
+            ref = { kind: "identifier", name: left.name };
+            defaults = extractTimelineDefaults(path.node.right, emptyScope);
+          } else if (isStaticMemberRef(left)) {
+            ref = { kind: "member", node: left };
+            defaults = extractTimelineDefaults(path.node.right, emptyScope);
+          }
         }
       }
       this.traverse(path);
     },
   });
-  return { timelineVar, timelineCount, defaults };
+  return { timelineVar, ref, timelineCount, defaults };
 }
 
 // ── Find All Tween Calls ────────────────────────────────────────────────────
@@ -448,17 +498,18 @@ interface TweenCallInfo {
  * True when the member chain of `callNode.callee` is rooted at the timeline
  * variable — `tl.to(...)` and every link of a chain `tl.to(...).to(...)`.
  */
-function isTimelineRootedCall(callNode: AstNode, timelineVar: string): boolean {
+function isTimelineRootedCall(callNode: AstNode, ref: TimelineRef): boolean {
   let obj = callNode.callee?.object;
   while (obj?.type === "CallExpression") {
     obj = obj.callee?.object;
   }
-  return obj?.type === "Identifier" && obj.name === timelineVar;
+  if (ref.kind === "identifier") return obj?.type === "Identifier" && obj.name === ref.name;
+  return sameMemberAccess(obj, ref.node);
 }
 
 function findAllTweenCalls(
   ast: AstNode,
-  timelineVar: string,
+  ref: TimelineRef,
   scope: ScopeBindings,
   targetBindings: TargetBindings,
 ): TweenCallInfo[] {
@@ -484,7 +535,7 @@ function findAllTweenCalls(
       if (
         callee?.type === "MemberExpression" &&
         callee.property?.type === "Identifier" &&
-        (isTimelineRootedCall(node, timelineVar) || isGlobalSet)
+        (isTimelineRootedCall(node, ref) || isGlobalSet)
       ) {
         const method = callee.property.name;
         if (!GSAP_METHODS.has(method)) {
@@ -1131,8 +1182,9 @@ function parseGsapAst(script: string): ParsedGsapAst {
   const scope = collectScopeBindings(ast);
   const targetBindings = collectTargetBindings(ast, scope);
   const detection = findTimelineVar(ast, scope);
-  const timelineVar = detection.timelineVar ?? "tl";
-  const calls = findAllTweenCalls(ast, timelineVar, scope, targetBindings);
+  const ref: TimelineRef = detection.ref ?? { kind: "identifier", name: "tl" };
+  const timelineVar = timelineRootSource(ref);
+  const calls = findAllTweenCalls(ast, ref, scope, targetBindings);
   sortBySourcePosition(calls);
   const rawAnims = calls.map((call) => tweenCallToAnimation(call, scope));
   applyTimelineDefaults(rawAnims, detection.defaults);
@@ -1151,15 +1203,19 @@ function parseGsapAst(script: string): ParsedGsapAst {
 export function parseGsapScript(script: string): ParsedGsap {
   try {
     const { detection, timelineVar, located } = parseGsapAst(script);
+    const ref: TimelineRef = detection.ref ?? { kind: "identifier", name: "tl" };
     const animations = located.map((l) => l.animation);
 
-    const timelineMatch = script.match(
-      new RegExp(
-        `^[\\s\\S]*?(?:const|let|var)\\s+${timelineVar}\\s*=\\s*gsap\\.timeline\\s*\\([^)]*\\)\\s*;?`,
-      ),
-    );
-    const preamble =
-      timelineMatch?.[0] ?? `const ${timelineVar} = gsap.timeline({ paused: true });`;
+    const declPattern =
+      ref.kind === "identifier"
+        ? `(?:const|let|var)\\s+${timelineVar}\\s*=\\s*gsap\\.timeline\\s*\\([^)]*\\)\\s*;?`
+        : `${escapeRegExp(timelineVar)}\\s*=\\s*gsap\\.timeline\\s*\\([^)]*\\)\\s*;?`;
+    const timelineMatch = script.match(new RegExp(`^[\\s\\S]*?${declPattern}`));
+    const fallbackPreamble =
+      ref.kind === "identifier"
+        ? `const ${timelineVar} = gsap.timeline({ paused: true });`
+        : `${timelineVar} = gsap.timeline({ paused: true });`;
+    const preamble = timelineMatch?.[0] ?? fallbackPreamble;
 
     const lastCallIdx = script.lastIndexOf(`${timelineVar}.`);
     let postamble = "";
@@ -1173,7 +1229,7 @@ export function parseGsapScript(script: string): ParsedGsap {
 
     const result: ParsedGsap = { animations, timelineVar, preamble, postamble };
     if (detection.timelineCount > 1) result.multipleTimelines = true;
-    if (detection.timelineCount > 0 && detection.timelineVar === null)
+    if (detection.timelineCount > 0 && detection.ref === null)
       result.unsupportedTimelinePattern = true;
     return result;
   } catch {
@@ -1468,7 +1524,7 @@ export function addAnimationToScript(
     return { script, id: "" };
   }
   // Nothing to anchor against and no timeline to target — treat as parse failure.
-  if (parsed.located.length === 0 && parsed.detection.timelineVar === null) {
+  if (parsed.located.length === 0 && parsed.detection.ref === null) {
     return { script, id: "" };
   }
 
@@ -1500,7 +1556,7 @@ export function addAnimationWithKeyframesToScript(
     console.warn("[gsap-parser] addAnimationWithKeyframesToScript parse failed:", e);
     return { script, id: "" };
   }
-  if (parsed.located.length === 0 && parsed.detection.timelineVar === null) {
+  if (parsed.located.length === 0 && parsed.detection.ref === null) {
     return { script, id: "" };
   }
 
@@ -2796,7 +2852,7 @@ export function addMotionPathToScript(
     console.warn("[gsap-parser] addMotionPathToScript parse failed:", e);
     return { script, id: null };
   }
-  if (parsed.located.length === 0 && parsed.detection.timelineVar === null) {
+  if (parsed.located.length === 0 && parsed.detection.ref === null) {
     return { script, id: null };
   }
 
