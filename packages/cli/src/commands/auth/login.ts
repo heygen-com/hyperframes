@@ -26,15 +26,21 @@ import { stdin as input } from "node:process";
 import {
   AuthClient,
   assertOAuthConfiguredOrExit,
+  clearUserInfo,
   deleteStore,
   isAuthError,
   isHeaderSafe,
+  isUserInfoEmpty,
   readStore,
   refreshTokens,
+  saveUserInfo,
   startAuthorizationCodeFlow,
   tryResolveCredential,
+  userDisplayName,
   writeStore,
   type Credentials,
+  type StoredUserInfo,
+  type UserInfo,
 } from "../../auth/index.js";
 import { c } from "../../ui/colors.js";
 
@@ -97,15 +103,60 @@ async function reportIdentity(): Promise<void> {
   });
   try {
     const user = await client.getCurrentUser(credential);
-    const identity = user.email ?? user.username ?? "(unknown user)";
+    // Persist the friendly-display block alongside the OAuth tokens so
+    // `auth status` can show "Logged in as ..." without re-hitting
+    // /v3/users/me. Best-effort — a persist failure never fails the login.
+    await persistUserInfo(user);
+    const identity = userDisplayName(toStoredUserInfo(user)) ?? "(unknown user)";
     console.log(c.success(`✓ Signed in as ${identity}.`));
   } catch (err) {
     // Don't roll back — the OAuth tokens are valid on disk; this is a
-    // transient verify-side issue. Surface as a warning so the user
-    // can re-check with `auth status` rather than re-running login.
+    // transient verify-side issue. The identity probe failed, so any
+    // stale user block from a prior login (possibly a DIFFERENT account)
+    // is cleared so `auth status` can't surface the wrong identity.
+    await clearUserInfoBestEffort();
     console.error(
       c.warn(`Signed in. Identity check failed (transient): ${(err as Error).message}`),
     );
+  }
+}
+
+/** Project the API `/v3/users/me` view onto the on-disk identity block. */
+function toStoredUserInfo(user: UserInfo): StoredUserInfo {
+  const out: StoredUserInfo = {};
+  if (user.email) out.email = user.email;
+  if (user.first_name) out.first_name = user.first_name;
+  if (user.last_name) out.last_name = user.last_name;
+  if (user.username) out.username = user.username;
+  return out;
+}
+
+/**
+ * Persist the friendly-display block (best-effort). A non-empty block is
+ * saved; an empty one (the API returned no identity fields) clears any
+ * stale block so a wrong account can't surface in `auth status`. A
+ * persist/clear failure is warned, never fatal — the credential is valid
+ * on disk and that's what matters.
+ */
+async function persistUserInfo(user: UserInfo): Promise<void> {
+  const stored = toStoredUserInfo(user);
+  try {
+    if (isUserInfoEmpty(stored)) {
+      await clearUserInfo();
+    } else {
+      await saveUserInfo(stored);
+    }
+  } catch (err) {
+    console.error(c.dim(`(warning: could not persist user info: ${(err as Error).message})`));
+  }
+}
+
+/** Drop any stale user block; best-effort, never fatal. */
+async function clearUserInfoBestEffort(): Promise<void> {
+  try {
+    await clearUserInfo();
+  } catch (err) {
+    console.error(c.dim(`(warning: could not clear stale user info: ${(err as Error).message})`));
   }
 }
 
@@ -170,7 +221,10 @@ async function verifyAndReport(key: string): Promise<boolean> {
   const client = new AuthClient();
   try {
     const user = await client.getCurrentUser({ type: "api_key", key, source: "file_json" });
-    const identity = user.email ?? user.username ?? "(unknown user)";
+    // Persist the friendly-display block next to the now-verified api_key
+    // so `auth status` can show a recognizable identity. Best-effort.
+    await persistUserInfo(user);
+    const identity = userDisplayName(toStoredUserInfo(user)) ?? "(unknown user)";
     console.log(c.success(`✓ API key saved. Authenticated as ${identity}.`));
     return true;
   } catch (err) {

@@ -18,9 +18,12 @@ import { defineCommand } from "citty";
 import {
   AuthClient,
   isAuthError,
+  loadUserInfo,
   refreshTokens,
   tryResolveCredential,
+  userDisplayName,
   type ResolvedCredential,
+  type StoredUserInfo,
   type UserInfo,
 } from "../../auth/index.js";
 import { getSystemMeta } from "../../telemetry/system.js";
@@ -36,7 +39,19 @@ import {
 interface VerifiedStatus {
   credential: ResolvedCredential;
   user: UserInfo | null;
+  /**
+   * The friendly-display block persisted at login time, when the active
+   * credential is file-sourced and a block is on disk. `null` for
+   * env-sourced credentials (the on-disk block could belong to a
+   * different key) and for pre-this-change credentials files.
+   */
+  persistedUser: StoredUserInfo | null;
   apiError: string | null;
+}
+
+/** True for credentials resolved from the shared file (not env). */
+function isFileSource(source: ResolvedCredential["source"]): boolean {
+  return source === "file_json" || source === "file_legacy";
 }
 
 export default defineCommand({
@@ -130,16 +145,34 @@ async function verify(credential: ResolvedCredential): Promise<VerifiedStatus> {
     // invalidate the old RT on every refresh).
     onUnauthenticatedRefresh: async (rt) => await refreshTokens(rt),
   });
+  const persistedUser = await loadPersistedUser(credential);
   try {
     const user = await client.getCurrentUser(credential);
-    return { credential, user, apiError: null };
+    return { credential, user, persistedUser, apiError: null };
   } catch (err) {
     if (!isAuthError(err)) throw err;
     return {
       credential,
       user: null,
+      persistedUser,
       apiError: err instanceof Error ? err.message : String(err),
     };
+  }
+}
+
+/**
+ * Load the persisted friendly-display block, but only for file-sourced
+ * credentials. An env credential (`HEYGEN_API_KEY` / `HYPERFRAMES_API_KEY`)
+ * could belong to a different key than the on-disk block, so surfacing
+ * that block would mislabel the active account. A read error is swallowed
+ * — the block is purely cosmetic and must never break `auth status`.
+ */
+async function loadPersistedUser(credential: ResolvedCredential): Promise<StoredUserInfo | null> {
+  if (!isFileSource(credential.source)) return null;
+  try {
+    return await loadUserInfo();
+  } catch {
+    return null;
   }
 }
 
@@ -149,6 +182,10 @@ function printJsonStatus(s: VerifiedStatus): void {
     source: s.credential.source,
     type: s.credential.type,
     user: s.user,
+    // The friendly-display block persisted at login (file-sourced creds
+    // only). Strictly additive — the live `user` field above is
+    // unchanged. Lets callers read identity offline / on an API blip.
+    persisted_user: persistedUserJson(s.persistedUser),
     api_error: s.apiError,
   };
   if (s.credential.type === "oauth") {
@@ -157,6 +194,24 @@ function printJsonStatus(s: VerifiedStatus): void {
     payload["scope"] = s.credential.scope ?? null;
   }
   console.log(JSON.stringify(payload, null, 2));
+}
+
+/**
+ * Shape the persisted block for JSON: the four optional fields plus the
+ * resolved `display_name` (email > "first last" > username). Returns
+ * `null` when nothing is persisted so the field is an explicit null
+ * rather than an empty object.
+ */
+function persistedUserJson(u: StoredUserInfo | null): Record<string, unknown> | null {
+  if (!u) return null;
+  const display = userDisplayName(u);
+  return {
+    email: u.email ?? null,
+    first_name: u.first_name ?? null,
+    last_name: u.last_name ?? null,
+    username: u.username ?? null,
+    display_name: display ?? null,
+  };
 }
 
 function printHumanStatus(s: VerifiedStatus): void {
@@ -173,6 +228,10 @@ function collectStatusRows(s: VerifiedStatus): [string, string][] {
   if (s.credential.type === "oauth") rows.push(...oauthRows(s.credential));
   if (s.apiError) {
     rows.push([c.error("API check failed:"), s.apiError]);
+    // Fall back to the persisted identity so the user still sees who
+    // they're logged in as when the live probe is unreachable.
+    const cached = s.persistedUser && userDisplayName(s.persistedUser);
+    if (cached) rows.push(["Account:", `${cached} ${c.dim("(cached)")}`]);
     return rows;
   }
   if (s.user) rows.push(...identityRows(s.user));

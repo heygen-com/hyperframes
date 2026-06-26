@@ -1,3 +1,4 @@
+import { promises as fs } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setupTempAuthEnv } from "./_test-utils.js";
 import { isAuthError } from "./errors.js";
@@ -295,6 +296,32 @@ describe("auth/oauth", () => {
       expect(credentials.api_key).toBe("hg_keep_me");
       expect(credentials.oauth?.access_token).toBe("new_at");
       expect(credentials.oauth?.refresh_token).toBe("new_rt");
+    });
+
+    it("preserves the user block AND unknown/foreign keys across fresh login", async () => {
+      // The OAuth write path must not drop co-located data the other CLI
+      // (or a prior login) wrote. Seed a user block plus a future key,
+      // then log in fresh — both must survive the OAuth-block overwrite.
+      const path = (await import("./paths.js")).credentialPath();
+      await fs.writeFile(
+        path,
+        JSON.stringify({
+          oauth: { access_token: "old_at" },
+          user: { email: "jane@example.com", username: "jdoe" },
+          future_field: { keep: true },
+        }),
+        { mode: 0o600 },
+      );
+      const fetchImpl = tokenFetch({ access_token: "new_at", expires_in: 3600 });
+      await startAuthorizationCodeFlow({ fetchImpl });
+
+      const { credentials } = await readStore();
+      expect(credentials.oauth?.access_token).toBe("new_at");
+      expect(credentials.user).toEqual({ email: "jane@example.com", username: "jdoe" });
+
+      // The unknown key is on a hidden slot — assert via the raw file.
+      const onDisk = JSON.parse(await fs.readFile(path, "utf8"));
+      expect(onDisk.future_field).toEqual({ keep: true });
     });
   });
 });

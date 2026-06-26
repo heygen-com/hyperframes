@@ -173,12 +173,143 @@ describe("auth/store", () => {
     await expect(readStore(path)).rejects.toSatisfy((err) => isAuthError(err));
   });
 
-  it("drops unknown top-level keys", async () => {
+  it("exposes only the typed surface for known keys (unknown keys hidden from callers)", async () => {
+    // The typed `credentials` view shows only the modelled keys —
+    // unknown/foreign keys are captured in a hidden (symbol-keyed)
+    // passthrough slot, not the enumerable surface, so callers can't
+    // accidentally read them. Round-trip preservation is covered below.
     await fs.writeFile(path, JSON.stringify({ api_key: "hg_x", future_field: { stuff: 1 } }), {
       mode: 0o600,
     });
     const result = await readStore(path);
-    expect(result.credentials).toEqual({ api_key: "hg_x" });
+    expect(Object.keys(result.credentials)).toEqual(["api_key"]);
+    expect(result.credentials.api_key).toBe("hg_x");
+  });
+
+  // --- Cross-CLI forward compatibility: unknown-field preservation. ---
+  // The credentials file is SHARED with the Go `heygen` CLI. If this CLI
+  // strips keys it doesn't model when it writes the file back, it
+  // silently destroys the other CLI's data (and vice versa). The writer
+  // MUST round-trip unknown fields untouched.
+
+  it("preserves an unknown TOP-LEVEL key across a read → write round-trip", async () => {
+    // Simulate a file another CLI version wrote with a future key.
+    await fs.writeFile(
+      path,
+      JSON.stringify({ api_key: "hg_x", future_field: { nested: [1, 2], flag: true } }),
+      { mode: 0o600 },
+    );
+    // Read it, then write back a typed update (here: just the api_key it
+    // surfaced). The unknown key must survive.
+    const { credentials } = await readStore(path);
+    await writeStore(credentials, path);
+
+    const onDisk = JSON.parse(await fs.readFile(path, "utf8"));
+    expect(onDisk.api_key).toBe("hg_x");
+    expect(onDisk.future_field).toEqual({ nested: [1, 2], flag: true });
+  });
+
+  it("preserves the heygen-cli `user` block when this CLI rewrites only the credential", async () => {
+    // The exact cross-CLI data-loss scenario: heygen-cli wrote a `user`
+    // block; hyperframes-cli updates the api_key and must not drop it.
+    await fs.writeFile(
+      path,
+      JSON.stringify({
+        api_key: "hg_old",
+        user: { email: "jane@example.com", first_name: "Jane", last_name: "Doe", username: "jdoe" },
+      }),
+      { mode: 0o600 },
+    );
+    const { credentials } = await readStore(path);
+    credentials.api_key = "hg_new";
+    await writeStore(credentials, path);
+
+    const onDisk = JSON.parse(await fs.readFile(path, "utf8"));
+    expect(onDisk.api_key).toBe("hg_new");
+    expect(onDisk.user).toEqual({
+      email: "jane@example.com",
+      first_name: "Jane",
+      last_name: "Doe",
+      username: "jdoe",
+    });
+  });
+
+  it("preserves an unknown key INSIDE the oauth sub-object", async () => {
+    await fs.writeFile(
+      path,
+      JSON.stringify({
+        oauth: { access_token: "at_1", id_token: "future_id_token_value" },
+      }),
+      { mode: 0o600 },
+    );
+    const { credentials } = await readStore(path);
+    await writeStore(credentials, path);
+
+    const onDisk = JSON.parse(await fs.readFile(path, "utf8"));
+    expect(onDisk.oauth.access_token).toBe("at_1");
+    expect(onDisk.oauth.id_token).toBe("future_id_token_value");
+  });
+
+  it("preserves an unknown key INSIDE the user sub-object", async () => {
+    await fs.writeFile(
+      path,
+      JSON.stringify({
+        api_key: "hg_x",
+        user: { email: "u@example.com", avatar_url: "https://cdn/x.png" },
+      }),
+      { mode: 0o600 },
+    );
+    const { credentials } = await readStore(path);
+    await writeStore(credentials, path);
+
+    const onDisk = JSON.parse(await fs.readFile(path, "utf8"));
+    expect(onDisk.user.email).toBe("u@example.com");
+    expect(onDisk.user.avatar_url).toBe("https://cdn/x.png");
+  });
+
+  it("round-trips the user block (schema + omitempty: empty fields are not written)", async () => {
+    const creds: Credentials = {
+      api_key: "hg_x",
+      user: { email: "u@example.com", username: "u" },
+    };
+    await writeStore(creds, path);
+    const result = await readStore(path);
+    expect(result.credentials.user).toEqual({ email: "u@example.com", username: "u" });
+
+    // omitempty: only the populated fields appear on disk — no empty
+    // first_name / last_name strings littering the file.
+    const onDisk = JSON.parse(await fs.readFile(path, "utf8"));
+    expect(onDisk.user).toEqual({ email: "u@example.com", username: "u" });
+    expect(Object.keys(onDisk.user)).toEqual(["email", "username"]);
+  });
+
+  it('omits an all-empty user block entirely (no `"user": {}` litter)', async () => {
+    await writeStore({ api_key: "hg_x", user: {} }, path);
+    const onDisk = JSON.parse(await fs.readFile(path, "utf8"));
+    expect(onDisk.user).toBeUndefined();
+    expect(onDisk.api_key).toBe("hg_x");
+  });
+
+  it("backwards-compat: a legacy file WITHOUT a user block parses with user undefined", async () => {
+    await fs.writeFile(path, JSON.stringify({ api_key: "hg_legacy" }), { mode: 0o600 });
+    const result = await readStore(path);
+    expect(result.source).toBe("file_json");
+    expect(result.credentials.api_key).toBe("hg_legacy");
+    expect(result.credentials.user).toBeUndefined();
+  });
+
+  it("ignores a malformed user sub-field rather than rejecting the whole file", async () => {
+    // The user block is additive metadata — a junk sub-field must never
+    // block resolving a perfectly good api_key. Non-string fields are
+    // dropped; the credential survives.
+    await fs.writeFile(
+      path,
+      JSON.stringify({ api_key: "hg_x", user: { email: "u@example.com", first_name: 12345 } }),
+      { mode: 0o600 },
+    );
+    const result = await readStore(path);
+    expect(result.credentials.api_key).toBe("hg_x");
+    expect(result.credentials.user).toEqual({ email: "u@example.com" });
   });
 
   it("deleteStore is idempotent", async () => {
@@ -200,6 +331,25 @@ describe("auth/store", () => {
     await writeStore({ oauth: { access_token: "only" } }, path);
     await clearOAuth(path);
     await expect(fs.access(path)).rejects.toThrow();
+  });
+
+  it("clearOAuth keeps the user block (and unknown keys) when an api_key survives", async () => {
+    await fs.writeFile(
+      path,
+      JSON.stringify({
+        api_key: "hg_keep",
+        oauth: { access_token: "drop_me" },
+        user: { email: "u@example.com" },
+        future_field: 1,
+      }),
+      { mode: 0o600 },
+    );
+    await clearOAuth(path);
+    const onDisk = JSON.parse(await fs.readFile(path, "utf8"));
+    expect(onDisk.oauth).toBeUndefined();
+    expect(onDisk.api_key).toBe("hg_keep");
+    expect(onDisk.user).toEqual({ email: "u@example.com" });
+    expect(onDisk.future_field).toBe(1);
   });
 
   it("clearOAuth is a no-op when file is absent", async () => {
