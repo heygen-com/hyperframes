@@ -12,6 +12,7 @@ import { useAskAgentModal } from "./useAskAgentModal";
 import { useDomSelection } from "./useDomSelection";
 import { usePreviewInteraction } from "./usePreviewInteraction";
 import { useDomEditCommits } from "./useDomEditCommits";
+import { useGroupCommits } from "./useGroupCommits";
 import { useGsapScriptCommits } from "./useGsapScriptCommits";
 import { useGsapCacheVersion } from "./useGsapTweenCache";
 import { useDomEditWiring } from "./useDomEditWiring";
@@ -114,7 +115,10 @@ export function useDomEditSession({
     domEditSelection,
     domEditGroupSelections,
     domEditHoverSelection,
+    activeGroupElement,
     domEditSelectionRef,
+    domEditGroupSelectionsRef,
+    setActiveGroupElement,
     applyDomSelection,
     clearDomSelection,
     buildDomSelectionFromTarget,
@@ -279,6 +283,42 @@ export function useDomEditSession({
       : undefined,
   });
 
+  // ── Element groups (wrap selected elements in a data-hf-group div) ──
+
+  const { groupSelection, ungroupSelection } = useGroupCommits({
+    activeCompPath,
+    showToast,
+    writeProjectFile,
+    domEditSaveTimestampRef,
+    editHistory,
+    projectIdRef,
+    reloadPreview,
+    clearDomSelection,
+    forceReloadSdkSession,
+  });
+
+  const handleGroupSelection = useCallback(() => {
+    const group = domEditGroupSelectionsRef.current;
+    const single = domEditSelectionRef.current;
+    const members = group.length > 0 ? group : single ? [single] : [];
+    if (members.length < 2) {
+      showToast("Select at least 2 elements to group", "info");
+      return;
+    }
+    void groupSelection(members);
+  }, [domEditGroupSelectionsRef, domEditSelectionRef, groupSelection, showToast]);
+
+  const handleUngroupSelection = useCallback(() => {
+    const sel = domEditSelectionRef.current;
+    if (!sel?.element.hasAttribute("data-hf-group")) {
+      showToast("Select a group to ungroup", "info");
+      return;
+    }
+    // Dissolving the group exits any drill-in (the wrapper is about to vanish).
+    setActiveGroupElement(null);
+    void ungroupSelection(sel);
+  }, [domEditSelectionRef, ungroupSelection, setActiveGroupElement, showToast]);
+
   // ── Wiring: selection sync, GSAP cache, preview sync, selection handlers ──
 
   const {
@@ -360,6 +400,7 @@ export function useDomEditSession({
     resolveDomSelectionFromPreviewPoint,
     resolveAllDomSelectionsFromPreviewPoint,
     updateDomEditHoverSelection,
+    setActiveGroupElement,
     onClickToSource,
   });
 
@@ -435,6 +476,7 @@ export function useDomEditSession({
     domEditSelection,
     domEditGroupSelections,
     domEditHoverSelection,
+    activeGroupElement,
     agentModalOpen,
     agentModalAnchorPoint,
     copiedAgentPrompt,
@@ -467,6 +509,9 @@ export function useDomEditSession({
     handleBlockedDomMove,
     handleDomManualDragStart,
     handleDomEditElementDelete,
+    handleGroupSelection,
+    handleUngroupSelection,
+    setActiveGroupElement,
     buildDomSelectionFromTarget,
     buildDomSelectionForTimelineElement,
     updateDomEditHoverSelection,

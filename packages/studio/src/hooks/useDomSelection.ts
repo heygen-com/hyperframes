@@ -48,13 +48,16 @@ export interface UseDomSelectionReturn {
   domEditSelection: DomEditSelection | null;
   domEditGroupSelections: DomEditSelection[];
   domEditHoverSelection: DomEditSelection | null;
+  activeGroupElement: HTMLElement | null;
   // Refs
   domEditSelectionRef: React.MutableRefObject<DomEditSelection | null>;
   domEditGroupSelectionsRef: React.MutableRefObject<DomEditSelection[]>;
   domEditHoverSelectionRef: React.MutableRefObject<DomEditSelection | null>;
+  activeGroupElementRef: React.MutableRefObject<HTMLElement | null>;
   // State setters (needed by useDomEditSession for agent-prompt reset flows)
   setDomEditSelection: React.Dispatch<React.SetStateAction<DomEditSelection | null>>;
   setDomEditGroupSelections: React.Dispatch<React.SetStateAction<DomEditSelection[]>>;
+  setActiveGroupElement: (el: HTMLElement | null) => void;
   // Callbacks
   applyDomSelection: (
     selection: DomEditSelection | null,
@@ -67,12 +70,20 @@ export interface UseDomSelectionReturn {
   clearDomSelection: () => void;
   buildDomSelectionFromTarget: (
     target: HTMLElement,
-    options?: { preferClipAncestor?: boolean },
+    options?: {
+      preferClipAncestor?: boolean;
+      skipSourceProbe?: boolean;
+      activeGroupElement?: HTMLElement | null;
+    },
   ) => Promise<DomEditSelection | null>;
   resolveDomSelectionFromPreviewPoint: (
     clientX: number,
     clientY: number,
-    options?: { preferClipAncestor?: boolean },
+    options?: {
+      preferClipAncestor?: boolean;
+      skipSourceProbe?: boolean;
+      activeGroupElement?: HTMLElement | null;
+    },
   ) => Promise<DomEditSelection | null>;
   resolveAllDomSelectionsFromPreviewPoint: (
     clientX: number,
@@ -110,17 +121,21 @@ export function useDomSelection({
   const [domEditSelection, setDomEditSelection] = useState<DomEditSelection | null>(null);
   const [domEditGroupSelections, setDomEditGroupSelections] = useState<DomEditSelection[]>([]);
   const [domEditHoverSelection, setDomEditHoverSelection] = useState<DomEditSelection | null>(null);
+  // The data-hf-group wrapper the user has drilled into (null = top level).
+  const [activeGroupElement, setActiveGroupElementState] = useState<HTMLElement | null>(null);
 
   // ── Refs ──
 
   const domEditSelectionRef = useRef<DomEditSelection | null>(domEditSelection);
   const domEditGroupSelectionsRef = useRef<DomEditSelection[]>(domEditGroupSelections);
   const domEditHoverSelectionRef = useRef<DomEditSelection | null>(domEditHoverSelection);
+  const activeGroupElementRef = useRef<HTMLElement | null>(activeGroupElement);
 
   // Keep refs in sync with state
   domEditSelectionRef.current = domEditSelection;
   domEditGroupSelectionsRef.current = domEditGroupSelections;
   domEditHoverSelectionRef.current = domEditHoverSelection;
+  activeGroupElementRef.current = activeGroupElement;
 
   // ── Callbacks ──
 
@@ -178,6 +193,14 @@ export function useDomSelection({
       setDomEditSelection(nextSelection);
       setDomEditGroupSelections(nextGroup);
 
+      // Selecting something outside the drilled-into group exits the drill-in, so
+      // a later click on the group selects it as a unit again (non-sticky drill-in).
+      const activeGroup = activeGroupElementRef.current;
+      if (activeGroup && nextSelection && !activeGroup.contains(nextSelection.element)) {
+        activeGroupElementRef.current = null;
+        setActiveGroupElementState(null);
+      }
+
       if (nextSelection) {
         if (options?.revealPanel !== false) {
           setRightCollapsed(false);
@@ -203,16 +226,36 @@ export function useDomSelection({
     applyDomSelection(null, { revealPanel: false });
   }, [applyDomSelection]);
 
+  // Drill into / out of a group. Changing scope clears the current selection so
+  // the user isn't left with an out-of-scope element selected.
+  const setActiveGroupElement = useCallback(
+    (el: HTMLElement | null) => {
+      setActiveGroupElementState(el);
+      applyDomSelection(null, { revealPanel: false });
+    },
+    [applyDomSelection],
+  );
+
   const buildDomSelectionFromTarget = useCallback(
     (
       target: HTMLElement,
-      options?: { preferClipAncestor?: boolean; skipSourceProbe?: boolean },
+      options?: {
+        preferClipAncestor?: boolean;
+        skipSourceProbe?: boolean;
+        // Override the drill-in scope (used by canvas double-click to resolve the
+        // child inside a group before the activeGroupElement state has re-rendered).
+        activeGroupElement?: HTMLElement | null;
+      },
     ) => {
       return resolveDomEditSelection(target, {
         activeCompositionPath: activeCompPath,
         isMasterView,
         preferClipAncestor: options?.preferClipAncestor,
         skipSourceProbe: options?.skipSourceProbe,
+        activeGroupElement:
+          options && "activeGroupElement" in options
+            ? options.activeGroupElement
+            : activeGroupElementRef.current,
         projectId,
       });
     },
@@ -224,7 +267,11 @@ export function useDomSelection({
     async (
       clientX: number,
       clientY: number,
-      options?: { preferClipAncestor?: boolean; skipSourceProbe?: boolean },
+      options?: {
+        preferClipAncestor?: boolean;
+        skipSourceProbe?: boolean;
+        activeGroupElement?: HTMLElement | null;
+      },
     ) => {
       const iframe = previewIframeRef.current;
       if (!iframe || captionEditMode) return null;
@@ -235,10 +282,19 @@ export function useDomSelection({
       }
       const target = getPreviewTargetFromPointer(iframe, clientX, clientY, activeCompPath);
       if (!target) return null;
-      return buildDomSelectionFromTarget(target, {
-        preferClipAncestor: options?.preferClipAncestor,
-        skipSourceProbe: options?.skipSourceProbe,
-      });
+      return buildDomSelectionFromTarget(
+        target,
+        options && "activeGroupElement" in options
+          ? {
+              preferClipAncestor: options.preferClipAncestor,
+              skipSourceProbe: options.skipSourceProbe,
+              activeGroupElement: options.activeGroupElement,
+            }
+          : {
+              preferClipAncestor: options?.preferClipAncestor,
+              skipSourceProbe: options?.skipSourceProbe,
+            },
+      );
     },
     [activeCompPath, buildDomSelectionFromTarget, captionEditMode, previewIframeRef],
   );
@@ -445,7 +501,12 @@ export function useDomSelection({
           if (!domEditSelectionInGroup(nextGroup, s)) nextGroup = [...nextGroup, s];
         }
       } else {
-        nextGroup = selections;
+        // Dedupe by target: under select-as-unit several marquee'd members collapse
+        // to the same group, which must count as one selection, not many duplicates.
+        nextGroup = [];
+        for (const s of selections) {
+          if (!domEditSelectionInGroup(nextGroup, s)) nextGroup.push(s);
+        }
       }
       const nextSelection = additive && current ? current : selections[0];
       domEditSelectionRef.current = nextSelection;
@@ -478,13 +539,16 @@ export function useDomSelection({
     domEditSelection,
     domEditGroupSelections,
     domEditHoverSelection,
+    activeGroupElement,
     // Refs
     domEditSelectionRef,
     domEditGroupSelectionsRef,
     domEditHoverSelectionRef,
+    activeGroupElementRef,
     // State setters
     setDomEditSelection,
     setDomEditGroupSelections,
+    setActiveGroupElement,
     // Callbacks
     applyDomSelection,
     clearDomSelection,

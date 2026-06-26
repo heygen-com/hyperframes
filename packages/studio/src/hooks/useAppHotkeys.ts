@@ -117,6 +117,10 @@ interface UseAppHotkeysParams {
   onDeleteSelectedKeyframes: () => void;
   onAfterUndoRedo?: () => void;
   onToggleRecording?: () => void;
+  /** Group the current multi-selection into a data-hf-group wrapper (⌘G). */
+  onGroupSelection?: () => void;
+  /** Ungroup the selected group wrapper (⌘⇧G). */
+  onUngroupSelection?: () => void;
   /** Active composition path — used to decide whether undo/redo must resync the SDK session. */
   activeCompPath?: string | null;
   /**
@@ -142,6 +146,8 @@ interface HotkeyCallbacks {
   onResetKeyframes: () => boolean;
   onDeleteSelectedKeyframes: () => void;
   onToggleRecording?: () => void;
+  onGroupSelection?: () => void;
+  onUngroupSelection?: () => void;
   leftSidebarRef: React.RefObject<LeftSidebarHandle | null>;
   domEditSelectionRef: React.MutableRefObject<DomEditSelection | null>;
   showToast: (message: string, tone?: "error" | "info") => void;
@@ -166,6 +172,13 @@ function dispatchModifierKey(event: KeyboardEvent, key: string, cb: HotkeyCallba
   if (event.key === "2") {
     event.preventDefault();
     cb.leftSidebarRef.current?.selectTab("assets");
+    return true;
+  }
+
+  if (key === "g" && !event.altKey && !isEditableTarget(event.target)) {
+    event.preventDefault();
+    if (event.shiftKey) cb.onUngroupSelection?.();
+    else cb.onGroupSelection?.();
     return true;
   }
 
@@ -310,6 +323,8 @@ export function useAppHotkeys({
   onDeleteSelectedKeyframes,
   onAfterUndoRedo,
   onToggleRecording,
+  onGroupSelection,
+  onUngroupSelection,
   activeCompPath,
   forceReloadSdkSession,
 }: UseAppHotkeysParams) {
@@ -403,6 +418,8 @@ export function useAppHotkeys({
     onResetKeyframes,
     onDeleteSelectedKeyframes,
     onToggleRecording,
+    onGroupSelection,
+    onUngroupSelection,
     leftSidebarRef,
     domEditSelectionRef,
     showToast,

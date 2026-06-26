@@ -20,13 +20,19 @@ export interface UsePreviewInteractionParams {
   resolveDomSelectionFromPreviewPoint: (
     clientX: number,
     clientY: number,
-    options?: { preferClipAncestor?: boolean; skipSourceProbe?: boolean },
+    options?: {
+      preferClipAncestor?: boolean;
+      skipSourceProbe?: boolean;
+      activeGroupElement?: HTMLElement | null;
+    },
   ) => Promise<DomEditSelection | null>;
   resolveAllDomSelectionsFromPreviewPoint: (
     clientX: number,
     clientY: number,
   ) => Promise<DomEditSelection[]>;
   updateDomEditHoverSelection: (selection: DomEditSelection | null) => void;
+  /** Drill into a group (double-click on the canvas) so its children become selectable. */
+  setActiveGroupElement: (el: HTMLElement | null) => void;
 
   onClickToSource?: (selection: DomEditSelection) => void;
 }
@@ -53,6 +59,7 @@ export function usePreviewInteraction({
   resolveDomSelectionFromPreviewPoint,
   resolveAllDomSelectionsFromPreviewPoint,
   updateDomEditHoverSelection,
+  setActiveGroupElement,
   onClickToSource,
 }: UsePreviewInteractionParams) {
   const cycleRef = useRef<ClickCycleState | null>(null);
@@ -61,6 +68,24 @@ export function usePreviewInteraction({
     // fallow-ignore-next-line complexity
     async (e: React.MouseEvent<HTMLDivElement>, options?: { preferClipAncestor?: boolean }) => {
       if (!STUDIO_PREVIEW_SELECTION_ENABLED || captionEditMode || compositionLoading) return;
+
+      // Double-click a group → drill into it and select the child under the
+      // pointer (resolve with the group as the explicit drill-in scope, since the
+      // activeGroupElement state hasn't re-rendered yet within this handler).
+      if (e.detail >= 2 && !e.shiftKey) {
+        const hit = await resolveDomSelectionFromPreviewPoint(e.clientX, e.clientY);
+        if (hit?.element.hasAttribute("data-hf-group")) {
+          e.preventDefault();
+          e.stopPropagation();
+          cycleRef.current = null;
+          setActiveGroupElement(hit.element);
+          const child = await resolveDomSelectionFromPreviewPoint(e.clientX, e.clientY, {
+            activeGroupElement: hit.element,
+          });
+          applyDomSelection(child ?? hit);
+          return;
+        }
+      }
 
       const now = Date.now();
       const prev = cycleRef.current;
@@ -125,6 +150,7 @@ export function usePreviewInteraction({
       onClickToSource,
       resolveAllDomSelectionsFromPreviewPoint,
       resolveDomSelectionFromPreviewPoint,
+      setActiveGroupElement,
     ],
   );
 

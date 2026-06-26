@@ -1,5 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { Eye, Layers, Move, X } from "../../icons/SystemIcons";
+import { Eye, Layers, Move } from "../../icons/SystemIcons";
+import { InspectorHeaderActions } from "./InspectorHeaderActions";
 import { useStudioShellContext } from "../../contexts/StudioContext";
 import { readStudioBoxSize, readStudioPathOffset, readStudioRotation } from "./manualEdits";
 import {
@@ -53,6 +54,7 @@ export const PropertyPanel = memo(function PropertyPanel({
   multiSelectCount = 0,
   copiedAgentPrompt: _copiedAgentPrompt,
   onClearSelection,
+  onUngroup,
   onSetStyle,
   onSetAttribute,
   onSetAttributeLive,
@@ -295,38 +297,13 @@ export const PropertyPanel = memo(function PropertyPanel({
             </div>
             <div className="mt-0.5 truncate text-[11px] text-neutral-500">{sourceLabel}</div>
           </div>
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={handleCopyElementInfo}
-              className={`flex h-6 w-6 items-center justify-center rounded transition-colors ${
-                clipboardCopied
-                  ? "text-studio-accent"
-                  : "text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300"
-              }`}
-              title={clipboardCopied ? "Copied!" : "Copy element info to clipboard"}
-            >
-              <svg
-                width="13"
-                height="13"
-                viewBox="0 0 16 16"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-              >
-                <rect x="5" y="5" width="9" height="9" rx="1.5" />
-                <path d="M11 5V3.5A1.5 1.5 0 009.5 2h-6A1.5 1.5 0 002 3.5v6A1.5 1.5 0 003.5 11H5" />
-              </svg>
-            </button>
-            <button
-              type="button"
-              aria-label="Clear selection"
-              onClick={onClearSelection}
-              className="flex h-6 w-6 items-center justify-center rounded text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-300"
-            >
-              <X size={13} />
-            </button>
-          </div>
+          <InspectorHeaderActions
+            element={element}
+            copied={clipboardCopied}
+            onCopy={handleCopyElementInfo}
+            onClear={onClearSelection}
+            onUngroup={onUngroup}
+          />
         </div>
       </div>
       <div className="flex-1 overflow-y-auto">

@@ -11,6 +11,7 @@ import {
   type ResolvedElementRef,
   groupOverlayItemsEqual,
   isElementVisibleForOverlay,
+  groupAwareOverlayRect,
   rectsEqual,
   resolveElementForOverlay,
   selectionCacheKey,
@@ -155,7 +156,7 @@ export function useDomEditOverlayRects({
         // backgroundless full-bleed scene above a subcomposition), which would wrongly
         // hide the selection box. Occlusion stays for hover, where a false hide is cheap.
         if (el && isElementVisibleForOverlay(el)) {
-          const nextRect = toOverlayRect(overlayEl, iframe, el);
+          const nextRect = groupAwareOverlayRect(overlayEl, iframe, el);
           setOverlayRect(nextRect);
           const descendants = el.querySelectorAll("*");
           if (descendants.length > 0 && descendants.length <= 60) {
@@ -196,9 +197,13 @@ export function useDomEditOverlayRects({
         const liveGroupKeys = new Set<string>();
         for (const groupSelection of group) {
           const key = selectionCacheKey(groupSelection);
+          // Members of the same group collapse to one selection under select-as-unit,
+          // so a multi-select can hold the same group twice — dedupe by key to avoid
+          // duplicate React keys (and a doubled overlay box).
+          if (liveGroupKeys.has(key)) continue;
           liveGroupKeys.add(key);
           const el = resolveGroupElement(doc, groupSelection);
-          const rect = el ? toOverlayRect(overlayEl, iframe, el) : null;
+          const rect = el ? groupAwareOverlayRect(overlayEl, iframe, el) : null;
           if (el && rect)
             nextGroupItems.push({ key, selection: groupSelection, element: el, rect });
         }
@@ -235,7 +240,7 @@ export function useDomEditOverlayRects({
         return;
       }
 
-      setHoverRect(toOverlayRect(overlayEl, iframe, hoverEl));
+      setHoverRect(groupAwareOverlayRect(overlayEl, iframe, hoverEl));
     };
 
     frame = requestAnimationFrame(update);

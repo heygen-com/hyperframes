@@ -59,9 +59,11 @@ export const LayersPanel = memo(function LayersPanel() {
   const currentTime = usePlayerStore((s) => s.currentTime);
   const {
     domEditSelection,
+    activeGroupElement,
     applyDomSelection,
     updateDomEditHoverSelection,
     handleDomZIndexReorderCommit,
+    setActiveGroupElement,
   } = useDomEditContext();
 
   const [layers, setLayers] = useState<DomEditLayerItem[]>([]);
@@ -86,12 +88,16 @@ export const LayersPanel = memo(function LayersPanel() {
       doc.querySelector<HTMLElement>("[data-composition-id]") ?? doc.documentElement ?? null;
     if (!root) return;
 
+    // A preview reload detaches the drilled-into wrapper; exit drill-in if so.
+    if (activeGroupElement && !activeGroupElement.isConnected) setActiveGroupElement(null);
+
     const items = collectDomEditLayerItems(root, {
       activeCompositionPath: activeCompPath,
       isMasterView,
+      activeGroupElement,
     });
     setLayers(sortLayersByZIndex(items));
-  }, [previewIframeRef, activeCompPath, isMasterView]);
+  }, [previewIframeRef, activeCompPath, isMasterView, activeGroupElement, setActiveGroupElement]);
 
   useEffect(() => {
     collectLayers();
@@ -135,9 +141,10 @@ export const LayersPanel = memo(function LayersPanel() {
         activeCompositionPath: activeCompPath,
         isMasterView,
         preferClipAncestor: false,
+        activeGroupElement,
       });
     },
-    [activeCompPath, isMasterView, previewIframeRef],
+    [activeCompPath, isMasterView, previewIframeRef, activeGroupElement],
   );
 
   const seekToLayer = useCallback(
@@ -181,6 +188,19 @@ export const LayersPanel = memo(function LayersPanel() {
       await seekToLayer(layer);
     },
     [resolveSelection, applyDomSelection, seekToLayer],
+  );
+
+  // Double-click a group row → drill into it; any other row → select it.
+  const handleLayerDoubleClick = useCallback(
+    async (layer: DomEditLayerItem) => {
+      const selection = await resolveSelection(layer);
+      if (selection?.element.hasAttribute("data-hf-group")) {
+        setActiveGroupElement(selection.element);
+      } else {
+        await handleSelectLayer(layer);
+      }
+    },
+    [resolveSelection, setActiveGroupElement, handleSelectLayer],
   );
 
   const handleLayerHover = useCallback(
@@ -271,6 +291,18 @@ export const LayersPanel = memo(function LayersPanel() {
         onPointerUp={handleContainerPointerUp}
         onPointerCancel={handleContainerPointerUp}
       >
+        {activeGroupElement && (
+          <button
+            type="button"
+            onClick={() => setActiveGroupElement(null)}
+            className="flex w-full items-center gap-1.5 px-2 py-1 text-left text-[11px] text-panel-text-3 hover:bg-panel-hover/40 hover:text-panel-text-1"
+          >
+            <span aria-hidden="true">←</span>
+            <span className="truncate">
+              {activeGroupElement.getAttribute("data-hf-group") || "Group"}
+            </span>
+          </button>
+        )}
         {visibleLayers.map((layer, index) => {
           const selected = layer.key === selectedKey;
           const isDragged = layer.key === dragKey;
@@ -286,6 +318,7 @@ export const LayersPanel = memo(function LayersPanel() {
               role="button"
               tabIndex={0}
               onClick={() => !dragKey && handleSelectLayer(layer)}
+              onDoubleClick={() => !dragKey && handleLayerDoubleClick(layer)}
               onPointerDown={(e) => handleRowPointerDown(index, e)}
               onPointerEnter={() => !dragKey && handleLayerHover(layer)}
               onKeyDown={(e) => {

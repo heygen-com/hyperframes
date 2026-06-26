@@ -93,6 +93,7 @@ export function StudioRightPanel({
     domEditGroupSelections,
     copiedAgentPrompt,
     clearDomSelection,
+    handleUngroupSelection,
     handleDomStyleCommit,
     handleDomAttributeCommit,
     handleDomAttributeLiveCommit,
@@ -241,6 +242,7 @@ export function StudioRightPanel({
       multiSelectCount={domEditGroupSelections.length}
       copiedAgentPrompt={copiedAgentPrompt}
       onClearSelection={clearDomSelection}
+      onUngroup={handleUngroupSelection}
       onSetStyle={handleDomStyleCommit}
       onSetAttribute={handleDomAttributeCommit}
       onSetAttributeLive={handleDomAttributeLiveCommit}

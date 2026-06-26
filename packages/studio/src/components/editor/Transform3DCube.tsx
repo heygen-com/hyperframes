@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { projectAxes, projectCubeFaces, wrapDeg } from "./transform3dProjection";
 
 export interface CubePose {
@@ -22,80 +22,18 @@ const SENSITIVITY = 0.6; // degrees per pixel of drag
  * Presentational only: emits a live draft pose while dragging and a final pose
  * on release — the parent owns live-previewing and committing to GSAP props.
  */
-// transformPerspective (px) is inversely related to effect strength, with 0 = off.
-// Map a 0..1 slider strength to px and to the cube's weak-perspective projection.
-const STRONG_PX = 200;
-const WEAK_PX = 1600;
-const PX_RANGE = WEAK_PX - STRONG_PX;
-const strengthToPx = (s: number) => (s <= 0.01 ? 0 : Math.round(WEAK_PX - s * PX_RANGE));
-const pxToStrength = (px: number) =>
-  px <= 0
-    ? 0
-    : Math.max(0, Math.min(1, (WEAK_PX - Math.max(STRONG_PX, Math.min(WEAK_PX, px))) / PX_RANGE));
+// transformPerspective (px) drives the cube's weak-perspective projection;
+// 0 = off → flattest (largest projection distance).
 const pxToProjPersp = (px: number) => (px > 0 ? Math.max(2.2, Math.min(14, px / 130)) : 14);
-
-/** Horizontal "perspective strength" slider — left = none, right = dramatic. */
-function PerspectiveSlider({
-  value,
-  onDraft,
-  onCommit,
-}: {
-  value: number;
-  onDraft?: (px: number) => void;
-  onCommit: (px: number) => void;
-}) {
-  const trackRef = useRef<HTMLDivElement | null>(null);
-  const draggingRef = useRef(false);
-  const strength = pxToStrength(value);
-  const fromEvent = (clientX: number) => {
-    const r = trackRef.current?.getBoundingClientRect();
-    if (!r || r.width === 0) return 0;
-    return strengthToPx(Math.max(0, Math.min(1, (clientX - r.left) / r.width)));
-  };
-  return (
-    <div className="flex items-center gap-1.5 px-2 pb-1.5 pt-1">
-      <span className="text-[8px] font-medium uppercase tracking-wide text-neutral-600">Persp</span>
-      <div
-        ref={trackRef}
-        onPointerDown={(e) => {
-          e.currentTarget.setPointerCapture(e.pointerId);
-          draggingRef.current = true;
-          onDraft?.(fromEvent(e.clientX));
-        }}
-        onPointerMove={(e) => {
-          if (draggingRef.current) onDraft?.(fromEvent(e.clientX));
-        }}
-        onPointerUp={(e) => {
-          if (!draggingRef.current) return;
-          draggingRef.current = false;
-          onCommit(fromEvent(e.clientX));
-        }}
-        onPointerCancel={() => {
-          draggingRef.current = false;
-        }}
-        className="relative h-3 flex-1 cursor-ew-resize touch-none"
-      >
-        <div className="absolute top-1/2 h-0.5 w-full -translate-y-1/2 rounded-full bg-neutral-700" />
-        <div
-          className="absolute top-1/2 h-0.5 -translate-y-1/2 rounded-full bg-[#5ff0bf]"
-          style={{ width: `${strength * 100}%` }}
-        />
-        <div
-          className="absolute top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-neutral-900 bg-[#5ff0bf]"
-          style={{ left: `${strength * 100}%` }}
-        />
-      </div>
-    </div>
-  );
-}
 
 export function Transform3DCube({
   pose,
   perspective = 0,
+  z = 0,
   onPoseDraft,
   onPoseCommit,
-  onPerspectiveDraft,
-  onPerspectiveCommit,
+  onDepthDraft,
+  onDepthCommit,
   onRecenter,
   onKeyframe,
   keyframed,
@@ -103,13 +41,16 @@ export function Transform3DCube({
   pose: CubePose;
   /** Element's transformPerspective (px); drives the cube's foreshortening. */
   perspective?: number;
+  /** Element's translateZ (px) — "depth", adjusted by scrolling over the cube. */
+  z?: number;
   /** Fires on every drag move with the in-progress pose (parent live-previews). */
   onPoseDraft?: (pose: CubePose) => void;
   /** Fires once on pointer release with the final pose (commit). */
   onPoseCommit: (pose: CubePose) => void;
-  /** Live + committed perspective (px) from the in-cube slider. */
-  onPerspectiveDraft?: (px: number) => void;
-  onPerspectiveCommit?: (px: number) => void;
+  /** Live depth (translateZ px) during a scroll; parent live-previews it. */
+  onDepthDraft?: (z: number) => void;
+  /** Committed depth (translateZ px) once a scroll burst settles. */
+  onDepthCommit?: (z: number) => void;
   /** Reset to identity orientation. */
   onRecenter?: () => void;
   /** Toggle keyframing the 3D transform (convert the static set → keyframes). */
@@ -118,16 +59,63 @@ export function Transform3DCube({
   keyframed?: boolean;
 }) {
   const [draft, setDraft] = useState<CubePose | null>(null);
+  const [depthDraft, setDepthDraft] = useState<number | null>(null);
   const dragRef = useRef<{ x: number; y: number; pose: CubePose } | null>(null);
   const shown = draft ?? pose;
+  const shownZ = depthDraft ?? z;
+
+  // Scroll over the cube to push the element along Z (depth) — matches the
+  // studio's "scroll = z depth" gesture-recording convention. A non-passive
+  // listener is required so preventDefault can stop the panel from scrolling.
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const depthRef = useRef({ z, onDepthDraft, onDepthCommit });
+  depthRef.current = { z, onDepthDraft, onDepthCommit };
+  useEffect(() => {
+    const el = svgRef.current;
+    if (!el) return;
+    let pending: number | null = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const onWheel = (e: WheelEvent) => {
+      const { onDepthCommit: commit, onDepthDraft: draft } = depthRef.current;
+      if (!commit) return;
+      e.preventDefault();
+      // ponytail: 0.25 px of Z per wheel-delta unit (~25px per notch); tune if
+      // it feels too fast/slow. Scroll up (deltaY < 0) pushes toward the viewer.
+      pending = Math.round((pending ?? depthRef.current.z) - e.deltaY * 0.25);
+      draft?.(pending);
+      setDepthDraft(pending); // live-scale the cube while scrolling
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (pending != null) commit(pending);
+        pending = null;
+        setDepthDraft(null); // fall back to the committed z prop
+      }, 160);
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => {
+      el.removeEventListener("wheel", onWheel);
+      if (timer) clearTimeout(timer);
+    };
+  }, []);
+
+  // Depth feedback: the cube scales like the element would — translateZ(z) under
+  // a perspective lens P appears scaled by P/(P-z). Closer (z>0) reads bigger,
+  // farther (z<0) smaller. Fall back to the default lens so depth always reads in
+  // the gizmo even before a perspective is set.
+  const lens = perspective > 0 ? perspective : 800;
+  const depthScale = Math.max(0.4, Math.min(2.2, lens / (lens - shownZ)));
   const projOpts = {
     cx: CX,
     cy: CY,
-    r: RADIUS,
+    r: RADIUS * depthScale,
     persp: pxToProjPersp(perspective),
   };
-  const faces = projectCubeFaces(shown.rotationX, shown.rotationY, shown.rotationZ, projOpts);
-  const axes = projectAxes(shown.rotationX, shown.rotationY, shown.rotationZ, projOpts);
+  // The element lives in CSS's screen-Y-down space; the cube projects Y-up. RotateX
+  // and RotateZ act in planes that contain Y, so they read inverted in the gizmo
+  // unless their sign is flipped — RotateY (X-Z plane) matches as-is. This keeps the
+  // cube's orientation a true mirror of the element.
+  const faces = projectCubeFaces(-shown.rotationX, shown.rotationY, -shown.rotationZ, projOpts);
+  const axes = projectAxes(-shown.rotationX, shown.rotationY, -shown.rotationZ, projOpts);
 
   const onPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -140,10 +128,13 @@ export function Transform3DCube({
     if (!d) return;
     const dx = e.clientX - d.x;
     const dy = e.clientY - d.y;
+    // dy→rotationX and shift dx→rotationZ are negated to match the projection's
+    // sign flip (above), so the cube's response to a drag is unchanged while the
+    // element now rotates in lock-step with it.
     const next: CubePose = e.shiftKey
-      ? { ...d.pose, rotationZ: wrapDeg(d.pose.rotationZ + dx * SENSITIVITY) }
+      ? { ...d.pose, rotationZ: wrapDeg(d.pose.rotationZ - dx * SENSITIVITY) }
       : {
-          rotationX: wrapDeg(d.pose.rotationX - dy * SENSITIVITY),
+          rotationX: wrapDeg(d.pose.rotationX + dy * SENSITIVITY),
           rotationY: wrapDeg(d.pose.rotationY + dx * SENSITIVITY),
           rotationZ: d.pose.rotationZ,
         };
@@ -161,6 +152,7 @@ export function Transform3DCube({
   return (
     <div className="relative overflow-hidden rounded-lg border border-neutral-800 bg-gradient-to-b from-neutral-900 to-neutral-950">
       <svg
+        ref={svgRef}
         viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
         className="block w-full cursor-grab touch-none select-none active:cursor-grabbing"
         style={{ aspectRatio: `${VIEW_W} / ${VIEW_H}` }}
@@ -169,7 +161,7 @@ export function Transform3DCube({
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
         role="slider"
-        aria-label="Drag to rotate in 3D; hold Shift to roll"
+        aria-label="Drag to rotate in 3D; hold Shift to roll; scroll to change depth"
         aria-valuetext={`X ${Math.round(shown.rotationX)}°, Y ${Math.round(
           shown.rotationY,
         )}°, Z ${Math.round(shown.rotationZ)}°`}
@@ -300,13 +292,6 @@ export function Transform3DCube({
             <path d="M6 1.5L10.5 6 6 10.5 1.5 6z" strokeWidth="1.4" strokeLinejoin="round" />
           </svg>
         </button>
-      )}
-      {onPerspectiveCommit && (
-        <PerspectiveSlider
-          value={perspective}
-          onDraft={onPerspectiveDraft}
-          onCommit={onPerspectiveCommit}
-        />
       )}
     </div>
   );

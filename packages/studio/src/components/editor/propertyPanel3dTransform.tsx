@@ -6,6 +6,10 @@ import { KeyframeNavigation } from "./KeyframeNavigation";
 import { formatPxMetricValue, parsePxMetricValue, RESPONSIVE_GRID } from "./propertyPanelHelpers";
 import { Transform3DCube, type CubePose } from "./Transform3DCube";
 
+// Default perspective (px) applied when depth is first set, so translateZ is
+// visible. ~800px is a moderate lens — closer = stronger foreshortening.
+const DEFAULT_DEPTH_PERSPECTIVE = 800;
+
 type KeyframeEntry = Array<{
   percentage: number;
   properties: Record<string, number | string>;
@@ -123,18 +127,36 @@ function Cube3dControl({
         <Transform3DCube
           pose={pose}
           perspective={gsapRuntimeValues.transformPerspective ?? 0}
+          z={gsapRuntimeValues.z ?? 0}
           onPoseDraft={livePreview}
           onPoseCommit={commitPose}
-          onPerspectiveDraft={(px) => onLivePreviewProps?.(element, { transformPerspective: px })}
-          onPerspectiveCommit={(px) =>
-            void onCommitAnimatedProperty(element, "transformPerspective", px)
+          onDepthDraft={(z) =>
+            onLivePreviewProps?.(
+              element,
+              gsapRuntimeValues.transformPerspective
+                ? { z }
+                : { z, transformPerspective: DEFAULT_DEPTH_PERSPECTIVE },
+            )
           }
+          onDepthCommit={(z) => {
+            // translateZ is invisible without a perspective lens — apply a sensible
+            // default the first time depth is set so scrolling visibly moves the
+            // element. The user can still fine-tune via the Perspective field.
+            if (!gsapRuntimeValues.transformPerspective) {
+              void onCommitAnimatedProperty(
+                element,
+                "transformPerspective",
+                DEFAULT_DEPTH_PERSPECTIVE,
+              );
+            }
+            void onCommitAnimatedProperty(element, "z", z);
+          }}
           onRecenter={recenter}
           onKeyframe={onKeyframe}
           keyframed={keyframed}
         />
         <p className="mt-1 text-center text-[9px] leading-snug text-neutral-600">
-          Drag to tilt · Shift-drag to roll
+          Drag to tilt · Shift-drag to roll · Scroll for depth
         </p>
       </div>
     </div>

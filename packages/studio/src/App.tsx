@@ -258,6 +258,8 @@ export function StudioApp() {
     onResetKeyframes: () => resetKeyframesRef.current(),
     onDeleteSelectedKeyframes: () => deleteSelectedKeyframesRef.current(),
     onAfterUndoRedo: () => invalidateGsapCacheRef.current(),
+    onGroupSelection: () => domEditSessionRef.current.handleGroupSelection(),
+    onUngroupSelection: () => domEditSessionRef.current.handleUngroupSelection(),
     activeCompPath,
     forceReloadSdkSession: sdkHandle.forceReload,
     onToggleRecording: STUDIO_KEYFRAMES_ENABLED

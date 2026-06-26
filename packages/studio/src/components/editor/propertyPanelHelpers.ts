@@ -13,6 +13,8 @@ export interface PropertyPanelProps {
   multiSelectCount?: number;
   copiedAgentPrompt: boolean;
   onClearSelection: () => void;
+  /** Dissolve the selected data-hf-group wrapper (shown only for group selections). */
+  onUngroup?: () => void;
   onSetStyle: (prop: string, value: string) => void | Promise<void>;
   onSetAttribute: (attr: string, value: string) => void | Promise<void>;
   onSetAttributeLive: (attr: string, value: string | null) => void | Promise<void>;

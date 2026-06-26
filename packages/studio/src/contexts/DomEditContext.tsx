@@ -31,6 +31,9 @@ export interface DomEditActionsValue extends Pick<
   | "handleBlockedDomMove"
   | "handleDomManualDragStart"
   | "handleDomEditElementDelete"
+  | "handleGroupSelection"
+  | "handleUngroupSelection"
+  | "setActiveGroupElement"
   | "buildDomSelectionFromTarget"
   | "buildDomSelectionForTimelineElement"
   | "updateDomEditHoverSelection"
@@ -72,6 +75,7 @@ export interface DomEditSelectionValue extends Pick<
   | "domEditSelection"
   | "domEditGroupSelections"
   | "domEditHoverSelection"
+  | "activeGroupElement"
   | "domEditSelectionRef"
   | "selectedGsapAnimations"
   | "gsapMultipleTimelines"
@@ -138,6 +142,10 @@ export function DomEditProvider({
     handleBlockedDomMove,
     handleDomManualDragStart,
     handleDomEditElementDelete,
+    handleGroupSelection,
+    handleUngroupSelection,
+    setActiveGroupElement,
+    activeGroupElement,
     buildDomSelectionFromTarget,
     buildDomSelectionForTimelineElement,
     updateDomEditHoverSelection,
@@ -216,6 +224,9 @@ export function DomEditProvider({
       handleBlockedDomMove,
       handleDomManualDragStart,
       handleDomEditElementDelete,
+      handleGroupSelection,
+      handleUngroupSelection,
+      setActiveGroupElement,
       buildDomSelectionFromTarget,
       buildDomSelectionForTimelineElement,
       updateDomEditHoverSelection,
@@ -277,6 +288,9 @@ export function DomEditProvider({
       handleBlockedDomMove,
       handleDomManualDragStart,
       handleDomEditElementDelete,
+      handleGroupSelection,
+      handleUngroupSelection,
+      setActiveGroupElement,
       buildDomSelectionFromTarget,
       buildDomSelectionForTimelineElement,
       updateDomEditHoverSelection,
@@ -319,6 +333,7 @@ export function DomEditProvider({
       domEditSelection,
       domEditGroupSelections,
       domEditHoverSelection,
+      activeGroupElement,
       domEditSelectionRef,
       selectedGsapAnimations,
       gsapMultipleTimelines,
@@ -332,6 +347,7 @@ export function DomEditProvider({
       domEditSelection,
       domEditGroupSelections,
       domEditHoverSelection,
+      activeGroupElement,
       domEditSelectionRef,
       selectedGsapAnimations,
       gsapMultipleTimelines,
