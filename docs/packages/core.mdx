@@ -392,6 +392,8 @@ if (music && voice) {
 }
 ```
 
+To affect preview and render, pass the real DOM media elements as the tracks **and** the composition's captured GSAP timeline — those ramps are probed into the same volume envelope as hand-authored fades. Plain timing objects (`{ start, duration }`) and the returned keyframe array are for computing ducking offline (tests, custom pipelines); on their own they do not influence playback. `duck` writes its ramps in composition time, so it works the same for tracks placed at a non-zero `data-start`.
+
 ## Frame Adapters
 
 The core package defines the [Frame Adapter](/concepts/frame-adapters) interface and provides the built-in GSAP adapter:

@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { readElementPlaybackRate, refreshRuntimeMediaCache, syncRuntimeMedia } from "./media";
 import type { RuntimeMediaClip } from "./media";
+import { duck } from "./audioDucking";
+import { interpolateVolumeGain, normaliseEnvelope } from "./mediaVolumeEnvelope";
 
 function createVideo(attrs: Record<string, string>): HTMLVideoElement {
   const el = document.createElement("video");
@@ -942,5 +944,62 @@ describe("syncRuntimeMedia", () => {
       userMuted: false,
     });
     expect(clip.el.muted).toBe(true);
+  });
+
+  describe("volume keyframes (preview/render parity)", () => {
+    // Regression for the duck()/probe parity bug: probed keyframes carry ABSOLUTE
+    // composition-time stamps, and the renderer normalises them by the track start
+    // before baking, so its envelope lookup is shift-invariant in composition time.
+    // Preview must look the envelope up at absolute composition time too. The
+    // earlier code interpolated absolute keyframes at the track-relative `relTime`,
+    // which missed the duck entirely for any track with a non-zero data-start.
+    const baseVolume = 1;
+    // Music at comp-time 5s..13s, voice at 6s..7s → duck keyframes around
+    // 5.75 / 6 / 7 / 7.25 (all ABSOLUTE composition seconds).
+    const keyframes = duck(
+      { start: 5, duration: 8, volume: baseVolume },
+      { start: 6, duration: 1 },
+      {
+        amount: "-12dB",
+        fade: 0.25,
+      },
+    );
+
+    // The renderer's basis: normalise by trackStart, then look up in
+    // track-relative seconds. Equivalent (by shift-invariance) to interpolating
+    // the raw absolute keyframes at absolute composition time, which is what the
+    // fixed preview path now does.
+    const renderGainAt = (compTime: number): number =>
+      interpolateVolumeGain(normaliseEnvelope(keyframes, 5, baseVolume), compTime - 5);
+
+    it("ducks during voice overlap on a non-zero data-start track", () => {
+      const clip = createMockClip({ start: 5, end: 13, volume: baseVolume });
+      clip.volumeKeyframes = keyframes;
+      // Middle of the duck window (comp-time 6.5s). The buggy relTime lookup
+      // (relTime = 1.5) sampled before the first absolute keyframe (5.75) and
+      // returned the un-ducked base volume; the fixed path ducks here.
+      syncRuntimeMedia({ clips: [clip], timeSeconds: 6.5, playing: true, playbackRate: 1 });
+      expect(clip.el.volume).toBeCloseTo(0.251189, 5);
+      expect(clip.el.volume).toBeCloseTo(renderGainAt(6.5), 6);
+      expect(clip.el.volume).toBeLessThan(baseVolume); // would be 1.0 under the bug
+    });
+
+    it("holds base volume before the duck ramp begins", () => {
+      const clip = createMockClip({ start: 5, end: 13, volume: baseVolume });
+      clip.volumeKeyframes = keyframes;
+      // Comp-time 5.2s — the clip is active but the ramp (5.75s) has not started.
+      syncRuntimeMedia({ clips: [clip], timeSeconds: 5.2, playing: true, playbackRate: 1 });
+      expect(clip.el.volume).toBeCloseTo(baseVolume, 5);
+      expect(clip.el.volume).toBeCloseTo(renderGainAt(5.2), 6);
+    });
+
+    it("matches the renderer envelope across the active window", () => {
+      const clip = createMockClip({ start: 5, end: 13, volume: baseVolume });
+      clip.volumeKeyframes = keyframes;
+      for (const compTime of [5.0, 5.75, 6.0, 6.5, 7.0, 7.25, 8.0]) {
+        syncRuntimeMedia({ clips: [clip], timeSeconds: compTime, playing: true, playbackRate: 1 });
+        expect(clip.el.volume).toBeCloseTo(renderGainAt(compTime), 6);
+      }
+    });
   });
 });
