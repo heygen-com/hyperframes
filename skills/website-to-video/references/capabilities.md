@@ -667,7 +667,7 @@ Control bridge actions: play, pause, seek, set-muted, set-playback-rate, enable-
 | ------------------------- | ----------------------------------------------------------------------- |
 | hyperframes               | Core framework skill (composition authoring)                            |
 | hyperframes-cli           | All CLI commands as an agent skill                                      |
-| hyperframes-media         | Media workflows (TTS, transcribe, captions integration)                 |
+| media-use                 | Media workflows (TTS, transcribe, captions integration)                 |
 | hyperframes-registry      | Installing blocks/components                                            |
 | hyperframes-contrast      | WCAG audit (scripts/contrast-report.mjs)                                |
 | hyperframes-animation-map | Per-tween bbox + flags report                                           |

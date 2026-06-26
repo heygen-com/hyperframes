@@ -56,7 +56,7 @@ Cross-cutting rules that hold for every command:
 
 - **Tailwind projects** (`init --tailwind`) → use `hyperframes-core` (Tailwind reference) before editing classes or theme tokens.
 - **Registry blocks/components** (`hyperframes add`, `hyperframes catalog`) → use `hyperframes-registry` for install paths, sub-composition wiring, and snippet merging.
-- **Asset preprocessing** (`tts`, `transcribe`, `remove-background`) → use `hyperframes-media` for voice selection, Whisper model rules, captions, and TTS-to-captions chain.
+- **Asset preprocessing** (`tts`, `transcribe`, `remove-background`) → use `media-use` for voice selection, Whisper model rules, captions, and TTS-to-captions chain.
 - **Parametrized renders** (`--variables`) → declared via `data-composition-variables` on `<html>`; see `hyperframes-core` for the full schema.
 
 ## Lambda (Cloud Rendering)

@@ -234,7 +234,7 @@ function buildAgentPrompt(
     captions: [
       `Using /hyperframes, add the "${title}" caption style (registry: ${name}) to my composition.`,
       `${description}`,
-      `Transcribe the audio with /hyperframes-media, then wire the transcript into this caption component. Match the font colors and animation timing to my composition's design tokens. Place it as an overlay above the main content with the highest z-index.`,
+      `Transcribe the audio with /media-use, then wire the transcript into this caption component. Match the font colors and animation timing to my composition's design tokens. Place it as an overlay above the main content with the highest z-index.`,
     ].join("\n\n"),
     vfx: [
       `Using /hyperframes, add the "${title}" VFX (registry: ${name}) as a full-screen overlay on my composition.`,

@@ -1,7 +1,7 @@
 /**
  * Which voice / music engine a workflow will actually use, and whether
  * its local dependencies are present. Mirrors the resolution order the
- * hyperframes-media skill scripts use, so `auth status` and `doctor`
+ * media-use skill scripts use, so `auth status` and `doctor`
  * report the same engine the render pipeline would pick:
  *
  *   voice: HeyGen Starfish → ElevenLabs (key + `elevenlabs`) → Kokoro (local)

@@ -226,7 +226,7 @@ The gallery used a `setInterval` loop; HyperFrames needs the same beats as **abs
 
 ## Pairs with HF skills
 
-- `hyperframes-media` — `remove-background` (the matte) + `transcribe` (word timings).
+- `media-use` — `remove-background` (the matte) + `transcribe` (word timings).
 - `hyperframes-captions` — transcript consumption, grouping, positioning, exit guarantees, `fitTextFontSize`.
 - `hyperframes-animation/rules/asr-keyword-glow.md` — the verbatim active-word envelope.
 - `hyperframes-gsap` — single paused timeline, transform aliases, ease palette.
