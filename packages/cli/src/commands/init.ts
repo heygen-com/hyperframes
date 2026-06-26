@@ -584,12 +584,6 @@ async function scaffoldProject(
 async function ensureSkillsCurrent(destDir: string): Promise<void> {
   const { installAllSkills } = await import("./skills.js");
   const { checkSkills } = await import("../utils/skillsManifest.js");
-  // --all pulls every skill (incl. ones not yet installed); --yes keeps it
-  // non-interactive. When Claude Code is driving, target its native dir so
-  // skills land in .claude/skills/.
-  const extraArgs = process.env["CLAUDECODE"]
-    ? ["--all", "--agent", "claude-code", "--yes"]
-    : ["--all", "--yes"];
 
   console.log();
   console.log(c.bold("Checking AI coding skills against GitHub..."));
@@ -602,7 +596,12 @@ async function ensureSkillsCurrent(destDir: string): Promise<void> {
   }
 
   if (needsInstall) {
-    await installAllSkills({ cwd: destDir, extraArgs });
+    // installAllSkills resolves the agent target set from destDir + the
+    // environment (Claude Code → claude-code; otherwise installed CLIs, else a
+    // Claude-Code + `.agents` floor). A freshly-scaffolded project has no agent
+    // folders yet, so this lands skills where the running agent will read them
+    // rather than spraying to every agent convention.
+    await installAllSkills({ cwd: destDir });
   } else {
     console.log(c.success("AI coding skills are already up to date."));
   }

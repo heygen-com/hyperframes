@@ -10,6 +10,7 @@ import {
   type SkillDiff,
   type SkillsCheckResult,
 } from "../utils/skillsManifest.js";
+import { buildSkillsAddArgs, resolveAgentTargets } from "../utils/skillsTargets.js";
 import type { Example } from "./_examples.js";
 
 export const examples: Example[] = [
@@ -57,6 +58,25 @@ function runSkillsAdd(
   source: string,
   opts: { cwd?: string; extraArgs?: string[] } = {},
 ): Promise<void> {
+  // Targeting: an explicit `extraArgs` wins (callers/tests that know exactly
+  // what they want); otherwise resolve which agents to install to. We must NOT
+  // use the upstream `--all` (= `--skill '*' --agent '*' -y`), which sprays the
+  // skills into every one of ~70 agent conventions on the machine. Instead we
+  // install every skill (`--skill '*'`) to a scoped agent set: the project's
+  // existing skill folders, else the agent running us / installed agent CLIs,
+  // else a Claude-Code + `.agents` floor. See resolveAgentTargets.
+  let extraArgs = opts.extraArgs;
+  if (!extraArgs) {
+    const targets = resolveAgentTargets({
+      cwd: opts.cwd ?? process.cwd(),
+      env: process.env,
+      pathStr: process.env["PATH"] ?? "",
+      platform: process.platform,
+    });
+    console.log(c.dim(`Installing to: ${targets.agents.join(", ")} — ${targets.reason}`));
+    extraArgs = buildSkillsAddArgs(targets.agents);
+  }
+
   // `--copy` writes real files into each target agent's skills dir, instead of
   // the upstream default (a canonical `.agents/skills` store + per-agent
   // symlinks). That default re-serialises each SKILL.md's frontmatter, so an
@@ -64,7 +84,7 @@ function runSkillsAdd(
   // check` then reports a freshly-installed set as outdated, and the symlinked
   // layout doesn't reliably land where the agent actually reads. Real copies
   // keep the install faithful to the manifest and detectable by `skills check`.
-  return spawnNpx(["skills", "add", source, ...(opts.extraArgs ?? ["--all"]), "--copy"], opts);
+  return spawnNpx(["skills", "add", source, ...extraArgs, "--copy"], opts);
 }
 
 // Skill names are kebab-case directory names. Refuse anything that isn't one
@@ -244,12 +264,15 @@ const updateCommand = defineCommand({
     const dir = args.dir;
     const source = args.source;
 
-    // `skills add --all` re-fetches every skill to the latest AND installs ones
-    // not yet present — so "update" pulls the full set, not just what is already
+    // The install re-fetches every skill to the latest AND installs ones not yet
+    // present — so "update" pulls the full set, not just what is already
     // installed. This is where `init` and the stale-skills nudge both lead.
+    // runSkillsAdd resolves the agent target set itself (existing project
+    // folders → installed CLIs → a Claude-Code + `.agents` floor); we no longer
+    // spray to every agent via `--all`.
     //
     // Note: the upstream `skills add` CLI has no `--dir` flag (it installs into
-    // detected agent dirs), so `--dir` here scopes only the *prune* detection
+    // the resolved agent dirs), so `--dir` here scopes only the *prune* detection
     // below, not the install. `--source` likewise drives where the prune's
     // "latest" manifest comes from; the install always targets the canonical
     // HyperFrames repo so `update` reliably pulls the published set.
@@ -259,14 +282,14 @@ const updateCommand = defineCommand({
     // fails (no npx, `skills add` exits non-zero) it must exit non-zero too —
     // otherwise the `||` chain passes while nothing actually changed.
     try {
-      await installAllSkills({ extraArgs: ["--all", "--yes"], strict: true });
+      await installAllSkills({ strict: true });
     } catch (err) {
       clack.log.error(c.error(`Update failed: ${(err as Error).message}`));
       process.exitCode = 1;
       return;
     }
 
-    // `skills add --all` never deletes, so a skill renamed or dropped upstream
+    // `skills add` never deletes, so a skill renamed or dropped upstream
     // (e.g. graphic-overlays → talking-head-recut) would linger forever. Prune
     // skills the lock attributes to our source that the manifest no longer
     // ships, so `check || update` fully reconciles the install to the manifest.

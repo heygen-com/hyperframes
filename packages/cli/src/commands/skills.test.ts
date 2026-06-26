@@ -56,6 +56,17 @@ vi.mock("../utils/skillsManifest.js", () => ({
   checkSkills: vi.fn(async () => ({ skills: [] })),
 }));
 
+// Agent-target resolution probes the real cwd / PATH / env, which would make
+// the spawned-args assertions environment-dependent. Pin it to a fixed result
+// so these tests verify how the command BUILDS the spawn, not what's installed
+// on the test host. The resolver's own decision tree is covered in
+// skillsTargets.test.ts. buildSkillsAddArgs is reproduced (it's trivial) so the
+// arg shape under test stays real.
+vi.mock("../utils/skillsTargets.js", () => ({
+  resolveAgentTargets: vi.fn(() => ({ agents: ["claude-code", "universal"], reason: "test" })),
+  buildSkillsAddArgs: (agents: string[]) => ["--skill", "*", "--agent", ...agents, "--yes"],
+}));
+
 function setPlatform(platform: NodeJS.Platform): void {
   Object.defineProperty(process, "platform", {
     value: platform,
@@ -109,13 +120,35 @@ describe("hyperframes skills", () => {
       "linux",
       "npx",
       ["--version"],
-      ["skills", "add", "https://github.com/heygen-com/hyperframes", "--all", "--copy"],
+      [
+        "skills",
+        "add",
+        "https://github.com/heygen-com/hyperframes",
+        "--skill",
+        "*",
+        "--agent",
+        "claude-code",
+        "universal",
+        "--yes",
+        "--copy",
+      ],
     ],
     [
       "darwin",
       "npx",
       ["--version"],
-      ["skills", "add", "https://github.com/heygen-com/hyperframes", "--all", "--copy"],
+      [
+        "skills",
+        "add",
+        "https://github.com/heygen-com/hyperframes",
+        "--skill",
+        "*",
+        "--agent",
+        "claude-code",
+        "universal",
+        "--yes",
+        "--copy",
+      ],
     ],
     [
       "win32",
@@ -129,7 +162,12 @@ describe("hyperframes skills", () => {
         "skills",
         "add",
         "https://github.com/heygen-com/hyperframes",
-        "--all",
+        "--skill",
+        "*",
+        "--agent",
+        "claude-code",
+        "universal",
+        "--yes",
         "--copy",
       ],
     ],
@@ -162,9 +200,16 @@ describe("hyperframes skills", () => {
     setPlatform("linux");
     await runSkillsUpdate();
     expect(process.exitCode).toBe(0);
+    const args = state.spawnCalls[0]?.args ?? [];
     // pulls the full set straight from GitHub
-    expect(state.spawnCalls[0]?.args).toContain("https://github.com/heygen-com/hyperframes");
-    expect(state.spawnCalls[0]?.args).toContain("--all");
+    expect(args).toContain("https://github.com/heygen-com/hyperframes");
+    // every skill, but to a scoped agent set — never the `--all` (= `--agent '*'`) spray
+    expect(args).toContain("--skill");
+    expect(args).toContain("--agent");
+    expect(args).not.toContain("--all");
+    // `--agent` must be followed by a concrete key, never the `'*'` wildcard
+    const agentValue = args[args.indexOf("--agent") + 1];
+    expect(agentValue).not.toBe("*");
   });
 
   // `skills add --all` never deletes, so update must separately prune skills the
