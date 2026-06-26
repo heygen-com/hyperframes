@@ -374,7 +374,7 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
       {
         pattern: /crypto\.getRandomValues\s*\(/,
         label: "crypto.getRandomValues()",
-        hint: "Remove time-dependent code. Use a seeded PRNG for deterministic renders.",
+        hint: "Replace with a seeded PRNG (e.g. a simple mulberry32) so renders are deterministic across frames.",
       },
     ];
 
