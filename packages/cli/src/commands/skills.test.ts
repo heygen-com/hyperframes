@@ -109,13 +109,13 @@ describe("hyperframes skills", () => {
       "linux",
       "npx",
       ["--version"],
-      ["skills", "add", "https://github.com/heygen-com/hyperframes", "--all"],
+      ["skills", "add", "https://github.com/heygen-com/hyperframes", "--all", "--copy"],
     ],
     [
       "darwin",
       "npx",
       ["--version"],
-      ["skills", "add", "https://github.com/heygen-com/hyperframes", "--all"],
+      ["skills", "add", "https://github.com/heygen-com/hyperframes", "--all", "--copy"],
     ],
     [
       "win32",
@@ -130,6 +130,7 @@ describe("hyperframes skills", () => {
         "add",
         "https://github.com/heygen-com/hyperframes",
         "--all",
+        "--copy",
       ],
     ],
   ] as const)(

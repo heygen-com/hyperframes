@@ -52,7 +52,14 @@ function runSkillsAdd(
   source: string,
   opts: { cwd?: string; extraArgs?: string[] } = {},
 ): Promise<void> {
-  return spawnNpx(["skills", "add", source, ...(opts.extraArgs ?? ["--all"])], opts);
+  // `--copy` writes real files into each target agent's skills dir, instead of
+  // the upstream default (a canonical `.agents/skills` store + per-agent
+  // symlinks). That default re-serialises each SKILL.md's frontmatter, so an
+  // installed bundle no longer byte-matches the published manifest — `skills
+  // check` then reports a freshly-installed set as outdated, and the symlinked
+  // layout doesn't reliably land where the agent actually reads. Real copies
+  // keep the install faithful to the manifest and detectable by `skills check`.
+  return spawnNpx(["skills", "add", source, ...(opts.extraArgs ?? ["--all"]), "--copy"], opts);
 }
 
 // Skill names are kebab-case directory names. Refuse anything that isn't one
