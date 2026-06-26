@@ -137,6 +137,10 @@ describe("@hyperframes/core public API exports", () => {
     it("exports parseAnimatedGifMetadata", () => {
       expect(typeof core.parseAnimatedGifMetadata).toBe("function");
     });
+
+    it("exports duck", () => {
+      expect(typeof core.duck).toBe("function");
+    });
   });
 
   describe("inline-script exports", () => {
