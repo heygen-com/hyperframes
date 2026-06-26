@@ -1,7 +1,6 @@
 // heygen.mjs — vendored HeyGen REST helpers (auth + transport) for the audio
-// pipeline. The credential resolver is copied from hyperframes-media's
-// heygen-tts.mjs (and matches the hyperframes CLI auth): first usable source
-// wins — $HEYGEN_API_KEY / $HYPERFRAMES_API_KEY → a nearby .env → ~/.heygen/
+// pipeline. The credential resolver matches the hyperframes CLI auth: first
+// usable source wins — $HEYGEN_API_KEY / $HYPERFRAMES_API_KEY → a nearby .env → ~/.heygen/
 // credentials (oauth → Bearer, else api_key → X-Api-Key; $HEYGEN_CONFIG_DIR
 // overrides the dir). Vendored so the skill ships standalone. Pure node.
 
