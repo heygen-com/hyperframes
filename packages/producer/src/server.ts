@@ -36,6 +36,7 @@ import {
   type RenderConfig,
 } from "./services/renderOrchestrator.js";
 import { prepareHyperframeLintBody, runHyperframeLint } from "./services/hyperframeLint.js";
+import { startHealthWorker, type HealthWorkerHandle } from "./services/healthWorker.js";
 import { isVideoFrameFormat } from "@hyperframes/engine";
 import { resolveRenderPaths } from "./utils/paths.js";
 import { defaultLogger, type ProducerLogger } from "./logger.js";
@@ -738,10 +739,35 @@ export function startServer(options: ServerOptions = {}) {
   (server as unknown as import("node:http").Server).requestTimeout = 0;
   (server as unknown as import("node:http").Server).keepAliveTimeout = 0;
 
+  // Start the worker-thread health endpoint alongside the main listener.
+  // The main thread keeps serving /health on `port` for backwards
+  // compatibility; the worker thread additionally serves /health on
+  // PRODUCER_HEALTH_PORT (default 9848) so k8s liveness/readiness probes can
+  // migrate to a listener that doesn't share an event loop with renders.
+  //
+  // Opt-out: set PRODUCER_DISABLE_HEALTH_WORKER=1 (e.g. for tests that don't
+  // want a worker spawned, or for environments where the extra port isn't
+  // wanted).
+  let healthWorker: HealthWorkerHandle | null = null;
+  if (process.env.PRODUCER_DISABLE_HEALTH_WORKER !== "1") {
+    startHealthWorker({ logger: log })
+      .then((handle) => {
+        healthWorker = handle;
+      })
+      .catch((err: Error) => {
+        // Don't crash the producer if the worker fails to start — the main
+        // /health is still up. Log loudly so the operator notices.
+        log.error(`[server] health worker failed to start: ${err.message}`);
+      });
+  }
+
   async function shutdown(signal: string) {
     log.info(`Received ${signal}, shutting down`);
     const { drainBrowserPool } = await import("@hyperframes/engine");
     await drainBrowserPool().catch(() => {});
+    if (healthWorker) {
+      await healthWorker.shutdown().catch(() => {});
+    }
     server.close(() => {
       log.info("Server closed");
       process.exit(0);
