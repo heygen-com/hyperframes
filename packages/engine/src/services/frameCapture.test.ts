@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   formatHttpErrorDiagnostic,
+  formatConsoleDiagnostic,
   formatNavigationFailureDiagnostic,
   formatNavigationStartDiagnostic,
   formatRequestFailureDiagnostic,
@@ -115,6 +116,37 @@ describe("isFontResourceError", () => {
     expect(
       isFontResourceError("error", "Failed to load resource: 404", "http://example.com/FONT.WOFF2"),
     ).toBe(true);
+  });
+});
+
+describe("formatConsoleDiagnostic", () => {
+  it("surfaces HyperFrames page logs with a dedicated host prefix", () => {
+    expect(
+      formatConsoleDiagnostic("info", "[hyperframes] render runtime fps JSHandle@object", ""),
+    ).toEqual({
+      text: "[HyperFrames] render runtime fps JSHandle@object",
+      suppressHostLog: false,
+    });
+  });
+
+  it("keeps font load errors in diagnostics but suppresses host log noise", () => {
+    expect(
+      formatConsoleDiagnostic(
+        "error",
+        "Failed to load resource: net::ERR_FAILED",
+        "https://fonts.googleapis.com/css2?family=Inter",
+      ),
+    ).toEqual({
+      text: "[Browser] Failed to load resource: net::ERR_FAILED",
+      suppressHostLog: true,
+    });
+  });
+
+  it("preserves existing browser prefixes for generic logs", () => {
+    expect(formatConsoleDiagnostic("warn", "careful", "")).toEqual({
+      text: "[Browser:WARN] careful",
+      suppressHostLog: false,
+    });
   });
 });
 

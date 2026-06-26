@@ -14,6 +14,7 @@ import type { IncomingMessage } from "node:http";
 import { readFileSync, existsSync, realpathSync, statSync } from "node:fs";
 import { join, extname, resolve, sep } from "node:path";
 import { injectScriptsAtHeadStart, injectScriptsIntoHtml } from "@hyperframes/core/compiler";
+import { fpsToNumber, type Fps } from "@hyperframes/core";
 import { getVerifiedHyperframeRuntimeSource } from "./hyperframeRuntimeLoader.js";
 import { getHfEarlyStub } from "../generated/hf-early-stub-inline.js";
 import { defaultLogger, type ProducerLogger } from "../logger.js";
@@ -308,7 +309,22 @@ const RENDER_SEEK_OFFSET_FRACTION = Math.max(
   Math.min(0.95, Number(process.env.PRODUCER_RUNTIME_RENDER_SEEK_OFFSET_FRACTION || 0.5)),
 );
 
-const RENDER_MODE_SCRIPT = `(function() {
+function resolveRenderFpsConfig(fps: Fps | undefined): {
+  value: number;
+  source: "render-options" | "default";
+  fallbackReason?: "missing" | "invalid";
+} {
+  if (!fps) return { value: 30, source: "default", fallbackReason: "missing" };
+  const value = fpsToNumber(fps);
+  if (!Number.isFinite(value) || value <= 0) {
+    return { value: 30, source: "default", fallbackReason: "invalid" };
+  }
+  return { value, source: "render-options" };
+}
+
+function buildRenderModeScript(fps: Fps | undefined): string {
+  const renderFps = resolveRenderFpsConfig(fps);
+  return `(function() {
   var __realSetTimeout =
     window.__HF_VIRTUAL_TIME__ && typeof window.__HF_VIRTUAL_TIME__.originalSetTimeout === "function"
       ? window.__HF_VIRTUAL_TIME__.originalSetTimeout
@@ -317,11 +333,17 @@ const RENDER_MODE_SCRIPT = `(function() {
   var __seekDiagnostics = ${RENDER_SEEK_DIAGNOSTICS ? "true" : "false"};
   var __seekStep = ${RENDER_SEEK_STEP};
   var __seekOffsetFraction = ${RENDER_SEEK_OFFSET_FRACTION};
+  var __renderFps = ${renderFps.value};
+  var __renderFpsSource = ${JSON.stringify(renderFps.source)};
+  var __renderFpsFallbackReason = ${JSON.stringify(renderFps.fallbackReason ?? null)};
   window.__HF_EXPORT_RENDER_SEEK_CONFIG = {
     mode: __seekMode,
     diagnostics: __seekDiagnostics,
     step: __seekStep,
     offsetFraction: __seekOffsetFraction,
+    fps: __renderFps,
+    fpsSource: __renderFpsSource,
+    fpsFallbackReason: __renderFpsFallbackReason || undefined,
     owner: "runtime",
   };
   function installMediaFallbackPlayer() {
@@ -417,6 +439,7 @@ const RENDER_MODE_SCRIPT = `(function() {
   }
   waitForPlayer();
 })();`;
+}
 
 /**
  * Early stub: ensures `window.__hf` exists *before* any user `<script>` in
@@ -558,6 +581,8 @@ export interface FileServerOptions {
   headScripts?: string[];
   /** Scripts injected before </body> of index.html. Default: render mode extension. */
   bodyScripts?: string[];
+  /** Actual render fps so page-side runtime quantization matches the output container. */
+  fps?: Fps;
   /** Strip embedded runtime scripts from HTML before injection. Default: true. */
   stripEmbeddedRuntime?: boolean;
 }
@@ -605,7 +630,7 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
   const preHeadScripts = [HF_EARLY_STUB, ...(options.preHeadScripts ?? [])];
   // Default scripts: Hyperframe runtime in <head>, render mode in </body>
   const headScripts = options.headScripts ?? [getVerifiedHyperframeRuntimeSource()];
-  const bodyScripts = options.bodyScripts ?? [RENDER_MODE_SCRIPT, HF_BRIDGE_SCRIPT];
+  const bodyScripts = options.bodyScripts ?? [buildRenderModeScript(options.fps), HF_BRIDGE_SCRIPT];
 
   const app = new Hono();
 

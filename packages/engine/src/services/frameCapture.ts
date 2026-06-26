@@ -506,6 +506,36 @@ export function isFontResourceError(type: string, text: string, locationUrl: str
   );
 }
 
+export function formatConsoleDiagnostic(
+  type: string,
+  text: string,
+  locationUrl: string,
+): { text: string; suppressHostLog: boolean } {
+  const isFontLoadError = isFontResourceError(type, text, locationUrl);
+  if (isFontLoadError) return { text: `[Browser] ${text}`, suppressHostLog: true };
+
+  if (text.startsWith("[hyperframes]")) {
+    return {
+      text: `[HyperFrames] ${text.slice("[hyperframes]".length).trim()}`,
+      suppressHostLog: false,
+    };
+  }
+
+  // Other "Failed to load resource" 404s are typically non-blocking (e.g.
+  // favicon, sourcemaps, optional assets). Prefix them so users know they
+  // are harmless and don't confuse them with real render errors.
+  const isResourceLoadError = type === "error" && text.startsWith("Failed to load resource");
+  const prefix = isResourceLoadError
+    ? "[non-blocking]"
+    : type === "error"
+      ? "[Browser:ERROR]"
+      : type === "warn"
+        ? "[Browser:WARN]"
+        : "[Browser]";
+
+  return { text: `${prefix} ${text}`, suppressHostLog: false };
+}
+
 async function pollPageExpression(
   page: Page,
   expression: string,
@@ -866,32 +896,15 @@ async function waitForOptionalTailwindReady(page: Page, timeoutMs: number): Prom
 export async function initializeSession(session: CaptureSession): Promise<void> {
   const { page, serverUrl } = session;
 
-  // Forward browser console to host with [Browser] prefix
-  // fallow-ignore-next-line complexity
+  // Forward browser console to host. HyperFrames runtime logs get a dedicated
+  // prefix so page-context observability is visible in producer stdout.
   page.on("console", (msg: ConsoleMessage) => {
     const type = msg.type();
     const text = msg.text();
     const locationUrl = msg.location()?.url ?? "";
-    const isFontLoadError = isFontResourceError(type, text, locationUrl);
-
-    // Other "Failed to load resource" 404s are typically non-blocking (e.g.
-    // favicon, sourcemaps, optional assets). Prefix them so users know they
-    // are harmless and don't confuse them with real render errors.
-    const isResourceLoadError =
-      type === "error" && text.startsWith("Failed to load resource") && !isFontLoadError;
-
-    const prefix = isResourceLoadError
-      ? "[non-blocking]"
-      : type === "error"
-        ? "[Browser:ERROR]"
-        : type === "warn"
-          ? "[Browser:WARN]"
-          : "[Browser]";
-    if (!isFontLoadError) {
-      console.log(`${prefix} ${text}`);
-    }
-
-    appendBrowserDiagnostic(session, `${prefix} ${text}`);
+    const diagnostic = formatConsoleDiagnostic(type, text, locationUrl);
+    if (!diagnostic.suppressHostLog) console.log(diagnostic.text);
+    appendBrowserDiagnostic(session, diagnostic.text);
   });
 
   page.on("pageerror", (err) => {

@@ -226,6 +226,77 @@ describe("isPathInside", () => {
 });
 
 describe("createFileServer", () => {
+  async function expectInjectedRenderFps(
+    fps: Parameters<typeof createFileServer>[0]["fps"],
+    expected: {
+      value: string;
+      source: "render-options" | "default";
+      fallbackReason?: "missing" | "invalid";
+    },
+  ): Promise<void> {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-file-server-render-fps-"));
+
+    try {
+      writeEmptyIndex(projectDir);
+      const server = await createFileServer({
+        projectDir,
+        preHeadScripts: [],
+        headScripts: [],
+        ...(fps ? { fps } : {}),
+      });
+      try {
+        const response = await fetch(`${server.url}/index.html`);
+        expect(response.status).toBe(200);
+        const html = await response.text();
+        expect(html).toContain("window.__HF_EXPORT_RENDER_SEEK_CONFIG");
+        expect(html).toContain(`var __renderFps = ${expected.value}`);
+        expect(html).toContain(`var __renderFpsSource = "${expected.source}"`);
+        if (expected.fallbackReason) {
+          expect(html).toContain(`var __renderFpsFallbackReason = "${expected.fallbackReason}"`);
+        } else {
+          expect(html).toContain("var __renderFpsFallbackReason = null");
+        }
+        expect(html).toContain("fps: __renderFps");
+        expect(html).toContain("fpsSource: __renderFpsSource");
+        expect(html).not.toContain("[hyperframes] render fps defaulted");
+      } finally {
+        server.close();
+      }
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  }
+
+  it("injects the requested render fps into the page render config", async () => {
+    await expectInjectedRenderFps({ num: 60, den: 1 }, { value: "60", source: "render-options" });
+  });
+
+  it("injects fractional render fps without rounding", async () => {
+    await expectInjectedRenderFps(
+      { num: 24000, den: 1001 },
+      { value: "23.976023976023978", source: "render-options" },
+    );
+  });
+
+  it("marks missing render fps as an explicit 30fps default", async () => {
+    await expectInjectedRenderFps(undefined, {
+      value: "30",
+      source: "default",
+      fallbackReason: "missing",
+    });
+  });
+
+  it("marks invalid render fps as an explicit 30fps default", async () => {
+    await expectInjectedRenderFps(
+      { num: 60, den: 0 },
+      {
+        value: "30",
+        source: "default",
+        fallbackReason: "invalid",
+      },
+    );
+  });
+
   it("serves asset files through project-root symlinked directories", async () => {
     const workspaceDir = mkdtempSync(join(tmpdir(), "hf-file-server-symlink-assets-"));
     const adsDir = join(workspaceDir, "Ads");

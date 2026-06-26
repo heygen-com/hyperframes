@@ -40,8 +40,49 @@ import { swallow } from "./diagnostics";
 const AUTHORED_DURATION_ATTR = "data-hf-authored-duration";
 const AUTHORED_END_ATTR = "data-hf-authored-end";
 
+type ExportRenderFpsResolution = {
+  fps: number | null;
+  source: "render-options" | "default" | "unknown";
+  rawFpsSource: unknown;
+  rawFps: unknown;
+  fallbackReason?: "missing" | "invalid";
+};
+
+function resolveExportRenderFps(): ExportRenderFpsResolution {
+  const config = window.__HF_EXPORT_RENDER_SEEK_CONFIG;
+  const rawFps = config?.fps;
+  const rawFpsSource = config?.fpsSource;
+  const fps = Number(rawFps);
+  if (!config || rawFps == null) {
+    return { fps: null, source: "default", rawFpsSource, rawFps, fallbackReason: "missing" };
+  }
+  if (!Number.isFinite(fps) || fps <= 0) {
+    return { fps: null, source: "default", rawFpsSource, rawFps, fallbackReason: "invalid" };
+  }
+  const source =
+    rawFpsSource === "render-options" || rawFpsSource === "default" ? rawFpsSource : "unknown";
+  return {
+    fps,
+    source,
+    rawFpsSource,
+    rawFps,
+    fallbackReason: config.fpsFallbackReason,
+  };
+}
+
 export function initSandboxRuntimeModular(): void {
   const state = createRuntimeState();
+  const exportRenderFps = resolveExportRenderFps();
+  state.canonicalFps = exportRenderFps.fps ?? state.canonicalFps;
+  if (window.__HF_EXPORT_RENDER_SEEK_CONFIG) {
+    console.info("[hyperframes] render runtime fps", {
+      canonicalFps: state.canonicalFps,
+      source: exportRenderFps.source,
+      rawFpsSource: exportRenderFps.rawFpsSource,
+      rawFps: exportRenderFps.rawFps,
+      fallbackReason: exportRenderFps.fallbackReason,
+    });
+  }
   let colorGradingRuntime: RuntimeColorGradingApi | null = null;
   let runtimeErrorListener: ((event: ErrorEvent) => void) | null = null;
   let runtimeUnhandledRejectionListener: ((event: PromiseRejectionEvent) => void) | null = null;
