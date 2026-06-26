@@ -183,6 +183,38 @@ describe("auth/oauth", () => {
       expect(credentials.oauth?.access_token).toBe("new_at");
     });
 
+    it("preserves an unknown key INSIDE the oauth sub-object across a refresh", async () => {
+      // The refresh path is `persistOAuth(preserveMissing: true)`, i.e.
+      // `{ ...existing.oauth, ...tokens }` — object spread carries the
+      // hidden Symbol-keyed unknown bag from `existing.oauth`, so a key
+      // another CLI wrote inside `oauth` (e.g. an `id_token`) must survive
+      // the no-rotation refresh. Refresh is the most-frequent write path,
+      // so a silent regression here would be the worst case.
+      const path = (await import("./paths.js")).credentialPath();
+      await fs.writeFile(
+        path,
+        JSON.stringify({
+          oauth: {
+            access_token: "old_at",
+            refresh_token: "keep_me_rt",
+            id_token: "future_id_token_value",
+          },
+        }),
+        { mode: 0o600 },
+      );
+      const fetchImpl = (async () =>
+        new Response(JSON.stringify({ access_token: "new_at", expires_in: 3600 }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })) as unknown as typeof fetch;
+      await refreshTokens("keep_me_rt", { fetchImpl });
+
+      const onDisk = JSON.parse(await fs.readFile(path, "utf8"));
+      expect(onDisk.oauth.access_token).toBe("new_at");
+      // The unknown oauth sub-key rode through on the hidden slot.
+      expect(onDisk.oauth.id_token).toBe("future_id_token_value");
+    });
+
     it("throws REFRESH_FAILED on 400/401", async () => {
       const fetchImpl = (async () =>
         new Response("invalid_grant", { status: 400 })) as unknown as typeof fetch;

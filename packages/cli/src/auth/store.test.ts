@@ -3,7 +3,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { isAuthError } from "./errors.js";
-import { clearOAuth, deleteStore, readStore, writeStore, type Credentials } from "./store.js";
+import {
+  clearOAuth,
+  deleteStore,
+  hasPreservedUnknownData,
+  readStore,
+  writeStore,
+  type Credentials,
+} from "./store.js";
 
 async function makeTmpDir(): Promise<string> {
   return fs.mkdtemp(join(tmpdir(), "hf-auth-store-"));
@@ -355,5 +362,97 @@ describe("auth/store", () => {
   it("clearOAuth is a no-op when file is absent", async () => {
     await clearOAuth(path);
     await expect(fs.access(path)).rejects.toThrow();
+  });
+
+  // --- Destructive paths must not clobber preserved unknown data. ---
+  // When clearing the only known credential would otherwise delete the
+  // file, a surviving unknown/foreign top-level key (a future credential
+  // another CLI owns) must keep the file alive — deleting would clobber
+  // exactly the cross-CLI data this machinery exists to preserve.
+
+  it("clearOAuth keeps the file (writing the unknown bag) when no api_key but a foreign top-level key survives", async () => {
+    await fs.writeFile(
+      path,
+      JSON.stringify({
+        oauth: { access_token: "drop_me" },
+        future_credential: { token: "owned_by_other_cli" },
+      }),
+      { mode: 0o600 },
+    );
+    await clearOAuth(path);
+    // File must still exist and carry the foreign key.
+    const onDisk = JSON.parse(await fs.readFile(path, "utf8"));
+    expect(onDisk.oauth).toBeUndefined();
+    expect(onDisk.future_credential).toEqual({ token: "owned_by_other_cli" });
+  });
+
+  it("clearOAuth keeps the file when no api_key but a foreign key survives inside the user block", async () => {
+    // The user block has no known friendly fields, only a foreign sub-key
+    // — the block itself survives the oauth clear, so its unknown data
+    // must too.
+    await fs.writeFile(
+      path,
+      JSON.stringify({
+        oauth: { access_token: "drop_me" },
+        user: { external_org_id: "org_123" },
+      }),
+      { mode: 0o600 },
+    );
+    await clearOAuth(path);
+    const onDisk = JSON.parse(await fs.readFile(path, "utf8"));
+    expect(onDisk.oauth).toBeUndefined();
+    expect(onDisk.user).toEqual({ external_org_id: "org_123" });
+  });
+
+  it("clearOAuth still deletes the file when only a known (empty-after-clear) surface remains", async () => {
+    // No api_key, no foreign data — just the oauth block being cleared.
+    // Nothing worth preserving, so the file goes.
+    await writeStore({ oauth: { access_token: "only" } }, path);
+    await clearOAuth(path);
+    await expect(fs.access(path)).rejects.toThrow();
+  });
+
+  describe("hasPreservedUnknownData", () => {
+    it("false for an empty record", () => {
+      expect(hasPreservedUnknownData({})).toBe(false);
+    });
+
+    it("false for a record with only known fields", () => {
+      expect(
+        hasPreservedUnknownData({
+          api_key: "hg_x",
+          oauth: { access_token: "at" },
+          user: { email: "u@example.com" },
+        }),
+      ).toBe(false);
+    });
+
+    it("true when a top-level unknown key was captured at read time", async () => {
+      await fs.writeFile(path, JSON.stringify({ api_key: "hg_x", future_field: 1 }), {
+        mode: 0o600,
+      });
+      const { credentials } = await readStore(path);
+      expect(hasPreservedUnknownData(credentials)).toBe(true);
+    });
+
+    it("true when an unknown key was captured inside the oauth sub-object", async () => {
+      await fs.writeFile(
+        path,
+        JSON.stringify({ oauth: { access_token: "at", id_token: "future" } }),
+        { mode: 0o600 },
+      );
+      const { credentials } = await readStore(path);
+      expect(hasPreservedUnknownData(credentials)).toBe(true);
+    });
+
+    it("true when an unknown key was captured inside the user sub-object", async () => {
+      await fs.writeFile(
+        path,
+        JSON.stringify({ api_key: "hg_x", user: { email: "u@example.com", avatar_url: "x" } }),
+        { mode: 0o600 },
+      );
+      const { credentials } = await readStore(path);
+      expect(hasPreservedUnknownData(credentials)).toBe(true);
+    });
   });
 });

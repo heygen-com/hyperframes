@@ -28,6 +28,7 @@ import {
   assertOAuthConfiguredOrExit,
   clearUserInfo,
   deleteStore,
+  hasPreservedUnknownData,
   isAuthError,
   isHeaderSafe,
   isUserInfoEmpty,
@@ -201,13 +202,18 @@ async function snapshotStore(): Promise<Credentials> {
 
 async function rollback(previous: Credentials): Promise<void> {
   try {
-    if (previous.api_key || previous.oauth) {
+    if (previous.api_key || previous.oauth || hasPreservedUnknownData(previous)) {
+      // Restore the prior state. This branch also covers the case where
+      // the only prior content was an unknown/foreign top-level key (a
+      // future credential another CLI owns): writing `previous` back
+      // re-emits that key, so the rollback doesn't clobber cross-CLI data
+      // the file had before this login attempt.
       await writeStore(previous);
       console.error(c.dim("Rolled back to the previous credential."));
     } else {
-      // No prior credential — restore true absence. Leaving the
-      // rejected key on disk would make the next `auth status` /
-      // command silently resolve a known-bad key.
+      // No prior credential and nothing worth preserving — restore true
+      // absence. Leaving the rejected key on disk would make the next
+      // `auth status` / command silently resolve a known-bad key.
       await deleteStore();
       console.error(c.dim("Removed the rejected credential."));
     }

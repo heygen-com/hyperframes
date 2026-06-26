@@ -135,6 +135,25 @@ describe("auth/user — save / load / clear", () => {
     expect(after).toBe(before);
   });
 
+  it("clearUserInfo keeps the file (preserving a foreign top-level key) when no credential survives", async () => {
+    // The file holds a user block plus a future/foreign top-level key but
+    // NO known credential. Clearing the user block must NOT delete the
+    // file — the foreign key may be a credential another CLI owns, and
+    // dropping it would clobber the cross-CLI data the store preserves.
+    await fs.writeFile(
+      path,
+      JSON.stringify({
+        user: { email: "u@example.com" },
+        future_credential: { token: "owned_by_other_cli" },
+      }),
+      { mode: 0o600 },
+    );
+    await clearUserInfo(path);
+    const onDisk = JSON.parse(await fs.readFile(path, "utf8"));
+    expect(onDisk.user).toBeUndefined();
+    expect(onDisk.future_credential).toEqual({ token: "owned_by_other_cli" });
+  });
+
   it("saveUserInfo does not clobber an unknown/foreign top-level key", async () => {
     // The cross-CLI invariant exercised through the persistence helper.
     await fs.writeFile(path, JSON.stringify({ api_key: "hg_x", future_field: 42 }), {

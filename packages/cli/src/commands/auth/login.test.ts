@@ -139,6 +139,25 @@ describe("auth login --api-key rollback", () => {
     expect(credentials.user).toEqual({ email: "prev@example.com" });
   });
 
+  it("rollback on a rejected key preserves a prior foreign top-level key (no known credential)", async () => {
+    // The prior file held ONLY a future/foreign top-level key — no
+    // api_key, no oauth. A rejected new key must roll back WITHOUT
+    // deleting the file, or the foreign credential another CLI owns is
+    // clobbered. (Before the fix, rollback deleted the file because
+    // neither api_key nor oauth was present.)
+    await fs.writeFile(
+      join(dir, "credentials"),
+      JSON.stringify({ future_credential: { token: "owned_by_other_cli" } }),
+      { mode: 0o600 },
+    );
+    verifyState.reject = true;
+    await expect(runLogin("hg_badnewkey")).rejects.toThrow(/process\.exit:1/);
+
+    const onDisk = JSON.parse(await fs.readFile(join(dir, "credentials"), "utf8"));
+    expect(onDisk.api_key).toBeUndefined();
+    expect(onDisk.future_credential).toEqual({ token: "owned_by_other_cli" });
+  });
+
   it("preserves an unknown/foreign top-level key across a successful re-login", async () => {
     // Cross-CLI invariant end-to-end: a key heygen-cli (or a future
     // version) wrote must survive a hyperframes-cli login round-trip.

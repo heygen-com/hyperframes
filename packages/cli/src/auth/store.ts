@@ -8,7 +8,7 @@
  *     "oauth": {
  *       "access_token": "...",
  *       "refresh_token": "...",
- *       "expires_at": "2026-06-25T12:00:00Z",
+ *       "expires_at": "<ISO-8601 UTC>",
  *       "scope": "openid profile",
  *       "token_type": "Bearer"
  *     },
@@ -34,6 +34,14 @@
  * sub-objects) into a hidden passthrough bag, and the writer re-emits
  * them verbatim. Known fields are still strictly validated; the
  * passthrough is purely additive and never feeds an HTTP header.
+ *
+ * The same contract binds the destructive paths (`clearOAuth`,
+ * `clearUserInfo`, and the failed `auth login --api-key` rollback): when
+ * removing a credential would leave the file with no known credential but
+ * a surviving unknown/foreign top-level (or user-block) key, they write
+ * the credential-less remnant rather than deleting the file — see
+ * `hasPreservedUnknownData`. Deleting there would clobber exactly the
+ * cross-CLI data this machinery exists to preserve.
  */
 
 import { promises as fs } from "node:fs";
@@ -157,6 +165,32 @@ export async function deleteStore(path = credentialPath()): Promise<void> {
   }
 }
 
+/**
+ * True when `credentials` carries any unrecognized/foreign data captured
+ * on a hidden passthrough slot — either a top-level unknown key, or an
+ * unknown key inside the `oauth` / `user` sub-objects.
+ *
+ * The cleanup / rollback paths (`clearOAuth`, `clearUserInfo`, the failed
+ * `auth login --api-key` rollback) use this to decide between deleting the
+ * file and writing a credential-less remnant. When no known credential
+ * survives BUT foreign data does, that data may be a future credential or
+ * metadata key another CLI owns — deleting the file would clobber exactly
+ * what the cross-CLI forward-compatibility contract promises to preserve.
+ * So those paths write the remaining record (carrying the unknown bag)
+ * instead of deleting. Only when nothing worth preserving remains do they
+ * delete.
+ */
+export function hasPreservedUnknownData(credentials: Credentials): boolean {
+  if (hasUnknownBag(credentials[UNKNOWN])) return true;
+  if (hasUnknownBag(credentials.oauth?.[UNKNOWN])) return true;
+  if (hasUnknownBag(credentials.user?.[UNKNOWN])) return true;
+  return false;
+}
+
+function hasUnknownBag(bag: Record<string, unknown> | undefined): boolean {
+  return bag !== undefined && Object.keys(bag).length > 0;
+}
+
 /** Remove only the `oauth` block. Used by `auth logout --keep-api-key`. */
 export async function clearOAuth(path = credentialPath()): Promise<void> {
   const { credentials, source } = await readStore(path);
@@ -166,9 +200,13 @@ export async function clearOAuth(path = credentialPath()): Promise<void> {
   // clears the OAuth session doesn't silently wipe co-located data.
   const next: Credentials = { ...credentials };
   delete next.oauth;
-  if (!next.api_key) {
-    // No credential survives. The leftover user block / unknown keys are
-    // orphaned metadata with no credential to attach to — drop the file.
+  if (!next.api_key && !hasPreservedUnknownData(next)) {
+    // Nothing worth preserving survives. The leftover user block had no
+    // friendly fields and there's no foreign/unknown data to round-trip,
+    // so this is orphaned metadata with no credential to attach to — drop
+    // the file. (A surviving top-level / user-block unknown key, by
+    // contrast, may be a future credential another CLI owns, so we keep
+    // the file in that case.)
     await deleteStore(path);
     return;
   }

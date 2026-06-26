@@ -16,7 +16,13 @@
  */
 
 import { credentialPath } from "./paths.js";
-import { readStore, writeStore, deleteStore, type StoredUserInfo } from "./store.js";
+import {
+  readStore,
+  writeStore,
+  deleteStore,
+  hasPreservedUnknownData,
+  type StoredUserInfo,
+} from "./store.js";
 
 export type { StoredUserInfo } from "./store.js";
 
@@ -27,9 +33,13 @@ export function isUserInfoEmpty(u: StoredUserInfo): boolean {
 
 /**
  * Most friendly name available, in priority order:
- *   email > "first last" > first > last > username > undefined.
- * The caller falls back to its own marker (e.g. "(unknown user)") on
- * `undefined`. Mirrors `UserInfo.DisplayName()` in heygen-cli.
+ *   email > "first last" > first-only > last-only > username > undefined.
+ * The "first-only" / "last-only" intermediates come from `combineName`,
+ * which returns `first || last || ""` when only one of the two is present
+ * (so a user with just a first name still resolves to that first name,
+ * not straight to username). The caller falls back to its own marker
+ * (e.g. "(unknown user)") on `undefined`. Mirrors `UserInfo.DisplayName()`
+ * in heygen-cli.
  */
 export function userDisplayName(u: StoredUserInfo): string | undefined {
   if (u.email) return u.email;
@@ -38,6 +48,12 @@ export function userDisplayName(u: StoredUserInfo): string | undefined {
   return u.username || undefined;
 }
 
+/**
+ * `"first last"` when both are present; otherwise `first || last || ""`
+ * (one-sided fall-through), and `""` when neither is set. The empty-string
+ * return is treated as falsy by `userDisplayName`, so it falls through to
+ * `username`.
+ */
 function combineName(first?: string, last?: string): string {
   if (first && last) return `${first} ${last}`;
   return first || last || "";
@@ -80,15 +96,18 @@ export async function loadUserInfo(path = credentialPath()): Promise<StoredUserI
 
 /**
  * Remove the friendly-display block, leaving any co-located credential
- * (and unknown/foreign keys) intact. When no credential survives, the
- * orphaned-metadata file is removed entirely. A no-op when there is
- * nothing to clear.
+ * (and unknown/foreign keys) intact. When neither a known credential NOR
+ * any preserved unknown/foreign data survives, the orphaned-metadata file
+ * is removed entirely. A surviving unknown top-level key (a future
+ * credential another CLI owns) keeps the file — deleting it would clobber
+ * exactly the cross-CLI data the store machinery exists to preserve. A
+ * no-op when there is nothing to clear.
  */
 export async function clearUserInfo(path = credentialPath()): Promise<void> {
   const { credentials, source } = await readStore(path);
   if (source === "absent" || !credentials.user) return;
   delete credentials.user;
-  if (!credentials.api_key && !credentials.oauth) {
+  if (!credentials.api_key && !credentials.oauth && !hasPreservedUnknownData(credentials)) {
     await deleteStore(path);
     return;
   }

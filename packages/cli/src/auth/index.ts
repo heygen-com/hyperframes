@@ -5,7 +5,14 @@
 
 export { isAuthError } from "./errors.js";
 
-export { clearOAuth, deleteStore, isHeaderSafe, readStore, writeStore } from "./store.js";
+export {
+  clearOAuth,
+  deleteStore,
+  hasPreservedUnknownData,
+  isHeaderSafe,
+  readStore,
+  writeStore,
+} from "./store.js";
 export type { Credentials, StoredUserInfo } from "./store.js";
 
 export {
