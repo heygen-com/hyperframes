@@ -55,6 +55,11 @@ export function cacheGetByEntity(entity) {
 
 export function cachePut(filePath, record) {
   const sha = contentHash(filePath);
+  // Idempotent: same content already promoted -> don't duplicate the global
+  // record. ponytail: skips usage_count bump; add it when the metric is needed.
+  const existing = readGlobalManifest().find((r) => r.sha === sha);
+  if (existing) return { sha, cached_path: existing.cached_path, deduped: true };
+
   const dir = globalMediaDir();
   const entryDir = cacheEntryDir(dir, sha);
   mkdirSync(entryDir, { recursive: true });

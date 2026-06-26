@@ -5,7 +5,7 @@ import { resolve, join, extname } from "node:path";
 import { parseArgs } from "node:util";
 import { appendRecord, findByPrompt, findByEntity, nextId, typeSubdir } from "./lib/manifest.mjs";
 import { regenerateIndex } from "./lib/index-gen.mjs";
-import { cacheGet, cacheGetByEntity, importFromCache } from "./lib/cache.mjs";
+import { cacheGet, cacheGetByEntity, importFromCache, cachePut } from "./lib/cache.mjs";
 import { runCapability, listTypes } from "./lib/registry.mjs";
 import { freezeUrl, freezeLocalFile } from "./lib/freeze.mjs";
 import { findExistingAsset } from "./lib/adopt.mjs";
@@ -198,6 +198,16 @@ async function run() {
 
   appendRecord(projectDir, record);
   regenerateIndex(projectDir);
+  // Auto-promote: surface every fetched asset in the global cache so it's
+  // reusable across all hyperframes projects (B3). Non-fatal; dedup by sha.
+  // ponytail: promotes search/generate/ingest assets (the ones media-use
+  // fetched), not bulk --adopt imports — add those if cross-project reuse of
+  // pre-existing project assets is wanted.
+  try {
+    cachePut(fullPath, record);
+  } catch {
+    // promotion is best-effort; a resolve still succeeds locally
+  }
   return result(record, searchResult.source || "search");
 }
 
