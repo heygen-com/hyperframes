@@ -59,8 +59,12 @@ server.on("error", (err: NodeJS.ErrnoException) => {
     type: "listen-error",
     error: `${err.code ?? "unknown"}: ${err.message}`,
   });
-  // Give the parent a beat to receive the error before we exit.
-  setTimeout(() => process.exit(1), 50);
+  // Give the parent a beat to receive the error, then close our message
+  // channel so the worker thread exits naturally. process.exit() inside a
+  // worker has had inconsistent semantics across Node versions; closing
+  // parentPort + letting the event loop drain is the documented clean path
+  // and lets the parent's `exit` listener fire with the natural code.
+  setTimeout(() => parentPort?.close(), 50);
 });
 
 server.listen(port, "0.0.0.0", () => {
@@ -69,9 +73,12 @@ server.listen(port, "0.0.0.0", () => {
 
 parentPort.on("message", (msg: { type?: string }) => {
   if (msg?.type === "shutdown") {
-    server.close(() => process.exit(0));
-    // Belt-and-suspenders: if close() hangs on a lingering socket, force-exit
-    // after 2s. The parent has its own 2s budget so this matches that.
-    setTimeout(() => process.exit(0), 2_000).unref();
+    // Close the server and the parent-port message channel. The parent
+    // owns the authoritative shutdown timeout (see healthWorker.ts —
+    // Promise.race against a 2s clock then worker.terminate()), so we do
+    // NOT need a redundant force-exit timer here: if server.close() hangs
+    // on a lingering keep-alive socket, the parent's terminate() lands
+    // first and kills the worker. Single source of truth for the deadline.
+    server.close(() => parentPort?.close());
   }
 });
