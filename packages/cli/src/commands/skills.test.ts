@@ -48,6 +48,25 @@ vi.mock("@clack/prompts", () => ({
   },
 }));
 
+// The install fans out to other agents via mirrorGlobalSkills, which touches
+// the real $HOME. Stub it so these arg-shape tests never create symlinks in the
+// dev machine's agent dirs — the mirror has its own isolated-HOME unit tests.
+vi.mock("../utils/skillsMirror.js", () => ({
+  mirrorGlobalSkills: vi.fn(() => ({ source: null, mirrored: [] })),
+}));
+
+// The global install command this CLI runs (after `skills add <url>`).
+const GLOBAL_ARGS = [
+  "--skill",
+  "*",
+  "--global",
+  "--agent",
+  "claude-code",
+  "universal",
+  "--copy",
+  "--yes",
+] as const;
+
 function setPlatform(platform: NodeJS.Platform): void {
   Object.defineProperty(process, "platform", {
     value: platform,
@@ -87,13 +106,13 @@ describe("hyperframes skills", () => {
       "linux",
       "npx",
       ["--version"],
-      ["skills", "add", "https://github.com/heygen-com/hyperframes", "--all"],
+      ["skills", "add", "https://github.com/heygen-com/hyperframes", ...GLOBAL_ARGS],
     ],
     [
       "darwin",
       "npx",
       ["--version"],
-      ["skills", "add", "https://github.com/heygen-com/hyperframes", "--all"],
+      ["skills", "add", "https://github.com/heygen-com/hyperframes", ...GLOBAL_ARGS],
     ],
     [
       "win32",
@@ -107,7 +126,7 @@ describe("hyperframes skills", () => {
         "skills",
         "add",
         "https://github.com/heygen-com/hyperframes",
-        "--all",
+        ...GLOBAL_ARGS,
       ],
     ],
   ] as const)(
@@ -125,45 +144,38 @@ describe("hyperframes skills", () => {
     },
   );
 
+  /** Run `skills update` with the mocked install exit code; returns the exitCode it left. */
+  async function runUpdate(installExitCode: number): Promise<number | undefined> {
+    state.spawnExitCode = installExitCode;
+    const prevExit = process.exitCode;
+    process.exitCode = 0;
+    try {
+      const { default: skillsCmd } = await import("./skills.js");
+      const subs = skillsCmd.subCommands as unknown as Record<string, typeof skillsCmd>;
+      const updateCmd = subs.update;
+      expect(updateCmd).toBeDefined();
+      await updateCmd!.run?.({ args: {}, rawArgs: [], cmd: updateCmd } as never);
+      return process.exitCode;
+    } finally {
+      process.exitCode = prevExit;
+    }
+  }
+
   // The `skills check || skills update` recovery contract requires update to
   // fail loudly — a swallowed install failure would let the `||` chain pass
   // while nothing changed.
   it("skills update exits non-zero when the install fails", async () => {
     setPlatform("linux");
-    state.spawnExitCode = 1; // simulate `skills add` exiting non-zero
-
-    const prevExit = process.exitCode;
-    process.exitCode = 0;
-    try {
-      const { default: skillsCmd } = await import("./skills.js");
-      const subs = skillsCmd.subCommands as unknown as Record<string, typeof skillsCmd>;
-      const updateCmd = subs.update;
-      expect(updateCmd).toBeDefined();
-      await updateCmd!.run?.({ args: {}, rawArgs: [], cmd: updateCmd } as never);
-      expect(process.exitCode).toBe(1);
-    } finally {
-      process.exitCode = prevExit;
-    }
+    expect(await runUpdate(1)).toBe(1);
   });
 
   it("skills update exits zero on a successful install", async () => {
     setPlatform("linux");
-    state.spawnExitCode = 0;
-
-    const prevExit = process.exitCode;
-    process.exitCode = 0;
-    try {
-      const { default: skillsCmd } = await import("./skills.js");
-      const subs = skillsCmd.subCommands as unknown as Record<string, typeof skillsCmd>;
-      const updateCmd = subs.update;
-      expect(updateCmd).toBeDefined();
-      await updateCmd!.run?.({ args: {}, rawArgs: [], cmd: updateCmd } as never);
-      expect(process.exitCode).toBe(0);
-      // pulls the full set straight from GitHub
-      expect(state.spawnCalls[0]?.args).toContain("https://github.com/heygen-com/hyperframes");
-      expect(state.spawnCalls[0]?.args).toContain("--all");
-    } finally {
-      process.exitCode = prevExit;
-    }
+    expect(await runUpdate(0)).toBe(0);
+    // pulls the full set straight from GitHub, globally, as a faithful copy
+    expect(state.spawnCalls[0]?.args).toContain("https://github.com/heygen-com/hyperframes");
+    expect(state.spawnCalls[0]?.args).toContain("--global");
+    expect(state.spawnCalls[0]?.args).toContain("--copy");
+    expect(state.spawnCalls[0]?.args).not.toContain("--all");
   });
 });

@@ -23,7 +23,8 @@
     "build:beat-analyzer": "node scripts/build-beat-analyzer.mjs",
     "build:copy": "node scripts/build-copy.mjs",
     "typecheck": "tsc --noEmit",
-    "gen:skills-manifest": "tsx scripts/gen-skills-manifest.ts"
+    "gen:skills-manifest": "tsx scripts/gen-skills-manifest.ts",
+    "gen:agent-dirs": "tsx scripts/sync-agent-dirs.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.8.0",

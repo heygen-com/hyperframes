@@ -574,22 +574,18 @@ async function scaffoldProject(
 }
 
 /**
- * Ensure the project's AI coding skills are present and current. Checks the
- * installed skills against the latest published on GitHub and only (re)installs
- * when something is outdated or missing — so re-running `init` on an already
- * up-to-date project is a no-op. Best-effort: if the version check can't reach
- * GitHub, it installs anyway. The install itself (`installAllSkills`) pulls the
- * full set straight from the GitHub repo.
+ * Ensure the AI coding skills are present and current. Checks the installed
+ * skills against the latest published on GitHub and only (re)installs when
+ * something is outdated or missing — so re-running `init` on an up-to-date
+ * machine is a no-op. Best-effort: if the version check can't reach GitHub, it
+ * installs anyway. The install itself (`installAllSkills`) installs the full
+ * set once GLOBALLY (~/.claude/skills + ~/.agents/skills) and mirrors it into
+ * every other installed agent, so it is project-independent — the check is
+ * global-first to match.
  */
 async function ensureSkillsCurrent(destDir: string): Promise<void> {
   const { installAllSkills } = await import("./skills.js");
   const { checkSkills } = await import("../utils/skillsManifest.js");
-  // --all pulls every skill (incl. ones not yet installed); --yes keeps it
-  // non-interactive. When Claude Code is driving, target its native dir so
-  // skills land in .claude/skills/.
-  const extraArgs = process.env["CLAUDECODE"]
-    ? ["--all", "--agent", "claude-code", "--yes"]
-    : ["--all", "--yes"];
 
   console.log();
   console.log(c.bold("Checking AI coding skills against GitHub..."));
@@ -602,7 +598,7 @@ async function ensureSkillsCurrent(destDir: string): Promise<void> {
   }
 
   if (needsInstall) {
-    await installAllSkills({ cwd: destDir, extraArgs });
+    await installAllSkills({ cwd: destDir });
   } else {
     console.log(c.success("AI coding skills are already up to date."));
   }

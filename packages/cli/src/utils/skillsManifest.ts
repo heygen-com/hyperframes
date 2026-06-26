@@ -204,7 +204,13 @@ function discoverSkillRoots(base: string, scope: "project" | "global"): SkillRoo
 /**
  * Find the first skill root that actually contains HyperFrames skills. A
  * `--dir` override (if given) is treated as a `.../skills` directory directly.
- * Otherwise scan project (cwd) then global ($HOME), auto-discovering hosts.
+ * Otherwise scan global ($HOME) then project (cwd), auto-discovering hosts.
+ *
+ * Global is checked FIRST to match how agents actually load skills: Claude Code
+ * (and most others) give the personal/global scope priority over the project
+ * scope, and HyperFrames now installs globally. Checking global-first means
+ * `check` reports on the copy the agent will really use — not a stale project
+ * copy that a newer global install silently overrides.
  */
 function locateInstall(
   skillNames: string[],
@@ -216,8 +222,8 @@ function locateInstall(
       : null;
   }
   const roots = [
-    ...discoverSkillRoots(opts.cwd ?? process.cwd(), "project"),
     ...discoverSkillRoots(opts.home ?? homedir(), "global"),
+    ...discoverSkillRoots(opts.cwd ?? process.cwd(), "project"),
   ];
   for (const root of roots) {
     if (skillNames.some((n) => existsSync(join(root.dir, n, "SKILL.md")))) return root;

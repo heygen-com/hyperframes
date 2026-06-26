@@ -190,18 +190,21 @@ describe("checkSkills install detection", () => {
     expect(res.agent).toBe(agent);
   });
 
-  it("prefers project scope over global, regardless of convention order", async () => {
+  it("prefers global scope over project (matches how agents load skills)", async () => {
     const project = join(root, "project");
     const home = join(root, "home");
     mkdirSync(project, { recursive: true });
     mkdirSync(home, { recursive: true });
     const source = writeManifest(root);
-    installSkill(join(home, ".claude/skills"), "alpha"); // global, higher-priority host
-    installSkill(join(project, ".hermes/skills"), "alpha"); // project, lower-priority host
+    installSkill(join(home, ".claude/skills"), "alpha"); // global — what the agent actually loads
+    installSkill(join(project, ".hermes/skills"), "alpha"); // project — overridden by the global copy
 
+    // Claude Code (and most agents) give the personal/global scope priority over
+    // the project scope, and HyperFrames installs globally — so check reports on
+    // the global copy the agent will really use, not a stale project copy.
     const res = await checkSkills({ source, cwd: project, home });
-    expect(res.location).toBe(join(project, ".hermes/skills"));
-    expect(res.agent).toBe("hermes");
+    expect(res.location).toBe(join(home, ".claude/skills"));
+    expect(res.agent).toBe("claude-code");
   });
 
   it("reports no location and an available update when nothing is installed", async () => {

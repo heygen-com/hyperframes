@@ -261,6 +261,11 @@
       // utils/compositionServer.ts; the remaining clone is per-command logging text
       // (different labels/help lines) — extracting it would over-abstract.
       "packages/cli/src/commands/present.ts",
+      // skillsManifest.test.ts: parallel arrange/act/assert cases for locateInstall
+      // (project vs global scope, per-agent host conventions, claude-code priority).
+      // Each case seeds a dir then asserts the resolved location/agent; collapsing
+      // the shared seed/assert shape would obscure what each scope/host verifies.
+      "packages/cli/src/utils/skillsManifest.test.ts",
     ],
   },
   "health": {
@@ -296,6 +301,11 @@
       // body is linear validation that reads clearly inline.
       "packages/cli/src/commands/play.ts",
       "packages/cli/src/commands/present.ts",
+      // sync-agent-dirs.ts: a build-time codegen that regex-parses upstream
+      // agents.ts. parseAgents/resolveGlobalExpr are branchy by nature (literal
+      // vs base-var args, validation throws) but small and well-tested via the
+      // generated table's shape test; this is dev tooling, not shipped runtime.
+      "packages/cli/scripts/sync-agent-dirs.ts",
     ],
   },
 }

@@ -5,6 +5,7 @@ import { c } from "../ui/colors.js";
 import { buildNpxCommand } from "../utils/npxCommand.js";
 import { withMeta } from "../utils/updateCheck.js";
 import { checkSkills, type SkillsCheckResult } from "../utils/skillsManifest.js";
+import { mirrorGlobalSkills } from "../utils/skillsMirror.js";
 import type { Example } from "./_examples.js";
 
 export const examples: Example[] = [
@@ -48,11 +49,28 @@ function spawnNpx(args: string[], opts: { cwd?: string } = {}): Promise<void> {
   });
 }
 
+// One faithful global install: --copy lands real files in Claude Code's global
+// store (~/.claude/skills, which Claude Code reads at global priority) plus the
+// shared universal store (~/.agents/skills). mirrorGlobalSkills then fans that
+// store out to every OTHER installed agent's global dir. Skills are
+// framework-general knowledge, so installing once globally beats copying a full
+// set into every project — and avoids the ~70-agent `--all` spray entirely.
+const GLOBAL_INSTALL_ARGS = [
+  "--skill",
+  "*",
+  "--global",
+  "--agent",
+  "claude-code",
+  "universal",
+  "--copy",
+  "--yes",
+];
+
 function runSkillsAdd(
   source: string,
   opts: { cwd?: string; extraArgs?: string[] } = {},
 ): Promise<void> {
-  return spawnNpx(["skills", "add", source, ...(opts.extraArgs ?? ["--all"])], opts);
+  return spawnNpx(["skills", "add", source, ...(opts.extraArgs ?? GLOBAL_INSTALL_ARGS)], opts);
 }
 
 // Use the full GitHub URL (not the `owner/repo` slug) so `skills add` git-clones
@@ -84,6 +102,18 @@ export async function installAllSkills(
       if (opts.strict) throw err instanceof Error ? err : new Error(String(err));
       console.log(c.dim(`${source.name} skills skipped`));
     }
+  }
+
+  // Fan the global Claude store out to every other installed agent. No-op when
+  // the global store is absent (e.g. a custom --dir install), so it's safe to
+  // run unconditionally after any install path.
+  try {
+    const { mirrored } = mirrorGlobalSkills();
+    if (mirrored.length > 0) {
+      console.log(c.dim(`Linked skills into ${mirrored.length} other agent director(ies).`));
+    }
+  } catch {
+    // best-effort: a mirror failure must not fail the install
   }
 }
 
@@ -167,16 +197,17 @@ const updateCommand = defineCommand({
   },
   args: {},
   async run() {
-    // `skills add --all` re-fetches every skill to the latest AND installs ones
-    // not yet present — so "update" pulls the full set, not just what is already
-    // installed. This is where `init` and the stale-skills nudge both lead.
+    // The global install re-fetches every skill to the latest AND installs ones
+    // not yet present, then re-mirrors — so "update" pulls the full set, not
+    // just what is already installed. This is where `init` and the stale-skills
+    // nudge both lead.
     //
     // strict: this is the documented recovery path for the agent/CI contract
     // `hyperframes skills check || hyperframes skills update`. If the install
     // fails (no npx, `skills add` exits non-zero) it must exit non-zero too —
     // otherwise the `||` chain passes while nothing actually changed.
     try {
-      await installAllSkills({ extraArgs: ["--all", "--yes"], strict: true });
+      await installAllSkills({ strict: true });
     } catch (err) {
       clack.log.error(c.error(`Update failed: ${(err as Error).message}`));
       process.exitCode = 1;
