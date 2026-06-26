@@ -78,12 +78,12 @@ describe("diffSkills", () => {
     },
   };
 
-  it("classifies current / outdated / missing / local-only", () => {
+  it("classifies current / outdated / missing and ignores skills not in the manifest", () => {
     const installed: Record<string, SkillEntry> = {
       keep: { hash: "h1", files: 1 }, // current
       changed: { hash: "DIFFERENT", files: 1 }, // outdated
       // gone: not installed → missing
-      extra: { hash: "hx", files: 1 }, // local-only
+      extra: { hash: "hx", files: 1 }, // not in the manifest → ignored
     };
     const diff = diffSkills(installed, latest);
     const byName = Object.fromEntries(diff.skills.map((s) => [s.name, s.status]));
@@ -91,9 +91,8 @@ describe("diffSkills", () => {
       keep: "current",
       changed: "outdated",
       gone: "missing",
-      extra: "local-only",
     });
-    expect(diff.summary).toEqual({ current: 1, outdated: 1, missing: 1, localOnly: 1 });
+    expect(diff.summary).toEqual({ current: 1, outdated: 1, missing: 1 });
   });
 
   it("flags updateAvailable when a skill is outdated OR missing", () => {
@@ -115,8 +114,8 @@ describe("diffSkills", () => {
     );
     expect(allCurrent.updateAvailable).toBe(false);
 
-    // A local-only skill (installed, not in the manifest) doesn't trigger one.
-    const localOnly = diffSkills(
+    // A skill installed but not in the manifest is ignored — doesn't trigger one.
+    const withExtra = diffSkills(
       {
         keep: { hash: "h1", files: 1 },
         changed: { hash: "h2", files: 1 },
@@ -125,6 +124,6 @@ describe("diffSkills", () => {
       },
       latest,
     );
-    expect(localOnly.updateAvailable).toBe(false);
+    expect(withExtra.updateAvailable).toBe(false);
   });
 });

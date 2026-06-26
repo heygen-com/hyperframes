@@ -19,7 +19,7 @@ import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, relative, sep } from "node:path";
+import { isAbsolute, join, relative, sep } from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -58,7 +58,7 @@ export interface SkillsManifest {
   skills: Record<string, SkillEntry>;
 }
 
-export type SkillStatus = "current" | "outdated" | "missing" | "local-only";
+export type SkillStatus = "current" | "outdated" | "missing";
 
 export interface SkillDiff {
   name: string;
@@ -73,7 +73,7 @@ export interface SkillsCheckResult {
   /** Agent convention inferred from the location (claude-code, codex, …). */
   agent: string | null;
   updateAvailable: boolean;
-  summary: { current: number; outdated: number; missing: number; localOnly: number };
+  summary: { current: number; outdated: number; missing: number };
   skills: SkillDiff[];
 }
 
@@ -87,7 +87,7 @@ const FETCH_TIMEOUT_MS = 4000;
 function listFilesSorted(dir: string): string[] {
   const out: string[] = [];
   const walk = (d: string): void => {
-    for (const name of readdirSync(d).sort()) {
+    for (const name of readdirSync(d)) {
       if (name === ".DS_Store") continue;
       const p = join(d, name);
       if (statSync(p).isDirectory()) walk(p);
@@ -95,6 +95,8 @@ function listFilesSorted(dir: string): string[] {
     }
   };
   walk(dir);
+  // Sorting the full path list once is what guarantees a deterministic,
+  // filesystem-order-independent hash — no need to also sort per directory.
   return out.sort();
 }
 
@@ -207,36 +209,35 @@ export function diffSkills(
   installed: Record<string, SkillEntry>,
   latest: SkillsManifest,
 ): Omit<SkillsCheckResult, "location" | "agent"> {
-  const names = new Set([...Object.keys(latest.skills), ...Object.keys(installed)]);
+  // Report only on skills the manifest knows about. A skill on disk that isn't
+  // in the manifest isn't necessarily ours — `.../skills` is shared across
+  // sources — so it's not something we can meaningfully diff, and is ignored.
   const skills: SkillDiff[] = [];
-  const summary = { current: 0, outdated: 0, missing: 0, localOnly: 0 };
+  const summary = { current: 0, outdated: 0, missing: 0 };
 
-  for (const name of [...names].sort()) {
-    const latestEntry = latest.skills[name];
+  for (const name of Object.keys(latest.skills).sort()) {
+    const latestEntry = latest.skills[name]!;
     const installedEntry = installed[name];
     let status: SkillStatus;
-    if (latestEntry && !installedEntry) status = "missing";
-    else if (!latestEntry && installedEntry) status = "local-only";
-    else if (installedEntry!.hash === latestEntry!.hash) status = "current";
+    if (!installedEntry) status = "missing";
+    else if (installedEntry.hash === latestEntry.hash) status = "current";
     else status = "outdated";
 
     if (status === "current") summary.current++;
     else if (status === "outdated") summary.outdated++;
-    else if (status === "missing") summary.missing++;
-    else summary.localOnly++;
+    else summary.missing++;
 
     skills.push({
       name,
       status,
       installedHash: installedEntry?.hash,
-      latestHash: latestEntry?.hash,
+      latestHash: latestEntry.hash,
     });
   }
 
   return {
     // The full skill set is the goal — `init` and `skills update` both pull the
     // complete set, so anything outdated OR missing means an update is available.
-    // (local-only skills — installed but not in the manifest — don't count.)
     updateAvailable: summary.outdated > 0 || summary.missing > 0,
     summary,
     skills,
@@ -258,13 +259,26 @@ function findRepoManifest(cwd = process.cwd()): string | null {
   return null;
 }
 
+/**
+ * Narrow an untrusted JSON payload to a SkillsManifest, or throw a clear error.
+ * Guards against a CDN serving an error page (or a malformed manifest) as 200 —
+ * without this, a bad shape surfaces later as a cryptic crash in diffSkills.
+ */
+function asSkillsManifest(data: unknown, sourceLabel: string): SkillsManifest {
+  const m = data as Partial<SkillsManifest> | null;
+  if (!m || typeof m !== "object" || typeof m.skills !== "object" || m.skills === null) {
+    throw new Error(`Malformed skills manifest from ${sourceLabel}`);
+  }
+  return m as SkillsManifest;
+}
+
 async function fetchManifest(url: string): Promise<SkillsManifest> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
     const res = await fetch(url, { signal: controller.signal, headers: { Connection: "close" } });
     if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${url}`);
-    return (await res.json()) as SkillsManifest;
+    return asSkillsManifest(await res.json(), url);
   } finally {
     clearTimeout(timeout);
   }
@@ -332,7 +346,9 @@ async function resolveLatestManifest(
   source?: string,
   cwd = process.cwd(),
 ): Promise<SkillsManifest> {
-  if (source && (source.startsWith(".") || source.startsWith("/"))) {
+  // A local path is a relative one (./ ../) or an absolute one — isAbsolute
+  // covers POSIX `/…` and Windows `C:\…` / `\…` on their respective platforms.
+  if (source && (source.startsWith(".") || isAbsolute(source))) {
     return resolveLocalManifest(source);
   }
   if (!source) {
