@@ -99,6 +99,86 @@ const MIME_TYPES: Record<string, string> = {
 };
 
 /**
+ * Result of parsing a `Range:` request header against a known total size.
+ *
+ * - `kind: "satisfiable"`: `start <= end < size`. The response should be 206
+ *   with `Content-Range: bytes start-end/size` and the sliced body.
+ * - `kind: "unsatisfiable"`: the header was syntactically valid (`bytes=...`)
+ *   but the resolved range falls outside `[0, size)` (e.g. `start >= size`,
+ *   `end < start`, or a suffix request on a zero-byte file). Per RFC 7233
+ *   the response should be 416 with `Content-Range: bytes (asterisk)/size`.
+ * - `kind: "absent"`: there is no `Range:` header on the request, or it is
+ *   syntactically malformed, uses a non-`bytes` unit, or requests multiple
+ *   ranges. RFC 7233 allows ignoring such headers and serving the full body
+ *   with a 200, which is what callers should do.
+ */
+export type RangeRequest =
+  | { kind: "satisfiable"; start: number; end: number }
+  | { kind: "unsatisfiable" }
+  | { kind: "absent" };
+
+/**
+ * Parse a single-range `Range:` request header per RFC 7233 §2.1.
+ *
+ * Supports the three forms of `bytes=...`:
+ *   - `bytes=START-END`: closed range, both bounds inclusive.
+ *   - `bytes=START-`: open-ended, serve from START to EOF.
+ *   - `bytes=-SUFFIX`: last SUFFIX bytes.
+ *
+ * Multi-range requests (`bytes=0-99,200-299`) are treated as `absent`. The
+ * caller serves the full body with 200. The hyperframes producer's use case
+ * (Chrome `<video>` seeks, range-aware media stack) only ever issues single
+ * ranges, so we don't take on the multipart-byteranges complexity here.
+ *
+ * Exported for unit tests; not part of the public package surface.
+ */
+export function parseRangeHeader(header: string | null | undefined, size: number): RangeRequest {
+  if (!header) return { kind: "absent" };
+  const match = /^\s*bytes\s*=\s*(.*?)\s*$/i.exec(header);
+  if (!match) return { kind: "absent" };
+  const specList = match[1];
+  if (!specList || specList.includes(",")) {
+    // Multi-range: bail to full-body 200 rather than reassemble
+    // multipart/byteranges. Single-range is the only shape we serve.
+    return { kind: "absent" };
+  }
+  const dashIdx = specList.indexOf("-");
+  if (dashIdx < 0) return { kind: "absent" };
+  const rawStart = specList.slice(0, dashIdx).trim();
+  const rawEnd = specList.slice(dashIdx + 1).trim();
+
+  // Suffix form: `bytes=-N` returns the last N bytes.
+  if (rawStart === "" && rawEnd !== "") {
+    if (!/^\d+$/.test(rawEnd)) return { kind: "absent" };
+    const suffixLen = Number(rawEnd);
+    if (!Number.isFinite(suffixLen)) return { kind: "absent" };
+    if (size === 0 || suffixLen === 0) return { kind: "unsatisfiable" };
+    const start = Math.max(0, size - suffixLen);
+    return { kind: "satisfiable", start, end: size - 1 };
+  }
+
+  if (!/^\d+$/.test(rawStart)) return { kind: "absent" };
+  const start = Number(rawStart);
+  if (!Number.isFinite(start)) return { kind: "absent" };
+
+  // Open-ended form: `bytes=START-` returns from START to EOF.
+  if (rawEnd === "") {
+    if (start >= size) return { kind: "unsatisfiable" };
+    return { kind: "satisfiable", start, end: size - 1 };
+  }
+
+  // Closed form: `bytes=START-END`
+  if (!/^\d+$/.test(rawEnd)) return { kind: "absent" };
+  const requestedEnd = Number(rawEnd);
+  if (!Number.isFinite(requestedEnd)) return { kind: "absent" };
+  if (requestedEnd < start) return { kind: "unsatisfiable" };
+  if (start >= size) return { kind: "unsatisfiable" };
+  // Clamp the end to the last valid byte.
+  const end = Math.min(requestedEnd, size - 1);
+  return { kind: "satisfiable", start, end };
+}
+
+/**
  * Options for {@link buildVirtualTimeShim}.
  */
 export interface VirtualTimeShimOptions {
@@ -692,16 +772,58 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
     // createReadStream() pipes bounded chunks asynchronously, so the event
     // loop stays responsive even when several large assets are in flight
     // simultaneously. Chrome reassembles the chunks transparently.
+    //
+    // We also honor `Range:` requests (RFC 7233) so Chrome's <video> element
+    // can seek into and partial-load large media without re-pulling the whole
+    // file. `Accept-Ranges: bytes` is advertised on every response (including
+    // full-body 200s) so the client knows ranges are supported.
     const stat = statSync(filePath);
+    const totalSize = stat.size;
+    const rangeHeader = c.req.header("range");
+    const rangeRequest = parseRangeHeader(rangeHeader, totalSize);
+
+    if (rangeRequest.kind === "unsatisfiable") {
+      // 416 Range Not Satisfiable. RFC 7233 §4.4 mandates `Content-Range`
+      // carry the total length as `bytes */<size>` so clients know how to
+      // re-issue a valid range.
+      return new Response(null, {
+        status: 416,
+        headers: {
+          "Content-Type": contentType,
+          "Content-Range": `bytes */${totalSize}`,
+          "Accept-Ranges": "bytes",
+        },
+      });
+    }
+
+    if (rangeRequest.kind === "satisfiable") {
+      const { start, end } = rangeRequest;
+      const length = end - start + 1;
+      const stream = createReadStream(filePath, { start, end });
+      const webStream = Readable.toWeb(stream) as unknown as ReadableStream;
+      return new Response(webStream, {
+        status: 206,
+        headers: {
+          "Content-Type": contentType,
+          "Content-Length": String(length),
+          "Content-Range": `bytes ${start}-${end}/${totalSize}`,
+          "Accept-Ranges": "bytes",
+        },
+      });
+    }
+
+    // No Range header (or malformed/multi-range): full-body 200 with
+    // Accept-Ranges advertised so the client knows future Range requests
+    // are supported. Node Readable -> Web ReadableStream so Hono's
+    // Response can consume it. Node 18+ supports Readable.toWeb directly.
     const stream = createReadStream(filePath);
-    // Node Readable -> Web ReadableStream so Hono's Response can consume it.
-    // Node 18+ supports Readable.toWeb directly.
     const webStream = Readable.toWeb(stream) as unknown as ReadableStream;
     return new Response(webStream, {
       status: 200,
       headers: {
         "Content-Type": contentType,
-        "Content-Length": String(stat.size),
+        "Content-Length": String(totalSize),
+        "Accept-Ranges": "bytes",
       },
     });
   });
