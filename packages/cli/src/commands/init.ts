@@ -803,10 +803,12 @@ export default defineCommand({
 
       if (!skipSkills) {
         const { installAllSkills } = await import("./skills.js");
-        // --yes keeps it non-interactive. When Claude Code is driving
-        // (CLAUDECODE env var), target its native dir so skills land in
-        // .claude/skills/ instead of only .agents/skills/.
-        const args = process.env["CLAUDECODE"] ? ["--agent", "claude-code", "--yes"] : ["--yes"];
+        // --all pulls every skill (including ones not yet installed); --yes keeps
+        // it non-interactive. When Claude Code is driving (CLAUDECODE env var),
+        // target its native dir so skills land in .claude/skills/.
+        const args = process.env["CLAUDECODE"]
+          ? ["--all", "--agent", "claude-code", "--yes"]
+          : ["--all", "--yes"];
         await installAllSkills({ cwd: destDir, extraArgs: args });
       }
 
@@ -1023,20 +1025,17 @@ export default defineCommand({
     const files = readdirSync(destDir);
     clack.note(files.map((f) => c.accent(f)).join("\n"), c.success(`Created ${name}/`));
 
-    // Offer to install AI coding skills
+    // Always install (and refresh) all AI coding skills — init is the one place
+    // skills are pulled in full, so this grabs every skill including ones not yet
+    // installed and brings existing ones to the latest. Opt out with --skip-skills.
     if (!skipSkills) {
-      const installSkills = await clack.confirm({
-        message: "Install AI coding skills? (for Claude Code, Cursor, Codex, etc.)",
-        initialValue: true,
-      });
-      if (clack.isCancel(installSkills)) {
-        clack.cancel("Setup cancelled.");
-        process.exit(0);
-      }
-      if (installSkills) {
-        const { installAllSkills } = await import("./skills.js");
-        await installAllSkills({ cwd: destDir });
-      }
+      const { installAllSkills } = await import("./skills.js");
+      // --all pulls every skill; --yes keeps it non-interactive. When Claude Code
+      // is driving, target .claude/skills/ (mirrors the non-interactive path).
+      const args = process.env["CLAUDECODE"]
+        ? ["--all", "--agent", "claude-code", "--yes"]
+        : ["--all", "--yes"];
+      await installAllSkills({ cwd: destDir, extraArgs: args });
     }
 
     // Auto-launch studio preview

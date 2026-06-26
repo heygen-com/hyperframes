@@ -11,7 +11,7 @@ export const examples: Example[] = [
   ["Install all HyperFrames skills", "hyperframes skills"],
   ["Check whether installed skills are up to date", "hyperframes skills check"],
   ["Check, machine-readable (for agents / CI)", "hyperframes skills check --json"],
-  ["Update installed skills to the latest", "hyperframes skills update"],
+  ["Update all skills to the latest (installs any missing)", "hyperframes skills update"],
 ];
 
 function hasNpx(): boolean {
@@ -153,30 +153,14 @@ const checkCommand = defineCommand({
 const updateCommand = defineCommand({
   meta: {
     name: "update",
-    description: "Update installed HyperFrames skills to the latest version",
+    description: "Update all HyperFrames skills to the latest — installs any not yet present",
   },
-  args: {
-    yes: { type: "boolean", description: "Skip prompts (auto-detect scope)", default: false },
-  },
-  async run({ args }) {
-    if (!hasNpx()) {
-      clack.log.error(c.error("npx not found. Install Node.js and retry."));
-      return;
-    }
-    // The upstream `skills` CLI owns the update mechanism (reads
-    // skills-lock.json and re-fetches changed skills). We wrap it so agents and
-    // users reference one tool, and so the passive nudge can point here.
-    console.log();
-    console.log(c.bold("Updating HyperFrames skills..."));
-    console.log();
-    const updateArgs = ["skills", "update"];
-    if (args.yes) updateArgs.push("--yes");
-    try {
-      await spawnNpx(updateArgs);
-    } catch (err) {
-      clack.log.error(c.error(`Update failed: ${(err as Error).message}`));
-      process.exitCode = 1;
-    }
+  args: {},
+  async run() {
+    // `skills add --all` re-fetches every skill to the latest AND installs ones
+    // not yet present — so "update" pulls the full set, not just what is already
+    // installed. This is where `init` and the stale-skills nudge both lead.
+    await installAllSkills({ extraArgs: ["--all", "--yes"] });
   },
 });
 

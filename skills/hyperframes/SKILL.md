@@ -85,10 +85,12 @@ After they run it, re-read the workflow's skill and continue.
 
 ## Keeping skills current
 
-HyperFrames skills are versioned. If a task is behaving unexpectedly, or before a long build, it's worth confirming the installed skills are current:
+HyperFrames skills are versioned. `npx hyperframes init` installs (and refreshes) **all** skills as part of project setup — including any not yet present — so a freshly init'd project always has the complete, latest set. Opt out with `init --skip-skills`.
+
+If a task is behaving unexpectedly, or before a long build, confirm the installed skills are current:
 
 - **Check:** `npx hyperframes skills check` (add `--json` for a machine-readable verdict; exits non-zero when something is outdated).
-- **Update:** `npx hyperframes skills update`.
+- **Update:** `npx hyperframes skills update` — pulls the full set to the latest, **installing any not yet present** (same as init's install step).
 
 The CLI also surfaces a one-line reminder when a `render` / `lint` / `validate` run detects stale skills.
 
