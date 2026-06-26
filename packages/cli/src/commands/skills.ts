@@ -55,10 +55,12 @@ function runSkillsAdd(
   return spawnNpx(["skills", "add", source, ...(opts.extraArgs ?? ["--all"])], opts);
 }
 
-function runSkillsRemove(names: string[]): Promise<void> {
-  // `skills remove -g --yes` deletes the bundle dir, every agent symlink, and
-  // the lock entry — non-interactively, mirroring how `skills add` installs.
-  return spawnNpx(["skills", "remove", ...names, "-g", "--yes"]);
+function runSkillsRemove(names: string[], opts: { global: boolean }): Promise<void> {
+  // `skills remove --yes` deletes the bundle dir, every agent symlink, and the
+  // lock entry non-interactively. `-g` targets the global install; without it,
+  // the project (cwd) install — we pass whichever scope detection attributed
+  // these names from, so we never reach into a scope we didn't inspect.
+  return spawnNpx(["skills", "remove", ...names, ...(opts.global ? ["-g"] : []), "--yes"]);
 }
 
 // Use the full GitHub URL (not the `owner/repo` slug) so `skills add` git-clones
@@ -206,17 +208,22 @@ const updateCommand = defineCommand({
     // (e.g. graphic-overlays → talking-head-recut) would linger forever. Prune
     // skills the lock attributes to our source that the manifest no longer
     // ships, so `check || update` fully reconciles the install to the manifest.
-    // Best-effort: cleanup failure doesn't fail the update — the install (the
-    // job that the CI contract gates on) already succeeded.
+    //
+    // Safety: `removed` only ever contains skills the lock records as installed
+    // from our source (see detectRemoved) — never a user's own or another
+    // source's skills. We remove in the exact scope detection attributed from,
+    // so we never reach into a scope we didn't inspect. Best-effort: cleanup
+    // failure doesn't fail the update — the install the CI contract gates on
+    // already succeeded.
     try {
-      const { skills } = await checkSkills();
+      const { skills, scope } = await checkSkills();
       const removed = skills.filter((s) => s.status === "removed").map((s) => s.name);
       if (removed.length) {
         console.log();
         console.log(
           c.dim(`Removing ${removed.length} skill(s) no longer published: ${removed.join(", ")}`),
         );
-        await runSkillsRemove(removed);
+        await runSkillsRemove(removed, { global: scope === "global" });
       }
     } catch (err) {
       clack.log.warn(c.warn(`Skipped removed-skill cleanup: ${(err as Error).message}`));

@@ -168,10 +168,11 @@ describe("hyperframes skills", () => {
 
   // `skills add --all` never deletes, so update must separately prune skills the
   // manifest dropped (renames/removals) for `check || update` to fully reconcile.
-  it("skills update prunes skills removed upstream after installing", async () => {
+  it("skills update prunes skills removed upstream, in the attributed scope", async () => {
     setPlatform("linux");
     const { checkSkills } = await import("../utils/skillsManifest.js");
     vi.mocked(checkSkills).mockResolvedValueOnce({
+      scope: "global",
       skills: [{ name: "graphic-overlays", status: "removed" }],
     } as never);
 
@@ -183,7 +184,27 @@ describe("hyperframes skills", () => {
     expect(removeCall, "expected a `skills remove` spawn").toBeDefined();
     expect(removeCall!.args).toContain("graphic-overlays");
     expect(removeCall!.args).toContain("--yes");
+    expect(removeCall!.args).toContain("-g"); // attributed from the global lock → remove globally
     expect(process.exitCode).toBe(0);
+  });
+
+  // The scope the skill was attributed from drives the remove scope: a
+  // project-scoped removal must NOT pass -g (which would target a different,
+  // possibly user-owned, global skill of the same name).
+  it("skills update prunes in project scope without -g", async () => {
+    setPlatform("linux");
+    const { checkSkills } = await import("../utils/skillsManifest.js");
+    vi.mocked(checkSkills).mockResolvedValueOnce({
+      scope: "project",
+      skills: [{ name: "graphic-overlays", status: "removed" }],
+    } as never);
+
+    await runSkillsUpdate();
+
+    const removeCall = state.spawnCalls.find((s) => s.args.includes("remove"));
+    expect(removeCall, "expected a `skills remove` spawn").toBeDefined();
+    expect(removeCall!.args).toContain("graphic-overlays");
+    expect(removeCall!.args).not.toContain("-g");
   });
 
   it("skills update does not prune when nothing was removed upstream", async () => {

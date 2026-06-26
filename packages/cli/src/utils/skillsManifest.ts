@@ -81,6 +81,8 @@ export interface SkillsCheckResult {
   location: string | null;
   /** Agent convention inferred from the location (claude-code, codex, …). */
   agent: string | null;
+  /** Scope of the located install — so a caller prunes in the same scope it attributed from. */
+  scope: "project" | "global" | null;
   updateAvailable: boolean;
   summary: { current: number; outdated: number; missing: number; removed: number };
   skills: SkillDiff[];
@@ -489,6 +491,7 @@ export async function checkSkills(
   return {
     location: root?.dir ?? null,
     agent: root?.agent ?? null,
+    scope: root?.scope ?? null,
     // Removed skills also mean the install isn't reconciled with the manifest —
     // `skills update` now prunes them, so they count toward "update available".
     updateAvailable: diff.updateAvailable || removed.length > 0,
