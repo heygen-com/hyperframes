@@ -9,7 +9,7 @@
  */
 
 import { parseHTML } from "linkedom";
-import { ensureHfIds } from "@hyperframes/core/hf-ids";
+import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { parseGsapScriptAcornForWrite } from "@hyperframes/core/gsap-parser-acorn";
 import { findRoot, getElementStyles, getOwnText, isNewHostBoundary } from "./engine/model.js";
 import type { HyperFramesElement, SdkDocument } from "./types.js";

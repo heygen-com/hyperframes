@@ -10,7 +10,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseHtml } from "./htmlParser.js";
 import { maxEndTime, serialize } from "./test-utils.js";
-import { generateHyperframesHtml } from "../generators/hyperframes.js";
+import { generateHyperframesHtml } from "@hyperframes/core/generators";
 
 describe("T1 — parse→serialize round-trip (DOM/timing)", () => {
   it("preserves element count and ids through one round-trip", () => {

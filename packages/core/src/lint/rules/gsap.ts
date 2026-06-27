@@ -16,7 +16,7 @@ interface LintParsedGsap {
 // instead of all-collapsed-at-0. It's also browser-safe, so this keeps recast
 // out of the lint graph entirely. Dynamic import preserves the lazy load.
 async function loadParseGsapScript(): Promise<(script: string) => LintParsedGsap> {
-  const mod = await import("../../parsers/gsapParserAcorn.js");
+  const mod = await import("@hyperframes/parsers/gsap-parser-acorn");
   return mod.parseGsapScriptAcorn as unknown as (script: string) => LintParsedGsap;
 }
 import type { LintContext } from "../context";

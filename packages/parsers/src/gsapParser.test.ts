@@ -29,7 +29,7 @@ import {
 } from "./gsapParser.js";
 import type { GsapAnimation } from "./gsapParser.js";
 import { classifyPropertyGroup, classifyTweenPropertyGroup } from "./gsapConstants.js";
-import type { Keyframe } from "../core.types";
+import type { Keyframe } from "./types.js";
 import {
   parseAndSerialize,
   parseSingleAnimation,

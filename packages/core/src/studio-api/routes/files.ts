@@ -27,10 +27,10 @@ import {
   findUnsafeMutationValues,
   type UnsafeMutationValue,
 } from "../helpers/finiteMutation.js";
-import type { GsapAnimation } from "../../parsers/gsapSerialize.js";
-import { classifyPropertyGroup } from "../../parsers/gsapConstants.js";
-import { parseGsapScriptAcorn } from "../../parsers/gsapParserAcorn.js";
-import { unrollComputedTimeline } from "../../parsers/gsapUnroll.js";
+import type { GsapAnimation } from "@hyperframes/parsers";
+import { classifyPropertyGroup } from "@hyperframes/parsers/gsap-constants";
+import { parseGsapScriptAcorn } from "@hyperframes/parsers/gsap-parser-acorn";
+import { unrollComputedTimeline } from "@hyperframes/parsers";
 import {
   updateAnimationInScript,
   addAnimationToScript,
@@ -50,7 +50,7 @@ import {
   splitIntoPropertyGroupsFromScript,
   shiftPositionsInScript,
   scalePositionsInScript,
-} from "../../parsers/gsapWriterAcorn.js";
+} from "@hyperframes/parsers/gsap-writer-acorn";
 import {
   removeElementFromHtml,
   patchElementInHtml,
@@ -82,7 +82,7 @@ function isAcornGsapWriterEnabled(): boolean {
  * for the recast write path (the default when STUDIO_SDK_CUTOVER_ENABLED is off).
  */
 async function loadGsapParser() {
-  return import("../../parsers/gsapParser.js");
+  return import("@hyperframes/parsers/gsap-parser-recast");
 }
 
 // ── Shared helpers ──────────────────────────────────────────────────────────

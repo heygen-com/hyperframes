@@ -2,7 +2,7 @@ import { parseCssColor, type ParsedColor } from "./colorValue";
 import { COMMON_LOCAL_FONT_FAMILIES } from "./fontCatalog";
 import type { DomEditSelection } from "./domEditing";
 import type { ImportedFontAsset } from "./fontAssets";
-import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
+import type { GsapAnimation } from "@hyperframes/parsers/gsap-parser";
 import { roundToCenti } from "../../utils/rounding";
 
 export interface PropertyPanelProps {
@@ -29,7 +29,7 @@ export interface PropertyPanelProps {
   fontAssets?: ImportedFontAsset[];
   onImportFonts?: (files: FileList | File[]) => Promise<ImportedFontAsset[]>;
   previewIframeRef?: React.RefObject<HTMLIFrameElement | null>;
-  gsapAnimations?: import("@hyperframes/core/gsap-parser").GsapAnimation[];
+  gsapAnimations?: import("@hyperframes/parsers/gsap-parser").GsapAnimation[];
   gsapMultipleTimelines?: boolean;
   gsapUnsupportedTimelinePattern?: boolean;
   onUpdateGsapProperty?: (animId: string, prop: string, value: number | string) => void;
@@ -49,13 +49,13 @@ export interface PropertyPanelProps {
     config: {
       enabled: boolean;
       autoRotate?: boolean | number;
-      segments?: import("@hyperframes/core/gsap-parser").ArcPathSegment[];
+      segments?: import("@hyperframes/parsers/gsap-parser").ArcPathSegment[];
     },
   ) => void;
   onUpdateArcSegment?: (
     animId: string,
     segmentIndex: number,
-    update: Partial<import("@hyperframes/core/gsap-parser").ArcPathSegment>,
+    update: Partial<import("@hyperframes/parsers/gsap-parser").ArcPathSegment>,
   ) => void;
   /** Unroll computed (helper/loop) tweens into literal tweens for direct editing. */
   onUnroll?: (animationId: string) => void;

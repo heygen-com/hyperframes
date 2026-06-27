@@ -9,13 +9,13 @@ import type {
   KeyframeProperties,
   StageZoomKeyframe,
   CompositionVariable,
-} from "../core.types";
+  ValidationResult,
+} from "./types.js";
 import { validateCompositionGsap } from "./gsapSerialize";
 import { ensureHfIds } from "./hfIds.js";
 import { parseGsapScriptAcornForWrite } from "./gsapParserAcorn.js";
-import { queryByAttr } from "../utils/cssSelector";
+import { queryByAttr } from "./utils/cssSelector.js";
 import { removeAnimationFromScript } from "./gsapWriterAcorn.js";
-import type { ValidationResult } from "../core.types";
 
 const MEDIA_TYPES = new Set<string>(["video", "image", "audio"]);
 

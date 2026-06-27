@@ -11,7 +11,7 @@ import {
   createStudioMotionRenderBodyScript,
   STUDIO_MOTION_PATH,
 } from "../helpers/studioMotionRenderScript.js";
-import { ensureHfIds } from "../../parsers/hfIds.js";
+import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { persistHfIdsIfNeeded } from "../helpers/hfIdPersist.js";
 
 const PROJECT_SIGNATURE_META = "hyperframes-project-signature";

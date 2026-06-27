@@ -1,5 +1,5 @@
 import type { PatchTarget } from "../../utils/sourcePatcher";
-import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
+import type { GsapAnimation } from "@hyperframes/parsers/gsap-parser";
 
 export const CURATED_STYLE_PROPERTIES = [
   "position",

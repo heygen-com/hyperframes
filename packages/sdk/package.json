@@ -63,6 +63,7 @@
   },
   "dependencies": {
     "@hyperframes/core": "workspace:*",
+    "@hyperframes/parsers": "workspace:*",
     "linkedom": "^0.18.12"
   },
   "devDependencies": {

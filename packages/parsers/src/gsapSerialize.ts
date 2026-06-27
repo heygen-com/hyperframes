@@ -6,7 +6,7 @@
  * isomorphic core layer that the barrel and browser code depend on. AST
  * parsing of GSAP source lives in the Node-only `./gsapParser` module.
  */
-import type { Keyframe, KeyframeProperties, ValidationResult } from "../core.types";
+import type { Keyframe, KeyframeProperties, ValidationResult } from "./types.js";
 import type { PropertyGroupName } from "./gsapConstants";
 
 export type GsapMethod = "set" | "to" | "from" | "fromTo";

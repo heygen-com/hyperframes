@@ -4,7 +4,7 @@
  *
  * Not part of the public package exports — consumed only by *.test.ts files.
  */
-import { generateHyperframesHtml } from "../generators/hyperframes.js";
+import { generateHyperframesHtml } from "@hyperframes/core/generators";
 import type { ParsedHtml } from "./htmlParser.js";
 
 export function maxEndTime(elements: ParsedHtml["elements"]): number {

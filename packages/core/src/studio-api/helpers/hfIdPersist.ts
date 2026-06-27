@@ -1,4 +1,4 @@
-import { ensureHfIds } from "../../parsers/hfIds.js";
+import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { readFileSync, writeFileSync } from "node:fs";
 
 /**
