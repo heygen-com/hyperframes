@@ -253,7 +253,35 @@ export async function promoteSetToKeyframes(
 ): Promise<void> {
   const selector = selectorFromSelection(sel);
   const setStart = resolveTweenStart(setAnim) ?? 0;
-  if (!selector || !session.commitMutation || t <= setStart) return;
+  if (!selector || !session.commitMutation) return;
+  // Playhead at or before the set → there's no forward range to promote into.
+  // Instead of doing nothing (which read as "can't add a keyframe at 0"), replace
+  // the set with a single keyframe at the playhead holding its value, matching the
+  // no-animation branch: one diamond the user can build motion from.
+  if (t <= setStart) {
+    const position = readElementPosition(iframe, sel, setAnim);
+    if (Object.keys(position).length === 0) {
+      for (const key of Object.keys(setAnim.properties ?? {})) {
+        const held = setAnim.properties?.[key];
+        if (typeof held === "number") position[key] = held;
+      }
+    }
+    if (Object.keys(position).length === 0) return;
+    const range = resolveNewTweenRange(sel.dataAttributes?.start, sel.dataAttributes?.duration, t);
+    await session.commitMutation(
+      {
+        type: "replace-with-keyframes",
+        animationId: setAnim.id,
+        targetSelector: selector,
+        position: roundTo3(range.start),
+        duration: roundTo3(range.duration),
+        keyframes: [{ percentage: 0, properties: position }],
+        ease: setAnim.ease,
+      },
+      { label: "Enable keyframes", softReload: true },
+    );
+    return;
+  }
   const endPosition = readElementPosition(iframe, sel, setAnim);
   if (Object.keys(endPosition).length === 0) return;
   const startPosition: Record<string, number> = {};

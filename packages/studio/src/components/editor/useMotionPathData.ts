@@ -5,6 +5,38 @@ import { buildMotionPathGeometry, type MotionPathGeometry } from "./motionPathGe
 
 type Rect = { left: number; top: number; width: number; height: number };
 
+// The translate (e/f) components of an element's computed transform, in comp px.
+// A group wrapper dragged via GSAP carries its offset here, not in offsetLeft/Top.
+function transformTranslate(el: HTMLElement): { x: number; y: number } {
+  const t = el.ownerDocument?.defaultView?.getComputedStyle(el).transform;
+  if (!t || t === "none") return { x: 0, y: 0 };
+  const m3 = t.match(/matrix3d\(([^)]+)\)/);
+  if (m3) {
+    const v = m3[1].split(",").map(Number);
+    return { x: v[12] || 0, y: v[13] || 0 };
+  }
+  const m = t.match(/matrix\(([^)]+)\)/);
+  if (m) {
+    const v = m[1].split(",").map(Number);
+    return { x: v[4] || 0, y: v[5] || 0 };
+  }
+  return { x: 0, y: 0 };
+}
+
+// Perspective foreshortening of the element's OWN transform (matrix3d m44). A
+// depth element (translateZ toward the viewer) renders 1/m44× larger, so its
+// animated x/y offsets travel 1/m44× further on screen than the flat preview
+// scale implies. Returns 1 for 2D transforms. The motion path magnifies its
+// offset points by 1/m44 (and de-magnifies pointer→offset) so the drawn path and
+// its draggable nodes track the projected element instead of drifting off it.
+export function transformWDivisor(el: HTMLElement): number {
+  const t = el.ownerDocument?.defaultView?.getComputedStyle(el).transform;
+  if (!t || !t.startsWith("matrix3d(")) return 1;
+  const v = t.slice("matrix3d(".length, -1).split(",");
+  const w = Number.parseFloat(v[15] ?? "");
+  return Number.isFinite(w) && w > 0 ? w : 1;
+}
+
 export function elementHome(el: HTMLElement): { x: number; y: number } {
   let left = 0;
   let top = 0;
@@ -12,6 +44,14 @@ export function elementHome(el: HTMLElement): { x: number; y: number } {
   while (node) {
     left += node.offsetLeft;
     top += node.offsetTop;
+    // Ancestor transforms (e.g. a group wrapper moved via GSAP) shift where the
+    // element actually renders, so the path must anchor on top of them. The element's
+    // OWN transform is excluded — that's the animated offset the path itself draws.
+    if (node !== el) {
+      const t = transformTranslate(node);
+      left += t.x;
+      top += t.y;
+    }
     const parent = node.offsetParent as HTMLElement | null;
     if (!parent || parent.hasAttribute("data-composition-id")) break;
     node = parent;
@@ -62,6 +102,7 @@ export function useMotionPathData(
   geometryResolved: boolean;
   visibleInPreview: boolean;
   home: { x: number; y: number } | null;
+  pScale: number;
 } {
   const [rect, setRect] = useState<Rect | null>(null);
   const [geometry, setGeometry] = useState<MotionPathGeometry | null>(null);
@@ -69,6 +110,9 @@ export function useMotionPathData(
   const geometryResolved = resolvedForRef.current === selector;
   const [visibleInPreview, setVisibleInPreview] = useState(true);
   const [home, setHome] = useState<{ x: number; y: number } | null>(null);
+  // Perspective magnification (1/m44) of the selected element — applied to the
+  // path's offset points so depth (translateZ) elements' paths track on screen.
+  const [pScale, setPScale] = useState(1);
 
   useEffect(() => {
     if (!selector) {
@@ -105,6 +149,8 @@ export function useMotionPathData(
           setHome((prev) =>
             prev && Math.abs(prev.x - h.x) < 0.5 && Math.abs(prev.y - h.y) < 0.5 ? prev : h,
           );
+          const ps = 1 / transformWDivisor(live);
+          setPScale((p) => (Math.abs(p - ps) < 0.001 ? p : ps));
         }
       }
       raf = requestAnimationFrame(tick);
@@ -132,5 +178,5 @@ export function useMotionPathData(
     return () => window.clearInterval(id);
   }, [selector, iframeRef]);
 
-  return { rect, geometry, geometryResolved, visibleInPreview, home };
+  return { rect, geometry, geometryResolved, visibleInPreview, home, pScale };
 }

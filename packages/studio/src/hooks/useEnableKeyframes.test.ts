@@ -167,4 +167,39 @@ describe("promoteSetToKeyframes — auto endpoint", () => {
     expect(kfs[1].percentage).toBe(100);
     expect(kfs[1].auto).toBeUndefined();
   });
+
+  it("playhead AT the set (t <= setStart) drops a single 0% keyframe, not a no-op", async () => {
+    // Regression: enabling keyframes on a `gsap.set` element at t=0 (set start 0)
+    // returned early (`t <= setStart`) → nothing created. Must give a 0% keyframe.
+    let committed: Record<string, unknown> | undefined;
+    const session = {
+      commitMutation: async (mutation: Record<string, unknown>) => {
+        committed = mutation;
+      },
+    } as unknown as EnableKeyframesSession;
+    const sel = {
+      id: "box",
+      selector: "#box",
+      sourceFile: "index.html",
+      element: { isConnected: true } as unknown as HTMLElement,
+    } as unknown as DomEditSelection;
+    const iframe = {
+      contentWindow: { gsap: { getProperty: () => -1091 } },
+    } as unknown as HTMLIFrameElement;
+    const setAnim = anim({
+      id: "#box-set-0-position",
+      targetSelector: "#box",
+      method: "set",
+      global: true,
+      resolvedStart: 0,
+      properties: { x: -1091, y: 280 },
+    });
+
+    await promoteSetToKeyframes(session, sel, setAnim, 0, iframe);
+
+    const kfs = committed?.keyframes as Array<{ percentage: number }>;
+    expect(committed?.type).toBe("replace-with-keyframes");
+    expect(kfs).toHaveLength(1);
+    expect(kfs[0].percentage).toBe(0);
+  });
 });

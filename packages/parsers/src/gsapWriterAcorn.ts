@@ -780,10 +780,22 @@ export function updateKeyframeInScript(
   const match = findKfPropByPct(kfPropNode.value, percentage);
   if (!match) return script;
 
-  const record: Record<string, number | string> = { ...properties };
-  if (ease) record.ease = ease;
   const ms = new MagicString(script);
-  ms.overwrite(match.prop.value.start, match.prop.value.end, recordToCode(record));
+  // MERGE the edited props into the existing keyframe, preserving properties already
+  // keyframed at this percentage (z, transformPerspective, rotation, …). A whole-value
+  // overwrite DROPS every prop not in this edit — e.g. editing rotationY at the 0%
+  // keyframe would strip z / transformPerspective, so the lens then animates from 0 and
+  // the element pops. Mirrors addKeyframeToScript's merge-into-existing branch.
+  if (match.prop.value?.type === "ObjectExpression") {
+    for (const [k, v] of Object.entries(properties)) {
+      upsertProp(ms, match.prop.value, k, v);
+    }
+    if (ease !== undefined) upsertProp(ms, match.prop.value, "ease", ease);
+  } else {
+    const record: Record<string, number | string> = { ...properties };
+    if (ease) record.ease = ease;
+    ms.overwrite(match.prop.value.start, match.prop.value.end, recordToCode(record));
+  }
   return ms.toString();
 }
 

@@ -21,6 +21,7 @@ import {
   elementHome,
   hasMotionPathPlugin,
   isPreviewHtmlElement,
+  transformWDivisor,
   useMotionPathData,
 } from "./useMotionPathData";
 
@@ -39,6 +40,7 @@ type DragState = {
   initX: number;
   initY: number;
   scale: number;
+  pScale: number;
   ref: MotionNodeRef;
 };
 
@@ -71,7 +73,7 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
     handleGsapRemoveKeyframe,
     handleGsapDeleteAllForElement,
   } = useDomEditContext();
-  const { rect, geometry, geometryResolved, visibleInPreview, home } = useMotionPathData(
+  const { rect, geometry, geometryResolved, visibleInPreview, home, pScale } = useMotionPathData(
     iframeRef,
     selectorFor(selection),
   );
@@ -156,8 +158,12 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
       e.preventDefault();
       const sc = r.width / compW;
       const elHome = elementHome(live);
-      const px = Math.round((e.clientX - r.left) / sc - elHome.x);
-      const py = Math.round((e.clientY - r.top) / sc - elHome.y);
+      // De-magnify: the click lands on the projected (1/m44-magnified) path, so
+      // divide the home-relative offset by the perspective factor to recover the
+      // stored composition offset (inverse of the `* pScale` applied at draw).
+      const ps = 1 / transformWDivisor(live);
+      const px = Math.round(((e.clientX - r.left) / sc - elHome.x) / ps);
+      const py = Math.round(((e.clientY - r.top) / sc - elHome.y) / ps);
       const t = Math.round(usePlayerStore.getState().currentTime * 100) / 100;
       void commitCreatePath(createSelector, t, px, py, commitMutation);
       setMotionPathArmed(false);
@@ -232,7 +238,16 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
     : geometry.nodes;
   // ax/ay = absolute composition position (home + offset) for drawing; n.x/n.y
   // stay offsets so the drag commit writes the right tween values.
-  const abs = nodes.map((n) => ({ ...n, ax: home.x + n.x, ay: home.y + n.y }));
+  // Magnify the animated offsets by the element's perspective factor (1/m44, via
+  // pScale) so the path tracks the *projected* element. `home` is the projection
+  // pivot (transform-origin), so it stays put; only the offsets foreshorten. 2D
+  // elements have pScale = 1 (no change). Inverse (de-magnify) applied wherever a
+  // pointer position is mapped back to a stored offset (create + node drag).
+  const abs = nodes.map((n) => ({
+    ...n,
+    ax: home.x + n.x * pScale,
+    ay: home.y + n.y * pScale,
+  }));
   const points = abs.map((p) => `${p.ax},${p.ay}`).join(" ");
   // Map a VIEWPORT pointer to composition space. Use the iframe's LIVE viewport
   // rect, not `rect` — `rect.left/top` are stored pan-surface-relative (for the
@@ -264,6 +279,7 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
       initX: x,
       initY: y,
       scale,
+      pScale,
       ref,
     };
     setDraft({ index, x, y });
@@ -273,8 +289,8 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
     if (!d) return;
     setDraft({
       index: d.index,
-      x: d.initX + (e.clientX - d.startX) / d.scale,
-      y: d.initY + (e.clientY - d.startY) / d.scale,
+      x: d.initX + (e.clientX - d.startX) / d.scale / d.pScale,
+      y: d.initY + (e.clientY - d.startY) / d.scale / d.pScale,
     });
   };
   // fallow-ignore-next-line complexity
@@ -286,8 +302,8 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
     if (!animId) return;
     const screenDx = e.clientX - d.startX;
     const screenDy = e.clientY - d.startY;
-    const x = Math.round(d.initX + screenDx / d.scale);
-    const y = Math.round(d.initY + screenDy / d.scale);
+    const x = Math.round(d.initX + screenDx / d.scale / d.pScale);
+    const y = Math.round(d.initY + screenDy / d.scale / d.pScale);
     // Click-vs-drag is decided in SCREEN space, not composition px: the old guard
     // compared rounded comp-px, which at high zoom (scale ≫ 1) swallowed real
     // multi-px screen drags whose sub-comp-px delta rounds to 0 → the node would

@@ -2348,6 +2348,23 @@ export function updateKeyframeInScript(
     // `properties` would wipe the primitive — leave the keyframe untouched.
     return script;
   }
+  // MERGE edited props into the existing keyframe, preserving props not in this edit
+  // (z, transformPerspective, rotation, …). A whole-value rebuild drops them, so editing
+  // one prop at the 0% keyframe strips z/transformPerspective and the element pops.
+  // Mirrors acorn updateKeyframeInScript; parity-locked by gsapWriterParity.corpus.
+  const existing = match.prop.value;
+  if (existing?.type === "ObjectExpression") {
+    const props = (existing.properties ?? []) as AstNode[];
+    const upsert = (key: string, valueCode: string) => {
+      const idx = props.findIndex((p: AstNode) => isObjectProperty(p) && propKeyName(p) === key);
+      const node = parseExpr(`({ ${safeKey(key)}: ${valueCode} })`).properties[0];
+      if (idx >= 0) props[idx] = node;
+      else props.push(node);
+    };
+    for (const [k, v] of Object.entries(properties)) upsert(k, valueToCode(v));
+    if (ease !== undefined) upsert("ease", JSON.stringify(ease));
+    return recast.print(loc.parsed.ast).code;
+  }
   match.prop.value = buildKeyframeValueNode(properties, ease);
   return recast.print(loc.parsed.ast).code;
 }

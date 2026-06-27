@@ -148,6 +148,19 @@ export const PropertyPanel = memo(function PropertyPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [gsapRuntimeValues, gsapAnimations, element, currentTime],
   );
+  // The 3D Transform panel should be reachable on ANY element, not only ones GSAP is
+  // already animating — otherwise you can't add depth/rotation to a fresh static
+  // element (the panel never appears, the classic chicken-and-egg). Default to
+  // identity when there are no runtime values yet; the first edit creates the
+  // gsap.set via commitStaticSet, after which real runtime values flow in.
+  const gsap3dValues: Record<string, number> = gsapRuntimeValues ?? {
+    rotationX: 0,
+    rotationY: 0,
+    rotationZ: 0,
+    z: 0,
+    scale: 1,
+    transformPerspective: 0,
+  };
 
   if (!element) {
     return (
@@ -490,33 +503,31 @@ export const PropertyPanel = memo(function PropertyPanel({
               )}
             </div>
           </div>
-          {gsapRuntimeValues && (
-            <PropertyPanel3dTransform
-              gsapRuntimeValues={gsapRuntimeValues}
-              gsapAnimId={gsapAnimId}
-              resolveAnimIdForProp={animIdForProp}
-              gsapKeyframes={navKeyframes}
-              currentPct={currentPct}
-              elStart={elStart}
-              elDuration={elDuration}
-              element={element}
-              onCommitAnimatedProperty={onCommitAnimatedProperty}
-              onCommitAnimatedProperties={onCommitAnimatedProperties}
-              onSeekToTime={onSeekToTime}
-              onRemoveKeyframe={onRemoveKeyframe}
-              onConvertToKeyframes={onConvertToKeyframes}
-              onLivePreviewProps={(el, props) => {
-                const iframe = iframeRef.current;
-                const win = iframe?.contentWindow as
-                  | { gsap?: { set: (t: Element, v: Record<string, number>) => void } }
-                  | null
-                  | undefined;
-                const sel = el.id ? `#${el.id}` : el.selector;
-                const node = sel ? iframe?.contentDocument?.querySelector(sel) : null;
-                if (win?.gsap && node) win.gsap.set(node, props);
-              }}
-            />
-          )}
+          <PropertyPanel3dTransform
+            gsapRuntimeValues={gsap3dValues}
+            gsapAnimId={gsapAnimId}
+            resolveAnimIdForProp={animIdForProp}
+            gsapKeyframes={navKeyframes}
+            currentPct={currentPct}
+            elStart={elStart}
+            elDuration={elDuration}
+            element={element}
+            onCommitAnimatedProperty={onCommitAnimatedProperty}
+            onCommitAnimatedProperties={onCommitAnimatedProperties}
+            onSeekToTime={onSeekToTime}
+            onRemoveKeyframe={onRemoveKeyframe}
+            onConvertToKeyframes={onConvertToKeyframes}
+            onLivePreviewProps={(el, props) => {
+              const iframe = iframeRef.current;
+              const win = iframe?.contentWindow as
+                | { gsap?: { set: (t: Element, v: Record<string, number>) => void } }
+                | null
+                | undefined;
+              const sel = el.id ? `#${el.id}` : el.selector;
+              const node = sel ? iframe?.contentDocument?.querySelector(sel) : null;
+              if (win?.gsap && node) win.gsap.set(node, props);
+            }}
+          />
           <div className="mt-3">
             <div className="mb-2 text-[10px] font-medium uppercase tracking-wider text-neutral-600">
               Stacking

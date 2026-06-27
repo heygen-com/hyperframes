@@ -6,9 +6,19 @@ import { KeyframeNavigation } from "./KeyframeNavigation";
 import { formatPxMetricValue, parsePxMetricValue, RESPONSIVE_GRID } from "./propertyPanelHelpers";
 import { Transform3DCube, type CubePose } from "./Transform3DCube";
 
-// Default perspective (px) applied when depth is first set, so translateZ is
-// visible. ~800px is a moderate lens — closer = stronger foreshortening.
-const DEFAULT_DEPTH_PERSPECTIVE = 800;
+// translateZ only foreshortens under a perspective lens. Rather than hardcode one
+// (an arbitrary px value reads wrong at different canvas sizes), derive it from the
+// element's composition: perspective = composition height puts the virtual camera
+// one comp-height back, a natural ~53° vertical FOV that looks the same whether the
+// canvas is 720p or 4K. Falls back to the element's own height only if the comp size
+// can't be read (detached/unmeasured), never to a fixed magic number.
+function naturalDepthPerspective(el: HTMLElement | null | undefined): number {
+  if (!el) return 0;
+  const root = el.closest("[data-hf-inner-root],[data-composition-id]") as HTMLElement | null;
+  const compHeight = root?.offsetHeight || el.ownerDocument?.documentElement?.clientHeight || 0;
+  if (compHeight > 0) return Math.round(compHeight);
+  return Math.round((el.offsetHeight || 0) * 4) || 0;
+}
 
 type KeyframeEntry = Array<{
   percentage: number;
@@ -42,17 +52,10 @@ interface PropertyPanel3dTransformProps {
   onLivePreviewProps?: (element: DomEditSelection, props: Record<string, number>) => void;
 }
 
-type CommitAnimatedProperty = (
-  element: DomEditSelection,
-  property: string,
-  value: number,
-) => Promise<void>;
-
 /** The draggable cube + its commit/recenter/live-preview wiring. */
 function Cube3dControl({
   element,
   gsapRuntimeValues,
-  onCommitAnimatedProperty,
   onCommitAnimatedProperties,
   onLivePreviewProps,
   onKeyframe,
@@ -60,8 +63,7 @@ function Cube3dControl({
 }: {
   element: DomEditSelection;
   gsapRuntimeValues: Record<string, number>;
-  onCommitAnimatedProperty: CommitAnimatedProperty;
-  onCommitAnimatedProperties?: (
+  onCommitAnimatedProperties: (
     element: DomEditSelection,
     props: Record<string, number | string>,
   ) => Promise<void>;
@@ -74,6 +76,15 @@ function Cube3dControl({
     rotationY: gsapRuntimeValues.rotationY ?? 0,
     rotationZ: gsapRuntimeValues.rotationZ ?? 0,
   };
+  // Comp-derived lens (see naturalDepthPerspective) applied the first time depth is
+  // set, so the scene's foreshortening scales with the canvas instead of a magic 800.
+  const depthPerspective = naturalDepthPerspective(element.element);
+  // A gentle, fixed "depth pose" tilt (degrees) dropped on a flat element the first
+  // time it gets depth, so translateZ reads as 3D foreshortening instead of a plain
+  // resize — small enough to look like a premium card, not a flip.
+  const DEPTH_POSE_X = 10;
+  const DEPTH_POSE_Y = -15;
+  const isFlat = Math.round(pose.rotationX) === 0 && Math.round(pose.rotationY) === 0;
   // Commit only the rotation axes the drag actually changed (each rounded to a
   // whole degree). Reuses the keyframe-aware animated-property commit, so a drag
   // at the playhead writes/updates a keyframe just like the numeric fields.
@@ -86,13 +97,8 @@ function Cube3dControl({
     const axes = Object.keys(changedProps);
     if (axes.length === 0) return;
     // ONE keyframe for the whole pose change — avoids per-axis commits racing into
-    // adjacent duplicate keyframes. Fall back to per-axis if no batched commit.
-    if (onCommitAnimatedProperties) {
-      void onCommitAnimatedProperties(element, changedProps);
-    } else {
-      for (const [axis, v] of Object.entries(changedProps))
-        onCommitAnimatedProperty(element, axis, v);
-    }
+    // adjacent duplicate keyframes.
+    void onCommitAnimatedProperties(element, changedProps);
   };
   const recenter = () => {
     // ONE commit for the whole reset — six per-axis commits meant six soft-reloads
@@ -105,15 +111,10 @@ function Cube3dControl({
       scale: 1,
       transformPerspective: 0,
     };
-    if (onCommitAnimatedProperties) {
-      void onCommitAnimatedProperties(element, identity);
-    } else {
-      for (const [prop, v] of Object.entries(identity))
-        void onCommitAnimatedProperty(element, prop, v);
-    }
+    void onCommitAnimatedProperties(element, identity);
   };
   // Immediate element feedback while dragging — set the live transform without a
-  // source write; the release commits via onCommitAnimatedProperty.
+  // source write; the release commits via commitPose.
   const livePreview = (next: CubePose) =>
     onLivePreviewProps?.(element, {
       rotationX: next.rotationX,
@@ -127,29 +128,47 @@ function Cube3dControl({
         <Transform3DCube
           pose={pose}
           perspective={gsapRuntimeValues.transformPerspective ?? 0}
+          defaultPerspective={depthPerspective}
           z={gsapRuntimeValues.z ?? 0}
           onPoseDraft={livePreview}
           onPoseCommit={commitPose}
-          onDepthDraft={(z) =>
-            onLivePreviewProps?.(
-              element,
-              gsapRuntimeValues.transformPerspective
-                ? { z }
-                : { z, transformPerspective: DEFAULT_DEPTH_PERSPECTIVE },
-            )
-          }
-          onDepthCommit={(z) => {
-            // translateZ is invisible without a perspective lens — apply a sensible
-            // default the first time depth is set so scrolling visibly moves the
-            // element. The user can still fine-tune via the Perspective field.
-            if (!gsapRuntimeValues.transformPerspective) {
-              void onCommitAnimatedProperty(
-                element,
-                "transformPerspective",
-                DEFAULT_DEPTH_PERSPECTIVE,
-              );
+          onDepthDraft={(z) => {
+            // Preview WITH a lens so depth is visible while scrolling — the same
+            // default the commit applies, so the element doesn't snap on release.
+            const preview: Record<string, number> = gsapRuntimeValues.transformPerspective
+              ? { z }
+              : { z, transformPerspective: depthPerspective };
+            // Depth-pose preview: a flat element only scales under Z, so mirror the
+            // commit and preview the gentle tilt that makes the depth read as 3D.
+            if (isFlat) {
+              preview.rotationX = DEPTH_POSE_X;
+              preview.rotationY = DEPTH_POSE_Y;
             }
-            void onCommitAnimatedProperty(element, "z", z);
+            onLivePreviewProps?.(element, preview);
+          }}
+          onDepthCommit={(z) => {
+            // Best-UX depth: scroll moves Z, and a 3D transform always has a lens —
+            // like an After Effects camera. translateZ is invisible without a
+            // perspective, so the FIRST time depth is added (Perspective still 0) we
+            // set a sensible comp-derived lens ONCE. Every later scroll touches Z
+            // only, and Perspective stays an independent, editable field. The cube's
+            // scroll is clamped in front of the lens, so Z can't run away past it.
+            const props: Record<string, number> = { z };
+            if (!gsapRuntimeValues.transformPerspective && depthPerspective > 0) {
+              props.transformPerspective = depthPerspective;
+            }
+            // Depth-pose: a flat element (no tilt) only scales under Z — it can't read
+            // as depth. So the first time depth lands on a flat element, also drop a
+            // gentle fixed tilt; the foreshortening makes depth read as 3D IN PLACE
+            // (no screen travel, per-element lens unchanged). Once the element has any
+            // tilt, depth scrolls touch Z only. Reset tilt to 0 to go flat again.
+            if (isFlat) {
+              props.rotationX = DEPTH_POSE_X;
+              props.rotationY = DEPTH_POSE_Y;
+            }
+            // One commit for all props so the writes can't race read-modify-write on
+            // the same script (which dropped a prop and reverted after a seek).
+            void onCommitAnimatedProperties(element, props);
           }}
           onRecenter={recenter}
           onKeyframe={onKeyframe}
@@ -308,11 +327,10 @@ export function PropertyPanel3dTransform({
       </button>
       {collapsed ? null : (
         <>
-          {onCommitAnimatedProperty && (
+          {onCommitAnimatedProperties && (
             <Cube3dControl
               element={element}
               gsapRuntimeValues={gsapRuntimeValues}
-              onCommitAnimatedProperty={onCommitAnimatedProperty}
               onCommitAnimatedProperties={onCommitAnimatedProperties}
               onLivePreviewProps={onLivePreviewProps}
               keyframed={(gsapKeyframes ?? []).some(

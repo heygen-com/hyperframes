@@ -97,6 +97,23 @@ export function initSandboxRuntimeModular(): void {
       swallow("runtime.init.site1", err);
     }
   }
+  // `_auto` is a Studio-internal keyframe marker (an auto-tracked endpoint the
+  // parser reads back), NOT an animatable property. Register it as a no-op GSAP
+  // plugin so GSAP doesn't log "Invalid property _auto" on every tween build —
+  // that per-frame warning destabilizes the preview and makes the selection
+  // overlay stop tracking the pointer. Idempotent + best-effort.
+  const ensureAutoMarkerNoop = (): void => {
+    const g = window.gsap as { registerPlugin?: (plugin: unknown) => void } | undefined;
+    const w = window as Window & { __hfAutoNoopRegistered?: boolean };
+    if (!g?.registerPlugin || w.__hfAutoNoopRegistered) return;
+    try {
+      g.registerPlugin({ name: "_auto", init: () => false });
+      w.__hfAutoNoopRegistered = true;
+    } catch {
+      // a stray warning is preferable to a broken runtime
+    }
+  };
+  ensureAutoMarkerNoop();
   // Normalize html/body so browser defaults (8px margin, white background) never
   // bleed into renders as white bars. Runs in both preview and render contexts,
   // eliminating the preview/render parity gap that existed when only the React

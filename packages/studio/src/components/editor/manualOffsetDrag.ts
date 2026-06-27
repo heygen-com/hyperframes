@@ -209,6 +209,22 @@ export function applyManualOffsetDragMatrix(matrix: ManualOffsetDragMatrix, poin
   };
 }
 
+/**
+ * The perspective w-divisor (matrix3d m44) of the element's current transform.
+ * For a plain `translateZ(z)` under `perspective(p)`, m44 = (p - z) / p, so the
+ * element renders 1/m44× larger and a translate of `d` composition px moves
+ * `d / m44` px on screen. Returns 1 for 2D transforms (no foreshortening). Used
+ * to keep the drag offset → screen-movement mapping correct for depth elements,
+ * which the flat-scale fast path below would otherwise get wrong by 1/m44.
+ */
+function readTransformWDivisor(element: HTMLElement): number {
+  const t = element.ownerDocument.defaultView?.getComputedStyle(element).transform;
+  if (!t || !t.startsWith("matrix3d(")) return 1;
+  const parts = t.slice("matrix3d(".length, -1).split(",");
+  const w = Number.parseFloat(parts[15] ?? "");
+  return Number.isFinite(w) && w > 0 ? w : 1;
+}
+
 export function measureManualOffsetDragScreenToOffsetMatrix(
   element: HTMLElement,
   initialOffset: { x: number; y: number },
@@ -221,7 +237,11 @@ export function measureManualOffsetDragScreenToOffsetMatrix(
   ) {
     const sx = options.scaleX || 1;
     const sy = options.scaleY || 1;
-    return { ok: true, matrix: { a: 1 / sx, b: 0, c: 0, d: 1 / sy } };
+    // Fold in the perspective foreshortening: a depth element (z≠0) moves
+    // 1/m44× faster on screen than its flat scale implies, so the screen→offset
+    // matrix must scale by m44 or the element outruns the pointer/overlay.
+    const w = readTransformWDivisor(element);
+    return { ok: true, matrix: { a: w / sx, b: 0, c: 0, d: w / sy } };
   }
 
   const probeSize = options.probeSize ?? DEFAULT_OFFSET_PROBE_PX;
@@ -360,6 +380,7 @@ export function createManualOffsetDragMember(input: {
     // drag is acceptable — the final committed position is always exact.
     const scaleX = input.rect.editScaleX || 1;
     const scaleY = input.rect.editScaleY || 1;
+    const w = readTransformWDivisor(input.element);
     return {
       ok: true,
       member: {
@@ -370,7 +391,7 @@ export function createManualOffsetDragMember(input: {
         baseGsap,
         initialPathOffset,
         gestureToken,
-        screenToOffset: { a: 1 / scaleX, b: 0, c: 0, d: 1 / scaleY },
+        screenToOffset: { a: w / scaleX, b: 0, c: 0, d: w / scaleY },
         originRect: input.rect,
       },
     };

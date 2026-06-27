@@ -15,6 +15,8 @@ import { usePlayerStore } from "../player/store/playerStore";
 import { readAllAnimatedProperties, readGsapProperty } from "./gsapRuntimeBridge";
 import type { SetPatchProps } from "./gsapRuntimePatch";
 import { selectorFromSelection, computeElementPercentage } from "./gsapShared";
+import { resolveTweenStart, resolveTweenDuration } from "../utils/globalTimeCompiler";
+import { roundTo3 } from "../utils/rounding";
 
 interface CommitAnimatedPropertyDeps {
   selectedGsapAnimations: GsapAnimation[];
@@ -45,14 +47,22 @@ function pickBestAnimation(
   selector: string | null,
   property?: string,
 ): GsapAnimation | undefined {
-  if (animations.length <= 1) return animations[0];
-  const currentTime = usePlayerStore.getState().currentTime;
   const targetGroup = property ? classifyPropertyGroup(property) : undefined;
-
-  // fallow-ignore-next-line complexity
-  const scored = animations.map((a) => {
+  // Group-aware: never hand back a tween from a DIFFERENT property group. The old
+  // `animations.length <= 1` early return merged a rotation/3D edit into the element's
+  // only tween even when that was a `position` tween — contaminating it and leaving the
+  // new property with no clean keyframe baseline. When a target group is known, only
+  // same-group tweens are candidates; if none exist we return undefined and the caller
+  // creates a fresh same-group tween.
+  const candidates =
+    targetGroup !== undefined
+      ? animations.filter((a) => a.propertyGroup === targetGroup)
+      : animations;
+  if (candidates.length === 0) return undefined;
+  if (candidates.length === 1) return candidates[0];
+  const currentTime = usePlayerStore.getState().currentTime;
+  const scored = candidates.map((a) => {
     let score = 0;
-    if (targetGroup && a.propertyGroup === targetGroup) score += 20;
     if (a.keyframes) score += 10;
     if (selector && a.targetSelector === selector) score += 5;
     else if (a.targetSelector.includes(",")) score -= 3;
@@ -196,14 +206,15 @@ async function commitKeyframeProps(
   iframe: HTMLIFrameElement | null,
   commit: Commit,
 ): Promise<void> {
-  if (!anim.keyframes) {
+  const wasKeyframed = !!anim.keyframes;
+  if (!wasKeyframed) {
     await commit(
       selection,
       { type: "convert-to-keyframes", animationId: anim.id },
       { label: "Convert to keyframes", skipReload: true },
     );
   }
-  const pct = computeElementPercentage(usePlayerStore.getState().currentTime, selection, anim);
+  const ct = usePlayerStore.getState().currentTime;
   const runtimeProps = selector ? readAllAnimatedProperties(iframe, selector, anim) : {};
   const properties: Record<string, number | string> = { ...runtimeProps, ...props };
 
@@ -216,6 +227,52 @@ async function commitKeyframeProps(
     backfillDefaults[property] = value;
   }
 
+  // Playhead OUTSIDE the keyframe tween's time range → EXTEND the tween to reach it
+  // and add a keyframe there, exactly like manual drag's extendTweenAndAddKeyframe.
+  // The add-keyframe below only writes WITHIN the existing range, so without this a
+  // depth edit past the tween end just overwrites the last keyframe (the bug: no new
+  // diamond appears at a playhead beyond the tween). Only for an already-keyframed
+  // tween — a freshly-converted set has no prior range worth remapping.
+  const kfs = anim.keyframes?.keyframes;
+  const ts = resolveTweenStart(anim);
+  const td = resolveTweenDuration(anim);
+  const hasSelectedKeyframe = usePlayerStore.getState().activeKeyframePct != null;
+  const playheadOutside = ts !== null && td > 0 && (ct < ts - 0.01 || ct > ts + td + 0.01);
+  const willExtend = wasKeyframed && !!kfs && playheadOutside && !hasSelectedKeyframe;
+  if (willExtend && kfs && ts !== null) {
+    const newStart = Math.min(ct, ts);
+    const newEnd = Math.max(ct, ts + td);
+    const newDuration = Math.max(0.01, newEnd - newStart);
+    const remapped = kfs.map((kf) => {
+      const absTime = ts + (kf.percentage / 100) * td;
+      const newPct = Math.round(((absTime - newStart) / newDuration) * 1000) / 10;
+      const p: Record<string, number | string> = { ...kf.properties };
+      for (const k of Object.keys(properties)) {
+        if (!(k in p) && backfillDefaults[k] != null) p[k] = backfillDefaults[k];
+      }
+      return { percentage: newPct, properties: p };
+    });
+    remapped.push({
+      percentage: Math.round(((ct - newStart) / newDuration) * 1000) / 10,
+      properties,
+    });
+    remapped.sort((a, b) => a.percentage - b.percentage);
+    await commit(
+      selection,
+      {
+        type: "replace-with-keyframes",
+        animationId: anim.id,
+        targetSelector: anim.targetSelector,
+        position: roundTo3(newStart),
+        duration: roundTo3(newDuration),
+        keyframes: remapped,
+      },
+      { label: `Edit ${primaryProp} (extended keyframe)`, softReload: true },
+    );
+    return;
+  }
+
+  const pct = computeElementPercentage(ct, selection, anim);
   const existingKf = anim.keyframes?.keyframes.some((kf) => Math.abs(kf.percentage - pct) < 0.05);
   // Rebuild the live keyframe tween in place so the edit shows instantly (no flash);
   // rebuildKeyframeTween declines → soft reload if the tween can't be safely rebuilt.
@@ -275,8 +332,30 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
       // so the rejection doesn't escape as an uncaught promise, and bump the cache
       // so selectedGsapAnimations re-syncs and the user's next edit self-heals.
       try {
-        // Existing static hold — merge the props into the `set`, then auto-keyframe
-        // ONLY if the element is already animated (maybeAutoKeyframeSet no-ops if not).
+        // Animated element → keyframe at the playhead, EXACTLY like manual drag /
+        // resize / rotate: if the picked anim is still a static `set`,
+        // commitKeyframeProps converts it to keyframes first, then writes the new
+        // value as a keyframe at the current time — so the 3D animates instead of
+        // holding a flat constant. This MUST come before the `set`-update path below,
+        // or a 3D `set` would short-circuit to an in-place update and the playhead
+        // keyframe would never land (the bug: scrolling depth on a keyframed element
+        // just changed the constant instead of dropping a keyframe).
+        if (elementHasKeyframes && anim) {
+          await commitKeyframeProps(
+            selection,
+            anim,
+            props,
+            propEntries,
+            primaryProp,
+            selector,
+            iframe,
+            gsapCommitMutation,
+          );
+          return;
+        }
+
+        // Existing static hold on a NON-animated element — merge the props into the
+        // `set` in place (maybeAutoKeyframeSet no-ops when nothing else is keyframed).
         if (anim?.method === "set") {
           await commitSetProps(
             selection,
@@ -289,8 +368,8 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
           return;
         }
 
-        // Static element — persist as a `tl.set`, never keyframes (incl. the
-        // no-animation case, which now creates a set instead of a keyframed tween).
+        // Static element (no keyframes anywhere) — persist as a `tl.set`, never
+        // keyframes (incl. the no-animation case, which creates a fresh set).
         if (!elementHasKeyframes) {
           await commitStaticSet(
             selection,
@@ -302,22 +381,43 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
           return;
         }
 
-        // Animated element — write ALL props into ONE keyframe so a multi-axis cube
-        // edit doesn't race into adjacent duplicates.
-        if (!anim) {
-          bumpGsapCache();
+        // Animated element but NO same-group tween exists (e.g. the FIRST rotation/3D
+        // keyframe on an element that only has a position tween). Create a fresh
+        // same-group keyframed tween WITH a 0% baseline at the playhead, instead of
+        // contaminating a foreign-group tween. Mirror an existing keyframed tween's
+        // time range so the new group animates over the same span. The 0% baseline is
+        // an `_auto` endpoint so it tracks the nearest keyframe as you add more.
+        if (selector) {
+          const template = selectedGsapAnimations.find((a) => !!a.keyframes);
+          const tStart = template ? (resolveTweenStart(template) ?? 0) : 0;
+          const tDur = template ? resolveTweenDuration(template) || 1 : 1;
+          const ct = usePlayerStore.getState().currentTime;
+          const pct =
+            tDur > 0
+              ? Math.max(0, Math.min(100, Math.round(((ct - tStart) / tDur) * 1000) / 10))
+              : 0;
+          const newProps = Object.fromEntries(propEntries);
+          const keyframes =
+            pct <= 0.05
+              ? [{ percentage: 0, properties: newProps }]
+              : [
+                  { percentage: 0, properties: { ...newProps, _auto: 1 } },
+                  { percentage: pct, properties: newProps },
+                ];
+          await gsapCommitMutation(
+            selection,
+            {
+              type: "add-with-keyframes",
+              targetSelector: selector,
+              position: roundTo3(tStart),
+              duration: roundTo3(tDur),
+              keyframes,
+            },
+            { label: `Add ${primaryProp} keyframe`, softReload: true },
+          );
           return;
         }
-        await commitKeyframeProps(
-          selection,
-          anim,
-          props,
-          propEntries,
-          primaryProp,
-          selector,
-          iframe,
-          gsapCommitMutation,
-        );
+        bumpGsapCache();
       } catch {
         bumpGsapCache();
       }

@@ -241,8 +241,15 @@ export async function tryGsapDragIntercept(
   // place (idempotent), else add a new one. This also covers the stale-cache
   // phantom — committing a set is correct because the element genuinely has no live motion.
   const hasNonHold = hasNonHoldTweenForElement(iframe, selector);
-
-  if (!hasNonHold) {
+  // A KEYFRAMED position tween — even one that's currently a flat constant ("hold",
+  // e.g. 0% and 100% identical) — is still an animation the user is building, so a
+  // drag must add/update a keyframe, NOT fall back to a static `set`. Without this,
+  // dragging an element whose position tween is constant writes a `gsap.set` that
+  // fights the tween (the "drag didn't create a keyframe / didn't persist" bug). The
+  // static path is only for elements with NO keyframed position tween (truly static,
+  // or just a leftover position-hold `set`).
+  const hasKeyframedPosTween = !!posAnim?.keyframes;
+  if (!hasNonHold && !hasKeyframedPosTween) {
     const existingSet =
       posAnim && posAnim.method === "set" && posAnim.targetSelector === selector
         ? posAnim
