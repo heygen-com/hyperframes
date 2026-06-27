@@ -1,4 +1,4 @@
-import { basename, resolve } from "node:path";
+import { resolve } from "node:path";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { defineCommand } from "citty";
@@ -33,12 +33,9 @@ export default defineCommand({
   async run({ args }) {
     const rawArg = args.dir;
     const dir = resolve(rawArg ?? ".");
-    const isImplicitCwd = !rawArg || rawArg === "." || rawArg === "./";
-    const projectName = isImplicitCwd ? basename(process.env["PWD"] ?? dir) : basename(dir);
-
     const indexPath = join(dir, "index.html");
     if (existsSync(indexPath)) {
-      const lintResult = await lintProject({ dir, name: projectName, indexPath });
+      const lintResult = await lintProject(dir);
       if (lintResult.totalErrors > 0 || lintResult.totalWarnings > 0) {
         console.log();
         for (const line of formatLintFindings(lintResult)) console.log(line);

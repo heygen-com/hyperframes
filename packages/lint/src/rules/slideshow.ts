@@ -1,8 +1,11 @@
 import type { LintContext, HyperframeLintFinding } from "../context";
 import type { LintRule } from "../types";
 import { readAttr } from "../utils";
-import { parseSlideshowManifest, resolveSlideshow } from "../../slideshow/parseSlideshow";
-import { isSceneLikeCompositionId } from "../../slideshow/sceneId";
+import {
+  parseSlideshowManifest,
+  resolveSlideshow,
+  isSceneLikeCompositionId,
+} from "@hyperframes/core/slideshow";
 
 type Scene = { id: string; start: number; duration: number };
 

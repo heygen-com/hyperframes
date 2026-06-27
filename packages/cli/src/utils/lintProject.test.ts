@@ -3,7 +3,6 @@ import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { lintProject, shouldBlockRender } from "./lintProject.js";
-import type { ProjectDir } from "./project.js";
 
 function tmpProject(name: string): string {
   return mkdtempSync(join(tmpdir(), `hf-test-${name}-`));
@@ -37,7 +36,7 @@ function htmlWithPreloadNone(): string {
 
 let dirs: string[] = [];
 
-function makeProject(indexHtml: string, subComps?: Record<string, string>): ProjectDir {
+function makeProject(indexHtml: string, subComps?: Record<string, string>): string {
   const dir = tmpProject("lint");
   dirs.push(dir);
   writeFileSync(join(dir, "index.html"), indexHtml);
@@ -48,7 +47,7 @@ function makeProject(indexHtml: string, subComps?: Record<string, string>): Proj
       writeFileSync(join(compsDir, name), html);
     }
   }
-  return { dir, name: "test-project", indexPath: join(dir, "index.html") };
+  return dir;
 }
 
 afterEach(() => {
@@ -108,12 +107,7 @@ describe("lintProject", () => {
 </template>`;
     writeFileSync(join(framesDir, "04-mechanism.html"), frameHtml);
 
-    const project: ProjectDir = {
-      dir,
-      name: "test-project",
-      indexPath: join(dir, "index.html"),
-    };
-    const { results } = await lintProject(project);
+    const { results } = await lintProject(dir);
 
     const frameResult = results.find((r) => r.file === "compositions/frames/04-mechanism.html");
     expect(frameResult).toBeDefined();
@@ -146,7 +140,7 @@ describe("lintProject", () => {
 </body></html>`,
     });
     writeFileSync(
-      join(project.dir, "compositions", "scene.css"),
+      join(project, "compositions", "scene.css"),
       '[data-composition-id="scene"] .title { opacity: 0; }',
     );
 
@@ -169,7 +163,7 @@ describe("lintProject", () => {
 </body></html>`,
     });
     writeFileSync(
-      join(project.dir, "compositions", decodeURIComponent(encodedFilename)),
+      join(project, "compositions", decodeURIComponent(encodedFilename)),
       '[data-composition-id="scene"] .title { opacity: 0; }',
     );
 
@@ -227,7 +221,7 @@ describe("lintProject", () => {
       "captions.html": validHtml("captions"),
     });
     // Add a non-HTML file
-    writeFileSync(join(project.dir, "compositions", "readme.txt"), "not html");
+    writeFileSync(join(project, "compositions", "readme.txt"), "not html");
 
     const { results } = await lintProject(project);
 
@@ -270,7 +264,7 @@ function validHtmlWithMaskImageUrl(url: string): string {
 describe("audio_file_without_element", () => {
   it("warns when audio file exists but no <audio> element", async () => {
     const project = makeProject(validHtml());
-    writeFileSync(join(project.dir, "music.mp3"), "fake");
+    writeFileSync(join(project, "music.mp3"), "fake");
 
     const { totalWarnings, results } = await lintProject(project);
 
@@ -285,7 +279,7 @@ describe("audio_file_without_element", () => {
 
   it("does not warn when audio file exists and <audio> element is present", async () => {
     const project = makeProject(validHtmlWithAudio());
-    writeFileSync(join(project.dir, "song.mp3"), "fake");
+    writeFileSync(join(project, "song.mp3"), "fake");
 
     const { results } = await lintProject(project);
 
@@ -308,8 +302,8 @@ describe("audio_file_without_element", () => {
 
   it("detects multiple audio file extensions", async () => {
     const project = makeProject(validHtml());
-    writeFileSync(join(project.dir, "narration.wav"), "fake");
-    writeFileSync(join(project.dir, "bgm.ogg"), "fake");
+    writeFileSync(join(project, "narration.wav"), "fake");
+    writeFileSync(join(project, "bgm.ogg"), "fake");
 
     const { results } = await lintProject(project);
 
@@ -325,7 +319,7 @@ describe("audio_file_without_element", () => {
     const project = makeProject(validHtml(), {
       "captions.html": validHtmlWithAudio("captions"),
     });
-    writeFileSync(join(project.dir, "song.mp3"), "fake");
+    writeFileSync(join(project, "song.mp3"), "fake");
 
     const { results } = await lintProject(project);
 
@@ -354,7 +348,7 @@ describe("audio_src_not_found", () => {
 
   it("does not error when <audio> src file exists", async () => {
     const project = makeProject(validHtmlWithAudio());
-    writeFileSync(join(project.dir, "song.mp3"), "fake");
+    writeFileSync(join(project, "song.mp3"), "fake");
 
     const { results } = await lintProject(project);
 
@@ -404,8 +398,8 @@ describe("audio_src_not_found", () => {
   <script>window.__timelines = window.__timelines || {}; window.__timelines["main"] = gsap.timeline({ paused: true });</script>
 </body></html>`;
     const project = makeProject(html);
-    mkdirSync(join(project.dir, "assets"), { recursive: true });
-    writeFileSync(join(project.dir, "assets", "bgm.mp3"), "fake");
+    mkdirSync(join(project, "assets"), { recursive: true });
+    writeFileSync(join(project, "assets", "bgm.mp3"), "fake");
 
     const { results } = await lintProject(project);
 
@@ -419,8 +413,8 @@ describe("audio_src_not_found", () => {
     const encodedFilename =
       "%D9%87%D9%86%D8%A7%20%D9%85%D8%B1%D9%88%D8%A7%20-%20%D9%85%D8%A8%D8%A7%D8%B1%D9%83.mp4";
     const project = makeProject(validHtmlWithAudioSrc(`assets/${encodedFilename}`));
-    mkdirSync(join(project.dir, "assets"), { recursive: true });
-    writeFileSync(join(project.dir, "assets", decodeURIComponent(encodedFilename)), "fake");
+    mkdirSync(join(project, "assets"), { recursive: true });
+    writeFileSync(join(project, "assets", decodeURIComponent(encodedFilename)), "fake");
 
     const { results } = await lintProject(project);
 
@@ -433,8 +427,8 @@ describe("audio_src_not_found", () => {
   it("does not error for malformed percent sequences that are literal filenames", async () => {
     const filename = "100%-discount.mp4";
     const project = makeProject(validHtmlWithAudioSrc(`assets/${filename}`));
-    mkdirSync(join(project.dir, "assets"), { recursive: true });
-    writeFileSync(join(project.dir, "assets", filename), "fake");
+    mkdirSync(join(project, "assets"), { recursive: true });
+    writeFileSync(join(project, "assets", filename), "fake");
 
     const { results } = await lintProject(project);
 
@@ -483,8 +477,8 @@ describe("audio_src_not_found", () => {
   <script>window.__timelines = window.__timelines || {}; window.__timelines["captions"] = gsap.timeline({ paused: true });</script>
 </body></html>`;
     const project = makeProject(validHtml(), { "captions.html": subComp });
-    mkdirSync(join(project.dir, "assets"), { recursive: true });
-    writeFileSync(join(project.dir, "assets", "bgm.mp3"), "fake");
+    mkdirSync(join(project, "assets"), { recursive: true });
+    writeFileSync(join(project, "assets", "bgm.mp3"), "fake");
 
     const { results } = await lintProject(project);
 
@@ -630,8 +624,8 @@ describe("missing_local_asset", () => {
   <script>window.__timelines = window.__timelines || {}; window.__timelines["main"] = gsap.timeline({ paused: true });</script>
 </body></html>`;
     const project = makeProject(html);
-    writeFileSync(join(project.dir, "hero.png"), "fake");
-    writeFileSync(join(project.dir, "clip.mp4"), "fake");
+    writeFileSync(join(project, "hero.png"), "fake");
+    writeFileSync(join(project, "clip.mp4"), "fake");
 
     const { results } = await lintProject(project);
 
@@ -647,8 +641,8 @@ describe("missing_local_asset", () => {
   <script>window.__timelines = window.__timelines || {}; window.__timelines["scene"] = gsap.timeline({ paused: true });</script>
 </body></html>`;
     const project = makeProject(validHtml(), { "scene.html": subComp });
-    mkdirSync(join(project.dir, "assets"), { recursive: true });
-    writeFileSync(join(project.dir, "assets", "foo.png"), "fake");
+    mkdirSync(join(project, "assets"), { recursive: true });
+    writeFileSync(join(project, "assets", "foo.png"), "fake");
 
     const { results } = await lintProject(project);
 
@@ -766,8 +760,8 @@ describe("texture_mask_asset_not_found", () => {
   <script>window.__timelines = window.__timelines || {}; window.__timelines["main"] = gsap.timeline({ paused: true });</script>
 </body></html>`;
     const project = makeProject(html);
-    mkdirSync(join(project.dir, "masks"), { recursive: true });
-    writeFileSync(join(project.dir, "masks", "lava.png"), "fake");
+    mkdirSync(join(project, "masks"), { recursive: true });
+    writeFileSync(join(project, "masks", "lava.png"), "fake");
 
     const { results } = await lintProject(project);
     const finding = results[0]?.result.findings.find(
@@ -787,11 +781,11 @@ describe("texture_mask_asset_not_found", () => {
 </body></html>`,
     });
     writeFileSync(
-      join(project.dir, "compositions", "scene.css"),
+      join(project, "compositions", "scene.css"),
       '.hf-texture-lava { mask-image: url("masks/lava.png"); }',
     );
-    mkdirSync(join(project.dir, "compositions", "masks"), { recursive: true });
-    writeFileSync(join(project.dir, "compositions", "masks", "lava.png"), "fake");
+    mkdirSync(join(project, "compositions", "masks"), { recursive: true });
+    writeFileSync(join(project, "compositions", "masks", "lava.png"), "fake");
 
     const { results } = await lintProject(project);
     const finding = results[0]?.result.findings.find(
@@ -812,7 +806,7 @@ describe("texture_mask_asset_not_found", () => {
 </body></html>`,
     });
     writeFileSync(
-      join(project.dir, "compositions", decodeURIComponent(encodedFilename)),
+      join(project, "compositions", decodeURIComponent(encodedFilename)),
       '.hf-texture-lava { mask-image: url("masks/missing.png"); }',
     );
 
@@ -839,10 +833,10 @@ describe("texture_mask_asset_not_found", () => {
   <script>window.__timelines = window.__timelines || {}; window.__timelines["main"] = gsap.timeline({ paused: true });</script>
 </body></html>`;
     const project = makeProject(html);
-    mkdirSync(join(project.dir, "assets", "texture-mask-text", "masks"), {
+    mkdirSync(join(project, "assets", "texture-mask-text", "masks"), {
       recursive: true,
     });
-    writeFileSync(join(project.dir, "assets", "texture-mask-text", "masks", "lava.png"), "fake");
+    writeFileSync(join(project, "assets", "texture-mask-text", "masks", "lava.png"), "fake");
 
     const { results } = await lintProject(project);
     const finding = results[0]?.result.findings.find(
@@ -855,8 +849,8 @@ describe("texture_mask_asset_not_found", () => {
   it("does not error for percent-encoded non-Latin mask filenames that exist on disk", async () => {
     const encodedFilename = "%E6%97%A5%E6%9C%AC%E8%AA%9E.png";
     const project = makeProject(validHtmlWithMaskImageUrl(`assets/${encodedFilename}`));
-    mkdirSync(join(project.dir, "assets"), { recursive: true });
-    writeFileSync(join(project.dir, "assets", decodeURIComponent(encodedFilename)), "fake");
+    mkdirSync(join(project, "assets"), { recursive: true });
+    writeFileSync(join(project, "assets", decodeURIComponent(encodedFilename)), "fake");
 
     const { results } = await lintProject(project);
     const finding = results[0]?.result.findings.find(
@@ -884,7 +878,7 @@ describe("multiple_root_compositions", () => {
   it("fires when two HTML files have data-composition-id", async () => {
     const project = makeProject(validHtml());
     writeFileSync(
-      join(project.dir, "scaffold.html"),
+      join(project, "scaffold.html"),
       '<div data-composition-id="scaffold" data-width="1920" data-height="1080" data-duration="10"></div>',
     );
     const { totalErrors, results } = await lintProject(project);
@@ -909,7 +903,7 @@ describe("multiple_root_compositions", () => {
   it("ignores root-level caption-skin.html source files", async () => {
     const project = makeProject(validHtml());
     writeFileSync(
-      join(project.dir, "caption-skin.html"),
+      join(project, "caption-skin.html"),
       '<div data-composition-id="captions" data-width="0" data-height="0"></div>',
     );
     const { results } = await lintProject(project);
@@ -921,7 +915,7 @@ describe("multiple_root_compositions", () => {
 
   it("ignores HTML files without data-composition-id", async () => {
     const project = makeProject(validHtml());
-    writeFileSync(join(project.dir, "readme.html"), "<html><body>Not a composition</body></html>");
+    writeFileSync(join(project, "readme.html"), "<html><body>Not a composition</body></html>");
     const { results } = await lintProject(project);
     const finding = results[0]?.result.findings.find(
       (f) => f.code === "multiple_root_compositions",
@@ -979,7 +973,7 @@ describe("duplicate_audio_track", () => {
     const project = makeProject(validHtmlWithAudio(), {
       "scene.html": validHtmlWithAudio("scene"),
     });
-    writeFileSync(join(project.dir, "song.mp3"), "fake");
+    writeFileSync(join(project, "song.mp3"), "fake");
     const { results } = await lintProject(project);
     const finding = results[0]?.result.findings.find((f) => f.code === "duplicate_audio_track");
     expect(finding).toBeUndefined();
@@ -1024,8 +1018,8 @@ describe("duplicate_audio_track", () => {
   <script>window.__timelines = window.__timelines || {}; window.__timelines["scene"] = gsap.timeline({ paused: true });</script>
 </body></html>`,
     });
-    writeFileSync(join(project.dir, "song.mp3"), "fake");
-    writeFileSync(join(project.dir, "music.wav"), "fake");
+    writeFileSync(join(project, "song.mp3"), "fake");
+    writeFileSync(join(project, "music.wav"), "fake");
     const { results } = await lintProject(project);
     const finding = results[0]?.result.findings.find((f) => f.code === "duplicate_audio_track");
     // song.mp3@0 (from validHtmlWithAudio, no data-duration → Infinity) and music.wav@5-25 overlap

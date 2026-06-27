@@ -1,6 +1,6 @@
 import type { LintContext, HyperframeLintFinding, ExtractedBlock } from "../context";
 import { findHtmlTag, readAttr, readJsonAttr, stripJsComments, truncateSnippet } from "../utils";
-import { COMPOSITION_VARIABLE_TYPES } from "../../core.types";
+import { COMPOSITION_VARIABLE_TYPES } from "@hyperframes/parsers";
 
 // Agent guidance thresholds: warning-only nudges for files/tracks that become hard
 // to inspect and revise reliably in a single composition.

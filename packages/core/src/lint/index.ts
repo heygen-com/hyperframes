@@ -1,7 +1,2 @@
-export type {
-  HyperframeLintSeverity,
-  HyperframeLintFinding,
-  HyperframeLintResult,
-  HyperframeLinterOptions,
-} from "./types";
-export { lintHyperframeHtml, lintMediaUrls } from "./hyperframeLinter";
+/** @deprecated Import from @hyperframes/lint */
+export * from "@hyperframes/lint";

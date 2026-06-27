@@ -353,6 +353,7 @@
   },
   "dependencies": {
     "@chenglou/pretext": "^0.0.5",
+    "@hyperframes/lint": "workspace:*",
     "@hyperframes/parsers": "workspace:*",
     "@hyperframes/studio-server": "workspace:*",
     "bpm-detective": "^2.0.5",

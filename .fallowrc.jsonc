@@ -284,6 +284,18 @@
       "packages/studio-server/src/helpers/sourceMutation.test.ts",
       "packages/studio-server/src/helpers/studioMotionRenderScript.test.ts",
       "packages/studio-server/src/helpers/subComposition.test.ts",
+      // @hyperframes/lint rule test files: parallel arrange/act/assert test cases
+      // (pre-existing structure from when lint lived in packages/core/src/lint/).
+      "packages/lint/src/rules/adapters.test.ts",
+      "packages/lint/src/rules/captions.test.ts",
+      "packages/lint/src/rules/composition.test.ts",
+      "packages/lint/src/rules/core.test.ts",
+      "packages/lint/src/rules/fonts.test.ts",
+      "packages/lint/src/rules/gsap.test.ts",
+      "packages/lint/src/rules/media.test.ts",
+      "packages/lint/src/rules/slideshow.test.ts",
+      "packages/lint/src/rules/textures.test.ts",
+      "packages/lint/src/hyperframeLinter.test.ts",
       // slideshowPanelHelpers.ts: setSlideNotes/addFragment/addHotspot share an
       // intentional parallel shape (signature + mapSlidesIn → exists-check →
       // map/append); the per-slide mutation differs, so a shared abstraction
@@ -335,6 +347,13 @@
       "packages/studio-server/src/helpers/manualEditsRenderScript.ts",
       "packages/studio-server/src/helpers/studioMotionRenderScript.ts",
       "packages/studio-server/src/helpers/subComposition.ts",
+      // lint rule implementations and project linter: pre-existing complexity
+      // (moved from packages/core/src/lint/). File-level exemption avoids the
+      // line-shift fingerprint problem for inherited findings.
+      "packages/lint/src/rules/media.ts",
+      "packages/lint/src/rules/textures.ts",
+      "packages/lint/src/rules/gsap.ts",
+      "packages/lint/src/project.ts",
       // SlideshowPanel.tsx: top-level editor panel that wires several independent
       // sections (slides/inspector/branches/hotspot). Its cyclomatic count comes
       // from that fan-out; splitting it would scatter shared state without
@@ -365,6 +384,10 @@
       "packages/studio/src/hooks/gsapDragPositionCommit.ts",
       "packages/studio/src/hooks/gsapKeyframeCacheHelpers.ts",
       "packages/studio/vite.config.ts",
+      "packages/cli/src/commands/lint.ts",
+      "packages/cli/src/commands/preview.ts",
+      "packages/cli/src/commands/publish.ts",
+      "packages/cli/src/server/studioServer.ts",
       // set-version.ts: compareSemver helper has pre-existing complexity from
       // semver string parsing logic; line-shift fingerprint problem from new
       // packages added to PACKAGES array makes fallow treat it as new.

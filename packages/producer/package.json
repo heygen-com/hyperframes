@@ -70,6 +70,7 @@
     "@hono/node-server": "^1.13.0",
     "@hyperframes/core": "workspace:^",
     "@hyperframes/engine": "workspace:^",
+    "@hyperframes/lint": "workspace:^",
     "@hyperframes/studio-server": "workspace:^",
     "hono": "^4.6.0",
     "linkedom": "^0.18.12",

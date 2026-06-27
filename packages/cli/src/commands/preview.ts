@@ -123,11 +123,10 @@ export default defineCommand({
     const isImplicitCwd = !rawArg || rawArg === "." || rawArg === "./";
     const project = resolveProject(rawArg);
     const dir = project.dir;
-    const indexPath = project.indexPath;
     const projectName = isImplicitCwd ? basename(process.env.PWD ?? dir) : project.name;
 
     // Lint before starting — surface issues for the agent to fix.
-    const lintResult = await lintProject({ dir, name: projectName, indexPath });
+    const lintResult = await lintProject(dir);
     if (lintResult.totalErrors > 0 || lintResult.totalWarnings > 0) {
       console.log();
       for (const line of formatLintFindings(lintResult)) console.log(line);
