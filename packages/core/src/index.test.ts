@@ -128,8 +128,12 @@ describe("@hyperframes/core public API exports", () => {
   });
 
   describe("lint exports", () => {
-    it("exports lintHyperframeHtml", () => {
-      expect(typeof core.lintHyperframeHtml).toBe("function");
+    it("exposes lintHyperframeHtml via the @hyperframes/core/lint back-compat stub", async () => {
+      // Lint moved to @hyperframes/lint; core's main entry no longer re-exports
+      // it (that would cycle through the lint package). The subpath stub keeps
+      // existing @hyperframes/core/lint imports working.
+      const lint = await import("./lint/index.js");
+      expect(typeof lint.lintHyperframeHtml).toBe("function");
     });
   });
 
