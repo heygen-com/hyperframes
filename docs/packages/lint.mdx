@@ -79,6 +79,25 @@ if (shouldBlockRender(result)) {
 }
 ```
 
+## Browser usage
+
+The rule engine runs **fully client-side** — no Node.js, no filesystem, no server round-trip. Import from the `@hyperframes/lint/browser` entry to validate composition HTML directly in a browser-only editor or tool:
+
+```typescript
+import { lintHyperframeHtml, shouldBlockRender } from '@hyperframes/lint/browser';
+
+const result = await lintHyperframeHtml(htmlString, { filePath: 'index.html' });
+if (!result.ok) {
+  for (const f of result.findings) console.warn(f.code, f.message);
+}
+```
+
+The browser entry exposes `lintHyperframeHtml`, `lintMediaUrls`, and `shouldBlockRender` — everything that operates on an HTML string. It is built with a browser target and contains **zero `node:` builtins**, so it bundles cleanly for the client (verified at build time).
+
+<Info>
+  `lintProject` (which walks a project **directory**) is filesystem-based and is **not** part of the browser entry — import it from the main `@hyperframes/lint` entry in Node.
+</Info>
+
 ## What the Linter Catches
 
 Detected issues include:

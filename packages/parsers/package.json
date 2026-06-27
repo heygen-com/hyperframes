@@ -11,6 +11,7 @@
     "README.md"
   ],
   "type": "module",
+  "sideEffects": false,
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
@@ -74,6 +75,12 @@
       "node": "./dist/assets.js",
       "import": "./src/assets.ts",
       "types": "./src/assets.ts"
+    },
+    "./composition": {
+      "bun": "./src/composition.ts",
+      "node": "./dist/composition.js",
+      "import": "./src/composition.ts",
+      "types": "./src/composition.ts"
     }
   },
   "publishConfig": {
@@ -119,6 +126,10 @@
       "./asset-paths": {
         "import": "./dist/assets.js",
         "types": "./dist/assets.d.ts"
+      },
+      "./composition": {
+        "import": "./dist/composition.js",
+        "types": "./dist/composition.d.ts"
       }
     },
     "main": "./dist/index.js",

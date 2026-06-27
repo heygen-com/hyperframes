@@ -32,6 +32,9 @@ npm install @hyperframes/parsers
 | `@hyperframes/parsers/gsap-constants` | `SUPPORTED_PROPS`, `SUPPORTED_EASES`, property groups |
 | `@hyperframes/parsers/spring-ease` | Spring-ease curve generation |
 | `@hyperframes/parsers/hf-ids` | Deterministic element id stamping |
+| `@hyperframes/parsers/slideshow` | Slideshow manifest parser (`parseSlideshowManifest`, `resolveSlideshow`) |
+| `@hyperframes/parsers/composition` | Pure, browser-safe composition primitives (data types, font aliases, URL helper) |
+| `@hyperframes/parsers/asset-paths` | Node-only asset-path rewriting helpers (`rewriteAssetPath`, …) |
 
 <Info>
   The package ships subpath entries so consumers tree-shake to what they use — importing `@hyperframes/parsers/hf-ids` (a couple KB) does **not** pull in the GSAP AST machinery (recast/babel/acorn).

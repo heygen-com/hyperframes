@@ -7,8 +7,14 @@
 
 import { isAbsolute, relative, resolve } from "node:path";
 
-/** Regex matching CSS `url(...)` references — captures the quote style and the raw URL. */
-export const CSS_URL_RE = /\burl\(\s*(["']?)([^)"']+)\1\s*\)/g;
+/**
+ * Regex matching CSS `url(...)` references — captures the quote style and the
+ * raw URL. The URL group is anchored to non-whitespace at both ends so the
+ * surrounding `\s*` can never overlap it (avoids polynomial-ReDoS backtracking);
+ * the captured value is whitespace-bounded already, matching the old behavior
+ * after callers `.trim()` it.
+ */
+export const CSS_URL_RE = /\burl\(\s*(["']?)([^)"'\s](?:[^)"']*[^)"'\s])?)\1\s*\)/g;
 
 /** Attributes that may contain relative asset paths. */
 export const PATH_ATTRS = ["src", "href"] as const;

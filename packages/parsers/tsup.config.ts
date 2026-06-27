@@ -12,6 +12,7 @@ export default defineConfig({
     gsapParser: "src/gsapParser.ts",
     slideshow: "src/slideshow/index.ts",
     assets: "src/assets.ts",
+    composition: "src/composition.ts",
   },
   format: ["esm"],
   outDir: "dist",

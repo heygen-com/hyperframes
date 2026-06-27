@@ -1,6 +1,7 @@
+export { shouldBlockRender } from "./shouldBlockRender.js";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, extname, isAbsolute, join, posix, relative, resolve } from "node:path";
-import { decodeUrlPathVariants } from "@hyperframes/parsers";
+import { decodeUrlPathVariants } from "@hyperframes/parsers/composition";
 import { rewriteAssetPath } from "@hyperframes/parsers/asset-paths";
 import { lintHyperframeHtml } from "./hyperframeLinter.js";
 import type { HyperframeLintFinding, HyperframeLintResult } from "./types.js";
@@ -239,15 +240,6 @@ export async function lintProject(projectDir: string): Promise<ProjectLintResult
   }
 
   return { results, totalErrors, totalWarnings, totalInfos };
-}
-
-export function shouldBlockRender(
-  strictErrors: boolean,
-  strictAll: boolean,
-  totalErrors: number,
-  totalWarnings: number,
-): boolean {
-  return (strictErrors && totalErrors > 0) || (strictAll && (totalErrors > 0 || totalWarnings > 0));
 }
 
 function lintProjectAudioFiles(

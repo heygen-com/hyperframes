@@ -341,6 +341,12 @@
       // packages/core/src/slideshow/ into parsers; flagged only because the move
       // makes fallow treat it as a fresh finding.
       "packages/parsers/src/slideshow/sceneId.ts",
+      // assetPaths.ts / rewriteSubCompPaths.ts: pure URL/asset-path helpers moved
+      // verbatim from packages/core/src/compiler/ into parsers. The move makes
+      // fallow score them as fresh (high CRAP = inherited complexity with no
+      // coverage mapping yet); the logic is unchanged.
+      "packages/parsers/src/assetPaths.ts",
+      "packages/parsers/src/rewriteSubCompPaths.ts",
       // gsapParser.ts: the recast/babel GSAP writer is a 2500-line legacy parser;
       // moved from packages/core/src/parsers/ — same complexity rationale.
       "packages/parsers/src/gsapParser.ts",
