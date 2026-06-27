@@ -27,12 +27,15 @@ export function resolveGroupCapture(
   for (let n: HTMLElement | null = startEl; n; n = n.parentElement) {
     if (n.hasAttribute("data-hf-group")) groups.push(n);
   }
-  if (!activeGroupElement) {
-    const outermost = groups[groups.length - 1];
-    return outermost ? { kind: "unit", element: outermost } : { kind: "child" };
-  }
-  const idx = groups.indexOf(activeGroupElement);
-  if (idx === -1) return { kind: "out-of-scope" };
-  const nestedInside = groups[idx - 1];
-  return nestedInside ? { kind: "unit", element: nestedInside } : { kind: "child" };
+  const result = ((): GroupCapture => {
+    if (!activeGroupElement) {
+      const outermost = groups[groups.length - 1];
+      return outermost ? { kind: "unit", element: outermost } : { kind: "child" };
+    }
+    const idx = groups.indexOf(activeGroupElement);
+    if (idx === -1) return { kind: "out-of-scope" };
+    const nestedInside = groups[idx - 1];
+    return nestedInside ? { kind: "unit", element: nestedInside } : { kind: "child" };
+  })();
+  return result;
 }

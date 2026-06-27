@@ -133,12 +133,12 @@ export function TimelineToolbar({
               <Tooltip
                 label={
                   keyframeState === "active"
-                    ? "Remove keyframe at playhead"
+                    ? "Remove keyframe at playhead (K)"
                     : keyframeState === "inactive"
                       ? keyframeWillExtend
-                        ? "Add keyframe at playhead (extends animation)"
-                        : "Add keyframe at playhead"
-                      : "Enable keyframes"
+                        ? "Add keyframe at playhead — extends animation (K)"
+                        : "Add keyframe at playhead (K)"
+                      : "Add keyframe (K)"
                 }
               >
                 <button

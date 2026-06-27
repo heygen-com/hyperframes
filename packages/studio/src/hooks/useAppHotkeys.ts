@@ -8,6 +8,7 @@ import { shouldHandleTimelineToggleHotkey, isEditableTarget } from "../utils/tim
 import { shouldIgnoreHistoryShortcut } from "../utils/studioHelpers";
 import { canSplitElement } from "../utils/timelineElementSplit";
 import { STUDIO_RAZOR_TOOL_ENABLED } from "../components/editor/manualEditingAvailability";
+import { trackStudioEvent } from "../utils/studioTelemetry";
 
 function iframeContentWindow(iframe: HTMLIFrameElement | null): Window | null {
   try {
@@ -158,19 +159,27 @@ function dispatchModifierKey(event: KeyboardEvent, key: string, cb: HotkeyCallba
     !shouldIgnoreHistoryShortcut(event.target) &&
     handleUndoRedoKey(
       event,
-      () => void cb.handleUndo(),
-      () => void cb.handleRedo(),
+      () => {
+        trackStudioEvent("keyboard_shortcut", { action: "undo" });
+        void cb.handleUndo();
+      },
+      () => {
+        trackStudioEvent("keyboard_shortcut", { action: "redo" });
+        void cb.handleRedo();
+      },
     )
   )
     return true;
 
   if (event.key === "1") {
     event.preventDefault();
+    trackStudioEvent("keyboard_shortcut", { action: "tab_compositions" });
     cb.leftSidebarRef.current?.selectTab("compositions");
     return true;
   }
   if (event.key === "2") {
     event.preventDefault();
+    trackStudioEvent("keyboard_shortcut", { action: "tab_assets" });
     cb.leftSidebarRef.current?.selectTab("assets");
     return true;
   }
@@ -184,17 +193,22 @@ function dispatchModifierKey(event: KeyboardEvent, key: string, cb: HotkeyCallba
 
   if (!event.shiftKey && !event.altKey && !isEditableTarget(event.target)) {
     if (key === "c") {
-      if (cb.handleCopy()) event.preventDefault();
+      if (cb.handleCopy()) {
+        event.preventDefault();
+        trackStudioEvent("keyboard_shortcut", { action: "copy" });
+      }
       return true;
     }
     if (key === "v") {
       event.preventDefault();
+      trackStudioEvent("keyboard_shortcut", { action: "paste" });
       void cb.handlePaste();
       return true;
     }
     if (key === "x") {
       if (usePlayerStore.getState().selectedElementId || cb.domEditSelectionRef.current) {
         event.preventDefault();
+        trackStudioEvent("keyboard_shortcut", { action: "cut" });
         void cb.handleCut();
       }
       return true;

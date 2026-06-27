@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import { trackStudioEvent } from "../utils/studioTelemetry";
 import type { TimelineElement } from "../player";
 import type { ImportedFontAsset } from "../components/editor/fontAssets";
 import type { EditHistoryKind } from "../utils/editHistory";
@@ -305,6 +306,7 @@ export function useDomEditSession({
       showToast("Select at least 2 elements to group", "info");
       return;
     }
+    trackStudioEvent("group", { action: "create", count: members.length });
     void groupSelection(members);
   }, [domEditGroupSelectionsRef, domEditSelectionRef, groupSelection, showToast]);
 
@@ -315,6 +317,7 @@ export function useDomEditSession({
       return;
     }
     // Dissolving the group exits any drill-in (the wrapper is about to vanish).
+    trackStudioEvent("group", { action: "ungroup" });
     setActiveGroupElement(null);
     void ungroupSelection(sel);
   }, [domEditSelectionRef, ungroupSelection, setActiveGroupElement, showToast]);

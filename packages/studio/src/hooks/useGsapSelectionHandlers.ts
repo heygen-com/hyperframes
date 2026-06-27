@@ -2,6 +2,7 @@ import { useCallback, useRef } from "react";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import { usePlayerStore } from "../player";
 import { trackStudioSaveFailure } from "../utils/studioSaveDiagnostics";
+import { trackStudioEvent } from "../utils/studioTelemetry";
 
 /**
  * Thin useCallback wrappers that guard on `domEditSelection` before
@@ -136,6 +137,7 @@ export function useGsapSelectionHandlers({
     (targetSelector: string) => {
       const sel = domEditSelection ?? lastSelectionRef.current;
       if (!sel) return;
+      trackStudioEvent("keyframe", { action: "delete_all" });
       deleteAllForSelector(sel, targetSelector);
     },
     [domEditSelection, deleteAllForSelector],
@@ -206,6 +208,7 @@ export function useGsapSelectionHandlers({
     ) => {
       const sel = selectionOverride ?? domEditSelection ?? lastSelectionRef.current;
       if (!sel) return;
+      trackStudioEvent("keyframe", { action: "add", property });
       addKeyframe(sel, animId, percentage, property, value);
     },
     [domEditSelection, addKeyframe],
@@ -224,6 +227,7 @@ export function useGsapSelectionHandlers({
     (animId: string, percentage: number, selectionOverride?: DomEditSelection | null) => {
       const sel = selectionOverride ?? domEditSelection ?? lastSelectionRef.current;
       if (!sel) return;
+      trackStudioEvent("keyframe", { action: "remove" });
       removeKeyframe(sel, animId, percentage);
     },
     [domEditSelection, removeKeyframe],
