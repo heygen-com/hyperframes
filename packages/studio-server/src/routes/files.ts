@@ -314,6 +314,137 @@ function extractGsapScriptBlock(html: string): {
   return null;
 }
 
+/**
+ * Remove every GSAP animation that targets `selector` from an HTML string's
+ * inline script. Used after unwrapping a group so its leftover `gsap.set("#id")`
+ * (the wrapper is gone) doesn't throw "target not found" on every preview run.
+ */
+function stripGsapAnimationsForSelector(html: string, selector: string): string {
+  const block = extractGsapScriptBlock(html);
+  if (!block) return html;
+  const parsed = parseGsapScriptAcorn(block.scriptText);
+  const matching = parsed.animations.filter((a) => a.targetSelector === selector);
+  if (matching.length === 0) return html;
+  let script = block.scriptText;
+  // Reverse so earlier removals don't shift the spans of later ones.
+  for (const anim of [...matching].reverse()) {
+    script = removeAnimationFromScript(script, anim.id);
+  }
+  return block.replaceScript(script);
+}
+
+/**
+ * Bake a group's STATIC GSAP transform into each member BEFORE the group is
+ * stripped on ungroup. Moving a group is stored as `gsap.set("#group-1",{x,y,…})`;
+ * without distributing it to the members they snap back to their creation-time
+ * positions. Translation (x/y/z) is an exact per-axis add; rotation/scale are
+ * composed about the group's centre (the pivot) so off-centre members don't drift.
+ * Animated group transforms (keyframes/tweens) are NOT baked — left to be stripped.
+ */
+function bakeGroupTransformIntoMembers(
+  html: string,
+  groupId: string,
+  members: Array<{ id: string; cx: number; cy: number }>,
+  groupCenter: { cx: number; cy: number },
+): string {
+  const block = extractGsapScriptBlock(html);
+  if (!block) return html;
+  const parsed = parseGsapScriptAcorn(block.scriptText);
+  const groupSel = `#${groupId}`;
+  const groupSets = parsed.animations.filter(
+    (a) => a.targetSelector === groupSel && a.method === "set",
+  );
+  if (groupSets.length === 0) return html;
+  // Merge the group's sets (later per-prop wins) → its effective static transform.
+  const gt: Record<string, number> = {};
+  for (const s of groupSets) {
+    for (const [k, v] of Object.entries(s.properties)) if (typeof v === "number") gt[k] = v;
+  }
+  const gx = gt.x ?? 0;
+  const gy = gt.y ?? 0;
+  const gz = gt.z ?? 0;
+  const grot = gt.rotation ?? 0;
+  const gscale = gt.scale ?? 1;
+  // Identity across ALL axes (incl. the extras baked below) — else a group whose
+  // only transform is e.g. scaleX would skip the bake and silently drop it.
+  const isScaleAxis = (k: string) => k === "scale" || k === "scaleX" || k === "scaleY";
+  const groupIsIdentity = Object.entries(gt).every(([k, v]) =>
+    isScaleAxis(k) ? v === 1 : v === 0,
+  );
+  if (groupIsIdentity) return html;
+
+  const rad = (grot * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const round3 = (n: number) => Math.round(n * 1000) / 1000;
+
+  let script = block.scriptText;
+  for (const m of members) {
+    const memberSel = `#${m.id}`;
+    const sets = parsed.animations.filter(
+      (a) => a.targetSelector === memberSel && a.method === "set",
+    );
+    // Effective member transform (merge its sets — last per-prop wins).
+    const mProps: Record<string, number | string> = {};
+    for (const s of sets) Object.assign(mProps, s.properties);
+    const mx = typeof mProps.x === "number" ? mProps.x : 0;
+    const my = typeof mProps.y === "number" ? mProps.y : 0;
+    // Compose the group transform onto the member's centre, then back to an offset.
+    const dx = m.cx + mx - groupCenter.cx;
+    const dy = m.cy + my - groupCenter.cy;
+    const visX = groupCenter.cx + gscale * (cos * dx - sin * dy) + gx;
+    const visY = groupCenter.cy + gscale * (sin * dx + cos * dy) + gy;
+    const newProps: Record<string, number | string> = {
+      ...mProps,
+      x: round3(visX - m.cx),
+      y: round3(visY - m.cy),
+    };
+    if (gz !== 0) newProps.z = (typeof mProps.z === "number" ? mProps.z : 0) + gz;
+    if (grot !== 0) {
+      newProps.rotation = round3(
+        (typeof mProps.rotation === "number" ? mProps.rotation : 0) + grot,
+      );
+    }
+    if (gscale !== 1) {
+      newProps.scale = round3((typeof mProps.scale === "number" ? mProps.scale : 1) * gscale);
+    }
+    // Bake any REMAINING group transform axis so nothing is silently dropped on
+    // ungroup. The pivot-composed axes (x/y/z/rotation/scale) are handled above;
+    // these extras (scaleX/Y, rotationX/Y/Z, skewX/Y, transformPerspective) compose
+    // about the member's own origin — exact for a member at the group centre, a
+    // close approximation otherwise (groups rarely carry these).
+    const pivoted = new Set(["x", "y", "z", "rotation", "scale"]);
+    for (const [k, v] of Object.entries(gt)) {
+      if (pivoted.has(k) || typeof v !== "number") continue;
+      if (k === "scaleX" || k === "scaleY") {
+        if (v !== 1) newProps[k] = round3((typeof mProps[k] === "number" ? mProps[k] : 1) * v);
+      } else if (k === "transformPerspective") {
+        // Adopt the group's lens only if the member has none of its own — never
+        // silently overwrite a member's existing perspective.
+        if (typeof mProps[k] !== "number") newProps[k] = v;
+      } else if (v !== 0) {
+        newProps[k] = round3((typeof mProps[k] === "number" ? mProps[k] : 0) + v);
+      }
+    }
+
+    // Strip ALL the member's existing sets and write ONE fresh gsap.set at position
+    // 0. The baked transform is the member's static base — writing it to an arbitrary
+    // "last" set could land it at a non-zero timeline position, or leave stale earlier
+    // sets that override it. Reverse-remove so spans don't shift, then add fresh.
+    for (const s of [...sets].reverse()) {
+      script = removeAnimationFromScript(script, s.id);
+    }
+    script = addAnimationToScript(script, {
+      targetSelector: memberSel,
+      method: "set",
+      position: 0,
+      properties: newProps,
+      global: true,
+    }).script;
+  }
+  return block.replaceScript(script);
+}
+
 function stripStudioEditsFromTarget(document: Document, selector: string): number {
   if (!selector) return 0;
   let stripped = 0;
@@ -1649,14 +1780,23 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     if (!result.unwrapped) {
       return c.json({ ok: false, changed: false, content: originalContent, path: ctx.filePath });
     }
-    return writeIfChanged(
-      c,
-      ctx.project.dir,
-      ctx.filePath,
-      ctx.absPath,
-      originalContent,
-      result.html,
-    );
+    // BAKE the group's static transform into the members FIRST, so the group's
+    // accumulated moves are preserved (otherwise members snap back to their
+    // creation-time positions), THEN strip the group's GSAP — a leftover
+    // `gsap.set("#group-1")` throws "target not found" every preview run.
+    let cleaned = result.html;
+    if (result.unwrappedGroupId && result.members && result.groupCenter) {
+      cleaned = bakeGroupTransformIntoMembers(
+        cleaned,
+        result.unwrappedGroupId,
+        result.members,
+        result.groupCenter,
+      );
+    }
+    if (result.unwrappedGroupId) {
+      cleaned = stripGsapAnimationsForSelector(cleaned, `#${result.unwrappedGroupId}`);
+    }
+    return writeIfChanged(c, ctx.project.dir, ctx.filePath, ctx.absPath, originalContent, cleaned);
   });
 
   api.post("/projects/:id/file-mutations/probe-element/*", async (c) => {
