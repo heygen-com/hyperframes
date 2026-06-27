@@ -36,6 +36,7 @@ jobs:
           filters: |
             preview:
               - "packages/core/**"
+              - "packages/parsers/**"
               - "packages/player/**"
               - "packages/studio/**"
               - "packages/cli/**"
@@ -72,6 +73,11 @@ jobs:
           node-version: 22
 
       - run: bun install --frozen-lockfile
+
+      - name: Build workspace packages (required for vite config loading)
+        run: |
+          bun run --filter '@hyperframes/parsers' build
+          bun run --cwd packages/core build
 
       - name: Run Studio preview routing regression
         run: |

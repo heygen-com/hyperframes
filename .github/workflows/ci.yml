@@ -227,6 +227,8 @@ jobs:
       - uses: ./.github/actions/prepare-ffmpeg-bin
       - run: bun install --frozen-lockfile
       - run: bun run test:scripts
+      - run: bun run --filter '@hyperframes/parsers' build
+      - run: bun run --cwd packages/core build
       - run: bun run --cwd packages/core build:hyperframes-runtime
       - run: bun run --filter '!@hyperframes/producer' test
 
