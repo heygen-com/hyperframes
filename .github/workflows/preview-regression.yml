@@ -37,6 +37,7 @@ jobs:
             preview:
               - "packages/core/**"
               - "packages/parsers/**"
+              - "packages/studio-server/**"
               - "packages/player/**"
               - "packages/studio/**"
               - "packages/cli/**"
@@ -77,12 +78,13 @@ jobs:
       - name: Build workspace packages (required for vite config loading)
         run: |
           bun run --filter '@hyperframes/parsers' build
+          bun run --filter '@hyperframes/studio-server' build
           bun run --cwd packages/core build
 
       - name: Run Studio preview routing regression
         run: |
           bun run --cwd packages/studio test -- vite.thumbnail.test.ts src/utils/projectRouting.test.ts src/utils/frameCapture.test.ts
-          bun run --cwd packages/core test -- src/studio-api/routes/thumbnail.test.ts
+          bun run --cwd packages/studio-server test -- src/routes/thumbnail.test.ts
 
       - name: Build preview runtime
         run: bun run --cwd packages/core build:hyperframes-runtime
