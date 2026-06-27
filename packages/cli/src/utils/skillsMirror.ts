@@ -99,9 +99,12 @@ function mirrorInto(
  * dir. Best-effort and idempotent: a no-op when the store is absent, and per
  * skill failures (permissions, races) don't abort the rest.
  */
-export function mirrorGlobalSkills(
-  opts: { home?: string; platform?: NodeJS.Platform; env?: NodeJS.ProcessEnv } = {},
-): MirrorResult {
+export function mirrorGlobalSkills(opts: {
+  skills: readonly string[];
+  home?: string;
+  platform?: NodeJS.Platform;
+  env?: NodeJS.ProcessEnv;
+}): MirrorResult {
   const home = opts.home ?? homedir();
   const platform = opts.platform ?? process.platform;
   const bases = resolveBases(home, opts.env ?? process.env);
@@ -112,7 +115,13 @@ export function mirrorGlobalSkills(
   const universalStore = join(home, ".agents", "skills");
   if (!existsSync(source)) return { source: null, mirrored: [] };
 
-  const skills = listSkillDirs(source);
+  // Mirror ONLY HyperFrames' own skills (by name), NEVER everything in the
+  // store: ~/.claude/skills is shared, so a user's gstack / personal / company
+  // skills live there too and must not be fanned out to (or overwrite) other
+  // agents. `opts.skills` is the lock-attributed HyperFrames set (see
+  // hyperframesSkillNames).
+  const allowed = new Set(opts.skills);
+  const skills = listSkillDirs(source).filter((name) => allowed.has(name));
   if (skills.length === 0) return { source, mirrored: [] };
 
   const mirrored: { agent: string; dir: string }[] = [];

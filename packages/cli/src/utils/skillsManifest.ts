@@ -406,6 +406,22 @@ function readSkillLock(path: string): SkillLock | null {
   }
 }
 
+/**
+ * The skill names the upstream lock attributes to HyperFrames, for a scope.
+ * The mirror MUST scope by this — never by listing `~/.claude/skills`, which is
+ * shared across sources, so a directory listing would fan a user's gstack /
+ * personal / company skills out to every agent. Same source-attribution the
+ * prune uses. Empty when the lock is absent (we can't attribute → mirror none).
+ */
+export function hyperframesSkillNames(opts: {
+  scope: "project" | "global";
+  cwd?: string;
+  home?: string;
+}): string[] {
+  const lockPath = lockPathForScope(opts.scope, { cwd: opts.cwd, home: opts.home });
+  return skillsAttributedToSource(readSkillLock(lockPath), DEFAULT_REPO_SLUG);
+}
+
 interface RemovedResult {
   removed: SkillDiff[];
   /** The lock was absent at the expected path — removed-detection silently no-ops. */

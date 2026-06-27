@@ -6,6 +6,7 @@ import { buildNpxCommand } from "../utils/npxCommand.js";
 import { withMeta } from "../utils/updateCheck.js";
 import {
   checkSkills,
+  hyperframesSkillNames,
   SKILLS_CLI_LOCK_PATHS_VERIFIED_AT,
   type SkillDiff,
   type SkillsCheckResult,
@@ -124,6 +125,28 @@ function runSkillsRemove(names: string[], opts: { global: boolean }): Promise<vo
 // resolves "latest" straight from GitHub too, so install and check agree.
 const SOURCES = [{ name: "HyperFrames", url: "https://github.com/heygen-com/hyperframes" }];
 
+// Fan HyperFrames' own skills out to every other installed agent. Scope by the
+// lock's source attribution (the same definition prune uses) — NOT by listing
+// ~/.claude/skills, which is shared with the user's other Claude skills (gstack,
+// personal, company). No-op when nothing is attributed or the global store is
+// absent, so it's safe to run unconditionally after any install. Best-effort: a
+// mirror failure must not fail the install.
+function mirrorToInstalledAgents(): void {
+  try {
+    const names = hyperframesSkillNames({ scope: "global" });
+    if (names.length === 0) return;
+    const { mirrored } = mirrorGlobalSkills({ skills: names });
+    const n = mirrored.length;
+    if (n > 0) {
+      console.log(
+        c.dim(`Linked skills into ${n} other agent ${n === 1 ? "directory" : "directories"}.`),
+      );
+    }
+  } catch {
+    // best-effort
+  }
+}
+
 export async function installAllSkills(
   opts: { cwd?: string; extraArgs?: string[]; strict?: boolean } = {},
 ): Promise<void> {
@@ -149,17 +172,7 @@ export async function installAllSkills(
     }
   }
 
-  // Fan the global Claude store out to every other installed agent. No-op when
-  // the global store is absent (e.g. a custom install), so it's safe to run
-  // unconditionally after any install path.
-  try {
-    const { mirrored } = mirrorGlobalSkills();
-    if (mirrored.length > 0) {
-      console.log(c.dim(`Linked skills into ${mirrored.length} other agent director(ies).`));
-    }
-  } catch {
-    // best-effort: a mirror failure must not fail the install
-  }
+  mirrorToInstalledAgents();
 }
 
 // ── check ────────────────────────────────────────────────────────────────────

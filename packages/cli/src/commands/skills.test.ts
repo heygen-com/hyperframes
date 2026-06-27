@@ -54,6 +54,9 @@ vi.mock("@clack/prompts", () => ({
 // default returns nothing removed, and the prune test overrides per-call.
 vi.mock("../utils/skillsManifest.js", () => ({
   checkSkills: vi.fn(async () => ({ skills: [] })),
+  // installAllSkills resolves the HyperFrames skill names (lock-attributed) to
+  // scope the mirror; pin it so these arg-shape tests don't read a real lock.
+  hyperframesSkillNames: vi.fn(() => ["hyperframes"]),
 }));
 
 // The install fans out to other agents via mirrorGlobalSkills, which touches

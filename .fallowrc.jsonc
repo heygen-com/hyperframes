@@ -268,6 +268,11 @@
       // Each case seeds a dir then asserts the resolved location/agent; collapsing
       // the shared seed/assert shape would obscure what each scope/host verifies.
       "packages/cli/src/utils/skillsManifest.test.ts",
+      // skills.test.ts: parallel prune cases (removed-in-global vs project, non-slug
+      // rejection, --source/--dir plumbing) share a mock-checkSkills → runSkillsUpdate
+      // → assert-remove-spawn shape; each verifies a distinct prune behavior, so
+      // extracting the shared scaffold would obscure what each case asserts.
+      "packages/cli/src/commands/skills.test.ts",
     ],
   },
   "health": {

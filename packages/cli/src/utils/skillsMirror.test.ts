@@ -5,6 +5,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readlinkSync,
+  readFileSync,
   realpathSync,
   rmSync,
   writeFileSync,
@@ -26,7 +27,7 @@ function makeHome(): string {
   return home;
 }
 
-/** Seed a real ~/.claude/skills store (the canonical global install). */
+/** Seed real skill bundles under ~/.claude/skills (the canonical global store). */
 function seedStore(home: string, skills: string[]): void {
   for (const name of skills) {
     const dir = join(home, ".claude", "skills", name);
@@ -47,7 +48,12 @@ afterEach(() => {
 describe("mirrorGlobalSkills", () => {
   it("no-ops when there is no global Claude store", () => {
     const home = makeHome();
-    const result = mirrorGlobalSkills({ home, platform: "linux", env: ENV });
+    const result = mirrorGlobalSkills({
+      skills: ["hyperframes"],
+      home,
+      platform: "linux",
+      env: ENV,
+    });
     expect(result.source).toBeNull();
     expect(result.mirrored).toEqual([]);
   });
@@ -59,7 +65,12 @@ describe("mirrorGlobalSkills", () => {
     installMarker(home, ".config/goose"); // goose present (XDG base)
     // windsurf NOT installed (no ~/.codeium/windsurf)
 
-    const { mirrored } = mirrorGlobalSkills({ home, platform: "linux", env: ENV });
+    const { mirrored } = mirrorGlobalSkills({
+      skills: ["hyperframes", "hyperframes-core"],
+      home,
+      platform: "linux",
+      env: ENV,
+    });
     const agents = mirrored.map((m) => m.agent);
     expect(agents).toContain("cursor");
     expect(agents).toContain("goose");
@@ -77,6 +88,31 @@ describe("mirrorGlobalSkills", () => {
     ).toBe(true);
   });
 
+  // The blocker Magi flagged: ~/.claude/skills is shared, so a user's gstack /
+  // personal / company skills live there too. The mirror must fan out ONLY
+  // HyperFrames' own skills (the lock-attributed allow-list), never everything
+  // in the store — and must not remove/replace a same-named skill already in
+  // another agent's dir.
+  it("only mirrors the allow-listed skills, never other sources' (gstack)", () => {
+    const home = makeHome();
+    seedStore(home, ["hyperframes", "gstack"]); // gstack is a foreign skill in the store
+    installMarker(home, ".cursor");
+    // cursor already has its OWN gstack skill from another source — must survive.
+    const foreign = join(home, ".cursor", "skills", "gstack");
+    mkdirSync(foreign, { recursive: true });
+    writeFileSync(join(foreign, "SKILL.md"), "# gstack (cursor's own, not ours)\n", "utf8");
+
+    mirrorGlobalSkills({ skills: ["hyperframes"], home, platform: "linux", env: ENV });
+
+    // our skill got linked
+    expect(lstatSync(join(home, ".cursor", "skills", "hyperframes")).isSymbolicLink()).toBe(true);
+    // gstack was NOT mirrored from the store...
+    expect(existsSync(join(home, ".claude", "skills", "gstack"))).toBe(true); // still in store
+    // ...and cursor's pre-existing gstack was neither replaced with a symlink nor removed
+    expect(lstatSync(foreign).isSymbolicLink()).toBe(false);
+    expect(readFileSync(join(foreign, "SKILL.md"), "utf8")).toContain("cursor's own");
+  });
+
   it("honors XDG_CONFIG_HOME for config-based agents", () => {
     const home = makeHome();
     const xdg = makeHome(); // a separate absolute XDG config root
@@ -84,6 +120,7 @@ describe("mirrorGlobalSkills", () => {
     mkdirSync(join(xdg, "goose"), { recursive: true }); // goose marker under XDG
 
     const { mirrored } = mirrorGlobalSkills({
+      skills: ["hyperframes"],
       home,
       platform: "linux",
       env: { XDG_CONFIG_HOME: xdg },
@@ -98,7 +135,7 @@ describe("mirrorGlobalSkills", () => {
     seedStore(home, ["hyperframes"]);
     installMarker(home, ".cursor");
 
-    mirrorGlobalSkills({ home, platform: "win32", env: ENV });
+    mirrorGlobalSkills({ skills: ["hyperframes"], home, platform: "win32", env: ENV });
     const target = join(home, ".cursor", "skills", "hyperframes");
     expect(lstatSync(target).isSymbolicLink()).toBe(false);
     expect(lstatSync(target).isDirectory()).toBe(true);
@@ -110,7 +147,12 @@ describe("mirrorGlobalSkills", () => {
     seedStore(home, ["hyperframes"]);
     installMarker(home, ".agents"); // .agents present (the universal install creates it)
 
-    const { mirrored } = mirrorGlobalSkills({ home, platform: "linux", env: ENV });
+    const { mirrored } = mirrorGlobalSkills({
+      skills: ["hyperframes"],
+      home,
+      platform: "linux",
+      env: ENV,
+    });
     expect(mirrored.map((m) => m.agent)).not.toContain("claude-code");
     // the .agents-family agents (cline/dexto/…) map to .agents/skills and are skipped
     expect(mirrored.map((m) => m.agent)).not.toContain("cline");
@@ -123,9 +165,14 @@ describe("mirrorGlobalSkills", () => {
     seedStore(home, ["hyperframes"]);
     installMarker(home, ".cursor");
 
-    mirrorGlobalSkills({ home, platform: "linux", env: ENV });
+    mirrorGlobalSkills({ skills: ["hyperframes"], home, platform: "linux", env: ENV });
     // second run must not throw and must leave a valid link
-    const { mirrored } = mirrorGlobalSkills({ home, platform: "linux", env: ENV });
+    const { mirrored } = mirrorGlobalSkills({
+      skills: ["hyperframes"],
+      home,
+      platform: "linux",
+      env: ENV,
+    });
     expect(mirrored.map((m) => m.agent)).toContain("cursor");
     const link = join(home, ".cursor", "skills", "hyperframes");
     expect(realpathSync(link)).toBe(realpathSync(join(home, ".claude", "skills", "hyperframes")));
