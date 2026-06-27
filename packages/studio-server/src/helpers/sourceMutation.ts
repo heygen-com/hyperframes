@@ -1,7 +1,7 @@
 import { parseHTML } from "linkedom";
 import postcss from "postcss";
 import selectorParser from "postcss-selector-parser";
-import { isAllowedHtmlAttribute, isSafeAttributeValue } from "../../utils/htmlAttrSafety";
+import { isAllowedHtmlAttribute, isSafeAttributeValue } from "@hyperframes/core/html-attr-safety";
 
 export interface SourceMutationTarget {
   id?: string | null;

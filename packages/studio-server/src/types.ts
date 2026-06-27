@@ -1,5 +1,5 @@
-import type { CanvasResolution } from "../core.types.js";
-import type { RegistryItem } from "../registry/types.js";
+import type { CanvasResolution } from "@hyperframes/parsers";
+import type { RegistryItem } from "@hyperframes/core";
 
 /** Resolved info about a single project. */
 export interface ResolvedProject {
@@ -81,7 +81,7 @@ export interface StudioApiAdapter {
      * route normalizes both into `Fps` before invoking the adapter, so
      * adapter implementations only ever see the rational form.
      */
-    fps: import("../core.types.js").Fps;
+    fps: import("@hyperframes/core").Fps;
     quality: string;
     jobId: string;
     /**

@@ -6,7 +6,7 @@ import {
   getSystemProfilerFamilies,
   locateSystemFont,
   SYSTEM_FONT_SIZE_LIMIT,
-} from "../../fonts/systemFontLocator";
+} from "@hyperframes/core/fonts/system-locator";
 
 const MAX_FONT_RESULTS = 2000;
 const GOOGLE_FONTS_METADATA_URL = "https://fonts.google.com/metadata/fonts";

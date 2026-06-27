@@ -62,6 +62,7 @@ var __dirname = __hf_dirname(__filename);`,
   noExternal: [
     "@hyperframes/core",
     "@hyperframes/parsers",
+    "@hyperframes/studio-server",
     "@hyperframes/producer",
     "@hyperframes/engine",
     "@clack/prompts",

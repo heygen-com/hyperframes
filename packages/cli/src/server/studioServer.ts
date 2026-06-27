@@ -25,9 +25,9 @@ import {
   type StudioApiAdapter,
   type ResolvedProject,
   type RenderJobState,
-} from "@hyperframes/core/studio-api";
-import { getElementScreenshotClip } from "@hyperframes/core/studio-api/screenshot-clip";
-import type { ScreenshotClip } from "@hyperframes/core/studio-api/screenshot-clip";
+} from "@hyperframes/studio-server";
+import { getElementScreenshotClip } from "@hyperframes/studio-server/screenshot-clip";
+import type { ScreenshotClip } from "@hyperframes/studio-server/screenshot-clip";
 import type { RenderJob } from "@hyperframes/producer";
 
 const STUDIO_MANUAL_EDITS_PATH = ".hyperframes/studio-manual-edits.json";

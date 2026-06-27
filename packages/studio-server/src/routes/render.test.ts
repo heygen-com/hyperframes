@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { VALID_CANVAS_RESOLUTIONS } from "../../core.types";
+import { VALID_CANVAS_RESOLUTIONS } from "@hyperframes/parsers";
 import { registerRenderRoutes } from "./render";
 import type { StudioApiAdapter } from "../types";
 

@@ -40,7 +40,7 @@ import { assertPublicHttpsUrl, downloadToTemp, isHttpUrl } from "../utils/urlDow
 import type { Page } from "puppeteer-core";
 import { injectDeterministicFontFaces } from "./deterministicFonts.js";
 import { prepareAnimatedGifInputs } from "./animatedGifPrep.js";
-import { createStudioPositionSeekReapplyScript } from "@hyperframes/core/studio-api/manual-edits-render-script";
+import { createStudioPositionSeekReapplyScript } from "@hyperframes/studio-server/manual-edits-render-script";
 import { defaultLogger, type ProducerLogger } from "../logger.js";
 
 export interface CompiledComposition {

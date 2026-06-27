@@ -1,7 +1,7 @@
 import type { Hono } from "hono";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { injectScriptsIntoHtml, stripEmbeddedRuntimeScripts } from "../../compiler/htmlDocument.js";
+import { injectScriptsIntoHtml, stripEmbeddedRuntimeScripts } from "@hyperframes/core/compiler";
 import type { StudioApiAdapter } from "../types.js";
 import { resolveWithinProject } from "../helpers/safePath.js";
 import { getMimeType } from "../helpers/mime.js";

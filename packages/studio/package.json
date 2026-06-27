@@ -58,6 +58,7 @@
     "@hyperframes/parsers": "workspace:*",
     "@hyperframes/player": "workspace:*",
     "@hyperframes/sdk": "workspace:*",
+    "@hyperframes/studio-server": "workspace:*",
     "@phosphor-icons/react": "^2.1.10",
     "bpm-detective": "^2.0.5",
     "dompurify": "^3.2.4",

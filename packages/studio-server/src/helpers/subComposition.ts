@@ -5,8 +5,8 @@ import {
   rewriteAssetPaths,
   rewriteCssAssetUrls,
   rewriteInlineStyleAssetUrls,
-} from "../../compiler/rewriteSubCompPaths.js";
-import { stripEmbeddedRuntimeScripts } from "../../compiler/htmlDocument.js";
+} from "@hyperframes/core";
+import { stripEmbeddedRuntimeScripts } from "@hyperframes/core/compiler";
 
 /**
  * Detect whether `html` is a full document (has `<html>`, `<head>`, or

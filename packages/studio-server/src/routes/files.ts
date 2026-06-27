@@ -1708,7 +1708,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     let block = extractGsapScriptBlock(html);
     if (!block && (body.type === "add" || body.type === "add-with-keyframes")) {
       const compId = html.match(/data-composition-id="([^"]+)"/)?.[1] ?? "main";
-      const { GSAP_CDN } = await import("../../templates/constants.js");
+      const { GSAP_CDN } = await import("@hyperframes/core");
       const gsapCdn = `<script src="${GSAP_CDN}"></script>`;
       const bootstrap = [
         gsapCdn,

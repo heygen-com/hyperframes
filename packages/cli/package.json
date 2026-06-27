@@ -52,6 +52,7 @@
     "@hyperframes/gcp-cloud-run": "workspace:*",
     "@hyperframes/producer": "workspace:*",
     "@hyperframes/studio": "workspace:*",
+    "@hyperframes/studio-server": "workspace:*",
     "@types/adm-zip": "^0.5.7",
     "@types/fontkit": "^2.0.9",
     "@types/mime-types": "^3.0.1",

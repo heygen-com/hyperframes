@@ -3,7 +3,8 @@ import { streamSSE } from "hono/streaming";
 import { existsSync, readFileSync, mkdirSync, unlinkSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { StudioApiAdapter, RenderJobState } from "../types.js";
-import { VALID_CANVAS_RESOLUTIONS, parseFps, type CanvasResolution } from "../../core.types.js";
+import { VALID_CANVAS_RESOLUTIONS, type CanvasResolution } from "@hyperframes/parsers";
+import { parseFps } from "@hyperframes/core";
 import { resolveWithinProject } from "../helpers/safePath.js";
 
 const VALID_RESOLUTIONS = new Set<string>(VALID_CANVAS_RESOLUTIONS);

@@ -354,10 +354,10 @@
   "dependencies": {
     "@chenglou/pretext": "^0.0.5",
     "@hyperframes/parsers": "workspace:*",
+    "@hyperframes/studio-server": "workspace:*",
     "bpm-detective": "^2.0.5",
     "linkedom": "^0.18.12",
-    "postcss": "^8.5.8",
-    "postcss-selector-parser": "^7.1.2"
+    "postcss": "^8.5.8"
   },
   "devDependencies": {
     "@types/jsdom": "^28.0.0",
@@ -367,14 +367,6 @@
     "tsx": "^4.21.0",
     "typescript": "^5.0.0",
     "vitest": "^3.2.4"
-  },
-  "peerDependencies": {
-    "hono": "^4.0.0"
-  },
-  "peerDependenciesMeta": {
-    "hono": {
-      "optional": true
-    }
   },
   "optionalDependencies": {
     "esbuild": "^0.25.12"

@@ -267,6 +267,23 @@
       "packages/parsers/src/gsapWriterParity.acorn.test.ts",
       "packages/parsers/src/htmlParser.roundtrip.test.ts",
       "packages/parsers/src/htmlParser.test.ts",
+      // @hyperframes/studio-server test files: parallel arrange/act/assert test cases
+      // (pre-existing structure from when studio-api lived in packages/core/src/studio-api/).
+      "packages/studio-server/src/routes/files.test.ts",
+      "packages/studio-server/src/routes/render.test.ts",
+      "packages/studio-server/src/routes/lint.test.ts",
+      "packages/studio-server/src/routes/preview.test.ts",
+      "packages/studio-server/src/routes/projects.test.ts",
+      "packages/studio-server/src/helpers/backupJournal.test.ts",
+      "packages/studio-server/src/helpers/finiteMutation.test.ts",
+      "packages/studio-server/src/helpers/hfIdPersist.test.ts",
+      "packages/studio-server/src/helpers/manualEditsRenderScript.test.ts",
+      "packages/studio-server/src/helpers/mediaValidation.test.ts",
+      "packages/studio-server/src/helpers/previewAdapter.test.ts",
+      "packages/studio-server/src/helpers/safePath.test.ts",
+      "packages/studio-server/src/helpers/sourceMutation.test.ts",
+      "packages/studio-server/src/helpers/studioMotionRenderScript.test.ts",
+      "packages/studio-server/src/helpers/subComposition.test.ts",
       // slideshowPanelHelpers.ts: setSlideNotes/addFragment/addHotspot share an
       // intentional parallel shape (signature + mapSlidesIn → exists-check →
       // map/append); the per-slide mutation differs, so a shared abstraction
@@ -309,8 +326,15 @@
       "packages/parsers/src/gsapParser.ts",
       // htmlParser.ts has pre-existing complexity (moved from packages/core).
       "packages/parsers/src/htmlParser.ts",
-      // executeGsapMutation (CRITICAL) pre-dates this PR; studio-api still lives in core.
-      "packages/core/src/studio-api/routes/files.ts",
+      // studio-server files: pre-existing complexity (moved from packages/core/src/studio-api/).
+      // files.ts: executeGsapMutationRecast/Acorn are CRITICAL; excluded as files.ts
+      // was already in health.ignore at the old path (packages/core/src/studio-api/routes/files.ts).
+      "packages/studio-server/src/routes/files.ts",
+      "packages/studio-server/src/routes/render.ts",
+      "packages/studio-server/src/routes/thumbnail.ts",
+      "packages/studio-server/src/helpers/manualEditsRenderScript.ts",
+      "packages/studio-server/src/helpers/studioMotionRenderScript.ts",
+      "packages/studio-server/src/helpers/subComposition.ts",
       // SlideshowPanel.tsx: top-level editor panel that wires several independent
       // sections (slides/inspector/branches/hotspot). Its cyclomatic count comes
       // from that fan-out; splitting it would scatter shared state without
@@ -329,15 +353,18 @@
       // generated table's shape test; this is dev tooling, not shipped runtime.
       "packages/cli/scripts/sync-agent-dirs.ts",
       // Files modified only for import-path updates (one-line changes to switch
-      // from @hyperframes/core/* subpaths to @hyperframes/parsers). Their complexity
+      // from @hyperframes/core/* subpaths to the new packages). Their complexity
       // is pre-existing; the line-shift fingerprint problem makes fallow treat
       // the violations as new even though no logic changed.
+      "packages/cli/src/server/studioServer.ts",
       "packages/core/src/core.types.ts",
       "packages/core/src/generators/hyperframes.ts",
+      "packages/producer/src/services/htmlCompiler.ts",
       "packages/studio/src/hooks/gsapRuntimeBridge.ts",
       "packages/studio/src/hooks/gsapShared.ts",
       "packages/studio/src/hooks/gsapDragPositionCommit.ts",
       "packages/studio/src/hooks/gsapKeyframeCacheHelpers.ts",
+      "packages/studio/vite.config.ts",
       // set-version.ts: compareSemver helper has pre-existing complexity from
       // semver string parsing logic; line-shift fingerprint problem from new
       // packages added to PACKAGES array makes fallow treat it as new.

@@ -15,9 +15,9 @@ import {
   type ResolvedProject,
   type RenderJobState,
   type StudioApiAdapter,
-} from "@hyperframes/core/studio-api";
+  createProjectSignature,
+} from "@hyperframes/studio-server";
 import type { RegistryItem } from "@hyperframes/core/registry";
-import { createProjectSignature } from "../core/src/studio-api/helpers/projectSignature";
 import { createRetryingModuleLoader, ensureProducerDist } from "./vite.producer";
 import { createStudioDevRenderBodyScripts } from "./vite.studioMotion";
 import { generateThumbnail, findSystemChrome } from "./vite.browser";
