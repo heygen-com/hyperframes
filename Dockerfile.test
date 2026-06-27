@@ -75,6 +75,7 @@ ENV PATH="/root/.bun/bin:$PATH"
 # lockfile change and fails.
 COPY package.json bun.lock ./
 COPY packages/parsers/package.json packages/parsers/package.json
+COPY packages/lint/package.json packages/lint/package.json
 COPY packages/core/package.json packages/core/package.json
 COPY packages/engine/package.json packages/engine/package.json
 COPY packages/player/package.json packages/player/package.json
@@ -90,12 +91,13 @@ RUN bun install --frozen-lockfile
 
 # Copy source
 COPY packages/parsers/ packages/parsers/
+COPY packages/lint/ packages/lint/
 COPY packages/core/ packages/core/
 COPY packages/engine/ packages/engine/
 COPY packages/producer/ packages/producer/
 
 # Build workspace packages so "node" export conditions resolve to built dist
-RUN bun run --filter '@hyperframes/parsers' build \
+RUN bun run --filter '@hyperframes/{parsers,lint}' build \
     && bun run --cwd packages/core build
 
 # Build core runtime artifacts (needed by renderer)

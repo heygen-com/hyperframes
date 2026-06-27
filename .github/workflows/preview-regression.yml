@@ -37,6 +37,7 @@ jobs:
             preview:
               - "packages/core/**"
               - "packages/parsers/**"
+              - "packages/lint/**"
               - "packages/player/**"
               - "packages/studio/**"
               - "packages/cli/**"
@@ -76,7 +77,7 @@ jobs:
 
       - name: Build workspace packages (required for vite config loading)
         run: |
-          bun run --filter '@hyperframes/parsers' build
+          bun run --filter '@hyperframes/{parsers,lint}' build
           bun run --cwd packages/core build
 
       - name: Run Studio preview routing regression
