@@ -42,7 +42,6 @@
     "prepublishOnly": "echo skip"
   },
   "dependencies": {
-    "@hyperframes/core": "workspace:*",
     "@hyperframes/parsers": "workspace:*",
     "postcss": "^8.5.8"
   },

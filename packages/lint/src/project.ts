@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, extname, isAbsolute, join, posix, relative, resolve } from "node:path";
-import { decodeUrlPathVariants, rewriteAssetPath } from "@hyperframes/core";
+import { decodeUrlPathVariants } from "@hyperframes/parsers";
+import { rewriteAssetPath } from "@hyperframes/parsers/asset-paths";
 import { lintHyperframeHtml } from "./hyperframeLinter.js";
 import type { HyperframeLintFinding, HyperframeLintResult } from "./types.js";
 

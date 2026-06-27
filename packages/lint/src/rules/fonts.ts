@@ -1,4 +1,4 @@
-import { FONT_ALIAS_KEYS, resolveAliasDisplayName } from "@hyperframes/core/fonts/aliases";
+import { FONT_ALIAS_KEYS, resolveAliasDisplayName } from "@hyperframes/parsers";
 import type { LintContext, HyperframeLintFinding } from "../context";
 import { isRegistrySourceFile, isRegistryInstalledFile } from "./composition";
 

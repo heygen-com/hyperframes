@@ -62,6 +62,18 @@
       "node": "./dist/gsapParser.js",
       "import": "./src/gsapParser.ts",
       "types": "./src/gsapParser.ts"
+    },
+    "./slideshow": {
+      "bun": "./src/slideshow/index.ts",
+      "node": "./dist/slideshow.js",
+      "import": "./src/slideshow/index.ts",
+      "types": "./src/slideshow/index.ts"
+    },
+    "./asset-paths": {
+      "bun": "./src/assets.ts",
+      "node": "./dist/assets.js",
+      "import": "./src/assets.ts",
+      "types": "./src/assets.ts"
     }
   },
   "publishConfig": {
@@ -99,6 +111,14 @@
       "./gsap-parser-recast": {
         "import": "./dist/gsapParser.js",
         "types": "./dist/gsapParser.d.ts"
+      },
+      "./slideshow": {
+        "import": "./dist/slideshow.js",
+        "types": "./dist/slideshow.d.ts"
+      },
+      "./asset-paths": {
+        "import": "./dist/assets.js",
+        "types": "./dist/assets.d.ts"
       }
     },
     "main": "./dist/index.js",

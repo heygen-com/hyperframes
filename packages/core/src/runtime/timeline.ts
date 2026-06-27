@@ -8,7 +8,7 @@ import { stableClipId } from "./clipTree";
 import { swallow } from "./diagnostics";
 import { readElementPlaybackRate } from "./media";
 import { createRuntimeStartTimeResolver } from "./startResolver";
-import { isSceneLikeCompositionId } from "../slideshow/sceneId";
+import { isSceneLikeCompositionId } from "../slideshow/index.js";
 
 const AUTHORED_DURATION_ATTR = "data-hf-authored-duration";
 const AUTHORED_END_ATTR = "data-hf-authored-end";

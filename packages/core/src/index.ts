@@ -45,9 +45,9 @@ export type {
   ResolvedSlide,
   ResolvedSlideSequence,
   ResolvedSlideshow,
-} from "./slideshow/slideshow.types";
+} from "./slideshow/index.js";
 
-export { parseSlideshowManifest, resolveSlideshow } from "./slideshow/parseSlideshow";
+export { parseSlideshowManifest, resolveSlideshow } from "./slideshow/index.js";
 
 export {
   CANVAS_DIMENSIONS,
