@@ -323,6 +323,9 @@
             "group": "Packages",
             "pages": [
               "packages/core",
+              "packages/parsers",
+              "packages/lint",
+              "packages/studio-server",
               "packages/sdk",
               "packages/engine",
               "packages/player",

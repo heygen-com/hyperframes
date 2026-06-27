@@ -177,6 +177,10 @@ const result = validateCompositionHtml(html);
 
 ### GSAP Script Parsing
 
+<Info>
+  The GSAP + HTML parsing layer now lives in its own standalone package, [`@hyperframes/parsers`](/packages/parsers). Core re-exports the API below for back-compat; import from `@hyperframes/parsers` directly in new code.
+</Info>
+
 ```typescript
 import {
   parseGsapScript,
@@ -242,6 +246,10 @@ const styles = getStageStyles('portrait');
 ```
 
 ## Linter
+
+<Info>
+  The composition linter now lives in its own package, [`@hyperframes/lint`](/packages/lint) — install it directly to lint a project or HTML string from Node without the CLI. `@hyperframes/core/lint` remains a back-compat re-export.
+</Info>
 
 The composition linter checks for structural issues that would cause rendering failures or unexpected behavior. You can run it from the CLI with `npx hyperframes lint`, or call it programmatically:
 
@@ -431,6 +439,15 @@ import type {
 ## Related Packages
 
 <CardGroup cols={2}>
+  <Card title="@hyperframes/parsers" icon="code" href="/packages/parsers">
+    The standalone GSAP + HTML parsing layer extracted from core.
+  </Card>
+  <Card title="@hyperframes/lint" icon="circle-check" href="/packages/lint">
+    The composition linter as a standalone library.
+  </Card>
+  <Card title="@hyperframes/studio-server" icon="server" href="/packages/studio-server">
+    The mountable studio preview/editor backend.
+  </Card>
   <Card title="CLI" icon="terminal" href="/packages/cli">
     The easiest way to create, preview, lint, and render compositions.
   </Card>
@@ -439,8 +456,5 @@ import type {
   </Card>
   <Card title="Producer" icon="film" href="/packages/producer">
     Full rendering pipeline built on top of core and engine.
-  </Card>
-  <Card title="Studio" icon="palette" href="/packages/studio">
-    Visual composition editor that embeds the core runtime for preview.
   </Card>
 </CardGroup>
