@@ -125,6 +125,7 @@ jobs:
           }
 
           publish_pkg "@hyperframes/parsers" "@hyperframes/parsers"
+          publish_pkg "@hyperframes/lint" "@hyperframes/lint"
           publish_pkg "@hyperframes/core" "@hyperframes/core"
           publish_pkg "@hyperframes/sdk" "@hyperframes/sdk"
           publish_pkg "@hyperframes/engine" "@hyperframes/engine"

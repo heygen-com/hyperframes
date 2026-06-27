@@ -22,6 +22,7 @@ import { CLI_SEMVER_PATTERN } from "./cli-options.ts";
 
 const PACKAGES = [
   "packages/parsers",
+  "packages/lint",
   "packages/core",
   "packages/engine",
   "packages/player",

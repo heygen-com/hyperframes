@@ -738,7 +738,7 @@ export default defineCommand({
 
     // ── Pre-render lint ──────────────────────────────────────────────────
     {
-      const lintResult = await lintProject(project);
+      const lintResult = await lintProject(project.dir);
       if (!quiet && (lintResult.totalErrors > 0 || lintResult.totalWarnings > 0)) {
         console.log("");
         for (const line of formatLintFindings(lintResult, { errorsFirst: true })) console.log(line);

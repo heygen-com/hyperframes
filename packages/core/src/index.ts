@@ -138,18 +138,12 @@ export {
   MEDIA_DURATION_CLAMP_EPSILON_SECONDS,
 } from "./compiler/timingCompiler";
 
-// Lint
-export type {
-  HyperframeLintSeverity,
-  HyperframeLintFinding,
-  HyperframeLintResult,
-  HyperframeLinterOptions,
-} from "./lint/types";
-export { lintHyperframeHtml } from "./lint/hyperframeLinter";
+// Lint — import from @hyperframes/lint directly
 export {
   rewriteAssetPaths,
   rewriteAssetPath,
   rewriteCssAssetUrls,
+  rewriteInlineStyleAssetUrls,
 } from "./compiler/rewriteSubCompPaths";
 export { CSS_URL_RE, isNonRelativeUrl, isPathInside } from "./compiler/assetPaths";
 export { queryByAttr } from "./utils/cssSelector";
