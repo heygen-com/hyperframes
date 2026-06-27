@@ -21,7 +21,7 @@ Templates: `blank`, `warm-grain`, `play-mode`, `swiss-grid`, `vignelli`, `decisi
 Other useful flags:
 
 - `--resolution` — preset: `landscape` (1920×1080), `portrait` (1080×1920), `landscape-4k`, `portrait-4k`, `square` (1080×1080), `square-4k`. Aliases: `1080p`, `4k`, `uhd`, `1080p-square`, `4k-square`.
-- `--skip-skills` — don't install AI coding skills after scaffold.
+- `--skip-skills` — **temporarily ignored**: `init` always checks AI coding skills against GitHub while the skills.sh registry catches up. To opt out (CI/tests), set the `HYPERFRAMES_SKIP_SKILLS=1` env var instead.
 - `--skip-transcribe` — don't auto-transcribe `--audio` / `--video` with Whisper.
 - `--model`, `--language` — Whisper model / language for the auto-transcription.
 

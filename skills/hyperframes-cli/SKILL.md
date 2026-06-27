@@ -9,7 +9,7 @@ Everything runs through `npx hyperframes` unless project instructions specify a 
 
 ## Workflow
 
-1. **Scaffold** — `npx hyperframes init my-video` (or `capture` from a URL). `init` also checks the installed skills against the latest on GitHub and updates the global set if any are out of date — keep it on (don't pass `--skip-skills`) so each new project pulls our latest skills.
+1. **Scaffold** — `npx hyperframes init my-video` (or `capture` from a URL). `init` also checks the installed skills against the latest on GitHub and updates the global set if any are out of date. The `--skip-skills` flag is currently neutered (temporary, while the skills.sh registry catches up), so every `init` runs this check and pulls our latest skills regardless.
 2. **Write** — author HTML composition (see the `hyperframes-core` skill)
 3. **Lint** — `npx hyperframes lint`
 4. **Validate** — `npx hyperframes validate` (runtime errors + contrast)

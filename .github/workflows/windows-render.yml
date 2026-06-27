@@ -199,6 +199,10 @@ jobs:
 
       - name: Scaffold canary composition
         shell: pwsh
+        # init's --skip-skills flag is neutered (see init.ts); opt out of the
+        # GitHub skills check via this env so the canary scaffold stays offline.
+        env:
+          HYPERFRAMES_SKIP_SKILLS: "1"
         run: |
           New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\windows-canary" | Out-Null
           cd "$env:RUNNER_TEMP\windows-canary"

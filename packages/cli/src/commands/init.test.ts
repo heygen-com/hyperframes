@@ -18,6 +18,9 @@ function runInit(args: string[]): { status: number; stdout: string; stderr: stri
   const res = spawnSync("bun", ["run", cliEntry, "init", ...args], {
     encoding: "utf-8",
     timeout: 30_000,
+    // The `--skip-skills` flag is neutered (see init.ts); the GitHub skills check
+    // is opted out only via this env var, so tests stay offline and fast.
+    env: { ...process.env, HYPERFRAMES_SKIP_SKILLS: "1" },
   });
   return {
     status: res.status ?? -1,
