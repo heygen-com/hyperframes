@@ -227,8 +227,7 @@ jobs:
       - uses: ./.github/actions/prepare-ffmpeg-bin
       - run: bun install --frozen-lockfile
       - run: bun run test:scripts
-      - run: bun run --filter '@hyperframes/parsers' build
-      - run: bun run --filter '@hyperframes/studio-server' build
+      - run: bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
       - run: bun run --cwd packages/core build
       - run: bun run --cwd packages/core build:hyperframes-runtime
       - run: bun run --filter '!@hyperframes/producer' test
@@ -361,8 +360,7 @@ jobs:
       # Build workspace deps so the studio vite.config.ts (loaded by Node) can
       # resolve @hyperframes/core and @hyperframes/studio-server via the "node"
       # export condition (dist).
-      - run: bun run --filter '@hyperframes/parsers' build
-      - run: bun run --filter '@hyperframes/studio-server' build
+      - run: bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
       - run: bun run --cwd packages/core build
       - run: bun run --cwd packages/core build:hyperframes-runtime
       - name: Start studio and check for runtime errors
