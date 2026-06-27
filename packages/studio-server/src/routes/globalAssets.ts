@@ -33,6 +33,12 @@ export function readGlobalAssets(home = homedir()): GlobalAssetRecord[] {
   return out;
 }
 
+// Fields the Studio panel actually renders. Deliberately omits cached_path —
+// an absolute ~/.media filesystem path has no business reaching the browser (m13).
+export function toPublicAsset(r: GlobalAssetRecord): GlobalAssetRecord {
+  return { id: r.id, type: r.type, description: r.description, sha: r.sha, entity: r.entity };
+}
+
 export function registerGlobalAssetRoutes(api: Hono): void {
-  api.get("/assets/global", (c) => c.json({ assets: readGlobalAssets() }));
+  api.get("/assets/global", (c) => c.json({ assets: readGlobalAssets().map(toPublicAsset) }));
 }

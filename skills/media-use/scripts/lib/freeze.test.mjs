@@ -20,3 +20,27 @@ test("rejects non-direct / non-media URLs", () => {
   assert.equal(isDirectMediaUrl("ftp://example.com/a.mp4"), false, "non-http(s)");
   assert.equal(isDirectMediaUrl("not a url"), false);
 });
+
+test("rejects local / private hosts (SSRF guard, m11)", () => {
+  for (const u of [
+    "http://localhost/a.mp4",
+    "http://127.0.0.1/a.mp4",
+    "http://127.1.2.3/a.mp4",
+    "http://0.0.0.0/a.mp4",
+    "http://10.0.0.5/a.mp4",
+    "http://192.168.1.1/a.mp4",
+    "http://172.16.0.1/a.mp4",
+    "http://172.31.255.255/a.mp4",
+    "http://169.254.169.254/a.mp4", // cloud metadata endpoint
+    "http://printer.local/a.mp4",
+    "http://svc.internal/a.mp4",
+    "http://[::1]/a.mp4",
+    "http://[fe80::1]/a.mp4",
+    "http://[fd00::1]/a.mp4",
+  ]) {
+    assert.equal(isDirectMediaUrl(u), false, `should block ${u}`);
+  }
+  // A public host that merely starts with similar digits is still allowed.
+  assert.equal(isDirectMediaUrl("https://172.40.0.1/a.mp4"), true, "172.40 is public");
+  assert.equal(isDirectMediaUrl("https://11.example.com/a.mp4"), true);
+});

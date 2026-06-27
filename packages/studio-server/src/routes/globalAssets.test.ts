@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { readGlobalAssets } from "./globalAssets";
+import { readGlobalAssets, toPublicAsset } from "./globalAssets";
 
 describe("readGlobalAssets", () => {
   let home: string;
@@ -37,5 +37,26 @@ describe("readGlobalAssets", () => {
       JSON.stringify({ id: "img_001", reusable: true }),
     ]);
     expect(readGlobalAssets(home).map((a) => a.id)).toEqual(["bgm_001", "img_001"]);
+  });
+});
+
+describe("toPublicAsset", () => {
+  it("drops the absolute cached_path before it reaches the browser (m13)", () => {
+    const pub = toPublicAsset({
+      id: "bgm_001",
+      type: "bgm",
+      description: "calm",
+      sha: "abc",
+      entity: "Acme",
+      cached_path: "/Users/someone/.media/bgm/bgm_001.mp3",
+    });
+    expect(pub).toEqual({
+      id: "bgm_001",
+      type: "bgm",
+      description: "calm",
+      sha: "abc",
+      entity: "Acme",
+    });
+    expect("cached_path" in pub).toBe(false);
   });
 });
