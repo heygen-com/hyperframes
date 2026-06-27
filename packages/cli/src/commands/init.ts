@@ -604,7 +604,19 @@ async function ensureSkillsCurrent(destDir: string): Promise<void> {
     // installAllSkills installs the full set once globally and mirrors it into
     // every installed agent's global dir — project-independent, so a freshly
     // scaffolded project doesn't need any agent folders yet.
-    await installAllSkills({ cwd: destDir });
+    //
+    // Best-effort: installAllSkills (non-strict here) already swallows its own
+    // failures, but now that --skip-skills no longer escapes this path every
+    // init runs it — including offline ones, where checkSkills throws and we
+    // fall through to "install anyway". Wrap defensively so a skills-install
+    // failure can never break `init` itself; it only warns and proceeds.
+    try {
+      await installAllSkills({ cwd: destDir });
+    } catch (err) {
+      console.log(
+        c.dim(`AI coding skills install skipped: ${err instanceof Error ? err.message : err}`),
+      );
+    }
   } else {
     console.log(c.success("AI coding skills are already up to date."));
   }
@@ -1076,7 +1088,8 @@ export default defineCommand({
     clack.note(files.map((f) => c.accent(f)).join("\n"), c.success(`Created ${name}/`));
 
     // Check skills against GitHub and (re)install only if outdated or missing —
-    // init is the one place the full set is pulled. Opt out with --skip-skills.
+    // init is the one place the full set is pulled. The --skip-skills flag is
+    // temporarily neutered (see above); CI/tests opt out via HYPERFRAMES_SKIP_SKILLS=1.
     if (!skipSkills) {
       await ensureSkillsCurrent(destDir);
     }
