@@ -56,8 +56,11 @@ import {
   patchElementInHtml,
   probeElementInSource,
   splitElementInHtml,
+  wrapElementsInHtml,
+  unwrapElementsFromHtml,
   isHTMLElement,
   type PatchOperation,
+  type ElementRebase,
 } from "../helpers/sourceMutation.js";
 import { parseHTML } from "linkedom";
 
@@ -1558,6 +1561,102 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       path: ctx.filePath,
       backupPath: backupPathForResponse(ctx.project.dir, backup.backupPath),
     });
+  });
+
+  api.post("/projects/:id/file-mutations/wrap-elements/*", async (c) => {
+    const ctx = await resolveFileMutationContext(c, adapter, "wrap-elements");
+    if ("error" in ctx) return ctx.error;
+
+    const body = (await c.req.json().catch(() => null)) as {
+      targets?: MutationTarget[];
+      groupId?: string;
+      bbox?: { left?: number; top?: number; width?: number; height?: number };
+      rebases?: ElementRebase[];
+    } | null;
+    if (!Array.isArray(body?.targets) || body.targets.length === 0 || !body.groupId) {
+      return c.json({ error: "targets and groupId required" }, 400);
+    }
+    // left/top/width/height are interpolated into inline style strings; reject
+    // anything non-numeric so a crafted value can't inject extra declarations.
+    const bbox = body.bbox ?? {};
+    const bboxNums = [bbox.left, bbox.top, bbox.width, bbox.height];
+    const rebases = body.rebases ?? [];
+    const allNumeric =
+      bboxNums.every((n) => typeof n === "number" && Number.isFinite(n)) &&
+      rebases.every(
+        (r) =>
+          typeof r?.left === "number" &&
+          Number.isFinite(r.left) &&
+          typeof r?.top === "number" &&
+          Number.isFinite(r.top),
+      );
+    if (!allNumeric) {
+      return c.json({ error: "bbox and rebase coordinates must be finite numbers" }, 400);
+    }
+
+    let originalContent: string;
+    try {
+      originalContent = readFileSync(ctx.absPath, "utf-8");
+    } catch {
+      return c.json({ error: "not found" }, 404);
+    }
+    const result = wrapElementsInHtml(
+      originalContent,
+      body.targets,
+      body.groupId,
+      { left: bbox.left!, top: bbox.top!, width: bbox.width!, height: bbox.height! },
+      rebases,
+    );
+    if (!result.matched) {
+      return c.json(
+        {
+          ok: false,
+          changed: false,
+          content: originalContent,
+          path: ctx.filePath,
+          error: result.error,
+        },
+        result.error === "grouped elements must share a single parent" ? 422 : 400,
+      );
+    }
+    const backup = snapshotBeforeWrite(ctx.project.dir, ctx.absPath);
+    if (backup.error) console.warn(`Failed to create backup for ${ctx.filePath}: ${backup.error}`);
+    writeFileSync(ctx.absPath, result.html, "utf-8");
+    return c.json({
+      ok: true,
+      changed: true,
+      groupId: result.groupId,
+      content: result.html,
+      path: ctx.filePath,
+      backupPath: backupPathForResponse(ctx.project.dir, backup.backupPath),
+    });
+  });
+
+  api.post("/projects/:id/file-mutations/unwrap-elements/*", async (c) => {
+    const ctx = await resolveFileMutationContext(c, adapter, "unwrap-elements");
+    if ("error" in ctx) return ctx.error;
+
+    const parsed = await parseMutationBody<{ target?: MutationTarget }>(c);
+    if ("error" in parsed) return parsed.error;
+
+    let originalContent: string;
+    try {
+      originalContent = readFileSync(ctx.absPath, "utf-8");
+    } catch {
+      return c.json({ error: "not found" }, 404);
+    }
+    const result = unwrapElementsFromHtml(originalContent, parsed.target);
+    if (!result.unwrapped) {
+      return c.json({ ok: false, changed: false, content: originalContent, path: ctx.filePath });
+    }
+    return writeIfChanged(
+      c,
+      ctx.project.dir,
+      ctx.filePath,
+      ctx.absPath,
+      originalContent,
+      result.html,
+    );
   });
 
   api.post("/projects/:id/file-mutations/probe-element/*", async (c) => {
