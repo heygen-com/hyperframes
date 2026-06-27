@@ -317,6 +317,10 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
       - run: bun install --frozen-lockfile
+      # Build workspace deps so the sdk's @hyperframes/parsers + core subpath
+      # imports resolve via the "node" export condition (dist) under vitest.
+      - run: bun run --filter '@hyperframes/parsers' build
+      - run: bun run --cwd packages/core build
       - run: bun run --filter @hyperframes/sdk test
 
   test-runtime-contract:
@@ -353,6 +357,10 @@ jobs:
           node-version: 22
       - uses: ./.github/actions/prepare-ffmpeg-bin
       - run: bun install --frozen-lockfile
+      # Build workspace deps so the studio vite.config.ts (loaded by Node) can
+      # resolve @hyperframes/core via the "node" export condition (dist).
+      - run: bun run --filter '@hyperframes/parsers' build
+      - run: bun run --cwd packages/core build
       - run: bun run --cwd packages/core build:hyperframes-runtime
       - name: Start studio and check for runtime errors
         run: |
