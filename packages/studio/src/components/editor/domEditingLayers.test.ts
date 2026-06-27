@@ -154,7 +154,7 @@ describe("resolveDomEditSelection — data-hf-group capture", () => {
     expect(scoped).not.toContain("outside");
   });
 
-  it("returns null when clicking outside the group the user is drilled into", async () => {
+  it("exits the drilled-into group and selects the outside element (non-sticky drill)", async () => {
     const { parent, inner } = buildNestedGroups();
     const outside = document.createElement("div");
     outside.id = "outside";
@@ -167,6 +167,8 @@ describe("resolveDomEditSelection — data-hf-group capture", () => {
     document.body.removeChild(parent);
     document.body.removeChild(outside);
 
-    expect(selection).toBeNull();
+    // Drill-in is non-sticky: clicking outside the active group exits it and
+    // resolves the clicked element normally (rather than selecting nothing).
+    expect(selection?.id).toBe("outside");
   });
 });

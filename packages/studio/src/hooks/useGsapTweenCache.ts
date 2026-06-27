@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import type { GsapAnimation, GsapKeyframesData, ParsedGsap } from "@hyperframes/core/gsap-parser";
-import type { GsapPercentageKeyframe } from "@hyperframes/core/gsap-parser";
 import { isStudioHoldSet } from "@hyperframes/core/gsap-parser";
 import { usePlayerStore } from "../player/store/playerStore";
 import { readRuntimeKeyframes, scanAllRuntimeKeyframes } from "./gsapRuntimeBridge";
@@ -8,63 +7,8 @@ import {
   clearKeyframeCacheForElement,
   clearKeyframeCacheForFile,
 } from "./gsapKeyframeCacheHelpers";
-import { PROPERTY_DEFAULTS, toAbsoluteTime } from "./gsapShared";
-
-function deduplicateKeyframes(keyframes: GsapPercentageKeyframe[]): GsapPercentageKeyframe[] {
-  const byPct = new Map<number, GsapPercentageKeyframe>();
-  for (const kf of keyframes) {
-    const existing = byPct.get(kf.percentage);
-    if (existing) {
-      existing.properties = { ...existing.properties, ...kf.properties };
-      if (kf.ease) existing.ease = kf.ease;
-    } else {
-      byPct.set(kf.percentage, { ...kf, properties: { ...kf.properties } });
-    }
-  }
-  return Array.from(byPct.values()).sort((a, b) => a.percentage - b.percentage);
-}
-
-// fallow-ignore-next-line complexity
-function synthesizeFlatTweenKeyframes(anim: GsapAnimation): GsapKeyframesData | null {
-  if (anim.method === "set") {
-    // A `set` is a STATIC HOLD — a value applied at one point, not an animated
-    // keyframe. It must NOT synthesize a keyframe, or the timeline + panel show a
-    // phantom diamond for a value that doesn't animate. This holds for a base
-    // `gsap.set` (off-timeline) AND an on-timeline `tl.set`, and aligns the AST
-    // path with the runtime scan, which already skips every zero-duration set.
-    return null;
-  }
-  const toProps = anim.properties;
-  const fromProps = anim.fromProperties;
-  if (!toProps || Object.keys(toProps).length === 0) return null;
-
-  const startProps: Record<string, number | string> = {};
-  const endProps: Record<string, number | string> = {};
-
-  if (anim.method === "from") {
-    for (const [k, v] of Object.entries(toProps)) {
-      startProps[k] = v;
-      endProps[k] = PROPERTY_DEFAULTS[k] ?? 0;
-    }
-  } else if (anim.method === "fromTo" && fromProps) {
-    Object.assign(startProps, fromProps);
-    Object.assign(endProps, toProps);
-  } else {
-    for (const [k, v] of Object.entries(toProps)) {
-      startProps[k] = PROPERTY_DEFAULTS[k] ?? 0;
-      endProps[k] = v;
-    }
-  }
-
-  return {
-    format: "percentage",
-    keyframes: [
-      { percentage: 0, properties: startProps },
-      { percentage: 100, properties: endProps },
-    ],
-    ...(anim.ease ? { ease: anim.ease } : {}),
-  };
-}
+import { toAbsoluteTime } from "./gsapShared";
+import { deduplicateKeyframes, synthesizeFlatTweenKeyframes } from "./gsapTweenSynth";
 
 function extractIdFromSelector(selector: string): string | null {
   const match = selector.match(/^#([\w-]+)/);
