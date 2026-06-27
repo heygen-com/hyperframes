@@ -89,8 +89,16 @@ catalog misses and the user opts in with `--allow-paid`, generation runs:
 | icon          | heygen asset search | Iconify (gated, not yet enabled)   |
 
 Voice resolves for free by default via HeyGen TTS (the catalog credential);
-ElevenLabs is the paid fallback. Other paid providers need their CLI installed +
-authed (`fal`, `elevenlabs`) and are never called without `--allow-paid`.
+ElevenLabs is the paid fallback. Paid providers shell their own CLI (media-use
+holds no keys) and are never called without `--allow-paid`:
+
+- **fal** → the `genmedia` CLI (`curl https://genmedia.sh/install -fsS | bash`;
+  `genmedia setup --api-key "$FAL_KEY"`). Not the `fal` pip package — that is the
+  serverless-deploy CLI and can't run hosted models.
+- **ElevenLabs** → the community `elevenlabs-cli` (`npm i -g elevenlabs-cli`;
+  `export ELEVENLABS_API_KEY=…`). The official `@elevenlabs/cli` is agents-only
+  with no TTS command.
+
 `--local-only` skips every network provider — including the free HeyGen ones —
 leaving the project + global cache and any local provider.
 
