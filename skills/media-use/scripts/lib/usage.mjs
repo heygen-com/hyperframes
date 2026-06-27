@@ -2,8 +2,9 @@ import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
 // Asset in-use detection: which manifest assets are actually referenced by the
-// project's compositions. Powers the Studio Asset tab's in-use / unused filter
-// and "is this safe to prune?" — nothing else tells you that today.
+// project's compositions. Answers "is this safe to prune?" from the CLI. (The
+// Studio Asset tab computes its in-use filter separately from the live timeline;
+// this is the skill-side equivalent for headless use.)
 //
 // ponytail: substring match of each asset's filename against the .html text
 // (covers src= / href= / url() / data-* without parsing HTML). False positives

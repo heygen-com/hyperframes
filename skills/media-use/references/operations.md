@@ -26,8 +26,8 @@ physical file when exporting/assembling outside the composition.
 ffmpeg -i in.mp4 -vf "crop=ih*9/16:ih,scale=1080:1920" out.mp4
 ```
 
-In Studio, crop is non-destructive (render-time `clip-path`) — the source file is
-untouched.
+For a non-destructive crop, set a `clip-path` on the element in the composition
+itself (render-time, source file untouched) instead of re-encoding with ffmpeg.
 
 ## Montage / stitch — join clips
 

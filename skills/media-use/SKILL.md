@@ -11,15 +11,15 @@ The media OS for HyperFrames: resolve · generate · operate · remember — eve
 
 HyperFrames owns media _playback_; media-use owns everything else. Each row is enforced by `scripts/lib/coverage.test.mjs` so the claim can't rot.
 
-| HyperFrames gap                            | media-use owns it via                                                        |
-| ------------------------------------------ | ---------------------------------------------------------------------------- |
-| Audio-only — no image/icon                 | `resolve --type image\|icon` (heygen asset search)                           |
-| No voice / audio generation                | `resolve --type voice` + the audio engine (`audio/scripts/audio.mjs`)        |
-| Scattered/duplicated audio engine          | one consolidated engine under `audio/` (hyperframes-media retired)           |
-| No agent media-ops (cut/reframe/transform) | `references/operations.md` + `resolve --from` to register outputs            |
-| No cross-project memory                    | global content-addressed cache + auto-promote (`~/.media`)                   |
-| Weak local-model defaults                  | spec-gated local models (tts/asr/upscale) via `scripts/lib/local-models.mjs` |
-| No paid generation fallback                | fal + ElevenLabs, cost-guarded (`--allow-paid` / `--local-only`)             |
+| HyperFrames gap                            | media-use owns it via                                                                       |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| Audio-only — no image/icon                 | `resolve --type image\|icon` (heygen asset search)                                          |
+| No voice / audio generation                | `resolve --type voice` + the audio engine (`audio/scripts/audio.mjs`)                       |
+| Scattered/duplicated audio engine          | one consolidated engine under `audio/` (hyperframes-media retired)                          |
+| No agent media-ops (cut/reframe/transform) | `references/operations.md` + `resolve --from` to register outputs                           |
+| No cross-project memory                    | global content-addressed cache + auto-promote (`~/.media`)                                  |
+| Weak local-model defaults                  | spec-gated local-model runner (`scripts/lib/local-run.mjs`, user-installed tts/asr/upscale) |
+| No paid generation fallback                | fal + ElevenLabs, cost-guarded (`--allow-paid` / `--local-only`)                            |
 
 ## When to use
 
@@ -64,31 +64,34 @@ node <SKILL_DIR>/scripts/resolve.mjs --type icon --intent "rocket" --project .
 
 ### Flags
 
-| Flag            | Description                                        |
-| --------------- | -------------------------------------------------- |
-| `--type, -t`    | Media type: bgm, sfx, image, icon, voice           |
-| `--intent, -i`  | What you need (natural language)                   |
-| `--entity, -e`  | Entity name for cache matching (optional)          |
-| `--project, -p` | Project directory (default: .)                     |
-| `--from`        | Freeze a local file or direct public URL (ingest)  |
-| `--allow-paid`  | Let paid generators run (fal / ElevenLabs); opt-in |
-| `--local-only`  | Free/local providers only; never call a paid one   |
-| `--adopt`       | Bulk-import existing assets/ into manifest         |
-| `--json`        | Output JSON instead of one-line result             |
+| Flag            | Description                                               |
+| --------------- | --------------------------------------------------------- |
+| `--type, -t`    | Media type: bgm, sfx, image, icon, voice                  |
+| `--intent, -i`  | What you need (natural language)                          |
+| `--entity, -e`  | Entity name for cache matching (optional)                 |
+| `--project, -p` | Project directory (default: .)                            |
+| `--from`        | Freeze a local file or direct public URL (ingest)         |
+| `--allow-paid`  | Let paid generators run (fal / ElevenLabs); opt-in        |
+| `--local-only`  | Offline: skip every network provider (cache + local only) |
+| `--adopt`       | Bulk-import existing assets/ into manifest                |
+| `--json`        | Output JSON instead of one-line result                    |
 
 ## Providers
 
 heygen-CLI is tried first (free catalog) for every type it serves. When the
 catalog misses and the user opts in with `--allow-paid`, generation runs:
 
-| Type          | Free (first)        | Paid generation (`--allow-paid`)    |
-| ------------- | ------------------- | ----------------------------------- |
-| bgm/sfx/image | heygen catalog      | **fal** (Flux / MiniMax / MMAudio)  |
-| voice         | —                   | **ElevenLabs**, then **heygen tts** |
-| icon          | heygen asset search | Iconify (gated, not yet enabled)    |
+| Type          | Free (first)        | Paid generation (`--allow-paid`)   |
+| ------------- | ------------------- | ---------------------------------- |
+| bgm/sfx/image | heygen catalog      | **fal** (Flux / MiniMax / MMAudio) |
+| voice         | **heygen tts**      | **ElevenLabs**                     |
+| icon          | heygen asset search | Iconify (gated, not yet enabled)   |
 
-Paid providers need their CLI installed + authed (`fal`, `elevenlabs`). They are
-never called without `--allow-paid`, and `--local-only` blocks them outright.
+Voice resolves for free by default via HeyGen TTS (the catalog credential);
+ElevenLabs is the paid fallback. Other paid providers need their CLI installed +
+authed (`fal`, `elevenlabs`) and are never called without `--allow-paid`.
+`--local-only` skips every network provider — including the free HeyGen ones —
+leaving the project + global cache and any local provider.
 
 ## How it works
 
@@ -129,7 +132,7 @@ icon_001   icon   —     200×200    .media/images/icon_001.png    rocket
 
 ## Cross-project reuse
 
-Assets are cached automatically on resolve. Subsequent resolves for the same prompt hit the global cache at `~/.media/` — no re-download, no provider call. Promote an asset explicitly with `organize --promote <id>` to make it reusable across all projects.
+Assets are cached automatically on resolve. Every resolved/ingested asset is auto-promoted to the global cache at `~/.media/`, so subsequent resolves for the same prompt — in any project — hit the cache with no re-download and no provider call.
 
 ## Files
 
