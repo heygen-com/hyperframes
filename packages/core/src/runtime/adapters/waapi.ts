@@ -4,7 +4,17 @@ import { swallow } from "../diagnostics";
 export function createWaapiAdapter(): RuntimeDeterministicAdapter {
   let didDiscover = false;
   let lastSeekTimeMs = 0;
-  const baselines = new WeakMap<
+  let animateHookInstalled = false;
+  let hookedPrototype:
+    | (Element & {
+        animate?: Element["animate"];
+        __hfOriginalAnimate?: Element["animate"];
+      })
+    | undefined;
+  let originalAnimate: Element["animate"] | undefined;
+  let installedAnimate: Element["animate"] | undefined;
+  const animations = new Set<Animation>();
+  let baselines = new WeakMap<
     Animation,
     {
       compositionTimeMs: number;
@@ -54,18 +64,75 @@ export function createWaapiAdapter(): RuntimeDeterministicAdapter {
     return baseline;
   };
 
+  const trackAnimation = (animation: Animation, compositionTimeMs: number) => {
+    if (!animations.has(animation)) {
+      animations.add(animation);
+      const stopTracking = () => {
+        animations.delete(animation);
+      };
+      try {
+        animation.addEventListener("finish", stopTracking, { once: true });
+        animation.addEventListener("cancel", stopTracking, { once: true });
+      } catch (err) {
+        swallow("runtime.adapters.waapi.site4", err);
+      }
+    }
+    ensureBaseline(animation, compositionTimeMs);
+  };
+
+  const trackAnimations = (items: Animation[], compositionTimeMs: number) => {
+    for (const animation of items) {
+      trackAnimation(animation, compositionTimeMs);
+    }
+  };
+
+  const installAnimateHook = () => {
+    if (animateHookInstalled) return;
+    if (typeof Element === "undefined") return;
+    const proto = Element.prototype as Element & {
+      animate?: Element["animate"];
+      __hfOriginalAnimate?: Element["animate"];
+    };
+    if (typeof proto.animate !== "function" || proto.__hfOriginalAnimate) return;
+    const original = proto.animate;
+    try {
+      Object.defineProperty(proto, "__hfOriginalAnimate", {
+        value: original,
+        configurable: true,
+      });
+      const wrappedAnimate = function (...args: Parameters<Element["animate"]>) {
+        const animation = original.apply(this, args);
+        trackAnimation(animation, lastSeekTimeMs);
+        return animation;
+      };
+      proto.animate = wrappedAnimate;
+      hookedPrototype = proto;
+      originalAnimate = original;
+      installedAnimate = wrappedAnimate;
+      animateHookInstalled = true;
+    } catch {
+      // Best-effort only. Existing animations are still discovered via snapshot.
+    }
+  };
+
   return {
     name: "waapi",
     discover: () => {
       didDiscover = true;
-      for (const animation of snapshotAnimations()) {
-        ensureBaseline(animation, lastSeekTimeMs);
-      }
+      installAnimateHook();
+      trackAnimations(snapshotAnimations(), lastSeekTimeMs);
     },
     seek: (ctx) => {
       const timeMs = Math.max(0, (Number(ctx.time) || 0) * 1000);
       lastSeekTimeMs = timeMs;
-      for (const animation of snapshotAnimations()) {
+      // document.getAnimations() is surprisingly expensive in Chromium even
+      // when it returns [], and renderSeek calls this adapter once per frame.
+      // After an empty discover, skip the per-frame global scan until authored
+      // code creates a WAAPI animation via Element.animate (hooked above).
+      if (!didDiscover || animations.size > 0) {
+        trackAnimations(snapshotAnimations(), didDiscover ? timeMs : 0);
+      }
+      for (const animation of animations) {
         const baseline = didDiscover
           ? ensureBaseline(animation, timeMs)
           : ensureBaseline(animation, 0);
@@ -86,8 +153,10 @@ export function createWaapiAdapter(): RuntimeDeterministicAdapter {
       }
     },
     pause: () => {
-      if (!document.getAnimations) return;
-      for (const animation of document.getAnimations()) {
+      if (!didDiscover) {
+        trackAnimations(snapshotAnimations(), lastSeekTimeMs);
+      }
+      for (const animation of animations) {
         try {
           animation.pause();
         } catch (err) {
@@ -95,6 +164,31 @@ export function createWaapiAdapter(): RuntimeDeterministicAdapter {
           swallow("runtime.adapters.waapi.site3", err);
         }
       }
+    },
+    revert: () => {
+      animations.clear();
+      baselines = new WeakMap();
+      didDiscover = false;
+      lastSeekTimeMs = 0;
+      if (
+        hookedPrototype &&
+        originalAnimate &&
+        installedAnimate &&
+        hookedPrototype.animate === installedAnimate
+      ) {
+        try {
+          hookedPrototype.animate = originalAnimate;
+          if (hookedPrototype.__hfOriginalAnimate === originalAnimate) {
+            delete hookedPrototype.__hfOriginalAnimate;
+          }
+        } catch (err) {
+          swallow("runtime.adapters.waapi.site5", err);
+        }
+      }
+      hookedPrototype = undefined;
+      originalAnimate = undefined;
+      installedAnimate = undefined;
+      animateHookInstalled = false;
     },
   };
 }

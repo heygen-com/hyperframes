@@ -15,6 +15,25 @@ import { getSystemTotalMb, LOW_MEMORY_TOTAL_MB_THRESHOLD } from "./systemMemory.
 
 let _puppeteer: PuppeteerNode | undefined;
 
+interface WebGlProbeInfo {
+  hasWebGL: boolean;
+  vendor: string;
+  renderer: string;
+}
+
+function isSoftwareWebGlRenderer(rendererInfo: string): boolean {
+  const renderer = rendererInfo.trim().toLowerCase();
+  return (
+    renderer.includes("swiftshader") ||
+    renderer.includes("llvmpipe") ||
+    renderer.includes("lavapipe") ||
+    renderer.includes("softpipe") ||
+    renderer.includes("mesa offscreen") ||
+    renderer.includes("microsoft basic render driver") ||
+    renderer.includes("software rasterizer")
+  );
+}
+
 async function getPuppeteer(): Promise<PuppeteerNode> {
   if (_puppeteer) return _puppeteer;
   try {
@@ -26,6 +45,55 @@ async function getPuppeteer(): Promise<PuppeteerNode> {
   }
   if (!_puppeteer) throw new Error("Neither puppeteer nor puppeteer-core found");
   return _puppeteer;
+}
+
+async function probeHardwareWebGlInfo(
+  ppt: PuppeteerNode,
+  options: {
+    args: string[];
+    browserTimeout: number;
+    executablePath: string | undefined;
+  },
+): Promise<WebGlProbeInfo> {
+  let probeBrowser: Browser | undefined;
+  try {
+    probeBrowser = await ppt.launch({
+      headless: true,
+      args: options.args,
+      defaultViewport: { width: 64, height: 64 },
+      executablePath: options.executablePath,
+      timeout: options.browserTimeout,
+    });
+    const page = await probeBrowser.newPage();
+    return await page.evaluate(() => {
+      const unavailable = { hasWebGL: false, vendor: "", renderer: "" };
+      const c = document.createElement("canvas");
+      let gl = c.getContext("webgl") as WebGLRenderingContext | null;
+      if (gl === null) {
+        gl = c.getContext("experimental-webgl") as WebGLRenderingContext | null;
+      }
+      if (gl === null) return unavailable;
+      const ext = gl.getExtension("WEBGL_debug_renderer_info") as {
+        UNMASKED_VENDOR_WEBGL: number;
+        UNMASKED_RENDERER_WEBGL: number;
+      } | null;
+      let vendorParam: number = gl.VENDOR;
+      let rendererParam: number = gl.RENDERER;
+      if (ext !== null) {
+        vendorParam = ext.UNMASKED_VENDOR_WEBGL;
+        rendererParam = ext.UNMASKED_RENDERER_WEBGL;
+      }
+      const vendor = gl.getParameter(vendorParam);
+      const renderer = gl.getParameter(rendererParam);
+      return {
+        hasWebGL: true,
+        vendor: vendor == null ? "" : String(vendor),
+        renderer: renderer == null ? "" : String(renderer),
+      };
+    });
+  } finally {
+    await probeBrowser?.close().catch(() => {});
+  }
 }
 
 // "beginframe" = atomic compositor control via HeadlessExperimental.beginFrame (Linux only)
@@ -165,6 +233,70 @@ export function _resetAutoBrowserGpuModeCacheForTests(): void {
   _autoBrowserGpuModeCache = undefined;
 }
 
+async function getPuppeteerOrNull(): Promise<PuppeteerNode | null> {
+  try {
+    return await getPuppeteer();
+  } catch {
+    return null;
+  }
+}
+
+function getHardwareGpuProbeArgs(platform: NodeJS.Platform): string[] {
+  return [
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
+    "--disable-dev-shm-usage",
+    "--enable-webgl",
+    "--ignore-gpu-blocklist",
+    ...getBrowserGpuArgs("hardware", platform),
+  ];
+}
+
+function resolveWebGlProbeMode(info: WebGlProbeInfo): "software" | "hardware" {
+  if (!info.hasWebGL) return "software";
+  if (!info.vendor.trim() && !info.renderer.trim()) return "software";
+  return isSoftwareWebGlRenderer(info.renderer) ? "software" : "hardware";
+}
+
+function describeWebGlProbe(info: WebGlProbeInfo): string {
+  if (!info.hasWebGL) return "WebGL unavailable";
+  return `WebGL renderer vendor=${JSON.stringify(info.vendor)} renderer=${JSON.stringify(info.renderer)}`;
+}
+
+function formatProbeFailure(err: unknown): string {
+  return `probe failed (${err instanceof Error ? err.message : String(err)})`;
+}
+
+async function probeAutoBrowserGpuMode(options: {
+  chromePath?: string;
+  browserTimeout?: number;
+  platform?: NodeJS.Platform;
+}): Promise<"software" | "hardware"> {
+  const platform = options.platform ?? process.platform;
+  const browserTimeout = options.browserTimeout ?? DEFAULT_CONFIG.browserTimeout;
+  const executablePath = options.chromePath ?? resolveHeadlessShellPath({});
+  const ppt = await getPuppeteerOrNull();
+
+  if (ppt === null) {
+    logResolvedBrowserGpuMode("software", "puppeteer unavailable");
+    return "software";
+  }
+
+  try {
+    const info = await probeHardwareWebGlInfo(ppt, {
+      args: getHardwareGpuProbeArgs(platform),
+      browserTimeout,
+      executablePath,
+    });
+    const resolved = resolveWebGlProbeMode(info);
+    logResolvedBrowserGpuMode(resolved, describeWebGlProbe(info));
+    return resolved;
+  } catch (err) {
+    logResolvedBrowserGpuMode("software", formatProbeFailure(err));
+    return "software";
+  }
+}
+
 /**
  * Resolve `browserGpuMode` to a concrete `"software" | "hardware"` answer.
  *
@@ -191,61 +323,7 @@ export function resolveBrowserGpuMode(
   if (mode !== "auto") return Promise.resolve(mode);
   if (_autoBrowserGpuModeCache) return _autoBrowserGpuModeCache;
 
-  _autoBrowserGpuModeCache = (async () => {
-    const platform = options.platform ?? process.platform;
-    const browserTimeout = options.browserTimeout ?? DEFAULT_CONFIG.browserTimeout;
-    const executablePath = options.chromePath ?? resolveHeadlessShellPath({});
-
-    const probeArgs = [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage",
-      "--enable-webgl",
-      "--ignore-gpu-blocklist",
-      ...getBrowserGpuArgs("hardware", platform),
-    ];
-
-    const ppt = await getPuppeteer().catch(() => null);
-    if (!ppt) {
-      logResolvedBrowserGpuMode("software", "puppeteer unavailable");
-      return "software" as const;
-    }
-
-    let probeBrowser: Browser | undefined;
-    try {
-      probeBrowser = await ppt.launch({
-        headless: true,
-        args: probeArgs,
-        defaultViewport: { width: 64, height: 64 },
-        executablePath,
-        timeout: browserTimeout,
-      });
-      const page = await probeBrowser.newPage();
-      const hasWebGL = await page.evaluate(() => {
-        try {
-          const c = document.createElement("canvas");
-          const gl =
-            c.getContext("webgl") ||
-            (c.getContext("experimental-webgl") as RenderingContext | null);
-          return gl !== null;
-        } catch {
-          return false;
-        }
-      });
-      const resolved = hasWebGL ? ("hardware" as const) : ("software" as const);
-      logResolvedBrowserGpuMode(resolved, hasWebGL ? "WebGL probe succeeded" : "WebGL unavailable");
-      return resolved;
-    } catch (err) {
-      logResolvedBrowserGpuMode(
-        "software",
-        `probe failed (${err instanceof Error ? err.message : String(err)})`,
-      );
-      return "software" as const;
-    } finally {
-      await probeBrowser?.close().catch(() => {});
-    }
-  })();
-
+  _autoBrowserGpuModeCache = probeAutoBrowserGpuMode(options);
   return _autoBrowserGpuModeCache;
 }
 

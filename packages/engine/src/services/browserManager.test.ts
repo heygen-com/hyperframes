@@ -67,12 +67,24 @@ describe("buildChromeArgs browser GPU mode", () => {
 });
 
 describe("resolveBrowserGpuMode", () => {
+  const setMockWebGlProbe = (info: { hasWebGL: boolean; vendor: string; renderer: string }) => {
+    const close = vi.fn().mockResolvedValue(undefined);
+    const evaluate = vi.fn().mockResolvedValue(info);
+    const launch = vi.fn().mockResolvedValue({
+      newPage: vi.fn().mockResolvedValue({ evaluate }),
+      close,
+    });
+    _setPuppeteerForTests({ launch } as unknown as PuppeteerNode);
+    return { close, launch };
+  };
+
   beforeEach(() => {
     _resetAutoBrowserGpuModeCacheForTests();
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
+    _setPuppeteerForTests(undefined);
     _resetAutoBrowserGpuModeCacheForTests();
   });
 
@@ -137,6 +149,74 @@ describe("resolveBrowserGpuMode", () => {
     expect(p2).toBe(p3);
     const results = await Promise.all([p1, p2, p3]);
     expect(results).toEqual(["software", "software", "software"]);
+  });
+
+  it.each([
+    [
+      "llvmpipe",
+      "Google Inc. (Mesa/X.org)",
+      "ANGLE (Mesa/X.org, llvmpipe (LLVM 12.0.0 256 bits), OpenGL ES 3.2)",
+    ],
+    [
+      "Microsoft Basic Render Driver",
+      "Google Inc. (Microsoft)",
+      "ANGLE (Microsoft, Microsoft Basic Render Driver Direct3D11 vs_5_0 ps_5_0)",
+    ],
+    ["Mesa offscreen", "Google Inc. (Mesa)", "ANGLE (Mesa, Mesa offscreen, OpenGL ES 3.2)"],
+    [
+      "lavapipe",
+      "Google Inc. (Mesa)",
+      "ANGLE (Mesa, llvmpipe/lavapipe Vulkan software rasterizer)",
+    ],
+  ])("treats %s WebGL as software in auto mode", async (_label, vendor, renderer) => {
+    const { close, launch } = setMockWebGlProbe({
+      hasWebGL: true,
+      vendor,
+      renderer,
+    });
+
+    const mode = await resolveBrowserGpuMode("auto", {
+      chromePath: "/mock/chrome-headless-shell",
+      browserTimeout: 2000,
+    });
+
+    expect(mode).toBe("software");
+    expect(launch).toHaveBeenCalledTimes(1);
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it("treats empty WebGL renderer metadata as software in auto mode", async () => {
+    const { close, launch } = setMockWebGlProbe({
+      hasWebGL: true,
+      vendor: "",
+      renderer: "",
+    });
+
+    const mode = await resolveBrowserGpuMode("auto", {
+      chromePath: "/mock/chrome-headless-shell",
+      browserTimeout: 2000,
+    });
+
+    expect(mode).toBe("software");
+    expect(launch).toHaveBeenCalledTimes(1);
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps real hardware WebGL as hardware in auto mode", async () => {
+    const { close, launch } = setMockWebGlProbe({
+      hasWebGL: true,
+      vendor: "Google Inc. (NVIDIA Corporation)",
+      renderer: "ANGLE (NVIDIA, NVIDIA A10G, OpenGL 4.6)",
+    });
+
+    const mode = await resolveBrowserGpuMode("auto", {
+      chromePath: "/mock/chrome-headless-shell",
+      browserTimeout: 2000,
+    });
+
+    expect(mode).toBe("hardware");
+    expect(launch).toHaveBeenCalledTimes(1);
+    expect(close).toHaveBeenCalledTimes(1);
   });
 });
 

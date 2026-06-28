@@ -4,6 +4,40 @@ import { createWaapiAdapter } from "./waapi";
 describe("waapi adapter", () => {
   const originalDocument = (globalThis as { document?: unknown }).document;
 
+  const makeAnimation = (currentTime = 0) => ({
+    addEventListener: vi.fn(),
+    pause: vi.fn(),
+    currentTime,
+  });
+
+  const setAnimations = (items: Array<ReturnType<typeof makeAnimation>>) => {
+    const getAnimations = vi.fn(() => items);
+    (document as any).getAnimations = getAnimations;
+    return getAnimations;
+  };
+
+  const makeDynamicDiscoveryFixture = (dynamicStartMs = 0) => {
+    const existing = makeAnimation();
+    const dynamic = makeAnimation(dynamicStartMs);
+    let includeDynamic = false;
+    (document as any).getAnimations = vi.fn(() =>
+      includeDynamic ? [existing, dynamic] : [existing],
+    );
+
+    const adapter = createWaapiAdapter();
+    adapter.discover();
+    adapter.seek({ time: 0.6 });
+    expect(existing.currentTime).toBe(600);
+
+    return {
+      adapter,
+      dynamic,
+      revealDynamic: () => {
+        includeDynamic = true;
+      },
+    };
+  };
+
   beforeEach(() => {
     (globalThis as { document?: unknown }).document = {
       getAnimations: vi.fn(() => []),
@@ -24,38 +58,34 @@ describe("waapi adapter", () => {
   });
 
   it("seek pauses and sets currentTime on all animations", () => {
-    const mockAnim = { pause: vi.fn(), currentTime: 0 };
-    (document as any).getAnimations = vi.fn(() => [mockAnim]);
+    const mockAnim = makeAnimation();
+    setAnimations([mockAnim]);
 
     const adapter = createWaapiAdapter();
     adapter.seek({ time: 2.5 });
 
     expect(mockAnim.pause).toHaveBeenCalled();
     expect(mockAnim.currentTime).toBe(2500); // seconds → ms
-
-    delete (document as any).getAnimations;
   });
 
   it("seek clamps negative time to 0", () => {
-    const mockAnim = { pause: vi.fn(), currentTime: 0 };
-    (document as any).getAnimations = vi.fn(() => [mockAnim]);
+    const mockAnim = makeAnimation();
+    setAnimations([mockAnim]);
 
     const adapter = createWaapiAdapter();
     adapter.seek({ time: -3 });
 
     expect(mockAnim.currentTime).toBe(0);
-    delete (document as any).getAnimations;
   });
 
   it("pause pauses all animations", () => {
-    const mockAnim = { pause: vi.fn(), currentTime: 0 };
-    (document as any).getAnimations = vi.fn(() => [mockAnim]);
+    const mockAnim = makeAnimation();
+    setAnimations([mockAnim]);
 
     const adapter = createWaapiAdapter();
     adapter.pause();
 
     expect(mockAnim.pause).toHaveBeenCalled();
-    delete (document as any).getAnimations;
   });
 
   it("handles missing getAnimations API", () => {
@@ -70,34 +100,27 @@ describe("waapi adapter", () => {
   });
 
   it("handles animation that throws on pause", () => {
-    const mockAnim = {
-      pause: vi.fn(() => {
-        throw new Error("invalid state");
-      }),
-      currentTime: 0,
-    };
-    (document as any).getAnimations = vi.fn(() => [mockAnim]);
+    const mockAnim = makeAnimation();
+    mockAnim.pause.mockImplementation(() => {
+      throw new Error("invalid state");
+    });
+    setAnimations([mockAnim]);
 
     const adapter = createWaapiAdapter();
     expect(() => adapter.seek({ time: 1 })).not.toThrow();
-
-    delete (document as any).getAnimations;
   });
 
   it("still sets currentTime when pause throws for an unresolved infinite animation", () => {
-    const mockAnim = {
-      pause: vi.fn(() => {
-        throw new Error("invalid state");
-      }),
-      currentTime: 0,
-    };
-    (document as any).getAnimations = vi.fn(() => [mockAnim]);
+    const mockAnim = makeAnimation();
+    mockAnim.pause.mockImplementation(() => {
+      throw new Error("invalid state");
+    });
+    setAnimations([mockAnim]);
 
     const adapter = createWaapiAdapter();
     adapter.seek({ time: 1.25 });
 
     expect(mockAnim.currentTime).toBe(1250);
-    delete (document as any).getAnimations;
   });
 
   it("discover is a no-op", () => {
@@ -105,75 +128,146 @@ describe("waapi adapter", () => {
     expect(() => adapter.discover()).not.toThrow();
   });
 
-  it("anchors newly discovered WAAPI animations to the seek where they first appear", () => {
-    const existing = { pause: vi.fn(), currentTime: 0 };
-    const dynamic = { pause: vi.fn(), currentTime: 0 };
-    let includeDynamic = false;
-    (document as any).getAnimations = vi.fn(() =>
-      includeDynamic ? [existing, dynamic] : [existing],
-    );
+  it.each([
+    ["relative start", 0],
+    ["inherited absolute composition time", 700],
+  ])("anchors newly discovered WAAPI animations with %s", (_label, dynamicStartMs) => {
+    const { adapter, dynamic, revealDynamic } = makeDynamicDiscoveryFixture(dynamicStartMs);
 
-    const adapter = createWaapiAdapter();
-    adapter.discover();
-
-    adapter.seek({ time: 0.6 });
-    expect(existing.currentTime).toBe(600);
-
-    includeDynamic = true;
-    adapter.seek({ time: 0.7 });
-    expect(existing.currentTime).toBe(700);
-    expect(dynamic.currentTime).toBe(0);
-
-    adapter.seek({ time: 0.8 });
-    expect(dynamic.currentTime).toBe(100);
-
-    delete (document as any).getAnimations;
-  });
-
-  it("rebases newly discovered WAAPI animations that inherit absolute composition time", () => {
-    const existing = { pause: vi.fn(), currentTime: 0 };
-    const dynamic = { pause: vi.fn(), currentTime: 700 };
-    let includeDynamic = false;
-    (document as any).getAnimations = vi.fn(() =>
-      includeDynamic ? [existing, dynamic] : [existing],
-    );
-
-    const adapter = createWaapiAdapter();
-    adapter.discover();
-
-    adapter.seek({ time: 0.6 });
-    expect(existing.currentTime).toBe(600);
-
-    includeDynamic = true;
+    revealDynamic();
     adapter.seek({ time: 0.7 });
     expect(dynamic.currentTime).toBe(0);
 
     adapter.seek({ time: 0.8 });
     expect(dynamic.currentTime).toBe(100);
-
-    delete (document as any).getAnimations;
   });
 
   it("does not double-count inherited absolute time when discover runs again after time has advanced", () => {
-    const existing = { pause: vi.fn(), currentTime: 0 };
-    const dynamic = { pause: vi.fn(), currentTime: 700 };
-    let includeDynamic = false;
-    (document as any).getAnimations = vi.fn(() =>
-      includeDynamic ? [existing, dynamic] : [existing],
-    );
+    const { adapter, dynamic, revealDynamic } = makeDynamicDiscoveryFixture(700);
 
-    const adapter = createWaapiAdapter();
-    adapter.discover();
-
-    adapter.seek({ time: 0.6 });
-    expect(existing.currentTime).toBe(600);
-
-    includeDynamic = true;
+    revealDynamic();
     adapter.discover();
     adapter.seek({ time: 0.7 });
 
     expect(dynamic.currentTime).toBe(200);
+  });
 
-    delete (document as any).getAnimations;
+  it("does not rescan document animations on every seek when discover found none", () => {
+    const getAnimations = setAnimations([]);
+
+    const adapter = createWaapiAdapter();
+    adapter.discover();
+    adapter.seek({ time: 0.1 });
+    adapter.seek({ time: 0.2 });
+    adapter.seek({ time: 0.3 });
+
+    expect(getAnimations).toHaveBeenCalledTimes(1);
+  });
+
+  it("tracks WAAPI animations created after an empty discover via Element.animate", () => {
+    const getAnimations = setAnimations([]);
+
+    const originalElement = (globalThis as { Element?: unknown }).Element;
+    const animation = makeAnimation();
+    class MockElement {}
+    (MockElement.prototype as { animate?: () => typeof animation }).animate = vi.fn(
+      () => animation,
+    );
+    (globalThis as { Element?: unknown }).Element = MockElement;
+
+    try {
+      const adapter = createWaapiAdapter();
+      adapter.discover();
+
+      const el = new MockElement() as InstanceType<typeof MockElement> & {
+        animate: () => typeof animation;
+      };
+      el.animate();
+      adapter.seek({ time: 0.25 });
+
+      expect(animation.currentTime).toBe(250);
+      expect(animation.pause).toHaveBeenCalled();
+      // The hook tracks the created animation; once WAAPI is active, the
+      // adapter may resume scanning to catch sibling animations.
+      expect(getAnimations).toHaveBeenCalledTimes(2);
+    } finally {
+      if (originalElement === undefined) {
+        delete (globalThis as { Element?: unknown }).Element;
+      } else {
+        (globalThis as { Element?: unknown }).Element = originalElement;
+      }
+    }
+  });
+
+  it("drops finished lazy-tracked animations so empty scans stay skipped again", () => {
+    const getAnimations = setAnimations([]);
+
+    const originalElement = (globalThis as { Element?: unknown }).Element;
+    const animation = makeAnimation();
+    const listeners = new Map<string, EventListener>();
+    animation.addEventListener.mockImplementation((type: string, listener: EventListener) => {
+      listeners.set(type, listener);
+    });
+    class MockElement {}
+    (MockElement.prototype as { animate?: () => typeof animation }).animate = vi.fn(
+      () => animation,
+    );
+    (globalThis as { Element?: unknown }).Element = MockElement;
+
+    const adapter = createWaapiAdapter();
+    try {
+      adapter.discover();
+
+      const el = new MockElement() as InstanceType<typeof MockElement> & {
+        animate: () => typeof animation;
+      };
+      el.animate();
+      adapter.seek({ time: 0.25 });
+
+      expect(animation.currentTime).toBe(250);
+      expect(getAnimations).toHaveBeenCalledTimes(2);
+
+      listeners.get("finish")?.({} as Event);
+      adapter.seek({ time: 0.5 });
+
+      expect(getAnimations).toHaveBeenCalledTimes(2);
+      expect(animation.currentTime).toBe(250);
+    } finally {
+      adapter.revert?.();
+      if (originalElement === undefined) {
+        delete (globalThis as { Element?: unknown }).Element;
+      } else {
+        (globalThis as { Element?: unknown }).Element = originalElement;
+      }
+    }
+  });
+
+  it("revert restores the Element.animate hook", () => {
+    const originalElement = (globalThis as { Element?: unknown }).Element;
+    const animation = makeAnimation();
+    const originalAnimate = vi.fn(() => animation);
+    class MockElement {}
+    (MockElement.prototype as { animate?: typeof originalAnimate }).animate = originalAnimate;
+    (globalThis as { Element?: unknown }).Element = MockElement;
+
+    const adapter = createWaapiAdapter();
+    try {
+      adapter.discover();
+
+      expect((MockElement.prototype as { animate?: unknown }).animate).not.toBe(originalAnimate);
+
+      adapter.revert?.();
+
+      expect((MockElement.prototype as { animate?: unknown }).animate).toBe(originalAnimate);
+      expect(
+        (MockElement.prototype as { __hfOriginalAnimate?: unknown }).__hfOriginalAnimate,
+      ).toBeUndefined();
+    } finally {
+      if (originalElement === undefined) {
+        delete (globalThis as { Element?: unknown }).Element;
+      } else {
+        (globalThis as { Element?: unknown }).Element = originalElement;
+      }
+    }
   });
 });
