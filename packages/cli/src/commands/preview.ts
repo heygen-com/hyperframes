@@ -1,9 +1,12 @@
 import { defineCommand } from "citty";
 import type { Example } from "./_examples.js";
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcessByStdio } from "node:child_process";
+import type { Readable } from "node:stream";
 
 export const examples: Example[] = [
   ["Preview the current project", "hyperframes preview"],
+  ["Print the current Studio selection as JSON", "hyperframes preview --selection --json"],
+  ["Print current Studio context as JSON", "hyperframes preview --context --json"],
   ["Preview a specific project directory", "hyperframes preview ./my-video"],
   ["Use a custom port", "hyperframes preview --port 8080"],
   ["Force a new server even if one is already running", "hyperframes preview --force-new"],
@@ -24,6 +27,7 @@ import * as clack from "@clack/prompts";
 import { c } from "../ui/colors.js";
 import { isDevMode } from "../utils/env.js";
 import { buildNpxCommand } from "../utils/npxCommand.js";
+import type { StudioSelectionSnapshot } from "@hyperframes/studio-server";
 import {
   openBrowser,
   parseRemoteDebuggingPort,
@@ -39,6 +43,40 @@ import {
 } from "../server/portUtils.js";
 import { killOrphanedProcesses, killProcessTree } from "../utils/orphanCleanup.js";
 import { resolveProject } from "../utils/project.js";
+
+interface BrowserLaunchOptions {
+  noOpen?: boolean;
+  browserPath?: string;
+  userDataDir?: string;
+  remoteDebuggingPort?: number;
+}
+
+interface StudioLaunchOptions extends BrowserLaunchOptions {
+  projectName?: string;
+}
+
+interface EmbeddedStudioOptions extends StudioLaunchOptions {
+  forceNew?: boolean;
+}
+
+type StudioChildProcess = ChildProcessByStdio<null, Readable, Readable>;
+type ContextField = "server" | "selection" | "lint" | "capabilities";
+type CompactSelectionPayload = Pick<
+  StudioSelectionSnapshot,
+  | "schemaVersion"
+  | "projectId"
+  | "compositionPath"
+  | "sourceFile"
+  | "currentTime"
+  | "target"
+  | "label"
+  | "tagName"
+  | "boundingBox"
+  | "textContent"
+  | "thumbnailUrl"
+>;
+
+const DEFAULT_CONTEXT_FIELDS: ContextField[] = ["server", "selection", "lint", "capabilities"];
 
 export default defineCommand({
   meta: { name: "preview", description: "Start the studio for previewing compositions" },
@@ -65,6 +103,32 @@ export default defineCommand({
       default: true,
       description: "Open browser automatically",
     },
+    selection: {
+      type: "boolean",
+      description: "Print the current element selected in a running Studio preview and exit",
+      default: false,
+    },
+    json: {
+      type: "boolean",
+      description: "Output preview selection/context as JSON (only with --selection or --context)",
+      default: false,
+    },
+    context: {
+      type: "boolean",
+      description:
+        "Print the current agent-readable context from a running Studio preview and exit",
+      default: false,
+    },
+    "context-fields": {
+      type: "string",
+      description:
+        "Comma-separated context fields to include: server,selection,lint,capabilities (only with --context)",
+    },
+    "context-detail": {
+      type: "string",
+      description: "Context payload detail: compact or full (only with --context)",
+      default: "compact",
+    },
     "browser-path": {
       type: "string",
       description: "Path to the browser executable to open",
@@ -80,6 +144,7 @@ export default defineCommand({
   },
   async run({ args }) {
     const startPort = parseInt(args.port ?? "3002", 10);
+    const preferredContextPort = hasExplicitPreviewPort(process.argv) ? startPort : undefined;
 
     // --list: scan and display active servers
     if (args.list) {
@@ -109,6 +174,26 @@ export default defineCommand({
       const killed = await killActiveServers(startPort);
       console.log(`\n  Killed ${killed} preview server${killed === 1 ? "" : "s"}.\n`);
       return;
+    }
+
+    if (args.context) {
+      const project = resolveProject(args.dir);
+      return printCurrentContext(project.dir, startPort, {
+        json: Boolean(args.json),
+        fields: args["context-fields"] as string | undefined,
+        detail: args["context-detail"] as string | undefined,
+        ...(preferredContextPort === undefined ? {} : { preferredPort: preferredContextPort }),
+      });
+    }
+
+    if (args.selection) {
+      const project = resolveProject(args.dir);
+      return printCurrentSelection(
+        project.dir,
+        startPort,
+        Boolean(args.json),
+        preferredContextPort,
+      );
     }
 
     // Kill orphaned chrome-headless-shell processes from previous crashed sessions.
@@ -198,28 +283,390 @@ export default defineCommand({
   },
 });
 
-/**
- * Dev mode: spawn the studio dev server from the monorepo.
- */
-async function runDevMode(
-  dir: string,
-  options?: {
-    projectName?: string;
-    noOpen?: boolean;
-    browserPath?: string;
-    userDataDir?: string;
-    remoteDebuggingPort?: number;
-  },
+function previewBaseUrl(port: number): string {
+  return `http://127.0.0.1:${port}`;
+}
+
+function absolutePreviewUrl(port: number, path: string): string {
+  if (/^https?:\/\//.test(path)) return path;
+  return `${previewBaseUrl(port)}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+function hasExplicitPreviewPort(argv: string[]): boolean {
+  return argv.some((arg) => arg === "--port" || arg.startsWith("--port="));
+}
+
+function printSelectionFailure(code: string, message: string, json: boolean): void {
+  if (json) {
+    console.log(JSON.stringify({ ok: false, error: { code, message } }, null, 2));
+  } else {
+    clack.log.error(message);
+  }
+  process.exitCode = 1;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function previewServerPayload(server: { port: number; projectName: string; projectDir: string }): {
+  port: number;
+  projectName: string;
+  projectDir: string;
+  url: string;
+} {
+  return {
+    port: server.port,
+    projectName: server.projectName,
+    projectDir: server.projectDir,
+    url: previewBaseUrl(server.port),
+  };
+}
+
+function parseContextFields(value: string | undefined): ContextField[] {
+  if (value === undefined) return DEFAULT_CONTEXT_FIELDS;
+  if (!value.trim()) throw new Error("--context-fields cannot be empty");
+  const allowed = new Set<ContextField>(DEFAULT_CONTEXT_FIELDS);
+  const fields = value
+    .split(",")
+    .map((field) => field.trim())
+    .filter(Boolean);
+  const invalid = fields.filter((field) => !allowed.has(field as ContextField));
+  if (invalid.length > 0) {
+    throw new Error(
+      `Unknown context field${invalid.length === 1 ? "" : "s"}: ${invalid.join(", ")}`,
+    );
+  }
+  return [...new Set(fields)] as ContextField[];
+}
+
+function contextIncludes(fields: ContextField[], field: ContextField): boolean {
+  return fields.includes(field);
+}
+
+function addContextError(
+  payload: Record<string, unknown>,
+  field: ContextField,
+  error: { code: string; message: string },
+): void {
+  payload.errors = {
+    ...((payload.errors as Record<string, unknown> | undefined) ?? {}),
+    [field]: error,
+  };
+}
+
+async function printCurrentSelection(
+  projectDir: string,
+  startPort: number,
+  json: boolean,
+  preferredPort?: number,
 ): Promise<void> {
-  // Find monorepo root by navigating from packages/cli/src/commands/
-  const thisFile = fileURLToPath(import.meta.url);
-  const repoRoot = resolve(dirname(thisFile), "..", "..", "..", "..");
+  const {
+    AmbiguousPreviewServerError,
+    PreviewServerPortMismatchError,
+    fetchStudioSelection,
+    findPreviewServerForProject,
+  } = await import("../utils/studioSelectionClient.js");
+  let server: Awaited<ReturnType<typeof findPreviewServerForProject>>;
+  try {
+    server = await findPreviewServerForProject(
+      projectDir,
+      startPort,
+      undefined,
+      undefined,
+      preferredPort === undefined ? undefined : { preferredPort },
+    );
+  } catch (err) {
+    if (err instanceof AmbiguousPreviewServerError) {
+      printSelectionFailure("ambiguous-preview-server", err.message, json);
+      return;
+    }
+    if (err instanceof PreviewServerPortMismatchError) {
+      printSelectionFailure("preview-port-mismatch", err.message, json);
+      return;
+    }
+    throw err;
+  }
+  if (!server) {
+    printSelectionFailure(
+      "preview-not-running",
+      "No running Studio preview found for this project. Start one with: npx hyperframes preview",
+      json,
+    );
+    return;
+  }
 
-  // Symlink project into the studio's data directory
-  const projectsDir = join(repoRoot, "packages", "studio", "data", "projects");
-  const pName = options?.projectName ?? basename(dir);
-  const symlinkPath = join(projectsDir, pName);
+  let response: Awaited<ReturnType<typeof fetchStudioSelection>>;
+  try {
+    response = await fetchStudioSelection(server);
+  } catch (err) {
+    printSelectionFailure("selection-unavailable", errorMessage(err), json);
+    return;
+  }
 
+  if (!response.selection) {
+    printSelectionFailure(
+      "no-selection",
+      "Studio is running, but no element is selected. Select an element in Studio and rerun this command.",
+      json,
+    );
+    return;
+  }
+
+  const selection = {
+    ...response.selection,
+    thumbnailUrl: absolutePreviewUrl(server.port, response.selection.thumbnailUrl),
+  };
+
+  if (json) {
+    console.log(
+      JSON.stringify(
+        {
+          ok: true,
+          server: previewServerPayload(server),
+          selection,
+          updatedAt: response.updatedAt,
+        },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+
+  console.log(`${c.success("◇")}  ${c.accent(selection.label)} selected in Studio`);
+  console.log(`  ${c.dim("Source")}    ${selection.sourceFile}`);
+  console.log(
+    `  ${c.dim("Target")}    ${selection.target.hfId ?? selection.target.id ?? selection.target.selector ?? "(none)"}`,
+  );
+  console.log(`  ${c.dim("Time")}      ${selection.currentTime.toFixed(3)}s`);
+  console.log(`  ${c.dim("Thumbnail")} ${selection.thumbnailUrl}`);
+  console.log();
+  console.log(c.dim("Use --json for the full agent-readable selection payload."));
+}
+
+function countLintFindings(findings: Array<{ severity: string }>): {
+  errors: number;
+  warnings: number;
+} {
+  return {
+    errors: findings.filter((finding) => finding.severity === "error").length,
+    warnings: findings.filter((finding) => finding.severity === "warning").length,
+  };
+}
+
+async function printCurrentContext(
+  projectDir: string,
+  startPort: number,
+  options: { json: boolean; fields?: string; detail?: string; preferredPort?: number },
+): Promise<void> {
+  let fields: ContextField[];
+  try {
+    fields = parseContextFields(options.fields);
+  } catch (err) {
+    printSelectionFailure(
+      "invalid-context-fields",
+      err instanceof Error ? err.message : String(err),
+      options.json,
+    );
+    return;
+  }
+  const fullDetail = options.detail === "full";
+  if (options.detail !== undefined && !["compact", "full"].includes(options.detail)) {
+    printSelectionFailure(
+      "invalid-context-detail",
+      "--context-detail must be compact or full",
+      options.json,
+    );
+    return;
+  }
+
+  const {
+    AmbiguousPreviewServerError,
+    PreviewServerPortMismatchError,
+    fetchStudioLint,
+    fetchStudioSelection,
+    findPreviewServerForProject,
+  } = await import("../utils/studioSelectionClient.js");
+  let server: Awaited<ReturnType<typeof findPreviewServerForProject>>;
+  try {
+    server = await findPreviewServerForProject(
+      projectDir,
+      startPort,
+      undefined,
+      undefined,
+      options.preferredPort === undefined ? undefined : { preferredPort: options.preferredPort },
+    );
+  } catch (err) {
+    if (err instanceof AmbiguousPreviewServerError) {
+      printSelectionFailure("ambiguous-preview-server", err.message, options.json);
+      return;
+    }
+    if (err instanceof PreviewServerPortMismatchError) {
+      printSelectionFailure("preview-port-mismatch", err.message, options.json);
+      return;
+    }
+    throw err;
+  }
+  if (!server) {
+    printSelectionFailure(
+      "preview-not-running",
+      "No running Studio preview found for this project. Start one with: npx hyperframes preview",
+      options.json,
+    );
+    return;
+  }
+
+  const wantsSelection = contextIncludes(fields, "selection");
+  const wantsLint = contextIncludes(fields, "lint");
+  const [selectionResult, lintResult] = await Promise.allSettled([
+    wantsSelection ? fetchStudioSelection(server) : Promise.resolve(null),
+    wantsLint ? fetchStudioLint(server) : Promise.resolve(null),
+  ]);
+
+  const selection =
+    selectionResult.status === "fulfilled" && selectionResult.value?.selection
+      ? {
+          ok: true as const,
+          value: fullDetail
+            ? {
+                ...selectionResult.value.selection,
+                thumbnailUrl: absolutePreviewUrl(
+                  server.port,
+                  selectionResult.value.selection.thumbnailUrl,
+                ),
+              }
+            : compactSelectionPayload({
+                ...selectionResult.value.selection,
+                thumbnailUrl: absolutePreviewUrl(
+                  server.port,
+                  selectionResult.value.selection.thumbnailUrl,
+                ),
+              }),
+          updatedAt: selectionResult.value.updatedAt,
+        }
+      : {
+          ok: false as const,
+          error:
+            selectionResult.status === "rejected"
+              ? { code: "selection-unavailable", message: errorMessage(selectionResult.reason) }
+              : {
+                  code: "no-selection",
+                  message: "Studio is running, but no element is selected.",
+                },
+        };
+
+  const lint =
+    lintResult.status === "fulfilled" && lintResult.value
+      ? {
+          ok: true as const,
+          summary: countLintFindings(lintResult.value.findings),
+          findings: lintResult.value.findings,
+        }
+      : {
+          ok: false as const,
+          error:
+            lintResult.status === "rejected"
+              ? { code: "lint-unavailable", message: errorMessage(lintResult.reason) }
+              : { code: "lint-not-requested", message: "Lint was not requested." },
+        };
+
+  const payload: Record<string, unknown> = { ok: true };
+  if (contextIncludes(fields, "server")) payload.server = previewServerPayload(server);
+  if (contextIncludes(fields, "selection")) {
+    payload.selection = selection.ok ? selection.value : null;
+    payload.selectionUpdatedAt = selection.ok ? selection.updatedAt : null;
+    if (!selection.ok) addContextError(payload, "selection", selection.error);
+  }
+  if (contextIncludes(fields, "lint")) payload.lint = lint;
+  if (contextIncludes(fields, "capabilities")) {
+    payload.capabilities = {
+      selection: true,
+      lint: true,
+      frame: false,
+      visibleElements: false,
+      lastAction: false,
+    };
+  }
+
+  if (options.json) {
+    console.log(JSON.stringify(payload, null, 2));
+    return;
+  }
+
+  console.log(`${c.success("◇")}  Studio context`);
+  if (contextIncludes(fields, "server")) {
+    console.log(`  ${c.dim("Project")}   ${server.projectName}`);
+    console.log(`  ${c.dim("Studio")}    ${previewBaseUrl(server.port)}`);
+  }
+  if (contextIncludes(fields, "selection")) {
+    if (selection.ok) {
+      console.log(`  ${c.dim("Selection")} ${selection.value.label}`);
+    } else {
+      console.log(`  ${c.dim("Selection")} ${selection.error.message}`);
+    }
+  }
+  if (contextIncludes(fields, "lint")) {
+    if (lint.ok) {
+      console.log(
+        `  ${c.dim("Lint")}      ${lint.summary.errors} error(s), ${lint.summary.warnings} warning(s)`,
+      );
+    } else {
+      console.log(`  ${c.dim("Lint")}      ${lint.error.message}`);
+    }
+  }
+  console.log();
+  console.log(c.dim("Use --json for the full agent-readable context payload."));
+}
+
+function compactSelectionPayload(selection: StudioSelectionSnapshot): CompactSelectionPayload {
+  return {
+    schemaVersion: selection.schemaVersion,
+    projectId: selection.projectId,
+    compositionPath: selection.compositionPath,
+    sourceFile: selection.sourceFile,
+    currentTime: selection.currentTime,
+    target: selection.target,
+    label: selection.label,
+    tagName: selection.tagName,
+    boundingBox: selection.boundingBox,
+    textContent: selection.textContent,
+    thumbnailUrl: selection.thumbnailUrl,
+  };
+}
+
+function openStudioBrowser(url: string, projectName: string, options?: BrowserLaunchOptions): void {
+  if (options?.noOpen) return;
+  openBrowser(`${url}#project/${projectName}`, {
+    browserPath: options?.browserPath,
+    userDataDir: options?.userDataDir,
+    remoteDebuggingPort: options?.remoteDebuggingPort,
+  });
+}
+
+function printStudioSummary(
+  projectName: string,
+  url: string,
+  opts: { details?: string[]; footer?: string } = {},
+): void {
+  console.log();
+  console.log(`  ${c.dim("Project")}   ${c.accent(projectName)}`);
+  console.log(`  ${c.dim("Studio")}    ${c.accent(url)}`);
+  console.log();
+  for (const detail of opts.details ?? []) {
+    console.log(`  ${c.dim(detail)}`);
+  }
+  if (opts.details?.length && opts.footer) console.log();
+  if (opts.footer) console.log(`  ${c.dim(opts.footer)}`);
+  console.log();
+}
+
+function linkProjectIntoStudioData(
+  dir: string,
+  projectsDir: string,
+  projectName: string,
+): { symlinkPath: string; createdSymlink: boolean } {
+  const symlinkPath = join(projectsDir, projectName);
   mkdirSync(projectsDir, { recursive: true });
 
   let createdSymlink = false;
@@ -227,23 +674,87 @@ async function runDevMode(
     if (existsSync(symlinkPath)) {
       try {
         const stat = lstatSync(symlinkPath);
-        if (stat.isSymbolicLink()) {
-          const target = readlinkSync(symlinkPath);
-          if (resolve(target) !== resolve(dir)) {
-            unlinkSync(symlinkPath);
-          }
+        if (stat.isSymbolicLink() && resolve(readlinkSync(symlinkPath)) !== resolve(dir)) {
+          unlinkSync(symlinkPath);
         }
-        // If it's a real directory, leave it alone
       } catch {
-        // Not a symlink — don't touch it
+        // Real directories or unreadable paths are left untouched.
       }
     }
-
     if (!existsSync(symlinkPath)) {
       symlinkSync(dir, symlinkPath, "dir");
       createdSymlink = true;
     }
   }
+
+  return { symlinkPath, createdSymlink };
+}
+
+function removeSymlinkOnExit(createdSymlink: boolean, symlinkPath: string): void {
+  if (!createdSymlink) return;
+  process.on("exit", () => {
+    try {
+      if (existsSync(symlinkPath)) unlinkSync(symlinkPath);
+    } catch {
+      /* ignore */
+    }
+  });
+}
+
+function registerChildTreeShutdown(child: StudioChildProcess): void {
+  const shutdown = (): void => {
+    if (child.pid) killProcessTree(child.pid);
+  };
+  process.once("SIGINT", shutdown);
+  process.once("SIGTERM", shutdown);
+}
+
+function waitForChildClose(child: StudioChildProcess): Promise<void> {
+  return new Promise<void>((resolveClose) => {
+    child.on("close", () => resolveClose());
+  });
+}
+
+function attachStudioReadyHandler(
+  child: StudioChildProcess,
+  spinner: ReturnType<typeof clack.spinner>,
+  projectName: string,
+  options?: BrowserLaunchOptions,
+): void {
+  let detected = false;
+
+  function handleOutput(data: Buffer): void {
+    const url = data.toString().match(/Local:\s+(http:\/\/localhost:\d+)/)?.[1];
+    if (!url || detected) return;
+
+    detected = true;
+    spinner.stop(c.success("Studio running"));
+    printStudioSummary(projectName, url, { footer: "Press Ctrl+C to stop" });
+    openStudioBrowser(url, projectName, options);
+    child.stdout.removeListener("data", handleOutput);
+    child.stderr.removeListener("data", handleOutput);
+  }
+
+  child.stdout.on("data", handleOutput);
+  child.stderr.on("data", handleOutput);
+  child.on("error", (err) => {
+    spinner.stop(c.error("Failed to start studio"));
+    console.error(c.dim(err.message));
+  });
+}
+
+/**
+ * Dev mode: spawn the studio dev server from the monorepo.
+ */
+async function runDevMode(dir: string, options?: StudioLaunchOptions): Promise<void> {
+  // Find monorepo root by navigating from packages/cli/src/commands/
+  const thisFile = fileURLToPath(import.meta.url);
+  const repoRoot = resolve(dirname(thisFile), "..", "..", "..", "..");
+
+  // Symlink project into the studio's data directory
+  const projectsDir = join(repoRoot, "packages", "studio", "data", "projects");
+  const pName = options?.projectName ?? basename(dir);
+  const { symlinkPath, createdSymlink } = linkProjectIntoStudioData(dir, projectsDir, pName);
 
   clack.intro(c.bold("hyperframes preview"));
 
@@ -257,55 +768,8 @@ async function runDevMode(
     stdio: ["ignore", "pipe", "pipe"],
   });
 
-  let frontendUrl = "";
-
-  function handleOutput(data: Buffer): void {
-    const text = data.toString();
-
-    // Detect Vite URL
-    const localMatch = text.match(/Local:\s+(http:\/\/localhost:\d+)/);
-    if (localMatch && !frontendUrl) {
-      frontendUrl = localMatch[1] ?? "";
-      s.stop(c.success("Studio running"));
-      console.log();
-      console.log(`  ${c.dim("Project")}   ${c.accent(pName)}`);
-      console.log(`  ${c.dim("Studio")}    ${c.accent(frontendUrl)}`);
-      console.log();
-      console.log(`  ${c.dim("Press Ctrl+C to stop")}`);
-      console.log();
-
-      if (!options?.noOpen) {
-        const urlToOpen = `${frontendUrl}#project/${pName}`;
-        openBrowser(urlToOpen, {
-          browserPath: options?.browserPath,
-          userDataDir: options?.userDataDir,
-          remoteDebuggingPort: options?.remoteDebuggingPort,
-        });
-      }
-
-      child.stdout?.removeListener("data", handleOutput);
-      child.stderr?.removeListener("data", handleOutput);
-    }
-  }
-
-  child.stdout?.on("data", handleOutput);
-  child.stderr?.on("data", handleOutput);
-
-  // If child exits before we detect readiness, show what we have
-  child.on("error", (err) => {
-    s.stop(c.error("Failed to start studio"));
-    console.error(c.dim(err.message));
-  });
-
-  if (createdSymlink) {
-    process.on("exit", () => {
-      try {
-        if (existsSync(symlinkPath)) unlinkSync(symlinkPath);
-      } catch {
-        /* ignore */
-      }
-    });
-  }
+  attachStudioReadyHandler(child, s, pName, options);
+  removeSymlinkOnExit(createdSymlink, symlinkPath);
 
   // Kill the child's entire process tree on SIGTERM/SIGINT. Ctrl+C sends
   // SIGINT to the foreground process group (covers the common case), but
@@ -313,15 +777,8 @@ async function runDevMode(
   // would survive without explicit cleanup.
   // On Windows, killProcessTree is a no-op (pgrep/ps unavailable); Ctrl+C
   // propagates via the console process group instead.
-  const shutdown = () => {
-    if (child.pid) killProcessTree(child.pid);
-  };
-  process.once("SIGINT", shutdown);
-  process.once("SIGTERM", shutdown);
-
-  return new Promise<void>((resolve) => {
-    child.on("close", () => resolve());
-  });
+  registerChildTreeShutdown(child);
+  return waitForChildClose(child);
 }
 
 /**
@@ -341,37 +798,14 @@ function hasLocalStudio(dir: string): boolean {
  * Local studio mode: spawn Vite using a locally installed @hyperframes/studio.
  * Provides full Vite HMR and the complete studio experience.
  */
-async function runLocalStudioMode(
-  dir: string,
-  options?: {
-    projectName?: string;
-    noOpen?: boolean;
-    browserPath?: string;
-    userDataDir?: string;
-    remoteDebuggingPort?: number;
-  },
-): Promise<void> {
+async function runLocalStudioMode(dir: string, options?: StudioLaunchOptions): Promise<void> {
   const req = createRequire(join(dir, "package.json"));
   const studioPkgPath = dirname(req.resolve("@hyperframes/studio/package.json"));
   const pName = options?.projectName ?? basename(dir);
 
   // Symlink project into studio's data directory
   const projectsDir = join(studioPkgPath, "data", "projects");
-  const symlinkPath = join(projectsDir, pName);
-  mkdirSync(projectsDir, { recursive: true });
-
-  let createdSymlink = false;
-  if (dir !== symlinkPath) {
-    if (existsSync(symlinkPath) && lstatSync(symlinkPath).isSymbolicLink()) {
-      if (resolve(readlinkSync(symlinkPath)) !== resolve(dir)) {
-        unlinkSync(symlinkPath);
-      }
-    }
-    if (!existsSync(symlinkPath)) {
-      symlinkSync(dir, symlinkPath, "dir");
-      createdSymlink = true;
-    }
-  }
+  const { symlinkPath, createdSymlink } = linkProjectIntoStudioData(dir, projectsDir, pName);
 
   clack.intro(c.bold("hyperframes preview") + c.dim(" (local studio)"));
   const s = clack.spinner();
@@ -383,58 +817,12 @@ async function runLocalStudioMode(
     stdio: ["ignore", "pipe", "pipe"],
   });
 
-  let detected = false;
-
-  function handleOutput(data: Buffer): void {
-    const text = data.toString();
-    const localMatch = text.match(/Local:\s+(http:\/\/localhost:\d+)/);
-    if (localMatch && !detected) {
-      detected = true;
-      const url = localMatch[1] ?? "";
-      s.stop(c.success("Studio running"));
-      console.log();
-      console.log(`  ${c.dim("Project")}   ${c.accent(pName)}`);
-      console.log(`  ${c.dim("Studio")}    ${c.accent(url)}`);
-      console.log();
-      console.log(`  ${c.dim("Press Ctrl+C to stop")}`);
-      console.log();
-      if (!options?.noOpen) {
-        openBrowser(`${url}#project/${pName}`, {
-          browserPath: options?.browserPath,
-          userDataDir: options?.userDataDir,
-          remoteDebuggingPort: options?.remoteDebuggingPort,
-        });
-      }
-    }
-  }
-
-  child.stdout?.on("data", handleOutput);
-  child.stderr?.on("data", handleOutput);
-  child.on("error", (err) => {
-    s.stop(c.error("Failed to start studio"));
-    console.error(c.dim(err.message));
-  });
-
-  if (createdSymlink) {
-    process.on("exit", () => {
-      try {
-        if (existsSync(symlinkPath)) unlinkSync(symlinkPath);
-      } catch {
-        /* ignore */
-      }
-    });
-  }
+  attachStudioReadyHandler(child, s, pName, options);
+  removeSymlinkOnExit(createdSymlink, symlinkPath);
 
   // Same tree-kill handler as dev mode. No-op on Windows (see comment above).
-  const shutdown = () => {
-    if (child.pid) killProcessTree(child.pid);
-  };
-  process.once("SIGINT", shutdown);
-  process.once("SIGTERM", shutdown);
-
-  return new Promise<void>((resolve) => {
-    child.on("close", () => resolve());
-  });
+  registerChildTreeShutdown(child);
+  return waitForChildClose(child);
 }
 
 /**
@@ -447,14 +835,7 @@ async function runLocalStudioMode(
 async function runEmbeddedMode(
   dir: string,
   startPort: number,
-  options?: {
-    projectName?: string;
-    forceNew?: boolean;
-    noOpen?: boolean;
-    browserPath?: string;
-    userDataDir?: string;
-    remoteDebuggingPort?: number;
-  },
+  options?: EmbeddedStudioOptions,
 ): Promise<void> {
   const { createStudioServer, loadPreviewServerBuildSignature, resolveStudioBundle } =
     await import("../server/studioServer.js");
@@ -504,21 +885,10 @@ async function runEmbeddedMode(
   if (result.type === "already-running") {
     const url = `http://localhost:${result.port}`;
     s.stop(c.success("Already running"));
-    console.log();
-    console.log(`  ${c.dim("Project")}   ${c.accent(pName)}`);
-    console.log(`  ${c.dim("Studio")}    ${c.accent(url)}`);
-    console.log();
-    console.log(
-      `  ${c.dim("Reusing existing server. Use --force-new to start a fresh instance.")}`,
-    );
-    console.log();
-    if (!options?.noOpen) {
-      openBrowser(`${url}#project/${pName}`, {
-        browserPath: options?.browserPath,
-        userDataDir: options?.userDataDir,
-        remoteDebuggingPort: options?.remoteDebuggingPort,
-      });
-    }
+    printStudioSummary(pName, url, {
+      details: ["Reusing existing server. Use --force-new to start a fresh instance."],
+    });
+    openStudioBrowser(url, pName, options);
     return;
   }
 
@@ -529,21 +899,14 @@ async function runEmbeddedMode(
     console.log(`  ${c.warn(`Port ${startPort} is in use, using ${result.port} instead`)}`);
     console.log();
   }
-  console.log(`  ${c.dim("Project")}   ${c.accent(pName)}`);
-  console.log(`  ${c.dim("Studio")}    ${c.accent(url)}`);
-  console.log();
-  console.log(`  ${c.dim("Edit with your AI agent — it has HyperFrames skills installed.")}`);
-  console.log(`  ${c.dim("Changes reload automatically in the studio.")}`);
-  console.log();
-  console.log(`  ${c.dim("Press Ctrl+C to stop")}`);
-  console.log();
-  if (!options?.noOpen) {
-    openBrowser(`${url}#project/${pName}`, {
-      browserPath: options?.browserPath,
-      userDataDir: options?.userDataDir,
-      remoteDebuggingPort: options?.remoteDebuggingPort,
-    });
-  }
+  printStudioSummary(pName, url, {
+    details: [
+      "Edit with your AI agent — it has HyperFrames skills installed.",
+      "Changes reload automatically in the studio.",
+    ],
+    footer: "Press Ctrl+C to stop",
+  });
+  openStudioBrowser(url, pName, options);
 
   // Block until Ctrl+C. Node would normally exit on SIGINT, but the listening
   // HTTP server keeps handles open, so the event loop stays alive after the

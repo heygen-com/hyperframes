@@ -381,7 +381,10 @@ export function useDomSelection({
       if (!doc) return;
 
       const element = findElementForSelection(doc, selection, activeCompPath);
-      if (!element) return;
+      if (!element) {
+        applyDomSelection(null, { revealPanel: false });
+        return;
+      }
 
       const nextSelection = await buildDomSelectionFromTarget(element);
       if (nextSelection) {

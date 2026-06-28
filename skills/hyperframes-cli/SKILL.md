@@ -14,7 +14,7 @@ Everything runs through `npx hyperframes` unless project instructions specify a 
 3. **Lint** — `npx hyperframes lint`
 4. **Validate** — `npx hyperframes validate` (runtime errors + contrast)
 5. **Visual inspect** — `npx hyperframes inspect`
-6. **Preview** — `npx hyperframes preview` opens **Studio**, the timeline editor where the user can manually edit anything (not just watch). Review there, then ask before rendering.
+6. **Preview / edit** — `npx hyperframes preview` opens **Studio**, the timeline editor where the user can manually edit anything (not just watch). Review there, then ask before rendering.
 7. **Render** — pick the variant:
    - Iterate: `npx hyperframes render --quality draft`
    - Deliver: `npx hyperframes render --quality high --output out.mp4`
@@ -29,12 +29,14 @@ For motion-heavy work, prefer snapshot-driven iteration and a `*.motion.json` si
 
 Cross-cutting rules that hold for every command:
 
-- **`--json` is available on every command except `render`, `preview`, and `play`.** Use it for any agent / CI invocation of the supported commands; output includes a `_meta` envelope (cli version, latest available, update advice). `render` reports status via stdout + exit code only — verify success with the post-render check below; `preview` / `play` are servers, no JSON.
+- **`--json` is available on every command except `render`, `preview`, and `play` server modes.** Use it for any agent / CI invocation of the supported commands; output includes a `_meta` envelope (cli version, latest available, update advice). `render` reports status via stdout + exit code only — verify success with the post-render check below. `preview --selection --json` and `preview --context --json` are the preview exceptions: they do not start a server, they query the user's running Studio session and exit.
 - **`doctor --json` always exits 0**, even when the environment is broken. Gate on the payload's `ok` field: `npx hyperframes doctor --json | jq -e '.ok' > /dev/null`. This insulates pipelines from CLI release churn.
 - **Non-TTY mode is auto-detected.** When `stdout` is not a TTY (CI, agents, piped output) the CLI auto-switches to non-interactive; `init` then **requires `--example`**. Pass `--non-interactive` to force this mode even on a TTY.
 - **CI gating on render**: `--strict` fails on lint errors, `--strict-all` fails on warnings too, `--strict-variables` fails on undeclared `--variables` keys.
 - **Paths in `--json` are redacted** — `$HOME` becomes the literal `$HOME` so output is safe to paste into bug reports and agent contexts.
 - **Render is user-gated.** Never auto-render once the checks pass. Pause at `preview`, tell the user the video is editable in Studio, and render only after they approve.
+- **Use Studio context for user-directed edits.** When the user says "this selected element", "the thing I clicked", "current selection", or similar, ask them to select it in Studio, then run `npx hyperframes preview --context --json --context-fields selection`. Use the returned `selection.target.hfId` / `selector`, `selection.sourceFile`, `selection.currentTime`, and `selection.thumbnailUrl` to anchor the edit. If `selection` is `null` and `errors.selection.code` is `no-selection`, ask the user to click the element and rerun; do not guess from screenshots.
+- **Keep Studio context compact.** `preview --context --json` returns compact selection by default. Add `--context-fields selection`, `--context-fields selection,lint`, or `--context-fields lint` to avoid bloating agent context. Use `--context-detail full` only when you need heavy fields like computed styles, inline styles, or text-field metadata.
 - **Post-render verification.** After `render` returns exit 0, confirm the output file exists and has plausible size before reporting success: `[ -s "$OUTPUT" ] || echo "render produced no output"`. The CLI prints `◇  <path>` on success; for long renders also sanity-check duration with `ffprobe -i "$OUTPUT" -show_format -v error`.
 
 ## Routing
