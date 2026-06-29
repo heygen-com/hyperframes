@@ -95,7 +95,7 @@ interface TimelineCanvasProps {
   onMoveKeyframe?: (
     elementId: string,
     fromClipPercentage: number,
-    toTweenPercentage: number,
+    toClipPercentage: number,
   ) => void;
   onContextMenuClip?: (e: React.MouseEvent, element: TimelineElement) => void;
   beatAnalysis?: MusicBeatAnalysis | null;

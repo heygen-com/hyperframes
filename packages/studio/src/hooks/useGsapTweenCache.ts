@@ -128,7 +128,7 @@ export async function fetchParsedAnimations(
  * Fall back to the sub-comp HOST's bounds, resolved via domClipChildren (the host's
  * data-composition-src is stripped in the rendered DOM, so we can't query it).
  */
-function resolveClipTimingBasis(
+export function resolveClipTimingBasis(
   elementId: string,
   sourceFile: string,
   elements: ReadonlyArray<{

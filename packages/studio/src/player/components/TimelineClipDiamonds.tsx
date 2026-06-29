@@ -37,12 +37,13 @@ interface TimelineClipDiamondsProps {
   onShiftClickKeyframe?: (elementId: string, percentage: number) => void;
   onContextMenuKeyframe?: (e: React.MouseEvent, elementId: string, percentage: number) => void;
   /** Drag-to-retime: move a keyframe to a new time, preserving its value + ease.
-   *  `fromClipPercentage` is clip-relative (identifies the dragged keyframe);
-   *  `toTweenPercentage` is the tween-relative drop position. */
+   *  Both percentages are clip-relative: `fromClipPercentage` identifies the
+   *  dragged keyframe, `toClipPercentage` is the neighbour-clamped drop position.
+   *  The handler decides move (within the tween) vs resize (past its boundary). */
   onMoveKeyframe?: (
     elementId: string,
     fromClipPercentage: number,
-    toTweenPercentage: number,
+    toClipPercentage: number,
   ) => void;
 }
 
@@ -58,7 +59,6 @@ type DragState = {
   kfKey: string;
   startX: number;
   fromClipPct: number;
-  fromTweenPct: number;
   moved: boolean;
 };
 
@@ -94,6 +94,9 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
   const sorted = keyframesData.keyframes
     .filter((kf) => kf.percentage >= KF_MIN_PCT && kf.percentage <= KF_MAX_PCT)
     .sort((a, b) => a.percentage - b.percentage);
+  // Clip-%s of the sorted keyframes — the neighbour clamp (preview + drop) needs
+  // the whole row to bound the dragged diamond between its immediate siblings.
+  const sortedClipPcts = sorted.map((k) => k.percentage);
   const baseColor = isSelected ? accentColor : "#a3a3a3";
   const baseOpacity = isSelected ? 0.4 : 0.25;
   const canDrag = isSelected && !!onMoveKeyframe;
@@ -147,7 +150,6 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
               kfKey,
               startX: e.clientX,
               fromClipPct: kf.percentage,
-              fromTweenPct: kf.tweenPercentage ?? kf.percentage,
               moved: false,
             };
           }
@@ -166,6 +168,8 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
                 pointerMoveX: e.clientX,
                 clipWidthPx,
                 draggedClipPct: d.fromClipPct,
+                draggedIndex: i,
+                sortedClipPcts,
               }),
             });
           }
@@ -187,14 +191,14 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
             pointerUpX: e.clientX,
             clipWidthPx,
             draggedClipPct: d.fromClipPct,
-            draggedTweenPct: d.fromTweenPct,
-            keyframes: sorted,
+            draggedIndex: i,
+            sortedClipPcts,
           });
           if (res.kind === "click") {
             if (e.shiftKey) onShiftClickKeyframe?.(elementId, kf.percentage);
             else onClickKeyframe?.(kf.percentage);
-          } else if (res.kind === "move" && res.toTweenPct != null) {
-            onMoveKeyframe?.(elementId, d.fromClipPct, res.toTweenPct);
+          } else if (res.kind === "move" && res.toClipPct != null) {
+            onMoveKeyframe?.(elementId, d.fromClipPct, res.toClipPct);
           }
         };
 

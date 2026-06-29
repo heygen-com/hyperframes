@@ -43,7 +43,7 @@ export interface TimelineEditCallbacks {
   onMoveKeyframe?: (
     elementId: string,
     fromClipPercentage: number,
-    toTweenPercentage: number,
+    toClipPercentage: number,
   ) => void;
   onToggleKeyframeAtPlayhead?: (element: TimelineElement) => void;
 }

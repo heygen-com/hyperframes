@@ -18,6 +18,9 @@ import {
 } from "./editor/manualEditingAvailability";
 import { useStudioPlaybackContext, useStudioShellContext } from "../contexts/StudioContext";
 import { useDomEditActionsContext, useDomEditSelectionContext } from "../contexts/DomEditContext";
+import { resolveTweenStart, resolveTweenDuration } from "../utils/globalTimeCompiler";
+import { resolveClipTimingBasis } from "../hooks/useGsapTweenCache";
+import { resolveKeyframeRetime } from "./editor/keyframeRetime";
 import { TimelineEditProvider } from "../contexts/TimelineEditContext";
 import type { BlockPreviewInfo } from "./sidebar/BlocksTab";
 import { readStudioUiPreferences } from "../utils/studioUiPreferences";
@@ -138,6 +141,7 @@ export function StudioPreviewArea({
     handleGsapRemoveAllKeyframes,
     buildDomSelectionForTimelineElement,
     applyMarqueeSelection,
+    commitMutation,
   } = useDomEditActionsContext();
 
   // fallow-ignore-next-line complexity
@@ -194,11 +198,57 @@ export function StudioPreviewArea({
         const target = resolveKeyframeTarget(pct);
         if (target) handleGsapMoveKeyframeToPlayhead(target.animId, target.tweenPct);
       },
-      // Drag-to-retime: identify the keyframe by its clip-% (resolveKeyframeTarget
-      // also gives its tween-% for the `from`), then move it to the dropped tween-%.
-      onMoveKeyframe: (_elId: string, fromClipPct: number, toTweenPct: number) => {
+      // Drag-to-retime. The diamond reports clip-%s; resolveKeyframeTarget gives
+      // the dragged keyframe's anim + tween-%. We convert the clip-% drop to an
+      // absolute time (via the clip's timing basis) and let resolveKeyframeRetime
+      // decide: a drop inside the tween window is a plain move (re-key tween-%); a
+      // drop past the boundary (last keyframe past the end, first before the start)
+      // resizes the tween — position/duration grow so the dragged keyframe lands at
+      // the drop while every other keyframe keeps its absolute time (value+ease too).
+      onMoveKeyframe: (_elId: string, fromClipPct: number, toClipPct: number) => {
         const target = resolveKeyframeTarget(fromClipPct);
-        if (target) handleGsapMoveKeyframe(target.animId, target.tweenPct, toTweenPct);
+        const sel = domEditSelection;
+        if (!target || !sel) return;
+        const anim = selectedGsapAnimations.find((a) => a.id === target.animId);
+        const tweenStart = anim ? resolveTweenStart(anim) : null;
+        if (!anim || tweenStart === null) return;
+        const tweenDuration = anim.duration ?? resolveTweenDuration(anim);
+        const sourceFile = sel.sourceFile || activeCompPath || "index.html";
+        const { elements, domClipChildren } = usePlayerStore.getState();
+        const { elStart, elDuration } = resolveClipTimingBasis(
+          sel.id ?? "",
+          sourceFile,
+          elements,
+          domClipChildren,
+        );
+        const dropAbsTime = elStart + (toClipPct / 100) * elDuration;
+        const decision = resolveKeyframeRetime({
+          keyframes: anim.keyframes?.keyframes ?? [],
+          draggedTweenPct: target.tweenPct,
+          tweenStart,
+          tweenDuration,
+          dropAbsTime,
+        });
+        if (decision.kind === "move" && decision.toTweenPct != null) {
+          handleGsapMoveKeyframe(target.animId, target.tweenPct, decision.toTweenPct);
+        } else if (
+          decision.kind === "resize" &&
+          decision.keyframes &&
+          decision.position != null &&
+          decision.duration != null
+        ) {
+          void commitMutation(
+            {
+              type: "replace-with-keyframes",
+              animationId: target.animId,
+              targetSelector: anim.targetSelector,
+              position: decision.position,
+              duration: decision.duration,
+              keyframes: decision.keyframes,
+            },
+            { label: "Retime keyframe (resize tween)", softReload: true },
+          );
+        }
       },
       onChangeKeyframeEase: (_elId: string, _pct: number, ease: string) => {
         for (const anim of selectedGsapAnimations) {
@@ -246,6 +296,8 @@ export function StudioPreviewArea({
       buildDomSelectionForTimelineElement,
       projectId,
       activeCompPath,
+      domEditSelection,
+      commitMutation,
     ],
   );
 
