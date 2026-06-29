@@ -157,6 +157,33 @@ function findPositionSetAnimation(
 }
 
 /**
+ * Find the EXISTING static position HOLD to update for a static-hold drag. Not
+ * just a `set`: a degenerate `tl.to("#el",{duration:0,x,y})` (what
+ * remove-all-keyframes leaves behind) is a held position too, and the next drag
+ * must UPDATE it in place rather than append a second `gsap.set` that fights it
+ * (the duplicate-position-write bug). Only zero-duration holds qualify — a
+ * live-duration `to`/`from` is NOT a static hold (and in the static path it's a
+ * stale/phantom parse: re-committing it would resurrect a just-deleted tween).
+ * Prefers a `set` (the canonical static channel) when both forms exist.
+ */
+function findExistingPositionWrite(
+  animations: GsapAnimation[],
+  selector: string,
+): GsapAnimation | null {
+  const set = findPositionSetAnimation(animations, selector);
+  if (set) return set;
+  return (
+    animations.find(
+      (a) =>
+        a.targetSelector === selector &&
+        a.propertyGroup === "position" &&
+        !a.keyframes &&
+        (a.duration ?? 0) === 0,
+    ) ?? null
+  );
+}
+
+/**
  * Commit a STATIC element drag as a `tl.set("#el",{x,y})` — the single-source
  * position channel for elements with no position animation. Idempotent: a
  * re-nudge of an element that already has a `set` UPDATES that set's x/y
@@ -235,7 +262,7 @@ export async function commitStaticGsapPosition(
   );
 }
 
-export { findPositionSetAnimation };
+export { findExistingPositionWrite };
 
 function findRotationSetAnimation(
   animations: GsapAnimation[],

@@ -126,6 +126,32 @@ describe("css adapter", () => {
     vi.restoreAllMocks();
   });
 
+  it("does not rescan element animations on every seek", () => {
+    const el = document.createElement("div");
+    el.style.animationName = "spin";
+    document.body.appendChild(el);
+
+    vi.spyOn(window, "getComputedStyle").mockImplementation(() => {
+      return { animationName: "spin" } as CSSStyleDeclaration;
+    });
+
+    const animation = { currentTime: 0, pause: vi.fn(), play: vi.fn() } as unknown as Animation;
+    const getAnimations = vi.fn(() => [animation]);
+    (el as HTMLElement & { getAnimations?: () => Animation[] }).getAnimations = getAnimations;
+
+    const adapter = createCssAdapter();
+    adapter.discover();
+    adapter.seek({ time: 1 });
+    adapter.seek({ time: 2 });
+    adapter.seek({ time: 3 });
+
+    expect(getAnimations).toHaveBeenCalledTimes(1);
+    expect(animation.currentTime).toBe(3000);
+
+    document.body.removeChild(el);
+    vi.restoreAllMocks();
+  });
+
   it("play resumes WAAPI animations and restores inline styles", () => {
     const el = document.createElement("div");
     el.style.animationName = "spin";

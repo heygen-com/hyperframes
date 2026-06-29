@@ -18,6 +18,7 @@ import { useGsapScriptCommits } from "./useGsapScriptCommits";
 import { useGsapCacheVersion } from "./useGsapTweenCache";
 import { useDomEditWiring } from "./useDomEditWiring";
 import { useGsapAwareEditing } from "./useGsapAwareEditing";
+import { useStudioSelectionPublisher } from "./useStudioSelectionPublisher";
 
 // ── Types ──
 
@@ -54,6 +55,7 @@ export interface UseDomEditSessionParams {
   projectIdRef: React.MutableRefObject<string | null>;
   previewIframe: HTMLIFrameElement | null;
   refreshKey: number;
+  previewDocumentVersion: number;
   rightPanelTab: RightPanelTab;
   applyStudioManualEditsToPreviewRef: React.MutableRefObject<
     (iframe: HTMLIFrameElement) => Promise<void>
@@ -96,6 +98,7 @@ export function useDomEditSession({
   projectIdRef,
   previewIframe,
   refreshKey,
+  previewDocumentVersion,
   rightPanelTab,
   applyStudioManualEditsToPreviewRef,
   syncPreviewHistoryHotkey,
@@ -166,6 +169,15 @@ export function useDomEditSession({
     showToast,
     domEditSelectionRef,
     domEditSelection,
+  });
+
+  useStudioSelectionPublisher({
+    projectId,
+    domEditSelection,
+    domEditSelectionRef,
+    refreshKey,
+    previewDocumentVersion,
+    refreshDomEditSelectionFromPreview,
   });
 
   // ── GSAP cache (hoisted so both useGsapScriptCommits and useDomEditWiring share the same instance) ──

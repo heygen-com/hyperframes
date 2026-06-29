@@ -71,7 +71,7 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
     commitMutation,
     selectedGsapAnimations,
     handleGsapRemoveKeyframe,
-    handleGsapDeleteAllForElement,
+    handleGsapRemoveAllKeyframes,
   } = useDomEditContext();
   const { rect, geometry, geometryResolved, visibleInPreview, home, pScale } = useMotionPathData(
     iframeRef,
@@ -489,7 +489,7 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
           state={kfMenu}
           onClose={() => setKfMenu(null)}
           onDelete={(_elId, pct) => animId && handleGsapRemoveKeyframe(animId, pct)}
-          onDeleteAll={(elId) => handleGsapDeleteAllForElement(`#${elId}`)}
+          onDeleteAll={() => animId && handleGsapRemoveAllKeyframes(animId)}
         />
       )}
     </>

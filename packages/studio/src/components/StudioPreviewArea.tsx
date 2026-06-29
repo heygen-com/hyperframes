@@ -133,7 +133,7 @@ export function StudioPreviewArea({
     handleGsapUpdateMeta,
     handleGsapAddKeyframe,
     handleGsapConvertToKeyframes,
-    handleGsapDeleteAllForElement,
+    handleGsapRemoveAllKeyframes,
     buildDomSelectionForTimelineElement,
     applyMarqueeSelection,
   } = useDomEditActionsContext();
@@ -158,9 +158,13 @@ export function StudioPreviewArea({
       onSplitElement: handleTimelineElementSplit,
       onRazorSplit: handleRazorSplit,
       onRazorSplitAll: handleRazorSplitAll,
-      onDeleteAllKeyframes: (elId: string) => {
-        const rawId = elId.includes("#") ? (elId.split("#").pop() ?? elId) : elId;
-        handleGsapDeleteAllForElement(`#${rawId}`);
+      onDeleteAllKeyframes: () => {
+        // Hold the element where it is (collapse keyframes to a static set) rather
+        // than deleting the whole animation — deleting strands a stale GSAP base
+        // that the next drag adds to, flinging the element off-screen.
+        const anim = selectedGsapAnimations.find((a) => a.keyframes);
+        if (!anim) return;
+        handleGsapRemoveAllKeyframes(anim.id);
       },
       // fallow-ignore-next-line complexity
       onDeleteKeyframe: (_elId: string, pct: number) => {
@@ -208,7 +212,7 @@ export function StudioPreviewArea({
       handleTimelineElementSplit,
       handleRazorSplit,
       handleRazorSplitAll,
-      handleGsapDeleteAllForElement,
+      handleGsapRemoveAllKeyframes,
       domEditSelection?.id,
       selectedGsapAnimations,
       handleGsapRemoveKeyframe,

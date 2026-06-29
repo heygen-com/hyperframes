@@ -83,7 +83,7 @@ export function StudioApp() {
   const [previewIframe, setPreviewIframe] = useState<HTMLIFrameElement | null>(null);
   const [compositionLoading, setCompositionLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [, setPreviewDocumentVersion] = useState(0);
+  const [previewDocumentVersion, setPreviewDocumentVersion] = useState(0);
   const [blockPreview, setBlockPreview] = useState<BlockPreviewInfo | null>(null);
   const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
   const activeCompPathRef = useRef(activeCompPath);
@@ -296,6 +296,7 @@ export function StudioApp() {
     projectIdRef: fileManager.projectIdRef,
     previewIframe,
     refreshKey,
+    previewDocumentVersion,
     rightPanelTab: panelLayout.rightPanelTab,
     applyStudioManualEditsToPreviewRef: previewPersistence.applyStudioManualEditsToPreviewRef,
     syncPreviewHistoryHotkey: appHotkeys.syncPreviewHistoryHotkey,

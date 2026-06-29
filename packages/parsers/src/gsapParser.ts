@@ -1267,13 +1267,13 @@ function isEditablePropertyKey(key: string): boolean {
   return !BUILTIN_VAR_KEYS.has(key) && !DROPPED_VAR_KEYS.has(key) && !EXTRAS_KEYS.has(key);
 }
 
-function makeObjectProperty(key: string, value: number | string): AstNode {
+function makeObjectProperty(key: string, value: number | string | boolean): AstNode {
   const obj = parseExpr(`{ ${safeKey(key)}: ${valueToCode(value)} }`);
   return obj.properties[0];
 }
 
 /** Set (or insert) a single key on an ObjectExpression, preserving sibling keys. */
-function setVarsKey(varsArg: AstNode, key: string, value: number | string): void {
+function setVarsKey(varsArg: AstNode, key: string, value: number | string | boolean): void {
   if (varsArg?.type !== "ObjectExpression") return;
   const existing = varsArg.properties.find(
     (p: AstNode) => isObjectProperty(p) && propKeyName(p) === key,
@@ -1624,10 +1624,15 @@ export function removeAnimationFromScript(script: string, animationId: string): 
     target = parsed.located.find((l) => l.id === convertedId);
   }
   if (!target) return script;
-  const node = target.call.node;
-  const stmtPath = findStatementPath(target.call.path);
-  if (!stmtPath) return script;
+  removeCallFromAst(target.call);
+  return recast.print(parsed.ast).code;
+}
 
+/** Remove a single located tween call from the AST (standalone stmt or chain link). */
+function removeCallFromAst(call: TweenCallInfo): void {
+  const node = call.node;
+  const stmtPath = findStatementPath(call.path);
+  if (!stmtPath) return;
   const parentCall = findChainParentCall(stmtPath.node, node);
   if (parentCall) {
     // Inner link of a chain — splice it out by re-pointing the next link.
@@ -1638,6 +1643,36 @@ export function removeAnimationFromScript(script: string, animationId: string): 
   } else {
     // Standalone tween — remove the whole statement.
     stmtPath.prune();
+  }
+}
+
+/**
+ * Recast twin of {@link dedupePositionWritesInScript} (acorn). Enforce "exactly
+ * one position write per element": keep `keepId` (or the LAST position write in
+ * source order if stale), remove every OTHER pure-position write
+ * (`propertyGroup === "position"` — tl.to/from/fromTo flat-or-keyframed, tl.set,
+ * standalone gsap.set, incl. degenerate duration:0 tweens). Non-position writes
+ * for the selector are left untouched.
+ */
+export function dedupePositionWritesInScript(
+  script: string,
+  selector: string,
+  keepId?: string,
+): string {
+  let parsed: ParsedGsapAst;
+  try {
+    parsed = parseGsapAst(script);
+  } catch {
+    return script;
+  }
+  const posWrites = parsed.located.filter(
+    (l) => l.animation.targetSelector === selector && l.animation.propertyGroup === "position",
+  );
+  if (posWrites.length <= 1) return script;
+  const keeper = posWrites.find((l) => l.id === keepId) ?? posWrites[posWrites.length - 1]!;
+  for (const l of posWrites) {
+    if (l === keeper) continue;
+    removeCallFromAst(l.call);
   }
   return recast.print(parsed.ast).code;
 }
@@ -2478,6 +2513,29 @@ export function removeAllKeyframesFromScript(script: string, animationId: string
   const collapseEntry = method === "from" ? kfEntries[0]! : kfEntries[kfEntries.length - 1]!;
   const record = objectExpressionToRecord(collapseEntry.prop.value, loc.parsed.scope);
   collapseKeyframesToFlat(loc.target.call.varsArg, record);
+  // Removing ALL keyframes HOLDS the element statically — collapse to a
+  // zero-duration immediateRender tween (a `gsap.set` equivalent), dropping the
+  // original duration/ease so the element does not re-animate from its base
+  // toward the collapsed value (which moved it out from under the selection).
+  removeVarsKey(loc.target.call.varsArg, "ease");
+  setVarsKey(loc.target.call.varsArg, "duration", 0);
+  setVarsKey(loc.target.call.varsArg, "immediateRender", true);
+
+  // Removing all keyframes of a POSITION tween leaves exactly ONE held state:
+  // strip every sibling position write for the same selector (stray gsap.set or a
+  // second tl.to/tl.set) so the collapsed hold is the lone position source. Only
+  // position siblings are stripped; rotation/opacity/etc. for the selector remain.
+  if (loc.target.animation.propertyGroup === "position") {
+    for (const l of loc.parsed.located) {
+      if (l === loc.target) continue;
+      if (
+        l.animation.targetSelector === loc.target.animation.targetSelector &&
+        l.animation.propertyGroup === "position"
+      ) {
+        removeCallFromAst(l.call);
+      }
+    }
+  }
 
   return recast.print(loc.parsed.ast).code;
 }

@@ -8,6 +8,7 @@ export function createCssAdapter(params?: {
     el: HTMLElement;
     baseDelay: string;
     basePlayState: string;
+    animations: Animation[];
   }> = [];
 
   const getAnimationsForElement = (el: HTMLElement): Animation[] => {
@@ -84,6 +85,7 @@ export function createCssAdapter(params?: {
           el: rawEl,
           baseDelay: rawEl.style.animationDelay || "",
           basePlayState: rawEl.style.animationPlayState || "",
+          animations: getAnimationsForElement(rawEl),
         });
       }
     },
@@ -95,7 +97,7 @@ export function createCssAdapter(params?: {
           ? params.resolveStartSeconds(entry.el)
           : Number.parseFloat(entry.el.getAttribute("data-start") ?? "0") || 0;
         const localTimeMs = Math.max(0, time - start) * 1000;
-        const animations = getAnimationsForElement(entry.el);
+        const animations = entry.animations;
         if (animations.length > 0) {
           seekAnimations(animations, localTimeMs);
           continue;
@@ -109,7 +111,7 @@ export function createCssAdapter(params?: {
     pause: () => {
       for (const entry of entries) {
         if (!entry.el.isConnected) continue;
-        const animations = getAnimationsForElement(entry.el);
+        const animations = entry.animations;
         if (animations.length > 0) {
           pauseAnimations(animations);
         }
@@ -120,7 +122,7 @@ export function createCssAdapter(params?: {
       for (const entry of entries) {
         if (!entry.el.isConnected) continue;
         restoreInlineStyles(entry);
-        playAnimations(getAnimationsForElement(entry.el));
+        playAnimations(entry.animations);
       }
     },
     revert: () => {

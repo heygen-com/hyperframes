@@ -155,7 +155,7 @@ function removeProp(ms: MagicString, propNode: Node, editableProps: Node[]): voi
 }
 
 /** Serialize a vars record to an object-literal source: `{ k: v, ... }`. */
-function buildVarsObjectCode(record: Record<string, number | string>): string {
+function buildVarsObjectCode(record: Record<string, number | string | boolean>): string {
   const entries = Object.entries(record).map(([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`);
   return entries.length > 0 ? `{ ${entries.join(", ")} }` : "{}";
 }
@@ -468,16 +468,10 @@ export function addAnimationToScript(
   return { script: result, id: newId };
 }
 
-export function removeAnimationFromScript(script: string, animationId: string): string {
-  const parsed = parseGsapScriptAcornForWrite(script);
-  if (!parsed) return script;
-  const target = parsed.located.find((l) => l.id === animationId);
-  if (!target) return script;
-
-  const ms = new MagicString(script);
-  const N = target.call.node;
-  const exprStmt = findEnclosingExpressionStatement(target.call.ancestors);
-
+/** Splice a single located tween call out of a MagicString (standalone stmt or chain link). */
+function removeCallFromMagicString(ms: MagicString, call: TweenCallInfo, script: string): void {
+  const N = call.node;
+  const exprStmt = findEnclosingExpressionStatement(call.ancestors);
   if (N.callee?.object?.type !== "CallExpression" && exprStmt?.expression === N) {
     // Standalone `tl.method(...)` — remove the whole ExpressionStatement
     const end =
@@ -489,7 +483,50 @@ export function removeAnimationFromScript(script: string, animationId: string): 
     // Chain link — splice out `.method(args)` from N.callee.object.end to N.end
     ms.remove(N.callee.object.end, N.end);
   }
+}
 
+export function removeAnimationFromScript(script: string, animationId: string): string {
+  const parsed = parseGsapScriptAcornForWrite(script);
+  if (!parsed) return script;
+  const target = parsed.located.find((l) => l.id === animationId);
+  if (!target) return script;
+
+  const ms = new MagicString(script);
+  removeCallFromMagicString(ms, target.call, script);
+  return ms.toString();
+}
+
+/**
+ * Enforce "exactly one position write per element". Position commits (drag, add
+ * keyframe, static hold) must never leave the same selector with two conflicting
+ * position representations (e.g. a degenerate `tl.to("#box",{duration:0,x,y})`
+ * AND a `gsap.set("#box",{x,y})`) — the later one silently overrides the earlier,
+ * so the element "can't move" / snaps / leaves residue on delete.
+ *
+ * Keeps `keepId` (the write the commit just edited); falls back to the LAST
+ * position write in source order (the runtime-effective one) if `keepId` is stale.
+ * Removes every OTHER pure-position write (`propertyGroup === "position"`, which
+ * covers tl.to/from/fromTo flat-or-keyframed, tl.set, and standalone gsap.set,
+ * including degenerate duration:0 tweens). Non-position writes for the same
+ * selector (rotation / opacity / size / mixed) are left untouched.
+ */
+export function dedupePositionWritesInScript(
+  script: string,
+  selector: string,
+  keepId?: string,
+): string {
+  const parsed = parseGsapScriptAcornForWrite(script);
+  if (!parsed) return script;
+  const posWrites = parsed.located.filter(
+    (l) => l.animation.targetSelector === selector && l.animation.propertyGroup === "position",
+  );
+  if (posWrites.length <= 1) return script;
+  const keeper = posWrites.find((l) => l.id === keepId) ?? posWrites[posWrites.length - 1]!;
+  const ms = new MagicString(script);
+  for (const l of posWrites) {
+    if (l === keeper) continue;
+    removeCallFromMagicString(ms, l.call, script);
+  }
   return ms.toString();
 }
 
@@ -1180,6 +1217,7 @@ export function removePropertyFromAnimation(
  * keyframe's properties: the first for `from()`, the last otherwise (the
  * destination = the visible resting state).
  */
+// fallow-ignore-next-line complexity
 export function removeAllKeyframesFromScript(script: string, animationId: string): string {
   const parsed = parseGsapScriptAcornForWrite(script);
   if (!parsed) return script;
@@ -1198,25 +1236,44 @@ export function removeAllKeyframesFromScript(script: string, animationId: string
     target.call,
     buildVarsObjectCode(buildCollapsedFlatVars(target.animation, collapse)),
   );
+  // Removing all keyframes of a POSITION tween must leave exactly ONE held state:
+  // strip every sibling position write for the same selector (a stray gsap.set or
+  // a second tl.to/tl.set) so the collapsed hold is the lone position source. Only
+  // position siblings are stripped; rotation/opacity/etc. for the selector remain.
+  if (target.animation.propertyGroup === "position") {
+    for (const l of parsed.located) {
+      if (l === target) continue;
+      if (
+        l.animation.targetSelector === target.animation.targetSelector &&
+        l.animation.propertyGroup === "position"
+      ) {
+        removeCallFromMagicString(ms, l.call, script);
+      }
+    }
+  }
   return ms.toString();
 }
 
 // Flat vars for a tween collapsing its keyframes onto one stop: existing
 // top-level props, then the collapse keyframe's props (skip per-keyframe
-// `ease`), then duration/ease/extras. Drops keyframes + easeEach by omission.
+// `ease`), then extras. Removing all keyframes HOLDS the element statically —
+// collapse to a zero-duration immediateRender tween (a `gsap.set` equivalent),
+// dropping the original duration/ease so the element does not re-animate.
 function buildCollapsedFlatVars(
   animation: GsapAnimation,
   collapse: { properties: Record<string, number | string> },
-): Record<string, number | string> {
-  const flat: Record<string, number | string> = { ...animation.properties };
+): Record<string, number | string | boolean> {
+  const flat: Record<string, number | string | boolean> = { ...animation.properties };
   for (const [k, v] of Object.entries(collapse.properties)) {
     if (k !== "ease") flat[k] = v;
   }
-  if (animation.duration !== undefined) flat.duration = animation.duration;
-  if (animation.ease) flat.ease = animation.ease;
   for (const [k, v] of Object.entries(animation.extras ?? {})) {
     if (typeof v === "number" || typeof v === "string") flat[k] = v;
   }
+  // Static hold wins over any carried extras: zero duration + immediateRender,
+  // no ease.
+  flat.duration = 0;
+  flat.immediateRender = true;
   return flat;
 }
 

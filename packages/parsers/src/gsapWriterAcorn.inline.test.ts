@@ -71,6 +71,11 @@ window.__timelines["scene"].to("#a", { keyframes: { "0%": { x: 0 }, "100%": { x:
     const id = parseGsapScriptAcorn(kf).animations[0]!.id;
     const out = removeAllKeyframesFromScript(kf, id);
     expect(out).not.toContain("keyframes");
+    // Static hold (gsap.set equivalent): zero duration + immediateRender so the
+    // element does not re-animate after collapse.
+    const anim = parseGsapScriptAcorn(out).animations[0]!;
+    expect(anim.duration).toBe(0);
+    expect(anim.extras?.immediateRender).toBe("__raw:true");
   });
 
   it("adds the first tween to an empty inline timeline", () => {

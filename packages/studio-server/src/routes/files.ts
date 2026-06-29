@@ -50,6 +50,7 @@ import {
   splitIntoPropertyGroupsFromScript,
   shiftPositionsInScript,
   scalePositionsInScript,
+  dedupePositionWritesInScript,
 } from "@hyperframes/parsers/gsap-writer-acorn";
 import {
   removeElementFromHtml,
@@ -737,6 +738,14 @@ type GsapMutationRequest =
       targetSelector: string;
     }
   | {
+      // Enforce "exactly one position write per element": keep `keepAnimationId`
+      // (the write the commit is editing) and strip every other pure-position
+      // write for the selector. Self-heals files that already have duplicates.
+      type: "consolidate-position-writes";
+      targetSelector: string;
+      keepAnimationId?: string;
+    }
+  | {
       // Rewrite all top-level helper/loop constructs into literal tweens so
       // computed keyframes become directly editable (visual no-op).
       type: "unroll-timeline";
@@ -896,6 +905,14 @@ function executeGsapMutationAcorn(
         script = removeAnimationFromScript(script, anim.id);
       }
       return script;
+    }
+    case "consolidate-position-writes": {
+      if (!body.targetSelector) return block.scriptText;
+      return dedupePositionWritesInScript(
+        block.scriptText,
+        body.targetSelector,
+        body.keepAnimationId,
+      );
     }
     case "remove-property": {
       const r = requireAnimation(block.scriptText, body.animationId);
@@ -1101,6 +1118,7 @@ async function executeGsapMutationRecast(
     addAnimationWithKeyframesToScript,
     splitAnimationsInScript,
     splitIntoPropertyGroups,
+    dedupePositionWritesInScript,
   } = parser;
 
   function requireAnimation(
@@ -1198,6 +1216,14 @@ async function executeGsapMutationRecast(
         script = removeAnimationFromScript(script, anim.id);
       }
       return script;
+    }
+    case "consolidate-position-writes": {
+      if (!body.targetSelector) return block.scriptText;
+      return dedupePositionWritesInScript(
+        block.scriptText,
+        body.targetSelector,
+        body.keepAnimationId,
+      );
     }
     case "remove-property": {
       const r = requireAnimation(block.scriptText, body.animationId);

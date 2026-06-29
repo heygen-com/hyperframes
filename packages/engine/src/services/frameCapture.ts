@@ -990,6 +990,13 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     await gotoEntryPage();
     logInitPhase("page.goto complete");
 
+    // Flush the GSAP proxy queue synchronously instead of waiting for
+    // rAF-based batch ticks (100 ops/tick at ~16ms). In headless mode there's
+    // no UI responsiveness concern, so draining instantly eliminates the
+    // largest init-time cost for tween-heavy compositions.
+    await page.evaluate(`window.__hfFlushSync?.()`);
+    logInitPhase("GSAP proxy flush complete");
+
     const pageReadyTimeout =
       session.config?.playerReadyTimeout ?? DEFAULT_CONFIG.playerReadyTimeout;
     await pollHfReady(page, pageReadyTimeout);
@@ -1001,24 +1008,37 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     await applyVideoMetadataHints(page, session.options.videoMetadataHints);
     logInitPhase("applyVideoMetadataHints complete");
 
-    // Wait for all video elements to have decoded their CURRENT frame, not
-    // just metadata. readyState >= 2 (HAVE_CURRENT_DATA) means a frame is
-    // actually rasterized and ready to paint — at >= 1 (HAVE_METADATA) we
-    // only know the dimensions, and the first <video> screenshot can come
-    // back as a black/blank rectangle. This bites compositions with two
-    // <video> elements of different codecs (h264 mp4 + VP9 webm) where the
-    // faster decoder lets the readiness check pass while the slower one
-    // hasn't painted, producing a black "first frame" for the slower clip.
-    // skipReadinessVideoIds excludes natively-extracted videos (e.g. HDR HEVC
-    // sources) whose frames come from ffmpeg out-of-band. videoMetadataHints
-    // supply intrinsic dimensions for skipped videos whose layout depends on
-    // aspect ratio, while Chromium may still fail to decode/load metadata.
-    const videosReady = await pollVideosReady(
-      page,
-      session.options.skipReadinessVideoIds ?? [],
-      pageReadyTimeout,
-    );
-    logInitPhase("pollVideosReady complete");
+    // Run independent readiness checks in parallel — videos, images, fonts,
+    // and Tailwind don't depend on each other's completion.
+    const skipVideoIds = session.options.skipReadinessVideoIds ?? [];
+    const [videosReady] = await Promise.all([
+      pollVideosReady(page, skipVideoIds, pageReadyTimeout),
+      pollImagesReady(page, pageReadyTimeout).then(async (ready) => {
+        if (!ready) {
+          const failedImages = await page.evaluate(() => {
+            return Array.from(document.querySelectorAll("img"))
+              .filter((img) => {
+                const ie = img as HTMLImageElement;
+                const src = ie.getAttribute("src") || "";
+                if (!src || src.startsWith("data:")) return false;
+                return !(ie.complete && ie.naturalWidth > 0);
+              })
+              .map((img) => (img as HTMLImageElement).src || img.getAttribute("src") || "(no src)")
+              .join(", ");
+          });
+          console.warn(
+            `[FrameCapture] Some image elements did not load within ${pageReadyTimeout}ms: ${failedImages}. ` +
+              `Continuing render — affected images may appear blank/missing in early frames.`,
+          );
+        }
+        await decodeAllImages(page);
+        return ready;
+      }),
+      page.evaluate(`document.fonts?.ready`),
+      waitForOptionalTailwindReady(page, pageReadyTimeout),
+    ]);
+    logInitPhase("media + fonts + tailwind ready");
+
     if (!videosReady) {
       const failedVideos = await page.evaluate((skipIdList: readonly string[]) => {
         const skip = new Set(skipIdList);
@@ -1027,38 +1047,13 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
           .filter((v) => (v as HTMLVideoElement).readyState < 2 && !(v as HTMLVideoElement).error)
           .map((v) => (v as HTMLVideoElement).src || v.getAttribute("src") || "(no src)")
           .join(", ");
-      }, session.options.skipReadinessVideoIds ?? []);
+      }, skipVideoIds);
       console.warn(
         `[FrameCapture] Some video elements did not decode within ${pageReadyTimeout}ms: ${failedVideos}. ` +
           `Continuing render — affected videos will appear as blank/black frames.`,
       );
     }
 
-    const imagesReady = await pollImagesReady(page, pageReadyTimeout);
-    if (!imagesReady) {
-      const failedImages = await page.evaluate(() => {
-        return Array.from(document.querySelectorAll("img"))
-          .filter((img) => {
-            const ie = img as HTMLImageElement;
-            const src = ie.getAttribute("src") || "";
-            if (!src || src.startsWith("data:")) return false;
-            return !(ie.complete && ie.naturalWidth > 0);
-          })
-          .map((img) => (img as HTMLImageElement).src || img.getAttribute("src") || "(no src)")
-          .join(", ");
-      });
-      console.warn(
-        `[FrameCapture] Some image elements did not load within ${pageReadyTimeout}ms: ${failedImages}. ` +
-          `Continuing render — affected images may appear blank/missing in early frames.`,
-      );
-    }
-    await decodeAllImages(page);
-    logInitPhase("images ready + decoded");
-
-    await page.evaluate(`document.fonts?.ready`);
-    logInitPhase("fonts ready");
-    await waitForOptionalTailwindReady(page, pageReadyTimeout);
-    logInitPhase("tailwind ready");
     await recordSessionInitTelemetry(session, initStart);
 
     // For PNG captures, force the page background fully transparent so the
@@ -1131,6 +1126,13 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
   await gotoEntryPage();
   logInitPhase("page.goto complete");
 
+  // Flush the GSAP proxy queue synchronously. In BeginFrame mode the rAF-based
+  // batch drain runs on the warmup loop's 33ms ticks — for tween-heavy
+  // compositions this is the dominant init cost. Flushing synchronously
+  // eliminates the wait entirely.
+  await page.evaluate(`window.__hfFlushSync?.()`);
+  logInitPhase("GSAP proxy flush complete");
+
   // Poll for window.__hf readiness using manual evaluate loop (waitForFunction
   // uses rAF polling internally, which won't fire in beginFrame mode).
   const pageReadyTimeout = session.config?.playerReadyTimeout ?? DEFAULT_CONFIG.playerReadyTimeout;
@@ -1148,12 +1150,37 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
   await applyVideoMetadataHints(page, session.options.videoMetadataHints);
   logInitPhase("applyVideoMetadataHints complete");
 
-  // Same readyState contract as the screenshot path above (>= 2 / HAVE_CURRENT_DATA).
-  const bfVideosReady = await pollVideosReady(
-    page,
-    session.options.skipReadinessVideoIds ?? [],
-    session.config?.playerReadyTimeout ?? DEFAULT_CONFIG.playerReadyTimeout,
-  );
+  // Run independent readiness checks in parallel — videos, images, fonts,
+  // and Tailwind don't depend on each other's completion.
+  const bfSkipVideoIds = session.options.skipReadinessVideoIds ?? [];
+  const [bfVideosReady] = await Promise.all([
+    pollVideosReady(page, bfSkipVideoIds, pageReadyTimeout),
+    pollImagesReady(page, pageReadyTimeout).then(async (ready) => {
+      if (!ready) {
+        const failedImages = await page.evaluate(() => {
+          return Array.from(document.querySelectorAll("img"))
+            .filter((img) => {
+              const ie = img as HTMLImageElement;
+              const src = ie.getAttribute("src") || "";
+              if (!src || src.startsWith("data:")) return false;
+              return !(ie.complete && ie.naturalWidth > 0);
+            })
+            .map((img) => (img as HTMLImageElement).src || img.getAttribute("src") || "(no src)")
+            .join(", ");
+        });
+        console.warn(
+          `[FrameCapture] Some image elements did not load within ${pageReadyTimeout}ms: ${failedImages}. ` +
+            `Continuing render — affected images may appear blank/missing in early frames.`,
+        );
+      }
+      await decodeAllImages(page);
+      return ready;
+    }),
+    page.evaluate(`document.fonts?.ready`),
+    waitForOptionalTailwindReady(page, pageReadyTimeout),
+  ]);
+  logInitPhase("media + fonts + tailwind ready");
+
   if (!bfVideosReady) {
     const failedVideos = await page.evaluate((skipIdList: readonly string[]) => {
       const skip = new Set(skipIdList);
@@ -1162,41 +1189,13 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
         .filter((v) => (v as HTMLVideoElement).readyState < 2 && !(v as HTMLVideoElement).error)
         .map((v) => (v as HTMLVideoElement).src || v.getAttribute("src") || "(no src)")
         .join(", ");
-    }, session.options.skipReadinessVideoIds ?? []);
+    }, bfSkipVideoIds);
     console.warn(
       `[FrameCapture] Some video elements did not decode within ${pageReadyTimeout}ms: ${failedVideos}. ` +
         `Continuing render — affected videos will appear as blank/black frames.`,
     );
   }
-  logInitPhase("pollVideosReady complete");
 
-  // Image readiness — parity with pollVideosReady. Defense against remote
-  // <img> URLs that bypass the htmlCompiler localize step.
-  const bfImagesReady = await pollImagesReady(page, pageReadyTimeout);
-  if (!bfImagesReady) {
-    const failedImages = await page.evaluate(() => {
-      return Array.from(document.querySelectorAll("img"))
-        .filter((img) => {
-          const ie = img as HTMLImageElement;
-          const src = ie.getAttribute("src") || "";
-          if (!src || src.startsWith("data:")) return false;
-          return !(ie.complete && ie.naturalWidth > 0);
-        })
-        .map((img) => (img as HTMLImageElement).src || img.getAttribute("src") || "(no src)")
-        .join(", ");
-    });
-    console.warn(
-      `[FrameCapture] Some image elements did not load within ${pageReadyTimeout}ms: ${failedImages}. ` +
-        `Continuing render — affected images may appear blank/missing in early frames.`,
-    );
-  }
-  await decodeAllImages(page);
-  logInitPhase("images ready + decoded");
-
-  await page.evaluate(`document.fonts?.ready`);
-  logInitPhase("fonts ready");
-  await waitForOptionalTailwindReady(page, pageReadyTimeout);
-  logInitPhase("tailwind ready");
   await recordSessionInitTelemetry(session, initStart);
 
   // Stop warmup. Unlocked mode exits on this flag; locked mode keeps ticking

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// transitions.mjs — inter-frame transition injector + verifier for product-launch.
+// transitions.mjs — inter-frame transition injector + verifier for the video workflow.
 //
 //   inject  — read STORYBOARD frame order + each frame's transition_in, overlap
 //             the frame clip wrappers in index.html, and stamp the GSAP template.
