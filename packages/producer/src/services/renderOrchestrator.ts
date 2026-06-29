@@ -67,6 +67,8 @@ import {
   LOW_MEMORY_TOTAL_MB_THRESHOLD,
   assertConfiguredFfmpegBinariesExist,
   type CapturePerfSummary,
+  resolveBrowserGpuMode,
+  resolveHeadlessShellPath,
 } from "@hyperframes/engine";
 import { join, dirname, resolve } from "path";
 import { randomUUID } from "crypto";
@@ -86,6 +88,7 @@ import { formatCaptureFrameName } from "../utils/paths.js";
 import { resolveEffectiveHdrMode } from "./render/hdrMode.js";
 import { buildRenderPerfSummary, pushWorkerDedupPerfs } from "./render/perfSummary.js";
 import { getCaptureStageBrowserConsole } from "./render/captureStageError.js";
+import { resolveVideoCaptureBeyondViewport } from "./render/captureBeyondViewport.js";
 import {
   type CaptureCalibrationSample,
   type CaptureCostEstimate,
@@ -1246,6 +1249,16 @@ export async function executeRenderJob(
     const framesDir = join(workDir, "captured-frames");
     if (!existsSync(framesDir)) mkdirSync(framesDir, { recursive: true });
 
+    const resolvedBrowserGpuMode = await resolveBrowserGpuMode(cfg.browserGpuMode, {
+      chromePath: resolveHeadlessShellPath(cfg),
+      browserTimeout: cfg.browserTimeout,
+    });
+    updateCaptureObservability({ browserGpuMode: resolvedBrowserGpuMode });
+    const videoCaptureBeyondViewport = resolveVideoCaptureBeyondViewport(
+      composition.videos.length,
+      resolvedBrowserGpuMode,
+    );
+
     const captureOptions: CaptureOptions = {
       width,
       height,
@@ -1254,7 +1267,9 @@ export async function executeRenderJob(
       quality: needsAlpha ? undefined : job.config.quality === "draft" ? 80 : 95,
       variables: job.config.variables,
       deviceScaleFactor,
-      ...(composition.videos.length > 0 ? { captureBeyondViewport: true } : {}),
+      ...(videoCaptureBeyondViewport !== undefined
+        ? { captureBeyondViewport: videoCaptureBeyondViewport }
+        : {}),
     };
     resolvedCaptureBeyondViewport =
       captureOptions.captureBeyondViewport ?? resolvedCaptureBeyondViewport;

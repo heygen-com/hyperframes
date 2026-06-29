@@ -58,6 +58,7 @@ import {
 import { defaultLogger } from "../../logger.js";
 import { runEncodeStage } from "../render/stages/encodeStage.js";
 import { runCaptureStage } from "../render/stages/captureStage.js";
+import { resolveVideoCaptureBeyondViewport } from "../render/captureBeyondViewport.js";
 import {
   type ChunkSliceJson,
   type LockedRenderConfig,
@@ -480,6 +481,11 @@ export async function renderChunk(
           )
         : null;
 
+    const videoCaptureBeyondViewport = resolveVideoCaptureBeyondViewport(
+      planVideos?.videos.length ?? 0,
+      "software",
+    );
+
     // ── Per-chunk work + frames directories ──
     // Suffix workDir with pid + random bytes so concurrent invocations on
     // the SAME `(planDir, chunkIndex)` (e.g. a scheduler that double-fires
@@ -518,7 +524,9 @@ export async function renderChunk(
       // declare `data-composition-variables` leave this undefined and the
       // engine skips the `evaluateOnNewDocument` injection.
       variables: encoder.variables,
-      ...((planVideos?.videos.length ?? 0) > 0 ? { captureBeyondViewport: true } : {}),
+      ...(videoCaptureBeyondViewport !== undefined
+        ? { captureBeyondViewport: videoCaptureBeyondViewport }
+        : {}),
       // lock the BeginFrame warmup loop to a fixed iteration count so
       // `beginFrameTimeTicks` is host-independent. Only chunks ever set this.
       lockWarmupTicks: true,
