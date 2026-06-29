@@ -256,6 +256,25 @@ export function useGsapSelectionHandlers({
     [domEditSelection, selectedGsapAnimations, moveKeyframe],
   );
 
+  const handleGsapMoveKeyframe = useCallback(
+    (
+      animId: string,
+      fromPercentage: number,
+      toPercentage: number,
+      selectionOverride?: DomEditSelection | null,
+    ) => {
+      const sel = selectionOverride ?? domEditSelection ?? lastSelectionRef.current;
+      if (!sel) return;
+      // Atomic retime: preserves the keyframe's value + per-keyframe ease. Both
+      // percentages are tween-relative (the drag handler converts the drop
+      // position before calling). No optimistic runtime hold — the soft-reload
+      // re-keys the diamond from source.
+      trackStudioEvent("keyframe", { action: "retime" });
+      moveKeyframe(sel, animId, fromPercentage, toPercentage);
+    },
+    [domEditSelection, moveKeyframe],
+  );
+
   const handleGsapConvertToKeyframes = useCallback(
     (animId: string, resolvedFromValues?: Record<string, number | string>, duration?: number) => {
       if (!domEditSelection) return Promise.resolve();
@@ -304,6 +323,7 @@ export function useGsapSelectionHandlers({
     handleGsapAddKeyframeBatch,
     handleGsapRemoveKeyframe,
     handleGsapMoveKeyframeToPlayhead,
+    handleGsapMoveKeyframe,
     handleGsapConvertToKeyframes,
     handleGsapRemoveAllKeyframes,
     handleResetSelectedElementKeyframes,

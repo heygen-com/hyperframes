@@ -87,6 +87,7 @@ export const Timeline = memo(function Timeline({
     onDeleteAllKeyframes,
     onChangeKeyframeEase,
     onMoveKeyframeToPlayhead,
+    onMoveKeyframe,
   } = useResolvedTimelineEditCallbacks({
     onMoveElement: onMoveElementOverride,
     onResizeElement: onResizeElementOverride,
@@ -480,6 +481,7 @@ export const Timeline = memo(function Timeline({
           onShiftClickKeyframe={(elId, pct) => {
             toggleSelectedKeyframe(`${elId}:${pct}`);
           }}
+          onMoveKeyframe={onMoveKeyframe}
           onContextMenuKeyframe={(e, elId, pct) => {
             const el = expandedElements.find((x) => (x.key ?? x.id) === elId);
             if (el) {

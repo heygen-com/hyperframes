@@ -92,6 +92,11 @@ interface TimelineCanvasProps {
   onClickKeyframe?: (element: TimelineElement, percentage: number) => void;
   onShiftClickKeyframe?: (elementId: string, percentage: number) => void;
   onContextMenuKeyframe?: (e: React.MouseEvent, elementId: string, percentage: number) => void;
+  onMoveKeyframe?: (
+    elementId: string,
+    fromClipPercentage: number,
+    toTweenPercentage: number,
+  ) => void;
   onContextMenuClip?: (e: React.MouseEvent, element: TimelineElement) => void;
   beatAnalysis?: MusicBeatAnalysis | null;
 }
@@ -139,6 +144,7 @@ export const TimelineCanvas = memo(function TimelineCanvas({
   onClickKeyframe,
   onShiftClickKeyframe,
   onContextMenuKeyframe,
+  onMoveKeyframe,
   onContextMenuClip,
   beatAnalysis,
 }: TimelineCanvasProps) {
@@ -439,6 +445,7 @@ export const TimelineCanvas = memo(function TimelineCanvas({
                         onClickKeyframe={(pct) => onClickKeyframe?.(previewElement, pct)}
                         onShiftClickKeyframe={onShiftClickKeyframe}
                         onContextMenuKeyframe={onContextMenuKeyframe}
+                        onMoveKeyframe={onMoveKeyframe}
                       />
                     )}
                   </TimelineClip>

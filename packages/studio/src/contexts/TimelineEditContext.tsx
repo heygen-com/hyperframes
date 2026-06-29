@@ -40,6 +40,7 @@ export function TimelineEditProvider({
       value.onDeleteAllKeyframes,
       value.onChangeKeyframeEase,
       value.onMoveKeyframeToPlayhead,
+      value.onMoveKeyframe,
       value.onToggleKeyframeAtPlayhead,
     ],
   );

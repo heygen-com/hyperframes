@@ -1,8 +1,15 @@
-import { memo } from "react";
+import { memo, useRef, useState } from "react";
 import { BEAT_BAND_H } from "./BeatStrip";
+import {
+  KEYFRAME_DRAG_THRESHOLD_PX,
+  previewClipPct,
+  resolveKeyframeDrag,
+} from "../../components/editor/keyframeDrag";
 
 interface KeyframeEntry {
   percentage: number;
+  /** Tween-relative percentage (the retime mutation keys on this, not clip %). */
+  tweenPercentage?: number;
   properties: Record<string, number | string>;
   ease?: string;
 }
@@ -29,6 +36,14 @@ interface TimelineClipDiamondsProps {
   onClickKeyframe?: (percentage: number) => void;
   onShiftClickKeyframe?: (elementId: string, percentage: number) => void;
   onContextMenuKeyframe?: (e: React.MouseEvent, elementId: string, percentage: number) => void;
+  /** Drag-to-retime: move a keyframe to a new time, preserving its value + ease.
+   *  `fromClipPercentage` is clip-relative (identifies the dragged keyframe);
+   *  `toTweenPercentage` is the tween-relative drop position. */
+  onMoveKeyframe?: (
+    elementId: string,
+    fromClipPercentage: number,
+    toTweenPercentage: number,
+  ) => void;
 }
 
 const DIAMOND_RATIO = 0.8;
@@ -38,6 +53,14 @@ const DIAMOND_RATIO = 0.8;
 // their true position rather than hidden.
 const KF_MIN_PCT = -5;
 const KF_MAX_PCT = 105;
+
+type DragState = {
+  kfKey: string;
+  startX: number;
+  fromClipPct: number;
+  fromTweenPct: number;
+  moved: boolean;
+};
 
 export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
   keyframesData,
@@ -52,7 +75,15 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
   onClickKeyframe,
   onShiftClickKeyframe,
   onContextMenuKeyframe,
+  onMoveKeyframe,
 }: TimelineClipDiamondsProps) {
+  // Hooks must run before the early return below.
+  const dragRef = useRef<DragState | null>(null);
+  // Visual-only preview of the dragged diamond's clip-% — no runtime/GSAP hold
+  // (that optimistic hold was the #1763 flake). The atomic move-keyframe commit
+  // on drop re-keys the diamond from source.
+  const [preview, setPreview] = useState<{ kfKey: string; clipPct: number } | null>(null);
+
   if (clipWidthPx < 20) return null;
 
   // When the beat strip occupies the top band, shrink the diamonds and center
@@ -65,15 +96,7 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
     .sort((a, b) => a.percentage - b.percentage);
   const baseColor = isSelected ? accentColor : "#a3a3a3";
   const baseOpacity = isSelected ? 0.4 : 0.25;
-
-  const handleClick = (e: React.MouseEvent, pct: number) => {
-    e.stopPropagation();
-    if (e.shiftKey) {
-      onShiftClickKeyframe?.(elementId, pct);
-    } else {
-      onClickKeyframe?.(pct);
-    }
-  };
+  const canDrag = isSelected && !!onMoveKeyframe;
 
   return (
     <div className="absolute inset-0" style={{ zIndex: 3, pointerEvents: "none" }}>
@@ -102,17 +125,79 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
       })}
 
       {sorted.map((kf, i) => {
+        const kfKey = `${elementId}:${kf.percentage}`;
+        // While dragging this diamond, render it at the live preview clip-%.
+        const renderPct = preview?.kfKey === kfKey ? preview.clipPct : kf.percentage;
         // Center the diamond ON its keyframe %: left = (% · width) − half so the
         // diamond's midpoint sits exactly at the percentage. At 0% the midpoint
-        // is the clip's left edge (the diamond's left half overflows, which the
-        // overflow-visible clip shows) — NOT shifted fully inside. No clamp, or
-        // boundary keyframes (0% / 100%) would render off-center.
-        const leftPx = (kf.percentage / 100) * clipWidthPx - half;
-        const kfKey = `${elementId}:${kf.percentage}`;
+        // is the clip's left edge (the left half overflows, which the
+        // overflow-visible clip shows) — NOT shifted fully inside.
+        const leftPx = (renderPct / 100) * clipWidthPx - half;
         const isKfSelected = selectedKeyframes.has(kfKey);
         const atPlayhead = isSelected && Math.abs(kf.percentage - currentPercentage) < 0.5;
         const isHighlighted = isKfSelected || atPlayhead;
         const color = isHighlighted ? accentColor : "#a3a3a3";
+
+        const onPointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
+          if (e.button !== 0) return;
+          e.stopPropagation();
+          if (canDrag) {
+            e.currentTarget.setPointerCapture?.(e.pointerId);
+            dragRef.current = {
+              kfKey,
+              startX: e.clientX,
+              fromClipPct: kf.percentage,
+              fromTweenPct: kf.tweenPercentage ?? kf.percentage,
+              moved: false,
+            };
+          }
+        };
+        const onPointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
+          const d = dragRef.current;
+          if (!d || d.kfKey !== kfKey) return;
+          if (!d.moved && Math.abs(e.clientX - d.startX) >= KEYFRAME_DRAG_THRESHOLD_PX) {
+            d.moved = true;
+          }
+          if (d.moved) {
+            setPreview({
+              kfKey,
+              clipPct: previewClipPct({
+                pointerDownX: d.startX,
+                pointerMoveX: e.clientX,
+                clipWidthPx,
+                draggedClipPct: d.fromClipPct,
+              }),
+            });
+          }
+        };
+        const onPointerUp = (e: React.PointerEvent<HTMLButtonElement>) => {
+          const d = dragRef.current;
+          // No drag armed (canDrag false / non-primary press) → treat as a click.
+          if (!d || d.kfKey !== kfKey) {
+            if (e.shiftKey) onShiftClickKeyframe?.(elementId, kf.percentage);
+            else onClickKeyframe?.(kf.percentage);
+            return;
+          }
+          e.stopPropagation();
+          dragRef.current = null;
+          setPreview(null);
+          e.currentTarget.releasePointerCapture?.(e.pointerId);
+          const res = resolveKeyframeDrag({
+            pointerDownX: d.startX,
+            pointerUpX: e.clientX,
+            clipWidthPx,
+            draggedClipPct: d.fromClipPct,
+            draggedTweenPct: d.fromTweenPct,
+            keyframes: sorted,
+          });
+          if (res.kind === "click") {
+            if (e.shiftKey) onShiftClickKeyframe?.(elementId, kf.percentage);
+            else onClickKeyframe?.(kf.percentage);
+          } else if (res.kind === "move" && res.toTweenPct != null) {
+            onMoveKeyframe?.(elementId, d.fromClipPct, res.toTweenPct);
+          }
+        };
+
         return (
           <button
             key={`${i}-${kf.percentage}`}
@@ -128,10 +213,13 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
               pointerEvents: "auto",
               background: "none",
               border: "none",
-              cursor: "pointer",
+              cursor: canDrag ? "ew-resize" : "pointer",
               padding: 0,
+              touchAction: "none",
             }}
-            onClick={(e) => handleClick(e, kf.percentage)}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
             onContextMenu={(e) => {
               e.preventDefault();
               e.stopPropagation();

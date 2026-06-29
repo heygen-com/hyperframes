@@ -131,6 +131,7 @@ export function StudioPreviewArea({
     handleDomRotationCommit,
     handleGsapRemoveKeyframe,
     handleGsapMoveKeyframeToPlayhead,
+    handleGsapMoveKeyframe,
     handleGsapUpdateMeta,
     handleGsapAddKeyframe,
     handleGsapConvertToKeyframes,
@@ -193,6 +194,12 @@ export function StudioPreviewArea({
         const target = resolveKeyframeTarget(pct);
         if (target) handleGsapMoveKeyframeToPlayhead(target.animId, target.tweenPct);
       },
+      // Drag-to-retime: identify the keyframe by its clip-% (resolveKeyframeTarget
+      // also gives its tween-% for the `from`), then move it to the dropped tween-%.
+      onMoveKeyframe: (_elId: string, fromClipPct: number, toTweenPct: number) => {
+        const target = resolveKeyframeTarget(fromClipPct);
+        if (target) handleGsapMoveKeyframe(target.animId, target.tweenPct, toTweenPct);
+      },
       onChangeKeyframeEase: (_elId: string, _pct: number, ease: string) => {
         for (const anim of selectedGsapAnimations) {
           if (anim.keyframes) handleGsapUpdateMeta(anim.id, { ease });
@@ -232,6 +239,7 @@ export function StudioPreviewArea({
       selectedGsapAnimations,
       handleGsapRemoveKeyframe,
       handleGsapMoveKeyframeToPlayhead,
+      handleGsapMoveKeyframe,
       handleGsapUpdateMeta,
       handleGsapAddKeyframe,
       handleGsapConvertToKeyframes,
