@@ -39,11 +39,19 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
     let compW = vpWidth || 1920;
     let compH = vpHeight || 1080;
     let sourceMtime = 0;
-    if (!vpWidth) {
-      const htmlFile = join(project.dir, compPath);
-      if (existsSync(htmlFile)) {
-        sourceMtime = Math.round(statSync(htmlFile).mtimeMs);
-        const html = readFileSync(htmlFile, "utf-8");
+    // Content-hash the composition HTML into the cache key — ALWAYS, even when
+    // explicit w/h are supplied. The old code only read the file when `!vpWidth`,
+    // so Studio thumbnail requests (which pass dimensions) kept the source out of
+    // the key entirely (sourceMtime=0) and served a stale thumbnail after every
+    // edit, even on a hard reload. Keyed on content (like manualEdits/motion), not
+    // just mtime, so a restore/copy with a preserved mtime can't serve stale.
+    let sourceKey = "";
+    const htmlFile = join(project.dir, compPath);
+    if (existsSync(htmlFile)) {
+      const html = readFileSync(htmlFile, "utf-8");
+      sourceKey = `_${createHash("sha1").update(html).digest("hex").slice(0, 16)}`;
+      sourceMtime = Math.round(statSync(htmlFile).mtimeMs);
+      if (!vpWidth) {
         const wMatch = html.match(/data-width=["'](\d+)["']/);
         const hMatch = html.match(/data-height=["'](\d+)["']/);
         if (wMatch?.[1]) compW = parseInt(wMatch[1]);
@@ -78,11 +86,11 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
     const urlVersionKey = urlVersion
       ? `_${urlVersion.replace(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 32)}`
       : "";
-    const cacheKey = `${THUMBNAIL_CACHE_VERSION}${urlVersionKey}${manualEditsKey}${motionKey}_${format}_${compPath.replace(/\//g, "_")}_${compW}x${compH}_${sourceMtime}_${seekTime.toFixed(2)}${selectorKey}.${format === "png" ? "png" : "jpg"}`;
+    const cacheKey = `${THUMBNAIL_CACHE_VERSION}${urlVersionKey}${manualEditsKey}${motionKey}${sourceKey}_${format}_${compPath.replace(/\//g, "_")}_${compW}x${compH}_${sourceMtime}_${seekTime.toFixed(2)}${selectorKey}.${format === "png" ? "png" : "jpg"}`;
     const cachePath = join(cacheDir, cacheKey);
     if (existsSync(cachePath)) {
       return new Response(new Uint8Array(readFileSync(cachePath)), {
-        headers: { "Content-Type": contentType, "Cache-Control": "public, max-age=60" },
+        headers: { "Content-Type": contentType, "Cache-Control": "no-cache" },
       });
     }
 
@@ -107,7 +115,7 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
       if (!existsSync(cacheDir)) mkdirSync(cacheDir, { recursive: true });
       writeFileSync(cachePath, buffer);
       return new Response(new Uint8Array(buffer), {
-        headers: { "Content-Type": contentType, "Cache-Control": "public, max-age=60" },
+        headers: { "Content-Type": contentType, "Cache-Control": "no-cache" },
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

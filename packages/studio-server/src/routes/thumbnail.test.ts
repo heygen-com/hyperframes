@@ -175,6 +175,28 @@ describe("registerThumbnailRoutes", () => {
     expect(adapter.generateThumbnail).toHaveBeenCalledTimes(2);
   });
 
+  it("regenerates when the composition HTML changes even with explicit w/h", async () => {
+    // Repro: the Studio requests thumbnails WITH explicit dimensions. The old
+    // code only read (and keyed on) the composition file when no w/h was given,
+    // so editing the HTML left the disk-cache key unchanged and served a stale
+    // thumbnail — even after a hard reload. The content hash must always be keyed.
+    const adapter = createAdapter();
+    const project = await adapter.resolveProject("demo");
+    if (!project) throw new Error("missing project");
+    const app = new Hono();
+    registerThumbnailRoutes(app, adapter);
+
+    const indexPath = join(project.dir, "index.html");
+    const url = "http://localhost/projects/demo/thumbnail/index.html?t=2&w=640&h=360&v=test";
+
+    writeFileSync(indexPath, `<div id="box">before</div>`);
+    await app.request(url);
+    writeFileSync(indexPath, `<div id="box">after</div>`);
+    await app.request(url);
+
+    expect(adapter.generateThumbnail).toHaveBeenCalledTimes(2);
+  });
+
   it("keeps changed studio motion separated in the disk cache", async () => {
     const adapter = createAdapter();
     const project = await adapter.resolveProject("demo");
