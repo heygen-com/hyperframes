@@ -36,7 +36,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { dirname, join, resolve } from "node:path";
 import { parseStoryboard } from "./lib/storyboard.mjs";
 import { captionBand, parseFormat } from "./lib/dimensions.mjs";
-import { parseColors, parseFonts, semanticColors } from "./lib/tokens.mjs";
+import { parseColors, parseFonts, semanticColors, lum } from "./lib/tokens.mjs";
 
 const flag = (argv, name, def) => {
   const i = argv.indexOf(`--${name}`);
@@ -243,32 +243,11 @@ function buildFromSkin(skin, groups, total, W, H, tokens, die, faces = "", fonts
     prev = out;
     out = out.replace(/<!--[\s\S]*?-->/g, "");
   }
-  // brand :root tokens + font loading, both into the reserved hole. Prefer local
-  // @font-face files (offline-safe, lint-clean). When NONE exist (the common PR case:
-  // the project uses the preset's own default font and ships no woff2), fall back to a
-  // Google Fonts @import for the resolved families — otherwise the caption text silently
-  // drops to the skin's generic fallback (e.g. Fraunces → Georgia), since the renderer's
-  // auto-resolved font list does not cover preset display fonts. Matches how the frame
-  // compositions load fonts. @import is valid here because it precedes the :root tokens in
-  // this <style>. Assumes the family exposes wght 400/500 (true for the variable editorial
-  // fonts the presets default to); shipping a local woff2 (the faces path) avoids the
-  // network dependency and the google_fonts_import lint warning entirely.
-  let fontLoad = faces;
-  if (!fontLoad) {
-    const fams = [
-      ...new Set(
-        [fonts.display, fonts.body].filter(Boolean).map((f) => f.replace(/^"|"$/g, "").trim()),
-      ),
-    ];
-    if (fams.length) {
-      const q = fams.map((f) => `family=${f.replace(/\s+/g, "+")}:wght@400;500`).join("&");
-      fontLoad = `      @import url("https://fonts.googleapis.com/css2?${q}&display=swap");`;
-    }
-  }
+  // brand :root tokens + @font-face for the brand fonts, both into the reserved hole
   out = fillOnce(
     out,
     /<style data-brand-tokens>\s*<\/style>/,
-    `<style data-brand-tokens>\n${fontLoad ? fontLoad + "\n" : ""}${tokens}\n    </style>`,
+    `<style data-brand-tokens>\n${faces ? faces + "\n" : ""}${tokens}\n    </style>`,
     "<style data-brand-tokens></style> hole",
   );
   // Resolve the skin's font-family var()s to the brand family LITERAL. Two reasons:
@@ -297,6 +276,20 @@ function buildFromSkin(skin, groups, total, W, H, tokens, die, faces = "", fonts
   // overflow:hidden — nothing is clipped); zeroing it would need an airy line-height that
   // balloons the pill, which is worse. Override only if a brand font genuinely clips.
   out += "\n<style>\n  .caption-line { line-height: 1.1 !important; }\n</style>";
+  // dark-ground caption contrast (auto). The preset caption skins are tuned for a LIGHT
+  // pill (cream); on a dark brand ground the pill goes near-black, so the skin's faint
+  // upcoming-word mix and light highlight block turn unreadable. When the resolved caption
+  // canvas is dark, override the three word states: a brighter muted upcoming color + an
+  // on-brand ACCENT highlight block with light text. Light grounds are left untouched.
+  const capCanvas = (tokens.match(/--cap-canvas:\s*(#[0-9a-fA-F]{6})/) || [])[1];
+  if (capCanvas && (lum(capCanvas) ?? 255) < 90) {
+    out +=
+      "\n<style>\n" +
+      "  .caption-word { color: color-mix(in srgb, var(--cap-ink) 64%, var(--cap-canvas)); }\n" +
+      "  .caption-word.is-active { color: var(--cap-ink); background: var(--cap-accent); box-shadow: 0 0 0 0.06em var(--cap-accent); }\n" +
+      "  .caption-word.is-spoken { color: var(--cap-ink); background: transparent; box-shadow: none; }\n" +
+      "</style>";
+  }
   return `<template id="captions-template" data-composition-id="captions" data-width="${W}" data-height="${H}">\n${out.trim()}\n</template>\n`;
 }
 
@@ -312,8 +305,11 @@ function brandFontFaces(framePath, hyperframesDir) {
   ];
   if (!families.length) return "";
   const dirs = [
-    { abs: join(hyperframesDir, "assets/fonts"), rel: "../assets/fonts" },
-    { abs: join(hyperframesDir, "capture/assets/fonts"), rel: "../capture/assets/fonts" },
+    // ROOT-RELATIVE — compositions are served with the project root as their base URL, so a
+    // "../" prefix escapes the root (lint: invalid_parent_traversal_in_asset_path) and 404s in
+    // Studio/preview. Mirror what the frame workers use for images.
+    { abs: join(hyperframesDir, "assets/fonts"), rel: "assets/fonts" },
+    { abs: join(hyperframesDir, "capture/assets/fonts"), rel: "capture/assets/fonts" },
   ].filter((d) => existsSync(d.abs));
   const weightOf = (n) => {
     const s = n.toLowerCase();
@@ -370,19 +366,19 @@ function brandFontFaces(framePath, hyperframesDir) {
       }
     }
   }
-  // Loud signal instead of a silent "". If frame.md named a brand font but no local file
-  // matched, the caller falls back to a Google Fonts @import (or, failing that, a generic
-  // font) — surface the cause here at build time rather than letting it surface 2 steps
-  // later as a font_family_without_font_face lint error disconnected from its root cause.
+  // Loud signal instead of a silent "". If frame.md named a brand font but no file
+  // matched, the caption text WILL fall back to a generic font in the render — surface
+  // the cause here (at build time) rather than letting it surface 2 steps later as a
+  // font_family_without_font_face lint error disconnected from its root cause.
   if (!faces.length) {
     const where = dirs.length
       ? dirs.map((d) => d.rel).join(" / ")
       : "assets/fonts or capture/assets/fonts (neither exists)";
     console.warn(
       `  ⚠ captions: frame.md names font ${families.map((f) => `"${f}"`).join(", ")} ` +
-        `but no matching .woff2/.woff/.ttf/.otf was found in ${where} — falling back to @import/generic ` +
+        `but no matching .woff2/.woff/.ttf/.otf was found in ${where} — captions will fall back ` +
         `(text may render in the wrong font). Stage a font file whose name starts with the family ` +
-        `(e.g. "TT Norms Pro" → TT_Norms_Pro_Bold.woff2) to ship it locally.`,
+        `(e.g. "TT Norms Pro" → TT_Norms_Pro_Bold.woff2) so it ships with the project.`,
     );
   }
   return faces.join("\n");
