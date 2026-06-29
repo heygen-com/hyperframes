@@ -239,6 +239,48 @@ tl.fromTo("#box", { opacity: 0, x: -50 }, { opacity: 1, x: 0, duration: 1.5, eas
     expect(result.parsed.animations[0].fromProperties?.x).toBe(-50);
   });
 
+  it("consolidate-position-writes leaves exactly one position write per selector", async () => {
+    const projectDir = createProjectDir();
+    const CORRUPTED = `<!DOCTYPE html><html><body><script data-hyperframes-gsap>
+const tl = gsap.timeline({ paused: true });
+tl.to("#box", { duration: 0, x: -766, y: 314, immediateRender: true }, 1.333);
+gsap.set("#box", { x: -520, y: 170 });
+gsap.set("#box", { rotation: 45 });
+</script></body></html>`;
+    writeHtml(projectDir, "dup.html", CORRUPTED);
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const res = await app.request("http://localhost/projects/demo/gsap-mutations/dup.html", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "consolidate-position-writes", targetSelector: "#box" }),
+    });
+    const result = (await res.json()) as {
+      ok: boolean;
+      parsed: {
+        animations: Array<{
+          targetSelector: string;
+          propertyGroup?: string;
+          properties: Record<string, unknown>;
+        }>;
+      };
+    };
+
+    expect(res.status).toBe(200);
+    expect(result.ok).toBe(true);
+    const posWrites = result.parsed.animations.filter(
+      (a) => a.targetSelector === "#box" && a.propertyGroup === "position",
+    );
+    expect(posWrites).toHaveLength(1);
+    // The non-position rotation set is untouched.
+    expect(
+      result.parsed.animations.some(
+        (a) => a.targetSelector === "#box" && "rotation" in a.properties,
+      ),
+    ).toBe(true);
+  });
+
   it("rejects serialized non-finite mutation values before writing source", async () => {
     const projectDir = createProjectDir();
     writeHtml(projectDir, "comp.html", FROMTO_COMP);

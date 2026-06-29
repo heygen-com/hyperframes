@@ -346,9 +346,16 @@ export function useGsapAnimationsForElement(
     let ease: string | undefined;
     let easeEach: string | undefined;
     for (const anim of animations) {
+      // A static position hold (only x/y, no real motion) is a `set`, not a
+      // keyframe — don't synthesize a diamond for it. Covers both `tl.set(...)`
+      // and the `tl.to({ duration: 0, immediateRender: true })` hold that
+      // remove-all-keyframes collapses to (which is otherwise shown as a stray
+      // 0% keyframe).
       if (
-        anim.method === "set" &&
-        Object.keys(anim.properties).every((k) => k === "x" || k === "y")
+        !anim.keyframes &&
+        Object.keys(anim.properties).length > 0 &&
+        Object.keys(anim.properties).every((k) => k === "x" || k === "y") &&
+        (anim.method === "set" || (anim.duration ?? 0) === 0)
       )
         continue;
       const kf = anim.keyframes ?? synthesizeFlatTweenKeyframes(anim);
@@ -454,11 +461,13 @@ export function usePopulateKeyframeCacheForFile(
       const mergedByElement = new Map<string, GsapKeyframesData>();
       for (const anim of parsed.animations) {
         if (anim.hasUnresolvedKeyframes) continue;
-        // Position-only set tweens are static holds (created by drag), not
-        // keyframed animations — skip them so they don't show timeline diamonds.
-        if (anim.method === "set") {
+        // Position-only static holds are not keyframed animations — skip them so
+        // they don't draw a timeline diamond. Covers both a `tl.set(...)` and the
+        // `tl.to({ duration: 0, immediateRender: true })` that remove-all-keyframes
+        // collapses a keyframed tween to.
+        if (!anim.keyframes && (anim.method === "set" || (anim.duration ?? 0) === 0)) {
           const propKeys = Object.keys(anim.properties).filter((k) => k !== "immediateRender");
-          if (propKeys.every((k) => k === "x" || k === "y")) {
+          if (propKeys.length > 0 && propKeys.every((k) => k === "x" || k === "y")) {
             continue;
           }
         }

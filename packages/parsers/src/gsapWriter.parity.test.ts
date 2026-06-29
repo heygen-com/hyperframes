@@ -28,6 +28,7 @@ import {
   addAnimationWithKeyframesToScript as addWithKfRecast,
   shiftPositionsInScript as shiftRecast,
   scalePositionsInScript as scaleRecast,
+  dedupePositionWritesInScript as dedupePosRecast,
   type SplitAnimationsOptions,
 } from "./gsapParser.js";
 import {
@@ -52,6 +53,7 @@ import {
   removeAnimationFromScript as removeAnimAcorn,
   shiftPositionsInScript as shiftAcorn,
   scalePositionsInScript as scaleAcorn,
+  dedupePositionWritesInScript as dedupePosAcorn,
 } from "./gsapWriterAcorn.js";
 
 function acornId(script: string): string {
@@ -161,6 +163,44 @@ describe("parity: removeAllKeyframesFromScript (recast vs acorn)", () => {
     `;
     const id = acornId(script);
     expect(removeAllAcorn(script, id)).toBe(script);
+  });
+});
+
+describe("parity: dedupePositionWritesInScript (recast vs acorn)", () => {
+  const DUP = `
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#box", { duration: 0, x: -766, y: 314, immediateRender: true }, 1.333);
+    gsap.set("#box", { x: -520, y: 170 });
+    gsap.set("#box", { rotation: 45 });
+    tl.to("#box", { opacity: 1, duration: 1 }, 0);
+  `;
+
+  it("keeps the same single position write in both writers (keep last)", () => {
+    const recastOut = dedupePosRecast(DUP, "#box");
+    const acornOut = dedupePosAcorn(DUP, "#box");
+    expect(modelOf(acornOut)).toEqual(modelOf(recastOut));
+    const posCount = modelOf(acornOut).filter(
+      (a) => "x" in a.properties || "y" in a.properties,
+    ).length;
+    expect(posCount).toBe(1);
+  });
+
+  it("keeps keepId (the tl.to) in both writers", () => {
+    const keepId = parseGsapScriptAcorn(DUP).animations.find(
+      (a) => a.method === "to" && a.propertyGroup === "position",
+    )!.id;
+    const recastOut = dedupePosRecast(DUP, "#box", keepId);
+    const acornOut = dedupePosAcorn(DUP, "#box", keepId);
+    expect(modelOf(acornOut)).toEqual(modelOf(recastOut));
+  });
+
+  it("no-op when 0 or 1 position writes — both writers", () => {
+    const single = `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#box", { x: 10, duration: 1 }, 0);
+    `;
+    expect(dedupePosAcorn(single, "#box")).toBe(single);
+    expect(dedupePosRecast(single, "#box")).toBe(single);
   });
 });
 
