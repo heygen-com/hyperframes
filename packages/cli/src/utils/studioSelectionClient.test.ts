@@ -112,11 +112,41 @@ describe("studioSelectionClient", () => {
 
     expect(server).toEqual({
       port: 5190,
+      host: "127.0.0.1",
       projectName: "demo project",
       projectDir: "/tmp/demo",
       version: "studio-dev",
       pid: null,
     });
+  });
+
+  it("discovers a Vite Studio that only binds IPv6 loopback ([::1])", async () => {
+    const scan = vi.fn(async () => []);
+    // Vite binds ::1 only: the IPv4 probe is refused, the IPv6 probe succeeds.
+    const fetchImpl = vi.fn(async (url: string | URL | Request) => {
+      const u = String(url);
+      if (u === "http://127.0.0.1:5190/api/projects") throw new Error("ECONNREFUSED");
+      expect(u).toBe("http://[::1]:5190/api/projects");
+      return new Response(
+        JSON.stringify({ projects: [{ id: "demo project", dir: "/tmp/demo", title: "Demo" }] }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }) as unknown as typeof fetch;
+
+    const server = await findPreviewServerForProject(resolve("/tmp/demo"), 3002, scan, fetchImpl);
+
+    expect(server).toEqual({
+      port: 5190,
+      host: "[::1]",
+      projectName: "demo project",
+      projectDir: "/tmp/demo",
+      version: "studio-dev",
+      pid: null,
+    });
+    // Follow-up API calls must target the IPv6 host the server was found on.
+    expect(studioSelectionUrl(server!)).toBe(
+      "http://[::1]:5190/api/projects/demo%20project/selection",
+    );
   });
 
   it("checks an explicit preferred port for Vite Studio discovery", async () => {

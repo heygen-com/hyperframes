@@ -205,6 +205,13 @@ async function getProcessOnPort(port: number): Promise<string | null> {
 
 export interface ActiveServer {
   port: number;
+  /**
+   * Loopback host the server is reachable on, URL-ready (`127.0.0.1` or
+   * `[::1]`). Vite dev servers bind IPv6 (`::1`) while embedded servers bind
+   * IPv4; consumers must use this rather than assuming `127.0.0.1`. Defaults to
+   * `127.0.0.1` when unset (embedded scan path).
+   */
+  host?: string;
   projectName: string;
   projectDir: string;
   version: string;

@@ -283,13 +283,15 @@ export default defineCommand({
   },
 });
 
-function previewBaseUrl(port: number): string {
-  return `http://127.0.0.1:${port}`;
+// `host` is the loopback the server actually bound (Vite binds `[::1]`, embedded
+// binds `127.0.0.1`); default to IPv4 for the embedded/legacy callers.
+function previewBaseUrl(port: number, host = "127.0.0.1"): string {
+  return `http://${host}:${port}`;
 }
 
-function absolutePreviewUrl(port: number, path: string): string {
+function absolutePreviewUrl(port: number, path: string, host = "127.0.0.1"): string {
   if (/^https?:\/\//.test(path)) return path;
-  return `${previewBaseUrl(port)}${path.startsWith("/") ? path : `/${path}`}`;
+  return `${previewBaseUrl(port, host)}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
 function hasExplicitPreviewPort(argv: string[]): boolean {
@@ -309,7 +311,12 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function previewServerPayload(server: { port: number; projectName: string; projectDir: string }): {
+function previewServerPayload(server: {
+  port: number;
+  host?: string;
+  projectName: string;
+  projectDir: string;
+}): {
   port: number;
   projectName: string;
   projectDir: string;
@@ -319,7 +326,7 @@ function previewServerPayload(server: { port: number; projectName: string; proje
     port: server.port,
     projectName: server.projectName,
     projectDir: server.projectDir,
-    url: previewBaseUrl(server.port),
+    url: previewBaseUrl(server.port, server.host),
   };
 }
 
@@ -415,7 +422,7 @@ async function printCurrentSelection(
 
   const selection = {
     ...response.selection,
-    thumbnailUrl: absolutePreviewUrl(server.port, response.selection.thumbnailUrl),
+    thumbnailUrl: absolutePreviewUrl(server.port, response.selection.thumbnailUrl, server.host),
   };
 
   if (json) {
@@ -597,7 +604,7 @@ async function printCurrentContext(
   console.log(`${c.success("◇")}  Studio context`);
   if (contextIncludes(fields, "server")) {
     console.log(`  ${c.dim("Project")}   ${server.projectName}`);
-    console.log(`  ${c.dim("Studio")}    ${previewBaseUrl(server.port)}`);
+    console.log(`  ${c.dim("Studio")}    ${previewBaseUrl(server.port, server.host)}`);
   }
   if (contextIncludes(fields, "selection")) {
     if (selection.ok) {

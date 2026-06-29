@@ -93,8 +93,14 @@ export function studioSelectionUrl(server: ActiveServer): string {
 }
 
 export function studioApiUrl(server: ActiveServer, route: string): string {
-  return `http://127.0.0.1:${server.port}/api/projects/${encodeURIComponent(server.projectName)}/${route}`;
+  const host = server.host ?? "127.0.0.1";
+  return `http://${host}:${server.port}/api/projects/${encodeURIComponent(server.projectName)}/${route}`;
 }
+
+// Vite dev servers bind IPv6 loopback (`::1`) by default while embedded servers
+// bind IPv4 (`127.0.0.1`), so probe both — a single family misses the other and
+// is exactly why `--selection`/`--context` failed against a local-studio preview.
+const LOOPBACK_HOSTS = ["127.0.0.1", "[::1]"] as const;
 
 async function findViteStudioServerForProject(
   normalizedProjectDir: string,
@@ -102,23 +108,26 @@ async function findViteStudioServerForProject(
   ports: readonly number[] = VITE_STUDIO_DISCOVERY_PORTS,
 ): Promise<ActiveServer | null> {
   for (const port of ports) {
-    try {
-      const response = await fetchImpl(`http://127.0.0.1:${port}/api/projects`);
-      if (!response.ok) continue;
-      const payload = (await response.json()) as StudioProjectsResponse;
-      const project = payload.projects?.find(
-        (candidate) => normalizePath(candidate.dir) === normalizedProjectDir,
-      );
-      if (!project) continue;
-      return {
-        port,
-        projectName: project.id,
-        projectDir: project.dir,
-        version: "studio-dev",
-        pid: null,
-      };
-    } catch {
-      // Port is not a Vite-served Studio, or the dev server is not reachable.
+    for (const host of LOOPBACK_HOSTS) {
+      try {
+        const response = await fetchImpl(`http://${host}:${port}/api/projects`);
+        if (!response.ok) continue;
+        const payload = (await response.json()) as StudioProjectsResponse;
+        const project = payload.projects?.find(
+          (candidate) => normalizePath(candidate.dir) === normalizedProjectDir,
+        );
+        if (!project) continue;
+        return {
+          port,
+          host,
+          projectName: project.id,
+          projectDir: project.dir,
+          version: "studio-dev",
+          pid: null,
+        };
+      } catch {
+        // Not a Vite-served Studio on this host/port, or unreachable. Try next.
+      }
     }
   }
   return null;
