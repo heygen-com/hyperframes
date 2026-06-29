@@ -86,6 +86,7 @@ export const Timeline = memo(function Timeline({
     onDeleteKeyframe,
     onDeleteAllKeyframes,
     onChangeKeyframeEase,
+    onMoveKeyframeToPlayhead,
   } = useResolvedTimelineEditCallbacks({
     onMoveElement: onMoveElementOverride,
     onResizeElement: onResizeElementOverride,
@@ -556,6 +557,11 @@ export const Timeline = memo(function Timeline({
           onDelete={(elId, pct) => onDeleteKeyframe?.(elId, pct)}
           onDeleteAll={(elId) => onDeleteAllKeyframes?.(elId)}
           onChangeEase={(elId, pct, ease) => onChangeKeyframeEase?.(elId, pct, ease)}
+          onMoveToPlayhead={
+            onMoveKeyframeToPlayhead
+              ? (elId, pct) => onMoveKeyframeToPlayhead(elId, pct)
+              : undefined
+          }
           onCopyProperties={(elId, pct) => {
             const kfData = keyframeCache.get(elId);
             const kf = kfData?.keyframes.find((k) => k.percentage === pct);

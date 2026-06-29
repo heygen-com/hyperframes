@@ -450,6 +450,82 @@ tl.to("#box", { opacity: 1, duration: 1 }, 0);
     expect(fp.opacity).toBe(0); // untouched
   });
 
+  // Object-form keyframes — exercises the move-keyframe (retime) route.
+  const KEYFRAME_COMP = `<!DOCTYPE html><html><body data-duration="3">
+<div id="box" data-start="0" data-duration="3"></div>
+<script data-hyperframes-gsap>
+const tl = gsap.timeline();
+tl.to("#box", { keyframes: { "0%": { x: 0 }, "50%": { x: 100, opacity: 0.5, ease: "power2.in" }, "100%": { x: 200 } }, duration: 1.5 }, 0);
+</script>
+</body></html>`;
+
+  it("move-keyframe retimes a keyframe, preserving its value + ease", async () => {
+    const projectDir = createProjectDir();
+    writeHtml(projectDir, "kf.html", KEYFRAME_COMP);
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const anim = await getFirstAnimation(app, "kf.html");
+
+    const res = await app.request("http://localhost/projects/demo/gsap-mutations/kf.html", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "move-keyframe",
+        animationId: anim.id,
+        fromPercentage: 50,
+        toPercentage: 75,
+      }),
+    });
+    const result = (await res.json()) as {
+      ok: boolean;
+      changed: boolean;
+      parsed: {
+        animations: Array<{
+          keyframes?: {
+            keyframes: Array<{
+              percentage: number;
+              properties: Record<string, number | string>;
+              ease?: string;
+            }>;
+          };
+        }>;
+      };
+    };
+
+    expect(res.status).toBe(200);
+    expect(result.ok).toBe(true);
+    expect(result.changed).toBe(true);
+    const kfs = result.parsed.animations[0].keyframes?.keyframes ?? [];
+    expect(kfs.map((k) => k.percentage)).toEqual([0, 75, 100]);
+    const moved = kfs.find((k) => k.percentage === 75)!;
+    expect(moved.properties).toEqual({ x: 100, opacity: 0.5 });
+    expect(moved.ease).toBe("power2.in");
+  });
+
+  it("move-keyframe rejects non-finite percentages before writing source", async () => {
+    const projectDir = createProjectDir();
+    writeHtml(projectDir, "kf.html", KEYFRAME_COMP);
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const anim = await getFirstAnimation(app, "kf.html");
+    const before = readFileSync(join(projectDir, "kf.html"), "utf-8");
+    const res = await app.request("http://localhost/projects/demo/gsap-mutations/kf.html", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "move-keyframe",
+        animationId: anim.id,
+        fromPercentage: 50,
+        toPercentage: Number.NaN,
+      }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(readFileSync(join(projectDir, "kf.html"), "utf-8")).toBe(before);
+  });
+
   it("remove-from-property returns 400 for a non-fromTo animation", async () => {
     const projectDir = createProjectDir();
     const TO_COMP = `<!DOCTYPE html><html><body><script data-hyperframes-gsap>

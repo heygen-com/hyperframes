@@ -205,6 +205,28 @@ export function useGsapKeyframeOps({
     [activeCompPath, commitMutation, trackGsapSaveFailure, sdkSession, sdkDeps],
   );
 
+  const moveKeyframe = useCallback(
+    (
+      selection: DomEditSelection,
+      animationId: string,
+      fromPercentage: number,
+      toPercentage: number,
+    ) => {
+      const mutation = { type: "move-keyframe", animationId, fromPercentage, toPercentage };
+      // No SDK persist helper exists for retime — server path only. The post-commit
+      // updateKeyframeCacheFromParsed re-keys the diamond from the fresh parse, so no
+      // optimistic cache write is needed (mapping the tween-% to clip-% here would
+      // duplicate that math). softReload mirrors remove-keyframe.
+      void commitMutation(selection, mutation, {
+        label: `Move keyframe to ${toPercentage}%`,
+        softReload: true,
+      }).catch((error) => {
+        trackGsapSaveFailure(error, selection, mutation, `Move keyframe to ${toPercentage}%`);
+      });
+    },
+    [commitMutation, trackGsapSaveFailure],
+  );
+
   const convertToKeyframes = useCallback(
     async (
       selection: DomEditSelection,
@@ -276,6 +298,7 @@ export function useGsapKeyframeOps({
     addKeyframe,
     addKeyframeBatch,
     removeKeyframe,
+    moveKeyframe,
     convertToKeyframes,
     removeAllKeyframes,
     commitKeyframeAtTime,

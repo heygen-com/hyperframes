@@ -25,6 +25,7 @@ import {
   addKeyframeToScript as addKeyframeRecast,
   updateKeyframeInScript as updateKeyframeRecast,
   removeKeyframeFromScript as removeKeyframeRecast,
+  moveKeyframeInScript as moveKeyframeRecast,
   addAnimationWithKeyframesToScript as addWithKfRecast,
   shiftPositionsInScript as shiftRecast,
   scalePositionsInScript as scaleRecast,
@@ -49,6 +50,7 @@ import {
   addKeyframeToScript as addKeyframeAcorn,
   updateKeyframeInScript as updateKeyframeAcorn,
   removeKeyframeFromScript as removeKeyframeAcorn,
+  moveKeyframeInScript as moveKeyframeAcorn,
   addAnimationWithKeyframesToScript as addWithKfAcorn,
   removeAnimationFromScript as removeAnimAcorn,
   shiftPositionsInScript as shiftAcorn,
@@ -1114,6 +1116,81 @@ describe("parity: updateKeyframeInScript (recast vs acorn)", () => {
     const acorn = updateKeyframeAcorn(UPD_ARRAY_SCRIPT, id, 50, { x: 60 });
     const recast = updateKeyframeRecast(UPD_ARRAY_SCRIPT, id, 50, { x: 60 });
     expect(modelOf(acorn)).toEqual(modelOf(recast));
+  });
+});
+
+// ── moveKeyframeInScript (retime: preserve value + ease) ─────────────────────
+// "Move to Playhead" retimes a keyframe in time, keeping its properties and
+// per-keyframe ease. The moved keyframe must vanish from the source percentage
+// and reappear (with identical value + ease) at the destination; a destination
+// collision is overwritten, not duplicated. recast and acorn must agree.
+const MOVE_KF_SCRIPT = `
+  const tl = gsap.timeline({ paused: true });
+  tl.to("#box", { keyframes: { "0%": { x: 0 }, "50%": { x: 100, opacity: 0.5, ease: "power2.in" }, "100%": { x: 200 } }, duration: 1 }, 0.2);
+`;
+
+describe("moveKeyframeInScript: retime preserves value + ease (acorn) ", () => {
+  it("moves a keyframe to a new percentage, keeping properties + ease", () => {
+    const id = acornId(MOVE_KF_SCRIPT);
+    const out = moveKeyframeAcorn(MOVE_KF_SCRIPT, id, 50, 75);
+    const kfs = shapeOf(out).keyframes?.keyframes ?? [];
+    const pcts = kfs.map((k) => k.percentage);
+    expect(pcts).toEqual([0, 75, 100]);
+    const moved = kfs.find((k) => k.percentage === 75)!;
+    expect(moved.properties).toEqual({ x: 100, opacity: 0.5 });
+    expect(moved.ease).toBe("power2.in");
+    // The source percentage is gone.
+    expect(pcts).not.toContain(50);
+  });
+
+  it("overwrites the destination keyframe on collision (no duplicate)", () => {
+    const id = acornId(MOVE_KF_SCRIPT);
+    const out = moveKeyframeAcorn(MOVE_KF_SCRIPT, id, 50, 100);
+    const kfs = shapeOf(out).keyframes?.keyframes ?? [];
+    const pcts = kfs.map((k) => k.percentage);
+    expect(pcts).toEqual([0, 100]);
+    const dest = kfs.find((k) => k.percentage === 100)!;
+    // The moved keyframe's value + ease replaced the old 100% { x: 200 }.
+    expect(dest.properties).toEqual({ x: 100, opacity: 0.5 });
+    expect(dest.ease).toBe("power2.in");
+  });
+
+  it("no-ops when moving onto the same keyframe (within tolerance)", () => {
+    const id = acornId(MOVE_KF_SCRIPT);
+    expect(moveKeyframeAcorn(MOVE_KF_SCRIPT, id, 50, 51)).toBe(MOVE_KF_SCRIPT);
+  });
+
+  it("no-ops on unknown id / absent source keyframe (both writers)", () => {
+    const id = acornId(MOVE_KF_SCRIPT);
+    expect(moveKeyframeAcorn(MOVE_KF_SCRIPT, "bad-id", 50, 75)).toBe(MOVE_KF_SCRIPT);
+    expect(moveKeyframeRecast(MOVE_KF_SCRIPT, "bad-id", 50, 75)).toBe(MOVE_KF_SCRIPT);
+    expect(moveKeyframeAcorn(MOVE_KF_SCRIPT, id, 33, 75)).toBe(MOVE_KF_SCRIPT);
+  });
+});
+
+describe("parity: moveKeyframeInScript (recast vs acorn)", () => {
+  function expectParity(script: string, from: number, to: number) {
+    const id = acornId(script);
+    expect(parseGsapScript(script).animations[0]!.id).toBe(id);
+    expect(modelOf(moveKeyframeAcorn(script, id, from, to))).toEqual(
+      modelOf(moveKeyframeRecast(script, id, from, to)),
+    );
+  }
+
+  it("retime to a fresh percentage", () => {
+    expectParity(MOVE_KF_SCRIPT, 50, 75);
+  });
+
+  it("retime earlier, re-sorting keyframes", () => {
+    expectParity(MOVE_KF_SCRIPT, 50, 10);
+  });
+
+  it("retime onto an existing percentage (collision overwrite)", () => {
+    expectParity(MOVE_KF_SCRIPT, 50, 100);
+  });
+
+  it("retime an endpoint inward", () => {
+    expectParity(MOVE_KF_SCRIPT, 0, 25);
   });
 });
 

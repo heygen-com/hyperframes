@@ -1,4 +1,4 @@
-import { useState, useMemo, type ReactNode } from "react";
+import { useState, useMemo, useCallback, type ReactNode } from "react";
 import { NLELayout } from "./nle/NLELayout";
 import { CaptionOverlay } from "../captions/components/CaptionOverlay";
 import { CaptionTimeline } from "../captions/components/CaptionTimeline";
@@ -130,6 +130,7 @@ export function StudioPreviewArea({
     handleDomBoxSizeCommit,
     handleDomRotationCommit,
     handleGsapRemoveKeyframe,
+    handleGsapMoveKeyframeToPlayhead,
     handleGsapUpdateMeta,
     handleGsapAddKeyframe,
     handleGsapConvertToKeyframes,
@@ -149,6 +150,23 @@ export function StudioPreviewArea({
     };
   });
 
+  // Resolve a timeline-diamond callback's clip-% to the keyframe's anim id + its
+  // tween-relative percentage (shared by the delete/move keyframe callbacks): the
+  // diamond reports a clip-% but the script ops key on the tween-%. Prefers the
+  // anim in the keyframe's property group, falling back to the first keyframed one.
+  const resolveKeyframeTarget = useCallback(
+    (pct: number): { animId: string; tweenPct: number } | null => {
+      const cached = usePlayerStore.getState().keyframeCache.get(domEditSelection?.id ?? "");
+      const kf = cached?.keyframes.find((k) => Math.abs(k.percentage - pct) < 0.2);
+      const group = kf?.propertyGroup;
+      const anim =
+        (group ? selectedGsapAnimations.find((a) => a.propertyGroup === group) : undefined) ??
+        selectedGsapAnimations.find((a) => a.keyframes);
+      return anim ? { animId: anim.id, tweenPct: kf?.tweenPercentage ?? pct } : null;
+    },
+    [domEditSelection?.id, selectedGsapAnimations],
+  );
+
   // fallow-ignore-next-line complexity
   const timelineEditCallbacks = useMemo(
     () => ({
@@ -166,17 +184,14 @@ export function StudioPreviewArea({
         if (!anim) return;
         handleGsapRemoveAllKeyframes(anim.id);
       },
-      // fallow-ignore-next-line complexity
       onDeleteKeyframe: (_elId: string, pct: number) => {
-        const cacheKey = domEditSelection?.id ?? "";
-        const cached = usePlayerStore.getState().keyframeCache.get(cacheKey);
-        const kf = cached?.keyframes.find((k) => Math.abs(k.percentage - pct) < 0.2);
-        const group = kf?.propertyGroup;
-        const anim =
-          (group ? selectedGsapAnimations.find((a) => a.propertyGroup === group) : undefined) ??
-          selectedGsapAnimations.find((a) => a.keyframes);
-        if (!anim) return;
-        handleGsapRemoveKeyframe(anim.id, kf?.tweenPercentage ?? pct);
+        const target = resolveKeyframeTarget(pct);
+        if (target) handleGsapRemoveKeyframe(target.animId, target.tweenPct);
+      },
+      // Retime the keyframe to the playhead, preserving its value + ease.
+      onMoveKeyframeToPlayhead: (_elId: string, pct: number) => {
+        const target = resolveKeyframeTarget(pct);
+        if (target) handleGsapMoveKeyframeToPlayhead(target.animId, target.tweenPct);
       },
       onChangeKeyframeEase: (_elId: string, _pct: number, ease: string) => {
         for (const anim of selectedGsapAnimations) {
@@ -213,9 +228,10 @@ export function StudioPreviewArea({
       handleRazorSplit,
       handleRazorSplitAll,
       handleGsapRemoveAllKeyframes,
-      domEditSelection?.id,
+      resolveKeyframeTarget,
       selectedGsapAnimations,
       handleGsapRemoveKeyframe,
+      handleGsapMoveKeyframeToPlayhead,
       handleGsapUpdateMeta,
       handleGsapAddKeyframe,
       handleGsapConvertToKeyframes,

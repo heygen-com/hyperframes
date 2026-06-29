@@ -37,6 +37,7 @@ import {
   removeAnimationFromScript,
   addKeyframeToScript,
   removeKeyframeFromScript,
+  moveKeyframeInScript,
   updateKeyframeInScript,
   convertToKeyframesFromScript,
   removeAllKeyframesFromScript,
@@ -625,6 +626,12 @@ type GsapMutationRequest =
     }
   | { type: "remove-keyframe"; animationId: string; percentage: number }
   | {
+      type: "move-keyframe";
+      animationId: string;
+      fromPercentage: number;
+      toPercentage: number;
+    }
+  | {
       type: "update-keyframe";
       animationId: string;
       percentage: number;
@@ -778,6 +785,7 @@ const HOLD_SYNC_MUTATION_TYPES = new Set<string>([
   "add-keyframe",
   "update-keyframe",
   "remove-keyframe",
+  "move-keyframe",
   "remove-all-keyframes",
   "add-with-keyframes",
   "replace-with-keyframes",
@@ -945,6 +953,14 @@ function executeGsapMutationAcorn(
     case "remove-keyframe": {
       return removeKeyframeFromScript(block.scriptText, body.animationId, body.percentage);
     }
+    case "move-keyframe": {
+      return moveKeyframeInScript(
+        block.scriptText,
+        body.animationId,
+        body.fromPercentage,
+        body.toPercentage,
+      );
+    }
     case "update-keyframe": {
       return updateKeyframeInScript(
         block.scriptText,
@@ -1103,6 +1119,7 @@ async function executeGsapMutationRecast(
     removeAnimationFromScript,
     addKeyframeToScript,
     removeKeyframeFromScript,
+    moveKeyframeInScript,
     updateKeyframeInScript,
     convertToKeyframesInScript,
     removeAllKeyframesFromScript,
@@ -1255,6 +1272,14 @@ async function executeGsapMutationRecast(
     }
     case "remove-keyframe": {
       return removeKeyframeFromScript(block.scriptText, body.animationId, body.percentage);
+    }
+    case "move-keyframe": {
+      return moveKeyframeInScript(
+        block.scriptText,
+        body.animationId,
+        body.fromPercentage,
+        body.toPercentage,
+      );
     }
     case "update-keyframe": {
       return updateKeyframeInScript(

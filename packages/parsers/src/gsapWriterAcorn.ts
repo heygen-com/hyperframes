@@ -1191,6 +1191,52 @@ export function removeKeyframeFromScript(
   return ms.toString();
 }
 
+/**
+ * Retime a keyframe: move the keyframe at `fromPercentage` to `toPercentage`,
+ * PRESERVING its properties and per-keyframe ease (the Studio "Move to Playhead"
+ * gesture). Re-sorts keyframes by percentage. If a keyframe already exists at
+ * `toPercentage`, it is overwritten by the moved one (no duplicate). No-op when
+ * the animation/keyframe isn't found, the tween has no object-form keyframes, or
+ * the move resolves onto the same keyframe.
+ */
+export function moveKeyframeInScript(
+  script: string,
+  animationId: string,
+  fromPercentage: number,
+  toPercentage: number,
+): string {
+  const located = locateWithKeyframes(script, animationId);
+  if (!located) return script;
+  const { kfNode } = located;
+
+  const match = findKfPropByPct(kfNode, fromPercentage);
+  if (!match) return script;
+  // Moving onto the same keyframe (from ≈ to within tolerance) — nothing to do.
+  const collision = findKfPropByPct(kfNode, toPercentage);
+  if (collision && collision.prop === match.prop) return script;
+
+  // Rebuild the keyframes object: drop the moved keyframe (and any keyframe at
+  // the destination it overwrites), re-key the moved record to toPercentage,
+  // then re-sort. recordToCode round-trips properties + per-keyframe ease + _auto.
+  const entries: Array<{ pct: number; record: Record<string, number | string> }> = [];
+  for (const prop of percentagePropsOf(kfNode)) {
+    if (prop === match.prop) continue;
+    if (collision && prop === collision.prop) continue;
+    const pct = percentageFromKey(propKeyName(prop) ?? "");
+    if (Number.isNaN(pct)) continue;
+    entries.push({ pct, record: valueNodeToRecord(prop.value, script) });
+  }
+  entries.push({ pct: toPercentage, record: valueNodeToRecord(match.prop.value, script) });
+  entries.sort((a, b) => a.pct - b.pct);
+
+  const body = entries
+    .map((e) => `${JSON.stringify(`${e.pct}%`)}: ${recordToCode(e.record)}`)
+    .join(", ");
+  const ms = new MagicString(script);
+  ms.overwrite(kfNode.start, kfNode.end, `{ ${body} }`);
+  return ms.toString();
+}
+
 export function removePropertyFromAnimation(
   script: string,
   animationId: string,

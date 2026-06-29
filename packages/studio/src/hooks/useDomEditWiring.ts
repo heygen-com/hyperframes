@@ -87,6 +87,12 @@ export interface UseDomEditWiringParams {
     properties: Record<string, number | string>,
   ) => Promise<void>;
   removeKeyframe: (sel: DomEditSelection, animId: string, percentage: number) => void;
+  moveKeyframe: (
+    sel: DomEditSelection,
+    animId: string,
+    fromPercentage: number,
+    toPercentage: number,
+  ) => void;
   convertToKeyframes: (
     sel: DomEditSelection,
     animId: string,
@@ -131,6 +137,7 @@ export function useDomEditWiring({
   addKeyframe,
   addKeyframeBatch,
   removeKeyframe,
+  moveKeyframe,
   convertToKeyframes,
   removeAllKeyframes,
   handleDomManualEditsReset,
@@ -224,6 +231,7 @@ export function useDomEditWiring({
     addKeyframe,
     addKeyframeBatch,
     removeKeyframe,
+    moveKeyframe,
     convertToKeyframes,
     removeAllKeyframes,
     handleDomManualEditsReset,

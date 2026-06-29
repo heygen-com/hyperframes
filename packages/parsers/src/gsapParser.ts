@@ -2316,6 +2316,53 @@ export function removeKeyframeFromScript(
 }
 
 /**
+ * Retime a keyframe: move the keyframe at `fromPercentage` to `toPercentage`,
+ * PRESERVING its properties and per-keyframe ease (the Studio "Move to Playhead"
+ * gesture). Re-sorts keyframes by percentage. If a keyframe already exists at
+ * `toPercentage`, it is overwritten by the moved one (no duplicate). No-op when
+ * the animation/keyframe isn't found, the tween has no object-form keyframes, or
+ * the move resolves onto the same keyframe. Acorn twin: moveKeyframeInScript.
+ */
+export function moveKeyframeInScript(
+  script: string,
+  animationId: string,
+  fromPercentage: number,
+  toPercentage: number,
+): string {
+  const loc = locateAnimationWithFallback(script, animationId);
+  if (!loc) return script;
+  const kfNode = findKeyframesObjectNode(loc.target.call.varsArg);
+  if (!kfNode) return script;
+
+  const match = findKeyframePropByPct(kfNode, fromPercentage);
+  if (!match) return script;
+  const collision = findKeyframePropByPct(kfNode, toPercentage);
+  if (collision && collision.prop === match.prop) return script;
+
+  // Reuse each keyframe's value node verbatim (preserves properties +
+  // per-keyframe ease + _auto). Drop the moved keyframe (and any destination
+  // keyframe it overwrites), re-key the moved value to toPercentage, then re-sort.
+  const movedValue = match.prop.value;
+  const entries: Array<{ pct: number; value: AstNode }> = [];
+  for (const prop of filterPercentageProps(kfNode)) {
+    if (prop === match.prop) continue;
+    if (collision && prop === collision.prop) continue;
+    const pct = percentageFromKey(propKeyName(prop) ?? "");
+    if (Number.isNaN(pct)) continue;
+    entries.push({ pct, value: prop.value });
+  }
+  entries.push({ pct: toPercentage, value: movedValue });
+  entries.sort((a, b) => a.pct - b.pct);
+
+  kfNode.properties = entries.map((e) => {
+    const p = parseExpr(`{ ${JSON.stringify(`${e.pct}%`)}: {} }`).properties[0];
+    p.value = e.value;
+    return p;
+  });
+  return recast.print(loc.parsed.ast).code;
+}
+
+/**
  * Replace the properties (and optionally ease) at an existing keyframe percentage.
  */
 export function updateKeyframeInScript(
