@@ -155,7 +155,7 @@ function removeProp(ms: MagicString, propNode: Node, editableProps: Node[]): voi
 }
 
 /** Serialize a vars record to an object-literal source: `{ k: v, ... }`. */
-function buildVarsObjectCode(record: Record<string, number | string>): string {
+function buildVarsObjectCode(record: Record<string, number | string | boolean>): string {
   const entries = Object.entries(record).map(([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`);
   return entries.length > 0 ? `{ ${entries.join(", ")} }` : "{}";
 }
@@ -1203,20 +1203,24 @@ export function removeAllKeyframesFromScript(script: string, animationId: string
 
 // Flat vars for a tween collapsing its keyframes onto one stop: existing
 // top-level props, then the collapse keyframe's props (skip per-keyframe
-// `ease`), then duration/ease/extras. Drops keyframes + easeEach by omission.
+// `ease`), then extras. Removing all keyframes HOLDS the element statically —
+// collapse to a zero-duration immediateRender tween (a `gsap.set` equivalent),
+// dropping the original duration/ease so the element does not re-animate.
 function buildCollapsedFlatVars(
   animation: GsapAnimation,
   collapse: { properties: Record<string, number | string> },
-): Record<string, number | string> {
-  const flat: Record<string, number | string> = { ...animation.properties };
+): Record<string, number | string | boolean> {
+  const flat: Record<string, number | string | boolean> = { ...animation.properties };
   for (const [k, v] of Object.entries(collapse.properties)) {
     if (k !== "ease") flat[k] = v;
   }
-  if (animation.duration !== undefined) flat.duration = animation.duration;
-  if (animation.ease) flat.ease = animation.ease;
   for (const [k, v] of Object.entries(animation.extras ?? {})) {
     if (typeof v === "number" || typeof v === "string") flat[k] = v;
   }
+  // Static hold wins over any carried extras: zero duration + immediateRender,
+  // no ease.
+  flat.duration = 0;
+  flat.immediateRender = true;
   return flat;
 }
 

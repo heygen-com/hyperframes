@@ -1267,13 +1267,13 @@ function isEditablePropertyKey(key: string): boolean {
   return !BUILTIN_VAR_KEYS.has(key) && !DROPPED_VAR_KEYS.has(key) && !EXTRAS_KEYS.has(key);
 }
 
-function makeObjectProperty(key: string, value: number | string): AstNode {
+function makeObjectProperty(key: string, value: number | string | boolean): AstNode {
   const obj = parseExpr(`{ ${safeKey(key)}: ${valueToCode(value)} }`);
   return obj.properties[0];
 }
 
 /** Set (or insert) a single key on an ObjectExpression, preserving sibling keys. */
-function setVarsKey(varsArg: AstNode, key: string, value: number | string): void {
+function setVarsKey(varsArg: AstNode, key: string, value: number | string | boolean): void {
   if (varsArg?.type !== "ObjectExpression") return;
   const existing = varsArg.properties.find(
     (p: AstNode) => isObjectProperty(p) && propKeyName(p) === key,
@@ -2478,6 +2478,13 @@ export function removeAllKeyframesFromScript(script: string, animationId: string
   const collapseEntry = method === "from" ? kfEntries[0]! : kfEntries[kfEntries.length - 1]!;
   const record = objectExpressionToRecord(collapseEntry.prop.value, loc.parsed.scope);
   collapseKeyframesToFlat(loc.target.call.varsArg, record);
+  // Removing ALL keyframes HOLDS the element statically — collapse to a
+  // zero-duration immediateRender tween (a `gsap.set` equivalent), dropping the
+  // original duration/ease so the element does not re-animate from its base
+  // toward the collapsed value (which moved it out from under the selection).
+  removeVarsKey(loc.target.call.varsArg, "ease");
+  setVarsKey(loc.target.call.varsArg, "duration", 0);
+  setVarsKey(loc.target.call.varsArg, "immediateRender", true);
 
   return recast.print(loc.parsed.ast).code;
 }

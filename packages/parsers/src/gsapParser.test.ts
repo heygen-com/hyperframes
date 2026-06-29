@@ -2192,6 +2192,10 @@ describe("keyframe mutations", () => {
     expect(anim.keyframes).toBeUndefined();
     expect(anim.properties.x).toBe(200);
     expect(anim.properties.opacity).toBe(1);
+    // Removing all keyframes must HOLD statically (gsap.set equivalent): zero
+    // duration + immediateRender so the element does not re-animate.
+    expect(anim.duration).toBe(0);
+    expect(anim.extras?.immediateRender).toBe("__raw:true");
   });
 });
 
