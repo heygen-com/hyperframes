@@ -251,6 +251,25 @@ export function applySoftReload(
       }
     }
 
+    // Also reset elements carrying a GSAP-applied inline `transform` that the
+    // timeline-children sweep above missed — a dragged element whose position
+    // was a standalone `gsap.set` (never a timeline child), or one whose
+    // keyframes were just removed (no longer in any timeline). Their last
+    // `gsap.set` transform is otherwise orphaned: the re-run won't re-set it
+    // and the sweep above can't see it, so the element renders offset from its
+    // source position (matching the overlay) until a full reload. The clear
+    // below runs BEFORE the re-run, which re-applies the transform for any
+    // element the new script still animates.
+    const seenTargets = new Set<Element>(allTargets);
+    for (const el of doc.querySelectorAll<HTMLElement>("[style*='transform']")) {
+      // Gate on the GSAP cache (`_gsap`) so we only reset transforms GSAP owns —
+      // never strip an authored, non-GSAP inline transform.
+      if (el.style.transform && "_gsap" in el && !seenTargets.has(el)) {
+        seenTargets.add(el);
+        allTargets.push(el);
+      }
+    }
+
     // Reset GSAP's internal transform cache so from() tweens don't read stale
     // end values. `clearProps: "all"` is needed to flush the cache, but it also
     // nukes the element's CSS base (position, width, height, etc.) from the

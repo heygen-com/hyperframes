@@ -100,6 +100,35 @@ describe("applySoftReload", () => {
     expect(contentWindow.__hfStudioManualEditsApply).toHaveBeenCalled();
   });
 
+  it("strips a stale inline transform from an orphaned (non-timeline-child) element", () => {
+    // Repro: an element dragged via gsap.set whose keyframes were then removed is
+    // no longer a timeline child, so the timeline-children sweep misses it. Its
+    // stale inline transform must still be cleared so it snaps back to its source
+    // (overlay) position instead of rendering offset.
+    const orphan = document.createElement("div");
+    orphan.style.cssText = "left: 1240px; top: 200px; transform: translate(449px, 0px)";
+    Object.assign(orphan, { _gsap: {} }); // GSAP cache marker (set by gsap.set)
+
+    const scriptEl = document.createElement("script");
+    scriptEl.textContent = 'const tl = gsap.timeline({ paused: true }); tl.to("#x", { x: 1 });';
+    const container = document.createElement("div");
+    container.appendChild(scriptEl);
+
+    const { iframe } = buildMockIframe({ gsap: { timeline: vi.fn(), set: vi.fn() } });
+    (iframe as unknown as { contentDocument: unknown }).contentDocument = {
+      querySelectorAll: (sel: string) =>
+        sel === "script:not([src])" ? [scriptEl] : sel === "[style*='transform']" ? [orphan] : [],
+      createElement: (tag: string) => document.createElement(tag),
+      body: container,
+      head: document.createElement("div"),
+    };
+
+    applySoftReload(iframe, SCRIPT_TEXT);
+
+    expect(orphan.style.transform).toBe(""); // stale GSAP transform stripped
+    expect(orphan.style.left).toBe("1240px"); // authored CSS base preserved
+  });
+
   it("wraps execution in __hfSuppressSceneMutations when available", () => {
     let suppressionCalled = false;
     const { iframe } = buildMockIframe({
