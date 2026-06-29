@@ -5,6 +5,7 @@ import {
   type EnableKeyframesSession,
 } from "../hooks/useEnableKeyframes";
 import { computeElementPercentage } from "../hooks/gsapShared";
+import { useKeyframeKeyboard } from "../hooks/useKeyframeKeyboard";
 import {
   getNextTimelineZoomPercent,
   getTimelineZoomPercent,
@@ -88,6 +89,13 @@ export function TimelineToolbar({
     willExtend: keyframeWillExtend,
     onToggle: onToggleKeyframe,
   } = useKeyframeToggle(domEditSession);
+
+  // Wire the "Add keyframe (K)" shortcut the toolbar advertises. Active only when
+  // there's a keyframeable selection; otherwise K stays JKL-pause in playback.
+  useKeyframeKeyboard({
+    enabled: STUDIO_KEYFRAMES_ENABLED && Boolean(onToggleKeyframe),
+    onAddKeyframe: onToggleKeyframe,
+  });
 
   return (
     <div className="border-b border-neutral-800/40 bg-neutral-950/96">
