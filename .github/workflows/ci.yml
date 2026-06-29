@@ -79,9 +79,12 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
+      - run: corepack enable
+      - run: corepack prepare pnpm@10.17.1 --activate
       - uses: ./.github/actions/prepare-ffmpeg-bin
       - run: bun install --frozen-lockfile
       - run: bun run build
+      - run: bun run verify:packed-manifests
 
   lint:
     name: Lint

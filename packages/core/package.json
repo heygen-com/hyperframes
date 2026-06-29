@@ -13,7 +13,6 @@
     "dist/**/*.d.ts.map",
     "dist/**/*.js.map",
     "!dist/hyperframe.runtime.mjs",
-    "!dist/generated/runtime-inline.js",
     "docs",
     "schemas",
     "README.md"
