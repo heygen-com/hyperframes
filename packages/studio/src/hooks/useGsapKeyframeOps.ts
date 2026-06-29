@@ -227,6 +227,34 @@ export function useGsapKeyframeOps({
     [commitMutation, trackGsapSaveFailure],
   );
 
+  const resizeKeyframedTween = useCallback(
+    (
+      selection: DomEditSelection,
+      animationId: string,
+      position: number,
+      duration: number,
+      pctRemap: Array<{ from: number; to: number }>,
+    ) => {
+      const mutation = {
+        type: "resize-keyframed-tween",
+        animationId,
+        position,
+        duration,
+        pctRemap,
+      };
+      // Boundary drag-to-retime: the server re-keys keyframes in place + grows the
+      // tween window, preserving _auto / per-keyframe ease / easeEach / outer ease.
+      // softReload re-keys the diamonds from the fresh parse (mirrors moveKeyframe).
+      void commitMutation(selection, mutation, {
+        label: "Retime keyframe (resize tween)",
+        softReload: true,
+      }).catch((error) => {
+        trackGsapSaveFailure(error, selection, mutation, "Retime keyframe (resize tween)");
+      });
+    },
+    [commitMutation, trackGsapSaveFailure],
+  );
+
   const convertToKeyframes = useCallback(
     async (
       selection: DomEditSelection,
@@ -299,6 +327,7 @@ export function useGsapKeyframeOps({
     addKeyframeBatch,
     removeKeyframe,
     moveKeyframe,
+    resizeKeyframedTween,
     convertToKeyframes,
     removeAllKeyframes,
     commitKeyframeAtTime,

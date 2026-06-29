@@ -22,6 +22,14 @@ export interface RetimeKeyframe {
   ease?: string;
 }
 
+/** One existing keyframe's old→new tween-% under a resize remap. */
+export interface KeyframePctRemap {
+  /** The existing keyframe's current tween-relative %. */
+  from: number;
+  /** Its new tween-relative % on the resized window. */
+  to: number;
+}
+
 export interface KeyframeRetimeResult {
   kind: "noop" | "move" | "resize";
   /** MOVE: tween-relative drop position. */
@@ -30,8 +38,13 @@ export interface KeyframeRetimeResult {
   position?: number;
   /** RESIZE: new tween duration (seconds). */
   duration?: number;
-  /** RESIZE: every keyframe remapped onto the new window (tween-%), value+ease kept. */
-  keyframes?: RetimeKeyframe[];
+  /**
+   * RESIZE: each existing keyframe's old→new tween-%. The commit re-keys each
+   * keyframe IN PLACE (round-tripping its value node), so `_auto`, per-keyframe
+   * `ease`, `easeEach`, and the outer tween `ease` all survive — unlike rebuilding
+   * a fresh keyframes array.
+   */
+  pctRemap?: KeyframePctRemap[];
 }
 
 /** Below this (tween-%) a move resolves onto the source keyframe → skip the write. */
@@ -89,23 +102,20 @@ export function resolveKeyframeRetime(opts: {
     }
   });
 
-  const remapped: RetimeKeyframe[] = keyframes.map((kf, i) => {
-    // Preserve every keyframe's absolute time; the dragged one lands at the drop.
+  // Map each existing keyframe to its new tween-% on the grown window, preserving
+  // its absolute time (the dragged one lands at the drop). Carry only the old→new
+  // percentages; the commit re-keys in place so value + ease + _auto + easeEach
+  // survive verbatim (no rebuilt keyframes array).
+  const pctRemap: KeyframePctRemap[] = keyframes.map((kf, i) => {
     const absTime =
       i === draggedIdx ? dropAbsTime : tweenStart + (kf.percentage / 100) * tweenDuration;
-    const percentage = round1(((absTime - newStart) / newDuration) * 100);
-    return {
-      percentage,
-      properties: { ...kf.properties },
-      ...(kf.ease ? { ease: kf.ease } : {}),
-    };
+    return { from: kf.percentage, to: round1(((absTime - newStart) / newDuration) * 100) };
   });
-  remapped.sort((a, b) => a.percentage - b.percentage);
 
   return {
     kind: "resize",
     position: round3(newStart),
     duration: round3(newDuration),
-    keyframes: remapped,
+    pctRemap,
   };
 }

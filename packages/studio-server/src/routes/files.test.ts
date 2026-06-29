@@ -526,6 +526,83 @@ tl.to("#box", { keyframes: { "0%": { x: 0 }, "50%": { x: 100, opacity: 0.5, ease
     expect(readFileSync(join(projectDir, "kf.html"), "utf-8")).toBe(before);
   });
 
+  it("resize-keyframed-tween grows the window + re-keys, preserving value + ease", async () => {
+    const projectDir = createProjectDir();
+    writeHtml(projectDir, "kf.html", KEYFRAME_COMP);
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const anim = await getFirstAnimation(app, "kf.html");
+
+    // Window [0, 1.5]; drag the last keyframe (abs 1.5) out to abs 3 → [0, 3].
+    // abs 0/0.75/3 over the new 3s window → 0 / 25 / 100.
+    const res = await app.request("http://localhost/projects/demo/gsap-mutations/kf.html", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "resize-keyframed-tween",
+        animationId: anim.id,
+        position: 0,
+        duration: 3,
+        pctRemap: [
+          { from: 0, to: 0 },
+          { from: 50, to: 25 },
+          { from: 100, to: 100 },
+        ],
+      }),
+    });
+    const result = (await res.json()) as {
+      ok: boolean;
+      changed: boolean;
+      parsed: {
+        animations: Array<{
+          duration?: number;
+          keyframes?: {
+            keyframes: Array<{
+              percentage: number;
+              properties: Record<string, number | string>;
+              ease?: string;
+            }>;
+          };
+        }>;
+      };
+    };
+
+    expect(res.status).toBe(200);
+    expect(result.ok).toBe(true);
+    expect(result.changed).toBe(true);
+    expect(result.parsed.animations[0].duration).toBe(3);
+    const kfs = result.parsed.animations[0].keyframes?.keyframes ?? [];
+    expect(kfs.map((k) => k.percentage)).toEqual([0, 25, 100]);
+    const interior = kfs.find((k) => k.percentage === 25)!;
+    expect(interior.properties).toEqual({ x: 100, opacity: 0.5 });
+    expect(interior.ease).toBe("power2.in");
+  });
+
+  it("resize-keyframed-tween rejects non-finite numbers before writing source", async () => {
+    const projectDir = createProjectDir();
+    writeHtml(projectDir, "kf.html", KEYFRAME_COMP);
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const anim = await getFirstAnimation(app, "kf.html");
+    const before = readFileSync(join(projectDir, "kf.html"), "utf-8");
+    const res = await app.request("http://localhost/projects/demo/gsap-mutations/kf.html", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "resize-keyframed-tween",
+        animationId: anim.id,
+        position: 0,
+        duration: Number.NaN,
+        pctRemap: [{ from: 0, to: 0 }],
+      }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(readFileSync(join(projectDir, "kf.html"), "utf-8")).toBe(before);
+  });
+
   it("remove-from-property returns 400 for a non-fromTo animation", async () => {
     const projectDir = createProjectDir();
     const TO_COMP = `<!DOCTYPE html><html><body><script data-hyperframes-gsap>

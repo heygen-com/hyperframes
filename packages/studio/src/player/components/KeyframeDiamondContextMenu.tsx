@@ -48,7 +48,10 @@ export const KeyframeDiamondContextMenu = memo(function KeyframeDiamondContextMe
           type="button"
           className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-neutral-200 hover:bg-neutral-800 cursor-pointer text-left"
           onClick={() => {
-            onMoveToPlayhead(state.elementId, state.tweenPercentage ?? state.percentage);
+            // Pass clip-% — resolveKeyframeTarget keys the cache lookup on clip-%
+            // and returns the tween-% for the mutation. Passing tween-% here would
+            // miss the lookup on any tween whose window is shorter than the clip.
+            onMoveToPlayhead(state.elementId, state.percentage);
             onClose();
           }}
         >
@@ -61,7 +64,7 @@ export const KeyframeDiamondContextMenu = memo(function KeyframeDiamondContextMe
         type="button"
         className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-400 hover:bg-neutral-800 cursor-pointer text-left"
         onClick={() => {
-          onDelete(state.elementId, state.tweenPercentage ?? state.percentage);
+          onDelete(state.elementId, state.percentage);
           onClose();
         }}
       >

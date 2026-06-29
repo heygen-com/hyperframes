@@ -667,6 +667,10 @@ const PERCENTAGE_KEY_RE = /^(\d+(?:\.\d+)?)%$/;
 // treated as the same keyframe (merge), not a new insert.
 const PCT_TOLERANCE = 2;
 
+// Below this (tween-%) a retime resolves onto its own source keyframe → skip the
+// write. Mirrors the drag layer's NOOP_EPSILON so a deliberate 1% retime commits.
+const MOVE_NOOP_EPSILON_PCT = 0.05;
+
 function percentageFromKey(key: string): number {
   const m = PERCENTAGE_KEY_RE.exec(key);
   return m ? Number.parseFloat(m[1] ?? "0") : Number.NaN;
@@ -1211,9 +1215,15 @@ export function moveKeyframeInScript(
 
   const match = findKfPropByPct(kfNode, fromPercentage);
   if (!match) return script;
-  // Moving onto the same keyframe (from ≈ to within tolerance) — nothing to do.
-  const collision = findKfPropByPct(kfNode, toPercentage);
-  if (collision && collision.prop === match.prop) return script;
+  // No-op ONLY for a negligible move (matches the drag's NOOP_EPSILON). The old
+  // `collision.prop === match.prop` guard dropped EVERY sub-PCT_TOLERANCE (2%)
+  // retime, because findKfPropByPct resolves the destination back onto the
+  // from-keyframe — so a deliberate 1% drag committed nothing.
+  if (Math.abs(fromPercentage - toPercentage) < MOVE_NOOP_EPSILON_PCT) return script;
+  // A destination keyframe is only a real collision (overwrite) when it's a
+  // DIFFERENT keyframe; resolving back onto the from-keyframe is not.
+  const dest = findKfPropByPct(kfNode, toPercentage);
+  const collision = dest && dest.prop !== match.prop ? dest : null;
 
   // Rebuild the keyframes object: drop the moved keyframe (and any keyframe at
   // the destination it overwrites), re-key the moved record to toPercentage,
@@ -1234,6 +1244,50 @@ export function moveKeyframeInScript(
     .join(", ");
   const ms = new MagicString(script);
   ms.overwrite(kfNode.start, kfNode.end, `{ ${body} }`);
+  return ms.toString();
+}
+
+/**
+ * Resize a keyframed tween's window (boundary drag-to-retime): set the tween's
+ * `position` (trailing position arg) + `duration`, and RE-KEY each existing
+ * keyframe to its new percentage via `pctRemap` (each `{ from, to }` matches an
+ * existing keyframe by its current tween-% and re-keys it to `to`).
+ *
+ * Unlike replace-with-keyframes (which rebuilds the keyframes object from a plain
+ * array and loses author intent), this re-keys the percentage KEY in place and
+ * leaves every value node, each keyframe's `_auto` + per-keyframe `ease`, the
+ * keyframes-object `easeEach`, and the OUTER tween `ease` byte-for-byte verbatim.
+ * No-op when the animation/keyframes can't be located.
+ */
+export function resizeKeyframedTweenInScript(
+  script: string,
+  animationId: string,
+  newPosition: number,
+  newDuration: number,
+  pctRemap: ReadonlyArray<{ from: number; to: number }>,
+): string {
+  const located = locateWithKeyframes(script, animationId);
+  if (!located) return script;
+  const { target, kfNode } = located;
+
+  // Resolve every re-key against the ORIGINAL AST first (offsets stay stable),
+  // then splice — distinct key nodes, so the overwrites never overlap. A Set
+  // guards the degenerate case where two remaps resolve to the same key.
+  const edits: Array<{ keyNode: Node; to: number }> = [];
+  const seen = new Set<Node>();
+  for (const { from, to } of pctRemap) {
+    const match = findKfPropByPct(kfNode, from);
+    if (!match || seen.has(match.prop.key)) continue;
+    seen.add(match.prop.key);
+    edits.push({ keyNode: match.prop.key, to });
+  }
+
+  const ms = new MagicString(script);
+  for (const { keyNode, to } of edits) {
+    ms.overwrite(keyNode.start, keyNode.end, JSON.stringify(`${to}%`));
+  }
+  overwritePosition(ms, target.call, newPosition);
+  upsertProp(ms, target.call.varsArg, "duration", newDuration);
   return ms.toString();
 }
 

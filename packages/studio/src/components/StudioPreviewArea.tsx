@@ -135,13 +135,13 @@ export function StudioPreviewArea({
     handleGsapRemoveKeyframe,
     handleGsapMoveKeyframeToPlayhead,
     handleGsapMoveKeyframe,
+    handleGsapResizeKeyframedTween,
     handleGsapUpdateMeta,
     handleGsapAddKeyframe,
     handleGsapConvertToKeyframes,
     handleGsapRemoveAllKeyframes,
     buildDomSelectionForTimelineElement,
     applyMarqueeSelection,
-    commitMutation,
   } = useDomEditActionsContext();
 
   // fallow-ignore-next-line complexity
@@ -233,20 +233,15 @@ export function StudioPreviewArea({
           handleGsapMoveKeyframe(target.animId, target.tweenPct, decision.toTweenPct);
         } else if (
           decision.kind === "resize" &&
-          decision.keyframes &&
+          decision.pctRemap &&
           decision.position != null &&
           decision.duration != null
         ) {
-          void commitMutation(
-            {
-              type: "replace-with-keyframes",
-              animationId: target.animId,
-              targetSelector: anim.targetSelector,
-              position: decision.position,
-              duration: decision.duration,
-              keyframes: decision.keyframes,
-            },
-            { label: "Retime keyframe (resize tween)", softReload: true },
+          handleGsapResizeKeyframedTween(
+            target.animId,
+            decision.position,
+            decision.duration,
+            decision.pctRemap,
           );
         }
       },
@@ -290,6 +285,7 @@ export function StudioPreviewArea({
       handleGsapRemoveKeyframe,
       handleGsapMoveKeyframeToPlayhead,
       handleGsapMoveKeyframe,
+      handleGsapResizeKeyframedTween,
       handleGsapUpdateMeta,
       handleGsapAddKeyframe,
       handleGsapConvertToKeyframes,
@@ -297,7 +293,6 @@ export function StudioPreviewArea({
       projectId,
       activeCompPath,
       domEditSelection,
-      commitMutation,
     ],
   );
 

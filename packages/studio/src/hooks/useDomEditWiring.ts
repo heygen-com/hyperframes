@@ -93,6 +93,13 @@ export interface UseDomEditWiringParams {
     fromPercentage: number,
     toPercentage: number,
   ) => void;
+  resizeKeyframedTween: (
+    sel: DomEditSelection,
+    animId: string,
+    position: number,
+    duration: number,
+    pctRemap: Array<{ from: number; to: number }>,
+  ) => void;
   convertToKeyframes: (
     sel: DomEditSelection,
     animId: string,
@@ -138,6 +145,7 @@ export function useDomEditWiring({
   addKeyframeBatch,
   removeKeyframe,
   moveKeyframe,
+  resizeKeyframedTween,
   convertToKeyframes,
   removeAllKeyframes,
   handleDomManualEditsReset,
@@ -232,6 +240,7 @@ export function useDomEditWiring({
     addKeyframeBatch,
     removeKeyframe,
     moveKeyframe,
+    resizeKeyframedTween,
     convertToKeyframes,
     removeAllKeyframes,
     handleDomManualEditsReset,

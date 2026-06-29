@@ -28,6 +28,7 @@ export function useGsapSelectionHandlers({
   addKeyframeBatch,
   removeKeyframe,
   moveKeyframe,
+  resizeKeyframedTween,
   convertToKeyframes,
   removeAllKeyframes,
   handleDomManualEditsReset,
@@ -81,6 +82,13 @@ export function useGsapSelectionHandlers({
     animId: string,
     fromPercentage: number,
     toPercentage: number,
+  ) => void;
+  resizeKeyframedTween: (
+    sel: DomEditSelection,
+    animId: string,
+    position: number,
+    duration: number,
+    pctRemap: Array<{ from: number; to: number }>,
   ) => void;
   convertToKeyframes: (
     sel: DomEditSelection,
@@ -275,6 +283,24 @@ export function useGsapSelectionHandlers({
     [domEditSelection, moveKeyframe],
   );
 
+  const handleGsapResizeKeyframedTween = useCallback(
+    (
+      animId: string,
+      position: number,
+      duration: number,
+      pctRemap: Array<{ from: number; to: number }>,
+      selectionOverride?: DomEditSelection | null,
+    ) => {
+      const sel = selectionOverride ?? domEditSelection ?? lastSelectionRef.current;
+      if (!sel) return;
+      // Boundary drag-to-retime: grows/shifts the tween window + re-keys keyframes
+      // in place. Distinct telemetry action so resize is separable from in-window move.
+      trackStudioEvent("keyframe", { action: "retime_resize" });
+      resizeKeyframedTween(sel, animId, position, duration, pctRemap);
+    },
+    [domEditSelection, resizeKeyframedTween],
+  );
+
   const handleGsapConvertToKeyframes = useCallback(
     (animId: string, resolvedFromValues?: Record<string, number | string>, duration?: number) => {
       if (!domEditSelection) return Promise.resolve();
@@ -324,6 +350,7 @@ export function useGsapSelectionHandlers({
     handleGsapRemoveKeyframe,
     handleGsapMoveKeyframeToPlayhead,
     handleGsapMoveKeyframe,
+    handleGsapResizeKeyframedTween,
     handleGsapConvertToKeyframes,
     handleGsapRemoveAllKeyframes,
     handleResetSelectedElementKeyframes,

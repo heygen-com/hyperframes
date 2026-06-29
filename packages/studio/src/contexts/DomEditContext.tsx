@@ -56,6 +56,7 @@ export interface DomEditActionsValue extends Pick<
   | "handleGsapRemoveKeyframe"
   | "handleGsapMoveKeyframeToPlayhead"
   | "handleGsapMoveKeyframe"
+  | "handleGsapResizeKeyframedTween"
   | "handleGsapConvertToKeyframes"
   | "handleGsapRemoveAllKeyframes"
   | "handleResetSelectedElementKeyframes"
@@ -173,6 +174,7 @@ export function DomEditProvider({
     handleGsapRemoveKeyframe,
     handleGsapMoveKeyframeToPlayhead,
     handleGsapMoveKeyframe,
+    handleGsapResizeKeyframedTween,
     handleGsapConvertToKeyframes,
     handleGsapRemoveAllKeyframes,
     handleResetSelectedElementKeyframes,
@@ -253,6 +255,7 @@ export function DomEditProvider({
       handleGsapRemoveKeyframe,
       handleGsapMoveKeyframeToPlayhead,
       handleGsapMoveKeyframe,
+      handleGsapResizeKeyframedTween,
       handleGsapConvertToKeyframes,
       handleGsapRemoveAllKeyframes,
       handleResetSelectedElementKeyframes,
@@ -319,6 +322,7 @@ export function DomEditProvider({
       handleGsapRemoveKeyframe,
       handleGsapMoveKeyframeToPlayhead,
       handleGsapMoveKeyframe,
+      handleGsapResizeKeyframedTween,
       handleGsapConvertToKeyframes,
       handleGsapRemoveAllKeyframes,
       handleResetSelectedElementKeyframes,

@@ -38,6 +38,7 @@ import {
   addKeyframeToScript,
   removeKeyframeFromScript,
   moveKeyframeInScript,
+  resizeKeyframedTweenInScript,
   updateKeyframeInScript,
   convertToKeyframesFromScript,
   removeAllKeyframesFromScript,
@@ -632,6 +633,16 @@ type GsapMutationRequest =
       toPercentage: number;
     }
   | {
+      // Boundary drag-to-retime: grow/shift a keyframed tween's window and re-key
+      // its existing keyframes in place (preserves _auto / per-keyframe ease /
+      // easeEach / outer ease, unlike the array-rebuild replace-with-keyframes).
+      type: "resize-keyframed-tween";
+      animationId: string;
+      position: number;
+      duration: number;
+      pctRemap: Array<{ from: number; to: number }>;
+    }
+  | {
       type: "update-keyframe";
       animationId: string;
       percentage: number;
@@ -786,6 +797,7 @@ const HOLD_SYNC_MUTATION_TYPES = new Set<string>([
   "update-keyframe",
   "remove-keyframe",
   "move-keyframe",
+  "resize-keyframed-tween",
   "remove-all-keyframes",
   "add-with-keyframes",
   "replace-with-keyframes",
@@ -961,6 +973,15 @@ function executeGsapMutationAcorn(
         body.toPercentage,
       );
     }
+    case "resize-keyframed-tween": {
+      return resizeKeyframedTweenInScript(
+        block.scriptText,
+        body.animationId,
+        body.position,
+        body.duration,
+        body.pctRemap,
+      );
+    }
     case "update-keyframe": {
       return updateKeyframeInScript(
         block.scriptText,
@@ -1120,6 +1141,7 @@ async function executeGsapMutationRecast(
     addKeyframeToScript,
     removeKeyframeFromScript,
     moveKeyframeInScript,
+    resizeKeyframedTweenInScript,
     updateKeyframeInScript,
     convertToKeyframesInScript,
     removeAllKeyframesFromScript,
@@ -1279,6 +1301,15 @@ async function executeGsapMutationRecast(
         body.animationId,
         body.fromPercentage,
         body.toPercentage,
+      );
+    }
+    case "resize-keyframed-tween": {
+      return resizeKeyframedTweenInScript(
+        block.scriptText,
+        body.animationId,
+        body.position,
+        body.duration,
+        body.pctRemap,
       );
     }
     case "update-keyframe": {
