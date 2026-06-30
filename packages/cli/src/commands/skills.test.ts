@@ -59,6 +59,14 @@ vi.mock("@clack/prompts", () => ({
   },
 }));
 
+// Capture the prerequisite-skip telemetry event without touching the real
+// PostHog client. trackSkillsInstallSkipped already gates on the telemetry
+// opt-out inside trackEvent, so the command calls it unconditionally.
+const trackSkillsInstallSkipped = vi.fn();
+vi.mock("../telemetry/events.js", () => ({
+  trackSkillsInstallSkipped: (...args: unknown[]) => trackSkillsInstallSkipped(...args),
+}));
+
 // `skills update` calls checkSkills() to find skills removed upstream, then
 // prunes them. Mock it so these tests don't touch the real FS / network; the
 // default returns nothing removed, and the prune test overrides per-call.
@@ -112,6 +120,7 @@ describe("hyperframes skills", () => {
     state.spawnCalls = [];
     state.spawnExitCode = 0;
     state.gitMissing = false;
+    trackSkillsInstallSkipped.mockClear();
     vi.resetModules();
     // Each test asserts on process.exitCode; isolate it from the runner's own.
     prevExitCode = process.exitCode;
@@ -329,6 +338,21 @@ describe("hyperframes skills", () => {
 
     expect(state.spawnCalls).toHaveLength(0);
     expect(process.exitCode).toBe(0);
+    // Diagnostic instrumentation: the skip records why, so rare boxes hitting
+    // this (fresh Windows without git) are visible instead of silently no-op.
+    expect(trackSkillsInstallSkipped).toHaveBeenCalledWith({ reason: "git_missing" });
+  });
+
+  // The happy path must never emit the prerequisite-skip event — it's a
+  // skip-only diagnostic, not a per-install signal.
+  it("bare `skills` does not emit the skip event when prerequisites are present", async () => {
+    setPlatform("linux");
+
+    const { default: skillsCmd } = await import("./skills.js");
+    await skillsCmd.run?.({ args: {}, rawArgs: [], cmd: skillsCmd } as never);
+
+    expect(state.spawnCalls.length).toBeGreaterThan(0);
+    expect(trackSkillsInstallSkipped).not.toHaveBeenCalled();
   });
 
   // The strict recovery path (`skills check || skills update`) must fail loudly
