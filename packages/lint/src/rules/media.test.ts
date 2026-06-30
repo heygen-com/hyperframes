@@ -267,4 +267,32 @@ describe("media rules", () => {
     const finding = result.findings.find((f) => f.code === "media_in_subcomposition");
     expect(finding).toBeUndefined();
   });
+
+  it("reports error for media with crossorigin (breaks preview when host omits CORS)", async () => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <video id="v1" crossorigin="anonymous" src="https://cdn.example.com/clip.mp4" data-start="0" data-duration="5" muted playsinline></video>
+  </div>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["c1"] = gsap.timeline({ paused: true });</script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "media_crossorigin_breaks_preview");
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("error");
+    expect(finding?.elementId).toBe("v1");
+  });
+
+  it("does not flag media without crossorigin", async () => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <video id="v1" src="https://cdn.example.com/clip.mp4" data-start="0" data-duration="5" muted playsinline></video>
+  </div>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["c1"] = gsap.timeline({ paused: true });</script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "media_crossorigin_breaks_preview");
+    expect(finding).toBeUndefined();
+  });
 });

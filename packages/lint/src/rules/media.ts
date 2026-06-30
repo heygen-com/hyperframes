@@ -483,6 +483,33 @@ export const mediaRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = 
     return findings;
   },
 
+  // media_crossorigin_breaks_preview — `crossorigin` on <video>/<audio> forces a
+  // CORS-checked fetch. The server-side renderer downloads media directly (no CORS),
+  // so it always works there; but Studio preview runs in the browser, where a media
+  // host that omits Access-Control-Allow-Origin silently fails the load — the media
+  // shows BLANK/black in preview while renders look fine, hiding the bug. Plain
+  // displayed media never needs crossorigin; it's only required to read pixels/samples
+  // back (canvas/WebGL texture, WebAudio createMediaElementSource) AND only when the
+  // host is known CORS-enabled.
+  ({ tags }) => {
+    const findings: HyperframeLintFinding[] = [];
+    for (const tag of tags) {
+      if (tag.name !== "video" && tag.name !== "audio") continue;
+      if (!hasAttrName(tag.raw, "crossorigin")) continue;
+      const elementId = readAttr(tag.raw, "id") || undefined;
+      findings.push({
+        code: "media_crossorigin_breaks_preview",
+        severity: "error",
+        message: `<${tag.name}${elementId ? ` id="${elementId}"` : ""}> has crossorigin, which forces a CORS-checked fetch. If the media host omits Access-Control-Allow-Origin, the load silently fails in Studio preview (media shows BLANK/black) while server-side renders still work — hiding the bug.`,
+        elementId,
+        fixHint:
+          "Remove the crossorigin attribute unless you read the media back via canvas/WebGL/WebAudio AND the host is known to send CORS headers. Plain displayed media never needs it.",
+        snippet: truncateSnippet(tag.raw),
+      });
+    }
+    return findings;
+  },
+
   // video_audio_double_source — catches audible <video> paired with a separate
   // <audio> pointing to the same file, which causes double playback at runtime
   ({ tags }) => {
