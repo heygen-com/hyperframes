@@ -50,10 +50,6 @@ interface RuntimeColorGradingStatus {
   message: string;
 }
 
-export function isColorGradingCapableElement(element: DomEditSelection): boolean {
-  return element.tagName === "video" || element.tagName === "img";
-}
-
 function readColorGradingFromElement(element: DomEditSelection): NormalizedHfColorGrading {
   const grading =
     normalizeHfColorGrading(element.dataAttributes[COLOR_GRADING_DATA_KEY]) ??

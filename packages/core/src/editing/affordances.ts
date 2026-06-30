@@ -72,21 +72,30 @@ function parsePx(value: string | undefined): number | null {
 function isIdentityTransform(value: string | undefined): boolean {
   const transform = (value ?? "none").trim();
   if (!transform || transform === "none") return true;
+
   const matrix = transform.match(/^matrix\(([^)]+)\)$/i);
-  if (!matrix || !matrix[1]) return false;
-  const parts = matrix[1].split(",");
-  if (parts.length !== 6) return false;
-  const values = parts.map((part) => Number.parseFloat(part.trim()));
-  if (values.some((part) => !Number.isFinite(part))) return false;
-  const [a = 0, b = 0, c = 0, d = 0, e = 0, f = 0] = values;
-  return (
-    Math.abs(a - 1) < 0.0001 &&
-    Math.abs(b) < 0.0001 &&
-    Math.abs(c) < 0.0001 &&
-    Math.abs(d - 1) < 0.0001 &&
-    Math.abs(e) < 0.0001 &&
-    Math.abs(f) < 0.0001
-  );
+  if (matrix && matrix[1]) {
+    const parts = matrix[1].split(",");
+    if (parts.length !== 6) return false;
+    const values = parts.map((part) => Number.parseFloat(part.trim()));
+    if (values.some((part) => !Number.isFinite(part))) return false;
+    const [a = 0, b = 0, c = 0, d = 0, e = 0, f = 0] = values;
+    return (
+      Math.abs(a - 1) < 0.0001 &&
+      Math.abs(b) < 0.0001 &&
+      Math.abs(c) < 0.0001 &&
+      Math.abs(d - 1) < 0.0001 &&
+      Math.abs(e) < 0.0001 &&
+      Math.abs(f) < 0.0001
+    );
+  }
+
+  const matrix3d = transform.match(/^matrix3d\(([^)]+)\)$/i);
+  if (!matrix3d || !matrix3d[1]) return false;
+  const values = matrix3d[1].split(",").map((part) => Number.parseFloat(part.trim()));
+  if (values.length !== 16 || values.some((part) => !Number.isFinite(part))) return false;
+  const identity = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+  return values.every((part, index) => Math.abs(part - (identity[index] ?? 0)) < 0.0001);
 }
 
 // fallow-ignore-next-line complexity
