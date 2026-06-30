@@ -260,7 +260,9 @@ export function useDomEditSession({
     onTrySdkPersist: sdkSession
       ? (selection, operations, originalContent, targetPath, options) => {
           // Resolver shadow runs regardless of the cutover flag — decoupled tripwire.
-          runResolverShadow(sdkSession, selection.hfId, operations);
+          // Pass originalContent so the runtime-node filter can suppress hf-ids
+          // absent from source (script-created nodes the SDK can't model).
+          runResolverShadow(sdkSession, selection.hfId, operations, originalContent);
           return sdkCutoverPersist(
             selection,
             operations,

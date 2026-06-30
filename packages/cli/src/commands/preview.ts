@@ -26,6 +26,7 @@ import { createRequire } from "node:module";
 import * as clack from "@clack/prompts";
 import { c } from "../ui/colors.js";
 import { isDevMode } from "../utils/env.js";
+import { normalizeErrorMessage as errorMessage } from "../utils/errorMessage.js";
 import { buildNpxCommand } from "../utils/npxCommand.js";
 import type { StudioSelectionSnapshot } from "@hyperframes/studio-server";
 import {
@@ -307,10 +308,6 @@ function printSelectionFailure(code: string, message: string, json: boolean): vo
   process.exitCode = 1;
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 function previewServerPayload(server: {
   port: number;
   host?: string;
@@ -471,11 +468,7 @@ async function printCurrentContext(
   try {
     fields = parseContextFields(options.fields);
   } catch (err) {
-    printSelectionFailure(
-      "invalid-context-fields",
-      err instanceof Error ? err.message : String(err),
-      options.json,
-    );
+    printSelectionFailure("invalid-context-fields", errorMessage(err), options.json);
     return;
   }
   const fullDetail = options.detail === "full";

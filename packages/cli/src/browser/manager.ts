@@ -4,6 +4,7 @@ import { existsSync, readdirSync, rmSync } from "node:fs";
 import { basename } from "node:path";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { normalizeErrorMessage } from "../utils/errorMessage.js";
 
 type PuppeteerBrowsers = typeof import("@puppeteer/browsers");
 
@@ -11,7 +12,7 @@ async function loadPuppeteerBrowsers(): Promise<PuppeteerBrowsers> {
   try {
     return await import("@puppeteer/browsers");
   } catch (err) {
-    const cause = err instanceof Error ? err.message : String(err);
+    const cause = normalizeErrorMessage(err);
     throw new Error(
       `Failed to load @puppeteer/browsers: ${cause}\n` +
         `Fix: run \`npm install\` or \`bun install\` to restore missing packages, then retry.`,
@@ -268,7 +269,7 @@ export async function findBrowser(): Promise<BrowserResult | undefined> {
     try {
       return await downloadBrowser();
     } catch (err) {
-      const cause = err instanceof Error ? err.message : String(err);
+      const cause = normalizeErrorMessage(err);
       throw new Error(
         `Cached Chrome binary was missing at ${fromCache.staleHyperframesCachePath}, and re-download failed: ${cause}\n` +
           `Run \`hyperframes browser ensure --force\` to re-download.`,

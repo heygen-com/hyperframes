@@ -22,6 +22,7 @@
 
 import { readFileSync } from "node:fs";
 import { c } from "../../ui/colors.js";
+import { normalizeErrorMessage } from "../../utils/errorMessage.js";
 
 export type PoliciesVerb = "role" | "user" | "validate";
 
@@ -247,7 +248,7 @@ export async function runPolicies(args: PoliciesArgs): Promise<void> {
       try {
         result = validatePolicy(args.inputPath);
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
+        const msg = normalizeErrorMessage(err);
         if (args.json) {
           console.log(JSON.stringify({ ok: false, error: msg }, null, 2));
           process.exitCode = 1;

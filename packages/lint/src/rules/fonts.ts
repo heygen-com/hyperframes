@@ -16,10 +16,10 @@ const GENERIC_FAMILIES = new Set([
   "math",
   "emoji",
   "fangsong",
-  // `-apple-system` and `BlinkMacSystemFont` are the cross-browser incantation
-  // for the platform UI font (synonyms of `system-ui`) — they name no specific
-  // file, so requiring an @font-face for them is a false positive. They appear
-  // in nearly every default CSS reset stack.
+  // Vendor-prefixed system-font keywords. Like `system-ui`, the engine resolves
+  // these to the OS UI font — they are never installable files and must not be
+  // flagged as a missing @font-face, even when a generic fallback follows them
+  // (e.g. `-apple-system, system-ui, sans-serif`).
   "-apple-system",
   "blinkmacsystemfont",
   "inherit",

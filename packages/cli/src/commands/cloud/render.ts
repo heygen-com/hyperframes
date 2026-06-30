@@ -33,6 +33,7 @@ import {
 import { c } from "../../ui/colors.js";
 import { errorBox, formatBytes, formatDuration } from "../../ui/format.js";
 import { resolveProject } from "../../utils/project.js";
+import { normalizeErrorMessage } from "../../utils/errorMessage.js";
 import { createPublishArchive } from "../../utils/publishProject.js";
 import {
   reportVariableIssues,
@@ -541,7 +542,7 @@ async function maybeUploadProject(
   try {
     archive = createPublishArchive(project.dir);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = normalizeErrorMessage(err);
     errorBox("Zip failed", msg, "Check the project for missing files or unreadable permissions.");
     process.exit(1);
   }
@@ -733,7 +734,7 @@ async function streamVideo(
     }
     return { bytes: result.bytes };
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = normalizeErrorMessage(err);
     errorBox(
       "Download failed",
       message,

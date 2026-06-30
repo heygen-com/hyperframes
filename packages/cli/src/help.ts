@@ -33,6 +33,10 @@ const GROUPS: Group[] = [
     title: "Project",
     commands: [
       ["lint", "Validate a composition for common mistakes"],
+      [
+        "validate",
+        "Runtime-validate a composition in headless Chrome (JS errors, missing assets, contrast)",
+      ],
       ["beats", "Detect beats in the music track and write beats/<audio>.json"],
       ["inspect", "Inspect rendered visual layout across the timeline"],
       ["snapshot", "Capture key frames as PNG screenshots for visual verification"],

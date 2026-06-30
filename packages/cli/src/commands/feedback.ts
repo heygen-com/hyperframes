@@ -42,9 +42,10 @@ export default defineCommand({
 
     const doctorSummary = await getDoctorSummary();
 
+    // The standalone command runs separately from `render`, so it has no real
+    // elapsed time to report. Omit it rather than recording a fake duration.
     trackRenderFeedback({
       rating,
-      renderDurationMs: 0,
       comment: args.comment || undefined,
       doctorSummary,
     });

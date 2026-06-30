@@ -55,7 +55,7 @@ import { lintProject, shouldBlockRender } from "../utils/lintProject.js";
 import { formatLintFindings } from "../utils/lintFormat.js";
 import { loadProducer } from "../utils/producer.js";
 import { c } from "../ui/colors.js";
-import { formatBytes, formatDuration, errorBox } from "../ui/format.js";
+import { formatBytes, formatRenderSummaryDetail, errorBox } from "../ui/format.js";
 import { renderProgress } from "../ui/progress.js";
 import {
   trackRenderComplete,
@@ -661,6 +661,30 @@ export default defineCommand({
       }
     }
 
+    // ── Slideshow guard ───────────────────────────────────────────────────
+    // A slideshow deck is several top-level scene compositions with no master
+    // root. `render` captures only the FIRST composition, so a deck renders as a
+    // silently truncated MP4 (e.g. slide 1 of a 40s deck). Warn and point at the
+    // deck-native path. Best-effort — never block a render on this probe.
+    if (!quiet) {
+      try {
+        const renderTarget = entryFile ? resolve(project.dir, entryFile) : project.indexPath;
+        const { slideshowIslandRegex } = await import("@hyperframes/core/slideshow");
+        if (slideshowIslandRegex("i").test(readFileSync(renderTarget, "utf8"))) {
+          console.log(
+            c.warn("⚠") +
+              "  This composition carries a slideshow island — `render` captures only the first" +
+              " scene, so the MP4 will be truncated to slide 1. Use " +
+              c.accent("hyperframes present") +
+              " for the deck; a linear main-line MP4 export is not yet available.",
+          );
+          console.log("");
+        }
+      } catch {
+        /* best-effort — a missing/unreadable target surfaces later in the real flow */
+      }
+    }
+
     // ── Print render plan ─────────────────────────────────────────────────
     if (!quiet && !batchPath) {
       const workerLabel =
@@ -729,7 +753,7 @@ export default defineCommand({
         browserSpinner?.stop(c.error("Browser not available"));
         errorBox(
           "Chrome not found",
-          err instanceof Error ? err.message : String(err),
+          normalizeErrorMessage(err),
           "Run: npx hyperframes browser ensure",
         );
         process.exit(1);
@@ -1052,7 +1076,7 @@ function ensureDockerImage(version: string, platform: string, quiet: boolean): s
       { stdio: quiet ? "pipe" : "inherit", timeout: 600_000 },
     );
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = normalizeErrorMessage(error);
     throw new Error(`Failed to build Docker image: ${message}`);
   } finally {
     rmSync(tmpDir, { recursive: true, force: true });
@@ -1125,7 +1149,7 @@ async function renderDocker(
   try {
     imageTag = ensureDockerImage(dockerVersion, platform, options.quiet);
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = normalizeErrorMessage(error);
     const isDockerMissing = /connect|not found|ENOENT/i.test(message);
     errorBox(
       isDockerMissing ? "Docker not available" : "Docker image build failed",
@@ -1203,6 +1227,9 @@ async function renderDocker(
     ...getMemorySnapshot(),
   });
 
+  // ponytail: Docker runs the producer in a child process, so no perfSummary is
+  // threaded back here; the summary shows render time only (never a wrong video
+  // length). Probe the output with ffprobe if a duration figure is wanted here.
   printRenderComplete(outputPath, elapsed, options.quiet);
   if (options.exitAfterComplete) scheduleRenderProcessExit();
   return { renderTimeMs: elapsed };
@@ -1299,7 +1326,13 @@ export async function renderLocal(
 
   const elapsed = Date.now() - startTime;
   trackRenderMetrics(job, elapsed, options, false);
-  printRenderComplete(outputPath, elapsed, options.quiet);
+  printRenderComplete(
+    outputPath,
+    elapsed,
+    options.quiet,
+    job.perfSummary?.compositionDurationSeconds,
+    job.perfSummary?.totalFrames,
+  );
   if (!options.skipFeedback) {
     await maybePromptRenderFeedback({
       renderDurationMs: elapsed,
@@ -1522,12 +1555,20 @@ function trackRenderMetrics(
   });
 }
 
-function printRenderComplete(outputPath: string, elapsedMs: number, quiet: boolean): void {
+function printRenderComplete(
+  outputPath: string,
+  elapsedMs: number,
+  quiet: boolean,
+  outputDurationSeconds?: number,
+  frameCount?: number,
+): void {
   if (quiet) return;
 
   let fileSize = "unknown";
+  let isDirectory = false;
   try {
     const stat = statSync(outputPath);
+    isDirectory = stat.isDirectory();
     if (stat.isDirectory()) {
       // png-sequence output is a directory; sum the contained file sizes so
       // the user sees the on-disk footprint of the deliverable rather than
@@ -1549,8 +1590,13 @@ function printRenderComplete(outputPath: string, elapsedMs: number, quiet: boole
     // file doesn't exist or is inaccessible
   }
 
-  const duration = formatDuration(elapsedMs);
+  const detail = formatRenderSummaryDetail({
+    elapsedMs,
+    outputDurationSeconds,
+    isDirectory,
+    frameCount,
+  });
   console.log("");
   console.log(c.success("\u25C7") + "  " + c.accent(outputPath));
-  console.log("   " + c.bold(fileSize) + c.dim(" \u00B7 " + duration + " \u00B7 completed"));
+  console.log("   " + c.bold(fileSize) + c.dim(" \u00B7 " + detail));
 }

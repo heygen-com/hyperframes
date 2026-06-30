@@ -511,6 +511,8 @@ export function generateAssetDescriptions(
       heading?: string;
       width?: number;
       height?: number;
+      sourceWidth?: number;
+      sourceHeight?: number;
     }>;
     for (const v of manifest) {
       if (!v.localPath) continue; // only describe clips that actually downloaded
@@ -518,7 +520,9 @@ export function generateAssetDescriptions(
       if (!base) continue;
       const desc =
         (v.caption || v.heading || "").trim().replace(/\s+/g, " ").slice(0, 140) || "motion clip";
-      const dims = v.width && v.height ? `, ~${v.width}×${v.height}` : "";
+      const dimW = v.sourceWidth || v.width;
+      const dimH = v.sourceHeight || v.height;
+      const dims = dimW && dimH ? `, ~${dimW}×${dimH}` : "";
       videoLines.push(`${base} — [video] ${desc}${dims}`);
     }
   } catch {

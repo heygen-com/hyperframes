@@ -226,6 +226,53 @@ describe("C. Resolver-parity detection", () => {
     });
   });
 
+  it("C8 runtime-node filter: hfId absent from source → suppressed (not a resolver bug)", () => {
+    // The studio resolved a live-DOM element to an hf-id that the SDK session
+    // doesn't contain AND that never appears in the on-disk source — it's a
+    // node a composition <script> created at runtime (e.g. caption spans). Not
+    // a resolver divergence; suppress.
+    const session = { getElement: () => null, getElements: () => [] } as unknown as Parameters<
+      typeof sdkResolverShadowCheck
+    >[0];
+    const source = `<div data-hf-id="hf-static">no runtime id here</div>`;
+    const mismatches = sdkResolverShadowCheck(
+      session,
+      "hf-runtimeonly",
+      [{ type: "inline-style", property: "color", value: "red" }],
+      source,
+    );
+    expect(mismatches).toHaveLength(0);
+  });
+
+  it("C8 runtime-node filter: hfId PRESENT in source but missing from session → still flagged (real bug)", () => {
+    const session = { getElement: () => null, getElements: () => [] } as unknown as Parameters<
+      typeof sdkResolverShadowCheck
+    >[0];
+    const source = `<div data-hf-id="hf-realbug">in source, not in SDK session</div>`;
+    const mismatches = sdkResolverShadowCheck(
+      session,
+      "hf-realbug",
+      [{ type: "inline-style", property: "color", value: "red" }],
+      source,
+    );
+    expect(mismatches).toHaveLength(1);
+    expect(mismatches[0]?.kind).toBe("element_not_found");
+  });
+
+  it("C8 sourceHfIdCount: emitted element_not_found carries source occurrence count", async () => {
+    mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = true;
+    const session = { getElement: () => null, getElements: () => [] } as unknown as Composition;
+    // id present twice in source (duplicate-id ambiguity) but absent from session
+    const source = `<div data-hf-id="hf-dup">a</div><div data-hf-id="hf-dup">b</div>`;
+    runResolverShadow(
+      session,
+      "hf-dup",
+      [{ type: "inline-style", property: "color", value: "red" }],
+      source,
+    );
+    expect(lastShadow()?.sourceHfIdCount).toBe(2);
+  });
+
   it("C10: unmappable op type produces no mismatch (excluded, not flagged)", async () => {
     const session = await openComposition(BASE_HTML);
     // "unknown-op" is not in MAPPED_OP_TYPES, so it must be silently excluded.

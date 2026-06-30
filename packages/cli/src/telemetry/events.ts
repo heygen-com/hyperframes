@@ -348,9 +348,18 @@ export function trackTranscribeUnavailable(props: { optional: boolean }): void {
   trackEvent("transcribe_unavailable", { optional: props.optional });
 }
 
+// A skills install was skipped because a required prerequisite binary is
+// absent from PATH (e.g. git on a fresh Windows box). Best-effort callers
+// (init) skip cleanly rather than crash, so the skip is otherwise invisible;
+// this surfaces the rare environments that hit it. `reason` is a low-cardinality
+// binary tag (e.g. "git_missing"), never a path or free text.
+export function trackSkillsInstallSkipped(props: { reason: string }): void {
+  trackEvent("cli skill install skipped", { reason: props.reason });
+}
+
 export function trackRenderFeedback(props: {
   rating: number;
-  renderDurationMs: number;
+  renderDurationMs?: number;
   comment?: string;
   doctorSummary?: string;
 }): void {
@@ -358,7 +367,7 @@ export function trackRenderFeedback(props: {
     $survey_id: "render_satisfaction",
     $survey_response: props.rating,
     ...(props.comment ? { $survey_response_2: props.comment } : {}),
-    render_duration_ms: props.renderDurationMs,
+    ...(props.renderDurationMs !== undefined ? { render_duration_ms: props.renderDurationMs } : {}),
     ...(props.doctorSummary ? { doctor_summary: props.doctorSummary } : {}),
   });
 }

@@ -82,6 +82,14 @@ type AttrMap = Record<string, string | null>;
  * Mirror resolveScoped here: exact scoped-path match, then canonical bare
  * match, then first bare match — the resolvability dispatch actually has.
  */
+// Count static `data-hf-id="<id>"` occurrences (both quote styles) in source.
+// Substring split, not regex — no escaping, and the id never contains a quote.
+function countHfIdInSource(source: string, id: string): number {
+  return (
+    source.split(`data-hf-id="${id}"`).length - 1 + (source.split(`data-hf-id='${id}'`).length - 1)
+  );
+}
+
 function resolveSnapshot(session: Composition, id: string): FlatEl | null {
   const els = session.getElements();
   const exact = els.find((el) => el.scopedId === id);
@@ -164,8 +172,17 @@ export function sdkResolverShadowCheck(
   session: Composition,
   hfId: string,
   ops: PatchOperation[],
+  sourceContent?: string,
 ): SdkResolverMismatch[] {
   if (!resolveSnapshot(session, hfId)) {
+    // Runtime-node filter: an hf-id absent from the on-disk source the SDK
+    // parsed was never in the static DOM — it belongs to an element a
+    // composition <script> creates at runtime (e.g. caption word/group spans),
+    // which the SDK session cannot model by design. That is NOT a resolver bug,
+    // so suppress it. An hf-id PRESENT in source but missing from the session IS
+    // a genuine resolver divergence (the v0.6.110 class) — keep emitting that.
+    // ponytail: substring match; biases toward keeping signal on a loose hit.
+    if (sourceContent !== undefined && !sourceContent.includes(hfId)) return [];
     return [{ kind: "element_not_found", hfId }];
   }
 
@@ -241,17 +258,30 @@ export function runResolverShadow(
   session: Composition,
   hfId: string | null | undefined,
   ops: PatchOperation[],
+  sourceContent?: string,
 ): void {
   if (!STUDIO_SDK_RESOLVER_SHADOW_ENABLED) return;
   if (!hfId) return;
   try {
-    const mismatches = sdkResolverShadowCheck(session, hfId, ops);
+    const mismatches = sdkResolverShadowCheck(session, hfId, ops, sourceContent);
     // Emit only on divergence — parity is silent, matching recordResolverParity
     // and recordAnimationResolverParity. Otherwise this fires a PostHog event on
     // every style/text/attr edit (the editor's chattiest path) at default-ON.
     if (mismatches.length === 0) return;
+    const isElementNotFound = mismatches.some((m) => m.kind === "element_not_found");
     trackStudioEvent("sdk_resolver_shadow", {
       hfId,
+      // sessionElementCount > 0 + element_not_found = runtime-only element;
+      // sessionElementCount === 0 = session is empty/broken (actionable).
+      sessionElementCount: session.getElements().length,
+      // Count of data-hf-id="<id>" occurrences in source for an emitted
+      // element_not_found (the runtime-node filter already dropped absent-from-
+      // source ids, so an emitted one is in source ≥1×). >1 = duplicate ids →
+      // resolver picked the wrong instance; =1 = single static node the SDK
+      // parse dropped (foreign-content exclusion / sub-comp inlining gap).
+      ...(isElementNotFound && sourceContent !== undefined
+        ? { sourceHfIdCount: countHfIdInSource(sourceContent, hfId) }
+        : {}),
       mismatchCount: mismatches.length,
       mismatches: JSON.stringify(redactMismatches(mismatches)),
     });
@@ -282,6 +312,7 @@ export function recordResolverParity(
     trackStudioEvent("sdk_resolver_shadow", {
       hfId,
       opLabel,
+      sessionElementCount: session.getElements().length,
       mismatchCount: 1,
       mismatches: JSON.stringify([
         { kind: "element_not_found", hfId } satisfies SdkResolverMismatch,
@@ -310,11 +341,13 @@ export function recordAnimationResolverParity(
   if (!STUDIO_SDK_RESOLVER_SHADOW_ENABLED) return;
   if (!session || !animationId) return;
   try {
-    const resolves = session.getElements().some((el) => el.animationIds.includes(animationId));
+    const elements = session.getElements();
+    const resolves = elements.some((el) => el.animationIds.includes(animationId));
     if (resolves) return; // SDK locates the animation — parity
     trackStudioEvent("sdk_resolver_shadow", {
       animationId,
       opLabel,
+      sessionElementCount: elements.length,
       mismatchCount: 1,
       mismatches: JSON.stringify([
         { kind: "animation_not_found", animationId } satisfies SdkResolverMismatch,
