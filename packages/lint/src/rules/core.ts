@@ -70,7 +70,7 @@ const ORPHAN_CSS_RULE_PATTERN =
   /(?:^|\s)(?:\/\*[\s\S]*?\*\/\s*)?(?:@[a-z-]+[^{}<]*|[.#][\w-]+[^{}<]*|[a-z][\w-]*(?:\s+[.#:[\w-][^{}<]*)?)\s*\{[^{}]*:[^{}]*\}/i;
 const VISIBLE_MARKUP_COMMENT_PATTERN = /\/\*[\s\S]*?\*\//g;
 const VISIBLE_MARKUP_COMMENT_PROTECTED_BLOCK_PATTERN =
-  /<(style|script|template|pre|code|textarea)\b[^>]*>[\s\S]*?<\/\1(?:\s[^>]*)?>/gi;
+  /<(style|script|template|title|noscript|pre|code|textarea|text)\b[^>]*>[\s\S]*?<\/\1(?:\s[^>]*)?>/gi;
 
 interface SourceRange {
   start: number;
