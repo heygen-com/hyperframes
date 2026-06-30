@@ -876,12 +876,20 @@ Word-level transcripts (whisper output) are grouped into readable caption cues o
 
     # Rating with optional details
     npx hyperframes feedback --rating 3 --comment "render succeeded but GSAP timeline didn't animate"
+
+    # Also file a pre-filled GitHub issue with a published minimal repro (opt-in, consented)
+    npx hyperframes feedback --rating 2 --comment "GSAP timeline froze on seek" --file-issue
     ```
 
     | Flag | Description |
     |------|-------------|
     | `--rating` | Satisfaction score, 1–5 (required) |
     | `--comment` | Optional free-text details |
+    | `--file-issue` | Also open a pre-filled GitHub issue with a published minimal repro (opt-in) |
+    | `--dir` | Project directory to publish as the repro (default: current directory) |
+    | `--yes` | Skip the publish + file-issue consent prompt (for scripts) |
+
+    With `--file-issue`, the CLI publishes a minimal repro to a public URL (with consent) and opens a pre-filled `bug` issue draft you review and submit yourself (no token or backend). See [Feedback Collection](/guides/feedback#filing-a-github-issue---file-issue).
 
     This command is also available to AI agents after a render — see [Feedback Collection](/guides/feedback#agent-runtimes) for how agent detection and the automatic post-render hint work.
 

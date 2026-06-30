@@ -151,6 +151,8 @@ npx hyperframes feedback --rating 3 --comment "bg <video> renders grey in multi-
 
 `--rating` is 1-5 (required); `--comment` is free text — use it for any bug, workaround, missing feature, or confusing behaviour, plus the composition pattern that triggered it and what you tried. Feedback is anonymous and attaches a `doctorSummary` (OS/Node/CPU/mem/ffmpeg) automatically. No-ops when telemetry is disabled.
 
+Hit a reproducible bug? Add `--file-issue` (optionally `--dir <project>` and `--yes` for non-interactive shells) to also publish a minimal repro to a public URL and open a pre-filled GitHub `bug` issue draft for a maintainer to file. This publishes the project publicly, so it is opt-in and consent-gated; the issue is never auto-submitted.
+
 ## publish
 
 ```bash

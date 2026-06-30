@@ -74,8 +74,27 @@ hyperframes feedback --rating 3 --comment "render succeeded but GSAP timeline di
 |------|-------------|
 | `--rating` | Satisfaction score, 1–5 (required) |
 | `--comment` | Optional free-text details |
+| `--file-issue` | Also open a pre-filled GitHub issue with a published minimal repro (opt-in) |
+| `--dir` | Project directory to publish as the repro (default: current directory) |
+| `--yes` | Skip the publish + file-issue consent prompt (for scripts) |
 
 This command collects a doctor summary automatically, flushes telemetry, and exits. It appears under the **Settings** group in `hyperframes --help`.
+
+### Filing a GitHub issue (`--file-issue`)
+
+When a render misbehaves, add `--file-issue` so maintainers can reproduce it:
+
+```bash
+hyperframes feedback --rating 2 --comment "GSAP timeline froze on seek" --file-issue
+```
+
+This is **opt-in** and **consented**. With `--file-issue` set, after the usual feedback is sent the CLI:
+
+1. Asks you to confirm (interactive) or requires `--yes` in non-interactive shells, because it will **publicly publish** the project at `--dir`.
+2. Publishes a minimal repro of the project and gets a public URL (the same upload as `hyperframes publish`).
+3. Opens your browser with a **pre-filled** GitHub issue draft, labelled `bug`, containing the rating, your comment, the public repro link, and the environment summary. It also prints the URL so you can copy it if no browser opens.
+
+The issue is **not auto-submitted**: you review and file it under your own GitHub account. There is no token, backend, or `gh` invocation; if publishing fails the issue still opens, just without a repro link.
 
 ## Agent Runtimes
 
