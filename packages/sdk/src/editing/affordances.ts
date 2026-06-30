@@ -37,6 +37,7 @@ export function resolveElementAffordances(
     : undefined;
 
   const inlineStyles: Record<string, string> = {
+    position: liveEl.style.getPropertyValue("position"),
     left: liveEl.style.getPropertyValue("left"),
     top: liveEl.style.getPropertyValue("top"),
     width: liveEl.style.getPropertyValue("width"),

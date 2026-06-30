@@ -12,7 +12,9 @@ beforeEach(() => {
 function el(html: string): HTMLElement {
   doc.body.innerHTML = html;
   const node = doc.body.firstElementChild;
-  if (!(node instanceof doc.defaultView!.HTMLElement)) throw new Error("expected HTMLElement");
+  const view = doc.defaultView;
+  if (!view) throw new Error("no defaultView");
+  if (!(node instanceof view.HTMLElement)) throw new Error("expected HTMLElement");
   return node as unknown as HTMLElement;
 }
 
