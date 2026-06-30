@@ -236,6 +236,18 @@
               "</svg>"
             );
           }
+          // Insert trusted SVG markup as parsed nodes (no innerHTML sink). The
+          // renderer gets the identical SVG; non-SVG falls back to plain text.
+          function setSvg(el, markup) {
+            el.textContent = "";
+            var root = new DOMParser().parseFromString(String(markup), "image/svg+xml")
+              .documentElement;
+            if (root && root.nodeName.toLowerCase() === "svg") {
+              el.appendChild(document.importNode(root, true));
+            } else {
+              el.textContent = String(markup);
+            }
+          }
 
           // ── 4. Default program (reversed from act0-intro-bell) ──
           var DEFAULT_PHRASES = [
@@ -381,9 +393,9 @@
               glyph.style.height = iconPx + "px";
               glyph.style.color = TH.ink;
               if (ICONS[iconSpec]) {
-                glyph.innerHTML = iconSVG(iconSpec); // library icon
+                setSvg(glyph, iconSVG(iconSpec)); // library icon
               } else if (iconSpec.slice(0, 4).toLowerCase() === "<svg") {
-                glyph.innerHTML = iconSpec; // custom inline SVG
+                setSvg(glyph, iconSpec); // custom inline SVG
               } else {
                 glyph.style.fontSize = Math.round(iconPx * 0.86) + "px"; // emoji / text glyph
                 glyph.textContent = iconSpec;

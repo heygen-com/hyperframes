@@ -361,10 +361,23 @@
         document.documentElement.style.setProperty("--mark", vars.markColor);
         document.documentElement.style.setProperty("--text", vars.textColor);
 
+        // Insert trusted SVG markup as parsed nodes (no innerHTML sink). The
+        // renderer gets the identical SVG; non-SVG falls back to plain text.
+        function setSvg(el, markup) {
+          el.textContent = "";
+          var root = new DOMParser().parseFromString(String(markup), "image/svg+xml")
+            .documentElement;
+          if (root && root.nodeName.toLowerCase() === "svg") {
+            el.appendChild(document.importNode(root, true));
+          } else {
+            el.textContent = String(markup);
+          }
+        }
+
         var markLeft = document.getElementById("markLeft");
         var markRight = document.getElementById("markRight");
-        markLeft.innerHTML = (vars.leftMark && vars.leftMark.trim()) || DEFAULT_LEFT;
-        markRight.innerHTML = (vars.rightMark && vars.rightMark.trim()) || DEFAULT_RIGHT;
+        setSvg(markLeft, (vars.leftMark && vars.leftMark.trim()) || DEFAULT_LEFT);
+        setSvg(markRight, (vars.rightMark && vars.rightMark.trim()) || DEFAULT_RIGHT);
 
         var wordsEl = document.getElementById("words");
         var wordList = [vars.word1, vars.word2, vars.word3, vars.word4].filter(function (w) {

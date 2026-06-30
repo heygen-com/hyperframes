@@ -466,7 +466,7 @@ function buildCaptionsHtml(groups, total, W, H) {
       color: rgba(255, 255, 255, 0.55);
     }
   </style>
-  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js" integrity="sha384-sG0Hv1tP1lZCk9KQmrIbY/XNwi+OY84GQqhMscbnsoBFqAz8KNCil1kvfL3Hbbk2" crossorigin="anonymous"></script>
   <script>
     (function () {
       var GROUPS = ${JSON.stringify(groups)};
