@@ -28,6 +28,7 @@ import {
 import { formatFfmpegError } from "../utils/runFfmpeg.js";
 import { getFfmpegBinary } from "../utils/ffmpegBinaries.js";
 import { getHdrEncoderColorParams } from "../utils/hdr.js";
+import { withEvenDimensionPad } from "../utils/evenDimensions.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { fpsToFfmpegArg, type Fps } from "@hyperframes/core";
 import { appendVp9CpuUsedArg } from "./vp9Options.js";
@@ -355,8 +356,10 @@ export function buildStreamingArgs(
         args[vfIdx + 1] = `scale=in_range=pc:out_range=tv,${args[vfIdx + 1]}`;
       }
     } else if (!shouldUseGpu) {
-      // Range conversion: Chrome screenshots are full-range RGB.
-      args.push("-vf", "scale=in_range=pc:out_range=tv");
+      // Range conversion: Chrome screenshots are full-range RGB. Pad odd
+      // dimensions up to even so libx264/libx265 (4:2:0) don't abort with
+      // "height not divisible by 2" on an odd-sized composition canvas.
+      args.push("-vf", withEvenDimensionPad("scale=in_range=pc:out_range=tv", pixelFormat));
     }
 
     // Fixed timescale for consistent A/V timing across platforms.
