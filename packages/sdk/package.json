@@ -29,6 +29,10 @@
     "./adapters/headless": {
       "import": "./src/adapters/headless.ts",
       "types": "./src/adapters/headless.ts"
+    },
+    "./editing": {
+      "import": "./src/editing/affordances.ts",
+      "types": "./src/editing/affordances.ts"
     }
   },
   "publishConfig": {
@@ -49,6 +53,10 @@
       "./adapters/headless": {
         "import": "./dist/adapters/headless.js",
         "types": "./dist/adapters/headless.d.ts"
+      },
+      "./editing": {
+        "import": "./dist/editing/affordances.js",
+        "types": "./dist/editing/affordances.d.ts"
       }
     },
     "main": "./dist/index.js",
