@@ -36,8 +36,11 @@ export const adapterRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> 
         /["']three["']/.test(t) &&
         /importmap/.test(scripts.find((s) => s.content === t)?.attrs || ""),
     );
-    const hasThreeModuleImport = texts.some(
-      (t) => /\bimport\b.*['"]three['"]/.test(t) || /\bfrom\s+['"]three['"]/.test(t),
+    // Matches any import/from whose specifier contains "three" (bare 'three', or a
+    // URL/path like .../+esm, esm.sh/three, three.module.js), mirroring the loose
+    // /three/i treatment of <script src>.
+    const hasThreeModuleImport = texts.some((t) =>
+      /\b(?:import|from)\s*[^;\n]*['"][^'"]*three[^'"]*['"]/i.test(t),
     );
 
     if (!usesThree || hasThreeScript || hasThreeImportMap || hasThreeModuleImport) return [];
