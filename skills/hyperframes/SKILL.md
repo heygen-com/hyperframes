@@ -51,24 +51,24 @@ Routing needs to know **what the video is about** — its input and subject. If 
 
 ## Workflow cheat-sheet
 
-| Workflow                   | Use it for                                                                                                                                                             |
-| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/product-launch-video`    | Marketing / launching / promoting a **product** — from its URL, a brief, or a script (even if the site is only named)                                                  |
-| `/website-to-video`        | Turning a **general website** into a video — site tour, portfolio / landing-page showcase, social clip from the site's visuals                                         |
-| `/faceless-explainer`      | **Explaining a topic / concept** from text — no product, no URL; every visual is LLM-invented                                                                          |
-| `/pr-to-video`             | A **GitHub PR / code change** → changelog / feature-reveal / fix / refactor explainer                                                                                  |
-| `/embedded-captions`       | Adding **captions / subtitles** to an existing talking-head video (footage untouched)                                                                                  |
-| `/talking-head-recut`      | Packaging an existing talking-head video with **designed graphic overlays** — lower-thirds, data callouts, kinetic titles, pull-quotes                                 |
-| `/motion-graphics`         | A short, **unnarrated, design-led motion graphic** — kinetic type, a stat / chart hit, a logo sting, a lower-third overlay                                             |
-| `/music-to-video`          | A **music track** → a **beat-synced** video — lyric video, slideshow, or kinetic promo; the music drives pacing (optional user images / videos cut onto the beat grid) |
-| `/slideshow`               | A **presentation / pitch deck / interactive deck** — discrete slides, fragments, branching, hotspots; output is a navigable **deck**, not a rendered video             |
-| `/general-video`           | **Anything else** — longer or multi-scene pieces, a static loop / poster, a custom composition                                                                         |
-| `/remotion-to-hyperframes` | **Porting an existing Remotion (React) composition** to HyperFrames (migration, not creation)                                                                          |
+| Workflow                   | Use it for                                                                                                                                                                                          |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/product-launch-video`    | **Selling a product** (SaaS, app, company / product site) — from a URL, brief, or script → a **promo**. The default for any commercial URL, even if the site is only named.                         |
+| `/website-to-video`        | **Showing a site itself** — a tour / showcase built from the site's own screenshots. For non-commercial sites (portfolio, blog, docs, personal, event), or when the user wants a tour, not a promo. |
+| `/faceless-explainer`      | **Explaining a topic / concept** from text — no product, no URL; every visual is LLM-invented                                                                                                       |
+| `/pr-to-video`             | A **GitHub PR / code change** → changelog / feature-reveal / fix / refactor explainer                                                                                                               |
+| `/embedded-captions`       | Adding **captions / subtitles** to an existing talking-head video (footage untouched)                                                                                                               |
+| `/talking-head-recut`      | Packaging an existing talking-head video with **designed graphic overlays** — lower-thirds, data callouts, kinetic titles, pull-quotes                                                              |
+| `/motion-graphics`         | A short, **unnarrated, design-led motion graphic** — kinetic type, a stat / chart hit, a logo sting, a lower-third overlay                                                                          |
+| `/music-to-video`          | A **music track** → a **beat-synced** video — lyric video, slideshow, or kinetic promo; the music drives pacing (optional user images / videos cut onto the beat grid)                              |
+| `/slideshow`               | A **presentation / pitch deck / interactive deck** — discrete slides, fragments, branching, hotspots; output is a navigable **deck**, not a rendered video                                          |
+| `/general-video`           | **Anything else** — longer or multi-scene pieces, a static loop / poster, a custom composition                                                                                                      |
+| `/remotion-to-hyperframes` | **Porting an existing Remotion (React) composition** to HyperFrames (migration, not creation)                                                                                                       |
 
 **Disambiguation (only where confusable):**
 
 - **Motion-first & unnarrated** (under ~10s, the motion _is_ the message) → `/motion-graphics`, regardless of input.
-- **A URL or script** — markets a specific product (even just naming the site) → `/product-launch-video`; a general non-product site → `/website-to-video`; a GitHub PR link → `/pr-to-video`; explains a concept with no product / site → `/faceless-explainer`. Genuinely unclear product-vs-topic, or launch-vs-general-site → ask one question.
+- **A URL or script** — ask one thing: _is the site selling a product?_ **Yes** (SaaS / app / product / company site) → `/product-launch-video` — a promo, and the default for any commercial URL even if the site is only named. **No**, or the user just wants the site shown as-is (portfolio / blog / docs / personal / event) → `/website-to-video` — a tour. A GitHub PR link → `/pr-to-video`; a concept with no product or site → `/faceless-explainer`.
 - **Existing footage** — plain spoken-word subtitles → `/embedded-captions`; designed overlay cards → `/talking-head-recut`. Neither edits the footage itself (re-timing / recolor / reframe / reorder / audio is NLE editing — out of scope).
 - **A music track is the input** (an audio file, or a video to pull audio from) with **no narration** → `/music-to-video` — the music's beats/energy drive the pacing. (Narrated pieces stay with the input-matched workflow above; `/motion-graphics` is for short unnarrated motion that isn't music-driven.)
 - **A presentation / pitch deck / interactive deck** (discrete slides, navigation, presenter mode) → `/slideshow` — output is a navigable deck, not a rendered video. An explicit "slideshow" request proceeds directly; an adjacent trigger ("deck / slides / presentation / convert this page") makes `/slideshow` confirm it's a slideshow before authoring, and switch to the appropriate non-slideshow workflow if not.
@@ -99,13 +99,13 @@ The CLI also surfaces a one-line reminder when a `render` / `lint` / `validate` 
 ### `/product-launch-video`
 
 - **Input:** A product being marketed — **(a)** a product URL (crawled with headless Chrome for assets + brand tokens), **(b)** a script / brief that names the product's site even without a link (PLV resolves + crawls it, unless the user opts out), or **(c)** a script with no derivable site / "don't scrape" (no-capture mode — pick a style preset that supplies palette + design system). A supplied script can be the **verbatim** voice-over or **restructured** per scene — PLV asks.
-- **Output:** product launch / SaaS promo as a HyperFrames composition → MP4. (sweet spot 30–90s).
+- **Output:** a product launch / SaaS **promo** as a HyperFrames composition → MP4 (sweet spot 30–90s) — the product's value is the subject, not a walkthrough of the site. For a plain tour of the site, use `/website-to-video`.
 - **Triggers:** "launch video for X", "promo for our site", "explain my SaaS in a minute", "turn my script into a 60s promo", "text-only launch video, don't scrape".
 
 ### `/website-to-video`
 
-- **Input:** A **general website / URL** to turn into a video — when the goal is a video _of_ the site, not a product launch. Captured with headless Chrome for real screenshots + brand assets.
-- **Output:** a site tour / portfolio / landing-page showcase / social clip built from the site's own visuals → MP4.
+- **Input:** A website / URL whose goal is to show **the site itself**, not to sell a product. Best for non-commercial sites (portfolio, blog, docs, personal, event), or when the user explicitly wants a tour of a site as-is. Captured with headless Chrome for real screenshots + brand assets. If the site is selling something and the user wants a promo, use `/product-launch-video`.
+- **Output:** a site tour / showcase / social clip built from the site's own visuals → MP4.
 - **Triggers:** "turn this website into a video", "site tour from ", "social clip from our homepage", "I just have a URL — make something".
 
 ### `/faceless-explainer`
