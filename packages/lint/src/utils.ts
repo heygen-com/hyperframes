@@ -112,7 +112,11 @@ export function findRootTag(source: string): OpenTag | null {
 export function readAttr(tagSource: string, attr: string): string | null {
   if (!tagSource) return null;
   const escaped = attr.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = tagSource.match(new RegExp(`\\b${escaped}\\s*=\\s*["']([^"']+)["']`, "i"));
+  // `(?<![\w-])` not `\b`: a plain `\b` boundary treats the hyphen in a longer
+  // attribute as a word break, so reading "id" would wrongly match the trailing
+  // `id="…"` inside `data-hf-id="…"` (and "width" inside `data-width`, etc.).
+  // The lookbehind requires the match to start a fresh attribute name.
+  const match = tagSource.match(new RegExp(`(?<![\\w-])${escaped}\\s*=\\s*["']([^"']+)["']`, "i"));
   return match?.[1] || null;
 }
 
@@ -131,7 +135,11 @@ export function readAttr(tagSource: string, attr: string): string | null {
 export function readJsonAttr(tagSource: string, attr: string): string | null {
   if (!tagSource) return null;
   const escaped = attr.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = tagSource.match(new RegExp(`\\b${escaped}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, "i"));
+  // See readAttr: `(?<![\w-])` prevents a short name from matching the tail of a
+  // longer hyphenated attribute (e.g. "id" inside `data-hf-id`).
+  const match = tagSource.match(
+    new RegExp(`(?<![\\w-])${escaped}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, "i"),
+  );
   if (!match) return null;
   return match[1] ?? match[2] ?? null;
 }

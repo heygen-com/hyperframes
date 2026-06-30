@@ -48,6 +48,25 @@ describe("media rules", () => {
     expect(finding?.message).toContain("FROZEN");
   });
 
+  it("flags media that has data-hf-id but no real id", async () => {
+    // Regression: readAttr(tag, "id") used a \b boundary that matched the
+    // trailing `id="…"` inside `data-hf-id="…"`, so media carrying only a
+    // Studio-stamped data-hf-id passed the check and then rendered as a blank
+    // wash (video) / silent (audio). data-hf-id is NOT a render id.
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <video data-hf-id="hf-v1a2b3" data-start="0" data-duration="10" src="clip.mp4" muted playsinline></video>
+    <audio data-hf-id="hf-a4c5d6" data-start="0" data-duration="10" src="narration.wav"></audio>
+  </div>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["c1"] = gsap.timeline({ paused: true });</script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const findings = result.findings.filter((f) => f.code === "media_missing_id");
+    expect(findings).toHaveLength(2);
+    expect(findings.every((f) => f.severity === "error")).toBe(true);
+  });
+
   it("does not flag media elements that have id", async () => {
     const html = `
 <html><body>
