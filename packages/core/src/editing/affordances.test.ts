@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { resolveEditingAffordances, type EditableElementFacts } from "./affordances";
+import {
+  resolveEditingAffordances,
+  resolveEditingSections,
+  type EditableElementFacts,
+} from "./affordances";
 
 function baseFacts(over: Partial<EditableElementFacts> = {}): EditableElementFacts {
   return {
     hasStableTarget: true,
     tag: "div",
-    classNames: [],
     inlineStyles: {},
     computedStyles: {},
     isCompositionHost: false,
@@ -152,5 +155,17 @@ describe("resolveEditingAffordances — sections", () => {
     );
     const anim = resolveEditingAffordances(baseFacts({ animationCount: 2 })).sections;
     expect(anim).toMatchObject({ timing: true, animation: true });
+  });
+});
+
+describe("resolveEditingSections (sections-only export)", () => {
+  it("matches resolveEditingAffordances().sections for the same facts", () => {
+    const facts = baseFacts({ tag: "video", hasEditableText: true, animationCount: 1 });
+    expect(resolveEditingSections(facts)).toEqual(resolveEditingAffordances(facts).sections);
+  });
+
+  it("animationCount > 0 turns on timing + animation even without data-start", () => {
+    const s = resolveEditingSections(baseFacts({ hasTimingStart: false, animationCount: 3 }));
+    expect(s).toMatchObject({ timing: true, animation: true });
   });
 });

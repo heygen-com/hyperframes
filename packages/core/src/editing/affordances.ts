@@ -38,8 +38,7 @@ export interface EditableElementFacts {
   hasStableTarget: boolean;
   /** Lowercased tag name. */
   tag: string;
-  classNames: string[];
-  /** kebab-case. Capability logic reads position/left/top/width/height/transform. */
+  /** kebab-case. Capability logic reads left/top/width/height/transform; sections read nothing here. */
   inlineStyles: Record<string, string>;
   /** kebab-case. Absent => canMove/canResize default to false (no live layout). */
   computedStyles?: Record<string, string>;
@@ -56,10 +55,11 @@ export interface EditableElementFacts {
   animationCount: number;
 }
 
-// kebab-case px parser — copied from studio domEditingDom.parsePx (trivial, kept
-// local so core stays DOM-package-independent).
-// fallow-ignore-next-line code-duplication
-function parsePx(value: string | undefined): number | null {
+/**
+ * kebab-case px parser. Single source of truth — studio's domEditingDom
+ * re-exports this so the two paths can't drift.
+ */
+export function parsePx(value: string | undefined): number | null {
   if (!value) return null;
   const trimmed = value.trim();
   if (!trimmed.endsWith("px")) return null;
@@ -67,7 +67,7 @@ function parsePx(value: string | undefined): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-// Mirrors studio domEditingDom.isIdentityTransform.
+/** Whether a CSS transform is the identity (matrix or matrix3d). Core-internal. */
 // fallow-ignore-next-line complexity
 function isIdentityTransform(value: string | undefined): boolean {
   const transform = (value ?? "none").trim();
@@ -174,7 +174,12 @@ function resolveCapabilities(facts: EditableElementFacts): DomEditCapabilities {
   };
 }
 
-function resolveSections(facts: EditableElementFacts): EditingSectionApplicability {
+/**
+ * Section applicability only. Reads no style facts, so callers that already
+ * hold resolved capabilities (e.g. the studio panel) can compute sections
+ * without re-running the capability geometry parse.
+ */
+export function resolveEditingSections(facts: EditableElementFacts): EditingSectionApplicability {
   return {
     text: facts.hasEditableText && !facts.isCompositionHost && !facts.isInsideLockedComposition,
     media: facts.tag === "video" || facts.tag === "audio",
@@ -185,5 +190,5 @@ function resolveSections(facts: EditableElementFacts): EditingSectionApplicabili
 }
 
 export function resolveEditingAffordances(facts: EditableElementFacts): EditingAffordances {
-  return { capabilities: resolveCapabilities(facts), sections: resolveSections(facts) };
+  return { capabilities: resolveCapabilities(facts), sections: resolveEditingSections(facts) };
 }

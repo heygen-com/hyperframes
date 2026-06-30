@@ -14,7 +14,7 @@ import {
 import { MetricField, Section } from "./propertyPanelPrimitives";
 import { createTransformCommitHandlers } from "./propertyPanelTransformCommit";
 import { classifyPropertyGroup } from "@hyperframes/core/gsap-parser";
-import { resolveEditingAffordances } from "@hyperframes/core/editing";
+import { resolveEditingSections } from "@hyperframes/core/editing";
 import { MediaSection } from "./propertyPanelMediaSection";
 import { ColorGradingSection } from "./propertyPanelColorGradingSection";
 import { domEditSelectionToFacts } from "./domEditingLayers";
@@ -198,7 +198,10 @@ export const PropertyPanel = memo(function PropertyPanel({
   const manualRotationEditingDisabled = !element.capabilities.canApplyManualRotation;
   const sourceLabel = element.id ? `#${element.id}` : element.selector;
   const showEditableSections = element.capabilities.canEditStyles;
-  const sections = resolveEditingAffordances(domEditSelectionToFacts(element)).sections;
+  // Capabilities are already resolved on the selection; recompute only sections,
+  // feeding the live GSAP tween count (arrives on the gsapAnimations prop, not the
+  // selection) so the Timing section shows for pure-GSAP elements with no data-start.
+  const sections = resolveEditingSections(domEditSelectionToFacts(element, gsapAnimations.length));
   const manualOffset = readStudioPathOffset(element.element);
   const manualSize = readStudioBoxSize(element.element);
   const resolvedWidth =

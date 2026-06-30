@@ -36,8 +36,9 @@ export function resolveElementAffordances(
       }
     : undefined;
 
+  // Core reads position only from computedStyles; inlineStyles supplies the
+  // authored left/top/width/height that override the computed layout.
   const inlineStyles: Record<string, string> = {
-    position: liveEl.style.getPropertyValue("position"),
     left: liveEl.style.getPropertyValue("left"),
     top: liveEl.style.getPropertyValue("top"),
     width: liveEl.style.getPropertyValue("width"),
@@ -47,7 +48,6 @@ export function resolveElementAffordances(
   return resolveEditingAffordances({
     hasStableTarget: true,
     tag: liveEl.tagName.toLowerCase(),
-    classNames: Array.from(liveEl.classList),
     inlineStyles,
     computedStyles,
     isCompositionHost: ctx.isCompositionHost ?? false,

@@ -3,7 +3,11 @@
  * for dom editing.
  */
 import type { PatchOperation } from "../../utils/sourcePatcher";
-import { resolveEditingAffordances, type EditableElementFacts } from "@hyperframes/core/editing";
+import {
+  resolveEditingAffordances,
+  resolveEditingSections,
+  type EditableElementFacts,
+} from "@hyperframes/core/editing";
 import { groupScopedLayerRoots, resolveGroupCapture } from "./domEditingGroups";
 import type {
   DomEditCapabilities,
@@ -170,14 +174,44 @@ export function buildDefaultDomEditTextField(base?: Partial<DomEditTextField>): 
 
 // ─── Capabilities ────────────────────────────────────────────────────────────
 
-/** Build core EditableElementFacts from a fully-resolved DomEditSelection. */
-export function domEditSelectionToFacts(selection: DomEditSelection): EditableElementFacts {
+/**
+ * Build the geometry/capability half of EditableElementFacts. Section inputs
+ * (text/timing/animation) are irrelevant to capability resolution, so they are
+ * zeroed here. Shared by the wrapper and the live-selection path so the two
+ * fact-construction sites can't disagree.
+ */
+function capabilityFacts(geometry: {
+  hasStableTarget: boolean;
+  tag: string;
+  inlineStyles: Record<string, string>;
+  computedStyles: Record<string, string>;
+  isCompositionHost: boolean;
+  isCompositionRoot: boolean;
+  isInsideLockedComposition: boolean;
+  isMasterView: boolean;
+  existsInSource: boolean;
+}): EditableElementFacts {
+  return {
+    ...geometry,
+    hasEditableText: false,
+    hasTimingStart: false,
+    animationCount: 0,
+  };
+}
+
+/**
+ * Build core EditableElementFacts from a fully-resolved DomEditSelection.
+ * `animationCount` is supplied by the caller because live GSAP tweens arrive on
+ * a separate channel (the PropertyPanel `gsapAnimations` prop), not on the
+ * selection — `selection.gsapAnimations` is never populated.
+ */
+export function domEditSelectionToFacts(
+  selection: DomEditSelection,
+  animationCount = selection.gsapAnimations?.length ?? 0,
+): EditableElementFacts {
   return {
     hasStableTarget: Boolean(selection.selector || selection.hfId),
     tag: selection.tagName,
-    classNames: selection.element.className
-      ? selection.element.className.split(/\s+/).filter(Boolean)
-      : [],
     inlineStyles: selection.inlineStyles,
     computedStyles: selection.computedStyles,
     isCompositionHost: selection.isCompositionHost,
@@ -187,7 +221,7 @@ export function domEditSelectionToFacts(selection: DomEditSelection): EditableEl
     existsInSource: true,
     hasEditableText: selection.textFields.length > 0,
     hasTimingStart: selection.dataAttributes.start != null,
-    animationCount: selection.gsapAnimations?.length ?? 0,
+    animationCount,
   };
 }
 
@@ -200,7 +234,6 @@ export function resolveDomEditCapabilities(args: {
   selector?: string;
   hfId?: string;
   tagName?: string;
-  className?: string;
   inlineStyles: Record<string, string>;
   computedStyles: Record<string, string>;
   isCompositionHost: boolean;
@@ -209,21 +242,19 @@ export function resolveDomEditCapabilities(args: {
   isMasterView: boolean;
   existsInSource?: boolean;
 }): DomEditCapabilities {
-  return resolveEditingAffordances({
-    hasStableTarget: Boolean(args.selector || args.hfId),
-    tag: (args.tagName ?? "div").toLowerCase(),
-    classNames: args.className ? args.className.split(/\s+/).filter(Boolean) : [],
-    inlineStyles: args.inlineStyles,
-    computedStyles: args.computedStyles,
-    isCompositionHost: args.isCompositionHost,
-    isCompositionRoot: args.isCompositionRoot ?? false,
-    isInsideLockedComposition: args.isInsideLockedComposition ?? false,
-    isMasterView: args.isMasterView,
-    existsInSource: args.existsInSource ?? true,
-    hasEditableText: false,
-    hasTimingStart: false,
-    animationCount: 0,
-  }).capabilities;
+  return resolveEditingAffordances(
+    capabilityFacts({
+      hasStableTarget: Boolean(args.selector || args.hfId),
+      tag: (args.tagName ?? "div").toLowerCase(),
+      inlineStyles: args.inlineStyles,
+      computedStyles: args.computedStyles,
+      isCompositionHost: args.isCompositionHost,
+      isCompositionRoot: args.isCompositionRoot ?? false,
+      isInsideLockedComposition: args.isInsideLockedComposition ?? false,
+      isMasterView: args.isMasterView,
+      existsInSource: args.existsInSource ?? true,
+    }),
+  ).capabilities;
 }
 
 // ─── Element label ────────────────────────────────────────────────────────────
@@ -307,22 +338,19 @@ export async function resolveDomEditSelection(
       if (selectorIndex != null) probeTarget.selectorIndex = selectorIndex;
       existsInSource = await probeSourceElement(options.projectId, sourceFile, probeTarget);
     }
-    const capabilities = resolveEditingAffordances({
-      hasStableTarget: Boolean(selector || hfId),
-      tag: current.tagName.toLowerCase(),
-      classNames: current.className ? current.className.split(/\s+/).filter(Boolean) : [],
-      inlineStyles,
-      computedStyles,
-      isCompositionHost: Boolean(compositionSrc),
-      isCompositionRoot,
-      isInsideLockedComposition: isInsideLocked,
-      isMasterView: options.isMasterView,
-      existsInSource: existsInSource ?? true,
-      // Section inputs are not yet available here; capability logic ignores them.
-      hasEditableText: false,
-      hasTimingStart: false,
-      animationCount: 0,
-    }).capabilities;
+    const capabilities = resolveEditingAffordances(
+      capabilityFacts({
+        hasStableTarget: Boolean(selector || hfId),
+        tag: current.tagName.toLowerCase(),
+        inlineStyles,
+        computedStyles,
+        isCompositionHost: Boolean(compositionSrc),
+        isCompositionRoot,
+        isInsideLockedComposition: isInsideLocked,
+        isMasterView: options.isMasterView,
+        existsInSource: existsInSource ?? true,
+      }),
+    ).capabilities;
     const rect = current.getBoundingClientRect();
 
     return {
@@ -510,7 +538,7 @@ export function getDomEditTargetKey(
 }
 
 export function isTextEditableSelection(selection: DomEditSelection): boolean {
-  return resolveEditingAffordances(domEditSelectionToFacts(selection)).sections.text;
+  return resolveEditingSections(domEditSelectionToFacts(selection)).text;
 }
 
 // buildElementAgentPrompt is in domEditingAgentPrompt.ts
