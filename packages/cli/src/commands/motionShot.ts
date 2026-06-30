@@ -192,23 +192,59 @@ async function openCompositionPage(
   return { browser, page, size };
 }
 
-// Longest paused timeline duration (seconds) across all registered timelines.
+// Longest seekable duration (seconds) across registered timelines, player/root
+// duration, CSS/WAAPI animations, and Anime.js instances.
 function timelineDuration(page: import("puppeteer-core").Page): Promise<number> {
   return page.evaluate(() => {
-    const tls = Object.values(
-      (
-        window as unknown as {
-          __timelines?: Record<string, { duration?: () => number; totalDuration?: () => number }>;
-        }
-      ).__timelines ?? {},
-    );
-    let d = 0;
+    const finiteSeconds = (value: unknown): number => {
+      const n = typeof value === "number" ? value : Number(value);
+      return Number.isFinite(n) && n > 0 ? n : 0;
+    };
+    const finiteMsToSeconds = (value: unknown): number => {
+      const n = typeof value === "number" ? value : Number(value);
+      return Number.isFinite(n) && n > 0 ? n / 1000 : 0;
+    };
+    const w = window as unknown as {
+      __player?: { getDuration?: () => number };
+      __timelines?: Record<string, { duration?: () => number; totalDuration?: () => number }>;
+      __hfAnime?: Array<{ duration?: number | string; totalDuration?: number | string }>;
+    };
+    let d = finiteSeconds(w.__player?.getDuration?.());
+
+    const root = document.querySelector("[data-composition-id][data-duration]");
+    if (root) d = Math.max(d, finiteSeconds(root.getAttribute("data-duration")));
+
+    const tls = Object.values(w.__timelines ?? {});
     for (const tl of tls) {
       try {
         d = Math.max(d, (tl.totalDuration?.() ?? tl.duration?.() ?? 0) as number);
       } catch {
         // skip
       }
+    }
+
+    if (typeof document.getAnimations === "function") {
+      try {
+        for (const animation of document.getAnimations()) {
+          const timing = animation.effect?.getTiming?.();
+          if (!timing) continue;
+          const durationMs = Number(timing.duration);
+          const iterations = Number(timing.iterations ?? 1);
+          if (!Number.isFinite(durationMs) || !Number.isFinite(iterations)) continue;
+          const delayMs = Number(timing.delay ?? 0);
+          const endDelayMs = Number(timing.endDelay ?? 0);
+          d = Math.max(
+            d,
+            finiteMsToSeconds(Math.max(0, delayMs) + durationMs * iterations + endDelayMs),
+          );
+        }
+      } catch {
+        // skip
+      }
+    }
+
+    for (const instance of w.__hfAnime ?? []) {
+      d = Math.max(d, finiteMsToSeconds(instance.totalDuration ?? instance.duration));
     }
     return d;
   });
@@ -349,8 +385,11 @@ export async function captureMotionPathShot(
         // page.screenshot can't see the GL buffer here).
         const dataUrl = await page.evaluate((tt: number) => {
           const w = window as unknown as {
+            __player?: { renderSeek?: (t: number) => void; seek?: (t: number) => void };
             __hfThreeTime?: number;
             __hfThreeRender?: () => void;
+            __hfAnime?: Array<{ pause?: () => void; seek?: (timeMs: number) => void }>;
+            gsap?: { ticker?: { tick?: () => void } };
             __timelines?: Record<
               string,
               {
@@ -360,19 +399,55 @@ export async function captureMotionPathShot(
               }
             >;
           };
+          const timeMs = Math.max(0, tt * 1000);
+          try {
+            if (typeof w.__player?.renderSeek === "function") w.__player.renderSeek(tt);
+            else if (typeof w.__player?.seek === "function") w.__player.seek(tt);
+          } catch {
+            /* best-effort */
+          }
           Object.values(w.__timelines ?? {}).forEach((tl) => {
             try {
               tl.pause?.();
-              if (typeof tl.totalTime === "function") tl.totalTime(tt, false);
-              else tl.seek?.(tt);
+              if (typeof tl.totalTime === "function") {
+                tl.totalTime(tt + 0.001, true);
+                tl.totalTime(tt, false);
+              } else tl.seek?.(tt);
             } catch {
               /* best-effort */
             }
           });
           try {
+            if (typeof document.getAnimations === "function") {
+              for (const animation of document.getAnimations()) {
+                try {
+                  animation.currentTime = timeMs;
+                } catch {
+                  /* best-effort */
+                }
+                try {
+                  animation.pause();
+                } catch {
+                  /* best-effort */
+                }
+              }
+            }
+          } catch {
+            /* best-effort */
+          }
+          for (const instance of w.__hfAnime ?? []) {
+            try {
+              instance.pause?.();
+              instance.seek?.(timeMs);
+            } catch {
+              /* best-effort */
+            }
+          }
+          try {
             w.__hfThreeTime = tt;
             window.dispatchEvent(new CustomEvent("hf-seek", { detail: { time: tt } }));
             w.__hfThreeRender?.();
+            w.gsap?.ticker?.tick?.();
           } catch {
             /* best-effort */
           }
@@ -428,22 +503,78 @@ export async function captureMotionPathShot(
     // screen positions ARE the 3D projection of each corner.
     const elements = (await page.evaluate(
       (selectors: string[], ts: number[]) => {
-        const tls = Object.values(
-          (
-            window as unknown as {
-              __timelines?: Record<string, { pause?: () => void; seek?: (t: number) => void }>;
+        const w = window as unknown as {
+          __player?: { renderSeek?: (t: number) => void; seek?: (t: number) => void };
+          __hfAnime?: Array<{ pause?: () => void; seek?: (timeMs: number) => void }>;
+          __hfThreeTime?: number;
+          __hfThreeRender?: () => void;
+          gsap?: { ticker?: { tick?: () => void } };
+          __timelines?: Record<
+            string,
+            {
+              pause?: () => void;
+              seek?: (t: number) => void;
+              totalTime?: (t: number, s: boolean) => void;
             }
-          ).__timelines ?? {},
-        );
-        const seekAll = (t: number) =>
+          >;
+        };
+        const tls = Object.values(w.__timelines ?? {});
+        const seekAll = (t: number) => {
+          const timeMs = Math.max(0, t * 1000);
+          try {
+            if (typeof w.__player?.renderSeek === "function") w.__player.renderSeek(t);
+            else if (typeof w.__player?.seek === "function") w.__player.seek(t);
+          } catch {
+            // best-effort
+          }
           tls.forEach((tl) => {
             try {
               tl.pause?.();
-              tl.seek?.(t);
+              if (typeof tl.totalTime === "function") {
+                tl.totalTime(t + 0.001, true);
+                tl.totalTime(t, false);
+              } else {
+                tl.seek?.(t);
+              }
             } catch {
               // best-effort
             }
           });
+          try {
+            if (typeof document.getAnimations === "function") {
+              for (const animation of document.getAnimations()) {
+                try {
+                  animation.currentTime = timeMs;
+                } catch {
+                  // best-effort
+                }
+                try {
+                  animation.pause();
+                } catch {
+                  // best-effort
+                }
+              }
+            }
+          } catch {
+            // best-effort
+          }
+          for (const instance of w.__hfAnime ?? []) {
+            try {
+              instance.pause?.();
+              instance.seek?.(timeMs);
+            } catch {
+              // best-effort
+            }
+          }
+          try {
+            w.__hfThreeTime = t;
+            window.dispatchEvent(new CustomEvent("hf-seek", { detail: { time: t } }));
+            w.__hfThreeRender?.();
+            w.gsap?.ticker?.tick?.();
+          } catch {
+            // best-effort
+          }
+        };
 
         const rigs = selectors.map((sel) => {
           const el = document.querySelector(sel) as HTMLElement | null;

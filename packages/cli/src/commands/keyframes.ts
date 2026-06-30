@@ -9,10 +9,11 @@ import { resolveProject } from "../utils/project.js";
 import { withMeta } from "../utils/updateCheck.js";
 
 export const examples: Example[] = [
-  ["Surface every keyframe + motion path in the project", "hyperframes motion"],
-  ["Inspect one composition file", "hyperframes motion compositions/scene.html"],
-  ["Machine-readable output for an agent", "hyperframes motion --json"],
-  ["Only one element's tweens", "hyperframes motion --selector '#puck-a'"],
+  ["Surface every keyframe + motion path in the project", "hyperframes keyframes"],
+  ["Inspect one composition file", "hyperframes keyframes compositions/scene.html"],
+  ["Machine-readable output for an agent", "hyperframes keyframes --json"],
+  ["Only one element's keyframes", "hyperframes keyframes --selector '#puck-a'"],
+  ["Runtime-aware hint for CSS/Anime compositions", "hyperframes keyframes --runtime all"],
 ];
 
 // ── Surfaced shapes ──────────────────────────────────────────────────────────
@@ -62,12 +63,32 @@ interface SurfacedTrace {
   strokes: TraceStroke[];
 }
 
+interface CssKeyframeStop {
+  selector: string;
+  declarations: string[];
+}
+
+interface SurfacedCssKeyframes {
+  name: string;
+  selectors: string[];
+  keyframes: CssKeyframeStop[];
+}
+
+interface SurfacedAnimeAnimation {
+  kind: "animation" | "timeline";
+  targets: string[];
+  durations: Array<number | string>;
+  registered: boolean;
+}
+
 interface SurfacedComposition {
   composition: string;
   source: string;
   tweens: SurfacedTween[];
   /** Multi-stroke traces: targets with ≥2 drawn position strokes, composited. */
   traces: SurfacedTrace[];
+  cssKeyframes: SurfacedCssKeyframes[];
+  anime: SurfacedAnimeAnimation[];
 }
 
 // ── GSAP extraction ──────────────────────────────────────────────────────────
@@ -76,6 +97,13 @@ function inlineScriptText(html: string): string {
   const doc = new DOMParser().parseFromString(html, "text/html");
   return Array.from(doc.querySelectorAll("script"))
     .filter((s) => !s.getAttribute("src"))
+    .map((s) => s.textContent ?? "")
+    .join("\n");
+}
+
+function inlineStyleText(html: string): string {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  return Array.from(doc.querySelectorAll("style"))
     .map((s) => s.textContent ?? "")
     .join("\n");
 }
@@ -220,7 +248,182 @@ export function surfaceComposition(
   }
   const tweens = animations.filter((a) => !isHoldMarker(a)).map(surfaceTween);
   attachComposedAncestors(tweens, html);
-  return { composition: label, source, tweens, traces: groupTraces(tweens) };
+  return {
+    composition: label,
+    source,
+    tweens,
+    traces: groupTraces(tweens),
+    cssKeyframes: surfaceCssKeyframes(inlineStyleText(html)),
+    anime: surfaceAnime(inlineScriptText(html)),
+  };
+}
+
+// ── CSS / Anime extraction ───────────────────────────────────────────────────
+
+function readBalancedBlock(text: string, openBrace: number): { body: string; end: number } | null {
+  if (text[openBrace] !== "{") return null;
+  let depth = 0;
+  for (let i = openBrace; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === "{") depth++;
+    else if (ch === "}") {
+      depth--;
+      if (depth === 0) {
+        return { body: text.slice(openBrace + 1, i), end: i + 1 };
+      }
+    }
+  }
+  return null;
+}
+
+function parseDeclarations(body: string): string[] {
+  return body
+    .split(";")
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function stripRanges(text: string, ranges: Array<{ start: number; end: number }>): string {
+  let out = "";
+  let cursor = 0;
+  for (const range of [...ranges].sort((a, b) => a.start - b.start)) {
+    out += text.slice(cursor, range.start);
+    cursor = range.end;
+  }
+  return out + text.slice(cursor);
+}
+
+function collectKeyframeBlocks(css: string): {
+  keyframes: Array<{ name: string; stops: CssKeyframeStop[] }>;
+  ranges: Array<{ start: number; end: number }>;
+} {
+  const keyframes: Array<{ name: string; stops: CssKeyframeStop[] }> = [];
+  const ranges: Array<{ start: number; end: number }> = [];
+  const re = /@keyframes\s+([a-zA-Z0-9_-]+)/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(css))) {
+    const open = css.indexOf("{", re.lastIndex);
+    const block = open >= 0 ? readBalancedBlock(css, open) : null;
+    if (!block) continue;
+    ranges.push({ start: match.index, end: block.end });
+    const stops: CssKeyframeStop[] = [];
+    const stopRe = /([^{}]+)\{([^{}]*)\}/g;
+    let stop: RegExpExecArray | null;
+    while ((stop = stopRe.exec(block.body))) {
+      stops.push({
+        selector: stop[1]!.trim().replace(/\s+/g, " "),
+        declarations: parseDeclarations(stop[2]!),
+      });
+    }
+    keyframes.push({ name: match[1]!, stops });
+  }
+  return { keyframes, ranges };
+}
+
+function animationNamesFromDeclarations(body: string, knownNames: Set<string>): string[] {
+  const out = new Set<string>();
+  const nameRe = /animation-name\s*:\s*([^;]+)/g;
+  let nameMatch: RegExpExecArray | null;
+  while ((nameMatch = nameRe.exec(body))) {
+    for (const raw of nameMatch[1]!.split(",")) {
+      const name = raw.trim().replace(/^["']|["']$/g, "");
+      if (knownNames.has(name)) out.add(name);
+    }
+  }
+
+  const animationRe = /animation\s*:\s*([^;]+)/g;
+  let animationMatch: RegExpExecArray | null;
+  while ((animationMatch = animationRe.exec(body))) {
+    for (const raw of animationMatch[1]!.split(",")) {
+      const tokens = raw.trim().split(/\s+/);
+      for (const token of tokens) {
+        const normalized = token.replace(/^["']|["']$/g, "");
+        if (knownNames.has(normalized)) out.add(normalized);
+      }
+    }
+  }
+  return [...out];
+}
+
+// CSS comments would otherwise glue onto the next rule's selector: once the
+// @keyframes blocks between them are stripped, a `/* note */` sitting above an
+// @keyframes reattaches to the following rule (and corrupts both the printed
+// selector and the --shot querySelector). Drop comments up front.
+function stripCssComments(css: string): string {
+  return css.replace(/\/\*[\s\S]*?\*\//g, " ");
+}
+
+function surfaceCssKeyframes(rawCss: string): SurfacedCssKeyframes[] {
+  const css = stripCssComments(rawCss);
+  if (!css.trim()) return [];
+  const { keyframes, ranges } = collectKeyframeBlocks(css);
+  if (keyframes.length === 0) return [];
+
+  const selectorsByName = new Map<string, Set<string>>();
+  for (const kf of keyframes) selectorsByName.set(kf.name, new Set());
+  const knownNames = new Set(keyframes.map((kf) => kf.name));
+  const cssWithoutKeyframes = stripRanges(css, ranges);
+  const ruleRe = /([^{}@]+)\{([^{}]*animation[^{}]*)\}/g;
+  let rule: RegExpExecArray | null;
+  while ((rule = ruleRe.exec(cssWithoutKeyframes))) {
+    const selector = rule[1]!.trim().replace(/\s+/g, " ");
+    if (!selector) continue;
+    for (const name of animationNamesFromDeclarations(rule[2]!, knownNames)) {
+      selectorsByName.get(name)?.add(selector);
+    }
+  }
+
+  return keyframes.map((kf) => ({
+    name: kf.name,
+    selectors: [...(selectorsByName.get(kf.name) ?? new Set<string>())],
+    keyframes: kf.stops,
+  }));
+}
+
+function valuesFromProperty(
+  script: string,
+  property: "targets" | "duration",
+): Array<string | number> {
+  const values: Array<string | number> = [];
+  const quoted = property + "\\s*:\\s*([\"'`])([^\"'`]+)\\1";
+  const numeric = property + "\\s*:\\s*([0-9]+(?:\\.[0-9]+)?)";
+  const re = new RegExp(`${quoted}|${numeric}`, "g");
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(script))) {
+    if (match[2] !== undefined) values.push(match[2]);
+    else if (match[3] !== undefined) values.push(Number(match[3]));
+  }
+  return values;
+}
+
+function animeAddTargets(script: string): string[] {
+  const values: string[] = [];
+  const re = /\.add\s*\(\s*(["'`])([^"'`]+)\1/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(script))) values.push(match[2]!);
+  return values;
+}
+
+function surfaceAnime(script: string): SurfacedAnimeAnimation[] {
+  if (!/\banime\s*(?:\.(?:timeline|createTimeline))?\s*\(/.test(script)) return [];
+  const registered = /__hfAnime[\s\S]*?\.push\s*\(/.test(script) || /__hfAnime\s*=/.test(script);
+  const timelineCount = (script.match(/\banime\.(?:timeline|createTimeline)\s*\(/g) ?? []).length;
+  const animationCount = (script.match(/\banime\s*\(/g) ?? []).length;
+  const targets = [
+    ...valuesFromProperty(script, "targets").filter(
+      (value): value is string => typeof value === "string",
+    ),
+    ...animeAddTargets(script),
+  ];
+  const durations = valuesFromProperty(script, "duration");
+  const out: SurfacedAnimeAnimation[] = [];
+  for (let i = 0; i < timelineCount; i++) {
+    out.push({ kind: "timeline", targets, durations, registered });
+  }
+  for (let i = 0; i < animationCount; i++) {
+    out.push({ kind: "animation", targets, durations, registered });
+  }
+  return out;
 }
 
 // A nested element's rendered motion is the COMPOSITION of its own tween and any
@@ -296,6 +499,16 @@ function bumpRange(ranges: Map<string, { min: number; max: number }>, k: string,
   } else ranges.set(k, { min: n, max: n });
 }
 
+// A drawn stroke must actually move across the canvas. A position tween whose
+// points never leave the start (an opacity/scale tween merely carrying a static
+// y) is not a pen stroke — exclude it so repeated in-place tweens don't
+// masquerade as a multi-stroke trace.
+function pathTravels(points: Array<{ x: number; y: number }>): boolean {
+  const first = points[0];
+  if (!first) return false;
+  return points.some((p) => Math.abs(p.x - first.x) > 0.5 || Math.abs(p.y - first.y) > 0.5);
+}
+
 // Group an element's DRAWN position strokes (to/from/fromTo/keyframes that carry
 // a path) into one ordered trace. A `set` with x/y is a pen-up jump — excluded
 // (not drawn). Only targets with ≥2 strokes become a composited trace; a single
@@ -305,6 +518,7 @@ function groupTraces(tweens: SurfacedTween[]): SurfacedTrace[] {
   for (const t of tweens) {
     if (t.method === "set") continue;
     if (!t.path || t.path.length < 2) continue;
+    if (!pathTravels(t.path)) continue; // in-place tween (e.g. opacity carrying a static y) is not a drawn stroke
     const list = byTarget.get(t.target);
     if (list) list.push(t);
     else byTarget.set(t.target, [t]);
@@ -402,12 +616,22 @@ interface ShotArgs {
 // Every animated element qualifies — the onion samples the live element and shows
 // every channel (rotation / scale / opacity / colour / 3D), not just x/y. A
 // 0-duration `set` is a pen-up marker, not motion.
-function collectAnimatedSelectors(comps: SurfacedComposition[]): Array<{ selector: string }> {
+export function collectShotSelectors(comps: SurfacedComposition[]): Array<{ selector: string }> {
   const selectors = new Set<string>();
   for (const cmp of comps) {
     for (const tr of cmp.traces) selectors.add(tr.target);
     for (const t of cmp.tweens) {
       if (t.method !== "set") selectors.add(t.target);
+    }
+    for (const css of cmp.cssKeyframes) {
+      for (const selector of css.selectors) {
+        if (selector) selectors.add(selector);
+      }
+    }
+    for (const anime of cmp.anime) {
+      for (const selector of anime.targets) {
+        if (selector) selectors.add(selector);
+      }
     }
   }
   return [...selectors].map((selector) => ({ selector }));
@@ -425,7 +649,7 @@ async function runOnionShot(
   // With --selector, sample from the FULL animated set and let the browser scope
   // to the selector (or its animated descendants when the selector is a static
   // wrapper like `.clip`). Without it, only the (already-filtered) comps qualify.
-  const requests = collectAnimatedSelectors(args.selector ? allComps : comps);
+  const requests = collectShotSelectors(args.selector ? allComps : comps);
   if (!projectDir) {
     console.log(c.dim("--shot needs a project directory (not a single .html file)."));
     return true;
@@ -490,15 +714,29 @@ function resolveScope(args: { target?: string; selector?: string }): {
         ...cmp,
         tweens: cmp.tweens.filter((t) => matches(t.target)),
         traces: cmp.traces.filter((tr) => matches(tr.target)),
+        cssKeyframes: cmp.cssKeyframes.filter((kf) => kf.selectors.some(matches)),
+        anime: cmp.anime.filter((a) => a.targets.some(matches)),
       }))
-      .filter((cmp) => cmp.tweens.length > 0 || cmp.traces.length > 0);
+      .filter(
+        (cmp) =>
+          cmp.tweens.length > 0 ||
+          cmp.traces.length > 0 ||
+          cmp.cssKeyframes.length > 0 ||
+          cmp.anime.length > 0,
+      );
   }
   return { comps, allComps, projectName, projectDir };
 }
 
 // Print one composition's traces + tweens (skipping strokes already shown in a trace).
 function printComposition(cmp: SurfacedComposition): void {
-  if (cmp.tweens.length === 0 && cmp.traces.length === 0) return;
+  if (
+    cmp.tweens.length === 0 &&
+    cmp.traces.length === 0 &&
+    cmp.cssKeyframes.length === 0 &&
+    cmp.anime.length === 0
+  )
+    return;
   console.log(c.bold(`${cmp.composition}`) + c.dim(`  (${cmp.source})`));
   const tracedIds = new Set(cmp.traces.flatMap((tr) => tr.strokes.map((s) => s.id)));
   const tracedTargets = new Set(cmp.traces.map((tr) => tr.target));
@@ -508,84 +746,177 @@ function printComposition(cmp: SurfacedComposition): void {
     if (t.method === "set" && tracedTargets.has(t.target)) continue; // internal pen-up jump
     printTween(t);
   }
+  for (const cssKeyframes of cmp.cssKeyframes) printCssKeyframes(cssKeyframes);
+  for (const anime of cmp.anime) printAnime(anime);
+}
+
+function printCssKeyframes(cssKeyframes: SurfacedCssKeyframes): void {
+  const selectors = cssKeyframes.selectors.length
+    ? cssKeyframes.selectors.join(", ")
+    : "(no selector found)";
+  console.log(
+    `  ${c.accent(`@keyframes ${cssKeyframes.name}`)}${c.dim(" css")}  ${c.dim(selectors)}`,
+  );
+  for (const stop of cssKeyframes.keyframes) {
+    console.log(`    ${c.dim(`${stop.selector} {${stop.declarations.join("; ")}}`)}`);
+  }
+  console.log();
+}
+
+function printAnime(anime: SurfacedAnimeAnimation): void {
+  const targets = anime.targets.length ? anime.targets.join(", ") : "(targets not parsed)";
+  const durations = anime.durations.length ? ` duration ${anime.durations.join(",")}` : "";
+  const registered = anime.registered ? "registered" : "not registered";
+  console.log(
+    `  ${c.accent(`anime.${anime.kind}`)}${c.dim(` ${registered}`)}  ${c.dim(`${targets}${durations}`)}`,
+  );
+  console.log();
 }
 
 // ── Command ──────────────────────────────────────────────────────────────────
 
-export default defineCommand({
-  meta: {
-    name: "motion",
-    description:
-      "See, debug, and refine motion — surface every GSAP tween, keyframe, and motion path, then --shot the onion-skin",
-  },
-  args: {
-    target: {
-      type: "positional",
-      description: "Project dir or composition .html",
-      required: false,
-    },
-    selector: { type: "string", description: "Only tweens matching this CSS selector" },
-    json: { type: "boolean", description: "Machine-readable JSON (for agents)", default: false },
-    shot: {
-      type: "string",
-      description:
-        "Onion-skin screenshot to PNG: the real element sampled over the timeline (true 3D, every channel) for visual self-verify. Pair with --selector to focus one element.",
-    },
-    samples: {
-      type: "string",
-      description: "Onion samples (equal-time steps) for --shot. Default 9.",
-    },
-    layout: {
-      type: "string",
-      description:
-        "--shot layout: 'path' (ghosts at real positions + path, default) or 'strip' (filmstrip by time — for in-place/overlapping motion).",
-    },
-    from: { type: "string", description: "--shot: sample only from this time (seconds)." },
-    to: { type: "string", description: "--shot: sample only up to this time (seconds)." },
-    angle: {
-      type: "string",
-      description:
-        "--shot orbit camera: a preset (front|iso|top|side|rear-iso) or 'yaw,pitch' degrees — view 3D motion from the angle that reveals it.",
-    },
-    fit: {
-      type: "boolean",
-      description: "--shot: zoom the motion to fill the frame (default true; --no-fit to disable).",
-      default: true,
-    },
-    ghost: {
-      type: "boolean",
-      description:
-        "--shot: rendered onion-skin — composite the real canvas/WebGL frames as translucent ghosts (older fainter), instead of bbox markers. For the canvas-internal 3D motion the marker onion can't see (requires a <canvas>).",
-      default: false,
-    },
-  },
-  async run({ args }) {
-    ensureDOMParser();
-    const { comps, allComps, projectName, projectDir } = resolveScope(args);
+interface KeyframesCommandOptions {
+  name: string;
+  description: string;
+  invocation: string;
+  defaultRuntime: "gsap" | "css" | "anime" | "all";
+}
 
-    // --shot: 3D onion-skin self-verify screenshot. Returns true when the command
-    // should stop (guard failure) so run() stays small.
-    if (args.shot && (await runOnionShot(comps, allComps, projectDir, args))) return;
+const defaultKeyframesCommand: KeyframesCommandOptions = {
+  name: "keyframes",
+  description:
+    "See, debug, and refine keyframes — surface GSAP, CSS @keyframes, Anime.js, paths, and onion-shot diagnostics",
+  invocation: "hyperframes keyframes",
+  defaultRuntime: "all",
+};
 
-    if (args.json) {
-      console.log(JSON.stringify(withMeta({ project: projectName, compositions: comps }), null, 2));
-      return;
-    }
+function createKeyframesCommand(options: Partial<KeyframesCommandOptions> = {}) {
+  const commandOptions = { ...defaultKeyframesCommand, ...options };
 
-    const total = comps.reduce((n, cmp) => n + cmp.tweens.length, 0);
-    if (total === 0) {
-      console.log(`${c.success("◇")}  ${c.accent(projectName)} ${c.dim("— no GSAP tweens found")}`);
-      return;
-    }
-    console.log(
-      `${c.success("◇")}  ${c.accent(projectName)} ${c.dim("—")} ${c.dim(`${total} tween${total === 1 ? "" : "s"}`)}`,
-    );
-    console.log();
-    for (const cmp of comps) printComposition(cmp);
-    console.log(
-      c.dim(
-        "Tip: edit the keyframes in source, then `motion --shot out.png` to see the rendered motion.",
-      ),
-    );
-  },
-});
+  return defineCommand({
+    meta: {
+      name: commandOptions.name,
+      description: commandOptions.description,
+    },
+    args: {
+      target: {
+        type: "positional",
+        description: "Project dir or composition .html",
+        required: false,
+      },
+      selector: { type: "string", description: "Only keyframes matching this CSS selector" },
+      runtime: {
+        type: "string",
+        description:
+          "Runtime filter hint: gsap|css|anime|all. Surfaces GSAP tweens, CSS @keyframes, and Anime.js timelines when detectable.",
+      },
+      json: { type: "boolean", description: "Machine-readable JSON (for agents)", default: false },
+      shot: {
+        type: "string",
+        description:
+          "Onion-skin screenshot to PNG: the real element sampled over the timeline (true 3D, every channel) for visual self-verify. Pair with --selector to focus one element.",
+      },
+      samples: {
+        type: "string",
+        description: "Onion samples (equal-time steps) for --shot. Default 9.",
+      },
+      layout: {
+        type: "string",
+        description:
+          "--shot layout: 'path' (ghosts at real positions + path, default) or 'strip' (filmstrip by time — for in-place/overlapping motion).",
+      },
+      from: { type: "string", description: "--shot: sample only from this time (seconds)." },
+      to: { type: "string", description: "--shot: sample only up to this time (seconds)." },
+      angle: {
+        type: "string",
+        description:
+          "--shot orbit camera: a preset (front|iso|top|side|rear-iso) or 'yaw,pitch' degrees — view 3D motion from the angle that reveals it.",
+      },
+      fit: {
+        type: "boolean",
+        description:
+          "--shot: zoom the motion to fill the frame (default true; --no-fit to disable).",
+        default: true,
+      },
+      ghost: {
+        type: "boolean",
+        description:
+          "--shot: rendered onion-skin — composite the real canvas/WebGL frames as translucent ghosts (older fainter), instead of bbox markers. For the canvas-internal 3D motion the marker onion can't see (requires a <canvas>).",
+        default: false,
+      },
+    },
+    async run({ args }) {
+      ensureDOMParser();
+      const runtime = normalizeRuntime(args.runtime, commandOptions.defaultRuntime);
+      if (runtime === "css" || runtime === "anime") {
+        console.log(
+          c.dim(
+            `${commandOptions.name}: ${runtime} output is a static authoring surface; use validate/render/snapshot to verify runtime adapter seekability.`,
+          ),
+        );
+        console.log();
+      }
+      const { comps: rawComps, allComps, projectName, projectDir } = resolveScope(args);
+      const comps = filterCompositionsByRuntime(rawComps, runtime);
+
+      // --shot: 3D onion-skin self-verify screenshot. Returns true when the command
+      // should stop (guard failure) so run() stays small.
+      if (args.shot && (await runOnionShot(comps, allComps, projectDir, args))) return;
+
+      if (args.json) {
+        console.log(
+          JSON.stringify(withMeta({ project: projectName, runtime, compositions: comps }), null, 2),
+        );
+        return;
+      }
+
+      const total = comps.reduce(
+        (n, cmp) => n + cmp.tweens.length + cmp.cssKeyframes.length + cmp.anime.length,
+        0,
+      );
+      if (total === 0) {
+        console.log(`${c.success("◇")}  ${c.accent(projectName)} ${c.dim("— no keyframes found")}`);
+        return;
+      }
+      console.log(
+        `${c.success("◇")}  ${c.accent(projectName)} ${c.dim("—")} ${c.dim(`${total} item${total === 1 ? "" : "s"}`)}`,
+      );
+      console.log();
+      for (const cmp of comps) printComposition(cmp);
+      console.log(
+        c.dim(
+          `Tip: edit the keyframes in source, then \`${commandOptions.invocation} --shot out.png\` to see the rendered motion.`,
+        ),
+      );
+    },
+  });
+}
+
+function normalizeRuntime(
+  runtime: unknown,
+  fallback: KeyframesCommandOptions["defaultRuntime"],
+): KeyframesCommandOptions["defaultRuntime"] {
+  if (typeof runtime !== "string") return fallback;
+  const normalized = runtime.toLowerCase();
+  return normalized === "gsap" ||
+    normalized === "css" ||
+    normalized === "anime" ||
+    normalized === "all"
+    ? normalized
+    : fallback;
+}
+
+function filterCompositionsByRuntime(
+  comps: SurfacedComposition[],
+  runtime: KeyframesCommandOptions["defaultRuntime"],
+): SurfacedComposition[] {
+  return comps.map((cmp) => ({
+    ...cmp,
+    tweens: runtime === "gsap" || runtime === "all" ? cmp.tweens : [],
+    traces: runtime === "gsap" || runtime === "all" ? cmp.traces : [],
+    cssKeyframes: runtime === "css" || runtime === "all" ? cmp.cssKeyframes : [],
+    anime: runtime === "anime" || runtime === "all" ? cmp.anime : [],
+  }));
+}
+
+export default createKeyframesCommand();
