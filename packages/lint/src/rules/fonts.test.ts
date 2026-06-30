@@ -261,6 +261,16 @@ describe("font rules", () => {
       expect(findings).toHaveLength(0);
     });
 
+    it("does not flag vendor-prefixed system-font keywords (-apple-system, BlinkMacSystemFont)", async () => {
+      const html = `<div data-composition-id="test" data-width="1920" data-height="1080">
+        <style>
+          body { font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif; }
+        </style>
+      </div>`;
+      const findings = await findByCode(html, "font_family_without_font_face");
+      expect(findings).toHaveLength(0);
+    });
+
     it("does not flag installed registry blocks that declare fonts via Google Fonts", async () => {
       const html =
         `<!-- hyperframes-registry-item: my-block -->\n` +

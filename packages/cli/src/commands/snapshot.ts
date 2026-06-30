@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import { defineCommand } from "citty";
 import { existsSync, mkdtempSync, readFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { resolve, join, relative, isAbsolute } from "node:path";
+import { resolve, join, relative, isAbsolute, basename } from "node:path";
 import { resolveProject } from "../utils/project.js";
 import { resolveCompositionViewportFromHtml } from "../utils/compositionViewport.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
@@ -94,7 +94,7 @@ export const examples: Example[] = [
  */
 async function captureSnapshots(
   projectDir: string,
-  opts: { frames?: number; timeout?: number; at?: number[] },
+  opts: { frames?: number; timeout?: number; at?: number[]; outputDir?: string },
 ): Promise<string[]> {
   const { bundleToSingleHtml } = await import("@hyperframes/core/compiler");
   const { ensureBrowser } = await import("../browser/manager.js");
@@ -176,26 +176,37 @@ async function captureSnapshots(
       // Extra settle time for media and animations to initialize
       await new Promise((r) => setTimeout(r, 1500));
 
-      // Font verification — report which fonts loaded vs fell back
+      // Font verification — split into loaded / errored / unused. Only status
+      // "error" is a real failure; a face still "unloaded"/"loading" after
+      // document.fonts.ready + the settle wait was simply never requested by any
+      // rendered text (an unused @font-face), so it is reported as "unused", not
+      // FAILED — printing it as FAILED alongside "loaded" read as a contradiction.
       const fontReport = await page
         .evaluate(() => {
           const loaded: string[] = [];
-          const failed: string[] = [];
+          const errored: string[] = [];
+          const unused: string[] = [];
           (document as any).fonts.forEach((f: any) => {
             const entry = `${f.family} (${f.weight} ${f.style})`;
             if (f.status === "loaded") loaded.push(entry);
-            else failed.push(entry + ` [${f.status}]`);
+            else if (f.status === "error") errored.push(entry);
+            else unused.push(entry);
           });
-          return { loaded, failed };
+          return { loaded, errored, unused };
         })
-        .catch(() => ({ loaded: [] as string[], failed: [] as string[] }));
+        .catch(() => ({ loaded: [] as string[], errored: [] as string[], unused: [] as string[] }));
 
-      if (fontReport.loaded.length > 0 || fontReport.failed.length > 0) {
-        console.log(
-          `\n   ${c.dim("Fonts loaded:")} ${fontReport.loaded.length > 0 ? fontReport.loaded.join(", ") : "none"}`,
-        );
-        if (fontReport.failed.length > 0) {
-          console.log(`   ${c.error("Fonts FAILED:")} ${fontReport.failed.join(", ")}`);
+      if (
+        fontReport.loaded.length > 0 ||
+        fontReport.errored.length > 0 ||
+        fontReport.unused.length > 0
+      ) {
+        const parts = [`${fontReport.loaded.length} loaded`];
+        if (fontReport.errored.length > 0) parts.push(`${fontReport.errored.length} failed`);
+        if (fontReport.unused.length > 0) parts.push(`${fontReport.unused.length} unused`);
+        console.log(`\n   ${c.dim("Fonts:")} ${parts.join(", ")}`);
+        if (fontReport.errored.length > 0) {
+          console.log(`   ${c.error("Fonts FAILED:")} ${fontReport.errored.join(", ")}`);
         }
       }
 
@@ -221,7 +232,7 @@ async function captureSnapshots(
           ? [duration / 2]
           : Array.from({ length: numFrames }, (_, i) => (i / (numFrames - 1)) * duration);
 
-      const snapshotDir = join(projectDir, "snapshots");
+      const snapshotDir = opts.outputDir ?? join(projectDir, "snapshots");
       mkdirSync(snapshotDir, { recursive: true });
       try {
         const { readdirSync } = await import("node:fs");
@@ -387,7 +398,8 @@ async function captureSnapshots(
         const framePath = join(snapshotDir, filename);
 
         await page.screenshot({ path: framePath, type: "png" });
-        savedPaths.push(`snapshots/${filename}`);
+        const rel = relative(projectDir, framePath);
+        savedPaths.push(rel.startsWith("..") || isAbsolute(rel) ? framePath : rel);
       }
     } finally {
       await chromeBrowser.close();
@@ -409,6 +421,11 @@ export default defineCommand({
       type: "positional",
       description: "Project directory",
       required: false,
+    },
+    output: {
+      type: "string",
+      alias: "o",
+      description: "Directory to write snapshots into (default: <project>/snapshots)",
     },
     frames: {
       type: "string",
@@ -457,7 +474,15 @@ export default defineCommand({
     console.log(`${c.accent("◆")}  Capturing ${label} from ${c.accent(project.name)}`);
 
     try {
-      const paths = await captureSnapshots(project.dir, { frames, timeout, at: atTimestamps });
+      const snapshotDir = args.output
+        ? resolve(String(args.output))
+        : join(project.dir, "snapshots");
+      const paths = await captureSnapshots(project.dir, {
+        frames,
+        timeout,
+        at: atTimestamps,
+        outputDir: snapshotDir,
+      });
 
       if (paths.length === 0) {
         console.log(
@@ -466,7 +491,9 @@ export default defineCommand({
         process.exit(1);
       }
 
-      console.log(`\n${c.success("◇")}  ${paths.length} snapshots saved to snapshots/`);
+      console.log(
+        `\n${c.success("◇")}  ${paths.length} snapshots saved to ${args.output ? snapshotDir : "snapshots/"}`,
+      );
       for (const p of paths) {
         console.log(`   ${p}`);
       }
@@ -474,7 +501,6 @@ export default defineCommand({
       // Generate contact sheet for quick AI review
       try {
         const { createSnapshotContactSheet } = await import("../capture/contactSheet.js");
-        const snapshotDir = join(project.dir, "snapshots");
         const sheets = await createSnapshotContactSheet(
           snapshotDir,
           join(snapshotDir, "contact-sheet.jpg"),
@@ -501,8 +527,6 @@ export default defineCommand({
             const { GoogleGenAI } = await import("@google/genai");
             const ai = new GoogleGenAI({ apiKey: geminiKey });
             const model = process.env.HYPERFRAMES_GEMINI_MODEL || "gemini-3.1-flash-lite-preview";
-            const snapshotDir = join(project.dir, "snapshots");
-
             const customQuestion =
               describeArg === "true"
                 ? "Describe this video composition frame in 1-2 sentences. Be specific and factual: what elements are visible, what text appears, is the frame blank/black/loading, what is the composition. Flag any obvious problems."
@@ -533,7 +557,7 @@ export default defineCommand({
 
             const results = await Promise.allSettled(
               paths.map(async (p) => {
-                const filename = p.replace("snapshots/", "");
+                const filename = basename(p);
                 const filePath = join(snapshotDir, filename);
                 if (!existsSync(filePath)) return { filename, desc: "file not found" };
                 const raw = readFileSync(filePath);
