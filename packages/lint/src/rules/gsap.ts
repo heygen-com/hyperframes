@@ -582,6 +582,9 @@ export const gsapRules: LintRule<LintContext>[] = [
       // gsap_exit_missing_hard_kill
       if (clipStartBoundaries.length > 0) {
         for (const win of gsapWindows) {
+          // Unresolved targets are unknown elements: you cannot assert a missing
+          // hard kill on one, and a `tl.set("__unresolved__", ...)` hint is meaningless.
+          if (win.targetSelector === UNRESOLVED_TARGET) continue;
           if (!isSceneBoundaryExit(win)) continue;
           const boundary = findMatchingSceneBoundary(win.end, clipStartBoundaries);
           if (boundary == null) continue;
