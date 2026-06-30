@@ -350,7 +350,7 @@ export function trackTranscribeUnavailable(props: { optional: boolean }): void {
 
 export function trackRenderFeedback(props: {
   rating: number;
-  renderDurationMs: number;
+  renderDurationMs?: number;
   comment?: string;
   doctorSummary?: string;
 }): void {
@@ -358,7 +358,7 @@ export function trackRenderFeedback(props: {
     $survey_id: "render_satisfaction",
     $survey_response: props.rating,
     ...(props.comment ? { $survey_response_2: props.comment } : {}),
-    render_duration_ms: props.renderDurationMs,
+    ...(props.renderDurationMs !== undefined ? { render_duration_ms: props.renderDurationMs } : {}),
     ...(props.doctorSummary ? { doctor_summary: props.doctorSummary } : {}),
   });
 }
