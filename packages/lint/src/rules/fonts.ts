@@ -56,6 +56,22 @@ function extractFontFaceFamilies(styles: Array<{ content: string }>): Set<string
   return families;
 }
 
+// Normalize one comma-separated font-family entry to a lowercase family name,
+// or null if it carries no resolvable name. `var(--heading)` (or any function
+// token) is an indirection the linter cannot statically resolve, so the literal
+// `var(...)` is not a font name and flagging it is a false positive. Comma-split
+// fallbacks like `var(--x, 'Inter')` also leave a dangling `)` on the fallback
+// part, so skip anything bearing parentheses.
+function normalizeUsedFontName(part: string): string | null {
+  const name = part
+    .trim()
+    .replace(/^['"]|['"]$/g, "")
+    .trim()
+    .toLowerCase();
+  if (!name || name.includes("(") || name.includes(")")) return null;
+  return name;
+}
+
 function extractUsedFontFamilies(styles: Array<{ content: string }>): string[] {
   const used: string[] = [];
   const seen = new Set<string>();
@@ -64,13 +80,8 @@ function extractUsedFontFamilies(styles: Array<{ content: string }>): string[] {
     const withoutFontFace = stripCssComments(style.content).replace(/@font-face\s*\{[^}]*\}/gi, "");
     let match: RegExpExecArray | null;
     while ((match = propRe.exec(withoutFontFace)) !== null) {
-      const stack = match[1]!;
-      for (const part of stack.split(",")) {
-        const name = part
-          .trim()
-          .replace(/^['"]|['"]$/g, "")
-          .trim()
-          .toLowerCase();
+      for (const part of match[1]!.split(",")) {
+        const name = normalizeUsedFontName(part);
         if (name && !GENERIC_FAMILIES.has(name) && !seen.has(name)) {
           seen.add(name);
           used.push(name);

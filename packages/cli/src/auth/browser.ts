@@ -5,6 +5,7 @@
  */
 
 import { c } from "../ui/colors.js";
+import { normalizeErrorMessage } from "../utils/errorMessage.js";
 
 export interface OpenBrowserResult {
   /** True when we successfully invoked the platform "open" command. */
@@ -21,7 +22,7 @@ export async function openBrowser(url: string): Promise<OpenBrowserResult> {
     await open(url);
     return { opened: true };
   } catch (err) {
-    printManualInstructions(url, err instanceof Error ? err.message : String(err));
+    printManualInstructions(url, normalizeErrorMessage(err));
     return { opened: false };
   }
 }

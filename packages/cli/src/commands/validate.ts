@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveProject } from "../utils/project.js";
+import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { resolveCompositionViewportFromHtml } from "../utils/compositionViewport.js";
 import { c } from "../ui/colors.js";
 import { withMeta } from "../utils/updateCheck.js";
@@ -226,7 +227,7 @@ async function validateInBrowser(
     });
 
     page.on("pageerror", (err) => {
-      const text = err instanceof Error ? err.message : String(err);
+      const text = normalizeErrorMessage(err);
       // CDN scripts (e.g. GSAP from jsdelivr) returning HTML error pages
       // instead of JS produce "Unexpected token '<'" SyntaxErrors. These
       // are network failures, not composition authoring errors.
@@ -394,7 +395,7 @@ Examples:
       const exitCode = printValidationResult(result, asJson);
       process.exit(exitCode);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = normalizeErrorMessage(err);
       emitFailureReport(message, asJson);
       process.exit(1);
     }

@@ -30,6 +30,7 @@ import {
   resolveVariablesArg,
   validateVariablesAgainstProject,
 } from "../utils/variables.js";
+import { normalizeErrorMessage } from "../utils/errorMessage.js";
 
 export const examples: Example[] = [
   ["Deploy the Cloud Run render stack", "hyperframes cloudrun deploy --project my-gcp-project"],
@@ -670,7 +671,7 @@ async function runRenderBatch(args: Record<string, unknown>): Promise<void> {
         } catch (err) {
           return {
             outputKey: entry.outputKey,
-            error: err instanceof Error ? err.message : String(err),
+            error: normalizeErrorMessage(err),
           };
         }
       }),

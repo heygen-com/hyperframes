@@ -5,6 +5,7 @@ import { existsSync, mkdtempSync, readFileSync, mkdirSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { resolve, join, relative, isAbsolute, basename } from "node:path";
 import { resolveProject } from "../utils/project.js";
+import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { resolveCompositionViewportFromHtml } from "../utils/compositionViewport.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
 import { c } from "../ui/colors.js";
@@ -594,8 +595,7 @@ export default defineCommand({
                 descriptions.push(`## ${result.value.filename}`, `${result.value.desc}`, ``);
               } else {
                 // Log first failure so Gemini issues are visible rather than silent
-                const errMsg =
-                  result.reason instanceof Error ? result.reason.message : String(result.reason);
+                const errMsg = normalizeErrorMessage(result.reason);
                 descriptions.push(`## (error)`, `Gemini call failed: ${errMsg.slice(0, 120)}`, ``);
               }
             }
@@ -605,12 +605,12 @@ export default defineCommand({
             console.log(`   ${c.dim("descriptions.md")} (Gemini frame analysis)`);
           }
         } catch (descErr) {
-          const msg = descErr instanceof Error ? descErr.message : String(descErr);
+          const msg = normalizeErrorMessage(descErr);
           console.log(`   ${c.dim(`--describe failed: ${msg.slice(0, 80)}`)}`);
         }
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = normalizeErrorMessage(err);
       console.error(`\n${c.error("✗")} Snapshot failed: ${msg}`);
       process.exit(1);
     }
