@@ -43,6 +43,21 @@ describe("serveStaticProjectHtml range support", () => {
     expect(await res.text()).toBe("abcdef");
   });
 
+  it("streams a small slice out of a large file without buffering the whole thing", async () => {
+    // 8MB file, ask for 4 bytes deep inside it. The handler must createReadStream
+    // the [start,end] window only, not readFileSync the whole 8MB and slice.
+    const size = 8 * 1024 * 1024;
+    const big = Buffer.alloc(size, 0x61); // 'a' everywhere...
+    big.write("WXYZ", 5_000_000); // ...except a 4-byte marker
+    const { url } = await serveWith(big);
+
+    const res = await fetch(`${url}tone.wav`, { headers: { Range: "bytes=5000000-5000003" } });
+    expect(res.status).toBe(206);
+    expect(res.headers.get("content-range")).toBe(`bytes 5000000-5000003/${size}`);
+    expect(res.headers.get("content-length")).toBe("4");
+    expect(await res.text()).toBe("WXYZ");
+  });
+
   it("returns 416 for an unsatisfiable range", async () => {
     const body = Buffer.from("abc", "utf-8");
     const { url } = await serveWith(body);
