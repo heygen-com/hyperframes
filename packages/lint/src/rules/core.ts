@@ -68,6 +68,14 @@ const ORPHAN_CSS_AT_RULE_PATTERN =
   /(?:^|\s)@(?:container|font-face|keyframes|layer|media|page|property|scope|supports)[^{<]*\{[\s\S]*?:[\s\S]*?\}/i;
 const ORPHAN_CSS_RULE_PATTERN =
   /(?:^|\s)(?:\/\*[\s\S]*?\*\/\s*)?(?:@[a-z-]+[^{}<]*|[.#][\w-]+[^{}<]*|[a-z][\w-]*(?:\s+[.#:[\w-][^{}<]*)?)\s*\{[^{}]*:[^{}]*\}/i;
+const VISIBLE_MARKUP_COMMENT_PATTERN = /\/\*[\s\S]*?\*\//g;
+const VISIBLE_MARKUP_COMMENT_PROTECTED_BLOCK_PATTERN =
+  /<(style|script|template|pre|code|textarea)\b[^>]*>[\s\S]*?<\/\1(?:\s[^>]*)?>/gi;
+
+interface SourceRange {
+  start: number;
+  end: number;
+}
 
 function findCodeFenceLeak(headWithoutValidBlocks: string): string | null {
   return MARKDOWN_CODE_FENCE_PATTERN.exec(headWithoutValidBlocks)?.[0] ?? null;
@@ -127,6 +135,39 @@ function findLeakedTextBeforeCompositionRoot(
   return findLeakedTextInHeadContent(source.slice(prefixStart, prefixEnd));
 }
 
+function findProtectedVisibleMarkupRanges(source: string): SourceRange[] {
+  const ranges: SourceRange[] = [];
+  VISIBLE_MARKUP_COMMENT_PROTECTED_BLOCK_PATTERN.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = VISIBLE_MARKUP_COMMENT_PROTECTED_BLOCK_PATTERN.exec(source)) !== null) {
+    ranges.push({ start: match.index, end: match.index + match[0].length });
+  }
+  return ranges;
+}
+
+function isInsideSourceRange(index: number, ranges: SourceRange[]): boolean {
+  return ranges.some((range) => range.start <= index && index < range.end);
+}
+
+function isInsideHtmlTag(source: string, index: number): boolean {
+  const lastOpen = source.lastIndexOf("<", index);
+  if (lastOpen === -1) return false;
+  const lastClose = source.lastIndexOf(">", index);
+  return lastOpen > lastClose;
+}
+
+function findVisibleMarkupCommentLeak(source: string): string | null {
+  const protectedRanges = findProtectedVisibleMarkupRanges(source);
+  VISIBLE_MARKUP_COMMENT_PATTERN.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = VISIBLE_MARKUP_COMMENT_PATTERN.exec(source)) !== null) {
+    if (isInsideHtmlTag(source, match.index)) continue;
+    if (isInsideSourceRange(match.index, protectedRanges)) continue;
+    return match[0];
+  }
+  return null;
+}
+
 export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   // root_missing_composition_id + root_missing_dimensions
   ({ rootTag }) => {
@@ -169,6 +210,23 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
           "Detected leaked code or CSS text around the document `<head>` or before the composition root. Browsers render this as visible text in the video.",
         fixHint:
           "Move CSS into a single `<style>...</style>` block and remove stray close tags, markdown fences, or code text from `<head>`, the `</head>`/`<body>` boundary, or the pre-root body prefix.",
+        snippet: truncateSnippet(snippet),
+      },
+    ];
+  },
+
+  // visible_markup_comment
+  ({ source }) => {
+    const snippet = findVisibleMarkupCommentLeak(source);
+    if (!snippet) return [];
+    return [
+      {
+        code: "visible_markup_comment",
+        severity: "error",
+        message:
+          "CSS/JS block comment syntax (`/* ... */`) appears in visible HTML markup. HTML only treats `<!-- ... -->` as comments, so this renders as on-screen text.",
+        fixHint:
+          "Remove the text or convert it to a real HTML comment (`<!-- ... -->`). Keep CSS comments inside `<style>` and JS comments inside `<script>`.",
         snippet: truncateSnippet(snippet),
       },
     ];

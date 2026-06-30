@@ -370,6 +370,61 @@ body {
     expect(finding).toBeUndefined();
   });
 
+  it("reports error when CSS block comment syntax leaks into visible markup", async () => {
+    const html = compositionWithBodyPrefix(
+      "",
+      `
+    /* Main Content Block */
+    <div class="editorial-block">Hello</div>
+`,
+    );
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "visible_markup_comment");
+
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("error");
+    expect(finding?.message).toContain("visible HTML markup");
+    expect(finding?.snippet).toContain("Main Content Block");
+  });
+
+  it("does not report block comments inside style or script blocks", async () => {
+    const html = `
+<html>
+<head>
+  <style>
+    /* Layout reset */
+    body { margin: 0; }
+  </style>
+</head>
+<body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"></div>
+  <script>
+    /* Timeline registry */
+    window.__timelines = {};
+  </script>
+</body>
+</html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "visible_markup_comment");
+
+    expect(finding).toBeUndefined();
+  });
+
+  it("does not report block comments in attributes, html comments, or code examples", async () => {
+    const html = compositionWithBodyPrefix(
+      "",
+      `
+    <!-- /* hidden implementation note */ -->
+    <div data-note="/* attribute note */"></div>
+    <pre>/* visible code sample */</pre>
+`,
+    );
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "visible_markup_comment");
+
+    expect(finding).toBeUndefined();
+  });
+
   it("reports error when a stray style close tag is left in the document head", async () => {
     const html = compositionWithHead(`
   <style>
