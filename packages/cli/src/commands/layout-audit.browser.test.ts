@@ -140,6 +140,7 @@ describe("layout-audit.browser content overlap", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     document.body.innerHTML = "";
+    delete (document as unknown as { elementFromPoint?: unknown }).elementFromPoint;
     delete (window as unknown as { __hyperframesLayoutAudit?: unknown }).__hyperframesLayoutAudit;
   });
 
@@ -166,6 +167,21 @@ describe("layout-audit.browser content overlap", () => {
   it("respects the data-layout-allow-overlap opt-out", () => {
     expectExemptFromOverlap({ attrs: "data-layout-allow-overlap" });
   });
+
+  // A typewriter span clipped to nothing (clip-path: inset(0 100% 0 0)) keeps a
+  // normal box but paints zero pixels; overlapping it must not flag the visible
+  // block beneath. The clipped element is unreachable by elementFromPoint, which
+  // is how isClippedAway detects it.
+  it("excludes a block clipped to nothing by clip-path from overlap", () => {
+    const issues = auditOverlapScene({
+      a: { textRect: rect({ left: 100, top: 100, width: 400, height: 100 }) },
+      b: {
+        textRect: rect({ left: 300, top: 120, width: 400, height: 100 }),
+        clipPath: "inset(0px 100% 0px 0px)",
+      },
+    });
+    expect(issues.some((issue) => issue.code === "content_overlap")).toBe(false);
+  });
 });
 
 // Both blocks overlap heavily; only the exemption on block A should suppress
@@ -179,8 +195,8 @@ function expectExemptFromOverlap(aOverrides: { color?: string; attrs?: string })
 }
 
 function auditOverlapScene(options: {
-  a: { textRect: DOMRect; color?: string; attrs?: string };
-  b: { textRect: DOMRect; color?: string; attrs?: string };
+  a: { textRect: DOMRect; color?: string; attrs?: string; clipPath?: string };
+  b: { textRect: DOMRect; color?: string; attrs?: string; clipPath?: string };
 }): ReturnType<typeof runAudit> {
   document.body.innerHTML = `
     <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
@@ -192,6 +208,10 @@ function auditOverlapScene(options: {
     a: options.a.color ?? "rgb(0, 0, 0)",
     b: options.b.color ?? "rgb(0, 0, 0)",
   };
+  const clipPaths: Record<string, string> = {
+    a: options.a.clipPath ?? "none",
+    b: options.b.clipPath ?? "none",
+  };
   const textRects: Record<string, DOMRect> = { a: options.a.textRect, b: options.b.textRect };
 
   vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
@@ -201,8 +221,17 @@ function auditOverlapScene(options: {
       visibility: "visible",
       opacity: "1",
       color: colors[id] ?? "rgb(0, 0, 0)",
+      clipPath: clipPaths[id] ?? "none",
     } as unknown as CSSStyleDeclaration;
   });
+
+  // A clipped-to-nothing element is unreachable by elementFromPoint; mimic that
+  // by returning the topmost non-clipped block at any probe point.
+  (document as unknown as { elementFromPoint: () => Element | null }).elementFromPoint = () => {
+    if (clipPaths.b === "none") return document.getElementById("b");
+    if (clipPaths.a === "none") return document.getElementById("a");
+    return null;
+  };
 
   for (const element of Array.from(document.querySelectorAll("*"))) {
     vi.spyOn(element, "getBoundingClientRect").mockReturnValue(
