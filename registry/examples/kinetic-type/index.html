@@ -82,6 +82,12 @@
       // The A-roll <video> is a host-root element, so the sub-composition
       // timeline cannot reach it. Drive its reveal here on the main timeline at
       // global time (the graphics sub-comp starts at 0, so scene-local == global).
+      //
+      // COUPLING: the reveal/hide times below (2.2 / 11.7 / 13.5) are hand-tuned
+      // to the graphics-layer sub-composition's scene boundaries and assume it is
+      // mounted at data-start="0". If you re-time the sub-composition's scenes or
+      // change its data-start, these absolute times drift out of alignment and
+      // must be updated to match the new scene boundaries.
       tl.set("#a-roll-video", { opacity: 0 }, 0);
       tl.set("#a-roll-video", { opacity: 1 }, 2.2); // reveal after the Scene 1 white wipe
       tl.to("#a-roll-video", { opacity: 0, duration: 0.4 }, 11.7); // hide for the Wes Anderson scene
