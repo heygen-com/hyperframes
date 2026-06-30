@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
 import { resolveProject } from "../utils/project.js";
+import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
 import { withMeta } from "../utils/updateCheck.js";
 import {
@@ -634,7 +635,7 @@ export function createInspectCommand(commandName: "inspect" | "layout") {
 
         process.exit(ok ? 0 : 1);
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
+        const message = normalizeErrorMessage(err);
         if (args.json) {
           console.log(
             JSON.stringify(

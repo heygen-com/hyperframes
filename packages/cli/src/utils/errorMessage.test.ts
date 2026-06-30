@@ -46,6 +46,18 @@ describe("normalizeErrorMessage", () => {
     expect(normalizeErrorMessage(hostile)).toBe("[object Object]");
   });
 
+  it("never yields '[object Object]' for a no-message object (the reported validate/inspect bug)", () => {
+    const out = normalizeErrorMessage({ code: 42 });
+    expect(out).not.toBe("[object Object]");
+    expect(out).toContain("42");
+  });
+
+  it("surfaces a Puppeteer-style protocol error object via its message", () => {
+    expect(normalizeErrorMessage({ name: "ProtocolError", message: "Target closed" })).toBe(
+      "Target closed",
+    );
+  });
+
   it("returns 'unknown error' for null and undefined", () => {
     expect(normalizeErrorMessage(null)).toBe("unknown error");
     expect(normalizeErrorMessage(undefined)).toBe("unknown error");
