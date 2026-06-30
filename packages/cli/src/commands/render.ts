@@ -661,6 +661,30 @@ export default defineCommand({
       }
     }
 
+    // ── Slideshow guard ───────────────────────────────────────────────────
+    // A slideshow deck is several top-level scene compositions with no master
+    // root. `render` captures only the FIRST composition, so a deck renders as a
+    // silently truncated MP4 (e.g. slide 1 of a 40s deck). Warn and point at the
+    // deck-native path. Best-effort — never block a render on this probe.
+    if (!quiet) {
+      try {
+        const renderTarget = entryFile ? resolve(project.dir, entryFile) : project.indexPath;
+        const { slideshowIslandRegex } = await import("@hyperframes/core/slideshow");
+        if (slideshowIslandRegex("i").test(readFileSync(renderTarget, "utf8"))) {
+          console.log(
+            c.warn("⚠") +
+              "  This composition carries a slideshow island — `render` captures only the first" +
+              " scene, so the MP4 will be truncated to slide 1. Use " +
+              c.accent("hyperframes present") +
+              " for the deck; a linear main-line MP4 export is not yet available.",
+          );
+          console.log("");
+        }
+      } catch {
+        /* best-effort — a missing/unreadable target surfaces later in the real flow */
+      }
+    }
+
     // ── Print render plan ─────────────────────────────────────────────────
     if (!quiet && !batchPath) {
       const workerLabel =

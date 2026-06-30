@@ -16,6 +16,12 @@ const GENERIC_FAMILIES = new Set([
   "math",
   "emoji",
   "fangsong",
+  // Vendor-prefixed system-font keywords. Like `system-ui`, the engine resolves
+  // these to the OS UI font — they are never installable files and must not be
+  // flagged as a missing @font-face, even when a generic fallback follows them
+  // (e.g. `-apple-system, system-ui, sans-serif`).
+  "-apple-system",
+  "blinkmacsystemfont",
   "inherit",
   "initial",
   "unset",
