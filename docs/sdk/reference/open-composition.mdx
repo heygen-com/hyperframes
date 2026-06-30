@@ -37,7 +37,7 @@ The same function covers three deployment patterns. Which mode you get depends e
 <ParamField path="persist" type="PersistAdapter">
   Storage adapter for autosave. After every committed change the SDK enqueues a write to this adapter. The session fires `persist:error` events instead of throwing on write failures.
 
-  Built-in adapters: `createMemoryAdapter()` (tests/demos), `createFsAdapter()` (Node.js), `createHeadlessAdapter()` (no-op). Custom adapters implement the `PersistAdapter` interface from `@hyperframes/sdk/adapters`.
+  Built-in adapters: `createMemoryAdapter()` (tests/demos) and `createFsAdapter()` (Node.js). Custom adapters implement the `PersistAdapter` interface, exported from `@hyperframes/sdk`. (`createHeadlessAdapter()` is a `PreviewAdapter` for the `preview` field below — not a persist adapter.)
 
   See the [persistence guide](/sdk/guides/persistence) for adapter selection and configuration.
 </ParamField>

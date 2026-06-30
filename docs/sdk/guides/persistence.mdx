@@ -87,6 +87,10 @@ const v1Html = await adapter.loadFrom("composition.html", versions[1].key);
 
 Writes to the filesystem and keeps a rolling version history under `.hf-versions/`. Node.js only — do not use in browser builds.
 
+<Note>
+  `createFsAdapter` is imported from the `@hyperframes/sdk/adapters/fs` **subpath**, not the main barrel like `createMemoryAdapter`. The fs adapter pulls in Node's `fs` module, so keeping it on a separate subpath lets browser bundles tree-shake it away — importing it from the root would drag `node:fs` into a browser build.
+</Note>
+
 ```typescript
 import { createFsAdapter } from "@hyperframes/sdk/adapters/fs";
 
@@ -147,8 +151,7 @@ export interface PersistAdapter {
 **Minimal example — an HTTP / S3-style adapter:**
 
 ```typescript
-import type { PersistAdapter, PersistVersionEntry } from "@hyperframes/sdk/adapters/types";
-import type { PersistErrorEvent } from "@hyperframes/sdk";
+import type { PersistAdapter, PersistVersionEntry, PersistErrorEvent } from "@hyperframes/sdk";
 
 export function createHttpAdapter(baseUrl: string): PersistAdapter {
   const errorHandlers: Array<(e: PersistErrorEvent) => void> = [];

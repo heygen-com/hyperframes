@@ -205,7 +205,7 @@ interface FindQuery {
 </ResponseField>
 
 <ResponseField name="text" type="string">
-  Match by the element's direct text content (exact string match).
+  Match by the element's direct text content (case-sensitive substring match — implemented with `String.includes`).
 </ResponseField>
 
 <ResponseField name="name" type="string">
@@ -295,7 +295,7 @@ interface GsapTweenSpec {
 
 ## KeyframeSpec
 
-A single keyframe entry for `addWithKeyframes` and `replaceWithKeyframes`.
+A single keyframe entry for `addWithKeyframes` and `replaceWithKeyframes`. This is a structural shape, not a runtime export — you pass plain objects of this form to those methods; it is **not** re-exported from the `@hyperframes/sdk` barrel, so there is nothing to import.
 
 ```typescript
 interface KeyframeSpec {

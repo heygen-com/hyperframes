@@ -46,7 +46,7 @@ if (el) {
 }
 ```
 
-Both bare ids (top-level elements) and scoped ids (sub-composition elements) are accepted.
+Both bare ids (top-level elements) and scoped ids (sub-composition elements) are accepted. A bare id resolves only against top-level elements: a leaf that exists **only** inside a sub-composition returns `null` even if its id is unique in the document — use `find()` to discover its scoped form (`"hf-HOST/hf-LEAF"`), then pass that to `getElement`.
 
 ### `find(query)`
 

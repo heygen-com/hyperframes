@@ -143,6 +143,10 @@ interface DraftProps {
 
 `dx` and `dy` are the accumulated drag deltas in composition pixels. `width` and `height` are defined in the interface for forward compatibility but are not yet wired to any op.
 
+<Note>
+  `ElementAtPointResult` and `DraftProps` are the structural shapes a `PreviewAdapter` produces and consumes. They are **not** re-exported from the `@hyperframes/sdk` barrel — you implement against these shapes rather than importing them.
+</Note>
+
 ---
 
 ## Factory Functions

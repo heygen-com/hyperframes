@@ -9,7 +9,7 @@ Every clip in a HyperFrames composition has a position on the timeline (`data-st
 
 ### Reading timings
 
-`getElementTimings()` returns a `Record<HfId, ElementTimingSnapshot>` — one entry per element that carries timing data. Values are derived from the live DOM on every call (never cached in the snapshot).
+`getElementTimings()` returns a `Record<HfId, ElementTimingSnapshot>` — one entry per element that carries timing data. Values are derived from the live DOM on every call (never cached in the snapshot). Keys are `scopedId`: for top-level elements this equals the bare `id`, but for elements inside a sub-composition it is the scoped form `"hf-HOST/hf-LEAF"`.
 
 ```typescript
 import { openComposition } from "@hyperframes/sdk";

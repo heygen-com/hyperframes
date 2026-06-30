@@ -19,7 +19,7 @@ npm install @hyperframes/sdk
 
 **Adapters decouple persistence and preview.** The SDK never reaches the filesystem or an iframe directly. You supply a `PersistAdapter` (memory, filesystem, S3, HTTP — same interface) and optionally a `PreviewAdapter`. The session fires `persist:error` events on write failures instead of throwing. This makes the SDK equally at home in a Node.js agent, a browser editor, and a CI pipeline.
 
-**Standalone vs embedded mode.** In standalone mode you own the HTML and the SDK owns history and autosave. In embedded (override) mode you supply a base template and a sparse `OverrideSet` delta; the SDK folds the delta onto the template at open time, accumulates further edits into the override set, and lets you store only the delta — the base template stays untouched. Two sentences that cover two completely different deployment patterns.
+**Standalone vs embedded mode.** In standalone mode you own the HTML and the SDK owns history and autosave. In embedded (override) mode you supply a base template and a sparse `OverrideSet` delta; the SDK folds the delta onto the template at open time, accumulates further edits into the override set, and lets you store only the delta — the base template stays untouched.
 
 ## Guides
 

@@ -94,7 +94,7 @@ When you read an `OverrideSet` value at a `var.*` key, narrow before treating it
 
 ## Disabling SDK undo
 
-In embedded mode the host typically owns the undo stack. Pass `history: false` to skip attaching the SDK's built-in undo module — it keeps the session lightweight and avoids duplicating state:
+In embedded mode the host typically owns the undo stack. The SDK already leaves history **off by default** in embedded mode (any session opened with `overrides`), so you usually don't need to do anything. Pass `history: false` explicitly only to make that intent obvious in standalone code paths, or as a guard if a call site may or may not supply `overrides`:
 
 ```typescript
 const comp = await openComposition(templateHtml, {

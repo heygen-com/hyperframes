@@ -28,6 +28,8 @@ const preview = createIframePreviewAdapter(iframe, (op) => {
 const comp = await openComposition(compositionHtml, { preview });
 ```
 
+The callback references `comp` before it is declared — that is intentional and safe: the arrow function captures `comp` by closure and is only ever invoked later (by `commitPreview()` on pointer-up), by which point `comp` is assigned. This is the standard way to break the adapter ⇄ session circular dependency.
+
 The `dispatch` callback is optional. Omitting it means `commitPreview()` is a no-op, which is useful if you want to handle op derivation yourself.
 
 ## Hit-testing: finding what the user clicked

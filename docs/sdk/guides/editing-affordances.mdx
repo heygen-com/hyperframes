@@ -6,7 +6,7 @@ description: "Resolve capability flags and inspector sections for a selected ele
 `resolveElementAffordances` answers the question "what can the user do with this element right now?" given a live DOM element and its SDK model entry. It returns two objects: `capabilities` (boolean flags for each edit action) and `sections` (which inspector panels apply). You use these to conditionally render controls in your editor's detail panel rather than showing a fixed field set for all elements.
 
 <Note>
-  This API ships in hyperframes PR #1814. You need a version of `@hyperframes/sdk` that includes the `/editing` subpath export. Check your installed version before importing.
+  This API lives on the `@hyperframes/sdk/editing` subpath, added in the editing-affordances change (merged to `main`). It is available in any `@hyperframes/sdk` build cut from `main` after that merge — if the import fails to resolve, upgrade to the latest `0.7.x`.
 </Note>
 
 ## Import
