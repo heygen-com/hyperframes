@@ -137,9 +137,7 @@ function findLeakedTextBeforeCompositionRoot(
 
 function findProtectedVisibleMarkupRanges(source: string): SourceRange[] {
   const ranges: SourceRange[] = [];
-  VISIBLE_MARKUP_COMMENT_PROTECTED_BLOCK_PATTERN.lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = VISIBLE_MARKUP_COMMENT_PROTECTED_BLOCK_PATTERN.exec(source)) !== null) {
+  for (const match of source.matchAll(VISIBLE_MARKUP_COMMENT_PROTECTED_BLOCK_PATTERN)) {
     ranges.push({ start: match.index, end: match.index + match[0].length });
   }
   return ranges;
@@ -150,17 +148,30 @@ function isInsideSourceRange(index: number, ranges: SourceRange[]): boolean {
 }
 
 function isInsideHtmlTag(source: string, index: number): boolean {
-  const lastOpen = source.lastIndexOf("<", index);
-  if (lastOpen === -1) return false;
-  const lastClose = source.lastIndexOf(">", index);
-  return lastOpen > lastClose;
+  let inTag = false;
+  let quote: '"' | "'" | null = null;
+  for (let i = 0; i < index; i++) {
+    const char = source[i];
+    if (!inTag) {
+      if (char === "<") inTag = true;
+      continue;
+    }
+    if (quote) {
+      if (char === quote) quote = null;
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+    } else if (char === ">") {
+      inTag = false;
+    }
+  }
+  return inTag;
 }
 
 function findVisibleMarkupCommentLeak(source: string): string | null {
   const protectedRanges = findProtectedVisibleMarkupRanges(source);
-  VISIBLE_MARKUP_COMMENT_PATTERN.lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = VISIBLE_MARKUP_COMMENT_PATTERN.exec(source)) !== null) {
+  for (const match of source.matchAll(VISIBLE_MARKUP_COMMENT_PATTERN)) {
     if (isInsideHtmlTag(source, match.index)) continue;
     if (isInsideSourceRange(match.index, protectedRanges)) continue;
     return match[0];

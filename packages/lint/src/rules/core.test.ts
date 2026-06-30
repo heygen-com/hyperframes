@@ -437,6 +437,7 @@ body {
       `
     <!-- /* hidden implementation note */ -->
     <div data-note="/* attribute note */"></div>
+    <div data-note="a > b /* quoted attribute note */"></div>
     <pre>/* visible code sample */</pre>
     <code>/* visible inline code sample */</code>
     <textarea>/* editable code sample */</textarea>
