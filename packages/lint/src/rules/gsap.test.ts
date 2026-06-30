@@ -952,6 +952,32 @@ describe("GSAP rules", () => {
     expect(finding).toBeDefined();
   });
 
+  it("does NOT report overlapping_gsap_tweens for distinct unresolved-target tweens", async () => {
+    // Each tween targets a DIFFERENT element via a target the parser cannot resolve
+    // statically (a helper call). Both collapse to the `__unresolved__` sentinel, but
+    // they are not the same element, so an overlap must not be asserted between them.
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="s0"><div class="hl"><span class="w">a</span></div></div>
+    <div id="s1"><div class="hl"><span class="w">b</span></div></div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    const a = pickWord(0);
+    const b = pickWord(1);
+    tl.to(a, { x: 100, duration: 1 }, 0);
+    tl.to(b, { x: 100, duration: 1 }, 0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "overlapping_gsap_tweens");
+    expect(finding).toBeUndefined();
+  });
+
   it("warns when an opacity exit ends at a clip start boundary without a hard kill", async () => {
     const html = `
 <html><body>
