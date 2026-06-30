@@ -82,16 +82,6 @@ export const STUDIO_RAZOR_TOOL_ENABLED = resolveStudioBooleanEnvFlag(
   true,
 );
 
-// Storyboard view: a top-level, toggleable view that renders STORYBOARD.md as a
-// contact sheet of live HTML frame tiles, replacing the timeline/preview stage.
-// Opt-in / off by default until the experience is ready for broad exposure.
-//   VITE_STUDIO_ENABLE_STORYBOARD=1 npx hyperframes preview
-export const STUDIO_STORYBOARD_ENABLED = resolveStudioBooleanEnvFlag(
-  env,
-  ["VITE_STUDIO_ENABLE_STORYBOARD", "VITE_STUDIO_STORYBOARD_ENABLED"],
-  false,
-);
-
 export const STUDIO_PREVIEW_SELECTION_ENABLED = STUDIO_INSPECTOR_PANELS_ENABLED;
 
 // Stage 7 Step 3c: SDK cutover — routes inline-style ops through SDK dispatch

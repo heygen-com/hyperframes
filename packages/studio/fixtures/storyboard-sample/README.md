@@ -13,10 +13,10 @@ It exercises the storyboard contract end to end:
 - Frame 5 (`05-cta.html`) is intentionally **absent** and `status: outline`, so
   the grid has an outline placeholder to render.
 
-Preview the storyboard view (flag-gated):
+Preview the storyboard view:
 
 ```bash
-VITE_STUDIO_ENABLE_STORYBOARD=1 npx hyperframes preview packages/studio/fixtures/storyboard-sample
+npx hyperframes preview packages/studio/fixtures/storyboard-sample
 ```
 
 Inspect just the parsed manifest the Studio consumes:

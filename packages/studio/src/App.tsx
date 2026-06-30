@@ -36,10 +36,7 @@ import {
 import type { DomEditSelection } from "./components/editor/domEditing";
 import { StudioHeader } from "./components/StudioHeader";
 import { useGestureCommit } from "./hooks/useGestureCommit";
-import {
-  STUDIO_KEYFRAMES_ENABLED,
-  STUDIO_STORYBOARD_ENABLED,
-} from "./components/editor/manualEditingAvailability";
+import { STUDIO_KEYFRAMES_ENABLED } from "./components/editor/manualEditingAvailability";
 import { GestureTrailOverlay } from "./components/editor/GestureTrailOverlay";
 import { StudioLeftSidebar } from "./components/StudioLeftSidebar";
 import { StudioPreviewArea } from "./components/StudioPreviewArea";
@@ -65,7 +62,7 @@ type CanvasRect = { left: number; top: number; width: number; height: number };
 export function StudioApp() {
   const { projectId, resolving, waitingForServer } = useServerConnection();
   const initialUrlStateRef = useRef(readStudioUrlStateFromWindow());
-  const viewModeValue = useViewModeState(STUDIO_STORYBOARD_ENABLED);
+  const viewModeValue = useViewModeState();
 
   // sessionStorage-backed: fires once per tab, survives HMR remounts
   useEffect(() => {

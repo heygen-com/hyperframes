@@ -44,14 +44,11 @@ export interface ViewModeValue {
 }
 
 /**
- * Owns the view-mode state. When `enabled` is false (storyboard flag off) the
- * mode is pinned to `timeline` and the URL is left untouched, so the feature is
- * fully inert until the flag is on.
+ * Owns the view-mode state — initial read from `?view=`, toggling, popstate sync.
+ * Storyboard mode is always available; no flag gating.
  */
-export function useViewModeState(enabled: boolean): ViewModeValue {
-  const [viewMode, setMode] = useState<StudioViewMode>(() =>
-    enabled ? readViewModeFromUrl() : "timeline",
-  );
+export function useViewModeState(): ViewModeValue {
+  const [viewMode, setMode] = useState<StudioViewMode>(() => readViewModeFromUrl());
 
   // Reflect genuine browser back/forward between history entries with a different
   // `?view=`. Note: our own writes use `replaceState` (below), which does NOT fire
@@ -60,23 +57,17 @@ export function useViewModeState(enabled: boolean): ViewModeValue {
   // the mount-time read); a scripted `pushState`/`replaceState` to `?view=` would not be
   // reflected here, by design.
   useEffect(() => {
-    if (!enabled) return;
     const onPopState = () => setMode(readViewModeFromUrl());
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
-  }, [enabled]);
+  }, []);
 
-  const setViewMode = useCallback(
-    (mode: StudioViewMode) => {
-      if (!enabled) return;
-      setMode(mode);
-      writeViewModeToUrl(mode);
-    },
-    [enabled],
-  );
+  const setViewMode = useCallback((mode: StudioViewMode) => {
+    setMode(mode);
+    writeViewModeToUrl(mode);
+  }, []);
 
-  const effectiveMode = enabled ? viewMode : "timeline";
-  return useMemo(() => ({ viewMode: effectiveMode, setViewMode }), [effectiveMode, setViewMode]);
+  return useMemo(() => ({ viewMode, setViewMode }), [viewMode, setViewMode]);
 }
 
 const ViewModeContext = createContext<ViewModeValue | null>(null);
