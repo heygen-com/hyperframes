@@ -39,6 +39,7 @@ Also avoid:
 Build the visible end-state in static HTML and CSS first, then animate from/to that state.
 
 - The composition root has fixed pixel frame dimensions.
+- **The root composition's total duration (render length / frame count) is fixed at compile time**, read once from the static root `data-duration` before scripts run, like `data-width` / `data-height`. A script or `--variables` value that rewrites the root `data-duration` afterward is ignored. To vary render length per output, author the root `data-duration` directly. (A _clip's_ own `data-duration` is re-read from the live DOM, so scripts/variables can still drive clip lengths. Only when the root omits `data-duration` does the renderer probe the live DOM / timeline for total length.)
 - Scene containers should fill the scene with `width: 100%; height: 100%; box-sizing: border-box`.
 - Use padding, flex, grid, and `max-width` for layout. Avoid positioning main content with hardcoded `top`/`left` offsets when a layout container can do it.
 - Use `position: absolute` for layers and decorative elements, not as the default content-layout strategy.
