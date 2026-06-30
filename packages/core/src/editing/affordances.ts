@@ -78,14 +78,14 @@ function isIdentityTransform(value: string | undefined): boolean {
   if (parts.length !== 6) return false;
   const values = parts.map((part) => Number.parseFloat(part.trim()));
   if (values.some((part) => !Number.isFinite(part))) return false;
-  const nums = values as number[];
+  const [a = 0, b = 0, c = 0, d = 0, e = 0, f = 0] = values;
   return (
-    Math.abs(nums[0]! - 1) < 0.0001 &&
-    Math.abs(nums[1]!) < 0.0001 &&
-    Math.abs(nums[2]!) < 0.0001 &&
-    Math.abs(nums[3]! - 1) < 0.0001 &&
-    Math.abs(nums[4]!) < 0.0001 &&
-    Math.abs(nums[5]!) < 0.0001
+    Math.abs(a - 1) < 0.0001 &&
+    Math.abs(b) < 0.0001 &&
+    Math.abs(c) < 0.0001 &&
+    Math.abs(d - 1) < 0.0001 &&
+    Math.abs(e) < 0.0001 &&
+    Math.abs(f) < 0.0001
   );
 }
 
