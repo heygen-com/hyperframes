@@ -55,7 +55,7 @@ import { lintProject, shouldBlockRender } from "../utils/lintProject.js";
 import { formatLintFindings } from "../utils/lintFormat.js";
 import { loadProducer } from "../utils/producer.js";
 import { c } from "../ui/colors.js";
-import { formatBytes, formatDuration, errorBox } from "../ui/format.js";
+import { formatBytes, formatRenderSummaryDetail, errorBox } from "../ui/format.js";
 import { renderProgress } from "../ui/progress.js";
 import {
   trackRenderComplete,
@@ -1227,6 +1227,9 @@ async function renderDocker(
     ...getMemorySnapshot(),
   });
 
+  // ponytail: Docker runs the producer in a child process, so no perfSummary is
+  // threaded back here; the summary shows render time only (never a wrong video
+  // length). Probe the output with ffprobe if a duration figure is wanted here.
   printRenderComplete(outputPath, elapsed, options.quiet);
   if (options.exitAfterComplete) scheduleRenderProcessExit();
   return { renderTimeMs: elapsed };
@@ -1323,7 +1326,13 @@ export async function renderLocal(
 
   const elapsed = Date.now() - startTime;
   trackRenderMetrics(job, elapsed, options, false);
-  printRenderComplete(outputPath, elapsed, options.quiet);
+  printRenderComplete(
+    outputPath,
+    elapsed,
+    options.quiet,
+    job.perfSummary?.compositionDurationSeconds,
+    job.perfSummary?.totalFrames,
+  );
   if (!options.skipFeedback) {
     await maybePromptRenderFeedback({
       renderDurationMs: elapsed,
@@ -1546,12 +1555,20 @@ function trackRenderMetrics(
   });
 }
 
-function printRenderComplete(outputPath: string, elapsedMs: number, quiet: boolean): void {
+function printRenderComplete(
+  outputPath: string,
+  elapsedMs: number,
+  quiet: boolean,
+  outputDurationSeconds?: number,
+  frameCount?: number,
+): void {
   if (quiet) return;
 
   let fileSize = "unknown";
+  let isDirectory = false;
   try {
     const stat = statSync(outputPath);
+    isDirectory = stat.isDirectory();
     if (stat.isDirectory()) {
       // png-sequence output is a directory; sum the contained file sizes so
       // the user sees the on-disk footprint of the deliverable rather than
@@ -1573,8 +1590,13 @@ function printRenderComplete(outputPath: string, elapsedMs: number, quiet: boole
     // file doesn't exist or is inaccessible
   }
 
-  const duration = formatDuration(elapsedMs);
+  const detail = formatRenderSummaryDetail({
+    elapsedMs,
+    outputDurationSeconds,
+    isDirectory,
+    frameCount,
+  });
   console.log("");
   console.log(c.success("\u25C7") + "  " + c.accent(outputPath));
-  console.log("   " + c.bold(fileSize) + c.dim(" \u00B7 " + duration + " \u00B7 completed"));
+  console.log("   " + c.bold(fileSize) + c.dim(" \u00B7 " + detail));
 }
