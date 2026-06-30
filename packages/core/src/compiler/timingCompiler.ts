@@ -60,7 +60,13 @@ export function shouldClampMediaDuration(declaredDuration: number, maxDuration: 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
 function getAttr(tag: string, attr: string): string | null {
-  const match = tag.match(new RegExp(`${attr}=["']([^"']+)["']`));
+  // `(?<![\w-])` anchors the attribute name to a fresh start. Without it,
+  // `getAttr(tag, "id")` matches the trailing `id="…"` inside `data-hf-id="…"`
+  // (and "src" inside `data-src`, etc.) and returns a phantom value. That bug
+  // made compileTag believe a Studio-stamped `data-hf-id`-only element already
+  // had an `id`, so it skipped its `hf-video-N` injection — leaving the element
+  // with no real `el.id`, which the render pipeline keys off of (blank wash).
+  const match = tag.match(new RegExp(`(?<![\\w-])${attr}=["']([^"']+)["']`));
   return match ? (match[1] ?? null) : null;
 }
 

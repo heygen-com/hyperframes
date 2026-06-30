@@ -4,7 +4,7 @@
   "tags": ["video", "data-hf-id", "media-id", "regression"],
   "minPsnr": 25,
   "maxFrameFailures": 5,
-  "minAudioCorrelation": 0.0,
+  "minAudioCorrelation": 0.9,
   "maxAudioLagWindows": 120,
   "renderConfig": {
     "fps": 30

@@ -1360,32 +1360,6 @@ function rewriteUnresolvableGsapToCdn(html: string, projectDir: string): string 
  * with all media metadata resolved.
  */
 // fallow-ignore-next-line complexity
-/**
- * Every render stage identifies `<video>`/`<audio>` by their real `id`: frame
- * extraction keys injected stills as `__render_frame_<id>__`, the runtime
- * frame-swap matches on `el.id` (runtime/media.ts), and the audio mixer selects
- * `audio[id][src]`. A timed media element with no `id` — e.g. one carrying only
- * `data-hf-id`, which is what Studio stamps — has an empty `el.id`, so its
- * injected frames never match: the video renders as a blank wash and any
- * separate `<audio>` is silently dropped. Assign a stable positional `id` to
- * every timed media element missing one, on the same HTML that is parsed for
- * media and served to the renderer, so the whole pipeline shares one identity.
- * `data-hf-id` is intentionally NOT reused as the id — it is a Studio edit
- * handle, not the render identity.
- */
-function assignMissingMediaIds(html: string): string {
-  const { document } = parseHTML(html);
-  const media = document.querySelectorAll("video[data-start], audio[data-start]");
-  let seq = 0;
-  let changed = false;
-  for (const el of Array.from(media)) {
-    if (el.getAttribute("id")) continue;
-    el.setAttribute("id", `hf-media-${seq++}`);
-    changed = true;
-  }
-  return changed ? document.toString() : html;
-}
-
 export async function compileForRender(
   projectDir: string,
   htmlPath: string,
@@ -1510,15 +1484,7 @@ export async function compileForRender(
   // Collect assets that resolve outside projectDir (e.g. ../shared-assets/hero.png).
   // These can't be served by the file server, so we map them to paths the
   // orchestrator will copy into the compiled output directory.
-  const { html: htmlBeforeMediaIds, externalAssets } = collectExternalAssets(
-    embeddedHtml,
-    projectDir,
-  );
-
-  // Give every timed <video>/<audio> a real `id` before any stage parses or
-  // serves this HTML — id-less media (e.g. carrying only `data-hf-id`) would
-  // otherwise render as a blank wash with dropped audio. See assignMissingMediaIds.
-  const html = assignMissingMediaIds(htmlBeforeMediaIds);
+  const { html, externalAssets } = collectExternalAssets(embeddedHtml, projectDir);
 
   for (const [relPath, absPath] of remoteMediaAssets) {
     externalAssets.set(relPath, absPath);
