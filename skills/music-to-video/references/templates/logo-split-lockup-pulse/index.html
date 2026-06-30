@@ -365,8 +365,10 @@
         // renderer gets the identical SVG; non-SVG falls back to plain text.
         function setSvg(el, markup) {
           el.textContent = "";
-          var root = new DOMParser().parseFromString(String(markup), "image/svg+xml")
-            .documentElement;
+          var root = new DOMParser().parseFromString(
+            String(markup),
+            "image/svg+xml",
+          ).documentElement;
           if (root && root.nodeName.toLowerCase() === "svg") {
             el.appendChild(document.importNode(root, true));
           } else {
