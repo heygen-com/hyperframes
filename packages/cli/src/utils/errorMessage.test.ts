@@ -58,6 +58,14 @@ describe("normalizeErrorMessage", () => {
     );
   });
 
+  it("surfaces a structured CDP error object (no message) instead of '[object Object]'", () => {
+    // The shape snapshot/render can receive when a CDP/protocol rejection is a
+    // plain object rather than an Error: no string `message`, only code + data.
+    const out = normalizeErrorMessage({ code: -32000, data: { reason: "navigation timeout" } });
+    expect(out).not.toBe("[object Object]");
+    expect(out).toContain("navigation timeout");
+  });
+
   it("returns 'unknown error' for null and undefined", () => {
     expect(normalizeErrorMessage(null)).toBe("unknown error");
     expect(normalizeErrorMessage(undefined)).toBe("unknown error");

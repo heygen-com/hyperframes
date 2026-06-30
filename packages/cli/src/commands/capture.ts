@@ -1,6 +1,7 @@
 import { defineCommand } from "citty";
 import { resolve } from "node:path";
 import type { Example } from "./_examples.js";
+import { normalizeErrorMessage } from "../utils/errorMessage.js";
 
 export const examples: Example[] = [
   ["Capture a website into ./capture/", "hyperframes capture https://stripe.com"],
@@ -213,7 +214,7 @@ export default defineCommand({
         console.log();
       }
     } catch (err) {
-      const errMsg = err instanceof Error ? err.message : String(err);
+      const errMsg = normalizeErrorMessage(err);
       // Write BLOCKED.md so the user/agent knows the capture failed
       try {
         const { mkdirSync, writeFileSync } = await import("node:fs");

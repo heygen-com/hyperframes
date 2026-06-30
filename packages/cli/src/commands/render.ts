@@ -753,7 +753,7 @@ export default defineCommand({
         browserSpinner?.stop(c.error("Browser not available"));
         errorBox(
           "Chrome not found",
-          err instanceof Error ? err.message : String(err),
+          normalizeErrorMessage(err),
           "Run: npx hyperframes browser ensure",
         );
         process.exit(1);
@@ -1076,7 +1076,7 @@ function ensureDockerImage(version: string, platform: string, quiet: boolean): s
       { stdio: quiet ? "pipe" : "inherit", timeout: 600_000 },
     );
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = normalizeErrorMessage(error);
     throw new Error(`Failed to build Docker image: ${message}`);
   } finally {
     rmSync(tmpDir, { recursive: true, force: true });
@@ -1149,7 +1149,7 @@ async function renderDocker(
   try {
     imageTag = ensureDockerImage(dockerVersion, platform, options.quiet);
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = normalizeErrorMessage(error);
     const isDockerMissing = /connect|not found|ENOENT/i.test(message);
     errorBox(
       isDockerMissing ? "Docker not available" : "Docker image build failed",
