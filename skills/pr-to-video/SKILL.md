@@ -159,6 +159,8 @@ Duration sync is mechanical: real voice duration wins; silent frames keep estima
 
 Before dispatch, read `sub-agents/frame-worker.md` and `../hyperframes-core/references/subagent-dispatch.md`. Dispatch one sub-agent per frame, in parallel if possible; otherwise run workers in waves. Each worker gets exactly one frame. Each worker's context must include `PROJECT_DIR`, `frame_id`, canvas size, caption status and keep-out band if captions are enabled, `RULES_DIR` (absolute path to this skill's `../hyperframes-animation/rules/`), and the absolute path to `references/code-vocabulary.md`. Each worker reads `frame.md`, its own `## Frame N` block from `STORYBOARD.md`, the local rule recipe (`../hyperframes-animation/rules/<id>.md`) for each cited motion, the frame's blueprint template (`../hyperframes-animation/blueprints/<id>.md`), and — for a code beat — `code-vocabulary.md` for the named block's inputs. Each worker writes only `compositions/frames/NN-*.html`; workers never edit `STORYBOARD.md`.
 
+**Full-bleed backgrounds ride on a `class="clip"` layer, never the `#root`.** A frame's ground (color field / gradient / grid) is its own full-duration background clip — a `background` set on the `#root` / `data-composition-id` element is clip-gated to the frame's window and is not a dependable ground, so dark content can land on the black host `body` and render invisible. The video's base ground is painted by the assembler from `frame.md`'s `canvas` color onto the index `#root`. (Full rule + self-check: `sub-agents/frame-worker.md`.)
+
 As each worker returns, mark that frame `animated` in `STORYBOARD.md`.
 
 After audio timings exist, build captions in the background and assemble the index:
