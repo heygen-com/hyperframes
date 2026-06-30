@@ -28,6 +28,17 @@ describe("compileTimingAttrs", () => {
     expect(compiled).toContain('data-end="2"');
   });
 
+  it("injects a real id on an audio element that has only data-hf-id", () => {
+    // Audio side of the same bug: the mixer selects `audio[id][src]`, so a
+    // phantom-id match meant the element was dropped (silent). compileTag must
+    // inject a real hf-audio-N so the mixer can find it.
+    const html = '<audio data-hf-id="hf-bgaudio01" src="a.mp3" data-start="0" data-duration="2">';
+    const { html: compiled } = compileTimingAttrs(html);
+
+    expect(compiled).toContain('id="hf-audio-0"');
+    expect(compiled).toContain('data-hf-id="hf-bgaudio01"');
+  });
+
   it("leaves data-end unchanged when already present", () => {
     const html = '<video id="v1" src="a.mp4" data-start="0" data-end="3">';
     const { html: compiled, unresolved } = compileTimingAttrs(html);
