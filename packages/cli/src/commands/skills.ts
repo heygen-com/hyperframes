@@ -31,6 +31,20 @@ function hasNpx(): boolean {
   }
 }
 
+// The upstream `skills` CLI clones the repo with `git`. When git is missing
+// (common on fresh Windows boxes) the clone aborts mid-run with a noisy,
+// multi-line `spawn git ENOENT` / "Installation failed" block, so detect git
+// up front and skip cleanly instead of letting that surface. `git` resolves as
+// a real executable on every platform, so no cmd.exe wrapping is needed.
+function hasGit(): boolean {
+  try {
+    execFileSync("git", ["--version"], { stdio: "ignore", timeout: 5000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function spawnNpx(args: string[], opts: { cwd?: string } = {}): Promise<void> {
   const npx = buildNpxCommand(args);
   return new Promise((resolve, reject) => {
@@ -147,18 +161,40 @@ function mirrorToInstalledAgents(): void {
   }
 }
 
+// The install shells out to `npx skills add`, and that CLI clones the repo with
+// git — so both must be on PATH. Each entry pairs a detector with the strict
+// error (thrown so the `check || update` recovery contract fails loudly) and a
+// best-effort report (one calm line; init carries on and still scaffolds).
+const SKILLS_TOOLING: ReadonlyArray<{ has: () => boolean; error: string; report: () => void }> = [
+  {
+    has: hasNpx,
+    error: "npx not found. Install Node.js and retry.",
+    report: () => clack.log.error(c.error("npx not found. Install Node.js and retry.")),
+  },
+  {
+    has: hasGit,
+    error: "git not found. Install git and retry to add AI coding skills.",
+    // Skip cleanly rather than letting the upstream clone dump a noisy
+    // multi-line `spawn git ENOENT` / "Installation failed" abort.
+    report: () => console.log(c.dim("Skipping AI coding skills: git not available.")),
+  },
+];
+
+/** True if the install can proceed; otherwise reports (or throws, when strict). */
+function skillsToolingReady(strict: boolean): boolean {
+  for (const tool of SKILLS_TOOLING) {
+    if (tool.has()) continue;
+    if (strict) throw new Error(tool.error);
+    tool.report();
+    return false;
+  }
+  return true;
+}
+
 export async function installAllSkills(
   opts: { cwd?: string; extraArgs?: string[]; strict?: boolean } = {},
 ): Promise<void> {
-  if (!hasNpx()) {
-    const msg = "npx not found. Install Node.js and retry.";
-    // strict callers (e.g. `skills update`) need a real failure so a recovery
-    // command can't exit 0 having done nothing; best-effort callers (init) just
-    // warn and carry on.
-    if (opts.strict) throw new Error(msg);
-    clack.log.error(c.error(msg));
-    return;
-  }
+  if (!skillsToolingReady(opts.strict ?? false)) return;
 
   for (const source of SOURCES) {
     console.log();

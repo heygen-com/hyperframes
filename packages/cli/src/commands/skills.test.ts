@@ -17,10 +17,16 @@ type ExecCall = {
 };
 
 const originalPlatform = process.platform;
-const state: { execCalls: ExecCall[]; spawnCalls: SpawnCall[]; spawnExitCode: number } = {
+const state: {
+  execCalls: ExecCall[];
+  spawnCalls: SpawnCall[];
+  spawnExitCode: number;
+  gitMissing: boolean;
+} = {
   execCalls: [],
   spawnCalls: [],
   spawnExitCode: 0,
+  gitMissing: false,
 };
 
 vi.mock("node:child_process", () => ({
@@ -30,6 +36,10 @@ vi.mock("node:child_process", () => ({
   execFile: vi.fn(),
   execFileSync: vi.fn((command: string, args: ReadonlyArray<string>) => {
     state.execCalls.push({ command, args });
+    // Simulate `git` absent from PATH: execFileSync throws ENOENT like the OS would.
+    if (state.gitMissing && command === "git") {
+      throw Object.assign(new Error("spawn git ENOENT"), { code: "ENOENT" });
+    }
     return Buffer.from("11.0.0");
   }),
   spawn: vi.fn(
@@ -101,6 +111,7 @@ describe("hyperframes skills", () => {
     state.execCalls = [];
     state.spawnCalls = [];
     state.spawnExitCode = 0;
+    state.gitMissing = false;
     vi.resetModules();
     // Each test asserts on process.exitCode; isolate it from the runner's own.
     prevExitCode = process.exitCode;
@@ -303,5 +314,33 @@ describe("hyperframes skills", () => {
     // doesn't fail the update.
     expect(state.spawnCalls[0]?.args).toContain("add");
     expect(process.exitCode).toBe(0);
+  });
+
+  // When git is missing the upstream `skills add` would clone-abort with a noisy
+  // `spawn git ENOENT` block. Detect it first and never spawn the install, so a
+  // best-effort caller (init) skips cleanly and a fresh boot without git still
+  // scaffolds the project.
+  it("bare `skills` skips the install (no spawn) when git is unavailable", async () => {
+    setPlatform("linux");
+    state.gitMissing = true;
+
+    const { default: skillsCmd } = await import("./skills.js");
+    await skillsCmd.run?.({ args: {}, rawArgs: [], cmd: skillsCmd } as never);
+
+    expect(state.spawnCalls).toHaveLength(0);
+    expect(process.exitCode).toBe(0);
+  });
+
+  // The strict recovery path (`skills check || skills update`) must fail loudly
+  // when git is missing, not silently no-op, else the `||` chain passes while
+  // nothing got installed.
+  it("skills update exits non-zero when git is unavailable", async () => {
+    setPlatform("linux");
+    state.gitMissing = true;
+
+    await runSkillsUpdate();
+
+    expect(state.spawnCalls).toHaveLength(0);
+    expect(process.exitCode).toBe(1);
   });
 });
