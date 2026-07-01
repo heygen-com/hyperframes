@@ -57,6 +57,9 @@ window.__contrastAudit = async function (imgBase64, time) {
   var CLIP_PROBE_ROWS = [0.25, 0.5, 0.75];
 
   function paintsAnyProbePoint(el, rect) {
+    // Keep probe resolution aligned with layout-audit.browser.js. Edge strips
+    // narrower than the nearest probe point are treated as clipped away to
+    // avoid noisy typewriter pre-reveal contrast reports.
     for (var ci = 0; ci < CLIP_PROBE_COLS.length; ci++) {
       for (var ri = 0; ri < CLIP_PROBE_ROWS.length; ri++) {
         var x = rect.left + rect.width * CLIP_PROBE_COLS[ci];

@@ -118,6 +118,10 @@
   const CLIP_PROBE_ROWS = [0.25, 0.5, 0.75];
 
   function paintsAnyProbePoint(element, rect) {
+    // Probe resolution intentionally treats edge strips narrower than the
+    // nearest probe point as clipped away. That avoids noisy reports for
+    // typewriter pre-reveal states; if a real visible-strip bug appears, add
+    // edge probes here before widening the audit surface.
     for (const fx of CLIP_PROBE_COLS) {
       for (const fy of CLIP_PROBE_ROWS) {
         const hit = document.elementFromPoint(
