@@ -32,7 +32,7 @@ export interface ControlsOptions {
 }
 
 export function formatSpeed(speed: number): string {
-  return Number.isInteger(speed) ? `${speed}x` : `${speed}x`;
+  return `${speed}x`;
 }
 
 export function formatTime(seconds: number): string {

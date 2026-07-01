@@ -1,7 +1,7 @@
 {
   "name": "@hyperframes/core",
   "version": "0.7.22",
-  "description": "",
+  "description": "Types, parsers, generators, linter, and runtime for HyperFrames",
   "repository": {
     "type": "git",
     "url": "https://github.com/heygen-com/hyperframes",

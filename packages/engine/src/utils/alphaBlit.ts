@@ -687,7 +687,6 @@ function parseObjectPositionAxis(value: string, axis: "x" | "y"): number {
   // Pixel values (e.g. "10px") aren't fractional; without the slack-space
   // numerator we can't honor them precisely. Fall back to center — this is
   // strictly worse than the browser but matches what we'd render today.
-  if (axis === "x" || axis === "y") return 0.5;
   return 0.5;
 }
 
