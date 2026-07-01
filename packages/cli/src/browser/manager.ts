@@ -112,7 +112,12 @@ async function findFromCache(): Promise<CacheLookupResult> {
     let installed: Awaited<ReturnType<typeof getInstalledBrowsers>>;
     try {
       installed = await getInstalledBrowsers({ cacheDir: CACHE_DIR });
-    } catch {
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException | undefined)?.code;
+      const suffix = code ? ` (${code})` : "";
+      console.warn(
+        `[hyperframes] Browser cache read failed${suffix}: ${normalizeErrorMessage(err)}. Falling back to system Chrome or a fresh download.`,
+      );
       installed = [];
     }
     const match = installed.find((b) => b.browser === Browser.CHROMEHEADLESSSHELL);
