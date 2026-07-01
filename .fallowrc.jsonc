@@ -202,15 +202,16 @@
       "file": "packages/studio/src/utils/timelineElementSplit.ts",
       "exports": ["buildPatchTarget", "readFileContent"],
     },
-    // freezeUrl and freezeLocalFile are public API for Task 4 manifest flow
-    // and the /figma skill integration; not yet imported by current code.
+    // freezeUrl and freezeLocalFile are public API re-exported from the figma
+    // barrel (index.ts) for Task 4 manifest flow and the /figma skill integration;
+    // not yet imported by current code outside the module.
     {
       "file": "packages/core/src/figma/freeze.ts",
       "exports": ["freezeUrl", "freezeLocalFile"],
     },
-    // mediaDir, typeDirPath, isFigmaManifestRecord: exported from manifest.ts
-    // for barrel wiring in Task 8 (one-batch export across Tasks 2-7).
-    // Not yet consumed by any code in the current stack.
+    // mediaDir, typeDirPath, isFigmaManifestRecord: re-exported from the figma
+    // barrel (index.ts) via manifest.ts per Task 8 wiring. Consumed only by the
+    // /figma skill integration, not by code in the current codebase.
     {
       "file": "packages/core/src/figma/manifest.ts",
       "exports": ["mediaDir", "typeDirPath", "isFigmaManifestRecord"],
