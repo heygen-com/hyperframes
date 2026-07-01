@@ -1989,6 +1989,37 @@ describe("HyperframesPlayer runtime ready handshake", () => {
     expect(player.paused).toBe(false);
     expect(findControlCalls("play")).toHaveLength(1);
   });
+
+  it("rescales the iframe on cross-origin timeline readiness even without a stage-size message", () => {
+    // Regression: the runtime's postTimeline() only sends `stage-size` when it
+    // can resolve the root's data-width/data-height at that instant — a race
+    // that can lose on first paint. onRuntimeTimelineReady must not depend on
+    // stage-size having arrived, or the iframe is left unscaled/untranslated
+    // (rendered pinned to the top-left instead of centered and fit).
+    Object.defineProperty(player, "offsetWidth", { value: 400, configurable: true });
+    Object.defineProperty(player, "offsetHeight", { value: 300, configurable: true });
+
+    expect(player.iframe.style.transform).toBe("");
+
+    player._onMessage(timelineMessage(120));
+
+    expect(player.iframe.style.transform).not.toBe("");
+    expect(player.iframe.style.transform).toContain("translate(-50%, -50%)");
+  });
+
+  it("warns at most once per instance when rescale keeps no-oping after ready", () => {
+    // A player that stays zero-size after ready (hidden tab, collapsed
+    // carousel card) keeps getting rescale attempts from every subsequent
+    // width/height attribute change and ResizeObserver tick. The diagnostic
+    // warning must not spam the console once per instance.
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    player._onMessage(timelineMessage(120)); // first no-op after ready
+    player.setAttribute("width", "800"); // still zero-size — would no-op again
+    player.setAttribute("height", "450"); // ditto
+
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("HyperframesPlayer audio lock — Claude desktop UA fallback", () => {
