@@ -158,10 +158,16 @@ export async function extractVisibleText(page: Page): Promise<string> {
 /**
  * Caption downloaded images using a vision model.
  *
- * Provider is chosen by which API key is present: OPENROUTER_API_KEY → OpenRouter
- * (any vision model via its OpenAI-style API), else GEMINI_API_KEY/GOOGLE_API_KEY
- * → Google Gemini, else no captioning. OpenRouter wins if both are set.
+ * Provider priority (first match wins):
+ *   1. HYPERFRAMES_VISION_API_KEY + HYPERFRAMES_VISION_BASE_URL — any OpenAI-compatible
+ *      endpoint (Volcengine ARK, Azure OpenAI, local Ollama, self-hosted vLLM, etc.).
+ *      Model defaults to HYPERFRAMES_VISION_MODEL env var, or the caller must set it.
+ *   2. OPENROUTER_API_KEY — OpenRouter proxy (any vision model via its OpenAI-style API).
+ *      Model defaults to HYPERFRAMES_OPENROUTER_MODEL, fallback "google/gemini-3.1-flash-lite".
+ *   3. GEMINI_API_KEY / GOOGLE_API_KEY — Google Gemini native SDK.
+ *      Model defaults to HYPERFRAMES_GEMINI_MODEL, fallback "gemini-3.1-flash-lite-preview".
  *
+ * When none of the above keys are present, captioning is skipped silently.
  * Batches requests to stay under free-tier rate limits.
  * Returns a map of filename -> caption string.
  */
@@ -171,21 +177,33 @@ export async function captionImagesWithGemini(
   warnings: string[],
 ): Promise<Record<string, string>> {
   const geminiCaptions: Record<string, string> = {};
+
+  const customKey = process.env.HYPERFRAMES_VISION_API_KEY;
+  const customBaseUrl = process.env.HYPERFRAMES_VISION_BASE_URL;
   const openRouterKey = process.env.OPENROUTER_API_KEY;
   const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-  if (!openRouterKey && !geminiKey) return geminiCaptions;
 
-  // OpenRouter takes priority when both keys are set — it's the explicit opt-in
-  // for users without Google access. Both providers satisfy the same
-  // single-image → one-line-caption contract (`captionOne`), so the batching and
-  // SVG-rasterization loops below stay provider-agnostic.
-  const useOpenRouter = Boolean(openRouterKey);
-  const providerName = useOpenRouter ? "OpenRouter" : "Gemini";
-  // Default mirrors the Gemini path's tier (3.x flash-lite). Override per
-  // provider via HYPERFRAMES_OPENROUTER_MODEL / HYPERFRAMES_GEMINI_MODEL.
-  const model = useOpenRouter
-    ? process.env.HYPERFRAMES_OPENROUTER_MODEL || "google/gemini-3.1-flash-lite"
-    : process.env.HYPERFRAMES_GEMINI_MODEL || "gemini-3.1-flash-lite-preview";
+  if (!customKey && !openRouterKey && !geminiKey) return geminiCaptions;
+
+  // Determine active provider and model.
+  let providerName: string;
+  let model: string;
+  if (customKey && customBaseUrl) {
+    providerName = "custom vision API";
+    model = process.env.HYPERFRAMES_VISION_MODEL || "";
+    if (!model) {
+      warnings.push(
+        "HYPERFRAMES_VISION_API_KEY and HYPERFRAMES_VISION_BASE_URL are set but HYPERFRAMES_VISION_MODEL is missing — skipping image captioning.",
+      );
+      return geminiCaptions;
+    }
+  } else if (openRouterKey) {
+    providerName = "OpenRouter";
+    model = process.env.HYPERFRAMES_OPENROUTER_MODEL || "google/gemini-3.1-flash-lite";
+  } else {
+    providerName = "Gemini";
+    model = process.env.HYPERFRAMES_GEMINI_MODEL || "gemini-3.1-flash-lite-preview";
+  }
 
   progress("design", `Captioning images with ${providerName} vision...`);
   try {
@@ -198,13 +216,15 @@ export async function captionImagesWithGemini(
       maxTokens: number;
     }) => Promise<string>;
 
-    let captionOne: CaptionOne;
-    if (openRouterKey) {
-      captionOne = async ({ mimeType, base64, prompt, maxTokens }) => {
-        const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    // Shared fetch helper for any OpenAI-compatible chat/completions endpoint.
+    const openAiCompatCaptionOne =
+      (apiKey: string, baseUrl: string): CaptionOne =>
+      async ({ mimeType, base64, prompt, maxTokens }) => {
+        const url = baseUrl.replace(/\/$/, "") + "/chat/completions";
+        const res = await fetch(url, {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${openRouterKey}`,
+            Authorization: `Bearer ${apiKey}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
@@ -223,13 +243,21 @@ export async function captionImagesWithGemini(
         });
         if (!res.ok) {
           const detail = await res.text().catch(() => "");
-          throw new Error(`OpenRouter ${res.status} ${res.statusText}: ${detail.slice(0, 200)}`);
+          throw new Error(
+            `${providerName} ${res.status} ${res.statusText}: ${detail.slice(0, 200)}`,
+          );
         }
         const data = (await res.json()) as {
           choices?: Array<{ message?: { content?: string } }>;
         };
         return data.choices?.[0]?.message?.content?.trim() || "";
       };
+
+    let captionOne: CaptionOne;
+    if (customKey && customBaseUrl) {
+      captionOne = openAiCompatCaptionOne(customKey, customBaseUrl);
+    } else if (openRouterKey) {
+      captionOne = openAiCompatCaptionOne(openRouterKey, "https://openrouter.ai/api/v1");
     } else {
       // Unreachable when geminiKey is unset (guarded above); re-narrow for TS.
       if (!geminiKey) return geminiCaptions;
