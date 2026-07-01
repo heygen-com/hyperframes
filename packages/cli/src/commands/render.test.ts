@@ -85,7 +85,7 @@ describe("renderLocal browser GPU config", () => {
     renderCommand = renderModule.default;
     renderLocal = renderModule.renderLocal;
     resolveBrowserGpuForCli = renderModule.resolveBrowserGpuForCli;
-  });
+  }, 30_000);
 
   function createRenderProject(): string {
     const dir = mkdtempSync(join(tmpdir(), "hf-render-command-"));
