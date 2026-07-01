@@ -300,19 +300,32 @@ export function runResolverShadow(
  *
  * No-op when the shadow flag is off; never throws; never mutates the session.
  */
-export function recordResolverParity(
+export async function recordResolverParity(
   session: Composition | null | undefined,
   hfId: string | null | undefined,
   opLabel: string,
-): void {
+  readSource?: () => Promise<string | undefined>,
+): Promise<void> {
   if (!STUDIO_SDK_RESOLVER_SHADOW_ENABLED) return;
   if (!session || !hfId) return;
   try {
     if (resolveSnapshot(session, hfId)) return; // resolves — parity, nothing to record
+    // Cheap check passed above, so the source read only runs on a real divergence.
+    let source: string | undefined;
+    if (readSource) {
+      try {
+        source = await readSource();
+      } catch {
+        source = undefined; // fail-open: a read error must not drop a real divergence
+      }
+    }
+    // Runtime-generated node the static parse can't model — suppress (mirrors the dom-edit path).
+    if (source !== undefined && !source.includes(hfId)) return;
     trackStudioEvent("sdk_resolver_shadow", {
       hfId,
       opLabel,
       sessionElementCount: session.getElements().length,
+      ...(source !== undefined ? { sourceHfIdCount: countHfIdInSource(source, hfId) } : {}),
       mismatchCount: 1,
       mismatches: JSON.stringify([
         { kind: "element_not_found", hfId } satisfies SdkResolverMismatch,

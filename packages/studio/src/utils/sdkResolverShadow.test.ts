@@ -345,7 +345,7 @@ describe("F. recordResolverParity", () => {
   it("emits element_not_found when the SDK cannot resolve the target", async () => {
     mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = true;
     const session = await openComposition(BASE_HTML);
-    recordResolverParity(session, "hf-missing", "setTiming");
+    await recordResolverParity(session, "hf-missing", "setTiming");
     const ev = lastShadow();
     expect(ev?.mismatchCount).toBe(1);
     expect(ev?.opLabel).toBe("setTiming");
@@ -355,7 +355,7 @@ describe("F. recordResolverParity", () => {
   it("emits nothing when the target resolves (parity)", async () => {
     mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = true;
     const session = await openComposition(BASE_HTML);
-    recordResolverParity(session, "hf-box", "removeElement");
+    await recordResolverParity(session, "hf-box", "removeElement");
     expect(trackedEvents.filter((e) => e.event === "sdk_resolver_shadow")).toHaveLength(0);
   });
 
@@ -363,7 +363,7 @@ describe("F. recordResolverParity", () => {
     mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = false;
     const session = await openComposition(BASE_HTML);
     const spy = vi.spyOn(session, "getElement");
-    recordResolverParity(session, "hf-missing", "setTiming");
+    await recordResolverParity(session, "hf-missing", "setTiming");
     expect(trackedEvents).toHaveLength(0);
     expect(spy).not.toHaveBeenCalled();
   });
@@ -371,8 +371,57 @@ describe("F. recordResolverParity", () => {
   it("never mutates the session (read-only resolver check)", async () => {
     mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = true;
     const session = await openComposition(BASE_HTML);
-    recordResolverParity(session, "hf-box", "setTiming");
+    await recordResolverParity(session, "hf-box", "setTiming");
     expect(session.getElement("hf-box")?.inlineStyles.color).toBe("red"); // unchanged
+  });
+
+  it("suppresses the emit when the hfId is absent from source (runtime node)", async () => {
+    mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = true;
+    const session = await openComposition(BASE_HTML);
+    await recordResolverParity(session, "hf-runtime", "setTiming", () =>
+      Promise.resolve('<div data-hf-id="hf-other"></div>'),
+    );
+    expect(trackedEvents.filter((e) => e.event === "sdk_resolver_shadow")).toHaveLength(0);
+  });
+
+  it("emits with sourceHfIdCount=1 when the hfId IS in source but missing from the session", async () => {
+    mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = true;
+    const session = await openComposition(BASE_HTML);
+    await recordResolverParity(session, "hf-ghost", "setTiming", () =>
+      Promise.resolve('<div data-hf-id="hf-ghost"></div>'),
+    );
+    const ev = lastShadow();
+    expect(ev?.mismatchCount).toBe(1);
+    expect(ev?.sourceHfIdCount).toBe(1);
+  });
+
+  it("reports sourceHfIdCount=2 for a duplicate-id source (ambiguity)", async () => {
+    mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = true;
+    const session = await openComposition(BASE_HTML);
+    await recordResolverParity(session, "hf-dup", "setTiming", () =>
+      Promise.resolve('<a data-hf-id="hf-dup"></a><b data-hf-id="hf-dup"></b>'),
+    );
+    expect(lastShadow()?.sourceHfIdCount).toBe(2);
+  });
+
+  it("emits without sourceHfIdCount when no reader is supplied (status quo)", async () => {
+    mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = true;
+    const session = await openComposition(BASE_HTML);
+    await recordResolverParity(session, "hf-missing", "setTiming");
+    const ev = lastShadow();
+    expect(ev?.mismatchCount).toBe(1);
+    expect(ev?.sourceHfIdCount).toBeUndefined();
+  });
+
+  it("fails open: a readSource error still emits (no suppression)", async () => {
+    mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = true;
+    const session = await openComposition(BASE_HTML);
+    await recordResolverParity(session, "hf-missing", "setTiming", () =>
+      Promise.reject(new Error("read failed")),
+    );
+    const ev = lastShadow();
+    expect(ev?.mismatchCount).toBe(1);
+    expect(ev?.sourceHfIdCount).toBeUndefined();
   });
 });
 
