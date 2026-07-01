@@ -165,7 +165,13 @@ export async function sdkTimingPersist(
 ): Promise<boolean> {
   // Resolver tripwire — runs BEFORE the cutover gate (decoupled): records when
   // the SDK can't resolve a target the server timing path is addressing.
-  recordResolverParity(sdkSession, hfId, "setTiming");
+  const timingSrc = deps.readProjectFile;
+  void recordResolverParity(
+    sdkSession,
+    hfId,
+    "setTiming",
+    timingSrc ? () => timingSrc(targetPath) : undefined,
+  );
   // Dark-launch gate: without this, timing cutover runs whenever an SDK session
   // exists (it always does, for shadow/selection) — flipping the flag OFF would
   // NOT disable it. Gate here so flag-off routes back to the legacy server path.
@@ -207,8 +213,15 @@ export function sdkGsapTweenPersist(
   // animationId (animation-resolution parity). Done here, not via
   // dispatchGsapOpAndPersist's resolverTarget, because the gate below returns
   // before that call when cutover is off.
-  if (op.kind === "add") recordResolverParity(sdkSession, op.target, "addGsapTween");
-  else
+  if (op.kind === "add") {
+    const gsapSrc = deps.readProjectFile;
+    void recordResolverParity(
+      sdkSession,
+      op.target,
+      "addGsapTween",
+      gsapSrc ? () => gsapSrc(targetPath) : undefined,
+    );
+  } else
     recordAnimationResolverParity(
       sdkSession,
       op.animationId,
@@ -470,7 +483,9 @@ export async function sdkDeletePersist(
   deps: CutoverDeps,
 ): Promise<boolean> {
   // Resolver tripwire — runs BEFORE the cutover gate (decoupled).
-  recordResolverParity(sdkSession, hfId, "removeElement");
+  void recordResolverParity(sdkSession, hfId, "removeElement", () =>
+    Promise.resolve(originalContent),
+  );
   // Dark-launch gate: flag OFF → legacy server delete path.
   if (!STUDIO_SDK_CUTOVER_ENABLED) return false;
   if (!sdkSession || !sdkSession.getElement(hfId)) return false;
