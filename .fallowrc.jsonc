@@ -208,6 +208,13 @@
       "file": "packages/core/src/figma/freeze.ts",
       "exports": ["freezeUrl", "freezeLocalFile"],
     },
+    // mediaDir, typeDirPath, isFigmaManifestRecord: exported from manifest.ts
+    // for barrel wiring in Task 8 (one-batch export across Tasks 2-7).
+    // Not yet consumed by any code in the current stack.
+    {
+      "file": "packages/core/src/figma/manifest.ts",
+      "exports": ["mediaDir", "typeDirPath", "isFigmaManifestRecord"],
+    },
   ],
   "ignoreDependencies": [
     // Runtime/dynamic deps not visible to static analysis: tsup `external`,
@@ -331,6 +338,12 @@
       // → assert-remove-spawn shape; each verifies a distinct prune behavior, so
       // extracting the shared scaffold would obscure what each case asserts.
       "packages/cli/src/commands/skills.test.ts",
+      // figma test files: freeze.test.ts and manifest.test.ts share a common
+      // arrange/act/assert setup preamble (file creation + test dir handling) that
+      // is minimal boilerplate; collapsing it into a shared fixture would reduce
+      // readability of each test's independent setup.
+      "packages/core/src/figma/freeze.test.ts",
+      "packages/core/src/figma/manifest.test.ts",
       // layout-audit.browser.test.ts: parallel arrange/act/assert cases per audit
       // rule (overflow / overlap / occlusion) that each install their own mocked
       // geometry + computed-style before asserting. The clone groups are this
@@ -453,6 +466,11 @@
       // label-position code added earlier in the file shifted its line number,
       // so the line-shift fingerprint re-flags this inherited finding.
       "packages/parsers/src/gsapParserAcorn.ts",
+      // isFigmaManifestRecord: type guard with 19 cyclomatic due to chained
+      // field validation (id/type/path/source types + value shape guards).
+      // This is the correct shape for a discriminating type guard; refactoring
+      // into smaller guards would obscure the unified validation contract.
+      "packages/core/src/figma/manifest.ts",
     ],
   },
 }
