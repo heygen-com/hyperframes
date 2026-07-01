@@ -102,10 +102,16 @@ export function createLottieAdapter(): RuntimeDeterministicAdapter {
                 anim.setCurrentRawFrameValue(Math.min(frame, totalFrames - 1));
               }
             } else if (typeof anim.seek === "function") {
-              // dotlottie-web v1: seek(percentage 0-100)
-              const duration = anim.duration ?? 1;
-              const percentage = Math.min(100, (time / duration) * 100);
-              anim.seek(percentage);
+              // dotlottie-web v1: seek(percentage 0-100). Mirror the v2 guard
+              // above: a not-yet-loaded player reports duration 0, and `0 ?? 1`
+              // stays 0 (nullish coalescing does not replace 0), so an unguarded
+              // (time / 0) * 100 = NaN reached seek() and blanked the first frame
+              // at composition time 0.
+              const duration = anim.duration ?? 0;
+              if (duration > 0) {
+                const percentage = Math.max(0, Math.min(100, (time / duration) * 100));
+                anim.seek(percentage);
+              }
             }
           }
         } catch (err) {
