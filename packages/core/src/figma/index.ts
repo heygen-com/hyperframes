@@ -1,3 +1,4 @@
+export type * from "./types";
 export { parseFigmaRef } from "./parseFigmaRef";
 export {
   MAX_FREEZE_BYTES,
