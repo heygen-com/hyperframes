@@ -41,7 +41,11 @@
         <div class="demo-subject"></div>
 
         <div class="demo-text">
-          <div class="demo-title">VIGNETTE</div>
+          <div class="demo-title">
+            <span class="ch">V</span><span class="ch">I</span><span class="ch">G</span
+            ><span class="ch">N</span><span class="ch">E</span><span class="ch">T</span
+            ><span class="ch">T</span><span class="ch">E</span>
+          </div>
           <div class="demo-subtitle">Frame the eye. Hold the moment.</div>
         </div>
       </div>
@@ -151,6 +155,9 @@
           text-shadow: 0 4px 24px rgba(0, 0, 0, 0.55);
           opacity: 0;
         }
+        .demo-title .ch {
+          display: inline-block;
+        }
 
         .demo-subtitle {
           font-size: 30px;
@@ -181,11 +188,22 @@
           tl.to(".haze-near", { opacity: 1, duration: 0.8, ease: "power2.out" }, 0.15);
           tl.to(".demo-subject", { opacity: 1, scale: 1, duration: 1.0, ease: "power3.out" }, 0.1);
 
-          // Title + subtitle settle in.
+          // Title + subtitle settle in. The letters settle from wider spacing to their
+          // resting spacing — the faithful smooth equivalent of a letter-spacing tween is a
+          // per-glyph x spread (transform, sub-pixel smooth), NOT a uniform scale (which
+          // would resize the glyphs instead of closing the gaps). letter-spacing holds at
+          // its CSS resting 0.18em; each glyph starts offset by the extra gap the original
+          // tween opened — (0.32em − 0.18em) × 108px ≈ 15.12px per gap — and converges to 0,
+          // centered about the word (8 chars → center at index 3.5).
           tl.fromTo(
             ".demo-title",
-            { opacity: 0, y: 18, letterSpacing: "0.32em" },
-            { opacity: 1, y: 0, letterSpacing: "0.18em", duration: 1.0, ease: "power3.out" },
+            { opacity: 0, y: 18 },
+            { opacity: 1, y: 0, duration: 1.0, ease: "power3.out" },
+            0.6,
+          );
+          tl.from(
+            ".demo-title .ch",
+            { x: (i) => (i - 3.5) * 15.12, duration: 1.0, ease: "power3.out" },
             0.6,
           );
           tl.to(".demo-subtitle", { opacity: 1, duration: 0.8, ease: "power3.out" }, 1.0);

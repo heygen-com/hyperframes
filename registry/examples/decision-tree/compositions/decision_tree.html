@@ -338,8 +338,8 @@
         tl.to(
           "#cursor",
           {
-            left: 450,
-            top: 540,
+            x: -1470,
+            y: -540,
             duration: 1,
             ease: "power1.inOut",
           },
@@ -409,7 +409,7 @@
         tl.addLabel("hold6", typingEnd + 0.5);
 
         // 16. Cursor moves slightly and clicks away to deselect
-        tl.to("#cursor", { left: 500, top: 580, duration: 0.3, overwrite: "auto" }, "hold6");
+        tl.to("#cursor", { x: -1420, y: -500, duration: 0.3, overwrite: "auto" }, "hold6");
         tl.to(
           "#cursor",
           { scale: 0.8, duration: 0.05, yoyo: true, repeat: 1, overwrite: "auto" },
