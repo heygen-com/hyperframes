@@ -738,17 +738,24 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
   // the adapters' getInferredDurationSeconds) — so data-duration is optional
   // wherever the runtime can work it out on its own.
   //
-  // This rule only fires for the cases that are NOT inferable, matching what
-  // the runtime itself can and can't determine:
+  // This rule fires for cases where the total render length is not reliably
+  // determinable without an explicit data-duration:
   //   - No GSAP timeline AND no data-duration AND no non-GSAP animation
-  //     signal at all (nothing for any adapter to discover).
-  //   - CSS animation-iteration-count: infinite with no finite CSS animation
-  //     alongside it (unbounded — the CSS adapter returns null).
+  //     signal at all (nothing for any adapter to discover — render fails).
   //   - Three.js used with no data-duration (no discoverable AnimationClip
   //     duration in this codebase's adapter — see adapters/three.ts).
-  // Lottie and finite CSS/WAAPI animations are excluded — the runtime infers
-  // those, so requiring data-duration there would be a false positive against
-  // the runtime's own auto-inference.
+  //   - Any infinite CSS animation-iteration-count with no data-duration,
+  //     EVEN when a finite CSS animation is present alongside it. An unbounded
+  //     animation makes the intended total length ambiguous — the runtime will
+  //     infer a finite sibling's length if one exists, but that's a fallback,
+  //     not a declaration of intent, so we still require data-duration here.
+  //     (This is intentionally stricter than the runtime's own inference.)
+  // Purely finite CSS/WAAPI animations and Lottie are excluded — the runtime
+  // infers those unambiguously, so requiring data-duration there would be a
+  // false positive against the runtime's own auto-inference. Note lint is
+  // advisory by default (see shouldBlockRender) — it only blocks render under
+  // --strict/--strict-all — so a strict flag here nudges toward an explicit,
+  // guaranteed-correct value without failing renders that would succeed.
   // fallow-ignore-next-line complexity
   ({ rootTag, scripts, styles, tags, options }) => {
     if (options.isSubComposition) return [];
@@ -831,17 +838,27 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     }
 
     if (hasInfiniteCssAnimation && !usesLottie && !usesWaapi) {
-      // An infinite/unbounded CSS animation-iteration-count can't be resolved
-      // to a finite end time — the CSS adapter's getInferredDurationSeconds
-      // returns null in this case (see adapters/css.ts).
+      // An infinite/unbounded CSS animation makes the intended total length
+      // ambiguous, so we require an explicit data-duration even when a finite
+      // CSS animation is present alongside it. This is deliberately stricter
+      // than the runtime's own inference: the CSS adapter's
+      // getInferredDurationSeconds (see adapters/css.ts) returns the longest
+      // finite animation end-time when one exists (so a finite sibling would
+      // render at that length) and null when every animation is unbounded (so
+      // a render with no finite source fails outright). Either way the author
+      // hasn't declared how long the video should be — a decorative infinite
+      // spinner next to a 3s fade doesn't tell us the clip is meant to be 3s
+      // — so we flag it and let them state intent. The message stays honest
+      // about both outcomes rather than claiming the render always fails.
       return [
         {
           code: "root_composition_missing_duration_source",
           severity: "error",
           message:
             "Root composition uses a CSS animation with animation-iteration-count: infinite and no " +
-            "data-duration. An infinite/unbounded animation has no finite end time for the runtime to " +
-            'infer — render will fail with "Composition has zero duration".',
+            "data-duration, so the intended total length is ambiguous. If a finite animation is also " +
+            "present the runtime infers that length; with no finite source the render fails with " +
+            '"Composition has zero duration". Declare the intended length explicitly.',
           fixHint:
             'Add data-duration="<seconds>" to the root element with the intended total length.',
           snippet: truncateSnippet(rootTag.raw),

@@ -1206,6 +1206,34 @@ describe("composition rules", () => {
       expect(finding?.severity).toBe("error");
     });
 
+    it("errors for a mixed finite + infinite CSS animation with no data-duration (length is ambiguous)", async () => {
+      // The runtime CAN infer 3s here (from the finite `fadeIn`), but an
+      // unbounded `spin infinite` alongside it makes the intended total length
+      // ambiguous, so the rule stays strict and requires an explicit
+      // data-duration. Deliberately stricter than runtime inference — see the
+      // rule's block comment. Message must NOT claim the render will fail
+      // (it wouldn't — the runtime falls back to the finite animation).
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-width="1920" data-height="1080">
+          <style>
+            .fade { animation: fadeIn 3s ease forwards; }
+            .spinner { animation: spin 1s linear infinite; }
+            @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+            @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+          </style>
+          <div class="fade"></div>
+          <div class="spinner"></div>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = find(result.findings);
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("error");
+      // Honest message: describes the ambiguity, does not assert a hard failure.
+      expect(finding?.message).toContain("ambiguous");
+      expect(finding?.message).not.toContain("will fail");
+    });
+
     it("does not error for an infinite CSS animation when data-duration is declared", async () => {
       const html = `<html><body>
         <div data-composition-id="main" data-start="0" data-duration="8" data-width="1920" data-height="1080">
