@@ -387,6 +387,27 @@ function tagSimpleSelectors(tag: OpenTag): string[] {
   return selectors;
 }
 
+function tagHasAttr(tag: OpenTag, attr: string): boolean {
+  const escaped = attr.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?:^|\\s)${escaped}(?:\\s*=|\\s|$)`, "i").test(tag.attrs);
+}
+
+function isLayoutSubtreeCanvas(tag: OpenTag): boolean {
+  return tag.name.toLowerCase() === "canvas" && tagHasAttr(tag, "layoutsubtree");
+}
+
+function tagMatchesSimpleSelector(tag: OpenTag, selector: string): boolean {
+  if (selector.startsWith("#")) return readAttr(tag.raw, "id") === selector.slice(1);
+  if (!selector.startsWith(".")) return false;
+  const classes = readAttr(tag.raw, "class")?.split(/\s+/).filter(Boolean) ?? [];
+  return classes.includes(selector.slice(1));
+}
+
+function selectorOnlyMatchesLayoutSubtreeCanvas(selector: string, tags: OpenTag[]): boolean {
+  const matches = tags.filter((tag) => tagMatchesSimpleSelector(tag, selector));
+  return matches.length > 0 && matches.every(isLayoutSubtreeCanvas);
+}
+
 function combinedTagStyle(tag: OpenTag, styleRules: Map<string, string>): string {
   const styles = [readAttr(tag.raw, "style") || ""];
   for (const selector of tagSimpleSelectors(tag)) {
@@ -714,29 +735,26 @@ export const gsapRules: LintRule<LintContext>[] = [
       for (const [, selector, body] of style.content.matchAll(
         /([#.][a-zA-Z0-9_-]+)\s*\{([^}]+)\}/g,
       )) {
+        const normalizedSelector = (selector ?? "").trim();
+        if (selectorOnlyMatchesLayoutSubtreeCanvas(normalizedSelector, tags)) continue;
         const tMatch = body?.match(/transform\s*:\s*([^;]+)/);
         if (!tMatch || !tMatch[1]) continue;
         const transformVal = tMatch[1].trim();
         if (/translate/i.test(transformVal))
-          cssTranslateSelectors.set((selector ?? "").trim(), transformVal);
-        if (/scale/i.test(transformVal))
-          cssScaleSelectors.set((selector ?? "").trim(), transformVal);
+          cssTranslateSelectors.set(normalizedSelector, transformVal);
+        if (/scale/i.test(transformVal)) cssScaleSelectors.set(normalizedSelector, transformVal);
       }
     }
 
     // Also check inline style="..." attributes on tags
     for (const tag of tags) {
+      if (isLayoutSubtreeCanvas(tag)) continue;
       const inlineStyle = readAttr(tag.raw, "style");
       if (!inlineStyle) continue;
       const tMatch = inlineStyle.match(/transform\s*:\s*([^;]+)/);
       if (!tMatch || !tMatch[1]) continue;
       const transformVal = tMatch[1].trim();
-      // Derive selectors from the tag's id and all classes
-      const id = readAttr(tag.raw, "id");
-      const classes = readAttr(tag.raw, "class")?.split(/\s+/).filter(Boolean) ?? [];
-      const selectors: string[] = [];
-      if (id) selectors.push(`#${id}`);
-      for (const cls of classes) selectors.push(`.${cls}`);
+      const selectors = tagSimpleSelectors(tag);
       if (selectors.length === 0) continue;
       for (const sel of selectors) {
         if (/translate/i.test(transformVal) && !cssTranslateSelectors.has(sel))
