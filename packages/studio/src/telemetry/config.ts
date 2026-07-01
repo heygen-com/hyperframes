@@ -5,9 +5,8 @@
 //   localStorage.setItem('hyperframes-studio:telemetryDisabled','1')
 // ---------------------------------------------------------------------------
 
-import { generateId } from "../utils/generateId";
+import { resolveStudioDistinctId } from "./distinctId";
 
-const ANON_ID_KEY = "hyperframes-studio:anonymousId";
 const OPT_OUT_KEY = "hyperframes-studio:telemetryDisabled";
 const NOTICE_KEY = "hyperframes-studio:telemetryNoticeShown";
 
@@ -19,22 +18,15 @@ function safeLocalStorage(): Storage | null {
   }
 }
 
-function newAnonymousId(): string {
-  return generateId();
-}
-
+/**
+ * Anonymous telemetry id for `studio_*` and render events.
+ *
+ * Delegates to the single source of truth in `distinctId.ts` so this id is
+ * identical to the one used for `studio:*` events (utils/studioTelemetry.ts)
+ * and, when the CLI launched Studio, to the CLI's own `config.anonymousId`.
+ */
 export function getAnonymousId(): string {
-  const ls = safeLocalStorage();
-  if (!ls) return "anonymous";
-  const existing = ls.getItem(ANON_ID_KEY);
-  if (existing) return existing;
-  const id = newAnonymousId();
-  try {
-    ls.setItem(ANON_ID_KEY, id);
-  } catch {
-    /* private browsing / quota — return the in-memory ID for this session */
-  }
-  return id;
+  return resolveStudioDistinctId();
 }
 
 export function isOptedOut(): boolean {
