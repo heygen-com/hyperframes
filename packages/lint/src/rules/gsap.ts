@@ -1151,4 +1151,37 @@ export const gsapRules: LintRule<LintContext>[] = [
     }
     return findings;
   },
+
+  // gsap_classname_not_seek_safe: GSAP's `className` special property is stateful
+  // and assumes sequential playback. HyperFrames renders by seeking a paused timeline
+  // to arbitrary frame times, so className add/remove (especially the relative
+  // `+=class` / `-=class` syntax) does not apply reliably under seek: it silently
+  // degrades, leaving the class unapplied (e.g. an element rendering as unstyled
+  // top-left text) with no lint/validate/runtime error. Warning, not error: existing
+  // comps use it and it "works" in live sequential preview.
+  async ({ scripts }) => {
+    const findings: HyperframeLintFinding[] = [];
+    for (const script of scripts) {
+      const windows = await cachedExtractGsapWindows(script.content);
+      for (const win of windows) {
+        if (!win.properties.includes("className")) continue;
+        findings.push({
+          code: "gsap_classname_not_seek_safe",
+          severity: "warning",
+          message:
+            `GSAP tween sets \`className\` on "${win.targetSelector}". GSAP's className animation ` +
+            "is not seek-safe in HyperFrames' frame-by-frame render: it assumes sequential playback " +
+            "and silently degrades under seek, leaving the class unapplied (often rendering as " +
+            "unstyled top-left text) with no lint/validate/runtime error. This is especially fragile " +
+            "with the relative `+=class` / `-=class` add/remove syntax.",
+          selector: win.targetSelector,
+          fixHint:
+            `Toggle the class at the desired time with \`tl.call(() => el.classList.add("your-class"))\` ` +
+            "(or classList.remove), or animate the concrete CSS properties directly instead of toggling a class.",
+          snippet: truncateSnippet(win.raw),
+        });
+      }
+    }
+    return findings;
+  },
 ];

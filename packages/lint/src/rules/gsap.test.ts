@@ -1372,4 +1372,84 @@ describe("GSAP rules", () => {
     const finding = result.findings.find((f) => f.code === "scene_layer_missing_visibility_kill");
     expect(finding).toBeUndefined();
   });
+
+  it("gsap_classname_not_seek_safe: fires on tl.set with relative +=class syntax", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="badge"></div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.set("#badge", { className: "+=locked" }, 1.0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_classname_not_seek_safe");
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("warning");
+  });
+
+  it("gsap_classname_not_seek_safe: fires on tl.to with a className var", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="badge"></div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#badge", { className: "active", duration: 1 }, 0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_classname_not_seek_safe");
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("warning");
+  });
+
+  it("gsap_classname_not_seek_safe: does NOT fire on a plain transform/opacity tween", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="badge"></div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#badge", { x: 100, opacity: 1, duration: 1 }, 0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_classname_not_seek_safe");
+    expect(finding).toBeUndefined();
+  });
+
+  it("gsap_classname_not_seek_safe: is a warning, does not raise errorCount", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="badge"></div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#badge", { className: "active", duration: 1 }, 0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_classname_not_seek_safe");
+    expect(finding?.severity).toBe("warning");
+    // The rule contributes a warning, never an error: no gsap_classname_not_seek_safe
+    // finding should ever count toward errorCount.
+    const asError = result.findings.some(
+      (f) => f.code === "gsap_classname_not_seek_safe" && f.severity === "error",
+    );
+    expect(asError).toBe(false);
+  });
 });
