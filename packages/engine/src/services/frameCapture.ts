@@ -1975,6 +1975,14 @@ const TRANSIENT_BROWSER_ERROR_PATTERNS = [
   /Failed to launch the browser process/i,
   /Navigation timeout of \d+ ms exceeded/i,
   /ECONNREFUSED/i,
+  // pollHfReady's own timeout — thrown when window.__renderReady never flips
+  // true within playerReadyTimeout. "Runtime ready: false" means init simply
+  // didn't finish in time (commonly a slow/contended host, e.g. several
+  // concurrent renders), which a fresh session usually clears on retry. This
+  // is distinct from the "Runtime ready: true" fast-fail case a few lines up
+  // in pollHfReady (no timeline + no data-duration) — that's a genuine
+  // authoring bug and intentionally NOT matched here, so it still fails fast.
+  /Composition has zero duration[\s\S]*Runtime ready: false/,
 ];
 
 export function isTransientBrowserError(error: unknown): boolean {
