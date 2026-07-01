@@ -183,6 +183,9 @@ export function sdkResolverShadowCheck(
     // a genuine resolver divergence (the v0.6.110 class) — keep emitting that.
     // ponytail: substring match; biases toward keeping signal on a loose hit.
     if (sourceContent !== undefined && !sourceContent.includes(hfId)) return [];
+    // Loose match here vs. countHfIdInSource's strict data-hf-id="..." match in the
+    // caller (runResolverShadow) means an emitted event can carry sourceHfIdCount: 0 —
+    // see the comment on that field in runResolverShadow for what 0 means in that case.
     return [{ kind: "element_not_found", hfId }];
   }
 
@@ -275,10 +278,14 @@ export function runResolverShadow(
       // sessionElementCount === 0 = session is empty/broken (actionable).
       sessionElementCount: session.getElements().length,
       // Count of data-hf-id="<id>" occurrences in source for an emitted
-      // element_not_found (the runtime-node filter already dropped absent-from-
-      // source ids, so an emitted one is in source ≥1×). >1 = duplicate ids →
-      // resolver picked the wrong instance; =1 = single static node the SDK
-      // parse dropped (foreign-content exclusion / sub-comp inlining gap).
+      // element_not_found. >1 = duplicate ids → resolver picked the wrong
+      // instance; =1 = single static node the SDK parse dropped (foreign-content
+      // exclusion / sub-comp inlining gap); =0 = the runtime-node filter above
+      // uses a loose substring match (biased toward keeping signal) while this
+      // count uses a strict attribute match — an emitted event with count 0
+      // means hfId appeared in source as plain text (e.g. a class name, comment,
+      // or script string) but never as a data-hf-id attribute. Treat 0 as "not
+      // a genuine attribute occurrence," not as a contradiction.
       ...(isElementNotFound && sourceContent !== undefined
         ? { sourceHfIdCount: countHfIdInSource(sourceContent, hfId) }
         : {}),
@@ -310,6 +317,12 @@ export async function recordResolverParity(
   if (!session || !hfId) return;
   try {
     if (resolveSnapshot(session, hfId)) return; // resolves — parity, nothing to record
+    // Capture BEFORE any await: this call is fire-and-forget (`void recordResolverParity(...)`)
+    // and the caller runs its own session mutation synchronously right after this call
+    // returns. getElements() caches and that cache is invalidated on dispatch, so reading
+    // the count after an await would silently reflect POST-edit state, not the pre-edit
+    // state this field exists to diagnose.
+    const sessionElementCount = session.getElements().length;
     // Cheap check passed above, so the source read only runs on a real divergence.
     let source: string | undefined;
     if (readSource) {
@@ -324,7 +337,11 @@ export async function recordResolverParity(
     trackStudioEvent("sdk_resolver_shadow", {
       hfId,
       opLabel,
-      sessionElementCount: session.getElements().length,
+      sessionElementCount,
+      // sourceHfIdCount: strict data-hf-id="..." attribute count. Can be 0 even
+      // on an emitted (non-suppressed) event — the suppression check above is a
+      // loose substring match (biased toward keeping signal); see the longer
+      // comment on this field in runResolverShadow for the full explanation.
       ...(source !== undefined ? { sourceHfIdCount: countHfIdInSource(source, hfId) } : {}),
       mismatchCount: 1,
       mismatches: JSON.stringify([

@@ -87,7 +87,7 @@ export function useDomEditSession({
   showToast,
   refreshPreviewDocumentVersion,
   queueDomEditSave,
-  readProjectFile: _readProjectFile,
+  readProjectFile,
   writeProjectFile,
   updateEditingFileContent,
   domEditSaveTimestampRef,
@@ -111,7 +111,6 @@ export function useDomEditSession({
   forceReloadSdkSession,
 }: UseDomEditSessionParams) {
   void _setRefreshKey;
-  void _readProjectFile;
 
   // ── Selection ──
 
@@ -295,8 +294,9 @@ export function useDomEditSession({
     // the SDK resolves each reordered element (the reorderElements op's targets).
     onReorderShadow: sdkSession
       ? (targets: string[]) => {
+          const reorderSrc = activeCompPath ? () => readProjectFile(activeCompPath) : undefined;
           for (const target of targets)
-            void recordResolverParity(sdkSession, target, "reorderElements");
+            void recordResolverParity(sdkSession, target, "reorderElements", reorderSrc);
         }
       : undefined,
   });

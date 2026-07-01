@@ -491,7 +491,7 @@ describe("H. inlined sub-composition leaf", () => {
   it("recordResolverParity emits NOTHING for a bare leaf inside a sub-comp", async () => {
     mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = true;
     const session = await openComposition(INLINED_HTML);
-    recordResolverParity(session, "hf-leaf", "setTiming");
+    await recordResolverParity(session, "hf-leaf", "setTiming");
     expect(trackedEvents.filter((e) => e.event === "sdk_resolver_shadow")).toHaveLength(0);
   });
 
