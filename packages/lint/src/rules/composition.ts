@@ -760,7 +760,11 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     if (readAttr(rootTag.raw, "data-composition-id") === null) return [];
     if (readAttr(rootTag.raw, "data-duration") !== null) return [];
 
-    const allScriptTexts = scripts.map((s) => s.content);
+    // Strip comments before scanning for signals — a commented-out
+    // `.animate(...)` call or `/* animation: spin 2s infinite; */` must not
+    // satisfy the "has a duration source" check, or the composition still
+    // fails at render with zero duration despite lint passing.
+    const allScriptTexts = scripts.map((s) => stripJsComments(s.content));
     const hasGsapTimeline = allScriptTexts.some((t) => /gsap\.timeline\s*\(/.test(t));
     const hasRegisteredTimeline = allScriptTexts.some((t) =>
       WINDOW_TIMELINE_ASSIGN_PATTERN.test(t),
@@ -771,21 +775,20 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
 
     const allCss = styles.map((s) => s.content).join("\n");
     const allInlineStyles = tags.map((t) => readAttr(t.raw, "style") || "").join("\n");
-    const combinedCss = `${allCss}\n${allInlineStyles}`;
+    const combinedCss = `${allCss}\n${allInlineStyles}`.replace(/\/\*[\s\S]*?\*\//g, "");
 
     const usesLottie =
       tags.some((t) => readAttr(t.raw, "data-lottie-src") !== null) ||
       allScriptTexts.some((t) => /lottie\.(loadAnimation)\b|__hfLottie\b/.test(t));
     const usesThree = allScriptTexts.some((t) => /\bTHREE\./.test(t));
-    // `.animate([...], ...)` catches the common inline-keyframes call;
-    // `.animate(someVar, ...)` catches keyframes built up in a variable first
-    // (the inline form can't be a false negative — WAAPI's own signature
-    // requires an array/object as the first argument either way).
-    const usesWaapi = allScriptTexts.some((t) => /\.animate\s*\(\s*[[$A-Za-z_]/.test(t));
+    // `.animate([...], ...)` catches the array-literal keyframes form;
+    // `.animate({...}, ...)` catches the object-literal (PropertyIndexedKeyframes)
+    // form; `.animate(someVar, ...)` catches keyframes built up in a variable
+    // first.
+    const usesWaapi = allScriptTexts.some((t) => /\.animate\s*\(\s*[[{$A-Za-z_]/.test(t));
     const hasCssAnimationName = /\banimation(?:-name)?\s*:/.test(combinedCss);
-    const hasInfiniteCssAnimation = /\banimation(?:-iteration-count)?\s*:[^;{}]*\binfinite\b/.test(
-      combinedCss,
-    );
+    const hasInfiniteCssAnimation =
+      /\banimation(?:-iteration-count)?\s*:[^;{}]*(?<![\w-])infinite(?![\w-])/.test(combinedCss);
 
     const hasAnyNonGsapSignal = usesLottie || usesThree || usesWaapi || hasCssAnimationName;
 

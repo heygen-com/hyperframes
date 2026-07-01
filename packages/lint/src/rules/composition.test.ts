@@ -1264,5 +1264,101 @@ describe("composition rules", () => {
       });
       expect(find(result.findings)).toBeUndefined();
     });
+
+    it("errors when the only .animate() call is commented out (no real duration source)", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-width="1920" data-height="1080">
+          <div class="box"></div>
+        </div>
+        <script>
+          // document.querySelector(".box").animate([{ opacity: 0 }, { opacity: 1 }], { duration: 2000 });
+        </script>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = find(result.findings);
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("error");
+    });
+
+    it("errors when the only CSS animation is inside a comment (no real duration source)", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-width="1920" data-height="1080">
+          <style>
+            /* .box { animation: spin 2s infinite; } */
+            .box { color: red; }
+          </style>
+          <div class="box"></div>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = find(result.findings);
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("error");
+    });
+
+    it("does not error for the object-literal (PropertyIndexedKeyframes) WAAPI form", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-width="1920" data-height="1080">
+          <div class="box"></div>
+        </div>
+        <script>
+          document.querySelector(".box").animate({ opacity: [0, 1] }, { duration: 2000 });
+        </script>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(find(result.findings)).toBeUndefined();
+    });
+
+    it("does not error for a finite CSS animation whose name merely contains 'infinite'", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-width="1920" data-height="1080">
+          <style>
+            .marquee { animation: infinite-spin 2s ease; }
+            @keyframes infinite-spin { from { transform: translateX(0); } to { transform: translateX(-100%); } }
+          </style>
+          <div class="marquee"></div>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(find(result.findings)).toBeUndefined();
+    });
+
+    it("errors for the longhand animation-name + animation-iteration-count: infinite combination", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-width="1920" data-height="1080">
+          <style>
+            .spinner {
+              animation-name: infinite-scroll;
+              animation-duration: 1s;
+              animation-iteration-count: infinite;
+            }
+            @keyframes infinite-scroll { from { transform: translateX(0); } to { transform: translateX(-100%); } }
+          </style>
+          <div class="spinner"></div>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = find(result.findings);
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("error");
+    });
+
+    it("does not error for the longhand animation-name form with a finite iteration count", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-width="1920" data-height="1080">
+          <style>
+            .spinner {
+              animation-name: infinite-scroll;
+              animation-duration: 1s;
+              animation-iteration-count: 3;
+            }
+            @keyframes infinite-scroll { from { transform: translateX(0); } to { transform: translateX(-100%); } }
+          </style>
+          <div class="spinner"></div>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(find(result.findings)).toBeUndefined();
+    });
   });
 });
