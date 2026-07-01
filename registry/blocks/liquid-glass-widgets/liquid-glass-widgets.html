@@ -279,6 +279,7 @@
           inset 0 -24px 48px rgba(255, 255, 255, 0.08);
         overflow: hidden;
         text-shadow: 0 2px 18px rgba(0, 0, 0, 0.4);
+        unicode-bidi: plaintext;
       }
       .showcase-icon {
         position: relative;
@@ -299,6 +300,7 @@
         font-weight: 700;
         color: #fff;
         text-align: center;
+        unicode-bidi: plaintext;
         line-height: 1.2;
       }
       .showcase-desc {
@@ -307,6 +309,7 @@
         font-weight: 500;
         color: #fff;
         text-align: center;
+        unicode-bidi: plaintext;
         line-height: 1.5;
         max-width: 380px;
       }
@@ -445,13 +448,13 @@
         <div class="showcase-icon">
           <img class="showcase-logo" src="assets/hyperframes-logo-dark.svg" alt="HyperFrames" />
         </div>
-        <div class="showcase-title">Preview pipeline</div>
-        <div class="showcase-desc">
+        <div class="showcase-title" dir="auto">Preview pipeline</div>
+        <div class="showcase-desc" dir="auto">
           Write HTML, render video. Ship compositions at the speed of code.
         </div>
         <div class="showcase-status">
           <span class="showcase-dot" id="showcase-dot"></span
-          ><span id="showcase-status">Encoding frames</span>
+          ><span id="showcase-status" dir="auto">Encoding frames</span>
         </div>
         <div class="showcase-progress">
           <div id="showcase-progress" class="showcase-progress-fill"></div>
@@ -461,15 +464,15 @@
       <!-- Pill chips -->
       <div id="text-pill1" class="text-overlay pill-text">
         <span class="pill-dot dot-green"></span>
-        <span class="pill-label">Connected</span>
+        <span class="pill-label" dir="auto">Connected</span>
       </div>
       <div id="text-pill2" class="text-overlay pill-text">
         <span class="pill-dot dot-blue"></span>
-        <span class="pill-label">Bluetooth</span>
+        <span class="pill-label" dir="auto">Bluetooth</span>
       </div>
       <div id="text-pill3" class="text-overlay pill-text">
         <span class="pill-dot dot-violet"></span>
-        <span class="pill-label">Focus</span>
+        <span class="pill-label" dir="auto">Focus</span>
       </div>
 
       <div

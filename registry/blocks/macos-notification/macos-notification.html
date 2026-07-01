@@ -29,7 +29,7 @@
       [data-composition-id="macos-notification"] .notification-card {
         position: absolute;
         top: 24px;
-        right: 24px;
+        inset-inline-end: 24px;
         width: 380px;
         background: rgba(30, 30, 30, 0.82);
         backdrop-filter: blur(40px);
@@ -61,6 +61,8 @@
       [data-composition-id="macos-notification"] .notification-content {
         flex: 1;
         min-width: 0;
+        text-align: start;
+        unicode-bidi: plaintext;
       }
 
       [data-composition-id="macos-notification"] .notification-header {
@@ -151,11 +153,11 @@
         </div>
         <div class="notification-content">
           <div class="notification-header">
-            <span class="app-name">HyperFrames</span>
-            <span class="time-label">now</span>
+            <span class="app-name" dir="auto">HyperFrames</span>
+            <span class="time-label" dir="auto">now</span>
           </div>
-          <div class="notification-title">Prompt to replace this title</div>
-          <div class="notification-body">
+          <div class="notification-title" dir="auto">Prompt to replace this title</div>
+          <div class="notification-body" dir="auto">
             Prompt to change this body text, the app icon, and the app name to match your content.
           </div>
         </div>
@@ -167,9 +169,10 @@
 
       var tl = gsap.timeline({ paused: true });
       var notification = document.getElementById("notification");
+      var inlineSign = getComputedStyle(document.documentElement).direction === "rtl" ? -1 : 1;
 
       // Start off-screen to the right
-      gsap.set(notification, { x: 420, opacity: 0 });
+      gsap.set(notification, { x: 420 * inlineSign, opacity: 0 });
 
       // Slide in from right
       tl.to(
@@ -187,7 +190,7 @@
       tl.to(
         notification,
         {
-          x: 420,
+          x: 420 * inlineSign,
           opacity: 0,
           duration: 0.3,
           ease: "power3.in",

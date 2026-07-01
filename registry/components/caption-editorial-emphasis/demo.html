@@ -56,7 +56,7 @@
       .safe-zone {
         position: absolute;
         top: 580px;
-        left: 60px;
+        inset-inline-start: 60px;
         width: 1800px;
         height: 430px;
         display: flex;
@@ -66,7 +66,7 @@
 
       .caption-block {
         position: absolute;
-        left: 0;
+        inset-inline-start: 0;
         top: 0;
         opacity: 0;
         transform-origin: 0% 0%;
@@ -365,6 +365,9 @@
       })();
 
       window.__timelines = window.__timelines || {};
+      var isRtl = getComputedStyle(document.documentElement).direction === "rtl";
+      var inlineStartOrigin = isRtl ? "100% 100%" : "0% 100%";
+      var inlineEnterX = isRtl ? 1920 : -1920;
       var tl = gsap.timeline({ paused: true });
 
       var allEls = BLOCKS.map(function (_, i) {
@@ -388,7 +391,7 @@
         block.line1.forEach(function (pair, wi) {
           var wordEl = document.getElementById("b" + bi + "L1w" + wi);
           var wordStart = W[pair[0]].start;
-          tl.set(wordEl, { opacity: 0, scale: 1.12, transformOrigin: "0% 100%" }, start);
+          tl.set(wordEl, { opacity: 0, scale: 1.12, transformOrigin: inlineStartOrigin }, start);
           tl.to(
             wordEl,
             { opacity: 1, scale: 1, duration: ENTRY_DUR, ease: "power2.out" },
@@ -403,14 +406,18 @@
           var l2El = document.getElementById("b" + bi + "L2");
           if (hasEmphasis) {
             var l2Start = W[block.line2[0][0]].start;
-            tl.set(l2El, { opacity: 0, x: -1920 }, start);
+            tl.set(l2El, { opacity: 0, x: inlineEnterX }, start);
             tl.to(l2El, { opacity: 1, x: 0, duration: SLIDE_DUR, ease: "power2.out" }, l2Start);
           } else {
             tl.set(l2El, { opacity: 1 }, start);
             block.line2.forEach(function (pair, wi) {
               var wordEl = document.getElementById("b" + bi + "L2w" + wi);
               var wordStart = W[pair[0]].start;
-              tl.set(wordEl, { opacity: 0, scale: 1.12, transformOrigin: "0% 100%" }, start);
+              tl.set(
+                wordEl,
+                { opacity: 0, scale: 1.12, transformOrigin: inlineStartOrigin },
+                start,
+              );
               tl.to(
                 wordEl,
                 { opacity: 1, scale: 1, duration: ENTRY_DUR, ease: "power2.out" },
