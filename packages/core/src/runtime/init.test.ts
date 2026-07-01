@@ -271,10 +271,11 @@ describe("initSandboxRuntimeModular", () => {
     expect(child.style.visibility).toBe("hidden");
   });
 
-  it("warns loudly when GSAP timelines are registered but none bind (frozen-render contract trap)", () => {
+  it("binds the sole registered timeline even when the root id is missing", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    // Root is MISSING data-composition-id, so the render path cannot resolve a
-    // timeline even though one is registered → would silently render frozen at t=0.
+    // Root is MISSING data-composition-id, but there is exactly one usable
+    // timeline registered. The DX fallback can bind it unambiguously instead of
+    // letting the render freeze at t=0.
     const root = document.createElement("div");
     root.className = "clip";
     root.setAttribute("data-root", "true");
@@ -288,8 +289,8 @@ describe("initSandboxRuntimeModular", () => {
     initSandboxRuntimeModular();
 
     const warned = warnSpy.mock.calls.map((c) => String(c[0])).join("\n");
-    expect(warned).toContain("[HyperFrames]");
-    expect(warned).toContain("none bound");
+    expect(window.__player?.getDuration()).toBe(6);
+    expect(warned).not.toContain("Root timeline not bound");
   });
 
   it("uses the shorter authored host window when the child timeline is longer", () => {
@@ -508,9 +509,10 @@ describe("initSandboxRuntimeModular", () => {
     expect(window.__player?.getDuration()).toBe(7);
   });
 
-  // #6: when the root id is missing AND two timelines are registered, the
-  // fallback is ambiguous, so nothing is bound (the loud warning fires instead).
+  // #6: when the root id is unmatched AND two timelines are registered, the
+  // fallback is ambiguous, so nothing is bound and the loud warning fires.
   it("does not bind any timeline when the root id is unmatched and multiple are registered", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
     root.setAttribute("data-root", "true");
@@ -526,7 +528,12 @@ describe("initSandboxRuntimeModular", () => {
 
     initSandboxRuntimeModular();
 
+    const warned = warnSpy.mock.calls.map((c) => String(c[0])).join("\n");
     expect(window.__player?.getDuration()).toBe(0);
+    expect(warned).toContain("[hyperframes]");
+    expect(warned).toContain("Root timeline not bound");
+    expect(warned).toContain("wrong-key-a");
+    expect(warned).toContain("wrong-key-b");
   });
 
   it("pauses nested media that is outside the timed-media cache after a seek", () => {

@@ -2212,35 +2212,6 @@ export function initSandboxRuntimeModular(): void {
     const boundDuration = getSafeTimelineDurationSeconds(state.capturedTimeline, 0);
     if (boundDuration > 0) {
       clock.setDuration(boundDuration);
-    } else {
-      // No GSAP timeline bound. Legitimate for CSS/WAAPI/Lottie-only comps
-      // (adapters drive time). But if GSAP timelines ARE registered yet none
-      // bound, the contract is broken: the render resolves the root's
-      // data-composition-id and seeks window.__timelines[<that id>], so a
-      // missing/mismatched id (or the loose `window.__timelines = { main: tl }`
-      // form) leaves the render FROZEN at t=0 even though `--shot` — which seeks
-      // __timelines directly — looks fine. Surface it loudly, don't fail silently.
-      const registry = (window as Record<string, unknown>).__timelines as
-        | Record<string, unknown>
-        | undefined;
-      const registeredKeys = registry ? Object.keys(registry) : [];
-      if (registeredKeys.length > 0) {
-        const rootEl =
-          document.querySelector("[data-composition-id]") ?? document.querySelector(".clip");
-        const rootId = rootEl?.getAttribute("data-composition-id") ?? null;
-        postRuntimeDiagnosticOnce(
-          "root_timeline_unbound_registry_present",
-          { rootCompositionId: rootId, registeredTimelineKeys: registeredKeys },
-          "root_timeline_unbound_registry_present",
-        );
-        console.warn(
-          `[HyperFrames] ${registeredKeys.length} GSAP timeline(s) are registered ` +
-            `(${registeredKeys.map((k) => JSON.stringify(k)).join(", ")}) but none bound for render. ` +
-            `The render seeks window.__timelines[root data-composition-id]; the root's data-composition-id is ` +
-            `${rootId === null ? "MISSING" : JSON.stringify(rootId)}. Set data-composition-id on the .clip root ` +
-            `and register the timeline under that exact key, or the render stays frozen at t=0 (even though --shot looks correct).`,
-        );
-      }
     }
     runAdapters("discover", state.currentTime);
     // Loud, specific diagnostic for the #1 "looks fine, ships broken" trap:
