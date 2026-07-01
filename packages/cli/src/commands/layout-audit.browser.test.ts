@@ -281,8 +281,8 @@ function auditOverlapScene(options: {
   // A clipped-to-nothing element is unreachable by elementFromPoint; mimic that
   // by returning the topmost non-clipped block at any probe point.
   (document as unknown as { elementFromPoint: () => Element | null }).elementFromPoint = () => {
-    if (!isFullyClipped(clipPaths.b)) return document.getElementById("b");
-    if (!isFullyClipped(clipPaths.a)) return document.getElementById("a");
+    if (!isFullyClipped(clipPaths.b ?? "none")) return document.getElementById("b");
+    if (!isFullyClipped(clipPaths.a ?? "none")) return document.getElementById("a");
     return null;
   };
 
@@ -459,7 +459,10 @@ function installContrastScript(): void {
   }
 
   vi.stubGlobal("Image", MockImage);
-  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+  const getContextSpy = vi.spyOn(HTMLCanvasElement.prototype, "getContext") as unknown as {
+    mockReturnValue(value: CanvasRenderingContext2D): void;
+  };
+  getContextSpy.mockReturnValue({
     drawImage() {},
     getImageData() {
       return { data: new Uint8ClampedArray(640 * 360 * 4).fill(255) };
