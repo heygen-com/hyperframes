@@ -14,7 +14,7 @@ vi.mock("../telemetry/config.js", () => ({
   readConfig: (...args: unknown[]) => readConfig(...args),
 }));
 
-const { resolveCliTelemetryDistinctId, buildCliIdentityScript } =
+const { resolveCliTelemetryDistinctId, buildCliIdentityScript, buildStudioHeadScripts } =
   await import("./telemetryIdentity.js");
 
 describe("resolveCliTelemetryDistinctId", () => {
@@ -78,5 +78,27 @@ describe("buildCliIdentityScript", () => {
     // The raw closing tag must be escaped by JSON.stringify, not emitted literally.
     expect(script).not.toContain("</script><script>alert(1)");
     expect(script).toContain("window.__HF_CLI_DISTINCT_ID=");
+  });
+});
+
+describe("buildStudioHeadScripts", () => {
+  beforeEach(() => {
+    shouldTrack.mockReset();
+    readConfig.mockReset();
+  });
+
+  const ENV_SCRIPT = "<script>window.__HF_STUDIO_ENV__={};</script>";
+
+  it("places the CLI identity script before the env script so the global is set first", () => {
+    shouldTrack.mockReturnValue(true);
+    readConfig.mockReturnValue({ anonymousId: "machine-uuid" });
+    const head = buildStudioHeadScripts(ENV_SCRIPT);
+    expect(head.indexOf("__HF_CLI_DISTINCT_ID")).toBeGreaterThanOrEqual(0);
+    expect(head.indexOf("__HF_CLI_DISTINCT_ID")).toBeLessThan(head.indexOf("__HF_STUDIO_ENV__"));
+  });
+
+  it("returns just the env script when identity is suppressed (telemetry off)", () => {
+    shouldTrack.mockReturnValue(false);
+    expect(buildStudioHeadScripts(ENV_SCRIPT)).toBe(ENV_SCRIPT);
   });
 });

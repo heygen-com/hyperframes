@@ -72,6 +72,14 @@ describe("resolveStudioDistinctId", () => {
     localStorage.setItem(DISTINCT_ID_KEY, "changed-underneath");
     expect(resolveStudioDistinctId()).toBe(first);
   });
+
+  it("memoizes an adopted CLI id even if window.__HF_CLI_DISTINCT_ID changes later", () => {
+    window.__HF_CLI_DISTINCT_ID = "cli-id-1";
+    expect(resolveStudioDistinctId()).toBe("cli-id-1");
+    // A late reassignment of the injected global must not change the resolved id.
+    window.__HF_CLI_DISTINCT_ID = "cli-id-2";
+    expect(resolveStudioDistinctId()).toBe("cli-id-1");
+  });
 });
 
 describe("getCliDistinctId", () => {

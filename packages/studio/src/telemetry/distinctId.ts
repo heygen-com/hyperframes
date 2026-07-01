@@ -18,6 +18,7 @@
 // ---------------------------------------------------------------------------
 
 import { generateId } from "../utils/generateId";
+import { safeLocalStorage } from "../utils/safeStorage";
 
 // Canonical storage key. Both legacy keys are kept in sync (below) so any code
 // still reading them directly, plus older cached values, resolve to one id.
@@ -34,14 +35,6 @@ declare global {
 }
 
 let cachedId: string | null = null;
-
-function safeLocalStorage(): Storage | null {
-  try {
-    return typeof localStorage === "undefined" ? null : localStorage;
-  } catch {
-    return null;
-  }
-}
 
 /**
  * The distinct_id the CLI seeded into the page, if any. A non-empty string
@@ -114,7 +107,8 @@ export function resolveStudioDistinctId(): string {
     }
   } else {
     // No storage at all (SSR / locked-down browser): stable within the session.
-    cachedId ??= "anonymous";
+    // `cachedId` is guaranteed null here (early-returned at the top otherwise).
+    cachedId = "anonymous";
     return cachedId;
   }
 

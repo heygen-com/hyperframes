@@ -16,7 +16,7 @@ import {
   loadRuntimeSourceSignature,
 } from "./runtimeSource.js";
 import { VERSION as version } from "../version.js";
-import { buildCliIdentityScript, resolveCliTelemetryDistinctId } from "./telemetryIdentity.js";
+import { buildStudioHeadScripts, resolveCliTelemetryDistinctId } from "./telemetryIdentity.js";
 import { emitStudioRenderComplete, emitStudioRenderError } from "./studioRenderTelemetry.js";
 import {
   createStudioManualEditsRenderBodyScript,
@@ -710,9 +710,10 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       );
     }
     let html = readFileSync(indexPath, "utf-8");
-    // Inject before the studio bundle runs. Identity script first so the CLI
-    // distinct id is on `window` by the time telemetry init reads it.
-    const headScript = `${buildCliIdentityScript()}${buildRuntimeEnvScript()}`;
+    // Inject before the studio bundle runs. Identity script first (see
+    // buildStudioHeadScripts) so the CLI distinct id is on `window` by the time
+    // telemetry init reads it.
+    const headScript = buildStudioHeadScripts(buildRuntimeEnvScript());
     if (headScript) {
       html = html.replace("<head>", `<head>${headScript}`);
     }

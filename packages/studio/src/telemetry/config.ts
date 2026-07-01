@@ -6,17 +6,10 @@
 // ---------------------------------------------------------------------------
 
 import { resolveStudioDistinctId } from "./distinctId";
+import { safeLocalStorage, safeSessionStorage } from "../utils/safeStorage";
 
 const OPT_OUT_KEY = "hyperframes-studio:telemetryDisabled";
 const NOTICE_KEY = "hyperframes-studio:telemetryNoticeShown";
-
-function safeLocalStorage(): Storage | null {
-  try {
-    return typeof localStorage === "undefined" ? null : localStorage;
-  } catch {
-    return null;
-  }
-}
 
 /**
  * Anonymous telemetry id for `studio_*` and render events.
@@ -49,14 +42,6 @@ export function markNoticeShown(): void {
 // route-level remounts within one tab don't refire `studio_session_start`.
 // Uses sessionStorage directly because the dedupe is per-tab, not per-browser.
 const SESSION_FIRED_KEY = "hyperframes-studio:sessionStartFired";
-
-function safeSessionStorage(): Storage | null {
-  try {
-    return typeof sessionStorage === "undefined" ? null : sessionStorage;
-  } catch {
-    return null;
-  }
-}
 
 export function hasFiredSessionStart(): boolean {
   return safeSessionStorage()?.getItem(SESSION_FIRED_KEY) === "1";

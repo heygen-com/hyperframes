@@ -45,8 +45,21 @@ export function buildCliIdentityScript(): string {
   const cliId = resolveCliTelemetryDistinctId();
   if (!cliId) return "";
   // The id is a randomUUID() so this is belt-and-suspenders, but JSON.stringify
-  // does not escape "<" — escape it (and "/") so the value can never terminate
-  // the inline <script> or open a new tag.
+  // does not escape "<" or "/". Escaping both means no "</script>" (or "</…")
+  // sequence can form in the emitted value, so it can never terminate the
+  // inline <script> or open a new tag.
   const encoded = JSON.stringify(cliId).replace(/</g, "\\u003c").replace(/\//g, "\\/");
   return `<script>window.__HF_CLI_DISTINCT_ID=${encoded};</script>`;
+}
+
+/**
+ * Compose the scripts injected into the served Studio `index.html` `<head>`.
+ * The CLI identity script MUST come first so `window.__HF_CLI_DISTINCT_ID` is
+ * set before the (deferred) Studio bundle runs telemetry init and reads it;
+ * `envScript` is the existing `window.__HF_STUDIO_ENV__` injection. Keeping the
+ * ordering in one pure, tested function guards against a future `<head>` inject
+ * silently landing ahead of the identity script and reintroducing a boot race.
+ */
+export function buildStudioHeadScripts(envScript: string): string {
+  return `${buildCliIdentityScript()}${envScript}`;
 }
