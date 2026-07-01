@@ -588,7 +588,11 @@ function buildZeroDurationDiagnostic(diag: {
   if (!diag.hasTimeline) {
     hints.push(
       "No GSAP timeline registered (window.__timelines is empty). " +
-        "If using CSS/WAAPI/Lottie/Three.js animations, add data-duration to the root element.",
+        "CSS/WAAPI/Lottie animations are usually auto-detected (the runtime infers " +
+        "duration from the longest running animation) — this composition's duration " +
+        "could not be inferred, which usually means an infinite/unbounded animation " +
+        "(e.g. animation-iteration-count: infinite, repeat: -1 WAAPI, or a looping Lottie " +
+        "clip) or a Three.js scene with no discoverable AnimationClip.",
     );
   }
   if (diag.declaredDuration <= 0 && !diag.hasTimeline) {
@@ -642,13 +646,26 @@ async function pollHfReady(page: Page, timeoutMs: number, intervalMs: number = 1
       if (now - lastDiagnosticAt >= DIAGNOSTIC_INTERVAL_MS) {
         lastDiagnosticAt = now;
         const diag = await evaluateHfDiagnostic(page);
-        // Only fast-fail when BOTH signals are permanently zero:
+        // Only fast-fail when ALL signals are permanently zero:
         //   1. No GSAP timeline registered (GSAP sets duration synchronously
         //      before __renderReady, so a missing timeline won't self-correct).
         //   2. No data-duration declared on the root element.
+        //   3. hf.duration is still 0 — this also covers CSS/WAAPI/Lottie
+        //      auto-inference (see runtime/init.ts resolveAdapterDurationFloorSeconds):
+        //      those runtimes report a non-zero hf.duration once discovery
+        //      resolves, without any GSAP timeline or data-duration. Checking
+        //      hf.duration directly (rather than only the two authored
+        //      signals) avoids fast-failing a composition whose inferred
+        //      duration just hasn't landed yet.
         // A composition with a GSAP timeline but no data-duration is still
         // valid — GSAP drives duration via __timelines, not data-duration.
-        if (diag.renderReady && diag.hasSeek && !diag.hasTimeline && diag.declaredDuration <= 0) {
+        if (
+          diag.renderReady &&
+          diag.hasSeek &&
+          !diag.hasTimeline &&
+          diag.declaredDuration <= 0 &&
+          diag.duration <= 0
+        ) {
           throw new Error(buildZeroDurationDiagnostic(diag));
         }
       }

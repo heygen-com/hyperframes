@@ -1101,4 +1101,168 @@ describe("composition rules", () => {
       expect(find(result.findings)).toBeUndefined();
     });
   });
+
+  describe("root_composition_missing_duration_source", () => {
+    const CODE = "root_composition_missing_duration_source";
+    const find = (findings: { code: string }[]) => findings.find((f) => f.code === CODE);
+
+    it("errors when there is no data-duration, no GSAP timeline, and no animation signal at all", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-width="1920" data-height="1080">
+          <div>static content</div>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = find(result.findings);
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("error");
+    });
+
+    it("does not error when data-duration is declared on the root", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-duration="6" data-width="1920" data-height="1080">
+          <div>static content</div>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(find(result.findings)).toBeUndefined();
+    });
+
+    it("does not error when a GSAP timeline is registered", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-width="1920" data-height="1080"></div>
+        <script>
+          window.__timelines = window.__timelines || {};
+          const tl = gsap.timeline({ paused: true });
+          window.__timelines["main"] = tl;
+        </script>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(find(result.findings)).toBeUndefined();
+    });
+
+    it("does not error for a finite CSS animation (runtime auto-infers duration)", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-width="1920" data-height="1080">
+          <style>
+            .box { animation: fadeIn 3s ease forwards; }
+            @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+          </style>
+          <div class="box"></div>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(find(result.findings)).toBeUndefined();
+    });
+
+    it("does not error for a WAAPI .animate() call (runtime auto-infers duration)", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-width="1920" data-height="1080">
+          <div class="box"></div>
+        </div>
+        <script>
+          document.querySelector(".box").animate([{ opacity: 0 }, { opacity: 1 }], { duration: 2000 });
+        </script>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(find(result.findings)).toBeUndefined();
+    });
+
+    it("does not error for a registered Lottie animation (runtime auto-infers duration)", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-width="1920" data-height="1080">
+          <div id="anim"></div>
+        </div>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js"></script>
+        <script>
+          window.__hfLottie = window.__hfLottie || [];
+          const anim = lottie.loadAnimation({
+            container: document.getElementById("anim"),
+            renderer: "svg",
+            loop: false,
+            autoplay: false,
+            path: "animation.json",
+          });
+          window.__hfLottie.push(anim);
+        </script>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(find(result.findings)).toBeUndefined();
+    });
+
+    it("errors for an infinite CSS animation with no data-duration", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-width="1920" data-height="1080">
+          <style>
+            .spinner { animation: spin 1s linear infinite; }
+            @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+          </style>
+          <div class="spinner"></div>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = find(result.findings);
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("error");
+    });
+
+    it("does not error for an infinite CSS animation when data-duration is declared", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-duration="8" data-width="1920" data-height="1080">
+          <style>
+            .spinner { animation: spin 1s linear infinite; }
+            @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+          </style>
+          <div class="spinner"></div>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(find(result.findings)).toBeUndefined();
+    });
+
+    it("errors for Three.js usage with no data-duration", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-width="1920" data-height="1080">
+          <canvas id="scene"></canvas>
+        </div>
+        <script src="https://cdn.jsdelivr.net/npm/three@0.160/build/three.min.js"></script>
+        <script>
+          const renderer = new THREE.WebGLRenderer();
+          const scene = new THREE.Scene();
+        </script>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = find(result.findings);
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("error");
+    });
+
+    it("does not error for Three.js usage when data-duration is declared", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-duration="10" data-width="1920" data-height="1080">
+          <canvas id="scene"></canvas>
+        </div>
+        <script src="https://cdn.jsdelivr.net/npm/three@0.160/build/three.min.js"></script>
+        <script>
+          const renderer = new THREE.WebGLRenderer();
+          const scene = new THREE.Scene();
+        </script>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(find(result.findings)).toBeUndefined();
+    });
+
+    it("does not apply to sub-compositions", async () => {
+      const html = `<template id="scene-template">
+        <div data-composition-id="scene" data-start="0" data-width="1920" data-height="1080">
+          <div>static content</div>
+        </div>
+      </template>`;
+      const result = await lintHyperframeHtml(html, {
+        filePath: "compositions/scene.html",
+        isSubComposition: true,
+      });
+      expect(find(result.findings)).toBeUndefined();
+    });
+  });
 });

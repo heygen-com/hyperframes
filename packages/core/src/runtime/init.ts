@@ -673,6 +673,32 @@ export function initSandboxRuntimeModular(): void {
     );
   };
 
+  // Non-GSAP runtimes (CSS, WAAPI, Lottie) have no window.__timelines entry
+  // and thus no authored source of truth for total duration. Adapters that
+  // implement getInferredDurationSeconds() report the longest end time they
+  // can discover from their own animations (see runtime/types.ts). Folding
+  // that into the duration floor here — the same mechanism data-duration and
+  // media windows already use — makes data-duration optional wherever the
+  // runtime can figure the duration out on its own, instead of hard-failing
+  // capture with "Composition has zero duration".
+  const resolveAdapterDurationFloorSeconds = (): number | null => {
+    let maxSeconds = 0;
+    for (const adapter of state.deterministicAdapters) {
+      const getter = adapter.getInferredDurationSeconds;
+      if (typeof getter !== "function") continue;
+      let inferred: number | null = null;
+      try {
+        inferred = getter();
+      } catch (err) {
+        swallow("runtime.init.adapterDuration", err);
+      }
+      if (typeof inferred === "number" && Number.isFinite(inferred) && inferred > 0) {
+        maxSeconds = Math.max(maxSeconds, inferred);
+      }
+    }
+    return maxSeconds > MIN_VALID_TIMELINE_DURATION_SECONDS ? maxSeconds : null;
+  };
+
   const getSafeTimelineDurationSeconds = (
     timeline: RuntimeTimelineLike | null,
     fallback = 0,
@@ -680,7 +706,12 @@ export function initSandboxRuntimeModular(): void {
     const timelineDuration = getTimelineDurationSeconds(timeline);
     const mediaFloor = resolveMediaDurationFloorSeconds();
     const authoredCompositionFloor = resolveAuthoredCompositionDurationFloorSeconds();
-    const durationFloor = Math.max(mediaFloor ?? 0, authoredCompositionFloor ?? 0);
+    const adapterFloor = resolveAdapterDurationFloorSeconds();
+    const durationFloor = Math.max(
+      mediaFloor ?? 0,
+      authoredCompositionFloor ?? 0,
+      adapterFloor ?? 0,
+    );
     const fallbackDuration =
       Number.isFinite(fallback) && fallback > MIN_VALID_TIMELINE_DURATION_SECONDS ? fallback : 0;
     let safeDuration = 0;

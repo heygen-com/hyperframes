@@ -259,6 +259,25 @@ export type RuntimeDeterministicAdapter = {
    * convention).
    */
   getReadyPromise?: () => PromiseLike<unknown> | null;
+  /**
+   * Optional duration auto-inference. Non-GSAP runtimes (CSS, WAAPI, Lottie)
+   * have no `window.__timelines` entry, so the runtime has no authored source
+   * of truth for total composition length unless the author sets
+   * `data-duration` on the root element. This hook lets an adapter report the
+   * longest end time it can discover from its own animations, so the runtime
+   * can fold it into the duration floor (see `resolveAdapterDurationFloorSeconds`
+   * in `init.ts`) and treat `data-duration` as optional rather than required.
+   *
+   * Return the inferred duration in seconds, or `null` when nothing usable
+   * was discovered (e.g. no animations yet, or an animation with unbounded /
+   * infinite iteration count that can't be resolved to a finite end time —
+   * those compositions must keep declaring `data-duration` explicitly).
+   *
+   * Called on every adapter-discovery cycle (same cadence as `discover`), so
+   * it's safe — and expected — to return a growing value as async work
+   * (Lottie JSON fetch, etc.) resolves.
+   */
+  getInferredDurationSeconds?: () => number | null;
 };
 
 export type RuntimeGsapSetTarget = string | Element | Element[] | null;
