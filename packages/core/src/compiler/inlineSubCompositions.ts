@@ -19,7 +19,7 @@ import {
   wrapInlineScriptWithErrorBoundary,
   wrapScopedCompositionScript,
 } from "./compositionScoping";
-import { checkSubCompositionUsability } from "./subCompositionValidity";
+import { checkSubCompositionUsability } from "@hyperframes/parsers/sub-composition-validity";
 
 // ---------------------------------------------------------------------------
 // Public interface
@@ -181,19 +181,26 @@ export function inlineSubCompositions(
     if (!src) continue;
 
     const compHtml = resolveHtml(src);
-    // Shared with lint + render pre-flight (subCompositionValidity.ts) so all
-    // three callers agree on what counts as a usable sub-composition file.
-    // This path stays intentionally tolerant (skip, don't throw) — preview
-    // and studio must keep bundling around a scene that's still being
-    // authored. Lint and the render pre-flight check use the same helper to
-    // fail loudly instead.
+    // Shared with lint + render pre-flight (@hyperframes/parsers'
+    // subCompositionValidity.ts) so all three callers agree on what counts
+    // as a usable sub-composition file. This path stays intentionally
+    // tolerant (skip, don't throw) — preview and studio must keep bundling
+    // around a scene that's still being authored. Lint and the render
+    // pre-flight check use the same helper to fail loudly instead.
     const validity = checkSubCompositionUsability(compHtml, parseHtml);
     if (!validity.ok) {
       onMissingComposition?.(src, validity.detail);
       continue;
     }
+    if (compHtml == null) {
+      // Unreachable in practice — checkSubCompositionUsability's "empty"
+      // reason already covers null/undefined — but this lets TypeScript
+      // narrow compHtml to `string` below without an `as T` assertion.
+      onMissingComposition?.(src);
+      continue;
+    }
 
-    const compDoc = parseHtml(compHtml as string);
+    const compDoc = parseHtml(compHtml);
 
     // Determine composition IDs
     let compId: string | null;

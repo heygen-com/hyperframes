@@ -79,4 +79,22 @@ describe("checkSubCompositionUsability", () => {
     expect(result.ok).toBe(false);
     expect(result.reason).toBe("no-content");
   });
+
+  it("rejects non-empty, parseable HTML with no data-composition-id anywhere (e.g. an AI-authored placeholder scene)", () => {
+    const result = checkSubCompositionUsability(
+      "<!doctype html><html><head></head><body><p>TODO: scene content</p></body></html>",
+      parse,
+    );
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe("no-composition-root");
+  });
+
+  it("rejects a <template> with content but no data-composition-id element inside", () => {
+    const result = checkSubCompositionUsability(
+      '<template><div class="title">HELLO WORLD</div></template>',
+      parse,
+    );
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe("no-composition-root");
+  });
 });

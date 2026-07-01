@@ -71,6 +71,7 @@
     "@hyperframes/core": "workspace:^",
     "@hyperframes/engine": "workspace:^",
     "@hyperframes/lint": "workspace:^",
+    "@hyperframes/parsers": "workspace:^",
     "@hyperframes/studio-server": "workspace:^",
     "hono": "^4.6.0",
     "linkedom": "^0.18.12",

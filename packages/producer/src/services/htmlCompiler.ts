@@ -23,11 +23,11 @@ import {
   type ResolvedDuration,
   type UnresolvedElement,
 } from "@hyperframes/core";
+import { inlineSubCompositions as inlineSubCompositionsShared } from "@hyperframes/core/compiler";
 import {
-  inlineSubCompositions as inlineSubCompositionsShared,
   checkSubCompositionUsability,
   type ParsableDocumentLike,
-} from "@hyperframes/core/compiler";
+} from "@hyperframes/parsers/sub-composition-validity";
 import { extractMediaMetadata, extractAudioMetadata } from "../utils/ffprobe.js";
 import { isPathInside, toExternalAssetKey } from "../utils/paths.js";
 import {
@@ -63,6 +63,11 @@ export interface CompiledComposition {
   hasShaderTransitions: boolean;
 }
 
+/** Adapts linkedom's `parseHTML` to the `checkSubCompositionUsability` contract. */
+function parseSubCompHtmlForValidity(html: string): ParsableDocumentLike {
+  return parseHTML(html).document as unknown as ParsableDocumentLike;
+}
+
 /**
  * Thrown by {@link assertSubCompositionsUsable} when one or more
  * `data-composition-src` references resolve to a missing, empty, or
@@ -80,13 +85,7 @@ export interface CompiledComposition {
  * of surfacing 45+ seconds later as a `pollSubCompositionTimelines` timeout
  * or a raw `Cannot destructure property 'firstElementChild' of
  * 'documentElement' as it is null` crash deep inside linkedom.
- */
-/** Adapts linkedom's `parseHTML` to the `checkSubCompositionUsability` contract. */
-function parseSubCompHtmlForValidity(html: string): ParsableDocumentLike {
-  return parseHTML(html).document as unknown as ParsableDocumentLike;
-}
-
-/**
+ *
  * Not exported — nothing needs `instanceof` narrowing on this today. Callers
  * catch it generically (`catch (err: unknown)`, matching on `.message`) the
  * same way they handle every other compile-time failure. Kept as a class
@@ -138,9 +137,13 @@ function assertSubCompositionsUsable(
   for (const el of hosts) {
     const srcPath = el.getAttribute("data-composition-src");
     if (!srcPath) continue;
+    if (/^__[A-Z_]+__$/.test(srcPath)) continue; // template placeholder, not a real reference — matches lint's skip
 
     const filePath = resolve(projectDir, srcPath);
-    if (visited.has(filePath)) continue; // circular reference — parseSubCompositions handles reporting
+    // Circular reference guard. parseSubCompositions (below) silently
+    // `continue`s on a repeat visit with no reporting at all — mirror that
+    // silence here rather than pretend it surfaces an error somewhere else.
+    if (visited.has(filePath)) continue;
 
     if (!existsSync(filePath)) {
       problems.push({ srcPath, detail: "the file does not exist" });
