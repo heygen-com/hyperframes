@@ -85,6 +85,7 @@
               "guides/claude-design",
               "guides/open-design",
               "guides/prompting",
+              "guides/elevenlabs-tts",
               "guides/hyperframes-vs-remotion",
               "guides/gsap-animation",
               "guides/keyframes",

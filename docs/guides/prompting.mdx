@@ -228,6 +228,8 @@ TTS runs locally via Kokoro (no API key needed). Describe the content and the ag
 "Add TTS with British male voice at 1.1x speed"
 ```
 
+For production voices, cloned voices, or ElevenLabs voice library assets, generate the audio externally and then run `npx hyperframes transcribe` so captions still use HyperFrames' word-level timing format. See [ElevenLabs TTS](/guides/elevenlabs-tts) for the recommended workflow.
+
 ### Rendering quality
 
 | Quality    | Use for                  |
