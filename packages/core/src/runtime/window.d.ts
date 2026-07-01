@@ -144,6 +144,25 @@ declare global {
      */
     __hfD3?: unknown[];
     /**
+     * Render-function callbacks for compositions whose visual state is a pure
+     * function of time (hand-rolled clocks, React state timelines, canvas /
+     * demoscene loops) — the seek-driven replacement for a
+     * `requestAnimationFrame` loop. The adapter calls each with the exact
+     * composition time (seconds) for every captured frame:
+     *   window.__hfRender = window.__hfRender || [];
+     *   window.__hfRender.push((timeSeconds) => drawFrame(timeSeconds));
+     *
+     * Callbacks must render purely from the time argument (no `Date.now()`,
+     * no `performance.now()`, no unseeded randomness).
+     */
+    __hfRender?: Array<(timeSeconds: number) => void>;
+    /**
+     * Current seek position in seconds, mirrored by the render-function adapter
+     * while it drives `__hfRender` callbacks. Read it from draw helpers instead
+     * of `performance.now()` to stay on the deterministic seek clock.
+     */
+    __hfTime?: number;
+    /**
      * Render-time variable overrides injected by the engine when the user
      * passes `hyperframes render --variables '<json>'`. Read indirectly via
      * `window.__hyperframes.getVariables()` (or the named `getVariables`
