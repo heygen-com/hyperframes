@@ -295,7 +295,8 @@ export function useDomEditSession({
     // the SDK resolves each reordered element (the reorderElements op's targets).
     onReorderShadow: sdkSession
       ? (targets: string[]) => {
-          for (const target of targets) recordResolverParity(sdkSession, target, "reorderElements");
+          for (const target of targets)
+            void recordResolverParity(sdkSession, target, "reorderElements");
         }
       : undefined,
   });
