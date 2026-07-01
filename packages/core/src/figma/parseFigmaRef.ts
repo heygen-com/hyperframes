@@ -3,7 +3,7 @@ import type { FigmaRef } from "./types";
 const FILE_KEY_RE = /\/(?:design|file|proto)\/([A-Za-z0-9]+)/;
 
 function normalizeNodeId(raw: string): string {
-  return raw.replace("-", ":");
+  return raw.replaceAll("-", ":");
 }
 
 export function parseFigmaRef(input: string): FigmaRef {
