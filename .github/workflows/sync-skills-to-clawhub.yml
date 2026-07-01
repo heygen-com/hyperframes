@@ -1,0 +1,66 @@
+name: Sync skills to ClawHub
+
+# Publishes changed skills under skills/ to ClawHub (https://clawhub.ai/heygen-com)
+# whenever they land on main. `clawhub sync` only publishes skills whose content
+# changed vs. the registry, auto-bumping the patch version — unchanged skills are
+# a no-op, so this is safe to run on every push.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "skills/**"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Preview what would publish without publishing"
+        type: boolean
+        default: false
+
+# Serialize runs so two pushes don't race on the same skill version.
+concurrency:
+  group: clawhub-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    name: Publish changed skills
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLAWHUB_DISABLE_TELEMETRY: "1"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Install ClawHub CLI
+        run: npm i -g clawhub@0.23.1
+
+      - name: Authenticate
+        env:
+          CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
+        run: clawhub login --token "$CLAWHUB_TOKEN" --no-input --label "hyperframes CI"
+
+      - name: Sync skills
+        env:
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+        run: |
+          FLAGS=(
+            --all
+            --owner heygen-com
+            --bump patch
+            --changelog "Synced from ${GITHUB_SHA:0:7} (${GITHUB_REF_NAME})"
+            --source-repo "$GITHUB_REPOSITORY"
+            --source-commit "$GITHUB_SHA"
+            --source-ref "$GITHUB_REF"
+          )
+          if [ "$DRY_RUN" = "true" ]; then
+            FLAGS+=(--dry-run)
+          fi
+          clawhub sync "${FLAGS[@]}"
