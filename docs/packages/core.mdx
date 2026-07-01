@@ -380,6 +380,28 @@ The pre-built runtime IIFE is available as a direct import:
 import runtime from '@hyperframes/core/runtime';
 ```
 
+### Audio Ducking
+
+Use `duck` from composition JavaScript to write deterministic volume ramps onto a GSAP timeline. The helper reads the timed media tracks you pass in and does not add any HTML authoring attributes:
+
+```typescript
+import { duck } from '@hyperframes/core';
+
+const timeline = gsap.timeline({ paused: true });
+const music = document.querySelector<HTMLAudioElement>('#music');
+const voice = document.querySelector<HTMLAudioElement>('#voice');
+
+if (music && voice) {
+  duck(music, [voice], {
+    timeline,
+    amount: '-12dB',
+    fade: 0.3,
+  });
+}
+```
+
+To affect preview and render, pass the real DOM media elements as the tracks **and** the composition's captured GSAP timeline — those ramps are probed into the same volume envelope as hand-authored fades. Plain timing objects (`{ start, duration }`) and the returned keyframe array are for computing ducking offline (tests, custom pipelines); on their own they do not influence playback. `duck` writes its ramps in composition time, so it works the same for tracks placed at a non-zero `data-start`.
+
 ## Frame Adapters
 
 The core package defines the [Frame Adapter](/concepts/frame-adapters) interface and provides the built-in GSAP adapter:

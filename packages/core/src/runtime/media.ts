@@ -192,8 +192,18 @@ export function syncRuntimeMedia(params: {
       let authorVolume: number;
       if (clip.volumeKeyframes && clip.volumeKeyframes.length > 0) {
         // Keyframes probed from the GSAP timeline — same source as the renderer.
-        // Use the interpolated envelope value directly; no need to track GSAP changes.
-        authorVolume = clampVolume(interpolateVolumeGain(clip.volumeKeyframes, relTime));
+        // They carry ABSOLUTE composition-time stamps (the probe samples
+        // el.volume at absolute timeline seconds, and duck() writes its ramps at
+        // absolute overlap times). The renderer normalises them by the track
+        // start before baking (engine/audioVolumeEnvelope.ts → normaliseEnvelope)
+        // and then looks the envelope up in track-relative seconds, which makes
+        // its result shift-invariant in composition time. Preview must use the
+        // SAME basis, so look the envelope up at absolute composition time — NOT
+        // relTime. relTime is track-relative AND folds in mediaStart/playbackRate
+        // (which the envelope was never authored against), so interpolating
+        // absolute keyframes at relTime reads the wrong window and misses the
+        // duck for any track with a non-zero data-start.
+        authorVolume = clampVolume(interpolateVolumeGain(clip.volumeKeyframes, params.timeSeconds));
       } else if (previousRuntimeVolume === undefined) {
         // First tick this clip is active. The transport has already seeked GSAP
         // to the current time (seekTimelineAndAdapters runs before syncRuntimeMedia),
