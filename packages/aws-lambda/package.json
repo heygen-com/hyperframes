@@ -67,7 +67,7 @@
     "typescript": "^5.7.2"
   },
   "peerDependencies": {
-    "aws-cdk-lib": "^2.130.0",
+    "aws-cdk-lib": "^2.260.0",
     "constructs": "^10.3.0"
   },
   "peerDependenciesMeta": {
