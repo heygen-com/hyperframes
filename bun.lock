@@ -45,7 +45,7 @@
       },
       "peerDependencies": {
         "aws-cdk-lib": "^2.130.0",
-        "constructs": "^10.3.0",
+        "constructs": "^10.6.0",
       },
       "optionalPeers": [
         "aws-cdk-lib",
