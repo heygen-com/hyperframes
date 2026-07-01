@@ -216,14 +216,14 @@ export function createWaapiAdapter(): RuntimeDeterministicAdapter {
     },
     getInferredDurationSeconds: () => {
       let maxEndSeconds = 0;
-      let sawUnbounded = false;
       for (const animation of snapshotAnimations()) {
         const result = inferAnimationEndSeconds(animation);
-        if (result.unbounded) sawUnbounded = true;
+        // Unbounded (Infinity/NaN endTime) animations are skipped here —
+        // they never contribute to maxEndSeconds. A finite animation
+        // elsewhere on the composition still supplies a valid duration
+        // signal; only fall through to null when nothing finite was found.
         if (result.endSeconds != null) maxEndSeconds = Math.max(maxEndSeconds, result.endSeconds);
       }
-      // Infinity/NaN on any animation — unbounded iteration count, can't auto-infer.
-      if (sawUnbounded) return null;
       return maxEndSeconds > 0 ? maxEndSeconds : null;
     },
   };

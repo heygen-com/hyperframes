@@ -120,19 +120,18 @@ export function createCssAdapter(params?: {
     },
     getInferredDurationSeconds: () => {
       let maxEndSeconds = 0;
-      let sawUnbounded = false;
       for (const entry of entries) {
         if (!entry.el.isConnected) continue;
         const start = resolveEntryStartSeconds(entry.el);
         for (const animation of getAnimationsForElement(entry.el)) {
           const result = inferAnimationEndSeconds(animation, start);
-          if (result.unbounded) sawUnbounded = true;
+          // Unbounded (Infinity/NaN endTime) animations are skipped here —
+          // they never contribute to maxEndSeconds. A finite animation
+          // elsewhere on the composition still supplies a valid duration
+          // signal; only fall through to null when nothing finite was found.
           if (result.endSeconds != null) maxEndSeconds = Math.max(maxEndSeconds, result.endSeconds);
         }
       }
-      // Infinity (or NaN) on any animation — unbounded/infinite iteration
-      // count, can't auto-infer. The caller must keep declaring data-duration.
-      if (sawUnbounded) return null;
       return maxEndSeconds > 0 ? maxEndSeconds : null;
     },
     seek: (ctx) => {

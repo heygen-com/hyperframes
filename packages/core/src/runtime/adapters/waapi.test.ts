@@ -298,7 +298,7 @@ describe("waapi adapter", () => {
       delete (document as any).getAnimations;
     });
 
-    it("returns null when any animation has an unbounded (Infinity) endTime", () => {
+    it("returns the finite animation's end time when a finite and an unbounded animation coexist", () => {
       const finite = {
         pause: vi.fn(),
         currentTime: 0,
@@ -310,6 +310,22 @@ describe("waapi adapter", () => {
         effect: { getComputedTiming: () => ({ endTime: Infinity }) },
       };
       (document as any).getAnimations = vi.fn(() => [finite, infinite]);
+
+      const adapter = createWaapiAdapter();
+      // The unbounded animation is ignored; the finite animation's 2s end
+      // time is still a valid duration signal.
+      expect(adapter.getInferredDurationSeconds?.()).toBe(2);
+
+      delete (document as any).getAnimations;
+    });
+
+    it("returns null when every animation has an unbounded (Infinity) endTime", () => {
+      const infinite = {
+        pause: vi.fn(),
+        currentTime: 0,
+        effect: { getComputedTiming: () => ({ endTime: Infinity }) },
+      };
+      (document as any).getAnimations = vi.fn(() => [infinite]);
 
       const adapter = createWaapiAdapter();
       expect(adapter.getInferredDurationSeconds?.()).toBeNull();

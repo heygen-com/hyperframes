@@ -270,6 +270,43 @@ describe("css adapter", () => {
       vi.restoreAllMocks();
     });
 
+    it("returns the finite animation's end time when a finite and an unbounded animation coexist", () => {
+      const elFinite = document.createElement("div");
+      elFinite.style.animationName = "fadeIn";
+      const elInfinite = document.createElement("div");
+      elInfinite.style.animationName = "spin";
+      document.body.appendChild(elFinite);
+      document.body.appendChild(elInfinite);
+
+      vi.spyOn(window, "getComputedStyle").mockImplementation((target) => {
+        return {
+          animationName: target === elFinite ? "fadeIn" : target === elInfinite ? "spin" : "none",
+        } as CSSStyleDeclaration;
+      });
+
+      (elFinite as HTMLElement & { getAnimations?: () => Animation[] }).getAnimations = () => [
+        {
+          effect: { getComputedTiming: () => ({ endTime: 3000 }) },
+        } as unknown as Animation,
+      ];
+      (elInfinite as HTMLElement & { getAnimations?: () => Animation[] }).getAnimations = () => [
+        {
+          effect: { getComputedTiming: () => ({ endTime: Infinity }) },
+        } as unknown as Animation,
+      ];
+
+      const adapter = createCssAdapter();
+      adapter.discover();
+
+      // The unbounded "spin" animation is ignored; the finite "fadeIn"
+      // animation's 3s end time is still a valid duration signal.
+      expect(adapter.getInferredDurationSeconds?.()).toBe(3);
+
+      document.body.removeChild(elFinite);
+      document.body.removeChild(elInfinite);
+      vi.restoreAllMocks();
+    });
+
     it("ignores disconnected elements", () => {
       const el = document.createElement("div");
       el.style.animationName = "fadeIn";
