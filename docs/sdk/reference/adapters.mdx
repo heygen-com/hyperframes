@@ -1,0 +1,322 @@
+---
+title: "Adapters"
+description: "Persistence and preview adapter interfaces, contracts, and the built-in factory functions."
+---
+
+The SDK decouples editing sessions from storage and preview surfaces through two injectable interfaces: `PersistAdapter` and `PreviewAdapter`. Both ship with concrete factory functions you pass to `openComposition()`. You can also implement either interface directly for custom storage backends (S3, IndexedDB, HTTP) or custom preview surfaces.
+
+## PersistAdapter
+
+```typescript
+import type { PersistAdapter } from "@hyperframes/sdk";
+```
+
+Injectable storage adapter. Decouples the SDK from the underlying persistence mechanism so the same session code runs in tests (memory), local dev (filesystem), and production (cloud storage).
+
+### Interface
+
+```typescript
+interface PersistAdapter {
+  read(path: string): Promise<string | undefined>;
+  write(path: string, content: string): Promise<void>;
+  flush(): Promise<void>;
+  listVersions(path: string): Promise<PersistVersionEntry[]>;
+  loadFrom(path: string, versionKey: string): Promise<string | undefined>;
+  on(event: "persist:error", handler: (event: PersistErrorEvent) => void): () => void;
+}
+```
+
+<ParamField path="read" type="(path: string) => Promise<string | undefined>">
+  Returns the stored content for `path`, or `undefined` for a path that has never been written. Never throws for a missing path.
+</ParamField>
+
+<ParamField path="write" type="(path: string, content: string) => Promise<void>">
+  Persists `content` at `path`. Idempotent — a second call with the same path overwrites the prior value. Write failures must not propagate as thrown exceptions; fire `persist:error` instead.
+</ParamField>
+
+<ParamField path="flush" type="() => Promise<void>">
+  Forces any queued or in-flight writes to commit before resolving. Call before process exit or navigation to prevent data loss.
+</ParamField>
+
+<ParamField path="listVersions" type="(path: string) => Promise<PersistVersionEntry[]>">
+  Returns the version history for `path` ordered newest-first. Returns an empty array when no versions exist. See `PersistVersionEntry` below.
+</ParamField>
+
+<ParamField path="loadFrom" type="(path: string, versionKey: string) => Promise<string | undefined>">
+  Returns the HTML content for a specific version identified by `versionKey`. Returns `undefined` when the key does not exist.
+</ParamField>
+
+<ParamField path="on" type='(event: "persist:error", handler) => () => void'>
+  Subscribes to write failures. Returns an unsubscribe function. Adapters must emit this event — not throw — when a write fails, so the session continues running even when storage is temporarily unavailable.
+</ParamField>
+
+### Contract summary
+
+- `read()` returns `undefined` for a path that has never been written — never throws ENOENT or a 404 equivalent.
+- `write()` is idempotent; a second write to the same path replaces the stored content.
+- `flush()` resolves when any pending writes are committed to durable storage.
+- `listVersions()` returns entries newest-first; `loadFrom()` uses the keys from those entries.
+- Write errors are emitted via `on('persist:error')`, never thrown — the session keeps running.
+
+### PersistVersionEntry
+
+```typescript
+interface PersistVersionEntry {
+  /** Opaque key identifying this version (adapter-defined format). */
+  key: string;
+  /** Full HTML content — may be omitted by adapters that load content lazily via loadFrom(). */
+  content?: string;
+  timestamp?: number;
+}
+```
+
+The `key` is adapter-defined and opaque to callers — pass it directly to `loadFrom()`. The filesystem adapter encodes milliseconds and a counter into the key; the memory adapter uses an incrementing `"v1"`, `"v2"` … scheme.
+
+---
+
+## PreviewAdapter
+
+```typescript
+import type { PreviewAdapter } from "@hyperframes/sdk";
+```
+
+Injectable preview surface adapter. Decouples the SDK from the host's rendering layer. The SDK is **not** in the 60fps draft loop: your pointer-move handler calls `applyDraft()` directly on the adapter at 60fps, and the SDK only gets involved once per gesture when `commitPreview()` fires to derive and dispatch the resulting op.
+
+### Interface
+
+```typescript
+interface PreviewAdapter {
+  elementAtPoint(x: number, y: number, opts?: { atTime?: number }): ElementAtPointResult | null;
+  applyDraft(id: string, props: DraftProps): void;
+  commitPreview(): void;
+  cancelPreview(): void;
+  select(ids: string[], opts?: { additive?: boolean }): void;
+  on(event: "selection", handler: (ids: string[]) => void): () => void;
+}
+```
+
+<ParamField path="elementAtPoint" type="(x, y, opts?) => ElementAtPointResult | null">
+  Synchronous hit-test at composition coordinates `(x, y)`. Returns the nearest `[data-hf-id]` element under the point, or `null` for a transparent hit (the composition root, an opacity-0 element, or nothing at all). Requires a same-origin iframe — cross-origin access throws a DOMException. The `atTime` option reflects GSAP state at the current playhead; seeking to a speculative time is not supported.
+</ParamField>
+
+<ParamField path="applyDraft" type="(id: string, props: DraftProps) => void">
+  Applies draft CSS markers to the preview element at 60fps during a drag. Writes CSS custom properties (`--hf-studio-dx`, `--hf-studio-dy`) onto the element so the composition's CSS can visually translate it without touching the model. The **SDK is not called here** — this is a direct write to the preview surface by your pointer-move handler.
+</ParamField>
+
+<ParamField path="commitPreview" type="() => void">
+  Called once on pointer-up. Reads the accumulated draft markers, derives a `moveElement` op from them, dispatches it into the SDK, emits a patch event, and clears the markers. This is the only moment the SDK becomes aware of a drag.
+</ParamField>
+
+<ParamField path="cancelPreview" type="() => void">
+  Reverts the draft CSS markers without dispatching any op. The model is never changed. Call this on `Escape` keydown or when a drag is aborted.
+</ParamField>
+
+<ParamField path="select" type="(ids: string[], opts?: { additive?: boolean }) => void">
+  Sets the preview selection and fires `selectionchange` on the session. Pass `{ additive: true }` to merge `ids` into the current selection rather than replacing it.
+</ParamField>
+
+<ParamField path="on" type='(event: "selection", handler: (ids: string[]) => void) => () => void'>
+  Fired when the preview host changes the selection (for example, the user clicks an element). Returns an unsubscribe function. In the current release, callers listen to the session's own `selectionchange` event instead — this hook is wired in a future stage.
+</ParamField>
+
+### ElementAtPointResult
+
+```typescript
+interface ElementAtPointResult {
+  id: string;
+  tag: string;
+}
+```
+
+The `id` is the element's `data-hf-id` value; `tag` is its lowercase tag name (e.g. `"div"`, `"img"`).
+
+### DraftProps
+
+```typescript
+interface DraftProps {
+  dx?: number;
+  dy?: number;
+  width?: number;
+  height?: number;
+}
+```
+
+`dx` and `dy` are the accumulated drag deltas in composition pixels. `width` and `height` are defined in the interface for forward compatibility but are not yet wired to any op.
+
+<Note>
+  `ElementAtPointResult` and `DraftProps` are the structural shapes a `PreviewAdapter` produces and consumes. They are **not** re-exported from the `@hyperframes/sdk` barrel — you implement against these shapes rather than importing them.
+</Note>
+
+---
+
+## Factory Functions
+
+### createMemoryAdapter
+
+```typescript
+import { createMemoryAdapter } from "@hyperframes/sdk";
+
+function createMemoryAdapter(): PersistAdapter & { injectFault(message: string): void };
+```
+
+Returns a `PersistAdapter` backed by an in-process `Map`. Writes are synchronous; `flush()` is a no-op. Versions are keyed `"v1"`, `"v2"` … and stored in memory with full content.
+
+The returned value also exposes `injectFault(message)` — a test helper that causes the **next** `write()` call to fire a `persist:error` event with `message` instead of committing. Use this in unit tests to verify your error-handling code path.
+
+```typescript
+const persist = createMemoryAdapter();
+
+const comp = await openComposition(html, { persist });
+comp.setText("hf-title", "Hello");
+await comp.flush();
+
+const saved = await persist.read("composition.html");
+```
+
+<Note>
+  `createMemoryAdapter()` is best suited for tests, demos, and ephemeral in-process sessions. For local development, use `createFsAdapter()` so edits survive restarts.
+</Note>
+
+---
+
+### createFsAdapter
+
+```typescript
+import { createFsAdapter } from "@hyperframes/sdk/adapters/fs";
+
+function createFsAdapter(opts: FsAdapterOptions): PersistAdapter;
+```
+
+**Node.js only.** Returns a `PersistAdapter` that reads and writes files under a root directory. Import from the `@hyperframes/sdk/adapters/fs` subpath — this module uses Node `fs/promises` and is excluded from the browser-safe main bundle.
+
+#### FsAdapterOptions
+
+```typescript
+interface FsAdapterOptions {
+  /** Root directory for composition files. */
+  root: string;
+  /** Max versions to keep per file. Default: 20. */
+  maxVersions?: number;
+}
+```
+
+<ParamField path="root" type="string" required>
+  Absolute or relative path to the directory where composition files are written. Created with `mkdir -p` on first write.
+</ParamField>
+
+<ParamField path="maxVersions" type="number">
+  Maximum number of historical versions retained per file. Oldest versions are pruned automatically when the limit is exceeded. Defaults to `20`.
+</ParamField>
+
+The adapter writes the current composition at `{root}/{path}` and stores version snapshots in `{root}/.hf-versions/{path}/`. Version keys encode `Date.now()` and a monotonic counter (`"1750000000000-0001"`), so `listVersions()` returns them newest-first by lexicographic descending sort.
+
+```typescript
+import { openComposition } from "@hyperframes/sdk";
+import { createFsAdapter } from "@hyperframes/sdk/adapters/fs";
+
+const comp = await openComposition(html, {
+  persist: createFsAdapter({ root: "./project", maxVersions: 50 }),
+  persistPath: "index.html",
+});
+
+comp.setText("hf-title", "Saved");
+await comp.flush();
+
+// List saved versions
+const adapter = createFsAdapter({ root: "./project" });
+const versions = await adapter.listVersions("index.html");
+const previous = await adapter.loadFrom("index.html", versions[1].key);
+```
+
+<Warning>
+  `createFsAdapter` uses Node.js `fs/promises`. Do not import it in browser or edge environments — import from `@hyperframes/sdk/adapters/fs` (the subpath) so bundlers can tree-shake it.
+</Warning>
+
+---
+
+### createHeadlessAdapter
+
+```typescript
+import { createHeadlessAdapter } from "@hyperframes/sdk";
+
+function createHeadlessAdapter(): PreviewAdapter;
+```
+
+Returns a no-op `PreviewAdapter` for headless use: agents, CI pipelines, and server-side rendering. All methods are stubs — `elementAtPoint` always returns `null`, `applyDraft` and `commitPreview` are no-ops, and the `"selection"` event never fires.
+
+Pass this adapter when you open a composition for programmatic editing and do not need a live preview surface.
+
+```typescript
+import { openComposition, createHeadlessAdapter } from "@hyperframes/sdk";
+
+const comp = await openComposition(html, {
+  preview: createHeadlessAdapter(),
+});
+```
+
+<Note>
+  `openComposition` defaults to a headless preview adapter when none is supplied, so you rarely need to pass it explicitly. The main use case is making the intent clear in code that runs in both headless and browser environments.
+</Note>
+
+---
+
+### createIframePreviewAdapter
+
+```typescript
+import { createIframePreviewAdapter } from "@hyperframes/sdk";
+
+function createIframePreviewAdapter(
+  iframe: HTMLIFrameElement,
+  dispatch?: (op: EditOp) => void,
+): PreviewAdapter;
+```
+
+Returns a `PreviewAdapter` that bridges the SDK to a same-origin `<iframe>` containing the composition. Provides real hit-testing via `elementsFromPoint` (z-stack aware), draft drag support, and selection management.
+
+**Requirements:**
+- The iframe must be same-origin (e.g. a `srcdoc` or `blob:` URL). Cross-origin access to `contentDocument` throws a `DOMException`.
+- Pass your session's `dispatch` callback to enable `commitPreview()` — without it, pointer-up is a no-op on the model.
+
+**Image-alpha hit-testing:** For `<img>` elements, the adapter samples the alpha channel of the pixel under the pointer using an `OffscreenCanvas`. Transparent pixels fall through to the element behind. Cross-origin images that taint the canvas are treated as opaque (safe fallback, logged once per src).
+
+```typescript
+import { openComposition, createIframePreviewAdapter } from "@hyperframes/sdk";
+
+const iframe = document.querySelector<HTMLIFrameElement>("#preview-frame")!;
+
+const comp = await openComposition(html);
+
+const preview = createIframePreviewAdapter(iframe, (op) => comp.dispatch(op));
+
+// Hit-test at pointer position
+const hit = preview.elementAtPoint(pointerX, pointerY);
+if (hit) {
+  preview.select([hit.id]);
+}
+
+// Drag: call applyDraft at 60fps, commitPreview on pointer-up
+preview.applyDraft(hit.id, { dx: 12, dy: -5 });
+preview.commitPreview();
+```
+
+---
+
+## Export Map
+
+| Symbol | Imported from |
+|--------|---------------|
+| `PersistAdapter`, `PreviewAdapter`, `PersistVersionEntry` | `@hyperframes/sdk` (types only) |
+| `createMemoryAdapter` | `@hyperframes/sdk` |
+| `createHeadlessAdapter` | `@hyperframes/sdk` |
+| `createIframePreviewAdapter`, `resolveNearestHfElement` | `@hyperframes/sdk` |
+| `createFsAdapter`, `FsAdapterOptions` | `@hyperframes/sdk/adapters/fs` |
+
+<CardGroup cols={2}>
+  <Card title="Persistence Guide" icon="floppy-disk" href="/sdk/guides/persistence">
+    How to wire adapters into openComposition, handle errors, and restore versions.
+  </Card>
+  <Card title="Canvas Integration" icon="browser" href="/sdk/guides/canvas-integration">
+    Building a visual editor canvas with the iframe preview adapter and hit-testing.
+  </Card>
+</CardGroup>
+

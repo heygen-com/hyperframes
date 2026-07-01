@@ -50,6 +50,12 @@ type CompositionRange = {
 
 const SCENE_BOUNDARY_EPSILON_SECONDS = 0.05;
 
+// Sentinel the GSAP parser assigns to a tween whose target it cannot statically
+// resolve to a concrete element (a computed variable, a helper call, etc.). It is
+// NOT an identity: two distinct unresolved selectors are not the same element, so
+// overlap analysis must never treat them as one.
+const UNRESOLVED_TARGET = "__unresolved__";
+
 // ── GSAP parsing utilities ─────────────────────────────────────────────────
 
 function countClassUsage(tags: OpenTag[]): Map<string, number> {
@@ -546,6 +552,9 @@ export const gsapRules: LintRule<LintContext>[] = [
         const left = gsapWindows[i];
         if (!left) continue;
         if (left.end <= left.position) continue;
+        // Unresolved targets are unknown elements: two of them are not provably
+        // the same element, so an overlap between them cannot be asserted.
+        if (left.targetSelector === UNRESOLVED_TARGET) continue;
         for (let j = i + 1; j < gsapWindows.length; j++) {
           const right = gsapWindows[j];
           if (!right) continue;
@@ -573,6 +582,9 @@ export const gsapRules: LintRule<LintContext>[] = [
       // gsap_exit_missing_hard_kill
       if (clipStartBoundaries.length > 0) {
         for (const win of gsapWindows) {
+          // Unresolved targets are unknown elements: you cannot assert a missing
+          // hard kill on one, and a `tl.set("__unresolved__", ...)` hint is meaningless.
+          if (win.targetSelector === UNRESOLVED_TARGET) continue;
           if (!isSceneBoundaryExit(win)) continue;
           const boundary = findMatchingSceneBoundary(win.end, clipStartBoundaries);
           if (boundary == null) continue;

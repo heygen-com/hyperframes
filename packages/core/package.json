@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/core",
-  "version": "0.7.21",
+  "version": "0.7.22",
   "description": "",
   "repository": {
     "type": "git",
@@ -39,6 +39,12 @@
       "node": "./dist/utils/htmlAttrSafety.js",
       "import": "./src/utils/htmlAttrSafety.ts",
       "types": "./src/utils/htmlAttrSafety.ts"
+    },
+    "./editing": {
+      "bun": "./src/editing/affordances.ts",
+      "node": "./dist/editing/affordances.js",
+      "import": "./src/editing/affordances.ts",
+      "types": "./src/editing/affordances.ts"
     },
     "./slideshow": {
       "bun": "./src/slideshow/index.ts",
@@ -215,6 +221,10 @@
       "./html-attr-safety": {
         "import": "./dist/utils/htmlAttrSafety.js",
         "types": "./dist/utils/htmlAttrSafety.d.ts"
+      },
+      "./editing": {
+        "import": "./dist/editing/affordances.js",
+        "types": "./dist/editing/affordances.d.ts"
       },
       "./generators": {
         "import": "./dist/generators/hyperframes.js",

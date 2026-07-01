@@ -124,6 +124,88 @@ describe("adapter rules", () => {
     expect(finding).toBeUndefined();
   });
 
+  it("does not report missing_three_script for an ESM +esm CDN import (jsdelivr)", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"></div>
+  <script type="module">
+    import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160/+esm';
+    window.__timelines = window.__timelines || {};
+    window.__timelines["main"] = gsap.timeline({ paused: true });
+    const scene = new THREE.Scene();
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "missing_three_script");
+    expect(finding).toBeUndefined();
+  });
+
+  it("does not report missing_three_script for an esm.sh/three import", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"></div>
+  <script type="module">
+    import * as THREE from 'https://esm.sh/three';
+    window.__timelines = window.__timelines || {};
+    window.__timelines["main"] = gsap.timeline({ paused: true });
+    const scene = new THREE.Scene();
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "missing_three_script");
+    expect(finding).toBeUndefined();
+  });
+
+  it("does not report missing_three_script for a local three.module.js import", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"></div>
+  <script type="module">
+    import { Scene } from './vendor/three.module.js';
+    window.__timelines = window.__timelines || {};
+    window.__timelines["main"] = gsap.timeline({ paused: true });
+    const scene = new Scene();
+    THREE.foo();
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "missing_three_script");
+    expect(finding).toBeUndefined();
+  });
+
+  it("does not report missing_three_script for a bare 'three' import (regression)", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"></div>
+  <script type="module">
+    import * as THREE from 'three';
+    window.__timelines = window.__timelines || {};
+    window.__timelines["main"] = gsap.timeline({ paused: true });
+    const scene = new THREE.Scene();
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "missing_three_script");
+    expect(finding).toBeUndefined();
+  });
+
+  it("still reports missing_three_script when THREE is used with no three loaded", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"></div>
+  <script type="module">
+    import { gsap } from 'https://cdn.jsdelivr.net/npm/gsap@3/+esm';
+    window.__timelines = window.__timelines || {};
+    window.__timelines["main"] = gsap.timeline({ paused: true });
+    const scene = new THREE.Scene();
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "missing_three_script");
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("error");
+  });
+
   it("does not report any adapter errors for composition with no adapter usage", async () => {
     const html = `
 <html><body>

@@ -11,6 +11,7 @@ const {
   trackRenderObservation,
   trackCommandFailure,
   trackCliError,
+  trackRenderFeedback,
 } = await import("./events.js");
 
 describe("render telemetry events", () => {
@@ -95,6 +96,29 @@ describe("render telemetry events", () => {
         composition_hash: "abc123",
         message: "Navigation failed for [path]",
       }),
+    );
+  });
+});
+
+describe("trackRenderFeedback", () => {
+  beforeEach(() => {
+    trackEvent.mockClear();
+  });
+
+  it("omits render_duration_ms when no duration is known (standalone feedback)", () => {
+    trackRenderFeedback({ rating: 4, comment: "great" });
+
+    const [, props] = trackEvent.mock.calls[0] as [string, Record<string, unknown>];
+    expect(props).not.toHaveProperty("render_duration_ms");
+    expect(props.$survey_response).toBe(4);
+  });
+
+  it("includes render_duration_ms when a real duration is supplied", () => {
+    trackRenderFeedback({ rating: 5, renderDurationMs: 6000 });
+
+    expect(trackEvent).toHaveBeenCalledWith(
+      "survey sent",
+      expect.objectContaining({ render_duration_ms: 6000 }),
     );
   });
 });

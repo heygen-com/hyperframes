@@ -4,6 +4,7 @@ import { existsSync, readdirSync, rmSync } from "node:fs";
 import { basename } from "node:path";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { normalizeErrorMessage } from "../utils/errorMessage.js";
 
 type PuppeteerBrowsers = typeof import("@puppeteer/browsers");
 
@@ -11,7 +12,7 @@ async function loadPuppeteerBrowsers(): Promise<PuppeteerBrowsers> {
   try {
     return await import("@puppeteer/browsers");
   } catch (err) {
-    const cause = err instanceof Error ? err.message : String(err);
+    const cause = normalizeErrorMessage(err);
     throw new Error(
       `Failed to load @puppeteer/browsers: ${cause}\n` +
         `Fix: run \`npm install\` or \`bun install\` to restore missing packages, then retry.`,
@@ -104,7 +105,21 @@ async function findFromCache(): Promise<CacheLookupResult> {
   // no puppeteer-cache binary exists.
   if (existsSync(CACHE_DIR)) {
     const { Browser, getInstalledBrowsers } = await loadPuppeteerBrowsers();
-    const installed = await getInstalledBrowsers({ cacheDir: CACHE_DIR });
+    // A corrupt cache (stub file where a browser dir is expected, malformed
+    // metadata) makes getInstalledBrowsers throw. Treat that as "no cached
+    // browser" so resolution falls through to system/download instead of
+    // crashing every caller.
+    let installed: Awaited<ReturnType<typeof getInstalledBrowsers>>;
+    try {
+      installed = await getInstalledBrowsers({ cacheDir: CACHE_DIR });
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException | undefined)?.code;
+      const suffix = code ? ` (${code})` : "";
+      console.warn(
+        `[hyperframes] Browser cache read failed${suffix}: ${normalizeErrorMessage(err)}. Falling back to system Chrome or a fresh download.`,
+      );
+      installed = [];
+    }
     const match = installed.find((b) => b.browser === Browser.CHROMEHEADLESSSHELL);
     if (match && existsSync(match.executablePath)) {
       return { result: { executablePath: match.executablePath, source: "cache" } };
@@ -268,7 +283,7 @@ export async function findBrowser(): Promise<BrowserResult | undefined> {
     try {
       return await downloadBrowser();
     } catch (err) {
-      const cause = err instanceof Error ? err.message : String(err);
+      const cause = normalizeErrorMessage(err);
       throw new Error(
         `Cached Chrome binary was missing at ${fromCache.staleHyperframesCachePath}, and re-download failed: ${cause}\n` +
           `Run \`hyperframes browser ensure --force\` to re-download.`,

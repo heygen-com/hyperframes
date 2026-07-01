@@ -8,6 +8,11 @@
 // Usage:
 //   node skills/hyperframes-animation/scripts/animation-map.mjs <composition-dir> \
 //     [--frames N] [--out <dir>] [--min-duration S] [--width W] [--height H] [--fps N]
+//
+// Env:
+//   HYPERFRAMES_SKILL_PKG_VERSION — pin the @hyperframes/producer version used
+//     when bootstrapping (global skill installs cannot infer it; falls back to
+//     @latest with a warning otherwise).
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve, join } from "node:path";

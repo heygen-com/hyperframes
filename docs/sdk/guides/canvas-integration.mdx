@@ -1,0 +1,186 @@
+---
+title: "Canvas & Preview Integration"
+description: "Connect a same-origin composition iframe to the SDK for hit-testing, draft preview, and selection."
+---
+
+The SDK's `PreviewAdapter` interface decouples the editing model from the visual surface. For browser-based editors, `createIframePreviewAdapter` bridges the SDK to a same-origin `<iframe>` containing the composition, giving you synchronous hit-testing, 60fps drag preview, and selection management — all without touching the model until the user commits.
+
+<Note>
+  The iframe must be same-origin (e.g. `srcdoc` or a `blob:` URL). Cross-origin iframe access throws a `DOMException`; the adapter does not guard this, so enforcing same-origin is the caller's responsibility.
+</Note>
+
+## Embedding the composition
+
+Render the composition HTML into a same-origin `<iframe>` in your editor shell, then pass that element plus a dispatch callback to `createIframePreviewAdapter`:
+
+```typescript
+import { openComposition, createIframePreviewAdapter } from "@hyperframes/sdk";
+
+// Assume `compositionHtml` is the composition's source HTML string.
+const iframe = document.querySelector<HTMLIFrameElement>("#composition-frame")!;
+
+// Build the adapter first so you can pass it to openComposition.
+// The dispatch callback is called by commitPreview() after a drag completes.
+const preview = createIframePreviewAdapter(iframe, (op) => {
+  comp.dispatch(op);
+});
+
+const comp = await openComposition(compositionHtml, { preview });
+```
+
+The callback references `comp` before it is declared — that is intentional and safe: the arrow function captures `comp` by closure and is only ever invoked later (by `commitPreview()` on pointer-up), by which point `comp` is assigned. This is the standard way to break the adapter ⇄ session circular dependency.
+
+The `dispatch` callback is optional. Omitting it means `commitPreview()` is a no-op, which is useful if you want to handle op derivation yourself.
+
+## Hit-testing: finding what the user clicked
+
+`preview.elementAtPoint(x, y)` performs a synchronous hit-test at coordinates in the iframe's own coordinate space and returns the nearest `[data-hf-id]` element, or `null` for a transparent hit.
+
+```typescript
+iframe.addEventListener("click", (e) => {
+  // e.clientX / e.clientY are in the outer frame's space.
+  // If the iframe is positioned, convert to iframe-local coords.
+  const rect = iframe.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+
+  const hit = preview.elementAtPoint(x, y);
+  if (hit) {
+    // hit.id  — the data-hf-id value
+    // hit.tag — the lowercased tag name (e.g. "div", "img", "video")
+    preview.select([hit.id]);
+  }
+});
+```
+
+The hit-test skips elements whose computed opacity is `0` (including ancestors with `opacity: 0`), and for `<img>` elements it samples the alpha at the clicked pixel using an offscreen canvas — a transparent pixel falls through to the element behind it. Cross-origin images that taint the canvas fall back to treating the pixel as opaque.
+
+The `opts.atTime` parameter is accepted but does not seek the GSAP timeline. It reflects whatever frame the composition is currently paused at in the iframe. Accurate out-of-time-band opacity queries are a future capability.
+
+### Walking a click target to the nearest HF element
+
+If you are working with events on the iframe's `contentDocument` directly (e.g. via a `message` bridge), use the exported `resolveNearestHfElement` function. It walks up the DOM from any node until it finds a `[data-hf-id]` ancestor, skipping the root:
+
+```typescript
+import { resolveNearestHfElement } from "@hyperframes/sdk";
+
+// Inside the iframe's own document context:
+iframeDoc.addEventListener("click", (e) => {
+  const result = resolveNearestHfElement(
+    e.target as Element | null,
+    (el) => {
+      // Return false to treat this element as invisible and continue the walk.
+      const style = el.ownerDocument.defaultView?.getComputedStyle(el);
+      return style ? parseFloat(style.opacity) !== 0 : true;
+    },
+  );
+  if (result) {
+    // result.id, result.tag
+  }
+});
+```
+
+`resolveNearestHfElement` returns `null` when the walk exits the tree without finding a `[data-hf-id]` node, when the matching node carries `[data-hf-root]` (the root is transparent to selection), or when `isVisible` returns `false` for that node.
+
+## Draft loop: 60fps drag without model mutations
+
+The draft loop keeps the model clean during a drag. The SDK is **not** in the 60fps path — you call `preview.applyDraft` on every `pointermove` and `preview.commitPreview` once on `pointerup`. The model sees exactly one `moveElement` op per drag, rather than hundreds.
+
+`applyDraft` writes CSS custom properties (`--hf-studio-dx`, `--hf-studio-dy`) directly onto the target element inside the iframe. The composition's CSS uses these vars to translate the element visually. Nothing in the SDK model changes.
+
+```typescript
+let dragging = false;
+let startX = 0;
+let startY = 0;
+let targetId: string | null = null;
+
+iframe.addEventListener("pointerdown", (e) => {
+  const rect = iframe.getBoundingClientRect();
+  const hit = preview.elementAtPoint(e.clientX - rect.left, e.clientY - rect.top);
+  if (!hit) return;
+
+  dragging = true;
+  targetId = hit.id;
+  startX = e.clientX;
+  startY = e.clientY;
+  iframe.setPointerCapture(e.pointerId);
+});
+
+iframe.addEventListener("pointermove", (e) => {
+  if (!dragging || !targetId) return;
+
+  const dx = e.clientX - startX;
+  const dy = e.clientY - startY;
+
+  // applyDraft at 60fps — no model mutation, no patch event
+  preview.applyDraft(targetId, { dx, dy });
+});
+
+iframe.addEventListener("pointerup", () => {
+  if (!dragging || !targetId) return;
+
+  // Derives a moveElement op from the accumulated dx/dy, dispatches it
+  // through the callback you passed to createIframePreviewAdapter, then
+  // clears the CSS vars and internal draft state.
+  preview.commitPreview();
+
+  dragging = false;
+  targetId = null;
+});
+
+iframe.addEventListener("pointercancel", () => {
+  // Clears the CSS vars. Model is never touched.
+  preview.cancelPreview();
+  dragging = false;
+  targetId = null;
+});
+```
+
+`DraftProps` accepts `dx`, `dy`, `width`, and `height`. Width and height are accepted by the interface but resize support (mapping to a `setStyle` op) is not yet wired — only `dx`/`dy` drive the draft CSS vars today.
+
+Call `cancelPreview()` instead of `commitPreview()` to discard the drag without emitting any op. The model is never mutated and the CSS vars are cleared.
+
+## Selection
+
+`preview.select(ids, opts?)` sets the selection state and fires the session's `selectionchange` event on any listeners. Pass `{ additive: true }` to extend the current selection rather than replace it.
+
+```typescript
+// Replace selection
+preview.select(["hf-title"]);
+
+// Extend selection (e.g. shift-click)
+preview.select(["hf-logo"], { additive: true });
+
+// Clear selection
+preview.select([]);
+```
+
+Listen to selection changes on the session via `comp.on("selectionchange", ...)` — the adapter fires that event, not a separate event on the iframe.
+
+## Pairing with embedded override mode
+
+For template-driven products you typically open the composition in embedded override mode and store only the sparse delta, not the full HTML. The preview adapter works identically in that mode — pass it the same way:
+
+```typescript
+const comp = await openComposition(templateHtml, {
+  preview,
+  overrides: existingOverrides,
+  history: false,
+});
+```
+
+See [Embedded Override Mode](/sdk/guides/embedded-override-mode) for the full pattern.
+
+## What to build next
+
+Once hit-testing and drag are working, you can use the affordance resolver to drive a context-aware inspector panel for whatever element is selected. See [Editing Affordances](/sdk/guides/editing-affordances) for how to translate a live element into capability flags and section applicability.
+
+<CardGroup cols={2}>
+  <Card title="Adapter reference" icon="plug" href="/sdk/reference/adapters">
+    Full `PreviewAdapter`, `PersistAdapter`, and related type documentation.
+  </Card>
+  <Card title="Editing Affordances" icon="sliders" href="/sdk/guides/editing-affordances">
+    Resolve which edit controls to show for the selected element.
+  </Card>
+</CardGroup>
+

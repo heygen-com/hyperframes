@@ -1,0 +1,256 @@
+---
+title: "Querying & Editing Elements"
+description: "Find elements by property, make typed mutations, group edits with batch, and work with element handles and selection."
+---
+
+The SDK exposes two layers for working with composition elements: a **query API** for reading the current document state, and a **mutation API** of typed methods (plus `dispatch()`) for making changes. Every query and every edit operates on stable `hf-id` strings — there is no cursor, no "current selection required" invariant, and no DOM reference that can go stale.
+
+## Query API
+
+### `getElements()`
+
+Returns a flat array of `ElementSnapshot` objects representing every element in the composition — including elements nested inside sub-compositions — in document order.
+
+```typescript
+const elements = comp.getElements();
+
+// Filter in userland
+const images = elements.filter((el) => el.tag === "img");
+const timed = elements.filter((el) => el.start !== null);
+```
+
+Each `ElementSnapshot` (aliased from `HyperFramesElement`) carries:
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `id` | `string` | Leaf `hf-id` — unique within its sub-composition scope |
+| `scopedId` | `string` | Canonical dispatch target (see below) |
+| `tag` | `string` | Lowercase HTML tag name |
+| `text` | `string \| null` | Direct text content of the element |
+| `inlineStyles` | `Record<string, string>` | camelCase property names |
+| `attributes` | `Record<string, string>` | All attributes except `style`, `class`, and `data-hf-*` |
+| `classNames` | `string[]` | |
+| `start` | `number \| null` | Seconds — null when `data-start` is absent |
+| `duration` | `number \| null` | Seconds — null when neither `data-duration` nor `data-end` is present |
+| `trackIndex` | `number \| null` | |
+| `animationIds` | `string[]` | GSAP tween IDs targeting this element |
+
+### `getElement(id)`
+
+Fetches a single element snapshot by `id` or `scopedId`. Returns `null` when no element matches.
+
+```typescript
+const el = comp.getElement("hf-title");
+if (el) {
+  console.log(el.text, el.inlineStyles.color);
+}
+```
+
+Both bare ids (top-level elements) and scoped ids (sub-composition elements) are accepted. A bare id resolves only against top-level elements: a leaf that exists **only** inside a sub-composition returns `null` even if its id is unique in the document — use `find()` to discover its scoped form (`"hf-HOST/hf-LEAF"`), then pass that to `getElement`.
+
+### `find(query)`
+
+Returns an array of `scopedId` strings for every element that matches all supplied `FindQuery` fields. All fields are optional; an empty query matches everything (equivalent to `getElements().map(el => el.scopedId)`).
+
+```typescript
+import type { FindQuery } from "@hyperframes/sdk";
+
+// By tag
+const imgIds = comp.find({ tag: "img" });
+
+// By text content (substring match)
+const headlineIds = comp.find({ text: "Launch" });
+
+// By data-name attribute
+const logoIds = comp.find({ name: "brand-logo" });
+
+// By track index
+const track1Ids = comp.find({ track: 1 });
+
+// Filter to elements inside a specific sub-composition (by host hf-id)
+const innerIds = comp.find({ composition: "hf-intro-scene" });
+
+// Combine fields — all must match
+const [targetId] = comp.find({ tag: "h1", track: 0 });
+```
+
+`FindQuery` fields:
+
+| Field | Type | Matches |
+|-------|------|---------|
+| `tag` | `string` | Exact tag name |
+| `text` | `string` | Substring of `el.text` |
+| `name` | `string` | Exact value of the `data-name` attribute |
+| `track` | `number` | Exact `trackIndex` |
+| `composition` | `string` | Elements whose `scopedId` starts with `"<host-id>/"` |
+
+### `scopedId` for sub-composition elements
+
+When a composition embeds another composition as a sub-clip, the inner elements are addressable with a scoped id of the form `"hf-HOST/hf-LEAF"` (arbitrary depth: `"hf-A/hf-B/hf-C"`). Always use the `scopedId` as the dispatch target for sub-composition elements — passing a bare leaf id to `setText` or `setStyle` will not resolve correctly when the same leaf id appears in multiple nested scopes.
+
+```typescript
+// Wrong — bare id for a sub-composition element
+comp.setText("hf-inner-title", "New text"); // may silently no-op
+
+// Correct — use the scopedId returned by find() or getElements()
+const [id] = comp.find({ name: "inner-title" }); // returns "hf-scene/hf-inner-title"
+if (id) comp.setText(id, "New text");
+```
+
+## Editing with typed methods
+
+Typed methods are the primary editing surface. Each one dispatches a single `EditOp` and returns immediately. The change is visible in the next `getElements()` call.
+
+### `setText(id, value)`
+
+Sets the direct text content of an element.
+
+```typescript
+comp.setText("hf-title", "Shipped.");
+comp.setText("hf-subtitle", "Available now in all regions.");
+```
+
+### `setStyle(id, styles)`
+
+Merges inline styles. Property names are camelCase. Pass `null` for a property to remove it.
+
+```typescript
+comp.setStyle("hf-card", {
+  backgroundColor: "#1A1A2E",
+  borderRadius: "16px",
+  opacity: "0.9",
+});
+
+// Remove a previously-set inline style
+comp.setStyle("hf-card", { opacity: null });
+```
+
+### `setAttribute(id, name, value)`
+
+Sets an HTML attribute. Pass `null` to remove it.
+
+```typescript
+comp.setAttribute("hf-hero-img", "src", "/assets/hero-v2.jpg");
+comp.setAttribute("hf-hero-img", "alt", "Product screenshot");
+
+// Remove an attribute
+comp.setAttribute("hf-hero-img", "loading", null);
+```
+
+### `removeElement(id)`
+
+Removes an element and all its children from the composition.
+
+```typescript
+comp.removeElement("hf-old-badge");
+```
+
+### `addElement(parent, index, html)`
+
+Inserts an HTML fragment as a child of `parent` at zero-based sibling position `index`. Pass `null` for `parent` to insert at the document body root. Returns the minted `hf-id` of the inserted root element.
+
+```typescript
+const newId = comp.addElement("hf-card", 0, `<span class="badge">New</span>`);
+// newId is a fresh stable hf-id, e.g. "hf-a3k7"
+
+// Append at the end (index >= child count)
+comp.addElement("hf-card", 999, `<div class="footer-note">v2.0</div>`);
+```
+
+The inserted HTML must be a single-root fragment and must not contain `<script>` tags.
+
+### `setVariableValue(id, value)`
+
+Sets a composition variable by its variable id.
+
+```typescript
+// String variable
+comp.setVariableValue("tagline", "The fast path to production.");
+
+// Font variable
+comp.setVariableValue("headingFont", {
+  name: "Inter",
+  source: "https://fonts.googleapis.com/css2?family=Inter:wght@400;700",
+});
+
+// Image variable
+comp.setVariableValue("heroBg", {
+  url: "/assets/hero.jpg",
+  fit: "cover",
+});
+```
+
+## `batch()` — group edits into one step
+
+Wrap related mutations in `batch()` to coalesce them into a single undo entry, a single persist write, and a single `change` event. This is the right tool any time two or more edits are logically inseparable.
+
+```typescript
+comp.batch(() => {
+  comp.setText("hf-title", "Summer Drop");
+  comp.setStyle("hf-title", { color: "#FF6B35", fontSize: "112px" });
+  comp.setTiming("hf-title", { start: 0, duration: 3.5 });
+  comp.setAttribute("hf-logo", "src", "/assets/logo-summer.svg");
+});
+// One undo entry. One disk write. One change event.
+```
+
+Batches are transactional: if the callback throws, all DOM mutations from that batch are rolled back and the composition is restored to its pre-batch state.
+
+Batches can nest — only the outermost boundary emits events and triggers a persist write.
+
+## Ergonomic handles
+
+### `comp.element(id)` → `ElementHandle`
+
+Returns a curried handle that holds the `id` string and exposes the same mutation methods as the top-level `comp.*` methods. Useful when you are making several edits to the same element.
+
+```typescript
+const title = comp.element("hf-title");
+
+title.setText("Shipped.");
+title.setStyle({ color: "#FFD60A", letterSpacing: "-0.02em" });
+title.setTiming({ start: 0.5, duration: 3 });
+```
+
+The handle holds only the `id` string — there is no stale DOM reference hazard. Calling methods on it after `dispose()` will silently no-op via the underlying dispatch path.
+
+### `comp.selection()` → `SelectionProxy`
+
+Returns a proxy that resolves the *current* selection at call time and applies mutations to every selected id in one batch.
+
+```typescript
+comp.setSelection(["hf-title", "hf-subtitle"]);
+
+const sel = comp.selection();
+console.log(sel.ids); // ["hf-title", "hf-subtitle"]
+
+// Applies setStyle to both ids as a single batch
+sel.setStyle({ opacity: "0.5" });
+```
+
+The selection is a runtime concept — it does not persist and is not included in patches or the override set. Use `getSelection()` to read the current selection, and `setSelection(ids)` to change it programmatically. Pass an empty array to clear.
+
+```typescript
+const current = comp.getSelection();
+comp.setSelection(["hf-logo"]);
+comp.setSelection([]); // clear
+```
+
+<Note>
+  `SelectionProxy` and `ElementHandle` expose the same five methods: `setStyle`, `setText`, `setAttribute`, `setTiming`, and `removeElement`. They are intentionally symmetric — switch between them freely without rethinking your call site.
+</Note>
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Composition reference" icon="cube" href="/sdk/reference/composition">
+    Full method signatures for every Composition method.
+  </Card>
+  <Card title="Types reference" icon="brackets-curly" href="/sdk/reference/types">
+    HyperFramesElement, FindQuery, ElementHandle, SelectionProxy, and more.
+  </Card>
+  <Card title="Edit Operations reference" icon="pen-to-square" href="/sdk/reference/edit-operations">
+    Every EditOp variant — for the dispatch() and can() layers.
+  </Card>
+</CardGroup>
+

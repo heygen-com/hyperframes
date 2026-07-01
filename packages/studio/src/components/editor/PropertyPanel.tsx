@@ -14,11 +14,10 @@ import {
 import { MetricField, Section } from "./propertyPanelPrimitives";
 import { createTransformCommitHandlers } from "./propertyPanelTransformCommit";
 import { classifyPropertyGroup } from "@hyperframes/core/gsap-parser";
-import { isMediaElement, MediaSection } from "./propertyPanelMediaSection";
-import {
-  ColorGradingSection,
-  isColorGradingCapableElement,
-} from "./propertyPanelColorGradingSection";
+import { resolveEditingSections } from "@hyperframes/core/editing";
+import { MediaSection } from "./propertyPanelMediaSection";
+import { ColorGradingSection } from "./propertyPanelColorGradingSection";
+import { domEditSelectionToFacts } from "./domEditingLayers";
 import { TextSection, StyleSections } from "./propertyPanelSections";
 import { GsapAnimationSection } from "./GsapAnimationSection";
 import { PropertyPanel3dTransform } from "./propertyPanel3dTransform";
@@ -199,6 +198,10 @@ export const PropertyPanel = memo(function PropertyPanel({
   const manualRotationEditingDisabled = !element.capabilities.canApplyManualRotation;
   const sourceLabel = element.id ? `#${element.id}` : element.selector;
   const showEditableSections = element.capabilities.canEditStyles;
+  // Capabilities are already resolved on the selection; recompute only sections,
+  // feeding the live GSAP tween count (arrives on the gsapAnimations prop, not the
+  // selection) so the Timing section shows for pure-GSAP elements with no data-start.
+  const sections = resolveEditingSections(domEditSelectionToFacts(element, gsapAnimations.length));
   const manualOffset = readStudioPathOffset(element.element);
   const manualSize = readStudioBoxSize(element.element);
   const resolvedWidth =
@@ -339,7 +342,7 @@ export const PropertyPanel = memo(function PropertyPanel({
           onRemoveTextField={onRemoveTextField}
         />
 
-        {(element.dataAttributes.start != null || gsapAnimations.length > 0) && (
+        {sections.timing && (
           // Render whenever there's an authored clip range OR animations to infer
           // one from — a pure-GSAP element with no data-start still gets a Timing
           // range (TimingSection derives it from its tweens).
@@ -349,7 +352,7 @@ export const PropertyPanel = memo(function PropertyPanel({
             onSetAttribute={onSetAttribute}
           />
         )}
-        {isMediaElement(element) && (
+        {sections.media && (
           <MediaSection
             projectDir={projectDir}
             element={element}
@@ -360,7 +363,7 @@ export const PropertyPanel = memo(function PropertyPanel({
           />
         )}
 
-        {STUDIO_COLOR_GRADING_ENABLED && isColorGradingCapableElement(element) && (
+        {STUDIO_COLOR_GRADING_ENABLED && sections.colorGrading && (
           <ColorGradingSection
             key={[
               element.id ?? "",

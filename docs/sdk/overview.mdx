@@ -1,0 +1,79 @@
+---
+title: "SDK Overview"
+description: "Headless, framework-neutral composition editing engine — query, mutate, patch, and persist without a browser UI."
+---
+
+`@hyperframes/sdk` is the editing engine inside HyperFrames Studio and the CLI. It opens composition HTML, exposes query and mutation APIs, emits RFC 6902 JSON patches, tracks undo/redo, and persists changes through pluggable adapters — all without requiring React, Studio, or a browser UI.
+
+```bash
+npm install @hyperframes/sdk
+```
+
+## Mental model
+
+**Every edit targets a stable `hf-id`.** The SDK stamps all elements with `data-hf-id` identifiers before any query or mutation runs. This means edits never depend on mouse state or a UI selection — agents and backend jobs operate on the same surface as a Studio user.
+
+**Typed methods are sugar over `dispatch()`.** `comp.setText("hf-title", "Hello")` is exactly equivalent to `comp.dispatch({ type: "setText", target: "hf-title", value: "Hello" })`. Both go through the same validation and emit the same patch event. Use typed methods for clarity; use `dispatch()` when you're building data-driven automation or want to feed programmatic op arrays.
+
+**Patches are the source of truth for history and sync.** Every committed change emits a `PatchEvent` with forward patches and inverse patches (RFC 6902 `add`/`remove`/`replace` ops). The undo stack replays inverse patches; embedded hosts replay the same patches into their own state machine; collaboration layers forward them to other clients. You can subscribe to `patch` events and mirror SDK mutations anywhere without re-parsing the HTML.
+
+**Adapters decouple persistence and preview.** The SDK never reaches the filesystem or an iframe directly. You supply a `PersistAdapter` (memory, filesystem, S3, HTTP — same interface) and optionally a `PreviewAdapter`. The session fires `persist:error` events on write failures instead of throwing. This makes the SDK equally at home in a Node.js agent, a browser editor, and a CI pipeline.
+
+**Standalone vs embedded mode.** In standalone mode you own the HTML and the SDK owns history and autosave. In embedded (override) mode you supply a base template and a sparse `OverrideSet` delta; the SDK folds the delta onto the template at open time, accumulates further edits into the override set, and lets you store only the delta — the base template stays untouched.
+
+## Guides
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="bolt" href="/sdk/quickstart">
+    Open a composition, make edits, serialize, and add persistence in five minutes.
+  </Card>
+  <Card title="Querying & Editing Elements" icon="magnifying-glass" href="/sdk/guides/querying-and-editing">
+    getElements, find, typed methods, batch, element handles, and selection.
+  </Card>
+  <Card title="Timing & Animation" icon="clock" href="/sdk/guides/timing-and-animation">
+    setTiming, setHold, GSAP tween and keyframe operations.
+  </Card>
+  <Card title="Undo, Redo & Patches" icon="arrow-rotate-left" href="/sdk/guides/undo-redo-and-patches">
+    History module, patch events, applyPatches, and origin tagging.
+  </Card>
+  <Card title="Persistence" icon="floppy-disk" href="/sdk/guides/persistence">
+    Memory, filesystem, and custom adapters. Version history and flush.
+  </Card>
+  <Card title="Embedded Override Mode" icon="layers" href="/sdk/guides/embedded-override-mode">
+    Template-driven products with host-owned undo and delta storage.
+  </Card>
+  <Card title="Canvas Integration" icon="paintbrush" href="/sdk/guides/canvas-integration">
+    Connecting the SDK to an iframe preview surface.
+  </Card>
+  <Card title="Editing Affordances" icon="sliders" href="/sdk/guides/editing-affordances">
+    Resolve which controls to show for a live element.
+  </Card>
+</CardGroup>
+
+## Reference
+
+<CardGroup cols={2}>
+  <Card title="openComposition" icon="door-open" href="/sdk/reference/open-composition">
+    The single entry point — options, modes, and examples.
+  </Card>
+  <Card title="Composition" icon="cube" href="/sdk/reference/composition">
+    Full method reference for the session object.
+  </Card>
+  <Card title="Edit Operations" icon="pen-to-square" href="/sdk/reference/edit-operations">
+    Every EditOp variant with field-level documentation.
+  </Card>
+  <Card title="Types" icon="brackets-curly" href="/sdk/reference/types">
+    HyperFramesElement, FindQuery, PatchEvent, OverrideSet, and more.
+  </Card>
+  <Card title="Adapters" icon="plug" href="/sdk/reference/adapters">
+    PersistAdapter and PreviewAdapter interfaces and built-in implementations.
+  </Card>
+  <Card title="Utilities" icon="wrench" href="/sdk/reference/utilities">
+    buildDocument, flatElements, UnsupportedOpError, and helper exports.
+  </Card>
+</CardGroup>
+
+<Tip>
+  If you want to render a composition to MP4 or WebM rather than edit it, see the [CLI](/packages/cli) or [producer](/packages/producer). The SDK is the editing layer — rendering is a separate pipeline.
+</Tip>
+

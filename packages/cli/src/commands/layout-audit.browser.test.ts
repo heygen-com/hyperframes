@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const script = readFileSync(join(__dirname, "layout-audit.browser.js"), "utf-8");
+const contrastScript = readFileSync(join(__dirname, "contrast-audit.browser.js"), "utf-8");
 
 interface RectInput {
   left: number;
@@ -140,6 +141,7 @@ describe("layout-audit.browser content overlap", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     document.body.innerHTML = "";
+    delete (document as unknown as { elementFromPoint?: unknown }).elementFromPoint;
     delete (window as unknown as { __hyperframesLayoutAudit?: unknown }).__hyperframesLayoutAudit;
   });
 
@@ -166,6 +168,73 @@ describe("layout-audit.browser content overlap", () => {
   it("respects the data-layout-allow-overlap opt-out", () => {
     expectExemptFromOverlap({ attrs: "data-layout-allow-overlap" });
   });
+
+  // A typewriter span clipped to nothing (clip-path: inset(0 100% 0 0)) keeps a
+  // normal box but paints zero pixels; overlapping it must not flag the visible
+  // block beneath. The clipped element is unreachable by elementFromPoint, which
+  // is how isClippedAway detects it.
+  it("excludes a block clipped to nothing by clip-path from overlap", () => {
+    const issues = auditOverlapScene({
+      a: { textRect: rect({ left: 100, top: 100, width: 400, height: 100 }) },
+      b: {
+        textRect: rect({ left: 300, top: 120, width: 400, height: 100 }),
+        clipPath: "inset(0px 100% 0px 0px)",
+      },
+    });
+    expect(issues.some((issue) => issue.code === "content_overlap")).toBe(false);
+  });
+
+  it("still flags overlap when clip-path leaves painted text visible", () => {
+    const issues = auditOverlapScene({
+      a: { textRect: rect({ left: 100, top: 100, width: 400, height: 100 }) },
+      b: {
+        textRect: rect({ left: 300, top: 120, width: 400, height: 100 }),
+        clipPath: "inset(0px 25% 0px 0px)",
+      },
+    });
+    expect(issues.some((issue) => issue.code === "content_overlap")).toBe(true);
+  });
+});
+
+describe("contrast-audit.browser clip-path visibility", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    document.body.innerHTML = "";
+    delete (document as unknown as { elementFromPoint?: unknown }).elementFromPoint;
+    delete (window as unknown as { __contrastAudit?: unknown }).__contrastAudit;
+  });
+
+  it("excludes text clipped to nothing by clip-path from contrast reports", async () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <div id="headline">Hidden text</div>
+      </div>
+    `;
+
+    vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
+      const id = (element as Element).id;
+      return {
+        display: "block",
+        visibility: "visible",
+        opacity: "1",
+        color: "rgb(0, 0, 0)",
+        fontSize: "32px",
+        fontWeight: "400",
+        clipPath: id === "headline" ? "inset(0px 100% 0px 0px)" : "none",
+      } as unknown as CSSStyleDeclaration;
+    });
+
+    vi.spyOn(document.getElementById("headline")!, "getBoundingClientRect").mockReturnValue(
+      rect({ left: 100, top: 100, width: 400, height: 80 }),
+    );
+    (document as unknown as { elementFromPoint: () => Element | null }).elementFromPoint = () =>
+      null;
+
+    installContrastScript();
+
+    expect(await runContrastAudit()).toEqual([]);
+  });
 });
 
 // Both blocks overlap heavily; only the exemption on block A should suppress
@@ -179,8 +248,8 @@ function expectExemptFromOverlap(aOverrides: { color?: string; attrs?: string })
 }
 
 function auditOverlapScene(options: {
-  a: { textRect: DOMRect; color?: string; attrs?: string };
-  b: { textRect: DOMRect; color?: string; attrs?: string };
+  a: { textRect: DOMRect; color?: string; attrs?: string; clipPath?: string };
+  b: { textRect: DOMRect; color?: string; attrs?: string; clipPath?: string };
 }): ReturnType<typeof runAudit> {
   document.body.innerHTML = `
     <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
@@ -192,6 +261,10 @@ function auditOverlapScene(options: {
     a: options.a.color ?? "rgb(0, 0, 0)",
     b: options.b.color ?? "rgb(0, 0, 0)",
   };
+  const clipPaths: Record<string, string> = {
+    a: options.a.clipPath ?? "none",
+    b: options.b.clipPath ?? "none",
+  };
   const textRects: Record<string, DOMRect> = { a: options.a.textRect, b: options.b.textRect };
 
   vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
@@ -201,8 +274,17 @@ function auditOverlapScene(options: {
       visibility: "visible",
       opacity: "1",
       color: colors[id] ?? "rgb(0, 0, 0)",
+      clipPath: clipPaths[id] ?? "none",
     } as unknown as CSSStyleDeclaration;
   });
+
+  // A clipped-to-nothing element is unreachable by elementFromPoint; mimic that
+  // by returning the topmost non-clipped block at any probe point.
+  (document as unknown as { elementFromPoint: () => Element | null }).elementFromPoint = () => {
+    if (!isFullyClipped(clipPaths.b ?? "none")) return document.getElementById("b");
+    if (!isFullyClipped(clipPaths.a ?? "none")) return document.getElementById("a");
+    return null;
+  };
 
   for (const element of Array.from(document.querySelectorAll("*"))) {
     vi.spyOn(element, "getBoundingClientRect").mockReturnValue(
@@ -228,6 +310,10 @@ function auditOverlapScene(options: {
 
   installAuditScript();
   return runAudit();
+}
+
+function isFullyClipped(clipPath: string): boolean {
+  return /inset\([^)]*100%|circle\(0px/i.test(clipPath);
 }
 
 describe("layout-audit.browser occlusion", () => {
@@ -358,6 +444,39 @@ function installOcclusionGeometry(options: {
 
 function installAuditScript(): void {
   window.eval(script);
+}
+
+function installContrastScript(): void {
+  class MockImage {
+    onload: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    naturalWidth = 640;
+    naturalHeight = 360;
+
+    set src(_value: string) {
+      this.onload?.();
+    }
+  }
+
+  vi.stubGlobal("Image", MockImage);
+  const getContextSpy = vi.spyOn(HTMLCanvasElement.prototype, "getContext") as unknown as {
+    mockReturnValue(value: CanvasRenderingContext2D): void;
+  };
+  getContextSpy.mockReturnValue({
+    drawImage() {},
+    getImageData() {
+      return { data: new Uint8ClampedArray(640 * 360 * 4).fill(255) };
+    },
+  } as unknown as CanvasRenderingContext2D);
+  window.eval(contrastScript);
+}
+
+async function runContrastAudit(): Promise<Array<Record<string, unknown>>> {
+  return (
+    window as unknown as {
+      __contrastAudit: (imgBase64: string, time: number) => Promise<Array<Record<string, unknown>>>;
+    }
+  ).__contrastAudit("stub", 0);
 }
 
 function runAudit(): Array<{

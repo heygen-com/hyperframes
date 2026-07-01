@@ -98,6 +98,50 @@
     return opacity;
   }
 
+  // A clip-path can shrink an element's painted region to nothing (e.g. a
+  // typewriter span pre-reveal at `inset(0 100% 0 0)`, or `circle(0px)`) while
+  // its layout box, opacity, visibility and display all still read as present.
+  // Such an element paints zero pixels, so flagging it for overlap/occlusion is
+  // a false positive. clip-path also drives hit-testing, so an element clipped
+  // to nothing is unreachable by elementFromPoint anywhere in its box; only run
+  // the probe when a clip-path is actually in effect (self or ancestor) to avoid
+  // mistaking a genuinely-occluded element for a clipped one.
+  function hasClipPath(element) {
+    for (let current = element; current; current = current.parentElement) {
+      const clip = getComputedStyle(current).clipPath;
+      if (clip && clip !== "none") return true;
+    }
+    return false;
+  }
+
+  const CLIP_PROBE_COLS = [0.05, 0.25, 0.5, 0.75, 0.95];
+  const CLIP_PROBE_ROWS = [0.25, 0.5, 0.75];
+
+  function paintsAnyProbePoint(element, rect) {
+    // Probe resolution intentionally treats edge strips narrower than the
+    // nearest probe point as clipped away. That avoids noisy reports for
+    // typewriter pre-reveal states; if a real visible-strip bug appears, add
+    // edge probes here before widening the audit surface.
+    for (const fx of CLIP_PROBE_COLS) {
+      for (const fy of CLIP_PROBE_ROWS) {
+        const hit = document.elementFromPoint(
+          rect.left + rect.width * fx,
+          rect.top + rect.height * fy,
+        );
+        if (hit === element || element.contains(hit)) return true;
+      }
+    }
+    return false;
+  }
+
+  function isClippedAway(element) {
+    if (typeof document.elementFromPoint !== "function") return false;
+    if (!hasClipPath(element)) return false;
+    const rect = element.getBoundingClientRect();
+    if (rect.width <= 0.5 || rect.height <= 0.5) return false;
+    return !paintsAnyProbePoint(element, rect);
+  }
+
   function isVisibleElement(element) {
     if (IGNORE_TAGS.has(element.tagName)) return false;
     if (hasIgnoreFlag(element)) return false;
@@ -111,7 +155,8 @@
     }
     if (opacityChain(element) < 0.2) return false;
     const rect = element.getBoundingClientRect();
-    return rect.width > 0.5 && rect.height > 0.5;
+    if (rect.width <= 0.5 || rect.height <= 0.5) return false;
+    return !isClippedAway(element);
   }
 
   function textContentFor(element) {

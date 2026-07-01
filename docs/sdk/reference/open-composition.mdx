@@ -1,0 +1,175 @@
+---
+title: "openComposition"
+description: "Open a composition HTML string for editing. Returns a Composition session."
+---
+
+`openComposition` is the single entry point for every SDK session. It parses the composition HTML, stamps stable `hf-id` attributes on any elements that lack them, and returns a [`Composition`](/sdk/reference/composition) ready to receive edits.
+
+```typescript
+import { openComposition } from "@hyperframes/sdk";
+
+const comp = await openComposition(html, opts?);
+```
+
+## Signature
+
+```typescript
+openComposition(html: string, opts?: OpenCompositionOptions): Promise<Composition>
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `html` | `string` | The full composition HTML string. |
+| `opts` | `OpenCompositionOptions` | Optional configuration — adapters, overrides, history behavior. |
+
+## Modes
+
+The same function covers three deployment patterns. Which mode you get depends entirely on what you pass in `opts`.
+
+**Standalone (default)** — You own the HTML, and the SDK owns history and persistence. Pass a `persist` adapter to enable autosave; undo/redo attaches automatically unless you opt out with `history: false`.
+
+**Embedded / override mode** — Pass `overrides` to open a shared base template with a user-specific delta applied on top. The SDK accumulates further edits into the override set, and you store only the delta. History is disabled by default in embedded mode (the host's stack drives undo). See the [embedded override mode guide](/sdk/guides/embedded-override-mode).
+
+**Headless / agent** — Omit both `persist` and `overrides`. The SDK is a pure in-memory transform. Call `serialize()` when done and discard the session.
+
+## Options
+
+<ParamField path="persist" type="PersistAdapter">
+  Storage adapter for autosave. After every committed change the SDK enqueues a write to this adapter. The session fires `persist:error` events instead of throwing on write failures.
+
+  Built-in adapters: `createMemoryAdapter()` (tests/demos) and `createFsAdapter()` (Node.js). Custom adapters implement the `PersistAdapter` interface, exported from `@hyperframes/sdk`. (`createHeadlessAdapter()` is a `PreviewAdapter` for the `preview` field below — not a persist adapter.)
+
+  See the [persistence guide](/sdk/guides/persistence) for adapter selection and configuration.
+</ParamField>
+
+<ParamField path="persistPath" type="string" default='"composition.html"'>
+  Relative path the persist queue passes to the adapter's `write` call. Immutable for the lifetime of the session — changing it would create a new file on disk without removing the old one. You must close and reopen the session to change the save path.
+</ParamField>
+
+<ParamField path="preview" type="PreviewAdapter">
+  Live-preview adapter that bridges the SDK model to a rendering surface. When provided, the adapter's selection events update `comp.getSelection()` so pointer-driven hit tests stay in sync with the model without crossing the mutation path.
+
+  Built-in: `createIframePreviewAdapter()` for same-origin composition iframes, `createHeadlessAdapter()` when no preview surface exists.
+</ParamField>
+
+<ParamField path="overrides" type="OverrideSet">
+  Sparse `{ "hfId.prop.path": value }` map that is applied on top of the base HTML before the session starts. Every subsequent edit accumulates into this map. The current map is readable via `comp.getOverrides()`.
+
+  Providing `overrides` activates **embedded mode**: history defaults to off, and the SDK emits patches rather than owning the undo stack. The host stores only the delta and replays it on each open, so the base template can be updated independently.
+
+  See the [embedded override mode guide](/sdk/guides/embedded-override-mode).
+</ParamField>
+
+<ParamField path="trackedOrigins" type="unknown[]">
+  Whitelist of origin values whose mutations enter the undo stack. Defaults to all origins except `ORIGIN_APPLY_PATCHES` (the sentinel used by `applyPatches()`). Use this when you dispatch edits from multiple sources and only want some of them to be undoable — for example, to exclude programmatic bulk updates from user-facing undo history.
+</ParamField>
+
+<ParamField path="coalesceMs" type="number" default={300}>
+  Auto-coalesce window in milliseconds. Consecutive mutations arriving within this window are merged into a single undo entry. Increase for slower interactions, decrease for tighter history granularity, or set to `0` to disable coalescing entirely.
+</ParamField>
+
+<ParamField path="history" type="false">
+  Pass `false` to skip attaching the undo/redo module. The session's `undo()`, `redo()`, `canUndo()`, and `canRedo()` become no-ops.
+
+  Use this when the host owns the undo stack and the SDK's history module would duplicate it. Note that disabling history does **not** disable persistence — autosave runs independently so that disabling undo does not silently drop disk writes.
+
+  In embedded mode (when `overrides` is provided), history defaults to off and this option is unnecessary.
+</ParamField>
+
+## Examples
+
+### Headless agent edit
+
+```typescript
+import { openComposition } from "@hyperframes/sdk";
+
+const comp = await openComposition(html);
+
+const [titleId] = comp.find({ name: "headline" });
+if (titleId) {
+  comp.setText(titleId, "New headline");
+  comp.setStyle(titleId, { color: "#FFD60A" });
+}
+
+const updatedHtml = comp.serialize();
+comp.dispose();
+```
+
+### Standalone with filesystem persistence
+
+```typescript
+import { openComposition } from "@hyperframes/sdk";
+import { createFsAdapter } from "@hyperframes/sdk/adapters/fs";
+
+const comp = await openComposition(html, {
+  persist: createFsAdapter({ root: "./project" }),
+  persistPath: "index.html",
+});
+
+comp.on("persist:error", ({ error }) => {
+  console.error("Autosave failed:", error.message);
+});
+
+comp.setText("hf-title", "Launch day");
+await comp.flush(); // drain any pending write before process exit
+comp.dispose();
+```
+
+### Embedded mode with overrides
+
+```typescript
+import { openComposition } from "@hyperframes/sdk";
+
+// Stored override delta for one customer
+const savedOverrides = {
+  "hf-title.text": "Acme — Q3 Review",
+  "hf-logo.attr.src": "/customers/acme/logo.png",
+};
+
+const comp = await openComposition(baseTemplateHtml, {
+  overrides: savedOverrides,
+  history: false,
+});
+
+// Host drives undo; SDK just accumulates overrides
+comp.on("patch", ({ patches, inversePatches, origin }) => {
+  if (origin !== ORIGIN_APPLY_PATCHES) {
+    hostHistoryStack.push({ patches, inversePatches });
+  }
+});
+
+comp.setStyle("hf-title", { color: "#0EA5E9" });
+
+// Persist the updated delta only — not the full HTML
+const nextOverrides = comp.getOverrides();
+await db.save(customerId, nextOverrides);
+comp.dispose();
+```
+
+### Disabling history to reduce overhead
+
+```typescript
+const comp = await openComposition(html, {
+  persist: createFsAdapter({ root: "./output" }),
+  history: false, // host owns undo; persist still runs
+});
+```
+
+<Note>
+  History defaults to **on** in standalone mode and **off** in embedded mode. Passing `history: false` in standalone mode is only necessary when you are managing the undo stack yourself and do not want the SDK to create a parallel copy.
+</Note>
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Composition" icon="cube" href="/sdk/reference/composition">
+    The full editing surface returned by openComposition.
+  </Card>
+  <Card title="Persistence guide" icon="floppy-disk" href="/sdk/guides/persistence">
+    Adapter selection, version history, and custom adapters.
+  </Card>
+  <Card title="Embedded override mode" icon="layers" href="/sdk/guides/embedded-override-mode">
+    Template-driven products with host-owned history.
+  </Card>
+</CardGroup>
+

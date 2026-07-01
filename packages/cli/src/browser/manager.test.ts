@@ -73,13 +73,16 @@ function installFsMocks({ existing, dirs }: FsMockOptions) {
 function installPuppeteerBrowsersMock(
   opts: {
     installedInHfCache?: Array<{ browser: string; executablePath: string }>;
+    installedInHfCacheError?: Error;
     installResult?: { executablePath: string };
   } = {},
 ) {
   vi.doMock("@puppeteer/browsers", () => ({
     Browser: { CHROMEHEADLESSSHELL: "chrome-headless-shell" },
     detectBrowserPlatform: () => "linux",
-    getInstalledBrowsers: vi.fn().mockResolvedValue(opts.installedInHfCache ?? []),
+    getInstalledBrowsers: opts.installedInHfCacheError
+      ? vi.fn().mockRejectedValue(opts.installedInHfCacheError)
+      : vi.fn().mockResolvedValue(opts.installedInHfCache ?? []),
     install: vi.fn().mockResolvedValue(opts.installResult ?? { executablePath: HF_BINARY }),
   }));
 }
@@ -142,6 +145,24 @@ describe("findBrowser — cache resolution", () => {
 
     expect(result).toEqual({ executablePath: redownloadedBinary, source: "download" });
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("Cached binary missing"));
+  });
+
+  it("warns and falls through when the hyperframes cache cannot be read", async () => {
+    installFsMocks({ existing: new Set([HF_CACHE, SYSTEM_CHROME]) });
+    installPuppeteerBrowsersMock({
+      installedInHfCacheError: Object.assign(new Error("ENOTDIR: not a directory"), {
+        code: "ENOTDIR",
+      }),
+    });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const { findBrowser, _resetSystemFallbackWarnForTests } = await import("./manager.js");
+    _resetSystemFallbackWarnForTests();
+    const result = await findBrowser();
+
+    expect(result).toEqual({ executablePath: SYSTEM_CHROME, source: "system" });
+    expect(warnSpy.mock.calls[0]?.[0]).toContain("Browser cache read failed (ENOTDIR)");
+    expect(warnSpy.mock.calls[0]?.[0]).toContain("Falling back to system Chrome");
   });
 
   it("falls back to the puppeteer-managed cache when hyperframes cache is empty", async () => {

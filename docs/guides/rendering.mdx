@@ -389,6 +389,17 @@ Only the visible elements (cards, text, images) will appear in the final video. 
 - **In a video editor:** Import the MOV file and place it on a track above other footage. Transparent areas should show the footage below.
 - **Online tool:** Use [rotato.app/tools/transparent-video](https://rotato.app/tools/transparent-video) to verify your MOV or WebM has working transparency.
 
+<Note>
+  **`ffprobe` reports a transparent WebM as `yuv420p`, not `yuva420p`.** This is expected and does not mean the alpha is missing. VP9 stores its alpha plane in a Matroska `BlockAdditional` sidecar, not in the primary stream's pixel format, so `ffprobe` reports the primary stream as `pix_fmt=yuv420p` even when the file genuinely carries alpha. First check that the WebM declares the alpha sidecar, then force the VP9 library decoder to verify per-pixel alpha:
+
+  ```bash
+  ffprobe -v error -show_streams out.webm | grep -i alpha_mode   # ALPHA_MODE=1 or alpha_mode=1
+  ffmpeg -c:v libvpx-vp9 -i out.webm -frames:v 1 -f rawvideo -pix_fmt rgba frame.raw
+  ```
+
+  A fully transparent corner pixel in `frame.raw` reads `00 00 00 00`. MOV (ProRes 4444) and `png-sequence` report their alpha directly, so this caveat is WebM-only.
+</Note>
+
 ## Tips
 
 <Tip>

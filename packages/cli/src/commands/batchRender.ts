@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import { c } from "../ui/colors.js";
 import { errorBox } from "../ui/format.js";
+import { normalizeErrorMessage as errorMessage } from "../utils/errorMessage.js";
 import {
   loadProjectVariableSchema,
   reportVariableIssues,
@@ -90,10 +91,7 @@ function parseJson(raw: string, source: string): unknown {
   try {
     return JSON.parse(raw);
   } catch (error: unknown) {
-    throw new BatchRenderInputError(
-      "Invalid JSON in --batch",
-      `${source}: ${error instanceof Error ? error.message : String(error)}`,
-    );
+    throw new BatchRenderInputError("Invalid JSON in --batch", `${source}: ${errorMessage(error)}`);
   }
 }
 
@@ -239,7 +237,7 @@ export function prepareBatchRender(options: PrepareBatchRenderOptions): Prepared
   } catch (error: unknown) {
     throw new BatchRenderInputError(
       "Could not read --batch",
-      `${batchPath}: ${error instanceof Error ? error.message : String(error)}`,
+      `${batchPath}: ${errorMessage(error)}`,
     );
   }
 
@@ -308,10 +306,6 @@ function writeManifest(manifest: BatchManifest): void {
 
 function emitJsonEvent(event: Record<string, unknown>, json: boolean): void {
   if (json) console.log(JSON.stringify(event));
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 async function renderBatchRow(

@@ -370,6 +370,87 @@ body {
     expect(finding).toBeUndefined();
   });
 
+  it("reports error when CSS block comment syntax leaks into visible markup", async () => {
+    const html = compositionWithBodyPrefix(
+      "",
+      `
+    /* Main Content Block */
+    <div class="editorial-block">Hello</div>
+`,
+    );
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "visible_markup_comment");
+
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("error");
+    expect(finding?.message).toContain("visible HTML markup");
+    expect(finding?.snippet).toContain("Main Content Block");
+  });
+
+  it("reports error when a misbalanced style block leaves block comment syntax visible", async () => {
+    const html = compositionWithBodyPrefix(
+      "",
+      `
+    <style>
+      .editorial-block { color: #fff; }
+    </style>
+    </style>
+    /* Main Content Block */
+    <div class="editorial-block">Hello</div>
+`,
+    );
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "visible_markup_comment");
+
+    expect(finding).toBeDefined();
+    expect(finding?.snippet).toContain("Main Content Block");
+  });
+
+  it("does not report block comments inside style or script blocks", async () => {
+    const html = `
+<html>
+<head>
+  <title>/* tab name */ Particle Field</title>
+  <style>
+    /* Layout reset */
+    body { margin: 0; }
+  </style>
+  <noscript>/* fallback note */</noscript>
+</head>
+<body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"></div>
+  <script>
+    /* Timeline registry */
+    window.__timelines = {};
+  </script>
+</body>
+</html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "visible_markup_comment");
+
+    expect(finding).toBeUndefined();
+  });
+
+  it("does not report block comments in attributes, html comments, or protected text contexts", async () => {
+    const html = compositionWithBodyPrefix(
+      "",
+      `
+    <!-- /* hidden implementation note */ -->
+    <div data-note="/* attribute note */"></div>
+    <div data-note="a > b /* quoted attribute note */"></div>
+    <pre>/* visible code sample */</pre>
+    <code>/* visible inline code sample */</code>
+    <textarea>/* editable code sample */</textarea>
+    <template>/* template-only note */</template>
+    <svg viewBox="0 0 100 20"><text x="0" y="15">/* svg label */</text></svg>
+`,
+    );
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "visible_markup_comment");
+
+    expect(finding).toBeUndefined();
+  });
+
   it("reports error when a stray style close tag is left in the document head", async () => {
     const html = compositionWithHead(`
   <style>

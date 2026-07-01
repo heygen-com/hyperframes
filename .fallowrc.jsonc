@@ -325,6 +325,12 @@
       // → assert-remove-spawn shape; each verifies a distinct prune behavior, so
       // extracting the shared scaffold would obscure what each case asserts.
       "packages/cli/src/commands/skills.test.ts",
+      // layout-audit.browser.test.ts: parallel arrange/act/assert cases per audit
+      // rule (overflow / overlap / occlusion) that each install their own mocked
+      // geometry + computed-style before asserting. The clone groups are this
+      // pre-existing per-rule scaffold; adding a clip-path case shifts lines and
+      // re-flags it. Collapsing the per-rule installers would obscure each case.
+      "packages/cli/src/commands/layout-audit.browser.test.ts",
     ],
   },
   "health": {
@@ -409,6 +415,14 @@
       // gsapRuntimeReaders.ts: pre-existing complexity in readAllAnimatedProperties;
       // line-shift fingerprint from import-path updates triggers the violation.
       "packages/studio/src/hooks/gsapRuntimeReaders.ts",
+      // In-page audit scripts: single large browser-side IIFE wrappers
+      // (auditLayout/__contrastAudit) with pre-existing CRITICAL helpers
+      // (textOverflowFixHint, selectorFor, the WCAG walk). Adding the small
+      // clip-path probe helpers shifts every function below it, so the line-shift
+      // fingerprint re-flags inherited complexity even though the new helpers are
+      // all at the lowest tier (<=5 cyclomatic).
+      "packages/cli/src/commands/layout-audit.browser.js",
+      "packages/cli/src/commands/contrast-audit.browser.js",
     ],
   },
 }

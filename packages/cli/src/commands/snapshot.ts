@@ -5,6 +5,7 @@ import { existsSync, mkdtempSync, readFileSync, mkdirSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { resolve, join, relative, isAbsolute, basename } from "node:path";
 import { resolveProject } from "../utils/project.js";
+import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { resolveCompositionViewportFromHtml } from "../utils/compositionViewport.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
 import { c } from "../ui/colors.js";
@@ -354,23 +355,41 @@ async function captureSnapshots(
 
           const updates: Array<{ videoId: string; dataUri: string }> = [];
           for (const v of active) {
-            let filePath: string | null = null;
+            // Resolve the <video> src to an FFmpeg input. Prefer a project-local
+            // file (fast, sandboxed); fall back to the absolute http(s) URL for
+            // remote assets (e.g. an S3-hosted clip embedded by an upstream agent)
+            // — FFmpeg reads http(s) input directly, and Chrome-headless can't seek
+            // it either, so without this those videos render blank in snapshots.
+            let ffmpegInput: string | null = null;
+            let inputIsLocal = false;
             try {
               const url = new URL(v.src);
               const decodedPath = decodeURIComponent(url.pathname).replace(/^\//, "");
               const candidate = resolve(projectDir, decodedPath);
               const rel = relative(projectDir, candidate);
               if (!rel.startsWith("..") && !isAbsolute(rel) && existsSync(candidate)) {
-                filePath = candidate;
+                ffmpegInput = candidate;
+                inputIsLocal = true;
+              } else if (url.protocol === "http:" || url.protocol === "https:") {
+                ffmpegInput = url.href;
               }
             } catch {
               /* unresolvable src (e.g. blob:, data:) — skip */
             }
-            if (!filePath) continue;
+            if (!ffmpegInput) continue;
+            // VP9-alpha detection shells out to ffprobe, which has no timeout.
+            // Only probe local files (filesystem-bounded); for remote URLs skip it
+            // (pass false) so a stalled host can't wedge snapshot in ffprobe before
+            // the bounded extractVideoFrameToBuffer below ever runs. Remote
+            // VP9-alpha overlays aren't a current path — revisit with a bounded
+            // ffprobe if one appears.
+            const useVp9AlphaDecoder = inputIsLocal
+              ? await shouldUseVp9AlphaDecoder(ffmpegInput)
+              : false;
             const png = await extractVideoFrameToBuffer(
-              filePath,
+              ffmpegInput,
               Math.max(0, v.relTime),
-              await shouldUseVp9AlphaDecoder(filePath),
+              useVp9AlphaDecoder,
             );
             if (!png) continue;
             updates.push({
@@ -594,8 +613,7 @@ export default defineCommand({
                 descriptions.push(`## ${result.value.filename}`, `${result.value.desc}`, ``);
               } else {
                 // Log first failure so Gemini issues are visible rather than silent
-                const errMsg =
-                  result.reason instanceof Error ? result.reason.message : String(result.reason);
+                const errMsg = normalizeErrorMessage(result.reason);
                 descriptions.push(`## (error)`, `Gemini call failed: ${errMsg.slice(0, 120)}`, ``);
               }
             }
@@ -605,12 +623,12 @@ export default defineCommand({
             console.log(`   ${c.dim("descriptions.md")} (Gemini frame analysis)`);
           }
         } catch (descErr) {
-          const msg = descErr instanceof Error ? descErr.message : String(descErr);
+          const msg = normalizeErrorMessage(descErr);
           console.log(`   ${c.dim(`--describe failed: ${msg.slice(0, 80)}`)}`);
         }
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = normalizeErrorMessage(err);
       console.error(`\n${c.error("✗")} Snapshot failed: ${msg}`);
       process.exit(1);
     }

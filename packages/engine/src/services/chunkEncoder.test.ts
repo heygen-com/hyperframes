@@ -904,16 +904,55 @@ describe("buildEncoderArgs color space", () => {
     expect(args[vfIdx + 1]).toBe("scale=in_range=pc:out_range=tv,format=nv12,hwupload");
   });
 
-  it("skips range conversion filter for non-VAAPI GPU encoding", () => {
+  it("pads odd dimensions (no range scale) for non-VAAPI GPU encoding", () => {
+    for (const gpu of ["nvenc", "videotoolbox", "qsv", "amf"] as const) {
+      const args = buildEncoderArgs(
+        { ...baseOptions, codec: "h264", preset: "medium", quality: 23, useGpu: true },
+        inputArgs,
+        "out.mp4",
+        gpu,
+      );
+      const vfIdx = args.indexOf("-vf");
+      // 4:2:0 HW encode still aborts on odd dims, so the pad must be present —
+      // but the range scale belongs to the SW path only.
+      expect(args[vfIdx + 1]).toBe("pad=ceil(iw/2)*2:ceil(ih/2)*2");
+      expect(args[vfIdx + 1]).not.toContain("scale=in_range");
+      // but still has color metadata
+      expect(args).toContain("-colorspace:v");
+    }
+  });
+
+  it("pads odd dimensions for 10-bit (yuv420p10le) GPU HDR encoding", () => {
     const args = buildEncoderArgs(
-      { ...baseOptions, codec: "h264", preset: "medium", quality: 23, useGpu: true },
+      {
+        ...baseOptions,
+        codec: "h265",
+        preset: "medium",
+        quality: 23,
+        useGpu: true,
+        pixelFormat: "yuv420p10le",
+      },
       inputArgs,
       "out.mp4",
       "nvenc",
     );
+    expect(args[args.indexOf("-vf") + 1]).toBe("pad=ceil(iw/2)*2:ceil(ih/2)*2");
+  });
+
+  it("leaves alpha ProRes untouched (no even-dim pad)", () => {
+    const args = buildEncoderArgs(
+      {
+        ...baseOptions,
+        codec: "prores",
+        preset: "4",
+        quality: 23,
+        pixelFormat: "yuva444p10le",
+      },
+      inputArgs,
+      "out.mov",
+    );
     expect(args.indexOf("-vf")).toBe(-1);
-    // but still has color metadata
-    expect(args).toContain("-colorspace:v");
+    expect(args.join(" ")).not.toContain("pad=");
   });
 
   it("does not add color metadata for VP9", () => {

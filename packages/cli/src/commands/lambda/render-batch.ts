@@ -36,6 +36,7 @@ import {
   reportVariableIssues,
   validateVariablesAgainstSchema,
 } from "../../utils/variables.js";
+import { normalizeErrorMessage } from "../../utils/errorMessage.js";
 import { warnOnDimensionMismatch } from "./_dimensions.js";
 import { requireStack } from "./state.js";
 
@@ -294,7 +295,7 @@ export async function runRenderBatch(args: RenderBatchArgs): Promise<void> {
         outputKey: entry.outputKey,
         executionArn: null,
         status: "failed-to-start",
-        error: err instanceof Error ? err.message : String(err),
+        error: normalizeErrorMessage(err),
       };
     }
   };
@@ -371,10 +372,7 @@ export function parseBatchFile(path: string): Array<{ entry: BatchEntry; lineNum
     try {
       parsed = JSON.parse(line);
     } catch (err) {
-      errorBox(
-        `Invalid JSON in batch file on line ${i + 1}`,
-        err instanceof Error ? err.message : String(err),
-      );
+      errorBox(`Invalid JSON in batch file on line ${i + 1}`, normalizeErrorMessage(err));
       process.exit(1);
     }
     if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {

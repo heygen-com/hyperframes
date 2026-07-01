@@ -13,6 +13,7 @@ import { publishProjectArchive } from "../utils/publishProject.js";
 export const examples: Example[] = [
   ["Publish the current project with a public URL", "hyperframes publish"],
   ["Publish a specific directory", "hyperframes publish ./my-video"],
+  ["Make the claimed project public to anyone", "hyperframes publish --public"],
   ["Skip the consent prompt (scripts)", "hyperframes publish --yes"],
 ];
 
@@ -27,6 +28,11 @@ export default defineCommand({
       type: "boolean",
       alias: "y",
       description: "Skip the publish confirmation prompt",
+      default: false,
+    },
+    public: {
+      type: "boolean",
+      description: "Make the claimed project public to anyone, not just the claimer",
       default: false,
     },
   },
@@ -66,7 +72,7 @@ export default defineCommand({
     publishSpinner.start("Uploading project...");
 
     try {
-      const published = await publishProjectArchive(dir);
+      const published = await publishProjectArchive(dir, { public: args.public === true });
       const claimUrl = new URL(published.url);
       claimUrl.searchParams.set("claim_token", published.claimToken);
       publishSpinner.stop(c.success("Project published"));

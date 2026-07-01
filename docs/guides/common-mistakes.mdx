@@ -92,6 +92,30 @@ These are mistakes that cannot be caught by the linter. For automated checks, ru
     </Tip>
   </Accordion>
 
+  <Accordion title="Setting the root render length from a script or --variables does nothing">
+    **Symptom:** You set the **root** composition's `data-duration` from a script (or expose it as a variable and pass `--variables`), but the render length never changes. It stays locked at whatever `data-duration` is written in the source HTML.
+
+    **Cause:** The root composition's `data-duration` (the total render length / frame count) is read **once at compile time**, before your scripts run, exactly like `data-width` / `data-height`. A static root `data-duration` is locked at that point, so a later `root.setAttribute("data-duration", ...)` or a `--variables`-driven value is ignored. This is unlike a **clip's** `data-duration`, which the renderer re-reads from the live DOM after scripts run.
+
+    **Before (broken):**
+
+    ```html index.html
+    <div id="root" data-composition-id="main" data-duration="2" data-width="1920" data-height="1080">
+      ...
+    </div>
+    <script>
+      // Ignored: the root render length was already fixed at 2s at compile time.
+      document.getElementById("root").setAttribute("data-duration", "5");
+    </script>
+    ```
+
+    **After (fixed):** author the root `data-duration` directly, one value per output. To produce a different length, author (or generate) a variant with that root `data-duration`. See [What can't be a variable](/concepts/variables#what-cant-be-a-variable).
+
+    <Tip>
+      Only the root composition's *total length* is compile-time-fixed. A clip's own `data-duration` (and a `<video>`/`<audio>` trim length) is re-read from the live DOM, so scripts and variables can still drive those, see [Swapping media: do you need to vary duration too?](/concepts/variables#swapping-media-do-you-need-to-vary-duration-too).
+    </Tip>
+  </Accordion>
+
   <Accordion title="Missing class='clip' on timed elements">
     **Symptom:** Elements are always visible, ignoring their `data-start` and `data-duration` timing.
 

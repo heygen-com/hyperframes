@@ -45,6 +45,45 @@ window.__contrastAudit = async function (imgBase64, time) {
     return s[Math.floor(s.length / 2)];
   }
 
+  function hasClipPath(el) {
+    for (var ce = el; ce; ce = ce.parentElement) {
+      var cp = getComputedStyle(ce).clipPath;
+      if (cp && cp !== "none") return true;
+    }
+    return false;
+  }
+
+  var CLIP_PROBE_COLS = [0.05, 0.25, 0.5, 0.75, 0.95];
+  var CLIP_PROBE_ROWS = [0.25, 0.5, 0.75];
+
+  function paintsAnyProbePoint(el, rect) {
+    // Keep probe resolution aligned with layout-audit.browser.js. Edge strips
+    // narrower than the nearest probe point are treated as clipped away to
+    // avoid noisy typewriter pre-reveal contrast reports.
+    for (var ci = 0; ci < CLIP_PROBE_COLS.length; ci++) {
+      for (var ri = 0; ri < CLIP_PROBE_ROWS.length; ri++) {
+        var x = rect.left + rect.width * CLIP_PROBE_COLS[ci];
+        var y = rect.top + rect.height * CLIP_PROBE_ROWS[ri];
+        var hit = document.elementFromPoint(x, y);
+        if (hit === el || el.contains(hit)) return true;
+      }
+    }
+    return false;
+  }
+
+  // A clip-path can shrink an element's painted region to nothing (a typewriter
+  // span pre-reveal at `inset(0 100% 0 0)`, or `circle(0px)`) while its box and
+  // colours read normally; it then paints zero pixels and measures a meaningless
+  // background-on-background ratio. clip-path drives hit-testing, so a fully
+  // clipped element is unreachable by elementFromPoint across its box. Probe only
+  // when a clip-path is in effect (self or ancestor) so genuinely-occluded but
+  // unclipped text is not skipped.
+  function isClippedAway(el, rect) {
+    if (typeof document.elementFromPoint !== "function") return false;
+    if (!hasClipPath(el)) return false;
+    return !paintsAnyProbePoint(el, rect);
+  }
+
   // Decode screenshot into canvas pixel data
   var img = new Image();
   await new Promise(function (resolve) {
@@ -110,6 +149,7 @@ window.__contrastAudit = async function (imgBase64, time) {
     var rect = el.getBoundingClientRect();
     if (rect.width < 8 || rect.height < 8) continue;
     if (rect.right <= 0 || rect.bottom <= 0 || rect.left >= w || rect.top >= h) continue;
+    if (isClippedAway(el, rect)) continue;
 
     var fg = parseColor(cs.color);
     if (fg[3] <= 0.01) continue;
