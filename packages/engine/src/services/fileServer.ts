@@ -33,6 +33,11 @@ const MIME_TYPES: Record<string, string> = {
   ".woff2": "font/woff2",
   ".ttf": "font/ttf",
   ".otf": "font/otf",
+  ".avif": "image/avif",
+  ".flac": "audio/flac",
+  ".m4a": "audio/mp4",
+  ".mov": "video/quicktime",
+  ".ico": "image/x-icon",
 };
 
 export interface FileServerOptions {

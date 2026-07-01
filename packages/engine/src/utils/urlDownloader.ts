@@ -1,4 +1,4 @@
-import { createWriteStream, existsSync, mkdirSync } from "fs";
+import { createWriteStream, existsSync, mkdirSync, rmSync } from "fs";
 import { createHash } from "crypto";
 import { join, extname } from "path";
 import { Readable } from "stream";
@@ -125,6 +125,7 @@ export async function downloadToTemp(
       downloadPathCache.set(url, localPath);
       return localPath;
     } catch (err) {
+      try { rmSync(localPath, { force: true }); } catch {}
       const message = err instanceof Error ? err.message : String(err);
       if (message.includes("aborted")) {
         throw new Error(`[URLDownloader] Download timeout after ${timeoutMs / 1000}s: ${url}`);
