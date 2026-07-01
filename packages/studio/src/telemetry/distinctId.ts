@@ -97,7 +97,15 @@ export function resolveStudioDistinctId(): string {
 
   // 2. Reuse an existing persisted id (prefer canonical, fall back to legacy).
   if (ls) {
-    const existing = ls.getItem(DISTINCT_ID_KEY) ?? ls.getItem(LEGACY_STUDIO_ANON_ID_KEY);
+    // getItem can throw in storage-restricted contexts (partitioned / sandboxed
+    // storage) even when the localStorage reference itself resolved — stay
+    // fail-silent (telemetry must never break Studio) and treat it as "no id".
+    let existing: string | null = null;
+    try {
+      existing = ls.getItem(DISTINCT_ID_KEY) ?? ls.getItem(LEGACY_STUDIO_ANON_ID_KEY);
+    } catch {
+      /* ignore */
+    }
     if (existing) {
       cachedId = existing;
       // Backfill the other key so both clients agree going forward.

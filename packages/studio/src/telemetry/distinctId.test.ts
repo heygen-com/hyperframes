@@ -10,7 +10,7 @@ import {
 } from "./distinctId";
 
 function clearCliId(): void {
-  delete (window as { __HF_CLI_DISTINCT_ID?: string }).__HF_CLI_DISTINCT_ID;
+  delete window.__HF_CLI_DISTINCT_ID;
 }
 
 describe("resolveStudioDistinctId", () => {
