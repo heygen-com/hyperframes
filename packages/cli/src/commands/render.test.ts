@@ -1,5 +1,8 @@
 // fallow-ignore-file code-duplication
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const producerState = vi.hoisted(() => ({
   createdJobs: [] as Array<Record<string, unknown>>,
@@ -59,8 +62,13 @@ vi.mock("../browser/preflight.js", () => ({
   runEnvironmentChecks: vi.fn(async () => preflightState.result),
 }));
 
+vi.mock("../browser/manager.js", () => ({
+  ensureBrowser: vi.fn(async () => ({ executablePath: "/mock/chrome", source: "cache" })),
+}));
+
 describe("renderLocal browser GPU config", () => {
   const savedEnv = new Map<string, string | undefined>();
+  let tempDirs: string[] = [];
   // Pre-resolve once. The first dynamic `import("./render.js")` in this file
   // takes >5 s on Windows runners (cold module load) — long enough to blow
   // vitest's default 5 s timeout in whichever test happens to be first. When
@@ -68,12 +76,27 @@ describe("renderLocal browser GPU config", () => {
   // the next test's `beforeEach` clears `producerState.createdJobs`, shifting
   // index 0 and corrupting unrelated assertions. Importing once in
   // `beforeAll` keeps every test fast and isolated.
+  let renderCommand: (typeof import("./render.js"))["default"];
   let renderLocal: typeof import("./render.js").renderLocal;
   let resolveBrowserGpuForCli: typeof import("./render.js").resolveBrowserGpuForCli;
 
   beforeAll(async () => {
-    ({ renderLocal, resolveBrowserGpuForCli } = await import("./render.js"));
-  });
+    const renderModule = await import("./render.js");
+    renderCommand = renderModule.default;
+    renderLocal = renderModule.renderLocal;
+    resolveBrowserGpuForCli = renderModule.resolveBrowserGpuForCli;
+  }, 30_000);
+
+  function createRenderProject(): string {
+    const dir = mkdtempSync(join(tmpdir(), "hf-render-command-"));
+    tempDirs.push(dir);
+    writeFileSync(
+      join(dir, "index.html"),
+      '<!doctype html><html><body><div data-composition-id="main" data-width="1920" data-height="1080" data-no-timeline></div></body></html>',
+      "utf8",
+    );
+    return dir;
+  }
 
   function setEnv(key: string, value: string) {
     if (!savedEnv.has(key)) savedEnv.set(key, process.env[key]);
@@ -103,6 +126,10 @@ describe("renderLocal browser GPU config", () => {
     vi.clearAllMocks();
     vi.useRealTimers();
     vi.restoreAllMocks();
+    for (const dir of tempDirs) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+    tempDirs = [];
   });
 
   it("passes an explicit software override for --no-browser-gpu even when env requests hardware", async () => {
@@ -250,6 +277,33 @@ describe("renderLocal browser GPU config", () => {
     });
 
     expect(producerState.createdJobs[0]?.videoFrameFormat).toBe("png");
+  });
+
+  it("forwards gif loop and video frame format to batch row renders", async () => {
+    const projectDir = createRenderProject();
+    const rowsPath = join(projectDir, "rows.json");
+    writeFileSync(rowsPath, "[{}]", "utf8");
+
+    if (!renderCommand.run) throw new Error("render command missing run handler");
+    await renderCommand.run({
+      args: {
+        dir: projectDir,
+        batch: rowsPath,
+        output: join(projectDir, "renders", "{index}.gif"),
+        fps: "15",
+        quality: "standard",
+        format: "gif",
+        "gif-loop": "3",
+        "video-frame-format": "png",
+        quiet: true,
+      },
+    } as never);
+
+    expect(producerState.createdJobs[0]).toMatchObject({
+      format: "gif",
+      gifLoop: 3,
+      videoFrameFormat: "png",
+    });
   });
 
   it("forwards debug mode to createRenderJob", async () => {
