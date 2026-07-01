@@ -19,6 +19,7 @@ import {
   wrapInlineScriptWithErrorBoundary,
   wrapScopedCompositionScript,
 } from "./compositionScoping";
+import { checkSubCompositionUsability } from "./subCompositionValidity";
 
 // ---------------------------------------------------------------------------
 // Public interface
@@ -101,10 +102,14 @@ export interface InlineSubCompositionsOptions {
   scriptErrorLabel?: string;
 
   /**
-   * Log a warning when a composition file cannot be resolved.
+   * Log a warning when a composition file cannot be resolved. `reason` is a
+   * short, human-readable explanation (e.g. "the file is empty (0 bytes or
+   * whitespace-only)") from `checkSubCompositionUsability` — present for
+   * every skip except when `resolveHtml` returns `null` (file not found,
+   * which callers detect themselves before calling `resolveHtml`).
    * Defaults to `console.warn`.
    */
-  onMissingComposition?: (srcPath: string) => void;
+  onMissingComposition?: (srcPath: string, reason?: string) => void;
 }
 
 export interface InlineSubCompositionsResult {
@@ -176,16 +181,19 @@ export function inlineSubCompositions(
     if (!src) continue;
 
     const compHtml = resolveHtml(src);
-    if (compHtml == null || !compHtml.trim()) {
-      onMissingComposition?.(src);
+    // Shared with lint + render pre-flight (subCompositionValidity.ts) so all
+    // three callers agree on what counts as a usable sub-composition file.
+    // This path stays intentionally tolerant (skip, don't throw) — preview
+    // and studio must keep bundling around a scene that's still being
+    // authored. Lint and the render pre-flight check use the same helper to
+    // fail loudly instead.
+    const validity = checkSubCompositionUsability(compHtml, parseHtml);
+    if (!validity.ok) {
+      onMissingComposition?.(src, validity.detail);
       continue;
     }
 
-    const compDoc = parseHtml(compHtml);
-    if (!compDoc.documentElement) {
-      onMissingComposition?.(src);
-      continue;
-    }
+    const compDoc = parseHtml(compHtml as string);
 
     // Determine composition IDs
     let compId: string | null;

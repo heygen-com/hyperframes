@@ -59,5 +59,15 @@ export {
   type InlineSubCompositionsResult,
 } from "./inlineSubCompositions";
 
+// Sub-composition usability check (shared between the inliner, lint, and the
+// render pre-flight abort) — single source of truth for "is this
+// data-composition-src file usable?"
+export {
+  checkSubCompositionUsability,
+  type ParsableDocumentLike,
+  type SubCompositionValidity,
+  type SubCompositionValidityReason,
+} from "./subCompositionValidity";
+
 // Asset-path primitives (shared across core, producer, CLI)
 export { CSS_URL_RE, PATH_ATTRS, isNonRelativeUrl, isPathInside } from "./assetPaths";
