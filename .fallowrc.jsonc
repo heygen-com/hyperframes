@@ -202,6 +202,12 @@
       "file": "packages/studio/src/utils/timelineElementSplit.ts",
       "exports": ["buildPatchTarget", "readFileContent"],
     },
+    // freezeUrl and freezeLocalFile are public API for Task 4 manifest flow
+    // and the /figma skill integration; not yet imported by current code.
+    {
+      "file": "packages/core/src/figma/freeze.ts",
+      "exports": ["freezeUrl", "freezeLocalFile"],
+    },
   ],
   "ignoreDependencies": [
     // Runtime/dynamic deps not visible to static analysis: tsup `external`,
