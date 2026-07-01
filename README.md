@@ -49,9 +49,9 @@ The skills teach agents the HyperFrames production loop: plan the video, write v
 
 ## Skills
 
-HyperFrames ships 20 skills agents load on demand. Read `/hyperframes` first — it's the router and capability map; it picks a workflow for any "make me a video" request and points to the domain skills below.
+HyperFrames ships 21 skills agents load on demand. Read `/hyperframes` first — it's the router and capability map; it picks a workflow for any "make me a video" request and points to the domain skills below.
 
-Run `npx skills add heygen-com/hyperframes` for the interactive picker, `npx skills add heygen-com/hyperframes --all` to install all 20 at once (skips the picker), or `npx skills add heygen-com/hyperframes --skill <name>` for just one (bare name, no leading `/`).
+Run `npx skills add heygen-com/hyperframes` for the interactive picker, `npx skills add heygen-com/hyperframes --all` to install all 21 at once (skips the picker), or `npx skills add heygen-com/hyperframes --skill <name>` for just one (bare name, no leading `/`).
 
 ### Router
 
@@ -89,6 +89,7 @@ Atomic capabilities the creation workflows compose against — pull one when you
 | `/media-use`             | Resolve any media need (BGM, SFX, image, icon) into a frozen local file + ledger record. One verb (`resolve`) over the HeyGen catalog with manifest tracking.                                               |
 | `/hyperframes-cli`       | CLI dev loop — `init`, `lint`, `validate`, `inspect`, `preview`, `render`, `publish`, `doctor`, plus AWS Lambda cloud rendering (`lambda deploy / render / progress`).                                      |
 | `/hyperframes-registry`  | Install and wire registry blocks and components into compositions via `hyperframes add`. Authoring a new block or component to contribute upstream.                                                         |
+| `/figma`                 | Import Figma assets, tokens, components, and Motion animations into a composition (MCP-first).                                                                         |
 
 For visual design handoff workflows, see the [Claude Design guide](https://hyperframes.heygen.com/guides/claude-design) and [Open Design guide](https://hyperframes.heygen.com/guides/open-design).
 

@@ -4,11 +4,11 @@ Open-source video rendering framework: write HTML, render video.
 
 ## Skills
 
-This repo ships 20 AI agent skills via [vercel-labs/skills](https://github.com/vercel-labs/skills). Install them before writing compositions — they encode framework-specific patterns that generic docs don't cover.
+This repo ships 21 AI agent skills via [vercel-labs/skills](https://github.com/vercel-labs/skills). Install them before writing compositions — they encode framework-specific patterns that generic docs don't cover.
 
 ```bash
 npx skills add heygen-com/hyperframes                        # interactive picker
-npx skills add heygen-com/hyperframes --all                  # install all 20 (skips picker)
+npx skills add heygen-com/hyperframes --all                  # install all 21 (skips picker)
 npx skills add heygen-com/hyperframes --skill <name>         # just one (bare name, no leading slash)
 ```
 
@@ -40,6 +40,7 @@ Atomic capabilities the creation workflows compose against — pull one when you
 - `/media-use` — resolve any media need (BGM, SFX, image, icon) into a frozen local file + ledger record. One verb (`resolve`) over the HeyGen catalog with manifest tracking; keeps search noise on disk.
 - `/hyperframes-cli` — CLI dev loop: `init`, `add`, `lint`, `validate`, `inspect`, `preview`, `render`, `publish`, `doctor`, `lambda` (AWS Lambda cloud rendering).
 - `/hyperframes-registry` — install and wire registry blocks and components into compositions via `hyperframes add`. Covers authoring a new block or component to contribute upstream.
+- `/figma` — import Figma assets, tokens, components, and Motion animations into a composition (MCP-first).
 
 ## Skill catalog maintenance
 
@@ -48,7 +49,7 @@ When adding a new skill, or substantially renaming / repurposing an existing one
 1. The skill list above (CLAUDE.md) AND the `## Skills` section in `README.md` AND `docs/guides/skills.mdx` (rendered at [hyperframes.heygen.com/guides/skills](https://hyperframes.heygen.com/guides/skills)). Out-of-date entries silently kill discovery.
 2. If the skill changes the routing surface for "make a video" requests, also update the capability map and intent router in `skills/hyperframes/SKILL.md` — that's the canonical router agents read first.
 3. Mirror the Router / Creation workflows / Domain skills grouping across all three surfaces so a skill always lives in the same column.
-4. Skill count appears in the README and CLAUDE.md intro lines ("20 AI agent skills…") — update on add/remove. The `docs/guides/skills.mdx` page deliberately omits a count to avoid drift; keep it count-free.
+4. Skill count appears in the README and CLAUDE.md intro lines ("21 AI agent skills…") — update on add/remove. The `docs/guides/skills.mdx` page deliberately omits a count to avoid drift; keep it count-free.
 
 The skill's own `SKILL.md` frontmatter `description:` is the source of truth for the one-line "use when" blurb; copy from there into the catalog rather than paraphrasing.
 
