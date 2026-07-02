@@ -65,11 +65,6 @@ function suggestMatchingPreset(
   compositionHeight: number,
   chosen: CanvasResolution,
 ): CanvasResolution | undefined {
-  const chosenLongSide = Math.max(
-    CANVAS_DIMENSIONS[chosen].width,
-    CANVAS_DIMENSIONS[chosen].height,
-  );
-
   const aspectMatches: CanvasResolution[] = VALID_CANVAS_RESOLUTIONS.filter((preset) => {
     const { width, height } = CANVAS_DIMENSIONS[preset];
     // Integer-safe aspect compare (cross-multiplication), matching the
@@ -78,13 +73,13 @@ function suggestMatchingPreset(
   });
   if (aspectMatches.length === 0) return undefined;
 
-  // Prefer the aspect-matching preset in the same resolution tier as the
-  // chosen one so we don't silently downgrade 4K → HD (or vice versa).
-  const sameTier = aspectMatches.find(
-    (preset) =>
-      Math.max(CANVAS_DIMENSIONS[preset].width, CANVAS_DIMENSIONS[preset].height) ===
-      chosenLongSide,
-  );
+  // Prefer the aspect-matching preset in the same resolution tier as the chosen
+  // one so we don't silently downgrade 4K → HD (or vice versa). Tier is keyed
+  // off the `-4k` suffix rather than long-side pixels: a 4K *square* (2160×2160)
+  // has a shorter long side than 4K landscape (3840), so a pixel-based compare
+  // would fail to recognise `square-4k` as the 4K peer and downgrade to `square`.
+  const chosenIs4k = chosen.endsWith("-4k");
+  const sameTier = aspectMatches.find((preset) => preset.endsWith("-4k") === chosenIs4k);
   return sameTier ?? aspectMatches[0];
 }
 

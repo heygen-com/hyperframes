@@ -68,7 +68,6 @@ import { normalizeSkillSlug } from "../telemetry/skill.js";
 import { bytesToMb } from "../telemetry/system.js";
 import { VERSION } from "../version.js";
 import { isDevMode } from "../utils/env.js";
-import { ensureDOMParser } from "../utils/dom.js";
 import { buildDockerRunArgs, resolveDockerPlatform } from "../utils/dockerRunArgs.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { runEnvironmentChecks } from "../browser/preflight.js";
@@ -800,7 +799,7 @@ export default defineCommand({
       let resolutionIssue: string | undefined;
       try {
         const renderTarget = entryFile ? resolve(project.dir, entryFile) : project.indexPath;
-        resolutionIssue = checkRenderResolutionPreflight(
+        resolutionIssue = await checkRenderResolutionPreflight(
           readFileSync(renderTarget, "utf8"),
           outputResolution,
           {
@@ -1026,21 +1025,28 @@ export function resolveBrowserGpuForCli(
 }
 
 /**
- * Read a composition's dimensions the SAME way the producer's compiler does —
- * `data-width` / `data-height` on the `[data-composition-id]` root (see
- * htmlCompiler.ts). Returns `undefined` when they can't be determined (no
- * root, missing/invalid attrs, unparseable HTML).
+ * Read a composition's dimensions from the SAME source the producer's compiler
+ * uses — `data-width` / `data-height` on the `[data-composition-id]` root (see
+ * htmlCompiler.ts). Returns `undefined` when they can't be determined (no root,
+ * missing/invalid attrs, unparseable HTML). Note the producer *defaults* a
+ * missing attr to 1080; this pre-flight deliberately defers instead (returns
+ * `undefined`) rather than guess a dimension the author didn't declare, so it
+ * never false-aborts — the producer's defense-in-depth still catches that case.
  *
  * Deriving dims any other way (e.g. `data-resolution` or a `#stage` heuristic)
  * risks disagreeing with the actual render: most compositions (all registry
  * blocks) carry `data-width/height` and no `data-resolution`, so a parallel
  * heuristic could false-abort a valid render. `DOMParser` isn't shipped by
- * Node — the CLI polyfills it via linkedom.
+ * Node — the CLI polyfills it via linkedom, imported lazily so the heavy DOM
+ * library stays out of `render.js`'s module-load graph (it cold-imports at
+ * >5 s already; a static linkedom import tips the render test suite's import
+ * hook over its timeout — see the note on `renderLocal browser GPU config`).
  */
-function readCompositionDimensions(
+async function readCompositionDimensions(
   compositionHtml: string,
-): { width: number; height: number } | undefined {
+): Promise<{ width: number; height: number } | undefined> {
   try {
+    const { ensureDOMParser } = await import("../utils/dom.js");
     ensureDOMParser();
     const doc = new DOMParser().parseFromString(compositionHtml, "text/html");
     const rootEl = doc.querySelector("[data-composition-id]");
@@ -1063,13 +1069,13 @@ function readCompositionDimensions(
  * thin adapter and the branch logic is unit-testable. See render-reliability
  * workstream P1-3.
  */
-export function checkRenderResolutionPreflight(
+export async function checkRenderResolutionPreflight(
   compositionHtml: string,
   outputResolution: CanvasResolution | undefined,
   modes: { alphaRequested: boolean; hdrRequested: boolean },
-): string | undefined {
+): Promise<string | undefined> {
   if (!outputResolution) return undefined;
-  const dims = readCompositionDimensions(compositionHtml);
+  const dims = await readCompositionDimensions(compositionHtml);
   // Couldn't determine the composition's actual dimensions — defer to the
   // pipeline's own defense-in-depth check rather than guess.
   if (!dims) return undefined;
