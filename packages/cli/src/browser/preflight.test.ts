@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parseToolVersion, runEnvironmentChecks } from "./preflight.js";
 import * as manager from "./manager.js";
+import * as linuxDeps from "./linuxDeps.js";
 
 describe("runEnvironmentChecks", () => {
   const originalFfmpegPath = process.env.HYPERFRAMES_FFMPEG_PATH;
@@ -99,6 +100,83 @@ describe("runEnvironmentChecks", () => {
       ok: false,
       title: "Chrome not found",
     });
+  });
+});
+
+describe("runEnvironmentChecks — Chrome shared libraries (Linux/WSL)", () => {
+  const originalPlatform = process.platform;
+
+  beforeEach(() => {
+    Object.defineProperty(process, "platform", { value: "linux", configurable: true });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(process, "platform", { value: originalPlatform, configurable: true });
+    vi.restoreAllMocks();
+  });
+
+  it("downgrades a found Chrome to a render-blocking error when libs are missing", async () => {
+    vi.spyOn(manager, "findBrowser").mockResolvedValue({
+      executablePath: "/root/.cache/hyperframes/chrome-headless-shell",
+      source: "cache",
+    });
+    vi.spyOn(linuxDeps, "probeChromeSharedLibs").mockReturnValue({
+      ok: false,
+      missing: ["libnss3.so", "libatk-1.0.so.0"],
+      probeUnavailable: false,
+    });
+    vi.spyOn(linuxDeps, "detectLinuxDistro").mockReturnValue({
+      family: "debian",
+      id: "ubuntu",
+      prettyName: "Ubuntu 22.04.3 LTS",
+      isWsl: true,
+    });
+
+    const result = await runEnvironmentChecks({ includeBrowser: true });
+    const chrome = result.outcomes.find((o) => o.name === "Chrome");
+
+    expect(chrome).toMatchObject({
+      ok: false,
+      level: "error",
+      title: "Chrome cannot launch (missing system libraries)",
+    });
+    expect(chrome?.detail).toContain("WSL");
+    expect(chrome?.detail).toContain("libnss3.so");
+    expect(chrome?.hint).toContain("apt-get install -y");
+    expect(chrome?.hint).toContain("libnss3");
+    // A lib-broken Chrome must NOT be handed to the render pipeline as usable.
+    expect(result.browser).toBeUndefined();
+  });
+
+  it("keeps Chrome ok when the shared-lib probe passes", async () => {
+    vi.spyOn(manager, "findBrowser").mockResolvedValue({
+      executablePath: "/usr/bin/chromium",
+      source: "system",
+    });
+    vi.spyOn(linuxDeps, "probeChromeSharedLibs").mockReturnValue({
+      ok: true,
+      missing: [],
+      probeUnavailable: false,
+    });
+
+    const result = await runEnvironmentChecks({ includeBrowser: true });
+    expect(result.outcomes.find((o) => o.name === "Chrome")).toMatchObject({ ok: true });
+    expect(result.browser?.executablePath).toBe("/usr/bin/chromium");
+  });
+
+  it("keeps Chrome ok when the probe is inconclusive (no ldd)", async () => {
+    vi.spyOn(manager, "findBrowser").mockResolvedValue({
+      executablePath: "/usr/bin/chromium",
+      source: "system",
+    });
+    vi.spyOn(linuxDeps, "probeChromeSharedLibs").mockReturnValue({
+      ok: false,
+      missing: [],
+      probeUnavailable: true,
+    });
+
+    const result = await runEnvironmentChecks({ includeBrowser: true });
+    expect(result.outcomes.find((o) => o.name === "Chrome")).toMatchObject({ ok: true });
   });
 });
 

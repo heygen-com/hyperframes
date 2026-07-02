@@ -71,6 +71,7 @@ import { isDevMode } from "../utils/env.js";
 import { buildDockerRunArgs, resolveDockerPlatform } from "../utils/dockerRunArgs.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { runEnvironmentChecks } from "../browser/preflight.js";
+import { chromeLaunchRemediation } from "../browser/linuxDeps.js";
 import type { ProducerLogger, RenderJob } from "@hyperframes/producer";
 import {
   MAX_VP9_CPU_USED,
@@ -1481,6 +1482,15 @@ function handleRenderError(
   });
   if (options.throwOnError) {
     throw new Error(message);
+  }
+  // A `Failed to launch the browser process` / `libnss3.so cannot open ...`
+  // failure on Linux/WSL is an environment problem, not a composition bug.
+  // Replace the generic "Try --docker" hint with the exact per-distro
+  // remediation and a pointer at `doctor`.
+  const remediation = chromeLaunchRemediation(message);
+  if (remediation) {
+    errorBox("Render failed — Chrome could not launch", message, remediation);
+    process.exit(1);
   }
   errorBox("Render failed", message, hint);
   process.exit(1);
