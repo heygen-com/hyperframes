@@ -12,6 +12,7 @@ const {
   trackCommandFailure,
   trackCliError,
   trackRenderFeedback,
+  trackRenderPreflightRejected,
 } = await import("./events.js");
 
 describe("render telemetry events", () => {
@@ -37,6 +38,13 @@ describe("render telemetry events", () => {
       }),
       undefined,
     );
+  });
+
+  it("emits render_preflight_rejected with the low-cardinality issue kind", () => {
+    trackRenderPreflightRejected({ kind: "aspect-mismatch" });
+    expect(trackEvent).toHaveBeenCalledWith("render_preflight_rejected", {
+      kind: "aspect-mismatch",
+    });
   });
 
   it("forwards distinctId to trackEvent so studio renders attribute to the browser user", () => {

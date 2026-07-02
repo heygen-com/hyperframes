@@ -308,6 +308,15 @@ export function trackBrowserInstall(): void {
   trackEvent("browser_install", {});
 }
 
+// A render was rejected by the output-resolution/alpha/HDR pre-flight (P1-3)
+// before any browser/ffmpeg work. Counts the "caught early" saves on dashboard
+// 1783183, distinct from deep render failures. `kind` is the low-cardinality
+// `OutputResolutionIssueKind` (aspect-mismatch / alpha-incompatible / etc.),
+// never free text.
+export function trackRenderPreflightRejected(props: { kind: string }): void {
+  trackEvent("render_preflight_rejected", { kind: props.kind });
+}
+
 export function trackCliError(props: {
   error_name: string;
   error_message: string;

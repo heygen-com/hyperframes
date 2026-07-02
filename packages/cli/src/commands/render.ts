@@ -61,6 +61,7 @@ import {
   trackRenderComplete,
   trackRenderError,
   trackRenderObservation,
+  trackRenderPreflightRejected,
 } from "../telemetry/events.js";
 import { maybePromptRenderFeedback } from "../telemetry/feedback.js";
 import { renderJobObservabilityTelemetryPayload } from "../telemetry/renderObservability.js";
@@ -86,6 +87,7 @@ import {
   fpsToNumber,
   fpsToFfmpegArg,
   type CanvasResolution,
+  type OutputResolutionIssueKind,
   type Fps,
   type FpsParseResult,
 } from "@hyperframes/core";
@@ -796,7 +798,7 @@ export default defineCommand({
     // own defense-in-depth check rather than blocking a render we can't reason
     // about. See render-reliability workstream P1-3.
     if (outputResolution) {
-      let resolutionIssue: string | undefined;
+      let resolutionIssue: { message: string; kind: OutputResolutionIssueKind } | undefined;
       try {
         const renderTarget = entryFile ? resolve(project.dir, entryFile) : project.indexPath;
         resolutionIssue = await checkRenderResolutionPreflight(
@@ -812,7 +814,11 @@ export default defineCommand({
         // the real problem with full context.
       }
       if (resolutionIssue) {
-        errorBox("Output resolution incompatible", resolutionIssue);
+        // Count the pre-flight save so dashboard 1783183 can distinguish
+        // "caught early by pre-flight" from a deep render failure or a user who
+        // gave up — i.e. measure whether the P1-3 fix is doing its job.
+        trackRenderPreflightRejected({ kind: resolutionIssue.kind });
+        errorBox("Output resolution incompatible", resolutionIssue.message);
         process.exit(1);
       }
     }
@@ -1073,7 +1079,7 @@ export async function checkRenderResolutionPreflight(
   compositionHtml: string,
   outputResolution: CanvasResolution | undefined,
   modes: { alphaRequested: boolean; hdrRequested: boolean },
-): Promise<string | undefined> {
+): Promise<{ message: string; kind: OutputResolutionIssueKind } | undefined> {
   if (!outputResolution) return undefined;
   const dims = await readCompositionDimensions(compositionHtml);
   // Couldn't determine the composition's actual dimensions — defer to the
@@ -1086,7 +1092,9 @@ export async function checkRenderResolutionPreflight(
     alphaRequested: modes.alphaRequested,
     hdrRequested: modes.hdrRequested,
   });
-  return compat.ok ? undefined : compat.message;
+  // Narrow to the incompatible case; `message`/`kind` are always set there.
+  if (compat.ok || !compat.message || !compat.kind) return undefined;
+  return { message: compat.message, kind: compat.kind };
 }
 
 const DOCKER_IMAGE_PREFIX = "hyperframes-renderer";

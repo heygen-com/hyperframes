@@ -443,22 +443,22 @@ describe("checkRenderResolutionPreflight", () => {
     expect(await checkRenderResolutionPreflight(portraitHtml, "portrait", noModes)).toBeUndefined();
   });
 
-  it("returns a suggestion when a landscape preset is used on a portrait composition", async () => {
-    const message = await checkRenderResolutionPreflight(portraitHtml, "landscape", noModes);
-    expect(message).toBeDefined();
-    expect(message).toContain("--resolution portrait");
+  it("returns a suggestion + aspect-mismatch kind when a landscape preset is used on a portrait composition", async () => {
+    const result = await checkRenderResolutionPreflight(portraitHtml, "landscape", noModes);
+    expect(result?.message).toContain("--resolution portrait");
+    expect(result?.kind).toBe("aspect-mismatch");
   });
 
   it("suggests landscape for a landscape composition rendered with a portrait preset", async () => {
-    const message = await checkRenderResolutionPreflight(landscapeHtml, "portrait", noModes);
-    expect(message).toContain("--resolution landscape");
+    const result = await checkRenderResolutionPreflight(landscapeHtml, "portrait", noModes);
+    expect(result?.message).toContain("--resolution landscape");
   });
 
   it("preserves the 4K tier when suggesting a matching preset (square comp + landscape-4k → square-4k)", async () => {
     // Tier-aware suggestion is the load-bearing new behavior; square-4k is the
     // preset that only surfaces via a same-tier swap, so guard it explicitly.
-    const message = await checkRenderResolutionPreflight(comp(2160, 2160), "landscape-4k", noModes);
-    expect(message).toContain("--resolution square-4k");
+    const result = await checkRenderResolutionPreflight(comp(2160, 2160), "landscape-4k", noModes);
+    expect(result?.message).toContain("--resolution square-4k");
   });
 
   it("does not false-abort a landscape registry-block composition (data-width/height, no data-resolution)", async () => {
@@ -471,11 +471,12 @@ describe("checkRenderResolutionPreflight", () => {
   });
 
   it("flags alpha output combined with outputResolution", async () => {
-    const message = await checkRenderResolutionPreflight(landscapeHtml, "landscape-4k", {
+    const result = await checkRenderResolutionPreflight(landscapeHtml, "landscape-4k", {
       alphaRequested: true,
       hdrRequested: false,
     });
-    expect(message).toContain("alpha output");
+    expect(result?.message).toContain("alpha output");
+    expect(result?.kind).toBe("alpha-incompatible");
   });
 
   it("returns undefined when composition dimensions can't be determined (defers to the pipeline)", async () => {
