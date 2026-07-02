@@ -15,6 +15,7 @@ import {
   localizeRemoteFontFaces,
   recompileWithResolutions,
 } from "./htmlCompiler.js";
+import { validateNoSystemFonts } from "./render/planValidation.js";
 
 // ── collectExternalAssets ──────────────────────────────────────────────────
 
@@ -675,6 +676,56 @@ describe("detectShaderTransitionUsage", () => {
 </body></html>`;
 
     expect(detectShaderTransitionUsage(html)).toBe(false);
+  });
+});
+
+describe("system-primary font normalization", () => {
+  it("promotes Inter before system/generic primary stacks before distributed plan validation", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-system-primary-font-"));
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html>
+<html>
+  <head>
+    <style>
+      :root { --system-font: -apple-system, BlinkMacSystemFont, sans-serif; }
+      body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+      .system-ui { font-family: system-ui, sans-serif; }
+      .var-font { font-family: var(--system-font), sans-serif; }
+      .deterministic { font-family: "Montserrat", system-ui, sans-serif; }
+    </style>
+  </head>
+  <body>
+    <div
+      data-composition-id="root"
+      data-width="640"
+      data-height="360"
+      data-duration="1"
+      data-font-family="ui-monospace, monospace"
+      style="--inline-system-font: system-ui, sans-serif; font-family: sans-serif"
+    >
+      <span class="var-font">Hello</span>
+    </div>
+  </body>
+</html>`,
+    );
+
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+
+    expect(() => validateNoSystemFonts(compiled.html)).not.toThrow();
+    const compact = compiled.html.replace(/\s+/g, "");
+    expect(compact).toContain("--system-font:Inter,-apple-system,BlinkMacSystemFont,sans-serif");
+    expect(compact).toContain("font-family:Inter,-apple-system,BlinkMacSystemFont,sans-serif");
+    expect(compact).toContain("font-family:Inter,system-ui,sans-serif");
+    expect(compact).toContain("font-family:var(--system-font),sans-serif");
+    expect(compact).toContain('font-family:"Montserrat",system-ui,sans-serif');
+    expect(compact).toContain('data-font-family="Inter,ui-monospace,monospace"');
+    expect(compact).toContain('data-hyperframes-deterministic-fonts="true"');
+
+    const { document } = parseHTML(compiled.html);
+    const rootStyle = document.querySelector('[data-composition-id="root"]')?.getAttribute("style");
+    expect(rootStyle).toContain("--inline-system-font: Inter, system-ui, sans-serif");
+    expect(rootStyle).toContain("font-family: Inter, sans-serif");
   });
 });
 

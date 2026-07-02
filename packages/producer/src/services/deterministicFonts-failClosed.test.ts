@@ -192,17 +192,30 @@ describe("injectDeterministicFontFaces — failClosedFontFetch: true", () => {
     expect(result).toContain("data-hyperframes-deterministic-fonts");
   });
 
-  it("does NOT throw when font-family uses CSS var() references", async () => {
+  it("does NOT throw when font-family uses unresolved CSS var() references", async () => {
     const html = `<!doctype html><html><head><style>
-      :root { --ui-font: "Inter"; --vowel-font: "Montserrat"; }
-      body { font-family: var(--ui-font), sans-serif; }
-      h1 { font-family: var(--vowel-font), serif; }
+      body { font-family: var(--missing-font), sans-serif; }
     </style></head><body><h1>hello</h1></body></html>`;
     const result = await injectDeterministicFontFaces(html, {
       failClosedFontFetch: true,
       fetchImpl: makeFailingFetch(),
     });
     expect(result).toBe(html);
+  });
+
+  it("resolves simple CSS var() font aliases when injecting deterministic fonts", async () => {
+    const html = `<!doctype html><html><head><style>
+      :root { --ui-font: "Inter"; --vowel-font: "Montserrat"; }
+      body { font-family: var(--ui-font), sans-serif; }
+      h1 { font-family: var(--vowel-font), serif; }
+    </style></head><body><h1>hello</h1></body></html>`;
+    const fetchImpl = (async () =>
+      new Response("/* no extra faces */", { status: 200 })) as unknown as typeof fetch;
+    const result = await injectDeterministicFontFaces(html, {
+      failClosedFontFetch: true,
+      fetchImpl,
+    });
+    expect(result).toContain("data-hyperframes-deterministic-fonts");
   });
 
   it("still resolves concrete fonts alongside var() in mixed declarations", async () => {

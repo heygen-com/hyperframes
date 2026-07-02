@@ -42,7 +42,10 @@ import {
 } from "@hyperframes/engine";
 import { assertPublicHttpsUrl, downloadToTemp, isHttpUrl } from "../utils/urlDownloader.js";
 import type { Page } from "puppeteer-core";
-import { injectDeterministicFontFaces } from "./deterministicFonts.js";
+import {
+  injectDeterministicFontFaces,
+  normalizeSystemFontPrimaryFamilies,
+} from "./deterministicFonts.js";
 import { prepareAnimatedGifInputs } from "./animatedGifPrep.js";
 import { createStudioPositionSeekReapplyScript } from "@hyperframes/studio-server/manual-edits-render-script";
 import { defaultLogger, type ProducerLogger } from "../logger.js";
@@ -1548,15 +1551,16 @@ export async function compileForRender(
   const renderModeHints = detectRenderModeHints(sanitizedHtml);
   const hasShaderTransitions = detectShaderTransitionUsage(sanitizedHtml);
 
-  const coalescedHtml = await injectDeterministicFontFaces(
+  const normalizedFontHtml = normalizeSystemFontPrimaryFamilies(
     injectTextRenderingRule(
       coalesceHeadStylesAndBodyScripts(promoteCssImportsToLinkTags(sanitizedHtml)),
     ),
-    {
-      failClosedFontFetch: options.failClosedFontFetch === true,
-      allowSystemFontCapture: options.allowSystemFontCapture,
-    },
   );
+
+  const coalescedHtml = await injectDeterministicFontFaces(normalizedFontHtml, {
+    failClosedFontFetch: options.failClosedFontFetch === true,
+    allowSystemFontCapture: options.allowSystemFontCapture,
+  });
 
   // Download CDN scripts and inline them AFTER coalescing. This order matters:
   // coalesceHeadStylesAndBodyScripts merges inline scripts and appends them at
