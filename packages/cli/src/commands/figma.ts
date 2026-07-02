@@ -40,6 +40,7 @@ export default defineCommand({
   meta: { name: "figma", description: "Import figma assets, tokens, and components (REST)" },
   subCommands: {
     asset: () => import("./figma/asset.js").then((m) => m.default),
+    tokens: () => import("./figma/tokens.js").then((m) => m.default),
   },
   async run({ args }) {
     if (!args._?.[0]) console.log(HELP);

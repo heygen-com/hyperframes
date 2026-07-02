@@ -33,6 +33,23 @@ export {
 } from "./manifest";
 export { buildAssetSnippet } from "./assetSnippet";
 export { sanitizeSvg } from "./sanitizeSvg";
+export {
+  appendBinding,
+  upsertBindings,
+  findBindingByFigmaId,
+  readBindings,
+  readLibraryMap,
+  recordLibraryFile,
+} from "./bindings";
+export type { FigmaBindingRecord } from "./bindings";
+export { tokensToVariables } from "./tokensToVariables";
+export type {
+  CompositionVariableEntry,
+  FigmaTokenSidecarEntry,
+  FigmaTokensSidecar,
+  TokenSource,
+  TokensToVariablesResult,
+} from "./tokensToVariables";
 export { mapEase } from "./motionEase";
 export { motionToGsap } from "./motionToGsap";
 export { emitTimelineScript } from "./emitTimelineScript";
