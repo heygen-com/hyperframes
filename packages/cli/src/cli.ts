@@ -144,6 +144,7 @@ const commandLoaders = {
   cloudrun: () => import("./commands/cloudrun.js").then((m) => m.default),
   cloud: () => import("./commands/cloud.js").then((m) => m.default),
   auth: () => import("./commands/auth.js").then((m) => m.default),
+  figma: () => import("./commands/figma.js").then((m) => m.default),
 };
 
 // Wrap each command's run() so a thrown failure reports its reason to telemetry

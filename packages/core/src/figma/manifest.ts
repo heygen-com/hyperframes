@@ -1,5 +1,6 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { readJsonlValues } from "./jsonl";
 import type { FigmaManifestRecord } from "./types";
 
 const MANIFEST_FILE = "manifest.jsonl";
@@ -54,20 +55,7 @@ export function isFigmaManifestRecord(value: unknown): value is FigmaManifestRec
 }
 
 export function readManifest(projectDir: string): FigmaManifestRecord[] {
-  const p = manifestPath(projectDir);
-  if (!existsSync(p)) return [];
-  const out: FigmaManifestRecord[] = [];
-  for (const line of readFileSync(p, "utf8").split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (trimmed.length === 0) continue;
-    try {
-      const parsed: unknown = JSON.parse(trimmed);
-      if (isFigmaManifestRecord(parsed)) out.push(parsed);
-    } catch {
-      // ponytail: skip malformed/non-matching lines, don't crash the whole read
-    }
-  }
-  return out;
+  return readJsonlValues(manifestPath(projectDir)).filter(isFigmaManifestRecord);
 }
 
 export function appendRecord(projectDir: string, record: FigmaManifestRecord): void {
