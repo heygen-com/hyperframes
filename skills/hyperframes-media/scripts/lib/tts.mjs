@@ -25,7 +25,9 @@ export function heygenAvailable() {
 }
 export function elevenlabsAvailable() {
   if (!process.env.ELEVENLABS_API_KEY) return false;
-  const r = spawnSync("python3", ["-c", "import elevenlabs"], { stdio: "ignore" });
+  const r = spawnSync("python3", ["-c", "import elevenlabs"], {
+    stdio: "ignore",
+  });
   return r.status === 0;
 }
 
@@ -72,7 +74,12 @@ export async function resolveVoiceId({ provider, userVoice, lang = "en" }) {
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 export function withWordIds(words) {
-  return (words ?? []).map((w, i) => ({ id: `w${i}`, text: w.text, start: w.start, end: w.end }));
+  return (words ?? []).map((w, i) => ({
+    id: `w${i}`,
+    text: w.text,
+    start: w.start,
+    end: w.end,
+  }));
 }
 
 // `ffmpeg -i <file>` prints a `Duration: HH:MM:SS.ms` line to stderr even
@@ -108,18 +115,57 @@ export function ffprobeDuration(absPath) {
   return parseFloat(String(r.stdout).trim());
 }
 
+export function resolveNpxCliFromNpmExecPath(
+  npmExecPath = process.env.npm_execpath,
+  pathExists = existsSync,
+) {
+  if (!npmExecPath) return null;
+  const fileName = npmExecPath.replace(/\\/g, "/").split("/").pop()?.toLowerCase();
+  const npxCliPath =
+    fileName === "npx-cli.js" ? npmExecPath : join(dirname(npmExecPath), "npx-cli.js");
+  return pathExists(npxCliPath) ? npxCliPath : null;
+}
+
+export function resolveSpawnCommand(
+  cmd,
+  args,
+  opts = {},
+  platform = process.platform,
+  env = process.env,
+  pathExists = existsSync,
+) {
+  if (cmd !== "npx" || platform !== "win32") {
+    return { cmd, args, opts: { stdio: "ignore", ...opts } };
+  }
+
+  // On Windows, npx resolves to npx.cmd, which Node cannot execute directly.
+  // Avoid `shell:true` and the .cmd shim entirely by invoking npm's JS CLI with
+  // node, preserving request-provided values as argv data instead of shell text.
+  const npxCliPath = resolveNpxCliFromNpmExecPath(env.npm_execpath, pathExists);
+  if (!npxCliPath) return null;
+  return {
+    cmd: env.npm_node_execpath || process.execPath,
+    args: [npxCliPath, ...args.map((arg) => String(arg))],
+    opts: { stdio: "ignore", windowsHide: true, ...opts },
+  };
+}
+
 // `platform`/`spawnFn` params (default process.platform / the real spawn)
 // exist so tests can exercise the win32 branch without mocking node:child_process
 // (its ESM exports are non-configurable, so mock.method can't patch it).
-export function spawnP(cmd, args, opts = {}, platform = process.platform, spawnFn = spawn) {
-  // On Windows, npx resolves to npx.cmd — a shell script that Node's spawn()
-  // cannot exec directly without shell:true. Without it this fails ENOENT,
-  // which the "error" listener below silently turns into ok:false ("TTS
-  // failed") rather than surfacing the real cause. Real binaries (python3)
-  // don't need this, so it's scoped to npx specifically.
-  const shell = cmd === "npx" && platform === "win32";
+export function spawnP(
+  cmd,
+  args,
+  opts = {},
+  platform = process.platform,
+  spawnFn = spawn,
+  env = process.env,
+  pathExists = existsSync,
+) {
+  const resolved = resolveSpawnCommand(cmd, args, opts, platform, env, pathExists);
+  if (!resolved) return Promise.resolve({ status: -1 });
   return new Promise((resolve) => {
-    const p = spawnFn(cmd, args, { stdio: "ignore", shell, ...opts });
+    const p = spawnFn(resolved.cmd, resolved.args, resolved.opts);
     p.on("exit", (code) => resolve({ status: code ?? -1 }));
     p.on("error", () => resolve({ status: -1 }));
   });
