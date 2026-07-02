@@ -9,6 +9,39 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.7.26"
+  description="Released - 2026-07-02"
+  tags={["Release", "Producer", "CLI", "Studio"]}
+>
+v0.7.26 makes imported designs more reliable by normalizing host-system primary font stacks to deterministic web fonts before distributed plan validation. It also adds render-reliability telemetry for preflight rejections, transient retries, and OOM classification, plus Studio controls and fixes around automatic keyframe recording.
+
+## Features
+
+- **CLI:** Emit render_preflight_rejected telemetry for P1-3 pre-flight saves ([9b41891f](https://github.com/heygen-com/hyperframes/commit/9b41891f3a39e73a0b91bd97bb00fa6767a4769e), [#1856](https://github.com/heygen-com/hyperframes/pull/1856))
+- **Producer,cli:** Render-reliability telemetry counters for capture hardening ([733f88cb](https://github.com/heygen-com/hyperframes/commit/733f88cb1f10bdbe31c924c4e0f1f8359f19e7d9), [#1850](https://github.com/heygen-com/hyperframes/pull/1850))
+- **Studio:** Add a global toggle to stop manual edits from auto-recording keyframes ([636d5dd6](https://github.com/heygen-com/hyperframes/commit/636d5dd6c52083a6c10a25eb00580c207b164534))
+
+## Fixes
+
+- **Producer:** Normalize system-primary font stacks ([e10e61ce](https://github.com/heygen-com/hyperframes/commit/e10e61ceb2cfb9664915548b4b8d42456d636aa1), [#1857](https://github.com/heygen-com/hyperframes/pull/1857))
+- **Studio:** Don't crash resizing an element whose keyframes were removed ([dff3634e](https://github.com/heygen-com/hyperframes/commit/dff3634ea89d8834a41f2fd935111d9f5530a637))
+- **Studio:** Re-sync soft-reloaded timelines to the studio's own scrub time ([70606f84](https://github.com/heygen-com/hyperframes/commit/70606f840df92549afdc85824fdc58d319b93819))
+- **Studio:** Fix array-form keyframe writes, diamond click-deselect, and nested video sync ([1b8b2ac4](https://github.com/heygen-com/hyperframes/commit/1b8b2ac425703e4ea3600b6656f7fc67bb7cd7b2))
+- **Studio:** Resolve recent timeline regressions ([9b311588](https://github.com/heygen-com/hyperframes/commit/9b311588be7e72ab7627c55a001fa63ae5c8307c))
+
+## Internal
+
+- **CLI:** De-flake cold-import tests under CI contention via vitest timeouts ([438474c9](https://github.com/heygen-com/hyperframes/commit/438474c968e1c094cb3a01453d6309c099502666), [#1855](https://github.com/heygen-com/hyperframes/pull/1855))
+
+## Other Changes
+
+- Keep Codex plugin category as Creativity ([bf8b3d97](https://github.com/heygen-com/hyperframes/commit/bf8b3d9796a740ff93015d4723b486bfcc5935a1), [#1860](https://github.com/heygen-com/hyperframes/pull/1860))
+- **Studio:** Make the auto-keyframe toggle icon a diamond with a record dot ([ae50327b](https://github.com/heygen-com/hyperframes/commit/ae50327bdb4a80123ff3b099ff067310a59b85c3))
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.7.25...v0.7.26).
+</Update>
+
+<Update
   label="HyperFrames v0.7.25"
   description="Released - 2026-07-02"
   tags={["Release", "CLI", "Engine", "Render"]}
