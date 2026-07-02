@@ -164,23 +164,23 @@ The `REVEAL_THRESHOLD` separates "scrambled" from "revealed" — by the time the
 - **HACKER_FONT_SIZE** — font-size of the flip text in px.
   - Range: 6-10% of viewport min-dimension; the flip text is the focal beat, scale accordingly
   - Constraints: ghost row must use the identical size so layout width stays stable mid-flicker
-  - Reference: examples/proof-logo-chain.html uses `163px` at 1920×1080
+  - Reference: ../../examples/proof-logo-chain.html uses `163px` at 1920×1080
 - **FLIP_DURATION** — per-character flip tween duration.
   - Range: 0.4-1.0s; under 0.4s the random-glyph phase has no time to flicker, over 1.0s drags
   - Effects: shorter feels snappy and modern; longer feels mechanical / typewriter
-  - Reference: examples/proof-logo-chain.html uses `0.55s`
+  - Reference: ../../examples/proof-logo-chain.html uses `0.55s`
 - **CHAR_STAGGER** — delay between consecutive characters starting their flips, in seconds.
   - Range: 0.03-0.08s; too fast and chars overlap visually, too slow and the effect feels labored
   - Constraints: total decode time = `CHAR_STAGGER × (charCount − 1) + FLIP_DURATION`; ensure this fits the phase budget
-  - Reference: examples/proof-logo-chain.html uses `0.033s` (≈2 frames at 60fps)
+  - Reference: ../../examples/proof-logo-chain.html uses `0.033s` (≈2 frames at 60fps)
 - **REVEAL_THRESHOLD** — progress at which a glyph swaps from random → real.
   - Range: 0.5-0.7; lower reveals too early (no decode tension), higher feels like a hard reveal at the end
   - Effects: this is a discrete tuning of when the eye locks onto the real letter
-  - Reference: examples/proof-logo-chain.html uses `0.6`
+  - Reference: ../../examples/proof-logo-chain.html uses `0.6`
 - **FLICKER_RATE** — frames between glyph reshuffles during the random phase.
   - Range: 3-6; lower than 3 looks like noise, higher than 6 looks like discrete typing instead of flicker
   - Constraints: must be ≥ ~3 frames (see Critical Constraints)
-  - Reference: examples/proof-logo-chain.html uses an equivalent of `3` (one shuffle every 3 internal-clock frames)
+  - Reference: ../../examples/proof-logo-chain.html uses an equivalent of `3` (one shuffle every 3 internal-clock frames)
 - **{bgColor} / {textColor}** — stage background and live-character color tokens.
 - **{monoFont}** — monospace family preferred so flicker glyphs don't change width per swap; if a proportional font is required, the ghost placeholder makes the cost recoverable.
 - **{phrase}** — the target word the flip resolves to. Length feeds the total decode duration via `CHAR_STAGGER`.

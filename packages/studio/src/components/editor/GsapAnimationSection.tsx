@@ -31,6 +31,7 @@ export const GsapAnimationSection = memo(function GsapAnimationSection({
   onSetArcPath,
   onUpdateArcSegment,
   onUpdateKeyframeEase,
+  onSetAllKeyframeEases,
   onUnroll,
 }: GsapAnimationSectionProps) {
   const [addMenuOpen, setAddMenuOpen] = useState(false);
@@ -45,9 +46,9 @@ export const GsapAnimationSection = memo(function GsapAnimationSection({
       )}
       {unsupportedTimelinePattern && (
         <p className="mb-2 rounded-lg bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-400">
-          This composition uses a timeline assignment pattern (window.__timelines[...]) that the
-          editor doesn&apos;t support. Use a variable declaration (const tl = gsap.timeline()) to
-          enable editing.
+          This timeline uses a computed key (window.__timelines[variable]) the editor can&apos;t
+          resolve statically. Use a string-literal key (window.__timelines[&quot;id&quot;]) or a
+          variable declaration (const tl = gsap.timeline()) to enable editing.
         </p>
       )}
       {multipleTimelines || unsupportedTimelinePattern ? null : (
@@ -70,6 +71,7 @@ export const GsapAnimationSection = memo(function GsapAnimationSection({
               onSetArcPath={onSetArcPath}
               onUpdateArcSegment={onUpdateArcSegment}
               onUpdateKeyframeEase={onUpdateKeyframeEase}
+              onSetAllKeyframeEases={onSetAllKeyframeEases}
               onUnroll={onUnroll}
             />
           ))}

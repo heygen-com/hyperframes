@@ -13,6 +13,7 @@ function fakePlayer() {
     play: vi.fn(() => {}),
     pause: vi.fn(() => {}),
     stopMedia: vi.fn(() => {}),
+    playSceneMedia: vi.fn((_sceneId: string) => {}),
     onTimeUpdate: (fn: (t: number) => void) => {
       cb = fn;
       return () => {
@@ -681,5 +682,49 @@ describe("SlideshowController syncTo", () => {
     const c = new SlideshowController(p, SHOW);
     c.syncTo("main", 99, -1);
     expect(c.position.slideIndex).toBe(0);
+  });
+});
+
+describe("SlideshowController autoplay", () => {
+  // "v" autoplays; "w" does not. Both sit on the main line.
+  const AUTOPLAY_SHOW: ResolvedSlideshow = {
+    slides: [
+      { sceneId: "v", start: 0, end: 5, fragments: [], hotspots: [], autoplay: true },
+      { sceneId: "w", start: 5, end: 10, fragments: [], hotspots: [] },
+    ],
+    sequences: {},
+  };
+
+  it("plays the slide's media on enter when autoplay is set", () => {
+    const p = fakePlayer();
+    new SlideshowController(p, AUTOPLAY_SHOW); // constructs on slide "v"
+    expect(p.playSceneMedia).toHaveBeenCalledWith("v");
+    expect(p.playSceneMedia).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not play media when entering a non-autoplay slide", () => {
+    const p = fakePlayer();
+    const c = new SlideshowController(p, AUTOPLAY_SHOW);
+    p.playSceneMedia.mockClear();
+    c.next(); // v → w (w is not autoplay)
+    expect(c.position.slideIndex).toBe(1);
+    expect(p.playSceneMedia).not.toHaveBeenCalled();
+  });
+
+  it("stops prior media and plays again when navigating back into an autoplay slide", () => {
+    const p = fakePlayer();
+    const c = new SlideshowController(p, AUTOPLAY_SHOW);
+    p.playSceneMedia.mockClear();
+    c.next(); // → w
+    expect(p.stopMedia).toHaveBeenCalled(); // leaving v stops its clip
+    p.playSceneMedia.mockClear();
+    c.prev(); // back into v (enterSlide) → replays
+    expect(p.playSceneMedia).toHaveBeenCalledWith("v");
+  });
+
+  it("does not require autoplay support on the port (optional hook)", () => {
+    // A port without playSceneMedia must not throw when entering an autoplay slide.
+    const { playSceneMedia: _omitted, ...port } = fakePlayer();
+    expect(() => new SlideshowController(port, AUTOPLAY_SHOW)).not.toThrow();
   });
 });

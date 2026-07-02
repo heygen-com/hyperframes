@@ -1,0 +1,171 @@
+{
+  "name": "@hyperframes/parsers",
+  "version": "0.7.24",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/heygen-com/hyperframes",
+    "directory": "packages/parsers"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "node": "./dist/index.js",
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
+    },
+    "./package.json": "./package.json",
+    "./gsap-parser": {
+      "bun": "./src/gsapParserExports.ts",
+      "node": "./dist/gsapParserExports.js",
+      "import": "./src/gsapParserExports.ts",
+      "types": "./src/gsapParserExports.ts"
+    },
+    "./gsap-parser-acorn": {
+      "bun": "./src/gsapParserAcorn.ts",
+      "node": "./dist/gsapParserAcorn.js",
+      "import": "./src/gsapParserAcorn.ts",
+      "types": "./src/gsapParserAcorn.ts"
+    },
+    "./gsap-writer-acorn": {
+      "bun": "./src/gsapWriterAcorn.ts",
+      "node": "./dist/gsapWriterAcorn.js",
+      "import": "./src/gsapWriterAcorn.ts",
+      "types": "./src/gsapWriterAcorn.ts"
+    },
+    "./gsap-constants": {
+      "bun": "./src/gsapConstants.ts",
+      "node": "./dist/gsapConstants.js",
+      "import": "./src/gsapConstants.ts",
+      "types": "./src/gsapConstants.ts"
+    },
+    "./spring-ease": {
+      "bun": "./src/springEase.ts",
+      "node": "./dist/springEase.js",
+      "import": "./src/springEase.ts",
+      "types": "./src/springEase.ts"
+    },
+    "./hf-ids": {
+      "bun": "./src/hfIds.ts",
+      "node": "./dist/hfIds.js",
+      "import": "./src/hfIds.ts",
+      "types": "./src/hfIds.ts"
+    },
+    "./gsap-parser-recast": {
+      "bun": "./src/gsapParser.ts",
+      "node": "./dist/gsapParser.js",
+      "import": "./src/gsapParser.ts",
+      "types": "./src/gsapParser.ts"
+    },
+    "./slideshow": {
+      "bun": "./src/slideshow/index.ts",
+      "node": "./dist/slideshow.js",
+      "import": "./src/slideshow/index.ts",
+      "types": "./src/slideshow/index.ts"
+    },
+    "./asset-paths": {
+      "bun": "./src/assets.ts",
+      "node": "./dist/assets.js",
+      "import": "./src/assets.ts",
+      "types": "./src/assets.ts"
+    },
+    "./composition": {
+      "bun": "./src/composition.ts",
+      "node": "./dist/composition.js",
+      "import": "./src/composition.ts",
+      "types": "./src/composition.ts"
+    },
+    "./sub-composition-validity": {
+      "bun": "./src/subCompositionValidity.ts",
+      "node": "./dist/subCompositionValidity.js",
+      "import": "./src/subCompositionValidity.ts",
+      "types": "./src/subCompositionValidity.ts"
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "import": "./dist/index.js",
+        "types": "./dist/index.d.ts"
+      },
+      "./package.json": "./package.json",
+      "./gsap-parser": {
+        "import": "./dist/gsapParserExports.js",
+        "types": "./dist/gsapParserExports.d.ts"
+      },
+      "./gsap-parser-acorn": {
+        "import": "./dist/gsapParserAcorn.js",
+        "types": "./dist/gsapParserAcorn.d.ts"
+      },
+      "./gsap-writer-acorn": {
+        "import": "./dist/gsapWriterAcorn.js",
+        "types": "./dist/gsapWriterAcorn.d.ts"
+      },
+      "./gsap-constants": {
+        "import": "./dist/gsapConstants.js",
+        "types": "./dist/gsapConstants.d.ts"
+      },
+      "./spring-ease": {
+        "import": "./dist/springEase.js",
+        "types": "./dist/springEase.d.ts"
+      },
+      "./hf-ids": {
+        "import": "./dist/hfIds.js",
+        "types": "./dist/hfIds.d.ts"
+      },
+      "./gsap-parser-recast": {
+        "import": "./dist/gsapParser.js",
+        "types": "./dist/gsapParser.d.ts"
+      },
+      "./slideshow": {
+        "import": "./dist/slideshow.js",
+        "types": "./dist/slideshow.d.ts"
+      },
+      "./asset-paths": {
+        "import": "./dist/assets.js",
+        "types": "./dist/assets.d.ts"
+      },
+      "./composition": {
+        "import": "./dist/composition.js",
+        "types": "./dist/composition.d.ts"
+      },
+      "./sub-composition-validity": {
+        "import": "./dist/subCompositionValidity.js",
+        "types": "./dist/subCompositionValidity.d.ts"
+      }
+    },
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts"
+  },
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "echo skip"
+  },
+  "dependencies": {
+    "@babel/parser": "^7.27.0",
+    "acorn": "^8.17.0",
+    "acorn-walk": "^8.3.5",
+    "linkedom": "^0.18.12",
+    "magic-string": "^0.30.21",
+    "recast": "^0.23.11"
+  },
+  "devDependencies": {
+    "@hyperframes/core": "workspace:*",
+    "@types/node": "^25.0.10",
+    "tsup": "^8.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.0.0",
+    "vitest": "^3.2.4"
+  }
+}

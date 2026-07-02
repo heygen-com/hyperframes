@@ -1,0 +1,541 @@
+---
+title: "Edit Operations"
+description: "The complete EditOp catalog for dispatch(), can(), and batch()."
+---
+
+Every mutation in the SDK is expressed as an `EditOp` — a plain data object with a discriminated `type` field. You can submit ops individually through `dispatch()`, validate them with `can()`, or group them into a single undo/persist step with `batch()`.
+
+<Tip>
+  Every element op requires an explicit `target` (an `HfId` string or `HfId[]` array). There is no selection-implicit mutation — the SDK never reads the current selection to decide what to edit. The typed methods on `Composition` (such as `comp.setText()` and `comp.setStyle()`) are convenience sugar that construct and dispatch these same ops.
+</Tip>
+
+## dispatch, batch, and can
+
+### dispatch
+
+```typescript
+comp.dispatch(op: EditOp, opts?: { origin?: unknown }): void
+```
+
+Applies `op` immediately. Emits a `patch` event, persists if an adapter is attached, and records a history entry. The optional `origin` is forwarded verbatim in the resulting `PatchEvent`; use it to label the source of the change (e.g. `"user"`, `"agent"`, or your own string constant).
+
+```typescript
+comp.dispatch(
+  { type: "setStyle", target: "hf-title", styles: { color: "#FFD60A" } },
+  { origin: "agent" },
+);
+```
+
+### batch
+
+```typescript
+comp.batch(fn: () => void, opts?: { origin?: unknown }): void
+```
+
+Groups all `dispatch()` calls made inside `fn` into a single undo step, a single persist write, and a single `patch` event. Use `batch()` when several mutations belong together logically.
+
+```typescript
+comp.batch(() => {
+  comp.dispatch({ type: "setText", target: "hf-title", value: "Launch Day" });
+  comp.dispatch({ type: "setStyle", target: "hf-title", styles: { fontSize: "96px" } });
+  comp.dispatch({ type: "setTiming", target: "hf-title", start: 0.5, duration: 3 });
+});
+```
+
+### can
+
+```typescript
+comp.can(op: EditOp): CanResult
+```
+
+Dry-runs `op` without mutating the document. Returns `{ ok: true }` when `dispatch(op)` would succeed, or `{ ok: false; code: string; message: string; hint?: string }` when it would be a no-op or error.
+
+Use `can()` as a feature-detection gate before rendering controls or applying optional operations:
+
+```typescript
+const result = comp.can({
+  type: "setGsapTween",
+  animationId: "anim-1",
+  properties: { ease: "power3.out" },
+});
+
+if (result.ok) {
+  comp.setGsapTween("anim-1", { ease: "power3.out" });
+} else {
+  console.warn(result.code, result.message);
+}
+```
+
+Stable `code` values for `ok: false`:
+
+| Code | Meaning |
+|------|---------|
+| `E_TARGET_NOT_FOUND` | The `target` hf-id does not exist in the document. |
+| `E_NO_ROOT` | The document has no root element (empty HTML). |
+| `E_NO_GSAP_TIMELINE` | Op requires a parsed GSAP timeline; parser engine not yet active. |
+| `E_NO_GSAP_SCRIPT` | Op requires a GSAP `<script>` block; none found in the document. |
+
+<Note>
+  Several Phase-3b GSAP ops (`addGsapTween`, `setGsapTween`, `removeGsapTween`, `addGsapKeyframe`, `setGsapKeyframe`, `removeGsapKeyframe`, etc.) return `{ ok: false, code: 'E_NO_GSAP_TIMELINE' }` from `can()` until the parser engine ships. `dispatch()` still applies those ops structurally even when `can()` returns false.
+</Note>
+
+See also: [`Composition`](/sdk/reference/composition) for the typed-method wrappers, [`Types`](/sdk/reference/types) for `CanResult` and `EditOp`.
+
+---
+
+## Element edits
+
+These ops target one or more elements by explicit hf-id. `target` accepts a single `HfId` string or an `HfId[]` array; when an array is given the op is applied to each id individually within a single batch.
+
+| `type` | Key fields | What it does |
+|--------|-----------|--------------|
+| `setStyle` | `target`, `styles` | Merges CSS inline styles. `null` values remove that property. |
+| `setText` | `target`, `value` | Replaces the element's direct text content. |
+| `setAttribute` | `target`, `name`, `value` | Sets or removes an HTML attribute. `null` removes it. Does not touch `style`, `class`, or `data-hf-*`. |
+| `setTiming` | `target`, `start?`, `duration?`, `trackIndex?` | Updates one or more timing attributes (`data-start`, `data-duration`, `data-track`). Omitted fields are unchanged. |
+| `setHold` | `target`, `hold` | Sets an elastic hold window; see `ElasticHold` shape below. |
+| `moveElement` | `target`, `x`, `y` | Repositions the element by setting `data-x` / `data-y` (not CSS `left`/`top`). |
+| `removeElement` | `target` | Removes the element and all its children from the document. Inverse of `addElement`. |
+
+### setStyle
+
+```typescript
+comp.dispatch({
+  type: "setStyle",
+  target: "hf-card",
+  styles: {
+    borderRadius: "24px",
+    backgroundColor: "#1A1A1A",
+    color: null,          // removes the color property
+  },
+});
+```
+
+`styles` keys are camelCase property names, matching `CSSStyleDeclaration` convention.
+
+### setText
+
+```typescript
+comp.dispatch({
+  type: "setText",
+  target: ["hf-headline", "hf-sub"],
+  value: "Coming soon",
+});
+```
+
+### setAttribute
+
+```typescript
+comp.dispatch({
+  type: "setAttribute",
+  target: "hf-logo",
+  name: "src",
+  value: "/assets/logo-v2.png",
+});
+
+// Remove an attribute:
+comp.dispatch({
+  type: "setAttribute",
+  target: "hf-video",
+  name: "autoplay",
+  value: null,
+});
+```
+
+### setTiming
+
+```typescript
+comp.dispatch({
+  type: "setTiming",
+  target: "hf-title",
+  start: 1.5,
+  duration: 3,
+  trackIndex: 0,
+});
+```
+
+### setHold
+
+`hold` is an `ElasticHold` object:
+
+```typescript
+comp.dispatch({
+  type: "setHold",
+  target: "hf-badge",
+  hold: {
+    start: 2,
+    end: 5,
+    fill: "freeze",   // "freeze" | "loop"
+  },
+});
+```
+
+### moveElement
+
+Sets the element's position via `data-x` / `data-y` attributes. Coordinates are in composition-space pixels.
+
+```typescript
+comp.dispatch({
+  type: "moveElement",
+  target: "hf-logo",
+  x: 120,
+  y: 48,
+});
+```
+
+---
+
+## Structure
+
+These ops mutate document structure (add/remove/reorder elements, apply class-level styles, or change composition metadata). They do **not** take a `target` field in the same form as element edits.
+
+| `type` | Key fields | What it does |
+|--------|-----------|--------------|
+| `addElement` | `parent`, `index`, `html` | Inserts an HTML fragment. Returns the minted hf-id via the typed `comp.addElement()` method. |
+| `reorderElements` | `entries` | Sets inline `z-index` on one or more elements to reorder their stacking. |
+| `setClassStyle` | `selector`, `styles` | Merges CSS rule styles for a class selector. `null` values remove properties. |
+| `deleteAllForSelector` | `selector` | Removes all elements matching the CSS selector from the document. |
+| `setCompositionMetadata` | `width?`, `height?`, `duration?` | Updates top-level composition dimensions and/or total duration. |
+
+### addElement
+
+`parent` is the hf-id of the parent element, or `null` to insert at the document body root. `index` is the zero-based sibling index (append if `>= childCount`). `html` must be a single-root HTML fragment and must not contain `<script>`.
+
+```typescript
+comp.dispatch({
+  type: "addElement",
+  parent: "hf-scene-1",
+  index: 2,
+  html: '<div class="clip" data-start="3" data-duration="2">New layer</div>',
+});
+```
+
+Use the typed `comp.addElement(parent, index, html)` method to get back the minted hf-id.
+
+### reorderElements
+
+Each entry sets `z-index` on one element. Elements must be non-statically positioned for `z-index` to take effect — the caller must ensure `position` is set.
+
+```typescript
+comp.dispatch({
+  type: "reorderElements",
+  entries: [
+    { target: "hf-bg",   zIndex: 0 },
+    { target: "hf-logo", zIndex: 10 },
+    { target: "hf-text", zIndex: 20 },
+  ],
+});
+```
+
+### setClassStyle
+
+```typescript
+comp.dispatch({
+  type: "setClassStyle",
+  selector: ".caption",
+  styles: { fontSize: "14px", fontWeight: "600" },
+});
+```
+
+### deleteAllForSelector
+
+```typescript
+comp.dispatch({
+  type: "deleteAllForSelector",
+  selector: ".debug-overlay",
+});
+```
+
+### setCompositionMetadata
+
+```typescript
+comp.dispatch({
+  type: "setCompositionMetadata",
+  width: 1920,
+  height: 1080,
+  duration: 30,
+});
+```
+
+---
+
+## Variables
+
+| `type` | Key fields | What it does |
+|--------|-----------|--------------|
+| `setVariableValue` | `id`, `value` | Sets a composition variable by id. Value may be a string, number, boolean, `FontValue`, or `ImageValue`. |
+
+```typescript
+// Scalar variable
+comp.dispatch({
+  type: "setVariableValue",
+  id: "brandColor",
+  value: "#6C5CE7",
+});
+
+// Font variable (object-valued — never a CSS string)
+comp.dispatch({
+  type: "setVariableValue",
+  id: "brand-font",
+  value: {
+    name: "Inter",
+    source: "https://fonts.googleapis.com/css2?family=Inter:wght@400;700",
+  },
+});
+
+// Image variable (object-valued)
+comp.dispatch({
+  type: "setVariableValue",
+  id: "hero-image",
+  value: {
+    url: "/assets/hero.jpg",
+    alt: "Product hero",
+    fit: "cover",
+  },
+});
+```
+
+---
+
+## GSAP tweens
+
+These ops add, edit, and remove GSAP tween entries in the composition's GSAP script block. They operate by `animationId` — a stable string identifier minted when a tween is created. Use `comp.addGsapTween()` or `addWithKeyframes` to mint a new id; the typed wrapper returns it directly.
+
+<Note>
+  Several GSAP ops require the parser engine to be active. Until it ships, `can()` returns `{ ok: false, code: 'E_NO_GSAP_TIMELINE' }` for these ops. `dispatch()` still applies the op structurally.
+</Note>
+
+| `type` | Key fields | What it does |
+|--------|-----------|--------------|
+| `addGsapTween` | `target`, `tween` | Adds a new tween for a target hf-id. Returns the minted `animationId` via the typed method. |
+| `setGsapTween` | `animationId`, `properties` | Partially updates an existing tween's `GsapTweenSpec` fields. |
+| `removeGsapTween` | `animationId` | Removes the tween entirely. |
+| `removeGsapProperty` | `animationId`, `property`, `from?` | Removes one animated property from a tween. `from: true` removes from `fromProperties`; otherwise removes from `toProperties` / `properties`. |
+
+### addGsapTween
+
+`tween` is a `GsapTweenSpec` object:
+
+```typescript
+comp.dispatch({
+  type: "addGsapTween",
+  target: "hf-title",
+  tween: {
+    method: "from",
+    position: 0,
+    duration: 0.8,
+    ease: "power3.out",
+    fromProperties: { opacity: 0, y: 40 },
+  },
+});
+```
+
+`GsapTweenSpec` fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `method` | `"from" \| "to" \| "fromTo" \| "set"` | GSAP tween method. |
+| `position` | `number \| string` | Timeline position. Accepts numbers (seconds) or label-relative strings (`"intro+=0.5"`). |
+| `duration` | `number` | Tween duration in seconds. |
+| `ease` | `string` | GSAP ease string (e.g. `"power3.out"`). |
+| `fromProperties` | `Record<string, unknown>` | Start-state properties (used by `from` and `fromTo`). |
+| `toProperties` | `Record<string, unknown>` | End-state properties (used by `fromTo`). |
+| `properties` | `Record<string, unknown>` | Animated properties for `to` tweens. |
+| `repeat` | `number` | Repeat count (`-1` = infinite). |
+| `yoyo` | `boolean` | Reverse on alternating repeats. |
+| `stagger` | `number \| Record<string, unknown>` | Stagger config for multi-target tweens. |
+
+### setGsapTween
+
+Only the fields you supply are changed; omit any field to leave it unchanged.
+
+```typescript
+comp.dispatch({
+  type: "setGsapTween",
+  animationId: "anim-1",
+  properties: { ease: "elastic.out(1, 0.3)", duration: 1.2 },
+});
+```
+
+### removeGsapProperty
+
+```typescript
+// Remove 'scale' from the to-properties of an existing tween
+comp.dispatch({
+  type: "removeGsapProperty",
+  animationId: "anim-1",
+  property: "scale",
+});
+
+// Remove 'opacity' from the from-properties
+comp.dispatch({
+  type: "removeGsapProperty",
+  animationId: "anim-2",
+  property: "opacity",
+  from: true,
+});
+```
+
+---
+
+## Keyframes
+
+Keyframe ops work with tweens that use CSS `@keyframes`-style percentage arrays rather than a single `fromProperties`/`toProperties` shape.
+
+| `type` | Key fields | What it does |
+|--------|-----------|--------------|
+| `setGsapKeyframe` | `animationId`, `keyframeIndex`, `position?`, `value?`, `ease?` | Updates one keyframe by index inside an existing keyframed tween. |
+| `addGsapKeyframe` | `animationId`, `position`, `value` | Appends a new keyframe at a given percentage position. |
+| `removeGsapKeyframe` | `animationId`, `percentage` | Removes the keyframe at a specific percentage. |
+| `removeAllKeyframes` | `animationId` | Clears all keyframes from a tween, leaving the tween shell intact. |
+| `convertToKeyframes` | `animationId`, `resolvedFromValues?` | Converts a `from`/`to`/`fromTo` tween into keyframe form. `resolvedFromValues` provides live computed values for the 0% stop. |
+| `materializeKeyframes` | `animationId`, `keyframes`, `easeEach?`, `resolvedSelector?` | Writes a complete keyframe set to an existing tween, replacing any previous keyframes. |
+| `addWithKeyframes` | `targetSelector`, `position`, `duration`, `keyframes`, `ease?` | Creates a new keyframed tween for the given CSS selector. Returns minted `animationId` via typed method. |
+| `replaceWithKeyframes` | `animationId`, `targetSelector`, `position`, `duration`, `keyframes`, `ease?` | Atomically removes an existing tween and inserts a new keyframed tween. |
+| `splitIntoPropertyGroups` | `animationId` | Splits a multi-property keyframed tween into one tween per animated property. |
+| `splitAnimations` | `originalId`, `newId`, `splitTime`, `elementStart`, `elementDuration` | Splits one tween into two at `splitTime`. The second half gets `newId`. |
+| `unrollDynamicAnimations` | `animationId`, `elements` | Converts a selector-targeted tween that matches multiple elements into per-element keyframe tweens. |
+
+### materializeKeyframes
+
+`keyframes` is an array of `{ percentage, properties, ease? }` objects:
+
+```typescript
+comp.dispatch({
+  type: "materializeKeyframes",
+  animationId: "anim-3",
+  keyframes: [
+    { percentage: 0,   properties: { opacity: 0, y: 30 } },
+    { percentage: 100, properties: { opacity: 1, y: 0 }, ease: "power2.out" },
+  ],
+  easeEach: "none",
+  resolvedSelector: "#hf-title",
+});
+```
+
+### addWithKeyframes / replaceWithKeyframes
+
+`position` is a number (seconds) — unlike `GsapTweenSpec.position`, label-relative strings are not accepted here.
+
+```typescript
+// Create a new keyframed tween:
+comp.dispatch({
+  type: "addWithKeyframes",
+  targetSelector: "#hf-card",
+  position: 1.5,
+  duration: 0.6,
+  keyframes: [
+    { percentage: 0,   properties: { scale: 0.8, opacity: 0 } },
+    { percentage: 100, properties: { scale: 1,   opacity: 1 } },
+  ],
+  ease: "back.out(1.7)",
+});
+
+// Replace an existing tween atomically:
+comp.dispatch({
+  type: "replaceWithKeyframes",
+  animationId: "anim-4",
+  targetSelector: "#hf-card",
+  position: 1.5,
+  duration: 0.6,
+  keyframes: [
+    { percentage: 0,   properties: { scale: 0.9 } },
+    { percentage: 100, properties: { scale: 1 } },
+  ],
+});
+```
+
+<Note>
+  After `replaceWithKeyframes`, position-derived tween IDs renumber. Re-query `comp.getElement(id).animationIds` to discover the new ID rather than assuming it matches the old one.
+</Note>
+
+`KeyframeSpec` fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `percentage` | `number` | Keyframe stop position (0–100). |
+| `properties` | `Record<string, number \| string>` | CSS / GSAP properties at this stop. |
+| `ease` | `string` | Ease applied from this stop to the next. |
+| `auto` | `boolean` | GSAP endpoint flag — emitted as numeric `_auto: 1`. |
+
+---
+
+## Labels
+
+GSAP timeline labels mark named positions (in seconds) in the master timeline. Labels are referenced in `GsapTweenSpec.position` as strings like `"intro"` or `"intro+=0.5"`.
+
+| `type` | Key fields | What it does |
+|--------|-----------|--------------|
+| `addLabel` | `name`, `position` | Adds a named label at a timeline position (seconds). |
+| `removeLabel` | `name` | Removes a named label. |
+
+```typescript
+comp.dispatch({ type: "addLabel", name: "intro", position: 0 });
+comp.dispatch({ type: "addLabel", name: "outro", position: 8 });
+
+// Tween positioned relative to a label:
+comp.dispatch({
+  type: "addGsapTween",
+  target: "hf-cta",
+  tween: {
+    method: "from",
+    position: "outro-=0.5",
+    duration: 0.4,
+    fromProperties: { opacity: 0 },
+  },
+});
+
+comp.dispatch({ type: "removeLabel", name: "intro" });
+```
+
+---
+
+## Arc paths
+
+Arc path ops control the motion path of a GSAP tween — the curve along which an element travels.
+
+| `type` | Key fields | What it does |
+|--------|-----------|--------------|
+| `setArcPath` | `animationId`, `config` | Creates or replaces the arc-path config on a tween. |
+| `updateArcSegment` | `animationId`, `segmentIndex`, `update` | Updates one segment's curviness or control points. |
+| `removeArcPath` | `animationId` | Removes the arc-path from a tween, reverting to a straight-line path. |
+
+### setArcPath
+
+`config` shape:
+
+```typescript
+comp.dispatch({
+  type: "setArcPath",
+  animationId: "anim-5",
+  config: {
+    enabled: true,
+    autoRotate: true,            // boolean, or a number (degrees offset)
+    segments: [
+      {
+        curviness: 1.5,
+        cp1: { x: 200, y: -80 }, // first control point
+        cp2: { x: 400, y: 20 },  // second control point
+      },
+    ],
+  },
+});
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `enabled` | `boolean` | Whether the arc path is active. |
+| `autoRotate` | `boolean \| number` | `true` = auto-rotate to follow path tangent; a number offsets the rotation by that many degrees. |
+| `segments` | `Array<{ curviness?, cp1?, cp2? }>` | Per-segment path definition. `curviness` is a GSAP Bezier curviness value; `cp1`/`cp2` are control-point coordinates in composition space. |
+
+### updateArcSegment
+
+```typescript
+comp.dispatch({
+  type: "updateArcSegment",
+  animationId: "anim-5",
+  segmentIndex: 0,
+  update: { curviness: 2, cp1: { x: 220, y: -100 } },
+});
+```
+

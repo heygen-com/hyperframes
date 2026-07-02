@@ -10,6 +10,13 @@ pre-commit:
       # Replaces --check which only reports — that left unformatted files in
       # commits when the hook ran after the amend snapshot was taken.
       run: bunx oxfmt --no-error-on-unmatched-pattern {staged_files} && git add {staged_files}
+    skills-manifest:
+      glob: "skills/**"
+      # Regenerate the freshness fingerprint when a skill changes, then re-stage
+      # it so skills-manifest.json (repo root) never drifts from skills/ (CI
+      # enforces the same via the "Skills: manifest in sync" job). Churn-free:
+      # the generator rewrites only when a content hash actually changed.
+      run: bun packages/cli/scripts/gen-skills-manifest.ts && git add skills-manifest.json
     typecheck:
       glob: "*.{ts,tsx}"
       run: cd packages/core && bunx tsc --noEmit && cd ../studio && bunx tsc --noEmit

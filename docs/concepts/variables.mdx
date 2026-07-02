@@ -142,7 +142,11 @@ If you need to clamp or pin the clip to a specific length per render — for exa
 </script>
 ```
 
-The probe phase reads `data-duration` from the live DOM after your script runs, so an attribute written programmatically behaves identically to one baked into the source HTML.
+The probe phase reads a **clip's** `data-duration` from the live DOM after your script runs, so an attribute written programmatically onto a clip or media element behaves identically to one baked into the source HTML.
+
+<Warning>
+This live-DOM re-read applies to clip and media elements, **not** to the **root composition's own `data-duration`** (its total render length / frame count). The renderer reads the root `data-duration` once at compile time, before your scripts run, exactly like `data-width` / `data-height`. If the root element carries a static `data-duration`, a script (or a variable) that rewrites it afterward is ignored, and the render uses the compile-time value. To make total render length vary per render, author the root `data-duration` directly (one value per output) rather than trying to drive it from a script. See [What can't be a variable](#what-cant-be-a-variable).
+</Warning>
 
 ## What can't be a variable
 
@@ -150,12 +154,13 @@ A small set of inputs are read once from the source HTML or from the CLI / SDK, 
 
 | What | Mechanism (not a variable) |
 |------|----------------------------|
-| Composition dimensions | `data-width` / `data-height` on the composition element — parsed from the source HTML at compile time, not from the live DOM |
+| Composition dimensions | `data-width` / `data-height` on the composition element, parsed from the source HTML at compile time, not from the live DOM |
+| Root composition total duration | `data-duration` on the **root** composition element (the total render length / frame count), parsed from the source HTML at compile time. A static root `data-duration` is locked before scripts run, so neither a script nor a variable can change the render length. (A clip's own `data-duration` is different: it is re-read from the live DOM, as shown above.) |
 | Frame rate | `--fps` flag on `hyperframes render`, or `config.fps` in the SDK |
 | Output format / codec / quality | `--format` / `--codec` / `--quality` flags, or the SDK equivalents |
 | A sibling or parent composition's variables | Variables are per-composition; use [`data-variable-values`](#per-instance-overrides-sub-compositions) on each sub-comp host element to pass overrides |
 
-The deeper rule: variables are runtime values your script applies to the DOM. They can drive anything the renderer reads from the live DOM after that script runs — text, colors, media `src`, even clip `data-duration` as shown above. They can't change inputs the renderer reads once at compile time (dimensions) or that live entirely outside the composition (CLI flags, encoder settings).
+The deeper rule: variables are runtime values your script applies to the DOM. They can drive anything the renderer reads from the live DOM after that script runs: text, colors, media `src`, even clip `data-duration` as shown above. They can't change inputs the renderer reads once at compile time (composition dimensions, and the root composition's total duration / render length) or that live entirely outside the composition (CLI flags, encoder settings).
 
 ## Reading Variables at Runtime
 

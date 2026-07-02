@@ -19,39 +19,10 @@ export function isHtmlElement(value: unknown): value is HTMLElement {
 
 // ─── Style parsing ────────────────────────────────────────────────────────────
 
-export function parsePx(value: string | undefined): number | null {
-  if (!value) return null;
-  const trimmed = value.trim();
-  if (!trimmed.endsWith("px")) return null;
-  const parsed = parseFloat(trimmed);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-export function isIdentityTransform(value: string | undefined): boolean {
-  const transform = (value ?? "none").trim();
-  if (!transform || transform === "none") return true;
-
-  const matrix = transform.match(/^matrix\(([^)]+)\)$/i);
-  if (matrix) {
-    const values = matrix[1].split(",").map((part) => Number.parseFloat(part.trim()));
-    if (values.length !== 6 || values.some((part) => !Number.isFinite(part))) return false;
-    return (
-      Math.abs(values[0] - 1) < 0.0001 &&
-      Math.abs(values[1]) < 0.0001 &&
-      Math.abs(values[2]) < 0.0001 &&
-      Math.abs(values[3] - 1) < 0.0001 &&
-      Math.abs(values[4]) < 0.0001 &&
-      Math.abs(values[5]) < 0.0001
-    );
-  }
-
-  const matrix3d = transform.match(/^matrix3d\(([^)]+)\)$/i);
-  if (!matrix3d) return false;
-  const values = matrix3d[1].split(",").map((part) => Number.parseFloat(part.trim()));
-  if (values.length !== 16 || values.some((part) => !Number.isFinite(part))) return false;
-  const identity = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
-  return values.every((part, index) => Math.abs(part - identity[index]) < 0.0001);
-}
+// Single source of truth lives in @hyperframes/core/editing so the studio
+// callers and the core resolver can't drift. Re-exported here to keep this
+// module's public surface (6 studio callers import parsePx from it).
+export { parsePx } from "@hyperframes/core/editing";
 
 export function isTextBearingTag(tagName: string): boolean {
   return ["div", "span", "p", "strong", "h1", "h2", "h3", "h4", "h5", "h6"].includes(tagName);
@@ -250,7 +221,7 @@ export function querySelectorAllSafely(doc: Document, selector: string): Element
   }
 }
 
-export function humanizeIdentifier(value: string): string {
+function humanizeIdentifier(value: string): string {
   return (
     value
       .replace(/\.html$/i, "")
@@ -270,10 +241,16 @@ export function buildStableSelector(el: HTMLElement): string | undefined {
   const compositionId = el.getAttribute("data-composition-id");
   if (compositionId) return `[data-composition-id="${escapeCssString(compositionId)}"]`;
 
+  // Group wrappers carry no id/class; their data-hf-group value is the unique,
+  // stable handle the source mutations write — use it so the wrapper is
+  // selectable, patchable (move/scale), and addressable for ungroup.
+  const group = el.getAttribute("data-hf-group");
+  if (group) return `[data-hf-group="${escapeCssString(group)}"]`;
+
   return getPreferredClassSelector(el);
 }
 
-export function getPreferredClassSelector(el: HTMLElement): string | undefined {
+function getPreferredClassSelector(el: HTMLElement): string | undefined {
   const classes = Array.from(el.classList)
     .map((value) => value.trim())
     .filter(Boolean);
@@ -281,6 +258,34 @@ export function getPreferredClassSelector(el: HTMLElement): string | undefined {
   const preferred =
     classes.find((value) => value !== "clip" && !value.startsWith("__hf-")) ?? classes[0];
   return preferred ? `.${escapeCssIdentifier(preferred)}` : undefined;
+}
+
+// fallow-ignore-next-line complexity
+export function buildElementLabel(el: HTMLElement): string {
+  const compositionId = el.getAttribute("data-composition-id");
+  if (compositionId && compositionId !== "main") {
+    return humanizeIdentifier(compositionId);
+  }
+
+  const compositionSrc =
+    el.getAttribute("data-composition-src") ?? el.getAttribute("data-composition-file");
+  if (compositionSrc) {
+    return humanizeIdentifier(compositionSrc);
+  }
+
+  const group = el.getAttribute("data-hf-group");
+  if (group) return group;
+
+  if (el.id) return humanizeIdentifier(el.id);
+
+  const preferredClass = getPreferredClassSelector(el);
+  if (preferredClass) {
+    return humanizeIdentifier(preferredClass.replace(/^\./, ""));
+  }
+
+  const text = (el.textContent ?? "").trim().replace(/\s+/g, " ");
+  if (text) return text.length > 40 ? `${text.slice(0, 39)}…` : text;
+  return el.tagName.toLowerCase();
 }
 
 export function getSelectorIndex(

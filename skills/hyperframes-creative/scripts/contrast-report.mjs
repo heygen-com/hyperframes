@@ -12,6 +12,11 @@
 //   node skills/hyperframes-creative/scripts/contrast-report.mjs <composition-dir> \
 //     [--samples N] [--out <dir>] [--width W] [--height H] [--fps N]
 //
+// Env:
+//   HYPERFRAMES_SKILL_PKG_VERSION — pin the @hyperframes/producer version used
+//     when bootstrapping (global skill installs cannot infer it; falls back to
+//     @latest with a warning otherwise).
+//
 // The composition directory must contain an index.html. Raw authoring HTML
 // works — the producer's file server auto-injects the runtime at serve time.
 // Exits 1 if any text element fails WCAG AA.

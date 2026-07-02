@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import { trackStudioEvent } from "../utils/studioTelemetry";
 import type { TimelineElement } from "../player";
 import type { ImportedFontAsset } from "../components/editor/fontAssets";
 import type { EditHistoryKind } from "../utils/editHistory";
@@ -12,10 +13,12 @@ import { useAskAgentModal } from "./useAskAgentModal";
 import { useDomSelection } from "./useDomSelection";
 import { usePreviewInteraction } from "./usePreviewInteraction";
 import { useDomEditCommits } from "./useDomEditCommits";
+import { useGroupCommits } from "./useGroupCommits";
 import { useGsapScriptCommits } from "./useGsapScriptCommits";
 import { useGsapCacheVersion } from "./useGsapTweenCache";
 import { useDomEditWiring } from "./useDomEditWiring";
 import { useGsapAwareEditing } from "./useGsapAwareEditing";
+import { useStudioSelectionPublisher } from "./useStudioSelectionPublisher";
 
 // ── Types ──
 
@@ -52,6 +55,7 @@ export interface UseDomEditSessionParams {
   projectIdRef: React.MutableRefObject<string | null>;
   previewIframe: HTMLIFrameElement | null;
   refreshKey: number;
+  previewDocumentVersion: number;
   rightPanelTab: RightPanelTab;
   applyStudioManualEditsToPreviewRef: React.MutableRefObject<
     (iframe: HTMLIFrameElement) => Promise<void>
@@ -83,7 +87,7 @@ export function useDomEditSession({
   showToast,
   refreshPreviewDocumentVersion,
   queueDomEditSave,
-  readProjectFile: _readProjectFile,
+  readProjectFile,
   writeProjectFile,
   updateEditingFileContent,
   domEditSaveTimestampRef,
@@ -94,6 +98,7 @@ export function useDomEditSession({
   projectIdRef,
   previewIframe,
   refreshKey,
+  previewDocumentVersion,
   rightPanelTab,
   applyStudioManualEditsToPreviewRef,
   syncPreviewHistoryHotkey,
@@ -106,7 +111,6 @@ export function useDomEditSession({
   forceReloadSdkSession,
 }: UseDomEditSessionParams) {
   void _setRefreshKey;
-  void _readProjectFile;
 
   // ── Selection ──
 
@@ -114,7 +118,10 @@ export function useDomEditSession({
     domEditSelection,
     domEditGroupSelections,
     domEditHoverSelection,
+    activeGroupElement,
     domEditSelectionRef,
+    domEditGroupSelectionsRef,
+    setActiveGroupElement,
     applyDomSelection,
     clearDomSelection,
     buildDomSelectionFromTarget,
@@ -163,6 +170,15 @@ export function useDomEditSession({
     domEditSelection,
   });
 
+  useStudioSelectionPublisher({
+    projectId,
+    domEditSelection,
+    domEditSelectionRef,
+    refreshKey,
+    previewDocumentVersion,
+    refreshDomEditSelectionFromPreview,
+  });
+
   // ── GSAP cache (hoisted so both useGsapScriptCommits and useDomEditWiring share the same instance) ──
 
   const { version: gsapCacheVersion, bump: bumpGsapCache } = useGsapCacheVersion();
@@ -184,6 +200,8 @@ export function useDomEditSession({
     addKeyframe,
     addKeyframeBatch,
     removeKeyframe,
+    moveKeyframe,
+    resizeKeyframedTween,
     convertToKeyframes,
     removeAllKeyframes,
     setArcPath,
@@ -215,7 +233,6 @@ export function useDomEditSession({
     handleDomTextFieldStyleCommit,
     handleDomAddTextField,
     handleDomRemoveTextField,
-    handleDomGroupPathOffsetCommit,
     handleDomBoxSizeCommit,
     handleDomManualEditsReset,
     handleDomEditElementDelete,
@@ -242,7 +259,9 @@ export function useDomEditSession({
     onTrySdkPersist: sdkSession
       ? (selection, operations, originalContent, targetPath, options) => {
           // Resolver shadow runs regardless of the cutover flag — decoupled tripwire.
-          runResolverShadow(sdkSession, selection.hfId, operations);
+          // Pass originalContent so the runtime-node filter can suppress hf-ids
+          // absent from source (script-created nodes the SDK can't model).
+          runResolverShadow(sdkSession, selection.hfId, operations, originalContent);
           return sdkCutoverPersist(
             selection,
             operations,
@@ -275,10 +294,55 @@ export function useDomEditSession({
     // the SDK resolves each reordered element (the reorderElements op's targets).
     onReorderShadow: sdkSession
       ? (targets: string[]) => {
-          for (const target of targets) recordResolverParity(sdkSession, target, "reorderElements");
+          // Single-flight: every target in one reorder batch shares the same file, so
+          // memoize the read instead of firing one fetch per unresolved target.
+          let reorderSrcPromise: Promise<string> | undefined;
+          const reorderSrc = activeCompPath
+            ? () => (reorderSrcPromise ??= readProjectFile(activeCompPath))
+            : undefined;
+          for (const target of targets)
+            void recordResolverParity(sdkSession, target, "reorderElements", reorderSrc);
         }
       : undefined,
   });
+
+  // ── Element groups (wrap selected elements in a data-hf-group div) ──
+
+  const { groupSelection, ungroupSelection } = useGroupCommits({
+    activeCompPath,
+    showToast,
+    writeProjectFile,
+    domEditSaveTimestampRef,
+    editHistory,
+    projectIdRef,
+    reloadPreview,
+    clearDomSelection,
+    forceReloadSdkSession,
+  });
+
+  const handleGroupSelection = useCallback(() => {
+    const group = domEditGroupSelectionsRef.current;
+    const single = domEditSelectionRef.current;
+    const members = group.length > 0 ? group : single ? [single] : [];
+    if (members.length < 2) {
+      showToast("Select at least 2 elements to group", "info");
+      return;
+    }
+    trackStudioEvent("group", { action: "create", count: members.length });
+    void groupSelection(members);
+  }, [domEditGroupSelectionsRef, domEditSelectionRef, groupSelection, showToast]);
+
+  const handleUngroupSelection = useCallback(() => {
+    const sel = domEditSelectionRef.current;
+    if (!sel?.element.hasAttribute("data-hf-group")) {
+      showToast("Select a group to ungroup", "info");
+      return;
+    }
+    // Dissolving the group exits any drill-in (the wrapper is about to vanish).
+    trackStudioEvent("group", { action: "ungroup" });
+    setActiveGroupElement(null);
+    void ungroupSelection(sel);
+  }, [domEditSelectionRef, ungroupSelection, setActiveGroupElement, showToast]);
 
   // ── Wiring: selection sync, GSAP cache, preview sync, selection handlers ──
 
@@ -302,6 +366,9 @@ export function useDomEditSession({
     handleGsapAddKeyframe,
     handleGsapAddKeyframeBatch,
     handleGsapRemoveKeyframe,
+    handleGsapMoveKeyframeToPlayhead,
+    handleGsapMoveKeyframe,
+    handleGsapResizeKeyframedTween,
     handleGsapConvertToKeyframes,
     handleGsapRemoveAllKeyframes,
     handleResetSelectedElementKeyframes,
@@ -339,6 +406,8 @@ export function useDomEditSession({
     addKeyframe,
     addKeyframeBatch,
     removeKeyframe,
+    moveKeyframe,
+    resizeKeyframedTween,
     convertToKeyframes,
     removeAllKeyframes,
     handleDomManualEditsReset,
@@ -361,6 +430,7 @@ export function useDomEditSession({
     resolveDomSelectionFromPreviewPoint,
     resolveAllDomSelectionsFromPreviewPoint,
     updateDomEditHoverSelection,
+    setActiveGroupElement,
     onClickToSource,
   });
 
@@ -368,9 +438,11 @@ export function useDomEditSession({
 
   const {
     handleGsapAwarePathOffsetCommit,
+    handleGsapAwareGroupPathOffsetCommit,
     handleGsapAwareBoxSizeCommit,
     handleGsapAwareRotationCommit,
     commitAnimatedProperty,
+    commitAnimatedProperties,
     handleSetArcPath,
     handleUpdateArcSegment,
     handleUnroll,
@@ -410,11 +482,31 @@ export function useDomEditSession({
     [gsapCommitMutation, domEditSelectionRef],
   );
 
+  // Apply one ease to every segment at once (AE select-all + F9): set easeEach
+  // and strip per-keyframe overrides in a single mutation.
+  const handleSetAllKeyframeEases = useCallback(
+    (animationId: string, ease: string) => {
+      const sel = domEditSelectionRef.current;
+      if (!sel) return;
+      gsapCommitMutation(
+        sel,
+        {
+          type: "update-meta",
+          animationId,
+          updates: { easeEach: ease, resetKeyframeEases: true },
+        },
+        { label: "Apply ease to all segments", softReload: true },
+      );
+    },
+    [gsapCommitMutation, domEditSelectionRef],
+  );
+
   return {
     // State
     domEditSelection,
     domEditGroupSelections,
     domEditHoverSelection,
+    activeGroupElement,
     agentModalOpen,
     agentModalAnchorPoint,
     copiedAgentPrompt,
@@ -433,7 +525,7 @@ export function useDomEditSession({
     handleDomAttributeLiveCommit,
     handleDomHtmlAttributeCommit,
     handleDomPathOffsetCommit: handleGsapAwarePathOffsetCommit,
-    handleDomGroupPathOffsetCommit,
+    handleDomGroupPathOffsetCommit: handleGsapAwareGroupPathOffsetCommit,
     handleDomZIndexReorderCommit,
     handleDomBoxSizeCommit: handleGsapAwareBoxSizeCommit,
     handleDomRotationCommit: handleGsapAwareRotationCommit,
@@ -447,6 +539,9 @@ export function useDomEditSession({
     handleBlockedDomMove,
     handleDomManualDragStart,
     handleDomEditElementDelete,
+    handleGroupSelection,
+    handleUngroupSelection,
+    setActiveGroupElement,
     buildDomSelectionFromTarget,
     buildDomSelectionForTimelineElement,
     updateDomEditHoverSelection,
@@ -473,11 +568,16 @@ export function useDomEditSession({
     handleGsapAddKeyframe,
     handleGsapAddKeyframeBatch,
     handleGsapRemoveKeyframe,
+    handleGsapMoveKeyframeToPlayhead,
+    handleGsapMoveKeyframe,
+    handleGsapResizeKeyframedTween,
     handleGsapConvertToKeyframes,
     handleGsapRemoveAllKeyframes,
     handleResetSelectedElementKeyframes,
     handleUpdateKeyframeEase,
+    handleSetAllKeyframeEases,
     commitAnimatedProperty,
+    commitAnimatedProperties,
     handleSetArcPath,
     handleUpdateArcSegment,
     handleUnroll,

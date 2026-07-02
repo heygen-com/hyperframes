@@ -121,6 +121,7 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
 
   const compileStart = Date.now();
   const compiled = await compileForRender(projectDir, htmlPath, join(workDir, "downloads"), {
+    log,
     failClosedFontFetch: failClosedFontFetch === true,
     allowSystemFontCapture,
     animatedGifCacheDir: cfg.extractCacheDir

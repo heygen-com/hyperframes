@@ -58,6 +58,7 @@ import {
 import { defaultLogger } from "../../logger.js";
 import { runEncodeStage } from "../render/stages/encodeStage.js";
 import { runCaptureStage } from "../render/stages/captureStage.js";
+import { resolveVideoCaptureBeyondViewport } from "../render/captureBeyondViewport.js";
 import {
   type ChunkSliceJson,
   type LockedRenderConfig,
@@ -166,10 +167,19 @@ export interface ChunkResult {
  * Rebuild the engine's in-memory `ExtractedFrames[]` from the on-disk
  * planDir layout. `<planDir>/video-frames/<videoId>/` holds the numbered
  * frame files plan() extracted; this lists each dir and rebuilds the
- * 1-based `framePaths` Map that `FrameLookupTable` / `videoFrameInjector`
- * both index against.
+ * 0-based `framePaths` Map that `FrameLookupTable` / `videoFrameInjector`
+ * both index against — the consumer is
+ * `videoFrameExtractor.ts:getFrameAtTime`, which floors `localTime * fps`
+ * to a 0-based index and reads `framePaths.get(frameIndex)`. Any drift
+ * from that key convention silently drops every `<video>`'s first-paint
+ * frame; see HF#1731 / HF#1730.
+ *
+ * Exported so a unit test can pin the 0-based contract without spinning
+ * up the heavyweight Docker fixture — the bug surfaces only under
+ * distributed mode and only at video first-paint, so this primitive is
+ * the right granularity to guard.
  */
-function rebuildExtractedFramesFromPlanDir(
+export function rebuildExtractedFramesFromPlanDir(
   planDir: string,
   videos: PlanVideosJson["extracted"],
 ): ExtractedFrames[] {
@@ -194,8 +204,7 @@ function rebuildExtractedFramesFromPlanDir(
     for (let i = 0; i < frames.length; i++) {
       const frameName = frames[i];
       if (!frameName) continue;
-      // FrameLookupTable indexes frames 1-based.
-      framePaths.set(i + 1, join(outputDir, frameName));
+      framePaths.set(i, join(outputDir, frameName));
     }
     result.push({
       videoId: v.videoId,
@@ -472,6 +481,11 @@ export async function renderChunk(
           )
         : null;
 
+    const videoCaptureBeyondViewport = resolveVideoCaptureBeyondViewport(
+      planVideos?.videos.length ?? 0,
+      "software",
+    );
+
     // ── Per-chunk work + frames directories ──
     // Suffix workDir with pid + random bytes so concurrent invocations on
     // the SAME `(planDir, chunkIndex)` (e.g. a scheduler that double-fires
@@ -492,6 +506,9 @@ export async function renderChunk(
       compiledDir,
       port: 0,
       preHeadScripts: [buildVirtualTimeShim({ seedRandomFromFrame: true })],
+      // These dimensions are frozen by the controller from the render job, so
+      // chunk runtime seek quantization stays on the same fps grid as capture.
+      fps: { num: plan.dimensions.fpsNum, den: plan.dimensions.fpsDen },
     });
 
     const captureOptions: CaptureOptions = {
@@ -507,7 +524,9 @@ export async function renderChunk(
       // declare `data-composition-variables` leave this undefined and the
       // engine skips the `evaluateOnNewDocument` injection.
       variables: encoder.variables,
-      ...((planVideos?.videos.length ?? 0) > 0 ? { captureBeyondViewport: true } : {}),
+      ...(videoCaptureBeyondViewport !== undefined
+        ? { captureBeyondViewport: videoCaptureBeyondViewport }
+        : {}),
       // lock the BeginFrame warmup loop to a fixed iteration count so
       // `beginFrameTimeTicks` is host-independent. Only chunks ever set this.
       lockWarmupTicks: true,

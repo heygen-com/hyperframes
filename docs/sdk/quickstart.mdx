@@ -1,0 +1,151 @@
+---
+title: "SDK Quickstart"
+description: "Open a composition, query and edit elements, serialize, and add autosave in minutes."
+---
+
+This guide walks you through the core SDK loop from scratch. You will open a composition HTML string, find and edit elements by their stable `hf-id`, serialize the result, and then extend the example to save changes to disk automatically.
+
+## Open, edit, serialize
+
+<Steps>
+  <Step title="Install the package">
+    ```bash
+    npm install @hyperframes/sdk
+    ```
+  </Step>
+
+  <Step title="Open a composition">
+    `openComposition` parses the HTML, stamps any elements that lack `data-hf-id` attributes, and returns a `Composition` session.
+
+    ```typescript
+    import { openComposition } from "@hyperframes/sdk";
+
+    const html = `<div class="clip" data-start="0" data-duration="5"
+                    data-hf-id="hf-title">Launch day</div>`;
+
+    const comp = await openComposition(html);
+    ```
+
+    The call is async because it runs the ID-stamping pass over the DOM before returning.
+  </Step>
+
+  <Step title="Find elements">
+    Use `getElements()` for a flat snapshot of everything in the composition, or `find()` to filter by tag, text content, `data-name` attribute, track index, or sub-composition host.
+
+    ```typescript
+    // All elements
+    const all = comp.getElements();
+
+    // Elements whose text contains "Launch"
+    const ids = comp.find({ text: "Launch" });
+
+    // A specific element by its hf-id
+    const el = comp.getElement("hf-title");
+    console.log(el?.text); // "Launch day"
+    ```
+
+    `find()` returns an array of `scopedId` strings. For top-level elements, `scopedId === id`. For elements inside inlined sub-compositions, it is `"hf-HOST/hf-LEAF"`.
+  </Step>
+
+  <Step title="Edit elements with typed methods">
+    Typed methods are the most readable way to mutate a composition. Each one translates directly into a dispatched `EditOp` and emits a patch event.
+
+    ```typescript
+    // Change text
+    comp.setText("hf-title", "Launch day — we shipped!");
+
+    // Change inline styles (camelCase property names)
+    comp.setStyle("hf-title", {
+      color: "#FFD60A",
+      fontSize: "96px",
+      fontWeight: "700",
+    });
+
+    // Set or clear an attribute (null removes it)
+    comp.setAttribute("hf-logo", "src", "/assets/logo-v2.png");
+
+    // Adjust clip timing
+    comp.setTiming("hf-title", { start: 0.5, duration: 4 });
+
+    // Set a composition variable
+    comp.setVariableValue("brandColor", "#6C5CE7");
+    ```
+
+    Use `batch()` when several mutations should collapse into one undo entry, one persist write, and one `change` event:
+
+    ```typescript
+    comp.batch(() => {
+      comp.setText("hf-title", "Launch day — we shipped!");
+      comp.setStyle("hf-title", { color: "#FFD60A" });
+      comp.setTiming("hf-title", { start: 0.5, duration: 4 });
+    });
+    ```
+  </Step>
+
+  <Step title="Serialize and dispose">
+    `serialize()` returns the full updated HTML string. Call `dispose()` when you are done to release event handlers and any internal state.
+
+    ```typescript
+    const updatedHtml = comp.serialize();
+    comp.dispose();
+
+    // updatedHtml is ready to write to disk, send to a renderer, or store in a database.
+    ```
+  </Step>
+</Steps>
+
+## Add a persistence adapter
+
+The headless pattern above is fine for one-shot transforms. When you want the SDK to autosave after every edit, pass a `PersistAdapter`.
+
+The filesystem adapter (`@hyperframes/sdk/adapters/fs`) writes to a local directory and keeps a rolling version history.
+
+```typescript
+import { openComposition } from "@hyperframes/sdk";
+import { createFsAdapter } from "@hyperframes/sdk/adapters/fs";
+import { readFile } from "node:fs/promises";
+
+// Load the current HTML from disk (or use a template string on first run).
+const html = await readFile("./project/index.html", "utf8").catch(() => "<div></div>");
+
+const comp = await openComposition(html, {
+  persist: createFsAdapter({ root: "./project" }),
+  persistPath: "index.html",
+});
+
+// Persistence failures surface as events, not thrown errors.
+comp.on("persist:error", ({ error }) => {
+  console.error("Autosave failed:", error.message);
+});
+
+comp.setText("hf-title", "Autosaved title");
+comp.setStyle("hf-title", { color: "#22C55E" });
+
+// Drain any pending write before the process exits.
+await comp.flush();
+comp.dispose();
+```
+
+The adapter writes `./project/index.html` after every mutation and keeps up to 20 version snapshots under `./project/.hf-versions/`.
+
+<Note>
+  Disabling undo (`history: false`) does **not** disable autosave. The two are independent. Passing `history: false` is only necessary when you are managing the undo stack yourself.
+</Note>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Querying & Editing Elements" icon="magnifying-glass" href="/sdk/guides/querying-and-editing">
+    FindQuery fields, scopedId for sub-compositions, batch semantics, and element handles.
+  </Card>
+  <Card title="Undo, Redo & Patches" icon="arrow-rotate-left" href="/sdk/guides/undo-redo-and-patches">
+    History module, patch events for host sync, and applyPatches loop prevention.
+  </Card>
+  <Card title="Persistence" icon="floppy-disk" href="/sdk/guides/persistence">
+    Adapter selection, version history, and implementing a custom adapter.
+  </Card>
+  <Card title="openComposition reference" icon="door-open" href="/sdk/reference/open-composition">
+    Full option reference — adapters, overrides, coalesce window, and more.
+  </Card>
+</CardGroup>
+

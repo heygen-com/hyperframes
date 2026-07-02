@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { openComposition } from "@hyperframes/sdk";
-import { patchElementInHtml } from "../../../core/src/studio-api/helpers/sourceMutation.js";
+import { patchElementInHtml } from "../../../studio-server/src/helpers/sourceMutation.js";
 import type { PatchOperation } from "./sourcePatcher";
 import { patchOpsToSdkEditOps } from "./sdkOpMapping";
 

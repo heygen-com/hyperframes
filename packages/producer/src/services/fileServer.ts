@@ -11,9 +11,12 @@
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import type { IncomingMessage } from "node:http";
-import { readFileSync, existsSync, realpathSync, statSync } from "node:fs";
+import { existsSync, realpathSync, statSync, createReadStream } from "node:fs";
+import { readFile } from "node:fs/promises";
+import { Readable } from "node:stream";
 import { join, extname, resolve, sep } from "node:path";
 import { injectScriptsAtHeadStart, injectScriptsIntoHtml } from "@hyperframes/core/compiler";
+import { fpsToNumber, type Fps } from "@hyperframes/core";
 import { getVerifiedHyperframeRuntimeSource } from "./hyperframeRuntimeLoader.js";
 import { getHfEarlyStub } from "../generated/hf-early-stub-inline.js";
 import { defaultLogger, type ProducerLogger } from "../logger.js";
@@ -95,6 +98,86 @@ const MIME_TYPES: Record<string, string> = {
   ".ttf": "font/ttf",
   ".otf": "font/otf",
 };
+
+/**
+ * Result of parsing a `Range:` request header against a known total size.
+ *
+ * - `kind: "satisfiable"`: `start <= end < size`. The response should be 206
+ *   with `Content-Range: bytes start-end/size` and the sliced body.
+ * - `kind: "unsatisfiable"`: the header was syntactically valid (`bytes=...`)
+ *   but the resolved range falls outside `[0, size)` (e.g. `start >= size`,
+ *   `end < start`, or a suffix request on a zero-byte file). Per RFC 7233
+ *   the response should be 416 with `Content-Range: bytes (asterisk)/size`.
+ * - `kind: "absent"`: there is no `Range:` header on the request, or it is
+ *   syntactically malformed, uses a non-`bytes` unit, or requests multiple
+ *   ranges. RFC 7233 allows ignoring such headers and serving the full body
+ *   with a 200, which is what callers should do.
+ */
+export type RangeRequest =
+  | { kind: "satisfiable"; start: number; end: number }
+  | { kind: "unsatisfiable" }
+  | { kind: "absent" };
+
+/**
+ * Parse a single-range `Range:` request header per RFC 7233 §2.1.
+ *
+ * Supports the three forms of `bytes=...`:
+ *   - `bytes=START-END`: closed range, both bounds inclusive.
+ *   - `bytes=START-`: open-ended, serve from START to EOF.
+ *   - `bytes=-SUFFIX`: last SUFFIX bytes.
+ *
+ * Multi-range requests (`bytes=0-99,200-299`) are treated as `absent`. The
+ * caller serves the full body with 200. The hyperframes producer's use case
+ * (Chrome `<video>` seeks, range-aware media stack) only ever issues single
+ * ranges, so we don't take on the multipart-byteranges complexity here.
+ *
+ * Exported for unit tests; not part of the public package surface.
+ */
+export function parseRangeHeader(header: string | null | undefined, size: number): RangeRequest {
+  if (!header) return { kind: "absent" };
+  const match = /^\s*bytes\s*=\s*(.*?)\s*$/i.exec(header);
+  if (!match) return { kind: "absent" };
+  const specList = match[1];
+  if (!specList || specList.includes(",")) {
+    // Multi-range: bail to full-body 200 rather than reassemble
+    // multipart/byteranges. Single-range is the only shape we serve.
+    return { kind: "absent" };
+  }
+  const dashIdx = specList.indexOf("-");
+  if (dashIdx < 0) return { kind: "absent" };
+  const rawStart = specList.slice(0, dashIdx).trim();
+  const rawEnd = specList.slice(dashIdx + 1).trim();
+
+  // Suffix form: `bytes=-N` returns the last N bytes.
+  if (rawStart === "" && rawEnd !== "") {
+    if (!/^\d+$/.test(rawEnd)) return { kind: "absent" };
+    const suffixLen = Number(rawEnd);
+    if (!Number.isFinite(suffixLen)) return { kind: "absent" };
+    if (size === 0 || suffixLen === 0) return { kind: "unsatisfiable" };
+    const start = Math.max(0, size - suffixLen);
+    return { kind: "satisfiable", start, end: size - 1 };
+  }
+
+  if (!/^\d+$/.test(rawStart)) return { kind: "absent" };
+  const start = Number(rawStart);
+  if (!Number.isFinite(start)) return { kind: "absent" };
+
+  // Open-ended form: `bytes=START-` returns from START to EOF.
+  if (rawEnd === "") {
+    if (start >= size) return { kind: "unsatisfiable" };
+    return { kind: "satisfiable", start, end: size - 1 };
+  }
+
+  // Closed form: `bytes=START-END`
+  if (!/^\d+$/.test(rawEnd)) return { kind: "absent" };
+  const requestedEnd = Number(rawEnd);
+  if (!Number.isFinite(requestedEnd)) return { kind: "absent" };
+  if (requestedEnd < start) return { kind: "unsatisfiable" };
+  if (start >= size) return { kind: "unsatisfiable" };
+  // Clamp the end to the last valid byte.
+  const end = Math.min(requestedEnd, size - 1);
+  return { kind: "satisfiable", start, end };
+}
 
 /**
  * Options for {@link buildVirtualTimeShim}.
@@ -308,7 +391,22 @@ const RENDER_SEEK_OFFSET_FRACTION = Math.max(
   Math.min(0.95, Number(process.env.PRODUCER_RUNTIME_RENDER_SEEK_OFFSET_FRACTION || 0.5)),
 );
 
-const RENDER_MODE_SCRIPT = `(function() {
+function resolveRenderFpsConfig(fps: Fps | undefined): {
+  value: number;
+  source: "render-options" | "default";
+  fallbackReason?: "missing" | "invalid";
+} {
+  if (!fps) return { value: 30, source: "default", fallbackReason: "missing" };
+  const value = fpsToNumber(fps);
+  if (!Number.isFinite(value) || value <= 0) {
+    return { value: 30, source: "default", fallbackReason: "invalid" };
+  }
+  return { value, source: "render-options" };
+}
+
+function buildRenderModeScript(fps: Fps | undefined): string {
+  const renderFps = resolveRenderFpsConfig(fps);
+  return `(function() {
   var __realSetTimeout =
     window.__HF_VIRTUAL_TIME__ && typeof window.__HF_VIRTUAL_TIME__.originalSetTimeout === "function"
       ? window.__HF_VIRTUAL_TIME__.originalSetTimeout
@@ -317,11 +415,17 @@ const RENDER_MODE_SCRIPT = `(function() {
   var __seekDiagnostics = ${RENDER_SEEK_DIAGNOSTICS ? "true" : "false"};
   var __seekStep = ${RENDER_SEEK_STEP};
   var __seekOffsetFraction = ${RENDER_SEEK_OFFSET_FRACTION};
+  var __renderFps = ${renderFps.value};
+  var __renderFpsSource = ${JSON.stringify(renderFps.source)};
+  var __renderFpsFallbackReason = ${JSON.stringify(renderFps.fallbackReason ?? null)};
   window.__HF_EXPORT_RENDER_SEEK_CONFIG = {
     mode: __seekMode,
     diagnostics: __seekDiagnostics,
     step: __seekStep,
     offsetFraction: __seekOffsetFraction,
+    fps: __renderFps,
+    fpsSource: __renderFpsSource,
+    fpsFallbackReason: __renderFpsFallbackReason || undefined,
     owner: "runtime",
   };
   function installMediaFallbackPlayer() {
@@ -417,6 +521,7 @@ const RENDER_MODE_SCRIPT = `(function() {
   }
   waitForPlayer();
 })();`;
+}
 
 /**
  * Early stub: ensures `window.__hf` exists *before* any user `<script>` in
@@ -558,6 +663,8 @@ export interface FileServerOptions {
   headScripts?: string[];
   /** Scripts injected before </body> of index.html. Default: render mode extension. */
   bodyScripts?: string[];
+  /** Actual render fps so page-side runtime quantization matches the output container. */
+  fps?: Fps;
   /** Strip embedded runtime scripts from HTML before injection. Default: true. */
   stripEmbeddedRuntime?: boolean;
 }
@@ -605,11 +712,11 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
   const preHeadScripts = [HF_EARLY_STUB, ...(options.preHeadScripts ?? [])];
   // Default scripts: Hyperframe runtime in <head>, render mode in </body>
   const headScripts = options.headScripts ?? [getVerifiedHyperframeRuntimeSource()];
-  const bodyScripts = options.bodyScripts ?? [RENDER_MODE_SCRIPT, HF_BRIDGE_SCRIPT];
+  const bodyScripts = options.bodyScripts ?? [buildRenderModeScript(options.fps), HF_BRIDGE_SCRIPT];
 
   const app = new Hono();
 
-  app.get("/*", (c) => {
+  app.get("/*", async (c) => {
     let requestPath = c.req.path;
     if (requestPath === "/") requestPath = "/index.html";
 
@@ -665,7 +772,12 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
     const contentType = MIME_TYPES[ext] || "application/octet-stream";
 
     if (ext === ".html") {
-      const rawHtml = readFileSync(filePath, "utf-8");
+      // Use the async read here so we don't block the Node event loop while
+      // reading an HTML file (typically small, but a 200KB+ AI-generated
+      // composition during a concurrent render still costs a ms of stall).
+      // The injection step is sync — it's pure string ops on the buffered
+      // HTML — but the read itself is the only step that touches the disk.
+      const rawHtml = await readFile(filePath, "utf-8");
       const isIndex = relativePath === "index.html";
       let html = rawHtml;
       if (preHeadScripts.length > 0) {
@@ -677,10 +789,67 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
       return c.text(html, 200, { "Content-Type": contentType });
     }
 
-    const content = readFileSync(filePath);
-    return new Response(content, {
+    // Stream binary file content rather than buffering it with readFileSync.
+    // On video-heavy compositions Chrome requests several 32MB video files
+    // back-to-back through this server; each readFileSync(32MB) blocked the
+    // Node event loop long enough to wedge concurrent /health responses (see
+    // renderOrchestrator.ts:1277-1306 documenting the same regression class).
+    // createReadStream() pipes bounded chunks asynchronously, so the event
+    // loop stays responsive even when several large assets are in flight
+    // simultaneously. Chrome reassembles the chunks transparently.
+    //
+    // We also honor `Range:` requests (RFC 7233) so Chrome's <video> element
+    // can seek into and partial-load large media without re-pulling the whole
+    // file. `Accept-Ranges: bytes` is advertised on every response (including
+    // full-body 200s) so the client knows ranges are supported.
+    const stat = statSync(filePath);
+    const totalSize = stat.size;
+    const rangeHeader = c.req.header("range");
+    const rangeRequest = parseRangeHeader(rangeHeader, totalSize);
+
+    if (rangeRequest.kind === "unsatisfiable") {
+      // 416 Range Not Satisfiable. RFC 7233 §4.4 mandates `Content-Range`
+      // carry the total length as `bytes */<size>` so clients know how to
+      // re-issue a valid range.
+      return new Response(null, {
+        status: 416,
+        headers: {
+          "Content-Type": contentType,
+          "Content-Range": `bytes */${totalSize}`,
+          "Accept-Ranges": "bytes",
+        },
+      });
+    }
+
+    if (rangeRequest.kind === "satisfiable") {
+      const { start, end } = rangeRequest;
+      const length = end - start + 1;
+      const stream = createReadStream(filePath, { start, end });
+      const webStream = Readable.toWeb(stream) as unknown as ReadableStream;
+      return new Response(webStream, {
+        status: 206,
+        headers: {
+          "Content-Type": contentType,
+          "Content-Length": String(length),
+          "Content-Range": `bytes ${start}-${end}/${totalSize}`,
+          "Accept-Ranges": "bytes",
+        },
+      });
+    }
+
+    // No Range header (or malformed/multi-range): full-body 200 with
+    // Accept-Ranges advertised so the client knows future Range requests
+    // are supported. Node Readable -> Web ReadableStream so Hono's
+    // Response can consume it. Node 18+ supports Readable.toWeb directly.
+    const stream = createReadStream(filePath);
+    const webStream = Readable.toWeb(stream) as unknown as ReadableStream;
+    return new Response(webStream, {
       status: 200,
-      headers: { "Content-Type": contentType },
+      headers: {
+        "Content-Type": contentType,
+        "Content-Length": String(totalSize),
+        "Accept-Ranges": "bytes",
+      },
     });
   });
 

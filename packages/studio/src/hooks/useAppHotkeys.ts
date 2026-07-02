@@ -8,6 +8,7 @@ import { shouldHandleTimelineToggleHotkey, isEditableTarget } from "../utils/tim
 import { shouldIgnoreHistoryShortcut } from "../utils/studioHelpers";
 import { canSplitElement } from "../utils/timelineElementSplit";
 import { STUDIO_RAZOR_TOOL_ENABLED } from "../components/editor/manualEditingAvailability";
+import { trackStudioEvent } from "../utils/studioTelemetry";
 
 function iframeContentWindow(iframe: HTMLIFrameElement | null): Window | null {
   try {
@@ -117,6 +118,10 @@ interface UseAppHotkeysParams {
   onDeleteSelectedKeyframes: () => void;
   onAfterUndoRedo?: () => void;
   onToggleRecording?: () => void;
+  /** Group the current multi-selection into a data-hf-group wrapper (⌘G). */
+  onGroupSelection?: () => void;
+  /** Ungroup the selected group wrapper (⌘⇧G). */
+  onUngroupSelection?: () => void;
   /** Active composition path — used to decide whether undo/redo must resync the SDK session. */
   activeCompPath?: string | null;
   /**
@@ -142,6 +147,8 @@ interface HotkeyCallbacks {
   onResetKeyframes: () => boolean;
   onDeleteSelectedKeyframes: () => void;
   onToggleRecording?: () => void;
+  onGroupSelection?: () => void;
+  onUngroupSelection?: () => void;
   leftSidebarRef: React.RefObject<LeftSidebarHandle | null>;
   domEditSelectionRef: React.MutableRefObject<DomEditSelection | null>;
   showToast: (message: string, tone?: "error" | "info") => void;
@@ -152,36 +159,56 @@ function dispatchModifierKey(event: KeyboardEvent, key: string, cb: HotkeyCallba
     !shouldIgnoreHistoryShortcut(event.target) &&
     handleUndoRedoKey(
       event,
-      () => void cb.handleUndo(),
-      () => void cb.handleRedo(),
+      () => {
+        trackStudioEvent("keyboard_shortcut", { action: "undo" });
+        void cb.handleUndo();
+      },
+      () => {
+        trackStudioEvent("keyboard_shortcut", { action: "redo" });
+        void cb.handleRedo();
+      },
     )
   )
     return true;
 
   if (event.key === "1") {
     event.preventDefault();
+    trackStudioEvent("keyboard_shortcut", { action: "tab_compositions" });
     cb.leftSidebarRef.current?.selectTab("compositions");
     return true;
   }
   if (event.key === "2") {
     event.preventDefault();
+    trackStudioEvent("keyboard_shortcut", { action: "tab_assets" });
     cb.leftSidebarRef.current?.selectTab("assets");
+    return true;
+  }
+
+  if (key === "g" && !event.altKey && !isEditableTarget(event.target)) {
+    event.preventDefault();
+    if (event.shiftKey) cb.onUngroupSelection?.();
+    else cb.onGroupSelection?.();
     return true;
   }
 
   if (!event.shiftKey && !event.altKey && !isEditableTarget(event.target)) {
     if (key === "c") {
-      if (cb.handleCopy()) event.preventDefault();
+      if (cb.handleCopy()) {
+        event.preventDefault();
+        trackStudioEvent("keyboard_shortcut", { action: "copy" });
+      }
       return true;
     }
     if (key === "v") {
       event.preventDefault();
+      trackStudioEvent("keyboard_shortcut", { action: "paste" });
       void cb.handlePaste();
       return true;
     }
     if (key === "x") {
       if (usePlayerStore.getState().selectedElementId || cb.domEditSelectionRef.current) {
         event.preventDefault();
+        trackStudioEvent("keyboard_shortcut", { action: "cut" });
         void cb.handleCut();
       }
       return true;
@@ -310,6 +337,8 @@ export function useAppHotkeys({
   onDeleteSelectedKeyframes,
   onAfterUndoRedo,
   onToggleRecording,
+  onGroupSelection,
+  onUngroupSelection,
   activeCompPath,
   forceReloadSdkSession,
 }: UseAppHotkeysParams) {
@@ -403,6 +432,8 @@ export function useAppHotkeys({
     onResetKeyframes,
     onDeleteSelectedKeyframes,
     onToggleRecording,
+    onGroupSelection,
+    onUngroupSelection,
     leftSidebarRef,
     domEditSelectionRef,
     showToast,

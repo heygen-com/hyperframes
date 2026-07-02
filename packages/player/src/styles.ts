@@ -229,6 +229,7 @@ export const PLAYER_STYLES = /* css */ `
   }
 
   .hfp-play-btn {
+    position: relative;
     background: none;
     border: none;
     color: var(--hfp-color, #fff);
@@ -245,6 +246,39 @@ export const PLAYER_STYLES = /* css */ `
 
   .hfp-play-btn:hover {
     opacity: 0.8;
+  }
+
+  /* Stacked play/pause glyphs that crossfade-morph on toggle (rotate + scale). */
+  .hfp-play-btn .hfp-ico {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition:
+      opacity 200ms ease,
+      transform 220ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .hfp-play-btn .hfp-ico-play {
+    opacity: 1;
+    transform: rotate(0) scale(1);
+  }
+  .hfp-play-btn .hfp-ico-pause {
+    opacity: 0;
+    transform: rotate(-90deg) scale(0.4);
+  }
+  .hfp-play-btn.hfp-playing .hfp-ico-play {
+    opacity: 0;
+    transform: rotate(90deg) scale(0.4);
+  }
+  .hfp-play-btn.hfp-playing .hfp-ico-pause {
+    opacity: 1;
+    transform: rotate(0) scale(1);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .hfp-play-btn .hfp-ico {
+      transition-duration: 0ms;
+      transform: none;
+    }
   }
 
   .hfp-play-btn svg,
@@ -424,7 +458,9 @@ export const PLAYER_STYLES = /* css */ `
   }
 `;
 
-export const PLAY_ICON = `<svg width="24" height="24" viewBox="0 0 18 18" fill="currentColor"><polygon points="4,2 16,9 4,16"/></svg>`;
+// Play glyph: the right-hand blade from the HyperFrames favicon, framed to its
+// bounding box so it fills the icon. Points right, like a play triangle.
+export const PLAY_ICON = `<svg width="24" height="24" viewBox="46 21 54 56" fill="currentColor"><path d="M87.5129 57.5141L56.9696 73.5433C52.8371 75.7098 48.7046 73.2553 49.6688 69.2104L58.9483 30.1391C59.9125 26.0942 65.2097 23.6397 68.3154 25.8062L91.2447 41.8354C96.4668 45.4796 94.4631 53.8699 87.5129 57.5141Z"/></svg>`;
 export const PAUSE_ICON = `<svg width="24" height="24" viewBox="0 0 18 18" fill="currentColor"><rect x="3" y="2" width="4" height="14"/><rect x="11" y="2" width="4" height="14"/></svg>`;
 export const VOLUME_HIGH_ICON = `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3z"/><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/><path d="M14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>`;
 export const VOLUME_LOW_ICON = `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3z"/><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/></svg>`;

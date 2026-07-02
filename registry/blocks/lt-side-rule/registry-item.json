@@ -1,0 +1,17 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "lt-side-rule",
+  "type": "hyperframes:block",
+  "title": "Lower Third — Side Rule",
+  "description": "Cardless lower third with a vertical accent bar; condensed display name + mono role, text-shadowed for footage",
+  "tags": ["lower-third", "overlay", "podcast", "interview", "minimal"],
+  "dimensions": { "width": 1920, "height": 1080 },
+  "duration": 4.8,
+  "files": [
+    {
+      "path": "lt-side-rule.html",
+      "target": "compositions/lt-side-rule.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}

@@ -10,12 +10,6 @@ import {
 } from "./propertyPanelHelpers";
 import { Section, SegmentedControl, SelectField, SliderControl } from "./propertyPanelPrimitives";
 
-const MEDIA_TAGS = new Set(["video", "audio"]);
-
-export function isMediaElement(element: DomEditSelection): boolean {
-  return MEDIA_TAGS.has(element.tagName);
-}
-
 export function MediaSection({
   projectDir,
   element,

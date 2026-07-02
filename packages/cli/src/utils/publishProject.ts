@@ -383,9 +383,11 @@ async function publishProjectArchiveDirect(
   apiBaseUrl: string,
   title: string,
   archive: PublishArchiveResult,
+  isPublic: boolean,
 ): Promise<PublishedProjectResponse> {
   const body = new FormData();
   body.set("title", title);
+  if (isPublic) body.set("is_public", "true");
   body.set(
     "file",
     new File([archiveArrayBuffer(archive)], `${title}.zip`, { type: PUBLISH_CONTENT_TYPE }),
@@ -414,6 +416,7 @@ async function publishProjectArchiveStaged(
   apiBaseUrl: string,
   title: string,
   archive: PublishArchiveResult,
+  isPublic: boolean,
 ): Promise<PublishedProjectResponse | null> {
   const fileName = `${title}.zip`;
   const uploadResponse = await fetch(`${apiBaseUrl}/v1/hyperframes/projects/publish/upload`, {
@@ -459,6 +462,7 @@ async function publishProjectArchiveStaged(
       upload_key: stagedUpload.uploadKey,
       file_name: fileName,
       title,
+      ...(isPublic ? { is_public: true } : {}),
     }),
     headers: {
       "content-type": "application/json",
@@ -476,11 +480,19 @@ async function publishProjectArchiveStaged(
   return publishedProject;
 }
 
-export async function publishProjectArchive(projectDir: string): Promise<PublishedProjectResponse> {
+export interface PublishOptions {
+  public?: boolean;
+}
+
+export async function publishProjectArchive(
+  projectDir: string,
+  opts: PublishOptions = {},
+): Promise<PublishedProjectResponse> {
+  const isPublic = opts.public === true;
   const title = basename(projectDir);
   const archive = createPublishArchive(projectDir);
   const apiBaseUrl = getPublishApiBaseUrl();
-  const stagedResult = await publishProjectArchiveStaged(apiBaseUrl, title, archive);
+  const stagedResult = await publishProjectArchiveStaged(apiBaseUrl, title, archive, isPublic);
   if (stagedResult) return stagedResult;
-  return publishProjectArchiveDirect(apiBaseUrl, title, archive);
+  return publishProjectArchiveDirect(apiBaseUrl, title, archive, isPublic);
 }

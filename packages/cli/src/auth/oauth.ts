@@ -414,8 +414,11 @@ async function persistOAuth(
   const oauth: OAuthTokens = opts.preserveMissing
     ? { ...existing.oauth, ...tokens }
     : { ...tokens };
-  // Keep co-located API key in both modes.
-  await writeStore({ ...(existing.api_key ? { api_key: existing.api_key } : {}), oauth });
+  // Start from the existing record so co-located data survives: the
+  // api_key, the friendly-display `user` block, AND any unknown/foreign
+  // keys another CLI wrote (carried on a hidden symbol slot by spread).
+  // Only the `oauth` block is overwritten here.
+  await writeStore({ ...existing, oauth });
 }
 
 async function readJsonOrThrow(res: Response): Promise<unknown> {

@@ -127,6 +127,39 @@ describe("tryGsapDragIntercept — stale-parse guard (no resurrection after dele
     });
   });
 
+  it("updates a degenerate duration:0 hold-`to` in place instead of appending a gsap.set", async () => {
+    const commitMutation = vi.fn();
+    const iframe = fakeIframe("puck-b", []); // runtime empty → STATIC path
+    // What remove-all-keyframes leaves behind: a zero-duration immediateRender
+    // `tl.to` hold. A drag must UPDATE it, not append a 2nd (gsap.set) position
+    // write that silently overrides it (the duplicate-position-write bug).
+    const degenerateHold = {
+      id: "#puck-b-to-0-position",
+      targetSelector: "#puck-b",
+      method: "to",
+      propertyGroup: "position",
+      properties: { x: -766, y: 314 },
+      position: 1.333,
+      resolvedStart: 1.333,
+      duration: 0,
+    } as unknown as GsapAnimation;
+
+    const handled = await tryGsapDragIntercept(
+      selection,
+      { x: -50, y: 30 },
+      [degenerateHold],
+      iframe,
+      commitMutation,
+    );
+
+    expect(handled).toBe(true);
+    // In-place update (2 coalesced update-property), NOT an `add`/`add-keyframe`.
+    const types = commitMutation.mock.calls.map(([, m]) => m.type);
+    expect(types.every((t: string) => t === "update-property")).toBe(true);
+    expect(types).not.toContain("add");
+    expect(types).not.toContain("add-keyframe");
+  });
+
   it("does not trip the stale-parse guard when the runtime still has the tween", async () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const liveTween = {

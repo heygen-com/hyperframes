@@ -73,7 +73,10 @@ export function createControls(
   const playBtn = document.createElement("button");
   playBtn.className = "hfp-play-btn";
   playBtn.type = "button";
-  playBtn.innerHTML = PLAY_ICON;
+  // Both glyphs stay in the DOM, stacked; toggling `hfp-playing` crossfade-morphs
+  // between them (see styles.ts) instead of swapping innerHTML, which would kill
+  // the transition.
+  playBtn.innerHTML = `<span class="hfp-ico hfp-ico-play">${PLAY_ICON}</span><span class="hfp-ico hfp-ico-pause">${PAUSE_ICON}</span>`;
   playBtn.setAttribute("aria-label", "Play");
 
   const scrubber = document.createElement("div");
@@ -350,7 +353,7 @@ export function createControls(
     },
     updatePlaying(playing: boolean) {
       isPlaying = playing;
-      playBtn.innerHTML = playing ? PAUSE_ICON : PLAY_ICON;
+      playBtn.classList.toggle("hfp-playing", playing);
       playBtn.setAttribute("aria-label", playing ? "Pause" : "Play");
       if (playing) startHideTimer();
       else controls.classList.remove("hfp-hidden");

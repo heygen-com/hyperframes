@@ -5,36 +5,21 @@
 //   localStorage.setItem('hyperframes-studio:telemetryDisabled','1')
 // ---------------------------------------------------------------------------
 
-import { generateId } from "../utils/generateId";
+import { resolveStudioDistinctId } from "./distinctId";
+import { safeLocalStorage, safeSessionStorage } from "../utils/safeStorage";
 
-const ANON_ID_KEY = "hyperframes-studio:anonymousId";
 const OPT_OUT_KEY = "hyperframes-studio:telemetryDisabled";
 const NOTICE_KEY = "hyperframes-studio:telemetryNoticeShown";
 
-function safeLocalStorage(): Storage | null {
-  try {
-    return typeof localStorage === "undefined" ? null : localStorage;
-  } catch {
-    return null;
-  }
-}
-
-function newAnonymousId(): string {
-  return generateId();
-}
-
+/**
+ * Anonymous telemetry id for `studio_*` and render events.
+ *
+ * Delegates to the single source of truth in `distinctId.ts` so this id is
+ * identical to the one used for `studio:*` events (utils/studioTelemetry.ts)
+ * and, when the CLI launched Studio, to the CLI's own `config.anonymousId`.
+ */
 export function getAnonymousId(): string {
-  const ls = safeLocalStorage();
-  if (!ls) return "anonymous";
-  const existing = ls.getItem(ANON_ID_KEY);
-  if (existing) return existing;
-  const id = newAnonymousId();
-  try {
-    ls.setItem(ANON_ID_KEY, id);
-  } catch {
-    /* private browsing / quota — return the in-memory ID for this session */
-  }
-  return id;
+  return resolveStudioDistinctId();
 }
 
 export function isOptedOut(): boolean {
@@ -57,14 +42,6 @@ export function markNoticeShown(): void {
 // route-level remounts within one tab don't refire `studio_session_start`.
 // Uses sessionStorage directly because the dedupe is per-tab, not per-browser.
 const SESSION_FIRED_KEY = "hyperframes-studio:sessionStartFired";
-
-function safeSessionStorage(): Storage | null {
-  try {
-    return typeof sessionStorage === "undefined" ? null : sessionStorage;
-  } catch {
-    return null;
-  }
-}
 
 export function hasFiredSessionStart(): boolean {
   return safeSessionStorage()?.getItem(SESSION_FIRED_KEY) === "1";

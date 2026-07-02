@@ -5,6 +5,7 @@ import {
   type EnableKeyframesSession,
 } from "../hooks/useEnableKeyframes";
 import { computeElementPercentage } from "../hooks/gsapShared";
+import { useKeyframeKeyboard } from "../hooks/useKeyframeKeyboard";
 import {
   getNextTimelineZoomPercent,
   getTimelineZoomPercent,
@@ -89,6 +90,13 @@ export function TimelineToolbar({
     onToggle: onToggleKeyframe,
   } = useKeyframeToggle(domEditSession);
 
+  // Wire the "Add keyframe (K)" shortcut the toolbar advertises. Active only when
+  // there's a keyframeable selection; otherwise K stays JKL-pause in playback.
+  useKeyframeKeyboard({
+    enabled: STUDIO_KEYFRAMES_ENABLED && Boolean(onToggleKeyframe),
+    onAddKeyframe: onToggleKeyframe,
+  });
+
   return (
     <div className="border-b border-neutral-800/40 bg-neutral-950/96">
       <div className="flex items-center justify-between px-3 py-2">
@@ -133,12 +141,12 @@ export function TimelineToolbar({
               <Tooltip
                 label={
                   keyframeState === "active"
-                    ? "Remove keyframe at playhead"
+                    ? "Remove keyframe at playhead (K)"
                     : keyframeState === "inactive"
                       ? keyframeWillExtend
-                        ? "Add keyframe at playhead (extends animation)"
-                        : "Add keyframe at playhead"
-                      : "Enable keyframes"
+                        ? "Add keyframe at playhead — extends animation (K)"
+                        : "Add keyframe at playhead (K)"
+                      : "Add keyframe (K)"
                 }
               >
                 <button

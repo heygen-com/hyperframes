@@ -28,6 +28,7 @@ import {
 import { formatFfmpegError } from "../utils/runFfmpeg.js";
 import { getFfmpegBinary } from "../utils/ffmpegBinaries.js";
 import { getHdrEncoderColorParams } from "../utils/hdr.js";
+import { withEvenDimensionPad } from "../utils/evenDimensions.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { fpsToFfmpegArg, type Fps } from "@hyperframes/core";
 import { appendVp9CpuUsedArg } from "./vp9Options.js";
@@ -350,13 +351,24 @@ export function buildStreamingArgs(
     if (options.rawInputFormat) {
       // No filter needed — PQ data goes straight to encoder
     } else if (gpuEncoder === "vaapi") {
+      // vaapi already runs `format=nv12,hwupload`; the nv12 conversion aligns
+      // odd dimensions before upload, so only prepend the range conversion.
       const vfIdx = args.indexOf("-vf");
       if (vfIdx !== -1) {
         args[vfIdx + 1] = `scale=in_range=pc:out_range=tv,${args[vfIdx + 1]}`;
       }
-    } else if (!shouldUseGpu) {
-      // Range conversion: Chrome screenshots are full-range RGB.
-      args.push("-vf", "scale=in_range=pc:out_range=tv");
+    } else if (shouldUseGpu) {
+      // nvenc/videotoolbox/qsv/amf feed software frames straight to the HW
+      // encoder with no `-vf`. They hit the same "height not divisible by 2"
+      // abort as libx264 on an odd-sized 4:2:0 canvas, so pad odd dimensions
+      // up to even on the software side before the encode.
+      const vf = withEvenDimensionPad("", pixelFormat);
+      if (vf) args.push("-vf", vf);
+    } else {
+      // Range conversion: Chrome screenshots are full-range RGB. Pad odd
+      // dimensions up to even so libx264/libx265 (4:2:0) don't abort with
+      // "height not divisible by 2" on an odd-sized composition canvas.
+      args.push("-vf", withEvenDimensionPad("scale=in_range=pc:out_range=tv", pixelFormat));
     }
 
     // Fixed timescale for consistent A/V timing across platforms.

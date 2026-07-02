@@ -1,4 +1,4 @@
-// dimensions.mjs — canvas size + caption-band geometry for the product-launch
+// dimensions.mjs — canvas size + caption-band geometry for the video
 // pipeline. Single source of truth = the STORYBOARD frontmatter `format` global
 // ("1920x1080" / "1080x1920" / "1080x1080", or a named orientation). Every
 // script and the index assembler reads the size from here; none hardcodes it.

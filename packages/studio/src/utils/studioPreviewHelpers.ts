@@ -81,6 +81,37 @@ function removePointerEventsOverride(style: HTMLStyleElement | null): void {
   }
 }
 
+// Animated group members can move outside their wrapper's static layout box, so
+// the empty space inside a group's *visual* bounds (the member-union the overlay
+// draws) doesn't hit-test to the group via elementsFromPoint. Recover it: if the
+// point falls within a group's live member-union rect, return that wrapper.
+// Innermost (smallest-area) group wins for nested groups.
+function findGroupAtPoint(doc: Document, x: number, y: number): HTMLElement | null {
+  let best: HTMLElement | null = null;
+  let bestArea = Infinity;
+  for (const group of Array.from(doc.querySelectorAll<HTMLElement>("[data-hf-group]"))) {
+    let left = Infinity;
+    let top = Infinity;
+    let right = -Infinity;
+    let bottom = -Infinity;
+    for (const member of Array.from(group.children)) {
+      const r = member.getBoundingClientRect();
+      if (r.width === 0 && r.height === 0) continue;
+      left = Math.min(left, r.left);
+      top = Math.min(top, r.top);
+      right = Math.max(right, r.right);
+      bottom = Math.max(bottom, r.bottom);
+    }
+    if (right < left || x < left || x > right || y < top || y > bottom) continue;
+    const area = (right - left) * (bottom - top);
+    if (area < bestArea) {
+      bestArea = area;
+      best = group;
+    }
+  }
+  return best;
+}
+
 // fallow-ignore-next-line complexity
 export function getPreviewTargetFromPointer(
   iframe: HTMLIFrameElement,
@@ -112,6 +143,12 @@ export function getPreviewTargetFromPointer(
         candidates.find((el) => !isFullBleedTarget(el, localPointer.viewport)) ?? null;
       if (visualTarget) return visualTarget;
     }
+
+    // No element hit (e.g. empty space inside an animated group's overlay) — fall
+    // back to the group whose member-union contains the point, so the whole group
+    // area is hoverable/selectable, not just where a member currently sits.
+    const groupHit = findGroupAtPoint(doc, localPointer.x, localPointer.y);
+    if (groupHit && getDomLayerPatchTarget(groupHit, activeCompositionPath)) return groupHit;
 
     const fallback = getEventTargetElement(doc.elementFromPoint(localPointer.x, localPointer.y));
     if (!fallback || !getDomLayerPatchTarget(fallback, activeCompositionPath)) return null;

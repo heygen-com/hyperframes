@@ -1,4 +1,4 @@
-import { basename, resolve } from "node:path";
+import { resolve } from "node:path";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { defineCommand } from "citty";
@@ -13,6 +13,7 @@ import { publishProjectArchive } from "../utils/publishProject.js";
 export const examples: Example[] = [
   ["Publish the current project with a public URL", "hyperframes publish"],
   ["Publish a specific directory", "hyperframes publish ./my-video"],
+  ["Make the claimed project public to anyone", "hyperframes publish --public"],
   ["Skip the consent prompt (scripts)", "hyperframes publish --yes"],
 ];
 
@@ -29,16 +30,18 @@ export default defineCommand({
       description: "Skip the publish confirmation prompt",
       default: false,
     },
+    public: {
+      type: "boolean",
+      description: "Make the claimed project public to anyone, not just the claimer",
+      default: false,
+    },
   },
   async run({ args }) {
     const rawArg = args.dir;
     const dir = resolve(rawArg ?? ".");
-    const isImplicitCwd = !rawArg || rawArg === "." || rawArg === "./";
-    const projectName = isImplicitCwd ? basename(process.env["PWD"] ?? dir) : basename(dir);
-
     const indexPath = join(dir, "index.html");
     if (existsSync(indexPath)) {
-      const lintResult = await lintProject({ dir, name: projectName, indexPath });
+      const lintResult = await lintProject(dir);
       if (lintResult.totalErrors > 0 || lintResult.totalWarnings > 0) {
         console.log();
         for (const line of formatLintFindings(lintResult)) console.log(line);
@@ -69,7 +72,7 @@ export default defineCommand({
     publishSpinner.start("Uploading project...");
 
     try {
-      const published = await publishProjectArchive(dir);
+      const published = await publishProjectArchive(dir, { public: args.public === true });
       const claimUrl = new URL(published.url);
       claimUrl.searchParams.set("claim_token", published.claimToken);
       publishSpinner.stop(c.success("Project published"));

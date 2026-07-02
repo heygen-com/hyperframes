@@ -39,7 +39,18 @@ declare global {
     __playerReady?: boolean;
     __renderReady?: boolean;
     __hfRuntimeTeardown?: (() => void) | null;
+    __HF_EXPORT_RENDER_SEEK_CONFIG?: {
+      mode?: string;
+      diagnostics?: boolean;
+      step?: number;
+      offsetFraction?: number;
+      fps?: number;
+      fpsSource?: "render-options" | "default";
+      fpsFallbackReason?: "missing" | "invalid";
+      owner?: string;
+    };
     __HF_PARITY_MODE?: boolean;
+    /** Legacy debug-only fps hint. Render-mode runtime fps uses __HF_EXPORT_RENDER_SEEK_CONFIG.fps. */
     __HF_FPS?: number;
     __HF_MAX_DURATION_SEC?: number;
     __hfThreeTime?: number;

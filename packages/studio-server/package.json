@@ -1,0 +1,109 @@
+{
+  "name": "@hyperframes/studio-server",
+  "version": "0.7.24",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/heygen-com/hyperframes",
+    "directory": "packages/studio-server"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "node": "./dist/index.js",
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
+    },
+    "./package.json": "./package.json",
+    "./screenshot-clip": {
+      "bun": "./src/helpers/screenshotClip.ts",
+      "node": "./dist/helpers/screenshotClip.js",
+      "import": "./src/helpers/screenshotClip.ts",
+      "types": "./src/helpers/screenshotClip.ts"
+    },
+    "./manual-edits-render-script": {
+      "bun": "./src/helpers/manualEditsRenderScript.ts",
+      "node": "./dist/helpers/manualEditsRenderScript.js",
+      "import": "./src/helpers/manualEditsRenderScript.ts",
+      "types": "./src/helpers/manualEditsRenderScript.ts"
+    },
+    "./studio-motion-render-script": {
+      "bun": "./src/helpers/studioMotionRenderScript.ts",
+      "node": "./dist/helpers/studioMotionRenderScript.js",
+      "import": "./src/helpers/studioMotionRenderScript.ts",
+      "types": "./src/helpers/studioMotionRenderScript.ts"
+    },
+    "./draft-markers": {
+      "bun": "./src/helpers/draftMarkers.ts",
+      "node": "./dist/helpers/draftMarkers.js",
+      "import": "./src/helpers/draftMarkers.ts",
+      "types": "./src/helpers/draftMarkers.ts"
+    },
+    "./finite-mutation": {
+      "bun": "./src/helpers/finiteMutation.ts",
+      "node": "./dist/helpers/finiteMutation.js",
+      "import": "./src/helpers/finiteMutation.ts",
+      "types": "./src/helpers/finiteMutation.ts"
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "import": "./dist/index.js",
+        "types": "./dist/index.d.ts"
+      },
+      "./package.json": "./package.json",
+      "./screenshot-clip": {
+        "import": "./dist/helpers/screenshotClip.js",
+        "types": "./dist/helpers/screenshotClip.d.ts"
+      },
+      "./manual-edits-render-script": {
+        "import": "./dist/helpers/manualEditsRenderScript.js",
+        "types": "./dist/helpers/manualEditsRenderScript.d.ts"
+      },
+      "./studio-motion-render-script": {
+        "import": "./dist/helpers/studioMotionRenderScript.js",
+        "types": "./dist/helpers/studioMotionRenderScript.d.ts"
+      },
+      "./draft-markers": {
+        "import": "./dist/helpers/draftMarkers.js",
+        "types": "./dist/helpers/draftMarkers.d.ts"
+      },
+      "./finite-mutation": {
+        "import": "./dist/helpers/finiteMutation.js",
+        "types": "./dist/helpers/finiteMutation.d.ts"
+      }
+    },
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts"
+  },
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "echo skip"
+  },
+  "dependencies": {
+    "@hyperframes/core": "workspace:*",
+    "@hyperframes/parsers": "workspace:*",
+    "hono": "^4.0.0",
+    "linkedom": "^0.18.12",
+    "postcss": "^8.5.8",
+    "postcss-selector-parser": "^7.1.2"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.10",
+    "tsup": "^8.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.0.0",
+    "vitest": "^3.2.4"
+  }
+}

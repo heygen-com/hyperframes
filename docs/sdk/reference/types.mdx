@@ -1,0 +1,668 @@
+---
+title: "Types"
+description: "All exported types from @hyperframes/sdk."
+---
+
+This page documents every type exported from `@hyperframes/sdk`. Types are verified against `packages/sdk/src/types.ts` and the export barrel at `packages/sdk/src/index.ts`.
+
+See also: [`Composition`](/sdk/reference/composition) for the main session interface, [`Edit Operations`](/sdk/reference/edit-operations) for the `EditOp` catalog.
+
+---
+
+## HfId
+
+```typescript
+type HfId = string;
+```
+
+A stable HyperFrames element identifier — the value of the `data-hf-id` attribute stamped on every editable element by `ensureHfIds`. Use `HfId` wherever you would write a raw `string` to signal that the value is an element id.
+
+---
+
+## HyperFramesElement
+
+Full DOM-level view of one editable element. Returned by `comp.getElements()` and `comp.getElement(id)`.
+
+```typescript
+interface HyperFramesElement {
+  readonly id: string;
+  readonly scopedId: string;
+  readonly tag: string;
+  readonly children: readonly HyperFramesElement[];
+  readonly inlineStyles: Readonly<Record<string, string>>;
+  readonly classNames: readonly string[];
+  readonly attributes: Readonly<Record<string, string>>;
+  readonly text: string | null;
+  readonly start: number | null;
+  readonly duration: number | null;
+  readonly trackIndex: number | null;
+  readonly animationIds: readonly string[];
+}
+```
+
+<ResponseField name="id" type="string">
+  The element's `data-hf-id` value — unique within the top-level document.
+</ResponseField>
+
+<ResponseField name="scopedId" type="string">
+  Fully-qualified scoped identifier: `host-chain-prefix/leaf`, separated by `/`. For top-level elements `scopedId === id`. For elements inside inlined sub-compositions the format is `"hf-HOST/hf-LEAF"` (any depth). Use `scopedId` — not `id` — as the canonical key in `dispatch()` targets, `getElement()`, `find()`, and `OverrideSet` keys when addressing sub-composition elements.
+</ResponseField>
+
+<ResponseField name="tag" type="string">
+  Lowercase HTML tag name (`"div"`, `"img"`, `"p"`, …).
+</ResponseField>
+
+<ResponseField name="children" type="readonly HyperFramesElement[]">
+  Direct child elements. Build a flat list with `flatElements()` from `@hyperframes/sdk` utilities.
+</ResponseField>
+
+<ResponseField name="inlineStyles" type="Readonly<Record<string, string>>">
+  Inline CSS properties in camelCase, mirroring `CSSStyleDeclaration` convention (`fontSize`, not `font-size`).
+</ResponseField>
+
+<ResponseField name="classNames" type="readonly string[]">
+  The element's class list.
+</ResponseField>
+
+<ResponseField name="attributes" type="Readonly<Record<string, string>>">
+  All HTML attributes except `style`, `class`, and `data-hf-*` (those are represented elsewhere in the model).
+</ResponseField>
+
+<ResponseField name="text" type="string | null">
+  The element's direct text content, intended as the `setText` target. Not a full descendant-text snapshot.
+</ResponseField>
+
+<ResponseField name="start" type="number | null">
+  Timing start in seconds (`data-start`). `null` when the element carries no timing attribute.
+</ResponseField>
+
+<ResponseField name="duration" type="number | null">
+  Timing duration in seconds (`data-duration`). `null` when not set.
+</ResponseField>
+
+<ResponseField name="trackIndex" type="number | null">
+  Zero-based track index (`data-track`). `null` when not set.
+</ResponseField>
+
+<ResponseField name="animationIds" type="readonly string[]">
+  IDs of GSAP tweens whose target is this element. Pass these to the GSAP tween ops in `dispatch()`.
+</ResponseField>
+
+---
+
+## ElementSnapshot
+
+```typescript
+type ElementSnapshot = HyperFramesElement;
+```
+
+Type alias for `HyperFramesElement`. Used in return types of `getElements()` and `getElement()` to signal that the value is a read-only snapshot — it does not update after subsequent mutations.
+
+---
+
+## SdkDocument
+
+The SDK's in-memory document model. Returned by `buildDocument()`.
+
+```typescript
+interface SdkDocument {
+  readonly roots: readonly HyperFramesElement[];
+  readonly gsapScript: string | null;
+  readonly styles: string | null;
+  readonly width: number | null;
+  readonly height: number | null;
+  readonly compositionDuration: number | null;
+  readonly html: string;
+}
+```
+
+<ResponseField name="roots" type="readonly HyperFramesElement[]">
+  Top-level elements of the composition body. Walk the tree via `.children`.
+</ResponseField>
+
+<ResponseField name="gsapScript" type="string | null">
+  Raw contents of the composition's GSAP `<script>` block, if present.
+</ResponseField>
+
+<ResponseField name="styles" type="string | null">
+  Raw contents of the composition's `<style>` block, if present.
+</ResponseField>
+
+<ResponseField name="width" type="number | null">
+  Composition width in pixels from `data-width` on the root element. `null` if not set.
+</ResponseField>
+
+<ResponseField name="height" type="number | null">
+  Composition height in pixels from `data-height`. `null` if not set.
+</ResponseField>
+
+<ResponseField name="compositionDuration" type="number | null">
+  Total duration in seconds from `data-duration` on the root element. `null` if not set.
+</ResponseField>
+
+<ResponseField name="html" type="string">
+  Build-time snapshot of the `ensureHfIds`-stamped HTML. This value is **never updated** after mutations — call `comp.serialize()` to get the current document state.
+</ResponseField>
+
+---
+
+## OverrideSet
+
+```typescript
+type OverrideSet = Record<
+  string,
+  string | number | boolean | Record<string, unknown> | null
+>;
+```
+
+A sparse map of overrides layered on top of a base composition template. Used in embedded override mode (T3) — pass as `overrides` to `openComposition()`, or read the accumulated delta with `comp.getOverrides()`.
+
+**Key format:** `hfId.prop.path`, where:
+
+- `hfId.style.fontSize` — inline style property override
+- `hfId.text` — text content override
+- `hfId.attr.src` — attribute override
+- `hfId` (key only, value `null`) — element removed by user
+- `var.{id}` — variable override; value is a scalar or an object (`FontValue` / `ImageValue`)
+
+**`null` value** = removal marker: the element or property was deleted by the user.
+
+```typescript
+const overrides: OverrideSet = {
+  "hf-title.text": "Customer headline",
+  "hf-logo.attr.src": "/customers/acme/logo.png",
+  "hf-title.style.color": "#0EA5E9",
+  "hf-old-badge": null,                         // element removed
+  "var.brand-font": {                            // font variable
+    name: "Inter",
+    source: "https://fonts.googleapis.com/css2?family=Inter",
+  },
+};
+```
+
+<Warning>
+  The value union includes `Record<string, unknown>` to admit object-valued variables (font, image). Code that reads an `OverrideSet` value must narrow before assuming a scalar — an object value type-checks anywhere `unknown` is accepted.
+</Warning>
+
+---
+
+## FindQuery
+
+Passed to `comp.find(query)` to search elements by descriptor.
+
+```typescript
+interface FindQuery {
+  tag?: string;
+  text?: string;
+  name?: string;
+  track?: number;
+  composition?: string;
+}
+```
+
+<ResponseField name="tag" type="string">
+  Match by lowercase HTML tag name (`"img"`, `"p"`, …).
+</ResponseField>
+
+<ResponseField name="text" type="string">
+  Match by the element's direct text content (case-sensitive substring match — implemented with `String.includes`).
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Match by `data-name` attribute value.
+</ResponseField>
+
+<ResponseField name="track" type="number">
+  Match by zero-based track index (`data-track`).
+</ResponseField>
+
+<ResponseField name="composition" type="string">
+  Restrict results to elements inside a specific sub-composition, identified by the host element's hf-id.
+</ResponseField>
+
+All fields are optional; non-null fields are ANDed.
+
+```typescript
+// Find all text elements on track 2:
+const ids = comp.find({ tag: "p", track: 2 });
+
+// Find inside a sub-composition:
+const subIds = comp.find({ composition: "hf-scene-2", tag: "img" });
+```
+
+---
+
+## GsapTweenSpec
+
+Describes a single GSAP tween entry to create or update.
+
+```typescript
+interface GsapTweenSpec {
+  method: "from" | "to" | "fromTo" | "set";
+  position?: number | string;
+  duration?: number;
+  ease?: string;
+  fromProperties?: Record<string, unknown>;
+  toProperties?: Record<string, unknown>;
+  properties?: Record<string, unknown>;
+  repeat?: number;
+  yoyo?: boolean;
+  stagger?: number | Record<string, unknown>;
+}
+```
+
+<ResponseField name="method" type='"from" | "to" | "fromTo" | "set"'>
+  GSAP tween method. `"from"` animates from the given values to the computed values; `"to"` animates toward the given values; `"fromTo"` animates from `fromProperties` to `toProperties`; `"set"` snaps without interpolation.
+</ResponseField>
+
+<ResponseField name="position" type="number | string">
+  Timeline insertion position. A number is seconds from the timeline start. A string is a label-relative offset such as `"intro"` or `"outro-=0.5"`. Omit to append.
+</ResponseField>
+
+<ResponseField name="duration" type="number">
+  Tween duration in seconds.
+</ResponseField>
+
+<ResponseField name="ease" type="string">
+  GSAP ease string, e.g. `"power3.out"`, `"elastic.out(1, 0.3)"`, `"none"`.
+</ResponseField>
+
+<ResponseField name="fromProperties" type="Record<string, unknown>">
+  Start-state property map — used by `"from"` and `"fromTo"` methods.
+</ResponseField>
+
+<ResponseField name="toProperties" type="Record<string, unknown>">
+  End-state property map — used by `"fromTo"` method.
+</ResponseField>
+
+<ResponseField name="properties" type="Record<string, unknown>">
+  Animated property map — used by `"to"` method.
+</ResponseField>
+
+<ResponseField name="repeat" type="number">
+  How many times to repeat. `-1` = infinite.
+</ResponseField>
+
+<ResponseField name="yoyo" type="boolean">
+  Reverse direction on alternating repeats.
+</ResponseField>
+
+<ResponseField name="stagger" type="number | Record<string, unknown>">
+  GSAP stagger config for multi-target tweens.
+</ResponseField>
+
+---
+
+## KeyframeSpec
+
+A single keyframe entry for `addWithKeyframes` and `replaceWithKeyframes`. This is a structural shape, not a runtime export — you pass plain objects of this form to those methods; it is **not** re-exported from the `@hyperframes/sdk` barrel, so there is nothing to import.
+
+```typescript
+interface KeyframeSpec {
+  percentage: number;
+  properties: Record<string, number | string>;
+  ease?: string;
+  auto?: boolean;
+}
+```
+
+<ResponseField name="percentage" type="number">
+  Keyframe stop position within the tween, from 0 to 100.
+</ResponseField>
+
+<ResponseField name="properties" type="Record<string, number | string>">
+  CSS and GSAP property values at this keyframe stop.
+</ResponseField>
+
+<ResponseField name="ease" type="string">
+  Ease applied from this stop to the next.
+</ResponseField>
+
+<ResponseField name="auto" type="boolean">
+  GSAP endpoint flag. When `true`, emitted as numeric `_auto: 1` in the generated GSAP script.
+</ResponseField>
+
+---
+
+## ElasticHold
+
+Controls the elastic hold (freeze or loop) window for an element.
+
+```typescript
+interface ElasticHold {
+  start: number;
+  end: number;
+  fill: "freeze" | "loop";
+}
+```
+
+<ResponseField name="start" type="number">
+  Start of the hold window in seconds.
+</ResponseField>
+
+<ResponseField name="end" type="number">
+  End of the hold window in seconds.
+</ResponseField>
+
+<ResponseField name="fill" type='"freeze" | "loop"'>
+  `"freeze"` holds the last frame statically; `"loop"` cycles the animation within the window.
+</ResponseField>
+
+---
+
+## FontValue
+
+Object value for a `font` composition variable. Always an object — never a raw CSS string.
+
+```typescript
+interface FontValue {
+  name: string;
+  source: string;
+}
+```
+
+<ResponseField name="name" type="string">
+  CSS `font-family` value, e.g. `"Inter"` or `"'Playfair Display'"`.
+</ResponseField>
+
+<ResponseField name="source" type="string">
+  Stylesheet URL to load for this font, e.g. a Google Fonts CSS URL.
+</ResponseField>
+
+---
+
+## ImageValue
+
+Object value for an `image` composition variable. Always an object — never a raw URL string.
+
+```typescript
+interface ImageValue {
+  url: string;
+  alt?: string;
+  fit?: "cover" | "contain" | "fill" | "none" | "scale-down";
+}
+```
+
+<ResponseField name="url" type="string">
+  Image source URL.
+</ResponseField>
+
+<ResponseField name="alt" type="string">
+  Alternative text for accessibility.
+</ResponseField>
+
+<ResponseField name="fit" type='"cover" | "contain" | "fill" | "none" | "scale-down"'>
+  Object-fit behavior for the image within its container. Maps to the CSS `object-fit` property.
+</ResponseField>
+
+---
+
+## JsonPatchOp
+
+An emit-only subset of [RFC 6902](https://datatracker.ietf.org/doc/html/rfc6902) JSON Patch. The SDK never emits `move`, `copy`, or `test` ops, and `applyPatches()` ignores operations outside this subset.
+
+```typescript
+interface JsonPatchOp {
+  op: "add" | "remove" | "replace";
+  path: string;
+  value?: unknown;
+}
+```
+
+<ResponseField name="op" type='"add" | "remove" | "replace"'>
+  The patch operation type.
+</ResponseField>
+
+<ResponseField name="path" type="string">
+  RFC 6902 JSON Pointer path to the document location being changed.
+</ResponseField>
+
+<ResponseField name="value" type="unknown">
+  New value for `"add"` and `"replace"` ops. Omitted for `"remove"`.
+</ResponseField>
+
+<Warning>
+  Hosts feeding patches back into `applyPatches()` must restrict themselves to `add`, `remove`, and `replace`. Other RFC 6902 op types are silently ignored.
+</Warning>
+
+---
+
+## PatchEvent
+
+Emitted by `comp.on('patch', handler)` after every committed change (single `dispatch()` or completed `batch()`).
+
+```typescript
+interface PatchEvent {
+  readonly formatVersion: 1;
+  readonly patches: readonly JsonPatchOp[];
+  readonly inversePatches: readonly JsonPatchOp[];
+  readonly origin: unknown;
+  readonly opTypes: readonly string[];
+}
+```
+
+<ResponseField name="formatVersion" type="1">
+  Always `1`. A bump in `formatVersion` is a breaking change. Hosts should check this value once on startup and reject unknown versions.
+</ResponseField>
+
+<ResponseField name="patches" type="readonly JsonPatchOp[]">
+  Forward patches that transform the previous document state into the new state.
+</ResponseField>
+
+<ResponseField name="inversePatches" type="readonly JsonPatchOp[]">
+  Inverse patches that undo this change — apply to the new state to return to the previous state. Store these for host-side undo stacks.
+</ResponseField>
+
+<ResponseField name="origin" type="unknown">
+  Re-emitted verbatim from the mutation entry. Identify automated patches by checking `origin === ORIGIN_APPLY_PATCHES`.
+</ResponseField>
+
+<ResponseField name="opTypes" type="readonly string[]">
+  Semantic op names from the `EditOp.type` field (e.g. `["setStyle", "setText"]`). Intended for analytics and history labels. **Not versioned** — do not use in branching logic.
+</ResponseField>
+
+**Loop prevention.** When a host mirrors patch events into the SDK via `applyPatches()`, it must skip events that originated from that call to avoid infinite loops:
+
+```typescript
+comp.on("patch", ({ patches, inversePatches, origin }) => {
+  if (origin === ORIGIN_APPLY_PATCHES) return;
+  saveToHostHistory({ patches, inversePatches });
+});
+```
+
+---
+
+## CanResult
+
+Returned by `comp.can(op)`. See [`Edit Operations`](/sdk/reference/edit-operations) for the full usage pattern.
+
+```typescript
+type CanResult =
+  | { ok: true }
+  | { ok: false; code: string; message: string; hint?: string };
+```
+
+<ResponseField name="ok" type="boolean">
+  `true` when `dispatch(op)` would succeed. `false` when it would be a no-op or error.
+</ResponseField>
+
+<ResponseField name="code" type="string">
+  Stable error code for `ok: false` — safe to use in `switch` statements. See the code table in [Edit Operations](/sdk/reference/edit-operations#dispatch-batch-and-can).
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Human-readable explanation of why the op cannot proceed.
+</ResponseField>
+
+<ResponseField name="hint" type="string">
+  Optional actionable suggestion to resolve the issue.
+</ResponseField>
+
+---
+
+## ElementTimingSnapshot
+
+Resolved timing for one element, returned as values in the `Record<HfId, ElementTimingSnapshot>` from `comp.getElementTimings()`.
+
+```typescript
+interface ElementTimingSnapshot {
+  enterAt: number;
+  exitAt: number;
+  labels: string[];
+}
+```
+
+<ResponseField name="enterAt" type="number">
+  Time in seconds when the element enters. Derived from `data-duration` (preferred) or `data-end − data-start` as fallback, using the same logic as `setTiming`.
+</ResponseField>
+
+<ResponseField name="exitAt" type="number">
+  Time in seconds when the element exits.
+</ResponseField>
+
+<ResponseField name="labels" type="string[]">
+  GSAP `addLabel` names whose numeric position falls within `[enterAt, exitAt]` for this element. Parsed fresh from the GSAP script on every `getElementTimings()` call — never cached.
+</ResponseField>
+
+---
+
+## SelectionProxy
+
+Proxy returned by `comp.selection()`. Resolves the current selection at call time and applies ops per-id within a single batch. Selection changes between calls are picked up automatically since `ids` is resolved fresh each time you call `comp.selection()`.
+
+```typescript
+interface SelectionProxy {
+  readonly ids: readonly string[];
+  setStyle(styles: Record<string, string | null>): void;
+  setText(value: string): void;
+  setAttribute(name: string, value: string | null): void;
+  setTiming(timing: { start?: number; duration?: number; trackIndex?: number }): void;
+  removeElement(): void;
+}
+```
+
+<ResponseField name="ids" type="readonly string[]">
+  The hf-ids in the current selection at the moment `comp.selection()` was called.
+</ResponseField>
+
+```typescript
+const sel = comp.selection();
+if (sel.ids.length > 0) {
+  sel.setStyle({ opacity: "0.5" });
+}
+```
+
+---
+
+## ElementHandle
+
+A curried element handle returned by `comp.element(id)`. Holds only the id string — no stale-reference hazard — and provides the same mutation methods as typed methods on `Composition`.
+
+```typescript
+interface ElementHandle {
+  readonly id: string;
+  setStyle(styles: Record<string, string | null>): void;
+  setText(value: string): void;
+  setAttribute(name: string, value: string | null): void;
+  setTiming(timing: { start?: number; duration?: number; trackIndex?: number }): void;
+  removeElement(): void;
+}
+```
+
+```typescript
+const title = comp.element("hf-title");
+title.setText("Launch Day");
+title.setStyle({ color: "#FFD60A", fontSize: "96px" });
+title.setTiming({ start: 0.5, duration: 3 });
+```
+
+---
+
+## ORIGIN_APPLY_PATCHES / ORIGIN_LOCAL
+
+```typescript
+const ORIGIN_APPLY_PATCHES = "@hyperframes/sdk:applyPatches";
+const ORIGIN_LOCAL = "local";
+```
+
+Reserved `origin` tag constants:
+
+- **`ORIGIN_APPLY_PATCHES`** — automatically set by `comp.applyPatches()`. Listeners **must** skip this origin to prevent undo loops when mirroring patch events back into the SDK. Uses a namespaced string (not a unique Symbol) so the sentinel survives realm boundaries such as `postMessage` and structured clone, which T3 embedded hosts may use to forward patch events.
+- **`ORIGIN_LOCAL`** — default origin used when `dispatch()` or `batch()` is called without an explicit `origin` option. Signals UI-driven user edits.
+
+```typescript
+comp.on("patch", ({ origin }) => {
+  if (origin === ORIGIN_APPLY_PATCHES) return; // skip — would loop
+  if (origin === ORIGIN_LOCAL) {
+    // user-driven edit — sync to collaboration layer
+  }
+});
+```
+
+---
+
+## EditOp
+
+The full union of all dispatchable edit operations. See [Edit Operations](/sdk/reference/edit-operations) for the complete catalog with field descriptions and code examples.
+
+```typescript
+type EditOp =
+  | { type: "setStyle"; target: HfId | HfId[]; styles: Record<string, string | null> }
+  | { type: "setText"; target: HfId | HfId[]; value: string }
+  | { type: "setAttribute"; target: HfId | HfId[]; name: string; value: string | null }
+  | { type: "setTiming"; target: HfId | HfId[]; start?: number; duration?: number; trackIndex?: number }
+  | { type: "setHold"; target: HfId | HfId[]; hold: ElasticHold }
+  | { type: "moveElement"; target: HfId | HfId[]; x: number; y: number }
+  | { type: "removeElement"; target: HfId | HfId[] }
+  | { type: "addElement"; parent: HfId | null; index: number; html: string }
+  | { type: "reorderElements"; entries: Array<{ target: HfId; zIndex: number }> }
+  | { type: "setClassStyle"; selector: string; styles: Record<string, string | null> }
+  | { type: "setCompositionMetadata"; width?: number; height?: number; duration?: number }
+  | { type: "setVariableValue"; id: string; value: string | number | boolean | FontValue | ImageValue }
+  | { type: "addGsapTween"; target: HfId; tween: GsapTweenSpec }
+  | { type: "setGsapTween"; animationId: string; properties: Partial<GsapTweenSpec> }
+  | { type: "removeGsapTween"; animationId: string }
+  | { type: "removeGsapProperty"; animationId: string; property: string; from?: boolean }
+  | { type: "setGsapKeyframe"; animationId: string; keyframeIndex: number; position?: number; value?: Record<string, unknown>; ease?: string }
+  | { type: "addGsapKeyframe"; animationId: string; position: number; value: Record<string, unknown> }
+  | { type: "removeGsapKeyframe"; animationId: string; percentage: number }
+  | { type: "removeAllKeyframes"; animationId: string }
+  | { type: "convertToKeyframes"; animationId: string; resolvedFromValues?: Record<string, number | string> }
+  | { type: "materializeKeyframes"; animationId: string; keyframes: Array<{ percentage: number; properties: Record<string, number | string>; ease?: string }>; easeEach?: string; resolvedSelector?: string }
+  | { type: "splitIntoPropertyGroups"; animationId: string }
+  | { type: "splitAnimations"; originalId: string; newId: string; splitTime: number; elementStart: number; elementDuration: number }
+  | { type: "addLabel"; name: string; position: number }
+  | { type: "removeLabel"; name: string }
+  | { type: "setArcPath"; animationId: string; config: { enabled: boolean; autoRotate: boolean | number; segments: Array<{ curviness?: number; cp1?: { x: number; y: number }; cp2?: { x: number; y: number } }> } }
+  | { type: "updateArcSegment"; animationId: string; segmentIndex: number; update: { curviness?: number; cp1?: { x: number; y: number }; cp2?: { x: number; y: number } } }
+  | { type: "removeArcPath"; animationId: string }
+  | { type: "unrollDynamicAnimations"; animationId: string; elements: Array<{ selector: string; keyframes: Array<{ percentage: number; properties: Record<string, number | string> }>; easeEach?: string }> }
+  | { type: "addWithKeyframes"; targetSelector: string; position: number; duration: number; keyframes: KeyframeSpec[]; ease?: string }
+  | { type: "replaceWithKeyframes"; animationId: string; targetSelector: string; position: number; duration: number; keyframes: KeyframeSpec[]; ease?: string }
+  | { type: "deleteAllForSelector"; selector: string };
+```
+
+---
+
+## PersistErrorEvent
+
+Emitted by `comp.on('persist:error', handler)` when an autosave write fails. Failures are non-fatal — the session continues operating normally.
+
+```typescript
+interface PersistErrorEvent {
+  error: { message: string; hint?: string; cause?: unknown };
+}
+```
+
+<ResponseField name="error.message" type="string">
+  Human-readable description of the persist failure.
+</ResponseField>
+
+<ResponseField name="error.hint" type="string">
+  Optional suggestion for resolving the failure.
+</ResponseField>
+
+<ResponseField name="error.cause" type="unknown">
+  Underlying error object, if available.
+</ResponseField>
+

@@ -3,7 +3,6 @@ import { RotateCcw, RotateCw, Camera } from "../icons/SystemIcons";
 import {
   STUDIO_INSPECTOR_PANELS_ENABLED,
   STUDIO_MANUAL_EDITING_DISABLED_TITLE,
-  STUDIO_STORYBOARD_ENABLED,
 } from "./editor/manualEditingAvailability";
 import { getHistoryShortcutLabel } from "../utils/studioHelpers";
 import { useStudioShellContext } from "../contexts/StudioContext";
@@ -204,8 +203,8 @@ export function StudioHeader({
         </span>
         <span className="text-[11px] font-medium text-neutral-300">{projectId}</span>
       </div>
-      {/* Center: storyboard / preview toggle (flag-gated) */}
-      {STUDIO_STORYBOARD_ENABLED && <ViewModeToggle />}
+      {/* Center: storyboard / preview toggle */}
+      <ViewModeToggle />
       {/* Right: toolbar buttons */}
       <div className="flex items-center gap-1.5">
         <button

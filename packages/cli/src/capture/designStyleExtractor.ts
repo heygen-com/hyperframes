@@ -21,8 +21,11 @@ const EXTRACT_DESIGN_STYLES_SCRIPT = `(() => {
   function rgbToHex(color) {
     if (!color) return "";
     if (color.startsWith('#')) return color.toUpperCase();
-    var m = color.match(/rgba?\\(\\s*(\\d+)\\s*,\\s*(\\d+)\\s*,\\s*(\\d+)/);
+    var m = color.match(/rgba?\\(\\s*(\\d+)\\s*,\\s*(\\d+)\\s*,\\s*(\\d+)\\s*(?:,\\s*([\\d.]+))?/);
     if (!m) return color;
+    // fully-transparent fill (rgba(...,0)) → sentinel, NOT #000000 — otherwise a transparent
+    // chip/tab/stat ground reads as solid black on a light-ground site.
+    if (m[4] !== undefined && parseFloat(m[4]) === 0) return "transparent";
     return '#' + ((1<<24) + (parseInt(m[1])<<16) + (parseInt(m[2])<<8) + parseInt(m[3])).toString(16).slice(1).toUpperCase();
   }
 
@@ -188,6 +191,100 @@ const EXTRACT_DESIGN_STYLES_SCRIPT = `(() => {
     };
   }
 
+  // ── 4b. Chips / pills / badges / tags ──
+  // selector by class-substring, PLUS a shape fallback (small + fully-rounded + short text) so
+  // hashed/utility class names (Tailwind, CSS-modules) still get caught.
+  var chipEls = Array.from(document.querySelectorAll(
+    '[class*="pill"], [class*="Pill"], [class*="badge"], [class*="Badge"], ' +
+    '[class*="chip"], [class*="Chip"], [class*="tag"], [class*="Tag"]'
+  )).filter(function(el) {
+    if (!isVisible(el) || el.closest('nav, [role="navigation"]')) return false;
+    var r = el.getBoundingClientRect();
+    var txt = (el.textContent || "").trim();
+    return r.height > 0 && r.height <= 60 && r.width <= 360 && txt.length > 0 && txt.length <= 40;
+  });
+  var shapeChips = Array.from(document.querySelectorAll('span, div, li, a')).slice(0, 500).filter(function(el) {
+    if (!isVisible(el) || el.closest('nav, [role="navigation"]')) return false;
+    var st = getComputedStyle(el);
+    var r = el.getBoundingClientRect();
+    var rad = parseFloat(st.borderRadius) || 0;
+    var txt = (el.textContent || "").trim();
+    var hasSkin = (st.backgroundColor && st.backgroundColor !== "rgba(0, 0, 0, 0)" && st.backgroundColor !== "transparent") || (parseFloat(st.borderTopWidth) || 0) > 0;
+    return hasSkin && r.height > 0 && r.height <= 44 && r.width <= 260 && rad >= (r.height / 2) - 1 && txt.length > 0 && txt.length <= 24 && el.children.length <= 1;
+  });
+  var allChips = chipEls.concat(shapeChips);
+  var chipMap = {};
+  for (var chi = 0; chi < allChips.length; chi++) {
+    var chs = getStyles(allChips[chi]);
+    var chKey = chs.background + "|" + chs.borderRadius + "|" + chs.border;
+    if (!chipMap[chKey]) {
+      chipMap[chKey] = {
+        label: (allChips[chi].textContent || "").trim().slice(0, 24) || "chip",
+        background: chs.background, color: chs.color, padding: chs.padding, borderRadius: chs.borderRadius,
+        border: chs.border, boxShadow: chs.boxShadow, fontSize: chs.fontSize, fontWeight: chs.fontWeight, height: chs.height
+      };
+    }
+  }
+  var chips = Object.values(chipMap).slice(0, 4);
+
+  // ── 4c. Stat / metric cells (a big numeral + a small label) ──
+  var statEls = Array.from(document.querySelectorAll(
+    '[class*="stat"], [class*="Stat"], [class*="metric"], [class*="Metric"], ' +
+    '[class*="kpi"], [class*="KPI"], [class*="figure"], [class*="Figure"]'
+  )).filter(function(el) {
+    if (!isVisible(el)) return false;
+    var r = el.getBoundingClientRect();
+    return r.height > 0 && r.height <= 400 && r.width <= 600;
+  }).slice(0, 14);
+  function biggestFontChild(el) {
+    var best = 0, bestEl = null, kids = el.querySelectorAll("*");
+    for (var i = 0; i < kids.length; i++) {
+      if (!isVisible(kids[i])) continue;
+      var fz = parseFloat(getComputedStyle(kids[i]).fontSize) || 0;
+      if (fz > best) { best = fz; bestEl = kids[i]; }
+    }
+    return bestEl;
+  }
+  var statMap = {};
+  for (var sti = 0; sti < statEls.length; sti++) {
+    var numEl = biggestFontChild(statEls[sti]) || statEls[sti];
+    var numFz = parseFloat(getComputedStyle(numEl).fontSize) || 0;
+    if (numFz < 28) continue; // needs a genuinely large numeral to count as a stat cell
+    var cst = getStyles(statEls[sti]);
+    var nst = getStyles(numEl);
+    var stKey = Math.round(numFz) + "|" + cst.background;
+    if (!statMap[stKey]) {
+      statMap[stKey] = {
+        background: cst.background, borderRadius: cst.borderRadius, border: cst.border, boxShadow: cst.boxShadow,
+        numberFontSize: nst.fontSize, numberFontWeight: nst.fontWeight, numberColor: nst.color
+      };
+    }
+  }
+  var statCells = Object.values(statMap).slice(0, 3);
+
+  // ── 4d. Tabs ──
+  var tabEls = Array.from(document.querySelectorAll(
+    '[role="tab"], [class*="tab"]:not([class*="table"]):not([class*="Table"])'
+  )).filter(function(el) {
+    if (!isVisible(el)) return false;
+    var r = el.getBoundingClientRect();
+    var txt = (el.textContent || "").trim();
+    return r.height > 0 && r.height <= 64 && txt.length > 0 && txt.length <= 30;
+  }).slice(0, 12);
+  var tabMap = {};
+  for (var tbi = 0; tbi < tabEls.length; tbi++) {
+    var tst = getStyles(tabEls[tbi]);
+    var tKey = tst.background + "|" + tst.color + "|" + tst.border;
+    if (!tabMap[tKey]) {
+      tabMap[tKey] = {
+        label: (tabEls[tbi].textContent || "").trim().slice(0, 24) || "tab",
+        background: tst.background, color: tst.color, padding: tst.padding, borderRadius: tst.borderRadius,
+        border: tst.border, boxShadow: tst.boxShadow, fontSize: tst.fontSize, fontWeight: tst.fontWeight, height: tst.height
+      };
+    }
+  }
+  var tabs = Object.values(tabMap).slice(0, 4);
+
   // ── 5. Spacing scale ──
   // Collect padding and margin values from visible elements
   var spacingCounts = {};
@@ -273,7 +370,10 @@ const EXTRACT_DESIGN_STYLES_SCRIPT = `(() => {
     shadows: shadows,
     buttons: buttons,
     cards: cards,
-    nav: nav
+    nav: nav,
+    chips: chips,
+    statCells: statCells,
+    tabs: tabs
   };
 })()`;
 

@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,700;0,900;1,400&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&display=block"
+      href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,700;0,900;1,400&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=block"
       rel="stylesheet"
     />
     <style>
@@ -24,10 +24,7 @@
         height: 1080px;
         overflow: hidden;
         background-color: #0a0a0f;
-        font-family:
-          "Inter",
-          -apple-system,
-          sans-serif;
+        font-family: "Inter", sans-serif;
       }
     </style>
   </head>
@@ -40,6 +37,31 @@
       data-width="1920"
       data-height="1080"
     >
+      <!--
+        A-Roll video. Media is only seeked/decoded when it is a DIRECT child of
+        the host root, so the footage lives here (not inside the sub-composition
+        template) and its per-scene reveal is driven on the main timeline below.
+      -->
+      <video
+        id="a-roll-video"
+        class="clip"
+        src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/uploaded_assets/67cf5a05_e134ec83a57042b38776c952da595870.mp4"
+        data-start="0"
+        data-duration="14.72"
+        data-track-index="0"
+        data-has-audio="true"
+        playsinline
+        style="
+          position: absolute;
+          left: 0;
+          top: 0;
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          z-index: 0;
+          opacity: 0;
+        "
+      ></video>
       <div
         id="graphics-layer"
         data-composition-id="main-graphics"
@@ -49,12 +71,28 @@
         data-track-index="1"
         data-width="1920"
         data-height="1080"
+        style="position: absolute; inset: 0; z-index: 1"
       ></div>
     </div>
 
     <script>
       window.__timelines = window.__timelines || {};
       const tl = gsap.timeline({ paused: true });
+
+      // The A-roll <video> is a host-root element, so the sub-composition
+      // timeline cannot reach it. Drive its reveal here on the main timeline at
+      // global time (the graphics sub-comp starts at 0, so scene-local == global).
+      //
+      // COUPLING: the reveal/hide times below (2.2 / 11.7 / 13.5) are hand-tuned
+      // to the graphics-layer sub-composition's scene boundaries and assume it is
+      // mounted at data-start="0". If you re-time the sub-composition's scenes or
+      // change its data-start, these absolute times drift out of alignment and
+      // must be updated to match the new scene boundaries.
+      tl.set("#a-roll-video", { opacity: 0 }, 0);
+      tl.set("#a-roll-video", { opacity: 1 }, 2.2); // reveal after the Scene 1 white wipe
+      tl.to("#a-roll-video", { opacity: 0, duration: 0.4 }, 11.7); // hide for the Wes Anderson scene
+      tl.set("#a-roll-video", { opacity: 1 }, 13.5); // back for the Vignelli outro
+
       window.__timelines["main"] = tl;
     </script>
   </body>

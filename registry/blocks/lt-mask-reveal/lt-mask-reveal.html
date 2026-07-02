@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        background: transparent;
+        overflow: hidden;
+      }
+      body {
+        width: 1920px;
+        height: 1080px;
+        font-family: "Montserrat", sans-serif;
+      }
+
+      #root .lt {
+        position: absolute;
+        left: 130px;
+        bottom: 122px;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 14px;
+      }
+      #root .lt-namewrap {
+        position: relative;
+        overflow: hidden;
+        padding: 2px 0;
+      }
+      #root .lt-name {
+        font-size: 72px;
+        font-weight: 900;
+        color: #ffffff;
+        line-height: 0.98;
+        letter-spacing: -0.02em;
+        white-space: nowrap;
+        text-shadow: 0 2px 22px rgba(0, 0, 0, 0.45);
+        will-change: clip-path;
+      }
+      #root .lt-sweep {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 8px;
+        background: #ffd23f;
+      }
+      #root .lt-role {
+        font-size: 28px;
+        font-weight: 500;
+        color: #e7eaf0;
+        line-height: 1.2;
+        letter-spacing: 0.02em;
+        white-space: nowrap;
+        text-shadow: 0 2px 16px rgba(0, 0, 0, 0.45);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="lt-mask-reveal"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="4.8"
+    >
+      <div id="lt-clip" class="clip" data-start="0" data-duration="4.8" data-track-index="0">
+        <div id="lt" class="lt">
+          <div class="lt-namewrap">
+            <div id="lt-name" class="lt-name">Dr. Maya Chen</div>
+            <div id="lt-sweep" class="lt-sweep"></div>
+          </div>
+          <div id="lt-role" class="lt-role">Host · Neuroscientist</div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+
+      var wrap = document.getElementById("lt");
+      var nameEl = document.getElementById("lt-name");
+      var sweep = document.getElementById("lt-sweep");
+      var role = document.getElementById("lt-role");
+
+      // An accent sweep crosses left→right; the name is revealed by a clip-path wipe behind it; role fades up.
+      gsap.set(nameEl, { clipPath: "inset(0 100% 0 0)" });
+      gsap.set(sweep, { left: "0%", opacity: 0 });
+      gsap.set(role, { y: 14, opacity: 0 });
+
+      tl.to(sweep, { opacity: 1, duration: 0.12, ease: "none" }, 0.1);
+      tl.to(sweep, { left: "100%", duration: 0.55, ease: "power2.inOut" }, 0.12);
+      tl.to(nameEl, { clipPath: "inset(0 0% 0 0)", duration: 0.5, ease: "power2.inOut" }, 0.16);
+      tl.to(sweep, { opacity: 0, duration: 0.15, ease: "none" }, 0.6);
+      tl.to(role, { y: 0, opacity: 1, duration: 0.5, ease: "power3.out" }, 0.55);
+
+      // Exit: name un-wipes, role fades, hard kill.
+      tl.to(role, { opacity: 0, duration: 0.3, ease: "power2.in" }, 4.25);
+      tl.to(nameEl, { clipPath: "inset(0 0 0 100%)", duration: 0.4, ease: "power2.in" }, 4.3);
+      tl.set(wrap, { visibility: "hidden" }, 4.75);
+
+      window.__timelines["lt-mask-reveal"] = tl;
+    </script>
+  </body>
+</html>

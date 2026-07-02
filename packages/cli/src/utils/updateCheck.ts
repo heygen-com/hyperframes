@@ -103,14 +103,24 @@ export function withMeta<T extends object>(data: T): T & { _meta: UpdateMeta } {
 }
 
 /**
+ * True when update / freshness notices should stay silent — CI, non-TTY, dev
+ * mode, or the HYPERFRAMES_NO_UPDATE_CHECK opt-out. Shared with the skills
+ * freshness notice so both honour the same gating.
+ */
+export function updateNoticesSuppressed(): boolean {
+  if (isDevMode()) return true;
+  if (process.env["CI"] === "true" || process.env["CI"] === "1") return true;
+  if (!process.stderr.isTTY) return true;
+  if (process.env["HYPERFRAMES_NO_UPDATE_CHECK"] === "1") return true;
+  return false;
+}
+
+/**
  * Print update notice to stderr if a newer version is available.
  * Skipped in CI, non-TTY, dev mode, or when HYPERFRAMES_NO_UPDATE_CHECK is set.
  */
 export function printUpdateNotice(): void {
-  if (isDevMode()) return;
-  if (process.env["CI"] === "true" || process.env["CI"] === "1") return;
-  if (!process.stderr.isTTY) return;
-  if (process.env["HYPERFRAMES_NO_UPDATE_CHECK"] === "1") return;
+  if (updateNoticesSuppressed()) return;
 
   const meta = getUpdateMeta();
   if (!meta.updateAvailable || !meta.latestVersion) return;

@@ -1,0 +1,12 @@
+{
+  "name": "Video identified only by data-hf-id (no real id)",
+  "description": "Regression for: a timed <video> carrying only a Studio-stamped data-hf-id and no real id rendered as a blank white/grey wash. The render pipeline identifies media by el.id (injected frames keyed __render_frame_<id>__, runtime frame-swap, audio mixer audio[id][src]); an empty el.id meant injected frames never matched. compileForRender now assigns a stable positional id to id-less timed media, so the footage composites correctly.",
+  "tags": ["video", "data-hf-id", "media-id", "regression"],
+  "minPsnr": 25,
+  "maxFrameFailures": 5,
+  "minAudioCorrelation": 0.0,
+  "maxAudioLagWindows": 120,
+  "renderConfig": {
+    "fps": 30
+  }
+}

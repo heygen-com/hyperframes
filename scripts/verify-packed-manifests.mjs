@@ -2,13 +2,15 @@
 
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
-import { extname, join } from "node:path";
+import { extname, join, posix } from "node:path";
 import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 
 const ROOT = join(import.meta.dirname, "..");
 const PACKAGES_DIR = join(ROOT, "packages");
 const DEP_FIELDS = ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"];
 const RUNTIME_IMPORT_EXTENSIONS = new Set([".js", ".mjs", ".cjs", ".json", ".wasm", ".node"]);
+const PACKED_JAVASCRIPT_FILE_PATTERN = /\.(?:js|mjs|cjs)$/;
 
 function listWorkspacePackageDirs() {
   return readdirSync(PACKAGES_DIR)
@@ -129,7 +131,9 @@ function hasExplicitRuntimeExtension(specifier) {
 function listRelativeImportSpecifiers(source) {
   const patterns = [
     /^\s*import\s+["'](\.\.?\/[^"']+)["']/gm,
-    /^\s*(?:import|export)\s+[^;]*?\s+from\s+["'](\.\.?\/[^"']+)["']/gm,
+    /^\s*(?:import|export)\b(?:(?!;)[\s\S])*?\s+from\s+["'](\.\.?\/[^"']+)["']/gm,
+    /\bimport\s*\(\s*["'](\.\.?\/[^"']+)["']\s*\)/gm,
+    /\brequire\s*\(\s*["'](\.\.?\/[^"']+)["']\s*\)/gm,
   ];
   const specifiers = [];
 
@@ -177,17 +181,28 @@ function verifyPackedEntrypoints(workspace, packedPackage, packedFiles) {
   }
 }
 
-function listJavaScriptImportIssues(filename, file) {
-  const source = readPackedFile(filename, file);
-  return listRelativeImportSpecifiers(source)
-    .filter(({ specifier }) => !hasExplicitRuntimeExtension(specifier))
-    .map(({ index, specifier }) => `${file}:${lineNumberAt(source, index)} imports ${specifier}`);
+function resolvePackedRelativeImport(fromFile, specifier) {
+  return posix.normalize(posix.join(posix.dirname(fromFile), stripSpecifierQuery(specifier)));
 }
 
-function listPackedJavaScriptImportIssues(filename, packedFiles) {
+export function listPackedJavaScriptImportIssues(filename, packedFiles) {
   return [...packedFiles]
-    .filter((file) => file.endsWith(".js"))
-    .flatMap((file) => listJavaScriptImportIssues(filename, file));
+    .filter((file) => PACKED_JAVASCRIPT_FILE_PATTERN.test(file))
+    .flatMap((file) => {
+      const source = readPackedFile(filename, file);
+      return listRelativeImportSpecifiers(source).flatMap(({ index, specifier }) => {
+        if (!hasExplicitRuntimeExtension(specifier)) {
+          return [`${file}:${lineNumberAt(source, index)} imports ${specifier}`];
+        }
+
+        const target = resolvePackedRelativeImport(file, specifier);
+        if (!packedFiles.has(target)) {
+          return [`${file}:${lineNumberAt(source, index)} imports missing ${specifier}`];
+        }
+
+        return [];
+      });
+    });
 }
 
 function verifyPackedJavaScriptImports(workspace, filename, packedFiles) {
@@ -276,4 +291,6 @@ function main() {
   listWorkspacePackageDirs().forEach(verifyWorkspace);
 }
 
-main();
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  main();
+}

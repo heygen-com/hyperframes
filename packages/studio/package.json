@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/studio",
-  "version": "0.7.6",
+  "version": "0.7.24",
   "description": "",
   "repository": {
     "type": "git",
@@ -55,11 +55,14 @@
     "@codemirror/theme-one-dark": "^6.1.2",
     "@codemirror/view": "6.40.0",
     "@hyperframes/core": "workspace:*",
+    "@hyperframes/parsers": "workspace:*",
     "@hyperframes/player": "workspace:*",
     "@hyperframes/sdk": "workspace:*",
+    "@hyperframes/studio-server": "workspace:*",
     "@phosphor-icons/react": "^2.1.10",
     "bpm-detective": "^2.0.5",
     "dompurify": "^3.2.4",
+    "gsap": "^3.13.0",
     "marked": "^14.1.4",
     "mediabunny": "^1.45.3"
   },

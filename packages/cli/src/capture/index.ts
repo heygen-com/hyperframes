@@ -18,6 +18,7 @@ import { extractTokens } from "./tokenExtractor.js";
 import { extractDesignStyles } from "./designStyleExtractor.js";
 import { downloadAssets, downloadAndRewriteFonts } from "./assetDownloader.js";
 import { extractFontMetadata } from "./fontMetadataExtractor.js";
+import { normalizeErrorMessage } from "../utils/errorMessage.js";
 // briefGenerator.ts, visual-style, capture-summary removed — DESIGN.md replaces them
 import {
   setupAnimationCapture,
@@ -353,7 +354,8 @@ export async function captureWebsite(
         `${designStyles.typography.length} typography roles, ${designStyles.buttons.length} button styles, ${designStyles.shadows.length} shadow values extracted`,
       );
     } catch (err) {
-      const errMsg = err instanceof Error ? `${err.message}\n${err.stack}` : String(err);
+      const errMsg =
+        err instanceof Error ? `${err.message}\n${err.stack}` : normalizeErrorMessage(err);
       console.error(`  ⚠ Design style extraction failed: ${errMsg}`);
       warnings.push(`Design style extraction failed: ${errMsg}`);
     }
@@ -480,10 +482,7 @@ export async function captureWebsite(
         }
       }
     } catch (err) {
-      console.warn(
-        "Font metadata extraction failed (non-fatal):",
-        err instanceof Error ? err.message : err,
-      );
+      console.warn("Font metadata extraction failed (non-fatal):", normalizeErrorMessage(err));
     }
 
     // Save animation catalog — lean version for the agent (not 745 raw CSS declarations)

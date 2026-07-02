@@ -26,10 +26,10 @@ Goal: Establish the music source, create the HyperFrames project, and note any u
 
 The **music is the spine** — establish one track before anything else. This skill is tuned for **fast, high-energy BGM**: a strong beat grid drives the cuts (calm tracks work, but pace by phrase rather than beat). If the user gave you audio — a music file, or a video to pull the audio from — use it. If not, generate one: choose the mood from the user's description (e.g. "driving synthwave", "trap beat", "upbeat corporate") and produce a track via `/hyperframes-media` (`references/bgm.md` — HeyGen retrieval when credentialed, else local Lyria / MusicGen; ElevenLabs or another generator also works). Before generating, run `npx hyperframes auth status` and **relay its output verbatim (don't paraphrase or rewrite it)** — it shows whether BGM comes from HeyGen or local MusicGen and, if not signed in, how to sign in. **If not signed in, STOP and wait for the user to choose — sign in, or continue offline with local MusicGen — before generating the track**; don't write keys into a per-repo `.env`. (In autonomous mode, note the status and continue offline.) See `/hyperframes-media` → Preflight for the canonical guidance. Either way the track lands at `assets/bgm.mp3`. Stage any user-supplied images or videos so frames can weave them in on the beat grid; otherwise typography carries the whole video.
 
-Initialize only if `hyperframes.json` is missing. Name `<project>` from the brief in kebab-case, such as `midnight-drive-loop` — never a timestamp.
+Initialize only if `hyperframes.json` is missing. Name `<project>` from the brief in kebab-case, such as `midnight-drive-loop` — never a timestamp. `init` checks the installed skills against the latest on GitHub and updates the global set if any are out of date.
 
 ```bash
-npx hyperframes init "videos/<project>" --non-interactive --skip-skills --example=blank
+npx hyperframes init "videos/<project>" --non-interactive --example=blank
 mkdir -p "$PROJECT_DIR/assets" "$PROJECT_DIR/renders"
 cp "<user-music>" "$PROJECT_DIR/assets/bgm.mp3"   # extract from a video first if needed
 # only if the user gave you images/videos:

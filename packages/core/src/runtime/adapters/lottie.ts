@@ -137,7 +137,61 @@ export function createLottieAdapter(): RuntimeDeterministicAdapter {
       // Don't clear __hfLottie — the animation objects are owned by the composition.
       // Just let them be garbage collected naturally.
     },
+
+    getInferredDurationSeconds: () => {
+      const instances = (window as LottieWindow).__hfLottie;
+      if (!instances || instances.length === 0) return null;
+      let maxSeconds = 0;
+      let sawAny = false;
+      for (const anim of instances) {
+        let seconds: number | null = null;
+        try {
+          seconds = inferAnimationDurationSeconds(anim);
+        } catch (err) {
+          // ignore per-animation failures — keep going for other instances
+          swallow("runtime.adapters.lottie.site4", err);
+        }
+        if (seconds == null) continue;
+        sawAny = true;
+        maxSeconds = Math.max(maxSeconds, seconds);
+      }
+      // Not-yet-loaded animations report totalFrames=0 — return null (not 0)
+      // so the caller doesn't treat "still loading" as "genuinely zero
+      // duration". A later discover cycle will pick up the real value once
+      // the JSON has loaded.
+      return sawAny ? maxSeconds : null;
+    },
   };
+}
+
+/** A finite, positive number in seconds derived from a frame count + rate, or null. */
+function finiteFramesToSeconds(
+  totalFrames: number | undefined,
+  frameRate: number | undefined,
+): number | null {
+  if (
+    !Number.isFinite(totalFrames) ||
+    !totalFrames ||
+    totalFrames <= 0 ||
+    !Number.isFinite(frameRate) ||
+    !frameRate ||
+    frameRate <= 0
+  ) {
+    return null;
+  }
+  return totalFrames / frameRate;
+}
+
+/** The inferred duration in seconds for one registered lottie-web/dotLottie instance, or null. */
+function inferAnimationDurationSeconds(anim: LottieWebAnimation | DotLottiePlayer): number | null {
+  if (isLottieWebAnimation(anim)) {
+    return finiteFramesToSeconds(anim.totalFrames, anim.frameRate);
+  }
+  if (!isDotLottiePlayer(anim)) return null;
+  if (Number.isFinite(anim.duration) && (anim.duration ?? 0) > 0) {
+    return anim.duration ?? null;
+  }
+  return finiteFramesToSeconds(anim.totalFrames, anim.frameRate);
 }
 
 // ── Type guards ────────────────────────────────────────────────────────────────

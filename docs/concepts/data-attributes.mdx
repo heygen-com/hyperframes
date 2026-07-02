@@ -10,7 +10,7 @@ Hyperframes uses HTML data attributes to control timing, media playback, and [co
 | Attribute | Example | Description |
 |-----------|---------|-------------|
 | `data-start` | `"0"` or `"intro"` | Start time in seconds, or a clip ID reference for [relative timing](#relative-timing) |
-| `data-duration` | `"5"` | Duration in seconds. Required for images. Optional for video/audio (defaults to source duration). Not used on compositions. |
+| `data-duration` | `"5"` | Duration in seconds. Required for images. Optional for video/audio (defaults to source duration). On the **root** composition it sets the total render length (see [Composition Attributes](#composition-attributes)); on nested sub-compositions it is ignored (their length comes from their child timeline). |
 | `data-track-index` | `"0"` | Timeline track number. Controls z-ordering (higher = in front) and groups clips into rows. Clips on the same track cannot overlap. |
 
 ## Media Attributes
@@ -28,6 +28,7 @@ Hyperframes uses HTML data attributes to control timing, media playback, and [co
 | `data-composition-id` | `"root"` | Unique ID for [composition](/concepts/compositions) wrapper (required on every composition) |
 | `data-width` | `"1920"` | Composition width in pixels |
 | `data-height` | `"1080"` | Composition height in pixels |
+| `data-duration` (root) | `"30"` | On the **root** composition, the total render length / frame count in seconds. Read once from the source HTML at compile time, like `data-width` / `data-height`, so a script or `hyperframes render --variables` cannot change it (author it directly, one value per output). If the root omits `data-duration`, and only then, the renderer derives the total length from the live DOM / timeline after scripts run. |
 | `data-composition-src` | `"./intro.html"` | Path to external [composition](/concepts/compositions) HTML file |
 | `data-variable-values` | `'{"title":"Hello"}'` | JSON object of values passed to a nested composition. Inside the sub-composition, read them via `window.__hyperframes.getVariables()` — the runtime layers these over the sub-comp's own `data-composition-variables` defaults and exposes the merged result on a per-instance basis (the same source can be embedded multiple times with different values). |
 | `data-composition-variables` | `'[{"id":"title","type":"string","label":"Title","default":"Hello"}]'` | JSON array of declared variables (`id`, `type`, `label`, `default`). Drives Studio editing UI and provides defaults read by `window.__hyperframes.getVariables()`. The CLI flag `hyperframes render --variables '<json>'` overrides these defaults at top-level render time; host elements override them per-instance via `data-variable-values`. |

@@ -25,6 +25,7 @@ export const PROP_LABELS: Record<string, string> = {
   rotationY: "Rotate Y",
   rotationZ: "Rotate Z",
   perspective: "Perspective",
+  transformPerspective: "Perspective",
   transformOrigin: "Transform Origin",
   opacity: "Opacity",
   scale: "Scale",
@@ -57,6 +58,7 @@ export const PROP_UNITS: Record<string, string> = {
   rotationY: "°",
   rotationZ: "°",
   perspective: "px",
+  transformPerspective: "px",
   transformOrigin: "",
   opacity: "%",
   scale: "×",
@@ -80,6 +82,8 @@ export const PROP_TOOLTIPS: Record<string, string> = {
   rotationZ: "Rotate around the screen-facing Z axis",
   perspective:
     "3D depth context for child elements; set it on a parent when rotating children in 3D",
+  transformPerspective:
+    "3D depth for THIS element's own X/Y rotation — lower = stronger perspective (try 600–1000)",
   transformOrigin: "Pivot point for transforms, for example center center or 50% 50%",
   width: "Element width",
   height: "Element height",
@@ -88,41 +92,12 @@ export const PROP_TOOLTIPS: Record<string, string> = {
   innerText: "End value for a number roll-up (the number it counts up/down to)",
 };
 
-export const EASE_LABELS: Record<string, string> = {
-  none: "Constant speed",
-  "power1.out": "Gentle slowdown",
-  "power2.out": "Smooth slowdown",
-  "power3.out": "Snappy slowdown",
-  "power4.out": "Sharp slowdown",
-  "power1.in": "Gentle speedup",
-  "power2.in": "Smooth speedup",
-  "power3.in": "Strong speedup",
-  "power4.in": "Sharp speedup",
-  "power1.inOut": "Gentle ease",
-  "power2.inOut": "Smooth ease",
-  "power3.inOut": "Strong ease",
-  "power4.inOut": "Sharp ease",
-  "back.out": "Overshoot & settle",
-  "back.in": "Pull back & go",
-  "back.inOut": "Pull & overshoot",
-  "elastic.out": "Springy bounce",
-  "elastic.in": "Wind up spring",
-  "elastic.inOut": "Full spring",
-  "bounce.out": "Drop & bounce",
-  "bounce.in": "Reverse bounce",
-  "bounce.inOut": "Double bounce",
-  "expo.out": "Very snappy stop",
-  "expo.in": "Very slow start",
-  "expo.inOut": "Dramatic ease",
-  "spring-gentle": "Gentle spring",
-  "spring-bouncy": "Bouncy spring",
-  "spring-stiff": "Stiff spring",
-  "spring-wobbly": "Wobbly spring",
-  "spring-heavy": "Heavy spring",
-  "ae-ease": "Easy Ease (AE)",
-  "ae-ease-in": "Easy Ease In (AE)",
-  "ae-ease-out": "Easy Ease Out (AE)",
-};
+// Ease labels surface the raw GSAP token (e.g. "power2.out", "back.out") rather
+// than friendly names — motion authors recognize the GSAP vocabulary, and the
+// invented labels ("Smooth speedup") confused users. Every consumer reads
+// `EASE_LABELS[token] ?? token`, so an empty map cleanly falls through to the
+// token; re-add an entry here only to override a specific token's display.
+export const EASE_LABELS: Record<string, string> = {};
 
 export const EASE_CURVES: Record<string, [number, number, number, number]> = {
   none: [0, 0, 1, 1],
@@ -179,6 +154,7 @@ export const PROP_CONSTRAINTS: Record<string, { min?: number; max?: number; step
   rotationY: { step: 1 },
   rotationZ: { step: 1 },
   perspective: { min: 0, step: 1 },
+  transformPerspective: { min: 0, step: 1 },
   skewX: { min: -90, max: 90, step: 1 },
   skewY: { min: -90, max: 90, step: 1 },
   width: { min: 0, step: 1 },

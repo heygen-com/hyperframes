@@ -10,7 +10,7 @@ import { spawn } from "child_process";
 import { existsSync, mkdirSync, readdirSync, rmSync } from "fs";
 import { isAbsolute, join, posix, resolve, sep } from "path";
 import { parseHTML } from "linkedom";
-import { decodeUrlPathVariants } from "@hyperframes/core";
+import { decodeUrlPathVariants, MEDIA_DURATION_CLAMP_EPSILON_SECONDS } from "@hyperframes/core";
 import { trackChildProcess } from "../utils/processTracker.js";
 import { extractMediaMetadata, type VideoMetadata } from "../utils/ffprobe.js";
 import {
@@ -963,6 +963,32 @@ export function getFrameAtTime(
   return extracted.framePaths.get(frameIndex) || null;
 }
 
+const HOLD_LAST_FRAME_TOLERANCE_FRAMES = 2;
+
+/**
+ * Whether a clip's source is shorter than its `data-duration` slot by more than
+ * the compiler tolerates before clamping the slot to the media
+ * (MEDIA_DURATION_CLAMP_EPSILON_SECONDS) — the case worth warning about. Shared
+ * by the render and `validate` warnings. `null` when the media covers the slot,
+ * the clip loops, or inputs are unusable.
+ */
+export function analyzeClipMediaFit(params: {
+  /** Timeline slot length in seconds — `end - start` (a.k.a. data-duration). */
+  slotSeconds: number;
+  /** Playable source media after the trim offset — `duration - mediaStart`. */
+  mediaSeconds: number;
+  /** Looping clips repeat to fill the slot, so they never fall short. */
+  loop?: boolean;
+}): { shortfallSeconds: number; toleranceSeconds: number } | null {
+  const { slotSeconds, mediaSeconds, loop } = params;
+  if (loop) return null;
+  if (!(slotSeconds > 0) || !Number.isFinite(mediaSeconds) || mediaSeconds < 0) return null;
+  const toleranceSeconds = MEDIA_DURATION_CLAMP_EPSILON_SECONDS;
+  const shortfallSeconds = slotSeconds - mediaSeconds;
+  if (shortfallSeconds <= toleranceSeconds) return null;
+  return { shortfallSeconds, toleranceSeconds };
+}
+
 export class FrameLookupTable {
   private videos: Map<
     string,
@@ -1079,11 +1105,17 @@ export class FrameLookupTable {
         continue;
       }
       if (frameIndex < 0 || frameIndex >= video.extracted.totalFrames) {
-        // At the inclusive clip end (globalTime === end), hold the last
-        // extracted frame so the render matches the runtime, which keeps the
-        // element visible on its final frame at `t === end`. Mid-clip source
-        // exhaustion (globalTime < end) stays blank — unchanged.
-        if (globalTime >= video.end && video.extracted.totalFrames > 0) {
+        // Source exhausted. Hold the last frame near the clip end so a media that
+        // falls a hair short of its slot (e.g. `ffmpeg -t 1.45` → 1.433s at 30fps)
+        // doesn't flash the background for one frame. A clip that's substantially
+        // shorter than its slot still blanks for the tail. Tolerance floored at
+        // the clamp epsilon so the seam is covered at any fps (see that const).
+        const fps = video.extracted.fps;
+        const holdTolerance = Math.max(
+          fps > 0 ? HOLD_LAST_FRAME_TOLERANCE_FRAMES / fps : 0,
+          MEDIA_DURATION_CLAMP_EPSILON_SECONDS,
+        );
+        if (globalTime >= video.end - holdTolerance && video.extracted.totalFrames > 0) {
           const lastIndex = video.extracted.totalFrames - 1;
           const lastPath = video.extracted.framePaths.get(lastIndex);
           if (lastPath) frames.set(videoId, { framePath: lastPath, frameIndex: lastIndex });

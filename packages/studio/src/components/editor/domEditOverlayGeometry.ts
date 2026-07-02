@@ -186,6 +186,34 @@ export function resolveDomEditGroupOverlayRect(rects: OverlayRect[]): OverlayRec
   };
 }
 
+// A group's overlay box encompasses its members' actual rendered bounds, not just
+// the wrapper's own box — so members moved or transformed out of the wrapper still
+// sit inside the box. Used by the selection, hover, and off-canvas overlays so they
+// all agree on where a group is.
+export function groupAwareOverlayRect(
+  overlayEl: HTMLDivElement,
+  iframe: HTMLIFrameElement,
+  el: HTMLElement,
+): OverlayRect | null {
+  const rect = toOverlayRect(overlayEl, iframe, el);
+  if (!rect || !el.hasAttribute("data-hf-group")) return rect;
+  // Union the MEMBERS' rendered rects — where the content actually is — not the
+  // wrapper's own box. The wrapper is invisible and its box can sit apart from the
+  // members once they've been moved/transformed, which would otherwise drag the
+  // group's bounds (and its off-canvas marker) off to a stale position.
+  const rects: OverlayRect[] = [];
+  for (const child of Array.from(el.children)) {
+    const childRect = toOverlayRect(overlayEl, iframe, child as HTMLElement);
+    if (childRect) rects.push(childRect);
+  }
+  const union = rects.length > 0 ? resolveDomEditGroupOverlayRect(rects) : null;
+  if (!union) return rect; // empty group → fall back to the wrapper box
+  // resolveDomEditGroupOverlayRect hardcodes editScaleX/Y to 1; keep the wrapper's
+  // real edit (display) scale, which the drag uses to convert pointer→offset — a
+  // reset-to-1 makes the group move at ~display-scale speed and lag the cursor.
+  return { ...union, editScaleX: rect.editScaleX, editScaleY: rect.editScaleY };
+}
+
 export function filterNestedDomEditGroupItems<T extends { element: HTMLElement }>(items: T[]): T[] {
   return items.filter(
     (item) => !items.some((other) => other !== item && other.element.contains(item.element)),

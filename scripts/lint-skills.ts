@@ -56,6 +56,43 @@ function collectSkillFiles(dir: string): string[] {
   return files;
 }
 
+/**
+ * Flag YAML frontmatter that won't parse, which aborts `skills add` for the
+ * WHOLE repo (one bad SKILL.md blocks installing every skill).
+ *
+ * ponytail: targets the one failure mode we've actually hit — an unquoted
+ * top-level scalar whose value contains `: ` (colon-space), which YAML 1.2
+ * reads as a nested mapping ("Nested mappings are not allowed in compact
+ * mappings"). Not a full YAML parse; if a different malformation appears,
+ * swap this for a real parser (the `yaml` package).
+ */
+function lintFrontmatter(content: string): Omit<Violation, "file">[] {
+  const match = content.match(/^---\n([\s\S]*?)\n---/);
+  if (!match) return [];
+  const violations: Omit<Violation, "file">[] = [];
+  const fmLines = match[1].split("\n");
+  for (let i = 0; i < fmLines.length; i++) {
+    const line = fmLines[i];
+    // Top-level `key: value` (no indentation). Skip block scalars (> |),
+    // already-quoted values, and flow collections — those handle colons fine.
+    const m = line.match(/^([A-Za-z0-9_-]+):[ \t]+(.+)$/);
+    if (!m) continue;
+    const value = m[2].trim();
+    if (/^["'>|[{]/.test(value)) continue;
+    if (/:[ \t]/.test(value)) {
+      violations.push({
+        line: i + 2, // +1 for the opening `---`, +1 for 1-based
+        message:
+          `Unquoted frontmatter value for "${m[1]}" contains ": " — YAML reads ` +
+          `this as a nested mapping and the parse fails, which aborts ` +
+          `\`skills add\` for the entire repo. Quote the value or rephrase the colon.`,
+        text: line.trim(),
+      });
+    }
+  }
+  return violations;
+}
+
 /** Strip fenced code blocks so we only lint prose + inline code. */
 function stripFencedBlocks(content: string): string {
   return content.replace(/^```[\s\S]*?^```/gm, (match) =>
@@ -68,9 +105,14 @@ function stripFencedBlocks(content: string): string {
 
 function lintFile(filePath: string): Violation[] {
   const raw = readFileSync(filePath, "utf-8");
+  const file = relative(process.cwd(), filePath);
+  const violations: Violation[] = lintFrontmatter(raw).map((v) => ({
+    ...v,
+    file,
+  }));
+
   const stripped = stripFencedBlocks(raw);
   const lines = stripped.split("\n");
-  const violations: Violation[] = [];
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];

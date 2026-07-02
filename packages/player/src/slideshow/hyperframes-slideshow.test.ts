@@ -2179,3 +2179,76 @@ describe("<hyperframes-slideshow> Fix 4 — back affordance (postMessage only; c
     el.remove();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Mechanical `interactive` attribute on inner <hyperframes-player>
+// ---------------------------------------------------------------------------
+// The slideshow auto-applies the `interactive` attribute to every inner
+// <hyperframes-player>, so clickable controls, links, native media controls,
+// and custom players inside the composition iframe receive pointer events
+// without the author having to remember the attribute. The player's default
+// is `pointer-events: none` on the iframe; `interactive` flips it to `auto`
+// via the `:host([interactive])` rule in player styles.
+// ---------------------------------------------------------------------------
+describe("<hyperframes-slideshow> auto-sets `interactive` on inner <hyperframes-player>", () => {
+  beforeEach(async () => {
+    await import("./hyperframes-slideshow.js");
+  });
+
+  const tick = () => new Promise<void>((r) => setTimeout(r, 0));
+
+  it("inner <hyperframes-player> gets `interactive` attribute after mount", async () => {
+    const el = document.createElement("hyperframes-slideshow");
+    const player = document.createElement("hyperframes-player");
+    el.appendChild(player);
+    document.body.appendChild(el);
+
+    // Allow the deferred initTimer macrotask to run.
+    await tick();
+
+    expect(player.hasAttribute("interactive")).toBe(true);
+    expect(player.getAttribute("interactive")).toBe("");
+
+    el.remove();
+  });
+
+  it("preserves any author-supplied `interactive` attribute value verbatim", async () => {
+    const el = document.createElement("hyperframes-slideshow");
+    const player = document.createElement("hyperframes-player");
+    // Preserve any author-supplied `interactive` value verbatim. Note: the
+    // CSS rule `:host([interactive])` is presence-based per HTML
+    // boolean-attribute convention, so the runtime behavior is identical
+    // regardless of the value — the attribute always enables pointer
+    // events. The preservation guarantee here is about DOM hygiene
+    // (idempotent mechanical wire-up, no clobber on re-runs), not a
+    // runtime opt-out — `interactive="false"` is NOT an opt-out.
+    player.setAttribute("interactive", "false");
+    el.appendChild(player);
+    document.body.appendChild(el);
+
+    await tick();
+
+    expect(player.getAttribute("interactive")).toBe("false");
+
+    el.remove();
+  });
+
+  it("dynamically-inserted <hyperframes-player> children also get `interactive`", async () => {
+    const el = document.createElement("hyperframes-slideshow");
+    document.body.appendChild(el);
+
+    await tick();
+
+    // Late insertion — picked up by the MutationObserver.
+    const player = document.createElement("hyperframes-player");
+    el.appendChild(player);
+
+    // MutationObserver callbacks deliver on a microtask; flush twice to be safe.
+    await tick();
+    await tick();
+
+    expect(player.hasAttribute("interactive")).toBe(true);
+
+    el.remove();
+  });
+});

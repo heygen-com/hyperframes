@@ -277,6 +277,8 @@ interface VideoDescriptor {
   src: string;
   width: number;
   height: number;
+  sourceWidth: number;
+  sourceHeight: number;
   top: number;
   left: number;
   heading: string;
@@ -315,8 +317,14 @@ const VIDEO_SCAN_EXPR = `(() => {
     if (!ariaLabel && wrapper) ariaLabel = wrapper.getAttribute('aria-label') || '';
     return {
       src: src,
+      // width/height are the DOM display box (what the page laid the element out
+      // at); sourceWidth/Height are the clip's intrinsic resolution. Size planners
+      // off the source dims, not the display box (a 1920x1080 clip can display at
+      // 904x613). 0 when metadata has not loaded yet.
       width: Math.round(rect.width),
       height: Math.round(rect.height),
+      sourceWidth: v.videoWidth || 0,
+      sourceHeight: v.videoHeight || 0,
       top: Math.round(rect.top),
       left: Math.round(rect.left),
       heading: heading,
@@ -418,6 +426,8 @@ export async function captureVideoManifest(
         filename: k,
         width: 0,
         height: 0,
+        sourceWidth: 0,
+        sourceHeight: 0,
         top: 0,
         left: 0,
         heading: "",
@@ -441,6 +451,8 @@ export async function captureVideoManifest(
     filename: string;
     width: number;
     height: number;
+    sourceWidth: number;
+    sourceHeight: number;
     heading: string;
     caption: string;
     ariaLabel: string;
@@ -508,6 +520,8 @@ export async function captureVideoManifest(
       filename: v.filename,
       width: v.width,
       height: v.height,
+      sourceWidth: v.sourceWidth,
+      sourceHeight: v.sourceHeight,
       heading: v.heading,
       caption: v.caption,
       ariaLabel: v.ariaLabel,

@@ -4,6 +4,10 @@
  */
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
+import {
+  STUDIO_ORIGINAL_WIDTH_ATTR,
+  STUDIO_ORIGINAL_HEIGHT_ATTR,
+} from "../components/editor/manualEditsTypes";
 import { usePlayerStore } from "../player/store/playerStore";
 import { readRuntimeKeyframes, scanAllRuntimeKeyframes } from "./gsapRuntimeKeyframes";
 import { resolveTweenStart, resolveTweenDuration } from "../utils/globalTimeCompiler";
@@ -116,18 +120,22 @@ interface UpdatePropertyMutation {
 function setPatchFromUpdateProperties(
   selector: string,
   mutations: UpdatePropertyMutation[],
+  global = false,
 ): { selector: string; change: RuntimeTweenChange } {
   const props: SetPatchProps = {};
   for (const m of mutations) props[m.property as keyof SetPatchProps] = m.value;
-  return { selector, change: { kind: "set", props } };
+  // An off-timeline `gsap.set` has no runtime tween to patch — apply it to the
+  // element directly. An on-timeline `tl.set` mutates its tween (so a re-seek keeps it).
+  return { selector, change: { kind: global ? "global-set" : "set", props } };
 }
 
 /** Single-mutation convenience over {@link setPatchFromUpdateProperties}. */
 function setPatchFromUpdateProperty(
   selector: string,
   mutation: UpdatePropertyMutation,
+  global = false,
 ): { selector: string; change: RuntimeTweenChange } {
-  return setPatchFromUpdateProperties(selector, [mutation]);
+  return setPatchFromUpdateProperties(selector, [mutation], global);
 }
 
 /**
@@ -144,6 +152,33 @@ function findPositionSetAnimation(
         a.method === "set" &&
         a.targetSelector === selector &&
         ("x" in a.properties || "y" in a.properties),
+    ) ?? null
+  );
+}
+
+/**
+ * Find the EXISTING static position HOLD to update for a static-hold drag. Not
+ * just a `set`: a degenerate `tl.to("#el",{duration:0,x,y})` (what
+ * remove-all-keyframes leaves behind) is a held position too, and the next drag
+ * must UPDATE it in place rather than append a second `gsap.set` that fights it
+ * (the duplicate-position-write bug). Only zero-duration holds qualify — a
+ * live-duration `to`/`from` is NOT a static hold (and in the static path it's a
+ * stale/phantom parse: re-committing it would resurrect a just-deleted tween).
+ * Prefers a `set` (the canonical static channel) when both forms exist.
+ */
+function findExistingPositionWrite(
+  animations: GsapAnimation[],
+  selector: string,
+): GsapAnimation | null {
+  const set = findPositionSetAnimation(animations, selector);
+  if (set) return set;
+  return (
+    animations.find(
+      (a) =>
+        a.targetSelector === selector &&
+        a.propertyGroup === "position" &&
+        !a.keyframes &&
+        (a.duration ?? 0) === 0,
     ) ?? null
   );
 }
@@ -190,22 +225,25 @@ export async function commitStaticGsapPosition(
     // preview still reflects what DID persist. The x commit carries skipReload
     // (no reload), so its instantPatch gives instant feedback without a reload;
     // the y commit triggers the soft reload (skipped when the patch applies).
+    const global = !!existingSet.global;
     await callbacks.commitMutation(selection, xMutation, {
       label: "Move layer",
       skipReload: true,
       coalesceKey,
-      instantPatch: setPatchFromUpdateProperty(selector, xMutation),
+      instantPatch: setPatchFromUpdateProperty(selector, xMutation, global),
     });
     await callbacks.commitMutation(selection, yMutation, {
       label: "Move layer",
       softReload: true,
       coalesceKey,
       // Final commit of the coalesced x/y pair: carry both channels so the
-      // runtime `tl.set` lands the complete {x,y} pose in place.
-      instantPatch: setPatchFromUpdateProperties(selector, [xMutation, yMutation]),
+      // runtime set lands the complete {x,y} pose in place.
+      instantPatch: setPatchFromUpdateProperties(selector, [xMutation, yMutation], global),
     });
     return;
   }
+  // New static hold → a base `gsap.set` (off-timeline, no 0% keyframe marker), with
+  // an instant patch so the first nudge shows immediately (no soft-reload flash).
   await callbacks.commitMutation(
     selection,
     {
@@ -214,12 +252,17 @@ export async function commitStaticGsapPosition(
       method: "set",
       position: 0,
       properties: { x: newX, y: newY },
+      global: true,
     },
-    { label: "Move layer", softReload: true },
+    {
+      label: "Move layer",
+      softReload: true,
+      instantPatch: { selector, change: { kind: "global-set", props: { x: newX, y: newY } } },
+    },
   );
 }
 
-export { findPositionSetAnimation };
+export { findExistingPositionWrite };
 
 function findRotationSetAnimation(
   animations: GsapAnimation[],
@@ -260,11 +303,13 @@ export async function commitStaticGsapRotation(
     await callbacks.commitMutation(selection, rotationMutation, {
       label: "Rotate layer",
       softReload: true,
-      // Value-only rotation set: patch the runtime `tl.set` rotation in place.
-      instantPatch: setPatchFromUpdateProperty(selector, rotationMutation),
+      // Value-only rotation set — patch the runtime in place (off-timeline gsap.set
+      // applies to the element directly; on-timeline tl.set patches its tween).
+      instantPatch: setPatchFromUpdateProperty(selector, rotationMutation, !!existingSet.global),
     });
     return;
   }
+  // New static hold → off-timeline `gsap.set` (no 0% keyframe marker) + instant patch.
   await callbacks.commitMutation(
     selection,
     {
@@ -273,8 +318,13 @@ export async function commitStaticGsapRotation(
       method: "set",
       position: 0,
       properties: { rotation: newRotation },
+      global: true,
     },
-    { label: "Rotate layer", softReload: true },
+    {
+      label: "Rotate layer",
+      softReload: true,
+      instantPatch: { selector, change: { kind: "global-set", props: { rotation: newRotation } } },
+    },
   );
 }
 
@@ -340,6 +390,103 @@ export async function commitStaticGsapSize(
     },
     { label: "Resize layer", softReload: true },
   );
+}
+
+/** Rounded `n` when it's a positive finite number, else `fallback`. */
+function positiveOr(n: number, fallback: number): number {
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : fallback;
+}
+
+/**
+ * Prior size for a keyframed resize: the existing global set's value, else the
+ * element's pre-resize size (the draft saved it on the element before mutating
+ * el.style.width/height). Falls back to the new size when neither is available.
+ */
+function resolvePriorSize(
+  sizeSet: GsapAnimation | null,
+  el: Element | null | undefined,
+  fallbackW: number,
+  fallbackH: number,
+): { width: number; height: number } {
+  if (sizeSet) {
+    return {
+      width: positiveOr(Number(sizeSet.properties.width), fallbackW),
+      height: positiveOr(Number(sizeSet.properties.height), fallbackH),
+    };
+  }
+  const ow = Number.parseFloat(el?.getAttribute(STUDIO_ORIGINAL_WIDTH_ATTR) ?? "");
+  const oh = Number.parseFloat(el?.getAttribute(STUDIO_ORIGINAL_HEIGHT_ATTR) ?? "");
+  return { width: positiveOr(ow, fallbackW), height: positiveOr(oh, fallbackH) };
+}
+
+/**
+ * Resize an *animated* element by keyframing its size at the current playhead,
+ * instead of a global `gsap.set` hold. Builds a width/height keyframe tween
+ * aligned to the element's existing animation: every base keyframe keeps the
+ * prior size, only the keyframe nearest the playhead gets the new size — so
+ * resizing one keyframe leaves the others unchanged. Replaces any prior global
+ * size set. Returns false when there's no usable range (caller falls back to the
+ * static set).
+ */
+export async function commitKeyframedSizeFromResize(
+  selection: DomEditSelection,
+  size: { width: number; height: number },
+  selector: string,
+  sizeSet: GsapAnimation | null,
+  animatedTween: GsapAnimation,
+  callbacks: GsapDragCommitCallbacks,
+): Promise<boolean> {
+  const ts = resolveTweenStart(animatedTween) ?? 0;
+  const td = resolveTweenDuration(animatedTween);
+  if (!(td > 0)) return false;
+
+  const newW = Math.round(size.width);
+  const newH = Math.round(size.height);
+  const prior = resolvePriorSize(sizeSet, selection.element, newW, newH);
+
+  const ct = usePlayerStore.getState().currentTime;
+  const pct = Math.max(0, Math.min(100, Math.round(((ct - ts) / td) * 1000) / 10));
+
+  // Base keyframe percentages from the animated tween (flat tween → 0 & 100),
+  // plus the endpoints and the playhead. Each keeps the prior size except the
+  // keyframe at the playhead, which gets the new size.
+  const pcts = new Set<number>(
+    animatedTween.keyframes?.keyframes.map((k) => k.percentage) ?? [0, 100],
+  );
+  pcts.add(0);
+  pcts.add(100);
+  pcts.add(pct);
+  const keyframes = Array.from(pcts)
+    .sort((a, b) => a - b)
+    .map((p) => ({
+      percentage: p,
+      properties: Math.abs(p - pct) < 0.05 ? { width: newW, height: newH } : { ...prior },
+    }));
+
+  // Add the size keyframe tween FIRST, then delete the old global hold. The two
+  // commits aren't transactional, so ordering matters: if the delete fails the
+  // size is preserved (animated, recoverable) rather than lost. Only the last
+  // commit triggers the reload.
+  const addLabel = `Resize (size keyframe ${pct.toFixed(0)}%)`;
+  await callbacks.commitMutation(
+    selection,
+    {
+      type: "add-with-keyframes",
+      targetSelector: selector,
+      position: roundTo3(ts),
+      duration: roundTo3(td),
+      keyframes,
+    },
+    sizeSet ? { label: addLabel, skipReload: true } : { label: addLabel, softReload: true },
+  );
+  if (sizeSet) {
+    await callbacks.commitMutation(
+      selection,
+      { type: "delete", animationId: sizeSet.id },
+      { label: "Resize layer", softReload: true },
+    );
+  }
+  return true;
 }
 
 export { findSizeSetAnimation };

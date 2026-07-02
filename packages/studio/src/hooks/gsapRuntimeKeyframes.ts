@@ -12,12 +12,23 @@ import { buildArcPath, type ArcPathConfig } from "@hyperframes/core/gsap-parser-
 import { parsePercentageKeyframes, toAbsoluteTime } from "./gsapShared";
 import { roundTo3 } from "../utils/rounding";
 
+/**
+ * A GSAP tween's `vars` object — intentionally open: it mixes channel values
+ * (numbers), easing (strings), flags (booleans), nested keyframes (objects) and
+ * callbacks. Named so call sites read as "GSAP config", not an untyped escape hatch.
+ */
+export type GsapVars = Record<string, unknown>;
+
 export interface RuntimeTween {
   targets?: () => Element[];
-  vars?: Record<string, unknown>;
+  vars?: GsapVars;
   duration?: () => number;
   startTime?: () => number;
   invalidate?: () => RuntimeTween;
+  /** Remove this tween from its parent timeline (GSAP `kill()`). */
+  kill?: () => void;
+  /** The timeline this tween lives in — used to re-insert a rebuilt tween. */
+  parent?: RuntimeTimeline;
 }
 
 export interface RuntimeTimeline {
@@ -25,6 +36,8 @@ export interface RuntimeTimeline {
   duration?: () => number;
   time?: () => number;
   invalidate?: () => RuntimeTimeline;
+  /** Add a tween at an absolute position — used to rebuild a keyframe tween in place. */
+  to?: (targets: Element[], vars: GsapVars, position?: number) => RuntimeTween;
 }
 
 type Pct = { percentage: number; properties: Record<string, number | string> };
@@ -185,6 +198,26 @@ function varsCarryChannel(vars: Record<string, unknown> | undefined, channels: s
 }
 
 /**
+ * Like `varsCarryChannel` but for a keyframe tween: the channels live inside the
+ * keyframe steps (`vars.keyframes`), not as own props of `vars`. Handles the object
+ * form (`{ "0%": {...} }`) and the array form (`[{...}, ...]`).
+ */
+function keyframeVarsCarryChannel(
+  vars: Record<string, unknown> | undefined,
+  channels: string[],
+): boolean {
+  const kf = vars?.keyframes;
+  if (!kf || typeof kf !== "object") return false;
+  const steps = Array.isArray(kf) ? kf : Object.values(kf);
+  return steps.some(
+    (step) =>
+      step != null &&
+      typeof step === "object" &&
+      channels.some((ch) => Object.prototype.hasOwnProperty.call(step, ch)),
+  );
+}
+
+/**
  * Resolve the live tween targeting `selector` using the SAME all-timelines scan
  * `readRuntimeKeyframes` uses, so read and write agree on "which tween". With
  * `kind: "keyframe"` it skips zero-duration `set`s and prefers the tween whose
@@ -197,6 +230,7 @@ function varsCarryChannel(vars: Record<string, unknown> | undefined, channels: s
  * on a rotation-only set). With no channel-matching set, it falls back to the
  * first matching set (back-compat). `channels` is ignored for `kind: "keyframe"`.
  */
+// fallow-ignore-next-line complexity
 export function resolveRuntimeTween(
   iframe: HTMLIFrameElement | null,
   selector: string,
@@ -219,7 +253,12 @@ export function resolveRuntimeTween(
     ? [compositionId]
     : Object.keys(timelines).filter((k) => typeof timelines[k]?.getChildren === "function");
 
-  const wantChannels = kind === "set" && channels && channels.length > 0 ? channels : null;
+  // Channels disambiguate co-located tweens for BOTH kinds: a `set` carries them as
+  // own vars props, a keyframe tween carries them inside its keyframe steps. An
+  // element can have a rotation keyframe tween AND a position keyframe tween; a
+  // rotation edit must land on the former. The reader passes no channels, so its
+  // playhead-containment path below is unchanged.
+  const wantChannels = channels && channels.length > 0 ? channels : null;
 
   let first: ResolvedRuntimeTween | null = null;
   let channelMatch: ResolvedRuntimeTween | null = null;
@@ -233,11 +272,15 @@ export function resolveRuntimeTween(
       const isSet = !(dur > 0);
       if (kind === "set" ? !isSet : isSet) continue;
       if (wantChannels) {
-        if (varsCarryChannel(tween.vars, wantChannels)) {
+        const carries =
+          kind === "set"
+            ? varsCarryChannel(tween.vars, wantChannels)
+            : keyframeVarsCarryChannel(tween.vars, wantChannels);
+        if (carries) {
           if (channelMatch === null) channelMatch = { tween, timeline };
         } else if (first === null) {
-          // A set carrying only disjoint channels: remember as last-resort
-          // fallback, but never prefer it over a channel-matching set.
+          // A tween carrying only disjoint channels: remember as last-resort
+          // fallback, but never prefer it over a channel-matching one.
           first = { tween, timeline };
         }
         continue;
@@ -252,14 +295,27 @@ export function resolveRuntimeTween(
   return channelMatch ?? first;
 }
 
+/** Whether a read carries at least one of `channels` as a keyframe property. */
+function readCarriesChannel(read: ReadTween, channels: string[]): boolean {
+  return read.keyframes.some((kf) => channels.some((c) => kf.properties[c] != null));
+}
+
 /**
  * Read keyframes (incl. motionPath arcs) for one selector from the live timeline.
  * Returns tween-relative percentages; callers convert to clip-relative.
+ *
+ * `requireChannels` restricts the scan to tweens whose read carries one of those
+ * properties — e.g. the motion-path overlay passes `["x","y"]` so it never picks
+ * up a co-located size/scale tween (which has no x/y and would blank the path
+ * whenever the playhead sits in that tween's range but outside the position
+ * tween's). Omitted → any keyframed tween qualifies (back-compat).
  */
+// fallow-ignore-next-line complexity
 export function readRuntimeKeyframes(
   iframe: HTMLIFrameElement | null,
   selector: string,
   compositionId?: string,
+  requireChannels?: string[],
 ): ReadTween | null {
   const timelines = timelinesOf(iframe);
   if (!timelines) return null;
@@ -299,6 +355,7 @@ export function readRuntimeKeyframes(
       if (isZeroDurationSet(dur)) continue; // skip hold/set tweens (see isZeroDurationSet)
       const read = readTween(tween.vars);
       if (!read) continue;
+      if (requireChannels && !readCarriesChannel(read, requireChannels)) continue;
       if (firstRead === null) firstRead = read;
       // Prefer the tween whose [start, start+dur] contains the playhead.
       if (now != null) {
@@ -321,6 +378,7 @@ export function readRuntimeKeyframes(
  * only a hold may remain, and resurrecting the deleted tween from the stale parse
  * must be avoided.
  */
+// fallow-ignore-next-line complexity
 export function hasNonHoldTweenForElement(
   iframe: HTMLIFrameElement | null,
   selector: string,

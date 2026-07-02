@@ -1,5 +1,4 @@
 import { useCallback, useRef } from "react";
-import { editLog } from "../utils/editDebugLog";
 import type { TimelineElement } from "../player";
 import { usePlayerStore } from "../player";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
@@ -120,7 +119,6 @@ async function executeSplit(
   if (!patchTarget) throw new Error("Clip is missing a patchable target.");
 
   const targetPath = element.sourceFile || activeCompPath || "index.html";
-  editLog("razor-split", { id: element.domId ?? element.id, splitTime, file: targetPath });
   const originalContent = await readFileContent(pid, targetPath);
   const newId = generateSplitId(collectHtmlIds(originalContent), element.domId || "clip");
 
@@ -134,7 +132,6 @@ async function executeSplit(
     element.duration,
   );
   if (!splitResult.ok) throw new Error("Failed to split clip.");
-  editLog("razor-split:done", { changed: splitResult.changed, newId });
   if (!splitResult.changed) {
     return { targetPath, originalContent, patchedContent: originalContent, changed: false };
   }

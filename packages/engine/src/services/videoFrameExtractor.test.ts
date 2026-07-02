@@ -22,6 +22,7 @@ import {
   codecMayHaveAlpha,
   decoderForCodec,
   getFrameAtTime,
+  analyzeClipMediaFit,
   type VideoElement,
   type ExtractedFrames,
 } from "./videoFrameExtractor.js";
@@ -375,6 +376,33 @@ describe("FrameLookupTable", () => {
     expect(table.getActiveFramePayloads(5.0).get("hero")?.frameIndex).toBe(29);
   });
 
+  it("holds the last frame when the source is a sub-frame shorter than the slot", () => {
+    // clip [2, 3.45] declares a 1.45s slot, but `ffmpeg -t 1.45` at 30fps emits
+    // 43 frames = 1.433s — a half-frame short. The tail between source
+    // exhaustion (~3.433) and the clip end (3.45) must hold the last frame
+    // rather than render the page background (a one-frame black flash at the
+    // cut). The held index is the final extracted frame (42).
+    const table = createFrameLookupTable(
+      [
+        {
+          id: "hero",
+          src: "clip.mp4",
+          start: 2,
+          end: 3.45,
+          mediaStart: 0,
+          loop: false,
+          hasAudio: false,
+        },
+      ],
+      [fakeExtracted(43, 30)],
+    );
+    // last real frame
+    expect(table.getActiveFramePayloads(3.4).get("hero")?.frameIndex).toBe(42);
+    // source exhausted but within tolerance of the end → hold, don't blank
+    expect(table.getActiveFramePayloads(3.44).get("hero")?.frameIndex).toBe(42);
+    expect(table.getActiveFramePayloads(3.45).get("hero")?.frameIndex).toBe(42);
+  });
+
   it("keeps both clips active at a shared adjacent boundary, matching the runtime", () => {
     // clip A ends at 3.0, clip B starts at 3.0. The runtime shows both at the
     // shared instant; the active set must too.
@@ -392,6 +420,35 @@ describe("FrameLookupTable", () => {
     const payloads = table.getActiveFramePayloads(3.0);
     expect(payloads.has("a")).toBe(true);
     expect(payloads.has("b")).toBe(true);
+  });
+});
+
+describe("analyzeClipMediaFit", () => {
+  it("returns null for a sub-tolerance shortfall the compiler leaves unclamped", () => {
+    // 1.433s media in a 1.45s slot — a sub-frame shortfall (<0.05s) the renderer
+    // freezes seamlessly and the compiler never clamps. Not worth warning about.
+    expect(analyzeClipMediaFit({ slotSeconds: 1.45, mediaSeconds: 1.433 })).toBeNull();
+  });
+
+  it("returns null when media is longer than or equal to the slot", () => {
+    expect(analyzeClipMediaFit({ slotSeconds: 2, mediaSeconds: 2 })).toBeNull();
+    expect(analyzeClipMediaFit({ slotSeconds: 2, mediaSeconds: 5 })).toBeNull();
+  });
+
+  it("reports the shortfall when the slot exceeds media beyond the clamp epsilon", () => {
+    const fit = analyzeClipMediaFit({ slotSeconds: 5, mediaSeconds: 1 });
+    expect(fit).not.toBeNull();
+    expect(fit?.shortfallSeconds).toBeCloseTo(4, 5);
+    expect(fit?.toleranceSeconds).toBeCloseTo(0.05, 5);
+  });
+
+  it("never flags looping clips (they repeat to fill the slot)", () => {
+    expect(analyzeClipMediaFit({ slotSeconds: 5, mediaSeconds: 1, loop: true })).toBeNull();
+  });
+
+  it("returns null for unusable inputs (non-finite media, zero slot)", () => {
+    expect(analyzeClipMediaFit({ slotSeconds: 0, mediaSeconds: 1 })).toBeNull();
+    expect(analyzeClipMediaFit({ slotSeconds: 5, mediaSeconds: NaN })).toBeNull();
   });
 });
 

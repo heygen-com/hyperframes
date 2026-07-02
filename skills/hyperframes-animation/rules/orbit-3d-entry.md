@@ -178,53 +178,53 @@ The orbit runs **inside the timeline** — not via `requestAnimationFrame` — s
   - Range: 300–900 px
   - Effects: small radius reads as a tight cluster; large radius spreads the ring across the frame and lets a large center element breathe
   - Constraints: must clear the center element horizontally at every angle — see Key Principles for the `RADIUS_X * min(|cos(θ)|) ≥ L_w + I_w + breathing_room` rule
-  - Reference: examples/cta-orbit-collapse.html uses 480
+  - Reference: ../../examples/cta-orbit-collapse.html uses 480
 
 - **Y_TO_X_RATIO** — `RADIUS_Y / RADIUS_X`, the orbit's perspective flattening
   - Range: 0.4–0.7
   - Effects: low values read as a near-horizontal disc seen from above; values approaching 1 read as a flat plane facing the camera
   - Constraints: keep < 1 — the orbit should look like a tilted ring, not a frontal halo
-  - Reference: examples/cta-orbit-collapse.html uses ≈ 0.58
+  - Reference: ../../examples/cta-orbit-collapse.html uses ≈ 0.58
 
 - **ORBIT_DURATION** — seconds for one full revolution
   - Range: 4–25 s (longer for ambient backdrop, shorter for active feature motion)
   - Effects: short durations look frenetic; long durations read as drifting / calm
   - Constraints: must be ≥ the time the orbit is on screen, otherwise the tween ends and items stop
-  - Reference: examples/cta-orbit-collapse.html uses ~25 s effective (orbit speed 0.25 rad/s)
+  - Reference: ../../examples/cta-orbit-collapse.html uses ~25 s effective (orbit speed 0.25 rad/s)
 
 - **ENTRY_DUR** — per-element flip-in duration
   - Range: 0.4–0.8 s
   - Effects: short feels punchy; long feels stately
   - Constraints: must be ≤ the gap between the first and last element's start so the cascade doesn't overlap to incoherence
-  - Reference: examples/cta-orbit-collapse.html uses 0.55 s
+  - Reference: ../../examples/cta-orbit-collapse.html uses 0.55 s
 
 - **STAGGER** — delay between consecutive element entries
   - Range: 0.06–0.12 s
   - Effects: below ~0.06 s reads as "popcorn"; above ~0.12 s reads as plodding
   - Constraints: total cascade `(n - 1) * STAGGER` should still complete before the next scene phase begins
-  - Reference: examples/cta-orbit-collapse.html uses 0.10 s
+  - Reference: ../../examples/cta-orbit-collapse.html uses 0.10 s
 
 - **FLIP_BACK** — `back.out(<n>)` overshoot for the flip-in
   - Range: 1.2–2.0
   - Effects: low end is a soft arrive; high end snaps with visible overshoot
   - Constraints: pair with a calmer `CENTER_BACK` if both fire close together — competing overshoots cancel each other
-  - Reference: examples/cta-orbit-collapse.html uses 1.4
+  - Reference: ../../examples/cta-orbit-collapse.html uses 1.4
 
 - **CENTER_BACK** — `back.out(<n>)` overshoot for the center label fade-in
   - Range: 1.2–1.8
   - Effects: low end keeps the label calm under the busy orbit; high end gives it a small "pop" of arrival
-  - Reference: examples/cta-orbit-collapse.html uses 1.4
+  - Reference: ../../examples/cta-orbit-collapse.html uses 1.4
 
 - **CENTER_FADE_AT** — when the center label fades in, in seconds
   - Range: just after the first 2–4 elements have landed
   - Effects: too early competes with the cascade; too late leaves a hole at the center of the orbit
-  - Reference: examples/cta-orbit-collapse.html starts the center brand near the front of the scene
+  - Reference: ../../examples/cta-orbit-collapse.html starts the center brand near the front of the scene
 
 - **ROTATE_X_FROM / ROTATE_Y_FROM / Z_FROM / SCALE_FROM** — initial 3D orientation
   - Range: rotateX ±60° to ±120°; rotateY ±45° to ±120°; z −200 to −400; scale 0.2–0.6
   - Effects: higher absolute rotation + deeper negative z = more dramatic "card flipping out of depth"; lower = subtle reorientation
   - Constraints: pick a direction consistent with the scene's perspective; mixing positive and negative rotateY across items reads as noise
-  - Reference: examples/cta-orbit-collapse.html uses rotateX 90, rotateY −45, z −100, scale 0
+  - Reference: ../../examples/cta-orbit-collapse.html uses rotateX 90, rotateY −45, z −100, scale 0
 
 ## Variations
 

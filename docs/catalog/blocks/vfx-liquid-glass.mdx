@@ -1,0 +1,48 @@
+---
+title: "Liquid Glass"
+description: "VFX composition block"
+---
+
+# Liquid Glass
+
+VFX composition block
+
+`html-in-canvas` `webgl`
+
+<Warning>
+**Requires Chrome flag.** Enable `chrome://flags/#canvas-draw-element` for live preview. Rendering via CLI enables the flag automatically. [Learn more](/guides/html-in-canvas).
+</Warning>
+
+<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-liquid-glass.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-liquid-glass.png" autoPlay muted loop playsInline />
+
+## Install
+
+<CodeGroup>
+
+```bash Terminal
+npx hyperframes add vfx-liquid-glass
+```
+
+</CodeGroup>
+
+## Details
+
+| Property | Value |
+| --- | --- |
+| Type | Block |
+| Dimensions | 1920×1080 |
+| Duration | 20s |
+
+## Files
+
+| File | Target | Type |
+| --- | --- | --- |
+| `vfx-liquid-glass.html` | `compositions/vfx-liquid-glass.html` | hyperframes:composition |
+
+## Usage
+
+After installing, add the block to your host composition:
+
+```html
+<div data-composition-id="vfx-liquid-glass" data-composition-src="compositions/vfx-liquid-glass.html" data-start="0" data-duration="20" data-track-index="1" data-width="1920" data-height="1080"></div>
+```

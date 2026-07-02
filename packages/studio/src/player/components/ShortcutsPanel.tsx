@@ -36,6 +36,8 @@ const SHORTCUT_SECTIONS = [
       { key: "⌘V", label: "Paste element" },
       { key: "⌘X", label: "Cut element" },
       { key: "S", label: "Split clip at playhead" },
+      { key: "⌘G", label: "Group elements" },
+      { key: "⌘⇧G", label: "Ungroup" },
       { key: "Del", label: "Delete selected element" },
     ],
   },

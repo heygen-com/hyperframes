@@ -9,12 +9,12 @@ metadata:
 
 The graphics that give a stat **visual weight** beside its number: a small bar chart, a progress bar/ring filling to a percentage, or a star row filling to a fractional rating. Pair these with [counting-dynamic-scale.md](counting-dynamic-scale.md) (the number) for a complete stat scene.
 
-**Layout archetype — pick ONE and hold it across all stats:**
+**Layout blueprint — pick ONE and hold it across all stats:**
 
 - **Single-focus** — one centered frame, the number is the hero, a ring or bar sits under/around it. Cleanest for a sequential reveal (stat 1 → stat 2 → stat 3 in the same frame).
 - **Split-frame** — big number on the left, paired graphic on the right. Better when stats are shown together or each needs a distinct visual.
 
-Don't mix archetypes between stats in one piece — that reads as inconsistent.
+Don't mix blueprints between stats in one piece — that reads as inconsistent.
 
 ## 1 — Growth Bars (CSS `scaleY` stagger)
 
@@ -135,7 +135,7 @@ tl.to(
 - **Transforms only** — `scaleY` / `scaleX` / `clipPath`, never `width`/`height` tweens (runtime-forbidden).
 - **Match the number's timing** — the fill and the count-up should peak together (same start + ease), so the stat resolves as one beat, not two.
 - **Measure, don't hard-code** — ring length via `getTotalLength()`; a hard-coded circumference breaks if the radius changes.
-- **One accent hue, consistent archetype** — see `hyperframes-creative/references/data-in-motion.md`.
+- **One accent hue, consistent blueprint** — see `hyperframes-creative/references/data-in-motion.md`.
 
 ## Critical Constraints
 

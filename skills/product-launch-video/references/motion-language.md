@@ -1,139 +1,156 @@
-# Motion language — product-launch visual-design judgment
+# Motion language — the move vocabulary + the motion doctrine + the seek-safe core
 
-> The motion-judgment layer for **Step 4 (Visual design)**. You name **each shot's choreography, spring intent, beat rhythm, holds, stillness, and the idle-motion budget** while enriching `STORYBOARD.md` frames; the **frame worker** maps intent to concrete GSAP eases / ms / stagger / code (via `hyperframes-animation`). A good promo feels like one continuous whole — one camera, one spring feel, **every shot directed across its full length** — not a pile of slides that animate once and freeze. You reference motion by **role**, never by curve: eases / durations resolve from `frame.md`'s motion tokens, named `entry` / `emphasis` / `exit` / `drift` (the pack's exact keys may differ); the worker maps the curve. Between-frame **transitions are not yours** — story names `transition_in`, the harness injects it.
+> The motion layer for **Step 4 (Visual design)**. When you write a frame's **time-coded shot sequence**, you name each scene's move **inline from the vocabulary below** — a named palette of the moves the golden corpus actually uses. Each move carries the **backing rule id** in this skill's local `../hyperframes-animation/rules/`; cite that id so the move resolves to a real recipe when a **frame worker** implements it in Step 5 (the worker reads the rule body in `../hyperframes-animation/rules/<id>.md` — it reproduces the move, it does not guess from the name). You name motion by **role / move name**, never by raw GSAP curve, ms, or stagger formula — the worker maps the curve. Between-frame **transitions are not yours**: story names `transition_in`, the harness injects it; that injected transition **is** the frame's exit. For cuts a worker builds INSIDE a frame (within-scene swaps, scene-to-scene seams), see the catalog in `cut-catalog.md`.
 
-## A frame is a shot, not a slide
+A good promo feels like one continuous film — one camera, one motion feel, **smooth and timed to the voiceover** — not a pile of slides that animate once and freeze. The doctrine in Part 2 is load-bearing: when in doubt, do what it says.
 
-The single failure that makes a promo read as PowerPoint: a frame whose content **animates in over the first ~0.8s, then freezes** for the rest of its duration while a slow drift plays underneath. The entrance is not the shot — it's the **first beat** of it. You direct the **whole duration**.
+---
 
-Three layers fill a shot, each governed by a different rule:
+# Part 1 — the move vocabulary
 
-| Layer                     | What                                                                                             | Rule                                                                        |
-| ------------------------- | ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------- |
-| **Camera** (macro)        | ONE correlated move on the frame root — slow drift / dolly / push / parallax pan                 | **always on, the whole shot** — this is the "someone is filming this" layer |
-| **Choreography** (action) | the beat develops: entrance → mid-shot move (reveal / rearrange / morph / emphasis hit) → settle | **fill the duration** — a shot animated only at entry is a slide            |
-| **Idle life** (texture)   | ambient continuation on the 1-2 elements that hold a live slot — breathing, glow, float          | **budgeted** — this is where screensaver lives; cap it                      |
+Reach into this palette when naming a scene's motion. Pick the move that matches the beat, name it in the shot sequence, and cite the rule id after `→`. The blueprints (`../hyperframes-animation/blueprints/`) name these same moves in their `rule mapping`; you're drawing from one shared palette. Compose 2–4 across a shot's scenes (entrance → sequential reveal → settle), not all at once.
 
-The reconciliation that matters: **mandate choreography, budget idle life.** Purposeful, sequential motion that carries information should fill the shot; ambient, simultaneous motion that carries none should be capped. Many elements each floating independently reads as _screensaver / UI animation_; a shot that only enters then freezes reads as _slideshow_. Avoid both — **one camera move + a directed multi-phase action + 1-2 living elements**, nothing scattered.
+## Kinetic type
 
-## Multi-phase choreography — direct the full shot
+- **hard-cut / flash word-swap** — a word or line replaces the previous one on an instant cut (no fade/roll); the swap itself is the beat. → `discrete-text-sequence`
+- **in-place token cycle** — a fixed line holds and only its variable slot changes, token → token → token. → `discrete-text-sequence`
+- **per-word staggered reveal** — a phrase assembles word-by-word (or chunk-by-chunk), each landing on its own beat. → `dynamic-content-sequencing`
+- **kinetic beat-slam** — short phrases slam in on a shared percussive beat array, each with a distinct entrance, resolving on a locked finale; the recipe for "punchy / rhythmic" taglines. → `kinetic-beat-slam`
 
-Every non-still frame's timeline is choreographed across its length, not front-loaded into the entrance:
+## Typewriter
 
-```
-entrance → development → settle
-```
+- **type-on with caret** — text types in character-by-character behind a blinking caret. → `discrete-text-sequence` (+ `context-sensitive-cursor` for the caret blink / color)
+- **backspace-and-retype** — the line types, deletes the last word(s), and retypes a new one (typo-correction, reframe). → `discrete-text-sequence` (+ `context-sensitive-cursor`)
 
-- **entrance** — the beat's primary content arrives (hero `entry` / `heavy`; groups staggered).
-- **development (the phase that's usually missing → PPT)** — mid-shot, the content _does something_: a second element reveals, elements rearrange to a new layout, a card morphs to its next state, a count-up runs, an emphasis hit lands on the keyword. This is the motion that separates video from slides.
-- **settle** — the shot resolves and holds for its read; the camera + idle life continue underneath (never a hard freeze).
+## Count-up / data
 
-**Architecture:** in hyperframes only the **exit** is forbidden mid-video (the frame unmounts; the harness transition _is_ the exit). Everything _before_ the settle — including rich mid-shot development — is free and seek-safe. Build the development phase; skip only the exit (unless you are the final frame).
+- **value-scaled counter** — a number counts up and its font size grows with the value, so the climb itself escalates. → `counting-dynamic-scale`
+- **bars / progress / star wipe** — a number paired with a graphic that fills: bar-height stagger, a progress bar / ring filling, a fractional star-rating wipe. → `stat-bars-and-fills`
 
-When you name a **`blueprint`**, the development phases come from its recipe — write the composition note **shot-by-shot** to match. When you name **no blueprint**, the **≥3 cited effects ARE the phases** — sequence them (one enters, one develops, one emphasizes); **don't fire them all at t=0** (simultaneous entry collapses three phases into one slide).
+## Reveal / decode
 
-## Spring intent (by role, not curve)
+- **3D char flip-decode** — characters flip in 3D and resolve from scrambled glyphs to the real text (decryption feel). → `hacker-flip-3d`
+- **SVG self-draw** — an outline / icon / ring draws itself stroke-by-stroke. → `svg-path-draw`
 
-| Intent     | Feel                                        | Use                                               |
-| ---------- | ------------------------------------------- | ------------------------------------------------- |
-| **entry**  | confident slight overshoot, settles quickly | primary element entry (default)                   |
-| **gentle** | soft slide-in, no overshoot                 | background elements, subtle motion                |
-| **snappy** | tight overshoot, nearly instant             | UI elements, small icons, buttons                 |
-| **heavy**  | weighted deceleration                       | large images, prototype screenshots, hero visuals |
-| **slam**   | bouncy overshoot, intentionally loud        | logo / bell / impact moments                      |
+## Camera
 
-**Consistency:** similar elements share one intent (all icons `snappy`, all hero images `heavy`). Don't invent a unique ease + duration per element.
+- **push / focus / drift** — a sequential camera move on the frame root (pull-back → focus → push) plus continuous micro-drift; the cinematic baseline. → `multi-phase-camera`
+- **zoom-to-target** — zoom into a non-centered element (scale + counter-translate to keep it framed). → `coordinate-target-zoom`
+- **pan / focus-lock** — a virtual camera transforming one `.world` wrapper to pan / zoom / lock onto a region. → `viewport-change`
+- **camera-cursor-tracking** — the viewport locks to a moving focal point (a typing cursor), static framing then focal-locked tracking. → `camera-cursor-tracking`
 
-**Forbidden:** `bounce.out` / `elastic.out` (dated; real objects decelerate, they don't bounce — low overshoot for `entry` is fine, high overshoot only for clearly playful moments); a unique ease+duration per element (visual noise).
+## Layout motion
 
-## Duration intent
+- **cluster→outward expansion** — elements start clustered at center and expand outward to their final positions in lockstep. → `center-outward-expansion`
+- **orbit** — elements flip in from 3D space and settle into a continuous elliptical orbit (entry flips in-place at the orbital position). → `orbit-3d-entry`
+- **split-tilt cards** — two cards side-by-side with opposing rotationY tilts, entering from their respective sides (comparison / before-after). → `split-tilt-cards`
+- **logo/avatar ring + connectors** — avatars or logos on an elliptical ring with SVG connection lines to a center point, staggered entry. → `avatar-cloud-network`
 
-Reference by **tier** ("instant feedback" / "state change" / "layout change" / "entry animation"); the worker maps concrete ms / frames at 30fps. **A single entry should not exceed ~800ms** — for a longer buildup, use multi-element stagger or a development phase, **not** one long tween.
+## Surface / UI
 
-**Phase-to-phase within a shot is swift** — when one element makes way for the next (development), the outgoing move runs ~75% of an entry; arrival is deliberate, hand-off is quick. (The between-frame **exit** is the harness's transition, never your within-shot motion.)
+- **3D page-scroll reveal** — a full webpage as a tilted 3D card whose internal content scrolls to reveal specific sections. → `3d-page-scroll`
+- **cursor click + ripple** — a cursor moves to a target, depresses with it on click, and emits an expanding ripple. → `cursor-click-ripple`
+- **button press** — a tactile press: compression then spring recovery, optional release burst / glow. → `press-release-spring` (or `physics-press-reaction` for a click that compresses cursor + target together)
+- **keyword glow** — keywords light up with glow + scale + color on an attack-decay-rest envelope, synced to a word rail. → `asr-keyword-glow`
 
-## Stagger cap
+## Morph / handoff
 
-When staggering N elements, **total ≤ 500ms** (longer feels dragged):
+- **scale-swap** — two elements at the same screen center hand off: the outgoing cluster shrinks + fades as the incoming one arrives. → `scale-swap-transition`
+- **card morph-anchor** — a container morphs apparent size + corner radius + surface between two shots, then fades to reveal the real target beneath (HyperFrames uses uniform `scale`, not `width`/`height`). → `card-morph-anchor`
 
-- **3-7 elements** — normal stagger, total 300-700ms.
-- **8+ elements** — tighten per-item delay, or stagger only the first few and enter the rest with the last.
-- Never let stagger run past 500ms.
+## Seam cuts (worker-built, inside a frame)
 
-## Beat structure across frames (the cross-frame rhythm)
+The velocity-matched cuts a worker authors between a frame's own Scenes. Name the seam in the shot sequence; the recipe is in the catalog, not a single `../hyperframes-animation/rules/` id.
 
-Rhythmic videos breathe: tension → release → tension → release. A clean reference shape for a ~46s video:
+- **zoom-through / inverse zoom-through** — a within-scene swap on the Z-axis; forward reads "progressing through", inverse reads "arriving at" (payoff). → `cut-catalog.md`
+- **cut-the-curve** — a scene-to-scene cut where both sides move the same direction at matched velocity. → `cut-catalog.md`
+- **waterfall cut** — cut-the-curve at word granularity, a wave across a text-to-text seam. → `cut-catalog.md`
 
-| Phase          | Duration | Rhythm             | Frame type                         |
-| -------------- | -------- | ------------------ | ---------------------------------- |
-| Slow setup     | 6-10s    | slow build         | hero establish, VO not yet present |
-| Fast montage   | 6-10s    | ~2s each           | quick cuts every 1.5-2s            |
-| Process reveal | 12-18s   | continuous, no cut | screen recording, real workflow    |
-| Closure        | 3-5s     | still, breathable  | logo, URL, CTA                     |
+## Emphasis / marker
 
-Allocate motion by a frame's energy: **high-energy** (hook, CTA) → faster entry, tighter stagger, `snappy`, busier development; **breathable** (brand reveal, emotional beat) → slower entry, `gentle`, longer hold, minimal development; **data** (stat, feature) → medium rhythm, clean stagger, count-up as the development phase.
+- **highlight / circle / burst / scribble** — a marker-drawn emphasis on a word or element: yellow highlight sweep, hand-drawn circle, radiating burst, scribble, or rough sketch-outline. → `css-marker-patterns`
 
-## Hold time — read time, not freeze time
+## Aliveness during a hold (use sparingly — see Part 2)
 
-After an element enters it must stay long enough to read (the worker maps concrete frames). "Hold" means **don't cut early** — the camera + idle life keep playing underneath; it is never a hard freeze.
+- **subtle jitter** — the sanctioned way to keep a settled frame alive: a small, low-amplitude positional/scale jitter on the held element. The motion-graphics trick that reads "alive" without reading "weak." → `sine-wave-loop` (low-amplitude register)
+- **live SVG internals** — internal SVG parts move so an icon feels alive (rotating hands, oscillating blades, pulsing dots, dash-flow); fine because it's the subject doing something, not a card breathing. → `svg-icon-enrichment`
+- **finite bounded ambient** — a single bounded breathe/drift on ONE held hero, only when genuinely needed; de-emphasized — prefer sequential reveal or jitter first. → `sine-wave-loop`
 
-| Content                              | Minimum hold |
-| ------------------------------------ | ------------ |
-| display text (1-3 words)             | ~1s          |
-| short sentence                       | ~1.5s        |
-| data / statistic                     | ~1.5s        |
-| product screenshot                   | ~2s          |
-| complex visual (diagram, comparison) | ~2.5s        |
-| hero / climax word                   | ~1-1.4s      |
+## The added moves — now backed by local rules
 
-Narration shorter than the needed hold → the frame's `duration` should still give the visual its read time.
+Five moves the golden corpus needs were added to this skill's `../hyperframes-animation/rules/`, rounding out the vocabulary above:
 
-## Stillness before climax — the marked exception
+- **depth-of-field / selective-blur** — blur the off-focus subset to spotlight the focal element → `depth-of-field-blur`
+- **motion-blur streak** — directional velocity blur on a fast fly-in / camera push-through → `motion-blur-streak`
+- **3D depth scatter-assemble** — glyphs/elements scatter into a tumbling 3D cloud, then reassemble → `depth-scatter-assemble`
+- **spring-pop entrance** — the canonical entrance pop; default to a smooth long-tail settle, overshoot only when explicitly playful → `spring-pop-entrance`
+- **ambient glow / bloom** — un-triggered soft glow blooming behind a static hero → `ambient-glow-bloom`
 
-Archive signature: a **0.3-0.75s pause** between the major action and its confirmation / result — the silence builds tension before the landing. It lands **because the rest of the video is choreographed** — stillness is a contrast against motion, so it only reads when motion is the baseline (if every frame is already frozen, a pause carries nothing). **Allocate it to only 2-3 frames per video, named in the `## Video direction` block**, where the narration lands a payoff. Stamped on every frame it becomes a tic and flattens the rhythm. Name `stillness-before-climax` in that frame's motion note; even then the camera move continues (still ≠ frozen).
+---
 
-## The idle-life budget — what may move during the hold
+# Part 2 — the motion doctrine (load-bearing)
 
-The 1-2 elements that keep moving _after_ the development settles. This is the layer that, overdone, becomes screensaver — so it is **capped**, not mandated:
+These four rules are the difference between a clip that reads as a serious launch video and one that reads as an agent-made PowerPoint. Follow them as written.
 
-1. **Camera move** — always present (the macro layer above); it alone keeps everything coherently alive.
-2. **At most 1-2 secondary live elements** — the ones carrying the beat (hero, CTA). Everything else holds.
-3. Prefer **macro move + depth parallax** over many independent floats.
+## 1. Smooth beats bouncy — `power3` is the default
 
-Secondary-slot menu (formulas are the worker's): **multiplicative breathing** (hero — small ±2-5% on final scale) · **glow pulse** (CTA / click target) · **sine float** (one decorative cluster at most) · **rotational drift** (3D cards, hero logo) · **orbit** (surrounding icons; counts as the one decorative cluster) · **halftone breathing** (atmospheric frames).
+Elements should use **long-tail decel curves that let them settle smoothly. `power3` is enough in most cases.** No bouncy, no overshoot, no `back.out` / `bounce.out` / `elastic.out` as a default.
 
-Multiplicative breathing is the signature for a hero **that holds a live slot** — not stamped on every hero. **Minimum amplitude ±6px or ±2-5% scale** — a 3px micro-float doesn't count; the budget caps how many things idle, it does not license invisible motion.
+Bouncy is the **#1 instant turn-off** in user-made Remotion / HyperFrames videos, and the agent almost never gets it right — it thinks bouncy adds emphasis, but it buys that emphasis at the cost of cleanliness. The serious launch-video shops feel the same. **Smooth always wins.** Overshoot is demoted to a **rare, explicitly-playful exception** (a consumer/fun logo slam, a deliberate bell-hit) — never the house style. Name the intent as a long-tail settle; the worker maps `power3` (or `expo.out` on a fast arrival). See `../hyperframes-animation/rules/spring-pop-entrance.md` — it now leads with the smooth settle.
 
-## Seek-safe motion — intents that don't survive the renderer
+## 2. Sequential reveal in the back ~50%, timed to the voiceover
 
-The frame is a **paused GSAP timeline seeked frame-by-frame**, so some "continuous" intents from a real-time engine cannot render — **don't name them**:
+This is the anti-PowerPoint mechanism — sharper than "put development in the middle."
 
-- **No infinite / forever motion** — "particles loop endlessly," "logo rotates forever," "marquee scrolls on repeat." Idle life is a **finite tween over the hold** (breathe up then back), never `repeat`/`yoyo`.
-- **No randomness or wall-clock** — `Math.random` particle fields, `Date.now` drift. Every motion is the same on every render; name deterministic motion only.
-- **Entrance + development only** (exit = final frame only) — the cross-frame exit is the harness's transition.
-- Express oscillation/breathing as a **bounded finite move**, not a loop; the worker writes it, but don't ask for a loop the timeline can't hold.
+- **Don't dump everything on screen in the first ~25%** of the scene. Rushing all content in up front is exactly what forces the slideshow feel.
+- **Reveal each piece — a line, a card, even an h1 — when the voiceover mentions it**, sequencing reveals across the **later ~50%** of the scene. Same amount of agent work, but the cut becomes coherent and gains rhythm.
+- **Less is more.** Fewer things on screen, each arriving on its VO beat, beats a full canvas that animated once and froze.
 
-## Forbidden — both failure modes
+Practically: a frame's shot sequence front-loads almost nothing — the entrance carries only what the VO is saying at t=0, and the rest of the elements wait in the timeline for their spoken cue. A reveal maps onto a development-class move from Part 1 (`per-word staggered reveal`, `cluster→outward expansion`, a `count-up`, an `asr-keyword-glow` synced to the word rail).
 
-**Slideshow (under-motion):**
+## 3. No lazy breathing, no bad pan/push — "no motion over bad motion"
 
-- Content animates in, then **freezes** for the rest of the shot (the PPT tell).
-- Only the entrance is animated; the remaining duration is a frozen hold under a drift.
-- The ≥3 cited effects **all fire at t=0** instead of sequencing into entrance / development / emphasis.
-- No mid-shot development on a non-still frame.
+The agent's two reflexive ways to fake "aliveness" both read cheap:
 
-**Screensaver (over-motion):**
+- **No lazy breathing.** Scaling cards/text up and down in a circular loop to look "alive" is the cheap tell. Don't reach for it.
+- **No bad slow pan / push in the back half.** A slow pan or push on elements in the later ~50% of a scene **disrupts the viewer's sightline and causes eye discomfort** — it actively makes the frame worse, not better.
 
-- **Every element** floating independently; idle motion with no information.
-- More than 1-2 elements idling at once; scattered sine floats as the "aliveness."
-- A 3px micro-float standing in for real motion.
+The fix for both is the same: **stagger element reveals in time with the script** (rule 2). And the governing principle: **"I'd rather have NO motion than BAD motion."** A held, still frame is better than a frame kept "alive" by breathing or a drifting camera. The **only sanctioned aliveness** during a hold is **subtle jitter** — a small low-amplitude jitter that keeps a frame from feeling dead without looking weak (it's in Claude videos now). Everything else holds.
 
-**Always:**
+## 4. Internal seams are velocity-matched cuts
 
-- `bounce.out` / `elastic.out`; a bespoke ease+duration per element; `repeat` / `yoyo`; all elements entering simultaneously (must stagger or sequence).
+When a frame has an internal seam — a within-scene swap, a Scene-to-Scene cut, a text-to-text line change — make it a **velocity-matched cut**, not a hard slideshow cut: cut at peak velocity, match direction and speed on both sides. The catalog (the four techniques, the blur logic, and which to use when) is `cut-catalog.md`; the moves are listed under **Seam cuts** in Part 1.
 
-## Motion note example
+## One-line summary
 
-> "Macro: slow dolly-in on the frame root across the whole beat. **Entrance** — hero enters `EASE.entry` (heavy); icons snappy-stagger (5 items, ~400ms). **Development** — icons rearrange into a row, then the result panel reveals beneath them. **Stillness-before-climax 0.6s** (allocated frame; only the dolly continues). **Settle** — result emphasis: text gentle entry + double-layer glow; idle hold with hero breathing ±3% as the one live element."
+Smooth long-tail (`power3`) over bouncy; reveal sequentially in the back ~50% timed to the VO (not dumped in the first 25%); no lazy breathing and no bad slow pan/push — prefer stillness, with subtle jitter as the only aliveness; cut at peak velocity with matched direction/speed (→ `cut-catalog.md`).
 
-One line for a single-shot frame; **shot-by-shot when the beat is multi-phase** (always, when you named a `blueprint`). Never concrete ease curves / ms / stagger formulas / JS — the worker writes those.
+---
+
+# Part 3 — the seek-safe core (hard rules)
+
+The frame is a **paused GSAP timeline seeked frame-by-frame**, so some "continuous" intents from a real-time engine can't render — don't name them. These are non-negotiable regardless of doctrine.
+
+- **No infinite / forever motion** — "particles loop endlessly," "logo rotates forever," "marquee on repeat." Any aliveness (the subtle jitter, a live SVG internal, a needed bounded ambient) is a **finite tween over the hold**, never `repeat` / `yoyo`.
+- **No randomness or wall-clock** — no `Math.random` particle fields, no `Date.now` drift. Every render must be identical; name deterministic motion only (stagger and any variation derive from the element index).
+- **Entrances use `fromTo`** — state the from-state explicitly so a seek to `t=0` lands the element correctly; never rely on a CSS-hidden start (it renders visible before the tween claims it, and flickers under seek).
+- **No CSS `transition` / `@keyframes` for motion** — CSS animation runs on the browser clock, independent of the HF seek clock; it desyncs and flickers. Drive all motion inside the paused GSAP timeline.
+- **Entrance + sequential reveal only — no mid-video exit.** The frame unmounts via the harness transition; that injected `transition_in` **is** the exit. Exit motion belongs only to the final frame. (Worker-built seam cuts in `cut-catalog.md` are within-frame, not the frame's exit.)
+
+## Forbidden — the failure modes
+
+**Slideshow (the primary failure):** everything dumped on screen in the first ~25%; content enters then freezes; nothing revealed on its VO cue. Fix with rule 2 (sequential reveal timed to the VO).
+
+**Cheap aliveness:** circular breathing as "life"; a slow pan/push in the back half disrupting the eye; many elements floating independently as "motion." Fix with rule 3 (stillness + subtle jitter only).
+
+**Bouncy:** `back.out` / `bounce.out` / `elastic.out` as the default entrance; hand-keyed overshoot. Fix with rule 1 (`power3` long-tail; overshoot only when explicitly playful).
+
+**Always:** no `repeat` / `yoyo`; no `Math.random` / `Date.now`; no all-elements-entering-simultaneously (sequence or stagger).
+
+## Naming motion in a shot — example
+
+> Scene 1 (0.0–1.0s): solid field; hero headline enters via **per-word staggered reveal** (`dynamic-content-sequencing`) on a smooth long-tail settle (`power3`); slow **push** on the root (`multi-phase-camera`) holds steady — no back-half re-push.
+> Scene 2 (1.0–3.0s): as the VO names each capability, five feature icons reveal **sequentially** via **cluster→outward expansion** (`center-outward-expansion`), then a **value-scaled counter** (`counting-dynamic-scale`) ticks up beneath them — the back-half reveal, timed to the script, not dumped at t=0.
+> Scene 3 (3.0–4.2s): hold on the result; **keyword glow** (`asr-keyword-glow`) lands on the payoff word as the VO says it; settles and holds still — at most **subtle jitter** (`sine-wave-loop`, low amplitude) keeps it alive; no breathing, no drift.
+
+Name the move + its rule id (or `cut-catalog.md` for a seam cut) per scene; let the worker pick curves, ms, and stagger — defaulting to `power3`.

@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        background: transparent;
+        overflow: hidden;
+      }
+      body {
+        width: 1920px;
+        height: 1080px;
+      }
+
+      #root .lt {
+        position: absolute;
+        left: 120px;
+        bottom: 116px;
+      }
+      #root .lt-block {
+        background: #141518;
+        padding: 18px 34px 22px 30px;
+        display: inline-flex;
+        flex-direction: column;
+        gap: 12px;
+        will-change: clip-path;
+      }
+      #root .lt-name {
+        font-family: "Archivo Black", sans-serif;
+        font-size: 58px;
+        font-weight: 400;
+        color: #ffffff;
+        line-height: 0.98;
+        letter-spacing: -0.015em;
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+      #root .lt-tagwrap {
+        overflow: hidden;
+      }
+      #root .lt-tag {
+        display: inline-block;
+        background: #ffd23f;
+        color: #141518;
+        font-family: "Space Mono", monospace;
+        font-size: 24px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        padding: 7px 16px;
+        white-space: nowrap;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="lt-bold-block"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="4.8"
+    >
+      <div id="lt-clip" class="clip" data-start="0" data-duration="4.8" data-track-index="0">
+        <div id="lt" class="lt">
+          <div id="lt-block" class="lt-block">
+            <div id="lt-name" class="lt-name">Maya Chen</div>
+            <div class="lt-tagwrap">
+              <span id="lt-tag" class="lt-tag">Host · Neuroscientist</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+
+      var wrap = document.getElementById("lt");
+      var block = document.getElementById("lt-block");
+      var nameEl = document.getElementById("lt-name");
+      var tag = document.getElementById("lt-tag");
+
+      // Solid block wipes in from the left, name slams up inside it, tag pops up after.
+      gsap.set(block, { clipPath: "inset(0 100% 0 0)" });
+      gsap.set(nameEl, { y: 30, opacity: 0 });
+      gsap.set(tag, { y: 40 });
+
+      tl.to(block, { clipPath: "inset(0 0% 0 0)", duration: 0.5, ease: "power4.out" }, 0.1);
+      tl.to(nameEl, { y: 0, opacity: 1, duration: 0.42, ease: "back.out(1.6)" }, 0.26);
+      tl.to(tag, { y: 0, duration: 0.45, ease: "back.out(2)" }, 0.5);
+
+      // Exit: block wipes out to the left, then hard kill.
+      tl.to(block, { clipPath: "inset(0 0 0 100%)", duration: 0.4, ease: "power3.in" }, 4.3);
+      tl.set(wrap, { visibility: "hidden" }, 4.75);
+
+      window.__timelines["lt-bold-block"] = tl;
+    </script>
+  </body>
+</html>

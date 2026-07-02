@@ -122,4 +122,47 @@ describe("buildExpandedElements", () => {
     expect(child.key).toBe("index.html#eyebrow");
     expect(child.key).toBe(expectedStoreKey);
   });
+
+  // Sub-comp internals (group + pills) have no data-start, so they're not in the
+  // manifest. They arrive as DOM children and must still expand under their host.
+  it("expands DOM-only sub-comp children (no manifest clip) under the host", () => {
+    const elements = [
+      el({ id: "scene-host", start: 5, duration: 6, compositionSrc: "scene.html" }),
+    ];
+    const manifest = [
+      clip({ id: "scene-host", start: 5, duration: 6, compositionSrc: "scene.html" }),
+    ];
+    // pill-3 selected → parent group-1 → host scene-host. None of group-1/pills
+    // are in the manifest; they're DOM children with parent links.
+    const parentMap = new Map([
+      ["group-1", "scene-host"],
+      ["pill-1", "group-1"],
+      ["pill-2", "group-1"],
+      ["pill-3", "group-1"],
+    ]);
+    const domClipChildren = [
+      { id: "group-1", parentId: "scene-host", hostId: "scene-host", label: "Group 1" },
+      { id: "pill-1", parentId: "group-1", hostId: "scene-host", label: "pill-1" },
+      { id: "pill-2", parentId: "group-1", hostId: "scene-host", label: "pill-2" },
+      { id: "pill-3", parentId: "group-1", hostId: "scene-host", label: "pill-3" },
+    ];
+
+    // Expanding pill-3's siblings: topLevel scene-host, immediate parent group-1.
+    const out = buildExpandedElements(
+      elements,
+      manifest,
+      parentMap,
+      "scene-host",
+      "group-1",
+      domClipChildren,
+    );
+    const pills = out.filter((e) => e.domId?.startsWith("pill-"));
+    expect(pills).toHaveLength(3);
+    // Children span the host's bounds and rebase onto the host's file.
+    expect(pills[0]!.start).toBe(5);
+    expect(pills[0]!.duration).toBe(6);
+    expect(pills[0]!.sourceFile).toBe("scene.html");
+    // The host row is replaced by its children.
+    expect(out.some((e) => e.domId === "scene-host")).toBe(false);
+  });
 });

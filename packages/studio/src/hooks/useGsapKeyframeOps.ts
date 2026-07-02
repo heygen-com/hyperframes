@@ -12,7 +12,11 @@ import {
 } from "../utils/sdkCutover";
 import type { KeyframeCacheEntry } from "../player/store/playerStore";
 import { commitKeyframeAtTimeImpl } from "./gsapKeyframeCommit";
-import { readKeyframeSnapshot, writeKeyframeCache } from "./gsapKeyframeCacheHelpers";
+import {
+  clearKeyframeCacheForElement,
+  readKeyframeSnapshot,
+  writeKeyframeCache,
+} from "./gsapKeyframeCacheHelpers";
 import type {
   CommitMutation,
   SafeGsapCommitMutation,
@@ -201,11 +205,62 @@ export function useGsapKeyframeOps({
     [activeCompPath, commitMutation, trackGsapSaveFailure, sdkSession, sdkDeps],
   );
 
+  const moveKeyframe = useCallback(
+    (
+      selection: DomEditSelection,
+      animationId: string,
+      fromPercentage: number,
+      toPercentage: number,
+    ) => {
+      const mutation = { type: "move-keyframe", animationId, fromPercentage, toPercentage };
+      // No SDK persist helper exists for retime — server path only. The post-commit
+      // updateKeyframeCacheFromParsed re-keys the diamond from the fresh parse, so no
+      // optimistic cache write is needed (mapping the tween-% to clip-% here would
+      // duplicate that math). softReload mirrors remove-keyframe.
+      void commitMutation(selection, mutation, {
+        label: `Move keyframe to ${toPercentage}%`,
+        softReload: true,
+      }).catch((error) => {
+        trackGsapSaveFailure(error, selection, mutation, `Move keyframe to ${toPercentage}%`);
+      });
+    },
+    [commitMutation, trackGsapSaveFailure],
+  );
+
+  const resizeKeyframedTween = useCallback(
+    (
+      selection: DomEditSelection,
+      animationId: string,
+      position: number,
+      duration: number,
+      pctRemap: Array<{ from: number; to: number }>,
+    ) => {
+      const mutation = {
+        type: "resize-keyframed-tween",
+        animationId,
+        position,
+        duration,
+        pctRemap,
+      };
+      // Boundary drag-to-retime: the server re-keys keyframes in place + grows the
+      // tween window, preserving _auto / per-keyframe ease / easeEach / outer ease.
+      // softReload re-keys the diamonds from the fresh parse (mirrors moveKeyframe).
+      void commitMutation(selection, mutation, {
+        label: "Retime keyframe (resize tween)",
+        softReload: true,
+      }).catch((error) => {
+        trackGsapSaveFailure(error, selection, mutation, "Retime keyframe (resize tween)");
+      });
+    },
+    [commitMutation, trackGsapSaveFailure],
+  );
+
   const convertToKeyframes = useCallback(
     async (
       selection: DomEditSelection,
       animationId: string,
       resolvedFromValues?: Record<string, number | string>,
+      duration?: number,
     ) => {
       if (sdkSession && sdkDeps) {
         const targetPath = selection.sourceFile || activeCompPath || "index.html";
@@ -221,7 +276,9 @@ export function useGsapKeyframeOps({
       }
       return commitMutation(
         selection,
-        { type: "convert-to-keyframes", animationId, resolvedFromValues },
+        // `duration` only applies when the target is a static `set` (which has
+        // none) — it spans the converted keyframes across the element's clip.
+        { type: "convert-to-keyframes", animationId, resolvedFromValues, duration },
         { label: "Convert to keyframes" },
       );
     },
@@ -230,8 +287,13 @@ export function useGsapKeyframeOps({
 
   const removeAllKeyframes = useCallback(
     async (selection: DomEditSelection, animationId: string) => {
+      const targetPath = selection.sourceFile || activeCompPath || "index.html";
+      // remove-all-keyframes collapses the tween to a static hold and the commit
+      // path doesn't return parsed animations, so the keyframe cache is never
+      // refreshed — clear it here so the timeline diamonds disappear immediately.
+      const elementId = selection.id ?? selection.selector?.match(/^#([\w-]+)/)?.[1] ?? null;
+      if (elementId) clearKeyframeCacheForElement(targetPath, elementId);
       if (sdkSession && sdkDeps) {
-        const targetPath = selection.sourceFile || activeCompPath || "index.html";
         const handled = await sdkGsapRemoveAllKeyframesPersist(
           targetPath,
           animationId,
@@ -264,6 +326,8 @@ export function useGsapKeyframeOps({
     addKeyframe,
     addKeyframeBatch,
     removeKeyframe,
+    moveKeyframe,
+    resizeKeyframedTween,
     convertToKeyframes,
     removeAllKeyframes,
     commitKeyframeAtTime,

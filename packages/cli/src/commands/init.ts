@@ -10,7 +10,10 @@ export const examples: Example[] = [
   ["Start from an audio file", "hyperframes init my-video --audio track.mp3"],
   ["Scaffold with Tailwind CSS", "hyperframes init my-video --example blank --tailwind"],
   ["Non-interactive mode (for CI or AI agents)", "hyperframes init my-video --non-interactive"],
-  ["Skip AI coding skills installation", "hyperframes init my-video --skip-skills"],
+  [
+    "Opt out of the GitHub skills check (CI/tests only)",
+    "HYPERFRAMES_SKIP_SKILLS=1 hyperframes init my-video --non-interactive",
+  ],
 ];
 import {
   existsSync,
@@ -573,6 +576,52 @@ async function scaffoldProject(
   }
 }
 
+/**
+ * Ensure the AI coding skills are present and current. Checks the installed
+ * skills against the latest published on GitHub and only (re)installs when
+ * something is outdated or missing — so re-running `init` on an up-to-date
+ * machine is a no-op. Best-effort: if the version check can't reach GitHub, it
+ * installs anyway. The install itself (`installAllSkills`) installs the full set
+ * once GLOBALLY (~/.claude/skills + ~/.agents/skills) and mirrors it into every
+ * other installed agent, so it is project-independent — the check is global-first
+ * to match.
+ */
+async function ensureSkillsCurrent(destDir: string): Promise<void> {
+  const { installAllSkills } = await import("./skills.js");
+  const { checkSkills } = await import("../utils/skillsManifest.js");
+
+  console.log();
+  console.log(c.bold("Checking AI coding skills against GitHub..."));
+  let needsInstall = true;
+  try {
+    const result = await checkSkills({ cwd: destDir });
+    needsInstall = result.updateAvailable;
+  } catch {
+    // Couldn't reach GitHub (offline, rate-limited) — install anyway.
+  }
+
+  if (needsInstall) {
+    // installAllSkills installs the full set once globally and mirrors it into
+    // every installed agent's global dir — project-independent, so a freshly
+    // scaffolded project doesn't need any agent folders yet.
+    //
+    // Best-effort: installAllSkills (non-strict here) already swallows its own
+    // failures, but now that --skip-skills no longer escapes this path every
+    // init runs it — including offline ones, where checkSkills throws and we
+    // fall through to "install anyway". Wrap defensively so a skills-install
+    // failure can never break `init` itself; it only warns and proceeds.
+    try {
+      await installAllSkills({ cwd: destDir });
+    } catch (err) {
+      console.log(
+        c.dim(`AI coding skills install skipped: ${err instanceof Error ? err.message : err}`),
+      );
+    }
+  } else {
+    console.log(c.success("AI coding skills are already up to date."));
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Exported command
 // ---------------------------------------------------------------------------
@@ -636,7 +685,8 @@ export default defineCommand({
     },
     "skip-skills": {
       type: "boolean",
-      description: "Skip AI coding skills installation",
+      description:
+        "[temporarily ignored] init always checks AI skills against GitHub while the skills.sh registry catches up; set HYPERFRAMES_SKIP_SKILLS=1 to opt out (CI/tests)",
     },
     tailwind: {
       type: "boolean",
@@ -671,12 +721,31 @@ export default defineCommand({
     const videoFlag = args.video;
     const audioFlag = args.audio;
     const skipTranscribe = args["skip-transcribe"] === true;
-    const skipSkills = args["skip-skills"] === true;
+    // Temporary measure while the skills.sh registry sync lags GitHub main: the
+    // `--skip-skills` FLAG is neutered so an agent (or user) that passes it can
+    // NOT dodge the GitHub skills freshness check. The "don't pass --skip-skills"
+    // guidance lives in SKILL.md, which ships through the same laggy skills.sh
+    // channel and can't be relied on to reach the agent — so the guarantee has to
+    // live in the CLI, the one channel that updates promptly (`npx
+    // hyperframes@latest`). CI and unit tests still opt out via the
+    // HYPERFRAMES_SKIP_SKILLS=1 env var, which the agent/user CLI path never sets.
+    // Revert to `args["skip-skills"] === true` once skills.sh catches up.
+    const skipSkills = process.env.HYPERFRAMES_SKIP_SKILLS === "1";
+    const skipSkillsFlagIgnored = args["skip-skills"] === true && !skipSkills;
     const tailwind = args.tailwind === true;
     const nonInteractive = args["non-interactive"] === true;
     const modelFlag = args.model;
     const languageFlag = args.language;
     const interactive = !nonInteractive && process.stdout.isTTY === true;
+
+    if (skipSkillsFlagIgnored) {
+      console.log(
+        c.dim(
+          "Note: --skip-skills is temporarily ignored — init always checks AI skills " +
+            "against GitHub while the skills.sh registry catches up.",
+        ),
+      );
+    }
 
     let resolutionPreset: CanvasResolution | undefined;
     if (args.resolution !== undefined) {
@@ -802,12 +871,7 @@ export default defineCommand({
       }
 
       if (!skipSkills) {
-        const { installAllSkills } = await import("./skills.js");
-        // --yes keeps it non-interactive. When Claude Code is driving
-        // (CLAUDECODE env var), target its native dir so skills land in
-        // .claude/skills/ instead of only .agents/skills/.
-        const args = process.env["CLAUDECODE"] ? ["--agent", "claude-code", "--yes"] : ["--yes"];
-        await installAllSkills({ cwd: destDir, extraArgs: args });
+        await ensureSkillsCurrent(destDir);
       }
 
       console.log();
@@ -815,7 +879,7 @@ export default defineCommand({
       console.log();
       if (skipSkills) {
         console.log(`  ${c.accent("1.")} Install AI coding skills (one-time):`);
-        console.log(`     ${c.accent("npx skills add heygen-com/hyperframes --yes")}`);
+        console.log(`     ${c.accent("npx hyperframes skills update")}`);
       } else {
         console.log(
           `  ${c.accent("1.")} Restart your AI agent (new session) so it loads the skills.`,
@@ -1023,20 +1087,11 @@ export default defineCommand({
     const files = readdirSync(destDir);
     clack.note(files.map((f) => c.accent(f)).join("\n"), c.success(`Created ${name}/`));
 
-    // Offer to install AI coding skills
+    // Check skills against GitHub and (re)install only if outdated or missing —
+    // init is the one place the full set is pulled. The --skip-skills flag is
+    // temporarily neutered (see above); CI/tests opt out via HYPERFRAMES_SKIP_SKILLS=1.
     if (!skipSkills) {
-      const installSkills = await clack.confirm({
-        message: "Install AI coding skills? (for Claude Code, Cursor, Codex, etc.)",
-        initialValue: true,
-      });
-      if (clack.isCancel(installSkills)) {
-        clack.cancel("Setup cancelled.");
-        process.exit(0);
-      }
-      if (installSkills) {
-        const { installAllSkills } = await import("./skills.js");
-        await installAllSkills({ cwd: destDir });
-      }
+      await ensureSkillsCurrent(destDir);
     }
 
     // Auto-launch studio preview

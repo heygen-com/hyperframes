@@ -92,33 +92,48 @@ export function useMusicBeatAnalysis(): void {
       return;
     }
     let cancelled = false;
-
-    let promise = analysisCache.get(musicSrc);
-    if (!promise) {
-      promise = analyzeMusicFromUrl(musicSrc);
-      cacheAnalysis(musicSrc, promise);
-    }
-
     const beatPath = beatFilePathForSrc(musicSrc);
-    promise
-      .then(async (analysis) => {
+    const io = ioRef.current;
+
+    // Only run expensive audio decode + beat analysis when the user has an
+    // explicit beats file saved. Without one, skip entirely — no surprise
+    // green lines on the timeline after dragging unrelated assets.
+    (async () => {
+      if (!beatPath || !io) return;
+      let hasSavedBeats = false;
+      try {
+        const content = await io.readOptionalProjectFile(beatPath);
+        const parsed = content ? parseBeats(content) : null;
+        hasSavedBeats = !!(parsed && parsed.times.length > 0);
+      } catch {
+        /* no file */
+      }
+      if (cancelled) return;
+      if (!hasSavedBeats) {
+        setBeatAnalysis(null);
+        return;
+      }
+
+      let promise = analysisCache.get(musicSrc);
+      if (!promise) {
+        promise = analyzeMusicFromUrl(musicSrc);
+        cacheAnalysis(musicSrc, promise);
+      }
+      try {
+        const analysis = await promise;
         const detected = { times: analysis.beatTimes, strengths: analysis.beatStrengths };
-        const io = ioRef.current;
-        if (!io) return;
-        const { times, strengths, hasFile } = await resolveBeats(beatPath, detected, io);
+        const { times, strengths } = await resolveBeats(beatPath, detected, io);
         if (cancelled) return;
         setBeatEdits(null);
         resetBeatHistory();
         setBeatAnalysis({ ...analysis, beatTimes: times, beatStrengths: strengths });
-        // Seed a missing file through the SAME debounced writer the edits use, so
-        // the initial write can't race a near-simultaneous edit's persist.
-        if (beatPath && !hasFile && times.length > 0) usePlayerStore.getState().beatPersist?.();
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setBeatAnalysis(null);
-        analysisCache.delete(musicSrc);
-      });
+      } catch {
+        if (!cancelled) {
+          setBeatAnalysis(null);
+          analysisCache.delete(musicSrc);
+        }
+      }
+    })();
 
     return () => {
       cancelled = true;

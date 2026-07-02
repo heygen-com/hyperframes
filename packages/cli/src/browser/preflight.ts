@@ -139,7 +139,17 @@ async function checkChrome(browserPath?: string): Promise<EnvironmentCheckOutcom
     };
   }
 
-  const info = await findBrowser();
+  // A corrupt/partial browser cache (stub files where a version dir is
+  // expected, missing executable, malformed metadata) makes findBrowser throw.
+  // That is the exact condition this check exists to report, so treat any
+  // failure as "Chrome not found" rather than letting it crash the caller
+  // (notably `doctor`, which is documented to exit 0 even when checks fail).
+  let info: Awaited<ReturnType<typeof findBrowser>>;
+  try {
+    info = await findBrowser();
+  } catch {
+    info = undefined;
+  }
   if (info) {
     return {
       name: "Chrome",

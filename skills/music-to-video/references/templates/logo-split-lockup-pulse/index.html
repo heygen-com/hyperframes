@@ -361,10 +361,109 @@
         document.documentElement.style.setProperty("--mark", vars.markColor);
         document.documentElement.style.setProperty("--text", vars.textColor);
 
+        // Insert SVG markup as SANITIZED parsed nodes — never innerHTML, and never
+        // a raw appendChild. DOMParser builds the tree, then cleanSvg() hard-strips
+        // everything that isn't inert drawing: only allow-listed shape elements +
+        // presentation attributes survive, so <script>, <image>/<use>/<foreignObject>,
+        // javascript: hrefs and every on* handler are removed before the nodes ever
+        // enter the live document. A custom mark SVG therefore can't smuggle active
+        // content (CWE-79 DOM-XSS). Non-SVG / malformed input falls back to text.
+        var SVG_OK_TAGS = {
+          svg: 1,
+          g: 1,
+          path: 1,
+          line: 1,
+          polyline: 1,
+          polygon: 1,
+          rect: 1,
+          circle: 1,
+          ellipse: 1,
+          defs: 1,
+          lineargradient: 1,
+          radialgradient: 1,
+          stop: 1,
+          clippath: 1,
+          title: 1,
+          desc: 1,
+          text: 1,
+          tspan: 1,
+        };
+        var SVG_OK_ATTRS = {
+          viewbox: 1,
+          xmlns: 1,
+          width: 1,
+          height: 1,
+          fill: 1,
+          "fill-rule": 1,
+          "fill-opacity": 1,
+          stroke: 1,
+          "stroke-width": 1,
+          "stroke-linecap": 1,
+          "stroke-linejoin": 1,
+          "stroke-dasharray": 1,
+          "stroke-dashoffset": 1,
+          "stroke-opacity": 1,
+          opacity: 1,
+          d: 1,
+          x: 1,
+          y: 1,
+          x1: 1,
+          y1: 1,
+          x2: 1,
+          y2: 1,
+          cx: 1,
+          cy: 1,
+          r: 1,
+          rx: 1,
+          ry: 1,
+          points: 1,
+          transform: 1,
+          offset: 1,
+          "stop-color": 1,
+          "stop-opacity": 1,
+          gradientunits: 1,
+          gradienttransform: 1,
+          "clip-path": 1,
+          "clip-rule": 1,
+          class: 1,
+          id: 1,
+        };
+        function cleanSvg(node) {
+          var attrs = Array.prototype.slice.call(node.attributes || []);
+          for (var a = 0; a < attrs.length; a++) {
+            if (!SVG_OK_ATTRS[attrs[a].name.toLowerCase()]) node.removeAttribute(attrs[a].name);
+          }
+          var kids = Array.prototype.slice.call(node.childNodes);
+          for (var k = 0; k < kids.length; k++) {
+            var c = kids[k];
+            if (c.nodeType === 1) {
+              if (SVG_OK_TAGS[(c.localName || c.nodeName).toLowerCase()]) cleanSvg(c);
+              else node.removeChild(c);
+            } else if (c.nodeType !== 3) {
+              node.removeChild(c);
+            }
+          }
+        }
+        function setSvg(el, markup) {
+          el.textContent = "";
+          var doc = new DOMParser().parseFromString(String(markup), "image/svg+xml");
+          var root = doc.documentElement;
+          if (
+            !root ||
+            root.nodeName.toLowerCase() !== "svg" ||
+            doc.getElementsByTagName("parsererror").length
+          ) {
+            el.textContent = String(markup);
+            return;
+          }
+          cleanSvg(root);
+          el.appendChild(document.importNode(root, true));
+        }
+
         var markLeft = document.getElementById("markLeft");
         var markRight = document.getElementById("markRight");
-        markLeft.innerHTML = (vars.leftMark && vars.leftMark.trim()) || DEFAULT_LEFT;
-        markRight.innerHTML = (vars.rightMark && vars.rightMark.trim()) || DEFAULT_RIGHT;
+        setSvg(markLeft, (vars.leftMark && vars.leftMark.trim()) || DEFAULT_LEFT);
+        setSvg(markRight, (vars.rightMark && vars.rightMark.trim()) || DEFAULT_RIGHT);
 
         var wordsEl = document.getElementById("words");
         var wordList = [vars.word1, vars.word2, vars.word3, vars.word4].filter(function (w) {

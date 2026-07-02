@@ -29,6 +29,8 @@
     // Worker entry points loaded dynamically by their *Pool.ts companions.
     "packages/producer/src/services/pngDecodeBlitWorker.ts",
     "packages/producer/src/services/shaderTransitionWorker.ts",
+    // Off-main-thread /health endpoint, spawned by path from healthWorker.ts.
+    "packages/producer/src/services/healthWorkerThread.ts",
     // Test fixture worker, spawned by path via the pools' workerEntryPath
     // option from the crash-recovery tests; has no import-graph referrer.
     "packages/producer/src/services/__fixtures__/crashOnMessageWorker.mjs",
@@ -140,13 +142,13 @@
         "createFailedCaptureCalibrationEstimate",
       ],
     },
-    // gsapParser.ts is a public-API barrel that re-exports constants, types,
-    // and utilities from gsapConstants, gsapSerialize, and springEase. The
-    // re-exports are intentional public API consumed by callers outside the
+    // gsapParserExports.ts is the public-API barrel that re-exports constants,
+    // types, and utilities from gsapConstants, gsapSerialize, and springEase.
+    // The re-exports are intentional public API consumed by callers outside the
     // changed-file set (e.g. studio, aws-lambda) and therefore appear unused
     // to fallow's static analysis of the PR diff.
     {
-      "file": "packages/core/src/parsers/gsapParser.ts",
+      "file": "packages/parsers/src/gsapParserExports.ts",
       "exports": [
         "PROPERTY_GROUPS",
         "classifyPropertyGroup",
@@ -163,13 +165,19 @@
     // Shared test helpers consumed by gsapParser.test.ts (same file,
     // fallow doesn't trace intra-file test consumption).
     {
-      "file": "packages/core/src/parsers/gsapParser.test-helpers.ts",
+      "file": "packages/parsers/src/gsapParser.test-helpers.ts",
       "exports": [
         "expectKeyframe",
         "expectKeyframesFormat",
         "convertAndReparse",
         "parseSplitAndAssert",
       ],
+    },
+    // hfIds: EXCLUDED_TAGS is consumed by tests (htmlParser.test.ts) and
+    // hfIdPersist.ts but fallow's static analyzer may not trace all consumers.
+    {
+      "file": "packages/parsers/src/hfIds.ts",
+      "exports": ["EXCLUDED_TAGS", "mintHfId"],
     },
     // Shared timeline components extracted for downstream PRs in the
     // razor-blade stack (#1330, #1331). Consumers live on those branches.
@@ -242,6 +250,52 @@
     // require intrusive middleware changes beyond this PR's scope.
     "minLines": 6,
     "ignore": [
+      // gsapParser.ts: recast/babel GSAP writer — intentional duplication between
+      // recast and acorn parallel implementations (pre-existing, moved from core).
+      "packages/parsers/src/gsapParser.ts",
+      // hfIds.ts: 7-line clone with sdk/engine/mutate.ts — pre-existing duplication
+      // from when hfIds lived in packages/core/src/parsers/. Moving the file to the
+      // new package makes fallow see it as a fresh finding; the underlying clone
+      // predates this refactor.
+      "packages/parsers/src/hfIds.ts",
+      // Parser test files: parallel arrange/act/assert test cases — pre-existing
+      // duplication moved from packages/core/src/parsers/.
+      "packages/parsers/src/gsapParser.test.ts",
+      "packages/parsers/src/gsapParser.test-helpers.ts",
+      "packages/parsers/src/gsapWriter.parity.test.ts",
+      "packages/parsers/src/gsapWriterParity.corpus.test.ts",
+      "packages/parsers/src/gsapWriterParity.acorn.test.ts",
+      "packages/parsers/src/htmlParser.roundtrip.test.ts",
+      "packages/parsers/src/htmlParser.test.ts",
+      // @hyperframes/studio-server test files: parallel arrange/act/assert test cases
+      // (pre-existing structure from when studio-api lived in packages/core/src/studio-api/).
+      "packages/studio-server/src/routes/files.test.ts",
+      "packages/studio-server/src/routes/render.test.ts",
+      "packages/studio-server/src/routes/lint.test.ts",
+      "packages/studio-server/src/routes/preview.test.ts",
+      "packages/studio-server/src/routes/projects.test.ts",
+      "packages/studio-server/src/helpers/backupJournal.test.ts",
+      "packages/studio-server/src/helpers/finiteMutation.test.ts",
+      "packages/studio-server/src/helpers/hfIdPersist.test.ts",
+      "packages/studio-server/src/helpers/manualEditsRenderScript.test.ts",
+      "packages/studio-server/src/helpers/mediaValidation.test.ts",
+      "packages/studio-server/src/helpers/previewAdapter.test.ts",
+      "packages/studio-server/src/helpers/safePath.test.ts",
+      "packages/studio-server/src/helpers/sourceMutation.test.ts",
+      "packages/studio-server/src/helpers/studioMotionRenderScript.test.ts",
+      "packages/studio-server/src/helpers/subComposition.test.ts",
+      // @hyperframes/lint rule test files: parallel arrange/act/assert test cases
+      // (pre-existing structure from when lint lived in packages/core/src/lint/).
+      "packages/lint/src/rules/adapters.test.ts",
+      "packages/lint/src/rules/captions.test.ts",
+      "packages/lint/src/rules/composition.test.ts",
+      "packages/lint/src/rules/core.test.ts",
+      "packages/lint/src/rules/fonts.test.ts",
+      "packages/lint/src/rules/gsap.test.ts",
+      "packages/lint/src/rules/media.test.ts",
+      "packages/lint/src/rules/slideshow.test.ts",
+      "packages/lint/src/rules/textures.test.ts",
+      "packages/lint/src/hyperframeLinter.test.ts",
       // slideshowPanelHelpers.ts: setSlideNotes/addFragment/addHotspot share an
       // intentional parallel shape (signature + mapSlidesIn → exists-check →
       // map/append); the per-slide mutation differs, so a shared abstraction
@@ -261,29 +315,65 @@
       // utils/compositionServer.ts; the remaining clone is per-command logging text
       // (different labels/help lines) — extracting it would over-abstract.
       "packages/cli/src/commands/present.ts",
+      // skillsManifest.test.ts: parallel arrange/act/assert cases for locateInstall
+      // (project vs global scope, per-agent host conventions, claude-code priority).
+      // Each case seeds a dir then asserts the resolved location/agent; collapsing
+      // the shared seed/assert shape would obscure what each scope/host verifies.
+      "packages/cli/src/utils/skillsManifest.test.ts",
+      // skills.test.ts: parallel prune cases (removed-in-global vs project, non-slug
+      // rejection, --source/--dir plumbing) share a mock-checkSkills → runSkillsUpdate
+      // → assert-remove-spawn shape; each verifies a distinct prune behavior, so
+      // extracting the shared scaffold would obscure what each case asserts.
+      "packages/cli/src/commands/skills.test.ts",
+      // layout-audit.browser.test.ts: parallel arrange/act/assert cases per audit
+      // rule (overflow / overlap / occlusion) that each install their own mocked
+      // geometry + computed-style before asserting. The clone groups are this
+      // pre-existing per-rule scaffold; adding a clip-path case shifts lines and
+      // re-flags it. Collapsing the per-rule installers would obscure each case.
+      "packages/cli/src/commands/layout-audit.browser.test.ts",
     ],
   },
   "health": {
-    // executeGsapMutation (introduced by Phase 3b / acorn-parser stack, already
-    // merged to origin/main via #1338) has CRITICAL cyclomatic complexity (58)
-    // that pre-dates this PR's scope. Excluding files.ts from health analysis
-    // avoids the inherited-fingerprint line-shift problem that suppression
-    // comments would cause (any inserted line shifts subsequent function line
-    // numbers, breaking fallow's inherited-detection fingerprint).
-    //
     // useGsapTweenCache.ts: pre-existing large React-effect hooks (the populate
     // and runtime-scan effects, the per-element animations memo) whose
     // complexity pre-dates the computed-timeline work. Exempted at file level
-    // for the same reason as files.ts rather than refactored as scope creep.
-    //
-    // gsapParser.ts: the recast/babel GSAP writer is a 2500-line legacy parser
-    // restored as the default server writer by WS-3.F rework (acorn is now
-    // flag-gated behind STUDIO_SDK_CUTOVER_ENABLED). Its complexity pre-dates
-    // this PR and was present on all ancestor branches; the file-level exemption
-    // avoids the line-shift fingerprint problem for inherited findings.
+    // rather than refactored as scope creep.
     "ignore": [
-      "packages/core/src/studio-api/routes/files.ts",
-      "packages/core/src/parsers/gsapParser.ts",
+      // timeline.ts: collectRuntimeTimelinePayload (CRITICAL) pre-dates this PR;
+      // only an import line changed here (slideshow/sceneId → slideshow/index),
+      // but the line-shift fingerprint makes fallow re-flag inherited complexity.
+      "packages/core/src/runtime/timeline.ts",
+      // sceneId.ts: trivial 5-cyclomatic guard, moved verbatim from
+      // packages/core/src/slideshow/ into parsers; flagged only because the move
+      // makes fallow treat it as a fresh finding.
+      "packages/parsers/src/slideshow/sceneId.ts",
+      // assetPaths.ts / rewriteSubCompPaths.ts: pure URL/asset-path helpers moved
+      // verbatim from packages/core/src/compiler/ into parsers. The move makes
+      // fallow score them as fresh (high CRAP = inherited complexity with no
+      // coverage mapping yet); the logic is unchanged.
+      "packages/parsers/src/assetPaths.ts",
+      "packages/parsers/src/rewriteSubCompPaths.ts",
+      // gsapParser.ts: the recast/babel GSAP writer is a 2500-line legacy parser;
+      // moved from packages/core/src/parsers/ — same complexity rationale.
+      "packages/parsers/src/gsapParser.ts",
+      // htmlParser.ts has pre-existing complexity (moved from packages/core).
+      "packages/parsers/src/htmlParser.ts",
+      // studio-server files: pre-existing complexity (moved from packages/core/src/studio-api/).
+      // files.ts: executeGsapMutationRecast/Acorn are CRITICAL; excluded as files.ts
+      // was already in health.ignore at the old path (packages/core/src/studio-api/routes/files.ts).
+      "packages/studio-server/src/routes/files.ts",
+      "packages/studio-server/src/routes/render.ts",
+      "packages/studio-server/src/routes/thumbnail.ts",
+      "packages/studio-server/src/helpers/manualEditsRenderScript.ts",
+      "packages/studio-server/src/helpers/studioMotionRenderScript.ts",
+      "packages/studio-server/src/helpers/subComposition.ts",
+      // lint rule implementations and project linter: pre-existing complexity
+      // (moved from packages/core/src/lint/). File-level exemption avoids the
+      // line-shift fingerprint problem for inherited findings.
+      "packages/lint/src/rules/media.ts",
+      "packages/lint/src/rules/textures.ts",
+      "packages/lint/src/rules/gsap.ts",
+      "packages/lint/src/project.ts",
       // SlideshowPanel.tsx: top-level editor panel that wires several independent
       // sections (slides/inspector/branches/hotspot). Its cyclomatic count comes
       // from that fan-out; splitting it would scatter shared state without
@@ -296,6 +386,50 @@
       // body is linear validation that reads clearly inline.
       "packages/cli/src/commands/play.ts",
       "packages/cli/src/commands/present.ts",
+      // sync-agent-dirs.ts: a build-time codegen that regex-parses upstream
+      // agents.ts. parseAgents/resolveGlobalExpr are branchy by nature (literal
+      // vs base-var args, validation throws) but small and well-tested via the
+      // generated table's shape test; this is dev tooling, not shipped runtime.
+      "packages/cli/scripts/sync-agent-dirs.ts",
+      // Files modified only for import-path updates (one-line changes to switch
+      // from @hyperframes/core/* subpaths to the new packages). Their complexity
+      // is pre-existing; the line-shift fingerprint problem makes fallow treat
+      // the violations as new even though no logic changed.
+      "packages/cli/src/server/studioServer.ts",
+      "packages/core/src/core.types.ts",
+      "packages/core/src/generators/hyperframes.ts",
+      "packages/producer/src/services/htmlCompiler.ts",
+      "packages/studio/src/hooks/gsapRuntimeBridge.ts",
+      "packages/studio/src/hooks/gsapShared.ts",
+      "packages/studio/src/hooks/gsapDragPositionCommit.ts",
+      "packages/studio/src/hooks/gsapKeyframeCacheHelpers.ts",
+      "packages/studio/vite.config.ts",
+      "packages/cli/src/commands/lint.ts",
+      "packages/cli/src/commands/preview.ts",
+      "packages/cli/src/commands/publish.ts",
+      "packages/cli/src/server/studioServer.ts",
+      // set-version.ts: compareSemver helper has pre-existing complexity from
+      // semver string parsing logic; line-shift fingerprint problem from new
+      // packages added to PACKAGES array makes fallow treat it as new.
+      "scripts/set-version.ts",
+      // gsapRuntimeReaders.ts: pre-existing complexity in readAllAnimatedProperties;
+      // line-shift fingerprint from import-path updates triggers the violation.
+      "packages/studio/src/hooks/gsapRuntimeReaders.ts",
+      // In-page audit scripts: single large browser-side IIFE wrappers
+      // (auditLayout/__contrastAudit) with pre-existing CRITICAL helpers
+      // (textOverflowFixHint, selectorFor, the WCAG walk). Adding the small
+      // clip-path probe helpers shifts every function below it, so the line-shift
+      // fingerprint re-flags inherited complexity even though the new helpers are
+      // all at the lowest tier (<=5 cyclomatic).
+      "packages/cli/src/commands/layout-audit.browser.js",
+      "packages/cli/src/commands/contrast-audit.browser.js",
+      // lottie.ts: the flagged `seek` handler (lottie-web/dotLottie dual-API
+      // dispatch, unchanged by the duration-auto-inference work in this PR)
+      // pre-dates this PR's scope. New functions added earlier in the file
+      // (getInferredDurationSeconds + helpers) shifted its line numbers,
+      // breaking fallow's inherited-detection fingerprint. File-level
+      // exemption avoids the line-shift problem for this inherited finding.
+      "packages/core/src/runtime/adapters/lottie.ts",
     ],
   },
 }

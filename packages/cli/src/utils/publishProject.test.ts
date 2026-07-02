@@ -453,6 +453,99 @@ describe("publishProjectArchive", () => {
     }
   });
 
+  it("sends is_public in the staged complete body only when public is requested", async () => {
+    const dir = makeProjectDir();
+    const stagedFetch = () =>
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              data: {
+                upload_url: "https://s3.example.com/upload",
+                upload_key: "ephemeral_store/hyperframes/project_uploads/upload-1/demo.zip",
+                upload_headers: { "content-type": "application/zip" },
+                content_type: "application/zip",
+              },
+            }),
+            { status: 200 },
+          ),
+        )
+        .mockResolvedValueOnce(new Response(null, { status: 200 }))
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              data: {
+                project_id: "hfp_123",
+                title: "demo",
+                file_count: 1,
+                url: "https://hyperframes.dev/p/hfp_123",
+                claim_token: "claim-token",
+              },
+            }),
+            { status: 200 },
+          ),
+        );
+
+    try {
+      writeFileSync(join(dir, "index.html"), "<html></html>", "utf-8");
+
+      const publicFetch = stagedFetch();
+      vi.stubGlobal("fetch", publicFetch);
+      await publishProjectArchive(dir, { public: true });
+      const publicCompleteBody = JSON.parse(publicFetch.mock.calls[2]![1].body);
+      expect(publicCompleteBody.is_public).toBe(true);
+
+      const defaultFetch = stagedFetch();
+      vi.stubGlobal("fetch", defaultFetch);
+      await publishProjectArchive(dir);
+      const defaultCompleteBody = JSON.parse(defaultFetch.mock.calls[2]![1].body);
+      expect(defaultCompleteBody).not.toHaveProperty("is_public");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("sends is_public in the direct multipart form only when public is requested", async () => {
+    const dir = makeProjectDir();
+    const directFetch = () =>
+      vi
+        .fn()
+        .mockResolvedValueOnce(new Response("not found", { status: 404 }))
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              data: {
+                project_id: "hfp_123",
+                title: "demo",
+                file_count: 1,
+                url: "https://hyperframes.dev/p/hfp_123",
+                claim_token: "claim-token",
+              },
+            }),
+            { status: 200 },
+          ),
+        );
+
+    try {
+      writeFileSync(join(dir, "index.html"), "<html></html>", "utf-8");
+
+      const publicFetch = directFetch();
+      vi.stubGlobal("fetch", publicFetch);
+      await publishProjectArchive(dir, { public: true });
+      const publicForm = publicFetch.mock.calls[1]![1].body as FormData;
+      expect(publicForm.get("is_public")).toBe("true");
+
+      const defaultFetch = directFetch();
+      vi.stubGlobal("fetch", defaultFetch);
+      await publishProjectArchive(dir);
+      const defaultForm = defaultFetch.mock.calls[1]![1].body as FormData;
+      expect(defaultForm.get("is_public")).toBeNull();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("does not fall back to multipart when a staged S3 upload fails", async () => {
     const dir = makeProjectDir();
     const fetchMock = vi

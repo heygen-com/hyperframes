@@ -74,6 +74,9 @@ ENV PATH="/root/.bun/bin:$PATH"
 # --frozen-lockfile` treats any member missing from the build context as a
 # lockfile change and fails.
 COPY package.json bun.lock ./
+COPY packages/parsers/package.json packages/parsers/package.json
+COPY packages/lint/package.json packages/lint/package.json
+COPY packages/studio-server/package.json packages/studio-server/package.json
 COPY packages/core/package.json packages/core/package.json
 COPY packages/engine/package.json packages/engine/package.json
 COPY packages/player/package.json packages/player/package.json
@@ -88,9 +91,16 @@ COPY packages/sdk-playground/package.json packages/sdk-playground/package.json
 RUN bun install --frozen-lockfile
 
 # Copy source
+COPY packages/parsers/ packages/parsers/
+COPY packages/lint/ packages/lint/
+COPY packages/studio-server/ packages/studio-server/
 COPY packages/core/ packages/core/
 COPY packages/engine/ packages/engine/
 COPY packages/producer/ packages/producer/
+
+# Build workspace packages so "node" export conditions resolve to built dist
+RUN bun run --filter '@hyperframes/{parsers,lint,studio-server}' build \
+    && bun run --cwd packages/core build
 
 # Build core runtime artifacts (needed by renderer)
 RUN bun run --filter @hyperframes/core build:hyperframes-runtime:modular

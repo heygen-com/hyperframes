@@ -33,53 +33,48 @@ export function useKeyframeKeyboard({
     (e: KeyboardEvent) => {
       if (!enabled) return;
       if (isTextInput(document.activeElement)) return;
+      if (e.metaKey || e.ctrlKey) return; // never shadow browser/system combos
 
       const hasSelectedKeyframes = usePlayerStore.getState().selectedKeyframes.size > 0;
 
+      // Only consume a key we can actually act on. The fall-through matters:
+      // these keys (k/j/arrows) double as JKL playback shortcuts in
+      // usePlaybackKeyboard, so when a handler is absent we must let the event
+      // continue. When we DO act, stopImmediatePropagation prevents the playback
+      // handler from also firing (e.g. K pausing instead of adding a keyframe).
+      // The listener is registered in the capture phase so it runs first.
+      const consume = (run: () => void) => {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        run();
+      };
+
       switch (e.key.toLowerCase()) {
         case "k":
-          if (!e.metaKey && !e.ctrlKey) {
-            e.preventDefault();
-            onAddKeyframe?.();
-          }
+          if (onAddKeyframe) consume(onAddKeyframe);
           break;
         case "delete":
         case "backspace":
-          if (hasSelectedKeyframes) {
-            e.preventDefault();
-            onDeleteKeyframe?.();
-          }
+          if (onDeleteKeyframe && hasSelectedKeyframes) consume(onDeleteKeyframe);
           break;
-        case "j":
-          if (!e.metaKey && !e.ctrlKey) {
-            e.preventDefault();
-            if (e.shiftKey) onNextKeyframe?.();
-            else onPrevKeyframe?.();
-          }
+        case "j": {
+          const nav = e.shiftKey ? onNextKeyframe : onPrevKeyframe;
+          if (nav) consume(nav);
           break;
+        }
         case "h":
-          if (!e.metaKey && !e.ctrlKey && hasSelectedKeyframes) {
-            e.preventDefault();
-            onToggleHold?.();
-          }
+          if (onToggleHold && hasSelectedKeyframes) consume(onToggleHold);
           break;
         case "u":
-          if (!e.metaKey && !e.ctrlKey) {
-            e.preventDefault();
-            onToggleExpand?.();
-          }
+          if (onToggleExpand) consume(onToggleExpand);
           break;
         case "arrowleft":
-          if (hasSelectedKeyframes && !e.metaKey && !e.ctrlKey && !e.altKey) {
-            e.preventDefault();
-            onNudgeKeyframe?.(-1, e.shiftKey);
-          }
+          if (onNudgeKeyframe && hasSelectedKeyframes && !e.altKey)
+            consume(() => onNudgeKeyframe(-1, e.shiftKey));
           break;
         case "arrowright":
-          if (hasSelectedKeyframes && !e.metaKey && !e.ctrlKey && !e.altKey) {
-            e.preventDefault();
-            onNudgeKeyframe?.(1, e.shiftKey);
-          }
+          if (onNudgeKeyframe && hasSelectedKeyframes && !e.altKey)
+            consume(() => onNudgeKeyframe(1, e.shiftKey));
           break;
       }
     },
@@ -97,7 +92,9 @@ export function useKeyframeKeyboard({
 
   useEffect(() => {
     if (!enabled) return;
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
+    // Capture phase: run before usePlaybackKeyboard's (bubble-phase) JKL handler
+    // so an active keyframe shortcut can claim the key.
+    window.addEventListener("keydown", handler, { capture: true });
+    return () => window.removeEventListener("keydown", handler, { capture: true });
   }, [enabled, handler]);
 }

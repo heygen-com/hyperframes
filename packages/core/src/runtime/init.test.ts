@@ -109,6 +109,7 @@ describe("initSandboxRuntimeModular", () => {
     delete window.__player;
     delete window.__playerReady;
     delete window.__renderReady;
+    delete (window as { __HF_EXPORT_RENDER_SEEK_CONFIG?: unknown }).__HF_EXPORT_RENDER_SEEK_CONFIG;
     delete window.__hfTimelinesBuilding;
     delete (window as { THREE?: unknown }).THREE;
     vi.restoreAllMocks();
@@ -144,6 +145,99 @@ describe("initSandboxRuntimeModular", () => {
     player?.renderSeek(9);
 
     expect(child.style.visibility).toBe("visible");
+  });
+
+  it("uses export render fps when quantizing renderSeek", () => {
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "1");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const timeline = createMockTimeline(1);
+    window.__timelines = { main: timeline };
+    (
+      window as {
+        __HF_EXPORT_RENDER_SEEK_CONFIG?: { fps: number; fpsSource: "render-options" };
+      }
+    ).__HF_EXPORT_RENDER_SEEK_CONFIG = {
+      fps: 60,
+      fpsSource: "render-options",
+    };
+
+    initSandboxRuntimeModular();
+
+    window.__player?.renderSeek(1 / 60);
+
+    expect(timeline.time()).toBeCloseTo(1 / 60, 6);
+    expect(infoSpy).toHaveBeenCalledWith(
+      "[hyperframes] render runtime fps",
+      expect.objectContaining({
+        canonicalFps: 60,
+        source: "render-options",
+        rawFpsSource: "render-options",
+        rawFps: 60,
+      }),
+    );
+  });
+
+  it("surfaces unknown export render fps sources without collapsing them to render-options", () => {
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "1");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    window.__timelines = { main: createMockTimeline(1) };
+    (
+      window as {
+        __HF_EXPORT_RENDER_SEEK_CONFIG?: { fps: number; fpsSource: string };
+      }
+    ).__HF_EXPORT_RENDER_SEEK_CONFIG = {
+      fps: 60,
+      fpsSource: "future-source",
+    };
+
+    initSandboxRuntimeModular();
+
+    expect(infoSpy).toHaveBeenCalledWith(
+      "[hyperframes] render runtime fps",
+      expect.objectContaining({
+        canonicalFps: 60,
+        source: "unknown",
+        rawFpsSource: "future-source",
+      }),
+    );
+  });
+
+  it("keeps the default 30fps renderSeek grid when export render fps is absent", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "1");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const timeline = createMockTimeline(1);
+    window.__timelines = { main: timeline };
+
+    initSandboxRuntimeModular();
+
+    // This is the originally broken 60fps render sample under the historical
+    // 30fps runtime default: floor((1 / 60) * 30) / 30 = 0.
+    window.__player?.renderSeek(1 / 60);
+
+    expect(timeline.time()).toBe(0);
   });
 
   it("uses live child timeline duration when a composition host has no authored duration", () => {
@@ -369,6 +463,49 @@ describe("initSandboxRuntimeModular", () => {
     initSandboxRuntimeModular();
 
     expect(window.__player?.getDuration()).toBe(12);
+  });
+
+  // #6: a single timeline registered under a key that does NOT match the root's
+  // data-composition-id must still bind (sole-timeline fallback) instead of
+  // silently rendering the frozen t=0 DOM.
+  it("binds the sole registered timeline when its key does not match the root id", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    // Registered under "wrong-key", not "main".
+    window.__timelines = {
+      "wrong-key": createMockTimeline(7),
+    };
+
+    initSandboxRuntimeModular();
+
+    expect(window.__player?.getDuration()).toBe(7);
+  });
+
+  // #6: when the root id is missing AND two timelines are registered, the
+  // fallback is ambiguous, so nothing is bound (the loud warning fires instead).
+  it("does not bind any timeline when the root id is unmatched and multiple are registered", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    window.__timelines = {
+      "wrong-key-a": createMockTimeline(7),
+      "wrong-key-b": createMockTimeline(9),
+    };
+
+    initSandboxRuntimeModular();
+
+    expect(window.__player?.getDuration()).toBe(0);
   });
 
   it("pauses nested media that is outside the timed-media cache after a seek", () => {
@@ -1065,6 +1202,149 @@ describe("initSandboxRuntimeModular", () => {
 
     expect(window.__playerReady).toBe(true);
     expect(window.__renderReady).toBe(true);
+  });
+
+  it("infers hf.duration from a CSS animation's computed timing without data-duration or a GSAP timeline", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const animated = document.createElement("div");
+    animated.style.animationName = "fadeIn";
+    root.appendChild(animated);
+
+    vi.spyOn(window, "getComputedStyle").mockImplementation((target) => {
+      const real =
+        Object.getPrototypeOf(window).getComputedStyle ?? (() => ({}) as CSSStyleDeclaration);
+      return {
+        ...real,
+        animationName: target === animated ? "fadeIn" : "none",
+      } as CSSStyleDeclaration;
+    });
+    (animated as HTMLElement & { getAnimations?: () => Animation[] }).getAnimations = () => [
+      {
+        currentTime: 0,
+        pause: () => {},
+        play: () => {},
+        effect: { getComputedTiming: () => ({ endTime: 6000 }) },
+      } as unknown as Animation,
+    ];
+
+    window.__timelines = {};
+
+    initSandboxRuntimeModular();
+
+    expect(window.__renderReady).toBe(true);
+    expect(window.__player?.getDuration()).toBe(6);
+  });
+
+  it("still requires data-duration when a CSS animation is infinite (unbounded end time)", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const animated = document.createElement("div");
+    animated.style.animationName = "spin";
+    root.appendChild(animated);
+
+    vi.spyOn(window, "getComputedStyle").mockImplementation((target) => {
+      const real =
+        Object.getPrototypeOf(window).getComputedStyle ?? (() => ({}) as CSSStyleDeclaration);
+      return {
+        ...real,
+        animationName: target === animated ? "spin" : "none",
+      } as CSSStyleDeclaration;
+    });
+    (animated as HTMLElement & { getAnimations?: () => Animation[] }).getAnimations = () => [
+      {
+        currentTime: 0,
+        pause: () => {},
+        play: () => {},
+        effect: { getComputedTiming: () => ({ endTime: Infinity }) },
+      } as unknown as Animation,
+    ];
+
+    window.__timelines = {};
+
+    initSandboxRuntimeModular();
+
+    // No data-duration, no GSAP timeline, and the only animation is
+    // unbounded — duration cannot be inferred, so it stays at 0. This is the
+    // case that must still surface the "add data-duration" lint/runtime error.
+    expect(window.__player?.getDuration()).toBe(0);
+  });
+
+  it("infers hf.duration from a registered Lottie animation without data-duration or a GSAP timeline", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    (window as Window & { __hfLottie?: unknown[] }).__hfLottie = [
+      { play: () => {}, pause: () => {}, totalFrames: 150, frameRate: 30 },
+    ];
+
+    window.__timelines = {};
+
+    initSandboxRuntimeModular();
+
+    expect(window.__renderReady).toBe(true);
+    expect(window.__player?.getDuration()).toBe(5);
+
+    delete (window as Window & { __hfLottie?: unknown[] }).__hfLottie;
+  });
+
+  it("regression: a GSAP timeline's duration is unaffected by adapter duration inference", () => {
+    // A GSAP composition can legitimately have an incidental, short CSS
+    // animation running alongside the timeline (e.g. a decorative shimmer).
+    // The GSAP timeline must remain the source of truth for total duration —
+    // the new adapter-inference floor (resolveAdapterDurationFloorSeconds)
+    // must not shrink or otherwise override it.
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "root");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const shimmer = document.createElement("div");
+    shimmer.style.animationName = "shimmer";
+    root.appendChild(shimmer);
+
+    vi.spyOn(window, "getComputedStyle").mockImplementation((target) => {
+      return {
+        animationName: target === shimmer ? "shimmer" : "none",
+      } as CSSStyleDeclaration;
+    });
+    (shimmer as HTMLElement & { getAnimations?: () => Animation[] }).getAnimations = () => [
+      {
+        currentTime: 0,
+        pause: () => {},
+        play: () => {},
+        // Much shorter than the GSAP timeline below (2s vs 12s) — must not
+        // become the reported duration.
+        effect: { getComputedTiming: () => ({ endTime: 2000 }) },
+      } as unknown as Animation,
+    ];
+
+    window.__timelines = { root: createMockTimeline(12) };
+
+    initSandboxRuntimeModular();
+
+    expect(window.__renderReady).toBe(true);
+    expect(window.__player?.getDuration()).toBe(12);
   });
 
   it("seeks captured timeline to currentTime on initial bind", () => {

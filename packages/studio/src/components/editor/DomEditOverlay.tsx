@@ -2,7 +2,8 @@ import { memo, useEffect, useMemo, useRef, useState, type RefObject } from "reac
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { type DomEditSelection } from "./domEditing";
 import { useMarqueeGestures } from "./marqueeCommit";
-import { resolveDomEditGroupOverlayRect, toOverlayRect } from "./domEditOverlayGeometry";
+import { MarqueeOverlay } from "./MarqueeOverlay";
+import { groupAwareOverlayRect, resolveDomEditGroupOverlayRect } from "./domEditOverlayGeometry";
 import { collectDomEditLayerItems } from "./domEditingLayers";
 import { isElementComputedVisible } from "./domEditingElement";
 import {
@@ -101,6 +102,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   const onMarqueeSelectRef = useRef(onMarqueeSelect);
   onMarqueeSelectRef.current = onMarqueeSelect;
 
+  // fallow-ignore-next-line complexity
   const selectionShapeStyles = (() => {
     const fallback = {
       borderRadius: 8 as string | number,
@@ -226,6 +228,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   // outside the composition bounds so users can find them.
   const offCanvasElementsRef = useRef<Map<string, HTMLElement>>(new Map());
   const [offCanvasRects, setOffCanvasRects] = useState<OffCanvasRect[]>([]);
+  // fallow-ignore-next-line complexity
   useEffect(() => {
     const iframe = iframeRef.current;
     const overlay = overlayRef.current;
@@ -245,7 +248,10 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     const elMap = new Map<string, HTMLElement>();
     for (const item of items) {
       if (!isElementComputedVisible(item.element)) continue;
-      const r = toOverlayRect(overlay, iframe, item.element);
+      // Groups use their members' union (where they actually render), so a group
+      // whose members sit inside the canvas isn't flagged off-canvas by a stale
+      // wrapper box.
+      const r = groupAwareOverlayRect(overlay, iframe, item.element);
       if (!r) continue;
       // Any edge crossing the composition border → gray-zone indicator (the
       // in-canvas portion is clipped away below, so only the sliver shows).
@@ -568,18 +574,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
         activeCompositionPathRef={activeCompositionPathRef}
         onSelectionChangeRef={onSelectionChangeRef}
       />
-      {marquee.marqueeRect && (
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute border border-dashed border-studio-accent bg-studio-accent/10"
-          style={{
-            left: marquee.marqueeRect.left,
-            top: marquee.marqueeRect.top,
-            width: marquee.marqueeRect.width,
-            height: marquee.marqueeRect.height,
-          }}
-        />
-      )}
+      <MarqueeOverlay candidateRects={marquee.candidateRects} marqueeRect={marquee.marqueeRect} />
       <GridOverlay
         visible={gridVisible}
         spacing={gridSpacing}

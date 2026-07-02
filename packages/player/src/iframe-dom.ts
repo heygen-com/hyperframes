@@ -57,18 +57,21 @@ export function createCompositionIframe(): {
 /**
  * Scale the iframe so the composition fits inside the player element while
  * preserving aspect ratio. No-ops when the player has no painted size yet.
+ * Returns whether the transform was actually applied, so callers can tell a
+ * real no-op (still 0×0) apart from a successful rescale.
  */
 export function scaleIframeToFit(
   playerElement: HTMLElement,
   iframe: HTMLIFrameElement,
   compositionWidth: number,
   compositionHeight: number,
-): void {
+): boolean {
   const w = playerElement.offsetWidth;
   const h = playerElement.offsetHeight;
-  if (w === 0 || h === 0) return;
+  if (w === 0 || h === 0) return false;
   const scale = Math.min(w / compositionWidth, h / compositionHeight);
   iframe.style.width = `${compositionWidth}px`;
   iframe.style.height = `${compositionHeight}px`;
   iframe.style.transform = `translate(-50%, -50%) scale(${scale})`;
+  return true;
 }

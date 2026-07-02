@@ -332,7 +332,7 @@ describe("commitStaticGsapPosition — instantPatch (value-only set)", () => {
     expect(yPatch.change.props[xMutation.property]).toBe(xMutation.value);
   });
 
-  it("does NOT attach instantPatch when ADDING a new set (structural — new tween)", async () => {
+  it("ADDS a global gsap.set with a global-set instantPatch (off-timeline, no flash)", async () => {
     const { commits, callbacks } = optionRecordingCallbacks();
 
     await commitStaticGsapPosition(
@@ -340,13 +340,15 @@ describe("commitStaticGsapPosition — instantPatch (value-only set)", () => {
       { x: -50, y: 30 },
       { x: 0, y: 0 },
       "#puck-a",
-      null, // no existing set → `add` a new tween
+      null, // no existing set → `add` a new base gsap.set
       callbacks,
     );
 
     expect(commits).toHaveLength(1);
     expect(commits[0].mutation.type).toBe("add");
-    expect(commits[0].options.instantPatch).toBeUndefined();
+    expect((commits[0].mutation as { global?: boolean }).global).toBe(true);
+    const patch = commits[0].options.instantPatch as { change: { kind: string } } | undefined;
+    expect(patch?.change.kind).toBe("global-set");
   });
 });
 
@@ -372,14 +374,16 @@ describe("commitStaticGsapRotation — instantPatch (value-only set)", () => {
     expect(patch.change.props[m.property]).toBe(m.value);
   });
 
-  it("does NOT attach instantPatch when ADDING a new rotation set (structural)", async () => {
+  it("ADDS a global gsap.set with a global-set instantPatch (off-timeline, no flash)", async () => {
     const { commits, callbacks } = optionRecordingCallbacks();
 
     await commitStaticGsapRotation(selection(), 42, "#puck-a", null, callbacks);
 
     expect(commits).toHaveLength(1);
     expect(commits[0].mutation.type).toBe("add");
-    expect(commits[0].options.instantPatch).toBeUndefined();
+    expect((commits[0].mutation as { global?: boolean }).global).toBe(true);
+    const patch = commits[0].options.instantPatch as { change: { kind: string } } | undefined;
+    expect(patch?.change.kind).toBe("global-set");
   });
 });
 

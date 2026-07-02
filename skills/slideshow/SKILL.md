@@ -15,6 +15,12 @@ A HyperFrames slideshow is a normal HyperFrames composition — scenes, clips, G
 
 **Read `/hyperframes-core` first** for the base composition contract (clips, tracks, `data-*` attributes, determinism rules). This skill covers only what is new: the island schema, slide writing rules, fragments, branching, validation, and the wrapping component.
 
+## Output — a navigable deck, not a linear MP4
+
+A slideshow's output is the **running deck**: serve it with `hyperframes present <project-dir>` (or Studio present mode) — the player's `SlideshowController` reads the island and drives navigation, fragments, branching, and presenter mode. See **Presenting and handoff** below.
+
+**Do not `hyperframes render` a slideshow into a single MP4.** A deck is authored as several top-level scene compositions (one `data-composition-id` per slide) with **no master-root composition** wrapping them, so `render` resolves only the **first** composition and emits a **silently truncated** MP4 (e.g. 6s of a 40-second deck). A linear main-line export (main slides only, branch sequences excluded) is **deferred** — until it ships, the supported outputs are the live `present` deck and per-slide `snapshot` stills. If a user needs a linear MP4 today, surface this limitation rather than pointing `render` at the deck.
+
 ## Intent confirmation
 
 If the user explicitly asks for a slideshow, slide show, or HyperFrames slideshow, proceed with this skill.
@@ -401,13 +407,13 @@ Wrap the composition in `<hyperframes-slideshow>` around `<hyperframes-player>` 
 
 ```html
 <hyperframes-slideshow>
-  <hyperframes-player interactive src="deck.html"></hyperframes-player>
+  <hyperframes-player src="deck.html"></hyperframes-player>
 </hyperframes-slideshow>
 ```
 
 `<hyperframes-slideshow>` provides the navigation chrome (Present, Prev / Next, counter, global mute when `sound` is present, fullscreen), keyboard handling (← / →, Space / Backspace, and P for Present), touch swipe, and hotspot overlays.
 
-Use the `interactive` attribute whenever the source page contains clickable controls, links, native media controls, or custom players. Without it, `<hyperframes-player>` intentionally blocks iframe pointer events; media controls inside the composition cannot be clicked, and clicks on the player host can toggle timeline playback instead of interacting with the slide content.
+The slideshow automatically sets the `interactive` attribute on every inner `<hyperframes-player>` at mount time, so clickable controls, links, native media controls, and custom players inside the composition iframe receive pointer events as expected. (Outside a slideshow wrapper, you must add `interactive` manually on `<hyperframes-player>` — the player defaults to `pointer-events: none` on the iframe so clicks on the player host don't get hijacked into toggling timeline playback.)
 
 **Presenter mode:** use the built-in Present icon button in the slideshow nav capsule, or press P. It calls `window.open('?mode=audience')` for a fullscreen audience window; the originating tab becomes the presenter view (current slide reduced, next-slide preview, notes, elapsed timer). Both windows sync via `BroadcastChannel('hf-slideshow:' + location.pathname)`. Do not add a custom wrapper-level Present button; the shared component owns its placement, icon, styling, and audience-mode hiding.
 

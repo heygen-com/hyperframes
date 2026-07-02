@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        background: transparent;
+        overflow: hidden;
+      }
+      body {
+        width: 1920px;
+        height: 1080px;
+      }
+
+      #root .lt {
+        position: absolute;
+        left: 130px;
+        bottom: 120px;
+        display: flex;
+        align-items: stretch;
+        gap: 26px;
+      }
+      #root .lt-bar {
+        width: 8px;
+        background: #46e5b7;
+        border-radius: 4px;
+        transform-origin: 50% 0%;
+        flex-shrink: 0;
+      }
+      #root .lt-text {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 12px;
+      }
+      #root .lt-name {
+        font-family: "League Gothic", sans-serif;
+        font-size: 92px;
+        font-weight: 400;
+        color: #ffffff;
+        line-height: 0.86;
+        letter-spacing: 0.01em;
+        text-transform: uppercase;
+        white-space: nowrap;
+        text-shadow: 0 2px 22px rgba(0, 0, 0, 0.5);
+      }
+      #root .lt-role {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 26px;
+        font-weight: 400;
+        color: #e7eaf0;
+        line-height: 1.2;
+        letter-spacing: 0.04em;
+        white-space: nowrap;
+        text-shadow: 0 2px 16px rgba(0, 0, 0, 0.5);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="lt-side-rule"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="4.8"
+    >
+      <div id="lt-clip" class="clip" data-start="0" data-duration="4.8" data-track-index="0">
+        <div id="lt" class="lt">
+          <div id="lt-bar" class="lt-bar"></div>
+          <div class="lt-text">
+            <div id="lt-name" class="lt-name">Dr. Maya Chen</div>
+            <div id="lt-role" class="lt-role">Host · Neuroscientist</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+
+      var wrap = document.getElementById("lt");
+      var bar = document.getElementById("lt-bar");
+      var nameEl = document.getElementById("lt-name");
+      var role = document.getElementById("lt-role");
+
+      // Vertical accent bar draws top→down, name and role slide in from the left.
+      gsap.set(bar, { scaleY: 0 });
+      gsap.set(nameEl, { x: -24, opacity: 0 });
+      gsap.set(role, { x: -24, opacity: 0 });
+
+      tl.to(bar, { scaleY: 1, duration: 0.5, ease: "power3.out" }, 0.1);
+      tl.to(nameEl, { x: 0, opacity: 1, duration: 0.5, ease: "power3.out" }, 0.26);
+      tl.to(role, { x: 0, opacity: 1, duration: 0.5, ease: "power3.out" }, 0.38);
+
+      // Exit: bar retracts, text lifts, hard kill.
+      tl.to(role, { opacity: 0, duration: 0.3, ease: "power2.in" }, 4.25);
+      tl.to(nameEl, { y: -14, opacity: 0, duration: 0.32, ease: "power2.in" }, 4.3);
+      tl.to(bar, { scaleY: 0, duration: 0.32, ease: "power2.in" }, 4.32);
+      tl.set(wrap, { visibility: "hidden" }, 4.75);
+
+      window.__timelines["lt-side-rule"] = tl;
+    </script>
+  </body>
+</html>

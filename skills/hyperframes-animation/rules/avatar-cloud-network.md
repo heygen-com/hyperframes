@@ -256,14 +256,14 @@ Placeholder tokens:
 
 - **CENTER_X / CENTER_Y** — px coordinates of the hub center; lines and avatar positions derive from these.
   - Constraints: **must equal the hub's actual rendered center** — when this rule is composed with another scene (e.g. a logo that has been recentered), `CENTER_X / CENTER_Y` must be baked from the same source as the hub's final position
-  - Reference: examples/proof-logo-chain.html uses `(W/2, H × 0.47)` so the cloud sits slightly above the canvas midline
+  - Reference: ../../examples/proof-logo-chain.html uses `(W/2, H × 0.47)` so the cloud sits slightly above the canvas midline
 - **RADIUS_X / RADIUS_Y** — ellipse radii in px (RADIUS_X ≥ RADIUS_Y reads as perspective).
   - Range: `RADIUS_X` ~ 20-30% of viewport width; `RADIUS_Y` ~ 18-25% of viewport height
   - Constraints: `RADIUS_X / RADIUS_Y` ratio between 1.5 and 3.0 reads as natural depth; ratio = 1 (circle) reads as a flat 2D layout
-  - Reference: examples/proof-logo-chain.html uses `W * 0.25` (`480px`) and `H * 0.22` (`237.6px`)
+  - Reference: ../../examples/proof-logo-chain.html uses `W * 0.25` (`480px`) and `H * 0.22` (`237.6px`)
 - **AVATAR_COUNT** — number of avatars distributed around the ring.
   - Range: 8-12; fewer feels sparse, more clutters the ellipse
-  - Reference: examples/proof-logo-chain.html uses `10`
+  - Reference: ../../examples/proof-logo-chain.html uses `10`
 - **AVATAR_SIZE / AVATAR_GLYPH_SIZE** — px diameter of each avatar circle and (optional) inner glyph size.
   - Range: `AVATAR_SIZE` ~ 80-120 px at 1920 wide; small enough that 10+ avatars fit the ring without overlap
 - **HUB_NUM_FONT_SIZE / HUB_LABEL_FONT_SIZE / BRAND_FONT_SIZE** — hub typography.

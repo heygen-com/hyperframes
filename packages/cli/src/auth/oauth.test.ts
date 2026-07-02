@@ -1,3 +1,4 @@
+import { promises as fs } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setupTempAuthEnv } from "./_test-utils.js";
 import { isAuthError } from "./errors.js";
@@ -182,6 +183,38 @@ describe("auth/oauth", () => {
       expect(credentials.oauth?.access_token).toBe("new_at");
     });
 
+    it("preserves an unknown key INSIDE the oauth sub-object across a refresh", async () => {
+      // The refresh path is `persistOAuth(preserveMissing: true)`, i.e.
+      // `{ ...existing.oauth, ...tokens }` — object spread carries the
+      // hidden Symbol-keyed unknown bag from `existing.oauth`, so a key
+      // another CLI wrote inside `oauth` (e.g. an `id_token`) must survive
+      // the no-rotation refresh. Refresh is the most-frequent write path,
+      // so a silent regression here would be the worst case.
+      const path = (await import("./paths.js")).credentialPath();
+      await fs.writeFile(
+        path,
+        JSON.stringify({
+          oauth: {
+            access_token: "old_at",
+            refresh_token: "keep_me_rt",
+            id_token: "future_id_token_value",
+          },
+        }),
+        { mode: 0o600 },
+      );
+      const fetchImpl = (async () =>
+        new Response(JSON.stringify({ access_token: "new_at", expires_in: 3600 }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })) as unknown as typeof fetch;
+      await refreshTokens("keep_me_rt", { fetchImpl });
+
+      const onDisk = JSON.parse(await fs.readFile(path, "utf8"));
+      expect(onDisk.oauth.access_token).toBe("new_at");
+      // The unknown oauth sub-key rode through on the hidden slot.
+      expect(onDisk.oauth.id_token).toBe("future_id_token_value");
+    });
+
     it("throws REFRESH_FAILED on 400/401", async () => {
       const fetchImpl = (async () =>
         new Response("invalid_grant", { status: 400 })) as unknown as typeof fetch;
@@ -295,6 +328,32 @@ describe("auth/oauth", () => {
       expect(credentials.api_key).toBe("hg_keep_me");
       expect(credentials.oauth?.access_token).toBe("new_at");
       expect(credentials.oauth?.refresh_token).toBe("new_rt");
+    });
+
+    it("preserves the user block AND unknown/foreign keys across fresh login", async () => {
+      // The OAuth write path must not drop co-located data the other CLI
+      // (or a prior login) wrote. Seed a user block plus a future key,
+      // then log in fresh — both must survive the OAuth-block overwrite.
+      const path = (await import("./paths.js")).credentialPath();
+      await fs.writeFile(
+        path,
+        JSON.stringify({
+          oauth: { access_token: "old_at" },
+          user: { email: "jane@example.com", username: "jdoe" },
+          future_field: { keep: true },
+        }),
+        { mode: 0o600 },
+      );
+      const fetchImpl = tokenFetch({ access_token: "new_at", expires_in: 3600 });
+      await startAuthorizationCodeFlow({ fetchImpl });
+
+      const { credentials } = await readStore();
+      expect(credentials.oauth?.access_token).toBe("new_at");
+      expect(credentials.user).toEqual({ email: "jane@example.com", username: "jdoe" });
+
+      // The unknown key is on a hidden slot — assert via the raw file.
+      const onDisk = JSON.parse(await fs.readFile(path, "utf8"));
+      expect(onDisk.future_field).toEqual({ keep: true });
     });
   });
 });

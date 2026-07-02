@@ -75,6 +75,7 @@
             "group": "Guides",
             "pages": [
               "guides/pipeline",
+              "guides/skills",
               "guides/authentication",
               "guides/video-components",
               "guides/html-in-canvas",
@@ -160,6 +161,7 @@
               "catalog/blocks/macos-tahoe-liquid-glass",
               "catalog/blocks/vfx-iphone-device",
               "catalog/blocks/vfx-liquid-background",
+              "catalog/blocks/vfx-liquid-glass",
               "catalog/blocks/vfx-magnetic",
               "catalog/blocks/vfx-portal",
               "catalog/blocks/vfx-shatter",
@@ -176,6 +178,23 @@
               "catalog/blocks/tiktok-follow",
               "catalog/blocks/x-post",
               "catalog/blocks/yt-lower-third"
+            ]
+          },
+          {
+            "group": "Lower Thirds",
+            "pages": [
+              "catalog/blocks/lower-third-bild",
+              "catalog/blocks/lt-accent-underline",
+              "catalog/blocks/lt-bold-block",
+              "catalog/blocks/lt-clean-bar",
+              "catalog/blocks/lt-color-block",
+              "catalog/blocks/lt-dark-card",
+              "catalog/blocks/lt-kicker-name",
+              "catalog/blocks/lt-mask-reveal",
+              "catalog/blocks/lt-side-rule",
+              "catalog/blocks/lt-soft-pill",
+              "catalog/blocks/lt-stack-bars",
+              "catalog/blocks/news-ticker"
             ]
           },
           {
@@ -262,6 +281,7 @@
             "group": "Blocks",
             "pages": [
               "catalog/blocks/flowchart",
+              "catalog/blocks/flowchart-vertical",
               "catalog/blocks/logo-outro"
             ]
           },
@@ -303,6 +323,9 @@
             "group": "Packages",
             "pages": [
               "packages/core",
+              "packages/parsers",
+              "packages/lint",
+              "packages/studio-server",
               "packages/sdk",
               "packages/engine",
               "packages/player",
@@ -312,6 +335,41 @@
               "packages/gcp-cloud-run",
               "packages/studio",
               "packages/cli"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "SDK",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "sdk/overview",
+              "sdk/quickstart"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "sdk/guides/querying-and-editing",
+              "sdk/guides/timing-and-animation",
+              "sdk/guides/undo-redo-and-patches",
+              "sdk/guides/persistence",
+              "sdk/guides/embedded-override-mode",
+              "sdk/guides/canvas-integration",
+              "sdk/guides/editing-affordances"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "sdk/reference/open-composition",
+              "sdk/reference/composition",
+              "sdk/reference/edit-operations",
+              "sdk/reference/types",
+              "sdk/reference/adapters",
+              "sdk/reference/utilities"
             ]
           }
         ]

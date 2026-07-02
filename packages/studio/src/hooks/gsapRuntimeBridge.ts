@@ -18,111 +18,26 @@ import {
   commitStaticGsapPosition,
   commitStaticGsapRotation,
   commitStaticGsapSize,
+  commitKeyframedSizeFromResize,
   commitWholePathOffset,
   computeCurrentPercentage,
-  findPositionSetAnimation,
+  findExistingPositionWrite,
   findRotationSetAnimation,
   findSizeSetAnimation,
   materializeIfDynamic,
 } from "./gsapDragCommit";
 import { resolveTweenStart, resolveTweenDuration } from "../utils/globalTimeCompiler";
 import type { GsapDragCommitCallbacks } from "./gsapDragCommit";
-import { getIframeGsap, queryIframeElement, selectorFromSelection } from "./gsapShared";
+import { selectorFromSelection } from "./gsapShared";
+import {
+  findGsapPositionAnimation,
+  pickClosestToPlayhead,
+  readGsapPositionFromIframe,
+} from "./gsapPositionDetection";
 import { hasNonHoldTweenForElement } from "./gsapRuntimeKeyframes";
 import { roundTo3 } from "../utils/rounding";
 
-// ── Runtime reads ──────────────────────────────────────────────────────────
-
-// fallow-ignore-next-line complexity
-function readGsapPositionFromIframe(
-  iframe: HTMLIFrameElement | null,
-  elementSelector: string,
-): { x: number; y: number } | null {
-  const gsap = getIframeGsap(iframe);
-  if (!gsap) return null;
-
-  const element = queryIframeElement(iframe, elementSelector);
-  if (!element) return null;
-
-  const x = Number(gsap.getProperty(element, "x")) || 0;
-  const y = Number(gsap.getProperty(element, "y")) || 0;
-  return { x, y };
-}
-
-// ── Animation matching ─────────────────────────────────────────────────────
-
-// fallow-ignore-next-line complexity
-function animHasPosition(anim: GsapAnimation): boolean {
-  if (anim.keyframes?.keyframes.some((kf) => "x" in kf.properties || "y" in kf.properties))
-    return true;
-  if (anim.method === "fromTo") {
-    const from = anim.fromProperties;
-    return (
-      "x" in anim.properties || "y" in anim.properties || !!(from && ("x" in from || "y" in from))
-    );
-  }
-  return "x" in anim.properties || "y" in anim.properties;
-}
-
-function findGsapPositionAnimation(
-  animations: GsapAnimation[],
-  selector?: string,
-): GsapAnimation | null {
-  if (animations.length === 0) return null;
-  const currentTime = usePlayerStore.getState().currentTime;
-
-  const scored = animations
-    .filter((a) => animHasPosition(a) || a.keyframes || animations.length === 1)
-    .map((a) => {
-      let score = 0;
-      if (animHasPosition(a)) score += 10;
-      if (a.keyframes) score += 5;
-      if (selector && a.targetSelector === selector) score += 8;
-      else if (a.targetSelector.includes(",")) score -= 5;
-      const pos = a.resolvedStart ?? (typeof a.position === "number" ? a.position : 0);
-      const dur = a.duration ?? 0;
-      if (currentTime >= pos - 0.05 && currentTime <= pos + dur + 0.05) score += 50;
-      else
-        score -= Math.round(
-          Math.min(Math.abs(currentTime - pos), Math.abs(currentTime - pos - dur)) * 5,
-        );
-      return { anim: a, score };
-    });
-  scored.sort((a, b) => b.score - a.score);
-  return scored[0]?.anim ?? animations[0];
-}
-
-// ── Selector resolution ────────────────────────────────────────────────────
-
 // ── Property-group tween resolution ───────────────────────────────────────
-
-/**
- * From a set of candidate tweens, pick the one whose time range is closest to
- * the current playhead. A tween that *contains* the playhead wins outright;
- * otherwise the nearest endpoint wins. This ensures a drag at t=6s edits (or
- * extends) the 4s tween, not the 1.5s one. Tie-break: most keyframes (so a
- * gesture-recorded tween beats a stub when both are equidistant).
- */
-function pickClosestToPlayhead(anims: GsapAnimation[]): GsapAnimation | null {
-  if (anims.length <= 1) return anims[0] ?? null;
-  const ct = usePlayerStore.getState().currentTime;
-  return anims.reduce((best, a) => {
-    const s = resolveTweenStart(a) ?? 0;
-    const e = s + resolveTweenDuration(a);
-    const dist = ct >= s && ct <= e ? 0 : Math.min(Math.abs(ct - s), Math.abs(ct - e));
-    const bestS = resolveTweenStart(best) ?? 0;
-    const bestE = bestS + resolveTweenDuration(best);
-    const bestDist =
-      ct >= bestS && ct <= bestE ? 0 : Math.min(Math.abs(ct - bestS), Math.abs(ct - bestE));
-    if (dist < bestDist) return a;
-    if (
-      dist === bestDist &&
-      (a.keyframes?.keyframes.length ?? 0) > (best.keyframes?.keyframes.length ?? 0)
-    )
-      return a;
-    return best;
-  });
-}
 
 /**
  * Find the tween for a given property group, splitting a legacy mixed tween
@@ -211,18 +126,48 @@ export async function tryGsapDragIntercept(
     return false;
   }
 
+  // Self-heal: enforce a single position write BEFORE committing. A corrupted
+  // file can carry 2+ conflicting position writes for one selector (e.g. a
+  // degenerate `tl.to(...,{duration:0,x,y})` AND a `gsap.set(...,{x,y})`) — the
+  // later one silently overrides the earlier, so the element "can't move". Keep
+  // the live keyframed/real tween if present (else any), strip the rest, so the
+  // commit below updates ONE write instead of fighting duplicates.
+  let workingAnimations = animations;
+  const isPosWrite = (a: GsapAnimation) =>
+    a.targetSelector === selector && a.propertyGroup === "position";
+  if (animations.filter(isPosWrite).length > 1 && fetchFallbackAnimations) {
+    const fresh = await fetchFallbackAnimations();
+    const dupes = fresh.filter(isPosWrite);
+    if (dupes.length > 1) {
+      const keeper =
+        dupes.find((a) => a.keyframes) ?? dupes.find((a) => (a.duration ?? 0) > 0) ?? dupes[0]!;
+      await commitMutation(
+        selection,
+        {
+          type: "consolidate-position-writes",
+          targetSelector: selector,
+          keepAnimationId: keeper.id,
+        },
+        { label: "Consolidate position writes", skipReload: true },
+      );
+      workingAnimations = await fetchFallbackAnimations();
+    } else {
+      workingAnimations = fresh;
+    }
+  }
+
   const resolved = await resolveGroupTween(
     "position",
-    animations,
+    workingAnimations,
     selection,
     commitMutation,
     fetchFallbackAnimations,
   );
 
   let posAnim = resolved?.anim ?? null;
-  let resolvedAnimations = resolved?.animations ?? animations;
+  let resolvedAnimations = resolved?.animations ?? workingAnimations;
   if (!posAnim) {
-    posAnim = findGsapPositionAnimation(animations, selector);
+    posAnim = findGsapPositionAnimation(workingAnimations, selector);
     if (!posAnim && fetchFallbackAnimations) {
       const fresh = await fetchFallbackAnimations();
       resolvedAnimations = fresh;
@@ -240,12 +185,19 @@ export async function tryGsapDragIntercept(
   // place (idempotent), else add a new one. This also covers the stale-cache
   // phantom — committing a set is correct because the element genuinely has no live motion.
   const hasNonHold = hasNonHoldTweenForElement(iframe, selector);
-
-  if (!hasNonHold) {
+  // A KEYFRAMED position tween — even one that's currently a flat constant ("hold",
+  // e.g. 0% and 100% identical) — is still an animation the user is building, so a
+  // drag must add/update a keyframe, NOT fall back to a static `set`. Without this,
+  // dragging an element whose position tween is constant writes a `gsap.set` that
+  // fights the tween (the "drag didn't create a keyframe / didn't persist" bug). The
+  // static path is only for elements with NO keyframed position tween (truly static,
+  // or just a leftover position-hold `set`).
+  const hasKeyframedPosTween = !!posAnim?.keyframes;
+  if (!hasNonHold && !hasKeyframedPosTween) {
     const existingSet =
       posAnim && posAnim.method === "set" && posAnim.targetSelector === selector
         ? posAnim
-        : findPositionSetAnimation(resolvedAnimations, selector);
+        : findExistingPositionWrite(resolvedAnimations, selector);
     await commitStaticGsapPosition(selection, offset, gsapPos, selector, existingSet, {
       commitMutation,
       fetchAnimations: fetchFallbackAnimations,
@@ -329,6 +281,27 @@ export async function tryGsapResizeIntercept(
     const sel = selectorFromSelection(selection);
     if (!sel) return false;
     const sizeSet = anim?.method === "set" ? anim : findSizeSetAnimation(animations, sel);
+
+    // If the element is animated (has a real tween, not just a static size
+    // hold), keyframe the size at the playhead so other keyframes keep theirs —
+    // instead of a global set that resizes every frame.
+    if (resizeGroup === "size") {
+      const animatedTween = pickClosestToPlayhead(
+        animations.filter((a) => a.method !== "set" && resolveTweenDuration(a) > 0),
+      );
+      if (animatedTween) {
+        const handled = await commitKeyframedSizeFromResize(
+          selection,
+          size,
+          sel,
+          sizeSet,
+          animatedTween,
+          { commitMutation, fetchAnimations: fetchFallbackAnimations },
+        );
+        if (handled) return true;
+      }
+    }
+
     await commitStaticGsapSize(selection, size, sel, sizeSet, {
       commitMutation,
       fetchAnimations: fetchFallbackAnimations,

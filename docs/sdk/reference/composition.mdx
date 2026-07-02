@@ -1,0 +1,639 @@
+---
+title: "Composition"
+description: "The main editing surface returned by openComposition — query, mutate, animate, and serialize a composition."
+---
+
+`Composition` is the object returned by [`openComposition`](/sdk/reference/open-composition). Every SDK edit goes through this interface. Typed methods are convenience wrappers over `dispatch()`; all validation runs in `dispatch()` regardless of which entry point you use.
+
+```typescript
+import { openComposition } from "@hyperframes/sdk";
+import type { Composition } from "@hyperframes/sdk";
+
+const comp: Composition = await openComposition(html);
+```
+
+For a practical walkthrough see [Querying and editing](/sdk/guides/querying-and-editing).
+
+---
+
+## Typed edit methods
+
+Typed methods are the recommended way to apply common edits. Each one calls `dispatch()` internally, so all patch events, history, and persistence behavior is identical.
+
+### `setStyle`
+
+```typescript
+setStyle(id: HfId, styles: Record<string, string | null>): void
+```
+
+Apply inline CSS styles to one element. Use camelCase property names (matching `CSSStyleDeclaration`). Pass `null` as a value to remove that property.
+
+```typescript
+comp.setStyle("hf-title", { color: "#FFD60A", fontSize: "96px" });
+comp.setStyle("hf-card", { borderRadius: null }); // removes border-radius
+```
+
+### `setText`
+
+```typescript
+setText(id: HfId, value: string): void
+```
+
+Replace the display text of an element. Targets the element's direct text content, not all descendant text.
+
+```typescript
+comp.setText("hf-headline", "Product launch — June 2026");
+```
+
+### `setAttribute`
+
+```typescript
+setAttribute(id: HfId, name: string, value: string | null): void
+```
+
+Set or remove an HTML attribute. Pass `null` to remove the attribute entirely.
+
+```typescript
+comp.setAttribute("hf-logo", "src", "/assets/logo-v2.png");
+comp.setAttribute("hf-video", "autoplay", null); // removes autoplay
+```
+
+### `setTiming`
+
+```typescript
+setTiming(id: HfId, timing: { start?: number; duration?: number; trackIndex?: number }): void
+```
+
+Update the `data-start`, `data-duration`, and/or `data-track` attributes of one element. All fields are optional; omitted fields are left unchanged.
+
+```typescript
+comp.setTiming("hf-title", { start: 0.5, duration: 2.5 });
+comp.setTiming("hf-cta", { trackIndex: 1 });
+```
+
+### `removeElement`
+
+```typescript
+removeElement(id: HfId): void
+```
+
+Remove an element and all its descendants from the composition. The inverse is an `addElement` of the removed subtree, so `undo()` restores it exactly.
+
+```typescript
+comp.removeElement("hf-old-badge");
+```
+
+### `addElement`
+
+```typescript
+addElement(parent: HfId | null, index: number, html: string): HfId
+```
+
+Insert an HTML fragment as a child of `parent` at zero-based sibling `index`. Pass `null` for `parent` to insert at the document body root. The fragment must be single-root and must not contain `<script>` tags. Returns the minted `hf-id` of the inserted root element.
+
+```typescript
+const newId = comp.addElement("hf-scene", 0, '<div class="clip">New clip</div>');
+comp.setText(newId, "Inserted clip");
+```
+
+### `setVariableValue`
+
+```typescript
+setVariableValue(id: string, value: string | number | boolean | FontValue | ImageValue): void
+```
+
+Update a composition variable. Font variables require a `FontValue` object `{ name, source }`; image variables require an `ImageValue` object `{ url, alt?, fit? }`. Scalar variables accept `string | number | boolean`.
+
+```typescript
+comp.setVariableValue("brandColor", "#6C5CE7");
+comp.setVariableValue("brandFont", { name: "Inter", source: "https://fonts.googleapis.com/css2?family=Inter" });
+comp.setVariableValue("heroImage", { url: "/assets/hero.jpg", fit: "cover" });
+```
+
+### `getElementTimings`
+
+```typescript
+getElementTimings(): Record<HfId, ElementTimingSnapshot>
+```
+
+Return a map of enter/exit times and active GSAP labels for every timed element. The SDK derives `enterAt`/`exitAt` using `data-duration` when present, falling back to `data-end − data-start`. GSAP labels are parsed fresh from the script each call. Elements with no timing attributes are excluded.
+
+```typescript
+const timings = comp.getElementTimings();
+for (const [id, t] of Object.entries(timings)) {
+  console.log(id, t.enterAt, t.exitAt, t.labels);
+}
+```
+
+### `setElementTiming`
+
+```typescript
+setElementTiming(map: Record<HfId, { start?: number; duration?: number; trackIndex?: number }>): void
+```
+
+Apply a sparse timing map in one batch. All entries are dispatched inside a single `batch()` call so the history sees one undo step. Entries for unknown IDs are silently skipped.
+
+```typescript
+comp.setElementTiming({
+  "hf-title":   { start: 0,   duration: 2   },
+  "hf-caption": { start: 1.5, duration: 1.5 },
+  "hf-cta":     { start: 3,   duration: 2   },
+});
+```
+
+### `setHold`
+
+```typescript
+setHold(id: HfId, hold: ElasticHold): void
+```
+
+Set an elastic hold window — a `{ start, end, fill }` range that either freezes or loops the element during a pause in the timeline.
+
+```typescript
+comp.setHold("hf-hero", { start: 2, end: 5, fill: "freeze" });
+```
+
+### `addGsapTween`
+
+```typescript
+addGsapTween(target: HfId, tween: GsapTweenSpec): string
+```
+
+Add a GSAP tween to the composition's timeline targeting the given element. Returns the newly assigned `animationId`.
+
+```typescript
+const animId = comp.addGsapTween("hf-title", {
+  method: "from",
+  position: 0,
+  duration: 0.6,
+  ease: "power3.out",
+  fromProperties: { opacity: 0, y: 40 },
+});
+```
+
+### `setGsapTween`
+
+```typescript
+setGsapTween(animationId: string, properties: Partial<GsapTweenSpec>): void
+```
+
+Update properties on an existing tween. Only the fields you supply are changed; the rest remain.
+
+```typescript
+comp.setGsapTween(animId, { ease: "back.out(1.7)", duration: 0.8 });
+```
+
+### `removeGsapTween`
+
+```typescript
+removeGsapTween(animationId: string): void
+```
+
+Remove a tween by animation ID.
+
+```typescript
+comp.removeGsapTween(animId);
+```
+
+### `addWithKeyframes`
+
+```typescript
+addWithKeyframes(
+  targetSelector: string,
+  position: number,
+  duration: number,
+  keyframes: KeyframeSpec[],
+  ease?: string,
+): string
+```
+
+Add a new keyframed tween for `targetSelector` at the given timeline position and duration. Returns the newly minted `animationId`. Position is a number in seconds (not a label-relative string).
+
+```typescript
+const animId = comp.addWithKeyframes(
+  "#hf-logo",
+  0.5,
+  1.2,
+  [
+    { percentage: 0,   properties: { opacity: 0, scale: 0.8 } },
+    { percentage: 100, properties: { opacity: 1, scale: 1   } },
+  ],
+  "power2.out",
+);
+```
+
+### `replaceWithKeyframes`
+
+```typescript
+replaceWithKeyframes(
+  animationId: string,
+  targetSelector: string,
+  position: number,
+  duration: number,
+  keyframes: KeyframeSpec[],
+  ease?: string,
+): string
+```
+
+Atomically remove an existing tween and add a replacement keyframed tween. Returns the replacement's `animationId`. Because position-derived IDs renumber after the removal, the returned ID may differ from the input `animationId` — treat the return value as the new canonical ID.
+
+```typescript
+const newId = comp.replaceWithKeyframes(
+  oldAnimId,
+  "#hf-card",
+  1.0,
+  0.8,
+  [
+    { percentage: 0,   properties: { x: -100 } },
+    { percentage: 100, properties: { x: 0     } },
+  ],
+);
+```
+
+### `undo` / `redo`
+
+```typescript
+undo(): void
+redo(): void
+```
+
+Step backward or forward through the undo history. No-ops when history is disabled (`history: false` in options) or in embedded mode.
+
+```typescript
+comp.setText("hf-title", "Draft");
+comp.undo(); // reverts to original text
+comp.redo(); // re-applies "Draft"
+```
+
+### `canUndo` / `canRedo`
+
+```typescript
+canUndo(): boolean
+canRedo(): boolean
+```
+
+Return `true` when a step in that direction is available. Use to drive the enabled state of undo/redo UI controls.
+
+```typescript
+undoButton.disabled = !comp.canUndo();
+redoButton.disabled = !comp.canRedo();
+```
+
+---
+
+## Query
+
+### `getElements`
+
+```typescript
+getElements(): ElementSnapshot[]
+```
+
+Return a flat array of all elements in the composition, including elements nested inside sub-compositions. Each `ElementSnapshot` carries the element's `id`, `scopedId`, `tag`, `inlineStyles`, `classNames`, `attributes`, `text`, timing fields, and `animationIds`. The array is a fresh copy; mutations to the returned objects have no effect.
+
+```typescript
+const elements = comp.getElements();
+const images = elements.filter((el) => el.tag === "img");
+```
+
+<Note>
+  For elements inside inlined sub-compositions, use `scopedId` (e.g. `"hf-host/hf-leaf"`) as the dispatch target, not `id`. Top-level elements have `scopedId === id`.
+</Note>
+
+### `getElement`
+
+```typescript
+getElement(id: HfId): ElementSnapshot | null
+```
+
+Return the snapshot for one element by ID. Accepts both bare IDs (top-level elements) and scoped IDs (sub-composition elements). Returns `null` if no element matches.
+
+```typescript
+const el = comp.getElement("hf-title");
+if (el) {
+  console.log(el.tag, el.inlineStyles);
+}
+```
+
+### `find`
+
+```typescript
+find(query: FindQuery): string[]
+```
+
+Search elements by structured query. Returns an array of `scopedId` strings for matching elements. All fields in `FindQuery` are optional and combined with AND logic.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `tag` | `string` | Exact HTML tag name, lowercase (`"div"`, `"img"`). |
+| `text` | `string` | Substring match against the element's `text` field. |
+| `name` | `string` | Exact match against `data-name` attribute. |
+| `track` | `number` | Exact track index (`data-track`). |
+| `composition` | `string` | Filter to elements inside a specific sub-composition host by its `hf-id`. |
+
+```typescript
+const headlineIds = comp.find({ name: "headline" });
+const allImages   = comp.find({ tag: "img" });
+const track1Ids   = comp.find({ track: 1 });
+```
+
+---
+
+## Selection
+
+### `selection`
+
+```typescript
+selection(): SelectionProxy
+```
+
+Return a `SelectionProxy` that resolves `getSelection()` at call time and dispatches operations to all selected elements. The proxy captures the ID list when you call `selection()` — subsequent selection changes do not affect an already-captured proxy.
+
+```typescript
+const sel = comp.selection();
+sel.setStyle({ opacity: "0.5" });
+sel.removeElement(); // removes all currently selected elements
+```
+
+### `element`
+
+```typescript
+element(id: HfId): ElementHandle
+```
+
+Return a curried `ElementHandle` for a single element. The handle stores only the ID string, so there is no stale-reference hazard if the DOM changes between calls.
+
+```typescript
+const title = comp.element("hf-title");
+title.setText("Hello");
+title.setStyle({ fontWeight: "700" });
+```
+
+### `getSelection`
+
+```typescript
+getSelection(): string[]
+```
+
+Return a copy of the current selection as an array of `hf-id` strings. Returns `[]` when nothing is selected.
+
+```typescript
+const ids = comp.getSelection();
+console.log(`${ids.length} elements selected`);
+```
+
+### `setSelection`
+
+```typescript
+setSelection(ids: string[]): void
+```
+
+Replace the current selection. Fires `selectionchange`. Pass `[]` to clear the selection. Duplicate IDs are deduplicated automatically.
+
+```typescript
+comp.setSelection(["hf-title", "hf-subtitle"]);
+comp.setSelection([]); // clear
+```
+
+---
+
+## Advanced / agent
+
+### `dispatch`
+
+```typescript
+dispatch(op: EditOp, opts?: { origin?: unknown }): void
+```
+
+Apply a data-shaped edit operation. All typed methods call this internally. Use `dispatch` when you need to apply op types that do not have a typed wrapper, when you are building automation that constructs ops programmatically, or when you need to set a custom `origin`.
+
+```typescript
+comp.dispatch({ type: "setStyle", target: "hf-card", styles: { borderRadius: "24px" } });
+comp.dispatch({ type: "reorderElements", entries: [{ target: "hf-bg", zIndex: 0 }] });
+comp.dispatch({ type: "setCompositionMetadata", width: 1920, height: 1080, duration: 30 });
+```
+
+For the full op catalog see [Edit operations](/sdk/reference/edit-operations).
+
+You can also target multiple elements with a single `dispatch` by passing an array to `target`:
+
+```typescript
+comp.dispatch({ type: "setText", target: ["hf-title", "hf-subtitle"], value: "Coming soon" });
+```
+
+### `batch`
+
+```typescript
+batch(fn: () => void, opts?: { origin?: unknown }): void
+```
+
+Coalesce multiple dispatches into one undo entry and one `patch` event. If the callback throws, all DOM mutations that ran inside the batch are rolled back atomically and the model is restored to its state before `batch()` was called.
+
+```typescript
+comp.batch(() => {
+  comp.setText("hf-title", "Version 2");
+  comp.setStyle("hf-title", { color: "#22C55E" });
+  comp.setTiming("hf-title", { start: 1, duration: 3 });
+});
+```
+
+### `can`
+
+```typescript
+can(op: EditOp): CanResult
+```
+
+Dry-run validation. Returns `{ ok: true }` when `dispatch(op)` would succeed, or `{ ok: false, code, message, hint? }` when it would fail or be a no-op.
+
+Use this as a feature-detection gate before rendering controls that depend on GSAP timeline availability, or before showing UI that applies optional edits.
+
+```typescript
+const result = comp.can({
+  type: "setGsapTween",
+  animationId: "anim-1",
+  properties: { ease: "power3.out" },
+});
+
+if (result.ok) {
+  comp.setGsapTween("anim-1", { ease: "power3.out" });
+} else {
+  console.warn(result.code, result.message);
+}
+```
+
+Stable error codes: `E_TARGET_NOT_FOUND`, `E_NO_ROOT`, `E_NO_GSAP_TIMELINE`, `E_NO_GSAP_SCRIPT`.
+
+For the full op catalog see [Edit operations](/sdk/reference/edit-operations).
+
+---
+
+## Events
+
+All `on()` overloads return an unsubscribe function. Call it to remove the listener.
+
+```typescript
+on(event: "change",         handler: () => void): () => void
+on(event: "selectionchange", handler: (ids: string[]) => void): () => void
+on(event: "patch",           handler: (event: PatchEvent) => void): () => void
+on(event: "persist:error",   handler: (event: PersistErrorEvent) => void): () => void
+```
+
+### `change`
+
+Fires after every committed mutation (whether typed method, `dispatch`, or `batch`). Use this to refresh a canvas or other derived view.
+
+```typescript
+const off = comp.on("change", () => {
+  canvas.render(comp.getElements());
+});
+
+off(); // unsubscribe
+```
+
+### `selectionchange`
+
+Fires when the selection changes, with the new ID array as the argument.
+
+```typescript
+comp.on("selectionchange", (ids) => {
+  propertiesPanel.show(ids);
+});
+```
+
+### `patch`
+
+Fires after every committed change with a `PatchEvent` containing RFC 6902 forward and inverse patches, the `origin`, and semantic `opTypes`. Use this to mirror edits into a host history stack, collaboration layer, or audit log.
+
+```typescript
+comp.on("patch", ({ patches, inversePatches, origin, opTypes }) => {
+  if (origin !== ORIGIN_APPLY_PATCHES) {
+    hostHistory.push({ patches, inversePatches });
+  }
+});
+```
+
+<Warning>
+  Always guard against `ORIGIN_APPLY_PATCHES` in `patch` listeners. Failing to skip that origin causes an infinite loop when your host replays inverse patches back into the SDK via `applyPatches()`.
+</Warning>
+
+### `persist:error`
+
+Fires when the persist adapter fails to write. The session continues; edits accumulate in memory and the queue retries on the next mutation.
+
+```typescript
+comp.on("persist:error", ({ error }) => {
+  toast.error(`Autosave failed: ${error.message}`);
+});
+```
+
+For undo/redo and patch patterns see [Undo, redo, and patches](/sdk/guides/undo-redo-and-patches).
+
+---
+
+## Serialization
+
+### `serialize`
+
+```typescript
+serialize(): string
+```
+
+Return the current composition as an HTML string reflecting all mutations applied since `openComposition`. The base HTML is never modified; this always returns a fresh serialization of the live document.
+
+```typescript
+const updatedHtml = comp.serialize();
+await fs.writeFile("output.html", updatedHtml);
+```
+
+---
+
+## Embedded extras
+
+These methods are only meaningful in embedded / override mode. See the [embedded override mode guide](/sdk/guides/embedded-override-mode).
+
+### `getOverrides`
+
+```typescript
+getOverrides(): OverrideSet
+```
+
+Return a copy of the current override set — the sparse delta accumulated on top of the base template. Store this instead of the full HTML when the base template is shared.
+
+```typescript
+const delta = comp.getOverrides();
+await db.saveUserOverrides(userId, delta);
+```
+
+### `applyPatches`
+
+```typescript
+applyPatches(patches: readonly JsonPatchOp[], opts?: { origin?: unknown }): void
+```
+
+Apply RFC 6902 patches directly to the live document. The default origin is `ORIGIN_APPLY_PATCHES`, which prevents `patch` listeners from forwarding these back in an undo loop. Use this when the host owns the undo stack and needs to replay inverse patches from its own history.
+
+```typescript
+// Host undo: replay inverse patches from the host stack
+const { inversePatches } = hostHistory.pop();
+comp.applyPatches(inversePatches);
+```
+
+---
+
+## Lifecycle
+
+### `flush`
+
+```typescript
+flush(): Promise<void>
+```
+
+Drain the persist queue. Resolves when any pending write has been committed to the adapter. No-op when no persist adapter was provided. Call this before process exit or navigation away to avoid losing queued writes.
+
+```typescript
+comp.setText("hf-title", "Final title");
+await comp.flush();
+comp.dispose();
+```
+
+### `dispose`
+
+```typescript
+dispose(): void
+```
+
+Tear down the session: unsubscribe preview adapter listeners, stop the persist queue, stop the history module, and clear all event handlers. After `dispose()`, the `Composition` object is inert; continued calls produce no-ops or errors.
+
+```typescript
+comp.dispose();
+```
+
+<Note>
+  Always call `dispose()` when you are done with a session. Skipping it leaks listeners attached to the preview adapter.
+</Note>
+
+---
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="openComposition" icon="door-open" href="/sdk/reference/open-composition">
+    Session factory — all options and modes.
+  </Card>
+  <Card title="Edit operations" icon="bolt" href="/sdk/reference/edit-operations">
+    Full op catalog for dispatch() and can().
+  </Card>
+  <Card title="Types reference" icon="file-code" href="/sdk/reference/types">
+    All exported TypeScript types — ElementSnapshot, PatchEvent, GsapTweenSpec, and more.
+  </Card>
+  <Card title="Querying and editing" icon="magnifying-glass" href="/sdk/guides/querying-and-editing">
+    Practical guide to find, getElements, and typed edits.
+  </Card>
+  <Card title="Undo, redo, and patches" icon="arrow-uturn-left" href="/sdk/guides/undo-redo-and-patches">
+    History, patch events, ORIGIN_APPLY_PATCHES guard.
+  </Card>
+  <Card title="Embedded override mode" icon="layers" href="/sdk/guides/embedded-override-mode">
+    Template-driven products with host-owned history.
+  </Card>
+</CardGroup>
+

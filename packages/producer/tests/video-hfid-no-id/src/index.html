@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1280, height=720" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1280px; height: 720px; overflow: hidden; background: transparent; }
+      #root { position: relative; width: 1280px; height: 720px; overflow: hidden; }
+      #root video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 0; }
+      .label {
+        position: absolute;
+        inset: 0;
+        z-index: 10;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: system-ui, sans-serif;
+        font-size: 72px;
+        font-weight: 800;
+        color: #fff;
+        text-shadow: 0 4px 24px rgba(0, 0, 0, 0.6);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="2"
+      data-width="1280"
+      data-height="720"
+    >
+      <!-- Regression: this full-bleed background video element carries only a
+           Studio-style data-hf-id and NO real id. Before the fix, the render
+           pipeline could not match its injected frames (keyed on the empty
+           el.id), so the footage rendered as a blank white/grey wash. The
+           baseline must show the testsrc2 footage, not a flat fill. -->
+      <video
+        data-hf-id="hf-bgvideo01"
+        class="clip"
+        src="clip.mp4"
+        muted
+        playsinline
+        data-start="0"
+        data-duration="2"
+        data-track-index="0"
+      ></video>
+
+      <div id="caption" class="label clip" data-start="0" data-duration="2" data-track-index="10">
+        FOOTAGE
+      </div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+      // static hold — the regression is about the video surface compositing,
+      // not motion; keep the timeline deterministic.
+      tl.fromTo("#caption", { opacity: 1 }, { opacity: 1, duration: 2 }, 0);
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

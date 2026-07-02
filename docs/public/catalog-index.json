@@ -363,6 +363,20 @@
         "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/flowchart.png"
     },
     {
+        "name": "flowchart-vertical",
+        "type": "block",
+        "title": "Flowchart Vertical",
+        "description": "Portrait animated decision tree with SVG connectors, sticky-note nodes, cursor interaction, and typing correction",
+        "tags": [
+            "diagram",
+            "flowchart",
+            "interactive",
+            "portrait"
+        ],
+        "href": "/catalog/blocks/flowchart-vertical",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/flowchart-vertical.png"
+    },
+    {
         "name": "glitch",
         "type": "block",
         "title": "Glitch",
@@ -538,6 +552,169 @@
         "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/logo-outro.png"
     },
     {
+        "name": "lower-third-bild",
+        "type": "block",
+        "title": "Lower Third — BILD Style",
+        "description": "News-style lower third with tight-fit text boxes: white headline bar with red drop-shadow, red sub-line with white drop-shadow.",
+        "tags": [
+            "broadcast",
+            "lower-third",
+            "news",
+            "overlay"
+        ],
+        "href": "/catalog/blocks/lower-third-bild",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/lower-third-bild.png"
+    },
+    {
+        "name": "lt-accent-underline",
+        "type": "block",
+        "title": "Lower Third — Accent Underline",
+        "description": "Cardless lower third for footage overlay: name rises, an accent rule draws left-to-right, role fades in; text-shadowed for legibility",
+        "tags": [
+            "lower-third",
+            "overlay",
+            "podcast",
+            "interview",
+            "minimal"
+        ],
+        "href": "/catalog/blocks/lt-accent-underline",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/lt-accent-underline.png"
+    },
+    {
+        "name": "lt-bold-block",
+        "type": "block",
+        "title": "Lower Third — Bold Block",
+        "description": "High-energy podcast lower third: solid dark block wipes in, uppercase name slams up, accent tag pops",
+        "tags": [
+            "lower-third",
+            "overlay",
+            "podcast",
+            "interview",
+            "bold"
+        ],
+        "href": "/catalog/blocks/lt-bold-block",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/lt-bold-block.png"
+    },
+    {
+        "name": "lt-clean-bar",
+        "type": "block",
+        "title": "Lower Third — Clean Bar",
+        "description": "Minimal white-card lower third for podcasts/interviews: accent tab, name + role, clip-wipe entrance",
+        "tags": [
+            "lower-third",
+            "overlay",
+            "podcast",
+            "interview"
+        ],
+        "href": "/catalog/blocks/lt-clean-bar",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/lt-clean-bar.png"
+    },
+    {
+        "name": "lt-color-block",
+        "type": "block",
+        "title": "Lower Third — Color Block",
+        "description": "High-energy lower third: bold accent-color block slides in with overshoot, condensed name + mono role",
+        "tags": [
+            "lower-third",
+            "overlay",
+            "podcast",
+            "interview",
+            "bold"
+        ],
+        "href": "/catalog/blocks/lt-color-block",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/lt-color-block.png"
+    },
+    {
+        "name": "lt-dark-card",
+        "type": "block",
+        "title": "Lower Third — Dark Card",
+        "description": "Charcoal card lower third for bright footage: name, drawn accent underline, role; slide-up entrance",
+        "tags": [
+            "lower-third",
+            "overlay",
+            "podcast",
+            "interview",
+            "dark"
+        ],
+        "href": "/catalog/blocks/lt-dark-card",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/lt-dark-card.png"
+    },
+    {
+        "name": "lt-kicker-name",
+        "type": "block",
+        "title": "Lower Third — Kicker Name",
+        "description": "Cardless lower third with an accent eyebrow/kicker tag, heavy name, and a drawn baseline; for footage",
+        "tags": [
+            "lower-third",
+            "overlay",
+            "podcast",
+            "interview",
+            "bold"
+        ],
+        "href": "/catalog/blocks/lt-kicker-name",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/lt-kicker-name.png"
+    },
+    {
+        "name": "lt-mask-reveal",
+        "type": "block",
+        "title": "Lower Third — Mask Reveal",
+        "description": "Cardless lower third: an accent sweep crosses and clip-path-reveals a heavy name, role fades up; for footage",
+        "tags": [
+            "lower-third",
+            "overlay",
+            "podcast",
+            "interview",
+            "bold"
+        ],
+        "href": "/catalog/blocks/lt-mask-reveal",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/lt-mask-reveal.png"
+    },
+    {
+        "name": "lt-side-rule",
+        "type": "block",
+        "title": "Lower Third — Side Rule",
+        "description": "Cardless lower third with a vertical accent bar; condensed display name + mono role, text-shadowed for footage",
+        "tags": [
+            "lower-third",
+            "overlay",
+            "podcast",
+            "interview",
+            "minimal"
+        ],
+        "href": "/catalog/blocks/lt-side-rule",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/lt-side-rule.png"
+    },
+    {
+        "name": "lt-soft-pill",
+        "type": "block",
+        "title": "Lower Third — Soft Pill",
+        "description": "Rounded white pill lower third for podcasts/interviews: status dot, name + role, scale-pop entrance",
+        "tags": [
+            "lower-third",
+            "overlay",
+            "podcast",
+            "interview",
+            "minimal"
+        ],
+        "href": "/catalog/blocks/lt-soft-pill",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/lt-soft-pill.png"
+    },
+    {
+        "name": "lt-stack-bars",
+        "type": "block",
+        "title": "Lower Third — Stack Bars",
+        "description": "Two stacked bars: a dark name bar wipes from the left, an accent role bar wipes from the right",
+        "tags": [
+            "lower-third",
+            "overlay",
+            "podcast",
+            "interview",
+            "bold"
+        ],
+        "href": "/catalog/blocks/lt-stack-bars",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/lt-stack-bars.png"
+    },
+    {
         "name": "macos-notification",
         "type": "block",
         "title": "macOS Notification",
@@ -564,6 +741,20 @@
         ],
         "href": "/catalog/blocks/macos-tahoe-liquid-glass",
         "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/macos-tahoe-liquid-glass.png"
+    },
+    {
+        "name": "news-ticker",
+        "type": "block",
+        "title": "News Ticker",
+        "description": "Premium broadcast-style lower-third ticker with live label, headline ribbon, and scrolling news crawl.",
+        "tags": [
+            "lower-third",
+            "overlay",
+            "news",
+            "ticker"
+        ],
+        "href": "/catalog/blocks/news-ticker",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/news-ticker.png"
     },
     {
         "name": "north-korea-locked-down",
@@ -1032,6 +1223,18 @@
         ],
         "href": "/catalog/blocks/vfx-liquid-background",
         "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-liquid-background.png"
+    },
+    {
+        "name": "vfx-liquid-glass",
+        "type": "block",
+        "title": "Liquid Glass",
+        "description": "VFX composition block",
+        "tags": [
+            "html-in-canvas",
+            "webgl"
+        ],
+        "href": "/catalog/blocks/vfx-liquid-glass",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-liquid-glass.png"
     },
     {
         "name": "vfx-magnetic",

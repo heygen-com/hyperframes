@@ -2,7 +2,9 @@ import { defineCommand } from "citty";
 import { existsSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveProject } from "../utils/project.js";
+import { resolveProject, type ProjectDir } from "../utils/project.js";
+import { normalizeErrorMessage } from "../utils/errorMessage.js";
+import type { ProjectLintResult } from "../utils/lintProject.js";
 import { resolveCompositionViewportFromHtml } from "../utils/compositionViewport.js";
 import { c } from "../ui/colors.js";
 import { withMeta } from "../utils/updateCheck.js";
@@ -72,6 +74,73 @@ async function seekTo(page: import("puppeteer-core").Page, time: number): Promis
   await new Promise((r) => setTimeout(r, SEEK_SETTLE_MS));
 }
 
+/**
+ * Flag `<video>`/`<audio>` clips whose source is meaningfully shorter than their
+ * `data-duration` slot (the slot gets silently shortened in renders). Runs in
+ * the live page to read each element's intrinsic `.duration`, which static lint
+ * can't see.
+ */
+async function auditClipDurations(
+  page: import("puppeteer-core").Page,
+  analyzeClipMediaFit: typeof import("@hyperframes/engine").analyzeClipMediaFit,
+): Promise<ConsoleEntry[]> {
+  const clips = await page.evaluate(() => {
+    const rows: Array<{
+      id: string;
+      kind: string;
+      slot: number;
+      mediaStart: number;
+      duration: number;
+      loop: boolean;
+    }> = [];
+    document.querySelectorAll("video[data-duration], audio[data-duration]").forEach((node) => {
+      const el = node as HTMLMediaElement;
+      const slot = parseFloat(el.getAttribute("data-duration") ?? "");
+      if (!(slot > 0)) return;
+      rows.push({
+        id: el.id || el.getAttribute("src") || `(${el.tagName.toLowerCase()})`,
+        kind: el.tagName === "AUDIO" ? "Audio" : "Video",
+        slot,
+        mediaStart: parseFloat(el.getAttribute("data-media-start") ?? "0") || 0,
+        duration: el.duration,
+        loop: el.loop || el.getAttribute("data-loop") === "true",
+      });
+    });
+    return rows;
+  });
+
+  const warnings: ConsoleEntry[] = [];
+  const unreadable: string[] = [];
+  for (const clip of clips) {
+    if (!Number.isFinite(clip.duration) || clip.duration <= 0) {
+      // Metadata never loaded (e.g. slow remote source) — record so the gap in
+      // coverage isn't silent, rather than dropping it.
+      unreadable.push(clip.id);
+      continue;
+    }
+    const mediaSeconds = Math.max(0, clip.duration - clip.mediaStart);
+    const fit = analyzeClipMediaFit({ slotSeconds: clip.slot, mediaSeconds, loop: clip.loop });
+    if (!fit) continue;
+    warnings.push({
+      level: "warning",
+      text:
+        `${clip.kind} "${clip.id}" is ${mediaSeconds.toFixed(2)}s but its slot (data-duration) ` +
+        `is ${clip.slot.toFixed(2)}s — the slot is shortened to the media length when rendered. ` +
+        `Set data-duration to ~${mediaSeconds.toFixed(2)}s if that isn't intended.`,
+    });
+  }
+  if (unreadable.length > 0) {
+    warnings.push({
+      level: "warning",
+      text:
+        `Could not read the duration of ${unreadable.length} media element(s) within the ` +
+        `validate timeout (${unreadable.join(", ")}); their slot vs. source fit was not checked. ` +
+        `Re-run with a longer --timeout if the source is slow to load.`,
+    });
+  }
+  return warnings;
+}
+
 async function runContrastAudit(page: import("puppeteer-core").Page): Promise<ContrastEntry[]> {
   const duration = await getCompositionDuration(page);
   if (duration <= 0) return [];
@@ -111,13 +180,40 @@ function loadContrastAuditScript(): string {
   throw new Error("Missing contrast audit browser script");
 }
 
+/**
+ * Pull the `missing_or_empty_sub_composition` lint findings out of a
+ * `lintProject` result and shape them as `ConsoleEntry`s. Extracted as a
+ * pure function so it's testable without a headless browser or a real
+ * project directory — see validate.test.ts.
+ */
+export function extractCompositionErrorsFromLint(
+  lintResult: Pick<ProjectLintResult, "results">,
+): ConsoleEntry[] {
+  return lintResult.results
+    .flatMap((r) => r.result.findings)
+    .filter((f) => f.code === "missing_or_empty_sub_composition" && f.severity === "error")
+    .map((f) => ({ level: "error" as const, text: f.message }));
+}
+
 async function validateInBrowser(
-  projectDir: string,
+  project: ProjectDir,
   opts: { timeout?: number; contrast?: boolean },
 ): Promise<{ errors: ConsoleEntry[]; warnings: ConsoleEntry[]; contrast?: ContrastEntry[] }> {
+  const projectDir = project.dir;
   const { bundleToSingleHtml } = await import("@hyperframes/core/compiler");
   const { ensureBrowser } = await import("../browser/manager.js");
   const { serveStaticProjectHtml } = await import("../utils/staticProjectServer.js");
+  const { lintProject } = await import("../utils/lintProject.js");
+
+  // Fail fast on missing/empty/unparsable data-composition-src references
+  // before spending time bundling and launching a browser. The bundler
+  // (bundleToSingleHtml → inlineSubCompositions) is intentionally tolerant of
+  // these — it skips the broken scene and keeps going, silently, with only a
+  // console.warn — so validate would otherwise report "No console errors"
+  // for a project that renders a materially broken video. Surface it as a
+  // real validate failure instead.
+  const lintResult = await lintProject(projectDir);
+  const compositionErrors = extractCompositionErrorsFromLint(lintResult);
 
   // `bundleToSingleHtml` now inlines the runtime IIFE by default, so the
   // previous post-bundle regex substitution (which matched `src="..."` on the
@@ -126,7 +222,7 @@ async function validateInBrowser(
 
   const server = await serveStaticProjectHtml(projectDir, html);
 
-  const errors: ConsoleEntry[] = [];
+  const errors: ConsoleEntry[] = [...compositionErrors];
   const warnings: ConsoleEntry[] = [];
   let contrast: ContrastEntry[] | undefined;
   const viewport = resolveCompositionViewportFromHtml(html);
@@ -134,7 +230,7 @@ async function validateInBrowser(
   try {
     const browser = await ensureBrowser();
     const puppeteer = await import("puppeteer-core");
-    const { buildChromeArgs } = await import("@hyperframes/engine");
+    const { buildChromeArgs, analyzeClipMediaFit } = await import("@hyperframes/engine");
     const browserGpuMode =
       process.env.PRODUCER_BROWSER_GPU_MODE === "software" ? "software" : "hardware";
     const chromeBrowser = await puppeteer.default.launch({
@@ -159,7 +255,7 @@ async function validateInBrowser(
     });
 
     page.on("pageerror", (err) => {
-      const text = err instanceof Error ? err.message : String(err);
+      const text = normalizeErrorMessage(err);
       // CDN scripts (e.g. GSAP from jsdelivr) returning HTML error pages
       // instead of JS produce "Unexpected token '<'" SyntaxErrors. These
       // are network failures, not composition authoring errors.
@@ -191,6 +287,10 @@ async function validateInBrowser(
 
     await page.goto(server.url, { waitUntil: "domcontentloaded", timeout: 10000 });
     await new Promise((r) => setTimeout(r, opts.timeout ?? 3000));
+
+    for (const w of await auditClipDurations(page, analyzeClipMediaFit)) {
+      warnings.push(w);
+    }
 
     if (opts.contrast) {
       contrast = await runContrastAudit(page);
@@ -319,11 +419,11 @@ Examples:
     }
 
     try {
-      const result = await validateInBrowser(project.dir, { timeout, contrast: useContrast });
+      const result = await validateInBrowser(project, { timeout, contrast: useContrast });
       const exitCode = printValidationResult(result, asJson);
       process.exit(exitCode);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = normalizeErrorMessage(err);
       emitFailureReport(message, asJson);
       process.exit(1);
     }

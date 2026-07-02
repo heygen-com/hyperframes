@@ -16,11 +16,10 @@ import {
   buildClearBoxSizePatches,
   buildClearRotationPatches,
 } from "../components/editor/manualEditsDomPatches";
-import type { DomEditGroupPathOffsetCommit } from "../components/editor/DomEditOverlay";
 import type { PatchOperation } from "../utils/sourcePatcher";
 import { isElementGsapTargeted } from "./gsapTargetCache";
 
-export const GSAP_CSS_FALLBACK_BLOCKED_MESSAGE =
+const GSAP_CSS_FALLBACK_BLOCKED_MESSAGE =
   "This element is GSAP-animated — dragging via CSS would corrupt keyframes";
 
 // ── Hook ──
@@ -46,7 +45,8 @@ export function useDomGeometryCommits({
       // elements fall through to commitPositionPatchToHtml → persistDomEditOperations →
       // onTrySdkPersist and are already SDK-cut-over as setStyle/setAttribute (§3.3 done).
       // Upgrade path for GSAP: add a moveElementGsap SDK op in a separate SDK PR.
-      if (isElementGsapTargeted(previewIframeRef.current, selection.element)) {
+      const gsapTargeted = isElementGsapTargeted(previewIframeRef.current, selection.element);
+      if (gsapTargeted) {
         const error = new Error(GSAP_CSS_FALLBACK_BLOCKED_MESSAGE);
         showToast(error.message, "error");
         return Promise.reject(error);
@@ -56,33 +56,6 @@ export function useDomGeometryCommits({
         label: "Move layer",
         coalesceKey: `path-offset:${getDomEditTargetKey(selection)}`,
       });
-    },
-    [commitPositionPatchToHtml, previewIframeRef, showToast],
-  );
-
-  const handleDomGroupPathOffsetCommit = useCallback(
-    (updates: DomEditGroupPathOffsetCommit[]) => {
-      if (updates.length === 0) return Promise.resolve();
-      const blockedUpdate = updates.find(({ selection }) =>
-        isElementGsapTargeted(previewIframeRef.current, selection.element),
-      );
-      if (blockedUpdate) {
-        const error = new Error(GSAP_CSS_FALLBACK_BLOCKED_MESSAGE);
-        showToast(error.message, "error");
-        return Promise.reject(error);
-      }
-      const coalesceKey = updates
-        .map((u) => getDomEditTargetKey(u.selection))
-        .sort()
-        .join(":");
-      const saves = updates.map(({ selection, next }) => {
-        applyStudioPathOffset(selection.element, next);
-        return commitPositionPatchToHtml(selection, buildPathOffsetPatches(selection.element), {
-          label: `Move ${updates.length} layers`,
-          coalesceKey: `group-path-offset:${coalesceKey}`,
-        });
-      });
-      return Promise.all(saves).then(() => undefined);
     },
     [commitPositionPatchToHtml, previewIframeRef, showToast],
   );
@@ -142,7 +115,6 @@ export function useDomGeometryCommits({
 
   return {
     handleDomPathOffsetCommit,
-    handleDomGroupPathOffsetCommit,
     handleDomBoxSizeCommit,
     handleDomRotationCommit,
     handleDomManualEditsReset,

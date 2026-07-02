@@ -31,6 +31,9 @@ export interface DomEditActionsValue extends Pick<
   | "handleBlockedDomMove"
   | "handleDomManualDragStart"
   | "handleDomEditElementDelete"
+  | "handleGroupSelection"
+  | "handleUngroupSelection"
+  | "setActiveGroupElement"
   | "buildDomSelectionFromTarget"
   | "buildDomSelectionForTimelineElement"
   | "updateDomEditHoverSelection"
@@ -51,10 +54,14 @@ export interface DomEditActionsValue extends Pick<
   | "handleGsapAddKeyframe"
   | "handleGsapAddKeyframeBatch"
   | "handleGsapRemoveKeyframe"
+  | "handleGsapMoveKeyframeToPlayhead"
+  | "handleGsapMoveKeyframe"
+  | "handleGsapResizeKeyframedTween"
   | "handleGsapConvertToKeyframes"
   | "handleGsapRemoveAllKeyframes"
   | "handleResetSelectedElementKeyframes"
   | "commitAnimatedProperty"
+  | "commitAnimatedProperties"
   | "handleSetArcPath"
   | "handleUpdateArcSegment"
   | "handleUnroll"
@@ -63,6 +70,7 @@ export interface DomEditActionsValue extends Pick<
   | "commitMutation"
   | "applyMarqueeSelection"
   | "handleUpdateKeyframeEase"
+  | "handleSetAllKeyframeEases"
 > {}
 
 export interface DomEditSelectionValue extends Pick<
@@ -70,6 +78,7 @@ export interface DomEditSelectionValue extends Pick<
   | "domEditSelection"
   | "domEditGroupSelections"
   | "domEditHoverSelection"
+  | "activeGroupElement"
   | "domEditSelectionRef"
   | "selectedGsapAnimations"
   | "gsapMultipleTimelines"
@@ -136,6 +145,10 @@ export function DomEditProvider({
     handleBlockedDomMove,
     handleDomManualDragStart,
     handleDomEditElementDelete,
+    handleGroupSelection,
+    handleUngroupSelection,
+    setActiveGroupElement,
+    activeGroupElement,
     buildDomSelectionFromTarget,
     buildDomSelectionForTimelineElement,
     updateDomEditHoverSelection,
@@ -159,10 +172,14 @@ export function DomEditProvider({
     handleGsapAddKeyframe,
     handleGsapAddKeyframeBatch,
     handleGsapRemoveKeyframe,
+    handleGsapMoveKeyframeToPlayhead,
+    handleGsapMoveKeyframe,
+    handleGsapResizeKeyframedTween,
     handleGsapConvertToKeyframes,
     handleGsapRemoveAllKeyframes,
     handleResetSelectedElementKeyframes,
     commitAnimatedProperty,
+    commitAnimatedProperties,
     handleSetArcPath,
     handleUpdateArcSegment,
     handleUnroll,
@@ -171,6 +188,7 @@ export function DomEditProvider({
     commitMutation,
     applyMarqueeSelection,
     handleUpdateKeyframeEase,
+    handleSetAllKeyframeEases,
   },
   children,
 }: {
@@ -212,6 +230,9 @@ export function DomEditProvider({
       handleBlockedDomMove,
       handleDomManualDragStart,
       handleDomEditElementDelete,
+      handleGroupSelection,
+      handleUngroupSelection,
+      setActiveGroupElement,
       buildDomSelectionFromTarget,
       buildDomSelectionForTimelineElement,
       updateDomEditHoverSelection,
@@ -232,10 +253,14 @@ export function DomEditProvider({
       handleGsapAddKeyframe,
       handleGsapAddKeyframeBatch,
       handleGsapRemoveKeyframe,
+      handleGsapMoveKeyframeToPlayhead,
+      handleGsapMoveKeyframe,
+      handleGsapResizeKeyframedTween,
       handleGsapConvertToKeyframes,
       handleGsapRemoveAllKeyframes,
       handleResetSelectedElementKeyframes,
       commitAnimatedProperty,
+      commitAnimatedProperties,
       handleSetArcPath,
       handleUpdateArcSegment,
       handleUnroll,
@@ -244,6 +269,7 @@ export function DomEditProvider({
       commitMutation: stableCommitMutation,
       applyMarqueeSelection,
       handleUpdateKeyframeEase,
+      handleSetAllKeyframeEases,
     }),
     [
       handleTimelineElementSelect,
@@ -271,6 +297,9 @@ export function DomEditProvider({
       handleBlockedDomMove,
       handleDomManualDragStart,
       handleDomEditElementDelete,
+      handleGroupSelection,
+      handleUngroupSelection,
+      setActiveGroupElement,
       buildDomSelectionFromTarget,
       buildDomSelectionForTimelineElement,
       updateDomEditHoverSelection,
@@ -291,10 +320,14 @@ export function DomEditProvider({
       handleGsapAddKeyframe,
       handleGsapAddKeyframeBatch,
       handleGsapRemoveKeyframe,
+      handleGsapMoveKeyframeToPlayhead,
+      handleGsapMoveKeyframe,
+      handleGsapResizeKeyframedTween,
       handleGsapConvertToKeyframes,
       handleGsapRemoveAllKeyframes,
       handleResetSelectedElementKeyframes,
       commitAnimatedProperty,
+      commitAnimatedProperties,
       handleSetArcPath,
       handleUpdateArcSegment,
       handleUnroll,
@@ -303,6 +336,7 @@ export function DomEditProvider({
       stableCommitMutation,
       applyMarqueeSelection,
       handleUpdateKeyframeEase,
+      handleSetAllKeyframeEases,
     ],
   );
 
@@ -311,6 +345,7 @@ export function DomEditProvider({
       domEditSelection,
       domEditGroupSelections,
       domEditHoverSelection,
+      activeGroupElement,
       domEditSelectionRef,
       selectedGsapAnimations,
       gsapMultipleTimelines,
@@ -324,6 +359,7 @@ export function DomEditProvider({
       domEditSelection,
       domEditGroupSelections,
       domEditHoverSelection,
+      activeGroupElement,
       domEditSelectionRef,
       selectedGsapAnimations,
       gsapMultipleTimelines,

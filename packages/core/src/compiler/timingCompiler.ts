@@ -48,8 +48,10 @@ export interface CompilationResult {
   unresolved: UnresolvedElement[];
 }
 
-// ffprobe precision can differ slightly across local and CI media stacks.
-const MEDIA_DURATION_CLAMP_EPSILON_SECONDS = 0.05;
+// ffprobe precision can differ slightly across local and CI media stacks. Also
+// the floor for the engine's hold-last-frame tolerance (a slot left unclamped is
+// short by at most this), so they must move together.
+export const MEDIA_DURATION_CLAMP_EPSILON_SECONDS = 0.05;
 
 export function shouldClampMediaDuration(declaredDuration: number, maxDuration: number): boolean {
   return declaredDuration > maxDuration + MEDIA_DURATION_CLAMP_EPSILON_SECONDS;
@@ -58,7 +60,13 @@ export function shouldClampMediaDuration(declaredDuration: number, maxDuration: 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
 function getAttr(tag: string, attr: string): string | null {
-  const match = tag.match(new RegExp(`${attr}=["']([^"']+)["']`));
+  // `(?<![\w-])` anchors the attribute name to a fresh start. Without it,
+  // `getAttr(tag, "id")` matches the trailing `id="…"` inside `data-hf-id="…"`
+  // (and "src" inside `data-src`, etc.) and returns a phantom value. That bug
+  // made compileTag believe a Studio-stamped `data-hf-id`-only element already
+  // had an `id`, so it skipped its `hf-video-N` injection — leaving the element
+  // with no real `el.id`, which the render pipeline keys off of (blank wash).
+  const match = tag.match(new RegExp(`(?<![\\w-])${attr}=["']([^"']+)["']`));
   return match ? (match[1] ?? null) : null;
 }
 

@@ -36,6 +36,9 @@ jobs:
           filters: |
             preview:
               - "packages/core/**"
+              - "packages/parsers/**"
+              - "packages/studio-server/**"
+              - "packages/lint/**"
               - "packages/player/**"
               - "packages/studio/**"
               - "packages/cli/**"
@@ -73,10 +76,15 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
+      - name: Build workspace packages (required for vite config loading)
+        run: |
+          bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
+          bun run --cwd packages/core build
+
       - name: Run Studio preview routing regression
         run: |
           bun run --cwd packages/studio test -- vite.thumbnail.test.ts src/utils/projectRouting.test.ts src/utils/frameCapture.test.ts
-          bun run --cwd packages/core test -- src/studio-api/routes/thumbnail.test.ts
+          bun run --cwd packages/studio-server test -- src/routes/thumbnail.test.ts
 
       - name: Build preview runtime
         run: bun run --cwd packages/core build:hyperframes-runtime

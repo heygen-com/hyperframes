@@ -194,6 +194,7 @@ let _trackCommandResult:
   | ((props: { command: string; success: boolean; exitCode: number; durationMs: number }) => void)
   | undefined;
 let _printUpdateNotice: (() => void) | undefined;
+let _printSkillsUpdateNotice: (() => void) | undefined;
 
 // `events` is a telemetry-internal beacon: it self-tracks + self-flushes, so it
 // skips the per-command wrapper (no duplicate cli_command, no first-run notice
@@ -226,6 +227,13 @@ if (!isHelp && !hasJsonFlag && command !== "upgrade" && command !== "events") {
       auto?.scheduleBackgroundInstall(result.latest, result.current);
     }
   });
+
+  // Skills freshness nudge — same gating as the CLI self-update notice. The
+  // check is cached (24h) and best-effort: it never blocks or fails the command.
+  import("./utils/skillsUpdateCheck.js").then(async (mod) => {
+    _printSkillsUpdateNotice = mod.printSkillsUpdateNotice;
+    await mod.checkSkillsForUpdate().catch(() => null);
+  });
 }
 
 const commandStart = Date.now();
@@ -237,7 +245,10 @@ const commandStart = Date.now();
 // detaches after first invocation, which is what we want for both.
 process.once("beforeExit", () => {
   _flush?.().catch(() => {});
-  if (!hasJsonFlag) _printUpdateNotice?.();
+  if (!hasJsonFlag) {
+    _printUpdateNotice?.();
+    _printSkillsUpdateNotice?.();
+  }
 });
 
 // Sync-only: exit handlers cannot await promises or drain microtasks.

@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        background: transparent;
+        overflow: hidden;
+      }
+      body {
+        width: 1920px;
+        height: 1080px;
+        font-family: "Montserrat", sans-serif;
+      }
+
+      #root .lt {
+        position: absolute;
+        left: 120px;
+        bottom: 110px;
+      }
+      #root .lt-card {
+        background: #16181d;
+        border-radius: 14px;
+        padding: 24px 38px 26px 32px;
+        box-shadow: 0 18px 50px rgba(0, 0, 0, 0.4);
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      #root .lt-name {
+        font-size: 48px;
+        font-weight: 700;
+        color: #ffffff;
+        line-height: 1.02;
+        letter-spacing: -0.015em;
+        white-space: nowrap;
+      }
+      #root .lt-underline {
+        height: 4px;
+        width: 100%;
+        background: #f5b942;
+        border-radius: 2px;
+        transform-origin: 0% 50%;
+      }
+      #root .lt-role {
+        font-size: 25px;
+        font-weight: 400;
+        color: #aeb6c2;
+        line-height: 1.2;
+        letter-spacing: 0.02em;
+        white-space: nowrap;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="lt-dark-card"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="4.8"
+    >
+      <div id="lt-clip" class="clip" data-start="0" data-duration="4.8" data-track-index="0">
+        <div id="lt" class="lt">
+          <div id="lt-card" class="lt-card">
+            <div id="lt-name" class="lt-name">Dr. Maya Chen</div>
+            <div id="lt-underline" class="lt-underline"></div>
+            <div id="lt-role" class="lt-role">Host · Neuroscientist</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+
+      var wrap = document.getElementById("lt");
+      var card = document.getElementById("lt-card");
+      var nameEl = document.getElementById("lt-name");
+      var underline = document.getElementById("lt-underline");
+      var role = document.getElementById("lt-role");
+
+      // Card slides up from below, name fades, accent underline draws, role fades.
+      gsap.set(card, { y: 60, opacity: 0 });
+      gsap.set(nameEl, { y: 14, opacity: 0 });
+      gsap.set(underline, { scaleX: 0 });
+      gsap.set(role, { opacity: 0 });
+
+      tl.to(card, { y: 0, opacity: 1, duration: 0.5, ease: "power3.out" }, 0.1);
+      tl.to(nameEl, { y: 0, opacity: 1, duration: 0.45, ease: "power3.out" }, 0.26);
+      tl.to(underline, { scaleX: 1, duration: 0.5, ease: "power4.out" }, 0.42);
+      tl.to(role, { opacity: 1, duration: 0.45, ease: "power2.out" }, 0.56);
+
+      // Exit: slide down + hard kill.
+      tl.to(card, { y: 24, opacity: 0, duration: 0.35, ease: "power2.in" }, 4.3);
+      tl.set(wrap, { visibility: "hidden" }, 4.75);
+
+      window.__timelines["lt-dark-card"] = tl;
+    </script>
+  </body>
+</html>

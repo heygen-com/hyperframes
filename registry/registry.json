@@ -176,6 +176,54 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "news-ticker",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "lt-accent-underline",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "lt-bold-block",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "lt-clean-bar",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "lt-color-block",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "lt-dark-card",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "lt-kicker-name",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "lt-mask-reveal",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "lt-side-rule",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "lt-soft-pill",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "lt-stack-bars",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "lower-third-bild",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "x-post",
       "type": "hyperframes:block"
     },

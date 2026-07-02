@@ -165,6 +165,23 @@ interface PlayerState {
   setClipManifest: (clips: ClipManifestClip[] | null) => void;
   clipParentMap: Map<string, string>;
   setClipParentMap: (map: Map<string, string>) => void;
+  /**
+   * Sub-composition DOM descendants (groups + their children) that have no
+   * `data-start`, so they're absent from the clip manifest/tree. Collected
+   * studio-side from the live preview so the timeline can expand a sub-comp row
+   * to show its DOM-only children. Keeps the manifest lean (timed clips only).
+   */
+  domClipChildren: DomClipChild[];
+  setDomClipChildren: (children: DomClipChild[]) => void;
+}
+
+/** A sub-comp DOM-only timeline child (no data-start) and its nesting context. */
+export interface DomClipChild {
+  id: string;
+  parentId: string;
+  /** The manifest sub-comp host clip id this descendant ultimately lives under. */
+  hostId: string;
+  label: string;
 }
 
 interface BeatHistoryEntry {
@@ -296,6 +313,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   setClipManifest: (clips) => set({ clipManifest: clips }),
   clipParentMap: new Map(),
   setClipParentMap: (map) => set({ clipParentMap: map }),
+  domClipChildren: [],
+  setDomClipChildren: (children) => set({ domClipChildren: children }),
 
   setIsPlaying: (playing) => {
     if (get().isPlaying === playing) return;
@@ -380,6 +399,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       beatPersist: null,
       clipManifest: null,
       clipParentMap: new Map(),
+      domClipChildren: [],
     }),
 }));
 

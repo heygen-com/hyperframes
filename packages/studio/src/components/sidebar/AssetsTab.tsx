@@ -1,8 +1,19 @@
-import { memo, useState, useCallback, useRef } from "react";
+import { memo, useState, useCallback, useRef, useMemo, useEffect } from "react";
 import { VideoFrameThumbnail } from "../ui/VideoFrameThumbnail";
-import { MEDIA_EXT, IMAGE_EXT, VIDEO_EXT, AUDIO_EXT } from "../../utils/mediaTypes";
+import { MEDIA_EXT, IMAGE_EXT, VIDEO_EXT, FONT_EXT } from "../../utils/mediaTypes";
 import { TIMELINE_ASSET_MIME } from "../../utils/timelineAssetDrop";
 import { copyTextToClipboard } from "../../utils/clipboard";
+import { ContextMenu } from "./AssetContextMenu";
+import { usePlayerStore } from "../../player/store/playerStore";
+import {
+  type MediaCategory,
+  getCategory,
+  basename,
+  ext,
+  CATEGORY_LABELS,
+  FILTER_ORDER,
+} from "./assetHelpers";
+import { AudioRow } from "./AudioRow";
 
 interface AssetsTabProps {
   projectId: string;
@@ -12,98 +23,36 @@ interface AssetsTabProps {
   onRename?: (oldPath: string, newPath: string) => void;
 }
 
-/** Inline thumbnail content — rendered inside the container div in AssetCard. */
-function AssetThumbnail({
-  serveUrl,
-  name,
-  isImage,
-  isVideo,
-  isAudio,
-}: {
-  serveUrl: string;
-  name: string;
-  isImage: boolean;
-  isVideo: boolean;
-  isAudio: boolean;
-}) {
-  return (
-    <>
-      {isImage && (
-        <img
-          src={serveUrl}
-          alt={name}
-          loading="lazy"
-          className="w-full h-full object-contain"
-          onError={(e) => {
-            (e.target as HTMLImageElement).style.display = "none";
-          }}
-        />
-      )}
-      {isVideo && <VideoFrameThumbnail src={serveUrl} />}
-      {isAudio && (
-        <div className="w-full h-full flex items-center justify-center">
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            className="text-purple-400"
-          >
-            <path d="M9 18V5l12-2v13" strokeLinecap="round" strokeLinejoin="round" />
-            <circle cx="6" cy="18" r="3" />
-            <circle cx="18" cy="16" r="3" />
-          </svg>
-        </div>
-      )}
-      {!isImage && !isVideo && !isAudio && (
-        <div className="w-full h-full flex items-center justify-center">
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            className="text-neutral-600"
-          >
-            <path
-              d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            <polyline points="14 2 14 8 20 8" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </div>
-      )}
-    </>
-  );
-}
-
-function AssetCard({
+// fallow-ignore-next-line complexity
+function ImageCard({
   projectId,
   asset,
+  used,
   onCopy,
   isCopied,
   onDelete,
   onRename,
+  size,
 }: {
   projectId: string;
   asset: string;
+  used: boolean;
   onCopy: (path: string) => void;
   isCopied: boolean;
   onDelete?: (path: string) => void;
   onRename?: (oldPath: string, newPath: string) => void;
+  size: "large" | "small";
 }) {
-  const [hovered, setHovered] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
-  const [renaming, setRenaming] = useState(false);
-  const [renameName, setRenameName] = useState("");
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const name = asset.split("/").pop() ?? asset;
+  const [hovered, setHovered] = useState(false);
+  const name = basename(asset);
+  const extension = ext(asset);
   const serveUrl = `/api/projects/${projectId}/preview/${asset}`;
   const isVideo = VIDEO_EXT.test(asset);
+  const isImage = IMAGE_EXT.test(asset);
+
+  const thumbW = size === "large" ? "w-full" : "w-[50px]";
+  const thumbH = size === "large" ? "h-[100px]" : "h-[32px]";
 
   return (
     <>
@@ -121,158 +70,103 @@ function AssetCard({
         }}
         onPointerEnter={() => setHovered(true)}
         onPointerLeave={() => setHovered(false)}
-        className={`w-full text-left px-2 py-1.5 flex items-center gap-2.5 transition-colors cursor-pointer ${
-          isCopied
-            ? "bg-studio-accent/10 border-l-2 border-studio-accent"
-            : "border-l-2 border-transparent hover:bg-neutral-800/50"
+        className={`transition-colors cursor-pointer ${
+          size === "large"
+            ? `px-2.5 py-1 ${isCopied ? "bg-studio-accent/10" : "hover:bg-neutral-800/30"}`
+            : `px-2.5 py-1.5 flex items-center gap-2.5 ${
+                isCopied
+                  ? "bg-studio-accent/10 border-l-2 border-studio-accent"
+                  : "border-l-2 border-transparent hover:bg-neutral-800/50"
+              }`
         }`}
       >
-        <div className="w-16 h-10 rounded overflow-hidden bg-neutral-900 flex-shrink-0 relative">
-          <AssetThumbnail
-            serveUrl={serveUrl}
-            name={name}
-            isImage={IMAGE_EXT.test(asset)}
-            isVideo={isVideo}
-            isAudio={AUDIO_EXT.test(asset)}
-          />
-          {isVideo && hovered && (
-            <video
-              src={serveUrl}
-              autoPlay
-              muted
-              loop
-              playsInline
-              className="absolute inset-0 w-full h-full object-contain"
-            />
-          )}
-        </div>
-        <div className="min-w-0 flex-1">
-          {renaming ? (
-            <input
-              autoFocus
-              value={renameName}
-              onChange={(e) => setRenameName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  const trimmed = renameName.trim();
-                  if (trimmed && trimmed !== name) {
-                    const dir = asset.includes("/")
-                      ? asset.slice(0, asset.lastIndexOf("/") + 1)
-                      : "";
-                    onRename?.(asset, dir + trimmed);
-                  }
-                  setRenaming(false);
-                } else if (e.key === "Escape") {
-                  setRenaming(false);
-                }
-              }}
-              onBlur={() => {
-                const trimmed = renameName.trim();
-                if (trimmed && trimmed !== name) {
-                  const dir = asset.includes("/") ? asset.slice(0, asset.lastIndexOf("/") + 1) : "";
-                  onRename?.(asset, dir + trimmed);
-                }
-                setRenaming(false);
-              }}
-              onClick={(e) => e.stopPropagation()}
-              className="w-full bg-neutral-800 text-neutral-200 text-[11px] px-1.5 py-0.5 rounded border border-neutral-600 outline-none focus:border-studio-accent"
-              spellCheck={false}
-            />
-          ) : (
-            <>
-              <span className="text-[11px] font-medium text-neutral-300 truncate block">
+        {size === "large" ? (
+          <div className="flex flex-col gap-1">
+            <div className={`${thumbW} ${thumbH} rounded overflow-hidden bg-neutral-900 relative`}>
+              {isImage && (
+                <img
+                  src={serveUrl}
+                  alt={name}
+                  loading="lazy"
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = "none";
+                  }}
+                />
+              )}
+              {isVideo && <VideoFrameThumbnail src={serveUrl} />}
+              {isVideo && hovered && (
+                <video
+                  src={serveUrl}
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                  className="absolute inset-0 w-full h-full object-cover"
+                />
+              )}
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span
+                className={`text-xs font-medium truncate ${used ? "text-panel-text-1" : "text-panel-text-3"}`}
+              >
                 {name}
               </span>
-              {isCopied ? (
-                <span className="text-[9px] text-studio-accent">Copied!</span>
-              ) : (
-                <span className="text-[9px] text-neutral-600 truncate block">{asset}</span>
+              <span className="text-[10px] text-neutral-600">{extension}</span>
+              {used && (
+                <span className="text-[9px] font-medium text-panel-accent bg-panel-accent/10 px-1.5 py-px rounded">
+                  in use
+                </span>
               )}
-            </>
-          )}
-        </div>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="w-[50px] h-[32px] rounded overflow-hidden bg-neutral-900 flex-shrink-0 flex items-center justify-center">
+              {isImage && (
+                <img
+                  src={serveUrl}
+                  alt={name}
+                  loading="lazy"
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = "none";
+                  }}
+                />
+              )}
+              {!isImage && (
+                <span className="text-[9px] font-medium text-neutral-700">{extension}</span>
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <span
+                className={`text-xs font-medium truncate block ${used ? "text-panel-text-1" : "text-panel-text-3"}`}
+              >
+                {name}
+              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-neutral-600 truncate">{extension}</span>
+                {used && (
+                  <span className="text-[9px] font-medium text-panel-accent bg-panel-accent/10 px-1.5 py-px rounded">
+                    in use
+                  </span>
+                )}
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
-      {/* Context menu */}
       {contextMenu && (
-        <div
-          className="fixed inset-0 z-[200]"
-          onClick={() => setContextMenu(null)}
-          onContextMenu={(e) => {
-            e.preventDefault();
-            setContextMenu(null);
-          }}
-        >
-          <div
-            className="absolute bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl py-1 min-w-[140px] text-xs"
-            style={{ left: contextMenu.x, top: contextMenu.y }}
-          >
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onCopy(asset);
-                setContextMenu(null);
-              }}
-              className="w-full text-left px-3 py-1.5 text-neutral-300 hover:bg-neutral-800 transition-colors"
-            >
-              Copy path
-            </button>
-            {onRename && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setRenameName(name);
-                  setRenaming(true);
-                  setContextMenu(null);
-                }}
-                className="w-full text-left px-3 py-1.5 text-neutral-300 hover:bg-neutral-800 transition-colors"
-              >
-                Rename
-              </button>
-            )}
-            {onDelete && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setConfirmDelete(true);
-                  setContextMenu(null);
-                }}
-                className="w-full text-left px-3 py-1.5 text-red-400 hover:bg-neutral-800 transition-colors"
-              >
-                Delete
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Delete confirmation */}
-      {confirmDelete && (
-        <div className="px-2 py-1.5 bg-red-950/30 border-l-2 border-red-500 flex items-center justify-between gap-2">
-          <span className="text-[10px] text-red-400 truncate">Delete {name}?</span>
-          <div className="flex items-center gap-1 flex-shrink-0">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete?.(asset);
-                setConfirmDelete(false);
-              }}
-              className="px-2 py-0.5 text-[10px] rounded bg-red-600 text-white hover:bg-red-500 transition-colors"
-            >
-              Delete
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setConfirmDelete(false);
-              }}
-              className="px-2 py-0.5 text-[10px] rounded text-neutral-400 hover:text-neutral-200 transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          asset={asset}
+          onClose={() => setContextMenu(null)}
+          onCopy={onCopy}
+          onDelete={onDelete}
+          onRename={onRename}
+        />
       )}
     </>
   );
@@ -288,6 +182,51 @@ export const AssetsTab = memo(function AssetsTab({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
+  const [activeFilter, setActiveFilter] = useState<MediaCategory | "all">("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [manifest, setManifest] = useState<
+    Map<string, { description?: string; duration?: number; width?: number; height?: number }>
+  >(new Map());
+
+  // Projects whose media manifest 404'd — most don't have one. Cache the miss so
+  // we don't re-fetch (and spam the console) on every re-render; the effect was
+  // also keyed on the `assets` array reference, which changes each render, so it
+  // re-fired constantly. Key on a stable join + skip known-missing manifests.
+  const manifest404Ref = useRef<Set<string>>(new Set());
+  const assetsKey = assets.join("|");
+  useEffect(() => {
+    if (manifest404Ref.current.has(projectId)) return;
+    let cancelled = false;
+    fetch(`/api/projects/${projectId}/preview/.media/manifest.jsonl`)
+      .then((r) => {
+        if (!r.ok) {
+          manifest404Ref.current.add(projectId);
+          return "";
+        }
+        return r.text();
+      })
+      .then((text) => {
+        if (cancelled || !text) return;
+        const m = new Map<
+          string,
+          { description?: string; duration?: number; width?: number; height?: number }
+        >();
+        for (const line of text.split("\n")) {
+          if (!line.trim()) continue;
+          try {
+            const rec = JSON.parse(line);
+            if (rec.path) m.set(rec.path, rec);
+          } catch {
+            /* skip */
+          }
+        }
+        setManifest(m);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, assetsKey]);
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
@@ -306,7 +245,56 @@ export const AssetsTab = memo(function AssetsTab({
     }
   }, []);
 
-  const mediaAssets = assets.filter((a) => MEDIA_EXT.test(a));
+  const elements = usePlayerStore((s) => s.elements);
+  const usedPaths = useMemo(() => {
+    const paths = new Set<string>();
+    for (const el of elements) {
+      if (el.src) {
+        const src = el.src.replace(/^\/api\/projects\/[^/]+\/preview\//, "");
+        paths.add(src);
+      }
+    }
+    return paths;
+  }, [elements]);
+
+  const mediaAssets = useMemo(() => {
+    const all = assets.filter((a) => MEDIA_EXT.test(a) || FONT_EXT.test(a));
+    if (!searchQuery) return all;
+    const q = searchQuery.toLowerCase();
+    return all.filter((a) => {
+      if (basename(a).toLowerCase().includes(q)) return true;
+      const rec = manifest.get(a);
+      return rec?.description?.toLowerCase().includes(q);
+    });
+  }, [assets, searchQuery, manifest]);
+
+  const categorized = useMemo(() => {
+    const groups: Record<MediaCategory, string[]> = { audio: [], images: [], video: [], fonts: [] };
+    for (const a of mediaAssets) {
+      const cat = getCategory(a);
+      if (cat) groups[cat].push(a);
+    }
+    // Sort: used assets first within each category
+    for (const cat of FILTER_ORDER) {
+      groups[cat].sort((a, b) => {
+        const aUsed = usedPaths.has(a) ? 0 : 1;
+        const bUsed = usedPaths.has(b) ? 0 : 1;
+        return aUsed - bUsed;
+      });
+    }
+    return groups;
+  }, [mediaAssets, usedPaths]);
+
+  const counts = useMemo(() => {
+    const c: Record<string, number> = { all: mediaAssets.length };
+    for (const cat of FILTER_ORDER) c[cat] = categorized[cat].length;
+    return c;
+  }, [mediaAssets, categorized]);
+
+  const visibleCategories =
+    activeFilter === "all"
+      ? FILTER_ORDER.filter((c) => categorized[c].length > 0)
+      : [activeFilter as MediaCategory].filter((c) => categorized[c].length > 0);
 
   return (
     <div
@@ -318,44 +306,111 @@ export const AssetsTab = memo(function AssetsTab({
       onDragLeave={() => setDragOver(false)}
       onDrop={handleDrop}
     >
-      {/* Import button */}
-      {onImport && (
-        <div className="px-3 py-2 border-b border-neutral-800/40 flex-shrink-0">
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-[11px] rounded-lg border border-dashed border-neutral-700/50 text-neutral-500 hover:text-neutral-300 hover:border-neutral-600 transition-colors"
-          >
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
+      {/* Header — matches design panel Section pattern */}
+      <div className="px-4 pt-2.5 pb-1.5 flex-shrink-0">
+        {/* Import */}
+        {onImport && (
+          <>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="w-full flex items-center justify-center gap-1.5 rounded-md bg-panel-input px-3 py-[7px] text-[11px] font-medium text-panel-text-3 hover:text-panel-text-1 transition-colors mb-2.5"
             >
-              <path d="M12 5v14M5 12h14" />
+              <svg
+                width="11"
+                height="11"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+              >
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              Import media
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="video/*,image/*,audio/*,font/*"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                if (e.target.files?.length) {
+                  onImport(e.target.files);
+                  e.target.value = "";
+                }
+              }}
+            />
+          </>
+        )}
+
+        {/* Search */}
+        {mediaAssets.length > 0 && (
+          <div className="flex items-center gap-1.5 rounded-md bg-panel-input px-2.5 py-[5px] mb-2">
+            <svg width="12" height="12" viewBox="0 0 256 256" fill="none" className="flex-shrink-0">
+              <circle
+                cx="116"
+                cy="116"
+                r="76"
+                stroke="currentColor"
+                strokeWidth="22"
+                className="text-panel-text-5"
+              />
+              <line
+                x1="170"
+                y1="170"
+                x2="232"
+                y2="232"
+                stroke="currentColor"
+                strokeWidth="22"
+                strokeLinecap="round"
+                className="text-panel-text-5"
+              />
             </svg>
-            Import media
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="video/*,image/*,audio/*"
-            multiple
-            className="hidden"
-            onChange={(e) => {
-              if (e.target.files?.length) {
-                onImport(e.target.files);
-                e.target.value = "";
-              }
-            }}
-          />
-        </div>
-      )}
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search assets..."
+              className="min-w-0 w-full bg-transparent text-[11px] text-panel-text-1 outline-none placeholder:text-panel-text-5"
+            />
+          </div>
+        )}
+
+        {/* Filter chips — panel-input style */}
+        {mediaAssets.length > 0 && (
+          <div className="flex gap-1.5 flex-wrap">
+            <button
+              onClick={() => setActiveFilter("all")}
+              className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors ${
+                activeFilter === "all"
+                  ? "bg-panel-accent/15 text-panel-accent"
+                  : "bg-panel-input text-panel-text-3 hover:text-panel-text-1"
+              }`}
+            >
+              All {counts.all}
+            </button>
+            {FILTER_ORDER.map((cat) =>
+              counts[cat] > 0 ? (
+                <button
+                  key={cat}
+                  onClick={() => setActiveFilter(activeFilter === cat ? "all" : cat)}
+                  className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors ${
+                    activeFilter === cat
+                      ? "bg-panel-accent/15 text-panel-accent"
+                      : "bg-panel-input text-panel-text-3 hover:text-panel-text-1"
+                  }`}
+                >
+                  {CATEGORY_LABELS[cat]} {counts[cat]}
+                </button>
+              ) : null,
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Asset list */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto mt-1">
         {mediaAssets.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full px-4 gap-2">
             <svg
@@ -378,16 +433,59 @@ export const AssetsTab = memo(function AssetsTab({
             <p className="text-[10px] text-neutral-600 text-center">Drop media files here</p>
           </div>
         ) : (
-          mediaAssets.map((asset) => (
-            <AssetCard
-              key={asset}
-              projectId={projectId}
-              asset={asset}
-              onCopy={handleCopyPath}
-              isCopied={copiedPath === asset}
-              onDelete={onDelete}
-              onRename={onRename}
-            />
+          visibleCategories.map((cat) => (
+            <div key={cat} className="mb-1">
+              {activeFilter === "all" && (
+                <div className="flex items-center gap-2 px-4 py-2 border-t border-panel-border">
+                  <h3 className="text-[12px] font-semibold text-panel-text-1">
+                    {CATEGORY_LABELS[cat]}
+                  </h3>
+                  <span className="text-[11px] text-panel-text-5">{categorized[cat].length}</span>
+                </div>
+              )}
+              {cat === "audio" &&
+                categorized[cat].map((a) => (
+                  <AudioRow
+                    key={a}
+                    projectId={projectId}
+                    asset={a}
+                    used={usedPaths.has(a)}
+                    meta={manifest.get(a)}
+                    onCopy={handleCopyPath}
+                    isCopied={copiedPath === a}
+                    onDelete={onDelete}
+                    onRename={onRename}
+                  />
+                ))}
+              {(cat === "images" || cat === "video") &&
+                categorized[cat].map((a) => (
+                  <ImageCard
+                    key={a}
+                    projectId={projectId}
+                    asset={a}
+                    used={usedPaths.has(a)}
+                    onCopy={handleCopyPath}
+                    isCopied={copiedPath === a}
+                    onDelete={onDelete}
+                    onRename={onRename}
+                    size={categorized[cat].length <= 4 ? "large" : "small"}
+                  />
+                ))}
+              {cat === "fonts" &&
+                categorized[cat].map((a) => (
+                  <ImageCard
+                    key={a}
+                    projectId={projectId}
+                    asset={a}
+                    used={usedPaths.has(a)}
+                    onCopy={handleCopyPath}
+                    isCopied={copiedPath === a}
+                    onDelete={onDelete}
+                    onRename={onRename}
+                    size="small"
+                  />
+                ))}
+            </div>
           ))
         )}
       </div>

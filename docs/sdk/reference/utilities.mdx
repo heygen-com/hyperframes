@@ -1,0 +1,330 @@
+---
+title: "Utilities & Constants"
+description: "History module, persist queue, document utilities, constants, and error types exported from @hyperframes/sdk."
+---
+
+This page covers everything exported from `@hyperframes/sdk` that is not covered in [`openComposition`](/sdk/reference/open-composition), the [`Composition` interface](/sdk/reference/composition), [edit operations](/sdk/reference/edit-operations), [types](/sdk/reference/types), or [adapters](/sdk/reference/adapters).
+
+---
+
+## History Module
+
+```typescript
+import { createHistory } from "@hyperframes/sdk";
+import type { HistoryModule, HistoryOptions, HistoryEntry } from "@hyperframes/sdk";
+```
+
+Optional undo/redo module that wires onto a `Composition` session via the `"patch"` event. Standalone sessions created by `openComposition()` attach a history module automatically — you only need `createHistory` directly when you are building a host application that manages its own undo stack, or when you want non-default coalesce/depth settings.
+
+### createHistory
+
+```typescript
+function createHistory(session: Composition, opts?: HistoryOptions): HistoryModule;
+```
+
+Subscribes to `session.on('patch')` and builds an undo/redo stack. Coalesces rapid same-operation bursts on the same element into a single undo entry so a slider drag produces one undo step, not hundreds.
+
+```typescript
+import { openComposition, createHistory } from "@hyperframes/sdk";
+
+// Custom history — host controls undo/redo buttons
+const comp = await openComposition(html, { history: false });
+const history = createHistory(comp, { coalesceMs: 500, maxEntries: 50 });
+
+comp.setText("hf-title", "Draft v1");
+
+history.canUndo(); // true
+history.undo();    // reverts to original
+history.redo();    // re-applies
+
+history.dispose(); // unsubscribes from patch events
+```
+
+### HistoryModule
+
+```typescript
+interface HistoryModule {
+  undo(): boolean;
+  redo(): boolean;
+  canUndo(): boolean;
+  canRedo(): boolean;
+  dispose(): void;
+}
+```
+
+<ParamField path="undo" type="() => boolean">
+  Pops the top entry from the undo stack and applies its inverse patches via `session.applyPatches()` tagged with `ORIGIN_APPLY_PATCHES`. Returns `true` when an entry was popped, `false` when the stack was empty.
+</ParamField>
+
+<ParamField path="redo" type="() => boolean">
+  Pops the top entry from the redo stack and re-applies its forward patches. Returns `true` when an entry was popped, `false` when the stack was empty. Any new op clears the redo stack.
+</ParamField>
+
+<ParamField path="canUndo" type="() => boolean">
+  Returns `true` when there is at least one entry on the undo stack.
+</ParamField>
+
+<ParamField path="canRedo" type="() => boolean">
+  Returns `true` when there is at least one entry on the redo stack.
+</ParamField>
+
+<ParamField path="dispose" type="() => void">
+  Unsubscribes from the session's `"patch"` event and clears both stacks. Call when the session is closed.
+</ParamField>
+
+### HistoryOptions
+
+```typescript
+interface HistoryOptions {
+  trackedOrigins?: unknown[];
+  coalesceMs?: number;
+  maxEntries?: number;
+}
+```
+
+<ParamField path="trackedOrigins" type="unknown[]">
+  Only ops whose `origin` value appears in this array enter the undo stack. When omitted, all origins are tracked except `ORIGIN_APPLY_PATCHES` (which is always excluded to prevent undo loops). Use this to restrict the undo stack to UI-driven edits while letting programmatic patches pass through silently.
+</ParamField>
+
+<ParamField path="coalesceMs" type="number">
+  Window in milliseconds within which same-operation bursts on the same paths are merged into a single undo entry. The timestamp slides forward on each coalesced event, so continuous editing keeps merging until there is a gap longer than `coalesceMs`. Default: `300`.
+</ParamField>
+
+<ParamField path="maxEntries" type="number">
+  Maximum depth of the undo stack. Oldest entries are dropped when the limit is exceeded. Default: `100`.
+</ParamField>
+
+### HistoryEntry
+
+```typescript
+interface HistoryEntry {
+  readonly patches: readonly JsonPatchOp[];
+  readonly inversePatches: readonly JsonPatchOp[];
+  readonly opTypes: readonly string[];
+  readonly origin: unknown;
+  readonly timestamp: number;
+}
+```
+
+Entries are internal to the history module — you do not create them directly. They mirror the shape of `PatchEvent` fields so the history module can reconstruct the forward and inverse change sets without re-parsing.
+
+<Note>
+  Standalone sessions (the default) attach history automatically. Pass `{ history: false }` to `openComposition()` when you want to manage undo/redo yourself via `createHistory` or the host's own stack.
+</Note>
+
+---
+
+## Persist Queue
+
+```typescript
+import { createPersistQueue } from "@hyperframes/sdk";
+import type { PersistQueueModule, PersistQueueOptions } from "@hyperframes/sdk";
+```
+
+Optional module that subscribes to `"change"` events on a session and schedules async writes through a `PersistAdapter`. One write is in flight at a time; the latest HTML always wins (last-write-wins coalescing). Standalone sessions wired with a `persist` adapter attach this automatically via `openComposition()`. Use `createPersistQueue` directly only when you are building an embedded host that owns persistence separately from the SDK session.
+
+### createPersistQueue
+
+```typescript
+function createPersistQueue(
+  session: Composition,
+  adapter: PersistAdapter,
+  opts?: PersistQueueOptions,
+): PersistQueueModule;
+```
+
+```typescript
+import { openComposition, createPersistQueue } from "@hyperframes/sdk";
+import { createFsAdapter } from "@hyperframes/sdk/adapters/fs";
+
+const adapt = createFsAdapter({ root: "./project" });
+const comp = await openComposition(html, { history: false });
+
+const queue = createPersistQueue(comp, adapt, {
+  path: "my-comp.html",
+  onError: ({ error }) => console.error("Write failed:", error.message),
+});
+
+comp.setText("hf-title", "Autosaved");
+
+// Force immediate flush before app close
+await queue.flush();
+queue.dispose();
+```
+
+### PersistQueueModule
+
+```typescript
+interface PersistQueueModule {
+  flush(): Promise<void>;
+  dispose(): void;
+}
+```
+
+<ParamField path="flush" type="() => Promise<void>">
+  Cancels any pending debounced write and immediately writes the current serialized HTML to the adapter. Resolves when the write commits. Use before app close or page unload.
+</ParamField>
+
+<ParamField path="dispose" type="() => void">
+  Cancels any pending write and unsubscribes from the session's `"change"` event. Does not flush — call `flush()` first if you need to ensure the final state is written.
+</ParamField>
+
+### PersistQueueOptions
+
+```typescript
+interface PersistQueueOptions {
+  path?: string;
+  onError?: (e: PersistErrorEvent) => void;
+}
+```
+
+<ParamField path="path" type="string">
+  The adapter path to write to. Passed directly to `adapter.write(path, content)`. Default: `"composition.html"`.
+</ParamField>
+
+<ParamField path="onError" type="(e: PersistErrorEvent) => void">
+  Called when `adapter.write()` rejects. Receives a `PersistErrorEvent` with `{ error: { message, cause? } }`. Use this to surface persistence failures in your UI or logging layer.
+</ParamField>
+
+---
+
+## Document Utilities
+
+```typescript
+import { buildDocument, buildRoots, flatElements } from "@hyperframes/sdk";
+```
+
+Low-level utilities for building the `SdkDocument` model and `HyperFramesElement` trees from parsed HTML. These are the same functions the SDK uses internally on every `openComposition()` call. You rarely need them directly — they are exposed for hosts that parse HTML outside of a session, or for testing.
+
+### buildDocument
+
+```typescript
+function buildDocument(html: string): SdkDocument;
+```
+
+Parses an HTML string into the SDK document model. Calls `ensureHfIds` first so every element gets a stable `data-hf-id`. Uses `linkedom` for DOM parsing — node-safe, works in agents, CI, and server-side code. Returns an `SdkDocument` snapshot; mutations on the live session do not update the returned value.
+
+### buildRoots
+
+```typescript
+function buildRoots(document: Document): HyperFramesElement[];
+```
+
+Builds the element tree from an already-parsed (hf-id-stamped) `linkedom` `Document`. Walks the live DOM directly — no serialize/re-parse round trip. This is what the session's query API uses against its mutable document after each op.
+
+### flatElements
+
+```typescript
+function flatElements(roots: readonly HyperFramesElement[]): HyperFramesElement[];
+```
+
+Returns every element from `roots` and all their descendants in document order (depth-first pre-order). Useful for searching across the full element tree without writing your own recursive walk.
+
+```typescript
+import { buildDocument, flatElements } from "@hyperframes/sdk";
+
+const doc = buildDocument(html);
+const all = flatElements(doc.roots);
+const images = all.filter((el) => el.tag === "img");
+```
+
+---
+
+## Constants
+
+### ORIGIN\_APPLY\_PATCHES
+
+```typescript
+import { ORIGIN_APPLY_PATCHES } from "@hyperframes/sdk";
+
+const ORIGIN_APPLY_PATCHES = "@hyperframes/sdk:applyPatches";
+```
+
+Reserved origin tag emitted by `applyPatches()` and by the history module's `undo()` / `redo()` methods. Host patch listeners **must** skip this origin to avoid undo loops:
+
+```typescript
+comp.on("patch", ({ origin, patches }) => {
+  if (origin === ORIGIN_APPLY_PATCHES) return; // SDK-internal replay — skip
+  forwardToCollaborationLayer(patches);
+});
+```
+
+The value is a namespaced string rather than a `Symbol` so it survives realm boundaries — `postMessage`, structured clone, and JSON serialization all preserve it correctly. T3 embedded hosts that forward patch events across frames or workers rely on this property. The namespace prefix (`@hyperframes/sdk:`) makes accidental collision with a host-chosen origin string negligible.
+
+### ORIGIN\_LOCAL
+
+```typescript
+import { ORIGIN_LOCAL } from "@hyperframes/sdk";
+
+const ORIGIN_LOCAL = "local";
+```
+
+Default origin applied when you call typed methods (`setText`, `setStyle`, …) or `dispatch()` without an explicit `origin` option. You can filter on `"local"` to track only user-driven UI edits in a history module's `trackedOrigins` list.
+
+---
+
+## Errors
+
+### UnsupportedOpError
+
+```typescript
+import { UnsupportedOpError } from "@hyperframes/sdk";
+```
+
+Thrown by `dispatch()` when an op type is not handled by the current engine version. The `code` property is stable and part of the public API contract — switch on it rather than the message string.
+
+```typescript
+class UnsupportedOpError extends Error {
+  readonly code = "E_UNSUPPORTED_OP";
+}
+```
+
+Feature-detect before dispatching optional ops with `comp.can(op)` to avoid this error in the hot path:
+
+```typescript
+const result = comp.can({ type: "setGsapTween", animationId: id, properties: { ease: "power2.out" } });
+if (!result.ok) {
+  console.warn(result.message);
+  return;
+}
+comp.setGsapTween(id, { ease: "power2.out" });
+```
+
+---
+
+## resolveNearestHfElement
+
+```typescript
+import { resolveNearestHfElement } from "@hyperframes/sdk";
+
+function resolveNearestHfElement(
+  el: Element | null,
+  isVisible: (el: Element) => boolean,
+): ElementAtPointResult | null;
+```
+
+Walks from `el` upward through `parentElement`, returning the nearest ancestor (inclusive) that carries `[data-hf-id]` and is not `[data-hf-root]`. Returns `null` when the walk exits the DOM without finding a match, when the matched node is the composition root, or when `isVisible(node)` returns `false` for the matched node.
+
+This is a pure function (no `window` or DOM API calls beyond `getAttribute`) and is unit-testable in a plain Node environment. `createIframePreviewAdapter` uses it internally to translate raw hit-test results into SDK element IDs. Full treatment of hit-testing and the visual editor canvas pattern is in the [Canvas Integration guide](/sdk/guides/canvas-integration).
+
+---
+
+## resolveElementAffordances
+
+```typescript
+import { resolveElementAffordances } from "@hyperframes/sdk/editing";
+```
+
+Determines which editing operations are available for a live element given its current DOM state and model. Imported from the `@hyperframes/sdk/editing` subpath. Full documentation is in the [Editing Affordances guide](/sdk/guides/editing-affordances).
+
+---
+
+<CardGroup cols={2}>
+  <Card title="Undo, Redo & Patches" icon="clock-rotate-left" href="/sdk/guides/undo-redo-and-patches">
+    How the history module, ORIGIN_APPLY_PATCHES, and applyPatches() work together.
+  </Card>
+  <Card title="Persistence" icon="floppy-disk" href="/sdk/guides/persistence">
+    Wiring a PersistAdapter, handling errors, and restoring from version history.
+  </Card>
+</CardGroup>
+

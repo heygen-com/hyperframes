@@ -55,6 +55,14 @@ export interface HyperframesConfig {
     /** True after the result has been surfaced once to the user. */
     reported?: boolean;
   };
+  /** ISO timestamp of the last `skills check` freshness check (24h cache). */
+  lastSkillsCheck?: string;
+  /** Whether installed skills were stale at the last check. */
+  skillsUpdateAvailable?: boolean;
+  /** How many installed skills were outdated at the last check. */
+  skillsOutdatedCount?: number;
+  /** How many skills were missing (not installed) at the last check. */
+  skillsMissingCount?: number;
 }
 
 const DEFAULT_CONFIG: HyperframesConfig = {
@@ -96,6 +104,10 @@ export function readConfig(): HyperframesConfig {
       latestVersion: parsed.latestVersion,
       pendingUpdate: parsed.pendingUpdate,
       completedUpdate: parsed.completedUpdate,
+      lastSkillsCheck: parsed.lastSkillsCheck,
+      skillsUpdateAvailable: parsed.skillsUpdateAvailable,
+      skillsOutdatedCount: parsed.skillsOutdatedCount,
+      skillsMissingCount: parsed.skillsMissingCount,
     };
 
     cachedConfig = config;

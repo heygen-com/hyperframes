@@ -22,6 +22,7 @@
  */
 
 import { readFileSync } from "node:fs";
+import { normalizeErrorMessage } from "../utils/errorMessage.js";
 
 export type SupportedAspectRatio = "16:9" | "9:16" | "1:1";
 
@@ -87,7 +88,7 @@ export function detectAspectRatioFromHtml(entryHtmlPath: string): AspectRatioDet
   try {
     html = readFileSync(entryHtmlPath, "utf-8");
   } catch (err) {
-    return { kind: "read-error", error: err instanceof Error ? err.message : String(err) };
+    return { kind: "read-error", error: normalizeErrorMessage(err) };
   }
   return detectAspectRatioFromHtmlString(html);
 }

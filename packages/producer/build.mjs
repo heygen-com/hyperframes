@@ -70,6 +70,11 @@ await Promise.all([
     entryPoints: ["src/services/shaderTransitionWorker.ts"],
     outfile: "dist/services/shaderTransitionWorker.js",
   }),
+  build({
+    ...sharedOpts,
+    entryPoints: ["src/services/healthWorkerThread.ts"],
+    outfile: "dist/services/healthWorkerThread.js",
+  }),
   build({ ...sharedOpts, entryPoints: ["src/distributed.ts"], outfile: "dist/distributed.js" }),
 ]);
 

@@ -12,6 +12,10 @@
 //   - a missing/deleted user, a network blip, an offline run → log + skip
 //   - it ALWAYS exits 0 (a failed avatar must never block the build)
 //
+// Network is constrained on purpose: only https GitHub avatar hosts are fetched
+// (SSRF guard), and bytes are only ever written under the project dir (no path
+// traversal), so a tampered people.json can't redirect the fetch or the write.
+//
 // Reads:
 //   --people <path>      capture/extracted/people.json (from ingest.mjs)
 // Writes:
@@ -28,7 +32,7 @@
 //   node fetch-people-avatars.mjs --people ./capture/extracted/people.json
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync, statSync } from "node:fs";
-import { resolve, join, dirname } from "node:path";
+import { resolve, join, dirname, sep } from "node:path";
 
 const argv = process.argv.slice(2);
 const flag = (name, def) => {
@@ -39,6 +43,30 @@ const flag = (name, def) => {
 const peoplePath = resolve(flag("people", "./capture/extracted/people.json"));
 const projectDir = resolve(flag("project-dir", "."));
 const TIMEOUT = parseInt(flag("timeout", "8000"), 10);
+
+// SSRF guard: avatars only ever come from GitHub's avatar hosts, so refuse any
+// other URL rather than fetching whatever string people.json happens to carry.
+// `github.com/<login>.png` 302s to avatars.githubusercontent.com (redirect stays
+// on-host, controlled by GitHub).
+const AVATAR_HOSTS = new Set(["avatars.githubusercontent.com", "github.com", "www.github.com"]);
+function isAllowedAvatarUrl(u) {
+  let parsed;
+  try {
+    parsed = new URL(u);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== "https:") return false;
+  const host = parsed.hostname.toLowerCase();
+  return AVATAR_HOSTS.has(host) || host.endsWith(".githubusercontent.com");
+}
+
+// Path guard: the written file must stay inside the project dir, so a crafted
+// avatarFile ("../../etc/…") can't escape via join().
+function isUnderProject(p) {
+  const r = resolve(p);
+  return r === projectDir || r.startsWith(projectDir + sep);
+}
 
 // Soft-exit helper — avatars are optional, so every early-out is exit 0.
 function softExit(msg) {
@@ -61,9 +89,19 @@ if (!people.length) softExit("no contributors in people.json — skipping");
 async function fetchOne(person) {
   const { login, avatarUrl } = person;
   if (!login || !avatarUrl) return "skip";
+  if (!isAllowedAvatarUrl(avatarUrl)) {
+    person.avatarFetched = false;
+    console.log(`  (skip avatar @${login}: not a GitHub avatar URL)`);
+    return "fail";
+  }
   // avatarFile is project-root-relative ("assets/<login>.png"); anchor on the
   // project root so it stays under the project's assets/ dir.
   const dest = join(projectDir, person.avatarFile || `assets/${login}.png`);
+  if (!isUnderProject(dest)) {
+    person.avatarFetched = false;
+    console.log(`  (skip avatar @${login}: avatar path escapes the project dir)`);
+    return "fail";
+  }
   mkdirSync(dirname(dest), { recursive: true });
   // Idempotent: a non-empty file from a prior run is reused (re-runs are free).
   if (existsSync(dest) && statSync(dest).size > 0) {

@@ -43,6 +43,10 @@ describe("@hyperframes/producer/distributed (subpath)", () => {
 
   it("exports the non-retryable error codes + classes", () => {
     expect(distributedSubpath.PLAN_TOO_LARGE).toBe("PLAN_TOO_LARGE");
+    expect(distributedSubpath.DISTRIBUTED_DURATION_OUT_OF_RANGE).toBe(
+      "DISTRIBUTED_DURATION_OUT_OF_RANGE",
+    );
+    expect(distributedSubpath.MAX_DISTRIBUTED_DURATION_SECONDS).toBe(24 * 60 * 60);
     expect(distributedSubpath.FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED).toBe(
       "FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED",
     );
@@ -51,6 +55,7 @@ describe("@hyperframes/producer/distributed (subpath)", () => {
 
     expect(typeof distributedSubpath.PlanTooLargeError).toBe("function");
     expect(typeof distributedSubpath.FormatNotSupportedInDistributedError).toBe("function");
+    expect(typeof distributedSubpath.PlanValidationError).toBe("function");
     expect(typeof distributedSubpath.RenderChunkValidationError).toBe("function");
   });
 

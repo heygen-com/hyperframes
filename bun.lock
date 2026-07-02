@@ -22,7 +22,7 @@
     },
     "packages/aws-lambda": {
       "name": "@hyperframes/aws-lambda",
-      "version": "0.6.119",
+      "version": "0.7.22",
       "dependencies": {
         "@aws-sdk/client-s3": "^3.700.0",
         "@aws-sdk/client-sfn": "^3.700.0",
@@ -54,7 +54,7 @@
     },
     "packages/cli": {
       "name": "@hyperframes/cli",
-      "version": "0.6.119",
+      "version": "0.7.22",
       "bin": {
         "hyperframes": "./dist/cli.js",
       },
@@ -82,8 +82,10 @@
         "@hyperframes/core": "workspace:*",
         "@hyperframes/engine": "workspace:*",
         "@hyperframes/gcp-cloud-run": "workspace:*",
+        "@hyperframes/lint": "workspace:*",
         "@hyperframes/producer": "workspace:*",
         "@hyperframes/studio": "workspace:*",
+        "@hyperframes/studio-server": "workspace:*",
         "@types/adm-zip": "^0.5.7",
         "@types/fontkit": "^2.0.9",
         "@types/mime-types": "^3.0.1",
@@ -101,17 +103,15 @@
     },
     "packages/core": {
       "name": "@hyperframes/core",
-      "version": "0.6.119",
+      "version": "0.7.22",
       "dependencies": {
-        "@babel/parser": "^7.27.0",
         "@chenglou/pretext": "^0.0.5",
-        "acorn": "^8.17.0",
-        "acorn-walk": "^8.3.5",
+        "@hyperframes/lint": "workspace:*",
+        "@hyperframes/parsers": "workspace:*",
+        "@hyperframes/studio-server": "workspace:*",
         "bpm-detective": "^2.0.5",
-        "magic-string": "^0.30.21",
+        "linkedom": "^0.18.12",
         "postcss": "^8.5.8",
-        "postcss-selector-parser": "^7.1.2",
-        "recast": "^0.23.11",
       },
       "devDependencies": {
         "@types/jsdom": "^28.0.0",
@@ -124,18 +124,11 @@
       },
       "optionalDependencies": {
         "esbuild": "^0.25.12",
-        "linkedom": "^0.18.12",
       },
-      "peerDependencies": {
-        "hono": "^4.0.0",
-      },
-      "optionalPeers": [
-        "hono",
-      ],
     },
     "packages/engine": {
       "name": "@hyperframes/engine",
-      "version": "0.6.119",
+      "version": "0.7.22",
       "dependencies": {
         "@hono/node-server": "^1.13.0",
         "@hyperframes/core": "workspace:^",
@@ -153,7 +146,7 @@
     },
     "packages/gcp-cloud-run": {
       "name": "@hyperframes/gcp-cloud-run",
-      "version": "0.6.119",
+      "version": "0.7.22",
       "dependencies": {
         "@google-cloud/storage": "^7.14.0",
         "@google-cloud/workflows": "^4.2.0",
@@ -171,9 +164,45 @@
         "typescript": "^5.7.2",
       },
     },
+    "packages/lint": {
+      "name": "@hyperframes/lint",
+      "version": "0.7.22",
+      "dependencies": {
+        "@hyperframes/parsers": "workspace:*",
+        "linkedom": "^0.18.12",
+        "postcss": "^8.5.8",
+      },
+      "devDependencies": {
+        "@types/node": "^25.0.10",
+        "tsup": "^8.0.0",
+        "tsx": "^4.21.0",
+        "typescript": "^5.0.0",
+        "vitest": "^3.2.4",
+      },
+    },
+    "packages/parsers": {
+      "name": "@hyperframes/parsers",
+      "version": "0.7.22",
+      "dependencies": {
+        "@babel/parser": "^7.27.0",
+        "acorn": "^8.17.0",
+        "acorn-walk": "^8.3.5",
+        "linkedom": "^0.18.12",
+        "magic-string": "^0.30.21",
+        "recast": "^0.23.11",
+      },
+      "devDependencies": {
+        "@hyperframes/core": "workspace:*",
+        "@types/node": "^25.0.10",
+        "tsup": "^8.0.0",
+        "tsx": "^4.21.0",
+        "typescript": "^5.0.0",
+        "vitest": "^3.2.4",
+      },
+    },
     "packages/player": {
       "name": "@hyperframes/player",
-      "version": "0.6.119",
+      "version": "0.7.22",
       "dependencies": {
         "@hyperframes/core": "workspace:*",
       },
@@ -188,7 +217,7 @@
     },
     "packages/producer": {
       "name": "@hyperframes/producer",
-      "version": "0.6.119",
+      "version": "0.7.22",
       "dependencies": {
         "@fontsource/archivo-black": "^5.2.8",
         "@fontsource/eb-garamond": "^5.2.7",
@@ -204,6 +233,9 @@
         "@hono/node-server": "^1.13.0",
         "@hyperframes/core": "workspace:^",
         "@hyperframes/engine": "workspace:^",
+        "@hyperframes/lint": "workspace:^",
+        "@hyperframes/parsers": "workspace:^",
+        "@hyperframes/studio-server": "workspace:^",
         "hono": "^4.6.0",
         "linkedom": "^0.18.12",
         "postcss": "^8.4.0",
@@ -229,13 +261,15 @@
     },
     "packages/sdk": {
       "name": "@hyperframes/sdk",
-      "version": "0.6.119",
+      "version": "0.7.22",
       "dependencies": {
         "@hyperframes/core": "workspace:*",
+        "@hyperframes/parsers": "workspace:*",
         "linkedom": "^0.18.12",
       },
       "devDependencies": {
         "@types/node": "^25.0.10",
+        "happy-dom": "^20.9.0",
         "typescript": "^5.0.0",
         "vitest": "^3.2.4",
       },
@@ -254,7 +288,7 @@
     },
     "packages/shader-transitions": {
       "name": "@hyperframes/shader-transitions",
-      "version": "0.6.119",
+      "version": "0.7.22",
       "dependencies": {
         "html2canvas": "^1.4.1",
       },
@@ -266,7 +300,7 @@
     },
     "packages/studio": {
       "name": "@hyperframes/studio",
-      "version": "0.6.119",
+      "version": "0.7.22",
       "dependencies": {
         "@codemirror/autocomplete": "^6.20.1",
         "@codemirror/commands": "^6.10.3",
@@ -280,11 +314,14 @@
         "@codemirror/theme-one-dark": "^6.1.2",
         "@codemirror/view": "6.40.0",
         "@hyperframes/core": "workspace:*",
+        "@hyperframes/parsers": "workspace:*",
         "@hyperframes/player": "workspace:*",
         "@hyperframes/sdk": "workspace:*",
+        "@hyperframes/studio-server": "workspace:*",
         "@phosphor-icons/react": "^2.1.10",
         "bpm-detective": "^2.0.5",
         "dompurify": "^3.2.4",
+        "gsap": "^3.13.0",
         "marked": "^14.1.4",
         "mediabunny": "^1.45.3",
       },
@@ -307,6 +344,25 @@
         "react": "19",
         "react-dom": "19",
         "zustand": "^4.0.0 || ^5.0.0",
+      },
+    },
+    "packages/studio-server": {
+      "name": "@hyperframes/studio-server",
+      "version": "0.7.22",
+      "dependencies": {
+        "@hyperframes/core": "workspace:*",
+        "@hyperframes/parsers": "workspace:*",
+        "hono": "^4.0.0",
+        "linkedom": "^0.18.12",
+        "postcss": "^8.5.8",
+        "postcss-selector-parser": "^7.1.2",
+      },
+      "devDependencies": {
+        "@types/node": "^25.0.10",
+        "tsup": "^8.0.0",
+        "tsx": "^4.21.0",
+        "typescript": "^5.0.0",
+        "vitest": "^3.2.4",
       },
     },
   },
@@ -667,6 +723,10 @@
 
     "@hyperframes/gcp-cloud-run": ["@hyperframes/gcp-cloud-run@workspace:packages/gcp-cloud-run"],
 
+    "@hyperframes/lint": ["@hyperframes/lint@workspace:packages/lint"],
+
+    "@hyperframes/parsers": ["@hyperframes/parsers@workspace:packages/parsers"],
+
     "@hyperframes/player": ["@hyperframes/player@workspace:packages/player"],
 
     "@hyperframes/producer": ["@hyperframes/producer@workspace:packages/producer"],
@@ -678,6 +738,8 @@
     "@hyperframes/shader-transitions": ["@hyperframes/shader-transitions@workspace:packages/shader-transitions"],
 
     "@hyperframes/studio": ["@hyperframes/studio@workspace:packages/studio"],
+
+    "@hyperframes/studio-server": ["@hyperframes/studio-server@workspace:packages/studio-server"],
 
     "@img/colour": ["@img/colour@1.1.0", "", {}, "sha512-Td76q7j57o/tLVdgS746cYARfSyxk8iEfRxewL9h4OMzYhbW4TAcppl0mT4eyqXddh6L/jwoM75mo7ixa/pCeQ=="],
 

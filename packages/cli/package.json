@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/cli",
-  "version": "0.7.6",
+  "version": "0.7.24",
   "description": "HyperFrames CLI — create, preview, and render HTML video compositions",
   "repository": {
     "type": "git",
@@ -22,7 +22,9 @@
     "build:runtime": "tsx scripts/build-runtime.ts",
     "build:beat-analyzer": "node scripts/build-beat-analyzer.mjs",
     "build:copy": "node scripts/build-copy.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "gen:skills-manifest": "tsx scripts/gen-skills-manifest.ts",
+    "gen:agent-dirs": "tsx scripts/sync-agent-dirs.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.8.0",
@@ -48,8 +50,10 @@
     "@hyperframes/core": "workspace:*",
     "@hyperframes/engine": "workspace:*",
     "@hyperframes/gcp-cloud-run": "workspace:*",
+    "@hyperframes/lint": "workspace:*",
     "@hyperframes/producer": "workspace:*",
     "@hyperframes/studio": "workspace:*",
+    "@hyperframes/studio-server": "workspace:*",
     "@types/adm-zip": "^0.5.7",
     "@types/fontkit": "^2.0.9",
     "@types/mime-types": "^3.0.1",

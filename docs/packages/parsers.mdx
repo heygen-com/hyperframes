@@ -1,0 +1,160 @@
+---
+title: "@hyperframes/parsers"
+description: "The GSAP + HTML parser/writer suite — standalone, zero @hyperframes/* dependencies."
+---
+
+The parsers package is the standalone foundation extracted from core. It owns the GSAP animation parser/writer (recast **and** acorn implementations), the HTML composition parser, hf-id stamping, and spring-ease generation. It has **no `@hyperframes/*` dependencies**, so it's the base every other package builds on.
+
+```bash
+npm install @hyperframes/parsers
+```
+
+## When to Use
+
+<Tip>
+  **Most users do not need to install `@hyperframes/parsers` directly.** [`@hyperframes/core`](/packages/core) re-exports the parser API it needs, and the [CLI](/packages/cli) / [studio](/packages/studio) depend on it transitively. Reach for it directly only when you want the parsing layer **without** pulling in the rest of core.
+</Tip>
+
+**Use `@hyperframes/parsers` when you need to:**
+- Parse HTML compositions into structured TypeScript objects
+- Parse, edit, and re-serialize GSAP timeline scripts (AST round-trip)
+- Stamp deterministic `hf-id` attributes onto a document
+- Build tooling that touches the parsing layer but doesn't need core's runtime, compiler, or generators
+
+## Package Exports
+
+| Import | Description |
+|--------|-------------|
+| `@hyperframes/parsers` | HTML parser, GSAP serialize/validate helpers, hf-ids, shared types |
+| `@hyperframes/parsers/gsap-parser-acorn` | Acorn-based GSAP parser (browser-safe, read path) |
+| `@hyperframes/parsers/gsap-writer-acorn` | Acorn-based GSAP writer (mutation helpers) |
+| `@hyperframes/parsers/gsap-parser-recast` | Recast-based GSAP parser/writer (legacy implementation) |
+| `@hyperframes/parsers/gsap-constants` | `SUPPORTED_PROPS`, `SUPPORTED_EASES`, property groups |
+| `@hyperframes/parsers/spring-ease` | Spring-ease curve generation |
+| `@hyperframes/parsers/hf-ids` | Deterministic element id stamping |
+| `@hyperframes/parsers/slideshow` | Slideshow manifest parser (`parseSlideshowManifest`, `resolveSlideshow`) |
+| `@hyperframes/parsers/composition` | Pure, browser-safe composition primitives (data types, font aliases, URL helper) |
+| `@hyperframes/parsers/asset-paths` | Node-only asset-path rewriting helpers (`rewriteAssetPath`, …) |
+
+<Info>
+  The package ships subpath entries so consumers tree-shake to what they use — importing `@hyperframes/parsers/hf-ids` (a couple KB) does **not** pull in the GSAP AST machinery (recast/babel/acorn).
+</Info>
+
+## HTML Parsing
+
+Round-trip between HTML and structured data:
+
+```typescript
+import {
+  parseHtml,
+  extractCompositionMetadata,
+  validateCompositionHtml,
+} from '@hyperframes/parsers';
+import type { ParsedHtml, CompositionMetadata } from '@hyperframes/parsers';
+
+// Parse HTML into structured data
+const parsed: ParsedHtml = parseHtml(htmlString);
+// parsed.elements, parsed.gsapScript, parsed.styles, parsed.resolution, parsed.keyframes
+
+// Extract composition metadata (id, duration, dimensions, variables)
+const meta: CompositionMetadata = extractCompositionMetadata(htmlString);
+
+// Validate HTML structure
+const result = validateCompositionHtml(htmlString);
+// result.valid, result.errors
+```
+
+### Modifying HTML
+
+```typescript
+import {
+  updateElementInHtml,
+  addElementToHtml,
+  removeElementFromHtml,
+} from '@hyperframes/parsers';
+
+const updated = updateElementInHtml(html, 'el-1', { start: 5 });
+const added = addElementToHtml(html, newElement);
+const cleaned = removeElementFromHtml(html, 'el-1');
+```
+
+## GSAP Script Parsing
+
+The acorn parser/writer is the primary path (browser-safe). Parse a timeline script, mutate it, and serialize it back without losing surrounding code:
+
+```typescript
+import { parseGsapScriptAcorn, extractGsapLabels } from '@hyperframes/parsers/gsap-parser-acorn';
+import {
+  updateAnimationInScript,
+  addAnimationToScript,
+  removeAnimationFromScript,
+  updateKeyframeInScript,
+  addKeyframeToScript,
+  shiftPositionsInScript,
+  scalePositionsInScript,
+} from '@hyperframes/parsers/gsap-writer-acorn';
+import type { GsapAnimation, GsapMethod, ParsedGsap } from '@hyperframes/parsers';
+
+const parsed: ParsedGsap = parseGsapScriptAcorn(scriptContent);
+// parsed.animations, parsed.timelineVar, parsed.preamble, parsed.postamble
+
+// Mutation helpers operate on the script text and preserve unrelated code
+const next = updateAnimationInScript(scriptContent, animationId, { duration: 2 });
+```
+
+High-level serialize / validate / keyframe-conversion helpers are on the main entry:
+
+```typescript
+import {
+  serializeGsapAnimations,
+  getAnimationsForElementId,
+  validateCompositionGsap,
+  keyframesToGsapAnimations,
+  gsapAnimationsToKeyframes,
+} from '@hyperframes/parsers';
+```
+
+### GSAP Constants
+
+```typescript
+import {
+  SUPPORTED_PROPS,    // animatable properties
+  SUPPORTED_EASES,    // available easing functions
+  PROPERTY_GROUPS,
+} from '@hyperframes/parsers/gsap-constants';
+import type { PropertyGroupName } from '@hyperframes/parsers/gsap-constants';
+```
+
+## hf-ids
+
+Deterministic element identity for stable diffing and editing:
+
+```typescript
+import { ensureHfIds, mintHfId } from '@hyperframes/parsers/hf-ids';
+
+// Stamp hf-id attributes onto every editable element in a document
+const withIds = ensureHfIds(htmlString);
+```
+
+## Spring Ease
+
+```typescript
+import { generateSpringEaseData, SPRING_PRESETS } from '@hyperframes/parsers/spring-ease';
+```
+
+## Related Packages
+
+<CardGroup cols={2}>
+  <Card title="@hyperframes/core" icon="cube" href="/packages/core">
+    Types, generators, runtime, and compiler — re-exports the parser API it needs.
+  </Card>
+  <Card title="@hyperframes/lint" icon="circle-check" href="/packages/lint">
+    The composition linter, built on the parsers.
+  </Card>
+  <Card title="@hyperframes/studio-server" icon="server" href="/packages/studio-server">
+    The studio preview server, built on the parsers.
+  </Card>
+  <Card title="CLI" icon="terminal" href="/packages/cli">
+    Create, preview, lint, and render compositions.
+  </Card>
+</CardGroup>

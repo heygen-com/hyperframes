@@ -52,6 +52,8 @@ For motion patterns, scene blueprints, transitions, and CSS marker effects, use 
 - `scripts/extract-audio-data.py` — pre-extract audio bands for audio-reactive compositions.
 - `scripts/package-loader.mjs` — support script for bundled creative tooling.
 
+`contrast-report.mjs` resolves helper packages from the current project first, then can bootstrap the bundled HyperFrames package version. Set `HYPERFRAMES_SKILL_PKG_VERSION=<version>` only when running the skill outside the bundled CLI/skill install and you need to pin that bootstrap version explicitly.
+
 Run from the repo root with explicit paths, for example:
 
 ```bash

@@ -27,14 +27,18 @@
     return Math.round(value * 100) / 100;
   }
 
-  function overflowFor(subject, container, tolerance) {
+  function overflowFor(subject, container, tolerance, vTolerance) {
+    // Horizontal axis uses `tolerance`; vertical axis uses `vTolerance` (defaults to the same).
+    // A separate vertical tolerance lets text overflow checks absorb glyph ink that exceeds a
+    // snug line-height — see textOverflowIssues.
+    if (vTolerance == null) vTolerance = tolerance;
     const overflow = {};
     if (subject.left < container.left - tolerance)
       overflow.left = round(container.left - subject.left);
     if (subject.right > container.right + tolerance)
       overflow.right = round(subject.right - container.right);
-    if (subject.top < container.top - tolerance) overflow.top = round(container.top - subject.top);
-    if (subject.bottom > container.bottom + tolerance)
+    if (subject.top < container.top - vTolerance) overflow.top = round(container.top - subject.top);
+    if (subject.bottom > container.bottom + vTolerance)
       overflow.bottom = round(subject.bottom - container.bottom);
     return Object.keys(overflow).length > 0 ? overflow : null;
   }
@@ -94,6 +98,50 @@
     return opacity;
   }
 
+  // A clip-path can shrink an element's painted region to nothing (e.g. a
+  // typewriter span pre-reveal at `inset(0 100% 0 0)`, or `circle(0px)`) while
+  // its layout box, opacity, visibility and display all still read as present.
+  // Such an element paints zero pixels, so flagging it for overlap/occlusion is
+  // a false positive. clip-path also drives hit-testing, so an element clipped
+  // to nothing is unreachable by elementFromPoint anywhere in its box; only run
+  // the probe when a clip-path is actually in effect (self or ancestor) to avoid
+  // mistaking a genuinely-occluded element for a clipped one.
+  function hasClipPath(element) {
+    for (let current = element; current; current = current.parentElement) {
+      const clip = getComputedStyle(current).clipPath;
+      if (clip && clip !== "none") return true;
+    }
+    return false;
+  }
+
+  const CLIP_PROBE_COLS = [0.05, 0.25, 0.5, 0.75, 0.95];
+  const CLIP_PROBE_ROWS = [0.25, 0.5, 0.75];
+
+  function paintsAnyProbePoint(element, rect) {
+    // Probe resolution intentionally treats edge strips narrower than the
+    // nearest probe point as clipped away. That avoids noisy reports for
+    // typewriter pre-reveal states; if a real visible-strip bug appears, add
+    // edge probes here before widening the audit surface.
+    for (const fx of CLIP_PROBE_COLS) {
+      for (const fy of CLIP_PROBE_ROWS) {
+        const hit = document.elementFromPoint(
+          rect.left + rect.width * fx,
+          rect.top + rect.height * fy,
+        );
+        if (hit === element || element.contains(hit)) return true;
+      }
+    }
+    return false;
+  }
+
+  function isClippedAway(element) {
+    if (typeof document.elementFromPoint !== "function") return false;
+    if (!hasClipPath(element)) return false;
+    const rect = element.getBoundingClientRect();
+    if (rect.width <= 0.5 || rect.height <= 0.5) return false;
+    return !paintsAnyProbePoint(element, rect);
+  }
+
   function isVisibleElement(element) {
     if (IGNORE_TAGS.has(element.tagName)) return false;
     if (hasIgnoreFlag(element)) return false;
@@ -107,7 +155,8 @@
     }
     if (opacityChain(element) < 0.2) return false;
     const rect = element.getBoundingClientRect();
-    return rect.width > 0.5 && rect.height > 0.5;
+    if (rect.width <= 0.5 || rect.height <= 0.5) return false;
+    return !isClippedAway(element);
   }
 
   function textContentFor(element) {
@@ -319,9 +368,22 @@
 
     const container = nearestConstraint(element, root, rootRect);
     const containerRect = container === root ? rootRect : toRect(container.getBoundingClientRect());
-    const containerOverflow = overflowFor(textRect, containerRect, tolerance);
+    // Glyph ink (ascenders / descenders / accents / heavy display faces) routinely exceeds a
+    // snug line-height box by a few px, proportional to font size. When the constraining box
+    // does NOT clip, that vertical spill is normal typography — it shows in the padding, nothing
+    // is hidden — not a layout defect (it false-flagged caption words). Allow a font-metric
+    // vertical tolerance there; keep it tight when the box actually clips (a real cut-off) and
+    // always tight horizontally (too-wide text is a real wrap/legibility issue).
+    const elementStyle = getComputedStyle(element);
+    const containerClips = clipsOverflow(
+      container === root ? getComputedStyle(root) : getComputedStyle(container),
+    );
+    const verticalTolerance = containerClips
+      ? tolerance
+      : Math.max(tolerance, parsePx(elementStyle.fontSize) * 0.2);
+    const containerOverflow = overflowFor(textRect, containerRect, tolerance, verticalTolerance);
     if (containerOverflow && !hasAllowOverflowFlag(element)) {
-      const style = getComputedStyle(element);
+      const style = elementStyle;
       issues.push({
         code: "text_box_overflow",
         severity: "error",
@@ -456,11 +518,37 @@
     return a.contains(b) || b.contains(a);
   }
 
+  function isInFlow(element) {
+    const position = getComputedStyle(element).position;
+    return position === "static" || position === "relative" || position === "sticky";
+  }
+
+  function nearestFlexGridAncestor(element) {
+    for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+      const display = getComputedStyle(parent).display;
+      if (display.includes("flex") || display.includes("grid")) return parent;
+    }
+    return null;
+  }
+
+  // Two in-flow text blocks governed by the same flex/grid container are placed
+  // by the layout engine, which reserves space for each — they cannot visually
+  // collide. Any measured text-rect overlap between them is line-box / leading
+  // slop (tight stacks, number lockups, super/subscript units), not a collision.
+  // A real overlap bug needs free positioning (absolute/fixed), which keeps a
+  // different formatting context and is still flagged.
+  function isManagedFlowOverlap(a, b) {
+    if (!isInFlow(a) || !isInFlow(b)) return false;
+    const container = nearestFlexGridAncestor(a);
+    return !!container && container === nearestFlexGridAncestor(b);
+  }
+
   // Two solid text blocks whose boxes overlap by more than a fifth of the
   // smaller block read as a collision — unreadable, and invisible to the
   // overflow checks, which only compare an element against its container.
   function overlapIssue(a, b, time) {
     if (isNested(a.element, b.element)) return null;
+    if (isManagedFlowOverlap(a.element, b.element)) return null;
     const area = intersectionArea(a.rect, b.rect);
     if (area <= Math.min(rectArea(a.rect), rectArea(b.rect)) * 0.2) return null;
     return {
@@ -520,13 +608,30 @@
     return !!hit && hit !== element && !element.contains(hit) && !hit.contains(element);
   }
 
+  // During a scene-to-scene crossfade the incoming scene paints over the
+  // outgoing scene's still-visible text at >= 0.6 opacity — and `--at-transitions`
+  // samples exactly that midpoint. That overlap is the transition doing its job,
+  // not an occlusion bug. Detect it: the occluder lives in a DIFFERENT composition
+  // mount ([data-composition-id]) than the text, and at least one of the two scenes
+  // is mid-fade (effective opacity < 1). Two fully-settled scenes overlapping
+  // (both opacity 1) is NOT suppressed — that is a real layering bug.
+  function isCrossSceneTransitionOverlap(textEl, occluder) {
+    const textScene = textEl.closest("[data-composition-id]");
+    const occluderScene = occluder.closest("[data-composition-id]");
+    if (!textScene || !occluderScene || textScene === occluderScene) return false;
+    return Math.min(opacityChain(textScene), opacityChain(occluderScene)) < 0.999;
+  }
+
   // The opaque element painted over (x, y), or null when the topmost element
-  // there is related to the text or non-opaque.
+  // there is related to the text, non-opaque, or a transient crossfade overlap.
+  // fallow-ignore-next-line complexity
   function occluderAt(element, x, y) {
     if (typeof document.elementFromPoint !== "function") return null;
     const hit = document.elementFromPoint(x, y);
     if (!isForeignElement(element, hit)) return null;
-    return isOpaqueOccluder(hit) ? hit : null;
+    if (!isOpaqueOccluder(hit)) return null;
+    if (isCrossSceneTransitionOverlap(element, hit)) return null;
+    return hit;
   }
 
   // Sweep a grid across the text box (three rows, not just the mid-line, so

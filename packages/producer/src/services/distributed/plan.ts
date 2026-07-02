@@ -35,7 +35,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join, relative, sep } from "node:path";
-import { type CanvasResolution } from "@hyperframes/core";
+import { type CanvasResolution, fpsToNumber } from "@hyperframes/core";
 import {
   type EngineConfig,
   type VideoFrameFormat,
@@ -60,7 +60,11 @@ import {
   type PlanDimensions,
   sha256Hex,
 } from "../render/stages/planHash.js";
-import { validateNoGpuEncode, validateNoSystemFonts } from "../render/planValidation.js";
+import {
+  validateDistributedDuration,
+  validateNoGpuEncode,
+  validateNoSystemFonts,
+} from "../render/planValidation.js";
 import { snapshotRuntimeEnv } from "../render/runtimeEnvSnapshot.js";
 import {
   buildSyntheticRenderJob,
@@ -853,6 +857,11 @@ export async function plan(
   job.duration = probeResult.duration;
   job.totalFrames = probeResult.totalFrames;
   const totalFrames = probeResult.totalFrames;
+  validateDistributedDuration({
+    duration: probeResult.duration,
+    totalFrames,
+    fps: fpsToNumber(job.config.fps),
+  });
   if (probeResult.fileServer) closeFileServerSafely(probeResult.fileServer, "plan", log);
   if (probeResult.probeSession) {
     // Close inside a try/catch — leaking a Chrome process here would mask

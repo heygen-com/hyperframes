@@ -40,8 +40,49 @@ import { swallow } from "./diagnostics";
 const AUTHORED_DURATION_ATTR = "data-hf-authored-duration";
 const AUTHORED_END_ATTR = "data-hf-authored-end";
 
+type ExportRenderFpsResolution = {
+  fps: number | null;
+  source: "render-options" | "default" | "unknown";
+  rawFpsSource: unknown;
+  rawFps: unknown;
+  fallbackReason?: "missing" | "invalid";
+};
+
+function resolveExportRenderFps(): ExportRenderFpsResolution {
+  const config = window.__HF_EXPORT_RENDER_SEEK_CONFIG;
+  const rawFps = config?.fps;
+  const rawFpsSource = config?.fpsSource;
+  const fps = Number(rawFps);
+  if (!config || rawFps == null) {
+    return { fps: null, source: "default", rawFpsSource, rawFps, fallbackReason: "missing" };
+  }
+  if (!Number.isFinite(fps) || fps <= 0) {
+    return { fps: null, source: "default", rawFpsSource, rawFps, fallbackReason: "invalid" };
+  }
+  const source =
+    rawFpsSource === "render-options" || rawFpsSource === "default" ? rawFpsSource : "unknown";
+  return {
+    fps,
+    source,
+    rawFpsSource,
+    rawFps,
+    fallbackReason: config.fpsFallbackReason,
+  };
+}
+
 export function initSandboxRuntimeModular(): void {
   const state = createRuntimeState();
+  const exportRenderFps = resolveExportRenderFps();
+  state.canonicalFps = exportRenderFps.fps ?? state.canonicalFps;
+  if (window.__HF_EXPORT_RENDER_SEEK_CONFIG) {
+    console.info("[hyperframes] render runtime fps", {
+      canonicalFps: state.canonicalFps,
+      source: exportRenderFps.source,
+      rawFpsSource: exportRenderFps.rawFpsSource,
+      rawFps: exportRenderFps.rawFps,
+      fallbackReason: exportRenderFps.fallbackReason,
+    });
+  }
   let colorGradingRuntime: RuntimeColorGradingApi | null = null;
   let runtimeErrorListener: ((event: ErrorEvent) => void) | null = null;
   let runtimeUnhandledRejectionListener: ((event: PromiseRejectionEvent) => void) | null = null;
@@ -56,6 +97,23 @@ export function initSandboxRuntimeModular(): void {
       swallow("runtime.init.site1", err);
     }
   }
+  // `_auto` is a Studio-internal keyframe marker (an auto-tracked endpoint the
+  // parser reads back), NOT an animatable property. Register it as a no-op GSAP
+  // plugin so GSAP doesn't log "Invalid property _auto" on every tween build —
+  // that per-frame warning destabilizes the preview and makes the selection
+  // overlay stop tracking the pointer. Idempotent + best-effort.
+  const ensureAutoMarkerNoop = (): void => {
+    const g = window.gsap as { registerPlugin?: (plugin: unknown) => void } | undefined;
+    const w = window as Window & { __hfAutoNoopRegistered?: boolean };
+    if (!g?.registerPlugin || w.__hfAutoNoopRegistered) return;
+    try {
+      g.registerPlugin({ name: "_auto", init: () => false });
+      w.__hfAutoNoopRegistered = true;
+    } catch {
+      // a stray warning is preferable to a broken runtime
+    }
+  };
+  ensureAutoMarkerNoop();
   // Normalize html/body so browser defaults (8px margin, white background) never
   // bleed into renders as white bars. Runs in both preview and render contexts,
   // eliminating the preview/render parity gap that existed when only the React
@@ -615,6 +673,32 @@ export function initSandboxRuntimeModular(): void {
     );
   };
 
+  // Non-GSAP runtimes (CSS, WAAPI, Lottie) have no window.__timelines entry
+  // and thus no authored source of truth for total duration. Adapters that
+  // implement getInferredDurationSeconds() report the longest end time they
+  // can discover from their own animations (see runtime/types.ts). Folding
+  // that into the duration floor here — the same mechanism data-duration and
+  // media windows already use — makes data-duration optional wherever the
+  // runtime can figure the duration out on its own, instead of hard-failing
+  // capture with "Composition has zero duration".
+  const resolveAdapterDurationFloorSeconds = (): number | null => {
+    let maxSeconds = 0;
+    for (const adapter of state.deterministicAdapters) {
+      const getter = adapter.getInferredDurationSeconds;
+      if (typeof getter !== "function") continue;
+      let inferred: number | null = null;
+      try {
+        inferred = getter();
+      } catch (err) {
+        swallow("runtime.init.adapterDuration", err);
+      }
+      if (typeof inferred === "number" && Number.isFinite(inferred) && inferred > 0) {
+        maxSeconds = Math.max(maxSeconds, inferred);
+      }
+    }
+    return maxSeconds > MIN_VALID_TIMELINE_DURATION_SECONDS ? maxSeconds : null;
+  };
+
   const getSafeTimelineDurationSeconds = (
     timeline: RuntimeTimelineLike | null,
     fallback = 0,
@@ -622,7 +706,12 @@ export function initSandboxRuntimeModular(): void {
     const timelineDuration = getTimelineDurationSeconds(timeline);
     const mediaFloor = resolveMediaDurationFloorSeconds();
     const authoredCompositionFloor = resolveAuthoredCompositionDurationFloorSeconds();
-    const durationFloor = Math.max(mediaFloor ?? 0, authoredCompositionFloor ?? 0);
+    const adapterFloor = resolveAdapterDurationFloorSeconds();
+    const durationFloor = Math.max(
+      mediaFloor ?? 0,
+      authoredCompositionFloor ?? 0,
+      adapterFloor ?? 0,
+    );
     const fallbackDuration =
       Number.isFinite(fallback) && fallback > MIN_VALID_TIMELINE_DURATION_SECONDS ? fallback : 0;
     let safeDuration = 0;
@@ -639,6 +728,29 @@ export function initSandboxRuntimeModular(): void {
 
   const resolveRootTimelineFromDocument = (): TimelineResolution => {
     const timelines = (window.__timelines ?? {}) as Record<string, RuntimeTimelineLike | undefined>;
+    // DX fallback (#6): when the root timeline cannot be resolved by id but
+    // EXACTLY ONE usable timeline is registered, bind it rather than silently
+    // rendering the frozen t=0 DOM. Safe because with a single registered
+    // timeline there is no ambiguity about which one is the composition's
+    // root. Multiple registered → ambiguous, so we still return null and let
+    // the loud warning fire.
+    const resolveSoleTimelineFallback = (reason: string): TimelineResolution => {
+      const usable = Object.entries(timelines).filter(
+        (entry): entry is [string, RuntimeTimelineLike] =>
+          !!entry[1] && typeof entry[1].play === "function" && typeof entry[1].pause === "function",
+      );
+      if (usable.length !== 1) return { timeline: null };
+      const [soleId, soleTimeline] = usable[0];
+      return {
+        timeline: soleTimeline,
+        selectedTimelineIds: [soleId],
+        selectedDurationSeconds: getTimelineDurationSeconds(soleTimeline),
+        diagnostics: {
+          code: "root_timeline_sole_registered_fallback",
+          details: { reason, soleTimelineId: soleId },
+        },
+      };
+    };
     const startResolver = createRuntimeStartTimeResolver({
       timelineRegistry: timelines,
       includeAuthoredTimingAttrs: true,
@@ -740,7 +852,7 @@ export function initSandboxRuntimeModular(): void {
     const rootCompositionNode = resolveRootCompositionElement();
     const rootCompositionId = rootCompositionNode?.getAttribute("data-composition-id") ?? null;
     if (!rootCompositionId) {
-      return { timeline: null };
+      return resolveSoleTimelineFallback("root_missing_composition_id");
     }
     const rootTimeline = timelines[rootCompositionId] ?? null;
     const collectRootChildCandidates = (): Array<{
@@ -1003,7 +1115,7 @@ export function initSandboxRuntimeModular(): void {
         };
       }
     }
-    return { timeline: null };
+    return resolveSoleTimelineFallback("root_composition_id_unmatched_in_registry");
   };
 
   // Track whether child composition timelines have been added to the root.
@@ -2102,6 +2214,39 @@ export function initSandboxRuntimeModular(): void {
       clock.setDuration(boundDuration);
     }
     runAdapters("discover", state.currentTime);
+    // Loud, specific diagnostic for the #1 "looks fine, ships broken" trap:
+    // a root timeline never bound even though timelines ARE registered. Without
+    // this the render silently proceeds on the static build-time DOM (frozen at
+    // t=0). Only warn when GSAP timelines exist (CSS/WAAPI/Lottie-only
+    // compositions legitimately bind no GSAP timeline and use adapters).
+    if (!state.capturedTimeline) {
+      const registry = (window.__timelines ?? {}) as Record<string, unknown>;
+      const registeredKeys = Object.keys(registry).filter((k) => registry[k]);
+      if (registeredKeys.length > 0) {
+        const rootEl = resolveRootCompositionElement();
+        const rootCompositionId = rootEl?.getAttribute("data-composition-id") ?? null;
+        postRuntimeDiagnosticOnce(
+          "root_timeline_unbound_registry_present",
+          {
+            reason: rootCompositionId
+              ? "root data-composition-id has no matching key in window.__timelines"
+              : "root composition element has no data-composition-id attribute",
+            rootCompositionId,
+            registeredTimelineKeys: registeredKeys,
+          },
+          "root_timeline_unbound_registry_present",
+        );
+        // eslint-disable-next-line no-console -- loud author-facing warning; this render would otherwise freeze at t=0
+        console.warn(
+          `[hyperframes] Root timeline not bound — render will freeze at t=0. ` +
+            (rootCompositionId
+              ? `Root data-composition-id is "${rootCompositionId}" but window.__timelines has no such key. `
+              : `Root composition element has no data-composition-id. `) +
+            `Registered timeline keys: [${registeredKeys.join(", ")}]. ` +
+            `Register the root timeline under its data-composition-id (window.__timelines["${rootCompositionId ?? "<root-id>"}"] = tl).`,
+        );
+      }
+    }
     // __renderReady = timeline binding attempted, safe for deterministic seeking.
     // Set after any GSAP batching has completed. renderSeek works with or
     // without a GSAP timeline (CSS/WAAPI/Lottie compositions use adapters only).
@@ -2232,11 +2377,30 @@ export function initSandboxRuntimeModular(): void {
       if (opts?.activateChildren) {
         activateSiblingTimelines(tl);
       }
+      // #10: when data-duration exceeds the timeline's intrinsic length the
+      // engine requests frames past the last tween. Seeking a paused GSAP
+      // timeline past its end can revert from()-tweens to their empty initial
+      // state, blanking the final poster. Clamp the MASTER seek to the
+      // timeline's full extent so it holds the final computed frame instead.
+      // Adapters still receive the raw `t` (their media may run longer).
+      // totalDuration() includes repeats; Infinity (infinite repeat) → no clamp.
+      const tlWithTotal = tl as RuntimeTimelineLike & { totalDuration?: () => number };
+      let tlSeekTime = t;
+      if (typeof tlWithTotal.totalDuration === "function") {
+        try {
+          const total = Number(tlWithTotal.totalDuration());
+          if (Number.isFinite(total) && total > 0 && t > total) {
+            tlSeekTime = total;
+          }
+        } catch (err) {
+          swallow("runtime.init.transport.clampDuration", err);
+        }
+      }
       try {
         if (typeof tl.totalTime === "function") {
-          tl.totalTime(t, false);
+          tl.totalTime(tlSeekTime, false);
         } else {
-          tl.seek(t, false);
+          tl.seek(tlSeekTime, false);
         }
       } catch (err) {
         swallow("runtime.init.transport.seek", err);

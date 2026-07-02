@@ -5,20 +5,12 @@
     data-height="1080"
     data-duration="14.72"
   >
-    <!-- A-Roll Video -->
-    <video
-      id="a-roll-video"
-      src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/uploaded_assets/67cf5a05_e134ec83a57042b38776c952da595870.mp4"
-      style="
-        position: absolute;
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        opacity: 1;
-        z-index: 0;
-      "
-      crossorigin="anonymous"
-    ></video>
+    <!--
+      The A-Roll footage lives in the host root (index.html), positioned UNDER
+      this overlay shell. This sub-composition is the transparent graphics layer:
+      scenes and overlays paint over the footage and its reveal is timed on the
+      main timeline. Media nested in a sub-composition is never seeked/decoded.
+    -->
 
     <!-- Scene 1: Hook -->
     <div
@@ -156,7 +148,7 @@
 
     <style>
       [data-composition-id="main-graphics"] {
-        background: black;
+        background: transparent;
         font-family: "Inter", sans-serif;
         color: white;
         overflow: hidden;
@@ -401,7 +393,6 @@
         left: 10%;
         font-size: 140px;
         font-weight: 900;
-        transform: translateY(200px);
         z-index: 2;
       }
       .carson-line-1 .red-dot {
@@ -448,10 +439,9 @@
         overflow: hidden;
       }
       .wes-text-top {
-        font-family: "Libre Baskerville", serif;
+        font-family: "Playfair Display", serif;
         font-size: 44px;
         font-style: italic;
-        transform: translateY(-100px);
       }
       .wes-rule {
         width: 0;
@@ -460,9 +450,8 @@
         margin: 20px auto;
       }
       .wes-text-bottom {
-        font-family: "Libre Baskerville", serif;
+        font-family: "Playfair Display", serif;
         font-size: 44px;
-        transform: translateY(100px);
       }
 
       /* Scene 6: Vignelli Style */
@@ -495,14 +484,11 @@
     <script>
       const tl = gsap.timeline({ paused: true });
 
-      const video = document.getElementById("a-roll-video");
+      // The A-roll footage lives in the host root (index.html); its reveal is
+      // driven on the main timeline there. This timeline only animates the
+      // graphics overlay's own elements.
 
       // --- Initial Setup ---
-      tl.set(
-        video,
-        { width: "100%", height: "100%", left: 0, top: 0, borderRadius: 0, scale: 1, opacity: 0 },
-        0,
-      );
       tl.set("#white-wipe", { xPercent: -100 }, 0);
 
       // --- Scene 1: Hook (0s - 2.0s) ---
@@ -519,7 +505,6 @@
       // --- Transition to Scene 2 (2.0s - 2.4s) ---
       tl.to("#white-wipe", { xPercent: 0, duration: 0.2, ease: "power2.in" }, 2.0);
       tl.set("#scene-1", { opacity: 0 }, 2.2);
-      tl.set(video, { opacity: 1 }, 2.2);
       tl.to("#white-wipe", { xPercent: 100, duration: 0.2, ease: "power2.out" }, 2.2);
 
       // --- Scene 2: Swiss Style (2.0s - 5.0s) ---
@@ -554,21 +539,19 @@
 
       // --- Scene 4: David Carson Style (9.6s - 11.7s) ---
       tl.to("#scene-4", { opacity: 1, duration: 0.1 }, 9.6);
-      tl.to(".carson-line-1", { y: 0, duration: 0.6, ease: "expo.out" }, 9.7);
+      tl.fromTo(".carson-line-1", { y: 200 }, { y: 0, duration: 0.6, ease: "expo.out" }, 9.7);
       tl.to(".carson-line-2", { opacity: 1, x: -50, duration: 0.5, ease: "back.out" }, 10.2);
       tl.to(".carson-container", { y: 300, duration: 0.6, ease: "expo.in" }, 11.4);
       tl.to("#scene-4", { opacity: 0, duration: 0.1 }, 11.7);
 
       // --- Scene 5: Wes Anderson (11.7s - 13.5s) ---
-      tl.to(video, { opacity: 0, duration: 0.4 }, 11.7);
       tl.to("#scene-5", { opacity: 1, duration: 0.1 }, 11.7);
-      tl.to(".wes-text-top", { y: 0, duration: 0.6, ease: "back.out(1.2)" }, 12.0);
+      tl.fromTo(".wes-text-top", { y: -100 }, { y: 0, duration: 0.6, ease: "back.out(1.2)" }, 12.0);
       tl.to(".wes-rule", { width: 400, duration: 0.6 }, 12.3);
-      tl.to(".wes-text-bottom", { y: 0, duration: 0.6, ease: "back.out(1.2)" }, 12.6);
+      tl.fromTo(".wes-text-bottom", { y: 100 }, { y: 0, duration: 0.6, ease: "back.out(1.2)" }, 12.6);
       tl.to("#scene-5", { opacity: 0, duration: 0.5 }, 13.0);
 
       // --- Scene 6: Vignelli Style (13.5s - 14.72s) ---
-      tl.set(video, { opacity: 1 }, 13.5);
       tl.set("#scene-6", { opacity: 1 }, 13.5);
       tl.set("#scene-6-overlay", { opacity: 1 }, 13.5);
 

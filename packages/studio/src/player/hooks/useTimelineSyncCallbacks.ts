@@ -10,7 +10,7 @@
 
 import { useCallback } from "react";
 import { liveTime, usePlayerStore } from "../store/playerStore";
-import type { TimelineElement } from "../store/playerStore";
+import type { TimelineElement, DomClipChild } from "../store/playerStore";
 import type { PlaybackAdapter, ClipManifestClip, IframeWindow } from "../lib/playbackTypes";
 import {
   parseTimelineFromDOM,
@@ -85,8 +85,8 @@ export function useTimelineSyncCallbacks({
           | (Window & { __clipTree?: import("@hyperframes/core/runtime/clipTree").ClipTree })
           | null;
         const clipTree = iframeWin?.__clipTree;
+        const parentMap = new Map<string, string>();
         if (clipTree) {
-          const parentMap = new Map<string, string>();
           const walk = (nodes: typeof clipTree.roots) => {
             for (const node of nodes) {
               if (node.id && node.parentId) parentMap.set(node.id, node.parentId);
@@ -94,11 +94,50 @@ export function useTimelineSyncCallbacks({
             }
           };
           walk(clipTree.roots);
-          usePlayerStore.getState().setClipParentMap(parentMap);
         }
+
+        // Descend into each sub-composition host: its internal elements (group
+        // wrappers + their children) carry no `data-start`, so the clip
+        // tree/manifest never enumerate them. Surface them studio-side as DOM
+        // children + parent links so the timeline can expand a sub-comp/group
+        // row to show them. Manifest stays lean (timed clips only).
+        const domClipChildren: DomClipChild[] = [];
+        if (iframeDoc) {
+          for (const clip of data.clips) {
+            if (clip.kind !== "composition" || !clip.id) continue;
+            const hostEl = iframeDoc.getElementById(clip.id);
+            if (!hostEl) continue;
+            const hostId = clip.id;
+            const innerRoot = hostEl.querySelector("[data-hf-inner-root]") ?? hostEl;
+            // Collect the sub-comp's id'd descendants (grouped OR ungrouped) so they
+            // expand into timeline rows. Descends through id-less structural wrappers
+            // (the inlined sub-comp body), and one level into groups for drill-in.
+            const collect = (parentEl: Element, parentId: string) => {
+              for (const child of Array.from(parentEl.children)) {
+                if (!child.id) {
+                  collect(child, parentId); // unwrap id-less structural containers
+                  continue;
+                }
+                const isGroup = child.hasAttribute("data-hf-group");
+                domClipChildren.push({
+                  id: child.id,
+                  parentId,
+                  hostId,
+                  label: isGroup ? child.getAttribute("data-hf-group") || child.id : child.id,
+                });
+                parentMap.set(child.id, parentId);
+                if (isGroup) collect(child, child.id);
+              }
+            };
+            collect(innerRoot, hostId);
+          }
+        }
+        usePlayerStore.getState().setClipParentMap(parentMap);
+        usePlayerStore.getState().setDomClipChildren(domClipChildren);
       } catch {
-        // cross-origin or __clipTree not available — parentMap stays empty
+        // cross-origin or __clipTree not available — maps stay empty
       }
+
       const usedHostEls = new Set<Element>();
       const els: TimelineElement[] = filtered.map((clip, index) => {
         const hostEl = iframeDoc

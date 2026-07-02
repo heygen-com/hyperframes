@@ -93,6 +93,7 @@ export function StudioRightPanel({
     domEditGroupSelections,
     copiedAgentPrompt,
     clearDomSelection,
+    handleUngroupSelection,
     handleDomStyleCommit,
     handleDomAttributeCommit,
     handleDomAttributeLiveCommit,
@@ -118,10 +119,12 @@ export function StudioRightPanel({
     handleGsapAddFromProperty,
     handleGsapRemoveFromProperty,
     commitAnimatedProperty,
+    commitAnimatedProperties,
     handleSetArcPath,
     handleUpdateArcSegment,
     handleUnroll,
     handleUpdateKeyframeEase,
+    handleSetAllKeyframeEases,
     handleGsapAddKeyframe,
     handleGsapRemoveKeyframe,
     handleGsapConvertToKeyframes,
@@ -239,6 +242,7 @@ export function StudioRightPanel({
       multiSelectCount={domEditGroupSelections.length}
       copiedAgentPrompt={copiedAgentPrompt}
       onClearSelection={clearDomSelection}
+      onUngroup={handleUngroupSelection}
       onSetStyle={handleDomStyleCommit}
       onSetAttribute={handleDomAttributeCommit}
       onSetAttributeLive={handleDomAttributeLiveCommit}
@@ -268,14 +272,18 @@ export function StudioRightPanel({
       onRemoveGsapFromProperty={handleGsapRemoveFromProperty}
       onAddGsapAnimation={handleGsapAddAnimation}
       onCommitAnimatedProperty={commitAnimatedProperty}
+      onCommitAnimatedProperties={commitAnimatedProperties}
       onAddKeyframe={handleGsapAddKeyframe}
       onRemoveKeyframe={handleGsapRemoveKeyframe}
-      onConvertToKeyframes={handleGsapConvertToKeyframes}
+      onConvertToKeyframes={(animId, duration) =>
+        handleGsapConvertToKeyframes(animId, undefined, duration)
+      }
       onSeekToTime={(t) => usePlayerStore.getState().requestSeek(t)}
       onSetArcPath={handleSetArcPath}
       onUpdateArcSegment={handleUpdateArcSegment}
       onUnroll={handleUnroll}
       onUpdateKeyframeEase={handleUpdateKeyframeEase}
+      onSetAllKeyframeEases={handleSetAllKeyframeEases}
       recordingState={recordingState}
       recordingDuration={recordingDuration}
       onToggleRecording={onToggleRecording}

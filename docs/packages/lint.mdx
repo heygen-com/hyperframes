@@ -1,0 +1,131 @@
+---
+title: "@hyperframes/lint"
+description: "The composition linter as a standalone library — lint a directory or a single HTML file without the CLI."
+---
+
+The lint package is the composition linter extracted from core into a dedicated, independently-installable package. It's the **single source of truth** for linting: both the CLI's `hyperframes lint` command and the render-time render-gate consume the same rule engine from here.
+
+```bash
+npm install @hyperframes/lint
+```
+
+## When to Use
+
+<Tip>
+  This package is the payoff of running validation **as a library** instead of shelling out to the CLI. A Node app (an agent harness, a CI step, an editor plugin) can `import { lintProject } from '@hyperframes/lint'` and lint a composition directory directly — no `npx hyperframes lint` subprocess, no stdout parsing.
+</Tip>
+
+**Use `@hyperframes/lint` when you need to:**
+- Lint a composition project (an index + sub-compositions) from Node
+- Lint a single HTML string programmatically
+- Gate a render on lint findings (`shouldBlockRender`)
+- Surface lint findings in your own UI or CI annotations
+
+<Info>
+  `@hyperframes/core/lint` still resolves (via a back-compat re-export stub), so existing imports keep working. New code should import from `@hyperframes/lint` directly.
+</Info>
+
+## Package Exports
+
+The lint package has a single entry point:
+
+```typescript
+import {
+  lintHyperframeHtml,
+  lintMediaUrls,
+  lintProject,
+  shouldBlockRender,
+} from '@hyperframes/lint';
+import type {
+  HyperframeLintResult,
+  HyperframeLintFinding,
+  HyperframeLintSeverity,   // "error" | "warning"
+  HyperframeLinterOptions,
+  ProjectLintResult,
+} from '@hyperframes/lint';
+```
+
+## Linting a Single Composition
+
+```typescript
+import { lintHyperframeHtml, lintMediaUrls } from '@hyperframes/lint';
+
+const result = lintHyperframeHtml(html, { filePath: 'index.html' });
+// result.ok, result.errorCount, result.warningCount, result.findings
+
+for (const finding of result.findings) {
+  console.log(finding.severity, finding.code, finding.message);
+  // finding.file, finding.selector, finding.elementId, finding.fixHint, finding.snippet
+}
+
+// Additional media URL validation
+const mediaFindings = lintMediaUrls(result.findings);
+```
+
+## Linting a Project
+
+`lintProject` walks a composition directory — the index plus any sub-compositions — and returns aggregated findings. It takes a **directory path string**, so it's callable from any Node context with nothing but a path:
+
+```typescript
+import { lintProject, shouldBlockRender } from '@hyperframes/lint';
+import type { ProjectLintResult } from '@hyperframes/lint';
+
+const result: ProjectLintResult = await lintProject('./my-composition');
+// result.totalErrors, result.totalWarnings, result.results[]
+//   each result entry: { file, result: HyperframeLintResult }
+
+if (shouldBlockRender(result)) {
+  throw new Error(`Lint found ${result.totalErrors} blocking error(s)`);
+}
+```
+
+## Browser usage
+
+The rule engine runs **fully client-side** — no Node.js, no filesystem, no server round-trip. Import from the `@hyperframes/lint/browser` entry to validate composition HTML directly in a browser-only editor or tool:
+
+```typescript
+import { lintHyperframeHtml, shouldBlockRender } from '@hyperframes/lint/browser';
+
+const result = await lintHyperframeHtml(htmlString, { filePath: 'index.html' });
+if (!result.ok) {
+  for (const f of result.findings) console.warn(f.code, f.message);
+}
+```
+
+The browser entry exposes `lintHyperframeHtml`, `lintMediaUrls`, and `shouldBlockRender` — everything that operates on an HTML string. It is built with a browser target and contains **zero `node:` builtins**, so it bundles cleanly for the client (verified at build time).
+
+<Info>
+  `lintProject` (which walks a project **directory**) is filesystem-based and is **not** part of the browser entry — import it from the main `@hyperframes/lint` entry in Node.
+</Info>
+
+## What the Linter Catches
+
+Detected issues include:
+
+- Missing timeline registration (`window.__timelines`)
+- Unmuted video elements (causes autoplay failures)
+- Missing `class="clip"` on timed visible elements
+- Deprecated attribute names
+- Missing composition dimensions (`data-width`, `data-height`)
+- Invalid `data-start` references to nonexistent clip IDs
+
+<Info>
+  For a full list of what the linter catches and how to fix each issue, see [Common Mistakes](/guides/common-mistakes) and [Troubleshooting](/guides/troubleshooting).
+</Info>
+
+## Related Packages
+
+<CardGroup cols={2}>
+  <Card title="@hyperframes/parsers" icon="code" href="/packages/parsers">
+    The HTML + GSAP parsing layer the linter builds on.
+  </Card>
+  <Card title="@hyperframes/core" icon="cube" href="/packages/core">
+    Types and runtime; re-exports the linter for back-compat.
+  </Card>
+  <Card title="CLI" icon="terminal" href="/packages/cli">
+    `npx hyperframes lint` wraps this package.
+  </Card>
+  <Card title="Studio" icon="palette" href="/packages/studio">
+    Surfaces lint findings in the editor.
+  </Card>
+</CardGroup>

@@ -18,6 +18,7 @@ import {
   mapPresetForGpuEncoder,
 } from "../utils/gpuEncoder.js";
 import { type HdrTransfer, getHdrEncoderColorParams } from "../utils/hdr.js";
+import { withEvenDimensionPad } from "../utils/evenDimensions.js";
 import { formatFfmpegError, runFfmpeg } from "../utils/runFfmpeg.js";
 import { getFfmpegBinary } from "../utils/ffmpegBinaries.js";
 import { extractAudioMetadata } from "../utils/ffprobe.js";
@@ -395,14 +396,25 @@ export function buildEncoderArgs(
 
     // Range conversion: Chrome's full-range RGB → limited/TV range.
     if (gpuEncoder === "vaapi") {
+      // vaapi already runs `format=nv12,hwupload`; the nv12 conversion aligns
+      // odd dimensions before upload, so only prepend the range conversion.
       const vfIdx = args.indexOf("-vf");
       if (vfIdx !== -1) {
         args[vfIdx + 1] = `scale=in_range=pc:out_range=tv,${args[vfIdx + 1]}`;
       }
-    } else if (!shouldUseGpu) {
+    } else if (shouldUseGpu) {
+      // nvenc/videotoolbox/qsv/amf feed software frames straight to the HW
+      // encoder with no `-vf`. They hit the same "height not divisible by 2"
+      // abort as libx264 on an odd-sized 4:2:0 canvas, so pad odd dimensions
+      // up to even on the software side before the encode.
+      const vf = withEvenDimensionPad("", pixelFormat);
+      if (vf) args.push("-vf", vf);
+    } else {
       // Range conversion: Chrome screenshots are full-range RGB.
-      // The scale filter handles both 8-bit and 10-bit correctly.
-      args.push("-vf", "scale=in_range=pc:out_range=tv");
+      // The scale filter handles both 8-bit and 10-bit correctly. Pad odd
+      // dimensions up to even so libx264/libx265 (4:2:0) don't abort with
+      // "height not divisible by 2" on an odd-sized composition canvas.
+      args.push("-vf", withEvenDimensionPad("scale=in_range=pc:out_range=tv", pixelFormat));
     }
 
     // Fixed timescale for consistent A/V timing across platforms.

@@ -104,6 +104,11 @@ export interface ManifestEntry {
   filename: string;
   width: number;
   height: number;
+  /** Intrinsic clip resolution (videoWidth/Height). Optional — absent in
+   * manifests written before source dims were recorded. Size off these, not
+   * the display box (width/height). */
+  sourceWidth?: number;
+  sourceHeight?: number;
   heading: string;
   caption: string;
   ariaLabel: string;
@@ -213,7 +218,7 @@ export async function runVideoMode(args: VideoModeArgs): Promise<void> {
     );
     for (const e of manifest) {
       console.log(
-        `  ${c.bold(`[${e.index}]`)} ${e.filename} — ${e.width}×${e.height}` +
+        `  ${c.bold(`[${e.index}]`)} ${e.filename} — ${e.sourceWidth || e.width}×${e.sourceHeight || e.height}` +
           (e.heading ? `\n      heading: "${e.heading}"` : "") +
           `\n      url: ${e.url}`,
       );
@@ -253,7 +258,7 @@ export async function runVideoMode(args: VideoModeArgs): Promise<void> {
   const relPath = isW2hLayout ? `capture/assets/videos/${fname}` : `assets/videos/${fname}`;
 
   console.log(
-    `${c.accent("▸")} downloading [${entry.index}] ${entry.filename} (${entry.width}×${entry.height})`,
+    `${c.accent("▸")} downloading [${entry.index}] ${entry.filename} (${entry.sourceWidth || entry.width}×${entry.sourceHeight || entry.height})`,
   );
   console.log(`     from: ${entry.url}`);
   try {
@@ -264,7 +269,7 @@ export async function runVideoMode(args: VideoModeArgs): Promise<void> {
     const snippetId = `video-${entry.index}`;
     console.log(
       `     Reference it from a beat composition as:\n` +
-        `       <video id="${snippetId}" src="${relPath}" data-start="0" data-duration="${entry.width === entry.height ? 5 : 4}" data-track-index="0" autoplay muted loop></video>`,
+        `       <video id="${snippetId}" src="${relPath}" data-start="0" data-duration="${(entry.sourceWidth || entry.width) === (entry.sourceHeight || entry.height) ? 5 : 4}" data-track-index="0" autoplay muted loop></video>`,
     );
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code === "EEXIST") {

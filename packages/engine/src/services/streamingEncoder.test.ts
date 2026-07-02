@@ -309,6 +309,24 @@ describe("buildStreamingArgs", () => {
       expect(h265Args[h265Args.indexOf("-c:v") + 1]).toBe("hevc_amf");
       expect(h265Args[h265Args.indexOf("-qp_i") + 1]).toBe("23");
     });
+
+    // 4:2:0 HW encode aborts on odd dims just like libx264, and these paths
+    // feed software frames straight to the encoder with no `-vf`, so the
+    // even-dim pad (and only the pad, not the SW range scale) must be added.
+    it("pads odd dimensions (no range scale) for non-VAAPI GPU encoding", () => {
+      for (const gpu of ["nvenc", "videotoolbox", "qsv", "amf"] as const) {
+        const args = buildStreamingArgs(baseGpu, "/tmp/out.mp4", gpu);
+        const vfIdx = args.indexOf("-vf");
+        expect(args[vfIdx + 1]).toBe("pad=ceil(iw/2)*2:ceil(ih/2)*2");
+        expect(args[vfIdx + 1]).not.toContain("scale=in_range");
+      }
+    });
+
+    it("prepends range conversion to VAAPI chain (nv12 covers even-dim)", () => {
+      const args = buildStreamingArgs(baseGpu, "/tmp/out.mp4", "vaapi");
+      const vfIdx = args.indexOf("-vf");
+      expect(args[vfIdx + 1]).toBe("scale=in_range=pc:out_range=tv,format=nv12,hwupload");
+    });
   });
 });
 

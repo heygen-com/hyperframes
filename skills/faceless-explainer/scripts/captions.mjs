@@ -36,7 +36,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { dirname, join, resolve } from "node:path";
 import { parseStoryboard } from "./lib/storyboard.mjs";
 import { captionBand, parseFormat } from "./lib/dimensions.mjs";
-import { parseColors, parseFonts, semanticColors } from "./lib/tokens.mjs";
+import { parseColors, parseFonts, semanticColors, lum } from "./lib/tokens.mjs";
 
 const flag = (argv, name, def) => {
   const i = argv.indexOf(`--${name}`);
@@ -276,6 +276,20 @@ function buildFromSkin(skin, groups, total, W, H, tokens, die, faces = "", fonts
   // overflow:hidden — nothing is clipped); zeroing it would need an airy line-height that
   // balloons the pill, which is worse. Override only if a brand font genuinely clips.
   out += "\n<style>\n  .caption-line { line-height: 1.1 !important; }\n</style>";
+  // dark-ground caption contrast (auto). The preset caption skins are tuned for a LIGHT
+  // pill (cream); on a dark brand ground the pill goes near-black, so the skin's faint
+  // upcoming-word mix and light highlight block turn unreadable. When the resolved caption
+  // canvas is dark, override the three word states: a brighter muted upcoming color + an
+  // on-brand ACCENT highlight block with light text. Light grounds are left untouched.
+  const capCanvas = (tokens.match(/--cap-canvas:\s*(#[0-9a-fA-F]{6})/) || [])[1];
+  if (capCanvas && (lum(capCanvas) ?? 255) < 90) {
+    out +=
+      "\n<style>\n" +
+      "  .caption-word { color: color-mix(in srgb, var(--cap-ink) 64%, var(--cap-canvas)); }\n" +
+      "  .caption-word.is-active { color: var(--cap-ink); background: var(--cap-accent); box-shadow: 0 0 0 0.06em var(--cap-accent); }\n" +
+      "  .caption-word.is-spoken { color: var(--cap-ink); background: transparent; box-shadow: none; }\n" +
+      "</style>";
+  }
   return `<template id="captions-template" data-composition-id="captions" data-width="${W}" data-height="${H}">\n${out.trim()}\n</template>\n`;
 }
 
@@ -291,8 +305,11 @@ function brandFontFaces(framePath, hyperframesDir) {
   ];
   if (!families.length) return "";
   const dirs = [
-    { abs: join(hyperframesDir, "assets/fonts"), rel: "../assets/fonts" },
-    { abs: join(hyperframesDir, "capture/assets/fonts"), rel: "../capture/assets/fonts" },
+    // ROOT-RELATIVE — compositions are served with the project root as their base URL, so a
+    // "../" prefix escapes the root (lint: invalid_parent_traversal_in_asset_path) and 404s in
+    // Studio/preview. Mirror what the frame workers use for images.
+    { abs: join(hyperframesDir, "assets/fonts"), rel: "assets/fonts" },
+    { abs: join(hyperframesDir, "capture/assets/fonts"), rel: "capture/assets/fonts" },
   ].filter((d) => existsSync(d.abs));
   const weightOf = (n) => {
     const s = n.toLowerCase();
@@ -449,7 +466,7 @@ function buildCaptionsHtml(groups, total, W, H) {
       color: rgba(255, 255, 255, 0.55);
     }
   </style>
-  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js" integrity="sha384-sG0Hv1tP1lZCk9KQmrIbY/XNwi+OY84GQqhMscbnsoBFqAz8KNCil1kvfL3Hbbk2" crossorigin="anonymous"></script>
   <script>
     (function () {
       var GROUPS = ${JSON.stringify(groups)};

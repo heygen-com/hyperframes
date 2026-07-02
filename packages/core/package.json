@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/core",
-  "version": "0.7.6",
+  "version": "0.7.24",
   "description": "",
   "repository": {
     "type": "git",
@@ -8,7 +8,11 @@
     "directory": "packages/core"
   },
   "files": [
-    "dist",
+    "dist/**/*.js",
+    "dist/**/*.d.ts",
+    "dist/**/*.d.ts.map",
+    "dist/**/*.js.map",
+    "!dist/hyperframe.runtime.mjs",
     "docs",
     "schemas",
     "README.md"
@@ -18,116 +22,184 @@
   "types": "./src/index.ts",
   "exports": {
     ".": {
+      "bun": "./src/index.ts",
+      "node": "./dist/index.js",
       "import": "./src/index.ts",
       "types": "./src/index.ts"
     },
     "./package.json": "./package.json",
     "./beats": {
+      "bun": "./src/beats/index.ts",
+      "node": "./dist/beats/index.js",
       "import": "./src/beats/index.ts",
       "types": "./src/beats/index.ts"
     },
     "./html-attr-safety": {
+      "bun": "./src/utils/htmlAttrSafety.ts",
+      "node": "./dist/utils/htmlAttrSafety.js",
       "import": "./src/utils/htmlAttrSafety.ts",
       "types": "./src/utils/htmlAttrSafety.ts"
     },
+    "./editing": {
+      "bun": "./src/editing/affordances.ts",
+      "node": "./dist/editing/affordances.js",
+      "import": "./src/editing/affordances.ts",
+      "types": "./src/editing/affordances.ts"
+    },
     "./slideshow": {
+      "bun": "./src/slideshow/index.ts",
+      "node": "./dist/slideshow/index.js",
       "import": "./src/slideshow/index.ts",
       "types": "./src/slideshow/index.ts"
     },
+    "./generators": {
+      "bun": "./src/generators/hyperframes.ts",
+      "node": "./dist/generators/hyperframes.js",
+      "import": "./src/generators/hyperframes.ts",
+      "types": "./src/generators/hyperframes.ts"
+    },
     "./lint": {
+      "bun": "./src/lint/index.ts",
+      "node": "./dist/lint/index.js",
       "import": "./src/lint/index.ts",
       "types": "./src/lint/index.ts"
     },
     "./compiler": {
+      "bun": "./src/compiler/index.ts",
+      "node": "./dist/compiler/index.js",
       "import": "./src/compiler/index.ts",
       "types": "./src/compiler/index.ts"
     },
     "./color-grading": {
+      "bun": "./src/colorGrading.ts",
+      "node": "./dist/colorGrading.js",
       "import": "./src/colorGrading.ts",
       "types": "./src/colorGrading.ts"
     },
     "./color-luts": {
+      "bun": "./src/colorLuts.ts",
+      "node": "./dist/colorLuts.js",
       "import": "./src/colorLuts.ts",
       "types": "./src/colorLuts.ts"
     },
     "./storyboard": {
+      "bun": "./src/storyboard/index.ts",
+      "node": "./dist/storyboard/index.js",
       "import": "./src/storyboard/index.ts",
       "types": "./src/storyboard/index.ts"
     },
     "./runtime": "./dist/hyperframe.runtime.iife.js",
     "./runtime/clipTree": {
+      "bun": "./src/runtime/clipTree.ts",
+      "node": "./dist/runtime/clipTree.js",
       "import": "./src/runtime/clipTree.ts",
       "types": "./src/runtime/clipTree.ts"
     },
     "./runtime/lottie-readiness": {
+      "bun": "./src/lottieReadiness.ts",
+      "node": "./dist/lottieReadiness.js",
       "import": "./src/lottieReadiness.ts",
       "types": "./src/lottieReadiness.ts"
     },
     "./studio-api": {
+      "bun": "./src/studio-api/index.ts",
+      "node": "./dist/studio-api/index.js",
       "import": "./src/studio-api/index.ts",
       "types": "./src/studio-api/index.ts"
     },
     "./studio-api/screenshot-clip": {
+      "bun": "./src/studio-api/helpers/screenshotClip.ts",
+      "node": "./dist/studio-api/helpers/screenshotClip.js",
       "import": "./src/studio-api/helpers/screenshotClip.ts",
       "types": "./src/studio-api/helpers/screenshotClip.ts"
     },
     "./studio-api/manual-edits-render-script": {
+      "bun": "./src/studio-api/helpers/manualEditsRenderScript.ts",
+      "node": "./dist/studio-api/helpers/manualEditsRenderScript.js",
       "import": "./src/studio-api/helpers/manualEditsRenderScript.ts",
       "types": "./src/studio-api/helpers/manualEditsRenderScript.ts"
     },
     "./studio-api/studio-motion-render-script": {
+      "bun": "./src/studio-api/helpers/studioMotionRenderScript.ts",
+      "node": "./dist/studio-api/helpers/studioMotionRenderScript.js",
       "import": "./src/studio-api/helpers/studioMotionRenderScript.ts",
       "types": "./src/studio-api/helpers/studioMotionRenderScript.ts"
     },
     "./studio-api/draft-markers": {
+      "bun": "./src/studio-api/helpers/draftMarkers.ts",
+      "node": "./dist/studio-api/helpers/draftMarkers.js",
       "import": "./src/studio-api/helpers/draftMarkers.ts",
       "types": "./src/studio-api/helpers/draftMarkers.ts"
     },
     "./studio-api/finite-mutation": {
+      "bun": "./src/studio-api/helpers/finiteMutation.ts",
+      "node": "./dist/studio-api/helpers/finiteMutation.js",
       "import": "./src/studio-api/helpers/finiteMutation.ts",
       "types": "./src/studio-api/helpers/finiteMutation.ts"
     },
     "./text": {
+      "bun": "./src/text/index.ts",
+      "node": "./dist/text/index.js",
       "import": "./src/text/index.ts",
       "types": "./src/text/index.ts"
     },
     "./registry": {
+      "bun": "./src/registry/index.ts",
+      "node": "./dist/registry/index.js",
       "import": "./src/registry/index.ts",
       "types": "./src/registry/index.ts"
     },
     "./media-volume-envelope": {
+      "bun": "./src/runtime/mediaVolumeEnvelope.ts",
+      "node": "./dist/runtime/mediaVolumeEnvelope.js",
       "import": "./src/runtime/mediaVolumeEnvelope.ts",
       "types": "./src/runtime/mediaVolumeEnvelope.ts"
     },
     "./hf-ids": {
+      "bun": "./src/parsers/hfIds.ts",
+      "node": "./dist/parsers/hfIds.js",
       "import": "./src/parsers/hfIds.ts",
       "types": "./src/parsers/hfIds.ts"
     },
     "./gsap-parser": {
+      "bun": "./src/parsers/gsapParserExports.ts",
+      "node": "./dist/parsers/gsapParserExports.js",
       "import": "./src/parsers/gsapParserExports.ts",
       "types": "./src/parsers/gsapParserExports.ts"
     },
     "./gsap-parser-acorn": {
+      "bun": "./src/parsers/gsapParserAcorn.ts",
+      "node": "./dist/parsers/gsapParserAcorn.js",
       "import": "./src/parsers/gsapParserAcorn.ts",
       "types": "./src/parsers/gsapParserAcorn.ts"
     },
     "./gsap-writer-acorn": {
+      "bun": "./src/parsers/gsapWriterAcorn.ts",
+      "node": "./dist/parsers/gsapWriterAcorn.js",
       "import": "./src/parsers/gsapWriterAcorn.ts",
       "types": "./src/parsers/gsapWriterAcorn.ts"
     },
     "./gsap-constants": {
+      "bun": "./src/parsers/gsapConstants.ts",
+      "node": "./dist/parsers/gsapConstants.js",
       "import": "./src/parsers/gsapConstants.ts",
       "types": "./src/parsers/gsapConstants.ts"
     },
     "./spring-ease": {
+      "bun": "./src/parsers/springEase.ts",
+      "node": "./dist/parsers/springEase.js",
       "import": "./src/parsers/springEase.ts",
       "types": "./src/parsers/springEase.ts"
     },
     "./fonts/aliases": {
+      "bun": "./src/fonts/aliases.ts",
+      "node": "./dist/fonts/aliases.js",
       "import": "./src/fonts/aliases.ts",
       "types": "./src/fonts/aliases.ts"
     },
     "./fonts/system-locator": {
+      "bun": "./src/fonts/systemFontLocator.ts",
+      "node": "./dist/fonts/systemFontLocator.js",
       "import": "./src/fonts/systemFontLocator.ts",
       "types": "./src/fonts/systemFontLocator.ts"
     },
@@ -149,6 +221,14 @@
       "./html-attr-safety": {
         "import": "./dist/utils/htmlAttrSafety.js",
         "types": "./dist/utils/htmlAttrSafety.d.ts"
+      },
+      "./editing": {
+        "import": "./dist/editing/affordances.js",
+        "types": "./dist/editing/affordances.d.ts"
+      },
+      "./generators": {
+        "import": "./dist/generators/hyperframes.js",
+        "types": "./dist/generators/hyperframes.d.ts"
       },
       "./lint": {
         "import": "./dist/lint/index.js",
@@ -280,15 +360,13 @@
     "prepublishOnly": "echo skip"
   },
   "dependencies": {
-    "@babel/parser": "^7.27.0",
     "@chenglou/pretext": "^0.0.5",
-    "acorn": "^8.17.0",
-    "acorn-walk": "^8.3.5",
+    "@hyperframes/lint": "workspace:*",
+    "@hyperframes/parsers": "workspace:*",
+    "@hyperframes/studio-server": "workspace:*",
     "bpm-detective": "^2.0.5",
-    "magic-string": "^0.30.21",
-    "postcss": "^8.5.8",
-    "postcss-selector-parser": "^7.1.2",
-    "recast": "^0.23.11"
+    "linkedom": "^0.18.12",
+    "postcss": "^8.5.8"
   },
   "devDependencies": {
     "@types/jsdom": "^28.0.0",
@@ -299,16 +377,7 @@
     "typescript": "^5.0.0",
     "vitest": "^3.2.4"
   },
-  "peerDependencies": {
-    "hono": "^4.0.0"
-  },
-  "peerDependenciesMeta": {
-    "hono": {
-      "optional": true
-    }
-  },
   "optionalDependencies": {
-    "esbuild": "^0.25.12",
-    "linkedom": "^0.18.12"
+    "esbuild": "^0.25.12"
   }
 }

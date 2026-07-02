@@ -1,5 +1,5 @@
 import type { PatchTarget } from "../../utils/sourcePatcher";
-import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
+import type { GsapAnimation } from "@hyperframes/parsers/gsap-parser";
 
 export const CURATED_STYLE_PROPERTIES = [
   "position",
@@ -108,6 +108,9 @@ export interface DomEditContextOptions {
   activeCompositionPath: string | null;
   isMasterView: boolean;
   preferClipAncestor?: boolean;
+  /** The group wrapper the user has drilled into (null = top level). Selection
+   * resolution treats groups as a unit unless drilled into one. */
+  activeGroupElement?: HTMLElement | null;
 }
 
 export interface DomEditViewport {

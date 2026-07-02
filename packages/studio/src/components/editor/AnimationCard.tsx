@@ -40,6 +40,7 @@ export const AnimationCard = memo(function AnimationCard({
   onSetArcPath,
   onUpdateArcSegment,
   onUpdateKeyframeEase,
+  onSetAllKeyframeEases,
   onUnroll,
 }: AnimationCardProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
@@ -249,6 +250,11 @@ export const AnimationCard = memo(function AnimationCard({
                     expandedPct={expandedKfPct}
                     onToggle={setExpandedKfPct}
                     onEaseCommit={(pct, ease) => onUpdateKeyframeEase(animation.id, pct, ease)}
+                    onApplyAll={
+                      onSetAllKeyframeEases
+                        ? (ease) => onSetAllKeyframeEases(animation.id, ease)
+                        : undefined
+                    }
                   />
                 ) : (
                   <>

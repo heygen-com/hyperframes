@@ -85,6 +85,7 @@ For every frame, define (use the storyboard format's fields, with these narrativ
 - `scene` — a one-line visual idea, not detailed composition.
 - `voiceover` — spoken guide text, or empty for silent frames.
 - `transition_in` — a registry transition name (see Transitions).
+- `blueprint` _(optional candidate)_ — consult the role→blueprint menu in `../hyperframes-animation/blueprints-index.md`; when a proven shape fits this beat, tag its id (a tag, not a commitment — Step 4 confirms or overrides). Then **write the `voiceover` in the shape that blueprint implies**, so the line is reveal-ready before Step 4 ever runs. Teaching truth still decides which beats exist — never invent, drop, or bend a beat just to fit a shape; omit `blueprint` and write the line plainly when none fits.
 
 In the prose under each frame, state:
 
@@ -93,7 +94,7 @@ In the prose under each frame, state:
 
 ### Type-enum repurposing (shared enum → explainer roles)
 
-The enum is shared with the product-launch visual layer; map your explainer roles onto it so downstream pacing matches the frame's job:
+The enum is shared with the downstream visual layer; map your explainer roles onto it so downstream pacing matches the frame's job:
 
 | Explainer role you want          | Use `type`          | Why this value                                                       |
 | -------------------------------- | ------------------- | -------------------------------------------------------------------- |
@@ -168,7 +169,7 @@ This framework builds **one frame per worker** — there is no "continue run" th
 1. **A consistent stage** — consecutive body frames share the same composition idea (same diagram growing, same number line, same desk), stated in each frame's `scene` so Step 4 and the workers keep the stage stable.
 2. **A consistent transition** — pick one seam type for a sequence (usually `push-slide <DIR>` for ordered steps, `crossfade` for a soft layer reveal) and repeat it across the run, so the frames feel like one flow rather than separate slides.
 
-When a single element genuinely _transforms_ between two ideas (a diagram node becomes a chart bar, a formula becomes its result), keep it within **one frame** as a development beat (entrance → the transform → settle) rather than splitting it across a seam — the worker owns that motion. Note the intent in the frame's `scene` / narrative; Step 4 turns it into `effects` / `blueprint`.
+When a single element genuinely _transforms_ between two ideas (a diagram node becomes a chart bar, a formula becomes its result), keep it within **one frame** as a development beat (entrance → the transform → settle) rather than splitting it across a seam — the worker owns that motion. Note the intent in the frame's `scene` / narrative; Step 4 turns it into a time-coded shot sequence (instantiating the candidate `blueprint`).
 
 ## Transitions
 
@@ -193,6 +194,7 @@ Write tight per-frame narration:
 
 - 1-2 sentences per spoken frame; usually 6-20 words.
 - Concrete and human; teach, don't read the article aloud.
+- **Write each line as discrete cues, not one run-on breath.** Step 5 reveals each on-screen piece _when the voiceover names it_ (the anti-PowerPoint mechanism). A line with clear phrase boundaries — "First the snowball — then the hill — then the speed" — hands the shot its reveal cadence for free; a single long clause leaves the frame nothing to pace to.
 - **Strong** (concretization): "Compound interest isn't addition, it's a snowball — every turn picks up the snow from the last, then more."
 - **Weak** (article-paraphrase): "The study, published in 2019, examined three cohorts and found that…" — that is reading, not explaining.
 
@@ -224,6 +226,7 @@ Use the exact fields required by the core storyboard format. This is the narrati
 - type: feature_showcase
 - persuasion: Progressive disclosure
 - beat: comprehension
+- blueprint: messaging-multi-phase — candidate shape from the role→blueprint menu; omit when none fits
 
 narrativeRole: What this frame does in the viewer's understanding.
 keyMessage: The one idea the viewer should remember.
@@ -237,6 +240,7 @@ Before asking for user approval, verify:
 - The opening uses a named hook strategy.
 - Each frame has one job; the body builds cumulatively (a run of `feature_showcase` / `benefit_highlight` / `product_intro`), not a single isolated body frame.
 - Every frame has `type`, `persuasion` (a named technique from the catalog), and `beat` (specific, not generic).
+- Each `voiceover` is phrase-segmented into cues (each a piece Step 5 can reveal on), not one run-on clause; a candidate `blueprint:` is tagged wherever a proven shape fits, and omitted where none does.
 - The emotional arc has meaningful variation matching the structure.
 - Transitions use only registry names and repeat 2-3 types; frame 1 is `cut`.
 - A consistent stage + consistent transition carry any multi-frame sequence; a genuine element transform stays inside one frame.

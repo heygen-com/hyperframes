@@ -36,10 +36,7 @@ import {
 import type { DomEditSelection } from "./components/editor/domEditing";
 import { StudioHeader } from "./components/StudioHeader";
 import { useGestureCommit } from "./hooks/useGestureCommit";
-import {
-  STUDIO_KEYFRAMES_ENABLED,
-  STUDIO_STORYBOARD_ENABLED,
-} from "./components/editor/manualEditingAvailability";
+import { STUDIO_KEYFRAMES_ENABLED } from "./components/editor/manualEditingAvailability";
 import { GestureTrailOverlay } from "./components/editor/GestureTrailOverlay";
 import { StudioLeftSidebar } from "./components/StudioLeftSidebar";
 import { StudioPreviewArea } from "./components/StudioPreviewArea";
@@ -65,7 +62,7 @@ type CanvasRect = { left: number; top: number; width: number; height: number };
 export function StudioApp() {
   const { projectId, resolving, waitingForServer } = useServerConnection();
   const initialUrlStateRef = useRef(readStudioUrlStateFromWindow());
-  const viewModeValue = useViewModeState(STUDIO_STORYBOARD_ENABLED);
+  const viewModeValue = useViewModeState();
 
   // sessionStorage-backed: fires once per tab, survives HMR remounts
   useEffect(() => {
@@ -83,7 +80,7 @@ export function StudioApp() {
   const [previewIframe, setPreviewIframe] = useState<HTMLIFrameElement | null>(null);
   const [compositionLoading, setCompositionLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [, setPreviewDocumentVersion] = useState(0);
+  const [previewDocumentVersion, setPreviewDocumentVersion] = useState(0);
   const [blockPreview, setBlockPreview] = useState<BlockPreviewInfo | null>(null);
   const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
   const activeCompPathRef = useRef(activeCompPath);
@@ -258,6 +255,8 @@ export function StudioApp() {
     onResetKeyframes: () => resetKeyframesRef.current(),
     onDeleteSelectedKeyframes: () => deleteSelectedKeyframesRef.current(),
     onAfterUndoRedo: () => invalidateGsapCacheRef.current(),
+    onGroupSelection: () => domEditSessionRef.current.handleGroupSelection(),
+    onUngroupSelection: () => domEditSessionRef.current.handleUngroupSelection(),
     activeCompPath,
     forceReloadSdkSession: sdkHandle.forceReload,
     onToggleRecording: STUDIO_KEYFRAMES_ENABLED
@@ -294,6 +293,7 @@ export function StudioApp() {
     projectIdRef: fileManager.projectIdRef,
     previewIframe,
     refreshKey,
+    previewDocumentVersion,
     rightPanelTab: panelLayout.rightPanelTab,
     applyStudioManualEditsToPreviewRef: previewPersistence.applyStudioManualEditsToPreviewRef,
     syncPreviewHistoryHotkey: appHotkeys.syncPreviewHistoryHotkey,

@@ -147,4 +147,47 @@ describe("lottie adapter", () => {
       expect(() => adapter.revert!()).not.toThrow();
     });
   });
+
+  describe("getInferredDurationSeconds", () => {
+    it("returns null with no registered instances", () => {
+      const adapter = createLottieAdapter();
+      expect(adapter.getInferredDurationSeconds?.()).toBeNull();
+    });
+
+    it("infers duration from lottie-web totalFrames/frameRate", () => {
+      const anim = createLottieWebAnim({ totalFrames: 90, frameRate: 30 });
+      lottieWindow.__hfLottie = [anim];
+      const adapter = createLottieAdapter();
+      expect(adapter.getInferredDurationSeconds?.()).toBe(3);
+    });
+
+    it("infers duration from dotlottie player's duration field", () => {
+      const player = createDotLottiePlayer({ duration: 4.2 });
+      lottieWindow.__hfLottie = [player];
+      const adapter = createLottieAdapter();
+      expect(adapter.getInferredDurationSeconds?.()).toBe(4.2);
+    });
+
+    it("falls back to totalFrames/frameRate when dotlottie duration is absent", () => {
+      const player = createDotLottiePlayer({ totalFrames: 150, frameRate: 30, duration: 0 });
+      lottieWindow.__hfLottie = [player];
+      const adapter = createLottieAdapter();
+      expect(adapter.getInferredDurationSeconds?.()).toBe(5);
+    });
+
+    it("returns the max across multiple registered animations", () => {
+      const short = createLottieWebAnim({ totalFrames: 30, frameRate: 30 });
+      const long = createLottieWebAnim({ totalFrames: 300, frameRate: 30 });
+      lottieWindow.__hfLottie = [short, long];
+      const adapter = createLottieAdapter();
+      expect(adapter.getInferredDurationSeconds?.()).toBe(10);
+    });
+
+    it("returns null when the animation hasn't loaded yet (totalFrames=0)", () => {
+      const anim = createLottieWebAnim({ totalFrames: 0, frameRate: 30 });
+      lottieWindow.__hfLottie = [anim];
+      const adapter = createLottieAdapter();
+      expect(adapter.getInferredDurationSeconds?.()).toBeNull();
+    });
+  });
 });

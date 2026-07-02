@@ -1,13 +1,15 @@
 ---
 name: sine-wave-loop
-description: Continuous breathing / idle ambient motion using trigonometry — keeps elements alive after entry settles. Pairs with virtually every entry rule.
+description: Bounded sine-driven idle — subtle jitter or a single genuinely-needed bounded ambient breath on a held element. De-emphasized: circular breathing as "aliveness" is cheap; prefer sequential reveal timed to the VO, then subtle jitter, before reaching here.
 metadata:
-  tags: idle, loop, breathing, sine, trigonometry, ambient, post-entry
+  tags: idle, jitter, bounded-ambient, sine, trigonometry, low-amplitude, post-entry
 ---
 
-# Sine Wave Loop (Breathing / Idle)
+# Sine Wave Loop (subtle jitter / bounded ambient)
 
-Keeps elements alive after the entry beat finishes. Subtle continuous floating using `Math.sin` driven by a long-running timeline tween.
+> **Reach for this last.** Per the motion doctrine (`references/motion-language.md`): **circular breathing — scaling text/cards up and down to look "alive" — is cheap, the agent's reflexive cheat, and reads weak.** "I'd rather have NO motion than BAD motion." Before using this rule to keep a held frame alive, prefer (1) **sequential reveal timed to the voiceover** — reveal the next line/element when the VO says it, across the back ~50% of the scene; that, not ambient motion, is what fills a shot. If a frame has genuinely settled and still needs a touch of life, the **sanctioned move is subtle jitter** — a small, low-amplitude jitter (this rule, at the LOW end of its amplitude range). A full breathing loop is reserved for the rare case where a single held hero genuinely needs bounded ambient; keep it de-emphasized and small.
+
+Keeps a settled element from feeling dead — as **subtle jitter** or, rarely, a single bounded ambient breath — using `Math.sin` driven by a finite timeline tween. This is the implementation behind the "subtle jitter" move in the motion vocabulary; it is **not** a license to breathe every hero.
 
 ## How It Works
 
@@ -243,6 +245,7 @@ For HF (`onUpdate` doesn't expose frame directly), use the tween's `phase` value
 
 ## Key Principles
 
+- **Prefer reveal, then jitter, then breath** — circular breathing as "aliveness" is cheap and reads weak; "no motion over bad motion." First fill the back of a shot with **sequential reveal timed to the VO**; if it's genuinely settled and still feels dead, use this rule at the **LOW end of its amplitude range as subtle jitter**; a full breathing loop is the rare last resort on a single held hero, never stamped on every element.
 - **`sin(0) = 0`** — at the moment idle begins, the offset must be zero so there's no visible jump from the entry's settled state to idle. Start the phase tween at `phase = 0`.
 - **Amplitude subtlety — default to the LOW end of the range.** Scale `0.008-0.015` (push to 0.02-0.04 only when isolated / short scene / kinetic brief), rotation `±0.3-0.8°` (rarely needed at all), translation `±2-3px` (push to 4-6px only when isolated). Bigger and idle reads as "still animating" instead of "alive but resting" — and a viewer watching 5+ consecutive scenes at the upper end will read the whole film as "shimmering."
 - **Cycle duration: 2.5-4s per breath when idle is long, 1.5-3s otherwise** — 2.5-3s is a comfortable breathing cadence; under 1.5s feels frantic in a long-idle window; over 4s feels lifeless in a short one.

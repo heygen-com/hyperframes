@@ -506,6 +506,36 @@ export function isFontResourceError(type: string, text: string, locationUrl: str
   );
 }
 
+export function formatConsoleDiagnostic(
+  type: string,
+  text: string,
+  locationUrl: string,
+): { text: string; suppressHostLog: boolean } {
+  const isFontLoadError = isFontResourceError(type, text, locationUrl);
+  if (isFontLoadError) return { text: `[Browser] ${text}`, suppressHostLog: true };
+
+  if (text.startsWith("[hyperframes]")) {
+    return {
+      text: `[HyperFrames] ${text.slice("[hyperframes]".length).trim()}`,
+      suppressHostLog: false,
+    };
+  }
+
+  // Other "Failed to load resource" 404s are typically non-blocking (e.g.
+  // favicon, sourcemaps, optional assets). Prefix them so users know they
+  // are harmless and don't confuse them with real render errors.
+  const isResourceLoadError = type === "error" && text.startsWith("Failed to load resource");
+  const prefix = isResourceLoadError
+    ? "[non-blocking]"
+    : type === "error"
+      ? "[Browser:ERROR]"
+      : type === "warn"
+        ? "[Browser:WARN]"
+        : "[Browser]";
+
+  return { text: `${prefix} ${text}`, suppressHostLog: false };
+}
+
 async function pollPageExpression(
   page: Page,
   expression: string,
@@ -558,7 +588,11 @@ function buildZeroDurationDiagnostic(diag: {
   if (!diag.hasTimeline) {
     hints.push(
       "No GSAP timeline registered (window.__timelines is empty). " +
-        "If using CSS/WAAPI/Lottie/Three.js animations, add data-duration to the root element.",
+        "CSS/WAAPI/Lottie animations are usually auto-detected (the runtime infers " +
+        "duration from the longest running animation) — this composition's duration " +
+        "could not be inferred, which usually means an infinite/unbounded animation " +
+        "(e.g. animation-iteration-count: infinite, repeat: -1 WAAPI, or a looping Lottie " +
+        "clip) or a Three.js scene with no discoverable AnimationClip.",
     );
   }
   if (diag.declaredDuration <= 0 && !diag.hasTimeline) {
@@ -612,13 +646,26 @@ async function pollHfReady(page: Page, timeoutMs: number, intervalMs: number = 1
       if (now - lastDiagnosticAt >= DIAGNOSTIC_INTERVAL_MS) {
         lastDiagnosticAt = now;
         const diag = await evaluateHfDiagnostic(page);
-        // Only fast-fail when BOTH signals are permanently zero:
+        // Only fast-fail when ALL signals are permanently zero:
         //   1. No GSAP timeline registered (GSAP sets duration synchronously
         //      before __renderReady, so a missing timeline won't self-correct).
         //   2. No data-duration declared on the root element.
+        //   3. hf.duration is still 0 — this also covers CSS/WAAPI/Lottie
+        //      auto-inference (see runtime/init.ts resolveAdapterDurationFloorSeconds):
+        //      those runtimes report a non-zero hf.duration once discovery
+        //      resolves, without any GSAP timeline or data-duration. Checking
+        //      hf.duration directly (rather than only the two authored
+        //      signals) avoids fast-failing a composition whose inferred
+        //      duration just hasn't landed yet.
         // A composition with a GSAP timeline but no data-duration is still
         // valid — GSAP drives duration via __timelines, not data-duration.
-        if (diag.renderReady && diag.hasSeek && !diag.hasTimeline && diag.declaredDuration <= 0) {
+        if (
+          diag.renderReady &&
+          diag.hasSeek &&
+          !diag.hasTimeline &&
+          diag.declaredDuration <= 0 &&
+          diag.duration <= 0
+        ) {
           throw new Error(buildZeroDurationDiagnostic(diag));
         }
       }
@@ -866,32 +913,15 @@ async function waitForOptionalTailwindReady(page: Page, timeoutMs: number): Prom
 export async function initializeSession(session: CaptureSession): Promise<void> {
   const { page, serverUrl } = session;
 
-  // Forward browser console to host with [Browser] prefix
-  // fallow-ignore-next-line complexity
+  // Forward browser console to host. HyperFrames runtime logs get a dedicated
+  // prefix so page-context observability is visible in producer stdout.
   page.on("console", (msg: ConsoleMessage) => {
     const type = msg.type();
     const text = msg.text();
     const locationUrl = msg.location()?.url ?? "";
-    const isFontLoadError = isFontResourceError(type, text, locationUrl);
-
-    // Other "Failed to load resource" 404s are typically non-blocking (e.g.
-    // favicon, sourcemaps, optional assets). Prefix them so users know they
-    // are harmless and don't confuse them with real render errors.
-    const isResourceLoadError =
-      type === "error" && text.startsWith("Failed to load resource") && !isFontLoadError;
-
-    const prefix = isResourceLoadError
-      ? "[non-blocking]"
-      : type === "error"
-        ? "[Browser:ERROR]"
-        : type === "warn"
-          ? "[Browser:WARN]"
-          : "[Browser]";
-    if (!isFontLoadError) {
-      console.log(`${prefix} ${text}`);
-    }
-
-    appendBrowserDiagnostic(session, `${prefix} ${text}`);
+    const diagnostic = formatConsoleDiagnostic(type, text, locationUrl);
+    if (!diagnostic.suppressHostLog) console.log(diagnostic.text);
+    appendBrowserDiagnostic(session, diagnostic.text);
   });
 
   page.on("pageerror", (err) => {
@@ -977,6 +1007,13 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     await gotoEntryPage();
     logInitPhase("page.goto complete");
 
+    // Flush the GSAP proxy queue synchronously instead of waiting for
+    // rAF-based batch ticks (100 ops/tick at ~16ms). In headless mode there's
+    // no UI responsiveness concern, so draining instantly eliminates the
+    // largest init-time cost for tween-heavy compositions.
+    await page.evaluate(`window.__hfFlushSync?.()`);
+    logInitPhase("GSAP proxy flush complete");
+
     const pageReadyTimeout =
       session.config?.playerReadyTimeout ?? DEFAULT_CONFIG.playerReadyTimeout;
     await pollHfReady(page, pageReadyTimeout);
@@ -988,24 +1025,37 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     await applyVideoMetadataHints(page, session.options.videoMetadataHints);
     logInitPhase("applyVideoMetadataHints complete");
 
-    // Wait for all video elements to have decoded their CURRENT frame, not
-    // just metadata. readyState >= 2 (HAVE_CURRENT_DATA) means a frame is
-    // actually rasterized and ready to paint — at >= 1 (HAVE_METADATA) we
-    // only know the dimensions, and the first <video> screenshot can come
-    // back as a black/blank rectangle. This bites compositions with two
-    // <video> elements of different codecs (h264 mp4 + VP9 webm) where the
-    // faster decoder lets the readiness check pass while the slower one
-    // hasn't painted, producing a black "first frame" for the slower clip.
-    // skipReadinessVideoIds excludes natively-extracted videos (e.g. HDR HEVC
-    // sources) whose frames come from ffmpeg out-of-band. videoMetadataHints
-    // supply intrinsic dimensions for skipped videos whose layout depends on
-    // aspect ratio, while Chromium may still fail to decode/load metadata.
-    const videosReady = await pollVideosReady(
-      page,
-      session.options.skipReadinessVideoIds ?? [],
-      pageReadyTimeout,
-    );
-    logInitPhase("pollVideosReady complete");
+    // Run independent readiness checks in parallel — videos, images, fonts,
+    // and Tailwind don't depend on each other's completion.
+    const skipVideoIds = session.options.skipReadinessVideoIds ?? [];
+    const [videosReady] = await Promise.all([
+      pollVideosReady(page, skipVideoIds, pageReadyTimeout),
+      pollImagesReady(page, pageReadyTimeout).then(async (ready) => {
+        if (!ready) {
+          const failedImages = await page.evaluate(() => {
+            return Array.from(document.querySelectorAll("img"))
+              .filter((img) => {
+                const ie = img as HTMLImageElement;
+                const src = ie.getAttribute("src") || "";
+                if (!src || src.startsWith("data:")) return false;
+                return !(ie.complete && ie.naturalWidth > 0);
+              })
+              .map((img) => (img as HTMLImageElement).src || img.getAttribute("src") || "(no src)")
+              .join(", ");
+          });
+          console.warn(
+            `[FrameCapture] Some image elements did not load within ${pageReadyTimeout}ms: ${failedImages}. ` +
+              `Continuing render — affected images may appear blank/missing in early frames.`,
+          );
+        }
+        await decodeAllImages(page);
+        return ready;
+      }),
+      page.evaluate(`document.fonts?.ready`),
+      waitForOptionalTailwindReady(page, pageReadyTimeout),
+    ]);
+    logInitPhase("media + fonts + tailwind ready");
+
     if (!videosReady) {
       const failedVideos = await page.evaluate((skipIdList: readonly string[]) => {
         const skip = new Set(skipIdList);
@@ -1014,38 +1064,13 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
           .filter((v) => (v as HTMLVideoElement).readyState < 2 && !(v as HTMLVideoElement).error)
           .map((v) => (v as HTMLVideoElement).src || v.getAttribute("src") || "(no src)")
           .join(", ");
-      }, session.options.skipReadinessVideoIds ?? []);
+      }, skipVideoIds);
       console.warn(
         `[FrameCapture] Some video elements did not decode within ${pageReadyTimeout}ms: ${failedVideos}. ` +
           `Continuing render — affected videos will appear as blank/black frames.`,
       );
     }
 
-    const imagesReady = await pollImagesReady(page, pageReadyTimeout);
-    if (!imagesReady) {
-      const failedImages = await page.evaluate(() => {
-        return Array.from(document.querySelectorAll("img"))
-          .filter((img) => {
-            const ie = img as HTMLImageElement;
-            const src = ie.getAttribute("src") || "";
-            if (!src || src.startsWith("data:")) return false;
-            return !(ie.complete && ie.naturalWidth > 0);
-          })
-          .map((img) => (img as HTMLImageElement).src || img.getAttribute("src") || "(no src)")
-          .join(", ");
-      });
-      console.warn(
-        `[FrameCapture] Some image elements did not load within ${pageReadyTimeout}ms: ${failedImages}. ` +
-          `Continuing render — affected images may appear blank/missing in early frames.`,
-      );
-    }
-    await decodeAllImages(page);
-    logInitPhase("images ready + decoded");
-
-    await page.evaluate(`document.fonts?.ready`);
-    logInitPhase("fonts ready");
-    await waitForOptionalTailwindReady(page, pageReadyTimeout);
-    logInitPhase("tailwind ready");
     await recordSessionInitTelemetry(session, initStart);
 
     // For PNG captures, force the page background fully transparent so the
@@ -1118,6 +1143,13 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
   await gotoEntryPage();
   logInitPhase("page.goto complete");
 
+  // Flush the GSAP proxy queue synchronously. In BeginFrame mode the rAF-based
+  // batch drain runs on the warmup loop's 33ms ticks — for tween-heavy
+  // compositions this is the dominant init cost. Flushing synchronously
+  // eliminates the wait entirely.
+  await page.evaluate(`window.__hfFlushSync?.()`);
+  logInitPhase("GSAP proxy flush complete");
+
   // Poll for window.__hf readiness using manual evaluate loop (waitForFunction
   // uses rAF polling internally, which won't fire in beginFrame mode).
   const pageReadyTimeout = session.config?.playerReadyTimeout ?? DEFAULT_CONFIG.playerReadyTimeout;
@@ -1135,12 +1167,37 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
   await applyVideoMetadataHints(page, session.options.videoMetadataHints);
   logInitPhase("applyVideoMetadataHints complete");
 
-  // Same readyState contract as the screenshot path above (>= 2 / HAVE_CURRENT_DATA).
-  const bfVideosReady = await pollVideosReady(
-    page,
-    session.options.skipReadinessVideoIds ?? [],
-    session.config?.playerReadyTimeout ?? DEFAULT_CONFIG.playerReadyTimeout,
-  );
+  // Run independent readiness checks in parallel — videos, images, fonts,
+  // and Tailwind don't depend on each other's completion.
+  const bfSkipVideoIds = session.options.skipReadinessVideoIds ?? [];
+  const [bfVideosReady] = await Promise.all([
+    pollVideosReady(page, bfSkipVideoIds, pageReadyTimeout),
+    pollImagesReady(page, pageReadyTimeout).then(async (ready) => {
+      if (!ready) {
+        const failedImages = await page.evaluate(() => {
+          return Array.from(document.querySelectorAll("img"))
+            .filter((img) => {
+              const ie = img as HTMLImageElement;
+              const src = ie.getAttribute("src") || "";
+              if (!src || src.startsWith("data:")) return false;
+              return !(ie.complete && ie.naturalWidth > 0);
+            })
+            .map((img) => (img as HTMLImageElement).src || img.getAttribute("src") || "(no src)")
+            .join(", ");
+        });
+        console.warn(
+          `[FrameCapture] Some image elements did not load within ${pageReadyTimeout}ms: ${failedImages}. ` +
+            `Continuing render — affected images may appear blank/missing in early frames.`,
+        );
+      }
+      await decodeAllImages(page);
+      return ready;
+    }),
+    page.evaluate(`document.fonts?.ready`),
+    waitForOptionalTailwindReady(page, pageReadyTimeout),
+  ]);
+  logInitPhase("media + fonts + tailwind ready");
+
   if (!bfVideosReady) {
     const failedVideos = await page.evaluate((skipIdList: readonly string[]) => {
       const skip = new Set(skipIdList);
@@ -1149,41 +1206,13 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
         .filter((v) => (v as HTMLVideoElement).readyState < 2 && !(v as HTMLVideoElement).error)
         .map((v) => (v as HTMLVideoElement).src || v.getAttribute("src") || "(no src)")
         .join(", ");
-    }, session.options.skipReadinessVideoIds ?? []);
+    }, bfSkipVideoIds);
     console.warn(
       `[FrameCapture] Some video elements did not decode within ${pageReadyTimeout}ms: ${failedVideos}. ` +
         `Continuing render — affected videos will appear as blank/black frames.`,
     );
   }
-  logInitPhase("pollVideosReady complete");
 
-  // Image readiness — parity with pollVideosReady. Defense against remote
-  // <img> URLs that bypass the htmlCompiler localize step.
-  const bfImagesReady = await pollImagesReady(page, pageReadyTimeout);
-  if (!bfImagesReady) {
-    const failedImages = await page.evaluate(() => {
-      return Array.from(document.querySelectorAll("img"))
-        .filter((img) => {
-          const ie = img as HTMLImageElement;
-          const src = ie.getAttribute("src") || "";
-          if (!src || src.startsWith("data:")) return false;
-          return !(ie.complete && ie.naturalWidth > 0);
-        })
-        .map((img) => (img as HTMLImageElement).src || img.getAttribute("src") || "(no src)")
-        .join(", ");
-    });
-    console.warn(
-      `[FrameCapture] Some image elements did not load within ${pageReadyTimeout}ms: ${failedImages}. ` +
-        `Continuing render — affected images may appear blank/missing in early frames.`,
-    );
-  }
-  await decodeAllImages(page);
-  logInitPhase("images ready + decoded");
-
-  await page.evaluate(`document.fonts?.ready`);
-  logInitPhase("fonts ready");
-  await waitForOptionalTailwindReady(page, pageReadyTimeout);
-  logInitPhase("tailwind ready");
   await recordSessionInitTelemetry(session, initStart);
 
   // Stop warmup. Unlocked mode exits on this flag; locked mode keeps ticking
@@ -1961,7 +1990,16 @@ const TRANSIENT_BROWSER_ERROR_PATTERNS = [
   /Execution context was destroyed/i,
   /Cannot find context with specified id/i,
   /Failed to launch the browser process/i,
+  /Navigation timeout of \d+ ms exceeded/i,
   /ECONNREFUSED/i,
+  // pollHfReady's own timeout — thrown when window.__renderReady never flips
+  // true within playerReadyTimeout. "Runtime ready: false" means init simply
+  // didn't finish in time (commonly a slow/contended host, e.g. several
+  // concurrent renders), which a fresh session usually clears on retry. This
+  // is distinct from the "Runtime ready: true" fast-fail case a few lines up
+  // in pollHfReady (no timeline + no data-duration) — that's a genuine
+  // authoring bug and intentionally NOT matched here, so it still fails fast.
+  /Composition has zero duration[\s\S]*Runtime ready: false/,
 ];
 
 export function isTransientBrowserError(error: unknown): boolean {

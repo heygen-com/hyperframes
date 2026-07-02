@@ -5,8 +5,23 @@
 
 export { isAuthError } from "./errors.js";
 
-export { clearOAuth, deleteStore, isHeaderSafe, readStore, writeStore } from "./store.js";
-export type { Credentials } from "./store.js";
+export {
+  clearOAuth,
+  deleteStore,
+  hasPreservedUnknownData,
+  isHeaderSafe,
+  readStore,
+  writeStore,
+} from "./store.js";
+export type { Credentials, StoredUserInfo } from "./store.js";
+
+export {
+  clearUserInfo,
+  isUserInfoEmpty,
+  loadUserInfo,
+  saveUserInfo,
+  userDisplayName,
+} from "./user.js";
 
 export { configDir, credentialPath } from "./paths.js";
 

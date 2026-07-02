@@ -7,6 +7,8 @@ Serve, render, and share commands.
 ```bash
 npx hyperframes preview                   # serve current directory
 npx hyperframes preview --port 4567       # custom port (default 3002)
+npx hyperframes preview --selection --json # print the current Studio selection and exit
+npx hyperframes preview --context --json  # print compact agent context from Studio
 ```
 
 Hot-reloads on file changes. Opens Studio in the browser automatically — the full timeline editor, where the user can play the video and edit anything by hand before rendering. This is the review surface, not just a viewer.
@@ -18,6 +20,46 @@ http://localhost:<port>/#project/<project-name>
 ```
 
 Use the actual port and project directory name; treat `index.html` as source-code context, not the preview surface. For example, after `npx hyperframes preview --port 3017` in `codex-openai-video`, report `http://localhost:3017/#project/codex-openai-video`.
+
+### Agent context from Studio selection
+
+`preview --context` and `preview --selection` are the agent bridge into a running Studio session. They do **not** start a new server; they find the active preview server for the current project, read agent-useful state from Studio, print it, and exit.
+
+Use it when the user gives deictic edit instructions like "change this", "move the selected element", "make the card I clicked bigger", or "fix the current selection":
+
+```bash
+npx hyperframes preview --context --json --context-fields selection
+```
+
+The compact context payload includes the selected element's source file, composition path, current timeline time, `data-hf-id` / selector target, bounding box, text content, and a thumbnail URL for the selected element. Prefer `selection.target.hfId` when present; fall back to `selection.target.selector` only when no stable `data-hf-id` exists. If `selection` is `null`, inspect `errors.selection.code` (for example, `no-selection`).
+
+Keep agent context small by asking only for the slices you need:
+
+```bash
+npx hyperframes preview --context --json --context-fields selection
+npx hyperframes preview --context --json --context-fields lint
+npx hyperframes preview --context --json --context-fields selection,lint
+```
+
+Use `--context-detail full` only when the edit genuinely needs heavy selection fields such as `computedStyles`, `inlineStyles`, `dataAttributes`, or editable text-field metadata:
+
+```bash
+npx hyperframes preview --context --json --context-fields selection --context-detail full
+```
+
+`preview --selection --json` remains available when you explicitly want the full selected-element payload and do not need lint/server context.
+
+Failure modes:
+
+| Code                       | Meaning                                                                    |
+| -------------------------- | -------------------------------------------------------------------------- |
+| `preview-not-running`      | Start Studio first with `npx hyperframes preview`.                         |
+| `ambiguous-preview-server` | Multiple matching Studio servers are open; rerun with one listed `--port`. |
+| `preview-port-mismatch`    | The requested `--port` is not one of the matching Studio servers.          |
+| `no-selection`             | Studio is open, but the user has not selected an element yet.              |
+| `selection-unavailable`    | The running preview server does not expose selection context cleanly.      |
+
+If there is no selection, ask the user to click the target element in Studio and rerun the command. If the server error lists candidate ports, rerun the same command with `--port <candidate>`. Do not infer the target from a screenshot when the CLI can give a stable element target.
 
 ## play (lightweight player)
 
@@ -97,6 +139,19 @@ npx hyperframes render --docker                       # byte-identical
 **Quality guidance:** `draft` while iterating, `standard` for review, `high` for final delivery.
 
 **Parametrized renders:** the composition declares its variables on the `<html>` root with **`data-composition-variables`** — a JSON **array of declarations** (`{id, type, label, default}` per entry) that defines the schema. Scripts inside read the resolved values via `window.__hyperframes.getVariables()`. The CLI `--variables '{"title":"Q4 Report"}'` is a JSON **object keyed by id** that overrides those declared defaults for one render; missing keys fall through, so the same composition runs unchanged in dev preview and in production. Sub-comp hosts can also override per-instance with `data-variable-values`. See the `hyperframes-core` skill for the full pattern.
+
+### feedback (report after rendering)
+
+After a render is verified, send one feedback line per task. This is the maintainers' primary signal — a render that finishes silently tells them nothing.
+
+```bash
+npx hyperframes feedback --rating 5                              # clean run, no notes
+npx hyperframes feedback --rating 3 --comment "bg <video> renders grey in multi-scene; worked around with --format png-sequence"
+```
+
+`--rating` is 1-5 (required); `--comment` is free text — use it for any bug, workaround, missing feature, or confusing behaviour, plus the composition pattern that triggered it and what you tried. Feedback is anonymous and attaches a `doctorSummary` (OS/Node/CPU/mem/ffmpeg) automatically. No-ops when telemetry is disabled.
+
+Hit a reproducible bug? Add `--file-issue` (optionally `--dir <project>` and `--yes` for non-interactive shells) to also publish a minimal repro to a public URL and open a pre-filled GitHub `bug` issue draft for a maintainer to file. This publishes the project publicly, so it is opt-in and consent-gated; the issue is never auto-submitted.
 
 ## publish
 

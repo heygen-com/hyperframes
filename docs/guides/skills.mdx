@@ -1,0 +1,106 @@
+---
+title: Skills catalog
+description: "Every HyperFrames skill agents load on demand — what each one is for, and how to install them."
+---
+
+HyperFrames ships AI agent skills via [vercel-labs/skills](https://github.com/vercel-labs/skills). They teach your agent the framework-specific patterns — `data-*` attributes, GSAP timeline registration, adapter registries, runtime-owned media playback — that generic web docs don't cover. **Install them before writing compositions** and your agent produces valid HyperFrames HTML on the first try.
+
+The skills split into three groups:
+
+- **Router** — the entry skill that picks a workflow for any "make me a video" request.
+- **Creation workflows** — one per input shape (URL, PR, music track, captions, etc.). Read by the router; you can also invoke directly if you already know which one fits.
+- **Domain skills** — atomic capabilities (animation, media, CLI, registry) the workflows compose against. Load one when you need that specific layer.
+
+## Install
+
+<Steps>
+  <Step title="Pick what to install (interactive picker)">
+    ```bash
+    npx skills add heygen-com/hyperframes
+    ```
+
+    Opens a picker so you can choose which skills to add. Works with [Claude Code](https://claude.ai/claude-code), [Cursor](https://cursor.sh), [Gemini CLI](https://github.com/google-gemini/gemini-cli), [Codex CLI](https://github.com/openai/codex), [GitHub Copilot CLI](/guides/copilot-cli), and [Google Antigravity](/guides/antigravity).
+  </Step>
+  <Step title="Or install all 19 at once (skip the picker)">
+    ```bash
+    npx skills add heygen-com/hyperframes --all
+    ```
+
+    Writes every skill to your project in one shot. Recommended when you want the full set without selecting from the picker.
+  </Step>
+  <Step title="Or install one skill at a time">
+    ```bash
+    npx skills add heygen-com/hyperframes --skill <name>
+    ```
+
+    Pass the bare skill name (no leading `/`) — e.g. `--skill hyperframes-animation`. Useful when you want a single capability without the full set.
+  </Step>
+  <Step title="Read /hyperframes first">
+    Once installed, invoke `/hyperframes` in your agent. It's the capability map for everything below and routes "make me a video" intent to the right creation workflow based on your input.
+  </Step>
+</Steps>
+
+<Tip>
+  **Don't see a slash command after install?** Open a new agent session, or run `/skills` (Copilot CLI) / restart your agent's skill loader. Most agents pick up new skills on the next prompt.
+</Tip>
+
+## Router
+
+The single entry point. Read `/hyperframes` before invoking anything else — it knows what's available and which workflow fits your request.
+
+| Skill          | Use when                                                                                                                                                                                                  |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/hyperframes` | **Read first** for any request to make / create / edit / animate / render a video, animation, or motion graphic. Capability map for the domain skills and intent router for the creation workflows below. |
+
+## Creation workflows
+
+One workflow per input shape. The router (`/hyperframes`) picks one of these for you — but you can invoke them directly when you already know which fits.
+
+| Skill                      | Use when                                                                                                                                                                                |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/product-launch-video`    | Marketing / launching / promoting a **product** — from its URL, a brief, or a script (even if the site is only named). Up to ~3 min (sweet spot 30-90s).                                |
+| `/website-to-video`        | Turning a **general website** into a video — site tour, portfolio / landing-page showcase, social clip from the site's own visuals.                                                     |
+| `/faceless-explainer`      | **Explaining a topic / concept** from arbitrary text — no product, no URL, no website capture; every visual is LLM-invented (typography / abstract / diagram / data-viz).               |
+| `/pr-to-video`             | A **GitHub pull request** (PR URL, `owner/repo#N` ref, or "this PR") → changelog / feature-reveal / fix / refactor explainer, read via the `gh` CLI.                                   |
+| `/embedded-captions`       | Adding **captions / subtitles** to an existing talking-head video (footage untouched) — verbatim rail, embedded climax behind the subject, or pure-cinematic embed.                     |
+| `/talking-head-recut`      | Packaging an existing talking-head / interview / podcast video with **designed graphic overlays** — lower-thirds, data callouts, kinetic titles, pull-quotes, side panels, PiP.          |
+| `/motion-graphics`         | A short, **unnarrated, design-led motion graphic** (~under 10s) — kinetic type, stat / chart hit, logo sting, lower-third, animated tweet / headline. MP4 or transparent overlay.       |
+| `/music-to-video`          | A **music track** (audio file, or video to pull audio from) → a **beat-synced** video — lyric, slideshow, or kinetic promo; music drives pacing.                                        |
+| `/slideshow`               | A **presentation / pitch deck / interactive deck** — discrete slides, fragment reveals, branching, hotspot navigation, presenter mode. Output is a navigable deck, not a rendered video. |
+| `/general-video`           | **Anything else** — longer or multi-scene pieces, brand / sizzle reel, title card, static loop, freeform composition. Input- and length-agnostic fallback.                              |
+| `/remotion-to-hyperframes` | **Porting an existing Remotion** (React) composition's source to HyperFrames HTML. One-way migration, not creation.                                                                     |
+
+## Domain skills (loaded on demand)
+
+Atomic capabilities the creation workflows compose against — pull one when you need that specific layer.
+
+| Skill                    | Covers                                                                                                                                                                |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/hyperframes-core`      | The composition contract — `data-*` timing attributes, `class="clip"`, tracks, sub-compositions, variables, framework-owned media playback, determinism rules.        |
+| `/hyperframes-animation` | All animation knowledge — atomic motion rules, scene blueprints, transitions, runtime adapters (GSAP / Lottie / Three.js / Anime.js / CSS / WAAPI / TypeGPU).         |
+| `/hyperframes-creative`  | Non-animation creative direction — `frame.md` / `design.md`, palettes, typography, narration, beat planning, audio-reactive visuals, composition patterns.            |
+| `/hyperframes-media`     | Audio + media — TTS voiceover, background music, sound effects, Whisper transcription, background removal, caption authoring (one shared audio engine).               |
+| `/media-use`             | Resolve any media need (BGM, SFX, image, icon) into a frozen local file + ledger record. One verb (`resolve`) over the HeyGen catalog with manifest tracking.          |
+| `/hyperframes-cli`       | CLI dev loop — `init`, `lint`, `validate`, `inspect`, `preview`, `render`, `publish`, `doctor`, plus AWS Lambda cloud rendering (`lambda deploy / render / progress`). |
+| `/hyperframes-registry`  | Install and wire registry blocks and components into compositions via `hyperframes add`. Authoring a new block or component to contribute upstream.                   |
+
+## Source of truth
+
+The one-line "use when" for each skill comes from its own `SKILL.md` frontmatter `description:` field in the [hyperframes repo](https://github.com/heygen-com/hyperframes/tree/main/skills). The same catalog lives in the [README's `## Skills` section](https://github.com/heygen-com/hyperframes#skills) and the repo `CLAUDE.md`; all three surfaces are kept in sync when a skill is added or renamed.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Install skills, scaffold a project, and render your first video.
+  </Card>
+  <Card title="Claude Design" icon="palette" href="/guides/claude-design">
+    Produce a valid first draft in Claude Design, then refine in any AI coding agent.
+  </Card>
+  <Card title="GitHub Copilot CLI" icon="terminal" href="/guides/copilot-cli">
+    Install and invoke HyperFrames skills from Copilot CLI in your terminal.
+  </Card>
+  <Card title="Google Antigravity" icon="atom" href="/guides/antigravity">
+    Use HyperFrames skills in Google Antigravity.
+  </Card>
+</CardGroup>

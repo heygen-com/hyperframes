@@ -1,0 +1,197 @@
+---
+title: "Embedded Override Mode"
+description: "Layer a sparse delta on top of a reusable base composition so the host stores only what changed."
+---
+
+Embedded override mode is the pattern for template-driven products: you maintain one base composition HTML file and store only the per-instance _delta_ (the `OverrideSet`) alongside it. When a user edits their instance, the SDK accumulates further changes into that same delta — the base stays untouched.
+
+This is exactly how a canvas embedder (for example, AI Studio) persists in-composition edits as a stable, reopenable delta.
+
+## Opening with overrides
+
+Pass the stored delta as `overrides` when you call `openComposition`. The SDK replays the override set onto the base template in one pass, so the session exposes the user's exact edited state immediately:
+
+```typescript
+import { openComposition } from "@hyperframes/sdk";
+
+// Stored delta — loaded from your database or storage layer.
+const storedOverrides = {
+  "hf-title.text": "Acme Corp Launch",
+  "hf-logo.attr.src": "/customers/acme/logo.png",
+  "hf-subtitle.style.color": "#0EA5E9",
+};
+
+const comp = await openComposition(templateHtml, {
+  overrides: storedOverrides,
+  history: false, // host owns undo — see below
+});
+```
+
+After `openComposition` returns, `comp.getElements()` reflects the overridden state. Any further edits accumulate into the same delta automatically.
+
+## Reading the current delta
+
+Call `getOverrides()` to retrieve the current delta for storage. It returns a shallow copy of the internal override set — safe to serialize and stash:
+
+```typescript
+comp.setText("hf-cta", "Get started free");
+comp.setStyle("hf-cta", { backgroundColor: "#22C55E" });
+
+const nextOverrides = comp.getOverrides();
+// { "hf-title.text": "Acme Corp Launch", ..., "hf-cta.text": "Get started free", ... }
+
+await db.saveOverrides(sessionId, nextOverrides);
+```
+
+On the next session open, pass `nextOverrides` as `overrides` again — the user sees their exact state.
+
+## Override set key format
+
+Keys follow the pattern `hfId.prop.path`. The common forms are:
+
+| Key | Meaning |
+|-----|---------|
+| `"hf-title.text"` | Inner text of element `hf-title` |
+| `"hf-logo.attr.src"` | `src` attribute on `hf-logo` |
+| `"hf-x.style.fontSize"` | Inline `fontSize` style on `hf-x` |
+| `"hf-card"` with value `null` | Removal marker — element was deleted |
+
+A `null` value is a removal marker. When the SDK serializes the composition it omits that element entirely. This lets the host distinguish "never touched" (key absent) from "user deleted" (key present, value `null`).
+
+Sub-composition elements use scoped IDs — `"hf-host/hf-leaf.text"` — where the host and leaf are separated by `/`.
+
+### Font and image variable overrides
+
+Variable overrides (from `setVariableValue`) live under the `var.{id}` key. Font and image values are objects, not strings:
+
+```typescript
+import type { FontValue, ImageValue } from "@hyperframes/sdk";
+
+// Font variable — name is the CSS font-family, source is the stylesheet URL.
+const fontOverride: FontValue = {
+  name: "Inter",
+  source: "https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap",
+};
+
+// Image variable — url is the src; alt and fit are optional.
+const imageOverride: ImageValue = {
+  url: "/customers/acme/hero.jpg",
+  alt: "Acme hero image",
+  fit: "cover",
+};
+
+comp.setVariableValue("brand-font", fontOverride);
+comp.setVariableValue("hero-image", imageOverride);
+
+const overrides = comp.getOverrides();
+// {
+//   "var.brand-font": { name: "Inter", source: "https://…" },
+//   "var.hero-image": { url: "/customers/acme/hero.jpg", alt: "…", fit: "cover" },
+// }
+```
+
+When you read an `OverrideSet` value at a `var.*` key, narrow before treating it as a scalar — the type is `string | number | boolean | Record<string, unknown> | null`.
+
+## Disabling SDK undo
+
+In embedded mode the host typically owns the undo stack. The SDK already leaves history **off by default** in embedded mode (any session opened with `overrides`), so you usually don't need to do anything. Pass `history: false` explicitly only to make that intent obvious in standalone code paths, or as a guard if a call site may or may not supply `overrides`:
+
+```typescript
+const comp = await openComposition(templateHtml, {
+  overrides: storedOverrides,
+  history: false,
+});
+```
+
+<Note>
+  `history: false` only disables the SDK's internal undo stack. Persistence (the `persist` adapter, if you supply one) is independent — omitting it does not affect autosave. In embedded mode, however, the host typically owns both undo and persistence, so you usually pass neither.
+</Note>
+
+## Host-owned undo via `applyPatches()`
+
+When the host pops an undo entry and needs to replay the inverse patches back into the SDK, use `applyPatches()`. The SDK applies the patches to the live document, updates the internal override set, and emits a `patch` event tagged with `ORIGIN_APPLY_PATCHES`.
+
+```typescript
+import { ORIGIN_APPLY_PATCHES } from "@hyperframes/sdk";
+
+// Host undo stack entry — inversePatches came from a prior 'patch' event.
+function hostUndo(inversePatches: JsonPatchOp[]) {
+  comp.applyPatches(inversePatches);
+}
+
+// Guard against undo loops — skip ORIGIN_APPLY_PATCHES events in the patch listener.
+comp.on("patch", ({ patches, inversePatches, origin }) => {
+  if (origin === ORIGIN_APPLY_PATCHES) return; // already from host undo — do not re-push
+  hostHistory.push({ patches, inversePatches });
+});
+```
+
+`applyPatches()` accepts an optional `opts.origin` override if you want to tag the event with a different sentinel, but the default `ORIGIN_APPLY_PATCHES` is the expected value for host undo/redo flows.
+
+See [Undo, Redo, and Patches](/sdk/guides/undo-redo-and-patches) for the full patch event contract and inverse patch handling.
+
+## Full example
+
+```typescript
+import { openComposition, ORIGIN_APPLY_PATCHES } from "@hyperframes/sdk";
+import type { JsonPatchOp, OverrideSet } from "@hyperframes/sdk";
+
+async function openUserSession(
+  templateHtml: string,
+  storedOverrides: OverrideSet,
+) {
+  const hostHistory: Array<{ patches: readonly JsonPatchOp[]; inversePatches: readonly JsonPatchOp[] }> = [];
+  let historyIndex = hostHistory.length;
+
+  const comp = await openComposition(templateHtml, {
+    overrides: storedOverrides,
+    history: false,
+  });
+
+  // Record every user edit in the host undo stack.
+  comp.on("patch", ({ patches, inversePatches, origin }) => {
+    if (origin === ORIGIN_APPLY_PATCHES) return;
+    // Discard any redo entries ahead of the cursor.
+    hostHistory.splice(historyIndex);
+    hostHistory.push({ patches, inversePatches });
+    historyIndex = hostHistory.length;
+  });
+
+  return {
+    comp,
+
+    undo() {
+      if (historyIndex === 0) return;
+      const { inversePatches } = hostHistory[--historyIndex];
+      comp.applyPatches([...inversePatches]);
+    },
+
+    redo() {
+      if (historyIndex >= hostHistory.length) return;
+      const { patches } = hostHistory[historyIndex++];
+      comp.applyPatches([...patches]);
+    },
+
+    async save() {
+      // Only store the delta — not the full HTML.
+      return comp.getOverrides();
+    },
+  };
+}
+```
+
+<CardGroup cols={2}>
+  <Card title="openComposition reference" icon="code" href="/sdk/reference/open-composition">
+    Full `OpenCompositionOptions` including `overrides`, `history`, and `persist`.
+  </Card>
+  <Card title="Types reference" icon="shapes" href="/sdk/reference/types">
+    `OverrideSet`, `FontValue`, `ImageValue`, `PatchEvent`, and `ORIGIN_APPLY_PATCHES`.
+  </Card>
+  <Card title="Undo, Redo, and Patches" icon="clock-rotate-left" href="/sdk/guides/undo-redo-and-patches">
+    Patch event format, inverse patch contract, and undo loop prevention.
+  </Card>
+  <Card title="Canvas integration" icon="browsers" href="/sdk/guides/canvas-integration">
+    Wiring the SDK to a live preview iframe inside an editor canvas.
+  </Card>
+</CardGroup>
+

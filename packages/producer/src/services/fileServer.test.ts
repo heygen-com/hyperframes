@@ -9,6 +9,7 @@ import {
   HF_EARLY_STUB,
   injectScriptsAtHeadStart,
   isPathInside,
+  parseRangeHeader,
   VIRTUAL_TIME_SHIM,
 } from "./fileServer.js";
 
@@ -225,7 +226,166 @@ describe("isPathInside", () => {
   });
 });
 
+describe("parseRangeHeader", () => {
+  const SIZE = 1000;
+
+  it("returns absent when there is no Range header", () => {
+    expect(parseRangeHeader(undefined, SIZE)).toEqual({ kind: "absent" });
+    expect(parseRangeHeader(null, SIZE)).toEqual({ kind: "absent" });
+    expect(parseRangeHeader("", SIZE)).toEqual({ kind: "absent" });
+  });
+
+  it("parses a closed range bytes=START-END", () => {
+    expect(parseRangeHeader("bytes=0-99", SIZE)).toEqual({
+      kind: "satisfiable",
+      start: 0,
+      end: 99,
+    });
+    expect(parseRangeHeader("bytes=100-199", SIZE)).toEqual({
+      kind: "satisfiable",
+      start: 100,
+      end: 199,
+    });
+  });
+
+  it("parses an open-ended range bytes=START- as start..EOF", () => {
+    expect(parseRangeHeader("bytes=100-", SIZE)).toEqual({
+      kind: "satisfiable",
+      start: 100,
+      end: SIZE - 1,
+    });
+    expect(parseRangeHeader("bytes=0-", SIZE)).toEqual({
+      kind: "satisfiable",
+      start: 0,
+      end: SIZE - 1,
+    });
+  });
+
+  it("parses a suffix range bytes=-N as the last N bytes", () => {
+    expect(parseRangeHeader("bytes=-50", SIZE)).toEqual({
+      kind: "satisfiable",
+      start: SIZE - 50,
+      end: SIZE - 1,
+    });
+    // Suffix larger than the file: clamp to the whole file.
+    expect(parseRangeHeader("bytes=-5000", SIZE)).toEqual({
+      kind: "satisfiable",
+      start: 0,
+      end: SIZE - 1,
+    });
+  });
+
+  it("clamps the end of a closed range to the last valid byte", () => {
+    // bytes=900-9999 on a 1000-byte file -> serve 900..999.
+    expect(parseRangeHeader("bytes=900-9999", SIZE)).toEqual({
+      kind: "satisfiable",
+      start: 900,
+      end: SIZE - 1,
+    });
+  });
+
+  it("returns unsatisfiable when start >= size", () => {
+    expect(parseRangeHeader("bytes=1000-2000", SIZE)).toEqual({ kind: "unsatisfiable" });
+    expect(parseRangeHeader("bytes=2000-", SIZE)).toEqual({ kind: "unsatisfiable" });
+  });
+
+  it("returns unsatisfiable when end < start in a closed range", () => {
+    expect(parseRangeHeader("bytes=200-100", SIZE)).toEqual({ kind: "unsatisfiable" });
+  });
+
+  it("returns unsatisfiable for a suffix request on a zero-byte file", () => {
+    expect(parseRangeHeader("bytes=-10", 0)).toEqual({ kind: "unsatisfiable" });
+  });
+
+  it("returns absent for non-bytes units, multi-range, and malformed inputs", () => {
+    expect(parseRangeHeader("items=0-1", SIZE)).toEqual({ kind: "absent" });
+    expect(parseRangeHeader("bytes=0-99,200-299", SIZE)).toEqual({ kind: "absent" });
+    expect(parseRangeHeader("bytes=abc-def", SIZE)).toEqual({ kind: "absent" });
+    expect(parseRangeHeader("bytes=", SIZE)).toEqual({ kind: "absent" });
+    expect(parseRangeHeader("bytes=-", SIZE)).toEqual({ kind: "absent" });
+  });
+
+  it("tolerates surrounding whitespace and case", () => {
+    expect(parseRangeHeader(" Bytes = 0-99 ", SIZE)).toEqual({
+      kind: "satisfiable",
+      start: 0,
+      end: 99,
+    });
+  });
+});
+
 describe("createFileServer", () => {
+  async function expectInjectedRenderFps(
+    fps: Parameters<typeof createFileServer>[0]["fps"],
+    expected: {
+      value: string;
+      source: "render-options" | "default";
+      fallbackReason?: "missing" | "invalid";
+    },
+  ): Promise<void> {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-file-server-render-fps-"));
+
+    try {
+      writeEmptyIndex(projectDir);
+      const server = await createFileServer({
+        projectDir,
+        preHeadScripts: [],
+        headScripts: [],
+        ...(fps ? { fps } : {}),
+      });
+      try {
+        const response = await fetch(`${server.url}/index.html`);
+        expect(response.status).toBe(200);
+        const html = await response.text();
+        expect(html).toContain("window.__HF_EXPORT_RENDER_SEEK_CONFIG");
+        expect(html).toContain(`var __renderFps = ${expected.value}`);
+        expect(html).toContain(`var __renderFpsSource = "${expected.source}"`);
+        if (expected.fallbackReason) {
+          expect(html).toContain(`var __renderFpsFallbackReason = "${expected.fallbackReason}"`);
+        } else {
+          expect(html).toContain("var __renderFpsFallbackReason = null");
+        }
+        expect(html).toContain("fps: __renderFps");
+        expect(html).toContain("fpsSource: __renderFpsSource");
+        expect(html).not.toContain("[hyperframes] render fps defaulted");
+      } finally {
+        server.close();
+      }
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  }
+
+  it("injects the requested render fps into the page render config", async () => {
+    await expectInjectedRenderFps({ num: 60, den: 1 }, { value: "60", source: "render-options" });
+  });
+
+  it("injects fractional render fps without rounding", async () => {
+    await expectInjectedRenderFps(
+      { num: 24000, den: 1001 },
+      { value: "23.976023976023978", source: "render-options" },
+    );
+  });
+
+  it("marks missing render fps as an explicit 30fps default", async () => {
+    await expectInjectedRenderFps(undefined, {
+      value: "30",
+      source: "default",
+      fallbackReason: "missing",
+    });
+  });
+
+  it("marks invalid render fps as an explicit 30fps default", async () => {
+    await expectInjectedRenderFps(
+      { num: 60, den: 0 },
+      {
+        value: "30",
+        source: "default",
+        fallbackReason: "invalid",
+      },
+    );
+  });
+
   it("serves asset files through project-root symlinked directories", async () => {
     const workspaceDir = mkdtempSync(join(tmpdir(), "hf-file-server-symlink-assets-"));
     const adsDir = join(workspaceDir, "Ads");
@@ -250,6 +410,150 @@ describe("createFileServer", () => {
       });
     } finally {
       rmSync(workspaceDir, { recursive: true, force: true });
+    }
+  });
+
+  it("streams binary file content without buffering through readFileSync", async () => {
+    // Regression test for the video-heavy event-loop block documented at
+    // renderOrchestrator.ts:1277-1306. Pre-fix the file route called
+    // readFileSync on every binary asset, which on 32MB+ videos stalled
+    // the Node event loop long enough to wedge concurrent /health probes.
+    // This test pins three properties of the streaming path:
+    //
+    //   1. Correctness: the served byte sequence matches the file exactly,
+    //      across a chunk boundary (we use a 5 MB synthetic asset, well past
+    //      Node's default 64KB createReadStream highWaterMark).
+    //   2. Content-Length is reported via statSync so range-aware HTTP
+    //      consumers (Chrome's media stack) see the size up front.
+    //   3. Concurrent requests don't serialize behind each other — N
+    //      parallel fetches all return identical content. With readFileSync
+    //      they'd block the event loop in serial; with the stream they
+    //      pipe interleaved chunks.
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-file-server-stream-"));
+    try {
+      writeEmptyIndex(projectDir);
+      // 5 MB of deterministic bytes — large enough to span many 64KB read
+      // chunks, small enough to keep the test fast.
+      const size = 5 * 1024 * 1024;
+      const buf = Buffer.alloc(size);
+      for (let i = 0; i < size; i++) buf[i] = i & 0xff;
+      writeFileSync(join(projectDir, "big.bin"), buf);
+
+      await withFileServer(projectDir, async (server) => {
+        // Single-request correctness + content-length.
+        const r = await fetch(`${server.url}/big.bin`);
+        expect(r.status).toBe(200);
+        expect(r.headers.get("content-length")).toBe(String(size));
+        const out = Buffer.from(await r.arrayBuffer());
+        expect(out.length).toBe(size);
+        // Spot-check a few sentinel positions (full equality check is O(5MB)
+        // and unnecessary — if any chunk were misaligned we'd see it here).
+        expect(out[0]).toBe(0);
+        expect(out[255]).toBe(255);
+        expect(out[256]).toBe(0);
+        expect(out[size - 1]).toBe((size - 1) & 0xff);
+
+        // Concurrent requests don't corrupt each other.
+        const concurrent = await Promise.all(
+          Array.from({ length: 4 }, () => fetch(`${server.url}/big.bin`)),
+        );
+        for (const resp of concurrent) {
+          expect(resp.status).toBe(200);
+          const body = Buffer.from(await resp.arrayBuffer());
+          expect(body.length).toBe(size);
+          expect(body[0]).toBe(0);
+          expect(body[size - 1]).toBe((size - 1) & 0xff);
+        }
+      });
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it("serves Range requests with 206 Partial Content + Accept-Ranges", async () => {
+    // Pins the RFC 7233 implementation for the binary path: Chrome's <video>
+    // element issues `Range: bytes=...` when seeking, and the response must
+    // be 206 with `Content-Range` + a sliced body so the player can resume
+    // partial-load without re-pulling the whole file. Also pins that the
+    // server advertises `Accept-Ranges: bytes` on full-body GETs so clients
+    // know future Range requests are supported.
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-file-server-range-"));
+    try {
+      writeEmptyIndex(projectDir);
+      // Use a 4 KB deterministic asset: small enough to keep the test
+      // fast, large enough that suffix / partial responses exercise the
+      // slicing math meaningfully.
+      const size = 4096;
+      const buf = Buffer.alloc(size);
+      for (let i = 0; i < size; i++) buf[i] = i & 0xff;
+      writeFileSync(join(projectDir, "asset.bin"), buf);
+
+      await withFileServer(projectDir, async (server) => {
+        // 1. Full GET advertises Accept-Ranges: bytes.
+        const full = await fetch(`${server.url}/asset.bin`);
+        expect(full.status).toBe(200);
+        expect(full.headers.get("accept-ranges")).toBe("bytes");
+        expect(full.headers.get("content-length")).toBe(String(size));
+        await full.body?.cancel();
+
+        // 2. Closed range: bytes=0-99 returns the first 100 bytes.
+        const head = await fetch(`${server.url}/asset.bin`, {
+          headers: { Range: "bytes=0-99" },
+        });
+        expect(head.status).toBe(206);
+        expect(head.headers.get("content-range")).toBe(`bytes 0-99/${size}`);
+        expect(head.headers.get("content-length")).toBe("100");
+        expect(head.headers.get("accept-ranges")).toBe("bytes");
+        const headBody = Buffer.from(await head.arrayBuffer());
+        expect(headBody.length).toBe(100);
+        expect(headBody[0]).toBe(0);
+        expect(headBody[99]).toBe(99);
+
+        // 3. Open-ended: bytes=4000- returns the tail.
+        const tail = await fetch(`${server.url}/asset.bin`, {
+          headers: { Range: "bytes=4000-" },
+        });
+        expect(tail.status).toBe(206);
+        expect(tail.headers.get("content-range")).toBe(`bytes 4000-${size - 1}/${size}`);
+        expect(tail.headers.get("content-length")).toBe(String(size - 4000));
+        const tailBody = Buffer.from(await tail.arrayBuffer());
+        expect(tailBody.length).toBe(size - 4000);
+        expect(tailBody[0]).toBe(4000 & 0xff);
+        expect(tailBody[tailBody.length - 1]).toBe((size - 1) & 0xff);
+
+        // 4. Suffix: bytes=-50 returns the last 50 bytes.
+        const suffix = await fetch(`${server.url}/asset.bin`, {
+          headers: { Range: "bytes=-50" },
+        });
+        expect(suffix.status).toBe(206);
+        expect(suffix.headers.get("content-range")).toBe(`bytes ${size - 50}-${size - 1}/${size}`);
+        expect(suffix.headers.get("content-length")).toBe("50");
+        const suffixBody = Buffer.from(await suffix.arrayBuffer());
+        expect(suffixBody.length).toBe(50);
+        expect(suffixBody[0]).toBe((size - 50) & 0xff);
+        expect(suffixBody[49]).toBe((size - 1) & 0xff);
+
+        // 5. Unsatisfiable: bytes=99999-99999 returns 416 with
+        //    Content-Range: bytes */<size> per RFC 7233 §4.4.
+        const bad = await fetch(`${server.url}/asset.bin`, {
+          headers: { Range: "bytes=99999-99999" },
+        });
+        expect(bad.status).toBe(416);
+        expect(bad.headers.get("content-range")).toBe(`bytes */${size}`);
+        expect(bad.headers.get("accept-ranges")).toBe("bytes");
+        await bad.body?.cancel();
+
+        // 6. Multi-range falls back to 200 (we don't reassemble
+        //    multipart/byteranges for the single-asset use case).
+        const multi = await fetch(`${server.url}/asset.bin`, {
+          headers: { Range: "bytes=0-9,20-29" },
+        });
+        expect(multi.status).toBe(200);
+        expect(multi.headers.get("accept-ranges")).toBe("bytes");
+        await multi.body?.cancel();
+      });
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
     }
   });
 

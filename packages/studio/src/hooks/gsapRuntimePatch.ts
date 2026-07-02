@@ -13,13 +13,22 @@
  * "Which tween" is resolved by the same all-timelines scan `readRuntimeKeyframes`
  * uses (`resolveRuntimeTween`), so read and write agree on the target.
  */
-import { resolveRuntimeTween, type RuntimeTween } from "./gsapRuntimeKeyframes";
+import {
+  resolveRuntimeTween,
+  type RuntimeTween,
+  type RuntimeTimeline,
+} from "./gsapRuntimeKeyframes";
 
 /** Value-only channels a `tl.set(...)` patch may touch. */
 export interface SetPatchProps {
   x?: number;
   y?: number;
   rotation?: number;
+  rotationX?: number;
+  rotationY?: number;
+  rotationZ?: number;
+  z?: number;
+  transformPerspective?: number;
   scaleX?: number;
   scaleY?: number;
   scale?: number;
@@ -31,12 +40,28 @@ export type KeyframeStep = Record<string, number>;
 
 export type RuntimeTweenChange =
   | { kind: "set"; props: SetPatchProps }
-  | { kind: "keyframes"; keyframes: KeyframeStep[] };
+  | { kind: "keyframes"; keyframes: KeyframeStep[] }
+  // Edit ONE step (at `pct`) of an object-form keyframe tween — the form the studio
+  // writes (`keyframes: { "0%": {...} }`). GSAP pre-compiles those into sub-tweens
+  // and won't re-read `vars.keyframes` on `invalidate()`, so this REBUILDS the tween
+  // (kill + recreate at the same position) instead of mutating it. Lets a design-panel
+  // keyframe edit show instantly rather than soft-reloading the iframe (a flash).
+  | { kind: "keyframe-rebuild"; pct: number; props: KeyframeStep }
+  // Apply a base `gsap.set` value to the element directly (`gsap.set(el, props)`).
+  // A base set lives OFF the timeline, so there's no runtime tween to patch — but
+  // the element is static on these channels, so setting them immediately reflects
+  // the edit with no soft reload (no flash) and leaves no keyframe marker.
+  | { kind: "global-set"; props: SetPatchProps };
 
 const SET_CHANNELS: Array<keyof SetPatchProps> = [
   "x",
   "y",
   "rotation",
+  "rotationX",
+  "rotationY",
+  "rotationZ",
+  "z",
+  "transformPerspective",
   "scaleX",
   "scaleY",
   "scale",
@@ -45,7 +70,41 @@ const SET_CHANNELS: Array<keyof SetPatchProps> = [
 
 type IframeWindow = Window & {
   __player?: { getTime?: () => number; seek?: (t: number) => void };
+  gsap?: { set?: (target: Element, vars: Record<string, number>) => void };
 };
+
+/**
+ * Apply a base `gsap.set` value to the element in the live runtime. Returns `true`
+ * if applied. Used for off-timeline static holds (position / 3D transform) — there's
+ * no tween to patch, so we set the channels directly. Safe because the element is
+ * static on these channels (the caller only uses this for non-animated values).
+ */
+/** The props as finite numbers, or null if any value is non-finite / none present. */
+function finiteNumericProps(props: SetPatchProps): Record<string, number> | null {
+  const numeric: Record<string, number> = {};
+  for (const [k, v] of Object.entries(props)) {
+    if (typeof v !== "number" || !Number.isFinite(v)) return null;
+    numeric[k] = v;
+  }
+  return Object.keys(numeric).length > 0 ? numeric : null;
+}
+
+function applyGlobalSet(
+  iframe: HTMLIFrameElement,
+  selector: string,
+  props: SetPatchProps,
+): boolean {
+  try {
+    const gsapLib = (iframe.contentWindow as IframeWindow | null)?.gsap;
+    const el = iframe.contentDocument?.querySelector(selector) ?? null;
+    const numeric = finiteNumericProps(props);
+    if (!gsapLib?.set || !el || !numeric) return false;
+    gsapLib.set(el, numeric);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function playerOf(iframe: HTMLIFrameElement): IframeWindow["__player"] | null {
   try {
@@ -100,10 +159,95 @@ function patchKeyframes(tween: RuntimeTween, keyframes: KeyframeStep[]): boolean
   return true;
 }
 
+/** The object-form keyframes map with `props` merged into the step at `pct`. */
+function mergeKeyframeStep(
+  map: Record<string, Record<string, number>>,
+  pct: number,
+  props: KeyframeStep,
+): Record<string, Record<string, number>> {
+  const next: Record<string, Record<string, number>> = {};
+  for (const [k, step] of Object.entries(map)) next[k] = { ...step };
+  // Match the existing percentage key numerically ("50%" ≡ pct 50), else add one.
+  let key: string | null = null;
+  for (const k of Object.keys(next)) {
+    const n = parseFloat(k);
+    if (Number.isFinite(n) && Math.abs(n - pct) < 0.05) {
+      key = k;
+      break;
+    }
+  }
+  if (key === null) key = `${pct}%`;
+  next[key] = { ...(next[key] ?? {}), ...props };
+  return next;
+}
+
 /**
- * Update one tween's values in `window.__timelines` in place + re-seek to the
- * current playhead. Returns `true` on a confident patch, `false` otherwise
- * (caller falls back to a soft reload).
+ * Rebuild an object-form keyframe tween with `props` merged into the step at `pct`,
+ * in place: kill the old tween and recreate it on the SAME parent timeline at the
+ * SAME position, with all other vars (duration, ease, repeat, …) preserved. This
+ * is the only way to reflect an object-form keyframe edit live — GSAP compiles
+ * those keyframes into sub-tweens at creation and ignores later `vars.keyframes`
+ * mutations. Declines (→ caller soft-reloads) for array-form, motionPath arcs,
+ * non-finite/dynamic values, or a tween whose parent/targets can't be resolved.
+ */
+// fallow-ignore-next-line complexity
+function rebuildKeyframeTween(tween: RuntimeTween, pct: number, props: KeyframeStep): boolean {
+  const vars = tween.vars;
+  if (!vars || "motionPath" in vars) return false;
+  const kf = vars.keyframes;
+  if (!kf || typeof kf !== "object" || Array.isArray(kf)) return false;
+  for (const v of Object.values(props)) {
+    if (typeof v !== "number" || !Number.isFinite(v)) return false;
+  }
+  const parent = tween.parent;
+  const targets = tween.targets?.();
+  if (!parent?.to || !targets || targets.length === 0) return false;
+  if (typeof tween.startTime !== "function" || typeof tween.kill !== "function") return false;
+
+  const next = mergeKeyframeStep(kf as Record<string, Record<string, number>>, pct, props);
+  const newVars = { ...vars, keyframes: next };
+  const position = tween.startTime();
+  tween.kill();
+  parent.to(targets, newVars, position);
+  return true;
+}
+
+/** The channels a change writes, for the resolver to disambiguate co-located tweens. */
+function changeChannels(change: RuntimeTweenChange): string[] | undefined {
+  if (change.kind === "set") {
+    return Object.keys(change.props).filter(
+      (k) => change.props[k as keyof SetPatchProps] !== undefined,
+    );
+  }
+  if (change.kind === "keyframe-rebuild") return Object.keys(change.props);
+  return undefined;
+}
+
+/** Re-render the timeline at the current playhead after an in-place edit. */
+function seekToCurrent(iframe: HTMLIFrameElement, timeline: RuntimeTimeline): void {
+  const player = playerOf(iframe);
+  const currentTime =
+    typeof player?.getTime === "function"
+      ? player.getTime()
+      : typeof timeline.time === "function"
+        ? timeline.time()
+        : 0;
+  player?.seek?.(Number.isFinite(currentTime) ? currentTime : 0);
+}
+
+/** Apply `change` to the resolved tween. `true` if applied, `false` to soft-reload.
+ *  `global-set` is handled before this (no tween) and never reaches here. */
+function applyChange(tween: RuntimeTween, change: RuntimeTweenChange): boolean {
+  if (change.kind === "set") return patchSet(tween, change.props);
+  if (change.kind === "keyframes") return patchKeyframes(tween, change.keyframes);
+  if (change.kind === "keyframe-rebuild")
+    return rebuildKeyframeTween(tween, change.pct, change.props);
+  return false;
+}
+
+/**
+ * Edit one tween in `window.__timelines` in place + re-seek to the current playhead.
+ * Returns `true` on a confident patch, `false` otherwise (caller soft-reloads).
  */
 export function patchRuntimeTweenInPlace(
   iframe: HTMLIFrameElement | null,
@@ -112,46 +256,29 @@ export function patchRuntimeTweenInPlace(
   compositionId?: string,
 ): boolean {
   if (!iframe) return false;
+  // A base `gsap.set` has no timeline tween to resolve — apply the value straight
+  // to the element so the edit shows instantly (no soft reload, no flash).
+  if (change.kind === "global-set") return applyGlobalSet(iframe, selector, change.props);
   try {
-    // For a `set` patch, hand the resolver the channels actually being written so
-    // it picks the set whose vars carry them — an element can have separate
-    // {x,y} and {rotation} sets, and a position patch must not corrupt the
-    // rotation set (channel-blind resolution would return the first match).
-    const channels =
-      change.kind === "set"
-        ? Object.keys(change.props).filter(
-            (k) => change.props[k as keyof SetPatchProps] !== undefined,
-          )
-        : undefined;
     const resolved = resolveRuntimeTween(
       iframe,
       selector,
       change.kind === "set" ? "set" : "keyframe",
       compositionId,
-      channels,
+      changeChannels(change),
     );
     if (!resolved) return false;
     const { tween, timeline } = resolved;
 
-    const applied =
-      change.kind === "set"
-        ? patchSet(tween, change.props)
-        : patchKeyframes(tween, change.keyframes);
-    if (!applied) return false;
+    if (!applyChange(tween, change)) return false;
 
-    // Recompute the tween (and its timeline) from the new vars, then re-render at
-    // the current playhead. `invalidate()` makes GSAP re-read vars on the next render.
-    tween.invalidate?.();
-    timeline.invalidate?.();
-
-    const player = playerOf(iframe);
-    const currentTime =
-      typeof player?.getTime === "function"
-        ? player.getTime()
-        : typeof timeline.time === "function"
-          ? timeline.time()
-          : 0;
-    player?.seek?.(Number.isFinite(currentTime) ? currentTime : 0);
+    // A rebuild already recreated the tween; set/keyframes mutate vars in place, so
+    // invalidate to make GSAP re-read them on the next render. Either way, re-seek.
+    if (change.kind !== "keyframe-rebuild") {
+      tween.invalidate?.();
+      timeline.invalidate?.();
+    }
+    seekToCurrent(iframe, timeline);
     return true;
   } catch {
     return false;
