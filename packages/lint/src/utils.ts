@@ -21,6 +21,11 @@ export const SCRIPT_BLOCK_PATTERN = /<script\b([^>]*)>([\s\S]*?)<\/script>/gi;
 const COMPOSITION_ID_IN_CSS_PATTERN = /\[data-composition-id=["']([^"']+)["']\]/g;
 export const TIMELINE_REGISTRY_INIT_PATTERN =
   /window\.__timelines\s*=\s*window\.__timelines\s*\|\|\s*\{\}|window\.__timelines\s*=\s*\{\}|window\.__timelines\s*\?\?=\s*\{\}/i;
+// Object-literal registration that assigns at least one `key: value` entry inline,
+// e.g. `window.__timelines = { main: tl }` or `window.__timelines = { "comp-1": tl }`.
+// Distinct from the empty-init form (`= {}`) — requires a key followed by `:`.
+export const TIMELINE_REGISTRY_OBJECT_LITERAL_PATTERN =
+  /window\.__timelines\s*=\s*\{\s*(?:["'][^"']+["']|[A-Za-z_$][\w$]*)\s*:/i;
 export const TIMELINE_REGISTRY_ASSIGN_PATTERN =
   /window\.__timelines(?:\[[^\]]+\]|\.[A-Za-z_$][\w$]*)\s*=/i;
 export const WINDOW_TIMELINE_ASSIGN_PATTERN =
@@ -29,6 +34,14 @@ export const INVALID_SCRIPT_CLOSE_PATTERN = /<script[^>]*>[\s\S]*?<\s*\/\s*scrip
 
 const TIMELINE_REGISTRY_KEY_PATTERN =
   /window\.__timelines(?:\[\s*["']([^"']+)["']\s*\]|\.\s*([A-Za-z_$][\w$]*))\s*=/g;
+
+// The `window.__timelines = { ... }` object-literal body (group 1), captured so its
+// `key: value` entries can be scanned for registered keys.
+const TIMELINE_REGISTRY_OBJECT_BODY_PATTERN = /window\.__timelines\s*=\s*\{([\s\S]*?)\}/i;
+// A single object-literal entry whose value is an identifier (real timeline registration),
+// e.g. `main: tl` or `"comp-1": tl`. Captures the key in group 1 (quoted) or 2 (bare).
+const TIMELINE_REGISTRY_OBJECT_ENTRY_PATTERN =
+  /(?:["']([^"']+)["']|([A-Za-z_$][\w$]*))\s*:\s*[A-Za-z_$][\w$]*/g;
 
 export function extractOpenTags(source: string): OpenTag[] {
   const tags: OpenTag[] = [];
@@ -176,6 +189,17 @@ export function extractTimelineRegistryKeys(source: string): string[] {
   while ((match = pattern.exec(source)) !== null) {
     const key = match[1] ?? match[2];
     if (key) keys.add(key);
+  }
+  const objectBody = TIMELINE_REGISTRY_OBJECT_BODY_PATTERN.exec(source)?.[1];
+  if (objectBody) {
+    const entryPattern = new RegExp(
+      TIMELINE_REGISTRY_OBJECT_ENTRY_PATTERN.source,
+      TIMELINE_REGISTRY_OBJECT_ENTRY_PATTERN.flags,
+    );
+    while ((match = entryPattern.exec(objectBody)) !== null) {
+      const key = match[1] ?? match[2];
+      if (key) keys.add(key);
+    }
   }
   return [...keys];
 }

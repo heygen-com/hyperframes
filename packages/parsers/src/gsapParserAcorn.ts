@@ -50,6 +50,82 @@ type ScopeBindings = ReadonlyMap<string, number | string | boolean>;
 /** Per-scope element bindings: scopeNode → (variable name → selector). */
 type TargetBindings = Map<any, Map<string, string>>;
 
+/**
+ * Side-table of top-level const/let ARRAY and OBJECT literals (of literals),
+ * captured by `collectScopeBindings` and stashed on the scope Map so that
+ * `resolveNode` can fold member access (`H.bar0`) and computed array index
+ * (`SPARK[0][1]`) without changing the resolveNode signature at its ~15 call
+ * sites. ponytail: hidden prop on the Map beats threading a new param everywhere.
+ */
+const CONST_NODES = Symbol("hf.constNodes");
+type ConstNodes = Map<string, any>;
+
+function constNodesOf(
+  scope: ReadonlyMap<string, number | string | boolean>,
+): ConstNodes | undefined {
+  return (scope as any)[CONST_NODES];
+}
+
+/** Whitelisted Math members we fold over constant args (deterministic, no I/O). */
+const MATH_FNS = new Set(["min", "max", "round", "floor", "ceil", "abs", "sqrt", "sign", "trunc"]);
+const MATH_CONSTS: Record<string, number> = { PI: Math.PI, E: Math.E, SQRT2: Math.SQRT2 };
+
+/**
+ * Fold a MemberExpression (`obj.prop`, `arr[i]`, `Math.PI`, `Math.round(x)`)
+ * against the const-node side-table. Returns undefined when not statically
+ * resolvable (genuinely runtime-dynamic) so the caller falls back to __raw.
+ */
+// fallow-ignore-next-line complexity
+function resolveMemberNode(
+  node: any,
+  scope: ReadonlyMap<string, number | string | boolean>,
+): number | string | boolean | undefined {
+  // Math.PI / Math.E
+  if (node.object?.type === "Identifier" && node.object.name === "Math") {
+    const key = node.property?.name;
+    return typeof key === "string" ? MATH_CONSTS[key] : undefined;
+  }
+  // Resolve the object to a const AST node (array/object literal), descending
+  // through chained member/index access (SPARK[0][1], H.bar0).
+  const objNode = resolveConstNode(node.object, scope);
+  if (!objNode) return undefined;
+  let valueNode: any;
+  if (node.computed) {
+    const idx = resolveNode(node.property, scope);
+    if (objNode.type === "ArrayExpression" && typeof idx === "number") {
+      valueNode = objNode.elements?.[idx];
+    } else if (
+      objNode.type === "ObjectExpression" &&
+      (typeof idx === "string" || typeof idx === "number")
+    ) {
+      valueNode = findPropertyNode(objNode, String(idx));
+    }
+  } else if (objNode.type === "ObjectExpression") {
+    valueNode = findPropertyNode(objNode, node.property?.name ?? node.property?.value);
+  }
+  return valueNode ? resolveNode(valueNode, scope) : undefined;
+}
+
+/** Resolve an expression to a const ARRAY/OBJECT AST node (for nested access). */
+function resolveConstNode(node: any, scope: ReadonlyMap<string, number | string | boolean>): any {
+  if (!node) return undefined;
+  if (node.type === "ArrayExpression" || node.type === "ObjectExpression") return node;
+  if (node.type === "Identifier") return constNodesOf(scope)?.get(node.name);
+  if (node.type === "MemberExpression") {
+    const objNode = resolveConstNode(node.object, scope);
+    if (!objNode) return undefined;
+    if (node.computed) {
+      const idx = resolveNode(node.property, scope);
+      if (objNode.type === "ArrayExpression" && typeof idx === "number")
+        return objNode.elements?.[idx];
+      if (objNode.type === "ObjectExpression") return findPropertyNode(objNode, String(idx));
+    } else if (objNode.type === "ObjectExpression") {
+      return findPropertyNode(objNode, node.property?.name ?? node.property?.value);
+    }
+  }
+  return undefined;
+}
+
 // ── Value resolution ─────────────────────────────────────────────────────────
 
 // fallow-ignore-next-line complexity
@@ -94,6 +170,22 @@ function resolveNode(
   }
   if (node.type === "TemplateLiteral" && node.expressions?.length === 0) {
     return node.quasis?.[0]?.value?.cooked ?? undefined;
+  }
+  if (node.type === "MemberExpression") {
+    return resolveMemberNode(node, scope);
+  }
+  // Whitelisted Math.fn(...) over constant args (Math.round/min/max/...).
+  if (
+    node.type === "CallExpression" &&
+    node.callee?.type === "MemberExpression" &&
+    node.callee.object?.type === "Identifier" &&
+    node.callee.object.name === "Math" &&
+    MATH_FNS.has(node.callee.property?.name)
+  ) {
+    const args = (node.arguments ?? []).map((a: any) => resolveNode(a, scope));
+    if (args.every((a: unknown) => typeof a === "number")) {
+      return (Math as any)[node.callee.property.name](...(args as number[]));
+    }
   }
   return undefined;
 }
@@ -193,14 +285,21 @@ function resolveCollectionSelector(
 
 function collectScopeBindings(ast: any): ScopeBindings {
   const bindings = new Map<string, number | string | boolean>();
+  // Const ARRAY/OBJECT literals are kept as AST nodes for member/index folding
+  // (resolveMemberNode), exposed to resolveNode via the CONST_NODES side-table.
+  const constNodes: ConstNodes = new Map();
+  Object.defineProperty(bindings, CONST_NODES, { value: constNodes, enumerable: false });
   acornWalk.simple(ast, {
     VariableDeclarator(node: any) {
       const name = node.id?.name;
       const init = node.init;
-      if (name && init) {
-        const val = resolveNode(init, bindings);
-        if (val !== undefined) bindings.set(name, val);
+      if (!name || !init) return;
+      if (init.type === "ArrayExpression" || init.type === "ObjectExpression") {
+        constNodes.set(name, init);
+        return;
       }
+      const val = resolveNode(init, bindings);
+      if (val !== undefined) bindings.set(name, val);
     },
   });
   return bindings;
@@ -256,6 +355,40 @@ function collectTargetBindings(ast: any, scope: ScopeBindings): TargetBindings {
     },
   } as any);
 
+  // Pass 3: collection ALIASES inherit their source collection's selector.
+  // `const lead = glyphs[0]`, `const rest = glyphs.slice(1)`,
+  // `const some = glyphs.filter(...)` all still target the same selector
+  // (`.glyph`). Per-element identity isn't statically recoverable (DOM-sized
+  // collection), but the selector + stagger should not read as __unresolved__.
+  const COLLECTION_ALIAS_METHODS = new Set(["slice", "filter", "concat", "reverse"]);
+  acornWalk.ancestor(ast, {
+    // fallow-ignore-next-line complexity
+    VariableDeclarator(node: any, _: unknown, ancestors: any[]) {
+      const name = node.id?.name;
+      const init = node.init;
+      if (!name || !init) return;
+      let sourceVar: string | undefined;
+      // x = coll[i]
+      if (init.type === "MemberExpression" && init.object?.type === "Identifier") {
+        sourceVar = init.object.name;
+      }
+      // x = coll.slice(...) / coll.filter(...)
+      else if (
+        init.type === "CallExpression" &&
+        init.callee?.type === "MemberExpression" &&
+        init.callee.object?.type === "Identifier" &&
+        init.callee.property?.type === "Identifier" &&
+        COLLECTION_ALIAS_METHODS.has(init.callee.property.name)
+      ) {
+        sourceVar = init.callee.object.name;
+      }
+      if (!sourceVar) return;
+      const selector = lookupBindingFromAncestors(sourceVar, ancestors, bindings);
+      if (selector)
+        addBinding(bindings, enclosingScopeNodeFromAncestors(ancestors), name, selector);
+    },
+  } as any);
+
   return bindings;
 }
 
@@ -286,6 +419,63 @@ function resolveTargetSelector(
     return lookupBindingFromAncestors(node.object.name, ancestors, bindings);
   }
   return null;
+}
+
+/**
+ * Classify an otherwise-unresolved tween target that is a plain object literal
+ * (`tl.to({}, …)`) or a proxy object (`tl.to(s, {onUpdate})`). Returns a
+ * descriptive pseudo-selector or null when the target isn't an object proxy.
+ *
+ * - Empty object literal → "dwell/hold" (a timing-only spacer tween, #11).
+ * - Proxy with onUpdate that writes a DOM attribute/style → "proxy → <attr>"
+ *   (best-effort #5; the channel name is parsed from the onUpdate body).
+ */
+function describeProxyTarget(targetNode: any, varsNode: any, scope: ScopeBindings): string | null {
+  // Resolve an Identifier proxy (const s = {u:0}) to its object literal.
+  const objNode =
+    targetNode?.type === "ObjectExpression"
+      ? targetNode
+      : targetNode?.type === "Identifier"
+        ? resolveConstNode(targetNode, scope)
+        : undefined;
+  if (objNode?.type !== "ObjectExpression") return null;
+
+  const onUpdate = findPropertyNode(varsNode, "onUpdate");
+  const driven = onUpdate ? drivenDomChannel(onUpdate) : undefined;
+  if (driven) return `proxy → ${driven}`;
+  // Empty / proxy object with no resolvable DOM write ⇒ a timing spacer.
+  return "dwell/hold";
+}
+
+/** Best-effort: find the DOM attribute/style channel an onUpdate body writes. */
+// fallow-ignore-next-line complexity
+function drivenDomChannel(fnNode: any): string | undefined {
+  let found: string | undefined;
+  acornWalk.simple(fnNode, {
+    CallExpression(node: any) {
+      // setAttribute("d" | "points" | "stroke-dashoffset", …)
+      if (
+        node.callee?.type === "MemberExpression" &&
+        node.callee.property?.name === "setAttribute" &&
+        typeof node.arguments?.[0]?.value === "string"
+      ) {
+        found ??= node.arguments[0].value;
+      }
+    },
+    AssignmentExpression(node: any) {
+      // el.style.foo = … / el.setAttribute-less style writes
+      const left = node.left;
+      if (
+        left?.type === "MemberExpression" &&
+        left.object?.type === "MemberExpression" &&
+        left.object.property?.name === "style" &&
+        left.property?.name
+      ) {
+        found ??= `style.${left.property.name}`;
+      }
+    },
+  });
+  return found;
 }
 
 // ── ObjectExpression utilities ────────────────────────────────────────────────
@@ -358,55 +548,10 @@ interface TimelineDefaults {
   duration?: number;
 }
 
-// How the timeline is referred to in source. `identifier` is the canonical
-// `const tl = …` form; `member` is the inline `window.__timelines["scene"] = …`
-// form, where the timeline IS the member expression (no variable name).
-type TimelineRef = { kind: "identifier"; name: string } | { kind: "member"; node: any };
-
 interface TimelineDetection {
-  /** Identifier name for the canonical form, else null (member or none). */
   timelineVar: string | null;
-  /** Structural reference: identifier OR member expression. Null when none found. */
-  ref: TimelineRef | null;
   timelineCount: number;
   defaults?: TimelineDefaults;
-}
-
-/** The static string key of a member access (`window.__timelines["scene"]` → "scene"), else null. */
-function staticMemberKey(node: any): string | null {
-  if (!node || node.type !== "MemberExpression") return null;
-  if (node.computed) {
-    const p = node.property;
-    if (p?.type === "Literal" && typeof p.value === "string") return p.value;
-    return null; // computed non-string-literal key → not statically resolvable
-  }
-  return node.property?.type === "Identifier" ? node.property.name : null;
-}
-
-/** True when a member expression refers to a statically-resolvable timeline slot. */
-function isStaticMemberRef(node: any): boolean {
-  return node?.type === "MemberExpression" && staticMemberKey(node) !== null;
-}
-
-/** Structural equality of two member-access nodes (object chain + static key), quote-insensitive. */
-function sameMemberAccess(a: any, b: any): boolean {
-  if (a?.type !== "MemberExpression" || b?.type !== "MemberExpression") return false;
-  if (staticMemberKey(a) !== staticMemberKey(b) || staticMemberKey(a) === null) return false;
-  const ao = a.object;
-  const bo = b.object;
-  if (ao?.type === "Identifier" && bo?.type === "Identifier") return ao.name === bo.name;
-  if (ao?.type === "MemberExpression" && bo?.type === "MemberExpression")
-    return sameMemberAccess(ao, bo);
-  return false;
-}
-
-/** The source string a tween call is rooted at: identifier name, or the member source as written. */
-function timelineRootSource(ref: TimelineRef, script: string): string {
-  return ref.kind === "identifier" ? ref.name : script.slice(ref.node.start, ref.node.end);
-}
-
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 // fallow-ignore-next-line complexity
@@ -433,7 +578,6 @@ function extractTimelineDefaults(
 
 function findTimelineVar(ast: any, scope?: ScopeBindings): TimelineDetection {
   let timelineVar: string | null = null;
-  let ref: TimelineRef | null = null;
   let timelineCount = 0;
   let defaults: TimelineDefaults | undefined;
   const emptyScope: ScopeBindings = scope ?? new Map();
@@ -442,9 +586,8 @@ function findTimelineVar(ast: any, scope?: ScopeBindings): TimelineDetection {
     VariableDeclarator(node: any) {
       if (isGsapTimelineCall(node.init)) {
         timelineCount += 1;
-        if (!ref && node.id?.type === "Identifier") {
-          timelineVar = node.id.name;
-          ref = { kind: "identifier", name: node.id.name };
+        if (!timelineVar) {
+          timelineVar = node.id?.name ?? null;
           defaults = extractTimelineDefaults(node.init, emptyScope);
         }
       }
@@ -452,23 +595,16 @@ function findTimelineVar(ast: any, scope?: ScopeBindings): TimelineDetection {
     AssignmentExpression(node: any) {
       if (isGsapTimelineCall(node.right)) {
         timelineCount += 1;
-        if (!ref) {
+        if (!timelineVar) {
           const left = node.left;
-          if (left?.type === "Identifier") {
-            timelineVar = left.name;
-            ref = { kind: "identifier", name: left.name };
-            defaults = extractTimelineDefaults(node.right, emptyScope);
-          } else if (isStaticMemberRef(left)) {
-            // Inline form: `window.__timelines["scene"] = gsap.timeline(...)`.
-            ref = { kind: "member", node: left };
-            defaults = extractTimelineDefaults(node.right, emptyScope);
-          }
+          if (left?.type === "Identifier") timelineVar = left.name;
+          defaults = extractTimelineDefaults(node.right, emptyScope);
         }
       }
     },
   });
 
-  return { timelineVar, ref, timelineCount, defaults };
+  return { timelineVar, timelineCount, defaults };
 }
 
 // ── Tween call collection ─────────────────────────────────────────────────────
@@ -497,18 +633,15 @@ export interface TweenCallInfo {
   varsArg: any;
   fromArg?: any;
   positionArg?: any;
-  /** True for a base `gsap.set(...)` (off-timeline) rather than `tl.set(...)`. */
-  global?: boolean;
 }
 
-/** True when the callee chain is rooted at the timeline reference (identifier or member). */
-function isTimelineRootedCall(callNode: any, ref: TimelineRef): boolean {
+/** True when callee chain is rooted at the timeline variable. */
+function isTimelineRootedCall(callNode: any, timelineVar: string): boolean {
   let obj = callNode.callee?.object;
   while (obj?.type === "CallExpression") {
     obj = obj.callee?.object;
   }
-  if (ref.kind === "identifier") return obj?.type === "Identifier" && obj.name === ref.name;
-  return sameMemberAccess(obj, ref.node);
+  return obj?.type === "Identifier" && obj.name === timelineVar;
 }
 
 /**
@@ -520,7 +653,7 @@ function isTimelineRootedCall(callNode: any, ref: TimelineRef): boolean {
  */
 function findAllTweenCalls(
   ast: any,
-  ref: TimelineRef,
+  timelineVar: string,
   scope: ScopeBindings,
   targetBindings: TargetBindings,
 ): TweenCallInfo[] {
@@ -534,22 +667,10 @@ function findAllTweenCalls(
     // Fire BEFORE children (pre-order) so chained outer calls come first.
     if (node.type === "CallExpression") {
       const callee = node.callee;
-      // A base `gsap.set("#sel", props)` is an off-timeline static hold — parse it as
-      // an editable global `set` so a static value round-trips and re-edits in place.
-      // STRING-LITERAL selectors only: variable-target holds stay surrounding source.
-      const gsapSetArg = node.arguments?.[0];
-      const isGlobalSet =
-        callee?.type === "MemberExpression" &&
-        callee.object?.type === "Identifier" &&
-        callee.object.name === "gsap" &&
-        callee.property?.type === "Identifier" &&
-        callee.property.name === "set" &&
-        (gsapSetArg?.type === "StringLiteral" ||
-          (gsapSetArg?.type === "Literal" && typeof gsapSetArg.value === "string"));
       if (
         callee?.type === "MemberExpression" &&
         callee.property?.type === "Identifier" &&
-        (isTimelineRootedCall(node, ref) || isGlobalSet) &&
+        isTimelineRootedCall(node, timelineVar) &&
         GSAP_METHODS.has(callee.property.name)
       ) {
         const method = callee.property.name;
@@ -578,7 +699,6 @@ function findAllTweenCalls(
             selector: selectorValue,
             varsArg: args[1],
             positionArg: args[2],
-            ...(isGlobalSet ? { global: true } : {}),
           });
         }
       }
@@ -974,8 +1094,16 @@ function tweenCallToAnimation(
     duration = computeKeyframesTotalDuration(call.varsArg, scope, source);
   }
 
+  // Relabel object-proxy / empty-target tweens so they don't read as bare
+  // __unresolved__: a dwell/hold spacer or an onUpdate-driven DOM channel (#5/#11).
+  let selector = call.selector;
+  if (selector === "__unresolved__") {
+    const proxyLabel = describeProxyTarget(call.node.arguments?.[0], call.varsArg, scope);
+    if (proxyLabel) selector = proxyLabel;
+  }
+
   const anim: Omit<GsapAnimation, "id"> = {
-    targetSelector: call.selector,
+    targetSelector: selector,
     method: call.method,
     position,
     properties,
@@ -993,15 +1121,90 @@ function tweenCallToAnimation(
     group = classifyTweenPropertyGroup(kfProps);
   }
   if (group) anim.propertyGroup = group;
-  if (call.global) anim.global = true;
   if (Object.keys(extras).length > 0) anim.extras = extras;
   if (keyframesData) anim.keyframes = keyframesData;
   if (motionPathResult) anim.arcPath = motionPathResult.arcPath;
   if (hasUnresolvedKeyframes) anim.hasUnresolvedKeyframes = true;
-  if (call.selector === "__unresolved__") anim.hasUnresolvedSelector = true;
+  if (selector === "__unresolved__") anim.hasUnresolvedSelector = true;
   const provenance = readProvenance(call.node);
   if (provenance) anim.provenance = provenance;
   return anim;
+}
+
+// ── Stagger annotation (read path) ────────────────────────────────────────────
+
+/**
+ * Pull the per-element stagger amount out of a captured `extras.stagger` value.
+ * GSAP staggers are either a number (`0.08`) or an object (`{ each: 0.012, ... }`).
+ * The value arrives here as the round-trip form `__raw:<source>`; we only need
+ * the leading numeric / `each:` figure for the annotation. Returns undefined for
+ * non-numeric (function) staggers — there's nothing honest to print.
+ */
+function staggerAmount(raw: unknown): number | undefined {
+  if (typeof raw === "number") return raw;
+  if (typeof raw !== "string") return undefined;
+  const src = raw.startsWith("__raw:") ? raw.slice(6) : raw;
+  const m = /(?:each\s*:\s*)?(-?\d+(?:\.\d+)?)/.exec(src);
+  if (!m) return undefined;
+  const n = Number.parseFloat(m[1]!);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+/** Rest-pose value GSAP animates to/from for an unspecified endpoint. */
+function restValue(prop: string): number {
+  return prop === "opacity" || prop.startsWith("scale") ? 1 : 0;
+}
+
+/**
+ * Honest from/to keyframes for a flat staggered tween, mirroring how a flat
+ * tween renders: `from()` plays vars -> rest, `to()` plays rest -> vars, `fromTo`
+ * plays its authored endpoints. A synthetic `stagger` channel rides on both
+ * keyframes so the per-element cascade is visible even when the tween lands on
+ * the rest pose (a 1->1 collection that would otherwise read as a no-op).
+ */
+function staggeredKeyframes(
+  anim: Omit<GsapAnimation, "id">,
+  each: number,
+): GsapPercentageKeyframe[] {
+  const vars = { ...anim.properties };
+  let from: Record<string, number | string>;
+  let to: Record<string, number | string>;
+  if (anim.method === "fromTo") {
+    from = { ...(anim.fromProperties ?? {}) };
+    to = vars;
+  } else if (anim.method === "from") {
+    from = vars;
+    to = {};
+    for (const k of Object.keys(vars)) to[k] = restValue(k);
+  } else {
+    from = { ...(anim.fromProperties ?? {}) };
+    for (const k of Object.keys(vars)) if (from[k] === undefined) from[k] = restValue(k);
+    to = vars;
+  }
+  return [
+    { percentage: 0, properties: { ...from, stagger: each } },
+    { percentage: 100, properties: { ...to, stagger: each } },
+  ];
+}
+
+/**
+ * Read-path honesty pass: a tween with a `stagger` targets a per-element
+ * collection that animates one element at a time. A flat staggered tween that
+ * lands on (or starts from) the rest pose otherwise renders as a misleading
+ * X->X no-op. Surface real from/to keyframes plus the per-element `stagger`
+ * amount so the reader can tell the collection DOES animate and roughly how.
+ *
+ * Read path only — the write/serialize path ignores `keyframes` and keeps the
+ * literal `extras.stagger` source, so round-trips are untouched. Keyframed /
+ * motionPath tweens already surface their motion, so they're left alone.
+ */
+function annotateStaggeredCollections(anims: Omit<GsapAnimation, "id">[]): void {
+  for (const anim of anims) {
+    if (anim.keyframes || anim.arcPath) continue;
+    const each = staggerAmount(anim.extras?.stagger);
+    if (each === undefined) continue;
+    anim.keyframes = { format: "percentage", keyframes: staggeredKeyframes(anim, each) };
+  }
 }
 
 // ── Timeline position resolution ─────────────────────────────────────────────
@@ -1034,6 +1237,89 @@ function resolvePositionString(pos: string, cursor: number, prevStart: number): 
   return Number.isFinite(n) ? n : null;
 }
 
+// ── set() pre-state seeding (#3 in eval) ──────────────────────────────────────
+
+/**
+ * Collect `gsap.set(target, {prop: v})` calls into selector → {prop: value}.
+ * These run before the (paused) timeline builds, establishing the initial DOM
+ * state. tl.set(...) calls are already in the animation list, so they're folded
+ * in during the seeding walk instead.
+ */
+function collectGsapSetStates(
+  ast: any,
+  scope: ScopeBindings,
+  bindings: TargetBindings,
+  source: string,
+): Map<string, Record<string, number | string>> {
+  const states = new Map<string, Record<string, number | string>>();
+  acornWalk.ancestor(ast, {
+    // fallow-ignore-next-line complexity
+    CallExpression(node: any, _: unknown, ancestors: any[]) {
+      const callee = node.callee;
+      if (
+        callee?.type !== "MemberExpression" ||
+        callee.object?.name !== "gsap" ||
+        callee.property?.name !== "set"
+      )
+        return;
+      const selector = resolveTargetSelector(node.arguments?.[0], ancestors, scope, bindings);
+      if (!selector) return;
+      const rec = objectExpressionToRecord(node.arguments?.[1], scope, source);
+      const props: Record<string, number | string> = states.get(selector) ?? {};
+      for (const [k, v] of Object.entries(rec)) {
+        if (typeof v === "number" || typeof v === "string") props[k] = v;
+      }
+      states.set(selector, props);
+    },
+  } as any);
+  return states;
+}
+
+/**
+ * Seed each tween's start keyframe from the most recent set() value on the same
+ * target. Without this, `set(scaleY:0)` then `.to(scaleY:1)` reports the CSS
+ * default as the start, so a grow/fold/fade-from reads as a flat no-op.
+ *
+ * Walks animations in timeline order, tracking per-target current state from
+ * gsap.set() (pre-seeded) and tl.set() tweens. For a later to/from tween that
+ * lacks an explicit from-value for an animated prop, the tracked set() value
+ * becomes its from-keyframe.
+ */
+function seedSetStates(
+  anims: Omit<GsapAnimation, "id">[],
+  initial: Map<string, Record<string, number | string>>,
+): void {
+  const state = new Map<string, Record<string, number | string>>();
+  for (const [sel, props] of initial) state.set(sel, { ...props });
+
+  for (const anim of anims) {
+    const sel = anim.targetSelector;
+    if (anim.method === "set") {
+      const cur = state.get(sel) ?? {};
+      for (const [k, v] of Object.entries(anim.properties)) cur[k] = v;
+      state.set(sel, cur);
+      continue;
+    }
+    const cur = state.get(sel);
+    // fromTo authors its own start explicitly — don't override it.
+    if (anim.method === "to" && cur) {
+      const from = { ...(anim.fromProperties ?? {}) };
+      let seeded = false;
+      for (const prop of Object.keys(anim.properties)) {
+        if (from[prop] === undefined && cur[prop] !== undefined) {
+          from[prop] = cur[prop];
+          seeded = true;
+        }
+      }
+      if (seeded) anim.fromProperties = from;
+    }
+    // After a to/from tween, the target's state is the tween's END values.
+    const next = state.get(sel) ?? {};
+    for (const [k, v] of Object.entries(anim.properties)) next[k] = v;
+    state.set(sel, next);
+  }
+}
+
 function applyTimelineDefaults(
   anims: Omit<GsapAnimation, "id">[],
   defaults?: TimelineDefaults,
@@ -1050,19 +1336,69 @@ function applyTimelineDefaults(
   }
 }
 
-// fallow-ignore-next-line complexity
-function resolveTimelinePositions(anims: Omit<GsapAnimation, "id">[]): void {
+/** A source-ordered addLabel(name, position) definition. */
+interface AddLabelDef {
+  name: string;
+  /** Raw position string/number, or undefined ⇒ label sits at current end. */
+  position: string | number | undefined;
+  /** Source-order key (parallel to anims), for interleaving. */
+  order: number;
+}
+
+/**
+ * Resolve a label-relative position string against a live label table.
+ * Handles "label", "label+=n", "label-=n". Unknown labels auto-create at the
+ * current playhead (cursor) — GSAP's behavior when a tween references a label
+ * that hasn't been added yet. Returns null when not a label form.
+ */
+function resolveLabelPosition(
+  pos: string,
+  labels: Map<string, number>,
+  cursor: number,
+): number | null {
+  const m = /^([A-Za-z_$][\w$]*)\s*(?:([+-])=\s*([\d.]+))?$/.exec(pos.trim());
+  if (!m) return null;
+  const name = m[1]!;
+  let base = labels.get(name);
+  if (base === undefined) {
+    base = cursor; // auto-create label at the current end-of-timeline
+    labels.set(name, base);
+  }
+  if (m[2] && m[3]) {
+    const n = Number.parseFloat(m[3]);
+    if (Number.isFinite(n)) return m[2] === "+" ? base + n : base - n;
+  }
+  return base;
+}
+
+function resolveTimelinePositions(
+  anims: Omit<GsapAnimation, "id">[],
+  labelDefs: AddLabelDef[] = [],
+): void {
   let cursor = 0;
   let prevStart = 0;
-  for (const anim of anims) {
-    // A global `gsap.set(...)` is off-timeline — applied once at load, not
-    // sequenced on the master timeline. It carries no position arg, so the
-    // cursor fallback would otherwise hand it the comp-end time. Pin it to 0
-    // (its load-time start) and don't advance the cursor/prevStart.
-    if (anim.method === "set" && anim.global) {
-      anim.resolvedStart = 0;
-      continue;
+  const labels = new Map<string, number>();
+  // Interleave addLabel definitions with tweens by source order so labels are
+  // available exactly when later tweens reference them.
+  let labelIdx = 0;
+  const sortedLabels = [...labelDefs].sort((a, b) => a.order - b.order);
+
+  const defineLabel = (def: AddLabelDef): void => {
+    let value: number;
+    if (typeof def.position === "number") value = def.position;
+    else if (typeof def.position === "string") {
+      value = resolveLabelPosition(def.position, labels, cursor) ?? cursor;
+    } else value = cursor; // no position ⇒ end of timeline
+    labels.set(def.name, Math.max(0, value));
+  };
+
+  anims.forEach((anim, i) => {
+    // Apply any addLabel calls authored before this tween.
+    while (labelIdx < sortedLabels.length && sortedLabels[labelIdx]!.order <= i) {
+      defineLabel(sortedLabels[labelIdx]!);
+      labelIdx++;
     }
+
     const duration = anim.method === "set" ? 0 : (anim.duration ?? GSAP_DEFAULT_DURATION);
     let start: number | null;
 
@@ -1071,7 +1407,9 @@ function resolveTimelinePositions(anims: Omit<GsapAnimation, "id">[]): void {
     } else if (typeof anim.position === "number") {
       start = anim.position;
     } else if (typeof anim.position === "string") {
-      start = resolvePositionString(anim.position, cursor, prevStart);
+      start =
+        resolveLabelPosition(anim.position, labels, cursor) ??
+        resolvePositionString(anim.position, cursor, prevStart);
     } else {
       start = cursor;
     }
@@ -1081,7 +1419,56 @@ function resolveTimelinePositions(anims: Omit<GsapAnimation, "id">[]): void {
       prevStart = anim.resolvedStart;
       cursor = Math.max(cursor, anim.resolvedStart + duration);
     }
-  }
+  });
+
+  // Any trailing addLabel calls (define for completeness; no tweens follow).
+  while (labelIdx < sortedLabels.length) defineLabel(sortedLabels[labelIdx++]!);
+}
+
+/**
+ * Collect `tl.addLabel(name, position)` calls and compute each one's `order` —
+ * the count of tween calls that precede it in source order — so positions can
+ * be interleaved against the sorted animation list in resolveTimelinePositions.
+ */
+function collectAddLabelDefs(
+  ast: any,
+  timelineVar: string,
+  scope: ScopeBindings,
+  sortedCalls: TweenCallInfo[],
+): AddLabelDef[] {
+  const callLocs = sortedCalls.map((c) => c.node.callee?.property?.loc?.start);
+  const defs: AddLabelDef[] = [];
+  acornWalk.simple(ast, {
+    // fallow-ignore-next-line complexity
+    CallExpression(node: any) {
+      const callee = node.callee;
+      if (
+        callee?.type !== "MemberExpression" ||
+        callee.object?.name !== timelineVar ||
+        callee.property?.name !== "addLabel"
+      )
+        return;
+      const nameNode = node.arguments?.[0];
+      const name = typeof nameNode?.value === "string" ? nameNode.value : undefined;
+      if (!name) return;
+      // position may be numeric, a label-relative string, or omitted.
+      const posVal = resolveNode(node.arguments?.[1], scope);
+      const position =
+        typeof posVal === "number" || typeof posVal === "string" ? posVal : undefined;
+      const labelLoc = callee.property?.loc?.start;
+      let order = sortedCalls.length;
+      if (labelLoc) {
+        order = callLocs.findIndex(
+          (l) =>
+            l &&
+            (l.line > labelLoc.line || (l.line === labelLoc.line && l.column > labelLoc.column)),
+        );
+        if (order === -1) order = sortedCalls.length;
+      }
+      defs.push({ name, position, order });
+    },
+  });
+  return defs;
 }
 
 function compareByLoc(a: TweenCallInfo, b: TweenCallInfo): number {
@@ -1147,9 +1534,8 @@ export function parseGsapScriptAcornForWrite(script: string): ParsedGsapAcornFor
     const scope = collectScopeBindings(ast);
     const targetBindings = collectTargetBindings(ast, scope);
     const detection = findTimelineVar(ast, scope);
-    const ref: TimelineRef = detection.ref ?? { kind: "identifier", name: "tl" };
-    const timelineVar = timelineRootSource(ref, script);
-    const calls = findAllTweenCalls(ast, ref, scope, targetBindings);
+    const timelineVar = detection.timelineVar ?? "tl";
+    const calls = findAllTweenCalls(ast, timelineVar, scope, targetBindings);
     sortBySourcePosition(calls);
     const rawAnims = calls.map((call) => tweenCallToAnimation(call, scope, script));
     applyTimelineDefaults(rawAnims, detection.defaults);
@@ -1160,7 +1546,7 @@ export function parseGsapScriptAcornForWrite(script: string): ParsedGsapAcornFor
       call,
       animation: animations[i]!,
     }));
-    return { ast, timelineVar, hasTimeline: detection.ref !== null, located };
+    return { ast, timelineVar, hasTimeline: detection.timelineVar !== null, located };
   } catch {
     return null;
   }
@@ -1181,41 +1567,38 @@ export function parseGsapScriptAcorn(script: string): ParsedGsap {
     });
     const scope = collectScopeBindings(ast);
     const detection = findTimelineVar(ast, scope);
-    const ref: TimelineRef = detection.ref ?? { kind: "identifier", name: "tl" };
-    const timelineVar = timelineRootSource(ref, script);
+    const timelineVar = detection.timelineVar ?? "tl";
     // Expand helper-built / bounded-loop timelines before analysis so their
     // tweens resolve at true positions (read path only — the write path keeps
     // original source nodes). Degrades to the un-inlined AST on any failure.
-    // Only the identifier form uses the helper-built pattern; inline member
-    // timelines have nothing to inline, so skip (avoids mis-rooting on the member).
-    if (ref.kind === "identifier") {
-      try {
-        inlineComputedTimelines(ast, timelineVar, (node) => resolveNode(node, scope));
-      } catch {
-        /* fall back to current behavior */
-      }
+    try {
+      inlineComputedTimelines(ast, timelineVar, (node) => resolveNode(node, scope));
+    } catch {
+      /* fall back to current behavior */
     }
     const targetBindings = collectTargetBindings(ast, scope);
-    const calls = findAllTweenCalls(ast, ref, scope, targetBindings);
+    const calls = findAllTweenCalls(ast, timelineVar, scope, targetBindings);
     sortBySourcePosition(calls);
     const rawAnims = calls.map((call) => tweenCallToAnimation(call, scope, script));
     applyTimelineDefaults(rawAnims, detection.defaults);
-    resolveTimelinePositions(rawAnims);
+    // Seed tween start-keyframes from gsap.set()/tl.set() pre-states (read-only
+    // enrichment; the write path keeps source untouched for round-trip parity).
+    seedSetStates(rawAnims, collectGsapSetStates(ast, scope, targetBindings, script));
+    const labelDefs = collectAddLabelDefs(ast, timelineVar, scope, calls);
+    resolveTimelinePositions(rawAnims, labelDefs);
+    // Honesty pass (read path only): make staggered collection tweens read as
+    // real per-element motion instead of a flat no-op. Done after positions so
+    // duration is settled; before ids so the annotation is part of the id.
+    annotateStaggeredCollections(rawAnims);
     const animations = assignStableIds(rawAnims);
 
-    // Preamble = source up to and including the timeline declaration/assignment.
-    // Identifier keeps the original `const|let|var <name> = …` regex (byte-stable);
-    // member matches `<member source> = …`.
-    const declPattern =
-      ref.kind === "identifier"
-        ? `(?:const|let|var)\\s+${timelineVar}\\s*=\\s*gsap\\.timeline\\s*\\([^)]*\\)\\s*;?`
-        : `${escapeRegExp(timelineVar)}\\s*=\\s*gsap\\.timeline\\s*\\([^)]*\\)\\s*;?`;
-    const timelineMatch = script.match(new RegExp(`^[\\s\\S]*?${declPattern}`));
-    const fallbackPreamble =
-      ref.kind === "identifier"
-        ? `const ${timelineVar} = gsap.timeline({ paused: true });`
-        : `${timelineVar} = gsap.timeline({ paused: true });`;
-    const preamble = timelineMatch?.[0] ?? fallbackPreamble;
+    const timelineMatch = script.match(
+      new RegExp(
+        `^[\\s\\S]*?(?:const|let|var)\\s+${timelineVar}\\s*=\\s*gsap\\.timeline\\s*\\([^)]*\\)\\s*;?`,
+      ),
+    );
+    const preamble =
+      timelineMatch?.[0] ?? `const ${timelineVar} = gsap.timeline({ paused: true });`;
 
     const lastCallIdx = script.lastIndexOf(`${timelineVar}.`);
     let postamble = "";
@@ -1229,7 +1612,7 @@ export function parseGsapScriptAcorn(script: string): ParsedGsap {
 
     const result: ParsedGsap = { animations, timelineVar, preamble, postamble };
     if (detection.timelineCount > 1) result.multipleTimelines = true;
-    if (detection.timelineCount > 0 && detection.ref === null)
+    if (detection.timelineCount > 0 && detection.timelineVar === null)
       result.unsupportedTimelinePattern = true;
     return result;
   } catch {
@@ -1261,7 +1644,7 @@ export function extractGsapLabels(script: string): GsapLabelEntry[] {
     });
     const scope = collectScopeBindings(ast);
     const detection = findTimelineVar(ast, scope);
-    const ref: TimelineRef = detection.ref ?? { kind: "identifier", name: "tl" };
+    const timelineVar = detection.timelineVar ?? "tl";
 
     const labels: GsapLabelEntry[] = [];
 
@@ -1271,14 +1654,10 @@ export function extractGsapLabels(script: string): GsapLabelEntry[] {
         const expr = node.expression;
         if (!expr || expr.type !== "CallExpression") return;
         const callee = expr.callee;
-        // Match <timeline>.addLabel(...) for identifier or member timeline refs.
-        const objMatches =
-          ref.kind === "identifier"
-            ? callee.object?.type === "Identifier" && callee.object.name === ref.name
-            : sameMemberAccess(callee.object, ref.node);
+        // Match tl.addLabel(...)
         if (
           callee?.type !== "MemberExpression" ||
-          !objMatches ||
+          callee.object?.name !== timelineVar ||
           callee.property?.name !== "addLabel"
         )
           return;

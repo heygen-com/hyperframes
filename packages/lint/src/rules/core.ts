@@ -9,6 +9,7 @@ import {
   getInlineScriptSyntaxError,
   TIMELINE_REGISTRY_INIT_PATTERN,
   TIMELINE_REGISTRY_ASSIGN_PATTERN,
+  TIMELINE_REGISTRY_OBJECT_LITERAL_PATTERN,
   INVALID_SCRIPT_CLOSE_PATTERN,
 } from "../utils";
 
@@ -252,7 +253,8 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
     const findings: HyperframeLintFinding[] = [];
     if (
       !TIMELINE_REGISTRY_INIT_PATTERN.test(source) &&
-      !TIMELINE_REGISTRY_ASSIGN_PATTERN.test(source)
+      !TIMELINE_REGISTRY_ASSIGN_PATTERN.test(source) &&
+      !TIMELINE_REGISTRY_OBJECT_LITERAL_PATTERN.test(source)
     ) {
       findings.push({
         code: "missing_timeline_registry",
