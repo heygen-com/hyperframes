@@ -593,6 +593,20 @@ export const gsapRules: LintRule<LintContext>[] = [
           );
           if (hasHardKill) continue;
 
+          // A tl.set hard kill on the exiting selector itself is the fix — unless
+          // that selector IS a clip element, in which case gsap_animates_clip_element
+          // (below) errors on that exact tl.set: the framework already owns
+          // visibility/display on clip elements. Point at the inner-wrapper
+          // pattern instead so the two rules' advice doesn't contradict.
+          const exitClipInfo =
+            clipIds.get(win.targetSelector) || clipClasses.get(win.targetSelector);
+          const fixHint = exitClipInfo
+            ? `"${win.targetSelector}" is a clip element — the framework already manages its visibility. ` +
+              "Wrap the scene's content in an inner non-clip <div>, move the exit tween and the hard kill " +
+              `(\`tl.set("<inner-selector>", ${hiddenStateLiteral(win.propertyValues)}, ${boundary.toFixed(2)})\`) onto that wrapper instead.`
+            : `Add \`tl.set("${win.targetSelector}", ${hiddenStateLiteral(win.propertyValues)}, ${boundary.toFixed(2)})\` ` +
+              "after the exit tween.";
+
           findings.push({
             code: "gsap_exit_missing_hard_kill",
             severity: "error",
@@ -600,9 +614,7 @@ export const gsapRules: LintRule<LintContext>[] = [
               `GSAP exit on "${win.targetSelector}" ends at the ${boundary.toFixed(2)}s clip start boundary ` +
               "without a matching tl.set hard kill. Non-linear seeking can land after the fade and leave stale visibility state.",
             selector: win.targetSelector,
-            fixHint:
-              `Add \`tl.set("${win.targetSelector}", ${hiddenStateLiteral(win.propertyValues)}, ${boundary.toFixed(2)})\` ` +
-              "after the exit tween.",
+            fixHint,
             snippet: truncateSnippet(win.raw),
           });
         }
@@ -985,6 +997,18 @@ export const gsapRules: LintRule<LintContext>[] = [
         const killPattern = new RegExp(`["']#${id}["'][^)]*visibility\\s*:\\s*["']hidden["']`);
         const hasKill = killPattern.test(content);
         if (!hasKill) {
+          // A tl.set on "#id" is only safe advice when the scene element isn't
+          // itself a clip — otherwise gsap_animates_clip_element errors on that
+          // exact tl.set, since the framework already owns visibility/display on
+          // clip elements. Point at the inner-wrapper pattern instead.
+          const classes = (readAttr(tag.raw, "class") || "").split(/\s+/).filter(Boolean);
+          const isClip = classes.includes("clip");
+          const fixHint = isClip
+            ? `"#${id}" is a clip element — the framework already manages its visibility. ` +
+              "Wrap the scene's content in an inner non-clip <div>, move the exit tween and the hard kill " +
+              '(`tl.set("<inner-selector>", { visibility: "hidden" }, <exit-end-time>)`) onto that wrapper instead.'
+            : `Add \`tl.set("#${id}", { visibility: "hidden" }, <exit-end-time>)\` after the scene's exit tweens.`;
+
           findings.push({
             code: "scene_layer_missing_visibility_kill",
             severity: "error",
@@ -992,7 +1016,7 @@ export const gsapRules: LintRule<LintContext>[] = [
             message:
               `Scene layer "#${id}" exits via opacity tween but has no visibility: hidden hard kill. ` +
               "When scrubbing or when tweens conflict, the scene may remain partially visible and overlap the next scene.",
-            fixHint: `Add \`tl.set("#${id}", { visibility: "hidden" }, <exit-end-time>)\` after the scene's exit tweens.`,
+            fixHint,
           });
         }
       }
