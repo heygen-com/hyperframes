@@ -60,6 +60,7 @@ import {
   getEncoderPreset,
   distributeFrames,
   executeParallelCapture,
+  isTransientBrowserError,
   mergeWorkerFrames,
   type ParallelProgress,
   type WorkerTask,
@@ -570,8 +571,15 @@ export function captureAttemptMadeProgress(
 
 export function isRecoverableParallelCaptureError(error: unknown): boolean {
   const message = normalizeErrorMessage(error);
+  if (!message.includes("[Parallel] Capture failed")) return false;
+  // Reuse the engine's transient-error classification (frame detachment,
+  // browser disconnects, OOM kills) instead of a second, narrower pattern
+  // list — the two had drifted apart, so errors like "Navigating frame was
+  // detached" (a shared-file-server-died-under-memory-pressure symptom that
+  // IS transient) matched isTransientBrowserError but not this function,
+  // silently skipping the adaptive worker-count-halving retry below.
   return (
-    message.includes("[Parallel] Capture failed") &&
+    isTransientBrowserError(error) ||
     /Runtime\.callFunctionOn timed out|HeadlessExperimental\.beginFrame timed out|Waiting failed|timeout exceeded|timed out|Navigation timeout|Protocol error|Target closed/i.test(
       message,
     )

@@ -1031,6 +1031,33 @@ describe("adaptive missing-frame retry helpers", () => {
       false,
     );
   });
+
+  it("retries transient browser errors even when they aren't in the timeout regex", () => {
+    // Regression: this drifted from isTransientBrowserError's pattern list, so
+    // a shared-file-server-died-under-memory-pressure symptom like "Navigating
+    // frame was detached" matched isTransientBrowserError but silently skipped
+    // the adaptive worker-count-halving retry here.
+    expect(
+      isRecoverableParallelCaptureError(
+        new Error("[Parallel] Capture failed: Worker 0: Navigating frame was detached"),
+      ),
+    ).toBe(true);
+    expect(
+      isRecoverableParallelCaptureError(
+        new Error("[Parallel] Capture failed: Worker 5: Connection closed"),
+      ),
+    ).toBe(false); // "Connection closed" alone isn't in either pattern list — deliberately not matched.
+    expect(
+      isRecoverableParallelCaptureError(
+        new Error("[Parallel] Capture failed: Worker 0: browser has disconnected"),
+      ),
+    ).toBe(true);
+    // Still requires the "[Parallel] Capture failed" prefix — a transient
+    // message from an unrelated stage must not trigger this retry path.
+    expect(isRecoverableParallelCaptureError(new Error("Navigating frame was detached"))).toBe(
+      false,
+    );
+  });
 });
 
 describe("projectBrowserEndToCompositionTimeline", () => {
