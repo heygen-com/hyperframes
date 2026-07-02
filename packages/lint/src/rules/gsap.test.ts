@@ -1296,6 +1296,26 @@ describe("GSAP rules", () => {
     expect(finding).toBeUndefined();
   });
 
+  it("does NOT warn when timeline is registered with a computed bracket key", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="root" data-width="1920" data-height="1080">
+    <div id="box">Hello</div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    var spec = { id: "root" };
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#box", { opacity: 0.5, duration: 2 });
+    window.__timelines[spec.id] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_timeline_not_registered");
+    expect(finding).toBeUndefined();
+  });
+
   it("does NOT warn for sub-compositions (template-based)", async () => {
     const html = `
 <template>

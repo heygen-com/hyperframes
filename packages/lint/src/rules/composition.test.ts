@@ -1141,6 +1141,20 @@ describe("composition rules", () => {
       expect(find(result.findings)).toBeUndefined();
     });
 
+    it("does not error when a GSAP timeline is registered with a computed bracket key", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-width="1920" data-height="1080"></div>
+        <script>
+          var spec = { id: "main" };
+          window.__timelines = window.__timelines || {};
+          const tl = gsap.timeline({ paused: true });
+          window.__timelines[spec.id] = tl;
+        </script>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(find(result.findings)).toBeUndefined();
+    });
+
     it("does not error for a finite CSS animation (runtime auto-infers duration)", async () => {
       const html = `<html><body>
         <div data-composition-id="main" data-start="0" data-width="1920" data-height="1080">

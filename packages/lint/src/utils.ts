@@ -23,8 +23,16 @@ export const TIMELINE_REGISTRY_INIT_PATTERN =
   /window\.__timelines\s*=\s*window\.__timelines\s*\|\|\s*\{\}|window\.__timelines\s*=\s*\{\}|window\.__timelines\s*\?\?=\s*\{\}/i;
 export const TIMELINE_REGISTRY_ASSIGN_PATTERN =
   /window\.__timelines(?:\[[^\]]+\]|\.[A-Za-z_$][\w$]*)\s*=/i;
+// The bracket branch accepts either a quoted string key (`["root"]`) or a
+// computed key (`[spec.id]`, `[id]`) — a bare-identifier-only bracket branch
+// missed `window.__timelines[spec.id] = tl`, a pattern the shipped
+// code-particle-assemble/code-3d-extrude registry blocks actually use,
+// making gsap_timeline_not_registered false-fire on correctly registered
+// timelines. The computed-key alternative is deliberately non-capturing:
+// its text isn't a literal composition id, so callers reading group 1/2
+// (readRegisteredTimelineCompositionId) must keep falling back to null for it.
 export const WINDOW_TIMELINE_ASSIGN_PATTERN =
-  /window\.__timelines(?:\[\s*["']([^"']+)["']\s*\]|\.\s*([A-Za-z_$][\w$]*))\s*=\s*([A-Za-z_$][\w$]*)/i;
+  /window\.__timelines(?:\[\s*(?:["']([^"']+)["']|[A-Za-z_$][\w$.]*)\s*\]|\.\s*([A-Za-z_$][\w$]*))\s*=\s*([A-Za-z_$][\w$]*)/i;
 export const INVALID_SCRIPT_CLOSE_PATTERN = /<script[^>]*>[\s\S]*?<\s*\/\s*script(?!>)/i;
 
 const TIMELINE_REGISTRY_KEY_PATTERN =
