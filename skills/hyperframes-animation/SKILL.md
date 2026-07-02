@@ -44,6 +44,7 @@ Blueprints live in `blueprints-index.md`. Each entry points to `blueprints/<id>.
 | TypeGPU / WebGPU (`navigator.gpu`, WGSL, compute pipelines)                    | `adapters/typegpu.md`                               |
 | HTML-as-texture + WebGL/GLSL post-fx (capture live DOM via `drawElementImage`) | `adapters/html-in-canvas-patterns.md`               |
 | Named text-animation effects (24 IDs via external `animate-text` skill)        | `adapters/animate-text.md`                          |
+| Render function — no animation library (`window.__hfRender`, time-driven draw) | `adapters/render-fn.md`                             |
 
 ## Picking a runtime
 
@@ -54,6 +55,7 @@ Blueprints live in `blueprints-index.md`. Each entry points to `blueprints/<id>.
 - **CSS** for simple repeated motifs, decoration, shimmer — no JavaScript animation cost.
 - **WAAPI** for native browser keyframes without a GSAP dependency.
 - **TypeGPU / WebGPU** for GPU-rendered canvases (particles, liquid glass, custom shaders).
+- **Render function** when the scene is a pure function of time with no animation library — a hand-rolled clock, a React state timeline, or a `<canvas>` draw loop. Register a `render(timeSeconds)` callback on `window.__hfRender` instead of a `requestAnimationFrame` loop.
 
 Multiple runtimes can coexist in one composition. Each registers its instances on the runtime-specific global so HyperFrames can seek all of them in one pass.
 
