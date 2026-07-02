@@ -353,11 +353,21 @@ export async function captureTransitionFrameOnWorker(
  * Streaming-encoder writes report `false` when FFmpeg is already gone.
  * Continuing to capture into a dead encoder wastes the rest of the render,
  * so every frame loop stops with a frame-indexed error instead.
+ *
+ * When the encoder is provided, the thrown error includes FFmpeg's own failure
+ * reason (exit code + stderr tail) — otherwise the message is just "exited
+ * before frame N", which for the frame-0 case (bad args / unsupported codec /
+ * missing binary quirk) is cryptic and unactionable.
  */
-export function ensureFrameWritten(frameWritten: boolean, frameIndex: number): void {
-  if (!frameWritten) {
-    throw new Error(`Streaming encoder exited before frame ${frameIndex} was written`);
-  }
+export function ensureFrameWritten(
+  frameWritten: boolean,
+  frameIndex: number,
+  encoder?: { getExitError: () => string | undefined },
+): void {
+  if (frameWritten) return;
+  const reason = encoder?.getExitError();
+  const base = `Streaming encoder exited before frame ${frameIndex} was written`;
+  throw new Error(reason ? `${base}: ${reason}` : base);
 }
 
 // ─── HDR video raw-frame cleanup (sequential path only) ────────────────────

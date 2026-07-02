@@ -43,7 +43,12 @@ export type {
 } from "./types.js";
 
 // ── Configuration ──────────────────────────────────────────────────────────────
-export { resolveConfig, DEFAULT_CONFIG, type EngineConfig } from "./config.js";
+export {
+  resolveConfig,
+  DEFAULT_CONFIG,
+  scaleProtocolTimeoutForComposition,
+  type EngineConfig,
+} from "./config.js";
 export {
   DEFAULT_VP9_CPU_USED,
   MAX_VP9_CPU_USED,
@@ -83,6 +88,7 @@ export {
   prepareCaptureSessionForReuse,
   type CaptureSession,
   isTransientBrowserError,
+  isMemoryExhaustionError,
   type BeforeCaptureHook,
   type DiscardWarmupInnerCapture,
 } from "./services/frameCapture.js";

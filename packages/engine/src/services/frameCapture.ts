@@ -2006,3 +2006,35 @@ export function isTransientBrowserError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return TRANSIENT_BROWSER_ERROR_PATTERNS.some((pattern) => pattern.test(message));
 }
+
+// ── Memory-exhaustion classification ────────────────────────────────────────
+// A render can run the Node process (or a page-side allocation) out of memory
+// on an oversized composition — huge canvas, thousands of frames, or a very
+// large frame cache. These surface as cryptic V8 RangeErrors ("Set maximum
+// size exceeded", "Invalid array length"/"string length", "Array buffer
+// allocation failed") or a hard V8 heap-limit abort. They are NOT transient
+// (a retry re-hits the same ceiling) and NOT composition-logic bugs — they're
+// resource limits. Classify them so the caller can surface actionable guidance
+// (lower resolution / fps / duration, or enable low-memory mode) instead of a
+// raw RangeError.
+
+// Deliberately specific: each pattern is a distinct V8/Node allocation-failure
+// signature. We intentionally do NOT match a bare /out of memory/ — that
+// substring appears in benign browser-console noise (WebGL `CONTEXT_LOST … out
+// of memory`, GPU driver notes) that gets carried into the error path, and
+// misclassifying it would replace the real failure message with generic OOM
+// guidance.
+const MEMORY_EXHAUSTION_ERROR_PATTERNS = [
+  /Set maximum size exceeded/i,
+  /Map maximum size exceeded/i,
+  /Invalid (?:array|string) length/i,
+  /Array buffer allocation failed/i,
+  /Cannot create a string longer than/i,
+  /Reached heap limit/i,
+  /JavaScript heap out of memory/i,
+];
+
+export function isMemoryExhaustionError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return MEMORY_EXHAUSTION_ERROR_PATTERNS.some((pattern) => pattern.test(message));
+}

@@ -252,6 +252,53 @@ export const DEFAULT_CONFIG: EngineConfig = {
   debug: false,
 };
 
+/**
+ * Reference canvas area for the baseline `protocolTimeout`: 1080p. A single CDP
+ * call (`Runtime.callFunctionOn` seek+paint, or `Page.captureScreenshot`)
+ * scales with the *output pixel area* it has to render/serialize — NOT with the
+ * frame count (that governs total wall-clock, capped separately by the ffmpeg
+ * streaming inactivity timeout). A fixed 300s ceiling intermittently kills
+ * legitimate slow-but-valid renders on large canvases with
+ * `Runtime.callFunctionOn timed out`, so we scale the per-call ceiling with
+ * area.
+ */
+const PROTOCOL_TIMEOUT_REFERENCE_PIXELS = 1920 * 1080;
+
+/**
+ * Absolute ceiling on the scaled protocol timeout (30 minutes). Bounds the
+ * blast radius: a genuinely wedged CDP call must still eventually fail rather
+ * than hang for an unbounded time on a pathologically large composition.
+ */
+const MAX_SCALED_PROTOCOL_TIMEOUT_MS = 1_800_000;
+
+/**
+ * Scale a base `protocolTimeout` up for oversized compositions.
+ *
+ * Scales by output pixel area (`width*height / reference`) — where width/height
+ * are the *device-scaled output* dimensions (the pixels a single CDP call
+ * actually renders/serializes), not the CSS composition size. Clamped to
+ * `[baseTimeout, max(baseTimeout, MAX_SCALED_PROTOCOL_TIMEOUT_MS)]`: never
+ * scales DOWN (a small composition — or a base already above the ceiling —
+ * keeps the configured base), and only ever raises. Pure function; exported
+ * for tests.
+ */
+export function scaleProtocolTimeoutForComposition(
+  baseTimeoutMs: number,
+  dims: { width: number; height: number },
+): number {
+  const { width, height } = dims;
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return baseTimeoutMs;
+  }
+  const factor = (width * height) / PROTOCOL_TIMEOUT_REFERENCE_PIXELS;
+  if (factor <= 1) return baseTimeoutMs;
+  const scaled = Math.ceil(baseTimeoutMs * factor);
+  // Ceiling is `max(base, MAX)` so an explicit base above the ceiling is never
+  // lowered (preserves the "only ever raise" contract for all callers).
+  const ceiling = Math.max(baseTimeoutMs, MAX_SCALED_PROTOCOL_TIMEOUT_MS);
+  return Math.min(ceiling, Math.max(baseTimeoutMs, scaled));
+}
+
 function memoryAdaptiveCacheLimit(): number {
   const total = getSystemTotalMb();
   if (total < 4096) return 32;
