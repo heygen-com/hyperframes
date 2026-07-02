@@ -75,12 +75,35 @@ export function withWordIds(words) {
   return (words ?? []).map((w, i) => ({ id: `w${i}`, text: w.text, start: w.start, end: w.end }));
 }
 
+// `ffmpeg -i <file>` prints a `Duration: HH:MM:SS.ms` line to stderr even
+// though it exits non-zero with no output requested. Parsing pulled out as
+// a pure function so the ENOENT fallback below can be tested without
+// depending on whether ffprobe/ffmpeg are actually installed on the
+// machine running the tests.
+export function parseFfmpegDurationBanner(stderrText) {
+  const match = /Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/.exec(stderrText ?? "");
+  if (!match) return NaN;
+  const [, hours, minutes, seconds] = match;
+  return Number(hours) * 3600 + Number(minutes) * 60 + Number(seconds);
+}
+
+// Some "essentials"-style ffmpeg distributions (common on Windows) ship
+// ffmpeg.exe without ffprobe.exe. ffprobeDuration's caller (audio.mjs)
+// otherwise reads a spurious NaN as "the WAV file is corrupt" and drops an
+// already-successfully-synthesized TTS line, rather than "the tool for
+// measuring it is missing".
+function ffmpegDurationFallback(absPath) {
+  const r = spawnSync("ffmpeg", ["-i", absPath], { encoding: "utf8" });
+  return parseFfmpegDurationBanner(r.stderr);
+}
+
 export function ffprobeDuration(absPath) {
   const r = spawnSync(
     "ffprobe",
     ["-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", absPath],
     { encoding: "utf8" },
   );
+  if (r.error?.code === "ENOENT") return ffmpegDurationFallback(absPath);
   if (r.status !== 0) return NaN;
   return parseFloat(String(r.stdout).trim());
 }
