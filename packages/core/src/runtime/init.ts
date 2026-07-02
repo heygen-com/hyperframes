@@ -496,7 +496,16 @@ export function initSandboxRuntimeModular(): void {
 
   const resolveMediaStartSeconds = (element: Element, fallback = 0): number => {
     if (!element.hasAttribute("data-hf-auto-start") && element.hasAttribute("data-start")) {
-      return Math.max(0, Number(element.getAttribute("data-start") ?? 0) || 0);
+      // `data-start` is authored relative to the media element's OWN sub-
+      // composition, not the root timeline — `fallback` carries the host
+      // composition's resolved absolute start (see syncMediaForCurrentState's
+      // inheritedStart), so it must be added, not discarded. Skipping it made
+      // a nested video play from root t=0 instead of holding until its
+      // parent scene began (issue #1838) — resolveStartForElement's own
+      // absolute-expression branch already adds this same host offset, this
+      // fast literal-value path just didn't.
+      const own = Math.max(0, Number(element.getAttribute("data-start") ?? 0) || 0);
+      return own + fallback;
     }
     return resolveStartForElement(element, fallback);
   };

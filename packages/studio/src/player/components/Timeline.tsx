@@ -487,8 +487,6 @@ export const Timeline = memo(function Timeline({
             if (el) {
               setSelectedElementId(elId);
               onSelectElement?.(el);
-              const absTime = el.start + (pct / 100) * el.duration;
-              onSeek?.(absTime);
             }
             const kfData = keyframeCache.get(elId);
             const kf = kfData?.keyframes.find((k) => Math.abs(k.percentage - pct) < 0.2);

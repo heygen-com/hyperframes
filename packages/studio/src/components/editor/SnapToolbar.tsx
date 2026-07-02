@@ -65,6 +65,7 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
   useEffect(() => {
     // fallow-ignore-next-line complexity
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return;
       const t = e.target;
       if (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement) return;
       if (t instanceof HTMLElement && t.isContentEditable) return;

@@ -1994,8 +1994,11 @@ function buildKeyframeValueNode(
   properties: Record<string, number | string>,
   ease?: string,
 ): AstNode {
-  const entries = Object.entries(properties).map(([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`);
-  if (ease) entries.push(`ease: ${JSON.stringify(ease)}`);
+  const effectiveEase = ease ?? (typeof properties.ease === "string" ? properties.ease : undefined);
+  const entries = Object.entries(properties)
+    .filter(([k]) => k !== "ease")
+    .map(([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`);
+  if (effectiveEase) entries.push(`ease: ${JSON.stringify(effectiveEase)}`);
   return parseExpr(`{ ${entries.join(", ")} }`);
 }
 
@@ -2335,7 +2338,11 @@ export function moveKeyframeInScript(
 ): string {
   const loc = locateAnimationWithFallback(script, animationId);
   if (!loc) return script;
-  const kfNode = findKeyframesObjectNode(loc.target.call.varsArg);
+  // Array-form keyframes can't host an arbitrary destination percentage —
+  // normalize to object form in place first (mirrors addKeyframeToScript).
+  const kfNode =
+    findKeyframesObjectNode(loc.target.call.varsArg) ??
+    convertArrayKeyframesToObjectNode(loc.target.call.varsArg);
   if (!kfNode) return script;
 
   const match = findKeyframePropByPct(kfNode, fromPercentage);
@@ -2392,7 +2399,11 @@ export function resizeKeyframedTweenInScript(
 ): string {
   const loc = locateAnimationWithFallback(script, animationId);
   if (!loc) return script;
-  const kfNode = findKeyframesObjectNode(loc.target.call.varsArg);
+  // Array-form keyframes can't host an arbitrary re-keyed percentage —
+  // normalize to object form in place first (mirrors addKeyframeToScript).
+  const kfNode =
+    findKeyframesObjectNode(loc.target.call.varsArg) ??
+    convertArrayKeyframesToObjectNode(loc.target.call.varsArg);
   if (!kfNode) return script;
 
   const seen = new Set<AstNode>();
@@ -2592,7 +2603,13 @@ export function convertToKeyframesInScript(
 export function removeAllKeyframesFromScript(script: string, animationId: string): string {
   let loc = locateAnimationWithFallback(script, animationId);
   if (!loc) return script;
-  const kfNode = findKeyframesObjectNode(loc.target.call.varsArg);
+  // Array-form keyframes have no percentage-keyed props for
+  // filterPercentageProps to read — normalize to object form first (mirrors
+  // addKeyframeToScript/moveKeyframeInScript), otherwise this silently no-ops
+  // on every array-form tween.
+  const kfNode =
+    findKeyframesObjectNode(loc.target.call.varsArg) ??
+    convertArrayKeyframesToObjectNode(loc.target.call.varsArg);
   if (!kfNode) return script;
 
   const kfEntries = filterPercentageProps(kfNode)

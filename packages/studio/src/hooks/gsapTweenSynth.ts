@@ -23,12 +23,18 @@ export function deduplicateKeyframes(
 
 // fallow-ignore-next-line complexity
 export function synthesizeFlatTweenKeyframes(anim: GsapAnimation): GsapKeyframesData | null {
-  if (anim.method === "set") {
-    // A `set` is a STATIC HOLD — a value applied at one point, not an animated
-    // keyframe. It must NOT synthesize a keyframe, or the timeline + panel show a
-    // phantom diamond for a value that doesn't animate. This holds for a base
-    // `gsap.set` (off-timeline) AND an on-timeline `tl.set`, and aligns the AST
-    // path with the runtime scan, which already skips every zero-duration set.
+  // Both parsers store extras as raw source text (`__raw:${code}`) so
+  // non-editable config like `stagger: {...}` survives verbatim — a literal
+  // `immediateRender: true` prints as exactly this string, not a boolean.
+  const hasImmediateRenderHold = anim.extras?.immediateRender === "__raw:true";
+  if (anim.method === "set" || (anim.duration === 0 && hasImmediateRenderHold)) {
+    // A `set` — or a `to()`/`from()` collapsed to a zero-duration
+    // immediateRender hold (what removeAllKeyframesFromScript collapses a
+    // keyframed tween to) — is a STATIC HOLD: a value applied at one point,
+    // not an animated keyframe. It must NOT synthesize a keyframe, or the
+    // timeline + panel show a phantom diamond for a value that doesn't
+    // animate. This aligns the AST path with the runtime scan, which already
+    // skips every zero-duration set.
     return null;
   }
   const toProps = anim.properties;

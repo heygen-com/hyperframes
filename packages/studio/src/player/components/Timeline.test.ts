@@ -3,7 +3,7 @@
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach } from "vitest";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   Timeline,
   formatTimelineTickLabel,
@@ -52,6 +52,56 @@ describe("Timeline provider boundary", () => {
       });
     }).not.toThrow();
 
+    act(() => root.unmount());
+  });
+
+  it("opens the keyframe context menu without seeking to that keyframe", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    Object.defineProperty(host, "clientWidth", {
+      configurable: true,
+      value: 720,
+    });
+
+    usePlayerStore.setState({
+      duration: 4,
+      timelineReady: true,
+      currentTime: 0.25,
+      selectedElementId: "clip-1",
+      elements: [{ id: "clip-1", tag: "div", start: 0, duration: 4, track: 0 }],
+      keyframeCache: new Map([
+        [
+          "clip-1",
+          {
+            format: "percentage",
+            keyframes: [{ percentage: 50, properties: { x: 100 }, tweenPercentage: 50 }],
+          },
+        ],
+      ]),
+    });
+
+    const onSeek = vi.fn();
+    const root = createRoot(host);
+    act(() => {
+      root.render(React.createElement(Timeline, { onSeek }));
+    });
+
+    const diamond = host.querySelector<HTMLButtonElement>('button[title="50%"]');
+    expect(diamond).not.toBeNull();
+
+    act(() => {
+      diamond!.dispatchEvent(
+        new MouseEvent("contextmenu", {
+          bubbles: true,
+          cancelable: true,
+          button: 2,
+          clientX: 120,
+          clientY: 40,
+        }),
+      );
+    });
+
+    expect(onSeek).not.toHaveBeenCalled();
     act(() => root.unmount());
   });
 });

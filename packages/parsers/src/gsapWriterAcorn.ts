@@ -1209,17 +1209,20 @@ export function moveKeyframeInScript(
   fromPercentage: number,
   toPercentage: number,
 ): string {
-  const located = locateWithKeyframes(script, animationId);
+  // ensureKeyframesNode (not locateWithKeyframes) so array-form `keyframes: [...]`
+  // tweens normalize to percentage-object form first — locateWithKeyframes alone
+  // bails on ArrayExpression, silently no-op'ing every move on an array-form tween.
+  const located = ensureKeyframesNode(script, animationId);
   if (!located) return script;
-  const { kfNode } = located;
+  const { script: src, kfNode } = located;
 
   const match = findKfPropByPct(kfNode, fromPercentage);
-  if (!match) return script;
+  if (!match) return src;
   // No-op ONLY for a negligible move (matches the drag's NOOP_EPSILON). The old
   // `collision.prop === match.prop` guard dropped EVERY sub-PCT_TOLERANCE (2%)
   // retime, because findKfPropByPct resolves the destination back onto the
   // from-keyframe — so a deliberate 1% drag committed nothing.
-  if (Math.abs(fromPercentage - toPercentage) < MOVE_NOOP_EPSILON_PCT) return script;
+  if (Math.abs(fromPercentage - toPercentage) < MOVE_NOOP_EPSILON_PCT) return src;
   // A destination keyframe is only a real collision (overwrite) when it's a
   // DIFFERENT keyframe; resolving back onto the from-keyframe is not.
   const dest = findKfPropByPct(kfNode, toPercentage);
@@ -1234,15 +1237,15 @@ export function moveKeyframeInScript(
     if (collision && prop === collision.prop) continue;
     const pct = percentageFromKey(propKeyName(prop) ?? "");
     if (Number.isNaN(pct)) continue;
-    entries.push({ pct, record: valueNodeToRecord(prop.value, script) });
+    entries.push({ pct, record: valueNodeToRecord(prop.value, src) });
   }
-  entries.push({ pct: toPercentage, record: valueNodeToRecord(match.prop.value, script) });
+  entries.push({ pct: toPercentage, record: valueNodeToRecord(match.prop.value, src) });
   entries.sort((a, b) => a.pct - b.pct);
 
   const body = entries
     .map((e) => `${JSON.stringify(`${e.pct}%`)}: ${recordToCode(e.record)}`)
     .join(", ");
-  const ms = new MagicString(script);
+  const ms = new MagicString(src);
   ms.overwrite(kfNode.start, kfNode.end, `{ ${body} }`);
   return ms.toString();
 }
@@ -1266,9 +1269,11 @@ export function resizeKeyframedTweenInScript(
   newDuration: number,
   pctRemap: ReadonlyArray<{ from: number; to: number }>,
 ): string {
-  const located = locateWithKeyframes(script, animationId);
+  // ensureKeyframesNode (not locateWithKeyframes) so array-form `keyframes: [...]`
+  // tweens normalize to percentage-object form first — see moveKeyframeInScript.
+  const located = ensureKeyframesNode(script, animationId);
   if (!located) return script;
-  const { target, kfNode } = located;
+  const { script: src, target, kfNode } = located;
 
   // Resolve every re-key against the ORIGINAL AST first (offsets stay stable),
   // then splice — distinct key nodes, so the overwrites never overlap. A Set
@@ -1282,7 +1287,7 @@ export function resizeKeyframedTweenInScript(
     edits.push({ keyNode: match.prop.key, to });
   }
 
-  const ms = new MagicString(script);
+  const ms = new MagicString(src);
   for (const { keyNode, to } of edits) {
     ms.overwrite(keyNode.start, keyNode.end, JSON.stringify(`${to}%`));
   }

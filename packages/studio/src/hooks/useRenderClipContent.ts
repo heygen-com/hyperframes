@@ -110,6 +110,13 @@ export function useRenderClipContent({
         });
       }
 
+      // Audio clips — waveform visualization. Resolve these before the generic
+      // activePreviewUrl thumbnail branch; audio rows need waveform data, not a
+      // captured frame from the currently drilled composition preview.
+      if (el.tag === "audio") {
+        return renderAudioClip(el, pid, style.label);
+      }
+
       // When drilled into a composition, render all inner elements via
       // CompositionThumbnail at their start time — most accurate visual.
       if (activePreviewUrl && el.duration > 0) {
@@ -130,11 +137,6 @@ export function useRenderClipContent({
         effectiveTimelineDuration > 0 &&
         el.duration < effectiveTimelineDuration * 0.92 &&
         !/(backdrop|background|overlay|scrim|mask)/i.test(el.id);
-
-      // Audio clips — waveform visualization
-      if (el.tag === "audio") {
-        return renderAudioClip(el, pid, style.label);
-      }
 
       if ((el.tag === "video" || el.tag === "img") && el.src) {
         const mediaSrc = el.src.startsWith("http")

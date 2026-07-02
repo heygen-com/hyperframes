@@ -446,6 +446,7 @@ export const TimelineCanvas = memo(function TimelineCanvas({
                         onShiftClickKeyframe={onShiftClickKeyframe}
                         onContextMenuKeyframe={onContextMenuKeyframe}
                         onMoveKeyframe={onMoveKeyframe}
+                        suppressClickRef={suppressClickRef}
                       />
                     )}
                   </TimelineClip>
