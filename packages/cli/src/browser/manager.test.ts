@@ -101,6 +101,15 @@ function installPuppeteerBrowsersMock(
   }));
 }
 
+function installChildProcessMocks() {
+  vi.doMock("node:child_process", () => ({
+    execSync: vi.fn(() => {
+      throw new Error("not found");
+    }),
+    spawnSync: vi.fn(),
+  }));
+}
+
 describe("findBrowser — cache resolution", () => {
   const origPlatform = process.platform;
   const origArch = process.arch;
@@ -113,6 +122,7 @@ describe("findBrowser — cache resolution", () => {
     Object.defineProperty(process, "platform", { value: "linux", configurable: true });
     Object.defineProperty(process, "arch", { value: "x64", configurable: true });
     delete process.env["HYPERFRAMES_BROWSER_PATH"];
+    installChildProcessMocks();
   });
 
   afterEach(() => {
@@ -121,6 +131,7 @@ describe("findBrowser — cache resolution", () => {
     vi.restoreAllMocks();
     vi.doUnmock("node:fs");
     vi.doUnmock("node:os");
+    vi.doUnmock("node:child_process");
     vi.doUnmock("@puppeteer/browsers");
   });
 
