@@ -21,7 +21,7 @@ The skills split into three groups:
 
     Opens a picker so you can choose which skills to add. Works with [Claude Code](https://claude.ai/claude-code), [Cursor](https://cursor.sh), [Gemini CLI](https://github.com/google-gemini/gemini-cli), [Codex CLI](https://github.com/openai/codex), [GitHub Copilot CLI](/guides/copilot-cli), and [Google Antigravity](/guides/antigravity).
   </Step>
-  <Step title="Or install all 19 at once (skip the picker)">
+  <Step title="Or install all 20 at once (skip the picker)">
     ```bash
     npx skills add heygen-com/hyperframes --all
     ```
@@ -78,6 +78,7 @@ Atomic capabilities the creation workflows compose against — pull one when you
 | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `/hyperframes-core`      | The composition contract — `data-*` timing attributes, `class="clip"`, tracks, sub-compositions, variables, framework-owned media playback, determinism rules.        |
 | `/hyperframes-animation` | All animation knowledge — atomic motion rules, scene blueprints, transitions, runtime adapters (GSAP / Lottie / Three.js / Anime.js / CSS / WAAPI / TypeGPU).         |
+| `/hyperframes-keyframes` | Seek-safe keyframe authoring across runtimes — GSAP timelines, CSS keyframes, Anime.js, WAAPI, FLIP, paths, masks, SVG morph/draw, 3D depth — plus `hyperframes keyframes` diagnostics for rendered motion. |
 | `/hyperframes-creative`  | Non-animation creative direction — `frame.md` / `design.md`, palettes, typography, narration, beat planning, audio-reactive visuals, composition patterns.            |
 | `/hyperframes-media`     | Audio + media — TTS voiceover, background music, sound effects, Whisper transcription, background removal, caption authoring (one shared audio engine).               |
 | `/media-use`             | Resolve any media need (BGM, SFX, image, icon) into a frozen local file + ledger record. One verb (`resolve`) over the HeyGen catalog with manifest tracking.          |

@@ -666,6 +666,38 @@ body {
       const finding = result.findings.find((f) => f.code === "timeline_id_mismatch");
       expect(finding).toBeUndefined();
     });
+
+    it("accepts object-literal timeline registration and extracts its keys", async () => {
+      const html = `
+<html><body>
+  <div data-composition-id="comp-1" data-width="1920" data-height="1080"></div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    window.__timelines = { "comp-1": tl };
+  </script>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(result.findings.find((f) => f.code === "missing_timeline_registry")).toBeUndefined();
+      expect(
+        result.findings.find((f) => f.code === "timeline_registry_missing_init"),
+      ).toBeUndefined();
+      expect(result.findings.find((f) => f.code === "timeline_id_mismatch")).toBeUndefined();
+    });
+
+    it("reports mismatched object-literal timeline registration keys", async () => {
+      const html = `
+<html><body>
+  <div data-composition-id="comp-1" data-width="1920" data-height="1080"></div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    window.__timelines = { main: tl };
+  </script>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "timeline_id_mismatch");
+      expect(finding).toBeDefined();
+      expect(finding?.message).toContain('Timeline registered as "main"');
+    });
   });
 
   it("warns when a timeline-visible element has no stable id for Studio editing", async () => {

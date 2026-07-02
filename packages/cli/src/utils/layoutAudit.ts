@@ -95,6 +95,18 @@ export function computeOverflow(
   return Object.keys(overflow).length > 0 ? overflow : null;
 }
 
+/**
+ * Whether a computed `overflow*` value clips its box. Mirrors the rule the
+ * browser audit (layout-audit.browser.js) uses to decide that text spilling
+ * past such an ancestor is intentionally masked (odometer/ticker reels) rather
+ * than a `text_box_overflow` defect. Kept here as the one unit-testable seam of
+ * that suppression: only `visible` (and the `clip visible` no-op) must NOT clip
+ * — every clipping value must, or real masked overflow gets reported as a bug.
+ */
+export function overflowValueClips(value: string | null | undefined): boolean {
+  return !!value && value !== "visible" && value !== "clip visible";
+}
+
 export function summarizeLayoutIssues(issues: LayoutIssue[]): LayoutSummary {
   const errorCount = issues.filter((issue) => issue.severity === "error").length;
   const warningCount = issues.filter((issue) => issue.severity === "warning").length;

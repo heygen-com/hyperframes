@@ -25,15 +25,16 @@ Below: a **capability map** (the domain skills, loaded on demand) and the **inte
 
 Atomic capabilities you load **on demand** — not full video workflows. For "make me a video", use the intent router below.
 
-| You want to…                                                                                                                               | Skill                    |
-| ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------ |
-| **Author / edit an HTML composition** — the `data-*` contract, clips, tracks, sub-compositions, variables                                  | `/hyperframes-core`      |
-| **Animate** — atomic motion, scene blueprints, transitions, runtime adapters (GSAP / Lottie / Three.js / Anime.js / CSS / WAAPI / TypeGPU) | `/hyperframes-animation` |
-| **Creative direction** — `frame.md` / `design.md`, palettes, typography, narration, beat planning, audio-reactive                          | `/hyperframes-creative`  |
-| **Media** — TTS voiceover, background music, transcription, background removal, captions                                                   | `/hyperframes-media`     |
-| **Media resolve** — find + freeze BGM, SFX, images, icons from HeyGen catalog into `.media/` with manifest tracking                        | `/media-use`             |
-| **CLI dev loop** — init, lint, validate, inspect, preview, render, publish, doctor                                                         | `/hyperframes-cli`       |
-| **Install registry blocks / components** (`hyperframes add`)                                                                               | `/hyperframes-registry`  |
+| You want to…                                                                                                                                                            | Skill                    |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ |
+| **Author / edit an HTML composition** — the `data-*` contract, clips, tracks, sub-compositions, variables                                                               | `/hyperframes-core`      |
+| **Animate** — atomic motion, scene blueprints, transitions, runtime adapters (GSAP / Lottie / Three.js / Anime.js / CSS / WAAPI / TypeGPU)                              | `/hyperframes-animation` |
+| **Author seek-safe keyframes** — GSAP timelines, CSS keyframes, Anime.js, WAAPI, FLIP, paths, masks, SVG morph/draw, 3D depth, plus `hyperframes keyframes` diagnostics | `/hyperframes-keyframes` |
+| **Creative direction** — `frame.md` / `design.md`, palettes, typography, narration, beat planning, audio-reactive                                                       | `/hyperframes-creative`  |
+| **Media** — TTS voiceover, background music, transcription, background removal, captions                                                                                | `/hyperframes-media`     |
+| **Media resolve** — find + freeze BGM, SFX, images, icons from HeyGen catalog into `.media/` with manifest tracking                                                     | `/media-use`             |
+| **CLI dev loop** — init, lint, validate, inspect, preview, render, publish, doctor                                                                                      | `/hyperframes-cli`       |
+| **Install registry blocks / components** (`hyperframes add`)                                                                                                            | `/hyperframes-registry`  |
 
 ---
 

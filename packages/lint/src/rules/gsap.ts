@@ -26,7 +26,9 @@ import {
   readAttr,
   truncateSnippet,
   stripJsComments,
+  hasCaptionStyles,
   WINDOW_TIMELINE_ASSIGN_PATTERN,
+  TIMELINE_REGISTRY_OBJECT_LITERAL_PATTERN,
 } from "../utils";
 
 // ── GSAP-specific types ────────────────────────────────────────────────────
@@ -274,6 +276,17 @@ function findContainingCompositionId(tag: OpenTag, ranges: CompositionRange[]): 
   return match?.id || null;
 }
 
+// A tag's `class` attribute, split into tokens, but only when it carries the
+// `clip` marker class — the common "is this a clip element?" filter used by
+// several rules that walk every tag looking for clips.
+type ClipTagClasses = { classAttr: string; classes: string[] };
+
+function getClipTagClasses(tag: OpenTag): ClipTagClasses | null {
+  const classAttr = readAttr(tag.raw, "class") || "";
+  const classes = classAttr.split(/\s+/).filter(Boolean);
+  return classes.includes("clip") ? { classAttr, classes } : null;
+}
+
 function collectClipStartBoundariesByComposition(
   source: string,
   tags: OpenTag[],
@@ -282,9 +295,7 @@ function collectClipStartBoundariesByComposition(
   const boundaries = new Map<string, Set<number>>();
 
   for (const tag of tags) {
-    const classAttr = readAttr(tag.raw, "class") || "";
-    const classes = classAttr.split(/\s+/).filter(Boolean);
-    if (!classes.includes("clip")) continue;
+    if (!getClipTagClasses(tag)) continue;
     const compositionId = findContainingCompositionId(tag, ranges);
     if (!compositionId) continue;
     const start = numberValue(readAttr(tag.raw, "data-start") ?? undefined);
@@ -507,6 +518,32 @@ function extractStandaloneGsapTransformCalls(script: string): GsapTransformCall[
   return calls;
 }
 
+// Run a global regex over every script's content, yielding each match plus a
+// context-padded snippet around it. Shared by the repeat-count and
+// group-selector-keyframes rules below, which differ only in the pattern,
+// whether comments are stripped first, and the context window size.
+function scanScriptsForRegexMatches(
+  scripts: LintContext["scripts"],
+  pattern: RegExp,
+  options: { stripComments: boolean; contextBefore: number; contextAfter: number },
+): Array<{ match: RegExpExecArray; snippet: string }> {
+  const hits: Array<{ match: RegExpExecArray; snippet: string }> = [];
+  for (const script of scripts) {
+    const content = options.stripComments ? stripJsComments(script.content) : script.content;
+    const regex = new RegExp(pattern.source, pattern.flags);
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(content)) !== null) {
+      const contextStart = Math.max(0, match.index - options.contextBefore);
+      const contextEnd = Math.min(
+        content.length,
+        match.index + match[0].length + options.contextAfter,
+      );
+      hits.push({ match, snippet: content.slice(contextStart, contextEnd) });
+    }
+  }
+  return hits;
+}
+
 // ── GSAP rules ─────────────────────────────────────────────────────────────
 
 // fallow-ignore-next-line complexity
@@ -521,17 +558,16 @@ export const gsapRules: LintRule<LintContext>[] = [
     const clipIds = new Map<string, ClipInfo>();
     const clipClasses = new Map<string, ClipInfo>();
     for (const tag of tags) {
-      const classAttr = readAttr(tag.raw, "class") || "";
-      const classes = classAttr.split(/\s+/).filter(Boolean);
-      if (!classes.includes("clip")) continue;
+      const clipTag = getClipTagClasses(tag);
+      if (!clipTag) continue;
       const id = readAttr(tag.raw, "id");
       const info: ClipInfo = {
         tag: tag.name,
         id: id || "",
-        classes: classAttr,
+        classes: clipTag.classAttr,
       };
       if (id) clipIds.set(`#${id}`, info);
-      for (const cls of classes) {
+      for (const cls of clipTag.classes) {
         if (cls !== "clip") clipClasses.set(`.${cls}`, info);
       }
     }
@@ -859,8 +895,7 @@ export const gsapRules: LintRule<LintContext>[] = [
   // fallow-ignore-next-line complexity
   ({ scripts, styles }) => {
     const findings: HyperframeLintFinding[] = [];
-    const isCaptionFile = styles.some((s) => /\.caption[-_]?(?:group|word)/i.test(s.content));
-    if (!isCaptionFile) return findings;
+    if (!hasCaptionStyles(styles)) return findings;
 
     for (const script of scripts) {
       const content = script.content;
@@ -904,28 +939,25 @@ export const gsapRules: LintRule<LintContext>[] = [
   // gsap_infinite_repeat
   ({ scripts }) => {
     const findings: HyperframeLintFinding[] = [];
-    for (const script of scripts) {
-      const content = stripJsComments(script.content);
-      // Match repeat: -1 in GSAP tweens or timeline configs
-      const pattern = /repeat\s*:\s*-1(?!\d)/g;
-      let match: RegExpExecArray | null;
-      while ((match = pattern.exec(content)) !== null) {
-        const contextStart = Math.max(0, match.index - 60);
-        const contextEnd = Math.min(content.length, match.index + match[0].length + 60);
-        const snippet = content.slice(contextStart, contextEnd).trim();
-        findings.push({
-          code: "gsap_infinite_repeat",
-          severity: "error",
-          message:
-            "GSAP tween uses `repeat: -1` (infinite). Infinite repeats break the deterministic " +
-            "capture engine which seeks to exact frame times. Use a finite repeat count calculated " +
-            "from the composition duration: `repeat: Math.floor(duration / cycleDuration) - 1`.",
-          fixHint:
-            "Replace `repeat: -1` with a finite count, e.g. `repeat: Math.floor(totalDuration / singleCycleDuration) - 1`. " +
-            "Use Math.floor (not Math.ceil) to ensure the animation fits within the total duration.",
-          snippet: truncateSnippet(snippet),
-        });
-      }
+    // Match repeat: -1 in GSAP tweens or timeline configs
+    const pattern = /repeat\s*:\s*-1(?!\d)/g;
+    for (const { snippet } of scanScriptsForRegexMatches(scripts, pattern, {
+      stripComments: true,
+      contextBefore: 60,
+      contextAfter: 60,
+    })) {
+      findings.push({
+        code: "gsap_infinite_repeat",
+        severity: "error",
+        message:
+          "GSAP tween uses `repeat: -1` (infinite). Infinite repeats break the deterministic " +
+          "capture engine which seeks to exact frame times. Use a finite repeat count calculated " +
+          "from the composition duration: `repeat: Math.floor(duration / cycleDuration) - 1`.",
+        fixHint:
+          "Replace `repeat: -1` with a finite count, e.g. `repeat: Math.floor(totalDuration / singleCycleDuration) - 1`. " +
+          "Use Math.floor (not Math.ceil) to ensure the animation fits within the total duration.",
+        snippet: truncateSnippet(snippet),
+      });
     }
     return findings;
   },
@@ -933,29 +965,26 @@ export const gsapRules: LintRule<LintContext>[] = [
   // gsap_repeat_ceil_overshoot
   ({ scripts }) => {
     const findings: HyperframeLintFinding[] = [];
-    for (const script of scripts) {
-      const content = script.content;
-      // Match patterns like: repeat: Math.ceil(duration / X) - 1
-      // or repeat: Math.ceil(totalDuration / cycleDuration) - 1
-      const pattern = /repeat\s*:\s*Math\.ceil\s*\([^)]+\)\s*-\s*1/g;
-      let match: RegExpExecArray | null;
-      while ((match = pattern.exec(content)) !== null) {
-        const contextStart = Math.max(0, match.index - 40);
-        const contextEnd = Math.min(content.length, match.index + match[0].length + 40);
-        const snippet = content.slice(contextStart, contextEnd).trim();
-        findings.push({
-          code: "gsap_repeat_ceil_overshoot",
-          severity: "warning",
-          message:
-            "GSAP repeat calculation uses `Math.ceil` which can overshoot the composition duration. " +
-            "For example, Math.ceil(10.5 / 2) - 1 = 5 repeats → 6 cycles × 2s = 12s, exceeding 10.5s.",
-          fixHint:
-            "Use `Math.floor` instead of `Math.ceil` to ensure the animation fits within the duration: " +
-            "`repeat: Math.floor(totalDuration / cycleDuration) - 1`. " +
-            "Math.floor(10.5 / 2) - 1 = 4 repeats → 5 cycles × 2s = 10s ✓",
-          snippet: truncateSnippet(snippet),
-        });
-      }
+    // Match patterns like: repeat: Math.ceil(duration / X) - 1
+    // or repeat: Math.ceil(totalDuration / cycleDuration) - 1
+    const pattern = /repeat\s*:\s*Math\.ceil\s*\([^)]+\)\s*-\s*1/g;
+    for (const { snippet } of scanScriptsForRegexMatches(scripts, pattern, {
+      stripComments: false,
+      contextBefore: 40,
+      contextAfter: 40,
+    })) {
+      findings.push({
+        code: "gsap_repeat_ceil_overshoot",
+        severity: "warning",
+        message:
+          "GSAP repeat calculation uses `Math.ceil` which can overshoot the composition duration. " +
+          "For example, Math.ceil(10.5 / 2) - 1 = 5 repeats → 6 cycles × 2s = 12s, exceeding 10.5s.",
+        fixHint:
+          "Use `Math.floor` instead of `Math.ceil` to ensure the animation fits within the duration: " +
+          "`repeat: Math.floor(totalDuration / cycleDuration) - 1`. " +
+          "Math.floor(10.5 / 2) - 1 = 4 repeats → 5 cycles × 2s = 10s ✓",
+        snippet: truncateSnippet(snippet),
+      });
     }
     return findings;
   },
@@ -1009,7 +1038,9 @@ export const gsapRules: LintRule<LintContext>[] = [
     for (const script of scripts) {
       const content = script.content;
       if (!/gsap\.timeline/.test(content)) continue;
-      const hasRegistration = WINDOW_TIMELINE_ASSIGN_PATTERN.test(content);
+      const hasRegistration =
+        WINDOW_TIMELINE_ASSIGN_PATTERN.test(content) ||
+        TIMELINE_REGISTRY_OBJECT_LITERAL_PATTERN.test(content);
       if (hasRegistration || canInheritFromHost) continue;
       findings.push({
         code: "gsap_timeline_not_registered",
@@ -1126,28 +1157,26 @@ export const gsapRules: LintRule<LintContext>[] = [
   // gsap_group_selector_keyframes
   ({ scripts }) => {
     const findings: HyperframeLintFinding[] = [];
-    for (const script of scripts) {
-      const content = stripJsComments(script.content);
-      const pattern = /\.(?:to|from|fromTo)\(\s*["']([^"']+,\s*[^"']+)["']\s*,\s*\{[^}]*keyframes/g;
-      let match: RegExpExecArray | null;
-      while ((match = pattern.exec(content)) !== null) {
-        const selector = match[1]!;
-        const count = selector.split(",").length;
-        const contextStart = Math.max(0, match.index - 20);
-        const contextEnd = Math.min(content.length, match.index + match[0].length + 40);
-        findings.push({
-          code: "gsap_group_selector_keyframes",
-          severity: "warning",
-          message:
-            `GSAP tween targets ${count} elements with shared keyframes ("${truncateSnippet(selector, 60)}"). ` +
-            `Editing one element's keyframes in Studio will affect all ${count} elements. ` +
-            `Split into individual tweens for per-element keyframe control.`,
-          fixHint:
-            `Replace the group selector with individual tl.to() calls per element, ` +
-            `each with their own keyframes object.`,
-          snippet: truncateSnippet(content.slice(contextStart, contextEnd)),
-        });
-      }
+    const pattern = /\.(?:to|from|fromTo)\(\s*["']([^"']+,\s*[^"']+)["']\s*,\s*\{[^}]*keyframes/g;
+    for (const { match, snippet } of scanScriptsForRegexMatches(scripts, pattern, {
+      stripComments: true,
+      contextBefore: 20,
+      contextAfter: 40,
+    })) {
+      const selector = match[1]!;
+      const count = selector.split(",").length;
+      findings.push({
+        code: "gsap_group_selector_keyframes",
+        severity: "warning",
+        message:
+          `GSAP tween targets ${count} elements with shared keyframes ("${truncateSnippet(selector, 60)}"). ` +
+          `Editing one element's keyframes in Studio will affect all ${count} elements. ` +
+          `Split into individual tweens for per-element keyframe control.`,
+        fixHint:
+          `Replace the group selector with individual tl.to() calls per element, ` +
+          `each with their own keyframes object.`,
+        snippet: truncateSnippet(snippet),
+      });
     }
     return findings;
   },

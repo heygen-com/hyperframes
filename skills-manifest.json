@@ -14,7 +14,7 @@
       "files": 1
     },
     "hyperframes": {
-      "hash": "e0cf1bb2843bc834",
+      "hash": "6cff4ef2b582b81b",
       "files": 1
     },
     "hyperframes-animation": {
@@ -32,6 +32,10 @@
     "hyperframes-creative": {
       "hash": "18a14a79da6cbc06",
       "files": 68
+    },
+    "hyperframes-keyframes": {
+      "hash": "47f20312033792c3",
+      "files": 3
     },
     "hyperframes-media": {
       "hash": "096b2ab0a43b05dd",

@@ -10,7 +10,41 @@ import { resolveCompositionViewportFromHtml } from "../utils/compositionViewport
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
 import { c } from "../ui/colors.js";
 import { findFFmpeg } from "../browser/ffmpeg.js";
+import { parseAngle, type Camera } from "./motionShotLayout.js";
 import type { Example } from "./_examples.js";
+
+// Runs IN THE BROWSER (serialized into page.evaluate). Tilt the whole stage so
+// the REAL painted pixels are viewed from an orthogonal angle (FINDING [10]:
+// snapshot only captured the composition's own head-on camera, so 3D depth /
+// occlusion couldn't be verified). Same approach as motionShot's orbit camera:
+// make the composition root + its ancestor chain preserve-3d, strip intermediate
+// perspective, put one perspective on the root's parent (the lens) and rotate
+// the root — works on any composition shape (no #stage assumption).
+//
+// Kept as a self-contained copy of motionShot.ts's `applyOrbitCamera` because
+// that one is module-private; this is ~15 lines and sharing it would mean
+// touching motionShot.ts (out of scope for this change).
+function orbitStageSource(): string {
+  return `function(cam) {
+    var root = document.querySelector("[data-composition-id]")
+      || document.querySelector("#stage")
+      || document.body.firstElementChild
+      || document.body;
+    var n = root;
+    while (n && n !== document.body) {
+      n.style.transformStyle = "preserve-3d";
+      n.style.perspective = "none";
+      n = n.parentElement;
+    }
+    root.style.transformStyle = "preserve-3d";
+    root.style.perspective = "none";
+    root.style.transformOrigin = "50% 50%";
+    root.style.transform = "rotateX(" + cam.pitch + "deg) rotateY(" + cam.yaw + "deg)";
+    var lens = root.parentElement || document.body;
+    lens.style.perspective = "1600px";
+    lens.style.perspectiveOrigin = "50% 50%";
+  }`;
+}
 
 /** Maximum time a single-frame FFmpeg extract is allowed to run. Mirrors the
  * default applied by `@hyperframes/engine`'s `runFfmpeg` so a pathological
@@ -87,7 +121,61 @@ async function extractVideoFrameToBuffer(
 export const examples: Example[] = [
   ["Capture 5 key frames from a composition", "snapshot capture"],
   ["Capture 10 evenly-spaced frames", "snapshot capture --frames 10"],
+  ["View the 3D stage from an isometric angle", "snapshot capture --angle iso"],
 ];
+
+/**
+ * Seeking the timeline to EXACTLY `data-duration` renders blank — the runtime
+ * treats t >= clip-end as past-end and unmounts the clip (verified on a V4 3D
+ * artifact: t=8.0 of an 8s clip was pure white, t=7.76 showed the final hero).
+ * So the "final frame" must be sampled just-before-end. The blank tail observed
+ * spanned the last ~2.5% of the timeline, hence a 3%-of-duration nudge (floored
+ * at 50ms so very short clips still back off a readable amount).
+ */
+export function tailFrameTime(duration: number): number {
+  return Math.max(0, duration - Math.max(0.05, duration * 0.03));
+}
+
+/**
+ * Pick the seek positions to screenshot. Pure so the "tail is always captured"
+ * guarantee is unit-testable (FINDING [7]: evenly-spaced --at times skipped the
+ * final beat and short hero beats with no signal).
+ *
+ * - No --at: evenly-spaced frames, but the LAST point is moved off the exact
+ *   duration to `tailFrameTime` so it isn't blank.
+ * - With --at: the user's exact times are honoured, plus a guaranteed
+ *   end-of-timeline frame appended (unless `includeEnd` is false), so the tail
+ *   is never silently skipped. A near-duplicate of the tail is not added twice.
+ *
+ * `appendedTail` flags that the readable-tail frame was added on top of the
+ * caller's request — used to warn that short sub-interval beats between samples
+ * may still be missed and need explicit --at.
+ */
+export function computeSnapshotTimes(
+  duration: number,
+  opts: { frames: number; at?: number[]; includeEnd?: boolean },
+): { times: number[]; appendedTail: boolean } {
+  const includeEnd = opts.includeEnd !== false;
+  const tail = tailFrameTime(duration);
+  const round = (t: number) => Math.round(t * 1000) / 1000;
+
+  if (opts.at?.length) {
+    const times = opts.at.map(round);
+    // Only append if the user didn't already sample at/near the readable tail.
+    const hasTail = times.some((t) => Math.abs(t - tail) < 0.05 || t >= duration);
+    if (includeEnd && duration > 0 && !hasTail) {
+      return { times: [...times, round(tail)], appendedTail: true };
+    }
+    return { times, appendedTail: false };
+  }
+
+  const n = opts.frames;
+  if (n <= 1) return { times: [round(duration / 2)], appendedTail: false };
+  const times = Array.from({ length: n }, (_, i) => (i / (n - 1)) * duration);
+  // Replace the final (exact-duration, blank) point with the readable tail.
+  if (includeEnd) times[times.length - 1] = tail;
+  return { times: times.map(round), appendedTail: false };
+}
 
 /**
  * Render key frames from a composition as PNG screenshots.
@@ -95,7 +183,14 @@ export const examples: Example[] = [
  */
 async function captureSnapshots(
   projectDir: string,
-  opts: { frames?: number; timeout?: number; at?: number[]; outputDir?: string },
+  opts: {
+    frames?: number;
+    timeout?: number;
+    at?: number[];
+    outputDir?: string;
+    angle?: Camera;
+    includeEnd?: boolean;
+  },
 ): Promise<string[]> {
   const { bundleToSingleHtml } = await import("@hyperframes/core/compiler");
   const { ensureBrowser } = await import("../browser/manager.js");
@@ -226,12 +321,25 @@ async function captureSnapshots(
         return [];
       }
 
-      // Calculate seek positions — explicit timestamps or evenly spaced
-      const positions: number[] = opts.at?.length
-        ? opts.at
-        : numFrames === 1
-          ? [duration / 2]
-          : Array.from({ length: numFrames }, (_, i) => (i / (numFrames - 1)) * duration);
+      // Calculate seek positions — explicit timestamps or evenly spaced, always
+      // including a readable end-of-timeline frame (FINDING [7]).
+      const { times: positions, appendedTail } = computeSnapshotTimes(duration, {
+        frames: numFrames,
+        at: opts.at,
+        includeEnd: opts.includeEnd,
+      });
+      if (appendedTail) {
+        console.log(
+          `   ${c.dim(`Note: added an end-of-timeline frame at ${positions[positions.length - 1]!.toFixed(2)}s. Short beats between your --at times may still be skipped — pass them explicitly.`)}`,
+        );
+      }
+
+      // Orthogonal camera (FINDING [10]) — re-applied after each seek inside the
+      // loop, since renderSeek may touch the stage's inline transform.
+      const cameraExpr =
+        opts.angle && (opts.angle.yaw !== 0 || opts.angle.pitch !== 0)
+          ? `(${orbitStageSource()})(${JSON.stringify(opts.angle)})`
+          : null;
 
       const snapshotDir = opts.outputDir ?? join(projectDir, "snapshots");
       mkdirSync(snapshotDir, { recursive: true });
@@ -318,6 +426,8 @@ async function captureSnapshots(
           window.setTimeout(finish, 100);
           requestAnimationFrame(function() { requestAnimationFrame(finish); });
         })`);
+
+        if (cameraExpr) await page.evaluate(cameraExpr);
 
         if (injectVideoFramesBatch && syncVideoFrameVisibility) {
           const active = await page.evaluate((t: number) => {
@@ -460,6 +570,17 @@ export default defineCommand({
       description: "Ms to wait for runtime to initialize (default: 5000)",
       default: "5000",
     },
+    angle: {
+      type: "string",
+      description:
+        "Orthogonal 3D camera for depth/occlusion checks: a preset (front|iso|top|side) or 'yaw,pitch' degrees. Tilts the whole stage before screenshotting (real pixels, not bbox markers).",
+    },
+    end: {
+      type: "boolean",
+      description:
+        "Always include a readable end-of-timeline frame (default: true). Pass --no-end to capture only your exact --at times.",
+      default: true,
+    },
     describe: {
       type: "string",
       description:
@@ -487,10 +608,16 @@ export default defineCommand({
           ? null
           : String(args.describe);
 
+    const camera = args.angle ? parseAngle(String(args.angle)) : undefined;
+
     const label = atTimestamps
       ? `${atTimestamps.length} frames at [${atTimestamps.map((t) => t.toFixed(1) + "s").join(", ")}]`
       : `${frames} frames`;
-    console.log(`${c.accent("◆")}  Capturing ${label} from ${c.accent(project.name)}`);
+    const angleLabel =
+      camera && (camera.yaw !== 0 || camera.pitch !== 0)
+        ? ` ${c.dim(`(angle yaw ${camera.yaw}° pitch ${camera.pitch}°)`)}`
+        : "";
+    console.log(`${c.accent("◆")}  Capturing ${label} from ${c.accent(project.name)}${angleLabel}`);
 
     try {
       const snapshotDir = args.output
@@ -501,6 +628,8 @@ export default defineCommand({
         timeout,
         at: atTimestamps,
         outputDir: snapshotDir,
+        angle: camera,
+        includeEnd: args.end !== false,
       });
 
       if (paths.length === 0) {

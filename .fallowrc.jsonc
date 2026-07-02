@@ -331,6 +331,11 @@
       // pre-existing per-rule scaffold; adding a clip-path case shifts lines and
       // re-flags it. Collapsing the per-rule installers would obscure each case.
       "packages/cli/src/commands/layout-audit.browser.test.ts",
+      // gsapParserAcorn.motionEval.test.ts: parallel arrange/act/assert cases for
+      // the staggered-collection honesty pass (.from reveal vs .to landing on the
+      // rest pose). Each asserts a distinct keyframe shape; collapsing the shared
+      // parse/keyframes-extraction scaffold would obscure what each case verifies.
+      "packages/core/src/parsers/gsapParserAcorn.motionEval.test.ts",
     ],
   },
   "health": {
@@ -430,6 +435,18 @@
       // breaking fallow's inherited-detection fingerprint. File-level
       // exemption avoids the line-shift problem for this inherited finding.
       "packages/core/src/runtime/adapters/lottie.ts",
+      // info.ts: the flagged `run` command handler pre-dates the keyframes-cli
+      // PR; that PR only added the orientation()/durationFromHtml() helpers and
+      // swapped a few `maxEnd` reads for the new `duration` variable, without
+      // adding branches. The line-shift fingerprint re-flags the inherited
+      // complexity even though the logic is unchanged.
+      "packages/cli/src/commands/info.ts",
+      // gsapParserAcorn.ts: the flagged `sameMemberAccess` (structural equality
+      // of two member-access nodes) pre-dates this PR's motion-eval work
+      // (added in #1760, unchanged since). The new const-folding / set-seeding /
+      // label-position code added earlier in the file shifted its line number,
+      // so the line-shift fingerprint re-flags this inherited finding.
+      "packages/parsers/src/gsapParserAcorn.ts",
     ],
   },
 }
