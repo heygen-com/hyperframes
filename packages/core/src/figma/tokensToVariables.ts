@@ -9,6 +9,7 @@
 
 import type { FigmaVariablePayload, FigmaVariablesResult } from "./client";
 import type { FigmaBindingRecord } from "./bindings";
+import { figmaColorToCss } from "./color";
 
 /** data-composition-variables entry (runtime getVariables contract). */
 export interface CompositionVariableEntry {
@@ -52,22 +53,6 @@ const TYPE_MAP: Record<string, CompositionVariableEntry["type"]> = {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
-}
-
-function toHexByte(channel: number): string {
-  return Math.round(channel * 255)
-    .toString(16)
-    .padStart(2, "0")
-    .toUpperCase();
-}
-
-function colorToCss(value: Record<string, unknown>): string | null {
-  const { r, g, b, a } = value;
-  if (typeof r !== "number" || typeof g !== "number" || typeof b !== "number") return null;
-  const alpha = typeof a === "number" ? a : 1;
-  if (alpha >= 1) return `#${toHexByte(r)}${toHexByte(g)}${toHexByte(b)}`;
-  const c = (n: number) => Math.round(n * 255);
-  return `rgba(${c(r)}, ${c(g)}, ${c(b)}, ${alpha})`;
 }
 
 /**
@@ -126,7 +111,7 @@ function toEntryValue(
   resolvedType: string | undefined,
   raw: unknown,
 ): string | number | boolean | null {
-  if (resolvedType === "COLOR") return isRecord(raw) ? colorToCss(raw) : null;
+  if (resolvedType === "COLOR") return figmaColorToCss(raw);
   if (resolvedType === "FLOAT") return typeof raw === "number" ? raw : null;
   if (resolvedType === "BOOLEAN") return typeof raw === "boolean" ? raw : null;
   if (resolvedType === "STRING") return typeof raw === "string" ? raw : null;

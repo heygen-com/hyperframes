@@ -42,6 +42,11 @@ export {
   recordLibraryFile,
 } from "./bindings";
 export type { FigmaBindingRecord } from "./bindings";
+export { figmaColorToCss } from "./color";
+export { resolveBindings } from "./resolveBindings";
+export type { BindingSite, ResolvedBindingSite, ResolveBindingsResult } from "./resolveBindings";
+export { nodeToHtml, slugify } from "./nodeToHtml";
+export type { NodeToHtmlResult, RasterizeRequest } from "./nodeToHtml";
 export { tokensToVariables } from "./tokensToVariables";
 export type {
   CompositionVariableEntry,
