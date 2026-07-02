@@ -62,19 +62,16 @@ vi.mock("../browser/preflight.js", () => ({
 describe("renderLocal browser GPU config", () => {
   const savedEnv = new Map<string, string | undefined>();
   // Pre-resolve once. The first dynamic `import("./render.js")` in this file
-  // cold-loads a heavy module graph (core + engine + producer, incl. linkedom)
-  // and takes >5 s on Windows runners — and materially longer under the full
-  // parallel monorepo test run, where it can exceed the default 10 s hook
-  // timeout on a contended CI runner. Importing once in `beforeAll` keeps every
-  // test fast and isolated; the explicit 30 s hook timeout absorbs cold-import
-  // contention so this doesn't flake (the failure was a pre-existing
-  // `Hook timed out in 10000ms`, reproducible on `main` under load).
+  // cold-loads a heavy module graph (core + engine + producer, incl. linkedom),
+  // slow under the parallel monorepo run — the generous hook timeout that
+  // absorbs that contention now lives in vitest.config.ts (shared by all CLI
+  // suites). Importing once in `beforeAll` keeps every test fast and isolated.
   let renderLocal: typeof import("./render.js").renderLocal;
   let resolveBrowserGpuForCli: typeof import("./render.js").resolveBrowserGpuForCli;
 
   beforeAll(async () => {
     ({ renderLocal, resolveBrowserGpuForCli } = await import("./render.js"));
-  }, 30_000);
+  });
 
   function setEnv(key: string, value: string) {
     if (!savedEnv.has(key)) savedEnv.set(key, process.env[key]);
@@ -420,12 +417,11 @@ describe("renderLocal browser GPU config", () => {
 describe("checkRenderResolutionPreflight", () => {
   let checkRenderResolutionPreflight: typeof import("./render.js").checkRenderResolutionPreflight;
 
-  // 30 s hook timeout: cold-importing render.js (heavy graph) can exceed the
-  // default 10 s under parallel CI contention. See the note on the
-  // "renderLocal browser GPU config" beforeAll above.
+  // Cold-imports render.js (heavy graph); the generous hook timeout for parallel
+  // CI contention lives in vitest.config.ts. See the note above.
   beforeAll(async () => {
     ({ checkRenderResolutionPreflight } = await import("./render.js"));
-  }, 30_000);
+  });
 
   // Dims must be read the same way the producer's compiler reads them:
   // `data-width` / `data-height` on the `[data-composition-id]` root.
