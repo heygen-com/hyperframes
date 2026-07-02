@@ -416,4 +416,62 @@ describe("renderLocal browser GPU config", () => {
   });
 });
 
+describe("checkRenderResolutionPreflight", () => {
+  let checkRenderResolutionPreflight: typeof import("./render.js").checkRenderResolutionPreflight;
+
+  beforeAll(async () => {
+    ({ checkRenderResolutionPreflight } = await import("./render.js"));
+  });
+
+  // Dims must be read the same way the producer's compiler reads them:
+  // `data-width` / `data-height` on the `[data-composition-id]` root.
+  const comp = (w: number, h: number) =>
+    `<html><body><div data-composition-id="root" data-width="${w}" data-height="${h}"></div></body></html>`;
+  const portraitHtml = comp(1080, 1920);
+  const landscapeHtml = comp(1920, 1080);
+  const noModes = { alphaRequested: false, hdrRequested: false } as const;
+
+  it("returns undefined when no outputResolution is requested", () => {
+    expect(checkRenderResolutionPreflight(portraitHtml, undefined, noModes)).toBeUndefined();
+  });
+
+  it("returns undefined when the preset matches the composition orientation", () => {
+    expect(checkRenderResolutionPreflight(portraitHtml, "portrait", noModes)).toBeUndefined();
+  });
+
+  it("returns a suggestion when a landscape preset is used on a portrait composition", () => {
+    const message = checkRenderResolutionPreflight(portraitHtml, "landscape", noModes);
+    expect(message).toBeDefined();
+    expect(message).toContain("--resolution portrait");
+  });
+
+  it("suggests landscape for a landscape composition rendered with a portrait preset", () => {
+    const message = checkRenderResolutionPreflight(landscapeHtml, "portrait", noModes);
+    expect(message).toContain("--resolution landscape");
+  });
+
+  it("does not false-abort a landscape registry-block composition (data-width/height, no data-resolution)", () => {
+    // Regression guard: registry blocks carry data-width/height and no
+    // data-resolution — a preset-snapping heuristic would misread this as
+    // portrait and wrongly reject the correct --resolution landscape.
+    expect(checkRenderResolutionPreflight(landscapeHtml, "landscape", noModes)).toBeUndefined();
+  });
+
+  it("flags alpha output combined with outputResolution", () => {
+    const message = checkRenderResolutionPreflight(landscapeHtml, "landscape-4k", {
+      alphaRequested: true,
+      hdrRequested: false,
+    });
+    expect(message).toContain("alpha output");
+  });
+
+  it("returns undefined when composition dimensions can't be determined (defers to the pipeline)", () => {
+    // No [data-composition-id] root / no data-width/height → defer, never guess.
+    expect(checkRenderResolutionPreflight("", "landscape", noModes)).toBeUndefined();
+    expect(
+      checkRenderResolutionPreflight("<html><body></body></html>", "landscape", noModes),
+    ).toBeUndefined();
+  });
+});
+
 // Variables-helper tests live in `../utils/variables.test.ts`.

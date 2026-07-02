@@ -68,6 +68,7 @@ import { normalizeSkillSlug } from "../telemetry/skill.js";
 import { bytesToMb } from "../telemetry/system.js";
 import { VERSION } from "../version.js";
 import { isDevMode } from "../utils/env.js";
+import { ensureDOMParser } from "../utils/dom.js";
 import { buildDockerRunArgs, resolveDockerPlatform } from "../utils/dockerRunArgs.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { runEnvironmentChecks } from "../browser/preflight.js";
@@ -81,6 +82,7 @@ import {
 } from "@hyperframes/engine";
 import {
   normalizeResolutionFlag,
+  checkOutputResolutionCompatibility,
   parseFps,
   fpsToNumber,
   fpsToFfmpegArg,
@@ -786,6 +788,36 @@ export default defineCommand({
       }
     }
 
+    // ── Pre-flight: output-resolution vs composition compatibility ────────
+    // Catch a preset whose orientation/aspect ratio (or alpha/HDR mode)
+    // conflicts with the composition BEFORE the browser and ffmpeg spin up —
+    // otherwise this surfaces cryptically deep inside the render compiler
+    // (resolveDeviceScaleFactor). Best-effort: a composition we can't read or
+    // whose dimensions aren't a known preset falls through to the pipeline's
+    // own defense-in-depth check rather than blocking a render we can't reason
+    // about. See render-reliability workstream P1-3.
+    if (outputResolution) {
+      let resolutionIssue: string | undefined;
+      try {
+        const renderTarget = entryFile ? resolve(project.dir, entryFile) : project.indexPath;
+        resolutionIssue = checkRenderResolutionPreflight(
+          readFileSync(renderTarget, "utf8"),
+          outputResolution,
+          {
+            alphaRequested: format === "webm" || format === "mov" || format === "png-sequence",
+            hdrRequested: args.hdr ?? false,
+          },
+        );
+      } catch {
+        // Unreadable file is non-fatal here — the render pipeline will surface
+        // the real problem with full context.
+      }
+      if (resolutionIssue) {
+        errorBox("Output resolution incompatible", resolutionIssue);
+        process.exit(1);
+      }
+    }
+
     // ── Validate HDR/SDR mutual exclusion ────────────────────────────────
     if (args.hdr && args.sdr) {
       console.error("Error: --hdr and --sdr are mutually exclusive.");
@@ -991,6 +1023,64 @@ export function resolveBrowserGpuForCli(
   if (browserGpuArg === false) return "software";
   if (envMode === "hardware" || envMode === "software" || envMode === "auto") return envMode;
   return "auto";
+}
+
+/**
+ * Read a composition's dimensions the SAME way the producer's compiler does —
+ * `data-width` / `data-height` on the `[data-composition-id]` root (see
+ * htmlCompiler.ts). Returns `undefined` when they can't be determined (no
+ * root, missing/invalid attrs, unparseable HTML).
+ *
+ * Deriving dims any other way (e.g. `data-resolution` or a `#stage` heuristic)
+ * risks disagreeing with the actual render: most compositions (all registry
+ * blocks) carry `data-width/height` and no `data-resolution`, so a parallel
+ * heuristic could false-abort a valid render. `DOMParser` isn't shipped by
+ * Node — the CLI polyfills it via linkedom.
+ */
+function readCompositionDimensions(
+  compositionHtml: string,
+): { width: number; height: number } | undefined {
+  try {
+    ensureDOMParser();
+    const doc = new DOMParser().parseFromString(compositionHtml, "text/html");
+    const rootEl = doc.querySelector("[data-composition-id]");
+    const width = parseInt(rootEl?.getAttribute("data-width") ?? "", 10);
+    const height = parseInt(rootEl?.getAttribute("data-height") ?? "", 10);
+    if (width > 0 && height > 0) return { width, height };
+  } catch {
+    // Unreadable / unparseable composition — fall through to `undefined`.
+  }
+  return undefined;
+}
+
+/**
+ * Render pre-flight: return an actionable message when the chosen
+ * `outputResolution` preset is incompatible with the composition's
+ * orientation/aspect ratio, or with the alpha/HDR mode — or `undefined` when
+ * the combination is fine (or can't be determined statically).
+ *
+ * Extracted (and exported) so the CLI wiring around `process.exit` stays a
+ * thin adapter and the branch logic is unit-testable. See render-reliability
+ * workstream P1-3.
+ */
+export function checkRenderResolutionPreflight(
+  compositionHtml: string,
+  outputResolution: CanvasResolution | undefined,
+  modes: { alphaRequested: boolean; hdrRequested: boolean },
+): string | undefined {
+  if (!outputResolution) return undefined;
+  const dims = readCompositionDimensions(compositionHtml);
+  // Couldn't determine the composition's actual dimensions — defer to the
+  // pipeline's own defense-in-depth check rather than guess.
+  if (!dims) return undefined;
+  const compat = checkOutputResolutionCompatibility({
+    compositionWidth: dims.width,
+    compositionHeight: dims.height,
+    outputResolution,
+    alphaRequested: modes.alphaRequested,
+    hdrRequested: modes.hdrRequested,
+  });
+  return compat.ok ? undefined : compat.message;
 }
 
 const DOCKER_IMAGE_PREFIX = "hyperframes-renderer";
