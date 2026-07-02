@@ -1037,6 +1037,14 @@ export async function executeRenderJob(
       ? "screenshot"
       : "beginframe";
   };
+  // Function-scoped (not inside the try) so both the success path AND the catch
+  // can read it — the catch records transient-retry burn on renders that still
+  // failed, which is the more actionable signal for tuning the retry cap.
+  const captureAttempts: CaptureAttemptSummary[] = [];
+  const recordTransientRetryObservability = (): void => {
+    const count = captureAttempts.filter((a) => a.reason === "transient-retry").length;
+    if (count > 0) updateCaptureObservability({ transientRetries: count });
+  };
   // Declared outside the try so `finally` can stop the interval, but
   // the sampler is created INSIDE the try so a synchronous throw
   // between declaration and the try-block (currently impossible, but
@@ -1550,9 +1558,9 @@ export async function executeRenderJob(
       maxDurationSeconds: cfg.streamingEncodeMaxDurationSeconds,
     });
 
-    const captureAttempts: CaptureAttemptSummary[] = [];
-    // Static-dedup perf, appended per sequential session / per parallel worker
-    // by the capture stage, aggregated into the perf summary below.
+    // `captureAttempts` is declared at function scope above (shared with the
+    // catch block). Static-dedup perf, appended per sequential session / per
+    // parallel worker by the capture stage, aggregated into the perf summary below.
     const dedupPerfs: CapturePerfSummary[] = [];
 
     // png-sequence is "no container" — outputPath is treated as a directory and
@@ -1921,14 +1929,9 @@ export async function executeRenderJob(
     const totalElapsed = Date.now() - pipelineStart;
 
     const tmpPeakBytes = existsSync(workDir) ? sampleDirectoryBytes(workDir) : 0;
-    // Record how many transient-tab-death retries fired on this (successful)
-    // render so retry-budget burn is visible on dashboard 1783183, not just logs.
-    const transientRetryCount = captureAttempts.filter(
-      (a) => a.reason === "transient-retry",
-    ).length;
-    if (transientRetryCount > 0) {
-      updateCaptureObservability({ transientRetries: transientRetryCount });
-    }
+    // Record transient-tab-death retry burn (recovered case) so it's visible on
+    // dashboard 1783183, not just logs. The catch mirrors this for the failed case.
+    recordTransientRetryObservability();
     observability.checkpoint("pipeline", "completed", { totalElapsedMs: totalElapsed });
     const observabilitySummary = observability.summary({
       lastBrowserConsole,
@@ -2023,6 +2026,9 @@ export async function executeRenderJob(
     if (memoryGuidance) {
       updateCaptureObservability({ memoryExhaustionDetected: true });
     }
+    // Retry burn on a render that STILL failed — the actionable signal for tuning
+    // MAX_TRANSIENT_CAPTURE_RETRIES (mirrors the success-path record above).
+    recordTransientRetryObservability();
     const errorMessage = memoryGuidance ?? normalizeErrorMessage(error);
     const carriedBrowserConsole = getCaptureStageBrowserConsole(error);
     if (carriedBrowserConsole.length > 0) {
