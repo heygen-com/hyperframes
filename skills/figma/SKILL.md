@@ -1,40 +1,83 @@
 ---
 name: figma
-description: Import Figma content into a HyperFrames composition — rendered assets, brand tokens, components, and Figma Motion animations — via the Figma MCP connector. Use when the user pastes a figma.com link or asks to bring a Figma design, frame, logo, brand, or animation into a video/composition.
+description: Import Figma content into a HyperFrames composition — rendered assets, brand tokens, components (REST/CLI), and Figma Motion animations + shaders (MCP). Use when the user pastes a figma.com link or asks to bring a Figma design, frame, logo, brand, or animation into a video/composition.
 ---
 
 # Figma → HyperFrames
 
-Bring the user's Figma work into a composition. **MCP-first:** you (the agent) call the Figma MCP tools, then hand their output to the pure helpers in `@hyperframes/core/figma`, freezing every asset locally so renders stay deterministic.
+Bring the user's Figma work into a composition. **Split by capability** (design spec §2):
 
-## Auth
+| Phase | What                | Transport                    | Surface                       |
+| ----- | ------------------- | ---------------------------- | ----------------------------- |
+| 1     | Static assets       | REST                         | `hyperframes figma asset`     |
+| 2     | Brand tokens/styles | REST                         | `hyperframes figma tokens`    |
+| 3     | Components → HTML   | REST                         | `hyperframes figma component` |
+| 4     | Motion → GSAP       | **MCP only**                 | you, via `get_motion_context` |
+| 5     | Shaders             | **MCP only** / manual export | you                           |
 
-Requires the Figma MCP connector (one-click OAuth). If tools error unauthenticated, tell the user to connect Figma and stop.
+REST is used wherever it can be (usable at volume, headless); MCP only where Figma exposes no REST equivalent (motion, shaders). Every path freezes assets locally so renders stay deterministic. Storyboard animatics compose Phase-1 asset exports (REST) with agent-driven timeline assembly — no MCP needed. Existing frozen assets, manifest records, and bindings are unaffected by routing changes — the split only changes which credential the next import uses.
+
+## Auth — two credentials, scoped
+
+- **Phases 1–3:** `FIGMA_TOKEN` env var (personal access token, figma.com/settings → security). Missing → the CLI errors with `NO_TOKEN`; tell the user to mint one and stop.
+- **Phases 4–5:** the Figma MCP connector (one-click OAuth). If MCP tools error unauthenticated, tell the user to connect Figma and stop.
+- Say exactly which credential a failing phase needs — never present the split as broken.
+
+**Rate-limit awareness (spec §2.1):** MCP on a Starter plan is 6 tool calls/**month** (figma plan matrix as of 2026-07 — re-verify if quotas look off) — batch with `recursive:true` on the parent node, skip verification screenshots unless asked, and cache raw MCP responses so re-derivation never spends a second call. REST is per-minute (10+/min, per-endpoint buckets) — fine at volume, back off on 429.
 
 ## Routing
 
-Parse the user's figma link with `parseFigmaRef`. Then by intent:
+Parse the user's figma link with `parseFigmaRef` (URL, `fileKey:nodeId`, bare `fileKey`). Then by intent:
 
-- "use this layer / logo / image" → **Asset import**
-- "import this animation / motion" → **Motion import**
-- brand tokens / components → not in this skill version (see the design spec roadmap).
+- "use this layer / logo / image" → **Asset** (CLI)
+- "pull my brand / colors / tokens" → **Tokens** (CLI)
+- "build a scene from this frame" → **Component** (CLI)
+- "import this animation / motion" → **Motion** (MCP, below)
+- shader fill/effect → **Shaders** (below)
 
-## Asset import
+## Assets (Phase 1 — CLI)
 
-1. `get_metadata(fileKey, nodeId)` → confirm the node, capture width/height.
-2. Export it: `download_assets` (or node image export) for PNG; prefer SVG for vectors.
-3. Freeze: write the bytes with `freezeBytes(bytes, join(typeDirPath(projectDir,"image"), id + ext))` where `id = nextId(projectDir,"image")`.
-4. Ledger: `appendRecord(projectDir, { id, type:"image", path, source:"figma", width, height, provenance:{ source:"figma", fileKey, nodeId, format } })`.
-5. Emit `buildAssetSnippet(record).html` into the composition. Re-import guard: `findByFigmaNode` before re-fetching.
+```bash
+hyperframes figma asset '<url-or-fileKey:nodeId>' [--format svg|png|jpg|pdf] [--scale 2]
+```
 
-## Motion import
+Renders over REST, sanitizes SVG, freezes under `.media/images/`, appends the manifest with provenance, prints an `<img>` snippet. Idempotent per `fileKey:nodeId:format:scale:version`. Prefer SVG for vectors/logos (scalable, animatable), PNG `--scale 2` for raster fidelity.
 
-1. `get_motion_context(fileKey, nodeId)` → read the `codeSnippets.motionDev` (and `.css`).
-2. Normalize it into a `MotionDoc`: for each animated property build a `MotionTrack` { property (motion.dev name), values, times (0..1), ease[] (named strings or `[x1,y1,x2,y2]` bezier arrays), duration, repeat }. Selector = the target element's stable id (`#<id>` from the component's `data-figma-id`/`id`).
-3. `const spec = motionToGsap(doc);`
-4. `const script = emitTimelineScript(spec);` → inject as a `<script>` in the composition (after the GSAP + CustomEase CDN tags). The timeline is paused, finite, registered on `window.__timelines`.
-5. If a track uses shader/spring/effect props with no GSAP mapping, bake instead: `export_video` → freeze MP4 → embed as `<video class="clip">`. Say which path you used.
+## Tokens (Phase 2 — CLI)
+
+```bash
+hyperframes figma tokens <fileKey>
+```
+
+Imports variables as composition brand-variable entries + `figma-tokens.json` sidecar + binding-index records (`.media/figma-bindings.jsonl`). Variables are Enterprise-gated upstream: on other plans the command degrades to published-style metadata (values resolve at component-import time). Add the printed entries to the composition's `data-composition-variables`.
+
+**Import tokens before components** when both are wanted — that's what lets component colors link to brand variables instead of baking duplicates.
+
+## Components (Phase 3 — CLI)
+
+```bash
+hyperframes figma component '<url-or-fileKey:nodeId>'
+```
+
+Node tree → editable HTML at exact figma geometry, packaged as a registry item under `compositions/components/<name>/`. Vectors/boolean-ops auto-rasterize via Phase-1 export. Binding pass (spec §7.1, exact-ID only — never value matching):
+
+- Fill bound to an **imported** token → `var(--slug, #literal)` — brand refresh propagates.
+- Bound to an **unknown** token → literal + `data-figma-unresolved` flag. The command tells you; offer the user: run `tokens` on the source (or library) file, then re-import the component to link them. Ask **once** per unknown library which file it is — never guess, never match by hex.
+
+## Motion (Phase 4 — MCP, the headline)
+
+No REST equivalent exists. You drive the MCP tools, then hand output to the pure helpers in `@hyperframes/core/figma`:
+
+1. `get_motion_context(fileKey, nodeId)` — use `recursive:true` on the parent frame (one call for the whole scene, not one per element). Save the raw JSON next to the project (`.media/figma-cache/`) so retranslation is free.
+2. Normalize into a `MotionDoc`: per animated property a `MotionTrack` { property (motion.dev name), values, times (0..1), ease[] (named or `[x1,y1,x2,y2]` bezier), duration, repeat }. Selector = the element's stable id (`#<id>` from Phase-3 output or the authored scene).
+3. `motionToGsap(doc)` → `emitTimelineScript(spec)` → inject as a `<script>` after the GSAP + CustomEase CDN tags. Paused, finite, registered on `window.__timelines` with a literal key.
+4. Untranslatable track (shader-driven, unsupported prop, complex masks) → bake: `export_video` → freeze MP4 → embed as `<video class="clip">`. Exception: shader-driven tracks — figma's export path flattens shaders to the base color (see Shaders below), so a bake there silently loses the shader; ask the user for a native figma export instead. Always say which path you used and why. Named eases outside the mapped set fall back to linear — the mapping table lives in `motionEase.ts`; flag the fallback to the user when it fires.
+5. Run `npx hyperframes lint && npx hyperframes validate` before calling it done.
+
+## Shaders (Phase 5 — mostly manual)
+
+Figma's MCP render path does not execute shaders (they flatten to the base color), and shader source is only reachable for **library-published** styles (paid Full seat). Default path: ask the user to export the shader frame natively in Figma (PNG or Motion MP4), then import it as a Phase-1 asset / clip. Don't attempt MCP pixel capture of a shader — it will silently produce the wrong thing.
 
 ## Determinism
 
-Never leave a Figma URL in the composition — freeze first. Never emit `repeat: -1`. Timelines paused.
+Never leave a Figma URL in the composition — freeze first. Never emit `repeat: -1`. Timelines paused, finite, literal `window.__timelines` keys. All Figma I/O at import time; render sees local files only.

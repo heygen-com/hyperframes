@@ -35,7 +35,7 @@ Atomic capabilities you load **on demand** — not full video workflows. For "ma
 | **Media resolve** — find + freeze BGM, SFX, images, icons from HeyGen catalog into `.media/` with manifest tracking                                                     | `/media-use`             |
 | **CLI dev loop** — init, lint, validate, inspect, preview, render, publish, doctor                                                                                      | `/hyperframes-cli`       |
 | **Install registry blocks / components** (`hyperframes add`)                                                                                                            | `/hyperframes-registry`  |
-| **Import Figma content** — assets, tokens, components, Motion animations (MCP-first)                                                                                    | `/figma`                 |
+| **Import Figma content** — assets, tokens, components (REST/CLI); Motion, shaders (MCP)                                                                                 | `/figma`                 |
 
 ---
 
