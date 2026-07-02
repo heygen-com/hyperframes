@@ -28,6 +28,8 @@ export interface RenderObservabilityTelemetryPayload {
   captureProtocolTimeoutMs?: number;
   capturePageNavigationTimeoutMs?: number;
   capturePlayerReadyTimeoutMs?: number;
+  captureTransientRetries?: number;
+  captureMemoryExhaustionDetected?: boolean;
   observabilityExtractVideoCount?: number;
   observabilityExtractedVideoCount?: number;
   observabilityExtractTotalFrames?: number;
@@ -70,6 +72,8 @@ function renderObservabilityEventProperties(props: RenderObservabilityTelemetryP
     capture_protocol_timeout_ms: props.captureProtocolTimeoutMs,
     capture_page_navigation_timeout_ms: props.capturePageNavigationTimeoutMs,
     capture_player_ready_timeout_ms: props.capturePlayerReadyTimeoutMs,
+    capture_transient_retries: props.captureTransientRetries,
+    capture_memory_exhaustion_detected: props.captureMemoryExhaustionDetected,
     observability_extract_video_count: props.observabilityExtractVideoCount,
     observability_extracted_video_count: props.observabilityExtractedVideoCount,
     observability_extract_total_frames: props.observabilityExtractTotalFrames,

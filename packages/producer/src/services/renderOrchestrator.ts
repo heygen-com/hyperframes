@@ -367,7 +367,13 @@ export interface CaptureAttemptSummary {
   attempt: number;
   workers: number;
   frameCount: number;
-  reason: "initial" | "retry";
+  /**
+   * `"transient-retry"` is a same-worker-count retry after a transient browser
+   * death (Target closed / tab crash); `"retry"` is the worker-halving retry
+   * after a recoverable timeout. Distinguished so transient-retry burn is
+   * countable for telemetry (dashboard 1783183).
+   */
+  reason: "initial" | "retry" | "transient-retry";
 }
 
 export interface RenderJob {
@@ -665,6 +671,10 @@ export async function executeDiskCaptureWithAdaptiveRetry(options: {
   let missingRanges: FrameRange[] | null = null;
   let attempt = 0;
   let transientRetriesUsed = 0;
+  // Set when the *previous* iteration retried after a transient browser death,
+  // so the attempt it spawns is tagged `"transient-retry"` (vs the worker-halving
+  // `"retry"`) for telemetry. Reset after each attempt is recorded.
+  let pendingTransientRetry = false;
   const rangeStart = options.frameRangeStart ?? 0;
 
   while (true) {
@@ -673,8 +683,9 @@ export async function executeDiskCaptureWithAdaptiveRetry(options: {
       attempt,
       workers: currentWorkers,
       frameCount,
-      reason: attempt === 0 ? "initial" : "retry",
+      reason: attempt === 0 ? "initial" : pendingTransientRetry ? "transient-retry" : "retry",
     });
+    pendingTransientRetry = false;
 
     const attemptWorkDir = join(options.workDir, `capture-attempt-${attempt}`);
     const batches = missingRanges
@@ -807,6 +818,7 @@ export async function executeDiskCaptureWithAdaptiveRetry(options: {
         );
         missingRanges = remaining;
         attempt++;
+        pendingTransientRetry = true;
         continue;
       }
 
@@ -1909,6 +1921,14 @@ export async function executeRenderJob(
     const totalElapsed = Date.now() - pipelineStart;
 
     const tmpPeakBytes = existsSync(workDir) ? sampleDirectoryBytes(workDir) : 0;
+    // Record how many transient-tab-death retries fired on this (successful)
+    // render so retry-budget burn is visible on dashboard 1783183, not just logs.
+    const transientRetryCount = captureAttempts.filter(
+      (a) => a.reason === "transient-retry",
+    ).length;
+    if (transientRetryCount > 0) {
+      updateCaptureObservability({ transientRetries: transientRetryCount });
+    }
     observability.checkpoint("pipeline", "completed", { totalElapsedMs: totalElapsed });
     const observabilitySummary = observability.summary({
       lastBrowserConsole,
@@ -1998,6 +2018,11 @@ export async function executeRenderJob(
       height: captureCompositionHeight,
       totalFrames: captureTotalFrames,
     });
+    // Flag OOM-classified failures so the "is OOM the dominant tail?" question is
+    // answerable from a metric (dashboard 1783183), not just the error string.
+    if (memoryGuidance) {
+      updateCaptureObservability({ memoryExhaustionDetected: true });
+    }
     const errorMessage = memoryGuidance ?? normalizeErrorMessage(error);
     const carriedBrowserConsole = getCaptureStageBrowserConsole(error);
     if (carriedBrowserConsole.length > 0) {

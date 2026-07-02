@@ -223,6 +223,9 @@ describe("executeDiskCaptureWithAdaptiveRetry — transient Target-closed single
       expect(vi.mocked(executeParallelCapture)).toHaveBeenCalledTimes(2);
       // Both attempts ran at the same worker count (transient retry doesn't halve).
       expect(attempts.map((a) => a.workers)).toEqual([1, 1]);
+      // The retry attempt is tagged `transient-retry` (vs the worker-halving
+      // `retry`) so it's countable for telemetry (dashboard 1783183).
+      expect(attempts.map((a) => a.reason)).toEqual(["initial", "transient-retry"]);
       expect(log.warn).toHaveBeenCalledWith(
         expect.stringContaining("Transient browser failure"),
         expect.objectContaining({ transientRetriesUsed: 1 }),
