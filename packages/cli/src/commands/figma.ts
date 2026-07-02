@@ -41,6 +41,7 @@ export default defineCommand({
   subCommands: {
     asset: () => import("./figma/asset.js").then((m) => m.default),
     tokens: () => import("./figma/tokens.js").then((m) => m.default),
+    component: () => import("./figma/component.js").then((m) => m.default),
   },
   async run({ args }) {
     if (!args._?.[0]) console.log(HELP);
