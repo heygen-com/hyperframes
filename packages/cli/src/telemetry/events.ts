@@ -1,4 +1,4 @@
-import { redactTelemetryString } from "@hyperframes/core";
+import { redactTelemetryString, type OutputResolutionIssueKind } from "@hyperframes/core";
 import { trackEvent } from "./client.js";
 
 export interface RenderObservabilityTelemetryPayload {
@@ -312,8 +312,8 @@ export function trackBrowserInstall(): void {
 // before any browser/ffmpeg work. Counts the "caught early" saves on dashboard
 // 1783183, distinct from deep render failures. `kind` is the low-cardinality
 // `OutputResolutionIssueKind` (aspect-mismatch / alpha-incompatible / etc.),
-// never free text.
-export function trackRenderPreflightRejected(props: { kind: string }): void {
+// typed to the union so the metric can never carry free text.
+export function trackRenderPreflightRejected(props: { kind: OutputResolutionIssueKind }): void {
   trackEvent("render_preflight_rejected", { kind: props.kind });
 }
 

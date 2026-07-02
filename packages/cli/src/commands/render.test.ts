@@ -479,6 +479,28 @@ describe("checkRenderResolutionPreflight", () => {
     expect(result?.kind).toBe("alpha-incompatible");
   });
 
+  // The three remaining kinds share the same rejection sink (→ one emit each);
+  // guard their classification so the telemetry dimension stays accurate.
+  it("classifies an HDR + outputResolution combination as hdr-incompatible", async () => {
+    const result = await checkRenderResolutionPreflight(landscapeHtml, "landscape", {
+      alphaRequested: false,
+      hdrRequested: true,
+    });
+    expect(result?.kind).toBe("hdr-incompatible");
+  });
+
+  it("classifies a preset smaller than the composition as downsampling", async () => {
+    // 3840×2160 comp + landscape (1920×1080): same 16:9 aspect, target smaller.
+    const result = await checkRenderResolutionPreflight(comp(3840, 2160), "landscape", noModes);
+    expect(result?.kind).toBe("downsampling");
+  });
+
+  it("classifies a non-integer upscale as non-integer-scale", async () => {
+    // 1280×720 comp + landscape (1920×1080): same 16:9 aspect, 1.5× scale.
+    const result = await checkRenderResolutionPreflight(comp(1280, 720), "landscape", noModes);
+    expect(result?.kind).toBe("non-integer-scale");
+  });
+
   it("returns undefined when composition dimensions can't be determined (defers to the pipeline)", async () => {
     // No [data-composition-id] root / no data-width/height → defer, never guess.
     expect(await checkRenderResolutionPreflight("", "landscape", noModes)).toBeUndefined();
