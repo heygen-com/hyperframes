@@ -85,9 +85,18 @@ export function ffprobeDuration(absPath) {
   return parseFloat(String(r.stdout).trim());
 }
 
-function spawnP(cmd, args, opts) {
+// `platform`/`spawnFn` params (default process.platform / the real spawn)
+// exist so tests can exercise the win32 branch without mocking node:child_process
+// (its ESM exports are non-configurable, so mock.method can't patch it).
+export function spawnP(cmd, args, opts = {}, platform = process.platform, spawnFn = spawn) {
+  // On Windows, npx resolves to npx.cmd — a shell script that Node's spawn()
+  // cannot exec directly without shell:true. Without it this fails ENOENT,
+  // which the "error" listener below silently turns into ok:false ("TTS
+  // failed") rather than surfacing the real cause. Real binaries (python3)
+  // don't need this, so it's scoped to npx specifically.
+  const shell = cmd === "npx" && platform === "win32";
   return new Promise((resolve) => {
-    const p = spawn(cmd, args, { stdio: "ignore", ...opts });
+    const p = spawnFn(cmd, args, { stdio: "ignore", shell, ...opts });
     p.on("exit", (code) => resolve({ status: code ?? -1 }));
     p.on("error", () => resolve({ status: -1 }));
   });
