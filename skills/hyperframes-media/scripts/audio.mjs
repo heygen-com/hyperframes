@@ -53,6 +53,7 @@ import {
 } from "./lib/tts.mjs";
 import { generateBgmDetached, inferBgmPrompt, retrieveBgm } from "./lib/bgm.mjs";
 import { resolveSfx } from "./lib/sfx.mjs";
+import { mapWithConcurrency } from "./lib/concurrency.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
@@ -66,6 +67,16 @@ const die = (m) => {
   process.exit(1);
 };
 const r3 = (x) => Number(x.toFixed(3));
+
+// Two independent reports of an unbounded Promise.all over TTS lines
+// overwhelming a machine: one OOM'd 12/13 concurrent Kokoro TTS +
+// whisper-transcribe lines on a resource-constrained laptop, the other saw
+// 7/8 lines fail on first run (concurrent cold-start model loads) and pass on
+// retry once the model was cached. Kokoro/Whisper each load their own local
+// model per subprocess, so firing every line at once multiplies that cost by
+// the line count. mapWithConcurrency caps how many run at once — still
+// parallel, just bounded.
+const ttsConcurrency = Math.max(1, Number(process.env.HYPERFRAMES_TTS_CONCURRENCY) || 4);
 
 const hyperframesDir = resolve(flag("hyperframes", "."));
 const requestPath = resolve(flag("request", join(hyperframesDir, "audio_request.json")));
@@ -156,7 +167,7 @@ if (only.has("tts") && lines.length) {
     }
     return { id, path: rel, duration_s: r3(dur), words: withWordIds(wordArr) };
   };
-  const results = await Promise.all(lines.map(synthLine));
+  const results = await mapWithConcurrency(lines, ttsConcurrency, synthLine);
   voices = results.filter(Boolean);
   for (const v of voices)
     console.error(`  voice ${v.id}: ${v.path} (${v.duration_s}s, ${v.words.length} words)`);
