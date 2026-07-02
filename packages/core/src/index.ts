@@ -35,6 +35,8 @@ export type {
   CompositionVariable,
   CompositionSpec,
   WaveformData,
+  OutputResolutionCompatibility,
+  OutputResolutionIssueKind,
 } from "./core.types";
 
 export type {
@@ -53,6 +55,7 @@ export {
   CANVAS_DIMENSIONS,
   VALID_CANVAS_RESOLUTIONS,
   normalizeResolutionFlag,
+  checkOutputResolutionCompatibility,
   parseFps,
   parseFpsWithDefault,
   toFps,

@@ -1111,6 +1111,14 @@ describe("resolveDeviceScaleFactor", () => {
     ).toThrow(/aspect ratio/);
   });
 
+  it("suggests the matching-orientation preset in the aspect-mismatch message", () => {
+    // Landscape composition + portrait preset → the message should point at
+    // the landscape swap so the user isn't left to guess (workstream P1-3).
+    expect(() => resolveDeviceScaleFactor({ ...defaults, outputResolution: "portrait" })).toThrow(
+      /--resolution landscape/,
+    );
+  });
+
   it("rejects downsampling (4K composition → 1080p output)", () => {
     expect(() =>
       resolveDeviceScaleFactor({
