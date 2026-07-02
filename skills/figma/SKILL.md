@@ -79,15 +79,19 @@ No REST equivalent exists. You drive the MCP tools, then hand output to the pure
 
 Figma's MCP render path does not execute shaders (they flatten to the base color), and shader source is only reachable for **library-published** styles (paid Full seat). Default path: ask the user to export the shader frame natively in Figma (PNG or Motion MP4), then import it as a Phase-1 asset / clip. Don't attempt MCP pixel capture of a shader — it will silently produce the wrong thing.
 
-## Storyboards (a SECTION of scene frames → animatic)
+## Storyboards (a SECTION of scene frames → animation)
+
+**The cardinal rule: storyboard frames are KEYFRAMES, not slides.** Two frames containing the same element describe that element's state through time — animate the ELEMENT between the states; never play the frames as a sequence of stills. A logo drawn in four consecutive frames at descending y is ONE element rising through four keyframes. Playing storyboard frames back-to-back is the failure mode; reconstructing the element timelines they imply is the job.
 
 Storyboard files follow a grammar you can parse mechanically — don't eyeball, decode:
 
 1. **Scene units**: inside the SECTION, every frame-sized node is a scene — both named FRAMEs _and_ loose full-frame RECTANGLEs (designers paste stills straight into the section). Filter by size (≈ composition aspect, e.g. >1400×900), not by node type or name.
 2. **Order = x-position** (row-major if the strip wraps). Sort scenes by `absoluteBoundingBox.x`.
-3. **Director notes**: TEXT nodes below the strip are motion intent, paired to the scene whose x-range they overlap. They describe _how_ to animate — they are not on-screen copy.
-4. **Export scenes as stills in batches**: `GET /v1/images` accepts comma-separated ids, but big scene frames hit "Render timeout" past ~12 ids — chunk to ~4 per call with a retry. (One call per scene wastes the rate budget; 26 scenes ≈ 52 calls via the single-asset path.)
-5. **Note verbs → transitions** (starter vocabulary, extend as encountered):
+3. **Diff adjacent frames into element chains** — this is where the animation lives. Match children across consecutive frames: first by **name** (same name = same element → tween its relative x/y/w/h between states), then by **geometry similarity** (similar size + nearby center = same logical element whose pixels changed → crossfade the two exports in place while tweening geometry; covers typed-text progressions and morph states). Unmatched children enter/exit at their scene's beat. Frame background fills tween as a color track. Export ONE asset per chain (one per state only when pixels genuinely differ) — never one still per frame.
+4. **Stills are the fallback, not the default** — only for frames that don't decompose (flat full-frame screenshots with no shared elements); those get the animatic treatment below.
+5. **Director notes**: TEXT nodes below the strip are motion intent, paired to the scene whose x-range they overlap. They describe _how_ to animate — they are not on-screen copy.
+6. **Batch exports** (elements or stills): `GET /v1/images` accepts comma-separated ids, but big scene frames hit "Render timeout" past ~12 ids — chunk to ~4 per call with a retry. (One call per scene wastes the rate budget; 26 scenes ≈ 52 calls via the single-asset path.)
+7. **Note verbs → transitions** (starter vocabulary, extend as encountered):
 
 | Note says                       | Do                                                                |
 | ------------------------------- | ----------------------------------------------------------------- |
@@ -97,8 +101,8 @@ Storyboard files follow a grammar you can parse mechanically — don't eyeball, 
 | CYCLE THROUGH / EACH ONE        | longer hold — or Phase-3 import if items animate within the scene |
 | (no note)                       | crossfade + slow Ken-Burns drift                                  |
 
-6. **Stills vs. components routing**: a note describing motion _between_ scenes → transition on the still (above). A note describing motion _inside_ a scene ("TEXT LINES REVEAL ONE AFTER THE OTHER", "PILLS ANIMATE IN") → that frame deserves a Phase-3 component import (real elements) animated per the note, not a flat PNG. Do the animatic pass first with stills, then upgrade the scenes the notes single out.
-7. One `main` timeline sequences everything (opacity/x/y per scene at absolute times) — no per-scene sub-compositions needed for an animatic.
+8. **Stills vs. components routing**: a note describing motion _between_ scenes → transition on the still (above). A note describing motion _inside_ a scene ("TEXT LINES REVEAL ONE AFTER THE OTHER", "PILLS ANIMATE IN") → that frame deserves a Phase-3 component import (real elements) animated per the note, not a flat PNG. Do the animatic pass first with stills, then upgrade the scenes the notes single out.
+9. One `main` timeline sequences everything (opacity/x/y per scene at absolute times) — no per-scene sub-compositions needed for an animatic.
 
 ## Determinism
 
