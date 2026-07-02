@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseHTML } from "linkedom";
 import { inlineSubCompositions } from "./inlineSubCompositions";
+import { prepareFlattenedInnerRoot } from "./flattenInnerRoot";
 
 // Fixtures reference GSAP CDN but are never loaded in a real browser — resolveHtml is mocked.
 
@@ -32,6 +33,16 @@ function makeHostDocument(compId: string) {
   <div data-composition-id="main">
     <div data-composition-id="${compId}" data-composition-src="intro.html"
          data-start="0" data-duration="4" data-track-index="0"></div>
+  </div>
+</body></html>`);
+  return document;
+}
+
+function makeAnonymousHostDocument() {
+  const { document } = parseHTML(`<!DOCTYPE html>
+<html><body>
+  <div data-composition-id="main">
+    <div data-composition-src="intro.html" data-start="0" data-duration="4"></div>
   </div>
 </body></html>`);
   return document;
@@ -173,6 +184,55 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
     // CSS is still rewritten to use the attribute selector.
     const scopedCss = result.styles.join("\n");
     expect(scopedCss).toContain('[data-hf-authored-id="intro"]');
+  });
+
+  it("anonymous hosts adopt the inferred composition id so the boundary survives flattening", () => {
+    const document = makeAnonymousHostDocument();
+    const host = document.querySelector('[data-composition-src="intro.html"]')!;
+
+    inlineSubCompositions(document, [host], {
+      resolveHtml: () => SUB_COMP_HTML,
+      parseHtml: (html) => parseHTML(html).document,
+      flattenInnerRoot: prepareFlattenedInnerRoot,
+    });
+
+    // The host takes the inferred id — same shape as a named host — so the
+    // boundary sits next to the host's data-start/duration and scoped
+    // [scope] [data-hf-authored-id=...] selectors match the wrapper below it.
+    expect(host.getAttribute("data-composition-id")).toBe("intro");
+    const wrapper = host.querySelector('[data-hf-inner-root="true"]');
+    expect(wrapper?.getAttribute("data-composition-id")).toBeNull();
+    expect(wrapper?.getAttribute("data-hf-authored-id")).toBe("intro");
+    expect(wrapper?.getAttribute("id")).toBeNull();
+    expect(wrapper?.querySelector(".title")?.textContent).toBe("HELLO WORLD");
+  });
+
+  it("flatten path scopes authored-root selectors as descendants that match the flattened DOM", () => {
+    const document = makeHostDocument("intro");
+    const host = document.querySelector('[data-composition-src="intro.html"]')!;
+
+    const result = inlineSubCompositions(document, [host], {
+      resolveHtml: () => SUB_COMP_HTML,
+      parseHtml: (html) => parseHTML(html).document,
+      flattenInnerRoot: prepareFlattenedInnerRoot,
+    });
+
+    // The wrapper (carrying data-hf-authored-id) is a CHILD of the host
+    // (carrying data-composition-id), so #intro-based rules must scope as
+    // descendants; a compound [scope][authored] selector matches nothing here.
+    const scopedCss = result.styles.join("\n");
+    expect(scopedCss).toContain('[data-composition-id="intro"] [data-hf-authored-id="intro"]');
+    expect(scopedCss).not.toContain('[data-composition-id="intro"][data-hf-authored-id="intro"]');
+
+    const { document: compiled } = parseHTML(document.toString());
+    const rootRule = compiled.querySelector(
+      '[data-composition-id="intro"] [data-hf-authored-id="intro"]',
+    );
+    expect(rootRule?.getAttribute("data-hf-inner-root")).toBe("true");
+    expect(
+      compiled.querySelector('[data-composition-id="intro"] [data-hf-authored-id="intro"] .title')
+        ?.textContent,
+    ).toBe("HELLO WORLD");
   });
 
   it("extracts <link> elements from sub-composition <head> with original rel and crossorigin", () => {

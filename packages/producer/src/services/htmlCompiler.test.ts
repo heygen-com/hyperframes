@@ -722,13 +722,18 @@ describe("template-wrapped sub-composition media offsets", () => {
       join(compositionsDir, "scene.html"),
       `<template id="scene-template">
   <div
+    id="scene-root"
+    class="scene-wrapper"
     data-composition-id="scene"
     data-start="0"
     data-width="640"
     data-height="360"
     data-duration="4"
   >
-    <style>.title { opacity: 0; }</style>
+    <style>
+      .scene-wrapper .title { opacity: 0; }
+      #scene-root .title { letter-spacing: 1px; }
+    </style>
     <h1 class="title">Scene</h1>
     <video
       id="scene-video"
@@ -844,7 +849,7 @@ describe("template-wrapped sub-composition media offsets", () => {
     );
   });
 
-  it("flattens the sub-composition root onto the host in compiled render HTML", async () => {
+  it("preserves the sub-composition root wrapper in compiled render HTML", async () => {
     const { projectDir, indexPath } = writeTemplateWrappedProject(
       'data-start="20" data-duration="6" data-width="640" data-height="360"',
       'data-start="1.5" data-duration="4"',
@@ -854,17 +859,34 @@ describe("template-wrapped sub-composition media offsets", () => {
 
     const { document } = parseHTML(compiled.html);
     const host = document.querySelector("#scene-host");
+    const innerRoot = host?.querySelector('[data-hf-inner-root="true"]');
 
     expect(host?.getAttribute("data-composition-id")).toBe("scene");
     expect(host?.getAttribute("data-start")).toBe("20");
     expect(host?.getAttribute("data-width")).toBe("640");
     expect(host?.querySelector(".title")?.textContent).toBe("Scene");
+    expect(innerRoot?.classList.contains("scene-wrapper")).toBe(true);
+    expect(innerRoot?.getAttribute("data-hf-authored-id")).toBe("scene-root");
+    expect(innerRoot?.getAttribute("id")).toBeNull();
+    expect(innerRoot?.getAttribute("data-composition-id")).toBeNull();
+    expect(innerRoot?.getAttribute("data-start")).toBeNull();
+    expect(innerRoot?.getAttribute("data-duration")).toBeNull();
+    expect(compiled.html).toContain('[data-composition-id="scene"] .scene-wrapper .title');
+    // Authored-root #id rules must scope as DESCENDANTS: the host carries
+    // data-composition-id while the preserved wrapper carries
+    // data-hf-authored-id, so a compound [scope][authored] selector would
+    // match nothing in the flattened DOM.
+    expect(compiled.html).toContain(
+      '[data-composition-id="scene"] [data-hf-authored-id="scene-root"] .title',
+    );
+    expect(compiled.html).not.toContain(
+      '[data-composition-id="scene"][data-hf-authored-id="scene-root"]',
+    );
     expect(
-      Array.from(host?.children ?? []).some(
-        (child) => child.getAttribute("data-composition-id") === "scene",
-      ),
-    ).toBe(false);
-    expect(compiled.html).toContain('[data-composition-id="scene"] .title');
+      document.querySelector(
+        '[data-composition-id="scene"] [data-hf-authored-id="scene-root"] .title',
+      )?.textContent,
+    ).toBe("Scene");
     expect(compiled.html).toContain("new Proxy(window.document");
     expect(compiled.html).toContain("__hfNormalizeSelector");
   });
@@ -887,7 +909,7 @@ describe("template-wrapped sub-composition media offsets", () => {
     writeFileSync(
       join(compositionsDir, "scene.html"),
       `<template id="scene-template">
-  <div data-composition-id="scene" data-width="640" data-height="360" data-duration="4">
+  <div id="scene-root" data-composition-id="scene" data-width="640" data-height="360" data-duration="4">
     <style>.title { opacity: 0; }</style>
     <h1 class="title">Scene</h1>
     <script>
@@ -902,8 +924,18 @@ describe("template-wrapped sub-composition media offsets", () => {
     const { document } = parseHTML(compiled.html);
     const host = document.querySelector("#scene-host");
 
-    expect(host?.getAttribute("data-composition-id")).toBeNull();
-    expect(host?.querySelector('[data-composition-id="scene"] .title')?.textContent).toBe("Scene");
+    // The host adopts the inferred composition id — the same shape as a named
+    // host — so the boundary lives next to the host's data-start and scoped
+    // descendant selectors match the preserved wrapper below it. The declared
+    // duration moves with it (flattening strips it from the wrapper).
+    expect(host?.getAttribute("data-composition-id")).toBe("scene");
+    expect(host?.getAttribute("data-duration")).toBe("4");
+    const innerRoot = host?.querySelector('[data-hf-inner-root="true"]');
+    expect(innerRoot?.getAttribute("data-composition-id")).toBeNull();
+    expect(innerRoot?.getAttribute("data-hf-authored-id")).toBe("scene-root");
+    expect(innerRoot?.getAttribute("id")).toBeNull();
+    expect(innerRoot?.getAttribute("data-duration")).toBeNull();
+    expect(innerRoot?.querySelector(".title")?.textContent).toBe("Scene");
     expect(compiled.html).toContain('var __hfCompId = "scene";');
   });
 });
