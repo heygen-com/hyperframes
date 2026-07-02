@@ -57,6 +57,7 @@ function installFsMocks({ existing, dirs }: FsMockOptions) {
   // Mutable, and returned, so tests can pre-seed a "lock already held" path or
   // assert the lock dir doesn't leak after ensureBrowser resolves.
   const paths = new Set(existing);
+  const mtimes = new Map([...existing].map((p) => [p, 0]));
   vi.doMock("node:fs", () => ({
     existsSync: (p: string) => paths.has(p),
     readdirSync: (p: string) => {
@@ -71,9 +72,19 @@ function installFsMocks({ existing, dirs }: FsMockOptions) {
         throw err;
       }
       paths.add(p);
+      mtimes.set(p, Date.now());
     },
     rmSync: (p: string) => {
       paths.delete(p);
+      mtimes.delete(p);
+    },
+    statSync: (p: string) => {
+      if (!paths.has(p)) {
+        const err = new Error(`ENOENT: no such file or directory, stat '${p}'`);
+        (err as NodeJS.ErrnoException).code = "ENOENT";
+        throw err;
+      }
+      return { mtimeMs: mtimes.get(p) ?? 0 };
     },
   }));
   vi.doMock("node:os", () => ({
@@ -213,6 +224,31 @@ describe("findBrowser — cache resolution", () => {
 
     expect(result).toBe("done");
     expect(paths.has(HF_LOCK)).toBe(false);
+  });
+
+  it("withInstallLock does not reclaim another waiter's fresh lock after this waiter timed out", async () => {
+    // Regression guard for the timeout-reclaim race: if multiple waiters cross
+    // the stale-lock deadline together, waiter A can reclaim the stale lock and
+    // acquire a fresh one. Waiter B's old deadline is still expired, but it must
+    // not delete A's fresh lock.
+    const HF_LOCK = join(HF_CACHE, ".install.lock");
+    const RECLAIM_LOCK = join(HF_CACHE, ".install.reclaim.lock");
+    const paths = installFsMocks({ existing: new Set([HF_CACHE, HF_LOCK]) });
+
+    const { withInstallLock } = await import("./manager.js");
+    const first = withInstallLock(
+      async () => {
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        return "first";
+      },
+      10,
+      5,
+    );
+    const second = withInstallLock(async () => "second", 10, 5);
+
+    await expect(Promise.all([first, second])).resolves.toEqual(["first", "second"]);
+    expect(paths.has(HF_LOCK)).toBe(false);
+    expect(paths.has(RECLAIM_LOCK)).toBe(false);
   });
 
   it("warns and falls through when the hyperframes cache cannot be read", async () => {

@@ -1,6 +1,6 @@
 // fallow-ignore-file code-duplication
 import { execSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { basename } from "node:path";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -40,8 +40,44 @@ const PUPPETEER_CACHE_DIR = join(homedir(), ".cache", "puppeteer", "chrome-headl
 // mkdirSync is atomic (EEXIST if another process already holds it), so it
 // doubles as a zero-dependency cross-process mutex — no lockfile library needed.
 const INSTALL_LOCK_DIR = join(CACHE_DIR, ".install.lock");
+const INSTALL_RECLAIM_LOCK_DIR = join(CACHE_DIR, ".install.reclaim.lock");
 const INSTALL_LOCK_TIMEOUT_MS = 120_000; // generous: a real download+extract can take a while
 const INSTALL_LOCK_POLL_MS = 200;
+
+function isErrno(err: unknown, code: string): boolean {
+  return (err as NodeJS.ErrnoException).code === code;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function tryAcquireDirLock(lockDir: string): boolean {
+  try {
+    // recursive:false is load-bearing: it's what makes this throw EEXIST
+    // (and therefore act as a mutex) instead of silently no-op'ing like
+    // `mkdir -p` when the lock dir already exists.
+    mkdirSync(lockDir, { recursive: false });
+    return true;
+  } catch (err) {
+    if (!isErrno(err, "EEXIST")) throw err;
+    return false;
+  }
+}
+
+function reclaimStaleInstallLock(timeoutMs: number): void {
+  if (!tryAcquireDirLock(INSTALL_RECLAIM_LOCK_DIR)) return;
+  try {
+    const mtimeMs = statSync(INSTALL_LOCK_DIR).mtimeMs;
+    if (Date.now() - mtimeMs > timeoutMs) {
+      rmSync(INSTALL_LOCK_DIR, { recursive: true, force: true });
+    }
+  } catch (err) {
+    if (!isErrno(err, "ENOENT")) throw err;
+  } finally {
+    rmSync(INSTALL_RECLAIM_LOCK_DIR, { recursive: true, force: true });
+  }
+}
 
 // timeoutMs/pollMs are parameters (not just the module constants) so tests can
 // exercise the reclaim-on-timeout branch with real but tiny waits instead of
@@ -53,24 +89,27 @@ export async function withInstallLock<T>(
 ): Promise<T> {
   // recursive:false below needs the parent to already exist (unlike `mkdir -p`).
   if (!existsSync(CACHE_DIR)) mkdirSync(CACHE_DIR, { recursive: true });
-  const deadline = Date.now() + timeoutMs;
+  let deadline = Date.now() + timeoutMs;
   for (;;) {
-    try {
-      // recursive:false is load-bearing: it's what makes this throw EEXIST
-      // (and therefore act as a mutex) instead of silently no-op'ing like
-      // `mkdir -p` when the lock dir already exists.
-      mkdirSync(INSTALL_LOCK_DIR, { recursive: false });
-      break;
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
-      if (Date.now() > deadline) {
-        // Held past any plausible real install — the previous holder crashed
-        // or was killed mid-extraction. Reclaim rather than hang forever.
-        rmSync(INSTALL_LOCK_DIR, { recursive: true, force: true });
-        continue;
-      }
-      await new Promise((resolve) => setTimeout(resolve, pollMs));
+    if (existsSync(INSTALL_RECLAIM_LOCK_DIR)) {
+      await sleep(pollMs);
+      continue;
     }
+    if (tryAcquireDirLock(INSTALL_LOCK_DIR)) {
+      rmSync(INSTALL_RECLAIM_LOCK_DIR, { recursive: true, force: true });
+      break;
+    }
+    if (Date.now() > deadline) {
+      // The reclaim gate matters when multiple waiters cross the timeout at
+      // once: without it, waiter A can delete the stale lock and acquire a
+      // fresh one, then waiter B (whose old deadline also expired) can delete
+      // A's fresh lock. The gate serializes reclaimers, and the mtime re-check
+      // after the gate prevents deleting a fresh lock another waiter just won.
+      reclaimStaleInstallLock(timeoutMs);
+      deadline = Date.now() + timeoutMs;
+      continue;
+    }
+    await sleep(pollMs);
   }
   try {
     return await fn();
