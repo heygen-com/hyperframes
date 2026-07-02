@@ -43,6 +43,15 @@ export interface RenderCaptureObservability {
   protocolTimeoutMs?: number;
   pageNavigationTimeoutMs?: number;
   playerReadyTimeoutMs?: number;
+  /**
+   * Render-reliability counters (see PostHog dashboard 1783183). Emitted so the
+   * capture-hardening in #1842 is measurable from a metric, not just logs:
+   * how often the bounded transient-tab-death retry fired on a render that
+   * ultimately succeeded, and whether the failure was classified as an
+   * out-of-memory exhaustion (`Set maximum size exceeded` and friends).
+   */
+  transientRetries?: number;
+  memoryExhaustionDetected?: boolean;
 }
 
 export interface RenderExtractionObservability {

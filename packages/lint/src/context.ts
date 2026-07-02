@@ -34,8 +34,15 @@ export function buildLintContext(html: string, options: HyperframeLinterOptions 
   // hijack the boundary match below. Linear + fixpoint (see stripHtmlComments) to
   // stay ReDoS-free and catch markers that re-form when a comment is removed.
   let source = stripHtmlComments(rawSource);
+  const sourceWithoutTemplates = source.replace(
+    /<template\b[^>]*>[\s\S]*?<\/template(?:\s[^>]*)?>/gi,
+    " ",
+  );
   const templateMatch = source.match(/<template[^>]*>([\s\S]*)<\/template>/i);
-  if (templateMatch?.[1]) source = templateMatch[1];
+  // Some sub-composition files are HTML shells whose real root lives inside a
+  // <template>. Keep nested templates intact when the visible document already
+  // has a composition root; only unwrap when no root exists outside templates.
+  if (templateMatch?.[1] && !findRootTag(sourceWithoutTemplates)) source = templateMatch[1];
 
   const tags = extractOpenTags(source);
   const styles = [

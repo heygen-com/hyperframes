@@ -175,4 +175,158 @@ describe("css adapter", () => {
     document.body.removeChild(el);
     vi.restoreAllMocks();
   });
+
+  describe("getInferredDurationSeconds", () => {
+    it("returns null when nothing was discovered", () => {
+      const adapter = createCssAdapter();
+      adapter.discover();
+      expect(adapter.getInferredDurationSeconds?.()).toBeNull();
+    });
+
+    it("infers the longest finite animation end time, offset by data-start", () => {
+      const el = document.createElement("div");
+      el.setAttribute("data-start", "2");
+      el.style.animationName = "fadeIn";
+      document.body.appendChild(el);
+
+      vi.spyOn(window, "getComputedStyle").mockImplementation(() => {
+        return { animationName: "fadeIn" } as CSSStyleDeclaration;
+      });
+
+      const animation = {
+        currentTime: 0,
+        pause: vi.fn(),
+        play: vi.fn(),
+        effect: { getComputedTiming: () => ({ endTime: 3000 }) },
+      } as unknown as Animation;
+      (el as HTMLElement & { getAnimations?: () => Animation[] }).getAnimations = () => [animation];
+
+      const adapter = createCssAdapter();
+      adapter.discover();
+
+      // start (2s) + endTime (3s) = 5s
+      expect(adapter.getInferredDurationSeconds?.()).toBe(5);
+
+      document.body.removeChild(el);
+      vi.restoreAllMocks();
+    });
+
+    it("returns the max across multiple animated elements", () => {
+      const elA = document.createElement("div");
+      elA.style.animationName = "a";
+      const elB = document.createElement("div");
+      elB.style.animationName = "b";
+      document.body.appendChild(elA);
+      document.body.appendChild(elB);
+
+      vi.spyOn(window, "getComputedStyle").mockImplementation((target) => {
+        return {
+          animationName: target === elA ? "a" : target === elB ? "b" : "none",
+        } as CSSStyleDeclaration;
+      });
+
+      (elA as HTMLElement & { getAnimations?: () => Animation[] }).getAnimations = () => [
+        {
+          effect: { getComputedTiming: () => ({ endTime: 1000 }) },
+        } as unknown as Animation,
+      ];
+      (elB as HTMLElement & { getAnimations?: () => Animation[] }).getAnimations = () => [
+        {
+          effect: { getComputedTiming: () => ({ endTime: 4500 }) },
+        } as unknown as Animation,
+      ];
+
+      const adapter = createCssAdapter();
+      adapter.discover();
+
+      expect(adapter.getInferredDurationSeconds?.()).toBe(4.5);
+
+      document.body.removeChild(elA);
+      document.body.removeChild(elB);
+      vi.restoreAllMocks();
+    });
+
+    it("returns null when an animation's endTime is Infinity (infinite iteration count)", () => {
+      const el = document.createElement("div");
+      el.style.animationName = "spin";
+      document.body.appendChild(el);
+
+      vi.spyOn(window, "getComputedStyle").mockImplementation(() => {
+        return { animationName: "spin" } as CSSStyleDeclaration;
+      });
+
+      (el as HTMLElement & { getAnimations?: () => Animation[] }).getAnimations = () => [
+        {
+          effect: { getComputedTiming: () => ({ endTime: Infinity }) },
+        } as unknown as Animation,
+      ];
+
+      const adapter = createCssAdapter();
+      adapter.discover();
+
+      expect(adapter.getInferredDurationSeconds?.()).toBeNull();
+
+      document.body.removeChild(el);
+      vi.restoreAllMocks();
+    });
+
+    it("returns the finite animation's end time when a finite and an unbounded animation coexist", () => {
+      const elFinite = document.createElement("div");
+      elFinite.style.animationName = "fadeIn";
+      const elInfinite = document.createElement("div");
+      elInfinite.style.animationName = "spin";
+      document.body.appendChild(elFinite);
+      document.body.appendChild(elInfinite);
+
+      vi.spyOn(window, "getComputedStyle").mockImplementation((target) => {
+        return {
+          animationName: target === elFinite ? "fadeIn" : target === elInfinite ? "spin" : "none",
+        } as CSSStyleDeclaration;
+      });
+
+      (elFinite as HTMLElement & { getAnimations?: () => Animation[] }).getAnimations = () => [
+        {
+          effect: { getComputedTiming: () => ({ endTime: 3000 }) },
+        } as unknown as Animation,
+      ];
+      (elInfinite as HTMLElement & { getAnimations?: () => Animation[] }).getAnimations = () => [
+        {
+          effect: { getComputedTiming: () => ({ endTime: Infinity }) },
+        } as unknown as Animation,
+      ];
+
+      const adapter = createCssAdapter();
+      adapter.discover();
+
+      // The unbounded "spin" animation is ignored; the finite "fadeIn"
+      // animation's 3s end time is still a valid duration signal.
+      expect(adapter.getInferredDurationSeconds?.()).toBe(3);
+
+      document.body.removeChild(elFinite);
+      document.body.removeChild(elInfinite);
+      vi.restoreAllMocks();
+    });
+
+    it("ignores disconnected elements", () => {
+      const el = document.createElement("div");
+      el.style.animationName = "fadeIn";
+      document.body.appendChild(el);
+
+      vi.spyOn(window, "getComputedStyle").mockImplementation(() => {
+        return { animationName: "fadeIn" } as CSSStyleDeclaration;
+      });
+      (el as HTMLElement & { getAnimations?: () => Animation[] }).getAnimations = () => [
+        {
+          effect: { getComputedTiming: () => ({ endTime: 3000 }) },
+        } as unknown as Animation,
+      ];
+
+      const adapter = createCssAdapter();
+      adapter.discover();
+      document.body.removeChild(el);
+
+      expect(adapter.getInferredDurationSeconds?.()).toBeNull();
+      vi.restoreAllMocks();
+    });
+  });
 });

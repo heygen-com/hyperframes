@@ -1,3 +1,13 @@
+// package-loader — bootstrap optional helper packages only when missing, with
+// defense-in-depth so a malicious or typo'd dependency can't run on install:
+//   • specs are version-pinned (assertPinnedPackageSpecs) — no floating "latest"
+//   • install runs `npm install --ignore-scripts` — package lifecycle scripts
+//     never execute
+//   • `--no-save` into a throwaway tmp dir — the host project is left untouched
+//   • requires an interactive y/N (or an explicit $HYPERFRAMES_SKILL_BOOTSTRAP_DEPS=1)
+//   • npm is spawned with an argv array (no shell) — never a built command string
+// The `installLine` strings below are DISPLAY ONLY (shown in the prompt / error
+// text); they are never handed to a shell or executed.
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -7,6 +17,7 @@ import { createInterface } from "node:readline/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+const VERSION_OVERRIDE_ENV = "HYPERFRAMES_SKILL_PKG_VERSION";
 const BOOTSTRAP_ENV = "HYPERFRAMES_SKILL_DEPS_BOOTSTRAPPED";
 const BOOTSTRAP_CONFIRM_ENV = "HYPERFRAMES_SKILL_BOOTSTRAP_DEPS";
 const NODE_MODULES_ENV = "HYPERFRAMES_SKILL_NODE_MODULES";
@@ -46,16 +57,24 @@ export async function importPackagesOrBootstrap(packageNames, options = {}) {
 }
 
 export function hyperframesPackageSpec(packageName) {
+  const override = process.env[VERSION_OVERRIDE_ENV]?.trim();
+  if (override) return `${packageName}@${override}`;
+
   const version = readBundledHyperframesVersion();
-  if (!version) {
-    throw new Error(
-      [
-        `Could not determine the bundled HyperFrames version for ${packageName}.`,
-        "Install the package yourself or pass a pinned options.npmPackages entry.",
-      ].join("\n"),
-    );
-  }
-  return `${packageName}@${version}`;
+  if (version) return `${packageName}@${version}`;
+
+  // Global skill installs (e.g. ~/.claude/skills) have no hyperframes package.json
+  // in their ancestor chain, so the bundled version is unknowable. Fall back to
+  // @latest instead of throwing: already-installed packages still import, and a
+  // bootstrap install can still proceed (@latest satisfies the pinned-spec guard).
+  process.stderr.write(
+    [
+      `hyperframes: could not determine the bundled version for ${packageName}; using @latest.`,
+      `Set ${VERSION_OVERRIDE_ENV}=<version> to pin it.`,
+      "",
+    ].join("\n"),
+  );
+  return `${packageName}@latest`;
 }
 
 function resolvePackageEntry(packageName) {

@@ -190,7 +190,7 @@ export async function runSequentialLayeredFrameLoop(input: SequentialLoopInput):
       );
       addHdrTiming(hdrPerf, "transitionCompositeMs", transitionTimingStart);
       await timeHdrPhaseAsync(hdrPerf, "encoderWriteMs", async () =>
-        ensureFrameWritten(await hdrEncoder.writeFrame(transitionBuffers.output), i),
+        ensureFrameWritten(await hdrEncoder.writeFrame(transitionBuffers.output), i, hdrEncoder),
       );
     } else {
       if (hdrPerf) hdrPerf.normalFrames += 1;
@@ -205,7 +205,7 @@ export async function runSequentialLayeredFrameLoop(input: SequentialLoopInput):
         );
       }
       await timeHdrPhaseAsync(hdrPerf, "encoderWriteMs", async () =>
-        ensureFrameWritten(await hdrEncoder.writeFrame(normalCanvas), i),
+        ensureFrameWritten(await hdrEncoder.writeFrame(normalCanvas), i, hdrEncoder),
       );
     }
 

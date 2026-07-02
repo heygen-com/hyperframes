@@ -8,115 +8,9 @@ import { trackStudioEvent } from "./studioTelemetry";
 import { markSelfWrite } from "../hooks/sdkSelfWriteRegistry";
 import { patchOpsToSdkEditOps } from "./sdkOpMapping";
 import { recordResolverParity, recordAnimationResolverParity } from "./sdkResolverShadow";
-import { isAllowedHtmlAttribute, isSafeAttributeValue } from "./htmlAttrSafety";
+import { shouldDeclineTextCutoverForTarget, shouldUseSdkCutover } from "./sdkCutoverEligibility";
 
-const CUTOVER_OP_TYPES = new Set<PatchOperation["type"]>([
-  "inline-style",
-  "text-content",
-  "attribute",
-  "html-attribute",
-]);
-
-// Mirrors the SDK's RESERVED_ATTRS (mutate.ts): a bare `attribute` op is
-// force-prefixed `data-`, so e.g. property "end" → "data-end", which the SDK
-// rejects with a throw. Detect that up front and decline the whole batch so it
-// takes the server path cleanly, instead of throwing inside the dispatch and
-// silently falling back per op.
-// ponytail: small mirror of the SDK set; if the SDK adds a reserved attr, a new
-// op for it just reverts to the (working) throw→fallback path until synced.
-const RESERVED_CUTOVER_ATTRS = new Set<string>([
-  "data-hf-id",
-  "data-composition-id",
-  "data-width",
-  "data-height",
-  "data-start",
-  "data-end",
-  "data-track-index",
-  "data-hold-start",
-  "data-hold-end",
-  "data-hold-fill",
-]);
-
-function sdkAttrName(op: PatchOperation): string | null {
-  if (op.type === "attribute") {
-    return op.property.startsWith("data-") ? op.property : `data-${op.property}`;
-  }
-  if (op.type === "html-attribute") return op.property;
-  return null;
-}
-
-function mapsToReservedAttr(op: PatchOperation): boolean {
-  const name = sdkAttrName(op);
-  // Lowercase to match the SDK's validateSetAttribute (it lowercases before the
-  // reserved check), so "DATA-START" is declined up front too; covers both
-  // `attribute` (prefixed) and `html-attribute` (raw) ops.
-  return name !== null && RESERVED_CUTOVER_ATTRS.has(name.toLowerCase());
-}
-
-// ─── html-attribute safety ───────────────────────────────────────────────────
-
-function hasUnsafeHtmlAttributeOp(ops: PatchOperation[]): boolean {
-  return ops.some(
-    (op) =>
-      op.type === "html-attribute" &&
-      (!isAllowedHtmlAttribute(op.property) ||
-        (op.value !== null && !isSafeAttributeValue(op.property, op.value))),
-  );
-}
-
-function hasTextContentOp(ops: PatchOperation[]): boolean {
-  return ops.some((op) => op.type === "text-content");
-}
-
-function targetChildren(target: unknown): unknown[] | null {
-  if (!target || typeof target !== "object" || !("children" in target)) return null;
-  const children = (target as { children?: unknown }).children;
-  return Array.isArray(children) ? children : null;
-}
-
-function elementTag(element: unknown): string | null {
-  if (!element || typeof element !== "object" || !("tag" in element)) return null;
-  const tag = (element as { tag?: unknown }).tag;
-  return typeof tag === "string" ? tag.toLowerCase() : null;
-}
-
-// Tags that are non-HTML namespace elements in a linkedom-parsed HTML body.
-// Mirrors the engine's `isHTMLElementTarget` (model.ts) which uses `instanceof
-// HTMLElement` — that runtime check catches the same set, but we can't use it
-// here because `target` is a plain SDK object, not a DOM Element. If linkedom
-// (or a future parser) surfaces additional foreign-content elements as
-// non-HTMLElement, add them here.
-const NON_HTML_CHILD_TAGS = new Set(["svg", "math"]);
-
-function shouldDeclineTextCutoverForTarget(target: unknown, ops: PatchOperation[]): boolean {
-  if (!hasTextContentOp(ops)) return false;
-  const children = targetChildren(target);
-  if (!children) return false;
-  // Legacy patch-element replaces the whole element for multi-child targets and
-  // for single non-HTML children. The SDK text patch stream stores a scalar
-  // inverse, so those shapes cannot be made both byte-identical and undo-safe
-  // here. Let the server path remain authoritative for them.
-  if (children.length > 1) return true;
-  const tag = elementTag(children[0]);
-  return tag !== null && NON_HTML_CHILD_TAGS.has(tag);
-}
-
-export function shouldUseSdkCutover(
-  flagEnabled: boolean,
-  hasSession: boolean,
-  hfId: string | null | undefined,
-  ops: PatchOperation[],
-): boolean {
-  return (
-    flagEnabled &&
-    hasSession &&
-    !!hfId &&
-    ops.length > 0 &&
-    ops.every((o) => CUTOVER_OP_TYPES.has(o.type)) &&
-    !ops.some(mapsToReservedAttr) &&
-    !hasUnsafeHtmlAttributeOp(ops)
-  );
-}
+export { shouldUseSdkCutover } from "./sdkCutoverEligibility";
 
 export interface CutoverDeps {
   editHistory: {
@@ -271,7 +165,13 @@ export async function sdkTimingPersist(
 ): Promise<boolean> {
   // Resolver tripwire — runs BEFORE the cutover gate (decoupled): records when
   // the SDK can't resolve a target the server timing path is addressing.
-  recordResolverParity(sdkSession, hfId, "setTiming");
+  const timingSrc = deps.readProjectFile;
+  void recordResolverParity(
+    sdkSession,
+    hfId,
+    "setTiming",
+    timingSrc ? () => timingSrc(targetPath) : undefined,
+  );
   // Dark-launch gate: without this, timing cutover runs whenever an SDK session
   // exists (it always does, for shadow/selection) — flipping the flag OFF would
   // NOT disable it. Gate here so flag-off routes back to the legacy server path.
@@ -313,13 +213,21 @@ export function sdkGsapTweenPersist(
   // animationId (animation-resolution parity). Done here, not via
   // dispatchGsapOpAndPersist's resolverTarget, because the gate below returns
   // before that call when cutover is off.
-  if (op.kind === "add") recordResolverParity(sdkSession, op.target, "addGsapTween");
-  else
+  if (op.kind === "add") {
+    const gsapSrc = deps.readProjectFile;
+    void recordResolverParity(
+      sdkSession,
+      op.target,
+      "addGsapTween",
+      gsapSrc ? () => gsapSrc(targetPath) : undefined,
+    );
+  } else {
     recordAnimationResolverParity(
       sdkSession,
       op.animationId,
       op.kind === "set" ? "setGsapTween" : "removeGsapTween",
     );
+  }
   // Leading dark-launch gate so flag-off does no SDK touch (getElement) at all —
   // matches the other three chokepoints' discipline.
   if (!STUDIO_SDK_CUTOVER_ENABLED) return Promise.resolve(false);
@@ -576,7 +484,9 @@ export async function sdkDeletePersist(
   deps: CutoverDeps,
 ): Promise<boolean> {
   // Resolver tripwire — runs BEFORE the cutover gate (decoupled).
-  recordResolverParity(sdkSession, hfId, "removeElement");
+  void recordResolverParity(sdkSession, hfId, "removeElement", () =>
+    Promise.resolve(originalContent),
+  );
   // Dark-launch gate: flag OFF → legacy server delete path.
   if (!STUDIO_SDK_CUTOVER_ENABLED) return false;
   if (!sdkSession || !sdkSession.getElement(hfId)) return false;

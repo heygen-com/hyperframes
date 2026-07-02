@@ -175,6 +175,7 @@ export function applySoftReload(
   iframe: HTMLIFrameElement | null,
   scriptText: string,
   onAsyncFailure?: () => void,
+  currentTimeOverride?: number,
 ): SoftReloadResult {
   if (!iframe || !scriptText) return "cannot-soft-reload";
 
@@ -210,7 +211,14 @@ export function applySoftReload(
   // rather than killing the target timeline and appending an orphan script.
   if (gsapScripts.length > 1 && staleScripts.length === 0) return "cannot-soft-reload";
 
-  const currentTime = win.__player?.getTime?.() ?? 0;
+  // Prefer the caller-supplied scrub position (the studio's own authoritative
+  // currentTime, e.g. usePlayerStore) over the iframe's raw `__player.getTime()`:
+  // the two can desync (a keyframe-node drag parks the playhead via the store
+  // BEFORE this reload's async commit resolves, and the iframe's own GSAP clock
+  // doesn't reliably reflect that yet), which re-seeks the freshly rebuilt
+  // timeline to the wrong frame and leaves the element (and its overlay)
+  // rendered at a stale/unrelated position.
+  const currentTime = currentTimeOverride ?? win.__player?.getTime?.() ?? 0;
 
   // Track whether the MotionPath async path was taken. When it is, the script
   // executes inside pluginScript.onload — after applySoftReload has already
@@ -300,8 +308,13 @@ export function applySoftReload(
       const s = doc.createElement("script");
       s.textContent = `(function(){${scriptText}\n})();`;
       doc.body.appendChild(s);
-      win.__hfForceTimelineRebind?.();
+      // Seek BEFORE rebind: __hfForceTimelineRebind's own internal force-render
+      // (see init.ts) renders the freshly-created timeline at whatever the
+      // runtime's internal scrub position already is, not at whatever we pass
+      // here afterward — a redundant seek() call after rebind can be a GSAP
+      // no-op if the timeline already reports being at that time internally.
       win.__player?.seek?.(currentTime);
+      win.__hfForceTimelineRebind?.();
       win.__hfStudioManualEditsApply?.();
     };
 

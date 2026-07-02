@@ -12,6 +12,7 @@ const spawnStreamingEncoder = mock(async () => ({
   writeFrame,
   close: closeEncoder,
   getExitStatus: () => "success",
+  getExitError: () => undefined,
 }));
 let failCaptureFrameToBuffer = false;
 let failInitializeSession = false;

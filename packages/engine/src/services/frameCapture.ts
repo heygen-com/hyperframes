@@ -588,7 +588,11 @@ function buildZeroDurationDiagnostic(diag: {
   if (!diag.hasTimeline) {
     hints.push(
       "No GSAP timeline registered (window.__timelines is empty). " +
-        "If using CSS/WAAPI/Lottie/Three.js animations, add data-duration to the root element.",
+        "CSS/WAAPI/Lottie animations are usually auto-detected (the runtime infers " +
+        "duration from the longest running animation) — this composition's duration " +
+        "could not be inferred, which usually means an infinite/unbounded animation " +
+        "(e.g. animation-iteration-count: infinite, repeat: -1 WAAPI, or a looping Lottie " +
+        "clip) or a Three.js scene with no discoverable AnimationClip.",
     );
   }
   if (diag.declaredDuration <= 0 && !diag.hasTimeline) {
@@ -642,13 +646,26 @@ async function pollHfReady(page: Page, timeoutMs: number, intervalMs: number = 1
       if (now - lastDiagnosticAt >= DIAGNOSTIC_INTERVAL_MS) {
         lastDiagnosticAt = now;
         const diag = await evaluateHfDiagnostic(page);
-        // Only fast-fail when BOTH signals are permanently zero:
+        // Only fast-fail when ALL signals are permanently zero:
         //   1. No GSAP timeline registered (GSAP sets duration synchronously
         //      before __renderReady, so a missing timeline won't self-correct).
         //   2. No data-duration declared on the root element.
+        //   3. hf.duration is still 0 — this also covers CSS/WAAPI/Lottie
+        //      auto-inference (see runtime/init.ts resolveAdapterDurationFloorSeconds):
+        //      those runtimes report a non-zero hf.duration once discovery
+        //      resolves, without any GSAP timeline or data-duration. Checking
+        //      hf.duration directly (rather than only the two authored
+        //      signals) avoids fast-failing a composition whose inferred
+        //      duration just hasn't landed yet.
         // A composition with a GSAP timeline but no data-duration is still
         // valid — GSAP drives duration via __timelines, not data-duration.
-        if (diag.renderReady && diag.hasSeek && !diag.hasTimeline && diag.declaredDuration <= 0) {
+        if (
+          diag.renderReady &&
+          diag.hasSeek &&
+          !diag.hasTimeline &&
+          diag.declaredDuration <= 0 &&
+          diag.duration <= 0
+        ) {
           throw new Error(buildZeroDurationDiagnostic(diag));
         }
       }
@@ -1975,9 +1992,49 @@ const TRANSIENT_BROWSER_ERROR_PATTERNS = [
   /Failed to launch the browser process/i,
   /Navigation timeout of \d+ ms exceeded/i,
   /ECONNREFUSED/i,
+  // pollHfReady's own timeout — thrown when window.__renderReady never flips
+  // true within playerReadyTimeout. "Runtime ready: false" means init simply
+  // didn't finish in time (commonly a slow/contended host, e.g. several
+  // concurrent renders), which a fresh session usually clears on retry. This
+  // is distinct from the "Runtime ready: true" fast-fail case a few lines up
+  // in pollHfReady (no timeline + no data-duration) — that's a genuine
+  // authoring bug and intentionally NOT matched here, so it still fails fast.
+  /Composition has zero duration[\s\S]*Runtime ready: false/,
 ];
 
 export function isTransientBrowserError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return TRANSIENT_BROWSER_ERROR_PATTERNS.some((pattern) => pattern.test(message));
+}
+
+// ── Memory-exhaustion classification ────────────────────────────────────────
+// A render can run the Node process (or a page-side allocation) out of memory
+// on an oversized composition — huge canvas, thousands of frames, or a very
+// large frame cache. These surface as cryptic V8 RangeErrors ("Set maximum
+// size exceeded", "Invalid array length"/"string length", "Array buffer
+// allocation failed") or a hard V8 heap-limit abort. They are NOT transient
+// (a retry re-hits the same ceiling) and NOT composition-logic bugs — they're
+// resource limits. Classify them so the caller can surface actionable guidance
+// (lower resolution / fps / duration, or enable low-memory mode) instead of a
+// raw RangeError.
+
+// Deliberately specific: each pattern is a distinct V8/Node allocation-failure
+// signature. We intentionally do NOT match a bare /out of memory/ — that
+// substring appears in benign browser-console noise (WebGL `CONTEXT_LOST … out
+// of memory`, GPU driver notes) that gets carried into the error path, and
+// misclassifying it would replace the real failure message with generic OOM
+// guidance.
+const MEMORY_EXHAUSTION_ERROR_PATTERNS = [
+  /Set maximum size exceeded/i,
+  /Map maximum size exceeded/i,
+  /Invalid (?:array|string) length/i,
+  /Array buffer allocation failed/i,
+  /Cannot create a string longer than/i,
+  /Reached heap limit/i,
+  /JavaScript heap out of memory/i,
+];
+
+export function isMemoryExhaustionError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return MEMORY_EXHAUSTION_ERROR_PATTERNS.some((pattern) => pattern.test(message));
 }

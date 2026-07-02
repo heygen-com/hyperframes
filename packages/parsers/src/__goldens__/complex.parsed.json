@@ -14,6 +14,27 @@
         "stagger": "__raw:0.055"
       },
       "resolvedStart": 0.05,
+      "keyframes": {
+        "format": "percentage",
+        "keyframes": [
+          {
+            "percentage": 0,
+            "properties": {
+              "y": 46,
+              "opacity": 0,
+              "stagger": 0.055
+            }
+          },
+          {
+            "percentage": 100,
+            "properties": {
+              "y": 0,
+              "opacity": 1,
+              "stagger": 0.055
+            }
+          }
+        ]
+      },
       "id": ".headline span-from-50"
     },
     {
@@ -56,6 +77,27 @@
         "stagger": "__raw:0.08"
       },
       "resolvedStart": 0.16,
+      "keyframes": {
+        "format": "percentage",
+        "keyframes": [
+          {
+            "percentage": 0,
+            "properties": {
+              "scaleX": 0,
+              "opacity": 0,
+              "stagger": 0.08
+            }
+          },
+          {
+            "percentage": 100,
+            "properties": {
+              "scaleX": 1,
+              "opacity": 1,
+              "stagger": 0.08
+            }
+          }
+        ]
+      },
       "id": ".ambient-line-from-160"
     }
   ],

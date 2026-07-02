@@ -126,7 +126,7 @@
     // Exported for render.test.ts (exported-for-tests pattern).
     {
       "file": "packages/cli/src/commands/render.ts",
-      "exports": ["resolveBrowserGpuForCli", "renderLocal"],
+      "exports": ["resolveBrowserGpuForCli", "renderLocal", "checkRenderResolutionPreflight"],
     },
     // captureCost.ts: constants and helpers consumed by the runCaptureCalibration
     // orchestration function and tests, but the entry-point graph doesn't
@@ -325,6 +325,17 @@
       // → assert-remove-spawn shape; each verifies a distinct prune behavior, so
       // extracting the shared scaffold would obscure what each case asserts.
       "packages/cli/src/commands/skills.test.ts",
+      // layout-audit.browser.test.ts: parallel arrange/act/assert cases per audit
+      // rule (overflow / overlap / occlusion) that each install their own mocked
+      // geometry + computed-style before asserting. The clone groups are this
+      // pre-existing per-rule scaffold; adding a clip-path case shifts lines and
+      // re-flags it. Collapsing the per-rule installers would obscure each case.
+      "packages/cli/src/commands/layout-audit.browser.test.ts",
+      // gsapParserAcorn.motionEval.test.ts: parallel arrange/act/assert cases for
+      // the staggered-collection honesty pass (.from reveal vs .to landing on the
+      // rest pose). Each asserts a distinct keyframe shape; collapsing the shared
+      // parse/keyframes-extraction scaffold would obscure what each case verifies.
+      "packages/core/src/parsers/gsapParserAcorn.motionEval.test.ts",
     ],
   },
   "health": {
@@ -409,6 +420,33 @@
       // gsapRuntimeReaders.ts: pre-existing complexity in readAllAnimatedProperties;
       // line-shift fingerprint from import-path updates triggers the violation.
       "packages/studio/src/hooks/gsapRuntimeReaders.ts",
+      // In-page audit scripts: single large browser-side IIFE wrappers
+      // (auditLayout/__contrastAudit) with pre-existing CRITICAL helpers
+      // (textOverflowFixHint, selectorFor, the WCAG walk). Adding the small
+      // clip-path probe helpers shifts every function below it, so the line-shift
+      // fingerprint re-flags inherited complexity even though the new helpers are
+      // all at the lowest tier (<=5 cyclomatic).
+      "packages/cli/src/commands/layout-audit.browser.js",
+      "packages/cli/src/commands/contrast-audit.browser.js",
+      // lottie.ts: the flagged `seek` handler (lottie-web/dotLottie dual-API
+      // dispatch, unchanged by the duration-auto-inference work in this PR)
+      // pre-dates this PR's scope. New functions added earlier in the file
+      // (getInferredDurationSeconds + helpers) shifted its line numbers,
+      // breaking fallow's inherited-detection fingerprint. File-level
+      // exemption avoids the line-shift problem for this inherited finding.
+      "packages/core/src/runtime/adapters/lottie.ts",
+      // info.ts: the flagged `run` command handler pre-dates the keyframes-cli
+      // PR; that PR only added the orientation()/durationFromHtml() helpers and
+      // swapped a few `maxEnd` reads for the new `duration` variable, without
+      // adding branches. The line-shift fingerprint re-flags the inherited
+      // complexity even though the logic is unchanged.
+      "packages/cli/src/commands/info.ts",
+      // gsapParserAcorn.ts: the flagged `sameMemberAccess` (structural equality
+      // of two member-access nodes) pre-dates this PR's motion-eval work
+      // (added in #1760, unchanged since). The new const-folding / set-seeding /
+      // label-position code added earlier in the file shifted its line number,
+      // so the line-shift fingerprint re-flags this inherited finding.
+      "packages/parsers/src/gsapParserAcorn.ts",
     ],
   },
 }

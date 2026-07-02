@@ -1,4 +1,4 @@
-import { generateId } from "./generateId";
+import { resolveStudioDistinctId } from "../telemetry/distinctId";
 
 // PostHog public ingest key — write-only, safe to ship in the client bundle
 const POSTHOG_API_KEY = "phc_zjjbX0PnWxERXrMHhkEJWj9A9BhGVLRReICgsfTMmpx";
@@ -18,26 +18,12 @@ interface QueuedEvent {
 
 let queue: QueuedEvent[] = [];
 let flushTimer: ReturnType<typeof setInterval> | null = null;
-let distinctId: string | null = null;
 
+// Delegates to the single source of truth (telemetry/distinctId.ts) so `studio:*`
+// events share one id with `studio_*` / render events, and adopt the CLI's
+// distinct_id when the CLI launched Studio.
 function getDistinctId(): string {
-  if (distinctId) return distinctId;
-  try {
-    const stored = localStorage.getItem("hf-studio-anon-id");
-    if (stored) {
-      distinctId = stored;
-      return stored;
-    }
-  } catch {
-    // localStorage may be unavailable
-  }
-  distinctId = generateId();
-  try {
-    localStorage.setItem("hf-studio-anon-id", distinctId);
-  } catch {
-    // best-effort persistence
-  }
-  return distinctId;
+  return resolveStudioDistinctId();
 }
 
 function isEnabled(): boolean {

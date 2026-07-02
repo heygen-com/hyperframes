@@ -6,7 +6,12 @@
  */
 
 import { BROWSER_GPU_NOT_SOFTWARE } from "@hyperframes/engine";
-import { GENERIC_FAMILIES, iterateFontFamilyDeclarations } from "../deterministicFonts.js";
+import {
+  collectFontFamilyCustomProperties,
+  GENERIC_FAMILIES,
+  iterateFontFamilyDeclarations,
+  resolveFontFamilyDeclarationFamilies,
+} from "../deterministicFonts.js";
 
 /**
  * Re-export the BROWSER_GPU_NOT_SOFTWARE code so distributed adapters and
@@ -118,12 +123,13 @@ export function validateNoGpuEncode(config: ValidateNoGpuEncodeInput): void {
  * @font-face injector and this validator scan the same regions.
  */
 export function validateNoSystemFonts(compiledHtml: string): void {
-  for (const { surface, declaration, families } of iterateFontFamilyDeclarations(compiledHtml)) {
+  const customProperties = collectFontFamilyCustomProperties(compiledHtml);
+  for (const { surface, declaration } of iterateFontFamilyDeclarations(compiledHtml)) {
+    const families = resolveFontFamilyDeclarationFamilies(declaration, customProperties);
     if (families.length === 0) continue;
     const primaryRaw = families[0]!;
-    // TODO(#1654): var() as primary bypasses this check — the resolved value
-    // could be system-ui or undefined. Consider resolving :root definitions
-    // or emitting a warning when primary is var().
+    // Unresolved var() primaries are left to the browser; resolved custom
+    // properties are checked above so common `--font: system-ui` aliases fail.
     if (!GENERIC_FAMILIES.has(primaryRaw.toLowerCase())) continue;
     throw new PlanValidationError(
       SYSTEM_FONT_USED,

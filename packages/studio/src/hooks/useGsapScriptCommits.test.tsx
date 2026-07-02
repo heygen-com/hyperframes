@@ -86,7 +86,7 @@ describe("applyPreviewSync", () => {
 
     // reloadPreview is wired as onAsyncFailure (3rd arg) so a MotionPath-plugin
     // CDN load failure escalates to a full reload — but it is NOT called eagerly.
-    expect(applySoftReload).toHaveBeenCalledWith(FAKE_IFRAME, "SCRIPT", reloadPreview);
+    expect(applySoftReload).toHaveBeenCalledWith(FAKE_IFRAME, "SCRIPT", reloadPreview, 0);
     expect(reloadPreview).not.toHaveBeenCalled();
     // A successful instant patch is the fast path; here it missed → fallback event.
     expect(trackStudioEvent).toHaveBeenCalledWith(
@@ -113,7 +113,7 @@ describe("applyPreviewSync", () => {
 
     // U4: "verify-failed" is the TRANSIENT empty-timeline window — the live state
     // is correct, so we must NOT escalate to a full reload.
-    expect(applySoftReload).toHaveBeenCalledWith(FAKE_IFRAME, "SCRIPT", reloadPreview);
+    expect(applySoftReload).toHaveBeenCalledWith(FAKE_IFRAME, "SCRIPT", reloadPreview, 0);
     expect(reloadPreview).not.toHaveBeenCalled();
     // Telemetry records the suppressed transient (escalated: false).
     expect(trackStudioEvent).toHaveBeenCalledWith(
@@ -143,7 +143,7 @@ describe("applyPreviewSync", () => {
     );
 
     // Structural failure: the preview is genuinely stale/broken → full reload.
-    expect(applySoftReload).toHaveBeenCalledWith(FAKE_IFRAME, "SCRIPT", reloadPreview);
+    expect(applySoftReload).toHaveBeenCalledWith(FAKE_IFRAME, "SCRIPT", reloadPreview, 0);
     expect(reloadPreview).toHaveBeenCalledTimes(1);
     expect(trackStudioEvent).toHaveBeenCalledWith(
       "gsap_soft_reload_outcome",
@@ -167,7 +167,7 @@ describe("applyPreviewSync", () => {
     );
 
     expect(patchRuntimeTweenInPlace).not.toHaveBeenCalled();
-    expect(applySoftReload).toHaveBeenCalledWith(FAKE_IFRAME, "SCRIPT", reloadPreview);
+    expect(applySoftReload).toHaveBeenCalledWith(FAKE_IFRAME, "SCRIPT", reloadPreview, 0);
     expect(reloadPreview).not.toHaveBeenCalled();
     // "applied" emits no telemetry (only the failure paths do).
     expect(trackStudioEvent).not.toHaveBeenCalled();
@@ -185,7 +185,7 @@ describe("applyPreviewSync", () => {
     );
 
     // onAsyncFailure is wired, but the transient result does not trigger it.
-    expect(applySoftReload).toHaveBeenCalledWith(FAKE_IFRAME, "SCRIPT", reloadPreview);
+    expect(applySoftReload).toHaveBeenCalledWith(FAKE_IFRAME, "SCRIPT", reloadPreview, 0);
     expect(reloadPreview).not.toHaveBeenCalled();
     expect(trackStudioEvent).toHaveBeenCalledWith(
       "gsap_soft_reload_outcome",
@@ -204,7 +204,7 @@ describe("applyPreviewSync", () => {
       reloadPreview,
     );
 
-    expect(applySoftReload).toHaveBeenCalledWith(FAKE_IFRAME, "SCRIPT", reloadPreview);
+    expect(applySoftReload).toHaveBeenCalledWith(FAKE_IFRAME, "SCRIPT", reloadPreview, 0);
     expect(reloadPreview).toHaveBeenCalledTimes(1);
     expect(trackStudioEvent).toHaveBeenCalledWith(
       "gsap_soft_reload_outcome",
@@ -345,7 +345,7 @@ describe("runCommit — instantPatch wiring", () => {
     });
 
     expect(fetch).toHaveBeenCalledTimes(1);
-    expect(applySoftReload).toHaveBeenCalledWith(FAKE_IFRAME, "SCRIPT", deps.reloadPreview);
+    expect(applySoftReload).toHaveBeenCalledWith(FAKE_IFRAME, "SCRIPT", deps.reloadPreview, 0);
     expect(deps.reloadPreview).not.toHaveBeenCalled();
     expect(deps.onCacheInvalidate).toHaveBeenCalledTimes(1);
   });
@@ -360,7 +360,7 @@ describe("runCommit — instantPatch wiring", () => {
     });
 
     expect(patchRuntimeTweenInPlace).not.toHaveBeenCalled();
-    expect(applySoftReload).toHaveBeenCalledWith(FAKE_IFRAME, "SCRIPT", deps.reloadPreview);
+    expect(applySoftReload).toHaveBeenCalledWith(FAKE_IFRAME, "SCRIPT", deps.reloadPreview, 0);
     expect(deps.reloadPreview).not.toHaveBeenCalled();
   });
 });

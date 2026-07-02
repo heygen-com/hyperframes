@@ -8,6 +8,10 @@
         "y": 0,
         "opacity": 1
       },
+      "fromProperties": {
+        "y": 300,
+        "opacity": 0
+      },
       "duration": 0.5,
       "ease": "power3.out",
       "resolvedStart": 0.1,
@@ -32,6 +36,9 @@
       "position": 1.15,
       "properties": {
         "scale": 1
+      },
+      "fromProperties": {
+        "scale": 0.92
       },
       "duration": 0.4,
       "ease": "elastic.out(1, 0.4)",
@@ -72,6 +79,10 @@
       "properties": {
         "y": 300,
         "opacity": 0
+      },
+      "fromProperties": {
+        "y": 0,
+        "opacity": 1
       },
       "duration": 0.25,
       "ease": "power3.in",

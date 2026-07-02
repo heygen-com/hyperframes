@@ -258,4 +258,28 @@ describe("validateNoSystemFonts", () => {
     const ok = `<style>body { font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif; }</style>`;
     expect(() => validateNoSystemFonts(ok)).not.toThrow();
   });
+
+  it("resolves simple CSS var() primary aliases before rejecting system fonts", () => {
+    const offending = `<style>
+      :root { --ui-font: -apple-system, BlinkMacSystemFont, sans-serif; }
+      body { font-family: var(--ui-font), sans-serif; }
+    </style>`;
+    let caught: unknown;
+    try {
+      validateNoSystemFonts(offending);
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(PlanValidationError);
+    expect((caught as PlanValidationError).code).toBe(SYSTEM_FONT_USED);
+    expect((caught as Error).message).toContain(`"-apple-system"`);
+  });
+
+  it("accepts CSS var() primary aliases that resolve to deterministic fonts", () => {
+    const ok = `<style>
+      :root { --ui-font: "Inter", -apple-system, sans-serif; }
+      body { font-family: var(--ui-font), sans-serif; }
+    </style>`;
+    expect(() => validateNoSystemFonts(ok)).not.toThrow();
+  });
 });

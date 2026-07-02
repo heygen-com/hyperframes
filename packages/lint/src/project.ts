@@ -3,8 +3,16 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, extname, isAbsolute, join, posix, relative, resolve } from "node:path";
 import { decodeUrlPathVariants } from "@hyperframes/parsers/composition";
 import { rewriteAssetPath } from "@hyperframes/parsers/asset-paths";
+import { checkSubCompositionUsability } from "@hyperframes/parsers/sub-composition-validity";
+import { parseHTML } from "linkedom";
 import { lintHyperframeHtml } from "./hyperframeLinter.js";
 import type { HyperframeLintFinding, HyperframeLintResult } from "./types.js";
+import type { ParsableDocumentLike } from "@hyperframes/parsers/sub-composition-validity";
+
+/** Adapts linkedom's `parseHTML` to the `checkSubCompositionUsability` contract. */
+function parseSubCompHtml(html: string): ParsableDocumentLike {
+  return parseHTML(html).document as unknown as ParsableDocumentLike;
+}
 
 interface HtmlSource {
   html: string;
@@ -221,6 +229,7 @@ export async function lintProject(projectDir: string): Promise<ProjectLintResult
     ...lintTextureMaskAssetNotFound(projectDir, allHtmlSources),
     ...lintMultipleRootCompositions(projectDir),
     ...lintDuplicateAudioTracks(allHtmlSources),
+    ...lintMissingOrEmptySubComposition(projectDir, rootHtml),
   ];
   if (projectFindings.length > 0) {
     for (const finding of projectFindings) {
@@ -500,5 +509,104 @@ function lintDuplicateAudioTracks(htmlSources: HtmlSource[]): HyperframeLintFind
       }
     }
   }
+  return findings;
+}
+
+/**
+ * Error if a `data-composition-src` reference points at a file that is
+ * missing, empty, or does not parse to usable HTML. This is the #1 render
+ * failure bucket in production telemetry: a scene-authoring step (an AI
+ * agent, most commonly) writes the reference before — or without ever —
+ * writing valid content into the scene file.
+ *
+ * The render pre-flight check (`assertSubCompositionsUsable` in
+ * `packages/producer/src/services/htmlCompiler.ts`) now aborts the render
+ * loudly and immediately when this happens, rather than silently dropping
+ * the scene — so catching it here, before the render even starts, means the
+ * failure surfaces at lint/validate time with the same message instead of
+ * only at render time.
+ *
+ * Only follows files actually reachable via `data-composition-src` starting
+ * from the root composition — mirroring the reachability semantics of
+ * `assertSubCompositionsUsable`. A raw filesystem walk of every `.html`
+ * under `compositions/` would flag orphaned/unreferenced files that the
+ * renderer never visits, producing false-positive lint/validate failures on
+ * projects that actually render fine. Lint, render, and the inliner must
+ * never disagree about whether a given file would actually render
+ * something.
+ */
+function lintMissingOrEmptySubComposition(
+  projectDir: string,
+  rootHtml: string,
+): HyperframeLintFinding[] {
+  // Dedup by src path — the same reference can appear from nested sub-comps.
+  const checked = new Map<string, { srcPath: string; problem: string }>();
+  const visited = new Set<string>();
+
+  // fallow-ignore-next-line complexity
+  const walk = (html: string): void => {
+    const compositionSrcRe = /<[^>]*\bdata-composition-src\s*=\s*["']([^"']+)["'][^>]*>/gi;
+    const scannable = maskNonScannableRanges(html);
+    let match: RegExpExecArray | null;
+    while ((match = compositionSrcRe.exec(scannable)) !== null) {
+      const srcPath = (match[1] ?? "").trim();
+      if (!srcPath) continue;
+      if (/^__[A-Z_]+__$/.test(srcPath)) continue; // template placeholder
+
+      // data-composition-src is always written root-relative (even from a
+      // nested sub-composition) — matches the resolution the renderer uses
+      // in packages/producer/src/services/htmlCompiler.ts (parseSubCompositions
+      // / assertSubCompositionsUsable).
+      const filePath = resolve(projectDir, srcPath);
+
+      // Circular reference guard — same as assertSubCompositionsUsable.
+      // Already-visited files were already checked (or are mid-walk); skip
+      // re-checking/re-recursing but still let a later distinct reference to
+      // the same broken file surface (checked is keyed by srcPath, not filePath).
+      if (visited.has(filePath)) continue;
+      visited.add(filePath);
+
+      if (!existsSync(filePath)) {
+        if (!checked.has(srcPath)) {
+          checked.set(srcPath, { srcPath, problem: "the file does not exist" });
+        }
+        continue;
+      }
+
+      const fileHtml = readFileSync(filePath, "utf-8");
+      const validity = checkSubCompositionUsability(fileHtml, parseSubCompHtml);
+      if (!validity.ok) {
+        if (!checked.has(srcPath)) {
+          checked.set(srcPath, {
+            srcPath,
+            problem: validity.detail ?? "the file is empty or could not be parsed",
+          });
+        }
+        continue;
+      }
+
+      // Usable — recurse into it so nested references are validated too,
+      // but only because this file is itself reachable from the root.
+      walk(fileHtml);
+    }
+  };
+
+  walk(rootHtml);
+
+  const findings: HyperframeLintFinding[] = [];
+  for (const { srcPath, problem } of checked.values()) {
+    findings.push({
+      code: "missing_or_empty_sub_composition",
+      severity: "error",
+      message: `data-composition-src references "${srcPath}", but ${problem}.`,
+      fixHint:
+        `Fix this before rendering — the render pre-flight rejects unusable sub-compositions. ` +
+        `Write valid HTML into "${srcPath}" — it needs a <template> or <body> containing an element with ` +
+        `data-composition-id, data-width, and data-height. Preview/studio still tolerates and skips the ` +
+        "scene while you author it. If a scene-authoring step is still running, wait for it to finish " +
+        "before referencing the file, or re-run the step that generates it.",
+    });
+  }
+
   return findings;
 }

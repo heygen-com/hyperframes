@@ -13,6 +13,7 @@ export default defineConfig({
     slideshow: "src/slideshow/index.ts",
     assets: "src/assets.ts",
     composition: "src/composition.ts",
+    subCompositionValidity: "src/subCompositionValidity.ts",
   },
   format: ["esm"],
   outDir: "dist",

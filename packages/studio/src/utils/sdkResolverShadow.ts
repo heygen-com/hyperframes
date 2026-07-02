@@ -183,6 +183,9 @@ export function sdkResolverShadowCheck(
     // a genuine resolver divergence (the v0.6.110 class) — keep emitting that.
     // ponytail: substring match; biases toward keeping signal on a loose hit.
     if (sourceContent !== undefined && !sourceContent.includes(hfId)) return [];
+    // Loose match here vs. countHfIdInSource's strict data-hf-id="..." match in the
+    // caller (runResolverShadow) means an emitted event can carry sourceHfIdCount: 0 —
+    // see the comment on that field in runResolverShadow for what 0 means in that case.
     return [{ kind: "element_not_found", hfId }];
   }
 
@@ -269,19 +272,25 @@ export function runResolverShadow(
     // every style/text/attr edit (the editor's chattiest path) at default-ON.
     if (mismatches.length === 0) return;
     const isElementNotFound = mismatches.some((m) => m.kind === "element_not_found");
+    const strictCount =
+      isElementNotFound && sourceContent !== undefined
+        ? countHfIdInSource(sourceContent, hfId)
+        : undefined;
     trackStudioEvent("sdk_resolver_shadow", {
       hfId,
       // sessionElementCount > 0 + element_not_found = runtime-only element;
       // sessionElementCount === 0 = session is empty/broken (actionable).
       sessionElementCount: session.getElements().length,
       // Count of data-hf-id="<id>" occurrences in source for an emitted
-      // element_not_found (the runtime-node filter already dropped absent-from-
-      // source ids, so an emitted one is in source ≥1×). >1 = duplicate ids →
-      // resolver picked the wrong instance; =1 = single static node the SDK
-      // parse dropped (foreign-content exclusion / sub-comp inlining gap).
-      ...(isElementNotFound && sourceContent !== undefined
-        ? { sourceHfIdCount: countHfIdInSource(sourceContent, hfId) }
-        : {}),
+      // element_not_found. >1 = duplicate ids → resolver picked the wrong
+      // instance; =1 = single static node the SDK parse dropped (foreign-content
+      // exclusion / sub-comp inlining gap); =0 = the runtime-node filter above
+      // uses a loose substring match (biased toward keeping signal) while this
+      // count uses a strict attribute match — see sourceLooseMatchOnly below.
+      ...(strictCount !== undefined ? { sourceHfIdCount: strictCount } : {}),
+      // Loose suppression check matched (kept this event) but the strict
+      // attribute count came back 0 — see the sourceHfIdCount comment above.
+      ...(strictCount === 0 ? { sourceLooseMatchOnly: true } : {}),
       mismatchCount: mismatches.length,
       mismatches: JSON.stringify(redactMismatches(mismatches)),
     });
@@ -300,19 +309,49 @@ export function runResolverShadow(
  *
  * No-op when the shadow flag is off; never throws; never mutates the session.
  */
-export function recordResolverParity(
+export async function recordResolverParity(
   session: Composition | null | undefined,
   hfId: string | null | undefined,
   opLabel: string,
-): void {
+  readSource?: () => Promise<string | undefined>,
+): Promise<void> {
   if (!STUDIO_SDK_RESOLVER_SHADOW_ENABLED) return;
   if (!session || !hfId) return;
   try {
     if (resolveSnapshot(session, hfId)) return; // resolves — parity, nothing to record
+    // Capture BEFORE any await: this call is fire-and-forget (`void recordResolverParity(...)`)
+    // and the caller runs its own session mutation synchronously right after this call
+    // returns. getElements() caches and that cache is invalidated on dispatch, so reading
+    // the count after an await would silently reflect POST-edit state, not the pre-edit
+    // state this field exists to diagnose.
+    const sessionElementCount = session.getElements().length;
+    // Cheap check passed above, so the source read only runs on a real divergence.
+    let source: string | undefined;
+    if (readSource) {
+      try {
+        source = await readSource();
+      } catch {
+        source = undefined; // fail-open: a read error must not drop a real divergence
+      }
+    }
+    // Runtime-generated node the static parse can't model — suppress (mirrors the dom-edit path).
+    if (source !== undefined && !source.includes(hfId)) return;
+    const strictCount = source !== undefined ? countHfIdInSource(source, hfId) : undefined;
     trackStudioEvent("sdk_resolver_shadow", {
       hfId,
       opLabel,
-      sessionElementCount: session.getElements().length,
+      sessionElementCount,
+      // sourceHfIdCount: strict data-hf-id="..." attribute count. Can be 0 even
+      // on an emitted (non-suppressed) event — the suppression check above is a
+      // loose substring match (biased toward keeping signal); see the longer
+      // comment on this field in runResolverShadow for the full explanation.
+      ...(strictCount !== undefined ? { sourceHfIdCount: strictCount } : {}),
+      // Loose suppression check matched (kept this event) but the strict
+      // attribute count came back 0 — hfId appeared as plain text (class name,
+      // comment, script string) but never as a data-hf-id="..." attribute.
+      // Lets telemetry consumers filter this cohort without parsing the
+      // sourceHfIdCount comment above.
+      ...(strictCount === 0 ? { sourceLooseMatchOnly: true } : {}),
       mismatchCount: 1,
       mismatches: JSON.stringify([
         { kind: "element_not_found", hfId } satisfies SdkResolverMismatch,

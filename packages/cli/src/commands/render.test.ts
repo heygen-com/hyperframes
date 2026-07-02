@@ -70,12 +70,10 @@ describe("renderLocal browser GPU config", () => {
   const savedEnv = new Map<string, string | undefined>();
   let tempDirs: string[] = [];
   // Pre-resolve once. The first dynamic `import("./render.js")` in this file
-  // takes >5 s on Windows runners (cold module load) — long enough to blow
-  // vitest's default 5 s timeout in whichever test happens to be first. When
-  // that test times out, its leaked late `createRenderJob` call lands AFTER
-  // the next test's `beforeEach` clears `producerState.createdJobs`, shifting
-  // index 0 and corrupting unrelated assertions. Importing once in
-  // `beforeAll` keeps every test fast and isolated.
+  // cold-loads a heavy module graph (core + engine + producer, incl. linkedom),
+  // slow under the parallel monorepo run — the generous hook timeout that
+  // absorbs that contention now lives in vitest.config.ts (shared by all CLI
+  // suites). Importing once in `beforeAll` keeps every test fast and isolated.
   let renderCommand: (typeof import("./render.js"))["default"];
   let renderLocal: typeof import("./render.js").renderLocal;
   let resolveBrowserGpuForCli: typeof import("./render.js").resolveBrowserGpuForCli;
@@ -467,6 +465,98 @@ describe("renderLocal browser GPU config", () => {
     expect(exit).not.toHaveBeenCalled();
     expect(() => vi.advanceTimersByTime(100)).toThrow("process.exit:0");
     expect(exit).toHaveBeenCalledWith(0);
+  });
+});
+
+describe("checkRenderResolutionPreflight", () => {
+  let checkRenderResolutionPreflight: typeof import("./render.js").checkRenderResolutionPreflight;
+
+  // Cold-imports render.js (heavy graph); the generous hook timeout for parallel
+  // CI contention lives in vitest.config.ts. See the note above.
+  beforeAll(async () => {
+    ({ checkRenderResolutionPreflight } = await import("./render.js"));
+  });
+
+  // Dims must be read the same way the producer's compiler reads them:
+  // `data-width` / `data-height` on the `[data-composition-id]` root.
+  const comp = (w: number, h: number) =>
+    `<html><body><div data-composition-id="root" data-width="${w}" data-height="${h}"></div></body></html>`;
+  const portraitHtml = comp(1080, 1920);
+  const landscapeHtml = comp(1920, 1080);
+  const noModes = { alphaRequested: false, hdrRequested: false } as const;
+
+  it("returns undefined when no outputResolution is requested", async () => {
+    expect(await checkRenderResolutionPreflight(portraitHtml, undefined, noModes)).toBeUndefined();
+  });
+
+  it("returns undefined when the preset matches the composition orientation", async () => {
+    expect(await checkRenderResolutionPreflight(portraitHtml, "portrait", noModes)).toBeUndefined();
+  });
+
+  it("returns a suggestion + aspect-mismatch kind when a landscape preset is used on a portrait composition", async () => {
+    const result = await checkRenderResolutionPreflight(portraitHtml, "landscape", noModes);
+    expect(result?.message).toContain("--resolution portrait");
+    expect(result?.kind).toBe("aspect-mismatch");
+  });
+
+  it("suggests landscape for a landscape composition rendered with a portrait preset", async () => {
+    const result = await checkRenderResolutionPreflight(landscapeHtml, "portrait", noModes);
+    expect(result?.message).toContain("--resolution landscape");
+  });
+
+  it("preserves the 4K tier when suggesting a matching preset (square comp + landscape-4k → square-4k)", async () => {
+    // Tier-aware suggestion is the load-bearing new behavior; square-4k is the
+    // preset that only surfaces via a same-tier swap, so guard it explicitly.
+    const result = await checkRenderResolutionPreflight(comp(2160, 2160), "landscape-4k", noModes);
+    expect(result?.message).toContain("--resolution square-4k");
+  });
+
+  it("does not false-abort a landscape registry-block composition (data-width/height, no data-resolution)", async () => {
+    // Regression guard: registry blocks carry data-width/height and no
+    // data-resolution — a preset-snapping heuristic would misread this as
+    // portrait and wrongly reject the correct --resolution landscape.
+    expect(
+      await checkRenderResolutionPreflight(landscapeHtml, "landscape", noModes),
+    ).toBeUndefined();
+  });
+
+  it("flags alpha output combined with outputResolution", async () => {
+    const result = await checkRenderResolutionPreflight(landscapeHtml, "landscape-4k", {
+      alphaRequested: true,
+      hdrRequested: false,
+    });
+    expect(result?.message).toContain("alpha output");
+    expect(result?.kind).toBe("alpha-incompatible");
+  });
+
+  // The three remaining kinds share the same rejection sink (→ one emit each);
+  // guard their classification so the telemetry dimension stays accurate.
+  it("classifies an HDR + outputResolution combination as hdr-incompatible", async () => {
+    const result = await checkRenderResolutionPreflight(landscapeHtml, "landscape", {
+      alphaRequested: false,
+      hdrRequested: true,
+    });
+    expect(result?.kind).toBe("hdr-incompatible");
+  });
+
+  it("classifies a preset smaller than the composition as downsampling", async () => {
+    // 3840×2160 comp + landscape (1920×1080): same 16:9 aspect, target smaller.
+    const result = await checkRenderResolutionPreflight(comp(3840, 2160), "landscape", noModes);
+    expect(result?.kind).toBe("downsampling");
+  });
+
+  it("classifies a non-integer upscale as non-integer-scale", async () => {
+    // 1280×720 comp + landscape (1920×1080): same 16:9 aspect, 1.5× scale.
+    const result = await checkRenderResolutionPreflight(comp(1280, 720), "landscape", noModes);
+    expect(result?.kind).toBe("non-integer-scale");
+  });
+
+  it("returns undefined when composition dimensions can't be determined (defers to the pipeline)", async () => {
+    // No [data-composition-id] root / no data-width/height → defer, never guess.
+    expect(await checkRenderResolutionPreflight("", "landscape", noModes)).toBeUndefined();
+    expect(
+      await checkRenderResolutionPreflight("<html><body></body></html>", "landscape", noModes),
+    ).toBeUndefined();
   });
 });
 

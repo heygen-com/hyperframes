@@ -389,6 +389,24 @@ describe("composition rules", () => {
       const finding = result.findings.find((f) => f.code === "overlapping_clips_same_track");
       expect(finding).toBeUndefined();
     });
+
+    it("does not flag adjacencies where parseFloat + add drifts by a few ulps", async () => {
+      // parseFloat("0.1") + parseFloat("0.2") = 0.30000000000000004
+      const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div class="clip" data-start="0.1" data-duration="0.2" data-track-index="0">A</div>
+    <div class="clip" data-start="0.3" data-duration="0.2" data-track-index="0">B</div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    window.__timelines["c1"] = gsap.timeline({ paused: true });
+  </script>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "overlapping_clips_same_track");
+      expect(finding).toBeUndefined();
+    });
   });
 
   describe("root_composition_missing_html_wrapper", () => {
@@ -1098,6 +1116,294 @@ describe("composition rules", () => {
         </div>
       </body></html>`;
       const result = await lintHyperframeHtml(html, { filePath: "/project/index.html" });
+      expect(find(result.findings)).toBeUndefined();
+    });
+  });
+
+  describe("root_composition_missing_duration_source", () => {
+    const CODE = "root_composition_missing_duration_source";
+    const find = (findings: { code: string }[]) => findings.find((f) => f.code === CODE);
+
+    it("errors when there is no data-duration, no GSAP timeline, and no animation signal at all", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-width="1920" data-height="1080">
+          <div>static content</div>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = find(result.findings);
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("error");
+    });
+
+    it("does not error when data-duration is declared on the root", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-duration="6" data-width="1920" data-height="1080">
+          <div>static content</div>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(find(result.findings)).toBeUndefined();
+    });
+
+    it("does not error when a GSAP timeline is registered", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-width="1920" data-height="1080"></div>
+        <script>
+          window.__timelines = window.__timelines || {};
+          const tl = gsap.timeline({ paused: true });
+          window.__timelines["main"] = tl;
+        </script>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(find(result.findings)).toBeUndefined();
+    });
+
+    it("does not error for a finite CSS animation (runtime auto-infers duration)", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-width="1920" data-height="1080">
+          <style>
+            .box { animation: fadeIn 3s ease forwards; }
+            @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+          </style>
+          <div class="box"></div>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(find(result.findings)).toBeUndefined();
+    });
+
+    it("does not error for a WAAPI .animate() call (runtime auto-infers duration)", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-width="1920" data-height="1080">
+          <div class="box"></div>
+        </div>
+        <script>
+          document.querySelector(".box").animate([{ opacity: 0 }, { opacity: 1 }], { duration: 2000 });
+        </script>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(find(result.findings)).toBeUndefined();
+    });
+
+    it("does not error for a registered Lottie animation (runtime auto-infers duration)", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-width="1920" data-height="1080">
+          <div id="anim"></div>
+        </div>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js"></script>
+        <script>
+          window.__hfLottie = window.__hfLottie || [];
+          const anim = lottie.loadAnimation({
+            container: document.getElementById("anim"),
+            renderer: "svg",
+            loop: false,
+            autoplay: false,
+            path: "animation.json",
+          });
+          window.__hfLottie.push(anim);
+        </script>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(find(result.findings)).toBeUndefined();
+    });
+
+    it("errors for an infinite CSS animation with no data-duration", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-width="1920" data-height="1080">
+          <style>
+            .spinner { animation: spin 1s linear infinite; }
+            @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+          </style>
+          <div class="spinner"></div>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = find(result.findings);
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("error");
+    });
+
+    it("errors for a mixed finite + infinite CSS animation with no data-duration (length is ambiguous)", async () => {
+      // The runtime CAN infer 3s here (from the finite `fadeIn`), but an
+      // unbounded `spin infinite` alongside it makes the intended total length
+      // ambiguous, so the rule stays strict and requires an explicit
+      // data-duration. Deliberately stricter than runtime inference — see the
+      // rule's block comment. Message must NOT claim the render will fail
+      // (it wouldn't — the runtime falls back to the finite animation).
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-width="1920" data-height="1080">
+          <style>
+            .fade { animation: fadeIn 3s ease forwards; }
+            .spinner { animation: spin 1s linear infinite; }
+            @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+            @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+          </style>
+          <div class="fade"></div>
+          <div class="spinner"></div>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = find(result.findings);
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("error");
+      // Honest message: describes the ambiguity, does not assert a hard failure.
+      expect(finding?.message).toContain("ambiguous");
+      expect(finding?.message).not.toContain("will fail");
+    });
+
+    it("does not error for an infinite CSS animation when data-duration is declared", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-duration="8" data-width="1920" data-height="1080">
+          <style>
+            .spinner { animation: spin 1s linear infinite; }
+            @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+          </style>
+          <div class="spinner"></div>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(find(result.findings)).toBeUndefined();
+    });
+
+    it("errors for Three.js usage with no data-duration", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-width="1920" data-height="1080">
+          <canvas id="scene"></canvas>
+        </div>
+        <script src="https://cdn.jsdelivr.net/npm/three@0.160/build/three.min.js"></script>
+        <script>
+          const renderer = new THREE.WebGLRenderer();
+          const scene = new THREE.Scene();
+        </script>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = find(result.findings);
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("error");
+    });
+
+    it("does not error for Three.js usage when data-duration is declared", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-duration="10" data-width="1920" data-height="1080">
+          <canvas id="scene"></canvas>
+        </div>
+        <script src="https://cdn.jsdelivr.net/npm/three@0.160/build/three.min.js"></script>
+        <script>
+          const renderer = new THREE.WebGLRenderer();
+          const scene = new THREE.Scene();
+        </script>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(find(result.findings)).toBeUndefined();
+    });
+
+    it("does not apply to sub-compositions", async () => {
+      const html = `<template id="scene-template">
+        <div data-composition-id="scene" data-start="0" data-width="1920" data-height="1080">
+          <div>static content</div>
+        </div>
+      </template>`;
+      const result = await lintHyperframeHtml(html, {
+        filePath: "compositions/scene.html",
+        isSubComposition: true,
+      });
+      expect(find(result.findings)).toBeUndefined();
+    });
+
+    it("errors when the only .animate() call is commented out (no real duration source)", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-width="1920" data-height="1080">
+          <div class="box"></div>
+        </div>
+        <script>
+          // document.querySelector(".box").animate([{ opacity: 0 }, { opacity: 1 }], { duration: 2000 });
+        </script>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = find(result.findings);
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("error");
+    });
+
+    it("errors when the only CSS animation is inside a comment (no real duration source)", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-width="1920" data-height="1080">
+          <style>
+            /* .box { animation: spin 2s infinite; } */
+            .box { color: red; }
+          </style>
+          <div class="box"></div>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = find(result.findings);
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("error");
+    });
+
+    it("does not error for the object-literal (PropertyIndexedKeyframes) WAAPI form", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-width="1920" data-height="1080">
+          <div class="box"></div>
+        </div>
+        <script>
+          document.querySelector(".box").animate({ opacity: [0, 1] }, { duration: 2000 });
+        </script>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(find(result.findings)).toBeUndefined();
+    });
+
+    it("does not error for a finite CSS animation whose name merely contains 'infinite'", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-width="1920" data-height="1080">
+          <style>
+            .marquee { animation: infinite-spin 2s ease; }
+            @keyframes infinite-spin { from { transform: translateX(0); } to { transform: translateX(-100%); } }
+          </style>
+          <div class="marquee"></div>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(find(result.findings)).toBeUndefined();
+    });
+
+    it("errors for the longhand animation-name + animation-iteration-count: infinite combination", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-width="1920" data-height="1080">
+          <style>
+            .spinner {
+              animation-name: infinite-scroll;
+              animation-duration: 1s;
+              animation-iteration-count: infinite;
+            }
+            @keyframes infinite-scroll { from { transform: translateX(0); } to { transform: translateX(-100%); } }
+          </style>
+          <div class="spinner"></div>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = find(result.findings);
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("error");
+    });
+
+    it("does not error for the longhand animation-name form with a finite iteration count", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-width="1920" data-height="1080">
+          <style>
+            .spinner {
+              animation-name: infinite-scroll;
+              animation-duration: 1s;
+              animation-iteration-count: 3;
+            }
+            @keyframes infinite-scroll { from { transform: translateX(0); } to { transform: translateX(-100%); } }
+          </style>
+          <div class="spinner"></div>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
       expect(find(result.findings)).toBeUndefined();
     });
   });

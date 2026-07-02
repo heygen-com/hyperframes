@@ -75,6 +75,8 @@ node skills/hyperframes-animation/scripts/animation-map.mjs <composition-dir> \
 
 Reads every GSAP timeline registered on `window.__timelines`, enumerates tweens, samples bboxes, computes flags, outputs `animation-map.json`. Use it to audit choreography (dead zones, stagger consistency, lifecycle warnings) after authoring.
 
+`animation-map.mjs` resolves helper packages from the current project first, then can bootstrap the bundled HyperFrames package version. Set `HYPERFRAMES_SKILL_PKG_VERSION=<version>` only when running the skill outside the bundled CLI/skill install and you need to pin that bootstrap version explicitly.
+
 ## See Also
 
 - `hyperframes-core` — composition structure, data attributes, sub-compositions, deterministic render contract

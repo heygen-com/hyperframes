@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/lint",
-  "version": "0.7.22",
+  "version": "0.7.26",
   "repository": {
     "type": "git",
     "url": "https://github.com/heygen-com/hyperframes",
@@ -54,6 +54,7 @@
   },
   "dependencies": {
     "@hyperframes/parsers": "workspace:*",
+    "linkedom": "^0.18.12",
     "postcss": "^8.5.8"
   },
   "devDependencies": {

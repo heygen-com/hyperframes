@@ -15,6 +15,7 @@ import {
   localizeRemoteFontFaces,
   recompileWithResolutions,
 } from "./htmlCompiler.js";
+import { validateNoSystemFonts } from "./render/planValidation.js";
 
 // ── collectExternalAssets ──────────────────────────────────────────────────
 
@@ -492,30 +493,159 @@ describe("detectRenderModeHints", () => {
     }
   });
 
-  it("compileForRender skips empty sub-composition files instead of aborting", async () => {
-    const projectDir = mkdtempSync(join(tmpdir(), "hf-empty-subcomp-"));
+  // Shared fixture builder for the assertSubCompositionsUsable / EmptyCompositionError
+  // pre-flight tests below. `subCompFiles` is a map of compositions/-relative
+  // filename to raw file content (empty string / malformed text / valid HTML).
+  // `hosts` is the data-composition-src host markup injected into the root
+  // composition's timeline div, in order, at 1s each.
+  function makeSubCompProject(
+    dirPrefix: string,
+    hosts: Array<{ id: string; src: string }>,
+    subCompFiles: Record<string, string>,
+  ): string {
+    const projectDir = mkdtempSync(join(tmpdir(), dirPrefix));
     const compositionsDir = join(projectDir, "compositions");
     mkdirSync(compositionsDir, { recursive: true });
+    const hostMarkup = hosts
+      .map(
+        (h, i) =>
+          `<div data-composition-id="${h.id}" data-composition-src="${h.src}" data-start="${i}" data-duration="1"></div>`,
+      )
+      .join("\n      ");
     writeFileSync(
       join(projectDir, "index.html"),
       `<!DOCTYPE html>
 <html>
   <head></head>
   <body>
-    <div data-composition-id="main" data-width="100" data-height="100" data-start="0" data-duration="1">
-      <div data-composition-id="intro" data-composition-src="compositions/intro.html" data-start="0" data-duration="1"></div>
+    <div data-composition-id="main" data-width="100" data-height="100" data-start="0" data-duration="${hosts.length}">
+      ${hostMarkup}
     </div>
     <script>
       window.__timelines = window.__timelines || {};
-      window.__timelines.main = { duration: function() { return 1; } };
+      window.__timelines.main = { duration: function() { return ${hosts.length}; } };
     </script>
   </body>
 </html>`,
     );
-    writeFileSync(join(compositionsDir, "intro.html"), "");
+    for (const [name, content] of Object.entries(subCompFiles)) {
+      writeFileSync(join(compositionsDir, name), content);
+    }
+    return projectDir;
+  }
+
+  function validSubCompHtml(compId: string, label: string, nestedSrc?: string): string {
+    const inner = nestedSrc
+      ? `<div data-composition-id="${label}" data-composition-src="${nestedSrc}" data-start="0" data-duration="1"></div>`
+      : `<div class="title">${label}</div>`;
+    return `<!doctype html><html><body>
+  <div data-composition-id="${compId}" data-width="100" data-height="100">
+    ${inner}
+  </div>
+</body></html>`;
+  }
+
+  it("compileForRender aborts with EmptyCompositionError when a sub-composition file is empty", async () => {
+    // The shared inliner (inlineSubCompositions.ts, packages/core) stays
+    // tolerant of empty/unparsable sub-compositions — it skips the scene and
+    // keeps going, silently, so preview/studio can keep iterating on a
+    // partially-authored project. That tolerance is intentional and tested
+    // separately in packages/core/src/compiler/inlineSubCompositions.test.ts.
+    //
+    // But a *render* that silently drops a scene produces a materially
+    // broken video with no visible error — worse than refusing to render.
+    // compileForRender (render-only) runs a pre-flight check
+    // (assertSubCompositionsUsable, using the same checkSubCompositionUsability
+    // helper the inliner and hyperframes lint use) before any compilation
+    // work starts, and aborts immediately instead of silently producing a
+    // broken render 45+ seconds later.
+    const projectDir = makeSubCompProject(
+      "hf-empty-subcomp-",
+      [{ id: "intro", src: "compositions/intro.html" }],
+      { "intro.html": "" },
+    );
+
+    await expect(
+      compileForRender(projectDir, join(projectDir, "index.html"), projectDir),
+    ).rejects.toThrow(/compositions\/intro\.html/);
+  });
+
+  it("compileForRender aborts naming every unusable sub-composition at once", async () => {
+    const projectDir = makeSubCompProject(
+      "hf-empty-subcomp-multi-",
+      [
+        { id: "intro", src: "compositions/intro.html" },
+        { id: "outro", src: "compositions/outro.html" },
+      ],
+      { "intro.html": "", "outro.html": "not valid html at all, just text" },
+    );
+
+    await expect(
+      compileForRender(projectDir, join(projectDir, "index.html"), projectDir),
+    ).rejects.toThrow(/compositions\/intro\.html[\s\S]*compositions\/outro\.html/);
+  });
+
+  it("compileForRender aborts when a data-composition-src reference points at a missing file", async () => {
+    const projectDir = makeSubCompProject(
+      "hf-missing-subcomp-",
+      [{ id: "intro", src: "compositions/does-not-exist.html" }],
+      {},
+    );
+
+    await expect(
+      compileForRender(projectDir, join(projectDir, "index.html"), projectDir),
+    ).rejects.toThrow(/compositions\/does-not-exist\.html/);
+  });
+
+  it("compileForRender succeeds when the sub-composition file is valid (happy path)", async () => {
+    const projectDir = makeSubCompProject(
+      "hf-valid-subcomp-",
+      [{ id: "intro", src: "compositions/intro.html" }],
+      { "intro.html": validSubCompHtml("intro", "Hello") },
+    );
 
     const result = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
     expect(result.html).toContain("data-composition-id");
+  });
+
+  it("compileForRender succeeds when a valid sub-composition itself references a nested valid sub-composition", async () => {
+    // Regression guard: data-composition-src is always root-relative, even
+    // from within a nested sub-composition (matches parseSubCompositions,
+    // which threads the original projectDir unchanged through every
+    // recursion level — never dirname(parentFile)). The pre-flight check
+    // must resolve nested references the same way, or it aborts renders
+    // that would have actually succeeded (false-positive abort).
+    //
+    // parent.html lives in compositions/ and references child.html using the
+    // same root-relative "compositions/..." form — not "./child.html".
+    const projectDir = makeSubCompProject(
+      "hf-nested-subcomp-valid-",
+      [{ id: "parent", src: "compositions/parent.html" }],
+      {
+        "parent.html": validSubCompHtml("parent", "child", "compositions/child.html"),
+        "child.html": validSubCompHtml("child", "Nested Hello"),
+      },
+    );
+
+    const result = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    expect(result.html).toContain("data-composition-id");
+  });
+
+  it("compileForRender aborts naming a broken nested (grandchild) sub-composition", async () => {
+    // child.html is empty — the grandchild scene, referenced root-relative
+    // from parent.html which itself lives in compositions/.
+    const projectDir = makeSubCompProject(
+      "hf-nested-subcomp-broken-",
+      [{ id: "parent", src: "compositions/parent.html" }],
+      {
+        "parent.html": validSubCompHtml("parent", "child", "compositions/child.html"),
+        "child.html": "",
+      },
+    );
+
+    await expect(
+      compileForRender(projectDir, join(projectDir, "index.html"), projectDir),
+    ).rejects.toThrow(/compositions\/child\.html/);
   });
 });
 
@@ -546,6 +676,56 @@ describe("detectShaderTransitionUsage", () => {
 </body></html>`;
 
     expect(detectShaderTransitionUsage(html)).toBe(false);
+  });
+});
+
+describe("system-primary font normalization", () => {
+  it("promotes Inter before system/generic primary stacks before distributed plan validation", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-system-primary-font-"));
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html>
+<html>
+  <head>
+    <style>
+      :root { --system-font: -apple-system, BlinkMacSystemFont, sans-serif; }
+      body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+      .system-ui { font-family: system-ui, sans-serif; }
+      .var-font { font-family: var(--system-font), sans-serif; }
+      .deterministic { font-family: "Montserrat", system-ui, sans-serif; }
+    </style>
+  </head>
+  <body>
+    <div
+      data-composition-id="root"
+      data-width="640"
+      data-height="360"
+      data-duration="1"
+      data-font-family="ui-monospace, monospace"
+      style="--inline-system-font: system-ui, sans-serif; font-family: sans-serif"
+    >
+      <span class="var-font">Hello</span>
+    </div>
+  </body>
+</html>`,
+    );
+
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+
+    expect(() => validateNoSystemFonts(compiled.html)).not.toThrow();
+    const compact = compiled.html.replace(/\s+/g, "");
+    expect(compact).toContain("--system-font:Inter,-apple-system,BlinkMacSystemFont,sans-serif");
+    expect(compact).toContain("font-family:Inter,-apple-system,BlinkMacSystemFont,sans-serif");
+    expect(compact).toContain("font-family:Inter,system-ui,sans-serif");
+    expect(compact).toContain("font-family:var(--system-font),sans-serif");
+    expect(compact).toContain('font-family:"Montserrat",system-ui,sans-serif');
+    expect(compact).toContain('data-font-family="Inter,ui-monospace,monospace"');
+    expect(compact).toContain('data-hyperframes-deterministic-fonts="true"');
+
+    const { document } = parseHTML(compiled.html);
+    const rootStyle = document.querySelector('[data-composition-id="root"]')?.getAttribute("style");
+    expect(rootStyle).toContain("--inline-system-font: Inter, system-ui, sans-serif");
+    expect(rootStyle).toContain("font-family: Inter, sans-serif");
   });
 });
 

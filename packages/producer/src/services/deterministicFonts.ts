@@ -10,6 +10,7 @@ import {
   SYSTEM_FONT_SIZE_LIMIT,
 } from "@hyperframes/core/fonts/system-locator";
 import { parseHTML } from "linkedom";
+import postcss, { type AtRule, type Declaration, type Rule } from "postcss";
 import { EMBEDDED_FONT_DATA } from "./fontData.generated.js";
 import { fontToDataUri } from "./fontCompression.js";
 
@@ -61,8 +62,216 @@ export function parseFontFamilyValue(value: string): string[] {
     .filter((piece) => piece.length > 0);
 }
 
+function systemPrimaryReplacement(value: string, deterministicPrimary: string): string | null {
+  const families = parseFontFamilyValue(value);
+  if (families.length === 0) return null;
+  if (!GENERIC_FAMILIES.has(normalizeFamilyName(families[0]!))) return null;
+  return `${deterministicPrimary}, ${value.trim()}`;
+}
+
+function parseCssRoot(css: string): postcss.Root | null {
+  try {
+    return postcss.parse(css);
+  } catch {
+    return null;
+  }
+}
+
+function isFontFaceDeclaration(decl: Declaration): boolean {
+  const parent = decl.parent;
+  return parent?.type === "atrule" && (parent as AtRule).name.toLowerCase() === "font-face";
+}
+
+function normalizeCssDeclarations(root: postcss.Root, deterministicPrimary: string): boolean {
+  let changed = false;
+  root.walkDecls((decl) => {
+    if (decl.prop.startsWith("--")) {
+      const replacement = systemPrimaryReplacement(decl.value, deterministicPrimary);
+      if (!replacement) return;
+      decl.value = replacement;
+      changed = true;
+      return;
+    }
+
+    if (decl.prop.toLowerCase() !== "font-family") return;
+    if (isFontFaceDeclaration(decl)) {
+      return;
+    }
+    const replacement = systemPrimaryReplacement(decl.value, deterministicPrimary);
+    if (!replacement) return;
+    decl.value = replacement;
+    changed = true;
+  });
+
+  return changed;
+}
+
+function normalizeCssFontFamilyDeclarations(css: string, deterministicPrimary: string): string {
+  const root = parseCssRoot(css);
+  if (!root) return css;
+  const changed = normalizeCssDeclarations(root, deterministicPrimary);
+  return changed ? root.toString() : css;
+}
+
+function normalizeInlineStyleAttribute(style: string, deterministicPrimary: string): string {
+  const root = parseCssRoot(`*{${style}}`);
+  if (!root) return style;
+  const rule = root.first;
+  if (rule?.type !== "rule") return style;
+  const before = rule.toString();
+  normalizeCssDeclarations(root, deterministicPrimary);
+  if (rule.toString() === before) return style;
+  const serialized = ((rule as Rule).nodes ?? []).map((node) => node.toString()).join("; ");
+  return serialized.endsWith(";") ? serialized : `${serialized};`;
+}
+
+/**
+ * Import/generated HTML often uses host UI stacks such as
+ * `-apple-system, BlinkMacSystemFont, sans-serif` as a primary family. That is
+ * fine on the author's machine but not in distributed render workers, where
+ * host fonts differ by OS. Promote a bundled deterministic family to the
+ * primary slot while preserving the original stack as fallbacks.
+ */
+export function normalizeSystemFontPrimaryFamilies(
+  html: string,
+  deterministicPrimary = "Inter",
+): string {
+  const { document } = parseHTML(html);
+  let changed = false;
+
+  for (const styleEl of Array.from(document.querySelectorAll("style"))) {
+    const current = styleEl.textContent ?? "";
+    const next = normalizeCssFontFamilyDeclarations(current, deterministicPrimary);
+    if (next === current) continue;
+    styleEl.textContent = next;
+    changed = true;
+  }
+
+  for (const el of Array.from(document.querySelectorAll("[style]"))) {
+    const current = el.getAttribute("style") ?? "";
+    const next = normalizeInlineStyleAttribute(current, deterministicPrimary);
+    if (next === current) continue;
+    el.setAttribute("style", next);
+    changed = true;
+  }
+
+  for (const el of Array.from(document.querySelectorAll("[data-font-family]"))) {
+    const current = el.getAttribute("data-font-family") ?? "";
+    const next = systemPrimaryReplacement(current, deterministicPrimary);
+    if (!next) continue;
+    el.setAttribute("data-font-family", next);
+    changed = true;
+  }
+
+  return changed ? document.toString() : html;
+}
+
 /** Surfaces font-family is declared on in served HTML. */
 export type FontFamilySurface = "font-family" | "data-font-family";
+
+export type FontFamilyDeclaration = {
+  surface: FontFamilySurface;
+  declaration: string;
+  families: string[];
+};
+
+function collectCssCustomProperties(css: string, customProperties: Map<string, string>): void {
+  const root = parseCssRoot(css);
+  if (!root) return;
+  root.walkDecls((decl) => {
+    if (!decl.prop.startsWith("--")) return;
+    customProperties.set(decl.prop, decl.value);
+  });
+}
+
+function* iterateCssRootFontFamilyDeclarations(
+  root: postcss.Root,
+): Generator<FontFamilyDeclaration> {
+  const declarations: FontFamilyDeclaration[] = [];
+  root.walkDecls((decl) => {
+    if (decl.prop.toLowerCase() !== "font-family") return;
+    if (isFontFaceDeclaration(decl)) return;
+    const declaration = decl.value;
+    declarations.push({
+      surface: "font-family",
+      declaration,
+      families: parseFontFamilyValue(declaration),
+    });
+  });
+  yield* declarations;
+}
+
+function* iterateCssFontFamilyDeclarations(css: string): Generator<FontFamilyDeclaration> {
+  const root = parseCssRoot(css);
+  if (!root) return;
+  yield* iterateCssRootFontFamilyDeclarations(root);
+}
+
+function* iterateInlineStyleFontFamilyDeclarations(
+  style: string,
+): Generator<FontFamilyDeclaration> {
+  const root = parseCssRoot(`*{${style}}`);
+  if (!root) return;
+  yield* iterateCssRootFontFamilyDeclarations(root);
+}
+
+/**
+ * Collect simple CSS custom-property font aliases from style blocks and inline
+ * styles. CSS cascade is richer than this map, but for compiler-generated
+ * imports the common shape is `--font: Inter, sans-serif` paired with
+ * `font-family: var(--font)`.
+ */
+export function collectFontFamilyCustomProperties(html: string): Map<string, string> {
+  const { document } = parseHTML(html);
+  const customProperties = new Map<string, string>();
+
+  for (const styleEl of Array.from(document.querySelectorAll("style"))) {
+    collectCssCustomProperties(styleEl.textContent ?? "", customProperties);
+  }
+  for (const el of Array.from(document.querySelectorAll("[style]"))) {
+    collectCssCustomProperties(`*{${el.getAttribute("style") ?? ""}}`, customProperties);
+  }
+
+  return customProperties;
+}
+
+function primaryCssVariableName(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed.toLowerCase().startsWith("var(")) return null;
+
+  let depth = 0;
+  for (let index = 0; index < trimmed.length; index += 1) {
+    const char = trimmed[index];
+    if (char === "(") {
+      depth += 1;
+      continue;
+    }
+    if (char !== ")") continue;
+    depth -= 1;
+    if (depth !== 0) continue;
+
+    const varExpression = trimmed.slice(0, index + 1);
+    const inner = varExpression.slice(4, -1).trim();
+    const commaIndex = inner.indexOf(",");
+    const variableName = (commaIndex === -1 ? inner : inner.slice(0, commaIndex)).trim();
+    return /^--[A-Za-z0-9_-]+$/.test(variableName) ? variableName : null;
+  }
+
+  return null;
+}
+
+export function resolveFontFamilyDeclarationFamilies(
+  declaration: string,
+  customProperties: ReadonlyMap<string, string>,
+): string[] {
+  const families = parseFontFamilyValue(declaration);
+  const variableName = primaryCssVariableName(declaration);
+  if (!variableName) return families;
+
+  const resolved = customProperties.get(variableName);
+  if (!resolved) return families;
+  return [...parseFontFamilyValue(resolved), ...families.slice(1)];
+}
 
 /**
  * Iterate every font-family declaration in a compiled HTML document. Yields
@@ -72,16 +281,20 @@ export type FontFamilySurface = "font-family" | "data-font-family";
  */
 export function* iterateFontFamilyDeclarations(
   html: string,
-): Generator<{ surface: FontFamilySurface; declaration: string; families: string[] }, void, void> {
-  const sources: ReadonlyArray<readonly [RegExp, FontFamilySurface]> = [
-    [/font-family\s*:\s*([^;}{]+)[;}]?/gi, "font-family"],
-    [/data-font-family=["']([^"']+)["']/gi, "data-font-family"],
-  ];
-  for (const [regex, surface] of sources) {
-    for (const match of html.matchAll(regex)) {
-      const declaration = match[1] ?? "";
-      yield { surface, declaration, families: parseFontFamilyValue(declaration) };
-    }
+): Generator<FontFamilyDeclaration, void, void> {
+  const { document } = parseHTML(html);
+
+  for (const styleEl of Array.from(document.querySelectorAll("style"))) {
+    yield* iterateCssFontFamilyDeclarations(styleEl.textContent ?? "");
+  }
+
+  for (const el of Array.from(document.querySelectorAll("[style]"))) {
+    yield* iterateInlineStyleFontFamilyDeclarations(el.getAttribute("style") ?? "");
+  }
+
+  for (const el of Array.from(document.querySelectorAll("[data-font-family]"))) {
+    const declaration = el.getAttribute("data-font-family") ?? "";
+    yield { surface: "data-font-family", declaration, families: parseFontFamilyValue(declaration) };
   }
 }
 
@@ -204,8 +417,12 @@ function extractExistingFontFaces(html: string): Set<string> {
 
 function extractRequestedFontFamilies(html: string): Map<string, string> {
   const requested = new Map<string, string>();
-  for (const { families } of iterateFontFamilyDeclarations(html)) {
-    for (const originalCase of families) {
+  const customProperties = collectFontFamilyCustomProperties(html);
+  for (const { declaration } of iterateFontFamilyDeclarations(html)) {
+    for (const originalCase of resolveFontFamilyDeclarationFamilies(
+      declaration,
+      customProperties,
+    )) {
       const normalized = originalCase.toLowerCase();
       if (!normalized || GENERIC_FAMILIES.has(normalized)) continue;
       if (normalized.startsWith("var(")) continue;

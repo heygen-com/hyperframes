@@ -45,6 +45,12 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
       label: "valid-parse-empty-body",
       html: "<!doctype html><html><head></head><body></body></html>",
     },
+    // linkedom's parseHTML("just some text") returns documentElement === null.
+    // Any code that then touches .head/.body (as linkedom's own internals do)
+    // throws "Cannot destructure property 'firstElementChild' of
+    // 'documentElement' as it is null" — the #1 raw crash in production
+    // telemetry. Must be skipped gracefully, not crash.
+    { label: "malformed non-HTML text", html: "just some plain text, no tags at all" },
   ])("skips $label sub-composition files gracefully", ({ html }) => {
     const document = makeHostDocument("intro");
     const host = document.querySelector('[data-composition-src="intro.html"]')!;
@@ -59,6 +65,21 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
     expect(missing).toEqual(["intro.html"]);
     expect(result.styles).toHaveLength(0);
     expect(result.scripts).toHaveLength(0);
+  });
+
+  it("passes the failure reason through to onMissingComposition", () => {
+    const document = makeHostDocument("intro");
+    const host = document.querySelector('[data-composition-src="intro.html"]')!;
+    const reasons: Array<string | undefined> = [];
+
+    inlineSubCompositions(document, [host], {
+      resolveHtml: () => "",
+      parseHtml: (h) => parseHTML(h).document,
+      onMissingComposition: (_src, reason) => reasons.push(reason),
+    });
+
+    expect(reasons).toHaveLength(1);
+    expect(reasons[0]).toContain("empty");
   });
 
   it("producer path (no flattenInnerRoot): strips inner root, losing #id attribute", () => {

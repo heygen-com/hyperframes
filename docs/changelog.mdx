@@ -9,6 +9,110 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.7.26"
+  description="Released - 2026-07-02"
+  tags={["Release", "Producer", "CLI", "Studio"]}
+>
+v0.7.26 makes imported designs more reliable by normalizing host-system primary font stacks to deterministic web fonts before distributed plan validation. It also adds render-reliability telemetry for preflight rejections, transient retries, and OOM classification, plus Studio controls and fixes around automatic keyframe recording.
+
+## Features
+
+- **CLI:** Emit render_preflight_rejected telemetry for P1-3 pre-flight saves ([9b41891f](https://github.com/heygen-com/hyperframes/commit/9b41891f3a39e73a0b91bd97bb00fa6767a4769e), [#1856](https://github.com/heygen-com/hyperframes/pull/1856))
+- **Producer,cli:** Render-reliability telemetry counters for capture hardening ([733f88cb](https://github.com/heygen-com/hyperframes/commit/733f88cb1f10bdbe31c924c4e0f1f8359f19e7d9), [#1850](https://github.com/heygen-com/hyperframes/pull/1850))
+- **Studio:** Add a global toggle to stop manual edits from auto-recording keyframes ([636d5dd6](https://github.com/heygen-com/hyperframes/commit/636d5dd6c52083a6c10a25eb00580c207b164534))
+
+## Fixes
+
+- **Producer:** Normalize system-primary font stacks ([e10e61ce](https://github.com/heygen-com/hyperframes/commit/e10e61ceb2cfb9664915548b4b8d42456d636aa1), [#1857](https://github.com/heygen-com/hyperframes/pull/1857))
+- **Studio:** Don't crash resizing an element whose keyframes were removed ([dff3634e](https://github.com/heygen-com/hyperframes/commit/dff3634ea89d8834a41f2fd935111d9f5530a637))
+- **Studio:** Re-sync soft-reloaded timelines to the studio's own scrub time ([70606f84](https://github.com/heygen-com/hyperframes/commit/70606f840df92549afdc85824fdc58d319b93819))
+- **Studio:** Fix array-form keyframe writes, diamond click-deselect, and nested video sync ([1b8b2ac4](https://github.com/heygen-com/hyperframes/commit/1b8b2ac425703e4ea3600b6656f7fc67bb7cd7b2))
+- **Studio:** Resolve recent timeline regressions ([9b311588](https://github.com/heygen-com/hyperframes/commit/9b311588be7e72ab7627c55a001fa63ae5c8307c))
+
+## Internal
+
+- **CLI:** De-flake cold-import tests under CI contention via vitest timeouts ([438474c9](https://github.com/heygen-com/hyperframes/commit/438474c968e1c094cb3a01453d6309c099502666), [#1855](https://github.com/heygen-com/hyperframes/pull/1855))
+
+## Other Changes
+
+- Keep Codex plugin category as Creativity ([bf8b3d97](https://github.com/heygen-com/hyperframes/commit/bf8b3d9796a740ff93015d4723b486bfcc5935a1), [#1860](https://github.com/heygen-com/hyperframes/pull/1860))
+- **Studio:** Make the auto-keyframe toggle icon a diamond with a record dot ([ae50327b](https://github.com/heygen-com/hyperframes/commit/ae50327bdb4a80123ff3b099ff067310a59b85c3))
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.7.25...v0.7.26).
+</Update>
+
+<Update
+  label="HyperFrames v0.7.25"
+  description="Released - 2026-07-02"
+  tags={["Release", "CLI", "Engine", "Render"]}
+>
+v0.7.25 adds the `hyperframes keyframes` command for inspecting GSAP, CSS, Anime.js, and 3D onion-skin shots from the CLI. It also improves first-time render reliability with Linux/WSL dependency checks, actionable preset preflight failures, transient capture retries with OOM guidance, and isolated forced-screenshot workers for parallel renders.
+
+## Features
+
+- **CLI:** Keyframes command (surface GSAP/CSS/Anime keyframes + 3D onion-skin --shot) ([a908af11](https://github.com/heygen-com/hyperframes/commit/a908af11a814d6fd2c9d3b65d8311e5c3f3742b9), [#1603](https://github.com/heygen-com/hyperframes/pull/1603))
+
+## Fixes
+
+- **Engine:** Parallelize forced screenshot workers ([145c71e8](https://github.com/heygen-com/hyperframes/commit/145c71e837f208d382462f0dfe5d8840f3c33414), [#1848](https://github.com/heygen-com/hyperframes/pull/1848))
+- **Render:** Pre-flight aspect-ratio / alpha preset mismatch with actionable guidance ([6be46813](https://github.com/heygen-com/hyperframes/commit/6be46813a213cdd1ef605f2efd93c76bb18deda9), [#1843](https://github.com/heygen-com/hyperframes/pull/1843))
+- **Producer:** Harden capture against timeouts, transient tab deaths, and OOM ([c0c3abf0](https://github.com/heygen-com/hyperframes/commit/c0c3abf0f16ca41e5dfebcf6b70bd6845127130c), [#1842](https://github.com/heygen-com/hyperframes/pull/1842))
+- **CLI:** Detect missing Chrome libs & ffmpeg on Linux/WSL in doctor ([180f368a](https://github.com/heygen-com/hyperframes/commit/180f368af1dd6b4d949d182805644077feaa81bc), [#1841](https://github.com/heygen-com/hyperframes/pull/1841))
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.7.24...v0.7.25).
+</Update>
+
+<Update
+  label="HyperFrames v0.7.24"
+  description="Released - 2026-07-01"
+  tags={["Release", "Studio"]}
+>
+Follow-up to v0.7.23's resolver-shadow filter extension: single-flights the reorder source read (one fetch per batch instead of one per unresolved target) and tags loose-match `sourceHfIdCount: 0` events so they're distinguishable on the telemetry dashboard.
+
+## Fixes
+
+- **Studio:** Single-flight reorder source read, tag loose-match sourceHfIdCount, brace style ([69b927a30](https://github.com/heygen-com/hyperframes/commit/69b927a300c9c9f8f74cd9cc55dff98abc0e5974))
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.7.23...v0.7.24).
+</Update>
+
+<Update
+  label="HyperFrames v0.7.23"
+  description="Released - 2026-07-01"
+  tags={["Release", "Studio", "Player", "Runtime"]}
+>
+This release unifies CLI and Studio telemetry identity, extends the resolver-shadow noise filter to cover timing/GSAP/reorder edits, and auto-infers composition duration for CSS/WAAPI/Lottie compositions so `data-duration` is no longer required. Also includes pre-flight validation for malformed sub-compositions and a batch of CLI/lint reliability fixes.
+
+## Features
+
+- **Telemetry:** Unify CLI and Studio PostHog identity (Layer 1) ([9c4d9e50a](https://github.com/heygen-com/hyperframes/commit/9c4d9e50a01e0e139d95a80f6c2216867036d905), [#1829](https://github.com/heygen-com/hyperframes/pull/1829))
+- **Capture:** Extract chips/stat-cells/tabs, detect icon fonts, transparent grounds ([6cc87312d](https://github.com/heygen-com/hyperframes/commit/6cc87312d4dffba9df531f6f156c0d0d1462aa82))
+
+## Fixes
+
+- **Studio:** Extend resolver-shadow runtime-node filter to timing/GSAP/reorder chokepoints ([c215a20c8](https://github.com/heygen-com/hyperframes/commit/c215a20c8e43c1966e92b42eddb45534922a6fae), [#1839](https://github.com/heygen-com/hyperframes/pull/1839))
+- **Player:** Rescale on cross-origin timeline ready, guard warn spam ([e5ec4cf53](https://github.com/heygen-com/hyperframes/commit/e5ec4cf53243a19a8a34f029c3139abaf07315c3), [#1840](https://github.com/heygen-com/hyperframes/pull/1840))
+- **Runtime:** Auto-infer composition duration for CSS/WAAPI/Lottie so data-duration is optional ([24edb1509](https://github.com/heygen-com/hyperframes/commit/24edb15095d2343fcd20c0468d2591b075810507), [#1830](https://github.com/heygen-com/hyperframes/pull/1830))
+- **Core,producer,cli:** Pre-flight validation for empty/malformed sub-compositions ([cf573f7f3](https://github.com/heygen-com/hyperframes/commit/cf573f7f3f8bfcc68b99c514afba4de0655436fc), [#1831](https://github.com/heygen-com/hyperframes/pull/1831))
+- **Engine:** Retry probe on pollHfReady zero-duration timeout ([b33d54f54](https://github.com/heygen-com/hyperframes/commit/b33d54f54b362b754d0b32427e31ba6a8bf3f49b), [#1824](https://github.com/heygen-com/hyperframes/pull/1824))
+- **Skills:** Clear two Snyk Fails and harden the network + supply-chain surface ([535297280](https://github.com/heygen-com/hyperframes/commit/535297280aabdd55005682d4774cbde2c5f1ef4b), [#1804](https://github.com/heygen-com/hyperframes/pull/1804))
+- **Skills:** Make hyperframes package version resolution non-fatal and overridable ([060889f84](https://github.com/heygen-com/hyperframes/commit/060889f84c430ad8d8d90fe1b7fd74ef4485a705), [#1825](https://github.com/heygen-com/hyperframes/pull/1825))
+- **CLI:** Keep doctor resilient to a corrupt browser cache ([0d202ea77](https://github.com/heygen-com/hyperframes/commit/0d202ea77921e123c3df35133d4919bcf02a94e7), [#1822](https://github.com/heygen-com/hyperframes/pull/1822))
+- **CLI:** Exclude clip-path-hidden text from inspect layout and contrast audits ([a7d0ab2d6](https://github.com/heygen-com/hyperframes/commit/a7d0ab2d61a0c7b1f60a9782981d8852af046a78), [#1821](https://github.com/heygen-com/hyperframes/pull/1821))
+- **Lint:** Catch visible markup comments ([d1038918b](https://github.com/heygen-com/hyperframes/commit/d1038918bb92307d62ed7edfbb6c9b3ed37e41cb), [#1819](https://github.com/heygen-com/hyperframes/pull/1819))
+- **CLI:** Don't run unbounded ffprobe on remote snapshot inputs ([1a36b2abb](https://github.com/heygen-com/hyperframes/commit/1a36b2abb4298ac20e5c842ac2b06e0230ff5a5e))
+- **CLI:** Extract snapshot video frames from remote http(s) srcs ([1f377f732](https://github.com/heygen-com/hyperframes/commit/1f377f732b73a376b4371e9aa4347e7315e0a774))
+
+## Docs & Examples
+
+- Clarify transparent WebM shows as yuv420p under ffprobe (alpha is a VP9 side-channel) ([534d6177b](https://github.com/heygen-com/hyperframes/commit/534d6177b65bfd7aadc74d1a0632410e03b1d8ac), [#1823](https://github.com/heygen-com/hyperframes/pull/1823))
+- **Sdk:** Republish SDK tab pages (Mintlify incremental deploy skipped the new files) ([bd27ea31a](https://github.com/heygen-com/hyperframes/commit/bd27ea31adcee07736f6a2c244acda77a4215975))
+- **Sdk:** Pin editing-affordances availability to @hyperframes/sdk@0.7.22 ([9140ee51b](https://github.com/heygen-com/hyperframes/commit/9140ee51b3109b97346cda083714e0b13b1270cf))
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.7.22...v0.7.23).
+</Update>
+
+<Update
   label="HyperFrames v0.7.22"
   description="Released - 2026-06-30"
   tags={["Release", "Sdk", "Editing", "CLI"]}

@@ -19,6 +19,22 @@ import { removeAnimationFromScript } from "./gsapWriterAcorn.js";
 
 const MEDIA_TYPES = new Set<string>(["video", "image", "audio"]);
 
+/**
+ * Thrown by htmlParser functions when the input HTML is empty or does not
+ * parse to a document with a `documentElement` — the condition that,
+ * unguarded, previously surfaced as a raw
+ * `Cannot read properties of null (reading '...')` /
+ * `Cannot destructure property 'firstElementChild' of 'documentElement' as
+ * it is null` crash deep inside the DOM implementation instead of a clear,
+ * catchable error naming which function received bad input.
+ */
+export class CompositionHtmlParseError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CompositionHtmlParseError";
+  }
+}
+
 export interface ParsedHtml {
   elements: TimelineElement[];
   gsapScript: string | null;
@@ -117,6 +133,7 @@ function parseResolutionFromCss(doc: Document, cssText: string | null): CanvasRe
 
 function parseResolutionFromHtml(doc: Document): CanvasResolution | null {
   const htmlEl = doc.documentElement;
+  if (!htmlEl) return null;
   const resolutionAttr = htmlEl.getAttribute("data-resolution");
   if (
     resolutionAttr === "landscape" ||
@@ -166,6 +183,9 @@ export function parseHtml(html: string): ParsedHtml {
   let idCounter = 0;
 
   const htmlEl = doc.documentElement;
+  if (!htmlEl) {
+    throw new CompositionHtmlParseError("parseHtml: input HTML is empty or could not be parsed");
+  }
   const customStylesAttr = htmlEl.getAttribute("data-custom-styles");
   let customStyles: string | null = null;
   if (customStylesAttr) {
@@ -591,6 +611,11 @@ export function updateElementInHtml(
     }
   }
 
+  if (!doc.documentElement) {
+    throw new CompositionHtmlParseError(
+      "updateElementInHtml: input HTML is empty or could not be parsed",
+    );
+  }
   return "<!DOCTYPE html>\n" + doc.documentElement.outerHTML;
 }
 
@@ -601,12 +626,22 @@ export function addElementToHtml(
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, "text/html");
 
+  if (!doc.documentElement) {
+    throw new CompositionHtmlParseError(
+      "addElementToHtml: input HTML is empty or could not be parsed",
+    );
+  }
+
   // Prefer zoom container, fall back to stage, then container, then body
   const container =
     doc.querySelector("#stage-zoom-container") ||
     doc.querySelector(".container") ||
     doc.querySelector("#stage") ||
     doc.body;
+
+  if (!container) {
+    throw new CompositionHtmlParseError("addElementToHtml: input HTML has no <body>");
+  }
 
   const id = element.id || `element-${Date.now()}`;
 
@@ -716,6 +751,11 @@ function cascadeRemoveGsapById(doc: Document, elementId: string): void {
 export function removeElementFromHtml(html: string, elementId: string): string {
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, "text/html");
+  if (!doc.documentElement) {
+    throw new CompositionHtmlParseError(
+      "removeElementFromHtml: input HTML is empty or could not be parsed",
+    );
+  }
   doc.getElementById(elementId)?.remove();
   cascadeRemoveGsapById(doc, elementId);
   return "<!DOCTYPE html>\n" + doc.documentElement.outerHTML;
@@ -731,6 +771,11 @@ export function extractCompositionMetadata(html: string): CompositionMetadata {
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, "text/html");
   const htmlEl = doc.documentElement;
+  if (!htmlEl) {
+    throw new CompositionHtmlParseError(
+      "extractCompositionMetadata: input HTML is empty or could not be parsed",
+    );
+  }
 
   const compositionId = htmlEl.getAttribute("data-composition-id");
   const durationStr = htmlEl.getAttribute("data-composition-duration");
@@ -797,6 +842,14 @@ export function validateCompositionHtml(html: string): ValidationResult {
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, "text/html");
   const htmlEl = doc.documentElement;
+
+  if (!htmlEl) {
+    return {
+      valid: false,
+      errors: ["Composition HTML is empty or could not be parsed"],
+      warnings: [],
+    };
+  }
 
   const compositionId = htmlEl.getAttribute("data-composition-id");
   if (!compositionId) {

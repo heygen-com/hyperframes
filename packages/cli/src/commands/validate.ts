@@ -2,8 +2,9 @@ import { defineCommand } from "citty";
 import { existsSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveProject } from "../utils/project.js";
+import { resolveProject, type ProjectDir } from "../utils/project.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
+import type { ProjectLintResult } from "../utils/lintProject.js";
 import { resolveCompositionViewportFromHtml } from "../utils/compositionViewport.js";
 import { c } from "../ui/colors.js";
 import { withMeta } from "../utils/updateCheck.js";
@@ -179,13 +180,40 @@ function loadContrastAuditScript(): string {
   throw new Error("Missing contrast audit browser script");
 }
 
+/**
+ * Pull the `missing_or_empty_sub_composition` lint findings out of a
+ * `lintProject` result and shape them as `ConsoleEntry`s. Extracted as a
+ * pure function so it's testable without a headless browser or a real
+ * project directory — see validate.test.ts.
+ */
+export function extractCompositionErrorsFromLint(
+  lintResult: Pick<ProjectLintResult, "results">,
+): ConsoleEntry[] {
+  return lintResult.results
+    .flatMap((r) => r.result.findings)
+    .filter((f) => f.code === "missing_or_empty_sub_composition" && f.severity === "error")
+    .map((f) => ({ level: "error" as const, text: f.message }));
+}
+
 async function validateInBrowser(
-  projectDir: string,
+  project: ProjectDir,
   opts: { timeout?: number; contrast?: boolean },
 ): Promise<{ errors: ConsoleEntry[]; warnings: ConsoleEntry[]; contrast?: ContrastEntry[] }> {
+  const projectDir = project.dir;
   const { bundleToSingleHtml } = await import("@hyperframes/core/compiler");
   const { ensureBrowser } = await import("../browser/manager.js");
   const { serveStaticProjectHtml } = await import("../utils/staticProjectServer.js");
+  const { lintProject } = await import("../utils/lintProject.js");
+
+  // Fail fast on missing/empty/unparsable data-composition-src references
+  // before spending time bundling and launching a browser. The bundler
+  // (bundleToSingleHtml → inlineSubCompositions) is intentionally tolerant of
+  // these — it skips the broken scene and keeps going, silently, with only a
+  // console.warn — so validate would otherwise report "No console errors"
+  // for a project that renders a materially broken video. Surface it as a
+  // real validate failure instead.
+  const lintResult = await lintProject(projectDir);
+  const compositionErrors = extractCompositionErrorsFromLint(lintResult);
 
   // `bundleToSingleHtml` now inlines the runtime IIFE by default, so the
   // previous post-bundle regex substitution (which matched `src="..."` on the
@@ -194,7 +222,7 @@ async function validateInBrowser(
 
   const server = await serveStaticProjectHtml(projectDir, html);
 
-  const errors: ConsoleEntry[] = [];
+  const errors: ConsoleEntry[] = [...compositionErrors];
   const warnings: ConsoleEntry[] = [];
   let contrast: ContrastEntry[] | undefined;
   const viewport = resolveCompositionViewportFromHtml(html);
@@ -391,7 +419,7 @@ Examples:
     }
 
     try {
-      const result = await validateInBrowser(project.dir, { timeout, contrast: useContrast });
+      const result = await validateInBrowser(project, { timeout, contrast: useContrast });
       const exitCode = printValidationResult(result, asJson);
       process.exit(exitCode);
     } catch (err: unknown) {

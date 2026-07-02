@@ -1,4 +1,4 @@
-import { redactTelemetryString } from "@hyperframes/core";
+import { redactTelemetryString, type OutputResolutionIssueKind } from "@hyperframes/core";
 import { trackEvent } from "./client.js";
 
 export interface RenderObservabilityTelemetryPayload {
@@ -28,6 +28,8 @@ export interface RenderObservabilityTelemetryPayload {
   captureProtocolTimeoutMs?: number;
   capturePageNavigationTimeoutMs?: number;
   capturePlayerReadyTimeoutMs?: number;
+  captureTransientRetries?: number;
+  captureMemoryExhaustionDetected?: boolean;
   observabilityExtractVideoCount?: number;
   observabilityExtractedVideoCount?: number;
   observabilityExtractTotalFrames?: number;
@@ -70,6 +72,8 @@ function renderObservabilityEventProperties(props: RenderObservabilityTelemetryP
     capture_protocol_timeout_ms: props.captureProtocolTimeoutMs,
     capture_page_navigation_timeout_ms: props.capturePageNavigationTimeoutMs,
     capture_player_ready_timeout_ms: props.capturePlayerReadyTimeoutMs,
+    capture_transient_retries: props.captureTransientRetries,
+    capture_memory_exhaustion_detected: props.captureMemoryExhaustionDetected,
     observability_extract_video_count: props.observabilityExtractVideoCount,
     observability_extracted_video_count: props.observabilityExtractedVideoCount,
     observability_extract_total_frames: props.observabilityExtractTotalFrames,
@@ -302,6 +306,15 @@ export function trackInitTemplate(templateId: string, props?: { tailwind?: boole
 
 export function trackBrowserInstall(): void {
   trackEvent("browser_install", {});
+}
+
+// A render was rejected by the output-resolution/alpha/HDR pre-flight (P1-3)
+// before any browser/ffmpeg work. Counts the "caught early" saves on dashboard
+// 1783183, distinct from deep render failures. `kind` is the low-cardinality
+// `OutputResolutionIssueKind` (aspect-mismatch / alpha-incompatible / etc.),
+// typed to the union so the metric can never carry free text.
+export function trackRenderPreflightRejected(props: { kind: OutputResolutionIssueKind }): void {
+  trackEvent("render_preflight_rejected", { kind: props.kind });
 }
 
 export function trackCliError(props: {

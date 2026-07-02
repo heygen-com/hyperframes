@@ -9,6 +9,12 @@ import {
   findFFprobe,
   getFFmpegInstallHint,
 } from "./ffmpeg.js";
+import {
+  chromeDepsInstallCommand,
+  detectLinuxDistro,
+  distroLabel,
+  probeChromeSharedLibs,
+} from "./linuxDeps.js";
 import { getFreeDiskMb } from "../telemetry/system.js";
 
 export type EnvironmentCheckLevel = "ok" | "warn" | "error";
@@ -118,16 +124,45 @@ function checkFFprobe(): EnvironmentCheckOutcome {
   };
 }
 
+/**
+ * A Chrome binary can exist on disk yet be unlaunchable because its system
+ * shared libraries (libnss3, libatk, ...) aren't installed — the dominant WSL
+ * first-render failure. When that's the case, downgrade the "found" outcome to
+ * a render-blocking error carrying the exact per-distro install command, so the
+ * user hits it in `doctor`/pre-flight instead of a cryptic
+ * `Failed to launch the browser process` mid-render. No-op off Linux and when
+ * `ldd` can't run (probe inconclusive).
+ */
+function chromeSharedLibOutcome(
+  executablePath: string,
+  found: EnvironmentCheckOutcome,
+): EnvironmentCheckOutcome {
+  if (process.platform !== "linux") return found;
+  const probe = probeChromeSharedLibs(executablePath);
+  if (probe.probeUnavailable || probe.ok) return found;
+
+  const distro = detectLinuxDistro();
+  return {
+    name: "Chrome",
+    ok: false,
+    level: "error",
+    title: "Chrome cannot launch (missing system libraries)",
+    detail: `Chrome at ${executablePath} is missing shared libraries on ${distroLabel(distro)}: ${probe.missing.join(", ")}`,
+    hint: chromeDepsInstallCommand(distro.family),
+    path: executablePath,
+  };
+}
+
 async function checkChrome(browserPath?: string): Promise<EnvironmentCheckOutcome> {
   if (browserPath) {
     if (existsSync(browserPath)) {
-      return {
+      return chromeSharedLibOutcome(browserPath, {
         name: "Chrome",
         ok: true,
         level: "ok",
         detail: `explicit: ${browserPath}`,
         path: browserPath,
-      };
+      });
     }
     return {
       name: "Chrome",
@@ -139,15 +174,25 @@ async function checkChrome(browserPath?: string): Promise<EnvironmentCheckOutcom
     };
   }
 
-  const info = await findBrowser();
+  // A corrupt/partial browser cache (stub files where a version dir is
+  // expected, missing executable, malformed metadata) makes findBrowser throw.
+  // That is the exact condition this check exists to report, so treat any
+  // failure as "Chrome not found" rather than letting it crash the caller
+  // (notably `doctor`, which is documented to exit 0 even when checks fail).
+  let info: Awaited<ReturnType<typeof findBrowser>>;
+  try {
+    info = await findBrowser();
+  } catch {
+    info = undefined;
+  }
   if (info) {
-    return {
+    return chromeSharedLibOutcome(info.executablePath, {
       name: "Chrome",
       ok: true,
       level: "ok",
       detail: `${info.source}: ${info.executablePath}`,
       path: info.executablePath,
-    };
+    });
   }
 
   return {

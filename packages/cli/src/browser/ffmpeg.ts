@@ -2,6 +2,7 @@
 import { execSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
+import { detectLinuxDistro, ffmpegInstallCommand } from "./linuxDeps.js";
 
 export const FFMPEG_PATH_ENV = "HYPERFRAMES_FFMPEG_PATH";
 export const FFPROBE_PATH_ENV = "HYPERFRAMES_FFPROBE_PATH";
@@ -62,8 +63,12 @@ export function getFFmpegInstallHint(): string {
   switch (process.platform) {
     case "darwin":
       return "brew install ffmpeg";
-    case "linux":
-      return "sudo apt install ffmpeg";
+    case "linux": {
+      // Distro-aware so WSL/Fedora/Arch/Alpine users get a command that
+      // actually works instead of a Debian-only `apt` line.
+      const distro = detectLinuxDistro();
+      return ffmpegInstallCommand(distro.family);
+    }
     case "win32":
       return "Download the 64-bit Windows build from https://ffmpeg.org/download.html#build-windows and add its bin/ directory to PATH.";
     default:

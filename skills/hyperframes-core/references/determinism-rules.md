@@ -19,6 +19,17 @@ For GSAP:
 
 Use the `hyperframes-animation` skill for tween syntax, position parameters, eases, and performance rules.
 
+### Duration Contract For Non-GSAP Runtimes
+
+The render engine needs a positive total duration before it will capture a single frame — without one, capture fails outright with "Composition has zero duration." A GSAP timeline supplies this automatically. CSS, WAAPI, and Lottie compositions have no timeline object, so the runtime infers duration itself:
+
+- **CSS**: longest `animation-delay` + `animation-duration` × finite `animation-iteration-count` across animated elements (offset by each element's `data-start`). `animation-iteration-count: infinite` cannot be inferred.
+- **WAAPI**: longest `element.animate()` effect's `getComputedTiming().endTime`. Infinite `iterations` cannot be inferred.
+- **Lottie**: the registered animation's native length (`totalFrames / frameRate`, or the dotLottie player's own `duration`) — always finite regardless of `loop`.
+- **Three.js**: **not inferable**. The `three` adapter only forwards time via `hf-seek` — it has no `AnimationClip`/`AnimationMixer` inspection.
+
+`data-duration` on the root `[data-composition-id]` element is therefore optional whenever every non-GSAP animation on the page is finite (CSS/WAAPI with finite iteration counts, or Lottie). It is **required** when: the composition has an infinite/unbounded CSS or WAAPI animation, the composition uses Three.js, or there is no GSAP timeline and no animation signal at all for any adapter to discover. `npx hyperframes lint` enforces exactly this (`root_composition_missing_duration_source`) — see the runtime/adapter-specific docs under `hyperframes-animation/adapters/` for the full contract per runtime.
+
 ## Determinism Rules
 
 Rendered frames must be reproducible from the requested time. Do **not** use any of the following for visual state:

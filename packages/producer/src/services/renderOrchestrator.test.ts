@@ -17,6 +17,7 @@ vi.mock("@hyperframes/engine", async (importOriginal) => {
 import {
   buildMissingFrameRetryBatches,
   captureAttemptMadeProgress,
+  describeMemoryExhaustion,
   executeDiskCaptureWithAdaptiveRetry,
   collectVideoMetadataHints,
   collectVideoReadinessSkipIds,
@@ -24,10 +25,12 @@ import {
   findMissingFrameRanges,
   getNextRetryWorkerCount,
   isRecoverableParallelCaptureError,
+  MAX_TRANSIENT_CAPTURE_RETRIES,
   resolveCaptureForceScreenshotForPageSideCompositing,
   shouldDiscardProbeSessionForPageSideCompositing,
   shouldUseStreamingEncode,
 } from "./renderOrchestrator.js";
+import { ensureFrameWritten } from "./render/stages/captureHdrFrameShared.js";
 import { resolveCompositeTransfer, shouldUseLayeredComposite } from "./hdrCompositor.js";
 import {
   createCaptureCalibrationConfig,
@@ -45,7 +48,7 @@ import {
   resolveDeviceScaleFactor,
   writeCompiledArtifacts,
 } from "./render/shared.js";
-import { toExternalAssetKey } from "../utils/paths.js";
+import { formatCaptureFrameName, toExternalAssetKey } from "../utils/paths.js";
 
 describe("extractStandaloneEntryFromIndex", () => {
   it("reuses the index wrapper and keeps only the requested composition host", () => {
@@ -166,6 +169,208 @@ describe("executeDiskCaptureWithAdaptiveRetry — zero-progress bail (integratio
       rmSync(workDir, { recursive: true, force: true });
       rmSync(framesDir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("executeDiskCaptureWithAdaptiveRetry — transient Target-closed single retry (integration)", () => {
+  const makeLog = () => ({ error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() });
+
+  const writeAllFrames = (framesDir: string, totalFrames: number): void => {
+    for (let i = 0; i < totalFrames; i++) {
+      writeFileSync(join(framesDir, formatCaptureFrameName(i, "jpg")), "x");
+    }
+  };
+
+  afterEach(() => {
+    vi.mocked(executeParallelCapture).mockReset();
+    vi.mocked(mergeWorkerFrames).mockReset();
+  });
+
+  it("retries ONCE at the same worker count on a transient Target closed with zero progress", async () => {
+    const workDir = mkdtempSync(join(tmpdir(), "hf-transient-work-"));
+    const framesDir = mkdtempSync(join(tmpdir(), "hf-transient-frames-"));
+    const log = makeLog();
+    let call = 0;
+    // First attempt: the tab dies before any frame is captured (frame 0) — zero
+    // forward progress, which the worker-halving retry deliberately bails on.
+    // The transient retry recovers it without changing the worker count.
+    vi.mocked(executeParallelCapture).mockImplementation(async () => {
+      call++;
+      if (call === 1) {
+        throw new Error("Protocol error (Page.captureScreenshot): Target closed");
+      }
+      writeAllFrames(framesDir, 4);
+      return [];
+    });
+    vi.mocked(mergeWorkerFrames).mockResolvedValue(undefined);
+
+    try {
+      const attempts = await executeDiskCaptureWithAdaptiveRetry({
+        serverUrl: "http://localhost:0",
+        workDir,
+        framesDir,
+        totalFrames: 4,
+        initialWorkerCount: 1,
+        allowRetry: true,
+        frameExt: "jpg",
+        captureOptions: {} as CaptureOptions,
+        createBeforeCaptureHook: () => null,
+        cfg: {} as EngineConfig,
+        log,
+        dedupPerfs: [],
+      });
+
+      expect(vi.mocked(executeParallelCapture)).toHaveBeenCalledTimes(2);
+      // Both attempts ran at the same worker count (transient retry doesn't halve).
+      expect(attempts.map((a) => a.workers)).toEqual([1, 1]);
+      // The retry attempt is tagged `transient-retry` (vs the worker-halving
+      // `retry`) so it's countable for telemetry (dashboard 1783183).
+      expect(attempts.map((a) => a.reason)).toEqual(["initial", "transient-retry"]);
+      expect(log.warn).toHaveBeenCalledWith(
+        expect.stringContaining("Transient browser failure"),
+        expect.objectContaining({ transientRetriesUsed: 1 }),
+      );
+    } finally {
+      rmSync(workDir, { recursive: true, force: true });
+      rmSync(framesDir, { recursive: true, force: true });
+    }
+  });
+
+  it("does NOT retry a transient error when the render was aborted", async () => {
+    const workDir = mkdtempSync(join(tmpdir(), "hf-transient-abort-work-"));
+    const framesDir = mkdtempSync(join(tmpdir(), "hf-transient-abort-frames-"));
+    const log = makeLog();
+    const controller = new AbortController();
+    // Cancellation tears the browser down, surfacing as a transient-looking
+    // "Target closed" — but an aborted render must fail immediately, not retry.
+    vi.mocked(executeParallelCapture).mockImplementation(async () => {
+      controller.abort();
+      throw new Error("Target closed");
+    });
+    vi.mocked(mergeWorkerFrames).mockResolvedValue(undefined);
+
+    try {
+      await expect(
+        executeDiskCaptureWithAdaptiveRetry({
+          serverUrl: "http://localhost:0",
+          workDir,
+          framesDir,
+          totalFrames: 4,
+          initialWorkerCount: 2,
+          allowRetry: true,
+          frameExt: "jpg",
+          captureOptions: {} as CaptureOptions,
+          createBeforeCaptureHook: () => null,
+          abortSignal: controller.signal,
+          cfg: {} as EngineConfig,
+          log,
+          dedupPerfs: [],
+        }),
+      ).rejects.toThrow(/Target closed/);
+
+      // Exactly one attempt — no transient retry burned on a cancelled render.
+      expect(vi.mocked(executeParallelCapture)).toHaveBeenCalledTimes(1);
+      expect(log.warn).not.toHaveBeenCalledWith(
+        expect.stringContaining("Transient browser failure"),
+        expect.anything(),
+      );
+    } finally {
+      rmSync(workDir, { recursive: true, force: true });
+      rmSync(framesDir, { recursive: true, force: true });
+    }
+  });
+
+  it("gives up after MAX_TRANSIENT_CAPTURE_RETRIES when the tab keeps dying", async () => {
+    const workDir = mkdtempSync(join(tmpdir(), "hf-transient2-work-"));
+    const framesDir = mkdtempSync(join(tmpdir(), "hf-transient2-frames-"));
+    const log = makeLog();
+    vi.mocked(executeParallelCapture).mockRejectedValue(new Error("Session closed"));
+    vi.mocked(mergeWorkerFrames).mockResolvedValue(undefined);
+
+    try {
+      await expect(
+        executeDiskCaptureWithAdaptiveRetry({
+          serverUrl: "http://localhost:0",
+          workDir,
+          framesDir,
+          totalFrames: 4,
+          initialWorkerCount: 1,
+          allowRetry: true,
+          frameExt: "jpg",
+          captureOptions: {} as CaptureOptions,
+          createBeforeCaptureHook: () => null,
+          cfg: {} as EngineConfig,
+          log,
+          dedupPerfs: [],
+        }),
+      ).rejects.toThrow(/Session closed/);
+
+      // 1 initial attempt + exactly MAX_TRANSIENT_CAPTURE_RETRIES retries.
+      expect(vi.mocked(executeParallelCapture)).toHaveBeenCalledTimes(
+        1 + MAX_TRANSIENT_CAPTURE_RETRIES,
+      );
+    } finally {
+      rmSync(workDir, { recursive: true, force: true });
+      rmSync(framesDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("describeMemoryExhaustion", () => {
+  it("returns actionable guidance for a memory-exhaustion error", () => {
+    const msg = describeMemoryExhaustion(new Error("Set maximum size exceeded"), {
+      width: 3840,
+      height: 2160,
+      totalFrames: 5400,
+    });
+    expect(msg).not.toBeNull();
+    expect(msg).toContain("ran out of memory");
+    expect(msg).toContain("3840×2160");
+    expect(msg).toContain("5400 frames");
+    expect(msg).toContain("Set maximum size exceeded");
+    expect(msg).toContain("--low-memory-mode");
+  });
+
+  it("omits dimensions when they are unknown", () => {
+    const msg = describeMemoryExhaustion(new Error("JavaScript heap out of memory"), {});
+    expect(msg).not.toBeNull();
+    expect(msg).not.toContain("×");
+  });
+
+  it("returns null for a non-memory error (leaves the original message intact)", () => {
+    expect(
+      describeMemoryExhaustion(new Error("Target closed"), {
+        width: 1920,
+        height: 1080,
+        totalFrames: 100,
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("ensureFrameWritten", () => {
+  it("returns without throwing when the frame was written", () => {
+    expect(() => ensureFrameWritten(true, 0)).not.toThrow();
+  });
+
+  it("throws a bare frame-indexed error when no encoder context is supplied", () => {
+    expect(() => ensureFrameWritten(false, 7)).toThrow(
+      "Streaming encoder exited before frame 7 was written",
+    );
+  });
+
+  it("includes the ffmpeg exit reason when the encoder reports one", () => {
+    const encoder = { getExitError: () => "FFmpeg exited with code 1: Unknown encoder 'libx264'" };
+    expect(() => ensureFrameWritten(false, 0, encoder)).toThrow(
+      /Streaming encoder exited before frame 0 was written: FFmpeg exited with code 1: Unknown encoder 'libx264'/,
+    );
+  });
+
+  it("falls back to the bare message when the encoder has no exit reason yet", () => {
+    const encoder = { getExitError: () => undefined };
+    expect(() => ensureFrameWritten(false, 3, encoder)).toThrow(
+      "Streaming encoder exited before frame 3 was written",
+    );
   });
 });
 
@@ -1109,6 +1314,14 @@ describe("resolveDeviceScaleFactor", () => {
     expect(() =>
       resolveDeviceScaleFactor({ ...defaults, outputResolution: "portrait-4k" }),
     ).toThrow(/aspect ratio/);
+  });
+
+  it("suggests the matching-orientation preset in the aspect-mismatch message", () => {
+    // Landscape composition + portrait preset → the message should point at
+    // the landscape swap so the user isn't left to guess (workstream P1-3).
+    expect(() => resolveDeviceScaleFactor({ ...defaults, outputResolution: "portrait" })).toThrow(
+      /--resolution landscape/,
+    );
   });
 
   it("rejects downsampling (4K composition → 1080p output)", () => {

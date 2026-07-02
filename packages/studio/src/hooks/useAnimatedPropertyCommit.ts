@@ -17,6 +17,7 @@ import type { SetPatchProps } from "./gsapRuntimePatch";
 import { selectorFromSelection, computeElementPercentage } from "./gsapShared";
 import { resolveTweenStart, resolveTweenDuration } from "../utils/globalTimeCompiler";
 import { roundTo3 } from "../utils/rounding";
+import { commitWholePropertyOffset } from "./gsapWholePropertyOffsetCommit";
 
 interface CommitAnimatedPropertyDeps {
   selectedGsapAnimations: GsapAnimation[];
@@ -341,6 +342,27 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
         // keyframe would never land (the bug: scrolling depth on a keyframed element
         // just changed the constant instead of dropping a keyframe).
         if (elementHasKeyframes && anim) {
+          // With auto-keyframe off (#1808), nudge the whole tween instead of
+          // adding/updating a keyframe at the playhead.
+          if (!usePlayerStore.getState().autoKeyframeEnabled) {
+            const pct = computeElementPercentage(
+              usePlayerStore.getState().currentTime,
+              selection,
+              anim,
+            );
+            await commitWholePropertyOffset(
+              selection,
+              anim,
+              Object.fromEntries(
+                propEntries.filter((e): e is [string, number] => typeof e[1] === "number"),
+              ),
+              pct,
+              iframe,
+              { commitMutation: gsapCommitMutation },
+              `Edit ${primaryProp} (whole animation)`,
+            );
+            return;
+          }
           await commitKeyframeProps(
             selection,
             anim,

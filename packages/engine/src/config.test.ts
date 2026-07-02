@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { resolveConfig, DEFAULT_CONFIG } from "./config.js";
+import { resolveConfig, DEFAULT_CONFIG, scaleProtocolTimeoutForComposition } from "./config.js";
 import { isLowMemorySystem } from "./services/systemMemory.js";
 
 describe("resolveConfig", () => {
@@ -209,5 +209,45 @@ describe("resolveConfig", () => {
       setEnv("PRODUCER_LOW_MEMORY_MODE", "true");
       expect(resolveConfig({ lowMemoryMode: false }).lowMemoryMode).toBe(false);
     });
+  });
+});
+
+describe("scaleProtocolTimeoutForComposition", () => {
+  const base = 300_000;
+
+  it("keeps the base timeout for a reference-or-smaller canvas", () => {
+    // 1080p == reference area → factor 1, no scale.
+    expect(scaleProtocolTimeoutForComposition(base, { width: 1920, height: 1080 })).toBe(base);
+    // Smaller than reference → still the base (never scales down).
+    expect(scaleProtocolTimeoutForComposition(base, { width: 1280, height: 720 })).toBe(base);
+  });
+
+  it("scales up proportionally with output pixel area", () => {
+    // 4K == 4× the reference area, which stays under the 30-minute ceiling.
+    const scaled = scaleProtocolTimeoutForComposition(base, { width: 3840, height: 2160 });
+    expect(scaled).toBeGreaterThan(base);
+    expect(scaled).toBe(base * 4);
+  });
+
+  it("clamps at the 30-minute ceiling for a pathological canvas", () => {
+    // 8K == 16× area → 4.8M ms, clamped to the 30-minute ceiling.
+    const scaled = scaleProtocolTimeoutForComposition(base, { width: 7680, height: 4320 });
+    expect(scaled).toBe(1_800_000);
+  });
+
+  it("never lowers a base timeout that already exceeds the ceiling", () => {
+    // Base above the 30-min ceiling + a large canvas: must not clamp below base.
+    const highBase = 2_400_000;
+    expect(
+      scaleProtocolTimeoutForComposition(highBase, { width: 3840, height: 2160 }),
+    ).toBeGreaterThanOrEqual(highBase);
+  });
+
+  it("returns the base timeout for degenerate dimensions", () => {
+    expect(scaleProtocolTimeoutForComposition(base, { width: 0, height: 1080 })).toBe(base);
+    expect(scaleProtocolTimeoutForComposition(base, { width: 1920, height: 0 })).toBe(base);
+    expect(scaleProtocolTimeoutForComposition(base, { width: Number.NaN, height: 1080 })).toBe(
+      base,
+    );
   });
 });

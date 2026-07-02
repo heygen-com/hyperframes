@@ -104,6 +104,12 @@ interface PlayerState {
   setMotionPathArmed: (armed: boolean) => void;
   motionPathCreateAvailable: boolean;
   setMotionPathCreateAvailable: (available: boolean) => void;
+  /** Global toggle for the "Add keyframe" diamond in the timeline toolbar (#1808).
+   *  When false, a manual drag/resize/rotate edit on an element that already has
+   *  a live tween shifts every keyframe by the edit's delta (preserving the
+   *  animation's shape) instead of inserting/updating a keyframe at the playhead. */
+  autoKeyframeEnabled: boolean;
+  setAutoKeyframeEnabled: (enabled: boolean) => void;
 
   /** Multi-select: additional selected elements beyond selectedElementId. */
   selectedElementIds: Set<string>;
@@ -238,6 +244,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   setMotionPathArmed: (armed) => set({ motionPathArmed: armed }),
   motionPathCreateAvailable: false,
   setMotionPathCreateAvailable: (available) => set({ motionPathCreateAvailable: available }),
+  autoKeyframeEnabled: true,
+  setAutoKeyframeEnabled: (enabled) => set({ autoKeyframeEnabled: enabled }),
 
   selectedElementIds: new Set<string>(),
   toggleSelectedElementId: (id: string) =>

@@ -1656,6 +1656,26 @@ describe("keyframe mutations", () => {
     expect(kfs[1].properties.x).toBe(999);
   });
 
+  it("addKeyframeToScript — preserves exactly one ease when updating an eased keyframe", () => {
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#hero", {
+        keyframes: { "0%": { scale: 1 }, "60%": { scale: 1.18, ease: "power2.out" }, "100%": { scale: 1 } },
+        duration: 2
+      }, 0);
+    `;
+    const id = getAnimId(script);
+    const updated = addKeyframeToScript(script, id, 60, { scale: 1.18, x: 10, y: 20 });
+    const reparsed = parseGsapScript(updated);
+    const keyframe = reparsed.animations[0].keyframes!.keyframes.find(
+      (kf) => kf.percentage === 60,
+    )!;
+
+    expect((updated.match(/ease:\s*"power2\.out"/g) ?? []).length).toBe(1);
+    expect(keyframe.ease).toBe("power2.out");
+    expect(keyframe.properties).toMatchObject({ scale: 1.18, x: 10, y: 20 });
+  });
+
   // ── backfillDefaults: editing one keyframe must not move the others ──────
   // UX invariant (CapCut/AE): keyframes are independent. Introducing a property
   // to one keyframe (e.g. `y` on an x-only tween) must backfill the other

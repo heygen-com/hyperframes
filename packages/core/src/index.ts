@@ -35,6 +35,8 @@ export type {
   CompositionVariable,
   CompositionSpec,
   WaveformData,
+  OutputResolutionCompatibility,
+  OutputResolutionIssueKind,
 } from "./core.types";
 
 export type {
@@ -53,6 +55,7 @@ export {
   CANVAS_DIMENSIONS,
   VALID_CANVAS_RESOLUTIONS,
   normalizeResolutionFlag,
+  checkOutputResolutionCompatibility,
   parseFps,
   parseFpsWithDefault,
   toFps,
@@ -149,6 +152,12 @@ export {
   rewriteInlineStyleAssetUrls,
 } from "./compiler/rewriteSubCompPaths";
 export { CSS_URL_RE, isNonRelativeUrl, isPathInside } from "./compiler/assetPaths";
+export {
+  checkSubCompositionUsability,
+  type ParsableDocumentLike,
+  type SubCompositionValidity,
+  type SubCompositionValidityReason,
+} from "./compiler/subCompositionValidity";
 export { queryByAttr } from "./utils/cssSelector";
 export { decodeUrlPathVariants } from "./utils/urlPath";
 export { parseAnimatedGifMetadata, type AnimatedGifMetadata } from "./media/gif";

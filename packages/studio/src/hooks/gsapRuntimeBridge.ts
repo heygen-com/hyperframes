@@ -26,6 +26,7 @@ import {
   findSizeSetAnimation,
   materializeIfDynamic,
 } from "./gsapDragCommit";
+import { commitWholePropertyOffset } from "./gsapWholePropertyOffsetCommit";
 import { resolveTweenStart, resolveTweenDuration } from "../utils/globalTimeCompiler";
 import type { GsapDragCommitCallbacks } from "./gsapDragCommit";
 import { selectorFromSelection } from "./gsapShared";
@@ -225,7 +226,12 @@ export async function tryGsapDragIntercept(
   }
 
   const cbs = { commitMutation, fetchAnimations: fetchFallbackAnimations };
-  if (options?.altKey) {
+  // Alt-drag already means "shift the whole path" — the global auto-keyframe
+  // toggle (#1808) just makes that the default while it's off, so a manual
+  // edit on an already-animated element nudges the animation instead of
+  // inserting/updating a keyframe at the playhead.
+  const autoKeyframeEnabled = usePlayerStore.getState().autoKeyframeEnabled;
+  if (options?.altKey || !autoKeyframeEnabled) {
     await commitWholePathOffset(selection, posAnim, offset, gsapPos, iframe, selector, cbs);
   } else {
     await commitGsapPositionFromDrag(selection, posAnim, offset, gsapPos, iframe, selector, cbs);
@@ -332,6 +338,24 @@ export async function tryGsapResizeIntercept(
       height: Math.round(size.height),
     };
   }
+
+  // With auto-keyframe off (#1808), `anim` is already a real (non-"set")
+  // tween for this resize group, so nudge it as a whole rather than adding a
+  // keyframe at the playhead.
+  if (!usePlayerStore.getState().autoKeyframeEnabled) {
+    if (activeKeyframePct != null) setActiveKeyframePct(null);
+    await commitWholePropertyOffset(
+      selection,
+      anim,
+      resizeProps,
+      pct,
+      iframe,
+      { commitMutation, fetchAnimations: fetchFallbackAnimations },
+      "Resize animation",
+    );
+    return true;
+  }
+
   const ct = usePlayerStore.getState().currentTime;
   const ts = resolveTweenStart(anim);
   const td = resolveTweenDuration(anim);
@@ -489,6 +513,22 @@ export async function tryGsapRotationIntercept(
   }
 
   const pct = computeCurrentPercentage(selection, anim);
+
+  // With auto-keyframe off (#1808), a rotation tween already exists for this
+  // element (checked above) so nudge it as a whole rather than adding a
+  // keyframe at the playhead.
+  if (!usePlayerStore.getState().autoKeyframeEnabled) {
+    await commitWholePropertyOffset(
+      selection,
+      anim,
+      { rotation: newRotation },
+      pct,
+      iframe,
+      { commitMutation, fetchAnimations: fetchFallbackAnimations },
+      "Rotate animation",
+    );
+    return true;
+  }
 
   if (anim.hasUnresolvedKeyframes || anim.hasUnresolvedSelector) {
     const newId = await materializeIfDynamic(anim, iframe, commitMutation, selection);

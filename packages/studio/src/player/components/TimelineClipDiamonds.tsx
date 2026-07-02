@@ -45,6 +45,10 @@ interface TimelineClipDiamondsProps {
     fromClipPercentage: number,
     toClipPercentage: number,
   ) => void;
+  /** Set while resolving a diamond press so the ancestor clip's onClick (which
+   *  toggles selection off when already selected) ignores the native "click"
+   *  the browser auto-synthesizes after this button's pointerdown+pointerup. */
+  suppressClickRef?: React.RefObject<boolean>;
 }
 
 const DIAMOND_RATIO = 0.8;
@@ -76,6 +80,7 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
   onShiftClickKeyframe,
   onContextMenuKeyframe,
   onMoveKeyframe,
+  suppressClickRef,
 }: TimelineClipDiamondsProps) {
   // Hooks must run before the early return below.
   const dragRef = useRef<DragState | null>(null);
@@ -83,6 +88,21 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
   // (that optimistic hold was the #1763 flake). The atomic move-keyframe commit
   // on drop re-keys the diamond from source.
   const [preview, setPreview] = useState<{ kfKey: string; clipPct: number } | null>(null);
+  // The button element can re-render (reposition/unmount) synchronously from
+  // the state updates onClickKeyframe/onMoveKeyframe trigger, before the
+  // browser gets to auto-synthesize the "click" event that normally follows
+  // pointerdown+pointerup on a button. That orphaned click then fires on
+  // whatever ancestor is still there — the clip wrapper — whose own onClick
+  // toggles selection off when the clip is already selected (the state a
+  // diamond click always happens in). Suppressing it here is the same fix
+  // already used for clip drag/resize in useTimelineClipDrag.ts.
+  const suppressNextClick = () => {
+    if (!suppressClickRef) return;
+    suppressClickRef.current = true;
+    requestAnimationFrame(() => {
+      suppressClickRef.current = false;
+    });
+  };
 
   if (clipWidthPx < 20) return null;
 
@@ -102,7 +122,19 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
   const canDrag = isSelected && !!onMoveKeyframe;
 
   return (
-    <div className="absolute inset-0" style={{ zIndex: 3, pointerEvents: "none" }}>
+    <div
+      className="absolute inset-0"
+      style={{
+        // Above the clip's trim-handle strips (TimelineClip.tsx, z-index 4) so
+        // a keyframe sitting in the first/last ~14px of the clip stays
+        // clickable instead of being covered by the resize handle. This div
+        // establishes its own stacking context (position + z-index), so the
+        // diamonds' own z-index (1/2) can't escape it on their own — the bump
+        // has to happen here.
+        zIndex: 5,
+        pointerEvents: "none",
+      }}
+    >
       {sorted.map((kf, i) => {
         if (i === 0) return null;
         const prev = sorted[i - 1]!;
@@ -178,6 +210,8 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
           const d = dragRef.current;
           // No drag armed (canDrag false / non-primary press) → treat as a click.
           if (!d || d.kfKey !== kfKey) {
+            if (e.button !== 0) return;
+            suppressNextClick();
             if (e.shiftKey) onShiftClickKeyframe?.(elementId, kf.percentage);
             else onClickKeyframe?.(kf.percentage);
             return;
@@ -186,6 +220,7 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
           dragRef.current = null;
           setPreview(null);
           e.currentTarget.releasePointerCapture?.(e.pointerId);
+          suppressNextClick();
           const res = resolveKeyframeDrag({
             pointerDownX: d.startX,
             pointerUpX: e.clientX,
@@ -194,11 +229,20 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
             draggedIndex: i,
             sortedClipPcts,
           });
-          if (res.kind === "click") {
+          if (res.kind === "click" || res.kind === "noop") {
+            // "noop" is a press with enough pointer jitter to arm a drag (canDrag
+            // is on for every diamond once the clip is selected) that resolved
+            // back onto ~the same position — no real retime, so treat it as the
+            // click it was. Otherwise a normal click with a few px of mouse/
+            // trackpad drift silently does nothing: no selection, no move.
             if (e.shiftKey) onShiftClickKeyframe?.(elementId, kf.percentage);
             else onClickKeyframe?.(kf.percentage);
           } else if (res.kind === "move" && res.toClipPct != null) {
             onMoveKeyframe?.(elementId, d.fromClipPct, res.toClipPct);
+            // A retime still targeted this exact diamond — park/select it at its
+            // new position, same as a plain click, or a drag that actually moved
+            // something looks identical to one that silently did nothing.
+            onClickKeyframe?.(res.toClipPct);
           }
         };
 

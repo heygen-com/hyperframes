@@ -9,6 +9,7 @@ import {
   getInlineScriptSyntaxError,
   TIMELINE_REGISTRY_INIT_PATTERN,
   TIMELINE_REGISTRY_ASSIGN_PATTERN,
+  TIMELINE_REGISTRY_OBJECT_LITERAL_PATTERN,
   INVALID_SCRIPT_CLOSE_PATTERN,
 } from "../utils";
 
@@ -68,6 +69,14 @@ const ORPHAN_CSS_AT_RULE_PATTERN =
   /(?:^|\s)@(?:container|font-face|keyframes|layer|media|page|property|scope|supports)[^{<]*\{[\s\S]*?:[\s\S]*?\}/i;
 const ORPHAN_CSS_RULE_PATTERN =
   /(?:^|\s)(?:\/\*[\s\S]*?\*\/\s*)?(?:@[a-z-]+[^{}<]*|[.#][\w-]+[^{}<]*|[a-z][\w-]*(?:\s+[.#:[\w-][^{}<]*)?)\s*\{[^{}]*:[^{}]*\}/i;
+const VISIBLE_MARKUP_COMMENT_PATTERN = /\/\*[\s\S]*?\*\//g;
+const VISIBLE_MARKUP_COMMENT_PROTECTED_BLOCK_PATTERN =
+  /<(style|script|template|title|noscript|pre|code|textarea|text)\b[^>]*>[\s\S]*?<\/\1(?:\s[^>]*)?>/gi;
+
+interface SourceRange {
+  start: number;
+  end: number;
+}
 
 function findCodeFenceLeak(headWithoutValidBlocks: string): string | null {
   return MARKDOWN_CODE_FENCE_PATTERN.exec(headWithoutValidBlocks)?.[0] ?? null;
@@ -127,6 +136,50 @@ function findLeakedTextBeforeCompositionRoot(
   return findLeakedTextInHeadContent(source.slice(prefixStart, prefixEnd));
 }
 
+function findProtectedVisibleMarkupRanges(source: string): SourceRange[] {
+  const ranges: SourceRange[] = [];
+  for (const match of source.matchAll(VISIBLE_MARKUP_COMMENT_PROTECTED_BLOCK_PATTERN)) {
+    ranges.push({ start: match.index, end: match.index + match[0].length });
+  }
+  return ranges;
+}
+
+function isInsideSourceRange(index: number, ranges: SourceRange[]): boolean {
+  return ranges.some((range) => range.start <= index && index < range.end);
+}
+
+function isInsideHtmlTag(source: string, index: number): boolean {
+  let inTag = false;
+  let quote: '"' | "'" | null = null;
+  for (let i = 0; i < index; i++) {
+    const char = source[i];
+    if (!inTag) {
+      if (char === "<") inTag = true;
+      continue;
+    }
+    if (quote) {
+      if (char === quote) quote = null;
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+    } else if (char === ">") {
+      inTag = false;
+    }
+  }
+  return inTag;
+}
+
+function findVisibleMarkupCommentLeak(source: string): string | null {
+  const protectedRanges = findProtectedVisibleMarkupRanges(source);
+  for (const match of source.matchAll(VISIBLE_MARKUP_COMMENT_PATTERN)) {
+    if (isInsideHtmlTag(source, match.index)) continue;
+    if (isInsideSourceRange(match.index, protectedRanges)) continue;
+    return match[0];
+  }
+  return null;
+}
+
 export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   // root_missing_composition_id + root_missing_dimensions
   ({ rootTag }) => {
@@ -174,6 +227,23 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
     ];
   },
 
+  // visible_markup_comment
+  ({ source }) => {
+    const snippet = findVisibleMarkupCommentLeak(source);
+    if (!snippet) return [];
+    return [
+      {
+        code: "visible_markup_comment",
+        severity: "error",
+        message:
+          "CSS/JS block comment syntax (`/* ... */`) appears in visible HTML markup. HTML only treats `<!-- ... -->` as comments, so this renders as on-screen text.",
+        fixHint:
+          "Remove the text or convert it to a real HTML comment (`<!-- ... -->`). Keep CSS comments inside `<style>` and JS comments inside `<script>`.",
+        snippet: truncateSnippet(snippet),
+      },
+    ];
+  },
+
   // missing_timeline_registry + timeline_registry_missing_init
   ({ source, rawSource, options }) => {
     // Sub-compositions inherit window.__timelines from the host composition
@@ -183,7 +253,8 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
     const findings: HyperframeLintFinding[] = [];
     if (
       !TIMELINE_REGISTRY_INIT_PATTERN.test(source) &&
-      !TIMELINE_REGISTRY_ASSIGN_PATTERN.test(source)
+      !TIMELINE_REGISTRY_ASSIGN_PATTERN.test(source) &&
+      !TIMELINE_REGISTRY_OBJECT_LITERAL_PATTERN.test(source)
     ) {
       findings.push({
         code: "missing_timeline_registry",

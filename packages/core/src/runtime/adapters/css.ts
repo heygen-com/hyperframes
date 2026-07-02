@@ -20,6 +20,35 @@ export function createCssAdapter(params?: {
     }
   };
 
+  const resolveEntryStartSeconds = (el: HTMLElement): number =>
+    params?.resolveStartSeconds
+      ? params.resolveStartSeconds(el)
+      : Number.parseFloat(el.getAttribute("data-start") ?? "0") || 0;
+
+  /**
+   * End time (seconds, relative to composition start) for one WAAPI
+   * animation handle. `endSeconds` is set only when the timing is readable
+   * AND finite; `unbounded` is true when a timing was read but its endTime
+   * is Infinity/NaN (an infinite iteration count the caller can't
+   * auto-infer a duration from) — distinct from "no timing available at
+   * all" (both fields absent), which callers should simply skip.
+   */
+  const inferAnimationEndSeconds = (
+    animation: Animation,
+    startSeconds: number,
+  ): { endSeconds?: number; unbounded?: true } => {
+    let timing: { endTime?: number | string } | null = null;
+    try {
+      timing = animation.effect?.getComputedTiming?.() ?? null;
+    } catch (err) {
+      swallow("runtime.adapters.css.site5", err);
+    }
+    if (!timing) return {};
+    const endTimeMs = Number(timing.endTime);
+    if (!Number.isFinite(endTimeMs)) return { unbounded: true };
+    return { endSeconds: startSeconds + endTimeMs / 1000 };
+  };
+
   const seekAnimations = (animations: Animation[], timeMs: number) => {
     for (const animation of animations) {
       try {
@@ -89,13 +118,27 @@ export function createCssAdapter(params?: {
         });
       }
     },
+    getInferredDurationSeconds: () => {
+      let maxEndSeconds = 0;
+      for (const entry of entries) {
+        if (!entry.el.isConnected) continue;
+        const start = resolveEntryStartSeconds(entry.el);
+        for (const animation of getAnimationsForElement(entry.el)) {
+          const result = inferAnimationEndSeconds(animation, start);
+          // Unbounded (Infinity/NaN endTime) animations are skipped here —
+          // they never contribute to maxEndSeconds. A finite animation
+          // elsewhere on the composition still supplies a valid duration
+          // signal; only fall through to null when nothing finite was found.
+          if (result.endSeconds != null) maxEndSeconds = Math.max(maxEndSeconds, result.endSeconds);
+        }
+      }
+      return maxEndSeconds > 0 ? maxEndSeconds : null;
+    },
     seek: (ctx) => {
       const time = Number(ctx.time) || 0;
       for (const entry of entries) {
         if (!entry.el.isConnected) continue;
-        const start = params?.resolveStartSeconds
-          ? params.resolveStartSeconds(entry.el)
-          : Number.parseFloat(entry.el.getAttribute("data-start") ?? "0") || 0;
+        const start = resolveEntryStartSeconds(entry.el);
         const localTimeMs = Math.max(0, time - start) * 1000;
         const animations = entry.animations;
         if (animations.length > 0) {

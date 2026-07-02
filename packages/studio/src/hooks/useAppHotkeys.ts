@@ -228,6 +228,9 @@ function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCallbacks
   }
 
   if (event.key === "s" && !event.altKey) {
+    // Reserve bare `s` for Split even when the current selection cannot split,
+    // so secondary listeners do not reinterpret the same key as Snap toggle.
+    event.preventDefault();
     const { selectedElementId, elements, currentTime } = usePlayerStore.getState();
     if (selectedElementId) {
       const el = elements.find((e) => (e.key ?? e.id) === selectedElementId);
@@ -237,7 +240,6 @@ function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCallbacks
         currentTime > el.start &&
         currentTime < el.start + el.duration
       ) {
-        event.preventDefault();
         void cb.handleTimelineElementSplit(el, currentTime);
         return;
       }
@@ -245,7 +247,6 @@ function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCallbacks
       // that isn't in the raw `elements` list, so the s-key can't resolve them.
       // Nudge toward the razor tool instead of failing silently.
       if (!el && selectedElementId.includes("#")) {
-        event.preventDefault();
         cb.showToast("Use the razor tool (B) to split clips inside a sub-composition", "info");
         return;
       }

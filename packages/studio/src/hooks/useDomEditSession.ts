@@ -87,7 +87,7 @@ export function useDomEditSession({
   showToast,
   refreshPreviewDocumentVersion,
   queueDomEditSave,
-  readProjectFile: _readProjectFile,
+  readProjectFile,
   writeProjectFile,
   updateEditingFileContent,
   domEditSaveTimestampRef,
@@ -111,7 +111,6 @@ export function useDomEditSession({
   forceReloadSdkSession,
 }: UseDomEditSessionParams) {
   void _setRefreshKey;
-  void _readProjectFile;
 
   // ── Selection ──
 
@@ -295,7 +294,14 @@ export function useDomEditSession({
     // the SDK resolves each reordered element (the reorderElements op's targets).
     onReorderShadow: sdkSession
       ? (targets: string[]) => {
-          for (const target of targets) recordResolverParity(sdkSession, target, "reorderElements");
+          // Single-flight: every target in one reorder batch shares the same file, so
+          // memoize the read instead of firing one fetch per unresolved target.
+          let reorderSrcPromise: Promise<string> | undefined;
+          const reorderSrc = activeCompPath
+            ? () => (reorderSrcPromise ??= readProjectFile(activeCompPath))
+            : undefined;
+          for (const target of targets)
+            void recordResolverParity(sdkSession, target, "reorderElements", reorderSrc);
         }
       : undefined,
   });

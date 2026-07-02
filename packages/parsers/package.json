@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/parsers",
-  "version": "0.7.22",
+  "version": "0.7.26",
   "repository": {
     "type": "git",
     "url": "https://github.com/heygen-com/hyperframes",
@@ -81,6 +81,12 @@
       "node": "./dist/composition.js",
       "import": "./src/composition.ts",
       "types": "./src/composition.ts"
+    },
+    "./sub-composition-validity": {
+      "bun": "./src/subCompositionValidity.ts",
+      "node": "./dist/subCompositionValidity.js",
+      "import": "./src/subCompositionValidity.ts",
+      "types": "./src/subCompositionValidity.ts"
     }
   },
   "publishConfig": {
@@ -130,6 +136,10 @@
       "./composition": {
         "import": "./dist/composition.js",
         "types": "./dist/composition.d.ts"
+      },
+      "./sub-composition-validity": {
+        "import": "./dist/subCompositionValidity.js",
+        "types": "./dist/subCompositionValidity.d.ts"
       }
     },
     "main": "./dist/index.js",

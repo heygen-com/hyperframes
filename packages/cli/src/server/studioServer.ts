@@ -16,6 +16,7 @@ import {
   loadRuntimeSourceSignature,
 } from "./runtimeSource.js";
 import { VERSION as version } from "../version.js";
+import { buildStudioHeadScripts, resolveCliTelemetryDistinctId } from "./telemetryIdentity.js";
 import { emitStudioRenderComplete, emitStudioRenderError } from "./studioRenderTelemetry.js";
 import {
   createStudioManualEditsRenderBodyScript,
@@ -566,6 +567,15 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     return serve();
   });
 
+  // CLI → Studio telemetry identity endpoint (Layer 1). Studio reads the
+  // injected `window.__HF_CLI_DISTINCT_ID` first; this GET is a fallback for
+  // clients that can't rely on the injected global. Returns the CLI's anonymous
+  // distinct id (no PII) so the browser session can join the CLI's PostHog
+  // person, or `{ distinctId: null }` when CLI telemetry is disabled.
+  app.get("/api/telemetry-identity", (c) => {
+    return c.json({ distinctId: resolveCliTelemetryDistinctId() });
+  });
+
   app.get("/api/events", (c) => {
     return streamSSE(c, async (stream) => {
       const listener = (path: string) => {
@@ -700,9 +710,12 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       );
     }
     let html = readFileSync(indexPath, "utf-8");
-    const envScript = buildRuntimeEnvScript();
-    if (envScript) {
-      html = html.replace("<head>", `<head>${envScript}`);
+    // Inject before the studio bundle runs. Identity script first (see
+    // buildStudioHeadScripts) so the CLI distinct id is on `window` by the time
+    // telemetry init reads it.
+    const headScript = buildStudioHeadScripts(buildRuntimeEnvScript());
+    if (headScript) {
+      html = html.replace("<head>", `<head>${headScript}`);
     }
     return c.html(html);
   });

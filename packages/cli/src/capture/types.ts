@@ -189,6 +189,17 @@ export interface ComponentStyle {
   height: string;
 }
 
+export interface StatCellStyle {
+  background: string;
+  borderRadius: string;
+  border: string;
+  boxShadow: string;
+  /** the large numeral's type */
+  numberFontSize: string;
+  numberFontWeight: string;
+  numberColor: string;
+}
+
 export interface DesignStyles {
   typography: TypographyRole[];
   spacing: {
@@ -200,6 +211,12 @@ export interface DesignStyles {
   buttons: ComponentStyle[];
   cards: ComponentStyle[];
   nav: ComponentStyle | null;
+  /** pill / badge / chip / tag — small rounded labelled elements */
+  chips?: ComponentStyle[];
+  /** metric / KPI cells (a large numeral + label) */
+  statCells?: StatCellStyle[];
+  /** tab controls */
+  tabs?: ComponentStyle[];
 }
 
 // ── Assets ──────────────────────────────────────────────────────────────────

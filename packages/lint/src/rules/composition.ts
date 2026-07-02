@@ -1,5 +1,12 @@
 import type { LintContext, HyperframeLintFinding, ExtractedBlock } from "../context";
-import { findHtmlTag, readAttr, readJsonAttr, stripJsComments, truncateSnippet } from "../utils";
+import {
+  findHtmlTag,
+  readAttr,
+  readJsonAttr,
+  stripJsComments,
+  truncateSnippet,
+  WINDOW_TIMELINE_ASSIGN_PATTERN,
+} from "../utils";
 import { COMPOSITION_VARIABLE_TYPES } from "@hyperframes/parsers/composition";
 
 // Agent guidance thresholds: warning-only nudges for files/tracks that become hard
@@ -7,6 +14,14 @@ import { COMPOSITION_VARIABLE_TYPES } from "@hyperframes/parsers/composition";
 const MAX_COMPOSITION_LINES = 300;
 const MAX_TIMED_ELEMENTS_PER_TRACK = 3;
 const TRACK_DENSITY_EXEMPT_TAGS = new Set(["audio", "script", "style", "video"]);
+
+// `parseFloat("0.1") + parseFloat("0.2") = 0.30000000000000004`. Sub-second
+// authored adjacencies survive parse + add as a value a few ulps above the
+// next clip's start; a strict `>` fires the overlap rule on adjacencies that
+// are exact in the source HTML. 1μs sits ~11 orders of magnitude above the
+// observed drift (worst ~2e-16s across every realistic decimal pair) and 4
+// below one 60fps frame (~16.67ms), so this only ever swallows float slop.
+const OVERLAP_EPSILON_SECONDS = 1e-6;
 
 function countPhysicalLines(source: string): number {
   if (source.length === 0) return 0;
@@ -399,7 +414,7 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
         const current = clips[i];
         const next = clips[i + 1];
         if (!current || !next) continue;
-        if (current.end > next.start) {
+        if (current.end - next.start > OVERLAP_EPSILON_SECONDS) {
           findings.push({
             code: "overlapping_clips_same_track",
             severity: "error",
@@ -719,5 +734,149 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
         snippet: truncateSnippet(rootTag.raw),
       },
     ];
+  },
+
+  // root_composition_missing_duration_source
+  //
+  // The render engine (packages/engine/src/services/frameCapture.ts) needs a
+  // positive window.__hf.duration to know how many frames to capture. GSAP
+  // timelines set this automatically. Non-GSAP runtimes (CSS, WAAPI, Lottie)
+  // are now auto-inferred by the runtime too (see
+  // packages/core/src/runtime/init.ts resolveAdapterDurationFloorSeconds and
+  // the adapters' getInferredDurationSeconds) — so data-duration is optional
+  // wherever the runtime can work it out on its own.
+  //
+  // This rule fires for cases where the total render length is not reliably
+  // determinable without an explicit data-duration:
+  //   - No GSAP timeline AND no data-duration AND no non-GSAP animation
+  //     signal at all (nothing for any adapter to discover — render fails).
+  //   - Three.js used with no data-duration (no discoverable AnimationClip
+  //     duration in this codebase's adapter — see adapters/three.ts).
+  //   - Any infinite CSS animation-iteration-count with no data-duration,
+  //     EVEN when a finite CSS animation is present alongside it. An unbounded
+  //     animation makes the intended total length ambiguous — the runtime will
+  //     infer a finite sibling's length if one exists, but that's a fallback,
+  //     not a declaration of intent, so we still require data-duration here.
+  //     (This is intentionally stricter than the runtime's own inference.)
+  // Purely finite CSS/WAAPI animations and Lottie are excluded — the runtime
+  // infers those unambiguously, so requiring data-duration there would be a
+  // false positive against the runtime's own auto-inference. Note lint is
+  // advisory by default (see shouldBlockRender) — it only blocks render under
+  // --strict/--strict-all — so a strict flag here nudges toward an explicit,
+  // guaranteed-correct value without failing renders that would succeed.
+  // fallow-ignore-next-line complexity
+  ({ rootTag, scripts, styles, tags, options }) => {
+    if (options.isSubComposition) return [];
+    if (!rootTag) return [];
+    // Not every file linted as a "root" HTML document is a video composition
+    // — e.g. a slideshow demo.html mounts <hyperframes-player src="index.html">
+    // with no data-composition-id of its own. Nothing to capture there, so
+    // there's no duration contract to enforce.
+    if (readAttr(rootTag.raw, "data-composition-id") === null) return [];
+    if (readAttr(rootTag.raw, "data-duration") !== null) return [];
+
+    // Strip comments before scanning for signals — a commented-out
+    // `.animate(...)` call or `/* animation: spin 2s infinite; */` must not
+    // satisfy the "has a duration source" check, or the composition still
+    // fails at render with zero duration despite lint passing.
+    const allScriptTexts = scripts.map((s) => stripJsComments(s.content));
+    const hasGsapTimeline = allScriptTexts.some((t) => /gsap\.timeline\s*\(/.test(t));
+    const hasRegisteredTimeline = allScriptTexts.some((t) =>
+      WINDOW_TIMELINE_ASSIGN_PATTERN.test(t),
+    );
+    // A GSAP timeline drives duration via window.__timelines regardless of
+    // data-duration — nothing to flag once one is registered.
+    if (hasGsapTimeline && hasRegisteredTimeline) return [];
+
+    const allCss = styles.map((s) => s.content).join("\n");
+    const allInlineStyles = tags.map((t) => readAttr(t.raw, "style") || "").join("\n");
+    const combinedCss = `${allCss}\n${allInlineStyles}`.replace(/\/\*[\s\S]*?\*\//g, "");
+
+    const usesLottie =
+      tags.some((t) => readAttr(t.raw, "data-lottie-src") !== null) ||
+      allScriptTexts.some((t) => /lottie\.(loadAnimation)\b|__hfLottie\b/.test(t));
+    const usesThree = allScriptTexts.some((t) => /\bTHREE\./.test(t));
+    // `.animate([...], ...)` catches the array-literal keyframes form;
+    // `.animate({...}, ...)` catches the object-literal (PropertyIndexedKeyframes)
+    // form; `.animate(someVar, ...)` catches keyframes built up in a variable
+    // first.
+    const usesWaapi = allScriptTexts.some((t) => /\.animate\s*\(\s*[[{$A-Za-z_]/.test(t));
+    const hasCssAnimationName = /\banimation(?:-name)?\s*:/.test(combinedCss);
+    const hasInfiniteCssAnimation =
+      /\banimation(?:-iteration-count)?\s*:[^;{}]*(?<![\w-])infinite(?![\w-])/.test(combinedCss);
+
+    const hasAnyNonGsapSignal = usesLottie || usesThree || usesWaapi || hasCssAnimationName;
+
+    if (!hasAnyNonGsapSignal) {
+      // No GSAP timeline, no data-duration, and nothing for any adapter to
+      // discover — the composition has no source of truth for duration at
+      // all. This is the exact shape of the 27K "zero duration" render
+      // failures this rule exists to catch before render time.
+      return [
+        {
+          code: "root_composition_missing_duration_source",
+          severity: "error",
+          message:
+            "Root composition has no data-duration, no GSAP timeline, and no CSS/WAAPI/Lottie/Three.js " +
+            "animation for the runtime to infer a duration from. The render engine cannot determine " +
+            'how long to capture and will fail with "Composition has zero duration".',
+          fixHint:
+            'Add data-duration="<seconds>" to the root element, or add a paused GSAP timeline registered ' +
+            "on window.__timelines.",
+          snippet: truncateSnippet(rootTag.raw),
+        },
+      ];
+    }
+
+    if (usesThree) {
+      // No AnimationMixer/AnimationClip discovery in the three.js adapter
+      // today (see adapters/three.ts) — genuinely not inferable.
+      return [
+        {
+          code: "root_composition_missing_duration_source",
+          severity: "error",
+          message:
+            "Root composition uses Three.js with no data-duration. The runtime cannot discover a " +
+            "Three.js scene's duration automatically (no AnimationClip/AnimationMixer inspection) — " +
+            'render will fail with "Composition has zero duration".',
+          fixHint: 'Add data-duration="<seconds>" to the root element.',
+          snippet: truncateSnippet(rootTag.raw),
+        },
+      ];
+    }
+
+    if (hasInfiniteCssAnimation && !usesLottie && !usesWaapi) {
+      // An infinite/unbounded CSS animation makes the intended total length
+      // ambiguous, so we require an explicit data-duration even when a finite
+      // CSS animation is present alongside it. This is deliberately stricter
+      // than the runtime's own inference: the CSS adapter's
+      // getInferredDurationSeconds (see adapters/css.ts) returns the longest
+      // finite animation end-time when one exists (so a finite sibling would
+      // render at that length) and null when every animation is unbounded (so
+      // a render with no finite source fails outright). Either way the author
+      // hasn't declared how long the video should be — a decorative infinite
+      // spinner next to a 3s fade doesn't tell us the clip is meant to be 3s
+      // — so we flag it and let them state intent. The message stays honest
+      // about both outcomes rather than claiming the render always fails.
+      return [
+        {
+          code: "root_composition_missing_duration_source",
+          severity: "error",
+          message:
+            "Root composition uses a CSS animation with animation-iteration-count: infinite and no " +
+            "data-duration, so the intended total length is ambiguous. If a finite animation is also " +
+            "present the runtime infers that length; with no finite source the render fails with " +
+            '"Composition has zero duration". Declare the intended length explicitly.',
+          fixHint:
+            'Add data-duration="<seconds>" to the root element with the intended total length.',
+          snippet: truncateSnippet(rootTag.raw),
+        },
+      ];
+    }
+
+    // Finite CSS animation, WAAPI .animate(), or Lottie — the runtime infers
+    // duration from these at render time (see resolveAdapterDurationFloorSeconds
+    // in runtime/init.ts). Not an error; data-duration is optional here.
+    return [];
   },
 ];

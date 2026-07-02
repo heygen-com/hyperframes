@@ -6,6 +6,7 @@ import {
   canonicalizeFamily,
   extractFontMetadata,
   inferWeightFromSubfamily,
+  isIconCharacterSet,
 } from "./fontMetadataExtractor.js";
 
 describe("inferWeightFromSubfamily", () => {
@@ -172,5 +173,43 @@ describe("extractFontMetadata", () => {
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }
+  });
+});
+
+describe("isIconCharacterSet", () => {
+  // codepoint helpers
+  const latin = Array.from({ length: 26 }, (_, i) => 0x41 + i); // A-Z
+  const pua = Array.from({ length: 20 }, (_, i) => 0xe000 + i); // Private Use Area
+  const puaSupp = [0xf0000, 0xf0001, 0x10fffd]; // supplementary PUA-A/B
+
+  it("flags a font whose glyphs are mostly Private-Use-Area (an icon font)", () => {
+    // ~63% PUA, mirroring a real "hushly" icon set
+    expect(isIconCharacterSet([...pua, ...latin.slice(0, 12)])).toBe(true);
+  });
+
+  it("flags a near-100% PUA set (Font-Awesome-style)", () => {
+    expect(isIconCharacterSet([...pua, ...puaSupp])).toBe(true);
+  });
+
+  it("does NOT flag a normal Latin text font", () => {
+    expect(isIconCharacterSet(latin)).toBe(false);
+  });
+
+  it("does NOT flag a unicode-range subset with no Latin letters but 0% PUA", () => {
+    // e.g. a cyrillic/latin-ext subset served by Next.js/Google Fonts — the false-positive case
+    const cyrillic = Array.from({ length: 40 }, (_, i) => 0x0410 + i);
+    expect(isIconCharacterSet(cyrillic)).toBe(false);
+  });
+
+  it("does NOT flag a PUA-heavy TEXT font that still has a full Latin alphabet", () => {
+    // Apple SF Pro (~81% PUA, ships SF Symbols in the PUA) and Descript's Booton (~50% PUA) are
+    // full text fonts — the Latin alphabet gate must keep them out of the icon bucket.
+    const fullAlphabet = latin; // A-Z (26)
+    const sfProLike = [...fullAlphabet, ...Array.from({ length: 200 }, (_, i) => 0xe000 + i)];
+    expect(isIconCharacterSet(sfProLike)).toBe(false);
+  });
+
+  it("returns false for an empty character set", () => {
+    expect(isIconCharacterSet([])).toBe(false);
   });
 });

@@ -800,8 +800,10 @@ export async function bundleToSingleHtml(
     parseHostVariables: parseHostVariableValues,
     buildScopeSelector: (compId: string) => cssAttributeSelector("data-composition-id", compId),
     scriptErrorLabel: "[HyperFrames] composition script error:",
-    onMissingComposition: (srcPath: string) => {
-      console.warn(`[Bundler] Composition file not found: ${srcPath}`);
+    onMissingComposition: (srcPath: string, reason?: string) => {
+      console.warn(
+        `[Bundler] Skipping sub-composition "${srcPath}": ${reason ?? "the file could not be found"}.`,
+      );
     },
   });
   const compStyleChunks: string[] = [...subCompResult.styles];

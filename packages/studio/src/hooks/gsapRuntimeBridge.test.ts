@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { tryGsapDragIntercept } from "./gsapRuntimeBridge";
+import { usePlayerStore } from "../player/store/playerStore";
 
 /**
  * Regression: `selectedGsapAnimations` (and the fetch fallback) is an async
@@ -176,5 +177,70 @@ describe("tryGsapDragIntercept — stale-parse guard (no resurrection after dele
 
     const staleLogged = logSpy.mock.calls.some((c) => String(c[1] ?? "").includes("stale parse"));
     expect(staleLogged).toBe(false);
+  });
+});
+
+// Regression (#1808): with the global auto-keyframe toggle off, dragging an
+// element that already has a keyframed position tween must shift the whole
+// tween (a "replace-with-keyframes" carrying every original percentage) —
+// the same path Alt-drag already takes — instead of inserting a keyframe at
+// the playhead.
+describe("tryGsapDragIntercept — autoKeyframeEnabled toggle (#1808)", () => {
+  afterEach(() => {
+    usePlayerStore.setState({ autoKeyframeEnabled: true });
+  });
+
+  const keyframedPositionAnim = {
+    id: "#puck-b-to-position",
+    targetSelector: "#puck-b",
+    propertyGroup: "position",
+    method: "to",
+    properties: {},
+    position: 0,
+    resolvedStart: 0,
+    duration: 2,
+    keyframes: {
+      keyframes: [
+        { percentage: 0, properties: { x: 0, y: 0 } },
+        { percentage: 100, properties: { x: 100, y: 0 } },
+      ],
+    },
+  } as unknown as GsapAnimation;
+
+  it("shifts the whole tween instead of adding a keyframe when the toggle is off", async () => {
+    usePlayerStore.setState({ autoKeyframeEnabled: false, currentTime: 2 }); // playhead at 100%
+    const commitMutation = vi.fn();
+    const iframe = fakeIframe("puck-b", []);
+
+    const handled = await tryGsapDragIntercept(
+      selection,
+      { x: -50, y: 0 },
+      [keyframedPositionAnim],
+      iframe,
+      commitMutation,
+    );
+
+    expect(handled).toBe(true);
+    const types = commitMutation.mock.calls.map(([, m]) => m.type);
+    expect(types).toContain("replace-with-keyframes");
+    expect(types).not.toContain("add-keyframe");
+  });
+
+  it("still adds/updates a keyframe at the playhead when the toggle is on (default)", async () => {
+    usePlayerStore.setState({ autoKeyframeEnabled: true, currentTime: 2 });
+    const commitMutation = vi.fn();
+    const iframe = fakeIframe("puck-b", []);
+
+    const handled = await tryGsapDragIntercept(
+      selection,
+      { x: -50, y: 0 },
+      [keyframedPositionAnim],
+      iframe,
+      commitMutation,
+    );
+
+    expect(handled).toBe(true);
+    const types = commitMutation.mock.calls.map(([, m]) => m.type);
+    expect(types).not.toContain("replace-with-keyframes");
   });
 });

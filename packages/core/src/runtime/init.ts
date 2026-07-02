@@ -496,7 +496,16 @@ export function initSandboxRuntimeModular(): void {
 
   const resolveMediaStartSeconds = (element: Element, fallback = 0): number => {
     if (!element.hasAttribute("data-hf-auto-start") && element.hasAttribute("data-start")) {
-      return Math.max(0, Number(element.getAttribute("data-start") ?? 0) || 0);
+      // `data-start` is authored relative to the media element's OWN sub-
+      // composition, not the root timeline — `fallback` carries the host
+      // composition's resolved absolute start (see syncMediaForCurrentState's
+      // inheritedStart), so it must be added, not discarded. Skipping it made
+      // a nested video play from root t=0 instead of holding until its
+      // parent scene began (issue #1838) — resolveStartForElement's own
+      // absolute-expression branch already adds this same host offset, this
+      // fast literal-value path just didn't.
+      const own = Math.max(0, Number(element.getAttribute("data-start") ?? 0) || 0);
+      return own + fallback;
     }
     return resolveStartForElement(element, fallback);
   };
@@ -673,6 +682,32 @@ export function initSandboxRuntimeModular(): void {
     );
   };
 
+  // Non-GSAP runtimes (CSS, WAAPI, Lottie) have no window.__timelines entry
+  // and thus no authored source of truth for total duration. Adapters that
+  // implement getInferredDurationSeconds() report the longest end time they
+  // can discover from their own animations (see runtime/types.ts). Folding
+  // that into the duration floor here — the same mechanism data-duration and
+  // media windows already use — makes data-duration optional wherever the
+  // runtime can figure the duration out on its own, instead of hard-failing
+  // capture with "Composition has zero duration".
+  const resolveAdapterDurationFloorSeconds = (): number | null => {
+    let maxSeconds = 0;
+    for (const adapter of state.deterministicAdapters) {
+      const getter = adapter.getInferredDurationSeconds;
+      if (typeof getter !== "function") continue;
+      let inferred: number | null = null;
+      try {
+        inferred = getter();
+      } catch (err) {
+        swallow("runtime.init.adapterDuration", err);
+      }
+      if (typeof inferred === "number" && Number.isFinite(inferred) && inferred > 0) {
+        maxSeconds = Math.max(maxSeconds, inferred);
+      }
+    }
+    return maxSeconds > MIN_VALID_TIMELINE_DURATION_SECONDS ? maxSeconds : null;
+  };
+
   const getSafeTimelineDurationSeconds = (
     timeline: RuntimeTimelineLike | null,
     fallback = 0,
@@ -680,7 +715,12 @@ export function initSandboxRuntimeModular(): void {
     const timelineDuration = getTimelineDurationSeconds(timeline);
     const mediaFloor = resolveMediaDurationFloorSeconds();
     const authoredCompositionFloor = resolveAuthoredCompositionDurationFloorSeconds();
-    const durationFloor = Math.max(mediaFloor ?? 0, authoredCompositionFloor ?? 0);
+    const adapterFloor = resolveAdapterDurationFloorSeconds();
+    const durationFloor = Math.max(
+      mediaFloor ?? 0,
+      authoredCompositionFloor ?? 0,
+      adapterFloor ?? 0,
+    );
     const fallbackDuration =
       Number.isFinite(fallback) && fallback > MIN_VALID_TIMELINE_DURATION_SECONDS ? fallback : 0;
     let safeDuration = 0;

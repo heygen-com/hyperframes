@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef } from "react";
 import { findUnsafeMutationValues } from "@hyperframes/core/studio-api/finite-mutation";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
+import { usePlayerStore } from "../player/store/playerStore";
 import { applySoftReload, extractGsapScriptText } from "../utils/gsapSoftReload";
 import type { SoftReloadResult } from "../utils/gsapSoftReload";
 import { trackStudioEvent } from "../utils/studioTelemetry";
@@ -66,7 +67,11 @@ function softReloadOrEscalate(
   reloadPreview: () => void,
   origin: "preview_sync" | "sdk_refresh",
 ): void {
-  const result: SoftReloadResult = applySoftReload(iframe, scriptText, reloadPreview);
+  // Seek the rebuilt timeline to the studio's own authoritative scrub position,
+  // not the iframe's raw `__player.getTime()` — see the comment in
+  // applySoftReload for why the two can desync after a keyframe-node drag.
+  const currentTime = usePlayerStore.getState().currentTime;
+  const result: SoftReloadResult = applySoftReload(iframe, scriptText, reloadPreview, currentTime);
   if (result === "applied") return;
   trackStudioEvent("gsap_soft_reload_outcome", {
     origin,

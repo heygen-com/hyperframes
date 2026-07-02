@@ -86,6 +86,7 @@ class HyperframesPlayer extends HTMLElement {
   private _volume = 1;
   private _compositionWidth = 1920;
   private _compositionHeight = 1080;
+  private _rescaleWarned = false;
   private _directTimelineAdapter: DirectTimelineAdapter | null = null;
   private _directTimelineClock: DirectTimelineClock;
   private _parentTickRaf: number | null = null;
@@ -667,6 +668,10 @@ class HyperframesPlayer extends HTMLElement {
     this._ready = true;
     this.controlsApi?.updateTime(this._currentTime, duration);
     this.dispatchEvent(new CustomEvent("ready", { detail: { duration } }));
+    // stage-size may not have arrived yet (race in the runtime's postTimeline
+    // resolving the root's data-width/data-height on first paint) — rescale
+    // here too so cross-origin compositions never stay unscaled/untransformed.
+    this._rescale();
 
     const doc = this._getSameOriginIframeDocument();
     if (doc) this._media.setupFromIframe(doc);
@@ -698,7 +703,28 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   private _rescale() {
-    scaleIframeToFit(this, this.iframe, this._compositionWidth, this._compositionHeight);
+    const applied = scaleIframeToFit(
+      this,
+      this.iframe,
+      this._compositionWidth,
+      this._compositionHeight,
+    );
+    // A no-op before "ready" is expected (element not painted yet). A no-op
+    // once ready means the composition is stuck unscaled/untransformed —
+    // pinned to the iframe's default top-left position — with no evidence of
+    // why in the field. Surface it once (not on every ResizeObserver tick —
+    // a legitimately hidden/zero-sized player, e.g. a collapsed tab or
+    // off-screen carousel card, would otherwise spam the console forever).
+    if (!applied && this._ready && !this._rescaleWarned) {
+      this._rescaleWarned = true;
+      console.warn("[hyperframes-player] rescale no-op after ready — zero-size player element", {
+        src: this.getAttribute("src"),
+        offsetWidth: this.offsetWidth,
+        offsetHeight: this.offsetHeight,
+        compositionWidth: this._compositionWidth,
+        compositionHeight: this._compositionHeight,
+      });
+    }
   }
 
   private _onIframeLoad() {

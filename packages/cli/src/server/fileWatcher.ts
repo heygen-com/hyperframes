@@ -47,6 +47,15 @@ export function createProjectWatcher(projectDir: string): ProjectWatcher {
         }
       }, DEBOUNCE_MS);
     });
+    // fs.watch can fail asynchronously too (e.g. EMFILE from exhausted OS watch
+    // handles) — that surfaces as an 'error' event, not a thrown exception. An
+    // EventEmitter 'error' with no listener crashes the whole process, so this
+    // listener is required for the same "degrade gracefully" the catch below
+    // already promises for the synchronous failure mode.
+    watcher.on("error", () => {
+      watcher?.close();
+      watcher = null;
+    });
   } catch {
     // fs.watch may fail on some platforms — degrade gracefully (no auto-refresh)
   }

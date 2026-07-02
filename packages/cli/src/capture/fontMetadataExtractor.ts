@@ -67,6 +67,12 @@ export interface FontFileMetadata {
   variationAxes: string[];
   /** Whether identification came from the binary name table (the trustworthy source). */
   identified: boolean;
+  /**
+   * True when this is an ICON font — it has no basic Latin letters, or its glyphs live mostly in
+   * the Unicode Private Use Area (Font Awesome, swiper-icons, a custom "hushly" icon set, …).
+   * Consumers must NOT treat it as a text family: binding it to one renders headings as tofu/icons.
+   */
+  isIcon: boolean;
 }
 
 export interface FontFamilySummary {
@@ -149,6 +155,7 @@ function readSingleFont(fullPath: string, filename: string): FontFileMetadata {
     style: "normal",
     variationAxes: [],
     identified: false,
+    isIcon: false,
   };
 
   try {
@@ -185,10 +192,43 @@ function readSingleFont(fullPath: string, filename: string): FontFileMetadata {
       style,
       variationAxes,
       identified: true,
+      isIcon: detectIconFont(font),
     };
   } catch {
     return empty;
   }
+}
+
+/**
+ * Detect an ICON font by glyph coverage rather than by name (icon fonts often have arbitrary
+ * names like "hushly" or "swiper-icons" that no name-list can enumerate). See isIconCharacterSet
+ * for the rule (lacks a Latin alphabet AND mostly Private-Use-Area glyphs). `characterSet` is a
+ * fontkit runtime member not always in its typings, so it's read through a narrow local shape.
+ */
+function detectIconFont(font: Font): boolean {
+  const f = font as unknown as { characterSet?: number[] };
+  try {
+    return isIconCharacterSet(Array.isArray(f.characterSet) ? f.characterSet : []);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Detect an icon font from glyph coverage. Two conditions must BOTH hold:
+ *   1. it lacks a real Latin alphabet (< 26 of A-Za-z) — a text font ships the full alphabet;
+ *   2. most of its glyphs (> 50%) live in a Unicode Private Use Area.
+ * The Latin gate is essential: some text fonts pack thousands of PUA glyphs yet are plainly text —
+ * Apple's SF Pro (81% PUA, full A-Za-z, ships SF Symbols in the PUA), Descript's Booton (50% PUA,
+ * full A-Za-z). Flagging those by PUA ratio alone strips a brand's real typeface. Measured icon
+ * fonts: "hushly" 63% PUA / 7 letters, Font Awesome 95% PUA / 0 letters. Exported for testing.
+ */
+export function isIconCharacterSet(characterSet: number[]): boolean {
+  if (!characterSet.length) return false;
+  const isLatinLetter = (cp: number) => (cp >= 0x41 && cp <= 0x5a) || (cp >= 0x61 && cp <= 0x7a);
+  if (characterSet.filter(isLatinLetter).length >= 26) return false; // has an alphabet → a text font
+  const inPua = (cp: number) => (cp >= 0xe000 && cp <= 0xf8ff) || (cp >= 0xf0000 && cp <= 0x10fffd);
+  return characterSet.filter(inPua).length / characterSet.length > 0.5;
 }
 
 /** Aggregate per-file entries into per-family summaries — most useful shape for DESIGN.md. */

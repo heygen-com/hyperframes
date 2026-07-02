@@ -3,6 +3,7 @@ import type { DomEditSelection } from "./domEditing";
 import { useDomEditContext } from "../../contexts/DomEditContext";
 import { usePlayerStore } from "../../player/store/playerStore";
 import { parkPlayheadOnKeyframe } from "../../hooks/gsapDragCommit";
+import { commitWholePropertyOffset } from "../../hooks/gsapWholePropertyOffsetCommit";
 import { nearestPointOnPath, type MotionNodeRef } from "./motionPathGeometry";
 import { editableAnimationId, selectorFor } from "./motionPathSelection";
 import { ACCENT, MotionPathNode } from "./MotionPathNode";
@@ -334,13 +335,35 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
     // high zoom) would commit an identical value — a no-op undo entry. Skip the
     // commit, but don't treat it as a click either (the user did drag).
     if (x === Math.round(d.initX) && y === Math.round(d.initY)) return;
-    void commitNode(d.ref, x, y, animId, commitMutation);
+    // With auto-keyframe off (#1808), dragging a keyframe's node on the motion
+    // path (the common way to nudge a KEYFRAMED element's position on canvas,
+    // since the element renders exactly at its current keyframe) shifts the
+    // whole path instead of moving just that one keyframe.
+    const anim =
+      d.ref.type === "keyframe" ? selectedGsapAnimations?.find((a) => a.id === animId) : undefined;
+    if (
+      d.ref.type === "keyframe" &&
+      anim &&
+      selection &&
+      !usePlayerStore.getState().autoKeyframeEnabled
+    ) {
+      void commitWholePropertyOffset(
+        selection,
+        anim,
+        { x, y },
+        d.ref.pct,
+        iframeRef.current,
+        { commitMutation: (_sel, mutation, options) => commitMutation(mutation, options) },
+        "Move animation path",
+      );
+    } else {
+      void commitNode(d.ref, x, y, animId, commitMutation);
+    }
     // Park the playhead on the edited keyframe's time so the element previews AT
     // that keyframe. Without it, a playhead sitting before the tween renders the
     // element's base pose — the edit (correct on the path) looks like it vanished.
-    if (d.ref.type === "keyframe") {
-      const anim = selectedGsapAnimations?.find((a) => a.id === animId);
-      if (anim) parkPlayheadOnKeyframe(anim, d.ref.pct);
+    if (d.ref.type === "keyframe" && anim) {
+      parkPlayheadOnKeyframe(anim, d.ref.pct);
     }
   };
 

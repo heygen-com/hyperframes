@@ -100,6 +100,18 @@ describe("applySoftReload", () => {
     expect(contentWindow.__hfStudioManualEditsApply).toHaveBeenCalled();
   });
 
+  it("seeks to the caller-supplied currentTime override instead of the iframe's own __player.getTime()", () => {
+    // Regression: the iframe's raw __player.getTime() (2.0 here, per the mock)
+    // can desync from the studio's authoritative scrub position — e.g. a
+    // keyframe-node drag parks the playhead via the store before this reload's
+    // async commit resolves. The rebuilt timeline must re-seek to the caller's
+    // value, not the iframe's possibly-stale one.
+    const { iframe, contentWindow } = buildMockIframe();
+    const result = applySoftReload(iframe, SCRIPT_TEXT, undefined, 0);
+    expect(result).toBe("applied");
+    expect(contentWindow.__player.seek).toHaveBeenCalledWith(0);
+  });
+
   it("strips a stale inline transform from an orphaned (non-timeline-child) element", () => {
     // Repro: an element dragged via gsap.set whose keyframes were then removed is
     // no longer a timeline child, so the timeline-children sweep misses it. Its

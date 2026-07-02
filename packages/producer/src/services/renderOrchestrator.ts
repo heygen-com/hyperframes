@@ -69,6 +69,9 @@ import {
   type CapturePerfSummary,
   resolveBrowserGpuMode,
   resolveHeadlessShellPath,
+  scaleProtocolTimeoutForComposition,
+  isMemoryExhaustionError,
+  isTransientBrowserError,
 } from "@hyperframes/engine";
 import { join, dirname, resolve } from "path";
 import { randomUUID } from "crypto";
@@ -364,7 +367,13 @@ export interface CaptureAttemptSummary {
   attempt: number;
   workers: number;
   frameCount: number;
-  reason: "initial" | "retry";
+  /**
+   * `"transient-retry"` is a same-worker-count retry after a transient browser
+   * death (Target closed / tab crash); `"retry"` is the worker-halving retry
+   * after a recoverable timeout. Distinguished so transient-retry burn is
+   * countable for telemetry (dashboard 1783183).
+   */
+  reason: "initial" | "retry" | "transient-retry";
 }
 
 export interface RenderJob {
@@ -552,6 +561,17 @@ export function getNextRetryWorkerCount(currentWorkers: number): number {
 }
 
 /**
+ * Bounded number of retries for transient browser deaths (a `Target closed` /
+ * `Page crashed` — the tab died, not the composition). Distinct from the
+ * worker-count-halving retry: a transient death is often a one-off (contended
+ * host, OOM-killed tab, flaky CDP session) that clears on a fresh session, so
+ * we retry ONCE at the SAME worker count before falling through to the
+ * halving/structural-failure logic. Capped at 1 so a deterministically-dying
+ * tab can't loop.
+ */
+export const MAX_TRANSIENT_CAPTURE_RETRIES = 1;
+
+/**
  * A retry only pays off if the attempt that just finished captured at least one
  * frame toward its target. When it captured nothing (frames still missing >=
  * frames it set out to capture), the composition is structurally broken — a
@@ -575,6 +595,34 @@ export function isRecoverableParallelCaptureError(error: unknown): boolean {
     /Runtime\.callFunctionOn timed out|HeadlessExperimental\.beginFrame timed out|Waiting failed|timeout exceeded|timed out|Navigation timeout|Protocol error|Target closed/i.test(
       message,
     )
+  );
+}
+
+/**
+ * Turn a cryptic memory-exhaustion failure (V8 `Set maximum size exceeded`,
+ * heap-limit abort, oversized allocation) into an actionable message. These
+ * come from oversized compositions — very high resolution, very long duration,
+ * or a huge frame count — not composition-logic bugs, and a retry re-hits the
+ * same ceiling. The guidance points at the levers that actually reduce memory
+ * pressure. Returns the original message unchanged for non-OOM errors.
+ */
+export function describeMemoryExhaustion(
+  error: unknown,
+  ctx: { width?: number; height?: number; totalFrames?: number },
+): string | null {
+  if (!isMemoryExhaustionError(error)) return null;
+  const raw = normalizeErrorMessage(error);
+  const dims =
+    ctx.width && ctx.height
+      ? ` (${ctx.width}×${ctx.height}${ctx.totalFrames ? `, ${ctx.totalFrames} frames` : ""})`
+      : "";
+  return (
+    `Render ran out of memory${dims}: ${raw}\n` +
+    "The composition is too large for the available memory. To reduce memory pressure:\n" +
+    "  - Lower the output resolution or split the composition into shorter scenes.\n" +
+    "  - Reduce the frame count (shorter duration or lower fps).\n" +
+    "  - Run with fewer parallel workers (`--workers 1`).\n" +
+    "  - Set PRODUCER_LOW_MEMORY_MODE=true (or `--low-memory-mode`) to use the low-memory render profile."
   );
 }
 
@@ -622,6 +670,11 @@ export async function executeDiskCaptureWithAdaptiveRetry(options: {
   let currentWorkers = options.initialWorkerCount;
   let missingRanges: FrameRange[] | null = null;
   let attempt = 0;
+  let transientRetriesUsed = 0;
+  // Set when the *previous* iteration retried after a transient browser death,
+  // so the attempt it spawns is tagged `"transient-retry"` (vs the worker-halving
+  // `"retry"`) for telemetry. Reset after each attempt is recorded.
+  let pendingTransientRetry = false;
   const rangeStart = options.frameRangeStart ?? 0;
 
   while (true) {
@@ -630,8 +683,9 @@ export async function executeDiskCaptureWithAdaptiveRetry(options: {
       attempt,
       workers: currentWorkers,
       frameCount,
-      reason: attempt === 0 ? "initial" : "retry",
+      reason: attempt === 0 ? "initial" : pendingTransientRetry ? "transient-retry" : "retry",
     });
+    pendingTransientRetry = false;
 
     const attemptWorkDir = join(options.workDir, `capture-attempt-${attempt}`);
     const batches = missingRanges
@@ -715,6 +769,13 @@ export async function executeDiskCaptureWithAdaptiveRetry(options: {
       missingRanges = remaining;
       attempt++;
     } catch (error) {
+      // A cancelled render tears the browser down, which surfaces as a
+      // transient-looking `Target closed`. Rethrow immediately so cancellation
+      // never burns a retry (or logs a misleading transient-failure warning) —
+      // the caller's abort handling owns cancellation.
+      if (options.abortSignal?.aborted) {
+        throw error;
+      }
       const remaining = findMissingFrameRanges(
         options.totalFrames,
         options.framesDir,
@@ -725,6 +786,42 @@ export async function executeDiskCaptureWithAdaptiveRetry(options: {
       }
       const remainingCount = countFrameRanges(remaining);
       const madeProgress = captureAttemptMadeProgress(frameCount, remainingCount);
+
+      // Single bounded retry for a transient browser death (`Target closed` /
+      // `Page crashed` / `Session closed`): the tab died mid-capture, not the
+      // composition. Unlike the worker-halving retry below, this keeps the same
+      // worker count (parallelism isn't the problem) and does NOT require
+      // forward progress — a tab that dies before frame 0 is the exact case we
+      // want to recover. Bounded by MAX_TRANSIENT_CAPTURE_RETRIES so a
+      // deterministically-dying tab still fails instead of looping.
+      //
+      // Scope: this covers the parallel disk-capture path (the multi-worker
+      // renders where a contended host most often drops a tab). The sequential
+      // and streaming capture paths run a single stateful session/encoder and
+      // don't route through here; probeStage already has its own transient
+      // retry for the session-init phase they share.
+      if (
+        options.allowRetry &&
+        isTransientBrowserError(error) &&
+        transientRetriesUsed < MAX_TRANSIENT_CAPTURE_RETRIES
+      ) {
+        transientRetriesUsed++;
+        options.log.warn(
+          "[Render] Transient browser failure during capture; retrying once with a fresh session.",
+          {
+            attempt,
+            workers: currentWorkers,
+            missingFrames: remainingCount,
+            transientRetriesUsed,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        );
+        missingRanges = remaining;
+        attempt++;
+        pendingTransientRetry = true;
+        continue;
+      }
+
       if (!madeProgress) {
         options.log.warn(
           "[Render] Capture attempt made no forward progress; composition is likely structurally broken — not retrying.",
@@ -891,6 +988,11 @@ export async function executeRenderJob(
   let probeSession: CaptureSession | null = null;
   let lastBrowserConsole: string[] = [];
   let restoreLogger: (() => void) | null = null;
+  // Composition dimensions captured for the error path (OOM guidance). Assigned
+  // once the composition metadata / frame count are resolved inside the try.
+  let captureCompositionWidth: number | undefined;
+  let captureCompositionHeight: number | undefined;
+  let captureTotalFrames: number | undefined;
   const perfStages: Record<string, number> = {};
   const hdrDiagnostics: HdrDiagnostics = {
     videoExtractionFailures: 0,
@@ -934,6 +1036,14 @@ export async function executeRenderJob(
     captureObservability.captureMode = captureObservability.forceScreenshot
       ? "screenshot"
       : "beginframe";
+  };
+  // Function-scoped (not inside the try) so both the success path AND the catch
+  // can read it — the catch records transient-retry burn on renders that still
+  // failed, which is the more actionable signal for tuning the retry cap.
+  const captureAttempts: CaptureAttemptSummary[] = [];
+  const recordTransientRetryObservability = (): void => {
+    const count = captureAttempts.filter((a) => a.reason === "transient-retry").length;
+    if (count > 0) updateCaptureObservability({ transientRetries: count });
   };
   // Declared outside the try so `finally` can stop the interval, but
   // the sampler is created INSIDE the try so a synchronous throw
@@ -1043,6 +1153,11 @@ export async function executeRenderJob(
     const composition = compileResult.composition;
     const { deviceScaleFactor, outputWidth, outputHeight } = compileResult;
     const { width, height } = composition;
+    // Capture the *output* (device-scaled) dimensions for the OOM error path —
+    // memory is allocated at output resolution, so the guidance must report the
+    // real pixel size that exhausted memory, not the smaller CSS composition.
+    captureCompositionWidth = outputWidth;
+    captureCompositionHeight = outputHeight;
     perfStages.compileOnlyMs = compileResult.compileOnlyMs;
     // Snapshot of `cfg.forceScreenshot` resolved by compileStage. The
     // BeginFrame auto-worker calibration may flip this to `true` at
@@ -1087,6 +1202,31 @@ export async function executeRenderJob(
       );
     }
 
+    // Scale the CDP protocol timeout up for oversized compositions BEFORE the
+    // probe launches its browser. `protocolTimeout` is a Puppeteer
+    // connection-level setting baked in at `ppt.launch()` and immutable
+    // afterwards — and the probe browser is reused for capture on the common
+    // single-worker path — so this must be applied before the first launch, not
+    // after probe. A single CDP seek+capture call scales with *output* pixel
+    // area (device-scaled), so the fixed default intermittently kills
+    // legitimate slow-but-valid large renders with `Runtime.callFunctionOn
+    // timed out`. Only ever raises; small compositions keep the configured base.
+    const scaledProtocolTimeout = scaleProtocolTimeoutForComposition(cfg.protocolTimeout, {
+      width: outputWidth,
+      height: outputHeight,
+    });
+    if (scaledProtocolTimeout > cfg.protocolTimeout) {
+      log.info("[Render] Scaled CDP protocol timeout up for large composition.", {
+        from: cfg.protocolTimeout,
+        to: scaledProtocolTimeout,
+        outputWidth,
+        outputHeight,
+        deviceScaleFactor,
+      });
+      cfg.protocolTimeout = scaledProtocolTimeout;
+      updateCaptureObservability({ protocolTimeoutMs: scaledProtocolTimeout });
+    }
+
     const probeResult = await observeRenderStage(
       observability,
       "browser_probe",
@@ -1122,6 +1262,8 @@ export async function executeRenderJob(
     job.duration = probeResult.duration;
     job.totalFrames = probeResult.totalFrames;
     const totalFrames = probeResult.totalFrames;
+    captureTotalFrames = totalFrames;
+
     perfStages.browserProbeMs = probeResult.browserProbeMs;
     perfStages.compileMs = Date.now() - stage1Start;
     observability.checkpoint("browser_probe", "duration resolved", {
@@ -1416,9 +1558,9 @@ export async function executeRenderJob(
       maxDurationSeconds: cfg.streamingEncodeMaxDurationSeconds,
     });
 
-    const captureAttempts: CaptureAttemptSummary[] = [];
-    // Static-dedup perf, appended per sequential session / per parallel worker
-    // by the capture stage, aggregated into the perf summary below.
+    // `captureAttempts` is declared at function scope above (shared with the
+    // catch block). Static-dedup perf, appended per sequential session / per
+    // parallel worker by the capture stage, aggregated into the perf summary below.
     const dedupPerfs: CapturePerfSummary[] = [];
 
     // png-sequence is "no container" — outputPath is treated as a directory and
@@ -1787,6 +1929,9 @@ export async function executeRenderJob(
     const totalElapsed = Date.now() - pipelineStart;
 
     const tmpPeakBytes = existsSync(workDir) ? sampleDirectoryBytes(workDir) : 0;
+    // Record transient-tab-death retry burn (recovered case) so it's visible on
+    // dashboard 1783183, not just logs. The catch mirrors this for the failed case.
+    recordTransientRetryObservability();
     observability.checkpoint("pipeline", "completed", { totalElapsedMs: totalElapsed });
     const observabilitySummary = observability.summary({
       lastBrowserConsole,
@@ -1871,7 +2016,20 @@ export async function executeRenderJob(
         ? error
         : new RenderCancelledError("render_cancelled");
     }
-    const errorMessage = normalizeErrorMessage(error);
+    const memoryGuidance = describeMemoryExhaustion(error, {
+      width: captureCompositionWidth,
+      height: captureCompositionHeight,
+      totalFrames: captureTotalFrames,
+    });
+    // Flag OOM-classified failures so the "is OOM the dominant tail?" question is
+    // answerable from a metric (dashboard 1783183), not just the error string.
+    if (memoryGuidance) {
+      updateCaptureObservability({ memoryExhaustionDetected: true });
+    }
+    // Retry burn on a render that STILL failed — the actionable signal for tuning
+    // MAX_TRANSIENT_CAPTURE_RETRIES (mirrors the success-path record above).
+    recordTransientRetryObservability();
+    const errorMessage = memoryGuidance ?? normalizeErrorMessage(error);
     const carriedBrowserConsole = getCaptureStageBrowserConsole(error);
     if (carriedBrowserConsole.length > 0) {
       lastBrowserConsole = [...lastBrowserConsole, ...carriedBrowserConsole].slice(-200);

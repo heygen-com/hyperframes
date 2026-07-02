@@ -115,6 +115,30 @@ export function createWaapiAdapter(): RuntimeDeterministicAdapter {
     }
   };
 
+  /**
+   * End time (seconds, relative to composition start) for one animation.
+   * `endSeconds` is set only when the timing is readable AND finite;
+   * `unbounded` is true when a timing was read but its endTime is
+   * Infinity/NaN (an infinite iteration count the caller can't auto-infer a
+   * duration from) — distinct from "no timing available at all" (both
+   * fields absent), which the caller should simply skip.
+   */
+  const inferAnimationEndSeconds = (
+    animation: Animation,
+  ): { endSeconds?: number; unbounded?: true } => {
+    let timing: { endTime?: number | string } | null = null;
+    try {
+      timing = animation.effect?.getComputedTiming?.() ?? null;
+    } catch (err) {
+      swallow("runtime.adapters.waapi.site4", err);
+    }
+    if (!timing) return {};
+    const endTimeMs = Number(timing.endTime);
+    if (!Number.isFinite(endTimeMs)) return { unbounded: true };
+    const compositionStartSeconds = (baselines.get(animation)?.compositionTimeMs ?? 0) / 1000;
+    return { endSeconds: compositionStartSeconds + endTimeMs / 1000 };
+  };
+
   return {
     name: "waapi",
     discover: () => {
@@ -189,6 +213,18 @@ export function createWaapiAdapter(): RuntimeDeterministicAdapter {
       originalAnimate = undefined;
       installedAnimate = undefined;
       animateHookInstalled = false;
+    },
+    getInferredDurationSeconds: () => {
+      let maxEndSeconds = 0;
+      for (const animation of snapshotAnimations()) {
+        const result = inferAnimationEndSeconds(animation);
+        // Unbounded (Infinity/NaN endTime) animations are skipped here —
+        // they never contribute to maxEndSeconds. A finite animation
+        // elsewhere on the composition still supplies a valid duration
+        // signal; only fall through to null when nothing finite was found.
+        if (result.endSeconds != null) maxEndSeconds = Math.max(maxEndSeconds, result.endSeconds);
+      }
+      return maxEndSeconds > 0 ? maxEndSeconds : null;
     },
   };
 }

@@ -12,7 +12,11 @@
 
 import { copyFileSync, cpSync, existsSync, mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
-import { CANVAS_DIMENSIONS, type CanvasResolution } from "@hyperframes/core";
+import {
+  CANVAS_DIMENSIONS,
+  checkOutputResolutionCompatibility,
+  type CanvasResolution,
+} from "@hyperframes/core";
 import type {
   AudioElement,
   ExtractedFrames,
@@ -94,52 +98,22 @@ export function resolveDeviceScaleFactor(input: {
   alphaRequested: boolean;
 }): number {
   if (!input.outputResolution) return 1;
-  if (input.hdrRequested) {
-    throw new Error(
-      "outputResolution cannot be combined with hdrMode='force-hdr'. " +
-        "HDR rendering composites at composition dimensions and does not yet " +
-        "support supersampling. Pick one or render in two passes.",
-    );
-  }
-  if (input.alphaRequested) {
-    throw new Error(
-      "outputResolution cannot be combined with alpha output (--format webm|mov|png-sequence). " +
-        "The alpha screenshot path does not yet apply deviceScaleFactor and would silently " +
-        "produce composition-resolution frames. Render alpha at composition resolution and " +
-        "upscale separately, or use --format mp4.",
-    );
-  }
+  // Single source of truth for the aspect/alpha/HDR/scale constraints, shared
+  // with the CLI render pre-flight so both raise the identical, actionable
+  // message. This is the deep defense-in-depth throw; the pre-flight aborts
+  // long before this runs on the common (aspect/alpha) mistakes.
+  const compat = checkOutputResolutionCompatibility({
+    compositionWidth: input.compositionWidth,
+    compositionHeight: input.compositionHeight,
+    outputResolution: input.outputResolution,
+    alphaRequested: input.alphaRequested,
+    hdrRequested: input.hdrRequested,
+  });
+  if (!compat.ok) throw new Error(compat.message);
+
   const target = CANVAS_DIMENSIONS[input.outputResolution];
-  // Aspect-ratio compare via cross-multiplication so the equality is integer-
-  // safe. Float division (`target.width / compositionWidth`) loses precision
-  // for non-power-of-2 ratios (e.g. cinema 4K 4096×2160 = 1.8963…) and a
-  // future preset could trip a false-mismatch on otherwise valid input.
-  if (target.width * input.compositionHeight !== target.height * input.compositionWidth) {
-    throw new Error(
-      `outputResolution ${input.outputResolution} (${target.width}×${target.height}) ` +
-        `does not match the aspect ratio of the composition ` +
-        `(${input.compositionWidth}×${input.compositionHeight}). ` +
-        `Pick a preset whose orientation matches.`,
-    );
-  }
   // Aspect ratios match → widthRatio === heightRatio. Compute once.
-  const widthRatio = target.width / input.compositionWidth;
-  if (widthRatio < 1) {
-    throw new Error(
-      `outputResolution ${input.outputResolution} (${target.width}×${target.height}) ` +
-        `is smaller than the composition (${input.compositionWidth}×${input.compositionHeight}). ` +
-        `Downsampling via --resolution is not supported.`,
-    );
-  }
-  if (!Number.isInteger(widthRatio)) {
-    throw new Error(
-      `outputResolution ${input.outputResolution} requires a non-integer ` +
-        `device scale factor (${widthRatio}×) to upsample from ` +
-        `${input.compositionWidth}×${input.compositionHeight}. ` +
-        `Pick a preset that's an integer multiple, or rescale the composition.`,
-    );
-  }
-  return widthRatio;
+  return target.width / input.compositionWidth;
 }
 
 /**

@@ -2,7 +2,7 @@ import { strict as assert } from "node:assert";
 import { mkdtempSync, rmSync, writeFileSync, readFileSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { appendRecord, readManifest } from "./lib/manifest.mjs";
 import { regenerateIndex } from "./lib/index-gen.mjs";
 import { getProvider } from "./lib/providers.mjs";
@@ -10,6 +10,7 @@ import { freezeLocalFile } from "./lib/freeze.mjs";
 import { cachePut, cacheGet, importFromCache } from "./lib/cache.mjs";
 
 const REPO_ROOT = join(import.meta.dirname, "..", "..", "..");
+const RESOLVE_CLI = join(import.meta.dirname, "resolve.mjs");
 let tmp;
 
 function setup() {
@@ -33,8 +34,15 @@ function makeRecord(overrides = {}) {
   };
 }
 
-function resolveCmd(args) {
-  return `node skills/media-use/scripts/resolve.mjs ${args}`;
+// Run resolve.mjs with argv passed as a literal array (no shell). Each token is
+// a separate argv entry, so a value with spaces or shell metacharacters can't
+// break out — never build a command string and hand it to a shell.
+function runResolve(args, opts = {}) {
+  return execFileSync(process.execPath, [RESOLVE_CLI, ...args], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+    ...opts,
+  });
 }
 
 const tests = [];
@@ -52,10 +60,7 @@ test("project manifest hit skips providers", () => {
   mkdirSync(join(filePath, ".."), { recursive: true });
   writeFileSync(filePath, "cached audio");
 
-  const out = execSync(resolveCmd(`--type bgm --intent "cached query" --project "${tmp}" --json`), {
-    cwd: REPO_ROOT,
-    encoding: "utf8",
-  });
+  const out = runResolve(["--type", "bgm", "--intent", "cached query", "--project", tmp, "--json"]);
   const parsed = JSON.parse(out.trim());
   assert.equal(parsed.ok, true);
   assert.equal(parsed.id, "bgm_001");
@@ -124,10 +129,7 @@ test("--adopt registers existing assets/ files", () => {
   writeFileSync(join(tmp, "assets/bgm/track.mp3"), "fake mp3");
   writeFileSync(join(tmp, "assets/icons/logo.svg"), "fake svg");
 
-  const out = execSync(resolveCmd(`--adopt --project "${tmp}" --json`), {
-    cwd: REPO_ROOT,
-    encoding: "utf8",
-  });
+  const out = runResolve(["--adopt", "--project", tmp, "--json"]);
   const parsed = JSON.parse(out.trim());
   assert.equal(parsed.ok, true);
   assert.equal(parsed.adopted, 2);
@@ -144,11 +146,8 @@ test("--adopt skips already-registered assets", () => {
   mkdirSync(join(tmp, "assets/bgm"), { recursive: true });
   writeFileSync(join(tmp, "assets/bgm/track.mp3"), "fake mp3");
 
-  execSync(resolveCmd(`--adopt --project "${tmp}" --json`), { cwd: REPO_ROOT, encoding: "utf8" });
-  const out = execSync(resolveCmd(`--adopt --project "${tmp}" --json`), {
-    cwd: REPO_ROOT,
-    encoding: "utf8",
-  });
+  runResolve(["--adopt", "--project", tmp, "--json"]);
+  const out = runResolve(["--adopt", "--project", tmp, "--json"]);
   const parsed = JSON.parse(out.trim());
   assert.equal(parsed.adopted, 0);
 
@@ -162,10 +161,15 @@ test("resolve finds existing unregistered asset before hitting providers", () =>
   mkdirSync(join(tmp, "assets/bgm"), { recursive: true });
   writeFileSync(join(tmp, "assets/bgm/ambient-track.mp3"), "existing bgm");
 
-  const out = execSync(
-    resolveCmd(`--type bgm --intent "ambient track" --project "${tmp}" --json`),
-    { cwd: REPO_ROOT, encoding: "utf8" },
-  );
+  const out = runResolve([
+    "--type",
+    "bgm",
+    "--intent",
+    "ambient track",
+    "--project",
+    tmp,
+    "--json",
+  ]);
   const parsed = JSON.parse(out.trim());
   assert.equal(parsed.ok, true);
   assert.equal(parsed.path, "assets/bgm/ambient-track.mp3");
@@ -176,14 +180,14 @@ test("resolve finds existing unregistered asset before hitting providers", () =>
 // --- CLI interface ---
 
 test("--help exits 0", () => {
-  const out = execSync(resolveCmd("--help"), { cwd: REPO_ROOT, encoding: "utf8" });
+  const out = runResolve(["--help"]);
   assert.ok(out.includes("media-use resolve"));
   assert.ok(out.includes("--type"));
 });
 
 test("missing required args exits 2", () => {
   try {
-    execSync(resolveCmd(""), { cwd: REPO_ROOT, encoding: "utf8", stdio: "pipe" });
+    runResolve([], { stdio: "pipe" });
     assert.fail("should have exited");
   } catch (err) {
     assert.equal(err.status, 2);
@@ -193,9 +197,7 @@ test("missing required args exits 2", () => {
 test("--json returns error JSON on stub provider failure", () => {
   setup();
   try {
-    execSync(resolveCmd(`--type bgm --intent "stub fail" --project "${tmp}" --json`), {
-      cwd: REPO_ROOT,
-      encoding: "utf8",
+    runResolve(["--type", "bgm", "--intent", "stub fail", "--project", tmp, "--json"], {
       stdio: "pipe",
     });
     assert.fail("should have exited");
@@ -216,10 +218,7 @@ test("one-line output format matches contract", () => {
   mkdirSync(join(filePath, ".."), { recursive: true });
   writeFileSync(filePath, "format check");
 
-  const out = execSync(resolveCmd(`--type bgm --intent "format test" --project "${tmp}"`), {
-    cwd: REPO_ROOT,
-    encoding: "utf8",
-  });
+  const out = runResolve(["--type", "bgm", "--intent", "format test", "--project", tmp]);
   assert.match(out.trim(), /^resolved bgm_001 → .media\/audio\/bgm\/bgm_001\.wav \(bgm/);
   cleanup();
 });

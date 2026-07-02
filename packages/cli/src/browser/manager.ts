@@ -105,7 +105,21 @@ async function findFromCache(): Promise<CacheLookupResult> {
   // no puppeteer-cache binary exists.
   if (existsSync(CACHE_DIR)) {
     const { Browser, getInstalledBrowsers } = await loadPuppeteerBrowsers();
-    const installed = await getInstalledBrowsers({ cacheDir: CACHE_DIR });
+    // A corrupt cache (stub file where a browser dir is expected, malformed
+    // metadata) makes getInstalledBrowsers throw. Treat that as "no cached
+    // browser" so resolution falls through to system/download instead of
+    // crashing every caller.
+    let installed: Awaited<ReturnType<typeof getInstalledBrowsers>>;
+    try {
+      installed = await getInstalledBrowsers({ cacheDir: CACHE_DIR });
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException | undefined)?.code;
+      const suffix = code ? ` (${code})` : "";
+      console.warn(
+        `[hyperframes] Browser cache read failed${suffix}: ${normalizeErrorMessage(err)}. Falling back to system Chrome or a fresh download.`,
+      );
+      installed = [];
+    }
     const match = installed.find((b) => b.browser === Browser.CHROMEHEADLESSSHELL);
     if (match && existsSync(match.executablePath)) {
       return { result: { executablePath: match.executablePath, source: "cache" } };

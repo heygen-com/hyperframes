@@ -24,6 +24,10 @@ import {
   type UnresolvedElement,
 } from "@hyperframes/core";
 import { inlineSubCompositions as inlineSubCompositionsShared } from "@hyperframes/core/compiler";
+import {
+  checkSubCompositionUsability,
+  type ParsableDocumentLike,
+} from "@hyperframes/parsers/sub-composition-validity";
 import { extractMediaMetadata, extractAudioMetadata } from "../utils/ffprobe.js";
 import { isPathInside, toExternalAssetKey } from "../utils/paths.js";
 import {
@@ -38,7 +42,10 @@ import {
 } from "@hyperframes/engine";
 import { assertPublicHttpsUrl, downloadToTemp, isHttpUrl } from "../utils/urlDownloader.js";
 import type { Page } from "puppeteer-core";
-import { injectDeterministicFontFaces } from "./deterministicFonts.js";
+import {
+  injectDeterministicFontFaces,
+  normalizeSystemFontPrimaryFamilies,
+} from "./deterministicFonts.js";
 import { prepareAnimatedGifInputs } from "./animatedGifPrep.js";
 import { createStudioPositionSeekReapplyScript } from "@hyperframes/studio-server/manual-edits-render-script";
 import { defaultLogger, type ProducerLogger } from "../logger.js";
@@ -57,6 +64,131 @@ export interface CompiledComposition {
   staticDuration: number;
   renderModeHints: RenderModeHints;
   hasShaderTransitions: boolean;
+}
+
+/** Adapts linkedom's `parseHTML` to the `checkSubCompositionUsability` contract. */
+function parseSubCompHtmlForValidity(html: string): ParsableDocumentLike {
+  return parseHTML(html).document as unknown as ParsableDocumentLike;
+}
+
+/**
+ * Thrown by {@link assertSubCompositionsUsable} when one or more
+ * `data-composition-src` references resolve to a missing, empty, or
+ * unparsable file. This is the render-path enforcement of the #1 render
+ * failure bucket in production telemetry: a scene-authoring step (most
+ * commonly an AI agent) writes the `data-composition-src` reference before,
+ * or without ever, writing valid content into the scene file.
+ *
+ * Unlike the tolerant inliner (`packages/core/src/compiler/inlineSubCompositions.ts`,
+ * intentionally kept lenient for preview/studio so mid-authoring iteration
+ * doesn't break bundling), a render that silently drops a scene produces a
+ * materially broken video with no visible error — strictly worse than
+ * refusing to render. This check runs before any compilation work starts so
+ * the failure is immediate and names every offending file at once, instead
+ * of surfacing 45+ seconds later as a `pollSubCompositionTimelines` timeout
+ * or a raw `Cannot destructure property 'firstElementChild' of
+ * 'documentElement' as it is null` crash deep inside linkedom.
+ *
+ * Not exported — nothing needs `instanceof` narrowing on this today. Callers
+ * catch it generically (`catch (err: unknown)`, matching on `.message`) the
+ * same way they handle every other compile-time failure. Kept as a class
+ * (not a plain `throw new Error(...)`) so the aggregated multi-file message
+ * construction has a single, testable home.
+ */
+class EmptyCompositionError extends Error {
+  readonly code = "EMPTY_COMPOSITION" as const;
+  readonly problems: ReadonlyArray<{ srcPath: string; detail: string }>;
+
+  constructor(problems: ReadonlyArray<{ srcPath: string; detail: string }>) {
+    const lines = problems.map((p) => `  - ${p.srcPath}: ${p.detail}`);
+    super(
+      `${problems.length} composition file${problems.length === 1 ? "" : "s"} referenced by ` +
+        `data-composition-src cannot be rendered:\n${lines.join("\n")}\n\n` +
+        "Check that each file referenced by data-composition-src contains valid HTML with a " +
+        "<template> or <body> containing a [data-composition-id] element. If a scene-authoring " +
+        "step is still running, wait for it to finish before referencing the file.",
+    );
+    this.name = "EmptyCompositionError";
+    this.problems = problems;
+  }
+}
+
+/**
+ * Recursively walk every `data-composition-src` reference reachable from
+ * `html` (including nested sub-compositions) and verify each resolves to a
+ * usable file — exists, non-empty, parses to HTML with renderable content.
+ * Uses the same `checkSubCompositionUsability` helper the tolerant inliner
+ * and `hyperframes lint` use, so all three agree on what counts as usable.
+ *
+ * Throws {@link EmptyCompositionError} naming every offending file at once
+ * (not just the first one hit) if any reference is unusable. Call this
+ * before any compilation work starts — it deliberately duplicates a small
+ * amount of file-reading work that `parseSubCompositions` also does, in
+ * exchange for failing in milliseconds instead of after the browser has
+ * already launched and waited out a capture timeout.
+ */
+// fallow-ignore-next-line complexity
+function assertSubCompositionsUsable(
+  html: string,
+  projectDir: string,
+  visited: Set<string> = new Set(),
+): void {
+  const { document } = parseHTML(html);
+  const hosts = [...document.querySelectorAll("[data-composition-src]")];
+  const problems: Array<{ srcPath: string; detail: string }> = [];
+
+  for (const el of hosts) {
+    const srcPath = el.getAttribute("data-composition-src");
+    if (!srcPath) continue;
+    if (/^__[A-Z_]+__$/.test(srcPath)) continue; // template placeholder, not a real reference — matches lint's skip
+
+    const filePath = resolve(projectDir, srcPath);
+    // Circular reference guard. parseSubCompositions (below) silently
+    // `continue`s on a repeat visit with no reporting at all — mirror that
+    // silence here rather than pretend it surfaces an error somewhere else.
+    if (visited.has(filePath)) continue;
+
+    if (!existsSync(filePath)) {
+      problems.push({ srcPath, detail: "the file does not exist" });
+      continue;
+    }
+
+    const fileHtml = readFileSync(filePath, "utf-8");
+    const validity = checkSubCompositionUsability(fileHtml, parseSubCompHtmlForValidity);
+    if (!validity.ok) {
+      problems.push({
+        srcPath,
+        detail: validity.detail ?? "the file is empty or could not be parsed",
+      });
+      continue;
+    }
+
+    // Recurse into nested sub-compositions so a broken scene three levels
+    // deep is still named directly instead of surfacing as a parent-level
+    // "no error, just missing content" mystery.
+    //
+    // Pass `projectDir` unchanged (not dirname(filePath)) — data-composition-src
+    // is always resolved root-relative, even from within a nested
+    // sub-composition. This must match parseSubCompositions' own recursive
+    // call below exactly (it threads the original projectDir through every
+    // level too), or this pre-flight check resolves nested references to the
+    // wrong path and aborts renders that would have actually succeeded.
+    const nestedVisited = new Set(visited);
+    nestedVisited.add(filePath);
+    try {
+      assertSubCompositionsUsable(fileHtml, projectDir, nestedVisited);
+    } catch (err) {
+      if (err instanceof EmptyCompositionError) {
+        problems.push(...err.problems);
+      } else {
+        throw err;
+      }
+    }
+  }
+
+  if (problems.length > 0) {
+    throw new EmptyCompositionError(problems);
+  }
 }
 
 export type RenderModeHintCode = "iframe" | "requestAnimationFrame" | "htmlInCanvas";
@@ -617,8 +749,14 @@ function inlineSubCompositions(
       parseHtml: (htmlStr: string) => parseHTML(htmlStr).document as unknown as Document,
       scriptErrorLabel: "[Compiler] Composition script failed",
       compoundAuthoredRoot: true,
-      onMissingComposition: (srcPath: string) => {
-        console.warn(`[Compiler] Composition file missing or empty: ${srcPath}`);
+      onMissingComposition: (srcPath: string, reason?: string) => {
+        // In the render path this is normally unreachable — compileForRender
+        // calls assertSubCompositionsUsable() before any of this runs, so a
+        // hit here means the file changed on disk between that pre-flight
+        // check and this later inline step (e.g. a concurrent scene-writer).
+        console.warn(
+          `[Compiler] Skipping sub-composition "${srcPath}": ${reason ?? "the file is missing or empty"}.`,
+        );
       },
     },
   );
@@ -1367,6 +1505,15 @@ export async function compileForRender(
   options: CompileForRenderOptions = {},
 ): Promise<CompiledComposition> {
   const rawHtml = rewriteUnresolvableGsapToCdn(readFileSync(htmlPath, "utf-8"), projectDir);
+
+  // Pre-flight: every data-composition-src reference must resolve to a
+  // usable file before we spend any time compiling, launching a browser, or
+  // waiting out a capture timeout. See EmptyCompositionError for why this is
+  // unconditional (not gated behind --strict like lint warnings) — a render
+  // that silently drops a scene is strictly worse than one that refuses to
+  // start.
+  assertSubCompositionsUsable(rawHtml, projectDir);
+
   const { html: compiledHtml, unresolvedCompositions } = await compileHtmlFile(
     rawHtml,
     projectDir,
@@ -1404,15 +1551,16 @@ export async function compileForRender(
   const renderModeHints = detectRenderModeHints(sanitizedHtml);
   const hasShaderTransitions = detectShaderTransitionUsage(sanitizedHtml);
 
-  const coalescedHtml = await injectDeterministicFontFaces(
+  const normalizedFontHtml = normalizeSystemFontPrimaryFamilies(
     injectTextRenderingRule(
       coalesceHeadStylesAndBodyScripts(promoteCssImportsToLinkTags(sanitizedHtml)),
     ),
-    {
-      failClosedFontFetch: options.failClosedFontFetch === true,
-      allowSystemFontCapture: options.allowSystemFontCapture,
-    },
   );
+
+  const coalescedHtml = await injectDeterministicFontFaces(normalizedFontHtml, {
+    failClosedFontFetch: options.failClosedFontFetch === true,
+    allowSystemFontCapture: options.allowSystemFontCapture,
+  });
 
   // Download CDN scripts and inline them AFTER coalescing. This order matters:
   // coalesceHeadStylesAndBodyScripts merges inline scripts and appends them at

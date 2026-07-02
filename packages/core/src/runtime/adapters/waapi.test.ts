@@ -270,4 +270,104 @@ describe("waapi adapter", () => {
       }
     }
   });
+
+  describe("getInferredDurationSeconds", () => {
+    it("returns null when there are no animations", () => {
+      (document as any).getAnimations = vi.fn(() => []);
+      const adapter = createWaapiAdapter();
+      expect(adapter.getInferredDurationSeconds?.()).toBeNull();
+      delete (document as any).getAnimations;
+    });
+
+    it("returns the max finite endTime across animations, in seconds", () => {
+      const short = {
+        pause: vi.fn(),
+        currentTime: 0,
+        effect: { getComputedTiming: () => ({ endTime: 1200 }) },
+      };
+      const long = {
+        pause: vi.fn(),
+        currentTime: 0,
+        effect: { getComputedTiming: () => ({ endTime: 4800 }) },
+      };
+      (document as any).getAnimations = vi.fn(() => [short, long]);
+
+      const adapter = createWaapiAdapter();
+      expect(adapter.getInferredDurationSeconds?.()).toBe(4.8);
+
+      delete (document as any).getAnimations;
+    });
+
+    it("returns the finite animation's end time when a finite and an unbounded animation coexist", () => {
+      const finite = {
+        pause: vi.fn(),
+        currentTime: 0,
+        effect: { getComputedTiming: () => ({ endTime: 2000 }) },
+      };
+      const infinite = {
+        pause: vi.fn(),
+        currentTime: 0,
+        effect: { getComputedTiming: () => ({ endTime: Infinity }) },
+      };
+      (document as any).getAnimations = vi.fn(() => [finite, infinite]);
+
+      const adapter = createWaapiAdapter();
+      // The unbounded animation is ignored; the finite animation's 2s end
+      // time is still a valid duration signal.
+      expect(adapter.getInferredDurationSeconds?.()).toBe(2);
+
+      delete (document as any).getAnimations;
+    });
+
+    it("returns null when every animation has an unbounded (Infinity) endTime", () => {
+      const infinite = {
+        pause: vi.fn(),
+        currentTime: 0,
+        effect: { getComputedTiming: () => ({ endTime: Infinity }) },
+      };
+      (document as any).getAnimations = vi.fn(() => [infinite]);
+
+      const adapter = createWaapiAdapter();
+      expect(adapter.getInferredDurationSeconds?.()).toBeNull();
+
+      delete (document as any).getAnimations;
+    });
+
+    it("accounts for the composition-time baseline of animations discovered mid-composition", () => {
+      const existing = { pause: vi.fn(), currentTime: 0 };
+      let includeDynamic = false;
+      const dynamic: { pause: () => void; currentTime: number; effect?: unknown } = {
+        pause: vi.fn(),
+        currentTime: 0,
+        effect: { getComputedTiming: () => ({ endTime: 1000 }) },
+      };
+      (document as any).getAnimations = vi.fn(() =>
+        includeDynamic ? [existing, dynamic] : [existing],
+      );
+
+      const adapter = createWaapiAdapter();
+      adapter.discover();
+      adapter.seek({ time: 2 });
+
+      // `dynamic` first appears at composition time 2s (t=2 seek) — its
+      // baseline.compositionTimeMs is recorded as 2000ms, so its inferred
+      // end time is 2s (baseline) + 1s (own endTime) = 3s.
+      includeDynamic = true;
+      adapter.seek({ time: 2 });
+
+      expect(adapter.getInferredDurationSeconds?.()).toBe(3);
+
+      delete (document as any).getAnimations;
+    });
+
+    it("handles missing getAnimations API", () => {
+      const original = document.getAnimations;
+      (document as Record<string, unknown>).getAnimations = undefined;
+
+      const adapter = createWaapiAdapter();
+      expect(adapter.getInferredDurationSeconds?.()).toBeNull();
+
+      document.getAnimations = original;
+    });
+  });
 });

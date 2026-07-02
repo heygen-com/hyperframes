@@ -82,6 +82,10 @@ window.__hfLottie.push(confettiAnim);
 
 HyperFrames seeks them all to the same composition time.
 
+## Composition Duration
+
+The render engine needs the composition's total length. GSAP timelines report duration automatically; a Lottie-only composition has no timeline object, so the runtime reads the registered animation's native length directly — `totalFrames / frameRate` for `lottie-web`, or the player's own `duration` for dotLottie. `data-duration` on the root element is optional for Lottie compositions: as long as every animation is registered on `window.__hfLottie` (per the contract above), the runtime has a finite duration to work with even when you set `loop: true`.
+
 ## Good Uses
 
 - After Effects exports that are already known to render correctly in lottie-web.
@@ -107,6 +111,7 @@ npx hyperframes validate
 ## Credits And References
 
 - HyperFrames adapter source: `packages/core/src/runtime/adapters/lottie.ts`.
+- Duration auto-inference: `packages/core/src/runtime/init.ts` (`resolveAdapterDurationFloorSeconds`), `getInferredDurationSeconds` in the adapter above.
 - lottie-web by Airbnb: https://github.com/airbnb/lottie-web
 - lottie-web `loadAnimation` options: https://github.com/airbnb/lottie-web/wiki/loadAnimation-options
 - dotLottie web player methods by LottieFiles: https://developers.lottiefiles.com/docs/dotlottie-player/dotlottie-web/methods
