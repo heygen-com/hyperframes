@@ -3,6 +3,7 @@ import {
   EDIT_BASE_X_ATTR,
   EDIT_BASE_Y_ATTR,
   EDIT_ORIGINAL_TRANSLATE_ATTR,
+  applyPositionEditToElement,
   applyPositionEdits,
   composeTranslate,
 } from "./positionEdits";
@@ -112,5 +113,38 @@ describe("applyPositionEdits", () => {
     expect(applyPositionEdits(document)).toBe(2);
     a.remove();
     b.remove();
+  });
+
+  it("skips re-apply when the written translate was consumed externally (GSAP fold)", () => {
+    const el = makeElement({
+      "data-x": "10",
+      "data-y": "20",
+      [EDIT_BASE_X_ATTR]: "0",
+      [EDIT_BASE_Y_ATTR]: "0",
+    });
+    applyPositionEdits(document);
+    expect(el.style.getPropertyValue("translate")).toBe("10px 20px");
+    // GSAP folding the translate into its cached transform writes "none".
+    el.style.setProperty("translate", "none");
+    applyPositionEdits(document);
+    // Re-setting would double the offset on non-animated axes — must skip.
+    expect(el.style.getPropertyValue("translate")).toBe("none");
+    el.remove();
+  });
+
+  it("force re-applies over a clobbered translate (editor commit path)", () => {
+    const el = makeElement({
+      "data-x": "10",
+      "data-y": "20",
+      [EDIT_BASE_X_ATTR]: "0",
+      [EDIT_BASE_Y_ATTR]: "0",
+    });
+    applyPositionEditToElement(el);
+    // A drag draft overwrites the translate; the commit must recompute.
+    el.style.setProperty("translate", "999px 999px");
+    el.setAttribute("data-x", "30");
+    applyPositionEditToElement(el, { force: true });
+    expect(el.style.getPropertyValue("translate")).toBe("30px 20px");
+    el.remove();
   });
 });

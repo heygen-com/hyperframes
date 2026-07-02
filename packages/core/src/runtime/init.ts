@@ -73,9 +73,12 @@ function resolveExportRenderFps(): ExportRenderFpsResolution {
 
 export function initSandboxRuntimeModular(): void {
   const state = createRuntimeState();
-  // Host hook: re-render SDK position edits after a live data-x/data-y write
-  // (e.g. the SDK iframe adapter's commitPreview) without a document reload.
-  (window as Record<string, unknown>).__hfApplyPositionEdits = () => applyPositionEdits(document);
+  // SDK moveElement edits must render even when no usable GSAP timeline ever
+  // binds (CSS/WAAPI-animated or fully static compositions) — apply at init.
+  // This runs at DOMContentLoaded, after inline composition scripts have
+  // parsed their tweens, so GSAP (when present) won't fold the translate.
+  // Re-applied on every timeline bind for the rebind/soft-reload paths.
+  applyPositionEdits(document);
   const exportRenderFps = resolveExportRenderFps();
   state.canonicalFps = exportRenderFps.fps ?? state.canonicalFps;
   if (window.__HF_EXPORT_RENDER_SEEK_CONFIG) {

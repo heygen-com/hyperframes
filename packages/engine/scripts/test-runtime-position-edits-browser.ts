@@ -183,10 +183,45 @@ async function main(): Promise<void> {
       assert(close(s.st.y, -70), `t=${s.t}: static element y should be -70, got ${s.st.y}`);
     }
 
+    // GSAP-free composition: no window.gsap, no timelines — the edit must
+    // still render (applied at runtime init, not only at timeline bind).
+    const gsapFreeHtml = `<!DOCTYPE html>
+<html><head><style>
+  body { margin: 0; }
+  .el { position: absolute; left: 0; top: 0; width: 40px; height: 40px; }
+</style></head><body>
+<div data-composition-id="root" data-width="1920" data-height="1080" data-duration="2">
+  <div id="st" class="clip el" data-hf-id="hf-st" data-start="0" data-duration="2"
+       data-x="50" data-y="-70" data-hf-edit-base-x="0" data-hf-edit-base-y="0"></div>
+</div>
+<script>${runtimeSource}</script>
+</body></html>`;
+
+    const page2 = await browser.newPage();
+    await page2.setContent(gsapFreeHtml, { waitUntil: "networkidle0", timeout: 10000 });
+    await page2.waitForFunction(
+      `(function () {
+        var el = document.getElementById("st");
+        return el !== null && getComputedStyle(el).translate !== "none";
+      })()`,
+      { timeout: 10000 },
+    );
+    const gsapFree = (await page2.evaluate(
+      `(function () {
+        var cs = getComputedStyle(document.getElementById("st"));
+        return { translate: cs.translate };
+      })()`,
+    )) as { translate: string };
+    assert(
+      gsapFree.translate === "50px -70px",
+      `GSAP-free composition should render the edit as translate 50px -70px, got ${gsapFree.translate}`,
+    );
+
     console.log(
       JSON.stringify({
         event: "runtime_position_edits_browser_test_passed",
         samples,
+        gsapFree,
       }),
     );
   } finally {

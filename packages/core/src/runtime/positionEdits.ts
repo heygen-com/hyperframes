@@ -66,7 +66,8 @@ export const composeTranslate = (original: string, x: string, y: string): string
   return `${addLengths(ox, x)} ${addLengths(oy, y)}${z}`;
 };
 
-const readCurrentTranslate = (el: HTMLElement): string => {
+/** The element's effective translate: inline if set, computed otherwise ("" = none). */
+export const readCurrentTranslate = (el: HTMLElement): string => {
   const inline = el.style.getPropertyValue("translate").trim();
   if (inline) return inline === "none" ? "" : inline;
   try {
@@ -79,19 +80,43 @@ const readCurrentTranslate = (el: HTMLElement): string => {
 };
 
 /**
+ * The translate value this module last wrote per element. When a re-apply
+ * (timeline rebind) finds the element's inline translate no longer matching,
+ * something else consumed it — in practice GSAP folding it into the cached
+ * transform when a lazily-created tween first-parsed the element. Re-setting
+ * it then would DOUBLE the offset on every axis the tween doesn't animate, so
+ * the non-forced path skips instead (degrading to the documented fold-loss).
+ */
+const lastAppliedTranslate = new WeakMap<HTMLElement, string>();
+
+/**
  * Apply one element's position edit. Idempotent — the pre-edit translate is
  * captured exactly once (into EDIT_ORIGINAL_TRANSLATE_ATTR, empty string
  * meaning "none") on first application, and every application recomputes from
  * that baseline.
+ *
+ * `force` re-applies even when the previously written translate was clobbered
+ * externally — used by editor commits, where the current inline translate is
+ * the draft-composed one and must be overwritten.
  */
-export function applyPositionEditToElement(el: HTMLElement): void {
+export function applyPositionEditToElement(el: HTMLElement, opts?: { force?: boolean }): void {
+  const previous = lastAppliedTranslate.get(el);
+  if (
+    !opts?.force &&
+    previous !== undefined &&
+    el.style.getPropertyValue("translate") !== previous
+  ) {
+    return;
+  }
   const dx = num(el.getAttribute("data-x")) - num(el.getAttribute(EDIT_BASE_X_ATTR));
   const dy = num(el.getAttribute("data-y")) - num(el.getAttribute(EDIT_BASE_Y_ATTR));
   if (!el.hasAttribute(EDIT_ORIGINAL_TRANSLATE_ATTR)) {
     el.setAttribute(EDIT_ORIGINAL_TRANSLATE_ATTR, readCurrentTranslate(el));
   }
   const original = el.getAttribute(EDIT_ORIGINAL_TRANSLATE_ATTR) ?? "";
-  el.style.setProperty("translate", composeTranslate(original, `${dx}px`, `${dy}px`));
+  const value = composeTranslate(original, `${dx}px`, `${dy}px`);
+  el.style.setProperty("translate", value);
+  lastAppliedTranslate.set(el, el.style.getPropertyValue("translate"));
 }
 
 /**
