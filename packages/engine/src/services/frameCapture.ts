@@ -25,6 +25,7 @@ import {
 } from "./browserManager.js";
 import {
   beginFrameCapture,
+  ensureRenderFrameSiblings,
   getCdpSession,
   pageScreenshotCapture,
   initTransparentBackground,
@@ -1085,6 +1086,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     }
 
     await armStaticDedup(session, session.page, logInitPhase);
+    await ensureRenderFrameSiblings(session.page);
     session.isInitialized = true;
     return;
   }
@@ -1239,6 +1241,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
   }
 
   await armStaticDedup(session, session.page, logInitPhase);
+  await ensureRenderFrameSiblings(session.page);
   session.isInitialized = true;
 }
 
