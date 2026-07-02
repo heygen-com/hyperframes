@@ -76,6 +76,15 @@ export interface WorkerSizingConfig extends Partial<
   captureCostMultiplier?: number;
 }
 
+type WorkerBrowserPoolDecision = {
+  parallel?: boolean;
+  platform: NodeJS.Platform;
+  // Deliberately accepted but not used: forceScreenshot is not an exclusion.
+  forceScreenshot?: boolean;
+  deviceScaleFactor?: number;
+  headlessShellPath?: string;
+};
+
 const MEMORY_PER_WORKER_MB = 256;
 const MIN_WORKERS = 1;
 const MAX_WORKER_DIAGNOSTIC_LINES = 8;
@@ -97,6 +106,21 @@ function defaultSafeMaxWorkers(): number {
   return Math.max(6, Math.min(16, Math.floor(cpus().length / 8)));
 }
 const MIN_FRAMES_PER_WORKER = 30;
+
+// Linux/headless parallel workers need isolated browser processes: BeginFrame
+// crashes when shared, while forceScreenshot is safe but serializes
+// Page.captureScreenshot per browser. Supersampling keeps the existing path
+// until browser-pool compatibility is keyed by DPR.
+export function shouldDisableBrowserPoolForParallelWorker({
+  parallel,
+  platform,
+  deviceScaleFactor,
+  headlessShellPath,
+}: WorkerBrowserPoolDecision): boolean {
+  return Boolean(
+    parallel && platform === "linux" && headlessShellPath && (deviceScaleFactor ?? 1) <= 1,
+  );
+}
 
 export function selectWorkerDiagnostics(
   lines: readonly string[],
@@ -266,18 +290,13 @@ async function executeWorkerTask(
   let session: CaptureSession | null = null;
   let perf: CapturePerfSummary | undefined;
 
-  // BeginFrame's compositor is process-global — multiple pages driving
-  // beginFrame in the same browser race it and crash with "Target closed".
-  // Only disable the pool when BeginFrame mode would actually be active.
-  // Must match the predicate in createCaptureSession (frameCapture.ts):
-  // Linux + headless-shell + !forceScreenshot + !supersampling.
-  const supersampling = (captureOptions.deviceScaleFactor ?? 1) > 1;
-  const needsSeparateBrowsers =
-    parallel &&
-    process.platform === "linux" &&
-    !config?.forceScreenshot &&
-    !supersampling &&
-    resolveHeadlessShellPath(config) !== undefined;
+  const needsSeparateBrowsers = shouldDisableBrowserPoolForParallelWorker({
+    parallel,
+    platform: process.platform,
+    forceScreenshot: config?.forceScreenshot,
+    deviceScaleFactor: captureOptions.deviceScaleFactor,
+    headlessShellPath: resolveHeadlessShellPath(config),
+  });
   const workerConfig: Partial<EngineConfig> | undefined = needsSeparateBrowsers
     ? { ...config, enableBrowserPool: false }
     : config;
