@@ -526,6 +526,55 @@ describe("spawnStreamingEncoder lifecycle and cleanup", () => {
     expect(result.error).toContain("Encoder error");
   });
 
+  it("getExitError surfaces the ffmpeg failure reason after a non-zero exit", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { spawnStreamingEncoder } = await import("./streamingEncoder.js");
+    const dir = mkdtempSync(join(tmpdir(), "se-exiterr-"));
+    const encoder = await spawnStreamingEncoder(join(dir, "out.mp4"), baseOptions);
+
+    const proc = calls[0]!.proc;
+    // While running, there is no exit error to report.
+    expect(encoder.getExitError()).toBeUndefined();
+
+    proc.stderr.emit("data", Buffer.from("Unknown encoder 'libx264'\n"));
+    await new Promise<void>((resolve) => {
+      process.nextTick(() => {
+        proc.emit("close", 1);
+        resolve();
+      });
+    });
+
+    // After a non-zero exit, the reason is available synchronously — this is
+    // what `ensureFrameWritten` reads to turn "encoder exited before frame 0"
+    // into an actionable message.
+    const exitError = encoder.getExitError();
+    expect(exitError).toContain("FFmpeg exited with code 1");
+    expect(exitError).toContain("Unknown encoder 'libx264'");
+  });
+
+  it("getExitError returns undefined after a clean exit", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { spawnStreamingEncoder } = await import("./streamingEncoder.js");
+    const dir = mkdtempSync(join(tmpdir(), "se-exitok-"));
+    const encoder = await spawnStreamingEncoder(join(dir, "out.mp4"), baseOptions);
+
+    const proc = calls[0]!.proc;
+    await new Promise<void>((resolve) => {
+      process.nextTick(() => {
+        proc.emit("close", 0);
+        resolve();
+      });
+    });
+
+    expect(encoder.getExitError()).toBeUndefined();
+  });
+
   it("returns a failure result (does NOT throw) when ffmpeg fails to spawn (ENOENT)", async () => {
     const { spawn, calls } = createSpawnSpy();
     vi.resetModules();

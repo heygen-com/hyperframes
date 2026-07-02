@@ -141,6 +141,13 @@ export interface StreamingEncoder {
   writeFrame: (buffer: Buffer) => Promise<boolean>;
   close: () => Promise<StreamingEncoderResult>;
   getExitStatus: () => "running" | "success" | "error";
+  /**
+   * The FFmpeg failure reason (exit code + tail of stderr), or `undefined`
+   * while the process is still running / exited cleanly. Lets a `writeFrame`
+   * that returned `false` because FFmpeg died surface WHY it died (bad args,
+   * unsupported codec, disk full) instead of a bare "encoder exited" message.
+   */
+  getExitError: () => string | undefined;
 }
 
 /**
@@ -600,6 +607,11 @@ export async function spawnStreamingEncoder(
     },
 
     getExitStatus: () => exitStatus,
+
+    getExitError: () => {
+      if (exitStatus !== "error") return undefined;
+      return formatFfmpegError(exitCode, stderr);
+    },
   };
 
   return encoder;
