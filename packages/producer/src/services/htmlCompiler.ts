@@ -748,8 +748,14 @@ function inlineSubCompositions(
       },
       parseHtml: (htmlStr: string) => parseHTML(htmlStr).document as unknown as Document,
       scriptErrorLabel: "[Compiler] Composition script failed",
+      // With flattenInnerRoot the authored root survives as a CHILD of the host
+      // (host carries data-composition-id, the preserved wrapper carries
+      // data-hf-authored-id), so authored-root selectors must scope as
+      // descendants — same as the bundler and the runtime loader. The old
+      // compoundAuthoredRoot: true belonged to the innerHTML-merge path where
+      // both attributes landed on the host element; keeping it here would emit
+      // [scope][authored] selectors that match nothing in the flattened DOM.
       flattenInnerRoot: prepareFlattenedInnerRoot,
-      compoundAuthoredRoot: true,
       onMissingComposition: (srcPath: string, reason?: string) => {
         // In the render path this is normally unreachable — compileForRender
         // calls assertSubCompositionsUsable() before any of this runs, so a

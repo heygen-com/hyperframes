@@ -69,9 +69,11 @@ export interface InlineSubCompositionsOptions {
   /**
    * When true, CSS selectors targeting the authored root use a compound
    * selector (`[scope][root]`) instead of a descendant (`[scope] [root]`).
-   * Enable this in the producer path where the inner root merges onto
-   * the host element via innerHTML — both attributes end up on the same
-   * element and a descendant selector won't match.
+   * Only for callers that merge the inner root onto the host via innerHTML
+   * (no `flattenInnerRoot`) — there both attributes end up on the same
+   * element and a descendant selector won't match. Callers that pass
+   * `flattenInnerRoot` keep the authored root as a child of the host, so
+   * they must NOT enable this.
    */
   compoundAuthoredRoot?: boolean;
 
@@ -373,16 +375,28 @@ export function inlineSubCompositions(
       if (flattenInnerRoot) {
         const prepared = flattenInnerRoot(innerRoot);
         if (!compId && inferredCompId) {
-          // Anonymous hosts have no outer composition id, so keep the inferred
-          // boundary on the preserved inner root after flattenInnerRoot strips it.
-          prepared.setAttribute("data-composition-id", inferredCompId);
+          // Anonymous hosts have no outer composition id; adopt the inferred one
+          // on the HOST so the flattened DOM has the same shape as a named host
+          // (boundary + timing attrs on the host, authored wrapper as its child).
+          // Putting it on the preserved wrapper instead would (a) break descendant
+          // [scope] [data-hf-authored-id=...] selectors — both attributes would sit
+          // on the same element — and (b) detach the boundary from the host's
+          // data-start/duration, so the runtime start resolver would see 0.
+          hostEl.setAttribute("data-composition-id", inferredCompId);
+          // Keep the composition's declared duration queryable next to the
+          // adopted id (the un-flattened path left it on the inner root, which
+          // flattenInnerRoot strips).
+          const innerDuration = innerRoot.getAttribute("data-duration");
+          if (innerDuration && !hostEl.getAttribute("data-duration")) {
+            hostEl.setAttribute("data-duration", innerDuration);
+          }
         }
         hostEl.innerHTML = prepared.outerHTML || "";
       } else {
         hostEl.innerHTML = compId ? innerRoot.innerHTML || "" : innerRoot.outerHTML || "";
-        // When the producer path strips the inner root (innerHTML), the
-        // authored id attribute is lost. Propagate it to the host so that
-        // rewritten #ID selectors ([data-hf-authored-id="X"]) still resolve.
+        // When a caller without flattenInnerRoot strips the inner root
+        // (innerHTML), the authored id attribute is lost. Propagate it to the
+        // host so rewritten #ID selectors ([data-hf-authored-id="X"]) resolve.
         if (compId && authoredRootId) {
           hostEl.setAttribute("data-hf-authored-id", authoredRootId);
         }
