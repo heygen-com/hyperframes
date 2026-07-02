@@ -179,6 +179,7 @@ export {
   CANVAS_DIMENSIONS,
   VALID_CANVAS_RESOLUTIONS,
   normalizeResolutionFlag,
+  checkOutputResolutionCompatibility,
   COMPOSITION_VARIABLE_TYPES,
   TIMELINE_COLORS,
   DEFAULT_DURATIONS,
@@ -186,4 +187,8 @@ export {
   isTextElement,
   isMediaElement,
   isCompositionElement,
+} from "@hyperframes/parsers";
+export type {
+  OutputResolutionCompatibility,
+  OutputResolutionIssueKind,
 } from "@hyperframes/parsers";

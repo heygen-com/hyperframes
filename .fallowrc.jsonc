@@ -126,7 +126,7 @@
     // Exported for render.test.ts (exported-for-tests pattern).
     {
       "file": "packages/cli/src/commands/render.ts",
-      "exports": ["resolveBrowserGpuForCli", "renderLocal"],
+      "exports": ["resolveBrowserGpuForCli", "renderLocal", "checkRenderResolutionPreflight"],
     },
     // captureCost.ts: constants and helpers consumed by the runCaptureCalibration
     // orchestration function and tests, but the entry-point graph doesn't
