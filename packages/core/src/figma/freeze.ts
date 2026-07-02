@@ -3,7 +3,7 @@
  * re-fetch from figma (design spec §5) — not Object.freeze.
  */
 
-import { copyFileSync, mkdirSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 // ponytail: bound the write so a hostile/runaway source can't fill the disk.
@@ -18,7 +18,15 @@ export function freezeBytes(bytes: Uint8Array, destPath: string): number {
   if (exceedsFreezeCap(bytes.length))
     throw new Error(`freeze failed: ${bytes.length} bytes exceeds ${MAX_FREEZE_BYTES} cap`);
   mkdirSync(dirname(destPath), { recursive: true });
-  writeFileSync(destPath, bytes);
+  // Exclusive create; on EEXIST remove and retry — never write through an
+  // existing file or planted symlink (CodeQL js/insecure-temporary-file).
+  try {
+    writeFileSync(destPath, bytes, { flag: "wx" });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+    rmSync(destPath);
+    writeFileSync(destPath, bytes, { flag: "wx" });
+  }
   return bytes.length;
 }
 

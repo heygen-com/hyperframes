@@ -232,6 +232,10 @@
         "import": "./dist/editing/affordances.js",
         "types": "./dist/editing/affordances.d.ts"
       },
+      "./figma": {
+        "import": "./dist/figma/index.js",
+        "types": "./dist/figma/index.d.ts"
+      },
       "./generators": {
         "import": "./dist/generators/hyperframes.js",
         "types": "./dist/generators/hyperframes.d.ts"

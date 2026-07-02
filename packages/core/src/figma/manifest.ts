@@ -97,9 +97,25 @@ export function nextId(projectDir: string, type: FigmaManifestRecord["type"]): s
   // Scan EVERY writer's rows (media-use included), not just figma-owned ones —
   // ids and file paths are shared across the inventory, so a figma id minted
   // from a figma-only view would collide with media-use's image_NNN files.
-  for (const r of readJsonlValues(manifestPath(projectDir))) {
-    if (typeof r !== "object" || r === null || !("id" in r) || typeof r.id !== "string") continue;
-    const m = r.id.match(re);
+  const p = manifestPath(projectDir);
+  if (!existsSync(p)) return `${type}_001`;
+  for (const line of readFileSync(p, "utf8").split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0) continue;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      continue;
+    }
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      !("id" in parsed) ||
+      typeof parsed.id !== "string"
+    )
+      continue;
+    const m = parsed.id.match(re);
     const n = m?.[1];
     if (n !== undefined) max = Math.max(max, Number.parseInt(n, 10));
   }
