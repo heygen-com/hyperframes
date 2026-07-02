@@ -29,3 +29,9 @@ describe("parseFigmaRef", () => {
     expect(() => parseFigmaRef("   ")).toThrow();
   });
 });
+
+describe("normalizeNodeId multi-segment", () => {
+  it("converts every dash in a multi-segment node id", () => {
+    expect(parseFigmaRef("KEY:1-2-3").nodeId).toBe("1:2:3");
+  });
+});
