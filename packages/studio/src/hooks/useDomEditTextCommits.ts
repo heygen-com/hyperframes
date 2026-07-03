@@ -33,6 +33,7 @@ import {
   bumpDomEditCommitVersion,
   runDomEditCommit,
 } from "./domEditCommitRunner";
+import { useDomEditAttributeCommits } from "./useDomEditAttributeCommits";
 
 // ── Types ──
 
@@ -52,33 +53,6 @@ export interface UseDomEditTextCommitsParams {
   ) => Promise<DomEditSelection | null>;
   persistDomEditOperations: PersistDomEditOperations;
   resolveImportedFontAsset: (fontFamilyValue: string) => ImportedFontAsset | null;
-}
-
-function applyPreviewAttribute(
-  doc: Document | null | undefined,
-  selection: DomEditSelection,
-  activeCompPath: string | null,
-  attr: string,
-  value: string | null,
-  options: { prefixData?: boolean; removeFalse?: boolean } = {},
-): void {
-  if (!doc) return;
-  const el = findElementForSelection(doc, selection, activeCompPath);
-  if (!el) return;
-  const fullAttr = options.prefixData && !attr.startsWith("data-") ? `data-${attr}` : attr;
-  if (value === null || value === "" || (options.removeFalse && value === "false")) {
-    el.removeAttribute(fullAttr);
-  } else {
-    el.setAttribute(fullAttr, value);
-  }
-}
-
-interface DataAttributeCommitOptions {
-  label: string;
-  coalescePrefix: string;
-  skipRefresh: boolean;
-  warningMessage: string;
-  refreshAfter?: boolean;
 }
 
 interface DomTextCommitPlan {
@@ -171,6 +145,16 @@ export function useDomEditTextCommits({
   const domTextCommitVersionRef = useRef(0);
   const domStyleCommitVersionRef = useRef(new Map<string, number>());
 
+  const { handleDomAttributeCommit, handleDomAttributeLiveCommit, handleDomHtmlAttributeCommit } =
+    useDomEditAttributeCommits({
+      activeCompPath,
+      previewIframeRef,
+      showToast,
+      domEditSelection,
+      refreshDomEditSelectionFromPreview,
+      persistDomEditOperations,
+    });
+
   const handleDomStyleCommit = useCallback(
     async (property: string, value: string) => {
       if (!domEditSelection) return;
@@ -243,105 +227,6 @@ export function useDomEditTextCommits({
       persistDomEditOperations,
       refreshDomEditSelectionFromPreview,
       resolveImportedFontAsset,
-      showToast,
-      previewIframeRef,
-    ],
-  );
-
-  const commitDataAttribute = useCallback(
-    async (attr: string, value: string | null, options: DataAttributeCommitOptions) => {
-      if (!domEditSelection) return;
-      const iframe = previewIframeRef.current;
-      applyPreviewAttribute(
-        iframe?.contentDocument,
-        domEditSelection,
-        activeCompPath,
-        attr,
-        value,
-        {
-          prefixData: true,
-        },
-      );
-      const op: PatchOperation = { type: "attribute", property: attr, value };
-      try {
-        await persistDomEditOperations(domEditSelection, [op], {
-          label: options.label,
-          coalesceKey: `${options.coalescePrefix}:${attr}:${getDomEditTargetKey(domEditSelection)}`,
-          skipRefresh: options.skipRefresh,
-        });
-      } catch (error) {
-        reportDomEditPersistFailure(domEditSelection, [op], error, showToast);
-      }
-      if (options.refreshAfter) {
-        refreshDomEditSelectionFromPreview(domEditSelection);
-      }
-    },
-    [
-      activeCompPath,
-      domEditSelection,
-      persistDomEditOperations,
-      refreshDomEditSelectionFromPreview,
-      showToast,
-      previewIframeRef,
-    ],
-  );
-
-  const handleDomAttributeCommit = useCallback(
-    async (attr: string, value: string) => {
-      await commitDataAttribute(attr, value, {
-        label: `Edit ${attr.replace(/-/g, " ")}`,
-        coalescePrefix: "attr",
-        skipRefresh: false,
-        warningMessage: "[Studio] Attribute persist failed:",
-        refreshAfter: true,
-      });
-    },
-    [commitDataAttribute],
-  );
-
-  const handleDomAttributeLiveCommit = useCallback(
-    async (attr: string, value: string | null) => {
-      await commitDataAttribute(attr, value, {
-        label: `Edit ${attr.replace(/^(data-)?/, "").replace(/-/g, " ")}`,
-        coalescePrefix: "attr-live",
-        skipRefresh: true,
-        warningMessage: "[Studio] Live attribute persist failed:",
-      });
-    },
-    [commitDataAttribute],
-  );
-
-  const handleDomHtmlAttributeCommit = useCallback(
-    async (attr: string, value: string | null) => {
-      if (!domEditSelection) return;
-      const iframe = previewIframeRef.current;
-      applyPreviewAttribute(
-        iframe?.contentDocument,
-        domEditSelection,
-        activeCompPath,
-        attr,
-        value,
-        {
-          removeFalse: true,
-        },
-      );
-      const op: PatchOperation = { type: "html-attribute", property: attr, value };
-      try {
-        await persistDomEditOperations(domEditSelection, [op], {
-          label: `Edit ${attr}`,
-          coalesceKey: `html-attr:${attr}:${getDomEditTargetKey(domEditSelection)}`,
-          skipRefresh: false,
-        });
-      } catch (error) {
-        reportDomEditPersistFailure(domEditSelection, [op], error, showToast);
-      }
-      refreshDomEditSelectionFromPreview(domEditSelection);
-    },
-    [
-      activeCompPath,
-      domEditSelection,
-      persistDomEditOperations,
-      refreshDomEditSelectionFromPreview,
       showToast,
       previewIframeRef,
     ],
