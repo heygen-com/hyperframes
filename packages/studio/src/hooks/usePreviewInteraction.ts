@@ -99,7 +99,14 @@ export function usePreviewInteraction({
           downTs - lastDown.t < DOUBLE_CLICK_MS &&
           Math.hypot(e.clientX - lastDown.x, e.clientY - lastDown.y) < DOUBLE_CLICK_RADIUS_PX);
       lastDownRef.current = { t: downTs, x: e.clientX, y: e.clientY };
+      const wasPlaying = usePlayerStore.getState().isPlaying;
       pausePreviewPlayback();
+      // A click that resolves to nothing (dead-zone / deselect) shouldn't leave
+      // playback paused — pausing before sampling only exists to keep the hit
+      // target stable while resolving; resume if nothing was selected.
+      const resumeIfNothingSelected = () => {
+        if (wasPlaying) usePlayerStore.getState().setIsPlaying(true);
+      };
 
       // Double-click a group → drill into it and select the child under the
       // pointer (resolve with the group as the explicit drill-in scope, since the
@@ -156,7 +163,10 @@ export function usePreviewInteraction({
           })) ??
           options?.hoverSelection ??
           null;
-        if (!nextSelection) return;
+        if (!nextSelection) {
+          resumeIfNothingSelected();
+          return;
+        }
         e.preventDefault();
         e.stopPropagation();
         applyDomSelection(nextSelection, { additive: true });
@@ -194,6 +204,7 @@ export function usePreviewInteraction({
       if (!nextSelection) {
         cycleRef.current = null;
         applyDomSelection(null, { revealPanel: false });
+        resumeIfNothingSelected();
         return;
       }
       e.preventDefault();

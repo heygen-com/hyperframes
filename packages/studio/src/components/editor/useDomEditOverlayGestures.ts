@@ -369,6 +369,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       opts.suppressNextBoxClickRef.current = true;
       opts.onCanvasMouseDown(e as unknown as React.MouseEvent<HTMLDivElement>, {
         preferClipAncestor: false,
+        hoverSelection: opts.hoverSelectionRef.current,
       });
       return;
     }

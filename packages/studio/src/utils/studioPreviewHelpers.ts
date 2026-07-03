@@ -102,8 +102,11 @@ function needsPointerEventsInheritanceFallback(doc: Document, win: Window): bool
   return needsFallback;
 }
 
-function hasOwnPointerEventsOverride(el: HTMLElement): boolean {
-  const value = el.style.pointerEvents.trim();
+// Own declared pointer-events value, via computed style rather than inline
+// style, so a CSS-class opt-in/opt-out (not just an inline style attribute)
+// is honored when walking back down from a pointer-events:none ancestor.
+function hasOwnPointerEventsOverride(el: HTMLElement, win: Window): boolean {
+  const value = win.getComputedStyle(el).pointerEvents;
   return value !== "" && value !== "inherit" && value !== "unset";
 }
 
@@ -113,8 +116,8 @@ function inheritsPointerEventsNoneFromAncestor(el: HTMLElement, win: Window): bo
     if (win.getComputedStyle(current).pointerEvents === "none") {
       let descendant: HTMLElement | null = el;
       while (descendant && descendant !== current) {
-        if (hasOwnPointerEventsOverride(descendant)) {
-          return descendant.style.pointerEvents.trim() === "none";
+        if (hasOwnPointerEventsOverride(descendant, win)) {
+          return win.getComputedStyle(descendant).pointerEvents === "none";
         }
         descendant = descendant.parentElement;
       }
@@ -221,6 +224,13 @@ export function getPreviewTargetFromPointer(
       if (visualTarget) return visualTarget;
     }
 
+    // Belt-and-suspenders: elementsFromPoint is universally supported in the
+    // browsers this ships in, so the override is already removed by this
+    // point in practice — but guard the environment without it too, so
+    // hasAuthorPointerEventsNone below never reads a forced-auto value.
+    removePointerEventsOverride(overrideStyle);
+    overrideStyle = null;
+
     // No element hit (e.g. empty space inside an animated group's overlay) — fall
     // back to the group whose member-union contains the point, so the whole group
     // area is hoverable/selectable, not just where a member currently sits.
@@ -234,8 +244,6 @@ export function getPreviewTargetFromPointer(
 
     const fallback = getEventTargetElement(doc.elementFromPoint(localPointer.x, localPointer.y));
     if (!fallback || !getDomLayerPatchTarget(fallback, activeCompositionPath)) return null;
-    removePointerEventsOverride(overrideStyle);
-    overrideStyle = null;
     if (hasAuthorPointerEventsNone(fallback)) return null;
     if (!isElementComputedVisible(fallback)) return null;
     if (isFullBleedTarget(fallback, localPointer.viewport)) return null;

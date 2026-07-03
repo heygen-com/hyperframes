@@ -139,4 +139,37 @@ describe("getPreviewTargetFromPointer", () => {
 
     iframe.remove();
   });
+
+  it("honors a CSS-class pointer-events:auto opt-in under a pointer-events:none ancestor", () => {
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    const doc = iframe.contentDocument;
+    if (!doc) throw new Error("Expected iframe document");
+
+    doc.head.innerHTML = `<style>.clickable { pointer-events: auto; }</style>`;
+    doc.body.innerHTML = `
+      <main id="scene" data-composition-id="scene">
+        <div id="overlay-parent" style="pointer-events: none;">
+          <button id="clickable-child" class="clickable">Play</button>
+        </div>
+      </main>
+    `;
+
+    const scene = doc.getElementById("scene");
+    const overlayParent = doc.getElementById("overlay-parent");
+    const clickableChild = doc.getElementById("clickable-child");
+    if (!scene || !overlayParent || !clickableChild) {
+      throw new Error("Expected preview fixture elements");
+    }
+
+    stubRect(iframe, domRect(0, 0, 400, 300));
+    stubRect(scene, domRect(0, 0, 400, 300));
+    stubRect(overlayParent, domRect(0, 0, 360, 260));
+    stubRect(clickableChild, domRect(40, 40, 80, 24));
+    doc.elementsFromPoint = () => [clickableChild, overlayParent, scene];
+
+    expect(getPreviewTargetFromPointer(iframe, 60, 50, "index.html")).toBe(clickableChild);
+
+    iframe.remove();
+  });
 });

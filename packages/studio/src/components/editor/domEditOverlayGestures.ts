@@ -9,6 +9,7 @@ import type { ManualOffsetDragMember } from "./manualOffsetDrag";
 import type { GroupOverlayItem, OverlayRect } from "./domEditOverlayGeometry";
 import type { SnapContext } from "./snapTargetCollection";
 import type { SnapGuidesState } from "./SnapGuideOverlay";
+import type { PreviewMouseDownOptions } from "../../hooks/usePreviewInteraction";
 
 export type GestureKind = "drag" | "resize" | "rotate";
 
@@ -161,6 +162,7 @@ export type UseDomEditOverlayGesturesOptions = {
   iframeRef: RefObject<HTMLIFrameElement | null>;
   boxRef: RefObject<HTMLDivElement | null>;
   selectionRef: RefObject<DomEditSelection | null>;
+  hoverSelectionRef: RefObject<DomEditSelection | null>;
   overlayRectRef: RefObject<OverlayRect | null>;
   groupOverlayItemsRef: RefObject<GroupOverlayItem[]>;
   gestureRef: RefObject<GestureState | null>;
@@ -194,9 +196,6 @@ export type UseDomEditOverlayGesturesOptions = {
       o?: { preferClipAncestor?: boolean },
     ) => Promise<DomEditSelection | null>
   >;
-  onCanvasMouseDown: (
-    e: React.MouseEvent<HTMLDivElement>,
-    o?: { preferClipAncestor?: boolean },
-  ) => void;
+  onCanvasMouseDown: (e: React.MouseEvent<HTMLDivElement>, o?: PreviewMouseDownOptions) => void;
   snapGuidesRef: RefObject<SnapGuidesState | null>;
 };

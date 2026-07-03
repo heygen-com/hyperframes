@@ -4,6 +4,7 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DomEditSelection } from "../components/editor/domEditing";
+import { usePlayerStore } from "../player";
 import { installReactActEnvironment, makeSelection } from "./domSelectionTestHarness";
 import { usePreviewInteraction } from "./usePreviewInteraction";
 
@@ -220,6 +221,40 @@ describe("usePreviewInteraction", () => {
 
     expect(applyDomSelection).toHaveBeenNthCalledWith(1, topSelection);
     expect(applyDomSelection).toHaveBeenNthCalledWith(2, bottomSelection);
+    cleanup();
+  });
+
+  it("resumes playback when a click resolves to nothing (dead-zone / deselect)", async () => {
+    usePlayerStore.setState({ isPlaying: true });
+    const applyDomSelection = vi.fn();
+    const resolveDomSelectionFromPreviewPoint = vi.fn(async () => null);
+    const { canvas, cleanup } = renderHarness({
+      previewIframe: createPreviewIframe(vi.fn()),
+      resolveDomSelectionFromPreviewPoint,
+      applyDomSelection,
+    });
+
+    await dispatchMouseDown(canvas, {});
+
+    expect(applyDomSelection).toHaveBeenCalledWith(null, { revealPanel: false });
+    expect(usePlayerStore.getState().isPlaying).toBe(true);
+    cleanup();
+  });
+
+  it("does not resume playback on deselect when it was already paused", async () => {
+    usePlayerStore.setState({ isPlaying: false });
+    const applyDomSelection = vi.fn();
+    const resolveDomSelectionFromPreviewPoint = vi.fn(async () => null);
+    const { canvas, cleanup } = renderHarness({
+      previewIframe: createPreviewIframe(vi.fn()),
+      resolveDomSelectionFromPreviewPoint,
+      applyDomSelection,
+    });
+
+    await dispatchMouseDown(canvas, {});
+
+    expect(applyDomSelection).toHaveBeenCalledWith(null, { revealPanel: false });
+    expect(usePlayerStore.getState().isPlaying).toBe(false);
     cleanup();
   });
 });

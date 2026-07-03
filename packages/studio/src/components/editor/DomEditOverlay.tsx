@@ -278,6 +278,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     iframeRef,
     boxRef,
     selectionRef,
+    hoverSelectionRef,
     overlayRectRef,
     groupOverlayItemsRef,
     gestureRef,
@@ -337,10 +338,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     // Allow clicks anywhere on the overlay — GSAP-translated elements can
     // extend beyond the composition rect into the gray zone, and users need
     // to select/deselect them by clicking there.
-    onCanvasMouseDown(event, {
-      preferClipAncestor: false,
-      hoverSelection: hoverSelectionRef.current,
-    });
+    onCanvasMouseDown(event, { hoverSelection: hoverSelectionRef.current });
     if (event.shiftKey) {
       suppressNextBoxMouseDownRef.current = true;
       suppressNextBoxClickRef.current = true;
@@ -405,7 +403,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       event.stopPropagation();
       return;
     }
-    onCanvasMouseDown(event, { preferClipAncestor: false });
+    onCanvasMouseDown(event, { hoverSelection: hoverSelectionRef.current });
   };
 
   const suppressBoxMouseDown = (e: React.MouseEvent) => {
