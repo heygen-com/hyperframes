@@ -271,7 +271,8 @@ export async function extractVideoFramesRange(
   args.push("-vf", vfFilters.join(","));
 
   args.push("-q:v", format === "jpg" ? String(Math.ceil((100 - quality) / 3)) : "0");
-  if (format === "png") args.push("-compression_level", "6");
+  // Render-scoped temp frames are read once; level 1 measured 3-5x faster for ~14% larger files.
+  if (format === "png") args.push("-compression_level", "1");
   args.push("-y", outputPattern);
 
   return new Promise((resolve, reject) => {
