@@ -73,7 +73,12 @@ export async function runComponentImport(
       { format: "svg" },
       { projectDir: deps.projectDir, client: deps.client, download: deps.download },
     );
-    const srcRel = relative(componentDir, join(deps.projectDir, asset.record.path));
+    // src is a URL — always forward slashes, even when relative() yields
+    // windows separators.
+    const srcRel = relative(componentDir, join(deps.projectDir, asset.record.path)).replaceAll(
+      "\\",
+      "/",
+    );
     const emittedId = escapeAttr(req.nodeId);
     html = html.replaceAll(
       `data-figma-rasterize="${emittedId}" `,
