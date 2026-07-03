@@ -1526,6 +1526,34 @@ async function computeStaticFrameSet(
 }
 
 /**
+ * Interior verification points for a run [a..b], plus the always-included end `b`.
+ * Density used to be a flat point-count cap (min(sampleCount, 8)), so a run's
+ * stride grew with its span — on a long run (many merged static frames), two
+ * checks could land hundreds of frames apart. A genuine content change in
+ * between (e.g. text swapped by a mechanism computeStaticFrameSet's GSAP-only
+ * tween walk can't see) then hides between samples and the whole run gets
+ * wrongly trusted as static. Bounding the STRIDE itself (never skip more than
+ * `sampleCount` frames between checks) makes density scale with run length
+ * instead of staying flat, while keeping the original per-run point target for
+ * short/typical runs where the two formulas agree. Pure and exported so its
+ * scaling behavior is unit-testable without a real page/browser.
+ */
+export function computeStaticVerificationPoints(
+  a: number,
+  b: number,
+  sampleCount: number,
+): number[] {
+  const perRun = Math.max(3, Math.min(sampleCount, 8));
+  const maxStride = Math.max(1, sampleCount);
+  const span = b - a;
+  const stride = span > 0 ? Math.min(maxStride, Math.max(1, Math.floor(span / (perRun - 1)))) : 1;
+  const pts = new Set<number>();
+  for (let f = a; f <= b; f += stride) pts.add(f);
+  pts.add(b);
+  return [...pts].sort((x, y) => x - y);
+}
+
+/**
  * Empirically verify the predicted-static set before trusting it. Group static frames
  * into runs; each run [a..b] reuses anchor a-1. CRITICAL: compare against the ANCHOR,
  * not the predecessor — a slow drift with sub-quantization per-frame deltas is byte-
@@ -1561,11 +1589,9 @@ async function verifyStaticFramesSafe(
   };
   // Verify EVERY run in order (no longest-first truncation that would leave runs armed
   // but unverified). Per run, compare the FIRST reused frame `a`, the END `b` (max
-  // accumulated drift), and interior points at a stride — against the anchor the run
-  // actually reuses. `sampleCount` sets the interior density (points per run ~ that many
-  // for a long run); a hard cap bounds pathological run counts, and hitting it DISABLES
-  // dedup (conservative: never trust an unverified set).
-  const perRun = Math.max(3, Math.min(sampleCount, 8));
+  // accumulated drift), and interior points at a stride (see computeStaticVerificationPoints)
+  // — against the anchor the run actually reuses. A hard cap bounds pathological run
+  // counts, and hitting it DISABLES dedup (conservative: never trust an unverified set).
   const hardCap = Math.max(sampleCount * 8, 400);
   let spent = 0;
   for (const { a, b } of runs) {
@@ -1573,12 +1599,7 @@ async function verifyStaticFramesSafe(
     if (anchor < 0) continue;
     const anchorBuf = await seekCapture(anchor);
     spent++;
-    const span = b - a;
-    const stride = span > 0 ? Math.max(1, Math.floor(span / (perRun - 1))) : 1;
-    const pts = new Set<number>();
-    for (let f = a; f <= b; f += stride) pts.add(f);
-    pts.add(b); // always include the end (max drift)
-    for (const f of [...pts].sort((x, y) => x - y)) {
+    for (const f of computeStaticVerificationPoints(a, b, sampleCount)) {
       const cur = await seekCapture(f);
       spent++;
       if (!anchorBuf.equals(cur)) return { badFrame: f, budgetExhausted: false };
