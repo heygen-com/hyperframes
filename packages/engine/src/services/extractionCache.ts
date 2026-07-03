@@ -192,6 +192,17 @@ function isTargetExistsRenameError(err: unknown): boolean {
  * should rehydrate from the final dir. If publish cannot complete safely, the
  * partial remains render-owned and must be cleaned up by the render cleanup.
  */
+/**
+ * If a concurrent writer's completed entry is visible, discard our partial
+ * and serve theirs. Identical keys produce identical frames, so adopting the
+ * winner is always correct. Returns null when no winner is present.
+ */
+function adoptPublishedWinner(entry: CacheEntry, partialDir: string): CachePublishResult | null {
+  if (!existsSync(join(entry.dir, COMPLETE_SENTINEL))) return null;
+  removeDir(partialDir);
+  return { dir: entry.dir, published: true };
+}
+
 export function publishCacheEntry(entry: CacheEntry, partialDir: string): CachePublishResult {
   try {
     writeFileSync(join(partialDir, COMPLETE_SENTINEL), "", "utf-8");
@@ -206,14 +217,8 @@ export function publishCacheEntry(entry: CacheEntry, partialDir: string): CacheP
     if (!isTargetExistsRenameError(err)) return { dir: partialDir, published: false };
   }
 
-  if (existsSync(join(entry.dir, COMPLETE_SENTINEL))) {
-    try {
-      rmSync(partialDir, { recursive: true, force: true });
-    } catch {
-      // Best effort cleanup; the partial is still safe to leave for GC.
-    }
-    return { dir: entry.dir, published: true };
-  }
+  const winner = adoptPublishedWinner(entry, partialDir);
+  if (winner) return winner;
 
   try {
     rmSync(entry.dir, { recursive: true, force: true });
@@ -225,7 +230,10 @@ export function publishCacheEntry(entry: CacheEntry, partialDir: string): CacheP
     renameSync(partialDir, entry.dir);
     return { dir: entry.dir, published: true };
   } catch {
-    return { dir: partialDir, published: false };
+    // TOCTOU: a concurrent writer can publish between the winner check, the
+    // rm above, and this retry. Re-run the adopt check so a winner that
+    // landed inside that window is served rather than reported as a failure.
+    return adoptPublishedWinner(entry, partialDir) ?? { dir: partialDir, published: false };
   }
 }
 
@@ -317,11 +325,18 @@ interface GcEntry {
  * writers) are removed immediately and yield `null`; entries that disappear
  * or fail to stat mid-sweep also yield `null`.
  */
-function collectGcEntry(dir: string, name: string, now: number, minAgeMs: number): GcEntry | null {
+function collectGcEntry(
+  dir: string,
+  name: string,
+  now: number,
+  minAgeMs: number,
+  stats: GcStats,
+): GcEntry | null {
   try {
     const dirStat = statSync(dir);
     if (isPartialChild(name) && now - dirStat.mtimeMs >= minAgeMs) {
       removeDir(dir);
+      stats.agedPartialsRemoved += 1;
       return null;
     }
 
@@ -338,39 +353,59 @@ function collectGcEntry(dir: string, name: string, now: number, minAgeMs: number
   }
 }
 
+export interface GcStats {
+  /** Complete entries evicted by the LRU size sweep. */
+  evictedEntries: number;
+  /** Bytes reclaimed by evicted entries. */
+  evictedBytes: number;
+  /** Aged `.partial-*` dirs (crashed writers) removed. */
+  agedPartialsRemoved: number;
+}
+
 /**
  * Opportunistic size-capped LRU cleanup for extracted video frames.
  *
  * Scans only direct cache-looking children and never throws. The age guard is
- * a liveness heuristic, not a lock.
+ * a liveness heuristic, not a lock. Returns counts so the caller can surface
+ * eviction pressure in render observability.
  */
 export function gcExtractionCache(
   rootDir: string,
   opts: { maxBytes: number; minAgeMs: number },
-): void {
+): GcStats {
+  const stats: GcStats = { evictedEntries: 0, evictedBytes: 0, agedPartialsRemoved: 0 };
   try {
     const now = Date.now();
     const entries: GcEntry[] = [];
     for (const child of readdirSync(rootDir, { withFileTypes: true })) {
       if (!child.isDirectory() || !isCacheLikeChild(child.name)) continue;
-      const entry = collectGcEntry(join(rootDir, child.name), child.name, now, opts.minAgeMs);
+      const entry = collectGcEntry(
+        join(rootDir, child.name),
+        child.name,
+        now,
+        opts.minAgeMs,
+        stats,
+      );
       if (entry) entries.push(entry);
     }
 
     let totalBytes = entries.reduce((sum, e) => sum + e.size, 0);
-    if (totalBytes <= opts.maxBytes) return;
+    if (totalBytes <= opts.maxBytes) return stats;
 
     entries.sort((a, b) => a.lastUseMs - b.lastUseMs);
     for (const entry of entries) {
       // ponytail: age-based liveness guard, not a lock; a render longer than minAge with a full cache could lose entries mid-read - acceptable, next render re-extracts.
       if (entry.ageMs < opts.minAgeMs) continue;
       removeDir(entry.dir);
+      stats.evictedEntries += 1;
+      stats.evictedBytes += entry.size;
       totalBytes -= entry.size;
       if (totalBytes <= opts.maxBytes) break;
     }
   } catch {
     // Missing root or unreadable cache: no cleanup this sweep.
   }
+  return stats;
 }
 
 /**
