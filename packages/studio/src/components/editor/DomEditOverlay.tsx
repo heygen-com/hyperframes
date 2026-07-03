@@ -1,6 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { type DomEditSelection } from "./domEditing";
+import type { PreviewMouseDownOptions } from "../../hooks/usePreviewInteraction";
 import { useMarqueeGestures } from "./marqueeCommit";
 import { MarqueeOverlay } from "./MarqueeOverlay";
 import { groupAwareOverlayRect, resolveDomEditGroupOverlayRect } from "./domEditOverlayGeometry";
@@ -44,7 +45,7 @@ interface DomEditOverlayProps {
   allowCanvasMovement?: boolean;
   onCanvasMouseDown: (
     event: React.MouseEvent<HTMLDivElement>,
-    options?: { preferClipAncestor?: boolean },
+    options?: PreviewMouseDownOptions,
   ) => void;
   onCanvasPointerMove: (
     event: React.PointerEvent<HTMLDivElement>,
@@ -336,7 +337,10 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     // Allow clicks anywhere on the overlay — GSAP-translated elements can
     // extend beyond the composition rect into the gray zone, and users need
     // to select/deselect them by clicking there.
-    onCanvasMouseDown(event, { preferClipAncestor: false });
+    onCanvasMouseDown(event, {
+      preferClipAncestor: false,
+      hoverSelection: hoverSelectionRef.current,
+    });
     if (event.shiftKey) {
       suppressNextBoxMouseDownRef.current = true;
       suppressNextBoxClickRef.current = true;
