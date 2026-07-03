@@ -578,3 +578,136 @@ describe("useDomEditCommits style persist handling", () => {
     }
   });
 });
+
+describe("useDomEditCommits attribute persist handling", () => {
+  beforeEach(() => {
+    ensureCssEscape();
+    vi.clearAllMocks();
+    vi.unstubAllGlobals();
+    document.body.replaceChildren();
+  });
+
+  it("toasts and reverts a data-attribute commit when the server cannot resolve the source element", async () => {
+    stubPatchFetch({ ok: true, changed: false, matched: false });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { iframe, element } = createPreviewElement();
+    const rendered = renderDomEditCommits(createSelection(element), iframe);
+
+    try {
+      await act(async () => {
+        await rendered.hook.handleDomAttributeCommit("volume", "0.8");
+      });
+
+      expect(rendered.showToast).toHaveBeenCalledWith(
+        expect.stringMatching(/Couldn't save "Hero title": Couldn't find this element/),
+        "error",
+      );
+      expect(element.getAttribute("data-volume")).toBeNull();
+    } finally {
+      warnSpy.mockRestore();
+      rendered.cleanup();
+    }
+  });
+
+  it("toasts and reverts a data-attribute commit when the patch request rejects", async () => {
+    stubPatchFetch(new Error("network down"));
+    const { iframe, element } = createPreviewElement();
+    element.setAttribute("data-volume", "0.5");
+    const rendered = renderDomEditCommits(createSelection(element), iframe);
+
+    try {
+      await act(async () => {
+        await rendered.hook.handleDomAttributeCommit("volume", "0.8");
+      });
+
+      expect(rendered.showToast).toHaveBeenCalledWith(
+        'Couldn\'t save "Hero title": network down',
+        "error",
+      );
+      expect(element.getAttribute("data-volume")).toBe("0.5");
+    } finally {
+      rendered.cleanup();
+    }
+  });
+
+  it("keeps a data-attribute commit on success", async () => {
+    stubPatchFetch({
+      ok: true,
+      changed: true,
+      matched: true,
+      content: '<div data-hf-id="hf-card" data-volume="0.8">Card</div>',
+    });
+    const { iframe, element } = createPreviewElement();
+    const rendered = renderDomEditCommits(createSelection(element), iframe);
+
+    try {
+      await act(async () => {
+        await rendered.hook.handleDomAttributeCommit("volume", "0.8");
+      });
+
+      expect(rendered.showToast).not.toHaveBeenCalled();
+      expect(element.getAttribute("data-volume")).toBe("0.8");
+    } finally {
+      rendered.cleanup();
+    }
+  });
+
+  it("toasts and reverts an html-attribute commit when the patch request rejects", async () => {
+    stubPatchFetch(new Error("network down"));
+    const { iframe, element } = createPreviewElement();
+    const rendered = renderDomEditCommits(createSelection(element), iframe);
+
+    try {
+      await act(async () => {
+        await rendered.hook.handleDomHtmlAttributeCommit("muted", "true");
+      });
+
+      expect(rendered.showToast).toHaveBeenCalledWith(
+        'Couldn\'t save "Hero title": network down',
+        "error",
+      );
+      expect(element.getAttribute("muted")).toBeNull();
+    } finally {
+      rendered.cleanup();
+    }
+  });
+
+  it("keeps a newer html-attribute value when an older overlapping commit later fails", async () => {
+    const first = createDeferred<Response>();
+    let call = 0;
+    const { iframe, element } = createPreviewElement();
+    const rendered = renderDomEditCommits(createSelection(element), iframe);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+        const url = requestUrl(input);
+        if (url.includes("/api/projects/p1/files/")) {
+          return jsonResponse({ content: '<div data-hf-id="hf-card"></div>' });
+        }
+        call += 1;
+        if (call === 1) return first.promise;
+        return jsonResponse({ ok: true, changed: true, matched: true, content: "" });
+      }),
+    );
+
+    try {
+      // Older commit's persist stays pending (captures previousValue=null); the
+      // newer commit captures previousValue="first-value" (the older commit's
+      // optimistic apply) and succeeds before the older one rejects. Without the
+      // per-key version guard, the stale rejection would revert to the older
+      // commit's own previousValue (null) and stomp the newer commit's value.
+      const firstCommit = act(async () => {
+        await rendered.hook.handleDomHtmlAttributeCommit("muted", "first-value");
+      });
+      await act(async () => {
+        await rendered.hook.handleDomHtmlAttributeCommit("muted", "second-value");
+      });
+      first.reject(new Error("stale request failed"));
+      await firstCommit;
+
+      expect(element.getAttribute("muted")).toBe("second-value");
+    } finally {
+      rendered.cleanup();
+    }
+  });
+});
