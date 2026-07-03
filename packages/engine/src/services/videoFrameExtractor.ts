@@ -25,6 +25,7 @@ import { unwrapTemplate } from "../utils/htmlTemplate.js";
 import {
   FRAME_FILENAME_PREFIX,
   gcExtractionCache,
+  gcSweepDue,
   lookupCacheEntry,
   partialCacheEntryDir,
   publishCacheEntry,
@@ -86,6 +87,7 @@ export interface ExtractionOptions {
 }
 
 const EXTRACT_CACHE_MIN_AGE_MS = 60 * 60 * 1000;
+const GC_STALENESS_MS = 24 * 60 * 60 * 1000;
 const SDR_TO_HDR_COLORSPACE_FILTER = "colorspace=all=bt2020:iall=bt709:range=tv";
 
 function sdrToHdrTransformKey(transfer: HdrTransfer): string {
@@ -552,6 +554,33 @@ function buildSupersetGroup(
   };
 }
 
+/**
+ * Partition one source's misses into overlap-connected components: sort by
+ * window start and cut wherever the next window starts past the running end.
+ * Without this, one disjoint outlier trim (e.g. [100..105] next to three
+ * overlapping trims at [0..11]) fails the union<=sum check for the whole
+ * bucket and every trim falls back to direct extraction.
+ */
+function overlapClusters(misses: UniqueExtractionMiss[]): UniqueExtractionMiss[][] {
+  const sorted = [...misses].sort((a, b) => a.work.video.mediaStart - b.work.video.mediaStart);
+  const clusters: UniqueExtractionMiss[][] = [];
+  let current: UniqueExtractionMiss[] = [];
+  let currentEnd = -Infinity;
+  for (const miss of sorted) {
+    const start = miss.work.video.mediaStart;
+    const end = start + miss.work.videoDuration;
+    if (current.length > 0 && start > currentEnd + 1e-9) {
+      clusters.push(current);
+      current = [];
+      currentEnd = -Infinity;
+    }
+    current.push(miss);
+    currentEnd = Math.max(currentEnd, end);
+  }
+  if (current.length > 0) clusters.push(current);
+  return clusters;
+}
+
 function planSupersetGroups(
   misses: UniqueExtractionMiss[],
   fps: number,
@@ -566,12 +595,14 @@ function planSupersetGroups(
   const direct: UniqueExtractionMiss[] = [];
   let groupIndex = 0;
   for (const groupMisses of bySource.values()) {
-    const group = buildSupersetGroup(`__superset-${groupIndex}`, groupMisses, fps);
-    if (group) {
-      groups.push(group);
-      groupIndex += 1;
-    } else {
-      direct.push(...groupMisses);
+    for (const cluster of overlapClusters(groupMisses)) {
+      const group = buildSupersetGroup(`__superset-${groupIndex}`, cluster, fps);
+      if (group) {
+        groups.push(group);
+        groupIndex += 1;
+      } else {
+        direct.push(...cluster);
+      }
     }
   }
   return { groups, direct };
@@ -1007,7 +1038,16 @@ export async function extractAllVideoFrames(
   ): Promise<Array<[string, ExtractionOutcome]>> {
     const first = group.members[0]?.miss.work;
     if (!first) return [];
-    const tempDir = join(options.outputDir, group.groupId);
+    // Hardlinks require source and destination on ONE filesystem. Cache-bound
+    // members link into partial dirs under cacheRootDir, which is commonly a
+    // different mount than the render's outputDir — extracting the superset
+    // next to the cache keeps linkSync viable there (the EXDEV copyFileSync
+    // fallback would silently multiply disk usage per member). The
+    // `.partial-` name puts crashed leftovers under the GC's aged-partial
+    // sweep.
+    const tempDir = cacheRootDir
+      ? join(cacheRootDir, `${group.groupId}.partial-${process.pid}`)
+      : join(options.outputDir, group.groupId);
 
     try {
       rmSync(tempDir, { recursive: true, force: true });
@@ -1029,7 +1069,16 @@ export async function extractAllVideoFrames(
         ]);
       }
       return outcomes;
-    } catch {
+    } catch (err) {
+      // On abort, the union failure is the cancellation itself — re-running
+      // every member through direct extraction would spawn N doomed ffmpeg
+      // processes. Surface the cancellation per member instead.
+      if (signal?.aborted) {
+        return group.members.map((member) => [
+          member.miss.work.dedupeKey,
+          { error: extractionError(member.miss.work.video.id, err) },
+        ]);
+      }
       const fallback = await Promise.all(
         group.members.map(
           async (member) =>
@@ -1147,7 +1196,12 @@ export async function extractAllVideoFrames(
     }
   }
 
-  if (cacheRootDir && breakdown.cacheMisses > 0) {
+  // Sweep when this render wrote something, plus a staleness fallback so a
+  // 100%-warm workload (misses never > 0) still reclaims space once a day.
+  const sweepDue =
+    breakdown.cacheMisses > 0 ||
+    (cacheRootDir !== undefined && gcSweepDue(cacheRootDir, GC_STALENESS_MS));
+  if (cacheRootDir && sweepDue) {
     const gcStats = gcExtractionCache(cacheRootDir, {
       maxBytes: config?.extractCacheMaxBytes ?? DEFAULT_CONFIG.extractCacheMaxBytes,
       minAgeMs: EXTRACT_CACHE_MIN_AGE_MS,

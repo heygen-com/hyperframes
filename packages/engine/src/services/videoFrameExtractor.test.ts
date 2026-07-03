@@ -31,7 +31,7 @@ import {
 } from "./videoFrameExtractor.js";
 import { extractVideoMetadata, type VideoMetadata } from "../utils/ffprobe.js";
 import { runFfmpeg } from "../utils/runFfmpeg.js";
-import { COMPLETE_SENTINEL, SCHEMA_PREFIX } from "./extractionCache.js";
+import { COMPLETE_SENTINEL, GC_MARKER, SCHEMA_PREFIX } from "./extractionCache.js";
 
 // ffmpeg is not preinstalled on GitHub's ubuntu-24.04 runners. The producer
 // regression test at packages/producer/tests/vfr-screen-recording/ runs inside
@@ -1150,6 +1150,69 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
     } finally {
       rmSync(CACHE_DIR, { recursive: true, force: true });
     }
+  }, 60_000);
+
+  it("clusters overlap components so a disjoint outlier does not break the group", async () => {
+    const SRC = await synthCfrClip("superset-cluster-src.mp4", 12);
+    const outputDir = join(FIXTURE_DIR, "out-superset-cluster");
+    mkdirSync(outputDir, { recursive: true });
+
+    // Three overlapping trims [0..4], [2..6], [4..8] plus one disjoint trim
+    // [10..12] of the same source. Pre-clustering, the outlier failed the
+    // union<=sum check for the whole bucket and ALL FOUR fell back to direct
+    // extraction; the overlapping three must still share one superset.
+    const result = await extractAllVideoFrames(
+      [
+        cfrClipElement("cl-a", SRC, 4, 0),
+        cfrClipElement("cl-b", SRC, 4, 2),
+        cfrClipElement("cl-c", SRC, 4, 4),
+        cfrClipElement("cl-out", SRC, 2, 10),
+      ],
+      FIXTURE_DIR,
+      { fps: 30, outputDir },
+    );
+
+    expect(result.errors).toEqual([]);
+    // Overlap region t=2..4 of the source: cl-a frame 60 and cl-b frame 0
+    // must be the SAME inode (shared superset extraction).
+    expect(statSync(framePath(result, "cl-a", 60)).ino).toBe(
+      statSync(framePath(result, "cl-b", 0)).ino,
+    );
+    expect(statSync(framePath(result, "cl-b", 60)).ino).toBe(
+      statSync(framePath(result, "cl-c", 0)).ino,
+    );
+    // The outlier extracted directly: its frames share no inode with the
+    // cluster (frame at source t=10 exists only in its own extraction).
+    expect(extractedFor(result, "cl-out").totalFrames).toBe(60);
+    expect(supersetDirNames(outputDir)).toEqual([]);
+  }, 60_000);
+
+  it("runs the GC staleness fallback sweep on all-hit renders with a stale marker", async () => {
+    const CACHE_DIR = mkdtempSync(join(tmpdir(), "hf-extract-cache-gc-stale-test-"));
+    const SRC = await synthCfrClip("cache-gc-stale-src.mp4", 1);
+    const video = cfrClipElement("gc-stale", SRC, 1);
+
+    const miss = await extractWithCache(video, "out-cache-gc-stale-miss", CACHE_DIR);
+    expect(miss.phaseBreakdown.cacheMisses).toBe(1);
+
+    const agedPartial = join(CACHE_DIR, `${SCHEMA_PREFIX}aged.partial-1234-cafef00d`);
+    mkdirSync(agedPartial, { recursive: true });
+    writeFileSync(join(agedPartial, "frame_00001.jpg"), "stale", "utf-8");
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    utimesSync(agedPartial, twoHoursAgo, twoHoursAgo);
+
+    // Age the sweep marker past the 24h staleness window: the next all-hit
+    // render must sweep anyway and clear the aged partial.
+    const twoDaysAgo = new Date(Date.now() - 48 * 60 * 60 * 1000);
+    utimesSync(join(CACHE_DIR, GC_MARKER), twoDaysAgo, twoDaysAgo);
+
+    const hit = await extractWithCache(video, "out-cache-gc-stale-hit", CACHE_DIR);
+    expect(hit.phaseBreakdown.cacheHits).toBe(1);
+    expect(hit.phaseBreakdown.cacheMisses).toBe(0);
+    expect(existsSync(agedPartial)).toBe(false);
+    expect(hit.phaseBreakdown.cacheAgedPartialsCleared).toBe(1);
+
+    rmSync(CACHE_DIR, { recursive: true, force: true });
   }, 60_000);
 
   it("hardlinks overlapping aligned trims from one superset extraction", async () => {

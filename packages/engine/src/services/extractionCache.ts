@@ -53,6 +53,9 @@ export const FRAME_FILENAME_PREFIX = "frame_";
 /** Sentinel filename written after a cache entry is fully populated. */
 export const COMPLETE_SENTINEL = ".hf-complete";
 
+/** Marker file stamped after each GC sweep; drives the staleness fallback. */
+export const GC_MARKER = ".hf-last-gc";
+
 /**
  * Current schema version. Bump when the cache-contents invariant changes.
  * v2 -> v3: one-pass VFR extraction (-fps_mode cfr) replaces the two-pass
@@ -390,11 +393,29 @@ export interface GcStats {
  * a liveness heuristic, not a lock. Returns counts so the caller can surface
  * eviction pressure in render observability.
  */
+/**
+ * Whether the staleness fallback should force a sweep: true when no sweep
+ * marker exists or the last sweep is older than `maxAgeMs`. Lets 100%-warm
+ * workloads (which skip the per-miss sweep) still reclaim space eventually.
+ */
+export function gcSweepDue(rootDir: string, maxAgeMs: number): boolean {
+  try {
+    return Date.now() - statSync(join(rootDir, GC_MARKER)).mtimeMs > maxAgeMs;
+  } catch {
+    return true;
+  }
+}
+
 export function gcExtractionCache(
   rootDir: string,
   opts: { maxBytes: number; minAgeMs: number },
 ): GcStats {
   const stats: GcStats = { evictedEntries: 0, evictedBytes: 0, agedPartialsRemoved: 0 };
+  try {
+    writeFileSync(join(rootDir, GC_MARKER), "", "utf-8");
+  } catch {
+    // Unwritable root: the sweep below will no-op on the same root anyway.
+  }
   try {
     const now = Date.now();
     const entries: GcEntry[] = [];
