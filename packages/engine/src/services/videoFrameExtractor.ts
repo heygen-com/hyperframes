@@ -94,11 +94,15 @@ export interface ExtractionOptions {
  *   - *Count fields report how many sources triggered that phase.
  *   - extractMs wraps the parallel `extractVideoFramesRange` calls; it
  *     reflects max-across-parallel-workers, not sum.
- *   - hdrPreflightMs / vfrPreflightMs both include their probe-time sibling
- *     (hdrProbeMs / vfrProbeMs) for symmetric semantics. The probe-only fields
- *     are a finer decomposition, not a separate carve-out.
+ *   - hdrPreflightMs includes its probe-time sibling (hdrProbeMs); the
+ *     probe-only field is a finer decomposition, not a separate carve-out.
  *   - vfrPreflightCount reports sources classified as VFR and routed through
- *     the one-pass `-fps_mode cfr -r` extraction path.
+ *     the one-pass `-fps_mode cfr -r` extraction path. DEFINITION CHANGE:
+ *     before the one-pass refactor, vfrPreflightMs timed a per-source
+ *     VFR-to-CFR re-encode and could reach seconds; it now times only the
+ *     (promise-cached) classification probe and is expected to be ~0.
+ *     Dashboards alerting on vfrPreflightMs thresholds should key on
+ *     vfrPreflightCount or extractMs instead.
  */
 export interface ExtractionPhaseBreakdown {
   resolveMs: number;
