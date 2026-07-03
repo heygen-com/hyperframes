@@ -746,17 +746,17 @@ export async function extractAllVideoFrames(
     videoPath: string,
     videoDuration: number,
     i: number,
+    metadata: VideoMetadata,
+    cacheFormat: CacheFrameFormat,
   ): Promise<ExtractedFrames | null> {
     if (!cacheRootDir) return null;
     const keyInput = cacheKeyInputs[i];
-    const probedMeta = videoMetadata[i];
-    if (!keyInput || !probedMeta) return null;
-    const cacheFormat = resolveFrameFormat(probedMeta, options.format);
+    if (!keyInput) return null;
 
     const keyDuration = resolveSegmentDuration(
       keyInput.end - keyInput.start,
       keyInput.mediaStart,
-      probedMeta,
+      metadata,
     );
     const lookup = lookupCacheEntry(cacheRootDir, {
       videoPath: keyInput.videoPath,
@@ -775,7 +775,7 @@ export async function extractAllVideoFrames(
         srcPath: keyInput.videoPath,
         fps: options.fps,
         format: cacheFormat,
-        metadata: probedMeta,
+        metadata,
       });
       return { ...rehydrated, ownedByLookup: true };
     }
@@ -798,43 +798,99 @@ export async function extractAllVideoFrames(
     return { ...result, ownedByLookup: true };
   }
 
-  const results = await Promise.all(
-    resolvedVideos.map(async ({ video, videoPath }, i) => {
+  function extractionError(videoId: string, err: unknown): { videoId: string; error: string } {
+    return { videoId, error: err instanceof Error ? err.message : String(err) };
+  }
+
+  type PreparedExtraction = {
+    video: VideoElement;
+    videoPath: string;
+    index: number;
+    metadata: VideoMetadata;
+    videoDuration: number;
+    format: CacheFrameFormat;
+    dedupeKey: string;
+  };
+
+  type PreparedExtractionResult =
+    | { work: PreparedExtraction }
+    | { error: { videoId: string; error: string } };
+
+  const preparedExtractions: PreparedExtractionResult[] = await Promise.all(
+    resolvedVideos.map(async ({ video, videoPath }, index) => {
       if (signal?.aborted) {
         throw new Error("Video frame extraction cancelled");
       }
       try {
-        const probedMeta = videoMetadata[i] ?? (await extractMediaMetadata(videoPath));
+        const metadata = videoMetadata[index] ?? (await extractMediaMetadata(videoPath));
         const videoDuration = resolveSegmentDuration(
           video.end - video.start,
           video.mediaStart,
-          probedMeta,
+          metadata,
         );
         if (video.end - video.start !== videoDuration) {
           video.end = video.start + videoDuration;
         }
 
-        const cached = await tryCachedExtract(video, videoPath, videoDuration, i);
-        if (cached) return { result: cached };
+        const format = resolveFrameFormat(metadata, options.format);
+        const dedupeKey = `${videoPath}\0${video.mediaStart}\0${videoDuration}\0${options.fps}\0${format}`;
 
-        const result = await extractVideoFramesRange(
-          videoPath,
-          video.id,
-          video.mediaStart,
-          videoDuration,
-          { ...options, format: resolveFrameFormat(probedMeta, options.format) },
-          signal,
-          config,
-        );
-
-        return { result };
-      } catch (err) {
         return {
-          error: {
-            videoId: video.id,
-            error: err instanceof Error ? err.message : String(err),
+          work: {
+            video,
+            videoPath,
+            index,
+            metadata,
+            videoDuration,
+            format,
+            dedupeKey,
           },
         };
+      } catch (err) {
+        return { error: extractionError(video.id, err) };
+      }
+    }),
+  );
+
+  const inFlightExtractions = new Map<string, Promise<ExtractedFrames>>();
+  const results = await Promise.all(
+    preparedExtractions.map(async (prepared) => {
+      if ("error" in prepared) return prepared;
+      const { work } = prepared;
+
+      try {
+        const existing = inFlightExtractions.get(work.dedupeKey);
+        if (existing) {
+          const shared = await existing;
+          return { result: { ...shared, videoId: work.video.id } };
+        }
+
+        const extraction = (async () => {
+          const cached = await tryCachedExtract(
+            work.video,
+            work.videoPath,
+            work.videoDuration,
+            work.index,
+            work.metadata,
+            work.format,
+          );
+          if (cached) return cached;
+
+          return extractVideoFramesRange(
+            work.videoPath,
+            work.video.id,
+            work.video.mediaStart,
+            work.videoDuration,
+            { ...options, format: work.format },
+            signal,
+            config,
+          );
+        })();
+
+        inFlightExtractions.set(work.dedupeKey, extraction);
+        return { result: await extraction };
+      } catch (err) {
+        return { error: extractionError(work.video.id, err) };
       }
     }),
   );

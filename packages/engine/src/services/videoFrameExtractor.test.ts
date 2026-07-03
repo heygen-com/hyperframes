@@ -682,6 +682,36 @@ describe.skipIf(!HAS_FFMPEG)("video frame extraction format", () => {
       rmSync(cacheDir, { recursive: true, force: true });
     }
   }, 60_000);
+
+  it("dedupes identical extractions within one render", async () => {
+    const outputDir = join(FIXTURE_DIR, "out-dedupe");
+    mkdirSync(outputDir, { recursive: true });
+
+    const videoA: VideoElement = { ...fixtureVideo(), id: "dupe-a" };
+    const videoB: VideoElement = { ...fixtureVideo(), id: "dupe-b" };
+
+    const result = await extractAllVideoFrames([videoA, videoB], FIXTURE_DIR, {
+      fps: 1,
+      outputDir,
+    });
+
+    expect(result.errors).toEqual([]);
+    expect(result.extracted).toHaveLength(2);
+    const first = result.extracted[0]!;
+    const second = result.extracted[1]!;
+    expect(first.videoId).toBe("dupe-a");
+    expect(second.videoId).toBe("dupe-b");
+    expect(second.outputDir).toBe(first.outputDir);
+    expect(Array.from(second.framePaths.entries())).toEqual(Array.from(first.framePaths.entries()));
+
+    const frameDirs = readdirSync(outputDir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name);
+    expect(frameDirs).toEqual(["dupe-a"]);
+    expect(readdirSync(first.outputDir).filter((f) => f.endsWith(".jpg"))).toHaveLength(
+      first.totalFrames,
+    );
+  }, 60_000);
 });
 
 // Regression test for the VFR (variable frame rate) freeze bug.
