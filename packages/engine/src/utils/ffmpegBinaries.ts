@@ -1,15 +1,14 @@
 // fallow-ignore-file code-duplication
 import { execFileSync } from "child_process";
 import { existsSync } from "fs";
-import { resolve } from "path";
+import { delimiter, join, resolve } from "path";
 
 export const FFMPEG_PATH_ENV = "HYPERFRAMES_FFMPEG_PATH";
 export const FFPROBE_PATH_ENV = "HYPERFRAMES_FFPROBE_PATH";
 
 const pathCache = new Map<string, string | undefined>();
 
-function findOnPath(name: "ffmpeg" | "ffprobe"): string | undefined {
-  if (pathCache.has(name)) return pathCache.get(name);
+function findViaWhereOrWhich(name: "ffmpeg" | "ffprobe"): string | undefined {
   try {
     const command = process.platform === "win32" ? "where" : "which";
     const output = execFileSync(command, [name], {
@@ -21,13 +20,37 @@ function findOnPath(name: "ffmpeg" | "ffprobe"): string | undefined {
       .split(/\r?\n/)
       .map((s) => s.trim())
       .find(Boolean);
-    const resolved = first ? resolve(first) : undefined;
-    pathCache.set(name, resolved);
-    return resolved;
+    return first ? resolve(first) : undefined;
   } catch {
-    pathCache.set(name, undefined);
     return undefined;
   }
+}
+
+// `where`/`which` themselves can be unavailable (a restricted/sandboxed shell
+// without cmd.exe's where.exe on PATH) even when the target binary is
+// directly executable and genuinely on PATH. Scanning PATH directories
+// ourselves needs no external helper process, so it still resolves the
+// binary in that case instead of falling through to a bare command name that
+// a later non-shell `spawn()` can't resolve on its own.
+export function findViaPathScan(name: "ffmpeg" | "ffprobe"): string | undefined {
+  const pathEnv = process.env.PATH ?? process.env.Path ?? process.env.path;
+  if (!pathEnv) return undefined;
+  const candidateNames = process.platform === "win32" ? [`${name}.exe`, name] : [name];
+  for (const dir of pathEnv.split(delimiter)) {
+    if (!dir) continue;
+    for (const candidateName of candidateNames) {
+      const candidate = join(dir, candidateName);
+      if (existsSync(candidate)) return candidate;
+    }
+  }
+  return undefined;
+}
+
+function findOnPath(name: "ffmpeg" | "ffprobe"): string | undefined {
+  if (pathCache.has(name)) return pathCache.get(name);
+  const resolved = findViaWhereOrWhich(name) ?? findViaPathScan(name);
+  pathCache.set(name, resolved);
+  return resolved;
 }
 
 function getConfiguredBinary(envName: string, binaryName: "ffmpeg" | "ffprobe"): string {
