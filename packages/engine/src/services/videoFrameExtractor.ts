@@ -852,7 +852,13 @@ export async function extractAllVideoFrames(
     }),
   );
 
-  const inFlightExtractions = new Map<string, Promise<ExtractedFrames>>();
+  // Value carries the leader's videoId so a shared-extraction failure can be
+  // attributed: N deduped elements otherwise report the same root error under
+  // N different videoIds, which reads as N independent failures in traces.
+  const inFlightExtractions = new Map<
+    string,
+    { leaderVideoId: string; promise: Promise<ExtractedFrames> }
+  >();
   const results = await Promise.all(
     preparedExtractions.map(async (prepared) => {
       if ("error" in prepared) return prepared;
@@ -861,8 +867,18 @@ export async function extractAllVideoFrames(
       try {
         const existing = inFlightExtractions.get(work.dedupeKey);
         if (existing) {
-          const shared = await existing;
-          return { result: { ...shared, videoId: work.video.id } };
+          try {
+            const shared = await existing.promise;
+            return { result: { ...shared, videoId: work.video.id } };
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            return {
+              error: {
+                videoId: work.video.id,
+                error: `[shared extraction, leader ${existing.leaderVideoId}] ${message}`,
+              },
+            };
+          }
         }
 
         const extraction = (async () => {
@@ -887,7 +903,10 @@ export async function extractAllVideoFrames(
           );
         })();
 
-        inFlightExtractions.set(work.dedupeKey, extraction);
+        inFlightExtractions.set(work.dedupeKey, {
+          leaderVideoId: work.video.id,
+          promise: extraction,
+        });
         return { result: await extraction };
       } catch (err) {
         return { error: extractionError(work.video.id, err) };
