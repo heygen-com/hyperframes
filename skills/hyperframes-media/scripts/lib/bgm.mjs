@@ -30,8 +30,15 @@ function pyOk(probe) {
   const { cmd, args } = pythonInvocation(["-c", probe]);
   return spawnSync(cmd, args, { stdio: "ignore" }).status === 0;
 }
+// `python -m pip`, not a bare `pip` binary: a Homebrew/system Python often
+// exposes only `python3`/`pip3` on PATH, so a plain `pip` spawn silently
+// no-ops (ENOENT) and the documented "auto-installed on demand" path never
+// actually installs. `-m pip` also guarantees the packages land in the SAME
+// interpreter pyOk() probes — a bare `pip`/`pip3` could resolve to a
+// different Python installation than `python3` if more than one is on PATH.
 function pipInstall(deps) {
-  return spawnSync("pip", ["install", "-q", ...deps], { stdio: "ignore" }).status === 0;
+  const { cmd, args } = pythonInvocation(["-m", "pip", "install", "-q", ...deps]);
+  return spawnSync(cmd, args, { stdio: "ignore" }).status === 0;
 }
 
 // ── retrieval (HeyGen music library) ──────────────────────────────────────────
