@@ -470,7 +470,7 @@ describe("useDomEditCommits style persist handling", () => {
     }
   });
 
-  it("toasts prepareContent write failures", async () => {
+  it("keeps the already-persisted patch and toasts once when the prepareContent write fails", async () => {
     stubPatchFetch(
       {
         ok: true,
@@ -507,13 +507,51 @@ describe("useDomEditCommits style persist handling", () => {
         );
       });
 
+      // The base patch already landed server-side before the font-face write
+      // failed, so this is recorded as a completed edit (not reverted/re-toasted
+      // as a full failure) — only the font embellishment is reported as lost.
+      expect(rendered.showToast).toHaveBeenCalledTimes(1);
+      expect(rendered.showToast).toHaveBeenCalledWith(
+        expect.stringContaining("Saved, but couldn't finish updating index.html"),
+        "error",
+      );
       expect(rendered.showToast).toHaveBeenCalledWith(
         expect.stringContaining("Failed to save index.html (500)"),
         "error",
       );
+      expect(rendered.recordEdit).toHaveBeenCalledTimes(1);
     } finally {
       warnSpy.mockRestore();
       rendered.cleanup();
+    }
+  });
+
+  it("keeps a rejected patch request (HTTP error) to one toast", async () => {
+    const { rendered, cleanup } = renderStyleCommitWithFetch(async (input) => {
+      const url = requestUrl(input);
+      if (url.includes("/api/projects/p1/files/")) {
+        return jsonResponse({
+          content: '<div data-hf-id="hf-card" style="color: red">Card</div>',
+        });
+      }
+      if (url.includes("/api/projects/p1/file-mutations/patch-element/")) {
+        return jsonResponse({ error: "invalid value", fields: ["style.color"] }, 400);
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    try {
+      await act(async () => {
+        await rendered.hook.handleDomStyleCommit("color", "blue");
+      });
+
+      expect(rendered.showToast).toHaveBeenCalledTimes(1);
+      expect(rendered.showToast).toHaveBeenCalledWith(
+        "Couldn't save edit: invalid value (style.color)",
+        "error",
+      );
+    } finally {
+      cleanup();
     }
   });
 
@@ -573,6 +611,30 @@ describe("useDomEditCommits style persist handling", () => {
       expect(rendered.showToast).not.toHaveBeenCalled();
       expect(rendered.recordEdit).toHaveBeenCalledTimes(1);
       expect(element.textContent).toBe("A < B");
+    } finally {
+      rendered.cleanup();
+    }
+  });
+
+  it("reverts and toasts a text commit when the server rejects the patch", async () => {
+    stubPatchFetch(new Error("network down"));
+    const { iframe, element } = createPreviewElement('<div data-hf-id="hf-card">Card</div>');
+    const selection = createSelection(element, {
+      textFields: [textField({ key: "self", value: "Card", source: "self", tagName: "div" })],
+    });
+    const rendered = renderDomEditCommits(selection, iframe);
+
+    try {
+      await act(async () => {
+        await rendered.hook.handleDomTextCommit("Updated", "self");
+      });
+
+      expect(rendered.showToast).toHaveBeenCalledWith(
+        'Couldn\'t save "Hero title": network down',
+        "error",
+      );
+      expect(element.textContent).toBe("Card");
+      expect(rendered.recordEdit).not.toHaveBeenCalled();
     } finally {
       rendered.cleanup();
     }
