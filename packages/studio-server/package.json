@@ -50,6 +50,12 @@
       "node": "./dist/helpers/finiteMutation.js",
       "import": "./src/helpers/finiteMutation.ts",
       "types": "./src/helpers/finiteMutation.ts"
+    },
+    "./source-mutation": {
+      "bun": "./src/helpers/sourceMutation.ts",
+      "node": "./dist/helpers/sourceMutation.js",
+      "import": "./src/helpers/sourceMutation.ts",
+      "types": "./src/helpers/sourceMutation.ts"
     }
   },
   "publishConfig": {
@@ -79,6 +85,10 @@
       "./finite-mutation": {
         "import": "./dist/helpers/finiteMutation.js",
         "types": "./dist/helpers/finiteMutation.d.ts"
+      },
+      "./source-mutation": {
+        "import": "./dist/helpers/sourceMutation.js",
+        "types": "./dist/helpers/sourceMutation.d.ts"
       }
     },
     "main": "./dist/index.js",

@@ -8,6 +8,7 @@ export default defineConfig({
     "helpers/studioMotionRenderScript": "src/helpers/studioMotionRenderScript.ts",
     "helpers/draftMarkers": "src/helpers/draftMarkers.ts",
     "helpers/finiteMutation": "src/helpers/finiteMutation.ts",
+    "helpers/sourceMutation": "src/helpers/sourceMutation.ts",
   },
   format: ["esm"],
   outDir: "dist",
