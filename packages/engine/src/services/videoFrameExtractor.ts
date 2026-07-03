@@ -7,7 +7,7 @@
  */
 
 import { spawn } from "child_process";
-import { existsSync, mkdirSync, readdirSync, rmSync } from "fs";
+import { copyFileSync, existsSync, linkSync, mkdirSync, readdirSync, rmSync } from "fs";
 import { isAbsolute, join, posix, resolve, sep } from "path";
 import { parseHTML } from "linkedom";
 import { decodeUrlPathVariants, MEDIA_DURATION_CLAMP_EPSILON_SECONDS } from "@hyperframes/core";
@@ -31,6 +31,7 @@ import {
   readKeyStat,
   rehydrateCacheEntry,
   touchCacheEntry,
+  type CacheEntry,
   type CacheFrameFormat,
 } from "./extractionCache.js";
 
@@ -432,6 +433,176 @@ export function resolveFrameFormat(
   return "jpg";
 }
 
+type PreparedExtraction = {
+  video: VideoElement;
+  videoPath: string;
+  index: number;
+  metadata: VideoMetadata;
+  videoDuration: number;
+  format: CacheFrameFormat;
+  sdrToHdrTransfer?: HdrTransfer;
+  dedupeKey: string;
+};
+
+type CacheMissTarget = {
+  entry: CacheEntry;
+  srcPath: string;
+};
+
+type UniqueExtractionMiss = {
+  work: PreparedExtraction;
+  cacheTarget?: CacheMissTarget;
+};
+
+type SupersetMemberPlan = {
+  miss: UniqueExtractionMiss;
+  offsetFrames: number;
+};
+
+type SupersetGroupPlan = {
+  groupId: string;
+  baseStart: number;
+  unionDuration: number;
+  members: SupersetMemberPlan[];
+};
+
+function extractedFrameFileNames(outputDir: string, format: CacheFrameFormat): string[] {
+  const suffix = `.${format}`;
+  return readdirSync(outputDir)
+    .filter((file) => file.startsWith(FRAME_FILENAME_PREFIX) && file.endsWith(suffix))
+    .sort();
+}
+
+function extractedFramesFromDirectory(
+  work: PreparedExtraction,
+  outputDir: string,
+  srcPath: string,
+  fps: number,
+): ExtractedFrames {
+  const framePattern = `${FRAME_FILENAME_PREFIX}%05d.${work.format}`;
+  const framePaths = new Map<number, string>();
+  extractedFrameFileNames(outputDir, work.format).forEach((file, index) => {
+    framePaths.set(index, join(outputDir, file));
+  });
+  return {
+    videoId: work.video.id,
+    srcPath,
+    outputDir,
+    framePattern,
+    fps,
+    totalFrames: framePaths.size,
+    metadata: work.metadata,
+    framePaths,
+  };
+}
+
+function frameFileName(frameNumber: number, format: CacheFrameFormat): string {
+  return `${FRAME_FILENAME_PREFIX}${String(frameNumber).padStart(5, "0")}.${format}`;
+}
+
+function linkOrCopyFrame(src: string, dest: string): void {
+  try {
+    linkSync(src, dest);
+  } catch {
+    copyFileSync(src, dest);
+  }
+}
+
+function supersetGroupingKey(work: PreparedExtraction, fps: number): string {
+  return [work.videoPath, String(fps), work.format, work.sdrToHdrTransfer ?? ""].join("\0");
+}
+
+function isIntegralFrameOffset(offsetSeconds: number, fps: number): boolean {
+  const frames = offsetSeconds * fps;
+  return Math.abs(frames - Math.round(frames)) <= 1e-4;
+}
+
+function windowsOverlapOrTouch(misses: UniqueExtractionMiss[], baseStart: number): boolean {
+  const unionEnd = Math.max(
+    ...misses.map(({ work }) => work.video.mediaStart + work.videoDuration),
+  );
+  const unionDuration = unionEnd - baseStart;
+  const summedDuration = misses.reduce((sum, { work }) => sum + work.videoDuration, 0);
+  return unionDuration > 0 && unionDuration <= summedDuration + 1e-9;
+}
+
+function buildSupersetGroup(
+  groupId: string,
+  misses: UniqueExtractionMiss[],
+  fps: number,
+): SupersetGroupPlan | null {
+  if (misses.length < 2) return null;
+  const baseStart = Math.min(...misses.map(({ work }) => work.video.mediaStart));
+  if (!misses.every(({ work }) => isIntegralFrameOffset(work.video.mediaStart - baseStart, fps))) {
+    return null;
+  }
+  if (!windowsOverlapOrTouch(misses, baseStart)) return null;
+
+  const unionEnd = Math.max(
+    ...misses.map(({ work }) => work.video.mediaStart + work.videoDuration),
+  );
+  return {
+    groupId,
+    baseStart,
+    unionDuration: unionEnd - baseStart,
+    members: misses.map((miss) => ({
+      miss,
+      offsetFrames: Math.round((miss.work.video.mediaStart - baseStart) * fps),
+    })),
+  };
+}
+
+function planSupersetGroups(
+  misses: UniqueExtractionMiss[],
+  fps: number,
+): { groups: SupersetGroupPlan[]; direct: UniqueExtractionMiss[] } {
+  const bySource = new Map<string, UniqueExtractionMiss[]>();
+  for (const miss of misses) {
+    const key = supersetGroupingKey(miss.work, fps);
+    bySource.set(key, [...(bySource.get(key) ?? []), miss]);
+  }
+
+  const groups: SupersetGroupPlan[] = [];
+  const direct: UniqueExtractionMiss[] = [];
+  let groupIndex = 0;
+  for (const groupMisses of bySource.values()) {
+    const group = buildSupersetGroup(`__superset-${groupIndex}`, groupMisses, fps);
+    if (group) {
+      groups.push(group);
+      groupIndex += 1;
+    } else {
+      direct.push(...groupMisses);
+    }
+  }
+  return { groups, direct };
+}
+
+function sliceSupersetMember(
+  member: SupersetMemberPlan,
+  superset: ExtractedFrames,
+  outputDir: string,
+  fps: number,
+): ExtractedFrames {
+  const { work } = member.miss;
+  rmSync(outputDir, { recursive: true, force: true });
+  mkdirSync(outputDir, { recursive: true });
+
+  // Sample-time correctness: member frame k uses superset frame
+  // offset_i + k, so its source time is
+  // baseStart + (offset_i + k) / fps = mediaStart_i + k / fps.
+  // The frame-alignment precondition is what makes offset_i integral.
+  const requestedFrames = Math.round(work.videoDuration * fps);
+  const availableFrames = Math.max(0, superset.totalFrames - member.offsetFrames);
+  const frameCount = Math.min(requestedFrames, availableFrames);
+  for (let i = 0; i < frameCount; i += 1) {
+    const sourceFrame = superset.framePaths.get(member.offsetFrames + i);
+    if (!sourceFrame) throw new Error(`superset frame ${member.offsetFrames + i} missing`);
+    linkOrCopyFrame(sourceFrame, join(outputDir, frameFileName(i + 1, work.format)));
+  }
+
+  return extractedFramesFromDirectory(work, outputDir, work.videoPath, fps);
+}
+
 /**
  * Resolve a relative `<video src>` to a filesystem path the way the browser
  * resolves it as a URL. Browsers clamp `..` segments at the served origin's
@@ -701,23 +872,45 @@ export async function extractAllVideoFrames(
     }
   }
 
-  async function tryCachedExtract(
-    video: VideoElement,
-    videoPath: string,
-    videoDuration: number,
-    i: number,
-    metadata: VideoMetadata,
-    cacheFormat: CacheFrameFormat,
-    sdrToHdrTransfer?: HdrTransfer,
-  ): Promise<ExtractedFrames | null> {
-    if (!cacheRootDir) return null;
-    const keyInput = cacheKeyInputs[i];
-    if (!keyInput) return null;
+  function extractionError(videoId: string, err: unknown): { videoId: string; error: string } {
+    return { videoId, error: err instanceof Error ? err.message : String(err) };
+  }
+
+  type PreparedExtractionResult =
+    | { work: PreparedExtraction }
+    | { error: { videoId: string; error: string } };
+
+  type ExtractionOutcome =
+    | { result: ExtractedFrames }
+    | { error: { videoId: string; error: string } };
+
+  function scopedExtractionOptions(work: PreparedExtraction): ExtractionOptions {
+    return { ...options, format: work.format, sdrToHdrTransfer: work.sdrToHdrTransfer };
+  }
+
+  function rehydratePublishedCache(work: PreparedExtraction, target: CacheMissTarget) {
+    const rehydrated = rehydrateCacheEntry(target.entry, {
+      videoId: work.video.id,
+      srcPath: target.srcPath,
+      fps: options.fps,
+      format: work.format,
+      metadata: work.metadata,
+    });
+    return { ...rehydrated, ownedByLookup: true };
+  }
+
+  function lookupCacheFor(work: PreparedExtraction): ExtractionOutcome | UniqueExtractionMiss {
+    if (!cacheRootDir) return { work };
+    const keyInput = cacheKeyInputs[work.index];
+    if (!keyInput) return { work };
+    const transform = work.sdrToHdrTransfer
+      ? sdrToHdrTransformKey(work.sdrToHdrTransfer)
+      : undefined;
 
     const keyDuration = resolveSegmentDuration(
       keyInput.end - keyInput.start,
       keyInput.mediaStart,
-      metadata,
+      work.metadata,
     );
     const lookup = lookupCacheEntry(cacheRootDir, {
       videoPath: keyInput.videoPath,
@@ -726,70 +919,131 @@ export async function extractAllVideoFrames(
       mediaStart: keyInput.mediaStart,
       duration: keyDuration,
       fps: options.fps,
-      format: cacheFormat,
-      transform: sdrToHdrTransfer ? sdrToHdrTransformKey(sdrToHdrTransfer) : undefined,
+      format: work.format,
+      transform,
     });
 
-    if (lookup.hit) {
-      breakdown.cacheHits += 1;
-      touchCacheEntry(lookup.entry);
-      const rehydrated = rehydrateCacheEntry(lookup.entry, {
-        videoId: video.id,
-        srcPath: keyInput.videoPath,
-        fps: options.fps,
-        format: cacheFormat,
-        metadata,
-      });
-      return { ...rehydrated, ownedByLookup: true };
+    if (!lookup.hit) {
+      breakdown.cacheMisses += 1;
+      return { work, cacheTarget: { entry: lookup.entry, srcPath: keyInput.videoPath } };
     }
 
-    breakdown.cacheMisses += 1;
-    const partialDir = partialCacheEntryDir(lookup.entry);
+    breakdown.cacheHits += 1;
+    touchCacheEntry(lookup.entry);
+    return {
+      result: rehydratePublishedCache(work, { entry: lookup.entry, srcPath: keyInput.videoPath }),
+    };
+  }
+
+  async function extractDirectMiss(miss: UniqueExtractionMiss): Promise<ExtractedFrames> {
+    const { work, cacheTarget } = miss;
+    if (!cacheTarget) {
+      return extractVideoFramesRange(
+        work.videoPath,
+        work.video.id,
+        work.video.mediaStart,
+        work.videoDuration,
+        scopedExtractionOptions(work),
+        signal,
+        config,
+      );
+    }
+
+    const partialDir = partialCacheEntryDir(cacheTarget.entry);
     mkdirSync(partialDir, { recursive: true });
     const result = await extractVideoFramesRange(
-      videoPath,
-      video.id,
-      video.mediaStart,
-      videoDuration,
-      { ...options, format: cacheFormat, sdrToHdrTransfer },
+      work.videoPath,
+      work.video.id,
+      work.video.mediaStart,
+      work.videoDuration,
+      scopedExtractionOptions(work),
       signal,
       config,
       partialDir,
     );
-    const published = publishCacheEntry(lookup.entry, partialDir);
+    const published = publishCacheEntry(cacheTarget.entry, partialDir);
     if (!published.published) {
       breakdown.cachePublishFailures += 1;
       return { ...result, ownedByLookup: false };
     }
-
-    const rehydrated = rehydrateCacheEntry(lookup.entry, {
-      videoId: video.id,
-      srcPath: keyInput.videoPath,
-      fps: options.fps,
-      format: cacheFormat,
-      metadata,
-    });
-    return { ...rehydrated, ownedByLookup: true };
+    return rehydratePublishedCache(work, cacheTarget);
   }
 
-  function extractionError(videoId: string, err: unknown): { videoId: string; error: string } {
-    return { videoId, error: err instanceof Error ? err.message : String(err) };
+  async function executeDirectMiss(miss: UniqueExtractionMiss): Promise<ExtractionOutcome> {
+    try {
+      return { result: await extractDirectMiss(miss) };
+    } catch (err) {
+      return { error: extractionError(miss.work.video.id, err) };
+    }
   }
 
-  type PreparedExtraction = {
-    video: VideoElement;
-    videoPath: string;
-    index: number;
-    metadata: VideoMetadata;
-    videoDuration: number;
-    format: CacheFrameFormat;
-    sdrToHdrTransfer?: HdrTransfer;
-    dedupeKey: string;
-  };
+  function materializeSupersetMember(
+    member: SupersetMemberPlan,
+    superset: ExtractedFrames,
+  ): ExtractedFrames {
+    const { miss } = member;
+    const { work, cacheTarget } = miss;
+    if (!cacheTarget) {
+      return sliceSupersetMember(
+        member,
+        superset,
+        join(options.outputDir, work.video.id),
+        options.fps,
+      );
+    }
 
-  type PreparedExtractionResult =
-    | { work: PreparedExtraction }
-    | { error: { videoId: string; error: string } };
+    const partialDir = partialCacheEntryDir(cacheTarget.entry);
+    const sliced = sliceSupersetMember(member, superset, partialDir, options.fps);
+    const published = publishCacheEntry(cacheTarget.entry, partialDir);
+    if (!published.published) {
+      breakdown.cachePublishFailures += 1;
+      return { ...sliced, ownedByLookup: false };
+    }
+    return rehydratePublishedCache(work, cacheTarget);
+  }
+
+  async function executeSupersetGroup(
+    group: SupersetGroupPlan,
+  ): Promise<Array<[string, ExtractionOutcome]>> {
+    const first = group.members[0]?.miss.work;
+    if (!first) return [];
+    const tempDir = join(options.outputDir, group.groupId);
+
+    try {
+      rmSync(tempDir, { recursive: true, force: true });
+      const superset = await extractVideoFramesRange(
+        first.videoPath,
+        group.groupId,
+        group.baseStart,
+        group.unionDuration,
+        scopedExtractionOptions(first),
+        signal,
+        config,
+        tempDir,
+      );
+      const outcomes: Array<[string, ExtractionOutcome]> = [];
+      for (const member of group.members) {
+        outcomes.push([
+          member.miss.work.dedupeKey,
+          { result: materializeSupersetMember(member, superset) },
+        ]);
+      }
+      return outcomes;
+    } catch {
+      const fallback = await Promise.all(
+        group.members.map(
+          async (member) =>
+            [member.miss.work.dedupeKey, await executeDirectMiss(member.miss)] as [
+              string,
+              ExtractionOutcome,
+            ],
+        ),
+      );
+      return fallback;
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  }
 
   const preparedExtractions: PreparedExtractionResult[] = await Promise.all(
     resolvedVideos.map(async ({ video, videoPath }, index) => {
@@ -829,68 +1083,57 @@ export async function extractAllVideoFrames(
     }),
   );
 
-  // Value carries the leader's videoId so a shared-extraction failure can be
-  // attributed: N deduped elements otherwise report the same root error under
-  // N different videoIds, which reads as N independent failures in traces.
-  const inFlightExtractions = new Map<
-    string,
-    { leaderVideoId: string; promise: Promise<ExtractedFrames> }
-  >();
-  const results = await Promise.all(
-    preparedExtractions.map(async (prepared) => {
-      if ("error" in prepared) return prepared;
-      const { work } = prepared;
+  const uniqueWorks = new Map<string, PreparedExtraction>();
+  for (const prepared of preparedExtractions) {
+    if ("work" in prepared && !uniqueWorks.has(prepared.work.dedupeKey)) {
+      uniqueWorks.set(prepared.work.dedupeKey, prepared.work);
+    }
+  }
 
-      try {
-        const existing = inFlightExtractions.get(work.dedupeKey);
-        if (existing) {
-          try {
-            const shared = await existing.promise;
-            return { result: { ...shared, videoId: work.video.id } };
-          } catch (err) {
-            const message = err instanceof Error ? err.message : String(err);
-            return {
-              error: {
-                videoId: work.video.id,
-                error: `[shared extraction, leader ${existing.leaderVideoId}] ${message}`,
-              },
-            };
-          }
-        }
+  const uniqueOutcomes = new Map<string, ExtractionOutcome>();
+  const cacheMisses: UniqueExtractionMiss[] = [];
+  for (const work of uniqueWorks.values()) {
+    const lookup = lookupCacheFor(work);
+    if ("work" in lookup) {
+      cacheMisses.push(lookup);
+    } else {
+      uniqueOutcomes.set(work.dedupeKey, lookup);
+    }
+  }
 
-        const extraction = (async () => {
-          const cached = await tryCachedExtract(
-            work.video,
-            work.videoPath,
-            work.videoDuration,
-            work.index,
-            work.metadata,
-            work.format,
-            work.sdrToHdrTransfer,
-          );
-          if (cached) return cached;
-
-          return extractVideoFramesRange(
-            work.videoPath,
-            work.video.id,
-            work.video.mediaStart,
-            work.videoDuration,
-            { ...options, format: work.format, sdrToHdrTransfer: work.sdrToHdrTransfer },
-            signal,
-            config,
-          );
-        })();
-
-        inFlightExtractions.set(work.dedupeKey, {
-          leaderVideoId: work.video.id,
-          promise: extraction,
-        });
-        return { result: await extraction };
-      } catch (err) {
-        return { error: extractionError(work.video.id, err) };
-      }
-    }),
+  const supersetPlan = planSupersetGroups(cacheMisses, options.fps);
+  const directOutcomes = await Promise.all(
+    supersetPlan.direct.map(
+      async (miss) =>
+        [miss.work.dedupeKey, await executeDirectMiss(miss)] as [string, ExtractionOutcome],
+    ),
   );
+  for (const [key, outcome] of directOutcomes) uniqueOutcomes.set(key, outcome);
+
+  const supersetOutcomes = await Promise.all(
+    supersetPlan.groups.map((group) => executeSupersetGroup(group)),
+  );
+  for (const groupOutcomes of supersetOutcomes) {
+    for (const [key, outcome] of groupOutcomes) uniqueOutcomes.set(key, outcome);
+  }
+
+  const results: ExtractionOutcome[] = preparedExtractions.map((prepared) => {
+    if ("error" in prepared) return prepared;
+    const outcome = uniqueOutcomes.get(prepared.work.dedupeKey);
+    if (!outcome)
+      return { error: extractionError(prepared.work.video.id, "missing extraction result") };
+    if ("error" in outcome) {
+      // A shared (deduped/superset) failure fans out to every element with the
+      // same key; annotate followers with the leader's videoId so N copies of
+      // one root failure are traceable to a single extraction in traces.
+      const isFollower = outcome.error.videoId !== prepared.work.video.id;
+      const message = isFollower
+        ? `[shared extraction, leader ${outcome.error.videoId}] ${outcome.error.error}`
+        : outcome.error.error;
+      return { error: { videoId: prepared.work.video.id, error: message } };
+    }
+    return { result: { ...outcome.result, videoId: prepared.work.video.id } };
+  });
 
   breakdown.extractMs = Date.now() - phase3Start;
 
@@ -904,7 +1147,7 @@ export async function extractAllVideoFrames(
     }
   }
 
-  if (cacheRootDir) {
+  if (cacheRootDir && breakdown.cacheMisses > 0) {
     const gcStats = gcExtractionCache(cacheRootDir, {
       maxBytes: config?.extractCacheMaxBytes ?? DEFAULT_CONFIG.extractCacheMaxBytes,
       minAgeMs: EXTRACT_CACHE_MIN_AGE_MS,
