@@ -58,6 +58,22 @@ async function getCompositionDuration(page: import("puppeteer-core").Page): Prom
 
 async function seekTo(page: import("puppeteer-core").Page, time: number): Promise<void> {
   await page.evaluate((t: number) => {
+    // window.__player.renderSeek is exposed directly by the composition
+    // runtime (packages/core/src/runtime/init.ts) on every page load, and
+    // — unlike raw timeline.seek() — it also runs the runtime's own
+    // [data-start]/[data-duration] visibility sync, hiding clips outside
+    // their timeline window. window.__hf.seek only exists when the
+    // producer's render-pipeline bridge script has been injected, which
+    // validate's static preview server never does, so it was always
+    // falling through to the raw __timelines seek below and skipping that
+    // sync — leaving off-window elements looking fully visible to any
+    // check (e.g. the contrast audit) that reads computed style afterward.
+    const player = (window as unknown as { __player?: { renderSeek?: (t: number) => void } })
+      .__player;
+    if (player && typeof player.renderSeek === "function") {
+      player.renderSeek(t);
+      return;
+    }
     if (window.__hf && typeof window.__hf.seek === "function") {
       window.__hf.seek(t);
       return;
