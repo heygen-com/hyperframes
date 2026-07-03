@@ -197,7 +197,7 @@ export async function runExtractVideosStage(
         format: job.config.videoFrameFormat ?? "auto",
       },
       abortSignal,
-      { extractCacheDir: cfg.extractCacheDir },
+      { extractCacheDir: cfg.extractCacheDir, extractCacheMaxBytes: cfg.extractCacheMaxBytes },
       compiledDir,
     );
     assertNotAborted();

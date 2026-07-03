@@ -15,10 +15,14 @@
  * - Cache entries live under `<rootDir>/<SCHEMA_PREFIX><key[0..16]>/` so
  *   `ls` output and tracing logs stay short. Truncation to 16 hex chars
  *   leaves 64 bits of entropy — collision risk at cache scale is negligible.
- * - A completed entry is marked by writing the `.hf-complete` sentinel file
- *   after all frames are on disk. A dir without the sentinel is treated as
- *   absent (stale/abandoned) and re-extracted into a fresh key (the old dir
- *   is left for external gc — the cache owns keys, not deletion policy).
+ * - Frames are extracted into a unique `<entry>.partial-<pid>-<uuid>/` dir.
+ *   Once all frames are written, the partial dir receives the `.hf-complete`
+ *   sentinel and is atomically renamed to the final key dir. Concurrent
+ *   same-key writers may duplicate ffmpeg work, but readers only ever serve
+ *   complete entries.
+ * - The sentinel mtime is touched on hits and used as the cache's LRU clock.
+ *   `gcExtractionCache` evicts by that mtime and also clears old partial dirs
+ *   left behind by crashed writers.
  *
  * ### Versioning
  *
@@ -27,9 +31,18 @@
  * become inert and can be gc'd by the caller.
  */
 
-import { createHash } from "node:crypto";
-import { mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
-import { existsSync } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  statSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import type { VideoMetadata } from "../utils/ffprobe.js";
 
@@ -82,10 +95,15 @@ export interface CacheEntry {
 
 export interface CacheLookup {
   /** Cache entry information — always returned even on a miss so the caller
-   *  can extract directly into `dir` then call `markCacheEntryComplete`. */
+   *  can derive a partial dir and publish it after extraction. */
   entry: CacheEntry;
   /** True when the entry exists AND carries the completion sentinel. */
   hit: boolean;
+}
+
+export interface CachePublishResult {
+  dir: string;
+  published: boolean;
 }
 
 /**
@@ -134,9 +152,9 @@ export function cacheEntryDirName(keyHash: string): string {
 
 /**
  * Look up a cache entry by key input. Returns the resolved entry path plus a
- * `hit` flag. On miss, callers should extract frames into `entry.dir`
- * (after calling `ensureCacheEntryDir`) and then call `markCacheEntryComplete`
- * once the extraction succeeds.
+ * `hit` flag. On miss, callers should extract frames into a
+ * `partialCacheEntryDir(entry)` directory and publish it with
+ * `publishCacheEntry` once extraction succeeds.
  */
 export function lookupCacheEntry(rootDir: string, input: CacheKeyInput): CacheLookup {
   const keyHash = computeCacheKey(input);
@@ -154,18 +172,205 @@ export function ensureCacheEntryDir(entry: CacheEntry): void {
 }
 
 /**
- * Write the completion sentinel so subsequent lookups treat this entry as a
- * hit. Must be called only after every frame has been written.
+ * Unique render-owned directory used to populate a cache entry before the
+ * atomic publish rename.
+ */
+export function partialCacheEntryDir(entry: CacheEntry): string {
+  return `${entry.dir}.partial-${process.pid}-${randomUUID().slice(0, 8)}`;
+}
+
+function isTargetExistsRenameError(err: unknown): boolean {
+  const code = (err as NodeJS.ErrnoException).code;
+  return code === "EEXIST" || code === "ENOTEMPTY" || code === "EPERM";
+}
+
+/**
+ * Publish an extracted partial directory as the final cache entry.
  *
- * Concurrency: lookup→populate→mark is non-atomic. Two concurrent renders of
- * the same key may both miss, both extract into the same dir, and the later
- * writer's frames win. The result is correct (identical inputs yield identical
- * frames) but wasteful. Acceptable for a single-process render pipeline;
- * anyone running concurrent renders against a shared cache root should front
- * it with an external lock.
+ * Same-filesystem directory rename is atomic: readers either see no entry or
+ * a complete sentineled entry. When another writer wins the race, the caller
+ * should rehydrate from the final dir. If publish cannot complete safely, the
+ * partial remains render-owned and must be cleaned up by the render cleanup.
+ */
+export function publishCacheEntry(entry: CacheEntry, partialDir: string): CachePublishResult {
+  try {
+    writeFileSync(join(partialDir, COMPLETE_SENTINEL), "", "utf-8");
+  } catch {
+    return { dir: partialDir, published: false };
+  }
+
+  try {
+    renameSync(partialDir, entry.dir);
+    return { dir: entry.dir, published: true };
+  } catch (err) {
+    if (!isTargetExistsRenameError(err)) return { dir: partialDir, published: false };
+  }
+
+  if (existsSync(join(entry.dir, COMPLETE_SENTINEL))) {
+    try {
+      rmSync(partialDir, { recursive: true, force: true });
+    } catch {
+      // Best effort cleanup; the partial is still safe to leave for GC.
+    }
+    return { dir: entry.dir, published: true };
+  }
+
+  try {
+    rmSync(entry.dir, { recursive: true, force: true });
+  } catch {
+    return { dir: partialDir, published: false };
+  }
+
+  try {
+    renameSync(partialDir, entry.dir);
+    return { dir: entry.dir, published: true };
+  } catch {
+    return { dir: partialDir, published: false };
+  }
+}
+
+/**
+ * Update the LRU clock for a complete cache entry. Misses and filesystem
+ * races are harmless: the caller can still use the entry it already found.
+ */
+export function touchCacheEntry(entry: CacheEntry): void {
+  try {
+    const now = new Date();
+    utimesSync(join(entry.dir, COMPLETE_SENTINEL), now, now);
+  } catch {
+    // Best effort LRU touch.
+  }
+}
+
+/**
+ * Write the completion sentinel so subsequent lookups treat this entry as a
+ * hit. Must be called only after every frame has been written. The extractor
+ * now publishes new entries via `publishCacheEntry`; this helper remains
+ * exported for tests and legacy callers that materialize entries directly.
+ *
+ * Concurrency: direct mark is non-atomic and should not be used for shared
+ * writer paths. `publishCacheEntry` writes the sentinel inside a partial dir
+ * and atomically renames it into place, so concurrent writers duplicate work
+ * but never serve torn frames.
  */
 export function markCacheEntryComplete(entry: CacheEntry): void {
   writeFileSync(join(entry.dir, COMPLETE_SENTINEL), "", "utf-8");
+}
+
+function isCacheLikeChild(name: string): boolean {
+  return name.startsWith(SCHEMA_PREFIX) || name.includes(".partial-");
+}
+
+function isPartialChild(name: string): boolean {
+  return name.includes(".partial-");
+}
+
+function directorySizeBytes(path: string): number {
+  try {
+    const stat = lstatSync(path);
+    if (!stat.isDirectory()) return stat.size;
+  } catch {
+    return 0;
+  }
+
+  let total = 0;
+  let children: string[];
+  try {
+    children = readdirSync(path);
+  } catch {
+    return 0;
+  }
+
+  for (const child of children) {
+    const childPath = join(path, child);
+    try {
+      const stat = lstatSync(childPath);
+      if (stat.isDirectory()) {
+        total += directorySizeBytes(childPath);
+      } else {
+        total += stat.size;
+      }
+    } catch {
+      // Ignore entries deleted or made unreadable during the sweep.
+    }
+  }
+  return total;
+}
+
+function removeDir(path: string): void {
+  try {
+    rmSync(path, { recursive: true, force: true });
+  } catch {
+    // Cache GC is opportunistic; one bad entry must not abort the sweep.
+  }
+}
+
+interface GcEntry {
+  dir: string;
+  size: number;
+  lastUseMs: number;
+  ageMs: number;
+}
+
+/**
+ * Stat one cache-looking child for the GC sweep. Aged partial dirs (crashed
+ * writers) are removed immediately and yield `null`; entries that disappear
+ * or fail to stat mid-sweep also yield `null`.
+ */
+function collectGcEntry(dir: string, name: string, now: number, minAgeMs: number): GcEntry | null {
+  try {
+    const dirStat = statSync(dir);
+    if (isPartialChild(name) && now - dirStat.mtimeMs >= minAgeMs) {
+      removeDir(dir);
+      return null;
+    }
+
+    let lastUseMs = dirStat.mtimeMs;
+    try {
+      lastUseMs = statSync(join(dir, COMPLETE_SENTINEL)).mtimeMs;
+    } catch {
+      // Unsentineled entries use directory mtime as a stale-entry clock.
+    }
+
+    return { dir, size: directorySizeBytes(dir), lastUseMs, ageMs: now - lastUseMs };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Opportunistic size-capped LRU cleanup for extracted video frames.
+ *
+ * Scans only direct cache-looking children and never throws. The age guard is
+ * a liveness heuristic, not a lock.
+ */
+export function gcExtractionCache(
+  rootDir: string,
+  opts: { maxBytes: number; minAgeMs: number },
+): void {
+  try {
+    const now = Date.now();
+    const entries: GcEntry[] = [];
+    for (const child of readdirSync(rootDir, { withFileTypes: true })) {
+      if (!child.isDirectory() || !isCacheLikeChild(child.name)) continue;
+      const entry = collectGcEntry(join(rootDir, child.name), child.name, now, opts.minAgeMs);
+      if (entry) entries.push(entry);
+    }
+
+    let totalBytes = entries.reduce((sum, e) => sum + e.size, 0);
+    if (totalBytes <= opts.maxBytes) return;
+
+    entries.sort((a, b) => a.lastUseMs - b.lastUseMs);
+    for (const entry of entries) {
+      // ponytail: age-based liveness guard, not a lock; a render longer than minAge with a full cache could lose entries mid-read - acceptable, next render re-extracts.
+      if (entry.ageMs < opts.minAgeMs) continue;
+      removeDir(entry.dir);
+      totalBytes -= entry.size;
+      if (totalBytes <= opts.maxBytes) break;
+    }
+  } catch {
+    // Missing root or unreadable cache: no cleanup this sweep.
+  }
 }
 
 /**

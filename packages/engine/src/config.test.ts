@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { resolveConfig, DEFAULT_CONFIG, scaleProtocolTimeoutForComposition } from "./config.js";
 import { isLowMemorySystem } from "./services/systemMemory.js";
 
@@ -6,8 +8,13 @@ describe("resolveConfig", () => {
   const savedEnv = new Map<string, string | undefined>();
 
   function setEnv(key: string, value: string) {
-    savedEnv.set(key, process.env[key]);
+    if (!savedEnv.has(key)) savedEnv.set(key, process.env[key]);
     process.env[key] = value;
+  }
+
+  function unsetEnv(key: string) {
+    if (!savedEnv.has(key)) savedEnv.set(key, process.env[key]);
+    delete process.env[key];
   }
 
   beforeEach(() => {
@@ -179,6 +186,38 @@ describe("resolveConfig", () => {
       setEnv("HF_PAGE_SIDE_COMPOSITING", "true");
       const config = resolveConfig({ enablePageSideCompositing: false });
       expect(config.enablePageSideCompositing).toBe(false);
+    });
+  });
+
+  describe("extraction cache env", () => {
+    it("defaults the extract cache directory to tmpdir plus uid when env is unset", () => {
+      unsetEnv("HYPERFRAMES_EXTRACT_CACHE_DIR");
+
+      const config = resolveConfig();
+
+      expect(config.extractCacheDir).toBe(
+        join(tmpdir(), `hyperframes-extract-cache-${process.getuid?.() ?? "u"}`),
+      );
+    });
+
+    it("disables the extract cache when env is an opt-out token", () => {
+      for (const value of ["off", "none", "false", "0", " OFF "]) {
+        setEnv("HYPERFRAMES_EXTRACT_CACHE_DIR", value);
+
+        expect(resolveConfig().extractCacheDir).toBeUndefined();
+      }
+    });
+
+    it("uses an explicit extract cache path from env", () => {
+      setEnv("HYPERFRAMES_EXTRACT_CACHE_DIR", "/tmp/custom-hf-cache");
+
+      expect(resolveConfig().extractCacheDir).toBe("/tmp/custom-hf-cache");
+    });
+
+    it("converts HYPERFRAMES_EXTRACT_CACHE_MAX_MB to bytes", () => {
+      setEnv("HYPERFRAMES_EXTRACT_CACHE_MAX_MB", "512");
+
+      expect(resolveConfig().extractCacheMaxBytes).toBe(512 * 1024 ** 2);
     });
   });
 

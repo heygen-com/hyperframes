@@ -25,11 +25,13 @@ import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { unwrapTemplate } from "../utils/htmlTemplate.js";
 import {
   FRAME_FILENAME_PREFIX,
-  ensureCacheEntryDir,
+  gcExtractionCache,
   lookupCacheEntry,
-  markCacheEntryComplete,
+  partialCacheEntryDir,
+  publishCacheEntry,
   readKeyStat,
   rehydrateCacheEntry,
+  touchCacheEntry,
   type CacheFrameFormat,
 } from "./extractionCache.js";
 
@@ -81,6 +83,8 @@ export interface ExtractionOptions {
   quality?: number;
   format?: VideoFrameFormat;
 }
+
+const EXTRACT_CACHE_MIN_AGE_MS = 60 * 60 * 1000;
 
 /**
  * Per-phase timings and counters emitted by `extractAllVideoFrames`.
@@ -529,7 +533,9 @@ export async function extractAllVideoFrames(
   baseDir: string,
   options: ExtractionOptions,
   signal?: AbortSignal,
-  config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout" | "extractCacheDir">>,
+  config?: Partial<
+    Pick<EngineConfig, "ffmpegProcessTimeout" | "extractCacheDir" | "extractCacheMaxBytes">
+  >,
   compiledDir?: string,
 ): Promise<ExtractionResult> {
   const startTime = Date.now();
@@ -739,7 +745,18 @@ export async function extractAllVideoFrames(
   breakdown.vfrPreflightMs = Date.now() - vfrPreflightStart;
 
   const phase3Start = Date.now();
-  const cacheRootDir = config?.extractCacheDir;
+  const configuredCacheRootDir = config?.extractCacheDir;
+  let cacheRootDir: string | undefined;
+  if (configuredCacheRootDir) {
+    try {
+      mkdirSync(configuredCacheRootDir, { recursive: true });
+      cacheRootDir = configuredCacheRootDir;
+    } catch {
+      process.stderr.write(
+        `[hyperframes:render] WARNING: extraction cache dir ${configuredCacheRootDir} is not writable; caching disabled for this render\n`,
+      );
+    }
+  }
 
   async function tryCachedExtract(
     video: VideoElement,
@@ -770,6 +787,7 @@ export async function extractAllVideoFrames(
 
     if (lookup.hit) {
       breakdown.cacheHits += 1;
+      touchCacheEntry(lookup.entry);
       const rehydrated = rehydrateCacheEntry(lookup.entry, {
         videoId: video.id,
         srcPath: keyInput.videoPath,
@@ -781,7 +799,8 @@ export async function extractAllVideoFrames(
     }
 
     breakdown.cacheMisses += 1;
-    ensureCacheEntryDir(lookup.entry);
+    const partialDir = partialCacheEntryDir(lookup.entry);
+    mkdirSync(partialDir, { recursive: true });
     const result = await extractVideoFramesRange(
       videoPath,
       video.id,
@@ -790,12 +809,19 @@ export async function extractAllVideoFrames(
       { ...options, format: cacheFormat },
       signal,
       config,
-      lookup.entry.dir,
+      partialDir,
     );
-    // Mark complete only AFTER frames are on disk — a crash mid-extract
-    // leaves the entry un-sentineled so the next lookup re-extracts over it.
-    markCacheEntryComplete(lookup.entry);
-    return { ...result, ownedByLookup: true };
+    const published = publishCacheEntry(lookup.entry, partialDir);
+    if (!published.published) return { ...result, ownedByLookup: false };
+
+    const rehydrated = rehydrateCacheEntry(lookup.entry, {
+      videoId: video.id,
+      srcPath: keyInput.videoPath,
+      fps: options.fps,
+      format: cacheFormat,
+      metadata,
+    });
+    return { ...rehydrated, ownedByLookup: true };
   }
 
   function extractionError(videoId: string, err: unknown): { videoId: string; error: string } {
@@ -924,6 +950,13 @@ export async function extractAllVideoFrames(
       extracted.push(item.result);
       totalFramesExtracted += item.result.totalFrames;
     }
+  }
+
+  if (cacheRootDir) {
+    gcExtractionCache(cacheRootDir, {
+      maxBytes: config?.extractCacheMaxBytes ?? DEFAULT_CONFIG.extractCacheMaxBytes,
+      minAgeMs: EXTRACT_CACHE_MIN_AGE_MS,
+    });
   }
 
   return {

@@ -1,5 +1,14 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
@@ -16,9 +25,11 @@ import {
   analyzeClipMediaFit,
   type VideoElement,
   type ExtractedFrames,
+  type ExtractionResult,
 } from "./videoFrameExtractor.js";
 import { extractVideoMetadata, type VideoMetadata } from "../utils/ffprobe.js";
 import { runFfmpeg } from "../utils/runFfmpeg.js";
+import { COMPLETE_SENTINEL, SCHEMA_PREFIX } from "./extractionCache.js";
 
 // ffmpeg is not preinstalled on GitHub's ubuntu-24.04 runners. The producer
 // regression test at packages/producer/tests/vfr-screen-recording/ runs inside
@@ -812,12 +823,11 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
     expect(result.phaseBreakdown.vfrPreflightMs).toBeGreaterThanOrEqual(0);
   }, 60_000);
 
-  it("reuses extracted frames on a warm cache hit", async () => {
-    const CACHE_DIR = mkdtempSync(join(tmpdir(), "hf-extract-cache-test-"));
-    const SRC = join(FIXTURE_DIR, "cache-src.mp4");
-
-    // Synthesize a clean CFR SDR clip — keeps VFR preflight count at zero so
-    // the cache key is stable across the two runs.
+  // Shared fixture helpers for the cache tests below. All synthesize clean
+  // CFR SDR clips — keeps VFR preflight count at zero so cache keys are
+  // stable across runs within a test.
+  async function synthCfrClip(name: string, durationSeconds: number): Promise<string> {
+    const src = join(FIXTURE_DIR, name);
     const synth = await runFfmpeg([
       "-y",
       "-hide_banner",
@@ -826,51 +836,49 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
       "-f",
       "lavfi",
       "-i",
-      "testsrc2=s=320x180:d=2:rate=30",
+      `testsrc2=s=320x180:d=${durationSeconds}:rate=30`,
       "-c:v",
       "libx264",
       "-preset",
       "ultrafast",
       "-pix_fmt",
       "yuv420p",
-      SRC,
+      src,
     ]);
     if (!synth.success) {
-      throw new Error(`Cache fixture synthesis failed: ${synth.stderr.slice(-400)}`);
+      throw new Error(`Fixture synthesis failed (${name}): ${synth.stderr.slice(-400)}`);
     }
+    return src;
+  }
 
-    const video: VideoElement = {
-      id: "cv1",
-      src: SRC,
-      start: 0,
-      end: 2,
-      mediaStart: 0,
-      loop: false,
-      hasAudio: false,
-    };
+  function cfrClipElement(id: string, src: string, endSeconds: number): VideoElement {
+    return { id, src, start: 0, end: endSeconds, mediaStart: 0, loop: false, hasAudio: false };
+  }
 
-    const outDirA = join(FIXTURE_DIR, "out-cache-miss");
-    mkdirSync(outDirA, { recursive: true });
-    const miss = await extractAllVideoFrames(
-      [video],
-      FIXTURE_DIR,
-      { fps: 30, outputDir: outDirA },
-      undefined,
-      { extractCacheDir: CACHE_DIR },
-    );
+  async function extractWithCache(
+    video: VideoElement,
+    outName: string,
+    cacheDir: string,
+    fps = 30,
+  ): Promise<ExtractionResult> {
+    const outputDir = join(FIXTURE_DIR, outName);
+    mkdirSync(outputDir, { recursive: true });
+    return extractAllVideoFrames([video], FIXTURE_DIR, { fps, outputDir }, undefined, {
+      extractCacheDir: cacheDir,
+    });
+  }
+
+  it("reuses extracted frames on a warm cache hit", async () => {
+    const CACHE_DIR = mkdtempSync(join(tmpdir(), "hf-extract-cache-test-"));
+    const SRC = await synthCfrClip("cache-src.mp4", 2);
+    const video = cfrClipElement("cv1", SRC, 2);
+
+    const miss = await extractWithCache(video, "out-cache-miss", CACHE_DIR);
     expect(miss.errors).toEqual([]);
     expect(miss.phaseBreakdown.cacheHits).toBe(0);
     expect(miss.phaseBreakdown.cacheMisses).toBe(1);
 
-    const outDirB = join(FIXTURE_DIR, "out-cache-hit");
-    mkdirSync(outDirB, { recursive: true });
-    const hit = await extractAllVideoFrames(
-      [video],
-      FIXTURE_DIR,
-      { fps: 30, outputDir: outDirB },
-      undefined,
-      { extractCacheDir: CACHE_DIR },
-    );
+    const hit = await extractWithCache(video, "out-cache-hit", CACHE_DIR);
     expect(hit.errors).toEqual([]);
     expect(hit.phaseBreakdown.cacheHits).toBe(1);
     expect(hit.phaseBreakdown.cacheMisses).toBe(0);
@@ -884,61 +892,65 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
     rmSync(CACHE_DIR, { recursive: true, force: true });
   }, 60_000);
 
+  it("updates the cache sentinel mtime on a hit", async () => {
+    const CACHE_DIR = mkdtempSync(join(tmpdir(), "hf-extract-cache-touch-test-"));
+    const SRC = await synthCfrClip("cache-touch-src.mp4", 1);
+    const video = cfrClipElement("touch", SRC, 1);
+
+    const miss = await extractWithCache(video, "out-cache-touch-miss", CACHE_DIR);
+    expect(miss.errors).toEqual([]);
+    expect(miss.phaseBreakdown.cacheMisses).toBe(1);
+
+    const cacheEntryNames = readdirSync(CACHE_DIR).filter((name) => name.startsWith(SCHEMA_PREFIX));
+    expect(cacheEntryNames).toHaveLength(1);
+    const sentinel = join(CACHE_DIR, cacheEntryNames[0]!, COMPLETE_SENTINEL);
+    const old = new Date(Date.now() - 120_000);
+    utimesSync(sentinel, old, old);
+    const before = statSync(sentinel).mtimeMs;
+
+    const hit = await extractWithCache(video, "out-cache-touch-hit", CACHE_DIR);
+
+    expect(hit.errors).toEqual([]);
+    expect(hit.phaseBreakdown.cacheHits).toBe(1);
+    expect(statSync(sentinel).mtimeMs).toBeGreaterThan(before);
+
+    rmSync(CACHE_DIR, { recursive: true, force: true });
+  }, 60_000);
+
+  it("disables caching for this render when the cache dir is not writable", async () => {
+    const CACHE_FILE = join(FIXTURE_DIR, "cache-dir-is-a-file");
+    writeFileSync(CACHE_FILE, "not a directory", "utf-8");
+    const SRC = await synthCfrClip("cache-disabled-src.mp4", 1);
+
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      const result = await extractWithCache(
+        cfrClipElement("uncached", SRC, 1),
+        "out-cache-disabled",
+        CACHE_FILE,
+      );
+
+      expect(result.errors).toEqual([]);
+      expect(result.extracted).toHaveLength(1);
+      expect(result.phaseBreakdown.cacheHits).toBe(0);
+      expect(result.phaseBreakdown.cacheMisses).toBe(0);
+      expect(stderr).toHaveBeenCalledTimes(1);
+      expect(String(stderr.mock.calls[0]?.[0])).toContain("extraction cache dir");
+      expect(String(stderr.mock.calls[0]?.[0])).toContain("caching disabled for this render");
+    } finally {
+      stderr.mockRestore();
+    }
+  }, 60_000);
+
   it("invalidates the cache when fps changes", async () => {
     const CACHE_DIR = mkdtempSync(join(tmpdir(), "hf-extract-cache-test-"));
-    const SRC = join(FIXTURE_DIR, "cache-fps-src.mp4");
+    const SRC = await synthCfrClip("cache-fps-src.mp4", 1);
+    const video = cfrClipElement("cv2", SRC, 1);
 
-    const synth = await runFfmpeg([
-      "-y",
-      "-hide_banner",
-      "-loglevel",
-      "error",
-      "-f",
-      "lavfi",
-      "-i",
-      "testsrc2=s=320x180:d=1:rate=30",
-      "-c:v",
-      "libx264",
-      "-preset",
-      "ultrafast",
-      "-pix_fmt",
-      "yuv420p",
-      SRC,
-    ]);
-    if (!synth.success) {
-      throw new Error(`Cache-fps fixture synthesis failed: ${synth.stderr.slice(-400)}`);
-    }
-
-    const video: VideoElement = {
-      id: "cv2",
-      src: SRC,
-      start: 0,
-      end: 1,
-      mediaStart: 0,
-      loop: false,
-      hasAudio: false,
-    };
-
-    const outA = join(FIXTURE_DIR, "out-cache-fps-30");
-    mkdirSync(outA, { recursive: true });
-    const first = await extractAllVideoFrames(
-      [video],
-      FIXTURE_DIR,
-      { fps: 30, outputDir: outA },
-      undefined,
-      { extractCacheDir: CACHE_DIR },
-    );
+    const first = await extractWithCache(video, "out-cache-fps-30", CACHE_DIR);
     expect(first.phaseBreakdown.cacheMisses).toBe(1);
 
-    const outB = join(FIXTURE_DIR, "out-cache-fps-60");
-    mkdirSync(outB, { recursive: true });
-    const second = await extractAllVideoFrames(
-      [video],
-      FIXTURE_DIR,
-      { fps: 60, outputDir: outB },
-      undefined,
-      { extractCacheDir: CACHE_DIR },
-    );
+    const second = await extractWithCache(video, "out-cache-fps-60", CACHE_DIR, 60);
     expect(second.phaseBreakdown.cacheMisses).toBe(1);
     expect(second.phaseBreakdown.cacheHits).toBe(0);
 

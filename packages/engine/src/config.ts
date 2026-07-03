@@ -6,6 +6,8 @@
  * fallbacks for backward compatibility during migration.
  */
 
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   getSystemTotalMb,
   isLowMemorySystem,
@@ -178,16 +180,19 @@ export interface EngineConfig {
   /**
    * Directory where the content-addressed extraction cache persists frame
    * bundles keyed on (path, mtime, size, mediaStart, duration, fps, format).
-   * Undefined disables caching — extraction runs into the render's workDir
-   * and cleanup removes it when the render ends, preserving the pre-cache
-   * behaviour.
+   * Defaults on under the OS temp directory:
+   * `<tmpdir>/hyperframes-extract-cache-<uid>`.
    *
-   * **Single-writer.** The cache is not safe for concurrent renders pointing
-   * at the same directory. A `.hf-complete` sentinel prevents another render
-   * from serving an entry that hasn't finished extracting, but individual
-   * frame files are written non-atomically — a second render reading during
-   * the write window can observe a truncated frame. Give each concurrent
-   * render pipeline its own `extractCacheDir`, or gate with an external mutex.
+   * New entries publish atomically: frames are extracted into a unique
+   * partial directory, the `.hf-complete` sentinel is written there, and the
+   * partial directory is renamed into the final key directory. Concurrent
+   * renders against the same cache are safe; at worst, two renders duplicate
+   * ffmpeg work and one rehydrates from the winner.
+   *
+   * Set `HYPERFRAMES_EXTRACT_CACHE_DIR` to a path to override the default, or
+   * to `off`, `none`, `false`, or `0` to disable caching for the process.
+   * When disabled, extraction runs into the render's workDir and cleanup
+   * removes it when the render ends, preserving the pre-cache behaviour.
    *
    * **Network filesystems.** `mtime` resolution on NFS/SMB mounts can be
    * coarser than expected (seconds rather than nanoseconds), which may
@@ -197,6 +202,15 @@ export interface EngineConfig {
    * Env fallback: `HYPERFRAMES_EXTRACT_CACHE_DIR`.
    */
   extractCacheDir?: string;
+  /**
+   * Soft disk budget for `extractCacheDir`, in bytes. The renderer runs a
+   * best-effort LRU sweep after extraction and evicts oldest sentineled
+   * entries until the cache is under this cap, while protecting young entries
+   * that may belong to live renders.
+   *
+   * Env fallback: `HYPERFRAMES_EXTRACT_CACHE_MAX_MB` (megabytes).
+   */
+  extractCacheMaxBytes: number;
 
   // ── Debug ────────────────────────────────────────────────────────────
   debug: boolean;
@@ -248,6 +262,8 @@ export const DEFAULT_CONFIG: EngineConfig = {
   pageNavigationTimeout: 60_000,
 
   verifyRuntime: true,
+
+  extractCacheMaxBytes: 2 * 1024 ** 3,
 
   debug: false,
 };
@@ -353,6 +369,23 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
     const raw = env("HF_STATIC_DEDUP")?.trim().toLowerCase();
     return !(raw === "false" || raw === "off" || raw === "0");
   };
+  const resolveExtractCacheDir = (): string | undefined => {
+    const raw = env("HYPERFRAMES_EXTRACT_CACHE_DIR");
+    if (raw === undefined) {
+      return join(tmpdir(), `hyperframes-extract-cache-${process.getuid?.() ?? "u"}`);
+    }
+    const trimmed = raw.trim();
+    const normalized = trimmed.toLowerCase();
+    if (
+      normalized === "off" ||
+      normalized === "none" ||
+      normalized === "false" ||
+      normalized === "0"
+    ) {
+      return undefined;
+    }
+    return raw;
+  };
 
   // Env-var layer (backward compat)
   const fromEnv: Partial<EngineConfig> = {
@@ -446,7 +479,10 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
     verifyRuntime: env("PRODUCER_VERIFY_HYPERFRAME_RUNTIME") !== "false",
     runtimeManifestPath: env("PRODUCER_HYPERFRAME_MANIFEST_PATH"),
 
-    extractCacheDir: env("HYPERFRAMES_EXTRACT_CACHE_DIR"),
+    extractCacheDir: resolveExtractCacheDir(),
+    extractCacheMaxBytes:
+      envNum("HYPERFRAMES_EXTRACT_CACHE_MAX_MB", DEFAULT_CONFIG.extractCacheMaxBytes / 1024 ** 2) *
+      1024 ** 2,
   };
 
   // Remove undefined values so they don't override defaults
