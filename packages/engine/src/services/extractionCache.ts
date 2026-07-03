@@ -5,7 +5,8 @@
  * after capture. Repeat renders of the same composition (preview → final,
  * studio iteration) re-extract identical frames from the same source file,
  * burning ffmpeg time that adds no value. This module keys extracted frame
- * bundles on the (path, mtime, size, mediaStart, duration, fps, format)
+ * bundles on the (path, mtime, size, mediaStart, duration, fps, format,
+ * optional transform)
  * tuple so re-renders resolve to a pre-extracted directory instead of
  * re-invoking ffmpeg.
  *
@@ -84,6 +85,8 @@ export interface CacheKeyInput {
   fps: number;
   /** Output image format. */
   format: CacheFrameFormat;
+  /** Optional source transform applied during extraction. */
+  transform?: string;
 }
 
 export interface CacheEntry {
@@ -124,7 +127,16 @@ export function readKeyStat(videoPath: string): { mtimeMs: number; size: number 
 
 function canonicalKeyBlob(input: CacheKeyInput): string {
   const durationForKey = Number.isFinite(input.duration) ? input.duration : -1;
-  return JSON.stringify({
+  const blob: {
+    p: string;
+    m: number;
+    s: number;
+    ms: number;
+    d: number;
+    f: number;
+    fmt: CacheFrameFormat;
+    t?: string;
+  } = {
     p: input.videoPath,
     m: input.mtimeMs,
     s: input.size,
@@ -132,7 +144,9 @@ function canonicalKeyBlob(input: CacheKeyInput): string {
     d: durationForKey,
     f: input.fps,
     fmt: input.format,
-  });
+  };
+  if (input.transform !== undefined) blob.t = input.transform;
+  return JSON.stringify(blob);
 }
 
 /**

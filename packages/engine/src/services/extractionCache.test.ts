@@ -133,6 +133,20 @@ describe("computeCacheKey", () => {
     expect(a).not.toBe(b);
   });
 
+  it("changes when a source transform is applied", () => {
+    const plain = computeCacheKey(base(sourceFile));
+    const transformedInput = { ...base(sourceFile), transform: "sdr2hdr-pq" };
+    const transformed = computeCacheKey(transformedInput);
+    expect(transformed).not.toBe(plain);
+  });
+
+  it("keeps undefined transform byte-compatible with omitted transform", () => {
+    const omitted = computeCacheKey(base(sourceFile));
+    const input = { ...base(sourceFile), transform: undefined };
+    const explicitUndefined = computeCacheKey(input);
+    expect(explicitUndefined).toBe(omitted);
+  });
+
   it("normalizes non-finite duration so Infinity doesn't produce unstable keys", () => {
     const a = computeCacheKey({ ...base(sourceFile), duration: Infinity });
     const b = computeCacheKey({ ...base(sourceFile), duration: Infinity });

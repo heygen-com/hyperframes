@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   existsSync,
   mkdirSync,
+  readFileSync,
   mkdtempSync,
   readdirSync,
   rmSync,
@@ -16,6 +17,7 @@ import {
   parseVideoElements,
   parseImageElements,
   extractAllVideoFrames,
+  extractVideoFramesRange,
   createFrameLookupTable,
   resolveProjectRelativeSrc,
   resolveFrameFormat,
@@ -868,6 +870,54 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
     });
   }
 
+  async function synthHdrTaggedClip(name: string, durationSeconds: number): Promise<string> {
+    const src = join(FIXTURE_DIR, name);
+    const synth = await runFfmpeg([
+      "-y",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      `testsrc2=s=320x180:d=${durationSeconds}:rate=30`,
+      "-c:v",
+      "libx264",
+      "-preset",
+      "ultrafast",
+      "-pix_fmt",
+      "yuv420p",
+      "-color_primaries",
+      "bt2020",
+      "-color_trc",
+      "smpte2084",
+      "-colorspace",
+      "bt2020nc",
+      src,
+    ]);
+    if (!synth.success) {
+      throw new Error(`HDR fixture synthesis failed (${name}): ${synth.stderr.slice(-400)}`);
+    }
+    return src;
+  }
+
+  function cacheEntryNames(cacheDir: string): string[] {
+    return readdirSync(cacheDir).filter((name) => name.startsWith(SCHEMA_PREFIX));
+  }
+
+  function extractedFor(result: ExtractionResult, videoId: string): ExtractedFrames {
+    const extracted = result.extracted.find((item) => item.videoId === videoId);
+    if (!extracted) throw new Error(`missing extraction result for ${videoId}`);
+    return extracted;
+  }
+
+  function framePath(result: ExtractionResult, videoId: string, frameIndex: number): string {
+    const extracted = extractedFor(result, videoId);
+    const frame = extracted?.framePaths.get(frameIndex);
+    if (!frame) throw new Error(`missing frame ${frameIndex} for ${videoId}`);
+    return frame;
+  }
+
   it("reuses extracted frames on a warm cache hit", async () => {
     const CACHE_DIR = mkdtempSync(join(tmpdir(), "hf-extract-cache-test-"));
     const SRC = await synthCfrClip("cache-src.mp4", 2);
@@ -957,65 +1007,13 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
     rmSync(CACHE_DIR, { recursive: true, force: true });
   }, 60_000);
 
-  // Regression test for the segment-scope HDR preflight fix: pre-fix,
-  // convertSdrToHdr re-encoded the entire source, so a 30-minute SDR source
-  // contributing a 2-second clip took ~200× longer than needed. Post-fix the
-  // converted file's duration matches the used segment.
-  it("bounds the SDR→HDR preflight re-encode to the used segment", async () => {
-    const SDR_LONG = join(FIXTURE_DIR, "sdr-long.mp4");
-    const HDR_SHORT = join(FIXTURE_DIR, "hdr-short.mp4");
-
-    const sdrResult = await runFfmpeg([
-      "-y",
-      "-hide_banner",
-      "-loglevel",
-      "error",
-      "-f",
-      "lavfi",
-      "-i",
-      "testsrc2=s=320x180:d=10:rate=30",
-      "-c:v",
-      "libx264",
-      "-preset",
-      "ultrafast",
-      "-pix_fmt",
-      "yuv420p",
-      SDR_LONG,
-    ]);
-    if (!sdrResult.success) {
-      throw new Error(`SDR fixture synthesis failed: ${sdrResult.stderr.slice(-400)}`);
-    }
-
-    // Tag as bt2020nc / smpte2084 so the preflight path considers the timeline mixed-HDR.
-    const hdrResult = await runFfmpeg([
-      "-y",
-      "-hide_banner",
-      "-loglevel",
-      "error",
-      "-f",
-      "lavfi",
-      "-i",
-      "testsrc2=s=320x180:d=2:rate=30",
-      "-c:v",
-      "libx264",
-      "-preset",
-      "ultrafast",
-      "-pix_fmt",
-      "yuv420p",
-      "-color_primaries",
-      "bt2020",
-      "-color_trc",
-      "smpte2084",
-      "-colorspace",
-      "bt2020nc",
-      HDR_SHORT,
-    ]);
-    if (!hdrResult.success) {
-      throw new Error(`HDR fixture synthesis failed: ${hdrResult.stderr.slice(-400)}`);
-    }
-
+  it("applies SDR→HDR conversion during extraction without normalized intermediates", async () => {
+    const SDR_LONG = await synthCfrClip("sdr-long.mp4", 10);
+    const HDR_SHORT = await synthHdrTaggedClip("hdr-short.mp4", 2);
     const outputDir = join(FIXTURE_DIR, "out-hdr-segment");
+    const plainOutputDir = join(FIXTURE_DIR, "out-hdr-plain-sdr");
     mkdirSync(outputDir, { recursive: true });
+    mkdirSync(plainOutputDir, { recursive: true });
 
     const videos: VideoElement[] = [
       { id: "sdr", src: SDR_LONG, start: 0, end: 2, mediaStart: 0, loop: false, hasAudio: false },
@@ -1036,14 +1034,56 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
     });
     expect(result.errors).toEqual([]);
     expect(result.phaseBreakdown.hdrPreflightCount).toBe(1);
+    expect(existsSync(join(outputDir, "_hdr_normalized"))).toBe(false);
 
-    const convertedPath = join(outputDir, "_hdr_normalized", "sdr_hdr.mp4");
-    expect(existsSync(convertedPath)).toBe(true);
-    const convertedMeta = await extractVideoMetadata(convertedPath);
-    // Pre-fix duration matched the 10s source; post-fix it matches the 2s segment
-    // (±0.2s for encoder keyframe/seek alignment).
-    expect(convertedMeta.durationSeconds).toBeGreaterThan(1.8);
-    expect(convertedMeta.durationSeconds).toBeLessThan(2.5);
+    const sdrFrames = result.extracted.find((item) => item.videoId === "sdr");
+    expect(sdrFrames?.totalFrames).toBe(60);
+
+    const plain = await extractVideoFramesRange(SDR_LONG, "plain-sdr", 0, 2, {
+      fps: 30,
+      outputDir: plainOutputDir,
+      format: "jpg",
+    });
+    expect(plain.totalFrames).toBe(60);
+    expect(
+      readFileSync(framePath(result, "sdr", 0)).equals(readFileSync(plain.framePaths.get(0)!)),
+    ).toBe(false);
+  }, 60_000);
+
+  it("keeps SDR→HDR cache entries distinct from plain SDR entries", async () => {
+    const CACHE_DIR = mkdtempSync(join(tmpdir(), "hf-extract-hdr-cache-test-"));
+    const SDR = await synthCfrClip("cache-hdr-sdr.mp4", 1);
+    const HDR = await synthHdrTaggedClip("cache-hdr-hdr.mp4", 1);
+    try {
+      const mixedOutputDir = join(FIXTURE_DIR, "out-cache-hdr-mixed");
+      mkdirSync(mixedOutputDir, { recursive: true });
+      const mixed = await extractAllVideoFrames(
+        [
+          cfrClipElement("sdr-transform", SDR, 1),
+          { ...cfrClipElement("hdr-peer", HDR, 1), start: 1, end: 2 },
+        ],
+        FIXTURE_DIR,
+        { fps: 30, outputDir: mixedOutputDir },
+        undefined,
+        { extractCacheDir: CACHE_DIR },
+      );
+      expect(mixed.errors).toEqual([]);
+      expect(mixed.phaseBreakdown.hdrPreflightCount).toBe(1);
+      expect(mixed.phaseBreakdown.cacheHits).toBe(0);
+      expect(mixed.phaseBreakdown.cacheMisses).toBe(2);
+
+      const plain = await extractWithCache(
+        cfrClipElement("sdr-plain", SDR, 1),
+        "out-cache-hdr-plain",
+        CACHE_DIR,
+      );
+      expect(plain.errors).toEqual([]);
+      expect(plain.phaseBreakdown.cacheHits).toBe(0);
+      expect(plain.phaseBreakdown.cacheMisses).toBe(1);
+      expect(cacheEntryNames(CACHE_DIR)).toHaveLength(3);
+    } finally {
+      rmSync(CACHE_DIR, { recursive: true, force: true });
+    }
   }, 60_000);
 
   // Asserts frame-count correctness for a full VFR file. One-pass CFR image
