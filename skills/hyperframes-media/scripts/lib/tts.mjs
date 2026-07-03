@@ -200,9 +200,13 @@ save(audio, sys.argv[3])
 `;
 
 // ── synthesize one line ───────────────────────────────────────────────────────
-// Writes wav at wavAbs. Returns { ok, words } — words is the raw
+// Writes wav at wavAbs. Returns { ok, words, error? } — words is the raw
 // [{text,start,end}] array for HeyGen (native), or null for ElevenLabs/Kokoro
 // (caller must transcribeWav). Never throws; failures return { ok:false }.
+// `error` is only populated for the heygen provider, where the underlying
+// HTTP failure (e.g. a 402 plan-upgrade response) carries a real diagnostic
+// message worth surfacing — a spawned CLI's bare exit code for the other two
+// providers doesn't.
 export async function synthesizeOne({
   provider,
   text,
@@ -239,14 +243,24 @@ async function synthesizeHeygen({ text, voiceId, lang, speed, wavAbs }) {
       body,
     });
     const inner = payload.data ?? payload;
-    if (!inner.audio_url) return { ok: false, words: null };
+    if (!inner.audio_url) {
+      return { ok: false, words: null, error: "HeyGen response had no audio_url" };
+    }
     const res = await fetch(inner.audio_url);
-    if (!res.ok) return { ok: false, words: null };
+    if (!res.ok) {
+      return {
+        ok: false,
+        words: null,
+        error: `failed to download synthesized audio: HTTP ${res.status}`,
+      };
+    }
     const bytes = Buffer.from(await res.arrayBuffer());
     // .wav output → transcode to 44.1k mono; .mp3 → raw bytes (no ffmpeg). The
     // engine always asks for .wav; the standalone heygen-tts CLI may ask for .mp3.
     if (wavAbs.endsWith(".wav")) {
-      if (!transcodeToWav(bytes, wavAbs)) return { ok: false, words: null };
+      if (!transcodeToWav(bytes, wavAbs)) {
+        return { ok: false, words: null, error: "ffmpeg transcode to wav failed" };
+      }
     } else {
       mkdirSync(dirname(wavAbs), { recursive: true });
       writeFileSync(wavAbs, bytes);
@@ -258,8 +272,13 @@ async function synthesizeHeygen({ text, voiceId, lang, speed, wavAbs }) {
           .map((w) => ({ text: w.word, start: w.start, end: w.end }))
       : [];
     return { ok: true, words };
-  } catch {
-    return { ok: false, words: null };
+  } catch (e) {
+    // heygenJSON's own thrown Error already carries the HTTP status and
+    // response body (e.g. "HeyGen POST /voices/speech → HTTP 402
+    // plan_upgrade_required..."). Surfacing it here, not swallowing it, is
+    // the whole fix — callers used to see nothing but a generic "synthesis
+    // failed" with no way to tell a plan-upgrade 402 from a transient 500.
+    return { ok: false, words: null, error: e.message };
   }
 }
 
