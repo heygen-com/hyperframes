@@ -36,6 +36,9 @@
     "packages/producer/src/services/__fixtures__/crashOnMessageWorker.mjs",
     "scripts/*.{ts,mjs,js}",
     "scripts/*/run.mjs",
+    // Standalone agent-browser e2e smoke, run by hand per its header — no
+    // import-graph referrer.
+    "packages/studio/tests/e2e/design-panel.mjs",
     // Keyframe UI components — wired dynamically via EaseCurveSection/MotionPanel.
     "packages/studio/src/components/editor/KeyframeDiamond.tsx",
     "packages/studio/src/components/editor/SpringEaseEditor.tsx",
