@@ -51,13 +51,34 @@ const TIMELINE_REGISTRY_OBJECT_BODY_PATTERN = /window\.__timelines\s*=\s*\{([\s\
 const TIMELINE_REGISTRY_OBJECT_ENTRY_PATTERN =
   /(?:["']([^"']+)["']|([A-Za-z_$][\w$]*))\s*:\s*[A-Za-z_$][\w$]*/g;
 
+// <style>/<script> content is CSS/JS text, not markup — a CSS comment like
+// `/* <g> wrapper */` or a JS comment mentioning a tag name otherwise reads as
+// a real open tag to TAG_PATTERN's flat regex scan, throwing off every
+// consumer that relies on tag order/position (findRootTag in particular:
+// a phantom tag from inside a <style> block can outrank the real
+// composition root). Compute the content spans up front and skip any match
+// that falls inside one, the same way findRootTag already special-cases
+// <style>/<script> tags themselves.
+function findStyleAndScriptContentRanges(source: string): Array<[number, number]> {
+  const ranges: Array<[number, number]> = [];
+  for (const pattern of [STYLE_BLOCK_PATTERN, SCRIPT_BLOCK_PATTERN]) {
+    for (const block of extractBlocks(source, pattern)) {
+      const contentStart = block.index + block.raw.indexOf(block.content);
+      ranges.push([contentStart, contentStart + block.content.length]);
+    }
+  }
+  return ranges;
+}
+
 export function extractOpenTags(source: string): OpenTag[] {
   const tags: OpenTag[] = [];
+  const skipRanges = findStyleAndScriptContentRanges(source);
   let match: RegExpExecArray | null;
   const pattern = new RegExp(TAG_PATTERN.source, TAG_PATTERN.flags);
   while ((match = pattern.exec(source)) !== null) {
     const raw = match[0];
     if (raw.startsWith("</") || raw.startsWith("<!")) continue;
+    if (skipRanges.some(([start, end]) => match!.index >= start && match!.index < end)) continue;
     tags.push({
       raw,
       name: (match[1] || "").toLowerCase(),
