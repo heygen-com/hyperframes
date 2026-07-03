@@ -27,6 +27,10 @@ function formatUnsafeFieldList(fields: Array<{ path: string }>): string {
   return fields.map((field) => field.path).join(", ");
 }
 
+function getErrorDetail(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 async function readErrorResponseBody(
   response: Response,
 ): Promise<{ error?: string; fields?: string[] } | null> {
@@ -210,7 +214,9 @@ export function useDomEditCommits({
       );
       if (!patchResponse.ok) {
         showToast(formatPatchRejectionMessage(await readErrorResponseBody(patchResponse)), "error");
-        throw await createStudioSaveHttpError(patchResponse, `Failed to patch ${targetPath}`);
+        throw await createStudioSaveHttpError(patchResponse, `Failed to patch ${targetPath}`, {
+          alreadyToasted: true,
+        });
       }
 
       const patchData = (await patchResponse.json()) as {
@@ -243,9 +249,21 @@ export function useDomEditCommits({
 
       let finalContent = patchedContent;
       if (options?.prepareContent) {
-        finalContent = options.prepareContent(patchedContent, targetPath);
-        if (finalContent !== patchedContent) {
-          await writeProjectFile(targetPath, finalContent);
+        const preparedContent = options.prepareContent(patchedContent, targetPath);
+        if (preparedContent !== patchedContent) {
+          try {
+            await writeProjectFile(targetPath, preparedContent);
+            finalContent = preparedContent;
+          } catch (error) {
+            // The patch above already landed on disk — only the prepareContent
+            // embellishment (e.g. an injected @font-face) failed to write. Keep
+            // the already-persisted patchedContent instead of throwing, which
+            // would otherwise revert a change the server already committed.
+            showToast(
+              `Saved, but couldn't finish updating ${targetPath}: ${getErrorDetail(error)}`,
+              "error",
+            );
+          }
         }
       }
 

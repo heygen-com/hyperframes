@@ -270,7 +270,7 @@ export function useDomEditTextCommits({
             shouldSave: isLatestTextCommit,
           });
         },
-        shouldRevert: (error) => error instanceof DomEditPersistUnsupportedTextStructureError,
+        shouldRevert: () => isLatestTextCommit(),
         revert: () => {
           if (!editedElement || previousInnerHtml === null) return;
           editedElement.innerHTML = previousInnerHtml;
@@ -344,7 +344,7 @@ export function useDomEditTextCommits({
               : undefined,
           });
         },
-        shouldRevert: (error) => error instanceof DomEditPersistUnsupportedTextStructureError,
+        shouldRevert: () => true,
         revert: () => {
           if (!editedElement || previousInnerHtml === null) return;
           editedElement.innerHTML = previousInnerHtml;
