@@ -306,6 +306,21 @@ describe("gcExtractionCache", () => {
     return dir;
   }
 
+  it("evicts superseded-generation entries (hfcache-v2-*) under the size cap", () => {
+    const oldGen = join(tmpRoot, "hfcache-v2-0123456789abcdef");
+    mkdirSync(oldGen, { recursive: true });
+    writeFileSync(join(oldGen, "frame_00001.jpg"), "x".repeat(2048), "utf-8");
+    writeFileSync(join(oldGen, ".hf-complete"), "", "utf-8");
+    const aged = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    utimesSync(join(oldGen, ".hf-complete"), aged, aged);
+    utimesSync(oldGen, aged, aged);
+
+    const stats = gcExtractionCache(tmpRoot, { maxBytes: 1024, minAgeMs: 60 * 60 * 1000 });
+
+    expect(existsSync(oldGen)).toBe(false);
+    expect(stats.evictedEntries).toBe(1);
+  });
+
   it("evicts oldest complete entries first until under maxBytes while respecting minAge", () => {
     const oldest = makeEntry("oldest", 60, 120_000);
     const middle = makeEntry("middle", 60, 90_000);

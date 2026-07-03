@@ -265,8 +265,15 @@ export function markCacheEntryComplete(entry: CacheEntry): void {
   writeFileSync(join(entry.dir, COMPLETE_SENTINEL), "", "utf-8");
 }
 
+/** Any generation of this cache's entries ("hfcache-v*"), current or superseded. */
+const CACHE_GENERATION_PREFIX = "hfcache-v";
+
 function isCacheLikeChild(name: string): boolean {
-  return name.startsWith(SCHEMA_PREFIX) || name.includes(".partial-");
+  // Match every schema generation, not just SCHEMA_PREFIX: after a schema
+  // bump, superseded-version entries would otherwise be invisible to the
+  // sweep and orphan their disk forever. Old-generation entries never get
+  // sentinel touches, so the LRU evicts them first.
+  return name.startsWith(CACHE_GENERATION_PREFIX) || name.includes(".partial-");
 }
 
 function isPartialChild(name: string): boolean {
