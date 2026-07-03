@@ -83,6 +83,36 @@ describe("registerFileRoutes", () => {
     expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toBe("after");
   });
 
+  it("preserves binary bodies byte-for-byte on PUT and POST", async () => {
+    const projectDir = createProjectDir();
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    // Bytes that are invalid UTF-8 (e.g. font/image data): a UTF-8 text decode
+    // would replace them with U+FFFD and corrupt the file.
+    const binary = Uint8Array.from([0x4f, 0x54, 0x54, 0x4f, 0x00, 0x98, 0xff, 0xfe, 0x80, 0x01]);
+
+    const created = await app.request("http://localhost/projects/demo/files/assets/font.otf", {
+      method: "POST",
+      headers: { "Content-Type": "application/octet-stream" },
+      body: binary,
+    });
+    expect(created.status).toBe(201);
+    expect(new Uint8Array(readFileSync(join(projectDir, "assets/font.otf")))).toEqual(binary);
+
+    const reversed = Uint8Array.from([...binary].reverse());
+    const overwritten = await app.request(
+      "http://localhost/projects/demo/files/assets/font.otf",
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/octet-stream" },
+        body: reversed,
+      },
+    );
+    expect(overwritten.status).toBe(200);
+    expect(new Uint8Array(readFileSync(join(projectDir, "assets/font.otf")))).toEqual(reversed);
+  });
+
   it("backs up the previous file content before delete", async () => {
     const projectDir = createProjectDir();
     writeFileSync(join(projectDir, "index.html"), "before delete");
