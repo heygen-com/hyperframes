@@ -39,8 +39,14 @@ export const FRAME_FILENAME_PREFIX = "frame_";
 /** Sentinel filename written after a cache entry is fully populated. */
 export const COMPLETE_SENTINEL = ".hf-complete";
 
-/** Current schema version. Bump when cache-entry layout changes. */
-export const SCHEMA_PREFIX = "hfcache-v2-";
+/**
+ * Current schema version. Bump when the cache-contents invariant changes.
+ * v2 -> v3: one-pass VFR extraction (-fps_mode cfr) replaces the two-pass
+ * VFR-to-CFR re-encode, changing frame contents for VFR sources under
+ * identical key tuples. Without the bump, warm v2 entries (two-pass frames)
+ * would keep being served across the deploy boundary.
+ */
+export const SCHEMA_PREFIX = "hfcache-v3-";
 
 /** Truncated hex chars of SHA-256 used for the entry directory name. */
 const KEY_HEX_CHARS = 16;

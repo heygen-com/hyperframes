@@ -33,7 +33,7 @@ const keyFor = (videoPath: string, overrides: Partial<CacheKeyInput> = {}): Cach
 
 describe("extractionCache constants", () => {
   it("exposes the v2 schema prefix", () => {
-    expect(SCHEMA_PREFIX).toBe("hfcache-v2-");
+    expect(SCHEMA_PREFIX).toBe("hfcache-v3-");
   });
 
   it("exposes the frame filename prefix shared with the extractor", () => {
