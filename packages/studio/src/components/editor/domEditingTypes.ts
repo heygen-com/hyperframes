@@ -69,6 +69,7 @@ export interface DomEditTextField {
   inlineStyles: Record<string, string>;
   computedStyles: Record<string, string>;
   source: "self" | "child" | "text-node";
+  sourceChildIndex?: number;
 }
 
 export interface DomEditSelection extends PatchTarget {

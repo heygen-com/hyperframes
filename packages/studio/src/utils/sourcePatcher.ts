@@ -90,6 +90,8 @@ export interface PatchOperation {
   type: "inline-style" | "attribute" | "text-content" | "html-attribute";
   property: string;
   value: string | null;
+  childSelector?: string;
+  childIndex?: number;
 }
 
 // Runtime validation for hfId lives in findTagByTarget → execDataAttrPattern (CSS attr-value

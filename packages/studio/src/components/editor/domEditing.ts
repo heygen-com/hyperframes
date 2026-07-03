@@ -31,6 +31,7 @@ export {
   buildDomEditTextPatchOperation,
   collectDomEditLayerItems,
   countDomEditChildLayers,
+  buildTextFieldChildLocator,
   getDomEditLayerKey,
   getDomEditNonEditableReason,
   getDomEditTargetKey,
