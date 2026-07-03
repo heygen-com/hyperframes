@@ -1081,6 +1081,30 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
       expect(plain.phaseBreakdown.cacheHits).toBe(0);
       expect(plain.phaseBreakdown.cacheMisses).toBe(1);
       expect(cacheEntryNames(CACHE_DIR)).toHaveLength(3);
+
+      // Cross-render poisoning regression: the plain-SDR render must not be
+      // served the BT.2020-converted frames the mixed render cached for the
+      // SAME source+trim. Compare actual frame bytes across the cache
+      // boundary, not just entry counts.
+      expect(
+        readFileSync(framePath(plain, "sdr-plain", 0)).equals(
+          readFileSync(framePath(mixed, "sdr-transform", 0)),
+        ),
+      ).toBe(false);
+
+      // And a repeat plain render must HIT the plain entry and serve
+      // byte-identical plain frames (proves the hit path keys correctly too).
+      const plainAgain = await extractWithCache(
+        cfrClipElement("sdr-plain-again", SDR, 1),
+        "out-cache-hdr-plain-again",
+        CACHE_DIR,
+      );
+      expect(plainAgain.phaseBreakdown.cacheHits).toBe(1);
+      expect(
+        readFileSync(framePath(plainAgain, "sdr-plain-again", 0)).equals(
+          readFileSync(framePath(plain, "sdr-plain", 0)),
+        ),
+      ).toBe(true);
     } finally {
       rmSync(CACHE_DIR, { recursive: true, force: true });
     }

@@ -296,6 +296,13 @@ export async function extractVideoFramesRange(
     vfFilters.push(`fps=${fps}`);
   }
   if (options.sdrToHdrTransfer) {
+    // Ordering intent: fps sampling runs BEFORE the colorspace remap so only
+    // kept frames are converted. The remap is pointwise per-frame, so the
+    // output is identical either way for the SDR (BT.709, 8-bit) inputs this
+    // flag is set for. If format=nv12 (macOS HDR-source decode) ever combines
+    // with this flag, revisit: nv12 subsampling before a BT.2020 remap is an
+    // untested interaction (today the flags are mutually exclusive — the
+    // remap only applies to SDR sources, nv12 only to HDR sources).
     vfFilters.push(SDR_TO_HDR_COLORSPACE_FILTER);
   }
   if (vfFilters.length > 0) args.push("-vf", vfFilters.join(","));
@@ -337,7 +344,14 @@ export async function extractVideoFramesRange(
         return;
       }
       if (code !== 0) {
-        reject(new Error(`FFmpeg exited with code ${code}: ${stderr.slice(-500)}`));
+        // With the SDR-to-HDR remap folded into this pass, a filter failure
+        // (e.g. an ffmpeg built without the colorspace filter) would otherwise
+        // surface as a generic extract error and the operator has to grep the
+        // filter chain to learn it was the HDR conversion. Attribute it.
+        const hdrPrefix = options.sdrToHdrTransfer
+          ? `SDR→HDR conversion failed (colorspace filter in extract pass, target ${options.sdrToHdrTransfer}): `
+          : "";
+        reject(new Error(`${hdrPrefix}FFmpeg exited with code ${code}: ${stderr.slice(-500)}`));
         return;
       }
 
@@ -585,6 +599,11 @@ export async function extractAllVideoFrames(
     resolvedVideos.map(({ videoPath }) => extractMediaMetadata(videoPath)),
   );
   const videoColorSpaces = videoMetadata.map((m) => m.colorSpace);
+  // Canonical per-index record of the SDR-to-HDR transform decision. BOTH the
+  // cache key (transform discriminator) and the extraction options read from
+  // this array via the prepared work items — never set one side independently
+  // or cache lookups and written frames drift apart (the poisoning bug this
+  // field exists to fix).
   const sdrToHdrTransfers: Array<HdrTransfer | undefined> = resolvedVideos.map(() => undefined);
   breakdown.hdrProbeMs = Date.now() - phase2ProbeStart;
 
