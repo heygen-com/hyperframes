@@ -53,6 +53,20 @@ function orbitStageSource(): string {
 const FFMPEG_EXTRACT_TIMEOUT_MS = 30_000;
 
 /**
+ * `--at` is declared as a single `type: "string"` citty arg, so Node's
+ * underlying `util.parseArgs` silently keeps only the LAST occurrence when
+ * the flag is repeated (`--at 1 --at 2` yields "2", not both) — citty has no
+ * `multiple: true` passthrough to opt into array accumulation. The
+ * documented usage is a single comma-separated value (`--at 1,2,3`), so
+ * repeating the flag is always a user mistake, not an alternate valid
+ * syntax; this only detects it in the raw argv so the mistake is loud
+ * instead of a silently truncated snapshot.
+ */
+export function countRepeatedAtFlag(argv: string[]): number {
+  return argv.filter((arg) => arg === "--at" || arg.startsWith("--at=")).length;
+}
+
+/**
  * Extract a single frame from a video file at `timeSeconds` via FFmpeg.
  * Used to work around Chrome-headless's inability to reliably seek
  * <video> elements during snapshot capture.
@@ -591,6 +605,14 @@ export default defineCommand({
     const project = resolveProject(args.dir);
     const frames = parseInt(args.frames as string, 10) || 5;
     const timeout = parseInt(args.timeout as string, 10) || 5000;
+    const repeatedAtCount = countRepeatedAtFlag(process.argv);
+    if (repeatedAtCount > 1) {
+      console.warn(
+        `   ${c.warn("⚠")} --at was passed ${repeatedAtCount} times; only the last one ` +
+          `("${String(args.at)}") is used. Pass every timestamp in one comma-separated flag ` +
+          `instead: --at 3.0,10.5,18.0`,
+      );
+    }
     const atTimestamps = args.at
       ? String(args.at)
           .split(",")
