@@ -10,6 +10,11 @@ import { fontFamilyFromAssetPath, type ImportedFontAsset } from "../components/e
 import type { EditHistoryKind } from "../utils/editHistory";
 import type { PersistDomEditOperations } from "./domEditCommitTypes";
 import type { PatchOperation } from "../utils/sourcePatcher";
+import {
+  DomEditPersistUnsafeValueError,
+  DomEditPersistUnresolvableError,
+  warnDomEditPersistNoOp,
+} from "./domEditPersistFailure";
 import { useDomEditPositionPatchCommit } from "./useDomEditPositionPatchCommit";
 import { useDomEditTextCommits } from "./useDomEditTextCommits";
 import { useDomGeometryCommits } from "./useDomGeometryCommits";
@@ -168,7 +173,9 @@ export function useDomEditCommits({
       if (unsafeFields.length > 0) {
         const fields = formatUnsafeFieldList(unsafeFields);
         showToast("Couldn't save edit because it contains invalid layout values", "error");
-        throw new Error(`DOM patch contains unsafe values: ${fields}`);
+        throw new DomEditPersistUnsafeValueError(`DOM patch contains unsafe values: ${fields}`, {
+          alreadyToasted: true,
+        });
       }
 
       // Skip the SDK path when prepareContent is set (e.g. @font-face injection
@@ -225,7 +232,9 @@ export function useDomEditCommits({
               composition: activeCompPath ?? undefined,
             });
           }
+          throw new DomEditPersistUnresolvableError(targetPath);
         }
+        warnDomEditPersistNoOp(selection, operations);
         return;
       }
 
@@ -286,6 +295,7 @@ export function useDomEditCommits({
     buildDomSelectionFromTarget,
     persistDomEditOperations,
     resolveImportedFontAsset,
+    showToast,
   });
 
   // ── Position patch helper (shared by geometry + lifecycle hooks) ──
