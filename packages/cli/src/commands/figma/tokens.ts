@@ -77,17 +77,19 @@ export default defineCommand({
     dir: { type: "string", description: "project directory", default: "." },
   },
   async run({ args }) {
-    const client = createFigmaClient({ token: process.env.FIGMA_TOKEN ?? "" });
-    const result = await runTokensImport(args.ref, { projectDir: args.dir, client });
-    if (result.mode === "styles") {
-      console.log(
-        "variables are Enterprise-gated on this plan — recorded published style metadata instead",
-      );
-    }
-    console.log(`wrote ${result.sidecarPath} (${result.mode})`);
-    if (result.entries.length > 0) {
-      console.log("add to data-composition-variables:");
-      console.log(JSON.stringify(result.entries, null, 2));
-    }
+    await withFigmaErrors(async () => {
+      const client = createFigmaClient({ token: process.env.FIGMA_TOKEN ?? "" });
+      const result = await runTokensImport(args.ref, { projectDir: args.dir, client });
+      if (result.mode === "styles") {
+        console.log(
+          "variables are Enterprise-gated on this plan — recorded published style metadata instead (style values resolve at component-import time)",
+        );
+      }
+      console.log(`wrote ${result.sidecarPath} (${result.mode})`);
+      if (result.entries.length > 0) {
+        console.log("add to data-composition-variables:");
+        console.log(JSON.stringify(result.entries, null, 2));
+      }
+    });
   },
 });

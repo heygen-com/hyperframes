@@ -19,9 +19,17 @@ REST is used wherever it can be (usable at volume, headless); MCP only where Fig
 
 ## Auth — two credentials, scoped
 
-- **Phases 1–3:** `FIGMA_TOKEN` env var (personal access token, figma.com/settings → security). Missing → the CLI errors with `NO_TOKEN`; tell the user to mint one and stop.
-- **Phases 4–5:** the Figma MCP connector (one-click OAuth). If MCP tools error unauthenticated, tell the user to connect Figma and stop.
+**Preflight — before the first CLI call, check the token exists** (`[ -n "$FIGMA_TOKEN" ]`). If unset, do NOT run the command to harvest the error — walk the user through the one-time setup first, then stop and wait:
+
+1. figma.com/settings → **Security** → **Personal access tokens** → Generate new token.
+2. Scopes — read-only is all this integration ever needs (it never writes to Figma): **File content: Read-only** + **File metadata: Read-only**. Optionally **Variables: Read-only** for brand variables — that scope only works on Figma Enterprise; without it `tokens` degrades to published styles automatically (expected behavior, not an error — say so).
+3. `export FIGMA_TOKEN="figd_…"` — and suggest persisting it (shell profile or project `.env`) so no future session repeats this.
+
+While onboarding, also set expectations in one breath: every import lands as a **local frozen file with recorded provenance** — renders never call Figma, re-running a command re-imports only what changed in Figma, and one token works for assets, brand tokens, and components across every file their Figma account can view.
+
+- **Phases 4–5 (motion/shaders):** the Figma MCP connector (one-click OAuth), a separate credential from the token. If MCP tools error unauthenticated, tell the user to connect the Figma connector and stop.
 - Say exactly which credential a failing phase needs — never present the split as broken.
+- `BAD_TOKEN` (401) mid-flow → the token is expired/revoked/under-scoped; point at the same three steps to re-mint. `REQUIRES_ENTERPRISE` (403 on variables) → not a failure: styles fallback already ran.
 
 **Rate-limit awareness (spec §2.1):** MCP on a Starter plan is 6 tool calls/**month** (figma plan matrix as of 2026-07 — re-verify if quotas look off) — batch with `recursive:true` on the parent node, skip verification screenshots unless asked, and cache raw MCP responses so re-derivation never spends a second call. REST is per-minute (10+/min, per-endpoint buckets) — fine at volume, back off on 429.
 
@@ -35,6 +43,8 @@ Parse the user's figma link with `parseFigmaRef` (URL, `fileKey:nodeId`, bare `f
 - "import this animation / motion" → **Motion** (MCP, below)
 - a storyboard section / filmstrip of scene frames → **Storyboard** (below)
 - shader fill/effect → **Shaders** (below)
+
+**Narrate every step for the user** — before each command say what you're about to pull from Figma; after it, say where the artifact landed (the frozen path / sidecar / component dir), what changed in the composition, and the immediate next action (preview, add printed variables, re-import to link bindings). The user should never have to ask "did it work?" or "now what?".
 
 ## Assets (Phase 1 — CLI)
 

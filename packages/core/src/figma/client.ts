@@ -119,7 +119,17 @@ export function createFigmaClient(options: FigmaClientOptions): FigmaClient {
   if (token === "") {
     throw new FigmaClientError(
       "NO_TOKEN",
-      "FIGMA_TOKEN is missing — mint a personal access token at figma.com/settings and export FIGMA_TOKEN",
+      [
+        "FIGMA_TOKEN is missing. One-time setup:",
+        "  1. figma.com/settings → Security → Personal access tokens → Generate new token",
+        "  2. Scopes (read-only is all this integration ever needs — it never writes to figma):",
+        "       File content: Read-only   ·   File metadata: Read-only",
+        "       Variables: Read-only      (optional — brand variables, requires figma Enterprise;",
+        "                                  without it `tokens` falls back to published styles)",
+        '  3. export FIGMA_TOKEN="figd_…"  — add it to your shell profile or the project .env',
+        "     so future sessions skip this step",
+        "Then re-run this command.",
+      ].join("\n"),
     );
   }
   const doFetch: FigmaFetch = options.fetch ?? ((url, init) => fetch(url, init));
@@ -130,7 +140,11 @@ export function createFigmaClient(options: FigmaClientOptions): FigmaClient {
       headers: { "X-Figma-Token": token },
     });
     if (res.status === 401)
-      throw new FigmaClientError("BAD_TOKEN", "figma rejected the token (401)", 401);
+      throw new FigmaClientError(
+        "BAD_TOKEN",
+        "figma rejected the token (401) — it is expired, revoked, or missing read scopes. Re-mint at figma.com/settings → Security with File content + File metadata read-only scopes, then update FIGMA_TOKEN.",
+        401,
+      );
     if (res.status === 403 && enterpriseGated)
       throw new FigmaClientError(
         "REQUIRES_ENTERPRISE",

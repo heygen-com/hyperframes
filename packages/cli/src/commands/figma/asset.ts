@@ -23,6 +23,7 @@ import {
 import { existsSync } from "node:fs";
 import { join, relative } from "node:path";
 import { downloadRender } from "./download.js";
+import { withFigmaErrors } from "./cliError.js";
 
 export interface AssetImportOptions {
   format: FigmaAssetFormat;
@@ -124,18 +125,20 @@ export default defineCommand({
     dir: { type: "string", description: "project directory", default: "." },
   },
   async run({ args }) {
-    const token = process.env.FIGMA_TOKEN ?? "";
-    const client = createFigmaClient({ token });
-    const result = await runAssetImport(
-      args.ref,
-      {
-        format: parseFormat(args.format),
-        scale: args.scale !== undefined ? Number(args.scale) : undefined,
-      },
-      { projectDir: args.dir, client, download: downloadRender },
-    );
-    const verb = result.reused ? "reused" : "imported";
-    console.log(`${verb} ${result.record.id} → ${result.record.path}`);
-    console.log(result.snippet.html);
+    await withFigmaErrors(async () => {
+      const token = process.env.FIGMA_TOKEN ?? "";
+      const client = createFigmaClient({ token });
+      const result = await runAssetImport(
+        args.ref,
+        {
+          format: parseFormat(args.format),
+          scale: args.scale !== undefined ? Number(args.scale) : undefined,
+        },
+        { projectDir: args.dir, client, download: downloadRender },
+      );
+      const verb = result.reused ? "reused" : "imported";
+      console.log(`${verb} ${result.record.id} → ${result.record.path}`);
+      console.log(result.snippet.html);
+    });
   },
 });

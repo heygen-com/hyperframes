@@ -1,0 +1,116 @@
+---
+title: Figma Import
+description: "Bring Figma designs into HyperFrames — frozen assets, brand tokens, editable components, storyboard animatics, and Figma Motion timelines translated to GSAP."
+---
+
+The work your designer already did in Figma — layout, color, type, motion — becomes the starting point of a composition instead of a thing to rebuild by hand. Point at a Figma URL; the artifact lands as a native HyperFrames piece: a frozen local file, a composition variable, editable HTML, or a paused GSAP timeline.
+
+## What you can import
+
+| Capability | What you get | Surface |
+| --- | --- | --- |
+| **Static assets** | A frame/layer rendered to SVG/PNG/JPG/PDF, frozen under `.media/` | `hyperframes figma asset` |
+| **Brand tokens** | Figma variables/styles as composition brand variables | `hyperframes figma tokens` |
+| **Components** | A frame as editable HTML with brand-linked colors | `hyperframes figma component` |
+| **Motion** | A Figma Motion timeline as an editable, paused GSAP timeline | `/figma` skill (agent, MCP) |
+| **Shaders** | A shader fill/effect as a frozen still or clip | `/figma` skill (agent, MCP) |
+| **Storyboards** | A section of scene frames reconstructed as an animatic | `/figma` skill (agent) |
+
+Two transports, split by what Figma exposes: assets, tokens, and components run over the **REST API** (headless, works in CI, generous per-minute rate limits). Motion and shaders exist only on Figma's **MCP server**, so an agent drives those. Every path freezes files locally — **renders never call Figma**.
+
+## One-time setup
+
+The CLI paths need a Figma personal access token in the `FIGMA_TOKEN` environment variable.
+
+<Steps>
+  <Step title="Mint a token">
+    In Figma: **Settings → Security → Personal access tokens → Generate new token.**
+  </Step>
+  <Step title="Pick read-only scopes">
+    The integration never writes to Figma — read-only is all it ever needs:
+
+    | Scope | Setting | Needed for |
+    | --- | --- | --- |
+    | File content | Read-only | assets, components |
+    | File metadata | Read-only | version tracking, refresh |
+    | Variables | Read-only | brand variables — **Figma Enterprise only** |
+
+    No Enterprise plan? Skip the Variables scope — `tokens` automatically falls back to your published styles. That's expected behavior, not an error.
+  </Step>
+  <Step title="Export it">
+    ```bash
+    export FIGMA_TOKEN="figd_…"
+    ```
+
+    Add the line to your shell profile or the project's `.env` so future sessions skip this step. The same token covers every Figma file your account can view.
+  </Step>
+</Steps>
+
+Motion and shader import use the **Figma MCP connector** instead — a one-click OAuth from your agent, separate from the token. Connect it when your agent asks; no scopes to configure.
+
+## Import an asset
+
+```bash
+hyperframes figma asset 'https://www.figma.com/design/KEY/Title?node-id=1-2'
+```
+
+The node renders over REST, lands frozen under `.media/images/`, and the command prints a ready-to-paste `<img>` snippet:
+
+```text
+imported image_007 → .media/images/image_007.svg
+<img src=".media/images/image_007.svg" alt="Hero illustration" />
+```
+
+- `--format svg|png|jpg|pdf` (default `svg`). SVG for logos and vectors — scalable and animatable. `--format png --scale 2` for raster fidelity.
+- Accepted refs: full Figma URL, `fileKey:nodeId` shorthand, or bare `fileKey`.
+- Idempotent: the manifest records `fileKey:nodeId:format:scale:version`, so re-running reuses the file unless the design actually changed in Figma.
+
+## Pull your brand
+
+```bash
+hyperframes figma tokens KEY
+```
+
+Reads the file's variables (or published styles), writes a `figma-tokens.json` sidecar plus a binding index, and prints entries for the composition's `data-composition-variables`. Every scene that references a brand role — instead of a hard-coded hex — is on-brand automatically, and stays on-brand when the file changes.
+
+<Tip>
+Import tokens **before** components. That's what lets an imported component's colors link to your brand variables instead of baking duplicate literals.
+</Tip>
+
+## Import a component
+
+```bash
+hyperframes figma component 'https://www.figma.com/design/KEY/Title?node-id=10-20'
+```
+
+The frame's node tree becomes editable HTML at exact Figma geometry, packaged under `compositions/components/<name>/`. Vector and boolean-op nodes that don't map to clean HTML auto-rasterize through the asset path.
+
+Colors bound to a Figma variable resolve against your imported tokens:
+
+- Bound to an **imported** token → emitted as `var(--brand-slug, #0066FF)` — a later brand refresh propagates into the component.
+- Bound to a token you **haven't imported** → the literal color is used and the element is flagged `data-figma-unresolved`. The command tells you; run `tokens` on the source (or library) file and re-import to link them.
+
+Matching is by exact Figma ID only — never by hex value — so a coincidentally-shared color can't create a false brand link.
+
+## Motion, shaders, and storyboards
+
+These run through the `/figma` agent skill:
+
+- **Motion** — a Figma Motion timeline (keyframes, easing, repeats) translates structurally into a paused, finite GSAP timeline registered on `window.__timelines`, seekable frame-by-frame like any hand-authored animation, and editable afterward. Tracks that can't translate faithfully fall back to a baked video clip — the agent tells you which path it took and why.
+- **Shaders** — Figma's export path doesn't execute shaders, so the default is a native Figma export (PNG or Motion MP4) imported as an asset/clip.
+- **Storyboards** — a section of scene frames is decoded, not slideshowed: frames sharing an element are treated as that element's keyframes over time, diffed into element chains and tweened, with text under the strip read as director notes. See the `/figma` skill for the full grammar.
+
+## Provenance and refresh
+
+Every import records where it came from (`fileKey`, `nodeId`, `version`) in `.media/manifest.jsonl`. Nothing in a rendered composition points at Figma — assets are files, tokens are variables, motion is a timeline. When the Figma file moves on, re-running the same import commands re-pulls only what changed.
+
+## Troubleshooting
+
+| Error | Meaning | Fix |
+| --- | --- | --- |
+| `NO_TOKEN` | `FIGMA_TOKEN` unset | Follow [One-time setup](#one-time-setup) |
+| `BAD_TOKEN` (401) | Token expired, revoked, or under-scoped | Re-mint with the read-only scopes above |
+| `REQUIRES_ENTERPRISE` (403) | Variables API needs Figma Enterprise | Not a failure — the styles fallback already ran |
+| `RATE_LIMITED` (429) | REST per-minute budget hit | Wait a minute and retry; chunk batch renders |
+| "Render timeout" on batch export | Too many large frames in one `/v1/images` call | Chunk to ~4 ids per call |
+| `ref has no node id` | Link points at a file, not a node | Copy the link with `?node-id=…` (right-click layer → Copy link) |
