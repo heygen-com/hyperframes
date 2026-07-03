@@ -214,6 +214,29 @@ describe("core rules", () => {
     expect(result.findings.find((f) => f.code === "root_missing_dimensions")).toBeUndefined();
   });
 
+  it("does not mistake a <tag>-shaped CSS comment inside <style> for the composition root", async () => {
+    // Regression: a CSS comment referencing an SVG tag name (e.g. `/* <g> wrapper */`)
+    // inside a <style> block reads as a real open tag to the flat TAG_PATTERN scan,
+    // manufacturing a phantom root before the real composition root and firing
+    // root_missing_composition_id/root_missing_dimensions/head_leaked_text on an
+    // otherwise valid sub-composition.
+    const html = `
+<html><body>
+  <style>
+    /* <g> wrapper for icon groups */
+    .icon { fill: currentColor; }
+  </style>
+  <svg id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <g class="icon"></g>
+  </svg>
+  <script>window.__timelines = window.__timelines || {};</script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.find((f) => f.code === "root_missing_composition_id")).toBeUndefined();
+    expect(result.findings.find((f) => f.code === "root_missing_dimensions")).toBeUndefined();
+    expect(result.findings.find((f) => f.code === "head_leaked_text")).toBeUndefined();
+  });
+
   it("reports error when timeline registry is missing", async () => {
     const html = `
 <html><body>
