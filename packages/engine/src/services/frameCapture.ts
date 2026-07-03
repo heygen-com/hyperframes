@@ -1525,6 +1525,12 @@ async function computeStaticFrameSet(
   };
 }
 
+// Fixed density target for verification checks: never leave a gap wider than this
+// many frames within a run, independent of the user-tunable sampleCount. This is
+// what fixes long runs going nearly unverified — deliberately NOT derived from
+// sampleCount, so that knob's effect on density stays monotonic (see below).
+const STATIC_VERIFY_REFERENCE_STRIDE = 24;
+
 /**
  * Interior verification points for a run [a..b], plus the always-included end `b`.
  * Density used to be a flat point-count cap (min(sampleCount, 8)), so a run's
@@ -1532,21 +1538,30 @@ async function computeStaticFrameSet(
  * checks could land hundreds of frames apart. A genuine content change in
  * between (e.g. text swapped by a mechanism computeStaticFrameSet's GSAP-only
  * tween walk can't see) then hides between samples and the whole run gets
- * wrongly trusted as static. Bounding the STRIDE itself (never skip more than
- * `sampleCount` frames between checks) makes density scale with run length
- * instead of staying flat, while keeping the original per-run point target for
- * short/typical runs where the two formulas agree. Pure and exported so its
- * scaling behavior is unit-testable without a real page/browser.
+ * wrongly trusted as static.
+ *
+ * `sampleCount` (HF_STATIC_DEDUP_SAMPLES) is a per-run point-count FLOOR, not a
+ * stride cap — raising it always increases density, never decreases it. (An
+ * earlier revision of this fix bounded the stride BY sampleCount directly, which
+ * inverted that: raising sampleCount widened the allowed gap instead of shrinking
+ * it, and the "raise HF_STATIC_DEDUP_SAMPLES to verify more" log guidance became
+ * backwards for exactly the long runs it's meant to help.) The length-scaling
+ * fix itself comes from STATIC_VERIFY_REFERENCE_STRIDE, which is independent of
+ * sampleCount, so density scales with run length regardless of how that knob is
+ * set; sampleCount only ever raises density further above that floor.
+ *
+ * Pure and exported so its scaling behavior is unit-testable without a real
+ * page/browser.
  */
 export function computeStaticVerificationPoints(
   a: number,
   b: number,
   sampleCount: number,
 ): number[] {
-  const perRun = Math.max(3, Math.min(sampleCount, 8));
-  const maxStride = Math.max(1, sampleCount);
   const span = b - a;
-  const stride = span > 0 ? Math.min(maxStride, Math.max(1, Math.floor(span / (perRun - 1)))) : 1;
+  const lengthScaledPoints = span > 0 ? Math.ceil(span / STATIC_VERIFY_REFERENCE_STRIDE) + 1 : 1;
+  const perRun = Math.max(3, sampleCount, lengthScaledPoints);
+  const stride = span > 0 ? Math.max(1, Math.floor(span / (perRun - 1))) : 1;
   const pts = new Set<number>();
   for (let f = a; f <= b; f += stride) pts.add(f);
   pts.add(b);
@@ -1562,7 +1577,7 @@ export function computeStaticVerificationPoints(
  * mismatch ⇒ the run isn't truly static ⇒ disable dedup whole-comp. Capture-mode-
  * independent (seeks + screenshots in normal DOM). Returns the first bad frame, or null.
  */
-async function verifyStaticFramesSafe(
+export async function verifyStaticFramesSafe(
   session: CaptureSession,
   page: Page,
   staticFrames: Set<number>,
@@ -1590,9 +1605,21 @@ async function verifyStaticFramesSafe(
   // Verify EVERY run in order (no longest-first truncation that would leave runs armed
   // but unverified). Per run, compare the FIRST reused frame `a`, the END `b` (max
   // accumulated drift), and interior points at a stride (see computeStaticVerificationPoints)
-  // — against the anchor the run actually reuses. A hard cap bounds pathological run
-  // counts, and hitting it DISABLES dedup (conservative: never trust an unverified set).
-  const hardCap = Math.max(sampleCount * 8, 400);
+  // — against the anchor the run actually reuses.
+  //
+  // hardCap bounds pathological cases and hitting it DISABLES dedup (conservative:
+  // never trust an unverified set). It must scale with the new density model:
+  // each run now costs roughly span/STATIC_VERIFY_REFERENCE_STRIDE + 1 checks (plus
+  // one anchor), not the ~8 the old flat point cap cost — sizing the budget only off
+  // sampleCount (which no longer drives density for long runs) would make a
+  // genuinely-static long composition spuriously disarm under the new, more
+  // thorough checking. `frames.length` approximates total interior checks; a 3x
+  // margin absorbs per-run anchor overhead and the 3-point floor on short runs.
+  const hardCap = Math.max(
+    sampleCount * 8,
+    400,
+    Math.ceil(frames.length / STATIC_VERIFY_REFERENCE_STRIDE) * 3 + runs.length,
+  );
   let spent = 0;
   for (const { a, b } of runs) {
     const anchor = a - 1;
@@ -1604,9 +1631,9 @@ async function verifyStaticFramesSafe(
       spent++;
       if (!anchorBuf.equals(cur)) return { badFrame: f, budgetExhausted: false };
     }
-    // Budget exhausted → can't fully verify → disarm. Reported distinctly from real
-    // drift so a `verification_budget` spike in telemetry signals "tune HF_STATIC_DEDUP_SAMPLES",
-    // not "compositions are non-static".
+    // Budget exhausted → can't fully verify → disarm, distinct from real drift so a
+    // `verification_budget` spike in telemetry reads as "this composition has a lot
+    // of static material to verify," not "compositions are non-static."
     if (spent > hardCap) return { badFrame: a, budgetExhausted: true };
   }
   return null;
@@ -1685,7 +1712,7 @@ async function armStaticDedup(
     logInitPhase(
       verdict.budgetExhausted
         ? `static-frame dedup: disabled (verification budget exhausted before frame ${verdict.badFrame}; ` +
-            `raise HF_STATIC_DEDUP_SAMPLES to verify more)`
+            `too much predicted-static material to fully verify — this is the safe fallback, not an error)`
         : `static-frame dedup: disabled (verification failed — content drifts from anchor at ` +
             `predicted-static frame ${verdict.badFrame})`,
     );
