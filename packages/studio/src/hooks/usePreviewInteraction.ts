@@ -3,6 +3,7 @@ import { liveTime, usePlayerStore } from "../player";
 import { pauseStudioPreviewPlayback } from "../utils/studioPreviewHelpers";
 import { STUDIO_PREVIEW_SELECTION_ENABLED } from "../components/editor/manualEditingAvailability";
 import { type DomEditSelection } from "../components/editor/domEditing";
+import type { ApplyDomSelectionOptions, ResolveDomSelectionOptions } from "./useDomSelection";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 
 // ── Types ──
@@ -16,16 +17,12 @@ export interface UsePreviewInteractionParams {
   // From useDomSelection
   applyDomSelection: (
     selection: DomEditSelection | null,
-    options?: { revealPanel?: boolean; additive?: boolean; preserveGroup?: boolean },
+    options?: ApplyDomSelectionOptions,
   ) => void;
   resolveDomSelectionFromPreviewPoint: (
     clientX: number,
     clientY: number,
-    options?: {
-      preferClipAncestor?: boolean;
-      skipSourceProbe?: boolean;
-      activeGroupElement?: HTMLElement | null;
-    },
+    options?: ResolveDomSelectionOptions,
   ) => Promise<DomEditSelection | null>;
   resolveAllDomSelectionsFromPreviewPoint: (
     clientX: number,
@@ -44,6 +41,11 @@ interface ClickCycleState {
   candidates: DomEditSelection[];
   index: number;
   at: number;
+}
+
+export interface PreviewMouseDownOptions {
+  preferClipAncestor?: boolean;
+  hoverSelection?: DomEditSelection | null;
 }
 
 const CYCLE_RADIUS_PX = 6;
@@ -72,9 +74,19 @@ export function usePreviewInteraction({
   const cycleRef = useRef<ClickCycleState | null>(null);
   const lastDownRef = useRef<{ t: number; x: number; y: number } | null>(null);
 
+  const pausePreviewPlayback = useCallback(() => {
+    const pausedTime = pauseStudioPreviewPlayback(previewIframeRef.current);
+    const playerStore = usePlayerStore.getState();
+    playerStore.setIsPlaying(false);
+    if (pausedTime != null) {
+      playerStore.setCurrentTime(pausedTime);
+      liveTime.notify(pausedTime);
+    }
+  }, [previewIframeRef]);
+
   const handlePreviewCanvasMouseDown = useCallback(
     // fallow-ignore-next-line complexity
-    async (e: React.MouseEvent<HTMLDivElement>, options?: { preferClipAncestor?: boolean }) => {
+    async (e: React.MouseEvent<HTMLDivElement>, options?: PreviewMouseDownOptions) => {
       if (!STUDIO_PREVIEW_SELECTION_ENABLED || captionEditMode || compositionLoading) return;
 
       // Manual double-click detection (see DOUBLE_CLICK_MS): the first click
@@ -87,6 +99,7 @@ export function usePreviewInteraction({
           downTs - lastDown.t < DOUBLE_CLICK_MS &&
           Math.hypot(e.clientX - lastDown.x, e.clientY - lastDown.y) < DOUBLE_CLICK_RADIUS_PX);
       lastDownRef.current = { t: downTs, x: e.clientX, y: e.clientY };
+      pausePreviewPlayback();
 
       // Double-click a group → drill into it and select the child under the
       // pointer (resolve with the group as the explicit drill-in scope, since the
@@ -105,6 +118,17 @@ export function usePreviewInteraction({
           applyDomSelection(child ?? hit);
           return;
         }
+        if (
+          hit &&
+          !hit.element.hasAttribute("data-composition-src") &&
+          !hit.element.hasAttribute("data-composition-file")
+        ) {
+          e.preventDefault();
+          e.stopPropagation();
+          cycleRef.current = null;
+          applyDomSelection(hit);
+          return;
+        }
       }
 
       const now = Date.now();
@@ -119,9 +143,12 @@ export function usePreviewInteraction({
       if (e.shiftKey) {
         // Additive selection — no cycling
         cycleRef.current = null;
-        const nextSelection = await resolveDomSelectionFromPreviewPoint(e.clientX, e.clientY, {
-          preferClipAncestor: options?.preferClipAncestor ?? false,
-        });
+        const nextSelection =
+          (await resolveDomSelectionFromPreviewPoint(e.clientX, e.clientY, {
+            preferClipAncestor: options?.preferClipAncestor ?? false,
+          })) ??
+          options?.hoverSelection ??
+          null;
         if (!nextSelection) return;
         e.preventDefault();
         e.stopPropagation();
@@ -156,6 +183,7 @@ export function usePreviewInteraction({
           activeGroupElement: null,
         });
       }
+      nextSelection = nextSelection ?? options?.hoverSelection ?? null;
       if (!nextSelection) {
         cycleRef.current = null;
         applyDomSelection(null, { revealPanel: false });
@@ -180,6 +208,7 @@ export function usePreviewInteraction({
       captionEditMode,
       compositionLoading,
       onClickToSource,
+      pausePreviewPlayback,
       resolveAllDomSelectionsFromPreviewPoint,
       resolveDomSelectionFromPreviewPoint,
       setActiveGroupElement,
@@ -225,14 +254,8 @@ export function usePreviewInteraction({
   );
 
   const handleDomManualDragStart = useCallback(() => {
-    const pausedTime = pauseStudioPreviewPlayback(previewIframeRef.current);
-    const playerStore = usePlayerStore.getState();
-    playerStore.setIsPlaying(false);
-    if (pausedTime != null) {
-      playerStore.setCurrentTime(pausedTime);
-      liveTime.notify(pausedTime);
-    }
-  }, [previewIframeRef]);
+    pausePreviewPlayback();
+  }, [pausePreviewPlayback]);
 
   return {
     handlePreviewCanvasMouseDown,

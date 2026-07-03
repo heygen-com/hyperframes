@@ -27,6 +27,18 @@ import { reapplyPositionEditsAfterSeek } from "../components/editor/manualEdits"
 
 // ── Types ──
 
+export interface ApplyDomSelectionOptions {
+  revealPanel?: boolean;
+  additive?: boolean;
+  preserveGroup?: boolean;
+}
+
+export interface ResolveDomSelectionOptions {
+  preferClipAncestor?: boolean;
+  skipSourceProbe?: boolean;
+  activeGroupElement?: HTMLElement | null;
+}
+
 export interface UseDomSelectionParams {
   projectId: string | null;
   activeCompPath: string | null;
@@ -61,29 +73,17 @@ export interface UseDomSelectionReturn {
   // Callbacks
   applyDomSelection: (
     selection: DomEditSelection | null,
-    options?: {
-      revealPanel?: boolean;
-      additive?: boolean;
-      preserveGroup?: boolean;
-    },
+    options?: ApplyDomSelectionOptions,
   ) => void;
   clearDomSelection: () => void;
   buildDomSelectionFromTarget: (
     target: HTMLElement,
-    options?: {
-      preferClipAncestor?: boolean;
-      skipSourceProbe?: boolean;
-      activeGroupElement?: HTMLElement | null;
-    },
+    options?: ResolveDomSelectionOptions,
   ) => Promise<DomEditSelection | null>;
   resolveDomSelectionFromPreviewPoint: (
     clientX: number,
     clientY: number,
-    options?: {
-      preferClipAncestor?: boolean;
-      skipSourceProbe?: boolean;
-      activeGroupElement?: HTMLElement | null;
-    },
+    options?: ResolveDomSelectionOptions,
   ) => Promise<DomEditSelection | null>;
   resolveAllDomSelectionsFromPreviewPoint: (
     clientX: number,
@@ -130,6 +130,7 @@ export function useDomSelection({
   const domEditGroupSelectionsRef = useRef<DomEditSelection[]>(domEditGroupSelections);
   const domEditHoverSelectionRef = useRef<DomEditSelection | null>(domEditHoverSelection);
   const activeGroupElementRef = useRef<HTMLElement | null>(activeGroupElement);
+  const compositionIdentityRef = useRef({ activeCompPath, projectId });
 
   // Keep refs in sync with state
   domEditSelectionRef.current = domEditSelection;
@@ -230,6 +231,8 @@ export function useDomSelection({
   // the user isn't left with an out-of-scope element selected.
   const setActiveGroupElement = useCallback(
     (el: HTMLElement | null) => {
+      if (activeGroupElementRef.current === el) return;
+      activeGroupElementRef.current = el;
       setActiveGroupElementState(el);
       applyDomSelection(null, { revealPanel: false });
     },
@@ -453,6 +456,17 @@ export function useDomSelection({
   useEffect(() => {
     updateDomEditHoverSelection(null);
   }, [activeCompPath, projectId, previewIframe, refreshKey, updateDomEditHoverSelection]);
+
+  // Clear committed selection only when the composition identity actually changes.
+  // eslint-disable-next-line no-restricted-syntax
+  useEffect(() => {
+    const previous = compositionIdentityRef.current;
+    if (previous.activeCompPath === activeCompPath && previous.projectId === projectId) return;
+    compositionIdentityRef.current = { activeCompPath, projectId };
+    activeGroupElementRef.current = null;
+    setActiveGroupElementState(null);
+    applyDomSelection(null, { revealPanel: false });
+  }, [activeCompPath, projectId, applyDomSelection]);
 
   // Clear hover conditionally (caption mode, matches selection, disconnected element)
   // eslint-disable-next-line no-restricted-syntax
