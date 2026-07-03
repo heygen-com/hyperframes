@@ -28,6 +28,7 @@ function escapeAttr(value: string): string {
 }
 import { runAssetImport } from "./asset.js";
 import { downloadRender } from "./download.js";
+import { withFigmaErrors } from "./cliError.js";
 
 export interface ComponentImportDeps {
   projectDir: string;

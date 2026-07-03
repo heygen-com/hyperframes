@@ -19,7 +19,7 @@ REST is used wherever it can be (usable at volume, headless); MCP only where Fig
 
 ## Auth — two credentials, scoped
 
-**Preflight — before the first CLI call, check the token exists** (`[ -n "$FIGMA_TOKEN" ]`). If unset, do NOT run the command to harvest the error — walk the user through the one-time setup first, then stop and wait:
+**Preflight — before the first CLI call, check a token exists**: shell env (`[ -n "$FIGMA_TOKEN" ]`) **or** the project `.env` (the CLI auto-loads it — a `.env` entry counts as configured). If neither, do NOT run the command to harvest the error — walk the user through the one-time setup first, then stop and wait:
 
 1. figma.com/settings → **Security** → **Personal access tokens** → Generate new token.
 2. Scopes — read-only is all this integration ever needs (it never writes to Figma): **File content: Read-only** + **File metadata: Read-only**. Optionally **Variables: Read-only** for brand variables — that scope only works on Figma Enterprise; without it `tokens` degrades to published styles automatically (expected behavior, not an error — say so).
@@ -29,7 +29,7 @@ While onboarding, also set expectations in one breath: every import lands as a *
 
 - **Phases 4–5 (motion/shaders):** the Figma MCP connector (one-click OAuth), a separate credential from the token. If MCP tools error unauthenticated, tell the user to connect the Figma connector and stop.
 - Say exactly which credential a failing phase needs — never present the split as broken.
-- `BAD_TOKEN` (401) mid-flow → the token is expired/revoked/under-scoped; point at the same three steps to re-mint. `REQUIRES_ENTERPRISE` (403 on variables) → not a failure: styles fallback already ran.
+- `BAD_TOKEN` (401) mid-flow → the token is expired/revoked; re-mint. `FORBIDDEN` (403) → missing read scope or no access to that file — check scopes + file visibility. `REQUIRES_ENTERPRISE` (403 on variables) → not a failure: styles fallback already ran.
 
 **Rate-limit awareness (spec §2.1):** MCP on a Starter plan is 6 tool calls/**month** (figma plan matrix as of 2026-07 — re-verify if quotas look off) — batch with `recursive:true` on the parent node, skip verification screenshots unless asked, and cache raw MCP responses so re-derivation never spends a second call. REST is per-minute (10+/min, per-endpoint buckets) — fine at volume, back off on 429.
 

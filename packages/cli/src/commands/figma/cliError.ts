@@ -1,16 +1,15 @@
 /**
  * Shared CLI error boundary for `hyperframes figma` subcommands: typed
- * client errors (NO_TOKEN, BAD_TOKEN, …) already carry actionable,
- * user-facing guidance — print the message, not a stack trace.
+ * client errors (NO_TOKEN, BAD_TOKEN, …) and input errors (bad ref, bad
+ * format) all carry actionable, user-facing messages — print the message,
+ * not a stack trace. Non-Error throws still surface raw.
  */
-
-import { FigmaClientError } from "@hyperframes/core/figma";
 
 export async function withFigmaErrors(fn: () => Promise<void>): Promise<void> {
   try {
     await fn();
   } catch (err) {
-    if (err instanceof FigmaClientError) {
+    if (err instanceof Error) {
       console.error(err.message);
       process.exit(1);
     }

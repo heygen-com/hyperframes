@@ -4,6 +4,7 @@ import type { FigmaAssetFormat, FigmaRef } from "./types";
 export type FigmaClientErrorCode =
   | "NO_TOKEN"
   | "BAD_TOKEN"
+  | "FORBIDDEN"
   | "REQUIRES_ENTERPRISE"
   | "RATE_LIMITED"
   | "RENDER_FAILED"
@@ -142,13 +143,19 @@ export function createFigmaClient(options: FigmaClientOptions): FigmaClient {
     if (res.status === 401)
       throw new FigmaClientError(
         "BAD_TOKEN",
-        "figma rejected the token (401) — it is expired, revoked, or missing read scopes. Re-mint at figma.com/settings → Security with File content + File metadata read-only scopes, then update FIGMA_TOKEN.",
+        "figma rejected the token (401) — it is expired or revoked. Re-mint at figma.com/settings → Security, then update FIGMA_TOKEN.",
         401,
       );
     if (res.status === 403 && enterpriseGated)
       throw new FigmaClientError(
         "REQUIRES_ENTERPRISE",
         "figma variables require an Enterprise plan (403) — fall back to styles",
+        403,
+      );
+    if (res.status === 403)
+      throw new FigmaClientError(
+        "FORBIDDEN",
+        "figma denied access (403) — the token is missing a read scope, or your account can't view this file. Check the token has File content: Read-only + File metadata: Read-only (figma.com/settings → Security) and that the file is visible to your account.",
         403,
       );
     if (res.status === 429)

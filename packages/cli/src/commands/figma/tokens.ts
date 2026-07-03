@@ -19,6 +19,7 @@ import {
 } from "@hyperframes/core/figma";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { withFigmaErrors } from "./cliError.js";
 
 export interface TokensImportDeps {
   projectDir: string;
