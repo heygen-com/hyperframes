@@ -8,6 +8,7 @@ function textField(input: {
   tagName?: string;
   inlineStyles?: Record<string, string>;
   source?: DomEditTextField["source"];
+  sourceChildIndex?: number;
 }): DomEditTextField {
   return {
     key: input.key,
@@ -18,14 +19,25 @@ function textField(input: {
     inlineStyles: input.inlineStyles ?? {},
     computedStyles: {},
     source: input.source ?? "child",
+    ...(input.sourceChildIndex == null ? {} : { sourceChildIndex: input.sourceChildIndex }),
   };
 }
 
 describe("buildTextFieldChildOperations", () => {
   it("builds child-scoped text and style operations for changed child fields", () => {
     const originalFields = [
-      textField({ key: "first", value: "First", inlineStyles: { color: "red" } }),
-      textField({ key: "second", value: "Second", inlineStyles: { "font-size": "24px" } }),
+      textField({
+        key: "first",
+        value: "First",
+        inlineStyles: { color: "red" },
+        sourceChildIndex: 0,
+      }),
+      textField({
+        key: "second",
+        value: "Second",
+        inlineStyles: { "font-size": "24px" },
+        sourceChildIndex: 1,
+      }),
     ];
     const nextFields = [
       originalFields[0],
@@ -33,6 +45,7 @@ describe("buildTextFieldChildOperations", () => {
         key: "second",
         value: "Second < &",
         inlineStyles: { "font-size": "24px", color: "#0000ff" },
+        sourceChildIndex: 1,
       }),
     ];
 
@@ -56,9 +69,16 @@ describe("buildTextFieldChildOperations", () => {
 
   it("emits null for a removed inline style", () => {
     const originalFields = [
-      textField({ key: "first", value: "First", inlineStyles: { color: "red" } }),
+      textField({
+        key: "first",
+        value: "First",
+        inlineStyles: { color: "red" },
+        sourceChildIndex: 0,
+      }),
     ];
-    const nextFields = [textField({ key: "first", value: "First", inlineStyles: {} })];
+    const nextFields = [
+      textField({ key: "first", value: "First", inlineStyles: {}, sourceChildIndex: 0 }),
+    ];
 
     expect(buildTextFieldChildOperations(originalFields, nextFields)).toEqual([
       {

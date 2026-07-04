@@ -189,21 +189,18 @@ export function buildTextFieldChildLocator(
   fields: DomEditTextField[],
   fieldKey: string,
 ): DomEditChildLocator | null {
-  const fieldIndex = fields.findIndex((field) => field.key === fieldKey);
-  const field = fields[fieldIndex];
+  const field = fields.find((candidate) => candidate.key === fieldKey);
   if (!field || field.source !== "child") return null;
-
-  let childIndex = field.sourceChildIndex;
-  if (childIndex == null) {
-    childIndex = 0;
-    for (const priorField of fields.slice(0, fieldIndex)) {
-      if (priorField.source === "child" && priorField.tagName === field.tagName) childIndex += 1;
-    }
-  }
+  // sourceChildIndex is only absent for a synthetic field that was never read
+  // back from the live DOM (e.g. one built by buildDefaultDomEditTextField).
+  // Guessing its position by counting same-tag "child" fields elsewhere in
+  // the array is unreliable and can silently locate the wrong element — fail
+  // closed instead so the caller falls back to the unsupported-structure path.
+  if (field.sourceChildIndex == null) return null;
 
   return {
     childSelector: `:scope > ${field.tagName}`,
-    childIndex,
+    childIndex: field.sourceChildIndex,
   };
 }
 
