@@ -1028,16 +1028,26 @@ describe("composition rules", () => {
       expect(finding?.fixHint).toContain("direction: rtl");
     });
 
-    it("flags any non-ltr dir value (case-insensitive check on ltr)", async () => {
+    it('flags dir="auto" on <html>', async () => {
       const html = `<html dir="AUTO"><body>
   <div data-composition-id="main" data-width="1920" data-height="1080" data-duration="5"></div>
 </body></html>`;
       const result = await lintHyperframeHtml(html);
-      expect(find(result.findings)).toBeDefined();
+      const finding = find(result.findings);
+      expect(finding).toBeDefined();
+      expect(finding?.fixHint).toContain('dir="auto"');
     });
 
     it('does not flag dir="ltr"', async () => {
       const html = `<html dir="ltr"><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-duration="5"></div>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(find(result.findings)).toBeUndefined();
+    });
+
+    it("does not flag invalid dir values that browsers treat as ltr", async () => {
+      const html = `<html dir="bogus"><body>
   <div data-composition-id="main" data-width="1920" data-height="1080" data-duration="5"></div>
 </body></html>`;
       const result = await lintHyperframeHtml(html);

@@ -634,7 +634,7 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     return findings;
   },
 
-  // html_dir_attribute_breaks_render — dir="rtl" (or any non-"ltr" value) on
+  // html_dir_attribute_breaks_render — valid non-LTR dir values on
   // <html> renders correctly in preview/snapshot but produces a fully
   // blank/black video from render, with no other lint/validate/inspect
   // check catching it (output file size, far smaller than expected, is the
@@ -651,13 +651,16 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     const htmlTag = findHtmlTag(source);
     if (!htmlTag) return [];
     const dir = readAttr(htmlTag.raw, "dir");
-    if (!dir || dir.toLowerCase() === "ltr") return [];
+    if (!dir) return [];
+    const normalizedDir = dir.toLowerCase();
+    if (normalizedDir !== "rtl" && normalizedDir !== "auto") return [];
+    const scopedDirection = normalizedDir === "auto" ? 'dir="auto"' : `direction: ${normalizedDir}`;
     return [
       {
         code: "html_dir_attribute_breaks_render",
         severity: "error",
         message: `<html dir="${dir}"> renders correctly in preview/snapshot but produces a fully blank/black video from render — a confirmed, silent failure.`,
-        fixHint: `Remove dir="${dir}" from <html>. Keep lang, and scope direction: ${dir.toLowerCase()} to individual text-containing elements via CSS instead — text still shapes correctly via the browser's own bidi algorithm.`,
+        fixHint: `Remove dir="${dir}" from <html>. Keep lang, and scope ${scopedDirection} to individual text-containing elements instead — text still shapes correctly via the browser's own bidi algorithm.`,
         snippet: truncateSnippet(htmlTag.raw),
       },
     ];
