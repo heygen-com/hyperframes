@@ -173,6 +173,7 @@ describe("buildDockerRunArgs", () => {
         quiet: true,
         debug: true,
         entryFile: "compositions/intro.html",
+        experimentalFastCapture: true,
       },
     });
     // Each value must reach the container exactly once. If a future option
@@ -195,6 +196,24 @@ describe("buildDockerRunArgs", () => {
     expect(args).toContain("--hdr");
     expect(args).toContain("--composition");
     expect(args).toContain("compositions/intro.html");
+    expect(args).toContain("--experimental-fast-capture");
+  });
+
+  it("forwards --experimental-fast-capture only when enabled", () => {
+    const on = buildDockerRunArgs({
+      ...FIXED_INPUT,
+      options: { ...BASE, experimentalFastCapture: true },
+    });
+    expect(on).toContain("--experimental-fast-capture");
+
+    const off = buildDockerRunArgs({
+      ...FIXED_INPUT,
+      options: { ...BASE, experimentalFastCapture: false },
+    });
+    expect(off).not.toContain("--experimental-fast-capture");
+
+    const absent = buildDockerRunArgs({ ...FIXED_INPUT, options: BASE });
+    expect(absent).not.toContain("--experimental-fast-capture");
   });
 
   it("forwards --format png-sequence to the container", () => {

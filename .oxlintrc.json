@@ -10,6 +10,7 @@
     "node_modules/",
     "playground/",
     "packages/producer/tests/**/src/vendor/**",
-    "registry/blocks/**/lib/*.iife.js"
+    "registry/blocks/**/lib/*.iife.js",
+    "chrome/"
   ]
 }

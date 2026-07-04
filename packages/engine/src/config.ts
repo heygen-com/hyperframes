@@ -64,6 +64,21 @@ export interface EngineConfig {
    */
   staticFrameDedup: boolean;
   /**
+   * EXPERIMENTAL. Use drawElementImage for frame capture (requires the
+   * CanvasDrawElement Chrome flag, added globally in buildChromeArgs).
+   * Surfaced via the CLI `--experimental-fast-capture` flag.
+   * Env fallback: `PRODUCER_EXPERIMENTAL_FAST_CAPTURE`.
+   */
+  useDrawElement: boolean;
+  /**
+   * EXPERIMENTAL. Pipeline JPEG encode into an in-page OffscreenCanvas Worker
+   * for the drawElement fast-capture path (macOS hardware GPU only). The worker
+   * encodes frame N while the main thread seeks+paints frame N+1, targeting
+   * ~1.65–1.96× wall-time speedup. No-op unless `useDrawElement` is also true.
+   * Default: off. Env: `HF_DE_WORKER_ENCODE=true`.
+   */
+  enableDrawElementWorkerEncode: boolean;
+  /**
    * Low-memory render profile. When `true`, the orchestrator collapses the
    * pipeline to its cheapest shape on memory-constrained hosts: it skips the
    * throwaway auto-worker calibration browser, pins capture to a single
@@ -235,6 +250,8 @@ export const DEFAULT_CONFIG: EngineConfig = {
   protocolTimeout: 300_000,
   forceScreenshot: false,
   staticFrameDedup: true,
+  useDrawElement: false,
+  enableDrawElementWorkerEncode: false,
   // Auto-detected per host in `resolveConfig`; defaults off for the raw
   // DEFAULT_CONFIG (used directly by tests and worker-sizing fallbacks).
   lowMemoryMode: false,
@@ -412,6 +429,11 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
 
     forceScreenshot: envBool("PRODUCER_FORCE_SCREENSHOT", DEFAULT_CONFIG.forceScreenshot),
     staticFrameDedup: resolveStaticFrameDedup(),
+    useDrawElement: envBool("PRODUCER_EXPERIMENTAL_FAST_CAPTURE", DEFAULT_CONFIG.useDrawElement),
+    enableDrawElementWorkerEncode: envBool(
+      "HF_DE_WORKER_ENCODE",
+      DEFAULT_CONFIG.enableDrawElementWorkerEncode,
+    ),
     lowMemoryMode: resolveLowMemoryMode(),
     enablePageSideCompositing: envBool(
       "HF_PAGE_SIDE_COMPOSITING",
@@ -493,6 +515,18 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
     ...cleanEnv,
     ...overrides,
   };
+
+  // drawElement capture and page-side shader compositing are mutually
+  // incompatible capture strategies (drawElement reads paint records directly
+  // and bypasses the page-side prepare→composite→resolve protocol). When
+  // experimental fast capture is on, force page-side compositing off so shader
+  // transitions fall back to the Node-side layered blend rather than silently
+  // dropping. This keeps the flag self-consistent and avoids a per-session
+  // incompatibility warning on every fast-capture render.
+  if (merged.useDrawElement) {
+    merged.enablePageSideCompositing = false;
+  }
+
   return {
     ...merged,
     vp9CpuUsed: normalizeVp9CpuUsed(merged.vp9CpuUsed),

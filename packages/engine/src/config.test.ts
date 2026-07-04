@@ -221,6 +221,36 @@ describe("resolveConfig", () => {
     });
   });
 
+  describe("useDrawElement (PRODUCER_EXPERIMENTAL_FAST_CAPTURE)", () => {
+    it("defaults to false", () => {
+      const config = resolveConfig();
+      expect(config.useDrawElement).toBe(false);
+    });
+
+    it("enabled when PRODUCER_EXPERIMENTAL_FAST_CAPTURE=true", () => {
+      setEnv("PRODUCER_EXPERIMENTAL_FAST_CAPTURE", "true");
+      const config = resolveConfig();
+      expect(config.useDrawElement).toBe(true);
+    });
+
+    it("explicit override wins over the env var", () => {
+      setEnv("PRODUCER_EXPERIMENTAL_FAST_CAPTURE", "true");
+      const config = resolveConfig({ useDrawElement: false });
+      expect(config.useDrawElement).toBe(false);
+    });
+
+    it("forces page-side compositing off when enabled (incompatible strategies)", () => {
+      const config = resolveConfig({ useDrawElement: true, enablePageSideCompositing: true });
+      expect(config.useDrawElement).toBe(true);
+      expect(config.enablePageSideCompositing).toBe(false);
+    });
+
+    it("leaves page-side compositing on when fast capture is off", () => {
+      const config = resolveConfig({ useDrawElement: false });
+      expect(config.enablePageSideCompositing).toBe(true);
+    });
+  });
+
   describe("lowMemoryMode", () => {
     it("forces on for truthy PRODUCER_LOW_MEMORY_MODE values", () => {
       setEnv("PRODUCER_LOW_MEMORY_MODE", "true");
