@@ -84,3 +84,21 @@ export function resolveCropInsetFromEdgeDrag(input: CropInsetDragInput): ClipPat
 
   return next;
 }
+
+/** Drag the whole crop window: both opposing insets shift together, the crop
+ *  size stays constant, clamped inside the element bounds. */
+export function resolveCropInsetFromMoveDrag(input: {
+  startInsets: ClipPathInsetSides;
+  deltaX: number;
+  deltaY: number;
+  scaleX: number;
+  scaleY: number;
+}): ClipPathInsetSides {
+  const sx = input.scaleX > 0 ? input.scaleX : 1;
+  const sy = input.scaleY > 0 ? input.scaleY : 1;
+  const totalX = input.startInsets.left + input.startInsets.right;
+  const totalY = input.startInsets.top + input.startInsets.bottom;
+  const left = Math.min(Math.max(0, input.startInsets.left + input.deltaX / sx), totalX);
+  const top = Math.min(Math.max(0, input.startInsets.top + input.deltaY / sy), totalY);
+  return { left, right: totalX - left, top, bottom: totalY - top };
+}

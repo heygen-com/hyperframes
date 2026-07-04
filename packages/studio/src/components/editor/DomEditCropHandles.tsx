@@ -6,11 +6,12 @@ import {
   cropRectFromInsets,
   readElementCropInsets,
   resolveCropInsetFromEdgeDrag,
+  resolveCropInsetFromMoveDrag,
 } from "./domEditOverlayCrop";
 import { buildInsetClipPathSides, type ClipPathInsetSides } from "./clipPathHelpers";
 
 interface CropGestureState {
-  edge: CropEdge;
+  edge: CropEdge | "move";
   pointerId: number;
   startX: number;
   startY: number;
@@ -104,7 +105,7 @@ export function DomEditCropHandles({
   const height = overlayRect.height / scaleY;
   const cropRect = cropRectFromInsets(overlayRect, state.insets, scaleX, scaleY);
 
-  const startCropGesture = (edge: CropEdge, event: ReactPointerEvent<HTMLButtonElement>) => {
+  const startCropGesture = (edge: CropEdge | "move", event: ReactPointerEvent<HTMLElement>) => {
     if (!onStyleCommit) return;
     event.preventDefault();
     event.stopPropagation();
@@ -119,26 +120,27 @@ export function DomEditCropHandles({
     };
   };
 
-  const updateCropGesture = (event: ReactPointerEvent<HTMLButtonElement>) => {
+  const updateCropGesture = (event: ReactPointerEvent<HTMLElement>) => {
     const gesture = gestureRef.current;
     if (!gesture || gesture.pointerId !== event.pointerId) return;
     event.preventDefault();
     event.stopPropagation();
-    const nextInsets = resolveCropInsetFromEdgeDrag({
-      edge: gesture.edge,
+    const drag = {
       startInsets: gesture.startInsets,
       deltaX: event.clientX - gesture.startX,
       deltaY: event.clientY - gesture.startY,
       scaleX,
       scaleY,
-      width,
-      height,
-    });
+    };
+    const nextInsets =
+      gesture.edge === "move"
+        ? resolveCropInsetFromMoveDrag(drag)
+        : resolveCropInsetFromEdgeDrag({ ...drag, edge: gesture.edge, width, height });
     gesture.didMove = true;
     setState((prev) => ({ ...prev, insets: nextInsets }));
   };
 
-  const finishCropGesture = (event: ReactPointerEvent<HTMLButtonElement>) => {
+  const finishCropGesture = (event: ReactPointerEvent<HTMLElement>) => {
     const gesture = gestureRef.current;
     if (!gesture || gesture.pointerId !== event.pointerId) return;
     event.preventDefault();
@@ -156,7 +158,7 @@ export function DomEditCropHandles({
     });
   };
 
-  const cancelCropGesture = (event: ReactPointerEvent<HTMLButtonElement>) => {
+  const cancelCropGesture = (event: ReactPointerEvent<HTMLElement>) => {
     const gesture = gestureRef.current;
     if (!gesture || gesture.pointerId !== event.pointerId) return;
     event.preventDefault();
@@ -188,15 +190,22 @@ export function DomEditCropHandles({
           }}
         />
       </div>
-      {/* Crop frame. */}
+      {/* Crop frame — drag it to move the whole crop window. */}
       <div
-        className="pointer-events-none absolute border-2 border-studio-accent shadow-[0_0_0_1px_rgba(0,0,0,0.4)]"
+        data-dom-edit-crop-frame="true"
+        className="pointer-events-auto absolute border-2 border-studio-accent shadow-[0_0_0_1px_rgba(0,0,0,0.4)]"
         style={{
           left: cropRect.left,
           top: cropRect.top,
           width: cropRect.width,
           height: cropRect.height,
+          cursor: "move",
+          touchAction: "none",
         }}
+        onPointerDown={(event) => startCropGesture("move", event)}
+        onPointerMove={updateCropGesture}
+        onPointerUp={finishCropGesture}
+        onPointerCancel={cancelCropGesture}
       />
       {EDGES.map((edge) => {
         const center = handleCenter(edge, cropRect);
