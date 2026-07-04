@@ -48,7 +48,7 @@ export default defineCommand({
     output: {
       type: "string",
       description: "Output file path (default: speech.wav in current directory)",
-      alias: "o",
+      alias: ["o", "out"],
     },
     voice: {
       type: "string",

@@ -8,8 +8,21 @@
 
 import { execFileSync } from "node:child_process";
 
-/** Locate a `python3` (or `python`) on PATH that reports as Python 3. */
+/** Locate a Python 3: `HYPERFRAMES_PYTHON` env override first, then PATH. */
 export function findPython(): string | undefined {
+  const override = process.env.HYPERFRAMES_PYTHON;
+  if (override) {
+    try {
+      const version = execFileSync(override, ["--version"], {
+        encoding: "utf-8",
+        stdio: ["pipe", "pipe", "pipe"],
+        timeout: 5000,
+      });
+      if (/Python 3/.test(version)) return override;
+    } catch {
+      // fall through to the PATH probe
+    }
+  }
   for (const name of ["python3", "python"]) {
     try {
       const cmd = process.platform === "win32" ? "where" : "which";
