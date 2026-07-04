@@ -9,11 +9,12 @@ import { renderProgress, resetProgressThrottleForTests } from "./progress.js";
 // printed no output in non-TTY").
 describe("renderProgress", () => {
   const originalIsTTY = process.stdout.isTTY;
-  let writeSpy: ReturnType<typeof vi.spyOn>;
+  const spyOnStdoutWrite = () => vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+  let writeSpy: ReturnType<typeof spyOnStdoutWrite>;
 
   beforeEach(() => {
     resetProgressThrottleForTests();
-    writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    writeSpy = spyOnStdoutWrite();
   });
 
   afterEach(() => {
