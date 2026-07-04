@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import {
   sdkResolverShadowCheck,
@@ -16,12 +17,15 @@ import { openComposition } from "@hyperframes/sdk";
 // ─── Telemetry capture ────────────────────────────────────────────────────────
 
 const trackedEvents: Array<{ event: string; props: Record<string, unknown> }> = [];
+const flushViaBeacon = vi.fn();
 vi.mock("./studioTelemetry", () => ({
   trackStudioEvent: (event: string, props: Record<string, unknown>) =>
     trackedEvents.push({ event, props }),
+  flushViaBeacon: () => flushViaBeacon(),
 }));
 beforeEach(() => {
   trackedEvents.length = 0;
+  flushViaBeacon.mockClear();
 });
 const lastShadow = () =>
   trackedEvents.filter((e) => e.event === "sdk_resolver_shadow").at(-1)?.props;
@@ -662,6 +666,7 @@ describe("I. production rollup wiring", () => {
   afterEach(() => {
     __resetAttemptSchedulingForTests();
     vi.useRealTimers();
+    Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
   });
 
   it("does not emit a rollup event when nothing was recorded", () => {
@@ -678,5 +683,31 @@ describe("I. production rollup wiring", () => {
     const rollups = trackedEvents.filter((e) => e.event === "sdk_resolver_shadow_attempt");
     expect(rollups).toHaveLength(1);
     expect(rollups[0].props.counts).toBe(JSON.stringify({ setTiming: 1 }));
+  });
+
+  it("flushes a rollup and forces a beacon delivery on visibilitychange -> hidden", async () => {
+    mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = true;
+    const session = await openComposition(BASE_HTML);
+    await recordResolverParity(session, "hf-box", "setTiming");
+    Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
+    document.dispatchEvent(new Event("visibilitychange"));
+    const rollups = trackedEvents.filter((e) => e.event === "sdk_resolver_shadow_attempt");
+    expect(rollups).toHaveLength(1);
+    expect(rollups[0].props.counts).toBe(JSON.stringify({ setTiming: 1 }));
+    // Delivery must not depend on studioTelemetry's own visibilitychange listener
+    // winning a race — this module forces its own beacon flush.
+    expect(flushViaBeacon).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not register a duplicate visibilitychange listener after a scheduling reset", async () => {
+    mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = true;
+    const session = await openComposition(BASE_HTML);
+    await recordResolverParity(session, "hf-box", "setTiming");
+    __resetAttemptSchedulingForTests();
+    await recordResolverParity(session, "hf-box", "setTiming"); // re-arms scheduling, incl. listener
+    Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
+    document.dispatchEvent(new Event("visibilitychange"));
+    // If the reset had leaked the old listener, this would fire twice.
+    expect(flushViaBeacon).toHaveBeenCalledTimes(1);
   });
 });

@@ -19,7 +19,7 @@ import type { Composition, JsonPatchOp } from "@hyperframes/sdk";
 import type { PatchOperation } from "./sourcePatcher";
 import { STUDIO_SDK_RESOLVER_SHADOW_ENABLED } from "../components/editor/manualEditingAvailability";
 import { patchOpsToSdkEditOps } from "./sdkOpMapping";
-import { trackStudioEvent } from "./studioTelemetry";
+import { trackStudioEvent, flushViaBeacon } from "./studioTelemetry";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -269,7 +269,7 @@ export function flushAttemptCounts(): Record<string, number> | null {
 
 const ATTEMPT_FLUSH_INTERVAL_MS = 5 * 60_000;
 let attemptFlushTimer: ReturnType<typeof setInterval> | null = null;
-let attemptUnloadListenerRegistered = false;
+let attemptVisibilityHandler: (() => void) | null = null;
 
 function flushAndEmitAttempts(): void {
   const counts = flushAttemptCounts();
@@ -285,26 +285,38 @@ function ensureAttemptFlushScheduled(): void {
   if (!attemptFlushTimer) {
     attemptFlushTimer = setInterval(flushAndEmitAttempts, ATTEMPT_FLUSH_INTERVAL_MS);
   }
-  if (!attemptUnloadListenerRegistered && typeof document !== "undefined") {
-    attemptUnloadListenerRegistered = true;
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "hidden") flushAndEmitAttempts();
-    });
+  if (!attemptVisibilityHandler && typeof document !== "undefined") {
+    attemptVisibilityHandler = () => {
+      if (document.visibilityState !== "hidden") return;
+      flushAndEmitAttempts();
+      // studioTelemetry.ts registers its own visibilitychange listener (on
+      // window, at module load) that drains its queue via sendBeacon. Listener
+      // execution order between that handler and this one (on document,
+      // registered lazily) is not something to rely on — whichever runs
+      // first could otherwise beacon-flush before or after this rollup lands
+      // in the queue. Forcing a beacon flush here makes delivery of this
+      // rollup event correct regardless of that order.
+      flushViaBeacon();
+    };
+    document.addEventListener("visibilitychange", attemptVisibilityHandler);
   }
 }
 
 /**
  * Test-only: clears the lazy timer/listener singleton state so tests can
  * verify the "starts on first attempt" behavior in isolation, without an
- * earlier test's real-timer interval silently surviving into a later test
- * that expects a fake one. Does NOT touch attemptCounts — only the
+ * earlier test's real-timer interval (or visibilitychange listener) silently
+ * surviving into a later test. Does NOT touch attemptCounts — only the
  * scheduling state. Not part of the public module contract; only imported
  * from sdkResolverShadow.test.ts.
  */
 export function __resetAttemptSchedulingForTests(): void {
   if (attemptFlushTimer) clearInterval(attemptFlushTimer);
   attemptFlushTimer = null;
-  attemptUnloadListenerRegistered = false;
+  if (attemptVisibilityHandler && typeof document !== "undefined") {
+    document.removeEventListener("visibilitychange", attemptVisibilityHandler);
+  }
+  attemptVisibilityHandler = null;
 }
 
 // ─── Telemetry ────────────────────────────────────────────────────────────────
@@ -343,8 +355,8 @@ export function runResolverShadow(
 ): void {
   if (!STUDIO_SDK_RESOLVER_SHADOW_ENABLED) return;
   if (!hfId) return;
-  recordAttempt("dom-edit");
   try {
+    recordAttempt("dom-edit");
     const mismatches = sdkResolverShadowCheck(session, hfId, ops, sourceContent);
     // Emit only on divergence — parity is silent, matching recordResolverParity
     // and recordAnimationResolverParity. Otherwise this fires a PostHog event on
@@ -396,8 +408,8 @@ export async function recordResolverParity(
 ): Promise<void> {
   if (!STUDIO_SDK_RESOLVER_SHADOW_ENABLED) return;
   if (!session || !hfId) return;
-  recordAttempt(opLabel);
   try {
+    recordAttempt(opLabel);
     if (resolveSnapshot(session, hfId)) return; // resolves — parity, nothing to record
     // Capture BEFORE any await: this call is fire-and-forget (`void recordResolverParity(...)`)
     // and the caller runs its own session mutation synchronously right after this call
@@ -459,8 +471,8 @@ export function recordAnimationResolverParity(
 ): void {
   if (!STUDIO_SDK_RESOLVER_SHADOW_ENABLED) return;
   if (!session || !animationId) return;
-  recordAttempt(opLabel);
   try {
+    recordAttempt(opLabel);
     const elements = session.getElements();
     const resolves = elements.some((el) => el.animationIds.includes(animationId));
     if (resolves) return; // SDK locates the animation — parity
