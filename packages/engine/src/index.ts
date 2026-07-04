@@ -83,6 +83,7 @@ export {
   captureFrame,
   captureFrameToBuffer,
   captureFrameToBufferPipelined,
+  captureFramesBatchPipelined,
   writeCapturedFrame,
   discardWarmupCapture,
   getCompositionDuration,

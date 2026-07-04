@@ -50,6 +50,7 @@ import {
   type StreamingEncoder,
   captureFrameToBuffer,
   captureFrameToBufferPipelined,
+  captureFramesBatchPipelined,
   closeCaptureSession,
   createCaptureSession,
   createFrameReorderBuffer,
@@ -166,6 +167,59 @@ async function runWorkerEncodePipelineLoop(
       onProgress,
     );
   };
+
+  // P6 (HF_DE_BATCH=N, N>1): capture runs of consecutive frames in ONE CDP
+  // round-trip each (in-page seek+paint+draw loop), amortizing protocol latency
+  // N-fold. Batches break at static-dedup frames (skipped via lastEncodeResult
+  // reuse — order-dependent) and at opt-in boundary-screenshot frames; those go
+  // through the per-frame path unchanged. onBeforeCapture (video frame
+  // injection) needs a node-side hook per frame → no batching.
+  const batchN = Math.floor(Number(process.env.HF_DE_BATCH ?? "0"));
+  if (batchN > 1 && !session.onBeforeCapture) {
+    const frameTime = (f: number) => (f * job.config.fps.den) / job.config.fps.num;
+    const drainBatch = async (batch: Array<{ idx: number; encodeResult: Promise<Buffer> }>) => {
+      for (const item of batch) {
+        assertNotAborted();
+        const buf = await item.encodeResult;
+        await reorderBuffer.waitForFrame(item.idx);
+        ensureFrameWritten(await currentEncoder.writeFrame(buf), item.idx, currentEncoder);
+        reorderBuffer.advanceTo(item.idx + 1);
+        job.framesRendered = item.idx + 1;
+        updateJobStatus(
+          job,
+          "rendering",
+          `Streaming frame ${item.idx + 1}/${totalFrames}`,
+          Math.round(25 + ((item.idx + 1) / totalFrames) * 55),
+          onProgress,
+        );
+      }
+    };
+    const boundarySS = process.env.HF_FAST_CAPTURE_BOUNDARY_SS === "true";
+    const batchable = (f: number) =>
+      !session.staticFrames?.has(f) && !(boundarySS && session.clipBoundaryFrames?.has(f));
+    let prevBatch: Array<{ idx: number; encodeResult: Promise<Buffer> }> = [];
+    let i = 0;
+    while (i < totalFrames) {
+      assertNotAborted();
+      if (batchable(i)) {
+        const idxs: number[] = [];
+        while (idxs.length < batchN && i < totalFrames && batchable(i)) {
+          idxs.push(i);
+          i++;
+        }
+        const results = await captureFramesBatchPipelined(session, idxs, idxs.map(frameTime));
+        await drainBatch(prevBatch);
+        prevBatch = results.map((r) => ({ idx: r.frameIndex, encodeResult: r.encodeResult }));
+      } else {
+        const { encodeResult } = await captureFrameToBufferPipelined(session, i, frameTime(i));
+        await drainBatch(prevBatch);
+        prevBatch = [{ idx: i, encodeResult }];
+        i++;
+      }
+    }
+    await drainBatch(prevBatch);
+    return;
+  }
 
   // On abort/throw the just-produced frame's encode is still in flight and never
   // awaited (it isn't `prev` yet); cleanupDrawElementWorkerEncode rejects it on

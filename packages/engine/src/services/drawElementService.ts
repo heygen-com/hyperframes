@@ -832,3 +832,240 @@ export async function produceDrawElementFrame(
 
   return { encodeResult };
 }
+
+/**
+ * P6 prototype (HF_DE_BATCH): batch-produce N consecutive frames in ONE CDP
+ * round-trip. In-page loop per frame: `__hf.seek(t)` → paint-wait (tick toggle +
+ * canvas `paint` event) → drawElementImage composite → createImageBitmap →
+ * postMessage to the encode worker. Bitmaps are posted per-frame (encode starts
+ * immediately); only the CDP protocol round-trips are amortized N-fold.
+ * Micro-pipeline inside the batch: frame i+1's seek/paint-wait overlaps frame
+ * i's createImageBitmap (the canvas is only redrawn after i's bitmap resolves).
+ *
+ * macOS-GPU sync path only (the worker-encode gate guarantees this at the call
+ * site). On an in-page failure at frame k, frames < k are already at the worker
+ * (their promises resolve normally); pending entries for frames >= k are
+ * rejected here and `failedAt` tells the caller to re-capture k.. via the
+ * per-frame path (which owns the screenshot-fallback semantics).
+ */
+export async function produceDrawElementFrameBatch(
+  page: Page,
+  times: number[],
+  width: number,
+  height: number,
+  quality = 80,
+): Promise<{ encodeResults: Array<Promise<Buffer>>; failedAt: number | null; error?: string }> {
+  const state = workerEncodeStates.get(page);
+  if (!state) {
+    throw new Error(
+      "drawElement worker encode not initialized; call initDrawElementWorkerEncode first",
+    );
+  }
+
+  const fids: number[] = [];
+  const encodeResults: Array<Promise<Buffer>> = [];
+  for (let i = 0; i < times.length; i++) {
+    const frameId = ++state.nextId;
+    fids.push(frameId);
+    const p = new Promise<Buffer>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        if (state.pending.delete(frameId)) {
+          reject(new Error(`drawElement worker encode timed out (frame ${frameId})`));
+        }
+      }, 30_000);
+      state.pending.set(frameId, {
+        resolve: (b) => {
+          clearTimeout(timer);
+          resolve(b);
+        },
+        reject: (e) => {
+          clearTimeout(timer);
+          reject(e);
+        },
+      });
+    });
+    void p.catch(() => {}); // same orphan-rejection guard as produceDrawElementFrame
+    encodeResults.push(p);
+  }
+
+  const outcome = await page.evaluate(
+    async ({
+      frames,
+      w,
+      h,
+      q,
+    }: {
+      frames: Array<{ t: number; fid: number }>;
+      w: number;
+      h: number;
+      q: number;
+    }): Promise<{ failedAt: number | null; error?: string }> => {
+      const canvas = document.getElementById("__hf_de_canvas") as HTMLCanvasElement | null;
+      const root = document.querySelector("[data-composition-id]") as HTMLElement | null;
+      if (!canvas || !root) return { failedAt: 0, error: "drawElement canvas not initialized" };
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return { failedAt: 0, error: "drawElement: 2d context unavailable" };
+
+      type AccelWindow = Window & {
+        __hf_accel_canvases?: HTMLCanvasElement[];
+        __hf3d?: { update: () => void };
+        __hf?: { seek?: (t: number) => void };
+        __HF_ROOT_PROPS__?: boolean;
+        __HF_ROOT_BASE_OPACITY__?: number;
+        __hfEncWorker?: Worker;
+      };
+      const aw = window as AccelWindow;
+
+      const waitPaint = (): Promise<void> =>
+        new Promise((res) => {
+          let done = false;
+          const settle = () => {
+            if (done) return;
+            done = true;
+            canvas.removeEventListener("paint", settle);
+            res();
+          };
+          canvas.addEventListener("paint", settle);
+          const tick = document.getElementById("__hf_de_tick");
+          if (tick) {
+            tick.style.backgroundColor =
+              tick.style.backgroundColor === "rgb(0, 0, 0)" ? "rgb(1, 1, 1)" : "rgb(0, 0, 0)";
+          }
+          setTimeout(settle, 250);
+        });
+
+      let prevBitmap: Promise<void> = Promise.resolve();
+      let prevBitmapIdx = -1;
+      const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+      for (let i = 0; i < frames.length; i++) {
+        const frame = frames[i];
+        if (!frame) return { failedAt: i, error: "batch frame missing" };
+        const { t, fid } = frame;
+        try {
+          if (aw.__hf && typeof aw.__hf.seek === "function") aw.__hf.seek(t);
+          aw.__hf3d?.update();
+          const accel = (aw.__hf_accel_canvases ?? []).filter((c) => root.contains(c));
+          for (const c of accel) {
+            if (c.style.visibility !== "hidden") c.style.visibility = "hidden";
+          }
+          await waitPaint();
+          // Wait for the previous frame's bitmap before overwriting the canvas.
+          try {
+            await prevBitmap;
+          } catch (e) {
+            return { failedAt: prevBitmapIdx, error: errMsg(e) };
+          }
+
+          ctx.clearRect(0, 0, w, h);
+          let bg = "";
+          for (let el = root.parentElement; el; el = el.parentElement) {
+            const c = getComputedStyle(el).backgroundColor;
+            if (c && c !== "transparent" && c !== "rgba(0, 0, 0, 0)") {
+              bg = c;
+              break;
+            }
+          }
+          ctx.fillStyle = bg || "#fff";
+          ctx.fillRect(0, 0, w, h);
+          const rootRect = root.getBoundingClientRect();
+          for (const c of accel) {
+            if (c.hasAttribute("data-hf-3d")) continue;
+            const r = c.getBoundingClientRect();
+            try {
+              ctx.drawImage(c, r.left - rootRect.left, r.top - rootRect.top, r.width, r.height);
+            } catch {
+              // skip
+            }
+          }
+          // Root compositor-applied opacity/transform correction — mirrors
+          // produceDrawElementFrame (see its comment).
+          let appliedAlpha = false;
+          let appliedTransform = false;
+          if (aw.__HF_ROOT_PROPS__) {
+            try {
+              const rcs = getComputedStyle(root);
+              const baseOp = aw.__HF_ROOT_BASE_OPACITY__ ?? 1;
+              const curOp = parseFloat(rcs.opacity);
+              if (baseOp > 0.001 && Number.isFinite(curOp)) {
+                const ratio = curOp / baseOp;
+                if (Math.abs(ratio - 1) > 0.002) {
+                  ctx.globalAlpha = Math.max(0, Math.min(1, ratio));
+                  appliedAlpha = true;
+                }
+              }
+              const curTransform = rcs.transform;
+              if (curTransform && curTransform !== "none") {
+                const m = new DOMMatrix(curTransform);
+                const origin = rcs.transformOrigin.split(" ");
+                const ox = parseFloat(origin[0] ?? "0") || 0;
+                const oy = parseFloat(origin[1] ?? "0") || 0;
+                ctx.translate(ox, oy);
+                ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
+                ctx.translate(-ox, -oy);
+                appliedTransform = true;
+              }
+            } catch {
+              /* leave context unchanged → uncorrected (no worse than before) */
+            }
+          }
+          (
+            ctx as unknown as { drawElementImage(el: Element, x: number, y: number): void }
+          ).drawElementImage(root, 0, 0);
+          if (appliedAlpha) ctx.globalAlpha = 1;
+          if (appliedTransform) ctx.setTransform(1, 0, 0, 1, 0, 0);
+          for (const c of accel) {
+            if (!c.hasAttribute("data-hf-3d")) continue;
+            const r = c.getBoundingClientRect();
+            try {
+              ctx.drawImage(c, r.left - rootRect.left, r.top - rootRect.top, r.width, r.height);
+            } catch {
+              // skip
+            }
+          }
+
+          prevBitmapIdx = i;
+          prevBitmap = createImageBitmap(canvas).then((bmp) => {
+            if (!aw.__hfEncWorker) {
+              bmp.close();
+              throw new Error("drawElement: encode worker not initialized");
+            }
+            aw.__hfEncWorker.postMessage({ bmp, id: fid, w, h, q: q / 100 }, [bmp]);
+          });
+        } catch (e) {
+          try {
+            await prevBitmap;
+          } catch {
+            /* prior frame's failure surfaces via its own pending timeout path */
+          }
+          return { failedAt: i, error: errMsg(e) };
+        }
+      }
+      try {
+        await prevBitmap;
+      } catch (e) {
+        return { failedAt: prevBitmapIdx, error: errMsg(e) };
+      }
+      return { failedAt: null };
+    },
+    { frames: times.map((t, i) => ({ t, fid: fids[i] ?? 0 })), w: width, h: height, q: quality },
+  );
+
+  if (outcome.failedAt !== null) {
+    // Frames >= failedAt never reached the worker — reject their pendings now
+    // so nothing waits 30s on the watchdog.
+    for (let k = outcome.failedAt; k < fids.length; k++) {
+      const fid = fids[k];
+      if (fid === undefined) continue;
+      const entry = state.pending.get(fid);
+      if (entry) {
+        state.pending.delete(fid);
+        entry.reject(
+          new Error(`drawElement batch produce failed at frame ${k}: ${outcome.error ?? "?"}`),
+        );
+      }
+    }
+  }
+
+  return { encodeResults, failedAt: outcome.failedAt, error: outcome.error };
+}

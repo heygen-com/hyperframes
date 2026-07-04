@@ -39,6 +39,7 @@ import {
   initDrawElementWorkerEncode,
   cleanupDrawElementWorkerEncode,
   produceDrawElementFrame,
+  produceDrawElementFrameBatch,
 } from "./drawElementService.js";
 import { initThreeDProjection, detectCssEffectRisk } from "./threeDProjection.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
@@ -2509,6 +2510,73 @@ export async function captureFrameToBufferPipelined(
     }
     throw captureError;
   }
+}
+
+/**
+ * P6 prototype (HF_DE_BATCH): capture N consecutive frames in one CDP
+ * round-trip via {@link produceDrawElementFrameBatch}. The caller pre-plans the
+ * batch (consecutive frame indices, none static-dedup'd, none opt-in
+ * boundary-screenshot). On a mid-batch in-page failure the remaining frames are
+ * re-captured through {@link captureFrameToBufferPipelined}, which owns the
+ * per-frame screenshot-fallback semantics — so failure behavior is identical to
+ * the unbatched path, just discovered at batch granularity.
+ */
+export async function captureFramesBatchPipelined(
+  session: CaptureSession,
+  frameIndices: number[],
+  times: number[],
+): Promise<Array<{ frameIndex: number; encodeResult: Promise<Buffer> }>> {
+  const { page, options } = session;
+  if (!session.isInitialized) {
+    throw new Error("[FrameCapture] Session not initialized");
+  }
+  const startTime = Date.now();
+  const fps = fpsToNumber(options.fps);
+  const quantized = times.map((t) => quantizeTimeToFrame(t, fps));
+
+  const { encodeResults, failedAt, error } = await produceDrawElementFrameBatch(
+    page,
+    quantized,
+    options.width,
+    options.height,
+    options.quality ?? 80,
+  );
+
+  const okCount = failedAt === null ? frameIndices.length : failedAt;
+  const elapsed = Date.now() - startTime;
+  session.capturePerf.frames += okCount;
+  // Round-trips are fused — attribute the whole batch to produce time.
+  session.capturePerf.screenshotMs += elapsed;
+  session.capturePerf.totalMs += elapsed;
+
+  const results: Array<{ frameIndex: number; encodeResult: Promise<Buffer> }> = [];
+  for (let i = 0; i < okCount; i++) {
+    const frameIndex = frameIndices[i];
+    const encodeResult = encodeResults[i];
+    if (frameIndex === undefined || !encodeResult) break;
+    results.push({ frameIndex, encodeResult });
+  }
+
+  if (failedAt !== null) {
+    console.log(
+      `[engine] fast capture: batch produce failed at frame ` +
+        `${frameIndices[failedAt] ?? "?"} (${error ?? "?"}); ` +
+        `re-capturing ${frameIndices.length - failedAt} frame(s) per-frame`,
+    );
+    for (let i = failedAt; i < frameIndices.length; i++) {
+      const frameIndex = frameIndices[i];
+      const time = times[i];
+      if (frameIndex === undefined || time === undefined) break;
+      const { encodeResult } = await captureFrameToBufferPipelined(session, frameIndex, time);
+      results.push({ frameIndex, encodeResult });
+    }
+  }
+
+  // Task B: retain the last encode result so a following static frame can reuse it.
+  const last = results[results.length - 1];
+  if (session.staticFrames && last) session.lastEncodeResult = last.encodeResult;
+
+  return results;
 }
 
 /**
