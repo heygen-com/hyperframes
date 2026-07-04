@@ -41,4 +41,24 @@ describe("selectDomLayerShowIds", () => {
       ),
     ).toEqual(["visible-overlay", "hidden-sdr-video"]);
   });
+
+  it("does not re-show opacity-zero scene members or their injected frames", () => {
+    expect(
+      selectDomLayerShowIds(
+        ["active-overlay", "inactive-scene-video", "inactive-scene-label"],
+        [
+          makeEl("active-overlay"),
+          makeEl("inactive-scene-video", {
+            opacity: 0,
+            visible: false,
+            renderFrameVisible: true,
+          }),
+          makeEl("inactive-scene-label", {
+            opacity: 0,
+            visible: true,
+          }),
+        ],
+      ),
+    ).toEqual(["active-overlay"]);
+  });
 });

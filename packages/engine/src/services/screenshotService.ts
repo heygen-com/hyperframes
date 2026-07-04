@@ -261,6 +261,9 @@ export async function captureAlphaPng(page: Page, width: number, height: number)
  * tests can assert presence/absence of the mask between captures.
  */
 export const DOM_LAYER_MASK_STYLE_ID = "__hf_dom_layer_mask__";
+const DOM_LAYER_MASK_HIDDEN_ATTR = "data-hf-dom-layer-mask-hidden";
+const DOM_LAYER_MASK_PREV_VISIBILITY_ATTR = "data-hf-dom-layer-mask-prev-visibility";
+const DOM_LAYER_MASK_PREV_PRIORITY_ATTR = "data-hf-dom-layer-mask-prev-priority";
 
 /**
  * Mask the DOM so a single layer screenshot captures ONLY the layer's pixels.
@@ -288,6 +291,9 @@ export const DOM_LAYER_MASK_STYLE_ID = "__hf_dom_layer_mask__";
  *    elements that are descendants of a container layer (for example HDR
  *    videos and other-layer SDR videos are descendants of `#root` when we
  *    capture the root DOM layer).
+ * 3. Inline-hide timed descendants of shown elements that were hidden before
+ *    the mask was installed. This covers idless child clips and same-layer
+ *    descendants that the `extraHideIds` id list cannot represent.
  *
  * Only `visibility` is set on extraHideIds — never `opacity`. CSS opacity is
  * multiplicative through the descendant chain and a descendant cannot escape
@@ -315,12 +321,49 @@ export async function applyDomLayerMask(
   extraHideIds: string[],
 ): Promise<void> {
   await page.evaluate(
-    (args: { show: string[]; hide: string[]; styleId: string }) => {
+    (args: {
+      show: string[];
+      hide: string[];
+      styleId: string;
+      hiddenAttr: string;
+      prevVisibilityAttr: string;
+      prevPriorityAttr: string;
+    }) => {
       const existing = document.getElementById(args.styleId);
       if (existing) existing.remove();
 
+      const restoreMaskedTimedDescendants = () => {
+        const masked = document.querySelectorAll(`[${args.hiddenAttr}="1"]`);
+        for (const node of masked) {
+          if (!(node instanceof HTMLElement)) continue;
+          const prevVisibility = node.getAttribute(args.prevVisibilityAttr);
+          const prevPriority = node.getAttribute(args.prevPriorityAttr);
+          if (prevVisibility === null) {
+            node.style.removeProperty("visibility");
+          } else {
+            node.style.setProperty("visibility", prevVisibility, prevPriority ?? "");
+          }
+          node.removeAttribute(args.hiddenAttr);
+          node.removeAttribute(args.prevVisibilityAttr);
+          node.removeAttribute(args.prevPriorityAttr);
+        }
+      };
+      restoreMaskedTimedDescendants();
+
+      const hiddenTimedDescendants: HTMLElement[] = [];
+      const rememberHiddenTimedDescendants = (root: Element) => {
+        for (const node of root.querySelectorAll("[data-start]")) {
+          if (!(node instanceof HTMLElement)) continue;
+          const computed = window.getComputedStyle(node);
+          if (computed.visibility !== "hidden" && computed.display !== "none") continue;
+          hiddenTimedDescendants.push(node);
+        }
+      };
+
       const showSelectors: string[] = [];
       for (const id of args.show) {
+        const el = document.getElementById(id);
+        if (el) rememberHiddenTimedDescendants(el);
         const escaped = CSS.escape(id);
         showSelectors.push(`#${escaped}`, `#${escaped} *`);
         const renderEscaped = CSS.escape(`__render_frame_${id}__`);
@@ -338,6 +381,27 @@ export async function applyDomLayerMask(
       style.textContent = `${massHideRule}\n${showRule}`;
       document.head.appendChild(style);
 
+      for (const el of hiddenTimedDescendants) {
+        if (el.getAttribute(args.hiddenAttr) === "1") continue;
+        const prevVisibility = el.style.getPropertyValue("visibility");
+        const prevPriority =
+          typeof el.style.getPropertyPriority === "function"
+            ? el.style.getPropertyPriority("visibility")
+            : "";
+        if (prevVisibility) {
+          el.setAttribute(args.prevVisibilityAttr, prevVisibility);
+        } else {
+          el.removeAttribute(args.prevVisibilityAttr);
+        }
+        if (prevPriority) {
+          el.setAttribute(args.prevPriorityAttr, prevPriority);
+        } else {
+          el.removeAttribute(args.prevPriorityAttr);
+        }
+        el.setAttribute(args.hiddenAttr, "1");
+        el.style.setProperty("visibility", "hidden", "important");
+      }
+
       for (const id of args.hide) {
         const el = document.getElementById(id);
         if (el) {
@@ -349,7 +413,14 @@ export async function applyDomLayerMask(
         }
       }
     },
-    { show: showIds, hide: extraHideIds, styleId: DOM_LAYER_MASK_STYLE_ID },
+    {
+      show: showIds,
+      hide: extraHideIds,
+      styleId: DOM_LAYER_MASK_STYLE_ID,
+      hiddenAttr: DOM_LAYER_MASK_HIDDEN_ATTR,
+      prevVisibilityAttr: DOM_LAYER_MASK_PREV_VISIBILITY_ATTR,
+      prevPriorityAttr: DOM_LAYER_MASK_PREV_PRIORITY_ATTR,
+    },
   );
 }
 
@@ -369,9 +440,29 @@ export async function applyDomLayerMask(
  */
 export async function removeDomLayerMask(page: Page, extraHideIds: string[]): Promise<void> {
   await page.evaluate(
-    (args: { hide: string[]; styleId: string }) => {
+    (args: {
+      hide: string[];
+      styleId: string;
+      hiddenAttr: string;
+      prevVisibilityAttr: string;
+      prevPriorityAttr: string;
+    }) => {
       const style = document.getElementById(args.styleId);
       if (style) style.remove();
+      const masked = document.querySelectorAll(`[${args.hiddenAttr}="1"]`);
+      for (const node of masked) {
+        if (!(node instanceof HTMLElement)) continue;
+        const prevVisibility = node.getAttribute(args.prevVisibilityAttr);
+        const prevPriority = node.getAttribute(args.prevPriorityAttr);
+        if (prevVisibility === null) {
+          node.style.removeProperty("visibility");
+        } else {
+          node.style.setProperty("visibility", prevVisibility, prevPriority ?? "");
+        }
+        node.removeAttribute(args.hiddenAttr);
+        node.removeAttribute(args.prevVisibilityAttr);
+        node.removeAttribute(args.prevPriorityAttr);
+      }
       for (const id of args.hide) {
         const el = document.getElementById(id);
         if (el) {
@@ -381,7 +472,13 @@ export async function removeDomLayerMask(page: Page, extraHideIds: string[]): Pr
         if (img) img.style.removeProperty("visibility");
       }
     },
-    { hide: extraHideIds, styleId: DOM_LAYER_MASK_STYLE_ID },
+    {
+      hide: extraHideIds,
+      styleId: DOM_LAYER_MASK_STYLE_ID,
+      hiddenAttr: DOM_LAYER_MASK_HIDDEN_ATTR,
+      prevVisibilityAttr: DOM_LAYER_MASK_PREV_VISIBILITY_ATTR,
+      prevPriorityAttr: DOM_LAYER_MASK_PREV_PRIORITY_ATTR,
+    },
   );
 }
 
