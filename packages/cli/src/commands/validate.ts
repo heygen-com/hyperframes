@@ -33,6 +33,33 @@ interface ContrastEntry {
 const CONTRAST_SAMPLES = 5;
 const SEEK_SETTLE_MS = 150;
 const MEDIA_EXTENSIONS = /\.(aac|flac|m4a|mov|mp3|mp4|oga|ogg|wav|webm)$/i;
+// Floor for the initial page navigation. A blocking external <script> (GSAP
+// from a CDN, etc.) delays `domcontentloaded`; the actual render (much larger
+// budget) rides it out, so validate's navigation must be at least as patient as
+// the user's --timeout, never stuck below this floor.
+const NAV_TIMEOUT_FLOOR_MS = 10000;
+
+// Navigation budget = the larger of the floor and the user's --timeout, so
+// `--timeout` (already the "wait longer for slow loads" knob for media/settle)
+// also extends navigation instead of being ignored by a hardcoded 10s.
+export function resolveNavigationTimeoutMs(optTimeout?: number): number {
+  return Math.max(NAV_TIMEOUT_FLOOR_MS, optTimeout ?? 0);
+}
+
+// Turn Puppeteer's opaque "Navigation timeout of Nms exceeded" into an
+// actionable message: the usual cause is a blocking CDN <script> that render
+// tolerates but validate's tighter budget does not. Returns a replacement Error
+// for a navigation timeout, or null for any other error (caller rethrows as-is).
+export function navigationTimeoutHint(err: unknown, navTimeoutMs: number): Error | null {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (!/navigation timeout/i.test(msg)) return null;
+  return new Error(
+    `Page navigation timed out after ${navTimeoutMs}ms. A blocking external <script> ` +
+      `(e.g. GSAP loaded from a CDN) can delay page load past this budget even when the ` +
+      `full render succeeds. Vendor the script locally (recommended for deterministic ` +
+      `renders), or re-run with a longer --timeout.`,
+  );
+}
 
 export function shouldIgnoreRequestFailure(
   url: string,
@@ -353,7 +380,14 @@ async function validateInBrowser(
       }
     });
 
-    await page.goto(server.url, { waitUntil: "domcontentloaded", timeout: 10000 });
+    const navTimeoutMs = resolveNavigationTimeoutMs(opts.timeout);
+    try {
+      await page.goto(server.url, { waitUntil: "domcontentloaded", timeout: navTimeoutMs });
+    } catch (err) {
+      const hinted = navigationTimeoutHint(err, navTimeoutMs);
+      if (hinted) throw hinted;
+      throw err;
+    }
     await new Promise((r) => setTimeout(r, opts.timeout ?? 3000));
 
     for (const w of await auditClipDurations(page, analyzeClipMediaFit, opts.timeout ?? 3000)) {
@@ -472,7 +506,9 @@ Examples:
     },
     timeout: {
       type: "string",
-      description: "Ms to wait for scripts to settle (default: 3000)",
+      description:
+        "Ms to wait for scripts to settle and media to load (default: 3000). Also raises the " +
+        "page-navigation budget above its 10s floor when a slow external <script> needs longer.",
       default: "3000",
     },
   },
