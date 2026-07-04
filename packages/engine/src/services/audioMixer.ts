@@ -4,8 +4,7 @@
  * Processes and mixes audio tracks using FFmpeg.
  */
 
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "fs";
-import { randomBytes } from "crypto";
+import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, rmSync, writeFileSync } from "fs";
 import { isAbsolute, join, dirname } from "path";
 import { parseHTML } from "linkedom";
 import { extractAudioMetadata } from "../utils/ffprobe.js";
@@ -415,8 +414,14 @@ async function mixAudioTracks(
   const runMix = (ignoreAutomation: boolean) => {
     const inputs: string[] = [];
     tracks.forEach((track) => inputs.push("-i", track.srcPath));
-    const scriptPath = join(outputDir, `.filter-complex-${randomBytes(6).toString("hex")}.txt`);
-    writeFileSync(scriptPath, buildFilterComplex(ignoreAutomation));
+    const scriptDir = mkdtempSync(join(outputDir, ".filter-complex-"));
+    const scriptPath = join(scriptDir, "graph.txt");
+    const fd = openSync(scriptPath, "wx", 0o600);
+    try {
+      writeFileSync(fd, buildFilterComplex(ignoreAutomation));
+    } finally {
+      closeSync(fd);
+    }
     const args = [
       ...inputs,
       "-filter_complex_script",
@@ -433,7 +438,7 @@ async function mixAudioTracks(
       outputPath,
     ];
     return runFfmpeg(args, { signal, timeout: ffmpegProcessTimeout }).finally(() =>
-      rmSync(scriptPath, { force: true }),
+      rmSync(scriptDir, { recursive: true, force: true }),
     );
   };
 
