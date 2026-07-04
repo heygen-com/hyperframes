@@ -15,6 +15,11 @@
 //   clicks on off-viewport nodes can hit sidebar helper buttons instead.
 // - Commit fires on Enter/blur only when the draft differs from the last value.
 // - Range inputs need input+change+pointerup; selects need change.
+// - Panel sections are found by the app's own `data-panel-section` attribute, not
+//   by matching h3 display text, and specific fields are found by their sibling
+//   label span (or, where there's no label, by being the section's only input of
+//   that type) — not by guessing the fixture's current value. Both survive wording
+//   or fixture-default changes that would otherwise break this script silently.
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
@@ -53,7 +58,10 @@ function abEval(code) {
 }
 function check(id, ok, detail) {
   console.log(`${ok ? "PASS" : "FAIL"} ${id}${detail ? " " + detail : ""}`);
-  if (!ok) failures += 1;
+  if (!ok) {
+    failures += 1;
+    console.log(`  patchLog: ${JSON.stringify(abEval("window.__patchLog"))}`);
+  }
 }
 function disk(file, needle) {
   try {
@@ -62,15 +70,47 @@ function disk(file, needle) {
     return false;
   }
 }
+// The patch fetch resolving client-side doesn't guarantee the server's file
+// write has landed yet (seen in practice on the very first commit of a run).
+// Poll disk instead of asserting immediately after the in-browser signal.
+async function waitForDisk(file, needle, timeout = 3000) {
+  const start = Date.now();
+  while (Date.now() - start < timeout) {
+    if (disk(file, needle)) return true;
+    await sleep(100);
+  }
+  return false;
+}
+// Polls a page-context boolean expression instead of sleeping a fixed duration:
+// faster on a healthy run, and it fails loudly (returns false) rather than
+// silently passing on a slow one.
+async function waitFor(expr, { timeout = 8000, interval = 150 } = {}) {
+  const start = Date.now();
+  while (Date.now() - start < timeout) {
+    if (abEval(expr) === true) return true;
+    await sleep(interval);
+  }
+  return false;
+}
 
 const HELPERS = String.raw`
 (() => {
   window.__patchLog = window.__patchLog || [];
+  window.__qaFault = window.__qaFault || null;
   if (!window.__qaShim) {
     window.__qaShim = true;
     const orig = window.fetch;
     window.fetch = async function(...args) {
       const url = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url) || '';
+      if (window.__qaFault && url.includes(window.__qaFault.match)) {
+        const fault = window.__qaFault;
+        window.__qaFault = null; // one-shot
+        window.__patchLog.push({ t: Date.now(), url, status: fault.status, req: null, resp: '(fault injected)' });
+        return new Response(JSON.stringify({ error: 'e2e injected fault' }), {
+          status: fault.status,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
       const isMut = url.includes('file-mutations') || url.includes('gsap-mutations') || (args[1] && args[1].method && args[1].method !== 'GET' && url.includes('/api/'));
       let body = null;
       if (isMut && args[1] && typeof args[1].body === 'string') body = args[1].body.slice(0, 1500);
@@ -116,34 +156,53 @@ const HELPERS = String.raw`
     return { label: m('label'), selector: m('selector'), hfId: m('hfId'), src: m('sourceFile') };
   };
   qa.clear = () => { window.__patchLog.length = 0; return 'cleared'; };
-  qa.sectionInputs = (title) => {
-    const h3 = [...document.querySelectorAll('h3')].find(h => h.textContent.trim() === title);
-    if (!h3) return null;
-    const headerBtn = h3.closest('button') || h3;
-    const inputs = [];
-    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT);
-    walker.currentNode = headerBtn;
-    let n;
-    while ((n = walker.nextNode())) {
-      if (n.tagName === 'H3' && n !== h3) break;
-      if (n.tagName === 'INPUT' || n.tagName === 'TEXTAREA' || n.tagName === 'SELECT') inputs.push(n);
-    }
-    return inputs;
+  qa.section = (slug) => document.querySelector('[data-panel-section="' + slug + '"]');
+  qa.sectionInputs = (slug) => {
+    const section = qa.section(slug);
+    if (!section) return null;
+    return [...section.querySelectorAll('input, textarea, select')];
   };
-  qa.ensureSection = (title) => {
-    const h3 = [...document.querySelectorAll('h3')].find(h => h.textContent.trim() === title);
-    if (!h3) return 'no section: ' + title;
-    const inputs = qa.sectionInputs(title);
+  qa.ensureSection = (slug) => {
+    const section = qa.section(slug);
+    if (!section) return 'no section: ' + slug;
+    const inputs = qa.sectionInputs(slug);
     if (inputs && inputs.length) return 'open';
-    (h3.closest('button') || h3).click();
+    const header = section.querySelector('button');
+    if (header) header.click();
     return 'clicked';
   };
+  // Walks up a few ancestor levels looking for a preceding <span> label — covers
+  // both a field whose label is a direct sibling of its input (MetricField) and
+  // one whose label sits beside the input's wrapper (a hand-rolled SliderControl
+  // row). More robust than hardcoding either shape.
+  qa.labelFor = (el) => {
+    let node = el;
+    for (let i = 0; i < 3 && node; i++) {
+      const sib = node.previousElementSibling;
+      if (sib && sib.tagName === 'SPAN' && sib.textContent.trim()) return sib.textContent.trim();
+      node = node.parentElement;
+    }
+    return null;
+  };
+  qa.pickByLabel = (slug, label) => {
+    const inputs = qa.sectionInputs(slug);
+    if (!inputs) return null;
+    return inputs.find((el) => qa.labelFor(el) === label) || null;
+  };
+  qa.pickByType = (slug, type) => {
+    const inputs = qa.sectionInputs(slug);
+    if (!inputs) return null;
+    const matches = inputs.filter((el) => el.type === type);
+    return matches.length === 1 ? matches[0] : null;
+  };
   qa.setEl = (el, value) => {
+    if (!el) return { error: 'no matching field' };
+    const from = el.value;
     if (el.tagName === 'SELECT') {
       const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set;
       setter.call(el, value);
       el.dispatchEvent(new Event('change', { bubbles: true }));
-      return 'select set';
+      return { from, to: value };
     }
     el.focus();
     const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
@@ -157,14 +216,7 @@ const HELPERS = String.raw`
       el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
       el.blur();
     }
-    return 'input set';
-  };
-  qa.setInputWhereValue = (title, current, value) => {
-    const inputs = qa.sectionInputs(title);
-    if (!inputs) return 'no section';
-    const el = inputs.find(e => String(e.value) === current);
-    if (!el) return 'no input with value ' + current + ' in ' + title;
-    return qa.setEl(el, value);
+    return { from, to: value };
   };
   qa.enableInspector = () => {
     if ([...document.querySelectorAll('h3, [class*="panel"]')].length && document.body.textContent.includes('Select an element')) return 'on';
@@ -173,56 +225,111 @@ const HELPERS = String.raw`
     btn.click();
     return 'toggled';
   };
+  qa.injectFault = (match, status) => { window.__qaFault = { match, status: status || 500 }; return 'armed'; };
   window.__qa = qa;
   return 'qa ready';
 })()`;
 
+const FRAME_SIGNATURE_EXPR =
+  "(() => { const f = window.__qa.frame(); if (!f) return null; const r = f.getBoundingClientRect(); return Math.round(r.x*1000+r.y*100+r.width*10+r.height); })()";
+
+// A prior commit can resize the property panel (opening it, or its content
+// changing height), which shifts the preview frame's on-page position. Computing
+// click coordinates mid-reflow silently clicks the wrong spot — the click still
+// lands on the overlay, so it doesn't error, it just selects nothing (or the
+// wrong element). Wait for two consecutive reads of the frame's rect to agree
+// before trusting it, instead of guessing how long a reflow takes.
+async function waitForStableFrame({ tries = 10, interval = 100 } = {}) {
+  let prev = abEval(FRAME_SIGNATURE_EXPR);
+  for (let i = 0; i < tries; i++) {
+    await sleep(interval);
+    const next = abEval(FRAME_SIGNATURE_EXPR);
+    if (next != null && next === prev) return true;
+    prev = next;
+  }
+  return false;
+}
+
 async function select(sel) {
   abEval("window.__qa.clear()");
+  await waitForStableFrame();
   const coords = abEval(`window.__qa.coords(${JSON.stringify(sel)})`);
   if (!Array.isArray(coords)) return { error: "no coords" };
   ab("mouse", "move", String(coords[0]), String(coords[1]));
   ab("mouse", "down", "left");
-  await sleep(150);
+  await sleep(150); // deliberate gesture delay to simulate a real click, not an async wait
   ab("mouse", "up", "left");
-  await sleep(1400);
+  await waitFor("window.__qa.lastSel() !== null");
   return abEval("window.__qa.lastSel()");
 }
-async function commit(section, whereValue, value) {
+
+// `pick` locates the field to edit: byLabel("Size") finds the input beside a
+// "Size" label; byType("range") finds the section's sole range input. Neither
+// depends on knowing the fixture's current value ahead of time.
+const byLabel = (label) => (slug) =>
+  `window.__qa.pickByLabel(${JSON.stringify(slug)}, ${JSON.stringify(label)})`;
+const byType = (type) => (slug) =>
+  `window.__qa.pickByType(${JSON.stringify(slug)}, ${JSON.stringify(type)})`;
+
+async function commit(sectionSlug, pick, value) {
   abEval("window.__qa.clear()");
-  abEval(`window.__qa.ensureSection(${JSON.stringify(section)})`);
-  await sleep(600);
-  const r = abEval(
-    `window.__qa.setInputWhereValue(${JSON.stringify(section)}, ${JSON.stringify(whereValue)}, ${JSON.stringify(value)})`,
-  );
-  await sleep(2000);
+  abEval(`window.__qa.ensureSection(${JSON.stringify(sectionSlug)})`);
+  await waitFor(`(window.__qa.sectionInputs(${JSON.stringify(sectionSlug)}) || []).length > 0`);
+  const r = abEval(`window.__qa.setEl(${pick(sectionSlug)}, ${JSON.stringify(value)})`);
+  await waitFor("window.__patchLog.length > 0");
   return r;
+}
+
+async function openStudio(url) {
+  ab("open", url);
+  await waitFor("document.readyState === 'complete' && !!document.querySelector('button')", {
+    timeout: 15000,
+  });
+  abEval(HELPERS);
+  // "a button exists" fires on the app shell alone; wait for the actual preview
+  // iframe to mount before handing control back, or a caller's first frame()
+  // lookup races the composition load and comes back null.
+  await waitFor("!!window.__qa.frame()", { timeout: 15000 });
 }
 
 // fallow-ignore-next-line complexity
 async function main() {
-  ab("open", `${STUDIO_URL}/?v=e2e${Date.now()}`);
-  await sleep(6000);
-  abEval(HELPERS);
+  await openStudio(`${STUDIO_URL}/?v=e2e${Date.now()}`);
   abEval("window.__qa.enableInspector()");
-  await sleep(1500);
+  await waitFor("document.body.textContent.includes('Select an element')", { timeout: 5000 });
 
   let s = await select("#qa-headline");
   check("select.headline", s && s.selector === "#qa-headline", JSON.stringify(s));
-  let r = await commit("Text", "48px", "72px");
-  check("text.size", disk("index.html", "font-size: 72px"), `set=${r}`);
+  let r = await commit("text", byLabel("Size"), "72px");
+  check(
+    "text.size",
+    await waitForDisk("index.html", "font-size: 72px"),
+    `set=${JSON.stringify(r)}`,
+  );
 
   s = await select("#qa-shape");
   check("select.shape", s && s.selector === "#qa-shape", JSON.stringify(s));
-  r = await commit("Transparency", "100", "80");
-  check("style.opacity", disk("index.html", "opacity: 0.8"), `set=${r}`);
-  r = await commit("Radius", "16", "24");
-  check("style.radius", disk("index.html", "border-radius: 24px"), `set=${r}`);
+  r = await commit("transparency", byType("range"), "80");
+  check(
+    "style.opacity",
+    await waitForDisk("index.html", "opacity: 0.8"),
+    `set=${JSON.stringify(r)}`,
+  );
+  r = await commit("radius", byLabel("All"), "24");
+  check(
+    "style.radius",
+    await waitForDisk("index.html", "border-radius: 24px"),
+    `set=${JSON.stringify(r)}`,
+  );
 
   s = await select("#qa-video");
   check("select.video", s && s.selector === "#qa-video", JSON.stringify(s));
-  r = await commit("Video", "50", "80");
-  check("media.volume", disk("index.html", 'data-volume="0.8"'), `set=${r}`);
+  r = await commit("video", byLabel("Volume"), "80");
+  check(
+    "media.volume",
+    await waitForDisk("index.html", 'data-volume="0.8"'),
+    `set=${JSON.stringify(r)}`,
+  );
 
   s = await select("#qa-sub-title");
   check(
@@ -230,13 +337,36 @@ async function main() {
     s && s.selector === "#qa-sub-title" && s.src === "compositions/qa-sub.html",
     JSON.stringify(s),
   );
-  r = await commit("Text", "36px", "48px");
-  check("sub.text-size", disk("compositions/qa-sub.html", "font-size: 48px"), `set=${r}`);
+  r = await commit("text", byLabel("Size"), "48px");
+  check(
+    "sub.text-size",
+    await waitForDisk("compositions/qa-sub.html", "font-size: 48px"),
+    `set=${JSON.stringify(r)}`,
+  );
+
+  // Fault injection: the server rejects the patch — the panel must surface the
+  // rejection and the value already on disk (72px, from the first cell) must
+  // survive untouched, not silently take on the value that failed to persist.
+  s = await select("#qa-headline");
+  check("select.headline-again", s && s.selector === "#qa-headline", JSON.stringify(s));
+  abEval("window.__qa.injectFault('file-mutations/patch-element', 500)");
+  r = await commit("text", byLabel("Size"), "90px");
+  await waitFor('document.body.textContent.includes("Couldn\'t save")', { timeout: 4000 });
+  const toastShown = abEval('document.body.textContent.includes("Couldn\'t save")');
+  check("fault.toast-shown", toastShown === true, `set=${JSON.stringify(r)}`);
+  check(
+    "fault.no-persist",
+    !disk("index.html", "font-size: 90px"),
+    "rejected value must not reach disk",
+  );
+  check(
+    "fault.prior-value-survives",
+    disk("index.html", "font-size: 72px"),
+    "prior committed value must survive",
+  );
 
   // Reload survival for the headline edit.
-  ab("open", `${STUDIO_URL}/?v=r${Date.now()}`);
-  await sleep(5000);
-  abEval(HELPERS);
+  await openStudio(`${STUDIO_URL}/?v=r${Date.now()}`);
   const survived = abEval(
     `(() => { const f = window.__qa.frame(); const el = f && f.contentDocument.querySelector('#qa-headline'); return el ? f.contentWindow.getComputedStyle(el).fontSize : null; })()`,
   );

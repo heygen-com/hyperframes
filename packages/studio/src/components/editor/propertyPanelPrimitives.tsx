@@ -371,7 +371,10 @@ export function Section({
   );
 
   return (
-    <section className="min-w-0 border-t border-panel-border">
+    <section
+      className="min-w-0 border-t border-panel-border"
+      data-panel-section={slugifyPanelSectionTitle(title)}
+    >
       <div className="flex w-full items-center gap-2 px-4 py-2.5">
         <button
           type="button"
@@ -386,4 +389,15 @@ export function Section({
       {!collapsed && <div className="px-4 pb-3">{children}</div>}
     </section>
   );
+}
+
+// Stable hook for e2e/automation to locate a section without depending on the
+// display copy (h3 textContent matching breaks on wording tweaks or, if this
+// panel is ever localized, on translation).
+function slugifyPanelSectionTitle(title: string): string {
+  return title
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
 }
