@@ -14,6 +14,7 @@ function makeEl(id: string, overrides?: Partial<ElementStackingInfo>): ElementSt
     layoutHeight: 1080,
     opacity: 1,
     visible: true,
+    renderFrameVisible: false,
     isHdr: false,
     transform: "none",
     borderRadius: [0, 0, 0, 0],

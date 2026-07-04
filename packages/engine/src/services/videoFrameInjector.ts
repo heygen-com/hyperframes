@@ -377,7 +377,7 @@ export interface ElementStackingInfo {
    * the layered HDR compositor keep their replacement frames in the right DOM
    * layer without reviving unrelated hidden elements.
    */
-  renderFrameVisible?: boolean;
+  renderFrameVisible: boolean;
   isHdr: boolean;
   transform: string; // CSS transform matrix string, e.g. "matrix(1,0,0,1,0,0)" or "none"
   borderRadius: [number, number, number, number]; // [tl, tr, br, bl] in CSS px from nearest clipping ancestor

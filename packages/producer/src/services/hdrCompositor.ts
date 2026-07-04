@@ -633,7 +633,16 @@ export async function compositeHdrFrame(
       // pixels overwrite previously composited HDR content beneath.
       const layerIds = new Set(layer.elementIds);
       const showIds = selectDomLayerShowIds(layer.elementIds, fullStacking);
-      if (showIds.length === 0) continue;
+      if (showIds.length === 0) {
+        if (shouldLog) {
+          log.info("[diag] dom layer skipped, all elements not paintable", {
+            frame: debugFrameIndex,
+            layerIdx,
+            layerIds: layer.elementIds,
+          });
+        }
+        continue;
+      }
       const hideIds = allElementIds.filter((id) => !layerIds.has(id));
       if (hdrPerf) hdrPerf.domLayerCaptures += 1;
 
