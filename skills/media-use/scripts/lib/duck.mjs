@@ -1,14 +1,44 @@
 import { wordListsFromMediaMeta } from "./words.mjs";
 
-export function speechSpans(meta, { mergeGap = 0.6 } = {}) {
-  const gap = Number(mergeGap);
+/**
+ * Speech spans from word timestamps.
+ *
+ * audio_meta.json word times are relative to EACH LINE'S OWN FILE, not to the
+ * composition. Without placement info, multiple lines would overlap at t=0 and
+ * merge into one bogus span. Placement options:
+ *   offsets:    { [voiceId]: startSeconds } explicit composition placement
+ *   sequential: stack lines back to back (plus `gap` seconds between lines)
+ * A single word list (bare transcript) needs neither.
+ */
+export function speechSpans(meta, { mergeGap = 0.6, offsets, sequential = false, gap = 0 } = {}) {
+  const merge = Number(mergeGap);
+  const lists = wordListsFromMediaMeta(meta);
+  const voices = Array.isArray(meta?.voices) ? meta.voices : [];
+  if (lists.length > 1 && !offsets && !sequential) {
+    throw new Error(
+      "audio_meta has multiple voice lines with file-relative times; pass --sequential or --offsets so spans land at composition time",
+    );
+  }
   const intervals = [];
-  for (const words of wordListsFromMediaMeta(meta)) {
-    for (const word of words) {
-      if (word.end > word.start) intervals.push({ start: word.start, end: word.end });
+  let cursor = 0;
+  for (let i = 0; i < lists.length; i++) {
+    const voice = voices[i];
+    let offset = 0;
+    if (offsets) {
+      const id = voice?.id ?? String(i);
+      if (!(id in offsets)) throw new Error(`--offsets is missing voice "${id}"`);
+      offset = Number(offsets[id]) || 0;
+    } else if (sequential) {
+      offset = cursor;
+      const lineDuration = Number(voice?.duration_s) || Math.max(...lists[i].map((w) => w.end), 0);
+      cursor += lineDuration + (Number(gap) || 0);
+    }
+    for (const word of lists[i]) {
+      if (word.end > word.start)
+        intervals.push({ start: word.start + offset, end: word.end + offset });
     }
   }
-  return mergeIntervals(intervals, Number.isFinite(gap) && gap >= 0 ? gap : 0.6);
+  return mergeIntervals(intervals, Number.isFinite(merge) && merge >= 0 ? merge : 0.6);
 }
 
 export function duckKeyframes(

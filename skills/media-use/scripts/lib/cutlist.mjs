@@ -103,11 +103,19 @@ function fillerRanges(words, value) {
     : String(value)
         .split(",")
         .map((s) => s.trim());
-  const set = new Set(fillers.filter(Boolean).map((s) => s.toLowerCase()));
+  const set = new Set(fillers.filter(Boolean).map(bareToken));
   if (set.size === 0) return [];
+  // Whisper emits words with attached punctuation and arbitrary case
+  // ("UM," / "Um."), so compare bare tokens.
   return words
-    .filter((word) => set.has(word.text.trim().toLowerCase()))
+    .filter((word) => set.has(bareToken(word.text)))
     .map((word) => ({ start: word.start, end: word.end }));
+}
+
+function bareToken(text) {
+  return String(text)
+    .toLowerCase()
+    .replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
 }
 
 function silenceRanges(words, value) {

@@ -21,18 +21,41 @@ test("speechSpans bridges gaps smaller than mergeGap", () => {
   ]);
 });
 
-test("speechSpans unions overlapping voice lines", () => {
+test("speechSpans refuses multi-line meta without placement (file-relative times)", () => {
   const meta = {
     voices: [
-      { id: "a", words: [word("w0", "one", 0, 1), word("w1", "two", 2, 3)] },
-      { id: "b", words: [word("w2", "overlap", 0.5, 1.5)] },
+      { id: "a", words: [word("w0", "one", 0, 1)] },
+      { id: "b", words: [word("w1", "two", 0, 1)] },
     ],
   };
+  assert.throws(() => speechSpans(meta, { mergeGap: 0.2 }), /--sequential or --offsets/);
+});
 
-  assert.deepEqual(speechSpans(meta, { mergeGap: 0.2 }), [
-    { start: 0, end: 1.5 },
-    { start: 2, end: 3 },
+test("speechSpans sequential stacks lines by duration plus gap", () => {
+  const meta = {
+    voices: [
+      { id: "a", duration_s: 2, words: [word("w0", "one", 0.1, 1.9)] },
+      { id: "b", duration_s: 1, words: [word("w1", "two", 0.1, 0.9)] },
+    ],
+  };
+  assert.deepEqual(speechSpans(meta, { mergeGap: 0.2, sequential: true, gap: 0.5 }), [
+    { start: 0.1, end: 1.9 },
+    { start: 2.6, end: 3.4 },
   ]);
+});
+
+test("speechSpans explicit offsets place each line at composition time", () => {
+  const meta = {
+    voices: [
+      { id: "a", words: [word("w0", "one", 0, 1)] },
+      { id: "b", words: [word("w1", "two", 0, 1)] },
+    ],
+  };
+  assert.deepEqual(speechSpans(meta, { mergeGap: 0.2, offsets: { a: 0, b: 4 } }), [
+    { start: 0, end: 1 },
+    { start: 4, end: 5 },
+  ]);
+  assert.throws(() => speechSpans(meta, { offsets: { a: 0 } }), /missing voice "b"/);
 });
 
 test("speechSpans returns empty spans for empty input", () => {

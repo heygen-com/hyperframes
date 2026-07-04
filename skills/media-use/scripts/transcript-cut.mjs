@@ -126,7 +126,7 @@ function run() {
       totalSeconds,
     )}s)`,
   );
-  console.log(`next: resolve --from ${outPath} --type video`);
+  console.log(`next: resolve --from ${outPath} --type <type>`);
 }
 
 function cutSegment(inputPath, segment, outPath, copy) {
@@ -143,21 +143,31 @@ function cutSegment(inputPath, segment, outPath, copy) {
   if (copy) {
     argv.push("-c", "copy", "-avoid_negative_ts", "make_zero");
   } else {
-    argv.push(
-      "-c:v",
-      "libx264",
-      "-preset",
-      "veryfast",
-      "-crf",
-      "18",
-      "-c:a",
-      "aac",
-      "-movflags",
-      "+faststart",
-    );
+    argv.push(...encodeArgsFor(extname(outPath).toLowerCase()));
   }
   argv.push(outPath);
   execFileSync("ffmpeg", argv, { stdio: "ignore" });
+}
+
+// Codec set per output container. Audio-only outputs must not get the
+// video-centric aac/x264 set (aac inside .wav breaks timing entirely).
+function encodeArgsFor(ext) {
+  if (ext === ".wav") return ["-c:a", "pcm_s16le"];
+  if (ext === ".mp3") return ["-c:a", "libmp3lame", "-q:a", "2"];
+  if (ext === ".m4a" || ext === ".aac") return ["-c:a", "aac"];
+  if (ext === ".flac") return ["-c:a", "flac"];
+  return [
+    "-c:v",
+    "libx264",
+    "-preset",
+    "veryfast",
+    "-crf",
+    "18",
+    "-c:a",
+    "aac",
+    "-movflags",
+    "+faststart",
+  ];
 }
 
 function probeDuration(filePath) {

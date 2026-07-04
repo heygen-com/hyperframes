@@ -13,6 +13,9 @@ const { values: args } = parseArgs({
     attack: { type: "string", default: "0.15" },
     release: { type: "string", default: "0.4" },
     "merge-gap": { type: "string", default: "0.6" },
+    sequential: { type: "boolean", default: false },
+    gap: { type: "string", default: "0" },
+    offsets: { type: "string" },
     composition: { type: "string" },
     json: { type: "boolean", default: false },
     help: { type: "boolean", short: "h", default: false },
@@ -33,6 +36,9 @@ Options:
   --attack        Duck-in duration seconds (default: 0.15)
   --release       Restore duration seconds (default: 0.4)
   --merge-gap     Bridge speech gaps smaller than this many seconds (default: 0.6)
+  --sequential    Place multi-line meta back to back at composition time
+  --gap           Extra seconds between sequential lines (default: 0)
+  --offsets       Explicit placement, "l1=0,l2=3.4" (voice id = start seconds)
   --composition   Read target data-volume from this HTML file
   --json          Output { spans, keyframes }
   --help, -h      Show this help`);
@@ -52,7 +58,20 @@ function run() {
   const meta = JSON.parse(readFileSync(resolve(args.meta), "utf8"));
   const target = args.target;
   const baseVolume = readBaseVolume(args.composition, target);
-  const spans = speechSpans(meta, { mergeGap: Number(args["merge-gap"]) });
+  const offsets = args.offsets
+    ? Object.fromEntries(
+        args.offsets.split(",").map((pair) => {
+          const [id, t] = pair.split("=");
+          return [id.trim(), Number(t)];
+        }),
+      )
+    : undefined;
+  const spans = speechSpans(meta, {
+    mergeGap: Number(args["merge-gap"]),
+    sequential: args.sequential,
+    gap: Number(args.gap),
+    offsets,
+  });
   const keyframes = duckKeyframes(spans, {
     duck: Number(args.duck),
     attack: Number(args.attack),
