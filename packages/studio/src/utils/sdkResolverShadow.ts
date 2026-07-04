@@ -229,6 +229,84 @@ export function sdkResolverShadowCheck(
   }
 }
 
+// ─── Attempt counter (denominator for the soak gate) ──────────────────────────
+//
+// The three emit functions below only fire a PostHog event on divergence —
+// parity is silent, by design, to avoid firing on every edit. That leaves no
+// way to compute a rate (divergences / attempts): we can count failures but
+// never attempts. This counter tracks attempts in memory and rolls them up
+// into ONE low-frequency event instead of firing per-attempt, which would
+// recreate the exact chattiness problem the divergence-only design avoids.
+
+const attemptCounts: Record<string, number> = {};
+
+/**
+ * Record that the resolver-shadow tripwire ran for `opLabel`, regardless of
+ * outcome (parity or divergence). No flag check of its own — only ever called
+ * from inside the three emit functions below, after their own
+ * STUDIO_SDK_RESOLVER_SHADOW_ENABLED guard, so it's already flag-gated.
+ */
+export function recordAttempt(opLabel: string): void {
+  attemptCounts[opLabel] = (attemptCounts[opLabel] ?? 0) + 1;
+  ensureAttemptFlushScheduled();
+}
+
+/**
+ * Return the accumulated attempt counts since the last flush (or `null` if
+ * nothing has been recorded — no point emitting an empty rollup), and reset
+ * the counter to empty.
+ */
+export function flushAttemptCounts(): Record<string, number> | null {
+  const keys = Object.keys(attemptCounts);
+  if (keys.length === 0) return null;
+  const snapshot: Record<string, number> = {};
+  for (const key of keys) {
+    snapshot[key] = attemptCounts[key];
+    delete attemptCounts[key];
+  }
+  return snapshot;
+}
+
+const ATTEMPT_FLUSH_INTERVAL_MS = 5 * 60_000;
+let attemptFlushTimer: ReturnType<typeof setInterval> | null = null;
+let attemptUnloadListenerRegistered = false;
+
+function flushAndEmitAttempts(): void {
+  const counts = flushAttemptCounts();
+  if (counts === null) return;
+  trackStudioEvent("sdk_resolver_shadow_attempt", { counts: JSON.stringify(counts) });
+}
+
+// Lazily starts the rollup timer + visibilitychange listener on the FIRST
+// attempt in a session — mirrors studioTelemetry.ts's own lazy flushTimer
+// start, so a session that never exercises the tripwire never runs a
+// background timer.
+function ensureAttemptFlushScheduled(): void {
+  if (!attemptFlushTimer) {
+    attemptFlushTimer = setInterval(flushAndEmitAttempts, ATTEMPT_FLUSH_INTERVAL_MS);
+  }
+  if (!attemptUnloadListenerRegistered && typeof document !== "undefined") {
+    attemptUnloadListenerRegistered = true;
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") flushAndEmitAttempts();
+    });
+  }
+}
+
+/**
+ * Test-only: clears the lazy timer/listener singleton state so tests can
+ * verify the "starts on first attempt" behavior in isolation, without an
+ * earlier test's real-timer interval silently surviving into a later test
+ * that expects a fake one. Does NOT touch attemptCounts — only the
+ * scheduling state. Not part of the public module contract; only imported
+ * from sdkResolverShadow.test.ts.
+ */
+export function __resetAttemptSchedulingForTests(): void {
+  if (attemptFlushTimer) clearInterval(attemptFlushTimer);
+  attemptFlushTimer = null;
+  attemptUnloadListenerRegistered = false;
+}
+
 // ─── Telemetry ────────────────────────────────────────────────────────────────
 
 // Redact all user-content values before telemetry: style values and text both
@@ -265,6 +343,7 @@ export function runResolverShadow(
 ): void {
   if (!STUDIO_SDK_RESOLVER_SHADOW_ENABLED) return;
   if (!hfId) return;
+  recordAttempt("dom-edit");
   try {
     const mismatches = sdkResolverShadowCheck(session, hfId, ops, sourceContent);
     // Emit only on divergence — parity is silent, matching recordResolverParity
@@ -317,6 +396,7 @@ export async function recordResolverParity(
 ): Promise<void> {
   if (!STUDIO_SDK_RESOLVER_SHADOW_ENABLED) return;
   if (!session || !hfId) return;
+  recordAttempt(opLabel);
   try {
     if (resolveSnapshot(session, hfId)) return; // resolves — parity, nothing to record
     // Capture BEFORE any await: this call is fire-and-forget (`void recordResolverParity(...)`)
@@ -379,6 +459,7 @@ export function recordAnimationResolverParity(
 ): void {
   if (!STUDIO_SDK_RESOLVER_SHADOW_ENABLED) return;
   if (!session || !animationId) return;
+  recordAttempt(opLabel);
   try {
     const elements = session.getElements();
     const resolves = elements.some((el) => el.animationIds.includes(animationId));
