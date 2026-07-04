@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication complexity
 /**
  * probeStage — browser probe + recompile + media reconciliation.
  *
@@ -38,6 +39,7 @@ import {
   getCompositionDuration,
   initializeSession,
   isTransientBrowserError,
+  probeBeginFrameLiveness,
 } from "@hyperframes/engine";
 import { fpsToNumber } from "@hyperframes/core";
 import type { CompiledComposition } from "../../htmlCompiler.js";
@@ -95,6 +97,14 @@ export interface ProbeStageResult {
   totalFrames: number;
   /** Wall-clock ms for the entire probe phase (near-zero when `needsBrowser` was false). */
   browserProbeMs: number;
+  /**
+   * True when the BeginFrame liveness probe timed out on this host (SwiftShader
+   * stalls the first BeginFrame indefinitely for heavy-layer compositions —
+   * style-N caption comps). The probe session has already been relaunched in
+   * screenshot mode; the sequencer must flip its `captureForceScreenshot`
+   * local so downstream capture stages follow.
+   */
+  beginFrameStalled: boolean;
 }
 
 export function hasScriptedAudioVolumeAutomation(html: string, audioCount: number): boolean {
@@ -147,6 +157,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
 
   let fileServer: FileServerHandle | null = null;
   let probeSession: CaptureSession | null = null;
+  let beginFrameStalled = false;
   let lastBrowserConsole: string[] = [];
 
   const probeStart = Date.now();
@@ -258,6 +269,65 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
     probeSession = session;
     lastBrowserConsole = session.browserConsoleBuffer;
 
+    // BeginFrame liveness probe. On SwiftShader, heavy-layer compositions
+    // (multi-group nested opacity caption animations — style-N prod comps)
+    // stall the FIRST BeginFrame indefinitely (tested to 30 min). The
+    // auto-worker calibration catches this via its capped protocol timeout,
+    // but renders with explicit `--workers N` skip calibration and would
+    // hang for the full protocol timeout. One bounded BeginFrame here gives
+    // ground truth for every render that probes a browser: on stall,
+    // relaunch the probe session in screenshot mode and tell the sequencer
+    // (via `beginFrameStalled`) to route the whole render through
+    // screenshot capture — the path the baseline already uses for these
+    // comps. Healthy comps pay one extra composited frame (<1s on GPU, a
+    // few seconds on SwiftShader).
+    if (probeSession.launchCaptureMode === "beginframe") {
+      const probeTimeoutMs =
+        Number(process.env.PRODUCER_BEGINFRAME_PROBE_TIMEOUT_MS) > 0
+          ? Number(process.env.PRODUCER_BEGINFRAME_PROBE_TIMEOUT_MS)
+          : 30_000;
+      const livenessStart = Date.now();
+      // Tick inside the post-warmup cushion: warmup < probe < first capture
+      // keeps the session's BeginFrame frameTimeTicks monotonic.
+      const probeTick = Math.max(
+        0,
+        probeSession.beginFrameTimeTicks - 5 * probeSession.beginFrameIntervalMs,
+      );
+      const alive = await probeBeginFrameLiveness(
+        probeSession.page,
+        probeTimeoutMs,
+        probeTick,
+        probeSession.beginFrameIntervalMs,
+      );
+      assertNotAborted();
+      if (alive) {
+        log.info("BeginFrame liveness probe passed", {
+          probeMs: Date.now() - livenessStart,
+        });
+      } else {
+        beginFrameStalled = true;
+        log.warn(
+          "[Render] BeginFrame liveness probe timed out — this composition stalls " +
+            "BeginFrame on this host (SwiftShader heavy-layer pattern). Relaunching " +
+            "the probe browser in screenshot capture mode; the render will use " +
+            "screenshot capture throughout.",
+          { probeTimeoutMs },
+        );
+        lastBrowserConsole = probeSession.browserConsoleBuffer;
+        await closeCaptureSession(probeSession).catch(() => {});
+        probeSession = await createCaptureSession(
+          fileServer.url,
+          join(workDir, "probe-screenshot"),
+          captureOpts,
+          null,
+          { ...probeCfg, forceScreenshot: true },
+        );
+        await initializeSession(probeSession);
+        assertNotAborted();
+        lastBrowserConsole = probeSession.browserConsoleBuffer;
+      }
+    }
+
     // Discover root composition duration
     if (composition.duration <= 0) {
       log.info("Discovering composition duration...");
@@ -315,6 +385,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
         }
 
         if (el.tagName === "video") {
+          // fallow-ignore-next-line code-duplication
           if (existingVideoIds.has(el.id)) {
             // Reconcile to browser/runtime media metadata (runtime src can differ from static HTML).
             const existing = composition.videos.find((v) => v.id === el.id);
@@ -361,6 +432,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
             existingVideoIds.add(el.id);
           }
         } else if (el.tagName === "audio") {
+          // fallow-ignore-next-line code-duplication
           if (existingAudioIds.has(el.id)) {
             const existing = composition.audios.find((a) => a.id === el.id);
             if (existing) {
@@ -535,5 +607,6 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
     duration,
     totalFrames,
     browserProbeMs,
+    beginFrameStalled,
   };
 }

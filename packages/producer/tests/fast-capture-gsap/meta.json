@@ -1,0 +1,13 @@
+{
+  "name": "fast-capture-gsap",
+  "description": "Regression guard for the experimental fast-capture (drawElementImage) path. Renders an opaque GSAP transform animation with --experimental-fast-capture; the golden is drawElement output, so this catches regressions in the canvas-injection / drawElement capture path on the Linux/Docker CI platform.",
+  "tags": ["regression", "fast-capture"],
+  "minPsnr": 30,
+  "maxFrameFailures": 0,
+  "minAudioCorrelation": 0,
+  "maxAudioLagWindows": 1,
+  "renderConfig": {
+    "fps": 30,
+    "experimentalFastCapture": true
+  }
+}

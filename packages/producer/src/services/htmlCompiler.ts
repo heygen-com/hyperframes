@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication complexity
 /**
  * HTML Compiler for Producer
  *
@@ -67,6 +68,10 @@ export interface CompiledComposition {
   staticDuration: number;
   renderModeHints: RenderModeHints;
   hasShaderTransitions: boolean;
+  /** Author HTML/CSS/scripts use a CSS 3D rendering context (pre-CDN-inline scan). */
+  usesThreeDTransforms: boolean;
+  /** Author HTML/CSS use mix-blend-mode (pre-CDN-inline scan). */
+  usesMixBlendMode: boolean;
 }
 
 /** Adapts linkedom's `parseHTML` to the `checkSubCompositionUsability` contract. */
@@ -271,6 +276,35 @@ export function detectRenderModeHints(html: string): RenderModeHints {
     recommendScreenshot: reasons.length > 0,
     reasons,
   };
+}
+
+/**
+ * 3D rendering-context signals. drawElementImage paints elements inside a
+ * CSS 3D rendering context incorrectly: backface-visibility:hidden is
+ * ignored (mid-flip elements show their mirrored backface), sibling content
+ * of the 3D context can drop out of the capture, and the context's
+ * background is lost. Observed on real-world gen_os comps (flip-card and
+ * rotationX scene-entrance patterns) on macOS hardware GPU — this is a
+ * drawElementImage limitation, not a SwiftShader artifact.
+ *
+ * Only genuine 3D-context signals are matched: `perspective` (property or
+ * transform function), `transform-style: preserve-3d`, `backface-visibility`,
+ * `matrix3d(` / `rotate3d(`, and GSAP's `transformPerspective`. Flat
+ * rotationX/Y tweens without a perspective context render as 2D and are
+ * deliberately NOT matched, nor is the ubiquitous `translateZ(0)` promotion
+ * hack.
+ */
+const THREE_D_CONTEXT_PATTERN =
+  /transform-style\s*:\s*preserve-3d|backface-visibility\s*:|perspective\s*:\s*[0-9]|perspective\s*\(|matrix3d\s*\(|rotate3d\s*\(|\btransformPerspective\b/i;
+
+export function detectThreeDTransformUsage(html: string): boolean {
+  return THREE_D_CONTEXT_PATTERN.test(html);
+}
+
+const MIX_BLEND_MODE_PATTERN = /mix-blend-mode\s*:/i;
+
+function detectMixBlendModeUsage(html: string): boolean {
+  return MIX_BLEND_MODE_PATTERN.test(html);
 }
 
 const SHADER_TRANSITION_USAGE_PATTERN =
@@ -1176,6 +1210,47 @@ export async function localizeRemoteImageSources(
   );
 }
 
+// Match a remote url() inside a `background` / `background-image` CSS declaration
+// (style blocks or inline style attrs). `[^;}"']*?` lets position/color tokens
+// precede the url() in the shorthand while stopping at the declaration boundary.
+const REMOTE_BG_URL_RE =
+  /background(?:-image)?\s*:\s*[^;}"']*?url\(\s*["']?(https?:\/\/[^"')]+)["']?\s*\)/gi;
+
+/**
+ * Download remote CSS `background-image: url(https://...)` references and rewrite
+ * them to local same-origin paths.
+ *
+ * Why: `drawElementImage` (fast capture) OMITS cross-origin content, so a remote
+ * background image renders BLACK on the drawElement path while the screenshot
+ * baseline captures it (origin-agnostic) — a whole-region mismatch (e.g. 10f79c0b
+ * picsum.photos backgrounds, 9.3 dB). `<img>`/`<video>`/`@font-face` are localized
+ * by their own passes; this closes the background-image gap so the fast path sees
+ * the same pixels as the baseline.
+ *
+ * @internal exported for unit testing only
+ */
+export async function localizeRemoteBackgroundImages(
+  html: string,
+  downloadDir: string,
+): Promise<{ html: string; remoteMediaAssets: Map<string, string> }> {
+  const urlSet = new Set<string>();
+  const re = new RegExp(REMOTE_BG_URL_RE.source, REMOTE_BG_URL_RE.flags);
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    if (m[1] && !isGoogleFontsUrl(m[1])) urlSet.add(m[1]);
+  }
+  return downloadAndRewriteUrls(
+    urlSet,
+    html,
+    join(downloadDir, REMOTE_MEDIA_SUBDIR),
+    "Remote background-image download failed for",
+    "Localized remote background-image(s)",
+    // Quoted url('..')/url("..") are rewritten by downloadAndRewriteUrls' default
+    // replaceAll; this handles the unquoted url(https://..) form.
+    (h, url, rel) => h.replaceAll(`url(${url})`, `url(${rel})`),
+  );
+}
+
 // Match url("https://...") or url('https://...') inside @font-face blocks.
 // We scan the full HTML (which includes <style> blocks) — matching against
 // @font-face context precisely would require a CSS parser; instead we match
@@ -1548,6 +1623,11 @@ export async function compileForRender(
   );
   const renderModeHints = detectRenderModeHints(sanitizedHtml);
   const hasShaderTransitions = detectShaderTransitionUsage(sanitizedHtml);
+  // Detected BEFORE inlineExternalScripts: GSAP's own source contains
+  // `transformPerspective`, so scanning post-inline HTML would flag every
+  // composition that loads GSAP from a CDN.
+  const usesThreeDTransforms = detectThreeDTransformUsage(sanitizedHtml);
+  const usesMixBlendMode = detectMixBlendModeUsage(sanitizedHtml);
 
   const normalizedFontHtml = normalizeSystemFontPrimaryFamilies(
     injectTextRenderingRule(
@@ -1602,12 +1682,18 @@ export async function compileForRender(
   const { html: htmlWithLocalImages, remoteMediaAssets: remoteImageAssets } =
     await localizeRemoteImageSources(htmlWithLocalMedia, downloadDir);
 
+  // Download remote CSS background-image url() references. drawElementImage omits
+  // cross-origin content, so remote backgrounds render black on the fast path;
+  // localising them to same-origin closes that gap.
+  const { html: htmlWithLocalBg, remoteMediaAssets: remoteBgAssets } =
+    await localizeRemoteBackgroundImages(htmlWithLocalImages, downloadDir);
+
   // Download remote @font-face src URLs and rewrite to local paths.
   // Remote font URLs fail with a CORS rejection at render time (S3 does not
   // allow http://localhost:PORT as origin), causing Chrome to silently fall
   // back to the next font in the stack.
   const { html: htmlWithLocalizedFonts, remoteMediaAssets: remoteFontAssets } =
-    await localizeRemoteFontFaces(htmlWithLocalImages, downloadDir);
+    await localizeRemoteFontFaces(htmlWithLocalBg, downloadDir);
 
   const gifSourceAssets = new Map<string, string>(remoteImageAssets);
   const {
@@ -1636,6 +1722,9 @@ export async function compileForRender(
     externalAssets.set(relPath, absPath);
   }
   for (const [relPath, absPath] of remoteImageAssets) {
+    externalAssets.set(relPath, absPath);
+  }
+  for (const [relPath, absPath] of remoteBgAssets) {
     externalAssets.set(relPath, absPath);
   }
   for (const [relPath, absPath] of remoteFontAssets) {
@@ -1711,6 +1800,8 @@ export async function compileForRender(
     staticDuration,
     renderModeHints,
     hasShaderTransitions,
+    usesThreeDTransforms,
+    usesMixBlendMode,
   };
 }
 

@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication
 import { describe, expect, it, mock, beforeAll } from "bun:test";
 import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -8,6 +9,7 @@ import {
   compileForRender,
   detectRenderModeHints,
   detectShaderTransitionUsage,
+  detectThreeDTransformUsage,
   discoverAudioVolumeAutomationFromTimeline,
   inlineExternalScripts,
   localizeRemoteMediaSources,
@@ -646,6 +648,50 @@ describe("detectRenderModeHints", () => {
     await expect(
       compileForRender(projectDir, join(projectDir, "index.html"), projectDir),
     ).rejects.toThrow(/compositions\/child\.html/);
+  });
+});
+
+describe("detectThreeDTransformUsage", () => {
+  it("detects CSS perspective property", () => {
+    expect(detectThreeDTransformUsage("<style>.s { perspective: 1000px; }</style>")).toBe(true);
+  });
+
+  it("detects transform-style preserve-3d", () => {
+    expect(detectThreeDTransformUsage("<style>.c { transform-style: preserve-3d; }</style>")).toBe(
+      true,
+    );
+  });
+
+  it("detects backface-visibility", () => {
+    expect(detectThreeDTransformUsage("<style>.f { backface-visibility: hidden; }</style>")).toBe(
+      true,
+    );
+  });
+
+  it("detects perspective() transform function", () => {
+    expect(detectThreeDTransformUsage('<div style="transform: perspective(500px)"></div>')).toBe(
+      true,
+    );
+  });
+
+  it("detects GSAP transformPerspective", () => {
+    expect(
+      detectThreeDTransformUsage("<script>gsap.to(el, { transformPerspective: 800 })</script>"),
+    ).toBe(true);
+  });
+
+  it("does not match flat GSAP rotationX without a perspective context", () => {
+    expect(detectThreeDTransformUsage("<script>gsap.to(el, { rotationX: 180 })</script>")).toBe(
+      false,
+    );
+  });
+
+  it("does not match translateZ(0) promotion hack", () => {
+    expect(detectThreeDTransformUsage('<div style="transform: translateZ(0)"></div>')).toBe(false);
+  });
+
+  it("does not match perspective: none", () => {
+    expect(detectThreeDTransformUsage("<style>.s { perspective: none; }</style>")).toBe(false);
   });
 });
 

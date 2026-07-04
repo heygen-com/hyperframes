@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication complexity
 /**
  * captureStreamingStage — single-machine fused capture + encode path.
  *
@@ -48,6 +49,7 @@ import {
   type EngineConfig,
   type StreamingEncoder,
   captureFrameToBuffer,
+  captureFrameToBufferPipelined,
   closeCaptureSession,
   createCaptureSession,
   createFrameReorderBuffer,
@@ -133,6 +135,52 @@ export type CaptureStreamingStageResult =
       /** Spawn failed (non-abort) — sequencer should fall back to the disk path. */
       success: false;
     };
+
+async function runWorkerEncodePipelineLoop(
+  session: CaptureSession,
+  totalFrames: number,
+  job: CaptureStreamingStageInput["job"],
+  currentEncoder: StreamingEncoder,
+  reorderBuffer: ReturnType<typeof createFrameReorderBuffer>,
+  assertNotAborted: () => void,
+  onProgress: CaptureStreamingStageInput["onProgress"],
+): Promise<void> {
+  let prev: { idx: number; encodeResult: Promise<Buffer> } | null = null;
+
+  const drainPrev = async (): Promise<void> => {
+    if (!prev) return;
+    // Observe aborts while parked here (the encode wait + ffmpeg write are the
+    // longest stretch of the loop); without this an abort isn't seen until the
+    // next produce iteration.
+    assertNotAborted();
+    const buf = await prev.encodeResult;
+    await reorderBuffer.waitForFrame(prev.idx);
+    ensureFrameWritten(await currentEncoder.writeFrame(buf), prev.idx, currentEncoder);
+    reorderBuffer.advanceTo(prev.idx + 1);
+    job.framesRendered = prev.idx + 1;
+    updateJobStatus(
+      job,
+      "rendering",
+      `Streaming frame ${prev.idx + 1}/${totalFrames}`,
+      Math.round(25 + ((prev.idx + 1) / totalFrames) * 55),
+      onProgress,
+    );
+  };
+
+  // On abort/throw the just-produced frame's encode is still in flight and never
+  // awaited (it isn't `prev` yet); cleanupDrawElementWorkerEncode rejects it on
+  // close. produceDrawElementFrame attaches a no-op catch to every encodeResult
+  // at creation so that orphaned rejection is never an unhandled rejection — so
+  // the loop needs no special guard here.
+  for (let i = 0; i < totalFrames; i++) {
+    assertNotAborted();
+    const time = (i * job.config.fps.den) / job.config.fps.num;
+    const { encodeResult } = await captureFrameToBufferPipelined(session, i, time);
+    await drainPrev();
+    prev = { idx: i, encodeResult };
+  }
+  await drainPrev();
+}
 
 export async function runCaptureStreamingStage(
   input: CaptureStreamingStageInput,
@@ -275,29 +323,43 @@ export async function runCaptureStreamingStage(
         assertNotAborted();
         lastBrowserConsole = session.browserConsoleBuffer;
 
-        for (let i = 0; i < totalFrames; i++) {
-          assertNotAborted();
-          const time = (i * job.config.fps.den) / job.config.fps.num;
-          const { buffer } = await captureFrameToBuffer(session, i, time);
-          await reorderBuffer.waitForFrame(i);
-          ensureFrameWritten(await currentEncoder.writeFrame(buffer), i, currentEncoder);
-          reorderBuffer.advanceTo(i + 1);
-          job.framesRendered = i + 1;
-
-          const frameProgress = (i + 1) / totalFrames;
-          const progress = 25 + frameProgress * 55;
-
-          // Keep status cadence identical to disk sequential capture; the
-          // capture error wrapper below must remain separate from finally so it
-          // can throw with the browser console before encoder cleanup runs.
-          // fallow-ignore-next-line code-duplication
-          updateJobStatus(
+        if (session.workerEncodeEnabled) {
+          // Worker-encode pipeline: depth-2. Frame N's in-page Worker encodes
+          // while frame N+1's main thread does seek+paint+drawElement+kick.
+          await runWorkerEncodePipelineLoop(
+            session,
+            totalFrames,
             job,
-            "rendering",
-            `Streaming frame ${i + 1}/${totalFrames}`,
-            Math.round(progress),
+            currentEncoder,
+            reorderBuffer,
+            assertNotAborted,
             onProgress,
           );
+        } else {
+          for (let i = 0; i < totalFrames; i++) {
+            assertNotAborted();
+            const time = (i * job.config.fps.den) / job.config.fps.num;
+            const { buffer } = await captureFrameToBuffer(session, i, time);
+            await reorderBuffer.waitForFrame(i);
+            ensureFrameWritten(await currentEncoder.writeFrame(buffer), i, currentEncoder);
+            reorderBuffer.advanceTo(i + 1);
+            job.framesRendered = i + 1;
+
+            const frameProgress = (i + 1) / totalFrames;
+            const progress = 25 + frameProgress * 55;
+
+            // Keep status cadence identical to disk sequential capture; the
+            // capture error wrapper below must remain separate from finally so it
+            // can throw with the browser console before encoder cleanup runs.
+            // fallow-ignore-next-line code-duplication
+            updateJobStatus(
+              job,
+              "rendering",
+              `Streaming frame ${i + 1}/${totalFrames}`,
+              Math.round(progress),
+              onProgress,
+            );
+          }
         }
         // Capture the session's static-dedup perf before close (counters valid
         // only while the session is live).

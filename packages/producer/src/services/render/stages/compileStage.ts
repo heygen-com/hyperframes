@@ -137,8 +137,63 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
   // composition's `renderModeHints.recommendScreenshot`. The single
   // write to `cfg.forceScreenshot` happens at the end of this block so
   // the contract is enforceable by inspection.
-  const callerForced = cfg.forceScreenshot || needsAlpha;
-  const { forceScreenshot } = applyRenderModeHints(callerForced, compiled, log);
+  // Alpha output forces screenshot because BeginFrame doesn't preserve alpha —
+  // but drawElement fast capture self-manages alpha (screenshot-launched
+  // browser + png drawElementImage, pixel-perfect; see createCaptureSession).
+  // Folding needsAlpha here would make the engine's forceScreenshot guard
+  // disable fast capture for every transparent render, so skip the fold when
+  // fast capture is on. Render-mode hints (e.g. raw requestAnimationFrame)
+  // still force screenshot below — those are correctness routings that
+  // drawElement must honor.
+  // The fast-capture video gate was REMOVED here once Chrome 151 fixed crbug
+  // 521861819. It keyed on compiled.videos.length > 0 as a proxy for the
+  // word-by-word caption opacity pattern (drawElementImage dropped the promoted
+  // opacity layers mid-fade, ~12 dB). On the 151 pinned floor, video + nested-fade
+  // comps render correctly on the drawElement path (verified PSNR=inf vs baseline);
+  // see docs/fast-capture-limitations.md Lim 2.
+  // Fast-capture 3D-transform gate, same shape as the video gate above.
+  // drawElementImage paints CSS 3D rendering contexts incorrectly:
+  // backface-visibility:hidden is ignored (mid-flip elements capture their
+  // mirrored backface), siblings of the 3D context can drop out, and the
+  // context's background is lost. Reproduced on macOS hardware GPU with
+  // real-world flip-card / rotationX-entrance comps (full-stream PSNR
+  // 27–46 dB avg, 17 dB min vs baseline). Routes to the platform's baseline
+  // capture; HF_FAST_CAPTURE_3D=true bypasses for R&D.
+  // Detection runs inside the compiler on PRE-CDN-inline HTML — GSAP's own
+  // source contains `transformPerspective`, so scanning compiled.html here
+  // would flag every composition that loads GSAP.
+  if (
+    cfg.useDrawElement &&
+    process.env.HF_FAST_CAPTURE_3D !== "true" &&
+    compiled.usesThreeDTransforms
+  ) {
+    cfg.useDrawElement = false;
+    log.info(
+      "[Render] Fast capture: composition uses a CSS 3D rendering context " +
+        "(perspective / preserve-3d / backface-visibility) — disabling drawElementImage " +
+        "for this render. Capture uses the platform's baseline route.",
+    );
+  }
+  // Fast-capture mix-blend-mode gate, same shape as the 3D gate above.
+  // drawElementImage captures each element's paint records before the
+  // compositor resolves blend equations — blended layers render as if
+  // mix-blend-mode were absent, producing saturated/damaged composites
+  // (measured: 42 dB min vs 53 dB floor on real blend+filter comps, macOS GPU).
+  // HF_FAST_CAPTURE_BLEND=true bypasses for R&D.
+  if (
+    cfg.useDrawElement &&
+    process.env.HF_FAST_CAPTURE_BLEND !== "true" &&
+    compiled.usesMixBlendMode
+  ) {
+    cfg.useDrawElement = false;
+    log.info(
+      "[Render] Fast capture: composition uses mix-blend-mode — disabling drawElementImage " +
+        "for this render. Capture uses the platform's baseline route.",
+    );
+  }
+  const callerForced = cfg.forceScreenshot || (needsAlpha && !cfg.useDrawElement);
+  const { forceScreenshot: hintForced } = applyRenderModeHints(callerForced, compiled, log);
+  let forceScreenshot = hintForced;
   cfg.forceScreenshot = forceScreenshot;
   writeCompiledArtifacts(compiled, workDir, Boolean(job.config.debug));
 
