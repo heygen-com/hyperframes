@@ -21,6 +21,7 @@ async function loadPuppeteerBrowsers(): Promise<PuppeteerBrowsers> {
 }
 
 const CHROME_VERSION = "131.0.6778.85";
+const CACHE_ROOT_DIR = join(homedir(), ".cache", "hyperframes");
 const CACHE_DIR = join(homedir(), ".cache", "hyperframes", "chrome");
 // Puppeteer's managed cache — where `@puppeteer/browsers install
 // chrome-headless-shell` (and `puppeteer install`) drop binaries. The engine's
@@ -39,8 +40,8 @@ const PUPPETEER_CACHE_DIR = join(homedir(), ".cache", "puppeteer", "chrome-headl
 //
 // mkdirSync is atomic (EEXIST if another process already holds it), so it
 // doubles as a zero-dependency cross-process mutex — no lockfile library needed.
-const INSTALL_LOCK_DIR = join(CACHE_DIR, ".install.lock");
-const INSTALL_RECLAIM_LOCK_DIR = join(CACHE_DIR, ".install.reclaim.lock");
+const INSTALL_LOCK_DIR = join(CACHE_ROOT_DIR, ".chrome.install.lock");
+const INSTALL_RECLAIM_LOCK_DIR = join(CACHE_ROOT_DIR, ".chrome.install.reclaim.lock");
 const INSTALL_LOCK_TIMEOUT_MS = 120_000; // generous: a real download+extract can take a while
 const INSTALL_LOCK_POLL_MS = 200;
 
@@ -88,7 +89,9 @@ export async function withInstallLock<T>(
   pollMs = INSTALL_LOCK_POLL_MS,
 ): Promise<T> {
   // recursive:false below needs the parent to already exist (unlike `mkdir -p`).
-  if (!existsSync(CACHE_DIR)) mkdirSync(CACHE_DIR, { recursive: true });
+  // Keep lock dirs outside CACHE_DIR so force-clearing the Chrome cache cannot
+  // delete another installer's in-flight lock.
+  if (!existsSync(CACHE_ROOT_DIR)) mkdirSync(CACHE_ROOT_DIR, { recursive: true });
   let deadline = Date.now() + timeoutMs;
   for (;;) {
     if (existsSync(INSTALL_RECLAIM_LOCK_DIR)) {
@@ -486,15 +489,17 @@ export async function ensureBrowser(options?: EnsureBrowserOptions): Promise<Bro
       warnSystemFallbackOnce(fromSystem.executablePath);
       return fromSystem;
     }
-  } else {
-    // `--force` means "always get a fresh managed download" — purging the
-    // whole HF-managed cache up front (reusing clearBrowser's already-tested
-    // rmSync) means there's nothing stale left for a cache/system shortcut to
-    // wrongly short-circuit on below.
-    clearBrowser();
   }
 
   return withInstallLock(async () => {
+    if (options?.force) {
+      // `--force` means "always get a fresh managed download" — purging the
+      // whole HF-managed cache after acquiring the install lock keeps two
+      // concurrent force retries from deleting each other's in-flight lock or
+      // partially extracted install.
+      clearBrowser();
+    }
+
     // Re-check after acquiring the lock: a concurrent invocation may have
     // finished installing while we were waiting, in which case reuse its
     // result instead of downloading and extracting a second time. Skipped

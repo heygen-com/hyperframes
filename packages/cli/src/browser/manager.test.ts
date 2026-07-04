@@ -30,7 +30,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // `/fake/home/...` literals would fail on Windows because the set lookup
 // would never match the `\\`-joined real paths.
 const FAKE_HOME = join("/", "fake", "home");
+const CACHE_ROOT = join(FAKE_HOME, ".cache", "hyperframes");
 const HF_CACHE = join(FAKE_HOME, ".cache", "hyperframes", "chrome");
+const HF_LOCK = join(CACHE_ROOT, ".chrome.install.lock");
+const HF_RECLAIM_LOCK = join(CACHE_ROOT, ".chrome.install.reclaim.lock");
 const PUPPETEER_CACHE = join(FAKE_HOME, ".cache", "puppeteer", "chrome-headless-shell");
 const PUPPETEER_BINARY = join(
   PUPPETEER_CACHE,
@@ -107,6 +110,7 @@ function installPuppeteerBrowsersMock(
     installedInHfCache?: Array<{ browser: string; executablePath: string; path?: string }>;
     installedInHfCacheError?: Error;
     installResult?: { executablePath: string };
+    installImpl?: () => Promise<{ executablePath: string }>;
   } = {},
 ) {
   vi.doMock("@puppeteer/browsers", () => ({
@@ -115,7 +119,11 @@ function installPuppeteerBrowsersMock(
     getInstalledBrowsers: opts.installedInHfCacheError
       ? vi.fn().mockRejectedValue(opts.installedInHfCacheError)
       : vi.fn().mockResolvedValue(opts.installedInHfCache ?? []),
-    install: vi.fn().mockResolvedValue(opts.installResult ?? { executablePath: HF_BINARY }),
+    install: vi
+      .fn()
+      .mockImplementation(
+        opts.installImpl ?? (async () => opts.installResult ?? { executablePath: HF_BINARY }),
+      ),
   }));
 }
 
@@ -221,11 +229,40 @@ describe("findBrowser — cache resolution", () => {
     const result = await ensureBrowser({ force: true });
 
     expect(result).toEqual({ executablePath: downloadedBinary, source: "download" });
-    // clearBrowser() wipes prior contents; withInstallLock then recreates the
-    // empty CACHE_DIR itself (needed as the lockfile's parent), so assert the
-    // purge on what was actually INSIDE it, not the directory's own existence.
+    // clearBrowser() wipes prior contents; withInstallLock uses a sibling lock
+    // outside CACHE_DIR, so assert the purge on what was actually INSIDE it,
+    // not the directory's own existence.
     expect(paths.has(staleInstallDir)).toBe(false);
     expect(paths.has(HF_BINARY)).toBe(false);
+  });
+
+  it("serializes concurrent force downloads so one purge cannot delete another installer's lock", async () => {
+    const downloadedBinary = join(HF_CACHE, "chrome-headless-shell", "force-downloaded");
+    const paths = installFsMocks({ existing: new Set([CACHE_ROOT, HF_CACHE, HF_BINARY]) });
+    let activeInstalls = 0;
+    let maxActiveInstalls = 0;
+    installPuppeteerBrowsersMock({
+      installedInHfCache: [{ browser: "chrome-headless-shell", executablePath: HF_BINARY }],
+      installImpl: async () => {
+        activeInstalls += 1;
+        maxActiveInstalls = Math.max(maxActiveInstalls, activeInstalls);
+        expect(paths.has(HF_LOCK)).toBe(true);
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        activeInstalls -= 1;
+        return { executablePath: downloadedBinary };
+      },
+    });
+
+    const { ensureBrowser } = await import("./manager.js");
+
+    await expect(
+      Promise.all([ensureBrowser({ force: true }), ensureBrowser({ force: true })]),
+    ).resolves.toEqual([
+      { executablePath: downloadedBinary, source: "download" },
+      { executablePath: downloadedBinary, source: "download" },
+    ]);
+    expect(maxActiveInstalls).toBe(1);
+    expect(paths.has(HF_LOCK)).toBe(false);
   });
 
   it("ensureBrowser does not leak the install lock directory after a successful download", async () => {
@@ -236,7 +273,6 @@ describe("findBrowser — cache resolution", () => {
     // same extract target. mkdirSync as an atomic mutex closes that race;
     // this asserts the lock is actually released afterward (a leaked lock
     // would permanently wedge every future render on this machine).
-    const HF_LOCK = join(HF_CACHE, ".install.lock");
     const downloadedBinary = join(HF_CACHE, "chrome-headless-shell", "downloaded");
     // Cache dir exists but is empty (no manifest entries) — distinct from the
     // ENOTDIR "cache unreadable" case, which falls back to system instead.
@@ -261,8 +297,7 @@ describe("findBrowser — cache resolution", () => {
     // withInstallLock directly with tiny real timeouts (it takes an
     // injectable timeoutMs/pollMs for exactly this) rather than mocking
     // Date.now()/setTimeout through the full ensureBrowser call graph.
-    const HF_LOCK = join(HF_CACHE, ".install.lock");
-    const paths = installFsMocks({ existing: new Set([HF_CACHE, HF_LOCK]) });
+    const paths = installFsMocks({ existing: new Set([CACHE_ROOT, HF_LOCK]) });
 
     const { withInstallLock } = await import("./manager.js");
     const result = await withInstallLock(async () => "done", 10, 5);
@@ -276,9 +311,7 @@ describe("findBrowser — cache resolution", () => {
     // the stale-lock deadline together, waiter A can reclaim the stale lock and
     // acquire a fresh one. Waiter B's old deadline is still expired, but it must
     // not delete A's fresh lock.
-    const HF_LOCK = join(HF_CACHE, ".install.lock");
-    const RECLAIM_LOCK = join(HF_CACHE, ".install.reclaim.lock");
-    const paths = installFsMocks({ existing: new Set([HF_CACHE, HF_LOCK]) });
+    const paths = installFsMocks({ existing: new Set([CACHE_ROOT, HF_LOCK]) });
 
     const { withInstallLock } = await import("./manager.js");
     const first = withInstallLock(
@@ -293,7 +326,7 @@ describe("findBrowser — cache resolution", () => {
 
     await expect(Promise.all([first, second])).resolves.toEqual(["first", "second"]);
     expect(paths.has(HF_LOCK)).toBe(false);
-    expect(paths.has(RECLAIM_LOCK)).toBe(false);
+    expect(paths.has(HF_RECLAIM_LOCK)).toBe(false);
   });
 
   it("warns and falls through when the hyperframes cache cannot be read", async () => {
