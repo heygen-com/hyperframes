@@ -107,6 +107,17 @@ function run() {
     rmSync(tmpDir, { recursive: true, force: true });
   }
 
+  // Stream copy can only cut on keyframes; on sparse-keyframe footage the
+  // snap can silently swallow the whole cut. Compare and warn.
+  if (args.copy) {
+    const outSeconds = probeDuration(outPath);
+    if (Math.abs(outSeconds - keptSeconds) > 1) {
+      console.error(
+        `warning: --copy keyframe snapping produced ${round3(outSeconds)}s instead of ${round3(keptSeconds)}s kept; drop --copy for frame-accurate cuts`,
+      );
+    }
+  }
+
   if (args.json) {
     console.log(
       JSON.stringify({

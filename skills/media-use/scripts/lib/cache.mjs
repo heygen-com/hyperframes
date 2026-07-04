@@ -29,8 +29,12 @@ function markComplete(entryDir) {
   writeFileSync(join(entryDir, COMPLETE_SENTINEL), "", "utf8");
 }
 
+// The manifest helpers append their own ".media" to the dir they get, so the
+// global manifest must be addressed by HOME, not by globalMediaDir() — passing
+// the latter nested it at ~/.media/.media/manifest.jsonl, invisible to the
+// Studio /api/assets/global route (which reads the documented flat path).
 function readGlobalManifest() {
-  return readManifest(globalMediaDir());
+  return readManifest(homedir());
 }
 
 function validateCacheHit(match) {
@@ -74,7 +78,7 @@ export function cachePut(filePath, record) {
     reusable: true,
     cached_path: dest,
   };
-  appendRecord(globalMediaDir(), globalRecord);
+  appendRecord(homedir(), globalRecord);
   return { sha, cached_path: dest };
 }
 
