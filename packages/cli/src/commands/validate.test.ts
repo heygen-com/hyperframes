@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   extractCompositionErrorsFromLint,
   raceMediaReady,
   shouldIgnoreRequestFailure,
+  waitForPreferredSeekTarget,
 } from "./validate.js";
 import type { ProjectLintResult } from "../utils/lintProject.js";
 
@@ -86,6 +87,28 @@ describe("shouldIgnoreRequestFailure", () => {
     expect(
       shouldIgnoreRequestFailure("http://127.0.0.1:3000/assets/sfx.wav", "net::ERR_FAILED"),
     ).toBe(false);
+  });
+});
+
+describe("waitForPreferredSeekTarget", () => {
+  it("waits for the runtime player/bridge target before falling back to raw timelines", async () => {
+    const page = {
+      waitForFunction: vi.fn(async () => undefined),
+    };
+
+    await waitForPreferredSeekTarget(page, 123);
+
+    expect(page.waitForFunction).toHaveBeenCalledWith(expect.any(Function), { timeout: 123 });
+  });
+
+  it("does not fail validation when only the legacy raw timeline fallback is available", async () => {
+    const page = {
+      waitForFunction: vi.fn(async () => {
+        throw new Error("waiting failed: timeout");
+      }),
+    };
+
+    await expect(waitForPreferredSeekTarget(page, 1)).resolves.toBeUndefined();
   });
 });
 
