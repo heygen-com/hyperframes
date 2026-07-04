@@ -10,13 +10,18 @@
 // content-end instead of fading gracefully through the wrapper's extended
 // fade-out tween. Pad the frame's own file to match so both durations agree.
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 export function padFrameInternalDuration(hyperframesDir, frameSrc, frameId, newDuration) {
   const framePath = resolve(hyperframesDir, frameSrc);
-  if (!existsSync(framePath)) return;
-  const html = readFileSync(framePath, "utf8");
+  let html;
+  try {
+    html = readFileSync(framePath, "utf8");
+  } catch (err) {
+    if (err?.code === "ENOENT") return;
+    throw err;
+  }
   const tagRe = /<[a-z][\w:-]*\s[^<>]*?>/gi;
   let m;
   while ((m = tagRe.exec(html)) !== null) {
