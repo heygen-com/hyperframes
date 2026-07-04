@@ -68,6 +68,40 @@ test("project manifest hit skips providers", () => {
   cleanup();
 });
 
+test("entity hit matches across icon/image (figma-imported brand marks)", () => {
+  setup();
+  const record = makeRecord({
+    id: "image_001",
+    type: "image",
+    path: ".media/images/image_001.svg",
+    description: "Acme logo",
+    entity: "Acme logo",
+    provenance: { source: "figma", fileKey: "KEY", nodeId: "1:2", version: "1", format: "svg" },
+  });
+  delete record.duration;
+  appendRecord(tmp, record);
+  const filePath = join(tmp, record.path);
+  mkdirSync(join(filePath, ".."), { recursive: true });
+  writeFileSync(filePath, "<svg/>");
+
+  const out = runResolve([
+    "--type",
+    "icon",
+    "--intent",
+    "acme brand mark",
+    "--entity",
+    "Acme logo",
+    "--project",
+    tmp,
+    "--json",
+  ]);
+  const parsed = JSON.parse(out.trim());
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.id, "image_001");
+  assert.equal(parsed._source, "cached");
+  cleanup();
+});
+
 // --- global cache hit ---
 
 test("global cache hit copies to project and registers", () => {

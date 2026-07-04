@@ -49,10 +49,10 @@ Parse the user's figma link with `parseFigmaRef` (URL, `fileKey:nodeId`, bare `f
 ## Assets (Phase 1 — CLI)
 
 ```bash
-hyperframes figma asset '<url-or-fileKey:nodeId>' [--format svg|png|jpg|pdf] [--scale 2]
+hyperframes figma asset '<url-or-fileKey:nodeId>' [--format svg|png|jpg|pdf] [--scale 2] [--description "..."] [--entity "..."]
 ```
 
-Renders over REST, sanitizes SVG, freezes under `.media/images/`, appends the manifest with provenance, prints an `<img>` snippet. Idempotent per `fileKey:nodeId:format:scale:version`. Prefer SVG for vectors/logos (scalable, animatable), PNG `--scale 2` for raster fidelity.
+Renders over REST, sanitizes SVG, freezes under `.media/images/`, appends the manifest with provenance, regenerates `.media/index.md` (the shared media-use inventory), prints an `<img>` snippet. Idempotent per `fileKey:nodeId:format:scale:version`. Prefer SVG for vectors/logos (scalable, animatable), PNG `--scale 2` for raster fidelity. **Always pass `--description "<what it is>"`** (it becomes the index row + `<img alt>`); add `--entity "<name>"` for named brand marks so media-use `resolve --entity` finds them later (entity hits match across image/icon).
 
 ## Tokens (Phase 2 — CLI)
 

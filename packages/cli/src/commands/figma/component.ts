@@ -67,12 +67,14 @@ export async function runComponentImport(
   // The search key must match the EMITTED (html-escaped) node id, and
   // replaceAll covers the same node appearing twice in the tree.
   let html = mapped.html;
+  const frozenAssets: string[] = [];
   for (const req of mapped.rasterize) {
     const asset = await runAssetImport(
       `${ref.fileKey}:${req.nodeId}`,
-      { format: "svg" },
+      { format: "svg", description: req.name },
       { projectDir: deps.projectDir, client: deps.client, download: deps.download },
     );
+    frozenAssets.push(asset.record.path);
     // src is a URL — always forward slashes, even when relative() yields
     // windows separators.
     const srcRel = relative(componentDir, join(deps.projectDir, asset.record.path)).replaceAll(
@@ -99,9 +101,11 @@ export async function runComponentImport(
         target: `compositions/components/${name}/${name}.html`,
         type: "hyperframes:snippet",
       },
-      ...mapped.rasterize.map((r) => ({
-        path: `${r.slug}.svg`,
-        target: `.media/images/${r.slug}.svg`,
+      // The paths the frozen files ACTUALLY landed at (image_NNN.svg), which
+      // is also what the emitted HTML references — not the slug names.
+      ...frozenAssets.map((p) => ({
+        path: p.split("/").pop() ?? p,
+        target: p.replaceAll("\\", "/"),
         type: "hyperframes:asset",
       })),
     ],
