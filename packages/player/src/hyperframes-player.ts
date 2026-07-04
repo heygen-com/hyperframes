@@ -82,6 +82,9 @@ class HyperframesPlayer extends HTMLElement {
   private _currentTime = 0;
   private _duration = 0;
   private _paused = true;
+  /** True while the user is dragging the scrubber — makes seek() play audio at the
+   * playhead (audible scrub) instead of positioning it silently. */
+  private _scrubbing = false;
   private _lastUpdateMs = 0;
   private _volume = 1;
   private _compositionWidth = 1920;
@@ -325,13 +328,20 @@ class HyperframesPlayer extends HTMLElement {
     this._stopParentTickClock();
     this._currentTime = timeInSeconds;
     if (this._media.audioOwner === "parent") {
-      // Pause BEFORE seek: leaving the proxy playing turns the next
-      // `mirrorTime` drift-correction tick into a perpetual seek→play→drift→seek
-      // stutter loop, where ~80ms of audio plays past the (now frozen) timeline,
-      // then mirrorTime yanks `currentTime` back to match it. Symmetric with
-      // `pause()` below.
-      this._media.pauseAll();
-      this._media.seekAll(timeInSeconds);
+      if (this._scrubbing) {
+        // Audible scrub: play the proxy audio at the playhead so the viewer hears
+        // the track as they drag. Each move re-seeks, restarting playback from the
+        // new position. onScrubEnd settles back to silence via a normal seek.
+        this._media.scrubAll(timeInSeconds);
+      } else {
+        // Pause BEFORE seek: leaving the proxy playing turns the next
+        // `mirrorTime` drift-correction tick into a perpetual seek→play→drift→seek
+        // stutter loop, where ~80ms of audio plays past the (now frozen) timeline,
+        // then mirrorTime yanks `currentTime` back to match it. Symmetric with
+        // `pause()` below.
+        this._media.pauseAll();
+        this._media.seekAll(timeInSeconds);
+      }
     }
     this._paused = true;
     this.controlsApi?.updatePlaying(false);
@@ -747,6 +757,15 @@ class HyperframesPlayer extends HTMLElement {
         onPlay: () => this.play(),
         onPause: () => this.pause(),
         onSeek: (f) => this.seek(f * this._duration),
+        onScrubStart: () => {
+          this._scrubbing = true;
+        },
+        onScrubEnd: () => {
+          this._scrubbing = false;
+          // Settle: a normal (silent) seek pauses the proxy audio at the final
+          // scrub position, matching the paused playhead.
+          this.seek(this._currentTime);
+        },
         onSpeedChange: (s) => void (this.playbackRate = s),
         onMuteToggle: () => void (this.muted = !this.muted),
         onVolumeChange: (v) => void (this.volume = v),

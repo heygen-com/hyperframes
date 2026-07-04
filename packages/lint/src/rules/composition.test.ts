@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication
 import { describe, it, expect } from "vitest";
 import { lintHyperframeHtml } from "../hyperframeLinter.js";
 
@@ -604,6 +605,78 @@ describe("composition rules", () => {
         (f) => f.code === "requestanimationframe_in_composition",
       );
       expect(finding).toBeUndefined();
+    });
+  });
+
+  describe("missing_data_no_timeline", () => {
+    it("warns when root has no timeline registration and no data-no-timeline", async () => {
+      const html = `<!DOCTYPE html><html><body>
+  <div data-composition-id="c1" data-width="320" data-height="180" data-duration="5"></div>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "missing_data_no_timeline");
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("warning");
+    });
+
+    it("does not warn when data-no-timeline is present (boolean form)", async () => {
+      const html = `<!DOCTYPE html><html><body>
+  <div data-composition-id="c1" data-no-timeline data-width="320" data-height="180" data-duration="5"></div>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(result.findings.find((f) => f.code === "missing_data_no_timeline")).toBeUndefined();
+    });
+
+    it("does not warn when a script registers window.__timelines[id]", async () => {
+      const html = `<!DOCTYPE html><html><body>
+  <div data-composition-id="c1" data-width="320" data-height="180" data-duration="5"></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    window.__timelines["c1"] = gsap.timeline({ paused: true });
+  </script>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(result.findings.find((f) => f.code === "missing_data_no_timeline")).toBeUndefined();
+    });
+
+    it("does not warn when there is no root composition-id", async () => {
+      const html = `<!DOCTYPE html><html><body><p>hello</p></body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(result.findings.find((f) => f.code === "missing_data_no_timeline")).toBeUndefined();
+    });
+
+    it("does not false-positive when data-no-timeline appears only inside an attribute value", async () => {
+      // Regression: /\bdata-no-timeline\b/ matched substrings inside values
+      const html = `<!DOCTYPE html><html><body>
+  <div data-composition-id="c1" title="add data-no-timeline here" data-width="320" data-height="180" data-duration="5"></div>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(result.findings.find((f) => f.code === "missing_data_no_timeline")).toBeDefined();
+    });
+
+    it("does not suppress when a hyphenated variant like data-no-timeline-start is present", async () => {
+      // Regression: /\bdata-no-timeline\b/ matched data-no-timeline-start because
+      // hyphen is a non-word char and \b fires between 'e' and '-'
+      const html = `<!DOCTYPE html><html><body>
+  <div data-composition-id="c1" data-no-timeline-start="0" data-width="320" data-height="180" data-duration="5"></div>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(result.findings.find((f) => f.code === "missing_data_no_timeline")).toBeDefined();
+    });
+
+    it("does not warn for sub-compositions", async () => {
+      const html = `<template><div data-composition-id="c1" data-width="320" data-height="180" data-duration="5"></div></template>`;
+      const result = await lintHyperframeHtml(html, { isSubComposition: true });
+      expect(result.findings.find((f) => f.code === "missing_data_no_timeline")).toBeUndefined();
+    });
+
+    it("does not warn when composition has external scripts (cannot scan for timeline registration)", async () => {
+      const html = `<!DOCTYPE html><html><body>
+  <div data-composition-id="c1" data-width="320" data-height="180" data-duration="5"></div>
+  <script src="app.js"></script>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(result.findings.find((f) => f.code === "missing_data_no_timeline")).toBeUndefined();
     });
   });
 

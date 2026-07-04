@@ -122,6 +122,22 @@ describe("ParentMediaManager audio-src proxy lifecycle", () => {
     source.remove();
   });
 
+  it("scrubAll plays in-window proxies at the playhead and pauses out-of-window ones", () => {
+    const mgr = makeManager({ owner: "parent" });
+    const inWin = makeFakeAudio(true); // currently paused — scrub should start it
+    const outWin = makeFakeAudio(false); // currently playing, but outside its window
+    mgr.entries.push({ el: inWin, start: 0, duration: 5, driftSamples: 0 });
+    mgr.entries.push({ el: outWin, start: 10, duration: 5, driftSamples: 0 });
+
+    mgr.scrubAll(2); // playhead at 2s
+
+    // in-window proxy: positioned at rel time and AUDIBLE (the point of scrub-audio)
+    expect(inWin.currentTime).toBe(2);
+    expect(inWin.paused).toBe(false);
+    // out-of-window proxy: paused, not blipped
+    expect(outWin.paused).toBe(true);
+  });
+
   it("does not duplicate or hijack a clip the composition already owns", () => {
     const mgr = makeManager();
     // The composition already adopted a clip with this URL.

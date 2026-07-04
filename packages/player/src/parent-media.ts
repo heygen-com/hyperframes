@@ -189,6 +189,26 @@ export class ParentMediaManager {
     }
   }
 
+  // Audible scrub: position every proxy at `timeInSeconds` AND play the ones whose
+  // clip window covers it, so the viewer hears the track under the playhead while
+  // dragging the scrubber (vs seekAll, which positions silently). Each drag move
+  // re-seeks to the new position, so playback restarts from the playhead and you
+  // hear the audio you're scrubbing over. The caller settles back to silence on
+  // scrub end (a normal pause+seekAll). Muted proxies stay silent (play() is a no-op
+  // for output). Out-of-window proxies are paused.
+  scrubAll(timeInSeconds: number): void {
+    for (const m of this._entries) {
+      this._refreshEntryBounds(m);
+      const relTime = timeInSeconds - m.start;
+      if (relTime >= 0 && relTime < m.duration) {
+        m.el.currentTime = relTime;
+        this._playEntry(m);
+      } else if (!m.el.paused) {
+        m.el.pause();
+      }
+    }
+  }
+
   /**
    * Mirror parent-proxy `currentTime` to the iframe timeline, with optional
    * jitter-coalescing. Pass `{ force: true }` for alignment moments (ownership

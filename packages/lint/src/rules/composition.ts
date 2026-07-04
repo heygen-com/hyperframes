@@ -495,6 +495,42 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     return findings;
   },
 
+  // missing_data_no_timeline
+  // The producer polls window.__timelines[id] with a 45-second timeout waiting
+  // for GSAP timeline registration. Compositions that never call
+  // window.__timelines[id] = tl stall for 45 s every render. Adding
+  // data-no-timeline to the root element tells the producer to skip the poll.
+  ({ rootTag, rootCompositionId, scripts, rawSource, options }) => {
+    if (options.isSubComposition) return [];
+    if (!rootCompositionId || !rootTag) return [];
+    // readAttr only matches valued attrs (attr="..."); data-no-timeline is
+    // typically boolean (no value). Strip quoted attribute values first to
+    // avoid matching attr names that appear inside other values
+    // (e.g. title="add data-no-timeline here"), then check with a boundary
+    // that rejects hyphenated variants (data-no-timeline-start has '-' next,
+    // not a word-break char).
+    const tagNoValues = rootTag.raw.replace(/"[^"]*"|'[^']*'/g, '""');
+    if (/(?:^|\s)data-no-timeline(?=[\s>=/]|$)/i.test(tagNoValues)) return [];
+    // Can't scan external script files for timeline registration; skip to avoid
+    // false positives on compositions that register via a bundled JS file.
+    if (/<script\b[^>]*\bsrc\s*=/i.test(rawSource)) return [];
+    const registersTimeline = scripts.some((s) => s.content.includes("window.__timelines["));
+    if (registersTimeline) return [];
+    return [
+      {
+        code: "missing_data_no_timeline",
+        severity: "warning",
+        message:
+          "This composition has no `window.__timelines` registration but is missing `data-no-timeline`. " +
+          "The producer polls for timeline registration for up to 45 seconds before timing out, " +
+          "adding 45 s to every render.",
+        fixHint:
+          'Add `data-no-timeline` to the root element to skip the poll: `<div data-composition-id="..." data-no-timeline ...>`.',
+        snippet: truncateSnippet(rootTag.raw),
+      },
+    ];
+  },
+
   // requestanimationframe_in_composition
   ({ scripts, rawSource, options }) => {
     if (isRegistrySourceFile(options.filePath) || isRegistryInstalledFile(rawSource)) return [];
