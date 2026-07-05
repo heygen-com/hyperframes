@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, chmodSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { mkdtempSync, writeFileSync, chmodSync, rmSync, existsSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
-import { parseFfmpegDurationBanner, ffprobeDuration } from "./tts.mjs";
+import { parseFfmpegDurationBanner, ffprobeDuration, synthesizeOne } from "./tts.mjs";
 
 test("parseFfmpegDurationBanner reads ffmpeg's stderr Duration line", () => {
   const stderr = [
@@ -62,5 +62,27 @@ test("ffprobeDuration returns NaN when neither ffprobe nor ffmpeg resolve", () =
   } finally {
     process.env.PATH = originalPath;
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// Regression: the elevenlabs provider spawned Python to write straight to
+// wavAbs without creating its parent dir first (unlike heygen/kokoro), so a
+// fresh project with no assets/voice/ yet failed silently ("TTS failed -
+// omitted"). synthesizeOne must create the output dir before synthesizing —
+// asserted independently of whether the (keyless) Python actually produces a
+// file, since the mkdir runs before the spawn either way.
+test("synthesizeOne(elevenlabs) creates the output dir before writing", async () => {
+  const base = mkdtempSync(join(tmpdir(), "hf-tts-eleven-"));
+  const wavAbs = join(base, "assets", "voice", "line-0.wav"); // nested, not yet created
+  const originalKey = process.env.ELEVENLABS_API_KEY;
+  delete process.env.ELEVENLABS_API_KEY; // keeps the Python side a fast, clean failure
+  try {
+    // May resolve/spawn Python and fail (no key) — we only require the dir exists.
+    await synthesizeOne({ provider: "elevenlabs", text: "hi", voiceId: "v1", wavAbs });
+    assert.ok(existsSync(dirname(wavAbs)), "output directory should be created");
+  } finally {
+    if (originalKey === undefined) delete process.env.ELEVENLABS_API_KEY;
+    else process.env.ELEVENLABS_API_KEY = originalKey;
+    rmSync(base, { recursive: true, force: true });
   }
 });
