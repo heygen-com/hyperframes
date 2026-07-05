@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: transparent;
+        overflow: hidden;
+      }
+      #yt-lcd-root {
+        /* ---- yt tokens: override in the host to re-skin the family ---- */
+        --yt-font: "Inter", -apple-system, sans-serif;
+        --yt-paper: #e9e9e6;
+        --yt-paper-dark: #1c1c1e;
+        --yt-ink: #1d1d1f;
+        --yt-ink-dark: #e8e8e4;
+        --yt-cyan: #35c8d9;
+        --yt-prism-r: #ff2a4d;
+        --yt-prism-b: #2a7fff;
+        --yt-scanline-alpha: 0.05;
+        --yt-scanline-gap: 3px;
+        --yt-grid-size: 28px;
+        --yt-grid-alpha: 0.06;
+        --yt-grain-alpha: 0.08;
+
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--yt-paper);
+        font-family: var(--yt-font);
+      }
+      #yt-lcd-root.yt-dark {
+        background: var(--yt-paper-dark);
+      }
+      /* the LCD surface: scanlines + optional pixel grid + static grain */
+      #yt-lcd-scan {
+        position: absolute;
+        inset: -20px;
+        background: repeating-linear-gradient(
+          0deg,
+          rgba(0, 0, 0, var(--yt-scanline-alpha)) 0 1px,
+          transparent 1px var(--yt-scanline-gap)
+        );
+      }
+      .yt-dark #yt-lcd-scan {
+        background: repeating-linear-gradient(
+          0deg,
+          rgba(255, 255, 255, calc(var(--yt-scanline-alpha) * 1.4)) 0 1px,
+          transparent 1px var(--yt-scanline-gap)
+        );
+      }
+      #yt-lcd-grid {
+        position: absolute;
+        inset: 0;
+        background:
+          repeating-linear-gradient(0deg, rgba(0, 0, 0, var(--yt-grid-alpha)) 0 1px, transparent 1px var(--yt-grid-size)),
+          repeating-linear-gradient(90deg, rgba(0, 0, 0, var(--yt-grid-alpha)) 0 1px, transparent 1px var(--yt-grid-size));
+      }
+      .yt-dark #yt-lcd-grid {
+        background:
+          repeating-linear-gradient(0deg, rgba(255, 255, 255, var(--yt-grid-alpha)) 0 1px, transparent 1px var(--yt-grid-size)),
+          repeating-linear-gradient(90deg, rgba(255, 255, 255, var(--yt-grid-alpha)) 0 1px, transparent 1px var(--yt-grid-size));
+      }
+      #yt-lcd-grain {
+        position: absolute;
+        inset: 0;
+        opacity: var(--yt-grain-alpha);
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' seed='7' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.6'/%3E%3C/svg%3E");
+      }
+      /* the display text: prism copies behind the main fill, optional bow */
+      #yt-lcd-bow {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 26px;
+      }
+      .yt-lcd-line {
+        position: relative;
+        font-weight: 700;
+        line-height: 1;
+        letter-spacing: -0.02em;
+        white-space: nowrap;
+      }
+      .yt-lcd-copy {
+        position: absolute;
+        inset: 0;
+      }
+      .yt-lcd-copy.r {
+        color: var(--yt-prism-r);
+      }
+      .yt-lcd-copy.b {
+        color: var(--yt-prism-b);
+      }
+      .yt-lcd-main {
+        position: relative;
+      }
+      #yt-lcd-sub {
+        font-weight: 500;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="yt-lcd-root"
+      data-composition-id="yt-lcd-background"
+      data-start="0"
+      data-duration="10"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="yt-lcd-scan" data-layout-allow-overflow></div>
+      <div id="yt-lcd-grid"></div>
+      <div id="yt-lcd-grain"></div>
+      <div id="yt-lcd-bow"></div>
+      <div
+        id="yt-lcd-drv"
+        class="clip"
+        data-start="0"
+        data-duration="10"
+        data-track-index="0"
+        style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"
+      ></div>
+    </div>
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+
+        /* ---- published parameters (inspector-style CONFIG) ---- */
+        var CONFIG = {
+          scheme: "light", // "light" | "dark" (light/dark toggle)
+          title: "yt-lcd",
+          subtitle: "background 01",
+          fontSize: 230,
+          subSize: 34,
+          color: null, // null = scheme ink (AA). Cyan "#35c8d9" is dark-scheme only: 1.66:1 on light paper fails AA
+          blur: 2.2, // resting text blur px (blur amount)
+          prism: { enabled: true, offset: 3 }, // chromatic fringe (chromatic fringe)
+          bow: { enabled: true, deg: 7 }, // perspective bow (safe CRT-bow variant)
+          grid: { enabled: true }, // pixel grid (pixel grid)
+          scanDrift: true, // slow scanline scroll for life
+          animationIn: true,
+          animationOut: true,
+        };
+
+        var DUR = 10;
+        /* the yt- family improvement: in/out durations auto-scale to block
+           length (animations adjust to the layer length) */
+        function clamp(v, lo, hi) {
+          return Math.min(hi, Math.max(lo, v));
+        }
+        var IN = clamp(DUR * 0.08, 0.3, 0.8);
+        var OUT = clamp(DUR * 0.06, 0.25, 0.6);
+
+        var root = document.getElementById("yt-lcd-root");
+        var bow = document.getElementById("yt-lcd-bow");
+        var grid = document.getElementById("yt-lcd-grid");
+        var scan = document.getElementById("yt-lcd-scan");
+
+        if (CONFIG.scheme === "dark") root.classList.add("yt-dark");
+        if (!CONFIG.grid.enabled) grid.style.display = "none";
+
+        var mainColor =
+          CONFIG.color || (CONFIG.scheme === "dark" ? "var(--yt-ink-dark)" : "var(--yt-ink)");
+
+        /* build a line: prism copies behind + main fill */
+        function buildLine(text, size, idBase, prismOn) {
+          var line = document.createElement("div");
+          line.className = "yt-lcd-line";
+          line.style.fontSize = size + "px";
+          ["r", "b"].forEach(function (ch) {
+            if (!CONFIG.prism.enabled || !prismOn) return;
+            var c = document.createElement("div");
+            c.className = "yt-lcd-copy " + ch;
+            c.id = idBase + "-" + ch;
+            c.textContent = text;
+            line.appendChild(c);
+          });
+          var main = document.createElement("div");
+          main.className = "yt-lcd-main";
+          main.id = idBase + "-main";
+          main.textContent = text;
+          main.style.color = mainColor;
+          line.appendChild(main);
+          return line;
+        }
+
+        var titleLine = buildLine(CONFIG.title, CONFIG.fontSize, "yt-lcd-t", true);
+        bow.appendChild(titleLine);
+        if (CONFIG.subtitle) {
+          var sub = buildLine(CONFIG.subtitle, CONFIG.subSize, "yt-lcd-s", false); /* fringe is title-only */
+          sub.id = "yt-lcd-sub";
+          bow.appendChild(sub);
+        }
+        if (CONFIG.bow.enabled) {
+          bow.style.transform = "perspective(950px) rotateX(" + CONFIG.bow.deg + "deg)";
+        }
+
+        var O = CONFIG.prism.offset;
+        var tl = gsap.timeline({ paused: true });
+
+        /* entrance: board fades, text focuses in from heavy blur while the
+           prism fringe settles from wide to resting offset */
+        if (CONFIG.animationIn) {
+          tl.from(root, { opacity: 0, duration: IN, ease: "power2.out" }, 0);
+          gsap.set(bow, { opacity: 0, filter: "blur(16px)" });
+          tl.to(bow, { opacity: 1, duration: IN * 1.4, ease: "power2.out" }, IN * 0.4);
+          tl.to(
+            bow,
+            { filter: "blur(" + CONFIG.blur + "px)", duration: IN * 2.2, ease: "power2.out" },
+            IN * 0.4
+          );
+          if (CONFIG.prism.enabled) {
+            gsap.set(".yt-lcd-copy.r", { x: -O * 4, opacity: 0.5 });
+            gsap.set(".yt-lcd-copy.b", { x: O * 4, opacity: 0.5 });
+            tl.to(".yt-lcd-copy.r", { x: -O, opacity: 0.85, duration: IN * 2.2, ease: "power2.out" }, IN * 0.4);
+            tl.to(".yt-lcd-copy.b", { x: O, opacity: 0.85, duration: IN * 2.2, ease: "power2.out" }, IN * 0.4);
+          }
+        } else {
+          gsap.set(bow, { filter: "blur(" + CONFIG.blur + "px)" });
+          if (CONFIG.prism.enabled) {
+            gsap.set(".yt-lcd-copy.r", { x: -O, opacity: 0.85 });
+            gsap.set(".yt-lcd-copy.b", { x: O, opacity: 0.85 });
+          }
+        }
+
+        /* ambient: slow scanline drift + a breath of prism wobble */
+        if (CONFIG.scanDrift) {
+          tl.to(scan, { y: 14, duration: 3.1, ease: "sine.inOut", yoyo: true, repeat: Math.max(1, Math.floor((DUR - 1) / 3.1) - 0) }, 0.5);
+        }
+        if (CONFIG.prism.enabled) {
+          tl.to(".yt-lcd-copy.r", { x: -O - 1.2, duration: 2.4, ease: "sine.inOut", yoyo: true, repeat: 2 }, 2.0);
+          tl.to(".yt-lcd-copy.b", { x: O + 1.2, duration: 2.4, ease: "sine.inOut", yoyo: true, repeat: 2 }, 2.0);
+        }
+
+        /* exit + hard kill */
+        if (CONFIG.animationOut) {
+          tl.to(root, { opacity: 0, duration: OUT, ease: "power2.in" }, DUR - OUT - 0.05);
+        }
+        tl.set(root, { visibility: "hidden" }, DUR - 0.02);
+
+        window.__timelines["yt-lcd-background"] = tl;
+      })();
+    </script>
+  </body>
+</html>

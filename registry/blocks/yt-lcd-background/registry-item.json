@@ -1,0 +1,24 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "yt-lcd-background",
+  "type": "hyperframes:block",
+  "title": "Scanline Board Background",
+  "description": "Textured paper board: scanlines with slow drift, optional pixel grid, static grain, and display text with a blur-focus entrance and chromatic-fringe title",
+  "tags": [
+    "background",
+    "texture",
+    "creator"
+  ],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 10,
+  "files": [
+    {
+      "path": "yt-lcd-background.html",
+      "target": "compositions/yt-lcd-background.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}
