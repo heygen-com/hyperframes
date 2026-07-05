@@ -594,6 +594,10 @@
     {
       "name": "mk-cta-button",
       "type": "hyperframes:component"
+    },
+    {
+      "name": "mk-usage-arc",
+      "type": "hyperframes:component"
     }
   ]
 }

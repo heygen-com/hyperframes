@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: transparent;
+        overflow: hidden;
+      }
+      /* ---- mk-usage-arc ----------------------------------------------------
+         Hairline circular gauge: draw-on arc + centered value + tiny label.
+         The promo's "Usage" arc. Recolor via --mk-arc-color. */
+      .mk-arc {
+        --mk-font: "Inter", -apple-system, sans-serif;
+        --mk-ink: #1d1d1f;
+        --mk-ink-dim: #6e6e73;
+        --mk-accent: #0071e3;
+        --mk-arc-color: var(--mk-accent);
+        --mk-hairline: 3px;
+
+        position: absolute;
+        width: 220px;
+        height: 220px;
+        pointer-events: none;
+      }
+      .mk-arc svg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+      .mk-arc-track {
+        fill: none;
+        stroke: rgba(29, 29, 31, 0.1);
+        stroke-width: var(--mk-hairline);
+      }
+      .mk-arc-fill {
+        fill: none;
+        stroke: var(--mk-arc-color);
+        stroke-width: var(--mk-hairline);
+        stroke-linecap: round;
+      }
+      .mk-arc-center {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        font-family: var(--mk-font);
+      }
+      .mk-arc-num {
+        font-weight: 600;
+        font-size: 46px;
+        letter-spacing: -0.02em;
+        color: var(--mk-ink);
+        font-variant-numeric: tabular-nums;
+      }
+      .mk-arc-label {
+        font-weight: 500;
+        font-size: 20px;
+        color: var(--mk-ink);
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Self-preview wrapper. WIRING: copy the .mk-arc CSS, the markup below,
+         and the helpers into your host. r=92 with 220px box; the helper reads
+         the circle's radius, so resizing the box + r just works. -->
+    <div
+      id="mk-arc-root"
+      data-composition-id="mk-usage-arc"
+      data-start="0"
+      data-duration="4"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div class="mk-arc" id="mk-arc-demo" style="top: 430px; left: 850px">
+        <svg viewBox="0 0 220 220">
+          <circle class="mk-arc-track" cx="110" cy="110" r="92"></circle>
+          <circle class="mk-arc-fill" cx="110" cy="110" r="92" transform="rotate(-90 110 110)"></circle>
+        </svg>
+        <div class="mk-arc-center">
+          <span class="mk-arc-num">0%</span>
+          <span class="mk-arc-label">Usage</span>
+        </div>
+      </div>
+      <div
+        id="mk-arc-drv"
+        class="clip"
+        data-start="0"
+        data-duration="4"
+        data-track-index="0"
+        style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"
+      ></div>
+    </div>
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+
+        // ---- copy these helpers into the host script, then:
+        //   mkArcIn(tl, "#mk-my-arc", 1.0, 0.76);  // draw to 76%, count the numeral
+        //   mkArcOut(tl, "#mk-my-arc", 8.5);
+        window.mkArcIn = function (tl, target, at, value) {
+          var el = document.querySelector(target);
+          var fill = el.querySelector(".mk-arc-fill");
+          var num = el.querySelector(".mk-arc-num");
+          var C = 2 * Math.PI * parseFloat(fill.getAttribute("r"));
+          gsap.set(el, { opacity: 0, y: 16 });
+          gsap.set(fill, { strokeDasharray: C, strokeDashoffset: C });
+          tl.to(el, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, at);
+          tl.to(fill, { strokeDashoffset: C * (1 - value), duration: 1.1, ease: "power2.inOut" }, at + 0.15);
+          var st = { v: 0 };
+          tl.to(
+            st,
+            {
+              v: value,
+              duration: 1.1,
+              ease: "power2.inOut",
+              onUpdate: function () {
+                num.textContent = Math.round(st.v * 100) + "%";
+              },
+            },
+            at + 0.15
+          );
+        };
+        window.mkArcOut = function (tl, target, at) {
+          tl.to(target, { opacity: 0, y: -12, duration: 0.35, ease: "power2.in" }, at);
+        };
+
+        // Self-preview timeline (not part of the snippet you copy).
+        var tl = gsap.timeline({ paused: true });
+        window.mkArcIn(tl, "#mk-arc-demo", 0.4, 0.76);
+        window.mkArcOut(tl, "#mk-arc-demo", 3.4);
+        tl.set("#mk-arc-root", { visibility: "hidden" }, 3.98);
+        window.__timelines["mk-usage-arc"] = tl;
+      })();
+    </script>
+  </body>
+</html>
