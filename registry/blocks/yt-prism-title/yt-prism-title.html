@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: transparent;
+        overflow: hidden;
+      }
+      #yt-pt-root {
+        /* ---- yt tokens: override in the host to re-skin the family ---- */
+        --yt-font: "Inter", -apple-system, sans-serif;
+        --yt-cyan: #35c8d9;
+        --yt-prism-r: #ff2a4d;
+        --yt-prism-b: #2a7fff;
+
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: transparent; /* overlays footage, a yt-lcd board, anything */
+        font-family: var(--yt-font);
+      }
+      #yt-pt-bow {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      #yt-pt-line {
+        position: relative;
+        font-weight: 700;
+        line-height: 1;
+        letter-spacing: -0.02em;
+        white-space: nowrap;
+      }
+      .yt-pt-copy {
+        position: absolute;
+        inset: 0;
+      }
+      .yt-pt-copy.r {
+        color: var(--yt-prism-r);
+      }
+      .yt-pt-copy.b {
+        color: var(--yt-prism-b);
+      }
+      #yt-pt-main {
+        position: relative;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="yt-pt-root"
+      data-composition-id="yt-prism-title"
+      data-start="0"
+      data-duration="6"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="yt-pt-bow"></div>
+      <div
+        id="yt-pt-drv"
+        class="clip"
+        data-start="0"
+        data-duration="6"
+        data-track-index="0"
+        style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"
+      ></div>
+    </div>
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+
+        /* ---- published parameters (inspector-style CONFIG) ----
+           The cyan hero title with the full treatment stack, on a
+           transparent root — drop it over footage or a yt-lcd board. */
+        var CONFIG = {
+          title: "yt-prism",
+          fontSize: 260,
+          color: "#35c8d9", // bright cyan, for dark footage/boards (1.66:1 on light paper fails AA); use a darker cyan e.g. "#0f7d8a" on light boards
+          blur: 2.5, // resting blur px
+          prism: { enabled: true, offset: 4 },
+          bow: { enabled: true, deg: 6 },
+          drift: true, // slow scale breath while held
+          x: null, // null = centered
+          y: null,
+          animationIn: true,
+          animationOut: true,
+        };
+
+        var DUR = 6;
+        function clamp(v, lo, hi) {
+          return Math.min(hi, Math.max(lo, v));
+        }
+        var IN = clamp(DUR * 0.08, 0.3, 0.8);
+        var OUT = clamp(DUR * 0.06, 0.25, 0.6);
+
+        var root = document.getElementById("yt-pt-root");
+        var bow = document.getElementById("yt-pt-bow");
+
+        /* build: prism copies behind the main fill */
+        var line = document.createElement("div");
+        line.id = "yt-pt-line";
+        line.style.fontSize = CONFIG.fontSize + "px";
+        ["r", "b"].forEach(function (ch) {
+          if (!CONFIG.prism.enabled) return;
+          var c = document.createElement("div");
+          c.className = "yt-pt-copy " + ch;
+          c.textContent = CONFIG.title;
+          line.appendChild(c);
+        });
+        var main = document.createElement("div");
+        main.id = "yt-pt-main";
+        main.textContent = CONFIG.title;
+        main.style.color = CONFIG.color;
+        line.appendChild(main);
+        bow.appendChild(line);
+
+        if (CONFIG.bow.enabled) {
+          bow.style.transform = "perspective(950px) rotateX(" + CONFIG.bow.deg + "deg)";
+        }
+        if (CONFIG.x !== null || CONFIG.y !== null) {
+          bow.style.justifyContent = CONFIG.x === null ? "center" : "flex-start";
+          bow.style.alignItems = CONFIG.y === null ? "center" : "flex-start";
+          if (CONFIG.x !== null) line.style.marginLeft = CONFIG.x + "px";
+          if (CONFIG.y !== null) line.style.marginTop = CONFIG.y + "px";
+        }
+
+        var O = CONFIG.prism.offset;
+        var tl = gsap.timeline({ paused: true });
+
+        /* entrance: focus in from heavy blur, prism settles wide -> resting */
+        if (CONFIG.animationIn) {
+          gsap.set(bow, { opacity: 0, filter: "blur(18px)" });
+          tl.to(bow, { opacity: 1, duration: IN * 1.4, ease: "power2.out" }, 0.1);
+          tl.to(bow, { filter: "blur(" + CONFIG.blur + "px)", duration: IN * 2.4, ease: "power2.out" }, 0.1);
+          if (CONFIG.prism.enabled) {
+            gsap.set(".yt-pt-copy.r", { x: -O * 4.5, opacity: 0.45 });
+            gsap.set(".yt-pt-copy.b", { x: O * 4.5, opacity: 0.45 });
+            tl.to(".yt-pt-copy.r", { x: -O, opacity: 0.85, duration: IN * 2.4, ease: "power2.out" }, 0.1);
+            tl.to(".yt-pt-copy.b", { x: O, opacity: 0.85, duration: IN * 2.4, ease: "power2.out" }, 0.1);
+          }
+        } else {
+          gsap.set(bow, { filter: "blur(" + CONFIG.blur + "px)" });
+          if (CONFIG.prism.enabled) {
+            gsap.set(".yt-pt-copy.r", { x: -O, opacity: 0.85 });
+            gsap.set(".yt-pt-copy.b", { x: O, opacity: 0.85 });
+          }
+        }
+
+        /* ambient: slow scale breath + prism wobble */
+        if (CONFIG.drift) {
+          tl.to(line, { scale: 1.035, duration: DUR - 1, ease: "sine.out" }, 0.4);
+        }
+        if (CONFIG.prism.enabled) {
+          tl.to(".yt-pt-copy.r", { x: -O - 1.4, duration: 1.9, ease: "sine.inOut", yoyo: true, repeat: 1 }, 1.4);
+          tl.to(".yt-pt-copy.b", { x: O + 1.4, duration: 1.9, ease: "sine.inOut", yoyo: true, repeat: 1 }, 1.4);
+        }
+
+        /* exit + hard kill */
+        if (CONFIG.animationOut) {
+          tl.to(bow, { opacity: 0, filter: "blur(12px)", duration: OUT, ease: "power2.in" }, DUR - OUT - 0.05);
+        }
+        tl.set(root, { visibility: "hidden" }, DUR - 0.02);
+
+        window.__timelines["yt-prism-title"] = tl;
+      })();
+    </script>
+  </body>
+</html>
