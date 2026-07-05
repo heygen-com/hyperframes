@@ -590,6 +590,10 @@
     {
       "name": "hw-callout-circle",
       "type": "hyperframes:component"
+    },
+    {
+      "name": "hw-box-label",
+      "type": "hyperframes:component"
     }
   ]
 }

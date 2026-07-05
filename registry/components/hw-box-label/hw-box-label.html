@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      @font-face {
+        font-family: "Caveat";
+        src: url("assets/fonts/Caveat-700-latin.woff2") format("woff2");
+        font-weight: 700;
+        font-display: block;
+      }
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: transparent;
+        overflow: hidden;
+      }
+      /* ---- hw-box-label ----------------------------------------------------
+         Rounded hand-drawn box + marker label (map-label style annotations).
+         Requires the hw-boil helpers in the host. */
+      .hw-box {
+        position: absolute;
+        pointer-events: none;
+      }
+      .hw-box svg {
+        width: 100%;
+        height: 100%;
+        overflow: visible;
+      }
+      .hw-box path {
+        fill: none;
+        stroke: var(--hw-box-ink, var(--hw-ink, #f4f2ec));
+        stroke-width: var(--hw-box-w, 6);
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .hw-box .hw-bx-label {
+        position: absolute;
+        width: 100%;
+        text-align: center;
+        font-family: var(--hw-font-print, "Caveat", cursive);
+        font-weight: 700;
+        font-size: 52px;
+        color: var(--hw-box-ink, var(--hw-ink, #f4f2ec));
+        white-space: nowrap;
+        opacity: 0;
+        text-shadow: 0 2px 14px rgba(0, 0, 0, 0.4);
+      }
+      /* self-preview scene */
+      #hw-bx-scene {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(140deg, #4a3560 0%, #1c1423 100%);
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Self-preview. WIRING: copy the .hw-box CSS + markup pattern, the
+         hwWobbleRect / hwBoxBuild / hwBoxOn / hwBoxOff helpers, AND the
+         hw-boil helpers. Size the wrapper over your target, then:
+
+           hwBoxBuild("#hw-my-box", { seed: 3, label: "Europe", labelPos: "above" });
+           hwBoxOn(tl, "#hw-my-box", 2.0);
+           hwBoil(tl, "#hw-my-box", { frameDrop: 3, seed: 3 });
+           hwBoxOff(tl, "#hw-my-box", 8.0);
+    -->
+    <div
+      id="hw-bx-root"
+      data-composition-id="hw-box-label"
+      data-start="0"
+      data-duration="4"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="hw-bx-scene"></div>
+      <div class="hw-box" id="hw-bx-demo" style="left: 700px; top: 420px; width: 420px; height: 230px">
+        <svg viewBox="0 0 420 230"><path id="hw-bx-demo-path"></path></svg>
+        <div class="hw-bx-label" id="hw-bx-demo-label"></div>
+      </div>
+      <div
+        id="hw-bx-drv"
+        class="clip"
+        data-start="0"
+        data-duration="4"
+        data-track-index="0"
+        style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"
+      ></div>
+    </div>
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+
+        /* ---- hw-boil helpers (shared family runtime — copy once per host) ---- */
+        window.hwOnUpdate = function (tl, fn) {
+          if (!tl.__hwRenders) {
+            tl.__hwRenders = [];
+            tl.eventCallback("onUpdate", function () {
+              for (var i = 0; i < tl.__hwRenders.length; i++) tl.__hwRenders[i]();
+            });
+          }
+          tl.__hwRenders.push(fn);
+          fn();
+        };
+        window.hwHash = function (n, seed) {
+          var x = Math.sin(n * 127.1 + (seed || 1) * 311.7) * 43758.5453;
+          return (x - Math.floor(x)) * 2 - 1;
+        };
+        window.hwBoil = function (tl, target, opts) {
+          opts = opts || {};
+          var amp = opts.amp !== undefined ? opts.amp : 1.6;
+          var rot = opts.rot !== undefined ? opts.rot : 0.5;
+          var fps = opts.fps || 30;
+          var drop = opts.frameDrop || 3;
+          var seed = opts.seed || 1;
+          var els = gsap.utils.toArray(target);
+          window.hwOnUpdate(tl, function () {
+            var step = Math.floor((tl.time() * fps) / drop);
+            for (var i = 0; i < els.length; i++) {
+              gsap.set(els[i], {
+                x: window.hwHash(step * 3 + i * 97, seed) * amp,
+                y: window.hwHash(step * 3 + 1 + i * 97, seed) * amp,
+                rotation: (opts.baseRot || 0) + window.hwHash(step * 3 + 2 + i * 97, seed) * rot,
+              });
+            }
+          });
+        };
+
+        // ---- hw-box helpers (copy these too) ----
+        // Wobbled rounded-rect path in a w x h box.
+        window.hwWobbleRect = function (w, h, r, seed, amp) {
+          amp = amp === undefined ? 3.5 : amp;
+          function wob(n) {
+            return window.hwHash(n, seed) * amp;
+          }
+          var d = "M " + (r + wob(1)) + " " + wob(2);
+          d += " L " + (w / 2 + wob(3)) + " " + wob(4);
+          d += " L " + (w - r + wob(5)) + " " + wob(6);
+          d += " Q " + (w + wob(7)) + " " + wob(8) + " " + (w + wob(9)) + " " + (r + wob(10));
+          d += " L " + (w + wob(11)) + " " + (h / 2 + wob(12));
+          d += " L " + (w + wob(13)) + " " + (h - r + wob(14));
+          d += " Q " + (w + wob(15)) + " " + (h + wob(16)) + " " + (w - r + wob(17)) + " " + (h + wob(18));
+          d += " L " + (w / 2 + wob(19)) + " " + (h + wob(20));
+          d += " L " + (r + wob(21)) + " " + (h + wob(22));
+          d += " Q " + wob(23) + " " + (h + wob(24)) + " " + wob(25) + " " + (h - r + wob(26));
+          d += " L " + wob(27) + " " + (h / 2 + wob(28));
+          d += " L " + wob(29) + " " + (r + wob(30));
+          d += " Q " + wob(31) + " " + wob(32) + " " + (r + wob(33)) + " " + wob(34);
+          return d;
+        };
+        window.hwBoxBuild = function (target, opts) {
+          opts = opts || {};
+          var el = document.querySelector(target);
+          var svg = el.querySelector("svg");
+          var vb = svg.getAttribute("viewBox").split(" ");
+          var W = parseFloat(vb[2]),
+            H = parseFloat(vb[3]);
+          el.querySelector("path").setAttribute("d", window.hwWobbleRect(W, H, Math.min(26, W * 0.1), opts.seed || 1));
+          var label = el.querySelector(".hw-bx-label");
+          label.textContent = opts.label || "";
+          if ((opts.labelPos || "above") === "above") {
+            label.style.top = "-64px";
+          } else {
+            label.style.top = "50%";
+            label.style.transform = "translateY(-50%)";
+          }
+        };
+        window.hwBoxOn = function (tl, target, at) {
+          var p = document.querySelector(target + " path");
+          var len = p.getTotalLength();
+          gsap.set(p, { strokeDasharray: len, strokeDashoffset: len });
+          tl.to(p, { strokeDashoffset: 0, duration: 0.75, ease: "power2.inOut" }, at);
+          tl.to(document.querySelector(target + " .hw-bx-label"), { opacity: 1, duration: 0.4, ease: "power2.out" }, at + 0.55);
+        };
+        window.hwBoxOff = function (tl, target, at) {
+          tl.to(target, { opacity: 0, duration: 0.35, ease: "power2.in" }, at);
+        };
+
+        // ---- self-preview ----
+        window.hwBoxBuild("#hw-bx-demo", { seed: 3, label: "Europe", labelPos: "above" });
+        var tl = gsap.timeline({ paused: true });
+        window.hwBoxOn(tl, "#hw-bx-demo", 0.4);
+        window.hwBoil(tl, "#hw-bx-demo", { amp: 1.8, rot: 0.4, frameDrop: 3, seed: 3 });
+        window.hwBoxOff(tl, "#hw-bx-demo", 3.4);
+        tl.set("#hw-bx-root", { visibility: "hidden" }, 3.98);
+        window.__timelines["hw-box-label"] = tl;
+      })();
+    </script>
+  </body>
+</html>
