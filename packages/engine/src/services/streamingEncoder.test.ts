@@ -13,7 +13,7 @@ import { EventEmitter } from "events";
 import { mkdtempSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   buildStreamingArgs,
@@ -475,9 +475,17 @@ async function resolveWithin<T>(promise: Promise<T>, ms = 100): Promise<T | "tim
 }
 
 describe("spawnStreamingEncoder lifecycle and cleanup", () => {
+  const originalPath = process.env.PATH;
+
+  beforeEach(() => {
+    process.env.PATH = "";
+  });
+
   afterEach(() => {
     vi.resetModules();
     vi.doUnmock("child_process");
+    if (originalPath === undefined) delete process.env.PATH;
+    else process.env.PATH = originalPath;
   });
 
   it("returns a success result when ffmpeg exits cleanly after close()", async () => {

@@ -166,12 +166,19 @@ function createSpawnSpy(outcomes: SpawnOutcome[]): {
 
 describe("ffprobe missing-binary fallback", () => {
   const originalFfprobePath = process.env.HYPERFRAMES_FFPROBE_PATH;
+  const originalPath = process.env.PATH;
+
+  function hidePathBinaries(): void {
+    process.env.PATH = "";
+  }
 
   afterEach(() => {
     vi.resetModules();
     vi.doUnmock("child_process");
     if (originalFfprobePath === undefined) delete process.env.HYPERFRAMES_FFPROBE_PATH;
     else process.env.HYPERFRAMES_FFPROBE_PATH = originalFfprobePath;
+    if (originalPath === undefined) delete process.env.PATH;
+    else process.env.PATH = originalPath;
   });
 
   it("spawns the configured absolute FFprobe path when HYPERFRAMES_FFPROBE_PATH is set", async () => {
@@ -198,6 +205,7 @@ describe("ffprobe missing-binary fallback", () => {
 
   it("extractMediaMetadata falls back to PNG cICP metadata when ffprobe is missing", async () => {
     const { spawn, calls } = createSpawnSpy([{ kind: "missing" }]);
+    hidePathBinaries();
     vi.resetModules();
     vi.doMock("child_process", () => ({ spawn }));
 
@@ -294,6 +302,7 @@ describe("ffprobe missing-binary fallback", () => {
 
   it("extractMediaMetadata rethrows ffprobe-missing error for non-image files without fallback", async () => {
     const { spawn } = createSpawnSpy([{ kind: "missing" }]);
+    hidePathBinaries();
     vi.resetModules();
     vi.doMock("child_process", () => ({ spawn }));
 
@@ -304,6 +313,7 @@ describe("ffprobe missing-binary fallback", () => {
 
   it("extractAudioMetadata surfaces a ffprobe-missing error verbatim", async () => {
     const { spawn, calls } = createSpawnSpy([{ kind: "missing" }]);
+    hidePathBinaries();
     vi.resetModules();
     vi.doMock("child_process", () => ({ spawn }));
 
@@ -318,6 +328,7 @@ describe("ffprobe missing-binary fallback", () => {
 
   it("analyzeKeyframeIntervals surfaces a ffprobe-missing error verbatim", async () => {
     const { spawn, calls } = createSpawnSpy([{ kind: "missing" }]);
+    hidePathBinaries();
     vi.resetModules();
     vi.doMock("child_process", () => ({ spawn }));
 
@@ -332,6 +343,7 @@ describe("ffprobe missing-binary fallback", () => {
 
   it("ffprobe-missing error message includes install hint", async () => {
     const { spawn } = createSpawnSpy([{ kind: "missing" }]);
+    hidePathBinaries();
     vi.resetModules();
     vi.doMock("child_process", () => ({ spawn }));
 
