@@ -225,6 +225,14 @@ export type { FitTextOptions, FitTextResult } from "./text/index.js";
 
 // Runtime helpers (composition-side)
 export { getVariables } from "./runtime/getVariables.js";
+export {
+  duck,
+  type DuckAmount,
+  type DuckOptions,
+  type DuckTimelineLike,
+  type DuckTrack,
+  type DuckTrackTiming,
+} from "./runtime/audioDucking.js";
 
 // Variable validation (CLI / tooling-side)
 export {
