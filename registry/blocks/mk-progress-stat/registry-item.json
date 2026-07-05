@@ -1,0 +1,24 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "mk-progress-stat",
+  "type": "hyperframes:block",
+  "title": "Count-Up Stat Card",
+  "description": "Big-numeral statistic with count-up, label, thin progress track filling to value/max, and caption; light and dark schemes",
+  "tags": [
+    "data-viz",
+    "stat",
+    "minimal"
+  ],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 7,
+  "files": [
+    {
+      "path": "mk-progress-stat.html",
+      "target": "compositions/mk-progress-stat.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}
