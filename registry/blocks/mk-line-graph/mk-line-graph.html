@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: transparent;
+        overflow: hidden;
+      }
+      #mk-lg-root {
+        /* ---- mk tokens: override in the host to re-skin the family ---- */
+        --mk-font: "Inter", -apple-system, sans-serif;
+        --mk-ink: #1d1d1f;
+        --mk-ink-dim: #6e6e73;
+        --mk-accent: #0071e3;
+        --mk-paper: #ffffff;
+        --mk-blob-2: #45d6c8;
+        --mk-axis: rgba(29, 29, 31, 0.22);
+
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: transparent; /* overlays footage or mk-background */
+        font-family: var(--mk-font);
+      }
+      #mk-lg-svg {
+        position: absolute;
+        inset: 0;
+      }
+      .mk-lg-line {
+        fill: none;
+        stroke-width: 5;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .mk-lg-dot {
+        stroke-width: 4;
+        fill: var(--mk-paper);
+      }
+      .mk-lg-axis {
+        stroke: var(--mk-axis);
+        stroke-width: 2;
+      }
+      .mk-lg-value {
+        position: absolute;
+        font-weight: 600;
+        font-size: 30px;
+        letter-spacing: -0.01em;
+        color: var(--mk-ink);
+        font-variant-numeric: tabular-nums;
+        transform: translate(-50%, -100%);
+        white-space: nowrap;
+      }
+      .mk-lg-xlabel {
+        position: absolute;
+        font-weight: 400;
+        font-size: 26px;
+        color: var(--mk-ink-dim);
+        transform: translateX(-50%);
+        white-space: nowrap;
+      }
+      .mk-lg-legend {
+        position: absolute;
+        display: flex;
+        gap: 40px;
+      }
+      .mk-lg-legend-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-weight: 500;
+        font-size: 30px;
+        color: var(--mk-ink-dim);
+      }
+      .mk-lg-legend-dot {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="mk-lg-root"
+      data-composition-id="mk-line-graph"
+      data-start="0"
+      data-duration="7"
+      data-width="1920"
+      data-height="1080"
+    >
+      <svg id="mk-lg-svg" viewBox="0 0 1920 1080"></svg>
+      <div id="mk-lg-labels"></div>
+      <div
+        id="mk-lg-drv"
+        class="clip"
+        data-start="0"
+        data-duration="7"
+        data-track-index="0"
+        style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"
+      ></div>
+    </div>
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+
+        /* ---- published parameters (inspector-style CONFIG) ----
+           A minimal presentation line graph: 1–2 series draw on, dots pop, value labels
+           ride their points, axes dimmer than labels (clear hierarchy). */
+        var CONFIG = {
+          // no scheme param — scheme-agnostic; re-skin via the --mk-* tokens
+          series: [
+            { name: "Renders", color: null /* accent */, values: [12, 26, 22, 38, 44, 58] },
+            { name: "Projects", color: null /* blob-2 */, values: [8, 14, 18, 16, 28, 36] },
+          ],
+          xLabels: ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
+          showValues: true,
+          area: { x: 160, y: 240, w: 980, h: 500 }, // plot rectangle
+          animationIn: true,
+          animationOut: true,
+        };
+
+        var DUR = 7;
+        var NS = "http://www.w3.org/2000/svg";
+        var root = document.getElementById("mk-lg-root");
+        var svg = document.getElementById("mk-lg-svg");
+        var labels = document.getElementById("mk-lg-labels");
+        var A = CONFIG.area;
+
+        var accent = getComputedStyle(root).getPropertyValue("--mk-accent").trim();
+        var blob2 = getComputedStyle(root).getPropertyValue("--mk-blob-2").trim();
+        if (CONFIG.series[1] && !CONFIG.series[1].color) CONFIG.series[1].color = blob2;
+
+        /* scale: 0..max(all values)*1.15 into the plot rect */
+        var max = 0;
+        CONFIG.series.forEach(function (s) {
+          s.values.forEach(function (v) {
+            if (v > max) max = v;
+          });
+        });
+        max *= 1.15;
+        var n = CONFIG.series[0].values.length;
+        function px(i) {
+          return A.x + (i / (n - 1)) * A.w;
+        }
+        function py(v) {
+          return A.y + A.h - (v / max) * A.h;
+        }
+
+        /* baseline axis */
+        var axis = document.createElementNS(NS, "line");
+        axis.setAttribute("class", "mk-lg-axis");
+        axis.setAttribute("x1", A.x - 20);
+        axis.setAttribute("y1", A.y + A.h);
+        axis.setAttribute("x2", A.x + A.w + 20);
+        axis.setAttribute("y2", A.y + A.h);
+        axis.id = "mk-lg-axis";
+        svg.appendChild(axis);
+
+        /* series paths, dots, value labels */
+        var paths = [],
+          dots = [],
+          vals = [];
+        CONFIG.series.forEach(function (s, si) {
+          var color = s.color || accent;
+          var d = s.values
+            .map(function (v, i) {
+              return (i === 0 ? "M" : "L") + px(i) + " " + py(v);
+            })
+            .join(" ");
+          var path = document.createElementNS(NS, "path");
+          path.setAttribute("class", "mk-lg-line");
+          path.setAttribute("d", d);
+          path.setAttribute("stroke", color);
+          path.id = "mk-lg-path-" + si;
+          svg.appendChild(path);
+          paths.push(path);
+
+          s.values.forEach(function (v, i) {
+            var dot = document.createElementNS(NS, "circle");
+            dot.setAttribute("class", "mk-lg-dot");
+            dot.setAttribute("cx", px(i));
+            dot.setAttribute("cy", py(v));
+            dot.setAttribute("r", 9);
+            dot.setAttribute("stroke", color);
+            dot.id = "mk-lg-dot-" + si + "-" + i;
+            svg.appendChild(dot);
+            dots.push({ el: dot, si: si, i: i });
+
+            if (CONFIG.showValues) {
+              var val = document.createElement("div");
+              val.className = "mk-lg-value";
+              val.id = "mk-lg-val-" + si + "-" + i;
+              val.textContent = v;
+              val.style.left = px(i) + "px";
+              val.style.top = py(v) - 20 + "px";
+              labels.appendChild(val);
+              vals.push({ el: val, si: si, i: i });
+            }
+          });
+        });
+
+        /* x labels + legend */
+        CONFIG.xLabels.slice(0, n).forEach(function (t, i) {
+          var xl = document.createElement("div");
+          xl.className = "mk-lg-xlabel";
+          xl.id = "mk-lg-xl-" + i;
+          xl.textContent = t;
+          xl.style.left = px(i) + "px";
+          xl.style.top = A.y + A.h + 24 + "px";
+          labels.appendChild(xl);
+        });
+        var legend = document.createElement("div");
+        legend.className = "mk-lg-legend";
+        legend.id = "mk-lg-legend";
+        legend.style.left = A.x + "px";
+        legend.style.top = A.y + A.h + 90 + "px";
+        CONFIG.series.forEach(function (s) {
+          var item = document.createElement("div");
+          item.className = "mk-lg-legend-item";
+          var dot = document.createElement("span");
+          dot.className = "mk-lg-legend-dot";
+          dot.style.background = s.color || accent;
+          item.appendChild(dot);
+          item.appendChild(document.createTextNode(s.name));
+          legend.appendChild(item);
+        });
+        labels.appendChild(legend);
+
+        var tl = gsap.timeline({ paused: true });
+        var DRAW = 1.3;
+
+        /* entrance: axis + x labels settle first */
+        gsap.set([axis, legend], { opacity: 0 });
+        tl.to(axis, { opacity: 1, duration: 0.5, ease: "power2.out" }, 0.2);
+        CONFIG.xLabels.slice(0, n).forEach(function (t, i) {
+          var xl = document.getElementById("mk-lg-xl-" + i);
+          gsap.set(xl, { opacity: 0, y: 10 });
+          tl.to(xl, { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, 0.25 + i * 0.05);
+        });
+
+        /* draw each series, dots + values riding the draw front */
+        CONFIG.series.forEach(function (s, si) {
+          var t0 = (CONFIG.animationIn ? 0.5 : 0) + si * 0.35;
+          var path = paths[si];
+          var len = path.getTotalLength();
+          gsap.set(path, { strokeDasharray: len, strokeDashoffset: len });
+          tl.to(path, { strokeDashoffset: 0, duration: DRAW, ease: "power2.inOut" }, t0);
+
+          s.values.forEach(function (v, i) {
+            var dot = document.getElementById("mk-lg-dot-" + si + "-" + i);
+            var td = t0 + (i / (n - 1)) * DRAW * 0.92;
+            gsap.set(dot, { scale: 0, transformOrigin: "50% 50%" });
+            tl.to(dot, { scale: 1, duration: 0.35, ease: "back.out(1.2)" }, td);
+            if (CONFIG.showValues) {
+              var val = document.getElementById("mk-lg-val-" + si + "-" + i);
+              gsap.set(val, { opacity: 0, y: 8 });
+              tl.to(val, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, td + 0.06);
+            }
+          });
+        });
+
+        tl.to(legend, { opacity: 1, duration: 0.5, ease: "power2.out" }, 2.3);
+
+        /* exit + hard kill */
+        if (CONFIG.animationOut) {
+          tl.to([svg, labels], { opacity: 0, y: -20, duration: 0.4, ease: "power2.in" }, DUR - 0.5);
+        }
+        tl.set(root, { visibility: "hidden" }, DUR - 0.02);
+
+        window.__timelines["mk-line-graph"] = tl;
+      })();
+    </script>
+  </body>
+</html>
