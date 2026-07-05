@@ -606,6 +606,10 @@
     {
       "name": "yt-circle-pointer",
       "type": "hyperframes:component"
+    },
+    {
+      "name": "yt-screen-warp",
+      "type": "hyperframes:component"
     }
   ]
 }

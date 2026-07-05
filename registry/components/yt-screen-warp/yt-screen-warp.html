@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: transparent;
+        overflow: hidden;
+      }
+      /* ---- yt-screen-warp ---------------------------------------------------
+         Make footage read as a physical display: add .yt-screen-warp3d to the
+         media WRAPPER (subtle perspective), and place .yt-screen-fx overlay
+         inside it (pixel grid + scanlines + vignette + sheen). */
+      .yt-screen-warp3d {
+        transform: perspective(1400px) rotateY(-3.5deg) rotateX(1.6deg);
+      }
+      .yt-screen-fx {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        opacity: 0;
+        background:
+          /* sheen */
+          linear-gradient(115deg, rgba(255, 255, 255, 0.09) 0%, transparent 30%),
+          /* scanlines */
+          repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.1) 0 1px, transparent 1px 3px),
+          /* pixel grid */
+          repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.06) 0 1px, transparent 1px 4px);
+        box-shadow:
+          inset 0 0 90px rgba(0, 0, 0, 0.4),
+          inset 0 0 8px rgba(0, 0, 0, 0.5);
+      }
+      /* self-preview stand-in */
+      #yt-sw-wrap {
+        position: absolute;
+        left: 360px;
+        top: 190px;
+        width: 1200px;
+        height: 700px;
+        border-radius: 18px;
+        overflow: hidden;
+      }
+      #yt-sw-fill {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(150deg, #ff8fb8 0%, #7d5cff 60%, #2a7fff 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: "Inter", ui-sans-serif, sans-serif;
+        font-weight: 700;
+        font-size: 92px;
+        color: rgba(255, 255, 255, 0.93);
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Self-preview wrapper. WIRING: copy the two CSS classes; add
+         class="yt-screen-warp3d" to your media wrapper and
+         <div class="yt-screen-fx" id="yt-my-fx"></div> as its LAST child. Then:
+
+           ytScreenOn(tl, "#yt-my-fx", 2.0);
+           ytScreenOff(tl, "#yt-my-fx", 8.0);
+    -->
+    <div
+      id="yt-sw-root"
+      data-composition-id="yt-screen-warp"
+      data-start="0"
+      data-duration="4"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="yt-sw-wrap" class="yt-screen-warp3d">
+        <div id="yt-sw-fill">on screen</div>
+        <div class="yt-screen-fx" id="yt-sw-fx"></div>
+      </div>
+      <div
+        id="yt-sw-drv"
+        class="clip"
+        data-start="0"
+        data-duration="4"
+        data-track-index="0"
+        style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"
+      ></div>
+    </div>
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+
+        // ---- copy these helpers into the host script ----
+        window.ytScreenOn = function (tl, target, at) {
+          tl.to(target, { opacity: 1, duration: 0.5, ease: "power2.out" }, at);
+        };
+        window.ytScreenOff = function (tl, target, at) {
+          tl.to(target, { opacity: 0, duration: 0.4, ease: "power2.in" }, at);
+        };
+
+        // Self-preview timeline.
+        var tl = gsap.timeline({ paused: true });
+        gsap.set("#yt-sw-wrap", { opacity: 0, scale: 0.96 });
+        tl.to("#yt-sw-wrap", { opacity: 1, scale: 1, duration: 0.5, ease: "power2.out" }, 0.2);
+        window.ytScreenOn(tl, "#yt-sw-fx", 0.8);
+        window.ytScreenOff(tl, "#yt-sw-fx", 3.1);
+        tl.to("#yt-sw-wrap", { opacity: 0, duration: 0.35, ease: "power2.in" }, 3.5);
+        tl.set("#yt-sw-root", { visibility: "hidden" }, 3.98);
+        window.__timelines["yt-screen-warp"] = tl;
+      })();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "yt-screen-warp",
+  "type": "hyperframes:component",
+  "title": "On-Screen Display Effect",
+  "description": "Grid, scanline, vignette, and sheen overlay plus a 3D-warp wrapper class that makes footage read as if playing on a physical display",
+  "tags": [
+    "effect",
+    "overlay",
+    "texture"
+  ],
+  "files": [
+    {
+      "path": "yt-screen-warp.html",
+      "target": "compositions/components/yt-screen-warp.html",
+      "type": "hyperframes:snippet"
+    }
+  ]
+}
