@@ -373,6 +373,31 @@ export function createMemorySampler(intervalMs: number = 250): MemorySampler {
  * Exported for integration tests; not part of the stable public API —
  * external callers should use `executeRenderJob` instead.
  */
+// Stage one video's extracted-frame dir into the compiled dir. Default is a
+// single symlink (cheap; the in-process renderer); `materializeSymlinks` copies
+// instead (distributed plan() needs a self-contained dir). On Windows without
+// Developer Mode/Administrator symlink creation is rejected with EPERM/EACCES,
+// which failed high/standard renders — degrade to a copy there rather than
+// throwing. Non-permission errors still propagate so real failures aren't hidden.
+function stageExtractedFrameDir(
+  fileSystem: MaterializeFileSystem,
+  src: string,
+  dest: string,
+  materializeSymlinks: boolean,
+): void {
+  if (materializeSymlinks) {
+    fileSystem.cpSync(src, dest, { recursive: true });
+    return;
+  }
+  try {
+    fileSystem.symlinkSync(src, dest);
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException | undefined)?.code;
+    if (code !== "EPERM" && code !== "EACCES") throw err;
+    fileSystem.cpSync(src, dest, { recursive: true });
+  }
+}
+
 export function materializeExtractedFramesForCompiledDir(
   extracted: MaterializedExtractedFrames[],
   compiledDir: string,
@@ -390,11 +415,12 @@ export function materializeExtractedFramesForCompiledDir(
     const linkPath = pathModule.join(compiledFrameRoot, ext.videoId);
     if (!fileSystem.existsSync(linkPath)) {
       fileSystem.mkdirSync(pathModule.dirname(linkPath), { recursive: true });
-      if (options.materializeSymlinks) {
-        fileSystem.cpSync(resolvedOut, linkPath, { recursive: true });
-      } else {
-        fileSystem.symlinkSync(resolvedOut, linkPath);
-      }
+      stageExtractedFrameDir(
+        fileSystem,
+        resolvedOut,
+        linkPath,
+        options.materializeSymlinks === true,
+      );
     }
 
     const remapped = new Map<number, string>();

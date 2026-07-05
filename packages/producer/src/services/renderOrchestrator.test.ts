@@ -554,6 +554,65 @@ describe("materializeExtractedFramesForCompiledDir", () => {
     expect(extracted.framePaths.get(0)).toBe(win32.join(linkPath, "frame_000001.jpg"));
     expect(copies).toEqual([{ src: outputDir, dest: linkPath, recursive: true }]);
   });
+
+  // fallow-ignore-next-line code-duplication
+  it("falls back to copying frames when symlinkSync fails with EPERM (Windows, no Developer Mode)", () => {
+    // Windows without Developer Mode/Administrator rejects symlink creation with
+    // EPERM — high/standard-quality renders failed here while draft worked. The
+    // helper must degrade to a recursive copy instead of throwing.
+    const compiledDir = win32.resolve("C:\\compiled");
+    const outputDir = win32.resolve("D:\\cache\\abc123");
+    const framePath = win32.join(outputDir, "frame_000001.jpg");
+    const extracted = createExtractedFrames(outputDir, framePath);
+    const copies: Array<{ src: string; dest: string; recursive: boolean }> = [];
+
+    // fallow-ignore-next-line code-duplication
+    materializeExtractedFramesForCompiledDir([extracted], compiledDir, {
+      pathModule: win32,
+      fileSystem: {
+        existsSync: () => false,
+        mkdirSync: () => undefined,
+        symlinkSync: () => {
+          const err: NodeJS.ErrnoException = new Error("EPERM: operation not permitted, symlink");
+          err.code = "EPERM";
+          throw err;
+        },
+        cpSync: (src, dest, options) => {
+          copies.push({ src, dest, recursive: options.recursive });
+        },
+      },
+    });
+
+    const linkPath = win32.join(compiledDir, "__hyperframes_video_frames", "video-1");
+    expect(copies).toEqual([{ src: outputDir, dest: linkPath, recursive: true }]);
+    expect(extracted.outputDir).toBe(linkPath);
+    expect(extracted.framePaths.get(0)).toBe(win32.join(linkPath, "frame_000001.jpg"));
+  });
+
+  it("rethrows a non-permission symlink error instead of masking it with a copy", () => {
+    const compiledDir = win32.resolve("C:\\compiled");
+    const outputDir = win32.resolve("D:\\cache\\abc123");
+    const framePath = win32.join(outputDir, "frame_000001.jpg");
+    const extracted = createExtractedFrames(outputDir, framePath);
+
+    expect(() =>
+      materializeExtractedFramesForCompiledDir([extracted], compiledDir, {
+        pathModule: win32,
+        fileSystem: {
+          existsSync: () => false,
+          mkdirSync: () => undefined,
+          symlinkSync: () => {
+            const err: NodeJS.ErrnoException = new Error("ENOSPC: no space left");
+            err.code = "ENOSPC";
+            throw err;
+          },
+          cpSync: () => {
+            throw new Error("must not fall back to copy for a non-permission error");
+          },
+        },
+      }),
+    ).toThrow(/ENOSPC/);
+  });
 });
 
 describe("writeCompiledArtifacts — external assets on Windows drive-letter paths (GH #321)", () => {
