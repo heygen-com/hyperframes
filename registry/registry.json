@@ -594,6 +594,10 @@
     {
       "name": "yt-avatar-pip",
       "type": "hyperframes:component"
+    },
+    {
+      "name": "yt-feather-highlight",
+      "type": "hyperframes:component"
     }
   ]
 }
