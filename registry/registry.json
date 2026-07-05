@@ -610,6 +610,10 @@
     {
       "name": "mk-usage-arc",
       "type": "hyperframes:component"
+    },
+    {
+      "name": "mk-emphasis-type",
+      "type": "hyperframes:component"
     }
   ]
 }
