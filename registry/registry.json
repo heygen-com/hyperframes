@@ -570,6 +570,10 @@
     {
       "name": "parallax-unzoom",
       "type": "hyperframes:component"
+    },
+    {
+      "name": "mk-pill-callout",
+      "type": "hyperframes:component"
     }
   ]
 }
