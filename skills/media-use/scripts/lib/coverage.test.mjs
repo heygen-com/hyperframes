@@ -43,6 +43,16 @@ test("weakness: no transcript-driven cutting → cut compiler entrypoints exist"
   assert.equal(typeof cutlist.compileCutList, "function");
 });
 
+test("weakness: whisper.cpp is weak → better local ASR (Parakeet) entrypoint exists", async () => {
+  assert.ok(existsSync(join(SKILL, "scripts", "transcribe.mjs")), "transcribe.mjs missing");
+  const pw = await import("./parakeet-words.mjs");
+  assert.equal(typeof pw.mergeTokensToWords, "function", "token->word merge missing");
+  const lm = await import("./local-models.mjs");
+  const asr = lm.listModels("asr");
+  const parakeet = asr.find((m) => m.id === "parakeet-mlx");
+  assert.ok(parakeet && parakeet.rank === 0, "Parakeet must be the rank-0 preferred ASR");
+});
+
 test("weakness: no auto-duck/loudness → duck compiler and recipes exist", async () => {
   assert.ok(existsSync(join(SKILL, "scripts", "audio-duck.mjs")), "audio-duck missing");
   assert.ok(existsSync(join(SKILL, "scripts", "lib", "duck.mjs")), "duck lib missing");

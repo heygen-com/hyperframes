@@ -1,18 +1,18 @@
 // Declarative table of USER-INSTALLED local models, for the spec-gated fallback.
 //
-// These models run on the user's own machine for their own use — media-use
+// These models run on the user's own machine for their own use; media-use
 // recommends, spec-checks, and assists install; it does not bundle, redistribute,
 // or sell them. Because nothing is redistributed, selection is purely by
-// quality / size / spec-fit / word-timestamp support — there is deliberately NO
-// license field gating availability.
+// quality / size / spec-fit / word-timestamp support (there is deliberately NO
+// license field gating availability).
 //
-// Tiers: `medium` = broad-compat, smaller (auto-install target ~<=2 GB);
-// `large` = best quality, needs a strong machine. selectModel() picks the
-// highest tier the machine can run, or returns a recommend-the-CLI result.
+// Tiers (`small`|`medium`|`large`|`xlarge`) are human labels; `needs.ramMB` is
+// what selection actually gates on. selectModel() returns the best model that
+// fits the machine's AVAILABLE RAM, best-first: by explicit `rank` when set
+// (quality that is NOT size, e.g. ASR), else by RAM footprint (the quality
+// proxy for generation). No fit -> recommend the CLI/cloud path.
 //
-// Picks reflect the 2026 research pass (see the v2 plan). The large-tier TTS
-// default (fish-speech) is the meeting's pick; final defaults are confirmed by
-// the eval harness in U7 — this table is the shortlist + current default.
+// Picks reflect the 2026 research pass, verified live where noted.
 
 export const CAPABILITIES = ["tts", "asr", "upscale", "videogen", "imagegen"];
 
@@ -40,25 +40,36 @@ const MODELS = {
     },
   ],
   asr: [
+    // Parakeet is BETTER than Whisper yet SMALLER (0.6B vs 1.5B), so quality is
+    // not size here: `rank` pins it ahead of whisper regardless of footprint.
+    // 2026-07 X consensus (one of the two best open-source STT models,
+    // Neural-Engine fast) + live verification on a 24GB Mac.
+    {
+      id: "parakeet-mlx",
+      tier: "small",
+      rank: 0,
+      sizeMB: 2400,
+      needs: { ramMB: 4000, gpu: true },
+      wordTimestamps: "tokens", // sub-word tokens; merged to words by parakeet-words.mjs
+      repo: "mlx-community/parakeet-tdt-0.6b-v3",
+      install:
+        "uv venv ~/.venvs/parakeet && VIRTUAL_ENV=~/.venvs/parakeet uv pip install parakeet-mlx",
+      invoke:
+        "parakeet-mlx {audio} --model mlx-community/parakeet-tdt-0.6b-v3 --output-format json --output-dir {outdir}",
+      notes:
+        "NVIDIA Parakeet-TDT 0.6B via parakeet-mlx. VERIFIED on 24GB: accurate transcript, ~3s (cached model) for 8s audio. Run via scripts/transcribe.mjs (merges tokens to word timestamps). Beats whisper.cpp on accuracy AND speed.",
+    },
     {
       id: "whisperx",
       tier: "medium",
+      rank: 1,
       sizeMB: 1500,
       needs: { ramMB: 4096, gpu: false },
       wordTimestamps: "native", // faster-whisper + wav2vec2 forced alignment
       install: "pip install whisperx",
       invoke: "whisperx {audio} --output_format json --out {out}",
-      notes: "Sub-100ms word timestamps on CPU. Strict upgrade over plain whisper.",
-    },
-    {
-      id: "parakeet",
-      tier: "large",
-      sizeMB: 2400,
-      needs: { ramMB: 8000, gpu: true, vramMB: 4000 },
-      wordTimestamps: "native",
-      install: "pip install parakeet-mlx  # NVIDIA: nemo-toolkit[asr]",
-      invoke: "parakeet {audio} --timestamps word --out {out}",
-      notes: "~1000x realtime; native word timestamps. Apple Silicon via parakeet-mlx.",
+      notes:
+        "CPU-only fallback (no GPU): faster-whisper + wav2vec2 forced alignment, native word timestamps. The packaged `hyperframes transcribe` (whisper.cpp) is the zero-setup baseline below this.",
     },
   ],
   upscale: [
@@ -203,11 +214,19 @@ export function meetsSpecs(model, specs) {
   return true;
 }
 
-// Bigger RAM footprint is the quality proxy inside a capability (a 40GB image
-// model out-renders a 12GB one), so "best model the machine can run" == the
-// largest-footprint model whose needs still fit the available-RAM budget.
-function rankedByFootprint(table) {
-  return [...table].sort((a, b) => (b.needs?.ramMB ?? 0) - (a.needs?.ramMB ?? 0));
+// "Best model the machine can run" == best-first among those that fit. Ordering:
+//   1. explicit `rank` (lower = better) when a model declares it. Needed where
+//      quality is NOT size: Parakeet-0.6B beats Whisper-large-1.5B at ASR, so
+//      footprint would pick the wrong one.
+//   2. otherwise RAM footprint descending, the quality proxy for generation
+//      (a 40GB image model out-renders a 12GB one).
+function rankedByPreference(table) {
+  return [...table].sort((a, b) => {
+    const ra = a.rank ?? Infinity;
+    const rb = b.rank ?? Infinity;
+    if (ra !== rb) return ra - rb;
+    return (b.needs?.ramMB ?? 0) - (a.needs?.ramMB ?? 0);
+  });
 }
 
 /**
@@ -219,7 +238,7 @@ function rankedByFootprint(table) {
 export function selectModel(capability, specs, { preferTier } = {}) {
   const table = tableFor(capability);
   const pool = preferTier ? table.filter((m) => m.tier === preferTier) : table;
-  for (const model of rankedByFootprint(pool)) {
+  for (const model of rankedByPreference(pool)) {
     if (meetsSpecs(model, specs)) return { model, tier: model.tier };
   }
   const smallest = table.reduce((a, b) => (a.sizeMB <= b.sizeMB ? a : b));
@@ -237,7 +256,7 @@ export function selectModel(capability, specs, { preferTier } = {}) {
  */
 export function describeModelLadder(capability, specs) {
   const budget = specs.availableRamMB ?? specs.ramMB;
-  return rankedByFootprint(tableFor(capability)).map((model) => {
+  return rankedByPreference(tableFor(capability)).map((model) => {
     const fits = meetsSpecs(model, specs);
     return {
       id: model.id,

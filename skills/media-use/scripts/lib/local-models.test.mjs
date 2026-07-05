@@ -129,6 +129,22 @@ test("imagegen on a 64GB Mac steps up to the higher-quality tier", () => {
   assert.equal(pick.tier, "xlarge", "80GB free unlocks the top-quality model");
 });
 
+test("ASR prefers Parakeet by rank even though it is smaller than whisper", () => {
+  // quality != size for ASR: Parakeet 0.6B beats whisper-1.5B, so `rank` wins
+  // over footprint. On a capable machine both fit; Parakeet must be chosen.
+  const capable = {
+    ramMB: 24000,
+    availableRamMB: 12000,
+    appleSilicon: true,
+    gpu: { present: true, kind: "apple", vramMB: 24000 },
+  };
+  const pick = selectModel("asr", capable);
+  assert.equal(pick.model.id, "parakeet-mlx", "Parakeet is the rank-0 preferred ASR");
+  // whisperx (rank 1, CPU-only) is the fallback when no GPU
+  const cpu = { ramMB: 16000, availableRamMB: 12000, gpu: { present: false, vramMB: 0 } };
+  assert.equal(selectModel("asr", cpu).model.id, "whisperx", "CPU-only falls back to whisperx");
+});
+
 test("ASR offers word-timestamp-capable models (better than plain whisper)", () => {
   const asr = listModels("asr");
   assert.ok(

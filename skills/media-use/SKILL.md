@@ -26,7 +26,7 @@ HyperFrames owns media _playback_; media-use owns everything else. Each row is e
 
 ## When to use
 
-Call `resolve` whenever a composition needs media: background music, sound effects, images, icons, or voice. For voiceover / TTS, music, SFX, and caption timing, use the **audio engine** (below); transcription and background removal are delegated to the `hyperframes` CLI (`transcribe`, `remove-background`). For cutting / reframing / transforming existing media, see `references/operations.md`. media-use searches the HeyGen catalog first, freezes the best match locally, registers it in a manifest, and hands the agent one line; all search noise stays on disk.
+Call `resolve` whenever a composition needs media: background music, sound effects, images, icons, or voice. For voiceover / TTS, music, SFX, and caption timing, use the **audio engine** (below); background removal is delegated to the `hyperframes` CLI; transcription defaults to whisper.cpp (`hyperframes transcribe`) with a higher-accuracy local option, Parakeet via `scripts/transcribe.mjs` (see `references/operations.md`). For cutting / reframing / transforming existing media, see `references/operations.md`. media-use searches the HeyGen catalog first, freezes the best match locally, registers it in a manifest, and hands the agent one line; all search noise stays on disk.
 
 ## Resolve
 

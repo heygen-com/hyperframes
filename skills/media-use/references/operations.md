@@ -64,6 +64,25 @@ asset (it records provenance and auto-promotes to the global cache).
 > `--from`. Add a thin `process` verb only if agents repeatedly fumble these
 > recipes.
 
+## Transcription (better local ASR than whisper.cpp)
+
+The zero-setup baseline is `npx hyperframes transcribe <audio>` (whisper.cpp).
+For higher accuracy, `transcribe.mjs` runs **NVIDIA Parakeet-TDT via parakeet-mlx**
+(a top open-source ASR, Neural-Engine fast on Apple Silicon, and the rank-0 pick
+in the `asr` ladder). It emits `{ text, words:[{text,start,end}] }` with word
+timestamps merged from Parakeet's sub-word tokens, so it feeds transcript-cut,
+captions, and the audio engine directly.
+
+```bash
+# install once: uv venv ~/.venvs/parakeet && VIRTUAL_ENV=~/.venvs/parakeet uv pip install parakeet-mlx
+node <SKILL_DIR>/scripts/transcribe.mjs --input talk.mp4 --out talk.transcribe.json
+```
+
+VERIFIED on 24GB: accurate transcript, ~3s (cached model) for 8s audio, beats
+whisper.cpp on accuracy and speed. Falls back to `hyperframes transcribe`
+(whisper.cpp) when parakeet-mlx is not installed. For no-GPU machines the `asr`
+ladder drops to whisperx (CPU, native word timestamps).
+
 ## Text-based editing (transcript cut)
 
 `transcript-cut.mjs` is a compiler, not a wrapper: it turns word timestamps and
