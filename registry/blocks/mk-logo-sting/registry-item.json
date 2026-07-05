@@ -1,0 +1,24 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "mk-logo-sting",
+  "type": "hyperframes:block",
+  "title": "Outline Logo Sting",
+  "description": "A hairline rounded-square outline draws on and the logo lands inside \u2014 image or text wordmark in the same shell",
+  "tags": [
+    "logo",
+    "sting",
+    "minimal"
+  ],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 3.5,
+  "files": [
+    {
+      "path": "mk-logo-sting.html",
+      "target": "compositions/mk-logo-sting.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}
