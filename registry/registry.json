@@ -568,6 +568,10 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "hw-title",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "parallax-zoom",
       "type": "hyperframes:component"
     },
