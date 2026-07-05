@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      @font-face {
+        font-family: "Caveat";
+        src: url("assets/fonts/Caveat-700-latin.woff2") format("woff2");
+        font-weight: 700;
+        font-display: block;
+      }
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: transparent;
+        overflow: hidden;
+      }
+      #hw-tc-root {
+        /* ---- hw tokens ---- */
+        --hw-font-print: "Caveat", cursive;
+        --hw-font-script: "Caveat", cursive;
+        --hw-ink: #f4f2ec;
+        --hw-ink-dark: #26241f;
+
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: transparent; /* overlays footage */
+        font-family: var(--hw-font-print, "Caveat", cursive);
+      }
+      #hw-tc-wrap {
+        position: absolute;
+        pointer-events: none;
+      }
+      #hw-tc-wrap svg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        overflow: visible;
+      }
+      #hw-tc-fill {
+        fill: var(--hw-ink);
+        opacity: 0;
+      }
+      #hw-tc-stroke {
+        fill: none;
+        stroke: var(--hw-ink-dark);
+        stroke-width: 4;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      #hw-tc-text {
+        position: absolute;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        font-weight: 700;
+        color: var(--hw-ink-dark);
+        line-height: 1.05;
+      }
+      #hw-tc-text .ch {
+        opacity: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="hw-tc-root"
+      data-composition-id="hw-text-cloud"
+      data-start="0"
+      data-duration="6"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="hw-tc-wrap">
+        <svg id="hw-tc-svg">
+          <path id="hw-tc-fill"></path>
+          <path id="hw-tc-stroke"></path>
+        </svg>
+        <div id="hw-tc-text"></div>
+      </div>
+      <div
+        id="hw-tc-drv"
+        class="clip"
+        data-start="0"
+        data-duration="6"
+        data-track-index="0"
+        style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"
+      ></div>
+    </div>
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+
+        /* ---- published parameters ----
+           Speech bubble with a movable tip (pointable at any subject): wobbled
+           cloud, draw-on outline, paper fill, per-char handwritten text. */
+        var CONFIG = {
+          text: "what are you looking at?",
+          x: 620, // wrapper left
+          y: 180, // wrapper top
+          w: 560,
+          h: 300,
+          fontSize: 58,
+          tip: { side: "bottom-left", len: 90 }, // "bottom-left"|"bottom-right"
+          seed: 6,
+          boil: { enabled: true, amp: 1.6, rot: 0.4, frameDrop: 3 },
+          typeCharDelay: 0.03,
+          animationIn: true,
+          animationOut: true,
+        };
+
+        var DUR = 6;
+        function clamp(v, lo, hi) {
+          return Math.min(hi, Math.max(lo, v));
+        }
+        var OUT = clamp(DUR * 0.06, 0.25, 0.6);
+
+        /* hw family runtime */
+        window.hwOnUpdate = function (tl, fn) {
+          if (!tl.__hwRenders) {
+            tl.__hwRenders = [];
+            tl.eventCallback("onUpdate", function () {
+              for (var i = 0; i < tl.__hwRenders.length; i++) tl.__hwRenders[i]();
+            });
+          }
+          tl.__hwRenders.push(fn);
+          fn();
+        };
+        window.hwHash = function (n, seed) {
+          var x = Math.sin(n * 127.1 + (seed || 1) * 311.7) * 43758.5453;
+          return (x - Math.floor(x)) * 2 - 1;
+        };
+        window.hwBoil = function (tl, target, opts) {
+          opts = opts || {};
+          var amp = opts.amp !== undefined ? opts.amp : 1.6;
+          var rot = opts.rot !== undefined ? opts.rot : 0.5;
+          var fps = opts.fps || 30;
+          var drop = opts.frameDrop || 3;
+          var seed = opts.seed || 1;
+          var els = gsap.utils.toArray(target);
+          window.hwOnUpdate(tl, function () {
+            var step = Math.floor((tl.time() * fps) / drop);
+            for (var i = 0; i < els.length; i++) {
+              gsap.set(els[i], {
+                x: window.hwHash(step * 3 + i * 97, seed) * amp,
+                y: window.hwHash(step * 3 + 1 + i * 97, seed) * amp,
+                rotation: (opts.baseRot || 0) + window.hwHash(step * 3 + 2 + i * 97, seed) * rot,
+              });
+            }
+          });
+        };
+
+        /* wobbled cloud with a tail tip */
+        function cloudPath(W, H, tip, seed) {
+          var cx = W / 2,
+            cy = H / 2 - 14,
+            rx = W / 2 - 12,
+            ry = H / 2 - 34;
+          var N = 16,
+            pts = [];
+          for (var i = 0; i < N; i++) {
+            var a = (i / N) * Math.PI * 2;
+            var wr = 1 + window.hwHash(i * 11 + 3, seed) * 0.06;
+            pts.push([cx + Math.cos(a) * rx * wr, cy + Math.sin(a) * ry * wr]);
+          }
+          var mx = (pts[0][0] + pts[N - 1][0]) / 2,
+            my = (pts[0][1] + pts[N - 1][1]) / 2;
+          var d = "M" + mx.toFixed(1) + " " + my.toFixed(1);
+          for (var j = 0; j < N; j++) {
+            var p = pts[j],
+              q = pts[(j + 1) % N];
+            d += " Q" + p[0].toFixed(1) + " " + p[1].toFixed(1) + " " + ((p[0] + q[0]) / 2).toFixed(1) + " " + ((p[1] + q[1]) / 2).toFixed(1);
+          }
+          d += "Z";
+          /* tail */
+          var left = tip.side !== "bottom-right";
+          var bx = cx + (left ? -rx * 0.45 : rx * 0.45),
+            by = cy + ry * 0.92;
+          var tx = bx + (left ? -tip.len * 0.5 : tip.len * 0.5),
+            ty = by + tip.len;
+          d +=
+            " M " + (bx - 26).toFixed(1) + " " + (by - 6).toFixed(1) +
+            " Q " + (bx - 8 + window.hwHash(31, seed) * 6).toFixed(1) + " " + ((by + ty) / 2).toFixed(1) + " " + tx.toFixed(1) + " " + ty.toFixed(1) +
+            " Q " + (bx + 18).toFixed(1) + " " + ((by + ty) / 2).toFixed(1) + " " + (bx + 30).toFixed(1) + " " + (by - 2).toFixed(1);
+          return d;
+        }
+
+        var wrap = document.getElementById("hw-tc-wrap");
+        wrap.style.left = CONFIG.x + "px";
+        wrap.style.top = CONFIG.y + "px";
+        wrap.style.width = CONFIG.w + "px";
+        wrap.style.height = CONFIG.h + "px";
+        var svg = document.getElementById("hw-tc-svg");
+        svg.setAttribute("viewBox", "0 0 " + CONFIG.w + " " + CONFIG.h);
+        var d = cloudPath(CONFIG.w, CONFIG.h, CONFIG.tip, CONFIG.seed);
+        document.getElementById("hw-tc-fill").setAttribute("d", d);
+        document.getElementById("hw-tc-stroke").setAttribute("d", d);
+
+        var text = document.getElementById("hw-tc-text");
+        text.style.left = CONFIG.w * 0.12 + "px";
+        text.style.top = CONFIG.h * 0.1 + "px";
+        text.style.width = CONFIG.w * 0.76 + "px";
+        text.style.height = CONFIG.h * 0.62 + "px";
+        text.style.fontSize = CONFIG.fontSize + "px";
+        var inner = document.createElement("div");
+        Array.from(CONFIG.text).forEach(function (ch) {
+          var s = document.createElement("span");
+          s.className = "ch";
+          s.textContent = ch;
+          inner.appendChild(s);
+        });
+        text.appendChild(inner);
+
+        var tl = gsap.timeline({ paused: true });
+
+        /* draw outline, fade fill, type text */
+        var stroke = document.getElementById("hw-tc-stroke");
+        var len = stroke.getTotalLength();
+        gsap.set(stroke, { strokeDasharray: len, strokeDashoffset: len });
+        var t0 = CONFIG.animationIn ? 0.3 : 0;
+        if (CONFIG.animationIn) {
+          tl.to(stroke, { strokeDashoffset: 0, duration: 0.8, ease: "power2.inOut" }, t0);
+          tl.to("#hw-tc-fill", { opacity: 0.94, duration: 0.4, ease: "power2.out" }, t0 + 0.55);
+        } else {
+          gsap.set(stroke, { strokeDashoffset: 0 });
+          gsap.set("#hw-tc-fill", { opacity: 0.94 });
+        }
+        var chars = text.querySelectorAll(".ch");
+        var delay = Math.min(CONFIG.typeCharDelay, 1.8 / Math.max(1, chars.length));
+        tl.to(chars, { opacity: 1, duration: 0.02, stagger: delay, ease: "none" }, t0 + 0.9);
+
+        if (CONFIG.boil.enabled) {
+          window.hwBoil(tl, "#hw-tc-wrap", {
+            amp: CONFIG.boil.amp,
+            rot: CONFIG.boil.rot,
+            frameDrop: CONFIG.boil.frameDrop,
+            seed: CONFIG.seed,
+          });
+        }
+
+        if (CONFIG.animationOut) {
+          tl.to(wrap, { opacity: 0, duration: OUT, ease: "power2.in" }, DUR - OUT - 0.05);
+        }
+        tl.set("#hw-tc-root", { visibility: "hidden" }, DUR - 0.02);
+
+        window.__timelines["hw-text-cloud"] = tl;
+      })();
+    </script>
+  </body>
+</html>
