@@ -518,3 +518,41 @@ window.__timelines["t"] = tl;</script>
     expect(b).toEqual(a); // same tween id on both matched elements
   });
 });
+
+describe("getAllAnimationIds", () => {
+  it("includes a tween id even when its selector matches no live DOM element", async () => {
+    const html = /* html */ `<!DOCTYPE html>
+<html><body>
+  <div data-hf-id="hf-box" style="color: red">Hello</div>
+  <script>var tl = gsap.timeline({ paused: true }); tl.to("#does-not-exist", { x: 100, duration: 1 }, 3);</script>
+</body></html>`;
+    const comp = await openComposition(html);
+    const flatIds = comp.getAllAnimationIds();
+    expect(flatIds.size).toBeGreaterThan(0);
+    const [unmatchedId] = [...flatIds];
+    // Confirms the bug this fixes: no element's animationIds contains this id,
+    // because "#does-not-exist" never CSS-matches anything in the document.
+    expect(comp.getElements().some((el) => el.animationIds.includes(unmatchedId ?? ""))).toBe(
+      false,
+    );
+  });
+
+  it("returns an empty set when the composition has no GSAP script", async () => {
+    const html = /* html */ `<!DOCTYPE html>
+<html><body><div data-hf-id="hf-box">Hello</div></body></html>`;
+    const comp = await openComposition(html);
+    expect(comp.getAllAnimationIds().size).toBe(0);
+  });
+
+  it("still includes ids for tweens that DO match a live DOM element", async () => {
+    const html = /* html */ `<!DOCTYPE html>
+<html><body>
+  <div data-hf-id="hf-box" style="color: red">Hello</div>
+  <script>var tl = gsap.timeline({ paused: true }); tl.to("[data-hf-id=\\"hf-box\\"]", { x: 100, duration: 1 }, 0);</script>
+</body></html>`;
+    const comp = await openComposition(html);
+    const realId = comp.getElements().flatMap((e) => [...e.animationIds])[0] ?? "";
+    expect(realId).not.toBe("");
+    expect(comp.getAllAnimationIds().has(realId)).toBe(true);
+  });
+});

@@ -82,6 +82,20 @@ function buildAnimationIdMap(document: Document): Map<string, string[]> {
   return map;
 }
 
+/**
+ * Every GSAP tween id `parseLocatedCached` finds in the script, with no DOM
+ * matching at all — the same id space the server-side script ops
+ * (removeAllKeyframesFromScript et al.) resolve against. Unlike
+ * buildAnimationIdMap's per-element map, this never drops an id just because
+ * its selector doesn't currently CSS-match a live element — that gap is what
+ * caused a false animation_not_found divergence in the resolver-shadow
+ * tripwire (a tween on a renamed/duplicate/scoped selector still resolves on
+ * the server, which reads the script directly).
+ */
+export function parsedAnimationIds(script: string): Set<string> {
+  return new Set(parseLocatedCached(script).map(({ id }) => id));
+}
+
 // fallow-ignore-next-line complexity
 function buildElement(
   el: Element,

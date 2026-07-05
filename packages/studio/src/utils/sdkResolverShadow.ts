@@ -459,8 +459,9 @@ export async function recordResolverParity(
  * dispatching. Read-only: emits `animation_not_found` when the SDK can't resolve
  * the animationId the server GSAP path is addressing — the GSAP-edit-surface
  * analogue of element_not_found. The SDK's resolvable animation ids are the
- * located ids attached to elements (buildAnimationIdMap), so a target absent
- * from every element's animationIds is a resolver divergence.
+ * located ids attached to elements (buildAnimationIdMap) OR any id parsed from
+ * the script regardless of DOM match (getAllAnimationIds) — a target absent
+ * from both is a resolver divergence.
  *
  * No-op when the shadow flag is off; never throws; never mutates the session.
  */
@@ -474,7 +475,9 @@ export function recordAnimationResolverParity(
   try {
     recordAttempt(opLabel);
     const elements = session.getElements();
-    const resolves = elements.some((el) => el.animationIds.includes(animationId));
+    const resolves =
+      elements.some((el) => el.animationIds.includes(animationId)) ||
+      session.getAllAnimationIds().has(animationId);
     if (resolves) return; // SDK locates the animation — parity
     trackStudioEvent("sdk_resolver_shadow", {
       animationId,

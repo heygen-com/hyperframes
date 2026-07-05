@@ -463,6 +463,13 @@ export interface Composition {
   getElements(): ElementSnapshot[];
   getElement(id: HfId): ElementSnapshot | null;
   find(query: FindQuery): string[];
+  /**
+   * Every GSAP tween id parsed from the composition's script, regardless of
+   * whether its target selector currently matches a live DOM element. See
+   * parsedAnimationIds in document.ts for why this differs from the
+   * per-element animationIds on ElementSnapshot.
+   */
+  getAllAnimationIds(): Set<string>;
 
   // ── Selection API ──────────────────────────────────────────────────────────
   /** Sugar: resolves getSelection() → explicit ops at call time */

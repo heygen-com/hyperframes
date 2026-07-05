@@ -29,7 +29,7 @@ import type {
   ElementHandle,
 } from "./types.js";
 import { ORIGIN_APPLY_PATCHES, ORIGIN_LOCAL } from "./types.js";
-import { buildRoots, flatElements } from "./document.js";
+import { buildRoots, flatElements, parsedAnimationIds } from "./document.js";
 import type { PersistAdapter, PreviewAdapter } from "./adapters/types.js";
 import { parseMutable } from "./engine/model.js";
 import type { ParsedDocument } from "./engine/model.js";
@@ -332,6 +332,11 @@ class CompositionImpl implements Composition {
         })
         .map((el) => el.scopedId)
     );
+  }
+
+  getAllAnimationIds(): Set<string> {
+    const script = getGsapScript(this.parsed.document);
+    return script ? parsedAnimationIds(script) : new Set();
   }
 
   // ── Selection API ────────────────────────────────────────────────────────────

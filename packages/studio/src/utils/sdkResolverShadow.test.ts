@@ -469,6 +469,12 @@ const GSAP_HTML = /* html */ `<!DOCTYPE html>
   <script>var tl = gsap.timeline({ paused: true }); tl.to("[data-hf-id=\\"hf-box\\"]", { x: 100, duration: 1 }, 0);</script>
 </body></html>`;
 
+const GSAP_UNMATCHED_SELECTOR_HTML = /* html */ `<!DOCTYPE html>
+<html><body>
+  <div data-hf-id="hf-box" style="color: red">Hello</div>
+  <script>var tl = gsap.timeline({ paused: true }); tl.to("#coral-band", { x: 100, duration: 1 }, 3);</script>
+</body></html>`;
+
 describe("G. recordAnimationResolverParity", () => {
   it("emits animation_not_found when the SDK cannot resolve the animationId", async () => {
     mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = true;
@@ -494,6 +500,17 @@ describe("G. recordAnimationResolverParity", () => {
     const session = await openComposition(GSAP_HTML);
     recordAnimationResolverParity(session, "no-such-anim", "setGsapTween");
     expect(trackedEvents).toHaveLength(0);
+  });
+
+  it("emits nothing when the animationId only resolves via getAllAnimationIds (no live DOM match) — repro of the v0.7.31 false-positive", async () => {
+    mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = true;
+    const session = await openComposition(GSAP_UNMATCHED_SELECTOR_HTML);
+    const unmatchedId = [...session.getAllAnimationIds()][0] ?? "";
+    expect(unmatchedId).not.toBe("");
+    // Confirms the bug this fixes: the id is NOT attached to any element.
+    expect(session.getElements().some((el) => el.animationIds.includes(unmatchedId))).toBe(false);
+    recordAnimationResolverParity(session, unmatchedId, "removeAllKeyframes");
+    expect(trackedEvents.filter((e) => e.event === "sdk_resolver_shadow")).toHaveLength(0);
   });
 });
 
