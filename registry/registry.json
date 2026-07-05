@@ -576,6 +576,10 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "hw-path-text",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "parallax-zoom",
       "type": "hyperframes:component"
     },
