@@ -19,15 +19,22 @@ test("heygen provider is first for every type it serves", () => {
   }
 });
 
-test("heygen is the only external provider: no fal / elevenlabs / iconify remain", () => {
+test("sanctioned providers only: heygen, codex image_gen, local design spec", () => {
+  const allowed = /^heygen|^codex\.image_gen$|^design_spec$/;
   for (const t of listTypes()) {
     for (const p of getProviders(t)) {
-      assert.ok(
-        /^heygen/.test(p.name) || p.name === "design_spec",
-        `${t} lists non-heygen provider: ${p.name}`,
-      );
+      assert.ok(allowed.test(p.name), `${t} lists unsanctioned provider: ${p.name}`);
     }
   }
+});
+
+test("image: heygen catalog first, codex generation as the miss fallback", () => {
+  const ps = getProviders("image");
+  assert.match(ps[0].name, /^heygen/);
+  const codex = ps.find((p) => p.name === "codex.image_gen");
+  assert.ok(codex, "codex image_gen fallback registered");
+  assert.equal(typeof codex.generate, "function");
+  assert.ok(!codex.paid, "sub-covered generation is not gated as paid");
 });
 
 test("voice: free HeyGen TTS is the sole provider", () => {

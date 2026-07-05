@@ -14,7 +14,7 @@
 // default (fish-speech) is the meeting's pick; final defaults are confirmed by
 // the eval harness in U7 — this table is the shortlist + current default.
 
-export const CAPABILITIES = ["tts", "asr", "upscale"];
+export const CAPABILITIES = ["tts", "asr", "upscale", "videogen"];
 
 const MODELS = {
   tts: [
@@ -81,6 +81,44 @@ const MODELS = {
       install: "pip install seedvr2",
       invoke: "seedvr2 upscale --in {in} --out {out}",
       notes: "Diffusion upscaler, GPU-only. Video2X for video.",
+    },
+  ],
+  videogen: [
+    // 2026-07 X research pass + live verification on a 24GB M-series Mac.
+    // The Mac-local video story is LTX 2.3 on MLX via dgrauet/ltx-2-mlx (the
+    // pipeline these weights were converted for; also powers Phosphene).
+    // Wan 2.x MLX exists only as A14B conversions (too large for consumer
+    // unified memory); revisit when a 5B Wan MLX conversion lands.
+    // IMPORTANT: download the weights with a targeted include list first;
+    // pointing tools at the repo blind snapshot-downloads all 60 GB:
+    //   hf download dgrauet/ltx-2.3-mlx-q4 --include \
+    //     transformer-distilled-1.1.safetensors connector.safetensors \
+    //     "vae_*.safetensors" audio_vae.safetensors vocoder.safetensors "*.json"
+    {
+      id: "ltx-2.3-mlx-q4",
+      tier: "medium",
+      sizeMB: 20000, // distilled subset; gemma-3-12b-4bit text encoder adds ~7GB
+      needs: { ramMB: 16384, gpu: true },
+      wordTimestamps: false,
+      install:
+        "git clone https://github.com/dgrauet/ltx-2-mlx && cd ltx-2-mlx && uv sync --all-extras",
+      invoke:
+        "ltx-2-mlx generate --prompt {prompt} --distilled --low-ram --model dgrauet/ltx-2.3-mlx-q4 --width {w} --height {h} --frames {frames} --frame-rate 24 --output {out}",
+      notes:
+        "LTX 2.3 int4 on MLX. Verified on 24GB unified: 512x320 x 33 frames in ~19 min cold (incl. text-encoder download), t2v with audio. Dims must be multiples of 64. i2v, retake/extend, keyframe interpolation supported.",
+    },
+    {
+      id: "ltx-2.3-mlx-bf16",
+      tier: "large",
+      sizeMB: 45000,
+      needs: { ramMB: 32768, gpu: true },
+      wordTimestamps: false,
+      install:
+        "git clone https://github.com/dgrauet/ltx-2-mlx && cd ltx-2-mlx && uv sync --all-extras",
+      invoke:
+        "ltx-2-mlx generate --prompt {prompt} --two-stage --model dgrauet/ltx-2.3-mlx-bf16 --width {w} --height {h} --frames {frames} --frame-rate 24 --output {out}",
+      notes:
+        "Full-precision two-stage pipeline (upstream production default). 32GB with --low-ram block streaming; 64-128GB Macs for long/HD runs (the 25s multi-scene spots seen in the wild).",
     },
   ],
 };

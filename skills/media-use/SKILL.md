@@ -79,15 +79,18 @@ node <SKILL_DIR>/scripts/resolve.mjs --type icon --intent "rocket" --project .
 
 ## Providers
 
-The `heygen` CLI is the only external CLI media-use shells (media-use holds no
-keys; the CLI owns auth). It is tried first, and is currently the only
-provider, for every type it serves:
+media-use shells exactly two external CLIs, both subscription-authenticated
+(media-use holds no keys; each CLI owns its auth): the `heygen` CLI, first for
+every type it serves, and the `codex` CLI for image generation on the user's
+ChatGPT subscription when the catalog misses.
 
-| Type          | Provider                               |
-| ------------- | -------------------------------------- |
-| bgm/sfx/image | heygen catalog (free)                  |
-| voice         | **heygen tts** (free, same credential) |
-| icon          | heygen asset search                    |
+| Type          | Provider                                       |
+| ------------- | ---------------------------------------------- |
+| bgm/sfx       | heygen catalog (free)                          |
+| image         | heygen search first, codex `image_gen` on miss |
+| voice         | **heygen tts** (free, same credential)         |
+| icon          | heygen asset search                            |
+| video (local) | spec-gated `videogen` models (local models)    |
 
 `--local-only` skips every network provider, including the free HeyGen ones,
 leaving the project + global cache and any local provider.
