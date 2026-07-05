@@ -64,24 +64,27 @@ asset (it records provenance and auto-promotes to the global cache).
 > `--from`. Add a thin `process` verb only if agents repeatedly fumble these
 > recipes.
 
-## Transcription (better local ASR than whisper.cpp)
+## Transcription (default: Parakeet, better than whisper.cpp)
 
-The zero-setup baseline is `npx hyperframes transcribe <audio>` (whisper.cpp).
-For higher accuracy, `transcribe.mjs` runs **NVIDIA Parakeet-TDT via parakeet-mlx**
-(a top open-source ASR, Neural-Engine fast on Apple Silicon, and the rank-0 pick
-in the `asr` ladder). It emits `{ text, words:[{text,start,end}] }` with word
-timestamps merged from Parakeet's sub-word tokens, so it feeds transcript-cut,
-captions, and the audio engine directly.
+`transcribe.mjs` is the default local transcription path. It runs **NVIDIA
+Parakeet-TDT via parakeet-mlx**, which beats whisper.cpp on the Open ASR
+Leaderboard (avg WER ~6.05% vs 7.44%; on NOISY audio 4.73% vs 5.96%, where
+whisper-large-v3 hallucinated to 308% WER on meetings) and is 5-10x faster.
+It emits `{ text, words:[{text,start,end}] }` with word timestamps (merged from
+Parakeet's sub-word tokens), feeding transcript-cut, captions, and the audio
+engine directly.
 
 ```bash
 # install once: uv venv ~/.venvs/parakeet && VIRTUAL_ENV=~/.venvs/parakeet uv pip install parakeet-mlx
 node <SKILL_DIR>/scripts/transcribe.mjs --input talk.mp4 --out talk.transcribe.json
 ```
 
-VERIFIED on 24GB: accurate transcript, ~3s (cached model) for 8s audio, beats
-whisper.cpp on accuracy and speed. Falls back to `hyperframes transcribe`
-(whisper.cpp) when parakeet-mlx is not installed. For no-GPU machines the `asr`
-ladder drops to whisperx (CPU, native word timestamps).
+VERIFIED on 24GB: accurate, ~3s (cached) for 8s audio. Parakeet covers English +
+25 European languages. For other languages, or when parakeet-mlx is not
+installed, transcribe.mjs auto-falls-back to whisper.cpp (99 languages) via
+`hyperframes transcribe`. `--engine parakeet|whisper` forces one. (Cohere
+Transcribe tops the leaderboard on paper but its mlx-audio quants produced
+garbage and ran 40-70x slower on a Mac in testing, so it is not wired in.)
 
 ## Text-based editing (transcript cut)
 

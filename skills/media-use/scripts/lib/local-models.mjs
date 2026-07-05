@@ -42,8 +42,15 @@ const MODELS = {
   asr: [
     // Parakeet is BETTER than Whisper yet SMALLER (0.6B vs 1.5B), so quality is
     // not size here: `rank` pins it ahead of whisper regardless of footprint.
-    // 2026-07 X consensus (one of the two best open-source STT models,
-    // Neural-Engine fast) + live verification on a 24GB Mac.
+    // Open ASR Leaderboard avg WER: Parakeet ~6.05% vs whisper-large-v3 7.44%
+    // (~19% better); on NOISY test-other 4.73% vs 5.96%, and whisper-v3
+    // hallucinated to 308% WER on meetings where Parakeet held. 5-10x faster.
+    //
+    // Cohere Transcribe 2B tops the leaderboard (5.42%) and is nominally the most
+    // accurate, but its mlx-audio community MLX quants (4bit AND 8bit, with and
+    // without --language en) produced multilingual token-soup garbage AND ran
+    // 40-70x slower than Parakeet on a 24GB Mac (live-tested 2026-07). Excluded
+    // until the mlx-audio Cohere decoder stabilizes; Parakeet is the default.
     {
       id: "parakeet-mlx",
       tier: "small",
@@ -57,7 +64,7 @@ const MODELS = {
       invoke:
         "parakeet-mlx {audio} --model mlx-community/parakeet-tdt-0.6b-v3 --output-format json --output-dir {outdir}",
       notes:
-        "NVIDIA Parakeet-TDT 0.6B via parakeet-mlx. VERIFIED on 24GB: accurate transcript, ~3s (cached model) for 8s audio. Run via scripts/transcribe.mjs (merges tokens to word timestamps). Beats whisper.cpp on accuracy AND speed.",
+        "NVIDIA Parakeet-TDT 0.6B via parakeet-mlx. VERIFIED on 24GB: accurate transcript, ~3s (cached model) for 8s audio, word timestamps drive transcript-cut. English + 25 European languages. Beats whisper.cpp on accuracy (6.05% vs 7.44% WER) AND speed (5-10x).",
     },
     {
       id: "whisperx",
