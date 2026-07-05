@@ -20,6 +20,8 @@ HyperFrames owns media _playback_; media-use owns everything else. Each row is e
 | No transcript-driven cutting               | `scripts/transcript-cut.mjs` compiles word-timestamp edits into cut lists                                                                   |
 | No auto-duck / publish loudness            | `scripts/audio-duck.mjs` + `references/operations.md` loudnorm/sidechain recipes                                                            |
 | No cross-project memory                    | global content-addressed cache + auto-promote (`~/.media`)                                                                                  |
+| No image generation                        | RAM-graded local mflux (FLUX) via `scripts/lib/mflux-provider.mjs`, codex `image_gen` upsell (`scripts/lib/codex-provider.mjs`)             |
+| No video generation                        | spec-gated local LTX (`videogen` in `scripts/lib/local-models.mjs`); `heygen video create` avatar upsell                                    |
 | Weak local-model defaults                  | free-usage HeyGen first (TTS, bg-removal) via the `heygen` CLI; local open-source only as an opt-out fallback (`scripts/lib/local-run.mjs`) |
 
 ## When to use
@@ -79,18 +81,23 @@ node <SKILL_DIR>/scripts/resolve.mjs --type icon --intent "rocket" --project .
 
 ## Providers
 
-media-use shells exactly two external CLIs, both subscription-authenticated
-(media-use holds no keys; each CLI owns its auth): the `heygen` CLI, first for
-every type it serves, and the `codex` CLI for image generation on the user's
-ChatGPT subscription when the catalog misses.
+media-use holds no keys; every external tool owns its auth. Generation is
+local-first with a cloud upsell where one helps. `resolve` spec-checks
+AVAILABLE RAM and auto-picks the best local model that fits (a RAM-graded
+ladder, `describeModelLadder`); the agent can see the ladder and override.
 
-| Type          | Provider                                       |
-| ------------- | ---------------------------------------------- |
-| bgm/sfx       | heygen catalog (free)                          |
-| image         | heygen search first, codex `image_gen` on miss |
-| voice         | **heygen tts** (free, same credential)         |
-| icon          | heygen asset search                            |
-| video (local) | spec-gated `videogen` models (local models)    |
+| Type          | Provider (in order)                                                                     |
+| ------------- | --------------------------------------------------------------------------------------- |
+| bgm/sfx       | heygen catalog (free)                                                                   |
+| image         | heygen search, then local mflux (best FLUX for your RAM), then codex `image_gen` upsell |
+| voice         | **heygen tts** (free, same credential)                                                  |
+| icon          | heygen asset search                                                                     |
+| video (local) | local LTX (`videogen` ladder); `heygen video create` avatar upsell                      |
+
+Local image (mflux) and video (LTX) run on-device (free, private, offline once
+cached). The `codex` CLI (ChatGPT sub) is the better-quality image upsell and
+the fallback when no local model fits; the `heygen` CLI is the avatar-video
+upsell. See `references/operations.md` for the RAM ladders and upsell recipes.
 
 `--local-only` skips every network provider, including the free HeyGen ones,
 leaving the project + global cache and any local provider.

@@ -71,6 +71,30 @@ test("weakness: weak local defaults → local models exist as the opt-out fallba
   }
 });
 
+test("weakness: no image generation → local mflux (RAM-graded) + codex upsell", async () => {
+  const ps = getProviders("image");
+  assert.ok(
+    ps.some((p) => p.name === "mflux.local" && typeof p.generate === "function"),
+    "local image gen missing",
+  );
+  assert.ok(
+    ps.some((p) => p.name === "codex.image_gen" && typeof p.generate === "function"),
+    "codex image upsell missing",
+  );
+  const lm = await import("./local-models.mjs");
+  assert.ok(lm.CAPABILITIES.includes("imagegen"), "imagegen capability missing");
+  assert.ok(lm.listModels("imagegen").length >= 3, "imagegen RAM ladder too small");
+  assert.equal(typeof lm.describeModelLadder, "function", "agent-facing ladder missing");
+});
+
+test("weakness: no video generation → local videogen ladder + heygen avatar upsell", async () => {
+  const lm = await import("./local-models.mjs");
+  assert.ok(lm.CAPABILITIES.includes("videogen"), "videogen capability missing");
+  assert.ok(lm.listModels("videogen").length >= 2, "videogen ladder too small");
+  const ops = existsSync(join(SKILL, "references", "operations.md"));
+  assert.ok(ops, "operations.md (avatar-upsell recipe) missing");
+});
+
 test("every resolve type has at least one enabled provider", () => {
   for (const t of listTypes()) {
     assert.ok(getProviders(t).length > 0, `type ${t} has no enabled provider`);

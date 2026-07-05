@@ -1,6 +1,14 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { listModels, meetsSpecs, selectModel, CAPABILITIES } from "./local-models.mjs";
+import {
+  listModels,
+  meetsSpecs,
+  selectModel,
+  describeModelLadder,
+  CAPABILITIES,
+} from "./local-models.mjs";
+
+const TIERS = ["small", "medium", "large", "xlarge"];
 
 const strongGpu = {
   ramMB: 64000,
@@ -16,7 +24,7 @@ test("every capability table is non-empty and well-formed", () => {
     assert.ok(models.length > 0, `no models for ${cap}`);
     for (const m of models) {
       assert.ok(m.id && m.tier && m.needs, `${cap}/${m.id} missing fields`);
-      assert.ok(["medium", "large"].includes(m.tier), `${cap}/${m.id} bad tier`);
+      assert.ok(TIERS.includes(m.tier), `${cap}/${m.id} bad tier: ${m.tier}`);
       assert.equal(typeof m.install, "string", `${cap}/${m.id} needs an install command`);
       assert.equal(typeof m.invoke, "string", `${cap}/${m.id} needs an invoke command`);
       // user-installed, local-use-only: there is NO license gate on selection
@@ -66,6 +74,59 @@ test("selectModel recommends the CLI path when no tier fits", () => {
 test("preferTier:'medium' avoids the large model even on a strong machine", () => {
   const r = selectModel("tts", strongGpu, { preferTier: "medium" });
   assert.equal(r.tier, "medium");
+});
+
+test("selectModel gates on AVAILABLE RAM, not total, when both are present", () => {
+  // 64GB total but only 6GB free right now -> the large tier must not be chosen.
+  const busy = {
+    ramMB: 64000,
+    availableRamMB: 6000,
+    appleSilicon: true,
+    gpu: { present: true, kind: "apple", vramMB: 64000 },
+  };
+  const r = selectModel("tts", busy);
+  assert.equal(r.tier, "medium", "available RAM (6GB) rules out the 16GB large tier");
+});
+
+test("imagegen is a RAM-graduated ladder; agent picks the best that fits", () => {
+  const ladder = describeModelLadder("imagegen", {
+    ramMB: 24000,
+    availableRamMB: 12000,
+    appleSilicon: true,
+    gpu: { present: true, kind: "apple", vramMB: 24000 },
+  });
+  // best-first order, each flagged with fit
+  assert.ok(ladder.length >= 3, "imagegen offers multiple RAM tiers");
+  assert.ok(
+    ladder[0].needsRamMB >= ladder[ladder.length - 1].needsRamMB,
+    "ladder is ordered best (biggest) first",
+  );
+  // on 24GB / 12GB-free the schnell --low-ram tier fits, the 32GB+ tiers do not
+  const fitting = ladder.filter((m) => m.fits);
+  assert.ok(fitting.length >= 1, "at least the low-ram tier fits a 24GB Mac");
+  assert.ok(
+    fitting.every((m) => m.needsRamMB <= 12000),
+    "only sub-budget models flagged as fitting",
+  );
+  const pick = selectModel("imagegen", {
+    ramMB: 24000,
+    availableRamMB: 12000,
+    gpu: { present: true, vramMB: 24000 },
+  });
+  assert.equal(
+    pick.model.id,
+    "flux-schnell-mflux-q4",
+    "best fit on 24GB is the low-ram schnell tier",
+  );
+});
+
+test("imagegen on a 64GB Mac steps up to the higher-quality tier", () => {
+  const pick = selectModel("imagegen", {
+    ramMB: 96000,
+    availableRamMB: 80000,
+    gpu: { present: true, vramMB: 96000 },
+  });
+  assert.equal(pick.tier, "xlarge", "80GB free unlocks the top-quality model");
 });
 
 test("ASR offers word-timestamp-capable models (better than plain whisper)", () => {

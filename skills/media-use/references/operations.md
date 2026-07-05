@@ -142,3 +142,60 @@ ffmpeg -i mix.wav \
   -af loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=<input_i>:measured_TP=<input_tp>:measured_LRA=<input_lra>:measured_thresh=<input_thresh>:offset=<target_offset>:linear=true:print_format=summary \
   mix.podcast.wav
 ```
+
+## Generate: images (local first, cloud upsell)
+
+`resolve --type image` retrieves from the HeyGen catalog first; on a miss it
+GENERATES. Two paths, best-for-the-machine picked automatically:
+
+1. **Local (default, free, private): mflux** (FLUX-on-MLX). `resolve` spec-checks
+   AVAILABLE RAM and runs the best FLUX-class model that fits, via
+   `scripts/lib/local-models.mjs` (`imagegen` ladder) + `mflux-provider.mjs`.
+   The RAM ladder (agent sees it via `describeModelLadder("imagegen", specs)`):
+
+   | Tier   | Model                | Needs (available RAM) | Notes                               |
+   | ------ | -------------------- | --------------------- | ----------------------------------- |
+   | medium | FLUX.1 schnell int4  | ~8GB (`--low-ram`)    | ~20s/512px on 24GB. VERIFIED. Fast. |
+   | large  | FLUX.2 Klein 4B int4 | ~32GB                 | higher quality, full-resident       |
+   | xlarge | Qwen-Image           | ~64GB                 | top quality, 64GB+ Macs only        |
+
+   Gotchas baked into the table: the official FLUX repos are HF-gated, so it
+   points at non-gated community 4-bit re-uploads; and `--low-ram` is MANDATORY
+   at the medium tier (without it a 768x512 run swap-thrashed to 90 minutes on
+   24GB; with it, 20 seconds).
+
+2. **Cloud upsell (better quality): the `codex` CLI** `image_gen` tool, on the
+   user's ChatGPT subscription (codex owns auth, no key here, no per-call
+   charge). It is the automatic fallback when no local model fits AND the
+   explicit "make it better" choice on any machine. Users who just want codex
+   can ask for it directly. Verified: prompt -> raster -> frozen + ledgered.
+
+`--local-only` keeps mflux (once cached) and skips codex (network).
+
+## Generate: video (local first, HeyGen avatar upsell)
+
+Operate-on-video ships now; GENERATING video is local-first with a HeyGen
+avatar upsell (decision X3).
+
+- **Local (default): LTX 2.3 on MLX** via `dgrauet/ltx-2-mlx`, the `videogen`
+  ladder in `local-models.mjs`. Generative clips (t2v / i2v), spec-gated to RAM.
+  Verified on 24GB: 512x320 x 33f with audio.
+- **HeyGen avatar upsell (better, script-driven): the `heygen` CLI**, NOT the
+  raw API. For a talking-head / avatar video, `heygen video create` (avatar
+  engine IV by default) beats a generative clip when you want a real presenter:
+
+  ```bash
+  # discover an avatar + a starfish voice, then create + wait
+  heygen avatar list --ownership public --limit 5
+  heygen voice list --engine starfish --limit 5
+  heygen video create --wait -d '{
+    "type": "avatar",
+    "avatar_id": "<avatar-id>",
+    "script": "Your narration here.",
+    "voice_id": "<voice-id>"
+  }'
+  ```
+
+  Avatar videos are deterministic + script-driven (lip-sync from a script or a
+  pre-recorded `audio_url`), distinct from the generative LTX clips. After it
+  renders, `resolve --from <downloaded.mp4> --type video` to ledger it.

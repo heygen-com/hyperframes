@@ -6,10 +6,13 @@
 // reproducible renders). heygen-CLI is always first for the types it serves.
 //
 // An entry exposes any of three capability methods — search / generate /
-// process — plus { name }. media-use shells exactly two external CLIs, both
-// subscription-authenticated with no keys held here: the heygen CLI (catalog +
-// TTS, first for every type it serves) and the codex CLI (image generation on
-// the user's ChatGPT sub, fallback when the catalog misses).
+// process — plus { name }. media-use holds no keys; each external tool owns its
+// own auth. Providers, by type:
+//   - heygen CLI: catalog + TTS, first for every type it serves (sub creds)
+//   - mflux: local FLUX-class image gen, spec-selected to the machine's RAM
+//     (free, private, offline once cached)
+//   - codex CLI: image gen on the user's ChatGPT sub — the better-quality upsell
+//     and the fallback when no local model fits
 
 import { bgmProvider } from "./bgm-provider.mjs";
 import { sfxProvider } from "./sfx-provider.mjs";
@@ -17,6 +20,7 @@ import { imageProvider, iconProvider } from "./image-provider.mjs";
 import { brandProvider } from "./brand-provider.mjs";
 import { heygenTtsGenerate } from "./voice-provider.mjs";
 import { codexImageGenerate } from "./codex-provider.mjs";
+import { mfluxImageGenerate } from "./mflux-provider.mjs";
 
 // Provider marker: `network` = hits a remote service (skipped by --local-only).
 // HeyGen (catalog + TTS) uses the credential you already hold for the free
@@ -30,7 +34,11 @@ const REGISTRY = {
   sfx: [N("heygen.audio.sounds", { search: sfxProvider.search })],
   image: [
     N("heygen.asset.search", { search: imageProvider.search }),
-    // Catalog miss -> generate on the user's ChatGPT sub (codex CLI owns auth).
+    // Catalog miss -> generate. Local first (best FLUX-class model the machine's
+    // RAM can run, spec-selected; free, private, kept under --local-only), then
+    // the codex CLI on the user's ChatGPT sub as the better-quality upsell and
+    // the fallback when no local model fits.
+    A("mflux.local", { generate: mfluxImageGenerate }),
     N("codex.image_gen", { generate: codexImageGenerate }),
   ],
   icon: [N("heygen.asset.search", { search: iconProvider.search })],

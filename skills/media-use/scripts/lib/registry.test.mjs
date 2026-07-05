@@ -19,8 +19,8 @@ test("heygen provider is first for every type it serves", () => {
   }
 });
 
-test("sanctioned providers only: heygen, codex image_gen, local design spec", () => {
-  const allowed = /^heygen|^codex\.image_gen$|^design_spec$/;
+test("sanctioned providers only: heygen, mflux local, codex image_gen, design spec", () => {
+  const allowed = /^heygen|^mflux\.local$|^codex\.image_gen$|^design_spec$/;
   for (const t of listTypes()) {
     for (const p of getProviders(t)) {
       assert.ok(allowed.test(p.name), `${t} lists unsanctioned provider: ${p.name}`);
@@ -28,13 +28,17 @@ test("sanctioned providers only: heygen, codex image_gen, local design spec", ()
   }
 });
 
-test("image: heygen catalog first, codex generation as the miss fallback", () => {
+test("image cascade: heygen catalog, then local mflux, then the codex upsell", () => {
   const ps = getProviders("image");
-  assert.match(ps[0].name, /^heygen/);
+  assert.match(ps[0].name, /^heygen/, "heygen catalog first");
+  const names = ps.map((p) => p.name);
+  const mflux = ps.find((p) => p.name === "mflux.local");
   const codex = ps.find((p) => p.name === "codex.image_gen");
-  assert.ok(codex, "codex image_gen fallback registered");
-  assert.equal(typeof codex.generate, "function");
-  assert.ok(!codex.paid, "sub-covered generation is not gated as paid");
+  assert.ok(mflux && typeof mflux.generate === "function", "local mflux registered");
+  assert.ok(codex && typeof codex.generate === "function", "codex upsell registered");
+  assert.ok(names.indexOf("mflux.local") < names.indexOf("codex.image_gen"), "local before codex");
+  assert.ok(!mflux.network, "local mflux is kept under --local-only");
+  assert.ok(codex.network, "codex is network (skipped under --local-only)");
 });
 
 test("voice: free HeyGen TTS is the sole provider", () => {

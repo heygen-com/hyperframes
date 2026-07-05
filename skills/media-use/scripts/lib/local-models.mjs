@@ -14,7 +14,7 @@
 // default (fish-speech) is the meeting's pick; final defaults are confirmed by
 // the eval harness in U7 — this table is the shortlist + current default.
 
-export const CAPABILITIES = ["tts", "asr", "upscale", "videogen"];
+export const CAPABILITIES = ["tts", "asr", "upscale", "videogen", "imagegen"];
 
 const MODELS = {
   tts: [
@@ -121,6 +121,59 @@ const MODELS = {
         "Full-precision two-stage pipeline (upstream production default). 32GB with --low-ram block streaming; 64-128GB Macs for long/HD runs (the 25s multi-scene spots seen in the wild).",
     },
   ],
+  imagegen: [
+    // 2026-07 X research + live verification on a 24GB M-series Mac. mflux
+    // (FLUX-on-MLX) is the Mac-native runner; FLUX is the quality leader. Two
+    // hard-won findings baked into `needs.ramMB`:
+    //   1. The OFFICIAL FLUX repos are HF-gated (license wall). Point --path at a
+    //      non-gated community 4-bit re-upload (self-contained, incl. VAE).
+    //   2. Without --low-ram, FLUX's T5-XXL text encoder + transformer blow past
+    //      24GB into swap: a 768x512 run took 90 MINUTES. With --low-ram (streams
+    //      components from disk) the SAME machine did 512x512 in ~20s at 7.6GB
+    //      free. So the medium tier's needs.ramMB is the streamed floor, not the
+    //      resident footprint; the large tiers are the no-streaming thresholds.
+    // The runner resolves `repo` to a local snapshot (hf download) before --path;
+    // a bare repo id in --path breaks mlx unflatten.
+    {
+      id: "flux-schnell-mflux-q4",
+      tier: "medium",
+      sizeMB: 8700,
+      needs: { ramMB: 8000, gpu: true },
+      repo: "dhairyashil/FLUX.1-schnell-mflux-4bit",
+      wordTimestamps: false,
+      install: "uv venv ~/.venvs/mflux && VIRTUAL_ENV=~/.venvs/mflux uv pip install mflux==0.9.6",
+      invoke:
+        "mflux-generate --model schnell --path {model_path} --low-ram --steps 4 --prompt {prompt} --width {w} --height {h} --seed {seed} --output {out}",
+      notes:
+        "FLUX.1 schnell int4. VERIFIED on 24GB (7.6GB free): --low-ram 512x512 in ~20s, photoreal. --low-ram is MANDATORY at this tier (streams to avoid swap). Few-step, fast.",
+    },
+    {
+      id: "flux2-klein-mflux-q4",
+      tier: "large",
+      sizeMB: 12000,
+      needs: { ramMB: 32000, gpu: true },
+      repo: "Runpod/FLUX.2-klein-4B-mflux-4bit",
+      wordTimestamps: false,
+      install: "uv venv ~/.venvs/mflux && VIRTUAL_ENV=~/.venvs/mflux uv pip install mflux",
+      invoke:
+        "mflux-generate --base-model flux2-klein-4b --path {model_path} --steps 8 --prompt {prompt} --width {w} --height {h} --seed {seed} --output {out}",
+      notes:
+        "FLUX.2 Klein 4B int4 (most-downloaded mflux community repo). Newer, higher quality than schnell; full-resident (no streaming) so needs 32GB+ to stay fast. Needs mflux >= 0.18 for the flux2-klein base model.",
+    },
+    {
+      id: "qwen-image-mflux",
+      tier: "xlarge",
+      sizeMB: 40000,
+      needs: { ramMB: 64000, gpu: true },
+      repo: "Qwen/Qwen-Image",
+      wordTimestamps: false,
+      install: "uv venv ~/.venvs/mflux && VIRTUAL_ENV=~/.venvs/mflux uv pip install mflux",
+      invoke:
+        "mflux-generate --base-model qwen --steps 20 --prompt {prompt} --width {w} --height {h} --seed {seed} --output {out}",
+      notes:
+        "Qwen-Image, top-tier quality. Heavy: 'several minutes' even on 128GB M4 Max, 'almost fried' a 32GB M4 Pro. 64GB+ only. Below that, the cloud upsell (codex) is faster and better.",
+    },
+  ],
 };
 
 function tableFor(capability) {
@@ -137,7 +190,11 @@ export function listModels(capability) {
 /** Does this machine meet a model's needs? Apple Silicon unified memory counts as VRAM. */
 export function meetsSpecs(model, specs) {
   const n = model.needs || {};
-  if (n.ramMB && specs.ramMB < n.ramMB) return false;
+  // Gate on AVAILABLE RAM when the probe reported it (the real budget with the
+  // OS + open apps resident); fall back to total RAM otherwise. Older specs
+  // objects (and unit fixtures) that only set ramMB keep working unchanged.
+  const budget = specs.availableRamMB ?? specs.ramMB;
+  if (n.ramMB && budget < n.ramMB) return false;
   if (n.gpu && !specs.gpu?.present) return false;
   if (n.vramMB) {
     const vram = specs.gpu?.vramMB ?? 0;
@@ -146,21 +203,51 @@ export function meetsSpecs(model, specs) {
   return true;
 }
 
+// Bigger RAM footprint is the quality proxy inside a capability (a 40GB image
+// model out-renders a 12GB one), so "best model the machine can run" == the
+// largest-footprint model whose needs still fit the available-RAM budget.
+function rankedByFootprint(table) {
+  return [...table].sort((a, b) => (b.needs?.ramMB ?? 0) - (a.needs?.ramMB ?? 0));
+}
+
 /**
- * Pick the best local model the machine can run for a capability.
- * Prefers `large` unless preferTier pins `medium`. Returns
- * `{ model, tier }`, or `{ recommend: "cli", reason }` when nothing fits.
+ * Pick the best local model the machine can run for a capability: the
+ * highest-footprint model that fits the available-RAM budget (and GPU/VRAM).
+ * `preferTier` pins the search to one tier (e.g. force a smaller/faster model).
+ * Returns `{ model, tier }`, or `{ recommend: "cli", reason }` when nothing fits.
  */
 export function selectModel(capability, specs, { preferTier } = {}) {
   const table = tableFor(capability);
-  const order = preferTier === "medium" ? ["medium"] : ["large", "medium"];
-  for (const tier of order) {
-    const model = table.find((m) => m.tier === tier && meetsSpecs(m, specs));
-    if (model) return { model, tier };
+  const pool = preferTier ? table.filter((m) => m.tier === preferTier) : table;
+  for (const model of rankedByFootprint(pool)) {
+    if (meetsSpecs(model, specs)) return { model, tier: model.tier };
   }
   const smallest = table.reduce((a, b) => (a.sizeMB <= b.sizeMB ? a : b));
   return {
     recommend: "cli",
     reason: `machine does not meet specs for any local ${capability} model (smallest needs ~${smallest.needs.ramMB}MB RAM${smallest.needs.gpu ? " + GPU" : ""}); use the CLI path instead`,
   };
+}
+
+/**
+ * Agent-facing ladder: every model for a capability, best-first, each flagged
+ * with whether it fits this machine and why. Lets the agent see the RAM-graded
+ * options and choose (e.g. trade the auto-picked best for a smaller/faster one,
+ * or step up to a cloud upsell) rather than only getting one auto-selection.
+ */
+export function describeModelLadder(capability, specs) {
+  const budget = specs.availableRamMB ?? specs.ramMB;
+  return rankedByFootprint(tableFor(capability)).map((model) => {
+    const fits = meetsSpecs(model, specs);
+    return {
+      id: model.id,
+      tier: model.tier,
+      needsRamMB: model.needs?.ramMB ?? 0,
+      fits,
+      reason: fits
+        ? `fits (needs ~${model.needs?.ramMB}MB, ${budget}MB available)`
+        : `too big (needs ~${model.needs?.ramMB}MB${model.needs?.gpu ? " + GPU" : ""}, ${budget}MB available)`,
+      notes: model.notes,
+    };
+  });
 }
