@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      @font-face {
+        font-family: "Caveat";
+        src: url("assets/fonts/Caveat-700-latin.woff2") format("woff2");
+        font-weight: 700;
+        font-display: block;
+      }
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: transparent;
+        overflow: hidden;
+      }
+      /* ---- hw-callout-circle ----------------------------------------------
+         The full callout anatomy: wobbled ellipse outline draws around a
+         target, optional scribble fill sketches in, a curved connector leads
+         to a handwritten label. Requires the hw-boil helpers in the host. */
+      .hw-callout {
+        position: absolute;
+        pointer-events: none;
+      }
+      .hw-callout svg {
+        width: 100%;
+        height: 100%;
+        overflow: visible;
+      }
+      .hw-callout path {
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .hw-callout .hw-co-outline {
+        stroke: var(--hw-co-ink, var(--hw-ink, #f4f2ec));
+        stroke-width: var(--hw-co-w, 6);
+      }
+      .hw-callout .hw-co-scribble {
+        stroke: var(--hw-co-accent, var(--hw-accent, #6d6dff));
+        stroke-width: 4;
+        opacity: 0.7;
+      }
+      .hw-callout .hw-co-connector {
+        stroke: var(--hw-co-ink, var(--hw-ink, #f4f2ec));
+        stroke-width: 4;
+      }
+      .hw-callout .hw-co-label {
+        position: absolute;
+        font-family: var(--hw-font-print, "Caveat", cursive);
+        font-weight: 700;
+        font-size: 54px;
+        color: var(--hw-co-ink, var(--hw-ink, #f4f2ec));
+        white-space: nowrap;
+        opacity: 0;
+        text-shadow: 0 2px 14px rgba(0, 0, 0, 0.45);
+      }
+      /* self-preview scene */
+      #hw-co-scene {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(150deg, #35604a 0%, #14231c 100%);
+      }
+      #hw-co-target {
+        position: absolute;
+        left: 700px;
+        top: 420px;
+        width: 220px;
+        height: 150px;
+        border-radius: 18px;
+        background: rgba(244, 242, 236, 0.18);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: "Inter", ui-sans-serif, sans-serif;
+        font-weight: 600;
+        font-size: 30px;
+        color: rgba(244, 242, 236, 0.8);
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Self-preview. WIRING: copy the .hw-callout CSS + markup pattern, the
+         hwCalloutBuild / hwCalloutOn / hwCalloutOff helpers, AND the hw-boil
+         helpers. Size the wrapper around your target, then:
+
+           hwCalloutBuild("#hw-my-callout", { scribble: true, seed: 4,
+             label: "look here!", labelAt: "right" });
+           hwCalloutOn(tl, "#hw-my-callout", 2.0);
+           hwBoil(tl, "#hw-my-callout", { frameDrop: 3, seed: 4 });
+           hwCalloutOff(tl, "#hw-my-callout", 8.0);
+    -->
+    <div
+      id="hw-co-root"
+      data-composition-id="hw-callout-circle"
+      data-start="0"
+      data-duration="5"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="hw-co-scene"></div>
+      <div id="hw-co-target">subject</div>
+      <div class="hw-callout" id="hw-co-demo" style="left: 640px; top: 370px; width: 340px; height: 250px">
+        <svg viewBox="0 0 340 250">
+          <path class="hw-co-scribble" id="hw-co-demo-scribble"></path>
+          <path class="hw-co-outline" id="hw-co-demo-outline"></path>
+          <path class="hw-co-connector" id="hw-co-demo-connector"></path>
+        </svg>
+        <div class="hw-co-label" id="hw-co-demo-label"></div>
+      </div>
+      <div
+        id="hw-co-drv"
+        class="clip"
+        data-start="0"
+        data-duration="5"
+        data-track-index="0"
+        style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"
+      ></div>
+    </div>
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+
+        /* ---- hw-boil helpers (shared family runtime — copy once per host) ---- */
+        window.hwOnUpdate = function (tl, fn) {
+          if (!tl.__hwRenders) {
+            tl.__hwRenders = [];
+            tl.eventCallback("onUpdate", function () {
+              for (var i = 0; i < tl.__hwRenders.length; i++) tl.__hwRenders[i]();
+            });
+          }
+          tl.__hwRenders.push(fn);
+          fn();
+        };
+        window.hwHash = function (n, seed) {
+          var x = Math.sin(n * 127.1 + (seed || 1) * 311.7) * 43758.5453;
+          return (x - Math.floor(x)) * 2 - 1;
+        };
+        window.hwBoil = function (tl, target, opts) {
+          opts = opts || {};
+          var amp = opts.amp !== undefined ? opts.amp : 1.6;
+          var rot = opts.rot !== undefined ? opts.rot : 0.5;
+          var fps = opts.fps || 30;
+          var drop = opts.frameDrop || 3;
+          var seed = opts.seed || 1;
+          var els = gsap.utils.toArray(target);
+          window.hwOnUpdate(tl, function () {
+            var step = Math.floor((tl.time() * fps) / drop);
+            for (var i = 0; i < els.length; i++) {
+              gsap.set(els[i], {
+                x: window.hwHash(step * 3 + i * 97, seed) * amp,
+                y: window.hwHash(step * 3 + 1 + i * 97, seed) * amp,
+                rotation: (opts.baseRot || 0) + window.hwHash(step * 3 + 2 + i * 97, seed) * rot,
+              });
+            }
+          });
+        };
+        window.hwWobbleEllipse = function (cx, cy, rx, ry, seed, wobblePct) {
+          wobblePct = wobblePct === undefined ? 3 : wobblePct;
+          var N = 14,
+            pts = [];
+          for (var i = 0; i < N; i++) {
+            var a = (i / N) * Math.PI * 2;
+            var wr = 1 + window.hwHash(i * 13 + 5, seed) * (wobblePct / 100);
+            pts.push([cx + Math.cos(a) * rx * wr, cy + Math.sin(a) * ry * wr]);
+          }
+          var mx = (pts[0][0] + pts[N - 1][0]) / 2,
+            my = (pts[0][1] + pts[N - 1][1]) / 2;
+          var d = "M" + mx.toFixed(1) + " " + my.toFixed(1);
+          for (var j = 0; j < N; j++) {
+            var p = pts[j],
+              q = pts[(j + 1) % N];
+            d += " Q" + p[0].toFixed(1) + " " + p[1].toFixed(1) + " " + ((p[0] + q[0]) / 2).toFixed(1) + " " + ((p[1] + q[1]) / 2).toFixed(1);
+          }
+          return d;
+        };
+
+        // ---- hw-callout helpers (copy these too) ----
+        // Builds outline + scribble + connector + label inside the wrapper.
+        // opts: scribble (bool), seed, label, labelAt ("right"|"left"|"below"),
+        //       connector (bool)
+        window.hwCalloutBuild = function (target, opts) {
+          opts = opts || {};
+          var seed = opts.seed || 1;
+          var el = document.querySelector(target);
+          var svg = el.querySelector("svg");
+          var vb = svg.getAttribute("viewBox").split(" ");
+          var W = parseFloat(vb[2]),
+            H = parseFloat(vb[3]);
+          var cx = W / 2,
+            cy = H / 2,
+            rx = W * 0.42,
+            ry = H * 0.36;
+
+          el.querySelector(".hw-co-outline").setAttribute("d", window.hwWobbleEllipse(cx, cy, rx, ry, seed, 4));
+
+          var scr = el.querySelector(".hw-co-scribble");
+          if (opts.scribble === false) {
+            scr.style.display = "none";
+          } else {
+            var d = "",
+              rows = 6;
+            for (var i = 0; i < rows; i++) {
+              var t = (i + 0.5) / rows;
+              var yy = cy - ry + t * ry * 2;
+              var half = Math.sqrt(Math.max(0.05, 1 - Math.pow((yy - cy) / ry, 2)));
+              var xw = rx * half * 0.86;
+              var xa = cx - xw + window.hwHash(i * 7 + 2, seed) * 8;
+              var xb = cx + xw + window.hwHash(i * 7 + 3, seed) * 8;
+              d += (i === 0 ? "M " : " L ") + (i % 2 ? xa : xb).toFixed(1) + " " + yy.toFixed(1);
+              d += " L " + (i % 2 ? xb : xa).toFixed(1) + " " + (yy + window.hwHash(i * 7 + 4, seed) * 4).toFixed(1);
+            }
+            scr.setAttribute("d", d);
+          }
+
+          var conn = el.querySelector(".hw-co-connector");
+          var label = el.querySelector(".hw-co-label");
+          if (opts.connector === false) {
+            conn.style.display = "none";
+          } else {
+            var at = opts.labelAt || "right";
+            var sx = at === "left" ? cx - rx : at === "below" ? cx : cx + rx;
+            var sy = at === "below" ? cy + ry : cy + ry * 0.35;
+            var ex = at === "left" ? sx - 70 : at === "below" ? sx + 40 : sx + 70;
+            var ey = sy + 55;
+            conn.setAttribute(
+              "d",
+              "M " + sx.toFixed(1) + " " + sy.toFixed(1) + " Q " + ((sx + ex) / 2 + window.hwHash(21, seed) * 14).toFixed(1) + " " + (sy + 46).toFixed(1) + " " + ex.toFixed(1) + " " + ey.toFixed(1)
+            );
+            label.style.left = (at === "left" ? ex - 180 : ex + 12) + "px";
+            label.style.top = ey - 24 + "px";
+          }
+          label.textContent = opts.label || "";
+        };
+        // Draw sequence: outline -> scribble -> connector -> label pop.
+        window.hwCalloutOn = function (tl, target, at) {
+          var el = document.querySelector(target);
+          var t = at;
+          ["outline", "scribble", "connector"].forEach(function (k, idx) {
+            var p = el.querySelector(".hw-co-" + k);
+            if (!p || p.style.display === "none") return;
+            var len = p.getTotalLength();
+            gsap.set(p, { strokeDasharray: len, strokeDashoffset: len });
+            var dur = k === "scribble" ? 0.55 : k === "connector" ? 0.35 : 0.7;
+            tl.to(p, { strokeDashoffset: 0, duration: dur, ease: "power2.inOut" }, t);
+            t += dur * 0.85;
+          });
+          var label = el.querySelector(".hw-co-label");
+          gsap.set(label, { scale: 0.8, transformOrigin: "0% 50%" });
+          tl.to(label, { opacity: 1, scale: 1, duration: 0.4, ease: "back.out(1.6)" }, t);
+        };
+        window.hwCalloutOff = function (tl, target, at) {
+          tl.to(target, { opacity: 0, duration: 0.35, ease: "power2.in" }, at);
+        };
+
+        // ---- self-preview ----
+        window.hwCalloutBuild("#hw-co-demo", { scribble: true, seed: 4, label: "look here!", labelAt: "right" });
+        var tl = gsap.timeline({ paused: true });
+        window.hwCalloutOn(tl, "#hw-co-demo", 0.4);
+        window.hwBoil(tl, "#hw-co-demo", { amp: 1.8, rot: 0.4, frameDrop: 3, seed: 4 });
+        window.hwCalloutOff(tl, "#hw-co-demo", 4.3);
+        tl.set("#hw-co-root", { visibility: "hidden" }, 4.98);
+        window.__timelines["hw-callout-circle"] = tl;
+      })();
+    </script>
+  </body>
+</html>

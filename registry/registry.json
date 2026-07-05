@@ -578,6 +578,10 @@
     {
       "name": "hw-arrow",
       "type": "hyperframes:component"
+    },
+    {
+      "name": "hw-callout-circle",
+      "type": "hyperframes:component"
     }
   ]
 }

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "hw-callout-circle",
+  "type": "hyperframes:component",
+  "title": "Scribble Callout Circle",
+  "description": "Wobbled ellipse draws around a target with optional scribble fill, curved connector, and handwritten label",
+  "tags": [
+    "handwritten",
+    "annotation",
+    "callout",
+    "overlay"
+  ],
+  "files": [
+    {
+      "path": "hw-callout-circle.html",
+      "target": "compositions/components/hw-callout-circle.html",
+      "type": "hyperframes:snippet"
+    },
+    {
+      "path": "assets/fonts/Caveat-700-latin.woff2",
+      "target": "assets/fonts/Caveat-700-latin.woff2",
+      "type": "hyperframes:asset"
+    }
+  ]
+}
