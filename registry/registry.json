@@ -598,6 +598,10 @@
     {
       "name": "yt-feather-highlight",
       "type": "hyperframes:component"
+    },
+    {
+      "name": "yt-circle-pointer",
+      "type": "hyperframes:component"
     }
   ]
 }

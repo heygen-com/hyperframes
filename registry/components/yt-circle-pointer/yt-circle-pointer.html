@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: transparent;
+        overflow: hidden;
+      }
+      /* ---- yt-circle-pointer -----------------------------------------------
+         Annotation tools: a hand-drawn-feel circle that draws on around a
+         target, and a countdown chip. Position instances via top/left with
+         explicit width/height. */
+      .yt-circle {
+        --yt-red: #e62e2e;
+        position: absolute;
+        pointer-events: none;
+      }
+      .yt-circle svg {
+        width: 100%;
+        height: 100%;
+        overflow: visible;
+      }
+      .yt-circle ellipse {
+        fill: none;
+        stroke: var(--yt-ptr-color, var(--yt-red));
+        stroke-width: 6;
+        stroke-linecap: round;
+        transform: rotate(-6deg);
+        transform-origin: 50% 50%;
+      }
+      .yt-count {
+        position: absolute;
+        display: inline-flex;
+        align-items: center;
+        gap: 14px;
+        padding: 16px 32px;
+        border-radius: 999px;
+        font-family: "Inter", ui-sans-serif, sans-serif;
+        font-weight: 700;
+        font-size: 40px;
+        background: var(--yt-count-bg, var(--yt-red));
+        color: #ffffff;
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
+        pointer-events: none;
+        opacity: 0;
+      }
+      .yt-count .num {
+        font-variant-numeric: tabular-nums;
+        min-width: 1.2em;
+        text-align: center;
+      }
+      /* self-preview scene */
+      #yt-ptr-scene {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(135deg, #35c8d9 0%, #2a7fff 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: "Inter", ui-sans-serif, sans-serif;
+        font-weight: 700;
+        font-size: 60px;
+        color: rgba(255, 255, 255, 0.92);
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Self-preview wrapper. WIRING: copy the .yt-circle / .yt-count CSS and
+         markup patterns, position over your target, then:
+
+           ytCircleOn(tl, "#yt-my-circle", 3.0);          // draws the ring
+           ytCircleOff(tl, "#yt-my-circle", 6.0);
+           ytCountIn(tl, "#yt-my-count", 2.0);
+           ytCountdown(tl, "#yt-my-count", 2.4, 5);       // 5 -> 0, pulsing each tick
+    -->
+    <div
+      id="yt-ptr-root"
+      data-composition-id="yt-circle-pointer"
+      data-start="0"
+      data-duration="5"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="yt-ptr-scene"><span>the thing</span></div>
+      <div class="yt-circle" id="yt-ptr-circle" style="left: 760px; top: 440px; width: 420px; height: 210px">
+        <svg viewBox="0 0 420 210"><ellipse cx="210" cy="105" rx="196" ry="88"></ellipse></svg>
+      </div>
+      <div class="yt-count" id="yt-ptr-count" style="right: 140px; top: 110px">
+        <span class="num">5</span><span>sec</span>
+      </div>
+      <div
+        id="yt-ptr-drv"
+        class="clip"
+        data-start="0"
+        data-duration="5"
+        data-track-index="0"
+        style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"
+      ></div>
+    </div>
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+
+        // ---- copy these helpers into the host script ----
+        window.ytCircleOn = function (tl, target, at, dur) {
+          var el = document.querySelector(target + " ellipse");
+          var len = el.getTotalLength();
+          gsap.set(el, { strokeDasharray: len, strokeDashoffset: len });
+          tl.to(el, { strokeDashoffset: 0, duration: dur === undefined ? 0.7 : dur, ease: "power2.inOut" }, at);
+        };
+        window.ytCircleOff = function (tl, target, at) {
+          tl.to(target, { opacity: 0, duration: 0.35, ease: "power2.in" }, at);
+        };
+        window.ytCountIn = function (tl, target, at) {
+          gsap.set(target, { y: -18, scale: 0.9 });
+          tl.to(target, { opacity: 1, y: 0, scale: 1, duration: 0.45, ease: "back.out(1.5)" }, at);
+        };
+        window.ytCountdown = function (tl, target, at, from) {
+          var num = document.querySelector(target + " .num");
+          var st = { v: from };
+          tl.to(
+            st,
+            {
+              v: 0,
+              duration: from,
+              ease: "none",
+              onUpdate: function () {
+                num.textContent = String(Math.ceil(st.v));
+              },
+            },
+            at
+          );
+          for (var i = 1; i <= from; i++) {
+            tl.to(target, { scale: 1.07, duration: 0.09, ease: "sine.out" }, at + i - 0.09);
+            tl.to(target, { scale: 1, duration: 0.14, ease: "sine.in" }, at + i);
+          }
+        };
+
+        // Self-preview timeline.
+        var tl = gsap.timeline({ paused: true });
+        window.ytCountIn(tl, "#yt-ptr-count", 0.3);
+        window.ytCountdown(tl, "#yt-ptr-count", 0.7, 3);
+        window.ytCircleOn(tl, "#yt-ptr-circle", 1.0);
+        window.ytCircleOff(tl, "#yt-ptr-circle", 4.2);
+        tl.to("#yt-ptr-count", { opacity: 0, duration: 0.3, ease: "power2.in" }, 4.3);
+        tl.set("#yt-ptr-root", { visibility: "hidden" }, 4.98);
+        window.__timelines["yt-circle-pointer"] = tl;
+      })();
+    </script>
+  </body>
+</html>
