@@ -113,7 +113,22 @@ export async function resolveSfx({ cues, heygenOK, headers, hyperframesDir, sfxL
     const src = join(sfxLibDir, hit.file);
     const destRel = `assets/sfx/${hit.file}`;
     const dest = join(hyperframesDir, destRel);
-    if (existsSync(src) && !existsSync(dest)) copyFileSync(src, dest);
+    // The bundled library may be incomplete: some installs of the skill ship
+    // manifest.json without the actual mp3s. Pushing an sfx entry that points at
+    // a file we never copied produces a dangling reference that silently drops
+    // downstream ("not on disk"). Surface it as a loud anomaly and skip the cue
+    // instead, so the audio_meta never references a missing file.
+    if (!existsSync(dest)) {
+      if (!existsSync(src)) {
+        anomalies.push(
+          `sfx "${name}" (id ${id}): bundled file ${hit.file} missing from the offline ` +
+            `library (${sfxLibDir}) — skipped. Reinstall the hyperframes-media skill to ` +
+            `restore assets/sfx/*.mp3, or configure a HeyGen credential for retrieval.`,
+        );
+        continue;
+      }
+      copyFileSync(src, dest);
+    }
     sfx.push({
       id,
       name,
