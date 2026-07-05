@@ -574,6 +574,10 @@
     {
       "name": "hw-boil",
       "type": "hyperframes:component"
+    },
+    {
+      "name": "hw-arrow",
+      "type": "hyperframes:component"
     }
   ]
 }
