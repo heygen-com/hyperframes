@@ -594,6 +594,10 @@
     {
       "name": "hw-box-label",
       "type": "hyperframes:component"
+    },
+    {
+      "name": "hw-underline",
+      "type": "hyperframes:component"
     }
   ]
 }
