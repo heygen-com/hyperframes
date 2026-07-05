@@ -9,6 +9,23 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.7.34"
+  description="Released - 2026-07-05"
+  tags={["Release", "Engine"]}
+>
+This release hardens DOM layer masking in the engine so temporary screenshot
+visibility changes restore the exact prior inline state. It adds another guard
+around layered HDR captures, reducing the chance that masking one frame affects
+later captures.
+
+## Fixes
+
+- **Engine:** Preserve DOM mask visibility state ([56d4a7032](https://github.com/heygen-com/hyperframes/commit/56d4a7032b64ecc3f46eeb7ed17e62a11af1c07b), [#1953](https://github.com/heygen-com/hyperframes/pull/1953))
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.7.33...v0.7.34).
+</Update>
+
+<Update
   label="HyperFrames v0.7.33"
   description="Released - 2026-07-04"
   tags={["Release", "Producer"]}
