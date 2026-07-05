@@ -363,6 +363,29 @@ describe("video-frame injection respects ancestor visibility", () => {
     } as unknown as Page;
   }
 
+  function installDomMaskGlobals(setup: { window: Window; document: Document }): () => void {
+    const globals = globalThis as unknown as {
+      window?: Window;
+      document?: Document;
+      HTMLElement?: typeof HTMLElement;
+      CSS?: typeof CSS;
+    };
+    const previousWindow = globals.window;
+    const previousDocument = globals.document;
+    const previousHTMLElement = globals.HTMLElement;
+    const previousCSS = globals.CSS;
+    globals.window = setup.window;
+    globals.document = setup.document;
+    globals.HTMLElement = setup.window.HTMLElement;
+    globals.CSS = { escape: (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, "\\$&") } as CSS;
+    return () => {
+      globals.window = previousWindow;
+      globals.document = previousDocument;
+      globals.HTMLElement = previousHTMLElement;
+      globals.CSS = previousCSS;
+    };
+  }
+
   it("skips replacement-frame creation when the video's host has visibility:hidden", async () => {
     const { teardown, setup } = withGlobals(setupHostHiddenScenario({ visibility: "hidden" }));
     try {
@@ -569,20 +592,7 @@ describe("video-frame injection respects ancestor visibility", () => {
       }),
     });
 
-    const globals = globalThis as unknown as {
-      window?: Window;
-      document?: Document;
-      HTMLElement?: typeof HTMLElement;
-      CSS?: typeof CSS;
-    };
-    const previousWindow = globals.window;
-    const previousDocument = globals.document;
-    const previousHTMLElement = globals.HTMLElement;
-    const previousCSS = globals.CSS;
-    globals.window = window;
-    globals.document = document;
-    globals.HTMLElement = window.HTMLElement;
-    globals.CSS = { escape: (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, "\\$&") } as CSS;
+    const teardown = installDomMaskGlobals({ window, document });
     try {
       await applyDomLayerMask(passthroughPage(), ["scene"], []);
       expect(scene.style.visibility || "").toBe("");
@@ -592,10 +602,74 @@ describe("video-frame injection respects ancestor visibility", () => {
       expect(label.style.visibility).toBe("hidden");
       expect(label.hasAttribute("data-hf-dom-layer-mask-hidden")).toBe(false);
     } finally {
-      globals.window = previousWindow;
-      globals.document = previousDocument;
-      globals.HTMLElement = previousHTMLElement;
-      globals.CSS = previousCSS;
+      teardown();
+    }
+  });
+
+  it("removeDomLayerMask keeps hidden timed descendants hidden when they are also extraHideIds", async () => {
+    const { window, document } = parseHTML(
+      `<html><head></head><body>
+        <div id="scene" data-start="0" data-duration="6">
+          <div id="caption" data-start="4.5" data-duration="1.5">late label</div>
+        </div>
+      </body></html>`,
+    );
+    const caption = document.getElementById("caption") as HTMLElement;
+    caption.style.visibility = "hidden";
+
+    Object.defineProperty(window, "getComputedStyle", {
+      configurable: true,
+      value: (el: Element) => ({
+        display: (el as HTMLElement).style.display || "block",
+        visibility: (el as HTMLElement).style.visibility || "visible",
+      }),
+    });
+
+    const teardown = installDomMaskGlobals({ window, document });
+    try {
+      await applyDomLayerMask(passthroughPage(), ["scene"], ["caption"]);
+      await removeDomLayerMask(passthroughPage(), ["caption"]);
+
+      expect(caption.style.visibility).toBe("hidden");
+      expect(caption.hasAttribute("data-hf-dom-layer-mask-hidden")).toBe(false);
+    } finally {
+      teardown();
+    }
+  });
+
+  it("removeDomLayerMask restores extraHideIds and render frames to previous visibility", async () => {
+    const { window, document } = parseHTML(
+      `<html><head></head><body>
+        <div id="visible-caption" data-start="0" data-duration="1">current</div>
+        <video id="clip" data-start="0" data-duration="1"></video>
+        <img id="__render_frame_clip__" />
+      </body></html>`,
+    );
+    const visibleCaption = document.getElementById("visible-caption") as HTMLElement;
+    const clip = document.getElementById("clip") as HTMLElement;
+    const renderFrame = document.getElementById("__render_frame_clip__") as HTMLElement;
+    visibleCaption.style.visibility = "visible";
+    clip.style.visibility = "hidden";
+    renderFrame.style.setProperty("visibility", "hidden", "important");
+
+    Object.defineProperty(window, "getComputedStyle", {
+      configurable: true,
+      value: (el: Element) => ({
+        display: (el as HTMLElement).style.display || "block",
+        visibility: (el as HTMLElement).style.visibility || "visible",
+      }),
+    });
+
+    const teardown = installDomMaskGlobals({ window, document });
+    try {
+      await applyDomLayerMask(passthroughPage(), [], ["visible-caption", "clip"]);
+      await removeDomLayerMask(passthroughPage(), ["visible-caption", "clip"]);
+
+      expect(visibleCaption.style.visibility).toBe("visible");
+      expect(clip.style.visibility).toBe("hidden");
+      expect(renderFrame.style.visibility).toBe("hidden");
+    } finally {
+      teardown();
     }
   });
 });
