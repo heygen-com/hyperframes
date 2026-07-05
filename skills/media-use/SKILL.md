@@ -44,7 +44,7 @@ Returns one line: `resolved <id> → <path> (<type>, <metadata>)`
 | `sfx`   | Sound effects       | Bundled 19-file library + HeyGen catalog |
 | `image` | Photos, backgrounds | HeyGen asset search (75k+ vectors)       |
 | `icon`  | Icons, logos        | HeyGen asset search (type=icon)          |
-| `voice` | TTS voiceover       | HeyGen TTS (free)                        |
+| `voice` | TTS voiceover       | Local Kokoro (free); HeyGen TTS upsell   |
 
 ### Examples
 
@@ -68,16 +68,17 @@ node <SKILL_DIR>/scripts/resolve.mjs --type icon --intent "rocket" --project .
 
 ### Flags
 
-| Flag            | Description                                               |
-| --------------- | --------------------------------------------------------- |
-| `--type, -t`    | Media type: bgm, sfx, image, icon, voice                  |
-| `--intent, -i`  | What you need (natural language)                          |
-| `--entity, -e`  | Entity name for cache matching (optional)                 |
-| `--project, -p` | Project directory (default: .)                            |
-| `--from`        | Freeze a local file or direct public URL (ingest)         |
-| `--local-only`  | Offline: skip every network provider (cache + local only) |
-| `--adopt`       | Bulk-import existing assets/ into manifest                |
-| `--json`        | Output JSON instead of one-line result                    |
+| Flag            | Description                                                     |
+| --------------- | --------------------------------------------------------------- |
+| `--type, -t`    | Media type: bgm, sfx, image, icon, voice                        |
+| `--intent, -i`  | What you need (natural language)                                |
+| `--entity, -e`  | Entity name for cache matching (optional)                       |
+| `--project, -p` | Project directory (default: .)                                  |
+| `--from`        | Freeze a local file or direct public URL (ingest)               |
+| `--local-only`  | Offline: skip every network provider (cache + local only)       |
+| `--provider`    | Force one generator (e.g. `codex`, `mflux`, `kokoro`, `heygen`) |
+| `--adopt`       | Bulk-import existing assets/ into manifest                      |
+| `--json`        | Output JSON instead of one-line result                          |
 
 ## Providers
 
@@ -90,14 +91,20 @@ ladder, `describeModelLadder`); the agent can see the ladder and override.
 | ------------- | --------------------------------------------------------------------------------------- |
 | bgm/sfx       | heygen catalog (free)                                                                   |
 | image         | heygen search, then local mflux (best FLUX for your RAM), then codex `image_gen` upsell |
-| voice         | **heygen tts** (free, same credential)                                                  |
+| voice         | local **Kokoro** (free, on-device), then **heygen tts** paid upsell                     |
 | icon          | heygen asset search                                                                     |
 | video (local) | local LTX (`videogen` ladder); `heygen video create` avatar upsell                      |
 
-Local image (mflux) and video (LTX) run on-device (free, private, offline once
-cached). The `codex` CLI (ChatGPT sub) is the better-quality image upsell and
-the fallback when no local model fits; the `heygen` CLI is the avatar-video
-upsell. See `references/operations.md` for the RAM ladders and upsell recipes.
+Local Kokoro (voice), mflux (image), and LTX (video) run on-device (free,
+private, offline once cached). Paid/cloud upsells sit behind them: HeyGen TTS
+for voice, the `codex` CLI (ChatGPT sub) for a better image, the `heygen` CLI
+for avatar video. Cost rule (X4): the agent confirms before an agent-initiated
+paid call; a user-requested one just runs.
+
+To force a specific generator (e.g. a user says "make this image with codex"),
+pass `--provider codex`: it pins resolution to that provider and skips the
+free-first default. See `references/operations.md` for the RAM ladders and
+upsell recipes.
 
 `--local-only` skips every network provider, including the free HeyGen ones,
 leaving the project + global cache and any local provider.

@@ -19,6 +19,7 @@ const { values: args } = parseArgs({
     adopt: { type: "boolean", default: false },
     from: { type: "string" },
     "local-only": { type: "boolean", default: false },
+    provider: { type: "string" },
     json: { type: "boolean", default: false },
     help: { type: "boolean", short: "h", default: false },
   },
@@ -39,6 +40,7 @@ Options:
   --entity, -e    Entity name for cache matching (optional)
   --project, -p   Project directory (default: .)
   --adopt         Adopt all existing assets/ files into the manifest
+  --provider      Force one generator (e.g. codex, mflux, kokoro, heygen)
   --json          Output JSON instead of one-line result
   --help, -h      Show this help`);
   process.exit(0);
@@ -144,7 +146,7 @@ async function run() {
   // Offline guard: --local-only skips every remote provider (HeyGen catalog),
   // leaving the project + global cache and any local provider.
   const localOnly = args["local-only"];
-  const ctx = { entity, projectDir, localOnly };
+  const ctx = { entity, projectDir, localOnly, provider: args.provider };
 
   // 3. provider search — registry tries providers in order (heygen-CLI first)
   let searchResult = null;

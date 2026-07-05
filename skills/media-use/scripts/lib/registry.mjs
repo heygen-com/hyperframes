@@ -13,20 +13,28 @@
 //     (free, private, offline once cached)
 //   - codex CLI: image gen on the user's ChatGPT sub — the better-quality upsell
 //     and the fallback when no local model fits
+//   - Kokoro (via the hyperframes CLI): local voiceover, free/private default
+//     for the voice type, ahead of the paid HeyGen TTS upsell
+//
+// Generation is local-first, cloud-upsell. `ctx.provider` forces one provider
+// (e.g. "make an image with codex").
 
 import { bgmProvider } from "./bgm-provider.mjs";
 import { sfxProvider } from "./sfx-provider.mjs";
 import { imageProvider, iconProvider } from "./image-provider.mjs";
 import { brandProvider } from "./brand-provider.mjs";
 import { heygenTtsGenerate } from "./voice-provider.mjs";
+import { localTtsGenerate } from "./tts-local-provider.mjs";
 import { codexImageGenerate } from "./codex-provider.mjs";
 import { mfluxImageGenerate } from "./mflux-provider.mjs";
 
-// Provider marker: `network` = hits a remote service (skipped by --local-only).
-// HeyGen (catalog + TTS) uses the credential you already hold for the free
-// catalog, so it is network-but-free.
-const A = (name, caps) => ({ name, ...caps }); // local
+// Provider markers: `network` = hits a remote service (skipped by --local-only).
+// `paid` = costs wallet credits (documentation for the agent's cost judgment,
+// X4: agent-initiated paid should confirm). HeyGen catalog SEARCH is free;
+// HeyGen TTS now costs credits, so it is the paid upsell behind local Kokoro.
+const A = (name, caps) => ({ name, ...caps }); // local, free
 const N = (name, caps) => ({ name, network: true, ...caps }); // remote, free
+const P = (name, caps) => ({ name, network: true, paid: true, ...caps }); // remote, paid
 
 // heygen-CLI first (and currently only). All remote providers are skipped by --local-only.
 const REGISTRY = {
@@ -42,7 +50,13 @@ const REGISTRY = {
     N("codex.image_gen", { generate: codexImageGenerate }),
   ],
   icon: [N("heygen.asset.search", { search: iconProvider.search })],
-  voice: [N("heygen.tts", { generate: heygenTtsGenerate })],
+  voice: [
+    // Local Kokoro first (free, private, on-device via the hyperframes CLI, kept
+    // under --local-only), then HeyGen TTS as the higher-quality paid upsell and
+    // the fallback when Kokoro is not set up.
+    A("kokoro.local", { generate: localTtsGenerate }),
+    P("heygen.tts", { generate: heygenTtsGenerate }),
+  ],
   brand: [
     // Local design spec, not heygen — reads frame.md / design.md tokens.
     A("design_spec", { search: brandProvider.search }),
@@ -80,12 +94,17 @@ export function getProvider(type) {
  * order, returns the first non-null result, skips providers that don't expose
  * the capability. Pure over its input — the unit-testable core of the cascade.
  *
- * Offline guard: a `network` provider is skipped when `ctx.localOnly` is set,
- * leaving only the cache + local providers.
+ * Offline guard: a `network` provider is skipped when `ctx.localOnly` is set.
+ * Provider override: `ctx.provider` (a full name like "codex.image_gen" or a
+ * prefix like "codex") pins resolution to matching providers only — this is how
+ * a user "make an image WITH codex" forces the upsell instead of taking the
+ * free-first default. An override to a `network` provider ignores --local-only.
  */
 export async function runProviders(providers, capability, intent, ctx) {
+  const want = ctx?.provider;
   for (const p of providers) {
-    if (p.network && ctx?.localOnly) continue; // --local-only: cache + local only
+    if (want && p.name !== want && !p.name.startsWith(`${want}.`)) continue;
+    if (p.network && ctx?.localOnly && !want) continue; // --local-only: cache + local only
     const fn = p[capability];
     if (typeof fn !== "function") continue;
     const res = await fn(intent, ctx);
