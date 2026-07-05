@@ -582,6 +582,10 @@
     {
       "name": "yt-camera-move",
       "type": "hyperframes:component"
+    },
+    {
+      "name": "yt-avatar-pip",
+      "type": "hyperframes:component"
     }
   ]
 }
