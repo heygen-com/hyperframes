@@ -5,6 +5,7 @@ import {
   assertConfiguredFfmpegBinariesExist,
   getFfmpegBinary,
   getFfprobeBinary,
+  selectBinaryFromPathResults,
 } from "./ffmpegBinaries.js";
 
 describe("ffmpeg binary env resolution", () => {
@@ -39,5 +40,33 @@ describe("ffmpeg binary env resolution", () => {
     process.env.HYPERFRAMES_FFPROBE_PATH = process.execPath;
 
     expect(() => assertConfiguredFfmpegBinariesExist()).not.toThrow();
+  });
+});
+
+describe("selectBinaryFromPathResults", () => {
+  it("on win32, prefers the .exe over a .cmd shim listed first (spawn EINVAL fix)", () => {
+    // The exact reported layout: `where ffmpeg` lists a .cmd wrapper first.
+    const out = "C:\\tools\\bin\\ffmpeg.cmd\r\nC:\\ffmpeg\\bin\\ffmpeg.exe\r\n";
+    expect(selectBinaryFromPathResults(out, "win32")).toBe("C:\\ffmpeg\\bin\\ffmpeg.exe");
+  });
+
+  it("on win32, also skips a .bat shim in favor of a later .exe", () => {
+    const out = "C:\\a\\ffmpeg.bat\nC:\\b\\ffmpeg.exe\n";
+    expect(selectBinaryFromPathResults(out, "win32")).toBe("C:\\b\\ffmpeg.exe");
+  });
+
+  it("on win32, falls back to the first result when no .exe/.com is listed", () => {
+    // No directly-spawnable exe present — keep prior behavior (don't drop it).
+    const out = "C:\\tools\\bin\\ffmpeg.cmd\r\n";
+    expect(selectBinaryFromPathResults(out, "win32")).toBe("C:\\tools\\bin\\ffmpeg.cmd");
+  });
+
+  it("on non-win32, returns the first result unchanged", () => {
+    const out = "/usr/local/bin/ffmpeg\n/usr/bin/ffmpeg\n";
+    expect(selectBinaryFromPathResults(out, "linux")).toBe("/usr/local/bin/ffmpeg");
+  });
+
+  it("returns undefined for empty output", () => {
+    expect(selectBinaryFromPathResults("\r\n  \n", "win32")).toBeUndefined();
   });
 });

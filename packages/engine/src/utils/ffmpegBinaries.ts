@@ -8,6 +8,31 @@ export const FFPROBE_PATH_ENV = "HYPERFRAMES_FFPROBE_PATH";
 
 const pathCache = new Map<string, string | undefined>();
 
+/**
+ * Pick the binary path to use from `where`/`which`'s (newline-separated) output.
+ *
+ * On Windows `where ffmpeg` frequently lists a `.cmd`/`.bat` shim (npm/scoop/
+ * winget wrappers) AHEAD of the real `.exe`. Node's spawn (no `shell:true`)
+ * cannot execute a `.cmd`/`.bat` directly — it throws `spawn EINVAL` — which
+ * surfaces as a render (and audio-mux) failure even though FFmpeg is installed.
+ * So on win32 prefer the first directly-spawnable executable (`.exe`/`.com`),
+ * falling back to the first result only when no such executable is listed
+ * (preserving prior behavior rather than dropping a usable-via-shell path).
+ * Pure and exported so the platform-specific selection is unit-testable.
+ */
+export function selectBinaryFromPathResults(output: string, platform: string): string | undefined {
+  const candidates = output
+    .split(/\r?\n/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (candidates.length === 0) return undefined;
+  if (platform === "win32") {
+    const spawnable = candidates.find((p) => /\.(exe|com)$/i.test(p));
+    return spawnable ?? candidates[0];
+  }
+  return candidates[0];
+}
+
 function findOnPath(name: "ffmpeg" | "ffprobe"): string | undefined {
   if (pathCache.has(name)) return pathCache.get(name);
   try {
@@ -17,11 +42,8 @@ function findOnPath(name: "ffmpeg" | "ffprobe"): string | undefined {
       stdio: ["pipe", "pipe", "pipe"],
       timeout: 5000,
     });
-    const first = output
-      .split(/\r?\n/)
-      .map((s) => s.trim())
-      .find(Boolean);
-    const resolved = first ? resolve(first) : undefined;
+    const selected = selectBinaryFromPathResults(output, process.platform);
+    const resolved = selected ? resolve(selected) : undefined;
     pathCache.set(name, resolved);
     return resolved;
   } catch {
