@@ -45,7 +45,7 @@ If the user said "dark cinematic feel" — that's SLOW, not fast. If they said "
 
 For every beat you plan, name **2–4 techniques** it will use. A beat with one technique is a slideshow frame — if you can't name two, redesign that beat.
 
-Pick from the inventory in [capabilities.md](capabilities.md) and implementation patterns in [techniques.md](../../hyperframes/references/techniques.md). Examples of composable beats:
+Pick from the inventory in [capabilities.md](capabilities.md) and implementation patterns in [techniques.md](../../hyperframes-animation/techniques.md). Examples of composable beats:
 
 ```
 Beat 3: composed kanban (4 cards-as-divs per column) + counter chip on In-Progress + back.out entrance stagger
@@ -62,8 +62,8 @@ Beat 3: composed kanban (4 cards-as-divs per column) + counter chip on In-Progre
 
 - **DESIGN.md** — your color palette, font rules, components, Do's/Don'ts. Every visual must be grounded in this brand identity. If it says "white backgrounds with purple accent" — plan light scenes, not dark moody ones.
 - **Asset discovery — view the contact sheets carefully, every cell.** Open `capture/assets/contact-sheet-*.jpg` and `capture/assets/svgs/contact-sheet-*.jpg`. Both are paginated — view every page (`contact-sheet-1.jpg`, `contact-sheet-2.jpg`, etc.). **For each page, name 5 specific assets you can see before moving on.** Past agents have reported "viewed the contact sheet" after one glance and then wrote beats referencing assets that didn't exist or missed the brand logo entirely. Don't be that agent. When you find an asset that earns its place in a beat, note the filename from the label and reference it as `capture/assets/<filename>`. If a thumbnail is too small to judge resolution / fine detail, open the individual file. Also read `capture/extracted/asset-descriptions.md` for one-line summaries. **Never use contact sheets or scroll screenshots in the video itself** — contact sheets have grid labels baked in; scroll screenshots are raw browser captures. Both are for AI to BROWSE and understand the site, not to place in compositions.
-- **[techniques.md](../../hyperframes/references/techniques.md)** — 13 primitive animation techniques with code patterns. Pick for beats, these are starting points to adapt, not templates to copy.
-- **[text-effects.md](../../hyperframes/references/text-effects.md)** — 24 named text animation effects from the separate `pixel-point/animate-text` skill. The reference page tells you how to load the upstream skill; the IDs are listed inline. Assign a specific effect ID to every headline, label, and copy element in every beat — not generic "fades in" descriptions.
+- **[techniques.md](../../hyperframes-animation/techniques.md)** — primitive animation techniques with code patterns. Pick for beats, these are starting points to adapt, not templates to copy.
+- **[animate-text.md](../../hyperframes-animation/adapters/animate-text.md)** — named text animation effects and adapter guidance. Assign a specific effect ID to every headline, label, and copy element in every beat — not generic "fades in" descriptions.
 
 The storyboard is the creative north star. It tells the engineer exactly what to build for each beat — mood, camera, animations, transitions, assets, appearance, sound. Write it as if you're briefing a motion designer who's never seen the website.
 
@@ -108,7 +108,7 @@ Apple keynote register — economy of words, silence between sentences is a feat
 **Style basis:** DESIGN.md (brand colors, fonts, components from the captured site)
 ```
 
-**Global guardrails** — read [video-composition.md](../../hyperframes/references/video-composition.md) first. It defines the medium rules: density, color presence, scale, frame composition, and how design.md is brand truth not layout spec. Then apply these capture-specific additions:
+**Global guardrails** — read [video-composition.md](../../hyperframes-creative/references/video-composition.md) first. It defines the medium rules: density, color presence, scale, frame composition, and how design.md is brand truth not layout spec. Then apply these capture-specific additions:
 
 - Captured assets are accents on composed beats, not the beats themselves — see Asset Audit below for which assets earn a place (typically 2-4 across the whole video).
 - Use different techniques from techniques.md — not across the whole video, per beat. Don't default to basic fade/scale/opacity — mix in SVG path drawing, HTML-in-canvas, shaders, scrolling effects or movement effect, CSS 3D transforms, typing effects, counter animations, canvas procedural art. Each beat should feel like its own visual world. Use as many as makes sense for the storyboard.
@@ -185,7 +185,7 @@ The `drawElementImage` Chrome API captures any live HTML/CSS as a GPU-accelerate
 - **WebGL shaders** — liquid glass refraction, shatter into fragments, portal reveal, noise distortion
 - **Post-processing** — bloom, depth-of-field, film grain, color grading
 
-When planning beats, decide which ones deserve an HTML-in-Canvas treatment vs. a standard GSAP animation. If you want it, name it in the storyboard — Step 5 will read [`../../hyperframes/references/html-in-canvas-patterns.md`](../../hyperframes/references/html-in-canvas-patterns.md) for implementation. You don't need to specify the API details here.
+When planning beats, decide which ones deserve an HTML-in-Canvas treatment vs. a standard GSAP animation. If you want it, name it in the storyboard — Step 5 will read [`../../hyperframes-animation/adapters/html-in-canvas-patterns.md`](../../hyperframes-animation/adapters/html-in-canvas-patterns.md) for implementation. You don't need to specify the API details here.
 
 ### SFX assignment — happens here, not in Step 5
 
@@ -349,7 +349,7 @@ Two things, both required:
 
 **Composed (load-bearing — what carries the beat):**
 
-- Describe the UI / element / scene you're building from scratch: markup structure, the techniques powering it (cite [capabilities.md](capabilities.md) sections + [techniques.md](../../hyperframes/references/techniques.md) entries), key animation events. E.g. "Composed kanban: 3 column divs, 4 cards each, drag-and-drop with `back.out(1.7)` entrance stagger, counter chip on In-Progress incrementing via `tl.set()`."
+- Describe the UI / element / scene you're building from scratch: markup structure, the techniques powering it (cite [capabilities.md](capabilities.md) sections + [techniques.md](../../hyperframes-animation/techniques.md) entries), key animation events. E.g. "Composed kanban: 3 column divs, 4 cards each, drag-and-drop with `back.out(1.7)` entrance stagger, counter chip on In-Progress incrementing via `tl.set()`."
 - **Brand-inflect:** brand colors from DESIGN.md, real product data (project names, real metrics, real copy — not placeholder labels), narration-sync moments. Make this beat THIS brand's beat, not a generic UI demo.
 
 **Accents (decoration only — what brand-inflects the beat):**
@@ -362,7 +362,7 @@ Write this section for THIS project's actual brand and the assets audited above 
 
 ### Text Animations
 
-Every text element in this beat must name a specific effect from the catalog. The reference page is at [`../../hyperframes/references/text-effects.md`](../../hyperframes/references/text-effects.md) (or locate it with `find "$HOME" -path '*/hyperframes/references/text-effects.md' -maxdepth 10 2>/dev/null | head -1`). It lists 24 effect IDs (from the separate `pixel-point/animate-text` skill); pick what fits the brand and this beat's mood — don't default to the same effect every beat.
+Every text element in this beat must name a specific effect from the catalog. The reference page is at [`../../hyperframes-animation/adapters/animate-text.md`](../../hyperframes-animation/adapters/animate-text.md). Pick what fits the brand and this beat's mood — don't default to the same effect every beat.
 
 Format (FORMAT EXAMPLES of structure, not prescriptions — pick based on brand/mood/context):
 
