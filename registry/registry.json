@@ -590,6 +590,10 @@
     {
       "name": "mk-pill-callout",
       "type": "hyperframes:component"
+    },
+    {
+      "name": "mk-cta-button",
+      "type": "hyperframes:component"
     }
   ]
 }

@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: transparent;
+        overflow: hidden;
+      }
+      /* ---- mk-cta-button ---------------------------------------------------
+         Pill CTA ("Buy", "Subscribe"). Set --mk-cta-bg/--mk-cta-fg to recolor
+         (any css color); add .mk-cta--framed for the outlined ring
+         with drop shadow, .mk-cta--frost for frosted glass over footage. */
+      .mk-cta {
+        --mk-font: "Inter", -apple-system, sans-serif;
+        --mk-ink: #1d1d1f;
+        --mk-accent: #0071e3;
+        --mk-cta-bg: var(--mk-accent);
+        --mk-cta-fg: #ffffff;
+        --mk-cta-frame: rgba(29, 29, 31, 0.22);
+        --mk-cta-arrow-w: 3.5;
+        --mk-shadow: 0 12px 36px rgba(0, 0, 0, 0.14);
+
+        position: absolute;
+        display: inline-flex;
+        align-items: center;
+        gap: 20px;
+        padding: 24px 48px;
+        border-radius: 999px;
+        font-family: var(--mk-font);
+        font-weight: 600;
+        font-size: 42px;
+        letter-spacing: -0.01em;
+        white-space: nowrap;
+        background: var(--mk-cta-bg);
+        color: var(--mk-cta-fg);
+        pointer-events: none;
+      }
+      .mk-cta--framed::before {
+        content: "";
+        position: absolute;
+        inset: -16px;
+        border: 2px solid var(--mk-cta-frame);
+        border-radius: 999px;
+        box-shadow: var(--mk-shadow);
+      }
+      .mk-cta--frost {
+        background: rgba(255, 255, 255, 0.42);
+        color: var(--mk-ink);
+        backdrop-filter: blur(24px) saturate(1.4);
+        -webkit-backdrop-filter: blur(24px) saturate(1.4);
+        box-shadow: var(--mk-shadow);
+      }
+      .mk-cta-arrow {
+        display: inline-flex;
+        width: 0.62em;
+      }
+      .mk-cta-arrow svg {
+        width: 100%;
+        stroke: currentColor;
+        stroke-width: var(--mk-cta-arrow-w);
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        fill: none;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Self-preview wrapper. WIRING: copy the .mk-cta CSS above, the .mk-cta
+         markup below, and the helpers into your host composition. Position
+         via top/right/bottom/left; add class="clip" + data-start/duration/
+         track-index for host windowing. -->
+    <div
+      id="mk-cta-root"
+      data-composition-id="mk-cta-button"
+      data-start="0"
+      data-duration="4"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div class="mk-cta mk-cta--framed" id="mk-cta-demo" style="top: 480px; left: 780px">
+        <span>Subscribe</span>
+        <span class="mk-cta-arrow"
+          ><svg viewBox="0 0 24 24"><path d="M4 12h15M13 5l7 7-7 7" /></svg
+        ></span>
+      </div>
+      <div
+        id="mk-cta-drv"
+        class="clip"
+        data-start="0"
+        data-duration="4"
+        data-track-index="0"
+        style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"
+      ></div>
+    </div>
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+
+        // ---- copy these helpers into the host script, then call them on the
+        // paused host timeline:
+        //   mkCtaIn(tl, "#mk-my-cta", 1.0);
+        //   mkCtaNudge(tl, "#mk-my-cta", 2.0);  // arrow beckons once
+        //   mkCtaOut(tl, "#mk-my-cta", 8.5);
+        window.mkCtaIn = function (tl, target, at) {
+          gsap.set(target, { opacity: 0, y: 26, scale: 0.95 });
+          tl.to(target, { opacity: 1, y: 0, scale: 1, duration: 0.65, ease: "back.out(1.2)" }, at);
+        };
+        window.mkCtaNudge = function (tl, target, at) {
+          var arrow = document.querySelector(target + " .mk-cta-arrow");
+          if (arrow) tl.to(arrow, { x: 7, duration: 0.28, ease: "sine.inOut", yoyo: true, repeat: 3 }, at);
+        };
+        window.mkCtaOut = function (tl, target, at) {
+          tl.to(target, { opacity: 0, y: -16, duration: 0.35, ease: "power2.in" }, at);
+        };
+
+        // Self-preview timeline (not part of the snippet you copy).
+        var tl = gsap.timeline({ paused: true });
+        window.mkCtaIn(tl, "#mk-cta-demo", 0.4);
+        window.mkCtaNudge(tl, "#mk-cta-demo", 1.5);
+        window.mkCtaOut(tl, "#mk-cta-demo", 3.4);
+        tl.set("#mk-cta-root", { visibility: "hidden" }, 3.98);
+        window.__timelines["mk-cta-button"] = tl;
+      })();
+    </script>
+  </body>
+</html>
