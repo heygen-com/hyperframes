@@ -1,0 +1,24 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "yt-logo-intro",
+  "type": "hyperframes:block",
+  "title": "Logo Intro Sequence",
+  "description": "Logo stamp pops on a lined board, a kicker line gives way to the title with an accent arrow chip; seeded line distortion",
+  "tags": [
+    "logo",
+    "intro",
+    "creator"
+  ],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 6,
+  "files": [
+    {
+      "path": "yt-logo-intro.html",
+      "target": "compositions/yt-logo-intro.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}
