@@ -568,6 +568,10 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "mk-callout-highlight",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "parallax-zoom",
       "type": "hyperframes:component"
     },
