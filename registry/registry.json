@@ -572,6 +572,10 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "hw-pipeline",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "parallax-zoom",
       "type": "hyperframes:component"
     },
