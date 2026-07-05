@@ -128,6 +128,35 @@ describe("compileTimingAttrs", () => {
 
     expect(unresolved).toHaveLength(0);
   });
+
+  it("ignores media tags mentioned inside comments (issue #1938)", () => {
+    const html =
+      "<!-- this comment mentions a <video> and an <audio> tag -->\n<p>no media here</p>";
+    const { html: compiled, unresolved } = compileTimingAttrs(html);
+
+    // Comment text is preserved verbatim — no id/data-start/data-hf-auto-start injected.
+    expect(compiled).toBe(html);
+    expect(compiled).not.toContain("data-hf-auto-start");
+    expect(unresolved).toHaveLength(0);
+  });
+
+  it("ignores media tags inside <script> string literals", () => {
+    const html = '<script>const x = "<video src=\\"a.mp4\\">";</script>';
+    const { html: compiled, unresolved } = compileTimingAttrs(html);
+
+    expect(compiled).toBe(html);
+    expect(unresolved).toHaveLength(0);
+  });
+
+  it("still compiles real media tags alongside a comment that mentions them", () => {
+    const html =
+      '<!-- a <video> in prose -->\n<video src="a.mp4" data-start="0" data-duration="2">';
+    const { html: compiled } = compileTimingAttrs(html);
+
+    expect(compiled).toContain("<!-- a <video> in prose -->");
+    expect(compiled).toContain('id="hf-video-0"');
+    expect(compiled).toContain('data-end="2"');
+  });
 });
 
 describe("injectDurations", () => {

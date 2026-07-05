@@ -1,5 +1,5 @@
 import { describe, expect, it, mock } from "bun:test";
-import { hasScriptedAudioVolumeAutomation } from "./probeStage.js";
+import { hasAutoStartVideos, hasScriptedAudioVolumeAutomation } from "./probeStage.js";
 
 // ── Mocks for runProbeStage tests ────────────────────────────────────────────
 // Capture the cfg passed to createCaptureSession so we can assert it carries
@@ -221,6 +221,26 @@ describe("hasScriptedAudioVolumeAutomation", () => {
     expect(
       hasScriptedAudioVolumeAutomation(`<script>gsap.to(audio, { volume: 1 });</script>`, 0),
     ).toBe(false);
+  });
+});
+
+describe("hasAutoStartVideos", () => {
+  it("detects a real auto-start video element", () => {
+    expect(hasAutoStartVideos(`<video src="a.mp4" data-hf-auto-start="">`)).toBe(true);
+  });
+
+  it("ignores the attribute mentioned in a comment (issue #1938)", () => {
+    expect(hasAutoStartVideos(`<!-- videos get data-hf-auto-start injected --><p>hi</p>`)).toBe(
+      false,
+    );
+  });
+
+  it("ignores the attribute in prose text", () => {
+    expect(hasAutoStartVideos(`<p>the data-hf-auto-start sentinel</p>`)).toBe(false);
+  });
+
+  it("returns false when there is no media", () => {
+    expect(hasAutoStartVideos(`<div class="clip"></div>`)).toBe(false);
   });
 });
 

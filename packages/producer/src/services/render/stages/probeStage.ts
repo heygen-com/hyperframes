@@ -114,6 +114,17 @@ export function hasScriptedAudioVolumeAutomation(html: string, audioCount: numbe
   );
 }
 
+/**
+ * True when the compiled HTML has at least one `<video>` carrying the
+ * auto-injected `data-hf-auto-start` sentinel. Uses a DOM query, not a
+ * substring scan — `html.includes("data-hf-auto-start")` false-fires on any
+ * comment or prose that merely mentions the attribute (issue #1938).
+ */
+export function hasAutoStartVideos(html: string): boolean {
+  const { document } = parseHTML(html);
+  return document.querySelector("video[data-hf-auto-start]") !== null;
+}
+
 export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageResult> {
   const {
     projectDir,
@@ -139,7 +150,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
   let lastBrowserConsole: string[] = [];
 
   const probeStart = Date.now();
-  const hasAutoStartVideos = compiled.html.includes("data-hf-auto-start");
+  const hasAutoStart = hasAutoStartVideos(compiled.html);
   const hasScriptedAudio = hasScriptedAudioVolumeAutomation(
     compiled.html,
     composition.audios.length,
@@ -147,7 +158,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
   const needsBrowser =
     composition.duration <= 0 ||
     compiled.unresolvedCompositions.length > 0 ||
-    hasAutoStartVideos ||
+    hasAutoStart ||
     hasScriptedAudio;
 
   if (needsBrowser) {
@@ -155,6 +166,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
     if (composition.duration <= 0) reasons.push("root duration unknown");
     if (compiled.unresolvedCompositions.length > 0)
       reasons.push(`${compiled.unresolvedCompositions.length} unresolved composition(s)`);
+    if (hasAutoStart) reasons.push("auto-start video(s)");
     if (hasScriptedAudio) reasons.push("scripted audio volume");
 
     log.info("Launching browser for composition probe...", {
