@@ -1,0 +1,25 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "mk-placeholder-grid",
+  "type": "hyperframes:block",
+  "title": "Rounded Media Grid",
+  "description": "N-up rounded-corner media grid (2-up, 3-up, 4-up, 3x2, hero plus two): per-cell inside-scale framing, staggered box-in entrance, slow settle",
+  "tags": [
+    "placeholder",
+    "media",
+    "grid",
+    "minimal"
+  ],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 8,
+  "files": [
+    {
+      "path": "mk-placeholder-grid.html",
+      "target": "compositions/mk-placeholder-grid.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}
