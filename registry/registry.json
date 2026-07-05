@@ -570,6 +570,10 @@
     {
       "name": "parallax-unzoom",
       "type": "hyperframes:component"
+    },
+    {
+      "name": "hw-boil",
+      "type": "hyperframes:component"
     }
   ]
 }
