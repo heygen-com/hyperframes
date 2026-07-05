@@ -1,0 +1,25 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "mk-specs-list",
+  "type": "hyperframes:block",
+  "title": "Specs Checklist",
+  "description": "Left-aligned specs/traits checklist over footage or a board: rows slide in staggered with an accent underline sweep; light and dark schemes",
+  "tags": [
+    "data-viz",
+    "list",
+    "minimal",
+    "professional"
+  ],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 8,
+  "files": [
+    {
+      "path": "mk-specs-list.html",
+      "target": "compositions/mk-specs-list.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}
