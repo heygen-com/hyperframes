@@ -14,6 +14,7 @@
     "packages/producer/src/runtime-conformance.ts",
     "packages/producer/src/benchmark.ts",
     "packages/producer/scripts/generate-font-data.ts",
+    "packages/producer/we-render.mjs",
     "packages/producer/scripts/validate-fast-video.ts",
     "packages/cli/scripts/generate-font-data.ts",
     "packages/engine/scripts/test-fitTextFontSize-browser.ts",

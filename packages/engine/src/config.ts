@@ -64,18 +64,21 @@ export interface EngineConfig {
    */
   staticFrameDedup: boolean;
   /**
-   * EXPERIMENTAL. Use drawElementImage for frame capture (requires the
-   * CanvasDrawElement Chrome flag, added globally in buildChromeArgs).
-   * Surfaced via the CLI `--experimental-fast-capture` flag.
-   * Env fallback: `PRODUCER_EXPERIMENTAL_FAST_CAPTURE`.
+   * Use drawElementImage for frame capture (requires the CanvasDrawElement
+   * Chrome flag, added globally in buildChromeArgs). Default ON, clamped in
+   * `resolveConfig` to hosts where it can actually engage (macOS + hardware-GPU
+   * browser); compile/init gates and the runtime self-verification net route
+   * incompatible or damaged renders back to screenshot capture.
+   * Kill switch: `PRODUCER_EXPERIMENTAL_FAST_CAPTURE=false` (or the CLI
+   * `--experimental-fast-capture=false`).
    */
   useDrawElement: boolean;
   /**
-   * EXPERIMENTAL. Pipeline JPEG encode into an in-page OffscreenCanvas Worker
-   * for the drawElement fast-capture path (macOS hardware GPU only). The worker
-   * encodes frame N while the main thread seeks+paints frame N+1, targeting
-   * ~1.65–1.96× wall-time speedup. No-op unless `useDrawElement` is also true.
-   * Default: off. Env: `HF_DE_WORKER_ENCODE=true`.
+   * Pipeline JPEG encode into an in-page OffscreenCanvas Worker for the
+   * drawElement fast-capture path (macOS hardware GPU only). The worker
+   * encodes frame N while the main thread seeks+paints frame N+1
+   * (~1.65–1.96× wall-time speedup). No-op unless `useDrawElement` is also
+   * true. Kill switch: `HF_DE_WORKER_ENCODE=false`.
    */
   enableDrawElementWorkerEncode: boolean;
   /**
@@ -250,8 +253,8 @@ export const DEFAULT_CONFIG: EngineConfig = {
   protocolTimeout: 300_000,
   forceScreenshot: false,
   staticFrameDedup: true,
-  useDrawElement: false,
-  enableDrawElementWorkerEncode: false,
+  useDrawElement: true,
+  enableDrawElementWorkerEncode: true,
   // Auto-detected per host in `resolveConfig`; defaults off for the raw
   // DEFAULT_CONFIG (used directly by tests and worker-sizing fallbacks).
   lowMemoryMode: false,
@@ -516,10 +519,27 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
     ...overrides,
   };
 
+  // Default-on drawElement is clamped to hosts where it can actually engage
+  // (macOS + a hardware-GPU browser; SwiftShader drops transparent sub-layers —
+  // crbug 521434899). Without the clamp, the default would needlessly disable
+  // page-side shader compositing (below) on Linux/Docker and macOS-software
+  // hosts where DE never runs. An EXPLICIT opt-in (env or caller override)
+  // skips the clamp and keeps the old semantics — attempt DE, let the
+  // init-time gates route away — which debugging relies on.
+  const explicitDrawElementOptIn =
+    env("PRODUCER_EXPERIMENTAL_FAST_CAPTURE") === "true" || overrides?.useDrawElement === true;
+  if (
+    merged.useDrawElement &&
+    !explicitDrawElementOptIn &&
+    !(process.platform === "darwin" && merged.browserGpuMode === "hardware")
+  ) {
+    merged.useDrawElement = false;
+  }
+
   // drawElement capture and page-side shader compositing are mutually
   // incompatible capture strategies (drawElement reads paint records directly
   // and bypasses the page-side prepare→composite→resolve protocol). When
-  // experimental fast capture is on, force page-side compositing off so shader
+  // fast capture is on, force page-side compositing off so shader
   // transitions fall back to the Node-side layered blend rather than silently
   // dropping. This keeps the flag self-consistent and avoids a per-session
   // incompatibility warning on every fast-capture render.

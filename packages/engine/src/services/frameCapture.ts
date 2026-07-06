@@ -146,6 +146,42 @@ export interface CaptureSession {
    * worker-encode path (mirrors `lastFrameBuffer` on the screenshot path). Only set
    * when static-frame dedup is armed on the drawElement path. */
   lastEncodeResult?: Promise<Buffer>;
+  /** Per-render self-verification ground truth (ungated-release safety net):
+   * K screenshot frames captured at init BEFORE the drawElement canvas is
+   * injected (the only window where a page screenshot shows the live DOM, not
+   * the capture canvas's stale bitmap). The producer drain compares the DE
+   * frame at each index against these; a breach aborts the render with
+   * DrawElementVerificationError and the orchestrator re-renders via the
+   * screenshot path. */
+  deVerifyFrames?: Map<number, Buffer>;
+}
+
+/**
+ * drawElement self-verification failure — a captured DE frame diverged from its
+ * pre-injection screenshot ground truth (or a blank frame survived a retry).
+ * The orchestrator catches this and re-renders the whole job with
+ * forceScreenshot. Discriminant-based guard (not instanceof) so it survives
+ * duplicated module instances across package boundaries.
+ */
+export class DrawElementVerificationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "DrawElementVerificationError";
+    // Discriminant property, assigned dynamically: isDrawElementVerificationError
+    // reads it structurally so detection survives duplicated module instances
+    // across package boundaries (where instanceof fails).
+    (this as unknown as { deVerificationFailure: boolean }).deVerificationFailure = true;
+  }
+}
+
+export function isDrawElementVerificationError(err: unknown): boolean {
+  // Walk the cause chain — the producer wraps capture errors (CaptureStageError).
+  let e: unknown = err;
+  for (let depth = 0; depth < 5 && typeof e === "object" && e !== null; depth++) {
+    if ((e as { deVerificationFailure?: boolean }).deVerificationFailure === true) return true;
+    e = (e as { cause?: unknown }).cause;
+  }
+  return false;
 }
 
 // Circular buffer for browser console messages dumped on render failure diagnostics.
@@ -581,6 +617,10 @@ async function initDrawElementOrTransparentBackground(
       // passed) and the DOM is still normal (canvas not yet injected, so the
       // verification screenshots are valid). drawElement-path only; see armStaticDedup.
       await armStaticDedup(session, page, logInitPhase);
+      // Self-verification ground truth: must ALSO run pre-injection — after the
+      // canvas wraps the root, a page screenshot shows the canvas's last-drawn
+      // bitmap, not the live DOM (see the Lim 6 boundary-screenshot note).
+      await captureDeVerificationFrames(session, page, logInitPhase);
       await injectDrawElementCanvas(page, session.options.width, session.options.height);
       if (transparent) {
         await initTransparentBackground(session.page);
@@ -2176,7 +2216,7 @@ async function computeTimelineAtRiskFrames(
  * toggled / detached / freshly-shown at a clip-cut boundary). Per-frame, not
  * whole-comp — callers fall back to screenshot for the single frame.
  */
-export function isNoCachedPaintRecordError(err: unknown): boolean {
+function isNoCachedPaintRecordError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
   return msg.includes("No cached paint record");
 }
@@ -2738,6 +2778,81 @@ export async function getCompositionDuration(session: CaptureSession): Promise<n
   return session.page.evaluate(() => {
     return window.__hf?.duration ?? 0;
   });
+}
+
+/**
+ * Ungated-release safety net, part 1: capture K screenshot ground-truth frames
+ * BEFORE the drawElement canvas is injected (the only window where a page
+ * screenshot shows the live DOM). The producer's drain compares each DE frame
+ * at these indices against its screenshot; a breach (or a blank frame that
+ * survives one retry) throws DrawElementVerificationError, and the orchestrator
+ * re-renders the whole job via the screenshot path.
+ *
+ * Env: HF_DE_VERIFY = sample count (default 4, clamp 0..8; 0 disables).
+ * Deterministic index selection: fixed fractions of the timeline, nudged off
+ * clip-cut boundaries (screenshot-vs-DE is legitimately ±1-frame desynced
+ * there — Lim 6). Skipped for tiny comps (<10 frames) and under
+ * HF_FORCE_DRAWELEMENT (debug escape hatch).
+ *
+ * False-positive bias is intentional: a nondeterministic comp may mismatch its
+ * init-time screenshot → the render falls back to the screenshot path (slower,
+ * never wrong). Cost when passing: ~K×(seek+screenshot) ≈ 150–300ms at init.
+ */
+async function captureDeVerificationFrames(
+  session: CaptureSession,
+  page: Page,
+  logInitPhase: (phase: string) => void,
+): Promise<void> {
+  const k = Math.max(0, Math.min(8, Math.floor(Number(process.env.HF_DE_VERIFY ?? "4")) || 0));
+  if (k === 0 || process.env.HF_FORCE_DRAWELEMENT === "1") return;
+  if (session.options.format === "png") return; // worker-encode drain (the consumer) is jpeg-only
+  const fps = fpsToNumber(session.options.fps);
+  const duration = await page.evaluate(
+    () => (window as unknown as { __hf?: { duration?: number } }).__hf?.duration ?? 0,
+  );
+  const totalFrames = Math.floor(duration * fps);
+  if (totalFrames < 10) return;
+  if (duration > 3600) {
+    // Implausible __hf.duration (e.g. infinite-repeat GSAP timelines report a
+    // huge sentinel; the producer renders the data-duration clamp instead).
+    // Fraction-based indices computed from it would never be drained.
+    // ponytail: skip verification here; threading the producer-resolved
+    // duration into CaptureOptions is the upgrade path if coverage matters.
+    logInitPhase(`drawElement self-verify skipped: implausible duration ${duration}s`);
+    return;
+  }
+  const boundary = await computeClipBoundaryFrames(page, fps);
+  const fractions = [0.15, 0.4, 0.65, 0.9, 0.25, 0.55, 0.8, 0.05].slice(0, k);
+  const frames = new Map<number, Buffer>();
+  for (const f of fractions) {
+    let idx = Math.min(totalFrames - 1, Math.max(1, Math.round(totalFrames * f)));
+    // Nudge off clip-cut boundaries (±1-frame desync is legitimate there).
+    let guard = 0;
+    while (boundary.has(idx) && guard++ < 6) idx = Math.min(totalFrames - 1, idx + 2);
+    if (frames.has(idx)) continue;
+    const t = quantizeTimeToFrame(idx / fps, fps);
+    await page.evaluate((tt: number) => {
+      const hf = (window as unknown as { __hf?: { seek?: (x: number) => void } }).__hf;
+      if (hf && typeof hf.seek === "function") hf.seek(tt);
+    }, t);
+    // Video frame injection (same hook the real capture paths run) — without
+    // it, <video> elements screenshot black and every video comp would
+    // false-positive into the screenshot fallback.
+    if (session.onBeforeCapture) await session.onBeforeCapture(page, t);
+    // Double-capture: the first screenshot forces a frame, which is what runs
+    // rAF-driven callbacks (count-up text counters land a tick after seek()
+    // returns — a single immediate screenshot captures stale text and
+    // false-positives the verify: 3bea8c73 28.7dB vs a truth missing its stat
+    // values while the DE frame was correct). NOTE: waiting on rAF via
+    // evaluate instead deadlocks — headless only fires rAF when a frame is
+    // produced, and nothing produces one until a screenshot asks.
+    await pageScreenshotCapture(page, session.options);
+    frames.set(idx, await pageScreenshotCapture(page, session.options));
+  }
+  session.deVerifyFrames = frames;
+  logInitPhase(
+    `drawElement self-verify armed: ${frames.size} ground-truth frame(s) @ [${[...frames.keys()].join(", ")}] of ${totalFrames}`,
+  );
 }
 
 export function getCapturePerfSummary(session: CaptureSession): CapturePerfSummary {

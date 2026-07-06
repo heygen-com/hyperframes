@@ -84,6 +84,8 @@ export {
   captureFrameToBuffer,
   captureFrameToBufferPipelined,
   captureFramesBatchPipelined,
+  DrawElementVerificationError,
+  isDrawElementVerificationError,
   writeCapturedFrame,
   discardWarmupCapture,
   getCompositionDuration,

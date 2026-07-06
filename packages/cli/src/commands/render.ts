@@ -361,11 +361,12 @@ export default defineCommand({
     "experimental-fast-capture": {
       type: "boolean",
       description:
-        "EXPERIMENTAL. Capture frames via Chrome's drawElementImage API " +
-        "instead of Page.captureScreenshot — reads DOM paint records directly, " +
-        "~46% faster on GPU. Transparent (PNG) renders on SwiftShader (Docker) " +
-        "auto-fall back to screenshot capture. Incompatible with page-side " +
-        "shader compositing. Default: false. Env: PRODUCER_EXPERIMENTAL_FAST_CAPTURE.",
+        "Capture frames via Chrome's drawElementImage API instead of " +
+        "Page.captureScreenshot — reads DOM paint records directly, ~2x faster. " +
+        "Default: on where it can engage (macOS + hardware-GPU browser); " +
+        "incompatible compositions and self-verification failures fall back to " +
+        "screenshot capture automatically. Pass =false to disable. " +
+        "Env: PRODUCER_EXPERIMENTAL_FAST_CAPTURE.",
       // No `default` — an omitted flag must stay `undefined` so the `!= null`
       // guard below leaves PRODUCER_EXPERIMENTAL_FAST_CAPTURE untouched and the
       // env fallback survives (matches the --low-memory-mode idiom).

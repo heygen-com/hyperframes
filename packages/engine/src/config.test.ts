@@ -222,15 +222,29 @@ describe("resolveConfig", () => {
   });
 
   describe("useDrawElement (PRODUCER_EXPERIMENTAL_FAST_CAPTURE)", () => {
-    it("defaults to false", () => {
+    it("default is clamped off on software-GPU hosts (page-side compositing preserved)", () => {
       const config = resolveConfig();
       expect(config.useDrawElement).toBe(false);
+      expect(config.enablePageSideCompositing).toBe(true);
     });
 
-    it("enabled when PRODUCER_EXPERIMENTAL_FAST_CAPTURE=true", () => {
+    it("default engages on macOS with a hardware-GPU browser", () => {
+      setEnv("PRODUCER_BROWSER_GPU_MODE", "hardware");
+      const config = resolveConfig();
+      expect(config.useDrawElement).toBe(process.platform === "darwin");
+    });
+
+    it("explicit env opt-in skips the platform clamp", () => {
       setEnv("PRODUCER_EXPERIMENTAL_FAST_CAPTURE", "true");
       const config = resolveConfig();
       expect(config.useDrawElement).toBe(true);
+    });
+
+    it("env kill switch wins over the default", () => {
+      setEnv("PRODUCER_BROWSER_GPU_MODE", "hardware");
+      setEnv("PRODUCER_EXPERIMENTAL_FAST_CAPTURE", "false");
+      const config = resolveConfig();
+      expect(config.useDrawElement).toBe(false);
     });
 
     it("explicit override wins over the env var", () => {

@@ -72,6 +72,7 @@ import {
   scaleProtocolTimeoutForComposition,
   isMemoryExhaustionError,
   isTransientBrowserError,
+  isDrawElementVerificationError,
 } from "@hyperframes/engine";
 import { join, dirname, resolve } from "path";
 import { randomUUID } from "crypto";
@@ -1759,46 +1760,72 @@ export async function executeRenderJob(
       let streamingHandled = false;
       if (useStreamingEncode) {
         const captureFrameStart = Date.now();
-        const streamingRes = await observeRenderStage(
-          observability,
-          "capture_streaming",
-          { workerCount, forceScreenshot: captureForceScreenshot },
-          () =>
-            runCaptureStreamingStage({
-              fileServer: activeFileServer,
-              workDir,
-              framesDir,
-              videoOnlyPath,
-              job,
-              totalFrames,
-              cfg,
-              forceScreenshot: captureForceScreenshot,
-              log,
-              workerCount,
-              probeSession,
-              outputFormat,
-              streamingEncoderOptions: {
-                fps: job.config.fps,
-                width,
-                height,
-                codec: preset.codec,
-                preset: preset.preset,
-                quality: effectiveQuality,
-                bitrate: effectiveBitrate,
-                pixelFormat: preset.pixelFormat,
-                vp9CpuUsed: cfg.vp9CpuUsed,
-                useGpu: job.config.useGpu,
-                imageFormat: captureOptions.format || "jpeg",
-                hdr: preset.hdr,
-              },
-              buildCaptureOptions,
-              createRenderVideoFrameInjector,
-              abortSignal,
-              assertNotAborted,
-              onProgress,
-              dedupPerfs,
-            }),
-        );
+        const invokeStreaming = () =>
+          observeRenderStage(
+            observability,
+            "capture_streaming",
+            { workerCount, forceScreenshot: captureForceScreenshot },
+            () =>
+              runCaptureStreamingStage({
+                fileServer: activeFileServer,
+                workDir,
+                framesDir,
+                videoOnlyPath,
+                job,
+                totalFrames,
+                cfg,
+                forceScreenshot: captureForceScreenshot,
+                log,
+                workerCount,
+                probeSession,
+                outputFormat,
+                streamingEncoderOptions: {
+                  fps: job.config.fps,
+                  width,
+                  height,
+                  codec: preset.codec,
+                  preset: preset.preset,
+                  quality: effectiveQuality,
+                  bitrate: effectiveBitrate,
+                  pixelFormat: preset.pixelFormat,
+                  vp9CpuUsed: cfg.vp9CpuUsed,
+                  useGpu: job.config.useGpu,
+                  imageFormat: captureOptions.format || "jpeg",
+                  hdr: preset.hdr,
+                },
+                buildCaptureOptions,
+                createRenderVideoFrameInjector,
+                abortSignal,
+                assertNotAborted,
+                onProgress,
+                dedupPerfs,
+              }),
+          );
+        let streamingRes;
+        try {
+          streamingRes = await invokeStreaming();
+        } catch (err) {
+          // drawElement self-verification tripped (blank frame or PSNR breach
+          // vs the pre-injection ground truth). The whole render restarts on
+          // the screenshot path — slower, never wrong. The failed attempt's
+          // session was closed by the stage's finally; probeSession (if any)
+          // was consumed by it, so a fresh session spawns on retry.
+          if (!isDrawElementVerificationError(err)) throw err;
+          log.warn("[Render] drawElement self-verification failed; re-rendering via screenshot", {
+            error: err instanceof Error ? err.message : String(err),
+          });
+          observability.checkpoint(
+            "capture_streaming",
+            "drawElement self-verify failed; retrying with forceScreenshot",
+          );
+          captureForceScreenshot = true;
+          updateCaptureObservability({
+            forceScreenshot: true,
+            deSelfVerifyFallback: true,
+          });
+          probeSession = null;
+          streamingRes = await invokeStreaming();
+        }
         const captureFrameMs = Date.now() - captureFrameStart;
         if (streamingRes.success) {
           streamingHandled = true;

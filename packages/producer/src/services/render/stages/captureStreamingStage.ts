@@ -41,6 +41,11 @@
  * into a shared module so the stages can import without reaching back.
  */
 
+import { execFile } from "node:child_process";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { promisify } from "node:util";
 import {
   type BeforeCaptureHook,
   type CaptureOptions,
@@ -48,6 +53,7 @@ import {
   type CaptureSession,
   type EngineConfig,
   type StreamingEncoder,
+  DrawElementVerificationError,
   captureFrameToBuffer,
   captureFrameToBufferPipelined,
   captureFramesBatchPipelined,
@@ -57,6 +63,7 @@ import {
   distributeFrames,
   executeParallelCapture,
   getCapturePerfSummary,
+  getFfmpegBinary,
   initializeSession,
   prepareCaptureSessionForReuse,
   spawnStreamingEncoder,
@@ -137,6 +144,28 @@ export type CaptureStreamingStageResult =
       success: false;
     };
 
+const execFileP = promisify(execFile);
+
+/** PSNR (average, dB) between two same-dimension encoded images via ffmpeg. */
+async function psnrDb(a: Buffer, b: Buffer): Promise<number> {
+  const dir = await mkdtemp(join(tmpdir(), "hf-de-verify-"));
+  try {
+    const pa = join(dir, "a.jpg");
+    const pb = join(dir, "b.jpg");
+    await Promise.all([writeFile(pa, a), writeFile(pb, b)]);
+    const { stderr } = await execFileP(
+      getFfmpegBinary(),
+      ["-hide_banner", "-i", pa, "-i", pb, "-lavfi", "psnr", "-f", "null", "-"],
+      { maxBuffer: 4 * 1024 * 1024 },
+    );
+    const m = /average:(inf|[\d.]+)/.exec(stderr);
+    if (!m) throw new Error(`psnr parse failed: ${stderr.slice(-300)}`);
+    return m[1] === "inf" ? Infinity : Number(m[1]);
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
 async function runWorkerEncodePipelineLoop(
   session: CaptureSession,
   totalFrames: number,
@@ -145,8 +174,102 @@ async function runWorkerEncodePipelineLoop(
   reorderBuffer: ReturnType<typeof createFrameReorderBuffer>,
   assertNotAborted: () => void,
   onProgress: CaptureStreamingStageInput["onProgress"],
+  log: CaptureStreamingStageInput["log"],
 ): Promise<void> {
   let prev: { idx: number; encodeResult: Promise<Buffer> } | null = null;
+  const frameTime = (i: number) => (i * job.config.fps.den) / job.config.fps.num;
+
+  // ── drawElement drain-time safety checks (ungated-release safety net) ──
+  // Runs on every drained frame. Drains execute strictly between capture
+  // evaluates (see the batch NOTE below), so a re-seek + recapture here is
+  // safe — nothing else is mutating page time.
+  //
+  // 1. Blank guard (worker-path port of the serial-path guard in
+  //    frameCapture): drawElement intermittently returns an anomalously small
+  //    blank frame with no throw. A frame far below the rolling-median byte
+  //    size is re-captured once; still blank → verification error.
+  // 2. Self-verification: at K sampled indices, compare the DE frame against
+  //    its pre-injection screenshot ground truth (session.deVerifyFrames).
+  //    PSNR below HF_DE_VERIFY_MIN_DB (default 32; natural DE-vs-screenshot
+  //    agreement measures ≥45, damage <30) → verification error.
+  // A DrawElementVerificationError propagates to the orchestrator, which
+  // re-renders the whole job via the screenshot path (never-wrong fallback).
+  const verifyMinDb = Number(process.env.HF_DE_VERIFY_MIN_DB ?? "32");
+  const sizes: number[] = [];
+  // Absolute floor lowers once a small frame proves deterministic (dark /
+  // low-detail content), so a dark stretch doesn't re-capture every frame.
+  let absFloor = 20_000;
+  const blankFloor = (): number => {
+    if (sizes.length < 12) return 0;
+    const sorted = [...sizes].sort((x, y) => x - y);
+    const median = sorted[Math.floor(sorted.length / 2)] ?? 0;
+    return Math.max(absFloor, median * 0.12);
+  };
+  let acceptedSmall: Buffer | null = null;
+  const guardFrame = async (idx: number, buf: Buffer): Promise<Buffer> => {
+    if (process.env.HF_FORCE_DRAWELEMENT !== "1") {
+      const floor = blankFloor();
+      if (floor > 0 && buf.length < floor && acceptedSmall?.equals(buf)) {
+        // Identical to a small frame already proven deterministic (dark
+        // clip-gap runs repeat the same bytes) — skip the recapture.
+      } else if (floor > 0 && buf.length < floor) {
+        log.warn("[Render] drawElement blank-frame suspect; re-capturing", {
+          frame: idx,
+          bytes: buf.length,
+          floor: Math.round(floor),
+        });
+        // Save/restore the static-dedup anchor: the re-capture would otherwise
+        // overwrite session.lastEncodeResult with this OLD frame, and a later
+        // static frame would reuse the wrong pixels.
+        const savedAnchor = session.lastEncodeResult;
+        const retry = await captureFrameToBufferPipelined(session, idx, frameTime(idx));
+        const retryBuf = await retry.encodeResult;
+        session.lastEncodeResult = savedAnchor;
+        if (retryBuf.equals(buf)) {
+          // Byte-identical on re-capture ⇒ deterministic content, not a
+          // transient blank drop (those are intermittent by nature) — the
+          // frame is legitimately small (dark / low-detail). Accept it;
+          // deterministic damage classes are the PSNR self-verify's job.
+          log.info("[Render] drawElement small frame is deterministic; accepted", {
+            frame: idx,
+            bytes: buf.length,
+          });
+          absFloor = Math.min(absFloor, Math.floor(buf.length / 2));
+          acceptedSmall = buf;
+        } else if (retryBuf.length < floor) {
+          throw new DrawElementVerificationError(
+            `blank drawElement frame ${idx}: ${buf.length}B (retry ${retryBuf.length}B) < floor ${Math.round(floor)}B`,
+          );
+        } else {
+          buf = retryBuf;
+        }
+      }
+      sizes.push(buf.length);
+      if (sizes.length > 60) sizes.shift();
+    }
+    const truth = session.deVerifyFrames?.get(idx);
+    if (truth) {
+      const db = await psnrDb(buf, truth);
+      if (db < verifyMinDb) {
+        // Keep the mismatched pair for diagnosis (tmpdir; OS-reaped).
+        const dumpDir = await mkdtemp(join(tmpdir(), "hf-de-verify-fail-")).catch(() => null);
+        if (dumpDir) {
+          await Promise.all([
+            writeFile(join(dumpDir, `frame-${idx}-de.jpg`), buf),
+            writeFile(join(dumpDir, `frame-${idx}-truth.jpg`), truth),
+          ]).catch(() => {});
+        }
+        throw new DrawElementVerificationError(
+          `drawElement self-verify failed at frame ${idx}: ${db.toFixed(1)}dB < ${verifyMinDb}dB vs pre-injection screenshot${dumpDir ? ` (pair: ${dumpDir})` : ""}`,
+        );
+      }
+      log.info("[Render] drawElement self-verify passed", {
+        frame: idx,
+        psnrDb: db === Infinity ? "inf" : Number(db.toFixed(1)),
+      });
+    }
+    return buf;
+  };
 
   const drainPrev = async (): Promise<void> => {
     if (!prev) return;
@@ -154,7 +277,7 @@ async function runWorkerEncodePipelineLoop(
     // longest stretch of the loop); without this an abort isn't seen until the
     // next produce iteration.
     assertNotAborted();
-    const buf = await prev.encodeResult;
+    const buf = await guardFrame(prev.idx, await prev.encodeResult);
     await reorderBuffer.waitForFrame(prev.idx);
     ensureFrameWritten(await currentEncoder.writeFrame(buf), prev.idx, currentEncoder);
     reorderBuffer.advanceTo(prev.idx + 1);
@@ -168,32 +291,32 @@ async function runWorkerEncodePipelineLoop(
     );
   };
 
-  // P6 (HF_DE_BATCH=N, N>1): capture runs of consecutive frames in ONE CDP
-  // round-trip each (in-page seek+paint+draw loop), amortizing protocol latency
-  // N-fold. Batches break at static-dedup frames (skipped via lastEncodeResult
-  // reuse — order-dependent) and at opt-in boundary-screenshot frames; those go
-  // through the per-frame path unchanged. onBeforeCapture (video frame
-  // injection) needs a node-side hook per frame → no batching.
-  const batchN = Math.floor(Number(process.env.HF_DE_BATCH ?? "0"));
+  // Batch capture (HF_DE_BATCH=N, N>1, default 4 — validated +1.20x lossless on
+  // the 19-comp gate): capture runs of consecutive frames in ONE CDP round-trip
+  // each (in-page seek+paint+draw loop), amortizing protocol latency N-fold.
+  // Batches break at static-dedup frames (skipped via lastEncodeResult reuse —
+  // order-dependent) and at opt-in boundary-screenshot frames; those go through
+  // the per-frame path unchanged. onBeforeCapture (video frame injection) needs
+  // a node-side hook per frame → no batching. Kill switch: HF_DE_BATCH=0.
+  const batchN = Math.floor(Number(process.env.HF_DE_BATCH ?? "4"));
+  const drainBatch = async (batch: Array<{ idx: number; encodeResult: Promise<Buffer> }>) => {
+    for (const item of batch) {
+      assertNotAborted();
+      const buf = await guardFrame(item.idx, await item.encodeResult);
+      await reorderBuffer.waitForFrame(item.idx);
+      ensureFrameWritten(await currentEncoder.writeFrame(buf), item.idx, currentEncoder);
+      reorderBuffer.advanceTo(item.idx + 1);
+      job.framesRendered = item.idx + 1;
+      updateJobStatus(
+        job,
+        "rendering",
+        `Streaming frame ${item.idx + 1}/${totalFrames}`,
+        Math.round(25 + ((item.idx + 1) / totalFrames) * 55),
+        onProgress,
+      );
+    }
+  };
   if (batchN > 1 && !session.onBeforeCapture) {
-    const frameTime = (f: number) => (f * job.config.fps.den) / job.config.fps.num;
-    const drainBatch = async (batch: Array<{ idx: number; encodeResult: Promise<Buffer> }>) => {
-      for (const item of batch) {
-        assertNotAborted();
-        const buf = await item.encodeResult;
-        await reorderBuffer.waitForFrame(item.idx);
-        ensureFrameWritten(await currentEncoder.writeFrame(buf), item.idx, currentEncoder);
-        reorderBuffer.advanceTo(item.idx + 1);
-        job.framesRendered = item.idx + 1;
-        updateJobStatus(
-          job,
-          "rendering",
-          `Streaming frame ${item.idx + 1}/${totalFrames}`,
-          Math.round(25 + ((item.idx + 1) / totalFrames) * 55),
-          onProgress,
-        );
-      }
-    };
     const boundarySS = process.env.HF_FAST_CAPTURE_BOUNDARY_SS === "true";
     const batchable = (f: number) =>
       !session.staticFrames?.has(f) && !(boundarySS && session.clipBoundaryFrames?.has(f));
@@ -207,6 +330,12 @@ async function runWorkerEncodePipelineLoop(
           idxs.push(i);
           i++;
         }
+        // NOTE: draining the previous batch CONCURRENTLY with this capture
+        // (kick the evaluate un-awaited, drain, then await) was prototyped and
+        // REJECTED 2026-07-03: ~1.0–1.03× on medium/long comps but it perturbed
+        // pixels on a deterministic comp (87dB vs ∞ noise floor — main-thread
+        // contention shifting a paint-wait to the timeout path). Keep the
+        // drain strictly between batch evaluates.
         const results = await captureFramesBatchPipelined(session, idxs, idxs.map(frameTime));
         await drainBatch(prevBatch);
         prevBatch = results.map((r) => ({ idx: r.frameIndex, encodeResult: r.encodeResult }));
@@ -228,7 +357,7 @@ async function runWorkerEncodePipelineLoop(
   // the loop needs no special guard here.
   for (let i = 0; i < totalFrames; i++) {
     assertNotAborted();
-    const time = (i * job.config.fps.den) / job.config.fps.num;
+    const time = frameTime(i);
     const { encodeResult } = await captureFrameToBufferPipelined(session, i, time);
     await drainPrev();
     prev = { idx: i, encodeResult };
@@ -388,6 +517,7 @@ export async function runCaptureStreamingStage(
             reorderBuffer,
             assertNotAborted,
             onProgress,
+            log,
           );
         } else {
           for (let i = 0; i < totalFrames; i++) {

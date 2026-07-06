@@ -40,6 +40,8 @@ export interface RenderCaptureObservability {
   usePageSideCompositing?: boolean;
   hasHdrContent?: boolean;
   browserGpuMode?: string;
+  /** drawElement per-render self-verification tripped → whole render re-ran via screenshot. */
+  deSelfVerifyFallback?: boolean;
   protocolTimeoutMs?: number;
   pageNavigationTimeoutMs?: number;
   playerReadyTimeoutMs?: number;
