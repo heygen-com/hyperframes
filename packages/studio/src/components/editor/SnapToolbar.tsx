@@ -102,7 +102,7 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
       {motionPathCreateAvailable && (
         <button
           type="button"
-          className={`rounded-md p-1.5 transition-colors ${
+          className={`rounded-md p-1.5 transition-colors active:scale-[0.95] ${
             motionPathArmed
               ? "bg-studio-accent/20 text-studio-accent"
               : "bg-black/40 text-white/60 hover:bg-black/60 hover:text-white/80"
@@ -118,7 +118,7 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
       )}
       <button
         type="button"
-        className={`rounded-md p-1.5 transition-colors ${
+        className={`rounded-md p-1.5 transition-colors active:scale-[0.95] ${
           prefs.snapEnabled
             ? "bg-studio-accent/20 text-studio-accent"
             : "bg-black/40 text-white/60 hover:bg-black/60 hover:text-white/80"
@@ -134,7 +134,7 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
         <button
           ref={gridButtonRef}
           type="button"
-          className={`rounded-md p-1.5 transition-colors ${
+          className={`rounded-md p-1.5 transition-colors active:scale-[0.95] ${
             prefs.gridVisible
               ? "bg-studio-accent/20 text-studio-accent"
               : "bg-black/40 text-white/60 hover:bg-black/60 hover:text-white/80"
@@ -144,10 +144,26 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
             e.preventDefault();
             setGridPopoverOpen((v) => !v);
           }}
-          title={prefs.gridVisible ? "Grid visible (G)" : "Grid hidden (G)"}
+          title={
+            prefs.gridVisible
+              ? "Grid visible (G) — right-click for spacing options"
+              : "Grid hidden (G) — right-click for spacing options"
+          }
           aria-label="Toggle grid"
         >
           <GridFour size={16} weight={prefs.gridVisible ? "fill" : "regular"} />
+        </button>
+        <button
+          type="button"
+          className="absolute -right-0.5 -bottom-0.5 rounded p-0.5 text-white/50 hover:text-white/90 bg-black/50"
+          onClick={() => setGridPopoverOpen((v) => !v)}
+          title="Grid options"
+          aria-label="Grid options"
+          aria-expanded={gridPopoverOpen}
+        >
+          <svg width="7" height="7" viewBox="0 0 8 8" fill="currentColor" aria-hidden="true">
+            <path d="M1 2.5l3 3 3-3z" />
+          </svg>
         </button>
 
         {gridPopoverOpen && (

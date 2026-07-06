@@ -154,7 +154,8 @@ export const AnimationCard = memo(function AnimationCard({
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
-        className="flex w-full items-center gap-2 py-1.5"
+        aria-expanded={expanded}
+        className="flex w-full items-center gap-2 py-1.5 active:scale-[0.99]"
       >
         <span
           className="rounded bg-panel-accent/10 px-1.5 py-0.5 text-[10px] font-semibold text-panel-accent"
@@ -176,7 +177,7 @@ export const AnimationCard = memo(function AnimationCard({
           height="10"
           viewBox="0 0 10 10"
           fill="currentColor"
-          className={`flex-shrink-0 text-neutral-500 transition-transform ${expanded ? "" : "-rotate-90"}`}
+          className={`flex-shrink-0 text-neutral-500 transition-transform duration-150 ${expanded ? "" : "-rotate-90"}`}
         >
           <path d="M2 3l3 4 3-4z" />
         </svg>

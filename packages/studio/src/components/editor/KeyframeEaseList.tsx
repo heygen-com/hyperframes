@@ -97,7 +97,8 @@ export function KeyframeEaseList({
             <button
               type="button"
               onClick={() => onToggle(isExpanded ? null : kf.percentage)}
-              className="flex w-full items-center gap-2 px-2 py-1.5 text-left"
+              aria-expanded={isExpanded}
+              className="flex w-full items-center gap-2 px-2 py-1.5 text-left active:scale-[0.99]"
             >
               <span className="text-[10px] font-medium text-neutral-400">{label}</span>
               <span className="ml-auto text-[9px] text-neutral-500">{easeLabel}</span>
@@ -106,7 +107,7 @@ export function KeyframeEaseList({
                 height="8"
                 viewBox="0 0 10 10"
                 fill="currentColor"
-                className={`text-neutral-500 transition-transform ${isExpanded ? "" : "-rotate-90"}`}
+                className={`text-neutral-500 transition-transform duration-150 ${isExpanded ? "" : "-rotate-90"}`}
               >
                 <path d="M2 3l3 4 3-4z" />
               </svg>

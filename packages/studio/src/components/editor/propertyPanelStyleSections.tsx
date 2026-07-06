@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Eye, Layers, Palette, Settings, Square, Zap } from "../../icons/SystemIcons";
 import { buildDefaultGradientModel, serializeGradient } from "./gradientValue";
 import { isTextEditableSelection, type DomEditSelection } from "./domEditing";
@@ -111,21 +111,40 @@ export function StyleSections({
       : "Solid";
   const [preferredFillMode, setPreferredFillMode] = useState(fillMode);
   const imageUrl = extractBackgroundImageUrl(backgroundImage);
+  // Remember the last authored gradient so an exploratory Solid↔Gradient
+  // toggle restores it instead of destroying it with the default gradient.
+  const lastGradientRef = useRef<string | null>(
+    backgroundImage.includes("gradient") ? backgroundImage : null,
+  );
+
+  // The remembered gradient is per-element: reset on selection change so
+  // element A's gradient can't leak onto element B via the fill-mode toggle.
+  // (The effect below re-stores it when the new element has its own gradient.)
+  useEffect(() => {
+    lastGradientRef.current = null;
+  }, [element.id, element.selector]);
 
   useEffect(() => {
     setPreferredFillMode(fillMode);
+    if (backgroundImage.includes("gradient")) {
+      lastGradientRef.current = backgroundImage;
+    }
   }, [fillMode, element.id, element.selector, backgroundImage]);
 
   const handleFillModeChange = (nextMode: string) => {
     setPreferredFillMode(nextMode);
     if (nextMode === "Solid") {
+      if (backgroundImage.includes("gradient")) {
+        lastGradientRef.current = backgroundImage;
+      }
       onSetStyle("background-image", "none");
       return;
     }
     if (nextMode === "Gradient" && !backgroundImage.includes("gradient")) {
       onSetStyle(
         "background-image",
-        serializeGradient(buildDefaultGradientModel(styles["background-color"])),
+        lastGradientRef.current ??
+          serializeGradient(buildDefaultGradientModel(styles["background-color"])),
       );
     }
   };
@@ -293,6 +312,7 @@ export function StyleSections({
             <div className="grid min-w-0 gap-1.5">
               <span className={LABEL}>Layer blur</span>
               <SliderControl
+                ariaLabel="Layer blur"
                 value={filterBlurValue}
                 min={0}
                 max={Math.max(40, Math.ceil(filterBlurValue))}
@@ -308,6 +328,7 @@ export function StyleSections({
             <div className="grid min-w-0 gap-1.5">
               <span className={LABEL}>Backdrop</span>
               <SliderControl
+                ariaLabel="Backdrop"
                 value={backdropBlurValue}
                 min={0}
                 max={Math.max(60, Math.ceil(backdropBlurValue))}
@@ -358,6 +379,7 @@ export function StyleSections({
           <div className="grid min-w-0 gap-1.5">
             <span className={LABEL}>Mask inset</span>
             <SliderControl
+              ariaLabel="Mask inset"
               value={clipInsetValue}
               min={0}
               max={Math.max(120, Math.ceil(clipInsetValue))}
@@ -406,6 +428,7 @@ export function StyleSections({
       <Section title="Transparency" icon={<Eye size={15} />} defaultCollapsed>
         <div className="space-y-4">
           <SliderControl
+            ariaLabel="Opacity"
             value={opacityValue}
             min={0}
             max={100}

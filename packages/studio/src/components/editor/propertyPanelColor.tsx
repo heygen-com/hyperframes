@@ -181,6 +181,10 @@ export function ColorField({
 
   useEffect(() => {
     if (!open) return;
+    // Move focus into the picker on open and restore it on close so Escape
+    // and keyboard editing work without a pointer round-trip.
+    panelRef.current?.focus();
+    const restoreTarget = buttonRef.current;
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target as Node | null;
       if (!target) return;
@@ -188,7 +192,10 @@ export function ColorField({
       setOpen(false);
     };
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key === "Escape") {
+        setOpen(false);
+        restoreTarget?.focus();
+      }
     };
     document.addEventListener("pointerdown", handlePointerDown);
     document.addEventListener("keydown", handleKeyDown);
@@ -232,7 +239,10 @@ export function ColorField({
     ? createPortal(
         <div
           ref={panelRef}
-          className="fixed z-[9999] w-[292px] overflow-hidden rounded-2xl border border-neutral-700 bg-neutral-950 shadow-2xl shadow-black/50"
+          role="dialog"
+          aria-label={`${label} color picker`}
+          tabIndex={-1}
+          className="fixed z-[9999] w-[292px] overflow-hidden rounded-2xl border border-neutral-700 bg-neutral-950 shadow-2xl shadow-black/50 outline-none"
           style={{
             left: panelPosition?.left ?? -9999,
             top: panelPosition?.top ?? -9999,

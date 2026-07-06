@@ -352,15 +352,76 @@ export function EaseCurveSection({
         <span className="tracking-wide text-neutral-500">time →</span>
         <span>{duration != null && duration > 0 ? `${duration}s` : "end"}</span>
       </div>
-      <div className="mt-1 flex items-center justify-between px-0.5">
+      <div className="mt-1 flex items-center justify-between gap-2 px-0.5">
         <span className="text-[10px] text-neutral-400">{label}</span>
-        <span
-          className="font-mono text-[9px] tracking-tight text-neutral-600"
-          title="cubic-bezier control points"
-        >
-          {bezierText}
-        </span>
+        <BezierReadout
+          key={bezierText}
+          bezierText={bezierText}
+          onCommit={(pts) => {
+            const path = `M0,0 C${pts[0]},${pts[1]} ${pts[2]},${pts[3]} 1,1`;
+            onCustomEaseCommit(`custom(${path})`);
+          }}
+        />
       </div>
     </div>
+  );
+}
+
+// Paste-editable cubic-bezier readout: type or paste "x1, y1, x2, y2"
+// (commas or spaces) and press Enter to apply a known curve directly.
+function BezierReadout({
+  bezierText,
+  onCommit,
+}: {
+  bezierText: string;
+  onCommit: (pts: Pts) => void;
+}) {
+  const [draft, setDraft] = useState(bezierText);
+  const [invalid, setInvalid] = useState(false);
+
+  const parse = (text: string): Pts | null => {
+    const nums = text
+      .split(/[,\s·]+/)
+      .filter(Boolean)
+      .map(Number);
+    if (nums.length !== 4 || nums.some((n) => !Number.isFinite(n))) return null;
+    const [x1, y1, x2, y2] = nums;
+    if (x1 < 0 || x1 > 1 || x2 < 0 || x2 > 1) return null;
+    return [x1, y1, x2, y2];
+  };
+
+  return (
+    <input
+      type="text"
+      value={draft}
+      aria-label="Cubic-bezier control points"
+      title="cubic-bezier control points — edit and press Enter"
+      onChange={(e) => {
+        setDraft(e.target.value);
+        setInvalid(false);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          setDraft(bezierText);
+          setInvalid(false);
+          e.currentTarget.blur();
+          return;
+        }
+        if (e.key !== "Enter") return;
+        const pts = parse(draft);
+        if (pts) onCommit(pts);
+        else setInvalid(true);
+      }}
+      onBlur={() => {
+        setDraft(bezierText);
+        setInvalid(false);
+      }}
+      className={`w-28 min-w-0 rounded border bg-transparent px-1 py-0.5 text-right font-mono text-[9px] tracking-tight outline-none ${
+        invalid
+          ? "border-red-500/60 text-red-400"
+          : "border-transparent text-neutral-600 focus:border-neutral-700 focus:text-neutral-300"
+      }`}
+      spellCheck={false}
+    />
   );
 }

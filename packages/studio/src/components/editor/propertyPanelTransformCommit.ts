@@ -69,7 +69,7 @@ export function createTransformCommitHandlers({
       commitAnimatedTransformValue(
         axis,
         parsed,
-        "Cannot edit position — animation callbacks not available",
+        "This element's position can't be edited here yet — it is driven by its animation",
       )
     )
       return;
@@ -91,7 +91,7 @@ export function createTransformCommitHandlers({
       return;
     }
     if (hasGsapAnimation) {
-      showToast?.("Cannot edit size — animation callbacks not available");
+      showToast?.("This element's size can't be edited here yet — it is driven by its animation");
       return;
     }
     const current = readStudioBoxSize(element.element);
@@ -118,7 +118,7 @@ export function createTransformCommitHandlers({
       commitAnimatedTransformValue(
         "rotation",
         parsed,
-        "Cannot edit rotation — animation callbacks not available",
+        "This element's rotation can't be edited here yet — it is driven by its animation",
       )
     )
       return;

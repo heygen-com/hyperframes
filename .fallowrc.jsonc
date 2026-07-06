@@ -308,6 +308,10 @@
     // require intrusive middleware changes beyond this PR's scope.
     "minLines": 6,
     "ignore": [
+      // FileTree.tsx / LeftSidebar.tsx: pre-existing 8-line structural clone
+      // (shared sidebar node shape); surfaced by the UX-sweep line shifts.
+      "packages/studio/src/components/editor/FileTree.tsx",
+      "packages/studio/src/components/sidebar/LeftSidebar.tsx",
       // sourcePatcher.ts: pre-existing internal clones between the inline-style
       // and attribute tag-patchers; only the PatchOperation type gained two
       // optional fields here, but the line shift makes fallow re-flag them.
@@ -562,6 +566,10 @@
       "packages/studio/src/components/editor/BlockParamsPanel.tsx",
       "packages/studio/src/components/editor/DomEditOverlay.tsx",
       "packages/studio/src/components/editor/FileTree.tsx",
+      // ColorGradingControls: main's 374-line render function (LUT + vignette/grain
+      // detail panels), reconciled against this PR's LUT import spinner/error graft
+      // during rebase. Pre-existing complexity; line-shift re-flags it.
+      "packages/studio/src/components/editor/propertyPanelColorGradingControls.tsx",
       "packages/studio/src/components/editor/FileTreeNodes.tsx",
       "packages/studio/src/components/editor/LayersPanel.tsx",
       "packages/studio/src/components/editor/MotionPathNode.tsx",

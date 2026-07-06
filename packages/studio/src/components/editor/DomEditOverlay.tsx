@@ -474,7 +474,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
             )}
             {allowCanvasMovement && selection.capabilities.canApplyManualSize && (
               <div
-                className="absolute -right-1.5 -bottom-1.5 w-3 h-3 rounded-sm bg-studio-accent border border-studio-accent/60"
+                className="absolute -right-1.5 -bottom-1.5 w-3 h-3 rounded-sm bg-studio-accent border border-studio-accent/60 before:absolute before:-inset-2.5 before:content-['']"
                 style={{
                   cursor: "se-resize",
                   touchAction: "none",

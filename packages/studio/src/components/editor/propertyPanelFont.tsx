@@ -139,6 +139,7 @@ export function FontFamilyField({
   const fontInputRef = useRef<HTMLInputElement | null>(null);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [activeIndex, setActiveIndex] = useState(-1);
   const [localFonts, setLocalFonts] = useState<string[]>([]);
   const [localFontData, setLocalFontData] = useState<LocalFontData[]>([]);
   const [googleFonts, setGoogleFonts] = useState<string[]>(() => [...POPULAR_GOOGLE_FONT_FAMILIES]);
@@ -251,6 +252,8 @@ export function FontFamilyField({
       } else {
         setFontNotice("No supported font files were imported.");
       }
+    } catch {
+      setFontNotice("Font import failed — the files were not added. Try again.");
     } finally {
       setImportingFonts(false);
     }
@@ -350,11 +353,17 @@ export function FontFamilyField({
           onCommit(buildFontFamilyValue(imported.family));
           setQuery("");
           setOpen(false);
-          return;
+        } else {
+          // Committing an un-imported family would render a silent fallback,
+          // so surface the failure and keep the current font instead.
+          setFontNotice(`Couldn't import "${option.family}" — the font was not applied.`);
         }
+      } catch {
+        setFontNotice(`Couldn't import "${option.family}" — the font was not applied.`);
       } finally {
         setImportingFonts(false);
       }
+      return;
     }
     if (option.source === "Google") loadGoogleFontStylesheet(option.family);
     const imported = importedFonts.find(
@@ -395,17 +404,39 @@ export function FontFamilyField({
               value={query}
               disabled={disabled}
               placeholder={loadingGoogleFonts ? "Loading Google Fonts..." : "Search fonts"}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setActiveIndex(-1);
+              }}
               onKeyDown={(e) => {
                 if (e.key === "Escape") {
                   e.preventDefault();
                   setOpen(false);
+                  return;
                 }
-                if (e.key === "Enter" && filteredOptions[0]) {
+                if (e.key === "ArrowDown" || e.key === "ArrowUp") {
                   e.preventDefault();
-                  commitFamily(filteredOptions[0]);
+                  if (filteredOptions.length === 0) return;
+                  const delta = e.key === "ArrowDown" ? 1 : -1;
+                  const next =
+                    activeIndex < 0 && delta === 1
+                      ? 0
+                      : (activeIndex + delta + filteredOptions.length) % filteredOptions.length;
+                  setActiveIndex(next);
+                  document
+                    .querySelector(`[data-font-option-index="${next}"]`)
+                    ?.scrollIntoView({ block: "nearest" });
+                  return;
+                }
+                const target = filteredOptions[activeIndex] ?? filteredOptions[0];
+                if (e.key === "Enter" && target) {
+                  e.preventDefault();
+                  commitFamily(target);
                 }
               }}
+              role="combobox"
+              aria-expanded={open}
+              aria-autocomplete="list"
               className="min-w-0 rounded-lg border border-neutral-800 bg-neutral-900 px-2.5 py-2 text-[11px] font-medium text-neutral-100 outline-none placeholder:text-neutral-600 focus:border-neutral-600"
             />
             {canQueryLocalFonts && (
@@ -449,19 +480,27 @@ export function FontFamilyField({
             {filteredOptions.length === 0 ? (
               <div className="px-2 py-3 text-[11px] text-neutral-500">No fonts found.</div>
             ) : (
-              filteredOptions.map((option) => (
+              filteredOptions.map((option, index) => (
                 <button
                   key={`${option.source}-${option.family}`}
                   type="button"
+                  data-font-option-index={index}
                   onClick={() => commitFamily(option)}
-                  className={`flex w-full min-w-0 items-center justify-between gap-3 rounded-lg px-2 py-2 text-left text-[11px] transition-colors ${
-                    option.family === currentFamily
-                      ? "bg-studio-accent/15 text-neutral-50"
-                      : "text-neutral-300 hover:bg-neutral-900 hover:text-neutral-100"
+                  className={`flex w-full min-w-0 items-center justify-between gap-3 rounded-lg px-2 py-2 text-left text-[11px] transition-colors active:bg-neutral-800 ${
+                    index === activeIndex
+                      ? "bg-neutral-800 text-neutral-50"
+                      : option.family === currentFamily
+                        ? "bg-studio-accent/15 text-neutral-50"
+                        : "text-neutral-300 hover:bg-neutral-900 hover:text-neutral-100"
                   }`}
                 >
                   <span className="flex min-w-0 items-center gap-1.5">
-                    <span className="truncate font-medium">{option.family}</span>
+                    <span
+                      className="truncate font-medium"
+                      style={{ fontFamily: `"${option.family}"` }}
+                    >
+                      {option.family}
+                    </span>
                     {renderAliasFor(option.family) && (
                       <span className="flex-shrink-0 text-[9px] text-neutral-500">
                         → {renderAliasFor(option.family)}

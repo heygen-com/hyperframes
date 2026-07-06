@@ -245,6 +245,7 @@ export function MediaSection({
             <div className="grid min-w-0 gap-1.5">
               <span className={LABEL}>Volume</span>
               <SliderControl
+                ariaLabel="Volume"
                 value={volumePercent}
                 min={0}
                 max={100}
@@ -260,6 +261,7 @@ export function MediaSection({
             <div className="grid min-w-0 gap-1.5">
               <span className={LABEL}>Playback rate</span>
               <SliderControl
+                ariaLabel="Playback rate"
                 value={playbackRate * 100}
                 min={25}
                 max={300}
@@ -275,6 +277,7 @@ export function MediaSection({
             <div className="grid min-w-0 gap-1.5">
               <span className={LABEL}>Media start</span>
               <SliderControl
+                ariaLabel="Media start"
                 value={Math.round(mediaStart * 100)}
                 min={0}
                 max={mediaStartMax * 100}

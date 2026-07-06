@@ -30,7 +30,8 @@ export function DomEditRotateHandle({
       <div className="absolute left-1/2 top-3 bottom-0 w-px -translate-x-1/2 bg-studio-accent/60" />
       <button
         type="button"
-        className="pointer-events-auto absolute left-1/2 top-0 h-3 w-3 -translate-x-1/2 rounded-full border border-studio-accent bg-studio-accent p-0 shadow-[0_0_0_2px_rgba(60,230,172,0.18)]"
+        tabIndex={-1}
+        className="pointer-events-auto absolute left-1/2 top-0 h-3 w-3 -translate-x-1/2 rounded-full border border-studio-accent bg-studio-accent p-0 shadow-[0_0_0_2px_rgba(60,230,172,0.18)] before:absolute before:-inset-2 before:content-['']"
         style={{ cursor: "grab", touchAction: "none" }}
         title="Rotate"
         aria-label="Rotate selection"
